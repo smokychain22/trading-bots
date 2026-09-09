@@ -55,19 +55,37 @@ all. The token matters for non-interactive/CI use, which isn't set up yet.
   an open architecture question — see the note in `docs/TEAM_CHARTER.md` and
   `docs/PHASED_PLAN.md` until it's resolved with the user.
 
-## Open architecture question
+## Architecture decision: Vercel hosts the future dashboard/API only
 
-THETA's frozen runtime topology (TRD §5–6) is a Node.js/TypeScript control plane +
-Python quant service, PostgreSQL, Redis, and Docker/Docker Compose, with an
-always-on scheduler holding Alpaca WebSocket connections (trade_updates, option
-quote stream) during market sessions. Vercel's serverless/Fluid Compute model is not
-a drop-in replacement for that — it doesn't run Docker Compose, and a function-based
-architecture needs a different design for anything long-running (an always-on
-scheduler, persistent WebSocket subscriptions) even though Vercel Functions can now
-hold WebSocket connections and Vercel Cron can trigger periodic work.
+Resolved with the user: **Vercel hosts a future Next.js dashboard and/or thin
+reporting/monitoring API — not the trading engine.** THETA's runtime (scheduler,
+Alpaca/Optionomics adapters, execution, AEGIS, the Wheel lifecycle state machine,
+Postgres, Redis) stays self-hosted exactly as the TRD specifies (§5–6: Node/TS
+control plane + Python quant service + Docker Compose, with an always-on scheduler
+holding broker WebSocket connections during market sessions) — Vercel's
+serverless/Fluid Compute model was never going to be a drop-in replacement for that,
+and this keeps the frozen runtime topology intact with no TRD revision needed.
 
-This doesn't block anything in the current phase (no application code exists yet),
-but it does affect how Codex should scaffold Phase 0 infrastructure, so it needs an
-explicit answer before that work starts rather than an assumption baked into the
-scaffold. See the question raised alongside this document's introduction for the
-options considered.
+Implications for repo layout and Phase 0+ work:
+
+- The Next.js dashboard, when it's built, is a **separate application** from
+  `bots/theta/app/` — likely `apps/dashboard/` or similar alongside `bots/` at the
+  repo root, added when the PRD's Command Center/reporting screens are actually
+  scheduled (not before; don't scaffold it speculatively ahead of the phase that
+  needs it).
+- The dashboard talks to THETA's data through whatever read API/reporting layer
+  `bots/theta/app/src/api/` exposes (per PRD §43 "Full Runtime API Stack" and the
+  `analytics.v_*` read views) — it does not get its own direct database connection
+  with independent query logic, to avoid two places defining "the" performance
+  numbers.
+- The `OPTIONOMICS_API_KEY` already configured as a Vercel Production env var (see
+  above) is unusual under this decision — the dashboard shouldn't need direct
+  Optionomics access if it's reading through THETA's own API. Worth asking the user
+  whether that variable was set up in anticipation of something specific (e.g. a
+  dashboard widget that calls Optionomics directly) or is leftover from an earlier
+  plan, next time Vercel/dashboard work is actually picked up. Not urgent — it's an
+  unused Production variable, not a live risk — but it shouldn't be silently
+  forgotten either.
+- Nothing in `docs/PHASED_PLAN.md` changes as a result of this — no phase currently
+  includes dashboard work, and none should until the engine phases it depends on
+  (candidate/decision persistence, performance views) are further along.
