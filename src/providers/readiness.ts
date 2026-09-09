@@ -187,6 +187,13 @@ const optionomicsProbes = (documentedPaths: readonly string[]): readonly Optiono
   return expected.filter((probe) => documentedPaths.includes(probe.path));
 };
 
+export const optionomicsProbeUrl = (operationAlias: string, documentedPath: string): URL => {
+  const path = documentedPath.replace('{symbol}', 'SPY');
+  const url = new URL(path, optionomicsApiBaseUrl);
+  if (operationAlias === 'opt.get_flow_net') url.searchParams.set('symbol', 'SPY');
+  return url;
+};
+
 export const checkOptionomics = async (environment: Environment): Promise<readonly CheckResult[]> => {
   const reference = await readJson('OPTIONOMICS', 'OPTIONOMICS_DOCUMENTED_CONTRACTS', 'opt.discover_documented_operations', optionomicsReferenceUrl, {}, optionomicsProvenance('/docs/api'), (body) => {
     const paths = extractDocumentedOperationPaths(typeof body === 'string' ? body : '');
@@ -197,8 +204,8 @@ export const checkOptionomics = async (environment: Environment): Promise<readon
   const headers = optionomicsHeaders(environment);
   const probes = optionomicsProbes(documentedPaths);
   const results = await Promise.all(probes.map(async (probe) => {
-    const path = probe.path.replace('{symbol}', 'SPY');
-    return readJson('OPTIONOMICS', probe.capability, probe.operationAlias, `${optionomicsApiBaseUrl}${path}`, { headers }, optionomicsProvenance(path), (body, response) => {
+    const url = optionomicsProbeUrl(probe.operationAlias, probe.path);
+    return readJson('OPTIONOMICS', probe.capability, probe.operationAlias, url, { headers }, optionomicsProvenance(url.pathname), (body, response) => {
       const record = object(body);
       return {
         responseIsObject: typeof body === 'object' && body !== null,
