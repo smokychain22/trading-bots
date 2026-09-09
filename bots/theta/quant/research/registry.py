@@ -34,6 +34,29 @@ CANDIDATE_ACTIONS = {
 EVIDENCE_STATES = {"OBSERVED", "RECONSTRUCTED", "INFERRED", "UNKNOWN"}
 HYPOTHESIS_STATUSES = {"RETAIN", "CORRECT", "TEST", "REJECT"}
 HYPOTHESIS_TYPES = {"trading", "measurement"}
+LABEL_TYPES = {
+    "entry_label",
+    "assignment_label",
+    "management_label",
+    "roll_label",
+    "cc_label",
+    "recovery_label",
+    "execution_label",
+    "N/A_MEASUREMENT",
+}
+REQUIRED_HYPOTHESIS_FIELDS = (
+    "mechanism",
+    "state",
+    "alternatives",
+    "label_type",
+    "label_definition",
+    "payoff_target",
+    "failure_mode",
+    "calibration_requirement",
+    "evidence_requirement",
+    "acceptance_criterion",
+    "rejection_criterion",
+)
 
 
 class ResearchRegistryError(ValueError):
@@ -141,6 +164,13 @@ def validate_registry() -> None:
 
         if h["status"] not in HYPOTHESIS_STATUSES:
             raise ResearchRegistryError(f"{hid}: invalid status {h['status']!r}")
+
+        for field in REQUIRED_HYPOTHESIS_FIELDS:
+            if field not in h:
+                raise ResearchRegistryError(f"{hid}: missing required field {field!r}")
+
+        if h["label_type"] not in LABEL_TYPES:
+            raise ResearchRegistryError(f"{hid}: invalid label_type {h['label_type']!r}")
 
         for se in h.get("source_experts", []):
             if se["expert_source_id"] not in expert_ids:

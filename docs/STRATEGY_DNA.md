@@ -56,15 +56,72 @@ data. `validate_registry()` checks internal *consistency* of the hypothesis
 registry — cross-references resolve, no orphaned IDs, no asymmetric contradictions —
 not economic validity. That's what Phase 6 is for.
 
+## Phase 1 update: full hypothesis field set + THETA-Q baseline code
+
+Per a follow-up research assignment, `hypotheses.json` was enriched in place
+(no breaking changes to existing fields/cross-references) with the full
+field set requested: `mechanism`, `state`, `alternatives`, `label_type` +
+`label_definition` (TRD section 46's label taxonomy), `payoff_target`,
+`failure_mode`, `calibration_requirement`, `evidence_requirement`,
+`acceptance_criterion`, and `rejection_criterion` — all 13 hypotheses, not a
+subset. `registry.py` and its tests now enforce that every hypothesis has
+this full field set and a valid `label_type`.
+
+`bots/theta/quant/models/theta_q_baseline.py` is the first simple,
+non-ML THETA-Q baseline: a transparent, reason-coded CSP candidate
+scorer (hard-veto liquidity/event/contract gates, an explicit ownership ×
+(1 − severe-drawdown) soft score, TRD Appendix A economics formulas, and
+hard-cap-only sizing). It deliberately does **not** compute a fabricated
+`EV_net` — that requires a calibrated entry-outcome model this baseline
+doesn't have, and inventing one would violate the no-invented-numbers rule.
+`bots/theta/tests/quant/test_theta_q_baseline.py` covers it with synthetic
+(clearly labeled, non-real-market) fixtures, including hand-computed
+economics, quantity-zero reachability, and IV-rank never acting as a
+standalone gate.
+
+## Continuation plan for the rest of the Phase 1 research brief
+
+Given the size of the full brief (ownership/regime models, deeper entry
+research, THETA-H-specific statistics, assignment/recovery survival
+modeling, covered-call utility modeling, roll intelligence, management
+policy sweeps, model-family selection, and the full validation framework),
+this update deliberately scoped to the hypothesis-registry enrichment and
+the THETA-Q baseline rather than shipping shallow stubs for everything at
+once — thin, unvalidated stand-ins for a survival model or a regime HMM
+would look like progress without being trustworthy. Next, in priority order:
+
+1. Ownership model (item 4): formalize the feature list already in
+   `feature_families.json` into an actual scoring function (still
+   non-ML-first, per the brief's own "start with interpretable baselines"
+   instruction), replacing the placeholder product formula in
+   `theta_q_baseline.py`'s `_ownership_evaluation`.
+2. Regime model (item 5): a rule-based baseline over trend/volatility/
+   event/liquidity/stress, before any clustering/HMM challenger.
+3. THETA-H-specific baseline (item 7): a variant of `theta_q_baseline.py`'s
+   structure for the 2-5 DTE cohort, kept statistically separate per H-H-02.
+4. Assignment/recovery survival modeling (item 8) and covered-call
+   `CCUtility` implementation (item 9) — both have exact formulas already in
+   the TRD and in `hypotheses.json`'s `payoff_target` fields, ready to
+   implement once items 1-2 exist to feed them.
+5. Roll intelligence (`RollUtility`, item 10) and management-policy sweeps
+   (item 11) build on the same pattern.
+6. Model family selection (item 12) and the validation framework (item 13)
+   are Phase 6 infrastructure-heavy work and stay gated on Codex's
+   FusionSnapshot/dataset pipeline regardless of how much research design
+   is ready before then.
+
 ## Known gaps, honestly flagged rather than papered over
 
 - No Python interpreter was available on this machine to actually execute
-  `registry.py`, `weighting.py`, or the test suite. Every JSON file's syntax and
-  cross-references were validated with a Node.js script (also not committed — it was
-  scratch tooling) and the Python code was traced by hand against that same validated
-  data. Codex or a future session should run the actual test suite the first time a
-  Python toolchain exists in this repo, and treat this milestone as unverified-by-
-  execution until that happens.
+  `registry.py`, `weighting.py`, `theta_q_baseline.py`, or any test in
+  `bots/theta/tests/quant/` (including `test_theta_q_baseline.py`, added in this
+  update). Every JSON file's syntax and cross-references were validated with a
+  Node.js script (also not committed — it was scratch tooling) and every Python
+  formula/branch was hand-traced against specific numeric examples (e.g. the
+  baseline's economics test values were computed by hand before being written into
+  the test). Codex or a future session should run the actual test suite the first
+  time a Python toolchain exists in this repo, and treat this milestone as
+  unverified-by-execution until that happens.
 - H-A-02 is marked `CORRECT`, not `TEST` or `RETAIN` — its statement conflates a
   settled architectural rule (a recovery bound should exist) with a genuinely open
   parameter (what the bound should be). It needs to be split before a backtester

@@ -39,6 +39,23 @@ class HypothesisCoverageTests(unittest.TestCase):
         for h in self.hypotheses:
             self.assertIn(h["status"], registry.HYPOTHESIS_STATUSES)
 
+    def test_every_hypothesis_has_the_full_required_field_set(self):
+        # mechanism/state/alternatives/label_type/label_definition/
+        # payoff_target/failure_mode/calibration_requirement/
+        # evidence_requirement/acceptance_criterion/rejection_criterion
+        for h in self.hypotheses:
+            for field in registry.REQUIRED_HYPOTHESIS_FIELDS:
+                self.assertIn(field, h, f"{h['hypothesis_id']} missing {field}")
+
+    def test_every_label_type_is_valid(self):
+        for h in self.hypotheses:
+            self.assertIn(h["label_type"], registry.LABEL_TYPES, h["hypothesis_id"])
+
+    def test_measurement_hypotheses_use_the_na_measurement_label(self):
+        for h in self.hypotheses:
+            if h["hypothesis_type"] == "measurement":
+                self.assertEqual(h["label_type"], "N/A_MEASUREMENT", h["hypothesis_id"])
+
     def test_contradiction_pair_is_symmetric_and_present(self):
         # H-R-01 (active management) and H-R-02 (patience) are the
         # deliberately preserved contradiction from the corpus -- this test
