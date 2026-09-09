@@ -12,12 +12,13 @@
     "test": "tsx --test tests/**/*.test.ts",
     "lint": "eslint src tests",
     "validate:env": "tsx src/config/validate-env.ts",
-    "provider:readiness": "tsx --env-file=.env.local src/providers/provider-readiness.ts"
+    "provider:readiness": "tsx src/providers/provider-readiness.ts"
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
+    "dotenv": "^17.4.2",
     "express": "^5.1.0",
     "pino": "^9.9.4",
     "zod": "^4.1.12"

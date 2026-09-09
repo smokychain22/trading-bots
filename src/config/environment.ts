@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { parse } from 'dotenv';
 import { z } from 'zod';
 
 const optionalUrl = z.string().url().optional();
@@ -19,6 +21,22 @@ const environmentSchema = z.object({
 
 export type Environment = z.infer<typeof environmentSchema>;
 export type ProviderName = 'ALPACA' | 'OPTIONOMICS';
+
+export const environmentPrecedence = [
+  'explicit dotenv file parsed by dotenv',
+  'process environment fallback',
+  'schema defaults'
+] as const;
+
+// No .env variant is loaded implicitly. Callers must name the intended file.
+// Explicit file values override stale shell/process values for deterministic checks.
+export const loadEnvironmentFile = (
+  filePath: string,
+  processSource: NodeJS.ProcessEnv = process.env
+): Environment => {
+  const fileSource = parse(readFileSync(filePath));
+  return environmentSchema.parse({ ...processSource, ...fileSource });
+};
 
 export const loadEnvironment = (source: NodeJS.ProcessEnv = process.env): Environment =>
   environmentSchema.parse(source);

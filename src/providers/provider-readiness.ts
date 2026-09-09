@@ -1,7 +1,8 @@
-import { assertProviderConfiguration, loadEnvironment } from '../config/environment.js';
+import { assertProviderConfiguration, loadEnvironment, loadEnvironmentFile } from '../config/environment.js';
 import { checkAlpaca, checkOptionomics, type CheckResult } from './readiness.js';
 
-const environment = loadEnvironment();
+const useProcessEnvironment = process.argv.includes('--process-env');
+const environment = useProcessEnvironment ? loadEnvironment() : loadEnvironmentFile('.env.local');
 const results: CheckResult[] = [];
 
 try {
