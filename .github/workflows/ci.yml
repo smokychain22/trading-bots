@@ -10,6 +10,31 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: trading_bots
+          POSTGRES_USER: trading_bots
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trading_bots -d trading_bots"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      PGPASSWORD: ci-only-password
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,3 +50,12 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: python -m unittest discover -s bots/theta/tests/quant -p 'test_*.py'
+      - name: Apply migrations and test schema invariants
+        run: |
+          for migration in migrations/*.sql; do
+            psql -h 127.0.0.1 -U trading_bots -d trading_bots -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          for test_file in tests/sql/*.sql; do
+            psql -h 127.0.0.1 -U trading_bots -d trading_bots -v ON_ERROR_STOP=1 -f "$test_file"
+          done
+          test "$(redis-cli -h 127.0.0.1 ping)" = "PONG"
