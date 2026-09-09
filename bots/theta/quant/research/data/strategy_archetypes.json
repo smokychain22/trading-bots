@@ -1,0 +1,65 @@
+{
+  "$schema_note": "THETA internal research archetypes -- how Claude organizes expert-evidence and hypotheses for study. These are NOT the frozen runtime 'strategy_branch' enum (THETA_CONVENTIONAL / THETA_HOLD_STRIKE / THETA_DEFINED_RISK / THETA_RECOVERY / THETA_CC, defined in the Backend Schema section 7 and implemented in the SQL bootstrap). Where an archetype maps closely to one runtime branch that is stated explicitly below; where it is cross-cutting (applies across branches, e.g. management/roll logic) that is stated too. Do not treat this file as redefining the schema enum -- it organizes research, the schema enum drives runtime behavior.",
+  "archetypes": [
+    {
+      "archetype_id": "THETA-Q",
+      "name": "Quality Ownership",
+      "description": "Underlying/CSP-entry selection hypotheses: is this underlying acceptable to own under the put strike, independent of which runtime branch eventually opens the position. Covers ownership_acceptability, severe-drawdown probability, and the explicit rejection of premium-blind or IV-rank-blind entry.",
+      "related_strategy_branch": null,
+      "branch_relationship": "cross-cutting: every runtime branch's entry step depends on the ownership-quality judgment this archetype studies (TRD UNIV-001..003, section 43 Underlying Ownership model), it is not itself a branch.",
+      "primary_trd_sections": ["12", "43", "section 0.2 (high IV alone is not sufficient)"],
+      "primary_models": ["ownership model", "severe-drawdown model", "recovery-time model"]
+    },
+    {
+      "archetype_id": "THETA-H",
+      "name": "Hold-the-Strike",
+      "description": "Short-dated (2-5 DTE) ATM/near-ATM assignment-aware entry policy on separately validated underlying/policy cohorts, with intentional assignment and a recovery-wait step before considering a covered call.",
+      "related_strategy_branch": "THETA_HOLD_STRIKE",
+      "branch_relationship": "direct match: this archetype is the research programme behind the THETA_HOLD_STRIKE runtime branch (TRD section 15) -- a research challenger, not the default, per the TRD's own framing.",
+      "primary_trd_sections": ["4", "15", "20"],
+      "primary_models": ["entry outcome model", "assignment model"]
+    },
+    {
+      "archetype_id": "THETA-R",
+      "name": "Roll Intelligence",
+      "description": "Management-timing hypotheses: when (if ever) closing or rolling a short option before expiration beats holding to expiration or full-cycle resolution, and the requirement that any roll beat the best feasible alternative computed at the same decision timestamp, never applied as a universal early/late rule.",
+      "related_strategy_branch": null,
+      "branch_relationship": "cross-cutting: management/roll decisions (TRD section 22, section 24) apply inside any branch's open position, not to one branch alone.",
+      "primary_trd_sections": ["22", "24", "Appendix A (RollUtility, NetRollCredit)"],
+      "primary_models": ["management model", "roll-value model"]
+    },
+    {
+      "archetype_id": "THETA-C",
+      "name": "Covered-Call Monetization",
+      "description": "Once stock is held (via assignment or otherwise), how to select and manage covered calls: trading off premium, retained upside, call-away regret, and event risk rather than maximizing annualized yield alone; explicitly excludes selling a call immediately after every assignment as a default.",
+      "related_strategy_branch": "THETA_CC",
+      "branch_relationship": "direct match: this archetype is the research programme behind the THETA_CC runtime branch.",
+      "primary_trd_sections": ["23"],
+      "primary_models": ["covered-call ranker"]
+    },
+    {
+      "archetype_id": "THETA-A",
+      "name": "Assignment/Recovery",
+      "description": "What happens after assignment: whether assignment itself is an acceptable outcome given ownership quality, how long recovery-wait should run before a bounded exit, and -- critically -- how assignment-heavy performance must be reported (Managed Episode WR, Whole-Chain WR, Open MTM together) so headline win rate never hides unresolved inventory drawdown.",
+      "related_strategy_branch": "THETA_RECOVERY",
+      "branch_relationship": "direct match for the recovery-wait management state; also draws on the full CSP-to-stock lineage that section 4's lifecycle diagram treats as one chain, not a separate branch.",
+      "primary_trd_sections": ["4", "23", "40", "43"],
+      "primary_models": ["assignment model", "ownership model", "recovery-time model"]
+    },
+    {
+      "archetype_id": "THETA-D",
+      "name": "Defined-Risk Challenger (later)",
+      "description": "Put-credit-spread or other defined-risk alternative when full cash-secured CSP quantity would be zero or tail risk is better bounded as a spread. Explicitly deferred: TRD section 3.1 permits this only after Level 3 options support and separate OOS validation; it is registered here for research completeness, not for near-term work.",
+      "related_strategy_branch": "THETA_DEFINED_RISK",
+      "branch_relationship": "direct match: this archetype is the research programme behind the (explicitly optional, later) THETA_DEFINED_RISK runtime branch.",
+      "primary_trd_sections": ["3.1", "15"],
+      "primary_models": ["none active -- gated"],
+      "gated_until": "Alpaca options trading Level 3 confirmed on the account (see docs/DATA_READINESS_ASSESSMENT.md, OPTIONS_TRADING_LEVEL) AND THETA-Q/H/R/C/A have graduated per docs/PHASED_PLAN.md. Do not begin implementation work on this archetype before both conditions are met."
+    }
+  ],
+  "cross_cutting_failure_dna": {
+    "applies_to": ["THETA-Q", "THETA-H", "THETA-R", "THETA-C", "THETA-A", "THETA-D"],
+    "source_expert_ids": ["sqqq_hold_the_strike", "fearless_value"],
+    "statement": "A high closed-trade or Leg win rate never proves an archetype is safe on its own. Every archetype's performance must be reported as Leg WR, Managed Episode WR, Whole-Chain WR, and Open MTM together (TRD OUT-001..004) -- this is a standing constraint on how ALL archetypes are evaluated, not a property of any single one, which is why it is recorded here rather than folded into just THETA-A."
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "$schema_note": "Maps each expert_source_id (bots/theta/quant/expert_priors/data/expert_sources.json) to the THETA research archetype(s) (bots/theta/quant/research/data/strategy_archetypes.json) their evidence is relevant to. An expert may map to more than one archetype -- their observed/reconstructed behavior is not forced into a single clean category. Contradictions between experts mapped to the same archetype are NOT resolved here by averaging; they surface as separate, explicitly competing hypotheses in bots/theta/quant/research/data/hypotheses.json instead (see e.g. H-R-01 vs H-R-02).",
+  "mappings": [
+    {
+      "expert_source_id": "orange_cat",
+      "archetype_ids": ["THETA-Q", "THETA-A", "THETA-C"],
+      "note": "Patience and acceptable-ownership evidence supports THETA-Q; the CSP->stock->CC full-cycle framing spans THETA-A (assignment/recovery) and THETA-C (the CC leg as the cycle's terminal monetization step)."
+    },
+    {
+      "expert_source_id": "iwm_hold_the_strike",
+      "archetype_ids": ["THETA-H", "THETA-A"],
+      "note": "Direct match to THETA-H's 2-5 DTE ATM policy; the intentional-assignment and recovery-wait-before-CC behavior also feeds THETA-A."
+    },
+    {
+      "expert_source_id": "hendo_67",
+      "archetype_ids": ["THETA-R", "THETA-C", "THETA-A"],
+      "note": "Active CSP/CC/Wheel management spans close/roll (THETA-R), CC management (THETA-C), and assignment behavior (THETA-A) -- not confined to one."
+    },
+    {
+      "expert_source_id": "alex",
+      "archetype_ids": ["THETA-R", "THETA-A"],
+      "note": "Rolling/adjustment evolution is core THETA-R evidence; 'assignment lifecycle' framing also touches THETA-A."
+    },
+    {
+      "expert_source_id": "ivan_orehovec",
+      "archetype_ids": ["THETA-R", "THETA-D"],
+      "note": "Cross-cutting: 'portfolio/structure routing across CSP/CC/spreads/IC' is a routing-level hypothesis that does not fit one archetype cleanly -- recorded against both the management (THETA-R) and defined-risk-structure (THETA-D) archetypes rather than forced into a single label."
+    },
+    {
+      "expert_source_id": "ivan_small_account",
+      "archetype_ids": ["THETA-D"],
+      "note": "Direct match: explicitly a defined-risk/small-account archetype, and TRD itself says not to merge it with main-account policy."
+    },
+    {
+      "expert_source_id": "wheeling_to_freedom",
+      "archetype_ids": ["THETA-R"],
+      "note": "BUY_CLOSE / active inventory management is a management-timing (close/roll-adjacent) behavior."
+    },
+    {
+      "expert_source_id": "david_romic",
+      "archetype_ids": ["THETA-Q"],
+      "note": "Conservative income process reads as an entry/ownership-quality posture, the weakest-evidence fit of the six archetypes given the explicit 'evidence-strength limits' caveat."
+    },
+    {
+      "expert_source_id": "lick_neeson",
+      "archetype_ids": ["THETA-R", "THETA-D"],
+      "note": "Same cross-cutting structure-routing theme as Ivan Orehovec -- recorded against both, explicitly 'research prior only until evidence improves.'"
+    },
+    {
+      "expert_source_id": "sqqq_hold_the_strike",
+      "archetype_ids": ["THETA-Q", "THETA-H", "THETA-R", "THETA-C", "THETA-A", "THETA-D"],
+      "note": "This is the cross-cutting failure-DNA constraint recorded in strategy_archetypes.json's cross_cutting_failure_dna block, not a positive strategy prior for any single archetype -- it applies to all of them equally, which is why it is not narrowed to THETA-A alone despite assignment/recovery being where the risk is sharpest."
+    },
+    {
+      "expert_source_id": "fearless_value",
+      "archetype_ids": ["THETA-Q", "THETA-A"],
+      "note": "Value/quality-ownership framing (THETA-Q) combined with drawdown caution most relevant to assignment/recovery reporting discipline (THETA-A); also listed in the cross-cutting failure-DNA block as a failure/mechanism study, not a strategy to copy."
+    }
+  ]
+}

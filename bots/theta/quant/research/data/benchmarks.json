@@ -1,0 +1,32 @@
+{
+  "$schema_note": "Benchmark and random-null definitions. The B0-B6 / A1-A6 IDs are TRD v1.1 FINAL section 49's own canonical benchmark/ablation matrix, reused verbatim -- not reinvented. Archetype-specific IDs (prefixed BQ/BH/BR/BC/BA) are additions for comparisons the canonical B/A matrix does not name explicitly, needed because the archetype-level hypotheses in hypotheses.json are more granular than the six canonical ablation steps. None of these carry invented performance numbers -- they are comparison *definitions*, to be run once the backtester (Phase 6) exists.",
+  "canonical_trd_benchmarks": [
+    {"id": "B0", "name": "No-trade / cash reference", "description": "Opportunity-cost and overtrading sanity check.", "is_null": false},
+    {"id": "B1", "name": "Mechanical CSP", "description": "Research-grid DTE/delta + fixed management. Simple premium-selling baseline.", "is_null": false},
+    {"id": "B2", "name": "Basic Wheel", "description": "CSP -> assignment -> immediate/simple CC. Lifecycle baseline.", "is_null": false},
+    {"id": "B3", "name": "Fixed profit-take", "description": "Fixed 25% / 50% / 75% profit-take variants. Management benchmark.", "is_null": false},
+    {"id": "B4", "name": "Fixed time-exit", "description": "Fixed time-exit / 21-DTE style variant where applicable. Time-management benchmark.", "is_null": false},
+    {"id": "B5", "name": "Random-entry matched", "description": "Random entry matched by ticker/DTE/structure/size. Tests whether timing/selection adds value.", "is_null": true},
+    {"id": "B6", "name": "Buy-and-hold assigned underlying", "description": "Tests whether Wheel management adds value after assignment.", "is_null": false},
+    {"id": "A1", "name": "+ ownership model", "description": "B1 + ownership model. Incremental ownership value.", "is_null": false},
+    {"id": "A2", "name": "+ volatility/surface features", "description": "A1 + volatility/surface features. Incremental vol value.", "is_null": false},
+    {"id": "A3", "name": "+ regime model", "description": "A2 + regime model. Conditional regime value.", "is_null": false},
+    {"id": "A4", "name": "+ expert priors", "description": "A3 + expert priors. Incremental expert prior value.", "is_null": false},
+    {"id": "A5", "name": "+ dynamic management", "description": "A4 + dynamic management. Management alpha.", "is_null": false},
+    {"id": "A6", "name": "+ execution/fill model", "description": "A5 + execution/fill model. Execution preservation.", "is_null": false}
+  ],
+  "archetype_specific_benchmarks": [
+    {"id": "BQ-1", "name": "Premium/IV-rank-only CSP selection", "description": "Select CSP candidates purely by highest premium or IV rank, no ownership_acceptability or p_severe_drawdown screen. Same underlying universe and sizing rules as the variant it is compared against. Counterfactual for H-Q-01 and H-Q-02.", "is_null": false},
+    {"id": "BH-1", "name": "Fixed 30-60 DTE conventional CSP", "description": "THETA_CONVENTIONAL's own default DTE lattice, run on the same underlying(s) proposed for a Hold-the-Strike cohort. Counterfactual for H-H-01 -- tests whether the 2-5 DTE regime actually beats the conventional regime on the same names, rather than assuming it from IWM Hold the Strike's reputation alone.", "is_null": false},
+    {"id": "BR-1", "name": "Always hold to expiration", "description": "No early close or roll under any condition; only expire/assign/exercise resolves the position. Counterfactual for H-R-01 (the active-management thesis).", "is_null": false},
+    {"id": "BR-2", "name": "Always close/roll at fixed 50% profit capture", "description": "Mirrors canonical B3 but stated as the explicit opposing baseline for H-R-02 (the patience thesis) -- if patience is right, BR-2 should underperform hold-to-cycle on a capital-day-adjusted basis.", "is_null": false},
+    {"id": "BC-1", "name": "Covered call selected by max annualized yield only", "description": "No trade-off against retained upside, call-away regret, or event risk. Counterfactual for H-C-01.", "is_null": false},
+    {"id": "BC-2", "name": "Covered call sold at next expiration after every assignment", "description": "No recovery-wait conditioning at all. Counterfactual for H-C-02 -- and a direct test of the charter's explicit non-negotiable rule against this exact behavior.", "is_null": false},
+    {"id": "BA-1", "name": "Mechanical close-before-assignment", "description": "Always closes the CSP for a loss rather than allowing assignment, regardless of ownership quality. Counterfactual for H-A-01.", "is_null": false},
+    {"id": "BA-2", "name": "Unconditional hold-to-original-basis recovery", "description": "No recovery horizon or thesis-invalidation exit; holds until the stock returns to original cost basis or forever. Counterfactual for H-A-02.", "is_null": false}
+  ],
+  "notes": [
+    "B5 (random-entry matched) is the standard random-null reference for any archetype's entry-selection hypothesis (H-Q-01, H-H-01) -- it is not redefined per archetype, only re-run against each archetype's specific universe/DTE/structure so the matching stays honest per TRD's own B5 description.",
+    "No numeric result is recorded in this file. These are pre-registered comparison definitions (per the ablation protocol in docs/TEAM_CHARTER.md: BASELINE vs BASELINE+NEW_FEATURE, all else constant) -- populating results without a working backtester would be inventing performance numbers, which is explicitly prohibited."
+  ]
+}

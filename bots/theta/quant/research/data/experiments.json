@@ -1,0 +1,97 @@
+{
+  "$schema_note": "Experiment registry: one entry per experiment_id referenced from hypotheses.json. Acceptance/rejection criteria are drawn directly from TRD v1.1 FINAL's own evidentiary standard (sections 30, 49, 50 and the ablation protocol in docs/TEAM_CHARTER.md) -- no numeric thresholds are invented here (no 'p < 0.05', no specific EV/DD targets). That would be inventing performance requirements the spec does not state. 'shared_acceptance_criteria' and 'shared_rejection_criteria' apply to every experiment below; per-experiment fields only add what's specific to that comparison.",
+  "shared_acceptance_criteria": [
+    "Untouched OOS EV_net for the variant exceeds the baseline's, with the reported uncertainty interval (Wilson for simple proportions, cluster/bootstrap where episodes are dependent) not spanning zero improvement.",
+    "Drawdown, ES/CVaR, and open MTM inventory for the variant are not worse than the baseline without a compensating EV gain that justifies the added risk.",
+    "Calibration (Brier/log-loss/reliability) for any model output used by the hypothesis is acceptable by the same standard as every other production model (TRD MODEL-003) -- not merely 'high WR'.",
+    "Sample size is reported as both raw N and independent-cluster N; per TRD section 50 a claim approaching the 70-80% range specifically needs ~300+ independent OOS episodes, preferably 500+ across regimes, before it can be treated as more than a preliminary signal.",
+    "The result survives clustered-bootstrap/regime resampling -- an effect that only appears in one regime or one narrow date range is not accepted as general.",
+    "Selection-bias diagnostics (DSR/PBO or equivalent) do not flag the finding as explainable by search breadth, given however many variants were actually tried."
+  ],
+  "shared_rejection_criteria": [
+    "Untouched OOS EV_net is not positive, or its uncertainty interval spans zero or negative.",
+    "The effect only holds when the final untouched OOS period was used to select the threshold or feature that produced it (ML-002 violation) -- automatic rejection regardless of the reported number.",
+    "Drawdown/ES/CVaR worsens without a compensating EV gain.",
+    "The effect disappears under clustered-bootstrap/regime resampling or is flagged by DSR/PBO as consistent with selection bias.",
+    "The result was obtained by adjusting the model, threshold, or OOS split specifically to move the reported win rate toward the 70-80% range -- this is rejected on process grounds regardless of the resulting number, per the charter's explicit prohibition."
+  ],
+  "experiments": [
+    {
+      "experiment_id": "EXP-Q-01",
+      "hypothesis_ids": ["H-Q-01"],
+      "comparison": "BQ-1 (premium/IV-rank-only selection) vs. A1 (B1 + ownership model), with B5 (random-entry matched) as the random-null reference.",
+      "specific_notes": "This is TRD's own A1 ablation step, scoped to the CSP-entry decision specifically.",
+      "status": "NOT_YET_RUN"
+    },
+    {
+      "experiment_id": "EXP-Q-02",
+      "hypothesis_ids": ["H-Q-02"],
+      "comparison": "BQ-1 (IV-rank-only) vs. A1 (+ ownership model), same as EXP-Q-01 -- this experiment is the confirmatory read of the same ablation from the 'what goes wrong without ownership screening' angle rather than a separate run.",
+      "specific_notes": "May be reported alongside EXP-Q-01 from the same A1 run rather than as an independent backtest.",
+      "status": "NOT_YET_RUN"
+    },
+    {
+      "experiment_id": "EXP-H-01",
+      "hypothesis_ids": ["H-H-01"],
+      "comparison": "BH-1 (conventional 30-60 DTE on the same names) vs. the 2-5 DTE Hold-the-Strike policy, with B5 as random-null.",
+      "specific_notes": "Universe must be the specific, separately validated cohort TRD requires for this branch -- not the general universe.",
+      "status": "NOT_YET_RUN"
+    },
+    {
+      "experiment_id": "EXP-R-01",
+      "hypothesis_ids": ["H-R-01"],
+      "comparison": "BR-1 (always hold to expiration) vs. active close/roll variant, evaluated as part of A5 (dynamic management ablation), with B5 as random-null.",
+      "specific_notes": "Must be run on the same candidate set and time period as EXP-R-02 so the two competing hypotheses are compared on equal footing, not cherry-picked periods.",
+      "status": "NOT_YET_RUN"
+    },
+    {
+      "experiment_id": "EXP-R-02",
+      "hypothesis_ids": ["H-R-02"],
+      "comparison": "BR-2 (fixed 50% profit-take close/roll) vs. hold-to-cycle variant, evaluated as part of A5, with B5 as random-null.",
+      "specific_notes": "See EXP-R-01 -- same candidate set and period required for a fair head-to-head, since H-R-01 and H-R-02 directly contradict each other.",
+      "status": "NOT_YET_RUN"
+    },
+    {
+      "experiment_id": "EXP-R-03",
+      "hypothesis_ids": ["H-R-03"],
+      "comparison": "BR-1 (naive always-hold, as a stand-in for 'no explicit alternative comparison') vs. a policy that computes RollUtility against HOLD/CLOSE/ASSIGN/REDEPLOY at each decision timestamp (TRD Appendix A RollUtility formula), within A5.",
+      "specific_notes": "This measures the *value of the discipline itself* (comparing alternatives) rather than picking a side in the R-01/R-02 debate.",
+      "status": "NOT_YET_RUN"
+    },
+    {
+      "experiment_id": "EXP-C-01",
+      "hypothesis_ids": ["H-C-01"],
+      "comparison": "BC-1 (max annualized yield CC selection) vs. full CCUtility-based selection (TRD section 23 formula).",
+      "specific_notes": "Requires earnings/ex-div event data (Optionomics + Alpaca corporate actions) to be meaningful -- the whole point is the event-conditioned trade-off.",
+      "status": "NOT_YET_RUN"
+    },
+    {
+      "experiment_id": "EXP-C-02",
+      "hypothesis_ids": ["H-C-02"],
+      "comparison": "BC-2 (immediate CC after every assignment) vs. recovery-conditioned CC policy.",
+      "specific_notes": "Directly tests one of the charter's own non-negotiable rules -- expected to confirm it, but the experiment is pre-registered rather than assumed.",
+      "status": "NOT_YET_RUN"
+    },
+    {
+      "experiment_id": "EXP-A-01",
+      "hypothesis_ids": ["H-A-01"],
+      "comparison": "BA-1 (mechanical close-before-assignment) vs. assignment-acceptable policy, with B6 (buy-and-hold assigned underlying) as an additional reference for whether active management post-assignment adds value beyond just holding.",
+      "specific_notes": "Needs the ownership model's actual output (not just a proxy) to be meaningful -- this experiment is downstream of the ownership model existing (Phase 6).",
+      "status": "NOT_YET_RUN"
+    },
+    {
+      "experiment_id": "EXP-A-02",
+      "hypothesis_ids": ["H-A-02"],
+      "comparison": "BA-2 (unconditional hold-to-basis-recovery) vs. bounded recovery-wait policy.",
+      "specific_notes": "Per H-A-02's own status (CORRECT), this experiment should not be run against a single arbitrary threshold -- it needs to be re-specified as a sweep across candidate thresholds once H-A-02 is split into a settled constraint plus explicit parameterized variants, so the threshold is chosen by evidence, not asserted first and confirmed second.",
+      "status": "BLOCKED_ON_HYPOTHESIS_REFINEMENT"
+    },
+    {
+      "experiment_id": "EXP-D-01",
+      "hypothesis_ids": ["H-D-01"],
+      "comparison": "B5 (random-entry null) vs. defined-risk spread structure, once Level 3 approval and the CSP/CC/Recovery archetypes' graduation are both confirmed.",
+      "specific_notes": "Gated -- see hypotheses.json's gated_until field. This entry exists so the experiment is not forgotten, not because it should be run soon.",
+      "status": "GATED_DO_NOT_RUN"
+    }
+  ]
+}
