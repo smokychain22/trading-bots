@@ -8,6 +8,11 @@ durable output, and how it gets verified. It is the working reference for Phase 
 Convention: `[MUST-ID]` references are TRD requirement IDs — grep the TRD for the exact
 wording before implementing against one.
 
+See `docs/DATA_READINESS_ASSESSMENT.md` for which feature families are actually usable
+under the account's current (PAPER, entitlement tier TBD) Alpaca connection versus
+blocked pending Codex's provider-capability check — that assessment, not this map,
+should be updated first as entitlement answers land.
+
 ## 1. Feature engineering — `quant/features/`
 
 | Feature family | TRD source | Module target | Durable output | Verification |
