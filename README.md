@@ -23,6 +23,11 @@ Start here:
 - [`docs/DATA_READINESS_ASSESSMENT.md`](docs/DATA_READINESS_ASSESSMENT.md) — what's
   actually usable for research given the account's current PAPER-only Alpaca
   connection, and the checklist for reviewing Codex's provider-capability results.
+- [`docs/STRATEGY_DNA.md`](docs/STRATEGY_DNA.md) — the THETA Strategy DNA / Hypothesis
+  Foundation: expert evidence, strategy archetypes, testable conditional hypotheses,
+  benchmarks and experiment registry. The actual machine-usable data/code lives under
+  `bots/theta/quant/expert_priors/` and `bots/theta/quant/research/`; this doc is the
+  index into it.
 - [`docs/PHASED_PLAN.md`](docs/PHASED_PLAN.md) — phased build plan and exit gates.
 - [`docs/specs/`](docs/specs/) — the canonical v1.1 FINAL TRD, PRD, backend schema, and
   PostgreSQL bootstrap. The TRD is the frozen build authority.

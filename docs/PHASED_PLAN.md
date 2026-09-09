@@ -95,6 +95,13 @@ attached; a phase is done when its gate is met.
 
 ## Phase 6 — Research and shadow validation (Claude-led)
 
+- **Exception already completed ahead of this phase, by explicit instruction:** the
+  THETA Strategy DNA / Hypothesis Foundation (`docs/STRATEGY_DNA.md`,
+  `bots/theta/quant/expert_priors/`, `bots/theta/quant/research/`) — expert-evidence
+  curation, strategy archetypes, testable conditional hypotheses, benchmark/experiment
+  definitions. This was safe to build early because it is pure offline research
+  requiring no infrastructure; no experiment has actually been run and no result
+  exists yet. Running these experiments for real is still gated on Phases 1–5.
 - This is the phase `docs/QUANT_IMPLEMENTATION_MAP.md` exists to drive: deterministic
   baseline policy, candidate economics, conservative fill model, shadow trades,
   experiment ledger, benchmark/null runs (B0–B6, A1–A6), point-in-time datasets, purged

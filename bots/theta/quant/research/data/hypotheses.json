@@ -1,0 +1,269 @@
+{
+  "$schema_note": "THETA Strategy DNA hypothesis registry. Each entry converts an expert-behavior prior into a testable conditional statement, not a hard-coded rule. 'status' is one of RETAIN (already structurally enforced by a TRD [MUST] requirement and/or a non-negotiable rule -- kept as a standing constraint, though still worth confirmatory benchmarking) / CORRECT (the underlying idea is right but needs modification before it is testable or usable as stated) / TEST (open question, needs OOS evidence before promotion either way) / REJECT (should not be pursued). No hypothesis here has been run against real data -- no performance numbers are recorded, and none should be added until an actual backtest produces them (Phase 6, docs/PHASED_PLAN.md).",
+  "status_enum": ["RETAIN", "CORRECT", "TEST", "REJECT"],
+  "hypothesis_type_enum": ["trading", "measurement"],
+  "data_availability_status_enum": [
+    "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
+    "BLOCKED_ON_ALPACA_ENTITLEMENT",
+    "BLOCKED_ON_FUTURE_LIVE_TCA",
+    "ARCHITECTURE_CHECK_NOT_DATA_DEPENDENT"
+  ],
+  "hypotheses": [
+    {
+      "hypothesis_id": "H-Q-01",
+      "archetype_id": "THETA-Q",
+      "hypothesis_type": "trading",
+      "statement": "Among CSP candidates with similar annualized premium, higher ownership_acceptability and lower p_severe_drawdown is associated with higher Managed Episode WR and lower Whole-Chain drawdown than selecting by premium/IV rank alone.",
+      "source_experts": [
+        {"expert_source_id": "orange_cat", "evidence_state": "OBSERVED"},
+        {"expert_source_id": "david_romic", "evidence_state": "INFERRED"}
+      ],
+      "candidate_actions": ["OPEN_CSP", "WAIT"],
+      "feature_families_required": ["ownership_acceptability", "p_severe_drawdown", "drawdown", "rv20", "gap_freq", "contract_iv", "iv_rank", "credit_collateral"],
+      "baseline_ref": "BQ-1",
+      "null_ref": "B5",
+      "ablation_ref": "A1",
+      "contradicts": [],
+      "experiment_id": "EXP-Q-01",
+      "status": "TEST",
+      "rationale": "Structurally supported by TRD UNIV-001..003 and section 43's ownership model, and is exactly what ablation A1 (B1 + ownership model) already exists to measure -- but it has not been run, so it stays TEST rather than RETAIN.",
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+    },
+    {
+      "hypothesis_id": "H-Q-02",
+      "archetype_id": "THETA-Q",
+      "hypothesis_type": "trading",
+      "statement": "Selecting CSP candidates by IV rank/percentile alone, without ownership-quality and event-state screening, produces materially worse Whole-Chain WR and higher assignment-drawdown than the same universe filtered by ownership_acceptability.",
+      "source_experts": [
+        {"expert_source_id": "sqqq_hold_the_strike", "evidence_state": "OBSERVED"}
+      ],
+      "candidate_actions": ["OPEN_CSP", "WAIT"],
+      "feature_families_required": ["iv_rank", "iv_percentile", "ownership_acceptability", "p_severe_drawdown"],
+      "baseline_ref": "BQ-1",
+      "null_ref": "B5",
+      "ablation_ref": "A1",
+      "contradicts": [],
+      "experiment_id": "EXP-Q-02",
+      "status": "TEST",
+      "rationale": "TRD UNIV-002 already forbids 'high IV alone is sufficient' as a hard rule (RETAIN at the architecture level), but the empirical size of the effect is unmeasured -- this hypothesis is the confirmatory measurement of that rule, not a new claim, and stays TEST until A1 is actually run.",
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+    },
+    {
+      "hypothesis_id": "H-H-01",
+      "archetype_id": "THETA-H",
+      "hypothesis_type": "trading",
+      "statement": "On a separately validated, narrow underlying/policy cohort, a 2-5 DTE ATM/near-ATM short-put policy with intentional assignment and a recovery-wait step achieves a higher Managed Episode WR than the same names traded on the conventional 30-60 DTE lattice -- but this does NOT transfer to other tickers or DTE ranges without its own OOS validation.",
+      "source_experts": [
+        {"expert_source_id": "iwm_hold_the_strike", "evidence_state": "RECONSTRUCTED"}
+      ],
+      "candidate_actions": ["OPEN_CSP", "ASSIGN", "RECOVERY_WAIT"],
+      "feature_families_required": ["dte", "log_moneyness", "delta", "ownership_acceptability", "recovery_median", "rv10"],
+      "baseline_ref": "BH-1",
+      "null_ref": "B5",
+      "ablation_ref": null,
+      "contradicts": [],
+      "regime_scope_note": "This hypothesis targets a narrow 2-5 DTE cohort explicitly distinct from THETA-Q's default 30-60 DTE research lattice -- it is a challenger regime, not a contradiction of THETA-Q's hypotheses, which apply outside this cohort.",
+      "experiment_id": "EXP-H-01",
+      "status": "TEST",
+      "rationale": "TRD itself frames THETA_HOLD_STRIKE as 'research challenger,' explicitly requiring separate OOS validation before promotion -- never assume its reputation transfers.",
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+    },
+    {
+      "hypothesis_id": "H-H-02",
+      "archetype_id": "THETA-H",
+      "hypothesis_type": "measurement",
+      "statement": "IWM Hold-the-Strike's high closed-trade win rate does not by itself prove low risk; Whole-Chain WR and Open MTM inventory must be included before this archetype is compared favorably to any other, because intentional, frequent assignment is exactly the pattern where unresolved stock drawdown can hide behind a high leg-level WR.",
+      "source_experts": [
+        {"expert_source_id": "sqqq_hold_the_strike", "evidence_state": "OBSERVED"}
+      ],
+      "candidate_actions": ["ASSIGN", "RECOVERY_WAIT"],
+      "feature_families_required": ["recovery_median", "p_severe_drawdown"],
+      "baseline_ref": null,
+      "null_ref": null,
+      "ablation_ref": null,
+      "contradicts": [],
+      "guards_against": ["H-H-01"],
+      "experiment_id": null,
+      "status": "RETAIN",
+      "rationale": "Already structurally enforced by TRD OUT-001..004 (report Leg WR, Managed Episode WR, Whole-Chain WR and Open MTM together). This is a standing reporting constraint applied specifically to this archetype, not an open statistical question -- no experiment_id because its 'test' is an architecture/reporting check, not an OOS run.",
+      "data_availability_status": "ARCHITECTURE_CHECK_NOT_DATA_DEPENDENT"
+    },
+    {
+      "hypothesis_id": "H-R-01",
+      "archetype_id": "THETA-R",
+      "hypothesis_type": "trading",
+      "statement": "Actively closing or rolling short options before expiration (e.g. near a fixed profit-capture percentage or DTE threshold) produces superior after-cost, capital-day-adjusted returns compared to holding to expiration, in at least some regimes.",
+      "source_experts": [
+        {"expert_source_id": "hendo_67", "evidence_state": "OBSERVED"},
+        {"expert_source_id": "wheeling_to_freedom", "evidence_state": "RECONSTRUCTED"}
+      ],
+      "candidate_actions": ["CLOSE", "ROLL"],
+      "feature_families_required": ["premium_capture", "dte", "capital_days", "contract_iv"],
+      "baseline_ref": "BR-1",
+      "null_ref": "B5",
+      "ablation_ref": "A5",
+      "contradicts": ["H-R-02"],
+      "experiment_id": "EXP-R-01",
+      "status": "TEST",
+      "rationale": "Directly contradicts H-R-02's patience thesis. Both are corpus-supported by different experts and both stay open -- TRD's own failure-DNA table explicitly rejects both 'roll every loser' and a universal hold-to-expiry assumption, so resolving this by averaging the two experts' behavior would manufacture a compromise neither actually demonstrated. The correct resolution is regime/DTE/branch-conditional, decided by A5 (dynamic management ablation) evidence, not by picking a side here.",
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+    },
+    {
+      "hypothesis_id": "H-R-02",
+      "archetype_id": "THETA-R",
+      "hypothesis_type": "trading",
+      "statement": "Holding short options to expiration or full-cycle resolution, rather than closing/rolling early at a fixed profit-capture threshold, produces superior after-cost, capital-day-adjusted returns in at least some regimes, because early close/roll forfeits remaining theta decay and incurs avoidable transaction costs.",
+      "source_experts": [
+        {"expert_source_id": "orange_cat", "evidence_state": "OBSERVED"}
+      ],
+      "candidate_actions": ["HOLD"],
+      "feature_families_required": ["premium_capture", "dte", "capital_days"],
+      "baseline_ref": "BR-2",
+      "null_ref": "B5",
+      "ablation_ref": "A5",
+      "contradicts": ["H-R-01"],
+      "experiment_id": "EXP-R-02",
+      "status": "TEST",
+      "rationale": "See H-R-01 -- this pair is deliberately preserved as competing hypotheses rather than resolved by inspection. TRD Appendix I explicitly frames the 25/50/75% profit-take grid and hold-to-expiry as baselines to test, not laws.",
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+    },
+    {
+      "hypothesis_id": "H-R-03",
+      "archetype_id": "THETA-R",
+      "hypothesis_type": "trading",
+      "statement": "A roll increases after-cost expectancy only when its scenario-EV exceeds the best feasible alternative (close/hold/assign/redeploy) computed at the same decision timestamp; a policy that rolls every moderately-losing short leg underperforms one that explicitly compares roll against alternatives.",
+      "source_experts": [
+        {"expert_source_id": "alex", "evidence_state": "RECONSTRUCTED"}
+      ],
+      "candidate_actions": ["ROLL", "CLOSE", "HOLD", "ASSIGN", "REDEPLOY"],
+      "feature_families_required": ["premium_capture", "capital_days", "contract_iv", "ownership_acceptability"],
+      "baseline_ref": "BR-1",
+      "null_ref": "B5",
+      "ablation_ref": "A5",
+      "contradicts": [],
+      "experiment_id": "EXP-R-03",
+      "status": "RETAIN",
+      "rationale": "Already a hard TRD rule (ROLL-002: roll only when it beats hold/close/assign/redeploy under the same state). RETAIN at the architecture level; still worth an A5 ablation to size how much this discipline is actually worth versus a naive always-roll policy.",
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+    },
+    {
+      "hypothesis_id": "H-C-01",
+      "archetype_id": "THETA-C",
+      "hypothesis_type": "trading",
+      "statement": "Selling covered calls to maximize annualized yield alone underperforms, on a full stock-plus-call lifecycle EV basis, a policy that trades off premium against retained upside and call-away regret -- particularly ahead of known events.",
+      "source_experts": [
+        {"expert_source_id": "hendo_67", "evidence_state": "OBSERVED"}
+      ],
+      "candidate_actions": ["SELL_CC", "CLOSE_STOCK"],
+      "feature_families_required": ["premium_capture", "earnings_distance", "ex_div_distance", "expected_move", "delta"],
+      "baseline_ref": "BC-1",
+      "null_ref": "B5",
+      "ablation_ref": null,
+      "contradicts": [],
+      "experiment_id": "EXP-C-01",
+      "status": "RETAIN",
+      "rationale": "Already required by TRD LIFE-004 (the CC optimizer must trade off premium, retained upside, call-away regret, event risk and capital-days, not maximize yield alone). RETAIN at the architecture level; the experiment sizes the effect against BC-1.",
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+    },
+    {
+      "hypothesis_id": "H-C-02",
+      "archetype_id": "THETA-C",
+      "hypothesis_type": "trading",
+      "statement": "Covered calls sold immediately upon every assignment (no recovery wait) underperform, on a full-chain basis, a policy that conditions the CC decision on recovery-thesis state -- e.g. waiting while the stock is significantly underwater relative to basis.",
+      "source_experts": [
+        {"expert_source_id": "orange_cat", "evidence_state": "OBSERVED"}
+      ],
+      "candidate_actions": ["SELL_CC", "RECOVERY_WAIT"],
+      "feature_families_required": ["recovery_median", "p_severe_drawdown", "ownership_acceptability"],
+      "baseline_ref": "BC-2",
+      "null_ref": "B5",
+      "ablation_ref": null,
+      "contradicts": [],
+      "experiment_id": "EXP-C-02",
+      "status": "RETAIN",
+      "rationale": "This is one of the charter's own non-negotiable rules ('do not automatically sell a covered call immediately after every assignment') and TRD STRAT-003. RETAIN at the architecture level; BC-2 exists to confirm the effect empirically, not to decide whether the rule applies.",
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+    },
+    {
+      "hypothesis_id": "H-A-01",
+      "archetype_id": "THETA-A",
+      "hypothesis_type": "trading",
+      "statement": "Assignment, when the underlying remains ownership-acceptable, produces superior full-chain economic outcomes than mechanically closing the CSP for a loss before assignment to avoid holding stock.",
+      "source_experts": [
+        {"expert_source_id": "orange_cat", "evidence_state": "OBSERVED"},
+        {"expert_source_id": "iwm_hold_the_strike", "evidence_state": "RECONSTRUCTED"}
+      ],
+      "candidate_actions": ["ASSIGN", "CLOSE_STOCK"],
+      "feature_families_required": ["ownership_acceptability", "p_severe_drawdown", "recovery_median"],
+      "baseline_ref": "BA-1",
+      "null_ref": "B5",
+      "ablation_ref": "B6",
+      "contradicts": [],
+      "experiment_id": "EXP-A-01",
+      "status": "RETAIN",
+      "rationale": "TRD STRAT-002 already treats assignment as a feasible, intentional transition when conditions remain acceptable. RETAIN at the architecture level; B6 (buy-and-hold assigned underlying) provides confirmatory evidence on whether Wheel management specifically adds value post-assignment.",
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+    },
+    {
+      "hypothesis_id": "H-A-02",
+      "archetype_id": "THETA-A",
+      "hypothesis_type": "trading",
+      "statement": "A recovery-wait policy with an explicit risk/time/thesis-invalidation bound produces better outcomes than unconditionally waiting for full recovery to original entry economics -- though the *existence* of such a bound is already a settled design rule; only its specific parameterization (how long, how much invalidation) is genuinely open.",
+      "source_experts": [
+        {"expert_source_id": "sqqq_hold_the_strike", "evidence_state": "OBSERVED"}
+      ],
+      "candidate_actions": ["RECOVERY_WAIT", "CLOSE_STOCK", "REDEPLOY"],
+      "feature_families_required": ["recovery_median", "p_severe_drawdown", "capital_days"],
+      "baseline_ref": "BA-2",
+      "null_ref": "B5",
+      "ablation_ref": null,
+      "contradicts": [],
+      "experiment_id": "EXP-A-02",
+      "status": "CORRECT",
+      "rationale": "Marked CORRECT rather than a clean TEST/RETAIN because it conflates two different questions: whether a bound should exist (RETAIN -- already TRD OWN-002) and what the bound's specific threshold should be (TEST, and per the charter this threshold must never be tuned merely to hit a target win rate). Before this hypothesis is used by the backtester it should be split into a settled architectural constraint plus a distinct, explicitly-parameterized TEST hypothesis per candidate threshold -- do not treat the single statement above as backtester-ready as written.",
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+    },
+    {
+      "hypothesis_id": "H-A-03",
+      "archetype_id": "THETA-A",
+      "hypothesis_type": "measurement",
+      "statement": "Closed-trade or Leg win rate alone will systematically overstate an assignment-heavy archetype's safety when unresolved assigned-stock losses are excluded from the headline metric; Managed Episode WR, Whole-Chain WR and Open MTM must be reported together for any assignment/recovery-heavy archetype.",
+      "source_experts": [
+        {"expert_source_id": "sqqq_hold_the_strike", "evidence_state": "OBSERVED"}
+      ],
+      "candidate_actions": [],
+      "feature_families_required": [],
+      "baseline_ref": null,
+      "null_ref": null,
+      "ablation_ref": null,
+      "contradicts": [],
+      "experiment_id": null,
+      "status": "RETAIN",
+      "rationale": "Structurally enforced by TRD OUT-001..004 already. This is the same cross-cutting failure-DNA constraint recorded in strategy_archetypes.json, restated here specifically for THETA-A where the risk is sharpest, given how central assignment/recovery is to this archetype.",
+      "data_availability_status": "ARCHITECTURE_CHECK_NOT_DATA_DEPENDENT"
+    },
+    {
+      "hypothesis_id": "H-D-01",
+      "archetype_id": "THETA-D",
+      "hypothesis_type": "trading",
+      "statement": "When full cash-secured CSP quantity would be zero (collateral/risk-budget insufficient) or tail risk is poorly bounded, a defined-risk put-credit-spread structure can express the same premium thesis with bounded downside, at the cost of capped upside and typically worse fill/liquidity quality.",
+      "source_experts": [
+        {"expert_source_id": "ivan_small_account", "evidence_state": "INFERRED"},
+        {"expert_source_id": "ivan_orehovec", "evidence_state": "OBSERVED"},
+        {"expert_source_id": "lick_neeson", "evidence_state": "INFERRED"}
+      ],
+      "candidate_actions": ["OPEN_CSP"],
+      "candidate_actions_note": "The action vocabulary supplied for this registry (WAIT/OPEN_CSP/HOLD/CLOSE/ROLL/ASSIGN/EXPIRE/RECOVERY_WAIT/SELL_CC/CLOSE_STOCK/REDEPLOY) has no distinct action for 'open a defined-risk spread' -- it is CSP/Wheel-centric by design. This is a known vocabulary gap, left unfilled rather than silently inventing a new action, since THETA-D is explicitly deferred.",
+      "feature_families_required": ["credit_collateral", "portfolio_concentration", "contract_iv"],
+      "baseline_ref": null,
+      "null_ref": "B5",
+      "ablation_ref": null,
+      "contradicts": [],
+      "experiment_id": "EXP-D-01",
+      "status": "TEST",
+      "gated_until": "Alpaca options trading Level 3 confirmed AND THETA-Q/H/R/C/A have graduated (see strategy_archetypes.json). Registered for research completeness only -- do not begin implementation.",
+      "rationale": "TRD section 3.1 explicitly permits this branch only after Level 3 support and separate OOS validation. Recording it now (rather than omitting it) keeps the structure-routing evidence from Ivan Orehovec and Lick Neeson from being silently dropped, while making the gating condition impossible to miss.",
+      "data_availability_status": "BLOCKED_ON_ALPACA_ENTITLEMENT"
+    }
+  ]
+}

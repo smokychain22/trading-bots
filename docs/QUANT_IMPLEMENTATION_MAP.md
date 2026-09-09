@@ -13,6 +13,11 @@ under the account's current (PAPER, entitlement tier TBD) Alpaca connection vers
 blocked pending Codex's provider-capability check — that assessment, not this map,
 should be updated first as entitlement answers land.
 
+See `docs/STRATEGY_DNA.md` and `bots/theta/quant/research/data/hypotheses.json` for
+the actual formalized hypotheses this map's models will eventually be built to test —
+that registry, not this document, is where expert-evidence-to-hypothesis mapping,
+benchmark/experiment IDs, and RETAIN/CORRECT/TEST/REJECT status live.
+
 ## 1. Feature engineering — `quant/features/`
 
 | Feature family | TRD source | Module target | Durable output | Verification |
