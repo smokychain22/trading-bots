@@ -29,8 +29,12 @@ All are in `docs/specs/`:
   migration system and does not yet implement all views/partitioning/RLS the schema doc
   promises. Convert it into ordered migrations in Phase 0 — do not apply it as-is.
 
-Also read `docs/OWNERSHIP.md`, `docs/QUANT_IMPLEMENTATION_MAP.md`, and
+Also read `docs/OWNERSHIP.md`, `docs/QUANT_IMPLEMENTATION_MAP.md`,
+`docs/ENGINEERING_IMPLEMENTATION_MAP.md`, `docs/IMPLEMENTATION_AUDIT.md`, and
 `docs/PHASED_PLAN.md` before proposing or reviewing any implementation work.
+`docs/IMPLEMENTATION_AUDIT.md` in particular records open decisions (e.g. the
+`broker_order`/`order_intent` cardinality question) that must be resolved — not
+silently picked either way — before the execution engine is built.
 
 An earlier read-through of these same documents (by a Codex session, before this repo
 existed) is preserved for cross-reference at

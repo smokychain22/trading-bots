@@ -11,6 +11,11 @@ Start here:
   module ownership.
 - [`docs/QUANT_IMPLEMENTATION_MAP.md`](docs/QUANT_IMPLEMENTATION_MAP.md) — TRD
   requirement → quant module → verification map.
+- [`docs/ENGINEERING_IMPLEMENTATION_MAP.md`](docs/ENGINEERING_IMPLEMENTATION_MAP.md) —
+  TRD/Backend-Schema requirement → Node/TS module → migration → test map.
+- [`docs/IMPLEMENTATION_AUDIT.md`](docs/IMPLEMENTATION_AUDIT.md) — repo/spec audit:
+  document version hierarchy, open schema inconsistencies requiring a decision before
+  coding, and missing implementation prerequisites.
 - [`docs/PHASED_PLAN.md`](docs/PHASED_PLAN.md) — phased build plan and exit gates.
 - [`docs/specs/`](docs/specs/) — the canonical v1.1 FINAL TRD, PRD, backend schema, and
   PostgreSQL bootstrap. The TRD is the frozen build authority.

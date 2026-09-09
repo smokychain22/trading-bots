@@ -11,26 +11,44 @@ attached; a phase is done when its gate is met.
 
 ## Phase 0 — Repository and safety foundation
 
-- **Status: this phase is what produced this commit.** Repo structure, `CLAUDE.md`,
-  `.gitignore`, ownership split, quant map, this plan. No application code yet.
-- Codex (next slice of Phase 0): TypeScript workspace + Python quant service
-  scaffolding, Docker Compose (Postgres/Redis), CI, typed config with secret
-  *references* (never values), structured logging, health/readiness endpoints. Convert
-  `docs/specs/THETA_v1_1_PostgreSQL_Bootstrap_Schema_2026-09-09.sql` into ordered,
-  forward-only migrations — the bootstrap's `IF NOT EXISTS` style is not a migration
-  system.
+- **Status: scaffold done (`9b312ec`); the engineering audit adds detail but no code
+  yet.** See `docs/IMPLEMENTATION_AUDIT.md` for the full findings and
+  `docs/ENGINEERING_IMPLEMENTATION_MAP.md` §8 for the concrete migration-conversion
+  plan referenced below.
+- Codex (next slice of Phase 0), in order:
+  1. Resolve the `broker_order`/`order_intent` cardinality question
+     (`docs/IMPLEMENTATION_AUDIT.md` §3.1) before writing any execution-engine code
+     that depends on it — this shapes Phase 5, not Phase 0, but the decision should be
+     recorded now while it's fresh.
+  2. TypeScript workspace + Python quant service scaffolding, Docker Compose
+     (Postgres/Redis), CI, typed config with secret *references* (never values),
+     structured logging, health/readiness endpoints.
+  3. Convert `docs/specs/THETA_v1_1_PostgreSQL_Bootstrap_Schema_2026-09-09.sql` into
+     ordered, forward-only migrations `001`–`016` following the schema doc's own
+     migration order (Backend Schema §34) — do not re-derive a different ordering.
+     Add partitioning strategy into the *first* migration that creates each
+     high-volume table (audit §3.2), not a later retrofit. Add DB role/permission
+     separation and UPDATE/DELETE denial on immutable tables in migration `015`
+     (AUDIT-001/IAM-001 — currently unimplemented in the bootstrap). Add the 7 missing
+     `analytics.v_*` read views (audit §3.2) into `015` alongside the 6 already
+     bootstrapped.
 - Claude: review the migration conversion for fidelity to the Backend Schema doc
-  (partitioning, RLS, immutability enforcement, and the views the schema doc promises
-  that the bootstrap doesn't yet create — flagged in the prior Codex audit).
+  (partitioning, permissions, immutability enforcement, and the views the schema doc
+  promises that the bootstrap doesn't yet create).
 - **Exit gate:** empty-database migration, lint, type-check, and unit tests pass in
-  CI; secret-scanning passes; nothing places, sizes, or previews a broker order.
+  CI; secret-scanning passes; schema invariant queries (Backend Schema §35) pass as
+  executable tests; nothing places, sizes, or previews a broker order.
 
 ## Phase 1 — Broker truth and lifecycle ingestion (Codex-led)
 
 - Alpaca adapter: account/config, clock/calendar, stock quotes/bars, option
   contracts/snapshots, option stream, orders, trade_updates, activities,
   corporate-action REST/SSE. Persist evidence with `as_of`/retrieval time and feed
-  identity (ALP-006).
+  identity (ALP-006). See `docs/ENGINEERING_IMPLEMENTATION_MAP.md` §1 for the
+  module-by-module breakdown.
+- Confirm actual Alpaca account entitlement (options level, OPRA vs. Basic/indicative)
+  before trusting any BBO-driven logic — TRD §8.2 treats the Basic feed as explicitly
+  non-execution-grade; this is a live-account check, not an assumption from the docs.
 - Reconciliation-before-autonomy: activities + positions reconcile assignment/expiry/
   exercise before any new risk is allowed (LIFE-001, CA-001..005).
 - **Exit gate:** paper integration tests pass, including timeout, duplicate,
