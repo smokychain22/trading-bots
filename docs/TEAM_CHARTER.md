@@ -137,6 +137,12 @@ commit" list above, but the user may still want them to stay private even if the
 itself goes public. Nothing has been pushed, so nothing is exposed yet; this is worth
 a decision before the first push, not before every commit.
 
+## Deployment access
+
+`docs/VERCEL_ACCESS.md` covers Vercel CLI access rules (credentials handling,
+permitted operations, restrictions on production changes/deletions). Same
+never-print/never-commit discipline as the secrets rules above.
+
 ## Agent handoff format
 
 When completing meaningful work, summarize:
