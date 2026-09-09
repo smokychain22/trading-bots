@@ -11,7 +11,8 @@
     "dev": "tsx watch src/index.ts",
     "test": "tsx --test tests/**/*.test.ts",
     "lint": "eslint src tests",
-    "validate:env": "tsx src/config/validate-env.ts"
+    "validate:env": "tsx src/config/validate-env.ts",
+    "provider:readiness": "tsx --env-file=.env.local src/providers/provider-readiness.ts"
   },
   "engines": {
     "node": ">=22"

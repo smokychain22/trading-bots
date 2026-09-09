@@ -9,7 +9,7 @@ const environmentSchema = z.object({
   REDIS_URL: optionalUrl,
   ALPACA_API_KEY: z.string().min(1).optional(),
   ALPACA_SECRET_KEY: z.string().min(1).optional(),
-  ALPACA_BASE_URL: optionalUrl,
+  ALPACA_BASE_URL: z.string().min(1).optional(),
   OPTIONOMICS_API_KEY: z.string().min(1).optional(),
   VERCEL_PROJECT_ID: z.string().min(1).optional(),
   VERCEL_ORG_ID: z.string().min(1).optional(),

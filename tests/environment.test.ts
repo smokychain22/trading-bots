@@ -23,7 +23,13 @@ test('accepts complete paper-provider configuration', () => {
 });
 
 test('rejects malformed provider URLs', () => {
-  assert.throws(() => loadEnvironment({ ALPACA_BASE_URL: 'not-a-url' }));
+  const environment = loadEnvironment({
+    ALPACA_API_KEY: 'test-key',
+    ALPACA_SECRET_KEY: 'test-secret',
+    ALPACA_BASE_URL: 'not-a-url',
+    OPTIONOMICS_API_KEY: 'test-key'
+  });
+  assert.throws(() => assertRuntimeConfiguration(environment), /paper API/);
 });
 
 test('rejects a non-paper Alpaca endpoint', () => {
