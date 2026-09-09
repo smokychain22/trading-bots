@@ -16,8 +16,12 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - run: npm ci
       - run: npm run lint
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - run: python -m unittest discover -s bots/theta/tests/quant -p 'test_*.py'
