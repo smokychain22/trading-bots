@@ -23,6 +23,8 @@ synthetic, not real market data.
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
+from models.common import ReasonCode
+
 
 # ---------------------------------------------------------------------------
 # Inputs
@@ -106,13 +108,6 @@ class SizingPolicy:
 # ---------------------------------------------------------------------------
 # Outputs
 # ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class ReasonCode:
-    code: str
-    polarity: int  # -1 negative/risk, 0 neutral/informational, 1 positive
-    detail: str
 
 
 @dataclass(frozen=True)
