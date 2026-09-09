@@ -58,4 +58,10 @@ jobs:
           for test_file in tests/sql/*.sql; do
             psql -h 127.0.0.1 -U trading_bots -d trading_bots -v ON_ERROR_STOP=1 -f "$test_file"
           done
-          test "$(redis-cli -h 127.0.0.1 ping)" = "PONG"
+          python - <<'PY'
+          import socket
+
+          with socket.create_connection(("127.0.0.1", 6379), timeout=3) as client:
+              client.sendall(b"*1\r\n$4\r\nPING\r\n")
+              assert client.recv(64) == b"+PONG\r\n"
+          PY
