@@ -156,3 +156,33 @@ any report generator elsewhere calls into it rather than reimplementing the stan
   (OUT-002)?
 - Does anything let Optionomics-derived data submit or block an order directly instead
   of only informing risk/policy (ARCH-002, OPT-004)?
+
+### 9.1 Break-it scenarios to run against Codex's execution/lifecycle code
+
+Per `docs/TEAM_CHARTER.md`, don't just read the code — try to break it with realistic
+trading scenarios before signing off. This list is a starting checklist, not
+exhaustive; add to it as new failure modes are found:
+
+- Assignment happens overnight, before the scheduler's pre-open reconciliation runs.
+- A partial fill leaves a remaining-order state that strategy logic then ignores.
+- Alpaca times out on submit — does the reconcile-before-retry path actually run, or
+  does something resubmit blindly?
+- A stock split or merger lands mid-chain — does the affected symbol correctly
+  quarantine new risk rather than silently trading an ambiguous deliverable?
+- Ex-dividend date arrives on a covered call that's deep ITM with low extrinsic value —
+  is early-assignment risk actually flagged, not just theoretically modeled?
+- A quote used for a decision is stale by the time of order submission.
+- The spread on the selected contract is wide enough that crossing it should cancel
+  the order, not force a fill.
+- Two positions are highly correlated (same sector, same earnings date) — does sizing
+  actually account for that, or does each position get sized as if independent?
+- Two management actions could both fire on the same state (e.g. a roll trigger and an
+  assignment-recovery trigger) — which wins, and is that arbitration explicit or
+  accidental?
+- The service restarts while a position is mid-lifecycle (e.g. between order
+  submission and fill confirmation) — does it resume from durable state or lose track?
+- Optionomics is missing a feature the candidate scorer expects — does the candidate
+  get scored with a silent default, or does the missing feature propagate as `UNKNOWN`?
+- The broker position drifts from the internally tracked state because of a manual
+  intervention or an out-of-band account action — is that drift detected and does it
+  block new risk until reconciled?

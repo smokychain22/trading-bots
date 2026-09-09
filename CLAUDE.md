@@ -1,5 +1,13 @@
 # CLAUDE.md — trading-bots
 
+**Read `docs/TEAM_CHARTER.md` first.** It is the shared rulebook Codex and Claude Code
+both operate under in this repository (canonical specs, providers, lifecycle,
+non-negotiable financial rules, teamwork/disagreement protocol, ablation reporting
+format, public-repository security rules, and the agent handoff format). This file is
+Claude's role-specific entry point and does not repeat that charter in full — Codex has
+its own entry point at `AGENTS.md`, pointing at the same charter, so the two agents
+never work from diverging copies of the shared rules.
+
 This repository hosts the user's multi-bot options-trading platform. **THETA is the
 first bot** and the only one in scope for v1. Five further bots (PULSE, NEXUS, VEGA,
 EVENT, ATLAS — 0DTE, event, vol-RV and swing strategies) are named in the canonical
@@ -77,6 +85,10 @@ it (OUT-002).
 
 ## Non-negotiable rules (see TRD §54 for the full "Prohibited Shortcuts" table)
 
+This list restates `docs/TEAM_CHARTER.md`'s financial rules with their TRD requirement
+IDs for quick lookup during review — the charter is the canonical copy if the two ever
+seem to diverge.
+
 - Delta is not probability of profit. Never treat 25-delta as "75% win rate."
 - Quantity zero is a valid, expected sizing outcome. Never `max(1, qty)`.
 - A roll is close-old + open-new. The old leg's realized P&L is immutable and cannot be
@@ -119,7 +131,21 @@ that it runs.
   explicit exit gate; do not start Phase N+1 work before Phase N's gate is met.
 - Never commit `.env`, API keys, broker credentials, account statements, or model
   weights. See `.gitignore`. If you ever see what looks like a live credential in a
-  file about to be committed, stop and flag it — do not commit it "to be safe."
+  file about to be committed, stop and flag it — do not commit it "to be safe." **This
+  repository may be public** (per `docs/TEAM_CHARTER.md`) — treat that as the default
+  assumption, not an edge case. When real config exists, use `.env.example` with empty
+  values only; don't invent variable names ahead of an actual config schema just to
+  populate that file early.
 - Prefer editing the phased plan / ownership doc over ad hoc scope creep. If new work
   doesn't fit a listed phase, that's a signal to update the plan deliberately, not to
   just start building.
+- **Do not push to GitHub unless the user explicitly requests it** — the user controls
+  remote pushes. Work incrementally and commit completed, tested milestones locally,
+  leaving the tree clean after each one.
+- When finishing meaningful work, close with the agent handoff format from
+  `docs/TEAM_CHARTER.md` (OWNER/TASK/FILES CHANGED/... /NEXT RECOMMENDED TASK) so Codex
+  has a clear starting point for its own review.
+- Any alpha/strategy change follows the ablation protocol in `docs/TEAM_CHARTER.md`
+  (BASELINE vs. BASELINE + NEW_FEATURE, all other variables held constant, full metric
+  set reported, no cherry-picking) — this applies to Claude's own quant proposals, not
+  only to reviewing Codex's work.

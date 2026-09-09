@@ -5,8 +5,12 @@ one and the only bot in scope for v1.**
 
 Start here:
 
-- [`CLAUDE.md`](CLAUDE.md) — mission, canonical documents, non-negotiable rules,
-  working agreements. Read this before doing anything else in this repo.
+- [`docs/TEAM_CHARTER.md`](docs/TEAM_CHARTER.md) — the shared rulebook both Codex and
+  Claude Code operate under: canonical specs, providers, non-negotiable financial
+  rules, teamwork/disagreement protocol, ablation reporting format, public-repo
+  security rules, and the agent handoff format.
+- [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) — role-specific entry points for
+  Claude Code and Codex respectively, both pointing back at the shared charter above.
 - [`docs/OWNERSHIP.md`](docs/OWNERSHIP.md) — Claude (quant) vs Codex (engineering)
   module ownership.
 - [`docs/QUANT_IMPLEMENTATION_MAP.md`](docs/QUANT_IMPLEMENTATION_MAP.md) — TRD
