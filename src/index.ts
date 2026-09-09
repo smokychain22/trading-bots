@@ -1,9 +1,8 @@
 import express from 'express';
 import pino from 'pino';
-import { assertRuntimeConfiguration, loadEnvironment } from './config/environment.js';
+import { loadEnvironment } from './config/environment.js';
 
 const environment = loadEnvironment();
-assertRuntimeConfiguration(environment);
 const logger = pino({ level: 'info', redact: ['req.headers.authorization', '*.apiKey', '*.secret', '*.token'] });
 const app = express();
 
