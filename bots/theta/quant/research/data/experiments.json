@@ -80,11 +80,11 @@
       "status": "NOT_YET_RUN"
     },
     {
-      "experiment_id": "EXP-A-02",
-      "hypothesis_ids": ["H-A-02"],
-      "comparison": "BA-2 (unconditional hold-to-basis-recovery) vs. bounded recovery-wait policy.",
-      "specific_notes": "Per H-A-02's own status (CORRECT), this experiment should not be run against a single arbitrary threshold -- it needs to be re-specified as a sweep across candidate thresholds once H-A-02 is split into a settled constraint plus explicit parameterized variants, so the threshold is chosen by evidence, not asserted first and confirmed second.",
-      "status": "BLOCKED_ON_HYPOTHESIS_REFINEMENT"
+      "experiment_id": "EXP-A-04",
+      "hypothesis_ids": ["H-A-04"],
+      "comparison": "BA-2 (unconditional hold-to-basis-recovery) vs. a pre-registered sweep of bounded recovery-wait policies (distinct max-wait-days / thesis-invalidation-trigger combinations, named before any OOS split is examined).",
+      "specific_notes": "Selection happens ONLY on the purged walk-forward split; the winning candidate is then confirmed on a separate, previously untouched OOS split it was never evaluated against during selection (see H-A-04's failure_mode for the exact three-step protocol). H-A-02 (now the settled 'a bound must exist' constraint) has no experiment of its own -- it's verified by implementation inspection, not a backtest run.",
+      "status": "NOT_YET_RUN"
     },
     {
       "experiment_id": "EXP-D-01",

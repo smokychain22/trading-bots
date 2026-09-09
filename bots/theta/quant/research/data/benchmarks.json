@@ -17,14 +17,32 @@
   ],
   "archetype_specific_benchmarks": [
     {"id": "BQ-1", "name": "Premium/IV-rank-only CSP selection", "description": "Select CSP candidates purely by highest premium or IV rank, no ownership_acceptability or p_severe_drawdown screen. Same underlying universe and sizing rules as the variant it is compared against. Counterfactual for H-Q-01 and H-Q-02.", "is_null": false},
+    {"id": "BQ-2", "name": "Fixed single-delta conventional CSP", "description": "Always selects the single closest-to-0.20 (or closest-to-0.25) delta contract within the DTE window, ignoring the multi-band lattice in theta_q_lattice.py entirely. This is a CONTROL specifically because the research brief prohibits ever choosing only one delta band as the production lattice (theta_q_lattice.LatticeConfig enforces at least two bands at construction time) -- BQ-2 exists to let the multi-band lattice prove it adds value over the single-delta habit, not to license using a single delta.", "is_null": false},
+    {"id": "BQ-3", "name": "THETA-Q v0 transparent baseline itself", "description": "bots/theta/quant/models/theta_q_baseline.py run as-is, with no learned model behind ownership_acceptability or p_severe_drawdown (i.e. exactly what the module computes today). This is the control the future calibrated entry-outcome model (TRD section 17) must beat before it is trusted as more than academically interesting -- the heuristic answers 'does sophisticated THETA actually beat something simple', it is not itself a candidate for the production decision rule.", "is_null": false},
     {"id": "BH-1", "name": "Fixed 30-60 DTE conventional CSP", "description": "THETA_CONVENTIONAL's own default DTE lattice, run on the same underlying(s) proposed for a Hold-the-Strike cohort. Counterfactual for H-H-01 -- tests whether the 2-5 DTE regime actually beats the conventional regime on the same names, rather than assuming it from IWM Hold the Strike's reputation alone.", "is_null": false},
     {"id": "BR-1", "name": "Always hold to expiration", "description": "No early close or roll under any condition; only expire/assign/exercise resolves the position. Counterfactual for H-R-01 (the active-management thesis).", "is_null": false},
     {"id": "BR-2", "name": "Always close/roll at fixed 50% profit capture", "description": "Mirrors canonical B3 but stated as the explicit opposing baseline for H-R-02 (the patience thesis) -- if patience is right, BR-2 should underperform hold-to-cycle on a capital-day-adjusted basis.", "is_null": false},
     {"id": "BC-1", "name": "Covered call selected by max annualized yield only", "description": "No trade-off against retained upside, call-away regret, or event risk. Counterfactual for H-C-01.", "is_null": false},
     {"id": "BC-2", "name": "Covered call sold at next expiration after every assignment", "description": "No recovery-wait conditioning at all. Counterfactual for H-C-02 -- and a direct test of the charter's explicit non-negotiable rule against this exact behavior.", "is_null": false},
     {"id": "BA-1", "name": "Mechanical close-before-assignment", "description": "Always closes the CSP for a loss rather than allowing assignment, regardless of ownership quality. Counterfactual for H-A-01.", "is_null": false},
-    {"id": "BA-2", "name": "Unconditional hold-to-original-basis recovery", "description": "No recovery horizon or thesis-invalidation exit; holds until the stock returns to original cost basis or forever. Counterfactual for H-A-02.", "is_null": false}
+    {"id": "BA-2", "name": "Unconditional hold-to-original-basis recovery", "description": "No recovery horizon or thesis-invalidation exit; holds until the stock returns to original cost basis or forever. Counterfactual for H-A-04 (the parameterized recovery-bound sweep) -- H-A-02 itself, now the settled 'a bound must exist' constraint, is verified by implementation inspection rather than a backtest comparison.", "is_null": false},
+    {"id": "BA-3", "name": "Unconditional assignment acceptance", "description": "Accepts every assignment regardless of ownership_acceptability or p_severe_drawdown -- the opposite failure mode from BA-1. A CONTROL contrasting with H-A-01's conditional acceptance (accept only when ownership-acceptable); never a recommended policy on its own.", "is_null": false}
   ],
+  "control_matrix": {
+    "note": "These are controls a real strategy must beat, not recommended strategies -- several are deliberately bad policies (BQ-2's single delta, BA-1/BA-3's two opposite mechanical extremes, BC-2's immediate-CC) included specifically so the eventual THETA policy has to prove it beats them, not because any of them should ever run live.",
+    "items": [
+      {"requested_control": "random eligible CSP", "benchmark_id": "B5"},
+      {"requested_control": "premium/IV-only CSP", "benchmark_id": "BQ-1"},
+      {"requested_control": "fixed delta conventional CSP", "benchmark_id": "BQ-2"},
+      {"requested_control": "basic THETA-Q transparent baseline", "benchmark_id": "BQ-3"},
+      {"requested_control": "always hold-to-expiry", "benchmark_id": "BR-1"},
+      {"requested_control": "fixed 25/50/75% captures", "benchmark_id": "B3"},
+      {"requested_control": "mechanical close-before-assignment", "benchmark_id": "BA-1"},
+      {"requested_control": "unconditional assignment", "benchmark_id": "BA-3"},
+      {"requested_control": "unconditional recovery wait", "benchmark_id": "BA-2"},
+      {"requested_control": "immediate covered call", "benchmark_id": "BC-2"}
+    ]
+  },
   "notes": [
     "B5 (random-entry matched) is the standard random-null reference for any archetype's entry-selection hypothesis (H-Q-01, H-H-01) -- it is not redefined per archetype, only re-run against each archetype's specific universe/DTE/structure so the matching stays honest per TRD's own B5 description.",
     "No numeric result is recorded in this file. These are pre-registered comparison definitions (per the ablation protocol in docs/TEAM_CHARTER.md: BASELINE vs BASELINE+NEW_FEATURE, all else constant) -- populating results without a working backtester would be inventing performance numbers, which is explicitly prohibited."
