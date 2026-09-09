@@ -1,0 +1,91 @@
+# ============================================================
+# Secrets and credentials — NEVER commit these
+# ============================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*credentials*
+*secret*
+!**/secrets/**/*.md
+alpaca*.json
+optionomics*.json
+**/config/local.*
+**/config/*.local.*
+
+# Account / broker data exports
+*account_statement*
+*trade_confirmation*
+*.ofx
+*.qfx
+
+# Model weights and large research artifacts (use object storage, not git)
+*.pt
+*.pth
+*.onnx
+*.h5
+*.pkl
+*.joblib
+/**/artifacts/
+/**/model_store/
+
+# ============================================================
+# Node / TypeScript (bots/*/app)
+# ============================================================
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.npm/
+.pnpm-store/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ============================================================
+# Python (bots/*/quant)
+# ============================================================
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+htmlcov/
+.coverage
+.coverage.*
+
+# ============================================================
+# Databases / local infra state
+# ============================================================
+*.sqlite3
+/pgdata/
+/redisdata/
+docker-compose.override.yml
+
+# ============================================================
+# OS / editor noise
+# ============================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+
+# ============================================================
+# Logs and local scratch
+# ============================================================
+*.log
+logs/
+tmp/
+.tmp/
