@@ -1,18 +1,21 @@
 import { assertProviderConfiguration, loadEnvironment } from '../config/environment.js';
-import { checkAlpaca, checkOptionomics } from './readiness.js';
+import { checkAlpaca, checkOptionomics, type CheckResult } from './readiness.js';
 
 const environment = loadEnvironment();
-const results = [];
+const results: CheckResult[] = [];
 
 try {
   assertProviderConfiguration(environment, 'ALPACA');
   results.push(...await checkAlpaca(environment));
 } catch (error) {
   results.push({
+    provider: 'ALPACA',
     capability: 'alpaca.configuration',
-    ok: false,
-    status: null,
+    operationAlias: 'alpaca.configuration',
+    state: 'INVALID',
+    httpStatus: null,
     observedAt: new Date().toISOString(),
+    provenance: { credentialValuesLogged: false },
     details: { configurationError: error instanceof Error ? error.message : 'UnknownError' }
   });
 }
@@ -22,10 +25,13 @@ try {
   results.push(...await checkOptionomics(environment));
 } catch (error) {
   results.push({
+    provider: 'OPTIONOMICS',
     capability: 'optionomics.configuration',
-    ok: false,
-    status: null,
+    operationAlias: 'optionomics.configuration',
+    state: 'INVALID',
+    httpStatus: null,
     observedAt: new Date().toISOString(),
+    provenance: { credentialValuesLogged: false },
     details: { configurationError: error instanceof Error ? error.message : 'UnknownError' }
   });
 }
@@ -34,6 +40,6 @@ for (const result of results) {
   console.info(JSON.stringify(result));
 }
 
-if (results.some((result) => !result.ok)) {
+if (results.some((result) => result.state !== 'GOOD')) {
   process.exitCode = 1;
 }

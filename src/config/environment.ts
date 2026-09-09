@@ -11,6 +11,7 @@ const environmentSchema = z.object({
   ALPACA_SECRET_KEY: z.string().min(1).optional(),
   ALPACA_BASE_URL: z.string().min(1).optional(),
   OPTIONOMICS_API_KEY: z.string().min(1).optional(),
+  OPTIONOMICS_EMAIL: z.string().min(1).optional(),
   VERCEL_PROJECT_ID: z.string().min(1).optional(),
   VERCEL_ORG_ID: z.string().min(1).optional(),
   VERCEL_TOKEN: z.string().min(1).optional()
@@ -28,7 +29,7 @@ export const missingProviderVariables = (
 ): readonly string[] => {
   const variables = provider === 'ALPACA'
     ? ['ALPACA_API_KEY', 'ALPACA_SECRET_KEY', 'ALPACA_BASE_URL'] as const
-    : ['OPTIONOMICS_API_KEY'] as const;
+    : ['OPTIONOMICS_API_KEY', 'OPTIONOMICS_EMAIL'] as const;
 
   return variables.filter((variable) => !environment[variable]);
 };
@@ -40,6 +41,9 @@ export const assertProviderConfiguration = (
   const missing = missingProviderVariables(environment, provider);
   if (missing.length > 0) {
     throw new Error(`${provider} configuration is incomplete. Missing variable names: ${missing.join(', ')}`);
+  }
+  if (provider === 'OPTIONOMICS' && !z.string().email().safeParse(environment.OPTIONOMICS_EMAIL).success) {
+    throw new Error('OPTIONOMICS_EMAIL must be a valid email address.');
   }
 };
 
