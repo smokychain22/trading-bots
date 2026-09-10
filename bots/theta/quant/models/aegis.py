@@ -218,3 +218,14 @@ def is_action_permitted(state: RiskState, action: str) -> bool:
     if action in RISK_REDUCING_ACTIONS:
         return True
     return action in _NEW_RISK_ACTIONS_BY_STATE.get(state, frozenset())
+
+
+def permitted_actions_for(state: RiskState) -> FrozenSet[str]:
+    """The full permitted-action set for ``state``: every risk-reducing
+    action (always permitted, per exit supremacy) plus whatever new-risk
+    actions this state allows. Public accessor for callers (e.g.
+    runtime/aegis_contract.py) that need to serialize the whole set rather
+    than test one action at a time via :func:`is_action_permitted` -- reads
+    the same two tables ``is_action_permitted`` does, so the two can never
+    silently disagree."""
+    return RISK_REDUCING_ACTIONS | _NEW_RISK_ACTIONS_BY_STATE.get(state, frozenset())
