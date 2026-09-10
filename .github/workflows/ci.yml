@@ -49,6 +49,18 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - run: npm run scan:security
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - name: Browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-evidence
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 14
       - run: python -m unittest discover -s bots/theta/tests/quant -p 'test_*.py'
       - name: Apply migrations and test schema invariants
         run: |

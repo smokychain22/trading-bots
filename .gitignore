@@ -91,3 +91,8 @@ tmp/
 .tmp/
 
 .vercel/
+test-results/
+playwright-report/
+
+.vercel
+.env*

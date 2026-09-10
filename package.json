@@ -10,12 +10,14 @@
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "test": "tsx --test tests/**/*.test.ts",
-    "lint": "eslint src tests",
+    "lint": "eslint src tests public/assets",
+    "test:browser": "playwright test",
+    "scan:security": "node tools/security-scan.mjs",
     "validate:env": "tsx src/config/validate-env.ts",
     "provider:readiness": "tsx src/providers/provider-readiness.ts"
   },
   "engines": {
-    "node": ">=22"
+    "node": "24.x"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
@@ -24,7 +26,9 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^9.37.0",
+    "@playwright/test": "^1.63.0",
     "@types/express": "^5.0.3",
     "@types/node": "^24.7.2",
     "eslint": "^9.37.0",
