@@ -15,7 +15,9 @@
     "scan:security": "node tools/security-scan.mjs",
     "validate:env": "tsx src/config/validate-env.ts",
     "provider:readiness": "tsx src/providers/provider-readiness.ts",
-    "theta:shadow:once": "tsx src/theta/theta-shadow-once.ts"
+    "theta:shadow:once": "tsx src/theta/theta-shadow-once.ts",
+    "db:migrate": "node tools/database-migrate.mjs",
+    "db:verify": "node tools/database-verify.mjs"
   },
   "engines": {
     "node": "24.x"
