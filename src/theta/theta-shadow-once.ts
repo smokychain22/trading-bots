@@ -54,6 +54,7 @@ function defaultShadowCycleConfig(alpaca: AlpacaProviderConfig, bridge: PythonBr
 
   return {
     alpaca, bridge, universeCandidates,
+    universeCandidatesOrigin: 'CALLER_MANUAL', // honest: real Alpaca asset-universe discovery is not built yet -- this hardcoded single-underlying list is a fixture, not a real query
     universePolicy: { policyVersion: 'universe-v1-shadow-once', minAvgDollarVolume: 10_000_000, minCurrentPrice: 5 },
     optionExpirationDateGte: optionExpirationGte, optionExpirationDateLte: optionExpirationLte, optionType: 'put', maxOptionPages: 10,
     historyStart, historyEnd: now, historyMaxPages: 5,
@@ -66,6 +67,7 @@ function defaultShadowCycleConfig(alpaca: AlpacaProviderConfig, bridge: PythonBr
     costAssumptions: { commissionPerContract: 0.65, feesPerContract: 0.05, estimatedSlippagePerContract: 1.0, costModelVersion: 'cost-v1-shadow-once' },
     aegisPolicy: { policyVersion: 'aegis-v1-shadow-once', maxTickerConcentrationPct: 0.15, maxSectorConcentrationPct: 0.3, maxCorrelationClusterPct: 0.3, maxPortfolioCapitalAtRiskPct: 0.5, maxInventoryCapacityPct: 0.5, maxAssignmentCapacityPct: 0.5, maxRecoveryCapacityPct: 0.3, providerRequiredStates: ['OK'] },
     aegisInputs: { tickerConcentrationPct: 0, sectorConcentrationPct: 0, correlationClusterExposurePct: 0, portfolioCapitalAtRiskPct: 0, inventoryCapacityUsedPct: 0, assignmentCapacityUsedPct: 0, recoveryCapacityUsedPct: 0, liquidityAcceptable: true, executionQualityAcceptable: true, providerState: 'OK', stressGapDetected: false, stressIvShockDetected: false, stressSpreadWideningDetected: false },
+    aegisInputsOrigin: 'CALLER_MANUAL', // honest: real position/order-derived account exposure is not wired into AEGIS yet
     opportunityFrontierPolicy: { policyVersion: 'opp-frontier-v1-shadow-once', reducedSizeUncertaintyThreshold: 0.5 },
     maxAcceptableSpreadPct: 0.15,
     sizingPolicy: { policyVersion: 'sizing-v1-shadow-once', riskBudgetQtyCap: 4, collateralQtyCap: 3, concentrationQtyCap: 5, assignmentCapacityQtyCap: 6, reducedStateMultiplier: 0.5 },

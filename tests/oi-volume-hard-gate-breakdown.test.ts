@@ -81,9 +81,9 @@ const OPTIONOMICS = new Map<string, OptionomicsChainEntry>([
   ['SPY261009P00520000', { symbol: 'SPY261009P00520000', delta: null, gamma: null, theta: null, vega: null, rho: null, impliedVolatility: null, volume: 3, openInterest: 5 }],
 ]);
 
-const itReal = pythonExecutablePath === undefined ? test.skip : test;
+const itMockedProviderRealCodePath = pythonExecutablePath === undefined ? test.skip : test;
 
-itReal('OI/volume hard-gate breakdown: UNKNOWN vs known-below-floor vs sufficient, using realistic (non-live) values', async () => {
+itMockedProviderRealCodePath('OI/volume hard-gate breakdown: UNKNOWN vs known-below-floor vs sufficient, using realistic (non-live) values', async () => {
   const contracts = mergeOptionChain({
     underlying: 'SPY', asOfDate: '2026-09-10', contracts: CONTRACTS, snapshotsBySymbol: SNAPSHOTS,
     optionomicsBySymbol: OPTIONOMICS, requestedFeed: 'INDICATIVE', multiplier: 100, receivedAt: NOW,

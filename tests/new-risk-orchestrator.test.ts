@@ -122,9 +122,9 @@ const baseRequest = (overrides: Partial<NewRiskOrchestrationRequest> = {}): NewR
   ...overrides,
 });
 
-const itReal = pythonExecutablePath === undefined ? test.skip : test;
+const itMockedProviderRealCodePath = pythonExecutablePath === undefined ? test.skip : test;
 
-itReal('a real THETA-Q lattice candidate flows end to end to a decision receipt with sizing and execution quality', async () => {
+itMockedProviderRealCodePath('a real THETA-Q lattice candidate flows end to end to a decision receipt with sizing and execution quality', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest());
   assert.equal(result.receipt.failClosedReason, null);
   assert.ok(result.ownership !== null);
@@ -141,7 +141,7 @@ itReal('a real THETA-Q lattice candidate flows end to end to a decision receipt 
   assert.ok(result.shadowOpportunities.length >= 1);
 });
 
-itReal('every evaluated candidate is recorded in the shadow opportunity book, not only the winner', async () => {
+itMockedProviderRealCodePath('every evaluated candidate is recorded in the shadow opportunity book, not only the winner', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     candidates: [candidate('C1'), candidate('C2', { contract: contract({ optionSymbol: 'C2', strike: 45 }) })],
   }));
@@ -150,7 +150,7 @@ itReal('every evaluated candidate is recorded in the shadow opportunity book, no
   assert.ok(recordedIds.includes('C2'));
 });
 
-itReal('a delta-UNKNOWN contract is excluded from the lattice call and recorded as PASS/UNKNOWN_DELTA', async () => {
+itMockedProviderRealCodePath('a delta-UNKNOWN contract is excluded from the lattice call and recorded as PASS/UNKNOWN_DELTA', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     candidates: [candidate('C1', { contract: contract({ optionSymbol: 'C1', delta: null }) })],
   }));
@@ -159,7 +159,7 @@ itReal('a delta-UNKNOWN contract is excluded from the lattice call and recorded 
   assert.equal(entry?.rejectionCategory, 'UNKNOWN_DELTA');
 });
 
-itReal('a stale option quote is excluded from the lattice call and recorded as WAIT/WAIT_LIQUIDITY, NEVER as PASS -- never sent to Python', async () => {
+itMockedProviderRealCodePath('a stale option quote is excluded from the lattice call and recorded as WAIT/WAIT_LIQUIDITY, NEVER as PASS -- never sent to Python', async () => {
   const staleTimestamp = new Date(Date.now() - 3600_000).toISOString(); // 1 hour old
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     candidates: [candidate('C1', { contract: contract({ optionSymbol: 'C1', quoteTimestamp: staleTimestamp }) })],
@@ -175,7 +175,7 @@ itReal('a stale option quote is excluded from the lattice call and recorded as W
   assert.equal(alternative?.disposition, 'WAIT');
 });
 
-itReal('a quote with no observation timestamp is excluded as WAIT/WAIT_LIQUIDITY, NEVER as PASS -- freshness is never assumed', async () => {
+itMockedProviderRealCodePath('a quote with no observation timestamp is excluded as WAIT/WAIT_LIQUIDITY, NEVER as PASS -- freshness is never assumed', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     candidates: [candidate('C1', { contract: contract({ optionSymbol: 'C1', quoteTimestamp: null }) })],
   }));
@@ -186,27 +186,27 @@ itReal('a quote with no observation timestamp is excluded as WAIT/WAIT_LIQUIDITY
   assert.equal(entry?.rejectionCategory, 'OPTION_QUOTE_UNKNOWN');
 });
 
-itReal('a fresh quote still reaches the lattice -- the freshness gate never blocks a genuinely fresh candidate', async () => {
+itMockedProviderRealCodePath('a fresh quote still reaches the lattice -- the freshness gate never blocks a genuinely fresh candidate', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     candidates: [candidate('C1', { contract: contract({ optionSymbol: 'C1', quoteTimestamp: NOW }) })],
   }));
   assert.ok(result.thetaQ !== null);
 });
 
-itReal('provider state not good fails the whole decision closed before any bridge call', async () => {
+itMockedProviderRealCodePath('provider state not good fails the whole decision closed before any bridge call', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest({ providerStateGood: false }));
   assert.equal(result.receipt.winningAction, 'HARD_VETO');
   assert.equal(result.ownership, null);
 });
 
-itReal('CASH_AVAILABLE + acceptable ownership routes THETA_Q eligible', async () => {
+itMockedProviderRealCodePath('CASH_AVAILABLE + acceptable ownership routes THETA_Q eligible', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest());
   assert.ok(result.routing !== null);
   const thetaQ = result.routing.results.find((r) => r.strategyFamily === 'THETA_Q');
   assert.equal(thetaQ?.eligible, true);
 });
 
-itReal('an already-open CSP lifecycle routes THETA_Q ineligible and produces zero evaluated candidates', async () => {
+itMockedProviderRealCodePath('an already-open CSP lifecycle routes THETA_Q ineligible and produces zero evaluated candidates', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     routerPortfolio: { lifecycleState: 'CSP_OPEN', stockSharesHeld: 0, openOptionExists: true, assignmentImminent: false },
   }));
@@ -217,7 +217,7 @@ itReal('an already-open CSP lifecycle routes THETA_Q ineligible and produces zer
   assert.equal(result.shadowOpportunities.some((e) => e.rejectionCategory === 'THETA_Q_INELIGIBLE'), true);
 });
 
-itReal('an unknown model family in the allowlist fails the whole decision closed at that stage', async () => {
+itMockedProviderRealCodePath('an unknown model family in the allowlist fails the whole decision closed at that stage', async () => {
   const badBridge: PythonBridgeConfig = { ...bridge(), scriptAllowlist: new Map() };
   const result = await runNewRiskOrchestration(badBridge, baseRequest());
   assert.equal(result.receipt.winningAction, 'HARD_VETO');

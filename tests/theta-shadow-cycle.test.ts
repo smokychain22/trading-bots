@@ -85,6 +85,7 @@ const baseConfig = (overrides: Partial<ThetaShadowCycleConfig> = {}): ThetaShado
   bridge: bridge(),
   universePolicy: { policyVersion: 'universe-v1', minAvgDollarVolume: 10_000_000, minCurrentPrice: 5 },
   universeCandidates: [spyEligible()],
+  universeCandidatesOrigin: 'CALLER_MANUAL',
   optionExpirationDateGte: '2026-10-01', optionExpirationDateLte: '2026-11-01', optionType: 'put', maxOptionPages: 5,
   historyStart: '2026-07-01T00:00:00Z', historyEnd: NOW, historyMaxPages: 5,
   ownershipPolicy: { policyVersion: 'ownership-v1', minStockAvgVolume: 1, minOptionOpenInterest: 1, minOptionVolume: 1, maxSpreadPct: 0.5, rvNormalizationCeiling: 0.6, downsideSemivarNormalizationCeiling: 0.3, gapFrequencyNormalizationCeiling: 0.5, eventDecayWindowDays: 10 },
@@ -96,6 +97,7 @@ const baseConfig = (overrides: Partial<ThetaShadowCycleConfig> = {}): ThetaShado
   costAssumptions: { commissionPerContract: 0.65, feesPerContract: 0.05, estimatedSlippagePerContract: 1.0, costModelVersion: 'cost-v1' },
   aegisPolicy: { policyVersion: 'aegis-v1', maxTickerConcentrationPct: 0.15, maxSectorConcentrationPct: 0.3, maxCorrelationClusterPct: 0.3, maxPortfolioCapitalAtRiskPct: 0.5, maxInventoryCapacityPct: 0.5, maxAssignmentCapacityPct: 0.5, maxRecoveryCapacityPct: 0.3, providerRequiredStates: ['OK'] },
   aegisInputs: { tickerConcentrationPct: 0.05, sectorConcentrationPct: 0.1, correlationClusterExposurePct: 0.1, portfolioCapitalAtRiskPct: 0.2, inventoryCapacityUsedPct: 0.1, assignmentCapacityUsedPct: 0.1, recoveryCapacityUsedPct: 0, liquidityAcceptable: true, executionQualityAcceptable: true, providerState: 'OK', stressGapDetected: false, stressIvShockDetected: false, stressSpreadWideningDetected: false },
+  aegisInputsOrigin: 'CALLER_MANUAL',
   opportunityFrontierPolicy: { policyVersion: 'opp-frontier-v1', reducedSizeUncertaintyThreshold: 0.5 },
   maxAcceptableSpreadPct: 1.0,
   sizingPolicy: { policyVersion: 'sizing-v1', riskBudgetQtyCap: 4, collateralQtyCap: 3, concentrationQtyCap: 5, assignmentCapacityQtyCap: 6, reducedStateMultiplier: 0.5 },
@@ -106,9 +108,9 @@ const baseConfig = (overrides: Partial<ThetaShadowCycleConfig> = {}): ThetaShado
   ...overrides,
 });
 
-const itReal = pythonExecutablePath === undefined ? test.skip : test;
+const itMockedProviderRealCodePath = pythonExecutablePath === undefined ? test.skip : test;
 
-itReal('a full cycle with real-shaped mocked Alpaca data reaches a decision receipt via the real Python pipeline', async () => {
+itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data reaches a decision receipt via the real Python pipeline', async () => {
   requestedUrls = [];
   const result = await runThetaShadowCycle(baseConfig());
   assert.equal(result.selectedUnderlying, 'SPY');
@@ -122,13 +124,13 @@ itReal('a full cycle with real-shaped mocked Alpaca data reaches a decision rece
   assert.equal(result.provenance, 'HYBRID');
 });
 
-itReal('no candidates on this underlying yields a coherent result, never a crash', async () => {
+itMockedProviderRealCodePath('no candidates on this underlying yields a coherent result, never a crash', async () => {
   const result = await runThetaShadowCycle(baseConfig({ alpaca: alpacaConfig({ hasContracts: false, hasBars: true }) }));
   assert.equal(result.blockers.includes('NO_CANDIDATES_AVAILABLE'), true);
   assert.equal(result.orchestration, null);
 });
 
-itReal('no eligible underlying in the universe short-circuits before any provider call', async () => {
+itMockedProviderRealCodePath('no eligible underlying in the universe short-circuits before any provider call', async () => {
   const notTradable: UnderlyingCandidateInput = { ...spyEligible(), tradable: false };
   const result = await runThetaShadowCycle(baseConfig({ universeCandidates: [notTradable] }));
   assert.equal(result.selectedUnderlying, null);
@@ -136,7 +138,35 @@ itReal('no eligible underlying in the universe short-circuits before any provide
   assert.equal(result.universeFunnel.eligible, 0);
 });
 
-itReal('with multiple eligible underlyings, selection is by RANKING, never by input array order', async () => {
+// --- Provenance semantics correction: origin, not result ---
+
+itMockedProviderRealCodePath('PROVENANCE CORRECTION: no eligible underlying is SYNTHETIC only because universeCandidatesOrigin is CALLER_MANUAL -- not because the result was empty', async () => {
+  const notTradable: UnderlyingCandidateInput = { ...spyEligible(), tradable: false };
+  const manualResult = await runThetaShadowCycle(baseConfig({ universeCandidates: [notTradable], universeCandidatesOrigin: 'CALLER_MANUAL' }));
+  assert.equal(manualResult.provenance, 'SYNTHETIC');
+
+  // Same empty-result outcome, but the universe input is declared as having
+  // come from a real provider query -- provenance must NOT be forced to
+  // SYNTHETIC merely because zero underlyings survived.
+  const realOriginResult = await runThetaShadowCycle(baseConfig({ universeCandidates: [notTradable], universeCandidatesOrigin: 'REAL_PROVIDER' }));
+  assert.notEqual(realOriginResult.provenance, 'SYNTHETIC');
+});
+
+itMockedProviderRealCodePath('PROVENANCE CORRECTION: a real account query that genuinely fails is still counted toward real provenance, never treated as a fixture', async () => {
+  const failingAccountFetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/account')) return new Response('', { status: 500 });
+    return mockAlpacaFetch({ hasContracts: true, hasBars: true })(input, {});
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({
+    alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: failingAccountFetch },
+  }));
+  // account is still classified via a real query attempt (UNAVAILABLE_AFTER_REAL_QUERY),
+  // not silently dropped from the provenance detail or conflated with a fixture.
+  assert.ok(result.provenanceDetail.some((d) => d.startsWith('account=UNAVAILABLE_AFTER_REAL_QUERY')));
+});
+
+itMockedProviderRealCodePath('with multiple eligible underlyings, selection is by RANKING, never by input array order', async () => {
   const lowerVolumeFirst: UnderlyingCandidateInput = { ...spyEligible(), symbol: 'LOWER_VOLUME_FIRST_IN_ARRAY', avgDollarVolume: 10_000_000 };
   const higherVolumeSecond: UnderlyingCandidateInput = { ...spyEligible(), symbol: 'HIGHER_VOLUME_SECOND_IN_ARRAY', avgDollarVolume: 500_000_000 };
   const result = await runThetaShadowCycle(baseConfig({ universeCandidates: [lowerVolumeFirst, higherVolumeSecond] }));
@@ -146,7 +176,7 @@ itReal('with multiple eligible underlyings, selection is by RANKING, never by in
   assert.equal(result.underlyingRanking[0]?.rank, 1);
 });
 
-itReal('an account fetch failure is recorded as a blocker, never silently ignored, and the cycle still completes coherently', async () => {
+itMockedProviderRealCodePath('an account fetch failure is recorded as a blocker, never silently ignored, and the cycle still completes coherently', async () => {
   const failingAccountFetch = (async (input: RequestInfo | URL) => {
     const url = input instanceof URL ? input.toString() : String(input);
     if (url.includes('/v2/account')) return new Response('', { status: 500 });
@@ -156,7 +186,7 @@ itReal('an account fetch failure is recorded as a blocker, never silently ignore
   assert.ok(result.blockers.some((b) => b.startsWith('ACCOUNT_FETCH_FAILED')));
 });
 
-itReal('runId is unique per cycle', async () => {
+itMockedProviderRealCodePath('runId is unique per cycle', async () => {
   const first = await runThetaShadowCycle(baseConfig());
   const second = await runThetaShadowCycle(baseConfig());
   assert.notEqual(first.runId, second.runId);
@@ -190,7 +220,7 @@ const deterministicConfig = (accountId: string): ThetaShadowCycleConfig => baseC
   alpaca: { tradingApiBase: 'https://paper-api.alpaca.markets', marketDataApiBase: 'https://data.alpaca.markets', apiKey: 'TEST-SYNTHETIC-KEY', apiSecret: 'TEST-SYNTHETIC-SECRET', fetchImpl: deterministicMockAlpacaFetch(accountId) },
 });
 
-itReal('FusionSnapshot content hash is REAL (64-char lowercase hex), never the old placeholder', async () => {
+itMockedProviderRealCodePath('FusionSnapshot content hash is REAL (64-char lowercase hex), never the old placeholder', async () => {
   const result = await runThetaShadowCycle(deterministicConfig('synthetic-test-account-A'));
   assert.ok(result.snapshotContentHash !== null);
   assert.match(result.snapshotContentHash as string, /^[0-9a-f]{64}$/);
@@ -198,13 +228,13 @@ itReal('FusionSnapshot content hash is REAL (64-char lowercase hex), never the o
   assert.equal(result.orchestration?.receipt.fusionSnapshotHash, result.snapshotContentHash);
 });
 
-itReal('the SAME canonical state produces the SAME deterministic content hash', async () => {
+itMockedProviderRealCodePath('the SAME canonical state produces the SAME deterministic content hash', async () => {
   const first = await runThetaShadowCycle(deterministicConfig('synthetic-test-account-A'));
   const second = await runThetaShadowCycle(deterministicConfig('synthetic-test-account-A'));
   assert.equal(first.snapshotContentHash, second.snapshotContentHash);
 });
 
-itReal('a materially DIFFERENT market state (different account equity) produces a DIFFERENT content hash', async () => {
+itMockedProviderRealCodePath('a materially DIFFERENT market state (different account equity) produces a DIFFERENT content hash', async () => {
   const first = await runThetaShadowCycle(deterministicConfig('synthetic-test-account-A'));
   const second = await runThetaShadowCycle(deterministicConfig('synthetic-test-account-B'));
   assert.notEqual(first.snapshotContentHash, second.snapshotContentHash);

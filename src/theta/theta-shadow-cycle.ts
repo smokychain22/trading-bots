@@ -43,6 +43,7 @@ export interface ThetaShadowCycleConfig {
   readonly bridge: PythonBridgeConfig;
   readonly universePolicy: UniversePolicy;
   readonly universeCandidates: readonly UnderlyingCandidateInput[]; // caller supplies the raw per-underlying facts; a full Alpaca-asset-universe fetch is not built this pass
+  readonly universeCandidatesOrigin: ProvenanceOrigin; // caller must honestly declare whether these facts came from a real asset-discovery call or a fixture/manual list -- drives automatic provenance, never guessed
   readonly optionExpirationDateGte: string;
   readonly optionExpirationDateLte: string;
   readonly optionType: 'put';
@@ -59,6 +60,7 @@ export interface ThetaShadowCycleConfig {
   readonly costAssumptions: Record<string, unknown>;
   readonly aegisPolicy: Record<string, unknown>;
   readonly aegisInputs: Record<string, unknown>; // portfolio/account risk-family inputs not yet derivable from MasterAccountSnapshot alone
+  readonly aegisInputsOrigin: ProvenanceOrigin; // honest declaration -- today this is always CALLER_MANUAL since real position/order-derived exposure isn't wired yet
   readonly opportunityFrontierPolicy: { policyVersion: string; reducedSizeUncertaintyThreshold: number };
   readonly maxAcceptableSpreadPct: number;
   readonly sizingPolicy: Record<string, unknown>;
@@ -173,26 +175,45 @@ function assembleFusionSnapshotInput(params: {
   };
 }
 
+// Provenance semantics correction (this session): FULL_REAL means "the
+// required state came through the real runtime/provider CODE PATH" -- it
+// does NOT mean "every field has a non-null value." A real provider query
+// that genuinely returns no value for a field (e.g. Optionomics has no OI
+// for a far-OTM contract) is still REAL provenance for that dimension --
+// UNKNOWN is a valid real-world observation, not evidence of a fixture.
+// What makes a dimension NOT real is that it was never queried at all, or
+// that its value was supplied by the CALLER/config as a literal (a test
+// fixture, a hardcoded synthetic account) rather than obtained by calling
+// a provider function. This distinction is per-dimension origin, not a
+// boolean "did we get a number back."
+export type ProvenanceOrigin =
+  | 'REAL_PROVIDER' // obtained by actually calling a real provider function this cycle, with a usable result
+  | 'UNAVAILABLE_AFTER_REAL_QUERY' // a real provider function was actually called this cycle, but it (honestly) had nothing to report
+  | 'SYNTHETIC_FIXTURE' // a test/development fixture value, never a real call
+  | 'CALLER_MANUAL' // the caller supplied this directly in config (e.g. aegisInputs, universeCandidates) -- not fetched at all
+  | 'NOT_ATTEMPTED'; // no code path for this dimension exists yet
+
+const REAL_ORIGINS: ReadonlySet<ProvenanceOrigin> = new Set(['REAL_PROVIDER', 'UNAVAILABLE_AFTER_REAL_QUERY']);
+
 /**
- * Automatic provenance classification (item 24) -- never manually labeled.
- * FULL_REAL requires every dimension the task specifies to have come from a
- * real provider call; this function currently can only ever return HYBRID
- * or SYNTHETIC, honestly, because Optionomics and event-state are not real
- * in this cycle implementation yet (see module docstring).
+ * Automatic provenance classification -- never manually labeled. A run is
+ * FULL_REAL only when every required dimension's ORIGIN is real (REAL_PROVIDER
+ * or UNAVAILABLE_AFTER_REAL_QUERY -- both count, since UNKNOWN-after-a-real-
+ * query is authentic reality, not a placeholder). SYNTHETIC only when every
+ * dimension is non-real. Otherwise HYBRID. The classification is driven by
+ * ORIGIN, never by whether the cycle happened to produce zero eligible
+ * underlyings or any other RESULT -- a real scan legitimately finding
+ * nothing is still real.
  */
-function classifyProvenance(dimensions: {
-  readonly accountReal: boolean;
-  readonly historyReal: boolean;
-  readonly optionChainReal: boolean;
-  readonly optionomicsReal: boolean;
-  readonly eventStateReal: boolean;
-}): { provenance: ShadowCycleProvenance; detail: readonly string[] } {
+function classifyProvenance(dimensions: Readonly<Record<string, ProvenanceOrigin>>): { provenance: ShadowCycleProvenance; detail: readonly string[] } {
   const detail: string[] = [];
-  const realCount = Object.values(dimensions).filter(Boolean).length;
-  for (const [name, real] of Object.entries(dimensions)) {
-    detail.push(`${name}=${real ? 'REAL' : 'SYNTHETIC_OR_UNAVAILABLE'}`);
+  let realCount = 0;
+  for (const [name, origin] of Object.entries(dimensions)) {
+    detail.push(`${name}=${origin}`);
+    if (REAL_ORIGINS.has(origin)) realCount += 1;
   }
-  if (realCount === Object.keys(dimensions).length) return { provenance: 'FULL_REAL', detail };
+  const total = Object.keys(dimensions).length;
+  if (realCount === total) return { provenance: 'FULL_REAL', detail };
   if (realCount === 0) return { provenance: 'SYNTHETIC', detail };
   return { provenance: 'HYBRID', detail };
 }
@@ -208,11 +229,19 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const topRanked = ranked[0];
 
   if (topRanked === undefined) {
+    // Provenance is classified from ORIGIN, never from this RESULT -- a
+    // genuinely real universe scan that legitimately finds zero eligible
+    // underlyings is still real; what actually makes this SYNTHETIC today
+    // is that universe discovery itself is caller-supplied, not that the
+    // scan came up empty (see classifyProvenance's own docstring).
+    const { provenance: noUnderlyingProvenance, detail: noUnderlyingDetail } = classifyProvenance({
+      universeCandidates: config.universeCandidatesOrigin,
+    });
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: null, underlyingRanking: ranked,
       optionChainComplete: null, optionContractsComplete: null, snapshotContentHash: null, snapshotValidForNewRisk: null,
       orchestration: null,
-      provenance: 'SYNTHETIC', provenanceDetail: ['no eligible underlying survived UniversePolicy this cycle'],
+      provenance: noUnderlyingProvenance, provenanceDetail: ['no eligible underlying survived UniversePolicy this cycle', ...noUnderlyingDetail],
       blockers: ['NO_ELIGIBLE_UNDERLYING'],
     };
   }
@@ -301,7 +330,13 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   }
 
   const { provenance, detail } = classifyProvenance({
-    accountReal, historyReal, optionChainReal: contractsReal && quotesReal, optionomicsReal: false, eventStateReal: false,
+    universeCandidates: config.universeCandidatesOrigin,
+    account: accountReal ? 'REAL_PROVIDER' : 'UNAVAILABLE_AFTER_REAL_QUERY', // fetchMasterAccountSnapshot was always actually called this cycle -- a failure is still a real query attempt, never a fixture
+    underlyingHistory: historyReal ? 'REAL_PROVIDER' : 'UNAVAILABLE_AFTER_REAL_QUERY',
+    optionChain: (contractsReal && quotesReal) ? 'REAL_PROVIDER' : 'UNAVAILABLE_AFTER_REAL_QUERY',
+    optionomics: 'NOT_ATTEMPTED', // no real Optionomics fetch adapter exists yet -- honestly not attempted, not a fixture
+    eventState: 'NOT_ATTEMPTED', // no event-state assembly exists yet
+    aegisInputs: config.aegisInputsOrigin,
   });
 
   // Canonical FusionSnapshot -- ALWAYS built, even on a no-candidates path,
