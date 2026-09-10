@@ -176,8 +176,11 @@ prohibited, edge cases, missing-data behavior, double-counting risk, validation 
 
 ## ReturnPerCapitalDay
 
-- **Formula:** `ReturnPerCapitalDay = EV_net / (SecuredCollateral × HoldingDays)`
-  (denominator: capital committed times the number of days it was committed for).
+- **Formula:** `ReturnPerCapitalDay = NetPnL / max(CapitalDays, epsilon)`.
+- **Units convention:** `CapitalDays` is the capital committed multiplied by its
+  holding duration. The calendar-day versus trading-day convention remains an explicit
+  unresolved implementation choice in `PHASE2_4_CORRECTION_AUDIT.md`; it must be
+  versioned before code or a result uses this metric.
 - **Purpose:** Capital-efficiency metric — the mechanism H-R-01's early-close/roll
   thesis actually claims (freeing capital sooner), distinct from raw `EV_net` which
   does not account for how long capital was tied up.
@@ -213,9 +216,9 @@ prohibited, edge cases, missing-data behavior, double-counting risk, validation 
   HOLD/CLOSE/ROLL/ASSIGN/EXPIRE/SELL_CC/CLOSE_STOCK/REDEPLOY at a single timestamp —
   the formal object H-R-03 and the management decision engine (`PHASE2_MASTER_SPEC.md`
   §10) require every roll/close/hold decision to be evaluated against.
-- **Formula (not in Appendix A as one line — composed from named sub-utilities per
-  action):** `ManagementUtility(action) = EV_net(action) - OpportunityCost(best
-  alternative not taken) - TailRiskPenalty(action) - CapitalDaysPenalty(action)`.
+- **Formula:** `ManagementUtility(action | state) = E[FutureWealthChange_after_cost |
+  action,state] - lambda * TailRisk(action) - kappa * CapitalDays(action) - xi *
+  ExecutionRisk(action)`.
 - **Status:** TEST/SPECIFIED — the sub-penalty weightings are open research questions,
   not frozen constants. No implementation exists.
 - **Where prohibited:** never approximated by "pick the action with the best
@@ -224,8 +227,8 @@ prohibited, edge cases, missing-data behavior, double-counting risk, validation 
 
 ## RollUtility
 
-- **Formula:** `RollUtility = EV_net(new leg) - EV_net(best of HOLD/CLOSE/ASSIGN/
-  REDEPLOY, same timestamp) - RollTransactionCosts - CapitalLockupPenalty`.
+- **Formula:** `RollUtility_j = EV_new,j - EV_best_alternative - lambda *
+  TailRisk_j - kappa * IncrementalCapitalDays_j - xi * OpportunityCost_j`.
 - **Purpose:** The decision quantity for ROLL specifically — a special case of
   `ManagementUtility` scoped to the roll action, matching H-R-03's `payoff_target`
   exactly ("`EV_new - EV_best_alternative - tail/capital-day/opportunity-cost
@@ -282,8 +285,10 @@ prohibited, edge cases, missing-data behavior, double-counting risk, validation 
   on vs. returned WAIT/SKIP — a check against both overtrading (too high, acting on
   marginal candidates) and excess caution (too low, leaving positive-EV opportunities
   on the table).
-- **Formula:** `OpportunityCaptureRate = TradedCandidates / EligibleCandidates` per
-  period, where `EligibleCandidates` are those that passed all hard vetoes.
+- **Formula:** `OpportunityCaptureRate = PositiveEVOpportunitiesTaken /
+  PositiveEVOpportunitiesDetected` per period. This remains `UNKNOWN` until the
+  required after-cost EV estimate is available and calibrated; merely passing hard
+  vetoes is not equivalent to a positive-EV opportunity.
 - **Where usable:** monitoring/drift context, alongside `EV_net` — a rate near 0 or
   near 1 both warrant investigation, not assumed to mean the policy is working well.
 - **Where prohibited:** never itself a target to optimize — it is diagnostic, not an

@@ -102,7 +102,7 @@ performance claims. Each finding classified RETAIN / CORRECT / TEST / REJECT.
   `METHOD_EXTRACTION_REGISTRY.md`/`LICENSING_REGISTRY.md` to pattern taxonomies rather
   than attributing findings to specific unverified repositories (finding 1 covers this
   too).
-- **Performance claims:** none made anywhere in any of the eighteen files this
+- **Performance claims:** none made anywhere in any of the twenty-one files this
   durabilization pass created.
 
 ## Summary disposition
@@ -116,3 +116,12 @@ classifications, surfaced here for visibility rather than requiring any change.
 Finding 1 is the structural finding this entire durabilization task exists to address
 and is handled by scoping the new packages to what can honestly be grounded in
 already-committed evidence.
+
+## Integration-review documentation correction
+
+Git records 21 durability files, not 18. The original count in this audit was a
+handoff-count error, not a claim about research evidence. Formula references were also
+aligned during integration to the canonical TRD Appendix A definitions for
+`ReturnPerCapitalDay`, `ManagementUtility`, `RollUtility`, and
+`OpportunityCaptureRate`. These are documentation corrections only. No quant/runtime
+implementation or empirical result changed.

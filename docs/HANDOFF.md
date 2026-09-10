@@ -16,4 +16,14 @@ RISKS: Options and assigned inventory can lose materially. UI readiness does not
 
 WHAT THE OTHER AGENT SHOULD REVIEW: Economic accounting and provenance, strict separation of illustrations from results, safe contracts and future publisher interfaces. Quant methodology and model files are unchanged.
 
-NEXT RECOMMENDED TASK: Owner review of this Phase 1 release and an explicit Phase 2 scope. Do not start Phase 2 automatically.
+## Research durabilization integration
+
+Claude's docs-only Phase 2-4 durabilization branch was independently reviewed and
+merged after confirming no runtime, provider, migration, UI, Vercel, broker or secret
+changes. The integration corrected four TRD Appendix A formula references and the
+durability-file count. See `docs/quant/PHASE2_4_CORRECTION_AUDIT.md` and
+`docs/EMPIRICAL_THETA_BACKLOG.md`.
+
+NEXT RECOMMENDED TASK: Start only the first empirical prerequisite after explicit
+approval: historical-data and provider-capability evidence. Do not begin an empirical
+run, paper order or copy activation until the documented prerequisites are met.
