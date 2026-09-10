@@ -78,3 +78,10 @@ customer UI or copy persistence. THETA remains
 R1_INTEGRATED_INPUT_ASSEMBLY_BLOCKED. A production scheduler, real ownership, regime,
 and event input assembly, plus persisted shadow decision receipts are required before
 the owner UI may show SHADOW RUNNING.
+
+The standalone Alpaca provider adapter, pagination, universe policy, point-in-time
+features, and freshness gates passed integration review and were kept. The proposed
+one-shot shadow runner was not merged because it still contains synthetic operational
+defaults, converts a missing entry bid to zero, lacks live Optionomics and event-state
+inputs, and does not persist receipts. Those are correctness blockers, not reasons to
+label a partial cycle as running.

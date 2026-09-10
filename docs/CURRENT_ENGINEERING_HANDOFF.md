@@ -28,7 +28,9 @@ WHAT WAS IMPLEMENTED:
 - A compact three-step copy experience. Only the current step is shown and advanced
   limits are collapsed.
 - R1 provider normalization, opportunity assembly, hard-gate proof, and decision
-  assembly were selectively integrated. Runtime status remains
+  assembly were selectively integrated. The production Alpaca read adapter, bounded
+  pagination, staged universe policy, point-in-time underlying features, and explicit
+  quote-freshness gate were also integrated after review. Runtime status remains
   R1_INTEGRATED_INPUT_ASSEMBLY_BLOCKED.
 
 KNOWN LIMITATIONS AND RISKS:
@@ -43,6 +45,10 @@ KNOWN LIMITATIONS AND RISKS:
   disposable PostgreSQL service before it can be trusted.
 - SHADOW is not running. Real ownership/regime/event input assembly, a restart-safe
   scheduler, and persisted shadow receipts remain required.
+- Claude's proposed one-shot shadow runner was reviewed but not merged. It still turns
+  an unknown entry bid into zero, supplies fixed broker quantity and risk inputs, uses
+  a hard-coded SPY universe candidate, omits live Optionomics and event state, and does
+  not persist its receipt. Those behaviors prevent a production SHADOW RUNNING claim.
 - Follower order intent contracts exist, but broker order submission stays locked and
   no worker is active.
 
