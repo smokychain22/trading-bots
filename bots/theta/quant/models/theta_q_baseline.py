@@ -180,10 +180,21 @@ class BaselinePolicy:
                 f"quote_age_seconds {c.quote_age_seconds} exceeds budget {sp.min_quote_freshness_seconds}.",
             ))
 
-        if c.open_interest is None or c.open_interest < sp.min_open_interest:
-            reasons.append(ReasonCode("OPEN_INTEREST_INSUFFICIENT", -1, "Open interest below floor or UNKNOWN."))
-        if c.volume is None or c.volume < sp.min_volume:
-            reasons.append(ReasonCode("VOLUME_INSUFFICIENT", -1, "Volume below floor or UNKNOWN."))
+        # These remain hard vetoes per TRD section 18's liquidity-floor table
+        # (a policy question, not changed here) -- but WHY a candidate was
+        # rejected must distinguish "the value is UNKNOWN" from "the value
+        # is known and genuinely below the floor": those are fundamentally
+        # different findings for later empirical/regret analysis (R6), and
+        # conflating them into one reason code would make it impossible to
+        # tell a real liquidity rejection apart from a data-availability gap.
+        if c.open_interest is None:
+            reasons.append(ReasonCode("OPEN_INTEREST_UNKNOWN", -1, "Open interest is UNKNOWN, not assumed acceptable or zero."))
+        elif c.open_interest < sp.min_open_interest:
+            reasons.append(ReasonCode("OPEN_INTEREST_BELOW_FLOOR", -1, f"open_interest {c.open_interest} below floor {sp.min_open_interest}."))
+        if c.volume is None:
+            reasons.append(ReasonCode("VOLUME_UNKNOWN", -1, "Volume is UNKNOWN, not assumed acceptable or zero."))
+        elif c.volume < sp.min_volume:
+            reasons.append(ReasonCode("VOLUME_BELOW_FLOOR", -1, f"volume {c.volume} below floor {sp.min_volume}."))
 
         if c.earnings_distance_days is not None and c.earnings_distance_days <= sp.earnings_exclusion_days:
             reasons.append(ReasonCode(

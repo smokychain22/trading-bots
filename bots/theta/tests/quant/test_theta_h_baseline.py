@@ -81,6 +81,18 @@ class HardVetoTests(unittest.TestCase):
         self.assertTrue(result.hard_veto)
         self.assertIn("OVERNIGHT_GAP_HISTORY_TOO_HIGH", [r.code for r in result.reasons])
 
+    def test_unknown_open_interest_is_distinguished_from_known_below_floor(self):
+        unknown = self.policy.evaluate(_candidate(open_interest=None))
+        below_floor = self.policy.evaluate(_candidate(open_interest=1))
+        self.assertIn("OPEN_INTEREST_UNKNOWN", [r.code for r in unknown.reasons])
+        self.assertIn("OPEN_INTEREST_BELOW_FLOOR", [r.code for r in below_floor.reasons])
+
+    def test_unknown_volume_is_distinguished_from_known_below_floor(self):
+        unknown = self.policy.evaluate(_candidate(volume=None))
+        below_floor = self.policy.evaluate(_candidate(volume=1))
+        self.assertIn("VOLUME_UNKNOWN", [r.code for r in unknown.reasons])
+        self.assertIn("VOLUME_BELOW_FLOOR", [r.code for r in below_floor.reasons])
+
 
 class DiagnosticsTests(unittest.TestCase):
     def setUp(self):

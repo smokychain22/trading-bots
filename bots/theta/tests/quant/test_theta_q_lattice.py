@@ -95,6 +95,24 @@ class CandidateGridTests(unittest.TestCase):
         result = build_candidate_grid([_contract(earnings_distance_days=2)], _config())
         self.assertIn("EARNINGS_TOO_NEAR", [r.code for r in result.rejected[0].reasons])
 
+    def test_unknown_open_interest_is_distinguished_from_known_below_floor(self):
+        unknown = build_candidate_grid([_contract(open_interest=None)], _config())
+        below_floor = build_candidate_grid([_contract(open_interest=1)], _config())
+        self.assertIn("OPEN_INTEREST_UNKNOWN", [r.code for r in unknown.rejected[0].reasons])
+        self.assertIn("OPEN_INTEREST_BELOW_FLOOR", [r.code for r in below_floor.rejected[0].reasons])
+
+    def test_unknown_volume_is_distinguished_from_known_below_floor(self):
+        unknown = build_candidate_grid([_contract(volume=None)], _config())
+        below_floor = build_candidate_grid([_contract(volume=1)], _config())
+        self.assertIn("VOLUME_UNKNOWN", [r.code for r in unknown.rejected[0].reasons])
+        self.assertIn("VOLUME_BELOW_FLOOR", [r.code for r in below_floor.rejected[0].reasons])
+
+    def test_unknown_spread_is_distinguished_from_known_too_wide(self):
+        unknown = build_candidate_grid([_contract(spread_pct=None)], _config())
+        too_wide = build_candidate_grid([_contract(spread_pct=0.5)], _config())
+        self.assertIn("SPREAD_UNKNOWN", [r.code for r in unknown.rejected[0].reasons])
+        self.assertIn("SPREAD_TOO_WIDE", [r.code for r in too_wide.rejected[0].reasons])
+
 
 if __name__ == "__main__":
     unittest.main()

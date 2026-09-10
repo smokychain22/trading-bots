@@ -100,12 +100,21 @@ def build_candidate_grid(
                 f"put_delta_magnitude={contract.put_delta_magnitude} does not fall in any configured band",
             ))
 
-        if contract.spread_pct is None or contract.spread_pct > config.max_spread_pct:
-            reasons.append(ReasonCode("SPREAD_INELIGIBLE", -1, "Spread UNKNOWN or exceeds max_spread_pct."))
-        if contract.open_interest is None or contract.open_interest < config.min_open_interest:
-            reasons.append(ReasonCode("OPEN_INTEREST_INELIGIBLE", -1, "Open interest UNKNOWN or below floor."))
-        if contract.volume is None or contract.volume < config.min_volume:
-            reasons.append(ReasonCode("VOLUME_INELIGIBLE", -1, "Volume UNKNOWN or below floor."))
+        # UNKNOWN and known-but-below-floor are distinguished, never
+        # conflated into one reason code -- R6 must be able to tell a real
+        # liquidity rejection apart from a data-availability gap.
+        if contract.spread_pct is None:
+            reasons.append(ReasonCode("SPREAD_UNKNOWN", -1, "Spread is UNKNOWN, not assumed acceptable."))
+        elif contract.spread_pct > config.max_spread_pct:
+            reasons.append(ReasonCode("SPREAD_TOO_WIDE", -1, f"spread_pct={contract.spread_pct} exceeds max_spread_pct={config.max_spread_pct}."))
+        if contract.open_interest is None:
+            reasons.append(ReasonCode("OPEN_INTEREST_UNKNOWN", -1, "Open interest is UNKNOWN, not assumed acceptable or zero."))
+        elif contract.open_interest < config.min_open_interest:
+            reasons.append(ReasonCode("OPEN_INTEREST_BELOW_FLOOR", -1, f"open_interest={contract.open_interest} below floor={config.min_open_interest}."))
+        if contract.volume is None:
+            reasons.append(ReasonCode("VOLUME_UNKNOWN", -1, "Volume is UNKNOWN, not assumed acceptable or zero."))
+        elif contract.volume < config.min_volume:
+            reasons.append(ReasonCode("VOLUME_BELOW_FLOOR", -1, f"volume={contract.volume} below floor={config.min_volume}."))
         if (
             contract.earnings_distance_days is not None
             and contract.earnings_distance_days <= config.earnings_exclusion_days

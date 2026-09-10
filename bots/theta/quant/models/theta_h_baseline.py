@@ -111,10 +111,18 @@ class ThetaHPolicy:
             reasons.append(ReasonCode("SPREAD_INELIGIBLE", -1, "Spread UNKNOWN or too wide for short-DTE execution."))
         if c.quote_age_seconds is None or c.quote_age_seconds > p.min_quote_freshness_seconds:
             reasons.append(ReasonCode("QUOTE_STALE_OR_UNKNOWN", -1, "Quote freshness UNKNOWN or stale."))
-        if c.open_interest is None or c.open_interest < p.min_open_interest:
-            reasons.append(ReasonCode("OPEN_INTEREST_INSUFFICIENT", -1, "OI UNKNOWN or below floor."))
-        if c.volume is None or c.volume < p.min_volume:
-            reasons.append(ReasonCode("VOLUME_INSUFFICIENT", -1, "Volume UNKNOWN or below floor."))
+        # UNKNOWN and known-but-below-floor are distinguished (never
+        # conflated into one reason code) -- same rationale as
+        # theta_q_baseline.py's identical correction: R6 must be able to
+        # tell a real liquidity rejection apart from a data-availability gap.
+        if c.open_interest is None:
+            reasons.append(ReasonCode("OPEN_INTEREST_UNKNOWN", -1, "OI is UNKNOWN, not assumed acceptable or zero."))
+        elif c.open_interest < p.min_open_interest:
+            reasons.append(ReasonCode("OPEN_INTEREST_BELOW_FLOOR", -1, f"open_interest {c.open_interest} below floor {p.min_open_interest}."))
+        if c.volume is None:
+            reasons.append(ReasonCode("VOLUME_UNKNOWN", -1, "Volume is UNKNOWN, not assumed acceptable or zero."))
+        elif c.volume < p.min_volume:
+            reasons.append(ReasonCode("VOLUME_BELOW_FLOOR", -1, f"volume {c.volume} below floor {p.min_volume}."))
         if c.earnings_distance_days is not None and c.earnings_distance_days <= p.earnings_exclusion_days:
             reasons.append(ReasonCode("EARNINGS_TOO_NEAR", -1, f"earnings_distance_days={c.earnings_distance_days}"))
         if c.gamma is not None and abs(c.gamma) > p.max_gamma_exposure:
