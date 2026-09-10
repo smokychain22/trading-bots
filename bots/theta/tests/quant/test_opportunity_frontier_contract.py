@@ -38,6 +38,16 @@ class OpportunityFrontierContractTests(unittest.TestCase):
         self.assertEqual(response["actionableCandidateIds"], ["c1"])
         self.assertIsNone(response["globalIdle"])
 
+    def test_an_actionable_entrys_serialized_rank_is_not_null(self):
+        # Regression test: build_opportunity_book's raw `entries` list
+        # always carries rank=None by construction (only the separate
+        # `actionable_entries` list is ranked) -- this adapter must look
+        # the real rank up from there, not pass through the always-null
+        # field directly.
+        response = evaluate_request(_request([_candidate("c1")]))
+        entry = next(e for e in response["entries"] if e["candidateId"] == "c1")
+        self.assertEqual(entry["rank"], 1)
+
     def test_a_single_bad_candidate_never_suppresses_a_good_one(self):
         candidates = [_candidate("bad", evNet=-5.0), _candidate("good", evNet=25.0)]
         response = evaluate_request(_request(candidates))

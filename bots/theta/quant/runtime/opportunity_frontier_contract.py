@@ -76,6 +76,12 @@ def evaluate_request(request: dict[str, Any]) -> dict[str, Any]:
 
     book = build_opportunity_book(policy, candidates)
 
+    # book.entries always carries rank=None by construction -- only
+    # book.actionable_entries (a separate, ranked list) has the real rank
+    # for OPEN_* dispositions. Build a lookup so the serialized "entries"
+    # list reports the actual rank instead of always emitting null.
+    rank_by_candidate_id = {entry.candidate.candidate_id: entry.rank for entry in book.actionable_entries}
+
     return {
         "contractVersion": CONTRACT_VERSION,
         "snapshotId": snapshot_id,
@@ -84,7 +90,7 @@ def evaluate_request(request: dict[str, Any]) -> dict[str, Any]:
         "entries": [
             {
                 "candidateId": entry.candidate.candidate_id,
-                "rank": entry.rank,
+                "rank": rank_by_candidate_id.get(entry.candidate.candidate_id),
                 "disposition": entry.decision.disposition.value,
                 "waitReason": entry.decision.wait_reason.value if entry.decision.wait_reason is not None else None,
                 "rejectionCategory": entry.decision.rejection_category,
