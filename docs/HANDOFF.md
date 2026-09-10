@@ -215,3 +215,40 @@ action mapping, and preserved lifecycle economics. Do not rebuild the broker ada
 NEXT RECOMMENDED TASK: Provision production PostgreSQL, rotate exposed credentials,
 verify the master account read-only, then connect real universe, event, positions, and
 open-order state into persisted shadow cycles. Do not authorize the first PAPER order yet.
+
+## 2026-09-11 provider provenance correction
+
+OWNER: Codex
+
+TASK: Port the remaining semantic correction from Claude commit `f3d7f38` onto the
+newer canonical runtime without merging the old branch wholesale.
+
+FILES CHANGED: THETA new-risk orchestration and shadow-cycle provenance, their tests,
+and decision/handoff records.
+
+WHAT WAS IMPLEMENTED: Provider origin now distinguishes successful values,
+successful-but-unknown values, failed calls, deterministic derivations, fixtures,
+manual inputs, and unattempted paths. Data quality remains separate. Transient
+provider failures produce `SYSTEM_HOLD`, while invalid authentication and required
+entitlement failures retain `HARD_VETO`. Provider failure cannot count as `FULL_REAL`,
+and provider incidents cannot be recorded as economic `PASS` outcomes.
+
+TESTS RUN: Current TypeScript, Python quant, Playwright responsive/accessibility,
+type checking, ESLint, build, secret scan, and dependency audit. PostgreSQL migration
+and Redis verification remain mandatory CI merge gates.
+
+TEST RESULTS: 326 TypeScript, 298 Python, and 16 Playwright tests passed locally.
+Type checking, lint, build, secret scan, and dependency audit passed.
+
+KNOWN LIMITATIONS: The cycle still lacks real Optionomics, event, positions,
+open-orders, account-derived AEGIS, persistent receipts, and a production scheduler.
+
+RISKS: Provenance describes evidence origin, not profitability or execution authority.
+PAPER execution remains locked and no order was submitted.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude should start future R1 work from the new
+post-merge main SHA and consume these origin and quality contracts without recreating
+the provider gate.
+
+NEXT RECOMMENDED TASK: Connect real Optionomics, positions, open orders, and
+account-derived AEGIS into persisted shadow cycles. Keep execution locked.

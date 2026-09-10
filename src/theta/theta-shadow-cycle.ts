@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  AlpacaProviderError,
   fetchMasterAccountSnapshot, fetchOpenOrders, fetchOptionContracts, fetchOptionSnapshots,
   fetchPositions, fetchStockBars, type AlpacaProviderConfig, type MasterAccountSnapshot,
 } from './alpaca-provider.js';
@@ -9,6 +10,7 @@ import { evaluateUniverse, rankEligibleUnderlyings, type RankedUnderlying, type 
 import { runNewRiskOrchestration, type NewRiskOrchestrationRequest, type NewRiskOrchestrationResult, type RawCandidateInput } from './new-risk-orchestrator.js';
 import type { PythonBridgeConfig } from './python-bridge.js';
 import { buildFusionSnapshot, hashJson, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
+import type { DataQualityState } from './data-freshness.js';
 
 // R1: runThetaShadowCycle -- the reusable, server-side, non-executing shadow
 // decision cycle. This is the "success condition" deliverable: a single
@@ -91,7 +93,35 @@ export interface ThetaShadowCycleResult {
   readonly blockers: readonly string[];
 }
 
-const evidenceStateFor = (real: boolean): 'GOOD' | 'UNKNOWN' => (real ? 'GOOD' : 'UNKNOWN');
+interface ProviderEvidence {
+  readonly origin: ProvenanceOrigin;
+  readonly quality: DataQualityState;
+}
+
+const notAttemptedEvidence = (): ProviderEvidence => ({ origin: 'NOT_ATTEMPTED', quality: 'UNKNOWN' });
+
+// Origin records what happened. Quality records whether the resulting state
+// is usable. A transport outage is real provider ERROR provenance but only a
+// transient DEGRADED capability. Authentication, entitlement, and malformed
+// payload failures are genuine prohibitions and remain INVALID/NOT_ENTITLED.
+function failedProviderEvidence(error: unknown): ProviderEvidence {
+  if (error instanceof AlpacaProviderError) {
+    if (error.errorClass === 'INVALID_AUTH' || error.errorClass === 'MALFORMED_RESPONSE') {
+      return { origin: 'REAL_PROVIDER_ERROR', quality: 'INVALID' };
+    }
+    if (error.errorClass === 'NOT_ENTITLED') {
+      return { origin: 'REAL_PROVIDER_ERROR', quality: 'NOT_ENTITLED' };
+    }
+  }
+  return { origin: 'REAL_PROVIDER_ERROR', quality: 'DEGRADED' };
+}
+
+function aggregateProviderQuality(states: readonly DataQualityState[]): DataQualityState {
+  for (const state of ['INVALID', 'NOT_ENTITLED', 'STALE', 'DEGRADED', 'UNKNOWN'] as const) {
+    if (states.includes(state)) return state;
+  }
+  return 'GOOD';
+}
 
 /**
  * Assembles the canonical FusionSnapshotInput (src/market/fusion-snapshot.ts,
@@ -106,9 +136,12 @@ function assembleFusionSnapshotInput(params: {
   readonly now: string;
   readonly underlying: string;
   readonly account: MasterAccountSnapshot | null;
-  readonly accountReal: boolean;
-  readonly contractsReal: boolean;
-  readonly quotesReal: boolean;
+  readonly accountOrigin: ProvenanceOrigin;
+  readonly accountQuality: DataQualityState;
+  readonly contractsOrigin: ProvenanceOrigin;
+  readonly contractsQuality: DataQualityState;
+  readonly quotesOrigin: ProvenanceOrigin;
+  readonly quotesQuality: DataQualityState;
   readonly mergedContracts: FusionSnapshotInput['contractCandidates'];
   readonly ownershipFeatures: JsonValue;
   readonly regimeFeatures: JsonValue;
@@ -142,23 +175,27 @@ function assembleFusionSnapshotInput(params: {
     },
     sourceProvenance: [
       {
-        provider: 'ALPACA', operationAlias: 'alpaca.get_account', asOf: params.accountReal ? params.now : null, retrievedAt: params.now,
-        state: evidenceStateFor(params.accountReal), contentHash: hashJson(accountJson), feed: null,
+        provider: 'ALPACA', operationAlias: 'alpaca.get_account', asOf: params.accountOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        state: params.accountQuality, contentHash: hashJson(accountJson), feed: null,
         contractVersion: 'alpaca-account-v1', truthRole: 'ACCOUNT', requiredForNewRisk: true,
       },
       {
-        provider: 'ALPACA', operationAlias: 'alpaca.get_option_contracts', asOf: params.contractsReal ? params.now : null, retrievedAt: params.now,
-        state: evidenceStateFor(params.contractsReal), contentHash: hashJson(contractsJson), feed: null,
+        provider: 'ALPACA', operationAlias: 'alpaca.get_option_contracts', asOf: params.contractsOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        state: params.contractsQuality, contentHash: hashJson(contractsJson), feed: null,
         contractVersion: 'alpaca-option-contracts-v1', truthRole: 'CONTRACT', requiredForNewRisk: true,
       },
       {
-        provider: 'ALPACA', operationAlias: 'alpaca.get_option_snapshots', asOf: params.quotesReal ? params.now : null, retrievedAt: params.now,
-        state: evidenceStateFor(params.quotesReal), contentHash: hashJson(contractsJson), feed: 'indicative',
+        provider: 'ALPACA', operationAlias: 'alpaca.get_option_snapshots', asOf: params.quotesOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        state: params.quotesQuality, contentHash: hashJson(contractsJson), feed: 'indicative',
         contractVersion: 'alpaca-option-snapshots-v1', truthRole: 'QUOTE', requiredForNewRisk: true,
       },
     ],
     providerHealth: [
-      { provider: 'ALPACA', state: evidenceStateFor(params.accountReal && params.contractsReal && params.quotesReal), asOf: params.now, retrievedAt: params.now },
+      {
+        provider: 'ALPACA',
+        state: aggregateProviderQuality([params.accountQuality, params.contractsQuality, params.quotesQuality]),
+        asOf: params.now, retrievedAt: params.now,
+      },
       { provider: 'OPTIONOMICS', state: 'UNKNOWN', asOf: null, retrievedAt: params.now },
     ],
     freshnessFlags: [],
@@ -168,53 +205,73 @@ function assembleFusionSnapshotInput(params: {
       { feature: 'eventState', reasonCode: 'EVENT_STATE_NOT_IMPLEMENTED', provider: null },
     ],
     executableTruth: {
-      account: evidenceStateFor(params.accountReal),
-      contract: evidenceStateFor(params.contractsReal),
-      quote: evidenceStateFor(params.quotesReal),
+      account: params.accountQuality,
+      contract: params.contractsQuality,
+      quote: params.quotesQuality,
     },
   };
 }
 
-// Provenance semantics correction (this session): FULL_REAL means "the
-// required state came through the real runtime/provider CODE PATH" -- it
-// does NOT mean "every field has a non-null value." A real provider query
-// that genuinely returns no value for a field (e.g. Optionomics has no OI
-// for a far-OTM contract) is still REAL provenance for that dimension --
-// UNKNOWN is a valid real-world observation, not evidence of a fixture.
-// What makes a dimension NOT real is that it was never queried at all, or
-// that its value was supplied by the CALLER/config as a literal (a test
-// fixture, a hardcoded synthetic account) rather than obtained by calling
-// a provider function. This distinction is per-dimension origin, not a
-// boolean "did we get a number back."
+// Provenance semantics correction (this session, refined further this
+// pass): FULL_REAL means "the required state came through the real
+// runtime/provider CODE PATH" -- it does NOT mean "every field has a
+// non-null value." But a SUCCESSFUL real query that genuinely has nothing
+// to report (REAL_PROVIDER_UNKNOWN) is a fundamentally different fact from
+// a real query that FAILED (REAL_PROVIDER_ERROR -- 5xx, network error,
+// auth/entitlement failure, exhausted rate-limit retry). Conflating these
+// two into one "real" bucket was a real bug: it let a provider OUTAGE
+// masquerade as an authentic UNKNOWN observation. REAL_PROVIDER_ERROR
+// counts toward provenance being "not synthetic" (a real call really was
+// attempted), but it must NEVER be treated as safe/usable evidence for a
+// decision. The orchestration capability gate uses the separate quality
+// state to decide whether evaluation may proceed.
 export type ProvenanceOrigin =
-  | 'REAL_PROVIDER' // obtained by actually calling a real provider function this cycle, with a usable result
-  | 'UNAVAILABLE_AFTER_REAL_QUERY' // a real provider function was actually called this cycle, but it (honestly) had nothing to report
+  | 'REAL_PROVIDER' // a real provider function was called this cycle and returned a usable result
+  | 'REAL_PROVIDER_UNKNOWN' // a real provider function was called this cycle, succeeded, but genuinely had nothing to report for this field
+  | 'REAL_PROVIDER_ERROR' // a real provider function was called this cycle and FAILED (network/5xx/auth/entitlement/rate-limit) -- never treated as a valid UNKNOWN
+  | 'DERIVED_FROM_REAL' // deterministic output computed only from real provider observations
   | 'SYNTHETIC_FIXTURE' // a test/development fixture value, never a real call
   | 'CALLER_MANUAL' // the caller supplied this directly in config (e.g. aegisInputs, universeCandidates) -- not fetched at all
   | 'NOT_ATTEMPTED'; // no code path for this dimension exists yet
 
-const REAL_ORIGINS: ReadonlySet<ProvenanceOrigin> = new Set(['REAL_PROVIDER', 'UNAVAILABLE_AFTER_REAL_QUERY']);
+// FULL_REAL evidence: a real call happened and (successfully or with an
+// honest empty result) told us something genuine. REAL_PROVIDER_ERROR is
+// deliberately EXCLUDED here -- an error is not "authentic reality" for
+// provenance purposes, even though it does prove a real call was attempted;
+// see NOT_SYNTHETIC_ORIGINS below for the "not purely synthetic" question.
+const FULL_REAL_ORIGINS: ReadonlySet<ProvenanceOrigin> = new Set(['REAL_PROVIDER', 'REAL_PROVIDER_UNKNOWN', 'DERIVED_FROM_REAL']);
+// "Not purely synthetic" evidence for the SYNTHETIC/HYBRID boundary: an
+// error still proves a real call was attempted (this is not a fixture),
+// even though it can never count as FULL_REAL evidence on its own.
+const NOT_SYNTHETIC_ORIGINS: ReadonlySet<ProvenanceOrigin> = new Set(['REAL_PROVIDER', 'REAL_PROVIDER_UNKNOWN', 'REAL_PROVIDER_ERROR', 'DERIVED_FROM_REAL']);
 
 /**
- * Automatic provenance classification -- never manually labeled. A run is
- * FULL_REAL only when every required dimension's ORIGIN is real (REAL_PROVIDER
- * or UNAVAILABLE_AFTER_REAL_QUERY -- both count, since UNKNOWN-after-a-real-
- * query is authentic reality, not a placeholder). SYNTHETIC only when every
- * dimension is non-real. Otherwise HYBRID. The classification is driven by
- * ORIGIN, never by whether the cycle happened to produce zero eligible
+ * Automatic provenance classification -- never manually labeled. FULL_REAL
+ * requires EVERY dimension to be genuine, usable real-provider evidence
+ * (REAL_PROVIDER, REAL_PROVIDER_UNKNOWN, or DERIVED_FROM_REAL) -- a REAL_PROVIDER_ERROR
+ * dimension can never make a run FULL_REAL, even though the call really
+ * was attempted, because an error is not authentic reality about the
+ * world, it's a failure to observe it. SYNTHETIC only when every dimension
+ * is CALLER_MANUAL/SYNTHETIC_FIXTURE/NOT_ATTEMPTED (nothing real was even
+ * attempted). Otherwise HYBRID -- which now also correctly covers "some
+ * real calls were attempted but one of them errored," rather than that
+ * case silently inflating to FULL_REAL as it did before this correction.
+ * Never driven by whether the cycle happened to produce zero eligible
  * underlyings or any other RESULT -- a real scan legitimately finding
  * nothing is still real.
  */
-function classifyProvenance(dimensions: Readonly<Record<string, ProvenanceOrigin>>): { provenance: ShadowCycleProvenance; detail: readonly string[] } {
+export function classifyShadowCycleProvenance(dimensions: Readonly<Record<string, ProvenanceOrigin>>): { provenance: ShadowCycleProvenance; detail: readonly string[] } {
   const detail: string[] = [];
-  let realCount = 0;
+  let fullRealCount = 0;
+  let notSyntheticCount = 0;
   for (const [name, origin] of Object.entries(dimensions)) {
     detail.push(`${name}=${origin}`);
-    if (REAL_ORIGINS.has(origin)) realCount += 1;
+    if (FULL_REAL_ORIGINS.has(origin)) fullRealCount += 1;
+    if (NOT_SYNTHETIC_ORIGINS.has(origin)) notSyntheticCount += 1;
   }
   const total = Object.keys(dimensions).length;
-  if (realCount === total) return { provenance: 'FULL_REAL', detail };
-  if (realCount === 0) return { provenance: 'SYNTHETIC', detail };
+  if (fullRealCount === total) return { provenance: 'FULL_REAL', detail };
+  if (notSyntheticCount === 0) return { provenance: 'SYNTHETIC', detail };
   return { provenance: 'HYBRID', detail };
 }
 
@@ -233,8 +290,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     // genuinely real universe scan that legitimately finds zero eligible
     // underlyings is still real; what actually makes this SYNTHETIC today
     // is that universe discovery itself is caller-supplied, not that the
-    // scan came up empty (see classifyProvenance's own docstring).
-    const { provenance: noUnderlyingProvenance, detail: noUnderlyingDetail } = classifyProvenance({
+    // scan came up empty (see classifyShadowCycleProvenance's own docstring).
+    const { provenance: noUnderlyingProvenance, detail: noUnderlyingDetail } = classifyShadowCycleProvenance({
       universeCandidates: config.universeCandidatesOrigin,
     });
     return {
@@ -248,15 +305,26 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const underlying = topRanked.symbol;
 
   let account: MasterAccountSnapshot | null = null;
-  let accountReal = false;
+  let accountEvidence = notAttemptedEvidence();
   try {
     account = await fetchMasterAccountSnapshot(config.alpaca, config.now());
-    accountReal = true;
+    const accountRequiredValuesPresent = account.accountStatus !== null
+      && account.equity !== null
+      && account.cash !== null
+      && (account.optionsBuyingPower !== null || account.buyingPower !== null)
+      && account.optionsApprovedLevel !== null
+      && account.optionsTradingLevel !== null;
+    accountEvidence = accountRequiredValuesPresent
+      ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
+      : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
   } catch (error) {
+    // A real call WAS attempted and it failed -- this is REAL_PROVIDER_ERROR,
+    // never conflated with "the query succeeded but had nothing to report."
+    accountEvidence = failedProviderEvidence(error);
     blockers.push(`ACCOUNT_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
   }
 
-  let historyReal = false;
+  let historyOrigin: ProvenanceOrigin = 'NOT_ATTEMPTED';
   const receivedAt = config.now();
   let ret1d: number | null = null;
   let rv20: number | null = null;
@@ -272,38 +340,68 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     );
     const bars = barsResult.bars.filter((b) => b.symbol === underlying);
     if (barsResult.complete && bars.length > 0) {
-      historyReal = true;
+      historyOrigin = 'REAL_PROVIDER';
       ret1d = computeReturn(bars, receivedAt, 1);
       rv20 = computeRealizedVolatility(bars, receivedAt, 20);
       drawdown = computeCurrentDrawdown(bars, receivedAt, 60);
       maSlope = computeTrendSlope(bars, receivedAt, 20);
       gapFrequency = computeGapFrequency(bars, receivedAt, 60, 0.02);
       maxAdverseGap = computeMaxAdverseGap(bars, receivedAt, 60);
-    } else if (!barsResult.complete) {
-      blockers.push('STOCK_HISTORY_INCOMPLETE');
+    } else {
+      // A real, successful call that genuinely returned nothing usable
+      // (complete but empty, or incomplete) -- still real provenance, NOT
+      // an error, per the correction that a real empty/partial result is
+      // authentic reality rather than a fixture or a failure.
+      historyOrigin = 'REAL_PROVIDER_UNKNOWN';
+      if (!barsResult.complete) blockers.push('STOCK_HISTORY_INCOMPLETE');
     }
   } catch (error) {
+    historyOrigin = 'REAL_PROVIDER_ERROR';
     blockers.push(`STOCK_HISTORY_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
   }
 
   let optionChainComplete: boolean | null = null;
   let optionContractsComplete: boolean | null = null;
-  let contractsReal = false;
-  let quotesReal = false;
+  let contractsEvidence = notAttemptedEvidence();
+  let quotesEvidence = notAttemptedEvidence();
   const candidates: RawCandidateInput[] = [];
   let mergedContractsForSnapshot: ReturnType<typeof mergeOptionChain> = [];
-  try {
-    const contractsResult = await fetchOptionContracts(config.alpaca, {
-      underlyingSymbol: underlying, expirationDateGte: config.optionExpirationDateGte, expirationDateLte: config.optionExpirationDateLte,
-      optionType: config.optionType, limit: 100, maxPages: config.maxOptionPages,
-    });
-    optionContractsComplete = contractsResult.complete;
-    contractsReal = contractsResult.complete;
-    const snapshotsResult = await fetchOptionSnapshots(config.alpaca, {
-      underlyingSymbol: underlying, feed: 'indicative', optionType: config.optionType, limit: 100, maxPages: config.maxOptionPages,
-    });
-    optionChainComplete = snapshotsResult.complete;
-    quotesReal = snapshotsResult.complete;
+  const contractsResult = await (async () => {
+    try {
+      const result = await fetchOptionContracts(config.alpaca, {
+        underlyingSymbol: underlying, expirationDateGte: config.optionExpirationDateGte, expirationDateLte: config.optionExpirationDateLte,
+        optionType: config.optionType, limit: 100, maxPages: config.maxOptionPages,
+      });
+      optionContractsComplete = result.complete;
+      contractsEvidence = result.complete
+        ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
+        : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
+      return result;
+    } catch (error) {
+      contractsEvidence = failedProviderEvidence(error);
+      blockers.push(`OPTION_CONTRACTS_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
+      return null;
+    }
+  })();
+
+  const snapshotsResult = contractsResult === null ? null : await (async () => {
+    try {
+      const result = await fetchOptionSnapshots(config.alpaca, {
+        underlyingSymbol: underlying, feed: 'indicative', optionType: config.optionType, limit: 100, maxPages: config.maxOptionPages,
+      });
+      optionChainComplete = result.complete;
+      quotesEvidence = result.complete
+        ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
+        : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
+      return result;
+    } catch (error) {
+      quotesEvidence = failedProviderEvidence(error);
+      blockers.push(`OPTION_SNAPSHOTS_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
+      return null;
+    }
+  })();
+
+  if (contractsResult !== null && snapshotsResult !== null) {
 
     // Optionomics is NOT fetched live here -- see module docstring. Empty
     // map is honest: every OI/volume/Greek stays UNKNOWN unless Alpaca's
@@ -329,15 +427,14 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
         ivCompensationSufficient: null, quoteSize: contract.bidSize, preSlippageExpectedUtility: null,
       });
     }
-  } catch (error) {
-    blockers.push(`OPTION_CHAIN_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
   }
 
-  const { provenance, detail } = classifyProvenance({
+  const { provenance, detail } = classifyShadowCycleProvenance({
     universeCandidates: config.universeCandidatesOrigin,
-    account: accountReal ? 'REAL_PROVIDER' : 'UNAVAILABLE_AFTER_REAL_QUERY', // fetchMasterAccountSnapshot was always actually called this cycle -- a failure is still a real query attempt, never a fixture
-    underlyingHistory: historyReal ? 'REAL_PROVIDER' : 'UNAVAILABLE_AFTER_REAL_QUERY',
-    optionChain: (contractsReal && quotesReal) ? 'REAL_PROVIDER' : 'UNAVAILABLE_AFTER_REAL_QUERY',
+    account: accountEvidence.origin,
+    underlyingHistory: historyOrigin,
+    optionContracts: contractsEvidence.origin,
+    optionSnapshots: quotesEvidence.origin,
     optionomics: 'NOT_ATTEMPTED', // no real Optionomics fetch adapter exists yet -- honestly not attempted, not a fixture
     eventState: 'NOT_ATTEMPTED', // no event-state assembly exists yet
     aegisInputs: config.aegisInputsOrigin,
@@ -347,7 +444,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   // so every returned run (successful or not) carries a genuine,
   // deterministic snapshot identity. NEVER a placeholder hash.
   const snapshotInput = assembleFusionSnapshotInput({
-    now: config.now(), underlying, account, accountReal, contractsReal, quotesReal,
+    now: config.now(), underlying, account,
+    accountOrigin: accountEvidence.origin, accountQuality: accountEvidence.quality,
+    contractsOrigin: contractsEvidence.origin, contractsQuality: contractsEvidence.quality,
+    quotesOrigin: quotesEvidence.origin, quotesQuality: quotesEvidence.quality,
     mergedContracts: [...mergedContractsForSnapshot],
     ownershipFeatures: { ret1d, rv20, drawdown, maSlope, gapFrequency, maxAdverseGap } as unknown as JsonValue,
     regimeFeatures: { maSlope, rv20, maxAdverseGap, drawdown } as unknown as JsonValue,
@@ -369,9 +469,9 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     earningsDistanceDays: null, // EventState is not real yet -- UNKNOWN, never fabricated as "no earnings nearby"
     optionQuoteFreshnessPolicy: config.optionQuoteFreshnessPolicy,
     providerCapabilities: {
-      ALPACA_ACCOUNT: accountReal ? 'GOOD' : 'UNKNOWN',
-      ALPACA_OPTION_CONTRACTS: contractsReal ? 'GOOD' : 'UNKNOWN',
-      ALPACA_OPTION_CHAIN: quotesReal ? 'GOOD' : 'UNKNOWN',
+      ALPACA_ACCOUNT: accountEvidence.quality,
+      ALPACA_OPTION_CONTRACTS: contractsEvidence.quality,
+      ALPACA_OPTION_CHAIN: quotesEvidence.quality,
       ALPACA_POSITIONS: 'UNKNOWN', // fetchPositions exists but is not yet called inside the cycle -- honestly not attempted
       ALPACA_OPEN_ORDERS: 'UNKNOWN', // same -- fetchOpenOrders exists but is not yet called inside the cycle
       OPTIONOMICS: 'UNKNOWN', // no real Optionomics adapter exists yet -- not attempted, not a documented entitlement gap

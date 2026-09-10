@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { runThetaShadowCycle, type ThetaShadowCycleConfig } from '../src/theta/theta-shadow-cycle.js';
+import { classifyShadowCycleProvenance, runThetaShadowCycle, type ThetaShadowCycleConfig } from '../src/theta/theta-shadow-cycle.js';
 import type { AlpacaProviderConfig } from '../src/theta/alpaca-provider.js';
 import type { PythonBridgeConfig } from '../src/theta/python-bridge.js';
 import type { UnderlyingCandidateInput } from '../src/theta/universe-policy.js';
@@ -140,6 +140,15 @@ itMockedProviderRealCodePath('no eligible underlying in the universe short-circu
 
 // --- Provenance semantics correction: origin, not result ---
 
+test('REAL_PROVIDER_UNKNOWN may be FULL_REAL while REAL_PROVIDER_ERROR can never count toward FULL_REAL', () => {
+  assert.equal(classifyShadowCycleProvenance({
+    account: 'REAL_PROVIDER', quote: 'REAL_PROVIDER_UNKNOWN', contract: 'DERIVED_FROM_REAL',
+  }).provenance, 'FULL_REAL');
+  assert.equal(classifyShadowCycleProvenance({
+    account: 'REAL_PROVIDER', quote: 'REAL_PROVIDER_ERROR', contract: 'REAL_PROVIDER',
+  }).provenance, 'HYBRID');
+});
+
 itMockedProviderRealCodePath('PROVENANCE CORRECTION: no eligible underlying is SYNTHETIC only because universeCandidatesOrigin is CALLER_MANUAL -- not because the result was empty', async () => {
   const notTradable: UnderlyingCandidateInput = { ...spyEligible(), tradable: false };
   const manualResult = await runThetaShadowCycle(baseConfig({ universeCandidates: [notTradable], universeCandidatesOrigin: 'CALLER_MANUAL' }));
@@ -152,7 +161,7 @@ itMockedProviderRealCodePath('PROVENANCE CORRECTION: no eligible underlying is S
   assert.notEqual(realOriginResult.provenance, 'SYNTHETIC');
 });
 
-itMockedProviderRealCodePath('PROVENANCE CORRECTION: a real account query that genuinely fails is still counted toward real provenance, never treated as a fixture', async () => {
+itMockedProviderRealCodePath('PROVENANCE CORRECTION: a real account query that genuinely FAILS is REAL_PROVIDER_ERROR, never conflated with a real-but-empty result and never counted as valid FULL_REAL evidence', async () => {
   const failingAccountFetch = (async (input: RequestInfo | URL) => {
     const url = input instanceof URL ? input.toString() : String(input);
     if (url.includes('/v2/account')) return new Response('', { status: 500 });
@@ -161,9 +170,58 @@ itMockedProviderRealCodePath('PROVENANCE CORRECTION: a real account query that g
   const result = await runThetaShadowCycle(baseConfig({
     alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: failingAccountFetch },
   }));
-  // account is still classified via a real query attempt (UNAVAILABLE_AFTER_REAL_QUERY),
-  // not silently dropped from the provenance detail or conflated with a fixture.
-  assert.ok(result.provenanceDetail.some((d) => d.startsWith('account=UNAVAILABLE_AFTER_REAL_QUERY')));
+  // The failed real call is honestly recorded as REAL_PROVIDER_ERROR -- a
+  // real call really was attempted (never silently dropped or treated as a
+  // fixture), but an error is not authentic reality about the world, so it
+  // must never masquerade as a genuine "successful query, nothing to
+  // report" (REAL_PROVIDER_UNKNOWN) and must never count toward FULL_REAL.
+  assert.ok(result.provenanceDetail.some((d) => d.startsWith('account=REAL_PROVIDER_ERROR')));
+  assert.notEqual(result.provenance, 'FULL_REAL');
+});
+
+const accountResponseConfig = (respond: () => Response | Promise<Response>): ThetaShadowCycleConfig => {
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/account')) return respond();
+    return mockAlpacaFetch({ hasContracts: true, hasBars: true })(input, {});
+  }) as typeof fetch;
+  return baseConfig({ alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl } });
+};
+
+test('HTTP success with required account truth genuinely absent is REAL_PROVIDER_UNKNOWN and a runtime hold', async () => {
+  const result = await runThetaShadowCycle(accountResponseConfig(() => jsonResponse(200, {
+    status: 'ACTIVE', equity: '100000', cash: '50000', buying_power: '40000',
+    options_buying_power: '20000', options_trading_level: 2,
+  })));
+  assert.ok(result.provenanceDetail.includes('account=REAL_PROVIDER_UNKNOWN'));
+  assert.equal(result.orchestration?.receipt.winningAction, 'SYSTEM_HOLD');
+  assert.equal(result.orchestration?.receipt.failClosedReason, null);
+});
+
+test('HTTP 500 is REAL_PROVIDER_ERROR with transient DEGRADED semantics, never FULL_REAL or HARD_VETO', async () => {
+  const result = await runThetaShadowCycle(accountResponseConfig(() => new Response('', { status: 500 })));
+  assert.ok(result.provenanceDetail.includes('account=REAL_PROVIDER_ERROR'));
+  assert.notEqual(result.provenance, 'FULL_REAL');
+  assert.equal(result.orchestration?.receipt.winningAction, 'SYSTEM_HOLD');
+});
+
+test('a provider timeout is REAL_PROVIDER_ERROR with runtime-defer semantics', async () => {
+  const result = await runThetaShadowCycle(accountResponseConfig(() => {
+    const error = new Error('synthetic timeout');
+    error.name = 'TimeoutError';
+    throw error;
+  }));
+  assert.ok(result.provenanceDetail.includes('account=REAL_PROVIDER_ERROR'));
+  assert.equal(result.orchestration?.receipt.winningAction, 'SYSTEM_HOLD');
+  assert.ok(result.orchestration?.receipt.reasonCodes.includes('RUNTIME_STAGE_DEFERRED:PROVIDER_STATE'));
+});
+
+test('an authentication failure is REAL_PROVIDER_ERROR and remains a genuine HARD_VETO', async () => {
+  const result = await runThetaShadowCycle(accountResponseConfig(() => new Response('', { status: 401 })));
+  assert.ok(result.provenanceDetail.includes('account=REAL_PROVIDER_ERROR'));
+  assert.notEqual(result.provenance, 'FULL_REAL');
+  assert.equal(result.orchestration?.receipt.winningAction, 'HARD_VETO');
+  assert.ok(result.orchestration?.receipt.reasonCodes.includes('RISK_CAPABILITY_PROHIBITION:PROVIDER_STATE'));
 });
 
 itMockedProviderRealCodePath('with multiple eligible underlyings, selection is by RANKING, never by input array order', async () => {

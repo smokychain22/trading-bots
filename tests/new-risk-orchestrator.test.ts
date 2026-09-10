@@ -194,29 +194,55 @@ itMockedProviderRealCodePath('a fresh quote still reaches the lattice -- the fre
   assert.ok(result.thetaQ !== null);
 });
 
-itMockedProviderRealCodePath('provider state not good fails the whole decision closed before any bridge call', async () => {
+itMockedProviderRealCodePath('a required capability that is UNKNOWN defers as SYSTEM_HOLD, never PASS, WAIT, or HARD_VETO', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest({ providerCapabilities: { ALPACA_ACCOUNT: 'UNKNOWN', ALPACA_OPTION_CONTRACTS: 'GOOD', ALPACA_OPTION_CHAIN: 'GOOD' } }));
   assert.equal(result.receipt.winningAction, 'SYSTEM_HOLD');
+  assert.equal(result.receipt.failClosedReason, null);
+  assert.ok(result.receipt.reasonCodes.some((code) => code.startsWith('RUNTIME_STAGE_DEFERRED:PROVIDER_STATE')));
   assert.equal(result.ownership, null);
 });
 
-itMockedProviderRealCodePath('STRUCTURED PROVIDER STATE: each required capability is checked independently -- a single DEGRADED capability fails closed even when the other two are GOOD', async () => {
-  const onlyChainDegraded = await runNewRiskOrchestration(bridge(), baseRequest({
+itMockedProviderRealCodePath('a required capability that is genuinely INVALID (a real safety/entitlement failure) fails the whole decision closed as HARD_VETO', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({ providerCapabilities: { ALPACA_ACCOUNT: 'INVALID', ALPACA_OPTION_CONTRACTS: 'GOOD', ALPACA_OPTION_CHAIN: 'GOOD' } }));
+  assert.equal(result.receipt.winningAction, 'HARD_VETO');
+  assert.ok(result.receipt.failClosedReason?.includes('ALPACA_ACCOUNT=INVALID'));
+  assert.equal(result.ownership, null);
+});
+
+itMockedProviderRealCodePath('STRUCTURED PROVIDER STATE: STALE, DEGRADED, and UNKNOWN defer as SYSTEM_HOLD while entitlement remains HARD_VETO', async () => {
+  const onlyChainStale = await runNewRiskOrchestration(bridge(), baseRequest({
     providerCapabilities: { ALPACA_ACCOUNT: 'GOOD', ALPACA_OPTION_CONTRACTS: 'GOOD', ALPACA_OPTION_CHAIN: 'STALE' },
   }));
+  assert.equal(onlyChainStale.receipt.winningAction, 'SYSTEM_HOLD');
+  assert.ok(onlyChainStale.receipt.reasonCodes.some((code) => code.startsWith('RUNTIME_STAGE_DEFERRED:PROVIDER_STATE')));
+  assert.ok(onlyChainStale.receipt.plainEnglishExplanation.includes('ALPACA_OPTION_CHAIN=STALE'));
+
+  const onlyChainDegraded = await runNewRiskOrchestration(bridge(), baseRequest({
+    providerCapabilities: { ALPACA_ACCOUNT: 'GOOD', ALPACA_OPTION_CONTRACTS: 'GOOD', ALPACA_OPTION_CHAIN: 'DEGRADED' },
+  }));
   assert.equal(onlyChainDegraded.receipt.winningAction, 'SYSTEM_HOLD');
-  assert.ok(onlyChainDegraded.receipt.failClosedReason?.includes('ALPACA_OPTION_CHAIN=STALE'));
+  assert.equal(onlyChainDegraded.receipt.failClosedReason, null);
 
   const onlyContractsUnknown = await runNewRiskOrchestration(bridge(), baseRequest({
     providerCapabilities: { ALPACA_ACCOUNT: 'GOOD', ALPACA_OPTION_CONTRACTS: 'UNKNOWN', ALPACA_OPTION_CHAIN: 'GOOD' },
   }));
   assert.equal(onlyContractsUnknown.receipt.winningAction, 'SYSTEM_HOLD');
-  assert.ok(onlyContractsUnknown.receipt.failClosedReason?.includes('ALPACA_OPTION_CONTRACTS=UNKNOWN'));
+  assert.ok(onlyContractsUnknown.receipt.plainEnglishExplanation.includes('ALPACA_OPTION_CONTRACTS=UNKNOWN'));
+
+  // A genuinely unsafe capability state (INVALID/NOT_ENTITLED) still fails
+  // closed as HARD_VETO -- the correction narrows HARD_VETO, it doesn't
+  // remove it.
+  const chainNotEntitled = await runNewRiskOrchestration(bridge(), baseRequest({
+    providerCapabilities: { ALPACA_ACCOUNT: 'GOOD', ALPACA_OPTION_CONTRACTS: 'GOOD', ALPACA_OPTION_CHAIN: 'NOT_ENTITLED' },
+  }));
+  assert.equal(chainNotEntitled.receipt.winningAction, 'HARD_VETO');
+  assert.ok(chainNotEntitled.receipt.failClosedReason?.includes('ALPACA_OPTION_CHAIN=NOT_ENTITLED'));
 
   // All three GOOD (the baseRequest default) proceeds normally -- proving
   // this isn't just "any non-empty object passes."
   const allGood = await runNewRiskOrchestration(bridge(), baseRequest());
   assert.notEqual(allGood.receipt.winningAction, 'SYSTEM_HOLD');
+  assert.notEqual(allGood.receipt.winningAction, 'HARD_VETO');
 });
 
 itMockedProviderRealCodePath('STRUCTURED PROVIDER STATE: capabilities NOT required for new risk (positions/orders/Optionomics/event data) do not block evaluation even when UNKNOWN', async () => {
