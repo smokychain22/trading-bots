@@ -22,6 +22,42 @@ probability reports ``utility=None`` (UNKNOWN) rather than inventing one.
 No I/O, no provider dependency. Every policy threshold is a required
 constructor argument on :class:`ManagementPolicy` -- nothing here defaults
 silently.
+
+VALUATION CONVENTION (clarified following a Codex review question about
+whether entry premium could be double-counted, or dropped, across
+alternatives): every ``certain_cashflow``, ``estimated_future_value``, and
+``utility`` this module reports is measured on a **total economic P&L since
+original entry** basis, so every action is directly comparable to every
+other. Concretely:
+
+- CLOSE's cashflow (``entry_credit_per_share - current_ask_per_share``) is
+  already total-since-entry -- this is the reference convention every other
+  action must match.
+- EXPIRE's cashflow (full ``entry_credit_per_share``) is total-since-entry
+  by construction (the short option expired worthless).
+- ROLL's ``certain_cashflow`` is **the old leg's total-since-entry value if
+  closed right now (identical to CLOSE's formula) PLUS the new leg's own
+  opening cash-in**, NOT the canonical ``NetRollCredit`` transactional
+  quantity (``NewOpeningCredit - OldCloseDebit``) on its own -- that
+  quantity is transactional (what changes hands at the moment of the roll)
+  and deliberately omits the old leg's original entry credit, which would
+  silently undervalue ROLL relative to CLOSE by exactly
+  ``entry_credit_per_share * multiplier`` if used as the comparison basis
+  directly. ``NetRollCredit`` remains reportable/derivable as
+  ``certain_cashflow - entry_credit_per_share * multiplier`` wherever a
+  caller wants the transactional figure specifically (e.g. for a receipt),
+  but it is never what this module compares actions by.
+- HOLD's ``hold_forward_value``, ROLL's/ASSIGN's/REDEPLOY's
+  ``estimated_future_value`` are externally supplied and MUST be computed
+  on this same total-since-entry basis by whatever model eventually
+  produces them (e.g. HOLD's forward value should already net the entry
+  credit collected against the expected cost/resolution of continuing to
+  hold, not report only the incremental piece from now forward) -- a
+  caller that supplies an incremental-only quantity here would understate
+  that action relative to CLOSE/EXPIRE/ROLL's total-since-entry figures.
+  This module cannot enforce that a caller respects this convention (the
+  values are opaque floats), so it is stated here explicitly rather than
+  left implicit, per the correctness review that prompted this note.
 """
 
 from dataclasses import dataclass
@@ -66,7 +102,11 @@ class RollCandidate:
     """A specific replacement contract under consideration for ROLL. The new
     leg's own forward value is genuinely uncertain -- ``estimated_future_value``
     is an explicit pass-through for a future calibrated model's output, never
-    computed by this module."""
+    computed by this module. Per the module docstring's VALUATION CONVENTION:
+    this value covers ONLY the new leg's own forward economics (the old
+    leg's total-since-entry value is computed separately, from
+    ``entry_credit_per_share``, and added automatically) -- never re-include
+    the old leg's entry credit here, or it would be counted twice."""
 
     new_strike: float
     new_dte: int
@@ -77,14 +117,18 @@ class RollCandidate:
 @dataclass(frozen=True)
 class AssignAlternative:
     """ACCEPT_ASSIGNMENT's forward value, supplied externally (depends on the
-    ownership/recovery models -- SPECIFIED, not fitted yet)."""
+    ownership/recovery models -- SPECIFIED, not fitted yet). Per the module
+    docstring's VALUATION CONVENTION: must be on a total-since-entry basis,
+    consistent with every other action's valuation."""
 
     estimated_future_value: Optional[float]
 
 
 @dataclass(frozen=True)
 class RedeployAlternative:
-    """Redeploying freed capital elsewhere -- forward value externally supplied."""
+    """Redeploying freed capital elsewhere -- forward value externally
+    supplied. Per the module docstring's VALUATION CONVENTION: must be on a
+    total-since-entry basis, consistent with every other action's valuation."""
 
     estimated_future_value: Optional[float]
 
@@ -239,10 +283,24 @@ def _roll_valuation(policy: ManagementPolicy, ctx: ManagementContext) -> ActionV
             reasons=[ReasonCode("ROLL_QUOTE_UNKNOWN", -1, "Old-leg BTC price or new-leg credit is UNKNOWN.")],
         )
     execution_penalty = 2 * policy.execution_cost_per_contract  # close old + open new
-    net_roll_credit = (roll.new_credit_per_share - leg.current_ask_per_share) * leg.multiplier - execution_penalty
+    # Old leg's total-since-entry value if closed right now -- IDENTICAL to
+    # _close_valuation's own formula, so ROLL and CLOSE are compared on the
+    # same basis -- plus the new leg's own opening cash-in. This is NOT the
+    # canonical NetRollCredit transactional quantity on its own (see the
+    # module docstring's VALUATION CONVENTION section): using
+    # (new_credit - old_ask) alone here would silently drop the old leg's
+    # entry_credit_per_share from the comparison, undervaluing every roll
+    # relative to CLOSE/EXPIRE by exactly entry_credit_per_share * multiplier.
+    old_leg_close_value = (leg.entry_credit_per_share - leg.current_ask_per_share) * leg.multiplier - policy.execution_cost_per_contract
+    new_leg_open_value = roll.new_credit_per_share * leg.multiplier - policy.execution_cost_per_contract
+    certain_cashflow = old_leg_close_value + new_leg_open_value
+    net_roll_credit = certain_cashflow - leg.entry_credit_per_share * leg.multiplier  # canonical transactional figure, reportable only
     capital_days = _capital_days_penalty(policy, ctx, days=roll.new_dte)
     tail = _tail_risk_penalty(policy, ctx)
-    reasons: List[ReasonCode] = [ReasonCode("NET_ROLL_CREDIT", 0, f"net_roll_credit={net_roll_credit}")]
+    reasons: List[ReasonCode] = [ReasonCode(
+        "ROLL_ECONOMICS", 0,
+        f"certain_cashflow(total-since-entry)={certain_cashflow} net_roll_credit(transactional)={net_roll_credit}",
+    )]
     if roll.estimated_future_value is None or capital_days is None or tail is None:
         reasons.append(ReasonCode(
             "ROLL_FUTURE_VALUE_UNKNOWN", -1,
@@ -250,15 +308,15 @@ def _roll_valuation(policy: ManagementPolicy, ctx: ManagementContext) -> ActionV
             "never treated as proof the roll is good (H-R-03).",
         ))
         return ActionValuation(
-            action=CandidateAction.ROLL, feasible=True, certain_cashflow=net_roll_credit,
+            action=CandidateAction.ROLL, feasible=True, certain_cashflow=certain_cashflow,
             estimated_future_value=roll.estimated_future_value, tail_risk_penalty=tail,
             capital_days_penalty=capital_days, execution_penalty=execution_penalty, utility=None,
             reasons=reasons,
         )
-    utility = net_roll_credit + roll.estimated_future_value - tail - capital_days
+    utility = certain_cashflow + roll.estimated_future_value - tail - capital_days
     reasons.append(ReasonCode("ROLL_VALUED", 0, f"utility={utility}"))
     return ActionValuation(
-        action=CandidateAction.ROLL, feasible=True, certain_cashflow=net_roll_credit,
+        action=CandidateAction.ROLL, feasible=True, certain_cashflow=certain_cashflow,
         estimated_future_value=roll.estimated_future_value, tail_risk_penalty=tail,
         capital_days_penalty=capital_days, execution_penalty=execution_penalty, utility=utility,
         reasons=reasons,

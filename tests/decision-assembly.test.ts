@@ -132,9 +132,9 @@ test('no candidates at all produces PASS, never a forced trade', () => {
   assert.equal(decision.quantity, 0);
 });
 
-test('bad provider state fails closed with HARD_VETO', () => {
+test('bad provider state fails closed with SYSTEM_HOLD, not a strategy veto', () => {
   const decision = assembleNewRiskDecision(baseInput({ providerStateGood: false, candidates: [qualifyingCandidate('C1', 0.002)] }));
-  assert.equal(decision.winningAction, 'HARD_VETO');
+  assert.equal(decision.winningAction, 'SYSTEM_HOLD');
   assert.equal(decision.failClosedReason !== null, true);
 });
 
@@ -143,18 +143,18 @@ test('model version mismatch fails closed', () => {
     modelVersions: { ownership: 'v2', regime: 'v1' },
     candidates: [qualifyingCandidate('C1', 0.002)],
   }));
-  assert.equal(decision.winningAction, 'HARD_VETO');
+  assert.equal(decision.winningAction, 'SYSTEM_HOLD');
 });
 
 test('missing ownership context fails closed', () => {
   const decision = assembleNewRiskDecision(baseInput({ ownership: null, candidates: [qualifyingCandidate('C1', 0.002)] }));
-  assert.equal(decision.winningAction, 'HARD_VETO');
+  assert.equal(decision.winningAction, 'SYSTEM_HOLD');
 });
 
 test('a candidate referencing a different underlying fails closed on snapshot consistency', () => {
   const mismatched: CandidateFrontierResult = { ...qualifyingCandidate('C1', 0.002), contract: contract({ underlying: 'MSFT' }) };
   const decision = assembleNewRiskDecision(baseInput({ candidates: [mismatched] }));
-  assert.equal(decision.winningAction, 'HARD_VETO');
+  assert.equal(decision.winningAction, 'SYSTEM_HOLD');
 });
 
 test('executionAuthorized is always false, even for a winning candidate', () => {
