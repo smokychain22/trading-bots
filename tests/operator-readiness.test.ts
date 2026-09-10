@@ -40,10 +40,11 @@ test("missing Optionomics configuration stays explicit and never probes guessed 
 });
 
 test("private paper key beta is configuration-gated and execution remains separate", () => {
-  assert.equal(privatePaperBetaReadiness.state, "IMPLEMENTED_CONFIGURATION_GATED");
-  assert.equal(privatePaperBetaReadiness.policy_status, "PRIVATE_TEAM_PAPER_ONLY");
-  assert.equal(privatePaperBetaReadiness.raw_key_endpoint_available, true);
-  assert.equal(privatePaperBetaReadiness.follower_count, 0);
+  const readiness = privatePaperBetaReadiness(2);
+  assert.equal(readiness.state, "IMPLEMENTED_CONFIGURATION_GATED");
+  assert.equal(readiness.policy_status, "PRIVATE_TEAM_PAPER_ONLY");
+  assert.equal(readiness.raw_key_endpoint_available, true);
+  assert.equal(readiness.follower_count, 2);
 });
 
 test("missing master configuration returns MISSING without a provider request", async () => {

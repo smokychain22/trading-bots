@@ -58,10 +58,10 @@ export async function verifyOptionomicsConnection(
   return summarizeOptionomicsReadiness(await checkOptionomics(environment));
 }
 
-export const privatePaperBetaReadiness = {
+export const privatePaperBetaReadiness = (followerCount: number | null) => ({
   state: "IMPLEMENTED_CONFIGURATION_GATED" as const,
   policy_status: "PRIVATE_TEAM_PAPER_ONLY" as const,
   reason: "Private team credentials are encrypted server-side. Order submission remains locked.",
-  follower_count: 0,
+  follower_count: followerCount,
   raw_key_endpoint_available: true,
-};
+});
