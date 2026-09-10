@@ -1,0 +1,167 @@
+import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import test from 'node:test';
+import { runNewRiskOrchestration, type CandidateInput, type NewRiskOrchestrationRequest } from '../src/theta/new-risk-orchestrator.js';
+import type { PythonBridgeConfig } from '../src/theta/python-bridge.js';
+import type { NormalizedOptionContract } from '../src/theta/option-contract.js';
+
+// Real end-to-end integration test: spawns the ACTUAL Python runtime
+// adapters (not a mock) through the real python-bridge.ts, so a pass here
+// proves genuine IPC across the language boundary for the whole new-risk
+// pipeline -- ownership -> regime -> strategy-router -> pareto-frontier ->
+// aegis -> opportunity-frontier -> sizing -> execution-quality -> decision
+// assembly -- not just that each stage's Python function or TS schema is
+// independently correct. Synthetic data only; no market/broker I/O.
+
+const CANDIDATE_PYTHON_PATHS = [
+  process.env.PYTHON_EXECUTABLE_FOR_TESTS,
+  'C:\\Users\\hp\\AppData\\Local\\Programs\\Python\\Python312\\python.exe',
+].filter((candidate): candidate is string => candidate !== undefined);
+
+const pythonExecutablePath = CANDIDATE_PYTHON_PATHS.find((candidate) => existsSync(candidate));
+
+const RUNTIME_DIR = path.resolve('bots/theta/quant/runtime');
+
+const bridge = (): PythonBridgeConfig => ({
+  pythonExecutablePath: pythonExecutablePath ?? 'python',
+  scriptAllowlist: new Map([
+    ['ownership', path.join(RUNTIME_DIR, 'ownership_contract.py')],
+    ['regime', path.join(RUNTIME_DIR, 'regime_contract.py')],
+    ['strategyRouter', path.join(RUNTIME_DIR, 'strategy_router_contract.py')],
+    ['paretoFrontier', path.join(RUNTIME_DIR, 'pareto_frontier_contract.py')],
+    ['opportunityFrontier', path.join(RUNTIME_DIR, 'opportunity_frontier_contract.py')],
+    ['aegis', path.join(RUNTIME_DIR, 'aegis_contract.py')],
+    ['sizing', path.join(RUNTIME_DIR, 'sizing_contract.py')],
+    ['executionQuality', path.join(RUNTIME_DIR, 'execution_quality_contract.py')],
+  ]),
+  timeoutMs: 5000,
+  maxOutputBytes: 1_000_000,
+});
+
+const NOW = new Date().toISOString();
+
+const contract = (overrides: Partial<NormalizedOptionContract> = {}): NormalizedOptionContract => ({
+  contractVersion: 'theta-option-contract-v1', underlying: 'SYN', optionSymbol: 'SYN260116P00050000', occSymbol: null,
+  optionType: 'PUT', strike: 50, expiration: '2026-01-16', dte: 45, multiplier: 100,
+  underlyingBid: null, underlyingAsk: null, underlyingLast: 52, underlyingReferencePrice: 52, underlyingTimestamp: NOW,
+  bid: 0.95, ask: 1.05, bidSize: 50, askSize: 50, lastTradePrice: null, lastTradeSize: null,
+  quoteTimestamp: NOW, tradeTimestamp: null,
+  midpointReference: 1.0, spread: 0.1, spreadPct: 0.1, moneyness: 0.04, distanceToStrikePct: 0.04, breakEven: 49.05,
+  volume: 100, openInterest: 500,
+  iv: 0.25, delta: -0.2, gamma: null, theta: null, vega: null, rho: null, greeksTimestamp: NOW,
+  source: 'ALPACA', feed: 'OPRA', dataQuality: 'GOOD', receivedAt: NOW, dataAgeSeconds: 1,
+  executable: true, nonExecutableReason: null,
+  ...overrides,
+});
+
+const NULL_ECONOMICS = {
+  grossCredit: null, calibratedPWin: null, breakEvenWr: null, edgeBuffer: null, expectedTailLoss: null,
+  assignmentProbability: null, severeDrawdownProbability: null, capitalRequirement: null, capitalDays: null,
+  returnPerCapitalDay: null, liquiditySpreadPct: null, fillProbability: null, expectedSlippage: null, modelUncertainty: null,
+};
+
+const candidate = (id: string, evNet: number | null, returnPerCapitalDay: number | null, overrides: Partial<CandidateInput> = {}): CandidateInput => ({
+  candidateId: id, contract: contract({ optionSymbol: id }),
+  economics: { ...NULL_ECONOMICS, evNet, returnPerCapitalDay },
+  hasAlternateContract: false, hasAlternateExpiry: false, hasAlternateStructure: false,
+  ivCompensationSufficient: true, quoteSize: 50, quoteAgeSeconds: 1, preSlippageExpectedUtility: evNet,
+  ...overrides,
+});
+
+const baseRequest = (overrides: Partial<NewRiskOrchestrationRequest> = {}): NewRiskOrchestrationRequest => ({
+  snapshotId: 'snap-1', fusionSnapshotHash: 'a'.repeat(64), timestamp: NOW, underlying: 'SYN', providerStateGood: true,
+  policyVersion: 'v1', modelVersions: {}, requiredModelVersions: {},
+  ownershipPolicy: {
+    policyVersion: 'ownership-v1', minStockAvgVolume: 1_000_000, minOptionOpenInterest: 100, minOptionVolume: 10,
+    maxSpreadPct: 0.15, rvNormalizationCeiling: 0.6, downsideSemivarNormalizationCeiling: 0.3,
+    gapFrequencyNormalizationCeiling: 0.5, eventDecayWindowDays: 10,
+  },
+  ownershipInputs: {
+    stockAvgVolume: 5_000_000, optionOpenInterest: 500, optionVolume: 100, spreadPct: 0.02,
+    ret1d: 0.001, ret5d: 0.01, ret20d: 0.02, ret60d: 0.05, ma20Rel: 0.02, ma50Rel: 0.03, ma200Rel: 0.05,
+    maSlope: 0.01, relativeStrength: 0.2, rv10: 0.15, rv20: 0.18, rv60: 0.2, drawdown: -0.05, maxAdverseGap: 0.02,
+    gapFrequency: 0.1, downsideSemivariance: 0.05, historicalRecoveryMedianDays: 20, historicalRecoveryP95Days: 60,
+    severeDrawdownEpisodeCount: 1, earningsDistanceDays: 40, exDividendDistanceDays: 90, knownEventDistanceDays: null,
+  },
+  regimePolicy: {
+    policyVersion: 'regime-v1', bullMaSlopeFloor: 0.01, bearMaSlopeCeiling: -0.01, rvLowCeiling: 0.1, rvHighFloor: 0.25,
+    rvShockFloor: 0.4, maxAdverseGapShockThreshold: 0.08, liquidityThinSpreadPctFloor: 0.03,
+    liquidityDislocatedSpreadPctFloor: 0.08, correctionDrawdownCeiling: -0.1, crisisDrawdownCeiling: -0.2,
+  },
+  regimeInputs: {
+    maSlope: 0.02, rv20: 0.15, maxAdverseGap: 0.01, earningsDistanceDays: 40, corporateActionPending: false,
+    macroRiskFlag: false, spreadPct: 0.01, portfolioOrMarketDrawdown: -0.02,
+  },
+  routerPolicy: { policyVersion: 'router-v1', thetaQMinOwnershipAcceptability: 0.3, thetaHMinOwnershipAcceptability: 0.75, thetaDGateSatisfied: false },
+  routerPortfolio: { lifecycleState: 'CASH_AVAILABLE', stockSharesHeld: 0, openOptionExists: false, assignmentImminent: false },
+  aegisPolicy: {
+    policyVersion: 'aegis-v1', maxTickerConcentrationPct: 0.15, maxSectorConcentrationPct: 0.3, maxCorrelationClusterPct: 0.3,
+    maxPortfolioCapitalAtRiskPct: 0.5, maxInventoryCapacityPct: 0.5, maxAssignmentCapacityPct: 0.5,
+    maxRecoveryCapacityPct: 0.3, providerRequiredStates: ['OK'],
+  },
+  aegisInputs: {
+    tickerConcentrationPct: 0.05, sectorConcentrationPct: 0.1, correlationClusterExposurePct: 0.1,
+    portfolioCapitalAtRiskPct: 0.2, inventoryCapacityUsedPct: 0.1, assignmentCapacityUsedPct: 0.1,
+    recoveryCapacityUsedPct: 0, liquidityAcceptable: true, executionQualityAcceptable: true, providerState: 'OK',
+    stressGapDetected: false, stressIvShockDetected: false, stressSpreadWideningDetected: false,
+  },
+  opportunityFrontierPolicy: { policyVersion: 'opp-frontier-v1', reducedSizeUncertaintyThreshold: 0.5 },
+  maxAcceptableSpreadPct: 0.15,
+  candidates: [candidate('C1', 25, 0.01)],
+  sizingPolicy: { policyVersion: 'sizing-v1', riskBudgetQtyCap: 4, collateralQtyCap: 3, concentrationQtyCap: 5, assignmentCapacityQtyCap: 6, reducedStateMultiplier: 0.5 },
+  sizingAccount: { equity: 100_000, cash: 50_000, buyingPower: 40_000, brokerAllowedQty: 10 },
+  executionQualityPolicy: { policyVersion: 'execq-v1', maxAcceptableSpreadPct: 0.15, minQuoteSizeForFullConfidence: 20, maxQuoteAgeSeconds: 5, minAfterCostUtilityToCross: 0 },
+  ...overrides,
+});
+
+const itReal = pythonExecutablePath === undefined ? test.skip : test;
+
+itReal('a positive-EV candidate flows end to end to a real decision receipt with sizing and execution quality', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest());
+  assert.equal(result.receipt.failClosedReason, null);
+  assert.ok(result.ownership !== null);
+  assert.ok(result.regime !== null);
+  assert.ok(result.routing !== null);
+  assert.ok(result.aegis !== null);
+  assert.ok(result.opportunityBook !== null);
+  assert.equal(result.receipt.selectedCandidateId, 'C1');
+  assert.equal(result.receipt.winningAction, 'OPEN_FULL');
+  assert.ok(result.receipt.quantity > 0);
+});
+
+itReal('a null-evNet candidate (no calibrated entry-outcome model yet) correctly PASSes, never fabricated OPEN', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({ candidates: [candidate('C1', null, null)] }));
+  assert.equal(result.receipt.selectedCandidateId, null);
+  assert.ok(result.receipt.winningAction === 'PASS' || result.receipt.winningAction === 'WAIT');
+});
+
+itReal('provider state not good fails the whole decision closed before any bridge call', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({ providerStateGood: false }));
+  assert.equal(result.receipt.winningAction, 'HARD_VETO');
+  assert.equal(result.ownership, null);
+});
+
+itReal('CASH_AVAILABLE + acceptable ownership routes THETA_Q eligible', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest());
+  assert.ok(result.routing !== null);
+  const thetaQ = result.routing.results.find((r) => r.strategyFamily === 'THETA_Q');
+  assert.equal(thetaQ?.eligible, true);
+});
+
+itReal('an already-open CSP lifecycle routes THETA_Q ineligible and produces zero evaluated candidates', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    routerPortfolio: { lifecycleState: 'CSP_OPEN', stockSharesHeld: 0, openOptionExists: true, assignmentImminent: false },
+  }));
+  const thetaQ = result.routing?.results.find((r) => r.strategyFamily === 'THETA_Q');
+  assert.equal(thetaQ?.eligible, false);
+  assert.equal(result.receipt.alternatives.length, 0);
+  assert.equal(result.receipt.winningAction, 'PASS');
+});
+
+itReal('an unknown model family in the allowlist fails the whole decision closed at that stage', async () => {
+  const badBridge: PythonBridgeConfig = { ...bridge(), scriptAllowlist: new Map() };
+  const result = await runNewRiskOrchestration(badBridge, baseRequest());
+  assert.equal(result.receipt.winningAction, 'HARD_VETO');
+  assert.ok(result.receipt.reasonCodes.some((code) => code.startsWith('PIPELINE_STAGE_FAILED:OWNERSHIP')));
+});
