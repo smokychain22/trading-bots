@@ -5,6 +5,7 @@ import { normalizeOptionContract, type RawOptionQuoteInput } from '../src/theta/
 const NOW = '2026-09-10T15:00:00.000Z';
 
 const baseRaw = (overrides: Partial<RawOptionQuoteInput> = {}): RawOptionQuoteInput => ({
+  source: 'ALPACA',
   underlying: 'AAPL',
   optionSymbol: 'AAPL260116P00200000',
   occSymbol: 'AAPL260116P00200000',
@@ -34,6 +35,7 @@ const baseRaw = (overrides: Partial<RawOptionQuoteInput> = {}): RawOptionQuoteIn
   vega: 0.12,
   rho: null,
   greeksTimestamp: NOW,
+  greeksSource: 'ALPACA',
   feed: 'OPRA',
   dataQuality: 'GOOD',
   maxQuoteAgeSecondsForExecutable: 10,
@@ -58,7 +60,7 @@ test('a CALL contract normalizes with no break-even (PUT-only convention)', () =
 
 test('missing Greeks are preserved as null, never fabricated', () => {
   const contract = normalizeOptionContract(
-    baseRaw({ iv: null, delta: null, gamma: null, theta: null, vega: null, greeksTimestamp: null }), NOW,
+    baseRaw({ iv: null, delta: null, gamma: null, theta: null, vega: null, rho: null, greeksTimestamp: null, greeksSource: null }), NOW,
   );
   assert.equal(contract.iv, null);
   assert.equal(contract.delta, null);
@@ -94,6 +96,13 @@ test('OPRA feed is preserved distinctly from INDICATIVE, never conflated', () =>
 test('unknown feed (null) is preserved as null, never defaulted to a feed type', () => {
   const contract = normalizeOptionContract(baseRaw({ feed: null }), NOW);
   assert.equal(contract.feed, null);
+});
+
+test('greeksSource tracks Greek provenance independently of the quote source, never silently conflated', () => {
+  const contract = normalizeOptionContract(baseRaw({ source: 'ALPACA', greeksSource: 'OPTIONOMICS', delta: -0.2, gamma: 0.01 }), NOW);
+  assert.equal(contract.source, 'ALPACA'); // the quote/bid-ask is still Alpaca's own indicative feed
+  assert.equal(contract.greeksSource, 'OPTIONOMICS'); // but the Greeks came from the supplementary features provider
+  assert.equal(contract.delta, -0.2);
 });
 
 test('non-GOOD data quality makes the contract non-executable', () => {
