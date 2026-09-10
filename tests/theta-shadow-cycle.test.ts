@@ -50,6 +50,12 @@ const mockAlpacaFetch = (options: { hasContracts: boolean; hasBars: boolean }) =
   if (url.includes('/v2/account')) {
     return jsonResponse(200, { id: 'synthetic-test-account-0000', status: 'ACTIVE', equity: '100000', cash: '50000', buying_power: '40000', options_buying_power: '20000', options_approved_level: 2, options_trading_level: 2 });
   }
+  if (url.includes('/v2/positions')) {
+    return jsonResponse(200, []); // a real, empty, genuinely-successful positions call -- never a fetch failure
+  }
+  if (url.includes('/v2/orders')) {
+    return jsonResponse(200, []); // same for open orders
+  }
   if (url.includes('/v2/stocks/bars')) {
     if (!options.hasBars) return jsonResponse(200, { bars: {}, next_page_token: null });
     const bars = Array.from({ length: 65 }, (_, i) => ({ t: new Date(Date.now() - (65 - i) * 86_400_000).toISOString(), o: 500 + i * 0.1, h: 501 + i * 0.1, l: 499 + i * 0.1, c: 500.1 + i * 0.1, v: 1_000_000 }));
@@ -256,6 +262,25 @@ itMockedProviderRealCodePath('an Optionomics provider failure is recorded honest
   assert.ok(result.blockers.some((b) => b.startsWith('OPTIONOMICS_FETCH_FAILED')));
   // The rest of the cycle still completes -- Optionomics is supplemental,
   // never a hard gate on new-risk evaluation.
+  assert.ok(result.orchestration !== null);
+});
+
+itMockedProviderRealCodePath('positions and open orders are fetched every cycle; a real empty account (no positions, no open orders) is honestly REAL_PROVIDER/GOOD, never a fetch failure', async () => {
+  const result = await runThetaShadowCycle(baseConfig());
+  assert.ok(result.provenanceDetail.some((d) => d === 'positions=REAL_PROVIDER'));
+  assert.ok(result.provenanceDetail.some((d) => d === 'openOrders=REAL_PROVIDER'));
+  assert.ok(!result.blockers.some((b) => b.startsWith('POSITIONS_FETCH_FAILED') || b.startsWith('OPEN_ORDERS_FETCH_FAILED')));
+});
+
+itMockedProviderRealCodePath('a positions fetch failure is recorded honestly (REAL_PROVIDER_ERROR) and never blocks the rest of the cycle', async () => {
+  const failingPositionsFetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/positions')) return new Response('', { status: 500 });
+    return mockAlpacaFetch({ hasContracts: true, hasBars: true })(input, {});
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({ alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: failingPositionsFetch } }));
+  assert.ok(result.blockers.some((b) => b.startsWith('POSITIONS_FETCH_FAILED')));
+  assert.ok(result.provenanceDetail.some((d) => d === 'positions=REAL_PROVIDER_ERROR'));
   assert.ok(result.orchestration !== null);
 });
 

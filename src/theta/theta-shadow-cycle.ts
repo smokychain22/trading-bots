@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import {
   AlpacaProviderError,
   fetchMasterAccountSnapshot, fetchOpenOrders, fetchOptionContracts, fetchOptionSnapshots,
-  fetchPositions, fetchStockBars, type AlpacaProviderConfig, type MasterAccountSnapshot,
+  fetchPositions, fetchStockBars, type AlpacaOpenOrderSnapshot, type AlpacaPositionSnapshot,
+  type AlpacaProviderConfig, type MasterAccountSnapshot,
 } from './alpaca-provider.js';
 import { mergeOptionChain, type OptionomicsChainEntry } from './option-chain-ingestion.js';
 import { computeCurrentDrawdown, computeGapFrequency, computeMaxAdverseGap, computeRealizedVolatility, computeReturn, computeTrendSlope } from './underlying-features.js';
@@ -155,6 +156,12 @@ function assembleFusionSnapshotInput(params: {
   readonly optionomicsOrigin: ProvenanceOrigin;
   readonly optionomicsQuality: DataQualityState;
   readonly optionomicsEntries: readonly NormalizedOptionomicsEntry[];
+  readonly positions: readonly AlpacaPositionSnapshot[];
+  readonly positionsOrigin: ProvenanceOrigin;
+  readonly positionsQuality: DataQualityState;
+  readonly openOrders: readonly AlpacaOpenOrderSnapshot[];
+  readonly openOrdersOrigin: ProvenanceOrigin;
+  readonly openOrdersQuality: DataQualityState;
   readonly mergedContracts: FusionSnapshotInput['contractCandidates'];
   readonly ownershipFeatures: JsonValue;
   readonly regimeFeatures: JsonValue;
@@ -184,6 +191,9 @@ function assembleFusionSnapshotInput(params: {
   }
   unknownFeatures.push({ feature: 'eventState', reasonCode: 'EVENT_STATE_NOT_IMPLEMENTED', provider: null });
 
+  const positionsJson: JsonValue = params.positions as unknown as JsonValue;
+  const openOrdersJson: JsonValue = params.openOrders as unknown as JsonValue;
+
   return {
     botId: 'THETA',
     decisionTimeUtc: params.now,
@@ -192,8 +202,8 @@ function assembleFusionSnapshotInput(params: {
     underlyingState: { symbol: params.underlying },
     contractCandidates: params.mergedContracts,
     accountState: accountJson,
-    positionState: null, // positions not yet folded into the cycle's snapshot -- future work
-    portfolioExposure: null,
+    positionState: { positions: positionsJson, openOrders: openOrdersJson },
+    portfolioExposure: null, // derived-exposure math not yet folded into this snapshot -- future work
     alpacaQuoteState: null,
     optionomicsFeatureState: optionomicsAttempted ? optionomicsJson : null, // honestly absent when not configured, never fabricated
     eventState: null, // no event-state assembly exists yet -- UNKNOWN, never "no event nearby"
@@ -227,11 +237,21 @@ function assembleFusionSnapshotInput(params: {
         state: optionomicsAttempted ? params.optionomicsQuality : 'UNKNOWN', contentHash: hashJson(optionomicsJson), feed: null,
         contractVersion: 'optionomics-option-chain-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
       },
+      {
+        provider: 'ALPACA', operationAlias: 'alpaca.get_positions', asOf: params.positionsOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        state: params.positionsQuality, contentHash: hashJson(positionsJson), feed: null,
+        contractVersion: 'alpaca-positions-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
+      },
+      {
+        provider: 'ALPACA', operationAlias: 'alpaca.get_open_orders', asOf: params.openOrdersOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        state: params.openOrdersQuality, contentHash: hashJson(openOrdersJson), feed: null,
+        contractVersion: 'alpaca-open-orders-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
+      },
     ],
     providerHealth: [
       {
         provider: 'ALPACA',
-        state: aggregateProviderQuality([params.accountQuality, params.contractsQuality, params.quotesQuality]),
+        state: aggregateProviderQuality([params.accountQuality, params.contractsQuality, params.quotesQuality, params.positionsQuality, params.openOrdersQuality]),
         asOf: params.now, retrievedAt: params.now,
       },
       { provider: 'OPTIONOMICS', state: optionomicsAttempted ? params.optionomicsQuality : 'UNKNOWN', asOf: optionomicsAttempted ? params.now : null, retrievedAt: params.now },
@@ -356,6 +376,32 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     // never conflated with "the query succeeded but had nothing to report."
     accountEvidence = failedProviderEvidence(error);
     blockers.push(`ACCOUNT_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
+  }
+
+  // Positions and open orders are fetched every cycle -- both are real
+  // account-truth calls, independent of the account snapshot itself and of
+  // each other. A genuinely empty account (no positions, no open orders)
+  // is a real, valid, common state -- distinguished from a fetch failure
+  // by evidence origin, never inferred from an empty array being "probably
+  // fine."
+  let positions: readonly AlpacaPositionSnapshot[] = [];
+  let positionsEvidence = notAttemptedEvidence();
+  try {
+    positions = await fetchPositions(config.alpaca, config.now());
+    positionsEvidence = { origin: 'REAL_PROVIDER', quality: 'GOOD' };
+  } catch (error) {
+    positionsEvidence = failedProviderEvidence(error);
+    blockers.push(`POSITIONS_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
+  }
+
+  let openOrders: readonly AlpacaOpenOrderSnapshot[] = [];
+  let openOrdersEvidence = notAttemptedEvidence();
+  try {
+    openOrders = await fetchOpenOrders(config.alpaca, config.now());
+    openOrdersEvidence = { origin: 'REAL_PROVIDER', quality: 'GOOD' };
+  } catch (error) {
+    openOrdersEvidence = failedProviderEvidence(error);
+    blockers.push(`OPEN_ORDERS_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
   }
 
   let historyOrigin: ProvenanceOrigin = 'NOT_ATTEMPTED';
@@ -504,6 +550,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const { provenance, detail } = classifyShadowCycleProvenance({
     universeCandidates: config.universeCandidatesOrigin,
     account: accountEvidence.origin,
+    positions: positionsEvidence.origin,
+    openOrders: openOrdersEvidence.origin,
     underlyingHistory: historyOrigin,
     optionContracts: contractsEvidence.origin,
     optionSnapshots: quotesEvidence.origin,
@@ -521,6 +569,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     contractsOrigin: contractsEvidence.origin, contractsQuality: contractsEvidence.quality,
     quotesOrigin: quotesEvidence.origin, quotesQuality: quotesEvidence.quality,
     optionomicsOrigin: optionomicsEvidence.origin, optionomicsQuality: optionomicsEvidence.quality, optionomicsEntries,
+    positions, positionsOrigin: positionsEvidence.origin, positionsQuality: positionsEvidence.quality,
+    openOrders, openOrdersOrigin: openOrdersEvidence.origin, openOrdersQuality: openOrdersEvidence.quality,
     mergedContracts: [...mergedContractsForSnapshot],
     ownershipFeatures: { ret1d, rv20, drawdown, maSlope, gapFrequency, maxAdverseGap } as unknown as JsonValue,
     regimeFeatures: { maSlope, rv20, maxAdverseGap, drawdown } as unknown as JsonValue,
@@ -545,8 +595,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       ALPACA_ACCOUNT: accountEvidence.quality,
       ALPACA_OPTION_CONTRACTS: contractsEvidence.quality,
       ALPACA_OPTION_CHAIN: quotesEvidence.quality,
-      ALPACA_POSITIONS: 'UNKNOWN', // fetchPositions exists but is not yet called inside the cycle -- honestly not attempted
-      ALPACA_OPEN_ORDERS: 'UNKNOWN', // same -- fetchOpenOrders exists but is not yet called inside the cycle
+      ALPACA_POSITIONS: positionsEvidence.quality,
+      ALPACA_OPEN_ORDERS: openOrdersEvidence.quality,
       OPTIONOMICS: optionomicsEvidence.quality,
       EVENT_DATA: 'UNKNOWN', // no event-state assembly exists yet
     },
@@ -583,7 +633,3 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration, provenance, provenanceDetail: detail, blockers,
   };
 }
-
-// Referenced for future wiring (positions/open orders into AEGIS/sizing
-// lineage, item 20) -- not yet consumed by runThetaShadowCycle above.
-export { fetchPositions, fetchOpenOrders };
