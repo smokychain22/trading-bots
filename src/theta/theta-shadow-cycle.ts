@@ -1,14 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import {
   AlpacaProviderError,
-  fetchMasterAccountSnapshot, fetchOpenOrders, fetchOptionContracts, fetchOptionSnapshots,
-  fetchPositions, fetchStockBars, type AlpacaOpenOrderSnapshot, type AlpacaPositionSnapshot,
+  fetchMarketClock, fetchMasterAccountSnapshot, fetchOpenOrders, fetchOptionContracts, fetchOptionSnapshots,
+  fetchPositions, fetchStockBars, type AlpacaMarketClock, type AlpacaOpenOrderSnapshot, type AlpacaPositionSnapshot,
   type AlpacaProviderConfig, type MasterAccountSnapshot,
 } from './alpaca-provider.js';
 import { mergeOptionChain, type OptionomicsChainEntry } from './option-chain-ingestion.js';
 import { computeCurrentDrawdown, computeGapFrequency, computeMaxAdverseGap, computeRealizedVolatility, computeReturn, computeTrendSlope } from './underlying-features.js';
 import { evaluateUniverse, rankEligibleUnderlyings, type RankedUnderlying, type UnderlyingCandidateInput, type UniverseFunnelReport, type UniversePolicy } from './universe-policy.js';
 import { runNewRiskOrchestration, type NewRiskOrchestrationRequest, type NewRiskOrchestrationResult, type RawCandidateInput } from './new-risk-orchestrator.js';
+import { assembleRuntimePreconditionHold } from './decision-assembly.js';
 import type { PythonBridgeConfig } from './python-bridge.js';
 import { buildFusionSnapshot, hashJson, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
 import type { DataQualityState } from './data-freshness.js';
@@ -163,6 +164,9 @@ function assembleFusionSnapshotInput(params: {
   readonly openOrders: readonly AlpacaOpenOrderSnapshot[];
   readonly openOrdersOrigin: ProvenanceOrigin;
   readonly openOrdersQuality: DataQualityState;
+  readonly clock: AlpacaMarketClock | null;
+  readonly clockOrigin: ProvenanceOrigin;
+  readonly clockQuality: DataQualityState;
   readonly derivedExposure: DerivedAccountExposure;
   readonly mergedContracts: FusionSnapshotInput['contractCandidates'];
   readonly ownershipFeatures: JsonValue;
@@ -200,7 +204,9 @@ function assembleFusionSnapshotInput(params: {
     botId: 'THETA',
     decisionTimeUtc: params.now,
     triggerType: 'SHADOW_CYCLE',
-    marketSession: null, // OPRA/options-aware calendar not wired yet -- UNKNOWN, never fabricated as "regular session"
+    marketSession: params.clock !== null
+      ? ({ isOpen: params.clock.isOpen, nextOpen: params.clock.nextOpen, nextClose: params.clock.nextClose, asOf: params.clock.timestamp } as unknown as JsonValue)
+      : null, // honestly absent when the clock fetch never returned a usable value -- never fabricated as "regular session"
     underlyingState: { symbol: params.underlying },
     contractCandidates: params.mergedContracts,
     accountState: accountJson,
@@ -249,11 +255,16 @@ function assembleFusionSnapshotInput(params: {
         state: params.openOrdersQuality, contentHash: hashJson(openOrdersJson), feed: null,
         contractVersion: 'alpaca-open-orders-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
       },
+      {
+        provider: 'ALPACA', operationAlias: 'alpaca.get_clock', asOf: params.clockOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        state: params.clockQuality, contentHash: hashJson((params.clock as unknown as JsonValue) ?? { fetched: false }), feed: null,
+        contractVersion: 'alpaca-clock-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
+      },
     ],
     providerHealth: [
       {
         provider: 'ALPACA',
-        state: aggregateProviderQuality([params.accountQuality, params.contractsQuality, params.quotesQuality, params.positionsQuality, params.openOrdersQuality]),
+        state: aggregateProviderQuality([params.accountQuality, params.contractsQuality, params.quotesQuality, params.positionsQuality, params.openOrdersQuality, params.clockQuality]),
         asOf: params.now, retrievedAt: params.now,
       },
       { provider: 'OPTIONOMICS', state: optionomicsAttempted ? params.optionomicsQuality : 'UNKNOWN', asOf: optionomicsAttempted ? params.now : null, retrievedAt: params.now },
@@ -404,6 +415,22 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   } catch (error) {
     openOrdersEvidence = failedProviderEvidence(error);
     blockers.push(`OPEN_ORDERS_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
+  }
+
+  // Market clock -- a confirmed real VALUE (open/closed), never a data-
+  // quality question. A closed market is an operational precondition
+  // (handled below, right before new-risk orchestration would run), not a
+  // provider capability failure.
+  let clock: AlpacaMarketClock | null = null;
+  let clockEvidence = notAttemptedEvidence();
+  try {
+    clock = await fetchMarketClock(config.alpaca, config.now());
+    clockEvidence = clock.isOpen !== null
+      ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
+      : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
+  } catch (error) {
+    clockEvidence = failedProviderEvidence(error);
+    blockers.push(`MARKET_CLOCK_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
   }
 
   let historyOrigin: ProvenanceOrigin = 'NOT_ATTEMPTED';
@@ -562,6 +589,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     account: accountEvidence.origin,
     positions: positionsEvidence.origin,
     openOrders: openOrdersEvidence.origin,
+    marketClock: clockEvidence.origin,
     underlyingHistory: historyOrigin,
     optionContracts: contractsEvidence.origin,
     optionSnapshots: quotesEvidence.origin,
@@ -581,6 +609,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     optionomicsOrigin: optionomicsEvidence.origin, optionomicsQuality: optionomicsEvidence.quality, optionomicsEntries,
     positions, positionsOrigin: positionsEvidence.origin, positionsQuality: positionsEvidence.quality,
     openOrders, openOrdersOrigin: openOrdersEvidence.origin, openOrdersQuality: openOrdersEvidence.quality,
+    clock, clockOrigin: clockEvidence.origin, clockQuality: clockEvidence.quality,
     derivedExposure,
     mergedContracts: [...mergedContractsForSnapshot],
     ownershipFeatures: { ret1d, rv20, drawdown, maSlope, gapFrequency, maxAdverseGap } as unknown as JsonValue,
@@ -595,6 +624,29 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash,
       snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration: null, provenance, provenanceDetail: detail,
       blockers: [...blockers, 'NO_CANDIDATES_AVAILABLE'],
+    };
+  }
+
+  // A confirmed-closed market is a real, known VALUE -- an operational
+  // precondition, never a strategy WAIT/PASS and never a provider-quality
+  // SYSTEM_HOLD. Only short-circuits on a TRUSTWORTHY confirmation
+  // (clockEvidence.quality === 'GOOD', i.e. the clock call actually
+  // succeeded and returned isOpen) -- an unreachable/unknown clock still
+  // falls through to the normal provider-capability gate below, which
+  // already handles genuine data-quality uncertainty correctly.
+  if (clockEvidence.quality === 'GOOD' && clock?.isOpen === false) {
+    const receipt = assembleRuntimePreconditionHold({
+      snapshotId: fusionSnapshot.contentHash, fusionSnapshotHash: fusionSnapshot.contentHash, timestamp: config.now(), underlying,
+      reasonCode: 'MARKET_CLOSED', detail: `Market is confirmed closed (nextOpen=${clock.nextOpen ?? 'UNKNOWN'}); new-risk evaluation deferred to the next session.`,
+      policyVersion: config.policyVersion, modelVersions: config.modelVersions,
+    });
+    const orchestration: NewRiskOrchestrationResult = {
+      receipt, ownership: null, regime: null, routing: null, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [],
+    };
+    return {
+      runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
+      optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash,
+      snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration, provenance, provenanceDetail: detail, blockers,
     };
   }
 

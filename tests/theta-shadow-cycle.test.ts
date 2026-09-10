@@ -56,6 +56,9 @@ const mockAlpacaFetch = (options: { hasContracts: boolean; hasBars: boolean }) =
   if (url.includes('/v2/orders')) {
     return jsonResponse(200, []); // same for open orders
   }
+  if (url.includes('/v2/clock')) {
+    return jsonResponse(200, { timestamp: NOW, is_open: true, next_open: NOW, next_close: NOW }); // market open by default
+  }
   if (url.includes('/v2/stocks/bars')) {
     if (!options.hasBars) return jsonResponse(200, { bars: {}, next_page_token: null });
     const bars = Array.from({ length: 65 }, (_, i) => ({ t: new Date(Date.now() - (65 - i) * 86_400_000).toISOString(), o: 500 + i * 0.1, h: 501 + i * 0.1, l: 499 + i * 0.1, c: 500.1 + i * 0.1, v: 1_000_000 }));
@@ -296,6 +299,38 @@ itMockedProviderRealCodePath('a real (mocked) stock position is fetched and fold
   assert.ok(result.provenanceDetail.some((d) => d === 'positions=REAL_PROVIDER'));
   assert.ok(!result.blockers.some((b) => b.startsWith('POSITIONS_FETCH_FAILED')));
   assert.ok(result.orchestration !== null);
+});
+
+itMockedProviderRealCodePath('a confirmed-closed market becomes a real precondition SYSTEM_HOLD (MARKET_CLOSED) -- never a strategy WAIT/PASS, never a provider-quality hold', async () => {
+  const closedMarketFetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/clock')) return jsonResponse(200, { timestamp: NOW, is_open: false, next_open: '2026-09-11T13:30:00Z', next_close: '2026-09-11T20:00:00Z' });
+    return mockAlpacaFetch({ hasContracts: true, hasBars: true })(input, {});
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({ alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: closedMarketFetch } }));
+  assert.equal(result.orchestration?.receipt.winningAction, 'SYSTEM_HOLD');
+  assert.ok(result.orchestration?.receipt.reasonCodes.includes('MARKET_CLOSED'));
+  assert.equal(result.orchestration?.receipt.failClosedReason, null);
+  assert.ok(result.provenanceDetail.some((d) => d === 'marketClock=REAL_PROVIDER'));
+});
+
+itMockedProviderRealCodePath('an open market (confirmed real) proceeds through the normal new-risk pipeline, never held merely because the clock was checked', async () => {
+  const result = await runThetaShadowCycle(baseConfig());
+  assert.notEqual(result.orchestration?.receipt.reasonCodes.includes('MARKET_CLOSED'), true);
+  assert.ok(result.provenanceDetail.some((d) => d === 'marketClock=REAL_PROVIDER'));
+});
+
+itMockedProviderRealCodePath('a market-clock fetch failure is recorded honestly and never blocks the rest of the cycle', async () => {
+  const failingClockFetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/clock')) return new Response('', { status: 500 });
+    return mockAlpacaFetch({ hasContracts: true, hasBars: true })(input, {});
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({ alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: failingClockFetch } }));
+  assert.ok(result.blockers.some((b) => b.startsWith('MARKET_CLOCK_FETCH_FAILED')));
+  assert.ok(result.provenanceDetail.some((d) => d === 'marketClock=REAL_PROVIDER_ERROR'));
+  assert.ok(result.orchestration !== null);
+  assert.notEqual(result.orchestration?.receipt.winningAction, 'HARD_VETO');
 });
 
 itMockedProviderRealCodePath('an account fetch failure is recorded as a blocker, never silently ignored, and the cycle still completes coherently', async () => {
