@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-10, end of this Claude takeover session (continuation pass).
 **Origin/main SHA at session start and end:** `cfe04b903bed86d6bf8fcb82c654070830241bd0` (unchanged — nothing pushed).
 **Claude branch:** `claude/full-platform-takeover`
-**Claude HEAD:** `a8d092c`
+**Claude HEAD:** `4545e18`
 
 ## Local commits on this branch (in order, all unpushed)
 
@@ -205,7 +205,22 @@ LOCAL_COMMITS_TO_REVIEW: 8a051b7, 7ff290a, f24dc3e (all on claude/full-platform-
 FILES/MIGRATIONS: no migrations touched; see commit messages for full file list
   (7 Python quant models + tests, 6 TS contract/state-machine files + tests, 3 docs
   updates)
-TESTS: 253/253 Python, 156/156 TS, lint/typecheck/build clean, secret scan 0 findings
+TESTS: 253/253 Python, 167/167 TS, lint/typecheck/build clean, secret scan 0 findings
+
+## Latest milestone: R2 economic lifecycle ledger (`4545e18`)
+
+- `migrations/004_economic_lifecycle_ledger.sql` + `tests/sql/004_economic_lifecycle_ledger.sql`
+  — economic_chain/option_leg/stock_lot/order_intent/broker_order/fill/assignment_event/
+  expiration_event/dividend_event/fee_event/reconciliation_event. Roll = new linked row,
+  never a mutated realized_pnl (immutability trigger enforces this). Assignment never
+  auto-sets stock_lot.realized_pnl. **NOT executed against a live Postgres this session
+  — Docker Desktop's engine is unreachable in this environment.** Written to match
+  migrations/001-003's exact conventions; needs real execution (Codex's CI already runs
+  this) before being trusted as correct SQL. Flagged in
+  `docs/quant/phase6_router/R2_LEDGER_STATUS.md`.
+- `src/theta/ledger-contract.ts` — TS-side mirror + `computeWholeChainPnl()`. Genuinely
+  tested, 11/11 passing (caught and fixed a real bug while testing: dividends must scale
+  by the paying lot's share count).
 
 ## Latest milestone: Pareto-dominance frontier + OPEN_ALTERNATE_EXPIRY (`a8d092c`)
 
