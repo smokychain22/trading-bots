@@ -147,10 +147,30 @@ test('fetchOptionContracts uses the TRADING API host, not the market-data host',
   let requestedHost = '';
   const fetchImpl = (async (input: RequestInfo | URL) => {
     requestedHost = new URL(input instanceof URL ? input.toString() : String(input)).host;
-    return jsonResponse(200, { option_contracts: [] });
+    return jsonResponse(200, { option_contracts: [], next_page_token: null });
   }) as typeof fetch;
-  await fetchOptionContracts(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01', optionType: 'put', limit: 10 });
+  await fetchOptionContracts(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01', optionType: 'put', limit: 10, maxPages: 5 });
   assert.equal(requestedHost, 'paper-api.alpaca.markets');
+});
+
+test('fetchOptionContracts follows next_page_token to completion, never assuming one HTTP 200 is the full chain', async () => {
+  const pages = [
+    { option_contracts: [{ symbol: 'SPY261009P00500000', strike_price: '500', expiration_date: '2026-10-09' }], next_page_token: 'p2' },
+    { option_contracts: [{ symbol: 'SPY261009P00505000', strike_price: '505', expiration_date: '2026-10-09' }], next_page_token: null },
+  ];
+  let call = 0;
+  const fetchImpl = (async () => { const page = pages[call]; call += 1; return jsonResponse(200, page); }) as typeof fetch;
+  const result = await fetchOptionContracts(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01', optionType: 'put', limit: 1, maxPages: 5 });
+  assert.equal(result.complete, true);
+  assert.equal(result.items.length, 2);
+  assert.equal(result.pagesFetched, 2);
+});
+
+test('fetchOptionContracts marks complete=false (never silently complete) when maxPages is hit with more remaining, but preserves items already fetched', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { option_contracts: [{ symbol: 'X', strike_price: '1', expiration_date: '2026-10-09' }], next_page_token: 'always-more' })) as typeof fetch;
+  const result = await fetchOptionContracts(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01', optionType: 'put', limit: 1, maxPages: 2 });
+  assert.equal(result.complete, false);
+  assert.equal(result.items.length, 2);
 });
 
 test('fetchOptionSnapshots uses the MARKET DATA host and preserves feed/Greeks/quote shape', async () => {
@@ -166,20 +186,42 @@ test('fetchOptionSnapshots uses the MARKET DATA host and preserves feed/Greeks/q
           dailyBar: { v: 5 },
         },
       },
+      next_page_token: null,
     });
   }) as typeof fetch;
-  const result = await fetchOptionSnapshots(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', feed: 'indicative', optionType: 'put', limit: 10 });
+  const result = await fetchOptionSnapshots(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', feed: 'indicative', optionType: 'put', limit: 10, maxPages: 5 });
   assert.equal(requestedHost, 'data.alpaca.markets');
-  const snapshot = result.get('SPY261009P00500000');
+  assert.equal(result.complete, true);
+  const snapshot = result.snapshots.get('SPY261009P00500000');
   assert.equal(snapshot?.bid, 0.11);
   assert.equal(snapshot?.greeks?.delta, -0.003);
   assert.equal(snapshot?.dailyVolume, 5);
 });
 
 test('fetchOptionSnapshots preserves a missing Greeks object as null, never fabricated', async () => {
-  const fetchImpl = (async () => jsonResponse(200, { snapshots: { X: { latestQuote: { bp: 1, ap: 1.1 } } } })) as typeof fetch;
-  const result = await fetchOptionSnapshots(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', feed: 'indicative', optionType: 'put', limit: 10 });
-  assert.equal(result.get('X')?.greeks, null);
+  const fetchImpl = (async () => jsonResponse(200, { snapshots: { X: { latestQuote: { bp: 1, ap: 1.1 } } }, next_page_token: null })) as typeof fetch;
+  const result = await fetchOptionSnapshots(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', feed: 'indicative', optionType: 'put', limit: 10, maxPages: 5 });
+  assert.equal(result.snapshots.get('X')?.greeks, null);
+});
+
+test('fetchOptionSnapshots: the best contract residing on a LATER page is still discovered -- page 1 alone would miss it', async () => {
+  const pages = [
+    { snapshots: { WORSE: { latestQuote: { bp: 0.05, ap: 0.06 } } }, next_page_token: 'p2' },
+    { snapshots: { BEST: { latestQuote: { bp: 0.5, ap: 0.51 } } }, next_page_token: null },
+  ];
+  let call = 0;
+  const fetchImpl = (async () => { const page = pages[call]; call += 1; return jsonResponse(200, page); }) as typeof fetch;
+  const result = await fetchOptionSnapshots(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', feed: 'indicative', optionType: 'put', limit: 1, maxPages: 5 });
+  assert.equal(result.complete, true);
+  assert.ok(result.snapshots.has('BEST'));
+  assert.ok(result.snapshots.has('WORSE'));
+});
+
+test('fetchOptionSnapshots marks complete=false when maxPages is hit with more remaining, but preserves snapshots already fetched', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { snapshots: { X: { latestQuote: { bp: 1, ap: 1.1 } } }, next_page_token: 'always-more' })) as typeof fetch;
+  const result = await fetchOptionSnapshots(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', feed: 'indicative', optionType: 'put', limit: 1, maxPages: 1 });
+  assert.equal(result.complete, false);
+  assert.equal(result.snapshots.size, 1);
 });
 
 test('fetchStockBars follows next_page_token across pages, including a first page containing only one symbol of a multi-symbol request', async () => {

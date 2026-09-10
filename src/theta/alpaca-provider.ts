@@ -206,58 +206,115 @@ export interface FetchOptionContractsParams {
   readonly expirationDateGte: string;
   readonly expirationDateLte: string;
   readonly optionType: 'put' | 'call';
-  readonly limit: number;
+  readonly limit: number; // per-page limit
+  readonly maxPages: number; // safety bound -- never an unbounded pagination loop
 }
 
-export async function fetchOptionContracts(config: AlpacaProviderConfig, params: FetchOptionContractsParams): Promise<readonly AlpacaOptionContractListing[]> {
+// Alpaca's own documented behavior: a page-size limit applies to the total
+// number of observations returned, not per-symbol/per-request, and results
+// are paginated via next_page_token -- a single HTTP 200 is NEVER assumed
+// to be the complete result set. `complete: false` (with the bars/items
+// already fetched preserved, never discarded) is the honest signal a
+// caller uses to distinguish "we saw everything" from "we stopped early."
+export interface PaginatedResult<T> {
+  readonly items: readonly T[];
+  readonly complete: boolean;
+  readonly pagesFetched: number;
+}
+
+export async function fetchOptionContracts(config: AlpacaProviderConfig, params: FetchOptionContractsParams): Promise<PaginatedResult<AlpacaOptionContractListing>> {
   const fetchImpl = config.fetchImpl ?? fetch;
-  const url = new URL('/v2/options/contracts', config.tradingApiBase);
-  url.search = new URLSearchParams({
-    underlying_symbols: params.underlyingSymbol, status: 'active', type: params.optionType,
-    expiration_date_gte: params.expirationDateGte, expiration_date_lte: params.expirationDateLte,
-    limit: String(params.limit),
-  }).toString();
-  const body = await requestJson(fetchImpl, url, authHeaders(config)) as { option_contracts?: Array<Record<string, unknown>> };
-  const contracts = body.option_contracts ?? [];
-  return contracts.map((c) => ({
-    symbol: asStringOrNull(c.symbol) ?? '',
-    strikePrice: asNumberOrNull(c.strike_price) ?? 0,
-    expirationDate: asStringOrNull(c.expiration_date) ?? '',
-    optionType: params.optionType === 'put' ? 'PUT' : 'CALL',
-  }));
+  const items: AlpacaOptionContractListing[] = [];
+  let pageToken: string | null = null;
+  let pages = 0;
+  let complete = true;
+
+  do {
+    const url = new URL('/v2/options/contracts', config.tradingApiBase);
+    const query: Record<string, string> = {
+      underlying_symbols: params.underlyingSymbol, status: 'active', type: params.optionType,
+      expiration_date_gte: params.expirationDateGte, expiration_date_lte: params.expirationDateLte,
+      limit: String(params.limit),
+    };
+    if (pageToken !== null) query.page_token = pageToken;
+    url.search = new URLSearchParams(query).toString();
+    const body = await requestJson(fetchImpl, url, authHeaders(config)) as { option_contracts?: Array<Record<string, unknown>>; next_page_token?: string | null };
+    for (const c of body.option_contracts ?? []) {
+      items.push({
+        symbol: asStringOrNull(c.symbol) ?? '',
+        strikePrice: asNumberOrNull(c.strike_price) ?? 0,
+        expirationDate: asStringOrNull(c.expiration_date) ?? '',
+        optionType: params.optionType === 'put' ? 'PUT' : 'CALL',
+      });
+    }
+    pageToken = body.next_page_token ?? null;
+    pages += 1;
+    if (pages >= params.maxPages && pageToken !== null) {
+      complete = false;
+      break;
+    }
+  } while (pageToken !== null);
+
+  return { items, complete, pagesFetched: pages };
 }
 
 export interface FetchOptionSnapshotsParams {
   readonly underlyingSymbol: string;
   readonly feed: 'opra' | 'indicative';
   readonly optionType: 'put' | 'call';
-  readonly limit: number;
+  readonly limit: number; // per-page limit -- Alpaca documents default 100, max 1000
+  readonly maxPages: number; // safety bound -- never an unbounded pagination loop
 }
 
-export async function fetchOptionSnapshots(config: AlpacaProviderConfig, params: FetchOptionSnapshotsParams): Promise<ReadonlyMap<string, AlpacaOptionSnapshot>> {
+export interface PaginatedSnapshotsResult {
+  readonly snapshots: ReadonlyMap<string, AlpacaOptionSnapshot>;
+  readonly complete: boolean;
+  readonly pagesFetched: number;
+}
+
+export async function fetchOptionSnapshots(config: AlpacaProviderConfig, params: FetchOptionSnapshotsParams): Promise<PaginatedSnapshotsResult> {
   const fetchImpl = config.fetchImpl ?? fetch;
-  const url = new URL(`/v1beta1/options/snapshots/${params.underlyingSymbol}`, config.marketDataApiBase);
-  url.search = new URLSearchParams({ feed: params.feed, type: params.optionType, limit: String(params.limit) }).toString();
-  const body = await requestJson(fetchImpl, url, authHeaders(config)) as { snapshots?: Record<string, Record<string, unknown>> };
   const snapshots = new Map<string, AlpacaOptionSnapshot>();
-  for (const [symbol, raw] of Object.entries(body.snapshots ?? {})) {
-    const quote = raw.latestQuote as Record<string, unknown> | undefined;
-    const greeksRaw = raw.greeks as Record<string, unknown> | undefined;
-    const dailyBar = raw.dailyBar as Record<string, unknown> | undefined;
-    snapshots.set(symbol, {
-      bid: asNumberOrNull(quote?.bp),
-      ask: asNumberOrNull(quote?.ap),
-      bidSize: asNumberOrNull(quote?.bs),
-      askSize: asNumberOrNull(quote?.as),
-      quoteTimestamp: asStringOrNull(quote?.t),
-      greeks: greeksRaw !== undefined
-        ? { delta: asNumberOrNull(greeksRaw.delta), gamma: asNumberOrNull(greeksRaw.gamma), theta: asNumberOrNull(greeksRaw.theta), vega: asNumberOrNull(greeksRaw.vega), rho: asNumberOrNull(greeksRaw.rho) }
-        : null,
-      impliedVolatility: asNumberOrNull(raw.impliedVolatility),
-      dailyVolume: asNumberOrNull(dailyBar?.v),
-    });
-  }
-  return snapshots;
+  let pageToken: string | null = null;
+  let pages = 0;
+  let complete = true;
+
+  do {
+    const url = new URL(`/v1beta1/options/snapshots/${params.underlyingSymbol}`, config.marketDataApiBase);
+    const query: Record<string, string> = { feed: params.feed, type: params.optionType, limit: String(params.limit) };
+    if (pageToken !== null) query.page_token = pageToken;
+    url.search = new URLSearchParams(query).toString();
+    const body = await requestJson(fetchImpl, url, authHeaders(config)) as { snapshots?: Record<string, Record<string, unknown>>; next_page_token?: string | null };
+    for (const [symbol, raw] of Object.entries(body.snapshots ?? {})) {
+      snapshots.set(symbol, parseOneSnapshot(raw));
+    }
+    pageToken = body.next_page_token ?? null;
+    pages += 1;
+    if (pages >= params.maxPages && pageToken !== null) {
+      complete = false;
+      break;
+    }
+  } while (pageToken !== null);
+
+  return { snapshots, complete, pagesFetched: pages };
+}
+
+function parseOneSnapshot(raw: Record<string, unknown>): AlpacaOptionSnapshot {
+  const quote = raw.latestQuote as Record<string, unknown> | undefined;
+  const greeksRaw = raw.greeks as Record<string, unknown> | undefined;
+  const dailyBar = raw.dailyBar as Record<string, unknown> | undefined;
+  return {
+    bid: asNumberOrNull(quote?.bp),
+    ask: asNumberOrNull(quote?.ap),
+    bidSize: asNumberOrNull(quote?.bs),
+    askSize: asNumberOrNull(quote?.as),
+    quoteTimestamp: asStringOrNull(quote?.t),
+    greeks: greeksRaw !== undefined
+      ? { delta: asNumberOrNull(greeksRaw.delta), gamma: asNumberOrNull(greeksRaw.gamma), theta: asNumberOrNull(greeksRaw.theta), vega: asNumberOrNull(greeksRaw.vega), rho: asNumberOrNull(greeksRaw.rho) }
+      : null,
+    impliedVolatility: asNumberOrNull(raw.impliedVolatility),
+    dailyVolume: asNumberOrNull(dailyBar?.v),
+  };
 }
 
 // ---------------------------------------------------------------------------
