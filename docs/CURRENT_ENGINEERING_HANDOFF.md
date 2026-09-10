@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-10, end of this Claude takeover session (continuation pass).
 **Origin/main SHA at session start and end:** `cfe04b903bed86d6bf8fcb82c654070830241bd0` (unchanged — nothing pushed).
 **Claude branch:** `claude/full-platform-takeover`
-**Claude HEAD:** `b147d54`
+**Claude HEAD:** `a8d092c`
 
 ## Local commits on this branch (in order, all unpushed)
 
@@ -205,7 +205,21 @@ LOCAL_COMMITS_TO_REVIEW: 8a051b7, 7ff290a, f24dc3e (all on claude/full-platform-
 FILES/MIGRATIONS: no migrations touched; see commit messages for full file list
   (7 Python quant models + tests, 6 TS contract/state-machine files + tests, 3 docs
   updates)
-TESTS: 239/239 Python, 156/156 TS, lint/typecheck/build clean, secret scan 0 findings
+TESTS: 253/253 Python, 156/156 TS, lint/typecheck/build clean, secret scan 0 findings
+
+## Latest milestone: Pareto-dominance frontier + OPEN_ALTERNATE_EXPIRY (`a8d092c`)
+
+Credential-free R1/quant work, per "one failed setup must not become WAIT":
+- `opportunity_frontier.py`: added `OPEN_ALTERNATE_EXPIRY` (distinct from
+  `OPEN_ALTERNATE_CONTRACT`). A negative-EV candidate now tries alternate expiry, then
+  alternate contract, before PASS.
+- `pareto_frontier.py` (new): multi-dimensional dominance filtering across EV_net/
+  EdgeBuffer/ReturnPerCapitalDay/fill-probability (maximize) and tail-loss/assignment-
+  probability/severe-drawdown-probability/capital-requirement/capital-days/spread/
+  slippage/uncertainty (minimize). UNKNOWN dimensions excluded from comparison, never
+  treated as favorable/unfavorable. `gross_credit` deliberately excluded as a
+  dominance dimension (that's the naive BQ-1/BQ-2 policy this replaces).
+17 new tests, 253/253 Python total.
 
 ## CREDENTIAL BLOCKER (found this session, still open)
 
