@@ -151,3 +151,51 @@ itReal('runId is unique per cycle', async () => {
   const second = await runThetaShadowCycle(baseConfig());
   assert.notEqual(first.runId, second.runId);
 });
+
+// --- FusionSnapshot: real, deterministic content hash (never a placeholder) ---
+
+const FIXED_BAR_START = new Date('2026-06-01T00:00:00.000Z').getTime();
+const deterministicMockAlpacaFetch = (accountId: string) => (async (input: RequestInfo | URL) => {
+  const url = input instanceof URL ? input.toString() : String(input);
+  if (url.includes('/v2/account')) {
+    return jsonResponse(200, { id: accountId, status: 'ACTIVE', equity: '100000', cash: '50000', buying_power: '40000', options_buying_power: '20000', options_approved_level: 2, options_trading_level: 2 });
+  }
+  if (url.includes('/v2/stocks/bars')) {
+    const bars = Array.from({ length: 65 }, (_, i) => ({ t: new Date(FIXED_BAR_START + i * 86_400_000).toISOString(), o: 500 + i * 0.1, h: 501 + i * 0.1, l: 499 + i * 0.1, c: 500.1 + i * 0.1, v: 1_000_000 }));
+    return jsonResponse(200, { bars: { SPY: bars }, next_page_token: null });
+  }
+  if (url.includes('/v2/options/contracts')) {
+    return jsonResponse(200, { option_contracts: [{ symbol: 'SPY261009P00500000', strike_price: '500', expiration_date: '2026-10-09' }], next_page_token: null });
+  }
+  if (url.includes('/v1beta1/options/snapshots')) {
+    return jsonResponse(200, {
+      snapshots: { SPY261009P00500000: { latestQuote: { bp: 0.13, ap: 0.14, bs: 900, as: 900, t: NOW }, greeks: { delta: -0.003, gamma: 0.0001, theta: -0.02, vega: 0.02, rho: -0.002 }, impliedVolatility: 0.5 } },
+      next_page_token: null,
+    });
+  }
+  throw new Error(`unmocked URL in test: ${url}`);
+}) as typeof fetch;
+
+const deterministicConfig = (accountId: string): ThetaShadowCycleConfig => baseConfig({
+  alpaca: { tradingApiBase: 'https://paper-api.alpaca.markets', marketDataApiBase: 'https://data.alpaca.markets', apiKey: 'TEST-SYNTHETIC-KEY', apiSecret: 'TEST-SYNTHETIC-SECRET', fetchImpl: deterministicMockAlpacaFetch(accountId) },
+});
+
+itReal('FusionSnapshot content hash is REAL (64-char lowercase hex), never the old placeholder', async () => {
+  const result = await runThetaShadowCycle(deterministicConfig('synthetic-test-account-A'));
+  assert.ok(result.snapshotContentHash !== null);
+  assert.match(result.snapshotContentHash as string, /^[0-9a-f]{64}$/);
+  assert.notEqual(result.snapshotContentHash, 'a'.repeat(64));
+  assert.equal(result.orchestration?.receipt.fusionSnapshotHash, result.snapshotContentHash);
+});
+
+itReal('the SAME canonical state produces the SAME deterministic content hash', async () => {
+  const first = await runThetaShadowCycle(deterministicConfig('synthetic-test-account-A'));
+  const second = await runThetaShadowCycle(deterministicConfig('synthetic-test-account-A'));
+  assert.equal(first.snapshotContentHash, second.snapshotContentHash);
+});
+
+itReal('a materially DIFFERENT market state (different account equity) produces a DIFFERENT content hash', async () => {
+  const first = await runThetaShadowCycle(deterministicConfig('synthetic-test-account-A'));
+  const second = await runThetaShadowCycle(deterministicConfig('synthetic-test-account-B'));
+  assert.notEqual(first.snapshotContentHash, second.snapshotContentHash);
+});

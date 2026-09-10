@@ -8,6 +8,7 @@ import { computeCurrentDrawdown, computeGapFrequency, computeMaxAdverseGap, comp
 import { evaluateUniverse, type UnderlyingCandidateInput, type UniverseFunnelReport, type UniversePolicy } from './universe-policy.js';
 import { runNewRiskOrchestration, type NewRiskOrchestrationRequest, type NewRiskOrchestrationResult, type RawCandidateInput } from './new-risk-orchestrator.js';
 import type { PythonBridgeConfig } from './python-bridge.js';
+import { buildFusionSnapshot, hashJson, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
 
 // R1: runThetaShadowCycle -- the reusable, server-side, non-executing shadow
 // decision cycle. This is the "success condition" deliverable: a single
@@ -76,10 +77,96 @@ export interface ThetaShadowCycleResult {
   readonly selectedUnderlying: string | null;
   readonly optionChainComplete: boolean | null;
   readonly optionContractsComplete: boolean | null;
+  readonly snapshotContentHash: string | null; // the REAL, deterministic FusionSnapshot content hash -- never a placeholder
+  readonly snapshotValidForNewRisk: boolean | null;
   readonly orchestration: NewRiskOrchestrationResult | null;
   readonly provenance: ShadowCycleProvenance;
   readonly provenanceDetail: readonly string[];
   readonly blockers: readonly string[];
+}
+
+const evidenceStateFor = (real: boolean): 'GOOD' | 'UNKNOWN' => (real ? 'GOOD' : 'UNKNOWN');
+
+/**
+ * Assembles the canonical FusionSnapshotInput (src/market/fusion-snapshot.ts,
+ * reused -- never duplicated) from the actual observations this cycle
+ * gathered. The three Alpaca provenance entries (ACCOUNT/CONTRACT/QUOTE)
+ * are ALWAYS present -- buildFusionSnapshot() requires their presence
+ * structurally -- but their `state` honestly reflects whether that
+ * specific fetch actually succeeded this cycle, never asserted GOOD when
+ * it wasn't.
+ */
+function assembleFusionSnapshotInput(params: {
+  readonly now: string;
+  readonly underlying: string;
+  readonly account: MasterAccountSnapshot | null;
+  readonly accountReal: boolean;
+  readonly contractsReal: boolean;
+  readonly quotesReal: boolean;
+  readonly mergedContracts: FusionSnapshotInput['contractCandidates'];
+  readonly ownershipFeatures: JsonValue;
+  readonly regimeFeatures: JsonValue;
+  readonly policyVersion: string;
+  readonly modelVersions: Readonly<Record<string, string>>;
+}): FusionSnapshotInput {
+  const accountJson: JsonValue = params.account === null ? { fetched: false } : { ...params.account };
+  const contractsJson: JsonValue = params.mergedContracts as unknown as JsonValue;
+
+  return {
+    botId: 'THETA',
+    decisionTimeUtc: params.now,
+    triggerType: 'SHADOW_CYCLE',
+    marketSession: null, // OPRA/options-aware calendar not wired yet -- UNKNOWN, never fabricated as "regular session"
+    underlyingState: { symbol: params.underlying },
+    contractCandidates: params.mergedContracts,
+    accountState: accountJson,
+    positionState: null, // positions not yet folded into the cycle's snapshot -- future work
+    portfolioExposure: null,
+    alpacaQuoteState: null,
+    optionomicsFeatureState: null, // Optionomics is not fetched live in this cycle yet -- honestly absent, not fabricated
+    eventState: null, // no event-state assembly exists yet -- UNKNOWN, never "no event nearby"
+    regimeState: params.regimeFeatures,
+    expertPriorState: null,
+    riskState: null,
+    strategyRouterState: null, // the router runs downstream of this snapshot in the current architecture
+    versions: {
+      strategyVersion: params.policyVersion, featureVersion: params.policyVersion, riskLimitVersion: params.policyVersion,
+      executionVersion: params.policyVersion, costModelVersion: params.policyVersion, dataVersion: params.policyVersion,
+      modelVersions: params.modelVersions,
+    },
+    sourceProvenance: [
+      {
+        provider: 'ALPACA', operationAlias: 'alpaca.get_account', asOf: params.accountReal ? params.now : null, retrievedAt: params.now,
+        state: evidenceStateFor(params.accountReal), contentHash: hashJson(accountJson), feed: null,
+        contractVersion: 'alpaca-account-v1', truthRole: 'ACCOUNT', requiredForNewRisk: true,
+      },
+      {
+        provider: 'ALPACA', operationAlias: 'alpaca.get_option_contracts', asOf: params.contractsReal ? params.now : null, retrievedAt: params.now,
+        state: evidenceStateFor(params.contractsReal), contentHash: hashJson(contractsJson), feed: null,
+        contractVersion: 'alpaca-option-contracts-v1', truthRole: 'CONTRACT', requiredForNewRisk: true,
+      },
+      {
+        provider: 'ALPACA', operationAlias: 'alpaca.get_option_snapshots', asOf: params.quotesReal ? params.now : null, retrievedAt: params.now,
+        state: evidenceStateFor(params.quotesReal), contentHash: hashJson(contractsJson), feed: 'indicative',
+        contractVersion: 'alpaca-option-snapshots-v1', truthRole: 'QUOTE', requiredForNewRisk: true,
+      },
+    ],
+    providerHealth: [
+      { provider: 'ALPACA', state: evidenceStateFor(params.accountReal && params.contractsReal && params.quotesReal), asOf: params.now, retrievedAt: params.now },
+      { provider: 'OPTIONOMICS', state: 'UNKNOWN', asOf: null, retrievedAt: params.now },
+    ],
+    freshnessFlags: [],
+    unknownFeatures: [
+      { feature: 'optionOpenInterest', reasonCode: 'OPTIONOMICS_NOT_FETCHED', provider: null },
+      { feature: 'optionVolume', reasonCode: 'OPTIONOMICS_NOT_FETCHED_ALPACA_DAILY_BAR_FALLBACK_ONLY', provider: null },
+      { feature: 'eventState', reasonCode: 'EVENT_STATE_NOT_IMPLEMENTED', provider: null },
+    ],
+    executableTruth: {
+      account: evidenceStateFor(params.accountReal),
+      contract: evidenceStateFor(params.contractsReal),
+      quote: evidenceStateFor(params.quotesReal),
+    },
+  };
 }
 
 /**
@@ -117,7 +204,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   if (eligible === undefined) {
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: null,
-      optionChainComplete: null, optionContractsComplete: null, orchestration: null,
+      optionChainComplete: null, optionContractsComplete: null, snapshotContentHash: null, snapshotValidForNewRisk: null,
+      orchestration: null,
       provenance: 'SYNTHETIC', provenanceDetail: ['no eligible underlying survived UniversePolicy this cycle'],
       blockers: ['NO_ELIGIBLE_UNDERLYING'],
     };
@@ -165,19 +253,22 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
 
   let optionChainComplete: boolean | null = null;
   let optionContractsComplete: boolean | null = null;
-  let optionChainReal = false;
+  let contractsReal = false;
+  let quotesReal = false;
   const candidates: RawCandidateInput[] = [];
+  let mergedContractsForSnapshot: ReturnType<typeof mergeOptionChain> = [];
   try {
     const contractsResult = await fetchOptionContracts(config.alpaca, {
       underlyingSymbol: underlying, expirationDateGte: config.optionExpirationDateGte, expirationDateLte: config.optionExpirationDateLte,
       optionType: config.optionType, limit: 100, maxPages: config.maxOptionPages,
     });
     optionContractsComplete = contractsResult.complete;
+    contractsReal = contractsResult.complete;
     const snapshotsResult = await fetchOptionSnapshots(config.alpaca, {
       underlyingSymbol: underlying, feed: 'indicative', optionType: config.optionType, limit: 100, maxPages: config.maxOptionPages,
     });
     optionChainComplete = snapshotsResult.complete;
-    optionChainReal = contractsResult.complete && snapshotsResult.complete && contractsResult.items.length > 0;
+    quotesReal = snapshotsResult.complete;
 
     // Optionomics is NOT fetched live here -- see module docstring. Empty
     // map is honest: every OI/volume/Greek stays UNKNOWN unless Alpaca's
@@ -189,6 +280,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       snapshotsBySymbol: snapshotsResult.snapshots, optionomicsBySymbol, requestedFeed: 'INDICATIVE',
       multiplier: 100, receivedAt, maxQuoteAgeSecondsForExecutable: 30, maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
     });
+    mergedContractsForSnapshot = mergedContracts;
 
     for (const contract of mergedContracts) {
       candidates.push({
@@ -203,21 +295,34 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   }
 
   const { provenance, detail } = classifyProvenance({
-    accountReal, historyReal, optionChainReal, optionomicsReal: false, eventStateReal: false,
+    accountReal, historyReal, optionChainReal: contractsReal && quotesReal, optionomicsReal: false, eventStateReal: false,
   });
+
+  // Canonical FusionSnapshot -- ALWAYS built, even on a no-candidates path,
+  // so every returned run (successful or not) carries a genuine,
+  // deterministic snapshot identity. NEVER a placeholder hash.
+  const snapshotInput = assembleFusionSnapshotInput({
+    now: config.now(), underlying, account, accountReal, contractsReal, quotesReal,
+    mergedContracts: [...mergedContractsForSnapshot],
+    ownershipFeatures: { ret1d, rv20, drawdown, maSlope, gapFrequency, maxAdverseGap } as unknown as JsonValue,
+    regimeFeatures: { maSlope, rv20, maxAdverseGap, drawdown } as unknown as JsonValue,
+    policyVersion: config.policyVersion, modelVersions: config.modelVersions,
+  });
+  const fusionSnapshot = buildFusionSnapshot(snapshotInput);
 
   if (candidates.length === 0) {
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying,
-      optionChainComplete, optionContractsComplete, orchestration: null, provenance, provenanceDetail: detail,
+      optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash,
+      snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration: null, provenance, provenanceDetail: detail,
       blockers: [...blockers, 'NO_CANDIDATES_AVAILABLE'],
     };
   }
 
   const orchestration = await runNewRiskOrchestration(config.bridge, {
-    snapshotId: `shadow-cycle-${runId}`, fusionSnapshotHash: 'a'.repeat(64), timestamp: config.now(), underlying,
+    snapshotId: fusionSnapshot.contentHash, fusionSnapshotHash: fusionSnapshot.contentHash, timestamp: config.now(), underlying,
     earningsDistanceDays: null, // EventState is not real yet -- UNKNOWN, never fabricated as "no earnings nearby"
-    optionQuoteFreshnessPolicy: config.optionQuoteFreshnessPolicy, providerStateGood: account !== null,
+    optionQuoteFreshnessPolicy: config.optionQuoteFreshnessPolicy, providerStateGood: fusionSnapshot.validForNewRisk,
     policyVersion: config.policyVersion, modelVersions: config.modelVersions, requiredModelVersions: config.requiredModelVersions,
     ownershipPolicy: config.ownershipPolicy,
     ownershipInputs: {
@@ -247,7 +352,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
 
   return {
     runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying,
-    optionChainComplete, optionContractsComplete, orchestration, provenance, provenanceDetail: detail, blockers,
+    optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash,
+    snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration, provenance, provenanceDetail: detail, blockers,
   };
 }
 
