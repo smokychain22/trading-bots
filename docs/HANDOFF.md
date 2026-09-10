@@ -132,3 +132,37 @@ and the future AEGIS input/output adapter. Claude's quant source was not changed
 
 NEXT RECOMMENDED TASK: Implement the authenticated follower read adapter and shadow
 master-event ingestion. Keep execution disabled until persistence and chaos tests pass.
+
+## 2026-09-10 provider connection and private PAPER beta readiness
+
+OWNER: Codex
+
+TASK: Complete separate master Alpaca, Optionomics, PostgreSQL, and follower OAuth
+readiness paths without enabling any order submission.
+
+FILES CHANGED: Migration 007 and its SQL invariant, environment contracts, customer
+OAuth/store/readiness/API modules, customer and operator UI, provider parsing, tests,
+and Alpaca Connect documentation.
+
+WHAT WAS IMPLEMENTED: Independent read-only master Alpaca and Optionomics checks,
+real PostgreSQL readiness, stored follower-token re-verification, options levels 0-3
+handling, minimal OAuth scope, and explicit customer setup states. Follower raw-key
+beta is disabled and structurally prohibited. Saving a setup does not place an order.
+
+TESTS RUN: TypeScript, ESLint, Node tests, browser and accessibility tests, production
+build, security scan, SQL migration invariants, and deployment checks.
+
+KNOWN LIMITATIONS: Alpaca Connect commercial approval, production PostgreSQL, and
+their Vercel values are external gates. Production provider checks require an operator
+session. PAPER execution is locked.
+
+RISKS: A provider HTTP success does not authorize execution. A saved follower setup
+must remain separate from an active execution worker. Transaction-pooled runtime URLs
+must not be used for migration session semantics.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Consume the typed account readiness and persisted
+follower boundary. Do not merge the old shadow runner or change provider/account UI.
+
+NEXT RECOMMENDED TASK: After external Connect approval and database provisioning,
+apply migration 007 and run one real follower OAuth connect/reverify journey. Keep
+order submission disabled.

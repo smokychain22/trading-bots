@@ -85,3 +85,24 @@ one-shot shadow runner was not merged because it still contains synthetic operat
 defaults, converts a missing entry bid to zero, lacks live Optionomics and event-state
 inputs, and does not persist receipts. Those are correctness blockers, not reasons to
 label a partial cycle as running.
+
+## 2026-09-10: Alpaca Connect policy and PAPER beta boundary
+
+Use deployment-managed key authentication only for the platform's own master PAPER
+account. Customer or follower accounts use Alpaca Connect OAuth. The exact requested
+scope is `trading`. The `data` scope is omitted until a customer-specific Data API need
+is proven. The current public Connect documentation requires OAuth 2.0 for API clients,
+so follower raw-key input is prohibited. Migration 007 encodes the only accepted
+connection method as `ALPACA_OAUTH`.
+
+THETA's core cash-secured-put and covered-call operations require Alpaca options level
+1. Level 0 is blocked. Levels 1 through 3 pass this capability gate. Approval and
+trading levels are retained separately rather than collapsed into one value.
+
+## 2026-09-10: database connection roles
+
+Use `DATABASE_URL` for transaction-pooled serverless runtime access. Use
+`DATABASE_MIGRATION_URL` for a direct or session-pooled migration connection. Do not
+run DDL that depends on session semantics through transaction pooling. Production
+readiness remains `MISSING` or `MIGRATION_REQUIRED` until the real database is reachable
+and migration `007_connection_readiness` is present.

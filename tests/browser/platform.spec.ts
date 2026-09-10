@@ -33,7 +33,7 @@ test("Copy THETA shows one simple connection step when OAuth is unavailable", as
   await expect(page.getByRole("heading", { name: "Copy THETA", exact: true })).toBeVisible();
   await expect(page.getByText("STEP 1 OF 3")).toBeVisible();
   await expect(page.getByRole("button", { name: "Connect Alpaca" })).toBeDisabled();
-  await expect(page.getByText("Alpaca connection is not available yet.")).toBeVisible();
+  await expect(page.getByText(/private paper testing/)).toBeVisible();
   await expect(page.getByText("How much should THETA use?")).toHaveCount(0);
   await expect(page.locator("main")).not.toContainText("token storage");
 });
@@ -45,7 +45,7 @@ test("My Bots and Account show safe disconnected states", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Your paper account" })).toBeVisible();
   await expect(page.getByText("Not connected", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Connect Alpaca" })).toBeDisabled();
-  await expect(page.getByText("Alpaca connection is not available yet.")).toBeVisible();
+  await expect(page.getByText(/private paper testing/)).toBeVisible();
   await expect(page.locator("main")).not.toContainText("OAuth");
   await expect(page.locator("main")).not.toContainText("token storage");
 });
@@ -82,12 +82,12 @@ test("backend failure does not reuse stale financial data", async ({ page }) => 
 
 test("home calls to action navigate to working customer routes", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /Connect your Alpaca Paper account/ })).toBeVisible();
-  await page.getByRole("link", { name: "Review THETA" }).click();
+  await expect(page.getByRole("heading", { name: "THETA is in private paper testing." })).toBeVisible();
+  await page.getByRole("link", { name: "View THETA" }).click();
   await expect(page).toHaveURL(/\/bots\/theta$/);
   await page.goto("/");
-  await page.getByRole("link", { name: "Connect paper account" }).click();
-  await expect(page).toHaveURL(/\/account$/);
+  await page.getByRole("link", { name: "View THETA" }).click();
+  await expect(page).toHaveURL(/\/bots\/theta$/);
 });
 
 test("customer performance, positions, and trades use one clean empty state", async ({ page }) => {
@@ -110,6 +110,8 @@ test("active follower fixture shows automatic-copy semantics without trade contr
     const body = await response.json();
     body.data.participation = "COPY_NEW_AND_MANAGE";
     body.data.follower_account.state = "READY";
+    body.data.follower_account.connected = true;
+    body.data.follower_account.ready_for_theta = true;
     body.data.follower_account.masked_account = "•••• 0184";
     body.data.follower_account.buying_power = 25000;
     body.data.follower_account.cash = 15000;
@@ -121,9 +123,8 @@ test("active follower fixture shows automatic-copy semantics without trade contr
   await expect(page.getByRole("heading", { name: "Track your THETA paper copy." })).toBeVisible();
   await expect(page.getByRole("link", { name: "View my results" })).toBeVisible();
   await page.goto("/my-bots");
-  await expect(page.getByRole("heading", { name: "Copying new trades" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Stop New Copies" })).toBeDisabled();
-  await expect(page.locator("main")).toContainText("Eligible master fills are adapted");
+  await expect(page.getByRole("heading", { name: "Paper setup saved" })).toBeVisible();
+  await expect(page.locator("main")).toContainText("Order submission remains locked");
   await page.goto("/account");
   await expect(page.getByText("Connected · •••• 0184")).toBeVisible();
   await expect(page.getByRole("button", { name: "Disconnect account" })).toBeEnabled();
@@ -151,6 +152,8 @@ test("visible customer controls either work or explain why they are unavailable"
     const response = await route.fetch();
     const body = await response.json();
     body.data.follower_account.state = "READY";
+    body.data.follower_account.connected = true;
+    body.data.follower_account.ready_for_theta = true;
     body.data.follower_account.masked_account = "••••0184";
     body.data.oauth.state = "READY";
     body.data.oauth.configured = true;
@@ -171,8 +174,8 @@ test("visible customer controls either work or explain why they are unavailable"
   await expect(page.locator("#allocation-output")).toHaveText("$12,000");
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByText("STEP 3 OF 3")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Start Copying" })).toBeEnabled();
-  await expect(page.locator("#activation-note")).toContainText("Order submission remains locked");
+  await expect(page.getByRole("button", { name: "Save setup" })).toBeEnabled();
+  await expect(page.locator("#activation-note")).toContainText("cannot place an order");
 
   await page.goto("/account");
   await expect(page.getByRole("button", { name: "Connect Alpaca" })).toHaveCount(0);

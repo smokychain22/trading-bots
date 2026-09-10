@@ -49,7 +49,7 @@ export function buildAlpacaAuthorizationUrl(
     client_id: environment.ALPACA_OAUTH_CLIENT_ID ?? "",
     redirect_uri: environment.ALPACA_OAUTH_REDIRECT_URI ?? "",
     state,
-    scope: "trading data",
+    scope: "trading",
     env: "paper",
   }).toString();
   return url;
@@ -124,7 +124,7 @@ export async function verifyFollowerAccount(
   const optionsLevel = account.options_trading_level ?? account.options_approved_level ?? 0;
   const active = account.status === "ACTIVE";
   const blocked = account.trading_blocked === true || account.account_blocked === true;
-  const ready = active && !blocked && optionsLevel >= 2;
+  const ready = active && !blocked && optionsLevel >= 1;
   return {
     account,
     positionsAvailable: positionsResponse.ok,
@@ -134,7 +134,7 @@ export async function verifyFollowerAccount(
       ? "Your Alpaca Paper account is not active."
       : blocked
         ? "Your Alpaca Paper account is restricted."
-        : optionsLevel < 2
+        : optionsLevel < 1
           ? "Your paper account needs options trading enabled before it can copy THETA."
           : !positionsResponse.ok || !ordersResponse.ok
             ? "Alpaca account reconciliation is temporarily unavailable."
@@ -206,4 +206,32 @@ export async function verifyStoredFollowerAccount(
     customerId,
   );
   return verifyFollowerAccount(token);
+}
+
+export async function reverifyStoredFollowerAccount(
+  store: CustomerStore,
+  environment: Environment,
+  customerId: string,
+): Promise<FollowerRecord> {
+  try {
+    const verification = await verifyStoredFollowerAccount(store, environment, customerId);
+    return store.updateFollowerVerification(customerId, {
+      accountStatus: verification.account.status ?? null,
+      buyingPower: verification.account.buying_power ?? null,
+      cash: verification.account.cash ?? null,
+      optionsBuyingPower: verification.account.options_buying_power ?? null,
+      optionsApprovedLevel: verification.account.options_approved_level ?? null,
+      optionsTradingLevel: verification.account.options_trading_level ?? null,
+      accountReady:
+        verification.ready && verification.positionsAvailable && verification.openOrdersAvailable,
+      restrictions: {
+        trading_blocked: verification.account.trading_blocked === true,
+        account_blocked: verification.account.account_blocked === true,
+        transfers_blocked: verification.account.transfers_blocked === true,
+      },
+    });
+  } catch (error) {
+    await store.markFollowerNeedsAttention(customerId);
+    throw error;
+  }
 }

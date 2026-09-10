@@ -207,6 +207,8 @@ export const checkAlpaca = async (environment: Environment): Promise<readonly Ch
       cashReadable: Number.isFinite(Number(accountBody.cash)),
       buyingPowerReadable: Number.isFinite(Number(accountBody.buying_power)),
       optionsApprovalReadable: typeof accountBody.options_approved_level === 'number' || typeof accountBody.options_trading_level === 'number',
+      optionsApprovedLevel: typeof accountBody.options_approved_level === 'number' ? accountBody.options_approved_level : null,
+      optionsTradingLevel: typeof accountBody.options_trading_level === 'number' ? accountBody.options_trading_level : null,
       optionsLevel: typeof accountBody.options_approved_level === 'number'
         ? accountBody.options_approved_level
         : typeof accountBody.options_trading_level === 'number'

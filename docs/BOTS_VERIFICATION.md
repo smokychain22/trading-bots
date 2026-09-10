@@ -49,3 +49,29 @@ Trading remains disabled. No order endpoint exists in the customer API and no pr
 Docker Desktop was started for the local schema gate, but its Linux engine pipe
 remained unavailable. This remains a local infrastructure blocker. The independent
 GitHub PostgreSQL service executed and passed migration 005 and its SQL invariants.
+
+## Provider connection readiness milestone, 2026-09-10
+
+- TypeScript check, ESLint, production build, and dependency audit passed.
+- Node tests: 288 passed, including OAuth scope, options levels 0 through 3,
+  encrypted-token re-verification, missing-provider states, and database readiness.
+- Python quantitative tests: 298 passed. No Claude-owned quantitative source changed.
+- Browser tests: 16 passed across desktop, tablet, and mobile, including axe WCAG AA,
+  overflow checks, customer connection states, and independent operator checks.
+- Security scan: zero findings across 318 tracked and nonignored paths.
+- Docker PostgreSQL and Redis remain locally blocked because the Docker Desktop Linux
+  engine pipe is unavailable. GitHub CI is the required empty-database migration and
+  SQL-invariant execution environment for migration 007.
+- Vercel Production pull succeeded into ignored `.env.local`. The standard dotenv
+  loader correctly removed dotenv syntax quotes and overrode stale process values.
+  Vercel Secret values materialized locally as non-secret placeholders, so local
+  provider authentication is not claimed. Vercel documents Secret values as
+  write-only after saving while remaining available to deployed functions.
+- Production contains the five existing master provider and operator variable names.
+  It does not contain PostgreSQL, Alpaca Connect client, callback, or follower-token
+  encryption variable names. Customer connection therefore stays limited to approved
+  testing and PAPER execution remains locked.
+- The repository Reticle skill file is absent on current `main`. The installed SDK and
+  ignored `.reticle` metadata do not provide a skill workflow or saved verdict flow.
+  Playwright screenshots were visually inspected as the documented fallback. No
+  Reticle verdict is claimed.

@@ -5,6 +5,7 @@ import {
   completeAlpacaOAuth,
   oauthConfiguration,
   startAlpacaOAuth,
+  verifyFollowerAccount,
 } from "../src/customer/alpaca-oauth.js";
 import { loadEnvironment } from "../src/config/environment.js";
 import type {
@@ -57,6 +58,7 @@ class MemoryStore implements CustomerStore {
       optionsApprovedLevel: input.optionsApprovedLevel,
       optionsTradingLevel: input.optionsTradingLevel,
       accountReady: input.accountReady,
+      connectionStatus: "CONNECTED",
       lastBrokerSyncAt: new Date().toISOString(),
       participation: "READY",
       allocationUsd: null,
@@ -65,6 +67,8 @@ class MemoryStore implements CustomerStore {
   }
   async getFollower() { return this.follower; }
   async getFollowerToken() { return null; }
+  async updateFollowerVerification(): Promise<FollowerRecord> { if (!this.follower) throw new Error("missing"); return this.follower; }
+  async markFollowerNeedsAttention(): Promise<void> {}
   async saveParticipation(): Promise<FollowerRecord> { if (!this.follower) throw new Error("missing"); return this.follower; }
   async disconnectFollower(): Promise<void> { this.follower = null; }
 }
@@ -74,7 +78,7 @@ test("authorization URL is official, PAPER-only, state-bound, and minimally scop
   assert.equal(url.origin, "https://app.alpaca.markets");
   assert.equal(url.pathname, "/oauth/authorize");
   assert.equal(url.searchParams.get("env"), "paper");
-  assert.equal(url.searchParams.get("scope"), "trading data");
+  assert.equal(url.searchParams.get("scope"), "trading");
   assert.equal(url.searchParams.get("state"), "synthetic-state");
   assert.equal(url.searchParams.get("redirect_uri"), environment.ALPACA_OAUTH_REDIRECT_URI);
   assert.equal(url.searchParams.has("client_secret"), false);
@@ -93,7 +97,7 @@ test("OAuth callback consumes state once, verifies paper account, and stores onl
   globalThis.fetch = async (input) => {
     const url = String(input);
     if (url === "https://api.alpaca.markets/oauth/token")
-      return Response.json({ access_token: "synthetic-oauth-access-token-1234567890", token_type: "bearer", scope: "trading data" });
+      return Response.json({ access_token: "synthetic-oauth-access-token-1234567890", token_type: "bearer", scope: "trading" });
     if (url.endsWith("/v2/account"))
       return Response.json({ id: "paper-account-1234", status: "ACTIVE", cash: "10000", buying_power: "20000", options_buying_power: "15000", options_approved_level: 3, options_trading_level: 3, trading_blocked: false, account_blocked: false });
     return Response.json([]);
@@ -111,6 +115,33 @@ test("OAuth callback consumes state once, verifies paper account, and stores onl
       completeAlpacaOAuth(store, environment, "customer-a", state, "temporary-code"),
       /OAUTH_STATE_INVALID_EXPIRED_OR_REPLAYED/,
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("THETA core requires options level 1, while level 0 remains blocked", async () => {
+  const originalFetch = globalThis.fetch;
+  let level = 0;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/v2/account"))
+      return Response.json({
+        id: "paper-account-1234",
+        status: "ACTIVE",
+        options_approved_level: level,
+        options_trading_level: level,
+        trading_blocked: false,
+        account_blocked: false,
+      });
+    return Response.json([]);
+  };
+  try {
+    for (const expectedLevel of [0, 1, 2, 3]) {
+      level = expectedLevel;
+      const result = await verifyFollowerAccount("synthetic-oauth-token-1234567890");
+      assert.equal(result.ready, expectedLevel >= 1, `level ${expectedLevel}`);
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }

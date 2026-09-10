@@ -23,6 +23,7 @@ export type FollowerRecord = {
   readonly optionsApprovedLevel: number | null;
   readonly optionsTradingLevel: number | null;
   readonly accountReady: boolean;
+  readonly connectionStatus: "CONNECTED" | "NEEDS_ATTENTION" | "REVOKED";
   readonly lastBrokerSyncAt: string | null;
   readonly participation: string;
   readonly allocationUsd: number | null;
@@ -44,6 +45,17 @@ export type SaveFollowerInput = {
   readonly encryptedToken: EncryptedSecret;
   readonly scope: string;
 };
+export type FollowerVerificationUpdate = Pick<
+  SaveFollowerInput,
+  | "accountStatus"
+  | "buyingPower"
+  | "cash"
+  | "optionsBuyingPower"
+  | "optionsApprovedLevel"
+  | "optionsTradingLevel"
+  | "accountReady"
+  | "restrictions"
+>;
 export type StoredFollowerToken = EncryptedSecret & { readonly keyRef: string };
 
 export interface CustomerStore {
@@ -57,6 +69,8 @@ export interface CustomerStore {
   saveFollower(input: SaveFollowerInput): Promise<FollowerRecord>;
   getFollower(customerId: string): Promise<FollowerRecord | null>;
   getFollowerToken(customerId: string): Promise<StoredFollowerToken | null>;
+  updateFollowerVerification(customerId: string, input: FollowerVerificationUpdate): Promise<FollowerRecord>;
+  markFollowerNeedsAttention(customerId: string): Promise<void>;
   saveParticipation(customerId: string, allocationUsd: number): Promise<FollowerRecord>;
   disconnectFollower(customerId: string): Promise<void>;
 }
@@ -76,6 +90,10 @@ function followerFromRow(row: Record<string, unknown>): FollowerRecord {
     optionsApprovedLevel: numberOrNull(row.options_approved_level),
     optionsTradingLevel: numberOrNull(row.options_trading_level),
     accountReady: row.account_ready === true,
+    connectionStatus:
+      row.connection_status === "NEEDS_ATTENTION" || row.connection_status === "REVOKED"
+        ? row.connection_status
+        : "CONNECTED",
     lastBrokerSyncAt:
       row.last_broker_sync_at instanceof Date
         ? row.last_broker_sync_at.toISOString()
@@ -197,9 +215,11 @@ export class PostgresCustomerStore implements CustomerStore {
            token_secret_id, participation, account_ready, options_approved,
            account_status, buying_power, cash, options_buying_power,
            options_approved_level, options_trading_level, restrictions,
-           last_broker_sync_at, disconnected_at)
+           last_broker_sync_at, last_verified_at, connection_method,
+           connection_status, disconnected_at)
          VALUES ($1, $1, $2, $3, $4, 'COPY_NEW_AND_MANAGE', $5, $6,
-                 $7, $8, $9, $10, $11, $12, $13, now(), NULL)
+                 $7, $8, $9, $10, $11, $12, $13, now(), now(),
+                 'ALPACA_OAUTH', 'CONNECTED', NULL)
          ON CONFLICT (workspace_id, provider_code, provider_account_ref)
          DO UPDATE SET customer_id = EXCLUDED.customer_id,
            oauth_secret_ref = EXCLUDED.oauth_secret_ref,
@@ -212,10 +232,12 @@ export class PostgresCustomerStore implements CustomerStore {
            options_approved_level = EXCLUDED.options_approved_level,
            options_trading_level = EXCLUDED.options_trading_level,
            restrictions = EXCLUDED.restrictions,
-           last_broker_sync_at = now(), disconnected_at = NULL,
+           last_broker_sync_at = now(), last_verified_at = now(),
+           connection_method = 'ALPACA_OAUTH', connection_status = 'CONNECTED',
+           disconnected_at = NULL,
            updated_at = now()
          RETURNING follower_account_id`,
-        [input.customerId, input.providerAccountRef, `vault:${token.rows[0].token_secret_id}`, token.rows[0].token_secret_id, input.accountReady, input.optionsApprovedLevel !== null, input.accountStatus, input.buyingPower, input.cash, input.optionsBuyingPower, input.optionsApprovedLevel, input.optionsTradingLevel, JSON.stringify(input.restrictions)],
+        [input.customerId, input.providerAccountRef, `vault:${token.rows[0].token_secret_id}`, token.rows[0].token_secret_id, input.accountReady, Math.max(input.optionsApprovedLevel ?? 0, input.optionsTradingLevel ?? 0) >= 1, input.accountStatus, input.buyingPower, input.cash, input.optionsBuyingPower, input.optionsApprovedLevel, input.optionsTradingLevel, JSON.stringify(input.restrictions)],
       );
       await client.query(
         `INSERT INTO copy.customer_participation(customer_id, follower_account_id, state)
@@ -242,6 +264,7 @@ export class PostgresCustomerStore implements CustomerStore {
         ('••••' || right(f.provider_account_ref, 4)) AS provider_account_ref_masked,
         f.account_status, f.buying_power, f.cash, f.options_buying_power,
         f.options_approved_level, f.options_trading_level, f.account_ready,
+        f.connection_status,
         f.last_broker_sync_at, p.state AS participation_state, p.allocation_usd
        FROM copy.follower_account f
        LEFT JOIN copy.customer_participation p ON p.customer_id = f.customer_id
@@ -266,6 +289,43 @@ export class PostgresCustomerStore implements CustomerStore {
     return row
       ? { keyRef: row.key_ref, ciphertext: row.ciphertext, iv: row.iv, authTag: row.auth_tag }
       : null;
+  }
+
+  async updateFollowerVerification(customerId: string, input: FollowerVerificationUpdate) {
+    await this.pool.query(
+      `UPDATE copy.follower_account
+       SET account_status = $2, buying_power = $3, cash = $4,
+         options_buying_power = $5, options_approved_level = $6,
+         options_trading_level = $7, account_ready = $8,
+         options_approved = COALESCE($6, 0) >= 1 OR COALESCE($7, 0) >= 1, restrictions = $9,
+         connection_status = 'CONNECTED', last_verified_at = now(),
+         last_broker_sync_at = now(), updated_at = now()
+       WHERE customer_id = $1 AND disconnected_at IS NULL`,
+      [
+        customerId,
+        input.accountStatus,
+        input.buyingPower,
+        input.cash,
+        input.optionsBuyingPower,
+        input.optionsApprovedLevel,
+        input.optionsTradingLevel,
+        input.accountReady,
+        JSON.stringify(input.restrictions),
+      ],
+    );
+    const follower = await this.getFollower(customerId);
+    if (!follower) throw new Error("FOLLOWER_NOT_CONNECTED");
+    return follower;
+  }
+
+  async markFollowerNeedsAttention(customerId: string) {
+    await this.pool.query(
+      `UPDATE copy.follower_account
+       SET connection_status = 'NEEDS_ATTENTION', account_ready = false,
+         updated_at = now()
+       WHERE customer_id = $1 AND disconnected_at IS NULL`,
+      [customerId],
+    );
   }
 
   async saveParticipation(customerId: string, allocationUsd: number) {
@@ -324,7 +384,8 @@ export class PostgresCustomerStore implements CustomerStore {
       );
       await client.query(
         `UPDATE copy.follower_account SET disconnected_at = now(), participation = 'DISCONNECTED',
-          account_ready = false, updated_at = now() WHERE customer_id = $1 AND disconnected_at IS NULL`,
+          connection_status = 'REVOKED', account_ready = false, updated_at = now()
+         WHERE customer_id = $1 AND disconnected_at IS NULL`,
         [customerId],
       );
       await client.query(

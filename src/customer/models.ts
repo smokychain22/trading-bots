@@ -236,12 +236,16 @@ export interface FollowerAccount {
   provider: "ALPACA";
   environment: "PAPER";
   connection_method: "OAUTH";
+  connected: boolean;
+  ready_for_theta: boolean;
   masked_account: string | null;
-  state: "NOT_CONNECTED" | "AUTHORIZING" | "VERIFYING" | "READY" | "DEGRADED" | "REVOKED";
+  state: "NOT_CONNECTED" | "AUTHORIZING" | "VERIFYING" | "CONNECTED_NOT_READY" | "READY" | "DEGRADED" | "REVOKED";
   verified_at: string | null;
   buying_power: number | null;
   cash: number | null;
   options_enabled: boolean | null;
+  options_approved_level: number | null;
+  options_trading_level: number | null;
   last_sync_at: string | null;
 }
 
@@ -323,7 +327,7 @@ export interface MasterPaperConnection {
   environment: "PAPER";
   credential_storage: "SERVER_ENVIRONMENT_REFERENCE";
   configured: boolean;
-  connection_state: "CONFIGURED_NOT_VERIFIED" | "NOT_CONFIGURED" | "GOOD" | "DEGRADED" | "INVALID";
+  connection_state: "CONFIGURED_NOT_VERIFIED" | "MISSING" | "CONNECTED" | "DEGRADED" | "INVALID";
   masked_account: string | null;
   checked_at: string | null;
   capabilities: Record<string, string>;
@@ -339,6 +343,8 @@ export interface MasterPaperConnection {
   cash: number | null;
   buying_power: number | null;
   options_buying_power: number | null;
+  options_approved_level: number | null;
+  options_trading_level: number | null;
   options_level: number | null;
   open_positions: number | null;
   open_orders: number | null;

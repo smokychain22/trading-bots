@@ -49,6 +49,11 @@ account, positions, and open-orders requests, and stores only AES-256-GCM cipher
 The token is never returned to the browser. DELETE /api/v1/alpaca/connection revokes
 the stored ciphertext and disconnects the follower without liquidating any position.
 
+POST /api/v1/alpaca/connection/verify decrypts the authenticated customer's stored
+token server-side, reruns read-only PAPER account checks, and updates the last verified
+state. The response contains only masked account and safe readiness fields. It never
+returns the token and never submits an order.
+
 The OAuth routes fail closed when DATABASE_URL, Alpaca Connect credentials, callback,
 or encryption-key configuration is absent. No raw-key customer connection is
 supported.
@@ -73,11 +78,17 @@ POST /api/v1/operator/session exchanges an existing strong operator credential f
 
 GET /api/v1/operator/status requires a valid session and returns release visibility only. It reports current provider runtime as UNKNOWN, not as a continuously refreshed health result. DELETE /api/v1/operator/session clears the browser cookie.
 
-POST /api/v1/operator/master-readiness and POST
+POST /api/v1/operator/master-readiness, POST
+/api/v1/operator/optionomics-readiness, POST
+/api/v1/operator/database-readiness, and the compatibility POST
 /api/v1/operator/provider-readiness require the operator session. They issue only
 documented read-only provider requests and return safe capability state, operation
 alias, HTTP status, timestamps, masked account identity, and numeric account fields.
 They never return a credential or authorization header and never submit an order.
+
+The database readiness response states whether PostgreSQL is missing, connected,
+degraded, or needs migrations. Runtime connections are transaction-pooled. Migrations
+must use a direct or session-pooled URL so session-level migration behavior is safe.
 
 No trading, secret, deployment or account mutation is exposed. Stateless session logout removes the browser cookie, while an already stolen cookie remains valid until expiry or operator-key rotation. This small operator surface is not a customer IAM system. Individual accounts, MFA, centralized revocation and durable rate limiting remain requirements before expanding privileged functions.
 

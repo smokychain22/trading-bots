@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Environment } from "../config/environment.js";
-import { assertProviderConfiguration, loadEnvironment } from "../config/environment.js";
+import { loadEnvironment, missingProviderVariables } from "../config/environment.js";
 import { checkAlpaca, type CheckResult } from "../providers/readiness.js";
 import type {
   CopyPolicyReview,
@@ -60,12 +60,24 @@ export function paperCopyReadiness(
       provider: "ALPACA",
       environment: "PAPER",
       connection_method: "OAUTH",
+      connected,
+      ready_for_theta: follower?.accountReady ?? false,
       masked_account: follower?.maskedAccount ?? null,
-      state: !follower ? "NOT_CONNECTED" : follower.accountReady ? "READY" : "DEGRADED",
+      state: !follower
+        ? "NOT_CONNECTED"
+        : follower.connectionStatus === "REVOKED"
+          ? "REVOKED"
+          : follower.connectionStatus === "NEEDS_ATTENTION"
+            ? "DEGRADED"
+            : follower.accountReady
+              ? "READY"
+              : "CONNECTED_NOT_READY",
       verified_at: follower?.lastBrokerSyncAt ?? null,
       buying_power: follower?.buyingPower ?? null,
       cash: follower?.cash ?? null,
-      options_enabled: follower ? (follower.optionsTradingLevel ?? follower.optionsApprovedLevel ?? 0) >= 2 : null,
+      options_enabled: follower ? (follower.optionsTradingLevel ?? follower.optionsApprovedLevel ?? 0) >= 1 : null,
+      options_approved_level: follower?.optionsApprovedLevel ?? null,
+      options_trading_level: follower?.optionsTradingLevel ?? null,
       last_sync_at: follower?.lastBrokerSyncAt ?? null,
     },
     oauth: {
@@ -185,7 +197,7 @@ export function masterConnectionMetadata(
     environment: "PAPER",
     credential_storage: "SERVER_ENVIRONMENT_REFERENCE",
     configured,
-    connection_state: configured ? "CONFIGURED_NOT_VERIFIED" : "NOT_CONFIGURED",
+    connection_state: configured ? "CONFIGURED_NOT_VERIFIED" : "MISSING",
     masked_account: null,
     checked_at: null,
     capabilities: {},
@@ -195,6 +207,8 @@ export function masterConnectionMetadata(
     cash: null,
     buying_power: null,
     options_buying_power: null,
+    options_approved_level: null,
+    options_trading_level: null,
     options_level: null,
     open_positions: null,
     open_orders: null,
@@ -221,8 +235,15 @@ export function summarizeMasterReadiness(
   const numberDetail = (name: string): number | null =>
     typeof account?.details[name] === "number" ? account.details[name] : null;
   const states = results.map((result) => result.state);
-  const connectionState = states.every((state) => state === "GOOD")
-    ? "GOOD"
+  const requiredConnectionResults = results.filter((result) => [
+    "ACCOUNT_ENVIRONMENT",
+    "POSITIONS_READ",
+    "OPEN_ORDERS_READ",
+    "MARKET_CLOCK",
+    "MARKET_CALENDAR",
+  ].includes(result.capability));
+  const connectionState = requiredConnectionResults.every((result) => result.state === "GOOD")
+    ? "CONNECTED"
     : states.some((state) => state === "INVALID")
       ? "INVALID"
       : "DEGRADED";
@@ -256,6 +277,8 @@ export function summarizeMasterReadiness(
     cash: numberDetail("cash"),
     buying_power: numberDetail("buyingPower"),
     options_buying_power: numberDetail("optionsBuyingPower"),
+    options_approved_level: numberDetail("optionsApprovedLevel"),
+    options_trading_level: numberDetail("optionsTradingLevel"),
     options_level: numberDetail("optionsLevel"),
     open_positions: typeof positions?.details.positionCount === "number" ? positions.details.positionCount : null,
     open_orders: typeof orders?.details.openOrderCount === "number" ? orders.details.openOrderCount : null,
@@ -271,6 +294,7 @@ export function summarizeMasterReadiness(
 export async function verifyMasterPaperConnection(
   environment: Environment,
 ): Promise<MasterPaperConnection> {
-  assertProviderConfiguration(environment, "ALPACA");
+  if (missingProviderVariables(environment, "ALPACA").length > 0)
+    return masterConnectionMetadata({});
   return summarizeMasterReadiness(await checkAlpaca(environment));
 }

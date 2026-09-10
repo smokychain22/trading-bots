@@ -122,15 +122,16 @@ export function bindSimulation() {
 }
 
 export function accountPage(readiness) {
-  const connected = readiness.follower_account.state === "READY";
+  const connected = readiness.follower_account.connected === true;
+  const ready = readiness.follower_account.ready_for_theta === true;
   const value = (input, formatter = String) =>
     input == null ? "—" : formatter(input);
   const connect = readiness.oauth.state === "READY"
     ? `<a class="button primary" href="/api/v1/alpaca/oauth/start">Connect Alpaca</a>`
     : readiness.oauth.state === "CUSTOMER_LOGIN_REQUIRED"
       ? `<form id="customer-auth" class="customer-auth"><div class="auth-mode" role="group" aria-label="Account action"><button type="button" class="choice active" data-auth-mode="login">Sign in</button><button type="button" class="choice" data-auth-mode="register">Create account</button></div><label>Email<input name="email" type="email" autocomplete="email" required></label><label>Password<input name="password" type="password" autocomplete="current-password" minlength="12" required></label><button class="button primary" type="submit">Sign in</button><p id="auth-result" role="alert"></p></form>`
-      : `<button class="button primary" disabled>Connect Alpaca</button><p class="simple-status">Alpaca connection is not available yet.</p>`;
-  return `<div class="page-heading"><div><p class="eyebrow">ACCOUNT</p><h1>Your paper account</h1><p class="lede">Connect Alpaca Paper so THETA can copy and manage positions within your chosen amount.</p></div>${badge("PAPER ONLY", "blue")}</div><section class="panel account-simple"><div class="account-connection"><div><span class="connection-mark" aria-hidden="true">A</span><div><h2>Alpaca Paper</h2><p>${connected ? `Connected · ${esc(readiness.follower_account.masked_account ?? "Paper account")}` : "Not connected"}</p></div></div>${badge(connected ? "CONNECTED" : "NOT CONNECTED", connected ? "green" : "")}</div>${connected ? `<dl class="account-facts"><div><dt>Buying power</dt><dd>${value(readiness.follower_account.buying_power, money)}</dd></div><div><dt>Available cash</dt><dd>${value(readiness.follower_account.cash, money)}</dd></div><div><dt>Options enabled</dt><dd>${value(readiness.follower_account.options_enabled, (v) => (v ? "Yes" : "No"))}</dd></div><div><dt>Last sync</dt><dd>${value(readiness.follower_account.last_sync_at)}</dd></div></dl><button id="disconnect-account" class="button secondary">Disconnect account</button><p id="account-result" role="status"></p>` : `<p>Your brokerage account stays with Alpaca. You’ll authorize a paper account on Alpaca’s website.</p>${connect}`}</section>`;
+      : `<button class="button primary" disabled>Connect Alpaca</button><p class="simple-status">THETA is in private paper testing. Account connection opens after Alpaca Connect approval.</p>`;
+  return `<div class="page-heading"><div><p class="eyebrow">ACCOUNT</p><h1>Your paper account</h1><p class="lede">Connect Alpaca Paper so THETA can prepare follower-specific paper trades within your chosen amount.</p></div>${badge("PAPER ONLY", "blue")}</div><section class="panel account-simple"><div class="account-connection"><div><span class="connection-mark" aria-hidden="true">A</span><div><h2>Alpaca Paper</h2><p>${connected ? `Connected · ${esc(readiness.follower_account.masked_account ?? "Paper account")}` : "Not connected"}</p></div></div>${badge(connected ? (ready ? "READY" : "NEEDS ATTENTION") : "NOT CONNECTED", connected ? (ready ? "green" : "amber") : "")}</div>${connected ? `<dl class="account-facts"><div><dt>Buying power</dt><dd>${value(readiness.follower_account.buying_power, money)}</dd></div><div><dt>Available cash</dt><dd>${value(readiness.follower_account.cash, money)}</dd></div><div><dt>Options approval</dt><dd>${value(readiness.follower_account.options_approved_level, (v) => `Level ${v}`)}</dd></div><div><dt>Options trading</dt><dd>${value(readiness.follower_account.options_trading_level, (v) => `Level ${v}`)}</dd></div><div><dt>Last verified</dt><dd>${value(readiness.follower_account.verified_at)}</dd></div></dl>${ready ? "" : '<p class="notice amber">The account is connected, but it does not currently meet THETA’s paper readiness checks. THETA requires options level 1 or higher.</p>'}<div class="heading-actions"><button id="verify-account" class="button primary">Verify connection</button><button id="disconnect-account" class="button secondary">Disconnect account</button><button id="customer-signout" class="button quiet">Sign out</button></div><p id="account-result" role="status"></p>` : `<p>Your brokerage account stays with Alpaca. You’ll authorize a paper account on Alpaca’s website.</p>${connect}`}</section>`;
 }
 
 export function bindAccount() {
@@ -158,21 +159,45 @@ export function bindAccount() {
     result.textContent = response.ok ? "Alpaca Paper disconnected." : "The account couldn’t be disconnected.";
     if (response.ok) location.reload();
   });
+  document.querySelector("#verify-account")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    const result = document.querySelector("#account-result");
+    button.disabled = true;
+    button.textContent = "Verifying…";
+    try {
+      const response = await fetch("/api/v1/alpaca/connection/verify", { method: "POST", signal: AbortSignal.timeout(15000) });
+      result.textContent = response.ok ? "Alpaca Paper connection verified. No order was submitted." : "The connection needs attention. Reconnect Alpaca Paper if this continues.";
+      if (response.ok) setTimeout(() => location.reload(), 600);
+    } catch {
+      result.textContent = "Verification is unavailable right now. No order was submitted.";
+    } finally {
+      button.disabled = false;
+      button.textContent = "Verify connection";
+    }
+  });
+  document.querySelector("#customer-signout")?.addEventListener("click", async () => {
+    await fetch("/api/v1/auth/session", { method: "DELETE" });
+    location.assign("/account");
+  });
 }
 
 export function paperCopyPage(readiness) {
   const number = (name, text, value, min, max, step = "1") =>
     `<label>${text}<input name="${name}" type="number" value="${value}" min="${min}" max="${max}" step="${step}" required></label>`;
-  const connected = readiness.follower_account.state === "READY";
+  const connected = readiness.follower_account.connected === true;
+  const ready = readiness.follower_account.ready_for_theta === true;
   const status = new URL(location.href).searchParams.get("connection");
   if (!connected) {
     const action = readiness.oauth.state === "READY"
       ? `<a class="button primary" href="/api/v1/alpaca/oauth/start">Connect Alpaca</a>`
       : readiness.oauth.state === "CUSTOMER_LOGIN_REQUIRED"
         ? link("/account?signin=required", "Sign in to connect", "button primary")
-        : `<button class="button primary" disabled>Connect Alpaca</button><p class="simple-status">Alpaca connection is not available yet.</p>`;
+        : `<button class="button primary" disabled>Connect Alpaca</button><p class="simple-status">THETA is in private paper testing. Account connection opens after Alpaca Connect approval.</p>`;
     const message = status === "denied" ? "Connection was canceled." : status === "invalid" ? "That connection request expired. Start again." : status === "failed" ? "Alpaca couldn’t be verified." : "Connect your Alpaca Paper account.";
     return `<div class="copy-heading"><div><p class="eyebrow">PAPER COPY SETUP</p><h2>Copy THETA</h2><p>Connect, choose an amount, then review.</p></div>${badge("PAPER ONLY", "blue")}</div><section class="panel copy-focus"><p class="step-label">STEP 1 OF 3</p><h2>Connect Alpaca</h2><p>${esc(message)}</p>${action}</section>`;
+  }
+  if (!ready) {
+    return `<div class="copy-heading"><div><p class="eyebrow">PAPER COPY SETUP</p><h2>Copy THETA</h2><p>Your Alpaca Paper account is connected, but needs attention.</p></div>${badge("NEEDS ATTENTION", "amber")}</div><section class="panel copy-focus"><p class="step-label">STEP 1 OF 3</p><h2>Verify account readiness</h2><p>THETA requires options level 1 or higher for cash-secured puts. Recheck your connection before choosing an amount.</p>${link("/account", "Review account", "button primary")}</section>`;
   }
   return `<div class="copy-heading"><div><p class="eyebrow">PAPER COPY SETUP</p><h2>Copy THETA</h2><p>Your Alpaca Paper account is connected.</p></div>${badge("CONNECTED", "green")}</div><form id="copy-policy" class="copy-policy customer-copy-form"><section class="panel copy-focus"><div class="section-heading"><div><p class="step-label">STEP 2 OF 3</p><h2>How much should THETA use?</h2><p>This is the maximum paper capital THETA can use.</p></div><output id="allocation-output">$10,000</output></div><input type="hidden" name="allocation_usd" value="10000"><div class="allocation-choices" role="group" aria-label="Allocation"><button type="button" class="choice" data-allocation="5000">$5,000</button><button type="button" class="choice active" data-allocation="10000">$10,000</button><button type="button" class="choice" data-allocation="25000">$25,000</button><button type="button" class="choice" data-allocation="custom">Custom</button></div><label id="custom-allocation" hidden>Custom allocation ($)<input type="number" min="0" max="10000000" step="100" value="10000"></label><details class="advanced-copy"><summary>Safety limits</summary><div class="advanced-fields">${number("max_open_positions", "Maximum open positions", 3, 0, 1000)}${number("max_bot_capital_pct", "Maximum allocation (%)", 25, 0, 100, "0.1")}${number("max_daily_loss_usd", "Daily loss limit ($)", 500, 0, 10000000)}${number("max_slippage_per_contract_usd", "Price protection ($)", 10, 0, 100000, "0.01")}</div></details><button class="button primary review-button" type="submit">Continue</button><p id="copy-error" role="alert"></p></section></form><section id="copy-review" class="panel copy-review" aria-live="polite" hidden></section>`;
 }
@@ -234,7 +259,7 @@ export function bindPaperCopy() {
       form.hidden = true;
       const target = document.querySelector("#copy-review");
       target.hidden = false;
-      target.innerHTML = `<div class="section-heading"><div><p class="step-label">STEP 3 OF 3</p><h2>Review</h2></div>${badge("PAPER", "blue")}</div><dl class="review-grid customer-review"><div><dt>Bot</dt><dd>THETA</dd></div><div><dt>Account</dt><dd>Alpaca Paper, connected</dd></div><div><dt>Amount</dt><dd>${money(review.policy.allocation_usd)}</dd></div><div><dt>Automatic copying</dt><dd>On</dd></div></dl><p>THETA will automatically copy and manage eligible trades. You don’t approve each trade.</p><button id="start-copying" class="button primary" ${review.activation_allowed ? "" : "disabled"}>Start Copying</button><p id="activation-note" class="simple-status">Order submission remains locked until the paper-execution release gate.</p>`;
+      target.innerHTML = `<div class="section-heading"><div><p class="step-label">STEP 3 OF 3</p><h2>Review</h2></div>${badge("PAPER", "blue")}</div><dl class="review-grid customer-review"><div><dt>Bot</dt><dd>THETA</dd></div><div><dt>Account</dt><dd>Alpaca Paper, connected</dd></div><div><dt>Amount</dt><dd>${money(review.policy.allocation_usd)}</dd></div><div><dt>Copy status</dt><dd>Prepared, execution locked</dd></div></dl><p>Save this paper allocation now. THETA will not submit an order until paper execution is separately released.</p><button id="start-copying" class="button primary">Save setup</button><p id="activation-note" class="simple-status">Saving this setup cannot place an order.</p>`;
       document.querySelector("#start-copying")?.addEventListener("click", async () => {
         const start = document.querySelector("#start-copying");
         start.disabled = true;
@@ -262,7 +287,7 @@ export function bindOwner() {
   const form = document.querySelector("#owner-login");
   const page = location.pathname;
   const systemTone = (value) =>
-    value === "HEALTHY" || value === "GOOD"
+    value === "HEALTHY" || value === "GOOD" || value === "CONNECTED" || value === "READY"
       ? "green"
       : value === "BLOCKED" || value === "DEGRADED"
         ? "amber"
@@ -270,7 +295,7 @@ export function bindOwner() {
   const signOut =
     '<button id="logout" class="button secondary">Sign out</button>';
   const readinessPanel = () =>
-    `<section class="operator-readiness"><div><h2>Provider verification</h2><p>Check the master Alpaca Paper account and Optionomics using read-only requests.</p></div><button id="verify-master" class="button secondary">Verify providers</button><div id="master-result" aria-live="polite"></div></section>`;
+    `<section class="operator-readiness"><div><h2>Readiness verification</h2><p>Run independent read-only checks from the deployed server.</p></div><div class="heading-actions"><button id="verify-master" class="button secondary">Verify Alpaca Paper</button><button id="verify-optionomics" class="button secondary">Verify Optionomics</button><button id="verify-database" class="button secondary">Verify database</button></div><div id="master-result" aria-live="polite"></div><div id="optionomics-result" aria-live="polite"></div><div id="database-result" aria-live="polite"></div></section>`;
 
   function renderPage(data) {
     const system = (name) => data.systems[name] ?? "UNKNOWN";
@@ -280,10 +305,10 @@ export function bindOwner() {
     if (page === "/ops/trading")
       return `${title}${readinessPanel()}<div class="ops-control-grid">${opsGroup("Positions", "Broker-reconciled master PAPER exposure only.", [["Open positions", data.runtime_detail.open_positions ?? "UNKNOWN"], ["Assignment inventory", "UNKNOWN"], ["Recovery positions", "UNKNOWN"], ["Corporate actions", "UNKNOWN"]])}${opsGroup("Orders and fills", "No order mutation is exposed. Ambiguous submissions require reconciliation.", [["Execution", system("execution"), systemTone(system("execution"))], ["Pending orders", data.runtime_detail.pending_orders ?? "UNKNOWN"], ["Partial fills", "UNKNOWN"], ["Unknown submissions", data.runtime_detail.unknown_submissions ?? "UNKNOWN"], ["Reconciliation", system("reconciliation"), systemTone(system("reconciliation"))]])}</div>`;
     if (page === "/ops/copy")
-      return `${title}<div class="ops-control-grid">${opsGroup("Copy engine", "The deterministic copy contract and database schema are present. Submission remains disabled.", [["Contract", "READY", "green"], ["Persistence schema", "READY", "green"], ["Execution", system("copy_engine"), systemTone(system("copy_engine"))], ["Raw master quantity copy", "PROHIBITED"], ["Quantity zero", "VALID", "green"]])}${opsGroup("Followers", "Every follower needs independent sizing, order state, fills, lifecycle, and reconciliation.", [["Connected followers", "UNKNOWN"], ["Copied full", "UNKNOWN"], ["Copied reduced", "UNKNOWN"], ["Skipped", "UNKNOWN"], ["Diverged", "UNKNOWN"]])}${opsGroup("Safety semantics", "Customer actions control participation without changing THETA strategy.", [["New entry stop", "MANAGE EXISTING"], ["Disconnect", "NO AUTO-LIQUIDATION"], ["Unknown submission", "RECONCILE"], ["Join existing", "DISABLED"]])}</div>`;
+      return `${title}<div class="ops-control-grid">${opsGroup("Copy engine", "Follower intent contracts are present. Broker submission remains locked.", [["Contract", "READY", "green"], ["Database", data.database.state, systemTone(data.database.state)], ["Execution", system("copy_engine"), systemTone(system("copy_engine"))], ["Follower execution", "LOCKED", "amber"], ["Quantity zero", "VALID", "green"]])}${opsGroup("Followers", "Connections remain tenant-scoped and independently verified.", [["Connected followers", data.database.active_followers ?? "UNKNOWN"], ["Private beta followers", data.copy_platform.private_paper_beta.follower_count], ["Alpaca Connect", data.copy_platform.oauth], ["Token vault", data.copy_platform.token_vault], ["Follower adapter", data.copy_platform.follower_broker_adapter]])}${opsGroup("Private Paper Beta", data.copy_platform.private_paper_beta.reason, [["State", data.copy_platform.private_paper_beta.state, "amber"], ["Policy", data.copy_platform.private_paper_beta.policy_status, "amber"], ["Raw-key endpoint", "UNAVAILABLE"], ["Public raw-key form", "PROHIBITED"]])}</div>`;
     if (page === "/ops/system")
       return `${title}<div class="ops-health">${Object.entries(data.systems).map(([name, state]) => `<article><span>${esc(name.replaceAll("_", " "))}</span>${badge(state, systemTone(state))}</article>`).join("")}</div>${readinessPanel()}<section class="panel release-gates"><h2>Release gates</h2><ul>${data.gates.map((gate) => `<li>${esc(gate)}</li>`).join("")}</ul></section><p class="caption">${esc(data.security)}</p>`;
-    return `${title}<section class="ops-section"><div class="section-heading"><div><h2>THETA runtime</h2><p>Real provider checks are available. Order submission remains locked.</p></div>${badge(data.runtime_detail.stage, "amber")}</div><dl class="capability-grid"><div><dt>Website</dt><dd>${badge(data.website, "blue")}</dd></div><div><dt>Master mode</dt><dd>${badge(data.bot_mode, "blue")}</dd></div><div><dt>Trading</dt><dd>${badge(data.trading, "amber")}</dd></div><div><dt>Customer copy</dt><dd>${badge(data.copy, "amber")}</dd></div></dl></section>${readinessPanel()}<div class="ops-control-grid">${opsGroup("Master THETA", "Server-side Alpaca Paper connection.", [["Alpaca Paper", data.master_connection.connection_state, systemTone(data.master_connection.connection_state)], ["Runtime", system("theta_runtime"), systemTone(system("theta_runtime"))], ["Optionomics", data.provider_runtime], ["Market data", system("market_data")], ["Execution", "LOCKED", "amber"]])}${opsGroup("Copy platform", "Customer connection readiness.", [["Alpaca OAuth", data.copy_platform.oauth, systemTone(data.copy_platform.oauth)], ["Customer IAM", data.copy_platform.customer_iam, systemTone(data.copy_platform.customer_iam)], ["Token vault", data.copy_platform.token_vault, systemTone(data.copy_platform.token_vault)], ["Follower adapter", data.copy_platform.follower_broker_adapter, "green"], ["Copy execution", data.copy_platform.copy_execution, "amber"]])}${opsGroup("Current action", "No decision is displayed without persisted runtime evidence.", [["Last decision", data.runtime_detail.last_decision ?? "UNKNOWN"], ["Next scan", data.runtime_detail.next_scan ?? "UNKNOWN"]])}${opsGroup("Attention", "The highest-priority release blockers.", data.gates.map((gate) => [gate, "OPEN", "amber"]))}</div>`;
+    return `${title}<section class="ops-section"><div class="section-heading"><div><h2>THETA runtime</h2><p>Provider checks run independently. Order submission remains locked.</p></div>${badge(data.runtime_detail.stage, "amber")}</div><dl class="capability-grid"><div><dt>Website</dt><dd>${badge(data.website, "blue")}</dd></div><div><dt>Master mode</dt><dd>${badge(data.bot_mode, "blue")}</dd></div><div><dt>THETA Shadow</dt><dd>${badge("BLOCKED", "amber")}</dd></div><div><dt>Execution</dt><dd>${badge("LOCKED", "amber")}</dd></div></dl></section>${readinessPanel()}<div class="ops-control-grid">${opsGroup("Master THETA", "Independent platform account and research providers.", [["Alpaca Paper", data.master_connection.connection_state, systemTone(data.master_connection.connection_state)], ["Optionomics", data.provider_runtime], ["THETA Shadow", "BLOCKED", "amber"], ["Database", data.database.state, systemTone(data.database.state)], ["Market data", system("market_data")], ["Execution", "LOCKED", "amber"]])}${opsGroup("Customer Copy", "Separate follower connection and persistence readiness.", [["Customer IAM", data.copy_platform.customer_iam, systemTone(data.copy_platform.customer_iam)], ["Private Paper Beta", data.copy_platform.private_paper_beta.state, "amber"], ["Alpaca Connect", data.copy_platform.oauth, systemTone(data.copy_platform.oauth)], ["Token vault", data.copy_platform.token_vault, systemTone(data.copy_platform.token_vault)], ["Follower adapter", data.copy_platform.follower_broker_adapter, "green"], ["Copy engine", data.copy_platform.copy_execution, "amber"], ["Follower execution", "LOCKED", "amber"]])}${opsGroup("Current action", "No decision is displayed without persisted runtime evidence.", [["Last decision", data.runtime_detail.last_decision ?? "UNKNOWN"], ["Next scan", data.runtime_detail.next_scan ?? "UNKNOWN"]])}${opsGroup("Attention", "Select a verification above or resolve these release gates.", data.gates.map((gate) => [gate, "OPEN", "amber"]))}</div>`;
   }
 
   function bindRuntimeActions() {
@@ -293,21 +318,57 @@ export function bindOwner() {
       button.textContent = "Verifying…";
       const target = document.querySelector("#master-result");
       try {
-        const readinessResponse = await fetch("/api/v1/operator/provider-readiness", {
+        const readinessResponse = await fetch("/api/v1/operator/master-readiness", {
           method: "POST",
           signal: AbortSignal.timeout(30000),
         });
         const payload = await readinessResponse.json();
         if (!readinessResponse.ok && readinessResponse.status !== 207)
           throw new Error(payload.error?.message ?? "Verification unavailable.");
-        const result = payload.data.master;
+        const result = payload.data;
         const shown = (value, formatter = String) => value == null ? "—" : formatter(value);
-        target.innerHTML = `<p class="notice ${result.connection_state === "GOOD" ? "green" : "amber"}"><strong>MASTER THETA PAPER · ${esc(result.connection_state)}</strong><br>${esc(result.masked_account ?? "Account identity unavailable")} · checked ${esc(result.checked_at ?? "unknown")}</p><dl class="capability-grid"><div><dt>Account status</dt><dd>${esc(shown(result.account_status))}</dd></div><div><dt>Equity</dt><dd>${esc(shown(result.equity, money))}</dd></div><div><dt>Cash</dt><dd>${esc(shown(result.cash, money))}</dd></div><div><dt>Buying power</dt><dd>${esc(shown(result.buying_power, money))}</dd></div><div><dt>Options buying power</dt><dd>${esc(shown(result.options_buying_power, money))}</dd></div><div><dt>Options level</dt><dd>${esc(shown(result.options_level))}</dd></div><div><dt>Open positions</dt><dd>${esc(shown(result.open_positions))}</dd></div><div><dt>Open orders</dt><dd>${esc(shown(result.open_orders))}</dd></div><div><dt>Market</dt><dd>${esc(result.market_open == null ? "Unknown" : result.market_open ? "Open" : "Closed")}</dd></div><div><dt>Market data</dt><dd>${esc(result.market_data_feed)}</dd></div><div><dt>Optionomics</dt><dd>${badge(payload.data.optionomics.state, systemTone(payload.data.optionomics.state))}</dd></div></dl>`;
+        target.innerHTML = `<p class="notice ${result.connection_state === "CONNECTED" ? "green" : "amber"}"><strong>MASTER THETA PAPER · ${esc(result.connection_state)}</strong><br>${esc(result.masked_account ?? "Account identity unavailable")} · checked ${esc(result.checked_at ?? "not verified")}</p><dl class="capability-grid"><div><dt>Account status</dt><dd>${esc(shown(result.account_status))}</dd></div><div><dt>Equity</dt><dd>${esc(shown(result.equity, money))}</dd></div><div><dt>Cash</dt><dd>${esc(shown(result.cash, money))}</dd></div><div><dt>Buying power</dt><dd>${esc(shown(result.buying_power, money))}</dd></div><div><dt>Options buying power</dt><dd>${esc(shown(result.options_buying_power, money))}</dd></div><div><dt>Options approved</dt><dd>${esc(shown(result.options_approved_level, (value) => `Level ${value}`))}</dd></div><div><dt>Options trading</dt><dd>${esc(shown(result.options_trading_level, (value) => `Level ${value}`))}</dd></div><div><dt>Open positions</dt><dd>${esc(shown(result.open_positions))}</dd></div><div><dt>Open orders</dt><dd>${esc(shown(result.open_orders))}</dd></div><div><dt>Market</dt><dd>${esc(result.market_open == null ? "Unknown" : result.market_open ? "Open" : "Closed")}</dd></div><div><dt>Market data</dt><dd>${esc(result.market_data_feed)}</dd></div></dl>`;
       } catch (error) {
         target.innerHTML = `<p class="notice amber">${esc(error.message)} No order was submitted.</p>`;
       } finally {
         button.disabled = false;
-        button.textContent = "Verify providers";
+        button.textContent = "Verify Alpaca Paper";
+      }
+    });
+    document.querySelector("#verify-optionomics")?.addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = "Verifying…";
+      const target = document.querySelector("#optionomics-result");
+      try {
+        const response = await fetch("/api/v1/operator/optionomics-readiness", { method: "POST", signal: AbortSignal.timeout(30000) });
+        const payload = await response.json();
+        if (!response.ok && response.status !== 207) throw new Error("Optionomics verification unavailable.");
+        const result = payload.data;
+        target.innerHTML = `<p class="notice ${result.state === "CONNECTED" ? "green" : "amber"}"><strong>OPTIONOMICS · ${esc(result.state)}</strong><br>Checked ${esc(result.checked_at)} · latency ${esc(result.latency_ms == null ? "unknown" : `${result.latency_ms} ms`)}</p><p class="caption">${esc(result.capabilities.length)} documented capability checks returned.</p>`;
+      } catch (error) {
+        target.innerHTML = `<p class="notice amber">${esc(error.message)}</p>`;
+      } finally {
+        button.disabled = false;
+        button.textContent = "Verify Optionomics";
+      }
+    });
+    document.querySelector("#verify-database")?.addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = "Verifying…";
+      const target = document.querySelector("#database-result");
+      try {
+        const response = await fetch("/api/v1/operator/database-readiness", { method: "POST", signal: AbortSignal.timeout(10000) });
+        const payload = await response.json();
+        if (!response.ok && response.status !== 207) throw new Error("Database verification unavailable.");
+        const result = payload.data;
+        target.innerHTML = `<p class="notice ${result.state === "CONNECTED" ? "green" : "amber"}"><strong>POSTGRESQL · ${esc(result.state)}</strong><br>Runtime: transaction pooled · migrations: direct or session pooled</p><p class="caption">Latest migration: ${esc(result.latest_migration ?? "not available")}. Required: ${esc(result.required_migration)}.</p>`;
+      } catch (error) {
+        target.innerHTML = `<p class="notice amber">${esc(error.message)}</p>`;
+      } finally {
+        button.disabled = false;
+        button.textContent = "Verify database";
       }
     });
     document.querySelector("#logout")?.addEventListener("click", async () => {

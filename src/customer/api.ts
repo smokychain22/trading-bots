@@ -4,7 +4,6 @@ import { z } from "zod";
 import { botDetail, botSummaries } from "./catalog.js";
 import { matchesOperatorToken } from "../providers/readiness-handler.js";
 import { loadEnvironment } from "../config/environment.js";
-import { checkOptionomics } from "../providers/readiness.js";
 import {
   masterConnectionMetadata,
   followerResults,
@@ -22,8 +21,14 @@ import {
 import {
   completeAlpacaOAuth,
   oauthConfiguration,
+  reverifyStoredFollowerAccount,
   startAlpacaOAuth,
 } from "./alpaca-oauth.js";
+import { checkDatabaseReadiness } from "./database-readiness.js";
+import {
+  privatePaperBetaReadiness,
+  verifyOptionomicsConnection,
+} from "./operator-readiness.js";
 
 const simulationSchema = z
   .object({
@@ -255,6 +260,43 @@ export default async function customerHandler(
       await store.disconnectFollower(customer.customerId);
       return send(response, 200, { api_version: "v1", data: { connected: false, orders_submitted: false } });
     }
+    if (route === "alpaca/connection/verify" && request.method === "POST") {
+      if (!sameOrigin(request))
+        return send(response, 403, { error: { code: "ORIGIN_REJECTED" } });
+      let store;
+      try {
+        store = customerStore(environment.DATABASE_URL);
+      } catch {
+        return send(response, 503, { error: { code: "ALPACA_CONNECTION_NOT_AVAILABLE" } });
+      }
+      const customer = await currentCustomer(request, store);
+      if (!customer)
+        return send(response, 401, { error: { code: "LOGIN_REQUIRED" } });
+      try {
+        const follower = await reverifyStoredFollowerAccount(
+          store,
+          environment,
+          customer.customerId,
+        );
+        return send(response, 200, {
+          api_version: "v1",
+          data: {
+            connected: true,
+            ready_for_theta: follower.accountReady,
+            masked_account: follower.maskedAccount,
+            buying_power: follower.buyingPower,
+            options_approved_level: follower.optionsApprovedLevel,
+            options_trading_level: follower.optionsTradingLevel,
+            last_verified_at: follower.lastBrokerSyncAt,
+            orders_submitted: false,
+          },
+        });
+      } catch {
+        return send(response, 409, {
+          error: { code: "CONNECTION_NEEDS_ATTENTION" },
+        });
+      }
+    }
     if (parts[0] === "operator") {
       const key = process.env.THETA_READINESS_TOKEN ?? "";
       if (request.method === "POST" || request.method === "DELETE") {
@@ -290,7 +332,7 @@ export default async function customerHandler(
       if (route === "operator/master-readiness" && request.method === "POST") {
         try {
           const data = await verifyMasterPaperConnection(environment);
-          return send(response, data.connection_state === "GOOD" ? 200 : 207, {
+          return send(response, data.connection_state === "CONNECTED" ? 200 : 207, {
             api_version: "v1",
             data,
           });
@@ -304,21 +346,31 @@ export default async function customerHandler(
           });
         }
       }
+      if (route === "operator/optionomics-readiness" && request.method === "POST") {
+        const data = await verifyOptionomicsConnection(environment);
+        return send(response, data.state === "CONNECTED" ? 200 : 207, {
+          api_version: "v1",
+          data: { ...data, orders_submitted: false },
+        });
+      }
+      if (route === "operator/database-readiness" && request.method === "POST") {
+        const data = await checkDatabaseReadiness(environment.DATABASE_URL);
+        return send(response, data.state === "CONNECTED" ? 200 : 207, {
+          api_version: "v1",
+          data,
+        });
+      }
       if (route === "operator/provider-readiness" && request.method === "POST") {
         try {
-          const [master, optionomicsResults] = await Promise.all([
+          const [master, optionomics] = await Promise.all([
             verifyMasterPaperConnection(environment),
-            checkOptionomics(environment),
+            verifyOptionomicsConnection(environment),
           ]);
           return send(response, 200, {
             api_version: "v1",
             data: {
               master,
-              optionomics: {
-                state: optionomicsResults.every((item) => item.state === "GOOD") ? "GOOD" : "DEGRADED",
-                checked_at: optionomicsResults.at(-1)?.observedAt ?? null,
-                capabilities: Object.fromEntries(optionomicsResults.map((item) => [item.capability, item.state])),
-              },
+              optionomics,
               orders_submitted: false,
             },
           });
@@ -331,6 +383,7 @@ export default async function customerHandler(
       if (route !== "operator/status")
         return send(response, 404, { error: { code: "NOT_FOUND" } });
       const oauth = oauthConfiguration(environment);
+      const database = await checkDatabaseReadiness(environment.DATABASE_URL);
       return send(response, 200, {
         api_version: "v1",
         data: {
@@ -358,12 +411,13 @@ export default async function customerHandler(
             execution: "BLOCKED",
             ledger: "BLOCKED",
             reconciliation: "BLOCKED",
-            customer_iam: environment.DATABASE_URL ? "READY" : "BLOCKED",
+            customer_iam: database.customer_iam ? "READY" : "BLOCKED",
+            database: database.state,
             alpaca_oauth: oauth.configured ? "READY" : "BLOCKED",
-            token_vault: environment.DATABASE_URL && environment.PAPER_COPY_TOKEN_ENCRYPTION_KEY ? "READY" : "BLOCKED",
+            token_vault: database.token_vault && environment.PAPER_COPY_TOKEN_ENCRYPTION_KEY ? "READY" : "BLOCKED",
             follower_adapter: "READY_READ_ONLY",
             copy_engine: environment.DATABASE_URL ? "ORDER_INTENT_READY_EXECUTION_LOCKED" : "BLOCKED",
-            followers: environment.DATABASE_URL ? "AVAILABLE" : "UNKNOWN",
+            followers: database.active_followers === null ? "UNKNOWN" : String(database.active_followers),
             system_errors: "UNKNOWN",
           },
           runtime_detail: {
@@ -385,13 +439,15 @@ export default async function customerHandler(
             reconciliation: "NOT_IMPLEMENTED",
           },
           master_connection: masterConnectionMetadata(),
+          database,
           copy_platform: {
             oauth: oauth.configured ? "READY" : "NEEDS_APP_CREDENTIALS",
-            customer_iam: environment.DATABASE_URL ? "READY" : "NOT_READY",
-            token_vault: environment.DATABASE_URL && environment.PAPER_COPY_TOKEN_ENCRYPTION_KEY ? "READY" : "NOT_READY",
+            customer_iam: database.customer_iam ? "READY" : "NOT_READY",
+            token_vault: database.token_vault && environment.PAPER_COPY_TOKEN_ENCRYPTION_KEY ? "READY" : "NOT_READY",
             follower_broker_adapter: "READ_ONLY_READY",
             copy_execution: "LOCKED",
             missing_configuration: oauth.missing,
+            private_paper_beta: privatePaperBetaReadiness,
           },
           published_performance: false,
           gates: [

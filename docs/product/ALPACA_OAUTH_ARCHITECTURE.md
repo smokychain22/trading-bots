@@ -28,8 +28,10 @@ their behalf.
 2. Server initiates Alpaca's documented authorization-code flow at
    `https://app.alpaca.markets/oauth/authorize`, with `response_type=code`, the
    registered client and redirect URI, a server-owned unguessable `state`, and
-   `env=paper`. The request uses `trading data`, the minimum scopes required for the
-   future automatic PAPER copy worker and market-data access. Order submission remains
+   `env=paper`. The request uses the exact `trading` scope. This is the minimum scope
+   required for account access and a future PAPER copy worker. The separate `data`
+   scope is not requested because the customer flow does not need Alpaca Data API
+   access. Order submission remains
    independently locked by the runtime release gate.
 3. State parameter is generated server-side, single-use, short-lived, and validated on
    callback (CSRF/replay protection) — PKCE used if the actual supported flow offers it.
@@ -88,13 +90,15 @@ Register an application from Alpaca Dashboard, Alpaca Connect, My Developed Apps
 
 - Canonical callback: `https://trading-bots-one.vercel.app/api/v1/alpaca/oauth/callback`
 - Environment: PAPER only, authorization request includes `env=paper`
-- Scopes: `trading data`
+- Scopes: `trading`
 - Vercel variables: `DATABASE_URL`, `ALPACA_OAUTH_CLIENT_ID`,
   `ALPACA_OAUTH_CLIENT_SECRET`, `ALPACA_OAUTH_REDIRECT_URI`,
   `PAPER_COPY_TOKEN_KEY_REF`, `PAPER_COPY_TOKEN_ENCRYPTION_KEY`
 
-The Connect application must be submitted to Alpaca. Alpaca's current documentation
-says live trading for other users requires approval. This product requests PAPER only.
+The Connect application must be submitted to Alpaca. Alpaca's current Connect
+documentation says third-party API clients authenticate with OAuth 2.0 and commercial
+apps must disclose their use and receive written approval. This product requests
+PAPER only. A customer API-key form is prohibited and does not exist.
 
 ## Status
 

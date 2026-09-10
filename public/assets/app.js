@@ -421,25 +421,30 @@ function myBots(readiness) {
       link("/bots/theta/copy", "Copy THETA", "button primary"),
     ) +
       (active || stopped
-        ? `<section class="panel copied-bot"><div class="section-heading"><div><p class="eyebrow">THETA</p><h2>${stopped ? "Managing existing positions" : "Copying new trades"}</h2><p>${stopped ? "New entries are stopped. Existing copied positions remain under THETA management." : "Eligible master fills are adapted to this paper account."}</p></div>${badge(stopped ? "STOPPED NEW" : "COPYING", stopped ? "amber" : "green")}</div><dl class="account-facts"><div><dt>Allocation</dt><dd>—</dd></div><div><dt>Your P&amp;L</dt><dd>—</dd></div><div><dt>Open positions</dt><dd>—</dd></div><div><dt>Last sync</dt><dd>—</dd></div></dl><div class="heading-actions">${link("/bots/theta/my-results", "View my results", "button secondary")}<button class="button secondary" disabled aria-describedby="stop-copy-note">Stop New Copies</button></div><p id="stop-copy-note" class="simple-status">The control is shown for its release semantics. Account mutations remain disabled until secure customer identity is available.</p></section>`
+        ? `<section class="panel copied-bot"><div class="section-heading"><div><p class="eyebrow">THETA</p><h2>${stopped ? "Managing existing positions" : "Paper setup saved"}</h2><p>${stopped ? "New entries are stopped. Existing copied positions remain under THETA management." : "Your paper allocation is saved. Order submission remains locked."}</p></div>${badge(stopped ? "STOPPED NEW" : "SETUP SAVED", stopped ? "amber" : "blue")}</div><dl class="account-facts"><div><dt>Allocation</dt><dd>—</dd></div><div><dt>Your P&amp;L</dt><dd>—</dd></div><div><dt>Open positions</dt><dd>—</dd></div><div><dt>Last sync</dt><dd>—</dd></div></dl><div class="heading-actions">${link("/bots/theta/my-results", "View my results", "button secondary")}</div><p class="simple-status">No order can be submitted from this saved setup.</p></section>`
         : `<section class="panel my-bots-empty">${empty("No bots are copying yet", "Connect an Alpaca Paper account and choose how much you want THETA to use.", link("/bots/theta/copy", "Copy THETA", "button primary"))}<p class="simple-status">No customer account or copied position is inferred from the master paper account.</p></section>`),
   );
 }
 function home(readiness) {
   const active = readiness.participation === "COPY_NEW_AND_MANAGE";
   const ready = readiness.participation === "READY_TO_COPY";
+  const connectionAvailable = readiness.oauth.state !== "NOT_CONFIGURED";
   const headline = active
     ? "Track your THETA paper copy."
     : ready
       ? "Choose how much paper capital THETA may use."
-      : "Connect your Alpaca Paper account to copy THETA.";
+      : connectionAvailable
+        ? "Connect your Alpaca Paper account to copy THETA."
+        : "THETA is in private paper testing.";
   const primary = active
     ? link("/bots/theta/my-results", "View my results", "button primary")
     : ready
       ? link("/bots/theta/copy", "Choose allocation", "button primary")
-      : link("/account", "Connect paper account", "button primary");
+      : connectionAvailable
+        ? link("/account", "Connect paper account", "button primary")
+        : link("/bots/theta", "View THETA", "button primary");
   shell(
-    `<section class="home-hero"><div><p class="eyebrow">AUTOMATED OPTIONS BOTS</p><h1>${esc(headline)}</h1><p class="lede">THETA makes the trading decisions and manages the full Wheel lifecycle. You control participation and paper capital allocation.</p><div class="heading-actions">${primary}${link("/bots/theta", "Review THETA", "button secondary")}</div><p class="simple-status">Secure customer connection and activation are still gated. No customer order can be placed today.</p></div><aside><div class="launch-title"><span class="bot-monogram large theta" aria-hidden="true">Θ</span><div><h2>THETA</h2><p>Assignment-aware premium strategy</p></div></div>${badge(active ? "COPYING" : "PAPER TESTING", active ? "green" : "blue")}<dl class="home-bot-facts"><div><dt>Track record</dt><dd>Building</dd></div><div><dt>Your open positions</dt><dd>—</dd></div><div><dt>Customer copying</dt><dd>${active ? "Active" : "Unavailable"}</dd></div></dl></aside></section><section class="home-steps"><div><span>1</span><p><strong>Connect Alpaca Paper</strong>Your brokerage account stays with Alpaca.</p></div><div><span>2</span><p><strong>Choose an amount</strong>Set the maximum paper capital THETA may use.</p></div><div><span>3</span><p><strong>Copy automatically</strong>THETA opens and manages eligible trades within account limits.</p></div><div><span>4</span><p><strong>Track your results</strong>See follower positions and full economic P&amp;L.</p></div></section>`,
+    `<section class="home-hero"><div><p class="eyebrow">AUTOMATED OPTIONS BOTS</p><h1>${esc(headline)}</h1><p class="lede">THETA makes the trading decisions and manages the full Wheel lifecycle. You control participation and paper capital allocation.</p><div class="heading-actions">${primary}${connectionAvailable ? link("/bots/theta", "Review THETA", "button secondary") : ""}</div><p class="simple-status">${connectionAvailable ? "Paper account setup is available. Order submission remains locked." : "Account connection is limited to approved testers while Alpaca Connect review is pending."}</p></div><aside><div class="launch-title"><span class="bot-monogram large theta" aria-hidden="true">Θ</span><div><h2>THETA</h2><p>Assignment-aware premium strategy</p></div></div>${badge(active ? "SETUP SAVED" : "PAPER TESTING", active ? "blue" : "blue")}<dl class="home-bot-facts"><div><dt>Track record</dt><dd>Building</dd></div><div><dt>Your open positions</dt><dd>—</dd></div><div><dt>Customer access</dt><dd>${active ? "Setup saved" : connectionAvailable ? "Available" : "Approved testers"}</dd></div></dl></aside></section><section class="home-steps"><div><span>1</span><p><strong>Connect Alpaca Paper</strong>Your brokerage account stays with Alpaca.</p></div><div><span>2</span><p><strong>Choose an amount</strong>Set the maximum paper capital THETA may use.</p></div><div><span>3</span><p><strong>Save your setup</strong>Your limits are stored while paper execution remains locked.</p></div><div><span>4</span><p><strong>Track your results</strong>After release, see follower positions and full economic P&amp;L.</p></div></section>`,
   );
 }
 function myResults(results) {
