@@ -86,12 +86,17 @@ test('valid PAPER account: every check reports GOOD with account fields readable
       assert.equal(account?.details.tradingBlocked, false);
 
       // Capability distinction correction: OPRA and INDICATIVE are checked
-      // independently, and only OPRA is ever execution-grade.
+      // independently. consolidatedBbo is true only for OPRA; both are
+      // engineeringUsable when reachable; paperExecutionPolicy/tcaQuality
+      // are NEVER derived from feed type alone (they start NOT_YET_EVALUATED/
+      // UNVALIDATED for either feed -- a separate release decision).
       const opra = results.find((r) => r.capability === 'OPTIONS_MARKET_DATA_OPRA');
       const indicative = results.find((r) => r.capability === 'OPTIONS_MARKET_DATA_INDICATIVE');
-      assert.equal(opra?.details.executionGrade, true);
-      assert.equal(indicative?.details.executionGrade, false, 'INDICATIVE must never be reported as execution-grade, even when reachable');
-      assert.equal(indicative?.details.marketDataEngineeringReady, true);
+      assert.equal(opra?.details.consolidatedBbo, true);
+      assert.equal(indicative?.details.consolidatedBbo, false, 'INDICATIVE must never be reported as consolidated BBO, even when reachable');
+      assert.equal(indicative?.details.engineeringUsable, true);
+      assert.equal(indicative?.details.paperExecutionPolicy, 'NOT_YET_EVALUATED');
+      assert.equal(opra?.details.paperExecutionPolicy, 'NOT_YET_EVALUATED', 'OPRA reachability alone must not auto-approve paper execution either');
     }
   );
 });
@@ -115,10 +120,11 @@ test('OPRA NOT_ENTITLED alongside a reachable INDICATIVE feed is reported accura
       const opra = results.find((r) => r.capability === 'OPTIONS_MARKET_DATA_OPRA');
       const indicative = results.find((r) => r.capability === 'OPTIONS_MARKET_DATA_INDICATIVE');
       assert.equal(opra?.state, 'NOT_ENTITLED');
-      assert.equal(opra?.details.executionGrade, false);
+      assert.equal(opra?.details.feedAvailable, false);
       assert.equal(indicative?.state, 'GOOD');
-      assert.equal(indicative?.details.marketDataEngineeringReady, true);
-      assert.equal(indicative?.details.executionGrade, false, 'a reachable INDICATIVE feed must never be reported as execution-grade');
+      assert.equal(indicative?.details.feedAvailable, true);
+      assert.equal(indicative?.details.engineeringUsable, true, 'INDICATIVE remains fully usable for engineering even though OPRA is NOT_ENTITLED');
+      assert.equal(indicative?.details.consolidatedBbo, false, 'a reachable INDICATIVE feed must never be reported as consolidated BBO');
     }
   );
 });
@@ -286,6 +292,34 @@ const secretEnvironment: Environment = {
   ALPACA_SECRET_KEY: REALISTIC_FAKE_ALPACA_SECRET,
   OPTIONOMICS_API_KEY: REALISTIC_FAKE_OPTIONOMICS_TOKEN
 };
+
+test('OPRA NOT_ENTITLED with INDICATIVE GOOD never reports every option-feed capability as unavailable -- engineering is never blocked', async () => {
+  await withMockedFetch(
+    [
+      { match: (u) => u.includes('/v2/account') && !u.includes('activities'), respond: () => jsonResponse(200, accountBody()) },
+      { match: (u) => u.includes('/v2/clock'), respond: () => jsonResponse(200, { timestamp: new Date().toISOString(), is_open: true }) },
+      { match: (u) => u.includes('/v2/calendar'), respond: () => jsonResponse(200, [{ date: '2026-09-10' }]) },
+      { match: (u) => u.includes('/v2/stocks/quotes/latest'), respond: () => jsonResponse(200, { quotes: { SPY: {} } }) },
+      { match: (u) => u.includes('/v2/options/contracts'), respond: () => jsonResponse(200, { option_contracts: [] }) },
+      { match: (u) => u.includes('feed=opra'), respond: () => jsonResponse(403, { message: 'not entitled' }) },
+      { match: (u) => u.includes('feed=indicative'), respond: () => jsonResponse(200, { snapshots: { X: { greeks: { delta: 0.1 } } } }) },
+      { match: (u) => u.includes('/v2/positions'), respond: () => jsonResponse(200, []) },
+      { match: (u) => u.includes('/v2/account/activities/FILL'), respond: () => jsonResponse(200, []) },
+      { match: (u) => u.includes('/v1/corporate-actions'), respond: () => jsonResponse(200, {}) }
+    ],
+    async () => {
+      const results = await checkAlpaca(baseEnvironment);
+      // Every OTHER capability (account, clock, calendar, contracts,
+      // positions, activities, corporate actions) must still report GOOD --
+      // an OPRA entitlement gap must never cascade into treating the whole
+      // account/engineering pipeline as blocked.
+      const nonOptionResults = results.filter((r) => r.capability !== 'OPTIONS_MARKET_DATA_OPRA' && r.capability !== 'OPTIONS_MARKET_DATA_INDICATIVE');
+      for (const result of nonOptionResults) {
+        assert.equal(result.state, 'GOOD', `${result.capability} must remain GOOD regardless of OPRA entitlement`);
+      }
+    }
+  );
+});
 
 test('a provider that echoes request headers back in its body never causes a credential to appear in a CheckResult', async () => {
   const echoBody = (): Record<string, unknown> => ({

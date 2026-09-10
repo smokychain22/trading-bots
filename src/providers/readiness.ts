@@ -55,28 +55,47 @@ const stateForResponse = (response: Response): CapabilityState => {
   return 'UNKNOWN';
 };
 
-// Capability distinction (security/architecture correction, 2026-09-10):
-// an option market-data feed being reachable is NOT the same claim as it
-// being execution-quality. Official Alpaca documentation describes
-// INDICATIVE quotes as modified derivatives of OPRA with delayed trades --
-// useful for integration development, schema verification, pipeline
-// testing, and candidate-generation mechanics (MARKET_DATA_ENGINEERING_READY),
-// but never sufficient on its own for execution-quality validation,
-// slippage/TCA validation, or the first-autonomous-PAPER-order release gate
-// (MARKET_DATA_EXECUTION_READY) unless a separately-approved real-time
-// executable-quality source is in place. This distinction must never be
-// silently upgraded -- callers check `executionGrade`, not just `state`.
-export const classifyOptionFeedCapability = (
-  feed: 'OPRA' | 'INDICATIVE',
-  state: CapabilityState
-): { readonly optionFeed: 'OPRA' | 'INDICATIVE'; readonly marketDataEngineeringReady: boolean; readonly executionGrade: boolean } => ({
-  optionFeed: feed,
-  marketDataEngineeringReady: state === 'GOOD',
-  // OPRA is Alpaca's consolidated real options BBO; INDICATIVE is
-  // documented as a modified derivative with delayed trades and is never
-  // treated as execution-grade regardless of its own reachability state.
-  executionGrade: feed === 'OPRA' && state === 'GOOD'
-});
+// Capability distinction (architecture correction, 2026-09-10): a feed's
+// reachability, its BBO quality, and whether PAPER execution may rely on it
+// are THREE SEPARATE questions, never collapsed into one boolean. Official
+// Alpaca documentation describes OPRA as the consolidated options BBO and
+// INDICATIVE as a modified derivative with delayed trades. This is NOT a
+// "OPRA missing -> THETA blocked" gate: INDICATIVE remains fully usable for
+// engineering, pipeline construction, candidate mechanics, and shadow
+// decisions. Whether INDICATIVE (plus Optionomics) is ADEQUATE for PAPER
+// execution pricing is a separate, future, evidence-based question (does it
+// materially change contract ranking / strike / expiry / OPEN-vs-WAIT / fill
+// modeling? -- see the Indicative-vs-OPRA evidence task in the DATA_GAP
+// register) -- it is never derived from feed type alone, and OPRA is never
+// purchased speculatively ahead of that evidence.
+export type OptionFeedType = 'OPRA' | 'INDICATIVE';
+export type TcaQuality = 'UNVALIDATED' | 'LIMITED' | 'VALIDATED';
+export type PaperExecutionPolicy = 'NOT_YET_EVALUATED' | 'APPROVED' | 'REJECTED';
+
+export interface OptionFeedCapability {
+  readonly optionFeed: OptionFeedType;
+  readonly feedAvailable: boolean; // this account/entitlement can reach this feed right now
+  readonly consolidatedBbo: boolean; // true only for OPRA -- INDICATIVE is a modified derivative, never consolidated BBO
+  readonly engineeringUsable: boolean; // fine for pipeline/schema/candidate-mechanics/shadow-decision work
+  readonly paperExecutionPolicy: PaperExecutionPolicy; // a SEPARATE release decision -- never derived from feedAvailable/consolidatedBbo alone
+  readonly tcaQuality: TcaQuality; // UNVALIDATED until the Indicative-vs-OPRA evidence task actually runs
+}
+
+export const classifyOptionFeedCapability = (feed: OptionFeedType, state: CapabilityState): OptionFeedCapability => {
+  const feedAvailable = state === 'GOOD';
+  return {
+    optionFeed: feed,
+    feedAvailable,
+    consolidatedBbo: feed === 'OPRA',
+    engineeringUsable: feedAvailable,
+    // Deliberately NOT `feed === 'OPRA' ? 'APPROVED' : 'REJECTED'` -- that
+    // would be exactly the "OPRA_NOT_ENTITLED -> PAPER_TRADING_IMPOSSIBLE"
+    // conflation this correction exists to prevent. This is a release
+    // decision a human/empirical-evidence gate makes, not a feed-type flag.
+    paperExecutionPolicy: 'NOT_YET_EVALUATED',
+    tcaQuality: 'UNVALIDATED'
+  };
+};
 
 export const assertPaperAlpacaUrl = (baseUrl: string): URL => {
   let url: URL;
