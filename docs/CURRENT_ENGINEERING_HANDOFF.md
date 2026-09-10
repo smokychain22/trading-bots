@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-10, end of this Claude takeover session (continuation pass).
 **Origin/main SHA at session start and end:** `cfe04b903bed86d6bf8fcb82c654070830241bd0` (unchanged — nothing pushed).
 **Claude branch:** `claude/full-platform-takeover`
-**Claude HEAD:** `e329b6a`
+**Claude HEAD:** `b193d79`
 
 ## Local commits on this branch (in order, all unpushed)
 
@@ -45,6 +45,16 @@
    position-management scan interval) + R1D ownership/regime TS contracts
    (`ownership-contract.ts`, `regime-contract.ts`). 26 new tests, 94/94 TS total,
    225/225 Python unaffected.
+9. `322d2f6` — handoff update.
+10. `b193d79` — `option-contract.ts` (canonical normalized option-contract shape,
+    exact field list from the task, UNKNOWN-preserving, executability determination),
+    `shadow-opportunity-book.ts` (contract + validating in-memory builder for every
+    evaluated candidate outcome — persistence itself deferred to R2),
+    `decision-assembly.ts` (`assembleNewRiskDecision`: composes already-computed
+    frontier/AEGIS/sizing/execution-quality results into one `NewRiskDecisionReceipt`,
+    zero quantitative computation of its own, fails closed on provider/version/
+    ownership/regime/snapshot problems, `executionAuthorized` always `false`).
+    39 new tests, 126/126 TS total, 225/225 Python unaffected.
 
 ## Last completed phase/subphase
 
@@ -180,7 +190,7 @@ LOCAL_COMMITS_TO_REVIEW: 8a051b7, 7ff290a, f24dc3e (all on claude/full-platform-
 FILES/MIGRATIONS: no migrations touched; see commit messages for full file list
   (7 Python quant models + tests, 6 TS contract/state-machine files + tests, 3 docs
   updates)
-TESTS: 225/225 Python, 68/68 TS, lint/typecheck/build clean, secret scan 0 findings
+TESTS: 225/225 Python, 126/126 TS, lint/typecheck/build clean, secret scan 0 findings
 PROVIDER_CALLS: NONE this session
 ORDERS_SUBMITTED: NO
 FIRST_PAPER_ORDER_GATE: NOT REACHED -- R2 through R7 have not been built yet, so the
