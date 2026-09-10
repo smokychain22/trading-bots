@@ -67,7 +67,7 @@ const candidate = (id: string, overrides: Partial<RawCandidateInput> = {}): RawC
 
 const baseRequest = (overrides: Partial<NewRiskOrchestrationRequest> = {}): NewRiskOrchestrationRequest => ({
   snapshotId: 'snap-1', fusionSnapshotHash: 'a'.repeat(64), timestamp: NOW, underlying: 'SYN',
-  earningsDistanceDays: 40, providerStateGood: true,
+  earningsDistanceDays: 40, optionQuoteFreshnessPolicy: { policyVersion: 'freshness-v1', goodMaxAgeSeconds: 10, staleMinAgeSeconds: 60 }, providerStateGood: true,
   policyVersion: 'v1', modelVersions: {}, requiredModelVersions: {},
   ownershipPolicy: {
     policyVersion: 'ownership-v1', minStockAvgVolume: 1_000_000, minOptionOpenInterest: 100, minOptionVolume: 10,
@@ -157,6 +157,32 @@ itReal('a delta-UNKNOWN contract is excluded from the lattice call and recorded 
   assert.equal(result.thetaQ, null); // never sent to the lattice at all
   const entry = result.shadowOpportunities.find((e) => e.contractSymbol === 'C1');
   assert.equal(entry?.rejectionCategory, 'UNKNOWN_DELTA');
+});
+
+itReal('a stale option quote is excluded from the lattice call and recorded as PASS/OPTION_QUOTE_STALE -- never sent to Python', async () => {
+  const staleTimestamp = new Date(Date.now() - 3600_000).toISOString(); // 1 hour old
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    candidates: [candidate('C1', { contract: contract({ optionSymbol: 'C1', quoteTimestamp: staleTimestamp }) })],
+  }));
+  assert.equal(result.thetaQ, null); // excluded before the lattice ever ran
+  const entry = result.shadowOpportunities.find((e) => e.contractSymbol === 'C1');
+  assert.equal(entry?.rejectionCategory, 'OPTION_QUOTE_STALE');
+});
+
+itReal('a quote with no observation timestamp is excluded as PASS/OPTION_QUOTE_UNKNOWN -- freshness is never assumed', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    candidates: [candidate('C1', { contract: contract({ optionSymbol: 'C1', quoteTimestamp: null }) })],
+  }));
+  assert.equal(result.thetaQ, null);
+  const entry = result.shadowOpportunities.find((e) => e.contractSymbol === 'C1');
+  assert.equal(entry?.rejectionCategory, 'OPTION_QUOTE_UNKNOWN');
+});
+
+itReal('a fresh quote still reaches the lattice -- the freshness gate never blocks a genuinely fresh candidate', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    candidates: [candidate('C1', { contract: contract({ optionSymbol: 'C1', quoteTimestamp: NOW }) })],
+  }));
+  assert.ok(result.thetaQ !== null);
 });
 
 itReal('provider state not good fails the whole decision closed before any bridge call', async () => {

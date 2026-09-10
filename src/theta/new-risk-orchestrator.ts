@@ -12,6 +12,7 @@ import { parseExecutionQualityResponse } from './execution-quality-contract.js';
 import { assembleNewRiskDecision, type CandidateFrontierResult, type NewRiskDecisionReceipt } from './decision-assembly.js';
 import type { NormalizedOptionContract } from './option-contract.js';
 import { ShadowOpportunityBookBuilder, type ShadowOpportunityEntry } from './shadow-opportunity-book.js';
+import { classifyObservation, type FreshnessPolicy } from './data-freshness.js';
 
 // R1: the real end-to-end new-risk orchestrator. Sequences every stage in
 // the canonical pipeline --
@@ -80,6 +81,7 @@ export interface NewRiskOrchestrationRequest {
   readonly timestamp: string;
   readonly underlying: string;
   readonly earningsDistanceDays: number | null; // underlying-level fact, shared across every candidate this cycle
+  readonly optionQuoteFreshnessPolicy: FreshnessPolicy; // R1C: versioned, hard execution-critical gate -- see data-freshness.ts
   readonly providerStateGood: boolean;
   readonly policyVersion: string;
   readonly modelVersions: Readonly<Record<string, string>>;
@@ -270,11 +272,57 @@ export async function runNewRiskOrchestration(
     };
   });
 
-  if (latticeEligible.length === 0) {
+  // R1C: freshness is a HARD execution-critical gate for the option quote
+  // itself (item 6/7: "stale current option quote cannot justify a new
+  // executable entry") -- classified per-candidate against the caller's own
+  // versioned OPTION_QUOTE freshness policy, using data-freshness.ts (never
+  // one arbitrary global threshold). STALE or UNKNOWN freshness excludes a
+  // candidate from the lattice entirely, recorded distinctly from a delta
+  // exclusion so the shadow book can tell freshness failures apart from
+  // missing Greeks.
+  const [freshnessEligible, freshnessRejected] = latticeEligible.reduce<[RawCandidateInput[], RawCandidateInput[]]>(
+    (acc, c) => {
+      const quality = classifyObservation(
+        {
+          observationClass: 'OPTION_QUOTE',
+          observedAt: c.contract.quoteTimestamp,
+          receivedAt: request.timestamp,
+          providerEntitlement: c.contract.dataQuality === 'NOT_ENTITLED' ? 'NOT_ENTITLED' : 'ENTITLED',
+          providerReachable: true,
+          valuePresent: c.contract.bid !== null && c.contract.ask !== null,
+        },
+        request.optionQuoteFreshnessPolicy,
+      );
+      acc[quality.state === 'GOOD' || quality.state === 'DEGRADED' ? 0 : 1].push(c);
+      return acc;
+    },
+    [[], []],
+  );
+
+  const freshnessRejectedResults: CandidateFrontierResult[] = freshnessRejected.map((c) => {
+    const quality = classifyObservation(
+      {
+        observationClass: 'OPTION_QUOTE', observedAt: c.contract.quoteTimestamp, receivedAt: request.timestamp,
+        providerEntitlement: c.contract.dataQuality === 'NOT_ENTITLED' ? 'NOT_ENTITLED' : 'ENTITLED',
+        providerReachable: true, valuePresent: c.contract.bid !== null && c.contract.ask !== null,
+      },
+      request.optionQuoteFreshnessPolicy,
+    );
+    recordShadow(c, {
+      outcome: 'PASS', rejectionCategory: `OPTION_QUOTE_${quality.state}`,
+      reasons: [{ code: 'OPTION_QUOTE_FRESHNESS_INSUFFICIENT', polarity: -1, detail: quality.reason }],
+    });
+    return {
+      candidateId: c.candidateId, contract: c.contract, disposition: 'PASS', waitReason: null,
+      rejectionReason: `OPTION_QUOTE_${quality.state}`, evNet: null, returnPerCapitalDay: null, aegis: null, sizing: null, executionQuality: null,
+    };
+  });
+
+  if (freshnessEligible.length === 0) {
     const receipt = assembleNewRiskDecision({
       snapshotId: request.snapshotId, fusionSnapshotHash: request.fusionSnapshotHash, timestamp: request.timestamp,
       underlying: request.underlying, ownership: ownershipResult.data, regime: regimeResult.data,
-      candidates: deltaUnknownResults, policyVersion: request.policyVersion, modelVersions: request.modelVersions,
+      candidates: [...deltaUnknownResults, ...freshnessRejectedResults], policyVersion: request.policyVersion, modelVersions: request.modelVersions,
       requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
     });
     return { receipt, ...partialAfterRouting, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all() };
@@ -285,7 +333,7 @@ export async function runNewRiskOrchestration(
     {
       contractVersion: 'theta-q-runtime-v1', operation: 'evaluateCspCandidates', fusionSnapshotHash: request.fusionSnapshotHash,
       latticeConfig: request.latticeConfig, sizingPolicy: request.thetaQSizingPolicy, costAssumptions: request.costAssumptions,
-      candidates: latticeEligible.map((c) => ({
+      candidates: freshnessEligible.map((c) => ({
         candidateId: c.candidateId, underlyingSymbol: c.contract.underlying, dte: c.contract.dte, strike: c.contract.strike,
         putDeltaMagnitude: Math.abs(c.contract.delta as number), spreadPct: c.contract.spreadPct,
         quoteAgeSeconds: c.contract.dataAgeSeconds, openInterest: c.contract.openInterest, volume: c.contract.volume,
@@ -299,14 +347,14 @@ export async function runNewRiskOrchestration(
   );
   if (!thetaQResult.ok) return failClosedResult(request, 'THETA_Q_LATTICE', thetaQResult.detail, partialAfterRouting);
 
-  const rawByCandidateId = new Map(latticeEligible.map((c) => [c.candidateId, c]));
+  const rawByCandidateId = new Map(freshnessEligible.map((c) => [c.candidateId, c]));
   const feasibleForFrontier: RawCandidateInput[] = [];
   const economicsByCandidateId = new Map<string, Omit<CandidateEconomics, 'candidateId'>>();
-  const immediateResults: CandidateFrontierResult[] = [...deltaUnknownResults];
+  const immediateResults: CandidateFrontierResult[] = [...deltaUnknownResults, ...freshnessRejectedResults];
 
   for (const tq of thetaQResult.data.candidates) {
     const raw = rawByCandidateId.get(tq.candidateId);
-    if (raw === undefined) continue; // cannot happen given the request was built from latticeEligible, but never assume
+    if (raw === undefined) continue; // cannot happen given the request was built from freshnessEligible, but never assume
     if (!tq.actionFeasible) {
       const reasonCode = tq.reasons[0]?.code ?? 'THETA_Q_INFEASIBLE';
       recordShadow(raw, {
