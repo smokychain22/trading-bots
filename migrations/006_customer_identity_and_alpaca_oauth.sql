@@ -60,6 +60,14 @@ ALTER TABLE copy.follower_account
   ADD COLUMN IF NOT EXISTS restrictions jsonb NOT NULL DEFAULT '{}'::jsonb;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_follower_account_active_customer
   ON copy.follower_account(customer_id) WHERE disconnected_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_follower_account_active_provider_ref
+  ON copy.follower_account(provider_code, provider_account_ref) WHERE disconnected_at IS NULL;
+
+ALTER TABLE copy.follower_policy
+  ADD COLUMN IF NOT EXISTS min_dte integer NOT NULL DEFAULT 7 CHECK (min_dte >= 0),
+  ADD COLUMN IF NOT EXISTS max_dte integer NOT NULL DEFAULT 60 CHECK (max_dte >= min_dte),
+  ADD COLUMN IF NOT EXISTS allow_0dte boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS min_open_interest integer NOT NULL DEFAULT 500 CHECK (min_open_interest >= 0);
 
 CREATE TABLE IF NOT EXISTS copy.customer_participation (
   customer_id uuid PRIMARY KEY REFERENCES iam.customer_identity(customer_id) ON DELETE CASCADE,

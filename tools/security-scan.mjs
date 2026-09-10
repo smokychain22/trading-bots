@@ -27,6 +27,8 @@ const sensitiveNames = [
   "OPTIONOMICS_API_KEY",
   "VERCEL_TOKEN",
   "THETA_READINESS_TOKEN",
+  "ALPACA_OAUTH_CLIENT_SECRET",
+  "PAPER_COPY_TOKEN_ENCRYPTION_KEY",
 ];
 let failures = 0;
 for (const path of paths) {

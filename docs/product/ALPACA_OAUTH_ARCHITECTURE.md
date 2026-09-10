@@ -1,9 +1,8 @@
 # Alpaca Customer PAPER Account Connection Architecture
 
-Specification for R3C (customer broker connection). Not yet implemented — this is the
-design a future implementation must follow, so a real OAuth build doesn't have to be
-re-derived from scratch, and so no interim implementation ever asks a customer to paste
-a raw API secret into the browser.
+Implemented application contract for the customer broker connection. Production use
+remains blocked until the external Alpaca Connect application and deployment secrets
+listed below are configured.
 
 ## Non-negotiable rule
 
@@ -29,9 +28,9 @@ their behalf.
 2. Server initiates Alpaca's documented authorization-code flow at
    `https://app.alpaca.markets/oauth/authorize`, with `response_type=code`, the
    registered client and redirect URI, a server-owned unguessable `state`, and
-   `env=paper`. The current official guide says read-only access is assumed by
-   default. The `trading` scope must not be requested until follower PAPER execution
-   is separately authorized and ready.
+   `env=paper`. The request uses `trading data`, the minimum scopes required for the
+   future automatic PAPER copy worker and market-data access. Order submission remains
+   independently locked by the runtime release gate.
 3. State parameter is generated server-side, single-use, short-lived, and validated on
    callback (CSRF/replay protection) — PKCE used if the actual supported flow offers it.
 4. On successful authorization, the resulting token is encrypted server-side before
@@ -68,17 +67,38 @@ their behalf.
   host, applied to whatever the customer-OAuth equivalent connection target is.
   **No boolean `live=true` query parameter or config flag may ever bypass this.**
 
-## What this document does not do
+## Implemented routes and storage
 
-It does not implement OAuth endpoints. Alpaca's official guide was verified on
-2026-09-10 and documents a server-side, form-encoded authorization-code exchange at
-`https://api.alpaca.markets/oauth/token`. The callback must reject a missing,
-mismatched, expired, or replayed `state`. The client secret and returned access token
-remain server-side. See https://docs.alpaca.markets/us/docs/using-oauth2-and-trading-api
-and https://docs.alpaca.markets/us/docs/registering-your-app.
+- Start: `GET /api/v1/alpaca/oauth/start`
+- Callback: `GET /api/v1/alpaca/oauth/callback`
+- Disconnect: `DELETE /api/v1/alpaca/connection`
+- Customer identity: password-authenticated, database-backed, opaque HttpOnly session
+- OAuth state: random, SHA-256 referenced, customer-bound, ten-minute expiry, single-use
+- Token vault: AES-256-GCM, customer-bound authenticated data, ciphertext only in PostgreSQL
+- Account verification: PAPER host account, positions, and open-order reads before readiness
+
+The official guide was verified on 2026-09-10 and documents the form-encoded token
+exchange at `https://api.alpaca.markets/oauth/token`. See
+https://docs.alpaca.markets/us/docs/using-oauth2-and-trading-api and
+https://docs.alpaca.markets/us/docs/registering-your-app.
+
+## Production owner setup
+
+Register an application from Alpaca Dashboard, Alpaca Connect, My Developed Apps.
+
+- Canonical callback: `https://trading-bots-one.vercel.app/api/v1/alpaca/oauth/callback`
+- Environment: PAPER only, authorization request includes `env=paper`
+- Scopes: `trading data`
+- Vercel variables: `DATABASE_URL`, `ALPACA_OAUTH_CLIENT_ID`,
+  `ALPACA_OAUTH_CLIENT_SECRET`, `ALPACA_OAUTH_REDIRECT_URI`,
+  `PAPER_COPY_TOKEN_KEY_REF`, `PAPER_COPY_TOKEN_ENCRYPTION_KEY`
+
+The Connect application must be submitted to Alpaca. Alpaca's current documentation
+says live trading for other users requires approval. This product requests PAPER only.
 
 ## Status
 
-SPECIFIED and official contract verified. `BLOCKED_BY_CONFIGURATION` until the
-Alpaca Connect application, customer IAM, state store, and encrypted token-reference
-store are implemented.
+APPLICATION PATH IMPLEMENTED. Production is `BLOCKED_BY_CONFIGURATION` until the
+database, Connect application credentials, exact callback, and encryption-key variables
+are configured. A real OAuth browser test cannot pass before those owner-controlled
+external settings exist.

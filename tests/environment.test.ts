@@ -46,6 +46,25 @@ test('rejects a non-paper Alpaca endpoint', () => {
   assert.throws(() => assertRuntimeConfiguration(environment), /paper API/);
 });
 
+test('rejects lookalike Alpaca paper hosts and non-root paths', () => {
+  const base = {
+    ALPACA_API_KEY: 'test-key',
+    ALPACA_SECRET_KEY: 'test-secret',
+    OPTIONOMICS_API_KEY: 'test-key',
+    OPTIONOMICS_EMAIL: 'test@example.com'
+  } as const;
+  for (const ALPACA_BASE_URL of [
+    'https://paper-api.alpaca.markets.evil.invalid',
+    'https://paper-api.alpaca.markets@evil.invalid',
+    'https://paper-api.alpaca.markets/v2'
+  ]) {
+    assert.throws(
+      () => assertRuntimeConfiguration(loadEnvironment({ ...base, ALPACA_BASE_URL })),
+      /paper API/
+    );
+  }
+});
+
 test('rejects an invalid Optionomics email only when checking Optionomics', () => {
   const environment = loadEnvironment({
     ALPACA_API_KEY: 'test-key',

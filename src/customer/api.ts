@@ -344,7 +344,7 @@ export default async function customerHandler(
           deployment_sha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
           provider_runtime: "UNKNOWN",
           systems: {
-            theta_runtime: "BLOCKED",
+            theta_runtime: "R1_INTEGRATED_INPUT_ASSEMBLY_BLOCKED",
             quant_models: "HEALTHY",
             python_bridge: "HEALTHY",
             strategy_router: "HEALTHY",
@@ -367,7 +367,7 @@ export default async function customerHandler(
             system_errors: "UNKNOWN",
           },
           runtime_detail: {
-            stage: "R1_PARTIAL",
+            stage: "R1_INTEGRATED_INPUT_ASSEMBLY_BLOCKED",
             policy_version: null,
             model_versions: ["theta-q-v0", "quant contract baselines"],
             last_market_snapshot: null,
@@ -395,7 +395,9 @@ export default async function customerHandler(
           },
           published_performance: false,
           gates: [
-            "OPRA entitlement not established for execution",
+            "Real ownership, regime, and event-state input assembly is incomplete",
+            "Shadow decision receipts are not yet persisted by a production scheduler",
+            "OPRA entitlement not established for future execution",
             "No validated customer performance publication",
             "Copy execution and customer account isolation not released",
           ],

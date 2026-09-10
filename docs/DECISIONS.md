@@ -52,3 +52,29 @@ master strategy Performance from follower My Results. Customer position and hist
 views are read-only. The private owner surface uses five protected routes: Overview,
 THETA, Trading, Copy, and System. The temporary shared operator token remains a
 short-lived session bridge, not production IAM.
+
+## 2026-09-10: separate master and follower Alpaca trust domains
+
+The THETA master PAPER account continues to use deployment-managed Alpaca key and
+secret references. Customer accounts use Alpaca Connect authorization-code OAuth with
+env=paper. Customer raw keys are never accepted. OAuth state is random, hashed,
+customer-bound, single-use, and expires after ten minutes. Access tokens use
+AES-256-GCM with customer identity as authenticated data and remain server-side.
+
+Customer identity uses a stable PostgreSQL UUID, salted scrypt password verification,
+opaque hashed sessions, server-side tenant filters, and revocable HttpOnly cookies.
+This first-party beta identity layer still needs rate limiting, verified email,
+recovery, MFA, and security operations before a broad public release.
+
+Saving a follower allocation creates a durable policy and READY participation record.
+It does not mean COPYING or ACTIVE. The existing copy-event and follower-order-intent
+contracts remain non-executing, and execution_authorized stays false.
+
+## 2026-09-10: integrate Claude R1 without false runtime claims
+
+Selected Claude R1 runtime contracts, provider input adapters, opportunity assembly,
+hard gates, and decision assembly were integrated without replacing the current
+customer UI or copy persistence. THETA remains
+R1_INTEGRATED_INPUT_ASSEMBLY_BLOCKED. A production scheduler, real ownership, regime,
+and event input assembly, plus persisted shadow decision receipts are required before
+the owner UI may show SHADOW RUNNING.

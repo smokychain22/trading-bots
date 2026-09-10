@@ -189,6 +189,7 @@ export function masterConnectionMetadata(
     masked_account: null,
     checked_at: null,
     capabilities: {},
+    capability_results: [],
     account_status: null,
     equity: null,
     cash: null,
@@ -216,6 +217,7 @@ export function summarizeMasterReadiness(
   const orders = results.find((result) => result.capability === "OPEN_ORDERS_READ");
   const clock = results.find((result) => result.capability === "MARKET_CLOCK");
   const optionData = results.find((result) => result.capability === "OPTIONS_MARKET_DATA_OPRA");
+  const indicativeData = results.find((result) => result.capability === "OPTIONS_MARKET_DATA_INDICATIVE");
   const numberDetail = (name: string): number | null =>
     typeof account?.details[name] === "number" ? account.details[name] : null;
   const states = results.map((result) => result.state);
@@ -242,6 +244,13 @@ export function summarizeMasterReadiness(
         null,
       ),
     capabilities,
+    capability_results: results.map((result) => ({
+      capability: result.capability,
+      operation_alias: result.operationAlias,
+      state: result.state,
+      http_status: result.httpStatus,
+      observed_at: result.observedAt,
+    })),
     account_status: typeof account?.details.accountStatus === "string" ? account.details.accountStatus : null,
     equity: numberDetail("equity"),
     cash: numberDetail("cash"),
@@ -251,7 +260,11 @@ export function summarizeMasterReadiness(
     open_positions: typeof positions?.details.positionCount === "number" ? positions.details.positionCount : null,
     open_orders: typeof orders?.details.openOrderCount === "number" ? orders.details.openOrderCount : null,
     market_open: typeof clock?.details.isOpen === "boolean" ? clock.details.isOpen : null,
-    market_data_feed: optionData?.state === "GOOD" ? "OPRA" : "INDICATIVE_OR_NOT_ENTITLED",
+    market_data_feed: optionData?.state === "GOOD"
+      ? "OPRA"
+      : indicativeData?.state === "GOOD"
+        ? "INDICATIVE"
+        : "UNAVAILABLE",
   };
 }
 

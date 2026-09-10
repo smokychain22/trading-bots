@@ -74,7 +74,20 @@ export const assertRuntimeConfiguration = (environment: Environment): void => {
   assertProviderConfiguration(environment, 'ALPACA');
   assertProviderConfiguration(environment, 'OPTIONOMICS');
 
-  if (!environment.ALPACA_BASE_URL?.startsWith('https://paper-api.alpaca.markets')) {
+  let alpacaUrl: URL;
+  try {
+    alpacaUrl = new URL(environment.ALPACA_BASE_URL ?? '');
+  } catch {
+    throw new Error('ALPACA_BASE_URL must point to the Alpaca paper API. Live trading is not enabled.');
+  }
+  if (
+    alpacaUrl.protocol !== 'https:' ||
+    alpacaUrl.hostname !== 'paper-api.alpaca.markets' ||
+    alpacaUrl.port !== '' ||
+    !['', '/'].includes(alpacaUrl.pathname) ||
+    alpacaUrl.search !== '' ||
+    alpacaUrl.hash !== ''
+  ) {
     throw new Error('ALPACA_BASE_URL must point to the Alpaca paper API. Live trading is not enabled.');
   }
 };

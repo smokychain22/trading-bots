@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Environment } from "../config/environment.js";
 import type { CustomerStore, FollowerRecord } from "./customer-store.js";
 import {
+  decryptSecret,
   encryptSecret,
   randomOpaqueToken,
   sha256,
@@ -157,6 +158,9 @@ export async function completeAlpacaOAuth(
   );
   if (!stateRecord) throw new Error("OAUTH_STATE_INVALID_EXPIRED_OR_REPLAYED");
   const token = await exchangeCode(environment, code);
+  const grantedScopes = new Set(token.scope.split(/\s+/).filter(Boolean));
+  if (!grantedScopes.has("trading"))
+    throw new Error("ALPACA_OAUTH_SCOPE_INSUFFICIENT");
   const verification = await verifyFollowerAccount(token.access_token);
   const account = verification.account;
   const encryptedToken = encryptSecret(
@@ -187,3 +191,19 @@ export async function completeAlpacaOAuth(
   return { follower, returnPath: stateRecord.returnPath };
 }
 
+export async function verifyStoredFollowerAccount(
+  store: CustomerStore,
+  environment: Environment,
+  customerId: string,
+): Promise<FollowerVerification> {
+  const stored = await store.getFollowerToken(customerId);
+  if (!stored) throw new Error("FOLLOWER_TOKEN_NOT_AVAILABLE");
+  if (stored.keyRef !== environment.PAPER_COPY_TOKEN_KEY_REF)
+    throw new Error("FOLLOWER_TOKEN_KEY_VERSION_MISMATCH");
+  const token = decryptSecret(
+    stored,
+    environment.PAPER_COPY_TOKEN_ENCRYPTION_KEY ?? "",
+    customerId,
+  );
+  return verifyFollowerAccount(token);
+}

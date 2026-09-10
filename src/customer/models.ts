@@ -327,6 +327,13 @@ export interface MasterPaperConnection {
   masked_account: string | null;
   checked_at: string | null;
   capabilities: Record<string, string>;
+  capability_results: ReadonlyArray<{
+    capability: string;
+    operation_alias: string;
+    state: string;
+    http_status: number | null;
+    observed_at: string;
+  }>;
   account_status: string | null;
   equity: number | null;
   cash: number | null;

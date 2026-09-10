@@ -44,6 +44,7 @@ export type SaveFollowerInput = {
   readonly encryptedToken: EncryptedSecret;
   readonly scope: string;
 };
+export type StoredFollowerToken = EncryptedSecret & { readonly keyRef: string };
 
 export interface CustomerStore {
   createCustomer(email: string, passwordHash: string): Promise<CustomerIdentity>;
@@ -55,6 +56,7 @@ export interface CustomerStore {
   consumeOAuthState(stateHash: string, customerId: string, now: Date): Promise<OAuthStateRecord | null>;
   saveFollower(input: SaveFollowerInput): Promise<FollowerRecord>;
   getFollower(customerId: string): Promise<FollowerRecord | null>;
+  getFollowerToken(customerId: string): Promise<StoredFollowerToken | null>;
   saveParticipation(customerId: string, allocationUsd: number): Promise<FollowerRecord>;
   disconnectFollower(customerId: string): Promise<void>;
 }
@@ -177,6 +179,12 @@ export class PostgresCustomerStore implements CustomerStore {
          WHERE customer_id = $1 AND revoked_at IS NULL`,
         [input.customerId],
       );
+      await client.query(
+        `UPDATE copy.follower_account SET disconnected_at = now(), participation = 'DISCONNECTED',
+          account_ready = false, updated_at = now()
+         WHERE customer_id = $1 AND disconnected_at IS NULL`,
+        [input.customerId],
+      );
       const token = await client.query(
         `INSERT INTO copy.alpaca_oauth_token
           (customer_id, key_ref, ciphertext, iv, auth_tag, scope)
@@ -244,13 +252,62 @@ export class PostgresCustomerStore implements CustomerStore {
     return result.rows[0] ? followerFromRow(result.rows[0]) : null;
   }
 
-  async saveParticipation(customerId: string, allocationUsd: number) {
-    await this.pool.query(
-      `UPDATE copy.customer_participation
-       SET allocation_usd = $2, state = 'READY', updated_at = now()
-       WHERE customer_id = $1`,
-      [customerId, allocationUsd],
+  async getFollowerToken(customerId: string) {
+    const result = await this.pool.query(
+      `UPDATE copy.alpaca_oauth_token t SET last_used_at = now()
+       FROM copy.follower_account f
+       WHERE t.customer_id = $1 AND t.customer_id = f.customer_id
+         AND t.token_secret_id = f.token_secret_id
+         AND t.revoked_at IS NULL AND f.disconnected_at IS NULL
+       RETURNING t.key_ref, t.ciphertext, t.iv, t.auth_tag`,
+      [customerId],
     );
+    const row = result.rows[0];
+    return row
+      ? { keyRef: row.key_ref, ciphertext: row.ciphertext, iv: row.iv, authTag: row.auth_tag }
+      : null;
+  }
+
+  async saveParticipation(customerId: string, allocationUsd: number) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const follower = await client.query(
+        `SELECT follower_account_id FROM copy.follower_account
+         WHERE customer_id = $1 AND disconnected_at IS NULL AND account_ready = true
+         ORDER BY updated_at DESC LIMIT 1 FOR UPDATE`,
+        [customerId],
+      );
+      if (!follower.rows[0]) throw new Error("FOLLOWER_NOT_CONNECTED");
+      await client.query(
+        `UPDATE copy.follower_policy SET superseded_at = now()
+         WHERE follower_account_id = $1 AND superseded_at IS NULL`,
+        [follower.rows[0].follower_account_id],
+      );
+      await client.query(
+        `INSERT INTO copy.follower_policy(
+          follower_account_id, policy_version, allocation_usd,
+          max_bot_capital_pct, max_ticker_exposure_pct, max_contracts,
+          max_daily_loss_usd, max_open_positions, max_slippage_per_contract_usd,
+          min_dte, max_dte, allow_0dte, min_open_interest,
+          join_existing_positions, start_new_trades_only
+        ) VALUES ($1, 'theta-copy-policy-v1:' || gen_random_uuid()::text, $2,
+          25, 10, 1, 500, 3, 10, 7, 60, false, 500, false, true)`,
+        [follower.rows[0].follower_account_id, allocationUsd],
+      );
+      await client.query(
+        `UPDATE copy.customer_participation
+         SET allocation_usd = $2, state = 'READY', policy_version = 'theta-copy-policy-v1', updated_at = now()
+         WHERE customer_id = $1`,
+        [customerId, allocationUsd],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
     const follower = await this.getFollower(customerId);
     if (!follower) throw new Error("FOLLOWER_NOT_CONNECTED");
     return follower;

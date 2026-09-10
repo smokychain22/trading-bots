@@ -28,20 +28,14 @@ test("THETA customer view is concise and hides engineering internals", async ({ 
   await expect(page.getByRole("heading", { name: "No open positions" })).toBeVisible();
 });
 
-test("Copy THETA validates a simple PAPER setup but cannot activate", async ({ page }) => {
+test("Copy THETA shows one simple connection step when OAuth is unavailable", async ({ page }) => {
   await page.goto("/bots/theta/copy");
   await expect(page.getByRole("heading", { name: "Copy THETA", exact: true })).toBeVisible();
-  await expect(page.locator(".copy-steps li")).toHaveCount(3);
-  await expect(page.getByText("No per-trade approvals.", { exact: false })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Connect Alpaca Paper" })).toBeDisabled();
-  await page.getByRole("button", { name: "$25,000" }).click();
-  await page.getByRole("button", { name: "Review paper setup" }).click();
-  await expect(page.getByRole("heading", { name: "Review your setup" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Start Paper Copying" })).toBeDisabled();
-  await expect(page.locator("#copy-review")).toContainText("$25,000");
-  await expect(page.locator("#copy-review")).toContainText("Automatic within account limits");
-  await expect(page.locator("main")).not.toContainText("DTE");
-  await expect(page.locator("main")).not.toContainText("open interest");
+  await expect(page.getByText("STEP 1 OF 3")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect Alpaca" })).toBeDisabled();
+  await expect(page.getByText("Alpaca connection is not available yet.")).toBeVisible();
+  await expect(page.getByText("How much should THETA use?")).toHaveCount(0);
+  await expect(page.locator("main")).not.toContainText("token storage");
 });
 
 test("My Bots and Account show safe disconnected states", async ({ page }) => {
@@ -50,8 +44,8 @@ test("My Bots and Account show safe disconnected states", async ({ page }) => {
   await page.goto("/account");
   await expect(page.getByRole("heading", { name: "Your paper account" })).toBeVisible();
   await expect(page.getByText("Not connected", { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Connect Alpaca Paper" })).toBeDisabled();
-  await expect(page.getByText("Secure account connection is being prepared", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect Alpaca" })).toBeDisabled();
+  await expect(page.getByText("Alpaca connection is not available yet.")).toBeVisible();
   await expect(page.locator("main")).not.toContainText("OAuth");
   await expect(page.locator("main")).not.toContainText("token storage");
 });
@@ -132,9 +126,8 @@ test("active follower fixture shows automatic-copy semantics without trade contr
   await expect(page.locator("main")).toContainText("Eligible master fills are adapted");
   await page.goto("/account");
   await expect(page.getByText("Connected · •••• 0184")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Disconnect account" })).toBeDisabled();
-  await expect(page.locator("main")).toContainText("Disconnecting stops management");
-  await expect(page.locator("main")).toContainText("won’t be liquidated automatically");
+  await expect(page.getByRole("button", { name: "Disconnect account" })).toBeEnabled();
+  await expect(page.locator("main")).not.toContainText("token revocation");
 });
 
 test("customer position and history views never expose manual trade actions", async ({ page }) => {
@@ -154,19 +147,35 @@ test("visible customer controls either work or explain why they are unavailable"
   await page.getByRole("button", { name: "Bot activity" }).click();
   await expect(page.getByRole("button", { name: "Bot activity" })).toHaveAttribute("aria-pressed", "true");
 
+  await page.route("**/api/v1/copy/readiness", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.follower_account.state = "READY";
+    body.data.follower_account.masked_account = "••••0184";
+    body.data.oauth.state = "READY";
+    body.data.oauth.configured = true;
+    body.data.activation_allowed = true;
+    await route.fulfill({ json: body });
+  });
+  await page.route("**/api/v1/copy/policy/validate", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.activation_allowed = true;
+    body.data.stage = "READY_TO_COPY";
+    await route.fulfill({ json: body });
+  });
   await page.goto("/bots/theta/copy");
-  await expect(page.getByRole("button", { name: "Connect Alpaca Paper" })).toBeDisabled();
-  await expect(page.getByText("Secure account connection is being prepared", { exact: false })).toBeVisible();
+  await expect(page.getByText("STEP 2 OF 3")).toBeVisible();
   await page.getByRole("button", { name: "Custom" }).click();
   await page.getByLabel("Custom allocation ($)").fill("12000");
   await expect(page.locator("#allocation-output")).toHaveText("$12,000");
-  await page.getByRole("button", { name: "Review paper setup" }).click();
-  await expect(page.getByRole("button", { name: "Start Paper Copying" })).toBeDisabled();
-  await expect(page.locator("#activation-note")).toContainText("No order can be submitted");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByText("STEP 3 OF 3")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start Copying" })).toBeEnabled();
+  await expect(page.locator("#activation-note")).toContainText("Order submission remains locked");
 
   await page.goto("/account");
-  await expect(page.getByRole("button", { name: "Connect Alpaca Paper" })).toBeDisabled();
-  await expect(page.getByText("Secure account connection is being prepared", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect Alpaca" })).toHaveCount(0);
 });
 
 test("ops requires a server session and shows partial runtime honestly", async ({ page, context, request }, testInfo) => {
@@ -182,7 +191,7 @@ test("ops requires a server session and shows partial runtime honestly", async (
   await page.getByRole("button", { name: "Open operations" }).click();
   await expect(page).toHaveURL(/\/ops$/);
   await expect(page.getByRole("heading", { name: "Operations overview" })).toBeVisible();
-  await expect(page.locator("main")).toContainText("Trading and customer copy submission remain disabled");
+  await expect(page.locator("main")).toContainText("Order submission remains locked");
   await expect(page.getByRole("navigation", { name: "Operations" }).getByRole("link")).toHaveCount(5);
   for (const route of ["/ops/theta", "/ops/trading", "/ops/copy", "/ops/system"]) {
     await page.goto(route);

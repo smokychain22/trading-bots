@@ -1,5 +1,60 @@
 # Current Engineering Handoff
 
+## 2026-09-10 functional connection milestone
+
+OWNER: Codex
+
+TASK: Build the real application path for master PAPER verification, customer
+identity, Alpaca Connect OAuth, encrypted follower token storage, durable allocation,
+and truthful owner/customer readiness. Integrate compatible Claude R1 runtime work
+without claiming that SHADOW is running.
+
+FILES CHANGED: migration 006, customer auth/security/store/OAuth/API modules, master
+readiness projections, customer and owner UI, API and OAuth architecture docs, tests,
+and security scanning rules. Selected Claude R1 commits are present in main history as
+separate commits.
+
+WHAT WAS IMPLEMENTED:
+
+- Distinct master and follower Alpaca trust domains. Master credentials remain server
+  environment references. Followers use Alpaca authorization-code OAuth with
+  env=paper and no raw-key UI.
+- Stable customer UUID identity, salted scrypt passwords, opaque hashed sessions,
+  customer-bound single-use OAuth state, and AES-256-GCM follower token encryption.
+- Read-only follower account, positions, and open-order verification before readiness.
+- Durable follower account, participation, allocation, and policy persistence.
+- Owner master and combined provider verification endpoints with safe HTTP and
+  operation metadata. No credential value is returned.
+- A compact three-step copy experience. Only the current step is shown and advanced
+  limits are collapsed.
+- R1 provider normalization, opportunity assembly, hard-gate proof, and decision
+  assembly were selectively integrated. Runtime status remains
+  R1_INTEGRATED_INPUT_ASSEMBLY_BLOCKED.
+
+KNOWN LIMITATIONS AND RISKS:
+
+- Production lacks DATABASE_URL and Alpaca Connect/token-vault configuration, so a
+  real follower OAuth round trip cannot run yet.
+- Existing deployment master credentials were previously exposed in conversation and
+  must be rotated before they are used for a new real verification claim.
+- The customer identity layer needs rate limiting, verified email, recovery, MFA, and
+  broader security operations before public production release.
+- Docker was unavailable locally, so migration 006 must be executed by CI against its
+  disposable PostgreSQL service before it can be trusted.
+- SHADOW is not running. Real ownership/regime/event input assembly, a restart-safe
+  scheduler, and persisted shadow receipts remain required.
+- Follower order intent contracts exist, but broker order submission stays locked and
+  no worker is active.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude should review only the final runtime input
+assembly interface and management/AEGIS semantics. Customer OAuth, IAM, persistence,
+and owner controls remain Codex-owned integration surfaces.
+
+NEXT RECOMMENDED TASK: configure the approved PAPER Alpaca Connect application and
+managed PostgreSQL secrets, run a real customer OAuth round trip, then complete the
+R1 scheduler and persisted read-only shadow-decision slice. The first PAPER order is a
+separate explicitly authorized milestone.
+
 ## 2026-09-10 Codex integration note
 
 Claude source through `04a7975` was audited and merged into `codex/phase2-copy-ops` from main `cfe04b903bed86d6bf8fcb82c654070830241bd0`.

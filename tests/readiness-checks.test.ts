@@ -37,6 +37,7 @@ const withMockedFetch = async (routes: readonly MockRoute[], run: () => Promise<
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const route = routes.find((candidate) => candidate.match(url));
+    if (!route && url.includes('/v2/orders')) return jsonResponse(200, []);
     if (!route) {
       throw new Error(`Unmocked request in test: ${url}`);
     }
