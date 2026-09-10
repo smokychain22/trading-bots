@@ -43,10 +43,14 @@ export interface Metric {
 }
 export interface BotStatus {
   mode: Evidence["environment"];
-  automation: "NOT_ENABLED" | "RESEARCH";
-  aegis: "UNKNOWN";
+  runtime: "RUNNING" | "PAUSED" | "SAFE_HOLD" | "KILLED" | "NOT_STARTED" | "RESEARCH";
+  automation: "NOT_ENABLED" | "RESEARCH" | "PAUSED";
+  broker: "CONNECTED" | "DEGRADED" | "UNAVAILABLE" | "NOT_PUBLISHED" | "NOT_APPLICABLE";
+  broker_environment: "PAPER" | "NOT_APPLICABLE";
+  aegis: "UNKNOWN" | "ALLOW_FULL" | "ALLOW_REDUCED" | "HOLD_ONLY" | "HARD_VETO";
   last_decision: string | null;
   last_fill: string | null;
+  next_evaluation: string | null;
   current_exposure: number | null;
   market_session: "UNKNOWN";
   regime: "UNKNOWN";
@@ -143,6 +147,19 @@ export interface BotPosition extends Evidence {
   dte: number | null;
   aegis: string;
   next_action: string;
+  contract: string | null;
+  expiration: string | null;
+  strike: number | null;
+  entry_credit: number | null;
+  current_close_debit: number | null;
+  captured_premium: number | null;
+  stock_basis: number | null;
+  economic_basis: number | null;
+  open_mtm: number | null;
+  capital_committed: number;
+  next_evaluation: string | null;
+  current_action: string;
+  reason: string;
 }
 export interface BotTrade extends Evidence {
   id: string;
@@ -190,6 +207,87 @@ export interface BotActivity extends Evidence {
   kind: string;
   detail: string;
   chain_id: string | null;
+  decision_id: string | null;
+  order_id: string | null;
+  fill_id: string | null;
+  order_status: "NOT_APPLICABLE" | "PENDING" | "PARTIAL_FILL" | "FILLED" | "REJECTED";
+  aegis: BotStatus["aegis"];
+  economic_result: number | null;
+}
+
+export type PaperCopyStage =
+  | "CONNECT_ALPACA"
+  | "ACCOUNT_READINESS"
+  | "RISK_POLICY"
+  | "REVIEW"
+  | "WAITING_FOR_COPY_RUNTIME"
+  | "ACTIVE";
+
+export interface FollowerAccount {
+  follower_account_id: string | null;
+  provider: "ALPACA";
+  environment: "PAPER";
+  connection_method: "OAUTH";
+  masked_account: string | null;
+  state: "NOT_CONNECTED" | "AUTHORIZING" | "VERIFYING" | "READY" | "DEGRADED" | "REVOKED";
+  verified_at: string | null;
+}
+
+export interface FollowerRiskPolicy {
+  allocation_usd: number;
+  max_bot_capital_pct: number;
+  max_ticker_exposure_pct: number;
+  max_contracts: number;
+  max_daily_loss_usd: number;
+  max_open_positions: number;
+  min_dte: number;
+  max_dte: number;
+  allow_0dte: boolean;
+  max_slippage_per_contract_usd: number;
+  min_open_interest: number;
+  join_existing_positions: false;
+  start_new_trades_only: true;
+}
+
+export interface PaperCopyReadiness {
+  extension_version: "THETA_v1.2_PAPER_COPY";
+  stage: PaperCopyStage;
+  follower_account: FollowerAccount;
+  oauth: {
+    architecture: "ALPACA_OAUTH_SERVER_SIDE";
+    configured: boolean;
+    state: "NOT_CONFIGURED" | "BLOCKED_ON_CUSTOMER_IAM" | "READY";
+    token_storage: "ENCRYPTED_SECRET_REFERENCE_REQUIRED";
+  };
+  copy_runtime: "NOT_IMPLEMENTED";
+  activation_allowed: false;
+  master_fill_first: true;
+  raw_master_quantity_copy: false;
+  reason: string;
+}
+
+export interface CopyPolicyReview {
+  extension_version: "THETA_v1.2_PAPER_COPY";
+  stage: "WAITING_FOR_COPY_RUNTIME";
+  policy: FollowerRiskPolicy;
+  final_quantity: 0;
+  activation_allowed: false;
+  sizing_basis: "FOLLOWER_SPECIFIC_PREFLIGHT_REQUIRED";
+  reason: "COPY_RUNTIME_NOT_IMPLEMENTED";
+}
+
+export interface MasterPaperConnection {
+  provider: "ALPACA";
+  environment: "PAPER";
+  credential_storage: "SERVER_ENVIRONMENT_REFERENCE";
+  configured: boolean;
+  connection_state: "CONFIGURED_NOT_VERIFIED" | "NOT_CONFIGURED" | "GOOD" | "DEGRADED" | "INVALID";
+  masked_account: string | null;
+  checked_at: string | null;
+  capabilities: Record<string, string>;
+  execution_enabled: false;
+  reconnect_method: "SECURE_ENVIRONMENT_ROTATION";
+  disconnect_available_in_ui: false;
 }
 export interface BotDetail extends BotSummary {
   tags: string[];

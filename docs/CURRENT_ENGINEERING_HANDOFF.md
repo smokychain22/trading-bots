@@ -1,5 +1,19 @@
 # Current Engineering Handoff
 
+## 2026-09-10 Codex integration note
+
+Claude source `cc4680366e12fed807ab8145b3ecaf3b55664b22` was audited and merged into `codex/phase2-copy-ops` from main `cfe04b903bed86d6bf8fcb82c654070830241bd0`.
+
+The merged runtime contracts preserve UNKNOWN values, quantity zero, executable-price provenance, RECOVERY_WAIT, reason-specific WAIT scheduling, AEGIS exit supremacy, deterministic order intent IDs, and ambiguous-submission reconciliation. They contain no provider I/O or order submission path.
+
+R1 remains PARTIAL. Quant baselines and TypeScript contracts are present. Live option candidate generation, Python runtime bridge, persistent opportunity book and ledger, complete management assembly, broker execution, reconciliation, and follower copy execution remain blocked. The management action-value interface also needs a joint quant review to make its valuation origin explicit and prevent entry premium from being counted twice when comparing current-timestamp forward alternatives.
+
+Customer copy setup and `/ops` are product and API foundations only. See `docs/THETA_V1_2_PAPER_COPY_EXTENSION.md`.
+
+Vercel Production stores `ALPACA_BASE_URL` and `OPTIONOMICS_EMAIL` as Sensitive values. They were corrected on 2026-09-10, but Vercel CLI 59.1.3 substitutes an 11-character non-secret placeholder during local `env pull` and `env run`. Safe diagnostics confirm this placeholder is neither a URL nor an email. Local provider readiness therefore stops at configuration validation. Sensitive storage was preserved and no provider authentication claim is made from that run.
+
+Reticle project wiring is present and connected successfully, but `.agents/skills/reticle/SKILL.md` and saved `.reticle/flows` are absent from this branch. `reticle verify` correctly refused to report a pass for zero saved flows. Playwright supplied the desktop, tablet, mobile, overflow, and WCAG AA evidence for this milestone.
+
 **Last updated:** 2026-09-10, end of this Claude takeover session (continuation pass).
 **Origin/main SHA at session start and end:** `cfe04b903bed86d6bf8fcb82c654070830241bd0` (unchanged — nothing pushed).
 **Claude branch:** `claude/full-platform-takeover`

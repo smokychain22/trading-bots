@@ -4,6 +4,8 @@ import { createServer, type Server } from "node:http";
 import { randomBytes } from "node:crypto";
 import { botDetail, botSummaries } from "../src/customer/catalog.js";
 import handler, { simulateCapital, validSession } from "../src/customer/api.js";
+import { paperCopyReadiness, reviewPaperCopyPolicy } from "../src/customer/paper-copy.js";
+import { hasOperatorSession } from "../src/customer/ops-access.js";
 
 let server: Server;
 let base: string;
@@ -211,4 +213,43 @@ test("operator access needs a strong key, same origin and signed expiring sessio
     headers: { cookie },
   });
   assert.equal((await status.json()).data.trading, "DISABLED");
+});
+
+test("paper-copy foundation is follower-specific, zero-safe, and never activates", () => {
+  const readiness = paperCopyReadiness({});
+  assert.equal(readiness.follower_account.state, "NOT_CONNECTED");
+  assert.equal(readiness.activation_allowed, false);
+  assert.equal(readiness.master_fill_first, true);
+  assert.equal(readiness.raw_master_quantity_copy, false);
+  const review = reviewPaperCopyPolicy({
+    allocation_usd: 0,
+    max_bot_capital_pct: 25,
+    max_ticker_exposure_pct: 10,
+    max_contracts: 0,
+    max_daily_loss_usd: 0,
+    max_open_positions: 0,
+    min_dte: 1,
+    max_dte: 60,
+    allow_0dte: false,
+    max_slippage_per_contract_usd: 10,
+    min_open_interest: 500,
+    join_existing_positions: false,
+    start_new_trades_only: true,
+  });
+  assert.equal(review.final_quantity, 0);
+  assert.equal(review.activation_allowed, false);
+  assert.throws(() => reviewPaperCopyPolicy({ ...review.policy, join_existing_positions: true }));
+});
+
+test("operator page authorization uses the same signed server session", async () => {
+  assert.equal(hasOperatorSession(""), false);
+  const res = await fetch(base + "/api/v1/operator/session", {
+    method: "POST",
+    headers: { origin: base, "Content-Type": "application/json" },
+    body: JSON.stringify({ token: key }),
+  });
+  assert.equal(res.status, 200);
+  const cookie = res.headers.get("set-cookie") ?? "";
+  assert.match(cookie, /Path=\//);
+  assert.equal(hasOperatorSession(cookie), true);
 });

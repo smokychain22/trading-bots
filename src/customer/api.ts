@@ -3,6 +3,13 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
 import { botDetail, botSummaries } from "./catalog.js";
 import { matchesOperatorToken } from "../providers/readiness-handler.js";
+import { loadEnvironment } from "../config/environment.js";
+import {
+  masterConnectionMetadata,
+  paperCopyReadiness,
+  reviewPaperCopyPolicy,
+  verifyMasterPaperConnection,
+} from "./paper-copy.js";
 
 const simulationSchema = z
   .object({
@@ -146,19 +153,36 @@ export default async function customerHandler(
         const value = `${Date.now() + 900000}.${randomBytes(16).toString("hex")}`;
         response.setHeader(
           "Set-Cookie",
-          `tb_operator=${value}.${sign(value, key)}; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/operator; Max-Age=900`,
+          `tb_operator=${value}.${sign(value, key)}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=900`,
         );
         return send(response, 200, { authenticated: true, expires_in: 900 });
       }
       if (parts[1] === "session" && request.method === "DELETE") {
         response.setHeader(
           "Set-Cookie",
-          "tb_operator=; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/operator; Max-Age=0",
+          "tb_operator=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0",
         );
         return send(response, 200, { authenticated: false });
       }
       if (!validSession(request.headers.cookie ?? "", key))
         return send(response, 401, { error: { code: "OWNER_LOGIN_REQUIRED" } });
+      if (route === "operator/master-readiness" && request.method === "POST") {
+        try {
+          const data = await verifyMasterPaperConnection(loadEnvironment());
+          return send(response, data.connection_state === "GOOD" ? 200 : 207, {
+            api_version: "v1",
+            data,
+          });
+        } catch {
+          return send(response, 503, {
+            error: {
+              code: "MASTER_PAPER_READINESS_UNAVAILABLE",
+              message:
+                "The PAPER connection could not be verified. No order was submitted.",
+            },
+          });
+        }
+      }
       if (request.method !== "GET")
         return send(response, 405, { error: { code: "READ_ONLY_OPERATOR" } });
       if (route !== "operator/status")
@@ -172,9 +196,44 @@ export default async function customerHandler(
               : "DEVELOPMENT_OR_PREVIEW",
           trading: "DISABLED",
           bot_mode: "PAPER",
-          copy: "NOT_AVAILABLE",
+          copy: "BLOCKED",
           deployment_sha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
           provider_runtime: "UNKNOWN",
+          systems: {
+            theta_runtime: "BLOCKED",
+            quant_models: "HEALTHY",
+            decision_assembly: "HEALTHY",
+            alpaca_master_paper: "UNKNOWN",
+            market_data: "UNKNOWN",
+            option_data: "UNKNOWN",
+            scheduler: "BLOCKED",
+            aegis: "HEALTHY",
+            execution: "BLOCKED",
+            ledger: "BLOCKED",
+            reconciliation: "BLOCKED",
+            copy_engine: "BLOCKED",
+            followers: "UNKNOWN",
+            system_errors: "UNKNOWN",
+          },
+          runtime_detail: {
+            stage: "R1_PARTIAL",
+            policy_version: null,
+            model_versions: ["theta-q-v0", "quant contract baselines"],
+            last_market_snapshot: null,
+            last_scan: null,
+            last_decision: null,
+            next_scan: null,
+            candidates_evaluated: null,
+            candidates_passing: null,
+            candidates_rejected: null,
+            candidates_waiting: null,
+            candidates_q_zero: null,
+            open_positions: null,
+            pending_orders: null,
+            unknown_submissions: null,
+            reconciliation: "NOT_IMPLEMENTED",
+          },
+          master_connection: masterConnectionMetadata(),
           published_performance: false,
           gates: [
             "OPRA entitlement not established for execution",
@@ -183,9 +242,23 @@ export default async function customerHandler(
           ],
           security:
             "Operator session expires in 15 minutes. Read-only release visibility. No trading mutations are exposed.",
+          connection_change_policy:
+            "Master credentials are managed through secure deployment configuration. Disconnect and reconnect require an audited secret-reference change and are not exposed in this UI.",
         },
       });
     }
+    if (route === "copy/readiness" && request.method === "GET")
+      return send(response, 200, {
+        api_version: "v1",
+        product_extension: "THETA_v1.2_PAPER_COPY",
+        data: paperCopyReadiness(),
+      });
+    if (route === "copy/policy/validate" && request.method === "POST")
+      return send(response, 200, {
+        api_version: "v1",
+        product_extension: "THETA_v1.2_PAPER_COPY",
+        data: reviewPaperCopyPolicy(await readJson(request)),
+      });
     if (request.method === "POST" && route === "bots/theta/simulate")
       return send(response, 200, {
         api_version: "v1",

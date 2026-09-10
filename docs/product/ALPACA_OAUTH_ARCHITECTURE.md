@@ -26,12 +26,12 @@ their behalf.
 
 1. Customer clicks "Connect Alpaca Paper Account" in the Copy THETA wizard (step 1 of
    `docs/product/COPY_THETA_FLOW.md`).
-2. Server initiates the broker-supported authorization flow (OAuth-style redirect, or
-   whatever mechanism Alpaca's actual current API contract supports for third-party
-   account connection — **this must be verified against Alpaca's real, current
-   documentation before implementation**, not assumed from memory, since broker APIs
-   change; do not guess an endpoint shape the way `readiness.ts`'s Optionomics checks
-   already refuse to for that same reason).
+2. Server initiates Alpaca's documented authorization-code flow at
+   `https://app.alpaca.markets/oauth/authorize`, with `response_type=code`, the
+   registered client and redirect URI, a server-owned unguessable `state`, and
+   `env=paper`. The current official guide says read-only access is assumed by
+   default. The `trading` scope must not be requested until follower PAPER execution
+   is separately authorized and ready.
 3. State parameter is generated server-side, single-use, short-lived, and validated on
    callback (CSRF/replay protection) — PKCE used if the actual supported flow offers it.
 4. On successful authorization, the resulting token is encrypted server-side before
@@ -70,14 +70,15 @@ their behalf.
 
 ## What this document does not do
 
-It does not implement any code. It does not assume a specific Alpaca OAuth endpoint
-shape — that must be confirmed against Alpaca's actual current API documentation at
-implementation time (the same "never guess an undocumented endpoint" discipline
-`readiness.ts` already applies to Optionomics). Building this without that
-verification step would risk exactly the kind of fabricated-capability mistake this
-whole engagement has consistently avoided.
+It does not implement OAuth endpoints. Alpaca's official guide was verified on
+2026-09-10 and documents a server-side, form-encoded authorization-code exchange at
+`https://api.alpaca.markets/oauth/token`. The callback must reject a missing,
+mismatched, expired, or replayed `state`. The client secret and returned access token
+remain server-side. See https://docs.alpaca.markets/us/docs/using-oauth2-and-trading-api
+and https://docs.alpaca.markets/us/docs/registering-your-app.
 
 ## Status
 
-SPECIFIED. `BLOCKED_BY_CONFIGURATION` until implemented and until Alpaca's actual
-current customer-authorization API contract is confirmed.
+SPECIFIED and official contract verified. `BLOCKED_BY_CONFIGURATION` until the
+Alpaca Connect application, customer IAM, state store, and encrypted token-reference
+store are implemented.

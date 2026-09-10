@@ -1,229 +1,97 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
-test("catalog is honest, filters work, and research cannot activate", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "Trading Bots", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("AVAILABLE FOR EXPLORATION NOW")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Explore THETA" })).toBeVisible();
-  await expect(page.locator(".bot-card")).toHaveCount(5);
-  await page.getByText("Browse and filter the research roadmap").click();
-  await page.getByLabel("Strategy", { exact: true }).selectOption("Income");
-  await expect(page.locator(".bot-card")).toHaveCount(0);
-  await page.getByLabel("Risk", { exact: true }).selectOption("Conservative");
-  await expect(
-    page.getByRole("heading", { name: "No bots match these filters" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Reset", exact: true }).click();
-  await expect(page.locator(".bot-card")).toHaveCount(5);
-  await page.goto("/bots/atlas");
-  await expect(
-    page.getByRole("heading", { name: "ATLAS", exact: true }),
-  ).toBeVisible();
-  await expect(page.locator("main")).toContainText("Not available");
-  await expect(
-    page.getByRole("link", { name: "Activate", exact: true }),
-  ).toHaveCount(0);
-});
-
-test("THETA routes preserve demo, expose loss and reveal economic data", async ({
-  page,
-}) => {
-  await page.goto("/bots/theta?dataset=demo");
-  await expect(page.locator(".demo-banner")).toContainText(
-    "Every performance value and position is synthetic",
-  );
-  await expect(page.locator(".kpi-strip")).toContainText("-$2,500");
-  await page.getByLabel("Series", { exact: true }).selectOption("drawdown");
-  await expect(page.locator('svg[role="img"]')).toHaveAttribute(
-    "aria-label",
-    /drawdown/,
-  );
-  await page.getByLabel("Period", { exact: true }).selectOption("30d");
-  await page.getByRole("link", { name: "Performance", exact: true }).click();
-  await expect(page).toHaveURL(/dataset=demo.*period=30d/);
-  await page.getByRole("link", { name: "Positions", exact: true }).click();
-  await page.getByRole("link", { name: "THETA / AAPL", exact: true }).click();
-  await expect(page.locator("main")).toContainText("-$1,920");
-  await expect(page.locator("main")).toContainText(
-    "economic measure, not a tax-basis statement",
-  );
-  await page
-    .getByText("Accounting and decision details", { exact: true })
-    .first()
-    .click();
-  await expect(
-    page.getByText("AAPL260807P00180000", { exact: true }).first(),
-  ).toBeVisible();
-  for (const route of [
-    "performance",
-    "positions",
-    "history",
-    "intelligence",
-    "risk",
-    "how-it-works",
-  ]) {
-    await page.goto("/bots/theta/" + route + "?dataset=demo");
-    await expect(
-      page.getByRole("heading", { name: "THETA", exact: true }),
-    ).toBeVisible();
-    await expect(page.locator(".demo-banner")).toBeVisible();
-    await expect(page.locator(".error-state")).toHaveCount(0);
-  }
-});
-
-test("simulation uses actual API, supports WAIT and local drafts without activation", async ({
-  page,
-}) => {
-  await page.goto("/bots/theta/simulate");
-  await page.getByRole("button", { name: "Calculate illustration" }).click();
-  await expect(page.locator("#simulation-result")).toContainText("-$352");
-  await page.getByRole("button", { name: "Save local draft" }).click();
-  await page.getByRole("link", { name: "View My Bots" }).click();
-  await expect(page.locator(".saved-plan")).toHaveCount(1);
-  await page.getByRole("button", { name: "Remove draft" }).click();
-  await expect(page.locator(".saved-plan")).toHaveCount(0);
-  await page.goto("/bots/theta/simulate");
-  await page
-    .getByLabel("Capital you want to illustrate ($)", { exact: true })
-    .fill("0");
-  await page.getByRole("button", { name: "Calculate illustration" }).click();
-  await expect(
-    page.getByRole("heading", { name: "WAIT · Quantity zero" }),
-  ).toBeVisible();
-  await expect(page.locator("main")).toContainText(
-    "No account is connected",
-  );
-});
-
-test("first-time THETA journey exposes availability, decision, assignment and simulation", async ({
-  page,
-}) => {
+test("Bots makes THETA primary and future bots unavailable", async ({ page }) => {
   await page.goto("/bots");
-  await page.getByRole("link", { name: "Explore THETA" }).click();
+  await expect(page.getByRole("heading", { name: "Trading Bots", exact: true })).toBeVisible();
+  await expect(page.getByText("PAPER TESTING", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Copy THETA", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "More bots coming" })).toBeVisible();
+  await expect(page.locator(".bot-card")).toHaveCount(5);
+  await page.getByText("Search and filter bots").click();
+  await page.getByLabel("Strategy").selectOption("Neutral");
+  await expect(page.locator(".bot-card")).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "Activate", exact: true })).toHaveCount(0);
+});
+
+test("THETA customer view is concise and hides engineering internals", async ({ page }) => {
+  await page.goto("/bots/theta");
   await expect(page.getByRole("heading", { name: "THETA", exact: true })).toBeVisible();
-  await expect(page.locator("main")).toContainText(
-    "There is no validated customer performance record yet",
-  );
-  await expect(page.getByRole("heading", { name: "No published decision yet" })).toBeVisible();
-  await page.getByRole("link", { name: "How the Wheel works" }).click();
-  await expect(page.locator("main")).toContainText("WAIT is valid");
-  await expect(page.locator("main")).toContainText("What assignment means");
-  await page.getByRole("link", { name: "Explore a capital scenario" }).click();
-  await expect(
-    page.getByLabel("Capital you want to illustrate ($)", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("does not have enough reconciled trades", { exact: false })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Copy THETA", exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "THETA sections" }).getByRole("link")).toHaveCount(4);
+  await expect(page.locator("main")).not.toContainText("FusionSnapshot");
+  await expect(page.locator("main")).not.toContainText("ManagementUtility");
+  await expect(page.locator(".metric-value")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "No open positions" })).toBeVisible();
 });
 
-test("compare and published empty states remain useful", async ({ page }) => {
-  await page.goto("/compare");
-  await expect(page.getByRole("table")).toBeVisible();
-  await page.getByLabel("NEXUS", { exact: true }).check();
-  await page.getByLabel("VEGA", { exact: true }).check();
-  await expect(page.getByLabel("EVENT", { exact: true })).toBeDisabled();
-  for (const route of [
-    "/overview",
-    "/my-bots",
-    "/activity",
-    "/settings",
-    "/bots/theta/positions",
-    "/bots/theta/history",
-    "/bots/theta/performance",
-  ]) {
-    await page.goto(route);
-    await expect(page.locator("main h1")).toBeVisible();
-    await expect(page.locator(".error-state")).toHaveCount(0);
-    await expect(page.locator(".demo-banner")).toHaveCount(0);
-  }
+test("Copy THETA validates a five-step PAPER setup but cannot activate", async ({ page }) => {
+  await page.goto("/bots/theta/copy");
+  await expect(page.getByRole("heading", { name: "Copy THETA", exact: true })).toBeVisible();
+  await expect(page.locator(".copy-steps li")).toHaveCount(5);
+  await expect(page.getByRole("button", { name: "Connect Alpaca Paper" })).toBeDisabled();
+  await page.getByRole("button", { name: "Review setup" }).click();
+  await expect(page.getByRole("heading", { name: "Waiting for the paper-copy runtime" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Activate paper copy" })).toBeDisabled();
+  await expect(page.locator("main")).toContainText("Current quantity");
 });
 
-test("loading, network failure, API failure and recovery do not fabricate data", async ({
-  page,
-}) => {
-  await page.route("**/api/v1/bots", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    await route.abort();
+test("My Bots and Account show safe disconnected states", async ({ page }) => {
+  await page.goto("/my-bots");
+  await expect(page.getByRole("heading", { name: "No bots are copying yet" })).toBeVisible();
+  await page.goto("/account");
+  await expect(page.getByRole("heading", { name: "Your paper account" })).toBeVisible();
+  await expect(page.getByText("No customer account connected")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect Alpaca PAPER" })).toBeDisabled();
+});
+
+test("Activity supports simple customer filters", async ({ page }) => {
+  await page.goto("/activity");
+  await expect(page.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "All" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Trades" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Bot decisions" })).toBeVisible();
+});
+
+test("degraded state stays explicit without fabricated metrics", async ({ page }) => {
+  await page.route("**/api/v1/bots/theta", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.data_quality = "DEGRADED";
+    body.data.status.broker = "UNAVAILABLE";
+    await route.fulfill({ json: body });
   });
+  await page.goto("/bots/theta");
+  await expect(page.getByText("Provider degraded", { exact: false })).toBeVisible();
+  await expect(page.getByText("Broker unavailable", { exact: false })).toBeVisible();
+  await expect(page.locator(".metric-value")).toHaveCount(0);
+});
+
+test("backend failure does not reuse stale financial data", async ({ page }) => {
+  await page.route("**/api/v1/bots", (route) => route.fulfill({ status: 503, body: "{}" }));
   await page.goto("/bots");
-  await expect(
-    page.getByRole("heading", { name: "Loading your workspace" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Your data is unavailable" }),
-  ).toBeVisible();
-  await page.unroute("**/api/v1/bots");
-  await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.locator(".bot-card")).toHaveCount(5);
-  await page.route("**/api/v1/bots", (route) =>
-    route.fulfill({ status: 503, body: "{}" }),
-  );
-  await page.reload();
-  await expect(
-    page.getByRole("heading", { name: "API connection failed" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "API connection failed" })).toBeVisible();
+  await expect(page.locator(".metric-value")).toHaveCount(0);
 });
 
-for (const state of [
-  "STALE",
-  "DEGRADED",
-  "INVALID",
-  "PAUSED",
-  "CLOSED",
-  "BROKER_UNAVAILABLE",
-  "SHADOW",
-  "LIVE_SMALL",
-  "LIVE",
-]) {
-  test("explicit rendering: " + state, async ({ page }) => {
-    await page.route("**/api/v1/bots/theta", async (route) => {
-      const response = await route.fetch();
-      const body = await response.json();
-      if (["STALE", "DEGRADED", "INVALID"].includes(state))
-        body.data.data_quality = state;
-      if (state === "PAUSED") body.data.status.automation = "PAUSED";
-      if (state === "CLOSED") body.data.status.market_session = "CLOSED";
-      if (state === "BROKER_UNAVAILABLE")
-        body.data.status.broker = "UNAVAILABLE";
-      if (["SHADOW", "LIVE_SMALL", "LIVE"].includes(state))
-        body.data.environment = state;
-      await route.fulfill({ json: body });
-    });
-    await page.goto("/bots/theta");
-    await expect(page.locator('.notice[role="status"]')).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: "Activate", exact: true }),
-    ).toHaveCount(0);
-    await expect(page.locator(".metric-value").first()).toHaveText("—");
-  });
-}
-
-test("owner access is private and uses a short-lived HttpOnly session", async ({
-  page,
-  context,
-}) => {
-  await page.goto("/owner");
-  await expect(
-    page.getByRole("heading", { name: "Owner access" }),
-  ).toBeVisible();
-  await page
-    .getByLabel("Operator access key")
-    .fill("synthetic-browser-test-operator-access-only");
-  await page.getByRole("button", { name: "Open owner workspace" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Release & operational visibility" }),
-  ).toBeVisible();
-  const cookie = (await context.cookies()).find(
-    (c) => c.name === "tb_operator",
-  );
+test("ops requires a server session and shows partial runtime honestly", async ({ page, context, request }) => {
+  const response = await request.get("/ops", { maxRedirects: 0 });
+  expect(response.status()).toBe(302);
+  expect(response.headers().location).toBe("/ops/login");
+  await page.goto("/bots");
+  await expect(page.getByRole("link", { name: /ops|admin|owner/i })).toHaveCount(0);
+  await page.goto("/ops/login");
+  await page.getByLabel("Operator access key").fill("synthetic-browser-test-operator-access-only");
+  await page.getByRole("button", { name: "Open operations" }).click();
+  await expect(page).toHaveURL(/\/ops$/);
+  await expect(page.getByRole("heading", { name: "Is THETA working?" })).toBeVisible();
+  await expect(page.locator("main")).toContainText("R1 is partial");
+  await expect(page.locator("main")).toContainText("Execution is disabled");
+  const cookie = (await context.cookies()).find((item) => item.name === "tb_operator");
   expect(cookie?.httpOnly).toBe(true);
   expect(cookie?.secure).toBe(true);
   expect(await page.evaluate(() => localStorage.length)).toBe(0);
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page.getByLabel("Operator access key")).toBeVisible();
 });
 
 for (const [name, width, height] of [
@@ -231,50 +99,18 @@ for (const [name, width, height] of [
   ["tablet", 834, 1112],
   ["mobile", 390, 844],
 ] as const) {
-  test(
-    name + " accessibility, keyboard, layout and reference screenshots",
-    async ({ page }, testInfo) => {
-      await page.setViewportSize({ width, height });
-      for (const [id, path] of [
-        ["bots", "/bots"],
-        ["theta", "/bots/theta?dataset=demo"],
-        ["positions", "/bots/theta/positions?dataset=demo"],
-        ["simulate", "/bots/theta/simulate"],
-        ["compare", "/compare"],
-      ]) {
-        await page.goto(path);
-        await expect(page.locator("main h1")).toBeVisible();
-        const overflow = await page.evaluate(() => ({
-          viewport: innerWidth,
-          document: document.documentElement.scrollWidth,
-        }));
-        expect(overflow, `${name} ${id} must not overflow the page`).toEqual({
-          viewport: width,
-          document: width,
-        });
-        const results = await new AxeBuilder({ page })
-          .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
-          .analyze();
-        expect(
-          results.violations.map((v) => ({
-            id: v.id,
-            impact: v.impact,
-            nodes: v.nodes.map((n) => n.target),
-          })),
-        ).toEqual([]);
-        await page.screenshot({
-          path: testInfo.outputPath(name + "-" + id + ".png"),
-          fullPage: true,
-          animations: "disabled",
-        });
-      }
-      await page.goto("/bots");
-      await page.keyboard.press("Tab");
-      await expect(
-        page.getByRole("link", { name: "Skip to content" }),
-      ).toBeFocused();
-      await page.keyboard.press("Enter");
-      await expect(page.locator("#main")).toBeFocused();
-    },
-  );
+  test(`${name} layout, accessibility and screenshots`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height });
+    for (const [id, route] of [
+      ["bots", "/bots"], ["theta", "/bots/theta"], ["copy", "/bots/theta/copy"],
+      ["my-bots", "/my-bots"], ["activity", "/activity"], ["account", "/account"],
+    ]) {
+      await page.goto(route);
+      await expect(page.locator("main h1, main h2").first()).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth), `${name} ${id} overflow`).toBe(width);
+      const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
+      expect(results.violations.map((v) => v.id)).toEqual([]);
+      await page.screenshot({ path: testInfo.outputPath(`${name}-${id}.png`), fullPage: true, animations: "disabled" });
+    }
+  });
 }

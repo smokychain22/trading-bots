@@ -1,0 +1,146 @@
+import { z } from "zod";
+import type { Environment } from "../config/environment.js";
+import { assertProviderConfiguration } from "../config/environment.js";
+import { checkAlpaca, type CheckResult } from "../providers/readiness.js";
+import type {
+  CopyPolicyReview,
+  MasterPaperConnection,
+  PaperCopyReadiness,
+} from "./models.js";
+
+export const paperCopyPolicySchema = z
+  .object({
+    allocation_usd: z.number().finite().min(0).max(10_000_000),
+    max_bot_capital_pct: z.number().finite().min(0).max(100),
+    max_ticker_exposure_pct: z.number().finite().min(0).max(100),
+    max_contracts: z.number().int().min(0).max(1_000),
+    max_daily_loss_usd: z.number().finite().min(0).max(10_000_000),
+    max_open_positions: z.number().int().min(0).max(1_000),
+    min_dte: z.number().int().min(0).max(730),
+    max_dte: z.number().int().min(0).max(730),
+    allow_0dte: z.boolean(),
+    max_slippage_per_contract_usd: z.number().finite().min(0).max(100_000),
+    min_open_interest: z.number().int().min(0).max(100_000_000),
+    join_existing_positions: z.literal(false),
+    start_new_trades_only: z.literal(true),
+  })
+  .strict()
+  .refine((policy) => policy.min_dte <= policy.max_dte, {
+    message: "Minimum DTE must not exceed maximum DTE.",
+  })
+  .refine((policy) => policy.allow_0dte || policy.min_dte > 0, {
+    message: "Minimum DTE must be at least one when 0DTE is disabled.",
+  });
+
+export function paperCopyReadiness(
+  source: NodeJS.ProcessEnv = process.env,
+): PaperCopyReadiness {
+  const oauthConfigured = Boolean(
+    source.ALPACA_OAUTH_CLIENT_ID &&
+      source.ALPACA_OAUTH_CLIENT_SECRET &&
+      source.ALPACA_OAUTH_REDIRECT_URI &&
+      source.PAPER_COPY_TOKEN_KEY_REF,
+  );
+  return {
+    extension_version: "THETA_v1.2_PAPER_COPY",
+    stage: "CONNECT_ALPACA",
+    follower_account: {
+      follower_account_id: null,
+      provider: "ALPACA",
+      environment: "PAPER",
+      connection_method: "OAUTH",
+      masked_account: null,
+      state: "NOT_CONNECTED",
+      verified_at: null,
+    },
+    oauth: {
+      architecture: "ALPACA_OAUTH_SERVER_SIDE",
+      configured: oauthConfigured,
+      state: oauthConfigured ? "BLOCKED_ON_CUSTOMER_IAM" : "NOT_CONFIGURED",
+      token_storage: "ENCRYPTED_SECRET_REFERENCE_REQUIRED",
+    },
+    copy_runtime: "NOT_IMPLEMENTED",
+    activation_allowed: false,
+    master_fill_first: true,
+    raw_master_quantity_copy: false,
+    reason: oauthConfigured
+      ? "Customer identity, encrypted token persistence, and callback state verification are not released."
+      : "Alpaca customer OAuth is not configured for this deployment.",
+  };
+}
+
+export function reviewPaperCopyPolicy(raw: unknown): CopyPolicyReview {
+  return {
+    extension_version: "THETA_v1.2_PAPER_COPY",
+    stage: "WAITING_FOR_COPY_RUNTIME",
+    policy: paperCopyPolicySchema.parse(raw),
+    final_quantity: 0,
+    activation_allowed: false,
+    sizing_basis: "FOLLOWER_SPECIFIC_PREFLIGHT_REQUIRED",
+    reason: "COPY_RUNTIME_NOT_IMPLEMENTED",
+  };
+}
+
+export function masterConnectionMetadata(
+  source: NodeJS.ProcessEnv = process.env,
+): MasterPaperConnection {
+  const configured = Boolean(
+    source.ALPACA_API_KEY &&
+      source.ALPACA_SECRET_KEY &&
+      source.ALPACA_BASE_URL === "https://paper-api.alpaca.markets",
+  );
+  return {
+    provider: "ALPACA",
+    environment: "PAPER",
+    credential_storage: "SERVER_ENVIRONMENT_REFERENCE",
+    configured,
+    connection_state: configured ? "CONFIGURED_NOT_VERIFIED" : "NOT_CONFIGURED",
+    masked_account: null,
+    checked_at: null,
+    capabilities: {},
+    execution_enabled: false,
+    reconnect_method: "SECURE_ENVIRONMENT_ROTATION",
+    disconnect_available_in_ui: false,
+  };
+}
+
+export function summarizeMasterReadiness(
+  results: readonly CheckResult[],
+): MasterPaperConnection {
+  const account = results.find((result) => result.capability === "ACCOUNT_ENVIRONMENT");
+  const capabilities = Object.fromEntries(
+    results.map((result) => [result.capability, result.state]),
+  );
+  const states = results.map((result) => result.state);
+  const connectionState = states.every((state) => state === "GOOD")
+    ? "GOOD"
+    : states.some((state) => state === "INVALID")
+      ? "INVALID"
+      : "DEGRADED";
+  return {
+    ...masterConnectionMetadata({
+      ALPACA_API_KEY: "configured",
+      ALPACA_SECRET_KEY: "configured",
+      ALPACA_BASE_URL: "https://paper-api.alpaca.markets",
+    }),
+    connection_state: connectionState,
+    masked_account:
+      typeof account?.details.maskedAccount === "string"
+        ? account.details.maskedAccount
+        : null,
+    checked_at:
+      results.reduce<string | null>(
+        (latest, result) =>
+          latest === null || result.observedAt > latest ? result.observedAt : latest,
+        null,
+      ),
+    capabilities,
+  };
+}
+
+export async function verifyMasterPaperConnection(
+  environment: Environment,
+): Promise<MasterPaperConnection> {
+  assertProviderConfiguration(environment, "ALPACA");
+  return summarizeMasterReadiness(await checkAlpaca(environment));
+}

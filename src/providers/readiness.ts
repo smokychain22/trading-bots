@@ -147,13 +147,20 @@ export const checkAlpaca = async (environment: Environment): Promise<readonly Ch
   const today = new Date().toISOString().slice(0, 10);
   const account = await readJson('ALPACA', 'ACCOUNT_ENVIRONMENT', 'alpaca.get_account', new URL('/v2/account', baseUrl), { headers }, alpacaProvenance(baseUrl.host, '/v2/account'), (body) => {
     const accountBody = object(body);
+    const accountId = typeof accountBody.id === 'string' ? accountBody.id : '';
     return {
       paperEndpoint: true,
+      maskedAccount: accountId ? `••••${accountId.slice(-4)}` : null,
       accountStatusPresent: typeof accountBody.status === 'string',
       equityReadable: Number.isFinite(Number(accountBody.equity)),
       cashReadable: Number.isFinite(Number(accountBody.cash)),
       buyingPowerReadable: Number.isFinite(Number(accountBody.buying_power)),
       optionsApprovalReadable: typeof accountBody.options_approved_level === 'number' || typeof accountBody.options_trading_level === 'number',
+      optionsLevel: typeof accountBody.options_approved_level === 'number'
+        ? accountBody.options_approved_level
+        : typeof accountBody.options_trading_level === 'number'
+          ? accountBody.options_trading_level
+          : null,
       tradingBlocked: accountBody.trading_blocked === true
     };
   });

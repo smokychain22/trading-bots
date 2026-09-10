@@ -97,10 +97,14 @@ export function botSummaries(): BotSummary[] {
     available: id === "theta",
     status: {
       mode: id === "theta" ? "PAPER" : "RESEARCH",
+      runtime: id === "theta" ? "NOT_STARTED" : "RESEARCH",
       automation: id === "theta" ? "NOT_ENABLED" : "RESEARCH",
+      broker: id === "theta" ? "NOT_PUBLISHED" : "NOT_APPLICABLE",
+      broker_environment: id === "theta" ? "PAPER" : "NOT_APPLICABLE",
       aegis: "UNKNOWN",
       last_decision: null,
       last_fill: null,
+      next_evaluation: null,
       current_exposure: null,
       market_session: "UNKNOWN",
       regime: "UNKNOWN",
@@ -213,6 +217,20 @@ export function botDetail(id: string, demo = false): BotDetail | null {
           aegis: "Demo: HOLD_ONLY",
           next_action:
             "Evaluate recovery, stock exit and covered-call alternatives",
+          contract: null,
+          expiration: null,
+          strike: null,
+          entry_credit: 6,
+          current_close_debit: null,
+          captured_premium: 600,
+          stock_basis: 180,
+          economic_basis: 174,
+          open_mtm: -2500,
+          capital_committed: 18000,
+          next_evaluation: null,
+          current_action: "RECOVERY_WAIT",
+          reason:
+            "Assigned stock remains below economic basis. No automatic covered call is assumed.",
         },
       ]
     : [];
@@ -366,7 +384,7 @@ export function botDetail(id: string, demo = false): BotDetail | null {
         start_date: fixture ? "2026-06-07" : null,
         live_duration_days: null,
         paper_duration_days: null,
-        resolved_episodes: fixture ? 5 : null,
+        resolved_episodes: fixture ? 5 : 0,
         independent_n: null,
         open_positions_included: fixture ? true : null,
         fees_included: fixture ? true : null,
@@ -534,6 +552,12 @@ export function botDetail(id: string, demo = false): BotDetail | null {
       kind: event.action,
       detail: event.reason,
       chain_id: "demo-aapl-001",
+      decision_id: `demo-decision-${i}`,
+      order_id: i === 2 ? null : `demo-order-${i}`,
+      fill_id: i === 2 ? null : `demo-fill-${i}`,
+      order_status: i === 2 ? "NOT_APPLICABLE" : "FILLED",
+      aegis: "HOLD_ONLY",
+      economic_result: event.realized_pnl + (event.unrealized_pnl ?? 0),
     })),
   };
 }

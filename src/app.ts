@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import customerHandler from "./customer/api.js";
+import { hasOperatorSession } from "./customer/ops-access.js";
 
 export const app = express();
 app.disable("x-powered-by");
@@ -62,6 +63,15 @@ app.get("/readyz", (_request, response) =>
 app.use("/api/v1", (request, response) => {
   request.url = request.originalUrl;
   void customerHandler(request, response);
+});
+app.get("/ops", (request, response) => {
+  if (!hasOperatorSession(request.headers.cookie ?? "")) {
+    response.redirect(302, "/ops/login");
+    return;
+  }
+  response.setHeader("Cache-Control", "no-store");
+  response.setHeader("X-Robots-Tag", "noindex, nofollow");
+  response.sendFile(resolve("public/index.html"));
 });
 app.use(
   "/__reticle",
