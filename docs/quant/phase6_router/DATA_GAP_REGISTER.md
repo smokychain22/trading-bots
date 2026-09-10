@@ -43,11 +43,19 @@ None have been proven unsupported by Alpaca + Optionomics after actual
 investigation. The two real gaps identified are:
 
 1. **Historical underlying bars for ownership/regime feature computation**
-   (trend, realized volatility, drawdown, gap history) — status **VERIFY**,
-   not yet probed. Alpaca's stock-bars REST endpoint is the documented
-   candidate; Optionomics's own `/price_history` endpoint (confirmed
-   reachable, real 200 this session, shape not yet inspected) is a second
-   candidate. Investigate both before concluding either is insufficient.
+   (trend, realized volatility, drawdown, gap history) — **PROVIDER AVAILABLE
+   = Alpaca** (`GET /v2/stocks/bars`, `GET /v2/stocks/{symbol}/bars` are
+   documented, pagination-capable endpoints); **IMPLEMENTATION STATUS =
+   PARTIALLY WIRED**. `src/theta/underlying-history.ts` implements the pure
+   response-parsing, pagination-following (`next_page_token`, never silently
+   truncated), and no-future-leakage (`barsAsOf`) logic, tested without live
+   credentials. NOT yet wired: the actual `fetch()` call against a live
+   account, and the feature-computation layer (trend/RV/drawdown/gap) that
+   consumes these bars for ownership/regime inputs. This is an
+   implementation gap, not a provider/vendor gap — reclassified from VERIFY
+   this session. Optionomics's own `/price_history` endpoint (confirmed
+   reachable, real 200 earlier this session, shape not yet inspected)
+   remains a documented secondary candidate if ever needed.
 2. **Event-state assembly** (earnings/dividend/corporate-action, structured
    into THETA's `EventState` contract) — the underlying data is reachable
    (both providers responded 200 to their respective event endpoints this
