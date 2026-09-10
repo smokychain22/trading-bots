@@ -18,6 +18,7 @@ import {
   ownerPage,
   bindOwner,
   accountPage,
+  bindAccount,
   paperCopyPage,
   bindPaperCopy,
 } from "./workflows.js";
@@ -476,6 +477,7 @@ async function load() {
       bindOwner();
     } else if (path === "/account") {
       shell(accountPage(await readCopyReadiness(abort.signal)));
+      bindAccount();
     } else if (path === "/settings") {
       shell(
         heading(

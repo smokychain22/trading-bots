@@ -18,6 +18,7 @@ const environmentSchema = z.object({
   ALPACA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
   ALPACA_OAUTH_REDIRECT_URI: optionalUrl,
   PAPER_COPY_TOKEN_KEY_REF: z.string().min(1).optional(),
+  PAPER_COPY_TOKEN_ENCRYPTION_KEY: z.string().min(1).optional(),
   VERCEL_PROJECT_ID: z.string().min(1).optional(),
   VERCEL_ORG_ID: z.string().min(1).optional(),
   VERCEL_TOKEN: z.string().min(1).optional()

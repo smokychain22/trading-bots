@@ -74,7 +74,7 @@ test('valid PAPER account: every check reports GOOD with account fields readable
     ],
     async () => {
       const results = await checkAlpaca(baseEnvironment);
-      assert.equal(results.length, 9);
+      assert.equal(results.length, 11);
       for (const result of results) {
         assert.equal(result.state, 'GOOD', `${result.capability} expected GOOD, got ${result.state}`);
         assert.equal(typeof result.latencyMs, 'number');

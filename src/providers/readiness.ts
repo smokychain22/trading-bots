@@ -42,6 +42,10 @@ const object = (value: unknown): JsonRecord =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : {};
 
 const observedAt = (): string => new Date().toISOString();
+const finiteNumber = (value: unknown): number | null => {
+  const number = Number(value);
+  return value !== null && value !== '' && Number.isFinite(number) ? number : null;
+};
 
 const stateForResponse = (response: Response): CapabilityState => {
   if (response.ok) return 'GOOD';
@@ -152,6 +156,11 @@ export const checkAlpaca = async (environment: Environment): Promise<readonly Ch
       paperEndpoint: true,
       maskedAccount: accountId ? `••••${accountId.slice(-4)}` : null,
       accountStatusPresent: typeof accountBody.status === 'string',
+      accountStatus: typeof accountBody.status === 'string' ? accountBody.status : null,
+      equity: finiteNumber(accountBody.equity),
+      cash: finiteNumber(accountBody.cash),
+      buyingPower: finiteNumber(accountBody.buying_power),
+      optionsBuyingPower: finiteNumber(accountBody.options_buying_power),
       equityReadable: Number.isFinite(Number(accountBody.equity)),
       cashReadable: Number.isFinite(Number(accountBody.cash)),
       buyingPowerReadable: Number.isFinite(Number(accountBody.buying_power)),
@@ -166,7 +175,7 @@ export const checkAlpaca = async (environment: Environment): Promise<readonly Ch
   });
   const clock = await readJson('ALPACA', 'MARKET_CLOCK', 'alpaca.get_clock', new URL('/v2/clock', baseUrl), { headers }, alpacaProvenance(baseUrl.host, '/v2/clock'), (body) => {
     const clockBody = object(body);
-    return { timestampPresent: typeof clockBody.timestamp === 'string', isOpenPresent: typeof clockBody.is_open === 'boolean' };
+    return { timestampPresent: typeof clockBody.timestamp === 'string', isOpenPresent: typeof clockBody.is_open === 'boolean', isOpen: typeof clockBody.is_open === 'boolean' ? clockBody.is_open : null };
   });
   const calendarUrl = new URL('/v2/calendar', baseUrl);
   calendarUrl.search = new URLSearchParams({ start: today, end: today }).toString();
@@ -195,13 +204,17 @@ export const checkAlpaca = async (environment: Environment): Promise<readonly Ch
     return { requestedFeed: 'opra', snapshotEnvelopePresent: typeof snapshots === 'object', greeksPresent: typeof first.greeks === 'object', requestIdPresent: response.headers.has('x-request-id') };
   });
   const positions = await readJson('ALPACA', 'POSITIONS_READ', 'alpaca.get_positions', new URL('/v2/positions', baseUrl), { headers }, alpacaProvenance(baseUrl.host, '/v2/positions'), (body) => ({ responseIsArray: Array.isArray(body), positionCount: Array.isArray(body) ? body.length : null }));
+  const openOrdersUrl = new URL('/v2/orders', baseUrl);
+  openOrdersUrl.search = new URLSearchParams({ status: 'open', limit: '100', direction: 'desc' }).toString();
+  const openOrders = await readJson('ALPACA', 'OPEN_ORDERS_READ', 'alpaca.get_open_orders', openOrdersUrl, { headers }, alpacaProvenance(baseUrl.host, '/v2/orders'), (body) => ({ responseIsArray: Array.isArray(body), openOrderCount: Array.isArray(body) ? body.length : null }));
+  const configuration = await readJson('ALPACA', 'ACCOUNT_CONFIGURATION_READ', 'alpaca.get_account_configurations', new URL('/v2/account/configurations', baseUrl), { headers }, alpacaProvenance(baseUrl.host, '/v2/account/configurations'), (body) => ({ configurationReadable: Object.keys(object(body)).length > 0 }));
   const activitiesUrl = new URL('/v2/account/activities/FILL', baseUrl);
   activitiesUrl.search = new URLSearchParams({ direction: 'desc', page_size: '1' }).toString();
   const activities = await readJson('ALPACA', 'ACCOUNT_ACTIVITY_READ', 'alpaca.get_account_activities_fill', activitiesUrl, { headers }, alpacaProvenance(baseUrl.host, '/v2/account/activities/FILL'), (body) => ({ responseIsArray: Array.isArray(body), activityCount: Array.isArray(body) ? body.length : null }));
   const corporateActionsUrl = new URL('/v1/corporate-actions', alpacaDataBaseUrl);
   corporateActionsUrl.search = new URLSearchParams({ symbols: 'SPY', start: today, end: today, limit: '1' }).toString();
   const corporateActions = await readJson('ALPACA', 'CORPORATE_ACTIONS_READ', 'alpaca.get_corporate_actions', corporateActionsUrl, { headers }, alpacaProvenance(corporateActionsUrl.host, corporateActionsUrl.pathname), (body) => ({ responseIsObject: typeof body === 'object' && body !== null }));
-  return [account, clock, calendar, stockData, contracts, optionData, positions, activities, corporateActions];
+  return [account, configuration, clock, calendar, stockData, contracts, optionData, positions, openOrders, activities, corporateActions];
 };
 
 type OptionomicsProbe = { readonly capability: string; readonly operationAlias: string; readonly path: string };

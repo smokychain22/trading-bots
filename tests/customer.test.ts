@@ -215,13 +215,13 @@ test("operator access needs a strong key, same origin and signed expiring sessio
   assert.equal((await status.json()).data.trading, "DISABLED");
 });
 
-test("paper-copy foundation is follower-specific, zero-safe, and never activates", () => {
+test("paper-copy readiness is follower-specific and fails closed without persistence", () => {
   const readiness = paperCopyReadiness({});
   assert.equal(readiness.follower_account.state, "NOT_CONNECTED");
   assert.equal(readiness.activation_allowed, false);
   assert.equal(readiness.master_fill_first, true);
   assert.equal(readiness.raw_master_quantity_copy, false);
-  assert.equal(readiness.copy_runtime, "CONTRACT_AND_SCHEMA_READY_EXECUTION_DISABLED");
+  assert.equal(readiness.copy_runtime, "PERSISTENCE_NOT_CONFIGURED");
   assert.equal(readiness.customer_authority.per_trade_approval, false);
   assert.equal(readiness.customer_authority.existing_position_management_after_stop, true);
   assert.equal(readiness.customer_authority.automatic_liquidation_on_disconnect, false);
@@ -242,6 +242,7 @@ test("paper-copy foundation is follower-specific, zero-safe, and never activates
   });
   assert.equal(review.final_quantity, 0);
   assert.equal(review.activation_allowed, false);
+  assert.equal(review.reason, "ACCOUNT_CONNECTION_REQUIRED");
   assert.throws(() => reviewPaperCopyPolicy({ ...review.policy, join_existing_positions: true }));
 });
 

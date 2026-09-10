@@ -227,7 +227,9 @@ export type FollowerParticipation =
   | "READY_TO_COPY"
   | "COPY_NEW_AND_MANAGE"
   | "STOP_NEW_TRADES_MANAGE_EXISTING"
-  | "DISCONNECTED";
+  | "DISCONNECTED"
+  | "BLOCKED"
+  | "RECONCILING";
 
 export interface FollowerAccount {
   follower_account_id: string | null;
@@ -266,12 +268,12 @@ export interface PaperCopyReadiness {
   oauth: {
     architecture: "ALPACA_OAUTH_SERVER_SIDE";
     configured: boolean;
-    state: "NOT_CONFIGURED" | "BLOCKED_ON_CUSTOMER_IAM" | "READY";
-    token_storage: "ENCRYPTED_SECRET_REFERENCE_REQUIRED";
+    state: "NOT_CONFIGURED" | "CUSTOMER_LOGIN_REQUIRED" | "READY";
+    token_storage: "ENCRYPTED_SERVER_SIDE" | "NOT_CONFIGURED";
   };
   participation: FollowerParticipation;
-  copy_runtime: "CONTRACT_AND_SCHEMA_READY_EXECUTION_DISABLED";
-  activation_allowed: false;
+  copy_runtime: "ORDER_INTENT_READY_EXECUTION_LOCKED" | "PERSISTENCE_NOT_CONFIGURED";
+  activation_allowed: boolean;
   master_fill_first: true;
   raw_master_quantity_copy: false;
   reason: string;
@@ -308,12 +310,12 @@ export interface FollowerResults extends Evidence {
 
 export interface CopyPolicyReview {
   extension_version: "THETA_v1.2_PAPER_COPY";
-  stage: "WAITING_FOR_COPY_RUNTIME";
+  stage: "REVIEW" | "READY_TO_COPY";
   policy: FollowerRiskPolicy;
   final_quantity: 0;
-  activation_allowed: false;
+  activation_allowed: boolean;
   sizing_basis: "FOLLOWER_SPECIFIC_PREFLIGHT_REQUIRED";
-  reason: "COPY_RUNTIME_NOT_IMPLEMENTED";
+  reason: "ACCOUNT_CONNECTION_REQUIRED" | "READY_TO_SAVE_PARTICIPATION";
 }
 
 export interface MasterPaperConnection {
@@ -325,6 +327,16 @@ export interface MasterPaperConnection {
   masked_account: string | null;
   checked_at: string | null;
   capabilities: Record<string, string>;
+  account_status: string | null;
+  equity: number | null;
+  cash: number | null;
+  buying_power: number | null;
+  options_buying_power: number | null;
+  options_level: number | null;
+  open_positions: number | null;
+  open_orders: number | null;
+  market_open: boolean | null;
+  market_data_feed: string;
   execution_enabled: false;
   reconnect_method: "SECURE_ENVIRONMENT_ROTATION";
   disconnect_available_in_ui: false;

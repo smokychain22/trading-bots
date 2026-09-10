@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Environment } from "../config/environment.js";
-import { assertProviderConfiguration } from "../config/environment.js";
+import { assertProviderConfiguration, loadEnvironment } from "../config/environment.js";
 import { checkAlpaca, type CheckResult } from "../providers/readiness.js";
 import type {
   CopyPolicyReview,
@@ -8,6 +8,8 @@ import type {
   MasterPaperConnection,
   PaperCopyReadiness,
 } from "./models.js";
+import type { FollowerRecord } from "./customer-store.js";
+import { oauthConfiguration } from "./alpaca-oauth.js";
 
 export const paperCopyPolicySchema = z
   .object({
@@ -35,43 +37,63 @@ export const paperCopyPolicySchema = z
 
 export function paperCopyReadiness(
   source: NodeJS.ProcessEnv = process.env,
+  follower: FollowerRecord | null = null,
+  authenticated = false,
 ): PaperCopyReadiness {
-  const oauthConfigured = Boolean(
-    source.ALPACA_OAUTH_CLIENT_ID &&
-      source.ALPACA_OAUTH_CLIENT_SECRET &&
-      source.ALPACA_OAUTH_REDIRECT_URI &&
-      source.PAPER_COPY_TOKEN_KEY_REF,
-  );
+  const environment = loadEnvironment(source);
+  const oauth = oauthConfiguration(environment);
+  const connected = follower !== null;
+  const participation = !follower
+    ? "NOT_CONNECTED"
+    : follower.participation === "ACTIVE"
+      ? "COPY_NEW_AND_MANAGE"
+      : follower.participation === "STOP_NEW_ENTRIES"
+        ? "STOP_NEW_TRADES_MANAGE_EXISTING"
+        : follower.participation === "BLOCKED"
+          ? "BLOCKED"
+          : "READY_TO_COPY";
   return {
     extension_version: "THETA_v1.2_PAPER_COPY",
-    stage: "CONNECT_ALPACA",
+    stage: connected ? "CHOOSE_ALLOCATION" : "CONNECT_ALPACA",
     follower_account: {
-      follower_account_id: null,
+      follower_account_id: follower?.followerAccountId ?? null,
       provider: "ALPACA",
       environment: "PAPER",
       connection_method: "OAUTH",
-      masked_account: null,
-      state: "NOT_CONNECTED",
-      verified_at: null,
-      buying_power: null,
-      cash: null,
-      options_enabled: null,
-      last_sync_at: null,
+      masked_account: follower?.maskedAccount ?? null,
+      state: !follower ? "NOT_CONNECTED" : follower.accountReady ? "READY" : "DEGRADED",
+      verified_at: follower?.lastBrokerSyncAt ?? null,
+      buying_power: follower?.buyingPower ?? null,
+      cash: follower?.cash ?? null,
+      options_enabled: follower ? (follower.optionsTradingLevel ?? follower.optionsApprovedLevel ?? 0) >= 2 : null,
+      last_sync_at: follower?.lastBrokerSyncAt ?? null,
     },
     oauth: {
       architecture: "ALPACA_OAUTH_SERVER_SIDE",
-      configured: oauthConfigured,
-      state: oauthConfigured ? "BLOCKED_ON_CUSTOMER_IAM" : "NOT_CONFIGURED",
-      token_storage: "ENCRYPTED_SECRET_REFERENCE_REQUIRED",
+      configured: oauth.configured,
+      state: !oauth.configured
+        ? "NOT_CONFIGURED"
+        : authenticated
+          ? "READY"
+          : "CUSTOMER_LOGIN_REQUIRED",
+      token_storage: oauth.configured ? "ENCRYPTED_SERVER_SIDE" : "NOT_CONFIGURED",
     },
-    participation: "NOT_CONNECTED",
-    copy_runtime: "CONTRACT_AND_SCHEMA_READY_EXECUTION_DISABLED",
-    activation_allowed: false,
+    participation,
+    copy_runtime: source.DATABASE_URL
+      ? "ORDER_INTENT_READY_EXECUTION_LOCKED"
+      : "PERSISTENCE_NOT_CONFIGURED",
+    activation_allowed: Boolean(follower?.accountReady && oauth.configured),
     master_fill_first: true,
     raw_master_quantity_copy: false,
-    reason: oauthConfigured
-      ? "Customer identity, encrypted token persistence, and callback state verification are not released."
-      : "Alpaca customer OAuth is not configured for this deployment.",
+    reason: !oauth.configured
+      ? "Alpaca connection is not available yet."
+      : !authenticated
+        ? "Sign in to connect your Alpaca Paper account."
+        : !connected
+          ? "Connect your Alpaca Paper account."
+          : follower.accountReady
+            ? "Your account is ready to save a paper-copy allocation. Order submission remains locked."
+            : "Your Alpaca Paper account does not currently meet THETA readiness requirements.",
     customer_authority: {
       bot_controls_strategy: true,
       per_trade_approval: false,
@@ -138,15 +160,15 @@ export function followerResults(): FollowerResults {
   };
 }
 
-export function reviewPaperCopyPolicy(raw: unknown): CopyPolicyReview {
+export function reviewPaperCopyPolicy(raw: unknown, accountReady = false): CopyPolicyReview {
   return {
     extension_version: "THETA_v1.2_PAPER_COPY",
-    stage: "WAITING_FOR_COPY_RUNTIME",
+    stage: accountReady ? "READY_TO_COPY" : "REVIEW",
     policy: paperCopyPolicySchema.parse(raw),
     final_quantity: 0,
-    activation_allowed: false,
+    activation_allowed: accountReady,
     sizing_basis: "FOLLOWER_SPECIFIC_PREFLIGHT_REQUIRED",
-    reason: "COPY_RUNTIME_NOT_IMPLEMENTED",
+    reason: accountReady ? "READY_TO_SAVE_PARTICIPATION" : "ACCOUNT_CONNECTION_REQUIRED",
   };
 }
 
@@ -167,6 +189,16 @@ export function masterConnectionMetadata(
     masked_account: null,
     checked_at: null,
     capabilities: {},
+    account_status: null,
+    equity: null,
+    cash: null,
+    buying_power: null,
+    options_buying_power: null,
+    options_level: null,
+    open_positions: null,
+    open_orders: null,
+    market_open: null,
+    market_data_feed: "UNKNOWN",
     execution_enabled: false,
     reconnect_method: "SECURE_ENVIRONMENT_ROTATION",
     disconnect_available_in_ui: false,
@@ -180,6 +212,12 @@ export function summarizeMasterReadiness(
   const capabilities = Object.fromEntries(
     results.map((result) => [result.capability, result.state]),
   );
+  const positions = results.find((result) => result.capability === "POSITIONS_READ");
+  const orders = results.find((result) => result.capability === "OPEN_ORDERS_READ");
+  const clock = results.find((result) => result.capability === "MARKET_CLOCK");
+  const optionData = results.find((result) => result.capability === "OPTIONS_MARKET_DATA_OPRA");
+  const numberDetail = (name: string): number | null =>
+    typeof account?.details[name] === "number" ? account.details[name] : null;
   const states = results.map((result) => result.state);
   const connectionState = states.every((state) => state === "GOOD")
     ? "GOOD"
@@ -204,6 +242,16 @@ export function summarizeMasterReadiness(
         null,
       ),
     capabilities,
+    account_status: typeof account?.details.accountStatus === "string" ? account.details.accountStatus : null,
+    equity: numberDetail("equity"),
+    cash: numberDetail("cash"),
+    buying_power: numberDetail("buyingPower"),
+    options_buying_power: numberDetail("optionsBuyingPower"),
+    options_level: numberDetail("optionsLevel"),
+    open_positions: typeof positions?.details.positionCount === "number" ? positions.details.positionCount : null,
+    open_orders: typeof orders?.details.openOrderCount === "number" ? orders.details.openOrderCount : null,
+    market_open: typeof clock?.details.isOpen === "boolean" ? clock.details.isOpen : null,
+    market_data_feed: optionData?.state === "GOOD" ? "OPRA" : "INDICATIVE_OR_NOT_ENTITLED",
   };
 }
 

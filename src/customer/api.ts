@@ -4,6 +4,7 @@ import { z } from "zod";
 import { botDetail, botSummaries } from "./catalog.js";
 import { matchesOperatorToken } from "../providers/readiness-handler.js";
 import { loadEnvironment } from "../config/environment.js";
+import { checkOptionomics } from "../providers/readiness.js";
 import {
   masterConnectionMetadata,
   followerResults,
@@ -11,6 +12,18 @@ import {
   reviewPaperCopyPolicy,
   verifyMasterPaperConnection,
 } from "./paper-copy.js";
+import { customerStore } from "./customer-store.js";
+import {
+  currentCustomer,
+  loginCustomer,
+  logoutCustomer,
+  registerCustomer,
+} from "./customer-auth.js";
+import {
+  completeAlpacaOAuth,
+  oauthConfiguration,
+  startAlpacaOAuth,
+} from "./alpaca-oauth.js";
 
 const simulationSchema = z
   .object({
@@ -79,6 +92,25 @@ function send(response: ServerResponse, status: number, body: unknown) {
   response.setHeader("X-Content-Type-Options", "nosniff");
   response.end(JSON.stringify(body));
 }
+function redirect(response: ServerResponse, location: string) {
+  response.statusCode = 302;
+  response.setHeader("Cache-Control", "no-store");
+  response.setHeader("Location", location);
+  response.end();
+}
+function sameOrigin(request: IncomingMessage): boolean {
+  const origin = request.headers.origin;
+  if (!origin) return false;
+  try {
+    return new URL(origin).host === request.headers.host;
+  } catch {
+    return false;
+  }
+}
+const authSchema = z.object({
+  email: z.string().min(3).max(254),
+  password: z.string().min(12).max(200),
+}).strict();
 async function readJson(request: IncomingMessage) {
   // Vercel parses JSON before invoking a Node function. Express passes a stream.
   const parsed = (request as IncomingMessage & { body?: unknown }).body;
@@ -135,6 +167,94 @@ export default async function customerHandler(
     const dataset = url.searchParams.get("dataset") ?? "published";
     if (!["published", "demo"].includes(dataset))
       return send(response, 400, { error: { code: "INVALID_DATASET" } });
+    const environment = loadEnvironment();
+    if (parts[0] === "auth") {
+      let store;
+      try {
+        store = customerStore(environment.DATABASE_URL);
+      } catch {
+        return send(response, 503, { error: { code: "CUSTOMER_LOGIN_NOT_AVAILABLE" } });
+      }
+      if (request.method === "GET" && parts[1] === "session") {
+        const customer = await currentCustomer(request, store);
+        return send(response, 200, {
+          api_version: "v1",
+          data: customer ? { authenticated: true, email: customer.email } : { authenticated: false, email: null },
+        });
+      }
+      if (!sameOrigin(request))
+        return send(response, 403, { error: { code: "ORIGIN_REJECTED" } });
+      if (request.method === "DELETE" && parts[1] === "session") {
+        await logoutCustomer(request, response, store);
+        return send(response, 200, { authenticated: false });
+      }
+      if (request.method === "POST" && ["register", "login"].includes(parts[1] ?? "")) {
+        const body = authSchema.parse(await readJson(request));
+        try {
+          const customer = parts[1] === "register"
+            ? await registerCustomer(response, store, body.email, body.password)
+            : await loginCustomer(response, store, body.email, body.password);
+          if (!customer) return send(response, 401, { error: { code: "LOGIN_FAILED" } });
+          return send(response, parts[1] === "register" ? 201 : 200, {
+            api_version: "v1",
+            data: { authenticated: true, email: customer.email },
+          });
+        } catch (error) {
+          if (error instanceof Error && error.message.includes("duplicate key"))
+            return send(response, 409, { error: { code: "ACCOUNT_EXISTS" } });
+          throw error;
+        }
+      }
+      return send(response, 404, { error: { code: "NOT_FOUND" } });
+    }
+    if (route === "alpaca/oauth/start" && request.method === "GET") {
+      let store;
+      try {
+        store = customerStore(environment.DATABASE_URL);
+      } catch {
+        return send(response, 503, { error: { code: "ALPACA_CONNECTION_NOT_AVAILABLE" } });
+      }
+      const customer = await currentCustomer(request, store);
+      if (!customer) return redirect(response, "/account?signin=required");
+      const authorization = await startAlpacaOAuth(store, environment, customer.customerId);
+      return redirect(response, authorization.toString());
+    }
+    if (route === "alpaca/oauth/callback" && request.method === "GET") {
+      let store;
+      try {
+        store = customerStore(environment.DATABASE_URL);
+      } catch {
+        return redirect(response, "/bots/theta/copy?connection=unavailable");
+      }
+      const customer = await currentCustomer(request, store);
+      if (!customer) return redirect(response, "/account?signin=required");
+      if (url.searchParams.has("error"))
+        return redirect(response, "/bots/theta/copy?connection=denied");
+      const state = url.searchParams.get("state");
+      const code = url.searchParams.get("code");
+      if (!state || !code)
+        return redirect(response, "/bots/theta/copy?connection=invalid");
+      try {
+        const completed = await completeAlpacaOAuth(store, environment, customer.customerId, state, code);
+        return redirect(response, `${completed.returnPath}?connection=${completed.follower.accountReady ? "connected" : "blocked"}`);
+      } catch (error) {
+        const codeValue = error instanceof Error && error.message.includes("STATE") ? "invalid" : "failed";
+        return redirect(response, `/bots/theta/copy?connection=${codeValue}`);
+      }
+    }
+    if (route === "alpaca/connection" && request.method === "DELETE") {
+      if (!sameOrigin(request)) return send(response, 403, { error: { code: "ORIGIN_REJECTED" } });
+      let store;
+      try {
+        store = customerStore(environment.DATABASE_URL);
+      } catch {
+        return send(response, 503, { error: { code: "ALPACA_CONNECTION_NOT_AVAILABLE" } });
+      }
+      const customer = await currentCustomer(request, store);
+      if (!customer) return send(response, 401, { error: { code: "LOGIN_REQUIRED" } });
+      await store.disconnectFollower(customer.customerId);
+      return send(response, 200, { api_version: "v1", data: { connected: false, orders_submitted: false } });
+    }
     if (parts[0] === "operator") {
       const key = process.env.THETA_READINESS_TOKEN ?? "";
       if (request.method === "POST" || request.method === "DELETE") {
@@ -169,7 +289,7 @@ export default async function customerHandler(
         return send(response, 401, { error: { code: "OWNER_LOGIN_REQUIRED" } });
       if (route === "operator/master-readiness" && request.method === "POST") {
         try {
-          const data = await verifyMasterPaperConnection(loadEnvironment());
+          const data = await verifyMasterPaperConnection(environment);
           return send(response, data.connection_state === "GOOD" ? 200 : 207, {
             api_version: "v1",
             data,
@@ -184,10 +304,33 @@ export default async function customerHandler(
           });
         }
       }
+      if (route === "operator/provider-readiness" && request.method === "POST") {
+        try {
+          const [master, optionomicsResults] = await Promise.all([
+            verifyMasterPaperConnection(environment),
+            checkOptionomics(environment),
+          ]);
+          return send(response, 200, {
+            api_version: "v1",
+            data: {
+              master,
+              optionomics: {
+                state: optionomicsResults.every((item) => item.state === "GOOD") ? "GOOD" : "DEGRADED",
+                checked_at: optionomicsResults.at(-1)?.observedAt ?? null,
+                capabilities: Object.fromEntries(optionomicsResults.map((item) => [item.capability, item.state])),
+              },
+              orders_submitted: false,
+            },
+          });
+        } catch {
+          return send(response, 503, { error: { code: "PROVIDER_READINESS_UNAVAILABLE" } });
+        }
+      }
       if (request.method !== "GET")
         return send(response, 405, { error: { code: "READ_ONLY_OPERATOR" } });
       if (route !== "operator/status")
         return send(response, 404, { error: { code: "NOT_FOUND" } });
+      const oauth = oauthConfiguration(environment);
       return send(response, 200, {
         api_version: "v1",
         data: {
@@ -197,7 +340,7 @@ export default async function customerHandler(
               : "DEVELOPMENT_OR_PREVIEW",
           trading: "DISABLED",
           bot_mode: "PAPER",
-          copy: "BLOCKED",
+          copy: oauth.configured ? "READY_TO_CONNECT" : "BLOCKED",
           deployment_sha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
           provider_runtime: "UNKNOWN",
           systems: {
@@ -207,7 +350,7 @@ export default async function customerHandler(
             strategy_router: "HEALTHY",
             management_assembly: "HEALTHY",
             decision_assembly: "HEALTHY",
-            alpaca_master_paper: "UNKNOWN",
+            alpaca_master_paper: masterConnectionMetadata().connection_state,
             market_data: "UNKNOWN",
             option_data: "UNKNOWN",
             scheduler: "BLOCKED",
@@ -215,8 +358,12 @@ export default async function customerHandler(
             execution: "BLOCKED",
             ledger: "BLOCKED",
             reconciliation: "BLOCKED",
-            copy_engine: "BLOCKED",
-            followers: "UNKNOWN",
+            customer_iam: environment.DATABASE_URL ? "READY" : "BLOCKED",
+            alpaca_oauth: oauth.configured ? "READY" : "BLOCKED",
+            token_vault: environment.DATABASE_URL && environment.PAPER_COPY_TOKEN_ENCRYPTION_KEY ? "READY" : "BLOCKED",
+            follower_adapter: "READY_READ_ONLY",
+            copy_engine: environment.DATABASE_URL ? "ORDER_INTENT_READY_EXECUTION_LOCKED" : "BLOCKED",
+            followers: environment.DATABASE_URL ? "AVAILABLE" : "UNKNOWN",
             system_errors: "UNKNOWN",
           },
           runtime_detail: {
@@ -238,6 +385,14 @@ export default async function customerHandler(
             reconciliation: "NOT_IMPLEMENTED",
           },
           master_connection: masterConnectionMetadata(),
+          copy_platform: {
+            oauth: oauth.configured ? "READY" : "NEEDS_APP_CREDENTIALS",
+            customer_iam: environment.DATABASE_URL ? "READY" : "NOT_READY",
+            token_vault: environment.DATABASE_URL && environment.PAPER_COPY_TOKEN_ENCRYPTION_KEY ? "READY" : "NOT_READY",
+            follower_broker_adapter: "READ_ONLY_READY",
+            copy_execution: "LOCKED",
+            missing_configuration: oauth.missing,
+          },
           published_performance: false,
           gates: [
             "OPRA entitlement not established for execution",
@@ -251,24 +406,61 @@ export default async function customerHandler(
         },
       });
     }
-    if (route === "copy/readiness" && request.method === "GET")
+    if (route === "copy/readiness" && request.method === "GET") {
+      let authenticated = false;
+      let follower = null;
+      if (environment.DATABASE_URL) {
+        const store = customerStore(environment.DATABASE_URL);
+        const customer = await currentCustomer(request, store);
+        authenticated = customer !== null;
+        follower = customer ? await store.getFollower(customer.customerId) : null;
+      }
       return send(response, 200, {
         api_version: "v1",
         product_extension: "THETA_v1.2_PAPER_COPY",
-        data: paperCopyReadiness(),
+        data: paperCopyReadiness(process.env, follower, authenticated),
       });
+    }
     if (route === "copy/results" && request.method === "GET")
       return send(response, 200, {
         api_version: "v1",
         dataset: "published",
         data: followerResults(),
       });
-    if (route === "copy/policy/validate" && request.method === "POST")
+    if (route === "copy/policy/validate" && request.method === "POST") {
+      let accountReady = false;
+      if (environment.DATABASE_URL) {
+        const store = customerStore(environment.DATABASE_URL);
+        const customer = await currentCustomer(request, store);
+        const follower = customer ? await store.getFollower(customer.customerId) : null;
+        accountReady = follower?.accountReady === true;
+      }
       return send(response, 200, {
         api_version: "v1",
         product_extension: "THETA_v1.2_PAPER_COPY",
-        data: reviewPaperCopyPolicy(await readJson(request)),
+        data: reviewPaperCopyPolicy(await readJson(request), accountReady),
       });
+    }
+    if (route === "copy/participation" && request.method === "POST") {
+      if (!sameOrigin(request)) return send(response, 403, { error: { code: "ORIGIN_REJECTED" } });
+      let store;
+      try {
+        store = customerStore(environment.DATABASE_URL);
+      } catch {
+        return send(response, 503, { error: { code: "COPY_PERSISTENCE_NOT_AVAILABLE" } });
+      }
+      const customer = await currentCustomer(request, store);
+      if (!customer) return send(response, 401, { error: { code: "LOGIN_REQUIRED" } });
+      const payload = z.object({ allocation_usd: z.number().finite().min(0).max(10_000_000) }).strict().parse(await readJson(request));
+      const follower = await store.getFollower(customer.customerId);
+      if (!follower?.accountReady)
+        return send(response, 409, { error: { code: "FOLLOWER_ACCOUNT_NOT_READY" } });
+      const saved = await store.saveParticipation(customer.customerId, payload.allocation_usd);
+      return send(response, 200, {
+        api_version: "v1",
+        data: { participation: saved.participation, allocation_usd: saved.allocationUsd, order_submission: "LOCKED" },
+      });
+    }
     if (request.method === "POST" && route === "bots/theta/simulate")
       return send(response, 200, {
         api_version: "v1",
