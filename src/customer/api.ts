@@ -202,6 +202,9 @@ export default async function customerHandler(
           systems: {
             theta_runtime: "BLOCKED",
             quant_models: "HEALTHY",
+            python_bridge: "HEALTHY",
+            strategy_router: "HEALTHY",
+            management_assembly: "HEALTHY",
             decision_assembly: "HEALTHY",
             alpaca_master_paper: "UNKNOWN",
             market_data: "UNKNOWN",

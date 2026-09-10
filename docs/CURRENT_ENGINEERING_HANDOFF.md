@@ -2,11 +2,11 @@
 
 ## 2026-09-10 Codex integration note
 
-Claude source `cc4680366e12fed807ab8145b3ecaf3b55664b22` was audited and merged into `codex/phase2-copy-ops` from main `cfe04b903bed86d6bf8fcb82c654070830241bd0`.
+Claude source through `04a7975` was audited and merged into `codex/phase2-copy-ops` from main `cfe04b903bed86d6bf8fcb82c654070830241bd0`.
 
 The merged runtime contracts preserve UNKNOWN values, quantity zero, executable-price provenance, RECOVERY_WAIT, reason-specific WAIT scheduling, AEGIS exit supremacy, deterministic order intent IDs, and ambiguous-submission reconciliation. They contain no provider I/O or order submission path.
 
-R1 remains PARTIAL. Quant baselines and TypeScript contracts are present. Live option candidate generation, Python runtime bridge, persistent opportunity book and ledger, complete management assembly, broker execution, reconciliation, and follower copy execution remain blocked. The management action-value interface also needs a joint quant review to make its valuation origin explicit and prevent entry premium from being counted twice when comparing current-timestamp forward alternatives.
+R1 remains PARTIAL. Quant baselines, the allowlisted Python bridge, strategy router, Pareto frontier, TypeScript contracts, and management assembly are present. Live option candidate generation, persistent opportunity book and ledger, broker execution, reconciliation, and follower copy execution remain blocked. The management action-value interface also needs a joint quant review to make its valuation origin explicit and prevent entry premium from being counted twice when comparing current-timestamp forward alternatives.
 
 Customer copy setup and `/ops` are product and API foundations only. See `docs/THETA_V1_2_PAPER_COPY_EXTENSION.md`.
 
