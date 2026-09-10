@@ -1,0 +1,317 @@
+import { parseAlpacaBarsPage, type FetchHistoricalBarsParams, type HistoricalBar, type RawAlpacaBarsPage } from './underlying-history.js';
+import type { AlpacaOptionContractListing, AlpacaOptionSnapshot } from './option-chain-ingestion.js';
+
+// R1B production Alpaca provider service: typed, canonical accessors over
+// the real Alpaca Trading API and Market Data API. This module owns HOST
+// SELECTION explicitly (Trading API base vs. Market Data API base are two
+// different hosts and must never be conflated by blindly concatenating one
+// base URL) -- callers never choose a host themselves.
+//
+// Credentials are consumed ONLY via AlpacaProviderConfig, which the caller
+// builds from environment variables (ALPACA_API_KEY / ALPACA_SECRET_KEY /
+// ALPACA_BASE_URL) -- this module never reads process.env itself, never
+// logs a header, and every error path here redacts before returning (see
+// AlpacaProviderError below). `fetchImpl` is injectable so every function
+// here is testable with a mock, never live network, in automated tests.
+
+export interface AlpacaProviderConfig {
+  readonly tradingApiBase: string; // e.g. https://paper-api.alpaca.markets -- account/positions/orders/contracts
+  readonly marketDataApiBase: string; // e.g. https://data.alpaca.markets -- quotes/snapshots/bars
+  readonly apiKey: string;
+  readonly apiSecret: string;
+  readonly fetchImpl?: typeof fetch;
+}
+
+const authHeaders = (config: AlpacaProviderConfig): HeadersInit => ({
+  'APCA-API-KEY-ID': config.apiKey,
+  'APCA-API-SECRET-KEY': config.apiSecret,
+});
+
+export type AlpacaErrorClass = 'INVALID_AUTH' | 'NOT_ENTITLED' | 'RATE_LIMITED' | 'SERVER_ERROR' | 'NETWORK_ERROR' | 'MALFORMED_RESPONSE';
+
+export class AlpacaProviderError extends Error {
+  readonly errorClass: AlpacaErrorClass;
+  readonly httpStatus: number | null;
+  constructor(errorClass: AlpacaErrorClass, httpStatus: number | null, message: string) {
+    super(message); // message never includes header/credential content -- see call sites below
+    this.name = 'AlpacaProviderError';
+    this.errorClass = errorClass;
+    this.httpStatus = httpStatus;
+  }
+}
+
+const classifyErrorStatus = (status: number): AlpacaErrorClass => {
+  if (status === 401 || status === 403) return status === 403 ? 'NOT_ENTITLED' : 'INVALID_AUTH';
+  if (status === 429) return 'RATE_LIMITED';
+  if (status >= 500) return 'SERVER_ERROR';
+  return 'SERVER_ERROR';
+};
+
+async function requestJson(fetchImpl: typeof fetch, url: URL, headers: HeadersInit): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetchImpl(url, { headers });
+  } catch (error) {
+    throw new AlpacaProviderError('NETWORK_ERROR', null, `Network error reaching ${url.host}${url.pathname} -- ${error instanceof Error ? error.name : 'unknown'}.`);
+  }
+  if (!response.ok) {
+    throw new AlpacaProviderError(classifyErrorStatus(response.status), response.status, `${url.pathname} returned HTTP ${response.status}.`);
+  }
+  try {
+    return await response.json();
+  } catch {
+    throw new AlpacaProviderError('MALFORMED_RESPONSE', response.status, `${url.pathname} returned a non-JSON body.`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Master account snapshot
+// ---------------------------------------------------------------------------
+
+export interface MasterAccountSnapshot {
+  readonly accountStatus: string | null;
+  readonly equity: number | null;
+  readonly cash: number | null;
+  readonly buyingPower: number | null;
+  readonly optionsBuyingPower: number | null;
+  readonly optionsApprovedLevel: number | null;
+  readonly optionsTradingLevel: number | null;
+  readonly tradingBlocked: boolean | null;
+  readonly transfersBlocked: boolean | null;
+  readonly maskedAccountId: string | null;
+  readonly receivedAt: string;
+}
+
+const asNumberOrNull = (value: unknown): number | null => {
+  if (value === null || value === undefined) return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+const asBooleanOrNull = (value: unknown): boolean | null => (typeof value === 'boolean' ? value : null);
+const asStringOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+
+export async function fetchMasterAccountSnapshot(config: AlpacaProviderConfig, receivedAt: string): Promise<MasterAccountSnapshot> {
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const body = await requestJson(fetchImpl, new URL('/v2/account', config.tradingApiBase), authHeaders(config)) as Record<string, unknown>;
+  const accountId = asStringOrNull(body.id);
+  return {
+    accountStatus: asStringOrNull(body.status),
+    equity: asNumberOrNull(body.equity),
+    cash: asNumberOrNull(body.cash),
+    buyingPower: asNumberOrNull(body.buying_power),
+    optionsBuyingPower: asNumberOrNull(body.options_buying_power),
+    optionsApprovedLevel: asNumberOrNull(body.options_approved_level),
+    optionsTradingLevel: asNumberOrNull(body.options_trading_level),
+    tradingBlocked: asBooleanOrNull(body.trading_blocked),
+    transfersBlocked: asBooleanOrNull(body.transfers_blocked),
+    maskedAccountId: accountId !== null ? `••••${accountId.slice(-4)}` : null,
+    receivedAt,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Positions
+// ---------------------------------------------------------------------------
+
+export interface AlpacaPositionSnapshot {
+  readonly symbol: string;
+  readonly assetClass: string | null;
+  readonly quantity: number | null;
+  readonly side: string | null;
+  readonly avgEntryPrice: number | null;
+  readonly marketValue: number | null;
+  readonly unrealizedPl: number | null;
+  readonly receivedAt: string;
+}
+
+export async function fetchPositions(config: AlpacaProviderConfig, receivedAt: string): Promise<readonly AlpacaPositionSnapshot[]> {
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const body = await requestJson(fetchImpl, new URL('/v2/positions', config.tradingApiBase), authHeaders(config));
+  if (!Array.isArray(body)) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/positions did not return an array.');
+  return body.map((raw: Record<string, unknown>) => ({
+    symbol: asStringOrNull(raw.symbol) ?? '',
+    assetClass: asStringOrNull(raw.asset_class),
+    quantity: asNumberOrNull(raw.qty),
+    side: asStringOrNull(raw.side),
+    avgEntryPrice: asNumberOrNull(raw.avg_entry_price),
+    marketValue: asNumberOrNull(raw.market_value),
+    unrealizedPl: asNumberOrNull(raw.unrealized_pl),
+    receivedAt,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Open orders
+// ---------------------------------------------------------------------------
+
+export interface AlpacaOpenOrderSnapshot {
+  readonly orderId: string;
+  readonly clientOrderId: string | null;
+  readonly symbol: string | null;
+  readonly side: string | null;
+  readonly quantity: number | null;
+  readonly status: string | null;
+  readonly submittedAt: string | null;
+  readonly receivedAt: string;
+}
+
+export async function fetchOpenOrders(config: AlpacaProviderConfig, receivedAt: string): Promise<readonly AlpacaOpenOrderSnapshot[]> {
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const url = new URL('/v2/orders', config.tradingApiBase);
+  url.search = new URLSearchParams({ status: 'open' }).toString();
+  const body = await requestJson(fetchImpl, url, authHeaders(config));
+  if (!Array.isArray(body)) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/orders did not return an array.');
+  return body.map((raw: Record<string, unknown>) => ({
+    orderId: asStringOrNull(raw.id) ?? '',
+    clientOrderId: asStringOrNull(raw.client_order_id),
+    symbol: asStringOrNull(raw.symbol),
+    side: asStringOrNull(raw.side),
+    quantity: asNumberOrNull(raw.qty),
+    status: asStringOrNull(raw.status),
+    submittedAt: asStringOrNull(raw.submitted_at),
+    receivedAt,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Market clock
+// ---------------------------------------------------------------------------
+
+export interface AlpacaMarketClock {
+  readonly timestamp: string | null;
+  readonly isOpen: boolean | null;
+  readonly nextOpen: string | null;
+  readonly nextClose: string | null;
+  readonly receivedAt: string;
+}
+
+export async function fetchMarketClock(config: AlpacaProviderConfig, receivedAt: string): Promise<AlpacaMarketClock> {
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const body = await requestJson(fetchImpl, new URL('/v2/clock', config.tradingApiBase), authHeaders(config)) as Record<string, unknown>;
+  return {
+    timestamp: asStringOrNull(body.timestamp),
+    isOpen: asBooleanOrNull(body.is_open),
+    nextOpen: asStringOrNull(body.next_open),
+    nextClose: asStringOrNull(body.next_close),
+    receivedAt,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Option contracts + chain snapshots
+// ---------------------------------------------------------------------------
+
+export interface FetchOptionContractsParams {
+  readonly underlyingSymbol: string;
+  readonly expirationDateGte: string;
+  readonly expirationDateLte: string;
+  readonly optionType: 'put' | 'call';
+  readonly limit: number;
+}
+
+export async function fetchOptionContracts(config: AlpacaProviderConfig, params: FetchOptionContractsParams): Promise<readonly AlpacaOptionContractListing[]> {
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const url = new URL('/v2/options/contracts', config.tradingApiBase);
+  url.search = new URLSearchParams({
+    underlying_symbols: params.underlyingSymbol, status: 'active', type: params.optionType,
+    expiration_date_gte: params.expirationDateGte, expiration_date_lte: params.expirationDateLte,
+    limit: String(params.limit),
+  }).toString();
+  const body = await requestJson(fetchImpl, url, authHeaders(config)) as { option_contracts?: Array<Record<string, unknown>> };
+  const contracts = body.option_contracts ?? [];
+  return contracts.map((c) => ({
+    symbol: asStringOrNull(c.symbol) ?? '',
+    strikePrice: asNumberOrNull(c.strike_price) ?? 0,
+    expirationDate: asStringOrNull(c.expiration_date) ?? '',
+    optionType: params.optionType === 'put' ? 'PUT' : 'CALL',
+  }));
+}
+
+export interface FetchOptionSnapshotsParams {
+  readonly underlyingSymbol: string;
+  readonly feed: 'opra' | 'indicative';
+  readonly optionType: 'put' | 'call';
+  readonly limit: number;
+}
+
+export async function fetchOptionSnapshots(config: AlpacaProviderConfig, params: FetchOptionSnapshotsParams): Promise<ReadonlyMap<string, AlpacaOptionSnapshot>> {
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const url = new URL(`/v1beta1/options/snapshots/${params.underlyingSymbol}`, config.marketDataApiBase);
+  url.search = new URLSearchParams({ feed: params.feed, type: params.optionType, limit: String(params.limit) }).toString();
+  const body = await requestJson(fetchImpl, url, authHeaders(config)) as { snapshots?: Record<string, Record<string, unknown>> };
+  const snapshots = new Map<string, AlpacaOptionSnapshot>();
+  for (const [symbol, raw] of Object.entries(body.snapshots ?? {})) {
+    const quote = raw.latestQuote as Record<string, unknown> | undefined;
+    const greeksRaw = raw.greeks as Record<string, unknown> | undefined;
+    const dailyBar = raw.dailyBar as Record<string, unknown> | undefined;
+    snapshots.set(symbol, {
+      bid: asNumberOrNull(quote?.bp),
+      ask: asNumberOrNull(quote?.ap),
+      bidSize: asNumberOrNull(quote?.bs),
+      askSize: asNumberOrNull(quote?.as),
+      quoteTimestamp: asStringOrNull(quote?.t),
+      greeks: greeksRaw !== undefined
+        ? { delta: asNumberOrNull(greeksRaw.delta), gamma: asNumberOrNull(greeksRaw.gamma), theta: asNumberOrNull(greeksRaw.theta), vega: asNumberOrNull(greeksRaw.vega), rho: asNumberOrNull(greeksRaw.rho) }
+        : null,
+      impliedVolatility: asNumberOrNull(raw.impliedVolatility),
+      dailyVolume: asNumberOrNull(dailyBar?.v),
+    });
+  }
+  return snapshots;
+}
+
+// ---------------------------------------------------------------------------
+// Historical stock bars -- real fetch wiring around underlying-history.ts's
+// pure pagination/parsing logic.
+// ---------------------------------------------------------------------------
+
+export type BarAdjustment = 'raw' | 'split' | 'dividend' | 'all';
+
+export interface FetchStockBarsParams extends FetchHistoricalBarsParams {
+  readonly adjustment: BarAdjustment; // must be explicit -- see docs/quant/.../BAR_ADJUSTMENT_POLICY.md
+}
+
+export interface StockBarsResult {
+  readonly bars: readonly HistoricalBar[];
+  readonly complete: boolean; // false iff maxPages was hit with more pages remaining
+}
+
+export async function fetchStockBars(config: AlpacaProviderConfig, params: FetchStockBarsParams, receivedAt: string): Promise<StockBarsResult> {
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const fetchPage = async (pageToken: string | null): Promise<RawAlpacaBarsPage> => {
+    const url = new URL('/v2/stocks/bars', config.marketDataApiBase);
+    const query: Record<string, string> = {
+      symbols: params.symbols.join(','), timeframe: params.timeframe, start: params.start, end: params.end,
+      adjustment: params.adjustment, feed: params.feed ?? 'iex',
+    };
+    if (pageToken !== null) query.page_token = pageToken;
+    url.search = new URLSearchParams(query).toString();
+    return await requestJson(fetchImpl, url, authHeaders(config)) as RawAlpacaBarsPage;
+  };
+
+  // Deliberately a local pagination loop (not underlying-history.ts's
+  // fetchAllHistoricalBars, which THROWS on exceeding maxPages) -- a
+  // provider-facing fetch must never discard bars it already retrieved
+  // just because the safety bound was hit; it reports them with
+  // complete=false instead, per Alpaca's own documented behavior that its
+  // page-size limit applies to total data points (not per symbol) and a
+  // multi-symbol request's first page may contain only one symbol.
+  const allBars: HistoricalBar[] = [];
+  let pageToken: string | null = null;
+  let pages = 0;
+  let complete = true;
+
+  do {
+    const raw = await fetchPage(pageToken);
+    const { bars, nextPageToken } = parseAlpacaBarsPage(raw, params.feed, receivedAt);
+    allBars.push(...bars);
+    pageToken = nextPageToken;
+    pages += 1;
+    if (pages >= params.maxPages && pageToken !== null) {
+      complete = false;
+      break;
+    }
+  } while (pageToken !== null);
+
+  return { bars: allBars, complete };
+}
