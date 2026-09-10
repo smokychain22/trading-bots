@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-10, end of this Claude takeover session (continuation pass).
 **Origin/main SHA at session start and end:** `cfe04b903bed86d6bf8fcb82c654070830241bd0` (unchanged — nothing pushed).
 **Claude branch:** `claude/full-platform-takeover`
-**Claude HEAD:** `b193d79`
+**Claude HEAD:** `017e4e3`
 
 ## Local commits on this branch (in order, all unpushed)
 
@@ -55,6 +55,21 @@
     zero quantitative computation of its own, fails closed on provider/version/
     ownership/regime/snapshot problems, `executionAuthorized` always `false`).
     39 new tests, 126/126 TS total, 225/225 Python unaffected.
+11. `cc46803` — handoff update.
+12. `017e4e3` — `strategy_router.py` (contextual strategy router: StrategyFamily/
+    LifecycleState/EligibilityState/ModelDisagreementState, `route_strategies()` —
+    "specialists, not voters," one family's ineligibility never suppresses another's,
+    tested directly), `strategy-router-contract.ts` (enforces exactly six results per
+    response), `management-assembly.ts` (R1H: composes management_action_value.py +
+    hold_advantage() + AEGIS + execution-quality into one receipt, exit supremacy
+    enforced structurally, fails closed on version/snapshot mismatch). Plus six
+    durable specs under `docs/quant/phase6_router/`: router design rationale,
+    expert-routing matrix (grounded strictly in the existing 11 experts), hard-gate-
+    vs-soft-feature registry (2 real gaps flagged), timeframe/horizon registry,
+    Python↔TS bridge architecture (SPECIFIED only — the biggest remaining R1 gap),
+    FusionSnapshot completeness audit (4 gaps named, none fixed), strategy-routing
+    shadow-record + RouteRegret spec. 31 new tests (14 Python + 6 + 11 TS), 239/239
+    Python total, 143/143 TS total.
 
 ## Last completed phase/subphase
 
@@ -190,7 +205,7 @@ LOCAL_COMMITS_TO_REVIEW: 8a051b7, 7ff290a, f24dc3e (all on claude/full-platform-
 FILES/MIGRATIONS: no migrations touched; see commit messages for full file list
   (7 Python quant models + tests, 6 TS contract/state-machine files + tests, 3 docs
   updates)
-TESTS: 225/225 Python, 126/126 TS, lint/typecheck/build clean, secret scan 0 findings
+TESTS: 239/239 Python, 143/143 TS, lint/typecheck/build clean, secret scan 0 findings
 PROVIDER_CALLS: NONE this session
 ORDERS_SUBMITTED: NO
 FIRST_PAPER_ORDER_GATE: NOT REACHED -- R2 through R7 have not been built yet, so the
