@@ -41,3 +41,38 @@ at implementation time — is the reference.
 Registry reflecting actual current implementation state, with two explicit gaps
 flagged (graded ownership scoring, regime-confidence-to-size wiring) rather than
 silently assumed to exist.
+
+## Flagged tension requiring an explicit decision (2026-09-10)
+
+A real-data proof this session (real Alpaca 25-60 DTE SPY puts, real bid/ask,
+real Greeks) had every candidate rejected by `theta_q_baseline.py`'s
+`OPEN_INTEREST_INSUFFICIENT`/`VOLUME_INSUFFICIENT` hard vetoes, because Alpaca's
+own option-chain snapshot endpoint does not reliably supply open interest, and
+this proof did not yet wire Optionomics as an OI/volume fallback. A subsequent
+product-direction message explicitly asked that "OI/volume should initially be
+evidence/confidence features unless the canonical policy explicitly requires
+them... do not let missing OI accidentally make every real contract PASS
+forever."
+
+This is a genuine tension, not a simple bug fix: `_hard_veto_reasons`'s own
+docstring in `theta_q_baseline.py` states these checks are "binary, per TRD
+section 18's hard-veto table" — i.e. this hard-gate behavior implements the
+FROZEN build authority (`docs/specs/THETA_v1_1_FINAL_TRD_...`), not a
+discretionary v0 default this module chose on its own. Per `CLAUDE.md`'s
+explicit instruction ("Do not silently redesign THETA's frozen architecture...
+lifecycle, provider ownership, outcome definitions, cost treatment, risk
+semantics... any of these needs a versioned TRD revision — raise it to the
+user, don't just implement a different design"), this hard gate was
+**deliberately left unchanged** rather than silently softened to a confidence
+feature.
+
+**Decision needed from the product/TRD owner:** either (a) confirm TRD section
+18's OI/volume floors stand as hard gates and the fix is upstream (wire
+Optionomics as a real OI/volume source before evaluating a real candidate, so
+the hard gate is satisfied by real data rather than tripped by a missing
+fallback — see `src/theta/option-chain-ingestion.ts`, already built), or (b) 
+issue a versioned TRD revision downgrading OI/volume to a soft/confidence
+feature (per the newer instruction), in which case `theta_q_baseline.py`'s
+`_hard_veto_reasons` needs an explicit, tested behavioral change and this
+registry's "Hard gates" table needs updating to match. Not resolved unilaterally
+in this session.
