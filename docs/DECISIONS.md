@@ -130,3 +130,18 @@ The first real PAPER order remains outside this milestone. It requires a genuine
 provider-backed decision preview, durable production PostgreSQL, real account
 verification, an active reconciliation worker, rotated credentials, and separate owner
 authorization.
+
+## 2026-09-11: provider provenance and runtime-defer separation
+
+Provider observation origin and data quality are independent facts. A successful
+provider response with required truth absent is `REAL_PROVIDER_UNKNOWN`. A failed
+real call is `REAL_PROVIDER_ERROR`, which can never count toward `FULL_REAL`.
+Deterministic features computed exclusively from real observations may use
+`DERIVED_FROM_REAL`. Fixtures, caller input, and paths not executed remain distinct.
+
+Transport failures such as timeouts, HTTP 5xx, and exhausted rate limits map to a
+transient capability state and `SYSTEM_HOLD`. They are not economic `PASS`, strategy
+`WAIT`, or risk `HARD_VETO` outcomes. Invalid authentication, malformed required
+truth, and required missing entitlement remain genuine fail-closed `HARD_VETO`
+conditions. This preserves clean provider reliability, opportunity, and risk-veto
+statistics while keeping quantity zero and execution authorization false.
