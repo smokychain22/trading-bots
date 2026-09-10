@@ -363,7 +363,16 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const orchestration = await runNewRiskOrchestration(config.bridge, {
     snapshotId: fusionSnapshot.contentHash, fusionSnapshotHash: fusionSnapshot.contentHash, timestamp: config.now(), underlying,
     earningsDistanceDays: null, // EventState is not real yet -- UNKNOWN, never fabricated as "no earnings nearby"
-    optionQuoteFreshnessPolicy: config.optionQuoteFreshnessPolicy, providerStateGood: fusionSnapshot.validForNewRisk,
+    optionQuoteFreshnessPolicy: config.optionQuoteFreshnessPolicy,
+    providerCapabilities: {
+      ALPACA_ACCOUNT: accountReal ? 'GOOD' : 'UNKNOWN',
+      ALPACA_OPTION_CONTRACTS: contractsReal ? 'GOOD' : 'UNKNOWN',
+      ALPACA_OPTION_CHAIN: quotesReal ? 'GOOD' : 'UNKNOWN',
+      ALPACA_POSITIONS: 'UNKNOWN', // fetchPositions exists but is not yet called inside the cycle -- honestly not attempted
+      ALPACA_OPEN_ORDERS: 'UNKNOWN', // same -- fetchOpenOrders exists but is not yet called inside the cycle
+      OPTIONOMICS: 'UNKNOWN', // no real Optionomics adapter exists yet -- not attempted, not a documented entitlement gap
+      EVENT_DATA: 'UNKNOWN', // no event-state assembly exists yet
+    },
     policyVersion: config.policyVersion, modelVersions: config.modelVersions, requiredModelVersions: config.requiredModelVersions,
     ownershipPolicy: config.ownershipPolicy,
     ownershipInputs: {

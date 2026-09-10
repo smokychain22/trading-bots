@@ -12,7 +12,7 @@ import { parseExecutionQualityResponse } from './execution-quality-contract.js';
 import { assembleNewRiskDecision, type CandidateFrontierResult, type NewRiskDecisionReceipt } from './decision-assembly.js';
 import type { NormalizedOptionContract } from './option-contract.js';
 import { ShadowOpportunityBookBuilder, type ShadowOpportunityEntry } from './shadow-opportunity-book.js';
-import { classifyObservation, type FreshnessPolicy } from './data-freshness.js';
+import { classifyObservation, type DataQualityState, type FreshnessPolicy } from './data-freshness.js';
 
 // R1: the real end-to-end new-risk orchestrator. Sequences every stage in
 // the canonical pipeline --
@@ -75,6 +75,35 @@ export interface RawCandidateInput {
   readonly preSlippageExpectedUtility: number | null;
 }
 
+// Structured provider capability/observation state (replaces the former
+// single providerStateGood boolean, which could not express "account GOOD,
+// option chain STALE, positions UNKNOWN" as three separate facts). Reuses
+// data-freshness.ts's DataQualityState so both modules speak the same
+// six-value vocabulary rather than inventing a parallel one. This is a
+// CAPABILITY/OBSERVATION snapshot for THIS cycle, not a general provider
+// health registry -- each key's value reflects what actually happened when
+// this cycle tried to use that capability, never a static "is it
+// supported" fact (that distinction belongs to a future provider-registry
+// module, not this per-cycle request type).
+export type ProviderCapabilityKey =
+  | 'ALPACA_ACCOUNT' | 'ALPACA_POSITIONS' | 'ALPACA_OPEN_ORDERS'
+  | 'ALPACA_OPTION_CONTRACTS' | 'ALPACA_OPTION_CHAIN'
+  | 'OPTIONOMICS' | 'EVENT_DATA';
+
+export type ProviderCapabilityStates = Readonly<Partial<Record<ProviderCapabilityKey, DataQualityState>>>;
+
+// Only these three gate new-risk evaluation entirely (they map directly to
+// FusionSnapshot's executableTruth ACCOUNT/CONTRACT/QUOTE truth roles).
+// Positions/open-orders/Optionomics/event-data are informational this
+// cycle -- not yet consumed as hard gates by AEGIS/sizing, so their
+// UNKNOWN/DEGRADED state does not by itself block evaluation. Extending
+// this list is the natural place to wire a future hard requirement.
+const REQUIRED_FOR_NEW_RISK: readonly ProviderCapabilityKey[] = ['ALPACA_ACCOUNT', 'ALPACA_OPTION_CONTRACTS', 'ALPACA_OPTION_CHAIN'];
+
+function allRequiredCapabilitiesGood(capabilities: ProviderCapabilityStates): boolean {
+  return REQUIRED_FOR_NEW_RISK.every((key) => capabilities[key] === 'GOOD');
+}
+
 export interface NewRiskOrchestrationRequest {
   readonly snapshotId: string;
   readonly fusionSnapshotHash: string;
@@ -82,7 +111,7 @@ export interface NewRiskOrchestrationRequest {
   readonly underlying: string;
   readonly earningsDistanceDays: number | null; // underlying-level fact, shared across every candidate this cycle
   readonly optionQuoteFreshnessPolicy: FreshnessPolicy; // R1C: versioned, hard execution-critical gate -- see data-freshness.ts
-  readonly providerStateGood: boolean;
+  readonly providerCapabilities: ProviderCapabilityStates;
   readonly policyVersion: string;
   readonly modelVersions: Readonly<Record<string, string>>;
   readonly requiredModelVersions: Readonly<Record<string, string>>;
@@ -171,8 +200,9 @@ export async function runNewRiskOrchestration(
   bridge: PythonBridgeConfig,
   request: NewRiskOrchestrationRequest,
 ): Promise<NewRiskOrchestrationResult> {
-  if (!request.providerStateGood) {
-    return failClosedResult(request, 'PROVIDER_STATE', 'Required provider state is not GOOD.');
+  if (!allRequiredCapabilitiesGood(request.providerCapabilities)) {
+    const detail = REQUIRED_FOR_NEW_RISK.map((key) => `${key}=${request.providerCapabilities[key] ?? 'UNKNOWN'}`).join(', ');
+    return failClosedResult(request, 'PROVIDER_STATE', `Required provider capability state is not GOOD: ${detail}`);
   }
 
   const ownershipResult = await invokeAndValidate(

@@ -67,7 +67,8 @@ const candidate = (id: string, overrides: Partial<RawCandidateInput> = {}): RawC
 
 const baseRequest = (overrides: Partial<NewRiskOrchestrationRequest> = {}): NewRiskOrchestrationRequest => ({
   snapshotId: 'snap-1', fusionSnapshotHash: 'a'.repeat(64), timestamp: NOW, underlying: 'SYN',
-  earningsDistanceDays: 40, optionQuoteFreshnessPolicy: { policyVersion: 'freshness-v1', goodMaxAgeSeconds: 10, staleMinAgeSeconds: 60 }, providerStateGood: true,
+  earningsDistanceDays: 40, optionQuoteFreshnessPolicy: { policyVersion: 'freshness-v1', goodMaxAgeSeconds: 10, staleMinAgeSeconds: 60 },
+  providerCapabilities: { ALPACA_ACCOUNT: 'GOOD', ALPACA_OPTION_CONTRACTS: 'GOOD', ALPACA_OPTION_CHAIN: 'GOOD' },
   policyVersion: 'v1', modelVersions: {}, requiredModelVersions: {},
   ownershipPolicy: {
     policyVersion: 'ownership-v1', minStockAvgVolume: 1_000_000, minOptionOpenInterest: 100, minOptionVolume: 10,
@@ -194,9 +195,35 @@ itMockedProviderRealCodePath('a fresh quote still reaches the lattice -- the fre
 });
 
 itMockedProviderRealCodePath('provider state not good fails the whole decision closed before any bridge call', async () => {
-  const result = await runNewRiskOrchestration(bridge(), baseRequest({ providerStateGood: false }));
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({ providerCapabilities: { ALPACA_ACCOUNT: 'UNKNOWN', ALPACA_OPTION_CONTRACTS: 'GOOD', ALPACA_OPTION_CHAIN: 'GOOD' } }));
   assert.equal(result.receipt.winningAction, 'HARD_VETO');
   assert.equal(result.ownership, null);
+});
+
+itMockedProviderRealCodePath('STRUCTURED PROVIDER STATE: each required capability is checked independently -- a single DEGRADED capability fails closed even when the other two are GOOD', async () => {
+  const onlyChainDegraded = await runNewRiskOrchestration(bridge(), baseRequest({
+    providerCapabilities: { ALPACA_ACCOUNT: 'GOOD', ALPACA_OPTION_CONTRACTS: 'GOOD', ALPACA_OPTION_CHAIN: 'STALE' },
+  }));
+  assert.equal(onlyChainDegraded.receipt.winningAction, 'HARD_VETO');
+  assert.ok(onlyChainDegraded.receipt.failClosedReason?.includes('ALPACA_OPTION_CHAIN=STALE'));
+
+  const onlyContractsUnknown = await runNewRiskOrchestration(bridge(), baseRequest({
+    providerCapabilities: { ALPACA_ACCOUNT: 'GOOD', ALPACA_OPTION_CONTRACTS: 'UNKNOWN', ALPACA_OPTION_CHAIN: 'GOOD' },
+  }));
+  assert.equal(onlyContractsUnknown.receipt.winningAction, 'HARD_VETO');
+  assert.ok(onlyContractsUnknown.receipt.failClosedReason?.includes('ALPACA_OPTION_CONTRACTS=UNKNOWN'));
+
+  // All three GOOD (the baseRequest default) proceeds normally -- proving
+  // this isn't just "any non-empty object passes."
+  const allGood = await runNewRiskOrchestration(bridge(), baseRequest());
+  assert.notEqual(allGood.receipt.winningAction, 'HARD_VETO');
+});
+
+itMockedProviderRealCodePath('STRUCTURED PROVIDER STATE: capabilities NOT required for new risk (positions/orders/Optionomics/event data) do not block evaluation even when UNKNOWN', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    providerCapabilities: { ALPACA_ACCOUNT: 'GOOD', ALPACA_OPTION_CONTRACTS: 'GOOD', ALPACA_OPTION_CHAIN: 'GOOD', ALPACA_POSITIONS: 'UNKNOWN', ALPACA_OPEN_ORDERS: 'UNKNOWN', OPTIONOMICS: 'UNKNOWN', EVENT_DATA: 'UNKNOWN' },
+  }));
+  assert.notEqual(result.receipt.winningAction, 'HARD_VETO');
 });
 
 itMockedProviderRealCodePath('CASH_AVAILABLE + acceptable ownership routes THETA_Q eligible', async () => {
