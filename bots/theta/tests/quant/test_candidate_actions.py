@@ -20,7 +20,11 @@ from research.registry import CANDIDATE_ACTIONS  # noqa: E402
 
 
 class CandidateActionEnumTests(unittest.TestCase):
-    def test_exactly_the_eleven_specified_actions(self):
+    def test_exactly_the_twelve_specified_actions(self):
+        # CALL_AWAY was added alongside the Phase 2C management/AEGIS models:
+        # the runtime schema docstring at the top of this module already
+        # named it as a management_action value, but the enum itself had
+        # omitted it -- a real gap, not a redefinition of the frozen schema.
         expected = {
             "WAIT",
             "OPEN_CSP",
@@ -32,6 +36,7 @@ class CandidateActionEnumTests(unittest.TestCase):
             "RECOVERY_WAIT",
             "SELL_CC",
             "CLOSE_STOCK",
+            "CALL_AWAY",
             "REDEPLOY",
         }
         actual = {a.value for a in CandidateAction}
@@ -57,6 +62,12 @@ class RuntimeEquivalenceMappingTests(unittest.TestCase):
         self.assertNotIn(CandidateAction.OPEN_CSP, RUNTIME_MANAGEMENT_ACTION_EQUIVALENT)
         self.assertEqual(RUNTIME_ENTRY_ACTION_EQUIVALENT[CandidateAction.WAIT], "WAIT")
         self.assertEqual(RUNTIME_ENTRY_ACTION_EQUIVALENT[CandidateAction.OPEN_CSP], "TRADE")
+
+    def test_call_away_maps_to_itself_as_a_management_action(self):
+        self.assertEqual(
+            RUNTIME_MANAGEMENT_ACTION_EQUIVALENT[CandidateAction.CALL_AWAY],
+            "CALL_AWAY",
+        )
 
     def test_recovery_wait_has_no_management_action_equivalent(self):
         # RECOVERY_WAIT is a lifecycle_state in the frozen schema, not an

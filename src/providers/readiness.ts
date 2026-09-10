@@ -9,9 +9,27 @@ export type CheckResult = {
   readonly state: CapabilityState;
   readonly httpStatus: number | null;
   readonly observedAt: string;
+  readonly retrievedAt: string;
+  readonly latencyMs: number | null;
   readonly provenance: Readonly<Record<string, string | number | boolean | null>>;
   readonly details: Readonly<Record<string, boolean | number | string | null>>;
 };
+
+export const configurationFailureResult = (
+  provider: CheckResult['provider'],
+  error: unknown
+): CheckResult => ({
+  provider,
+  capability: `${provider.toLowerCase()}.configuration`,
+  operationAlias: `${provider.toLowerCase()}.configuration`,
+  state: 'INVALID',
+  httpStatus: null,
+  observedAt: new Date().toISOString(),
+  retrievedAt: new Date().toISOString(),
+  latencyMs: null,
+  provenance: { credentialValuesLogged: false },
+  details: { configurationError: error instanceof Error ? error.message : 'UnknownError' }
+});
 
 type JsonRecord = Record<string, unknown>;
 
@@ -60,6 +78,8 @@ const readJson = async (
   provenance: CheckResult['provenance'],
   evaluate: (body: unknown, response: Response) => CheckResult['details']
 ): Promise<CheckResult> => {
+  const requestedAt = performance.now();
+  const elapsedMs = (): number => Math.round(performance.now() - requestedAt);
   try {
     const response = await fetch(input, init);
     const contentType = response.headers.get('content-type') ?? '';
@@ -73,6 +93,8 @@ const readJson = async (
       state: stateForResponse(response),
       httpStatus: response.status,
       observedAt: observedAt(),
+      retrievedAt: observedAt(),
+      latencyMs: elapsedMs(),
       provenance,
       details: evaluate(body, response)
     };
@@ -84,6 +106,8 @@ const readJson = async (
       state: 'UNKNOWN',
       httpStatus: null,
       observedAt: observedAt(),
+      retrievedAt: observedAt(),
+      latencyMs: elapsedMs(),
       provenance,
       details: { networkError: error instanceof Error ? error.name : 'UnknownError' }
     };

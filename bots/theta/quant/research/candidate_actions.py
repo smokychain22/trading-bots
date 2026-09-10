@@ -28,6 +28,7 @@ class CandidateAction(str, Enum):
     RECOVERY_WAIT = "RECOVERY_WAIT"
     SELL_CC = "SELL_CC"
     CLOSE_STOCK = "CLOSE_STOCK"
+    CALL_AWAY = "CALL_AWAY"
     REDEPLOY = "REDEPLOY"
 
 
@@ -42,6 +43,7 @@ RUNTIME_MANAGEMENT_ACTION_EQUIVALENT = {
     CandidateAction.EXPIRE: "EXPIRE",
     CandidateAction.SELL_CC: "SELL_CC",
     CandidateAction.CLOSE_STOCK: "CLOSE_STOCK",
+    CandidateAction.CALL_AWAY: "CALL_AWAY",
     CandidateAction.REDEPLOY: "REDEPLOY",
     # WAIT, OPEN_CSP, RECOVERY_WAIT have no 1:1 management_action row: WAIT and
     # OPEN_CSP belong to the entry_action enum instead (WAIT is shared with it

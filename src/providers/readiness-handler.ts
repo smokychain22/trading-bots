@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { assertProviderConfiguration, loadEnvironment } from '../config/environment.js';
-import { checkAlpaca, checkOptionomics, type CheckResult } from './readiness.js';
+import { checkAlpaca, checkOptionomics, configurationFailureResult, type CheckResult } from './readiness.js';
 
 export const matchesOperatorToken = (header: string, expected: string): boolean => {
   const prefix = 'Bearer ';
@@ -10,17 +10,6 @@ export const matchesOperatorToken = (header: string, expected: string): boolean 
   const expectedBuffer = Buffer.from(expected);
   return received.length === expectedBuffer.length && timingSafeEqual(received, expectedBuffer);
 };
-
-const configurationFailure = (provider: CheckResult['provider'], error: unknown): CheckResult => ({
-  provider,
-  capability: `${provider.toLowerCase()}.configuration`,
-  operationAlias: `${provider.toLowerCase()}.configuration`,
-  state: 'INVALID',
-  httpStatus: null,
-  observedAt: new Date().toISOString(),
-  provenance: { credentialValuesLogged: false },
-  details: { configurationError: error instanceof Error ? error.message : 'UnknownError' }
-});
 
 export default async function providerReadinessHandler(
   request: IncomingMessage,
@@ -47,13 +36,13 @@ export default async function providerReadinessHandler(
     assertProviderConfiguration(environment, 'ALPACA');
     results.push(...await checkAlpaca(environment));
   } catch (error) {
-    results.push(configurationFailure('ALPACA', error));
+    results.push(configurationFailureResult('ALPACA', error));
   }
   try {
     assertProviderConfiguration(environment, 'OPTIONOMICS');
     results.push(...await checkOptionomics(environment));
   } catch (error) {
-    results.push(configurationFailure('OPTIONOMICS', error));
+    results.push(configurationFailureResult('OPTIONOMICS', error));
   }
 
   response.setHeader('Content-Type', 'application/json; charset=utf-8');
