@@ -39,4 +39,3 @@ try {
   try { await client.query("SELECT pg_advisory_unlock($1)", [863_801_009]); } catch {}
   await client.end();
 }
-
