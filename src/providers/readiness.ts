@@ -51,6 +51,29 @@ const stateForResponse = (response: Response): CapabilityState => {
   return 'UNKNOWN';
 };
 
+// Capability distinction (security/architecture correction, 2026-09-10):
+// an option market-data feed being reachable is NOT the same claim as it
+// being execution-quality. Official Alpaca documentation describes
+// INDICATIVE quotes as modified derivatives of OPRA with delayed trades --
+// useful for integration development, schema verification, pipeline
+// testing, and candidate-generation mechanics (MARKET_DATA_ENGINEERING_READY),
+// but never sufficient on its own for execution-quality validation,
+// slippage/TCA validation, or the first-autonomous-PAPER-order release gate
+// (MARKET_DATA_EXECUTION_READY) unless a separately-approved real-time
+// executable-quality source is in place. This distinction must never be
+// silently upgraded -- callers check `executionGrade`, not just `state`.
+export const classifyOptionFeedCapability = (
+  feed: 'OPRA' | 'INDICATIVE',
+  state: CapabilityState
+): { readonly optionFeed: 'OPRA' | 'INDICATIVE'; readonly marketDataEngineeringReady: boolean; readonly executionGrade: boolean } => ({
+  optionFeed: feed,
+  marketDataEngineeringReady: state === 'GOOD',
+  // OPRA is Alpaca's consolidated real options BBO; INDICATIVE is
+  // documented as a modified derivative with delayed trades and is never
+  // treated as execution-grade regardless of its own reachability state.
+  executionGrade: feed === 'OPRA' && state === 'GOOD'
+});
+
 export const assertPaperAlpacaUrl = (baseUrl: string): URL => {
   let url: URL;
   try {
@@ -192,7 +215,23 @@ export const checkAlpaca = async (environment: Environment): Promise<readonly Ch
   const optionData = await readJson('ALPACA', 'OPTIONS_MARKET_DATA_OPRA', 'alpaca.get_option_snapshots', optionUrl, { headers }, alpacaProvenance(optionUrl.host, optionUrl.pathname), (body, response) => {
     const snapshots = object(body).snapshots;
     const first = object(snapshots && typeof snapshots === 'object' ? Object.values(snapshots)[0] : undefined);
-    return { requestedFeed: 'opra', snapshotEnvelopePresent: typeof snapshots === 'object', greeksPresent: typeof first.greeks === 'object', requestIdPresent: response.headers.has('x-request-id') };
+    return {
+      requestedFeed: 'opra', snapshotEnvelopePresent: typeof snapshots === 'object', greeksPresent: typeof first.greeks === 'object',
+      requestIdPresent: response.headers.has('x-request-id'), ...classifyOptionFeedCapability('OPRA', stateForResponse(response))
+    };
+  });
+  // Always checked (never only as an OPRA fallback) so this account's real
+  // capability profile is complete: INDICATIVE reachability never implies
+  // OPRA is unavailable, and vice versa -- both are independently reported.
+  const indicativeUrl = new URL('/v1beta1/options/snapshots/SPY', alpacaDataBaseUrl);
+  indicativeUrl.search = new URLSearchParams({ feed: 'indicative', type: 'put', limit: '1' }).toString();
+  const optionDataIndicative = await readJson('ALPACA', 'OPTIONS_MARKET_DATA_INDICATIVE', 'alpaca.get_option_snapshots', indicativeUrl, { headers }, alpacaProvenance(indicativeUrl.host, indicativeUrl.pathname), (body, response) => {
+    const snapshots = object(body).snapshots;
+    const first = object(snapshots && typeof snapshots === 'object' ? Object.values(snapshots)[0] : undefined);
+    return {
+      requestedFeed: 'indicative', snapshotEnvelopePresent: typeof snapshots === 'object', greeksPresent: typeof first.greeks === 'object',
+      requestIdPresent: response.headers.has('x-request-id'), ...classifyOptionFeedCapability('INDICATIVE', stateForResponse(response))
+    };
   });
   const positions = await readJson('ALPACA', 'POSITIONS_READ', 'alpaca.get_positions', new URL('/v2/positions', baseUrl), { headers }, alpacaProvenance(baseUrl.host, '/v2/positions'), (body) => ({ responseIsArray: Array.isArray(body), positionCount: Array.isArray(body) ? body.length : null }));
   const activitiesUrl = new URL('/v2/account/activities/FILL', baseUrl);
@@ -201,7 +240,7 @@ export const checkAlpaca = async (environment: Environment): Promise<readonly Ch
   const corporateActionsUrl = new URL('/v1/corporate-actions', alpacaDataBaseUrl);
   corporateActionsUrl.search = new URLSearchParams({ symbols: 'SPY', start: today, end: today, limit: '1' }).toString();
   const corporateActions = await readJson('ALPACA', 'CORPORATE_ACTIONS_READ', 'alpaca.get_corporate_actions', corporateActionsUrl, { headers }, alpacaProvenance(corporateActionsUrl.host, corporateActionsUrl.pathname), (body) => ({ responseIsObject: typeof body === 'object' && body !== null }));
-  return [account, clock, calendar, stockData, contracts, optionData, positions, activities, corporateActions];
+  return [account, clock, calendar, stockData, contracts, optionData, optionDataIndicative, positions, activities, corporateActions];
 };
 
 type OptionomicsProbe = { readonly capability: string; readonly operationAlias: string; readonly path: string };

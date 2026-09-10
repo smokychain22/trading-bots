@@ -74,7 +74,7 @@ test('valid PAPER account: every check reports GOOD with account fields readable
     ],
     async () => {
       const results = await checkAlpaca(baseEnvironment);
-      assert.equal(results.length, 9);
+      assert.equal(results.length, 10);
       for (const result of results) {
         assert.equal(result.state, 'GOOD', `${result.capability} expected GOOD, got ${result.state}`);
         assert.equal(typeof result.latencyMs, 'number');
@@ -84,6 +84,41 @@ test('valid PAPER account: every check reports GOOD with account fields readable
       assert.equal(account?.details.equityReadable, true);
       assert.equal(account?.details.optionsApprovalReadable, true);
       assert.equal(account?.details.tradingBlocked, false);
+
+      // Capability distinction correction: OPRA and INDICATIVE are checked
+      // independently, and only OPRA is ever execution-grade.
+      const opra = results.find((r) => r.capability === 'OPTIONS_MARKET_DATA_OPRA');
+      const indicative = results.find((r) => r.capability === 'OPTIONS_MARKET_DATA_INDICATIVE');
+      assert.equal(opra?.details.executionGrade, true);
+      assert.equal(indicative?.details.executionGrade, false, 'INDICATIVE must never be reported as execution-grade, even when reachable');
+      assert.equal(indicative?.details.marketDataEngineeringReady, true);
+    }
+  );
+});
+
+test('OPRA NOT_ENTITLED alongside a reachable INDICATIVE feed is reported accurately -- never silently upgraded', async () => {
+  await withMockedFetch(
+    [
+      { match: (u) => u.includes('/v2/account') && !u.includes('activities'), respond: () => jsonResponse(200, accountBody()) },
+      { match: (u) => u.includes('/v2/clock'), respond: () => jsonResponse(200, { timestamp: new Date().toISOString(), is_open: true }) },
+      { match: (u) => u.includes('/v2/calendar'), respond: () => jsonResponse(200, [{ date: '2026-09-10' }]) },
+      { match: (u) => u.includes('/v2/stocks/quotes/latest'), respond: () => jsonResponse(200, { quotes: { SPY: {} } }) },
+      { match: (u) => u.includes('/v2/options/contracts'), respond: () => jsonResponse(200, { option_contracts: [] }) },
+      { match: (u) => u.includes('feed=opra'), respond: () => jsonResponse(403, { message: 'not entitled' }) },
+      { match: (u) => u.includes('feed=indicative'), respond: () => jsonResponse(200, { snapshots: { X: { greeks: { delta: 0.1 } } } }) },
+      { match: (u) => u.includes('/v2/positions'), respond: () => jsonResponse(200, []) },
+      { match: (u) => u.includes('/v2/account/activities/FILL'), respond: () => jsonResponse(200, []) },
+      { match: (u) => u.includes('/v1/corporate-actions'), respond: () => jsonResponse(200, {}) }
+    ],
+    async () => {
+      const results = await checkAlpaca(baseEnvironment);
+      const opra = results.find((r) => r.capability === 'OPTIONS_MARKET_DATA_OPRA');
+      const indicative = results.find((r) => r.capability === 'OPTIONS_MARKET_DATA_INDICATIVE');
+      assert.equal(opra?.state, 'NOT_ENTITLED');
+      assert.equal(opra?.details.executionGrade, false);
+      assert.equal(indicative?.state, 'GOOD');
+      assert.equal(indicative?.details.marketDataEngineeringReady, true);
+      assert.equal(indicative?.details.executionGrade, false, 'a reachable INDICATIVE feed must never be reported as execution-grade');
     }
   );
 });
@@ -231,6 +266,74 @@ test('Optionomics explicit null values are surfaced as a fact, never coerced to 
       const results = await checkOptionomics(baseEnvironment);
       const tickers = results.find((r) => r.operationAlias === 'opt.list_tickers');
       assert.equal(tickers?.details.explicitNullObserved, true);
+    }
+  );
+});
+
+// Security correction: even a malicious/broken provider that reflects the
+// exact credential value back in its response body must never cause that
+// value to reach a CheckResult -- readiness.ts's evaluate() callbacks only
+// ever extract specific, named-safe fields (maskedAccount, booleans,
+// counts), never the raw body, so this holds structurally rather than by
+// convention. Uses realistic-shaped (but fake, test-only) credential values.
+const REALISTIC_FAKE_ALPACA_KEY = 'PKTESTFAKEKEYNOTREAL0000000';
+const REALISTIC_FAKE_ALPACA_SECRET = 'FakeTestSecretValueNotReal0000000000000000';
+const REALISTIC_FAKE_OPTIONOMICS_TOKEN = 'fakeTestOptionomicsTokenNotReal_00000000';
+
+const secretEnvironment: Environment = {
+  ...baseEnvironment,
+  ALPACA_API_KEY: REALISTIC_FAKE_ALPACA_KEY,
+  ALPACA_SECRET_KEY: REALISTIC_FAKE_ALPACA_SECRET,
+  OPTIONOMICS_API_KEY: REALISTIC_FAKE_OPTIONOMICS_TOKEN
+};
+
+test('a provider that echoes request headers back in its body never causes a credential to appear in a CheckResult', async () => {
+  const echoBody = (): Record<string, unknown> => ({
+    status: 'ACTIVE', equity: '1', cash: '1', buying_power: '1', options_approved_level: 1, trading_blocked: false,
+    // Simulates a broken/malicious server reflecting the request's own credentials.
+    debug_echo_api_key: REALISTIC_FAKE_ALPACA_KEY,
+    debug_echo_secret: REALISTIC_FAKE_ALPACA_SECRET
+  });
+  await withMockedFetch(
+    [
+      { match: (u) => u.includes('/v2/account') && !u.includes('activities'), respond: () => jsonResponse(200, echoBody()) },
+      { match: (u) => u.includes('/v2/clock'), respond: () => jsonResponse(200, { timestamp: new Date().toISOString(), is_open: true }) },
+      { match: (u) => u.includes('/v2/calendar'), respond: () => jsonResponse(200, [{ date: '2026-09-10' }]) },
+      { match: (u) => u.includes('/v2/stocks/quotes/latest'), respond: () => jsonResponse(200, { quotes: { SPY: {} } }) },
+      { match: (u) => u.includes('/v2/options/contracts'), respond: () => jsonResponse(200, { option_contracts: [] }) },
+      { match: (u) => u.includes('/v1beta1/options/snapshots'), respond: () => jsonResponse(200, { snapshots: {} }) },
+      { match: (u) => u.includes('/v2/positions'), respond: () => jsonResponse(200, []) },
+      { match: (u) => u.includes('/v2/account/activities/FILL'), respond: () => jsonResponse(200, []) },
+      { match: (u) => u.includes('/v1/corporate-actions'), respond: () => jsonResponse(200, {}) }
+    ],
+    async () => {
+      const results = await checkAlpaca(secretEnvironment);
+      const serialized = JSON.stringify(results);
+      assert.ok(!serialized.includes(REALISTIC_FAKE_ALPACA_KEY), 'CheckResult must never contain the raw API key value');
+      assert.ok(!serialized.includes(REALISTIC_FAKE_ALPACA_SECRET), 'CheckResult must never contain the raw secret value');
+      for (const result of results) {
+        assert.equal(result.provenance.credentialValuesLogged, false);
+      }
+    }
+  );
+});
+
+test('an Optionomics provider echoing the request token back never causes it to appear in a CheckResult', async () => {
+  await withMockedFetch(
+    [
+      {
+        match: (u) => u.includes('optionomics.ai/docs/api'),
+        respond: () => new Response('<code>GET /api/v1/tickers</code>', { status: 200, headers: { 'content-type': 'text/html' } })
+      },
+      {
+        match: (u) => u.includes('/api/v1/tickers'),
+        respond: () => jsonResponse(200, { tickers: [], debug_echo_token: REALISTIC_FAKE_OPTIONOMICS_TOKEN })
+      }
+    ],
+    async () => {
+      const results = await checkOptionomics(secretEnvironment);
+      const serialized = JSON.stringify(results);
+      assert.ok(!serialized.includes(REALISTIC_FAKE_OPTIONOMICS_TOKEN), 'CheckResult must never contain the raw Optionomics token value');
     }
   );
 });
