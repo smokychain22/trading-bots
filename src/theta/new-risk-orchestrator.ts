@@ -100,9 +100,28 @@ export type ProviderCapabilityStates = Readonly<Partial<Record<ProviderCapabilit
 // this list is the natural place to wire a future hard requirement.
 const REQUIRED_FOR_NEW_RISK: readonly ProviderCapabilityKey[] = ['ALPACA_ACCOUNT', 'ALPACA_OPTION_CONTRACTS', 'ALPACA_OPTION_CHAIN'];
 
-function allRequiredCapabilitiesGood(capabilities: ProviderCapabilityStates): boolean {
-  return REQUIRED_FOR_NEW_RISK.every((key) => capabilities[key] === 'GOOD');
+// HARD_VETO is reserved for a genuine risk/safety prohibition: the account
+// is invalid or trading is blocked (INVALID), or THETA is not entitled to
+// the data at all (NOT_ENTITLED). STALE/DEGRADED/UNKNOWN -- and a capability
+// key missing entirely -- are transient data conditions: a provider outage,
+// a slow refresh, or a call that simply hasn't happened yet. These must
+// never be treated as a risk veto (that would contaminate risk-veto
+// statistics with plain data unavailability); they defer evaluation instead.
+const HARD_VETO_CAPABILITY_STATES: ReadonlySet<DataQualityState> = new Set(['INVALID', 'NOT_ENTITLED']);
+
+type RequiredCapabilityFailure = 'NONE' | 'HARD_VETO' | 'TRANSIENT';
+
+function requiredCapabilityFailureKind(capabilities: ProviderCapabilityStates): RequiredCapabilityFailure {
+  let anyTransient = false;
+  for (const key of REQUIRED_FOR_NEW_RISK) {
+    const state = capabilities[key];
+    if (state === 'GOOD') continue;
+    if (state !== undefined && HARD_VETO_CAPABILITY_STATES.has(state)) return 'HARD_VETO';
+    anyTransient = true; // STALE, DEGRADED, UNKNOWN, or not yet attempted
+  }
+  return anyTransient ? 'TRANSIENT' : 'NONE';
 }
+
 
 export interface NewRiskOrchestrationRequest {
   readonly snapshotId: string;
@@ -188,6 +207,78 @@ const systemHoldResult = (
   ...partial,
 });
 
+// A transient provider condition prevents economic evaluation. It is an
+// operational SYSTEM_HOLD rather than a strategy WAIT or a risk HARD_VETO.
+// This keeps strategy outcomes, provider incidents, and risk transforms
+// separate for later opportunity and reliability analysis.
+const providerTransientHoldResult = (
+  request: NewRiskOrchestrationRequest,
+  stage: string,
+  detail: string,
+): NewRiskOrchestrationResult => ({
+  receipt: {
+    decisionId: `${request.snapshotId}:${request.underlying}`,
+    snapshotId: request.snapshotId,
+    fusionSnapshotHash: request.fusionSnapshotHash,
+    timestamp: request.timestamp,
+    underlying: request.underlying,
+    winningAction: 'SYSTEM_HOLD',
+    selectedCandidateId: null,
+    quantity: 0,
+    alternatives: [],
+    ownershipSnapshotId: null,
+    regimeSnapshotId: null,
+    executionAuthorized: false,
+    reasonCodes: [`RUNTIME_STAGE_DEFERRED:${stage}`],
+    plainEnglishExplanation: `Evaluation deferred at stage ${stage}: ${detail}`,
+    failClosedReason: null,
+    policyVersion: request.policyVersion,
+    modelVersions: request.modelVersions,
+  },
+  ownership: null,
+  regime: null,
+  routing: null,
+  thetaQ: null,
+  aegis: null,
+  paretoSurvivorIds: null,
+  opportunityBook: null,
+  shadowOpportunities: [],
+});
+
+const hardVetoResult = (
+  request: NewRiskOrchestrationRequest,
+  stage: string,
+  detail: string,
+): NewRiskOrchestrationResult => ({
+  receipt: {
+    decisionId: `${request.snapshotId}:${request.underlying}`,
+    snapshotId: request.snapshotId,
+    fusionSnapshotHash: request.fusionSnapshotHash,
+    timestamp: request.timestamp,
+    underlying: request.underlying,
+    winningAction: 'HARD_VETO',
+    selectedCandidateId: null,
+    quantity: 0,
+    alternatives: [],
+    ownershipSnapshotId: null,
+    regimeSnapshotId: null,
+    executionAuthorized: false,
+    reasonCodes: [`RISK_CAPABILITY_PROHIBITION:${stage}`],
+    plainEnglishExplanation: `New risk is prohibited at stage ${stage}: ${detail}`,
+    failClosedReason: detail,
+    policyVersion: request.policyVersion,
+    modelVersions: request.modelVersions,
+  },
+  ownership: null,
+  regime: null,
+  routing: null,
+  thetaQ: null,
+  aegis: null,
+  paretoSurvivorIds: null,
+  opportunityBook: null,
+  shadowOpportunities: [],
+});
+
 const requiredCollateralPerContract = (contract: NormalizedOptionContract): number => contract.strike * contract.multiplier;
 
 const NULL_ECONOMICS: Omit<CandidateEconomics, 'candidateId'> = {
@@ -200,9 +291,13 @@ export async function runNewRiskOrchestration(
   bridge: PythonBridgeConfig,
   request: NewRiskOrchestrationRequest,
 ): Promise<NewRiskOrchestrationResult> {
-  if (!allRequiredCapabilitiesGood(request.providerCapabilities)) {
+  const capabilityFailure = requiredCapabilityFailureKind(request.providerCapabilities);
+  if (capabilityFailure !== 'NONE') {
     const detail = REQUIRED_FOR_NEW_RISK.map((key) => `${key}=${request.providerCapabilities[key] ?? 'UNKNOWN'}`).join(', ');
-    return systemHoldResult(request, 'PROVIDER_STATE', `Required provider capability state is not GOOD: ${detail}`);
+    if (capabilityFailure === 'HARD_VETO') {
+      return hardVetoResult(request, 'PROVIDER_STATE', `Required provider capability state indicates a genuine safety or entitlement prohibition: ${detail}`);
+    }
+    return providerTransientHoldResult(request, 'PROVIDER_STATE', `Required provider capability state is temporarily degraded or unavailable: ${detail}`);
   }
 
   const ownershipResult = await invokeAndValidate(
