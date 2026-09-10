@@ -14,6 +14,19 @@ Response envelope: api_version = v1, dataset = published or demo, data = the req
 
 No endpoint connects to a broker, submits an order or enables a bot. No public payload contains private account data. These are unauthenticated public product records only. User-specific records must not be added without tenant authorization.
 
+## Paper-copy preparation
+
+GET /api/v1/copy/readiness returns the disconnected customer state, paper-only OAuth
+architecture, customer authority boundary, and disabled activation state.
+
+GET /api/v1/copy/results returns an empty follower-only projection until customer
+identity and account tenancy exist. It never substitutes the master PAPER account's
+performance for customer results.
+
+POST /api/v1/copy/policy/validate validates a stateless paper allocation draft. It
+always returns final_quantity=0 and activation_allowed=false. There is no OAuth start,
+callback, stop, disconnect, order, or activation endpoint in this release.
+
 ## Capital scenario
 
 POST /api/v1/bots/theta/simulate accepts strict numeric inputs:
@@ -30,7 +43,7 @@ Invalid or oversized bodies return a generic 400 without echoing input. The body
 
 ## Private owner access
 
-POST /api/v1/operator/session exchanges an existing strong operator credential for a 15-minute HMAC-signed HttpOnly, Secure, SameSite=Strict cookie scoped to /api/v1/operator. State-changing session calls require same-origin headers. Missing or incorrect credentials return 401. No credentials are stored in localStorage.
+POST /api/v1/operator/session exchanges an existing strong operator credential for a 15-minute HMAC-signed HttpOnly, Secure, SameSite=Strict cookie scoped to the site path so the protected `/ops/*` pages and operator APIs can use the same session. State-changing session calls require same-origin headers. Missing or incorrect credentials return 401. No credentials are stored in localStorage.
 
 GET /api/v1/operator/status requires a valid session and returns release visibility only. It reports current provider runtime as UNKNOWN, not as a continuously refreshed health result. DELETE /api/v1/operator/session clears the browser cookie.
 

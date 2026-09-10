@@ -29,3 +29,26 @@ The owner's later authority permits tested main pushes, superseding earlier no-p
 ## 2026-09-10: Phase 1.5 customer reconstruction
 
 Keep every financial and provenance contract intact while simplifying the customer surface. Primary navigation is Overview, Bots, My Bots and Activity. Compare becomes contextual, while owner access remains a direct authenticated operator route. THETA receives a decision-first overview, an explicit available-for-exploration hierarchy, compact detail navigation and a progressive-disclosure simulation. Research bot cards remain available as a quiet roadmap only.
+
+## 2026-09-10: automatic follower-copy authority boundary
+
+THETA owns strategy and lifecycle decisions. Customers control account connection,
+paper-capital allocation, stopping new entries, and disconnection. There are no
+per-trade approvals or customer strategy overrides. Stop New Copies blocks new
+entries while existing copied positions remain under THETA management. Disconnect
+stops management and does not liquidate positions automatically.
+
+The first copy-engine milestone is deterministic and non-executing. Stable copy
+event and client order identifiers, follower-specific sizing, valid quantity zero,
+partial-fill handling, and reconciliation-before-retry are implemented as contracts
+and persistence constraints. Broker submission stays disabled until customer IAM,
+OAuth state ownership, encrypted token references, runtime adapters, and PAPER chaos
+tests are complete.
+
+## 2026-09-10: split customer and owner information architecture
+
+Customer navigation is Home, Bots, My Bots, Activity, and Account. THETA distinguishes
+master strategy Performance from follower My Results. Customer position and history
+views are read-only. The private owner surface uses five protected routes: Overview,
+THETA, Trading, Copy, and System. The temporary shared operator token remains a
+short-lived session bridge, not production IAM.

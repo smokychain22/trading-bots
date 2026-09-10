@@ -4,6 +4,7 @@ import { assertProviderConfiguration } from "../config/environment.js";
 import { checkAlpaca, type CheckResult } from "../providers/readiness.js";
 import type {
   CopyPolicyReview,
+  FollowerResults,
   MasterPaperConnection,
   PaperCopyReadiness,
 } from "./models.js";
@@ -52,6 +53,10 @@ export function paperCopyReadiness(
       masked_account: null,
       state: "NOT_CONNECTED",
       verified_at: null,
+      buying_power: null,
+      cash: null,
+      options_enabled: null,
+      last_sync_at: null,
     },
     oauth: {
       architecture: "ALPACA_OAUTH_SERVER_SIDE",
@@ -59,13 +64,77 @@ export function paperCopyReadiness(
       state: oauthConfigured ? "BLOCKED_ON_CUSTOMER_IAM" : "NOT_CONFIGURED",
       token_storage: "ENCRYPTED_SECRET_REFERENCE_REQUIRED",
     },
-    copy_runtime: "NOT_IMPLEMENTED",
+    participation: "NOT_CONNECTED",
+    copy_runtime: "CONTRACT_AND_SCHEMA_READY_EXECUTION_DISABLED",
     activation_allowed: false,
     master_fill_first: true,
     raw_master_quantity_copy: false,
     reason: oauthConfigured
       ? "Customer identity, encrypted token persistence, and callback state verification are not released."
       : "Alpaca customer OAuth is not configured for this deployment.",
+    customer_authority: {
+      bot_controls_strategy: true,
+      per_trade_approval: false,
+      customer_controls: [
+        "CONNECT_ACCOUNT",
+        "SET_ALLOCATION",
+        "STOP_NEW_TRADES",
+        "DISCONNECT_ACCOUNT",
+      ],
+      existing_position_management_after_stop: true,
+      automatic_liquidation_on_disconnect: false,
+    },
+  };
+}
+
+export function followerResults(): FollowerResults {
+  return {
+    bot_id: "theta",
+    strategy_version: null,
+    environment: "PAPER",
+    as_of: null,
+    data_quality: "UNKNOWN",
+    provenance: "PAPER",
+    participation: "NOT_CONNECTED",
+    allocation_usd: null,
+    metrics: [
+      {
+        label: "Your economic P&L",
+        technical_name: "Follower Whole-Chain P&L",
+        value: null,
+        unit: "USD",
+        explanation: "Your option, stock, dividend, fee, and slippage economics.",
+        reason: "No follower paper account is connected.",
+      },
+      {
+        label: "Your return",
+        technical_name: "Follower Economic Return",
+        value: null,
+        unit: "PERCENT",
+        explanation: "Economic return on your allocated paper capital.",
+        reason: "No follower paper account is connected.",
+      },
+      {
+        label: "Open positions",
+        technical_name: "Follower Open Positions",
+        value: null,
+        unit: "COUNT",
+        explanation: "Broker-reconciled positions in your account.",
+        reason: "No follower paper account is connected.",
+      },
+    ],
+    positions: [],
+    history: [],
+    tracking: {
+      master_events_seen: null,
+      copied_full: null,
+      copied_reduced: null,
+      skipped: null,
+      diverged: null,
+      last_sync_at: null,
+    },
+    reason:
+      "Connect an Alpaca Paper account and start copying before personal results can be measured.",
   };
 }
 

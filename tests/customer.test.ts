@@ -4,7 +4,7 @@ import { createServer, type Server } from "node:http";
 import { randomBytes } from "node:crypto";
 import { botDetail, botSummaries } from "../src/customer/catalog.js";
 import handler, { simulateCapital, validSession } from "../src/customer/api.js";
-import { paperCopyReadiness, reviewPaperCopyPolicy } from "../src/customer/paper-copy.js";
+import { followerResults, paperCopyReadiness, reviewPaperCopyPolicy } from "../src/customer/paper-copy.js";
 import { hasOperatorSession } from "../src/customer/ops-access.js";
 
 let server: Server;
@@ -221,6 +221,10 @@ test("paper-copy foundation is follower-specific, zero-safe, and never activates
   assert.equal(readiness.activation_allowed, false);
   assert.equal(readiness.master_fill_first, true);
   assert.equal(readiness.raw_master_quantity_copy, false);
+  assert.equal(readiness.copy_runtime, "CONTRACT_AND_SCHEMA_READY_EXECUTION_DISABLED");
+  assert.equal(readiness.customer_authority.per_trade_approval, false);
+  assert.equal(readiness.customer_authority.existing_position_management_after_stop, true);
+  assert.equal(readiness.customer_authority.automatic_liquidation_on_disconnect, false);
   const review = reviewPaperCopyPolicy({
     allocation_usd: 0,
     max_bot_capital_pct: 25,
@@ -239,6 +243,20 @@ test("paper-copy foundation is follower-specific, zero-safe, and never activates
   assert.equal(review.final_quantity, 0);
   assert.equal(review.activation_allowed, false);
   assert.throws(() => reviewPaperCopyPolicy({ ...review.policy, join_existing_positions: true }));
+});
+
+test("follower results never reuse master account performance", async () => {
+  const results = followerResults();
+  assert.equal(results.participation, "NOT_CONNECTED");
+  assert(results.metrics.every((metric) => metric.value === null));
+  assert.equal(results.positions.length, 0);
+  assert.equal(results.history.length, 0);
+  const response = await fetch(base + "/api/v1/copy/results");
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.dataset, "published");
+  assert.equal(body.data.bot_id, "theta");
+  assert(!JSON.stringify(body).includes("provider_account_ref"));
 });
 
 test("operator page authorization uses the same signed server session", async () => {

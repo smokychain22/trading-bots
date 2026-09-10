@@ -36,9 +36,17 @@ const nav = [
 ];
 const botTabs = [
   ["", "Overview"],
+  ["my-results", "My Results"],
   ["positions", "Positions"],
-  ["history", "Trades"],
+  ["history", "Trade History"],
   ["performance", "Performance"],
+];
+const opsNav = [
+  ["/ops", "Overview"],
+  ["/ops/theta", "THETA"],
+  ["/ops/trading", "Trading"],
+  ["/ops/copy", "Copy"],
+  ["/ops/system", "System"],
 ];
 let detail;
 let catalog;
@@ -46,7 +54,7 @@ let abort;
 
 function shell(content) {
   if (path.startsWith("/ops")) {
-    root.innerHTML = `<div class="ops-shell"><header class="ops-topbar"><a class="brand" href="/ops"><img src="/assets/mark.svg" width="34" height="34" alt=""><span>Trading Bots<small>PRIVATE OPERATIONS</small></span></a>${badge("PAPER ONLY", "blue")}</header><main id="main" tabindex="-1">${content}</main></div>`;
+    root.innerHTML = `<div class="ops-shell"><header class="ops-topbar"><a class="brand" href="/ops"><img src="/assets/mark.svg" width="34" height="34" alt=""><span>Trading Bots<small>PRIVATE OPERATIONS</small></span></a>${path === "/ops/login" ? "" : `<nav aria-label="Operations">${opsNav.map(([href, text]) => `<a href="${href}" ${path === href ? 'aria-current="page"' : ""}>${text}</a>`).join("")}</nav>`}${badge("PAPER ONLY", "blue")}</header><main id="main" tabindex="-1">${content}</main></div>`;
     return;
   }
   root.innerHTML = `<aside class="sidebar"><a class="brand" href="/"><img src="/assets/mark.svg" width="34" height="34" alt=""><span>trading<span class="brand-light">bots</span><small>AUTOMATED STRATEGIES</small></span></a><div class="nav-label">ACCOUNT</div><nav aria-label="Primary">${nav.map(([href, text, icon]) => `<a href="${href}${q}" ${path === href || (href === "/overview" && path === "/") || (href === "/bots" && path.startsWith("/bots")) ? 'aria-current="page"' : ""}><span aria-hidden="true">${icon}</span>${text}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="workspace-card"><span class="status-dot"></span><div>Paper environment<small>Live trading disabled</small></div></div></div></aside><div class="workspace"><header class="topbar"><span class="breadcrumb">Workspace <span>/</span> ${path.startsWith("/bots/theta") ? "Bots / THETA" : path === "/" || path === "/overview" ? "Home" : "Trading Bots"}</span><div class="top-actions"><span class="website-state"><span class="status-dot"></span>Platform online</span>${badge("PAPER ONLY", "blue")}<span class="avatar" aria-label="Visitor workspace">V</span></div></header><main id="main" tabindex="-1">${demo ? `<div class="demo-banner" role="status"><div><strong>DEMO DATA</strong> You’re viewing a test fixture. Values are synthetic.</div>${link(path, "Exit demo", "text-link")}</div>` : ""}${content}</main><footer><span>Trading Bots</span><span>Paper trading only. Activation unavailable.</span><a href="/bots/theta/how-it-works#risks">Options risk disclosure</a></footer></div>`;
@@ -130,7 +138,7 @@ function discovery() {
   filter();
 }
 function detailHeader(section) {
-  return `<div class="theta-context"><div class="bot-identity"><div class="bot-monogram theta" aria-hidden="true">Θ</div><div><p class="eyebrow">PREMIUM INCOME</p><div class="identity-line"><h1>THETA</h1>${badge("PAPER TESTING", "blue")}</div><p>Assignment-aware options income</p></div></div><div class="heading-actions">${link("/bots/theta/copy", "Copy THETA", "button primary")}${link("/bots/theta/history", "View trades", "button secondary")}</div></div><div class="theta-context-copy"><p>THETA sells cash-secured puts and manages assignment, recovery, and covered calls as one complete position.</p><span>Paper track record is being built.</span></div><nav class="tabs theta-tabs" aria-label="THETA sections">${botTabs.map(([key, text]) => `<a href="/bots/theta${key ? "/" + key : ""}${q}" ${section === key ? 'aria-current="page"' : ""}>${text}</a>`).join("")}</nav>`;
+  return `<div class="theta-context"><div class="bot-identity"><div class="bot-monogram theta" aria-hidden="true">Θ</div><div><p class="eyebrow">PREMIUM INCOME</p><div class="identity-line"><h1>THETA</h1>${badge("PAPER TESTING", "blue")}</div><p>Assignment-aware options income</p></div></div><div class="heading-actions">${link("/bots/theta/copy", "Copy THETA", "button primary")}${link("/bots/theta/how-it-works", "About THETA", "button secondary")}</div></div><div class="theta-context-copy"><p>THETA autonomously selects and manages eligible cash-secured puts, assignment, stock recovery, and covered calls as one complete position.</p><span>Paper track record is being built. Customer activation remains disabled.</span></div><nav class="tabs theta-tabs" aria-label="THETA sections">${botTabs.map(([key, text]) => `<a href="/bots/theta${key ? "/" + key : ""}${q}" ${section === key ? 'aria-current="page"' : ""}>${text}</a>`).join("")}</nav>`;
 }
 function dataState() {
   const messages = [];
@@ -401,7 +409,9 @@ function compare() {
     .forEach((e) => e.addEventListener("change", redraw));
   redraw();
 }
-function myBots() {
+function myBots(readiness) {
+  const active = readiness.participation === "COPY_NEW_AND_MANAGE";
+  const stopped = readiness.participation === "STOP_NEW_TRADES_MANAGE_EXISTING";
   shell(
     heading(
       "YOUR BOTS",
@@ -409,13 +419,39 @@ function myBots() {
       "Manage the bots connected to your paper account.",
       link("/bots/theta/copy", "Copy THETA", "button primary"),
     ) +
-      `<section class="panel my-bots-empty">${empty("No bots are copying yet", "Connect an Alpaca Paper account and choose how much you want THETA to use.", link("/bots/theta/copy", "Copy THETA", "button primary"))}<p class="simple-status">Paper copying is being enabled. Pause and stop controls will appear after activation is available.</p></section>`,
+      (active || stopped
+        ? `<section class="panel copied-bot"><div class="section-heading"><div><p class="eyebrow">THETA</p><h2>${stopped ? "Managing existing positions" : "Copying new trades"}</h2><p>${stopped ? "New entries are stopped. Existing copied positions remain under THETA management." : "Eligible master fills are adapted to this paper account."}</p></div>${badge(stopped ? "STOPPED NEW" : "COPYING", stopped ? "amber" : "green")}</div><dl class="account-facts"><div><dt>Allocation</dt><dd>—</dd></div><div><dt>Your P&amp;L</dt><dd>—</dd></div><div><dt>Open positions</dt><dd>—</dd></div><div><dt>Last sync</dt><dd>—</dd></div></dl><div class="heading-actions">${link("/bots/theta/my-results", "View my results", "button secondary")}<button class="button secondary" disabled aria-describedby="stop-copy-note">Stop New Copies</button></div><p id="stop-copy-note" class="simple-status">The control is shown for its release semantics. Account mutations remain disabled until secure customer identity is available.</p></section>`
+        : `<section class="panel my-bots-empty">${empty("No bots are copying yet", "Connect an Alpaca Paper account and choose how much you want THETA to use.", link("/bots/theta/copy", "Copy THETA", "button primary"))}<p class="simple-status">No customer account or copied position is inferred from the master paper account.</p></section>`),
   );
 }
-function home() {
+function home(readiness) {
+  const active = readiness.participation === "COPY_NEW_AND_MANAGE";
+  const ready = readiness.participation === "READY_TO_COPY";
+  const headline = active
+    ? "Track your THETA paper copy."
+    : ready
+      ? "Choose how much paper capital THETA may use."
+      : "Connect your Alpaca Paper account to copy THETA.";
+  const primary = active
+    ? link("/bots/theta/my-results", "View my results", "button primary")
+    : ready
+      ? link("/bots/theta/copy", "Choose allocation", "button primary")
+      : link("/account", "Connect paper account", "button primary");
   shell(
-    `<section class="home-hero"><div><p class="eyebrow">AUTOMATED OPTIONS BOTS</p><h1>Copy options strategies with your Alpaca Paper account.</h1><p class="lede">Start with THETA, review its paper performance, and choose how much capital you want it to use.</p><div class="heading-actions">${link("/bots/theta", "View THETA", "button secondary")}${link("/bots/theta/copy", "Copy THETA", "button primary")}</div></div><aside><div class="launch-title"><span class="bot-monogram large theta" aria-hidden="true">Θ</span><div><h2>THETA</h2><p>Assignment-aware premium strategy</p></div></div>${badge("PAPER TESTING", "blue")}<dl class="home-bot-facts"><div><dt>Track record</dt><dd>Building</dd></div><div><dt>Open positions</dt><dd>—</dd></div><div><dt>Customer copying</dt><dd>Coming soon</dd></div></dl></aside></section><section class="home-steps"><div><span>1</span><p><strong>Choose a bot</strong>Understand the strategy and risks.</p></div><div><span>2</span><p><strong>Connect Alpaca Paper</strong>Your brokerage account stays with Alpaca.</p></div><div><span>3</span><p><strong>Set your limits</strong>Choose capital and a risk preference.</p></div><div><span>4</span><p><strong>Track results</strong>See positions, trades, and economic P&amp;L.</p></div></section>`,
+    `<section class="home-hero"><div><p class="eyebrow">AUTOMATED OPTIONS BOTS</p><h1>${esc(headline)}</h1><p class="lede">THETA makes the trading decisions and manages the full Wheel lifecycle. You control participation and paper capital allocation.</p><div class="heading-actions">${primary}${link("/bots/theta", "Review THETA", "button secondary")}</div><p class="simple-status">Secure customer connection and activation are still gated. No customer order can be placed today.</p></div><aside><div class="launch-title"><span class="bot-monogram large theta" aria-hidden="true">Θ</span><div><h2>THETA</h2><p>Assignment-aware premium strategy</p></div></div>${badge(active ? "COPYING" : "PAPER TESTING", active ? "green" : "blue")}<dl class="home-bot-facts"><div><dt>Track record</dt><dd>Building</dd></div><div><dt>Your open positions</dt><dd>—</dd></div><div><dt>Customer copying</dt><dd>${active ? "Active" : "Unavailable"}</dd></div></dl></aside></section><section class="home-steps"><div><span>1</span><p><strong>Connect Alpaca Paper</strong>Your brokerage account stays with Alpaca.</p></div><div><span>2</span><p><strong>Choose an amount</strong>Set the maximum paper capital THETA may use.</p></div><div><span>3</span><p><strong>Copy automatically</strong>THETA opens and manages eligible trades within account limits.</p></div><div><span>4</span><p><strong>Track your results</strong>See follower positions and full economic P&amp;L.</p></div></section>`,
   );
+}
+function myResults(results) {
+  shell(
+    detailHeader("my-results") +
+      `<section class="panel follower-results"><div class="section-heading"><div><p class="eyebrow">YOUR PAPER ACCOUNT</p><h2>My Results</h2><p>Follower results are calculated from your own broker-reconciled fills, positions, costs, and assigned stock.</p></div>${badge("PAPER", "blue")}</div><div class="kpi-strip customer-kpis">${results.metrics.map((item) => metricCard(item, false)).join("")}</div>${empty("No personal results yet", results.reason, link("/bots/theta/copy", "Review copy setup", "button secondary"))}<div class="notice"><strong>Master performance and your results are separate.</strong> Your quantity, fills, slippage, skipped trades, and lifecycle divergence can differ from THETA’s master paper account.</div></section>`,
+  );
+}
+
+async function readCopyReadiness(signal) {
+  const response = await fetch("/api/v1/copy/readiness", { signal });
+  if (!response.ok) throw new Error("API");
+  return (await response.json()).data;
 }
 async function load() {
   shell(
@@ -431,17 +467,15 @@ async function load() {
     if (body.api_version !== "v1" || !Array.isArray(body.data))
       throw new Error("contract");
     catalog = body.data;
-    if (path === "/") home();
+    if (path === "/") home(await readCopyReadiness(abort.signal));
     else if (path === "/bots") discovery();
     else if (path === "/compare") compare();
-    else if (path === "/my-bots") myBots();
-    else if (path === "/ops" || path === "/ops/login" || path === "/owner") {
+    else if (path === "/my-bots") myBots(await readCopyReadiness(abort.signal));
+    else if (path.startsWith("/ops") || path === "/owner") {
       shell(ownerPage());
       bindOwner();
     } else if (path === "/account") {
-      const readinessResponse = await fetch("/api/v1/copy/readiness", { signal: abort.signal });
-      if (!readinessResponse.ok) throw new Error("API");
-      shell(accountPage((await readinessResponse.json()).data));
+      shell(accountPage(await readCopyReadiness(abort.signal)));
     } else if (path === "/settings") {
       shell(
         heading(
@@ -513,17 +547,19 @@ async function load() {
         }));
       }
       else if (path === "/overview")
-        home();
+        home(await readCopyReadiness(abort.signal));
       else if (id !== "theta")
         shell(
           heading("COMING LATER", detail.name, detail.description) +
             `<section class="panel future-detail">${badge("NOT AVAILABLE")}<h2>${esc(detail.category)}</h2><p>This bot isn’t available yet. THETA is the only strategy currently in paper testing.</p>${link("/bots", "Back to bots")}</section>`,
         );
       else if (path.endsWith("/copy")) {
-        const readinessResponse = await fetch("/api/v1/copy/readiness", { signal: abort.signal });
-        if (!readinessResponse.ok) throw new Error("API");
-        shell(detailHeader("") + paperCopyPage((await readinessResponse.json()).data));
+        shell(detailHeader("") + paperCopyPage(await readCopyReadiness(abort.signal)));
         bindPaperCopy();
+      } else if (path.endsWith("/my-results")) {
+        const resultResponse = await fetch("/api/v1/copy/results", { signal: abort.signal });
+        if (!resultResponse.ok) throw new Error("API");
+        myResults((await resultResponse.json()).data);
       } else if (path.endsWith("/simulate")) {
         shell(detailHeader("") + simulationPage());
         bindSimulation();

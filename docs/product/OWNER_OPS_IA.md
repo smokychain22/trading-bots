@@ -7,13 +7,26 @@ before this can be considered a complete production administration system.
 
 ## Top-level sections
 
-1. **Overview** — operating mode (OFF/SHADOW/PAPER/LIVE_SMALL/LIVE — only PAPER
-   architecture may ever be *active* today, per this takeover's standing constraint),
-   operational override (RUN/PAUSE_NEW_ENTRIES/SAFE_HOLD/QUARANTINE/KILL, each change
-   requiring actor/time/reason/old-state/new-state/version per the existing AEGIS exit-
-   supremacy discipline), worker heartbeat, last/next scan, last decision, last trade,
-   open positions/orders, pending intents, `UNKNOWN_SUBMISSION` count, AEGIS state,
-   broker state, provider state, current economic P&L/drawdown/capital utilization.
+The owner navigation intentionally has five stable routes. Detailed operational
+domains sit within these routes rather than creating a wide navigation tree.
+
+1. **Overview** (`/ops`) — release state, current action, master connection,
+   performance publication state, risk, and immediate release gates.
+2. **THETA** (`/ops/theta`) — decision pipeline, AEGIS, opportunity evidence,
+   strategy and model versions, and whole-chain economic truth.
+3. **Trading** (`/ops/trading`) — master Alpaca PAPER readiness, positions, orders,
+   fills, assignment, expiration, corporate actions, execution, and reconciliation.
+4. **Copy** (`/ops/copy`) — follower accounts, master copy events, follower sizing,
+   child order intent state, copy outcomes, tracking difference, and divergence.
+5. **System** (`/ops/system`) — provider, worker, PostgreSQL, Redis, incident, audit,
+   and release-gate health.
+
+Detailed domain requirements within those routes:
+
+1. **Overview detail** — operating mode (OFF/SHADOW/PAPER/LIVE_SMALL/LIVE, with only
+   PAPER architecture eligible today), operational override, worker heartbeat,
+   last/next scan, last decision, last trade, open positions/orders, pending intents,
+   AEGIS state, provider state, and economic risk.
 2. **Opportunity Engine** — the full `opportunity_frontier.py` output surfaced
    directly: eligible underlyings scanned, contracts evaluated, positive-EV/WAIT/PASS/
    AEGIS-rejected/execution-rejected/Q=0 counts, the ranked actionable book (rank,
@@ -70,7 +83,8 @@ before this can be considered a complete production administration system.
 
 ## Route and access
 
-The canonical route is `/ops`. An unauthenticated request redirects to `/ops/login`.
+The canonical route is `/ops`. Every `/ops/*` route is server-protected except
+`/ops/login`. An unauthenticated request redirects to `/ops/login`.
 No customer page or navigation element links to either route.
 
 Current owner access procedure:
@@ -90,9 +104,9 @@ any operator mutation or broader team access is released.
 
 ## Status
 
-FOUNDATION IMPLEMENTED. `/ops` now provides read-only runtime, provider, decision,
-execution, economic-record, copy-engine, infrastructure, release-gate, and incident
-visibility. Most runtime values correctly remain `UNKNOWN` or `BLOCKED` until their
-persistent services exist. Provider verification is read-only. No trading mutation is
-exposed. The full tabbed console, owner IAM, persistent audit log, incident workflows,
-and runtime-backed metrics remain future work.
+FOUNDATION IMPLEMENTED. The five protected owner routes provide read-only runtime,
+provider, decision, execution, economic-record, copy-engine, infrastructure, and
+release-gate visibility. Most runtime values correctly remain `UNKNOWN` or `BLOCKED`
+until their services exist. Provider verification is read-only. No trading mutation
+is exposed. Owner IAM, incident workflows, and runtime-backed metrics remain future
+work.

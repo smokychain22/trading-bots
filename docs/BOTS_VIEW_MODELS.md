@@ -17,6 +17,10 @@ Canonical definitions: src/customer/models.ts. Mapping: src/customer/catalog.ts.
 | BotIntelligence / BotModelHealth      | Observed/research/model distinction and evidence gaps                                  |
 | BotComparison                         | Comparable public summaries without allocation recommendation                          |
 | BotActivity                           | Customer-readable event with technical drill-down                                      |
+| PaperCopyReadiness                    | Follower connection, participation, customer authority and disabled activation state   |
+| FollowerAccount                       | Customer-safe PAPER account facts with nullable broker values                           |
+| FollowerResults                       | Follower-only economics, positions, history and tracking difference                     |
+| FollowerRiskPolicy / CopyPolicyReview | Versioned account limits and a non-activating setup review                              |
 
 Evidence includes bot_id, strategy_version, environment, as_of, data_quality and provenance. Scalar metrics carry friendly and technical names, units, explanation, nullable value and missing-data reason. Published missing metrics remain null. Empty collections mean no published records, not a claim about zero broker exposure.
 

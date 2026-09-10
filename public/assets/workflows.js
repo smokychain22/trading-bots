@@ -123,13 +123,15 @@ export function bindSimulation() {
 
 export function accountPage(readiness) {
   const connected = readiness.follower_account.state === "READY";
-  return `<div class="page-heading"><div><p class="eyebrow">ACCOUNT</p><h1>Your paper account</h1><p class="lede">Connect an Alpaca Paper account to prepare for copy trading.</p></div>${badge("PAPER ONLY", "blue")}</div><section class="panel account-simple"><div class="account-connection"><div><span class="connection-mark" aria-hidden="true">A</span><div><h2>Alpaca Paper</h2><p>${connected ? `Connected · ${esc(readiness.follower_account.masked_account)}` : "Not connected"}</p></div></div>${badge(connected ? "CONNECTED" : "NOT CONNECTED", connected ? "green" : "")}</div>${connected ? `<dl class="account-facts"><div><dt>Buying power</dt><dd>—</dd></div><div><dt>Available cash</dt><dd>—</dd></div><div><dt>Options enabled</dt><dd>—</dd></div><div><dt>Last sync</dt><dd>—</dd></div></dl><button class="button secondary" disabled aria-describedby="disconnect-note">Disconnect</button><p id="disconnect-note" class="simple-status">Account management is being enabled.</p>` : `<p>Your brokerage account stays with Alpaca. This platform will request access only through Alpaca’s account connection flow.</p><button class="button primary" disabled aria-describedby="connect-note">Connect Alpaca Paper</button><p id="connect-note" class="simple-status">Alpaca Paper connection is being enabled.</p>`}</section>`;
+  const value = (input, formatter = String) =>
+    input == null ? "—" : formatter(input);
+  return `<div class="page-heading"><div><p class="eyebrow">ACCOUNT</p><h1>Your paper account</h1><p class="lede">Connect Alpaca Paper so THETA can copy and manage positions automatically within your allocation.</p></div>${badge("PAPER ONLY", "blue")}</div><section class="panel account-simple"><div class="account-connection"><div><span class="connection-mark" aria-hidden="true">A</span><div><h2>Alpaca Paper</h2><p>${connected ? `Connected · ${esc(readiness.follower_account.masked_account ?? "Paper account")}` : "Not connected"}</p></div></div>${badge(connected ? "CONNECTED" : "NOT CONNECTED", connected ? "green" : "")}</div>${connected ? `<dl class="account-facts"><div><dt>Buying power</dt><dd>${value(readiness.follower_account.buying_power, money)}</dd></div><div><dt>Available cash</dt><dd>${value(readiness.follower_account.cash, money)}</dd></div><div><dt>Options enabled</dt><dd>${value(readiness.follower_account.options_enabled, (v) => (v ? "Yes" : "No"))}</dd></div><div><dt>Last sync</dt><dd>${value(readiness.follower_account.last_sync_at)}</dd></div></dl><button class="button secondary" disabled aria-describedby="disconnect-note">Disconnect account</button><div id="disconnect-note" class="notice amber"><strong>Disconnecting stops management.</strong> Open copied positions won’t be liquidated automatically, and THETA will no longer manage them. Account actions remain unavailable until secure customer identity and token revocation are released.</div>` : `<p>Your brokerage account stays with Alpaca. Connection will use Alpaca’s paper-only authorization flow. Credentials won’t be entered or stored in this browser.</p><button class="button primary" disabled aria-describedby="connect-note">Connect Alpaca Paper</button><p id="connect-note" class="simple-status">Secure account connection is being prepared. No account access is requested from this release.</p>`}</section>`;
 }
 
 export function paperCopyPage() {
   const number = (name, text, value, min, max, step = "1") =>
     `<label>${text}<input name="${name}" type="number" value="${value}" min="${min}" max="${max}" step="${step}" required></label>`;
-  return `<div class="copy-heading"><div><p class="eyebrow">PAPER COPY SETUP</p><h2>Copy THETA</h2><p>Choose your paper account preferences. No order or broker authorization is created.</p></div>${badge("PAPER ONLY", "blue")}</div><ol class="copy-steps four" aria-label="Paper copy setup steps"><li><span>1</span>Connect account</li><li><span>2</span>Choose allocation</li><li><span>3</span>Choose risk</li><li><span>4</span>Review</li></ol><section class="connection-blocked"><div><p class="step-label">STEP 1</p><h3>Connect Alpaca Paper</h3><p>Alpaca Paper connection is being enabled.</p></div><button class="button primary" disabled aria-describedby="copy-connect-note">Connect Alpaca Paper</button><span id="copy-connect-note" class="sr-only">Connection is not available yet.</span></section><form id="copy-policy" class="copy-policy customer-copy-form"><section class="panel"><div class="section-heading"><div><p class="step-label">STEP 2</p><h2>Choose allocation</h2><p>How much paper buying power should THETA be allowed to use?</p></div><output id="allocation-output">$10,000</output></div><input type="hidden" name="allocation_usd" value="10000"><div class="allocation-choices" role="group" aria-label="Allocation"><button type="button" class="choice" data-allocation="5000">$5,000</button><button type="button" class="choice active" data-allocation="10000">$10,000</button><button type="button" class="choice" data-allocation="25000">$25,000</button><button type="button" class="choice" data-allocation="custom">Custom</button></div><label id="custom-allocation" hidden>Custom allocation ($)<input type="number" min="0" max="10000000" step="100" value="10000"></label></section><section class="panel"><p class="step-label">STEP 3</p><h2>Choose risk profile</h2><p>This preference helps shape your account limits. THETA’s risk engine always has final authority.</p><div class="risk-choices"><label><input type="radio" name="risk_profile" value="Conservative"><span><strong>Conservative</strong><small>Lower account limits</small></span></label><label><input type="radio" name="risk_profile" value="Balanced" checked><span><strong>Balanced</strong><small>Moderate account limits</small></span></label><label><input type="radio" name="risk_profile" value="Growth"><span><strong>Growth</strong><small>Higher account limits</small></span></label></div></section><details class="panel advanced-copy"><summary>Advanced settings</summary><p>Optional account-level limits. THETA’s strategy rules can’t be changed here.</p><div class="advanced-fields">${number("max_open_positions", "Maximum open positions", 3, 0, 1000)}${number("max_bot_capital_pct", "Maximum account allocation (%)", 25, 0, 100, "0.1")}${number("max_daily_loss_usd", "Daily loss limit ($)", 500, 0, 10000000)}${number("max_slippage_per_contract_usd", "Slippage preference per contract ($)", 10, 0, 100000, "0.01")}</div><label class="check-row locked"><input type="checkbox" name="join_existing_positions" disabled> Join existing positions</label><p class="caption">Join existing positions stays off. New trades only is the default.</p></details><button class="button primary review-button" type="submit">Review setup</button><p id="copy-error" role="alert"></p></form><section id="copy-review" class="panel copy-review" aria-live="polite"><p class="step-label">STEP 4</p><h2>Review</h2><p>Your paper-copy summary will appear here.</p></section>`;
+  return `<div class="copy-heading"><div><p class="eyebrow">PAPER COPY SETUP</p><h2>Copy THETA</h2><p>THETA makes and manages strategy decisions automatically. You choose whether to participate and how much paper capital it may use.</p></div>${badge("PAPER ONLY", "blue")}</div><div class="notice blue copy-authority"><strong>No per-trade approvals.</strong> Once copying is eventually activated, THETA can open and manage eligible paper positions within your allocation. Your account may copy fewer contracts or skip a trade when its limits require it.</div><ol class="copy-steps three" aria-label="Paper copy setup steps"><li><span>1</span>Connect account</li><li><span>2</span>Choose amount</li><li><span>3</span>Review and start</li></ol><section class="connection-blocked"><div><p class="step-label">STEP 1</p><h3>Connect Alpaca Paper</h3><p>Connection will use Alpaca’s paper-only account authorization. No password is entered here.</p></div><button class="button primary" disabled aria-describedby="copy-connect-note">Connect Alpaca Paper</button><span id="copy-connect-note" class="simple-status">Secure account connection is being prepared.</span></section><form id="copy-policy" class="copy-policy customer-copy-form"><section class="panel"><div class="section-heading"><div><p class="step-label">STEP 2</p><h2>Choose your amount</h2><p>This is the maximum paper capital THETA may allocate. Quantity zero and skipped trades remain valid.</p></div><output id="allocation-output">$10,000</output></div><input type="hidden" name="allocation_usd" value="10000"><div class="allocation-choices" role="group" aria-label="Allocation"><button type="button" class="choice" data-allocation="5000">$5,000</button><button type="button" class="choice active" data-allocation="10000">$10,000</button><button type="button" class="choice" data-allocation="25000">$25,000</button><button type="button" class="choice" data-allocation="custom">Custom</button></div><label id="custom-allocation" hidden>Custom allocation ($)<input type="number" min="0" max="10000000" step="100" value="10000"></label></section><details class="panel advanced-copy"><summary>Optional account limits</summary><p>These cap account exposure. They don’t change THETA’s strategy selection or management decisions.</p><div class="advanced-fields">${number("max_open_positions", "Maximum open positions", 3, 0, 1000)}${number("max_bot_capital_pct", "Maximum account allocation (%)", 25, 0, 100, "0.1")}${number("max_daily_loss_usd", "Daily new-entry loss limit ($)", 500, 0, 10000000)}${number("max_slippage_per_contract_usd", "Maximum slippage per contract ($)", 10, 0, 100000, "0.01")}</div><p class="caption">Copying starts with new master trades only. Existing master positions are never joined.</p></details><button class="button primary review-button" type="submit">Review paper setup</button><p id="copy-error" role="alert"></p></form><section id="copy-review" class="panel copy-review" aria-live="polite"><p class="step-label">STEP 3</p><h2>Review and start</h2><p>Your paper-copy summary will appear here.</p></section>`;
 }
 
 export function bindPaperCopy() {
@@ -161,7 +163,6 @@ export function bindPaperCopy() {
     button.disabled = true;
     document.querySelector("#copy-error").textContent = "";
     const data = new FormData(form);
-    const riskProfile = data.get("risk_profile");
     const policy = {
       allocation_usd: Number(data.get("allocation_usd")),
       max_bot_capital_pct: Number(data.get("max_bot_capital_pct")),
@@ -186,7 +187,7 @@ export function bindPaperCopy() {
       });
       if (!response.ok) throw new Error("Review the DTE range and risk limits.");
       const { data: review } = await response.json();
-      document.querySelector("#copy-review").innerHTML = `<div class="section-heading"><div><p class="step-label">STEP 4</p><h2>Review your setup</h2></div>${badge("NOT ACTIVE")}</div><dl class="review-grid customer-review"><div><dt>Paper account</dt><dd>Alpaca</dd></div><div><dt>Allocation</dt><dd>${money(review.policy.allocation_usd)}</dd></div><div><dt>Risk</dt><dd>${esc(riskProfile)}</dd></div><div><dt>New trades only</dt><dd>Yes</dd></div></dl><button class="button primary" disabled aria-describedby="activation-note">Start Paper Copying</button><p id="activation-note" class="simple-status">Paper copying is being enabled. You can review this setup, but activation isn’t available yet.</p>`;
+      document.querySelector("#copy-review").innerHTML = `<div class="section-heading"><div><p class="step-label">STEP 3</p><h2>Review your setup</h2></div>${badge("NOT ACTIVE")}</div><dl class="review-grid customer-review"><div><dt>Paper account</dt><dd>Alpaca Paper, not connected</dd></div><div><dt>Maximum allocation</dt><dd>${money(review.policy.allocation_usd)}</dd></div><div><dt>Copy behavior</dt><dd>New master trades only</dd></div><div><dt>Management</dt><dd>Automatic within account limits</dd></div></dl><div class="notice amber"><strong>What Stop New Copies means</strong> New entries stop, while THETA continues managing copied positions already open. Disconnecting later stops management and won’t liquidate positions.</div><button class="button primary" disabled aria-describedby="activation-note">Start Paper Copying</button><p id="activation-note" class="simple-status">Activation needs customer identity, secure OAuth token storage, and paper execution reconciliation. No order can be submitted from this release.</p>`;
     } catch (error) {
       document.querySelector("#copy-error").textContent = error.message;
     } finally {
@@ -196,67 +197,41 @@ export function bindPaperCopy() {
 }
 
 export function ownerPage() {
-  return `<div class="page-heading"><div><p class="eyebrow">PRIVATE OPERATIONS</p><h1>THETA operations</h1><p class="lede">Runtime, provider, execution, accounting, and copy readiness.</p></div>${badge("READ ONLY", "blue")}</div><section class="panel owner-panel"><form id="owner-login"><h2>Authorized access</h2><label>Operator access key<input type="password" name="token" required minlength="32" autocomplete="off" spellcheck="false"></label><p class="caption">The credential is exchanged for a 15-minute HttpOnly session and is never stored in browser storage.</p><button class="button primary">Open operations</button><p id="owner-error" role="alert"></p></form><div id="owner-data"></div></section>`;
+  return `<div><section class="panel owner-panel"><form id="owner-login"><div class="page-heading"><div><p class="eyebrow">PRIVATE OPERATIONS</p><h1>THETA operations</h1><p class="lede">Runtime, provider, execution, accounting, and copy readiness.</p></div>${badge("READ ONLY", "blue")}</div><h2>Authorized access</h2><label>Operator access key<input type="password" name="token" required minlength="32" autocomplete="off" spellcheck="false"></label><p class="caption">The credential is exchanged for a 15-minute HttpOnly session and is never stored in browser storage.</p><button class="button primary">Open operations</button><p id="owner-error" role="alert"></p></form></section><div id="owner-data"></div></div>`;
 }
 function opsGroup(title, description, entries) {
   return `<section class="panel ops-control-card"><div class="section-heading"><div><h2>${esc(title)}</h2><p>${esc(description)}</p></div></div><dl>${entries.map(([name, value, tone = ""]) => `<div><dt>${esc(name)}</dt><dd>${badge(value, tone)}</dd></div>`).join("")}</dl></section>`;
 }
 export function bindOwner() {
   const form = document.querySelector("#owner-login");
-  async function read() {
-    const res = await fetch("/api/v1/operator/status", {
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) return false;
-    const { data } = await res.json();
+  const page = location.pathname;
+  const systemTone = (value) =>
+    value === "HEALTHY" || value === "GOOD"
+      ? "green"
+      : value === "BLOCKED" || value === "DEGRADED"
+        ? "amber"
+        : "";
+  const signOut =
+    '<button id="logout" class="button secondary">Sign out</button>';
+  const readinessPanel = () =>
+    `<section class="operator-readiness"><div><h2>Alpaca master PAPER</h2><p>Run read-only checks for the account, clock, calendar, positions, contracts, market data, activities, and corporate actions.</p></div><button id="verify-master" class="button secondary">Verify PAPER connection</button><div id="master-result" aria-live="polite"></div></section>`;
+
+  function renderPage(data) {
     const system = (name) => data.systems[name] ?? "UNKNOWN";
-    const tone = (value) => value === "HEALTHY" ? "green" : value === "BLOCKED" ? "amber" : "";
-    const runtimeGroups = [
-      opsGroup("Market and decisions", "Live runtime evidence and opportunity selection.", [
-        ["Market snapshot", data.runtime_detail.last_market_snapshot ?? "UNKNOWN"],
-        ["Candidate scan", data.runtime_detail.last_scan ?? "UNKNOWN"],
-        ["Router decision", data.runtime_detail.last_decision ?? "UNKNOWN"],
-        ["Opportunity count", data.runtime_detail.candidates_passing ?? "UNKNOWN"],
-        ["WAIT and PASS reasons", data.runtime_detail.candidates_waiting ?? "UNKNOWN"],
-        ["AEGIS", system("aegis"), tone(system("aegis"))],
-      ]),
-      opsGroup("Execution and reconciliation", "Orders remain disabled. Unknown broker state is never treated as success.", [
-        ["Execution", system("execution"), tone(system("execution"))],
-        ["Open option orders", data.runtime_detail.pending_orders ?? "UNKNOWN"],
-        ["Partial fills", "UNKNOWN"],
-        ["Unknown submissions", data.runtime_detail.unknown_submissions ?? "UNKNOWN"],
-        ["Reconciliation", system("reconciliation"), tone(system("reconciliation"))],
-        ["Assignments and recovery", "UNKNOWN"],
-      ]),
-      opsGroup("Economic record", "Whole-chain accounting and performance evidence.", [
-        ["Ledger", system("ledger"), tone(system("ledger"))],
-        ["Whole-chain P&L", "UNKNOWN"],
-        ["Win rate", "UNKNOWN"],
-        ["Profit factor", "UNKNOWN"],
-        ["Drawdown", "UNKNOWN"],
-        ["After-cost EV", "UNKNOWN"],
-        ["Slippage and fill quality", "UNKNOWN"],
-      ]),
-      opsGroup("Copy engine", "Follower accounts, safety checks, and child-order state.", [
-        ["Copy runtime", system("copy_engine"), tone(system("copy_engine"))],
-        ["Followers", system("followers"), tone(system("followers"))],
-        ["Follower sizing", "BLOCKED", "amber"],
-        ["Child orders", "BLOCKED", "amber"],
-        ["Follower reconciliation", "BLOCKED", "amber"],
-      ]),
-      opsGroup("Infrastructure", "Services required for a repeatable paper runtime.", [
-        ["Scheduler", system("scheduler"), tone(system("scheduler"))],
-        ["Python bridge", system("python_bridge"), tone(system("python_bridge"))],
-        ["Worker jobs", "UNKNOWN"],
-        ["Database state", "UNKNOWN"],
-        ["Provider freshness", system("market_data"), tone(system("market_data"))],
-        ["Errors and incidents", system("system_errors"), tone(system("system_errors"))],
-      ]),
-    ].join("");
-    form.hidden = true;
-    document.querySelector("#owner-data").innerHTML =
-      `<div class="section-heading"><div><p class="eyebrow">SYSTEM STATE</p><h2>Is THETA working?</h2></div><button id="logout" class="button secondary">Sign out</button></div><div class="ops-health">${Object.entries(data.systems).map(([name, state]) => `<article><span>${esc(name.replaceAll("_", " "))}</span>${badge(state, tone(state))}</article>`).join("")}</div><section class="ops-section"><div class="section-heading"><div><h2>THETA engine</h2><p>R1 is partial. Deterministic contracts and models exist, while runtime I/O remains gated.</p></div>${badge(data.runtime_detail.stage, "amber")}</div><dl class="capability-grid"><div><dt>Bot mode</dt><dd>${badge(data.bot_mode, "blue")}</dd></div><div><dt>Trading</dt><dd>${badge(data.trading, "amber")}</dd></div><div><dt>Copy</dt><dd>${badge(data.copy, "amber")}</dd></div><div><dt>Policy version</dt><dd>${esc(data.runtime_detail.policy_version ?? "Not active")}</dd></div><div><dt>Last snapshot</dt><dd>${esc(data.runtime_detail.last_market_snapshot ?? "Unknown")}</dd></div><div><dt>Last scan</dt><dd>${esc(data.runtime_detail.last_scan ?? "Unknown")}</dd></div><div><dt>Last decision</dt><dd>${esc(data.runtime_detail.last_decision ?? "Unknown")}</dd></div><div><dt>Candidates evaluated</dt><dd>${esc(data.runtime_detail.candidates_evaluated ?? "Unknown")}</dd></div></dl></section><section class="operator-readiness"><div><h2>Alpaca master PAPER</h2><p>Run read-only checks for account, clock, calendar, positions, contracts, market data, activities, and corporate actions.</p></div><button id="verify-master" class="button secondary">Verify PAPER connection</button><div id="master-result" aria-live="polite"></div></section><div class="ops-control-grid">${runtimeGroups}</div><section class="panel release-gates"><h2>Release gates</h2><ul>${data.gates.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></section><p class="caption">${esc(data.security)}</p>`;
-    document.querySelector("#verify-master").addEventListener("click", async (event) => {
+    const title = `<div class="section-heading"><div><p class="eyebrow">PRIVATE OPERATIONS</p><h1>${page === "/ops" ? "Operations overview" : page === "/ops/theta" ? "THETA engine" : page === "/ops/trading" ? "Trading operations" : page === "/ops/copy" ? "Follower copy" : "System readiness"}</h1></div>${signOut}</div>`;
+    if (page === "/ops/theta")
+      return `${title}<div class="ops-control-grid">${opsGroup("Current action", "No action is inferred without a running scheduler and persisted decision.", [["Last decision", data.runtime_detail.last_decision ?? "UNKNOWN"], ["Next scan", data.runtime_detail.next_scan ?? "UNKNOWN"], ["AEGIS", system("aegis"), systemTone(system("aegis"))], ["Execution authority", data.trading, "amber"]])}${opsGroup("Decision pipeline", "Deterministic contracts exist. Runtime inputs and orchestration remain gated.", [["Runtime stage", data.runtime_detail.stage, "amber"], ["Last snapshot", data.runtime_detail.last_market_snapshot ?? "UNKNOWN"], ["Last scan", data.runtime_detail.last_scan ?? "UNKNOWN"], ["Candidates evaluated", data.runtime_detail.candidates_evaluated ?? "UNKNOWN"], ["Policy version", data.runtime_detail.policy_version ?? "NOT ACTIVE"]])}${opsGroup("Economic truth", "Whole-chain accounting includes option and assigned-stock economics.", [["Ledger runtime", system("ledger"), systemTone(system("ledger"))], ["Whole-chain P&L", "UNKNOWN"], ["Drawdown", "UNKNOWN"], ["After-cost EV", "UNKNOWN"], ["Open inventory MTM", "UNKNOWN"]])}</div>`;
+    if (page === "/ops/trading")
+      return `${title}${readinessPanel()}<div class="ops-control-grid">${opsGroup("Positions", "Broker-reconciled master PAPER exposure only.", [["Open positions", data.runtime_detail.open_positions ?? "UNKNOWN"], ["Assignment inventory", "UNKNOWN"], ["Recovery positions", "UNKNOWN"], ["Corporate actions", "UNKNOWN"]])}${opsGroup("Orders and fills", "No order mutation is exposed. Ambiguous submissions require reconciliation.", [["Execution", system("execution"), systemTone(system("execution"))], ["Pending orders", data.runtime_detail.pending_orders ?? "UNKNOWN"], ["Partial fills", "UNKNOWN"], ["Unknown submissions", data.runtime_detail.unknown_submissions ?? "UNKNOWN"], ["Reconciliation", system("reconciliation"), systemTone(system("reconciliation"))]])}</div>`;
+    if (page === "/ops/copy")
+      return `${title}<div class="ops-control-grid">${opsGroup("Copy engine", "The deterministic copy contract and database schema are present. Submission remains disabled.", [["Contract", "READY", "green"], ["Persistence schema", "READY", "green"], ["Execution", system("copy_engine"), systemTone(system("copy_engine"))], ["Raw master quantity copy", "PROHIBITED"], ["Quantity zero", "VALID", "green"]])}${opsGroup("Followers", "Every follower needs independent sizing, order state, fills, lifecycle, and reconciliation.", [["Connected followers", "UNKNOWN"], ["Copied full", "UNKNOWN"], ["Copied reduced", "UNKNOWN"], ["Skipped", "UNKNOWN"], ["Diverged", "UNKNOWN"]])}${opsGroup("Safety semantics", "Customer actions control participation without changing THETA strategy.", [["New entry stop", "MANAGE EXISTING"], ["Disconnect", "NO AUTO-LIQUIDATION"], ["Unknown submission", "RECONCILE"], ["Join existing", "DISABLED"]])}</div>`;
+    if (page === "/ops/system")
+      return `${title}<div class="ops-health">${Object.entries(data.systems).map(([name, state]) => `<article><span>${esc(name.replaceAll("_", " "))}</span>${badge(state, systemTone(state))}</article>`).join("")}</div>${readinessPanel()}<section class="panel release-gates"><h2>Release gates</h2><ul>${data.gates.map((gate) => `<li>${esc(gate)}</li>`).join("")}</ul></section><p class="caption">${esc(data.security)}</p>`;
+    return `${title}<section class="ops-section"><div class="section-heading"><div><h2>Can THETA trade?</h2><p>The platform is online. Trading and customer copy submission remain disabled.</p></div>${badge(data.runtime_detail.stage, "amber")}</div><dl class="capability-grid"><div><dt>Website</dt><dd>${badge(data.website, "blue")}</dd></div><div><dt>Master mode</dt><dd>${badge(data.bot_mode, "blue")}</dd></div><div><dt>Trading</dt><dd>${badge(data.trading, "amber")}</dd></div><div><dt>Customer copy</dt><dd>${badge(data.copy, "amber")}</dd></div></dl></section><div class="ops-control-grid">${opsGroup("Current action", "No decision is displayed without persisted runtime evidence.", [["Last decision", data.runtime_detail.last_decision ?? "UNKNOWN"], ["Last fill", "UNKNOWN"], ["Next scan", data.runtime_detail.next_scan ?? "UNKNOWN"]])}${opsGroup("Master account", "Credentials stay in server-side deployment configuration.", [["Connection", data.master_connection.connection_state, systemTone(data.master_connection.connection_state)], ["Account", data.master_connection.masked_account ?? "UNKNOWN"], ["Last check", data.master_connection.checked_at ?? "UNKNOWN"]])}${opsGroup("Published performance", "Customer performance stays unavailable until reconciled evidence exists.", [["Track record", data.published_performance ? "PUBLISHED" : "NOT PUBLISHED"], ["Economic P&L", "UNKNOWN"], ["Drawdown", "UNKNOWN"]])}${opsGroup("Attention", "The highest-priority release blockers.", data.gates.map((gate) => [gate, "OPEN", "amber"]))}</div>`;
+  }
+
+  function bindRuntimeActions() {
+    document.querySelector("#verify-master")?.addEventListener("click", async (event) => {
       const button = event.currentTarget;
       button.disabled = true;
       button.textContent = "Verifying…";
@@ -270,7 +245,7 @@ export function bindOwner() {
         if (!readinessResponse.ok && readinessResponse.status !== 207)
           throw new Error(payload.error?.message ?? "Verification unavailable.");
         const result = payload.data;
-        target.innerHTML = `<p class="notice ${result.connection_state === "GOOD" ? "green" : "amber"}"><strong>${esc(result.connection_state)}</strong> · ${esc(result.masked_account ?? "Account identity unavailable")} · checked ${esc(result.checked_at ?? "unknown")}</p><dl class="capability-grid">${Object.entries(result.capabilities).map(([capability, state]) => `<div><dt>${esc(capability)}</dt><dd>${badge(state, state === "GOOD" ? "green" : "amber")}</dd></div>`).join("")}</dl>`;
+        target.innerHTML = `<p class="notice ${result.connection_state === "GOOD" ? "green" : "amber"}"><strong>${esc(result.connection_state)}</strong> · ${esc(result.masked_account ?? "Account identity unavailable")} · checked ${esc(result.checked_at ?? "unknown")}</p><dl class="capability-grid">${Object.entries(result.capabilities).map(([capability, state]) => `<div><dt>${esc(capability)}</dt><dd>${badge(state, systemTone(state))}</dd></div>`).join("")}</dl>`;
       } catch (error) {
         target.innerHTML = `<p class="notice amber">${esc(error.message)} No order was submitted.</p>`;
       } finally {
@@ -278,10 +253,21 @@ export function bindOwner() {
         button.textContent = "Verify PAPER connection";
       }
     });
-    document.querySelector("#logout").addEventListener("click", async () => {
+    document.querySelector("#logout")?.addEventListener("click", async () => {
       await fetch("/api/v1/operator/session", { method: "DELETE" });
       location.assign("/ops/login");
     });
+  }
+
+  async function read() {
+    const res = await fetch("/api/v1/operator/status", {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return false;
+    const { data } = await res.json();
+    form.closest(".owner-panel").hidden = true;
+    document.querySelector("#owner-data").innerHTML = renderPage(data);
+    bindRuntimeActions();
     return true;
   }
   read().catch(() => {

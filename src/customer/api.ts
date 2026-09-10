@@ -6,6 +6,7 @@ import { matchesOperatorToken } from "../providers/readiness-handler.js";
 import { loadEnvironment } from "../config/environment.js";
 import {
   masterConnectionMetadata,
+  followerResults,
   paperCopyReadiness,
   reviewPaperCopyPolicy,
   verifyMasterPaperConnection,
@@ -255,6 +256,12 @@ export default async function customerHandler(
         api_version: "v1",
         product_extension: "THETA_v1.2_PAPER_COPY",
         data: paperCopyReadiness(),
+      });
+    if (route === "copy/results" && request.method === "GET")
+      return send(response, 200, {
+        api_version: "v1",
+        dataset: "published",
+        data: followerResults(),
       });
     if (route === "copy/policy/validate" && request.method === "POST")
       return send(response, 200, {

@@ -217,11 +217,17 @@ export interface BotActivity extends Evidence {
 
 export type PaperCopyStage =
   | "CONNECT_ALPACA"
-  | "ACCOUNT_READINESS"
-  | "RISK_POLICY"
+  | "CHOOSE_ALLOCATION"
   | "REVIEW"
   | "WAITING_FOR_COPY_RUNTIME"
   | "ACTIVE";
+
+export type FollowerParticipation =
+  | "NOT_CONNECTED"
+  | "READY_TO_COPY"
+  | "COPY_NEW_AND_MANAGE"
+  | "STOP_NEW_TRADES_MANAGE_EXISTING"
+  | "DISCONNECTED";
 
 export interface FollowerAccount {
   follower_account_id: string | null;
@@ -231,6 +237,10 @@ export interface FollowerAccount {
   masked_account: string | null;
   state: "NOT_CONNECTED" | "AUTHORIZING" | "VERIFYING" | "READY" | "DEGRADED" | "REVOKED";
   verified_at: string | null;
+  buying_power: number | null;
+  cash: number | null;
+  options_enabled: boolean | null;
+  last_sync_at: string | null;
 }
 
 export interface FollowerRiskPolicy {
@@ -259,10 +269,40 @@ export interface PaperCopyReadiness {
     state: "NOT_CONFIGURED" | "BLOCKED_ON_CUSTOMER_IAM" | "READY";
     token_storage: "ENCRYPTED_SECRET_REFERENCE_REQUIRED";
   };
-  copy_runtime: "NOT_IMPLEMENTED";
+  participation: FollowerParticipation;
+  copy_runtime: "CONTRACT_AND_SCHEMA_READY_EXECUTION_DISABLED";
   activation_allowed: false;
   master_fill_first: true;
   raw_master_quantity_copy: false;
+  reason: string;
+  customer_authority: {
+    bot_controls_strategy: true;
+    per_trade_approval: false;
+    customer_controls: readonly [
+      "CONNECT_ACCOUNT",
+      "SET_ALLOCATION",
+      "STOP_NEW_TRADES",
+      "DISCONNECT_ACCOUNT",
+    ];
+    existing_position_management_after_stop: true;
+    automatic_liquidation_on_disconnect: false;
+  };
+}
+
+export interface FollowerResults extends Evidence {
+  participation: FollowerParticipation;
+  allocation_usd: number | null;
+  metrics: Metric[];
+  positions: BotPosition[];
+  history: BotTrade[];
+  tracking: {
+    master_events_seen: number | null;
+    copied_full: number | null;
+    copied_reduced: number | null;
+    skipped: number | null;
+    diverged: number | null;
+    last_sync_at: string | null;
+  };
   reason: string;
 }
 

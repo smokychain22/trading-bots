@@ -6,16 +6,19 @@ Authority: the owner's standalone Phase 1 request, 2026-09-09. This supersedes p
 
 | Area     | Route                    | Purpose                                                               |
 | -------- | ------------------------ | --------------------------------------------------------------------- |
-| Overview | /overview                | Platform orientation and a concise THETA entry point                  |
-| Bots     | / and /bots              | THETA exploration first, followed by a quieter research roadmap       |
-| My Bots  | /my-bots                 | Browser-local simulation drafts and explicit unavailable copy service |
-| Activity | /activity                | Published-empty or explicit demo events with drill-down               |
-| Settings | /settings                | Clear local simulation drafts                                         |
+| Home     | / and /overview           | State-driven account and THETA copy starting point                    |
+| Bots     | /bots                     | THETA exploration first, followed by a quieter research roadmap       |
+| My Bots  | /my-bots                  | Copy participation, allocation, follower status, and stop semantics   |
+| Activity | /activity                 | Customer-readable follower and bot events with drill-down             |
+| Account  | /account                  | Alpaca PAPER connection, account facts, and disconnect warning        |
 | Learn    | /bots/theta/how-it-works | Accessible Wheel explanation and disclosures                          |
 | Compare  | /compare                 | Contextual roadmap comparison, not a primary navigation destination   |
-| Owner    | /owner                   | Direct authenticated operator route, not customer navigation          |
+| Owner    | /ops                     | Direct authenticated operator route, not customer navigation          |
 
-THETA has dedicated Overview, Performance, Positions, Trade History, Intelligence, Risk and How It Works routes under /bots/theta. The visible contextual navigation is Overview, Performance, Positions, Activity, Risk and More. More contains intelligence, lifecycle explanation and chain examples without changing direct URLs. Simulation is /bots/theta/simulate. Chains use /bots/theta/chains/{id}. Dataset and period query parameters survive detail-tab navigation.
+THETA's customer navigation is Overview, My Results, Positions, Trade History, and
+Performance. My Results is follower-only. Performance is the master THETA record.
+How It Works is available as About THETA without crowding the primary tab set.
+Simulation remains at /bots/theta/simulate. Chains use /bots/theta/chains/{id}.
 
 ## Progressive disclosure
 
@@ -31,11 +34,19 @@ Material stock losses are never collapsed out of headline economics. Missing evi
 
 Discovery to understanding: filter owned bots, open THETA, inspect risk and How It Works, inspect provenance.
 
-Understanding to illustration: explicitly enter demo record mode or the capital scenario. Change capital, contract and cost assumptions. See zero-size or assignment-loss results. Save a local draft in My Bots.
+Understanding to copy setup: connect an Alpaca PAPER account, choose an allocation,
+then review and start. The current release stops honestly before connection or
+activation because customer IAM and OAuth ownership are not available.
+
+Understanding to illustration: explicitly enter demo record mode or the capital
+scenario. Change capital, contract and cost assumptions. See zero-size or
+assignment-loss results.
 
 Investigation: open a position, follow its chain, expand accounting and decision details, compare premium with whole-chain P&L.
 
-Owner: enter an existing operator credential, inspect release gates through a short-lived secure session, sign out. No order or configuration mutation is exposed.
+Owner: enter an existing operator credential, inspect Overview, THETA, Trading,
+Copy, and System through a short-lived secure session, then sign out. No order or
+configuration mutation is exposed.
 
 ## Availability rules
 

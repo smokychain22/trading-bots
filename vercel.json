@@ -3,7 +3,9 @@
   "outputDirectory": "public",
   "rewrites": [
     { "source": "/api/v1/:path*", "destination": "/api/customer?route=:path" },
+    { "source": "/ops/login", "destination": "/index.html" },
     { "source": "/ops", "destination": "/api/ops" },
+    { "source": "/ops/:path*", "destination": "/api/ops" },
     { "source": "/bots/:path*", "destination": "/index.html" },
     { "source": "/overview", "destination": "/index.html" },
     { "source": "/my-bots", "destination": "/index.html" },
@@ -11,7 +13,6 @@
     { "source": "/activity", "destination": "/index.html" },
     { "source": "/settings", "destination": "/index.html" },
     { "source": "/account", "destination": "/index.html" },
-    { "source": "/ops/login", "destination": "/index.html" },
     { "source": "/owner", "destination": "/ops/login" }
   ],
   "headers": [

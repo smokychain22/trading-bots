@@ -1,6 +1,6 @@
 # THETA v1.2 PAPER Copy Extension
 
-Status: interface foundation only. Order submission and copy activation are disabled.
+Status: deterministic contract and persistence schema implemented. Runtime I/O, order submission, and copy activation are disabled.
 
 ## Scope
 
@@ -33,7 +33,10 @@ The current application exposes no OAuth start or callback endpoint. Customer IA
 ## Current API foundation
 
 - `GET /api/v1/copy/readiness` returns customer-safe readiness only.
+- `GET /api/v1/copy/results` returns follower-only results and never reuses master performance.
 - `POST /api/v1/copy/policy/validate` validates a stateless draft and always returns `activation_allowed=false` and `final_quantity=0`.
+- `src/customer/copy-engine-contract.ts` produces deterministic follower plans. It adapts quantity, preserves quantity zero, maps rolls to close plus open, and requires reconciliation for partial, rejected, divergent, or ambiguous broker state.
+- `migrations/005_follower_copy_engine.sql` persists follower accounts by opaque secret reference, versioned account limits, stable copy events, child order intents, immutable fills, reconciliation facts, and operator audit events.
 - No secret, access token, account identifier, authorization header, or master account data is returned.
 - No order endpoint is called.
 
@@ -46,10 +49,10 @@ Before the first follower PAPER copy:
 - server-side OAuth state and callback validation
 - encrypted token storage by opaque secret reference
 - read-only follower account and entitlement verification
-- persistent follower policy with version and audit history
+- a production persistence adapter and customer tenancy enforcement over the follower schema
 - master decision or fill ingestion and lineage
 - follower AEGIS and sizing integration
-- idempotent child order intent and ambiguous-submission reconciliation
+- broker-backed child order submission and ambiguous-submission reconciliation
 - partial-fill and cancel/replace handling
 - follower lifecycle and whole-chain economic ledger
 - pause, stop, and revocation semantics

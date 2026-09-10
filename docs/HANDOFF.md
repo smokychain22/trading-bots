@@ -89,3 +89,43 @@ customer-safe runtime boundary and continue to avoid commits or pushes.
 
 NEXT RECOMMENDED TASK: Return to the first runtime persistence and provider-backed
 shadow decision milestone. Do not enable customer copy activation or submit an order.
+
+## 2026-09-10 authoritative customer and copy-contract completion pass
+
+OWNER: Codex
+
+TASK: Apply the final product authority to customer copy behavior, follower-result
+separation, private owner operations, and the non-executing copy-engine foundation.
+
+FILES CHANGED: Customer copy contracts and tests, migration 005 and SQL invariants,
+customer-safe models and APIs, customer and owner UI, route protection, Vercel
+rewrites, browser tests, and product status documentation.
+
+WHAT WAS IMPLEMENTED: Follower-specific copy planning with stable identifiers,
+quantity adaptation including zero, full lifecycle actions, stop-new-entry management,
+roll close-plus-open semantics, and reconcile-before-retry. Added durable follower
+copy tables with opaque secret references and append-only facts. Added follower-only
+My Results, state-driven Home and My Bots, a three-step automatic-copy setup, explicit
+disconnect consequences, read-only customer tables, and five protected owner routes.
+
+TESTS RUN: TypeScript check, ESLint, Node unit/API/contract tests, Playwright customer
+and owner journeys, axe WCAG AA checks, responsive overflow checks, build, security
+scan, dependency audit, secret-pattern scan, and Docker readiness probe.
+
+TEST RESULTS: Record final counts and release state in `docs/BOTS_VERIFICATION.md` at
+milestone completion. Docker schema execution is blocked locally because the Docker
+Desktop Linux engine pipe is unavailable.
+
+KNOWN LIMITATIONS: Customer IAM, OAuth callback and token vault integration, runtime
+persistence adapters, follower broker I/O, PAPER order execution, scheduler, economic
+publisher, and validated performance remain unreleased.
+
+RISKS: A disconnected follower with open positions loses THETA management. The UI
+warns about this, but customer mutations remain disabled until identity, audit, and
+reconciliation controls exist.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Copy action mapping against lifecycle contracts
+and the future AEGIS input/output adapter. Claude's quant source was not changed.
+
+NEXT RECOMMENDED TASK: Implement the authenticated follower read adapter and shadow
+master-event ingestion. Keep execution disabled until persistence and chaos tests pass.

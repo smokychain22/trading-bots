@@ -73,6 +73,21 @@ app.get("/ops", (request, response) => {
   response.setHeader("X-Robots-Tag", "noindex, nofollow");
   response.sendFile(resolve("public/index.html"));
 });
+app.get("/ops/{*path}", (request, response) => {
+  if (request.path === "/ops/login") {
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("X-Robots-Tag", "noindex, nofollow");
+    response.sendFile(resolve("public/index.html"));
+    return;
+  }
+  if (!hasOperatorSession(request.headers.cookie ?? "")) {
+    response.redirect(302, "/ops/login");
+    return;
+  }
+  response.setHeader("Cache-Control", "no-store");
+  response.setHeader("X-Robots-Tag", "noindex, nofollow");
+  response.sendFile(resolve("public/index.html"));
+});
 app.use(
   "/__reticle",
   express.static(resolve("node_modules/@reticlehq/browser/dist")),
