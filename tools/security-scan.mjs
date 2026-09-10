@@ -1,6 +1,6 @@
 // Prints paths and rule names only, never matching secret text.
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const paths = [
   ...new Set(
@@ -30,6 +30,7 @@ const sensitiveNames = [
 ];
 let failures = 0;
 for (const path of paths) {
+  if (!existsSync(path)) continue;
   if (/(^|\/)\.env(?:\.|$)/.test(path) && !path.endsWith(".env.example")) {
     console.error(path + ": environment file must not be tracked");
     failures++;

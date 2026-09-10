@@ -1,6 +1,6 @@
 # Customer API contract, v1
 
-Handler: src/customer/api.ts. Vercel entry: api/v1/[...path].ts. Local development uses the same handler through src/app.ts. All responses are JSON and no-store.
+Handler: src/customer/api.ts. Vercel entry: api/customer.ts. Vercel binds the repeated public path to the single route query without retaining the repetition marker in the destination. Local development uses the same handler through src/app.ts. All responses are JSON and no-store.
 
 ## Public reads
 

@@ -166,6 +166,15 @@ test("versioned routes fail closed and expose no account fields", async () => {
   assert.equal(sim.status, 200);
   assert.equal((await sim.json()).data.execution_authorized, false);
 });
+test("Vercel nested-route rewrite passes the complete route value", async () => {
+  const res = await fetch(
+    base + "/api/customer?route=bots/theta/performance&dataset=demo",
+  );
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.data.bot_id, "theta");
+  assert.equal(body.data.provenance, "DEMO_DATA");
+});
 test("operator access needs a strong key, same origin and signed expiring session", async () => {
   assert.equal((await fetch(base + "/api/v1/operator/status")).status, 401);
   const login = (token: string, origin: string) =>
