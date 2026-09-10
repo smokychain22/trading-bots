@@ -200,6 +200,10 @@ test("ops requires a server session and shows partial runtime honestly", async (
     await page.goto(route);
     await expect(page.locator("main h1:visible")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1280);
+    const overflowCount = await page.locator(".ops-health article, .ops-control-card").evaluateAll((elements) =>
+      elements.filter((element) => element.scrollWidth > element.clientWidth).length,
+    );
+    expect(overflowCount).toBe(0);
     const accessibility = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
       .analyze();
