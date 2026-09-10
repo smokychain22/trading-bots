@@ -118,6 +118,37 @@ class HardVetoTests(unittest.TestCase):
         self.assertTrue(result.hard_veto)
         self.assertEqual(result.quantity, 0)
 
+    def test_unknown_open_interest_is_distinguished_from_known_below_floor(self):
+        # UNKNOWN and known-but-below-floor must never share one reason
+        # code -- R6 needs to tell a real liquidity rejection apart from a
+        # data-availability gap (see docs/quant/phase6_router/DATA_GAP_REGISTER.md).
+        unknown = self.policy.evaluate(_clean_candidate(open_interest=None))
+        below_floor = self.policy.evaluate(_clean_candidate(open_interest=1))
+        self.assertTrue(unknown.hard_veto)
+        self.assertTrue(below_floor.hard_veto)
+        self.assertIn("OPEN_INTEREST_UNKNOWN", [r.code for r in unknown.reasons])
+        self.assertNotIn("OPEN_INTEREST_BELOW_FLOOR", [r.code for r in unknown.reasons])
+        self.assertIn("OPEN_INTEREST_BELOW_FLOOR", [r.code for r in below_floor.reasons])
+        self.assertNotIn("OPEN_INTEREST_UNKNOWN", [r.code for r in below_floor.reasons])
+
+    def test_unknown_volume_is_distinguished_from_known_below_floor(self):
+        unknown = self.policy.evaluate(_clean_candidate(volume=None))
+        below_floor = self.policy.evaluate(_clean_candidate(volume=1))
+        self.assertTrue(unknown.hard_veto)
+        self.assertTrue(below_floor.hard_veto)
+        self.assertIn("VOLUME_UNKNOWN", [r.code for r in unknown.reasons])
+        self.assertNotIn("VOLUME_BELOW_FLOOR", [r.code for r in unknown.reasons])
+        self.assertIn("VOLUME_BELOW_FLOOR", [r.code for r in below_floor.reasons])
+        self.assertNotIn("VOLUME_UNKNOWN", [r.code for r in below_floor.reasons])
+
+    def test_sufficient_known_open_interest_and_volume_are_not_hard_vetoed_on_liquidity(self):
+        result = self.policy.evaluate(_clean_candidate(open_interest=500, volume=100))
+        codes = [r.code for r in result.reasons]
+        self.assertNotIn("OPEN_INTEREST_UNKNOWN", codes)
+        self.assertNotIn("OPEN_INTEREST_BELOW_FLOOR", codes)
+        self.assertNotIn("VOLUME_UNKNOWN", codes)
+        self.assertNotIn("VOLUME_BELOW_FLOOR", codes)
+
 
 class OwnershipScoringTests(unittest.TestCase):
     def setUp(self):
