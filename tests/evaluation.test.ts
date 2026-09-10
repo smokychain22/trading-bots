@@ -21,6 +21,7 @@ function snapshotFixture(): FusionSnapshotInput {
   return {
     botId: 'THETA', decisionTimeUtc: '2026-09-09T18:30:02Z', triggerType: 'PERIODIC_SCAN',
     marketSession: {}, underlyingState: {}, contractCandidates: [], accountState: {}, positionState: {},
+    portfolioExposure: {}, strategyRouterState: {},
     alpacaQuoteState: {}, optionomicsFeatureState: {}, eventState: {}, regimeState: {},
     expertPriorState: {}, riskState: {},
     versions: {
@@ -28,6 +29,7 @@ function snapshotFixture(): FusionSnapshotInput {
       executionVersion: 'e1', costModelVersion: 'c1', dataVersion: 'd1', modelVersions: {},
     },
     sourceProvenance: [provenance('ACCOUNT'), provenance('CONTRACT'), provenance('QUOTE')],
+    providerHealth: [],
     freshnessFlags: [], unknownFeatures: [],
     executableTruth: { account: 'GOOD', contract: 'GOOD', quote: 'GOOD' },
   };

@@ -82,6 +82,17 @@ class ModelDisagreementState(str, Enum):
 
 @dataclass(frozen=True)
 class RouterPolicy:
+    """Every floor below is a REQUIRED, versioned research/default policy
+    parameter -- there is no built-in default, and none of these numbers is
+    asserted to be production-optimal. They exist so the router is testable
+    and so THETA-H's "stricter than THETA-Q" requirement is structurally
+    enforceable (two different floors over the same continuous score), not
+    because any specific floor value has been empirically validated. Per
+    TRD section 51 (risk/research parameters are versioned configuration),
+    a real value belongs in a versioned policy record once one exists --
+    this dataclass only fixes the SHAPE of that record.
+    """
+
     policy_version: str
     theta_q_min_ownership_acceptability: float
     theta_h_min_ownership_acceptability: float  # THETA-H's cohort validation bar is stricter than THETA-Q's

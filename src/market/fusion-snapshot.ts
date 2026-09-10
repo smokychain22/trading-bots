@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { normalizedOptionContractSchema } from '../theta/option-contract.js';
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
@@ -32,6 +33,17 @@ const executableTruthSchema = z.object({
   quote: evidenceState,
 });
 
+// Gap 1 (docs/quant/phase6_router/FUSION_SNAPSHOT_AUDIT.md): a single named
+// provider-health field, distinct from the per-operation sourceProvenance
+// array, so a caller doesn't have to reconstruct system-level health by
+// scanning provenance entries.
+const providerHealthSchema = z.object({
+  provider: z.enum(['ALPACA', 'OPTIONOMICS', 'POSTGRESQL', 'REDIS', 'WORKER', 'WEB_API']),
+  state: evidenceState,
+  asOf: utcTimestamp.nullable(),
+  retrievedAt: utcTimestamp,
+});
+
 const versionManifestSchema = z.object({
   strategyVersion: z.string().min(1),
   featureVersion: z.string().min(1),
@@ -48,17 +60,34 @@ const fusionSnapshotInputSchema = z.object({
   triggerType: z.string().min(1),
   marketSession: z.unknown(),
   underlyingState: z.unknown(),
-  contractCandidates: z.array(z.unknown()),
+  // Gap 3: was z.array(z.unknown()) -- now the canonical normalized
+  // contract shape (src/theta/option-contract.ts), so a snapshot's
+  // candidates are schema-validated rather than an untyped blob.
+  contractCandidates: z.array(normalizedOptionContractSchema),
   accountState: z.unknown(),
   positionState: z.unknown(),
+  // Gap 2: portfolio-level exposure (concentration/correlation/sector),
+  // distinct from the raw positionState blob -- what aegis.py's
+  // SECTOR/CORRELATION/PORTFOLIO risk families actually consume. Kept as
+  // z.unknown() consistent with this schema's existing pattern for
+  // state blobs whose internal shape is owned by the risk layer, not this
+  // module -- FusionSnapshot's job is to pin it point-in-time, not define it.
+  portfolioExposure: z.unknown(),
   alpacaQuoteState: z.unknown(),
   optionomicsFeatureState: z.unknown(),
   eventState: z.unknown(),
   regimeState: z.unknown(),
   expertPriorState: z.unknown(),
   riskState: z.unknown(),
+  // Gap 4: pins the strategy-router's eligibility output (strategy_router.py
+  // / strategy-router-contract.ts) to this snapshot, so a replayed decision
+  // can show which families were even eligible to compete, not just which
+  // one won.
+  strategyRouterState: z.unknown(),
   versions: versionManifestSchema,
   sourceProvenance: z.array(provenanceSchema).min(1),
+  // Gap 1.
+  providerHealth: z.array(providerHealthSchema),
   freshnessFlags: z.array(z.string().min(1)),
   unknownFeatures: z.array(unknownFeatureSchema),
   executableTruth: executableTruthSchema,
