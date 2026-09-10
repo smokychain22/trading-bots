@@ -3,6 +3,11 @@ import { parse } from 'dotenv';
 import { z } from 'zod';
 
 const optionalUrl = z.string().url().optional();
+const booleanFlag = (defaultValue: 'true' | 'false') => z.preprocess(
+  (value) => value === '' || value === undefined ? undefined : value,
+  z.enum(['true', 'false']).default(defaultValue),
+).transform((value) => value === 'true');
+const safeFlag = booleanFlag('false');
 
 const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -20,6 +25,9 @@ const environmentSchema = z.object({
   ALPACA_OAUTH_REDIRECT_URI: optionalUrl,
   PAPER_COPY_TOKEN_KEY_REF: z.string().min(1).optional(),
   PAPER_COPY_TOKEN_ENCRYPTION_KEY: z.string().min(1).optional(),
+  MASTER_PAPER_EXECUTION_ENABLED: safeFlag,
+  FOLLOWER_PAPER_EXECUTION_ENABLED: safeFlag,
+  PAPER_PAUSE_NEW_ORDERS: booleanFlag('true'),
   VERCEL_PROJECT_ID: z.string().min(1).optional(),
   VERCEL_ORG_ID: z.string().min(1).optional(),
   VERCEL_TOKEN: z.string().min(1).optional()

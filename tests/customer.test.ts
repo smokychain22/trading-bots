@@ -212,7 +212,12 @@ test("operator access needs a strong key, same origin and signed expiring sessio
   const status = await fetch(base + "/api/v1/operator/status", {
     headers: { cookie },
   });
-  assert.equal((await status.json()).data.trading, "DISABLED");
+  const statusPayload = await status.json();
+  assert.equal(statusPayload.data.trading, "LOCKED");
+  assert.equal(statusPayload.data.execution_control.master_paper_execution, "LOCKED");
+  assert.equal(statusPayload.data.execution_control.follower_paper_execution, "LOCKED");
+  assert.equal(statusPayload.data.execution_control.pause_new_orders, true);
+  assert.equal(statusPayload.data.execution_control.live_host_allowed, false);
 });
 
 test("paper-copy readiness is follower-specific and fails closed without persistence", () => {

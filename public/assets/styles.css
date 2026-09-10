@@ -188,6 +188,7 @@ summary {
   margin: 24px 0;
 }
 .ops-health article {
+  min-width: 0;
   padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -198,8 +199,16 @@ summary {
   gap: 12px;
 }
 .ops-health article > span:first-child {
+  min-width: 0;
   text-transform: capitalize;
   color: var(--muted);
+}
+.ops-health article .badge,
+.ops-control-card .badge {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 .ops-section {
   padding: 24px;
@@ -2779,7 +2788,9 @@ td details p {
   color: var(--muted);
 }
 .ops-control-card dd {
+  min-width: 0;
   margin: 0;
+  text-align: right;
 }
 .release-gates {
   border-color: #5a4930;

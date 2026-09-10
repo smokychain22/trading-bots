@@ -29,6 +29,7 @@ import {
   privatePaperBetaReadiness,
   verifyOptionomicsConnection,
 } from "./operator-readiness.js";
+import { executionMode } from "../execution/execution-control.js";
 
 const simulationSchema = z
   .object({
@@ -384,6 +385,13 @@ export default async function customerHandler(
         return send(response, 404, { error: { code: "NOT_FOUND" } });
       const oauth = oauthConfiguration(environment);
       const database = await checkDatabaseReadiness(environment.DATABASE_URL);
+      const executionControl = {
+        masterEnabled: environment.MASTER_PAPER_EXECUTION_ENABLED,
+        followerEnabled: environment.FOLLOWER_PAPER_EXECUTION_ENABLED,
+        pauseNewOrders: environment.PAPER_PAUSE_NEW_ORDERS,
+      };
+      const masterExecutionMode = executionMode(executionControl, "MASTER_API_KEY");
+      const followerExecutionMode = executionMode(executionControl, "FOLLOWER_OAUTH");
       return send(response, 200, {
         api_version: "v1",
         data: {
@@ -391,13 +399,13 @@ export default async function customerHandler(
             process.env.VERCEL_ENV === "production"
               ? "PRODUCTION"
               : "DEVELOPMENT_OR_PREVIEW",
-          trading: "DISABLED",
+          trading: masterExecutionMode,
           bot_mode: "PAPER",
           copy: oauth.configured ? "READY_TO_CONNECT" : "BLOCKED",
           deployment_sha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
           provider_runtime: "UNKNOWN",
           systems: {
-            theta_runtime: "R1_INTEGRATED_INPUT_ASSEMBLY_BLOCKED",
+            theta_runtime: "INTEGRATED_REAL_INPUT_PARTIAL",
             quant_models: "HEALTHY",
             python_bridge: "HEALTHY",
             strategy_router: "HEALTHY",
@@ -408,20 +416,20 @@ export default async function customerHandler(
             option_data: "UNKNOWN",
             scheduler: "BLOCKED",
             aegis: "HEALTHY",
-            execution: "BLOCKED",
-            ledger: "BLOCKED",
-            reconciliation: "BLOCKED",
+            execution: "PAPER_ADAPTER_READY_EXECUTION_LOCKED",
+            ledger: database.state === "CONNECTED" ? "READY" : "SCHEMA_READY_DATABASE_REQUIRED",
+            reconciliation: database.state === "CONNECTED" ? "READY_NOT_RUNNING" : "CONTRACT_READY_DATABASE_REQUIRED",
             customer_iam: database.customer_iam ? "READY" : "BLOCKED",
             database: database.state,
             alpaca_oauth: oauth.configured ? "READY" : "BLOCKED",
             token_vault: database.token_vault && environment.PAPER_COPY_TOKEN_ENCRYPTION_KEY ? "READY" : "BLOCKED",
-            follower_adapter: "READY_READ_ONLY",
+            follower_adapter: "PAPER_ADAPTER_READY_EXECUTION_LOCKED",
             copy_engine: environment.DATABASE_URL ? "ORDER_INTENT_READY_EXECUTION_LOCKED" : "BLOCKED",
             followers: database.active_followers === null ? "UNKNOWN" : String(database.active_followers),
             system_errors: "UNKNOWN",
           },
           runtime_detail: {
-            stage: "R1_INTEGRATED_INPUT_ASSEMBLY_BLOCKED",
+            stage: "INTEGRATED_REAL_INPUT_PARTIAL",
             policy_version: null,
             model_versions: ["theta-q-v0", "quant contract baselines"],
             last_market_snapshot: null,
@@ -436,7 +444,16 @@ export default async function customerHandler(
             open_positions: null,
             pending_orders: null,
             unknown_submissions: null,
-            reconciliation: "NOT_IMPLEMENTED",
+            reconciliation: database.state === "CONNECTED" ? "READY_NOT_RUNNING" : "DATABASE_REQUIRED",
+          },
+          execution_control: {
+            environment: "PAPER",
+            live_host_allowed: false,
+            master_paper_execution: masterExecutionMode,
+            follower_paper_execution: followerExecutionMode,
+            pause_new_orders: environment.PAPER_PAUSE_NEW_ORDERS,
+            customer_can_enable: false,
+            orders_submitted_by_release: 0,
           },
           master_connection: masterConnectionMetadata(),
           database,
@@ -444,18 +461,20 @@ export default async function customerHandler(
             oauth: oauth.configured ? "READY" : "NEEDS_APP_CREDENTIALS",
             customer_iam: database.customer_iam ? "READY" : "NOT_READY",
             token_vault: database.token_vault && environment.PAPER_COPY_TOKEN_ENCRYPTION_KEY ? "READY" : "NOT_READY",
-            follower_broker_adapter: "READ_ONLY_READY",
-            copy_execution: "LOCKED",
+            follower_broker_adapter: "PAPER_ADAPTER_READY_EXECUTION_LOCKED",
+            copy_execution: followerExecutionMode,
             missing_configuration: oauth.missing,
             private_paper_beta: privatePaperBetaReadiness,
           },
           published_performance: false,
           gates: [
-            "Real ownership, regime, and event-state input assembly is incomplete",
+            "Real universe, event, and account-risk input assembly is incomplete",
             "Shadow decision receipts are not yet persisted by a production scheduler",
             "OPRA entitlement not established for future execution",
+            "Production PostgreSQL is required for durable order and reconciliation workers",
+            "First PAPER order requires separate owner authorization after a genuine preview",
             "No validated customer performance publication",
-            "Copy execution and customer account isolation not released",
+            "Alpaca Connect application credentials are required for real team accounts",
           ],
           security:
             "Operator session expires in 15 minutes. Read-only release visibility. No trading mutations are exposed.",

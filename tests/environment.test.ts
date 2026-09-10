@@ -123,3 +123,16 @@ test('missingProviderVariables reports variable NAMES only, never a partially-se
   assert.ok(!serialized.includes(REALISTIC_FAKE_SECRET), 'missingProviderVariables must never include an actual configured value');
   assert.deepEqual(missing, ['ALPACA_SECRET_KEY', 'ALPACA_BASE_URL']);
 });
+
+test('paper execution flags fail closed when absent or blank', () => {
+  const absent = loadEnvironment({ NODE_ENV: 'test' });
+  assert.equal(absent.MASTER_PAPER_EXECUTION_ENABLED, false);
+  assert.equal(absent.FOLLOWER_PAPER_EXECUTION_ENABLED, false);
+  assert.equal(absent.PAPER_PAUSE_NEW_ORDERS, true);
+  const blank = loadEnvironment({
+    NODE_ENV: 'test', MASTER_PAPER_EXECUTION_ENABLED: '', FOLLOWER_PAPER_EXECUTION_ENABLED: '', PAPER_PAUSE_NEW_ORDERS: '',
+  });
+  assert.equal(blank.MASTER_PAPER_EXECUTION_ENABLED, false);
+  assert.equal(blank.FOLLOWER_PAPER_EXECUTION_ENABLED, false);
+  assert.equal(blank.PAPER_PAUSE_NEW_ORDERS, true);
+});

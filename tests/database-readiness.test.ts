@@ -8,6 +8,7 @@ test("database readiness reports MISSING without guessing or attempting a connec
   assert.equal(result.latest_migration, null);
   assert.equal(result.customer_iam, false);
   assert.equal(result.token_vault, false);
+  assert.equal(result.paper_execution_schema, false);
   assert.equal(result.active_followers, null);
   assert.equal(result.private_beta_followers, 0);
   assert.equal(result.connection_type, "TRANSACTION_POOLED_RUNTIME");

@@ -166,3 +166,49 @@ follower boundary. Do not merge the old shadow runner or change provider/account
 NEXT RECOMMENDED TASK: After external Connect approval and database provisioning,
 apply migration 007 and run one real follower OAuth connect/reverify journey. Keep
 order submission disabled.
+
+## 2026-09-11 THETA runtime integration and PAPER_READY execution milestone
+
+OWNER: Codex
+
+TASK: Preserve Claude's full autonomous-runtime history, integrate it into main, then
+build the single master/follower Alpaca PAPER broker boundary without placing an order.
+
+FILES CHANGED: THETA shadow integration files, `src/execution/`, migration 008 and SQL
+invariants, typed execution flags, private operator status, tests, and decision records.
+
+WHAT WAS IMPLEMENTED: PR #2 merged the complete Claude branch with a two-parent merge.
+The runtime now has structured capability states, ranked underlyings, the canonical
+FusionSnapshot hash, and a development-gated non-executing one-shot path. Provider and
+pipeline failures produce `SYSTEM_HOLD`, separate from an AEGIS hard veto. The new
+shared PAPER adapter supports API-key and OAuth authentication, read operations,
+submit/replace/cancel contracts, exact limit-order construction, intent-first
+persistence, ambiguous-submission lookup, restart recovery, trade-update normalization,
+partial-fill deduplication, and provisional assignment reconciliation.
+
+TESTS RUN: TypeScript check, ESLint, Node tests, Python tests, Playwright responsive and
+accessibility tests, production build, security scan, dependency audit, and diff checks.
+Migration 008 and its SQL invariant are delegated to GitHub CI because the local Docker
+Linux engine is unavailable.
+
+TEST RESULTS: Integration PR #2 passed two GitHub CI runs and Vercel preview. The final
+PAPER_READY local suite passed 320 TypeScript, 298 Python, and 16 Playwright tests.
+Lint, type checking, build, secret scan, and dependency audit passed with zero high-risk
+dependency findings. GitHub SQL/Redis verification remains the branch merge gate.
+
+KNOWN LIMITATIONS: Production PostgreSQL and Alpaca Connect app credentials are absent.
+The real universe, event, account-risk, scheduler, WebSocket worker, and durable shadow
+receipt assembly remain incomplete. Credentials pasted in task history are exposed and
+must be rotated before authenticated master verification.
+
+RISKS: The broker mutation methods now exist in source, so release flags, PAPER-host
+assertions, intent persistence, AEGIS, quote freshness, and reconciliation controls must
+remain mandatory. Neither execution flag is enabled and no order endpoint is exposed to
+customers or operators.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude should review only the quant-to-order boundary,
+action mapping, and preserved lifecycle economics. Do not rebuild the broker adapter.
+
+NEXT RECOMMENDED TASK: Provision production PostgreSQL, rotate exposed credentials,
+verify the master account read-only, then connect real universe, event, positions, and
+open-order state into persisted shadow cycles. Do not authorize the first PAPER order yet.

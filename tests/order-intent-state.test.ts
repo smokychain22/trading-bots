@@ -43,6 +43,14 @@ test('terminal states have no outgoing transitions', () => {
   }
 });
 
+test('broker truth may jump directly from submitted to partial or filled', () => {
+  assert.equal(isValidOrderIntentTransition('SUBMITTED', 'PARTIAL'), true);
+  assert.equal(isValidOrderIntentTransition('SUBMITTED', 'FILLED'), true);
+  assert.equal(isValidOrderIntentTransition('SUBMITTING', 'FILLED'), true);
+  assert.equal(isValidOrderIntentTransition('ACKNOWLEDGED', 'CANCELED'), true);
+  assert.equal(isValidOrderIntentTransition('PARTIAL', 'CANCELED'), true);
+});
+
 test('applyOrderIntentTransition rejects an invalid transition rather than recording it', () => {
   assert.throws(() => applyOrderIntentTransition('intent-1', 'UNKNOWN_SUBMISSION', 'SUBMITTING', new Date().toISOString()));
 });
