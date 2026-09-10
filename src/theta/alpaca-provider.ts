@@ -198,6 +198,81 @@ export async function fetchMarketClock(config: AlpacaProviderConfig, receivedAt:
 }
 
 // ---------------------------------------------------------------------------
+// Market calendar
+// ---------------------------------------------------------------------------
+
+export interface AlpacaCalendarSession {
+  readonly date: string; // YYYY-MM-DD
+  readonly open: string | null; // HH:MM, exchange-local per Alpaca's documented format
+  readonly close: string | null;
+  readonly sessionOpen: string | null; // pre-market session open, when documented/present
+  readonly sessionClose: string | null; // post-market session close, when documented/present
+}
+
+export async function fetchMarketCalendar(config: AlpacaProviderConfig, start: string, end: string): Promise<readonly AlpacaCalendarSession[]> {
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const url = new URL('/v2/calendar', config.tradingApiBase);
+  url.search = new URLSearchParams({ start, end }).toString();
+  const body = await requestJson(fetchImpl, url, authHeaders(config));
+  if (!Array.isArray(body)) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/calendar did not return an array.');
+  return body.map((raw: Record<string, unknown>) => ({
+    date: asStringOrNull(raw.date) ?? '',
+    open: asStringOrNull(raw.open),
+    close: asStringOrNull(raw.close),
+    sessionOpen: asStringOrNull(raw.session_open),
+    sessionClose: asStringOrNull(raw.session_close),
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Tradable asset universe (Stage 1 cheap screen source -- see
+// universe-discovery.ts, which is the only intended caller of this
+// function; it is NOT an option-chain call and carries no per-symbol
+// optionability information, only Alpaca's own asset registry facts).
+// ---------------------------------------------------------------------------
+
+export interface AlpacaTradableAsset {
+  readonly symbol: string;
+  readonly exchange: string | null;
+  readonly assetClass: string | null;
+  readonly tradable: boolean;
+  readonly status: string | null;
+  readonly fractionable: boolean | null;
+}
+
+// Alpaca's /v2/assets endpoint is NOT paginated (it returns the full
+// matching set in one response) -- this is Alpaca's own documented
+// behavior, not an assumption this module invents. `maxAssets` is a
+// client-side safety bound: if the real response exceeds it, the excess
+// is truncated (deterministically, by response order) and `complete:
+// false` is reported honestly -- never silently dropped without saying so.
+export interface FetchTradableAssetsResult {
+  readonly assets: readonly AlpacaTradableAsset[];
+  readonly complete: boolean;
+}
+
+export async function fetchTradableAssets(config: AlpacaProviderConfig, maxAssets: number): Promise<FetchTradableAssetsResult> {
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const url = new URL('/v2/assets', config.tradingApiBase);
+  url.search = new URLSearchParams({ status: 'active', asset_class: 'us_equity' }).toString();
+  const body = await requestJson(fetchImpl, url, authHeaders(config));
+  if (!Array.isArray(body)) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/assets did not return an array.');
+  const tradableOnly = body.filter((raw: Record<string, unknown>) => raw.tradable === true);
+  const complete = tradableOnly.length <= maxAssets;
+  return {
+    assets: tradableOnly.slice(0, maxAssets).map((raw: Record<string, unknown>) => ({
+      symbol: asStringOrNull(raw.symbol) ?? '',
+      exchange: asStringOrNull(raw.exchange),
+      assetClass: asStringOrNull(raw.class),
+      tradable: raw.tradable === true,
+      status: asStringOrNull(raw.status),
+      fractionable: asBooleanOrNull(raw.fractionable),
+    })),
+    complete,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Option contracts + chain snapshots
 // ---------------------------------------------------------------------------
 

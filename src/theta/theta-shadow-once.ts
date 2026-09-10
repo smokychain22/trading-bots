@@ -1,7 +1,9 @@
 import { assertProviderConfiguration, loadEnvironment, loadEnvironmentFile } from '../config/environment.js';
-import { runThetaShadowCycle, type ThetaShadowCycleConfig } from './theta-shadow-cycle.js';
+import { runThetaShadowCycle, type ProvenanceOrigin, type ThetaShadowCycleConfig } from './theta-shadow-cycle.js';
 import type { AlpacaProviderConfig } from './alpaca-provider.js';
+import type { OptionomicsProviderConfig } from './optionomics-provider.js';
 import type { PythonBridgeConfig } from './python-bridge.js';
+import { discoverRealUniverse, type UniverseDiscoveryConfig } from './universe-discovery.js';
 import type { UnderlyingCandidateInput } from './universe-policy.js';
 
 // Safe one-shot entrypoint for runThetaShadowCycle(). Designed to be run
@@ -39,19 +41,34 @@ function requireAlpacaConfig(environment: ReturnType<typeof loadEnvironment>): A
   };
 }
 
+// Optionomics is genuinely optional for this entrypoint -- unlike Alpaca
+// (whose absence blocks the whole run), a missing Optionomics credential
+// just means OI/volume/IV-fallback stay UNKNOWN this cycle. `null` here is
+// honestly NOT_ATTEMPTED, never a fixture standing in for a real call.
+function optionomicsConfigFromEnvironment(environment: ReturnType<typeof loadEnvironment>): OptionomicsProviderConfig | null {
+  if (environment.OPTIONOMICS_EMAIL === undefined || environment.OPTIONOMICS_API_KEY === undefined) return null;
+  return { apiBase: 'https://optionomics.ai', email: environment.OPTIONOMICS_EMAIL, apiToken: environment.OPTIONOMICS_API_KEY };
+}
+
 // Research/placeholder versioned policies -- explicitly NOT asserted
 // production-optimal (same discipline as every other policy default in
 // this repo). A real deployment should supply its own versioned policy
 // records; these exist so this entrypoint is runnable at all.
-function defaultShadowCycleConfig(alpaca: AlpacaProviderConfig, bridge: PythonBridgeConfig, universeCandidates: readonly UnderlyingCandidateInput[]): ThetaShadowCycleConfig {
+function defaultShadowCycleConfig(
+  alpaca: AlpacaProviderConfig,
+  optionomics: OptionomicsProviderConfig | null,
+  bridge: PythonBridgeConfig,
+  universeCandidates: readonly UnderlyingCandidateInput[],
+  universeCandidatesOrigin: ProvenanceOrigin,
+): ThetaShadowCycleConfig {
   const now = new Date().toISOString();
   const historyStart = new Date(Date.now() - 120 * 86_400_000).toISOString();
   const optionExpirationGte = new Date(Date.now() + 25 * 86_400_000).toISOString().slice(0, 10);
   const optionExpirationLte = new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10);
 
   return {
-    alpaca, bridge, universeCandidates,
-    universeCandidatesOrigin: 'CALLER_MANUAL', // honest: real Alpaca asset-universe discovery is not built yet -- this hardcoded single-underlying list is a fixture, not a real query
+    alpaca, optionomics, bridge, universeCandidates,
+    universeCandidatesOrigin,
     universePolicy: { policyVersion: 'universe-v1-shadow-once', minAvgDollarVolume: 10_000_000, minCurrentPrice: 5 },
     optionExpirationDateGte: optionExpirationGte, optionExpirationDateLte: optionExpirationLte, optionType: 'put', maxOptionPages: 10,
     historyStart, historyEnd: now, historyMaxPages: 5,
@@ -115,26 +132,31 @@ async function main(): Promise<number> {
     maxOutputBytes: 2_000_000,
   };
 
-  // A single, hardcoded, liquid universe candidate for this first
-  // production-capable run -- real universe asset discovery (Alpaca's
-  // full tradable/optionable asset list) is not built yet (see
-  // docs/quant/phase6_router/DATA_GAP_REGISTER.md); this is an honest,
-  // narrow starting point, not a claim of full autonomy.
-  const universeCandidates: readonly UnderlyingCandidateInput[] = [{
-    symbol: 'SPY', tradable: true, optionEnabled: true, assetDataValid: true,
-    avgDollarVolume: 50_000_000_000, currentPrice: 500, hasUsableOptionChain: true,
-    accountCollateralFeasible: true, ownershipAcceptable: true,
-    unsupportedCorporateActionPending: false, eventNear: false,
-  }];
+  // Real, bounded, staged universe discovery -- see universe-discovery.ts.
+  // No hardcoded symbol list in production: this entrypoint asks Alpaca
+  // which US equities are actually tradable/optionable right now, rather
+  // than assuming THETA is an SPY bot. Versioned research parameters
+  // (bound sizes, lookback) are explicit here, not silently arbitrary.
+  const discoveryConfig: UniverseDiscoveryConfig = {
+    discoveryVersion: 'universe-discovery-v1-shadow-once',
+    maxCandidateAssets: 500, allowedExchanges: ['NYSE', 'NASDAQ', 'ARCA', 'BATS'],
+    barsLookbackDays: 30, barsBatchSize: 100, maxOptionabilityChecks: 30, minCurrentPrice: 5,
+  };
+  const discovery = await discoverRealUniverse(alpaca, discoveryConfig, () => new Date().toISOString());
+  const universeCandidates: readonly UnderlyingCandidateInput[] = discovery.candidates;
 
-  const config = defaultShadowCycleConfig(alpaca, bridge, universeCandidates);
+  const optionomics = optionomicsConfigFromEnvironment(environment);
+  const config = defaultShadowCycleConfig(alpaca, optionomics, bridge, universeCandidates, discovery.candidatesOrigin);
   const result = await runThetaShadowCycle(config);
 
   console.info(JSON.stringify({
     runId: result.runId,
     startedAt: result.startedAt,
     finishedAt: result.finishedAt,
+    universeDiscoveryFunnel: discovery.funnel,
+    universeDiscoveryBlockers: discovery.blockers,
     selectedUnderlying: result.selectedUnderlying,
+    underlyingRanking: result.underlyingRanking,
     universeFunnel: result.universeFunnel,
     optionContractsComplete: result.optionContractsComplete,
     optionChainComplete: result.optionChainComplete,

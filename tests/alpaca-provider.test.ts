@@ -3,12 +3,14 @@ import test from 'node:test';
 import {
   AlpacaProviderError,
   fetchMasterAccountSnapshot,
+  fetchMarketCalendar,
   fetchMarketClock,
   fetchOpenOrders,
   fetchOptionContracts,
   fetchOptionSnapshots,
   fetchPositions,
   fetchStockBars,
+  fetchTradableAssets,
   type AlpacaProviderConfig,
 } from '../src/theta/alpaca-provider.js';
 
@@ -261,4 +263,41 @@ test('fetchStockBars request includes the explicit adjustment parameter -- never
   }) as typeof fetch;
   await fetchStockBars(baseConfig(fetchImpl), { symbols: ['SPY'], timeframe: '1Day', start: NOW, end: NOW, feed: 'iex', maxPages: 5, adjustment: 'split' }, NOW);
   assert.ok(requestedUrl.includes('adjustment=split'));
+});
+
+test('fetchMarketCalendar parses a session correctly', async () => {
+  const fetchImpl = (async () => jsonResponse(200, [{ date: '2026-09-10', open: '09:30', close: '16:00', session_open: '04:00', session_close: '20:00' }])) as typeof fetch;
+  const sessions = await fetchMarketCalendar(baseConfig(fetchImpl), '2026-09-10', '2026-09-10');
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0]?.date, '2026-09-10');
+  assert.equal(sessions[0]?.open, '09:30');
+  assert.equal(sessions[0]?.close, '16:00');
+});
+
+test('fetchMarketCalendar rejects a non-array body rather than silently returning nothing', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { unexpected: true })) as typeof fetch;
+  await assert.rejects(() => fetchMarketCalendar(baseConfig(fetchImpl), '2026-09-10', '2026-09-10'), AlpacaProviderError);
+});
+
+test('fetchTradableAssets filters to tradable=true only and reports complete=true when under the bound', async () => {
+  const fetchImpl = (async () => jsonResponse(200, [
+    { symbol: 'SPY', exchange: 'ARCA', class: 'us_equity', tradable: true, status: 'active', fractionable: true },
+    { symbol: 'NOTRADE', exchange: 'OTC', class: 'us_equity', tradable: false, status: 'active', fractionable: false },
+  ])) as typeof fetch;
+  const result = await fetchTradableAssets(baseConfig(fetchImpl), 100);
+  assert.equal(result.assets.length, 1);
+  assert.equal(result.assets[0]?.symbol, 'SPY');
+  assert.equal(result.complete, true);
+});
+
+test('fetchTradableAssets truncates deterministically and reports complete=false when the real universe exceeds maxAssets -- never silently drops without saying so', async () => {
+  const fetchImpl = (async () => jsonResponse(200, Array.from({ length: 5 }, (_, i) => ({ symbol: `SYM${i}`, exchange: 'NASDAQ', class: 'us_equity', tradable: true, status: 'active', fractionable: false })))) as typeof fetch;
+  const result = await fetchTradableAssets(baseConfig(fetchImpl), 3);
+  assert.equal(result.assets.length, 3);
+  assert.equal(result.complete, false);
+});
+
+test('fetchTradableAssets rejects a non-array body', async () => {
+  const fetchImpl = (async () => jsonResponse(200, {})) as typeof fetch;
+  await assert.rejects(() => fetchTradableAssets(baseConfig(fetchImpl), 10), AlpacaProviderError);
 });

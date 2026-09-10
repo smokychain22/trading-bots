@@ -137,6 +137,49 @@ const systemHold = (
 });
 
 /**
+ * Builds a SYSTEM_HOLD receipt for a runtime PRECONDITION that is a known,
+ * confirmed VALUE -- not a provider data-quality failure -- and therefore
+ * never even reaches the ownership/regime/lattice/AEGIS pipeline. The
+ * canonical example is a confirmed-closed market: the clock call
+ * succeeded and told us something real (the market is closed right now),
+ * which is an operational fact, never a strategy WAIT, never a risk
+ * HARD_VETO, and never a provider-quality SYSTEM_HOLD. Callers outside
+ * this module (e.g. theta-shadow-cycle.ts) use this instead of
+ * constructing a receipt by hand, so the shape/invariants stay in one
+ * place.
+ */
+export function assembleRuntimePreconditionHold(params: {
+  readonly snapshotId: string;
+  readonly fusionSnapshotHash: string;
+  readonly timestamp: string;
+  readonly underlying: string;
+  readonly reasonCode: string;
+  readonly detail: string;
+  readonly policyVersion: string;
+  readonly modelVersions: Readonly<Record<string, string>>;
+}): NewRiskDecisionReceipt {
+  return {
+    decisionId: `${params.snapshotId}:${params.underlying}`,
+    snapshotId: params.snapshotId,
+    fusionSnapshotHash: params.fusionSnapshotHash,
+    timestamp: params.timestamp,
+    underlying: params.underlying,
+    winningAction: 'SYSTEM_HOLD',
+    selectedCandidateId: null,
+    quantity: 0,
+    alternatives: [],
+    ownershipSnapshotId: null,
+    regimeSnapshotId: null,
+    executionAuthorized: false,
+    reasonCodes: [params.reasonCode],
+    plainEnglishExplanation: params.detail,
+    failClosedReason: null, // a confirmed known value is not a fail-closed safety veto
+    policyVersion: params.policyVersion,
+    modelVersions: params.modelVersions,
+  };
+}
+
+/**
  * Assembles the final new-risk decision receipt from already-computed
  * per-candidate frontier/AEGIS/sizing/execution-quality results. Fails
  * closed (winningAction=SYSTEM_HOLD, quantity=0) on: invalid provider state,
