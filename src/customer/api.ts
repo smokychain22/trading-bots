@@ -30,6 +30,8 @@ import {
   verifyOptionomicsConnection,
 } from "./operator-readiness.js";
 import { executionMode } from "../execution/execution-control.js";
+import { connectPrivatePaperApiKey, privatePaperApiKeyConfiguration } from "./private-paper-api-key.js";
+import { AlpacaPaperBrokerError } from "../execution/broker.js";
 
 const simulationSchema = z
   .object({
@@ -248,6 +250,52 @@ export default async function customerHandler(
         return redirect(response, `/bots/theta/copy?connection=${codeValue}`);
       }
     }
+    if (route === "alpaca/connection" && request.method === "POST") {
+      if (!sameOrigin(request)) return send(response, 403, { error: { code: "ORIGIN_REJECTED" } });
+      if (process.env.VERCEL_ENV === "production" && request.headers["x-forwarded-proto"] !== "https")
+        return send(response, 400, { error: { code: "HTTPS_REQUIRED" } });
+      let store;
+      try {
+        store = customerStore(environment.DATABASE_URL);
+      } catch {
+        return send(response, 503, { error: { code: "ALPACA_CONNECTION_NOT_AVAILABLE" } });
+      }
+      const customer = await currentCustomer(request, store);
+      if (!customer) return send(response, 401, { error: { code: "LOGIN_REQUIRED" } });
+      try {
+        const follower = await connectPrivatePaperApiKey(
+          store, environment, customer.customerId, await readJson(request),
+        );
+        return send(response, 201, {
+          api_version: "v1",
+          data: {
+            connected: true,
+            connection_method: follower.connectionMethod,
+            ready_for_theta: follower.accountReady,
+            masked_account: follower.maskedAccount,
+            account_status: follower.accountStatus,
+            equity: follower.equity,
+            buying_power: follower.buyingPower,
+            options_approved_level: follower.optionsApprovedLevel,
+            options_trading_level: follower.optionsTradingLevel,
+            open_positions: follower.openPositionCount,
+            open_orders: follower.openOrderCount,
+            market_open: follower.marketIsOpen,
+            last_verified_at: follower.lastBrokerSyncAt,
+            orders_submitted: false,
+          },
+        });
+      } catch (error) {
+        if (error instanceof AlpacaPaperBrokerError) {
+          return send(response, error.category === "INVALID_AUTH" ? 401 : 422, {
+            error: { code: error.category, http_status: error.httpStatus },
+          });
+        }
+        if (error instanceof Error && error.message === "PRIVATE_PAPER_API_KEY_BETA_NOT_CONFIGURED")
+          return send(response, 503, { error: { code: error.message } });
+        throw error;
+      }
+    }
     if (route === "alpaca/connection" && request.method === "DELETE") {
       if (!sameOrigin(request)) return send(response, 403, { error: { code: "ORIGIN_REJECTED" } });
       let store;
@@ -285,10 +333,15 @@ export default async function customerHandler(
             connected: true,
             ready_for_theta: follower.accountReady,
             masked_account: follower.maskedAccount,
+            account_status: follower.accountStatus,
+            equity: follower.equity,
             buying_power: follower.buyingPower,
             options_approved_level: follower.optionsApprovedLevel,
             options_trading_level: follower.optionsTradingLevel,
             last_verified_at: follower.lastBrokerSyncAt,
+            open_positions: follower.openPositionCount,
+            open_orders: follower.openOrderCount,
+            market_open: follower.marketIsOpen,
             orders_submitted: false,
           },
         });
@@ -384,6 +437,8 @@ export default async function customerHandler(
       if (route !== "operator/status")
         return send(response, 404, { error: { code: "NOT_FOUND" } });
       const oauth = oauthConfiguration(environment);
+      const privateBeta = privatePaperApiKeyConfiguration(environment);
+      const connectionConfigured = oauth.configured || privateBeta.configured;
       const database = await checkDatabaseReadiness(environment.DATABASE_URL);
       const executionControl = {
         masterEnabled: environment.MASTER_PAPER_EXECUTION_ENABLED,
@@ -401,7 +456,7 @@ export default async function customerHandler(
               : "DEVELOPMENT_OR_PREVIEW",
           trading: masterExecutionMode,
           bot_mode: "PAPER",
-          copy: oauth.configured ? "READY_TO_CONNECT" : "BLOCKED",
+          copy: connectionConfigured ? "READY_TO_CONNECT" : "BLOCKED",
           deployment_sha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
           provider_runtime: "UNKNOWN",
           systems: {
@@ -474,7 +529,9 @@ export default async function customerHandler(
             "Production PostgreSQL is required for durable order and reconciliation workers",
             "First PAPER order requires separate owner authorization after a genuine preview",
             "No validated customer performance publication",
-            "Alpaca Connect application credentials are required for real team accounts",
+            connectionConfigured
+              ? "Private team Paper connection is available; public accounts still require Alpaca Connect approval"
+              : "A configured broker credential path is required for team accounts",
           ],
           security:
             "Operator session expires in 15 minutes. Read-only release visibility. No trading mutations are exposed.",

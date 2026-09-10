@@ -12,11 +12,15 @@ export type OAuthStateRecord = {
   readonly returnPath: string;
 };
 
+export type BrokerConnectionMethod = "ALPACA_OAUTH" | "PAPER_API_KEY_PRIVATE_BETA";
+
 export type FollowerRecord = {
   readonly customerId: string;
   readonly followerAccountId: string;
   readonly maskedAccount: string;
+  readonly connectionMethod: BrokerConnectionMethod;
   readonly accountStatus: string | null;
+  readonly equity: number | null;
   readonly buyingPower: number | null;
   readonly cash: number | null;
   readonly optionsBuyingPower: number | null;
@@ -25,6 +29,9 @@ export type FollowerRecord = {
   readonly accountReady: boolean;
   readonly connectionStatus: "CONNECTED" | "NEEDS_ATTENTION" | "REVOKED";
   readonly lastBrokerSyncAt: string | null;
+  readonly openPositionCount: number | null;
+  readonly openOrderCount: number | null;
+  readonly marketIsOpen: boolean | null;
   readonly participation: string;
   readonly allocationUsd: number | null;
 };
@@ -33,30 +40,42 @@ export type SaveFollowerInput = {
   readonly customerId: string;
   readonly providerAccountRef: string;
   readonly maskedAccount: string;
+  readonly connectionMethod: BrokerConnectionMethod;
   readonly accountStatus: string | null;
+  readonly equity: number | null;
   readonly buyingPower: number | null;
   readonly cash: number | null;
   readonly optionsBuyingPower: number | null;
   readonly optionsApprovedLevel: number | null;
   readonly optionsTradingLevel: number | null;
   readonly accountReady: boolean;
+  readonly openPositionCount: number | null;
+  readonly openOrderCount: number | null;
+  readonly marketIsOpen: boolean | null;
   readonly restrictions: Readonly<Record<string, boolean>>;
   readonly keyRef: string;
-  readonly encryptedToken: EncryptedSecret;
+  readonly encryptedCredential: EncryptedSecret;
   readonly scope: string;
 };
 export type FollowerVerificationUpdate = Pick<
   SaveFollowerInput,
   | "accountStatus"
+  | "equity"
   | "buyingPower"
   | "cash"
   | "optionsBuyingPower"
   | "optionsApprovedLevel"
   | "optionsTradingLevel"
   | "accountReady"
+  | "openPositionCount"
+  | "openOrderCount"
+  | "marketIsOpen"
   | "restrictions"
 >;
-export type StoredFollowerToken = EncryptedSecret & { readonly keyRef: string };
+export type StoredFollowerCredential = EncryptedSecret & {
+  readonly keyRef: string;
+  readonly connectionMethod: BrokerConnectionMethod;
+};
 
 export interface CustomerStore {
   createCustomer(email: string, passwordHash: string): Promise<CustomerIdentity>;
@@ -68,7 +87,7 @@ export interface CustomerStore {
   consumeOAuthState(stateHash: string, customerId: string, now: Date): Promise<OAuthStateRecord | null>;
   saveFollower(input: SaveFollowerInput): Promise<FollowerRecord>;
   getFollower(customerId: string): Promise<FollowerRecord | null>;
-  getFollowerToken(customerId: string): Promise<StoredFollowerToken | null>;
+  getFollowerCredential(customerId: string): Promise<StoredFollowerCredential | null>;
   updateFollowerVerification(customerId: string, input: FollowerVerificationUpdate): Promise<FollowerRecord>;
   markFollowerNeedsAttention(customerId: string): Promise<void>;
   saveParticipation(customerId: string, allocationUsd: number): Promise<FollowerRecord>;
@@ -83,7 +102,9 @@ function followerFromRow(row: Record<string, unknown>): FollowerRecord {
     customerId: String(row.customer_id),
     followerAccountId: String(row.follower_account_id),
     maskedAccount: String(row.provider_account_ref_masked),
+    connectionMethod: row.connection_method === "PAPER_API_KEY_PRIVATE_BETA" ? "PAPER_API_KEY_PRIVATE_BETA" : "ALPACA_OAUTH",
     accountStatus: row.account_status == null ? null : String(row.account_status),
+    equity: numberOrNull(row.equity),
     buyingPower: numberOrNull(row.buying_power),
     cash: numberOrNull(row.cash),
     optionsBuyingPower: numberOrNull(row.options_buying_power),
@@ -100,6 +121,9 @@ function followerFromRow(row: Record<string, unknown>): FollowerRecord {
         : row.last_broker_sync_at == null
           ? null
           : String(row.last_broker_sync_at),
+    openPositionCount: numberOrNull(row.open_position_count),
+    openOrderCount: numberOrNull(row.open_order_count),
+    marketIsOpen: typeof row.market_is_open === "boolean" ? row.market_is_open : null,
     participation: row.participation_state == null ? "READY" : String(row.participation_state),
     allocationUsd: numberOrNull(row.allocation_usd),
   };
@@ -207,19 +231,20 @@ export class PostgresCustomerStore implements CustomerStore {
         `INSERT INTO copy.alpaca_oauth_token
           (customer_id, key_ref, ciphertext, iv, auth_tag, scope)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING token_secret_id`,
-        [input.customerId, input.keyRef, input.encryptedToken.ciphertext, input.encryptedToken.iv, input.encryptedToken.authTag, input.scope],
+        [input.customerId, input.keyRef, input.encryptedCredential.ciphertext, input.encryptedCredential.iv, input.encryptedCredential.authTag, input.scope],
       );
       const follower = await client.query(
         `INSERT INTO copy.follower_account
           (workspace_id, customer_id, provider_account_ref, oauth_secret_ref,
            token_secret_id, participation, account_ready, options_approved,
-           account_status, buying_power, cash, options_buying_power,
+           account_status, equity, buying_power, cash, options_buying_power,
            options_approved_level, options_trading_level, restrictions,
+           open_position_count, open_order_count, market_is_open,
            last_broker_sync_at, last_verified_at, connection_method,
            connection_status, disconnected_at)
          VALUES ($1, $1, $2, $3, $4, 'COPY_NEW_AND_MANAGE', $5, $6,
-                 $7, $8, $9, $10, $11, $12, $13, now(), now(),
-                 'ALPACA_OAUTH', 'CONNECTED', NULL)
+                 $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, now(), now(),
+                 $18, 'CONNECTED', NULL)
          ON CONFLICT (workspace_id, provider_code, provider_account_ref)
          DO UPDATE SET customer_id = EXCLUDED.customer_id,
            oauth_secret_ref = EXCLUDED.oauth_secret_ref,
@@ -227,17 +252,21 @@ export class PostgresCustomerStore implements CustomerStore {
            account_ready = EXCLUDED.account_ready,
            options_approved = EXCLUDED.options_approved,
            account_status = EXCLUDED.account_status,
+           equity = EXCLUDED.equity,
            buying_power = EXCLUDED.buying_power, cash = EXCLUDED.cash,
            options_buying_power = EXCLUDED.options_buying_power,
            options_approved_level = EXCLUDED.options_approved_level,
            options_trading_level = EXCLUDED.options_trading_level,
            restrictions = EXCLUDED.restrictions,
+           open_position_count = EXCLUDED.open_position_count,
+           open_order_count = EXCLUDED.open_order_count,
+           market_is_open = EXCLUDED.market_is_open,
            last_broker_sync_at = now(), last_verified_at = now(),
-           connection_method = 'ALPACA_OAUTH', connection_status = 'CONNECTED',
+           connection_method = EXCLUDED.connection_method, connection_status = 'CONNECTED',
            disconnected_at = NULL,
            updated_at = now()
          RETURNING follower_account_id`,
-        [input.customerId, input.providerAccountRef, `vault:${token.rows[0].token_secret_id}`, token.rows[0].token_secret_id, input.accountReady, Math.max(input.optionsApprovedLevel ?? 0, input.optionsTradingLevel ?? 0) >= 1, input.accountStatus, input.buyingPower, input.cash, input.optionsBuyingPower, input.optionsApprovedLevel, input.optionsTradingLevel, JSON.stringify(input.restrictions)],
+        [input.customerId, input.providerAccountRef, `vault:${token.rows[0].token_secret_id}`, token.rows[0].token_secret_id, input.accountReady, Math.max(input.optionsApprovedLevel ?? 0, input.optionsTradingLevel ?? 0) >= 1, input.accountStatus, input.equity, input.buyingPower, input.cash, input.optionsBuyingPower, input.optionsApprovedLevel, input.optionsTradingLevel, JSON.stringify(input.restrictions), input.openPositionCount, input.openOrderCount, input.marketIsOpen, input.connectionMethod],
       );
       await client.query(
         `INSERT INTO copy.customer_participation(customer_id, follower_account_id, state)
@@ -262,9 +291,9 @@ export class PostgresCustomerStore implements CustomerStore {
     const result = await this.pool.query(
       `SELECT f.customer_id, f.follower_account_id,
         ('••••' || right(f.provider_account_ref, 4)) AS provider_account_ref_masked,
-        f.account_status, f.buying_power, f.cash, f.options_buying_power,
+        f.connection_method, f.account_status, f.equity, f.buying_power, f.cash, f.options_buying_power,
         f.options_approved_level, f.options_trading_level, f.account_ready,
-        f.connection_status,
+        f.connection_status, f.open_position_count, f.open_order_count, f.market_is_open,
         f.last_broker_sync_at, p.state AS participation_state, p.allocation_usd
        FROM copy.follower_account f
        LEFT JOIN copy.customer_participation p ON p.customer_id = f.customer_id
@@ -275,35 +304,38 @@ export class PostgresCustomerStore implements CustomerStore {
     return result.rows[0] ? followerFromRow(result.rows[0]) : null;
   }
 
-  async getFollowerToken(customerId: string) {
+  async getFollowerCredential(customerId: string) {
     const result = await this.pool.query(
       `UPDATE copy.alpaca_oauth_token t SET last_used_at = now()
        FROM copy.follower_account f
        WHERE t.customer_id = $1 AND t.customer_id = f.customer_id
          AND t.token_secret_id = f.token_secret_id
          AND t.revoked_at IS NULL AND f.disconnected_at IS NULL
-       RETURNING t.key_ref, t.ciphertext, t.iv, t.auth_tag`,
+       RETURNING t.key_ref, t.ciphertext, t.iv, t.auth_tag, f.connection_method`,
       [customerId],
     );
     const row = result.rows[0];
     return row
-      ? { keyRef: row.key_ref, ciphertext: row.ciphertext, iv: row.iv, authTag: row.auth_tag }
+      ? { keyRef: row.key_ref, ciphertext: row.ciphertext, iv: row.iv, authTag: row.auth_tag,
+          connectionMethod: (row.connection_method === "PAPER_API_KEY_PRIVATE_BETA" ? "PAPER_API_KEY_PRIVATE_BETA" : "ALPACA_OAUTH") as BrokerConnectionMethod }
       : null;
   }
 
   async updateFollowerVerification(customerId: string, input: FollowerVerificationUpdate) {
     await this.pool.query(
       `UPDATE copy.follower_account
-       SET account_status = $2, buying_power = $3, cash = $4,
-         options_buying_power = $5, options_approved_level = $6,
-         options_trading_level = $7, account_ready = $8,
-         options_approved = COALESCE($6, 0) >= 1 OR COALESCE($7, 0) >= 1, restrictions = $9,
+       SET account_status = $2, equity = $3, buying_power = $4, cash = $5,
+         options_buying_power = $6, options_approved_level = $7,
+         options_trading_level = $8, account_ready = $9,
+         options_approved = COALESCE($7, 0) >= 1 OR COALESCE($8, 0) >= 1, restrictions = $10,
+         open_position_count = $11, open_order_count = $12, market_is_open = $13,
          connection_status = 'CONNECTED', last_verified_at = now(),
          last_broker_sync_at = now(), updated_at = now()
        WHERE customer_id = $1 AND disconnected_at IS NULL`,
       [
         customerId,
         input.accountStatus,
+        input.equity,
         input.buyingPower,
         input.cash,
         input.optionsBuyingPower,
@@ -311,6 +343,9 @@ export class PostgresCustomerStore implements CustomerStore {
         input.optionsTradingLevel,
         input.accountReady,
         JSON.stringify(input.restrictions),
+        input.openPositionCount,
+        input.openOrderCount,
+        input.marketIsOpen,
       ],
     );
     const follower = await this.getFollower(customerId);

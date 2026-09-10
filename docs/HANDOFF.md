@@ -252,3 +252,47 @@ the provider gate.
 
 NEXT RECOMMENDED TASK: Connect real Optionomics, positions, open orders, and
 account-derived AEGIS into persisted shadow cycles. Keep execution locked.
+
+## 2026-09-11 private team Alpaca Paper API-key connection
+
+OWNER: Codex
+
+TASK: Add the owner-authorized, temporary private team Alpaca Paper credential flow
+without changing OAuth or enabling order submission.
+
+FILES CHANGED: Environment contract, common broker credential provider, read-only
+Paper verifier, customer store, migration 009, customer API and account UI, tests,
+API contract, and decision record.
+
+WHAT WAS IMPLEMENTED: Authenticated same-origin HTTPS users can submit their own
+Paper API key and masked secret field. The server accepts only the exact Alpaca Paper
+host, verifies account and options facts plus positions, open orders, and clock,
+encrypts a key bundle with customer-bound AES-256-GCM, and returns only a masked
+account plus safe read facts. Connect, replace, reverify, disconnect, timestamps, and
+health are supported. OAuth is preserved behind the same credential-provider
+interface. Order submission remains locked.
+
+TESTS RUN: ESLint, TypeScript checks, 330 Node tests, production build, security scan,
+targeted Playwright credential-flow verification, and the full responsive,
+accessibility, and screenshot suite. Migration 009 and SQL invariants are part of the
+Linux CI database gate.
+
+TEST RESULTS: Local deterministic and browser tests pass. Secret scan reports zero
+findings. Visual inspection shows the masked Paper form without clipping or overflow.
+
+KNOWN LIMITATIONS: The linked Vercel project has no database resource. Installing the
+free Neon integration requires the account owner to accept Vercel Marketplace and
+Neon legal terms. Docker Desktop is not currently reachable locally, so PostgreSQL
+and Redis validation must run in GitHub CI until the Vercel database exists.
+
+RISKS: The legacy encrypted table retains its OAuth-oriented name for migration
+compatibility, though its records are discriminated by the follower connection
+method. Private API-key beta must remain limited to trusted testers and PAPER.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: The shared credential-provider boundary and safe
+read projection only. No quant methodology or strategy logic changed.
+
+NEXT RECOMMENDED TASK: After the owner accepts the Neon terms, create and attach the
+free production database, apply migrations through 009, pull the resulting production
+environment safely, and execute a real tester connect/read/disconnect smoke test. Do
+not place an order.

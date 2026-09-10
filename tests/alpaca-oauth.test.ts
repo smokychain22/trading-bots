@@ -46,12 +46,14 @@ class MemoryStore implements CustomerStore {
     return { customerId, returnPath: item.returnPath };
   }
   async saveFollower(input: SaveFollowerInput) {
-    this.savedTokenPlaintext = input.encryptedToken.ciphertext.toString().includes("oauth-access-token");
+    this.savedTokenPlaintext = input.encryptedCredential.ciphertext.toString().includes("oauth-access-token");
     this.follower = {
       customerId: input.customerId,
       followerAccountId: "follower-1",
       maskedAccount: input.maskedAccount,
+      connectionMethod: input.connectionMethod,
       accountStatus: input.accountStatus,
+      equity: input.equity,
       buyingPower: input.buyingPower,
       cash: input.cash,
       optionsBuyingPower: input.optionsBuyingPower,
@@ -60,13 +62,16 @@ class MemoryStore implements CustomerStore {
       accountReady: input.accountReady,
       connectionStatus: "CONNECTED",
       lastBrokerSyncAt: new Date().toISOString(),
+      openPositionCount: input.openPositionCount,
+      openOrderCount: input.openOrderCount,
+      marketIsOpen: input.marketIsOpen,
       participation: "READY",
       allocationUsd: null,
     };
     return this.follower;
   }
   async getFollower() { return this.follower; }
-  async getFollowerToken() { return null; }
+  async getFollowerCredential() { return null; }
   async updateFollowerVerification(): Promise<FollowerRecord> { if (!this.follower) throw new Error("missing"); return this.follower; }
   async markFollowerNeedsAttention(): Promise<void> {}
   async saveParticipation(): Promise<FollowerRecord> { if (!this.follower) throw new Error("missing"); return this.follower; }
@@ -99,7 +104,8 @@ test("OAuth callback consumes state once, verifies paper account, and stores onl
     if (url === "https://api.alpaca.markets/oauth/token")
       return Response.json({ access_token: "synthetic-oauth-access-token-1234567890", token_type: "bearer", scope: "trading" });
     if (url.endsWith("/v2/account"))
-      return Response.json({ id: "paper-account-1234", status: "ACTIVE", cash: "10000", buying_power: "20000", options_buying_power: "15000", options_approved_level: 3, options_trading_level: 3, trading_blocked: false, account_blocked: false });
+      return Response.json({ id: "paper-account-1234", status: "ACTIVE", equity: "20000", cash: "10000", buying_power: "20000", options_buying_power: "15000", options_approved_level: 3, options_trading_level: 3, trading_blocked: false, account_blocked: false });
+    if (url.endsWith("/v2/clock")) return Response.json({ is_open: false });
     return Response.json([]);
   };
   try {
@@ -129,11 +135,16 @@ test("THETA core requires options level 1, while level 0 remains blocked", async
       return Response.json({
         id: "paper-account-1234",
         status: "ACTIVE",
+        equity: "20000",
+        cash: "10000",
+        buying_power: "20000",
+        options_buying_power: "10000",
         options_approved_level: level,
         options_trading_level: level,
         trading_blocked: false,
         account_blocked: false,
       });
+    if (url.endsWith("/v2/clock")) return Response.json({ is_open: false });
     return Response.json([]);
   };
   try {

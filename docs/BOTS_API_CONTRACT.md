@@ -55,8 +55,16 @@ state. The response contains only masked account and safe readiness fields. It n
 returns the token and never submits an order.
 
 The OAuth routes fail closed when DATABASE_URL, Alpaca Connect credentials, callback,
-or encryption-key configuration is absent. No raw-key customer connection is
-supported.
+or encryption-key configuration is absent.
+
+For the temporary private team beta, `POST /api/v1/alpaca/connection` accepts an
+authenticated same-origin HTTPS request containing `api_key_id` and `secret_key`.
+The server pins every broker request to `https://paper-api.alpaca.markets`, validates
+account, positions, open orders, clock, and options level, then stores one
+customer-bound AES-256-GCM ciphertext. Responses contain only the masked account
+identifier and read-only account facts. The explicit method is
+`PAPER_API_KEY_PRIVATE_BETA`. OAuth remains `ALPACA_OAUTH`. Neither method grants
+order-submission authority.
 
 ## Capital scenario
 

@@ -59,9 +59,9 @@ export async function verifyOptionomicsConnection(
 }
 
 export const privatePaperBetaReadiness = {
-  state: "DISABLED" as const,
-  policy_status: "PROHIBITED" as const,
-  reason: "Alpaca Connect requires third-party API clients to use OAuth 2.0.",
+  state: "IMPLEMENTED_CONFIGURATION_GATED" as const,
+  policy_status: "PRIVATE_TEAM_PAPER_ONLY" as const,
+  reason: "Private team credentials are encrypted server-side. Order submission remains locked.",
   follower_count: 0,
-  raw_key_endpoint_available: false,
+  raw_key_endpoint_available: true,
 };

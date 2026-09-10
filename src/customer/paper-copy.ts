@@ -10,6 +10,7 @@ import type {
 } from "./models.js";
 import type { FollowerRecord } from "./customer-store.js";
 import { oauthConfiguration } from "./alpaca-oauth.js";
+import { privatePaperApiKeyConfiguration } from "./private-paper-api-key.js";
 
 export const paperCopyPolicySchema = z
   .object({
@@ -42,6 +43,8 @@ export function paperCopyReadiness(
 ): PaperCopyReadiness {
   const environment = loadEnvironment(source);
   const oauth = oauthConfiguration(environment);
+  const privateBeta = privatePaperApiKeyConfiguration(environment);
+  const connectionConfigured = oauth.configured || privateBeta.configured;
   const connected = follower !== null;
   const participation = !follower
     ? "NOT_CONNECTED"
@@ -59,10 +62,11 @@ export function paperCopyReadiness(
       follower_account_id: follower?.followerAccountId ?? null,
       provider: "ALPACA",
       environment: "PAPER",
-      connection_method: "OAUTH",
+      connection_method: follower?.connectionMethod ?? null,
       connected,
       ready_for_theta: follower?.accountReady ?? false,
       masked_account: follower?.maskedAccount ?? null,
+      account_status: follower?.accountStatus ?? null,
       state: !follower
         ? "NOT_CONNECTED"
         : follower.connectionStatus === "REVOKED"
@@ -74,11 +78,15 @@ export function paperCopyReadiness(
               : "CONNECTED_NOT_READY",
       verified_at: follower?.lastBrokerSyncAt ?? null,
       buying_power: follower?.buyingPower ?? null,
+      equity: follower?.equity ?? null,
       cash: follower?.cash ?? null,
       options_enabled: follower ? (follower.optionsTradingLevel ?? follower.optionsApprovedLevel ?? 0) >= 1 : null,
       options_approved_level: follower?.optionsApprovedLevel ?? null,
       options_trading_level: follower?.optionsTradingLevel ?? null,
       last_sync_at: follower?.lastBrokerSyncAt ?? null,
+      open_positions: follower?.openPositionCount ?? null,
+      open_orders: follower?.openOrderCount ?? null,
+      market_open: follower?.marketIsOpen ?? null,
     },
     oauth: {
       architecture: "ALPACA_OAUTH_SERVER_SIDE",
@@ -90,14 +98,22 @@ export function paperCopyReadiness(
           : "CUSTOMER_LOGIN_REQUIRED",
       token_storage: oauth.configured ? "ENCRYPTED_SERVER_SIDE" : "NOT_CONFIGURED",
     },
+    private_paper_api_key: {
+      configured: privateBeta.configured,
+      state: !privateBeta.configured
+        ? "NOT_CONFIGURED"
+        : authenticated ? "READY" : "CUSTOMER_LOGIN_REQUIRED",
+      credential_storage: privateBeta.configured ? "ENCRYPTED_SERVER_SIDE" : "NOT_CONFIGURED",
+      order_submission: "LOCKED",
+    },
     participation,
     copy_runtime: source.DATABASE_URL
       ? "ORDER_INTENT_READY_EXECUTION_LOCKED"
       : "PERSISTENCE_NOT_CONFIGURED",
-    activation_allowed: Boolean(follower?.accountReady && oauth.configured),
+    activation_allowed: Boolean(follower?.accountReady && connectionConfigured),
     master_fill_first: true,
     raw_master_quantity_copy: false,
-    reason: !oauth.configured
+    reason: !connectionConfigured
       ? "Alpaca connection is not available yet."
       : !authenticated
         ? "Sign in to connect your Alpaca Paper account."
