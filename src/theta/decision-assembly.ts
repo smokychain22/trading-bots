@@ -25,6 +25,7 @@ export type NewRiskWinningAction =
   | 'OPEN_ALTERNATE_STRUCTURE'
   | 'WAIT'
   | 'PASS'
+  | 'SYSTEM_HOLD'
   | 'HARD_VETO';
 
 export type CandidateDisposition =
@@ -111,7 +112,7 @@ const alternativeFrom = (c: CandidateFrontierResult): NewRiskAlternative => ({
   rejectionReason: c.rejectionReason,
 });
 
-const failClosed = (
+const systemHold = (
   input: NewRiskDecisionInput,
   reason: string,
   reasonCodes: readonly string[],
@@ -121,7 +122,7 @@ const failClosed = (
   fusionSnapshotHash: input.fusionSnapshotHash,
   timestamp: input.timestamp,
   underlying: input.underlying,
-  winningAction: 'HARD_VETO',
+  winningAction: 'SYSTEM_HOLD',
   selectedCandidateId: null,
   quantity: 0,
   alternatives: input.candidates.map(alternativeFrom),
@@ -138,7 +139,7 @@ const failClosed = (
 /**
  * Assembles the final new-risk decision receipt from already-computed
  * per-candidate frontier/AEGIS/sizing/execution-quality results. Fails
- * closed (winningAction=HARD_VETO, quantity=0) on: invalid provider state,
+ * closed (winningAction=SYSTEM_HOLD, quantity=0) on: invalid provider state,
  * model-version mismatch, missing ownership/regime context, or an
  * inconsistent snapshot reference across candidates. `executionAuthorized`
  * is always `false` -- this phase produces a decision receipt and,
@@ -146,13 +147,13 @@ const failClosed = (
  */
 export function assembleNewRiskDecision(input: NewRiskDecisionInput): NewRiskDecisionReceipt {
   if (!input.providerStateGood) {
-    return failClosed(input, 'Required provider state is not GOOD; no new risk can be evaluated.', ['PROVIDER_STATE_INVALID']);
+    return systemHold(input, 'Required provider state is not GOOD; no new risk can be evaluated.', ['PROVIDER_STATE_INVALID']);
   }
 
   for (const [modelName, requiredVersion] of Object.entries(input.requiredModelVersions)) {
     const actualVersion = input.modelVersions[modelName];
     if (actualVersion !== requiredVersion) {
-      return failClosed(
+      return systemHold(
         input,
         `Model version mismatch for ${modelName}: expected ${requiredVersion}, got ${actualVersion ?? 'MISSING'}.`,
         ['MODEL_VERSION_MISMATCH'],
@@ -161,15 +162,15 @@ export function assembleNewRiskDecision(input: NewRiskDecisionInput): NewRiskDec
   }
 
   if (input.ownership === null) {
-    return failClosed(input, 'Ownership evaluation is unavailable for this underlying.', ['OWNERSHIP_UNAVAILABLE']);
+    return systemHold(input, 'Ownership evaluation is unavailable for this underlying.', ['OWNERSHIP_UNAVAILABLE']);
   }
   if (input.regime === null) {
-    return failClosed(input, 'Regime context is unavailable.', ['REGIME_UNAVAILABLE']);
+    return systemHold(input, 'Regime context is unavailable.', ['REGIME_UNAVAILABLE']);
   }
 
   const inconsistentSnapshot = input.candidates.some((c) => c.contract.underlying !== input.underlying);
   if (inconsistentSnapshot) {
-    return failClosed(input, 'One or more candidates reference a different underlying than this decision.', ['SNAPSHOT_INCONSISTENT']);
+    return systemHold(input, 'One or more candidates reference a different underlying than this decision.', ['SNAPSHOT_INCONSISTENT']);
   }
 
   const alternatives = input.candidates.map(alternativeFrom);
@@ -216,7 +217,7 @@ export function assembleNewRiskDecision(input: NewRiskDecisionInput): NewRiskDec
   openCandidates.sort((a, b) => (b.returnPerCapitalDay ?? 0) - (a.returnPerCapitalDay ?? 0));
   const winner = openCandidates[0];
   if (winner === undefined || winner.sizing === null) {
-    return failClosed(input, 'Internal inconsistency: a qualifying candidate lost its sizing result during selection.', ['INTERNAL_INCONSISTENCY']);
+    return systemHold(input, 'Internal inconsistency: a qualifying candidate lost its sizing result during selection.', ['INTERNAL_INCONSISTENCY']);
   }
 
   return {

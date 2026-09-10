@@ -12,7 +12,7 @@ import { parseExecutionQualityResponse } from './execution-quality-contract.js';
 import { assembleNewRiskDecision, type CandidateFrontierResult, type NewRiskDecisionReceipt } from './decision-assembly.js';
 import type { NormalizedOptionContract } from './option-contract.js';
 import { ShadowOpportunityBookBuilder, type ShadowOpportunityEntry } from './shadow-opportunity-book.js';
-import { classifyObservation, type FreshnessPolicy } from './data-freshness.js';
+import { classifyObservation, type DataQualityState, type FreshnessPolicy } from './data-freshness.js';
 
 // R1: the real end-to-end new-risk orchestrator. Sequences every stage in
 // the canonical pipeline --
@@ -55,8 +55,8 @@ import { classifyObservation, type FreshnessPolicy } from './data-freshness.js';
 // already-known quantities (capital tied up x days committed; EV / capital-
 // days) -- never a fabricated probability or alpha estimate.
 //
-// Any bridge-call failure at any stage fails the WHOLE decision closed
-// (HARD_VETO, quantity 0) rather than attempting a partial assembly with a
+// Any bridge-call failure at any stage holds the WHOLE decision closed
+// (SYSTEM_HOLD, quantity 0) rather than attempting a partial assembly with a
 // stage silently skipped.
 
 export interface RawCandidateInput {
@@ -75,6 +75,35 @@ export interface RawCandidateInput {
   readonly preSlippageExpectedUtility: number | null;
 }
 
+// Structured provider capability/observation state (replaces the former
+// single providerStateGood boolean, which could not express "account GOOD,
+// option chain STALE, positions UNKNOWN" as three separate facts). Reuses
+// data-freshness.ts's DataQualityState so both modules speak the same
+// six-value vocabulary rather than inventing a parallel one. This is a
+// CAPABILITY/OBSERVATION snapshot for THIS cycle, not a general provider
+// health registry -- each key's value reflects what actually happened when
+// this cycle tried to use that capability, never a static "is it
+// supported" fact (that distinction belongs to a future provider-registry
+// module, not this per-cycle request type).
+export type ProviderCapabilityKey =
+  | 'ALPACA_ACCOUNT' | 'ALPACA_POSITIONS' | 'ALPACA_OPEN_ORDERS'
+  | 'ALPACA_OPTION_CONTRACTS' | 'ALPACA_OPTION_CHAIN'
+  | 'OPTIONOMICS' | 'EVENT_DATA';
+
+export type ProviderCapabilityStates = Readonly<Partial<Record<ProviderCapabilityKey, DataQualityState>>>;
+
+// Only these three gate new-risk evaluation entirely (they map directly to
+// FusionSnapshot's executableTruth ACCOUNT/CONTRACT/QUOTE truth roles).
+// Positions/open-orders/Optionomics/event-data are informational this
+// cycle -- not yet consumed as hard gates by AEGIS/sizing, so their
+// UNKNOWN/DEGRADED state does not by itself block evaluation. Extending
+// this list is the natural place to wire a future hard requirement.
+const REQUIRED_FOR_NEW_RISK: readonly ProviderCapabilityKey[] = ['ALPACA_ACCOUNT', 'ALPACA_OPTION_CONTRACTS', 'ALPACA_OPTION_CHAIN'];
+
+function allRequiredCapabilitiesGood(capabilities: ProviderCapabilityStates): boolean {
+  return REQUIRED_FOR_NEW_RISK.every((key) => capabilities[key] === 'GOOD');
+}
+
 export interface NewRiskOrchestrationRequest {
   readonly snapshotId: string;
   readonly fusionSnapshotHash: string;
@@ -82,7 +111,7 @@ export interface NewRiskOrchestrationRequest {
   readonly underlying: string;
   readonly earningsDistanceDays: number | null; // underlying-level fact, shared across every candidate this cycle
   readonly optionQuoteFreshnessPolicy: FreshnessPolicy; // R1C: versioned, hard execution-critical gate -- see data-freshness.ts
-  readonly providerStateGood: boolean;
+  readonly providerCapabilities: ProviderCapabilityStates;
   readonly policyVersion: string;
   readonly modelVersions: Readonly<Record<string, string>>;
   readonly requiredModelVersions: Readonly<Record<string, string>>;
@@ -123,7 +152,7 @@ export interface NewRiskOrchestrationResult {
   readonly shadowOpportunities: readonly ShadowOpportunityEntry[];
 }
 
-const failClosedResult = (
+const systemHoldResult = (
   request: NewRiskOrchestrationRequest,
   stage: string,
   detail: string,
@@ -135,7 +164,7 @@ const failClosedResult = (
     fusionSnapshotHash: request.fusionSnapshotHash,
     timestamp: request.timestamp,
     underlying: request.underlying,
-    winningAction: 'HARD_VETO',
+    winningAction: 'SYSTEM_HOLD',
     selectedCandidateId: null,
     quantity: 0,
     alternatives: [],
@@ -171,8 +200,9 @@ export async function runNewRiskOrchestration(
   bridge: PythonBridgeConfig,
   request: NewRiskOrchestrationRequest,
 ): Promise<NewRiskOrchestrationResult> {
-  if (!request.providerStateGood) {
-    return failClosedResult(request, 'PROVIDER_STATE', 'Required provider state is not GOOD.');
+  if (!allRequiredCapabilitiesGood(request.providerCapabilities)) {
+    const detail = REQUIRED_FOR_NEW_RISK.map((key) => `${key}=${request.providerCapabilities[key] ?? 'UNKNOWN'}`).join(', ');
+    return systemHoldResult(request, 'PROVIDER_STATE', `Required provider capability state is not GOOD: ${detail}`);
   }
 
   const ownershipResult = await invokeAndValidate(
@@ -180,14 +210,14 @@ export async function runNewRiskOrchestration(
     { contractVersion: 'theta-ownership-runtime-v1', snapshotId: request.snapshotId, underlyingSymbol: request.underlying, timestamp: request.timestamp, policy: request.ownershipPolicy, inputs: request.ownershipInputs },
     (payload) => parseOwnershipEvaluationResponse(payload),
   );
-  if (!ownershipResult.ok) return failClosedResult(request, 'OWNERSHIP', ownershipResult.detail);
+  if (!ownershipResult.ok) return systemHoldResult(request, 'OWNERSHIP', ownershipResult.detail);
 
   const regimeResult = await invokeAndValidate(
     bridge, 'regime',
     { contractVersion: 'theta-regime-runtime-v1', snapshotId: request.snapshotId, timestamp: request.timestamp, policy: request.regimePolicy, inputs: request.regimeInputs },
     (payload) => parseRegimeSnapshotResponse(payload),
   );
-  if (!regimeResult.ok) return failClosedResult(request, 'REGIME', regimeResult.detail, { ownership: ownershipResult.data });
+  if (!regimeResult.ok) return systemHoldResult(request, 'REGIME', regimeResult.detail, { ownership: ownershipResult.data });
 
   const routerResult = await invokeAndValidate(
     bridge, 'strategyRouter',
@@ -205,7 +235,7 @@ export async function runNewRiskOrchestration(
     (payload) => parseStrategyRoutingResponse(payload),
   );
   if (!routerResult.ok) {
-    return failClosedResult(request, 'STRATEGY_ROUTER', routerResult.detail, { ownership: ownershipResult.data, regime: regimeResult.data });
+    return systemHoldResult(request, 'STRATEGY_ROUTER', routerResult.detail, { ownership: ownershipResult.data, regime: regimeResult.data });
   }
 
   const thetaQEligible = eligibleFamilies(routerResult.data).includes('THETA_Q');
@@ -353,7 +383,7 @@ export async function runNewRiskOrchestration(
     },
     (payload) => parseThetaQResponse(payload, request.fusionSnapshotHash),
   );
-  if (!thetaQResult.ok) return failClosedResult(request, 'THETA_Q_LATTICE', thetaQResult.detail, partialAfterRouting);
+  if (!thetaQResult.ok) return systemHoldResult(request, 'THETA_Q_LATTICE', thetaQResult.detail, partialAfterRouting);
 
   const rawByCandidateId = new Map(freshnessEligible.map((c) => [c.candidateId, c]));
   const feasibleForFrontier: RawCandidateInput[] = [];
@@ -414,7 +444,7 @@ export async function runNewRiskOrchestration(
     },
     (payload) => parseParetoFrontierResponse(payload),
   );
-  if (!paretoResult.ok) return failClosedResult(request, 'PARETO_FRONTIER', paretoResult.detail, { ...partialAfterRouting, thetaQ: thetaQResult.data });
+  if (!paretoResult.ok) return systemHoldResult(request, 'PARETO_FRONTIER', paretoResult.detail, { ...partialAfterRouting, thetaQ: thetaQResult.data });
   const survivorIds = new Set(survivingCandidateIds(paretoResult.data));
 
   const aegisResult = await invokeAndValidate(
@@ -423,7 +453,7 @@ export async function runNewRiskOrchestration(
     (payload) => parseAegisAssessmentResponse(payload),
   );
   if (!aegisResult.ok) {
-    return failClosedResult(request, 'AEGIS', aegisResult.detail, { ...partialAfterRouting, thetaQ: thetaQResult.data, paretoSurvivorIds: [...survivorIds] });
+    return systemHoldResult(request, 'AEGIS', aegisResult.detail, { ...partialAfterRouting, thetaQ: thetaQResult.data, paretoSurvivorIds: [...survivorIds] });
   }
 
   const survivors = feasibleForFrontier.filter((c) => survivorIds.has(c.candidateId));
@@ -471,7 +501,7 @@ export async function runNewRiskOrchestration(
     (payload) => parseOpportunityFrontierResponse(payload),
   );
   if (!opportunityResult.ok) {
-    return failClosedResult(request, 'OPPORTUNITY_FRONTIER', opportunityResult.detail, {
+    return systemHoldResult(request, 'OPPORTUNITY_FRONTIER', opportunityResult.detail, {
       ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds],
     });
   }
@@ -515,7 +545,7 @@ export async function runNewRiskOrchestration(
       (payload) => parseSizingResultResponse(payload),
     );
     if (!sizingResult.ok) {
-      return failClosedResult(request, 'SIZING', sizingResult.detail, {
+      return systemHoldResult(request, 'SIZING', sizingResult.detail, {
         ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
       });
     }
@@ -534,7 +564,7 @@ export async function runNewRiskOrchestration(
       (payload) => parseExecutionQualityResponse(payload),
     );
     if (!executionQualityResult.ok) {
-      return failClosedResult(request, 'EXECUTION_QUALITY', executionQualityResult.detail, {
+      return systemHoldResult(request, 'EXECUTION_QUALITY', executionQualityResult.detail, {
         ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
       });
     }

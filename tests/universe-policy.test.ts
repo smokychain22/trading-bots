@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { evaluateUnderlying, evaluateUniverse, type UnderlyingCandidateInput, type UniversePolicy } from '../src/theta/universe-policy.js';
+import { evaluateUnderlying, evaluateUniverse, rankEligibleUnderlyings, type UnderlyingCandidateInput, type UniversePolicy } from '../src/theta/universe-policy.js';
 
 const policy: UniversePolicy = { policyVersion: 'universe-v1', minAvgDollarVolume: 10_000_000, minCurrentPrice: 5 };
 
@@ -100,4 +100,36 @@ test('a zero-eligible scan is still fully explainable via the funnel, never just
   const { funnel } = evaluateUniverse(policy, inputs);
   assert.equal(funnel.eligible, 0);
   assert.equal(funnel.byStage.BASE_OPTIONABLE.rejected, 2);
+});
+
+test('rankEligibleUnderlyings does NOT select by input order -- the LATER-listed underlying with higher avgDollarVolume ranks first', () => {
+  const inputs = [
+    clean({ symbol: 'FIRST_IN_ARRAY_BUT_LOWER_VOLUME', avgDollarVolume: 10_000_000 }),
+    clean({ symbol: 'LATER_IN_ARRAY_BUT_HIGHER_VOLUME', avgDollarVolume: 200_000_000 }),
+  ];
+  const { decisions } = evaluateUniverse(policy, inputs);
+  const inputsBySymbol = new Map(inputs.map((i) => [i.symbol, i]));
+  const ranked = rankEligibleUnderlyings(decisions, inputsBySymbol);
+  assert.equal(ranked[0]?.symbol, 'LATER_IN_ARRAY_BUT_HIGHER_VOLUME');
+  assert.equal(ranked[0]?.rank, 1);
+  assert.equal(ranked[1]?.symbol, 'FIRST_IN_ARRAY_BUT_LOWER_VOLUME');
+  assert.equal(ranked[1]?.rank, 2);
+});
+
+test('rankEligibleUnderlyings excludes DEFERRED/REJECTED underlyings entirely', () => {
+  const inputs = [clean({ symbol: 'ELIGIBLE_ONE' }), clean({ symbol: 'REJECTED_ONE', tradable: false })];
+  const { decisions } = evaluateUniverse(policy, inputs);
+  const inputsBySymbol = new Map(inputs.map((i) => [i.symbol, i]));
+  const ranked = rankEligibleUnderlyings(decisions, inputsBySymbol);
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0]?.symbol, 'ELIGIBLE_ONE');
+});
+
+test('rankEligibleUnderlyings carries an explicit, transparent reason for each rank -- never an opaque score', () => {
+  const inputs = [clean({ symbol: 'A' })];
+  const { decisions } = evaluateUniverse(policy, inputs);
+  const inputsBySymbol = new Map(inputs.map((i) => [i.symbol, i]));
+  const ranked = rankEligibleUnderlyings(decisions, inputsBySymbol);
+  assert.equal(ranked[0]?.rankingFeature, 'avgDollarVolume');
+  assert.ok(ranked[0]?.reason.length > 0);
 });

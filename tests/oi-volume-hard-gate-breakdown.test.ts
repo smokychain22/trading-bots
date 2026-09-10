@@ -81,9 +81,9 @@ const OPTIONOMICS = new Map<string, OptionomicsChainEntry>([
   ['SPY261009P00520000', { symbol: 'SPY261009P00520000', delta: null, gamma: null, theta: null, vega: null, rho: null, impliedVolatility: null, volume: 3, openInterest: 5 }],
 ]);
 
-const itReal = pythonExecutablePath === undefined ? test.skip : test;
+const itMockedProviderRealCodePath = pythonExecutablePath === undefined ? test.skip : test;
 
-itReal('OI/volume hard-gate breakdown: UNKNOWN vs known-below-floor vs sufficient, using realistic (non-live) values', async () => {
+itMockedProviderRealCodePath('OI/volume hard-gate breakdown: UNKNOWN vs known-below-floor vs sufficient, using realistic (non-live) values', async () => {
   const contracts = mergeOptionChain({
     underlying: 'SPY', asOfDate: '2026-09-10', contracts: CONTRACTS, snapshotsBySymbol: SNAPSHOTS,
     optionomicsBySymbol: OPTIONOMICS, requestedFeed: 'INDICATIVE', multiplier: 100, receivedAt: NOW,
@@ -108,7 +108,9 @@ itReal('OI/volume hard-gate breakdown: UNKNOWN vs known-below-floor vs sufficien
 
   const result = await runNewRiskOrchestration(bridge(), {
     snapshotId: 'oi-gate-proof', fusionSnapshotHash: 'a'.repeat(64), timestamp: NOW, underlying: 'SPY',
-    earningsDistanceDays: 90, optionQuoteFreshnessPolicy: { policyVersion: 'freshness-v1', goodMaxAgeSeconds: 10, staleMinAgeSeconds: 60 }, providerStateGood: true, policyVersion: 'oi-gate-proof-v1', modelVersions: {}, requiredModelVersions: {},
+    earningsDistanceDays: 90, optionQuoteFreshnessPolicy: { policyVersion: 'freshness-v1', goodMaxAgeSeconds: 10, staleMinAgeSeconds: 60 },
+    providerCapabilities: { ALPACA_ACCOUNT: 'GOOD', ALPACA_OPTION_CONTRACTS: 'GOOD', ALPACA_OPTION_CHAIN: 'GOOD' },
+    policyVersion: 'oi-gate-proof-v1', modelVersions: {}, requiredModelVersions: {},
     ownershipPolicy: { policyVersion: 'ownership-v1', minStockAvgVolume: 1, minOptionOpenInterest: 1, minOptionVolume: 1, maxSpreadPct: 0.5, rvNormalizationCeiling: 0.6, downsideSemivarNormalizationCeiling: 0.3, gapFrequencyNormalizationCeiling: 0.5, eventDecayWindowDays: 10 },
     ownershipInputs: { stockAvgVolume: 50_000_000, optionOpenInterest: 1000, optionVolume: 100, spreadPct: 0.05, ret1d: 0, ret5d: 0, ret20d: 0, ret60d: 0, ma20Rel: 0.01, ma50Rel: 0.01, ma200Rel: 0.01, maSlope: 0.005, relativeStrength: 0, rv10: 0.15, rv20: 0.15, rv60: 0.15, drawdown: -0.02, maxAdverseGap: 0.01, gapFrequency: 0.05, downsideSemivariance: 0.02, historicalRecoveryMedianDays: 15, historicalRecoveryP95Days: 45, severeDrawdownEpisodeCount: 0, earningsDistanceDays: 90, exDividendDistanceDays: 90, knownEventDistanceDays: null },
     regimePolicy: { policyVersion: 'regime-v1', bullMaSlopeFloor: 0.01, bearMaSlopeCeiling: -0.01, rvLowCeiling: 0.1, rvHighFloor: 0.25, rvShockFloor: 0.4, maxAdverseGapShockThreshold: 0.08, liquidityThinSpreadPctFloor: 0.03, liquidityDislocatedSpreadPctFloor: 0.08, correctionDrawdownCeiling: -0.1, crisisDrawdownCeiling: -0.2 },
