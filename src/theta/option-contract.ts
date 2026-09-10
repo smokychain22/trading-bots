@@ -65,9 +65,16 @@ export const normalizedOptionContractSchema = z.object({
   distanceToStrikePct: nullableFiniteNumber,
   breakEven: nullableFiniteNumber, // CSP: strike - bid (credit received); documented per candidate type at call site
 
-  // Market activity
+  // Market activity. Per-feature provenance, tracked independently of
+  // `source` and of each other: Alpaca's own option-chain snapshot does not
+  // guarantee open interest, and volume/open-interest may legitimately
+  // arrive from a different provider (e.g. Optionomics) than the bid/ask
+  // quote itself. A null source means the corresponding value is UNKNOWN,
+  // never inferred from `source` or silently defaulted to zero.
   volume: nullableNonNegativeInt,
+  volumeSource: z.enum(['ALPACA', 'OPTIONOMICS']).nullable(),
   openInterest: nullableNonNegativeInt,
+  openInterestSource: z.enum(['ALPACA', 'OPTIONOMICS']).nullable(),
 
   // Greeks -- legitimately unavailable depending on entitlement; never
   // fabricated when missing. greeksSource is tracked SEPARATELY from the
@@ -112,6 +119,12 @@ export const normalizedOptionContractSchema = z.object({
   if (!anyGreekKnown && contract.greeksSource !== null) {
     context.addIssue({ code: 'custom', message: 'greeksSource is only meaningful when at least one Greek is known' });
   }
+  if ((contract.volume !== null) !== (contract.volumeSource !== null)) {
+    context.addIssue({ code: 'custom', message: 'volumeSource must be set if and only if volume is known' });
+  }
+  if ((contract.openInterest !== null) !== (contract.openInterestSource !== null)) {
+    context.addIssue({ code: 'custom', message: 'openInterestSource must be set if and only if openInterest is known' });
+  }
   // Delta is never treated as probability of profit -- this contract only
   // ever carries the raw Greek; enforcing that discipline is a strategy-
   // layer concern (theta_q_baseline.py etc.), not a schema-level check this
@@ -144,7 +157,9 @@ export interface RawOptionQuoteInput {
   readonly quoteTimestamp: string | null;
   readonly tradeTimestamp: string | null;
   readonly volume: number | null;
+  readonly volumeSource: 'ALPACA' | 'OPTIONOMICS' | null; // null iff volume is null
   readonly openInterest: number | null;
+  readonly openInterestSource: 'ALPACA' | 'OPTIONOMICS' | null; // null iff openInterest is null
   readonly iv: number | null;
   readonly delta: number | null;
   readonly gamma: number | null;
@@ -230,7 +245,9 @@ export function normalizeOptionContract(raw: RawOptionQuoteInput, receivedAt: st
     distanceToStrikePct,
     breakEven,
     volume: raw.volume,
+    volumeSource: raw.volumeSource,
     openInterest: raw.openInterest,
+    openInterestSource: raw.openInterestSource,
     iv: raw.iv,
     delta: raw.delta,
     gamma: raw.gamma,

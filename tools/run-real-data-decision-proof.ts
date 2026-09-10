@@ -128,7 +128,7 @@ for (const c of contracts.slice(0, 5)) {
     bid: quote?.bp ?? null, ask: quote?.ap ?? null, bidSize: quote?.bs ?? null, askSize: quote?.as ?? null,
     lastTradePrice: null, lastTradeSize: null,
     quoteTimestamp: quote?.t ?? null, tradeTimestamp: null,
-    volume: null, openInterest: null,
+    volume: null, volumeSource: null, openInterest: null, openInterestSource: null,
     iv: alpacaHasGreeks ? (snapshot?.impliedVolatility ?? null) : optionomicsGreek('implied_volatility'),
     delta: greek('delta', 'delta'), gamma: greek('gamma', 'gamma'), theta: greek('theta', 'theta'),
     vega: greek('vega', 'vega'), rho: greek('rho', 'rho'),

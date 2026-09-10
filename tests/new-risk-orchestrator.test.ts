@@ -50,7 +50,7 @@ const contract = (overrides: Partial<NormalizedOptionContract> = {}): Normalized
   bid: 0.95, ask: 1.05, bidSize: 50, askSize: 50, lastTradePrice: null, lastTradeSize: null,
   quoteTimestamp: NOW, tradeTimestamp: null,
   midpointReference: 1.0, spread: 0.1, spreadPct: 0.1, moneyness: 0.04, distanceToStrikePct: 0.04, breakEven: 49.05,
-  volume: 100, openInterest: 500,
+  volume: 100, volumeSource: 'ALPACA', openInterest: 500, openInterestSource: 'ALPACA',
   iv: 0.25, delta: -0.22, gamma: null, theta: null, vega: null, rho: null, greeksTimestamp: NOW, greeksSource: 'ALPACA',
   source: 'ALPACA', feed: 'OPRA', dataQuality: 'GOOD', receivedAt: NOW, dataAgeSeconds: 1,
   executable: true, nonExecutableReason: null,
