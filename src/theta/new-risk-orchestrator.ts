@@ -299,6 +299,14 @@ export async function runNewRiskOrchestration(
     [[], []],
   );
 
+  // CORRECTION: a stale/unknown-freshness quote is NEVER recorded as PASS.
+  // PASS means "THETA had valid enough state to evaluate the opportunity
+  // and deliberately declined it" (nonpositive economics, dominated,
+  // inferior alternative). A data-quality failure means THETA COULD NOT
+  // EVALUATE the candidate at all -- a fundamentally different fact that
+  // must never be mixed into PASS-regret analysis. This is recorded as
+  // WAIT/WAIT_LIQUIDITY instead: a transient, re-checkable condition, per
+  // the same anti-paralysis WAIT discipline every other WAIT reason uses.
   const freshnessRejectedResults: CandidateFrontierResult[] = freshnessRejected.map((c) => {
     const quality = classifyObservation(
       {
@@ -309,11 +317,11 @@ export async function runNewRiskOrchestration(
       request.optionQuoteFreshnessPolicy,
     );
     recordShadow(c, {
-      outcome: 'PASS', rejectionCategory: `OPTION_QUOTE_${quality.state}`,
+      outcome: 'WAIT', waitReason: 'WAIT_LIQUIDITY', rejectionCategory: `OPTION_QUOTE_${quality.state}`,
       reasons: [{ code: 'OPTION_QUOTE_FRESHNESS_INSUFFICIENT', polarity: -1, detail: quality.reason }],
     });
     return {
-      candidateId: c.candidateId, contract: c.contract, disposition: 'PASS', waitReason: null,
+      candidateId: c.candidateId, contract: c.contract, disposition: 'WAIT', waitReason: 'WAIT_LIQUIDITY',
       rejectionReason: `OPTION_QUOTE_${quality.state}`, evNet: null, returnPerCapitalDay: null, aegis: null, sizing: null, executionQuality: null,
     };
   });

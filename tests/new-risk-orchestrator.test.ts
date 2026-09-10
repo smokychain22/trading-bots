@@ -159,22 +159,30 @@ itReal('a delta-UNKNOWN contract is excluded from the lattice call and recorded 
   assert.equal(entry?.rejectionCategory, 'UNKNOWN_DELTA');
 });
 
-itReal('a stale option quote is excluded from the lattice call and recorded as PASS/OPTION_QUOTE_STALE -- never sent to Python', async () => {
+itReal('a stale option quote is excluded from the lattice call and recorded as WAIT/WAIT_LIQUIDITY, NEVER as PASS -- never sent to Python', async () => {
   const staleTimestamp = new Date(Date.now() - 3600_000).toISOString(); // 1 hour old
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     candidates: [candidate('C1', { contract: contract({ optionSymbol: 'C1', quoteTimestamp: staleTimestamp }) })],
   }));
   assert.equal(result.thetaQ, null); // excluded before the lattice ever ran
   const entry = result.shadowOpportunities.find((e) => e.contractSymbol === 'C1');
+  assert.equal(entry?.outcome, 'WAIT');
+  assert.equal(entry?.waitReason, 'WAIT_LIQUIDITY');
+  assert.notEqual(entry?.outcome, 'PASS');
   assert.equal(entry?.rejectionCategory, 'OPTION_QUOTE_STALE');
+  assert.equal(result.receipt.winningAction, 'WAIT'); // the receipt itself must never call this PASS either
+  const alternative = result.receipt.alternatives.find((a) => a.candidateId === 'C1');
+  assert.equal(alternative?.disposition, 'WAIT');
 });
 
-itReal('a quote with no observation timestamp is excluded as PASS/OPTION_QUOTE_UNKNOWN -- freshness is never assumed', async () => {
+itReal('a quote with no observation timestamp is excluded as WAIT/WAIT_LIQUIDITY, NEVER as PASS -- freshness is never assumed', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     candidates: [candidate('C1', { contract: contract({ optionSymbol: 'C1', quoteTimestamp: null }) })],
   }));
   assert.equal(result.thetaQ, null);
   const entry = result.shadowOpportunities.find((e) => e.contractSymbol === 'C1');
+  assert.equal(entry?.outcome, 'WAIT');
+  assert.equal(entry?.waitReason, 'WAIT_LIQUIDITY');
   assert.equal(entry?.rejectionCategory, 'OPTION_QUOTE_UNKNOWN');
 });
 
