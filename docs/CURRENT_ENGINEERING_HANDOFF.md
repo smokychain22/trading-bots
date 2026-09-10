@@ -1,9 +1,9 @@
 # Current Engineering Handoff
 
-**Last updated:** 2026-09-10, end of this Claude takeover session.
-**Origin/main SHA at session start and end:** `cfe04b9903bed86d6bf8fcb82c654070830241bd0` (unchanged — nothing pushed).
+**Last updated:** 2026-09-10, end of this Claude takeover session (continuation pass).
+**Origin/main SHA at session start and end:** `cfe04b903bed86d6bf8fcb82c654070830241bd0` (unchanged — nothing pushed).
 **Claude branch:** `claude/full-platform-takeover`
-**Claude HEAD:** `f24dc3e`
+**Claude HEAD:** `a17e51e`
 
 ## Local commits on this branch (in order, all unpushed)
 
@@ -17,6 +17,18 @@
    families, plus two tested state machines: THETA lifecycle (`runtime-state.ts`) and
    order-intent lifecycle with idempotent `client_order_id` generation
    (`order-intent-state.ts`).
+4. `cc80691` — this handoff document, first version.
+5. `a17e51e` — Opportunity-frontier anti-paralysis engine
+   (`opportunity_frontier.py`): WAIT-vs-PASS classification with per-candidate
+   sub-reasons (WAIT_PRICE/WAIT_VOL/WAIT_LIQUIDITY/WAIT_EVENT/WAIT_REGIME), book-level
+   ranking, and an auditable `GlobalIdleReport` (never a bare "WAIT" when the engine
+   takes no new risk). Plus `hold_advantage()` on `management_action_value.py` (named
+   `U_HOLD - max(alternatives)` quantity, the antidote to a fixed 25/50/75% TP rule).
+   23 new tests, 225/225 total Python tests passing. Explicitly did NOT durabilize an
+   unverified 20-repository GitHub corpus or additional named traders (MAR1 QUANT,
+   EnhancedMarket, Renee, Swayd, TeamTape) referenced in the prompt that produced this
+   commit — see `docs/quant/phase5_management/OPPORTUNITY_FRONTIER_ENGINE.md`'s
+   non-fabrication note.
 
 ## Last completed phase/subphase
 
@@ -63,7 +75,7 @@ created or modified. No `.sql` files touched.
 
 ## Tests
 
-- Python: 202/202 passing (`python -m unittest discover -s bots/theta/tests/quant -p "test_*.py"`).
+- Python: 225/225 passing (`python -m unittest discover -s bots/theta/tests/quant -p "test_*.py"`).
 - TypeScript: 68/68 passing (`npm test`).
 - Lint (`npm run lint`): clean.
 - Typecheck (`npm run check`): clean.
@@ -152,7 +164,7 @@ LOCAL_COMMITS_TO_REVIEW: 8a051b7, 7ff290a, f24dc3e (all on claude/full-platform-
 FILES/MIGRATIONS: no migrations touched; see commit messages for full file list
   (7 Python quant models + tests, 6 TS contract/state-machine files + tests, 3 docs
   updates)
-TESTS: 202/202 Python, 68/68 TS, lint/typecheck/build clean, secret scan 0 findings
+TESTS: 225/225 Python, 68/68 TS, lint/typecheck/build clean, secret scan 0 findings
 PROVIDER_CALLS: NONE this session
 ORDERS_SUBMITTED: NO
 FIRST_PAPER_ORDER_GATE: NOT REACHED -- R2 through R7 have not been built yet, so the
