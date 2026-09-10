@@ -223,11 +223,14 @@ for (const [name, width, height] of [
       ]) {
         await page.goto(path);
         await expect(page.locator("main h1")).toBeVisible();
-        expect(
-          await page.evaluate(
-            () => document.documentElement.scrollWidth <= innerWidth,
-          ),
-        ).toBe(true);
+        const overflow = await page.evaluate(() => ({
+          viewport: innerWidth,
+          document: document.documentElement.scrollWidth,
+        }));
+        expect(overflow, `${name} ${id} must not overflow the page`).toEqual({
+          viewport: width,
+          document: width,
+        });
         const results = await new AxeBuilder({ page })
           .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
           .analyze();

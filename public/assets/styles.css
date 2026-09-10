@@ -1477,7 +1477,7 @@ td details p {
     padding: 20px;
   }
 }
-@media (max-width: 800px) {
+@media (max-width: 900px) {
   .sidebar {
     position: static;
     width: 100%;
