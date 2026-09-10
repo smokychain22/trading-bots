@@ -5,7 +5,7 @@ import {
 } from './alpaca-provider.js';
 import { mergeOptionChain, type OptionomicsChainEntry } from './option-chain-ingestion.js';
 import { computeCurrentDrawdown, computeGapFrequency, computeMaxAdverseGap, computeRealizedVolatility, computeReturn, computeTrendSlope } from './underlying-features.js';
-import { evaluateUniverse, type UnderlyingCandidateInput, type UniverseFunnelReport, type UniversePolicy } from './universe-policy.js';
+import { evaluateUniverse, rankEligibleUnderlyings, type RankedUnderlying, type UnderlyingCandidateInput, type UniverseFunnelReport, type UniversePolicy } from './universe-policy.js';
 import { runNewRiskOrchestration, type NewRiskOrchestrationRequest, type NewRiskOrchestrationResult, type RawCandidateInput } from './new-risk-orchestrator.js';
 import type { PythonBridgeConfig } from './python-bridge.js';
 import { buildFusionSnapshot, hashJson, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
@@ -28,8 +28,11 @@ import { buildFusionSnapshot, hashJson, type FusionSnapshotInput, type JsonValue
 //     here, so OI/volume/Greeks-fallback from Optionomics never populate a
 //     real cycle yet -- Alpaca-only Greeks/quotes are used.
 //   - Event state is always UNKNOWN (no event-state assembly exists yet).
-//   - Underlying selection from the universe is "first ELIGIBLE" -- no
-//     ranking among multiple eligible underlyings exists yet.
+//   - Underlying selection ranks eligible underlyings transparently (see
+//     universe-policy.ts's rankEligibleUnderlyings) rather than picking
+//     input order, but v1's ranking feature (avgDollarVolume) is itself an
+//     honest placeholder, not real economic ranking -- see that function's
+//     own docstring.
 //   - Market calendar/session awareness is not consulted.
 // A cycle run through this function can therefore never legitimately be
 // classified FULL_REAL (see classifyShadowCycleProvenance) -- at best
@@ -75,6 +78,7 @@ export interface ThetaShadowCycleResult {
   readonly finishedAt: string;
   readonly universeFunnel: UniverseFunnelReport;
   readonly selectedUnderlying: string | null;
+  readonly underlyingRanking: readonly RankedUnderlying[]; // full ranked-eligible list + why each rank -- selection is never "first in the input array"
   readonly optionChainComplete: boolean | null;
   readonly optionContractsComplete: boolean | null;
   readonly snapshotContentHash: string | null; // the REAL, deterministic FusionSnapshot content hash -- never a placeholder
@@ -199,18 +203,20 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const blockers: string[] = [];
 
   const { decisions, funnel } = evaluateUniverse(config.universePolicy, config.universeCandidates);
-  const eligible = decisions.find((d) => d.state === 'ELIGIBLE');
+  const inputsBySymbol = new Map(config.universeCandidates.map((c) => [c.symbol, c]));
+  const ranked = rankEligibleUnderlyings(decisions, inputsBySymbol);
+  const topRanked = ranked[0];
 
-  if (eligible === undefined) {
+  if (topRanked === undefined) {
     return {
-      runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: null,
+      runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: null, underlyingRanking: ranked,
       optionChainComplete: null, optionContractsComplete: null, snapshotContentHash: null, snapshotValidForNewRisk: null,
       orchestration: null,
       provenance: 'SYNTHETIC', provenanceDetail: ['no eligible underlying survived UniversePolicy this cycle'],
       blockers: ['NO_ELIGIBLE_UNDERLYING'],
     };
   }
-  const underlying = eligible.symbol;
+  const underlying = topRanked.symbol;
 
   let account: MasterAccountSnapshot | null = null;
   let accountReal = false;
@@ -312,7 +318,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
 
   if (candidates.length === 0) {
     return {
-      runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying,
+      runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
       optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash,
       snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration: null, provenance, provenanceDetail: detail,
       blockers: [...blockers, 'NO_CANDIDATES_AVAILABLE'],
@@ -351,7 +357,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   });
 
   return {
-    runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying,
+    runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
     optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash,
     snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration, provenance, provenanceDetail: detail, blockers,
   };

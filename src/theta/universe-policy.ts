@@ -177,3 +177,47 @@ export function evaluateUniverse(policy: UniversePolicy, inputs: readonly Underl
     },
   };
 }
+
+export interface RankedUnderlying {
+  readonly symbol: string;
+  readonly rank: number; // 1 = top-ranked
+  readonly rankingFeature: 'avgDollarVolume';
+  readonly rankingValue: number;
+  readonly reason: string;
+}
+
+/**
+ * Transparent, deterministic ranking among ELIGIBLE underlyings -- input
+ * order (e.g. array position in a caller-supplied candidate list) is NEVER
+ * the selection criterion; picking "whichever happened to come first" is
+ * not an economic strategy. v1 ranks by avgDollarVolume descending (higher
+ * underlying liquidity -> more reliable option-market conditions), which is
+ * an honest, transparent placeholder -- NOT asserted to be THETA's real
+ * economic ranking. Real premium-opportunity ranking (ownership-adjusted
+ * yield, event-adjusted risk, account-capital efficiency) requires actual
+ * option-chain data that is not available at this cheap universe-narrowing
+ * stage by design (fetching full chains for every eligible underlying just
+ * to rank them would defeat UniversePolicy's whole cost-control purpose).
+ * Underlying ranking and option-CONTRACT ranking remain two separate
+ * stages, per the standing architectural requirement -- this function
+ * performs only the former.
+ */
+export function rankEligibleUnderlyings(
+  decisions: readonly UnderlyingDecision[],
+  inputsBySymbol: ReadonlyMap<string, UnderlyingCandidateInput>,
+): readonly RankedUnderlying[] {
+  const eligible = decisions.filter((d) => d.state === 'ELIGIBLE');
+  const withValue = eligible.map((d) => {
+    const input = inputsBySymbol.get(d.symbol);
+    const value = input?.avgDollarVolume ?? 0; // ELIGIBLE guarantees avgDollarVolume was known and non-null at evaluation time
+    return { symbol: d.symbol, value };
+  });
+  withValue.sort((a, b) => b.value - a.value);
+  return withValue.map((entry, index) => ({
+    symbol: entry.symbol,
+    rank: index + 1,
+    rankingFeature: 'avgDollarVolume' as const,
+    rankingValue: entry.value,
+    reason: `ranked ${index + 1} of ${withValue.length} eligible underlyings by avgDollarVolume (v1 placeholder ranking feature, not final economic ranking)`,
+  }));
+}

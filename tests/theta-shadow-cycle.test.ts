@@ -136,6 +136,16 @@ itReal('no eligible underlying in the universe short-circuits before any provide
   assert.equal(result.universeFunnel.eligible, 0);
 });
 
+itReal('with multiple eligible underlyings, selection is by RANKING, never by input array order', async () => {
+  const lowerVolumeFirst: UnderlyingCandidateInput = { ...spyEligible(), symbol: 'LOWER_VOLUME_FIRST_IN_ARRAY', avgDollarVolume: 10_000_000 };
+  const higherVolumeSecond: UnderlyingCandidateInput = { ...spyEligible(), symbol: 'HIGHER_VOLUME_SECOND_IN_ARRAY', avgDollarVolume: 500_000_000 };
+  const result = await runThetaShadowCycle(baseConfig({ universeCandidates: [lowerVolumeFirst, higherVolumeSecond] }));
+  assert.equal(result.selectedUnderlying, 'HIGHER_VOLUME_SECOND_IN_ARRAY');
+  assert.equal(result.underlyingRanking.length, 2);
+  assert.equal(result.underlyingRanking[0]?.symbol, 'HIGHER_VOLUME_SECOND_IN_ARRAY');
+  assert.equal(result.underlyingRanking[0]?.rank, 1);
+});
+
 itReal('an account fetch failure is recorded as a blocker, never silently ignored, and the cycle still completes coherently', async () => {
   const failingAccountFetch = (async (input: RequestInfo | URL) => {
     const url = input instanceof URL ? input.toString() : String(input);
