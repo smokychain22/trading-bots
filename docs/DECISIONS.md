@@ -106,3 +106,27 @@ Use `DATABASE_URL` for transaction-pooled serverless runtime access. Use
 run DDL that depends on session semantics through transaction pooling. Production
 readiness remains `MISSING` or `MIGRATION_REQUIRED` until the real database is reachable
 and migration `007_connection_readiness` is present.
+
+## 2026-09-11: canonical PAPER broker and order-intent boundary
+
+Use one `PaperBrokerAdapter` contract for the master API-key account and follower OAuth
+accounts. Authentication differs, while order construction, state transitions,
+reconciliation, and lifecycle accounting remain shared. The adapter rejects every host
+except `paper-api.alpaca.markets`.
+
+Every order is a DAY limit order with a caller-supplied deterministic
+`client_order_id`. A roll is two separately persisted intents, close old and open new.
+Each reprice also receives a new intent and client identity, preserving the current
+order-to-broker-order cardinality and the old economic result. Covered calls require
+confirmed share coverage before payload construction.
+
+`MASTER_PAPER_EXECUTION_ENABLED` and `FOLLOWER_PAPER_EXECUTION_ENABLED` default false.
+`PAPER_PAUSE_NEW_ORDERS` defaults true. A missing or blank variable stays fail-closed.
+The customer cannot change these controls. Network ambiguity transitions to
+`UNKNOWN_SUBMISSION`, then broker lookup by `client_order_id`. Absence at lookup remains
+`RECONCILING` and never causes an automatic resubmit.
+
+The first real PAPER order remains outside this milestone. It requires a genuine
+provider-backed decision preview, durable production PostgreSQL, real account
+verification, an active reconciliation worker, rotated credentials, and separate owner
+authorization.
