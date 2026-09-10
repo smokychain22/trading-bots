@@ -26,7 +26,7 @@ function fixture(): FusionSnapshotInput {
       quoteTimestamp: '2026-09-09T18:30:00.000Z', tradeTimestamp: null,
       midpointReference: 4.2, spread: 0.2, spreadPct: 0.0476, moneyness: 0.0838, distanceToStrikePct: 0.0838,
       breakEven: 595.9,
-      volume: null, openInterest: null,
+      volume: null, volumeSource: null, openInterest: null, openInterestSource: null,
       iv: null, delta: null, gamma: null, theta: null, vega: null, rho: null, greeksTimestamp: null, greeksSource: null,
       source: 'ALPACA', feed: 'OPRA', dataQuality: 'GOOD', receivedAt: '2026-09-09T18:30:00.000Z', dataAgeSeconds: 1,
       executable: true, nonExecutableReason: null,

@@ -27,7 +27,9 @@ const baseRaw = (overrides: Partial<RawOptionQuoteInput> = {}): RawOptionQuoteIn
   quoteTimestamp: NOW,
   tradeTimestamp: NOW,
   volume: 150,
+  volumeSource: 'ALPACA',
   openInterest: 2000,
+  openInterestSource: 'ALPACA',
   iv: 0.28,
   delta: -0.22,
   gamma: 0.01,
@@ -132,4 +134,18 @@ test('executable contracts never carry a nonExecutableReason (schema-enforced)',
 test('DTE is computed from asOfDate to expiration, not assumed', () => {
   const contract = normalizeOptionContract(baseRaw({ asOfDate: '2026-09-10', expiration: '2026-09-20' }), NOW);
   assert.equal(contract.dte, 10);
+});
+
+test('volume/openInterest carry per-feature provenance independent of the quote source, never inferred', () => {
+  const alpacaSourced = normalizeOptionContract(baseRaw({ source: 'ALPACA', volumeSource: 'ALPACA', openInterestSource: 'OPTIONOMICS' }), NOW);
+  assert.equal(alpacaSourced.volumeSource, 'ALPACA');
+  assert.equal(alpacaSourced.openInterestSource, 'OPTIONOMICS'); // may legitimately differ from the quote's own source
+
+  const bothUnknown = normalizeOptionContract(
+    baseRaw({ volume: null, volumeSource: null, openInterest: null, openInterestSource: null }), NOW,
+  );
+  assert.equal(bothUnknown.volume, null);
+  assert.equal(bothUnknown.volumeSource, null);
+  assert.equal(bothUnknown.openInterest, null);
+  assert.equal(bothUnknown.openInterestSource, null);
 });
