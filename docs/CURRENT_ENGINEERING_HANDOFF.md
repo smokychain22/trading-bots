@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-10, end of this Claude takeover session (continuation pass).
 **Origin/main SHA at session start and end:** `cfe04b903bed86d6bf8fcb82c654070830241bd0` (unchanged — nothing pushed).
 **Claude branch:** `claude/full-platform-takeover`
-**Claude HEAD:** `a17e51e`
+**Claude HEAD:** `e329b6a`
 
 ## Local commits on this branch (in order, all unpushed)
 
@@ -40,6 +40,11 @@
    secret, mirrors the existing PAPER-only assertion pattern), owner `/ops` IA (12
    sections), five-step Copy THETA wizard, and the exact customer-vs-admin
    information-boundary line.
+8. `e329b6a` — R1C scheduler job model (`scheduler.ts`) + scheduling policy
+   (`scheduling-policy.ts`, WAIT-reason-specific recheck triggers + urgency-scaled
+   position-management scan interval) + R1D ownership/regime TS contracts
+   (`ownership-contract.ts`, `regime-contract.ts`). 26 new tests, 94/94 TS total,
+   225/225 Python unaffected.
 
 ## Last completed phase/subphase
 
