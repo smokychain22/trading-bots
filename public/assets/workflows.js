@@ -123,29 +123,58 @@ export function bindSimulation() {
 
 export function accountPage(readiness) {
   const connected = readiness.follower_account.state === "READY";
-  return `<div class="page-heading"><div><p class="eyebrow">ACCOUNT</p><h1>Your paper account</h1><p class="lede">Connect Alpaca through a secure PAPER-only authorization flow when customer access is released.</p></div>${badge("PAPER ONLY", "blue")}</div><section class="account-connection"><div><span class="connection-mark" aria-hidden="true">A</span><div><h2>Alpaca PAPER</h2><p>${connected ? `Connected as ${esc(readiness.follower_account.masked_account)}` : "No customer account connected"}</p></div></div>${badge(readiness.follower_account.state, connected ? "green" : "amber")}</section><div class="two-columns"><section class="panel"><h2>Connection method</h2><p>Customer accounts will use Alpaca OAuth. API keys and access tokens will never be entered into this page, redisplayed, or stored in browser storage.</p><dl class="facts"><div><dt>Environment</dt><dd>PAPER</dd></div><div><dt>Authorization</dt><dd>Server-side OAuth</dd></div><div><dt>Token storage</dt><dd>Encrypted secret reference required</dd></div></dl><button class="button primary" disabled aria-describedby="connect-reason">Connect Alpaca PAPER</button><p id="connect-reason" class="notice amber">${esc(readiness.reason)}</p></section><section class="panel"><h2>What happens after connection</h2><ol class="plain-steps"><li>Authorize a PAPER account with Alpaca.</li><li>Verify account status, options approval, buying power, positions, market data, and session state.</li><li>Set follower-specific capital and risk limits.</li><li>Review the setup. Activation stays blocked until the copy runtime passes its release gates.</li></ol>${link("/bots/theta/copy", "Preview paper-copy setup", "button secondary")}</section></div>`;
+  return `<div class="page-heading"><div><p class="eyebrow">ACCOUNT</p><h1>Your paper account</h1><p class="lede">Connect an Alpaca Paper account to prepare for copy trading.</p></div>${badge("PAPER ONLY", "blue")}</div><section class="panel account-simple"><div class="account-connection"><div><span class="connection-mark" aria-hidden="true">A</span><div><h2>Alpaca Paper</h2><p>${connected ? `Connected · ${esc(readiness.follower_account.masked_account)}` : "Not connected"}</p></div></div>${badge(connected ? "CONNECTED" : "NOT CONNECTED", connected ? "green" : "")}</div>${connected ? `<dl class="account-facts"><div><dt>Buying power</dt><dd>—</dd></div><div><dt>Available cash</dt><dd>—</dd></div><div><dt>Options enabled</dt><dd>—</dd></div><div><dt>Last sync</dt><dd>—</dd></div></dl><button class="button secondary" disabled aria-describedby="disconnect-note">Disconnect</button><p id="disconnect-note" class="simple-status">Account management is being enabled.</p>` : `<p>Your brokerage account stays with Alpaca. This platform will request access only through Alpaca’s account connection flow.</p><button class="button primary" disabled aria-describedby="connect-note">Connect Alpaca Paper</button><p id="connect-note" class="simple-status">Alpaca Paper connection is being enabled.</p>`}</section>`;
 }
 
-export function paperCopyPage(readiness) {
+export function paperCopyPage() {
   const number = (name, text, value, min, max, step = "1") =>
     `<label>${text}<input name="${name}" type="number" value="${value}" min="${min}" max="${max}" step="${step}" required></label>`;
-  return `<div class="copy-heading"><div><p class="eyebrow">PAPER COPY SETUP</p><h2>Copy THETA</h2><p>Choose how much THETA may use and review your safety limits. No order or broker authorization is created.</p></div>${badge("PAPER", "blue")}</div><ol class="copy-steps" aria-label="Paper copy setup steps"><li aria-current="step"><span>1</span>Connect Alpaca</li><li><span>2</span>Copy amount</li><li><span>3</span>Safety</li><li><span>4</span>Review</li><li><span>5</span>Activate</li></ol><section class="connection-blocked"><div><h3>Connect your Alpaca Paper account</h3><p>${esc(readiness.reason)}</p></div><button class="button primary" disabled>Connect Alpaca Paper</button></section><form id="copy-policy" class="panel copy-policy"><div class="section-heading"><div><p class="eyebrow">COPY AMOUNT</p><h2>How much should THETA use?</h2><p>Cash-secured puts require enough cash to buy assigned shares.</p></div>${badge("NOT ACTIVE", "amber")}</div><fieldset><legend>Copy and safety limits</legend><div class="advanced-fields">${number("allocation_usd", "Amount to use ($)", 25000, 0, 10000000)}${number("max_bot_capital_pct", "Maximum account allocation (%)", 25, 0, 100, "0.1")}${number("max_open_positions", "Maximum open positions", 3, 0, 1000)}${number("max_daily_loss_usd", "Daily loss safety limit ($)", 500, 0, 10000000)}</div></fieldset><details><summary>Advanced limits</summary><fieldset><div class="advanced-fields">${number("max_ticker_exposure_pct", "Maximum one-ticker exposure (%)", 10, 0, 100, "0.1")}${number("max_contracts", "Maximum contracts per order", 1, 0, 1000)}${number("min_dte", "Minimum DTE", 7, 0, 730)}${number("max_dte", "Maximum DTE", 60, 0, 730)}${number("max_slippage_per_contract_usd", "Maximum slippage per contract ($)", 10, 0, 100000, "0.01")}${number("min_open_interest", "Minimum open interest", 500, 0, 100000000)}</div><label class="check-row"><input type="checkbox" name="allow_0dte"> Allow 0DTE trades</label></fieldset></details><label class="check-row locked"><input type="checkbox" name="start_new_trades_only" checked disabled> Start new trades only</label><label class="check-row locked"><input type="checkbox" name="join_existing_positions" disabled> Join existing positions</label><p class="caption">Some THETA trades may be skipped or reduced to respect your account limits.</p><button class="button primary" type="submit">Review setup</button><p id="copy-error" role="alert"></p></form><section id="copy-review" class="panel copy-review" aria-live="polite"><h2>Review</h2><p>Review your limits to see whether paper activation is available.</p></section>`;
+  return `<div class="copy-heading"><div><p class="eyebrow">PAPER COPY SETUP</p><h2>Copy THETA</h2><p>Choose your paper account preferences. No order or broker authorization is created.</p></div>${badge("PAPER ONLY", "blue")}</div><ol class="copy-steps four" aria-label="Paper copy setup steps"><li><span>1</span>Connect account</li><li><span>2</span>Choose allocation</li><li><span>3</span>Choose risk</li><li><span>4</span>Review</li></ol><section class="connection-blocked"><div><p class="step-label">STEP 1</p><h3>Connect Alpaca Paper</h3><p>Alpaca Paper connection is being enabled.</p></div><button class="button primary" disabled aria-describedby="copy-connect-note">Connect Alpaca Paper</button><span id="copy-connect-note" class="sr-only">Connection is not available yet.</span></section><form id="copy-policy" class="copy-policy customer-copy-form"><section class="panel"><div class="section-heading"><div><p class="step-label">STEP 2</p><h2>Choose allocation</h2><p>How much paper buying power should THETA be allowed to use?</p></div><output id="allocation-output">$10,000</output></div><input type="hidden" name="allocation_usd" value="10000"><div class="allocation-choices" role="group" aria-label="Allocation"><button type="button" class="choice" data-allocation="5000">$5,000</button><button type="button" class="choice active" data-allocation="10000">$10,000</button><button type="button" class="choice" data-allocation="25000">$25,000</button><button type="button" class="choice" data-allocation="custom">Custom</button></div><label id="custom-allocation" hidden>Custom allocation ($)<input type="number" min="0" max="10000000" step="100" value="10000"></label></section><section class="panel"><p class="step-label">STEP 3</p><h2>Choose risk profile</h2><p>This preference helps shape your account limits. THETA’s risk engine always has final authority.</p><div class="risk-choices"><label><input type="radio" name="risk_profile" value="Conservative"><span><strong>Conservative</strong><small>Lower account limits</small></span></label><label><input type="radio" name="risk_profile" value="Balanced" checked><span><strong>Balanced</strong><small>Moderate account limits</small></span></label><label><input type="radio" name="risk_profile" value="Growth"><span><strong>Growth</strong><small>Higher account limits</small></span></label></div></section><details class="panel advanced-copy"><summary>Advanced settings</summary><p>Optional account-level limits. THETA’s strategy rules can’t be changed here.</p><div class="advanced-fields">${number("max_open_positions", "Maximum open positions", 3, 0, 1000)}${number("max_bot_capital_pct", "Maximum account allocation (%)", 25, 0, 100, "0.1")}${number("max_daily_loss_usd", "Daily loss limit ($)", 500, 0, 10000000)}${number("max_slippage_per_contract_usd", "Slippage preference per contract ($)", 10, 0, 100000, "0.01")}</div><label class="check-row locked"><input type="checkbox" name="join_existing_positions" disabled> Join existing positions</label><p class="caption">Join existing positions stays off. New trades only is the default.</p></details><button class="button primary review-button" type="submit">Review setup</button><p id="copy-error" role="alert"></p></form><section id="copy-review" class="panel copy-review" aria-live="polite"><p class="step-label">STEP 4</p><h2>Review</h2><p>Your paper-copy summary will appear here.</p></section>`;
 }
 
 export function bindPaperCopy() {
   const form = document.querySelector("#copy-policy");
+  const allocation = form.elements.allocation_usd;
+  const output = document.querySelector("#allocation-output");
+  const custom = document.querySelector("#custom-allocation");
+  const customInput = custom.querySelector("input");
+  document.querySelectorAll("[data-allocation]").forEach((choice) => {
+    choice.addEventListener("click", () => {
+      document.querySelectorAll("[data-allocation]").forEach((item) => item.classList.toggle("active", item === choice));
+      const isCustom = choice.dataset.allocation === "custom";
+      custom.hidden = !isCustom;
+      if (!isCustom) {
+        allocation.value = choice.dataset.allocation;
+        output.textContent = money(Number(allocation.value));
+      } else {
+        customInput.focus();
+      }
+    });
+  });
+  customInput.addEventListener("input", () => {
+    allocation.value = customInput.value;
+    output.textContent = money(Number(customInput.value));
+  });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = form.querySelector('[type="submit"]');
     button.disabled = true;
     document.querySelector("#copy-error").textContent = "";
     const data = new FormData(form);
-    const policy = Object.fromEntries(
-      [...data]
-        .filter(([name]) => !["allow_0dte"].includes(name))
-        .map(([name, value]) => [name, Number(value)]),
-    );
-    policy.allow_0dte = data.has("allow_0dte");
+    const riskProfile = data.get("risk_profile");
+    const policy = {
+      allocation_usd: Number(data.get("allocation_usd")),
+      max_bot_capital_pct: Number(data.get("max_bot_capital_pct")),
+      max_open_positions: Number(data.get("max_open_positions")),
+      max_daily_loss_usd: Number(data.get("max_daily_loss_usd")),
+      max_slippage_per_contract_usd: Number(data.get("max_slippage_per_contract_usd")),
+      max_ticker_exposure_pct: 10,
+      max_contracts: 1,
+      min_dte: 7,
+      max_dte: 60,
+      min_open_interest: 500,
+      allow_0dte: false,
+    };
     policy.join_existing_positions = false;
     policy.start_new_trades_only = true;
     try {
@@ -157,7 +186,7 @@ export function bindPaperCopy() {
       });
       if (!response.ok) throw new Error("Review the DTE range and risk limits.");
       const { data: review } = await response.json();
-      document.querySelector("#copy-review").innerHTML = `<div class="section-heading"><div><p class="eyebrow">REVIEW</p><h2>Waiting for the paper-copy runtime</h2></div>${badge("BLOCKED", "amber")}</div><dl class="review-grid"><div><dt>Capital budget</dt><dd>${money(review.policy.allocation_usd)}</dd></div><div><dt>Max contracts</dt><dd>${esc(review.policy.max_contracts)}</dd></div><div><dt>DTE range</dt><dd>${esc(review.policy.min_dte)}–${esc(review.policy.max_dte)}</dd></div><div><dt>Join existing</dt><dd>Off</dd></div><div><dt>Current quantity</dt><dd>0</dd></div><div><dt>Sizing</dt><dd>Follower preflight required</dd></div></dl><p class="notice amber">Activation is unavailable. Customer IAM, OAuth callback verification, encrypted token persistence, master-fill ingestion, follower preflight, sizing, child-order lifecycle, and reconciliation are not released.</p><button class="button primary" disabled>Activate paper copy</button>`;
+      document.querySelector("#copy-review").innerHTML = `<div class="section-heading"><div><p class="step-label">STEP 4</p><h2>Review your setup</h2></div>${badge("NOT ACTIVE")}</div><dl class="review-grid customer-review"><div><dt>Paper account</dt><dd>Alpaca</dd></div><div><dt>Allocation</dt><dd>${money(review.policy.allocation_usd)}</dd></div><div><dt>Risk</dt><dd>${esc(riskProfile)}</dd></div><div><dt>New trades only</dt><dd>Yes</dd></div></dl><button class="button primary" disabled aria-describedby="activation-note">Start Paper Copying</button><p id="activation-note" class="simple-status">Paper copying is being enabled. You can review this setup, but activation isn’t available yet.</p>`;
     } catch (error) {
       document.querySelector("#copy-error").textContent = error.message;
     } finally {
@@ -169,6 +198,9 @@ export function bindPaperCopy() {
 export function ownerPage() {
   return `<div class="page-heading"><div><p class="eyebrow">PRIVATE OPERATIONS</p><h1>THETA operations</h1><p class="lede">Runtime, provider, execution, accounting, and copy readiness.</p></div>${badge("READ ONLY", "blue")}</div><section class="panel owner-panel"><form id="owner-login"><h2>Authorized access</h2><label>Operator access key<input type="password" name="token" required minlength="32" autocomplete="off" spellcheck="false"></label><p class="caption">The credential is exchanged for a 15-minute HttpOnly session and is never stored in browser storage.</p><button class="button primary">Open operations</button><p id="owner-error" role="alert"></p></form><div id="owner-data"></div></section>`;
 }
+function opsGroup(title, description, entries) {
+  return `<section class="panel ops-control-card"><div class="section-heading"><div><h2>${esc(title)}</h2><p>${esc(description)}</p></div></div><dl>${entries.map(([name, value, tone = ""]) => `<div><dt>${esc(name)}</dt><dd>${badge(value, tone)}</dd></div>`).join("")}</dl></section>`;
+}
 export function bindOwner() {
   const form = document.querySelector("#owner-login");
   async function read() {
@@ -177,9 +209,53 @@ export function bindOwner() {
     });
     if (!res.ok) return false;
     const { data } = await res.json();
+    const system = (name) => data.systems[name] ?? "UNKNOWN";
+    const tone = (value) => value === "HEALTHY" ? "green" : value === "BLOCKED" ? "amber" : "";
+    const runtimeGroups = [
+      opsGroup("Market and decisions", "Live runtime evidence and opportunity selection.", [
+        ["Market snapshot", data.runtime_detail.last_market_snapshot ?? "UNKNOWN"],
+        ["Candidate scan", data.runtime_detail.last_scan ?? "UNKNOWN"],
+        ["Router decision", data.runtime_detail.last_decision ?? "UNKNOWN"],
+        ["Opportunity count", data.runtime_detail.candidates_passing ?? "UNKNOWN"],
+        ["WAIT and PASS reasons", data.runtime_detail.candidates_waiting ?? "UNKNOWN"],
+        ["AEGIS", system("aegis"), tone(system("aegis"))],
+      ]),
+      opsGroup("Execution and reconciliation", "Orders remain disabled. Unknown broker state is never treated as success.", [
+        ["Execution", system("execution"), tone(system("execution"))],
+        ["Open option orders", data.runtime_detail.pending_orders ?? "UNKNOWN"],
+        ["Partial fills", "UNKNOWN"],
+        ["Unknown submissions", data.runtime_detail.unknown_submissions ?? "UNKNOWN"],
+        ["Reconciliation", system("reconciliation"), tone(system("reconciliation"))],
+        ["Assignments and recovery", "UNKNOWN"],
+      ]),
+      opsGroup("Economic record", "Whole-chain accounting and performance evidence.", [
+        ["Ledger", system("ledger"), tone(system("ledger"))],
+        ["Whole-chain P&L", "UNKNOWN"],
+        ["Win rate", "UNKNOWN"],
+        ["Profit factor", "UNKNOWN"],
+        ["Drawdown", "UNKNOWN"],
+        ["After-cost EV", "UNKNOWN"],
+        ["Slippage and fill quality", "UNKNOWN"],
+      ]),
+      opsGroup("Copy engine", "Follower accounts, safety checks, and child-order state.", [
+        ["Copy runtime", system("copy_engine"), tone(system("copy_engine"))],
+        ["Followers", system("followers"), tone(system("followers"))],
+        ["Follower sizing", "BLOCKED", "amber"],
+        ["Child orders", "BLOCKED", "amber"],
+        ["Follower reconciliation", "BLOCKED", "amber"],
+      ]),
+      opsGroup("Infrastructure", "Services required for a repeatable paper runtime.", [
+        ["Scheduler", system("scheduler"), tone(system("scheduler"))],
+        ["Python bridge", system("python_bridge"), tone(system("python_bridge"))],
+        ["Worker jobs", "UNKNOWN"],
+        ["Database state", "UNKNOWN"],
+        ["Provider freshness", system("market_data"), tone(system("market_data"))],
+        ["Errors and incidents", system("system_errors"), tone(system("system_errors"))],
+      ]),
+    ].join("");
     form.hidden = true;
     document.querySelector("#owner-data").innerHTML =
-      `<div class="section-heading"><div><p class="eyebrow">SYSTEM STATE</p><h2>Is THETA working?</h2></div><button id="logout" class="button secondary">Sign out</button></div><div class="ops-health">${Object.entries(data.systems).map(([name, state]) => `<article><span>${esc(name.replaceAll("_", " "))}</span>${badge(state, state === "HEALTHY" ? "green" : state === "BLOCKED" ? "amber" : "")}</article>`).join("")}</div><section class="ops-section"><div class="section-heading"><div><h2>THETA engine</h2><p>R1 is partial. Contracts and deterministic models exist, while runtime I/O remains gated.</p></div>${badge(data.runtime_detail.stage, "amber")}</div><dl class="capability-grid"><div><dt>Policy version</dt><dd>${esc(data.runtime_detail.policy_version ?? "Not active")}</dd></div><div><dt>Last snapshot</dt><dd>${esc(data.runtime_detail.last_market_snapshot ?? "Unknown")}</dd></div><div><dt>Last scan</dt><dd>${esc(data.runtime_detail.last_scan ?? "Unknown")}</dd></div><div><dt>Last decision</dt><dd>${esc(data.runtime_detail.last_decision ?? "Unknown")}</dd></div><div><dt>Candidates evaluated</dt><dd>${esc(data.runtime_detail.candidates_evaluated ?? "Unknown")}</dd></div><div><dt>Q=0</dt><dd>${esc(data.runtime_detail.candidates_q_zero ?? "Unknown")}</dd></div><div><dt>Pending orders</dt><dd>${esc(data.runtime_detail.pending_orders ?? "Unknown")}</dd></div><div><dt>Unknown submissions</dt><dd>${esc(data.runtime_detail.unknown_submissions ?? "Unknown")}</dd></div></dl></section><section class="operator-readiness"><div><h2>Alpaca master PAPER</h2><p>Read-only checks cover account, clock, calendar, positions, contracts, market data, activities, and corporate actions. No order endpoint is called.</p></div><button id="verify-master" class="button secondary">Verify connection</button><div id="master-result" aria-live="polite"></div></section><div class="two-columns ops-columns"><section class="panel"><h2>Opportunity engine</h2><p>No live candidate feed is connected. Frontier outcomes, alternatives, next evaluation, and regret measures remain unavailable.</p>${badge("BLOCKED", "amber")}</section><section class="panel"><h2>Trading and ledger</h2><p>Execution is disabled. Persistent order, fill, Wheel lineage, and reconciliation views are waiting for runtime persistence.</p>${badge("BLOCKED", "amber")}</section><section class="panel"><h2>Copy engine</h2><p>Follower eligibility, follower-specific risk, sizing, execution, and reconciliation aren’t implemented.</p>${badge("BLOCKED", "amber")}</section><section class="panel"><h2>Release gates</h2><ul>${data.gates.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></section></div><p class="caption">${esc(data.security)}</p>`;
+      `<div class="section-heading"><div><p class="eyebrow">SYSTEM STATE</p><h2>Is THETA working?</h2></div><button id="logout" class="button secondary">Sign out</button></div><div class="ops-health">${Object.entries(data.systems).map(([name, state]) => `<article><span>${esc(name.replaceAll("_", " "))}</span>${badge(state, tone(state))}</article>`).join("")}</div><section class="ops-section"><div class="section-heading"><div><h2>THETA engine</h2><p>R1 is partial. Deterministic contracts and models exist, while runtime I/O remains gated.</p></div>${badge(data.runtime_detail.stage, "amber")}</div><dl class="capability-grid"><div><dt>Bot mode</dt><dd>${badge(data.bot_mode, "blue")}</dd></div><div><dt>Trading</dt><dd>${badge(data.trading, "amber")}</dd></div><div><dt>Copy</dt><dd>${badge(data.copy, "amber")}</dd></div><div><dt>Policy version</dt><dd>${esc(data.runtime_detail.policy_version ?? "Not active")}</dd></div><div><dt>Last snapshot</dt><dd>${esc(data.runtime_detail.last_market_snapshot ?? "Unknown")}</dd></div><div><dt>Last scan</dt><dd>${esc(data.runtime_detail.last_scan ?? "Unknown")}</dd></div><div><dt>Last decision</dt><dd>${esc(data.runtime_detail.last_decision ?? "Unknown")}</dd></div><div><dt>Candidates evaluated</dt><dd>${esc(data.runtime_detail.candidates_evaluated ?? "Unknown")}</dd></div></dl></section><section class="operator-readiness"><div><h2>Alpaca master PAPER</h2><p>Run read-only checks for account, clock, calendar, positions, contracts, market data, activities, and corporate actions.</p></div><button id="verify-master" class="button secondary">Verify PAPER connection</button><div id="master-result" aria-live="polite"></div></section><div class="ops-control-grid">${runtimeGroups}</div><section class="panel release-gates"><h2>Release gates</h2><ul>${data.gates.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></section><p class="caption">${esc(data.security)}</p>`;
     document.querySelector("#verify-master").addEventListener("click", async (event) => {
       const button = event.currentTarget;
       button.disabled = true;

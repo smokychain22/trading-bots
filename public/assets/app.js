@@ -8,7 +8,6 @@ import {
   empty,
   link,
   table,
-  trackRecord,
   chart,
   lifecycle,
 } from "./ui.js";
@@ -38,7 +37,7 @@ const nav = [
 const botTabs = [
   ["", "Overview"],
   ["positions", "Positions"],
-  ["history", "History"],
+  ["history", "Trades"],
   ["performance", "Performance"],
 ];
 let detail;
@@ -50,22 +49,13 @@ function shell(content) {
     root.innerHTML = `<div class="ops-shell"><header class="ops-topbar"><a class="brand" href="/ops"><img src="/assets/mark.svg" width="34" height="34" alt=""><span>Trading Bots<small>PRIVATE OPERATIONS</small></span></a>${badge("PAPER ONLY", "blue")}</header><main id="main" tabindex="-1">${content}</main></div>`;
     return;
   }
-  root.innerHTML = `<aside class="sidebar"><a class="brand" href="/bots"><img src="/assets/mark.svg" width="34" height="34" alt=""><span>trading<span class="brand-light">bots</span><small>AUTOMATED STRATEGIES</small></span></a><div class="nav-label">ACCOUNT</div><nav aria-label="Primary">${nav.map(([href, text, icon]) => `<a href="${href}${q}" ${path === href || (href === "/bots" && (path === "/" || path.startsWith("/bots"))) ? 'aria-current="page"' : ""}><span aria-hidden="true">${icon}</span>${text}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="workspace-card"><span class="status-dot"></span><div>Paper environment<small>Live trading disabled</small></div></div></div></aside><div class="workspace"><header class="topbar"><span class="breadcrumb">Workspace <span>/</span> ${path.startsWith("/bots/theta") ? "Bots / THETA" : "Trading Bots"}</span><div class="top-actions"><span class="website-state"><span class="status-dot"></span>Platform online</span>${badge("PAPER ONLY", "blue")}<span class="avatar" aria-label="Visitor workspace">V</span></div></header><main id="main" tabindex="-1">${demo ? `<div class="demo-banner" role="status"><div><strong>DEMO DATA</strong> You’re viewing a test fixture. Values are synthetic.</div>${link(path, "Exit demo", "text-link")}</div>` : ""}${content}</main><footer><span>Trading Bots</span><span>Paper trading only. Activation unavailable.</span><a href="/bots/theta/how-it-works#risks">Options risk disclosure</a></footer></div>`;
+  root.innerHTML = `<aside class="sidebar"><a class="brand" href="/"><img src="/assets/mark.svg" width="34" height="34" alt=""><span>trading<span class="brand-light">bots</span><small>AUTOMATED STRATEGIES</small></span></a><div class="nav-label">ACCOUNT</div><nav aria-label="Primary">${nav.map(([href, text, icon]) => `<a href="${href}${q}" ${path === href || (href === "/overview" && path === "/") || (href === "/bots" && path.startsWith("/bots")) ? 'aria-current="page"' : ""}><span aria-hidden="true">${icon}</span>${text}</a>`).join("")}</nav><div class="sidebar-bottom"><div class="workspace-card"><span class="status-dot"></span><div>Paper environment<small>Live trading disabled</small></div></div></div></aside><div class="workspace"><header class="topbar"><span class="breadcrumb">Workspace <span>/</span> ${path.startsWith("/bots/theta") ? "Bots / THETA" : path === "/" || path === "/overview" ? "Home" : "Trading Bots"}</span><div class="top-actions"><span class="website-state"><span class="status-dot"></span>Platform online</span>${badge("PAPER ONLY", "blue")}<span class="avatar" aria-label="Visitor workspace">V</span></div></header><main id="main" tabindex="-1">${demo ? `<div class="demo-banner" role="status"><div><strong>DEMO DATA</strong> You’re viewing a test fixture. Values are synthetic.</div>${link(path, "Exit demo", "text-link")}</div>` : ""}${content}</main><footer><span>Trading Bots</span><span>Paper trading only. Activation unavailable.</span><a href="/bots/theta/how-it-works#risks">Options risk disclosure</a></footer></div>`;
 }
 function heading(eyebrow, title, description, actions = "") {
   return `<div class="page-heading"><div><p class="eyebrow">${esc(eyebrow)}</p><h1>${esc(title)}</h1><p class="lede">${esc(description)}</p></div><div class="heading-actions">${actions}</div></div>`;
 }
 function card(bot) {
-  return `<article class="bot-card ${bot.available ? "featured" : ""}"><div class="card-top"><span class="bot-monogram ${esc(bot.bot_id)}" aria-hidden="true">${{ theta: "Θ", atlas: "A", nexus: "N", vega: "V", event: "E", pulse: "P" }[bot.bot_id]}</span>${badge(bot.environment, bot.available ? "blue" : "")}</div><div class="card-name"><h2>${esc(bot.name)}</h2><span class="caption">${esc(bot.category)}</span></div><p class="card-description">${esc(bot.description)}</p><div class="card-properties"><span>Risk <strong>Unrated</strong></span><span>Capital <strong>Not established</strong></span><span>Holding <strong>${esc(bot.holding)}</strong></span></div>${
-    bot.available
-      ? `<div class="card-metrics">${bot.metrics
-          .slice(0, 3)
-          .map(
-            (m) => `<div><span>${esc(m.label)}</span><strong>—</strong></div>`,
-          )
-          .join("")}</div>`
-      : `<div class="research-note"><span class="tiny-square"></span>Not available <span>Coming later</span></div>`
-  }<p class="card-provenance">${bot.available ? "Paper testing is in progress. Results will appear after reconciled trades." : "Coming later"}</p><div class="card-actions">${link(`/bots/${bot.bot_id}${q}`, bot.available ? "View bot" : "Details", "button secondary grow")}${bot.available ? link("/bots/theta/copy", "Copy THETA", "button primary") : ""}</div></article>`;
+  return `<article class="bot-card roadmap-card"><div class="card-top"><span class="bot-monogram ${esc(bot.bot_id)}" aria-hidden="true">${{ theta: "Θ", atlas: "A", nexus: "N", vega: "V", event: "E", pulse: "P" }[bot.bot_id]}</span>${badge("COMING LATER")}</div><div class="card-name"><h2>${esc(bot.name)}</h2><span class="caption">${esc(bot.category)}</span></div><p class="card-description">Future ${esc(bot.strategy.toLowerCase())} strategy.</p><div class="research-note"><span class="tiny-square"></span>Not available</div><div class="card-actions">${link(`/bots/${bot.bot_id}`, "View details", "button secondary grow")}</div></article>`;
 }
 function discovery() {
   shell(
@@ -74,7 +64,7 @@ function discovery() {
       "Trading Bots",
       "Choose a bot and connect your paper account to copy its trades.",
     ) +
-      `<section class="theta-launch"><div><p class="eyebrow">AVAILABLE NOW</p><div class="launch-title"><span class="bot-monogram large theta" aria-hidden="true">Θ</span><div><h2>THETA</h2><p class="lede">Assignment-aware premium income.</p></div></div><p>THETA trades options in an Alpaca paper environment and keeps assignment, recovery, and costs in one economic record.</p><div class="launch-actions">${link("/bots/theta", "View bot", "button secondary")}${link("/bots/theta/copy", "Copy THETA", "button primary")}</div></div><aside><div class="receipt-label">BOT STATUS</div>${badge("PAPER TESTING", "blue")}<h3>Preparing</h3><p>Paper testing is in progress. Performance will appear after reconciled trades.</p></aside></section><section class="section-heading discovery-title"><div><p class="eyebrow">ROADMAP</p><h2>More bots coming</h2><p>These bots aren’t available yet.</p></div></section><div id="bot-grid" class="bot-grid research-grid"></div><details class="roadmap-browser"><summary>Search and filter bots</summary><form id="filters" class="filters compact-filters"><label class="search-field">Search<input name="search" type="search" placeholder="Bot name" value="${esc(url.searchParams.get("search") ?? "")}"></label>${[
+      `<section class="theta-product-card"><div class="theta-product-main"><div class="card-top"><div class="launch-title"><span class="bot-monogram large theta" aria-hidden="true">Θ</span><div><p class="eyebrow">PREMIUM INCOME</p><h2>THETA</h2></div></div>${badge("PAPER TESTING", "blue")}</div><p class="lede">An assignment-aware options strategy designed to collect premium and manage the full position when shares are assigned.</p><div class="product-metrics"><div><span>Return</span><strong>—</strong></div><div><span>Win rate</span><strong>—</strong></div><div><span>Max drawdown</span><strong>—</strong></div><div><span>Trades</span><strong>0</strong></div></div><p class="track-note">No validated track record yet.</p><div class="launch-actions">${link("/bots/theta", "View bot", "button secondary")}${link("/bots/theta/copy", "Copy THETA", "button primary")}</div></div><aside><h3>Paper testing</h3><p>THETA is preparing to build a reconciled paper track record. No customer orders can be placed from this site.</p>${link("/bots/theta/how-it-works", "How THETA works", "text-link")}</aside></section><section class="section-heading discovery-title"><div><p class="eyebrow">COMING LATER</p><h2>Future bots</h2><p>Five additional strategies are on the roadmap.</p></div></section><div id="bot-grid" class="bot-grid research-grid"></div><details class="roadmap-browser"><summary>Filter future bots</summary><form id="filters" class="filters compact-filters"><label class="search-field">Search<input name="search" type="search" placeholder="Bot name" value="${esc(url.searchParams.get("search") ?? "")}"></label>${[
         [
           "strategy",
           "Strategy",
@@ -124,7 +114,7 @@ function discovery() {
       ? research.map(card).join("")
       : empty(
           "No bots match these filters",
-          "Research bots are not yet risk-rated or available for activation. Reset filters to see the roadmap.",
+          "Reset the filters to see the roadmap.",
         );
     document.querySelector("#results-caption").textContent =
       `${result.length} ${result.length === 1 ? "strategy" : "strategies"}${f.sort !== "strategy" ? " · Ranking unavailable without validated comparable evidence. Catalog order retained." : ""}`;
@@ -140,7 +130,7 @@ function discovery() {
   filter();
 }
 function detailHeader(section) {
-  return `<div class="theta-context"><div class="bot-identity"><div class="bot-monogram theta" aria-hidden="true">Θ</div><div><div class="identity-line"><h1>THETA</h1>${badge(detail.environment, "blue")}</div><p>Premium Income</p></div></div><div class="heading-actions">${link("/bots/theta/copy", "Copy THETA", "button primary")}</div></div><div class="theta-context-copy"><p>THETA trades options using an assignment-aware premium strategy.</p><span>Paper copy is being prepared.</span></div><nav class="tabs theta-tabs" aria-label="THETA sections">${botTabs.map(([key, text]) => `<a href="/bots/theta${key ? "/" + key : ""}${q}" ${section === key ? 'aria-current="page"' : ""}>${text}</a>`).join("")}</nav>`;
+  return `<div class="theta-context"><div class="bot-identity"><div class="bot-monogram theta" aria-hidden="true">Θ</div><div><p class="eyebrow">PREMIUM INCOME</p><div class="identity-line"><h1>THETA</h1>${badge("PAPER TESTING", "blue")}</div><p>Assignment-aware options income</p></div></div><div class="heading-actions">${link("/bots/theta/copy", "Copy THETA", "button primary")}${link("/bots/theta/history", "View trades", "button secondary")}</div></div><div class="theta-context-copy"><p>THETA sells cash-secured puts and manages assignment, recovery, and covered calls as one complete position.</p><span>Paper track record is being built.</span></div><nav class="tabs theta-tabs" aria-label="THETA sections">${botTabs.map(([key, text]) => `<a href="/bots/theta${key ? "/" + key : ""}${q}" ${section === key ? 'aria-current="page"' : ""}>${text}</a>`).join("")}</nav>`;
 }
 function dataState() {
   const messages = [];
@@ -182,7 +172,7 @@ function dataState() {
     .join("");
 }
 function equityPanel(drawdown = false) {
-  return `<section class="panel equity-panel"><div class="section-heading"><div><p class="eyebrow">${demo ? "ILLUSTRATIVE ECONOMICS" : "PERFORMANCE"}</p><h2>${drawdown ? "Drawdown" : "Economic equity"}</h2></div><div class="chart-controls"><label>Series<select id="series" aria-label="Series"><option value="${drawdown ? "drawdown" : "total"}">${drawdown ? "Drawdown" : "Total economic equity"}</option>${drawdown ? "" : '<option value="realized">Realized P&L</option><option value="unrealized">Unrealized P&L</option><option value="benchmark">Benchmark</option><option value="drawdown">Drawdown</option><option value="capital_utilized">Capital utilized</option>'}</select></label><label>Period<select id="period" aria-label="Period"><option value="all">All</option><option value="30d">30d</option><option value="90d">90d</option><option value="1y">1y</option></select></label></div></div><div id="equity-chart">${chart(detail.performance.equity, drawdown ? "drawdown" : "total")}</div><p class="caption chart-caption">${demo ? "DEMO DATA · Starting equity $100,000 · Fees and modeled slippage included. All values are hypothetical." : "No published broker equity series. Missing values are unavailable, never zero."}</p><details class="chart-data"><summary>View chart values and accounting method</summary><p>Economic equity = starting capital + options realized + options unrealized + stock realized + stock unrealized + dividends − costs. Fill prices embed execution slippage; do not subtract it twice.</p>${table(
+  return `<section class="panel equity-panel"><div class="section-heading"><div><p class="eyebrow">${demo ? "DEMO DATA" : "PAPER PERFORMANCE"}</p><h2>${drawdown ? "Drawdown" : "Equity curve"}</h2></div>${detail.performance.equity.length ? `<div class="chart-controls"><label>View<select id="series" aria-label="Chart view"><option value="${drawdown ? "drawdown" : "total"}">${drawdown ? "Drawdown" : "Total equity"}</option>${drawdown ? "" : '<option value="realized">Realized</option><option value="unrealized">Unrealized</option><option value="drawdown">Drawdown</option>'}</select></label><label>Period<select id="period" aria-label="Period"><option value="all">All</option><option value="30d">30d</option><option value="90d">90d</option><option value="1y">1y</option></select></label></div>` : ""}</div><div id="equity-chart">${chart(detail.performance.equity, drawdown ? "drawdown" : "total")}</div>${demo ? '<p class="caption chart-caption">DEMO DATA. Synthetic values, not a track record.</p>' : ""}${detail.performance.equity.length ? `<details class="chart-data"><summary>View chart values</summary>${table(
     ["Date", "Total equity", "Realized", "Unrealized", "Drawdown"],
     detail.performance.equity.map((p) => [
       esc(p.date),
@@ -192,24 +182,21 @@ function equityPanel(drawdown = false) {
       p.drawdown.toFixed(2) + "%",
     ]),
     "Equity observations, DEMO DATA when populated",
-  )}</details></section>`;
+  )}</details>` : ""}</section>`;
 }
-function statusPanel() {
-  return `<aside class="panel status-panel"><div class="section-heading"><h2>Bot status</h2>${badge(detail.status.runtime === "RUNNING" ? "RUNNING" : "PREPARING", detail.status.runtime === "RUNNING" ? "green" : "amber")}</div><dl class="facts"><div><dt>Environment</dt><dd>${badge(detail.status.mode, "blue")}</dd></div><div><dt>Broker</dt><dd>${detail.status.broker === "CONNECTED" ? "Alpaca Paper connected" : "Not connected"}</dd></div><div><dt>Risk status</dt><dd>${detail.status.runtime === "RUNNING" ? "Normal" : "Unavailable"}</dd></div><div><dt>Capital in use</dt><dd>${demo ? "DEMO: $18,000" : "Unavailable"}</dd></div><div><dt>Open positions</dt><dd>${detail.positions.length}</dd></div><div><dt>Next check</dt><dd>${date(detail.status.next_evaluation)}</dd></div></dl><p class="notice">${demo ? "Test fixture values aren’t a running paper account." : "Current account and market data will appear after the paper runtime is connected."}</p>${link("/account", "Account connection", "text-link")}</aside>`;
-}
-
 function performanceHeadline() {
-  if (demo || detail.performance.metrics.some((metric) => metric.value != null))
-    return `<div class="kpi-strip">${detail.performance.metrics.map((m) => metricCard(m, demo)).join("")}</div>`;
-  return `<section class="track-building"><div><p class="eyebrow">PAPER TESTING</p><h2>Building a paper track record</h2><p>THETA does not have enough reconciled trades for a performance record yet. Open stock losses, costs, and assignment remain part of the result.</p></div><div><strong>${esc(detail.performance.track_record.resolved_episodes ?? 0)}</strong><span>resolved trades</span></div></section>`;
+  const byName = (name) => detail.performance.metrics.find((item) => item.technical_name === name)?.value ?? null;
+  const pnl = byName("Whole-Chain P&L");
+  const rows = [
+    { label: "Total return", technical_name: "Economic return", unit: "PERCENT", value: demo && pnl != null ? pnl / 1000 : null, explanation: "Total economic gain or loss relative to starting capital.", reason: "" },
+    { label: "Total P&L", technical_name: "Whole-Chain P&L", unit: "USD", value: pnl, explanation: "Options, assigned stock, dividends, fees, and costs.", reason: "" },
+    { label: "Win rate", technical_name: "Managed Episode WR", unit: "PERCENT", value: byName("Managed Episode WR"), explanation: "Share of completed economic episodes that ended profitably.", reason: "" },
+    { label: "Max drawdown", technical_name: "Maximum Drawdown", unit: "PERCENT", value: byName("Maximum Drawdown"), explanation: "Largest decline from a prior equity peak.", reason: "" },
+    { label: "Trades", technical_name: "Completed trades", unit: "COUNT", value: demo ? detail.performance.track_record.resolved_episodes : null, explanation: "Completed and reconciled paper episodes.", reason: "" },
+    { label: "Open positions", technical_name: "Open positions", unit: "COUNT", value: demo ? detail.positions.length : null, explanation: "Broker-reconciled positions currently open.", reason: "" },
+  ];
+  return `<div class="kpi-strip customer-kpis">${rows.map((item) => metricCard(item, demo)).join("")}</div>`;
 }
-function decisionReceipt() {
-  const activity = detail.activity.at(-1);
-  if (!activity)
-    return `<section class="decision-receipt"><p class="eyebrow">LATEST DECISION</p><h2>No paper decision yet</h2><p>When the runtime is connected, this receipt will show the action, reason, account impact, and next check.</p></section>`;
-  return `<section class="decision-receipt"><div class="receipt-top"><div><p class="eyebrow">LATEST DECISION</p><h2>${esc(customerDecision(activity.kind))}</h2></div>${badge(demo ? "DEMO DATA" : "PAPER", demo ? "demo" : "blue")}</div><p class="receipt-reason">${esc(activity.message)}</p><dl class="receipt-facts"><div><dt>Reason</dt><dd>${esc(activity.detail)}</dd></div><div><dt>Next check</dt><dd>${date(detail.status.next_evaluation)}</dd></div></dl><div class="receipt-footer"><span>${date(activity.time)}</span></div></section>`;
-}
-
 function customerDecision(kind) {
   return ({
     WAIT_PRICE: "Waiting for a better price",
@@ -223,130 +210,65 @@ function customerDecision(kind) {
   })[kind] ?? label(kind);
 }
 function overview() {
-  return `<section class="runtime-strip"><div><span>STATUS</span><strong>Preparing</strong></div><div><span>BROKER</span><strong>Alpaca Paper</strong></div><div><span>LAST CHECKED</span><strong>${date(detail.as_of)}</strong></div><div><span>LAST DECISION</span><strong>${date(detail.status.last_decision)}</strong></div><div><span>OPEN POSITIONS</span><strong>${detail.positions.length}</strong></div></section>${performanceHeadline()}<div class="overview-grid"><div>${decisionReceipt()}<section class="panel"><div class="section-heading"><h2>Current positions</h2>${link("/bots/theta/positions" + q, "View all", "text-link")}</div>${detail.positions.length ? positionRows(detail.positions.slice(0, 3)) : empty("No open positions", "Positions will appear after broker reconciliation.")}</section><section class="panel"><div class="section-heading"><h2>Recent activity</h2>${link("/activity", "View all", "text-link")}</div>${activityList(detail.activity.slice(-4))}</section></div>${statusPanel()}</div><section class="panel about-theta"><h2>About THETA</h2><p>THETA sells cash-secured puts, manages assignment as stock ownership, and uses recovery or covered calls only when the economics support them. Some trades may be skipped or reduced to respect account limits.</p></section>`;
+  return `${performanceHeadline()}${!demo && !detail.performance.metrics.some((item) => item.value != null) ? '<p class="track-note centered">Paper track record is being built. Performance will appear after completed paper trades.</p>' : ""}<div class="overview-grid customer-overview"><div><section class="panel"><div class="section-heading"><div><h2>Current positions</h2><p>What THETA is trading now.</p></div>${link("/bots/theta/positions" + q, "View all", "text-link")}</div>${detail.positions.length ? positionRows(detail.positions.slice(0, 3)) : empty("No open positions", "THETA has no published paper positions right now.")}</section><section class="panel"><div class="section-heading"><h2>Recent activity</h2>${link("/activity", "View all", "text-link")}</div>${activityList(detail.activity.slice(-4))}</section></div><aside class="panel theta-summary"><h2>Before you copy</h2><ul class="plain-list"><li>Cash-secured puts can lead to share assignment.</li><li>Assigned shares can lose value and tie up capital.</li><li>Covered calls are used only when the economics support them.</li><li>Your account limits can cause trades to be reduced or skipped.</li></ul>${link("/bots/theta/how-it-works", "How THETA works", "text-link")}</aside></div>`;
 }
 function performance() {
-  return `${performanceHeadline()}${equityPanel()}<div class="two-columns"><section class="panel"><h2>Monthly returns</h2>${detail.performance.monthly.length ? `<div class="returns">${detail.performance.monthly.map((m) => `<div><span>${esc(m.month)}</span><strong class="${m.return_pct < 0 ? "negative" : "positive"}">${m.return_pct.toFixed(2)}%</strong><small>DEMO DATA</small></div>`).join("")}</div>` : empty("No monthly record", "Returns require published economic equity, including open inventory.")}</section><section class="panel"><h2>Attribution</h2>${
-    detail.performance.attribution.length
-      ? table(
-          ["Lifecycle outcome", "Economic P&L", "Episodes"],
-          detail.performance.attribution.map((a) => [
-            esc(a.label),
-            money(a.pnl),
-            String(a.episodes),
-          ]),
-          "DEMO DATA · Economic attribution",
-        )
-      : empty(
-          "No supported attribution",
-          "Regime, underlying, DTE, ownership, volatility and management cohorts need validated evidence.",
-        )
-  }</section></div><section class="panel"><h2>Rolling metrics</h2><p>30d, 90d, 1y and all-time PF, episode WR, after-cost EV and drawdown require dated, resolved episode records. ${demo ? "The illustration has an equity series, but not enough dated episode records for rolling performance." : ""}</p>${badge("INSUFFICIENT DATA")}</section><details class="panel"><summary>Advanced metrics & statistical confidence</summary><div class="advanced-grid">${detail.performance.advanced.map((m) => metricCard(m, demo)).join("")}</div><p>Raw N ${demo ? "= 5 synthetic episodes" : "is unknown"}. Independent N, confidence intervals and untouched OOS evidence are unavailable. No performance claim can be inferred.</p></details><section class="panel"><h2>Execution quality</h2>${empty("No measured fill quality", "Slippage, fill probability and markouts require broker fills and contemporaneous benchmarks. No midpoint fills are assumed.")}</section>${trackRecord(detail.performance.track_record)}`;
+  const hasRecord = demo || detail.performance.track_record.resolved_episodes > 0;
+  if (!hasRecord)
+    return `<section class="panel performance-empty">${empty("THETA is building its paper track record", "Performance will appear after completed paper trades.", link("/bots/theta", "Back to THETA", "button secondary"))}</section>`;
+  const profitFactor = detail.performance.metrics.find((item) => item.technical_name === "Profit Factor") ?? { label: "Profit factor", technical_name: "Profit Factor", unit: "RATIO", value: null, explanation: "Gross wins divided by gross losses." };
+  return `${performanceHeadline()}<div class="single-kpi">${metricCard(profitFactor, demo)}</div>${equityPanel()}<div class="two-columns"><section class="panel"><h2>Monthly returns</h2><div class="returns">${detail.performance.monthly.map((m) => `<div><span>${esc(m.month)}</span><strong class="${m.return_pct < 0 ? "negative" : "positive"}">${m.return_pct.toFixed(2)}%</strong><small>DEMO DATA</small></div>`).join("")}</div></section><section class="panel"><h2>Recent completed trades</h2>${tradeRows(detail.history.slice(-5))}</section></div><details class="panel customer-more"><summary>More statistics</summary><p>Additional validated customer metrics will appear as the reconciled paper sample grows. Detailed model, execution, and statistical diagnostics remain in the private operator console.</p></details>`;
 }
 function positions() {
-  return `<section class="panel"><div class="section-heading"><div><h2>Positions & inventory</h2><p>Each position belongs to a complete economic chain.</p></div>${badge(demo ? "DEMO_DATA" : "PAPER", demo ? "demo" : "blue")}</div><label class="inline-filter">Lifecycle<select id="position-filter" aria-label="Lifecycle"><option value="">All states</option>${["CSP", "Assignment", "Stock", "Recovery", "Covered Call", "Roll", "Closing"].map((v) => `<option>${v}</option>`).join("")}</select></label><div id="positions-table">${positionRows(detail.positions)}</div></section>`;
+  return `<section class="panel"><div class="section-heading"><div><h2>Positions</h2><p>Open positions copied by THETA.</p></div>${badge(demo ? "DEMO DATA" : "PAPER", demo ? "demo" : "blue")}</div><div id="positions-table">${positionRows(detail.positions)}</div></section>`;
 }
 function positionRows(rows) {
   return rows.length
     ? table(
         [
-          "Bot / Symbol",
-          "Lifecycle",
-          "Contract / position",
-          "Entry / close",
-          "Capital",
-          "Open MTM",
-          "Whole-chain P&L",
-          "Current action",
-          "Next evaluation",
+          "Symbol",
+          "Strategy",
+          "Position",
+          "Strike",
+          "Expiry",
+          "Entry",
+          "Current value",
+          "P&L",
+          "Status",
         ],
         rows.map((p) => [
-          link(
-            `/bots/theta/chains/${p.chain_id}${q}`,
-            `THETA / ${p.symbol}`,
-            "text-link",
-          ),
-          badge(p.lifecycle_state, "amber"),
-          `<span class="mono">${esc(p.contract ?? p.position)}</span><small>${p.expiration ? `${esc(p.expiration)} · ${money(p.strike)}` : esc(p.position)}</small>`,
-          `<span>${money(p.entry_credit)} credit</span><small>${p.current_close_debit == null ? "Close debit unavailable" : `${money(p.current_close_debit)} close debit`}</small>`,
-          `${money(p.capital_committed)}<small>Economic basis ${money(p.economic_basis)}</small>`,
-          `<span class="${p.open_mtm < 0 ? "negative" : "positive"}">${money(p.open_mtm)}</span><small>Stock MTM ${money(p.stock_mtm)}</small>`,
-          `<span class="negative">${money(p.whole_chain_pnl)}</span>`,
-          `<strong>${esc(label(p.current_action))}</strong><small>${esc(p.reason)}</small>`,
-          p.next_evaluation ? date(p.next_evaluation) : esc(p.next_action),
+          link(`/bots/theta/chains/${p.chain_id}${q}`, p.symbol, "text-link"),
+          "THETA",
+          `<span class="mono">${esc(p.contract ?? p.position)}</span>`,
+          p.strike == null ? "—" : money(p.strike),
+          p.expiration ?? "—",
+          money(p.entry_credit),
+          p.current_price == null ? "—" : money(p.current_price),
+          `<span class="${p.whole_chain_pnl < 0 ? "negative" : "positive"}">${money(p.whole_chain_pnl)}</span>`,
+          badge(customerPositionStatus(p.lifecycle_state), "amber"),
         ]),
-        "Position lifecycle ledger · DEMO DATA",
+        demo ? "Open positions, DEMO DATA" : "Open positions",
       )
     : empty(
-        "No positions to display",
-        "No reconciled position data is published for this view. This does not assert that a brokerage account has zero exposure.",
+        "No open positions",
+        "THETA has no published paper positions right now.",
       );
 }
+function customerPositionStatus(value) {
+  return ({ CSP_OPEN: "Put open", ASSIGNMENT: "Assigned", STOCK: "Shares held", RECOVERY_WAIT: "Waiting for recovery", COVERED_CALL: "Covered call", ROLL: "Rolling", CLOSING: "Closing" })[value] ?? label(value);
+}
+function customerTradeAction(value) {
+  return ({ OPEN_CSP: "Opened put", CLOSE_CSP: "Closed put", EXPIRE: "Put expired", ROLL: "Rolled position", ACCEPT_ASSIGNMENT: "Assigned shares", STOCK_HELD: "Held shares", RECOVERY_WAIT: "Waiting for recovery", SELL_CC: "Sold covered call", CLOSE_CC: "Closed covered call", CALL_AWAY: "Shares called away", CLOSE_STOCK: "Sold shares", REDEPLOY: "Ready for next trade" })[value] ?? label(value);
+}
+function tradeRows(rows) {
+  return rows.length ? table(
+    ["Date", "Symbol", "Action", "Contract", "Entry / exit", "P&L", "Status"],
+    rows.map((t) => [date(t.time), esc(t.symbol), esc(customerTradeAction(t.action)), `<span class="mono">${esc(t.contract ?? "Shares")}</span>`, t.fill == null ? "—" : money(t.fill), money(t.pnl_effect), badge(t.status, demo ? "demo" : "blue")]),
+    demo ? "Completed trades, DEMO DATA" : "Completed paper trades",
+  ) : empty("No trades yet", "Completed paper trades will appear here.");
+}
 function tradeHistory() {
-  return `<section class="panel"><h2>Trade history</h2><p>Semantic actions keep rolls, assignment and recovery understandable.</p>${
-    detail.history.length
-      ? table(
-          [
-            "Time",
-            "Bot / Symbol",
-            "Action",
-            "Contract",
-            "Qty",
-            "Expected",
-            "Fill",
-            "Slippage",
-            "P&L effect",
-            "Chain",
-            "Status",
-          ],
-          detail.history.map((t) => [
-            date(t.time),
-            `THETA / ${esc(t.symbol)}`,
-            `<details><summary>${esc(label(t.action))}</summary><p>${esc(t.reasons.join(" "))}</p><dl class="facts"><div><dt>AEGIS</dt><dd>${esc(t.aegis)}</dd></div><div><dt>Snapshot</dt><dd>${esc(t.snapshot_ref)}</dd></div><div><dt>Management</dt><dd>${esc(t.management_state)}</dd></div></dl></details>`,
-            `<span class="mono">${esc(t.contract ?? "Stock / cash")}</span>`,
-            String(t.qty),
-            money(t.expected),
-            money(t.fill),
-            money(t.slippage),
-            money(t.pnl_effect),
-            link(
-              `/bots/theta/chains/${t.chain_id}${q}`,
-              "View chain",
-              "text-link",
-            ),
-            badge(t.status, "demo"),
-          ]),
-          "Illustrative ledger events, not a live trade record",
-        )
-      : empty(
-          "No trades published",
-          "Executed, skipped and reconciled actions will appear with decision reasons and chain references.",
-        )
-  }</section>`;
-}
-function intelligence() {
-  return `<div class="intelligence-heading"><span class="eyebrow">EVIDENCE BEFORE INSIGHT</span><h2>Strategy intelligence</h2><p>Understand behavior, outcomes and uncertainty in context.</p></div><div class="two-columns">${detail.intelligence.sections.map((s) => `<section class="panel"><div class="section-heading"><h2>${esc(s.title)}</h2>${badge(s.evidence, "violet")}</div><p>${esc(s.summary)}</p></section>`).join("")}<section class="panel"><div class="section-heading"><h2>Model health</h2>${badge("MODEL UNAVAILABLE")}</div><p>${esc(detail.intelligence.model.explanation)}</p><dl class="facts"><div><dt>Calibration</dt><dd>Unknown</dd></div><div><dt>Drift</dt><dd>Unknown</dd></div><div><dt>Confidence quality</dt><dd>Insufficient data</dd></div></dl></section></div>`;
-}
-function risk() {
-  return `<div class="notice amber">Risk classification is unvalidated. Selling puts creates downside and inventory risk even when the premium is small.</div><div class="kpi-strip three">${detail.risk_view.metrics.map((m) => metricCard(m, demo)).join("")}</div><div class="two-columns"><section class="panel"><h2>Largest risk</h2><p>${demo ? "DEMO DATA: assigned AAPL shares hold $18,000 of capital and a $2,500 unrealized loss. Further stock declines would increase that loss." : "Current exposure is unavailable. Assignment can create concentrated stock ownership and a prolonged recovery period."}</p><h3>Ticker exposure</h3>${
-    detail.risk_view.exposures.length
-      ? table(
-          ["Underlying", "Committed capital"],
-          detail.risk_view.exposures.map((e) => [
-            esc(e.symbol),
-            money(e.capital),
-          ]),
-          "DEMO DATA · Exposure",
-        )
-      : empty(
-          "Exposure unknown",
-          "A current account and position snapshot is required.",
-        )
-  }</section><section class="panel"><h2>Stress scenarios</h2>${table(
-    ["Scenario", "Estimated loss"],
-    detail.risk_view.stress.map((s) => [esc(s.scenario), "Unavailable"]),
-    "Stress estimates",
-  )}<p class="caption">Scenario tests are estimates, not guarantees. No stress result is fabricated without a portfolio and validated model.</p></section></div><details class="panel"><summary>Advanced portfolio risk</summary><dl class="facts">${["Delta", "Gamma", "Vega", "Theta", "Sector concentration", "Correlation", "Expected Shortfall"].map((n) => `<div><dt>${n}</dt><dd>Unknown</dd></div>`).join("")}</dl><p>Greeks require source, time, units and normalization. Unknown correlation is not zero correlation.</p></details>`;
+  return `<section class="panel"><div class="section-heading"><div><h2>Trade history</h2><p>Completed THETA paper trades.</p></div>${badge(demo ? "DEMO DATA" : "PAPER", demo ? "demo" : "blue")}</div>${tradeRows(detail.history)}</section>`;
 }
 function activityList(items) {
   return items.length
@@ -359,7 +281,7 @@ function activityList(items) {
         .join("")}</ol>`
     : empty(
         "No activity published",
-        "Trades and bot decisions will appear here after the paper runtime is connected.",
+        "Trades and bot activity will appear here after the paper runtime is connected.",
       );
 }
 function chain() {
@@ -487,7 +409,12 @@ function myBots() {
       "Manage the bots connected to your paper account.",
       link("/bots/theta/copy", "Copy THETA", "button primary"),
     ) +
-      `<section class="panel my-bots-empty">${empty("No bots are copying yet", "Connect an Alpaca Paper account, choose a copy amount, and review your safety limits.", link("/bots/theta/copy", "Set up THETA", "button primary"))}<p class="notice">Paper copy is being prepared. Pause and stop controls will appear only after activation is released.</p></section>`,
+      `<section class="panel my-bots-empty">${empty("No bots are copying yet", "Connect an Alpaca Paper account and choose how much you want THETA to use.", link("/bots/theta/copy", "Copy THETA", "button primary"))}<p class="simple-status">Paper copying is being enabled. Pause and stop controls will appear after activation is available.</p></section>`,
+  );
+}
+function home() {
+  shell(
+    `<section class="home-hero"><div><p class="eyebrow">AUTOMATED OPTIONS BOTS</p><h1>Copy options strategies with your Alpaca Paper account.</h1><p class="lede">Start with THETA, review its paper performance, and choose how much capital you want it to use.</p><div class="heading-actions">${link("/bots/theta", "View THETA", "button secondary")}${link("/bots/theta/copy", "Copy THETA", "button primary")}</div></div><aside><div class="launch-title"><span class="bot-monogram large theta" aria-hidden="true">Θ</span><div><h2>THETA</h2><p>Assignment-aware premium strategy</p></div></div>${badge("PAPER TESTING", "blue")}<dl class="home-bot-facts"><div><dt>Track record</dt><dd>Building</dd></div><div><dt>Open positions</dt><dd>—</dd></div><div><dt>Customer copying</dt><dd>Coming soon</dd></div></dl></aside></section><section class="home-steps"><div><span>1</span><p><strong>Choose a bot</strong>Understand the strategy and risks.</p></div><div><span>2</span><p><strong>Connect Alpaca Paper</strong>Your brokerage account stays with Alpaca.</p></div><div><span>3</span><p><strong>Set your limits</strong>Choose capital and a risk preference.</p></div><div><span>4</span><p><strong>Track results</strong>See positions, trades, and economic P&amp;L.</p></div></section>`,
   );
 }
 async function load() {
@@ -504,7 +431,8 @@ async function load() {
     if (body.api_version !== "v1" || !Array.isArray(body.data))
       throw new Error("contract");
     catalog = body.data;
-    if (path === "/" || path === "/bots") discovery();
+    if (path === "/") home();
+    else if (path === "/bots") discovery();
     else if (path === "/compare") compare();
     else if (path === "/my-bots") myBots();
     else if (path === "/ops" || path === "/ops/login" || path === "/owner") {
@@ -574,9 +502,9 @@ async function load() {
           heading(
             "YOUR TIMELINE",
             "Activity",
-            "Trades and bot decisions in one chronological feed.",
+            "Your trades and THETA activity in one place.",
           ) +
-            `<div class="activity-filters" role="group" aria-label="Activity filter"><button class="button secondary" data-feed="all" aria-pressed="true">All</button><button class="button quiet" data-feed="trade" aria-pressed="false">Trades</button><button class="button quiet" data-feed="decision" aria-pressed="false">Bot decisions</button></div><section class="panel">${activityList(detail.activity)}</section>`,
+            `<div class="activity-filters" role="group" aria-label="Activity filter"><button class="button secondary" data-feed="all" aria-pressed="true">All</button><button class="button quiet" data-feed="trade" aria-pressed="false">Trades</button><button class="button quiet" data-feed="decision" aria-pressed="false">Bot activity</button></div><section class="panel">${activityList(detail.activity)}</section>`,
         );
         document.querySelectorAll("[data-feed]").forEach((button) => button.addEventListener("click", () => {
           const kind = button.dataset.feed;
@@ -585,19 +513,11 @@ async function load() {
         }));
       }
       else if (path === "/overview")
-        shell(
-          heading(
-            "WORKSPACE OVERVIEW",
-            "Systematic, with perspective.",
-            "Start with a strategy. Understand its behavior. Follow the evidence.",
-            link("/bots", "Explore strategies", "button primary"),
-          ) +
-            `<div class="two-columns"><section class="panel feature-overview"><span class="eyebrow">IN DEVELOPMENT</span><h2>THETA</h2><p class="lede">Premium income, across the whole Wheel.</p><p>Cash-secured puts, assignment-aware management and patient stock recovery.</p>${link("/bots/theta" + q, "Explore THETA →", "text-link")}</section>${statusPanel()}</div><section class="panel"><h2>Platform activity</h2>${activityList(detail.activity)}</section>`,
-        );
+        home();
       else if (id !== "theta")
         shell(
-          heading("RESEARCH ROADMAP", detail.name, detail.description) +
-            `<section class="panel">${badge("RESEARCH")} ${badge("COMING LATER")}<h2>${esc(detail.category)}</h2><p>Not available. No validated performance, capital requirement, risk rating or release date is established.</p>${link("/bots", "Back to bots")}</section>`,
+          heading("COMING LATER", detail.name, detail.description) +
+            `<section class="panel future-detail">${badge("NOT AVAILABLE")}<h2>${esc(detail.category)}</h2><p>This bot isn’t available yet. THETA is the only strategy currently in paper testing.</p>${link("/bots", "Back to bots")}</section>`,
         );
       else if (path.endsWith("/copy")) {
         const readinessResponse = await fetch("/api/v1/copy/readiness", { signal: abort.signal });
@@ -614,8 +534,6 @@ async function load() {
           performance,
           positions,
           history: tradeHistory,
-          intelligence,
-          risk,
           "how-it-works": howItWorks,
           chains: chain,
         }[section];

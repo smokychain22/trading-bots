@@ -49,3 +49,43 @@ durability-file count. See `docs/quant/PHASE2_4_CORRECTION_AUDIT.md` and
 NEXT RECOMMENDED TASK: Start only the first empirical prerequisite after explicit
 approval: historical-data and provider-capability evidence. Do not begin an empirical
 run, paper order or copy activation until the documented prerequisites are met.
+
+## 2026-09-10 customer UX final correction pass
+
+OWNER: Codex
+
+TASK: Reconstruct the public experience around a simple PAPER copy-trading journey
+and strengthen the private operator status surface without changing THETA models.
+
+FILES CHANGED: `public/assets/app.js`, `public/assets/workflows.js`,
+`public/assets/ui.js`, `public/assets/styles.css`, `tests/browser/platform.spec.ts`,
+`docs/product/OWNER_OPS_IA.md`, and verification documentation.
+
+WHAT WAS IMPLEMENTED: A direct customer home page, a product-style THETA card,
+four customer THETA tabs, simple performance/position/trade empty states, a four-step
+copy setup, plain account messaging, customer-safe activity wording, and a denser
+read-only `/ops` control center. Copy and Alpaca connection controls remain visibly
+unavailable until their backend gates pass.
+
+TESTS RUN: TypeScript check, ESLint, Node tests, Python tests, Playwright customer
+journeys, axe WCAG AA analysis, responsive overflow checks, production build,
+security scan, dependency audit, secret-pattern checks, and Git diff checks.
+
+TEST RESULTS: See `docs/BOTS_VERIFICATION.md` and the release commit for exact final
+counts and deployment status.
+
+KNOWN LIMITATIONS: Customer OAuth, customer IAM, follower token storage, runtime
+persistence, master-fill ingestion, follower sizing, child orders, reconciliation,
+pause, stop, and copy activation remain unavailable. Reticle connected to the app but
+could not issue a verdict because this client lacks its MCP verdict tools and the repo
+has no saved flows.
+
+RISKS: The current `/ops` login uses one temporary shared operator secret. It lacks
+per-owner identity, MFA, roles, and durable audit attribution. Paper runtime and
+website deployment must continue to be treated as separate release states.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: No quant code changed. Claude should consume the
+customer-safe runtime boundary and continue to avoid commits or pushes.
+
+NEXT RECOMMENDED TASK: Return to the first runtime persistence and provider-backed
+shadow decision milestone. Do not enable customer copy activation or submit an order.

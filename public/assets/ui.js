@@ -35,7 +35,12 @@ export function metricCard(m, demo = false) {
           : Number(m.value).toLocaleString("en-US", {
               maximumFractionDigits: 2,
             });
-  return `<article class="metric"><div class="metric-title">${esc(m.label)}<details class="tooltip"><summary aria-label="About ${esc(m.label)}">i</summary><p><strong>${esc(m.technical_name)}</strong><br>${esc(m.explanation)}</p></details></div><p class="metric-value ${m.value != null && m.unit === "USD" ? (m.value < 0 ? "negative" : "positive") : ""}">${value}</p><span class="caption">${demo && m.value != null ? "DEMO DATA" : esc(m.reason ?? m.technical_name)}</span></article>`;
+  const caption = demo && m.value != null
+    ? "DEMO DATA"
+    : m.value == null
+      ? m.reason === "" ? "" : "Paper track record is being built"
+      : m.reason ?? m.technical_name;
+  return `<article class="metric"><div class="metric-title">${esc(m.label)}<details class="tooltip"><summary aria-label="About ${esc(m.label)}">i</summary><p><strong>${esc(m.technical_name)}</strong><br>${esc(m.explanation)}</p></details></div><p class="metric-value ${m.value != null && m.unit === "USD" ? (m.value < 0 ? "negative" : "positive") : ""}">${value}</p>${caption ? `<span class="caption">${esc(caption)}</span>` : ""}</article>`;
 }
 export function empty(title, text, action = "") {
   return `<div class="empty"><span class="empty-symbol" aria-hidden="true">⌁</span><h3>${esc(title)}</h3><p>${esc(text)}</p>${action}</div>`;
@@ -45,42 +50,11 @@ export const link = (href, text, cls = "button secondary") =>
 export function table(headers, rows, caption) {
   return `<div class="table-scroll" tabindex="0" role="region" aria-label="${esc(caption)}"><table><caption>${esc(caption)}</caption><thead><tr>${headers.map((h) => `<th scope="col">${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
-export function trackRecord(record) {
-  const bool = (v) => (v == null ? "Unknown" : v ? "Included" : "Excluded");
-  const rows = [
-    ["Source", record.source],
-    ["Environment", record.environment],
-    ["Data class", label(record.provenance)],
-    ["Start date", record.start_date ?? "Unavailable"],
-    ["Last update", date(record.as_of)],
-    [
-      "Live duration",
-      record.live_duration_days == null
-        ? "No live record"
-        : `${record.live_duration_days} days`,
-    ],
-    [
-      "Paper duration",
-      record.paper_duration_days == null
-        ? "No published paper record"
-        : `${record.paper_duration_days} days`,
-    ],
-    ["Resolved episodes", record.resolved_episodes ?? "Insufficient data"],
-    ["Independent N", record.independent_n ?? "Insufficient data"],
-    ["Open positions", bool(record.open_positions_included)],
-    ["Fees / commissions", bool(record.fees_included)],
-    ["Slippage", bool(record.slippage_included)],
-    ["Stock mark-to-market", bool(record.stock_mtm_included)],
-    ["Assignment", bool(record.assignment_included)],
-  ];
-  return `<section class="panel"><div class="section-heading"><h2>Track record & data</h2>${badge(record.provenance, record.provenance === "DEMO_DATA" ? "demo" : "")}</div><dl class="facts">${rows.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl><p class="notice">${esc(record.limitation)}</p></section>`;
-}
 export function chart(points, series = "total") {
   if (!points.length)
     return empty(
-      "The record starts with evidence",
-      "Economic equity will appear here once reconciled performance is published. Open stock losses and costs will stay visible.",
-      link("/bots/theta?dataset=demo", "Explore an illustrated record"),
+      "Paper track record is being built",
+      "The equity curve will appear after completed paper trades.",
     );
   const values = points.map((p) => p[series]);
   if (values.some((v) => v == null))

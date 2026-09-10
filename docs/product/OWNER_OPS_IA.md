@@ -1,10 +1,9 @@
 # Owner/Operator Console — Information Architecture
 
-Specification for the private `/ops` console (R5G, not yet implemented). Never
-appears in customer navigation; requires real authentication/authorization before any
-production use (not yet built — the existing `readiness-handler.ts`'s Bearer-token
-pattern is the closest current analogue, but a real console needs proper session-based
-auth, not a single shared token).
+Specification and current foundation for the private `/ops` console. It never appears
+in customer navigation. The current release uses a temporary shared operator secret
+to create a signed, 15-minute, HttpOnly session. Proper owner IAM is still required
+before this can be considered a complete production administration system.
 
 ## Top-level sections
 
@@ -71,11 +70,29 @@ auth, not a single shared token).
 
 ## Route and access
 
-`/ops` (or `/admin`), never linked from customer navigation, gated by real session-
-based authentication (to be designed — not yet built) rather than the single shared
-Bearer token `readiness-handler.ts` currently uses for its narrower, single-purpose
-private endpoint.
+The canonical route is `/ops`. An unauthenticated request redirects to `/ops/login`.
+No customer page or navigation element links to either route.
+
+Current owner access procedure:
+
+1. Open `/ops/login` on the deployed trading-bots domain.
+2. Enter the operator access key held in the authorized secret store and configured
+   server-side as `THETA_READINESS_TOKEN`. Never paste this value into source code,
+   issue text, chat logs, or browser storage.
+3. Select **Open operations**. The server checks the key using a timing-safe
+   comparison, returns a signed Secure, HttpOnly, SameSite=Strict cookie, and redirects
+   to `/ops`.
+4. The session expires after 15 minutes. Select **Sign out** to invalidate it sooner.
+
+The shared-secret login is temporary. It has no per-user identity, MFA, role model,
+revocation list, or durable operator audit identity. Replace it with owner IAM before
+any operator mutation or broader team access is released.
 
 ## Status
 
-SPECIFIED. No `/ops` route exists yet. This document is the target IA for R5G.
+FOUNDATION IMPLEMENTED. `/ops` now provides read-only runtime, provider, decision,
+execution, economic-record, copy-engine, infrastructure, release-gate, and incident
+visibility. Most runtime values correctly remain `UNKNOWN` or `BLOCKED` until their
+persistent services exist. Provider verification is read-only. No trading mutation is
+exposed. The full tabbed console, owner IAM, persistent audit log, incident workflows,
+and runtime-backed metrics remain future work.
