@@ -66,7 +66,49 @@ before this slice can be called fully done: staleness detection design decision 
 made here, flagged above), and the `iv_change_since_entry`/`rv_change_since_entry`-
 style freshness signal if a future capability needs it.
 
-## Phase 2B-2G, Phase 3A-3D
+## Phase 2B-quant / 2C-quant — management/AEGIS/sizing/execution decision models
+
+**Status: IMPLEMENTED (transparent baselines, per MODEL-001).** Built directly in
+Python (`bots/theta/quant/models/`) rather than in TypeScript, because the TS runtime
+plumbing (Phase 2B/2C's orchestration layer) has nothing real to call without these
+models existing first — building the TS shell first would have been hollow
+scaffolding. All modules are deterministic, reason-coded, explicit-input formulas, not
+fitted models; every UNKNOWN input propagates as `None`/UNKNOWN, never a fabricated
+default. 66 new tests, all passing, added alongside:
+
+- `management_action_value.py` — same-state `ManagementUtility` comparison across
+  HOLD/CLOSE/EXPIRE/ROLL/ASSIGN/REDEPLOY from one shared `ManagementContext` snapshot
+  (H-M-01, RETAIN). Folds `RollUtility`/`NetRollCredit` in directly (no separate roll
+  evaluator module) so the "no double counting" and "same timestamp" requirements are
+  enforced structurally rather than by convention across two files.
+- `assignment_model.py` — H-A-01's accept-vs-mechanically-close economics.
+- `recovery_decision.py` — RECOVERY_WAIT / SELL_STOCK / SELL_CC, enforcing H-A-02's
+  bound-must-exist rule (no code path for unconditional waiting) and H-C-02's
+  never-automatic-CC rule.
+- `covered_call_ranker.py` — WAIT / SELL_STOCK / SELL_CC(candidates) frontier via
+  `CCUtility`, rejecting a positive-premium CC when `CallAwayRegret` dominates.
+- `aegis.py` — the full risk contract (`ALLOW_FULL`/`ALLOW_REDUCED`/
+  `DEFINED_RISK_ONLY`/`HOLD_ONLY`/`HARD_VETO`) across 12 independent risk families,
+  strictest-wins aggregation, and an explicit, tested **exit-supremacy action-
+  permission matrix** (`is_action_permitted`) resolving the correction-audit gap in
+  `docs/quant/PHASE2_4_CORRECTION_AUDIT.md` finding 6.
+- `sizing.py` — tightest-cap-wins position sizing, AEGIS-gated (HOLD_ONLY/HARD_VETO
+  force zero), quantity zero always legitimate, structurally incapable of
+  martingale/loss-doubling (no "recent losses" input exists at all).
+- `execution_quality.py` — deterministic fill/slippage heuristic baseline, slippage
+  measured against the ask (never midpoint), cancels rather than crossing blindly when
+  after-cost utility turns negative.
+
+**Also fixed:** `research/candidate_actions.py`'s `CandidateAction` enum was missing
+`CALL_AWAY`, even though the runtime-schema docstring at the top of that same file
+already named it as a `management_action` value — a real, pre-existing gap, now closed
+(with `research/registry.py`'s duplicate validation set and its test updated to match).
+
+**Not yet done:** the TypeScript orchestration layer that would call these models at
+runtime (Phase 2C's remaining wiring), reconciliation/ledger (2D), customer broker
+architecture (2E), copy engine (2F/2G), UI (3), and empirical/replay engineering (4).
+
+## Phase 2D-2G, Phase 3A-3D, Phase 4
 
 Not started in this takeover pass. See the final takeover report (chat) for an honest
 accounting of what remains and why a single-pass "complete everything" claim would not
