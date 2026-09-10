@@ -29,6 +29,17 @@
    EnhancedMarket, Renee, Swayd, TeamTape) referenced in the prompt that produced this
    commit — see `docs/quant/phase5_management/OPPORTUNITY_FRONTIER_ENGINE.md`'s
    non-fabrication note.
+6. `78edb29` — handoff update for the anti-paralysis milestone.
+7. (pending, this update) — Product-correction durable specs:
+   `docs/product/CUSTOMER_COPY_UX.md`, `OWNER_OPS_IA.md`, `COPY_THETA_FLOW.md`,
+   `ALPACA_OAUTH_ARCHITECTURE.md`, `CUSTOMER_VS_ADMIN_INFORMATION_BOUNDARY.md`.
+   Specification only, per the product correction's own priority order (R1-R4 runtime
+   first, UI wiring after) — **no UI code changed**. Captures: customer-language
+   correction (drop "Explore THETA"-style research framing), simplified nav (Home/
+   Bots/My Bots/Activity/Account), Alpaca customer-OAuth architecture (never a pasted
+   secret, mirrors the existing PAPER-only assertion pattern), owner `/ops` IA (12
+   sections), five-step Copy THETA wizard, and the exact customer-vs-admin
+   information-boundary line.
 
 ## Last completed phase/subphase
 
