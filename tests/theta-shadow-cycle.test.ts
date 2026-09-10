@@ -152,7 +152,7 @@ itMockedProviderRealCodePath('PROVENANCE CORRECTION: no eligible underlying is S
   assert.notEqual(realOriginResult.provenance, 'SYNTHETIC');
 });
 
-itMockedProviderRealCodePath('PROVENANCE CORRECTION: a real account query that genuinely fails is still counted toward real provenance, never treated as a fixture', async () => {
+itMockedProviderRealCodePath('PROVENANCE CORRECTION: a real account query that genuinely FAILS is REAL_PROVIDER_ERROR, never conflated with a real-but-empty result and never counted as valid FULL_REAL evidence', async () => {
   const failingAccountFetch = (async (input: RequestInfo | URL) => {
     const url = input instanceof URL ? input.toString() : String(input);
     if (url.includes('/v2/account')) return new Response('', { status: 500 });
@@ -161,9 +161,13 @@ itMockedProviderRealCodePath('PROVENANCE CORRECTION: a real account query that g
   const result = await runThetaShadowCycle(baseConfig({
     alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: failingAccountFetch },
   }));
-  // account is still classified via a real query attempt (UNAVAILABLE_AFTER_REAL_QUERY),
-  // not silently dropped from the provenance detail or conflated with a fixture.
-  assert.ok(result.provenanceDetail.some((d) => d.startsWith('account=UNAVAILABLE_AFTER_REAL_QUERY')));
+  // The failed real call is honestly recorded as REAL_PROVIDER_ERROR -- a
+  // real call really was attempted (never silently dropped or treated as a
+  // fixture), but an error is not authentic reality about the world, so it
+  // must never masquerade as a genuine "successful query, nothing to
+  // report" (REAL_PROVIDER_UNKNOWN) and must never count toward FULL_REAL.
+  assert.ok(result.provenanceDetail.some((d) => d.startsWith('account=REAL_PROVIDER_ERROR')));
+  assert.notEqual(result.provenance, 'FULL_REAL');
 });
 
 itMockedProviderRealCodePath('with multiple eligible underlyings, selection is by RANKING, never by input array order', async () => {
