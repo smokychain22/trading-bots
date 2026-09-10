@@ -17,6 +17,7 @@ from models.management_action_value import (  # noqa: E402
     RedeployAlternative,
     RollCandidate,
     evaluate_management_alternatives,
+    hold_advantage,
 )
 
 
@@ -220,6 +221,37 @@ class CapitalDaysPenaltyTests(unittest.TestCase):
         roll = next(v for v in decision.valuations if v.action is CandidateAction.ROLL)
         self.assertIsNone(roll.capital_days_penalty)
         self.assertIsNone(roll.utility)
+
+
+class HoldAdvantageTests(unittest.TestCase):
+    def test_positive_hold_advantage_when_hold_dominates(self):
+        ctx = _ctx(
+            open_option_leg=_leg(entry_credit_per_share=0.60, current_ask_per_share=0.90, multiplier=100.0),
+            hold_forward_value=-10.0, capital_committed=1000.0, p_severe_drawdown=0.01,
+        )
+        decision = evaluate_management_alternatives(_policy(), ctx)
+        advantage = hold_advantage(decision)
+        self.assertIsNotNone(advantage)
+        self.assertGreater(advantage, 0.0)
+
+    def test_negative_hold_advantage_when_an_alternative_dominates(self):
+        ctx = _ctx(
+            open_option_leg=_leg(entry_credit_per_share=0.60, current_ask_per_share=0.10, multiplier=100.0),
+            redeploy_alternative=RedeployAlternative(estimated_future_value=500.0),
+            hold_forward_value=0.0,
+        )
+        decision = evaluate_management_alternatives(_policy(), ctx)
+        advantage = hold_advantage(decision)
+        self.assertIsNotNone(advantage)
+        self.assertLess(advantage, 0.0)
+
+    def test_hold_advantage_is_unknown_when_hold_forward_value_is_unknown(self):
+        decision = evaluate_management_alternatives(_policy(), _ctx(hold_forward_value=None))
+        self.assertIsNone(hold_advantage(decision))
+
+    def test_hold_advantage_is_unknown_when_no_alternative_has_a_known_utility(self):
+        decision = evaluate_management_alternatives(_policy(), _ctx(open_option_leg=None, hold_forward_value=50.0))
+        self.assertIsNone(hold_advantage(decision))
 
 
 class SameTimestampComparisonTests(unittest.TestCase):

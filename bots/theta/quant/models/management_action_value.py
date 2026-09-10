@@ -343,3 +343,28 @@ def evaluate_management_alternatives(
         ))
 
     return ManagementDecision(valuations=valuations, selected_action=best.action, selected_reasons=reasons)
+
+
+def hold_advantage(decision: ManagementDecision) -> Optional[float]:
+    """HoldAdvantage = U_HOLD - max(U_CLOSE, U_ROLL, U_ASSIGN, U_EXPIRE, U_REDEPLOY).
+
+    A named, inspectable quantity (not just an implicit argmax) for exactly
+    the question a fixed-percentage TP/SL rule can't answer: does continuing
+    to hold still dominate every alternative, right now, given the current
+    state -- never "has an arbitrary threshold been crossed." Positive means
+    HOLD remains superior; negative means some alternative already dominates
+    it (a signal that a fixed TP/SL benchmark comparison would miss if it
+    only checked premium captured). None if HOLD's utility, or every
+    feasible alternative's utility, is unknown -- never fabricated.
+    """
+    hold = next(v for v in decision.valuations if v.action == CandidateAction.HOLD)
+    if hold.utility is None:
+        return None
+    alternative_utilities = [
+        v.utility
+        for v in decision.valuations
+        if v.action != CandidateAction.HOLD and v.feasible and v.utility is not None
+    ]
+    if not alternative_utilities:
+        return None
+    return hold.utility - max(alternative_utilities)
