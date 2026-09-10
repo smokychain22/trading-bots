@@ -72,3 +72,35 @@ test('parses dotenv quotes and lets the explicit file override stale process val
     unlinkSync(filePath);
   }
 });
+
+// Security correction: a credential-loading/validation failure must report
+// PRESENT/MISSING/VALID/INVALID by name only -- never the secret value
+// itself, even when the value is realistic-shaped. Every thrown message and
+// every missingProviderVariables() entry is checked structurally here
+// rather than trusted by convention.
+const REALISTIC_FAKE_SECRET = 'FakeTestSecretValueNotReal0000000000000000';
+
+test('a configuration error message never contains the secret value that triggered it', () => {
+  const environment = loadEnvironment({
+    ALPACA_API_KEY: 'test-key',
+    ALPACA_SECRET_KEY: REALISTIC_FAKE_SECRET,
+    ALPACA_BASE_URL: 'not-a-url', // triggers assertRuntimeConfiguration's thrown error
+    OPTIONOMICS_API_KEY: 'test-key',
+    OPTIONOMICS_EMAIL: 'test@example.com'
+  });
+  try {
+    assertRuntimeConfiguration(environment);
+    assert.fail('expected assertRuntimeConfiguration to throw for a malformed ALPACA_BASE_URL');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    assert.ok(!message.includes(REALISTIC_FAKE_SECRET), 'thrown configuration error must never echo a secret value');
+  }
+});
+
+test('missingProviderVariables reports variable NAMES only, never a partially-set value', () => {
+  const environment = loadEnvironment({ ALPACA_API_KEY: REALISTIC_FAKE_SECRET });
+  const missing = missingProviderVariables(environment, 'ALPACA');
+  const serialized = JSON.stringify(missing);
+  assert.ok(!serialized.includes(REALISTIC_FAKE_SECRET), 'missingProviderVariables must never include an actual configured value');
+  assert.deepEqual(missing, ['ALPACA_SECRET_KEY', 'ALPACA_BASE_URL']);
+});

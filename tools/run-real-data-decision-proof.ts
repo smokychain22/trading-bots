@@ -1,17 +1,44 @@
-// PROOF SCRIPT (not a production module): proves REAL Alpaca + Optionomics
-// data can flow through the actual new-risk-orchestrator.ts and produce a
-// genuine, reproducible THETA decision receipt. This is a one-off diagnostic,
-// not R1D's real universe-selection engine or a permanent ingestion module --
-// those remain separate, larger engineering tasks. No order is submitted;
-// every call here is a read-only GET.
+// HYBRID_REAL_DATA_RUNTIME_PROOF (not a production module, not a fully-real
+// autonomous decision -- see label discipline below). This is a one-off
+// diagnostic, not R1D's real universe-selection engine or a permanent
+// ingestion module -- those remain separate, larger engineering tasks. No
+// order is submitted; every call here is a read-only GET.
 //
-// Pipeline exercised: Alpaca option-contract discovery (real, 25-60 DTE
-// window) -> Alpaca indicative bid/ask (real, broker truth for this
-// account's entitlement) -> Optionomics option chain (real Greeks, matched
-// by OCC symbol) -> NormalizedOptionContract (source=ALPACA,
-// greeksSource=OPTIONOMICS when matched) -> runNewRiskOrchestration (the
-// real ownership/regime/router/theta-q-lattice/pareto/aegis/opportunity-
-// frontier/sizing/execution-quality pipeline, via real Python subprocesses).
+// Requires a local, gitignored credential file at the path below. NEVER
+// reuse the specific Alpaca/Optionomics credential values from this
+// session's transcript -- they were exposed in a chat conversation and must
+// be treated as compromised/rotated; only a freshly-rotated credential set
+// should ever be placed in that file.
+//
+// What is REAL in this run: Alpaca option-contract discovery (25-60 DTE
+// window), Alpaca bid/ask (INDICATIVE feed -- see the OPRA/INDICATIVE
+// capability-grade note below; this account has no OPRA entitlement),
+// Alpaca/Optionomics Greeks (whichever provider's snapshot actually
+// supplied them, tracked via greeksSource, never silently attributed),
+// and the full Python/TS THETA pipeline execution (real subprocesses,
+// no mocks).
+//
+// What is SYNTHETIC in this run (clearly not real, do not report otherwise):
+// ownership inputs, regime inputs, account capital figures, sizing/AEGIS
+// policy thresholds, and the underlying itself (SPY is hardcoded here, not
+// selected by a real universe engine). This run therefore does NOT meet
+// the "FULL REAL DECISION" bar (every state, from underlying selection
+// through account exposure, sourced from real provider/runtime state) --
+// call it what it is: a hybrid mechanical proof that real market data can
+// reach the real pipeline and produce a reproducible receipt, not a
+// demonstration of autonomous live-state decision-making.
+//
+// Capability-grade note: even where Alpaca's INDICATIVE feed is reachable
+// and returns bid/ask/Greeks (as it did for this account/contract set),
+// INDICATIVE is documented by Alpaca as a modified derivative of OPRA with
+// delayed trades -- it is MARKET_DATA_ENGINEERING_READY (fine for this
+// proof, pipeline testing, schema verification) but never
+// MARKET_DATA_EXECUTION_READY (never sufficient for execution-quality/
+// slippage/TCA validation or the first-autonomous-PAPER-order release
+// gate) unless a separately-approved real-time executable-quality source
+// is in place. See classifyOptionFeedCapability in
+// src/providers/readiness.ts, which this script's ingestion should be
+// upgraded to consume once a permanent production ingestion module exists.
 import { loadEnvironmentFile } from '../src/config/environment.js';
 import { normalizeOptionContract, type RawOptionQuoteInput } from '../src/theta/option-contract.js';
 import { runNewRiskOrchestration, type RawCandidateInput } from '../src/theta/new-risk-orchestrator.js';
@@ -141,6 +168,15 @@ const bridge: PythonBridgeConfig = {
   maxOutputBytes: 1_000_000,
 };
 
+// DIAGNOSTIC POLICY BOUNDARY: every threshold below (maxSpreadPct: 1.0,
+// maxQuoteAgeSeconds: 999_999, minAfterCostUtilityToCross: -999_999, etc.)
+// is a deliberately permissive TEST/DIAGNOSTIC value chosen so this proof
+// script can exercise the pipeline without a real cohort of liquid, fresh
+// contracts. These values are hardcoded ONLY in this tools/ script, which
+// nothing under src/ ever imports -- they cannot leak into production
+// policy, Vercel runtime, or default paper-trading configuration by
+// construction. Never copy these specific threshold values into a
+// versioned production RouterPolicy/SizingPolicy/ExecutionQualityPolicy.
 const result = await runNewRiskOrchestration(bridge, {
   snapshotId: `real-proof-${Date.now()}`, fusionSnapshotHash: 'a'.repeat(64), timestamp: nowIso,
   underlying: UNDERLYING, earningsDistanceDays: 90, providerStateGood: true,
@@ -207,6 +243,6 @@ console.log('routing THETA_Q:', result.routing?.results.find((r) => r.strategyFa
 console.log('thetaQ candidate count:', result.thetaQ?.candidates.length);
 console.log('thetaQ candidates:', JSON.stringify(result.thetaQ?.candidates, null, 2));
 
-console.log('\n=== REAL-DATA DECISION RECEIPT ===');
+console.log('\n=== HYBRID_REAL_DATA_RUNTIME_PROOF DECISION RECEIPT (NOT a full-real autonomous decision -- see header comment) ===');
 console.log(JSON.stringify(result.receipt, null, 2));
 console.log(`\nshadowOpportunities recorded: ${result.shadowOpportunities.length}`);
