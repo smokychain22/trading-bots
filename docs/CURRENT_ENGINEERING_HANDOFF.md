@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-10, end of this Claude takeover session (continuation pass).
 **Origin/main SHA at session start and end:** `cfe04b903bed86d6bf8fcb82c654070830241bd0` (unchanged — nothing pushed).
 **Claude branch:** `claude/full-platform-takeover`
-**Claude HEAD:** `017e4e3`
+**Claude HEAD:** `b147d54`
 
 ## Local commits on this branch (in order, all unpushed)
 
@@ -205,7 +205,34 @@ LOCAL_COMMITS_TO_REVIEW: 8a051b7, 7ff290a, f24dc3e (all on claude/full-platform-
 FILES/MIGRATIONS: no migrations touched; see commit messages for full file list
   (7 Python quant models + tests, 6 TS contract/state-machine files + tests, 3 docs
   updates)
-TESTS: 239/239 Python, 143/143 TS, lint/typecheck/build clean, secret scan 0 findings
+TESTS: 239/239 Python, 156/156 TS, lint/typecheck/build clean, secret scan 0 findings
+
+## CREDENTIAL BLOCKER (found this session, still open)
+
+No real Alpaca PAPER or Optionomics credentials exist anywhere in this development
+environment: `.env.local` exists but contains none of `ALPACA_API_KEY`/
+`ALPACA_SECRET_KEY`/`ALPACA_BASE_URL`/`OPTIONOMICS_API_KEY`/`OPTIONOMICS_EMAIL`
+(checked via `dotenv.parse`, presence/length only, never values printed), and none of
+these are set in the process environment either. This blocks R1F (real Alpaca PAPER
+option-chain pipeline) and the R1 end-condition (a real-data end-to-end shadow run)
+entirely — not a corner cut, a missing external dependency. Whoever has real THETA
+PAPER credentials needs to add them to `.env.local` (which is correctly gitignored)
+before R1F can be attempted for real.
+
+## Latest milestone: Python<->TS bridge + FusionSnapshot completion (`b147d54`)
+
+- `src/theta/python-bridge.ts` — R1I, the controlled bridge per
+  `docs/quant/phase6_router/PYTHON_TS_BRIDGE_ARCHITECTURE.md`. No shell invoked, fixed
+  script allowlist, timeout, max-output cap, stderr secret redaction, full
+  version/snapshot/schema validation, all fail-closed. 13 tests using real Python
+  fixture scripts (`tests/fixtures/python-bridge/`).
+- `src/market/fusion-snapshot.ts` — all 4 documented audit gaps fixed:
+  `contractCandidates` now uses the real `normalizedOptionContractSchema` (was
+  `z.unknown()`), plus new `providerHealth`, `portfolioExposure`,
+  `strategyRouterState` fields. Two dependent test fixtures (`fusion-snapshot.test.ts`,
+  `evaluation.test.ts`) updated to match — all their existing tests still pass.
+- `strategy_router.py` — added an explicit disclaimer that its ownership floors are
+  versioned research/default parameters, never claimed production-optimal.
 PROVIDER_CALLS: NONE this session
 ORDERS_SUBMITTED: NO
 FIRST_PAPER_ORDER_GATE: NOT REACHED -- R2 through R7 have not been built yet, so the
