@@ -82,6 +82,7 @@ const spyEligible = (): UnderlyingCandidateInput => ({
 
 const baseConfig = (overrides: Partial<ThetaShadowCycleConfig> = {}): ThetaShadowCycleConfig => ({
   alpaca: alpacaConfig({ hasContracts: true, hasBars: true }),
+  optionomics: null, // honestly NOT_ATTEMPTED by default -- individual tests below opt in with a mocked config
   bridge: bridge(),
   universePolicy: { policyVersion: 'universe-v1', minAvgDollarVolume: 10_000_000, minCurrentPrice: 5 },
   universeCandidates: [spyEligible()],
@@ -232,6 +233,30 @@ itMockedProviderRealCodePath('with multiple eligible underlyings, selection is b
   assert.equal(result.underlyingRanking.length, 2);
   assert.equal(result.underlyingRanking[0]?.symbol, 'HIGHER_VOLUME_SECOND_IN_ARRAY');
   assert.equal(result.underlyingRanking[0]?.rank, 1);
+});
+
+itMockedProviderRealCodePath('a real (mocked) Optionomics fetch supplies OI/volume/IV for the exact-matched contract, honestly UNKNOWN if unmatched', async () => {
+  const optionomicsFetch = (async () => new Response(JSON.stringify([
+    { symbol: 'SPY261009P00500000', underlying: 'SPY', expiration: '2026-10-09', option_type: 'put', strike: 500, open_interest: 1200, volume: 340, implied_volatility: 0.31 },
+  ]), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({
+    optionomics: { apiBase: 'https://optionomics.ai', email: 'test-synthetic@example.com', apiToken: 'TEST-SYNTHETIC-TOKEN', fetchImpl: optionomicsFetch, now: () => NOW },
+  }));
+  assert.ok(result.provenanceDetail.some((d) => d.startsWith('optionomics=REAL_PROVIDER')));
+  assert.ok(!result.blockers.some((b) => b.startsWith('OPTIONOMICS_')));
+  assert.ok(result.orchestration !== null);
+});
+
+itMockedProviderRealCodePath('an Optionomics provider failure is recorded honestly (REAL_PROVIDER_ERROR) and never blocks the rest of the cycle', async () => {
+  const optionomicsFetch = (async () => new Response('', { status: 500 })) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({
+    optionomics: { apiBase: 'https://optionomics.ai', email: 'test-synthetic@example.com', apiToken: 'TEST-SYNTHETIC-TOKEN', fetchImpl: optionomicsFetch, now: () => NOW, sleepImpl: async () => {} },
+  }));
+  assert.ok(result.provenanceDetail.some((d) => d.startsWith('optionomics=REAL_PROVIDER_ERROR')));
+  assert.ok(result.blockers.some((b) => b.startsWith('OPTIONOMICS_FETCH_FAILED')));
+  // The rest of the cycle still completes -- Optionomics is supplemental,
+  // never a hard gate on new-risk evaluation.
+  assert.ok(result.orchestration !== null);
 });
 
 itMockedProviderRealCodePath('an account fetch failure is recorded as a blocker, never silently ignored, and the cycle still completes coherently', async () => {

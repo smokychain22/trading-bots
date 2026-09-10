@@ -12,10 +12,13 @@
 // GET /api/v1/stocks/{symbol}/options, headers X-USER-EMAIL / X-USER-TOKEN.
 // This module does not invent or guess an undocumented endpoint.
 //
-// THIS MODULE IS DELIBERATELY NOT WIRED into runThetaShadowCycle or
-// runNewRiskOrchestration -- those two files (and their tests) are being
-// actively reconciled by Codex (PR #4) at the time this module was written.
-// Integration is a separate, later step once a new canonical main exists.
+// Wired into runThetaShadowCycle (theta-shadow-cycle.ts) as of the R1
+// real-state integration pass -- fetched independently of Alpaca's own
+// calls, matched to specific Alpaca contracts by exact identity only (see
+// matchOptionomicsContractIdentity), and merged via option-chain-
+// ingestion.ts's mergeOptionChain. NOT yet wired into
+// runNewRiskOrchestration directly (it consumes the already-merged
+// NormalizedOptionContract, never this module's raw output).
 //
 // Neutral outcome shape (see OptionomicsFetchOutcome below): this module
 // does NOT define or reuse a competing global ProvenanceOrigin enum. It

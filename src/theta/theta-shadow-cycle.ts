@@ -11,6 +11,10 @@ import { runNewRiskOrchestration, type NewRiskOrchestrationRequest, type NewRisk
 import type { PythonBridgeConfig } from './python-bridge.js';
 import { buildFusionSnapshot, hashJson, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
 import type { DataQualityState } from './data-freshness.js';
+import {
+  fetchOptionomicsOptionChain, matchOptionomicsContractIdentity,
+  type AlpacaContractIdentity, type NormalizedOptionomicsEntry, type OptionomicsProviderConfig,
+} from './optionomics-provider.js';
 
 // R1: runThetaShadowCycle -- the reusable, server-side, non-executing shadow
 // decision cycle. This is the "success condition" deliverable: a single
@@ -25,10 +29,15 @@ import type { DataQualityState } from './data-freshness.js';
 //
 // HONESTLY INCOMPLETE by design, not by oversight -- see `blockers` on the
 // result and the provenance classification below:
-//   - Optionomics is NOT fetched live in this function (no real Optionomics
-//     fetch adapter exists yet); `optionomicsBySymbol` is always empty
-//     here, so OI/volume/Greeks-fallback from Optionomics never populate a
-//     real cycle yet -- Alpaca-only Greeks/quotes are used.
+//   - Optionomics IS fetched live (fetchOptionomicsOptionChain) when
+//     config.optionomics is non-null, matched to specific Alpaca contracts
+//     by exact identity only, and merged for OI/volume/Greeks-fallback.
+//     When config.optionomics is null (no credentials configured), it is
+//     honestly NOT_ATTEMPTED -- never a fixture standing in for a real call.
+//   - Positions and open orders are NOT yet fetched inside this cycle
+//     (fetchPositions/fetchOpenOrders exist in alpaca-provider.ts but are
+//     not called here) -- account exposure/AEGIS inputs remain caller-
+//     supplied until that wiring lands.
 //   - Event state is always UNKNOWN (no event-state assembly exists yet).
 //   - Underlying selection ranks eligible underlyings transparently (see
 //     universe-policy.ts's rankEligibleUnderlyings) rather than picking
@@ -42,6 +51,7 @@ import type { DataQualityState } from './data-freshness.js';
 
 export interface ThetaShadowCycleConfig {
   readonly alpaca: AlpacaProviderConfig;
+  readonly optionomics: OptionomicsProviderConfig | null; // null when Optionomics credentials are not configured -- honestly NOT_ATTEMPTED, never a fixture
   readonly bridge: PythonBridgeConfig;
   readonly universePolicy: UniversePolicy;
   readonly universeCandidates: readonly UnderlyingCandidateInput[]; // caller supplies the raw per-underlying facts; a full Alpaca-asset-universe fetch is not built this pass
@@ -142,6 +152,9 @@ function assembleFusionSnapshotInput(params: {
   readonly contractsQuality: DataQualityState;
   readonly quotesOrigin: ProvenanceOrigin;
   readonly quotesQuality: DataQualityState;
+  readonly optionomicsOrigin: ProvenanceOrigin;
+  readonly optionomicsQuality: DataQualityState;
+  readonly optionomicsEntries: readonly NormalizedOptionomicsEntry[];
   readonly mergedContracts: FusionSnapshotInput['contractCandidates'];
   readonly ownershipFeatures: JsonValue;
   readonly regimeFeatures: JsonValue;
@@ -150,6 +163,26 @@ function assembleFusionSnapshotInput(params: {
 }): FusionSnapshotInput {
   const accountJson: JsonValue = params.account === null ? { fetched: false } : { ...params.account };
   const contractsJson: JsonValue = params.mergedContracts as unknown as JsonValue;
+  const optionomicsAttempted = params.optionomicsOrigin !== 'NOT_ATTEMPTED';
+  const optionomicsJson: JsonValue = optionomicsAttempted
+    ? (params.optionomicsEntries as unknown as JsonValue)
+    : { attempted: false };
+
+  // unknownFeatures reflects what actually happened THIS cycle -- when
+  // Optionomics genuinely was not attempted (no config), the reason is
+  // honestly "not configured", never silently omitted; when it WAS
+  // attempted and succeeded, these two entries are dropped entirely
+  // (per-contract OI/volume provenance is already carried on each
+  // NormalizedOptionContract via openInterestSource/volumeSource).
+  const unknownFeatures: FusionSnapshotInput['unknownFeatures'] = [];
+  if (!optionomicsAttempted) {
+    unknownFeatures.push({ feature: 'optionOpenInterest', reasonCode: 'OPTIONOMICS_NOT_CONFIGURED', provider: null });
+    unknownFeatures.push({ feature: 'optionVolume', reasonCode: 'OPTIONOMICS_NOT_CONFIGURED_ALPACA_DAILY_BAR_FALLBACK_ONLY', provider: null });
+  } else if (params.optionomicsQuality !== 'GOOD') {
+    unknownFeatures.push({ feature: 'optionOpenInterest', reasonCode: `OPTIONOMICS_${params.optionomicsQuality}`, provider: 'OPTIONOMICS' });
+    unknownFeatures.push({ feature: 'optionVolume', reasonCode: `OPTIONOMICS_${params.optionomicsQuality}`, provider: 'OPTIONOMICS' });
+  }
+  unknownFeatures.push({ feature: 'eventState', reasonCode: 'EVENT_STATE_NOT_IMPLEMENTED', provider: null });
 
   return {
     botId: 'THETA',
@@ -162,7 +195,7 @@ function assembleFusionSnapshotInput(params: {
     positionState: null, // positions not yet folded into the cycle's snapshot -- future work
     portfolioExposure: null,
     alpacaQuoteState: null,
-    optionomicsFeatureState: null, // Optionomics is not fetched live in this cycle yet -- honestly absent, not fabricated
+    optionomicsFeatureState: optionomicsAttempted ? optionomicsJson : null, // honestly absent when not configured, never fabricated
     eventState: null, // no event-state assembly exists yet -- UNKNOWN, never "no event nearby"
     regimeState: params.regimeFeatures,
     expertPriorState: null,
@@ -189,6 +222,11 @@ function assembleFusionSnapshotInput(params: {
         state: params.quotesQuality, contentHash: hashJson(contractsJson), feed: 'indicative',
         contractVersion: 'alpaca-option-snapshots-v1', truthRole: 'QUOTE', requiredForNewRisk: true,
       },
+      {
+        provider: 'OPTIONOMICS', operationAlias: 'optionomics.get_option_chain', asOf: params.optionomicsOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        state: optionomicsAttempted ? params.optionomicsQuality : 'UNKNOWN', contentHash: hashJson(optionomicsJson), feed: null,
+        contractVersion: 'optionomics-option-chain-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
+      },
     ],
     providerHealth: [
       {
@@ -196,14 +234,10 @@ function assembleFusionSnapshotInput(params: {
         state: aggregateProviderQuality([params.accountQuality, params.contractsQuality, params.quotesQuality]),
         asOf: params.now, retrievedAt: params.now,
       },
-      { provider: 'OPTIONOMICS', state: 'UNKNOWN', asOf: null, retrievedAt: params.now },
+      { provider: 'OPTIONOMICS', state: optionomicsAttempted ? params.optionomicsQuality : 'UNKNOWN', asOf: optionomicsAttempted ? params.now : null, retrievedAt: params.now },
     ],
     freshnessFlags: [],
-    unknownFeatures: [
-      { feature: 'optionOpenInterest', reasonCode: 'OPTIONOMICS_NOT_FETCHED', provider: null },
-      { feature: 'optionVolume', reasonCode: 'OPTIONOMICS_NOT_FETCHED_ALPACA_DAILY_BAR_FALLBACK_ONLY', provider: null },
-      { feature: 'eventState', reasonCode: 'EVENT_STATE_NOT_IMPLEMENTED', provider: null },
-    ],
+    unknownFeatures,
     executableTruth: {
       account: params.accountQuality,
       contract: params.contractsQuality,
@@ -360,6 +394,32 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     blockers.push(`STOCK_HISTORY_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
   }
 
+  // Optionomics is fetched independently of Alpaca's option-chain calls --
+  // its own success/failure is a genuinely separate fact from Alpaca's.
+  // Matching its entries to specific Alpaca contracts (exact identity only)
+  // happens below, once Alpaca's contract list is known.
+  let optionomicsEntries: readonly NormalizedOptionomicsEntry[] = [];
+  let optionomicsEvidence = notAttemptedEvidence();
+  if (config.optionomics !== null) {
+    const outcome = await fetchOptionomicsOptionChain(config.optionomics, underlying);
+    if (outcome.kind === 'VALUE_PRESENT') {
+      optionomicsEntries = outcome.value.entries;
+      optionomicsEvidence = optionomicsEntries.length > 0
+        ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
+        : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
+    } else if (outcome.kind === 'VALUE_UNKNOWN_AFTER_SUCCESS') {
+      optionomicsEvidence = { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
+      blockers.push(`OPTIONOMICS_RESPONSE_UNRECOGNIZED:${outcome.detail}`);
+    } else {
+      const quality: DataQualityState =
+        outcome.errorClass === 'AUTHENTICATION_FAILED' || outcome.errorClass === 'INVALID_PROVIDER_RESPONSE' ? 'INVALID'
+        : outcome.errorClass === 'SUBSCRIPTION_REQUIRED' || outcome.errorClass === 'NOT_ENTITLED' ? 'NOT_ENTITLED'
+        : 'DEGRADED';
+      optionomicsEvidence = { origin: 'REAL_PROVIDER_ERROR', quality };
+      blockers.push(`OPTIONOMICS_FETCH_FAILED:${outcome.errorClass}:${outcome.detail}`);
+    }
+  }
+
   let optionChainComplete: boolean | null = null;
   let optionContractsComplete: boolean | null = null;
   let contractsEvidence = notAttemptedEvidence();
@@ -403,10 +463,22 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
 
   if (contractsResult !== null && snapshotsResult !== null) {
 
-    // Optionomics is NOT fetched live here -- see module docstring. Empty
-    // map is honest: every OI/volume/Greek stays UNKNOWN unless Alpaca's
-    // own snapshot supplied it, never fabricated.
+    // Exact identity only (OCC symbol, then exact underlying+expiration+
+    // type+strike) -- never fuzzy. An Optionomics entry that cannot be
+    // proven to match a specific Alpaca contract contributes nothing;
+    // that contract's OI/volume/Greeks-fallback simply stay UNKNOWN.
+    const alpacaIdentities: readonly AlpacaContractIdentity[] = contractsResult.items.map((c) => ({
+      symbol: c.symbol, underlying, expiration: c.expirationDate, optionType: c.optionType, strike: c.strikePrice,
+    }));
     const optionomicsBySymbol = new Map<string, OptionomicsChainEntry>();
+    for (const entry of optionomicsEntries) {
+      const match = matchOptionomicsContractIdentity(entry, alpacaIdentities);
+      if (match.alpacaSymbol === null) continue; // UNMATCHED -- never merged on a guess
+      optionomicsBySymbol.set(match.alpacaSymbol, {
+        symbol: match.alpacaSymbol, delta: entry.delta, gamma: entry.gamma, theta: entry.theta, vega: entry.vega, rho: entry.rho,
+        impliedVolatility: entry.impliedVolatility, volume: entry.volume, openInterest: entry.openInterest,
+      });
+    }
 
     const mergedContracts = mergeOptionChain({
       underlying, asOfDate: config.now().slice(0, 10), contracts: contractsResult.items,
@@ -435,7 +507,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     underlyingHistory: historyOrigin,
     optionContracts: contractsEvidence.origin,
     optionSnapshots: quotesEvidence.origin,
-    optionomics: 'NOT_ATTEMPTED', // no real Optionomics fetch adapter exists yet -- honestly not attempted, not a fixture
+    optionomics: optionomicsEvidence.origin,
     eventState: 'NOT_ATTEMPTED', // no event-state assembly exists yet
     aegisInputs: config.aegisInputsOrigin,
   });
@@ -448,6 +520,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     accountOrigin: accountEvidence.origin, accountQuality: accountEvidence.quality,
     contractsOrigin: contractsEvidence.origin, contractsQuality: contractsEvidence.quality,
     quotesOrigin: quotesEvidence.origin, quotesQuality: quotesEvidence.quality,
+    optionomicsOrigin: optionomicsEvidence.origin, optionomicsQuality: optionomicsEvidence.quality, optionomicsEntries,
     mergedContracts: [...mergedContractsForSnapshot],
     ownershipFeatures: { ret1d, rv20, drawdown, maSlope, gapFrequency, maxAdverseGap } as unknown as JsonValue,
     regimeFeatures: { maSlope, rv20, maxAdverseGap, drawdown } as unknown as JsonValue,
@@ -474,7 +547,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       ALPACA_OPTION_CHAIN: quotesEvidence.quality,
       ALPACA_POSITIONS: 'UNKNOWN', // fetchPositions exists but is not yet called inside the cycle -- honestly not attempted
       ALPACA_OPEN_ORDERS: 'UNKNOWN', // same -- fetchOpenOrders exists but is not yet called inside the cycle
-      OPTIONOMICS: 'UNKNOWN', // no real Optionomics adapter exists yet -- not attempted, not a documented entitlement gap
+      OPTIONOMICS: optionomicsEvidence.quality,
       EVENT_DATA: 'UNKNOWN', // no event-state assembly exists yet
     },
     policyVersion: config.policyVersion, modelVersions: config.modelVersions, requiredModelVersions: config.requiredModelVersions,
