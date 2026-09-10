@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { deriveAccountExposure, parseOccOptionSymbol } from '../src/theta/account-exposure.js';
+import { deriveAccountExposure, mergeDerivedExposureIntoAegisInputs, parseOccOptionSymbol } from '../src/theta/account-exposure.js';
 import type { AlpacaOpenOrderSnapshot, AlpacaPositionSnapshot, MasterAccountSnapshot } from '../src/theta/alpaca-provider.js';
 
 const NOW = '2026-09-10T15:00:00.000Z';
@@ -143,4 +143,27 @@ test('a genuinely empty account (no positions, no orders) is a real zero exposur
   assert.equal(exposure.cspCollateralRequired, 0);
   assert.equal(exposure.portfolioCapitalAtRiskPct, 0);
   assert.equal(exposure.openOrderCount, 0);
+});
+
+// --- mergeDerivedExposureIntoAegisInputs ---
+
+test('when trustworthy, real derived ticker concentration overwrites the caller-manual value', () => {
+  const exposure = deriveAccountExposure(account({ equity: 100_000 }), [position({ symbol: 'SPY', assetClass: 'us_equity', marketValue: 40_000 })], []);
+  const merged = mergeDerivedExposureIntoAegisInputs({ tickerConcentrationPct: 0.05, sectorConcentrationPct: 0.1 }, exposure, true);
+  assert.equal(merged.tickerConcentrationPct, 0.4);
+  // Fields with no real derivation source are passed through unchanged.
+  assert.equal(merged.sectorConcentrationPct, 0.1);
+});
+
+test('when NOT trustworthy (a required fetch failed this cycle), the caller-manual value is preserved, never overwritten with a possibly-wrong derivation', () => {
+  const exposure = deriveAccountExposure(account({ equity: 100_000 }), [position({ symbol: 'SPY', assetClass: 'us_equity', marketValue: 40_000 })], []);
+  const merged = mergeDerivedExposureIntoAegisInputs({ tickerConcentrationPct: 0.05 }, exposure, false);
+  assert.equal(merged.tickerConcentrationPct, 0.05);
+});
+
+test('a derived ratio that is itself UNKNOWN (null) never overwrites the caller-manual value with a fabricated 0', () => {
+  const exposure = deriveAccountExposure(account({ equity: null }), [position({ symbol: 'SPY', assetClass: 'us_equity', marketValue: 40_000 })], []);
+  assert.equal(exposure.tickerConcentrationPct, null);
+  const merged = mergeDerivedExposureIntoAegisInputs({ tickerConcentrationPct: 0.05 }, exposure, true);
+  assert.equal(merged.tickerConcentrationPct, 0.05);
 });

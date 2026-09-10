@@ -284,6 +284,20 @@ itMockedProviderRealCodePath('a positions fetch failure is recorded honestly (RE
   assert.ok(result.orchestration !== null);
 });
 
+itMockedProviderRealCodePath('a real (mocked) stock position is fetched and folded into the cycle without error, never silently dropped', async () => {
+  const concentratedPositionsFetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/positions')) {
+      return new Response(JSON.stringify([{ symbol: 'SPY', asset_class: 'us_equity', qty: '80', side: 'long', avg_entry_price: '500', market_value: '40000', unrealized_pl: '0' }]), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    return mockAlpacaFetch({ hasContracts: true, hasBars: true })(input, {});
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({ alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: concentratedPositionsFetch } }));
+  assert.ok(result.provenanceDetail.some((d) => d === 'positions=REAL_PROVIDER'));
+  assert.ok(!result.blockers.some((b) => b.startsWith('POSITIONS_FETCH_FAILED')));
+  assert.ok(result.orchestration !== null);
+});
+
 itMockedProviderRealCodePath('an account fetch failure is recorded as a blocker, never silently ignored, and the cycle still completes coherently', async () => {
   const failingAccountFetch = (async (input: RequestInfo | URL) => {
     const url = input instanceof URL ? input.toString() : String(input);

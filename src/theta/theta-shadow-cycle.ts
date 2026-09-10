@@ -16,6 +16,7 @@ import {
   fetchOptionomicsOptionChain, matchOptionomicsContractIdentity,
   type AlpacaContractIdentity, type NormalizedOptionomicsEntry, type OptionomicsProviderConfig,
 } from './optionomics-provider.js';
+import { deriveAccountExposure, mergeDerivedExposureIntoAegisInputs, type DerivedAccountExposure } from './account-exposure.js';
 
 // R1: runThetaShadowCycle -- the reusable, server-side, non-executing shadow
 // decision cycle. This is the "success condition" deliverable: a single
@@ -162,6 +163,7 @@ function assembleFusionSnapshotInput(params: {
   readonly openOrders: readonly AlpacaOpenOrderSnapshot[];
   readonly openOrdersOrigin: ProvenanceOrigin;
   readonly openOrdersQuality: DataQualityState;
+  readonly derivedExposure: DerivedAccountExposure;
   readonly mergedContracts: FusionSnapshotInput['contractCandidates'];
   readonly ownershipFeatures: JsonValue;
   readonly regimeFeatures: JsonValue;
@@ -203,7 +205,7 @@ function assembleFusionSnapshotInput(params: {
     contractCandidates: params.mergedContracts,
     accountState: accountJson,
     positionState: { positions: positionsJson, openOrders: openOrdersJson },
-    portfolioExposure: null, // derived-exposure math not yet folded into this snapshot -- future work
+    portfolioExposure: params.derivedExposure as unknown as JsonValue, // real, pure arithmetic over account/positions/orders -- see account-exposure.ts
     alpacaQuoteState: null,
     optionomicsFeatureState: optionomicsAttempted ? optionomicsJson : null, // honestly absent when not configured, never fabricated
     eventState: null, // no event-state assembly exists yet -- UNKNOWN, never "no event nearby"
@@ -547,6 +549,14 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     }
   }
 
+  // Real account exposure -- pure arithmetic over the account/positions/
+  // open-orders state already fetched above. Always computed (an empty
+  // account is a valid, common, real-zero-exposure state); whether any of
+  // it is safe to MERGE into aegisInputs below depends on the underlying
+  // fetches' quality, checked separately.
+  const derivedExposure: DerivedAccountExposure = deriveAccountExposure(account, positions, openOrders);
+  const exposureDerivationTrustworthy = accountEvidence.quality === 'GOOD' && positionsEvidence.quality === 'GOOD' && openOrdersEvidence.quality === 'GOOD';
+
   const { provenance, detail } = classifyShadowCycleProvenance({
     universeCandidates: config.universeCandidatesOrigin,
     account: accountEvidence.origin,
@@ -571,6 +581,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     optionomicsOrigin: optionomicsEvidence.origin, optionomicsQuality: optionomicsEvidence.quality, optionomicsEntries,
     positions, positionsOrigin: positionsEvidence.origin, positionsQuality: positionsEvidence.quality,
     openOrders, openOrdersOrigin: openOrdersEvidence.origin, openOrdersQuality: openOrdersEvidence.quality,
+    derivedExposure,
     mergedContracts: [...mergedContractsForSnapshot],
     ownershipFeatures: { ret1d, rv20, drawdown, maSlope, gapFrequency, maxAdverseGap } as unknown as JsonValue,
     regimeFeatures: { maSlope, rv20, maxAdverseGap, drawdown } as unknown as JsonValue,
@@ -586,6 +597,12 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       blockers: [...blockers, 'NO_CANDIDATES_AVAILABLE'],
     };
   }
+
+  // Merge the real, derived exposure ratios into aegisInputs -- see
+  // mergeDerivedExposureIntoAegisInputs's own docstring for the honesty
+  // rules (partial merge only; sector/correlation/stress remain exactly
+  // what the caller supplied).
+  const effectiveAegisInputs = mergeDerivedExposureIntoAegisInputs(config.aegisInputs, derivedExposure, exposureDerivationTrustworthy);
 
   const orchestration = await runNewRiskOrchestration(config.bridge, {
     snapshotId: fusionSnapshot.contentHash, fusionSnapshotHash: fusionSnapshot.contentHash, timestamp: config.now(), underlying,
@@ -616,7 +633,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     },
     routerPolicy: config.routerPolicy, routerPortfolio: config.routerPortfolio,
     latticeConfig: config.latticeConfig, thetaQSizingPolicy: config.thetaQSizingPolicy, costAssumptions: config.costAssumptions,
-    aegisPolicy: config.aegisPolicy, aegisInputs: config.aegisInputs,
+    aegisPolicy: config.aegisPolicy, aegisInputs: effectiveAegisInputs,
     opportunityFrontierPolicy: config.opportunityFrontierPolicy, maxAcceptableSpreadPct: config.maxAcceptableSpreadPct,
     candidates,
     sizingPolicy: config.sizingPolicy,

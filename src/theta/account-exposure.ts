@@ -190,3 +190,28 @@ export function deriveAccountExposure(
     unparsedOptionSymbols,
   };
 }
+
+/**
+ * Merges the two AEGIS-input fields that ARE genuinely derivable from real
+ * account/positions/orders state (tickerConcentrationPct,
+ * portfolioCapitalAtRiskPct) into an existing aegisInputs object -- ONLY
+ * when `trustworthy` is true (the underlying account/positions/orders
+ * fetches were all GOOD this cycle) AND the specific derived ratio is
+ * itself non-null. A caller-supplied value is never overwritten with a
+ * fabricated 0 when the real derivation came back UNKNOWN, and every OTHER
+ * field (sector concentration, correlation-cluster exposure, stress
+ * detection, liquidity/execution acceptability) is passed through
+ * unchanged -- this is a partial, honest merge, never a claim that the
+ * whole aegisInputs object became real-derived.
+ */
+export function mergeDerivedExposureIntoAegisInputs(
+  aegisInputs: Readonly<Record<string, unknown>>,
+  derivedExposure: DerivedAccountExposure,
+  trustworthy: boolean,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...aegisInputs };
+  if (!trustworthy) return merged;
+  if (derivedExposure.tickerConcentrationPct !== null) merged.tickerConcentrationPct = derivedExposure.tickerConcentrationPct;
+  if (derivedExposure.portfolioCapitalAtRiskPct !== null) merged.portfolioCapitalAtRiskPct = derivedExposure.portfolioCapitalAtRiskPct;
+  return merged;
+}
