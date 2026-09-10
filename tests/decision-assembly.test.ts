@@ -162,6 +162,13 @@ test('executionAuthorized is always false, even for a winning candidate', () => 
   assert.equal(decision.executionAuthorized, false);
 });
 
+test('an OPEN_ALTERNATE_EXPIRY candidate qualifies exactly like OPEN_FULL', () => {
+  const alternateExpiry: CandidateFrontierResult = { ...qualifyingCandidate('C1', 0.002), disposition: 'OPEN_ALTERNATE_EXPIRY' };
+  const decision = assembleNewRiskDecision(baseInput({ candidates: [alternateExpiry] }));
+  assert.equal(decision.winningAction, 'OPEN_ALTERNATE_EXPIRY');
+  assert.equal(decision.selectedCandidateId, 'C1');
+});
+
 test('alternatives array includes every candidate, including disqualified ones', () => {
   const good = qualifyingCandidate('GOOD', 0.01);
   const bad: CandidateFrontierResult = { ...qualifyingCandidate('BAD', 0.001), aegis: aegis('HARD_VETO') };
