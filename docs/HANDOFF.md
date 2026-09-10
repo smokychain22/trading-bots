@@ -191,10 +191,13 @@ accessibility tests, production build, security scan, dependency audit, and diff
 Migration 008 and its SQL invariant are delegated to GitHub CI because the local Docker
 Linux engine is unavailable.
 
-TEST RESULTS: Integration PR #2 passed two GitHub CI runs and Vercel preview. The final
-PAPER_READY local suite passed 320 TypeScript, 298 Python, and 16 Playwright tests.
-Lint, type checking, build, secret scan, and dependency audit passed with zero high-risk
-dependency findings. GitHub SQL/Redis verification remains the branch merge gate.
+TEST RESULTS: Integration PR #2 and PAPER readiness PR #3 passed their GitHub CI runs
+and Vercel previews. The final local suite passed 320 TypeScript, 298 Python, and 16
+Playwright tests. The Linux main pipeline passed 287 TypeScript tests with 33
+platform-specific skips, 298 Python tests, and all 16 Playwright tests. It applied
+migrations 001 through 008 to an empty PostgreSQL database, passed every SQL invariant,
+and verified Redis connectivity. Lint, type checking, build, secret scan, and dependency
+audit passed with zero high-risk dependency findings. The production deployment is Ready.
 
 KNOWN LIMITATIONS: Production PostgreSQL and Alpaca Connect app credentials are absent.
 The real universe, event, account-risk, scheduler, WebSocket worker, and durable shadow
