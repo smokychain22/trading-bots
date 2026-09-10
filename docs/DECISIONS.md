@@ -131,6 +131,20 @@ provider-backed decision preview, durable production PostgreSQL, real account
 verification, an active reconciliation worker, rotated credentials, and separate owner
 authorization.
 
+## 2026-09-11: owner-authorized private team Paper credential bridge
+
+The owner explicitly authorized a temporary private-team connection method while the
+public product continues toward Alpaca OAuth. Authenticated testers may connect their
+own Alpaca Paper API key through `PAPER_API_KEY_PRIVATE_BETA`. The server pins every
+request to `https://paper-api.alpaca.markets`, verifies account, options, positions,
+open orders, and clock through read-only calls, and stores only customer-bound
+AES-256-GCM ciphertext. The browser receives no secret or full key. OAuth remains
+`ALPACA_OAUTH`, and both resolve through one `BrokerCredentialProvider` boundary.
+
+This decision does not change execution authority. Customer order submission remains
+locked. Public production should use OAuth after Alpaca Connect approval, and the
+private bridge can then be disabled without changing THETA or copy-engine contracts.
+
 ## 2026-09-11: provider provenance and runtime-defer separation
 
 Provider observation origin and data quality are independent facts. A successful

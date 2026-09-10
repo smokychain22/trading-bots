@@ -2,29 +2,17 @@ import { z } from "zod";
 import type { Environment } from "../config/environment.js";
 import type { CustomerStore, FollowerRecord } from "./customer-store.js";
 import {
-  decryptSecret,
   encryptSecret,
   randomOpaqueToken,
   sha256,
 } from "./customer-security.js";
+import { EncryptedStoreBrokerCredentialProvider } from "./broker-credential-provider.js";
+import { verifyAlpacaPaperAccount, type FollowerVerification } from "./alpaca-paper-verification.js";
 
 const oauthTokenSchema = z.object({
   access_token: z.string().min(20),
   token_type: z.string().min(1),
   scope: z.string().default(""),
-});
-
-const accountSchema = z.object({
-  id: z.string().min(4),
-  status: z.string().nullable().optional(),
-  cash: z.coerce.number().finite().nullable().optional(),
-  buying_power: z.coerce.number().finite().nullable().optional(),
-  options_buying_power: z.coerce.number().finite().nullable().optional(),
-  options_approved_level: z.number().int().nullable().optional(),
-  options_trading_level: z.number().int().nullable().optional(),
-  trading_blocked: z.boolean().optional(),
-  account_blocked: z.boolean().optional(),
-  transfers_blocked: z.boolean().optional(),
 });
 
 export function oauthConfiguration(environment: Environment) {
@@ -91,55 +79,10 @@ async function exchangeCode(environment: Environment, code: string) {
   return oauthTokenSchema.parse(await response.json());
 }
 
-export type FollowerVerification = {
-  readonly account: z.infer<typeof accountSchema>;
-  readonly positionsAvailable: boolean;
-  readonly openOrdersAvailable: boolean;
-  readonly ready: boolean;
-  readonly reason: string | null;
-};
-
 export async function verifyFollowerAccount(
   accessToken: string,
 ): Promise<FollowerVerification> {
-  const headers = { Authorization: `Bearer ${accessToken}` };
-  const [accountResponse, positionsResponse, ordersResponse] = await Promise.all([
-    fetch("https://paper-api.alpaca.markets/v2/account", {
-      headers,
-      signal: AbortSignal.timeout(12_000),
-    }),
-    fetch("https://paper-api.alpaca.markets/v2/positions", {
-      headers,
-      signal: AbortSignal.timeout(12_000),
-    }),
-    fetch("https://paper-api.alpaca.markets/v2/orders?status=open&limit=1", {
-      headers,
-      signal: AbortSignal.timeout(12_000),
-    }),
-  ]);
-  if (!accountResponse.ok) {
-    throw new Error(`ALPACA_FOLLOWER_ACCOUNT_${accountResponse.status}`);
-  }
-  const account = accountSchema.parse(await accountResponse.json());
-  const optionsLevel = account.options_trading_level ?? account.options_approved_level ?? 0;
-  const active = account.status === "ACTIVE";
-  const blocked = account.trading_blocked === true || account.account_blocked === true;
-  const ready = active && !blocked && optionsLevel >= 1;
-  return {
-    account,
-    positionsAvailable: positionsResponse.ok,
-    openOrdersAvailable: ordersResponse.ok,
-    ready,
-    reason: !active
-      ? "Your Alpaca Paper account is not active."
-      : blocked
-        ? "Your Alpaca Paper account is restricted."
-        : optionsLevel < 1
-          ? "Your paper account needs options trading enabled before it can copy THETA."
-          : !positionsResponse.ok || !ordersResponse.ok
-            ? "Alpaca account reconciliation is temporarily unavailable."
-            : null,
-  };
+  return verifyAlpacaPaperAccount({ kind: "FOLLOWER_OAUTH", accessToken });
 }
 
 export async function completeAlpacaOAuth(
@@ -163,7 +106,7 @@ export async function completeAlpacaOAuth(
     throw new Error("ALPACA_OAUTH_SCOPE_INSUFFICIENT");
   const verification = await verifyFollowerAccount(token.access_token);
   const account = verification.account;
-  const encryptedToken = encryptSecret(
+  const encryptedCredential = encryptSecret(
     token.access_token,
     environment.PAPER_COPY_TOKEN_ENCRYPTION_KEY ?? "",
     customerId,
@@ -172,20 +115,25 @@ export async function completeAlpacaOAuth(
     customerId,
     providerAccountRef: account.id,
     maskedAccount: `••••${account.id.slice(-4)}`,
+    connectionMethod: "ALPACA_OAUTH",
     accountStatus: account.status ?? null,
+    equity: account.equity ?? null,
     buyingPower: account.buying_power ?? null,
     cash: account.cash ?? null,
     optionsBuyingPower: account.options_buying_power ?? null,
     optionsApprovedLevel: account.options_approved_level ?? null,
     optionsTradingLevel: account.options_trading_level ?? null,
-    accountReady: verification.ready && verification.positionsAvailable && verification.openOrdersAvailable,
+    accountReady: verification.ready,
+    openPositionCount: verification.positions.length,
+    openOrderCount: verification.openOrders.length,
+    marketIsOpen: verification.marketOpen,
     restrictions: {
       trading_blocked: account.trading_blocked === true,
       account_blocked: account.account_blocked === true,
       transfers_blocked: account.transfers_blocked === true,
     },
     keyRef: environment.PAPER_COPY_TOKEN_KEY_REF ?? "",
-    encryptedToken,
+    encryptedCredential,
     scope: token.scope,
   });
   return { follower, returnPath: stateRecord.returnPath };
@@ -196,16 +144,10 @@ export async function verifyStoredFollowerAccount(
   environment: Environment,
   customerId: string,
 ): Promise<FollowerVerification> {
-  const stored = await store.getFollowerToken(customerId);
-  if (!stored) throw new Error("FOLLOWER_TOKEN_NOT_AVAILABLE");
-  if (stored.keyRef !== environment.PAPER_COPY_TOKEN_KEY_REF)
-    throw new Error("FOLLOWER_TOKEN_KEY_VERSION_MISMATCH");
-  const token = decryptSecret(
-    stored,
-    environment.PAPER_COPY_TOKEN_ENCRYPTION_KEY ?? "",
-    customerId,
-  );
-  return verifyFollowerAccount(token);
+  const credential = await new EncryptedStoreBrokerCredentialProvider(store, environment)
+    .getAuthentication(customerId);
+  if (!credential) throw new Error("FOLLOWER_CREDENTIAL_NOT_AVAILABLE");
+  return verifyAlpacaPaperAccount(credential.authentication);
 }
 
 export async function reverifyStoredFollowerAccount(
@@ -217,13 +159,16 @@ export async function reverifyStoredFollowerAccount(
     const verification = await verifyStoredFollowerAccount(store, environment, customerId);
     return store.updateFollowerVerification(customerId, {
       accountStatus: verification.account.status ?? null,
+      equity: verification.account.equity ?? null,
       buyingPower: verification.account.buying_power ?? null,
       cash: verification.account.cash ?? null,
       optionsBuyingPower: verification.account.options_buying_power ?? null,
       optionsApprovedLevel: verification.account.options_approved_level ?? null,
       optionsTradingLevel: verification.account.options_trading_level ?? null,
-      accountReady:
-        verification.ready && verification.positionsAvailable && verification.openOrdersAvailable,
+      accountReady: verification.ready,
+      openPositionCount: verification.positions.length,
+      openOrderCount: verification.openOrders.length,
+      marketIsOpen: verification.marketOpen,
       restrictions: {
         trading_blocked: verification.account.trading_blocked === true,
         account_blocked: verification.account.account_blocked === true,

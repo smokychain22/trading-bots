@@ -235,18 +235,23 @@ export interface FollowerAccount {
   follower_account_id: string | null;
   provider: "ALPACA";
   environment: "PAPER";
-  connection_method: "OAUTH";
+  connection_method: "PAPER_API_KEY_PRIVATE_BETA" | "ALPACA_OAUTH" | null;
   connected: boolean;
   ready_for_theta: boolean;
   masked_account: string | null;
+  account_status: string | null;
   state: "NOT_CONNECTED" | "AUTHORIZING" | "VERIFYING" | "CONNECTED_NOT_READY" | "READY" | "DEGRADED" | "REVOKED";
   verified_at: string | null;
   buying_power: number | null;
+  equity: number | null;
   cash: number | null;
   options_enabled: boolean | null;
   options_approved_level: number | null;
   options_trading_level: number | null;
   last_sync_at: string | null;
+  open_positions: number | null;
+  open_orders: number | null;
+  market_open: boolean | null;
 }
 
 export interface FollowerRiskPolicy {
@@ -274,6 +279,12 @@ export interface PaperCopyReadiness {
     configured: boolean;
     state: "NOT_CONFIGURED" | "CUSTOMER_LOGIN_REQUIRED" | "READY";
     token_storage: "ENCRYPTED_SERVER_SIDE" | "NOT_CONFIGURED";
+  };
+  private_paper_api_key: {
+    configured: boolean;
+    state: "NOT_CONFIGURED" | "CUSTOMER_LOGIN_REQUIRED" | "READY";
+    credential_storage: "ENCRYPTED_SERVER_SIDE" | "NOT_CONFIGURED";
+    order_submission: "LOCKED";
   };
   participation: FollowerParticipation;
   copy_runtime: "ORDER_INTENT_READY_EXECUTION_LOCKED" | "PERSISTENCE_NOT_CONFIGURED";

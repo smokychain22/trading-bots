@@ -25,6 +25,7 @@ const environmentSchema = z.object({
   ALPACA_OAUTH_REDIRECT_URI: optionalUrl,
   PAPER_COPY_TOKEN_KEY_REF: z.string().min(1).optional(),
   PAPER_COPY_TOKEN_ENCRYPTION_KEY: z.string().min(1).optional(),
+  PRIVATE_PAPER_API_KEY_BETA_ENABLED: safeFlag,
   MASTER_PAPER_EXECUTION_ENABLED: safeFlag,
   FOLLOWER_PAPER_EXECUTION_ENABLED: safeFlag,
   PAPER_PAUSE_NEW_ORDERS: booleanFlag('true'),

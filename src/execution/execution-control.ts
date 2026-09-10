@@ -5,7 +5,7 @@ export interface PaperExecutionControl {
 }
 
 export interface ExecutionGateContext {
-  readonly accountKind: 'MASTER_API_KEY' | 'FOLLOWER_OAUTH';
+  readonly accountKind: 'MASTER_API_KEY' | 'FOLLOWER_API_KEY' | 'FOLLOWER_OAUTH';
   readonly environment: 'PAPER';
   readonly baseHostname: string;
   readonly accountVerified: boolean;
@@ -63,7 +63,7 @@ export function assertBrokerMutationAuthorized(permit: BrokerMutationAuthorizati
   if (quantity !== undefined && permit.quantity !== quantity) throw new Error('Execution-gate permit does not match quantity.');
 }
 
-export const executionMode = (control: PaperExecutionControl, kind: 'MASTER_API_KEY' | 'FOLLOWER_OAUTH'): 'LOCKED' | 'READY' | 'ACTIVE' => {
+export const executionMode = (control: PaperExecutionControl, kind: 'MASTER_API_KEY' | 'FOLLOWER_API_KEY' | 'FOLLOWER_OAUTH'): 'LOCKED' | 'READY' | 'ACTIVE' => {
   const enabled = kind === 'MASTER_API_KEY' ? control.masterEnabled : control.followerEnabled;
   if (!enabled) return 'LOCKED';
   return control.pauseNewOrders ? 'READY' : 'ACTIVE';

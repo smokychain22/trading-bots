@@ -39,10 +39,10 @@ test("missing Optionomics configuration stays explicit and never probes guessed 
   assert.deepEqual(readiness.capabilities, []);
 });
 
-test("raw-key follower beta remains structurally unavailable under Alpaca Connect policy", () => {
-  assert.equal(privatePaperBetaReadiness.state, "DISABLED");
-  assert.equal(privatePaperBetaReadiness.policy_status, "PROHIBITED");
-  assert.equal(privatePaperBetaReadiness.raw_key_endpoint_available, false);
+test("private paper key beta is configuration-gated and execution remains separate", () => {
+  assert.equal(privatePaperBetaReadiness.state, "IMPLEMENTED_CONFIGURATION_GATED");
+  assert.equal(privatePaperBetaReadiness.policy_status, "PRIVATE_TEAM_PAPER_ONLY");
+  assert.equal(privatePaperBetaReadiness.raw_key_endpoint_available, true);
   assert.equal(privatePaperBetaReadiness.follower_count, 0);
 });
 

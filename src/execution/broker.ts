@@ -2,10 +2,11 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { assertBrokerMutationAuthorized, type BrokerMutationAuthorization } from './execution-control.js';
 
-export type BrokerAccountKind = 'MASTER_API_KEY' | 'FOLLOWER_OAUTH';
+export type BrokerAccountKind = 'MASTER_API_KEY' | 'FOLLOWER_API_KEY' | 'FOLLOWER_OAUTH';
 
 export type AlpacaPaperAuthentication =
   | { readonly kind: 'MASTER_API_KEY'; readonly apiKey: string; readonly apiSecret: string }
+  | { readonly kind: 'FOLLOWER_API_KEY'; readonly apiKey: string; readonly apiSecret: string }
   | { readonly kind: 'FOLLOWER_OAUTH'; readonly accessToken: string };
 
 export interface BrokerOrderRequest {
@@ -147,7 +148,7 @@ const assertPaperHost = (baseUrl: string): URL => {
   return parsed;
 };
 
-const requestHeaders = (auth: AlpacaPaperAuthentication): HeadersInit => auth.kind === 'MASTER_API_KEY'
+const requestHeaders = (auth: AlpacaPaperAuthentication): HeadersInit => auth.kind !== 'FOLLOWER_OAUTH'
   ? { 'APCA-API-KEY-ID': auth.apiKey, 'APCA-API-SECRET-KEY': auth.apiSecret, 'Content-Type': 'application/json' }
   : { Authorization: `Bearer ${auth.accessToken}`, 'Content-Type': 'application/json' };
 

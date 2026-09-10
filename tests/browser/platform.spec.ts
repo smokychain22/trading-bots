@@ -50,6 +50,47 @@ test("My Bots and Account show safe disconnected states", async ({ page }) => {
   await expect(page.locator("main")).not.toContainText("token storage");
 });
 
+test("private team can enter masked Paper credentials and receives only safe account data", async ({ page }, testInfo) => {
+  let connected = false;
+  await page.route("**/api/v1/copy/readiness", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.private_paper_api_key = {
+      configured: true, state: "READY", credential_storage: "ENCRYPTED_SERVER_SIDE", order_submission: "LOCKED",
+    };
+    if (connected) body.data.follower_account = {
+      ...body.data.follower_account, connected: true, ready_for_theta: true,
+      connection_method: "PAPER_API_KEY_PRIVATE_BETA", masked_account: "••••abcd",
+      account_status: "ACTIVE", equity: 25000, buying_power: 48000,
+      options_approved_level: 2, options_trading_level: 2, open_positions: 1,
+      open_orders: 0, market_open: false, last_sync_at: "2026-09-11T10:00:00.000Z",
+    };
+    await route.fulfill({ json: body });
+  });
+  await page.route("**/api/v1/alpaca/connection", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    const payload = route.request().postDataJSON();
+    expect(payload).toEqual({ api_key_id: "paper-test-key", secret_key: "paper-test-secret" });
+    connected = true;
+    await route.fulfill({ status: 201, json: { api_version: "v1", data: {
+      connected: true, connection_method: "PAPER_API_KEY_PRIVATE_BETA",
+      masked_account: "••••abcd", account_status: "ACTIVE", equity: 25000,
+      buying_power: 48000, orders_submitted: false,
+    } } });
+  });
+  await page.goto("/account");
+  await page.screenshot({ path: testInfo.outputPath("private-paper-connect-form.png"), fullPage: true, animations: "disabled" });
+  await expect(page.getByLabel("Secret Key")).toHaveAttribute("type", "password");
+  await page.getByLabel("API Key ID").fill("paper-test-key");
+  await page.getByLabel("Secret Key").fill("paper-test-secret");
+  await page.getByRole("button", { name: "Connect Paper Account" }).click();
+  await expect(page.getByText("Connected · ••••abcd")).toBeVisible();
+  await expect(page.getByText("$25,000")).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("paper-test-secret");
+  await expect(page.locator("body")).not.toContainText("paper-test-key");
+  await expect(page.getByRole("button", { name: /submit order/i })).toHaveCount(0);
+});
+
 test("Activity supports simple customer filters", async ({ page }) => {
   await page.goto("/activity");
   await expect(page.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
