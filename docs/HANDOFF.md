@@ -112,9 +112,12 @@ TESTS RUN: TypeScript check, ESLint, Node unit/API/contract tests, Playwright cu
 and owner journeys, axe WCAG AA checks, responsive overflow checks, build, security
 scan, dependency audit, secret-pattern scan, and Docker readiness probe.
 
-TEST RESULTS: Record final counts and release state in `docs/BOTS_VERIFICATION.md` at
-milestone completion. Docker schema execution is blocked locally because the Docker
-Desktop Linux engine pipe is unavailable.
+TEST RESULTS: 180 Node tests, 253 Python tests, and 16 Playwright journeys passed.
+The browser run includes axe WCAG AA and responsive overflow checks. Security scan,
+build, lint, type checking, and dependency audit passed. GitHub CI applied all five
+PostgreSQL migrations, passed SQL invariants, and verified Redis. Docker schema
+execution remains blocked locally because the Docker Desktop Linux engine pipe is
+unavailable.
 
 KNOWN LIMITATIONS: Customer IAM, OAuth callback and token vault integration, runtime
 persistence adapters, follower broker I/O, PAPER order execution, scheduler, economic

@@ -32,11 +32,20 @@ Automated checks and static screenshots do not replace testing with real assisti
 
 ## Deployment gates
 
-The production deployment URL, HTTP route checks, security headers, Vercel state and GitHub CI run are recorded in the final Phase 1 handoff after the tested commit reaches main.
+GitHub CI run
+`https://github.com/smokychain22/trading-bots/actions/runs/34497319306` passed
+for commit `7c951a087a38e76ff1f920a80c20e2cf650a4307`. Its PostgreSQL 16
+service applied migrations 001 through 005 and passed every SQL invariant. Redis
+responded to the CI health check.
+
+Vercel production deployment `dpl_FbiuMHZNY24hZ1DESgGoYHmu29dA` is Ready at
+`https://trading-bots-one.vercel.app`. Root, Bots, THETA, My Results, Account, copy
+readiness, and copy-results routes return HTTP 200. Unauthenticated `/ops` and all
+four `/ops/*` detail routes return HTTP 302 to `/ops/login`. CSP, frame, content-type,
+and referrer security headers are present.
 
 Trading remains disabled. No order endpoint exists in the customer API and no provider order call is made by these pages.
 
-Docker Desktop was started for the schema gate, but its Linux engine pipe remained
-unavailable. Migration 005 and its SQL invariants therefore require the repository's
-PostgreSQL CI service for execution. This is recorded as a local infrastructure
-blocker, not a passing schema result.
+Docker Desktop was started for the local schema gate, but its Linux engine pipe
+remained unavailable. This remains a local infrastructure blocker. The independent
+GitHub PostgreSQL service executed and passed migration 005 and its SQL invariants.
