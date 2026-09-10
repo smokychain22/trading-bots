@@ -21,6 +21,7 @@ export type NewRiskWinningAction =
   | 'OPEN_FULL'
   | 'OPEN_REDUCED'
   | 'OPEN_ALTERNATE_CONTRACT'
+  | 'OPEN_ALTERNATE_EXPIRY'
   | 'OPEN_ALTERNATE_STRUCTURE'
   | 'WAIT'
   | 'PASS'
@@ -30,6 +31,7 @@ export type CandidateDisposition =
   | 'OPEN_FULL'
   | 'OPEN_REDUCED'
   | 'OPEN_ALTERNATE_CONTRACT'
+  | 'OPEN_ALTERNATE_EXPIRY'
   | 'OPEN_ALTERNATE_STRUCTURE'
   | 'WAIT'
   | 'PASS';
@@ -174,7 +176,7 @@ export function assembleNewRiskDecision(input: NewRiskDecisionInput): NewRiskDec
 
   const openCandidates = input.candidates.filter(
     (c) =>
-      (c.disposition === 'OPEN_FULL' || c.disposition === 'OPEN_REDUCED' || c.disposition === 'OPEN_ALTERNATE_CONTRACT' || c.disposition === 'OPEN_ALTERNATE_STRUCTURE') &&
+      (c.disposition === 'OPEN_FULL' || c.disposition === 'OPEN_REDUCED' || c.disposition === 'OPEN_ALTERNATE_CONTRACT' || c.disposition === 'OPEN_ALTERNATE_EXPIRY' || c.disposition === 'OPEN_ALTERNATE_STRUCTURE') &&
       c.contract.executable &&
       c.aegis !== null &&
       c.aegis.newRiskState !== 'HOLD_ONLY' &&
