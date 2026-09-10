@@ -17,7 +17,7 @@ Reticle project wiring is present and connected successfully, but `.agents/skill
 **Last updated:** 2026-09-10, end of this Claude takeover session (continuation pass).
 **Origin/main SHA at session start and end:** `cfe04b903bed86d6bf8fcb82c654070830241bd0` (unchanged — nothing pushed).
 **Claude branch:** `claude/full-platform-takeover`
-**Claude HEAD:** `b193d79`
+**Claude HEAD:** `a8d092c`
 
 ## Local commits on this branch (in order, all unpushed)
 
@@ -69,6 +69,21 @@ Reticle project wiring is present and connected successfully, but `.agents/skill
     zero quantitative computation of its own, fails closed on provider/version/
     ownership/regime/snapshot problems, `executionAuthorized` always `false`).
     39 new tests, 126/126 TS total, 225/225 Python unaffected.
+11. `cc46803` — handoff update.
+12. `017e4e3` — `strategy_router.py` (contextual strategy router: StrategyFamily/
+    LifecycleState/EligibilityState/ModelDisagreementState, `route_strategies()` —
+    "specialists, not voters," one family's ineligibility never suppresses another's,
+    tested directly), `strategy-router-contract.ts` (enforces exactly six results per
+    response), `management-assembly.ts` (R1H: composes management_action_value.py +
+    hold_advantage() + AEGIS + execution-quality into one receipt, exit supremacy
+    enforced structurally, fails closed on version/snapshot mismatch). Plus six
+    durable specs under `docs/quant/phase6_router/`: router design rationale,
+    expert-routing matrix (grounded strictly in the existing 11 experts), hard-gate-
+    vs-soft-feature registry (2 real gaps flagged), timeframe/horizon registry,
+    Python↔TS bridge architecture (SPECIFIED only — the biggest remaining R1 gap),
+    FusionSnapshot completeness audit (4 gaps named, none fixed), strategy-routing
+    shadow-record + RouteRegret spec. 31 new tests (14 Python + 6 + 11 TS), 239/239
+    Python total, 143/143 TS total.
 
 ## Last completed phase/subphase
 
@@ -204,7 +219,48 @@ LOCAL_COMMITS_TO_REVIEW: 8a051b7, 7ff290a, f24dc3e (all on claude/full-platform-
 FILES/MIGRATIONS: no migrations touched; see commit messages for full file list
   (7 Python quant models + tests, 6 TS contract/state-machine files + tests, 3 docs
   updates)
-TESTS: 225/225 Python, 126/126 TS, lint/typecheck/build clean, secret scan 0 findings
+TESTS: 253/253 Python, 156/156 TS, lint/typecheck/build clean, secret scan 0 findings
+
+## Latest milestone: Pareto-dominance frontier + OPEN_ALTERNATE_EXPIRY (`a8d092c`)
+
+Credential-free R1/quant work, per "one failed setup must not become WAIT":
+- `opportunity_frontier.py`: added `OPEN_ALTERNATE_EXPIRY` (distinct from
+  `OPEN_ALTERNATE_CONTRACT`). A negative-EV candidate now tries alternate expiry, then
+  alternate contract, before PASS.
+- `pareto_frontier.py` (new): multi-dimensional dominance filtering across EV_net/
+  EdgeBuffer/ReturnPerCapitalDay/fill-probability (maximize) and tail-loss/assignment-
+  probability/severe-drawdown-probability/capital-requirement/capital-days/spread/
+  slippage/uncertainty (minimize). UNKNOWN dimensions excluded from comparison, never
+  treated as favorable/unfavorable. `gross_credit` deliberately excluded as a
+  dominance dimension (that's the naive BQ-1/BQ-2 policy this replaces).
+17 new tests, 253/253 Python total.
+
+## CREDENTIAL BLOCKER (found this session, still open)
+
+No real Alpaca PAPER or Optionomics credentials exist anywhere in this development
+environment: `.env.local` exists but contains none of `ALPACA_API_KEY`/
+`ALPACA_SECRET_KEY`/`ALPACA_BASE_URL`/`OPTIONOMICS_API_KEY`/`OPTIONOMICS_EMAIL`
+(checked via `dotenv.parse`, presence/length only, never values printed), and none of
+these are set in the process environment either. This blocks R1F (real Alpaca PAPER
+option-chain pipeline) and the R1 end-condition (a real-data end-to-end shadow run)
+entirely — not a corner cut, a missing external dependency. Whoever has real THETA
+PAPER credentials needs to add them to `.env.local` (which is correctly gitignored)
+before R1F can be attempted for real.
+
+## Latest milestone: Python<->TS bridge + FusionSnapshot completion (`b147d54`)
+
+- `src/theta/python-bridge.ts` — R1I, the controlled bridge per
+  `docs/quant/phase6_router/PYTHON_TS_BRIDGE_ARCHITECTURE.md`. No shell invoked, fixed
+  script allowlist, timeout, max-output cap, stderr secret redaction, full
+  version/snapshot/schema validation, all fail-closed. 13 tests using real Python
+  fixture scripts (`tests/fixtures/python-bridge/`).
+- `src/market/fusion-snapshot.ts` — all 4 documented audit gaps fixed:
+  `contractCandidates` now uses the real `normalizedOptionContractSchema` (was
+  `z.unknown()`), plus new `providerHealth`, `portfolioExposure`,
+  `strategyRouterState` fields. Two dependent test fixtures (`fusion-snapshot.test.ts`,
+  `evaluation.test.ts`) updated to match — all their existing tests still pass.
+- `strategy_router.py` — added an explicit disclaimer that its ownership floors are
+  versioned research/default parameters, never claimed production-optimal.
 PROVIDER_CALLS: NONE this session
 ORDERS_SUBMITTED: NO
 FIRST_PAPER_ORDER_GATE: NOT REACHED -- R2 through R7 have not been built yet, so the

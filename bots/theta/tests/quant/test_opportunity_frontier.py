@@ -29,7 +29,7 @@ def _candidate(**overrides) -> CandidateSnapshot:
         ownership_acceptable=True, liquidity_acceptable=True, iv_compensation_sufficient=True,
         event_near=False, regime_acceptable=True, model_uncertainty=0.1,
         aegis_permits_full=True, aegis_permits_reduced=True,
-        has_alternate_contract=False, has_alternate_structure=False,
+        has_alternate_contract=False, has_alternate_expiry=False, has_alternate_structure=False,
     )
     defaults.update(overrides)
     return CandidateSnapshot(**defaults)
@@ -113,6 +113,34 @@ class AegisFallbackTests(unittest.TestCase):
         ).entries[0].decision
         self.assertEqual(decision.disposition, CandidateDisposition.PASS)
         self.assertEqual(decision.rejection_category, "AEGIS")
+
+
+class NegativeEvAlternateFallbackTests(unittest.TestCase):
+    def test_negative_ev_tries_alternate_expiry_before_passing(self):
+        # "Preferred DTE loses economic advantage -> evaluate another
+        # validated DTE region" -- a negative-EV contract must not
+        # immediately PASS if a different DTE bucket hasn't been tried yet.
+        decision = build_opportunity_book(
+            _policy(), [_candidate(ev_net=-5.0, has_alternate_expiry=True)]
+        ).entries[0].decision
+        self.assertEqual(decision.disposition, CandidateDisposition.OPEN_ALTERNATE_EXPIRY)
+
+    def test_negative_ev_falls_back_to_alternate_contract_when_no_alternate_expiry(self):
+        decision = build_opportunity_book(
+            _policy(), [_candidate(ev_net=-5.0, has_alternate_expiry=False, has_alternate_contract=True)]
+        ).entries[0].decision
+        self.assertEqual(decision.disposition, CandidateDisposition.OPEN_ALTERNATE_CONTRACT)
+
+    def test_negative_ev_with_no_fallback_available_is_pass(self):
+        decision = build_opportunity_book(_policy(), [_candidate(ev_net=-5.0)]).entries[0].decision
+        self.assertEqual(decision.disposition, CandidateDisposition.PASS)
+        self.assertEqual(decision.rejection_category, "NEGATIVE_EV")
+
+    def test_alternate_expiry_is_tried_before_alternate_contract(self):
+        decision = build_opportunity_book(
+            _policy(), [_candidate(ev_net=-5.0, has_alternate_expiry=True, has_alternate_contract=True)]
+        ).entries[0].decision
+        self.assertEqual(decision.disposition, CandidateDisposition.OPEN_ALTERNATE_EXPIRY)
 
 
 class GlobalIdleExplainabilityTests(unittest.TestCase):
