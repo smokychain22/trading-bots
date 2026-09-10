@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { invokeAndValidate, type PythonBridgeConfig } from './python-bridge.js';
 import { parseOwnershipEvaluationResponse, type OwnershipEvaluationResponse } from './ownership-contract.js';
 import { parseRegimeSnapshotResponse, type RegimeSnapshotResponse } from './regime-contract.js';
 import { parseStrategyRoutingResponse, eligibleFamilies, type StrategyRoutingResponse } from './strategy-router-contract.js';
+import { parseThetaQResponse, type ThetaQResponse } from './theta-q-contract.js';
 import { parseParetoFrontierResponse, survivingCandidateIds, type CandidateEconomics } from './pareto-frontier-contract.js';
 import { parseOpportunityFrontierResponse, type OpportunityFrontierResponse } from './opportunity-frontier-contract.js';
 import { parseAegisAssessmentResponse, type AegisAssessmentResponse } from './aegis-contract.js';
@@ -9,17 +11,32 @@ import { parseSizingResultResponse } from './sizing-contract.js';
 import { parseExecutionQualityResponse } from './execution-quality-contract.js';
 import { assembleNewRiskDecision, type CandidateFrontierResult, type NewRiskDecisionReceipt } from './decision-assembly.js';
 import type { NormalizedOptionContract } from './option-contract.js';
+import { ShadowOpportunityBookBuilder, type ShadowOpportunityEntry } from './shadow-opportunity-book.js';
 
 // R1: the real end-to-end new-risk orchestrator. Sequences every stage in
 // the canonical pipeline --
-//   OWNERSHIP -> REGIME -> STRATEGY ROUTER -> [candidate economics, supplied
-//   by the caller -- this module generates no economic number itself] ->
+//   OWNERSHIP -> REGIME -> STRATEGY ROUTER -> THETA-Q CANDIDATE LATTICE ->
 //   PARETO FRONTIER -> AEGIS -> OPPORTUNITY FRONTIER -> SIZING ->
-//   EXECUTION QUALITY -> FINAL DECISION ASSEMBLY
-// -- through python-bridge.ts, and returns both the final decision receipt
-// AND every intermediate stage's output, so a caller (shadow-opportunity-book,
-// /ops diagnostics, a future R2 ledger writer) can persist the complete,
-// reproducible trail a single receipt field can't hold on its own.
+//   EXECUTION QUALITY -> FINAL DECISION ASSEMBLY -> SHADOW OPPORTUNITY BOOK
+// -- through python-bridge.ts, and returns the final decision receipt, every
+// intermediate stage's raw output, AND a populated shadow-opportunity-book
+// (every legitimate candidate this cycle evaluated, not only the winner).
+//
+// theta_q_contract.py (the lattice + transparent baseline) is now the REAL
+// candidate-economics source -- this module no longer accepts caller-
+// supplied economics. A caller supplies the raw normalized option chain
+// (already-quoted, already-Greeked contracts, from a real provider or a
+// synthetic fixture) plus the underlying-level facts theta_q_baseline.py's
+// CspCandidateInputs needs that aren't part of a contract itself
+// (entryPremiumPerShare assumption, severeDrawdownProbability, ivRank,
+// brokerAllowedQty, contractIsStandard).
+//
+// A contract with an UNKNOWN delta is excluded from the theta_q lattice
+// call before it is ever sent to Python -- theta_q_lattice.py's
+// ChainContract.put_delta_magnitude is a required float, and comparing
+// None against a delta band would raise inside Python rather than fail
+// closed gracefully. This module treats that exclusion itself as a
+// PASS/UNKNOWN_DELTA outcome, never a silent drop (CAND-002).
 //
 // AEGIS runs before the opportunity frontier, not after, even though the
 // task's conceptual diagram lists PARETO -> OPPORTUNITY -> AEGIS -> SIZING:
@@ -30,27 +47,30 @@ import type { NormalizedOptionContract } from './option-contract.js';
 // dependency ordering, not a deviation from the pipeline's intent: every
 // stage still runs, once, in the only order the data allows.
 //
-// This module invents no missing model: THETA-Q's baseline (theta_q_baseline.py)
-// does not yet have a calibrated entry-outcome model, so evNet legitimately
-// arrives here as null for every candidate until that model exists (R6).
-// A null evNet correctly and honestly routes a candidate through
-// REQUIRED_INPUT_UNKNOWN -> PASS, exactly like every other missing input in
-// this codebase -- this orchestrator does not fabricate a workaround.
+// This module invents no missing model: THETA-Q's baseline has no
+// calibrated entry-outcome model yet, so ev_net legitimately arrives as
+// null for every candidate until that model exists (R6). CapitalDays and
+// ReturnPerCapitalDay ARE computed here, but only as plain arithmetic over
+// already-known quantities (capital tied up x days committed; EV / capital-
+// days) -- never a fabricated probability or alpha estimate.
 //
 // Any bridge-call failure at any stage fails the WHOLE decision closed
 // (HARD_VETO, quantity 0) rather than attempting a partial assembly with a
 // stage silently skipped.
 
-export interface CandidateInput {
+export interface RawCandidateInput {
   readonly candidateId: string;
   readonly contract: NormalizedOptionContract;
-  readonly economics: Omit<CandidateEconomics, 'candidateId'>;
+  readonly entryPremiumPerShare: number;
+  readonly severeDrawdownProbability: number | null;
+  readonly ivRank: number | null;
+  readonly brokerAllowedQty: number;
+  readonly contractIsStandard: boolean;
   readonly hasAlternateContract: boolean;
   readonly hasAlternateExpiry: boolean;
   readonly hasAlternateStructure: boolean;
   readonly ivCompensationSufficient: boolean | null;
   readonly quoteSize: number | null;
-  readonly quoteAgeSeconds: number | null;
   readonly preSlippageExpectedUtility: number | null;
 }
 
@@ -59,6 +79,7 @@ export interface NewRiskOrchestrationRequest {
   readonly fusionSnapshotHash: string;
   readonly timestamp: string;
   readonly underlying: string;
+  readonly earningsDistanceDays: number | null; // underlying-level fact, shared across every candidate this cycle
   readonly providerStateGood: boolean;
   readonly policyVersion: string;
   readonly modelVersions: Readonly<Record<string, string>>;
@@ -71,13 +92,17 @@ export interface NewRiskOrchestrationRequest {
   readonly routerPolicy: Record<string, unknown> & { thetaQMinOwnershipAcceptability: number };
   readonly routerPortfolio: Record<string, unknown>;
 
+  readonly latticeConfig: Record<string, unknown>;
+  readonly thetaQSizingPolicy: Record<string, unknown>; // theta_q_baseline.py's own SizingPolicy -- a hard-cap-only preliminary estimate, distinct from the account-aware sizing.py stage below
+  readonly costAssumptions: Record<string, unknown>;
+
   readonly aegisPolicy: Record<string, unknown>;
   readonly aegisInputs: Record<string, unknown>;
 
   readonly opportunityFrontierPolicy: { policyVersion: string; reducedSizeUncertaintyThreshold: number };
   readonly maxAcceptableSpreadPct: number; // shared liquidity-acceptability floor for opportunity-frontier derivation
 
-  readonly candidates: readonly CandidateInput[];
+  readonly candidates: readonly RawCandidateInput[];
 
   readonly sizingPolicy: Record<string, unknown>;
   readonly sizingAccount: { equity: number | null; cash: number | null; buyingPower: number | null; brokerAllowedQty: number };
@@ -89,16 +114,18 @@ export interface NewRiskOrchestrationResult {
   readonly ownership: OwnershipEvaluationResponse | null;
   readonly regime: RegimeSnapshotResponse | null;
   readonly routing: StrategyRoutingResponse | null;
+  readonly thetaQ: ThetaQResponse | null;
   readonly aegis: AegisAssessmentResponse | null;
   readonly paretoSurvivorIds: readonly string[] | null;
   readonly opportunityBook: OpportunityFrontierResponse | null;
+  readonly shadowOpportunities: readonly ShadowOpportunityEntry[];
 }
 
 const failClosedResult = (
   request: NewRiskOrchestrationRequest,
   stage: string,
   detail: string,
-  partial: Partial<Omit<NewRiskOrchestrationResult, 'receipt'>> = {},
+  partial: Partial<Omit<NewRiskOrchestrationResult, 'receipt' | 'shadowOpportunities'>> = {},
 ): NewRiskOrchestrationResult => ({
   receipt: {
     decisionId: `${request.snapshotId}:${request.underlying}`,
@@ -122,13 +149,21 @@ const failClosedResult = (
   ownership: null,
   regime: null,
   routing: null,
+  thetaQ: null,
   aegis: null,
   paretoSurvivorIds: null,
   opportunityBook: null,
+  shadowOpportunities: [],
   ...partial,
 });
 
 const requiredCollateralPerContract = (contract: NormalizedOptionContract): number => contract.strike * contract.multiplier;
+
+const NULL_ECONOMICS: Omit<CandidateEconomics, 'candidateId'> = {
+  grossCredit: null, evNet: null, calibratedPWin: null, breakEvenWr: null, edgeBuffer: null, expectedTailLoss: null,
+  assignmentProbability: null, severeDrawdownProbability: null, capitalRequirement: null, capitalDays: null,
+  returnPerCapitalDay: null, liquiditySpreadPct: null, fillProbability: null, expectedSlippage: null, modelUncertainty: null,
+};
 
 export async function runNewRiskOrchestration(
   bridge: PythonBridgeConfig,
@@ -173,26 +208,157 @@ export async function runNewRiskOrchestration(
 
   const thetaQEligible = eligibleFamilies(routerResult.data).includes('THETA_Q');
   const partialAfterRouting = { ownership: ownershipResult.data, regime: regimeResult.data, routing: routerResult.data };
+  const book = new ShadowOpportunityBookBuilder();
+
+  const recordShadow = (
+    candidate: RawCandidateInput | null,
+    fields: Partial<Omit<ShadowOpportunityEntry, 'contractVersion' | 'opportunityId' | 'snapshotId' | 'timestamp' | 'underlying' | 'policyVersion' | 'modelVersions'>>,
+  ): void => {
+    book.record({
+      contractVersion: 'theta-shadow-opportunity-book-v1',
+      opportunityId: randomUUID(),
+      snapshotId: request.snapshotId,
+      timestamp: request.timestamp,
+      underlying: request.underlying,
+      contractSymbol: candidate?.contract.optionSymbol ?? null,
+      strategyBranch: 'THETA_Q',
+      evNet: null, tailAdjustedEv: null, returnPerCapitalDay: null, capitalRequired: null, uncertainty: null,
+      ownershipSnapshotId: request.snapshotId, regimeSnapshotId: request.snapshotId, aegisState: null,
+      recommendedQuantity: null, executionQualityAcceptable: null,
+      waitReason: null, rejectionCategory: null, reasons: [],
+      policyVersion: request.policyVersion, modelVersions: request.modelVersions,
+      eventualOutcomeKnown: false, eventualRealizedPnl: null,
+      ...fields,
+    });
+  };
 
   if (!thetaQEligible || request.candidates.length === 0) {
+    if (request.candidates.length > 0) {
+      recordShadow(null, {
+        outcome: 'PASS', rejectionCategory: 'THETA_Q_INELIGIBLE',
+        reasons: [{ code: 'STRATEGY_INELIGIBLE_THIS_CYCLE', polarity: -1, detail: 'THETA_Q was not an eligible strategy family for the current lifecycle/market state.' }],
+      });
+    }
     const receipt = assembleNewRiskDecision({
       snapshotId: request.snapshotId, fusionSnapshotHash: request.fusionSnapshotHash, timestamp: request.timestamp,
       underlying: request.underlying, ownership: ownershipResult.data, regime: regimeResult.data, candidates: [],
       policyVersion: request.policyVersion, modelVersions: request.modelVersions,
       requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
     });
-    return { receipt, ...partialAfterRouting, aegis: null, paretoSurvivorIds: null, opportunityBook: null };
+    return { receipt, ...partialAfterRouting, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all() };
+  }
+
+  // Contracts with an UNKNOWN delta cannot enter the lattice call --
+  // theta_q_lattice.py's ChainContract.put_delta_magnitude is a required
+  // float. Exclude them here, recorded as PASS, never sent to Python.
+  const [latticeEligible, deltaUnknown] = request.candidates.reduce<[RawCandidateInput[], RawCandidateInput[]]>(
+    (acc, c) => {
+      acc[c.contract.delta === null ? 1 : 0].push(c);
+      return acc;
+    },
+    [[], []],
+  );
+
+  const deltaUnknownResults: CandidateFrontierResult[] = deltaUnknown.map((c) => {
+    recordShadow(c, {
+      outcome: 'PASS', rejectionCategory: 'UNKNOWN_DELTA',
+      reasons: [{ code: 'DELTA_UNKNOWN', polarity: -1, detail: 'Delta is UNKNOWN for this contract -- never manufactured, excluded from the lattice.' }],
+    });
+    return {
+      candidateId: c.candidateId, contract: c.contract, disposition: 'PASS', waitReason: null,
+      rejectionReason: 'UNKNOWN_DELTA', evNet: null, returnPerCapitalDay: null, aegis: null, sizing: null, executionQuality: null,
+    };
+  });
+
+  if (latticeEligible.length === 0) {
+    const receipt = assembleNewRiskDecision({
+      snapshotId: request.snapshotId, fusionSnapshotHash: request.fusionSnapshotHash, timestamp: request.timestamp,
+      underlying: request.underlying, ownership: ownershipResult.data, regime: regimeResult.data,
+      candidates: deltaUnknownResults, policyVersion: request.policyVersion, modelVersions: request.modelVersions,
+      requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
+    });
+    return { receipt, ...partialAfterRouting, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all() };
+  }
+
+  const thetaQResult = await invokeAndValidate(
+    bridge, 'thetaQ',
+    {
+      contractVersion: 'theta-q-runtime-v1', operation: 'evaluateCspCandidates', fusionSnapshotHash: request.fusionSnapshotHash,
+      latticeConfig: request.latticeConfig, sizingPolicy: request.thetaQSizingPolicy, costAssumptions: request.costAssumptions,
+      candidates: latticeEligible.map((c) => ({
+        candidateId: c.candidateId, underlyingSymbol: c.contract.underlying, dte: c.contract.dte, strike: c.contract.strike,
+        putDeltaMagnitude: Math.abs(c.contract.delta as number), spreadPct: c.contract.spreadPct,
+        quoteAgeSeconds: c.contract.dataAgeSeconds, openInterest: c.contract.openInterest, volume: c.contract.volume,
+        earningsDistanceDays: request.earningsDistanceDays, multiplier: c.contract.multiplier,
+        entryPremiumPerShare: c.entryPremiumPerShare, ownershipAcceptability: ownershipResult.data.ownability,
+        severeDrawdownProbability: c.severeDrawdownProbability, ivRank: c.ivRank, brokerAllowedQty: c.brokerAllowedQty,
+        contractIsStandard: c.contractIsStandard,
+      })),
+    },
+    (payload) => parseThetaQResponse(payload, request.fusionSnapshotHash),
+  );
+  if (!thetaQResult.ok) return failClosedResult(request, 'THETA_Q_LATTICE', thetaQResult.detail, partialAfterRouting);
+
+  const rawByCandidateId = new Map(latticeEligible.map((c) => [c.candidateId, c]));
+  const feasibleForFrontier: RawCandidateInput[] = [];
+  const economicsByCandidateId = new Map<string, Omit<CandidateEconomics, 'candidateId'>>();
+  const immediateResults: CandidateFrontierResult[] = [...deltaUnknownResults];
+
+  for (const tq of thetaQResult.data.candidates) {
+    const raw = rawByCandidateId.get(tq.candidateId);
+    if (raw === undefined) continue; // cannot happen given the request was built from latticeEligible, but never assume
+    if (!tq.actionFeasible) {
+      const reasonCode = tq.reasons[0]?.code ?? 'THETA_Q_INFEASIBLE';
+      recordShadow(raw, {
+        outcome: reasonCode === 'OWNERSHIP_BELOW_FLOOR' ? 'REJECTED' : 'REJECTED',
+        rejectionCategory: reasonCode,
+        reasons: tq.reasons,
+      });
+      immediateResults.push({
+        candidateId: raw.candidateId, contract: raw.contract, disposition: 'PASS', waitReason: null,
+        rejectionReason: reasonCode, evNet: tq.economics?.ev_net ?? null, returnPerCapitalDay: null,
+        aegis: null, sizing: null, executionQuality: null,
+      });
+      continue;
+    }
+
+    const capitalRequirement = tq.economics?.secured_collateral_per_contract ?? null;
+    const capitalDays = capitalRequirement !== null ? capitalRequirement * raw.contract.dte : null;
+    const evNet = tq.economics?.ev_net ?? null;
+    const returnPerCapitalDay = evNet !== null && capitalDays !== null && capitalDays > 0 ? evNet / capitalDays : null;
+
+    economicsByCandidateId.set(raw.candidateId, {
+      ...NULL_ECONOMICS,
+      grossCredit: tq.economics?.max_profit ?? null,
+      evNet,
+      severeDrawdownProbability: raw.severeDrawdownProbability,
+      capitalRequirement,
+      capitalDays,
+      returnPerCapitalDay,
+      liquiditySpreadPct: raw.contract.spreadPct,
+    });
+    feasibleForFrontier.push(raw);
+  }
+
+  if (feasibleForFrontier.length === 0) {
+    const receipt = assembleNewRiskDecision({
+      snapshotId: request.snapshotId, fusionSnapshotHash: request.fusionSnapshotHash, timestamp: request.timestamp,
+      underlying: request.underlying, ownership: ownershipResult.data, regime: regimeResult.data,
+      candidates: immediateResults, policyVersion: request.policyVersion, modelVersions: request.modelVersions,
+      requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
+    });
+    return { receipt, ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all() };
   }
 
   const paretoResult = await invokeAndValidate(
     bridge, 'paretoFrontier',
     {
       contractVersion: 'theta-pareto-frontier-runtime-v1', snapshotId: request.snapshotId, timestamp: request.timestamp,
-      candidates: request.candidates.map((c) => ({ candidateId: c.candidateId, ...c.economics })),
+      candidates: feasibleForFrontier.map((c) => ({ candidateId: c.candidateId, ...(economicsByCandidateId.get(c.candidateId) as Omit<CandidateEconomics, 'candidateId'>) })),
     },
     (payload) => parseParetoFrontierResponse(payload),
   );
-  if (!paretoResult.ok) return failClosedResult(request, 'PARETO_FRONTIER', paretoResult.detail, partialAfterRouting);
+  if (!paretoResult.ok) return failClosedResult(request, 'PARETO_FRONTIER', paretoResult.detail, { ...partialAfterRouting, thetaQ: thetaQResult.data });
   const survivorIds = new Set(survivingCandidateIds(paretoResult.data));
 
   const aegisResult = await invokeAndValidate(
@@ -201,62 +367,67 @@ export async function runNewRiskOrchestration(
     (payload) => parseAegisAssessmentResponse(payload),
   );
   if (!aegisResult.ok) {
-    return failClosedResult(request, 'AEGIS', aegisResult.detail, { ...partialAfterRouting, paretoSurvivorIds: [...survivorIds] });
+    return failClosedResult(request, 'AEGIS', aegisResult.detail, { ...partialAfterRouting, thetaQ: thetaQResult.data, paretoSurvivorIds: [...survivorIds] });
   }
 
-  const survivors = request.candidates.filter((c) => survivorIds.has(c.candidateId));
+  const survivors = feasibleForFrontier.filter((c) => survivorIds.has(c.candidateId));
+  for (const c of feasibleForFrontier) {
+    if (!survivorIds.has(c.candidateId)) {
+      immediateResults.push({
+        candidateId: c.candidateId, contract: c.contract, disposition: 'PASS', waitReason: null,
+        rejectionReason: 'PARETO_DOMINATED', evNet: economicsByCandidateId.get(c.candidateId)?.evNet ?? null,
+        returnPerCapitalDay: economicsByCandidateId.get(c.candidateId)?.returnPerCapitalDay ?? null,
+        aegis: null, sizing: null, executionQuality: null,
+      });
+      recordShadow(c, { outcome: 'REJECTED', rejectionCategory: 'PARETO_DOMINATED', reasons: [{ code: 'PARETO_DOMINATED', polarity: -1, detail: 'Strictly dominated by another candidate in this snapshot.' }] });
+    }
+  }
+
   const opportunityResult = await invokeAndValidate(
     bridge, 'opportunityFrontier',
     {
       contractVersion: 'theta-opportunity-frontier-runtime-v1', snapshotId: request.snapshotId, timestamp: request.timestamp,
       policy: request.opportunityFrontierPolicy,
-      candidates: survivors.map((c) => ({
-        candidateId: c.candidateId,
-        underlyingSymbol: c.contract.underlying,
-        evNet: c.economics.evNet,
-        returnPerCapitalDay: c.economics.returnPerCapitalDay,
-        ownershipAcceptable: ownershipResult.data.ownability === null ? null : ownershipResult.data.ownability >= request.routerPolicy.thetaQMinOwnershipAcceptability,
-        liquidityAcceptable: c.contract.spreadPct === null ? null : c.contract.spreadPct <= request.maxAcceptableSpreadPct,
-        ivCompensationSufficient: c.ivCompensationSufficient,
-        eventNear: regimeResult.data.eventState === null ? true : regimeResult.data.eventState !== 'NONE',
-        regimeAcceptable:
-          regimeResult.data.stressState === null || regimeResult.data.volatilityState === null
-            ? null
-            : regimeResult.data.stressState !== 'CRISIS' && regimeResult.data.volatilityState !== 'SHOCK',
-        modelUncertainty: null,
-        aegisPermitsFull: aegisResult.data.newRiskState === 'ALLOW_FULL',
-        aegisPermitsReduced: aegisResult.data.newRiskState === 'ALLOW_FULL' || aegisResult.data.newRiskState === 'ALLOW_REDUCED',
-        hasAlternateContract: c.hasAlternateContract,
-        hasAlternateExpiry: c.hasAlternateExpiry,
-        hasAlternateStructure: c.hasAlternateStructure,
-      })),
+      candidates: survivors.map((c) => {
+        const econ = economicsByCandidateId.get(c.candidateId) as Omit<CandidateEconomics, 'candidateId'>;
+        return {
+          candidateId: c.candidateId,
+          underlyingSymbol: c.contract.underlying,
+          evNet: econ.evNet,
+          returnPerCapitalDay: econ.returnPerCapitalDay,
+          ownershipAcceptable: ownershipResult.data.ownability === null ? null : ownershipResult.data.ownability >= request.routerPolicy.thetaQMinOwnershipAcceptability,
+          liquidityAcceptable: c.contract.spreadPct === null ? null : c.contract.spreadPct <= request.maxAcceptableSpreadPct,
+          ivCompensationSufficient: c.ivCompensationSufficient,
+          eventNear: regimeResult.data.eventState === null ? true : regimeResult.data.eventState !== 'NONE',
+          regimeAcceptable:
+            regimeResult.data.stressState === null || regimeResult.data.volatilityState === null
+              ? null
+              : regimeResult.data.stressState !== 'CRISIS' && regimeResult.data.volatilityState !== 'SHOCK',
+          modelUncertainty: null,
+          aegisPermitsFull: aegisResult.data.newRiskState === 'ALLOW_FULL',
+          aegisPermitsReduced: aegisResult.data.newRiskState === 'ALLOW_FULL' || aegisResult.data.newRiskState === 'ALLOW_REDUCED',
+          hasAlternateContract: c.hasAlternateContract,
+          hasAlternateExpiry: c.hasAlternateExpiry,
+          hasAlternateStructure: c.hasAlternateStructure,
+        };
+      }),
     },
     (payload) => parseOpportunityFrontierResponse(payload),
   );
   if (!opportunityResult.ok) {
     return failClosedResult(request, 'OPPORTUNITY_FRONTIER', opportunityResult.detail, {
-      ...partialAfterRouting, aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds],
+      ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds],
     });
   }
 
   const entryByCandidateId = new Map(opportunityResult.data.entries.map((entry) => [entry.candidateId, entry]));
   const OPEN_DISPOSITIONS = new Set(['OPEN_FULL', 'OPEN_REDUCED', 'OPEN_ALTERNATE_CONTRACT', 'OPEN_ALTERNATE_EXPIRY', 'OPEN_ALTERNATE_STRUCTURE']);
 
-  const candidateResults: CandidateFrontierResult[] = [];
-  for (const candidate of request.candidates) {
+  const candidateResults: CandidateFrontierResult[] = [...immediateResults];
+  for (const candidate of survivors) {
+    const econ = economicsByCandidateId.get(candidate.candidateId) as Omit<CandidateEconomics, 'candidateId'>;
     const entry = entryByCandidateId.get(candidate.candidateId);
-    if (entry === undefined) {
-      // Dominated by pareto or otherwise never reached the opportunity
-      // frontier -- still recorded as a PASS alternative, never dropped
-      // silently (CAND-002: retain rejected alternatives).
-      candidateResults.push({
-        candidateId: candidate.candidateId, contract: candidate.contract, disposition: 'PASS', waitReason: null,
-        rejectionReason: survivorIds.has(candidate.candidateId) ? 'NOT_EVALUATED' : 'PARETO_DOMINATED',
-        evNet: candidate.economics.evNet, returnPerCapitalDay: candidate.economics.returnPerCapitalDay,
-        aegis: null, sizing: null, executionQuality: null,
-      });
-      continue;
-    }
+    if (entry === undefined) continue; // never happens -- every survivor was sent to opportunityFrontier
 
     const isOpen = OPEN_DISPOSITIONS.has(entry.disposition);
     if (!isOpen) {
@@ -264,8 +435,12 @@ export async function runNewRiskOrchestration(
         candidateId: candidate.candidateId, contract: candidate.contract,
         disposition: entry.disposition as CandidateFrontierResult['disposition'],
         waitReason: entry.waitReason, rejectionReason: entry.rejectionCategory,
-        evNet: candidate.economics.evNet, returnPerCapitalDay: candidate.economics.returnPerCapitalDay,
+        evNet: econ.evNet, returnPerCapitalDay: econ.returnPerCapitalDay,
         aegis: null, sizing: null, executionQuality: null,
+      });
+      recordShadow(candidate, {
+        outcome: entry.disposition === 'WAIT' ? 'WAIT' : 'PASS', evNet: econ.evNet, returnPerCapitalDay: econ.returnPerCapitalDay,
+        capitalRequired: econ.capitalRequirement, waitReason: entry.waitReason, rejectionCategory: entry.rejectionCategory, reasons: entry.reasons,
       });
       continue;
     }
@@ -285,7 +460,7 @@ export async function runNewRiskOrchestration(
     );
     if (!sizingResult.ok) {
       return failClosedResult(request, 'SIZING', sizingResult.detail, {
-        ...partialAfterRouting, aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
+        ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
       });
     }
 
@@ -296,7 +471,7 @@ export async function runNewRiskOrchestration(
         snapshotId: request.snapshotId, timestamp: request.timestamp, policy: request.executionQualityPolicy,
         inputs: {
           bid: candidate.contract.bid, ask: candidate.contract.ask, quoteSize: candidate.quoteSize,
-          quoteAgeSeconds: candidate.quoteAgeSeconds, limitPrice: candidate.contract.bid ?? 0,
+          quoteAgeSeconds: candidate.contract.dataAgeSeconds, limitPrice: candidate.contract.bid ?? 0,
           preSlippageExpectedUtility: candidate.preSlippageExpectedUtility,
         },
       },
@@ -304,7 +479,7 @@ export async function runNewRiskOrchestration(
     );
     if (!executionQualityResult.ok) {
       return failClosedResult(request, 'EXECUTION_QUALITY', executionQualityResult.detail, {
-        ...partialAfterRouting, aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
+        ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
       });
     }
 
@@ -312,8 +487,17 @@ export async function runNewRiskOrchestration(
       candidateId: candidate.candidateId, contract: candidate.contract,
       disposition: entry.disposition as CandidateFrontierResult['disposition'],
       waitReason: entry.waitReason, rejectionReason: entry.rejectionCategory,
-      evNet: candidate.economics.evNet, returnPerCapitalDay: candidate.economics.returnPerCapitalDay,
+      evNet: econ.evNet, returnPerCapitalDay: econ.returnPerCapitalDay,
       aegis: aegisResult.data, sizing: sizingResult.data, executionQuality: executionQualityResult.data,
+    });
+
+    const executionAcceptable = executionQualityResult.data.acceptable;
+    const outcome: ShadowOpportunityEntry['outcome'] =
+      sizingResult.data.quantity === 0 ? 'Q_ZERO' : executionAcceptable === false ? 'EXECUTION_REJECTED' : 'ACCEPTED';
+    recordShadow(candidate, {
+      outcome, evNet: econ.evNet, returnPerCapitalDay: econ.returnPerCapitalDay, capitalRequired: econ.capitalRequirement,
+      aegisState: aegisResult.data.newRiskState, recommendedQuantity: sizingResult.data.quantity,
+      executionQualityAcceptable: executionAcceptable, reasons: [...sizingResult.data.reasons, ...executionQualityResult.data.reasons],
     });
   }
 
@@ -326,6 +510,7 @@ export async function runNewRiskOrchestration(
 
   return {
     receipt, ownership: ownershipResult.data, regime: regimeResult.data, routing: routerResult.data,
-    aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
+    thetaQ: thetaQResult.data, aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds],
+    opportunityBook: opportunityResult.data, shadowOpportunities: book.all(),
   };
 }
