@@ -296,3 +296,56 @@ NEXT RECOMMENDED TASK: After the owner accepts the Neon terms, create and attach
 free production database, apply migrations through 009, pull the resulting production
 environment safely, and execute a real tester connect/read/disconnect smoke test. Do
 not place an order.
+
+## 2026-09-11 Neon production database and real-state R1 integration
+
+OWNER: Codex
+
+TASK: Provision the attached Neon database, verify the deployed private Paper account
+path, and integrate Claude's latest non-conflicting real-state R1 runtime work.
+
+FILES CHANGED: Canonical database migration and verification tools, plus the files from
+Claude branch `claude/theta-r1-real-state`. No customer credential, environment file,
+temporary audit endpoint, or temporary audit token remains in the repository or Vercel.
+
+WHAT WAS IMPLEMENTED: Neon Production and Preview variables were confirmed as Vercel
+Sensitive values. Migrations 001 through 009 were applied in order over an unpooled Neon
+connection. All seven SQL invariant suites passed against Neon. Reusable migration and
+verification commands now choose a session-capable migration URL before any pooled
+runtime URL. Claude's R1 work added real Alpaca account, position, open-order, clock,
+calendar accessor, asset-universe, stock-history, optionability, Optionomics chain,
+contract merge, and account-exposure inputs to the non-executing shadow cycle.
+
+TESTS RUN: 399 TypeScript tests, 298 Python tests, ESLint, TypeScript check, production
+build, security scan, real Neon migrations and SQL invariants, production root and API
+smoke tests, read-only master Alpaca and Optionomics verification, and a deployed
+customer registration/session/private-connector rejection test.
+
+TEST RESULTS: All local and GitHub CI gates passed. Production root returns HTTP 200
+through Vercel's authenticated private deployment. Alpaca Paper account, configuration,
+clock, calendar, IEX stock data, option-contract discovery, indicative option snapshots,
+positions, open orders, account activity, and corporate actions returned successful
+read-only responses. OPRA returned HTTP 403 `NOT_ENTITLED`, while INDICATIVE returned
+HTTP 200. Optionomics documented contracts, authentication, symbol metrics, option
+chain, history, flow, and events returned HTTP 200. The database reports zero broker
+orders, zero active followers, and zero active customer credentials.
+
+KNOWN LIMITATIONS: A real tester has not yet supplied a separate private-beta Alpaca
+Paper credential through the deployed form. Valid customer connect, encrypted Neon
+persistence, reverify, replace, and disconnect are covered by deterministic integration
+tests, but the deployed real-credential journey cannot be claimed until a tester enters
+their own credential. The master deployment credential was intentionally not reused as
+a customer credential. The shadow cycle still lacks durable FusionSnapshot/opportunity
+persistence, real event-state assembly, a production scheduler, and complete management
+and reconciliation workers.
+
+RISKS: INDICATIVE data is reachable, but OPRA is not entitled. No first Paper order may
+use an unapproved feed assumption. Several AEGIS families still depend on explicitly
+manual or unavailable inputs, and current shadow policy defaults are research values.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: The merged real-state R1 provider and cycle files
+only at a release boundary. Claude must not commit or push under the current owner rule.
+
+NEXT RECOMMENDED TASK: Add durable shadow snapshot, opportunity, and decision persistence,
+then wire real event state and a restart-safe scheduler. Keep both Paper execution flags
+false and `PAPER_PAUSE_NEW_ORDERS=true`.

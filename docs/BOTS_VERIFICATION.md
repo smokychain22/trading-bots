@@ -75,3 +75,35 @@ GitHub PostgreSQL service executed and passed migration 005 and its SQL invarian
   ignored `.reticle` metadata do not provide a skill workflow or saved verdict flow.
   Playwright screenshots were visually inspected as the documented fallback. No
   Reticle verdict is claimed.
+
+## Neon and real provider verification, 2026-09-11
+
+- Vercel project `skillswap7/trading-bots` exposes `DATABASE_URL`,
+  `DATABASE_URL_UNPOOLED`, and `POSTGRES_URL_NON_POOLING` as Sensitive values in
+  Production and Preview. Values were never printed.
+- The real Neon database accepted migrations 001 through 009 in lexical order under an
+  advisory lock. `core.schema_migration` contains all nine canonical versions.
+- Seven SQL invariant files passed against Neon. The verification included immutable
+  decisions, lifecycle economics, follower copy rules, customer identity and sessions,
+  connection readiness, Paper execution readiness, and private Paper API-key rules.
+- Required private-beta tables exist, including `iam.customer_identity`,
+  `iam.customer_session`, `copy.alpaca_oauth_token`, `copy.follower_account`, and
+  `copy.customer_participation`. The encrypted-token table contains no active test
+  credential after cleanup.
+- Production read-only Alpaca verification returned `CONNECTED`. Account status was
+  `ACTIVE`, options approval and trading level were 3, positions and open orders were
+  both readable and empty, and the market was closed at the observation time. OPRA was
+  `NOT_ENTITLED` with HTTP 403. INDICATIVE option snapshots were `GOOD` with HTTP 200.
+- Production Optionomics verification returned `CONNECTED` for every discovered and
+  documented capability probe. No route was guessed.
+- The deployed private connector accepted customer registration and an authenticated
+  session, reported `READY`, rejected missing credentials, and mapped deliberately
+  invalid credentials to `INVALID_AUTH` with HTTP 401. The response contained no supplied
+  credential value. The temporary test identity and session were deleted afterward.
+- A separate real tester credential was not available to this session. Production
+  connect, encrypted persistence, replace, reverify, and disconnect with a genuine
+  tester account remain an external end-to-end evidence gate.
+- Production root returned HTTP 200, the temporary audit endpoint returned HTTP 404 after
+  cleanup, and private Paper execution stayed locked. Database order count remained zero.
+- Final local verification after R1 integration passed 399 TypeScript tests, 298 Python
+  tests, ESLint, TypeScript checking, build, and security scan. Main CI passed.

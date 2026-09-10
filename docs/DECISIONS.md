@@ -159,3 +159,23 @@ transient capability state and `SYSTEM_HOLD`. They are not economic `PASS`, stra
 truth, and required missing entitlement remain genuine fail-closed `HARD_VETO`
 conditions. This preserves clean provider reliability, opportunity, and risk-veto
 statistics while keeping quantity zero and execution authorization false.
+
+## 2026-09-11: Neon migration authority and private-beta production boundary
+
+Use Neon `DATABASE_URL` for pooled serverless runtime requests. Migration tooling must
+prefer `DATABASE_MIGRATION_URL`, `DATABASE_URL_UNPOOLED`, or
+`POSTGRES_URL_NON_POOLING`, in that order. Migrations run under a PostgreSQL advisory
+lock and remain idempotent. Vercel's local environment pull masks connected-integration
+Sensitive values, so a masked local placeholder must never be diagnosed as a bad Neon
+credential or passed to a migration.
+
+The Production schema is now at migrations 001 through 009 and passed all repository SQL
+invariants. Identity, session, encrypted credential, follower, participation, immutable
+decision, lifecycle, order-intent, and reconciliation structures are present. Broker
+order count remains zero.
+
+The platform master Alpaca deployment credential remains a separate trust domain from a
+customer private-beta credential. It may verify the master account read-only, but it must
+not be copied into a customer record to manufacture an end-to-end tester result. A real
+tester must enter their own Paper API key and secret through the HTTPS account form.
+Customer order submission remains locked independently of successful account connection.
