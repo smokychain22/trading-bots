@@ -41,7 +41,7 @@ export function howItWorks() {
 export function simulationPage() {
   const field = (name, text, value, min, max, step = "1") =>
     `<label>${text}<input name="${name}" type="number" value="${value}" min="${min}" max="${max}" step="${step}" required></label>`;
-  return `<div class="section-heading"><div><p class="eyebrow">ILLUSTRATIVE SCENARIO</p><h2>Simulate your capital</h2><p>Explore the effect of size and assignment. These inputs are hypothetical, not a strategy forecast.</p></div>${badge("DEMO DATA", "demo")}</div><div class="two-columns"><form class="panel simulation-form" id="simulation"><fieldset><legend>1. Your illustration</legend>${field("capital", "Available capital ($)", 10000, 0, 10000000)}${field("strike", "Put strike ($ per share)", 50, 0.01, 100000, "0.01")}${field("premium", "Assumed opening premium ($ per share)", 1.5, 0, 100000, "0.01")}${field("stock_at_exit", "Stock value at expiry ($ per share)", 45, 0, 100000, "0.01")}${field("max_contracts", "Maximum contracts", 1, 0, 1000)}${field("costs_per_contract", "Total modeled fees and slippage ($ per contract)", 2, 0, 10000, "0.01")}${field("dte", "Contract days to expiry", 30, 1, 730)}</fieldset><fieldset><legend>2. Copy preferences for later</legend><p class="caption">Preferences are saved with the local draft. They are not enforced against a broker. Copy trading is unavailable.</p>${field("min_dte", "Minimum DTE", 7, 1, 730)}${field("max_dte", "Maximum DTE", 60, 1, 730)}${field("max_daily_loss", "Maximum daily loss preference ($)", 500, 0, 10000000)}${field("max_slippage", "Maximum slippage preference ($ per share)", 0.1, 0, 100, "0.01")}${field("min_open_interest", "Minimum open interest preference", 500, 0, 100000000)}<div class="control-note"><strong>0DTE blocked</strong><p>Same-day expiry is outside this THETA illustration.</p></div><div class="control-note"><strong>Start with new positions only</strong><p>Existing positions cannot be joined. Any later copy service must reconcile each user’s own fills, collateral and inventory.</p></div></fieldset><button class="button primary" type="submit">Calculate illustration</button><p id="simulation-error" role="alert"></p></form><section class="panel simulation-output" aria-live="polite"><h2>Your scenario</h2><p>Enter your assumptions, then calculate. Quantity can be zero when capital or limits do not allow a contract.</p><div id="simulation-result"></div></section></div>`;
+  return `<div class="section-heading"><div><p class="eyebrow">ILLUSTRATIVE SCENARIO</p><h2>Start with your capital</h2><p>This is a learning tool, not a forecast, backtest or offer to trade.</p></div>${badge("DEMO DATA", "demo")}</div><div class="two-columns"><form class="panel simulation-form" id="simulation"><fieldset><legend>1. The essentials</legend>${field("capital", "Capital you want to illustrate ($)", 10000, 0, 10000000)}<div class="preference-choice"><span>Would you be willing to receive assigned shares?</span><label><input type="radio" name="assignment_preference" value="yes" checked> Yes, show an assigned-stock example</label><label><input type="radio" name="assignment_preference" value="no"> No, explain why assignment matters</label></div><p class="control-note"><strong>What happens next</strong><br>We calculate an explicitly hypothetical position size. A result of zero means WAIT, which is a valid result.</p></fieldset><details class="advanced-assumptions"><summary>Advanced assumptions</summary><p>These assumptions make the illustration concrete. They are not live quotes, recommendations or broker controls.</p><div class="advanced-fields">${field("strike", "Illustrative put strike ($ per share)", 50, 0.01, 100000, "0.01")}${field("premium", "Illustrative opening premium ($ per share)", 1.5, 0, 100000, "0.01")}${field("stock_at_exit", "Illustrative stock value at expiry ($ per share)", 45, 0, 100000, "0.01")}${field("dte", "Illustrative days to expiry", 30, 1, 730)}${field("max_contracts", "Maximum illustrative contracts", 1, 0, 1000)}${field("costs_per_contract", "Modeled fees and slippage ($ per contract)", 2, 0, 10000, "0.01")}${field("min_dte", "Minimum DTE preference", 7, 1, 730)}${field("max_dte", "Maximum DTE preference", 60, 1, 730)}${field("max_daily_loss", "Daily loss preference ($)", 500, 0, 10000000)}${field("max_slippage", "Slippage preference ($ per share)", 0.1, 0, 100, "0.01")}${field("min_open_interest", "Open-interest preference", 500, 0, 100000000)}</div></details><p class="caption">0DTE is outside this illustration. No account is connected and no existing position can be joined.</p><button class="button primary" type="submit">Calculate illustration</button><p id="simulation-error" role="alert"></p></form><section class="panel simulation-output" aria-live="polite"><p class="eyebrow">YOUR ILLUSTRATION</p><h2>See the economic consequence</h2><p>Enter capital and calculate. The result includes assigned-stock value, not option premium alone.</p><div id="simulation-result"></div></section></div>`;
 }
 export function bindSimulation() {
   const form = document.querySelector("#simulation");
@@ -52,8 +52,11 @@ export function bindSimulation() {
     button.disabled = true;
     button.textContent = "Calculating…";
     document.querySelector("#simulation-error").textContent = "";
+    const raw = new FormData(form);
     const input = Object.fromEntries(
-      [...new FormData(form)].map(([k, v]) => [k, Number(v)]),
+      [...raw]
+        .filter(([k]) => k !== "assignment_preference")
+        .map(([k, v]) => [k, Number(v)]),
     );
     input.join_existing = false;
     try {
@@ -69,8 +72,9 @@ export function bindSimulation() {
         );
       const { data: r } = await response.json();
       lastInput = input;
+      const assignmentPreference = raw.get("assignment_preference");
       document.querySelector("#simulation-result").innerHTML =
-        `${badge("DEMO DATA", "demo")}<h3>${r.quantity === 0 ? "WAIT · Quantity zero" : `${r.quantity} illustrative contract${r.quantity > 1 ? "s" : ""}`}</h3>${table(
+        `${badge("DEMO DATA", "demo")}<h3>${r.quantity === 0 ? "WAIT · Quantity zero" : `${r.quantity} illustrative contract${r.quantity > 1 ? "s" : ""}`}</h3><p class="plain-result">${r.quantity === 0 ? "Your selected capital or limits do not support a contract in this illustration. WAIT preserves cash in this example." : r.assignment_assumed ? "This example includes assignment. The stock loss stays visible in total economic P&L." : "This example assumes the option expires without assignment."}</p>${table(
           ["Component", "Hypothetical value"],
           [
             ["Cash collateral", money(r.collateral)],
@@ -83,7 +87,7 @@ export function bindSimulation() {
             ],
           ],
           "DEMO DATA · Your assumptions",
-        )}<p>${r.assignment_assumed ? "This simplified scenario assumes assignment because the stock value is below strike." : "This simplified scenario assumes expiration without assignment."}</p><p>${r.quantity === 0 ? "Capital, maximum quantity or DTE preferences prevented the illustration from sizing a contract." : ""}</p><details open><summary>Assumptions & limitations</summary><ul>${r.limitations.map((s) => `<li>${esc(s)}</li>`).join("")}</ul></details><button class="button secondary" id="save-plan">Save local draft</button><p id="save-result" role="status"></p>`;
+        )}<p>${assignmentPreference === "no" ? "You marked assignment as unsuitable. A future controlled experience would need real enforcement. This illustration does not enforce a broker rule." : ""}</p><details><summary>Assumptions & limitations</summary><ul>${r.limitations.map((s) => `<li>${esc(s)}</li>`).join("")}</ul></details><button class="button secondary" id="save-plan">Save local draft</button><p id="save-result" role="status"></p>`;
       document.querySelector("#save-plan").addEventListener("click", () => {
         try {
           let plans = JSON.parse(

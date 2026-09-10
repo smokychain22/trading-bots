@@ -8,18 +8,18 @@ test("catalog is honest, filters work, and research cannot activate", async ({
   await expect(
     page.getByRole("heading", { name: "Trading Bots", exact: true }),
   ).toBeVisible();
-  await expect(page.locator(".bot-card")).toHaveCount(6);
-  await expect(page.locator(".bot-card.featured")).toContainText(
-    "No track record published",
-  );
+  await expect(page.getByText("AVAILABLE FOR EXPLORATION NOW")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Explore THETA" })).toBeVisible();
+  await expect(page.locator(".bot-card")).toHaveCount(5);
+  await page.getByText("Browse and filter the research roadmap").click();
   await page.getByLabel("Strategy", { exact: true }).selectOption("Income");
-  await expect(page.locator(".bot-card")).toHaveCount(1);
+  await expect(page.locator(".bot-card")).toHaveCount(0);
   await page.getByLabel("Risk", { exact: true }).selectOption("Conservative");
   await expect(
     page.getByRole("heading", { name: "No bots match these filters" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Reset", exact: true }).click();
-  await expect(page.locator(".bot-card")).toHaveCount(6);
+  await expect(page.locator(".bot-card")).toHaveCount(5);
   await page.goto("/bots/atlas");
   await expect(
     page.getByRole("heading", { name: "ATLAS", exact: true }),
@@ -88,14 +88,35 @@ test("simulation uses actual API, supports WAIT and local drafts without activat
   await page.getByRole("button", { name: "Remove draft" }).click();
   await expect(page.locator(".saved-plan")).toHaveCount(0);
   await page.goto("/bots/theta/simulate");
-  await page.getByLabel("Available capital ($)", { exact: true }).fill("0");
+  await page
+    .getByLabel("Capital you want to illustrate ($)", { exact: true })
+    .fill("0");
   await page.getByRole("button", { name: "Calculate illustration" }).click();
   await expect(
     page.getByRole("heading", { name: "WAIT · Quantity zero" }),
   ).toBeVisible();
   await expect(page.locator("main")).toContainText(
-    "Copy trading is unavailable",
+    "No account is connected",
   );
+});
+
+test("first-time THETA journey exposes availability, decision, assignment and simulation", async ({
+  page,
+}) => {
+  await page.goto("/bots");
+  await page.getByRole("link", { name: "Explore THETA" }).click();
+  await expect(page.getByRole("heading", { name: "THETA", exact: true })).toBeVisible();
+  await expect(page.locator("main")).toContainText(
+    "There is no validated customer performance record yet",
+  );
+  await expect(page.getByRole("heading", { name: "No published decision yet" })).toBeVisible();
+  await page.getByRole("link", { name: "How the Wheel works" }).click();
+  await expect(page.locator("main")).toContainText("WAIT is valid");
+  await expect(page.locator("main")).toContainText("What assignment means");
+  await page.getByRole("link", { name: "Explore a capital scenario" }).click();
+  await expect(
+    page.getByLabel("Capital you want to illustrate ($)", { exact: true }),
+  ).toBeVisible();
 });
 
 test("compare and published empty states remain useful", async ({ page }) => {
@@ -136,7 +157,7 @@ test("loading, network failure, API failure and recovery do not fabricate data",
   ).toBeVisible();
   await page.unroute("**/api/v1/bots");
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.locator(".bot-card")).toHaveCount(6);
+  await expect(page.locator(".bot-card")).toHaveCount(5);
   await page.route("**/api/v1/bots", (route) =>
     route.fulfill({ status: 503, body: "{}" }),
   );

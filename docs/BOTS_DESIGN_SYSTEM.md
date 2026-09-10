@@ -16,7 +16,9 @@ Semantic green means positive or healthy, red means loss or danger, amber means 
 
 ## Reusable primitives
 
-BotCard, environment/status/provenance badges, metric cards with accessible disclosures, equity/drawdown chart, monthly return cells, lifecycle timeline, scrollable tables, risk summary, intelligence panels, empty/error states, stale/degraded banners and comparison table.
+THETA launch panel, Decision Receipt, lifecycle path, environment/status/provenance badges, metric cards with accessible disclosures, equity/drawdown chart, monthly return cells, lifecycle timeline, scrollable tables, risk summary, intelligence panels, empty/error states, stale/degraded banners and comparison table.
+
+The UI gives THETA a larger, actionable exploration surface. Research bots remain visually quieter and cannot inherit a performance or risk hierarchy they have not earned. Repeated empty containers are replaced by a single explanation of the evidence required and an action useful today.
 
 Small rendering functions are preferred over one class per visual. Workflow binding is separate from primitive rendering. The view models stay in src/customer and contain no HTML.
 

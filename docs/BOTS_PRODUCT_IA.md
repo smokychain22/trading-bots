@@ -6,20 +6,24 @@ Authority: the owner's standalone Phase 1 request, 2026-09-09. This supersedes p
 
 | Area     | Route                    | Purpose                                                               |
 | -------- | ------------------------ | --------------------------------------------------------------------- |
-| Overview | /overview                | Strategy introduction, runtime boundaries and activity                |
-| Bots     | / and /bots              | Six owned strategy projects, search, filters, evidence-aware sorting  |
+| Overview | /overview                | Platform orientation and a concise THETA entry point                  |
+| Bots     | / and /bots              | THETA exploration first, followed by a quieter research roadmap       |
 | My Bots  | /my-bots                 | Browser-local simulation drafts and explicit unavailable copy service |
-| Compare  | /compare                 | Select two to four bots, compare facts without allocations            |
 | Activity | /activity                | Published-empty or explicit demo events with drill-down               |
 | Settings | /settings                | Clear local simulation drafts                                         |
 | Learn    | /bots/theta/how-it-works | Accessible Wheel explanation and disclosures                          |
-| Owner    | /owner                   | Authenticated read-only release visibility                            |
+| Compare  | /compare                 | Contextual roadmap comparison, not a primary navigation destination   |
+| Owner    | /owner                   | Direct authenticated operator route, not customer navigation          |
 
-THETA has dedicated Overview, Performance, Positions, Trade History, Intelligence, Risk and How It Works routes under /bots/theta. Simulation is /bots/theta/simulate. Chains use /bots/theta/chains/{id}. Dataset and period query parameters survive detail-tab navigation. Direct URLs and normal browser history work without a framework router.
+THETA has dedicated Overview, Performance, Positions, Trade History, Intelligence, Risk and How It Works routes under /bots/theta. The visible contextual navigation is Overview, Performance, Positions, Activity, Risk and More. More contains intelligence, lifecycle explanation and chain examples without changing direct URLs. Simulation is /bots/theta/simulate. Chains use /bots/theta/chains/{id}. Dataset and period query parameters survive detail-tab navigation.
 
 ## Progressive disclosure
 
-Level one: identity, strategy intent, environment, risk uncertainty, capital uncertainty and primary economic KPIs. Level two: chart, positions, lifecycle, history, explanation and track-record inclusion flags. Level three: calibration, independent sample size, recovery, stress, execution and advanced accounting detail.
+Level one: identity, current release state, latest decision, strategy intent, risk uncertainty, capital uncertainty and primary economic KPIs. Level two: chart, positions, lifecycle, activity and track-record inclusion flags. Level three: calibration, independent sample size, recovery, stress, execution and advanced accounting detail.
+
+## Differentiation pattern: decision receipts
+
+The reusable customer-facing Decision Receipt answers action, plain-English reason, capital affected, AEGIS result, provenance and freshness before offering technical detail. It appears first on THETA overview and is echoed in activity, history and lifecycle detail. A model estimate remains an estimate and DEMO DATA remains visibly synthetic.
 
 Material stock losses are never collapsed out of headline economics. Missing evidence is itself material and remains visible.
 
