@@ -29,6 +29,7 @@
     "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^9.37.0",
     "@playwright/test": "^1.63.0",
+    "@reticlehq/browser": "^2.13.1",
     "@types/express": "^5.0.3",
     "@types/node": "^24.7.2",
     "eslint": "^9.37.0",
