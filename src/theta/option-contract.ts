@@ -70,7 +70,12 @@ export const normalizedOptionContractSchema = z.object({
   openInterest: nullableNonNegativeInt,
 
   // Greeks -- legitimately unavailable depending on entitlement; never
-  // fabricated when missing.
+  // fabricated when missing. greeksSource is tracked SEPARATELY from the
+  // top-level `source` (which describes the quote/bid-ask provenance):
+  // an Alpaca indicative-feed contract with no OPRA entitlement may still
+  // carry real Greeks sourced from Optionomics as a supplementary features
+  // provider -- greeksSource=null means the Greeks themselves are UNKNOWN,
+  // never inferred from `source` alone.
   iv: nullableFiniteNumber,
   delta: nullableFiniteNumber,
   gamma: nullableFiniteNumber,
@@ -78,9 +83,13 @@ export const normalizedOptionContractSchema = z.object({
   vega: nullableFiniteNumber,
   rho: nullableFiniteNumber,
   greeksTimestamp: nullableTimestamp,
+  greeksSource: z.enum(['ALPACA', 'OPTIONOMICS']).nullable(),
 
-  // Provenance
-  source: z.literal('ALPACA'),
+  // Provenance. ALPACA is broker/execution truth (bid/ask/executability);
+  // OPTIONOMICS is a features/context source -- Optionomics never places an
+  // order and is never treated as execution-quality truth regardless of
+  // which fields it supplied here.
+  source: z.enum(['ALPACA', 'OPTIONOMICS']),
   feed: feedType.nullable(),
   dataQuality,
   receivedAt: z.string().datetime({ offset: true }),
@@ -96,6 +105,13 @@ export const normalizedOptionContractSchema = z.object({
   if (!contract.executable && contract.nonExecutableReason === null) {
     context.addIssue({ code: 'custom', message: 'a non-executable contract must state why' });
   }
+  const anyGreekKnown = [contract.iv, contract.delta, contract.gamma, contract.theta, contract.vega, contract.rho].some((g) => g !== null);
+  if (anyGreekKnown && contract.greeksSource === null) {
+    context.addIssue({ code: 'custom', message: 'a known Greek must carry a greeksSource -- provenance is never inferred' });
+  }
+  if (!anyGreekKnown && contract.greeksSource !== null) {
+    context.addIssue({ code: 'custom', message: 'greeksSource is only meaningful when at least one Greek is known' });
+  }
   // Delta is never treated as probability of profit -- this contract only
   // ever carries the raw Greek; enforcing that discipline is a strategy-
   // layer concern (theta_q_baseline.py etc.), not a schema-level check this
@@ -106,6 +122,7 @@ export const normalizedOptionContractSchema = z.object({
 export type NormalizedOptionContract = z.infer<typeof normalizedOptionContractSchema>;
 
 export interface RawOptionQuoteInput {
+  readonly source: 'ALPACA' | 'OPTIONOMICS';
   readonly underlying: string;
   readonly optionSymbol: string;
   readonly occSymbol: string | null;
@@ -135,6 +152,7 @@ export interface RawOptionQuoteInput {
   readonly vega: number | null;
   readonly rho: number | null;
   readonly greeksTimestamp: string | null;
+  readonly greeksSource: 'ALPACA' | 'OPTIONOMICS' | null; // null iff every Greek above is also null
   readonly feed: FeedType | null;
   readonly dataQuality: DataQuality;
   readonly maxQuoteAgeSecondsForExecutable: number;
@@ -220,7 +238,8 @@ export function normalizeOptionContract(raw: RawOptionQuoteInput, receivedAt: st
     vega: raw.vega,
     rho: raw.rho,
     greeksTimestamp: raw.greeksTimestamp,
-    source: 'ALPACA',
+    greeksSource: raw.greeksSource,
+    source: raw.source,
     feed: raw.feed,
     dataQuality: raw.dataQuality,
     receivedAt,
