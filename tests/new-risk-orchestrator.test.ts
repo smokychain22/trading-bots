@@ -2,17 +2,18 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { runNewRiskOrchestration, type CandidateInput, type NewRiskOrchestrationRequest } from '../src/theta/new-risk-orchestrator.js';
+import { runNewRiskOrchestration, type RawCandidateInput, type NewRiskOrchestrationRequest } from '../src/theta/new-risk-orchestrator.js';
 import type { PythonBridgeConfig } from '../src/theta/python-bridge.js';
 import type { NormalizedOptionContract } from '../src/theta/option-contract.js';
 
 // Real end-to-end integration test: spawns the ACTUAL Python runtime
 // adapters (not a mock) through the real python-bridge.ts, so a pass here
 // proves genuine IPC across the language boundary for the whole new-risk
-// pipeline -- ownership -> regime -> strategy-router -> pareto-frontier ->
-// aegis -> opportunity-frontier -> sizing -> execution-quality -> decision
-// assembly -- not just that each stage's Python function or TS schema is
-// independently correct. Synthetic data only; no market/broker I/O.
+// pipeline -- ownership -> regime -> strategy-router -> THETA-Q candidate
+// lattice -> pareto-frontier -> aegis -> opportunity-frontier -> sizing ->
+// execution-quality -> decision assembly -- not just that each stage's
+// Python function or TS schema is independently correct. Synthetic data
+// only; no market/broker I/O.
 
 const CANDIDATE_PYTHON_PATHS = [
   process.env.PYTHON_EXECUTABLE_FOR_TESTS,
@@ -29,6 +30,7 @@ const bridge = (): PythonBridgeConfig => ({
     ['ownership', path.join(RUNTIME_DIR, 'ownership_contract.py')],
     ['regime', path.join(RUNTIME_DIR, 'regime_contract.py')],
     ['strategyRouter', path.join(RUNTIME_DIR, 'strategy_router_contract.py')],
+    ['thetaQ', path.join(RUNTIME_DIR, 'theta_q_contract.py')],
     ['paretoFrontier', path.join(RUNTIME_DIR, 'pareto_frontier_contract.py')],
     ['opportunityFrontier', path.join(RUNTIME_DIR, 'opportunity_frontier_contract.py')],
     ['aegis', path.join(RUNTIME_DIR, 'aegis_contract.py')],
@@ -49,28 +51,23 @@ const contract = (overrides: Partial<NormalizedOptionContract> = {}): Normalized
   quoteTimestamp: NOW, tradeTimestamp: null,
   midpointReference: 1.0, spread: 0.1, spreadPct: 0.1, moneyness: 0.04, distanceToStrikePct: 0.04, breakEven: 49.05,
   volume: 100, openInterest: 500,
-  iv: 0.25, delta: -0.2, gamma: null, theta: null, vega: null, rho: null, greeksTimestamp: NOW,
+  iv: 0.25, delta: -0.22, gamma: null, theta: null, vega: null, rho: null, greeksTimestamp: NOW,
   source: 'ALPACA', feed: 'OPRA', dataQuality: 'GOOD', receivedAt: NOW, dataAgeSeconds: 1,
   executable: true, nonExecutableReason: null,
   ...overrides,
 });
 
-const NULL_ECONOMICS = {
-  grossCredit: null, calibratedPWin: null, breakEvenWr: null, edgeBuffer: null, expectedTailLoss: null,
-  assignmentProbability: null, severeDrawdownProbability: null, capitalRequirement: null, capitalDays: null,
-  returnPerCapitalDay: null, liquiditySpreadPct: null, fillProbability: null, expectedSlippage: null, modelUncertainty: null,
-};
-
-const candidate = (id: string, evNet: number | null, returnPerCapitalDay: number | null, overrides: Partial<CandidateInput> = {}): CandidateInput => ({
-  candidateId: id, contract: contract({ optionSymbol: id }),
-  economics: { ...NULL_ECONOMICS, evNet, returnPerCapitalDay },
+const candidate = (id: string, overrides: Partial<RawCandidateInput> = {}): RawCandidateInput => ({
+  candidateId: id, contract: contract({ optionSymbol: id }), entryPremiumPerShare: 1.0,
+  severeDrawdownProbability: 0.05, ivRank: 0.4, brokerAllowedQty: 5, contractIsStandard: true,
   hasAlternateContract: false, hasAlternateExpiry: false, hasAlternateStructure: false,
-  ivCompensationSufficient: true, quoteSize: 50, quoteAgeSeconds: 1, preSlippageExpectedUtility: evNet,
+  ivCompensationSufficient: true, quoteSize: 50, preSlippageExpectedUtility: 50,
   ...overrides,
 });
 
 const baseRequest = (overrides: Partial<NewRiskOrchestrationRequest> = {}): NewRiskOrchestrationRequest => ({
-  snapshotId: 'snap-1', fusionSnapshotHash: 'a'.repeat(64), timestamp: NOW, underlying: 'SYN', providerStateGood: true,
+  snapshotId: 'snap-1', fusionSnapshotHash: 'a'.repeat(64), timestamp: NOW, underlying: 'SYN',
+  earningsDistanceDays: 40, providerStateGood: true,
   policyVersion: 'v1', modelVersions: {}, requiredModelVersions: {},
   ownershipPolicy: {
     policyVersion: 'ownership-v1', minStockAvgVolume: 1_000_000, minOptionOpenInterest: 100, minOptionVolume: 10,
@@ -95,6 +92,16 @@ const baseRequest = (overrides: Partial<NewRiskOrchestrationRequest> = {}): NewR
   },
   routerPolicy: { policyVersion: 'router-v1', thetaQMinOwnershipAcceptability: 0.3, thetaHMinOwnershipAcceptability: 0.75, thetaDGateSatisfied: false },
   routerPortfolio: { lifecycleState: 'CASH_AVAILABLE', stockSharesHeld: 0, openOptionExists: false, assignmentImminent: false },
+  latticeConfig: {
+    configVersion: 'lattice-v1', minDte: 25, maxDte: 60, deltaBands: [[0.10, 0.20], [0.20, 0.30]],
+    minOpenInterest: 50, minVolume: 10, maxSpreadPct: 0.15, earningsExclusionDays: 5,
+  },
+  thetaQSizingPolicy: {
+    riskLimitVersion: 'risk-v1', maxSpreadPct: 0.15, maxQuoteAgeSeconds: 5, minOpenInterest: 50, minVolume: 10,
+    earningsExclusionDays: 5, ownershipAcceptabilityFloor: 0.3, exceptionalUtilityThreshold: 0.9,
+    strongUtilityThreshold: 0.7, minimumPositiveEdge: 0.05, riskBudgetQtyCap: 4, collateralQtyCap: 3, concentrationQtyCap: 2,
+  },
+  costAssumptions: { commissionPerContract: 0.65, feesPerContract: 0.05, estimatedSlippagePerContract: 1.0, costModelVersion: 'cost-v1' },
   aegisPolicy: {
     policyVersion: 'aegis-v1', maxTickerConcentrationPct: 0.15, maxSectorConcentrationPct: 0.3, maxCorrelationClusterPct: 0.3,
     maxPortfolioCapitalAtRiskPct: 0.5, maxInventoryCapacityPct: 0.5, maxAssignmentCapacityPct: 0.5,
@@ -108,7 +115,7 @@ const baseRequest = (overrides: Partial<NewRiskOrchestrationRequest> = {}): NewR
   },
   opportunityFrontierPolicy: { policyVersion: 'opp-frontier-v1', reducedSizeUncertaintyThreshold: 0.5 },
   maxAcceptableSpreadPct: 0.15,
-  candidates: [candidate('C1', 25, 0.01)],
+  candidates: [candidate('C1')],
   sizingPolicy: { policyVersion: 'sizing-v1', riskBudgetQtyCap: 4, collateralQtyCap: 3, concentrationQtyCap: 5, assignmentCapacityQtyCap: 6, reducedStateMultiplier: 0.5 },
   sizingAccount: { equity: 100_000, cash: 50_000, buyingPower: 40_000, brokerAllowedQty: 10 },
   executionQualityPolicy: { policyVersion: 'execq-v1', maxAcceptableSpreadPct: 0.15, minQuoteSizeForFullConfidence: 20, maxQuoteAgeSeconds: 5, minAfterCostUtilityToCross: 0 },
@@ -117,23 +124,39 @@ const baseRequest = (overrides: Partial<NewRiskOrchestrationRequest> = {}): NewR
 
 const itReal = pythonExecutablePath === undefined ? test.skip : test;
 
-itReal('a positive-EV candidate flows end to end to a real decision receipt with sizing and execution quality', async () => {
+itReal('a real THETA-Q lattice candidate flows end to end to a decision receipt with sizing and execution quality', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest());
   assert.equal(result.receipt.failClosedReason, null);
   assert.ok(result.ownership !== null);
   assert.ok(result.regime !== null);
   assert.ok(result.routing !== null);
+  assert.ok(result.thetaQ !== null);
   assert.ok(result.aegis !== null);
   assert.ok(result.opportunityBook !== null);
-  assert.equal(result.receipt.selectedCandidateId, 'C1');
-  assert.equal(result.receipt.winningAction, 'OPEN_FULL');
-  assert.ok(result.receipt.quantity > 0);
+  assert.equal(result.thetaQ?.candidates.length, 1);
+  // THETA-Q's own baseline has no calibrated entry-outcome model yet, so
+  // ev_net is honestly null -- this correctly routes to PASS, never a
+  // fabricated OPEN.
+  assert.equal(result.receipt.selectedCandidateId, null);
+  assert.ok(result.shadowOpportunities.length >= 1);
 });
 
-itReal('a null-evNet candidate (no calibrated entry-outcome model yet) correctly PASSes, never fabricated OPEN', async () => {
-  const result = await runNewRiskOrchestration(bridge(), baseRequest({ candidates: [candidate('C1', null, null)] }));
-  assert.equal(result.receipt.selectedCandidateId, null);
-  assert.ok(result.receipt.winningAction === 'PASS' || result.receipt.winningAction === 'WAIT');
+itReal('every evaluated candidate is recorded in the shadow opportunity book, not only the winner', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    candidates: [candidate('C1'), candidate('C2', { contract: contract({ optionSymbol: 'C2', strike: 45 }) })],
+  }));
+  const recordedIds = result.shadowOpportunities.map((entry) => entry.contractSymbol);
+  assert.ok(recordedIds.includes('C1'));
+  assert.ok(recordedIds.includes('C2'));
+});
+
+itReal('a delta-UNKNOWN contract is excluded from the lattice call and recorded as PASS/UNKNOWN_DELTA', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    candidates: [candidate('C1', { contract: contract({ optionSymbol: 'C1', delta: null }) })],
+  }));
+  assert.equal(result.thetaQ, null); // never sent to the lattice at all
+  const entry = result.shadowOpportunities.find((e) => e.contractSymbol === 'C1');
+  assert.equal(entry?.rejectionCategory, 'UNKNOWN_DELTA');
 });
 
 itReal('provider state not good fails the whole decision closed before any bridge call', async () => {
@@ -157,6 +180,7 @@ itReal('an already-open CSP lifecycle routes THETA_Q ineligible and produces zer
   assert.equal(thetaQ?.eligible, false);
   assert.equal(result.receipt.alternatives.length, 0);
   assert.equal(result.receipt.winningAction, 'PASS');
+  assert.equal(result.shadowOpportunities.some((e) => e.rejectionCategory === 'THETA_Q_INELIGIBLE'), true);
 });
 
 itReal('an unknown model family in the allowlist fails the whole decision closed at that stage', async () => {
