@@ -44,8 +44,9 @@ class WaitReason(str, Enum):
 class CandidateDisposition(str, Enum):
     OPEN_FULL = "OPEN_FULL"
     OPEN_REDUCED = "OPEN_REDUCED"
-    OPEN_ALTERNATE_CONTRACT = "OPEN_ALTERNATE_CONTRACT"
-    OPEN_ALTERNATE_STRUCTURE = "OPEN_ALTERNATE_STRUCTURE"
+    OPEN_ALTERNATE_CONTRACT = "OPEN_ALTERNATE_CONTRACT"  # same expiry, neighboring strike
+    OPEN_ALTERNATE_EXPIRY = "OPEN_ALTERNATE_EXPIRY"  # different DTE bucket, same underlying/structure intent
+    OPEN_ALTERNATE_STRUCTURE = "OPEN_ALTERNATE_STRUCTURE"  # a different, validated structure (e.g. defined-risk)
     WAIT = "WAIT"
     PASS = "PASS"
 
@@ -54,6 +55,7 @@ _OPEN_DISPOSITIONS = frozenset({
     CandidateDisposition.OPEN_FULL,
     CandidateDisposition.OPEN_REDUCED,
     CandidateDisposition.OPEN_ALTERNATE_CONTRACT,
+    CandidateDisposition.OPEN_ALTERNATE_EXPIRY,
     CandidateDisposition.OPEN_ALTERNATE_STRUCTURE,
 })
 
@@ -97,8 +99,9 @@ class CandidateSnapshot:
     model_uncertainty: Optional[float]  # in [0, 1], None if unmodeled
     aegis_permits_full: bool
     aegis_permits_reduced: bool
-    has_alternate_contract: bool
-    has_alternate_structure: bool
+    has_alternate_contract: bool  # a neighboring strike, same expiry, not yet evaluated
+    has_alternate_expiry: bool  # a different DTE bucket, same underlying/structure intent, not yet evaluated
+    has_alternate_structure: bool  # a validated defined-risk (or other) structure alternative exists
 
 
 @dataclass(frozen=True)
@@ -125,7 +128,18 @@ def _classify(policy: OpportunityFrontierPolicy, c: CandidateSnapshot) -> Candid
         reasons.append(ReasonCode("OWNERSHIP_UNACCEPTABLE", -1, "Ownership screen failed -- structurally inferior, not transient."))
         return CandidateDecision(c.candidate_id, CandidateDisposition.PASS, None, "OWNERSHIP", reasons)
     if c.ev_net <= 0:
-        reasons.append(ReasonCode("NEGATIVE_AFTER_COST_EV", -1, "After-cost EV is non-positive."))
+        reasons.append(ReasonCode("NEGATIVE_AFTER_COST_EV", -1, "After-cost EV is non-positive on this specific contract."))
+        # A negative-EV contract does not mean the underlying/opportunity is
+        # dead -- a neighboring strike or a different DTE bucket may still
+        # be positive-EV. Try those before giving up with PASS (this task's
+        # explicit "preferred DTE loses economic advantage -> evaluate
+        # another validated DTE region" requirement).
+        if c.has_alternate_expiry:
+            reasons.append(ReasonCode("ALTERNATE_EXPIRY_FALLBACK", 0, "A different DTE bucket has not yet been evaluated."))
+            return CandidateDecision(c.candidate_id, CandidateDisposition.OPEN_ALTERNATE_EXPIRY, None, None, reasons)
+        if c.has_alternate_contract:
+            reasons.append(ReasonCode("ALTERNATE_CONTRACT_FALLBACK", 0, "A neighboring strike has not yet been evaluated."))
+            return CandidateDecision(c.candidate_id, CandidateDisposition.OPEN_ALTERNATE_CONTRACT, None, None, reasons)
         return CandidateDecision(c.candidate_id, CandidateDisposition.PASS, None, "NEGATIVE_EV", reasons)
 
     # Transient/monitorable conditions -> WAIT with a specific sub-reason,
