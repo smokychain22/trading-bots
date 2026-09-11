@@ -72,7 +72,7 @@ const mockAlpacaFetch = (options: { hasContracts: boolean; hasBars: boolean }) =
   }
   if (url.includes('/v2/options/contracts')) {
     if (!options.hasContracts) return jsonResponse(200, { option_contracts: [], next_page_token: null });
-    return jsonResponse(200, { option_contracts: [{ symbol: 'SPY261009P00500000', strike_price: '500', expiration_date: '2026-10-09' }], next_page_token: null });
+    return jsonResponse(200, { option_contracts: [{ symbol: 'SPY261009P00500000', strike_price: '500', expiration_date: '2026-10-09', size: '100' }], next_page_token: null });
   }
   if (url.includes('/v1beta1/options/snapshots')) {
     if (!options.hasContracts) return jsonResponse(200, { snapshots: {}, next_page_token: null });
@@ -261,7 +261,7 @@ itMockedProviderRealCodePath('cross-symbol economics can override pure liquidity
       const isLowVol = url.includes('underlying_symbols=LOWVOL');
       const symbol = isLowVol ? 'LOWVOL261009P00050000' : 'HIVOL261009P00500000';
       const strike = isLowVol ? '50' : '500';
-      return jsonResponse(200, { option_contracts: [{ symbol, strike_price: strike, expiration_date: '2026-10-09' }], next_page_token: null });
+      return jsonResponse(200, { option_contracts: [{ symbol, strike_price: strike, expiration_date: '2026-10-09', size: '100' }], next_page_token: null });
     }
     if (url.includes('/v1beta1/options/snapshots')) {
       const isLowVol = url.includes('/LOWVOL');
@@ -496,7 +496,7 @@ const deterministicMockAlpacaFetch = (accountId: string) => (async (input: Reque
     return jsonResponse(200, { bars: { SPY: bars }, next_page_token: null });
   }
   if (url.includes('/v2/options/contracts')) {
-    return jsonResponse(200, { option_contracts: [{ symbol: 'SPY261009P00500000', strike_price: '500', expiration_date: '2026-10-09' }], next_page_token: null });
+    return jsonResponse(200, { option_contracts: [{ symbol: 'SPY261009P00500000', strike_price: '500', expiration_date: '2026-10-09', size: '100' }], next_page_token: null });
   }
   if (url.includes('/v1beta1/options/snapshots')) {
     return jsonResponse(200, {

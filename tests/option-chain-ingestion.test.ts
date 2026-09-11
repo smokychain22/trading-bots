@@ -109,3 +109,27 @@ test('the caller-supplied default is used ONLY when the contract\'s own multipli
   }));
   assert.equal(contract?.multiplier, 100);
 });
+
+test('a contract with a genuinely unknown multiplier is forced non-executable, even with a perfect quote -- the default is never treated as economically trustworthy', () => {
+  const [contract] = mergeOptionChain(baseInput({
+    contracts: [{ symbol: 'SPY261009P00500000', strikePrice: 500, expirationDate: '2026-10-09', optionType: 'PUT', multiplier: null }],
+    defaultMultiplierForUnknownContracts: 100,
+    snapshotsBySymbol: new Map([
+      ['SPY261009P00500000', { bid: 1.0, ask: 1.05, bidSize: 900, askSize: 900, quoteTimestamp: NOW, greeks: null, impliedVolatility: null, dailyVolume: null }],
+    ]),
+  }));
+  assert.equal(contract?.executable, false);
+  assert.ok(contract?.nonExecutableReason?.includes('multiplier unverified'));
+});
+
+test('a contract with a real, contract-derived multiplier is unaffected by the unverified-multiplier gate', () => {
+  const [contract] = mergeOptionChain(baseInput({
+    contracts: [{ symbol: 'SPY261009P00500000', strikePrice: 500, expirationDate: '2026-10-09', optionType: 'PUT', multiplier: 100 }],
+    defaultMultiplierForUnknownContracts: 100,
+    snapshotsBySymbol: new Map([
+      ['SPY261009P00500000', { bid: 1.0, ask: 1.05, bidSize: 900, askSize: 900, quoteTimestamp: NOW, greeks: null, impliedVolatility: null, dailyVolume: null }],
+    ]),
+  }));
+  assert.equal(contract?.executable, true);
+  assert.equal(contract?.nonExecutableReason, null);
+});

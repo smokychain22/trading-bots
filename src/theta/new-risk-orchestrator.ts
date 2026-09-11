@@ -388,10 +388,39 @@ export async function runNewRiskOrchestration(
     return { receipt, ...partialAfterRouting, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all(), candidateEconomics: null };
   }
 
+  // A contract the ingestion layer itself marked non-executable (e.g. an
+  // Alpaca contract whose real multiplier metadata was never supplied --
+  // option-chain-ingestion.ts forces executable=false rather than
+  // silently fabricating a 100-share assumption) can never enter the
+  // lattice call: its premium/collateral economics would be computed
+  // against an unverified number. Excluded here, recorded as PASS, never
+  // sent to Python -- mirroring the UNKNOWN-delta exclusion immediately
+  // below, which this pass runs before.
+  const [executableCandidates, nonExecutable] = request.candidates.reduce<[RawCandidateInput[], RawCandidateInput[]]>(
+    (acc, c) => {
+      acc[c.contract.executable ? 0 : 1].push(c);
+      return acc;
+    },
+    [[], []],
+  );
+  const nonExecutableResults: CandidateFrontierResult[] = nonExecutable.map((c) => {
+    recordShadow(c, {
+      outcome: 'PASS', rejectionCategory: 'CONTRACT_NOT_EXECUTABLE',
+      reasons: [{
+        code: 'CONTRACT_NOT_EXECUTABLE', polarity: -1,
+        detail: c.contract.nonExecutableReason ?? 'Contract marked non-executable by the ingestion layer.',
+      }],
+    });
+    return {
+      candidateId: c.candidateId, contract: c.contract, disposition: 'PASS', waitReason: null,
+      rejectionReason: 'CONTRACT_NOT_EXECUTABLE', evNet: null, returnPerCapitalDay: null, aegis: null, sizing: null, executionQuality: null,
+    };
+  });
+
   // Contracts with an UNKNOWN delta cannot enter the lattice call --
   // theta_q_lattice.py's ChainContract.put_delta_magnitude is a required
   // float. Exclude them here, recorded as PASS, never sent to Python.
-  const [latticeEligible, deltaUnknown] = request.candidates.reduce<[RawCandidateInput[], RawCandidateInput[]]>(
+  const [latticeEligible, deltaUnknown] = executableCandidates.reduce<[RawCandidateInput[], RawCandidateInput[]]>(
     (acc, c) => {
       acc[c.contract.delta === null ? 1 : 0].push(c);
       return acc;
@@ -468,7 +497,7 @@ export async function runNewRiskOrchestration(
     const receipt = assembleNewRiskDecision({
       snapshotId: request.snapshotId, fusionSnapshotHash: request.fusionSnapshotHash, timestamp: request.timestamp,
       underlying: request.underlying, ownership: ownershipResult.data, regime: regimeResult.data,
-      candidates: [...deltaUnknownResults, ...freshnessRejectedResults], policyVersion: request.policyVersion, modelVersions: request.modelVersions,
+      candidates: [...nonExecutableResults, ...deltaUnknownResults, ...freshnessRejectedResults], policyVersion: request.policyVersion, modelVersions: request.modelVersions,
       requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
     });
     return { receipt, ...partialAfterRouting, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all(), candidateEconomics: null };
@@ -496,7 +525,7 @@ export async function runNewRiskOrchestration(
   const rawByCandidateId = new Map(freshnessEligible.map((c) => [c.candidateId, c]));
   const feasibleForFrontier: RawCandidateInput[] = [];
   const economicsByCandidateId = new Map<string, Omit<CandidateEconomics, 'candidateId'>>();
-  const immediateResults: CandidateFrontierResult[] = [...deltaUnknownResults, ...freshnessRejectedResults];
+  const immediateResults: CandidateFrontierResult[] = [...nonExecutableResults, ...deltaUnknownResults, ...freshnessRejectedResults];
 
   for (const tq of thetaQResult.data.candidates) {
     const raw = rawByCandidateId.get(tq.candidateId);
