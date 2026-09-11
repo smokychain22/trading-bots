@@ -153,7 +153,7 @@ export class PostgresThetaCycleStore {
       const optionContractId = deterministicRuntimeUuid(`option-contract:${contractSymbol}`);
       await client.query(
         `INSERT INTO market.option_contract(option_contract_id,provider_contract_id,contract_symbol,underlying_id,option_type,strike,expiration_date,multiplier,tradable,status)
-         VALUES($1,$2,$2,$3,$4,$5,$6,$7,$8,'ACTIVE')
+         VALUES($1,$2::text,$2::varchar(64),$3,$4,$5,$6,$7,$8,'ACTIVE')
          ON CONFLICT(contract_symbol) DO NOTHING`,
         [optionContractId, contractSymbol, underlyingId, optionType, strike, expiration, multiplier, Boolean(contract.executable)],
       );
