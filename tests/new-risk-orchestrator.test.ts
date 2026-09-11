@@ -140,6 +140,17 @@ itMockedProviderRealCodePath('a real THETA-Q lattice candidate flows end to end 
   // fabricated OPEN.
   assert.equal(result.receipt.selectedCandidateId, null);
   assert.ok(result.shadowOpportunities.length >= 1);
+  // R1H full-H: candidateEconomics is exposed so a cross-symbol frontier
+  // caller can combine this underlying's economics with other
+  // underlyings' without recomputing anything.
+  assert.equal(result.candidateEconomics?.length, 1);
+  assert.equal(result.candidateEconomics?.[0]?.candidateId, 'C1');
+});
+
+itMockedProviderRealCodePath('candidateEconomics is null when the pipeline fails closed before any candidate economics are computed', async () => {
+  const badBridge: PythonBridgeConfig = { ...bridge(), scriptAllowlist: new Map() };
+  const result = await runNewRiskOrchestration(badBridge, baseRequest());
+  assert.equal(result.candidateEconomics, null);
 });
 
 itMockedProviderRealCodePath('every evaluated candidate is recorded in the shadow opportunity book, not only the winner', async () => {
