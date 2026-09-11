@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { deriveAccountExposure, mergeDerivedExposureIntoAegisInputs, parseOccOptionSymbol } from '../src/theta/account-exposure.js';
+import { deriveAccountExposure, deriveAssignmentCapacity, maxAdditionalContractsForCandidate, mergeDerivedExposureIntoAegisInputs, parseOccOptionSymbol } from '../src/theta/account-exposure.js';
 import type { AlpacaOpenOrderSnapshot, AlpacaPositionSnapshot, MasterAccountSnapshot } from '../src/theta/alpaca-provider.js';
 
 const NOW = '2026-09-10T15:00:00.000Z';
@@ -247,4 +247,75 @@ test('a real, known pendingOrderCapital is included in portfolioCapitalAtRiskPct
   );
   assert.equal(exposure.pendingOrderCapital, 2000);
   assert.equal(exposure.portfolioCapitalAtRiskPct, 0.02);
+});
+
+// --- assignment capacity (item G) ---
+
+test('deriveAssignmentCapacity sums real open + pending CSP collateral into currentPotentialAssignmentCapital', () => {
+  const exposure = deriveAccountExposure(
+    account({ equity: 100_000, cash: 60_000 }),
+    [position({ symbol: 'SPY261009P00500000', assetClass: 'us_option', quantity: -1, side: 'short', marketValue: -100 })],
+    [openOrder({ symbol: 'AAPL261009P00150000', assetClass: 'us_option', side: 'sell', quantity: 1, filledQuantity: 0 })],
+  );
+  const capacity = deriveAssignmentCapacity(exposure);
+  // open: 500*100*1 = 50,000; pending: 150*100*1 = 15,000
+  assert.equal(capacity.currentPotentialAssignmentCapital, 65_000);
+  assert.equal(capacity.assignmentCapacityUsedPct, 0.65);
+});
+
+test('deriveAssignmentCapacity derives a conservative cash-based availableAssignmentCapital', () => {
+  const exposure = deriveAccountExposure(account({ equity: 100_000, cash: 60_000 }), [], []);
+  const capacity = deriveAssignmentCapacity(exposure);
+  assert.equal(capacity.currentPotentialAssignmentCapital, 0);
+  assert.equal(capacity.availableAssignmentCapital, 60_000);
+});
+
+test('deriveAssignmentCapacity never reports a negative availableAssignmentCapital -- floors at 0', () => {
+  const exposure = deriveAccountExposure(
+    account({ equity: 100_000, cash: 10_000 }),
+    [position({ symbol: 'SPY261009P00500000', assetClass: 'us_option', quantity: -1, side: 'short', marketValue: -100 })],
+    [],
+  );
+  const capacity = deriveAssignmentCapacity(exposure);
+  assert.equal(capacity.currentPotentialAssignmentCapital, 50_000);
+  assert.equal(capacity.availableAssignmentCapital, 0); // cash (10,000) - collateral (50,000) would be negative
+});
+
+test('deriveAssignmentCapacity is UNKNOWN when cash or collateral is itself UNKNOWN, never a fabricated default', () => {
+  const exposure = deriveAccountExposure(
+    account({ equity: 100_000, cash: null }),
+    [position({ symbol: 'SPY261009P00500000', assetClass: 'us_option', quantity: -1, side: 'short', marketValue: -100 })],
+    [],
+  );
+  const capacity = deriveAssignmentCapacity(exposure);
+  assert.equal(capacity.availableAssignmentCapital, null);
+});
+
+test('maxAdditionalContractsForCandidate returns a real floor(available/perContractCollateral), never a fabricated minimum of 1', () => {
+  const exposure = deriveAccountExposure(account({ equity: 100_000, cash: 12_345 }), [], []);
+  const capacity = deriveAssignmentCapacity(exposure);
+  // 12,345 / (100 * 100) = 1.2345 -> floor to 1
+  assert.equal(maxAdditionalContractsForCandidate(capacity, 100, 100), 1);
+});
+
+test('maxAdditionalContractsForCandidate is a real 0 (not UNKNOWN, not a fabricated 1) when capacity is exhausted -- Q=0 remains legitimate', () => {
+  const exposure = deriveAccountExposure(account({ equity: 100_000, cash: 50 }), [], []);
+  const capacity = deriveAssignmentCapacity(exposure);
+  assert.equal(maxAdditionalContractsForCandidate(capacity, 500, 100), 0);
+});
+
+test('maxAdditionalContractsForCandidate is UNKNOWN (null) when availableAssignmentCapital is itself UNKNOWN', () => {
+  const exposure = deriveAccountExposure(account({ equity: 100_000, cash: null }), [], []);
+  const capacity = deriveAssignmentCapacity(exposure);
+  assert.equal(maxAdditionalContractsForCandidate(capacity, 500, 100), null);
+});
+
+test('mergeDerivedExposureIntoAegisInputs also merges a real assignmentCapacityUsedPct when trustworthy', () => {
+  const exposure = deriveAccountExposure(
+    account({ equity: 100_000 }),
+    [position({ symbol: 'SPY261009P00500000', assetClass: 'us_option', quantity: -1, side: 'short', marketValue: -100 })],
+    [],
+  );
+  const merged = mergeDerivedExposureIntoAegisInputs({ assignmentCapacityUsedPct: 0 }, exposure, true);
+  assert.equal(merged.assignmentCapacityUsedPct, 0.5);
 });

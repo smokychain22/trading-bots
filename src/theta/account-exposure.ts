@@ -86,6 +86,11 @@ export interface DerivedAccountExposure {
   // a guessed fill price, per the standing "do not guess a market fill
   // price" rule.
   readonly pendingOrderCapital: number | null;
+  // The CSP-collateral-specific SUBSET of pendingOrderCapital (pending
+  // short-put opening orders only, never stock-purchase orders) -- kept
+  // separate because assignment capacity (item G) needs exactly this
+  // figure, not total pending capital.
+  readonly pendingCspCollateral: number | null;
   // Real, derived ratios -- null (UNKNOWN) whenever a required input is
   // itself null, never coerced to 0.
   readonly portfolioCapitalAtRiskPct: number | null; // (cspCollateralRequired + stockInventoryValue + pendingOrderCapital) / equity
@@ -184,6 +189,7 @@ export function deriveAccountExposure(
   if (unparsedOptionSymbols.length > 0) cspCollateralRequired = null;
 
   let pendingOrderCapital: number | null = 0;
+  let pendingCspCollateral: number | null = 0;
   for (const order of openOrders) {
     const remainingQty = order.quantity !== null ? order.quantity - (order.filledQuantity ?? 0) : null;
     if (remainingQty === null || remainingQty <= 0) continue;
@@ -195,7 +201,9 @@ export function deriveAccountExposure(
         (p) => p.assetClass === 'us_option' && p.symbol === order.symbol && (p.side === 'long' || (p.quantity ?? 0) > 0),
       );
       if (hasMatchingLongPosition) continue; // closing a long, not opening a short -- no new collateral
-      if (pendingOrderCapital !== null) pendingOrderCapital += parsed.strike * requiredMultiplier(multiplier) * remainingQty;
+      const collateral = parsed.strike * requiredMultiplier(multiplier) * remainingQty;
+      if (pendingOrderCapital !== null) pendingOrderCapital += collateral;
+      if (pendingCspCollateral !== null) pendingCspCollateral += collateral;
     } else if (order.assetClass === 'us_equity' && order.side === 'buy') {
       if (order.limitPrice === null) {
         pendingOrderCapital = null; // an unbounded (e.g. market) buy order's commitment cannot be reliably bounded
@@ -239,7 +247,7 @@ export function deriveAccountExposure(
     cspCollateralRequired, stockInventoryValue,
     shortPutCount, shortCallCount, longPutCount, longCallCount,
     openOrderCount: openOrders.length,
-    pendingOrderCapital,
+    pendingOrderCapital, pendingCspCollateral,
     portfolioCapitalAtRiskPct, tickerConcentrationPct, largestConcentrationUnderlying,
     unparsedOptionSymbols,
   };
@@ -267,5 +275,68 @@ export function mergeDerivedExposureIntoAegisInputs(
   if (!trustworthy) return merged;
   if (derivedExposure.tickerConcentrationPct !== null) merged.tickerConcentrationPct = derivedExposure.tickerConcentrationPct;
   if (derivedExposure.portfolioCapitalAtRiskPct !== null) merged.portfolioCapitalAtRiskPct = derivedExposure.portfolioCapitalAtRiskPct;
+  const assignmentCapacity = deriveAssignmentCapacity(derivedExposure);
+  if (assignmentCapacity.assignmentCapacityUsedPct !== null) merged.assignmentCapacityUsedPct = assignmentCapacity.assignmentCapacityUsedPct;
   return merged;
+}
+
+// ---------------------------------------------------------------------------
+// Assignment capacity (item G) -- a versioned, explicit calculation of how
+// much MORE cash-secured-put collateral this account could genuinely
+// support, given its currently-known real cash/collateral state. THETA
+// may intentionally accept assignment, but it must never sell a CSP whose
+// economic assignment cannot be supported -- Q=0 remains a fully
+// legitimate result of this calculation, never forced to a minimum of 1.
+// ---------------------------------------------------------------------------
+
+export interface AssignmentCapacityAssessment {
+  // Real capital already tied up in short-put collateral -- both already-
+  // open positions and pending (not yet filled) opening orders. This is
+  // what WOULD convert to assigned stock if every outstanding short put
+  // were assigned today.
+  readonly currentPotentialAssignmentCapital: number | null;
+  // A conservative cash-based ceiling: real cash minus capital already
+  // committed to CSP collateral. This does NOT account for options buying
+  // power multipliers or margin -- it is deliberately the more
+  // conservative of the two real signals available, never the more
+  // permissive one.
+  readonly availableAssignmentCapital: number | null;
+  // currentPotentialAssignmentCapital / equity -- the raw utilization
+  // ratio AEGIS's own policy threshold (maxAssignmentCapacityPct) is
+  // compared against downstream; this module does not apply that
+  // threshold itself.
+  readonly assignmentCapacityUsedPct: number | null;
+}
+
+export function deriveAssignmentCapacity(exposure: DerivedAccountExposure): AssignmentCapacityAssessment {
+  const currentPotentialAssignmentCapital =
+    exposure.cspCollateralRequired !== null && exposure.pendingCspCollateral !== null
+      ? exposure.cspCollateralRequired + exposure.pendingCspCollateral
+      : null;
+  const availableAssignmentCapital =
+    exposure.cash !== null && currentPotentialAssignmentCapital !== null
+      ? Math.max(0, exposure.cash - currentPotentialAssignmentCapital)
+      : null;
+  const assignmentCapacityUsedPct =
+    exposure.equity !== null && exposure.equity > 0 && currentPotentialAssignmentCapital !== null
+      ? currentPotentialAssignmentCapital / exposure.equity
+      : null;
+  return { currentPotentialAssignmentCapital, availableAssignmentCapital, assignmentCapacityUsedPct };
+}
+
+/**
+ * Given a real candidate contract's strike (and multiplier), returns the
+ * maximum additional contracts this account's currently-known
+ * availableAssignmentCapital could support -- Q=0 whenever capacity is
+ * exhausted or unknown, never a fabricated minimum of 1.
+ */
+export function maxAdditionalContractsForCandidate(
+  assignmentCapacity: AssignmentCapacityAssessment,
+  strike: number,
+  multiplier: number,
+): number | null {
+  if (assignmentCapacity.availableAssignmentCapital === null) return null;
+  const perContractCollateral = strike * multiplier;
+  if (perContractCollateral <= 0) return null;
+  return Math.max(0, Math.floor(assignmentCapacity.availableAssignmentCapital / perContractCollateral));
 }
