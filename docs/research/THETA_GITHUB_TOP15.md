@@ -1,120 +1,38 @@
-# THETA GitHub Top 15 — Ranked Research Priority
+# THETA GitHub Top 15
 
-Per the authoritative directive to study existing GitHub work systematically
-(READ → UNDERSTAND → VERIFY → EXTRACT METHOD → ADAPT → TEST → INTEGRATE)
-before reinventing subproblems THETA needs. This ranks the 22-repository
-candidate corpus supplied in that directive and selects the 15 to deeply
-inspect first. Every repository listed here was verified to exist and be
-public via `gh api repos/<owner>/<repo>` on 2026-09-11 — none of this ranking
-is based on an unread README screenshot.
+2026-09-11. The owner's explicit list is the bounded working set. The scores below are reviewer judgments about the inspected files, not empirical measurements or strategy returns. A total is only an intake aid. Production priority remains Full-H economics, router, assignment/recovery, execution/reconciliation, scheduler, lifecycle accounting, then backtesting/OOS. QuantLib and LEAN are additional Tier-0 references, outside the fifteen.
 
-Per `docs/research/RESEARCH_REGISTER.md`'s existing REPO-001/REPO-002 rule:
-these are implementation-pattern references only, never proof of
-profitability, and never adopted without a license/assumption/test review.
+Scoring: 0 means no useful verified contribution in this scope, 5 means useful with substantial caveats, 10 means unusually strong fit. License score measures straightforwardness of potential source reuse, not whether reading ideas is allowed. Code quality is provisional because upstream suites were not executed. Exact commits, files and reasons are in [the ledger](GITHUB_REPO_RESEARCH_LEDGER.md).
 
-Scoring is 0-10 per dimension, based on actual metadata + (for the repos
-marked "read" below) real file-level inspection, not the README's own
-claims. "Licensing safety" scores the license itself (permissive = higher),
-not whether we intend to copy source verbatim.
+| Rank | Repository | Quant /10 | Architecture /10 | Execution /10 | Risk /10 | Backtest /10 | THETA relevance /10 | Code quality /10 | Licensing safety /10 | Total /80 | Action |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | [lambdaclass/options_portfolio_backtester](https://github.com/lambdaclass/options_portfolio_backtester/tree/e53ef86928777de6ee0721424762ea3dc133f993) | 6 | 7 | 4 | 5 | 6 | 8 | 5 | 9 | 50 | ADAPT |
+| 2 | [goldspanlabs/optopsy](https://github.com/goldspanlabs/optopsy/tree/40bb8b2aa07ef8763caeadf752961faecb494efd) | 7 | 7 | 4 | 4 | 8 | 8 | 7 | 2 | 47 | REFERENCE_ONLY |
+| 3 | [joncovington/MEICAgent](https://github.com/joncovington/MEICAgent/tree/333ff77b68aaba07c68bcbcacb6d439ebceda4b6) | 5 | 6 | 4 | 5 | 5 | 5 | 5 | 9 | 44 | ADAPT |
+| 4 | [alpacahq/options-wheel](https://github.com/alpacahq/options-wheel/tree/3698429289065ceb0c13ffcdc31a966c576779ad) | 4 | 5 | 5 | 3 | 1 | 9 | 5 | 9 | 41 | ADAPT |
+| 5 | [zrack/gex-terminal](https://github.com/zrack/gex-terminal/tree/72d68f47a41c2c330351476cef99b48411f9fe3d) | 6 | 6 | 1 | 5 | 3 | 5 | 6 | 9 | 41 | ADAPT |
+| 6 | [thedhruvhegde/ivsurf](https://github.com/thedhruvhegde/ivsurf/tree/c20072a8f6c09146697bdb55dca566567d7b0535) | 6 | 5 | 1 | 4 | 4 | 6 | 4 | 9 | 39 | TEST_ONLY |
+| 7 | [hedarthy/DealerFlow](https://github.com/hedarthy/DealerFlow/tree/14c7a0f345116c93b43641893aaa372a4cf19085) | 5 | 4 | 0 | 3 | 1 | 4 | 4 | 9 | 30 | REFERENCE_ONLY |
+| 8 | [FlashAlpha-lab/gex-explained](https://github.com/FlashAlpha-lab/gex-explained/tree/a11321d62006311c4a72a68552587485024f2bf2) | 5 | 3 | 0 | 3 | 1 | 4 | 4 | 9 | 29 | REFERENCE_ONLY |
+| 9 | [milgar7969/alpaca-options-framework](https://github.com/milgar7969/alpaca-options-framework/tree/fd1c411da1abfee9009186fda99d8e9c02ca4166) | 3 | 5 | 6 | 3 | 1 | 8 | 3 | 0 | 29 | TEST_ONLY |
+| 10 | [puneet-chandna/0DTE-dealer-gamma](https://github.com/puneet-chandna/0DTE-dealer-gamma/tree/8da6fa67328b4aa34956c033f0b7cbb74431501d) | 5 | 5 | 1 | 4 | 2 | 4 | 5 | 1 | 27 | REFERENCE_ONLY |
+| 11 | [NavnoorBawa/Options-Flow-Predictor](https://github.com/NavnoorBawa/Options-Flow-Predictor/tree/da83ec361c1cb7494a0b1b96dbca8edc4a09e788) | 3 | 3 | 0 | 2 | 2 | 4 | 2 | 9 | 25 | REFERENCE_ONLY |
+| 12 | [ksanjay/Kelly-Criterion-Option-Selector](https://github.com/ksanjay/Kelly-Criterion-Option-Selector/tree/43c2443cd202777650bd1c61233054a83fe31771) | 1 | 1 | 0 | 1 | 0 | 3 | 2 | 9 | 17 | REJECT |
+| 13 | [ShayantoDutta/alpaca-wheel-bot](https://github.com/ShayantoDutta/alpaca-wheel-bot/tree/40c550cf44109028f9a99cdee2863a74c93ba833) | 2 | 2 | 2 | 2 | 0 | 7 | 2 | 0 | 17 | TEST_ONLY |
+| 14 | [sgdividends/spx-dealer-gamma](https://github.com/sgdividends/spx-dealer-gamma/tree/4b49ede031a17daa2a18c087e7fdb200a0c1d26f) | 5 | 2 | 0 | 2 | 0 | 4 | 3 | 0 | 16 | REFERENCE_ONLY |
+| 15 | [BitraAI/gex_app](https://github.com/BitraAI/gex_app/tree/b1234c65452581fccf5375cb7488b990423ed79c) | 3 | 2 | 0 | 2 | 1 | 3 | 2 | 0 | 13 | REJECT |
 
-| # | Repository | Quant | Arch | Exec | Risk | Backtest | THETA relevance | Code quality | License safety | Total |
-|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | goldspanlabs/optopsy | 6 | 8 | 3 | 3 | 9 | 8 | 8 | 4 (AGPL-3.0) | 49 |
-| 2 | FlashAlpha-lab/gex-explained | 8 | 5 | 1 | 2 | 2 | 7 | 8 | 9 (MIT) | 42 |
-| 3 | HasibVortex369/riskkit | 5 | 7 | 2 | 9 | 3 | 6 | 8 | 9 (MIT) | 49 |
-| 4 | alpacahq/options-wheel | 3 | 6 | 8 | 3 | 2 | 7 | 6 | 9 (Apache-2.0) | 44 |
-| 5 | lambdaclass/options_portfolio_backtester | 5 | 8 | 3 | 4 | 9 | 7 | 8 | 8 (MIT) | 52 |
-| 6 | thedhruvhegde/ivsurf | 7 | 5 | 1 | 2 | 1 | 7 | 5 | 8 (MIT) | 36 |
-| 7 | ksanjay/Kelly-Criterion-Option-Selector | 3 | 1 | 1 | 2 | 1 | 5 | 2 | 8 (MIT) | 23 |
-| 8 | NavnoorBawa/Options-Flow-Predictor | 4 | 2 | 1 | 2 | 2 | 5 | 3 | 8 (MIT) | 27 |
-| 9 | milgar7969/alpaca-options-framework | 2 | 6 | 6 | 2 | 1 | 5 | 5 | 3 (none) | 30 |
-| 10 | Ja-Ta/optionstrader | 3 | 5 | 4 | 3 | 4 | 6 | 5 | 8 (MIT) | 38 |
-| 11 | joncovington/MEICAgent | 3 | 4 | 4 | 3 | 2 | 4 | 4 | 8 (MIT) | 32 |
-| 12 | puneet-chandna/0DTE-dealer-gamma | 6 | 5 | 1 | 1 | 1 | 4 | 5 | 2 (noncommercial) | 25 |
-| 13 | zrack/gex-terminal | 4 | 4 | 1 | 1 | 2 | 4 | 4 | 8 (MIT) | 28 |
-| 14 | BitraAI/gex_app | 4 | 4 | 1 | 1 | 1 | 3 | 4 | 2 (none-asserted) | 20 |
-| 15 | AdamNaghs/Options-Spread-Conviction-Engine | 3 | 3 | 2 | 2 | 1 | 4 | 3 | 8 (MIT) | 26 |
-| — | vahagn-madatyan/wheel-it | 3 | 6 | 8 | 3 | 2 | 6 | 6 | 9 (Apache-2.0) | (fork of #4, see note) |
-| — | CryptoGnome/WheelForge | 3 | 6 | 8 | 3 | 2 | 6 | 6 | 9 (Apache-2.0) | (fork of #4, see note) |
-| — | xiao81/AllYouNeedIsWheel | 1 | 2 | 2 | 1 | 1 | 2 | 3 | 9 (Apache-2.0) | 21 (JS, not options-specific — deprioritized) |
-| — | ShayantoDutta/alpaca-wheel-bot | 1 | 1 | 1 | 1 | 1 | 2 | 2 | 1 (none, 10 bytes) | 10 (essentially empty) |
-| — | hedarthy/DealerFlow | 3 | 3 | 1 | 1 | 1 | 3 | 3 | 8 (MIT) | 23 |
-| — | sgdividends/spx-dealer-gamma | 3 | 2 | 1 | 1 | 1 | 3 | 2 | 1 (none, 5 bytes) | 14 (essentially empty) |
-| — | ArashkKH/OptionTradingAssistant | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 (none, no description) | 9 (not options-relevant) |
+## Tier-0 references
 
-## Notes on exclusions from the Top 15
+- [lballabio/QuantLib](https://github.com/lballabio/QuantLib/tree/ca953b7ebdb400f2839d86f18eeb0d4a2a4a30a4): scores in the same column order 9/9/2/7/6/8/9/9, total 59/80. Black-formula parameter validation, implied standard-deviation solvers with convergence criteria, and variance-space interpolation with sorted unique expiries.
+- [QuantConnect/Lean](https://github.com/QuantConnect/Lean/tree/8ee075a39918f2df6fe9e0a5944e366fb60d10dc): scores in the same column order 8/9/9/8/9/10/9/9, total 71/80. Holdings use contract multipliers and directional liquidation prices. Exercise emits option adjustment and physical underlying delivery events. Scheduler separates UTC event times and frontier scans.
 
-- **vahagn-madatyan/wheel-it** and **CryptoGnome/WheelForge** share the exact
-  description "Runnable algo template for trading the Options Wheel
-  strategy" with `alpacahq/options-wheel` and are almost certainly forks or
-  near-copies of it (not independently confirmed file-by-file this pass).
-  Deprioritized in favor of studying the canonical `alpacahq/options-wheel`
-  once, rather than three near-duplicates — flag for a future diff pass if
-  wheel-it/WheelForge are later found to have genuinely diverged logic.
-- **xiao81/AllYouNeedIsWheel** is JavaScript with a generic "automated
-  trading solutions" description, no options-specific content confirmed —
-  deprioritized.
-- **ShayantoDutta/alpaca-wheel-bot** (redirected from the requested
-  `SayantoDutta/alpaca-wheel-bot` — GitHub reports it as a renamed/moved
-  account) is 10 bytes in size, effectively empty. Deprioritized.
-- **sgdividends/spx-dealer-gamma** is 5 bytes, effectively empty (an MCP
-  server stub per its description, no computable content). Deprioritized.
-- **ArashkKH/OptionTradingAssistant** has no description, no license, 57KB
-  of JavaScript, unconfirmed relevance. Deprioritized pending a future pass
-  if time allows.
-- **hedarthy/DealerFlow** has no description and was not yet file-inspected
-  this pass; included in the corpus for a future GEX cross-implementation
-  check but not in this pass's Top 15 given `gex-explained` and
-  `puneet-chandna/0DTE-dealer-gamma` already anchor that category.
+## What to use first
 
-## The 15 selected for deep inspection (this pass + near-term follow-up)
+1. LEAN: directional MTM, explicit exercise/delivery events, pre-submission data rejection and injected event clocks. Keep THETA's stricter freshness and retry controls.
+2. Alpaca Wheel and milgar: broker-state reconstruction and cancel/fill race scenarios. Reject market-by-default orders, fixed multiplier, forced quantity and failure-to-empty conversions.
+3. optopsy/lambdaclass: separate fill/cost interfaces and replay test structure. Reject midpoint certainty and positional date joins.
+4. QuantLib: independent pricing/IV oracle, not a new data provider. Verify instrument model and dividends before American-option use.
+5. GEX/flow/surface projects: bounded research comparison only. No GEX feature should displace missing Full-H evidence, durable management or scheduler work.
 
-1. `goldspanlabs/optopsy` — backtesting representation/architecture (AGPL-3.0: methods/architecture only, no source copying — see licensing note below)
-2. `lambdaclass/options_portfolio_backtester` — backtesting representation/architecture (MIT)
-3. `HasibVortex369/riskkit` — position sizing / risk (MIT)
-4. `alpacahq/options-wheel` — wheel execution/state machine (Apache-2.0) — Codex-led, Claude cross-referenced for candidate-ranking anti-patterns
-5. `FlashAlpha-lab/gex-explained` — GEX formula + dealer-hedging theory (MIT)
-6. `thedhruvhegde/ivsurf` — IV surface / Black-Scholes / Greeks (MIT)
-7. `ksanjay/Kelly-Criterion-Option-Selector` — Kelly sizing (MIT) — primarily a NEGATIVE example (see ledger)
-8. `NavnoorBawa/Options-Flow-Predictor` — options flow features (MIT)
-9. `milgar7969/alpaca-options-framework` — Alpaca API workaround patterns (no license — reference/idea only, no code reuse)
-10. `Ja-Ta/optionstrader` — covered-call/CSP screening + scheduled reporting (MIT)
-11. `joncovington/MEICAgent` — 0DTE iron-condor state machine, tastytrade (MIT) — lower priority (different broker, different strategy family)
-12. `puneet-chandna/0DTE-dealer-gamma` — real-time GEX dashboard, vectorized Black-Scholes (PolyForm Noncommercial — REFERENCE_ONLY, no reuse of any kind under a commercial platform)
-13. `zrack/gex-terminal` — GEX terminal UI + replay research (MIT) — for a future GEX cross-implementation check
-14. `BitraAI/gex_app` — real-time options analytics dashboard (no asserted license — REFERENCE_ONLY)
-15. `AdamNaghs/Options-Spread-Conviction-Engine` — spread conviction scoring (MIT) — lower priority, not yet file-inspected
-
-Deep, file-level findings for each are in `docs/research/GITHUB_REPO_RESEARCH_LEDGER.md`.
-Extracted formulas are in `docs/research/THETA_FORMULA_CATALOG.md`. External
-strategy logic is in `docs/research/THETA_STRATEGY_REPO_CATALOG.md` (not yet
-populated this pass — strategy-shape extraction is lower priority than the
-formula/architecture extraction already done, per the roadmap-priority rule
-below). Gaps against THETA's own subsystems are in
-`docs/research/THETA_GITHUB_GAP_MATRIX.md`.
-
-## Licensing note on optopsy (AGPL-3.0)
-
-AGPL-3.0 is a strong copyleft license: linking/incorporating its source
-into THETA (a project with no intention of releasing its own source under
-AGPL) would create a license-compatibility problem. Per the "method vs.
-source code" distinction in the directive: THETA may study and
-independently reimplement optopsy's *architecture and slippage-model
-ideas* (multi-leg join pattern, four named slippage models, commission
-calculation) — none of which are copyrightable expression on their own —
-but must NOT copy optopsy's actual source lines into this repository.
-This is recorded explicitly so a future contributor does not later paste
-optopsy code without noticing the license conflict.
-
-## Priority alignment with the current roadmap
-
-Per the directive's own instruction not to let research pause the roadmap:
-this pass concentrated on repos directly useful to Claude's active work
-(Full-H economic frontier, strategy router, candidate ranking, sizing) —
-GEX/IV/Kelly/sizing/backtesting-architecture — over repos with lower
-immediate relevance (0DTE iron condors, dashboards). The broker/
-reconciliation/scheduler/persistence category (`alpacahq/options-wheel`,
-`milgar7969/alpaca-options-framework`) is Codex's lead per the directive;
-this pass only lightly cross-referenced `options-wheel`'s candidate-scoring
-logic because it directly informs a Full-H/candidate-ranking anti-pattern
-finding (see the ledger's `alpacahq/options-wheel` entry).
+No source strategy has been promoted. No provider added. Public returns/screenshots were not accepted as evidence. Remaining 50+ corpus entries are deferred deliberately rather than claimed reviewed.

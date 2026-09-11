@@ -1,5 +1,54 @@
 # Codex handoff: standalone platform Phase 1
 
+## 2026-09-11: commit-pinned GitHub methods audit and ledger UNKNOWN fix
+
+OWNER: Codex, sole integration owner.
+
+TASK: Inspect the owner's fifteen GitHub references plus QuantLib/LEAN and turn
+findings into explicit comparisons and one focused accounting correction.
+
+FILES CHANGED: research Top15, ledger, gap matrix, formula catalog, new strategy
+catalog, archived previous research, EV spec correction, ledger-contract.ts,
+ledger-contract.test.ts, DECISIONS.md and this handoff. Quant model sources,
+providers, migrations, customer UI and execution gates are unchanged.
+
+WHAT WAS IMPLEMENTED: 17 commit-pinned source records with licensing, scope and
+limitations, 36 gap rows, 21 formula entries, strategy rejection/promotion criteria.
+Ledger v2 propagates unknown option/stock/dividend components into a null total
+while preserving known realized losses and explicit valuation issues. Earlier
+research is retained in archive, including references outside the bounded fifteen.
+
+TESTS RUN: targeted ledger tests, TypeScript check, ESLint, full Node tests,
+Python quant tests, Playwright browser/accessibility checks, build, secret scan
+and diff review. No upstream repository's test suite was executed.
+
+TEST RESULTS: 13 ledger tests passed, 532 Node tests passed with three local DB
+tests skipped, 349 Python tests passed, 22 browser tests passed. Type check,
+lint, build and security scan passed. CI will rerun disposable Postgres/Redis
+invariants after integration. No migration is required for this pure calculation.
+
+KNOWN LIMITATIONS: Targeted file/function review is not an exhaustive code audit
+of all17 repositories. No calibrated full-H EV or OOS profitability evidence was
+created. Option MTM provenance, premium/basis and fee allocation, ex-date dividend
+shares, capital-days and durable management joins remain incomplete.
+
+RISKS: Positional date zipping in lambdaclass, mixed-expiry batch handling in
+ivsurf, conflated GEX crossing definitions and unsafe missing-data/forced-quantity
+patterns must not be ported. Noncommercial/no-license/AGPL source was not imported.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: execution_quality.py needs explicit side and
+unit review before its buy-oriented heuristic is used for short-option execution.
+Preserve canonical full-H/management methodology. Avoid failed-fold suppression
+and current-chain features in historical rows. Only Codex integrates main.
+
+NEXT RECOMMENDED TASK: Provenance-aware full-chain valuation and durable management
+receipts, then reconciliation/scheduler operational evidence in the existing roadmap.
+No new GEX provider or strategy is needed to do that work.
+
+ORDER SAFETY: No broker order submission was made in this milestone. Execution
+gates remain unchanged. READY_FOR_FIRST_PAPER_ORDER remains NO, this source audit
+does not establish fresh account, contract, quote or worker readiness evidence.
+
 ## 2026-09-10 customer copy UX and owner operations foundation
 
 OWNER: Codex

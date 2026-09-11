@@ -1,5 +1,17 @@
 # THETA EV Model Specification (R6)
 
+> 2026-09-11 correctness update: this document's original implementation
+> claims below are historical and superseded by the current
+> [formula catalog](THETA_FORMULA_CATALOG.md) and
+> [gap matrix](THETA_GITHUB_GAP_MATRIX.md). Features are not universally
+> available merely because contracts exist. The blocker includes input
+> coverage, labels, costs and lifecycle reconciliation. Ledger v2 now
+> returns null for unknown open-option MTM, unknown stock marks or missing
+> dividend lots. A flagged numeric partial total was not a valid complete
+> target. Provenance-aware option valuation, basis/premium and fee allocation,
+> ex-date dividend entitlement, and capital-day joins remain prerequisites.
+> No calibrated full-H model or new profitability evidence is claimed.
+
 Per the explicit directive: this is the empirical framework spec for
 `EV_net`/`ReturnPerCapitalDay`, not an invented model. It builds on
 existing, frozen canonical specs rather than re-deriving them —
@@ -32,16 +44,16 @@ plainly and specifically:
   headline range discussion, and this document adds no lower threshold
   of its own — an EV model promoted on fewer than that has no basis for
   trust regardless of what its point estimate says.
-- **Features available today:** everything computed at decision time is
-  already real and available (ownership score, regime classification,
-  strike/DTE/delta, spread%, OI/volume, event proximity, AEGIS state) --
-  none of this is the blocker. The blocker is exclusively the **label**
-  side: no resolved-episode outcome history exists to fit or validate
-  against.
+- **Feature availability:** contracts exist for ownership, regime,
+  strike/DTE/delta, spread, OI/volume, events and AEGIS. Each decision still
+  requires verified availability, freshness and provenance. A defined
+  field does not prove the provider supplied it. Labels are an additional
+  blocker, not the only one.
 - **Target construction:** fully specified below (§2) and already
   partially implemented in code (`ledger-contract.ts`'s
-  `computeWholeChainPnl`) — this is NOT missing, only the historical
-  volume of resolved examples to train/validate against is missing.
+  `computeWholeChainPnl`). Complete option MTM, entitlement/basis/cost
+  reconciliation and durable lifecycle joins still need implementation
+  before this calculation can supply a complete training target.
 - **Validation protocol:** fully specified in
   `DATASET_AND_LABEL_CONTRACT.md` §5 and `THETA_WALK_FORWARD_SPEC.md`
   (this pass) — not missing, just has nothing to run against yet.
@@ -81,10 +93,9 @@ subsystems that agree with each other:
 
   ```
   WholeChainPnl = RealizedStockPnl + UnrealizedStockPnl
-                + RealizedOptionPnl + UnrealizedOptionPnl (currently always 0 -- no
-                  open-option-leg mark-to-market field exists yet, explicitly
-                  flagged via hasUnresolvedOpenPositions rather than assumed zero-cost)
+                + RealizedOptionPnl + UnrealizedOptionPnl
                 + Dividends - Fees
+  # v2: unavailable open-option MTM, stock mark or dividend lot => null total
   ```
 
   This is not a proposal — it is real, tested code

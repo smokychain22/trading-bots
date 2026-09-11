@@ -1,5 +1,19 @@
 # Engineering decisions
 
+## 2026-09-11: research references and incomplete valuation
+
+Review the owner's fifteen GitHub repositories plus QuantLib and LEAN at
+commit-pinned file scope. Preserve previous research under research/archive,
+correct sign/units/license and implementation-readiness errors in the active
+documents, and do not import external code or unvalidated strategy thresholds.
+
+Version the pure ledger calculation as theta-ledger-runtime-v2. Unknown open
+option valuation, stock mark or dividend entitlement reference makes the
+corresponding aggregate and total null. Known realized components stay visible.
+The only current consumers found are its tests, so no customer API, migration
+or UI contract changes are required. This does not complete option valuation,
+basis/premium reconciliation or full-H model calibration.
+
 ## 2026-09-09: standalone customer platform
 
 The owner's latest instruction makes trading-bots a complete standalone website for the current development period. TradePilot integration is deferred. UI components and versioned public projections remain separate from the trading engine.
