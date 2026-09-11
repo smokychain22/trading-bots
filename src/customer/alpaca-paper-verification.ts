@@ -18,12 +18,19 @@ const accountSchema = z.object({
   transfers_blocked: z.boolean().optional(),
 }).passthrough();
 const clockSchema = z.object({ is_open: z.boolean(), timestamp: z.string().optional() }).passthrough();
+const calendarSchema = z.array(z.object({
+  date: z.string().min(1),
+  open: z.string().min(1),
+  close: z.string().min(1),
+}).passthrough());
 
 export type FollowerVerification = {
   readonly account: z.infer<typeof accountSchema>;
   readonly positions: readonly unknown[];
   readonly openOrders: readonly unknown[];
   readonly marketOpen: boolean;
+  readonly marketClockTimestamp: string | null;
+  readonly calendar: readonly z.infer<typeof calendarSchema>[number][];
   readonly ready: boolean;
   readonly reason: string | null;
 };
@@ -35,18 +42,24 @@ export async function verifyAlpacaPaperAccount(
 ): Promise<FollowerVerification> {
   if (baseUrl !== ALPACA_PAPER_BASE_URL) throw new Error("ALPACA_PAPER_HOST_REJECTED");
   const adapter = new AlpacaPaperBrokerAdapter({ baseUrl, authentication, fetchImpl });
-  const clockRequest = async () => {
-    const headers: HeadersInit = authentication.kind === "FOLLOWER_OAUTH"
-      ? { Authorization: `Bearer ${authentication.accessToken}` }
-      : { "APCA-API-KEY-ID": authentication.apiKey, "APCA-API-SECRET-KEY": authentication.apiSecret };
-    const response = await fetchImpl(`${ALPACA_PAPER_BASE_URL}/v2/clock`, { headers, signal: AbortSignal.timeout(12_000) });
-    if (!response.ok) throw new AlpacaPaperBrokerError(response.status === 401 ? "INVALID_AUTH" : "BROKER_REJECTED", response.status, `Alpaca PAPER /v2/clock returned HTTP ${response.status}.`);
-    return clockSchema.parse(await response.json());
+  const headers: HeadersInit = authentication.kind === "FOLLOWER_OAUTH"
+    ? { Authorization: `Bearer ${authentication.accessToken}` }
+    : { "APCA-API-KEY-ID": authentication.apiKey, "APCA-API-SECRET-KEY": authentication.apiSecret };
+  const get = async (path: string) => {
+    const response = await fetchImpl(`${ALPACA_PAPER_BASE_URL}${path}`, { headers, signal: AbortSignal.timeout(12_000) });
+    if (!response.ok) throw new AlpacaPaperBrokerError(response.status === 401 ? "INVALID_AUTH" : "BROKER_REJECTED", response.status, `Alpaca PAPER ${path.split('?')[0]} returned HTTP ${response.status}.`);
+    return response.json();
   };
-  const [rawAccount, positions, openOrders, clock] = await Promise.all([
-    adapter.getAccount(), adapter.getPositions(), adapter.getOrders("open"), clockRequest(),
+  const today = new Date().toISOString().slice(0, 10);
+  const calendarEnd = new Date(`${today}T00:00:00.000Z`);
+  calendarEnd.setUTCDate(calendarEnd.getUTCDate() + 7);
+  const calendarPath = `/v2/calendar?start=${today}&end=${calendarEnd.toISOString().slice(0, 10)}`;
+  const [rawAccount, positions, openOrders, rawClock, rawCalendar] = await Promise.all([
+    adapter.getAccount(), adapter.getPositions(), adapter.getOrders("open"), get('/v2/clock'), get(calendarPath),
   ]);
   const account = accountSchema.parse(rawAccount);
+  const clock = clockSchema.parse(rawClock);
+  const calendar = calendarSchema.parse(rawCalendar);
   const optionsLevel = account.options_trading_level ?? account.options_approved_level ?? 0;
   const active = account.status === "ACTIVE";
   const blocked = account.trading_blocked === true || account.account_blocked === true;
@@ -59,6 +72,8 @@ export async function verifyAlpacaPaperAccount(
     positions,
     openOrders,
     marketOpen: clock.is_open,
+    marketClockTimestamp: clock.timestamp ?? null,
+    calendar,
     ready,
     reason: !active
       ? "Your Alpaca Paper account is not active."

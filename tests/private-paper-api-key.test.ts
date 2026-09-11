@@ -69,6 +69,7 @@ function paperFetch(expectedKey: string, expectedSecret: string): typeof fetch {
     if (path === "/v2/positions") return Response.json([{ symbol: "AAPL" }]);
     if (path === "/v2/orders") return Response.json([]);
     if (path === "/v2/clock") return Response.json({ is_open: false, timestamp: new Date().toISOString() });
+    if (path === "/v2/calendar") return Response.json([{ date: "2026-09-11", open: "09:30", close: "16:00" }]);
     return Response.json({}, { status: 404 });
   };
 }

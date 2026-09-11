@@ -8,7 +8,8 @@ import type { FollowerRecord } from '../src/customer/customer-store.js';
 
 const verified: FollowerVerification = {
   account: { id: 'synthetic-paper-account', status: 'ACTIVE' },
-  ready: true, positions: [], openOrders: [], marketOpen: false, reason: null,
+  ready: true, positions: [], openOrders: [], marketOpen: false,
+  marketClockTimestamp: '2026-09-11T12:00:00.000Z', calendar: [], reason: null,
 };
 
 test('role designation verifies before persistence and never exposes identity or credentials', async () => {

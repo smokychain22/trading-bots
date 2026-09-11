@@ -106,6 +106,7 @@ test("OAuth callback consumes state once, verifies paper account, and stores onl
     if (url.endsWith("/v2/account"))
       return Response.json({ id: "paper-account-1234", status: "ACTIVE", equity: "20000", cash: "10000", buying_power: "20000", options_buying_power: "15000", options_approved_level: 3, options_trading_level: 3, trading_blocked: false, account_blocked: false });
     if (url.endsWith("/v2/clock")) return Response.json({ is_open: false });
+    if (url.includes("/v2/calendar")) return Response.json([{ date: "2026-09-11", open: "09:30", close: "16:00" }]);
     return Response.json([]);
   };
   try {
@@ -145,6 +146,7 @@ test("THETA core requires options level 1, while level 0 remains blocked", async
         account_blocked: false,
       });
     if (url.endsWith("/v2/clock")) return Response.json({ is_open: false });
+    if (url.includes("/v2/calendar")) return Response.json([{ date: "2026-09-11", open: "09:30", close: "16:00" }]);
     return Response.json([]);
   };
   try {
