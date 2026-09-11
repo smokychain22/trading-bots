@@ -1,0 +1,16 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+.vercel
+.venv
+node_modules
+dist
+coverage
+test-results
+playwright-report
+__pycache__
+*.pyc
+docs
+tests

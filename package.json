@@ -8,6 +8,8 @@
     "build": "tsc -p tsconfig.json",
     "check": "tsc --noEmit -p tsconfig.json",
     "start": "node dist/index.js",
+    "worker:start": "node dist/worker/index.js",
+    "worker:dev": "tsx src/worker/index.ts",
     "dev": "tsx watch src/index.ts",
     "test": "tsx --test tests/**/*.test.ts",
     "lint": "eslint src tests public/assets",

@@ -30,6 +30,9 @@ const environmentSchema = z.object({
   FOLLOWER_PAPER_EXECUTION_ENABLED: safeFlag,
   PAPER_PAUSE_NEW_ORDERS: booleanFlag('true'),
   THETA_AUTONOMOUS_WORKER_ENABLED: safeFlag,
+  THETA_WORKER_PORT: z.coerce.number().int().min(1).max(65_535).default(3001),
+  THETA_WORKER_INTERVAL_MS: z.coerce.number().int().min(10_000).max(900_000).default(60_000),
+  THETA_PYTHON_EXECUTABLE: z.string().min(1).default('python3'),
   CRON_SECRET: z.string().min(32).optional(),
   VERCEL_PROJECT_ID: z.string().min(1).optional(),
   VERCEL_ORG_ID: z.string().min(1).optional(),
@@ -101,5 +104,14 @@ export const assertRuntimeConfiguration = (environment: Environment): void => {
     alpacaUrl.hash !== ''
   ) {
     throw new Error('ALPACA_BASE_URL must point to the Alpaca paper API. Live trading is not enabled.');
+  }
+};
+
+export const assertAutonomousWorkerConfiguration = (environment: Environment): void => {
+  if (!environment.THETA_AUTONOMOUS_WORKER_ENABLED) throw new Error('THETA_AUTONOMOUS_WORKER_DISABLED');
+  if (!environment.DATABASE_URL) throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');
+  if (!environment.PAPER_COPY_TOKEN_ENCRYPTION_KEY) throw new Error('PAPER_CREDENTIAL_ENCRYPTION_NOT_CONFIGURED');
+  if (!environment.PAPER_PAUSE_NEW_ORDERS || environment.MASTER_PAPER_EXECUTION_ENABLED || environment.FOLLOWER_PAPER_EXECUTION_ENABLED) {
+    throw new Error('FIRST_PAPER_ORDER_BOUNDARY_NOT_LOCKED');
   }
 };

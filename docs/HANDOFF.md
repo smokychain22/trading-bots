@@ -608,3 +608,62 @@ change.
 NEXT RECOMMENDED TASK: Run the same checks in CI with PostgreSQL/Redis, then activate
 the read-only worker only after a supported always-on host and strong runtime secret are
 available. Keep every broker mutation gate locked.
+
+## 2026-09-12 Host-independent worker and broker lifecycle evidence
+
+OWNER: Codex
+
+TASK: Defer permanent hosting, package a portable resident worker, make the first-order
+readiness boundary executable, and close broker lifecycle evidence gaps without placing
+an order.
+
+FILES CHANGED: Worker entry point/runtime, typed environment, two-target Dockerfile,
+worker Compose example, broker reconciliation persistence, lifecycle evidence
+classifier, deterministic first-order receipt, migration 016 and verifier, focused
+tests, README, decisions, worker documentation, and Claude review ledger.
+
+WHAT WAS IMPLEMENTED: A generic Node plus Python worker validates database, Python, and
+locked execution state, exposes sanitized health/readiness, prevents overlapping runs,
+uses the existing lease-backed scheduler, and shuts down gracefully. The readiness
+receipt requires complete known broker, market, option, BBO, economics, AEGIS, durable
+identity, scheduler, reconciliation, and idempotency evidence. Broker reconciliation
+now stores complete immutable point-in-time positions and hashed activity facts.
+Lifecycle classification requires broker activity plus position movement for put
+assignment, put expiry, covered-call expiry, and call-away. Migration 016 was applied
+to Production Neon and all repository invariants passed with all order gates locked.
+
+TESTS RUN: 564 Node tests, 352 Python tests, TypeScript, ESLint, production build,
+security scan, diff check, migration 001-016 idempotent replay, and Production database
+verification.
+
+TEST RESULTS: 561 Node passed and three disposable-local-PostgreSQL tests skipped. All
+352 Python tests passed. TypeScript, ESLint, build, and security scan passed with zero
+findings. Neon reports 16 migrations, 20 required tables, one master role, one encrypted
+credential, all account/copy/runtime/lifecycle protections enforced, and zero broker
+orders.
+
+KNOWN LIMITATIONS: Docker Desktop's Linux engine is stopped, so the image could not be
+built locally. No always-on worker is deployed by owner direction. Production
+management still lacks a complete assembler for Greeks, economic marks, concentration,
+event, and AEGIS state. The production opportunity job therefore remains degraded and
+does not produce an OrderIntent. Historical calibration is insufficient, so
+`EV_MODEL_NOT_EMPIRICALLY_READY` remains a readiness blocker.
+
+RISKS: Lifecycle evidence is persisted and deterministically classified, but the
+classifier is not yet allowed to mutate economic-chain state. Atomic option-leg,
+assignment/expiration event, stock-lot, ledger, and chain updates must be completed
+together to avoid economically inconsistent partial transitions.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude should repair the R6 issues listed in
+`docs/reviews/CLAUDE_THETA_R1_REAL_STATE_REVIEW.md`. It must not change worker,
+execution-control, customer identity, or migration files.
+
+CLAUDE COMMITS REVIEWED: All commits through `9d3172e`. New repair `531ae8b` correctly
+addresses the six previously reported defects but depends on the unintegrated R6 base,
+so it is `REPAIR_AND_PORT`, not a wholesale merge. `9d3172e` is `DEFER` because it does
+not close the current runtime or empirical-data blockers.
+
+NEXT RECOMMENDED TASK: Build the PostgreSQL management-input projection and atomic
+broker-confirmed lifecycle writer, then connect the safe opportunity cycle to durable
+receipt generation. Keep every broker mutation locked until the full real receipt is
+YES and has been reported before the first POST.

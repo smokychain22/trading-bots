@@ -26,6 +26,13 @@ export interface UnmatchedBrokerFact {
   readonly detail: Readonly<Record<string, unknown>>;
 }
 
+export interface BrokerPositionEvidence {
+  readonly symbol: string;
+  readonly quantity: number | null;
+  readonly side: string | null;
+  readonly assetClass: string | null;
+}
+
 export interface ReconciledBrokerOrder {
   readonly orderIntentId: string;
   readonly providerOrderId: string;
@@ -56,6 +63,8 @@ export interface BrokerReconciliationSnapshotInput {
   readonly positionCount: number;
   readonly openOrderCount: number;
   readonly activityCount: number;
+  readonly positions: readonly BrokerPositionEvidence[];
+  readonly activities: readonly BrokerActivity[];
   readonly matchedOrders: readonly ReconciledBrokerOrder[];
   readonly missingLocalIntentIds: readonly string[];
   readonly unmatchedFacts: readonly UnmatchedBrokerFact[];
@@ -88,7 +97,7 @@ export interface BrokerReconciliationResult {
   readonly observedAt: string;
 }
 
-function safePosition(raw: unknown) {
+function safePosition(raw: unknown): BrokerPositionEvidence {
   const parsed = positionSchema.parse(raw);
   return {
     symbol: parsed.symbol,
@@ -174,7 +183,7 @@ export async function runReadOnlyBrokerReconciliation(input: {
     providerAccountRefHash, accountStatus: account.status ?? null,
     marketClock, calendarSessions,
     positionCount: positions.length, openOrderCount: orders.filter((order) => !['filled', 'canceled', 'expired', 'rejected'].includes(order.status)).length,
-    activityCount: sortedActivities.length, matchedOrders: matches.matched,
+    activityCount: sortedActivities.length, positions, activities: sortedActivities, matchedOrders: matches.matched,
     missingLocalIntentIds: matches.missingLocalIntentIds, unmatchedFacts, observedAt, payloadHash,
   });
   const calendarSessionConfirmed = calendarSessions?.some((session) =>
@@ -264,6 +273,31 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
            ON CONFLICT(connection_id,fact_type,provider_fact_ref_hash) DO NOTHING`,
           [input.connectionId, input.snapshotId, fact.factType, fact.providerFactRefHash,
             fact.symbol, input.observedAt, JSON.stringify(fact.detail)],
+        );
+      }
+      for (const position of input.positions) {
+        await client.query(
+          `INSERT INTO trade.broker_position_snapshot(
+             reconciliation_snapshot_id,connection_id,symbol,quantity,side,asset_class,observed_at,payload_hash)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [input.snapshotId, input.connectionId, position.symbol, position.quantity, position.side,
+            position.assetClass, input.observedAt, sha256(canonicalJson(position))],
+        );
+      }
+      for (const activity of input.activities) {
+        await client.query(
+          `INSERT INTO trade.broker_activity_fact(
+             connection_id,provider_activity_ref_hash,activity_type,symbol,quantity,price,
+             activity_at,provider_order_ref_hash,first_observed_at,last_observed_at,payload_hash)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10)
+           ON CONFLICT(connection_id,provider_activity_ref_hash) DO UPDATE SET
+             last_observed_at=EXCLUDED.last_observed_at`,
+          [input.connectionId, sha256(activity.id), activity.activityType, activity.symbol,
+            activity.quantity, activity.price, activity.date, activity.orderId === null ? null : sha256(activity.orderId),
+            input.observedAt, sha256(canonicalJson({
+              type: activity.activityType, symbol: activity.symbol, quantity: activity.quantity,
+              price: activity.price, date: activity.date,
+            }))],
         );
       }
       for (const order of input.matchedOrders) await this.recordMatchedOrder(client, input, order);

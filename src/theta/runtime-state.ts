@@ -37,9 +37,12 @@ export type ThetaLifecycleState =
 export const THETA_LIFECYCLE_TRANSITIONS: Readonly<Record<ThetaLifecycleState, readonly ThetaLifecycleState[]>> = {
   WAIT: ['CSP_PROPOSED'],
   CSP_PROPOSED: ['CSP_OPEN', 'WAIT'], // WAIT: proposal rejected/expired before fill
-  CSP_OPEN: ['BTC_CLOSE', 'EXPIRE_OTM', 'ROLL_DECISION'],
+  CSP_OPEN: ['BTC_CLOSE', 'EXPIRE_OTM', 'ROLL_DECISION', 'ASSIGNED'],
   BTC_CLOSE: ['REDEPLOY'],
-  EXPIRE_OTM: ['REDEPLOY'],
+  // A put expiry releases cash and can redeploy. A covered-call expiry
+  // returns the still-owned stock to recovery evaluation. The reconciler
+  // supplies the leg context and broker evidence before choosing either.
+  EXPIRE_OTM: ['REDEPLOY', 'RECOVERY_WAIT'],
   ROLL_DECISION: ['CSP_PROPOSED', 'ASSIGNED'], // roll opens a new CSP proposal, or assignment is accepted instead
   ASSIGNED: ['STOCK_HELD'],
   STOCK_HELD: ['RECOVERY_WAIT'],

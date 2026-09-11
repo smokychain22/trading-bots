@@ -292,3 +292,27 @@ T=0 or earlier is non-executable, while later expiries in the same batch are eva
 independently. THETA does not currently solve IV internally, so impossible-price and
 solver-convergence cases do not exist in the Production path and must not be presented
 as tested capabilities.
+
+## 2026-09-12: defer hosting and finish the host-independent THETA boundary
+
+`EXTERNAL_WORKER_HOST_DEFERRED_UNTIL_PAPER_READINESS` is intentional. Vercel remains
+the customer control plane. No permanent scheduler host, paid plan, or cloud-specific
+worker API is selected in this phase.
+
+The resident worker is a generic Docker target with Node, Python, health/readiness,
+graceful termination, database/Python startup checks, non-overlapping cycles, and
+PostgreSQL lease-based restart recovery. It refuses to start unless every broker
+submission control is locked. A separate image target preserves the web control plane.
+
+The first Paper order boundary now has a deterministic receipt. Every required value
+carries an evidence state and source. UNKNOWN, STALE, INVALID, or NOT_ENTITLED creates
+a named blocker. The receipt checks the exact Paper host and master role, CSP intent,
+provider multiplier, collateral identity, Alpaca BBO, quote age, empirically ready
+positive after-cost economics, tail evidence, AEGIS quantity, durable IDs, idempotency,
+persistence, scheduler, reconciliation, and the final pre-POST lock. A valid receipt
+still submits zero orders.
+
+Broker reconciliation now persists a complete immutable position set for each read and
+hashed activity facts for lifecycle evidence. Assignment, expiration, and call-away
+classification requires matching broker activity and consistent position movement.
+Moneyness or a missing option position alone cannot mutate a chain.

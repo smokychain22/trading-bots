@@ -64,5 +64,10 @@ npm test
 npm run build
 ```
 
+The host-independent resident runtime is documented in
+[`docs/THETA_WORKER_RUNTIME.md`](docs/THETA_WORKER_RUNTIME.md). It is packaged for a
+future generic Docker host, but no always-on worker is deployed during the current
+Paper-readiness phase.
+
 `npm run validate:env` reports only configuration status and missing variable names.
 `npm run provider:readiness` performs read-only checks and never submits an order.

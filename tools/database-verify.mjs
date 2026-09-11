@@ -20,6 +20,7 @@ try {
     "013_position_intent_null_guard",
     "014_theta_runtime_persistence",
     "015_autonomous_runtime_evidence",
+    "016_broker_lifecycle_evidence",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -36,6 +37,7 @@ try {
     ["ops", "runtime_worker_cycle"], ["trade", "broker_reconciliation_snapshot"],
     ["trade", "unmatched_broker_fact"], ["research", "theta_replay_observation"],
     ["research", "theta_replay_outcome_label"],
+    ["trade", "broker_position_snapshot"], ["trade", "broker_activity_fact"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -89,6 +91,11 @@ try {
   const runtimeProtection = runtimeEvidence.rows[0];
   if (!runtimeProtection?.lease_evidence || !runtimeProtection?.runtime_version || !runtimeProtection?.anti_leakage || !runtimeProtection?.immutable_reconciliation)
     throw new Error("AUTONOMOUS_RUNTIME_PROTECTION_MISSING");
+  const lifecycleEvidence = await client.query(`SELECT
+    EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade' AND trigger_name='reject_immutable_mutation' AND event_object_table='broker_position_snapshot') AS immutable_positions,
+    EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade' AND trigger_name='protect_broker_activity_fact' AND event_object_table='broker_activity_fact') AS protected_activities`);
+  if (!lifecycleEvidence.rows[0]?.immutable_positions || !lifecycleEvidence.rows[0]?.protected_activities)
+    throw new Error("BROKER_LIFECYCLE_EVIDENCE_PROTECTION_MISSING");
   const gate = executionControl.rows[0];
   if (!gate?.pause_new_orders || gate.master_execution_enabled || gate.follower_execution_enabled)
     throw new Error("PAPER_EXECUTION_NOT_LOCKED");
@@ -108,6 +115,7 @@ try {
     explicitOptionPositionIntent: "ENFORCED",
     autonomousRuntimeEvidence: "ENFORCED",
     replayFeatureLabelSeparation: "ENFORCED",
+    brokerLifecycleEvidence: "ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
     brokerOrders: orderCount.rows[0]?.count ?? 0,

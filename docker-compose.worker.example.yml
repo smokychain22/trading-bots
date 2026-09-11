@@ -1,0 +1,25 @@
+services:
+  theta-worker:
+    build:
+      context: .
+      target: worker
+    env_file:
+      - .env.worker
+    environment:
+      NODE_ENV: production
+      THETA_AUTONOMOUS_WORKER_ENABLED: "true"
+      THETA_WORKER_PORT: "3001"
+      THETA_PYTHON_EXECUTABLE: /usr/bin/python3
+      MASTER_PAPER_EXECUTION_ENABLED: "false"
+      FOLLOWER_PAPER_EXECUTION_ENABLED: "false"
+      PAPER_PAUSE_NEW_ORDERS: "true"
+    ports:
+      - "127.0.0.1:3001:3001"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
