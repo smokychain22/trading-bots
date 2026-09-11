@@ -387,9 +387,9 @@ export class PostgresCustomerStore implements CustomerStore {
     try {
       await client.query("BEGIN");
       const follower = await client.query(
-        `SELECT follower_account_id FROM copy.follower_account
+        `SELECT follower_account_id FROM copy.follower_account AS f
          WHERE customer_id = $1 AND disconnected_at IS NULL AND account_ready = true
-           AND COALESCE(to_jsonb(copy.follower_account)->>'account_role','FOLLOWER_THETA_PAPER') = 'FOLLOWER_THETA_PAPER'
+           AND COALESCE(to_jsonb(f)->>'account_role','FOLLOWER_THETA_PAPER') = 'FOLLOWER_THETA_PAPER'
          ORDER BY updated_at DESC LIMIT 1 FOR UPDATE`,
         [customerId],
       );
