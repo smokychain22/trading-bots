@@ -92,6 +92,32 @@ test('parses dotenv quotes and lets the explicit file override stale process val
   }
 });
 
+test('Vercel redaction markers never override real process values', () => {
+  const filePath = 'tests/.environment-precedence.env';
+  writeFileSync(filePath, 'ALPACA_API_KEY="[SENSITIVE]"\nMASTER_PAPER_EXECUTION_ENABLED="[SENSITIVE]"\n');
+  try {
+    const environment = loadEnvironmentFile(filePath, {
+      ALPACA_API_KEY: 'real-process-key', MASTER_PAPER_EXECUTION_ENABLED: 'false',
+    });
+    assert.equal(environment.ALPACA_API_KEY, 'real-process-key');
+    assert.equal(environment.MASTER_PAPER_EXECUTION_ENABLED, false);
+  } finally {
+    unlinkSync(filePath);
+  }
+});
+
+test('Vercel redaction markers without a real fallback fail closed', () => {
+  const filePath = 'tests/.environment-precedence.env';
+  writeFileSync(filePath, 'ALPACA_API_KEY="[SENSITIVE]"\nPAPER_PAUSE_NEW_ORDERS="[SENSITIVE]"\n');
+  try {
+    const environment = loadEnvironmentFile(filePath, {});
+    assert.equal(environment.ALPACA_API_KEY, undefined);
+    assert.equal(environment.PAPER_PAUSE_NEW_ORDERS, true);
+  } finally {
+    unlinkSync(filePath);
+  }
+});
+
 // Security correction: a credential-loading/validation failure must report
 // PRESENT/MISSING/VALID/INVALID by name only -- never the secret value
 // itself, even when the value is realistic-shaped. Every thrown message and

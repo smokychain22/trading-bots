@@ -43,10 +43,12 @@ export type Environment = z.infer<typeof environmentSchema>;
 export type ProviderName = 'ALPACA' | 'OPTIONOMICS';
 
 export const environmentPrecedence = [
-  'explicit dotenv file parsed by dotenv',
+  'explicit dotenv file parsed by dotenv, excluding the exact Vercel redaction sentinel',
   'process environment fallback',
   'schema defaults'
 ] as const;
+
+const VERCEL_REDACTED_VALUE = '[SENSITIVE]';
 
 // No .env variant is loaded implicitly. Callers must name the intended file.
 // Explicit file values override stale shell/process values for deterministic checks.
@@ -54,7 +56,13 @@ export const loadEnvironmentFile = (
   filePath: string,
   processSource: NodeJS.ProcessEnv = process.env
 ): Environment => {
-  const fileSource = parse(readFileSync(filePath));
+  // Vercel can preserve a key name while withholding a sensitive value in
+  // a downloaded dotenv file. That marker is metadata, not configuration.
+  // Ignore only the exact marker. Never strip quotes or mutate arbitrary
+  // secret values here. dotenv already owns quote parsing.
+  const fileSource = Object.fromEntries(
+    Object.entries(parse(readFileSync(filePath))).filter(([, value]) => value !== VERCEL_REDACTED_VALUE),
+  );
   return environmentSchema.parse({ ...processSource, ...fileSource });
 };
 

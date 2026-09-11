@@ -361,3 +361,8 @@ writer through a confirmed-evidence-only bridge. UNKNOWN or INVALID evidence can
 reach persistence, and the writer still validates stored multiplier, quantity, P&L,
 chain state, and replay identity. Other management actions remain behind their existing
 explicit atomic application APIs until an empirical policy and always-on worker exist.
+
+Vercel's exact downloaded redaction marker `[SENSITIVE]` is ignored by the dotenv file
+loader. It cannot override a real process value or pass validation as a credential or
+boolean flag. Standard dotenv parsing still owns quote removal, and arbitrary secret
+values are never modified.
