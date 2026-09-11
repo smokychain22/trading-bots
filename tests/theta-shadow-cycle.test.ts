@@ -59,6 +59,9 @@ const mockAlpacaFetch = (options: { hasContracts: boolean; hasBars: boolean }) =
   if (url.includes('/v2/clock')) {
     return jsonResponse(200, { timestamp: NOW, is_open: true, next_open: NOW, next_close: NOW }); // market open by default
   }
+  if (url.includes('/v2/calendar')) {
+    return jsonResponse(200, [{ date: NOW.slice(0, 10), open: '09:30', close: '16:00' }]); // a normal scheduled session by default
+  }
   if (url.includes('/v2/stocks/bars')) {
     if (!options.hasBars) return jsonResponse(200, { bars: {}, next_page_token: null });
     const bars = Array.from({ length: 65 }, (_, i) => ({ t: new Date(Date.now() - (65 - i) * 86_400_000).toISOString(), o: 500 + i * 0.1, h: 501 + i * 0.1, l: 499 + i * 0.1, c: 500.1 + i * 0.1, v: 1_000_000 }));
@@ -346,6 +349,42 @@ itMockedProviderRealCodePath('a market-clock fetch failure is recorded honestly 
   const result = await runThetaShadowCycle(baseConfig({ alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: failingClockFetch } }));
   assert.ok(result.blockers.some((b) => b.startsWith('MARKET_CLOCK_FETCH_FAILED')));
   assert.ok(result.provenanceDetail.some((d) => d === 'marketClock=REAL_PROVIDER_ERROR'));
+  assert.ok(result.orchestration !== null);
+  assert.notEqual(result.orchestration?.receipt.winningAction, 'HARD_VETO');
+});
+
+itMockedProviderRealCodePath('a confirmed weekday with no scheduled session and a closed clock becomes SYSTEM_HOLD/MARKET_HOLIDAY, distinct from ordinary MARKET_CLOSED', async () => {
+  const holidayFetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/clock')) return jsonResponse(200, { timestamp: NOW, is_open: false, next_open: '2026-09-11T13:30:00Z', next_close: '2026-09-11T20:00:00Z' });
+    if (url.includes('/v2/calendar')) return jsonResponse(200, []); // no scheduled session at all on this (weekday) date
+    return mockAlpacaFetch({ hasContracts: true, hasBars: true })(input, {});
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({ alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: holidayFetch } }));
+  assert.equal(result.orchestration?.receipt.winningAction, 'SYSTEM_HOLD');
+  assert.ok(result.orchestration?.receipt.reasonCodes.includes('MARKET_HOLIDAY'));
+});
+
+itMockedProviderRealCodePath('a clock/calendar disagreement (clock says open, calendar has no session today) becomes its own SYSTEM_HOLD reason, never trusted blindly either way', async () => {
+  const disagreementFetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/calendar')) return jsonResponse(200, []); // clock (mocked open by default) disagrees with an empty calendar
+    return mockAlpacaFetch({ hasContracts: true, hasBars: true })(input, {});
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({ alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: disagreementFetch } }));
+  assert.equal(result.orchestration?.receipt.winningAction, 'SYSTEM_HOLD');
+  assert.ok(result.orchestration?.receipt.reasonCodes.includes('SYSTEM_HOLD_SESSION_INCONSISTENT'));
+});
+
+itMockedProviderRealCodePath('a market-calendar fetch failure is recorded honestly and never blocks the rest of the cycle', async () => {
+  const failingCalendarFetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/calendar')) return new Response('', { status: 500 });
+    return mockAlpacaFetch({ hasContracts: true, hasBars: true })(input, {});
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({ alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: failingCalendarFetch } }));
+  assert.ok(result.blockers.some((b) => b.startsWith('MARKET_CALENDAR_FETCH_FAILED')));
+  assert.ok(result.provenanceDetail.some((d) => d === 'marketCalendar=REAL_PROVIDER_ERROR'));
   assert.ok(result.orchestration !== null);
   assert.notEqual(result.orchestration?.receipt.winningAction, 'HARD_VETO');
 });

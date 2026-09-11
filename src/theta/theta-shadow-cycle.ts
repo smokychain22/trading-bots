@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   AlpacaProviderError,
-  fetchMarketClock, fetchMasterAccountSnapshot, fetchOpenOrders, fetchOptionContracts, fetchOptionSnapshots,
+  fetchMarketCalendar, fetchMarketClock, fetchMasterAccountSnapshot, fetchOpenOrders, fetchOptionContracts, fetchOptionSnapshots,
   fetchPositions, fetchStockBars, type AlpacaMarketClock, type AlpacaOpenOrderSnapshot, type AlpacaPositionSnapshot,
   type AlpacaProviderConfig, type MasterAccountSnapshot,
 } from './alpaca-provider.js';
@@ -168,6 +168,9 @@ function assembleFusionSnapshotInput(params: {
   readonly clock: AlpacaMarketClock | null;
   readonly clockOrigin: ProvenanceOrigin;
   readonly clockQuality: DataQualityState;
+  readonly todaysCalendar: readonly Awaited<ReturnType<typeof fetchMarketCalendar>>[number][];
+  readonly calendarOrigin: ProvenanceOrigin;
+  readonly calendarQuality: DataQualityState;
   readonly derivedExposure: DerivedAccountExposure;
   readonly mergedContracts: FusionSnapshotInput['contractCandidates'];
   readonly ownershipFeatures: JsonValue;
@@ -206,7 +209,10 @@ function assembleFusionSnapshotInput(params: {
     decisionTimeUtc: params.now,
     triggerType: 'SHADOW_CYCLE',
     marketSession: params.clock !== null
-      ? ({ isOpen: params.clock.isOpen, nextOpen: params.clock.nextOpen, nextClose: params.clock.nextClose, asOf: params.clock.timestamp } as unknown as JsonValue)
+      ? ({
+          isOpen: params.clock.isOpen, nextOpen: params.clock.nextOpen, nextClose: params.clock.nextClose, asOf: params.clock.timestamp,
+          todaysSessions: params.todaysCalendar,
+        } as unknown as JsonValue)
       : null, // honestly absent when the clock fetch never returned a usable value -- never fabricated as "regular session"
     underlyingState: { symbol: params.underlying },
     contractCandidates: params.mergedContracts,
@@ -261,11 +267,16 @@ function assembleFusionSnapshotInput(params: {
         state: params.clockQuality, contentHash: hashJson((params.clock as unknown as JsonValue) ?? { fetched: false }), feed: null,
         contractVersion: 'alpaca-clock-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
       },
+      {
+        provider: 'ALPACA', operationAlias: 'alpaca.get_calendar', asOf: params.calendarOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        state: params.calendarQuality, contentHash: hashJson(params.todaysCalendar as unknown as JsonValue), feed: null,
+        contractVersion: 'alpaca-calendar-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
+      },
     ],
     providerHealth: [
       {
         provider: 'ALPACA',
-        state: aggregateProviderQuality([params.accountQuality, params.contractsQuality, params.quotesQuality, params.positionsQuality, params.openOrdersQuality, params.clockQuality]),
+        state: aggregateProviderQuality([params.accountQuality, params.contractsQuality, params.quotesQuality, params.positionsQuality, params.openOrdersQuality, params.clockQuality, params.calendarQuality]),
         asOf: params.now, retrievedAt: params.now,
       },
       { provider: 'OPTIONOMICS', state: optionomicsAttempted ? params.optionomicsQuality : 'UNKNOWN', asOf: optionomicsAttempted ? params.now : null, retrievedAt: params.now },
@@ -440,6 +451,25 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     blockers.push(`MARKET_CLOCK_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
   }
 
+  // Market calendar -- distinguishes a genuine holiday (no scheduled
+  // session at all) from ordinary after-hours/weekend closure, and lets a
+  // clock/calendar disagreement be caught explicitly rather than trusted
+  // blindly. Known limitation: this compares only "is there a session
+  // scheduled today at all", not exact HH:MM exchange-local open/close
+  // boundaries against the clock's UTC timestamp (that requires exchange-
+  // timezone conversion this pass does not implement) -- documented here,
+  // not silently assumed correct down to the minute.
+  const todayDate = config.now().slice(0, 10);
+  let todaysCalendar: readonly Awaited<ReturnType<typeof fetchMarketCalendar>>[number][] = [];
+  let calendarEvidence = notAttemptedEvidence();
+  try {
+    todaysCalendar = await fetchMarketCalendar(config.alpaca, todayDate, todayDate);
+    calendarEvidence = { origin: 'REAL_PROVIDER', quality: 'GOOD' };
+  } catch (error) {
+    calendarEvidence = failedProviderEvidence(error);
+    blockers.push(`MARKET_CALENDAR_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
+  }
+
   let historyOrigin: ProvenanceOrigin = 'NOT_ATTEMPTED';
   const receivedAt = config.now();
   let ret1d: number | null = null;
@@ -597,6 +627,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     positions: positionsEvidence.origin,
     openOrders: openOrdersEvidence.origin,
     marketClock: clockEvidence.origin,
+    marketCalendar: calendarEvidence.origin,
     underlyingHistory: historyOrigin,
     optionContracts: contractsEvidence.origin,
     optionSnapshots: quotesEvidence.origin,
@@ -617,6 +648,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     positions, positionsOrigin: positionsEvidence.origin, positionsQuality: positionsEvidence.quality,
     openOrders, openOrdersOrigin: openOrdersEvidence.origin, openOrdersQuality: openOrdersEvidence.quality,
     clock, clockOrigin: clockEvidence.origin, clockQuality: clockEvidence.quality,
+    todaysCalendar, calendarOrigin: calendarEvidence.origin, calendarQuality: calendarEvidence.quality,
     derivedExposure,
     mergedContracts: [...mergedContractsForSnapshot],
     ownershipFeatures: { ret1d, rv20, drawdown, maSlope, gapFrequency, maxAdverseGap } as unknown as JsonValue,
@@ -672,6 +704,19 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     return runtimePreconditionHoldResult(temporalCheck.reasonCode, temporalCheck.detail);
   }
 
+  // A confirmed clock/calendar DISAGREEMENT is caught before trusting
+  // either one alone: the calendar has no scheduled session today at all,
+  // yet the clock reports the market open right now. This is an
+  // inconsistent session state, not an ordinary closed-market precondition
+  // -- it gets its own reason so it is never silently treated as either
+  // "market open, proceed" or "market closed, MARKET_CLOSED".
+  if (clockEvidence.quality === 'GOOD' && calendarEvidence.quality === 'GOOD' && clock?.isOpen === true && todaysCalendar.length === 0) {
+    return runtimePreconditionHoldResult(
+      'SYSTEM_HOLD_SESSION_INCONSISTENT',
+      `Alpaca's clock reports the market open, but the calendar has no scheduled session for ${todayDate} -- clock/calendar disagreement, never trusted blindly.`,
+    );
+  }
+
   // A confirmed-closed market is a real, known VALUE -- an operational
   // precondition, never a strategy WAIT/PASS and never a provider-quality
   // SYSTEM_HOLD. Only short-circuits on a TRUSTWORTHY confirmation
@@ -680,6 +725,15 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   // falls through to the normal provider-capability gate below, which
   // already handles genuine data-quality uncertainty correctly.
   if (clockEvidence.quality === 'GOOD' && clock?.isOpen === false) {
+    // A genuine holiday (no scheduled session today at all, on what would
+    // otherwise be a trading weekday) is distinguished from ordinary
+    // after-hours/weekend closure -- both are real operational facts, but
+    // a holiday is worth naming precisely for scheduler/ops visibility.
+    const dayOfWeek = new Date(`${todayDate}T00:00:00Z`).getUTCDay(); // 0=Sun, 6=Sat -- UTC approximation, not exchange-local
+    const isWeekday = dayOfWeek !== 0 && dayOfWeek !== 6;
+    if (calendarEvidence.quality === 'GOOD' && isWeekday && todaysCalendar.length === 0) {
+      return runtimePreconditionHoldResult('MARKET_HOLIDAY', `No scheduled session for ${todayDate} despite being a weekday -- treated as a market holiday; nextOpen=${clock.nextOpen ?? 'UNKNOWN'}.`);
+    }
     return runtimePreconditionHoldResult('MARKET_CLOSED', `Market is confirmed closed (nextOpen=${clock.nextOpen ?? 'UNKNOWN'}); new-risk evaluation deferred to the next session.`);
   }
 
