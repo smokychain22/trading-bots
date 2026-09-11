@@ -73,13 +73,16 @@ test('WholeChainPnl sums realized option + realized stock + unrealized stock + d
   assert.equal(result.realizedStockPnl, -440);
   assert.equal(result.dividends, 50); // 100 shares * $0.50/share, scaled by the paying lot's share count
   assert.equal(result.fees, 5);
-  assert.equal(result.wholeChainPnl, result.realizedStockPnl + result.unrealizedStockPnl + result.realizedOptionPnl + result.dividends - result.fees);
+  assert.equal(result.wholeChainPnl, -425);
+  assert.deepEqual(result.valuationIssues, []);
 });
 
-test('a dividend referencing an unknown lot is excluded, never guessed', () => {
+test('a dividend referencing an unknown lot makes dividends and total unknown', () => {
   const dividends: DividendEvent[] = [{ stockLotId: 'nonexistent-lot', exDate: '2026-09-01', amountPerShare: 0.5 }];
   const result = computeWholeChainPnl([], [], dividends, []);
-  assert.equal(result.dividends, 0);
+  assert.equal(result.dividends, null);
+  assert.equal(result.wholeChainPnl, null);
+  assert.deepEqual(result.valuationIssues, ['DIVIDEND_LOT_UNAVAILABLE']);
 });
 
 test('an open stock lot contributes unrealized MTM, and old realized roll loss is never erased', () => {
@@ -91,14 +94,19 @@ test('an open stock lot contributes unrealized MTM, and old realized roll loss i
   // leg (from the roll) is also present and open.
   assert.equal(result.realizedOptionPnl, -30);
   // Unrealized stock: (40 - 49.40) * 100 = -940, a real underwater position, visible.
-  assert.ok(Math.abs(result.unrealizedStockPnl - -940) < 1e-6);
+  assert.ok(result.unrealizedStockPnl !== null && Math.abs(result.unrealizedStockPnl - -940) < 1e-6);
+  assert.equal(result.unrealizedOptionPnl, null);
+  assert.equal(result.wholeChainPnl, null);
+  assert.deepEqual(result.valuationIssues, ['OPEN_OPTION_MARK_UNAVAILABLE']);
   assert.equal(result.hasUnresolvedOpenPositions, true);
 });
 
-test('an unknown current price on an open lot is excluded, never assumed to be zero loss', () => {
+test('an unknown current price makes stock MTM and the total unknown', () => {
   const lots = [openLot({ currentPricePerShare: null })];
   const result = computeWholeChainPnl([], lots, [], []);
-  assert.equal(result.unrealizedStockPnl, 0); // excluded contribution, not a fabricated MTM
+  assert.equal(result.unrealizedStockPnl, null);
+  assert.equal(result.wholeChainPnl, null);
+  assert.deepEqual(result.valuationIssues, ['STOCK_MARK_UNAVAILABLE']);
   assert.equal(result.hasUnresolvedOpenPositions, true);
 });
 
@@ -115,5 +123,23 @@ test('assignment is never an automatic win: a just-assigned open lot contributes
   const lots = [openLot({ economicBasisPerShare: 49.40, currentPricePerShare: 45.0, shares: 100 })];
   const result = computeWholeChainPnl([], lots, [], []);
   assert.equal(result.unrealizedStockPnl, (45.0 - 49.40) * 100);
-  assert.ok(result.unrealizedStockPnl < 0);
+  assert.ok(result.unrealizedStockPnl !== null && result.unrealizedStockPnl < 0);
+  assert.equal(result.wholeChainPnl, result.unrealizedStockPnl);
+  assert.deepEqual(result.valuationIssues, []);
+});
+
+test('known gains cannot mask an unknown open inventory valuation', () => {
+  const result = computeWholeChainPnl([closedLeg({ realizedPnl: 5000 }), openLeg()],
+    [openLot({ currentPricePerShare: null })], [], []);
+  assert.equal(result.realizedOptionPnl, 5000);
+  assert.equal(result.wholeChainPnl, null);
+  assert.deepEqual(result.valuationIssues, ['OPEN_OPTION_MARK_UNAVAILABLE', 'STOCK_MARK_UNAVAILABLE']);
+});
+
+test('zero inventory and an empty ledger have known zero MTM', () => {
+  const result = computeWholeChainPnl([openLeg({ quantity: 0 })],
+    [openLot({ shares: 0, currentPricePerShare: null })], [], []);
+  assert.equal(result.wholeChainPnl, 0);
+  assert.deepEqual(result.valuationIssues, []);
+  assert.equal(computeWholeChainPnl([], [], [], []).wholeChainPnl, 0);
 });
