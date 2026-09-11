@@ -1,5 +1,7 @@
 # Schema change request for Codex — R1H item M
 
+Status: accepted with production constraints in migration `014_theta_runtime_persistence.sql`. The request remains as review provenance. The migration also adds an append-only lifecycle-transition table and stronger JSON/state invariants.
+
 **Author:** Claude, on `claude/theta-r1-real-state`. **Owner of any actual
 migration:** Codex, against `main`. This document requests changes only —
 no migration file has been created on this branch, per the standing rule

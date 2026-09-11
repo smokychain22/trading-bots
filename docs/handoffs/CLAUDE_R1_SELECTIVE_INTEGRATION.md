@@ -15,6 +15,10 @@ WHAT WAS IMPLEMENTED:
 - `4fc13cd` and `98eedfb` were rejected pending explicit position-intent wiring. Inferring risk-opening sells from unmatched positions is unsafe for collateral and assignment-capacity calculations.
 - `971aaa9` was not integrated. The isolated Cboe research layer is outside the current execution-readiness slice and has no demonstrated missing runtime field.
 - `9e07688` and `d6b73cf` were rejected. The premium-to-collateral calculation omits the premium contract multiplier, and the routing rule selects by a raw proxy instead of after-cost expectancy, inventory risk, and assignment capacity.
+- `78e2c4f` through `e7e0bbc` were integrated as additive management contracts after focused review. They provide fail-closed short-put, assignment, recovery, covered-call, unified routing, and management-opportunity evidence. The unsafe pending-order inference from `4fc13cd` and `98eedfb` remains excluded. Only an explicit assignment-capacity input contract was added so the management boundary compiles without inventing capacity.
+- `80b0559` was integrated for repository contracts and in-memory contract tests. Codex migration 014 supplies the requested durable table shapes.
+- `0f19dbd` was integrated as a tested dispatcher primitive. It is not described as a running production scheduler until the PostgreSQL lease repository, invocation endpoint, and real executors are wired.
+- `1e2bf39` was rejected as written. It correctly parses Alpaca's contract `size`, but still supplies a numeric 100 fallback when metadata is absent. Production economics must remain UNKNOWN when the exact contract multiplier is unverified.
 
 TESTS RUN: Targeted temporal-consistency, shadow-cycle, and AEGIS derivation tests, followed by the repository type, lint, test, build, security, and browser checks.
 

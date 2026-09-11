@@ -86,6 +86,17 @@ export interface DerivedAccountExposure {
   readonly unparsedOptionSymbols: readonly string[]; // option positions whose symbol did not match the documented OCC format -- never silently dropped from view
 }
 
+// Runtime management contracts consume this assessment, but account-exposure
+// cannot derive it safely from positions alone. Pending broker orders do not
+// reliably expose opening/closing intent, so callers must supply this from
+// verified collateral reservations and broker account truth. UNKNOWN remains
+// null instead of being inferred from order side.
+export interface AssignmentCapacityAssessment {
+  readonly currentPotentialAssignmentCapital: number | null;
+  readonly availableAssignmentCapital: number | null;
+  readonly assignmentCapacityUsedPct: number | null;
+}
+
 const requiredMultiplier = (multiplier: number): number => multiplier;
 
 /**

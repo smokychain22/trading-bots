@@ -18,6 +18,7 @@ try {
     "009_private_paper_api_key_beta", "010_paper_account_roles",
     "011_optional_follower_limits", "012_explicit_option_position_intent",
     "013_position_intent_null_guard",
+    "014_theta_runtime_persistence",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -28,6 +29,9 @@ try {
     ["copy", "alpaca_oauth_token"], ["copy", "follower_account"],
     ["copy", "customer_participation"], ["trade", "order_intent"],
     ["ops", "paper_account_role_event"],
+    ["trade", "management_decision"], ["trade", "strategy_route"],
+    ["trade", "shadow_opportunity"], ["trade", "management_opportunity"],
+    ["trade", "lifecycle_transition"], ["ops", "scheduler_checkpoint"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
