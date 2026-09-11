@@ -58,6 +58,8 @@ class PromotionCheckInputs:
     return_denominator_verified: bool = True  # False if a reported "return" was actually premium_collected-denominated rather than secured-capital-denominated (episode_economics.py's PremiumCapture vs ReturnOnSecuredCapital distinction)
     fill_probability_is_fabricated: bool = False  # True if any reported fill probability was NOT FillProbability.UNKNOWN despite no calibrated fill model existing
     feature_provenance_recorded: bool = True  # False if any feature's source/PIT-availability timestamp was not recorded per row
+    ablation_result: Optional[str] = None  # an ablation.py AblationResult value (as its .value string, to avoid a hard import dependency) -- must be "IMPROVES" to promote
+    regime_stability_verified: Optional[bool] = None  # False/None if per-regime-cell performance (regime_report.py) was not checked or was inconsistent across cells
 
     # --- Data sufficiency ---
     independent_chain_n: int = 0
@@ -150,6 +152,12 @@ def evaluate_promotion(inputs: PromotionCheckInputs) -> "PromotionCheckResult":
         return PromotionCheckResult(PromotionResult.STATISTICAL_FAILURE, reasons)
     if inputs.calibration_acceptable is not True:
         reasons.append("calibration diagnostics are unknown or unacceptable")
+        return PromotionCheckResult(PromotionResult.STATISTICAL_FAILURE, reasons)
+    if inputs.ablation_result != "IMPROVES":
+        reasons.append(f"ablation_result={inputs.ablation_result!r} -- a feature/strategy must show a genuine IMPROVES ablation result, never NEUTRAL/DEGRADES/INCONCLUSIVE/unknown, to promote")
+        return PromotionCheckResult(PromotionResult.STATISTICAL_FAILURE, reasons)
+    if inputs.regime_stability_verified is not True:
+        reasons.append("regime-cell performance stability was not verified (or was found inconsistent) -- an average improvement hiding regime-specific failure is not promotable")
         return PromotionCheckResult(PromotionResult.STATISTICAL_FAILURE, reasons)
 
     # --- 4. ECONOMIC_FAILURE ---

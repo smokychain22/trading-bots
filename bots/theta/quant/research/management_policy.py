@@ -6,6 +6,19 @@ never runs against real positions and never submits an order). Every
 numerical/economic claim about which exit policy or WAIT reason is "right"
 remains a HYPOTHESIS to be tested via `ablation.py`/`walk_forward.py`, never
 asserted here.
+
+DUPLICATION NOTE (R6E, `docs/research/R6E_DUPLICATION_AUDIT.md`): this
+module's `ManagementAction` enum below duplicates, and should have instead
+reused, `research/candidate_actions.py`'s pre-existing `CandidateAction`
+enum, which `models/management_action_value.py`'s real, tested point-
+estimate valuation engine already consumes. Kept here (not deleted -- this
+module's own tests already reference it) but flagged: no future module
+should add a THIRD action vocabulary. `action_value_distribution.py`
+(added this phase) correctly uses `CandidateAction` directly.
+`ProfitTakingPolicy`/`LossPolicy` below (also added this phase) are a
+finer-grained REPLACEMENT for `ExitPolicyFamily`'s single coarse list, per
+R6E items 10/11 -- `ExitPolicyFamily` is kept for backward compatibility
+with existing R6D tests but should be considered superseded.
 """
 
 from __future__ import annotations
@@ -31,6 +44,38 @@ class ExitPolicyFamily(str, Enum):
     EXIT_DYNAMIC_REMAINING_EV = "EXIT_DYNAMIC_REMAINING_EV"
     EXIT_DYNAMIC_EV_PLUS_HARD_RISK = "EXIT_DYNAMIC_EV_PLUS_HARD_RISK"
     EXIT_DYNAMIC_EV_PLUS_FLOW_INVALIDATION = "EXIT_DYNAMIC_EV_PLUS_FLOW_INVALIDATION"
+
+
+class ProfitTakingPolicy(str, Enum):
+    """R6E item 10 -- candidate profit-taking (exit-when-winning) policy
+    variants, each a HYPOTHESIS to compare over COMPLETE economic episodes
+    (`episode_economics.py`'s `whole_episode_pnl`), never individual legs.
+    None is canonical; FIXED_25/50/75 are the "quality-first CSP engine"-
+    style benchmarks R6E explicitly says to test, not adopt."""
+
+    FIXED_25 = "FIXED_25"
+    FIXED_50 = "FIXED_50"
+    FIXED_75 = "FIXED_75"
+    TIME_EXIT = "TIME_EXIT"
+    DTE_EXIT = "DTE_EXIT"
+    DYNAMIC_REMAINING_EV = "DYNAMIC_REMAINING_EV"
+    DYNAMIC_EV_PLUS_HARD_RISK = "DYNAMIC_EV_PLUS_HARD_RISK"
+    DYNAMIC_EV_PLUS_FLOW_INVALIDATION = "DYNAMIC_EV_PLUS_FLOW_INVALIDATION"
+
+
+class LossPolicy(str, Enum):
+    """R6E item 11 -- candidate loss-management policy variants. Never
+    "losing = automatically roll": ROLL_WHEN_INCREMENTAL_EV_POSITIVE and
+    ASSIGN_WHEN_OWNERSHIP_EV_POSITIVE both require a positive computed
+    incremental value before acting, matching H-R-03's already-enforced
+    RollUtility discipline (`models/management_action_value.py`)."""
+
+    FIXED_OPTION_PREMIUM_STOP = "FIXED_OPTION_PREMIUM_STOP"
+    THESIS_INVALIDATION = "THESIS_INVALIDATION"
+    DYNAMIC_CONTINUATION_EV = "DYNAMIC_CONTINUATION_EV"
+    ROLL_WHEN_INCREMENTAL_EV_POSITIVE = "ROLL_WHEN_INCREMENTAL_EV_POSITIVE"
+    ASSIGN_WHEN_OWNERSHIP_EV_POSITIVE = "ASSIGN_WHEN_OWNERSHIP_EV_POSITIVE"
+    HYBRID_HARD_TAIL_LIMIT_PLUS_DYNAMIC = "HYBRID_HARD_TAIL_LIMIT_PLUS_DYNAMIC"
 
 
 class ManagementAction(str, Enum):
@@ -170,6 +215,9 @@ class GlobalWaitEvidence:
     redeployment_alternatives_evaluated: bool
     reason: GlobalWaitReason
     reason_detail: str
+    best_rejected_candidate_id: Optional[str] = None  # R6E item 17: the single best candidate that still didn't survive, if any
+    best_rejected_candidate_utility: Optional[float] = None
+    best_feasible_utility: Optional[float] = None  # the best utility among anything that WAS feasible (e.g. HOLD on an existing position) -- None if truly nothing was feasible
 
 
 def validate_global_wait_evidence(evidence: GlobalWaitEvidence, min_underlyings_evaluated: int) -> List[str]:

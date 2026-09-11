@@ -112,5 +112,60 @@ class CapConsistencyTests(unittest.TestCase):
         self.assertEqual(result.binding_constraint, "AEGIS_ALLOW_REDUCED")
 
 
+class MonotonicityInvariantTests(unittest.TestCase):
+    """R6E item 12: Qty = min(collateral_capacity, assignment_capacity,
+    expected_shortfall_capacity, concentration_capacity, portfolio_stress_
+    capacity) must never let TIGHTENING any one of those capacities
+    INCREASE the resulting quantity, and zero capacity on any dimension
+    must zero the whole quantity. `risk_budget_qty_cap` is the existing
+    stand-in for the tail-risk/ES/portfolio-stress capacity in the current
+    `sizing.py` implementation -- there is no separate named field for
+    each of those three yet, so this test exercises the cap that exists
+    today; a future session that splits them into distinct fields must
+    re-verify this same monotonicity property per field."""
+
+    def test_tightening_the_risk_budget_cap_never_increases_quantity(self):
+        loose = compute_sizing(_policy(risk_budget_qty_cap=8), _inputs())
+        tight = compute_sizing(_policy(risk_budget_qty_cap=3), _inputs())
+        self.assertLessEqual(tight.quantity, loose.quantity)
+
+    def test_tightening_the_concentration_cap_never_increases_quantity(self):
+        loose = compute_sizing(_policy(concentration_qty_cap=8), _inputs())
+        tight = compute_sizing(_policy(concentration_qty_cap=2), _inputs())
+        self.assertLessEqual(tight.quantity, loose.quantity)
+
+    def test_tightening_the_assignment_capacity_cap_never_increases_quantity(self):
+        loose = compute_sizing(_policy(assignment_capacity_qty_cap=8), _inputs())
+        tight = compute_sizing(_policy(assignment_capacity_qty_cap=1), _inputs())
+        self.assertLessEqual(tight.quantity, loose.quantity)
+
+    def test_zero_risk_budget_capacity_zeros_the_quantity(self):
+        result = compute_sizing(_policy(risk_budget_qty_cap=0), _inputs())
+        self.assertEqual(result.quantity, 0)
+
+    def test_zero_concentration_capacity_zeros_the_quantity(self):
+        result = compute_sizing(_policy(concentration_qty_cap=0), _inputs())
+        self.assertEqual(result.quantity, 0)
+
+    def test_zero_assignment_capacity_zeros_the_quantity(self):
+        result = compute_sizing(_policy(assignment_capacity_qty_cap=0), _inputs())
+        self.assertEqual(result.quantity, 0)
+
+    def test_unknown_multiplier_makes_required_collateral_unknown_and_sizing_non_executable(self):
+        # "Unknown multiplier -> non-executable": this is exactly the
+        # UNKNOWN_INPUT path already in compute_sizing, reached here via
+        # episode_economics.secured_capital's own None-on-unverified-
+        # multiplier discipline feeding required_collateral_per_contract.
+        sys.path.insert(0, str(_QUANT_DIR))
+        from research.episode_economics import SecuredCapitalInputs, secured_capital
+
+        unverified_capital_per_contract = secured_capital(SecuredCapitalInputs(strike=150.0, contracts=1.0, multiplier=None))
+        self.assertIsNone(unverified_capital_per_contract)
+
+        result = compute_sizing(_policy(), _inputs(required_collateral_per_contract=unverified_capital_per_contract))
+        self.assertEqual(result.quantity, 0)
+        self.assertEqual(result.binding_constraint, "UNKNOWN_INPUT")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -38,6 +38,8 @@ def _passing_inputs(**overrides):
         drawdown_regression_pct=0.01,
         max_acceptable_drawdown_regression_pct=0.10,
         catastrophic_subgroup_collapse=False,
+        ablation_result="IMPROVES",
+        regime_stability_verified=True,
     )
     defaults.update(overrides)
     return PromotionCheckInputs(**defaults)
@@ -133,6 +135,30 @@ class StatisticalFailureTests(unittest.TestCase):
     def test_pbo_supplied_without_its_threshold_is_a_caller_error(self):
         with self.assertRaises(ValueError):
             evaluate_promotion(_passing_inputs(probability_of_backtest_overfitting=0.2, max_acceptable_pbo=None))
+
+    def test_a_neutral_ablation_result_blocks_promotion(self):
+        result = evaluate_promotion(_passing_inputs(ablation_result="NEUTRAL"))
+        self.assertEqual(result.result, PromotionResult.STATISTICAL_FAILURE)
+
+    def test_a_degrades_ablation_result_blocks_promotion(self):
+        result = evaluate_promotion(_passing_inputs(ablation_result="DEGRADES"))
+        self.assertEqual(result.result, PromotionResult.STATISTICAL_FAILURE)
+
+    def test_an_inconclusive_ablation_result_blocks_promotion(self):
+        result = evaluate_promotion(_passing_inputs(ablation_result="INCONCLUSIVE"))
+        self.assertEqual(result.result, PromotionResult.STATISTICAL_FAILURE)
+
+    def test_a_missing_ablation_result_blocks_promotion(self):
+        result = evaluate_promotion(_passing_inputs(ablation_result=None))
+        self.assertEqual(result.result, PromotionResult.STATISTICAL_FAILURE)
+
+    def test_unverified_regime_stability_blocks_promotion(self):
+        result = evaluate_promotion(_passing_inputs(regime_stability_verified=None))
+        self.assertEqual(result.result, PromotionResult.STATISTICAL_FAILURE)
+
+    def test_inconsistent_regime_stability_blocks_promotion(self):
+        result = evaluate_promotion(_passing_inputs(regime_stability_verified=False))
+        self.assertEqual(result.result, PromotionResult.STATISTICAL_FAILURE)
 
 
 class EconomicFailureTests(unittest.TestCase):

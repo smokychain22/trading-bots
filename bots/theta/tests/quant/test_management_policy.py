@@ -11,11 +11,30 @@ from research.management_policy import (  # noqa: E402
     ActionEconomics,
     GlobalWaitEvidence,
     GlobalWaitReason,
+    LossPolicy,
     ManagementAction,
     ManagementDecisionExplanation,
+    ProfitTakingPolicy,
     management_utility,
     validate_global_wait_evidence,
 )
+
+
+class PolicyEnumTests(unittest.TestCase):
+    def test_profit_taking_policy_has_all_eight_named_variants(self):
+        expected = {
+            "FIXED_25", "FIXED_50", "FIXED_75", "TIME_EXIT", "DTE_EXIT",
+            "DYNAMIC_REMAINING_EV", "DYNAMIC_EV_PLUS_HARD_RISK", "DYNAMIC_EV_PLUS_FLOW_INVALIDATION",
+        }
+        self.assertEqual({v.value for v in ProfitTakingPolicy}, expected)
+
+    def test_loss_policy_has_all_six_named_variants(self):
+        expected = {
+            "FIXED_OPTION_PREMIUM_STOP", "THESIS_INVALIDATION", "DYNAMIC_CONTINUATION_EV",
+            "ROLL_WHEN_INCREMENTAL_EV_POSITIVE", "ASSIGN_WHEN_OWNERSHIP_EV_POSITIVE",
+            "HYBRID_HARD_TAIL_LIMIT_PLUS_DYNAMIC",
+        }
+        self.assertEqual({v.value for v in LossPolicy}, expected)
 
 
 class ManagementUtilityTests(unittest.TestCase):
