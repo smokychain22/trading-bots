@@ -9,6 +9,18 @@ import { hasOperatorSession } from "../src/customer/ops-access.js";
 import { safeCustomerReturnPath } from "../src/customer/customer-auth.js";
 
 let server: Server;
+test("master designation requires operator session and same-origin authorization", async () => {
+  const response = await fetch(base + "/api/v1/operator/master-account", {
+    method: "POST", headers: { origin: base, "Content-Type": "application/json" },
+    body: JSON.stringify({ customer_id: "00000000-0000-0000-0000-000000001001" }),
+  });
+  assert.equal(response.status, 401);
+  const crossOrigin = await fetch(base + "/api/v1/operator/master-account", {
+    method: "POST", headers: { origin: "https://example.invalid", "Content-Type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(crossOrigin.status, 403);
+});
 let base: string;
 const priorKey = process.env.THETA_READINESS_TOKEN;
 const key = randomBytes(32).toString("hex");

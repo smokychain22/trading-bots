@@ -111,10 +111,12 @@ export function paperCopyReadiness(
     copy_runtime: source.DATABASE_URL
       ? "ORDER_INTENT_READY_EXECUTION_LOCKED"
       : "PERSISTENCE_NOT_CONFIGURED",
-    activation_allowed: Boolean(follower?.accountReady && connectionConfigured),
+    activation_allowed: Boolean(follower?.accountReady && connectionConfigured && follower.accountRole !== "MASTER_THETA_PAPER"),
     master_fill_first: true,
     raw_master_quantity_copy: false,
-    reason: !connectionConfigured
+    reason: follower?.accountRole === "MASTER_THETA_PAPER"
+      ? "This account is the THETA Paper master. It cannot copy itself. Order submission remains locked."
+      : !connectionConfigured
       ? "Private Paper connection is disabled in this environment."
       : !authenticated
         ? "Sign in to connect your Alpaca Paper account."

@@ -15,6 +15,7 @@ export type OAuthStateRecord = {
 export type BrokerConnectionMethod = "ALPACA_OAUTH" | "PAPER_API_KEY_PRIVATE_BETA";
 
 export type FollowerRecord = {
+  readonly accountRole?: "MASTER_THETA_PAPER" | "FOLLOWER_THETA_PAPER";
   readonly customerId: string;
   readonly followerAccountId: string;
   readonly maskedAccount: string;
@@ -99,6 +100,7 @@ const numberOrNull = (value: unknown): number | null =>
 
 function followerFromRow(row: Record<string, unknown>): FollowerRecord {
   return {
+    accountRole: row.account_role === "MASTER_THETA_PAPER" ? "MASTER_THETA_PAPER" : "FOLLOWER_THETA_PAPER",
     customerId: String(row.customer_id),
     followerAccountId: String(row.follower_account_id),
     maskedAccount: String(row.provider_account_ref_masked),
@@ -211,6 +213,14 @@ export class PostgresCustomerStore implements CustomerStore {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
+      // Serialize credential replacement with owner role designation. JSON field
+      // access keeps this additive deployment compatible before migration 010.
+      const current = await client.query(`SELECT provider_account_ref,
+        to_jsonb(f)->>'account_role' AS account_role FROM copy.follower_account f
+        WHERE customer_id=$1 FOR UPDATE`, [input.customerId]);
+      if (current.rows.some((row) => row.account_role === "MASTER_THETA_PAPER" && row.provider_account_ref !== input.providerAccountRef))
+        throw new Error("MASTER_IDENTITY_IMMUTABLE");
+      const isMaster = current.rows.some((row) => row.account_role === "MASTER_THETA_PAPER");
       await client.query(
         `INSERT INTO iam.workspace(workspace_id, name) VALUES ($1, $2)
          ON CONFLICT (workspace_id) DO NOTHING`,
@@ -224,8 +234,8 @@ export class PostgresCustomerStore implements CustomerStore {
       await client.query(
         `UPDATE copy.follower_account SET disconnected_at = now(), participation = 'DISCONNECTED',
           account_ready = false, updated_at = now()
-         WHERE customer_id = $1 AND disconnected_at IS NULL`,
-        [input.customerId],
+         WHERE customer_id = $1 AND disconnected_at IS NULL AND provider_account_ref <> $2`,
+        [input.customerId, input.providerAccountRef],
       );
       const token = await client.query(
         `INSERT INTO copy.alpaca_oauth_token
@@ -242,11 +252,12 @@ export class PostgresCustomerStore implements CustomerStore {
            open_position_count, open_order_count, market_is_open,
            last_broker_sync_at, last_verified_at, connection_method,
            connection_status, disconnected_at)
-         VALUES ($1, $1, $2, $3, $4, 'COPY_NEW_AND_MANAGE', $5, $6,
+         VALUES ($1, $1, $2, $3, $4, $19, $5, $6,
                  $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, now(), now(),
                  $18, 'CONNECTED', NULL)
          ON CONFLICT (workspace_id, provider_code, provider_account_ref)
          DO UPDATE SET customer_id = EXCLUDED.customer_id,
+           participation = EXCLUDED.participation,
            oauth_secret_ref = EXCLUDED.oauth_secret_ref,
            token_secret_id = EXCLUDED.token_secret_id,
            account_ready = EXCLUDED.account_ready,
@@ -266,14 +277,14 @@ export class PostgresCustomerStore implements CustomerStore {
            disconnected_at = NULL,
            updated_at = now()
          RETURNING follower_account_id`,
-        [input.customerId, input.providerAccountRef, `vault:${token.rows[0].token_secret_id}`, token.rows[0].token_secret_id, input.accountReady, Math.max(input.optionsApprovedLevel ?? 0, input.optionsTradingLevel ?? 0) >= 1, input.accountStatus, input.equity, input.buyingPower, input.cash, input.optionsBuyingPower, input.optionsApprovedLevel, input.optionsTradingLevel, JSON.stringify(input.restrictions), input.openPositionCount, input.openOrderCount, input.marketIsOpen, input.connectionMethod],
+        [input.customerId, input.providerAccountRef, `vault:${token.rows[0].token_secret_id}`, token.rows[0].token_secret_id, input.accountReady, Math.max(input.optionsApprovedLevel ?? 0, input.optionsTradingLevel ?? 0) >= 1, input.accountStatus, input.equity, input.buyingPower, input.cash, input.optionsBuyingPower, input.optionsApprovedLevel, input.optionsTradingLevel, JSON.stringify(input.restrictions), input.openPositionCount, input.openOrderCount, input.marketIsOpen, input.connectionMethod, isMaster ? "STOP_NEW_TRADES_MANAGE_EXISTING" : "COPY_NEW_AND_MANAGE"],
       );
       await client.query(
         `INSERT INTO copy.customer_participation(customer_id, follower_account_id, state)
          VALUES ($1, $2, $3)
          ON CONFLICT (customer_id) DO UPDATE SET follower_account_id = EXCLUDED.follower_account_id,
            state = EXCLUDED.state, updated_at = now()`,
-        [input.customerId, follower.rows[0].follower_account_id, input.accountReady ? "READY" : "BLOCKED"],
+        [input.customerId, follower.rows[0].follower_account_id, input.accountReady && !isMaster ? "READY" : "BLOCKED"],
       );
       await client.query("COMMIT");
       const saved = await this.getFollower(input.customerId);
@@ -290,6 +301,7 @@ export class PostgresCustomerStore implements CustomerStore {
   async getFollower(customerId: string) {
     const result = await this.pool.query(
       `SELECT f.customer_id, f.follower_account_id,
+        to_jsonb(f)->>'account_role' AS account_role,
         ('••••' || right(f.provider_account_ref, 4)) AS provider_account_ref_masked,
         f.connection_method, f.account_status, f.equity, f.buying_power, f.cash, f.options_buying_power,
         f.options_approved_level, f.options_trading_level, f.account_ready,
@@ -370,6 +382,7 @@ export class PostgresCustomerStore implements CustomerStore {
       const follower = await client.query(
         `SELECT follower_account_id FROM copy.follower_account
          WHERE customer_id = $1 AND disconnected_at IS NULL AND account_ready = true
+           AND COALESCE(to_jsonb(copy.follower_account)->>'account_role','FOLLOWER_THETA_PAPER') = 'FOLLOWER_THETA_PAPER'
          ORDER BY updated_at DESC LIMIT 1 FOR UPDATE`,
         [customerId],
       );

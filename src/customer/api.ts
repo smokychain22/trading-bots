@@ -33,6 +33,7 @@ import {
 import { executionMode } from "../execution/execution-control.js";
 import { connectPrivatePaperApiKey, privatePaperApiKeyConfiguration } from "./private-paper-api-key.js";
 import { AlpacaPaperBrokerError } from "../execution/broker.js";
+import { designateConnectedPaperMaster, masterRoleStore } from "./paper-account-role.js";
 
 const simulationSchema = z
   .object({
@@ -398,6 +399,23 @@ export default async function customerHandler(
       }
       if (!validSession(request.headers.cookie ?? "", key))
         return send(response, 401, { error: { code: "OWNER_LOGIN_REQUIRED" } });
+      if (route === "operator/master-account" && request.method === "GET") {
+        try {
+          const connections = await masterRoleStore(environment.DATABASE_URL).listConnections();
+          return send(response, 200, { api_version: "v1", data: { connections, order_submission: "LOCKED" } });
+        } catch {
+          return send(response, 503, { error: { code: "MASTER_ROLE_DATABASE_UNAVAILABLE" } });
+        }
+      }
+      if (route === "operator/master-account" && request.method === "POST") {
+        const payload = z.object({ customer_id: z.string().uuid() }).strict().parse(await readJson(request));
+        try {
+          const data = await designateConnectedPaperMaster(environment, payload.customer_id, masterRoleStore(environment.DATABASE_URL));
+          return send(response, 200, { api_version: "v1", data });
+        } catch {
+          return send(response, 409, { error: { code: "MASTER_ROLE_NOT_VERIFIED_OR_PERSISTED" } });
+        }
+      }
       if (route === "operator/master-readiness" && request.method === "POST") {
         try {
           const data = await verifyMasterPaperConnection(environment);
@@ -604,6 +622,8 @@ export default async function customerHandler(
       const follower = await store.getFollower(customer.customerId);
       if (!follower?.accountReady)
         return send(response, 409, { error: { code: "FOLLOWER_ACCOUNT_NOT_READY" } });
+      if (follower.accountRole === "MASTER_THETA_PAPER")
+        return send(response, 409, { error: { code: "MASTER_SELF_COPY_FORBIDDEN" } });
       const saved = await store.saveParticipation(customer.customerId, payload.allocation_usd);
       return send(response, 200, {
         api_version: "v1",
