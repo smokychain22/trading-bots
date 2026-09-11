@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
+import type { Environment } from '../../src/config/environment.js';
 import { PostgresCustomerStore, type SaveFollowerInput } from '../../src/customer/customer-store.js';
 import { PostgresMasterRoleStore } from '../../src/customer/paper-account-role.js';
 import { recommendedCopyPolicy } from '../../src/customer/copy-policy.js';
+import { encryptSecret } from '../../src/customer/customer-security.js';
+import { runAutonomousRuntimeCycle } from '../../src/theta/autonomous-runtime.js';
 
 test('real disposable PostgreSQL preserves user limits, master role and tenant isolation', {
   skip: !process.env.TEST_DATABASE_URL,
@@ -17,14 +20,17 @@ test('real disposable PostgreSQL preserves user limits, master role and tenant i
   try {
     const store = new PostgresCustomerStore(pool);
     const customer = await store.createCustomer(`${randomUUID()}@example.invalid`, 'x'.repeat(64));
+    const encryptionKey = Buffer.alloc(32, 9).toString('base64');
+    const brokerCredential = encryptSecret(JSON.stringify({
+      apiKeyId: 'SYNTHETIC_PAPER_KEY', apiSecret: 'SYNTHETIC_PAPER_SECRET',
+    }), encryptionKey, customer.customerId);
     const input: SaveFollowerInput = {
       customerId: customer.customerId, providerAccountRef: randomUUID(), maskedAccount: 'synthetic',
       connectionMethod: 'PAPER_API_KEY_PRIVATE_BETA', accountStatus: 'ACTIVE',
       equity: 10000, cash: 10000, buyingPower: 10000, optionsBuyingPower: 10000,
       optionsApprovedLevel: 1, optionsTradingLevel: 1, accountReady: true,
       openPositionCount: 0, openOrderCount: 0, marketIsOpen: false, restrictions: {},
-      keyRef: 'synthetic', scope: 'paper',
-      encryptedCredential: { ciphertext: Buffer.from('synthetic-ciphertext'), iv: Buffer.alloc(12), authTag: Buffer.alloc(16) },
+      keyRef: 'synthetic', scope: 'paper', encryptedCredential: brokerCredential,
     };
     await store.saveFollower(input);
     const recommended = recommendedCopyPolicy(10000);
@@ -59,5 +65,51 @@ test('real disposable PostgreSQL preserves user limits, master role and tenant i
     assert.equal(await store.getFollowerCredential(customer.customerId), null);
     await store.saveFollower(input);
     assert.equal((await store.getFollower(customer.customerId))?.accountRole, 'MASTER_THETA_PAPER');
+
+    const environment = {
+      NODE_ENV: 'test', PORT: 3000, DATABASE_URL: url.toString(),
+      PRIVATE_PAPER_API_KEY_BETA_ENABLED: true,
+      MASTER_PAPER_EXECUTION_ENABLED: false, FOLLOWER_PAPER_EXECUTION_ENABLED: false,
+      PAPER_PAUSE_NEW_ORDERS: true, THETA_AUTONOMOUS_WORKER_ENABLED: true,
+      PAPER_COPY_TOKEN_KEY_REF: 'synthetic', PAPER_COPY_TOKEN_ENCRYPTION_KEY: encryptionKey,
+    } as Environment;
+    const originalFetch = globalThis.fetch;
+    const observedMethods: string[] = [];
+    globalThis.fetch = (async (request, init) => {
+      observedMethods.push(init?.method ?? 'GET');
+      const requestUrl = new URL(String(request));
+      if (requestUrl.pathname === '/v2/account') return Response.json({ id: input.providerAccountRef, status: 'ACTIVE' });
+      if (requestUrl.pathname === '/v2/positions') return Response.json([]);
+      if (requestUrl.pathname === '/v2/orders') return Response.json([]);
+      if (requestUrl.pathname === '/v2/account/activities') return Response.json([]);
+      if (requestUrl.pathname === '/v2/clock') return Response.json({
+        timestamp: '2026-09-11T16:15:00.000Z', is_open: true,
+        next_open: '2026-09-14T13:30:00.000Z', next_close: '2026-09-11T20:00:00.000Z',
+      });
+      if (requestUrl.pathname === '/v2/calendar') return Response.json([{ date: '2026-09-11', open: '09:30', close: '16:00' }]);
+      throw new Error(`UNEXPECTED_READ_PATH:${requestUrl.pathname}`);
+    }) as typeof fetch;
+    try {
+      const cycleAt = new Date('2026-09-11T16:15:00.000Z');
+      const first = await runAutonomousRuntimeCycle(environment, pool, cycleAt);
+      const duplicate = await runAutonomousRuntimeCycle(environment, pool, cycleAt);
+      assert.equal(first.status, 'DEGRADED');
+      assert.equal(first.reconciliation?.dataQuality, 'GOOD');
+      assert.equal(first.reconciliation?.accountStatus, 'ACTIVE');
+      assert.equal(duplicate.status, 'DUPLICATE');
+      assert.ok(observedMethods.length > 0);
+      assert.deepEqual(new Set(observedMethods), new Set(['GET']));
+      assert.equal(first.masterPaperOrdersSubmitted, 0);
+      assert.equal(first.followerPaperOrdersSubmitted, 0);
+      assert.equal(first.liveOrdersSubmitted, 0);
+      const runtimeEvidence = await pool.query(`SELECT
+        (SELECT count(*)::int FROM ops.runtime_worker_cycle WHERE correlation_id=$1) AS cycles,
+        (SELECT count(*)::int FROM trade.broker_reconciliation_snapshot WHERE correlation_id=$2) AS reconciliations,
+        (SELECT count(*)::int FROM trade.broker_order) AS broker_orders`,
+      [first.correlationId, `POSITION_RECONCILIATION:${first.correlationId.slice('theta-runtime:'.length)}`]);
+      assert.deepEqual(runtimeEvidence.rows[0], { cycles: 1, reconciliations: 1, broker_orders: 0 });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   } finally { await pool.end(); }
 });
