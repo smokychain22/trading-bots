@@ -26,6 +26,20 @@ export const candidateEconomicsSchema = z.object({
   fillProbability: z.number().min(0).max(1).nullable(),
   expectedSlippage: z.number().finite().nonnegative().nullable(),
   modelUncertainty: z.number().min(0).max(1).nullable(),
+  // R1H full-H additions: all optional so every pre-full-H caller of this
+  // schema (new-risk-orchestrator.ts and its tests) remains valid
+  // unchanged. See models/pareto_frontier.py's own docstring for why each
+  // defaults to null/None rather than a fabricated favorable value.
+  ownershipQuality: nullableFiniteNumber.optional(),
+  eventRiskPenalty: nullableFiniteNumber.optional(),
+  concentrationImpact: nullableFiniteNumber.optional(),
+  capitalOpportunityCost: nullableFiniteNumber.optional(),
+  // Categorical metadata, never a dominance dimension -- carried only so
+  // a cross-symbol/cross-branch frontier receipt can show where each
+  // candidate came from.
+  underlying: z.string().min(1).nullable().optional(),
+  strategyBranch: z.string().min(1).nullable().optional(),
+  volatilityRegime: z.string().min(1).nullable().optional(),
 });
 
 export type CandidateEconomics = z.infer<typeof candidateEconomicsSchema>;

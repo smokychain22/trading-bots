@@ -39,6 +39,20 @@ _FIELD_TO_ATTR = {
     "modelUncertainty": "model_uncertainty",
 }
 
+# R1H full-H additions: all OPTIONAL (data.get, never _required) so an
+# existing caller that predates these dimensions still validates
+# unchanged -- see models/pareto_frontier.py's own docstring for why each
+# is defaulted to None rather than required.
+_OPTIONAL_FIELD_TO_ATTR = {
+    "ownershipQuality": "ownership_quality",
+    "eventRiskPenalty": "event_risk_penalty",
+    "concentrationImpact": "concentration_impact",
+    "capitalOpportunityCost": "capital_opportunity_cost",
+    "underlying": "underlying",
+    "strategyBranch": "strategy_branch",
+    "volatilityRegime": "volatility_regime",
+}
+
 
 def _required(data: dict[str, Any], name: str) -> Any:
     if name not in data:
@@ -50,6 +64,8 @@ def _candidate_economics(data: dict[str, Any]) -> CandidateEconomics:
     kwargs = {"candidate_id": _required(data, "candidateId")}
     for field_name in _FIELDS:
         kwargs[_FIELD_TO_ATTR[field_name]] = _required(data, field_name)
+    for field_name, attr_name in _OPTIONAL_FIELD_TO_ATTR.items():
+        kwargs[attr_name] = data.get(field_name)
     return CandidateEconomics(**kwargs)
 
 
