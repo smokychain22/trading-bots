@@ -70,6 +70,10 @@ class ExperimentResultContract:
     target_version: str
     split_plan_hash: str
     source_code_sha: str
+    strategy_branch: str  # e.g. "THETA-Q", "THETA-H" -- an experiment result is meaningless without naming which branch it evaluates (THETA-H's special-scrutiny requirement in particular depends on this never being conflated across branches)
+    management_policy_version: str  # e.g. an ExitPolicyFamily value plus a version tag
+    execution_version: str  # which execution_simulator.py structural model version priced the fills
+    cost_model_version: str  # which commission/slippage cost assumptions were used
 
     # Metrics -- each Optional and None (never fabricated) when genuinely
     # unknown, per the standing "never fabricate EV/win-rate/Sharpe"
@@ -99,5 +103,9 @@ class ExperimentResultContract:
             "target_version": self.target_version,
             "split_plan_hash": self.split_plan_hash,
             "source_code_sha": self.source_code_sha,
+            "strategy_branch": self.strategy_branch,
+            "management_policy_version": self.management_policy_version,
+            "execution_version": self.execution_version,
+            "cost_model_version": self.cost_model_version,
         }
         return _sha256_hex(_canonical_json(identity))

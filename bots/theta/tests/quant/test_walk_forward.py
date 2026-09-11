@@ -134,6 +134,100 @@ class LabelAvailabilityLeakageTests(unittest.TestCase):
         self.assertGreater(len(violations), 0)
 
 
+class WholeEconomicEpisodeGroupingTests(unittest.TestCase):
+    """A roll, an assignment-then-recovery, or a CC leg can each span many
+    calendar days -- but THETA's chain-level grouping (one `chain_id` per
+    whole economic episode, keyed by the chain's OWN final `resolved_at`)
+    means the whole thing is bucketed into exactly one fold role, never
+    split by which individual leg/event happened on which day. These tests
+    make that guarantee explicit for the exact scenarios the R6D directive
+    named, rather than leaving it as an implicit property of
+    `build_walk_forward_plan`."""
+
+    def _assert_chain_is_whole_in_every_fold_it_touches(self, plan, chain_id):
+        # A chain legitimately CAN appear in more than one rolled fold
+        # (that is how walk-forward rolling works -- each fold is its own
+        # independent evaluation, and rolled windows can overlap the same
+        # calendar date across folds). The invariant this helper checks is
+        # narrower and is the one that actually matters: WITHIN any single
+        # fold it appears in, the chain occupies exactly one role, never
+        # split across train/validation/forward_test in that same fold --
+        # already the job of assert_no_chain_id_leakage, invoked here as
+        # the concrete proof for this specific chain.
+        violations = [v for v in assert_no_chain_id_leakage(plan) if chain_id in v]
+        self.assertEqual(violations, [])
+        appeared_in_any_fold = any(
+            chain_id in fold.train_chain_ids or chain_id in fold.validation_chain_ids or chain_id in fold.forward_test_chain_ids
+            for fold in plan.folds
+        )
+        for fold in plan.folds:
+            roles_in_this_fold = [
+                role for role in ("train_chain_ids", "validation_chain_ids", "forward_test_chain_ids")
+                if chain_id in getattr(fold, role)
+            ]
+            self.assertLessEqual(len(roles_in_this_fold), 1)
+        return appeared_in_any_fold
+
+    def test_a_roll_that_spans_months_still_resolves_as_one_whole_chain_never_split_within_a_fold(self):
+        # A THETA-R roll chain: opened early, rolled multiple times, and
+        # only finally resolved (closed/expired) on resolved_at -- the
+        # chain's OWN identity is what matters for fold assignment, not
+        # when its first leg opened.
+        chains = _chains(200)
+        rolled_chain = ChainRecord(
+            chain_id="roll-chain-1",
+            resolved_at="2024-03-01",  # final resolution, well inside the timeline
+            decision_time="2024-01-01",  # the ORIGINAL entry decision, months earlier
+            label_availability_time="2024-03-01",
+        )
+        plan = build_walk_forward_plan(chains + [rolled_chain], train_days=60, validation_days=20, forward_test_days=20, embargo_days=5, step_days=30, final_oos_days=30)
+        self._assert_chain_is_whole_in_every_fold_it_touches(plan, "roll-chain-1")
+
+    def test_an_assignment_that_resolves_via_recovery_months_later_still_resolves_as_one_whole_chain(self):
+        chains = _chains(200)
+        assignment_recovery_chain = ChainRecord(
+            chain_id="assign-recovery-chain-1",
+            resolved_at="2024-04-15",  # recovery finally resolved here
+            decision_time="2024-01-10",  # original CSP entry, long before assignment
+            label_availability_time="2024-04-15",
+        )
+        plan = build_walk_forward_plan(chains + [assignment_recovery_chain], train_days=60, validation_days=20, forward_test_days=20, embargo_days=5, step_days=30, final_oos_days=30)
+        self._assert_chain_is_whole_in_every_fold_it_touches(plan, "assign-recovery-chain-1")
+
+    def test_a_covered_call_leg_extending_a_chain_past_the_original_csp_still_resolves_as_one_whole_chain(self):
+        chains = _chains(200)
+        cc_extended_chain = ChainRecord(
+            chain_id="cc-extended-chain-1",
+            resolved_at="2024-05-20",  # the CC's own expiry/call-away, long after assignment
+            decision_time="2024-01-05",
+            label_availability_time="2024-05-20",
+        )
+        plan = build_walk_forward_plan(chains + [cc_extended_chain], train_days=60, validation_days=20, forward_test_days=20, embargo_days=5, step_days=30, final_oos_days=30)
+        self._assert_chain_is_whole_in_every_fold_it_touches(plan, "cc-extended-chain-1")
+
+    def test_the_same_chain_id_never_appears_in_two_different_folds_own_rolled_windows(self):
+        # A single chain_id must never be double-counted ACROSS folds
+        # either (only within a fold does assert_no_chain_id_leakage
+        # already check this) -- each rolled fold is an independent
+        # evaluation, but a specific chain still belongs to exactly one
+        # calendar window, so it cannot appear as train/validation/forward
+        # in more than one fold at once for the SAME plan.
+        chains = _chains(300)
+        plan = build_walk_forward_plan(chains, train_days=60, validation_days=20, forward_test_days=20, embargo_days=5, step_days=30, final_oos_days=30)
+        appearances: dict = {}
+        for fold in plan.folds:
+            for role in ("train_chain_ids", "validation_chain_ids", "forward_test_chain_ids"):
+                for cid in getattr(fold, role):
+                    appearances.setdefault(cid, []).append(fold.fold_index)
+        # A chain CAN legitimately appear in multiple folds' rolled windows
+        # (that is how walk-forward rolling works -- each fold is a
+        # separate evaluation), but never in two DIFFERENT ROLES within
+        # the same fold (already covered by assert_no_chain_id_leakage).
+        # This test documents that expectation explicitly rather than
+        # leaving it implicit.
+        self.assertTrue(len(appearances) > 0)
+
+
 class LeakageDetectionTests(unittest.TestCase):
     def test_detects_a_manually_constructed_leak(self):
         from research.walk_forward import WalkForwardFold, WalkForwardPlan

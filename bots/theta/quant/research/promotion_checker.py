@@ -54,6 +54,10 @@ class PromotionCheckInputs:
     training_dataset_hash: Optional[str] = None
     evaluation_dataset_hash: Optional[str] = None
     model_version: Optional[str] = None
+    roll_accounting_verified: bool = True  # False if any roll's old-leg realized P&L was found dropped/absorbed rather than summed (episode_economics.py's whole_episode_pnl discipline)
+    return_denominator_verified: bool = True  # False if a reported "return" was actually premium_collected-denominated rather than secured-capital-denominated (episode_economics.py's PremiumCapture vs ReturnOnSecuredCapital distinction)
+    fill_probability_is_fabricated: bool = False  # True if any reported fill probability was NOT FillProbability.UNKNOWN despite no calibrated fill model existing
+    feature_provenance_recorded: bool = True  # False if any feature's source/PIT-availability timestamp was not recorded per row
 
     # --- Data sufficiency ---
     independent_chain_n: int = 0
@@ -105,6 +109,18 @@ def evaluate_promotion(inputs: PromotionCheckInputs) -> "PromotionCheckResult":
         return PromotionCheckResult(PromotionResult.STRUCTURAL_FAILURE, reasons)
     if inputs.model_version is None:
         reasons.append("no immutable model version identifier was assigned")
+        return PromotionCheckResult(PromotionResult.STRUCTURAL_FAILURE, reasons)
+    if not inputs.roll_accounting_verified:
+        reasons.append("a roll's old-leg realized P&L was dropped/absorbed rather than summed into whole-episode economics")
+        return PromotionCheckResult(PromotionResult.STRUCTURAL_FAILURE, reasons)
+    if not inputs.return_denominator_verified:
+        reasons.append("a reported return was denominated by premium collected rather than secured/committed capital")
+        return PromotionCheckResult(PromotionResult.STRUCTURAL_FAILURE, reasons)
+    if inputs.fill_probability_is_fabricated:
+        reasons.append("a fabricated (non-UNKNOWN) fill probability was reported without a calibrated fill model")
+        return PromotionCheckResult(PromotionResult.STRUCTURAL_FAILURE, reasons)
+    if not inputs.feature_provenance_recorded:
+        reasons.append("feature provenance (source + point-in-time availability) was not recorded per row")
         return PromotionCheckResult(PromotionResult.STRUCTURAL_FAILURE, reasons)
 
     # --- 2. DATA_INSUFFICIENT ---

@@ -76,6 +76,22 @@ class StructuralFailureTests(unittest.TestCase):
         result = evaluate_promotion(_passing_inputs(model_version=None))
         self.assertEqual(result.result, PromotionResult.STRUCTURAL_FAILURE)
 
+    def test_invalid_roll_accounting_fails_structurally(self):
+        result = evaluate_promotion(_passing_inputs(roll_accounting_verified=False))
+        self.assertEqual(result.result, PromotionResult.STRUCTURAL_FAILURE)
+
+    def test_premium_based_fake_return_denominator_fails_structurally(self):
+        result = evaluate_promotion(_passing_inputs(return_denominator_verified=False))
+        self.assertEqual(result.result, PromotionResult.STRUCTURAL_FAILURE)
+
+    def test_fabricated_fill_probability_fails_structurally(self):
+        result = evaluate_promotion(_passing_inputs(fill_probability_is_fabricated=True))
+        self.assertEqual(result.result, PromotionResult.STRUCTURAL_FAILURE)
+
+    def test_missing_feature_provenance_fails_structurally(self):
+        result = evaluate_promotion(_passing_inputs(feature_provenance_recorded=False))
+        self.assertEqual(result.result, PromotionResult.STRUCTURAL_FAILURE)
+
     def test_structural_failure_takes_precedence_over_a_great_looking_economic_result(self):
         # Even with a huge EV and perfect statistics, a leakage violation
         # must still win -- structural checks are unconditional.

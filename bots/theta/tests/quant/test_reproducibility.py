@@ -18,6 +18,8 @@ def _contract(**overrides):
     defaults = dict(
         model_id="theta-q-v1", dataset_hash="d1", feature_set_hash="f1",
         target_version="target-v1", split_plan_hash="s1", source_code_sha="abc123",
+        strategy_branch="THETA-Q", management_policy_version="EXIT_DYNAMIC_REMAINING_EV-v1",
+        execution_version="execution_simulator-v1", cost_model_version="cost-model-v1",
         ev_net=10.0, win_probability=0.55, calibration_ece=0.02, expected_shortfall=-50.0,
         value_at_risk=-30.0, max_drawdown_pct=0.15, return_per_capital_day=0.001,
         assignment_rate=0.2, model_uncertainty=2.0,
@@ -91,6 +93,26 @@ class ExperimentFingerprintTests(unittest.TestCase):
         a = _contract()
         b = _contract(source_code_sha="def456")
         self.assertNotEqual(a.experiment_fingerprint(), b.experiment_fingerprint())
+
+    def test_a_changed_strategy_branch_changes_the_fingerprint(self):
+        # THETA-H's own special-scrutiny requirement depends on this: a
+        # THETA-Q result and a THETA-H result must never fingerprint
+        # identically even if every other identity field matched.
+        a = _contract(strategy_branch="THETA-Q")
+        b = _contract(strategy_branch="THETA-H")
+        self.assertNotEqual(a.experiment_fingerprint(), b.experiment_fingerprint())
+
+    def test_a_changed_management_policy_version_changes_the_fingerprint(self):
+        a = _contract(management_policy_version="EXIT_FIXED_TP_SL-v1")
+        b = _contract(management_policy_version="EXIT_DYNAMIC_REMAINING_EV-v1")
+        self.assertNotEqual(a.experiment_fingerprint(), b.experiment_fingerprint())
+
+    def test_a_changed_execution_or_cost_model_version_changes_the_fingerprint(self):
+        a = _contract()
+        b = _contract(execution_version="execution_simulator-v2")
+        c = _contract(cost_model_version="cost-model-v2")
+        self.assertNotEqual(a.experiment_fingerprint(), b.experiment_fingerprint())
+        self.assertNotEqual(a.experiment_fingerprint(), c.experiment_fingerprint())
 
 
 if __name__ == "__main__":
