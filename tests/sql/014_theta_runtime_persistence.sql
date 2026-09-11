@@ -14,6 +14,10 @@ BEGIN
     WHERE trigger_schema='trade' AND trigger_name='reject_immutable_mutation'
       AND event_object_table='shadow_opportunity'
   ) THEN RAISE EXCEPTION 'shadow opportunity is not append-only'; END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='trade' AND table_name='decision' AND column_name='aegis_action' AND is_nullable='NO'
+  ) THEN RAISE EXCEPTION 'decision cannot preserve UNKNOWN AEGIS'; END IF;
 
   BEGIN
     INSERT INTO ops.scheduler_checkpoint(job_id,job_kind,correlation_key,max_attempts,status,lease_owner)

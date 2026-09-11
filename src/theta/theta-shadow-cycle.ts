@@ -12,7 +12,7 @@ import { runNewRiskOrchestration, type NewRiskOrchestrationRequest, type NewRisk
 import { assembleRuntimePreconditionHold } from './decision-assembly.js';
 import { checkTemporalConsistency, DEFAULT_TEMPORAL_CONSISTENCY_POLICIES } from './temporal-consistency.js';
 import type { PythonBridgeConfig } from './python-bridge.js';
-import { buildFusionSnapshot, hashJson, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
+import { buildFusionSnapshot, hashJson, type FusionSnapshot, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
 import type { DataQualityState } from './data-freshness.js';
 import {
   fetchOptionomicsOptionChain, matchOptionomicsContractIdentity,
@@ -102,6 +102,7 @@ export interface ThetaShadowCycleResult {
   readonly optionChainComplete: boolean | null;
   readonly optionContractsComplete: boolean | null;
   readonly snapshotContentHash: string | null; // the REAL, deterministic FusionSnapshot content hash -- never a placeholder
+  readonly fusionSnapshot: FusionSnapshot | null; // complete immutable evidence required by durable persistence and replay
   readonly snapshotValidForNewRisk: boolean | null;
   readonly orchestration: NewRiskOrchestrationResult | null;
   readonly provenance: ShadowCycleProvenance;
@@ -378,7 +379,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     });
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: null, underlyingRanking: ranked,
-      optionChainComplete: null, optionContractsComplete: null, snapshotContentHash: null, snapshotValidForNewRisk: null,
+      optionChainComplete: null, optionContractsComplete: null, snapshotContentHash: null, fusionSnapshot: null, snapshotValidForNewRisk: null,
       orchestration: null,
       provenance: noUnderlyingProvenance, provenanceDetail: ['no eligible underlying survived UniversePolicy this cycle', ...noUnderlyingDetail],
       blockers: ['NO_ELIGIBLE_UNDERLYING'],
@@ -665,7 +666,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   if (candidates.length === 0) {
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
-      optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash,
+      optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
       snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration: null, provenance, provenanceDetail: detail,
       blockers: [...blockers, 'NO_CANDIDATES_AVAILABLE'],
     };
@@ -681,7 +682,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     };
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
-      optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash,
+      optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
       snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration, provenance, provenanceDetail: detail, blockers,
     };
   };
@@ -731,7 +732,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     });
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
-      optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash,
+      optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
       snapshotValidForNewRisk: fusionSnapshot.validForNewRisk,
       orchestration: { receipt, ownership: null, regime: null, routing: null, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [] },
       provenance, provenanceDetail: detail, blockers,
@@ -803,7 +804,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
 
   return {
     runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
-    optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash,
+    optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
     snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration, provenance, provenanceDetail: detail, blockers,
   };
 }

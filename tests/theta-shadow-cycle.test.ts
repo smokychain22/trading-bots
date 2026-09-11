@@ -418,6 +418,7 @@ itMockedProviderRealCodePath('FusionSnapshot content hash is REAL (64-char lower
   assert.match(result.snapshotContentHash as string, /^[0-9a-f]{64}$/);
   assert.notEqual(result.snapshotContentHash, 'a'.repeat(64));
   assert.equal(result.orchestration?.receipt.fusionSnapshotHash, result.snapshotContentHash);
+  assert.equal(result.fusionSnapshot?.contentHash, result.snapshotContentHash);
 });
 
 itMockedProviderRealCodePath('the SAME canonical state produces the SAME deterministic content hash', async () => {

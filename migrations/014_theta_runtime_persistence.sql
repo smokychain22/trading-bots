@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS trade.strategy_route (
   fusion_snapshot_id uuid NOT NULL UNIQUE REFERENCES trade.fusion_snapshot(fusion_snapshot_id),
   evaluated_at timestamptz NOT NULL,
   branch_eligibility_json jsonb NOT NULL CHECK (jsonb_typeof(branch_eligibility_json) = 'array'),
-  selected_branch core.strategy_branch,
+  selected_branch text CHECK (selected_branch IS NULL OR selected_branch IN ('THETA_Q','THETA_H','THETA_R','THETA_A','THETA_C','THETA_D')),
   policy_version text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -35,14 +35,14 @@ CREATE TABLE IF NOT EXISTS trade.shadow_opportunity (
   observed_at timestamptz NOT NULL,
   underlying text NOT NULL,
   contract_symbol text,
-  strategy_branch core.strategy_branch,
+  strategy_branch text CHECK (strategy_branch IS NULL OR strategy_branch IN ('THETA_Q','THETA_H','THETA_R','THETA_A','THETA_C','THETA_D')),
   ev_net numeric(24,8),
   tail_adjusted_ev numeric(24,8),
   return_per_capital_day numeric(24,12),
   capital_required numeric(24,8),
   uncertainty numeric(10,9) CHECK (uncertainty BETWEEN 0 AND 1),
   ownership_snapshot_id text,
-  regime_snapshot_id uuid REFERENCES market.regime_snapshot(regime_snapshot_id),
+  regime_snapshot_ref text,
   aegis_state core.aegis_action,
   recommended_quantity integer CHECK (recommended_quantity >= 0),
   execution_quality_acceptable boolean,
@@ -83,6 +83,13 @@ CREATE TABLE IF NOT EXISTS trade.management_opportunity (
   CHECK (eventual_outcome_known OR eventual_realized_pnl IS NULL)
 );
 CREATE INDEX IF NOT EXISTS ix_management_opportunity_chain ON trade.management_opportunity(chain_id, observed_at DESC);
+
+ALTER TABLE trade.decision ALTER COLUMN aegis_action DROP NOT NULL;
+ALTER TABLE trade.decision ADD COLUMN IF NOT EXISTS runtime_selected_candidate_ref text;
+ALTER TABLE trade.decision ADD COLUMN IF NOT EXISTS policy_version text;
+ALTER TABLE trade.decision ADD COLUMN IF NOT EXISTS model_versions_json jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE trade.decision ADD COLUMN IF NOT EXISTS fail_closed_reason text;
+ALTER TABLE trade.decision ADD COLUMN IF NOT EXISTS receipt_json jsonb;
 
 CREATE TABLE IF NOT EXISTS trade.lifecycle_transition (
   lifecycle_transition_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
