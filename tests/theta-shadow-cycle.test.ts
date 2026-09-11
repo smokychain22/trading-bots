@@ -113,6 +113,7 @@ const baseConfig = (overrides: Partial<ThetaShadowCycleConfig> = {}): ThetaShado
   aegisInputsOrigin: 'CALLER_MANUAL',
   opportunityFrontierPolicy: { policyVersion: 'opp-frontier-v1', reducedSizeUncertaintyThreshold: 0.5 },
   maxAcceptableSpreadPct: 1.0,
+  stressGapThresholdAbsReturn: 0.05,
   sizingPolicy: { policyVersion: 'sizing-v1', riskBudgetQtyCap: 4, collateralQtyCap: 3, concentrationQtyCap: 5, assignmentCapacityQtyCap: 6, reducedStateMultiplier: 0.5 },
   executionQualityPolicy: { policyVersion: 'execq-v1', maxAcceptableSpreadPct: 1.0, minQuoteSizeForFullConfidence: 1, maxQuoteAgeSeconds: 999_999, minAfterCostUtilityToCross: -999_999 },
   optionQuoteFreshnessPolicy: { policyVersion: 'freshness-v1', goodMaxAgeSeconds: 999_999, staleMinAgeSeconds: 999_999_999 },

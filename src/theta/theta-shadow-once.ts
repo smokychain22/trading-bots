@@ -81,9 +81,10 @@ function defaultShadowCycleConfig(
     costAssumptions: { commissionPerContract: 0.65, feesPerContract: 0.05, estimatedSlippagePerContract: 1.0, costModelVersion: 'cost-v1-shadow-once' },
     aegisPolicy: { policyVersion: 'aegis-v1-shadow-once', maxTickerConcentrationPct: 0.15, maxSectorConcentrationPct: 0.3, maxCorrelationClusterPct: 0.3, maxPortfolioCapitalAtRiskPct: 0.5, maxInventoryCapacityPct: 0.5, maxAssignmentCapacityPct: 0.5, maxRecoveryCapacityPct: 0.3, providerRequiredStates: ['OK'] },
     aegisInputs: { tickerConcentrationPct: 0, sectorConcentrationPct: 0, correlationClusterExposurePct: 0, portfolioCapitalAtRiskPct: 0, inventoryCapacityUsedPct: 0, assignmentCapacityUsedPct: 0, recoveryCapacityUsedPct: 0, liquidityAcceptable: true, executionQualityAcceptable: true, providerState: 'OK', stressGapDetected: false, stressIvShockDetected: false, stressSpreadWideningDetected: false },
-    aegisInputsOrigin: 'CALLER_MANUAL', // honest: real position/order-derived account exposure is not wired into AEGIS yet
+    aegisInputsOrigin: 'CALLER_MANUAL', // honest: tickerConcentrationPct/portfolioCapitalAtRiskPct/providerState/liquidityAcceptable/executionQualityAcceptable/stressGapDetected are now real-derived when trustworthy (see account-exposure.ts and aegis-derivation.ts) -- sector/correlation/IV-shock/spread-widening remain exactly what this fixture supplies, since no real source exists for those yet
     opportunityFrontierPolicy: { policyVersion: 'opp-frontier-v1-shadow-once', reducedSizeUncertaintyThreshold: 0.5 },
     maxAcceptableSpreadPct: 0.15,
+    stressGapThresholdAbsReturn: 0.05, // research placeholder -- see aegis-derivation.ts's deriveStressGapDetected
     sizingPolicy: { policyVersion: 'sizing-v1-shadow-once', riskBudgetQtyCap: 4, collateralQtyCap: 3, concentrationQtyCap: 5, assignmentCapacityQtyCap: 6, reducedStateMultiplier: 0.5 },
     executionQualityPolicy: { policyVersion: 'execq-v1-shadow-once', maxAcceptableSpreadPct: 0.15, minQuoteSizeForFullConfidence: 20, maxQuoteAgeSeconds: 30, minAfterCostUtilityToCross: 0 },
     optionQuoteFreshnessPolicy: { policyVersion: 'freshness-v1-shadow-once', goodMaxAgeSeconds: 10, staleMinAgeSeconds: 60 },
