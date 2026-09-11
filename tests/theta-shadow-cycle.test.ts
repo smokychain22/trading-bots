@@ -62,6 +62,9 @@ const mockAlpacaFetch = (options: { hasContracts: boolean; hasBars: boolean }) =
   if (url.includes('/v2/calendar')) {
     return jsonResponse(200, [{ date: NOW.slice(0, 10), open: '09:30', close: '16:00' }]); // a normal scheduled session by default
   }
+  if (url.includes('/v1/corporate-actions')) {
+    return jsonResponse(200, { corporate_actions: {} }); // recognized shape, genuinely no actions, by default
+  }
   if (url.includes('/v2/stocks/bars')) {
     if (!options.hasBars) return jsonResponse(200, { bars: {}, next_page_token: null });
     const bars = Array.from({ length: 65 }, (_, i) => ({ t: new Date(Date.now() - (65 - i) * 86_400_000).toISOString(), o: 500 + i * 0.1, h: 501 + i * 0.1, l: 499 + i * 0.1, c: 500.1 + i * 0.1, v: 1_000_000 }));
@@ -385,6 +388,43 @@ itMockedProviderRealCodePath('a market-calendar fetch failure is recorded honest
   const result = await runThetaShadowCycle(baseConfig({ alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: failingCalendarFetch } }));
   assert.ok(result.blockers.some((b) => b.startsWith('MARKET_CALENDAR_FETCH_FAILED')));
   assert.ok(result.provenanceDetail.some((d) => d === 'marketCalendar=REAL_PROVIDER_ERROR'));
+  assert.ok(result.orchestration !== null);
+  assert.notEqual(result.orchestration?.receipt.winningAction, 'HARD_VETO');
+});
+
+itMockedProviderRealCodePath('a real (mocked) recognized corporate-actions response with a near dividend is recorded honestly (REAL_PROVIDER), never blocking the cycle', async () => {
+  const dividendFetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v1/corporate-actions')) {
+      return jsonResponse(200, { corporate_actions: { cash_dividends: [{ symbol: 'SPY', ex_date: new Date(new Date(NOW).getTime() + 3 * 86_400_000).toISOString().slice(0, 10) }] } });
+    }
+    return mockAlpacaFetch({ hasContracts: true, hasBars: true })(input, {});
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({ alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: dividendFetch } }));
+  assert.ok(result.provenanceDetail.some((d) => d === 'eventState=REAL_PROVIDER'));
+  assert.ok(!result.blockers.some((b) => b.startsWith('CORPORATE_ACTIONS_FETCH_FAILED')));
+  assert.ok(result.orchestration !== null);
+});
+
+itMockedProviderRealCodePath('an unrecognized corporate-actions response shape is honestly REAL_PROVIDER_UNKNOWN, never treated as confirmed no-event', async () => {
+  const unrecognizedFetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v1/corporate-actions')) return jsonResponse(200, { unexpected_shape: true });
+    return mockAlpacaFetch({ hasContracts: true, hasBars: true })(input, {});
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({ alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: unrecognizedFetch } }));
+  assert.ok(result.provenanceDetail.some((d) => d === 'eventState=REAL_PROVIDER_UNKNOWN'));
+});
+
+itMockedProviderRealCodePath('a corporate-actions fetch failure is recorded honestly (REAL_PROVIDER_ERROR) and never blocks the rest of the cycle', async () => {
+  const failingCorporateActionsFetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v1/corporate-actions')) return new Response('', { status: 500 });
+    return mockAlpacaFetch({ hasContracts: true, hasBars: true })(input, {});
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({ alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: failingCorporateActionsFetch } }));
+  assert.ok(result.blockers.some((b) => b.startsWith('CORPORATE_ACTIONS_FETCH_FAILED')));
+  assert.ok(result.provenanceDetail.some((d) => d === 'eventState=REAL_PROVIDER_ERROR'));
   assert.ok(result.orchestration !== null);
   assert.notEqual(result.orchestration?.receipt.winningAction, 'HARD_VETO');
 });

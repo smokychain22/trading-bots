@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import {
   AlpacaProviderError,
-  fetchMarketCalendar, fetchMarketClock, fetchMasterAccountSnapshot, fetchOpenOrders, fetchOptionContracts, fetchOptionSnapshots,
+  fetchCorporateActions, fetchMarketCalendar, fetchMarketClock, fetchMasterAccountSnapshot, fetchOpenOrders, fetchOptionContracts, fetchOptionSnapshots,
   fetchPositions, fetchStockBars, type AlpacaMarketClock, type AlpacaOpenOrderSnapshot, type AlpacaPositionSnapshot,
-  type AlpacaProviderConfig, type MasterAccountSnapshot,
+  type AlpacaProviderConfig, type MasterAccountSnapshot, type RawCorporateAction,
 } from './alpaca-provider.js';
 import { mergeOptionChain, type OptionomicsChainEntry } from './option-chain-ingestion.js';
 import { computeCurrentDrawdown, computeGapFrequency, computeMaxAdverseGap, computeRealizedVolatility, computeReturn, computeTrendSlope } from './underlying-features.js';
@@ -11,6 +11,7 @@ import { evaluateUniverse, rankEligibleUnderlyings, type RankedUnderlying, type 
 import { runNewRiskOrchestration, type NewRiskOrchestrationRequest, type NewRiskOrchestrationResult, type RawCandidateInput } from './new-risk-orchestrator.js';
 import { assembleRuntimePreconditionHold } from './decision-assembly.js';
 import { checkTemporalConsistency, DEFAULT_TEMPORAL_CONSISTENCY_POLICIES } from './temporal-consistency.js';
+import { assembleEventState, knownDate, unknownDate, type EventStateAssessment } from './event-state.js';
 import type { PythonBridgeConfig } from './python-bridge.js';
 import { buildFusionSnapshot, hashJson, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
 import type { DataQualityState } from './data-freshness.js';
@@ -171,6 +172,8 @@ function assembleFusionSnapshotInput(params: {
   readonly todaysCalendar: readonly Awaited<ReturnType<typeof fetchMarketCalendar>>[number][];
   readonly calendarOrigin: ProvenanceOrigin;
   readonly calendarQuality: DataQualityState;
+  readonly eventState: EventStateAssessment | null;
+  readonly eventStateQuality: DataQualityState;
   readonly derivedExposure: DerivedAccountExposure;
   readonly mergedContracts: FusionSnapshotInput['contractCandidates'];
   readonly ownershipFeatures: JsonValue;
@@ -199,7 +202,11 @@ function assembleFusionSnapshotInput(params: {
     unknownFeatures.push({ feature: 'optionOpenInterest', reasonCode: `OPTIONOMICS_${params.optionomicsQuality}`, provider: 'OPTIONOMICS' });
     unknownFeatures.push({ feature: 'optionVolume', reasonCode: `OPTIONOMICS_${params.optionomicsQuality}`, provider: 'OPTIONOMICS' });
   }
-  unknownFeatures.push({ feature: 'eventState', reasonCode: 'EVENT_STATE_NOT_IMPLEMENTED', provider: null });
+  if (params.eventState === null) {
+    unknownFeatures.push({ feature: 'eventState', reasonCode: 'EVENT_STATE_NOT_ATTEMPTED', provider: null });
+  } else if (params.eventState.earnings.known === false) {
+    unknownFeatures.push({ feature: 'earningsDistance', reasonCode: 'EARNINGS_DATE_SOURCE_NOT_WIRED', provider: null });
+  }
 
   const positionsJson: JsonValue = params.positions as unknown as JsonValue;
   const openOrdersJson: JsonValue = params.openOrders as unknown as JsonValue;
@@ -221,7 +228,7 @@ function assembleFusionSnapshotInput(params: {
     portfolioExposure: params.derivedExposure as unknown as JsonValue, // real, pure arithmetic over account/positions/orders -- see account-exposure.ts
     alpacaQuoteState: null,
     optionomicsFeatureState: optionomicsAttempted ? optionomicsJson : null, // honestly absent when not configured, never fabricated
-    eventState: null, // no event-state assembly exists yet -- UNKNOWN, never "no event nearby"
+    eventState: params.eventState as unknown as JsonValue, // real assembled event state (see event-state.ts) -- null only when genuinely never attempted
     regimeState: params.regimeFeatures,
     expertPriorState: null,
     riskState: null,
@@ -271,6 +278,11 @@ function assembleFusionSnapshotInput(params: {
         provider: 'ALPACA', operationAlias: 'alpaca.get_calendar', asOf: params.calendarOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
         state: params.calendarQuality, contentHash: hashJson(params.todaysCalendar as unknown as JsonValue), feed: null,
         contractVersion: 'alpaca-calendar-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
+      },
+      {
+        provider: 'ALPACA', operationAlias: 'alpaca.get_corporate_actions', asOf: params.eventState !== null ? params.now : null, retrievedAt: params.now,
+        state: params.eventStateQuality, contentHash: hashJson(params.eventState as unknown as JsonValue), feed: null,
+        contractVersion: 'alpaca-corporate-actions-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
       },
     ],
     providerHealth: [
@@ -470,6 +482,61 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     blockers.push(`MARKET_CALENDAR_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
   }
 
+  // Honest event-state assembly (item D) -- see event-state.ts's own
+  // docstring for why "earnings" stays permanently UNKNOWN this pass (no
+  // real earnings-date source is wired: Alpaca's corporate-actions
+  // endpoint covers splits/dividends/mergers, never earnings
+  // announcements, and Optionomics's /api/v1/events shape/per-symbol
+  // support was never verified). exDividend and corporateEvent DO use the
+  // real corporate-actions fetch when its response shape is recognized.
+  let eventStateEvidence = notAttemptedEvidence();
+  let eventState: EventStateAssessment | null = null;
+  {
+    const eventWindowStart = new Date(new Date(config.now()).getTime() - 5 * 86_400_000).toISOString().slice(0, 10);
+    const eventWindowEnd = new Date(new Date(config.now()).getTime() + 60 * 86_400_000).toISOString().slice(0, 10);
+    try {
+      const corporateActionsResult = await fetchCorporateActions(config.alpaca, [underlying], eventWindowStart, eventWindowEnd);
+      if (!corporateActionsResult.recognized) {
+        eventStateEvidence = { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
+      } else {
+        eventStateEvidence = { origin: 'REAL_PROVIDER', quality: 'GOOD' };
+      }
+      const asOfDate = config.now().slice(0, 10);
+      const relevantActions = corporateActionsResult.actions.filter((a) => a.symbol === null || a.symbol === underlying);
+      const dividendActions = relevantActions.filter((a) => a.category === 'cash_dividends' || a.category === 'stock_dividends');
+      const otherActions = relevantActions.filter((a) => a.category !== 'cash_dividends' && a.category !== 'stock_dividends');
+
+      const nearestDateFrom = (items: readonly RawCorporateAction[]): { date: string; category: string } | null => {
+        let nearest: { date: string; category: string; distance: number } | null = null;
+        for (const item of items) {
+          const dateStr = item.exDate ?? item.processDate ?? item.payableDate ?? item.recordDate;
+          if (dateStr === null) continue;
+          const distance = Math.abs(new Date(`${dateStr}T00:00:00Z`).getTime() - new Date(`${asOfDate}T00:00:00Z`).getTime());
+          if (!Number.isFinite(distance)) continue;
+          if (nearest === null || distance < nearest.distance) nearest = { date: dateStr, category: item.category, distance };
+        }
+        return nearest === null ? null : { date: nearest.date, category: nearest.category };
+      };
+
+      const nearestDividend = corporateActionsResult.recognized ? nearestDateFrom(dividendActions) : null;
+      const nearestOther = corporateActionsResult.recognized ? nearestDateFrom(otherActions) : null;
+
+      eventState = assembleEventState(
+        asOfDate,
+        unknownDate(), // earnings -- honestly never wired this pass, see comment above
+        nearestDividend !== null ? knownDate(nearestDividend.date, asOfDate, 'ALPACA') : (corporateActionsResult.recognized ? unknownDate() : unknownDate('UNRECOGNIZED_RESPONSE_SHAPE')),
+        nearestOther !== null ? { known: true, category: nearestOther.category, effectiveDate: nearestOther.date, provenance: 'ALPACA' } : { known: false, category: null, effectiveDate: null, provenance: 'UNKNOWN' },
+      );
+    } catch (error) {
+      eventStateEvidence = failedProviderEvidence(error);
+      blockers.push(`CORPORATE_ACTIONS_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
+    }
+  }
+  const corporateEventDistanceDays: number | null =
+    eventState?.corporateEvent.known === true && eventState.corporateEvent.effectiveDate !== null
+      ? Math.round((new Date(`${eventState.corporateEvent.effectiveDate}T00:00:00Z`).getTime() - new Date(`${eventState.asOfDate}T00:00:00Z`).getTime()) / 86_400_000)
+      : null;
+
   let historyOrigin: ProvenanceOrigin = 'NOT_ATTEMPTED';
   const receivedAt = config.now();
   let ret1d: number | null = null;
@@ -632,7 +699,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     optionContracts: contractsEvidence.origin,
     optionSnapshots: quotesEvidence.origin,
     optionomics: optionomicsEvidence.origin,
-    eventState: 'NOT_ATTEMPTED', // no event-state assembly exists yet
+    eventState: eventStateEvidence.origin,
     aegisInputs: config.aegisInputsOrigin,
   });
 
@@ -649,6 +716,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     openOrders, openOrdersOrigin: openOrdersEvidence.origin, openOrdersQuality: openOrdersEvidence.quality,
     clock, clockOrigin: clockEvidence.origin, clockQuality: clockEvidence.quality,
     todaysCalendar, calendarOrigin: calendarEvidence.origin, calendarQuality: calendarEvidence.quality,
+    eventState, eventStateQuality: eventStateEvidence.quality,
     derivedExposure,
     mergedContracts: [...mergedContractsForSnapshot],
     ownershipFeatures: { ret1d, rv20, drawdown, maSlope, gapFrequency, maxAdverseGap } as unknown as JsonValue,
@@ -745,7 +813,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
 
   const orchestration = await runNewRiskOrchestration(config.bridge, {
     snapshotId: fusionSnapshot.contentHash, fusionSnapshotHash: fusionSnapshot.contentHash, timestamp: config.now(), underlying,
-    earningsDistanceDays: null, // EventState is not real yet -- UNKNOWN, never fabricated as "no earnings nearby"
+    earningsDistanceDays: eventState?.earnings.distanceDays ?? null, // always null this pass -- no real earnings-date source is wired yet, never fabricated as "no earnings nearby"
     optionQuoteFreshnessPolicy: config.optionQuoteFreshnessPolicy,
     providerCapabilities: {
       ALPACA_ACCOUNT: accountEvidence.quality,
@@ -754,7 +822,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       ALPACA_POSITIONS: positionsEvidence.quality,
       ALPACA_OPEN_ORDERS: openOrdersEvidence.quality,
       OPTIONOMICS: optionomicsEvidence.quality,
-      EVENT_DATA: 'UNKNOWN', // no event-state assembly exists yet
+      EVENT_DATA: eventStateEvidence.quality,
     },
     policyVersion: config.policyVersion, modelVersions: config.modelVersions, requiredModelVersions: config.requiredModelVersions,
     ownershipPolicy: config.ownershipPolicy,
@@ -763,11 +831,14 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       ret1d, ret5d: null, ret20d: null, ret60d: null, ma20Rel: null, ma50Rel: null, ma200Rel: null,
       maSlope, relativeStrength: null, rv10: null, rv20, rv60: null, drawdown, maxAdverseGap,
       gapFrequency, downsideSemivariance: null, historicalRecoveryMedianDays: null, historicalRecoveryP95Days: null,
-      severeDrawdownEpisodeCount: null, earningsDistanceDays: null, exDividendDistanceDays: null, knownEventDistanceDays: null,
+      severeDrawdownEpisodeCount: null, earningsDistanceDays: eventState?.earnings.distanceDays ?? null,
+      exDividendDistanceDays: eventState?.exDividend.distanceDays ?? null,
+      knownEventDistanceDays: corporateEventDistanceDays,
     },
     regimePolicy: config.regimePolicy,
     regimeInputs: {
-      maSlope, rv20, maxAdverseGap, earningsDistanceDays: null, corporateActionPending: false,
+      maSlope, rv20, maxAdverseGap, earningsDistanceDays: eventState?.earnings.distanceDays ?? null,
+      corporateActionPending: corporateEventDistanceDays !== null && Math.abs(corporateEventDistanceDays) <= 10,
       macroRiskFlag: false, spreadPct: null, portfolioOrMarketDrawdown: drawdown,
     },
     routerPolicy: config.routerPolicy, routerPortfolio: config.routerPortfolio,

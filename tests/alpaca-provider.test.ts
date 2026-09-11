@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   AlpacaProviderError,
+  fetchCorporateActions,
   fetchMasterAccountSnapshot,
   fetchMarketCalendar,
   fetchMarketClock,
@@ -300,4 +301,29 @@ test('fetchTradableAssets truncates deterministically and reports complete=false
 test('fetchTradableAssets rejects a non-array body', async () => {
   const fetchImpl = (async () => jsonResponse(200, {})) as typeof fetch;
   await assert.rejects(() => fetchTradableAssets(baseConfig(fetchImpl), 10), AlpacaProviderError);
+});
+
+test('fetchCorporateActions parses a recognized category shape', async () => {
+  const fetchImpl = (async () => jsonResponse(200, {
+    corporate_actions: { cash_dividends: [{ symbol: 'SPY', ex_date: '2026-09-20', record_date: '2026-09-21', payable_date: '2026-10-01' }] },
+  })) as typeof fetch;
+  const result = await fetchCorporateActions(baseConfig(fetchImpl), ['SPY'], '2026-09-01', '2026-12-01');
+  assert.equal(result.recognized, true);
+  assert.equal(result.actions.length, 1);
+  assert.equal(result.actions[0]?.category, 'cash_dividends');
+  assert.equal(result.actions[0]?.exDate, '2026-09-20');
+});
+
+test('fetchCorporateActions reports recognized=false (never a fabricated empty confirmation) for an unexpected shape', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { unexpected: true })) as typeof fetch;
+  const result = await fetchCorporateActions(baseConfig(fetchImpl), ['SPY'], '2026-09-01', '2026-12-01');
+  assert.equal(result.recognized, false);
+  assert.equal(result.actions.length, 0);
+});
+
+test('fetchCorporateActions ignores unrecognized category keys without crashing', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { corporate_actions: { some_future_category_not_yet_known: [{ symbol: 'SPY' }], cash_dividends: [] } })) as typeof fetch;
+  const result = await fetchCorporateActions(baseConfig(fetchImpl), ['SPY'], '2026-09-01', '2026-12-01');
+  assert.equal(result.recognized, true);
+  assert.equal(result.actions.length, 0);
 });

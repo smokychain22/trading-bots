@@ -273,6 +273,75 @@ export async function fetchTradableAssets(config: AlpacaProviderConfig, maxAsset
 }
 
 // ---------------------------------------------------------------------------
+// Corporate actions (event-state assembly source -- see event-state.ts).
+//
+// GET /v1/corporate-actions is confirmed REACHABLE (real HTTP 200 per this
+// repo's own prior read-only verification, documented in
+// docs/quant/phase6_router/DATA_GAP_REGISTER.md), but its exact JSON
+// field-level shape was never inspected before this function was written
+// -- an acknowledged, documented gap. Parsing here is DELIBERATELY
+// conservative: it only trusts a `corporate_actions` object keyed by
+// category (Alpaca's documented category names, e.g. cash_dividends,
+// forward_splits) containing arrays of items with a symbol/date-ish
+// shape. Any other top-level shape is reported `recognized: false` --
+// callers must treat that as UNKNOWN, never as "confirmed no action."
+// ---------------------------------------------------------------------------
+
+export interface RawCorporateAction {
+  readonly symbol: string | null;
+  readonly category: string; // the raw category key, passed through verbatim -- never renamed/reinterpreted
+  readonly exDate: string | null;
+  readonly recordDate: string | null;
+  readonly payableDate: string | null;
+  readonly processDate: string | null;
+}
+
+export interface FetchCorporateActionsResult {
+  readonly recognized: boolean; // false = the response did not match any shape this parser understands -- UNKNOWN, not "no actions"
+  readonly actions: readonly RawCorporateAction[];
+}
+
+const KNOWN_CORPORATE_ACTION_CATEGORIES = [
+  'forward_splits', 'reverse_splits', 'unit_splits', 'cash_dividends', 'stock_dividends',
+  'spin_offs', 'cash_mergers', 'stock_mergers', 'stock_and_cash_mergers', 'redemptions',
+  'name_changes', 'worthless_removals', 'rights_distributions',
+] as const;
+
+export async function fetchCorporateActions(
+  config: AlpacaProviderConfig,
+  symbols: readonly string[],
+  start: string,
+  end: string,
+): Promise<FetchCorporateActionsResult> {
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const url = new URL('/v1/corporate-actions', config.marketDataApiBase);
+  url.search = new URLSearchParams({ symbols: symbols.join(','), start, end }).toString();
+  const body = await requestJson(fetchImpl, url, authHeaders(config)) as Record<string, unknown>;
+
+  const container = body.corporate_actions;
+  if (container === null || container === undefined || typeof container !== 'object' || Array.isArray(container)) {
+    return { recognized: false, actions: [] };
+  }
+
+  const actions: RawCorporateAction[] = [];
+  for (const category of KNOWN_CORPORATE_ACTION_CATEGORIES) {
+    const items = (container as Record<string, unknown>)[category];
+    if (!Array.isArray(items)) continue;
+    for (const raw of items as Record<string, unknown>[]) {
+      actions.push({
+        symbol: asStringOrNull(raw.symbol),
+        category,
+        exDate: asStringOrNull(raw.ex_date),
+        recordDate: asStringOrNull(raw.record_date),
+        payableDate: asStringOrNull(raw.payable_date),
+        processDate: asStringOrNull(raw.process_date),
+      });
+    }
+  }
+  return { recognized: true, actions };
+}
+
+// ---------------------------------------------------------------------------
 // Option contracts + chain snapshots
 // ---------------------------------------------------------------------------
 
