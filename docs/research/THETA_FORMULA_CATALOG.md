@@ -237,3 +237,40 @@ guards against cannot occur in THETA's design by construction.
 one confirming `capital_required` reflects the risk-budget-capped
 quantity, one confirming it reflects the `ALLOW_REDUCED` multiplier's
 final scaled-down quantity). Both pass.
+
+---
+
+## THETA's own economic target variable (Y), R6
+
+**Equation:**
+```
+Y = WholeChainPnl
+  = RealizedStockPnl + UnrealizedStockPnl
+  + RealizedOptionPnl + UnrealizedOptionPnl   (currently always 0 -- no
+                                                open-leg mark-to-market
+                                                field exists yet, flagged
+                                                via hasUnresolvedOpenPositions
+                                                rather than assumed zero-cost)
+  + Dividends - Fees
+
+CapitalDays = sum(capital_committed_that_interval * days_in_interval)  [not yet joined across a whole chain]
+ReturnPerCapitalDay = Y / CapitalDays
+```
+**Source:** THETA's OWN codebase, not an external repo —
+`src/theta/ledger-contract.ts`'s `computeWholeChainPnl`, already
+implemented and tested (`tests/ledger-contract.test.ts`). Cataloged here
+because item 6 of the R1 safety/R6 directive asked for this target to be
+explicitly specified, and this formula already exists and satisfies that
+request in full — no invention was needed, only recognition that it
+already does the job.
+**Assumptions:** rolls preserve the old leg's immutable realized P&L
+rather than netting it into the new leg's own number (matches
+`DATASET_AND_LABEL_CONTRACT.md`'s `RollUtility`-not-`NetRollCredit`
+discipline exactly). Commission/modeled-slippage are currently folded
+into `fees`, not a distinct line item (an acknowledged, named gap in the
+function's own docstring).
+**THETA implementation:** already implemented; see
+`docs/research/THETA_EV_MODEL_SPEC.md` §2 for the full derivation and
+what remains to join it into a per-episode `ReturnPerCapitalDay` row.
+**Verification test:** `tests/ledger-contract.test.ts` (pre-existing,
+confirmed passing).

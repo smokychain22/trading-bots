@@ -458,74 +458,124 @@ are both worth independently reimplementing when R6 begins), never
 
 **URL:** https://github.com/lambdaclass/options_portfolio_backtester
 **Commit SHA inspected:** `e53ef86928777de6ee0721424762ea3dc133f993`
-**Last inspected:** 2026-09-11
+**Last inspected:** 2026-09-11 (updated same day with a follow-up read of `engine/engine.py` and `convexity/scoring.py`, per the R6 priority directive)
 **License:** MIT
 **Category:** Backtesting (Claude-led)
-**Relevant files:** `options_portfolio_backtester/core/types.py`; `engine/`, `convexity/`, `analytics/`, `execution/` directories listed but not yet file-read this pass
+**Relevant files:** `options_portfolio_backtester/core/types.py`, `engine/engine.py`, `convexity/scoring.py` (all now read); `analytics/`, `execution/` directories still not file-read
 
 **What problem it solves:** A portfolio-level (not single-strategy)
 options + equity backtester, with a dedicated "convexity" module for
 tail-risk-hedge analysis (per its README description and
 `docs/SPITZNAGEL_RECONSTRUCTION.md`, not yet read this pass).
 
-**Algorithms/formulas found:** none beyond the type system this pass
-(see below) — deeper algorithmic content in `engine/engine.py`,
-`convexity/scoring.py`, `analytics/stats.py` not yet read; flagged as a
-follow-up given this repo's high architecture/backtest-value ranking in
-the Top-15 table.
+**Algorithms/formulas found:** `convexity/scoring.py`'s
+`compute_convexity_scores` computes a daily `convexity_ratio` for deep-OTM
+put positions (tail-hedge candidates) via a Rust extension
+(`_ob_rust.compute_daily_scores`), taking strike/bid/ask/delta/
+underlying/DTE/IV plus `target_delta`/`dte_min`/`dte_max`/`tail_drop`
+policy parameters, returning `annual_cost`/`tail_payoff` alongside the
+ratio — a genuine tail-hedge-overlay scoring formula, structurally the
+OPPOSITE strategy family from THETA's premium-selling wheel (buying deep
+OTM puts as insurance vs. selling premium), so not directly reusable, but
+confirms tail-risk/convexity scoring at scale is a solved subproblem.
 
-**Architecture patterns found:** a clean, minimal domain-type layer
-(`core/types.py`): `OptionType`/`Direction`/`Signal`/`Order` as small
-enums, each with an explicit `__invert__` (flip CALL↔PUT, BUY↔SELL,
-BTO↔STC/STO↔BTC) — a nice, type-safe way to express "the closing order
-for this opening order" without a lookup table scattered elsewhere.
-`Direction.price_column` maps BUY→"ask"/SELL→"bid" directly on the enum,
-keeping the bid/ask-selection rule in one place rather than duplicated at
-every call site.
+**Architecture patterns found:** `core/types.py`'s enum-with-`__invert__`
+pattern (already recorded). `engine/engine.py`'s `BacktestEngine` composes
+independently-swappable data providers, `Strategy`/`StrategyLeg`,
+`TransactionCostModel`/`FillModel`/`PositionSizer`/`SignalSelector`
+(execution), `Portfolio`, `RiskManager`, and analytics — a clean
+composition-over-inheritance architecture (explicitly stated in its own
+docstring as replacing "the monolithic Backtest class"). Defines
+`HedgeFillWarning`: an explicit, named warning fired when a strategy's
+assumed strike/DTE band matched no tradeable contract in a historical
+era (its own example: deep-OTM SPX puts before ~2003) — the module's own
+documentation is explicit that silently proceeding here would turn an
+"overlay" backtest into misleading partial buy-and-hold. This is a
+directly citable, concrete pattern for THETA's own
+`universe-discovery.ts` point-in-time-optionability discipline: an
+equivalent named warning/reason-code (e.g.
+`HISTORICAL_CHAIN_BAND_UNAVAILABLE`) should exist once THETA has a real
+historical chain-replay path, so a backtest never silently degrades into
+a different, misleading strategy shape without saying so.
 
-**Strategy logic found:** not yet reviewed this pass.
+**Strategy logic found:** not yet reviewed beyond the engine's
+composition shape (`Strategy`/`StrategyLeg` themselves not yet read).
 
-**Risk logic found:** not yet reviewed this pass (the "convexity"/
-tail-hedge module is a strong candidate for THETA's own tail-risk
-research, given `docs/SPITZNAGEL_RECONSTRUCTION.md`'s naming suggests a
-tail-hedge/convexity strategy reconstruction — flagged for a priority
-follow-up read).
+**Risk logic found:** the convexity/tail-hedge scoring above; portfolio-
+level `RiskManager` composition confirmed to exist but its internal
+constraint logic not yet read.
 
-**Execution logic found:** an `execution/` directory exists, not yet
-read.
+**Execution logic found:** `TransactionCostModel`/`FillModel` are named,
+swappable interfaces (`NoCosts`/`MarketAtBidAsk` cited as concrete
+implementations in `engine.py`'s imports) — concrete class names
+confirmed, internals not yet read.
 
-**Backtesting logic found:** an `engine/` directory (`engine.py`,
-`clock.py`, `pipeline.py`, `multi_strategy.py`, `strategy_tree.py`,
-`algo_adapters.py`) exists, not yet read — the presence of a dedicated
-`clock.py` and `strategy_tree.py` suggests a more general backtest/live
-scheduling architecture than optopsy's vectorized-DataFrame approach,
-worth comparing once read.
+**Backtesting logic found:** `engine/engine.py`'s `BacktestEngine`,
+composing the pieces above; a dedicated `clock.py` (not yet read)
+suggests explicit backtest/live time-stepping, distinct from optopsy's
+one-shot vectorized-DataFrame approach.
 
-**Useful tests/invariants:** not yet reviewed this pass.
+**Useful tests/invariants:** not yet reviewed this pass (test suite not
+enumerated).
 
-**Assumptions/Weaknesses/Look-ahead/Survivorship/Execution-model
-weaknesses:** **NOT YET ASSESSED** — this entry is intentionally partial.
-Recorded honestly as "identified and ranked, not yet deep-inspected
-beyond the type system," per the directive's own instruction not to
-claim "we studied repo X" without recording what was actually extracted.
+**Assumptions:** `HedgeFillWarning`'s own docstring names its central
+assumption explicitly: a fixed strike/DTE band request assumes the
+historical chain actually had matching contracts every rebalance period,
+which is false for many real historical eras (its own cited example:
+deep-OTM SPX puts pre-2003) — the library surfaces this as a warning +
+`option_fill_rate` diagnostic rather than silently interpolating or
+skipping.
+
+**Weaknesses:** the convexity-scoring module depends on a compiled Rust
+extension (`_ob_rust`) not inspectable via the GitHub API content-read
+path used this session — its internal numerical behavior is therefore
+NOT independently verified by this ledger entry, only its documented
+inputs/outputs.
+
+**Look-ahead risk:** not fully assessed — `engine.py`'s composition
+confirms a clock-driven, not vectorized-whole-history-at-once, design,
+which is structurally more resistant to look-ahead than a naive vectorized
+join, but the actual time-stepping logic in `clock.py`/`pipeline.py` was
+not read this pass to confirm.
+
+**Survivorship-bias risk:** depends entirely on the historical data
+source supplied by the caller (`HistoricalOptionsData`/`TiingoData`),
+same as noted for optopsy.
+
+**Execution-model weaknesses:** not yet assessed (`FillModel`/
+`TransactionCostModel` internals not yet read).
 
 **Licensing restrictions:** MIT — safe to study and independently
 reimplement.
 
-**Relevant to THETA:** high potential relevance to R6 (portfolio-level
-backtesting) and to the tail-risk/convexity side of Full-H's
-`ExpectedShortfall` dimension — follow-up read recommended before R6
-design begins.
+**Relevant to THETA:** high relevance to R6's future backtest engine
+architecture (composition pattern, `HedgeFillWarning`'s point-in-time-
+availability discipline) — see `docs/research/THETA_WALK_FORWARD_SPEC.md`
+§5 and `docs/research/THETA_EV_MODEL_SPEC.md` §3, both written this
+session citing this repo directly.
 
-**Existing THETA equivalent:** none (R6 not started).
+**Existing THETA equivalent:** none (R6 not started) — THETA's own
+contract/orchestrator separation (Python model / TS contract / TS
+orchestrator, used throughout `bots/theta/quant/runtime/` and
+`src/theta/`) is architecturally analogous in spirit to this engine's
+composition-over-inheritance approach, independently arrived at.
 
-**Better than current THETA implementation:** N/A (insufficient
-inspection to compare).
+**Better than current THETA implementation:** N/A (R6 doesn't exist yet
+to compare against; the composition pattern itself is worth adopting
+when it does).
 
-**Recommended action:** `REFERENCE_ONLY` pending a deeper follow-up read
-of `engine/engine.py` and `convexity/scoring.py` specifically.
+**Recommended action:** `ADOPT_METHOD` for the `BacktestEngine`
+composition shape and the `HedgeFillWarning` discipline (architecture
+only, MIT license permits closer study but THETA should still
+independently reimplement rather than depend on this package directly,
+consistent with the "no new dependency without a documented missing
+capability" rule). `REFERENCE_ONLY` for the convexity/tail-hedge scoring
+(different strategy family, not directly applicable to THETA's premium-
+selling design today).
 
-**Integration status:** NOT INTEGRATED. Flagged for priority follow-up.
+**Integration status:** NOT INTEGRATED. `analytics/`, `execution/`
+internals, `Strategy`/`StrategyLeg`, and `clock.py`/`pipeline.py` remain
+flagged for further follow-up if R6 architecture work begins.
 
 ---
 
