@@ -75,6 +75,10 @@ test('real disposable PostgreSQL preserves user limits, master role and tenant i
     } as Environment;
     const originalFetch = globalThis.fetch;
     const observedMethods: string[] = [];
+    const cycleAt = new Date(Date.now() - 60_000);
+    const marketDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(cycleAt);
     globalThis.fetch = (async (request, init) => {
       observedMethods.push(init?.method ?? 'GET');
       const requestUrl = new URL(String(request));
@@ -83,14 +87,14 @@ test('real disposable PostgreSQL preserves user limits, master role and tenant i
       if (requestUrl.pathname === '/v2/orders') return Response.json([]);
       if (requestUrl.pathname === '/v2/account/activities') return Response.json([]);
       if (requestUrl.pathname === '/v2/clock') return Response.json({
-        timestamp: '2026-09-11T16:15:00.000Z', is_open: true,
-        next_open: '2026-09-14T13:30:00.000Z', next_close: '2026-09-11T20:00:00.000Z',
+        timestamp: cycleAt.toISOString(), is_open: true,
+        next_open: new Date(cycleAt.getTime() + 86_400_000).toISOString(),
+        next_close: new Date(cycleAt.getTime() + 3_600_000).toISOString(),
       });
-      if (requestUrl.pathname === '/v2/calendar') return Response.json([{ date: '2026-09-11', open: '09:30', close: '16:00' }]);
+      if (requestUrl.pathname === '/v2/calendar') return Response.json([{ date: marketDate, open: '09:30', close: '16:00' }]);
       throw new Error(`UNEXPECTED_READ_PATH:${requestUrl.pathname}`);
     }) as typeof fetch;
     try {
-      const cycleAt = new Date('2026-09-11T16:15:00.000Z');
       const first = await runAutonomousRuntimeCycle(environment, pool, cycleAt);
       const duplicate = await runAutonomousRuntimeCycle(environment, pool, cycleAt);
       assert.equal(first.status, 'DEGRADED');
