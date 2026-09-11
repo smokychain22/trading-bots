@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { runCrossSymbolEconomicFrontier } from '../src/theta/cross-symbol-economic-frontier.js';
+import {
+  runCrossSymbolEconomicFrontier, computeFrontierDisposition, confirmWinnerAgainstOwnPipeline,
+  type CombinedFrontierCandidate, type UnderlyingFrontierEntry,
+} from '../src/theta/cross-symbol-economic-frontier.js';
 import type { RawCandidateInput, NewRiskOrchestrationRequest } from '../src/theta/new-risk-orchestrator.js';
 import type { PythonBridgeConfig } from '../src/theta/python-bridge.js';
 import type { NormalizedOptionContract } from '../src/theta/option-contract.js';
@@ -134,6 +137,11 @@ itRealPythonCodePath('a strictly better capital-days candidate from one underlyi
   assert.equal(spyCandidate?.survivesFrontier, false);
   assert.ok((spyCandidate?.dominatedBy.length ?? 0) > 0);
   assert.equal(result.selectedUnderlying, 'QQQ');
+  // No calibrated EV model exists yet -- this pick is a capital-days
+  // research ranking only, NEVER an executable economic selection.
+  assert.equal(result.disposition, 'RESEARCH_RANKING_ONLY');
+  assert.equal(result.executable, false);
+  assert.equal(result.reasonCodes.includes('WAIT_ECONOMIC_EXPECTANCY_UNCALIBRATED'), true);
 });
 
 itRealPythonCodePath('a genuine tradeoff (lower tail risk vs. lower capital requirement) keeps both underlyings on the frontier', async () => {
@@ -164,6 +172,8 @@ itRealPythonCodePath('a non-standard multiplier changes candidate economics and 
   assert.equal(spyCandidate?.survivesFrontier, true);
   assert.equal(qqqCandidate?.survivesFrontier, false);
   assert.equal(result.selectedUnderlying, 'SPY');
+  assert.equal(result.disposition, 'RESEARCH_RANKING_ONLY');
+  assert.equal(result.executable, false);
 });
 
 itRealPythonCodePath('one underlying producing zero feasible candidates does not break the combined frontier -- the other underlying still wins', async () => {
@@ -174,6 +184,8 @@ itRealPythonCodePath('one underlying producing zero feasible candidates does not
   assert.equal(result.failClosedReason, null);
   assert.equal(result.combinedCandidates.every((c) => c.underlying === 'QQQ'), true);
   assert.equal(result.selectedUnderlying, 'QQQ');
+  assert.equal(result.disposition, 'RESEARCH_RANKING_ONLY');
+  assert.equal(result.executable, false);
 });
 
 itRealPythonCodePath('every underlying producing zero feasible candidates fails closed rather than selecting arbitrarily', async () => {
@@ -184,6 +196,8 @@ itRealPythonCodePath('every underlying producing zero feasible candidates fails 
   assert.notEqual(result.failClosedReason, null);
   assert.equal(result.selectedUnderlying, null);
   assert.equal(result.combinedCandidates.length, 0);
+  assert.equal(result.disposition, 'NO_SURVIVORS');
+  assert.equal(result.executable, false);
 });
 
 test('an unknown Python model family fails closed rather than selecting arbitrarily, without a real Python install', async () => {
@@ -191,4 +205,82 @@ test('an unknown Python model family fails closed rather than selecting arbitrar
   const result = await runCrossSymbolEconomicFrontier(badBridge, 'snap-1', NOW, [requestFor('SPY'), requestFor('QQQ')]);
   assert.notEqual(result.failClosedReason, null);
   assert.equal(result.selectedUnderlying, null);
+  assert.equal(result.executable, false);
+});
+
+test('a genuinely known ReturnPerCapitalDay is the ONLY thing that can ever mark the frontier executable (synthetic fixture, since real ev_net is always null today)', () => {
+  const combinedCandidates: CombinedFrontierCandidate[] = [
+    {
+      underlying: 'SPY', candidateId: 'C1', combinedCandidateId: 'SPY:C1', survivesFrontier: true, dominatedBy: [],
+      economics: { grossCredit: null, evNet: 50, calibratedPWin: null, breakEvenWr: null, edgeBuffer: null, expectedTailLoss: null, assignmentProbability: null, severeDrawdownProbability: null, capitalRequirement: 5000, capitalDays: 1000, returnPerCapitalDay: 0.05, liquiditySpreadPct: null, fillProbability: null, expectedSlippage: null, modelUncertainty: null },
+    },
+  ];
+  const result = computeFrontierDisposition(combinedCandidates, new Set(['SPY:C1']));
+  assert.equal(result.disposition, 'EXECUTABLE_SELECTION');
+  assert.equal(result.executable, true);
+  assert.equal(result.selectedUnderlying, 'SPY');
+});
+
+test('when no survivor has a known ReturnPerCapitalDay, the pure disposition function falls back to research-ranking-only, never executable', () => {
+  const combinedCandidates: CombinedFrontierCandidate[] = [
+    {
+      underlying: 'SPY', candidateId: 'C1', combinedCandidateId: 'SPY:C1', survivesFrontier: true, dominatedBy: [],
+      economics: { grossCredit: null, evNet: null, calibratedPWin: null, breakEvenWr: null, edgeBuffer: null, expectedTailLoss: null, assignmentProbability: null, severeDrawdownProbability: null, capitalRequirement: 5000, capitalDays: 1000, returnPerCapitalDay: null, liquiditySpreadPct: null, fillProbability: null, expectedSlippage: null, modelUncertainty: null },
+    },
+  ];
+  const result = computeFrontierDisposition(combinedCandidates, new Set(['SPY:C1']));
+  assert.equal(result.disposition, 'RESEARCH_RANKING_ONLY');
+  assert.equal(result.executable, false);
+  assert.equal(result.selectedUnderlying, 'SPY');
+  assert.equal(result.reasonCodes.includes('WAIT_ECONOMIC_EXPECTANCY_UNCALIBRATED'), true);
+});
+
+test('no survivors at all is NO_SURVIVORS, never executable', () => {
+  const result = computeFrontierDisposition([], new Set());
+  assert.equal(result.disposition, 'NO_SURVIVORS');
+  assert.equal(result.executable, false);
+  assert.equal(result.selectedUnderlying, null);
+});
+
+const minimalReceipt = (overrides: { selectedCandidateId: string | null; quantity: number }) => ({
+  decisionId: 'd1', snapshotId: 'snap-1', fusionSnapshotHash: 'a'.repeat(64), timestamp: NOW, underlying: 'SPY',
+  winningAction: 'OPEN' as const, alternatives: [], ownershipSnapshotId: null, regimeSnapshotId: null,
+  executionAuthorized: false as const, reasonCodes: [], plainEnglishExplanation: 'x', failClosedReason: null,
+  policyVersion: 'v1', modelVersions: {}, ...overrides,
+});
+
+test('confirmWinnerAgainstOwnPipeline downgrades to research-ranking when the winning underlying\'s own pipeline selected a DIFFERENT candidate', () => {
+  const executableDisposition = { disposition: 'EXECUTABLE_SELECTION' as const, executable: true, selectedUnderlying: 'SPY', selectedCandidateId: 'C1', reasonCodes: ['SELECTED_BY_HIGHEST_RETURN_PER_CAPITAL_DAY_AMONG_FRONTIER_SURVIVORS'] };
+  const perUnderlying: UnderlyingFrontierEntry[] = [
+    { underlying: 'SPY', result: { receipt: minimalReceipt({ selectedCandidateId: 'C2', quantity: 3 }) } as never },
+  ];
+  const result = confirmWinnerAgainstOwnPipeline(executableDisposition, perUnderlying);
+  assert.equal(result.disposition, 'RESEARCH_RANKING_ONLY');
+  assert.equal(result.executable, false);
+  assert.equal(result.reasonCodes.includes('WINNING_CANDIDATE_NOT_CONFIRMED_BY_ITS_OWN_UNDERLYINGS_AEGIS_SIZING_EXECUTION_QUALITY_PIPELINE'), true);
+});
+
+test('confirmWinnerAgainstOwnPipeline downgrades to research-ranking when AEGIS/sizing/execution-quality reduced the winner to Q=0', () => {
+  const executableDisposition = { disposition: 'EXECUTABLE_SELECTION' as const, executable: true, selectedUnderlying: 'SPY', selectedCandidateId: 'C1', reasonCodes: [] };
+  const perUnderlying: UnderlyingFrontierEntry[] = [
+    { underlying: 'SPY', result: { receipt: minimalReceipt({ selectedCandidateId: 'C1', quantity: 0 }) } as never },
+  ];
+  const result = confirmWinnerAgainstOwnPipeline(executableDisposition, perUnderlying);
+  assert.equal(result.executable, false);
+});
+
+test('confirmWinnerAgainstOwnPipeline preserves an executable disposition genuinely confirmed by its own underlying\'s pipeline', () => {
+  const executableDisposition = { disposition: 'EXECUTABLE_SELECTION' as const, executable: true, selectedUnderlying: 'SPY', selectedCandidateId: 'C1', reasonCodes: ['SELECTED_BY_HIGHEST_RETURN_PER_CAPITAL_DAY_AMONG_FRONTIER_SURVIVORS'] };
+  const perUnderlying: UnderlyingFrontierEntry[] = [
+    { underlying: 'SPY', result: { receipt: minimalReceipt({ selectedCandidateId: 'C1', quantity: 2 }) } as never },
+  ];
+  const result = confirmWinnerAgainstOwnPipeline(executableDisposition, perUnderlying);
+  assert.equal(result.disposition, 'EXECUTABLE_SELECTION');
+  assert.equal(result.executable, true);
+});
+
+test('confirmWinnerAgainstOwnPipeline is a no-op for a non-executable disposition', () => {
+  const researchDisposition = { disposition: 'RESEARCH_RANKING_ONLY' as const, executable: false, selectedUnderlying: 'SPY', selectedCandidateId: 'C1', reasonCodes: ['WAIT_ECONOMIC_EXPECTANCY_UNCALIBRATED'] };
+  const result = confirmWinnerAgainstOwnPipeline(researchDisposition, []);
+  assert.deepEqual(result, researchDisposition);
 });
