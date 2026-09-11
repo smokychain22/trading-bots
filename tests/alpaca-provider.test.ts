@@ -129,15 +129,21 @@ test('fetchPositions rejects a non-array response as MALFORMED_RESPONSE', async 
   await assert.rejects(() => fetchPositions(baseConfig(fetchImpl), NOW));
 });
 
-test('fetchOpenOrders requests status=open and parses real-shaped orders', async () => {
+test('fetchOpenOrders requests status=open and parses real-shaped orders, including price/fill/type fields', async () => {
   let requestedUrl = '';
   const fetchImpl = (async (input: RequestInfo | URL) => {
     requestedUrl = input instanceof URL ? input.toString() : String(input);
-    return jsonResponse(200, [{ id: 'order-1', client_order_id: 'client-1', symbol: 'SPY', side: 'sell', qty: '1', status: 'new', submitted_at: NOW }]);
+    return jsonResponse(200, [{
+      id: 'order-1', client_order_id: 'client-1', symbol: 'SPY', asset_class: 'us_equity', side: 'sell', qty: '1',
+      filled_qty: '0', order_type: 'limit', limit_price: '450.50', stop_price: null, status: 'new', submitted_at: NOW,
+    }]);
   }) as typeof fetch;
   const result = await fetchOpenOrders(baseConfig(fetchImpl), NOW);
   assert.ok(requestedUrl.includes('status=open'));
   assert.equal(result[0]?.orderId, 'order-1');
+  assert.equal(result[0]?.filledQuantity, 0);
+  assert.equal(result[0]?.orderType, 'limit');
+  assert.equal(result[0]?.limitPrice, 450.5);
 });
 
 test('fetchMarketClock parses timestamp/isOpen', async () => {

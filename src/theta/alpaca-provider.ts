@@ -148,8 +148,13 @@ export interface AlpacaOpenOrderSnapshot {
   readonly orderId: string;
   readonly clientOrderId: string | null;
   readonly symbol: string | null;
+  readonly assetClass: string | null;
   readonly side: string | null;
   readonly quantity: number | null;
+  readonly filledQuantity: number | null;
+  readonly orderType: string | null; // Alpaca's own order_type/type, e.g. 'limit', 'market' -- passed through verbatim
+  readonly limitPrice: number | null;
+  readonly stopPrice: number | null;
   readonly status: string | null;
   readonly submittedAt: string | null;
   readonly receivedAt: string;
@@ -165,8 +170,13 @@ export async function fetchOpenOrders(config: AlpacaProviderConfig, receivedAt: 
     orderId: asStringOrNull(raw.id) ?? '',
     clientOrderId: asStringOrNull(raw.client_order_id),
     symbol: asStringOrNull(raw.symbol),
+    assetClass: asStringOrNull(raw.asset_class),
     side: asStringOrNull(raw.side),
     quantity: asNumberOrNull(raw.qty),
+    filledQuantity: asNumberOrNull(raw.filled_qty),
+    orderType: asStringOrNull(raw.order_type ?? raw.type),
+    limitPrice: asNumberOrNull(raw.limit_price),
+    stopPrice: asNumberOrNull(raw.stop_price),
     status: asStringOrNull(raw.status),
     submittedAt: asStringOrNull(raw.submitted_at),
     receivedAt,

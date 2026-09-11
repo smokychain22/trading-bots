@@ -19,7 +19,8 @@ const position = (overrides: Partial<AlpacaPositionSnapshot> = {}): AlpacaPositi
 });
 
 const openOrder = (overrides: Partial<AlpacaOpenOrderSnapshot> = {}): AlpacaOpenOrderSnapshot => ({
-  orderId: 'order-1', clientOrderId: null, symbol: 'SPY', side: 'sell', quantity: 1, status: 'new',
+  orderId: 'order-1', clientOrderId: null, symbol: 'SPY', assetClass: 'us_equity', side: 'sell', quantity: 1,
+  filledQuantity: 0, orderType: 'limit', limitPrice: null, stopPrice: null, status: 'new',
   submittedAt: NOW, receivedAt: NOW,
   ...overrides,
 });
@@ -166,4 +167,84 @@ test('a derived ratio that is itself UNKNOWN (null) never overwrites the caller-
   assert.equal(exposure.tickerConcentrationPct, null);
   const merged = mergeDerivedExposureIntoAegisInputs({ tickerConcentrationPct: 0.05 }, exposure, true);
   assert.equal(merged.tickerConcentrationPct, 0.05);
+});
+
+// --- pendingOrderCapital (item F) ---
+
+test('a sell-to-open short put order (no matching long position) commits real strike-based collateral', () => {
+  const exposure = deriveAccountExposure(
+    account(),
+    [],
+    [openOrder({ symbol: 'SPY261009P00500000', assetClass: 'us_option', side: 'sell', quantity: 2, filledQuantity: 0 })],
+  );
+  assert.equal(exposure.pendingOrderCapital, 500 * 100 * 2);
+});
+
+test('a sell order that matches an existing long position in the same exact contract is a closing sale -- no new collateral', () => {
+  const exposure = deriveAccountExposure(
+    account(),
+    [position({ symbol: 'SPY261009P00500000', assetClass: 'us_option', side: 'long', quantity: 2 })],
+    [openOrder({ symbol: 'SPY261009P00500000', assetClass: 'us_option', side: 'sell', quantity: 2, filledQuantity: 0 })],
+  );
+  assert.equal(exposure.pendingOrderCapital, 0);
+});
+
+test('a stock buy order with a known limit price commits limitPrice * remainingQty', () => {
+  const exposure = deriveAccountExposure(
+    account(),
+    [],
+    [openOrder({ symbol: 'AAPL', assetClass: 'us_equity', side: 'buy', quantity: 10, filledQuantity: 4, limitPrice: 150 })],
+  );
+  assert.equal(exposure.pendingOrderCapital, 150 * 6);
+});
+
+test('a stock buy order with NO limit price (e.g. a market order) makes pendingOrderCapital UNKNOWN, never a guessed fill price', () => {
+  const exposure = deriveAccountExposure(account(), [], [openOrder({ symbol: 'AAPL', assetClass: 'us_equity', side: 'buy', quantity: 10, limitPrice: null })]);
+  assert.equal(exposure.pendingOrderCapital, null);
+});
+
+test('a stock sell order and an option buy order never add to pendingOrderCapital -- both are closing/reducing or ambiguous, never guessed', () => {
+  const exposure = deriveAccountExposure(
+    account(),
+    [],
+    [
+      openOrder({ symbol: 'AAPL', assetClass: 'us_equity', side: 'sell', quantity: 5 }),
+      openOrder({ symbol: 'SPY261009P00500000', assetClass: 'us_option', side: 'buy', quantity: 1 }),
+    ],
+  );
+  assert.equal(exposure.pendingOrderCapital, 0);
+});
+
+test('a fully-filled order (remainingQty=0) contributes nothing further', () => {
+  const exposure = deriveAccountExposure(
+    account(),
+    [],
+    [openOrder({ symbol: 'SPY261009P00500000', assetClass: 'us_option', side: 'sell', quantity: 2, filledQuantity: 2 })],
+  );
+  assert.equal(exposure.pendingOrderCapital, 0);
+});
+
+test('no open orders is a real zero pendingOrderCapital, not UNKNOWN', () => {
+  const exposure = deriveAccountExposure(account(), [], []);
+  assert.equal(exposure.pendingOrderCapital, 0);
+});
+
+test('an UNKNOWN pendingOrderCapital poisons portfolioCapitalAtRiskPct too -- never silently excluded from capital-at-risk', () => {
+  const exposure = deriveAccountExposure(
+    account({ equity: 100_000 }),
+    [],
+    [openOrder({ symbol: 'AAPL', assetClass: 'us_equity', side: 'buy', quantity: 10, limitPrice: null })],
+  );
+  assert.equal(exposure.pendingOrderCapital, null);
+  assert.equal(exposure.portfolioCapitalAtRiskPct, null);
+});
+
+test('a real, known pendingOrderCapital is included in portfolioCapitalAtRiskPct', () => {
+  const exposure = deriveAccountExposure(
+    account({ equity: 100_000 }),
+    [],
+    [openOrder({ symbol: 'AAPL', assetClass: 'us_equity', side: 'buy', quantity: 10, limitPrice: 200 })],
+  );
+  assert.equal(exposure.pendingOrderCapital, 2000);
+  assert.equal(exposure.portfolioCapitalAtRiskPct, 0.02);
 });

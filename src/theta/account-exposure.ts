@@ -78,9 +78,17 @@ export interface DerivedAccountExposure {
   readonly longPutCount: number;
   readonly longCallCount: number;
   readonly openOrderCount: number;
+  // Capital genuinely committed by currently-open, RISK-OPENING orders
+  // only (never a closing/reducing order) -- see deriveAccountExposure's
+  // own docstring for the exact heuristic and its documented limitation.
+  // UNKNOWN (null) if any risk-opening order's commitment cannot be
+  // bounded (e.g. a market stock buy order with no limit price) -- never
+  // a guessed fill price, per the standing "do not guess a market fill
+  // price" rule.
+  readonly pendingOrderCapital: number | null;
   // Real, derived ratios -- null (UNKNOWN) whenever a required input is
   // itself null, never coerced to 0.
-  readonly portfolioCapitalAtRiskPct: number | null; // (cspCollateralRequired + stockInventoryValue) / equity
+  readonly portfolioCapitalAtRiskPct: number | null; // (cspCollateralRequired + stockInventoryValue + pendingOrderCapital) / equity
   readonly tickerConcentrationPct: number | null; // largest single-underlying exposure (stock value + CSP collateral) / equity
   readonly largestConcentrationUnderlying: string | null;
   readonly unparsedOptionSymbols: readonly string[]; // option positions whose symbol did not match the documented OCC format -- never silently dropped from view
@@ -99,6 +107,20 @@ const requiredMultiplier = (multiplier: number): number => multiplier;
  * combine results; this module does not have contract-metadata access
  * (AlpacaPositionSnapshot carries no multiplier field), so 100 is the
  * honest default for the standard-equity-option case only.
+ *
+ * Pending-order capital (item F): Alpaca's open-order payload has no
+ * confirmed `position_intent` field in this repo's verified observations
+ * (see docs/quant/phase6_router/DATA_GAP_REGISTER.md's field-shape
+ * caveats), so opening-vs-closing intent is inferred heuristically: an
+ * option `sell` order is treated as opening a new short (collateral
+ * required) ONLY if no matching long position in that exact contract
+ * symbol currently exists; a stock `buy` order commits `limitPrice *
+ * remainingQty` when a limit price is known. Every other order
+ * (closing/reducing orders, and any risk-opening order whose commitment
+ * cannot be bounded -- e.g. a market order with no limit price) is
+ * excluded from the sum rather than guessed, and an unbounded
+ * risk-opening order makes the whole figure UNKNOWN (null), never a
+ * partial understatement.
  */
 export function deriveAccountExposure(
   account: MasterAccountSnapshot | null,
@@ -161,9 +183,40 @@ export function deriveAccountExposure(
   // complete figure -- a partial sum would silently understate real risk.
   if (unparsedOptionSymbols.length > 0) cspCollateralRequired = null;
 
+  let pendingOrderCapital: number | null = 0;
+  for (const order of openOrders) {
+    const remainingQty = order.quantity !== null ? order.quantity - (order.filledQuantity ?? 0) : null;
+    if (remainingQty === null || remainingQty <= 0) continue;
+
+    if (order.assetClass === 'us_option' && order.side === 'sell') {
+      const parsed = order.symbol !== null ? parseOccOptionSymbol(order.symbol) : null;
+      if (parsed === null || parsed.optionType !== 'PUT') continue;
+      const hasMatchingLongPosition = positions.some(
+        (p) => p.assetClass === 'us_option' && p.symbol === order.symbol && (p.side === 'long' || (p.quantity ?? 0) > 0),
+      );
+      if (hasMatchingLongPosition) continue; // closing a long, not opening a short -- no new collateral
+      if (pendingOrderCapital !== null) pendingOrderCapital += parsed.strike * requiredMultiplier(multiplier) * remainingQty;
+    } else if (order.assetClass === 'us_equity' && order.side === 'buy') {
+      if (order.limitPrice === null) {
+        pendingOrderCapital = null; // an unbounded (e.g. market) buy order's commitment cannot be reliably bounded
+      } else if (pendingOrderCapital !== null) {
+        pendingOrderCapital += order.limitPrice * remainingQty;
+      }
+    }
+    // Any other combination (option buy, stock sell, unrecognized
+    // assetClass) is either a closing/reducing order or genuinely
+    // ambiguous without a real position_intent field -- deliberately
+    // excluded rather than guessed.
+  }
+
+  // Pending order capital is real committed capital too (per the standing
+  // "avoid double counting" rule, this is ADDITIONAL to open positions,
+  // never a substitute for them) -- an UNKNOWN pendingOrderCapital poisons
+  // the ratio the same way an unparsed option symbol does, never silently
+  // excluded from "capital at risk."
   const portfolioCapitalAtRiskPct =
-    equity !== null && equity > 0 && cspCollateralRequired !== null && stockInventoryValue !== null
-      ? (cspCollateralRequired + stockInventoryValue) / equity
+    equity !== null && equity > 0 && cspCollateralRequired !== null && stockInventoryValue !== null && pendingOrderCapital !== null
+      ? (cspCollateralRequired + stockInventoryValue + pendingOrderCapital) / equity
       : null;
 
   let largestConcentrationUnderlying: string | null = null;
@@ -186,6 +239,7 @@ export function deriveAccountExposure(
     cspCollateralRequired, stockInventoryValue,
     shortPutCount, shortCallCount, longPutCount, longCallCount,
     openOrderCount: openOrders.length,
+    pendingOrderCapital,
     portfolioCapitalAtRiskPct, tickerConcentrationPct, largestConcentrationUnderlying,
     unparsedOptionSymbols,
   };
