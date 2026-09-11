@@ -143,6 +143,52 @@ class FullHDimensionTests(unittest.TestCase):
         # A still dominates on ev_net alone (the only comparable dimension).
         self.assertEqual({s.candidate_id for s in survivors}, {"A"})
 
+    def test_unknown_event_risk_penalty_is_skipped_not_treated_as_favorable_or_unfavorable(self):
+        a = _candidate("A", event_risk_penalty=None)
+        b = _candidate("B", event_risk_penalty=50.0)
+        survivors = compute_pareto_frontier([a, b])
+        # Every other dimension is identical, so with event_risk_penalty
+        # excluded (A's value unknown) there is no comparable dimension
+        # left at all -- neither can dominate the other.
+        self.assertEqual({s.candidate_id for s in survivors}, {"A", "B"})
+
+    def test_missing_ev_net_never_lets_a_candidate_win_purely_by_the_other_having_a_known_value(self):
+        # A's ev_net is UNKNOWN; B's is known positive. If evNet counted an
+        # UNKNOWN as "worse than any known value," B would wrongly appear
+        # to strictly dominate A. It must instead be excluded from this
+        # pair's comparison, same as any other unknown dimension.
+        a = _candidate("A", ev_net=None)
+        b = _candidate("B", ev_net=80.0)
+        survivors = compute_pareto_frontier([a, b])
+        self.assertEqual({s.candidate_id for s in survivors}, {"A", "B"})
+
+    def test_missing_fill_probability_never_counts_toward_dominance(self):
+        a = _candidate("A", fill_probability=None)
+        b = _candidate("B", fill_probability=0.95)
+        survivors = compute_pareto_frontier([a, b])
+        self.assertEqual({s.candidate_id for s in survivors}, {"A", "B"})
+
+    def test_a_material_unknown_dimension_cannot_be_offset_by_a_real_advantage_elsewhere_to_falsely_dominate(self):
+        # The concrete scenario from the R1 safety directive: A has a
+        # better EV_net but an UNKNOWN ownership_quality; B has a lower
+        # EV_net but a KNOWN, good ownership_quality. A must not
+        # "automatically dominate" B merely because the ownership
+        # dimension was skipped for A -- it dominates ONLY because EV_net
+        # itself (the one dimension both sides have a known value for) is
+        # genuinely, strictly better. This test pins that exact behavior
+        # down by name so a future change to the comparability rule is
+        # caught immediately.
+        a = _candidate("A", ev_net=100.0, ownership_quality=None)
+        b = _candidate("B", ev_net=80.0, ownership_quality=0.90)
+        survivors = compute_pareto_frontier([a, b])
+        self.assertEqual({s.candidate_id for s in survivors}, {"A"})
+        # But if A's real advantage disappears (equal ev_net), the
+        # unknown ownership dimension must NOT manufacture a dominance
+        # claim either way -- both must survive as genuinely incomparable.
+        a_tied = _candidate("A", ev_net=80.0, ownership_quality=None)
+        survivors_tied = compute_pareto_frontier([a_tied, b])
+        self.assertEqual({s.candidate_id for s in survivors_tied}, {"A", "B"})
+
 
 class DominatedByDiagnosticTests(unittest.TestCase):
     def test_dominated_by_lists_the_dominating_candidates(self):

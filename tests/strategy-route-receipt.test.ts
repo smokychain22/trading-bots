@@ -84,9 +84,10 @@ test('THETA_Q eligible but never selected because the router never routed a cand
   assert.equal(receipt.selectedStrategy, null);
 });
 
-test('the cross-symbol economic frontier, when present, drives the final selectedUnderlying/candidateId over the single-underlying receipt', () => {
+test('an EXECUTABLE cross-symbol economic frontier drives the final selectedUnderlying/candidateId over the single-underlying receipt', () => {
   const frontier: CrossSymbolEconomicFrontierResult = {
     snapshotId: 'snap-1', timestamp: NOW, perUnderlying: [], combinedCandidates: [],
+    disposition: 'EXECUTABLE_SELECTION', executable: true,
     selectedUnderlying: 'QQQ', selectedCandidateId: 'QQQ-C1',
     reasonCodes: ['SELECTED_BY_HIGHEST_RETURN_PER_CAPITAL_DAY_AMONG_FRONTIER_SURVIVORS'], failClosedReason: null,
   };
@@ -98,9 +99,29 @@ test('the cross-symbol economic frontier, when present, drives the final selecte
   assert.equal(receipt.economicFrontier, frontier);
 });
 
+test('a RESEARCH_RANKING_ONLY frontier (executable=false) never becomes a confirmed selection, even though it has a research pick', () => {
+  const frontier: CrossSymbolEconomicFrontierResult = {
+    snapshotId: 'snap-1', timestamp: NOW, perUnderlying: [], combinedCandidates: [],
+    disposition: 'RESEARCH_RANKING_ONLY', executable: false,
+    selectedUnderlying: 'QQQ', selectedCandidateId: 'QQQ-C1',
+    reasonCodes: ['WAIT_ECONOMIC_EXPECTANCY_UNCALIBRATED', 'RESEARCH_RANKING_BY_LOWEST_CAPITAL_DAYS_ONLY_NOT_EXECUTABLE'],
+    failClosedReason: null,
+  };
+  const receipt = assembleStrategyRouteReceipt(routing(), resultFor({
+    receipt: receiptFor({ underlying: 'SPY', selectedCandidateId: 'SPY-C1', quantity: 1 }),
+  }), frontier, {});
+  assert.equal(receipt.selectedUnderlying, null);
+  assert.equal(receipt.selectedCandidateId, null);
+  assert.equal(receipt.selectedStrategy, null);
+  assert.equal(receipt.waitReason, 'WAIT_ECONOMIC_EXPECTANCY_UNCALIBRATED');
+  // The frontier's own research pick remains fully visible for regret analysis.
+  assert.equal(receipt.economicFrontier?.selectedUnderlying, 'QQQ');
+});
+
 test('a frontier with no selected underlying reports its own reason as the waitReason', () => {
   const frontier: CrossSymbolEconomicFrontierResult = {
     snapshotId: 'snap-1', timestamp: NOW, perUnderlying: [], combinedCandidates: [],
+    disposition: 'NO_SURVIVORS', executable: false,
     selectedUnderlying: null, selectedCandidateId: null, reasonCodes: ['NO_FRONTIER_SURVIVORS'], failClosedReason: null,
   };
   const receipt = assembleStrategyRouteReceipt(routing(), resultFor(), frontier, {});

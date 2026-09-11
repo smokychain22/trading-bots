@@ -83,3 +83,63 @@ data-availability gap. R6 will empirically test the current floor, a weaker
 floor, a stronger floor, and soft/confidence use against untouched-OOS
 after-cost economics and opportunity regret; a versioned TRD revision remains
 the only path to actually changing the gate.
+
+## Full-H cross-symbol frontier: mandatory vs. research-enhancing economic dimensions (2026-09-11)
+
+A distinct question from candidate-eligibility hard gates above: once
+`cross-symbol-economic-frontier.ts` (item H, Stage 2) has a set of Pareto-
+non-dominated survivors, which of THOSE candidates' economic dimensions
+must be known before that candidate can ever become an **executable**
+selection, versus which merely refine its research ranking? Conflating
+these two produced a genuine safety gap this session: a candidate could
+survive Pareto dominance and win a capital-efficiency tie-break purely
+because it had the LOWEST capital lockup, with no economic evidence it
+was actually profitable — "shorter capital lockup" is not the same claim
+as "positive expected value."
+
+**Mandatory for EXECUTABLE_SELECTION** (a missing/UNKNOWN value here
+means the candidate can be at most a `FRONTIER_RESEARCH_SURVIVOR`, never
+an executable pick):
+
+| Dimension | Enforced by |
+|---|---|
+| Contract identity (real, resolvable OCC symbol) | `option-contract.ts` normalization (already required, non-nullable) |
+| Multiplier (contract-derived, never assumed 100) | `option-chain-ingestion.ts`'s `mergeOptionChain` (fixed this same session — prefers the contract's own real multiplier over any caller default) |
+| Quote freshness | `data-freshness.ts` / `theta-shadow-cycle.ts`'s freshness gate (already a hard gate upstream of candidate economics) |
+| Execution-quality truth | `execution-quality-contract.ts`, already gates `winningAction` in `new-risk-orchestrator.ts` before a candidate can reach `OPEN_FULL`/`OPEN_REDUCED` |
+| Collateral / required capital | `theta_q_baseline.py`'s `secured_collateral_per_contract` (already required, non-nullable once a candidate is feasible) |
+| Assignment capacity | `account-exposure.ts`'s `deriveAssignmentCapacity`, consumed by AEGIS |
+| Event-state requirements | `event-state.ts` (UNKNOWN event state does not by itself veto, but is never silently treated as "no event") |
+| AEGIS requirements | `aegis.py`'s aggregation, already a hard gate |
+| **Minimum expectancy evidence (ReturnPerCapitalDay / ev_net known)** | **NEW this session** — `cross-symbol-economic-frontier.ts`'s `computeFrontierDisposition`: this is the dimension that was previously missing an explicit mandatory-gate, and is now the sole criterion that may ever produce `disposition='EXECUTABLE_SELECTION'` |
+| The winning candidate's own underlying pipeline actually confirmed it (not just its bare economics) | **NEW this session** — `confirmWinnerAgainstOwnPipeline`: candidateEconomics is computed BEFORE that underlying's own AEGIS/sizing/execution-quality stages run, so economics-only agreement is never sufficient; the underlying's own receipt must have selected the exact same candidate with quantity > 0 |
+
+**Research-enhancing (an UNKNOWN value here may still leave a candidate
+on the Pareto frontier as a `FRONTIER_RESEARCH_SURVIVOR`, with increased
+uncertainty, but never by itself prevents that status)**:
+
+- `ownershipQuality`, `eventRiskPenalty`, `concentrationImpact`,
+  `capitalOpportunityCost` (all added to `pareto_frontier.py`'s
+  `CandidateEconomics` this session — Pareto dominance already correctly
+  skips an unknown value on either side of a pairwise comparison rather
+  than treating it as favorable or unfavorable; see
+  `test_pareto_frontier.py`'s `FullHDimensionTests` for the pinned-down
+  behavior, including the exact "EV=100/ownership=UNKNOWN vs. EV=80/
+  ownership=known" scenario from the R1 safety directive).
+- Research-only Cboe features (`cboe-regime.ts`) — explicitly never wired
+  into any dominance dimension or executability gate; remains
+  research-only until an ablation promotes a specific feature.
+- Any future unvalidated challenger signal (e.g. a prospective GEX
+  signal, per `docs/research/THETA_GITHUB_GAP_MATRIX.md`) — the same
+  research-only discipline applies before it may ever influence
+  `disposition`.
+
+**Distinguishing the two runtime states**: `FrontierDisposition` is
+`'EXECUTABLE_SELECTION' | 'RESEARCH_RANKING_ONLY' | 'NO_SURVIVORS'`. Only
+the first sets `executable: true`. `RESEARCH_RANKING_ONLY`'s pick
+(`selectedUnderlying`/`selectedCandidateId`) is preserved on the result
+specifically so shadow/regret analysis retains the whole comparison —
+it is simply never promoted to a confirmed selection by
+`strategy-route-receipt.ts`, which checks `economicFrontier.executable`
+before ever treating the frontier's pick as the receipt's own
+`selectedStrategy`/`selectedCandidateId`.

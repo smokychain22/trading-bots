@@ -72,15 +72,32 @@ export function assembleStrategyRouteReceipt(
     .filter((family) => family !== THETA_Q);
 
   const winningAction = economicFrontier !== null ? null : primaryResult.receipt.winningAction;
-  const selectedUnderlying = economicFrontier?.selectedUnderlying ?? (primaryResult.receipt.selectedCandidateId !== null ? primaryResult.receipt.underlying : null);
-  const selectedCandidateId = economicFrontier?.selectedCandidateId ?? primaryResult.receipt.selectedCandidateId;
+  // A cross-symbol frontier's selectedUnderlying/selectedCandidateId are
+  // ONLY promoted to this receipt's confirmed selection when the
+  // frontier itself reports executable===true (a genuinely
+  // calibrated-EV-derived pick, per computeFrontierDisposition's own
+  // EXECUTABLE_SELECTION/RESEARCH_RANKING_ONLY/NO_SURVIVORS split) --
+  // never merely because a research-ranking pick happens to be present.
+  // The frontier's own (possibly non-executable) pick remains fully
+  // visible via the `economicFrontier` field on this receipt for
+  // research/regret analysis; it is simply never conflated with a
+  // confirmed selection here.
+  const frontierConfirmed = economicFrontier !== null && economicFrontier.executable;
+  const selectedUnderlying = frontierConfirmed
+    ? economicFrontier.selectedUnderlying
+    : economicFrontier === null && primaryResult.receipt.selectedCandidateId !== null
+      ? primaryResult.receipt.underlying
+      : null;
+  const selectedCandidateId = frontierConfirmed ? economicFrontier.selectedCandidateId : economicFrontier === null ? primaryResult.receipt.selectedCandidateId : null;
 
   const thetaQEligible = eligibleStrategies.includes(THETA_Q);
   const selectedStrategy: StrategyFamily | null = selectedCandidateId !== null && thetaQEligible ? THETA_Q : null;
 
   const waitReason =
-    selectedCandidateId === null && (winningAction === 'PASS' || winningAction === 'WAIT' || (economicFrontier !== null && economicFrontier.selectedUnderlying === null))
-      ? (economicFrontier?.reasonCodes[0] ?? primaryResult.receipt.reasonCodes[0] ?? 'WAIT_NO_REASON_RECORDED')
+    selectedCandidateId === null
+      ? (economicFrontier !== null
+          ? (economicFrontier.reasonCodes[0] ?? 'WAIT_NO_REASON_RECORDED')
+          : (winningAction === 'PASS' || winningAction === 'WAIT' ? (primaryResult.receipt.reasonCodes[0] ?? 'WAIT_NO_REASON_RECORDED') : null))
       : null;
 
   const qZeroReason = selectedCandidateId !== null && primaryResult.receipt.quantity === 0 ? 'Q_ZERO_AFTER_SIZING_OR_EXECUTION_QUALITY' : null;
