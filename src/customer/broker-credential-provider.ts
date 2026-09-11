@@ -70,6 +70,7 @@ export class MasterEncryptedStoreBrokerCredentialProvider {
     );
     const bundle = apiKeyBundleSchema.parse(JSON.parse(plaintext));
     return {
+      customerId: stored.customerId,
       method: stored.connectionMethod,
       providerAccountRef: stored.providerAccountRef,
       authentication: { kind: 'MASTER_API_KEY' as const, apiKey: bundle.apiKeyId, apiSecret: bundle.apiSecret },

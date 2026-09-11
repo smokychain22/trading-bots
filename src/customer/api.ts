@@ -35,6 +35,7 @@ import { connectPrivatePaperApiKey, privatePaperApiKeyConfiguration } from "./pr
 import { AlpacaPaperBrokerError } from "../execution/broker.js";
 import { designateAuthenticatedPaperMaster, masterRoleStore } from "./paper-account-role.js";
 import { paperCopyPolicySchema, recommendedCopyPolicy } from "./copy-policy.js";
+import { verifyStoredMasterPaperConnection } from "./master-paper-runtime.js";
 
 const simulationSchema = z
   .object({
@@ -418,8 +419,8 @@ export default async function customerHandler(
       }
       if (route === "operator/master-readiness" && request.method === "POST") {
         try {
-          const data = await verifyMasterPaperConnection(environment);
-          return send(response, data.connection_state === "CONNECTED" ? 200 : 207, {
+          const data = await verifyStoredMasterPaperConnection(environment, customerStore(environment.DATABASE_URL));
+          return send(response, data.connectionState === "CONNECTED" ? 200 : 207, {
             api_version: "v1",
             data,
           });

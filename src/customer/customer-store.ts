@@ -492,7 +492,7 @@ export class PostgresCustomerStore implements CustomerStore {
 }
 
 let sharedPool: Pool | null = null;
-export function customerStore(databaseUrl: string | undefined): CustomerStore {
+export function customerStore(databaseUrl: string | undefined): CustomerStore & MasterCredentialStore {
   if (!databaseUrl) throw new Error("CUSTOMER_DATABASE_NOT_CONFIGURED");
   sharedPool ??= new Pool({ connectionString: databaseUrl, max: 4, idleTimeoutMillis: 10_000 });
   return new PostgresCustomerStore(sharedPool);

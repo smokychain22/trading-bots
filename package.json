@@ -18,7 +18,8 @@
     "theta:shadow:once": "tsx src/theta/theta-shadow-once.ts",
     "db:migrate": "node tools/database-migrate.mjs",
     "db:verify": "node tools/database-verify.mjs",
-    "paper:designate-master": "tsx tools/designate-master-paper.ts"
+    "paper:designate-master": "tsx tools/designate-master-paper.ts",
+    "paper:verify-master": "tsx tools/verify-stored-master-paper.ts"
   },
   "engines": {
     "node": "24.x"
