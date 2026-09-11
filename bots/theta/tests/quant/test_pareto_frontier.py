@@ -93,6 +93,57 @@ class UnknownFieldTests(unittest.TestCase):
         self.assertEqual({s.candidate_id for s in survivors}, {"A", "B"})
 
 
+class FullHDimensionTests(unittest.TestCase):
+    def test_new_optional_dimensions_default_to_none_for_every_existing_caller(self):
+        c = _candidate("A")
+        self.assertIsNone(c.ownership_quality)
+        self.assertIsNone(c.event_risk_penalty)
+        self.assertIsNone(c.concentration_impact)
+        self.assertIsNone(c.capital_opportunity_cost)
+        self.assertIsNone(c.underlying)
+        self.assertIsNone(c.strategy_branch)
+
+    def test_better_ownership_quality_alone_can_make_a_candidate_dominate(self):
+        better = _candidate("BETTER", ownership_quality=0.9)
+        worse = _candidate("WORSE", ownership_quality=0.2)
+        survivors = compute_pareto_frontier([better, worse])
+        self.assertEqual({s.candidate_id for s in survivors}, {"BETTER"})
+
+    def test_higher_event_risk_penalty_makes_a_candidate_dominated(self):
+        safer = _candidate("SAFER", event_risk_penalty=10.0)
+        riskier = _candidate("RISKIER", event_risk_penalty=500.0)
+        survivors = compute_pareto_frontier([safer, riskier])
+        self.assertEqual({s.candidate_id for s in survivors}, {"SAFER"})
+
+    def test_higher_concentration_impact_makes_a_candidate_dominated(self):
+        diversified = _candidate("DIVERSIFIED", concentration_impact=100.0)
+        concentrated = _candidate("CONCENTRATED", concentration_impact=5000.0)
+        survivors = compute_pareto_frontier([diversified, concentrated])
+        self.assertEqual({s.candidate_id for s in survivors}, {"DIVERSIFIED"})
+
+    def test_higher_capital_opportunity_cost_makes_a_candidate_dominated(self):
+        cheap_capital = _candidate("CHEAP", capital_opportunity_cost=5.0)
+        expensive_capital = _candidate("EXPENSIVE", capital_opportunity_cost=200.0)
+        survivors = compute_pareto_frontier([cheap_capital, expensive_capital])
+        self.assertEqual({s.candidate_id for s in survivors}, {"CHEAP"})
+
+    def test_underlying_and_strategy_branch_metadata_never_participate_in_dominance(self):
+        # Identical economics, different underlying/branch metadata --
+        # metadata alone must never create or break a dominance claim.
+        a = _candidate("A", underlying="SPY", strategy_branch="THETA_Q")
+        b = _candidate("B", underlying="QQQ", strategy_branch="THETA_H")
+        survivors = compute_pareto_frontier([a, b])
+        self.assertEqual({s.candidate_id for s in survivors}, {"A", "B"})
+
+    def test_unknown_new_dimension_never_counts_toward_dominance_either(self):
+        a = _candidate("A", ev_net=100.0, ownership_quality=None)
+        b = _candidate("B", ev_net=50.0, ownership_quality=0.9)
+        survivors = compute_pareto_frontier([a, b])
+        # A's unknown ownership_quality is skipped, not treated as worse --
+        # A still dominates on ev_net alone (the only comparable dimension).
+        self.assertEqual({s.candidate_id for s in survivors}, {"A"})
+
+
 class DominatedByDiagnosticTests(unittest.TestCase):
     def test_dominated_by_lists_the_dominating_candidates(self):
         better = _candidate("BETTER", ev_net=100.0)

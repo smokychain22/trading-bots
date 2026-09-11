@@ -67,6 +67,24 @@ class ParetoFrontierContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             evaluate_request({**_request([_candidate("a")]), "contractVersion": "wrong"})
 
+    def test_full_h_optional_dimensions_are_accepted_and_affect_dominance(self):
+        candidates = [
+            _candidate("better-ownership", evNet=50.0, ownershipQuality=0.9, underlying="SPY", strategyBranch="THETA_Q"),
+            _candidate("worse-ownership", evNet=50.0, ownershipQuality=0.1, underlying="QQQ", strategyBranch="THETA_Q"),
+        ]
+        response = evaluate_request(_request(candidates))
+        by_id = {r["candidateId"]: r for r in response["results"]}
+        self.assertTrue(by_id["better-ownership"]["survivesFrontier"])
+        self.assertFalse(by_id["worse-ownership"]["survivesFrontier"])
+
+    def test_full_h_optional_dimensions_default_to_none_when_omitted(self):
+        # No error, no fabricated favorable value -- omitting the new
+        # fields entirely must behave exactly like the pre-full-H contract.
+        response = evaluate_request(_request([_candidate("a", evNet=10.0), _candidate("b", evNet=5.0)]))
+        by_id = {r["candidateId"]: r for r in response["results"]}
+        self.assertTrue(by_id["a"]["survivesFrontier"])
+        self.assertFalse(by_id["b"]["survivesFrontier"])
+
 
 if __name__ == "__main__":
     unittest.main()

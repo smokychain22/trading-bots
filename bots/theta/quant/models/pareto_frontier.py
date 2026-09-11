@@ -46,6 +46,20 @@ class CandidateEconomics:
     fill_probability: Optional[float]
     expected_slippage: Optional[float]
     model_uncertainty: Optional[float]
+    # R1H full-H additions (all optional, defaulted to None so every
+    # existing caller of this dataclass remains valid unchanged):
+    ownership_quality: Optional[float] = None  # ownership_v0.py-style acceptability score in [0,1]; higher is better
+    event_risk_penalty: Optional[float] = None  # a $ penalty for event proximity/severity, never a boolean gate here
+    concentration_impact: Optional[float] = None  # marginal portfolio concentration this candidate would add, in $
+    capital_opportunity_cost: Optional[float] = None  # $ cost of capital NOT being available for the next-best alternative
+    # Categorical metadata, deliberately NOT part of dominance comparison
+    # (there is no unambiguous "better"/"worse" ordering over an
+    # underlying symbol or a strategy branch) -- carried through purely so
+    # a cross-symbol/cross-branch frontier receipt can show WHERE each
+    # surviving or eliminated candidate came from.
+    underlying: Optional[str] = None
+    strategy_branch: Optional[str] = None
+    volatility_regime: Optional[str] = None
 
 
 # Field -> optimization direction. Only fields with an unambiguous "more is
@@ -68,6 +82,10 @@ _DOMINANCE_FIELDS: Dict[str, DominanceDirection] = {
     "liquidity_spread_pct": DominanceDirection.MINIMIZE,
     "expected_slippage": DominanceDirection.MINIMIZE,
     "model_uncertainty": DominanceDirection.MINIMIZE,
+    "ownership_quality": DominanceDirection.MAXIMIZE,
+    "event_risk_penalty": DominanceDirection.MINIMIZE,
+    "concentration_impact": DominanceDirection.MINIMIZE,
+    "capital_opportunity_cost": DominanceDirection.MINIMIZE,
 }
 
 
