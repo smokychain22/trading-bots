@@ -19,6 +19,9 @@ WHAT WAS IMPLEMENTED:
 - `80b0559` was integrated for repository contracts and in-memory contract tests. Codex migration 014 supplies the requested durable table shapes.
 - `0f19dbd` was integrated as a tested dispatcher primitive. It is not described as a running production scheduler until the PostgreSQL lease repository, invocation endpoint, and real executors are wired.
 - `1e2bf39` was rejected as written. It correctly parses Alpaca's contract `size`, but still supplies a numeric 100 fallback when metadata is absent. Production economics must remain UNKNOWN when the exact contract multiplier is unverified.
+- `2641c32` and `4777726` were reviewed as useful contract-level groundwork for carrying full economic dimensions, but deferred until the values have real, versioned inputs rather than optional empty fields.
+- `4fe7f7c` was rejected as a production selector. When EV and return-per-capital-day are UNKNOWN for every survivor, it selects the lowest capital-days candidate. Capital efficiency alone cannot prove positive after-cost expectancy and must not authorize new risk.
+- `3bc369b` was deferred because it depends on the rejected cross-symbol selector. Its explicit route-receipt shape is useful, but it must consume a safe final selection contract first.
 
 TESTS RUN: Targeted temporal-consistency, shadow-cycle, and AEGIS derivation tests, followed by the repository type, lint, test, build, security, and browser checks.
 
