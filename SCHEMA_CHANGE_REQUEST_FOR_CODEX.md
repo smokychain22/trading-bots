@@ -6,13 +6,47 @@ no migration file has been created on this branch, per the standing rule
 that Claude does not create conflicting production migrations while Codex
 is actively modifying `main`.
 
-Checked against the current canonical schema (`migrations/001-008`) before
-writing this. TS-side repository interfaces already exist at
+**REFRESHED 2026-09-11** against `origin/main` at `6fc33ed`
+(`migrations/001-013`, read-only `git fetch` — no rebase/merge performed).
+The original version of this document was checked only against
+`migrations/001-008`; Codex has since landed 009-013 (private Paper API
+keys, paper account roles, optional follower limits, explicit/null-guarded
+option position intent) — none of which touch `trade.management_decision`,
+`trade.strategy_route`, `trade.shadow_opportunity`,
+`trade.management_opportunity`, or `ops.scheduler_checkpoint`. Every
+classification below was re-verified against the actual fetched
+`origin/main` tree, not assumed carried over from the stale version.
+
+TS-side repository interfaces already exist at
 `src/theta/persistence-repositories.ts` (with an in-memory reference
 implementation at `persistence-repositories-memory.ts`, tests at
 `tests/persistence-repositories.test.ts`) — this document is what those
 interfaces need from the real schema to have a genuine Postgres-backed
 implementation, not a redesign of them.
+
+## Classification summary (against origin/main@6fc33ed)
+
+| Requested object | Status | Notes |
+|---|---|---|
+| `FusionSnapshotRepository` → `trade.fusion_snapshot` | **ALREADY_EXISTS** | unchanged across 009-013 |
+| `DecisionReceiptRepository` → `trade.decision` + `trade.decision_reason` | **ALREADY_EXISTS** | unchanged across 009-013 |
+| `LifecycleEpisodeRepository` → `trade.economic_chain` | **ALREADY_EXISTS** | unchanged across 009-013 |
+| `ManagementDecisionReceiptRepository` → `trade.management_decision` | **MISSING** | no such table anywhere in 001-013 |
+| `StrategyRouteRepository` → `trade.strategy_route` | **MISSING** | no such table anywhere in 001-013 |
+| `ShadowOpportunityRepository` → `trade.shadow_opportunity` | **MISSING** | no such table anywhere in 001-013 |
+| `ManagementOpportunityRepository` → `trade.management_opportunity` | **MISSING** | no such table anywhere in 001-013 |
+| `SchedulerCheckpointRepository` → `ops.scheduler_checkpoint` | **MISSING** | no such table anywhere in 001-013; `ops.paper_execution_control`/`ops.provider_verification`/`ops.paper_account_role_event` (010) exist but serve unrelated concerns, not a lease/heartbeat model |
+
+No requested object is **PARTIALLY_EXISTS** or **SUPERSEDED** — Codex's
+009-013 work (customer/copy/account-role/option-intent concerns) is
+orthogonal to everything this document requests; nothing here duplicates
+persistence Codex has already built.
+
+Incidental, non-blocking observation: `migrations/012` and `013` added
+`trade.order_intent.position_intent` (explicit long/short position intent
+on an order, with a null-guard constraint). This has no interaction with
+any table requested below — noted only so Codex can see it was checked,
+not overlooked.
 
 ## Already schema-compatible (no change requested)
 
@@ -22,7 +56,7 @@ implementation, not a redesign of them.
 - `LifecycleEpisodeRepository` → `trade.economic_chain`. Compatible as-is
   (already has `chain_id`, `lifecycle_state`, `opened_at`, `closed_at`).
 
-## 1. Management decisions have no compatible table
+## 1. Management decisions have no compatible table — MISSING
 
 `trade.decision` was designed around the new-risk OPEN/WAIT/PASS decision
 shape (`selected_candidate_id`, `action_code` constrained to make sense
@@ -66,7 +100,26 @@ Lifecycle relationship: one `economic_chain` has zero-to-many
 evaluation, not one per state transition — most evaluations reaffirm HOLD
 and no transition happens).
 
-## 2. No table for the strategy router's OWN eligibility reasoning
+**Idempotency requirement:** `management_decision_id` should be caller-
+supplied as a deterministic value derived from `(chain_id, decided_at,
+route)` (mirroring `scheduler-engine.ts`'s `deterministicJobId` pattern),
+not `gen_random_uuid()`'s default — so a retried write after a crash
+inserts the same row rather than a duplicate. `gen_random_uuid()` is kept
+as the column default only for a caller that has no natural deterministic
+key; Codex should decide whether to keep the random default or require
+the deterministic id at the application layer.
+
+**Why the existing schema cannot represent this:** `trade.decision` has
+no `chain_id` column at all (it links to `candidate_set_id`/
+`selected_candidate_id`, which only make sense for a brand-new position,
+not a management action on an already-open one), no field for
+`hold_advantage`, and no `jsonb` column shaped to hold a multi-alternative
+utility breakdown — extending `trade.decision` to serve both purposes
+would either force nullable columns that are meaningless for one of the
+two decision kinds, or silently blur the "new risk" vs. "manage existing
+risk" distinction this whole item K architecture exists to keep separate.
+
+## 2. No table for the strategy router's OWN eligibility reasoning — MISSING
 
 `trade.decision.strategy_branch` records which branch a decision *used*,
 but nothing persists the router's full eligibility sweep across all five
@@ -88,9 +141,22 @@ selected, rejected, WAIT, Q=0."
 | `policy_version` | `text` | no | |
 
 Index: `(fusion_snapshot_id)`. Uniqueness:
-`UNIQUE(fusion_snapshot_id)` — one router evaluation per snapshot.
+`UNIQUE(fusion_snapshot_id)` — one router evaluation per snapshot, which
+also gives idempotent writes for free (`INSERT ... ON CONFLICT
+(fusion_snapshot_id) DO NOTHING`, since a snapshot's router evaluation is
+deterministic given the same inputs — a retried write is a no-op, never a
+duplicate row).
 
-## 3. No table for the shadow opportunity book (new-risk or management)
+**Why the existing schema cannot represent this:** `trade.decision.
+strategy_branch` records only the ONE branch a decision ultimately used
+— it has no room for "THETA_CC was ineligible because no stock is held"
+or "THETA_DEFINED_RISK was eligible but scored lower," which the roadmap
+explicitly requires the router to expose. A `decision` row also does not
+exist at all in cycles where every branch is ineligible (nothing gets
+proposed), so there would be no row to attach that reasoning to even if
+`trade.decision` had the columns.
+
+## 3. No table for the shadow opportunity book (new-risk or management) — MISSING
 
 Neither `shadow-opportunity-book.ts`'s new-risk entries (ACCEPTED/
 REJECTED/WAIT/PASS/AEGIS_REJECTED/Q_ZERO/EXECUTION_REJECTED) nor
@@ -132,9 +198,27 @@ Both append-only (a later empirical pass fills `eventual_outcome_known`/
 original entry, consistent with every other `trade.*` table's
 immutability discipline).
 
-## 4. No table for scheduler checkpoints (R1I)
+**Idempotency requirement:** `opportunity_id`/`entry_id` should be
+caller-supplied deterministic values (already the case in
+`shadow-opportunity-book.ts`/`management-opportunity-book.ts`'s own
+builders), with a `UNIQUE` constraint on the id column so a retried write
+after a crash is a no-op, not a duplicate observation.
 
-No table anywhere in `migrations/001-008` supports the restart-safe
+**Why the existing schema cannot represent this:** there is no table
+anywhere in `trade.*` for an opportunity that was EVALUATED but never
+became a `trade.decision` at all (a WAIT, a PASS, a Q_ZERO, an
+AEGIS-rejected candidate) — `trade.candidate`/`trade.candidate_reason`
+come closest, but they only exist inside a `candidate_set`, which itself
+only exists when the new-risk pipeline actually reached candidate
+generation; a management-path evaluation (HOLD/CLOSE/ROLL/etc.) has no
+`candidate_set` concept at all. Regret analysis specifically needs the
+opportunities that were evaluated and NOT converted into a candidate/
+decision, which is exactly the population `trade.candidate`/
+`trade.decision` cannot hold.
+
+## 4. No table for scheduler checkpoints (R1I) — MISSING
+
+No table anywhere in `migrations/001-013` supports the restart-safe
 scheduler's lease/heartbeat/idempotency requirements.
 
 **Requested table:** `ops.scheduler_checkpoint` (in the `ops` schema,
@@ -162,7 +246,20 @@ deterministic job identity, which is what makes lease acquisition a
 straightforward `UPDATE ... WHERE job_id = $1 AND (status != 'LEASED' OR
 lease_expires_at <= now())` compare-and-swap.
 
-## Summary of requested additions
+**Idempotency requirement:** `job_id` IS the idempotency key
+(`deterministicJobId(jobType, correlationKey)` in
+`scheduler-engine.ts`) — this table's entire design exists to make
+retries safe, not merely to log them.
+
+**Why the existing schema cannot represent this:** `ops.
+paper_execution_control`/`ops.provider_verification`/`ops.
+paper_account_role_event` (010) are all single-purpose operational tables
+for unrelated concerns (execution gating, provider readiness, account
+role transitions) with no lease/lease-expiry/attempt-count/heartbeat
+columns at all — none of them are a job dispatch table, and repurposing
+any of them would conflate unrelated operational domains into one table.
+
+## Summary of requested additions (all MISSING, none PARTIALLY_EXISTS/SUPERSEDED)
 
 - `trade.management_decision` (new table)
 - `trade.strategy_route` (new table)
@@ -171,5 +268,21 @@ lease_expires_at <= now())` compare-and-swap.
 - `ops.scheduler_checkpoint` (new table, mutable, not append-only)
 
 No changes requested to any existing table. Codex decides the actual
-migration numbering/ordering and whether these are one migration or
-several.
+migration numbering (next would be `014`), ordering, and whether these
+are one migration or several.
+
+## Separately: source-file divergence noticed during this refresh (not a schema matter, flagging anyway)
+
+While fetching `origin/main` read-only to refresh this document, a few
+`src/theta/*.ts` files were found to have diverged independently between
+this branch and `main` since the shared ancestor (`main` has its own
+evolution of calendar/session wiring; this branch has additionally
+layered event-state/corporate-actions/cross-symbol-selection/the
+multiplier fix on top of an earlier version of the same files) —
+`theta-shadow-cycle.ts`, `theta-shadow-once.ts`, `alpaca-provider.ts`,
+`option-chain-ingestion.ts`, and (a smaller, logic-level difference)
+`aegis-derivation.ts`. This is a **TypeScript source merge concern for
+Codex to reconcile when integrating this branch**, not a database schema
+matter — noted here only because it was discovered in the same read-only
+pass and Codex asked for the fetch to inform exactly this kind of
+comparison. See the accompanying handoff message for the full list.
