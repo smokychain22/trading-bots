@@ -208,7 +208,7 @@ test('an unknown Python model family fails closed rather than selecting arbitrar
   assert.equal(result.executable, false);
 });
 
-test('a genuinely known ReturnPerCapitalDay is the ONLY thing that can ever mark the frontier executable (synthetic fixture, since real ev_net is always null today)', () => {
+test('positive after-cost EV and positive ReturnPerCapitalDay are required to mark the frontier executable', () => {
   const combinedCandidates: CombinedFrontierCandidate[] = [
     {
       underlying: 'SPY', candidateId: 'C1', combinedCandidateId: 'SPY:C1', survivesFrontier: true, dominatedBy: [],
@@ -233,6 +233,19 @@ test('when no survivor has a known ReturnPerCapitalDay, the pure disposition fun
   assert.equal(result.executable, false);
   assert.equal(result.selectedUnderlying, 'SPY');
   assert.equal(result.reasonCodes.includes('WAIT_ECONOMIC_EXPECTANCY_UNCALIBRATED'), true);
+});
+
+test('known but non-positive after-cost economics remain research-only, never executable', () => {
+  const combinedCandidates: CombinedFrontierCandidate[] = [
+    {
+      underlying: 'SPY', candidateId: 'C1', combinedCandidateId: 'SPY:C1', survivesFrontier: true, dominatedBy: [],
+      economics: { grossCredit: 50, evNet: -5, calibratedPWin: 0.8, breakEvenWr: 0.7, edgeBuffer: -0.1, expectedTailLoss: 30, assignmentProbability: 0.2, severeDrawdownProbability: 0.05, capitalRequirement: 5000, capitalDays: 1000, returnPerCapitalDay: -0.005, liquiditySpreadPct: 0.02, fillProbability: 0.8, expectedSlippage: 1, modelUncertainty: 0.1 },
+    },
+  ];
+  const result = computeFrontierDisposition(combinedCandidates, new Set(['SPY:C1']));
+  assert.equal(result.disposition, 'RESEARCH_RANKING_ONLY');
+  assert.equal(result.executable, false);
+  assert.equal(result.reasonCodes.includes('WAIT_ECONOMIC_EXPECTANCY_NOT_POSITIVE'), true);
 });
 
 test('no survivors at all is NO_SURVIVORS, never executable', () => {

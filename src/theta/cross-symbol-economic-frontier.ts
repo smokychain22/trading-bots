@@ -222,12 +222,17 @@ export interface FrontierDispositionResult {
  * fixture until R6 lands, which is exactly why it is split out on its
  * own rather than only reachable via a real subprocess call).
  *
- * EXECUTABLE tie-break: highest known ReturnPerCapitalDay -- the ONLY
- * criterion that may ever produce disposition='EXECUTABLE_SELECTION', as
- * it is the sole quantity here derived from a genuinely calibrated
- * economic estimate (ev_net). RESEARCH-ONLY fallback (lowest known
- * CapitalDays) is preserved purely for research/regret-tracking --
- * "shorter capital lockup" is never treated as "positive expected value."
+ * EXECUTABLE tie-break: highest POSITIVE ReturnPerCapitalDay backed by a
+ * POSITIVE after-cost EV -- the ONLY criterion that may ever produce
+ * disposition='EXECUTABLE_SELECTION', as it is the sole quantity here
+ * derived from a genuinely calibrated economic estimate (ev_net). A
+ * known-but-NON-positive value (zero or negative EV/ReturnPerCapitalDay)
+ * is deliberately excluded from this tie-break, not just an unknown one
+ * -- a candidate a calibrated model confidently prices as unprofitable
+ * must never be promoted to executable merely because the number itself
+ * is "known." RESEARCH-ONLY fallback (lowest known CapitalDays) is
+ * preserved purely for research/regret-tracking -- "shorter capital
+ * lockup" is never treated as "positive expected value."
  */
 export function computeFrontierDisposition(
   combinedCandidates: readonly CombinedFrontierCandidate[],
@@ -235,7 +240,10 @@ export function computeFrontierDisposition(
 ): FrontierDispositionResult {
   const survivors = combinedCandidates.filter((c) => c.survivesFrontier && survivorIds.has(c.combinedCandidateId));
 
-  const rankableByReturn = survivors.filter((c) => c.economics.returnPerCapitalDay !== null);
+  const rankableByReturn = survivors.filter((c) =>
+    c.economics.evNet !== null && c.economics.evNet > 0 &&
+    c.economics.returnPerCapitalDay !== null && c.economics.returnPerCapitalDay > 0,
+  );
   rankableByReturn.sort((a, b) => {
     const diff = (b.economics.returnPerCapitalDay as number) - (a.economics.returnPerCapitalDay as number);
     return diff !== 0 ? diff : byCombinedId(a, b);
@@ -265,12 +273,19 @@ export function computeFrontierDisposition(
   });
   const researchPick = rankableByCapitalDays[0] ?? null;
 
+  // A survivor with a KNOWN but non-positive evNet/returnPerCapitalDay is
+  // a materially different situation from every survivor being genuinely
+  // UNCALIBRATED (null) -- distinguish them in the reason code so a
+  // caller/reviewer can tell "the model priced this and said no" apart
+  // from "no model exists yet to price it at all."
+  const anyKnownEconomics = survivors.some((candidate) => candidate.economics.evNet !== null || candidate.economics.returnPerCapitalDay !== null);
+
   return {
     disposition: 'RESEARCH_RANKING_ONLY', executable: false,
     selectedUnderlying: researchPick?.underlying ?? null,
     selectedCandidateId: researchPick?.candidateId ?? null,
     reasonCodes: [
-      'WAIT_ECONOMIC_EXPECTANCY_UNCALIBRATED',
+      anyKnownEconomics ? 'WAIT_ECONOMIC_EXPECTANCY_NOT_POSITIVE' : 'WAIT_ECONOMIC_EXPECTANCY_UNCALIBRATED',
       researchPick !== null
         ? 'RESEARCH_RANKING_BY_LOWEST_CAPITAL_DAYS_ONLY_NOT_EXECUTABLE'
         : 'NO_SURVIVOR_HAS_A_KNOWN_CAPITAL_DAYS_EITHER',
