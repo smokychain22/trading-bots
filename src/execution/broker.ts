@@ -45,6 +45,19 @@ export interface BrokerActivity {
   readonly orderId: string | null;
 }
 
+export interface BrokerMarketClock {
+  readonly timestamp: string | null;
+  readonly isOpen: boolean | null;
+  readonly nextOpen: string | null;
+  readonly nextClose: string | null;
+}
+
+export interface BrokerCalendarSession {
+  readonly date: string;
+  readonly open: string | null;
+  readonly close: string | null;
+}
+
 export interface PaperBrokerAdapter {
   readonly accountKind: BrokerAccountKind;
   readonly environment: 'PAPER';
@@ -53,6 +66,8 @@ export interface PaperBrokerAdapter {
   getOrders(status?: 'open' | 'closed' | 'all'): Promise<readonly BrokerOrderSnapshot[]>;
   getOrderByClientOrderId(clientOrderId: string): Promise<BrokerOrderSnapshot | null>;
   getActivities(activityTypes?: readonly string[]): Promise<readonly BrokerActivity[]>;
+  getClock?(): Promise<BrokerMarketClock>;
+  getCalendar?(start: string, end: string): Promise<readonly BrokerCalendarSession[]>;
   submitOrder(order: BrokerOrderRequest, authorization: BrokerMutationAuthorization): Promise<BrokerOrderSnapshot>;
   replaceOrder(providerOrderId: string, replacement: Pick<BrokerOrderRequest, 'qty' | 'limit_price' | 'time_in_force' | 'client_order_id'>, authorization: BrokerMutationAuthorization): Promise<BrokerOrderSnapshot>;
   cancelOrder(providerOrderId: string, authorization: BrokerMutationAuthorization): Promise<void>;
@@ -217,6 +232,23 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
       if (pageToken === null) throw new AlpacaPaperBrokerError('MALFORMED_RESPONSE', null, 'Alpaca activity pagination did not provide a usable final activity ID.');
     }
     throw new AlpacaPaperBrokerError('MALFORMED_RESPONSE', null, 'Alpaca activity pagination exceeded the bounded reconciliation window.');
+  }
+  async getClock(): Promise<BrokerMarketClock> {
+    const body = z.object({
+      timestamp: z.string().nullable().optional(), is_open: z.boolean().nullable().optional(),
+      next_open: z.string().nullable().optional(), next_close: z.string().nullable().optional(),
+    }).passthrough().parse(await this.request('/v2/clock'));
+    return {
+      timestamp: body.timestamp ?? null, isOpen: body.is_open ?? null,
+      nextOpen: body.next_open ?? null, nextClose: body.next_close ?? null,
+    };
+  }
+  async getCalendar(start: string, end: string): Promise<readonly BrokerCalendarSession[]> {
+    const query = new URLSearchParams({ start, end });
+    const body = z.array(z.object({
+      date: z.string().min(1), open: z.string().nullable().optional(), close: z.string().nullable().optional(),
+    }).passthrough()).parse(await this.request(`/v2/calendar?${query.toString()}`));
+    return body.map((session) => ({ date: session.date, open: session.open ?? null, close: session.close ?? null }));
   }
   async submitOrder(order: BrokerOrderRequest, authorization: BrokerMutationAuthorization): Promise<BrokerOrderSnapshot> {
     assertBrokerMutationAuthorized(authorization, order.client_order_id, order.qty);

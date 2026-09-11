@@ -5,9 +5,8 @@ import type { SchedulerCheckpointRepository, SchedulerCheckpointRecord } from '.
 // R1I: the restart-safe scheduler ENGINE -- ties scheduler.ts's job
 // state machine, scheduling-policy.ts's urgency scoring, and
 // persistence-repositories.ts's SchedulerCheckpointRepository (lease/
-// heartbeat) together into one dispatcher. Runtime logic only; nothing
-// here is deployed or wired to a real cron/process yet (that is Codex's
-// call once item M's real schema exists).
+// heartbeat) together into one dispatcher. The production serverless
+// entry point invokes this engine through autonomous-runtime.ts.
 //
 // PRIORITY ORDER (fixed, per the R1 roadmap's explicit instruction --
 // never re-ordered by urgency scoring, which only affects INTERVAL
@@ -21,21 +20,20 @@ import type { SchedulerCheckpointRepository, SchedulerCheckpointRecord } from '.
 //      concept -- see note below)
 //   6. WAIT rechecks (WAIT_RECHECK)
 //   7. new opportunity scanning (OPPORTUNITY_SCAN)
-// MARKET_STATE_REFRESH / ACCOUNT_STATE_REFRESH / COPY_FANOUT_PREPARATION /
-// HEALTH_HEARTBEAT are infrastructure jobs this priority ladder does not
-// rank against trading concerns -- they run at PRIORITY 0, always first,
-// since every trading-relevant job depends on fresh market/account state.
+// MARKET_STATE_REFRESH / ACCOUNT_STATE_REFRESH are supporting observations.
+// Executors refresh prerequisites inline when needed, so these standalone
+// jobs never jump ahead of reconciliation or management.
 
 const JOB_TYPE_PRIORITY: Readonly<Record<JobType, number>> = {
   POSITION_RECONCILIATION: 0,
   ORDER_RECONCILIATION: 1,
-  MARKET_STATE_REFRESH: 2,
-  ACCOUNT_STATE_REFRESH: 2,
-  POSITION_MANAGEMENT_SCAN: 3,
-  ASSIGNMENT_EXPIRY_RECONCILIATION: 4,
-  PENDING_ORDER_MANAGEMENT: 5,
-  WAIT_RECHECK: 6,
-  OPPORTUNITY_SCAN: 7,
+  POSITION_MANAGEMENT_SCAN: 2,
+  ASSIGNMENT_EXPIRY_RECONCILIATION: 3,
+  PENDING_ORDER_MANAGEMENT: 4,
+  WAIT_RECHECK: 5,
+  OPPORTUNITY_SCAN: 6,
+  ACCOUNT_STATE_REFRESH: 7,
+  MARKET_STATE_REFRESH: 7,
   COPY_FANOUT_PREPARATION: 8,
   HEALTH_HEARTBEAT: 9,
 };
@@ -124,12 +122,22 @@ export async function dispatchOneJob(
   }
 
   const leaseExpiresAt = new Date(Date.parse(now()) + config.leaseDurationMs).toISOString();
-  const acquired = await repo.tryAcquireLease(jobId, config.workerId, leaseExpiresAt);
+  const acquired = await repo.tryAcquireLease(
+    jobId, config.workerId, leaseExpiresAt, config.workerVersion, config.policyVersion,
+  );
   if (!acquired) {
     return { jobId, jobType: job.jobType, outcome: 'LEASE_HELD_BY_ANOTHER_OWNER', runResult: null };
   }
 
   let runResult: JobRunResult;
+  let heartbeatFailed = false;
+  const heartbeatIntervalMs = Math.max(1_000, Math.min(15_000, Math.floor(config.leaseDurationMs / 3)));
+  const heartbeat = setInterval(() => {
+    const extendedLease = new Date(Date.now() + config.leaseDurationMs).toISOString();
+    void repo.heartbeat(jobId, config.workerId, extendedLease).then((renewed) => {
+      if (!renewed) heartbeatFailed = true;
+    }).catch(() => { heartbeatFailed = true; });
+  }, heartbeatIntervalMs);
   try {
     runResult = await executor(job.jobType, job.correlationKey, jobId, recoveryAction);
   } catch (error) {
@@ -138,6 +146,15 @@ export async function dispatchOneJob(
       errorCode: 'EXECUTOR_THREW',
       errorDetail: error instanceof Error ? error.message : String(error),
       nextRunAt: null,
+    };
+  } finally {
+    clearInterval(heartbeat);
+  }
+  if (heartbeatFailed && runResult.status === 'SUCCEEDED') {
+    runResult = {
+      status: 'DEGRADED', errorCode: 'LEASE_HEARTBEAT_FAILED',
+      errorDetail: 'The job completed, but its lease heartbeat could not be confirmed.',
+      nextRunAt: runResult.nextRunAt,
     };
   }
 
@@ -148,17 +165,22 @@ export async function dispatchOneJob(
   // status this save just set back to COMPLETED, defeating the bounded-
   // retry attempt-count check below.
   const record = await repo.findById(jobId);
+  const finishedAt = now();
+  const terminalStatus: SchedulerCheckpointRecord['status'] = runResult.status === 'QUARANTINED'
+    ? 'ABANDONED'
+    : runResult.status === 'SUCCEEDED' || runResult.status === 'SKIPPED' ? 'COMPLETED' : 'FAILED';
   await repo.save({
     jobId, jobKind: job.jobType, leaseOwner: config.workerId,
+    correlationId: jobId,
+    leaseAcquiredAt: record?.leaseAcquiredAt ?? null,
     leaseExpiresAt: record?.leaseExpiresAt ?? leaseExpiresAt,
-    lastHeartbeatAt: now(), attempt: record?.attempt ?? 1,
-    // SchedulerCheckpointRecord's status vocabulary is coarser than
-    // JobRunResult's (no DEGRADED/SKIPPED/QUARANTINED distinction) --
-    // anything other than a clean SUCCEEDED counts as FAILED for
-    // bounded-retry purposes; the finer-grained JobRunResult itself is
-    // still returned to the caller uncollapsed, so no information is lost.
-    status: runResult.status === 'SUCCEEDED' ? 'COMPLETED' : 'FAILED',
+    lastHeartbeatAt: record?.lastHeartbeatAt ?? finishedAt, attempt: record?.attempt ?? 1,
+    status: terminalStatus, resultStatus: runResult.status,
+    startedAt: record?.startedAt ?? null, completedAt: finishedAt,
+    nextEligibleAt: runResult.nextRunAt,
+    runtimeVersion: config.workerVersion, policyVersion: config.policyVersion,
     lastError: runResult.errorDetail,
+    resultMetadata: { errorCode: runResult.errorCode },
   });
 
   return { jobId, jobType: job.jobType,
@@ -175,7 +197,7 @@ export async function dispatchOneJob(
  * mid-execution" case restartRecoveryAction exists to catch.
  */
 function jobStatusFromCheckpoint(record: SchedulerCheckpointRecord, nowIso: string): 'RUNNING' | 'SCHEDULED' {
-  if (record.status === 'LEASED' && record.leaseExpiresAt <= nowIso) return 'RUNNING';
+  if (record.status === 'LEASED' && record.leaseExpiresAt !== null && record.leaseExpiresAt <= nowIso) return 'RUNNING';
   return 'SCHEDULED';
 }
 

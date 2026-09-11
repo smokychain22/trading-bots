@@ -46,6 +46,26 @@ test('200 valid response: entries normalize with full Greeks/OI/volume/IV', asyn
   assert.equal(entry?.delta, -0.3);
 });
 
+test('historical chain fetch uses only documented point-in-time filters', async () => {
+  let requested: URL | null = null;
+  const fetchImpl = (async (input) => {
+    requested = new URL(String(input));
+    return jsonResponse(200, []);
+  }) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY', {
+    sessionDate: '2025-04-21', expirationDate: '2025-05-16', limit: 250,
+    optionType: 'put', strikeMin: 450, strikeMax: 550,
+  });
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  assert.equal(requested?.pathname, '/api/v1/stocks/SPY/options');
+  assert.equal(requested?.searchParams.get('date'), '2025-04-21');
+  assert.equal(requested?.searchParams.get('expiration_date'), '2025-05-16');
+  assert.equal(requested?.searchParams.get('option_type'), 'put');
+  assert.equal(requested?.searchParams.get('limit'), '250');
+  assert.equal(requested?.searchParams.get('strike_min'), '450');
+  assert.equal(requested?.searchParams.get('strike_max'), '550');
+});
+
 test('200 legitimate empty response: a real query that found nothing is VALUE_PRESENT with zero entries, never an error', async () => {
   const fetchImpl = (async () => jsonResponse(200, [])) as typeof fetch;
   const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY');

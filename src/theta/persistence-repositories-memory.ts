@@ -128,24 +128,42 @@ export class InMemorySchedulerCheckpointRepository implements SchedulerCheckpoin
   async findById(jobId: string): Promise<SchedulerCheckpointRecord | null> {
     return this.byId.get(jobId) ?? null;
   }
-  async tryAcquireLease(jobId: string, owner: string, leaseExpiresAt: string): Promise<boolean> {
+  async tryAcquireLease(jobId: string, owner: string, leaseExpiresAt: string, runtimeVersion?: string, policyVersion?: string): Promise<boolean> {
     const existing = this.byId.get(jobId);
     const now = new Date().toISOString();
-    if (existing !== undefined && existing.status === 'LEASED' && existing.leaseExpiresAt > now && existing.leaseOwner !== owner) {
+    if (existing !== undefined && existing.status === 'LEASED' && existing.leaseExpiresAt !== null && existing.leaseExpiresAt > now) {
       return false; // someone else holds an unexpired lease -- expected, not an error
     }
+    if (existing?.nextEligibleAt !== null && existing?.nextEligibleAt !== undefined && existing.nextEligibleAt > now) {
+      return false;
+    }
     this.byId.set(jobId, {
-      jobId, jobKind: existing?.jobKind ?? 'UNKNOWN', leaseOwner: owner, leaseExpiresAt,
-      lastHeartbeatAt: now, attempt: (existing?.attempt ?? 0) + 1, status: 'LEASED', lastError: null,
+      jobId, jobKind: existing?.jobKind ?? jobId.split(':', 1)[0] ?? 'UNKNOWN', correlationId: jobId,
+      leaseOwner: owner, leaseAcquiredAt: now, leaseExpiresAt,
+      lastHeartbeatAt: now, attempt: (existing?.attempt ?? 0) + 1, status: 'LEASED',
+      resultStatus: null, startedAt: now, completedAt: null, nextEligibleAt: null,
+      runtimeVersion: runtimeVersion ?? existing?.runtimeVersion ?? null,
+      policyVersion: policyVersion ?? existing?.policyVersion ?? null,
+      lastError: null, resultMetadata: {},
     });
+    return true;
+  }
+  async heartbeat(jobId: string, owner: string, leaseExpiresAt: string): Promise<boolean> {
+    const existing = this.byId.get(jobId);
+    if (existing === undefined || existing.leaseOwner !== owner || existing.status !== 'LEASED') return false;
+    this.byId.set(jobId, { ...existing, leaseExpiresAt, lastHeartbeatAt: new Date().toISOString() });
     return true;
   }
   async releaseLease(jobId: string, owner: string): Promise<void> {
     const existing = this.byId.get(jobId);
     if (existing === undefined || existing.leaseOwner !== owner) return; // not ours to release -- silently a no-op, never a forced takeover
-    this.byId.set(jobId, { ...existing, status: 'COMPLETED' });
+    this.byId.set(jobId, { ...existing, status: 'COMPLETED', resultStatus: 'SUCCEEDED', completedAt: new Date().toISOString() });
   }
   async findExpiredLeases(asOfIso: string): Promise<readonly SchedulerCheckpointRecord[]> {
-    return Array.from(this.byId.values()).filter((r) => r.status === 'LEASED' && r.leaseExpiresAt <= asOfIso);
+    return Array.from(this.byId.values()).filter((r) => r.status === 'LEASED' && r.leaseExpiresAt !== null && r.leaseExpiresAt <= asOfIso);
+  }
+  async findRetryableFailures(asOfIso: string): Promise<readonly SchedulerCheckpointRecord[]> {
+    return Array.from(this.byId.values()).filter((record) => record.status === 'FAILED'
+      && record.nextEligibleAt !== null && record.nextEligibleAt <= asOfIso);
   }
 }

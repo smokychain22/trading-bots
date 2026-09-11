@@ -19,7 +19,7 @@ export function persistedPositionIntent(instrumentType: string, side: unknown, r
 }
 
 export class PostgresPaperOrderStore implements PaperOrderStore {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: Pool, private readonly executionAccountId?: string) {}
 
   async insertIntent(intent: PersistedPaperOrderIntent): Promise<void> {
     const instrumentType = intent.action === 'SELL_STOCK' ? 'STOCK' : 'OPTION';
@@ -122,7 +122,9 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
     const result = await this.pool.query(
       `SELECT order_intent_id FROM trade.order_intent
        WHERE status IN ('SUBMITTING','UNKNOWN_SUBMISSION','RECONCILING')
+         AND ($1::uuid IS NULL OR execution_account_id=$1)
        ORDER BY updated_at ASC`,
+      [this.executionAccountId ?? null],
     );
     const intents = await Promise.all(result.rows.map((row: { order_intent_id: string }) => this.getIntent(row.order_intent_id)));
     return intents.filter((intent): intent is PersistedPaperOrderIntent => intent !== null);

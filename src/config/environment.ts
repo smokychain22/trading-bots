@@ -29,6 +29,8 @@ const environmentSchema = z.object({
   MASTER_PAPER_EXECUTION_ENABLED: safeFlag,
   FOLLOWER_PAPER_EXECUTION_ENABLED: safeFlag,
   PAPER_PAUSE_NEW_ORDERS: booleanFlag('true'),
+  THETA_AUTONOMOUS_WORKER_ENABLED: safeFlag,
+  CRON_SECRET: z.string().min(32).optional(),
   VERCEL_PROJECT_ID: z.string().min(1).optional(),
   VERCEL_ORG_ID: z.string().min(1).optional(),
   VERCEL_TOKEN: z.string().min(1).optional()

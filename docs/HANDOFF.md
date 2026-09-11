@@ -509,3 +509,60 @@ contract and must not reintroduce proxy-based executable ranking.
 
 NEXT RECOMMENDED TASK: Run disposable PostgreSQL CI, integrate the verified commit into
 current main, and keep all Paper and live broker submissions locked.
+
+## 2026-09-11 Autonomous runtime and broker reconciliation milestone
+
+OWNER: Codex
+
+TASK: Build the first restart-safe, browser-independent THETA PAPER runtime slice, add
+durable broker/replay evidence, audit historical data sufficiency, and review Claude's
+new R6 research commits without weakening production controls.
+
+FILES CHANGED: Environment contract, Vercel worker entry point, scheduler contracts and
+PostgreSQL repository, PAPER broker read methods, broker reconciliation worker, replay
+contracts, migration 015 and SQL invariants, Optionomics historical query support,
+database verifier, historical-data audit, tests, and decision/handoff records.
+
+WHAT WAS IMPLEMENTED: An authenticated, bounded serverless worker now has deterministic
+minute jobs, fixed safety priority, exclusive leases, heartbeats, bounded retry,
+reconciliation-before-retry, and durable cycle results. The master reconciliation path
+verifies broker identity and reads account, positions, all orders, activities, clock,
+and calendar without calling a mutation method. Matched broker orders can advance only
+through the existing order-intent state machine. Contradictory states are quarantined.
+Unmatched broker facts are immutable `EXTERNAL_OR_UNKNOWN` records. Replay observations
+and future labels are physically separated with temporal and append-only constraints.
+Migration 015 was applied to Production Neon and all database invariants passed.
+
+TESTS RUN: TypeScript check, ESLint, 543 runnable Node tests plus three PostgreSQL-only
+skips, 349 Python tests, focused scheduler/broker tests, production build, security
+scan, migration 015 against Neon, the migration 015 SQL invariant suite, and the full
+production database verifier.
+
+TEST RESULTS: All runnable tests, lint, type checks, and build passed. The security scan
+reported zero findings. Neon reports 15 migrations, 18 required tables, the master role
+and self-copy protection enforced, optional follower-limit semantics enforced, one
+active encrypted credential, and zero broker orders.
+
+KNOWN LIMITATIONS: The Vercel cron and worker environment cannot be enabled or observed
+from the current browser session because Chrome is still signed in as
+`puppyhugs.help@gmail.com`, which receives 404 for `skillswap7/trading-bots`. The local
+Vercel token is invalid and the local encryption values are intentionally redacted.
+Production quant opportunity input assembly is also unavailable inside the current
+Node serverless worker, so new-risk scanning reports DEGRADED and cannot create an
+order. Docker Desktop is unavailable locally, leaving three disposable-PostgreSQL tests
+to GitHub CI.
+
+RISKS: A one-minute Vercel cron requires a plan that supports per-minute schedules.
+Deployment must prove that capability before the worker is enabled. The runtime remains
+read-only and returns a degraded result for incomplete management, WAIT, or opportunity
+inputs. `READY_FOR_FIRST_PAPER_ORDER` remains NO.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude should correct and retest the R6 research
+issues recorded in `docs/DECISIONS.md`. No Claude commit from `4c8fe61` through
+`f182aa0` was merged. Claude must not modify the production worker, account, execution,
+or migration files.
+
+NEXT RECOMMENDED TASK: Restore the correct Vercel owner session, verify plan support,
+configure a strong `CRON_SECRET` and enable the read-only worker, then inspect its first
+Neon-backed reconciliation cycle. Keep all broker mutation gates locked. Correct the R6
+research modules on Claude's branch before selective integration.

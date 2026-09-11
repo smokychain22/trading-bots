@@ -231,3 +231,36 @@ Pending-order collateral and assignment capacity must consume explicit position
 intents. They cannot infer `SELL_TO_OPEN` from order side and current holdings. Cross-
 symbol routing must use after-cost economics and risk constraints, not raw premium or
 an incorrectly scaled premium-to-collateral proxy.
+
+## 2026-09-11: autonomous PAPER runtime starts with broker truth
+
+The first deployed THETA worker slice is a short-lived, authenticated serverless cycle,
+not a resident process. Each invocation and job writes durable lease, heartbeat,
+attempt, result, version, and correlation evidence to PostgreSQL. The fixed priority is
+broker reconciliation, ambiguous-order recovery, existing-position management,
+assignment/expiration reconciliation, pending-order management, WAIT rechecks, then new
+risk. Failed jobs become eligible for bounded retry at their persisted next-eligible
+time. An expired lease is reconciled before any retry.
+
+The worker uses only the designated encrypted `MASTER_THETA_PAPER` credential and the
+exact `paper-api.alpaca.markets` host. It reads account, positions, orders, activities,
+clock, and calendar. Facts that cannot be matched to THETA intent are stored as
+`EXTERNAL_OR_UNKNOWN` and excluded from strategy evidence until resolved. Order
+submission, replacement, cancellation, follower fan-out, and live trading remain
+locked. The worker must report a degraded state while production quant input assembly
+is unavailable instead of fabricating an opportunity.
+
+Historical replay inputs and outcome labels are stored in separate append-only tables.
+Provider timestamps cannot exceed the observation as-of time, and an outcome label
+cannot predate its observation. The historical-data audit does not approve a new
+provider. Alpaca remains executable truth and Optionomics remains research
+intelligence until coverage and entitlement tests prove a specific gap.
+
+Claude R6 commits `4c8fe61`, `4ea86c5`, `b277ca0`, `424a54b`, `0a4efb4`, and
+`f182aa0` were reviewed independently and were not integrated in this milestone.
+Material blockers include a variance-versus-standard-deviation error in the DSR hurdle,
+unpaired ablation statistics for a paired baseline comparison, a midpoint-based
+structural fill price, a zero-correlation lookup bug, drawdown recovery requiring a new
+high instead of recovery to the prior peak, and a walk-forward contract that lacks both
+decision time and label-availability time. The production baseline is preserved until
+those issues are corrected and retested.

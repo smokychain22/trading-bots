@@ -218,6 +218,24 @@ export type OptionomicsFetchOutcome<T> =
       readonly attemptCount: number;
     };
 
+export interface OptionomicsChainQuery {
+  readonly sessionDate?: string;
+  readonly expirationDate?: string;
+  readonly limit?: number;
+  readonly optionType?: 'call' | 'put';
+  readonly strikeMin?: number;
+  readonly strikeMax?: number;
+}
+
+function applyDocumentedChainQuery(url: URL, query: OptionomicsChainQuery): void {
+  if (query.sessionDate !== undefined) url.searchParams.set('date', query.sessionDate);
+  if (query.expirationDate !== undefined) url.searchParams.set('expiration_date', query.expirationDate);
+  if (query.limit !== undefined) url.searchParams.set('limit', String(query.limit));
+  if (query.optionType !== undefined) url.searchParams.set('option_type', query.optionType);
+  if (query.strikeMin !== undefined) url.searchParams.set('strike_min', String(query.strikeMin));
+  if (query.strikeMax !== undefined) url.searchParams.set('strike_max', String(query.strikeMax));
+}
+
 const asFiniteNumberOrNull = (value: unknown): number | null => {
   if (value === null || value === undefined) return null;
   const num = Number(value);
@@ -297,9 +315,11 @@ function normalizeOneEntry(raw: Record<string, unknown>, retrievedAt: string): N
 export async function fetchOptionomicsOptionChain(
   config: OptionomicsProviderConfig,
   underlyingSymbol: string,
+  query: OptionomicsChainQuery = {},
 ): Promise<OptionomicsFetchOutcome<NormalizedOptionomicsChain>> {
   const now = config.now ?? defaultNow;
   const url = new URL(`/api/v1/stocks/${encodeURIComponent(underlyingSymbol)}/options`, config.apiBase);
+  applyDocumentedChainQuery(url, query);
   try {
     const { body, httpStatus, retrievedAt } = await requestJsonBounded(config, url);
     if (!Array.isArray(body)) {

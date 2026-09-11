@@ -28,6 +28,35 @@ test('priority ladder ranks reconciliation before management before wait-recheck
   assert.ok(comparePriority('ASSIGNMENT_EXPIRY_RECONCILIATION', 'PENDING_ORDER_MANAGEMENT') < 0);
   assert.ok(comparePriority('PENDING_ORDER_MANAGEMENT', 'WAIT_RECHECK') < 0);
   assert.ok(comparePriority('WAIT_RECHECK', 'OPPORTUNITY_SCAN') < 0);
+  assert.ok(comparePriority('OPPORTUNITY_SCAN', 'ACCOUNT_STATE_REFRESH') < 0);
+});
+
+test('scheduler leases expose acquisition and heartbeat evidence', async () => {
+  const repo = new InMemorySchedulerCheckpointRepository();
+  const jobId = deterministicJobId('ORDER_RECONCILIATION', 'heartbeat');
+  const firstExpiry = new Date(Date.now() + 30_000).toISOString();
+  assert.equal(await repo.tryAcquireLease(jobId, 'worker-a', firstExpiry, 'runtime-v1', 'policy-v1'), true);
+  const secondExpiry = new Date(Date.now() + 60_000).toISOString();
+  assert.equal(await repo.heartbeat(jobId, 'worker-a', secondExpiry), true);
+  const record = await repo.findById(jobId);
+  assert.equal(record?.leaseExpiresAt, secondExpiry);
+  assert.equal(record?.runtimeVersion, 'runtime-v1');
+  assert.equal(record?.policyVersion, 'policy-v1');
+  assert.equal(record?.leaseAcquiredAt !== null, true);
+});
+
+test('failed jobs become retryable only when nextEligibleAt is due', async () => {
+  const repo = new InMemorySchedulerCheckpointRepository();
+  const jobId = deterministicJobId('ORDER_RECONCILIATION', 'retry-me');
+  assert.equal(await repo.tryAcquireLease(jobId, 'worker-a', '2099-09-11T14:10:00.000Z'), true);
+  const leased = await repo.findById(jobId);
+  assert.ok(leased);
+  await repo.save({
+    ...leased, status: 'FAILED', resultStatus: 'DEGRADED', completedAt: '2026-09-11T14:00:00.000Z',
+    nextEligibleAt: '2026-09-11T14:05:00.000Z', lastError: 'retry later',
+  });
+  assert.equal((await repo.findRetryableFailures('2026-09-11T14:04:59.000Z')).length, 0);
+  assert.equal((await repo.findRetryableFailures('2026-09-11T14:05:00.000Z')).length, 1);
 });
 
 test('prioritizeDueJobs reorders a mixed batch into the fixed priority order, stable within a tier', () => {

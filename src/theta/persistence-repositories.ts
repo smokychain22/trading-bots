@@ -1,5 +1,5 @@
-// R1H item M: persistence INTERFACES only. Codex owns the production
-// PostgreSQL schema/migration (migrations/001-008, canonical tables in
+// R1H item M: persistence interfaces shared by the research/runtime
+// layers. Codex owns the production PostgreSQL schema/migrations, in
 // trade.*/core.*/market.*). This file defines repository contracts for
 // everything THETA's runtime layer now produces (FusionSnapshot,
 // DecisionReceipt, ManagementDecisionReceipt, StrategyRoute,
@@ -16,20 +16,10 @@
 // - FusionSnapshotRepository  -> trade.fusion_snapshot                    (EXISTS, compatible)
 // - DecisionReceiptRepository -> trade.decision + trade.decision_reason   (EXISTS, compatible for NEW_RISK)
 // - LifecycleEpisodeRepository -> trade.economic_chain                    (EXISTS, compatible)
-// - ManagementDecisionReceiptRepository -> NO compatible table yet.
-//   trade.decision has no chain_id, no route, no holdAdvantage, no
-//   per-alternative valuations. See SCHEMA_CHANGE_REQUEST_FOR_CODEX.md.
-// - StrategyRouteRepository   -> trade.decision.strategy_branch exists,
-//   but there is no table for the ROUTER'S OWN eligibility/reasons per
-//   branch (THETA-Q/THETA-H/THETA-RECOVERY/THETA-CC/THETA-DEFINED-RISK),
-//   only the single branch a decision ultimately used. See the schema
-//   change request.
-// - ShadowOpportunityRepository -> NO table exists for the shadow
-//   opportunity book (accepted/rejected/WAIT/PASS/Q_ZERO/etc, including
-//   the ones a decision was never even attempted for). See the schema
-//   change request.
-// - SchedulerCheckpointRepository -> NO table exists. See the schema
-//   change request.
+// - ManagementDecisionReceiptRepository -> trade.management_decision
+// - StrategyRouteRepository   -> trade.strategy_route
+// - ShadowOpportunityRepository -> trade.shadow_opportunity
+// - SchedulerCheckpointRepository -> ops.scheduler_checkpoint
 
 import type { ShadowOpportunityEntry } from './shadow-opportunity-book.js';
 import type { ManagementOpportunityEntry } from './management-opportunity-book.js';
@@ -178,12 +168,21 @@ export interface LifecycleEpisodeRepository {
 export interface SchedulerCheckpointRecord {
   readonly jobId: string; // deterministic correlation id -- see scheduler.ts
   readonly jobKind: string;
-  readonly leaseOwner: string;
-  readonly leaseExpiresAt: string;
-  readonly lastHeartbeatAt: string;
+  readonly correlationId: string;
+  readonly leaseOwner: string | null;
+  readonly leaseAcquiredAt: string | null;
+  readonly leaseExpiresAt: string | null;
+  readonly lastHeartbeatAt: string | null;
   readonly attempt: number;
   readonly status: 'PENDING' | 'LEASED' | 'COMPLETED' | 'FAILED' | 'ABANDONED';
+  readonly resultStatus: 'SUCCEEDED' | 'DEGRADED' | 'FAILED' | 'SKIPPED' | 'QUARANTINED' | null;
+  readonly startedAt: string | null;
+  readonly completedAt: string | null;
+  readonly nextEligibleAt: string | null;
+  readonly runtimeVersion: string | null;
+  readonly policyVersion: string | null;
   readonly lastError: string | null;
+  readonly resultMetadata: Readonly<Record<string, unknown>>;
 }
 
 export interface SchedulerCheckpointRepository {
@@ -193,7 +192,15 @@ export interface SchedulerCheckpointRepository {
   // throws) if another owner already holds an unexpired lease, so the
   // caller can treat "someone else has this" as an ordinary, expected
   // outcome rather than an error.
-  tryAcquireLease(jobId: string, owner: string, leaseExpiresAt: string): Promise<boolean>;
+  tryAcquireLease(
+    jobId: string,
+    owner: string,
+    leaseExpiresAt: string,
+    runtimeVersion?: string,
+    policyVersion?: string,
+  ): Promise<boolean>;
+  heartbeat(jobId: string, owner: string, leaseExpiresAt: string): Promise<boolean>;
   releaseLease(jobId: string, owner: string): Promise<void>;
   findExpiredLeases(asOfIso: string): Promise<readonly SchedulerCheckpointRecord[]>;
+  findRetryableFailures(asOfIso: string): Promise<readonly SchedulerCheckpointRecord[]>;
 }
