@@ -106,12 +106,25 @@ def simulate_fill(
     about how far into the spread the fill price lands (0.0 = at the
     passive/best-for-the-trader side, i.e. the quote's own bid for a buy
     or ask for a sell -- deliberately never used as a default; 1.0 = at
-    the full spread, the worst price for the trader). This mirrors
-    optopsy's own named "spread"/"liquidity" slippage models (`ADOPT_
-    METHOD`, method only) rather than one directionless formula. This
-    function does not choose a value for `fill_ratio` itself -- a real
-    calibration would come from historical fill data, which does not
-    exist yet.
+    the full spread, the worst price for the trader, i.e. the ask for a
+    buy or the bid for a sell). This mirrors optopsy's own named
+    "spread"/"liquidity" slippage models (`ADOPT_METHOD`, method only)
+    rather than one directionless formula. This function does not choose
+    a value for `fill_ratio` itself -- a real calibration would come from
+    historical fill data, which does not exist yet.
+
+    The fill price is anchored DIRECTLY at the relevant bid/ask -- it
+    never computes or passes through a midpoint. An earlier version of
+    this function computed `mid + half_spread * fill_ratio`, which made
+    `fill_ratio=0.0` land at the MIDPOINT rather than at the passive side
+    the docstring (and every test) actually promised, silently halving
+    the modeled price range and contradicting the "midpoint is never
+    executable truth" convention this replay engine otherwise follows
+    everywhere else (`bots/theta/app` execution-quality v2 measures
+    concession toward the ask/bid directly, never via a midpoint
+    intermediate) -- Codex review flagged this. The corrected formula
+    below spans the full bid-ask range for the full [0, 1] range of
+    `fill_ratio`.
 
     `fill_probability` is always `FillProbability.UNKNOWN` in the
     returned result -- this function determines FILL ELIGIBILITY
@@ -144,14 +157,15 @@ def simulate_fill(
     if not (0.0 <= fill_ratio <= 1.0):
         raise ValueError(f"fill_ratio must be in [0, 1], got {fill_ratio}")
 
-    mid = (quote.bid + quote.ask) / 2.0
-    half_spread = (quote.ask - quote.bid) / 2.0
+    spread = quote.ask - quote.bid
     buying = is_buy_side(request.side)
 
     # Direction-aware pricing -- the one property the directive requires
-    # explicitly: buying moves toward the ask, selling moves toward the
-    # bid, never a shared midpoint assumption for both.
-    fill_price = mid + half_spread * fill_ratio if buying else mid - half_spread * fill_ratio
+    # explicitly: buying starts at the bid (passive) and moves toward the
+    # ask as fill_ratio rises; selling starts at the ask (passive) and
+    # moves toward the bid. Anchored directly at bid/ask -- no midpoint
+    # variable is computed or used here at all.
+    fill_price = quote.bid + spread * fill_ratio if buying else quote.ask - spread * fill_ratio
 
     if request.limit_price is not None:
         if buying and fill_price > request.limit_price:
@@ -179,7 +193,7 @@ def simulate_fill(
     filled_quantity = min(request.quantity, available_size)
     unfilled_quantity = request.quantity - filled_quantity
 
-    slippage_per_unit = half_spread * fill_ratio  # always non-negative: the cost of crossing part of the spread, in the direction that hurts the trader
+    slippage_per_unit = spread * fill_ratio  # always non-negative: the cost of crossing that fraction of the spread away from the passive (best-for-the-trader) side
 
     if filled_quantity <= 0:
         reasons.append("available quoted size at the relevant side is zero -- no fill")

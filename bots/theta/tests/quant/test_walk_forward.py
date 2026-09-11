@@ -10,14 +10,28 @@ sys.path.insert(0, str(_QUANT_DIR))
 
 from research.walk_forward import (  # noqa: E402
     ChainRecord,
+    assert_labels_available_before_next_phase,
     assert_no_chain_id_leakage,
     build_walk_forward_plan,
 )
 
 
-def _chains(n_days: int, start: str = "2024-01-01") -> list:
+def _chains(n_days: int, start: str = "2024-01-01", label_lag_days: int = 0) -> list:
+    """`label_lag_days` lets tests model a chain whose label becomes
+    available some number of days AFTER its own resolution (e.g. a
+    delayed corporate-action confirmation) -- 0 means the label is known
+    the same day the chain resolves, the common case."""
     start_date = date.fromisoformat(start)
-    return [ChainRecord(chain_id=f"chain-{i}", resolved_at=(start_date + timedelta(days=i)).isoformat()) for i in range(n_days)]
+    chains = []
+    for i in range(n_days):
+        resolved = start_date + timedelta(days=i)
+        chains.append(ChainRecord(
+            chain_id=f"chain-{i}",
+            resolved_at=resolved.isoformat(),
+            decision_time=resolved.isoformat(),  # decision same day as resolution in these synthetic fixtures
+            label_availability_time=(resolved + timedelta(days=label_lag_days)).isoformat(),
+        ))
+    return chains
 
 
 class WalkForwardPlanTests(unittest.TestCase):
@@ -83,6 +97,41 @@ class WalkForwardPlanTests(unittest.TestCase):
         first_start = date.fromisoformat(plan.folds[0].train_window[0])
         second_start = date.fromisoformat(plan.folds[1].train_window[0])
         self.assertEqual((second_start - first_start).days, 30)
+
+
+class ChainRecordTimestampValidationTests(unittest.TestCase):
+    def test_decision_time_after_resolved_at_raises(self):
+        with self.assertRaises(ValueError):
+            ChainRecord(chain_id="x", resolved_at="2024-01-01", decision_time="2024-01-05", label_availability_time="2024-01-01")
+
+    def test_label_availability_before_resolved_at_raises(self):
+        with self.assertRaises(ValueError):
+            ChainRecord(chain_id="x", resolved_at="2024-01-05", decision_time="2024-01-01", label_availability_time="2024-01-01")
+
+    def test_decision_time_equal_to_resolved_at_is_valid(self):
+        ChainRecord(chain_id="x", resolved_at="2024-01-05", decision_time="2024-01-05", label_availability_time="2024-01-05")
+
+
+class LabelAvailabilityLeakageTests(unittest.TestCase):
+    def test_a_label_lag_well_within_the_embargo_produces_no_violation(self):
+        # embargo_days=5, and every label is available the same day it
+        # resolves (label_lag_days=0) -- comfortably inside the embargo.
+        chains = _chains(200, label_lag_days=0)
+        plan = build_walk_forward_plan(chains, train_days=60, validation_days=20, forward_test_days=20, embargo_days=5, step_days=30, final_oos_days=30)
+        violations = assert_labels_available_before_next_phase(plan, chains)
+        self.assertEqual(violations, [])
+
+    def test_a_label_lag_that_exceeds_the_chosen_embargo_is_flagged(self):
+        # Every chain's label becomes available 10 days after it
+        # resolves, but the plan's embargo is only 5 days -- a train
+        # chain resolved near train_end has a label that isn't actually
+        # available until AFTER validation has already started. This is
+        # exactly the leak `assert_no_chain_id_leakage` cannot see (it
+        # only checks chain_id set membership, never label timing).
+        chains = _chains(200, label_lag_days=10)
+        plan = build_walk_forward_plan(chains, train_days=60, validation_days=20, forward_test_days=20, embargo_days=5, step_days=30, final_oos_days=30)
+        violations = assert_labels_available_before_next_phase(plan, chains)
+        self.assertGreater(len(violations), 0)
 
 
 class LeakageDetectionTests(unittest.TestCase):

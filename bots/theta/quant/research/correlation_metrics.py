@@ -66,7 +66,17 @@ class CorrelationMatrix:
     def get(self, symbol_a: str, symbol_b: str) -> Optional[float]:
         if symbol_a == symbol_b:
             return 1.0
-        return self.values.get((symbol_a, symbol_b)) or self.values.get((symbol_b, symbol_a))
+        # A genuine zero correlation is a real, valid value -- `or` is
+        # wrong here because 0.0 is falsy in Python, so `values.get((a,b))
+        # or values.get((b,a))` would silently fall through to the second
+        # (symmetric, also-missing) lookup and return None for an actual
+        # zero correlation instead of 0.0. Codex review flagged this.
+        # Explicit `is not None` checks make an actually-known zero
+        # correlation distinguishable from a genuinely unknown pair.
+        direct = self.values.get((symbol_a, symbol_b))
+        if direct is not None:
+            return direct
+        return self.values.get((symbol_b, symbol_a))
 
 
 def build_correlation_matrix(series: Sequence[ReturnSeries]) -> CorrelationMatrix:

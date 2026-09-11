@@ -79,6 +79,20 @@ class DrawdownSummaryTests(unittest.TestCase):
         ]))
         self.assertGreater(deep_long.ulcer_index, shallow_brief.ulcer_index)
 
+    def test_returning_exactly_to_the_prior_peak_counts_as_recovered_not_a_new_high_required(self):
+        # Regression test: recovery means reaching the PRIOR peak again,
+        # not exceeding it. Equity returns to exactly 100 (the original
+        # peak) at the third point, never a strictly new high -- an
+        # earlier version of this function required equities[i] > peak
+        # (strict), which meant landing exactly back on the prior peak
+        # was never marked recovered at all.
+        summary = compute_drawdown_summary(_points([
+            ("2024-01-01", 100.0), ("2024-01-05", 80.0), ("2024-01-15", 100.0),
+        ]))
+        self.assertFalse(summary.unrecovered_trough_present)
+        self.assertIsNotNone(summary.longest_recovery_days)
+        self.assertAlmostEqual(summary.longest_recovery_days, 10.0)
+
     def test_out_of_order_input_is_sorted_by_as_of_never_assumed_pre_sorted(self):
         summary = compute_drawdown_summary(_points([
             ("2024-01-10", 90.0), ("2024-01-01", 100.0), ("2024-01-05", 120.0),

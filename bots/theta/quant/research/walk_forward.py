@@ -33,14 +33,50 @@ def _parse_date(value: str) -> date:
 
 @dataclass(frozen=True)
 class ChainRecord:
-    """One chain's identity and ordering timestamp for fold-assignment
-    purposes. `resolved_at` is the chain's own resolution date (for a
+    """One chain's identity and the three distinct timestamps a
+    walk-forward contract must carry -- an earlier version of this
+    dataclass had only `resolved_at`, which Codex review flagged as
+    lacking both a decision timestamp and a label-availability timestamp.
+    Folding on `resolved_at` alone cannot express two genuinely different
+    leakage questions:
+
+    - `decision_time`: when the entry/management decision was actually
+      made (i.e. when the point-in-time feature snapshot the model would
+      have used was taken). This must never postdate `resolved_at`.
+    - `label_availability_time`: when the outcome label this chain
+      contributes actually became knowable/computable (for most labels
+      this equals `resolved_at`, but a delayed corporate action, a late
+      dividend record, or a recovery-episode censoring decision can push
+      it later). This must never PREDATE `resolved_at` -- a label cannot
+      be known before the episode that produces it has resolved.
+
+    `resolved_at` remains the chain's own resolution date (for a
     RESOLVED chain) -- a CENSORED_OPEN chain has no resolution date and
     must never be passed to this module at all (the caller filters via
-    `chain_resolution.py` before this point)."""
+    `chain_resolution.py` before this point). Fold bucketing below still
+    keys on `resolved_at` (episodes are grouped into folds by when they
+    resolved); `decision_time`/`label_availability_time` exist so
+    `assert_labels_available_before_next_phase` can verify the embargo
+    a caller chose is actually wide enough for the real label lag in the
+    data, rather than assuming any embargo_days value is automatically
+    sufficient."""
 
     chain_id: str
     resolved_at: str  # ISO date
+    decision_time: str  # ISO date/datetime -- must be <= resolved_at
+    label_availability_time: str  # ISO date/datetime -- must be >= resolved_at
+
+    def __post_init__(self) -> None:
+        if _parse_date(self.decision_time) > _parse_date(self.resolved_at):
+            raise ValueError(
+                f"chain {self.chain_id}: decision_time ({self.decision_time}) is after resolved_at "
+                f"({self.resolved_at}) -- a decision cannot be made after the episode it decided already resolved"
+            )
+        if _parse_date(self.label_availability_time) < _parse_date(self.resolved_at):
+            raise ValueError(
+                f"chain {self.chain_id}: label_availability_time ({self.label_availability_time}) is before "
+                f"resolved_at ({self.resolved_at}) -- a label cannot be known before the episode resolves"
+            )
 
 
 @dataclass(frozen=True)
@@ -169,5 +205,52 @@ def assert_no_chain_id_leakage(plan: WalkForwardPlan) -> List[str]:
             overlap_with_oos = role_set & final_oos_set
             if overlap_with_oos:
                 violations.extend(f"fold {fold.fold_index}: {cid} also in final OOS" for cid in overlap_with_oos)
+
+    return violations
+
+
+def assert_labels_available_before_next_phase(plan: WalkForwardPlan, chains: Sequence[ChainRecord]) -> List[str]:
+    """Verifies the caller's chosen `embargo_days` is actually wide enough
+    for the real label-availability lag in the data, using each chain's
+    own `label_availability_time` -- the concrete leakage check the two
+    new `ChainRecord` timestamps exist to support. An embargo gap
+    computed purely from `resolved_at` dates (as `build_walk_forward_plan`
+    does) is only a real guarantee if every TRAIN/VALIDATION chain's
+    label was actually available before the very next phase begins; this
+    function checks that against the real timestamp instead of assuming
+    it.
+
+    Returns a list of violation strings (empty = safe): a TRAIN chain
+    whose label became available on/after its fold's validation_window
+    start, or a VALIDATION chain whose label became available on/after
+    its fold's forward_test_window start, is a genuine leak -- the model
+    selection/scoring step for the next phase could not truly have used
+    only already-resolved information at that point in time."""
+    violations: List[str] = []
+    chains_by_id: Dict[str, ChainRecord] = {c.chain_id: c for c in chains}
+
+    for fold in plan.folds:
+        validation_start = _parse_date(fold.validation_window[0])
+        forward_start = _parse_date(fold.forward_test_window[0])
+
+        for chain_id in fold.train_chain_ids:
+            chain = chains_by_id.get(chain_id)
+            if chain is None:
+                continue
+            if _parse_date(chain.label_availability_time) >= validation_start:
+                violations.append(
+                    f"fold {fold.fold_index}: train chain {chain_id}'s label was not available "
+                    f"({chain.label_availability_time}) until on/after validation began ({fold.validation_window[0]})"
+                )
+
+        for chain_id in fold.validation_chain_ids:
+            chain = chains_by_id.get(chain_id)
+            if chain is None:
+                continue
+            if _parse_date(chain.label_availability_time) >= forward_start:
+                violations.append(
+                    f"fold {fold.fold_index}: validation chain {chain_id}'s label was not available "
+                    f"({chain.label_availability_time}) until on/after the forward test began ({fold.forward_test_window[0]})"
+                )
 
     return violations

@@ -90,9 +90,16 @@ def compute_drawdown_summary(equity_curve: Sequence[EquityPoint]) -> DrawdownSum
     unrecovered_trough_present = False
 
     for i in range(1, len(equities)):
-        if equities[i] > peak:
-            # A new high: if there was an active trough below the OLD
-            # peak, it has now recovered.
+        if equities[i] >= peak:
+            # Recovered: equity has returned to (or beyond) the peak this
+            # trough fell from -- recovery is reaching the PRIOR peak
+            # again, not requiring a strictly NEW all-time high beyond it.
+            # An earlier version used a strict `>` here, which meant a
+            # trough that returned to exactly its own peak level (without
+            # exceeding it) was never marked recovered -- Codex review
+            # flagged this as a real bug, not a rounding nuance: it
+            # silently misclassified a fully-recovered episode as still
+            # unrecovered whenever equity landed exactly on the prior high.
             if trough_ordinal is not None:
                 recovery_durations.append(ordinals[i] - trough_ordinal)
                 trough_ordinal = None

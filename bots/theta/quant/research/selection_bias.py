@@ -53,8 +53,12 @@ def _expected_max_sharpe(n_trials: int, variance_of_trial_sharpes: float) -> flo
     """Expected maximum Sharpe ratio across `n_trials` INDEPENDENT trials
     under the null (true Sharpe = 0), per Bailey & Lopez de Prado's own
     approximation using the expected maximum of `n_trials` draws from a
-    standard normal, scaled by the cross-trial Sharpe standard deviation.
-    Uses the classical extreme-value approximation:
+    standard normal, scaled by the cross-trial Sharpe STANDARD DEVIATION
+    (sigma, not variance -- a real bug caught by Codex review: the formula
+    below is written in units of Sharpe, so it must be scaled by sigma =
+    sqrt(variance), never by variance itself, or the hurdle silently uses
+    the wrong units whenever variance != 1). Uses the classical extreme-
+    value approximation:
 
         E[max] ~= sigma * ((1 - gamma) * Z^-1(1 - 1/N) + gamma * Z^-1(1 - 1/(N*e)))
 
@@ -64,10 +68,13 @@ def _expected_max_sharpe(n_trials: int, variance_of_trial_sharpes: float) -> flo
     """
     if n_trials <= 1:
         return 0.0
+    if variance_of_trial_sharpes < 0:
+        raise ValueError(f"variance_of_trial_sharpes must be >= 0, got {variance_of_trial_sharpes}")
+    sigma_of_trial_sharpes = math.sqrt(variance_of_trial_sharpes)
     euler_mascheroni = 0.5772156649015329
     z_inv_1 = _normal_inverse_cdf(1.0 - 1.0 / n_trials)
     z_inv_2 = _normal_inverse_cdf(1.0 - 1.0 / (n_trials * math.e))
-    return variance_of_trial_sharpes * ((1 - euler_mascheroni) * z_inv_1 + euler_mascheroni * z_inv_2)
+    return sigma_of_trial_sharpes * ((1 - euler_mascheroni) * z_inv_1 + euler_mascheroni * z_inv_2)
 
 
 def _normal_inverse_cdf(p: float) -> float:
@@ -219,10 +226,17 @@ def probability_of_backtest_overfitting(
 
         best_is_candidate = max(range(n_candidates), key=lambda c: is_scores[c])
 
-        # OOS rank of the IS-best candidate, as a relative rank in (0, 1)
-        # where 1.0 = best OOS performer, closer to 0 = worst.
-        oos_rank_position = sorted(range(n_candidates), key=lambda c: oos_scores[c]).index(best_is_candidate)
-        relative_rank = (oos_rank_position + 1) / n_candidates  # in (0, 1]
+        # OOS rank of the IS-best candidate, as a relative rank in (0, 1]
+        # where 1.0 = best OOS performer, closer to 0 = worst. Ties in
+        # oos_scores are given the AVERAGE rank of the tied group (standard
+        # fractional/mid-rank convention) rather than an arbitrary sort-
+        # stable position -- an unbroken tie must not silently bias the
+        # IS-best candidate's apparent OOS standing in either direction.
+        best_score = oos_scores[best_is_candidate]
+        n_strictly_worse = sum(1 for c in range(n_candidates) if oos_scores[c] < best_score)
+        n_tied = sum(1 for c in range(n_candidates) if oos_scores[c] == best_score)
+        average_rank_position = n_strictly_worse + (n_tied - 1) / 2.0  # 0-indexed average position among ties
+        relative_rank = (average_rank_position + 1) / n_candidates  # in (0, 1]
 
         logit = math.log(relative_rank / (1.0 - relative_rank)) if 0 < relative_rank < 1 else (float("inf") if relative_rank >= 1 else float("-inf"))
         if math.isfinite(logit):

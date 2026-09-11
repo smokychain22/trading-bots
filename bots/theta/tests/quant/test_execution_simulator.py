@@ -40,18 +40,39 @@ class DirectionAwarenessTests(unittest.TestCase):
         self.assertFalse(is_buy_side(OrderSide.SELL_STOCK))
 
     def test_a_buy_fills_above_mid_toward_the_ask(self):
-        result = simulate_fill(_request(OrderSide.BUY_TO_OPEN), _quote(), fill_ratio=0.5)
+        result = simulate_fill(_request(OrderSide.BUY_TO_OPEN), _quote(), fill_ratio=0.75)
         mid = 1.05
         self.assertGreater(result.fill_price, mid)
 
     def test_a_sell_fills_below_mid_toward_the_bid(self):
-        result = simulate_fill(_request(OrderSide.SELL_TO_OPEN), _quote(), fill_ratio=0.5)
+        result = simulate_fill(_request(OrderSide.SELL_TO_OPEN), _quote(), fill_ratio=0.75)
         mid = 1.05
         self.assertLess(result.fill_price, mid)
 
-    def test_buying_and_selling_the_same_quote_never_produce_the_same_fill_price(self):
+    def test_a_zero_fill_ratio_lands_exactly_at_the_passive_side_never_at_the_midpoint(self):
+        # Regression test for the midpoint-anchoring bug: fill_ratio=0.0
+        # must land at the bid for a buy / the ask for a sell (the
+        # passive, best-for-the-trader side), never at the midpoint.
+        buy_result = simulate_fill(_request(OrderSide.BUY_TO_OPEN), _quote(), fill_ratio=0.0)
+        self.assertAlmostEqual(buy_result.fill_price, 1.00)  # the bid
+        sell_result = simulate_fill(_request(OrderSide.SELL_TO_OPEN), _quote(), fill_ratio=0.0)
+        self.assertAlmostEqual(sell_result.fill_price, 1.10)  # the ask
+
+    def test_a_half_fill_ratio_spans_the_full_spread_to_exactly_the_midpoint(self):
+        # fill_ratio must span the FULL bid-ask range, not half of it --
+        # 0.5 lands exactly at the midpoint for both directions.
         buy_result = simulate_fill(_request(OrderSide.BUY_TO_OPEN), _quote(), fill_ratio=0.5)
+        self.assertAlmostEqual(buy_result.fill_price, 1.05)
         sell_result = simulate_fill(_request(OrderSide.SELL_TO_OPEN), _quote(), fill_ratio=0.5)
+        self.assertAlmostEqual(sell_result.fill_price, 1.05)
+
+    def test_buying_and_selling_the_same_quote_never_produce_the_same_fill_price(self):
+        # fill_ratio=0.5 lands both directions exactly at the midpoint by
+        # construction (a real, correct coincidence, not a bug) -- use a
+        # ratio off the midpoint to prove buy and sell diverge in
+        # opposite directions from the same quote.
+        buy_result = simulate_fill(_request(OrderSide.BUY_TO_OPEN), _quote(), fill_ratio=0.75)
+        sell_result = simulate_fill(_request(OrderSide.SELL_TO_OPEN), _quote(), fill_ratio=0.75)
         self.assertNotEqual(buy_result.fill_price, sell_result.fill_price)
 
     def test_a_full_spread_fill_ratio_lands_exactly_at_the_relevant_quote_side(self):
@@ -134,8 +155,8 @@ class FillProbabilityHonestyTests(unittest.TestCase):
 
 class StockOrderTests(unittest.TestCase):
     def test_buy_stock_and_sell_stock_use_the_same_direction_semantics_as_options(self):
-        buy_result = simulate_fill(_request(OrderSide.BUY_STOCK), _quote(), fill_ratio=0.5)
-        sell_result = simulate_fill(_request(OrderSide.SELL_STOCK), _quote(), fill_ratio=0.5)
+        buy_result = simulate_fill(_request(OrderSide.BUY_STOCK), _quote(), fill_ratio=0.75)
+        sell_result = simulate_fill(_request(OrderSide.SELL_STOCK), _quote(), fill_ratio=0.75)
         self.assertGreater(buy_result.fill_price, sell_result.fill_price)
 
 

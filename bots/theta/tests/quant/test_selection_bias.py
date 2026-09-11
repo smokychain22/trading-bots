@@ -134,6 +134,56 @@ class PboTests(unittest.TestCase):
         result = probability_of_backtest_overfitting(matrix)
         self.assertIsNone(result.probability_of_overfitting)
 
+    def test_tied_oos_scores_use_symmetric_average_rank_not_an_order_dependent_position(self):
+        # A: wins IS split 1, ties with B for worst OOS in that split.
+        # C: wins IS split 2, ties with B for worst OOS in that split.
+        # The two splits are symmetric by construction (each IS-winner
+        # ties for worst-OOS with the same middle candidate B) -- a
+        # correct, order-independent rank must treat both splits
+        # identically. An earlier version of this function broke the tie
+        # by raw sort-stability position, which favored whichever
+        # candidate happened to sit at a lower original index and
+        # produced a different (and wrong) PBO of 0.5 instead of 1.0 for
+        # this exact matrix.
+        matrix = [
+            [10.0, 2.0],
+            [1.0, 2.0],
+            [1.0, 8.0],
+        ]
+        result = probability_of_backtest_overfitting(matrix)
+        self.assertAlmostEqual(result.probability_of_overfitting, 1.0)
+        self.assertEqual(len(result.logit_values), 2)
+        for logit in result.logit_values:
+            self.assertAlmostEqual(logit, 0.0)  # relative_rank=0.5 exactly for both symmetric splits
+
+
+class DsrNumericalFixtureTests(unittest.TestCase):
+    """Independently-computed expected values -- these tests reimplement
+    the DSR formula inline (via math.erf directly, never calling the
+    module's own _normal_inverse_cdf/_normal_cdf helpers) so a bug shared
+    between the implementation and a monotonic-only test cannot hide."""
+
+    def test_dsr_matches_an_independently_computed_value_with_no_multiple_testing(self):
+        import math
+
+        sr, n, skew, kurt = 0.8, 60, -0.3, 4.5
+        variance_term = (1.0 - skew * sr + ((kurt - 1.0) / 4.0) * sr * sr) / (n - 1)
+        se = math.sqrt(variance_term)
+        expected_dsr = 0.5 * (1.0 + math.erf((sr / se) / math.sqrt(2.0)))
+
+        result = deflated_sharpe_ratio(_dsr_inputs(observed_sharpe=sr, n_observations=n, skewness=skew, kurtosis=kurt, n_trials=1))
+        self.assertAlmostEqual(result.deflated_sharpe_ratio, expected_dsr, places=9)
+
+    def test_expected_max_sharpe_scales_with_standard_deviation_not_variance(self):
+        # Regression test for the variance-vs-standard-deviation bug: the
+        # expected-max-Sharpe hurdle must scale by sqrt(variance), so
+        # quadrupling variance_of_trial_sharpes (1.0 -> 4.0) must exactly
+        # DOUBLE the hurdle, not quadruple it.
+        base = deflated_sharpe_ratio(_dsr_inputs(n_trials=100, variance_of_trial_sharpes=1.0))
+        quadrupled_variance = deflated_sharpe_ratio(_dsr_inputs(n_trials=100, variance_of_trial_sharpes=4.0))
+        ratio = quadrupled_variance.expected_max_sharpe_under_multiple_testing / base.expected_max_sharpe_under_multiple_testing
+        self.assertAlmostEqual(ratio, 2.0, places=9)
+
 
 if __name__ == "__main__":
     unittest.main()

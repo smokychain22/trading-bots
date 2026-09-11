@@ -179,14 +179,55 @@ def classify_ablation_result(
     return AblationResult.DEGRADES, reasons
 
 
+def paired_mean_difference(
+    baseline_observations: Sequence[float],
+    treatment_observations: Sequence[float],
+) -> Tuple[Optional[float], Optional[float]]:
+    """Paired-difference mean/standard-error, the statistic ablation.py
+    must use: a baseline-vs-baseline+feature ablation is ALWAYS a paired
+    comparison (the exact same chains/episodes, re-scored with and
+    without the added feature), never two independent samples -- Codex
+    review flagged an earlier version of this module for using Welch's
+    unpaired test here, which both discards the correlation between the
+    paired arms (understating the true precision of the comparison, since
+    it ignores that per-episode noise common to both arms cancels in the
+    difference) and requires the two sequences to be independently drawn,
+    which a same-episode ablation never is.
+
+    `baseline_observations[i]` and `treatment_observations[i]` MUST be
+    the same episode's baseline and treatment outcome, index-aligned by
+    the caller -- this function does not (and cannot) verify pairing
+    beyond requiring equal length. Returns (None, None) if the sequences
+    have mismatched lengths or fewer than 2 paired observations (no
+    variance estimate possible for the paired differences)."""
+    if len(baseline_observations) != len(treatment_observations):
+        return None, None
+    n = len(baseline_observations)
+    if n < 2:
+        return None, None
+
+    differences = [t - b for b, t in zip(baseline_observations, treatment_observations)]
+    mean_diff = sum(differences) / n
+    variance_diff = sum((d - mean_diff) ** 2 for d in differences) / (n - 1)
+    standard_error = math.sqrt(variance_diff / n)
+    return mean_diff, standard_error
+
+
 def welch_mean_difference(
     baseline_observations: Sequence[float],
     treatment_observations: Sequence[float],
 ) -> Tuple[Optional[float], Optional[float]]:
     """Welch's unequal-variance mean-difference test statistic
     components: (delta, standard_error), where delta = mean(treatment) -
-    mean(baseline). Returns (None, None) if either sample has fewer than
-    2 observations (no variance estimate possible)."""
+    mean(baseline), for genuinely INDEPENDENT samples (e.g. two disjoint
+    candidate universes evaluated separately, never the same episodes
+    scored twice). Do NOT use this for a feature-family ablation --
+    baseline and baseline+feature are always the same episodes, and
+    `paired_mean_difference` above is the statistically correct choice
+    there; this function is kept only for the genuinely-independent-
+    samples case, where it remains appropriate. Returns (None, None) if
+    either sample has fewer than 2 observations (no variance estimate
+    possible)."""
     if len(baseline_observations) < 2 or len(treatment_observations) < 2:
         return None, None
 

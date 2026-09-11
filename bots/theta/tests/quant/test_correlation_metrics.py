@@ -55,6 +55,23 @@ class CorrelationMatrixTests(unittest.TestCase):
         matrix = build_correlation_matrix(series)
         self.assertIsNone(matrix.get("SPY", "FLAT"))
 
+    def test_a_genuine_zero_correlation_is_returned_as_zero_never_silently_turned_into_none(self):
+        # Regression test: an earlier version used `values.get((a,b)) or
+        # values.get((b,a))`, and 0.0 is falsy in Python, so a real zero
+        # correlation fell through to the second (also-missing) lookup
+        # and was returned as None -- indistinguishable from a genuinely
+        # unknown pair. Codex review flagged this.
+        series = [
+            ReturnSeries("A", (1.0, 2.0, 3.0, 4.0)),
+            ReturnSeries("B", (1.0, -1.0, -1.0, 1.0)),  # exactly orthogonal to A's own zero-mean deviation pattern
+        ]
+        matrix = build_correlation_matrix(series)
+        corr = pairwise_correlation(series[0].returns, series[1].returns)
+        self.assertAlmostEqual(corr, 0.0)
+        self.assertIsNotNone(matrix.get("A", "B"))
+        self.assertAlmostEqual(matrix.get("A", "B"), 0.0)
+        self.assertAlmostEqual(matrix.get("B", "A"), 0.0)  # symmetric lookup must also see the real zero
+
 
 class DynamicClusterTests(unittest.TestCase):
     def test_highly_correlated_symbols_cluster_together(self):
