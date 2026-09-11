@@ -687,6 +687,18 @@ IV, events, portfolio risk, or empirical economics remain explicit. Assignment, 
 option close, CSP and CC rolls, covered-call open, call-away, and stock disposal now have
 one transactionally consistent and idempotent PostgreSQL application path.
 
+TESTS RUN: 577 Node tests, 352 Python tests, TypeScript, ESLint, production build,
+security scan, browser tests, migrations and schema invariants, and four disposable
+PostgreSQL integration tests. CI run 34650080986 executed the complete Linux/PostgreSQL/
+Redis path. Migration 017 was then applied idempotently to Production Neon and the
+production database verifier was rerun.
+
+TEST RESULTS: 573 Node tests passed locally with four database-only skips. All 352
+Python tests passed. CI passed every check, including all four PostgreSQL tests and the
+broker-confirmed lifecycle replay test. The security scan found zero findings. Production
+Neon reports 17 migrations, 23 required tables, one master Paper role, one encrypted
+credential, locked Paper execution, and zero broker orders.
+
 KNOWN LIMITATIONS: The empirical continuation-EV, assignment, recovery, tail, and fill
 models are not promoted. No action can claim calibrated expected profit or win
 probability. The atomic lifecycle writer is not yet called automatically by the broker
