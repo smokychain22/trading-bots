@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import {
   AlpacaProviderError,
-  fetchMarketClock, fetchMasterAccountSnapshot, fetchOpenOrders, fetchOptionContracts, fetchOptionSnapshots,
-  fetchPositions, fetchStockBars, type AlpacaMarketClock, type AlpacaOpenOrderSnapshot, type AlpacaPositionSnapshot,
+  fetchMarketCalendar, fetchMarketClock, fetchMasterAccountSnapshot, fetchOpenOrders, fetchOptionContracts, fetchOptionSnapshots,
+  fetchPositions, fetchStockBars, type AlpacaCalendarSession, type AlpacaMarketClock, type AlpacaOpenOrderSnapshot, type AlpacaPositionSnapshot,
   type AlpacaProviderConfig, type MasterAccountSnapshot,
 } from './alpaca-provider.js';
 import { mergeOptionChain, type OptionomicsChainEntry } from './option-chain-ingestion.js';
@@ -37,17 +37,17 @@ import { deriveAccountExposure, mergeDerivedExposureIntoAegisInputs, type Derive
 //     by exact identity only, and merged for OI/volume/Greeks-fallback.
 //     When config.optionomics is null (no credentials configured), it is
 //     honestly NOT_ATTEMPTED -- never a fixture standing in for a real call.
-//   - Positions and open orders are NOT yet fetched inside this cycle
-//     (fetchPositions/fetchOpenOrders exist in alpaca-provider.ts but are
-//     not called here) -- account exposure/AEGIS inputs remain caller-
-//     supplied until that wiring lands.
+//   - Positions and open orders are fetched inside every cycle. The
+//     account ratios derivable from them feed AEGIS, while sector,
+//     correlation, recovery, and stress families remain incomplete.
 //   - Event state is always UNKNOWN (no event-state assembly exists yet).
 //   - Underlying selection ranks eligible underlyings transparently (see
 //     universe-policy.ts's rankEligibleUnderlyings) rather than picking
 //     input order, but v1's ranking feature (avgDollarVolume) is itself an
 //     honest placeholder, not real economic ranking -- see that function's
 //     own docstring.
-//   - Market calendar/session awareness is not consulted.
+//   - Event state is still UNKNOWN. Market calendar/session truth is now
+//     required alongside the clock before an open-session new-risk scan.
 // A cycle run through this function can therefore never legitimately be
 // classified FULL_REAL (see classifyShadowCycleProvenance) -- at best
 // HYBRID, and only once real credentials make the Alpaca calls succeed.
@@ -167,6 +167,9 @@ function assembleFusionSnapshotInput(params: {
   readonly clock: AlpacaMarketClock | null;
   readonly clockOrigin: ProvenanceOrigin;
   readonly clockQuality: DataQualityState;
+  readonly calendar: readonly AlpacaCalendarSession[];
+  readonly calendarOrigin: ProvenanceOrigin;
+  readonly calendarQuality: DataQualityState;
   readonly derivedExposure: DerivedAccountExposure;
   readonly mergedContracts: FusionSnapshotInput['contractCandidates'];
   readonly ownershipFeatures: JsonValue;
@@ -205,7 +208,7 @@ function assembleFusionSnapshotInput(params: {
     decisionTimeUtc: params.now,
     triggerType: 'SHADOW_CYCLE',
     marketSession: params.clock !== null
-      ? ({ isOpen: params.clock.isOpen, nextOpen: params.clock.nextOpen, nextClose: params.clock.nextClose, asOf: params.clock.timestamp } as unknown as JsonValue)
+      ? ({ isOpen: params.clock.isOpen, nextOpen: params.clock.nextOpen, nextClose: params.clock.nextClose, asOf: params.clock.timestamp, calendar: params.calendar } as unknown as JsonValue)
       : null, // honestly absent when the clock fetch never returned a usable value -- never fabricated as "regular session"
     underlyingState: { symbol: params.underlying },
     contractCandidates: params.mergedContracts,
@@ -260,11 +263,16 @@ function assembleFusionSnapshotInput(params: {
         state: params.clockQuality, contentHash: hashJson((params.clock as unknown as JsonValue) ?? { fetched: false }), feed: null,
         contractVersion: 'alpaca-clock-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
       },
+      {
+        provider: 'ALPACA', operationAlias: 'alpaca.get_calendar', asOf: params.calendarOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        state: params.calendarQuality, contentHash: hashJson(params.calendar as unknown as JsonValue), feed: null,
+        contractVersion: 'alpaca-calendar-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
+      },
     ],
     providerHealth: [
       {
         provider: 'ALPACA',
-        state: aggregateProviderQuality([params.accountQuality, params.contractsQuality, params.quotesQuality, params.positionsQuality, params.openOrdersQuality, params.clockQuality]),
+        state: aggregateProviderQuality([params.accountQuality, params.contractsQuality, params.quotesQuality, params.positionsQuality, params.openOrdersQuality, params.clockQuality, params.calendarQuality]),
         asOf: params.now, retrievedAt: params.now,
       },
       { provider: 'OPTIONOMICS', state: optionomicsAttempted ? params.optionomicsQuality : 'UNKNOWN', asOf: optionomicsAttempted ? params.now : null, retrievedAt: params.now },
@@ -345,6 +353,10 @@ export function classifyShadowCycleProvenance(dimensions: Readonly<Record<string
 export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promise<ThetaShadowCycleResult> {
   const runId = randomUUID();
   const startedAt = config.now();
+  // One immutable decision timestamp anchors every input and hash in this
+  // cycle. Provider retrieval timestamps may differ inside their adapters,
+  // but repeated config.now() calls can never create a mixed-time snapshot.
+  const decisionTime = startedAt;
   const blockers: string[] = [];
 
   const { decisions, funnel } = evaluateUniverse(config.universePolicy, config.universeCandidates);
@@ -374,7 +386,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let account: MasterAccountSnapshot | null = null;
   let accountEvidence = notAttemptedEvidence();
   try {
-    account = await fetchMasterAccountSnapshot(config.alpaca, config.now());
+    account = await fetchMasterAccountSnapshot(config.alpaca, decisionTime);
     const accountRequiredValuesPresent = account.accountStatus !== null
       && account.equity !== null
       && account.cash !== null
@@ -400,7 +412,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let positions: readonly AlpacaPositionSnapshot[] = [];
   let positionsEvidence = notAttemptedEvidence();
   try {
-    positions = await fetchPositions(config.alpaca, config.now());
+    positions = await fetchPositions(config.alpaca, decisionTime);
     positionsEvidence = { origin: 'REAL_PROVIDER', quality: 'GOOD' };
   } catch (error) {
     positionsEvidence = failedProviderEvidence(error);
@@ -410,7 +422,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let openOrders: readonly AlpacaOpenOrderSnapshot[] = [];
   let openOrdersEvidence = notAttemptedEvidence();
   try {
-    openOrders = await fetchOpenOrders(config.alpaca, config.now());
+    openOrders = await fetchOpenOrders(config.alpaca, decisionTime);
     openOrdersEvidence = { origin: 'REAL_PROVIDER', quality: 'GOOD' };
   } catch (error) {
     openOrdersEvidence = failedProviderEvidence(error);
@@ -424,7 +436,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let clock: AlpacaMarketClock | null = null;
   let clockEvidence = notAttemptedEvidence();
   try {
-    clock = await fetchMarketClock(config.alpaca, config.now());
+    clock = await fetchMarketClock(config.alpaca, decisionTime);
     clockEvidence = clock.isOpen !== null
       ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
       : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
@@ -433,8 +445,25 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     blockers.push(`MARKET_CLOCK_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
   }
 
+  const marketDate = /^\d{4}-\d{2}-\d{2}/.test(clock?.timestamp ?? '')
+    ? (clock?.timestamp ?? decisionTime).slice(0, 10)
+    : decisionTime.slice(0, 10);
+  const calendarEndDate = new Date(`${marketDate}T00:00:00.000Z`);
+  calendarEndDate.setUTCDate(calendarEndDate.getUTCDate() + 7);
+  let calendar: readonly AlpacaCalendarSession[] = [];
+  let calendarEvidence = notAttemptedEvidence();
+  try {
+    calendar = await fetchMarketCalendar(config.alpaca, marketDate, calendarEndDate.toISOString().slice(0, 10));
+    calendarEvidence = calendar.length > 0
+      ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
+      : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
+  } catch (error) {
+    calendarEvidence = failedProviderEvidence(error);
+    blockers.push(`MARKET_CALENDAR_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
+  }
+
   let historyOrigin: ProvenanceOrigin = 'NOT_ATTEMPTED';
-  const receivedAt = config.now();
+  const receivedAt = decisionTime;
   let ret1d: number | null = null;
   let rv20: number | null = null;
   let drawdown: number | null = null;
@@ -556,7 +585,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     }
 
     const mergedContracts = mergeOptionChain({
-      underlying, asOfDate: config.now().slice(0, 10), contracts: contractsResult.items,
+      underlying, asOfDate: decisionTime.slice(0, 10), contracts: contractsResult.items,
       snapshotsBySymbol: snapshotsResult.snapshots, optionomicsBySymbol, requestedFeed: 'INDICATIVE',
       multiplier: 100, receivedAt, maxQuoteAgeSecondsForExecutable: 30, maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
     });
@@ -590,6 +619,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     positions: positionsEvidence.origin,
     openOrders: openOrdersEvidence.origin,
     marketClock: clockEvidence.origin,
+    marketCalendar: calendarEvidence.origin,
     underlyingHistory: historyOrigin,
     optionContracts: contractsEvidence.origin,
     optionSnapshots: quotesEvidence.origin,
@@ -602,7 +632,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   // so every returned run (successful or not) carries a genuine,
   // deterministic snapshot identity. NEVER a placeholder hash.
   const snapshotInput = assembleFusionSnapshotInput({
-    now: config.now(), underlying, account,
+    now: decisionTime, underlying, account,
     accountOrigin: accountEvidence.origin, accountQuality: accountEvidence.quality,
     contractsOrigin: contractsEvidence.origin, contractsQuality: contractsEvidence.quality,
     quotesOrigin: quotesEvidence.origin, quotesQuality: quotesEvidence.quality,
@@ -610,6 +640,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     positions, positionsOrigin: positionsEvidence.origin, positionsQuality: positionsEvidence.quality,
     openOrders, openOrdersOrigin: openOrdersEvidence.origin, openOrdersQuality: openOrdersEvidence.quality,
     clock, clockOrigin: clockEvidence.origin, clockQuality: clockEvidence.quality,
+    calendar, calendarOrigin: calendarEvidence.origin, calendarQuality: calendarEvidence.quality,
     derivedExposure,
     mergedContracts: [...mergedContractsForSnapshot],
     ownershipFeatures: { ret1d, rv20, drawdown, maSlope, gapFrequency, maxAdverseGap } as unknown as JsonValue,
@@ -636,7 +667,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   // already handles genuine data-quality uncertainty correctly.
   if (clockEvidence.quality === 'GOOD' && clock?.isOpen === false) {
     const receipt = assembleRuntimePreconditionHold({
-      snapshotId: fusionSnapshot.contentHash, fusionSnapshotHash: fusionSnapshot.contentHash, timestamp: config.now(), underlying,
+      snapshotId: fusionSnapshot.contentHash, fusionSnapshotHash: fusionSnapshot.contentHash, timestamp: decisionTime, underlying,
       reasonCode: 'MARKET_CLOSED', detail: `Market is confirmed closed (nextOpen=${clock.nextOpen ?? 'UNKNOWN'}); new-risk evaluation deferred to the next session.`,
       policyVersion: config.policyVersion, modelVersions: config.modelVersions,
     });
@@ -650,6 +681,24 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     };
   }
 
+
+  const currentCalendarSession = calendar.find((session) => session.date === marketDate);
+  if (clockEvidence.quality === 'GOOD' && clock?.isOpen === true &&
+      (calendarEvidence.quality !== 'GOOD' || currentCalendarSession?.open == null || currentCalendarSession.close == null)) {
+    const receipt = assembleRuntimePreconditionHold({
+      snapshotId: fusionSnapshot.contentHash, fusionSnapshotHash: fusionSnapshot.contentHash, timestamp: decisionTime, underlying,
+      reasonCode: 'MARKET_SESSION_UNCONFIRMED', detail: 'The broker clock reports open, but the exchange calendar session could not be confirmed. New risk is held.',
+      policyVersion: config.policyVersion, modelVersions: config.modelVersions,
+    });
+    return {
+      runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
+      optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash,
+      snapshotValidForNewRisk: fusionSnapshot.validForNewRisk,
+      orchestration: { receipt, ownership: null, regime: null, routing: null, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [] },
+      provenance, provenanceDetail: detail, blockers,
+    };
+  }
+
   // Merge the real, derived exposure ratios into aegisInputs -- see
   // mergeDerivedExposureIntoAegisInputs's own docstring for the honesty
   // rules (partial merge only; sector/correlation/stress remain exactly
@@ -657,7 +706,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const effectiveAegisInputs = mergeDerivedExposureIntoAegisInputs(config.aegisInputs, derivedExposure, exposureDerivationTrustworthy);
 
   const orchestration = await runNewRiskOrchestration(config.bridge, {
-    snapshotId: fusionSnapshot.contentHash, fusionSnapshotHash: fusionSnapshot.contentHash, timestamp: config.now(), underlying,
+    snapshotId: fusionSnapshot.contentHash, fusionSnapshotHash: fusionSnapshot.contentHash, timestamp: decisionTime, underlying,
     earningsDistanceDays: null, // EventState is not real yet -- UNKNOWN, never fabricated as "no earnings nearby"
     optionQuoteFreshnessPolicy: config.optionQuoteFreshnessPolicy,
     providerCapabilities: {

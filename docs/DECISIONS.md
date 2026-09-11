@@ -192,3 +192,12 @@ replace a previously verified encrypted credential. Only a confirmed authenticat
 rejection marks that connection as needing attention. Replacement credentials are
 still verified before the encrypted record is changed. All Paper order submission
 gates remain locked.
+
+## 2026-09-11: clock plus calendar required for an open-session shadow scan
+
+One captured decision timestamp anchors a complete shadow cycle and its FusionSnapshot.
+The Alpaca clock and calendar are separate evidence sources. When the clock reports an
+open market, the cycle must also find the dated exchange session with known open and
+close times. Missing, malformed, or unavailable calendar truth returns
+`SYSTEM_HOLD/MARKET_SESSION_UNCONFIRMED`. A confirmed closed clock still returns
+`SYSTEM_HOLD/MARKET_CLOSED`. Neither state can authorize execution.

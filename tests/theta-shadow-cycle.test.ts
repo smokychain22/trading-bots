@@ -59,6 +59,9 @@ const mockAlpacaFetch = (options: { hasContracts: boolean; hasBars: boolean }) =
   if (url.includes('/v2/clock')) {
     return jsonResponse(200, { timestamp: NOW, is_open: true, next_open: NOW, next_close: NOW }); // market open by default
   }
+  if (url.includes('/v2/calendar')) {
+    return jsonResponse(200, [{ date: NOW.slice(0, 10), open: '09:30', close: '16:00' }]);
+  }
   if (url.includes('/v2/stocks/bars')) {
     if (!options.hasBars) return jsonResponse(200, { bars: {}, next_page_token: null });
     const bars = Array.from({ length: 65 }, (_, i) => ({ t: new Date(Date.now() - (65 - i) * 86_400_000).toISOString(), o: 500 + i * 0.1, h: 501 + i * 0.1, l: 499 + i * 0.1, c: 500.1 + i * 0.1, v: 1_000_000 }));
@@ -317,7 +320,21 @@ itMockedProviderRealCodePath('a confirmed-closed market becomes a real precondit
 itMockedProviderRealCodePath('an open market (confirmed real) proceeds through the normal new-risk pipeline, never held merely because the clock was checked', async () => {
   const result = await runThetaShadowCycle(baseConfig());
   assert.notEqual(result.orchestration?.receipt.reasonCodes.includes('MARKET_CLOSED'), true);
+  assert.notEqual(result.orchestration?.receipt.reasonCodes.includes('MARKET_SESSION_UNCONFIRMED'), true);
   assert.ok(result.provenanceDetail.some((d) => d === 'marketClock=REAL_PROVIDER'));
+  assert.ok(result.provenanceDetail.some((d) => d === 'marketCalendar=REAL_PROVIDER'));
+});
+
+itMockedProviderRealCodePath('an open clock cannot authorize new-risk evaluation without a confirmed exchange calendar session', async () => {
+  const missingCalendarFetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/calendar')) return jsonResponse(200, []);
+    return mockAlpacaFetch({ hasContracts: true, hasBars: true })(input, {});
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({ alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: missingCalendarFetch } }));
+  assert.equal(result.orchestration?.receipt.winningAction, 'SYSTEM_HOLD');
+  assert.ok(result.orchestration?.receipt.reasonCodes.includes('MARKET_SESSION_UNCONFIRMED'));
+  assert.ok(result.provenanceDetail.some((d) => d === 'marketCalendar=REAL_PROVIDER_UNKNOWN'));
 });
 
 itMockedProviderRealCodePath('a market-clock fetch failure is recorded honestly and never blocks the rest of the cycle', async () => {

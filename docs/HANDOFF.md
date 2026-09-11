@@ -391,3 +391,36 @@ health transition only. No quant module or strategy rule changed.
 
 NEXT RECOMMENDED TASK: Deploy this slice to the canonical alias, run real Neon and
 customer-session smoke checks, then continue durable shadow evidence and scheduler work.
+
+## 2026-09-11 Shadow calendar and temporal consistency
+
+OWNER: Codex
+
+TASK: Close the market-calendar/session and mixed-timestamp gaps in the non-executing
+THETA shadow cycle.
+
+FILES CHANGED: `src/theta/theta-shadow-cycle.ts`, its focused test suite, and project
+decision/handoff records.
+
+WHAT WAS IMPLEMENTED: Every cycle captures one decision timestamp, retrieves the Alpaca
+calendar independently from the clock, records calendar data and provenance in the
+FusionSnapshot, and holds new risk when an open clock cannot be reconciled to a dated
+exchange session. No order endpoint or execution flag changed.
+
+TESTS RUN: ESLint, TypeScript check, 402 Node tests, production build, and security scan.
+
+TEST RESULTS: All gates pass. A focused fixture proves open-clock plus missing-calendar
+returns `SYSTEM_HOLD/MARKET_SESSION_UNCONFIRMED`.
+
+KNOWN LIMITATIONS: Real event-state assembly, remaining AEGIS families, durable shadow
+evidence persistence, and production scheduler invocation remain incomplete.
+
+RISKS: Calendar truth is required only as an explicit precondition for an open-session
+new-risk scan. Closed-market handling stays clock-authoritative and fail-safe.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: The calendar/session precondition only. No quant
+methodology or policy threshold changed.
+
+NEXT RECOMMENDED TASK: Persist FusionSnapshot, opportunity, and decision evidence using
+the existing migration 003 schema, then add a lease-backed scheduler. Keep execution
+locked.
