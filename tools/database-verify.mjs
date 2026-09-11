@@ -17,6 +17,7 @@ try {
     "007_connection_readiness", "008_paper_execution_readiness",
     "009_private_paper_api_key_beta", "010_paper_account_roles",
     "011_optional_follower_limits", "012_explicit_option_position_intent",
+    "013_position_intent_null_guard",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -65,6 +66,13 @@ try {
     EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='trade' AND table_name='order_intent' AND constraint_name='ck_order_intent_position_intent') AS has_constraint`);
   if (!intentProtection.rows[0]?.has_column || !intentProtection.rows[0]?.has_constraint)
     throw new Error("EXPLICIT_POSITION_INTENT_PROTECTION_MISSING");
+  const intentNullGuard = await client.query(`SELECT
+    pg_get_constraintdef(oid) AS definition, convalidated
+    FROM pg_constraint WHERE conrelid='trade.order_intent'::regclass
+    AND conname='ck_order_intent_position_intent'`);
+  const intentConstraint = intentNullGuard.rows[0];
+  if (!intentConstraint?.convalidated || !intentConstraint.definition.includes('position_intent IS NOT NULL'))
+    throw new Error("EXPLICIT_POSITION_INTENT_NULL_GUARD_MISSING");
   const gate = executionControl.rows[0];
   if (!gate?.pause_new_orders || gate.master_execution_enabled || gate.follower_execution_enabled)
     throw new Error("PAPER_EXECUTION_NOT_LOCKED");

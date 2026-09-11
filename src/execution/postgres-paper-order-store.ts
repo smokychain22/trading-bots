@@ -1,24 +1,39 @@
 import { Pool } from 'pg';
+import { z } from 'zod';
 import type { OrderIntentState } from '../theta/order-intent-state.js';
 import { assertValidOrderIntentTransition } from '../theta/order-intent-state.js';
 import type { ExecutionAttemptRecord, PaperOrderStore, PersistedPaperOrderIntent } from './paper-order-coordinator.js';
 
 const toIso = (value: unknown): string => value instanceof Date ? value.toISOString() : String(value);
 
+export function persistedPositionIntent(instrumentType: string, side: unknown, raw: unknown) {
+  const parsedSide = z.enum(['buy', 'sell']).parse(side);
+  if (instrumentType === 'STOCK') {
+    if (raw !== null && raw !== undefined) throw new Error('STOCK_POSITION_INTENT_NOT_ALLOWED');
+    return undefined;
+  }
+  if (instrumentType !== 'OPTION') throw new Error('INSTRUMENT_TYPE_INVALID');
+  const value = z.enum(['BUY_TO_OPEN', 'BUY_TO_CLOSE', 'SELL_TO_OPEN', 'SELL_TO_CLOSE']).parse(raw);
+  if (!value.toLowerCase().startsWith(`${parsedSide}_`)) throw new Error('POSITION_INTENT_SIDE_MISMATCH');
+  return value.toLowerCase() as NonNullable<PersistedPaperOrderIntent['request']['position_intent']>;
+}
+
 export class PostgresPaperOrderStore implements PaperOrderStore {
   constructor(private readonly pool: Pool) {}
 
   async insertIntent(intent: PersistedPaperOrderIntent): Promise<void> {
+    const instrumentType = intent.action === 'SELL_STOCK' ? 'STOCK' : 'OPTION';
+    persistedPositionIntent(instrumentType, intent.request.side, intent.request.position_intent?.toUpperCase());
     await this.pool.query(
       `INSERT INTO trade.order_intent
         (order_intent_id, execution_account_id, decision_id, client_order_id, status,
          instrument_type, broker_symbol, side, quantity, limit_price, time_in_force,
          theta_action, position_intent, intent_persisted_at, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'OPTION', $6, $7, $8, $9, $10, $11, $12, $13, $13, $13)`,
+       VALUES ($1, $2, $3, $4, $5, $14, $6, $7, $8, $9, $10, $11, $12, $13, $13, $13)`,
       [intent.orderIntentId, intent.executionAccountId, intent.decisionId, intent.request.client_order_id,
         intent.status, intent.request.symbol, intent.request.side, intent.request.qty,
         intent.request.limit_price, intent.request.time_in_force, intent.action,
-        intent.request.position_intent?.toUpperCase() ?? null, intent.persistedAt],
+        intent.request.position_intent?.toUpperCase() ?? null, intent.persistedAt, instrumentType],
     );
   }
 
@@ -26,7 +41,7 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
     const result = await this.pool.query(
       `SELECT i.order_intent_id, i.execution_account_id, i.decision_id, i.client_order_id,
               i.status, i.broker_symbol, i.side, i.quantity, i.limit_price, i.time_in_force,
-              i.theta_action, i.position_intent, i.intent_persisted_at, b.provider_order_id
+              i.theta_action, i.instrument_type, i.position_intent, i.intent_persisted_at, b.provider_order_id
        FROM trade.order_intent i
        LEFT JOIN LATERAL (
          SELECT provider_order_id FROM trade.broker_order
@@ -37,6 +52,7 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
     );
     const row = result.rows[0] as Record<string, unknown> | undefined;
     if (row === undefined) return null;
+    const positionIntent = persistedPositionIntent(String(row.instrument_type), row.side, row.position_intent);
     return {
       orderIntentId: String(row.order_intent_id),
       executionAccountId: String(row.execution_account_id),
@@ -48,7 +64,7 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
       request: {
         symbol: String(row.broker_symbol), qty: Number(row.quantity), side: String(row.side) as 'buy' | 'sell',
         type: 'limit', time_in_force: 'day', limit_price: String(row.limit_price), client_order_id: String(row.client_order_id),
-        position_intent: String(row.position_intent).toLowerCase() as NonNullable<PersistedPaperOrderIntent['request']['position_intent']>,
+        ...(positionIntent === undefined ? {} : { position_intent: positionIntent }),
       },
     };
   }
