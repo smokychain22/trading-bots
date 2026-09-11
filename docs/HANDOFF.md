@@ -559,8 +559,9 @@ opportunity inputs. `READY_FOR_FIRST_PAPER_ORDER` remains NO.
 
 WHAT THE OTHER AGENT SHOULD REVIEW: Claude should correct and retest the R6 research
 issues recorded in `docs/DECISIONS.md`. No Claude commit from `4c8fe61` through
-`f182aa0` was merged. Claude must not modify the production worker, account, execution,
-or migration files.
+`f182aa0` was merged. Documentation-only commit `7f3f610` was selectively integrated
+after removing its dependency on the rejected ablation implementation. Claude must not
+modify the production worker, account, execution, or migration files.
 
 NEXT RECOMMENDED TASK: Restore the correct Vercel owner session, verify plan support,
 configure a strong `CRON_SECRET` and enable the read-only worker, then inspect its first

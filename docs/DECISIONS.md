@@ -271,3 +271,8 @@ structural fill price, a zero-correlation lookup bug, drawdown recovery requirin
 high instead of recovery to the prior peak, and a walk-forward contract that lacks both
 decision time and label-availability time. The production baseline is preserved until
 those issues are corrected and retested.
+
+Claude commit `7f3f610` was integrated as a research-only GEX definition matrix. It
+does not enable GEX, choose a zero-gamma definition, alter AEGIS, or create a trading
+signal. Its reference to the rejected ablation implementation was replaced with the
+canonical pre-registered baseline-versus-feature promotion requirement.
