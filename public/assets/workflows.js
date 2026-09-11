@@ -1,4 +1,48 @@
-import { esc, money, badge, link, table } from "./ui.js";
+import { esc, money, date, badge, link, table } from "./ui.js";
+
+function paperApiKeyForm() {
+  return `<form id="paper-api-key-connect" class="customer-auth broker-credential-form"><div class="form-intro"><h3>Connect Alpaca Paper</h3><p>Use the API credentials from your Alpaca Paper account. Your credentials are encrypted server-side and are never shown again after connection.</p><p class="notice blue"><strong>Paper API credentials only.</strong> Do not enter your Alpaca website password.</p></div><label>Paper API Key ID<input name="api_key_id" type="text" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore required maxlength="256"></label><label>Paper Secret Key<input name="secret_key" type="password" autocomplete="new-password" spellcheck="false" data-lpignore="true" data-1p-ignore required maxlength="512"></label><button class="button primary" type="submit">Connect Paper Account</button><p class="caption">Verification uses paper-api.alpaca.markets. Order submission remains locked.</p><p id="paper-connect-result" role="alert"></p></form>`;
+}
+
+function bindPaperCredentialForm() {
+  document.querySelector("#paper-api-key-connect")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector("[type=submit]");
+    const result = form.querySelector("#paper-connect-result");
+    button.disabled = true;
+    button.textContent = "Verifying Paper account…";
+    try {
+      const response = await fetch("/api/v1/alpaca/connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.fromEntries(new FormData(form))),
+        signal: AbortSignal.timeout(20000),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        const messages = {
+          INVALID_AUTH: "We couldn’t verify this Alpaca Paper account. Check the Paper API key and secret and try again.",
+          ACCOUNT_NOT_READY: "This Paper account is connected, but its options permissions do not currently meet THETA’s requirements.",
+          ALPACA_PAPER_HOST_REJECTED: "This private test currently supports Alpaca Paper accounts only.",
+          AMBIGUOUS_NETWORK: "Alpaca is temporarily unavailable. Your saved connection has not been changed.",
+          RATE_LIMITED: "Alpaca is temporarily unavailable. Your saved connection has not been changed.",
+          BROKER_REJECTED: "Alpaca is temporarily unavailable. Your saved connection has not been changed.",
+          CONNECTION_SERVICE_UNAVAILABLE: "The secure connection service is temporarily unavailable. No credential was stored.",
+        };
+        throw new Error(messages[body.error?.code] ?? "The Paper account could not be verified.");
+      }
+      form.reset();
+      result.textContent = "Alpaca Paper connected. No order was submitted.";
+      setTimeout(() => location.reload(), 500);
+    } catch (error) {
+      result.textContent = error.name === "TimeoutError" ? "Alpaca verification timed out. No credential was stored." : error.message;
+    } finally {
+      button.disabled = false;
+      button.textContent = "Connect Paper Account";
+    }
+  });
+}
 
 export function howItWorks() {
   const steps = [
@@ -124,27 +168,36 @@ export function bindSimulation() {
 export function accountPage(readiness) {
   const connected = readiness.follower_account.connected === true;
   const ready = readiness.follower_account.ready_for_theta === true;
+  const params = new URL(location.href).searchParams;
+  const loginRequired = readiness.private_paper_api_key?.state === "CUSTOMER_LOGIN_REQUIRED" || readiness.oauth.state === "CUSTOMER_LOGIN_REQUIRED";
+  const authMode = params.get("authMode") === "register" ? "register" : "login";
+  const requestedReturn = params.get("returnTo") === "/bots/theta/copy" ? "/bots/theta/copy" : "/account";
   const value = (input, formatter = String) =>
     input == null ? "—" : formatter(input);
-  const apiKeyForm = `<form id="paper-api-key-connect" class="customer-auth"><label>API Key ID<input name="api_key_id" type="text" autocomplete="off" spellcheck="false" required maxlength="256"></label><label>Secret Key<input name="secret_key" type="password" autocomplete="new-password" spellcheck="false" required maxlength="512"></label><button class="button primary" type="submit">Connect Paper Account</button><p class="caption">Credentials are verified against Alpaca Paper, encrypted on the server, and never shown again. Order submission remains locked.</p><p id="paper-connect-result" role="alert"></p></form>`;
-  const loginRequired = readiness.private_paper_api_key?.state === "CUSTOMER_LOGIN_REQUIRED" || readiness.oauth.state === "CUSTOMER_LOGIN_REQUIRED";
+  const apiKeyForm = paperApiKeyForm();
   const connect = readiness.private_paper_api_key?.state === "READY"
     ? apiKeyForm
     : readiness.oauth.state === "READY"
       ? `<a class="button primary" href="/api/v1/alpaca/oauth/start">Connect with Alpaca OAuth</a>`
     : loginRequired
-      ? `<form id="customer-auth" class="customer-auth"><div class="auth-mode" role="group" aria-label="Account action"><button type="button" class="choice active" data-auth-mode="login">Sign in</button><button type="button" class="choice" data-auth-mode="register">Create account</button></div><label>Email<input name="email" type="email" autocomplete="email" required></label><label>Password<input name="password" type="password" autocomplete="current-password" minlength="12" required></label><button class="button primary" type="submit">Sign in</button><p id="auth-result" role="alert"></p></form>`
+      ? `<form id="customer-auth" class="customer-auth"><div class="form-intro"><h2>Sign in to Trading Bots</h2><p>First sign in to your Trading Bots tester account. After signing in, you’ll securely connect your Alpaca Paper account.</p><p class="caption">These are your Trading Bots account details. They are not Alpaca credentials.</p></div><div class="auth-mode" role="group" aria-label="Trading Bots account action"><button type="button" class="choice ${authMode === "login" ? "active" : ""}" data-auth-mode="login">Sign in</button><button type="button" class="choice ${authMode === "register" ? "active" : ""}" data-auth-mode="register">Create tester account</button></div><input type="hidden" name="return_to" value="${esc(requestedReturn)}"><label>Trading Bots email<input name="email" type="email" autocomplete="email" required></label><label>Trading Bots password<input name="password" type="password" autocomplete="${authMode === "register" ? "new-password" : "current-password"}" minlength="12" required></label><button class="button primary" type="submit">${authMode === "register" ? "Create tester account" : "Sign in"}</button><p id="auth-result" role="alert"></p></form>`
       : `<button class="button primary" disabled>Connect Alpaca</button><p class="simple-status">THETA is in private paper testing. Account connection opens after Alpaca Connect approval.</p>`;
-  return `<div class="page-heading"><div><p class="eyebrow">ACCOUNT</p><h1>Your paper account</h1><p class="lede">Connect Alpaca Paper so THETA can prepare follower-specific paper trades within your chosen amount.</p></div>${badge("PAPER ONLY", "blue")}</div><section class="panel account-simple"><div class="account-connection"><div><span class="connection-mark" aria-hidden="true">A</span><div><h2>Alpaca Paper</h2><p>${connected ? `Connected · ${esc(readiness.follower_account.masked_account ?? "Paper account")}` : "Not connected"}</p></div></div>${badge(connected ? (ready ? "READY" : "NEEDS ATTENTION") : "NOT CONNECTED", connected ? (ready ? "green" : "amber") : "")}</div>${connected ? `<dl class="account-facts"><div><dt>Account status</dt><dd>${value(readiness.follower_account.account_status)}</dd></div><div><dt>Paper equity</dt><dd>${value(readiness.follower_account.equity, money)}</dd></div><div><dt>Buying power</dt><dd>${value(readiness.follower_account.buying_power, money)}</dd></div><div><dt>Available cash</dt><dd>${value(readiness.follower_account.cash, money)}</dd></div><div><dt>Options approval</dt><dd>${value(readiness.follower_account.options_approved_level, (v) => `Level ${v}`)}</dd></div><div><dt>Open positions</dt><dd>${value(readiness.follower_account.open_positions)}</dd></div><div><dt>Open orders</dt><dd>${value(readiness.follower_account.open_orders)}</dd></div><div><dt>Last sync</dt><dd>${value(readiness.follower_account.last_sync_at)}</dd></div></dl>${ready ? "" : '<p class="notice amber">The account is connected, but it does not currently meet THETA’s paper readiness checks. THETA requires options level 1 or higher.</p>'}<div class="heading-actions"><button id="verify-account" class="button primary">Verify connection</button><button id="disconnect-account" class="button secondary">Disconnect account</button><button id="customer-signout" class="button quiet">Sign out</button></div>${readiness.private_paper_api_key?.state === "READY" ? `<details class="advanced-copy"><summary>Replace paper credentials</summary>${apiKeyForm}</details>` : ""}<p id="account-result" role="status"></p>` : `<p>Your credentials stay encrypted on this server and are used only with Alpaca Paper.</p>${connect}`}</section>`;
+  const headingTitle = loginRequired ? "Sign in to Trading Bots" : "Your paper account";
+  const headingCopy = loginRequired
+    ? "Authenticate your tester identity first. Your Alpaca Paper API credentials are entered in the next step."
+    : "Connect Alpaca Paper so THETA can prepare follower-specific paper trades within your chosen amount.";
+  return `<div class="page-heading"><div><p class="eyebrow">ACCOUNT</p><h1>${headingTitle}</h1><p class="lede">${headingCopy}</p></div>${badge("PAPER ONLY", "blue")}</div><section class="panel account-simple">${loginRequired ? "" : `<div class="account-connection"><div><span class="connection-mark" aria-hidden="true">A</span><div><h2>Alpaca Paper</h2><p>${connected ? `Connected · ${esc(readiness.follower_account.masked_account ?? "Paper account")}` : "Not connected"}</p></div></div>${badge(connected ? (ready ? "READY" : "NEEDS ATTENTION") : "NOT CONNECTED", connected ? (ready ? "green" : "amber") : "")}</div>`}${connected ? `<dl class="account-facts"><div><dt>Account status</dt><dd>${value(readiness.follower_account.account_status)}</dd></div><div><dt>Paper equity</dt><dd>${value(readiness.follower_account.equity, money)}</dd></div><div><dt>Cash</dt><dd>${value(readiness.follower_account.cash, money)}</dd></div><div><dt>Buying power</dt><dd>${value(readiness.follower_account.buying_power, money)}</dd></div><div><dt>Options buying power</dt><dd>${value(readiness.follower_account.options_buying_power, money)}</dd></div><div><dt>Options approval</dt><dd>${value(readiness.follower_account.options_approved_level, (v) => `Level ${v}`)}</dd></div><div><dt>Options trading level</dt><dd>${value(readiness.follower_account.options_trading_level, (v) => `Level ${v}`)}</dd></div><div><dt>Open positions</dt><dd>${value(readiness.follower_account.open_positions)}</dd></div><div><dt>Open orders</dt><dd>${value(readiness.follower_account.open_orders)}</dd></div><div><dt>Market</dt><dd>${readiness.follower_account.market_open == null ? "—" : readiness.follower_account.market_open ? "Open" : "Closed"}</dd></div><div><dt>Last verified</dt><dd>${value(readiness.follower_account.verified_at ?? readiness.follower_account.last_sync_at, date)}</dd></div></dl>${ready ? "" : '<p class="notice amber">This Paper account is connected, but its options permissions do not currently meet THETA’s requirements.</p>'}<div class="heading-actions"><button id="verify-account" class="button primary">Reverify</button><button id="disconnect-account" class="button secondary">Disconnect</button><button id="customer-signout" class="button quiet">Sign out</button></div>${readiness.private_paper_api_key?.state === "READY" ? `<details class="advanced-copy"><summary>Replace credentials</summary>${apiKeyForm}</details>` : ""}<p id="account-result" role="status"></p>` : `${loginRequired ? "" : "<p>Your credentials stay encrypted on this server and are used only with Alpaca Paper.</p>"}${connect}`}</section>`;
 }
 
 export function bindAccount() {
-  let mode = "login";
+  let mode = document.querySelector("[data-auth-mode].active")?.dataset.authMode ?? "login";
   document.querySelectorAll("[data-auth-mode]").forEach((button) => button.addEventListener("click", () => {
     mode = button.dataset.authMode;
     document.querySelectorAll("[data-auth-mode]").forEach((item) => item.classList.toggle("active", item === button));
     const submit = document.querySelector("#customer-auth [type=submit]");
-    submit.textContent = mode === "login" ? "Sign in" : "Create account";
+    submit.textContent = mode === "login" ? "Sign in" : "Create tester account";
+    const password = document.querySelector("#customer-auth [name=password]");
+    password.autocomplete = mode === "login" ? "current-password" : "new-password";
   }));
   document.querySelector("#customer-auth")?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -153,36 +206,12 @@ export function bindAccount() {
     const body = Object.fromEntries(new FormData(form));
     try {
       const response = await fetch(`/api/v1/auth/${mode}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const payload = await response.json();
       if (!response.ok) throw new Error(response.status === 409 ? "An account already exists for this email." : "Sign in wasn’t completed.");
-      location.assign("/account");
+      location.assign(payload.data.return_to);
     } catch (error) { result.textContent = error.message; }
   });
-  document.querySelector("#paper-api-key-connect")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const button = form.querySelector("[type=submit]");
-    const result = form.querySelector("#paper-connect-result");
-    button.disabled = true;
-    button.textContent = "Verifying Paper account…";
-    try {
-      const response = await fetch("/api/v1/alpaca/connection", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(Object.fromEntries(new FormData(form))),
-        signal: AbortSignal.timeout(20000),
-      });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.code === "INVALID_AUTH" ? "Alpaca rejected those Paper credentials." : "The Paper account could not be verified.");
-      form.reset();
-      result.textContent = "Alpaca Paper connected. No order was submitted.";
-      setTimeout(() => location.reload(), 500);
-    } catch (error) {
-      result.textContent = error.name === "TimeoutError" ? "Alpaca verification timed out. No credential was stored." : error.message;
-    } finally {
-      button.disabled = false;
-      button.textContent = "Connect Paper Account";
-    }
-  });
+  bindPaperCredentialForm();
   document.querySelector("#disconnect-account")?.addEventListener("click", async () => {
     const result = document.querySelector("#account-result");
     const response = await fetch("/api/v1/alpaca/connection", { method: "DELETE" });
@@ -202,7 +231,7 @@ export function bindAccount() {
       result.textContent = "Verification is unavailable right now. No order was submitted.";
     } finally {
       button.disabled = false;
-      button.textContent = "Verify connection";
+      button.textContent = "Reverify";
     }
   });
   document.querySelector("#customer-signout")?.addEventListener("click", async () => {
@@ -219,11 +248,11 @@ export function paperCopyPage(readiness) {
   const status = new URL(location.href).searchParams.get("connection");
   if (!connected) {
     const action = readiness.private_paper_api_key?.state === "READY"
-      ? link("/account", "Connect Alpaca Paper", "button primary")
+      ? paperApiKeyForm()
       : readiness.oauth.state === "READY"
         ? `<a class="button primary" href="/api/v1/alpaca/oauth/start">Connect with Alpaca OAuth</a>`
       : readiness.private_paper_api_key?.state === "CUSTOMER_LOGIN_REQUIRED" || readiness.oauth.state === "CUSTOMER_LOGIN_REQUIRED"
-        ? link("/account?signin=required", "Sign in to connect", "button primary")
+        ? `<div class="signin-first"><h3>Sign in to Trading Bots</h3><p>First sign in to your Trading Bots tester account. After signing in, you’ll securely connect your Alpaca Paper account.</p><div class="heading-actions">${link("/account?signin=required&returnTo=%2Fbots%2Ftheta%2Fcopy", "Sign in", "button primary")}${link("/account?signin=required&authMode=register&returnTo=%2Fbots%2Ftheta%2Fcopy", "Create tester account", "button secondary")}</div><p class="caption">Use your Trading Bots email and password here. Alpaca Paper API credentials come next.</p></div>`
         : `<button class="button primary" disabled>Connect Alpaca</button><p class="simple-status">THETA is in private paper testing. Account connection opens after Alpaca Connect approval.</p>`;
     const message = status === "denied" ? "Connection was canceled." : status === "invalid" ? "That connection request expired. Start again." : status === "failed" ? "Alpaca couldn’t be verified." : "Connect your Alpaca Paper account.";
     return `<div class="copy-heading"><div><p class="eyebrow">PAPER COPY SETUP</p><h2>Copy THETA</h2><p>Connect, choose an amount, then review.</p></div>${badge("PAPER ONLY", "blue")}</div><section class="panel copy-focus"><p class="step-label">STEP 1 OF 3</p><h2>Connect Alpaca</h2><p>${esc(message)}</p>${action}</section>`;
@@ -235,6 +264,7 @@ export function paperCopyPage(readiness) {
 }
 
 export function bindPaperCopy() {
+  bindPaperCredentialForm();
   const form = document.querySelector("#copy-policy");
   if (!form) return;
   const allocation = form.elements.allocation_usd;

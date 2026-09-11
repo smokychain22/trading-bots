@@ -17,6 +17,7 @@ import {
   loginCustomer,
   logoutCustomer,
   registerCustomer,
+  safeCustomerReturnPath,
 } from "./customer-auth.js";
 import {
   completeAlpacaOAuth,
@@ -118,6 +119,7 @@ function sameOrigin(request: IncomingMessage): boolean {
 const authSchema = z.object({
   email: z.string().min(3).max(254),
   password: z.string().min(12).max(200),
+  return_to: z.string().max(200).optional(),
 }).strict();
 async function readJson(request: IncomingMessage) {
   // Vercel parses JSON before invoking a Node function. Express passes a stream.
@@ -205,7 +207,11 @@ export default async function customerHandler(
           if (!customer) return send(response, 401, { error: { code: "LOGIN_FAILED" } });
           return send(response, parts[1] === "register" ? 201 : 200, {
             api_version: "v1",
-            data: { authenticated: true, email: customer.email },
+            data: {
+              authenticated: true,
+              email: customer.email,
+              return_to: safeCustomerReturnPath(body.return_to),
+            },
           });
         } catch (error) {
           if (error instanceof Error && error.message.includes("duplicate key"))
@@ -275,7 +281,9 @@ export default async function customerHandler(
             masked_account: follower.maskedAccount,
             account_status: follower.accountStatus,
             equity: follower.equity,
+            cash: follower.cash,
             buying_power: follower.buyingPower,
+            options_buying_power: follower.optionsBuyingPower,
             options_approved_level: follower.optionsApprovedLevel,
             options_trading_level: follower.optionsTradingLevel,
             open_positions: follower.openPositionCount,
@@ -287,13 +295,18 @@ export default async function customerHandler(
         });
       } catch (error) {
         if (error instanceof AlpacaPaperBrokerError) {
-          return send(response, error.category === "INVALID_AUTH" ? 401 : 422, {
+          const unavailable = ["AMBIGUOUS_NETWORK", "RATE_LIMITED", "BROKER_REJECTED"].includes(error.category);
+          return send(response, error.category === "INVALID_AUTH" ? 401 : unavailable ? 503 : 422, {
             error: { code: error.category, http_status: error.httpStatus },
           });
         }
+        if (error instanceof Error && error.message === "ALPACA_PAPER_ACCOUNT_NOT_READY")
+          return send(response, 422, { error: { code: "ACCOUNT_NOT_READY" } });
         if (error instanceof Error && error.message === "PRIVATE_PAPER_API_KEY_BETA_NOT_CONFIGURED")
           return send(response, 503, { error: { code: error.message } });
-        throw error;
+        if (error instanceof z.ZodError)
+          return send(response, 400, { error: { code: "INVALID_REQUEST" } });
+        return send(response, 503, { error: { code: "CONNECTION_SERVICE_UNAVAILABLE" } });
       }
     }
     if (route === "alpaca/connection" && request.method === "DELETE") {
@@ -335,7 +348,9 @@ export default async function customerHandler(
             masked_account: follower.maskedAccount,
             account_status: follower.accountStatus,
             equity: follower.equity,
+            cash: follower.cash,
             buying_power: follower.buyingPower,
+            options_buying_power: follower.optionsBuyingPower,
             options_approved_level: follower.optionsApprovedLevel,
             options_trading_level: follower.optionsTradingLevel,
             last_verified_at: follower.lastBrokerSyncAt,

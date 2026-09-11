@@ -349,3 +349,45 @@ only at a release boundary. Claude must not commit or push under the current own
 NEXT RECOMMENDED TASK: Add durable shadow snapshot, opportunity, and decision persistence,
 then wire real event state and a restart-safe scheduler. Keep both Paper execution flags
 false and `PAPER_PAUSE_NEW_ORDERS=true`.
+
+## 2026-09-11 Canonical-domain customer connection correction
+
+OWNER: Codex
+
+TASK: Make the private tester sign-in and Alpaca Paper connection sequence explicit,
+resume the exact Copy THETA step after authentication, and preserve safe connection
+state during transient provider failures.
+
+FILES CHANGED: Customer auth/API/readiness contracts, Paper account and Copy THETA UI,
+private-connection verification behavior, browser and unit tests, and decision/handoff
+documentation.
+
+WHAT WAS IMPLEMENTED: The Copy THETA flow now distinguishes Trading Bots credentials
+from Alpaca Paper API credentials, offers separate sign-in and tester-registration
+actions, and returns through a server-allowlisted internal path. Authenticated testers
+can enter Paper API credentials directly in the same Copy THETA step. The connected
+card includes cash, equity, buying power, options buying power, both options levels,
+position/order counts, market state, and verification time. Provider errors are
+customer-safe. Transient reverify failures preserve the stored connection, while a
+confirmed 401 marks it for attention. Order submission remains locked.
+
+TESTS RUN: ESLint, TypeScript check, 401 Node tests, production build, security scan,
+18 Playwright journeys across desktop/tablet/mobile with WCAG checks, 298 Python tests,
+and visual inspection of the sign-in and Paper credential screens.
+
+TEST RESULTS: All repository gates pass. Reticle CLI reported `no_flows`, so it could
+not issue a visual verdict. Playwright screenshots and accessibility assertions were
+used as the verified visual fallback.
+
+KNOWN LIMITATIONS: A genuine tester credential is still required to prove the deployed
+successful connection and persistence journey. The master credential remains isolated
+and was not reused. No Paper or live order was submitted.
+
+RISKS: Vercel Deployment Protection still requires authorized access to the private
+site. OPRA remains not entitled, so no future execution gate may assume OPRA quality.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: The auth return-path allowlist and the reverify
+health transition only. No quant module or strategy rule changed.
+
+NEXT RECOMMENDED TASK: Deploy this slice to the canonical alias, run real Neon and
+customer-session smoke checks, then continue durable shadow evidence and scheduler work.

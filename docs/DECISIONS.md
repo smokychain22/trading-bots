@@ -179,3 +179,16 @@ customer private-beta credential. It may verify the master account read-only, bu
 not be copied into a customer record to manufacture an end-to-end tester result. A real
 tester must enter their own Paper API key and secret through the HTTPS account form.
 Customer order submission remains locked independently of successful account connection.
+
+## 2026-09-11: tester identity return paths and connection-health semantics
+
+Customer authentication and Alpaca authorization remain separate steps. The server
+accepts only a small allowlist of internal post-authentication paths and returns
+`/account` for every external, protocol-relative, query-bearing, or unknown value.
+This lets Copy THETA resume at `/bots/theta/copy` without creating an open redirect.
+
+A transient Alpaca network, rate-limit, or provider failure does not invalidate or
+replace a previously verified encrypted credential. Only a confirmed authentication
+rejection marks that connection as needing attention. Replacement credentials are
+still verified before the encrypted record is changed. All Paper order submission
+gates remain locked.

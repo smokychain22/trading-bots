@@ -5,6 +5,7 @@ import { loadEnvironment } from "../src/config/environment.js";
 import { connectPrivatePaperApiKey, privatePaperCredentialSchema } from "../src/customer/private-paper-api-key.js";
 import { verifyAlpacaPaperAccount } from "../src/customer/alpaca-paper-verification.js";
 import { EncryptedStoreBrokerCredentialProvider } from "../src/customer/broker-credential-provider.js";
+import { reverifyStoredFollowerAccount } from "../src/customer/alpaca-oauth.js";
 import type { CustomerIdentity, CustomerStore, FollowerRecord, OAuthStateRecord, SaveFollowerInput, StoredFollowerCredential } from "../src/customer/customer-store.js";
 
 const encryptionKey = randomBytes(32).toString("base64");
@@ -17,6 +18,7 @@ const environment = loadEnvironment({
 });
 
 class MemoryStore implements CustomerStore {
+  needsAttentionCount = 0;
   inputs = new Map<string, SaveFollowerInput>();
   records = new Map<string, FollowerRecord>();
   async createCustomer(): Promise<CustomerIdentity> { throw new Error("unused"); }
@@ -48,7 +50,7 @@ class MemoryStore implements CustomerStore {
     return input ? { ...input.encryptedCredential, keyRef: input.keyRef, connectionMethod: input.connectionMethod } : null;
   }
   async updateFollowerVerification(customerId: string) { const record = this.records.get(customerId); if (!record) throw new Error("missing"); return record; }
-  async markFollowerNeedsAttention(): Promise<void> {}
+  async markFollowerNeedsAttention(): Promise<void> { this.needsAttentionCount += 1; }
   async saveParticipation(customerId: string) { const record = this.records.get(customerId); if (!record) throw new Error("missing"); return record; }
   async disconnectFollower(customerId: string) { this.records.delete(customerId); this.inputs.delete(customerId); }
 }
@@ -128,5 +130,20 @@ test("tenant isolation, replacement, and disconnect keep credentials customer-bo
   await store.disconnectFollower("customer-a");
   assert.equal(await provider.getAuthentication("customer-a"), null);
   assert(await provider.getAuthentication("customer-b"));
+});
+
+test("reverify preserves a working connection during an Alpaca outage and flags confirmed credential rejection", async () => {
+  const store = new MemoryStore();
+  await connectPrivatePaperApiKey(store, environment, "customer-a", {
+    api_key_id: "key-a", secret_key: "secret-a",
+  }, paperFetch("key-a", "secret-a"));
+  const unavailable: typeof fetch = async () => { throw new TypeError("synthetic network outage"); };
+  await assert.rejects(reverifyStoredFollowerAccount(store, environment, "customer-a", unavailable), /request failed/);
+  assert.equal(store.needsAttentionCount, 0);
+  assert.equal(store.records.get("customer-a")?.connectionStatus, "CONNECTED");
+
+  const rejected: typeof fetch = async () => Response.json({ message: "unauthorized" }, { status: 401 });
+  await assert.rejects(reverifyStoredFollowerAccount(store, environment, "customer-a", rejected), /HTTP 401/);
+  assert.equal(store.needsAttentionCount, 1);
 });
 

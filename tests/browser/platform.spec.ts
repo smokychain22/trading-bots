@@ -61,7 +61,8 @@ test("private team can enter masked Paper credentials and receives only safe acc
     if (connected) body.data.follower_account = {
       ...body.data.follower_account, connected: true, ready_for_theta: true,
       connection_method: "PAPER_API_KEY_PRIVATE_BETA", masked_account: "••••abcd",
-      account_status: "ACTIVE", equity: 25000, buying_power: 48000,
+      account_status: "ACTIVE", equity: 25000, buying_power: 48000, cash: 12000,
+      options_buying_power: 12000,
       options_approved_level: 2, options_trading_level: 2, open_positions: 1,
       open_orders: 0, market_open: false, last_sync_at: "2026-09-11T10:00:00.000Z",
     };
@@ -80,15 +81,62 @@ test("private team can enter masked Paper credentials and receives only safe acc
   });
   await page.goto("/account");
   await page.screenshot({ path: testInfo.outputPath("private-paper-connect-form.png"), fullPage: true, animations: "disabled" });
-  await expect(page.getByLabel("Secret Key")).toHaveAttribute("type", "password");
-  await page.getByLabel("API Key ID").fill("paper-test-key");
-  await page.getByLabel("Secret Key").fill("paper-test-secret");
+  await expect(page.getByLabel("Paper Secret Key")).toHaveAttribute("type", "password");
+  await page.getByLabel("Paper API Key ID").fill("paper-test-key");
+  await page.getByLabel("Paper Secret Key").fill("paper-test-secret");
   await page.getByRole("button", { name: "Connect Paper Account" }).click();
   await expect(page.getByText("Connected · ••••abcd")).toBeVisible();
   await expect(page.getByText("$25,000")).toBeVisible();
+  await expect(page.getByText("$12,000")).toHaveCount(2);
   await expect(page.locator("body")).not.toContainText("paper-test-secret");
   await expect(page.locator("body")).not.toContainText("paper-test-key");
   await expect(page.getByRole("button", { name: /submit order/i })).toHaveCount(0);
+});
+
+test("Copy THETA distinguishes tester sign-in and returns to the broker step", async ({ page }, testInfo) => {
+  let authenticated = false;
+  await page.route("**/api/v1/copy/readiness", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.private_paper_api_key = {
+      configured: true,
+      state: authenticated ? "READY" : "CUSTOMER_LOGIN_REQUIRED",
+      credential_storage: "ENCRYPTED_SERVER_SIDE",
+      order_submission: "LOCKED",
+    };
+    body.data.oauth.state = "NOT_CONFIGURED";
+    await route.fulfill({ json: body });
+  });
+  await page.route("**/api/v1/auth/login", async (route) => {
+    const payload = route.request().postDataJSON();
+    expect(payload.return_to).toBe("/bots/theta/copy");
+    authenticated = true;
+    await route.fulfill({ json: { api_version: "v1", data: {
+      authenticated: true,
+      email: "tester@example.invalid",
+      return_to: "/bots/theta/copy",
+    } } });
+  });
+
+  await page.goto("/bots/theta/copy");
+  await expect(page.getByRole("heading", { name: "Sign in to Trading Bots" })).toBeVisible();
+  await expect(page.getByText("Alpaca Paper API credentials come next.")).toBeVisible();
+  await page.getByRole("link", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/\/account\?signin=required.*returnTo=/);
+  await expect(page.getByRole("heading", { name: "Sign in to Trading Bots", exact: true }).first()).toBeVisible();
+  await expect(page.getByText("They are not Alpaca credentials.")).toBeVisible();
+  expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze()).violations).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("trading-bots-sign-in.png"), fullPage: true, animations: "disabled" });
+  await page.getByLabel("Trading Bots email").fill("tester@example.invalid");
+  await page.getByLabel("Trading Bots password").fill("synthetic-password-only");
+  await page.getByRole("button", { name: "Sign in", exact: true }).last().click();
+  await expect(page).toHaveURL(/\/bots\/theta\/copy$/);
+  await expect(page.getByLabel("Paper API Key ID")).toBeVisible();
+  await expect(page.getByLabel("Paper Secret Key")).toHaveAttribute("type", "password");
+  await expect(page.getByRole("button", { name: "Connect Paper Account" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /submit order/i })).toHaveCount(0);
+  expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze()).violations).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("copy-paper-credentials.png"), fullPage: true, animations: "disabled" });
 });
 
 test("Activity supports simple customer filters", async ({ page }) => {
@@ -168,7 +216,7 @@ test("active follower fixture shows automatic-copy semantics without trade contr
   await expect(page.locator("main")).toContainText("Order submission remains locked");
   await page.goto("/account");
   await expect(page.getByText("Connected · •••• 0184")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Disconnect account" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Disconnect", exact: true })).toBeEnabled();
   await expect(page.locator("main")).not.toContainText("token revocation");
 });
 

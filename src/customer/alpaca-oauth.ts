@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Environment } from "../config/environment.js";
+import { AlpacaPaperBrokerError } from "../execution/broker.js";
 import type { CustomerStore, FollowerRecord } from "./customer-store.js";
 import {
   encryptSecret,
@@ -143,20 +144,22 @@ export async function verifyStoredFollowerAccount(
   store: CustomerStore,
   environment: Environment,
   customerId: string,
+  fetchImpl: typeof fetch = fetch,
 ): Promise<FollowerVerification> {
   const credential = await new EncryptedStoreBrokerCredentialProvider(store, environment)
     .getAuthentication(customerId);
   if (!credential) throw new Error("FOLLOWER_CREDENTIAL_NOT_AVAILABLE");
-  return verifyAlpacaPaperAccount(credential.authentication);
+  return verifyAlpacaPaperAccount(credential.authentication, fetchImpl);
 }
 
 export async function reverifyStoredFollowerAccount(
   store: CustomerStore,
   environment: Environment,
   customerId: string,
+  fetchImpl: typeof fetch = fetch,
 ): Promise<FollowerRecord> {
   try {
-    const verification = await verifyStoredFollowerAccount(store, environment, customerId);
+    const verification = await verifyStoredFollowerAccount(store, environment, customerId, fetchImpl);
     return store.updateFollowerVerification(customerId, {
       accountStatus: verification.account.status ?? null,
       equity: verification.account.equity ?? null,
@@ -176,7 +179,10 @@ export async function reverifyStoredFollowerAccount(
       },
     });
   } catch (error) {
-    await store.markFollowerNeedsAttention(customerId);
+    // A transient provider or network failure must not revoke a previously valid
+    // connection. Only confirmed credential rejection changes stored health.
+    if (error instanceof AlpacaPaperBrokerError && error.category === "INVALID_AUTH")
+      await store.markFollowerNeedsAttention(customerId);
     throw error;
   }
 }

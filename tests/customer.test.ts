@@ -6,6 +6,7 @@ import { botDetail, botSummaries } from "../src/customer/catalog.js";
 import handler, { simulateCapital, validSession } from "../src/customer/api.js";
 import { followerResults, paperCopyReadiness, reviewPaperCopyPolicy } from "../src/customer/paper-copy.js";
 import { hasOperatorSession } from "../src/customer/ops-access.js";
+import { safeCustomerReturnPath } from "../src/customer/customer-auth.js";
 
 let server: Server;
 let base: string;
@@ -58,6 +59,13 @@ test("published catalog has no invented results or activation permissions", () =
     botDetail("theta")?.performance.track_record.open_positions_included,
     null,
   );
+});
+test("customer return paths allow only known internal workflow destinations", () => {
+  assert.equal(safeCustomerReturnPath("/bots/theta/copy"), "/bots/theta/copy");
+  assert.equal(safeCustomerReturnPath("/my-bots"), "/my-bots");
+  assert.equal(safeCustomerReturnPath("https://evil.invalid/steal"), "/account");
+  assert.equal(safeCustomerReturnPath("//evil.invalid"), "/account");
+  assert.equal(safeCustomerReturnPath("/bots/theta/copy?next=https://evil.invalid"), "/account");
 });
 test("demo economic equity, drawdown, attribution and open chain reconcile", () => {
   const detail = botDetail("theta", true);

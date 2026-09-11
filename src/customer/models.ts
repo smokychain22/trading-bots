@@ -243,6 +243,7 @@ export interface FollowerAccount {
   state: "NOT_CONNECTED" | "AUTHORIZING" | "VERIFYING" | "CONNECTED_NOT_READY" | "READY" | "DEGRADED" | "REVOKED";
   verified_at: string | null;
   buying_power: number | null;
+  options_buying_power: number | null;
   equity: number | null;
   cash: number | null;
   options_enabled: boolean | null;

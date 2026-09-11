@@ -9,6 +9,17 @@ import {
 
 const cookieName = "tb_customer";
 const sessionLifetimeMs = 7 * 24 * 60 * 60_000;
+const safeCustomerReturnPaths = new Set([
+  "/account",
+  "/bots/theta/copy",
+  "/my-bots",
+]);
+
+export function safeCustomerReturnPath(value: unknown): string {
+  return typeof value === "string" && safeCustomerReturnPaths.has(value)
+    ? value
+    : "/account";
+}
 
 export function normalizeEmail(value: string): string {
   const email = value.trim().toLowerCase();
@@ -89,4 +100,3 @@ export async function logoutCustomer(
     `${cookieName}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`,
   );
 }
-

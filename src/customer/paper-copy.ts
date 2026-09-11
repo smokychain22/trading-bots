@@ -78,6 +78,7 @@ export function paperCopyReadiness(
               : "CONNECTED_NOT_READY",
       verified_at: follower?.lastBrokerSyncAt ?? null,
       buying_power: follower?.buyingPower ?? null,
+      options_buying_power: follower?.optionsBuyingPower ?? null,
       equity: follower?.equity ?? null,
       cash: follower?.cash ?? null,
       options_enabled: follower ? (follower.optionsTradingLevel ?? follower.optionsApprovedLevel ?? 0) >= 1 : null,
@@ -114,7 +115,7 @@ export function paperCopyReadiness(
     master_fill_first: true,
     raw_master_quantity_copy: false,
     reason: !connectionConfigured
-      ? "Alpaca connection is not available yet."
+      ? "Private Paper connection is disabled in this environment."
       : !authenticated
         ? "Sign in to connect your Alpaca Paper account."
         : !connected
