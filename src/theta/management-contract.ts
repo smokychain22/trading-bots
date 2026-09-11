@@ -52,6 +52,14 @@ export const managementDecisionResponseSchema = z.object({
   valuations: z.array(actionValuationSchema).min(1),
   selectedAction: managementActionSchema,
   selectedReasons: z.array(reasonSchema),
+  // Additive, optional field: management_contract.py (the real runtime
+  // wrapper around management_action_value.py's hold_advantage()) reports
+  // this directly, computed from the SAME valuations already returned --
+  // never recomputed independently in TypeScript, to avoid the two
+  // languages' formulas silently drifting apart. Optional so a caller
+  // that omits it (e.g. this contract's own earlier fixtures) remains
+  // valid; consumers should treat an absent field the same as null.
+  holdAdvantage: z.number().finite().nullable().optional(),
 }).superRefine((response, context) => {
   const selected = response.valuations.find((valuation) => valuation.action === response.selectedAction);
   if (!selected) {
