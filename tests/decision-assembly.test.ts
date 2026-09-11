@@ -43,7 +43,7 @@ const sizing = (quantity: number): SizingResultResponse => ({
 });
 
 const executionQuality = (action: ExecutionQualityResponse['recommendedAction']): ExecutionQualityResponse => ({
-  contractVersion: 'theta-execution-quality-runtime-v1', decisionId: 'd1', snapshotId: 's1', timestamp: NOW, policyVersion: 'v1',
+  contractVersion: 'theta-execution-quality-runtime-v2', decisionId: 'd1', snapshotId: 's1', timestamp: NOW, policyVersion: 'v1', positionIntent: 'SELL_TO_OPEN',
   spreadPct: 0.05, fillProbability: 0.8, expectedSlippagePerShare: 0.01,
   acceptable: action === 'SUBMIT', recommendedAction: action, reasons: [],
 });

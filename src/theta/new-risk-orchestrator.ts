@@ -690,9 +690,10 @@ export async function runNewRiskOrchestration(
     const executionQualityResult = await invokeAndValidate(
       bridge, 'executionQuality',
       {
-        contractVersion: 'theta-execution-quality-runtime-v1', decisionId: `${request.snapshotId}:${request.underlying}`,
+        contractVersion: 'theta-execution-quality-runtime-v2', decisionId: `${request.snapshotId}:${request.underlying}`,
         snapshotId: request.snapshotId, timestamp: request.timestamp, policy: request.executionQualityPolicy,
         inputs: {
+          positionIntent: 'SELL_TO_OPEN',
           bid: candidate.contract.bid, ask: candidate.contract.ask, quoteSize: candidate.quoteSize,
           quoteAgeSeconds: candidate.contract.dataAgeSeconds, limitPrice: candidate.contract.bid ?? 0,
           preSlippageExpectedUtility: candidate.preSlippageExpectedUtility,

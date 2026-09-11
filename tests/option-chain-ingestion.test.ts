@@ -133,3 +133,39 @@ test('a contract with a real, contract-derived multiplier is unaffected by the u
   assert.equal(contract?.executable, true);
   assert.equal(contract?.nonExecutableReason, null);
 });
+
+test('an invalid IV is isolated to its own contract instead of aborting the chain batch', () => {
+  const symbols = ['SPY261009P00500000', 'SPY261009P00495000'] as const;
+  const contracts = mergeOptionChain(baseInput({
+    contracts: [
+      { symbol: symbols[0], strikePrice: 500, expirationDate: '2026-10-09', optionType: 'PUT', multiplier: 100 },
+      { symbol: symbols[1], strikePrice: 495, expirationDate: '2026-10-09', optionType: 'PUT', multiplier: 100 },
+    ],
+    snapshotsBySymbol: new Map([
+      [symbols[0], { bid: 1, ask: 1.05, bidSize: 20, askSize: 20, quoteTimestamp: NOW, greeks: { delta: -0.2, gamma: 0.01, theta: -0.03, vega: 0.1, rho: 0 }, impliedVolatility: Number.NaN, dailyVolume: 10 }],
+      [symbols[1], { bid: 0.8, ask: 0.85, bidSize: 20, askSize: 20, quoteTimestamp: NOW, greeks: { delta: -0.18, gamma: 0.01, theta: -0.02, vega: 0.09, rho: 0 }, impliedVolatility: 0.24, dailyVolume: 10 }],
+    ]),
+  }));
+  assert.equal(contracts.length, 2);
+  assert.equal(contracts[0]?.iv, null);
+  assert.equal(contracts[1]?.iv, 0.24);
+});
+
+test('a T=0 contract is isolated as non-executable while a future sibling remains eligible', () => {
+  const symbols = ['SPY260910P00500000', 'SPY261009P00495000'] as const;
+  const snapshot = (iv: number) => ({
+    bid: 1, ask: 1.05, bidSize: 20, askSize: 20, quoteTimestamp: NOW,
+    greeks: { delta: -0.2, gamma: 0.01, theta: -0.03, vega: 0.1, rho: 0 }, impliedVolatility: iv, dailyVolume: 10,
+  });
+  const contracts = mergeOptionChain(baseInput({
+    contracts: [
+      { symbol: symbols[0], strikePrice: 500, expirationDate: '2026-09-10', optionType: 'PUT', multiplier: 100 },
+      { symbol: symbols[1], strikePrice: 495, expirationDate: '2026-10-09', optionType: 'PUT', multiplier: 100 },
+    ],
+    snapshotsBySymbol: new Map([[symbols[0], snapshot(0.4)], [symbols[1], snapshot(0.24)]]),
+  }));
+  assert.equal(contracts[0]?.dte, 0);
+  assert.equal(contracts[0]?.executable, false);
+  assert.match(contracts[0]?.nonExecutableReason ?? '', /expires today/);
+  assert.equal(contracts[1]?.executable, true);
+});

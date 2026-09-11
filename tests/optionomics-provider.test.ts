@@ -117,6 +117,18 @@ test('implied volatility outside the conservative decimal band is reported UNKNO
   assert.equal(entry?.impliedVolatilityRaw, 45);
 });
 
+test('one invalid IV remains UNKNOWN without contaminating valid sibling contracts', async () => {
+  const fetchImpl = (async () => jsonResponse(200, [
+    { symbol: 'BAD', implied_volatility: 45 },
+    { symbol: 'GOOD', implied_volatility: 0.27 },
+  ])) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY');
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  assert.equal(outcome.value.entries[0]?.impliedVolatility, null);
+  assert.equal(outcome.value.entries[1]?.impliedVolatility, 0.27);
+});
+
 test('invalid JSON body on a 2xx response is a REQUEST_ERROR classified INVALID_PROVIDER_RESPONSE -- the body cannot even be parsed to check its shape', async () => {
   const fetchImpl = (async () => new Response('not json', { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
   const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY');

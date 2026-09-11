@@ -22,6 +22,7 @@ def _request(**overrides):
             "minAfterCostUtilityToCross": 0.0,
         },
         "inputs": {
+            "positionIntent": "SELL_TO_OPEN",
             "bid": 0.95, "ask": 1.05, "quoteSize": 25, "quoteAgeSeconds": 1.0,
             "limitPrice": 1.0, "preSlippageExpectedUtility": 50.0,
         },
@@ -35,6 +36,7 @@ class ExecutionQualityContractTests(unittest.TestCase):
         response = evaluate_request(_request())
         self.assertTrue(response["acceptable"])
         self.assertEqual(response["recommendedAction"], "SUBMIT")
+        self.assertEqual(response["positionIntent"], "SELL_TO_OPEN")
 
     def test_unknown_quote_never_recommends_submit(self):
         request = _request()
@@ -46,7 +48,7 @@ class ExecutionQualityContractTests(unittest.TestCase):
     def test_negative_after_cost_utility_cancels_rather_than_crossing_blindly(self):
         request = _request()
         request["inputs"]["preSlippageExpectedUtility"] = 0.02
-        request["inputs"]["limitPrice"] = 0.95  # crossing the full spread -> full slippage
+        request["inputs"]["limitPrice"] = 1.05  # seller starts at ask; reaching bid concedes the full spread
         response = evaluate_request(request)
         self.assertFalse(response["acceptable"])
         self.assertEqual(response["recommendedAction"], "CANCEL")

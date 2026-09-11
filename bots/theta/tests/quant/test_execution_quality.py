@@ -10,6 +10,7 @@ sys.path.insert(0, str(_QUANT_DIR))
 from models.execution_quality import (  # noqa: E402
     ExecutionQualityInputs,
     ExecutionQualityPolicy,
+    PositionIntent,
     assess_execution_quality,
 )
 
@@ -28,6 +29,7 @@ def _policy(**overrides) -> ExecutionQualityPolicy:
 
 def _inputs(**overrides) -> ExecutionQualityInputs:
     defaults = dict(
+        position_intent=PositionIntent.BUY_TO_OPEN,
         bid=0.55, ask=0.60, quote_size=50, quote_age_seconds=1.0,
         limit_price=0.58, pre_slippage_expected_utility=10.0,
     )
@@ -36,10 +38,39 @@ def _inputs(**overrides) -> ExecutionQualityInputs:
 
 
 class MidpointNeverExecutableTruthTests(unittest.TestCase):
-    def test_slippage_measured_against_ask_not_midpoint(self):
+    def test_buy_concession_measured_against_ask_not_midpoint(self):
         result = assess_execution_quality(_policy(), _inputs(bid=0.57, ask=0.60, limit_price=0.58))
         # Expected slippage is ask - limit, never (mid - limit).
         self.assertAlmostEqual(result.expected_slippage_per_share, 0.02, places=6)
+
+    def test_sell_concession_measured_against_bid_not_midpoint(self):
+        result = assess_execution_quality(
+            _policy(),
+            _inputs(position_intent=PositionIntent.SELL_TO_OPEN, bid=0.55, ask=0.60, limit_price=0.58),
+        )
+        self.assertAlmostEqual(result.expected_slippage_per_share, 0.03, places=6)
+
+    def test_sell_fill_probability_increases_toward_bid(self):
+        passive = assess_execution_quality(
+            _policy(),
+            _inputs(position_intent=PositionIntent.SELL_TO_CLOSE, bid=0.55, ask=0.60, limit_price=0.60),
+        )
+        marketable = assess_execution_quality(
+            _policy(),
+            _inputs(position_intent=PositionIntent.SELL_TO_CLOSE, bid=0.55, ask=0.60, limit_price=0.55),
+        )
+        self.assertGreater(marketable.fill_probability, passive.fill_probability)
+
+    def test_buy_fill_probability_increases_toward_ask(self):
+        passive = assess_execution_quality(
+            _policy(),
+            _inputs(position_intent=PositionIntent.BUY_TO_CLOSE, bid=0.55, ask=0.60, limit_price=0.55),
+        )
+        marketable = assess_execution_quality(
+            _policy(),
+            _inputs(position_intent=PositionIntent.BUY_TO_CLOSE, bid=0.55, ask=0.60, limit_price=0.60),
+        )
+        self.assertGreater(marketable.fill_probability, passive.fill_probability)
 
 
 class StaleAndWideSpreadTests(unittest.TestCase):

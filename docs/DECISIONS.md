@@ -276,3 +276,19 @@ Claude commit `7f3f610` was integrated as a research-only GEX definition matrix.
 does not enable GEX, choose a zero-gamma definition, alter AEGIS, or create a trading
 signal. Its reference to the rejected ablation implementation was replaced with the
 canonical pre-registered baseline-versus-feature promotion requirement.
+
+## 2026-09-11: execution quality is position-intent aware
+
+The execution-quality boundary is versioned to v2 and requires one of the four explicit
+option intents. Buy intents measure the remaining concession toward the ask and become
+more fillable as their limit approaches the ask. Sell intents measure the remaining
+concession toward the bid and become more fillable as their limit approaches the bid.
+Midpoint remains context only and is never executable truth. THETA-Q CSP entry supplies
+`SELL_TO_OPEN` explicitly rather than relying on a side default.
+
+Provider analytics are isolated by contract at ingestion. A non-finite IV becomes
+UNKNOWN for that contract while valid sibling contracts remain usable. A contract at
+T=0 or earlier is non-executable, while later expiries in the same batch are evaluated
+independently. THETA does not currently solve IV internally, so impossible-price and
+solver-convergence cases do not exist in the Production path and must not be presented
+as tested capabilities.

@@ -18,10 +18,11 @@ sys.path.insert(0, str(_QUANT_DIR))
 from models.execution_quality import (  # noqa: E402
     ExecutionQualityInputs,
     ExecutionQualityPolicy,
+    PositionIntent,
     assess_execution_quality,
 )
 
-CONTRACT_VERSION = "theta-execution-quality-runtime-v1"
+CONTRACT_VERSION = "theta-execution-quality-runtime-v2"
 
 
 def _required(data: dict[str, Any], name: str) -> Any:
@@ -42,6 +43,7 @@ def _policy(data: dict[str, Any]) -> ExecutionQualityPolicy:
 
 def _inputs(data: dict[str, Any]) -> ExecutionQualityInputs:
     return ExecutionQualityInputs(
+        position_intent=PositionIntent(_required(data, "positionIntent")),
         bid=_required(data, "bid"),
         ask=_required(data, "ask"),
         quote_size=_required(data, "quoteSize"),
@@ -69,6 +71,7 @@ def evaluate_request(request: dict[str, Any]) -> dict[str, Any]:
         "snapshotId": snapshot_id,
         "timestamp": timestamp,
         "policyVersion": policy.policy_version,
+        "positionIntent": inputs.position_intent.value,
         "spreadPct": assessment.spread_pct,
         "fillProbability": assessment.fill_probability,
         "expectedSlippagePerShare": assessment.expected_slippage_per_share,

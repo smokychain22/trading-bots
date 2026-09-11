@@ -206,6 +206,7 @@ export function normalizeOptionContract(raw: RawOptionQuoteInput, receivedAt: st
   const quoteAgeSeconds = raw.quoteTimestamp !== null ? (new Date(receivedAt).getTime() - new Date(raw.quoteTimestamp).getTime()) / 1000 : null;
 
   const reasons: string[] = [];
+  if (dte <= 0) reasons.push('contract expired or expires today');
   if (raw.bid === null || raw.ask === null) reasons.push('quote unavailable');
   if (quoteAgeSeconds === null) reasons.push('quote age unknown');
   else if (quoteAgeSeconds > raw.maxQuoteAgeSecondsForExecutable) reasons.push('quote stale');

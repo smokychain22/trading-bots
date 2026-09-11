@@ -23,6 +23,17 @@ class FillOutcome(str, Enum):
     REPRICE = "REPRICE"
 
 
+class PositionIntent(str, Enum):
+    SELL_TO_OPEN = "SELL_TO_OPEN"
+    BUY_TO_CLOSE = "BUY_TO_CLOSE"
+    SELL_TO_CLOSE = "SELL_TO_CLOSE"
+    BUY_TO_OPEN = "BUY_TO_OPEN"
+
+    @property
+    def is_buy(self) -> bool:
+        return self in {PositionIntent.BUY_TO_CLOSE, PositionIntent.BUY_TO_OPEN}
+
+
 @dataclass(frozen=True)
 class ExecutionQualityPolicy:
     policy_version: str
@@ -34,6 +45,7 @@ class ExecutionQualityPolicy:
 
 @dataclass(frozen=True)
 class ExecutionQualityInputs:
+    position_intent: PositionIntent
     bid: Optional[float]
     ask: Optional[float]
     quote_size: Optional[int]
@@ -61,8 +73,8 @@ def assess_execution_quality(
         reasons.append(ReasonCode("QUOTE_UNKNOWN", -1, "Bid/ask is UNKNOWN, not assumed acceptable."))
         return ExecutionQualityAssessment(None, None, None, None, "UNKNOWN", reasons)
 
-    if inputs.ask <= 0:
-        reasons.append(ReasonCode("INVALID_QUOTE", -1, "Ask must be > 0."))
+    if inputs.bid < 0 or inputs.ask <= 0 or inputs.ask < inputs.bid:
+        reasons.append(ReasonCode("INVALID_QUOTE", -1, "BBO must satisfy 0 <= bid <= ask and ask > 0."))
         return ExecutionQualityAssessment(None, None, None, None, "UNKNOWN", reasons)
 
     spread_pct = (inputs.ask - inputs.bid) / inputs.ask
@@ -86,12 +98,22 @@ def assess_execution_quality(
         # the limit price sits relative to the spread and how much size is
         # displayed, never derived from a fitted model.
         size_ratio = min(1.0, inputs.quote_size / policy.min_quote_size_for_full_confidence)
-        price_ratio = 0.0 if inputs.ask == inputs.bid else max(
-            0.0, min(1.0, (inputs.limit_price - inputs.bid) / (inputs.ask - inputs.bid))
-        )
+        if inputs.ask == inputs.bid:
+            price_ratio = 1.0
+        elif inputs.position_intent.is_buy:
+            price_ratio = max(0.0, min(1.0, (inputs.limit_price - inputs.bid) / (inputs.ask - inputs.bid)))
+        else:
+            price_ratio = max(0.0, min(1.0, (inputs.ask - inputs.limit_price) / (inputs.ask - inputs.bid)))
         fill_probability = 0.5 * size_ratio + 0.5 * price_ratio
 
-    expected_slippage = (inputs.ask - inputs.limit_price) if inputs.limit_price < inputs.ask else 0.0
+    # This is the remaining per-share concession required to reach the
+    # executable side of the BBO. A buy moves toward the ask. A sell moves
+    # toward the bid. Midpoint is never used as executable truth.
+    expected_slippage = (
+        max(0.0, inputs.ask - inputs.limit_price)
+        if inputs.position_intent.is_buy
+        else max(0.0, inputs.limit_price - inputs.bid)
+    )
 
     if inputs.pre_slippage_expected_utility is None:
         reasons.append(ReasonCode("PRE_SLIPPAGE_UTILITY_UNKNOWN", -1, "Cannot confirm after-cost utility remains positive."))

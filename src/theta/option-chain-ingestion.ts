@@ -72,6 +72,9 @@ export interface MergeOptionChainInput {
   readonly maxSpreadPctForExecutable: number;
 }
 
+const finiteOrNull = (value: number | null | undefined): number | null =>
+  value !== null && value !== undefined && Number.isFinite(value) ? value : null;
+
 /**
  * Merges one underlying's real Alpaca contract listing + option snapshot +
  * (optional) Optionomics chain entry into canonical NormalizedOptionContract
@@ -87,15 +90,15 @@ export function mergeOptionChain(input: MergeOptionChainInput): readonly Normali
     const snapshot = input.snapshotsBySymbol.get(contract.symbol) ?? null;
     const optionomics = input.optionomicsBySymbol.get(contract.symbol) ?? null;
 
-    const alpacaGreeksKnown = snapshot?.greeks !== null && snapshot?.greeks !== undefined && snapshot.greeks.delta !== null;
+    const alpacaGreeksKnown = finiteOrNull(snapshot?.greeks?.delta) !== null;
     const greeksSource: 'ALPACA' | 'OPTIONOMICS' | null = alpacaGreeksKnown
       ? 'ALPACA'
-      : optionomics !== null && optionomics.delta !== null
+      : finiteOrNull(optionomics?.delta) !== null
         ? 'OPTIONOMICS'
         : null;
     const greek = (field: 'delta' | 'gamma' | 'theta' | 'vega' | 'rho'): number | null =>
-      greeksSource === 'ALPACA' ? (snapshot?.greeks?.[field] ?? null) : greeksSource === 'OPTIONOMICS' ? (optionomics?.[field] ?? null) : null;
-    const iv = greeksSource === 'ALPACA' ? (snapshot?.impliedVolatility ?? null) : greeksSource === 'OPTIONOMICS' ? (optionomics?.impliedVolatility ?? null) : null;
+      greeksSource === 'ALPACA' ? finiteOrNull(snapshot?.greeks?.[field]) : greeksSource === 'OPTIONOMICS' ? finiteOrNull(optionomics?.[field]) : null;
+    const iv = greeksSource === 'ALPACA' ? finiteOrNull(snapshot?.impliedVolatility) : greeksSource === 'OPTIONOMICS' ? finiteOrNull(optionomics?.impliedVolatility) : null;
 
     const alpacaVolumeKnown = snapshot?.dailyVolume !== null && snapshot?.dailyVolume !== undefined;
     const volumeSource: 'ALPACA' | 'OPTIONOMICS' | null = alpacaVolumeKnown

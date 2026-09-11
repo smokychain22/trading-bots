@@ -567,3 +567,44 @@ NEXT RECOMMENDED TASK: Restore the correct Vercel owner session, verify plan sup
 configure a strong `CRON_SECRET` and enable the read-only worker, then inspect its first
 Neon-backed reconciliation cycle. Keep all broker mutation gates locked. Correct the R6
 research modules on Claude's branch before selective integration.
+
+## 2026-09-11 Direction-aware execution and expiry isolation
+
+OWNER: Codex
+
+TASK: Close the unsigned execution-cost and contract-batch contamination gaps identified
+in the current R1/R2 directive.
+
+FILES CHANGED: Python execution-quality model and JSON boundary, TypeScript response
+contract and orchestrator call, option normalization/ingestion, focused tests, and
+decision/handoff records.
+
+WHAT WAS IMPLEMENTED: Execution-quality contract v2 now requires and returns the exact
+option position intent. Buy and sell limits use opposite BBO directions for fillability
+and remaining execution concession. THETA-Q sends `SELL_TO_OPEN`. Non-finite IV is
+isolated to the affected contract, and T=0 or expired contracts are non-executable
+without contaminating future-expiry siblings.
+
+TESTS RUN: 549 Node tests, 352 Python tests, ESLint, TypeScript check, Production build,
+and security scan.
+
+TEST RESULTS: 546 Node tests passed with three local PostgreSQL-only skips, all 352
+Python tests passed, and all static/build/security gates passed with zero secret-scan
+findings.
+
+KNOWN LIMITATIONS: THETA consumes provider IV and has no Production IV solver, so no
+claim is made about solver convergence or impossible-price handling. The always-on
+worker remains externally blocked by the Vercel plan and inaccessible owner project
+session described above.
+
+RISKS: `preSlippageExpectedUtility` remains a per-share model input by convention and
+needs a future explicit unit rename when the calibrated execution/TCA model replaces
+this deterministic heuristic. No execution authorization was enabled.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: The v2 position-intent field and BBO-direction
+formulas only. Strategy thresholds, calibrated probabilities, and entry policy did not
+change.
+
+NEXT RECOMMENDED TASK: Run the same checks in CI with PostgreSQL/Redis, then activate
+the read-only worker only after a supported always-on host and strong runtime secret are
+available. Keep every broker mutation gate locked.

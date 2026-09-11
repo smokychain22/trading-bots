@@ -7,11 +7,11 @@ const NOW = '2026-09-10T15:00:00.000Z';
 const baseRaw = (overrides: Partial<RawOptionQuoteInput> = {}): RawOptionQuoteInput => ({
   source: 'ALPACA',
   underlying: 'AAPL',
-  optionSymbol: 'AAPL260116P00200000',
-  occSymbol: 'AAPL260116P00200000',
+  optionSymbol: 'AAPL261016P00200000',
+  occSymbol: 'AAPL261016P00200000',
   optionType: 'PUT',
   strike: 200,
-  expiration: '2026-01-16',
+  expiration: '2026-10-16',
   asOfDate: '2026-09-10',
   multiplier: 100,
   underlyingBid: 209.5,
@@ -55,7 +55,7 @@ test('a clean PUT contract normalizes as executable with derived fields computed
 });
 
 test('a CALL contract normalizes with no break-even (PUT-only convention)', () => {
-  const contract = normalizeOptionContract(baseRaw({ optionType: 'CALL', optionSymbol: 'AAPL260116C00220000', strike: 220 }), NOW);
+  const contract = normalizeOptionContract(baseRaw({ optionType: 'CALL', optionSymbol: 'AAPL261016C00220000', strike: 220 }), NOW);
   assert.equal(contract.optionType, 'CALL');
   assert.equal(contract.breakEven, null);
 });
