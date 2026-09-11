@@ -49,11 +49,11 @@ const MIN_VOLUME = 10;
 // (single- and double-digit OI for far-OTM strikes is realistic and was
 // directly observed) plus deliberately-included UNKNOWN cases.
 const CONTRACTS: readonly AlpacaOptionContractListing[] = [
-  { symbol: 'SPY261009P00500000', strikePrice: 500, expirationDate: '2026-10-09', optionType: 'PUT' },
-  { symbol: 'SPY261009P00505000', strikePrice: 505, expirationDate: '2026-10-09', optionType: 'PUT' },
-  { symbol: 'SPY261009P00510000', strikePrice: 510, expirationDate: '2026-10-09', optionType: 'PUT' },
-  { symbol: 'SPY261009P00515000', strikePrice: 515, expirationDate: '2026-10-09', optionType: 'PUT' },
-  { symbol: 'SPY261009P00520000', strikePrice: 520, expirationDate: '2026-10-09', optionType: 'PUT' },
+  { symbol: 'SPY261009P00500000', strikePrice: 500, expirationDate: '2026-10-09', optionType: 'PUT', multiplier: 100 },
+  { symbol: 'SPY261009P00505000', strikePrice: 505, expirationDate: '2026-10-09', optionType: 'PUT', multiplier: 100 },
+  { symbol: 'SPY261009P00510000', strikePrice: 510, expirationDate: '2026-10-09', optionType: 'PUT', multiplier: 100 },
+  { symbol: 'SPY261009P00515000', strikePrice: 515, expirationDate: '2026-10-09', optionType: 'PUT', multiplier: 100 },
+  { symbol: 'SPY261009P00520000', strikePrice: 520, expirationDate: '2026-10-09', optionType: 'PUT', multiplier: 100 },
 ];
 
 const alpacaSnapshot = (bid: number, ask: number, delta: number): AlpacaOptionSnapshot => ({
@@ -86,7 +86,7 @@ const itMockedProviderRealCodePath = pythonExecutablePath === undefined ? test.s
 itMockedProviderRealCodePath('OI/volume hard-gate breakdown: UNKNOWN vs known-below-floor vs sufficient, using realistic (non-live) values', async () => {
   const contracts = mergeOptionChain({
     underlying: 'SPY', asOfDate: '2026-09-10', contracts: CONTRACTS, snapshotsBySymbol: SNAPSHOTS,
-    optionomicsBySymbol: OPTIONOMICS, requestedFeed: 'INDICATIVE', multiplier: 100, receivedAt: NOW,
+    optionomicsBySymbol: OPTIONOMICS, requestedFeed: 'INDICATIVE', defaultMultiplierForUnknownContracts: 100, receivedAt: NOW,
     maxQuoteAgeSecondsForExecutable: 30, maxSpreadPctForExecutable: 0.5,
   });
   assert.equal(contracts.length, 5);

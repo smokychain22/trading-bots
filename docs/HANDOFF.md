@@ -424,3 +424,39 @@ methodology or policy threshold changed.
 NEXT RECOMMENDED TASK: Persist FusionSnapshot, opportunity, and decision evidence using
 the existing migration 003 schema, then add a lease-backed scheduler. Keep execution
 locked.
+
+## 2026-09-11 Contract-multiplier safety integration
+
+OWNER: Codex
+
+TASK: Review and integrate Claude commit `645b977` without accepting an implicit
+100-share economics assumption.
+
+FILES CHANGED: Alpaca option-contract parsing, option-chain normalization, THETA cycle
+fixtures, multiplier safety tests, and this handoff.
+
+WHAT WAS IMPLEMENTED: Alpaca contract `size` is preserved as the contract multiplier.
+Missing or malformed provider multipliers remain UNKNOWN and force the normalized
+contract non-executable. A caller default may satisfy the normalized storage schema,
+but can never authorize economics or execution. A misleading shadow-cycle test that
+treated a premium/collateral proxy as calibrated positive expectancy was removed. The
+cross-symbol frontier's dedicated tests continue to require positive after-cost EV and
+positive return per capital-day before any executable selection.
+
+TESTS RUN: TypeScript check, ESLint, 533 Node tests, production build, and security scan.
+
+TEST RESULTS: 530 passed, 3 PostgreSQL-only tests skipped locally, 0 failed. Security
+scan reported zero findings.
+
+KNOWN LIMITATIONS: The production runtime still lacks a calibrated positive-EV model
+and an always-on worker deployment, so this correction cannot make a first Paper order
+ready by itself.
+
+RISKS: Alpaca responses that omit contract size will now reduce opportunity throughput.
+That is intentional until exact contract economics can be verified.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude should consume the fail-closed multiplier
+contract and must not reintroduce proxy-based executable ranking.
+
+NEXT RECOMMENDED TASK: Run disposable PostgreSQL CI, integrate the verified commit into
+current main, and keep all Paper and live broker submissions locked.
