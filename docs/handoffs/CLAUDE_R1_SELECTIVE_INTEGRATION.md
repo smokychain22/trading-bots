@@ -22,6 +22,7 @@ WHAT WAS IMPLEMENTED:
 - `2641c32` and `4777726` were reviewed as useful contract-level groundwork for carrying full economic dimensions, but deferred until the values have real, versioned inputs rather than optional empty fields.
 - `4fe7f7c` was rejected as a production selector. When EV and return-per-capital-day are UNKNOWN for every survivor, it selects the lowest capital-days candidate. Capital efficiency alone cannot prove positive after-cost expectancy and must not authorize new risk.
 - `3bc369b` was deferred because it depends on the rejected cross-symbol selector. Its explicit route-receipt shape is useful, but it must consume a safe final selection contract first.
+- `a25555b` was accepted and ported as `56a6375`. It adds a source-pinned research ledger and formula catalog plus two sizing cap-consistency regression tests. It does not activate a new signal, change production policy, or import third-party source. GEX, Kelly, and slippage findings remain research inputs subject to the documented independent review and OOS ablation gates.
 
 TESTS RUN: Targeted temporal-consistency, shadow-cycle, and AEGIS derivation tests, followed by the repository type, lint, test, build, security, and browser checks.
 
