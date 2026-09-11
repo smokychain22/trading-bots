@@ -71,6 +71,7 @@ function defaultShadowCycleConfig(
     universeCandidatesOrigin,
     universePolicy: { policyVersion: 'universe-v1-shadow-once', minAvgDollarVolume: 10_000_000, minCurrentPrice: 5 },
     optionExpirationDateGte: optionExpirationGte, optionExpirationDateLte: optionExpirationLte, optionType: 'put', maxOptionPages: 10,
+    crossSymbolShortlistSize: 5, // versioned research parameter -- see theta-shadow-cycle.ts's cross-symbol comparison stage
     historyStart, historyEnd: now, historyMaxPages: 5,
     ownershipPolicy: { policyVersion: 'ownership-v1-shadow-once', minStockAvgVolume: 1_000_000, minOptionOpenInterest: 1, minOptionVolume: 1, maxSpreadPct: 0.5, rvNormalizationCeiling: 0.6, downsideSemivarNormalizationCeiling: 0.3, gapFrequencyNormalizationCeiling: 0.5, eventDecayWindowDays: 10 },
     regimePolicy: { policyVersion: 'regime-v1-shadow-once', bullMaSlopeFloor: 0.001, bearMaSlopeCeiling: -0.001, rvLowCeiling: 0.1, rvHighFloor: 0.25, rvShockFloor: 0.4, maxAdverseGapShockThreshold: 0.08, liquidityThinSpreadPctFloor: 0.03, liquidityDislocatedSpreadPctFloor: 0.08, correctionDrawdownCeiling: -0.1, crisisDrawdownCeiling: -0.2 },

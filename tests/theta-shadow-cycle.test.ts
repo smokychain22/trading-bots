@@ -103,6 +103,7 @@ const baseConfig = (overrides: Partial<ThetaShadowCycleConfig> = {}): ThetaShado
   universeCandidates: [spyEligible()],
   universeCandidatesOrigin: 'CALLER_MANUAL',
   optionExpirationDateGte: '2026-10-01', optionExpirationDateLte: '2026-11-01', optionType: 'put', maxOptionPages: 5,
+  crossSymbolShortlistSize: 5,
   historyStart: '2026-07-01T00:00:00Z', historyEnd: NOW, historyMaxPages: 5,
   ownershipPolicy: { policyVersion: 'ownership-v1', minStockAvgVolume: 1, minOptionOpenInterest: 1, minOptionVolume: 1, maxSpreadPct: 0.5, rvNormalizationCeiling: 0.6, downsideSemivarNormalizationCeiling: 0.3, gapFrequencyNormalizationCeiling: 0.5, eventDecayWindowDays: 10 },
   regimePolicy: { policyVersion: 'regime-v1', bullMaSlopeFloor: 0.001, bearMaSlopeCeiling: -0.001, rvLowCeiling: 0.1, rvHighFloor: 0.25, rvShockFloor: 0.4, maxAdverseGapShockThreshold: 0.08, liquidityThinSpreadPctFloor: 0.03, liquidityDislocatedSpreadPctFloor: 0.08, correctionDrawdownCeiling: -0.1, crisisDrawdownCeiling: -0.2 },
@@ -249,6 +250,42 @@ itMockedProviderRealCodePath('with multiple eligible underlyings, selection is b
   assert.equal(result.underlyingRanking.length, 2);
   assert.equal(result.underlyingRanking[0]?.symbol, 'HIGHER_VOLUME_SECOND_IN_ARRAY');
   assert.equal(result.underlyingRanking[0]?.rank, 1);
+});
+
+itMockedProviderRealCodePath('cross-symbol economics can override pure liquidity ranking: the lower-dollar-volume underlying with the better real option premium/collateral proxy is selected', async () => {
+  const lowerVolumeButBetterEconomics: UnderlyingCandidateInput = { ...spyEligible(), symbol: 'LOWVOL', avgDollarVolume: 10_000_000 };
+  const higherVolumeButWorseEconomics: UnderlyingCandidateInput = { ...spyEligible(), symbol: 'HIVOL', avgDollarVolume: 500_000_000 };
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/options/contracts')) {
+      const isLowVol = url.includes('underlying_symbols=LOWVOL');
+      const symbol = isLowVol ? 'LOWVOL261009P00050000' : 'HIVOL261009P00500000';
+      const strike = isLowVol ? '50' : '500';
+      return jsonResponse(200, { option_contracts: [{ symbol, strike_price: strike, expiration_date: '2026-10-09' }], next_page_token: null });
+    }
+    if (url.includes('/v1beta1/options/snapshots')) {
+      const isLowVol = url.includes('/LOWVOL');
+      const symbol = isLowVol ? 'LOWVOL261009P00050000' : 'HIVOL261009P00500000';
+      // LOWVOL: bid=2 on strike 50 -> proxy 2/5000 = 0.0004. HIVOL: bid=1 on strike 500 -> proxy 1/50000 = 0.00002. LOWVOL wins economically.
+      const bid = isLowVol ? 2 : 1;
+      return jsonResponse(200, { snapshots: { [symbol]: { latestQuote: { bp: bid, ap: bid + 0.05, bs: 10, as: 10, t: NOW } } }, next_page_token: null });
+    }
+    return mockAlpacaFetch({ hasContracts: true, hasBars: true })(input, {});
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({
+    universeCandidates: [higherVolumeButWorseEconomics, lowerVolumeButBetterEconomics],
+    alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl },
+  }));
+  assert.equal(result.selectedUnderlying, 'LOWVOL');
+  assert.ok(result.crossSymbolComparison !== null);
+  // crossSymbolComparison is the raw per-underlying proxy list in shortlist
+  // (liquidity) order -- HIVOL first, LOWVOL second -- never re-sorted;
+  // the real economic comparison is what determined `selectedUnderlying`
+  // above, not this array's order.
+  assert.equal(result.crossSymbolComparison?.length, 2);
+  const lowVolProxy = result.crossSymbolComparison?.find((p) => p.underlying === 'LOWVOL');
+  const hiVolProxy = result.crossSymbolComparison?.find((p) => p.underlying === 'HIVOL');
+  assert.ok(lowVolProxy?.returnProxy !== null && hiVolProxy?.returnProxy !== null && (lowVolProxy?.returnProxy ?? 0) > (hiVolProxy?.returnProxy ?? 0));
 });
 
 itMockedProviderRealCodePath('a real (mocked) Optionomics fetch supplies OI/volume/IV for the exact-matched contract, honestly UNKNOWN if unmatched', async () => {

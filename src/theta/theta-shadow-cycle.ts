@@ -21,6 +21,7 @@ import {
 } from './optionomics-provider.js';
 import { deriveAccountExposure, mergeDerivedExposureIntoAegisInputs, type DerivedAccountExposure } from './account-exposure.js';
 import { deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProviderState, deriveStressGapDetected } from './aegis-derivation.js';
+import { computeUnderlyingReturnProxy, rankUnderlyingsByReturnProxy, type UnderlyingReturnProxy } from './cross-symbol-selection.js';
 
 // R1: runThetaShadowCycle -- the reusable, server-side, non-executing shadow
 // decision cycle. This is the "success condition" deliverable: a single
@@ -66,6 +67,12 @@ export interface ThetaShadowCycleConfig {
   readonly optionExpirationDateLte: string;
   readonly optionType: 'put';
   readonly maxOptionPages: number;
+  // Item H: how many of the liquidity-ranked eligible underlyings get a
+  // real (cheap, Alpaca-only) option-chain probe for cross-symbol economic
+  // comparison before final selection -- versioned research parameter,
+  // never a permanent magic number. 1 reproduces the old "liquidity-#1
+  // only" behavior; the real comparison only has an effect when >1.
+  readonly crossSymbolShortlistSize: number;
   readonly historyStart: string;
   readonly historyEnd: string;
   readonly historyMaxPages: number;
@@ -100,6 +107,13 @@ export interface ThetaShadowCycleResult {
   readonly universeFunnel: UniverseFunnelReport;
   readonly selectedUnderlying: string | null;
   readonly underlyingRanking: readonly RankedUnderlying[]; // full ranked-eligible list + why each rank -- selection is never "first in the input array"
+  // Item H: the real, cheap, per-underlying economic comparison across
+  // the shortlist (see cross-symbol-selection.ts). `null` only when the
+  // shortlist probe itself never ran (no eligible underlying at all).
+  // `selectedUnderlying` is chosen from THIS ranking when it produced at
+  // least one real candidate, never from underlyingRanking's liquidity
+  // order alone.
+  readonly crossSymbolComparison: readonly UnderlyingReturnProxy[] | null;
   readonly optionChainComplete: boolean | null;
   readonly optionContractsComplete: boolean | null;
   readonly snapshotContentHash: string | null; // the REAL, deterministic FusionSnapshot content hash -- never a placeholder
@@ -389,13 +403,47 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     });
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: null, underlyingRanking: ranked,
+      crossSymbolComparison: null,
       optionChainComplete: null, optionContractsComplete: null, snapshotContentHash: null, snapshotValidForNewRisk: null,
       orchestration: null,
       provenance: noUnderlyingProvenance, provenanceDetail: ['no eligible underlying survived UniversePolicy this cycle', ...noUnderlyingDetail],
       blockers: ['NO_ELIGIBLE_UNDERLYING'],
     };
   }
-  const underlying = topRanked.symbol;
+
+  // Item H: real, cheap, per-underlying economic comparison across the
+  // liquidity-ranked shortlist -- replaces "select liquidity-#1" as final
+  // trade ranking. Only Alpaca contracts+snapshots are probed here (no
+  // Optionomics, no full Python pipeline) to keep this stage bounded; the
+  // expensive full pipeline still runs exactly once per cycle, on
+  // whichever underlying wins this comparison. Falls back to the
+  // liquidity-#1 underlying (topRanked.symbol) when the shortlist probe
+  // produces no usable candidate at all -- `underlying` is never left
+  // unselected.
+  const shortlist = ranked.slice(0, Math.max(1, config.crossSymbolShortlistSize));
+  const shortlistProxies: UnderlyingReturnProxy[] = [];
+  for (const candidate of shortlist) {
+    try {
+      const contractsProbe = await fetchOptionContracts(config.alpaca, {
+        underlyingSymbol: candidate.symbol, expirationDateGte: config.optionExpirationDateGte, expirationDateLte: config.optionExpirationDateLte,
+        optionType: config.optionType, limit: 100, maxPages: config.maxOptionPages,
+      });
+      const snapshotsProbe = await fetchOptionSnapshots(config.alpaca, {
+        underlyingSymbol: candidate.symbol, feed: 'indicative', optionType: config.optionType, limit: 100, maxPages: config.maxOptionPages,
+      });
+      const mergedProbe = mergeOptionChain({
+        underlying: candidate.symbol, asOfDate: config.now().slice(0, 10), contracts: contractsProbe.items,
+        snapshotsBySymbol: snapshotsProbe.snapshots, optionomicsBySymbol: new Map(), requestedFeed: 'INDICATIVE',
+        multiplier: 100, receivedAt: config.now(), maxQuoteAgeSecondsForExecutable: 30, maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
+      });
+      shortlistProxies.push(computeUnderlyingReturnProxy(candidate.symbol, mergedProbe));
+    } catch (error) {
+      blockers.push(`CROSS_SYMBOL_PROBE_FAILED:${candidate.symbol}:${error instanceof Error ? error.message : 'unknown'}`);
+      shortlistProxies.push({ underlying: candidate.symbol, bestCandidateSymbol: null, returnProxy: null });
+    }
+  }
+  const { ranked: crossSymbolRanked } = rankUnderlyingsByReturnProxy(shortlistProxies);
+  const underlying = crossSymbolRanked[0]?.underlying ?? topRanked.symbol;
 
   let account: MasterAccountSnapshot | null = null;
   let accountEvidence = notAttemptedEvidence();
@@ -730,6 +778,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   if (candidates.length === 0) {
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
+      crossSymbolComparison: shortlistProxies,
       optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash,
       snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration: null, provenance, provenanceDetail: detail,
       blockers: [...blockers, 'NO_CANDIDATES_AVAILABLE'],
@@ -746,6 +795,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     };
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
+      crossSymbolComparison: shortlistProxies,
       optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash,
       snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration, provenance, provenanceDetail: detail, blockers,
     };
@@ -875,6 +925,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
 
   return {
     runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
+    crossSymbolComparison: shortlistProxies,
     optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash,
     snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration, provenance, provenanceDetail: detail, blockers,
   };
