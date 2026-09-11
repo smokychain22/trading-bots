@@ -180,6 +180,46 @@ export function assembleRuntimePreconditionHold(params: {
 }
 
 /**
+ * Records the economically meaningful result of a completed scan that
+ * produced no candidate contracts. A scan backed by valid required truth is
+ * a real PASS. An incomplete snapshot is a fail-closed SYSTEM_HOLD. Both are
+ * quantity zero and remain permanently non-executable.
+ */
+export function assembleNoCandidateDecision(params: {
+  readonly snapshotId: string;
+  readonly fusionSnapshotHash: string;
+  readonly timestamp: string;
+  readonly underlying: string;
+  readonly snapshotValidForNewRisk: boolean;
+  readonly policyVersion: string;
+  readonly modelVersions: Readonly<Record<string, string>>;
+}): NewRiskDecisionReceipt {
+  const valid = params.snapshotValidForNewRisk;
+  const detail = valid
+    ? 'The completed scan produced no eligible option candidate. No new risk was opened.'
+    : 'The scan produced no candidate and required provider truth was not valid for new risk. The cycle was held closed.';
+  return {
+    decisionId: `${params.snapshotId}:${params.underlying}`,
+    snapshotId: params.snapshotId,
+    fusionSnapshotHash: params.fusionSnapshotHash,
+    timestamp: params.timestamp,
+    underlying: params.underlying,
+    winningAction: valid ? 'PASS' : 'SYSTEM_HOLD',
+    selectedCandidateId: null,
+    quantity: 0,
+    alternatives: [],
+    ownershipSnapshotId: null,
+    regimeSnapshotId: null,
+    executionAuthorized: false,
+    reasonCodes: [valid ? 'NO_CANDIDATES_AVAILABLE' : 'NO_CANDIDATES_WITH_INVALID_REQUIRED_TRUTH'],
+    plainEnglishExplanation: detail,
+    failClosedReason: valid ? null : detail,
+    policyVersion: params.policyVersion,
+    modelVersions: params.modelVersions,
+  };
+}
+
+/**
  * Assembles the final new-risk decision receipt from already-computed
  * per-candidate frontier/AEGIS/sizing/execution-quality results. Fails
  * closed (winningAction=SYSTEM_HOLD, quantity=0) on: invalid provider state,

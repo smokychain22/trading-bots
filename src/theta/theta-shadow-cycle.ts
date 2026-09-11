@@ -9,7 +9,7 @@ import { mergeOptionChain, type OptionomicsChainEntry } from './option-chain-ing
 import { computeCurrentDrawdown, computeGapFrequency, computeMaxAdverseGap, computeRealizedVolatility, computeReturn, computeTrendSlope } from './underlying-features.js';
 import { evaluateUniverse, rankEligibleUnderlyings, type RankedUnderlying, type UnderlyingCandidateInput, type UniverseFunnelReport, type UniversePolicy } from './universe-policy.js';
 import { runNewRiskOrchestration, type NewRiskOrchestrationRequest, type NewRiskOrchestrationResult, type RawCandidateInput } from './new-risk-orchestrator.js';
-import { assembleRuntimePreconditionHold } from './decision-assembly.js';
+import { assembleNoCandidateDecision, assembleRuntimePreconditionHold } from './decision-assembly.js';
 import { checkTemporalConsistency, DEFAULT_TEMPORAL_CONSISTENCY_POLICIES } from './temporal-consistency.js';
 import type { PythonBridgeConfig } from './python-bridge.js';
 import { buildFusionSnapshot, hashJson, type FusionSnapshot, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
@@ -664,10 +664,21 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const fusionSnapshot = buildFusionSnapshot(snapshotInput);
 
   if (candidates.length === 0) {
+    const receipt = assembleNoCandidateDecision({
+      snapshotId: fusionSnapshot.contentHash,
+      fusionSnapshotHash: fusionSnapshot.contentHash,
+      timestamp: decisionTime,
+      underlying,
+      snapshotValidForNewRisk: fusionSnapshot.validForNewRisk,
+      policyVersion: config.policyVersion,
+      modelVersions: config.modelVersions,
+    });
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
       optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
-      snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration: null, provenance, provenanceDetail: detail,
+      snapshotValidForNewRisk: fusionSnapshot.validForNewRisk,
+      orchestration: { receipt, ownership: null, regime: null, routing: null, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [] },
+      provenance, provenanceDetail: detail,
       blockers: [...blockers, 'NO_CANDIDATES_AVAILABLE'],
     };
   }

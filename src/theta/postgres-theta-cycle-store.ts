@@ -16,6 +16,8 @@ export interface ThetaCyclePersistenceContext {
 
 export interface PersistedThetaCycle {
   readonly fusionSnapshotId: string;
+  readonly candidateSetId: string | null;
+  readonly candidateCount: number;
   readonly decisionId: string | null;
   readonly strategyRouteId: string | null;
   readonly shadowOpportunityCount: number;
@@ -64,8 +66,9 @@ export class PostgresThetaCycleStore {
           JSON.stringify(objectField(fusion.snapshot, 'unknownFeatures')), JSON.stringify(fusion.snapshot), fusion.contentHash],
       );
 
+      const candidates = await this.persistCandidates(client, fusionSnapshotId, cycle);
       const strategyRouteId = await this.persistRoute(client, fusionSnapshotId, cycle);
-      const decisionId = await this.persistDecision(client, fusionSnapshotId, cycle);
+      const decisionId = await this.persistDecision(client, fusionSnapshotId, cycle, candidates.candidateSetId, candidates.candidateIds);
       let shadowOpportunityCount = 0;
       for (const entry of cycle.orchestration?.shadowOpportunities ?? []) {
         const result = await client.query(
@@ -86,11 +89,107 @@ export class PostgresThetaCycleStore {
         shadowOpportunityCount += result.rowCount ?? 0;
       }
       await client.query('COMMIT');
-      return { fusionSnapshotId, decisionId, strategyRouteId, shadowOpportunityCount };
+      return { fusionSnapshotId, candidateSetId: candidates.candidateSetId, candidateCount: candidates.candidateIds.size, decisionId, strategyRouteId, shadowOpportunityCount };
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
     } finally { client.release(); }
+  }
+
+  private async persistCandidates(
+    client: PoolClient,
+    fusionSnapshotId: string,
+    cycle: ThetaShadowCycleResult,
+  ): Promise<{ candidateSetId: string | null; candidateIds: Map<string, string> }> {
+    const receipt = cycle.orchestration?.receipt;
+    if (receipt === null || receipt === undefined) return { candidateSetId: null, candidateIds: new Map() };
+
+    const evaluated = cycle.orchestration?.thetaQ?.candidates ?? [];
+    const setPayload = JSON.stringify(evaluated);
+    const setHash = createHash('sha256').update(setPayload).digest('hex');
+    const candidateSetId = deterministicRuntimeUuid(`candidate-set:${fusionSnapshotId}:THETA_CONVENTIONAL:${setHash}`);
+    await client.query(
+      `INSERT INTO trade.candidate_set(candidate_set_id,fusion_snapshot_id,branch,candidate_count,generated_at,generator_version,set_hash)
+       VALUES($1,$2,'THETA_CONVENTIONAL',$3,$4,$5,$6)
+       ON CONFLICT(fusion_snapshot_id,branch,set_hash) DO NOTHING`,
+      [candidateSetId, fusionSnapshotId, evaluated.length, receipt.timestamp, cycle.orchestration?.thetaQ?.contractVersion ?? 'theta-runtime-no-candidate-v1', setHash],
+    );
+
+    const snapshotContracts = cycle.fusionSnapshot?.snapshot.contractCandidates;
+    if (!Array.isArray(snapshotContracts)) throw new Error('FUSION_SNAPSHOT_CONTRACT_CANDIDATES_INVALID');
+    const candidateIds = new Map<string, string>();
+    for (const evaluatedCandidate of evaluated) {
+      const contract = snapshotContracts.find((item) => {
+        if (item === null || typeof item !== 'object' || Array.isArray(item)) return false;
+        return item.optionSymbol === evaluatedCandidate.candidateId || item.occSymbol === evaluatedCandidate.candidateId;
+      });
+      if (contract === undefined || contract === null || typeof contract !== 'object' || Array.isArray(contract)) {
+        throw new Error(`EVALUATED_CANDIDATE_CONTRACT_MISSING:${evaluatedCandidate.candidateId}`);
+      }
+      const underlying = String(contract.underlying);
+      const contractSymbol = String(contract.occSymbol ?? contract.optionSymbol);
+      const optionType = String(contract.optionType);
+      const strike = Number(contract.strike);
+      const expiration = String(contract.expiration);
+      const multiplier = Number(contract.multiplier);
+      if (!underlying || !contractSymbol || !['CALL', 'PUT'].includes(optionType) || !Number.isFinite(strike) || !Number.isFinite(multiplier)) {
+        throw new Error(`EVALUATED_CANDIDATE_IDENTITY_INVALID:${evaluatedCandidate.candidateId}`);
+      }
+
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`theta-underlying:${underlying}`]);
+      let underlyingResult = await client.query<{ underlying_id: string }>(
+        `SELECT underlying_id FROM market.underlying WHERE symbol=$1 ORDER BY active DESC, created_at ASC LIMIT 1`, [underlying],
+      );
+      if (underlyingResult.rowCount === 0) {
+        const underlyingId = deterministicRuntimeUuid(`underlying:${underlying}`);
+        underlyingResult = await client.query<{ underlying_id: string }>(
+          `INSERT INTO market.underlying(underlying_id,symbol,asset_type,exchange,currency,active)
+           VALUES($1,$2,'US_EQUITY',NULL,'USD',true) RETURNING underlying_id`, [underlyingId, underlying],
+        );
+      }
+      const underlyingId = underlyingResult.rows[0]?.underlying_id;
+      if (underlyingId === undefined) throw new Error(`UNDERLYING_PERSISTENCE_FAILED:${underlying}`);
+
+      const optionContractId = deterministicRuntimeUuid(`option-contract:${contractSymbol}`);
+      await client.query(
+        `INSERT INTO market.option_contract(option_contract_id,provider_contract_id,contract_symbol,underlying_id,option_type,strike,expiration_date,multiplier,tradable,status)
+         VALUES($1,$2,$2,$3,$4,$5,$6,$7,$8,'ACTIVE')
+         ON CONFLICT(contract_symbol) DO NOTHING`,
+        [optionContractId, contractSymbol, underlyingId, optionType, strike, expiration, multiplier, Boolean(contract.executable)],
+      );
+      const persistedContract = await client.query<{ option_contract_id: string; underlying_id: string; option_type: string; strike: string; expiration_date: string; multiplier: string }>(
+        `SELECT option_contract_id,underlying_id,option_type,strike::text,expiration_date::text,multiplier::text
+         FROM market.option_contract WHERE contract_symbol=$1`, [contractSymbol],
+      );
+      const stored = persistedContract.rows[0];
+      if (stored === undefined || stored.underlying_id !== underlyingId || stored.option_type !== optionType || Number(stored.strike) !== strike || stored.expiration_date !== expiration || Number(stored.multiplier) !== multiplier) {
+        throw new Error(`OPTION_CONTRACT_IDENTITY_CONFLICT:${contractSymbol}`);
+      }
+
+      const candidateId = deterministicRuntimeUuid(`candidate:${candidateSetId}:${evaluatedCandidate.candidateId}`);
+      candidateIds.set(evaluatedCandidate.candidateId, candidateId);
+      const alternative = receipt.alternatives.find((item) => item.candidateId === evaluatedCandidate.candidateId) ?? null;
+      const inserted = await client.query(
+        `INSERT INTO trade.candidate(candidate_id,candidate_set_id,underlying_id,option_contract_id,structure_code,rank,action_feasible,
+           ev_net,ownership_score,capital_required,metrics_json)
+         VALUES($1,$2,$3,$4,'CSP',$5,$6,$7,$8,$9,$10)
+         ON CONFLICT(candidate_id) DO NOTHING RETURNING candidate_id`,
+        [candidateId, candidateSetId, underlyingId, stored.option_contract_id, evaluatedCandidate.rank, evaluatedCandidate.actionFeasible,
+          evaluatedCandidate.economics?.ev_net ?? null, evaluatedCandidate.ownershipScore,
+          evaluatedCandidate.economics?.secured_collateral_per_contract ?? null,
+          JSON.stringify({ thetaQ: evaluatedCandidate, decisionAlternative: alternative, contract })],
+      );
+      if ((inserted.rowCount ?? 0) > 0) {
+        for (const [index, reason] of evaluatedCandidate.reasons.entries()) {
+          await client.query(
+            `INSERT INTO trade.candidate_reason(candidate_id,reason_family,reason_code,polarity,value_json,importance_rank)
+             VALUES($1,'THETA_Q',$2,$3,$4,$5)`,
+            [candidateId, reason.code, reason.polarity, JSON.stringify({ detail: reason.detail }), index + 1],
+          );
+        }
+      }
+    }
+    return { candidateSetId, candidateIds };
   }
 
   private async persistRoute(client: PoolClient, fusionSnapshotId: string, cycle: ThetaShadowCycleResult): Promise<string | null> {
@@ -109,17 +208,23 @@ export class PostgresThetaCycleStore {
     return routeId;
   }
 
-  private async persistDecision(client: PoolClient, fusionSnapshotId: string, cycle: ThetaShadowCycleResult): Promise<string | null> {
+  private async persistDecision(client: PoolClient, fusionSnapshotId: string, cycle: ThetaShadowCycleResult, candidateSetId: string | null, candidateIds: ReadonlyMap<string, string>): Promise<string | null> {
     const receipt = cycle.orchestration?.receipt;
     if (receipt === null || receipt === undefined) return null;
+    const selectedCandidateId = receipt.selectedCandidateId === null ? null : candidateIds.get(receipt.selectedCandidateId);
+    if (receipt.selectedCandidateId !== null && selectedCandidateId === undefined) {
+      throw new Error(`SELECTED_CANDIDATE_NOT_PERSISTED:${receipt.selectedCandidateId}`);
+    }
     const decisionId = deterministicRuntimeUuid(`decision:${fusionSnapshotId}:${receipt.underlying}`);
     const inserted = await client.query(
-      `INSERT INTO trade.decision(decision_id,fusion_snapshot_id,decision_kind,action_code,quantity,
-         aegis_action,decided_at,status,explanation_text,explanation_hash,runtime_selected_candidate_ref,
+      `INSERT INTO trade.decision(decision_id,fusion_snapshot_id,candidate_set_id,selected_candidate_id,decision_kind,action_code,quantity,
+         aegis_action,strategy_branch,decided_at,status,explanation_text,explanation_hash,runtime_selected_candidate_ref,
          policy_version,model_versions_json,fail_closed_reason,receipt_json)
-       VALUES($1,$2,'NEW_RISK',$3,$4,$5,$6,'RECORDED',$7,$8,$9,$10,$11,$12,$13)
+       VALUES($1,$2,$3,$4,'NEW_RISK',$5,$6,$7,'THETA_CONVENTIONAL',$8,'RECORDED',$9,$10,$11,$12,$13,$14,$15)
        ON CONFLICT(decision_id) DO NOTHING RETURNING decision_id`,
-      [decisionId, fusionSnapshotId, receipt.winningAction, receipt.quantity,
+      [decisionId, fusionSnapshotId, candidateSetId,
+        selectedCandidateId ?? null,
+        receipt.winningAction, receipt.quantity,
         cycle.orchestration?.aegis?.newRiskState ?? null, receipt.timestamp, receipt.plainEnglishExplanation,
         createHash('sha256').update(receipt.plainEnglishExplanation).digest('hex'), receipt.selectedCandidateId,
         receipt.policyVersion, JSON.stringify(receipt.modelVersions), receipt.failClosedReason, JSON.stringify(receipt)],

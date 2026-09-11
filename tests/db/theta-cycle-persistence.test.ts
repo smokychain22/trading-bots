@@ -4,6 +4,7 @@ import test from 'node:test';
 import { Pool } from 'pg';
 import { buildFusionSnapshot, type FusionSnapshotInput } from '../../src/market/fusion-snapshot.js';
 import { PostgresThetaCycleStore } from '../../src/theta/postgres-theta-cycle-store.js';
+import { normalizeOptionContract } from '../../src/theta/option-contract.js';
 import type { ThetaShadowCycleResult } from '../../src/theta/theta-shadow-cycle.js';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -35,9 +36,19 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
     const accountSnapshot = await pool.query(`INSERT INTO trade.account_snapshot(account_id,equity,cash,buying_power,options_buying_power,options_level,as_of,retrieved_at)
       VALUES($1,100000,50000,100000,50000,3,$2,$2) RETURNING account_snapshot_id`, [accountId, now]);
 
+    const contract = normalizeOptionContract({
+      source: 'ALPACA', underlying: 'SPY', optionSymbol: 'SPY261009P00500000', occSymbol: 'SPY261009P00500000',
+      optionType: 'PUT', strike: 500, expiration: '2026-10-09', asOfDate: '2026-09-11', multiplier: 100,
+      underlyingBid: 500, underlyingAsk: 500.02, underlyingLast: 500.01, underlyingTimestamp: now,
+      bid: 2.5, ask: 2.6, bidSize: 20, askSize: 20, lastTradePrice: 2.5, lastTradeSize: 1,
+      quoteTimestamp: now, tradeTimestamp: now, volume: 100, volumeSource: 'ALPACA', openInterest: 1000,
+      openInterestSource: 'ALPACA', iv: 0.2, delta: -0.2, gamma: 0.01, theta: -0.03, vega: 0.1, rho: -0.02,
+      greeksTimestamp: now, greeksSource: 'ALPACA', feed: 'OPRA', dataQuality: 'GOOD',
+      maxQuoteAgeSecondsForExecutable: 60, maxSpreadPctForExecutable: 0.1,
+    }, now);
     const snapshotInput: FusionSnapshotInput = {
       botId: 'THETA', decisionTimeUtc: now, triggerType: 'TEST', marketSession: { isOpen: false }, underlyingState: { symbol: 'SPY' },
-      contractCandidates: [], accountState: { status: 'ACTIVE' }, positionState: { positions: [], orders: [] }, portfolioExposure: {},
+      contractCandidates: [contract], accountState: { status: 'ACTIVE' }, positionState: { positions: [], orders: [] }, portfolioExposure: {},
       alpacaQuoteState: null, optionomicsFeatureState: null, eventState: null, regimeState: null, expertPriorState: null,
       riskState: null, strategyRouterState: null,
       versions: { strategyVersion: 'test', featureVersion: 'test', riskLimitVersion: 'test', executionVersion: 'test', costModelVersion: 'test', dataVersion: 'test', modelVersions: {} },
@@ -57,13 +68,21 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
       snapshotValidForNewRisk: true, provenance: 'HYBRID', provenanceDetail: [], blockers: [],
       orchestration: {
         receipt: { decisionId: 'runtime-receipt', snapshotId: fusion.contentHash, fusionSnapshotHash: fusion.contentHash, timestamp: now,
-          underlying: 'SPY', winningAction: 'PASS', selectedCandidateId: null, quantity: 0, alternatives: [], ownershipSnapshotId: null,
+          underlying: 'SPY', winningAction: 'PASS', selectedCandidateId: null, quantity: 0,
+          alternatives: [{ candidateId: contract.optionSymbol, disposition: 'PASS', evNet: null, returnPerCapitalDay: null, aegisState: null, quantity: 0, executionRecommendedAction: null, rejectionReason: 'EDGE_UNKNOWN' }], ownershipSnapshotId: null,
           regimeSnapshotId: null, executionAuthorized: false, reasonCodes: ['NO_ELIGIBLE_CANDIDATE'], plainEnglishExplanation: 'No candidate qualified.',
           failClosedReason: null, policyVersion: 'test-policy', modelVersions: {} },
         ownership: null, regime: null,
         routing: { contractVersion: 'theta-strategy-router-runtime-v1', snapshotId: fusion.contentHash, timestamp: now, policyVersion: 'router-v1',
           results: families.map((strategyFamily) => ({ strategyFamily, eligible: false, eligibilityState: 'PASS' as const, reasons: [], policyVersion: 'router-v1' })) },
-        thetaQ: null, aegis: null, paretoSurvivorIds: [], opportunityBook: null,
+        thetaQ: { contractVersion: 'theta-q-runtime-v1', fusionSnapshotHash: fusion.contentHash,
+          candidates: [{ candidateId: contract.optionSymbol, rank: 1, actionFeasible: false, quantity: 0,
+            economics: { max_profit: 250, break_even_price: 497.5, secured_collateral_per_contract: 50000,
+              credit_collateral_ratio: 0.005, ev_net: null, ev_net_unknown_reason: 'OUTCOME_PROBABILITY_UNKNOWN' },
+            ownershipScore: null, reasons: [{ code: 'EDGE_UNKNOWN', polarity: -1 as const, detail: 'Validated outcome probability is unavailable.' }] }],
+          wait: { candidateId: 'WAIT', actionFeasible: true, quantity: 0 },
+          recommendation: { actionCode: 'WAIT', selectedCandidateId: 'WAIT', quantity: 0, executionAuthorized: false, requiresAegis: true, requiresFreshAlpacaBbo: true } },
+        aegis: null, paretoSurvivorIds: [], opportunityBook: null,
         shadowOpportunities: [{ contractVersion: 'theta-shadow-opportunity-book-v1', opportunityId: `opp-${randomUUID()}`, snapshotId: fusion.contentHash,
           timestamp: now, underlying: 'SPY', contractSymbol: null, strategyBranch: 'THETA_Q', evNet: null, tailAdjustedEv: null,
           returnPerCapitalDay: null, capitalRequired: null, uncertainty: null, ownershipSnapshotId: null, regimeSnapshotId: null,
@@ -80,9 +99,12 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
     assert.equal(first.fusionSnapshotId, second.fusionSnapshotId);
     const counts = await pool.query(`SELECT
       (SELECT count(*) FROM trade.fusion_snapshot WHERE bot_instance_id=$1)::int AS snapshots,
+      (SELECT count(*) FROM trade.candidate_set WHERE fusion_snapshot_id=$2)::int AS candidate_sets,
+      (SELECT count(*) FROM trade.candidate c JOIN trade.candidate_set cs USING(candidate_set_id) WHERE cs.fusion_snapshot_id=$2)::int AS candidates,
+      (SELECT count(*) FROM trade.candidate_reason cr JOIN trade.candidate c USING(candidate_id) JOIN trade.candidate_set cs USING(candidate_set_id) WHERE cs.fusion_snapshot_id=$2)::int AS candidate_reasons,
       (SELECT count(*) FROM trade.decision WHERE fusion_snapshot_id=$2)::int AS decisions,
       (SELECT count(*) FROM trade.strategy_route WHERE fusion_snapshot_id=$2)::int AS routes,
       (SELECT count(*) FROM trade.shadow_opportunity WHERE fusion_snapshot_id=$2)::int AS opportunities`, [botId, first.fusionSnapshotId]);
-    assert.deepEqual(counts.rows[0], { snapshots: 1, decisions: 1, routes: 1, opportunities: 1 });
+    assert.deepEqual(counts.rows[0], { snapshots: 1, candidate_sets: 1, candidates: 1, candidate_reasons: 1, decisions: 1, routes: 1, opportunities: 1 });
   } finally { await pool.end(); }
 });

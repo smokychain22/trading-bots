@@ -141,7 +141,11 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
 itMockedProviderRealCodePath('no candidates on this underlying yields a coherent result, never a crash', async () => {
   const result = await runThetaShadowCycle(baseConfig({ alpaca: alpacaConfig({ hasContracts: false, hasBars: true }) }));
   assert.equal(result.blockers.includes('NO_CANDIDATES_AVAILABLE'), true);
-  assert.equal(result.orchestration, null);
+  assert.ok(result.orchestration !== null);
+  assert.equal(result.orchestration.receipt.winningAction, 'PASS');
+  assert.equal(result.orchestration.receipt.quantity, 0);
+  assert.equal(result.orchestration.receipt.executionAuthorized, false);
+  assert.deepEqual(result.orchestration.receipt.reasonCodes, ['NO_CANDIDATES_AVAILABLE']);
 });
 
 itMockedProviderRealCodePath('no eligible underlying in the universe short-circuits before any provider call', async () => {
