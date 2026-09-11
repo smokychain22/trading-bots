@@ -17,6 +17,7 @@ export interface BrokerOrderRequest {
   readonly time_in_force: 'day';
   readonly limit_price: string;
   readonly client_order_id: string;
+  readonly position_intent?: 'buy_to_open' | 'buy_to_close' | 'sell_to_open' | 'sell_to_close';
 }
 
 export interface BrokerOrderSnapshot {

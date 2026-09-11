@@ -26,6 +26,12 @@ const instructionSchema = z.object({
 
 const buyActions: readonly ThetaOrderAction[] = ['CLOSE_CSP', 'ROLL_CSP_CLOSE', 'CLOSE_CC', 'ROLL_CC_CLOSE'];
 const coveredCallOpenActions: readonly ThetaOrderAction[] = ['OPEN_CC', 'ROLL_CC_OPEN'];
+const optionPositionIntent: Readonly<Partial<Record<ThetaOrderAction, NonNullable<BrokerOrderRequest['position_intent']>>>> = {
+  OPEN_CSP: 'sell_to_open', CLOSE_CSP: 'buy_to_close',
+  ROLL_CSP_CLOSE: 'buy_to_close', ROLL_CSP_OPEN: 'sell_to_open',
+  OPEN_CC: 'sell_to_open', CLOSE_CC: 'buy_to_close',
+  ROLL_CC_CLOSE: 'buy_to_close', ROLL_CC_OPEN: 'sell_to_open',
+};
 
 export function buildAlpacaLimitOrder(raw: ThetaOrderInstruction): BrokerOrderRequest {
   const input = instructionSchema.parse(raw);
@@ -35,6 +41,7 @@ export function buildAlpacaLimitOrder(raw: ThetaOrderInstruction): BrokerOrderRe
       throw new Error('Covered-call order requires confirmed share coverage.');
     }
   }
+  const positionIntent = optionPositionIntent[input.action];
   return {
     symbol: input.symbol,
     qty: input.quantity,
@@ -43,6 +50,7 @@ export function buildAlpacaLimitOrder(raw: ThetaOrderInstruction): BrokerOrderRe
     time_in_force: 'day',
     limit_price: input.limitPrice.toFixed(2),
     client_order_id: input.clientOrderId,
+    ...(positionIntent === undefined ? {} : { position_intent: positionIntent }),
   };
 }
 

@@ -21,12 +21,15 @@ test('master and follower adapters share the same PAPER-only implementation and 
   assert.equal(follower.environment, 'PAPER');
 });
 
-test('exact option action payloads are limit DAY orders with deterministic caller identity', () => {
-  const cases: Array<[ThetaOrderInstruction['action'], 'buy' | 'sell']> = [
-    ['OPEN_CSP', 'sell'], ['CLOSE_CSP', 'buy'], ['ROLL_CSP_CLOSE', 'buy'], ['ROLL_CSP_OPEN', 'sell'],
-    ['OPEN_CC', 'sell'], ['CLOSE_CC', 'buy'], ['ROLL_CC_CLOSE', 'buy'], ['ROLL_CC_OPEN', 'sell'], ['SELL_STOCK', 'sell'],
+test('exact option action payloads carry explicit position intent and never infer open/close from side', () => {
+  const cases: Array<[ThetaOrderInstruction['action'], 'buy' | 'sell', string | undefined]> = [
+    ['OPEN_CSP', 'sell', 'sell_to_open'], ['CLOSE_CSP', 'buy', 'buy_to_close'],
+    ['ROLL_CSP_CLOSE', 'buy', 'buy_to_close'], ['ROLL_CSP_OPEN', 'sell', 'sell_to_open'],
+    ['OPEN_CC', 'sell', 'sell_to_open'], ['CLOSE_CC', 'buy', 'buy_to_close'],
+    ['ROLL_CC_CLOSE', 'buy', 'buy_to_close'], ['ROLL_CC_OPEN', 'sell', 'sell_to_open'],
+    ['SELL_STOCK', 'sell', undefined],
   ];
-  for (const [action, side] of cases) {
+  for (const [action, side, positionIntent] of cases) {
     const request = buildAlpacaLimitOrder({
       action, symbol: action === 'SELL_STOCK' ? 'AAPL' : 'AAPL261016P00150000', quantity: 1,
       limitPrice: 1.25, clientOrderId: `theta-${action.toLowerCase()}`,
@@ -34,6 +37,7 @@ test('exact option action payloads are limit DAY orders with deterministic calle
     });
     assert.deepEqual({ side: request.side, type: request.type, time: request.time_in_force, price: request.limit_price, qty: request.qty },
       { side, type: 'limit', time: 'day', price: '1.25', qty: 1 });
+    assert.equal(request.position_intent, positionIntent);
   }
 });
 

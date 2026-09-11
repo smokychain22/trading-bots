@@ -13,11 +13,12 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
       `INSERT INTO trade.order_intent
         (order_intent_id, execution_account_id, decision_id, client_order_id, status,
          instrument_type, broker_symbol, side, quantity, limit_price, time_in_force,
-         theta_action, intent_persisted_at, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'OPTION', $6, $7, $8, $9, $10, $11, $12, $12, $12)`,
+         theta_action, position_intent, intent_persisted_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'OPTION', $6, $7, $8, $9, $10, $11, $12, $13, $13, $13)`,
       [intent.orderIntentId, intent.executionAccountId, intent.decisionId, intent.request.client_order_id,
         intent.status, intent.request.symbol, intent.request.side, intent.request.qty,
-        intent.request.limit_price, intent.request.time_in_force, intent.action, intent.persistedAt],
+        intent.request.limit_price, intent.request.time_in_force, intent.action,
+        intent.request.position_intent?.toUpperCase() ?? null, intent.persistedAt],
     );
   }
 
@@ -25,7 +26,7 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
     const result = await this.pool.query(
       `SELECT i.order_intent_id, i.execution_account_id, i.decision_id, i.client_order_id,
               i.status, i.broker_symbol, i.side, i.quantity, i.limit_price, i.time_in_force,
-              i.theta_action, i.intent_persisted_at, b.provider_order_id
+              i.theta_action, i.position_intent, i.intent_persisted_at, b.provider_order_id
        FROM trade.order_intent i
        LEFT JOIN LATERAL (
          SELECT provider_order_id FROM trade.broker_order
@@ -47,6 +48,7 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
       request: {
         symbol: String(row.broker_symbol), qty: Number(row.quantity), side: String(row.side) as 'buy' | 'sell',
         type: 'limit', time_in_force: 'day', limit_price: String(row.limit_price), client_order_id: String(row.client_order_id),
+        position_intent: String(row.position_intent).toLowerCase() as NonNullable<PersistedPaperOrderIntent['request']['position_intent']>,
       },
     };
   }

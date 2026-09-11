@@ -16,7 +16,7 @@ try {
     "005_follower_copy_engine", "006_customer_identity_and_alpaca_oauth",
     "007_connection_readiness", "008_paper_execution_readiness",
     "009_private_paper_api_key_beta", "010_paper_account_roles",
-    "011_optional_follower_limits",
+    "011_optional_follower_limits", "012_explicit_option_position_intent",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -60,6 +60,11 @@ try {
   if (!protection?.global_identity || !protection?.single_master || !protection?.self_copy_trigger || !protection?.recommended_null_constraint)
     throw new Error("PAPER_ACCOUNT_PROTECTION_MISSING");
   const executionControl = await client.query("SELECT pause_new_orders, master_execution_enabled, follower_execution_enabled FROM ops.paper_execution_control WHERE singleton=true");
+  const intentProtection = await client.query(`SELECT
+    EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='trade' AND table_name='order_intent' AND column_name='position_intent') AS has_column,
+    EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='trade' AND table_name='order_intent' AND constraint_name='ck_order_intent_position_intent') AS has_constraint`);
+  if (!intentProtection.rows[0]?.has_column || !intentProtection.rows[0]?.has_constraint)
+    throw new Error("EXPLICIT_POSITION_INTENT_PROTECTION_MISSING");
   const gate = executionControl.rows[0];
   if (!gate?.pause_new_orders || gate.master_execution_enabled || gate.follower_execution_enabled)
     throw new Error("PAPER_EXECUTION_NOT_LOCKED");
@@ -76,6 +81,7 @@ try {
     selfCopyProtection: "ENFORCED",
     optionalFollowerLimits: "ENFORCED",
     paperExecutionGate: "LOCKED",
+    explicitOptionPositionIntent: "ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
     brokerOrders: orderCount.rows[0]?.count ?? 0,

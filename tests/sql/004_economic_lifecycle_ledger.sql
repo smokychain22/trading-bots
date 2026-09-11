@@ -171,11 +171,11 @@ $$;
 -- UNKNOWN_SUBMISSION status (never resubmitted blindly -- reconciled).
 INSERT INTO trade.order_intent(
   order_intent_id, chain_id, client_order_id, status, instrument_type,
-  option_contract_id, side, quantity, limit_price
+  option_contract_id, side, position_intent, quantity, limit_price
 ) VALUES (
   '00000000-0000-0000-0000-000000000124', '00000000-0000-0000-0000-000000000120',
   'theta-test-client-order-1', 'UNKNOWN_SUBMISSION', 'OPTION',
-  '00000000-0000-0000-0000-000000000112', 'SELL_TO_OPEN', 1, 0.80
+  '00000000-0000-0000-0000-000000000112', 'SELL_TO_OPEN', 'SELL_TO_OPEN', 1, 0.80
 );
 
 INSERT INTO trade.reconciliation_event(order_intent_id, chain_id, state, detail_json)
@@ -206,8 +206,8 @@ $$;
 DO $$
 BEGIN
   BEGIN
-    INSERT INTO trade.order_intent(client_order_id, status, instrument_type, side, quantity)
-    VALUES ('theta-test-negative-qty', 'PROPOSED', 'OPTION', 'SELL_TO_OPEN', -1);
+    INSERT INTO trade.order_intent(client_order_id, status, instrument_type, side, position_intent, quantity)
+    VALUES ('theta-test-negative-qty', 'PROPOSED', 'OPTION', 'SELL_TO_OPEN', 'SELL_TO_OPEN', -1);
     RAISE EXCEPTION 'a negative order_intent quantity was accepted';
   EXCEPTION WHEN check_violation THEN
     NULL;
@@ -216,7 +216,7 @@ END;
 $$;
 
 -- Quantity zero is explicitly legitimate -- must succeed.
-INSERT INTO trade.order_intent(client_order_id, status, instrument_type, side, quantity)
-VALUES ('theta-test-zero-qty', 'PROPOSED', 'OPTION', 'SELL_TO_OPEN', 0);
+INSERT INTO trade.order_intent(client_order_id, status, instrument_type, side, position_intent, quantity)
+VALUES ('theta-test-zero-qty', 'PROPOSED', 'OPTION', 'SELL_TO_OPEN', 'SELL_TO_OPEN', 0);
 
 ROLLBACK;
