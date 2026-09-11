@@ -21,6 +21,7 @@ try {
     "014_theta_runtime_persistence",
     "015_autonomous_runtime_evidence",
     "016_broker_lifecycle_evidence",
+    "017_management_decision_vertical_slice",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -38,6 +39,8 @@ try {
     ["trade", "unmatched_broker_fact"], ["research", "theta_replay_observation"],
     ["research", "theta_replay_outcome_label"],
     ["trade", "broker_position_snapshot"], ["trade", "broker_activity_fact"],
+    ["trade", "management_input_snapshot"], ["trade", "management_action_frontier"],
+    ["trade", "lifecycle_application"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -116,6 +119,7 @@ try {
     autonomousRuntimeEvidence: "ENFORCED",
     replayFeatureLabelSeparation: "ENFORCED",
     brokerLifecycleEvidence: "ENFORCED",
+    managementDecisionVerticalSlice: "ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
     brokerOrders: orderCount.rows[0]?.count ?? 0,

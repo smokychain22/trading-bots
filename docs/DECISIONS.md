@@ -312,6 +312,26 @@ positive after-cost economics, tail evidence, AEGIS quantity, durable IDs, idemp
 persistence, scheduler, reconciliation, and the final pre-POST lock. A valid receipt
 still submits zero orders.
 
+## 2026-09-12: management decisions use frontiers, not indicator unanimity
+
+New-risk and management evidence is split into mechanical hard gates and soft evidence.
+Technical indicators, volatility context, flow, ownership, and regime normally change
+rank, uncertainty, size, or branch choice. They do not independently veto a candidate.
+A global WAIT is valid only after all currently eligible underlyings and validated
+branches, existing management, recovery, covered-call, and redeployment surfaces were
+evaluated.
+
+Open-chain management inputs are projected from persisted broker, account, quote,
+FusionSnapshot, and economic-ledger facts. Missing values remain explicit. The action
+frontier is complete for CSP, stock recovery, and covered-call states, while action EV,
+tail estimates, capital-days, and utilities remain null until empirical models qualify.
+No fixed take-profit percentage becomes production policy by default.
+
+Broker-confirmed lifecycle applications use one PostgreSQL transaction and one hashed
+evidence key. Assignment, expiry, close, roll, covered-call open/close, call-away, and
+stock disposal cannot leave a partially updated chain. Option-leg realized losses remain
+immutable and every roll opens a separate linked leg.
+
 Broker reconciliation now persists a complete immutable position set for each read and
 hashed activity facts for lifecycle evidence. Assignment, expiration, and call-away
 classification requires matching broker activity and consistent position movement.

@@ -667,3 +667,42 @@ NEXT RECOMMENDED TASK: Build the PostgreSQL management-input projection and atom
 broker-confirmed lifecycle writer, then connect the safe opportunity cycle to durable
 receipt generation. Keep every broker mutation locked until the full real receipt is
 YES and has been reported before the first POST.
+
+## 2026-09-12 Profitability decision vertical slice
+
+OWNER: Codex
+
+TASK: Replace the generic management-input blocker with real persisted inputs, explicit
+action frontiers, earned global-WAIT evidence, and atomic lifecycle accounting.
+
+FILES CHANGED: Decision evidence taxonomy, management input projection, action frontier,
+broker position normalization, autonomous runtime, lifecycle application store, migration
+017, database verifier, tests, profitability runtime note, Claude review, decisions, and
+handoff.
+
+WHAT WAS IMPLEMENTED: Hard mechanical blockers are separate from soft ranking evidence.
+Global WAIT requires exhaustive surface evidence. Each open economic chain gets an
+immutable input snapshot and complete state-appropriate action frontier. Missing Greeks,
+IV, events, portfolio risk, or empirical economics remain explicit. Assignment, expiry,
+option close, CSP and CC rolls, covered-call open, call-away, and stock disposal now have
+one transactionally consistent and idempotent PostgreSQL application path.
+
+KNOWN LIMITATIONS: The empirical continuation-EV, assignment, recovery, tail, and fill
+models are not promoted. No action can claim calibrated expected profit or win
+probability. The atomic lifecycle writer is not yet called automatically by the broker
+reconciliation classifier, so broker-confirmed terminal facts still require that final
+orchestration link before unattended lifecycle mutation is safe. External worker hosting
+and CRON_SECRET remain intentionally deferred.
+
+RISKS: Existing live data does not yet populate every management field. The runtime will
+persist the frontier and report a degraded empirical-readiness state instead of selecting
+a profit-maximizing action from incomplete evidence.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude commit `48b522a` was reviewed file by file.
+Research utility code that substitutes zero for unknown penalty inputs was not adopted.
+Claude must continue using its isolated branch and must not change production runtime,
+execution, account, or migration files.
+
+NEXT RECOMMENDED TASK: Accumulate point-in-time shadow and resolved whole-chain evidence,
+calibrate the action-value distributions, and promote only a paired out-of-sample policy
+that improves after-cost economics without weakening drawdown or tail-risk controls.

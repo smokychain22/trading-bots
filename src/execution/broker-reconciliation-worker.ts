@@ -8,6 +8,11 @@ const accountSchema = z.object({ id: z.string().min(1), status: z.string().nulla
 const positionSchema = z.object({
   symbol: z.string().min(1), qty: z.union([z.string(), z.number()]).nullable().optional(),
   side: z.string().nullable().optional(), asset_class: z.string().nullable().optional(),
+  avg_entry_price: z.union([z.string(), z.number()]).nullable().optional(),
+  current_price: z.union([z.string(), z.number()]).nullable().optional(),
+  market_value: z.union([z.string(), z.number()]).nullable().optional(),
+  cost_basis: z.union([z.string(), z.number()]).nullable().optional(),
+  unrealized_pl: z.union([z.string(), z.number()]).nullable().optional(),
 }).passthrough();
 
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');
@@ -31,6 +36,11 @@ export interface BrokerPositionEvidence {
   readonly quantity: number | null;
   readonly side: string | null;
   readonly assetClass: string | null;
+  readonly averageEntryPrice: number | null;
+  readonly currentPrice: number | null;
+  readonly marketValue: number | null;
+  readonly costBasis: number | null;
+  readonly unrealizedPnl: number | null;
 }
 
 export interface ReconciledBrokerOrder {
@@ -99,11 +109,21 @@ export interface BrokerReconciliationResult {
 
 function safePosition(raw: unknown): BrokerPositionEvidence {
   const parsed = positionSchema.parse(raw);
+  const numberOrNull = (value: string | number | null | undefined): number | null => {
+    if (value == null) return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  };
   return {
     symbol: parsed.symbol,
-    quantity: parsed.qty == null ? null : Number(parsed.qty),
+    quantity: numberOrNull(parsed.qty),
     side: parsed.side ?? null,
     assetClass: parsed.asset_class ?? null,
+    averageEntryPrice: numberOrNull(parsed.avg_entry_price),
+    currentPrice: numberOrNull(parsed.current_price),
+    marketValue: numberOrNull(parsed.market_value),
+    costBasis: numberOrNull(parsed.cost_basis),
+    unrealizedPnl: numberOrNull(parsed.unrealized_pl),
   };
 }
 
@@ -166,7 +186,12 @@ export async function runReadOnlyBrokerReconciliation(input: {
       factType: 'POSITION' as const,
       providerFactRefHash: sha256(`${position.symbol}:${position.side ?? ''}:${position.quantity ?? 'UNKNOWN'}`),
       symbol: position.symbol,
-      detail: { quantity: position.quantity, side: position.side, assetClass: position.assetClass },
+      detail: {
+        quantity: position.quantity, side: position.side, assetClass: position.assetClass,
+        averageEntryPrice: position.averageEntryPrice, currentPrice: position.currentPrice,
+        marketValue: position.marketValue, costBasis: position.costBasis,
+        unrealizedPnl: position.unrealizedPnl,
+      },
     })),
     ...sortedActivities.filter((activity) => activity.orderId === null || !knownOrderIds.has(activity.orderId)).map(activityFact),
   ];
@@ -278,10 +303,12 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
       for (const position of input.positions) {
         await client.query(
           `INSERT INTO trade.broker_position_snapshot(
-             reconciliation_snapshot_id,connection_id,symbol,quantity,side,asset_class,observed_at,payload_hash)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+             reconciliation_snapshot_id,connection_id,symbol,quantity,side,asset_class,observed_at,payload_hash,
+             average_entry_price,current_price,market_value,cost_basis,unrealized_pnl)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
           [input.snapshotId, input.connectionId, position.symbol, position.quantity, position.side,
-            position.assetClass, input.observedAt, sha256(canonicalJson(position))],
+            position.assetClass, input.observedAt, sha256(canonicalJson(position)), position.averageEntryPrice,
+            position.currentPrice, position.marketValue, position.costBasis, position.unrealizedPnl],
         );
       }
       for (const activity of input.activities) {

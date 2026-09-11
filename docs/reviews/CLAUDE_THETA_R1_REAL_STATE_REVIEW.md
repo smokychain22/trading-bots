@@ -47,9 +47,20 @@ means useful intent exists but the implementation needs correction and focused t
 | `7f3f610` | SUPERSEDED | Corrected research-only GEX matrix is on main as `be15d11`. |
 | `531ae8b` | REPAIR_AND_PORT | The six named repairs are directionally correct and include regression tests. Port only with their R6 base modules after an isolated full review. |
 | `9d3172e` | DEFER | Reproducibility and promotion checks are research-only and do not close the current Paper runtime input or empirical-data blockers. |
+| `48b522a` `episode_economics.py` | SUPERSEDED | Its roll, multiplier, capital-day, and whole-chain invariants already exist in the production ledger contract and are enforced by the atomic lifecycle writer. |
+| `48b522a` `management_policy.py` action taxonomy | REPAIR_AND_PORT | The action and global-WAIT taxonomies are useful and were ported as typed TypeScript contracts. `management_utility()` was not ported because it converts unknown penalty terms to zero. |
+| `48b522a` `bs_reference.py` | RESEARCH_ONLY | Useful numerical fixture reference. Optionomics remains the production IV source and this solver is not a trading fallback. |
+| `48b522a` `regime_report.py` | RESEARCH_ONLY | Correctly separates raw N and independent-chain N, but it does not close the live management-input or calibration gap. |
+| `48b522a` flow and friend-bot documents | RESEARCH_ONLY | The anti-leakage and fail-open warnings are valid. No unvalidated flow threshold or claimed performance was adopted. |
 
-No new Claude commit enters main in this slice. The repaired branch now addresses the
+No Claude commit was merged wholesale. The repaired branch now addresses the
 previous six defects, but the repair commit depends on the unintegrated R6 base bundle.
 Repaired point-in-time replay and
 statistical metrics can be reviewed later with fixed reference fixtures. This does
 not block the host-independent runtime or broker-truth work.
+
+The production port is deliberately narrower than `48b522a`: hard gates and soft
+evidence are distinct, global WAIT requires exhaustive evidence, every lifecycle state
+has an explicit action frontier, and unknown economic terms remain null. The research
+utility function's use of `or 0.0` for missing penalties was rejected because it would
+make unknown risk look costless.

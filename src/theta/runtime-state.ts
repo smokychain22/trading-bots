@@ -38,18 +38,18 @@ export const THETA_LIFECYCLE_TRANSITIONS: Readonly<Record<ThetaLifecycleState, r
   WAIT: ['CSP_PROPOSED'],
   CSP_PROPOSED: ['CSP_OPEN', 'WAIT'], // WAIT: proposal rejected/expired before fill
   CSP_OPEN: ['BTC_CLOSE', 'EXPIRE_OTM', 'ROLL_DECISION', 'ASSIGNED'],
-  BTC_CLOSE: ['REDEPLOY'],
+  BTC_CLOSE: ['REDEPLOY', 'CLOSED'],
   // A put expiry releases cash and can redeploy. A covered-call expiry
   // returns the still-owned stock to recovery evaluation. The reconciler
   // supplies the leg context and broker evidence before choosing either.
   EXPIRE_OTM: ['REDEPLOY', 'RECOVERY_WAIT'],
-  ROLL_DECISION: ['CSP_PROPOSED', 'ASSIGNED'], // roll opens a new CSP proposal, or assignment is accepted instead
+  ROLL_DECISION: ['CSP_PROPOSED', 'CC_PROPOSED', 'ASSIGNED'], // close-old then open-new; branch identity determines CSP vs CC
   ASSIGNED: ['STOCK_HELD'],
   STOCK_HELD: ['RECOVERY_WAIT'],
   RECOVERY_WAIT: ['CLOSE_STOCK', 'CC_PROPOSED'],
   CC_PROPOSED: ['CC_OPEN', 'RECOVERY_WAIT'], // CC proposal rejected -- back to waiting
   CC_OPEN: ['CLOSE_CC', 'EXPIRE_OTM', 'ROLL_DECISION', 'CALL_AWAY'],
-  CLOSE_CC: ['CLOSE_STOCK', 'REDEPLOY'], // stock may still be held (sell later) or was already exited
+  CLOSE_CC: ['RECOVERY_WAIT', 'CLOSE_STOCK', 'REDEPLOY'], // a closed CC normally returns owned stock to recovery evaluation
   CALL_AWAY: ['CLOSED'], // shares are gone; chain resolves
   CLOSE_STOCK: ['CLOSED'],
   REDEPLOY: ['WAIT'], // freed capital re-enters evaluation as a fresh candidate search

@@ -36,6 +36,12 @@ test('the assignment-to-recovery-to-covered-call path is valid', () => {
   }
 });
 
+test('CSP and covered-call rolls use distinct proposal states', () => {
+  assertValidLifecycleTransition('ROLL_DECISION', 'CSP_PROPOSED');
+  assertValidLifecycleTransition('ROLL_DECISION', 'CC_PROPOSED');
+  assertValidLifecycleTransition('CLOSE_CC', 'RECOVERY_WAIT');
+});
+
 test('an invalid transition is rejected, never silently coerced', () => {
   assert.equal(isValidLifecycleTransition('WAIT', 'CC_OPEN'), false);
   assert.throws(() => assertValidLifecycleTransition('WAIT', 'CC_OPEN'), InvalidLifecycleTransitionError);

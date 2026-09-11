@@ -13,6 +13,8 @@ import { customerStore } from '../customer/customer-store.js';
 import { dispatchDueJobs, type DueJob } from './scheduler-engine.js';
 import type { JobRunResult, JobType } from './scheduler.js';
 import { PostgresSchedulerCheckpointRepository } from './postgres-scheduler-checkpoint-repository.js';
+import { PostgresManagementInputStore } from './management-input-state.js';
+import { buildManagementActionFrontier } from './management-action-frontier.js';
 
 export const autonomousRuntimeVersion = 'theta-autonomous-runtime-v1' as const;
 export const autonomousPolicyVersion = 'theta-scheduler-policy-v1' as const;
@@ -199,8 +201,18 @@ export async function runAutonomousRuntimeCycle(
         return succeeded();
       }
       if (jobType === 'POSITION_MANAGEMENT_SCAN') {
-        const count = await cycleStore.openChainCount();
-        return count === 0 ? skipped('NO_OPEN_THETA_CHAINS') : degraded('MANAGEMENT_INPUT_ASSEMBLY_INCOMPLETE', retryAt);
+        if (reconciliation === null) return degraded('BROKER_RECONCILIATION_REQUIRED', retryAt);
+        const managementStore = new PostgresManagementInputStore(pool);
+        const states = await managementStore.assembleAndPersistOpenChains(
+          master.connectionId, reconciliation.snapshotId, reconciliation.observedAt,
+        );
+        if (states.length === 0) return skipped('NO_OPEN_THETA_CHAINS');
+        const frontiers = states.map(buildManagementActionFrontier);
+        await managementStore.persistFrontiers(states, frontiers);
+        if (states.some((state) => state.hardBlockers.length > 0)) {
+          return degraded('MANAGEMENT_HARD_BLOCKERS_PRESENT', retryAt);
+        }
+        return degraded('EV_MODEL_NOT_EMPIRICALLY_READY', retryAt);
       }
       if (jobType === 'ASSIGNMENT_EXPIRY_RECONCILIATION') {
         return reconciliation === null ? degraded('BROKER_RECONCILIATION_REQUIRED', retryAt) : succeeded();
