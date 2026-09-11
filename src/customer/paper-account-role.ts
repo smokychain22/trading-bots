@@ -7,6 +7,15 @@ export interface MasterRoleStore {
   promote(customerId: string, verifiedAccountId: string): Promise<void>;
 }
 
+export function resolveAuthenticatedMasterCandidate(customerIds: readonly string[]): string {
+  const distinct = [...new Set(customerIds)];
+  if (distinct.length === 0) throw new Error('AUTHENTICATED_MASTER_CONNECTION_NOT_FOUND');
+  if (distinct.length !== 1) throw new Error('AUTHENTICATED_MASTER_CONNECTION_AMBIGUOUS');
+  const candidate = distinct[0];
+  if (candidate === undefined) throw new Error('AUTHENTICATED_MASTER_CONNECTION_NOT_FOUND');
+  return candidate;
+}
+
 export class PostgresMasterRoleStore implements MasterRoleStore {
   constructor(private readonly pool: Pool) {}
 

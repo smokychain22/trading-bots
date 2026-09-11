@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadEnvironment } from '../src/config/environment.js';
-import { designateConnectedPaperMaster } from '../src/customer/paper-account-role.js';
+import { designateConnectedPaperMaster, resolveAuthenticatedMasterCandidate } from '../src/customer/paper-account-role.js';
 import type { FollowerVerification } from '../src/customer/alpaca-paper-verification.js';
 import { paperCopyReadiness } from '../src/customer/paper-copy.js';
 import type { FollowerRecord } from '../src/customer/customer-store.js';
@@ -54,4 +54,10 @@ test('master account cannot activate follower setup', () => {
   const result = paperCopyReadiness({}, master, true);
   assert.equal(result.activation_allowed, false);
   assert.match(result.reason, /cannot copy itself/);
+});
+
+test('master candidate resolution requires one authenticated connected customer', () => {
+  assert.equal(resolveAuthenticatedMasterCandidate(['customer-a', 'customer-a']), 'customer-a');
+  assert.throws(() => resolveAuthenticatedMasterCandidate([]), /NOT_FOUND/);
+  assert.throws(() => resolveAuthenticatedMasterCandidate(['customer-a', 'customer-b']), /AMBIGUOUS/);
 });
