@@ -320,6 +320,7 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
         strikePrice: asNumberOrNull(c.strike_price) ?? 0,
         expirationDate: asStringOrNull(c.expiration_date) ?? '',
         optionType: params.optionType === 'put' ? 'PUT' : 'CALL',
+        multiplier: asNumberOrNull(c.size),
       });
     }
     pageToken = body.next_page_token ?? null;

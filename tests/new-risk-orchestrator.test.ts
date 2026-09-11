@@ -162,6 +162,16 @@ itMockedProviderRealCodePath('every evaluated candidate is recorded in the shado
   assert.ok(recordedIds.includes('C2'));
 });
 
+itMockedProviderRealCodePath('a non-executable contract (e.g. unverified multiplier) is excluded from the lattice call before delta is even checked, recorded as PASS/CONTRACT_NOT_EXECUTABLE', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    candidates: [candidate('C1', { contract: contract({ optionSymbol: 'C1', executable: false, nonExecutableReason: 'multiplier unverified' }) })],
+  }));
+  assert.equal(result.thetaQ, null); // never sent to the lattice at all
+  assert.equal(result.candidateEconomics, null); // no economics ever computed for it
+  const entry = result.shadowOpportunities.find((e) => e.contractSymbol === 'C1');
+  assert.equal(entry?.rejectionCategory, 'CONTRACT_NOT_EXECUTABLE');
+});
+
 itMockedProviderRealCodePath('a delta-UNKNOWN contract is excluded from the lattice call and recorded as PASS/UNKNOWN_DELTA', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     candidates: [candidate('C1', { contract: contract({ optionSymbol: 'C1', delta: null }) })],

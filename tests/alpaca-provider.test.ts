@@ -168,6 +168,24 @@ test('fetchOptionContracts follows next_page_token to completion, never assuming
   assert.equal(result.pagesFetched, 2);
 });
 
+test('fetchOptionContracts parses the provider contract multiplier', async () => {
+  const fetchImpl = (async () => jsonResponse(200, {
+    option_contracts: [{ symbol: 'ADJ261009P00500000', strike_price: '500', expiration_date: '2026-10-09', size: '250' }],
+    next_page_token: null,
+  })) as typeof fetch;
+  const result = await fetchOptionContracts(baseConfig(fetchImpl), { underlyingSymbol: 'ADJ', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01', optionType: 'put', limit: 10, maxPages: 5 });
+  assert.equal(result.items[0]?.multiplier, 250);
+});
+
+test('fetchOptionContracts preserves a missing multiplier as UNKNOWN', async () => {
+  const fetchImpl = (async () => jsonResponse(200, {
+    option_contracts: [{ symbol: 'SPY261009P00500000', strike_price: '500', expiration_date: '2026-10-09' }],
+    next_page_token: null,
+  })) as typeof fetch;
+  const result = await fetchOptionContracts(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01', optionType: 'put', limit: 10, maxPages: 5 });
+  assert.equal(result.items[0]?.multiplier, null);
+});
+
 test('fetchOptionContracts marks complete=false (never silently complete) when maxPages is hit with more remaining, but preserves items already fetched', async () => {
   const fetchImpl = (async () => jsonResponse(200, { option_contracts: [{ symbol: 'X', strike_price: '1', expiration_date: '2026-10-09' }], next_page_token: 'always-more' })) as typeof fetch;
   const result = await fetchOptionContracts(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01', optionType: 'put', limit: 1, maxPages: 2 });

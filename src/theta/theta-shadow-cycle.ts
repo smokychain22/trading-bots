@@ -601,7 +601,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     const mergedContracts = mergeOptionChain({
       underlying, asOfDate: decisionTime.slice(0, 10), contracts: contractsResult.items,
       snapshotsBySymbol: snapshotsResult.snapshots, optionomicsBySymbol, requestedFeed: 'INDICATIVE',
-      multiplier: 100, receivedAt, maxQuoteAgeSecondsForExecutable: 30, maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
+      defaultMultiplierForUnknownContracts: 100, receivedAt, maxQuoteAgeSecondsForExecutable: 30, maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
     });
     mergedContractsForSnapshot = mergedContracts;
 

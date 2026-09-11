@@ -27,6 +27,7 @@ export interface AlpacaOptionContractListing {
   readonly strikePrice: number;
   readonly expirationDate: string; // YYYY-MM-DD
   readonly optionType: OptionType;
+  readonly multiplier: number | null;
 }
 
 export interface AlpacaOptionSnapshot {
@@ -65,7 +66,7 @@ export interface MergeOptionChainInput {
   readonly snapshotsBySymbol: ReadonlyMap<string, AlpacaOptionSnapshot>;
   readonly optionomicsBySymbol: ReadonlyMap<string, OptionomicsChainEntry>;
   readonly requestedFeed: 'OPRA' | 'INDICATIVE';
-  readonly multiplier: number; // standard contracts are 100; caller confirms via contractIsStandard upstream
+  readonly defaultMultiplierForUnknownContracts: number;
   readonly receivedAt: string;
   readonly maxQuoteAgeSecondsForExecutable: number;
   readonly maxSpreadPctForExecutable: number;
@@ -111,7 +112,7 @@ export function mergeOptionChain(input: MergeOptionChainInput): readonly Normali
     const openInterestSource: 'ALPACA' | 'OPTIONOMICS' | null = optionomics !== null && optionomics.openInterest !== null ? 'OPTIONOMICS' : null;
     const openInterest = openInterestSource === 'OPTIONOMICS' ? (optionomics?.openInterest ?? null) : null;
 
-    return normalizeOptionContract(
+    const normalized = normalizeOptionContract(
       {
         source: 'ALPACA', // bid/ask/executability are always Alpaca's -- broker/execution truth
         underlying: input.underlying,
@@ -121,7 +122,7 @@ export function mergeOptionChain(input: MergeOptionChainInput): readonly Normali
         strike: contract.strikePrice,
         expiration: contract.expirationDate,
         asOfDate: input.asOfDate,
-        multiplier: input.multiplier,
+        multiplier: contract.multiplier ?? input.defaultMultiplierForUnknownContracts,
         underlyingBid: null, underlyingAsk: null, underlyingLast: null, underlyingTimestamp: null,
         bid: snapshot?.bid ?? null, ask: snapshot?.ask ?? null, bidSize: snapshot?.bidSize ?? null, askSize: snapshot?.askSize ?? null,
         lastTradePrice: null, lastTradeSize: null,
@@ -138,5 +139,24 @@ export function mergeOptionChain(input: MergeOptionChainInput): readonly Normali
       },
       input.receivedAt,
     );
+
+    // Production-economics safety: `defaultMultiplierForUnknownContracts`
+    // exists ONLY to give this contract's `multiplier` field a concrete
+    // number (the schema requires one) -- it must NEVER silently make an
+    // unverified contract look economically trustworthy. When Alpaca did
+    // not supply this contract's own real multiplier, the contract is
+    // forced non-executable here, regardless of how good its quote/
+    // spread/data-quality otherwise look, so nothing downstream can ever
+    // compute capital/premium economics against a fabricated multiplier.
+    if (contract.multiplier === null) {
+      return {
+        ...normalized,
+        executable: false,
+        nonExecutableReason: normalized.nonExecutableReason !== null
+          ? `${normalized.nonExecutableReason}; multiplier unverified`
+          : 'multiplier unverified',
+      };
+    }
+    return normalized;
   });
 }
