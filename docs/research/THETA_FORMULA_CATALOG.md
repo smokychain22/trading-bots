@@ -175,6 +175,21 @@ adverse_slippage=side*(actual_fill-reference_price)*M*Q, side=+1 buy,-1 sell
 - THETA implementation: THETA execution_quality.py lacks side input, review requested. No quant change.
 - Verification tests: Proposed STO/BTC/STC/BTO, quote-before-submit, partial fill and no fill tests.
 
+## Whole-cycle and management utility
+
+```text
+CycleUtility = E[whole_chain_pnl] / E[capital_days] - tail_penalty - inventory_penalty
+ManagementUtility(a) = RemainingEV(a) - lambda*TailRisk(a) - kappa*CapitalDays(a)
+                       - xi*ExecutionRisk(a) - OpportunityCost(a)
+```
+
+- Variables / units: Whole-chain P&L and cost terms must use compatible currency units. Capital-day normalization and every penalty weight must be versioned. Action `a` comes from the canonical lifecycle action set.
+- Source: owner-supplied THETA strategy and profitability blueprints dated 2026-09-12, reconciled with the canonical formula registry.
+- Assumptions: All compared actions share one decision-time FusionSnapshot. Remaining EV uses physical, point-in-time outcome distributions and after-cost economics.
+- Numerical and missing-data issues: If any required empirical component or its unit convention is unknown, utility is UNKNOWN. Missing penalties cannot become zero. No arbitrary lambda, kappa, or xi is promoted by this catalog.
+- THETA implementation: The action frontier and response contract persist the alternatives and null fields. Empirical calibration is blocked.
+- Verification tests: Strategy response rejects non-null EV while empirical readiness is blocked. Management frontier and receipt tests preserve null utilities.
+
 ## After-cost expected value and Full-H
 
 ```text

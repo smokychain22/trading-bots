@@ -26,6 +26,8 @@ test('global WAIT is not earned when one underlying or validated branch was skip
     validatedBranchesEvaluated: ['THETA_Q'], existingPositionManagementEvaluated: true,
     recoveryOpportunitiesEvaluated: true, coveredCallOpportunitiesEvaluated: true,
     redeploymentAlternativesEvaluated: true, hardGateCounts: {}, softEvidenceFamiliesObserved: ['RSI'],
+    blockedBranches: { THETA_H: ['RESEARCH_ONLY'] }, bestCandidateId: null,
+    secondBestCandidateId: null, bestRejectedCandidateId: 'candidate-1',
   });
   assert.equal(result.earned, false);
   assert.deepEqual(result.violations, ['ELIGIBLE_UNIVERSE_NOT_EXHAUSTED', 'VALIDATED_BRANCHES_NOT_EXHAUSTED']);
@@ -37,7 +39,20 @@ test('global WAIT can be earned without requiring every soft indicator to agree'
     contractsEvaluated: 24, validatedBranchesEligible: ['THETA_Q'], validatedBranchesEvaluated: ['THETA_Q'],
     existingPositionManagementEvaluated: true, recoveryOpportunitiesEvaluated: true,
     coveredCallOpportunitiesEvaluated: true, redeploymentAlternativesEvaluated: true,
-    hardGateCounts: {}, softEvidenceFamiliesObserved: ['IV'],
+    hardGateCounts: {}, softEvidenceFamiliesObserved: ['IV'], blockedBranches: {},
+    bestCandidateId: null, secondBestCandidateId: null, bestRejectedCandidateId: 'candidate-1',
   });
   assert.deepEqual(result, { earned: true, violations: [] });
+});
+
+test('global WAIT rejects contradictory best and second-best evidence', () => {
+  const result = validateGlobalWaitEvidence({
+    reason: 'EXECUTION_NOT_FEASIBLE', eligibleUnderlyingCount: 1, underlyingsEvaluated: 1,
+    contractsEvaluated: 2, validatedBranchesEligible: ['THETA_Q'], validatedBranchesEvaluated: ['THETA_Q'],
+    existingPositionManagementEvaluated: true, recoveryOpportunitiesEvaluated: true,
+    coveredCallOpportunitiesEvaluated: true, redeploymentAlternativesEvaluated: true,
+    hardGateCounts: {}, softEvidenceFamiliesObserved: [], blockedBranches: {},
+    bestCandidateId: 'same', secondBestCandidateId: 'same', bestRejectedCandidateId: null,
+  });
+  assert.deepEqual(result.violations, ['SECOND_BEST_DUPLICATES_BEST']);
 });

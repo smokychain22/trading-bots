@@ -718,3 +718,56 @@ execution, account, or migration files.
 NEXT RECOMMENDED TASK: Accumulate point-in-time shadow and resolved whole-chain evidence,
 calibrate the action-value distributions, and promote only a paired out-of-sample policy
 that improves after-cost economics without weakening drawdown or tail-risk controls.
+
+## 2026-09-12 Strategy package integration
+
+OWNER: Codex
+
+TASK: Reconcile the new THETA strategy documents with canonical runtime, add a validated
+five-branch strategy package, repair UNKNOWN economics handling, and link confirmed
+broker terminal evidence to the atomic lifecycle writer.
+
+FILES CHANGED: Strategy package, aggregate Node-to-Python contract, underlying Pareto
+selector, strategy decision envelope, broker lifecycle application bridge, new-risk
+assembly, persistence, sizing and lifecycle tests, the complete strategy documentation
+set, decisions, and handoff.
+
+WHAT WAS IMPLEMENTED: The existing six-family router is mapped to five business
+branches without duplicating THETA_R. Each branch has a strict, immutable, hashed config
+and an execution-disabled status. Research lattices are explicit without becoming
+profitability claims. The strategy response preserves UNKNOWN empirical values and can
+never authorize execution. New-risk selection requires known positive after-cost EV
+and capital-day return. Missing bid no longer becomes zero. Persisted decisions now use
+a versioned envelope with strategy version, branch, alternatives, second-best,
+economics, AEGIS state, invalidation conditions, and reevaluation triggers. Broker-
+confirmed assignment and expiration can reach the atomic writer only through a hashed,
+type-checked evidence bridge.
+
+CLAUDE REVIEW: Commits `8fa0909` and follow-up repair `811da56` were reviewed file by file. Sizing monotonicity tests and
+the UNKNOWN-first distributional contract were ported. Promotion and feature-taxonomy
+ideas were accepted conceptually. Outcome-dependent strictness, opportunity-capture,
+and routing-regret work remains deferred. The duplicate management action enum and its
+original UNKNOWN-to-zero utility were rejected. `811da56` fixes that utility correctly,
+but its parallel research config/registry was not ported because the canonical Production
+strategy package now supplies one validated source of truth. No wholesale merge occurred.
+
+KNOWN LIMITATIONS: Empirical EV, assignment, recovery, tail, fill, and action-value
+models remain unready. Global WAIT evidence now carries best, second-best, and best-
+rejected identities, but the single-underlying shadow cycle is not yet a complete
+cross-account global frontier. Greeks and Optionomics event context are still UNKNOWN
+when providers do not supply them. No always-on worker is deployed.
+
+RISKS: A deterministic branch config cannot prove profitability. Branch promotion needs
+resolved point-in-time whole-chain data and independent OOS evidence. The broker bridge
+covers broker-confirmed assignment and expiration. Close, roll, CC open/close, and stock
+disposal still require their existing explicit application assemblers to be attached to
+the future worker after management economics are promoted.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: The strategy package contracts and research mapping
+only. Claude must not modify Production execution, customer identity, migrations, or
+worker code.
+
+NEXT RECOMMENDED TASK: Persist candidate-funnel telemetry and complete the global
+cross-symbol, management, recovery, CC, and redeployment frontier in SHADOW. Then build
+the point-in-time resolved-episode dataset required to calibrate action values. Keep all
+broker submission gates locked.

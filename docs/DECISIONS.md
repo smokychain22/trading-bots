@@ -336,3 +336,28 @@ Broker reconciliation now persists a complete immutable position set for each re
 hashed activity facts for lifecycle evidence. Assignment, expiration, and call-away
 classification requires matching broker activity and consistent position movement.
 Moneyness or a missing option position alone cannot mutate a chain.
+
+## 2026-09-12: one strategy package, five business branches, zero executable branches
+
+The existing Q/H/R/A/C/D Python router remains the only applicability engine. The
+customer and strategy package use five business branches. Q maps to conventional, H to
+Hold Strike, A to recovery, C to covered call, and D to defined risk. R remains a
+management route over the active lifecycle branch, so it does not create a duplicate
+sixth strategy.
+
+Resolved strategy configs are strict, immutable, and SHA-256 identified. Research-only
+or unpromoted configs cannot enable execution. The current conventional 25 to 60 DTE
+and 0.10 to 0.40 delta lattice is a research enumeration range, not a profitability
+claim or universal rule. All five branches remain non-executable because after-cost EV
+and action-value distributions have not been empirically calibrated.
+
+Underlying ranking uses a Pareto contract across versioned normalized inputs. It does
+not hide arbitrary weights. Missing soft inputs stay UNKNOWN. New-risk assembly now
+requires known positive EV and return per capital day, and an absent Alpaca bid can no
+longer cross the Node-to-Python boundary as zero.
+
+Broker assignment and expiration classification can now call the atomic lifecycle
+writer through a confirmed-evidence-only bridge. UNKNOWN or INVALID evidence cannot
+reach persistence, and the writer still validates stored multiplier, quantity, P&L,
+chain state, and replay identity. Other management actions remain behind their existing
+explicit atomic application APIs until an empirical policy and always-on worker exist.

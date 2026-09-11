@@ -112,5 +112,27 @@ class CapConsistencyTests(unittest.TestCase):
         self.assertEqual(result.binding_constraint, "AEGIS_ALLOW_REDUCED")
 
 
+class MonotonicityInvariantTests(unittest.TestCase):
+    """Claude 8fa0909 review: ported invariant tests to the existing sizer."""
+
+    def test_tightening_each_capacity_never_increases_quantity(self):
+        for field in ("risk_budget_qty_cap", "collateral_qty_cap", "concentration_qty_cap",
+                      "assignment_capacity_qty_cap"):
+            loose = compute_sizing(_policy(**{field: 8}), _inputs())
+            tight = compute_sizing(_policy(**{field: 2}), _inputs())
+            self.assertLessEqual(tight.quantity, loose.quantity, field)
+
+    def test_zero_capacity_on_any_dimension_zeros_quantity(self):
+        for field in ("risk_budget_qty_cap", "collateral_qty_cap", "concentration_qty_cap",
+                      "assignment_capacity_qty_cap"):
+            result = compute_sizing(_policy(**{field: 0}), _inputs())
+            self.assertEqual(result.quantity, 0, field)
+
+    def test_unknown_required_collateral_is_non_executable(self):
+        result = compute_sizing(_policy(), _inputs(required_collateral_per_contract=None))
+        self.assertEqual(result.quantity, 0)
+        self.assertEqual(result.binding_constraint, "UNKNOWN_INPUT")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -262,6 +262,10 @@ export function assembleNewRiskDecision(input: NewRiskDecisionInput): NewRiskDec
     (c) =>
       (c.disposition === 'OPEN_FULL' || c.disposition === 'OPEN_REDUCED' || c.disposition === 'OPEN_ALTERNATE_CONTRACT' || c.disposition === 'OPEN_ALTERNATE_EXPIRY' || c.disposition === 'OPEN_ALTERNATE_STRUCTURE') &&
       c.contract.executable &&
+      c.evNet !== null &&
+      c.evNet > 0 &&
+      c.returnPerCapitalDay !== null &&
+      c.returnPerCapitalDay > 0 &&
       c.aegis !== null &&
       c.aegis.newRiskState !== 'HOLD_ONLY' &&
       c.aegis.newRiskState !== 'HARD_VETO' &&
@@ -297,7 +301,14 @@ export function assembleNewRiskDecision(input: NewRiskDecisionInput): NewRiskDec
     };
   }
 
-  openCandidates.sort((a, b) => (b.returnPerCapitalDay ?? 0) - (a.returnPerCapitalDay ?? 0));
+  openCandidates.sort((a, b) => {
+    // The filter above proves both values are known. Keep the comparison
+    // explicit so UNKNOWN can never acquire the economic meaning of zero.
+    if (a.returnPerCapitalDay === null || b.returnPerCapitalDay === null) {
+      throw new Error('OPEN_CANDIDATE_ECONOMICS_UNKNOWN');
+    }
+    return b.returnPerCapitalDay - a.returnPerCapitalDay;
+  });
   const winner = openCandidates[0];
   if (winner === undefined || winner.sizing === null) {
     return systemHold(input, 'Internal inconsistency: a qualifying candidate lost its sizing result during selection.', ['INTERNAL_INCONSISTENCY']);

@@ -65,6 +65,10 @@ export interface GlobalWaitEvidence {
   readonly redeploymentAlternativesEvaluated: boolean;
   readonly hardGateCounts: Readonly<Partial<Record<HardGateCode, number>>>;
   readonly softEvidenceFamiliesObserved: readonly z.infer<typeof softEvidenceFamily>[];
+  readonly blockedBranches: Readonly<Record<string, readonly string[]>>;
+  readonly bestCandidateId: string | null;
+  readonly secondBestCandidateId: string | null;
+  readonly bestRejectedCandidateId: string | null;
 }
 
 export interface GlobalWaitValidation {
@@ -92,6 +96,12 @@ export function validateGlobalWaitEvidence(input: GlobalWaitEvidence): GlobalWai
   if (!input.recoveryOpportunitiesEvaluated) violations.push('RECOVERY_FRONTIER_NOT_EVALUATED');
   if (!input.coveredCallOpportunitiesEvaluated) violations.push('COVERED_CALL_FRONTIER_NOT_EVALUATED');
   if (!input.redeploymentAlternativesEvaluated) violations.push('REDEPLOYMENT_FRONTIER_NOT_EVALUATED');
+  if (input.bestCandidateId !== null && input.secondBestCandidateId === input.bestCandidateId) {
+    violations.push('SECOND_BEST_DUPLICATES_BEST');
+  }
+  if (input.bestRejectedCandidateId !== null && input.bestRejectedCandidateId === input.bestCandidateId) {
+    violations.push('BEST_REJECTED_DUPLICATES_SELECTED');
+  }
   return { earned: violations.length === 0, violations };
 }
 

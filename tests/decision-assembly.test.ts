@@ -175,3 +175,11 @@ test('alternatives array includes every candidate, including disqualified ones',
   const decision = assembleNewRiskDecision(baseInput({ candidates: [good, bad] }));
   assert.equal(decision.alternatives.length, 2);
 });
+
+test('an OPEN candidate with UNKNOWN or non-positive economics cannot be selected', () => {
+  const unknown: CandidateFrontierResult = { ...qualifyingCandidate('UNKNOWN', 0.01), evNet: null };
+  const zeroReturn: CandidateFrontierResult = { ...qualifyingCandidate('ZERO', 0), evNet: 10 };
+  const decision = assembleNewRiskDecision(baseInput({ candidates: [unknown, zeroReturn] }));
+  assert.equal(decision.selectedCandidateId, null);
+  assert.equal(decision.quantity, 0);
+});

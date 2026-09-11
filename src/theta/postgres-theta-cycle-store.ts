@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { verifyFusionSnapshot, type JsonValue } from '../market/fusion-snapshot.js';
 import type { ThetaShadowCycleResult } from './theta-shadow-cycle.js';
+import { buildStrategyDecisionEnvelope } from './strategy-decision-envelope.js';
 
 export interface ThetaCyclePersistenceContext {
   readonly botInstanceId: string;
@@ -68,7 +69,8 @@ export class PostgresThetaCycleStore {
 
       const candidates = await this.persistCandidates(client, fusionSnapshotId, cycle);
       const strategyRouteId = await this.persistRoute(client, fusionSnapshotId, cycle);
-      const decisionId = await this.persistDecision(client, fusionSnapshotId, cycle, candidates.candidateSetId, candidates.candidateIds);
+      const decisionId = await this.persistDecision(client, fusionSnapshotId, cycle, candidates.candidateSetId, candidates.candidateIds,
+        context.strategyVersionId);
       let shadowOpportunityCount = 0;
       for (const entry of cycle.orchestration?.shadowOpportunities ?? []) {
         const result = await client.query(
@@ -208,7 +210,8 @@ export class PostgresThetaCycleStore {
     return routeId;
   }
 
-  private async persistDecision(client: PoolClient, fusionSnapshotId: string, cycle: ThetaShadowCycleResult, candidateSetId: string | null, candidateIds: ReadonlyMap<string, string>): Promise<string | null> {
+  private async persistDecision(client: PoolClient, fusionSnapshotId: string, cycle: ThetaShadowCycleResult,
+    candidateSetId: string | null, candidateIds: ReadonlyMap<string, string>, strategyVersionId: string): Promise<string | null> {
     const receipt = cycle.orchestration?.receipt;
     if (receipt === null || receipt === undefined) return null;
     const selectedCandidateId = receipt.selectedCandidateId === null ? null : candidateIds.get(receipt.selectedCandidateId);
@@ -216,6 +219,11 @@ export class PostgresThetaCycleStore {
       throw new Error(`SELECTED_CANDIDATE_NOT_PERSISTED:${receipt.selectedCandidateId}`);
     }
     const decisionId = deterministicRuntimeUuid(`decision:${fusionSnapshotId}:${receipt.underlying}`);
+    const strategyEnvelope = buildStrategyDecisionEnvelope({
+      strategyVersionId,
+      strategyBranch: 'THETA_CONVENTIONAL',
+      receipt,
+    });
     const inserted = await client.query(
       `INSERT INTO trade.decision(decision_id,fusion_snapshot_id,candidate_set_id,selected_candidate_id,decision_kind,action_code,quantity,
          aegis_action,strategy_branch,decided_at,status,explanation_text,explanation_hash,runtime_selected_candidate_ref,
@@ -227,7 +235,7 @@ export class PostgresThetaCycleStore {
         receipt.winningAction, receipt.quantity,
         cycle.orchestration?.aegis?.newRiskState ?? null, receipt.timestamp, receipt.plainEnglishExplanation,
         createHash('sha256').update(receipt.plainEnglishExplanation).digest('hex'), receipt.selectedCandidateId,
-        receipt.policyVersion, JSON.stringify(receipt.modelVersions), receipt.failClosedReason, JSON.stringify(receipt)],
+        receipt.policyVersion, JSON.stringify(receipt.modelVersions), receipt.failClosedReason, JSON.stringify(strategyEnvelope)],
     );
     if ((inserted.rowCount ?? 0) > 0) {
       for (const [index, reasonCode] of receipt.reasonCodes.entries()) {

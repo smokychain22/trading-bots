@@ -687,6 +687,13 @@ export async function runNewRiskOrchestration(
       });
     }
 
+    if (candidate.contract.bid === null) {
+      return systemHoldResult(request, 'EXECUTION_QUALITY', 'OPEN candidate has no executable Alpaca bid.', {
+        ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: aegisResult.data,
+        paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
+      });
+    }
+
     const executionQualityResult = await invokeAndValidate(
       bridge, 'executionQuality',
       {
@@ -695,7 +702,11 @@ export async function runNewRiskOrchestration(
         inputs: {
           positionIntent: 'SELL_TO_OPEN',
           bid: candidate.contract.bid, ask: candidate.contract.ask, quoteSize: candidate.quoteSize,
-          quoteAgeSeconds: candidate.contract.dataAgeSeconds, limitPrice: candidate.contract.bid ?? 0,
+          quoteAgeSeconds: candidate.contract.dataAgeSeconds,
+          // An OPEN disposition cannot be executable without a known bid.
+          // Fail closed above or in the Python boundary rather than turning
+          // an absent executable price into a zero-dollar order reference.
+          limitPrice: candidate.contract.bid,
           preSlippageExpectedUtility: candidate.preSlippageExpectedUtility,
         },
       },
