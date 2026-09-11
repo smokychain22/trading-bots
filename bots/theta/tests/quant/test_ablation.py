@@ -13,6 +13,7 @@ from research.ablation import (  # noqa: E402
     FeatureFamily,
     FeatureFamilyStatus,
     classify_ablation_result,
+    paired_mean_difference,
     welch_mean_difference,
 )
 
@@ -48,6 +49,47 @@ class WelchMeanDifferenceTests(unittest.TestCase):
         delta, se = welch_mean_difference([1.0], [1.0, 2.0, 3.0])
         self.assertIsNone(delta)
         self.assertIsNone(se)
+
+
+class PairedMeanDifferenceTests(unittest.TestCase):
+    """The statistic ablation.py must actually use: baseline and
+    treatment are the SAME episodes re-scored with/without a feature, so
+    per-episode common noise must cancel in the paired difference rather
+    than inflating the standard error the way an unpaired (Welch) test
+    would."""
+
+    def test_computes_the_mean_of_the_paired_differences(self):
+        baseline = [10.0, 12.0, 8.0, 15.0, 9.0]
+        treatment = [20.0, 21.0, 19.0, 24.0, 18.0]  # treatment - baseline = [10, 9, 11, 9, 9]
+        delta, se = paired_mean_difference(baseline, treatment)
+        self.assertAlmostEqual(delta, 9.6)
+        self.assertGreater(se, 0)
+
+    def test_mismatched_lengths_return_none_none_never_a_silent_misalignment(self):
+        delta, se = paired_mean_difference([1.0, 2.0, 3.0], [1.0, 2.0])
+        self.assertIsNone(delta)
+        self.assertIsNone(se)
+
+    def test_returns_none_none_for_fewer_than_two_pairs(self):
+        delta, se = paired_mean_difference([1.0], [2.0])
+        self.assertIsNone(delta)
+        self.assertIsNone(se)
+
+    def test_paired_standard_error_is_smaller_than_unpaired_when_episodes_share_common_noise(self):
+        # Same underlying per-episode noise present in BOTH arms (a
+        # shared confound across baseline and treatment for each
+        # episode), plus a small, consistent +2.0 treatment effect. The
+        # paired test should cancel the shared noise and report a much
+        # tighter standard error than Welch's unpaired test, which cannot
+        # see that the noise is shared.
+        common_noise = [5.0, -3.0, 8.0, -6.0, 2.0, -4.0]
+        baseline = [10.0 + n for n in common_noise]
+        treatment = [12.0 + n for n in common_noise]  # exactly +2.0 per episode, same noise
+        paired_delta, paired_se = paired_mean_difference(baseline, treatment)
+        welch_delta, welch_se = welch_mean_difference(baseline, treatment)
+        self.assertAlmostEqual(paired_delta, 2.0)
+        self.assertAlmostEqual(welch_delta, 2.0)
+        self.assertLess(paired_se, welch_se)
 
 
 class ClassifyAblationResultTests(unittest.TestCase):
