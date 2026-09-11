@@ -1,721 +1,391 @@
-# GitHub Repository Research Ledger
+# GitHub repository research ledger
 
-Per the authoritative directive: this records what was ACTUALLY extracted
-from each repository, not merely that it was "studied." Every entry below
-reflects real file content fetched via `gh api` on 2026-09-11 (not a
-README skim, unless explicitly marked as metadata-only). Commit SHAs are
-the exact HEAD of each repo's default branch at inspection time — if a
-repo is revisited later, re-fetch and compare against the recorded SHA
-before assuming nothing changed.
+## Audited pass, 2026-09-11
 
-Neither agent claims to have "learned" these repositories in a
-model-training sense. Everything below is an explicit, auditable
-extraction: read → understood → the concrete idea/formula/pattern is
-named, and a recommendation is attached.
+Baseline: `dc3df23bebd5144d4bc9eed5cd109ffdbfec0dda`. Scope: the owner's named 15 repositories plus QuantLib and LEAN. This is targeted file-level review, not a claim to have read every line of every repository. Complete small modules and selected functions/tests in larger modules were inspected using GitHub's raw-content API at the commits below. No upstream code was executed, no upstream test suite was run, and no repository was installed as a dependency. Test suggestions below are extracted cases, not claims of passing upstream tests.
 
----
+This pass supersedes conflicting earlier research claims. GitHub repository size is reported in KB, so size5 and size10 do not mean empty repositories. Bitra has a restrictive custom license, not an absent license. Call-positive/put-negative GEX is a positioning assumption, not a mathematical consequence of dealers short both options. No inspected repository demonstrates calibrated THETA full-H expectancy or a validated 70-80% Managed Episode win rate.
 
-## FlashAlpha-lab/gex-explained
-
-**URL:** https://github.com/FlashAlpha-lab/gex-explained
-**Commit SHA inspected:** `a11321d62006311c4a72a68552587485024f2bf2`
-**Last inspected:** 2026-09-11
-**License:** MIT
-**Category:** GEX / dealer positioning (Claude-led)
-**Relevant files:** `code/compute_gex.py`, `theory/gamma-exposure.md`, `theory/dealer-hedging.md`, `code/compare_with_api.py`, `tests/test_compute_gex.py`
-
-**What problem it solves:** Computes per-strike and total Gamma Exposure
-(GEX) from a raw options-chain CSV using the "SpotGamma convention," plus
-gamma-flip level, call wall, and put wall.
-
-**Algorithms/formulas found:**
-- Black-Scholes gamma: `gamma = N'(d1) / (S * sigma * sqrt(T))`, with
-  `N'(x) = (1/sqrt(2*pi)) * exp(-x^2/2)`, `d1 = (ln(S/K) + (r+sigma^2/2)*T) / (sigma*sqrt(T))`.
-- Per-strike dollar GEX: `GEX_strike = gamma * OI * 100 * S^2 * 0.01`
-  (derived explicitly in the theory doc as "dollar delta change per 1% spot
-  move, scaled by open interest").
-- Sign convention: `call_gex = +gex`, `put_gex = -gex` (customers assumed
-  net-long options; dealers therefore short calls/short puts, and the
-  convention records dealer short-call-gamma hedging as stabilizing
-  (+) and short-put-gamma hedging as destabilizing (-)).
-- Gamma flip: first strike-to-strike zero crossing in the GEX profile,
-  linearly interpolated between the two bracketing strikes.
-- Call wall / put wall: the strike with the single highest / lowest net
-  GEX value (a simple argmax/argmin, not a smoothed peak).
-- IV approximation (their own words: "very rough," "use a Newton solver
-  for production"): Brenner-Subrahmanyam, `IV ≈ (mid/spot) * sqrt(2*pi/T)`,
-  clamped to `[0.05, 2.0]`.
-
-**Architecture patterns found:** small, dependency-free, pure-function
-module (no I/O beyond CSV load) — matches THETA's own "transparent
-baseline, no hidden state" convention already used throughout
-`bots/theta/quant/models/`.
-
-**Strategy logic found:** none (this is a market-structure/context
-signal generator, not a strategy).
-
-**Risk logic found:** none directly; the "regime" classification
-(`total_gex >= 0` → "POSITIVE (mean-reversion)" else "NEGATIVE
-(momentum/vol-expansion)") is a widely-cited heuristic, presented here
-without any empirical backtest of its own.
-
-**Execution logic found:** none.
-
-**Backtesting logic found:** none.
-
-**Useful tests/invariants:** `tests/test_compute_gex.py` /
-`test_unit.py` cover: zero-gamma at expiration edge cases, sign-flip
-detection between adjacent strikes, and a `compare_with_api.py` script
-that cross-checks the hand-rolled Black-Scholes gamma against a second,
-independent source — exactly the "compare at least 2 independent
-implementations" discipline the directive itself asks for; worth
-replicating as a pattern in THETA's own Cboe research-only ablation work.
-
-**Assumptions:** customers are net long options (both calls and puts);
-open interest at a strike/type fully represents current dealer exposure
-at that strike (no netting across expirations, no consideration of
-dealer's own directional bets); risk-free rate is a caller-supplied
-constant, not term-structure-aware.
-
-**Weaknesses:** the module's own theory doc states the sign convention
-is "a simplification" and can be wrong when customer positioning is
-actually net short (a real, named limitation, not a hidden one). The IV
-approximation is explicitly flagged by the authors as unfit for
-production. No treatment of American-style early-exercise value, no
-dividend adjustment.
-
-**Look-ahead risk:** none identified — this is a single-snapshot
-calculation, not a backtest; no forward-looking data is used.
-
-**Survivorship-bias risk:** N/A (not a strategy backtest).
-
-**Execution-model weaknesses:** N/A (no execution model).
-
-**Licensing restrictions:** MIT — safe to independently reimplement the
-formula (which is public domain mathematics regardless of license) and
-even safe to closely mirror code structure if desired, with attribution.
-THETA does not currently need to copy any source lines — the formula
-itself is what's valuable.
-
-**Relevant to THETA:** THETA's Cboe research-only layer
-(`src/theta/cboe-regime.ts`) currently ingests VIX/VIX9D/VVIX/put-call
-ratios but has no GEX computation at all — GEX is a genuinely new,
-currently-absent signal category for THETA.
-
-**Existing THETA equivalent:** none. `cboe-regime.ts` is the closest
-adjacent module (also research-only, also explicitly not wired into any
-production decision path).
-
-**Better than current THETA implementation:** N/A (no existing THETA GEX
-implementation to compare against).
-
-**Recommended action:** `ADAPT`. If GEX is ever added to THETA's research
-layer, use this repo's formula and sign-convention documentation as the
-starting definition (cross-checked against a second source before
-adoption — see the Gap Matrix), reimplemented independently in Python
-under `bots/theta/quant/models/` following THETA's own transparent-
-baseline/no-hidden-state conventions, with the exact same "research-only,
-never a direct trade trigger" discipline Cboe already has. Do NOT wire a
-"GEX regime => trade action" rule without an ablation, per the standing
-Cboe production rule.
-
-**Integration status:** NOT INTEGRATED. Formula extracted into
-`docs/research/THETA_FORMULA_CATALOG.md`. No code written in THETA yet.
-
----
-
-## ksanjay/Kelly-Criterion-Option-Selector
-
-**URL:** https://github.com/ksanjay/Kelly-Criterion-Option-Selector
-**Commit SHA inspected:** `43c2443cd202777650bd1c61233054a83fe31771`
-**Last inspected:** 2026-09-11
-**License:** MIT
-**Category:** Position sizing (Claude-led)
-**Relevant files:** `kelly_leaps.ipynb` (single notebook, 7KB, no other files)
-
-**What problem it solves:** Sizes a single at-the-money LEAP call per
-ticker for a 4-ticker basket using a Kelly-fraction calculation.
-
-**Algorithms/formulas found:**
-- `p = N(d2)` (Black-Scholes risk-neutral probability the option finishes
-  ITM), computed via the standard `d2 = (ln(S/K) + (r - sigma^2/2)*T) /
-  (sigma*sqrt(T))`.
-- `b = (S-K)/premium - 1` (a rough approximation of the payoff-to-cost
-  ratio if the underlying reaches the current spot price by expiry —
-  NOT a modeled expected payoff distribution).
-- Kelly fraction: `f* = max(0, (p*b - q) / b)` where `q = 1-p`.
-- Sizing: `contracts = floor(f* * bankroll / (premium * 100))`, with an
-  explicit floor of 1 contract whenever `f* > 0` (never scales below one
-  contract once Kelly says "trade").
-
-**Architecture patterns found:** none of note — a single, linear
-notebook script with no reusable module structure.
-
-**Strategy logic found:** buy one ATM LEAP call per ticker; exit/roll
-rules given only as prose in a markdown cell (delta ≥ 0.75 or value ≥ 3x
-cost → trim half; price -10% and delta < 0.20 → close; 365 DTE → roll up
-a strike) — never implemented in code, purely documentation.
-
-**Risk logic found:** none beyond the Kelly fraction itself — no
-portfolio-level cap, no correlation check across the 4 tickers, no
-drawdown control.
-
-**Execution logic found:** none (this fetches the current chain via
-`yfinance` and prints a sizing table; it never places an order).
-
-**Backtesting logic found:** none.
-
-**Useful tests/invariants:** none — no `tests/` directory, no assertions
-beyond input-shape checks (`assert len(tickers)==4`).
-
-**Assumptions:** `p = N(d2)` (a risk-neutral probability derived from
-current IV) is treated as if it were the option's real-world win
-probability. `b` is a single-point approximation, not derived from any
-actual expected-return distribution.
-
-**Weaknesses (significant — flagged explicitly for the gap matrix):**
-1. **This is precisely the STAT-001 mistake THETA's own CLAUDE.md
-   explicitly forbids**: "delta is not probability of profit... never
-   claim WR from calibrated model confidence." Using `N(d2)` as if it
-   were a real win probability conflates a risk-neutral pricing quantity
-   with a real-world outcome probability — the exact anti-pattern this
-   codebase's non-negotiable rules exist to prevent.
-2. **Raw, un-fractional Kelly** (`fraction=1.0` implicit — no fractional
-   discount applied anywhere in the notebook) is exactly what THETA's own
-   standing instruction says to never deploy ("never deploy raw
-   full-Kelly sizing"). Full Kelly is well known in the literature to be
-   extremely volatile under any model misspecification, which is
-   guaranteed here since `p` isn't even a real win probability to begin
-   with.
-3. No transaction costs, no slippage, no assignment/early-exercise
-   handling for the "LEAP call" (American-style options can be exercised
-   early against dividends).
-4. Single ATM strike only — no comparison across a candidate frontier
-   (exactly the "one arbitrary score" anti-pattern THETA's own
-   `covered_call_ranker.py`/Pareto-frontier work already avoids).
-
-**Look-ahead risk:** N/A (not a backtest — fetches live data at run
-time).
-
-**Survivorship-bias risk:** N/A.
-
-**Execution-model weaknesses:** no execution model exists at all;
-notebook only prints a sizing table.
-
-**Licensing restrictions:** MIT — no restriction on studying the
-formula.
-
-**Relevant to THETA:** directly relevant as a **negative example** for
-the position-sizing / Kelly section of the Gap Matrix and as concrete,
-citable evidence for why THETA's `management_action_value.py`/AEGIS
-sizing discipline (never a raw win-rate-derived Kelly stake, always a
-fractional/AEGIS-bounded sizing) is the correct call, not merely a
-cautious preference.
-
-**Existing THETA equivalent:** `bots/theta/quant/models/sizing.py` (via
-`sizing_contract.py`) already uses risk-budget/collateral/concentration
-qty caps, never a raw Kelly formula — no change needed as a result of
-this inspection, but this repo is now citable evidence for *why*.
-
-**Better than current THETA implementation:** **NO.** THETA's existing
-sizing discipline (caps, never delta-as-probability, no raw Kelly) is
-already more conservative and more correct than this reference.
-
-**Recommended action:** `REJECT` (as a sizing method to adopt).
-`REFERENCE_ONLY` (as a documented negative example / cautionary citation
-in the Gap Matrix and in any future PR that proposes adding Kelly-based
-sizing to THETA — it should cite exactly why this repo's approach must
-not be copied).
-
-**Integration status:** NOT INTEGRATED (correctly, by design).
-
----
-
-## HasibVortex369/riskkit
-
-**URL:** https://github.com/HasibVortex369/riskkit
-**Commit SHA inspected:** `99d1d167dc55c8a564526ef42d87e298f3e74fad`
-**Last inspected:** 2026-09-11
-**License:** MIT
-**Category:** Position sizing / risk (Claude-led)
-**Relevant files:** `src/riskkit/sizing.py`, `src/riskkit/drawdown.py` (listed, not yet read), `src/riskkit/correlation.py` (listed, not yet read), `tests/test_sizing.py` (listed, not yet read)
-
-**What problem it solves:** Framework-agnostic position sizing: a
-volatility-adjusted fixed-fractional sizer with an optional half-Kelly
-ceiling and a loss/drawdown reduction ladder, plus standalone composable
-helpers (`kelly_fraction`, `volatility_target_size`,
-`inverse_vol_weights`).
-
-**Algorithms/formulas found:**
-- `kelly_fraction(win_rate, avg_win, avg_loss, fraction=1.0)`:
-  `kelly = win_rate - (1-win_rate)/(avg_win/avg_loss)`, returned as
-  `max(0, kelly * fraction)` — explicitly documents that callers should
-  pass `fraction=0.5` for "the common, less-aggressive half-Kelly," and
-  the `PositionSizer` class itself always calls it with `fraction=0.5`
-  internally (never raw full-Kelly) whenever `win_rate`/`avg_win`/
-  `avg_loss` are all supplied.
-- Volatility-scaled base risk: `vol_adjusted_risk = base_risk / clip(atr
-  / atr_baseline, 0.2, 5.0)` (risk shrinks when current ATR exceeds its
-  baseline).
-- A reduction-multiplier ladder combining consecutive-loss count,
-  drawdown %, daily-loss %, and a "confluence score" into one audited
-  multiplier dict (`multipliers_applied`) — every adjustment that fired
-  is named and retained on the result, not just the final number.
-- Absolute notional cap: position notional can never exceed
-  `max_notional_pct` of equity regardless of what the risk math alone
-  would produce; if the cap binds, `risk_pct` is recomputed backward from
-  the capped `units` so the reported risk percentage stays internally
-  consistent (never silently wrong after capping).
-- `SizingResult.reason_for_zero` — an explicit, named reason whenever
-  `units == 0` (e.g. "risk 0.180% below floor"), never a bare zero with
-  no explanation.
-
-**Architecture patterns found:** pure dataclasses in/out
-(`SizingInputs`/`SizingResult`), zero framework dependency at the core,
-with separate adapter modules (`adapters/backtesting.py`,
-`adapters/freqtrade.py`, `adapters/vectorbt.py`) bridging to specific
-backtest/live frameworks — a clean "policy core, thin adapters" split.
-
-**Strategy logic found:** none (sizing only, strategy-agnostic by
-design).
-
-**Risk logic found:** see formulas above — this whole module IS the risk
-logic.
-
-**Execution logic found:** none.
-
-**Backtesting logic found:** none directly, but the `adapters/
-backtesting.py` file (not yet read this pass) bridges to the
-`backtesting.py` Python library.
-
-**Useful tests/invariants:** `tests/test_sizing.py`,
-`tests/test_properties.py` (not yet read this pass — flagged for
-follow-up; property-based tests are exactly the kind of edge-case
-coverage the directive asks to extract).
-
-**Assumptions:** `win_rate`/`avg_win`/`avg_loss` are assumed to be
-already-calibrated, already-known historical statistics supplied by the
-caller — this module does not itself estimate them from a return series,
-so it cannot silently fabricate an edge (a good property, but it means
-any THETA use of this pattern still needs its own calibration pipeline,
-which does not exist yet — see the standing "no calibrated entry-outcome
-model yet" gap already documented across `management_action_value.py`
-and `theta_q_baseline.py`).
-
-**Weaknesses:** the "confluence score" reduction/boost multipliers
-(0.75x / 1.5x thresholds at specific integer score bands) read as
-arbitrary, un-cited constants — presented without any backtest or
-empirical justification in the file itself (a real weakness, explicitly
-flagged rather than silently adopted).
-
-**Look-ahead risk:** none identified (pure sizing function, no time-
-series traversal).
-
-**Survivorship-bias risk:** N/A.
-
-**Execution-model weaknesses:** N/A (no execution model in this module).
-
-**Licensing restrictions:** MIT — safe to study and independently
-reimplement.
-
-**Relevant to THETA:** directly relevant to the position-sizing / Kelly
-row of the Gap Matrix, and a positive counter-example to
-`ksanjay/Kelly-Criterion-Option-Selector` above — this is what a
-correctly-fractionalized, auditable, floor-respecting sizer looks like.
-
-**Existing THETA equivalent:** `sizing.py`/`sizing_contract.py`
-(risk-budget/collateral/concentration qty caps, `SizingResult`-style
-reason codes already exist via `ReasonCode`). THETA's existing
-`reasons` list on every valuation (across `management_action_value.py`,
-`covered_call_ranker.py`, etc.) already achieves the same
-"every adjustment is named and auditable" property riskkit's
-`multipliers_applied` dict achieves — independently arrived at, not
-copied, and already just as rigorous.
-
-**Better than current THETA implementation:** **PARTIAL.** riskkit's
-absolute notional cap with backward-consistent `risk_pct` recomputation
-after capping is a specific, concrete pattern THETA's own sizing model
-should be checked against (confirm THETA's `sizing.py` similarly keeps
-reported risk% consistent after any cap binds — not yet verified this
-pass, flagged as a validation task in the Gap Matrix). The half-Kelly
-convention (never full Kelly) matches THETA's own standing instruction
-already.
-
-**Recommended action:** `TEST_ONLY` for the notional-cap-consistency
-pattern (write a THETA test confirming the same invariant holds in
-`sizing.py`, rather than importing riskkit itself). `REFERENCE_ONLY` for
-the rest (confluence-score ladder is not empirically justified enough to
-adopt as-is).
-
-**Integration status:** NOT INTEGRATED. Recorded as a verification task
-in the Gap Matrix, not yet executed.
-
----
-
-## goldspanlabs/optopsy
-
-**URL:** https://github.com/goldspanlabs/optopsy
-**Commit SHA inspected:** `40bb8b2aa07ef8763caeadf752961faecb494efd`
-**Last inspected:** 2026-09-11
-**License:** AGPL-3.0 (**strong copyleft — see the licensing note in
-`THETA_GITHUB_TOP15.md`; architecture/method study only, never source
-copying**)
-**Category:** Backtesting (Claude-led)
-**Relevant files:** `optopsy/core.py`, `optopsy/pricing.py`, `optopsy/checks.py` (listed, not yet read), `optopsy/evaluation.py` (listed, not yet read), `optopsy/calendar.py` (listed, not yet read)
-
-**What problem it solves:** A pandas/vectorized options-strategy
-backtesting library: single- and multi-leg (including calendar/diagonal)
-strategy construction, entry/exit matching, fill-price/slippage
-modeling, and grouped performance statistics (win rate, profit factor).
-
-**Algorithms/formulas found:**
-- Four named slippage models in `_calculate_fill_price`:
-  - `"mid"` — fill at the midpoint, no slippage.
-  - `"spread"` — fill at the full half-spread against the trader (worst
-    realistic case for a market/marketable-limit fill).
-  - `"liquidity"` — fill ratio scales with a `liquidity_score = clip(volume
-    / reference_volume, 0, 1)`: illiquid contracts (`volume` far below
-    `reference_volume`) get pushed toward the full half-spread, liquid
-    ones toward the base `fill_ratio`.
-  - `"per_leg"` — an additive slippage penalty per additional leg in a
-    multi-leg strategy (`fill_ratio + per_leg_slippage * (num_legs-1)`,
-    capped at 1.0) — explicitly modeling that a 4-leg iron condor fills
-    worse than a 1-leg CSP.
-- Multi-leg join: each leg's DataFrame is suffixed (`_leg1`, `_leg2`, ...)
-  and inner-joined on shared keys (date, expiration, etc.), so a
-  multi-leg strategy's P&L is a single vectorized row operation, not a
-  per-trade Python loop.
-
-**Architecture patterns found:** pipeline stages explicitly named in the
-module docstring (validation → evaluation → strategy construction →
-output formatting), with calendar/diagonal spreads routed through a
-parallel path rather than forced through the same join logic as
-same-expiration multi-leg strategies (an honest acknowledgment that
-different-expiration legs need genuinely different exit-price matching).
-
-**Strategy logic found:** none reviewed this pass beyond the generic
-multi-leg join mechanism (strategy-specific construction lives in
-`docs/strategies/*.md` + presumably a `filters.py`/`checks.py` — not yet
-read).
-
-**Risk logic found:** none reviewed this pass.
-
-**Execution logic found:** the four slippage models above ARE its
-execution-cost model — no live broker interaction (this is backtest-only,
-as expected for its category).
-
-**Backtesting logic found:** the entire module is the backtesting
-engine; see architecture/algorithms above.
-
-**Useful tests/invariants:** not yet read this pass (`tests/` not
-enumerated) — flagged as a follow-up, since the directive specifically
-calls out edge-case tests as often the most valuable extraction.
-
-**Assumptions:** `reference_volume` (a fixed threshold, default from the
-caller) is treated as "fully liquid" — a single global threshold rather
-than a per-underlying-appropriate one.
-
-**Weaknesses:** commission handling not yet reviewed this pass. No
-explicit mention (in the files read so far) of assignment/early-exercise
-handling for American-style options, nor of corporate actions.
-
-**Look-ahead risk:** not yet assessed this pass — a genuine backtesting
-library's entry/exit matching logic needs a dedicated look-ahead review
-before any of its methodology is trusted; flagged as a required follow-up
-before this repo's engine informs THETA's own R6 backtest architecture.
-
-**Survivorship-bias risk:** depends entirely on the historical
-option-chain data source the caller supplies — not addressed by the
-library itself (an honest data-provider concern, not a library defect).
-
-**Execution-model weaknesses:** the four slippage models are simple,
-parametric approximations, not modeled from real fill-rate data — a
-reasonable, explicitly-named simplification, not a hidden one.
-
-**Licensing restrictions:** AGPL-3.0 — **method/architecture study only,
-never source reuse**, per the Top-15 doc's licensing note.
-
-**Relevant to THETA:** directly informs the future backtesting/R6
-architecture row of the Gap Matrix (THETA has no backtesting engine
-today).
-
-**Existing THETA equivalent:** none — R6 (backtesting/OOS) is explicitly
-future work per `docs/PHASED_PLAN.md`.
-
-**Better than current THETA implementation:** N/A (no current THETA
-implementation).
-
-**Recommended action:** `ADOPT_METHOD` (the four-named-slippage-model
-pattern and the "calendar spreads need a separate matching path" lesson
-are both worth independently reimplementing when R6 begins), never
-`ADOPT`/copy-source given the AGPL-3.0 license.
-
-**Integration status:** NOT INTEGRATED (R6 has not started).
-
----
-
-## lambdaclass/options_portfolio_backtester
-
-**URL:** https://github.com/lambdaclass/options_portfolio_backtester
-**Commit SHA inspected:** `e53ef86928777de6ee0721424762ea3dc133f993`
-**Last inspected:** 2026-09-11 (updated same day with a follow-up read of `engine/engine.py` and `convexity/scoring.py`, per the R6 priority directive)
-**License:** MIT
-**Category:** Backtesting (Claude-led)
-**Relevant files:** `options_portfolio_backtester/core/types.py`, `engine/engine.py`, `convexity/scoring.py` (all now read); `analytics/`, `execution/` directories still not file-read
-
-**What problem it solves:** A portfolio-level (not single-strategy)
-options + equity backtester, with a dedicated "convexity" module for
-tail-risk-hedge analysis (per its README description and
-`docs/SPITZNAGEL_RECONSTRUCTION.md`, not yet read this pass).
-
-**Algorithms/formulas found:** `convexity/scoring.py`'s
-`compute_convexity_scores` computes a daily `convexity_ratio` for deep-OTM
-put positions (tail-hedge candidates) via a Rust extension
-(`_ob_rust.compute_daily_scores`), taking strike/bid/ask/delta/
-underlying/DTE/IV plus `target_delta`/`dte_min`/`dte_max`/`tail_drop`
-policy parameters, returning `annual_cost`/`tail_payoff` alongside the
-ratio — a genuine tail-hedge-overlay scoring formula, structurally the
-OPPOSITE strategy family from THETA's premium-selling wheel (buying deep
-OTM puts as insurance vs. selling premium), so not directly reusable, but
-confirms tail-risk/convexity scoring at scale is a solved subproblem.
-
-**Architecture patterns found:** `core/types.py`'s enum-with-`__invert__`
-pattern (already recorded). `engine/engine.py`'s `BacktestEngine` composes
-independently-swappable data providers, `Strategy`/`StrategyLeg`,
-`TransactionCostModel`/`FillModel`/`PositionSizer`/`SignalSelector`
-(execution), `Portfolio`, `RiskManager`, and analytics — a clean
-composition-over-inheritance architecture (explicitly stated in its own
-docstring as replacing "the monolithic Backtest class"). Defines
-`HedgeFillWarning`: an explicit, named warning fired when a strategy's
-assumed strike/DTE band matched no tradeable contract in a historical
-era (its own example: deep-OTM SPX puts before ~2003) — the module's own
-documentation is explicit that silently proceeding here would turn an
-"overlay" backtest into misleading partial buy-and-hold. This is a
-directly citable, concrete pattern for THETA's own
-`universe-discovery.ts` point-in-time-optionability discipline: an
-equivalent named warning/reason-code (e.g.
-`HISTORICAL_CHAIN_BAND_UNAVAILABLE`) should exist once THETA has a real
-historical chain-replay path, so a backtest never silently degrades into
-a different, misleading strategy shape without saying so.
-
-**Strategy logic found:** not yet reviewed beyond the engine's
-composition shape (`Strategy`/`StrategyLeg` themselves not yet read).
-
-**Risk logic found:** the convexity/tail-hedge scoring above; portfolio-
-level `RiskManager` composition confirmed to exist but its internal
-constraint logic not yet read.
-
-**Execution logic found:** `TransactionCostModel`/`FillModel` are named,
-swappable interfaces (`NoCosts`/`MarketAtBidAsk` cited as concrete
-implementations in `engine.py`'s imports) — concrete class names
-confirmed, internals not yet read.
-
-**Backtesting logic found:** `engine/engine.py`'s `BacktestEngine`,
-composing the pieces above; a dedicated `clock.py` (not yet read)
-suggests explicit backtest/live time-stepping, distinct from optopsy's
-one-shot vectorized-DataFrame approach.
-
-**Useful tests/invariants:** not yet reviewed this pass (test suite not
-enumerated).
-
-**Assumptions:** `HedgeFillWarning`'s own docstring names its central
-assumption explicitly: a fixed strike/DTE band request assumes the
-historical chain actually had matching contracts every rebalance period,
-which is false for many real historical eras (its own cited example:
-deep-OTM SPX puts pre-2003) — the library surfaces this as a warning +
-`option_fill_rate` diagnostic rather than silently interpolating or
-skipping.
-
-**Weaknesses:** the convexity-scoring module depends on a compiled Rust
-extension (`_ob_rust`) not inspectable via the GitHub API content-read
-path used this session — its internal numerical behavior is therefore
-NOT independently verified by this ledger entry, only its documented
-inputs/outputs.
-
-**Look-ahead risk:** not fully assessed — `engine.py`'s composition
-confirms a clock-driven, not vectorized-whole-history-at-once, design,
-which is structurally more resistant to look-ahead than a naive vectorized
-join, but the actual time-stepping logic in `clock.py`/`pipeline.py` was
-not read this pass to confirm.
-
-**Survivorship-bias risk:** depends entirely on the historical data
-source supplied by the caller (`HistoricalOptionsData`/`TiingoData`),
-same as noted for optopsy.
-
-**Execution-model weaknesses:** not yet assessed (`FillModel`/
-`TransactionCostModel` internals not yet read).
-
-**Licensing restrictions:** MIT — safe to study and independently
-reimplement.
-
-**Relevant to THETA:** high relevance to R6's future backtest engine
-architecture (composition pattern, `HedgeFillWarning`'s point-in-time-
-availability discipline) — see `docs/research/THETA_WALK_FORWARD_SPEC.md`
-§5 and `docs/research/THETA_EV_MODEL_SPEC.md` §3, both written this
-session citing this repo directly.
-
-**Existing THETA equivalent:** none (R6 not started) — THETA's own
-contract/orchestrator separation (Python model / TS contract / TS
-orchestrator, used throughout `bots/theta/quant/runtime/` and
-`src/theta/`) is architecturally analogous in spirit to this engine's
-composition-over-inheritance approach, independently arrived at.
-
-**Better than current THETA implementation:** N/A (R6 doesn't exist yet
-to compare against; the composition pattern itself is worth adopting
-when it does).
-
-**Recommended action:** `ADOPT_METHOD` for the `BacktestEngine`
-composition shape and the `HedgeFillWarning` discipline (architecture
-only, MIT license permits closer study but THETA should still
-independently reimplement rather than depend on this package directly,
-consistent with the "no new dependency without a documented missing
-capability" rule). `REFERENCE_ONLY` for the convexity/tail-hedge scoring
-(different strategy family, not directly applicable to THETA's premium-
-selling design today).
-
-**Integration status:** NOT INTEGRATED. `analytics/`, `execution/`
-internals, `Strategy`/`StrategyLeg`, and `clock.py`/`pipeline.py` remain
-flagged for further follow-up if R6 architecture work begins.
-
----
+License labels are an engineering intake screen, not legal clearance. MIT/Apache/BSD source reuse still requires notice/attribution review. AGPL code is not imported into this project without a separate licensing decision. Noncommercial and no-license source is not copied. All changes in this milestone are independently written from THETA's canonical missing-data requirement.
 
 ## alpacahq/options-wheel
 
-**URL:** https://github.com/alpacahq/options-wheel
-**Commit SHA inspected:** `3698429289065ceb0c13ffcdc31a966c576779ad`
-**Last inspected:** 2026-09-11
-**License:** Apache-2.0
-**Category:** Execution / Wheel / Alpaca (Codex-led; Claude cross-referenced the candidate-scoring logic only, which is a quant/ranking concern)
-**Relevant files:** `core/strategy.py` (fully read); `core/execution.py`, `core/state_manager.py`, `core/broker_client.py`, `models/contract.py` listed but not yet read this pass
+- Repository / URL: [alpacahq/options-wheel](https://github.com/alpacahq/options-wheel)
+- Commit SHA inspected: `3698429289065ceb0c13ffcdc31a966c576779ad`
+- Last inspected: 2026-09-11
+- License: Apache-2.0. License file or absence checked against repository tree.
+- Category: Wheel / broker adapter
+- Relevant files: [core/execution.py](https://github.com/alpacahq/options-wheel/blob/3698429289065ceb0c13ffcdc31a966c576779ad/core/execution.py), [core/state_manager.py](https://github.com/alpacahq/options-wheel/blob/3698429289065ceb0c13ffcdc31a966c576779ad/core/state_manager.py), [core/broker_client.py](https://github.com/alpacahq/options-wheel/blob/3698429289065ceb0c13ffcdc31a966c576779ad/core/broker_client.py).
+- Problem solved / algorithms / architecture: Reconstructs cash/put/stock/call state from broker positions, paginates contracts and batches snapshots. The temporary short-call-awaiting-stock state handles position iteration order.
+- Strategy logic: Sells score-ranked puts and covered calls on held shares. Single-symbol state reconstruction is a useful starting point, not a durable lifecycle ledger.
+- Risk logic / assumptions: Tracks put collateral with 100 × strike × quantity. Hardcoded multiplier must be replaced by verified contract metadata.
+- Execution logic / weaknesses: Market sells, default quantity one, no deterministic client_order_id or explicit option intent in reviewed request construction. Liquidation does not wait for the option close to settle before stock liquidation.
+- Backtesting logic: No point-in-time replay or OOS evidence established from these files.
+- Useful tests / invariants: Extract state reconstruction with stock before/after short call, empty positions, incompatible long options, adjusted multiplier, pending-order collateral. External tests not executed.
+- Weaknesses: Automatic covered calls do not implement recovery economics. Positions alone cannot explain fills, assignment activities, or immutable roll losses.
+- Look-ahead risk: Current snapshots only, not a historical feature archive.
+- Survivorship-bias risk: Historical universe and delisted symbols unverified.
+- THETA relevance / existing equivalent: `assignment-orchestrator.ts, order-intent-state.ts, account-exposure.ts`.
+- Better than current THETA: PARTIAL, limited to the specific method above, never a profitability ranking.
+- Recommended action: ADAPT.
+- Integration status: State/reconciliation test requirements extracted, no external code imported.
 
-**What problem it solves:** A runnable Alpaca options-wheel algo
-template: filters underlyings by buying power, filters put candidates by
-delta/yield/open-interest bands, scores and ranks them, and (in files
-not yet read this pass) presumably executes and tracks wheel state.
+## goldspanlabs/optopsy
 
-**Algorithms/formulas found:**
-- Candidate filter: `DELTA_MIN < |delta| < DELTA_MAX`, and an annualized
-  yield band `YIELD_MIN < (bid/strike) * (365/(dte+1)) < YIELD_MAX`, plus
-  a minimum open-interest floor.
-- Candidate score: `score = (1 - |delta|) * (250 / (dte+5)) * (bid /
-  strike)` — a single scalar combining "probability-of-OTM proxy"
-  (`1-|delta|`), an annualization-style time factor, and yield.
-- Selection: highest score per underlying, then top-N across underlyings
-  by that same single score.
+- Repository / URL: [goldspanlabs/optopsy](https://github.com/goldspanlabs/optopsy)
+- Commit SHA inspected: `40bb8b2aa07ef8763caeadf752961faecb494efd`
+- Last inspected: 2026-09-11
+- License: AGPL-3.0. License file or absence checked against repository tree.
+- Category: Backtest / costs
+- Relevant files: [optopsy/pricing.py](https://github.com/goldspanlabs/optopsy/blob/40bb8b2aa07ef8763caeadf752961faecb494efd/optopsy/pricing.py), [tests/test_timestamps.py](https://github.com/goldspanlabs/optopsy/blob/40bb8b2aa07ef8763caeadf752961faecb494efd/tests/test_timestamps.py).
+- Problem solved / algorithms / architecture: Separates strategy leg direction/quantity from bid/ask fill and commission calculation. Exit direction is reversed correctly in the reviewed fill transformation.
+- Strategy logic: Generic multi-leg representation. This is a strategy evaluator, not a validated Wheel policy.
+- Risk logic / assumptions: No full-H assignment-capacity or inventory-tail guarantee established by pricing.py.
+- Execution logic / weaknesses: Spread, midpoint, liquidity and per-leg sensitivity models. These are simulated prices, not broker fill probabilities.
+- Backtesting logic: Compares entry/exit cashflows. Daily date normalization tests are useful for EOD joins, but stripping timestamps is unsuitable for THETA intraday freshness.
+- Useful tests / invariants: Read timestamp normalization and cross-source matching cases. Proposed tests: buy/sell reversal, fees both ways, missing exit quote, quote after order, zero quantity. Not executed upstream.
+- Weaknesses: Missing volume may become zero or use fallback ratio. Commission and price units need an explicit dollar/contract bridge. Midpoint mode is not an executable assumption.
+- Look-ahead risk: Date-only joins lose publication time. Require historical availability timestamps before replay.
+- Survivorship-bias risk: Caller data must contain expired/delisted contracts and point-in-time universe.
+- THETA relevance / existing equivalent: `execution-quality-contract.ts, R6 dataset/cost contracts`.
+- Better than current THETA: PARTIAL, limited to the specific method above, never a profitability ranking.
+- Recommended action: REFERENCE_ONLY.
+- Integration status: Methods only. No AGPL source reuse or dependency added.
 
-**Architecture patterns found:** small, focused, pure functions
-(`filter_underlying`/`filter_options`/`score_options`/`select_options`)
-each doing exactly one pipeline stage — a reasonable decomposition
-pattern independent of the scoring formula's own merits.
+## lambdaclass/options_portfolio_backtester
 
-**Strategy logic found:** the classic CSP-selling wheel entry filter
-above; exit/roll/assignment logic lives in files not yet read this pass
-(`core/execution.py`, `core/state_manager.py`).
+- Repository / URL: [lambdaclass/options_portfolio_backtester](https://github.com/lambdaclass/options_portfolio_backtester)
+- Commit SHA inspected: `e53ef86928777de6ee0721424762ea3dc133f993`
+- Last inspected: 2026-09-11
+- License: MIT. License file or absence checked against repository tree.
+- Category: Event backtest / portfolio
+- Relevant files: [options_portfolio_backtester/engine/clock.py](https://github.com/lambdaclass/options_portfolio_backtester/blob/e53ef86928777de6ee0721424762ea3dc133f993/options_portfolio_backtester/engine/clock.py), [options_portfolio_backtester/execution/fill_model.py](https://github.com/lambdaclass/options_portfolio_backtester/blob/e53ef86928777de6ee0721424762ea3dc133f993/options_portfolio_backtester/execution/fill_model.py), [tests/engine/test_clock.py](https://github.com/lambdaclass/options_portfolio_backtester/blob/e53ef86928777de6ee0721424762ea3dc133f993/tests/engine/test_clock.py).
+- Problem solved / algorithms / architecture: Composes clock and fill model interfaces. MarketAtBidAsk is a clear baseline and fill assumptions are replaceable independently of strategy.
+- Strategy logic: Generic options portfolios, not a complete recovery-aware Wheel. Prior ledger also reviewed engine/engine.py and convexity/scoring.py.
+- Risk logic / assumptions: Volume-aware pricing delegates to Rust. Python wrapper alone does not verify Rust numerical behavior.
+- Execution logic / weaknesses: Bid/ask, midpoint and volume-aware alternatives. A modeled fill does not imply a fill occurred.
+- Backtesting logic: Critical issue: iter_dates zips grouped stock and option frames and discards the option group's date. Missing dates can pair future option data with earlier stock dates and truncate the longer stream.
+- Useful tests / invariants: Read clock test cases. They use matching date sets, so they do not establish missing-date alignment. Add mismatched-calendar/unequal-stream tests before reuse.
+- Weaknesses: Do not adopt the positional date zip or assume business-day ranges are exchange sessions.
+- Look-ahead risk: Concrete cross-date alignment hazard, including independent monthly first dates.
+- Survivorship-bias risk: Dataset completeness and historical constituents remain caller responsibilities.
+- THETA relevance / existing equivalent: `scheduler-engine.ts, R6 replay, execution model interface`.
+- Better than current THETA: PARTIAL, limited to the specific method above, never a profitability ranking.
+- Recommended action: ADAPT.
+- Integration status: Interface pattern retained as reference. Clock implementation explicitly rejected.
 
-**Risk logic found:** none beyond the delta/yield/OI bands above — no
-portfolio-level concentration, no tail-risk, no capital-day accounting.
+## FlashAlpha-lab/gex-explained
 
-**Execution logic found:** `core/broker_client.py`/`core/execution.py`
-not yet read this pass.
+- Repository / URL: [FlashAlpha-lab/gex-explained](https://github.com/FlashAlpha-lab/gex-explained)
+- Commit SHA inspected: `a11321d62006311c4a72a68552587485024f2bf2`
+- Last inspected: 2026-09-11
+- License: MIT. License file or absence checked against repository tree.
+- Category: GEX research
+- Relevant files: [code/compute_gex.py](https://github.com/FlashAlpha-lab/gex-explained/blob/a11321d62006311c4a72a68552587485024f2bf2/code/compute_gex.py).
+- Problem solved / algorithms / architecture: Transparent BSM gamma, OI aggregation and strike-bucket crossing formulas make a useful independent formula check.
+- Strategy logic: Positive/negative aggregate GEX heuristic, not a complete trade policy.
+- Risk logic / assumptions: Call-positive/put-negative signs are assumed positioning, not observed dealer inventory.
+- Execution logic / weaknesses: No execution engine reviewed.
+- Backtesting logic: No validated OOS profitability evidence established.
+- Useful tests / invariants: Extract empty chain, unknown IV/OI, expiry, adjusted multiplier, multiple crossings. Reviewed implementation, no upstream test run.
+- Weaknesses: Rough midpoint-derived IV, fixed100 multiplier, expired T floored positive, first strike crossing. Invalid inputs may return0.
+- Look-ahead risk: A current chain cannot support historical GEX labels without archived availability times.
+- Survivorship-bias risk: Current-chain sampling omits historical unavailable contracts.
+- THETA relevance / existing equivalent: `cboe-regime.ts research boundary, optional future GEX contract`.
+- Better than current THETA: PARTIAL, limited to the specific method above, never a profitability ranking.
+- Recommended action: REFERENCE_ONLY.
+- Integration status: Cross-checked against DealerFlow, zrack and sgdividends. No GEX runtime module added.
 
-**Backtesting logic found:** `reports/options-wheel-strategy-test.pdf`
-exists (a static report, not runnable backtest code) — not opened this
-pass.
+## thedhruvhegde/ivsurf
 
-**Useful tests/invariants:** no `tests/` directory found in the top-level
-tree listing.
+- Repository / URL: [thedhruvhegde/ivsurf](https://github.com/thedhruvhegde/ivsurf)
+- Commit SHA inspected: `c20072a8f6c09146697bdb55dca566567d7b0535`
+- Last inspected: 2026-09-11
+- License: MIT. License file or absence checked against repository tree.
+- Category: IV / surface / validation
+- Relevant files: [core/black_scholes.py](https://github.com/thedhruvhegde/ivsurf/blob/c20072a8f6c09146697bdb55dca566567d7b0535/core/black_scholes.py), [core/surface_model.py](https://github.com/thedhruvhegde/ivsurf/blob/c20072a8f6c09146697bdb55dca566567d7b0535/core/surface_model.py), [core/surface_smoothing.py](https://github.com/thedhruvhegde/ivsurf/blob/c20072a8f6c09146697bdb55dca566567d7b0535/core/surface_smoothing.py), [engine/backtest/walk_forward.py](https://github.com/thedhruvhegde/ivsurf/blob/c20072a8f6c09146697bdb55dca566567d7b0535/engine/backtest/walk_forward.py).
+- Problem solved / algorithms / architecture: IV inversion with Newton/Brent and explicit residual checks. Rolling train/test indices include a purge gap. Surface smoothing methods exist, but core/surface_model.py explicitly raises NotImplementedError.
+- Strategy logic: Pricing/research utilities are not a THETA entry policy.
+- Risk logic / assumptions: Surface smoothness alone does not establish absence of calendar/butterfly arbitrage.
+- Execution logic / weaknesses: No production fill behavior validated in this scope.
+- Backtesting logic: Walk-forward evaluator catches exceptions and skips failed folds, returns0 with no successful folds. Fixed row gap is not lifecycle-label purging.
+- Useful tests / invariants: Required: mixed T=[0,positive], nonfinite inputs, failed inversion, no folds, failed folds, overlapping labels. Smoothing file inspected selectively, not line-complete.
+- Weaknesses: black_scholes_price uses if any(T==0) then intrinsic for every batch element. This is a concrete mixed-maturity bug. Scalar Brent path cannot simply be assumed vector-safe.
+- Look-ahead risk: Purge by actual label interval, not just five rows. Input order must be verified.
+- Survivorship-bias risk: No historical-universe proof from inspected files.
+- THETA relevance / existing equivalent: `Optionomics feature verification and R6 walk-forward`.
+- Better than current THETA: PARTIAL, limited to the specific method above, never a profitability ranking.
+- Recommended action: TEST_ONLY.
+- Integration status: Prefer QuantLib as independent numerical oracle. Do not duplicate Optionomics surface service.
 
-**Assumptions:** `1 - |delta|` is used as a stand-in for "probability the
-option expires OTM" — this treats delta as if it were a real-world
-probability, the same STAT-001-category conflation flagged in the Kelly
-repo above, though here it is used only as a RANKING heuristic (relative
-ordering) rather than a claimed win-rate — a materially less severe
-version of the same mistake, but still an instance of it.
+## ksanjay/Kelly-Criterion-Option-Selector
 
-**Weaknesses (flagged explicitly for the Gap Matrix):**
-1. **Single opaque weighted score** combining three genuinely different
-   economic dimensions (probability-of-OTM proxy, time decay, yield)
-   into one scalar — exactly the "one arbitrary weighted score" anti-
-   pattern the Full-H directive explicitly warns against, and exactly
-   what THETA's own `covered_call_ranker.py` docstring already calls out
-   by name ("never selects by max yield alone... what makes it
-   structurally different from BC-1's naive max-yield policy").
-2. No tail-risk, no capital-days, no assignment-economics, no execution-
-   cost term anywhere in the scoring formula — a candidate with a wide
-   spread or high assignment probability scores identically to one
-   without, as long as delta/yield/DTE match.
-3. `1-|delta|` reused as a probability-like weight compounds the "delta
-   is not probability" conflation into the ranking itself, even though
-   it's not asserted as a literal win rate.
+- Repository / URL: [ksanjay/Kelly-Criterion-Option-Selector](https://github.com/ksanjay/Kelly-Criterion-Option-Selector)
+- Commit SHA inspected: `43c2443cd202777650bd1c61233054a83fe31771`
+- Last inspected: 2026-09-11
+- License: MIT. License file or absence checked against repository tree.
+- Category: Sizing anti-pattern
+- Relevant files: [kelly_leaps.ipynb](https://github.com/ksanjay/Kelly-Criterion-Option-Selector/blob/43c2443cd202777650bd1c61233054a83fe31771/kelly_leaps.ipynb).
+- Problem solved / algorithms / architecture: Explicit example of Kelly inputs and integer contract conversion, valuable primarily for negative tests.
+- Strategy logic: ATM long LEAPS on a fixed four-symbol list. Uses N(d2) as probability and current spot payoff proxy.
+- Risk logic / assumptions: Raw Kelly and forced one contract after rounding can violate budget. Each symbol may independently spend the bankroll.
+- Execution logic / weaknesses: No broker reconciliation path established.
+- Backtesting logic: No credible managed-episode OOS result in notebook inspection.
+- Useful tests / invariants: No dedicated test suite found in tree. Test negative edge=>0, unaffordable=>0, aggregate budget, probability provenance.
+- Weaknesses: Risk-neutral ITM probability is not physical profitable-episode probability. b=(S-K)/premium-1 is not a forecast payoff distribution.
+- Look-ahead risk: Current option lastPrice/expiry selection does not reconstruct historical entry data.
+- Survivorship-bias risk: Hand-picked surviving symbols.
+- THETA relevance / existing equivalent: `sizing.py, AEGIS, EV model provenance`.
+- Better than current THETA: NO, limited to the specific method above, never a profitability ranking.
+- Recommended action: REJECT.
+- Integration status: No sizing or strategy adoption.
 
-**Look-ahead risk:** N/A (not a backtest in the files reviewed).
+## joncovington/MEICAgent
 
-**Survivorship-bias risk:** N/A.
+- Repository / URL: [joncovington/MEICAgent](https://github.com/joncovington/MEICAgent)
+- Commit SHA inspected: `333ff77b68aaba07c68bcbcacb6d439ebceda4b6`
+- Last inspected: 2026-09-11
+- License: MIT. License file or absence checked against repository tree.
+- Category: Iron condor simulation / lifecycle
+- Relevant files: [src/paper.py](https://github.com/joncovington/MEICAgent/blob/333ff77b68aaba07c68bcbcacb6d439ebceda4b6/src/paper.py), [tests/test_paper_calendar.py](https://github.com/joncovington/MEICAgent/blob/333ff77b68aaba07c68bcbcacb6d439ebceda4b6/tests/test_paper_calendar.py).
+- Problem solved / algorithms / architecture: Compares risk-profile variants using a shared market snapshot. Separates paper simulation settlement behavior and fee calculation.
+- Strategy logic: Intraday iron-condor simulation with different stop/management profiles. Not a CSP/stock recovery system.
+- Risk logic / assumptions: Cash settlement versus physical-delivery force-close distinction is useful. Missing strike/spot can return0 in settlement helper, unsafe for accounting.
+- Execution logic / weaknesses: Synthetic fills, not Alpaca Paper brokerage. Tastytrade-specific fee assumptions must not become Alpaca cost truth.
+- Backtesting logic: Same-snapshot variants are dependent observations. Snapshot dates plus wall-clock _now_et timestamps require replay audit.
+- Useful tests / invariants: Calendar test file read. Proposed physical/cash settlement, missing marks, holiday shifts, injected-clock replay tests. Upstream tests not run.
+- Weaknesses: Date heuristics must defer to actual exchange schedule. No Wheel assignment/recovery model demonstrated.
+- Look-ahead risk: Wall clock in historical replay can contaminate event timing.
+- Survivorship-bias risk: Fixed product scope does not establish delisted equity handling.
+- THETA relevance / existing equivalent: `management ablation, assignment/expiration fixtures`.
+- Better than current THETA: PARTIAL, limited to the specific method above, never a profitability ranking.
+- Recommended action: ADAPT.
+- Integration status: Variant lineage and settlement tests proposed, strategy not integrated.
 
-**Execution-model weaknesses:** not yet assessed (execution.py not read
-this pass).
+## NavnoorBawa/Options-Flow-Predictor
 
-**Licensing restrictions:** Apache-2.0 — permissive; safe to study
-closely, including source structure, with attribution if code were ever
-reused (none reused here).
+- Repository / URL: [NavnoorBawa/Options-Flow-Predictor](https://github.com/NavnoorBawa/Options-Flow-Predictor)
+- Commit SHA inspected: `da83ec361c1cb7494a0b1b96dbca8edc4a09e788`
+- Last inspected: 2026-09-11
+- License: MIT. License file or absence checked against repository tree.
+- Category: Flow / ML research
+- Relevant files: [Options Flow Predictor.ipynb](https://github.com/NavnoorBawa/Options-Flow-Predictor/blob/da83ec361c1cb7494a0b1b96dbca8edc4a09e788/Options%20Flow%20Predictor.ipynb).
+- Problem solved / algorithms / architecture: Volume/OI and volatility-context feature families plus TimeSeriesSplit are candidates for a feature audit, not trading evidence.
+- Strategy logic: RF/XGBoost directional predictions over stock history and currently fetched options context. Selected notebook code inspected, not every output cell.
+- Risk logic / assumptions: Missing features are ffilled/fillna(0), RSI may default50 and missing VIX9D may use VIX. These substitutions fabricate neutral knowledge.
+- Execution logic / weaknesses: No audited executable BBO/partial-fill/accounting engine.
+- Backtesting logic: TimeSeriesSplit alone cannot fix stale/current options context, symbol grouping or overlapping labels. No untouched-OOS Wheel economics proven.
+- Useful tests / invariants: No dedicated tests in tree inspected. Require feature available_at, per-date chain archive, missingness mask, purged label windows, fold failure accounting.
+- Weaknesses: README/notebook academic-return rhetoric is not repository performance proof. Large volume does not identify initiator, opening/closing or dealer inventory.
+- Look-ahead risk: Current-chain data attached to stock-history modeling requires explicit date proof before historical use.
+- Survivorship-bias risk: User-selected current tickers and provider history do not establish point-in-time universe.
+- THETA relevance / existing equivalent: `Optionomics feature-family contracts and dataset lineage`.
+- Better than current THETA: NO, limited to the specific method above, never a profitability ranking.
+- Recommended action: REFERENCE_ONLY.
+- Integration status: No model, threshold or performance claim adopted.
 
-**Relevant to THETA:** directly relevant as a **concrete, real-world
-confirmation that THETA's existing multi-dimension Pareto-frontier
-approach (`pareto_frontier.py`, this session's own Full-H cross-symbol
-frontier) is already a materially more rigorous design** than a popular
-reference implementation's single-score ranking.
+## puneet-chandna/0DTE-dealer-gamma
 
-**Existing THETA equivalent:** `covered_call_ranker.py` (opening CC
-decision) and the full Pareto-frontier/cross-symbol-economic-frontier
-stack (item H) already avoid single-score ranking entirely.
+- Repository / URL: [puneet-chandna/0DTE-dealer-gamma](https://github.com/puneet-chandna/0DTE-dealer-gamma)
+- Commit SHA inspected: `8da6fa67328b4aa34956c033f0b7cbb74431501d`
+- Last inspected: 2026-09-11
+- License: PolyForm Noncommercial 1.0.0. License file or absence checked against repository tree.
+- Category: GEX / quality
+- Relevant files: [backend/app/core/gex_calculator.py](https://github.com/puneet-chandna/0DTE-dealer-gamma/blob/8da6fa67328b4aa34956c033f0b7cbb74431501d/backend/app/core/gex_calculator.py).
+- Problem solved / algorithms / architecture: Vectorized signed OI gamma and explicit crossing_found metadata improve interpretability over an unexplained number.
+- Strategy logic: Intraday dealer-gamma context, not validated THETA routing.
+- Risk logic / assumptions: GEX thresholds and call/put signs are assumptions.
+- Execution logic / weaknesses: No broker execution reviewed.
+- Backtesting logic: No OOS incremental THETA value established.
+- Useful tests / invariants: Tree exposes snapshot-quality/GEX tests, not executed. Extract no-crossing versus zero, empty array, stale chain and multiplier tests.
+- Weaknesses: Cumulative-by-strike crossing is not aggregate spot-repricing zero gamma. Fixed100 assumptions and raw coverage need separate quality flags.
+- Look-ahead risk: Current0DTE chain context requires timestamped archival for replay.
+- Survivorship-bias risk: No historical availability guarantees established.
+- THETA relevance / existing equivalent: `research-only feature validation`.
+- Better than current THETA: PARTIAL, limited to the specific method above, never a profitability ranking.
+- Recommended action: REFERENCE_ONLY.
+- Integration status: Noncommercial code not imported. Formula semantics compared only.
 
-**Better than current THETA implementation:** **NO.** THETA's Pareto-
-dominance, multi-dimension approach is already strictly more rigorous
-than this reference's single weighted score. This finding is recorded as
-positive validating evidence for THETA's existing design choice, not a
-gap to close.
+## hedarthy/DealerFlow
 
-**Recommended action:** `REJECT` (the scoring formula, as a method to
-adopt). `REFERENCE_ONLY` (the pipeline-stage decomposition pattern is
-fine and unremarkable; the wheel state-machine/execution files are
-Codex's category to inspect further, not re-inspected here).
+- Repository / URL: [hedarthy/DealerFlow](https://github.com/hedarthy/DealerFlow)
+- Commit SHA inspected: `14c7a0f345116c93b43641893aaa372a4cf19085`
+- Last inspected: 2026-09-11
+- License: MIT. License file or absence checked against repository tree.
+- Category: GEX / vanna / charm
+- Relevant files: [spy_gex/exposure.py](https://github.com/hedarthy/DealerFlow/blob/14c7a0f345116c93b43641893aaa372a4cf19085/spy_gex/exposure.py).
+- Problem solved / algorithms / architecture: Names separate gamma, vanna and charm exposure units, with a minimum gross-exposure condition on cumulative crossings.
+- Strategy logic: GEX-sign regime heuristic. No proven entry/exit policy.
+- Risk logic / assumptions: Dealer signs, zero crossing windows and rates are assumed. Returns0 for unavailable crossing and negative regime when total0.
+- Execution logic / weaknesses: No execution engine in inspected module.
+- Backtesting logic: No independent OOS strategy proof.
+- Useful tests / invariants: Extract missing IV/OI, invalid type, multiple crossings, expiry timezone, vanna per-unit-vol and charm per-day dimensional tests.
+- Weaknesses: Fixed100, missing-data defaults, expiry floor and duplicated product calculations. Crossing is cumulative strike profile, not repriced aggregate.
+- Look-ahead risk: Naive local expiry construction can create timezone inconsistencies.
+- Survivorship-bias risk: Current chain cannot establish historical coverage.
+- THETA relevance / existing equivalent: `formula validation / research provenance`.
+- Better than current THETA: PARTIAL, limited to the specific method above, never a profitability ranking.
+- Recommended action: REFERENCE_ONLY.
+- Integration status: Units/sign/crossing comparison documented, no runtime adoption.
 
-**Integration status:** NOT INTEGRATED (correctly — THETA's existing
-approach is already better on this specific dimension).
+## zrack/gex-terminal
 
----
+- Repository / URL: [zrack/gex-terminal](https://github.com/zrack/gex-terminal)
+- Commit SHA inspected: `72d68f47a41c2c330351476cef99b48411f9fe3d`
+- Last inspected: 2026-09-11
+- License: MIT. License file or absence checked against repository tree.
+- Category: GEX semantics / replay
+- Relevant files: [gex_terminal/engine.py](https://github.com/zrack/gex-terminal/blob/72d68f47a41c2c330351476cef99b48411f9fe3d/gex_terminal/engine.py).
+- Problem solved / algorithms / architecture: Explicit positive finite contract multipliers, distinguishable strike_profile_flip semantics and observed-volume proxy descriptions are useful quality contracts.
+- Strategy logic: Positioning display/context, not validated Wheel economics.
+- Risk logic / assumptions: Volume-based counterparty sign remains an assumption. Black76/BSM conventions must match instruments.
+- Execution logic / weaknesses: No broker engine audited.
+- Backtesting logic: Tree includes replay/chronology tests. Listing them does not prove they pass or prove alpha.
+- Useful tests / invariants: Extract no-crossing without fallback, adjusted multiplier, empty chain, missing proxy source, expiry-separated aggregation. Engine read selectively.
+- Weaknesses: Legacy nearest-neutral fallback must not be promoted to true zero-gamma crossing. Extensive surface does not prove economics.
+- Look-ahead risk: Replay ordering and provider timestamp integrity must be checked independently.
+- Survivorship-bias risk: Coverage of expired/delisted contracts unverified.
+- THETA relevance / existing equivalent: `contract-multiplier quality and optional GEX semantics`.
+- Better than current THETA: PARTIAL, limited to the specific method above, never a profitability ranking.
+- Recommended action: ADAPT.
+- Integration status: Metadata/invariant methods only, no GEX routing enabled.
 
-## Repositories identified and ranked but NOT yet file-level inspected
+## BitraAI/gex_app
 
-Per the directive's instruction to select 15 and deeply inspect those
-before expanding further, the remaining Top-15 entries
-(`thedhruvhegde/ivsurf` beyond its `black_scholes.py` file,
-`NavnoorBawa/Options-Flow-Predictor`, `milgar7969/alpaca-options-
-framework`, `Ja-Ta/optionstrader`, `joncovington/MEICAgent`,
-`puneet-chandna/0DTE-dealer-gamma`, `zrack/gex-terminal`,
-`BitraAI/gex_app`, `AdamNaghs/Options-Spread-Conviction-Engine`) have
-been identified, verified to exist, licensed-checked at the metadata
-level (see `THETA_GITHUB_TOP15.md`'s table), but not yet given a full
-ledger entry with extracted formulas/logic. This is recorded honestly
-rather than padded with unsubstantiated entries — each will get a full
-entry in a follow-up pass, prioritized by the Gap Matrix's own
-"validation required" column.
+- Repository / URL: [BitraAI/gex_app](https://github.com/BitraAI/gex_app)
+- Commit SHA inspected: `b1234c65452581fccf5375cb7488b990423ed79c`
+- Last inspected: 2026-09-11
+- License: Custom personal/noncommercial. License file or absence checked against repository tree.
+- Category: GEX dashboard research
+- Relevant files: [calculations.py](https://github.com/BitraAI/gex_app/blob/b1234c65452581fccf5375cb7488b990423ed79c/calculations.py), [LICENSE](https://github.com/BitraAI/gex_app/blob/b1234c65452581fccf5375cb7488b990423ed79c/LICENSE).
+- Problem solved / algorithms / architecture: Illustrates several exposure labels, but units and cross-product fallbacks need substantial skepticism.
+- Strategy logic: Exposure visualization, not audited THETA trade policy.
+- Risk logic / assumptions: VEX calculation is vega exposure rather than DealerFlow's vanna exposure. Same acronym does not imply same quantity.
+- Execution logic / weaknesses: No executable broker path reviewed.
+- Backtesting logic: No OOS evidence established.
+- Useful tests / invariants: Extract exposure-unit and exact-contract-identity checks. No upstream tests run.
+- Weaknesses: Duplicate compute_totals definitions and cross-underlying closest-delta substitution. Commercial use/integration requires written permission under inspected license.
+- Look-ahead risk: Substituted Greeks across products and dates lose provenance.
+- Survivorship-bias risk: Historical coverage unverified.
+- THETA relevance / existing equivalent: `provenance/schema rejection fixtures`.
+- Better than current THETA: NO, limited to the specific method above, never a profitability ranking.
+- Recommended action: REJECT.
+- Integration status: No code, design assets or implementation imported.
 
-### thedhruvhegde/ivsurf (partial — one file read)
+## sgdividends/spx-dealer-gamma
 
-**Commit SHA inspected:** `c20072a8f6c09146697bdb55dca566567d7b0535`
-**File read:** `core/black_scholes.py` only.
-**What was found:** a vectorized (numpy-based) Black-Scholes
-pricer/Greeks module with explicit input validation
-(`BlackScholesError` for non-positive S/K/sigma, a warning for `|r| >
-100%`) and a T=0 guard (`sqrt(max(T, 1e-10))`) to avoid division by
-zero at expiration — a genuinely useful, concrete edge-case pattern
-(handling T→0 without crashing) worth confirming THETA's own Greeks
-consumption path handles identically. Full Greeks/IV-solver files
-(`greeks.py`, `advanced_interpolation.py`, `surface_model.py`,
-`heston.py`, `jump_models.py`) not yet read.
-**Recommended action:** `TEST_ONLY` — add a THETA test confirming
-Optionomics-sourced Greeks/IV never divide-by-zero or crash at DTE=0
-(no adoption of ivsurf's own code needed; THETA does not compute
-Greeks itself, per its own architecture, Optionomics does).
-**Integration status:** NOT INTEGRATED.
+- Repository / URL: [sgdividends/spx-dealer-gamma](https://github.com/sgdividends/spx-dealer-gamma)
+- Commit SHA inspected: `4b49ede031a17daa2a18c087e7fdb200a0c1d26f`
+- Last inspected: 2026-09-11
+- License: No license found. License file or absence checked against repository tree.
+- Category: Aggregate GEX spot scan
+- Relevant files: [gamma.py](https://github.com/sgdividends/spx-dealer-gamma/blob/4b49ede031a17daa2a18c087e7fdb200a0c1d26f/gamma.py), [server.py](https://github.com/sgdividends/spx-dealer-gamma/blob/4b49ede031a17daa2a18c087e7fdb200a0c1d26f/server.py).
+- Problem solved / algorithms / architecture: Recomputes aggregate signed gamma across hypothetical spot levels, interpolates all crossings and selects nearest spot. This is conceptually distinct from strike/cumulative crossings.
+- Strategy logic: SPX positioning context, not a complete strategy.
+- Risk logic / assumptions: Fixed-IV spot scan is a scenario convention, not actual dealer inventory or a forecast.
+- Execution logic / weaknesses: MCP read tool, not broker execution.
+- Backtesting logic: No OOS evidence or dedicated tests found in tree.
+- Useful tests / invariants: Extract no root, multiple roots, all-missing IV, unit consistency, exercise-time timezone. Full gamma/server files read.
+- Weaknesses: Fixed100 and rate, missing inputs may become0. Expiry uses16 UTC despite ET comment. All-zero curves can produce false roots.
+- Look-ahead risk: Cboe delayed chain timestamps and expiry timezone are material.
+- Survivorship-bias risk: Current SPX chain only.
+- THETA relevance / existing equivalent: `future research gamma definition, no new API`.
+- Better than current THETA: PARTIAL, limited to the specific method above, never a profitability ranking.
+- Recommended action: REFERENCE_ONLY.
+- Integration status: Not empty: GitHub size5 is KB. No code copying without license.
+
+## milgar7969/alpaca-options-framework
+
+- Repository / URL: [milgar7969/alpaca-options-framework](https://github.com/milgar7969/alpaca-options-framework)
+- Commit SHA inspected: `fd1c411da1abfee9009186fda99d8e9c02ca4166`
+- Last inspected: 2026-09-11
+- License: No license found. License file or absence checked against repository tree.
+- Category: Execution / state / risk
+- Relevant files: [orders.py](https://github.com/milgar7969/alpaca-options-framework/blob/fd1c411da1abfee9009186fda99d8e9c02ca4166/orders.py), [state.py](https://github.com/milgar7969/alpaca-options-framework/blob/fd1c411da1abfee9009186fda99d8e9c02ca4166/state.py), [risk.py](https://github.com/milgar7969/alpaca-options-framework/blob/fd1c411da1abfee9009186fda99d8e9c02ca4166/risk.py).
+- Problem solved / algorithms / architecture: Poll, cancel on timeout, then query once more to detect a fill racing the cancellation. Entry/exit pending flags expose useful concurrency states.
+- Strategy logic: Long-option framework with stop/risk policy, not a Wheel assignment engine.
+- Risk logic / assumptions: Daily counters can be restored, but stop-distance sizing forces at least1. Counter restoration is not durable reservations.
+- Execution logic / weaknesses: Explicit BUY_TO_OPEN, cancellation/fill race handling. Partial fills are not resolved adequately. get_positions failure=>[] and fill-price failure=>0 are unsafe.
+- Backtesting logic: No OOS validation established.
+- Useful tests / invariants: Extract cancel/fill race, partial fill before rejection, positions failure!=flat, unknown fill price!=0, restart with pending order.
+- Weaknesses: In-memory flags and CSV cannot replace atomic lease/idempotent event ledger. No deterministic submission identity in inspected path.
+- Look-ahead risk: Real-time functions not a replay implementation.
+- Survivorship-bias risk: Universe history unverified.
+- THETA relevance / existing equivalent: `order-intent-state.ts, scheduler/reconciliation infrastructure`.
+- Better than current THETA: PARTIAL, limited to the specific method above, never a profitability ranking.
+- Recommended action: TEST_ONLY.
+- Integration status: Use failure scenarios only. No unlicensed source reuse.
+
+## ShayantoDutta/alpaca-wheel-bot
+
+- Repository / URL: [ShayantoDutta/alpaca-wheel-bot](https://github.com/ShayantoDutta/alpaca-wheel-bot)
+- Commit SHA inspected: `40c550cf44109028f9a99cdee2863a74c93ba833`
+- Last inspected: 2026-09-11
+- License: No license found. License file or absence checked against repository tree.
+- Category: Wheel failure cases
+- Relevant files: [wheel_bot.py](https://github.com/ShayantoDutta/alpaca-wheel-bot/blob/40c550cf44109028f9a99cdee2863a74c93ba833/wheel_bot.py).
+- Problem solved / algorithms / architecture: Small real Wheel script with JSON state and put/stock/call handling. Requested SayantoDutta URL resolves to this canonical owner.
+- Strategy logic: Delta0.25±0.1, DTE14-28, IV-rank30,50% profit target,2× premium loss threshold, five-day wait in inspected configuration. Static NVDA event estimates.
+- Risk logic / assumptions: Order quantity1 and assumed100 multiplier. Static2026 holiday list lacks full exchange-session behavior.
+- Execution logic / weaknesses: Limit order pricing is an estimate. Stores midpoint premium before fills and treats disappearing option as full-premium realization before stock inspection.
+- Backtesting logic: No dedicated test suite or validated OOS record found.
+- Useful tests / invariants: Extract disappearance without activity, partial assignment, canceled order, no fill, restart during JSON write, unknown IVrank. Key code excerpts inspected, not every line.
+- Weaknesses: Automatic inference can book a false win. No deterministic clientid/position intent, atomic persistence or full-H recovery policy proven.
+- Look-ahead risk: Static earnings/calendar approximations and current IV snapshots.
+- Survivorship-bias risk: Fixed chosen symbol(s), no historical-universe proof.
+- THETA relevance / existing equivalent: `lifecycle/accounting regression fixtures`.
+- Better than current THETA: NO, limited to the specific method above, never a profitability ranking.
+- Recommended action: TEST_ONLY.
+- Integration status: Not empty: GitHub size10 is KB. Reject trading/accounting implementation.
+
+## lballabio/QuantLib
+
+- Repository / URL: [lballabio/QuantLib](https://github.com/lballabio/QuantLib)
+- Commit SHA inspected: `ca953b7ebdb400f2839d86f18eeb0d4a2a4a30a4`
+- Last inspected: 2026-09-11
+- License: BSD-style three-condition license. License file or absence checked against repository tree.
+- Category: Mature pricing / numerical oracle
+- Relevant files: [ql/pricingengines/blackformula.cpp](https://github.com/lballabio/QuantLib/blob/ca953b7ebdb400f2839d86f18eeb0d4a2a4a30a4/ql/pricingengines/blackformula.cpp), [ql/termstructures/volatility/equityfx/blackvariancesurface.cpp](https://github.com/lballabio/QuantLib/blob/ca953b7ebdb400f2839d86f18eeb0d4a2a4a30a4/ql/termstructures/volatility/equityfx/blackvariancesurface.cpp), [LICENSE.TXT](https://github.com/lballabio/QuantLib/blob/ca953b7ebdb400f2839d86f18eeb0d4a2a4a30a4/LICENSE.TXT).
+- Problem solved / algorithms / architecture: Black-formula parameter validation, implied standard-deviation solvers with convergence criteria, and variance-space interpolation with sorted unique expiries.
+- Strategy logic: No trading policy inferred.
+- Risk logic / assumptions: European Black pricing does not replace American exercise/dividend/assignment modeling. Surface interpolation is not a blanket arbitrage certificate.
+- Execution logic / weaknesses: Pricing does not provide executable fills.
+- Backtesting logic: Numerical reference, not a THETA historical data source.
+- Useful tests / invariants: Extract price-to-IV roundtrip, option bounds, near expiry, failed solver, sorted expiry, dimensional shape and independent Greeks tests. Functions inspected selectively, suite not executed.
+- Weaknesses: Mature library still needs instrument/day-count/calendar/curve configuration. No new dependency justified in this slice.
+- Look-ahead risk: Evaluation date and point-in-time curves must be injected, not today defaults.
+- Survivorship-bias risk: Outside numerical library scope.
+- THETA relevance / existing equivalent: `independent Optionomics/Alpaca Greeks validation, R6 oracle`.
+- Better than current THETA: YES, limited to the specific method above, never a profitability ranking.
+- Recommended action: ADOPT_METHOD.
+- Integration status: Validation methodology selected, no pricing library installed.
+
+## QuantConnect/Lean
+
+- Repository / URL: [QuantConnect/Lean](https://github.com/QuantConnect/Lean)
+- Commit SHA inspected: `8ee075a39918f2df6fe9e0a5944e366fb60d10dc`
+- Last inspected: 2026-09-11
+- License: Apache-2.0. License file or absence checked against repository tree.
+- Category: Mature lifecycle / accounting / scheduling
+- Relevant files: [Common/Securities/Option/OptionHolding.cs](https://github.com/QuantConnect/Lean/blob/8ee075a39918f2df6fe9e0a5944e366fb60d10dc/Common/Securities/Option/OptionHolding.cs), [Common/Securities/SecurityHolding.cs](https://github.com/QuantConnect/Lean/blob/8ee075a39918f2df6fe9e0a5944e366fb60d10dc/Common/Securities/SecurityHolding.cs), [Common/Orders/OptionExercise/DefaultExerciseModel.cs](https://github.com/QuantConnect/Lean/blob/8ee075a39918f2df6fe9e0a5944e366fb60d10dc/Common/Orders/OptionExercise/DefaultExerciseModel.cs), [Common/Scheduling/ScheduledEvent.cs](https://github.com/QuantConnect/Lean/blob/8ee075a39918f2df6fe9e0a5944e366fb60d10dc/Common/Scheduling/ScheduledEvent.cs), [Tests/Common/Orders/Fills/ImmediateFillModelTests.cs](https://github.com/QuantConnect/Lean/blob/8ee075a39918f2df6fe9e0a5944e366fb60d10dc/Tests/Common/Orders/Fills/ImmediateFillModelTests.cs).
+- Problem solved / algorithms / architecture: Holdings use contract multipliers and directional liquidation prices. Exercise emits option adjustment and physical underlying delivery events. Scheduler separates UTC event times and frontier scans.
+- Strategy logic: Platform architecture, no THETA strategy assumed.
+- Risk logic / assumptions: Holding valuation includes approximate liquidation fees. THETA must keep broker-confirmed basis and premium allocation consistent.
+- Execution logic / weaknesses: Tests prohibit fills from data before submission. Other default models may warn and still use stale data, stricter THETA veto remains required.
+- Backtesting logic: Shared event concepts support replay/runtime parity. ScheduledEvent.Scan can fire skipped events back-to-back, unsafe for blindly replaying trade submissions after outage.
+- Useful tests / invariants: Read exercise model and selected holding/scheduler functions and fill test cases. Extract pre-submit data, buy ask/sell bid, physical vs cash, restart catch-up tests. No LEAN suite run.
+- Weaknesses: Do not transplant entire engine or treat default fill/exercise simulation as broker truth. Catch-up needs idempotency, reconciliation and stale-intent expiry.
+- Look-ahead risk: Inject event clock and preserve data availability frontier.
+- Survivorship-bias risk: Historical data completeness remains separate from engine maturity.
+- THETA relevance / existing equivalent: `ledger-contract.ts, assignment reconciliation, scheduler-engine.ts`.
+- Better than current THETA: YES, limited to the specific method above, never a profitability ranking.
+- Recommended action: ADAPT.
+- Integration status: Concrete THETA UNKNOWN-valuation fix and regression tests implemented in this milestone. Broader scheduler adaptation pending.
+
+## Implemented consequence and retained blockers
+
+The reviewed LEAN holding design reinforces the canonical requirement to value both option and stock inventory. THETA's old ledger returned a numeric total while substituting zero for open option MTM or omitting unmarked stock. The independent fix versions the calculation contract to v2, returns null for incomplete aggregates, exposes deterministic valuation issues, and retains known realized losses. No DB schema, strategy weight, broker endpoint or execution gate changed.
+
+Still required: provenance-aware option MTM input, dividend share entitlement at ex-date, basis/premium allocation reconciliation, cost allocation without double-counting, capital-day integration, and durable lifecycle joins. This fix does not claim the ledger is a complete training-label pipeline.
+
+Claude review items: execution_quality.py is direction-agnostic and uses ask-oriented slippage, so validate SELL_TO_OPEN and BUY_TO_CLOSE separately before using its heuristic. Compare utility units with per-share slippage. No quant source was changed. Replay must not copy positional date pairing from lambdaclass or failed-fold suppression from ivsurf.

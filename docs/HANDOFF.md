@@ -1,5 +1,54 @@
 # Codex handoff: standalone platform Phase 1
 
+## 2026-09-11: commit-pinned GitHub methods audit and ledger UNKNOWN fix
+
+OWNER: Codex, sole integration owner.
+
+TASK: Inspect the owner's fifteen GitHub references plus QuantLib/LEAN and turn
+findings into explicit comparisons and one focused accounting correction.
+
+FILES CHANGED: research Top15, ledger, gap matrix, formula catalog, new strategy
+catalog, archived previous research, EV spec correction, ledger-contract.ts,
+ledger-contract.test.ts, DECISIONS.md and this handoff. Quant model sources,
+providers, migrations, customer UI and execution gates are unchanged.
+
+WHAT WAS IMPLEMENTED: 17 commit-pinned source records with licensing, scope and
+limitations, 36 gap rows, 21 formula entries, strategy rejection/promotion criteria.
+Ledger v2 propagates unknown option/stock/dividend components into a null total
+while preserving known realized losses and explicit valuation issues. Earlier
+research is retained in archive, including references outside the bounded fifteen.
+
+TESTS RUN: targeted ledger tests, TypeScript check, ESLint, full Node tests,
+Python quant tests, Playwright browser/accessibility checks, build, secret scan
+and diff review. No upstream repository's test suite was executed.
+
+TEST RESULTS: 13 ledger tests passed, 532 Node tests passed with three local DB
+tests skipped, 349 Python tests passed, 22 browser tests passed. Type check,
+lint, build and security scan passed. CI will rerun disposable Postgres/Redis
+invariants after integration. No migration is required for this pure calculation.
+
+KNOWN LIMITATIONS: Targeted file/function review is not an exhaustive code audit
+of all17 repositories. No calibrated full-H EV or OOS profitability evidence was
+created. Option MTM provenance, premium/basis and fee allocation, ex-date dividend
+shares, capital-days and durable management joins remain incomplete.
+
+RISKS: Positional date zipping in lambdaclass, mixed-expiry batch handling in
+ivsurf, conflated GEX crossing definitions and unsafe missing-data/forced-quantity
+patterns must not be ported. Noncommercial/no-license/AGPL source was not imported.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: execution_quality.py needs explicit side and
+unit review before its buy-oriented heuristic is used for short-option execution.
+Preserve canonical full-H/management methodology. Avoid failed-fold suppression
+and current-chain features in historical rows. Only Codex integrates main.
+
+NEXT RECOMMENDED TASK: Provenance-aware full-chain valuation and durable management
+receipts, then reconciliation/scheduler operational evidence in the existing roadmap.
+No new GEX provider or strategy is needed to do that work.
+
+ORDER SAFETY: No broker order submission was made in this milestone. Execution
+gates remain unchanged. READY_FOR_FIRST_PAPER_ORDER remains NO, this source audit
+does not establish fresh account, contract, quote or worker readiness evidence.
+
 ## 2026-09-10 customer copy UX and owner operations foundation
 
 OWNER: Codex
@@ -252,3 +301,211 @@ the provider gate.
 
 NEXT RECOMMENDED TASK: Connect real Optionomics, positions, open orders, and
 account-derived AEGIS into persisted shadow cycles. Keep execution locked.
+
+## 2026-09-11 private team Alpaca Paper API-key connection
+
+OWNER: Codex
+
+TASK: Add the owner-authorized, temporary private team Alpaca Paper credential flow
+without changing OAuth or enabling order submission.
+
+FILES CHANGED: Environment contract, common broker credential provider, read-only
+Paper verifier, customer store, migration 009, customer API and account UI, tests,
+API contract, and decision record.
+
+WHAT WAS IMPLEMENTED: Authenticated same-origin HTTPS users can submit their own
+Paper API key and masked secret field. The server accepts only the exact Alpaca Paper
+host, verifies account and options facts plus positions, open orders, and clock,
+encrypts a key bundle with customer-bound AES-256-GCM, and returns only a masked
+account plus safe read facts. Connect, replace, reverify, disconnect, timestamps, and
+health are supported. OAuth is preserved behind the same credential-provider
+interface. Order submission remains locked.
+
+TESTS RUN: ESLint, TypeScript checks, 330 Node tests, production build, security scan,
+targeted Playwright credential-flow verification, and the full responsive,
+accessibility, and screenshot suite. Migration 009 and SQL invariants are part of the
+Linux CI database gate.
+
+TEST RESULTS: Local deterministic and browser tests pass. Secret scan reports zero
+findings. Visual inspection shows the masked Paper form without clipping or overflow.
+
+KNOWN LIMITATIONS: The linked Vercel project has no database resource. Installing the
+free Neon integration requires the account owner to accept Vercel Marketplace and
+Neon legal terms. Docker Desktop is not currently reachable locally, so PostgreSQL
+and Redis validation must run in GitHub CI until the Vercel database exists.
+
+RISKS: The legacy encrypted table retains its OAuth-oriented name for migration
+compatibility, though its records are discriminated by the follower connection
+method. Private API-key beta must remain limited to trusted testers and PAPER.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: The shared credential-provider boundary and safe
+read projection only. No quant methodology or strategy logic changed.
+
+NEXT RECOMMENDED TASK: After the owner accepts the Neon terms, create and attach the
+free production database, apply migrations through 009, pull the resulting production
+environment safely, and execute a real tester connect/read/disconnect smoke test. Do
+not place an order.
+
+## 2026-09-11 Neon production database and real-state R1 integration
+
+OWNER: Codex
+
+TASK: Provision the attached Neon database, verify the deployed private Paper account
+path, and integrate Claude's latest non-conflicting real-state R1 runtime work.
+
+FILES CHANGED: Canonical database migration and verification tools, plus the files from
+Claude branch `claude/theta-r1-real-state`. No customer credential, environment file,
+temporary audit endpoint, or temporary audit token remains in the repository or Vercel.
+
+WHAT WAS IMPLEMENTED: Neon Production and Preview variables were confirmed as Vercel
+Sensitive values. Migrations 001 through 009 were applied in order over an unpooled Neon
+connection. All seven SQL invariant suites passed against Neon. Reusable migration and
+verification commands now choose a session-capable migration URL before any pooled
+runtime URL. Claude's R1 work added real Alpaca account, position, open-order, clock,
+calendar accessor, asset-universe, stock-history, optionability, Optionomics chain,
+contract merge, and account-exposure inputs to the non-executing shadow cycle.
+
+TESTS RUN: 399 TypeScript tests, 298 Python tests, ESLint, TypeScript check, production
+build, security scan, real Neon migrations and SQL invariants, production root and API
+smoke tests, read-only master Alpaca and Optionomics verification, and a deployed
+customer registration/session/private-connector rejection test.
+
+TEST RESULTS: All local and GitHub CI gates passed. Production root returns HTTP 200
+through Vercel's authenticated private deployment. Alpaca Paper account, configuration,
+clock, calendar, IEX stock data, option-contract discovery, indicative option snapshots,
+positions, open orders, account activity, and corporate actions returned successful
+read-only responses. OPRA returned HTTP 403 `NOT_ENTITLED`, while INDICATIVE returned
+HTTP 200. Optionomics documented contracts, authentication, symbol metrics, option
+chain, history, flow, and events returned HTTP 200. The database reports zero broker
+orders, zero active followers, and zero active customer credentials.
+
+KNOWN LIMITATIONS: A real tester has not yet supplied a separate private-beta Alpaca
+Paper credential through the deployed form. Valid customer connect, encrypted Neon
+persistence, reverify, replace, and disconnect are covered by deterministic integration
+tests, but the deployed real-credential journey cannot be claimed until a tester enters
+their own credential. The master deployment credential was intentionally not reused as
+a customer credential. The shadow cycle still lacks durable FusionSnapshot/opportunity
+persistence, real event-state assembly, a production scheduler, and complete management
+and reconciliation workers.
+
+RISKS: INDICATIVE data is reachable, but OPRA is not entitled. No first Paper order may
+use an unapproved feed assumption. Several AEGIS families still depend on explicitly
+manual or unavailable inputs, and current shadow policy defaults are research values.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: The merged real-state R1 provider and cycle files
+only at a release boundary. Claude must not commit or push under the current owner rule.
+
+NEXT RECOMMENDED TASK: Add durable shadow snapshot, opportunity, and decision persistence,
+then wire real event state and a restart-safe scheduler. Keep both Paper execution flags
+false and `PAPER_PAUSE_NEW_ORDERS=true`.
+
+## 2026-09-11 Canonical-domain customer connection correction
+
+OWNER: Codex
+
+TASK: Make the private tester sign-in and Alpaca Paper connection sequence explicit,
+resume the exact Copy THETA step after authentication, and preserve safe connection
+state during transient provider failures.
+
+FILES CHANGED: Customer auth/API/readiness contracts, Paper account and Copy THETA UI,
+private-connection verification behavior, browser and unit tests, and decision/handoff
+documentation.
+
+WHAT WAS IMPLEMENTED: The Copy THETA flow now distinguishes Trading Bots credentials
+from Alpaca Paper API credentials, offers separate sign-in and tester-registration
+actions, and returns through a server-allowlisted internal path. Authenticated testers
+can enter Paper API credentials directly in the same Copy THETA step. The connected
+card includes cash, equity, buying power, options buying power, both options levels,
+position/order counts, market state, and verification time. Provider errors are
+customer-safe. Transient reverify failures preserve the stored connection, while a
+confirmed 401 marks it for attention. Order submission remains locked.
+
+TESTS RUN: ESLint, TypeScript check, 401 Node tests, production build, security scan,
+18 Playwright journeys across desktop/tablet/mobile with WCAG checks, 298 Python tests,
+and visual inspection of the sign-in and Paper credential screens.
+
+TEST RESULTS: All repository gates pass. Reticle CLI reported `no_flows`, so it could
+not issue a visual verdict. Playwright screenshots and accessibility assertions were
+used as the verified visual fallback.
+
+KNOWN LIMITATIONS: A genuine tester credential is still required to prove the deployed
+successful connection and persistence journey. The master credential remains isolated
+and was not reused. No Paper or live order was submitted.
+
+RISKS: Vercel Deployment Protection still requires authorized access to the private
+site. OPRA remains not entitled, so no future execution gate may assume OPRA quality.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: The auth return-path allowlist and the reverify
+health transition only. No quant module or strategy rule changed.
+
+NEXT RECOMMENDED TASK: Deploy this slice to the canonical alias, run real Neon and
+customer-session smoke checks, then continue durable shadow evidence and scheduler work.
+
+## 2026-09-11 Shadow calendar and temporal consistency
+
+OWNER: Codex
+
+TASK: Close the market-calendar/session and mixed-timestamp gaps in the non-executing
+THETA shadow cycle.
+
+FILES CHANGED: `src/theta/theta-shadow-cycle.ts`, its focused test suite, and project
+decision/handoff records.
+
+WHAT WAS IMPLEMENTED: Every cycle captures one decision timestamp, retrieves the Alpaca
+calendar independently from the clock, records calendar data and provenance in the
+FusionSnapshot, and holds new risk when an open clock cannot be reconciled to a dated
+exchange session. No order endpoint or execution flag changed.
+
+TESTS RUN: ESLint, TypeScript check, 402 Node tests, production build, and security scan.
+
+TEST RESULTS: All gates pass. A focused fixture proves open-clock plus missing-calendar
+returns `SYSTEM_HOLD/MARKET_SESSION_UNCONFIRMED`.
+
+KNOWN LIMITATIONS: Real event-state assembly, remaining AEGIS families, durable shadow
+evidence persistence, and production scheduler invocation remain incomplete.
+
+RISKS: Calendar truth is required only as an explicit precondition for an open-session
+new-risk scan. Closed-market handling stays clock-authoritative and fail-safe.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: The calendar/session precondition only. No quant
+methodology or policy threshold changed.
+
+NEXT RECOMMENDED TASK: Persist FusionSnapshot, opportunity, and decision evidence using
+the existing migration 003 schema, then add a lease-backed scheduler. Keep execution
+locked.
+
+## 2026-09-11 Contract-multiplier safety integration
+
+OWNER: Codex
+
+TASK: Review and integrate Claude commit `645b977` without accepting an implicit
+100-share economics assumption.
+
+FILES CHANGED: Alpaca option-contract parsing, option-chain normalization, THETA cycle
+fixtures, multiplier safety tests, and this handoff.
+
+WHAT WAS IMPLEMENTED: Alpaca contract `size` is preserved as the contract multiplier.
+Missing or malformed provider multipliers remain UNKNOWN and force the normalized
+contract non-executable. A caller default may satisfy the normalized storage schema,
+but can never authorize economics or execution. A misleading shadow-cycle test that
+treated a premium/collateral proxy as calibrated positive expectancy was removed. The
+cross-symbol frontier's dedicated tests continue to require positive after-cost EV and
+positive return per capital-day before any executable selection.
+
+TESTS RUN: TypeScript check, ESLint, 533 Node tests, production build, and security scan.
+
+TEST RESULTS: 530 passed, 3 PostgreSQL-only tests skipped locally, 0 failed. Security
+scan reported zero findings.
+
+KNOWN LIMITATIONS: The production runtime still lacks a calibrated positive-EV model
+and an always-on worker deployment, so this correction cannot make a first Paper order
+ready by itself.
+
+RISKS: Alpaca responses that omit contract size will now reduce opportunity throughput.
+That is intentional until exact contract economics can be verified.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude should consume the fail-closed multiplier
+contract and must not reintroduce proxy-based executable ranking.
+
+NEXT RECOMMENDED TASK: Run disposable PostgreSQL CI, integrate the verified commit into
+current main, and keep all Paper and live broker submissions locked.

@@ -1,5 +1,19 @@
 # Engineering decisions
 
+## 2026-09-11: research references and incomplete valuation
+
+Review the owner's fifteen GitHub repositories plus QuantLib and LEAN at
+commit-pinned file scope. Preserve previous research under research/archive,
+correct sign/units/license and implementation-readiness errors in the active
+documents, and do not import external code or unvalidated strategy thresholds.
+
+Version the pure ledger calculation as theta-ledger-runtime-v2. Unknown open
+option valuation, stock mark or dividend entitlement reference makes the
+corresponding aggregate and total null. Known realized components stay visible.
+The only current consumers found are its tests, so no customer API, migration
+or UI contract changes are required. This does not complete option valuation,
+basis/premium reconciliation or full-H model calibration.
+
 ## 2026-09-09: standalone customer platform
 
 The owner's latest instruction makes trading-bots a complete standalone website for the current development period. TradePilot integration is deferred. UI components and versioned public projections remain separate from the trading engine.
@@ -131,6 +145,20 @@ provider-backed decision preview, durable production PostgreSQL, real account
 verification, an active reconciliation worker, rotated credentials, and separate owner
 authorization.
 
+## 2026-09-11: owner-authorized private team Paper credential bridge
+
+The owner explicitly authorized a temporary private-team connection method while the
+public product continues toward Alpaca OAuth. Authenticated testers may connect their
+own Alpaca Paper API key through `PAPER_API_KEY_PRIVATE_BETA`. The server pins every
+request to `https://paper-api.alpaca.markets`, verifies account, options, positions,
+open orders, and clock through read-only calls, and stores only customer-bound
+AES-256-GCM ciphertext. The browser receives no secret or full key. OAuth remains
+`ALPACA_OAUTH`, and both resolve through one `BrokerCredentialProvider` boundary.
+
+This decision does not change execution authority. Customer order submission remains
+locked. Public production should use OAuth after Alpaca Connect approval, and the
+private bridge can then be disabled without changing THETA or copy-engine contracts.
+
 ## 2026-09-11: provider provenance and runtime-defer separation
 
 Provider observation origin and data quality are independent facts. A successful
@@ -145,3 +173,61 @@ transient capability state and `SYSTEM_HOLD`. They are not economic `PASS`, stra
 truth, and required missing entitlement remain genuine fail-closed `HARD_VETO`
 conditions. This preserves clean provider reliability, opportunity, and risk-veto
 statistics while keeping quantity zero and execution authorization false.
+
+## 2026-09-11: Neon migration authority and private-beta production boundary
+
+Use Neon `DATABASE_URL` for pooled serverless runtime requests. Migration tooling must
+prefer `DATABASE_MIGRATION_URL`, `DATABASE_URL_UNPOOLED`, or
+`POSTGRES_URL_NON_POOLING`, in that order. Migrations run under a PostgreSQL advisory
+lock and remain idempotent. Vercel's local environment pull masks connected-integration
+Sensitive values, so a masked local placeholder must never be diagnosed as a bad Neon
+credential or passed to a migration.
+
+The Production schema is now at migrations 001 through 009 and passed all repository SQL
+invariants. Identity, session, encrypted credential, follower, participation, immutable
+decision, lifecycle, order-intent, and reconciliation structures are present. Broker
+order count remains zero.
+
+The platform master Alpaca deployment credential remains a separate trust domain from a
+customer private-beta credential. It may verify the master account read-only, but it must
+not be copied into a customer record to manufacture an end-to-end tester result. A real
+tester must enter their own Paper API key and secret through the HTTPS account form.
+Customer order submission remains locked independently of successful account connection.
+
+## 2026-09-11: tester identity return paths and connection-health semantics
+
+Customer authentication and Alpaca authorization remain separate steps. The server
+accepts only a small allowlist of internal post-authentication paths and returns
+`/account` for every external, protocol-relative, query-bearing, or unknown value.
+This lets Copy THETA resume at `/bots/theta/copy` without creating an open redirect.
+
+A transient Alpaca network, rate-limit, or provider failure does not invalidate or
+replace a previously verified encrypted credential. Only a confirmed authentication
+rejection marks that connection as needing attention. Replacement credentials are
+still verified before the encrypted record is changed. All Paper order submission
+gates remain locked.
+
+## 2026-09-11: clock plus calendar required for an open-session shadow scan
+
+One captured decision timestamp anchors a complete shadow cycle and its FusionSnapshot.
+The Alpaca clock and calendar are separate evidence sources. When the clock reports an
+open market, the cycle must also find the dated exchange session with known open and
+close times. Missing, malformed, or unavailable calendar truth returns
+`SYSTEM_HOLD/MARKET_SESSION_UNCONFIRMED`. A confirmed closed clock still returns
+`SYSTEM_HOLD/MARKET_CLOSED`. Neither state can authorize execution.
+
+## 2026-09-11: selective R1 temporal and AEGIS integration
+
+Provider reads in one THETA cycle share a canonical decision timestamp, while each
+read also records its own local request timestamp. This preserves deterministic
+snapshot and receipt identity without hiding a slow acquisition sequence from the
+temporal-consistency policy.
+
+AEGIS evidence remains three-valued. An empty required-capability set is unknown,
+not healthy. A contract with missing bid, ask, timestamp, or quality evidence is also
+unknown for execution quality. `false` is reserved for a fully observed failure.
+
+Pending-order collateral and assignment capacity must consume explicit position
+intents. They cannot infer `SELL_TO_OPEN` from order side and current holdings. Cross-
+symbol routing must use after-cost economics and risk constraints, not raw premium or
+an incorrectly scaled premium-to-collateral proxy.
