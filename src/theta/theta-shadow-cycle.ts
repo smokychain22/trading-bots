@@ -20,6 +20,7 @@ import {
   type AlpacaContractIdentity, type NormalizedOptionomicsEntry, type OptionomicsProviderConfig,
 } from './optionomics-provider.js';
 import { deriveAccountExposure, mergeDerivedExposureIntoAegisInputs, type DerivedAccountExposure } from './account-exposure.js';
+import { deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProviderState, deriveStressGapDetected } from './aegis-derivation.js';
 
 // R1: runThetaShadowCycle -- the reusable, server-side, non-executing shadow
 // decision cycle. This is the "success condition" deliverable: a single
@@ -80,6 +81,7 @@ export interface ThetaShadowCycleConfig {
   readonly aegisInputsOrigin: ProvenanceOrigin; // honest declaration -- today this is always CALLER_MANUAL since real position/order-derived exposure isn't wired yet
   readonly opportunityFrontierPolicy: { policyVersion: string; reducedSizeUncertaintyThreshold: number };
   readonly maxAcceptableSpreadPct: number;
+  readonly stressGapThresholdAbsReturn: number; // versioned research placeholder -- see aegis-derivation.ts's deriveStressGapDetected
   readonly sizingPolicy: Record<string, unknown>;
   readonly executionQualityPolicy: Record<string, unknown>;
   readonly optionQuoteFreshnessPolicy: NewRiskOrchestrationRequest['optionQuoteFreshnessPolicy'];
@@ -809,7 +811,24 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   // mergeDerivedExposureIntoAegisInputs's own docstring for the honesty
   // rules (partial merge only; sector/correlation/stress remain exactly
   // what the caller supplied).
-  const effectiveAegisInputs = mergeDerivedExposureIntoAegisInputs(config.aegisInputs, derivedExposure, exposureDerivationTrustworthy);
+  let effectiveAegisInputs = mergeDerivedExposureIntoAegisInputs(config.aegisInputs, derivedExposure, exposureDerivationTrustworthy);
+
+  // Additional real AEGIS-input derivations (item E) -- each independently
+  // null/UNKNOWN (never overwriting the caller's value with a guess) when
+  // its own required evidence is missing. See aegis-derivation.ts's own
+  // docstring for exactly which fields remain caller-supplied and why
+  // (sector concentration, correlation clusters, IV-shock/spread-widening
+  // detection all lack a real data source this pass).
+  const derivedProviderState = deriveProviderState([accountEvidence.quality, contractsEvidence.quality, quotesEvidence.quality]);
+  const derivedLiquidityAcceptable = deriveLiquidityAcceptable(mergedContractsForSnapshot, config.maxAcceptableSpreadPct);
+  const derivedExecutionQualityAcceptable = deriveExecutionQualityAcceptable(mergedContractsForSnapshot);
+  effectiveAegisInputs = {
+    ...effectiveAegisInputs,
+    ...(derivedProviderState !== null ? { providerState: derivedProviderState } : {}),
+    ...(derivedLiquidityAcceptable !== null ? { liquidityAcceptable: derivedLiquidityAcceptable } : {}),
+    ...(derivedExecutionQualityAcceptable !== null ? { executionQualityAcceptable: derivedExecutionQualityAcceptable } : {}),
+    stressGapDetected: deriveStressGapDetected(ret1d, config.stressGapThresholdAbsReturn),
+  };
 
   const orchestration = await runNewRiskOrchestration(config.bridge, {
     snapshotId: fusionSnapshot.contentHash, fusionSnapshotHash: fusionSnapshot.contentHash, timestamp: config.now(), underlying,
