@@ -4,9 +4,10 @@ import { randomBytes } from "node:crypto";
 import { loadEnvironment } from "../src/config/environment.js";
 import { connectPrivatePaperApiKey, privatePaperCredentialSchema } from "../src/customer/private-paper-api-key.js";
 import { verifyAlpacaPaperAccount } from "../src/customer/alpaca-paper-verification.js";
-import { EncryptedStoreBrokerCredentialProvider } from "../src/customer/broker-credential-provider.js";
+import { EncryptedStoreBrokerCredentialProvider, MasterEncryptedStoreBrokerCredentialProvider } from "../src/customer/broker-credential-provider.js";
+import { encryptSecret } from "../src/customer/customer-security.js";
 import { reverifyStoredFollowerAccount } from "../src/customer/alpaca-oauth.js";
-import type { CustomerIdentity, CustomerStore, FollowerRecord, OAuthStateRecord, SaveFollowerInput, StoredFollowerCredential } from "../src/customer/customer-store.js";
+import type { CustomerIdentity, CustomerStore, FollowerRecord, MasterCredentialStore, OAuthStateRecord, SaveFollowerInput, StoredFollowerCredential } from "../src/customer/customer-store.js";
 
 const encryptionKey = randomBytes(32).toString("base64");
 const environment = loadEnvironment({
@@ -131,6 +132,19 @@ test("tenant isolation, replacement, and disconnect keep credentials customer-bo
   await store.disconnectFollower("customer-a");
   assert.equal(await provider.getAuthentication("customer-a"), null);
   assert(await provider.getAuthentication("customer-b"));
+});
+
+test("autonomous master credential resolution is role-scoped and emits MASTER_API_KEY only", async () => {
+  const customerId = "master-customer";
+  const encrypted = encryptSecret(JSON.stringify({ apiKeyId: "master-key", apiSecret: "master-secret" }), encryptionKey, customerId);
+  const store: MasterCredentialStore = { getMasterCredential: async () => ({
+    ...encrypted, customerId, providerAccountRef: "paper-account-master",
+    keyRef: "private-beta-v1", connectionMethod: "PAPER_API_KEY_PRIVATE_BETA",
+  }) };
+  const resolved = await new MasterEncryptedStoreBrokerCredentialProvider(store, environment).getAuthentication();
+  assert.equal(resolved?.authentication.kind, "MASTER_API_KEY");
+  assert.equal(resolved?.providerAccountRef, "paper-account-master");
+  assert.equal(JSON.stringify({ method: resolved?.method, providerAccountRef: resolved?.providerAccountRef }).includes("master-secret"), false);
 });
 
 test("reverify preserves a working connection during an Alpaca outage and flags confirmed credential rejection", async () => {

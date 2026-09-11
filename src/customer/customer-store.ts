@@ -79,6 +79,14 @@ export type StoredFollowerCredential = EncryptedSecret & {
   readonly keyRef: string;
   readonly connectionMethod: BrokerConnectionMethod;
 };
+export type StoredMasterCredential = StoredFollowerCredential & {
+  readonly customerId: string;
+  readonly providerAccountRef: string;
+};
+
+export interface MasterCredentialStore {
+  getMasterCredential(): Promise<StoredMasterCredential | null>;
+}
 
 export interface CustomerStore {
   createCustomer(email: string, passwordHash: string): Promise<CustomerIdentity>;
@@ -336,6 +344,28 @@ export class PostgresCustomerStore implements CustomerStore {
       ? { keyRef: row.key_ref, ciphertext: row.ciphertext, iv: row.iv, authTag: row.auth_tag,
           connectionMethod: (row.connection_method === "PAPER_API_KEY_PRIVATE_BETA" ? "PAPER_API_KEY_PRIVATE_BETA" : "ALPACA_OAUTH") as BrokerConnectionMethod }
       : null;
+  }
+
+  async getMasterCredential(): Promise<StoredMasterCredential | null> {
+    const result = await this.pool.query(
+      `UPDATE copy.alpaca_oauth_token t SET last_used_at=now()
+       FROM copy.follower_account f
+       WHERE f.account_role='MASTER_THETA_PAPER' AND f.environment='PAPER'
+         AND f.connection_method='PAPER_API_KEY_PRIVATE_BETA'
+         AND f.connection_status='CONNECTED' AND f.account_ready=true
+         AND f.disconnected_at IS NULL AND t.token_secret_id=f.token_secret_id
+         AND t.customer_id=f.customer_id AND t.revoked_at IS NULL
+       RETURNING t.customer_id,t.key_ref,t.ciphertext,t.iv,t.auth_tag,
+         f.connection_method,f.provider_account_ref`,
+    );
+    if (result.rowCount === 0) return null;
+    if (result.rowCount !== 1) throw new Error('MASTER_CREDENTIAL_AMBIGUOUS');
+    const row = result.rows[0];
+    return {
+      customerId: String(row.customer_id), providerAccountRef: String(row.provider_account_ref),
+      keyRef: String(row.key_ref), ciphertext: row.ciphertext, iv: row.iv, authTag: row.auth_tag,
+      connectionMethod: 'PAPER_API_KEY_PRIVATE_BETA',
+    };
   }
 
   async updateFollowerVerification(customerId: string, input: FollowerVerificationUpdate) {
