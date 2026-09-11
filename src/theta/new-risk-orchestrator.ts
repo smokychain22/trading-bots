@@ -169,6 +169,16 @@ export interface NewRiskOrchestrationResult {
   readonly paretoSurvivorIds: readonly string[] | null;
   readonly opportunityBook: OpportunityFrontierResponse | null;
   readonly shadowOpportunities: readonly ShadowOpportunityEntry[];
+  // R1H full-H: every feasible candidate's per-dimension economics this
+  // cycle already computed internally for the pareto-frontier call --
+  // exposed so a CROSS-underlying caller (cross-symbol-economic-
+  // frontier.ts) can combine this underlying's candidates with every
+  // other shortlisted underlying's candidates into ONE combined Pareto
+  // comparison, without recomputing any economics itself (never a second,
+  // possibly-drifting derivation of the same numbers). null whenever no
+  // candidate reached the point these economics are computed (an earlier
+  // pipeline-stage failure, or zero feasible candidates this cycle).
+  readonly candidateEconomics: readonly CandidateEconomics[] | null;
 }
 
 const systemHoldResult = (
@@ -204,6 +214,7 @@ const systemHoldResult = (
   paretoSurvivorIds: null,
   opportunityBook: null,
   shadowOpportunities: [],
+  candidateEconomics: null,
   ...partial,
 });
 
@@ -243,6 +254,7 @@ const providerTransientHoldResult = (
   paretoSurvivorIds: null,
   opportunityBook: null,
   shadowOpportunities: [],
+  candidateEconomics: null,
 });
 
 const hardVetoResult = (
@@ -277,6 +289,7 @@ const hardVetoResult = (
   paretoSurvivorIds: null,
   opportunityBook: null,
   shadowOpportunities: [],
+  candidateEconomics: null,
 });
 
 const requiredCollateralPerContract = (contract: NormalizedOptionContract): number => contract.strike * contract.multiplier;
@@ -372,7 +385,7 @@ export async function runNewRiskOrchestration(
       policyVersion: request.policyVersion, modelVersions: request.modelVersions,
       requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
     });
-    return { receipt, ...partialAfterRouting, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all() };
+    return { receipt, ...partialAfterRouting, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all(), candidateEconomics: null };
   }
 
   // Contracts with an UNKNOWN delta cannot enter the lattice call --
@@ -458,7 +471,7 @@ export async function runNewRiskOrchestration(
       candidates: [...deltaUnknownResults, ...freshnessRejectedResults], policyVersion: request.policyVersion, modelVersions: request.modelVersions,
       requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
     });
-    return { receipt, ...partialAfterRouting, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all() };
+    return { receipt, ...partialAfterRouting, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all(), candidateEconomics: null };
   }
 
   const thetaQResult = await invokeAndValidate(
@@ -528,7 +541,7 @@ export async function runNewRiskOrchestration(
       candidates: immediateResults, policyVersion: request.policyVersion, modelVersions: request.modelVersions,
       requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
     });
-    return { receipt, ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all() };
+    return { receipt, ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all(), candidateEconomics: null };
   }
 
   const paretoResult = await invokeAndValidate(
@@ -693,5 +706,8 @@ export async function runNewRiskOrchestration(
     receipt, ownership: ownershipResult.data, regime: regimeResult.data, routing: routerResult.data,
     thetaQ: thetaQResult.data, aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds],
     opportunityBook: opportunityResult.data, shadowOpportunities: book.all(),
+    candidateEconomics: feasibleForFrontier.map((c) => ({
+      candidateId: c.candidateId, ...(economicsByCandidateId.get(c.candidateId) as Omit<CandidateEconomics, 'candidateId'>),
+    })),
   };
 }

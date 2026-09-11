@@ -792,6 +792,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     });
     const orchestration: NewRiskOrchestrationResult = {
       receipt, ownership: null, regime: null, routing: null, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [],
+      candidateEconomics: null,
     };
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
