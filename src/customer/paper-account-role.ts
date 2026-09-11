@@ -19,6 +19,19 @@ export function resolveAuthenticatedMasterCandidate(customerIds: readonly string
 export class PostgresMasterRoleStore implements MasterRoleStore {
   constructor(private readonly pool: Pool) {}
 
+  async resolveAuthenticatedCustomer(): Promise<string> {
+    const result = await this.pool.query(`SELECT DISTINCT f.customer_id
+      FROM copy.follower_account f
+      JOIN iam.customer_identity c ON c.customer_id=f.customer_id AND c.status='ACTIVE'
+      JOIN copy.alpaca_oauth_token t ON t.token_secret_id=f.token_secret_id
+        AND t.customer_id=f.customer_id AND t.revoked_at IS NULL
+      WHERE f.disconnected_at IS NULL AND f.connection_status='CONNECTED'
+        AND f.connection_method='PAPER_API_KEY_PRIVATE_BETA' AND f.environment='PAPER'
+        AND EXISTS (SELECT 1 FROM iam.customer_session s WHERE s.customer_id=f.customer_id
+          AND s.revoked_at IS NULL AND s.expires_at>now())`);
+    return resolveAuthenticatedMasterCandidate(result.rows.map((row) => String(row.customer_id)));
+  }
+
   async listConnections() {
     const result = await this.pool.query(`SELECT customer_id, follower_account_id AS connection_id,
       account_role, account_status, account_ready, last_verified_at,
@@ -35,9 +48,15 @@ export class PostgresMasterRoleStore implements MasterRoleStore {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock(863801010)');
       const result = await client.query(`SELECT follower_account_id, account_role
-        FROM copy.follower_account WHERE customer_id=$1 AND provider_account_ref=$2
+        FROM copy.follower_account AS f WHERE customer_id=$1 AND provider_account_ref=$2
         AND disconnected_at IS NULL AND connection_method='PAPER_API_KEY_PRIVATE_BETA'
-        AND environment='PAPER' FOR UPDATE`, [customerId, verifiedAccountId]);
+        AND environment='PAPER'
+        AND EXISTS (SELECT 1 FROM copy.alpaca_oauth_token t
+          WHERE t.token_secret_id=f.token_secret_id
+            AND t.customer_id=f.customer_id AND t.revoked_at IS NULL)
+        AND EXISTS (SELECT 1 FROM iam.customer_session s
+          WHERE s.customer_id=f.customer_id
+            AND s.revoked_at IS NULL AND s.expires_at>now()) FOR UPDATE`, [customerId, verifiedAccountId]);
       if (result.rowCount !== 1) throw new Error('MASTER_CONNECTION_IDENTITY_MISMATCH');
       const row = result.rows[0];
       if (row.account_role !== 'MASTER_THETA_PAPER') {
@@ -84,6 +103,14 @@ export async function designateConnectedPaperMaster(
     order_submission: 'LOCKED' as const,
     orders_submitted: 0,
   };
+}
+
+export async function designateAuthenticatedPaperMaster(
+  environment: Environment,
+  store: PostgresMasterRoleStore,
+) {
+  const customerId = await store.resolveAuthenticatedCustomer();
+  return designateConnectedPaperMaster(environment, customerId, store);
 }
 
 let rolePool: Pool | undefined;

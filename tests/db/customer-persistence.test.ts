@@ -41,6 +41,8 @@ test('real disposable PostgreSQL preserves user limits, master role and tenant i
 
     const roles = new PostgresMasterRoleStore(pool);
     await assert.rejects(roles.promote(customer.customerId, 'wrong-identity'), /IDENTITY_MISMATCH/);
+    await store.createSession(customer.customerId, 'a'.repeat(64), new Date(Date.now() + 60_000));
+    assert.equal(await roles.resolveAuthenticatedCustomer(), customer.customerId);
     await roles.promote(customer.customerId, input.providerAccountRef);
     await roles.promote(customer.customerId, input.providerAccountRef); // idempotent
     assert.equal((await store.getFollower(customer.customerId))?.accountRole, 'MASTER_THETA_PAPER');

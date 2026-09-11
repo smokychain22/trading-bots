@@ -33,7 +33,7 @@ import {
 import { executionMode } from "../execution/execution-control.js";
 import { connectPrivatePaperApiKey, privatePaperApiKeyConfiguration } from "./private-paper-api-key.js";
 import { AlpacaPaperBrokerError } from "../execution/broker.js";
-import { designateConnectedPaperMaster, masterRoleStore } from "./paper-account-role.js";
+import { designateAuthenticatedPaperMaster, masterRoleStore } from "./paper-account-role.js";
 import { paperCopyPolicySchema, recommendedCopyPolicy } from "./copy-policy.js";
 
 const simulationSchema = z
@@ -409,9 +409,8 @@ export default async function customerHandler(
         }
       }
       if (route === "operator/master-account" && request.method === "POST") {
-        const payload = z.object({ customer_id: z.string().uuid() }).strict().parse(await readJson(request));
         try {
-          const data = await designateConnectedPaperMaster(environment, payload.customer_id, masterRoleStore(environment.DATABASE_URL));
+          const data = await designateAuthenticatedPaperMaster(environment, masterRoleStore(environment.DATABASE_URL));
           return send(response, 200, { api_version: "v1", data });
         } catch {
           return send(response, 409, { error: { code: "MASTER_ROLE_NOT_VERIFIED_OR_PERSISTED" } });
