@@ -4,9 +4,6 @@
   "functions": {
     "api/theta-runtime.ts": { "maxDuration": 60 }
   },
-  "crons": [
-    { "path": "/api/theta-runtime", "schedule": "* * * * 1-5" }
-  ],
   "rewrites": [
     { "source": "/api/v1/:path*", "destination": "/api/customer?route=:path" },
     { "source": "/ops/login", "destination": "/index.html" },

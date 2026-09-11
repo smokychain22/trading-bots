@@ -256,6 +256,13 @@ cannot predate its observation. The historical-data audit does not approve a new
 provider. Alpaca remains executable truth and Optionomics remains research
 intelligence until coverage and entitlement tests prove a specific gap.
 
+The canonical Vercel project rejected a per-minute cron at deployment and linked the
+failure to its cron plan limits. The unsupported schedule was removed immediately so
+the customer site can deploy. A once-daily Hobby cron is not an acceptable substitute
+for time-sensitive reconciliation or management. The authenticated worker endpoint
+remains deployable but disabled. Timely autonomous invocation requires an owner-approved
+Vercel Pro upgrade or a separately approved worker host, plus a strong `CRON_SECRET`.
+
 Claude R6 commits `4c8fe61`, `4ea86c5`, `b277ca0`, `424a54b`, `0a4efb4`, and
 `f182aa0` were reviewed independently and were not integrated in this milestone.
 Material blockers include a variance-versus-standard-deviation error in the DSR hurdle,

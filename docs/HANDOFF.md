@@ -552,10 +552,10 @@ Node serverless worker, so new-risk scanning reports DEGRADED and cannot create 
 order. Docker Desktop is unavailable locally, leaving three disposable-PostgreSQL tests
 to GitHub CI.
 
-RISKS: A one-minute Vercel cron requires a plan that supports per-minute schedules.
-Deployment must prove that capability before the worker is enabled. The runtime remains
-read-only and returns a degraded result for incomplete management, WAIT, or opportunity
-inputs. `READY_FOR_FIRST_PAPER_ORDER` remains NO.
+RISKS: Vercel rejected the one-minute cron because the project plan permits only a daily
+schedule. A daily imprecise invocation is unsafe and was not substituted. The runtime
+remains read-only and returns a degraded result for incomplete management, WAIT, or
+opportunity inputs. `READY_FOR_FIRST_PAPER_ORDER` remains NO.
 
 WHAT THE OTHER AGENT SHOULD REVIEW: Claude should correct and retest the R6 research
 issues recorded in `docs/DECISIONS.md`. No Claude commit from `4c8fe61` through
