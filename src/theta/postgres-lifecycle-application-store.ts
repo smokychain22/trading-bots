@@ -248,14 +248,6 @@ export class PostgresLifecycleApplicationStore {
           application.newEntryPricePerShare * nextContract.multiplier * application.newQuantity)) {
         throw new Error('ROLL_NEW_LEG_INVALID');
       }
-      const oldLeg = await client.query(
-        `UPDATE trade.option_leg SET closed_at=$2,close_reason='ROLLED',close_price_per_share=$3,
-           realized_pnl=$4,rolled_to_option_leg_id=$5
-         WHERE option_leg_id=$1 AND chain_id=$6 AND closed_at IS NULL RETURNING option_leg_id`,
-        [application.oldOptionLegId,application.occurredAt,application.oldClosePricePerShare,
-          application.oldRealizedPnl,application.newOptionLegId,application.chainId],
-      );
-      if (oldLeg.rowCount !== 1) throw new Error('OPEN_ROLL_LEG_NOT_FOUND');
       await client.query(
         `INSERT INTO trade.option_leg(option_leg_id,chain_id,option_contract_id,decision_id,side,quantity,
            entry_price_per_share,entry_credit_debit,opened_at,rolled_from_option_leg_id)
@@ -264,6 +256,14 @@ export class PostgresLifecycleApplicationStore {
           application.newQuantity,application.newEntryPricePerShare,application.newEntryCreditDebit,
           application.occurredAt,application.oldOptionLegId],
       );
+      const oldLeg = await client.query(
+        `UPDATE trade.option_leg SET closed_at=$2,close_reason='ROLLED',close_price_per_share=$3,
+           realized_pnl=$4,rolled_to_option_leg_id=$5
+         WHERE option_leg_id=$1 AND chain_id=$6 AND closed_at IS NULL RETURNING option_leg_id`,
+        [application.oldOptionLegId,application.occurredAt,application.oldClosePricePerShare,
+          application.oldRealizedPnl,application.newOptionLegId,application.chainId],
+      );
+      if (oldLeg.rowCount !== 1) throw new Error('OPEN_ROLL_LEG_NOT_FOUND');
       return;
     }
     if (application.eventKind === 'COVERED_CALL_OPEN') {
