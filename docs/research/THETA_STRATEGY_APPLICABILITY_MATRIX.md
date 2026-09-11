@@ -61,6 +61,29 @@ can currently report a real number (`EV_MODEL_NOT_EMPIRICALLY_READY`) --
 existing machinery once real resolved episodes exist, not by a new
 regime-lookup table built ahead of that data.
 
+## R6F: structural vs. empirical support labeling
+
+Per `THETA_STRATEGY_ENGINE_AND_IMPLEMENTATION_SPEC_v1.0` section 19's
+explicit instruction ("do not invent applicability where data is
+unavailable" -- label `STRUCTURALLY_APPLICABLE` / `EMPIRICALLY_SUPPORTED` /
+`NOT_SUPPORTED` / `UNKNOWN` separately), every branch x lifecycle-state cell
+in the table above is reclassified here on this second axis. "Eligible"
+above only ever meant `route_strategies` would let the branch compete this
+cycle -- it never meant the branch has been shown to actually WORK there.
+
+| Branch | Lifecycle state | Structural label | Empirical label |
+|---|---|---|---|
+| THETA_CONVENTIONAL | CASH_AVAILABLE | STRUCTURALLY_APPLICABLE (router + candidate generation both real/tested) | UNKNOWN (`EV_MODEL_NOT_EMPIRICALLY_READY`) |
+| THETA_HOLD_STRIKE | CASH_AVAILABLE (validated cohort only) | STRUCTURALLY_APPLICABLE (router logic real/tested) | UNKNOWN -- no cohort has yet been separately validated |
+| THETA_RECOVERY | STOCK_HELD / RECOVERY | STRUCTURALLY_APPLICABLE (router + `action_value_distribution.py` contract real) | UNKNOWN -- recovery-time distribution model SPECIFIED, not fit |
+| THETA_CC | STOCK_HELD / CC_OPEN | STRUCTURALLY_APPLICABLE | UNKNOWN -- call-away probability/CCUtility components not calibrated |
+| THETA_DEFINED_RISK | CASH_AVAILABLE (gated) | NOT_SUPPORTED -- Level 3 entitlement gate not confirmed; router has no eligibility path for it until `theta_d_gate_satisfied=True` | NOT_SUPPORTED (gated, not merely unknown) |
+
+No cell above is `EMPIRICALLY_SUPPORTED` for any branch -- that label
+requires a real positive after-cost OOS result, which cannot exist before a
+real point-in-time options-chain dataset does (`EV_MODEL_NOT_EMPIRICALLY_
+READY`). This is the honest, current state, not a placeholder.
+
 ## Status
 
 `strategy_router.py` remains the single, authoritative "which branch may

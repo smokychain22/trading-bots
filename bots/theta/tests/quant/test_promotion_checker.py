@@ -40,6 +40,7 @@ def _passing_inputs(**overrides):
         catastrophic_subgroup_collapse=False,
         ablation_result="IMPROVES",
         regime_stability_verified=True,
+        edge_survives_realistic_execution=True,
     )
     defaults.update(overrides)
     return PromotionCheckInputs(**defaults)
@@ -183,6 +184,22 @@ class RiskFailureTests(unittest.TestCase):
     def test_drawdown_regression_beyond_the_acceptable_maximum_is_risk_failure(self):
         result = evaluate_promotion(_passing_inputs(drawdown_regression_pct=0.5, max_acceptable_drawdown_regression_pct=0.10))
         self.assertEqual(result.result, PromotionResult.RISK_FAILURE)
+
+
+class ExecutionFailureTests(unittest.TestCase):
+    def test_edge_not_surviving_realistic_execution_is_execution_failure(self):
+        result = evaluate_promotion(_passing_inputs(edge_survives_realistic_execution=False))
+        self.assertEqual(result.result, PromotionResult.EXECUTION_FAILURE)
+
+    def test_unknown_execution_realism_is_execution_failure_never_assumed_true(self):
+        result = evaluate_promotion(_passing_inputs(edge_survives_realistic_execution=None))
+        self.assertEqual(result.result, PromotionResult.EXECUTION_FAILURE)
+
+    def test_execution_failure_is_distinct_from_risk_failure(self):
+        # A bad execution realism result must not be misreported as a
+        # tail/ES/drawdown risk failure -- it is its own category.
+        result = evaluate_promotion(_passing_inputs(edge_survives_realistic_execution=False))
+        self.assertNotEqual(result.result, PromotionResult.RISK_FAILURE)
 
 
 class PromotionEligibleResearchTests(unittest.TestCase):

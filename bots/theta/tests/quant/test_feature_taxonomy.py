@@ -9,11 +9,29 @@ sys.path.insert(0, str(_QUANT_DIR))
 
 from research.feature_taxonomy import (  # noqa: E402
     FEATURE_DESTINATION_MAP,
+    FeatureFamily,
     FeatureRole,
     classify,
+    count_by_family,
     count_by_role,
     features_eligible_for_entry_gating,
 )
+
+
+class CountByFamilyTests(unittest.TestCase):
+    def test_every_family_appears_in_the_count_even_if_zero(self):
+        counts = count_by_family()
+        for family in FeatureFamily:
+            self.assertIn(family, counts)
+
+    def test_family_counts_sum_to_the_total_registry_size(self):
+        counts = count_by_family()
+        self.assertEqual(sum(counts.values()), len(FEATURE_DESTINATION_MAP))
+
+    def test_a_feature_carries_both_a_role_and_a_family(self):
+        destination = classify("ownership_acceptability")
+        self.assertEqual(destination.role, FeatureRole.SOFT_FEATURE)
+        self.assertEqual(destination.family, FeatureFamily.OWNERSHIP)
 
 
 class ClassifyTests(unittest.TestCase):

@@ -27,6 +27,7 @@ class PromotionResult(str, Enum):
     STATISTICAL_FAILURE = "STATISTICAL_FAILURE"
     ECONOMIC_FAILURE = "ECONOMIC_FAILURE"
     RISK_FAILURE = "RISK_FAILURE"
+    EXECUTION_FAILURE = "EXECUTION_FAILURE"  # R6F, THETA_STRATEGY_ENGINE_AND_IMPLEMENTATION_SPEC_v1.0 section 39: "edge disappears after spread/slippage/fill reality" -- a distinct failure mode from RISK_FAILURE's tail/ES/drawdown concerns
     PROMOTION_ELIGIBLE_RESEARCH = "PROMOTION_ELIGIBLE_RESEARCH"
 
 
@@ -82,6 +83,9 @@ class PromotionCheckInputs:
     drawdown_regression_pct: Optional[float] = None
     max_acceptable_drawdown_regression_pct: Optional[float] = None  # REQUIRED if drawdown_regression_pct is supplied
     catastrophic_subgroup_collapse: bool = False
+
+    # --- Execution realism (R6F) ---
+    edge_survives_realistic_execution: Optional[bool] = None  # False/None if the edge was only positive under an idealized (e.g. midpoint) fill assumption and disappears under direction-aware spread/slippage
 
 
 def evaluate_promotion(inputs: PromotionCheckInputs) -> "PromotionCheckResult":
@@ -182,7 +186,12 @@ def evaluate_promotion(inputs: PromotionCheckInputs) -> "PromotionCheckResult":
             reasons.append(f"drawdown regression {inputs.drawdown_regression_pct:.4f} exceeds the acceptable maximum {inputs.max_acceptable_drawdown_regression_pct}")
             return PromotionCheckResult(PromotionResult.RISK_FAILURE, reasons)
 
-    # --- 6. PROMOTION_ELIGIBLE_RESEARCH ---
+    # --- 6. EXECUTION_FAILURE ---
+    if inputs.edge_survives_realistic_execution is not True:
+        reasons.append("edge_survives_realistic_execution is unknown or False -- the edge is not confirmed to survive realistic spread/slippage/fill economics")
+        return PromotionCheckResult(PromotionResult.EXECUTION_FAILURE, reasons)
+
+    # --- 7. PROMOTION_ELIGIBLE_RESEARCH ---
     reasons.append("every structural/data/statistical/economic/risk gate passed -- eligible for research promotion only; Production activation remains Codex's sole decision and is out of scope for this module")
     return PromotionCheckResult(PromotionResult.PROMOTION_ELIGIBLE_RESEARCH, reasons)
 

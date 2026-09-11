@@ -35,6 +35,30 @@ class DetermineBranchStatusTests(unittest.TestCase):
         record = BranchPromotionRecord(StrategyFamily.THETA_C, PromotionResult.ECONOMIC_FAILURE, True, True)
         self.assertEqual(determine_branch_status(record), BranchStatus.RETIRED)
 
+    def test_a_health_drift_on_a_previously_championed_branch_is_degraded(self):
+        record = BranchPromotionRecord(
+            StrategyFamily.THETA_Q, PromotionResult.PROMOTION_ELIGIBLE_RESEARCH, True, True,
+            health_drift_detected=True, severe_health_drift=False,
+        )
+        self.assertEqual(determine_branch_status(record), BranchStatus.DEGRADED)
+
+    def test_severe_health_drift_on_a_previously_championed_branch_is_hold_only(self):
+        record = BranchPromotionRecord(
+            StrategyFamily.THETA_Q, PromotionResult.PROMOTION_ELIGIBLE_RESEARCH, True, True,
+            health_drift_detected=True, severe_health_drift=True,
+        )
+        self.assertEqual(determine_branch_status(record), BranchStatus.HOLD_ONLY)
+
+    def test_health_drift_on_a_branch_never_previously_championed_does_not_trigger_degraded(self):
+        # Drift-based de-rating only applies to a branch that WAS
+        # champion/challenger -- a brand-new, never-activated branch has
+        # nothing to "drift" from.
+        record = BranchPromotionRecord(
+            StrategyFamily.THETA_D, PromotionResult.PROMOTION_ELIGIBLE_RESEARCH, False, False,
+            health_drift_detected=True, severe_health_drift=False,
+        )
+        self.assertEqual(determine_branch_status(record), BranchStatus.CHALLENGER)
+
 
 class RouteChampionChallengerTests(unittest.TestCase):
     def test_each_family_status_is_independent_of_every_other_family(self):
@@ -48,18 +72,25 @@ class RouteChampionChallengerTests(unittest.TestCase):
         self.assertEqual(statuses[StrategyFamily.THETA_Q], BranchStatus.CHAMPION)
         self.assertEqual(statuses[StrategyFamily.THETA_H], BranchStatus.RESEARCH_ONLY)
 
-    def test_champions_and_challengers_excludes_research_only_and_retired(self):
+    def test_champions_and_challengers_excludes_research_only_hold_only_and_retired(self):
         statuses = {
             StrategyFamily.THETA_Q: BranchStatus.CHAMPION,
             StrategyFamily.THETA_H: BranchStatus.CHALLENGER,
             StrategyFamily.THETA_D: BranchStatus.RESEARCH_ONLY,
             StrategyFamily.THETA_R: BranchStatus.RETIRED,
+            StrategyFamily.THETA_A: BranchStatus.HOLD_ONLY,
         }
         routable = champions_and_challengers(statuses)
         self.assertIn(StrategyFamily.THETA_Q, routable)
         self.assertIn(StrategyFamily.THETA_H, routable)
         self.assertNotIn(StrategyFamily.THETA_D, routable)
         self.assertNotIn(StrategyFamily.THETA_R, routable)
+        self.assertNotIn(StrategyFamily.THETA_A, routable)
+
+    def test_champions_and_challengers_includes_degraded(self):
+        statuses = {StrategyFamily.THETA_Q: BranchStatus.DEGRADED}
+        routable = champions_and_challengers(statuses)
+        self.assertIn(StrategyFamily.THETA_Q, routable)
 
 
 if __name__ == "__main__":

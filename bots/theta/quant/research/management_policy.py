@@ -136,21 +136,38 @@ def management_utility(
     that is the caller's responsibility to get right, and is called out
     here specifically because it is an easy, easy-to-hide mistake.
 
-    Returns None (never a fabricated utility) when `remaining_ev` is
-    unknown -- a utility comparison cannot meaningfully rank an action
-    whose core economic term is unknown against one whose is known."""
-    if economics.remaining_ev is None:
+    SAFETY FIX (R6F, Codex review of commit `48b522a`,
+    `docs/DECISIONS.md` 2026-09-12: "The research utility function's use
+    of `or 0.0` for missing penalties was rejected because it would make
+    unknown risk look costless"): an earlier version of this function used
+    `economics.tail_risk or 0.0` (and the same pattern for
+    capital_days_consumed/execution_cost/opportunity_cost), which silently
+    converted an UNKNOWN penalty into a KNOWN-ZERO one -- a position whose
+    tail risk had never actually been estimated would score identically to
+    one with a genuinely, confirmed-zero tail risk. That is unsafe: it
+    makes an unknown risk look costless rather than reporting that the
+    comparison cannot be trusted.
+
+    Returns None (never a fabricated utility) whenever ANY of
+    `remaining_ev`, `tail_risk`, `capital_days_consumed`, `execution_cost`,
+    or `opportunity_cost` is None. There is no default substitution for a
+    missing penalty term anymore: a caller who genuinely intends a term to
+    contribute nothing (e.g. "no opportunity cost is being modeled in this
+    particular comparison") MUST pass an explicit `0.0`, never rely on
+    `None` to mean that -- `None` now always means "unknown," and unknown
+    always makes the whole utility unknown, never just that one term."""
+    components = (
+        economics.remaining_ev, economics.tail_risk, economics.capital_days_consumed,
+        economics.execution_cost, opportunity_cost,
+    )
+    if any(component is None for component in components):
         return None
-    tail = economics.tail_risk or 0.0
-    capital_days = economics.capital_days_consumed or 0.0
-    execution = economics.execution_cost or 0.0
-    opp = opportunity_cost or 0.0
     return (
         economics.remaining_ev
-        - tail_risk_aversion * tail
-        - capital_day_cost * capital_days
-        - execution_risk_aversion * execution
-        - opp
+        - tail_risk_aversion * economics.tail_risk
+        - capital_day_cost * economics.capital_days_consumed
+        - execution_risk_aversion * economics.execution_cost
+        - opportunity_cost
     )
 
 

@@ -38,18 +38,49 @@ class PolicyEnumTests(unittest.TestCase):
 
 
 class ManagementUtilityTests(unittest.TestCase):
+    """R6F: management_utility() had a real safety bug -- an earlier
+    version used `economics.tail_risk or 0.0` (and the same pattern for
+    capital_days_consumed/execution_cost/opportunity_cost), silently
+    converting an UNKNOWN penalty into a KNOWN-ZERO one and making unknown
+    risk look costless. Codex review (docs/DECISIONS.md, 2026-09-12)
+    rejected porting this function for exactly that reason. Fixed here:
+    ANY unknown component now makes the whole utility unknown, and a
+    caller must pass an explicit 0.0 to mean "no penalty," never rely on
+    None to mean that."""
+
     def test_unknown_remaining_ev_makes_utility_unknown(self):
         econ = ActionEconomics(ManagementAction.HOLD, remaining_ev=None, tail_risk=1.0, capital_days_consumed=1.0, execution_cost=0.0)
+        self.assertIsNone(management_utility(econ, 1.0, 1.0, 1.0, opportunity_cost=0.0))
+
+    def test_unknown_tail_risk_makes_the_whole_utility_unknown_never_zero(self):
+        # Regression test for the exact bug Codex found: unknown tail risk
+        # must NOT silently become 0.0 and let a numeric utility through.
+        econ = ActionEconomics(ManagementAction.HOLD, remaining_ev=50.0, tail_risk=None, capital_days_consumed=1.0, execution_cost=0.0)
+        self.assertIsNone(management_utility(econ, 1.0, 1.0, 1.0, opportunity_cost=0.0))
+
+    def test_unknown_capital_days_consumed_makes_the_whole_utility_unknown(self):
+        econ = ActionEconomics(ManagementAction.HOLD, remaining_ev=50.0, tail_risk=1.0, capital_days_consumed=None, execution_cost=0.0)
+        self.assertIsNone(management_utility(econ, 1.0, 1.0, 1.0, opportunity_cost=0.0))
+
+    def test_unknown_execution_cost_makes_the_whole_utility_unknown(self):
+        econ = ActionEconomics(ManagementAction.HOLD, remaining_ev=50.0, tail_risk=1.0, capital_days_consumed=1.0, execution_cost=None)
+        self.assertIsNone(management_utility(econ, 1.0, 1.0, 1.0, opportunity_cost=0.0))
+
+    def test_unknown_opportunity_cost_makes_the_whole_utility_unknown_even_though_it_is_a_separate_argument(self):
+        # opportunity_cost defaults to None -- a caller who does not pass
+        # it explicitly gets an UNKNOWN utility, never a silently-zeroed
+        # opportunity cost.
+        econ = ActionEconomics(ManagementAction.HOLD, remaining_ev=50.0, tail_risk=1.0, capital_days_consumed=1.0, execution_cost=0.0)
         self.assertIsNone(management_utility(econ, 1.0, 1.0, 1.0))
 
-    def test_utility_subtracts_all_three_weighted_penalties(self):
+    def test_utility_subtracts_all_four_weighted_penalties_when_every_term_is_explicitly_known(self):
         econ = ActionEconomics(ManagementAction.ROLL, remaining_ev=100.0, tail_risk=10.0, capital_days_consumed=5.0, execution_cost=2.0)
-        utility = management_utility(econ, tail_risk_aversion=2.0, capital_day_cost=1.0, execution_risk_aversion=3.0)
-        self.assertAlmostEqual(utility, 100.0 - 2.0 * 10.0 - 1.0 * 5.0 - 3.0 * 2.0)
+        utility = management_utility(econ, tail_risk_aversion=2.0, capital_day_cost=1.0, execution_risk_aversion=3.0, opportunity_cost=0.0)
+        self.assertAlmostEqual(utility, 100.0 - 2.0 * 10.0 - 1.0 * 5.0 - 3.0 * 2.0 - 0.0)
 
-    def test_missing_optional_fields_default_to_zero_penalty_not_none_propagation(self):
-        econ = ActionEconomics(ManagementAction.CLOSE_FULL, remaining_ev=50.0, tail_risk=None, capital_days_consumed=None, execution_cost=None)
-        utility = management_utility(econ, 1.0, 1.0, 1.0)
+    def test_an_explicit_zero_penalty_is_honored_as_a_real_zero_not_treated_as_unknown(self):
+        econ = ActionEconomics(ManagementAction.CLOSE_FULL, remaining_ev=50.0, tail_risk=0.0, capital_days_consumed=0.0, execution_cost=0.0)
+        utility = management_utility(econ, 1.0, 1.0, 1.0, opportunity_cost=0.0)
         self.assertAlmostEqual(utility, 50.0)
 
     def test_opportunity_cost_is_subtracted_when_supplied(self):
