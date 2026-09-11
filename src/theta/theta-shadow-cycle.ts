@@ -10,6 +10,7 @@ import { computeCurrentDrawdown, computeGapFrequency, computeMaxAdverseGap, comp
 import { evaluateUniverse, rankEligibleUnderlyings, type RankedUnderlying, type UnderlyingCandidateInput, type UniverseFunnelReport, type UniversePolicy } from './universe-policy.js';
 import { runNewRiskOrchestration, type NewRiskOrchestrationRequest, type NewRiskOrchestrationResult, type RawCandidateInput } from './new-risk-orchestrator.js';
 import { assembleRuntimePreconditionHold } from './decision-assembly.js';
+import { checkTemporalConsistency, DEFAULT_TEMPORAL_CONSISTENCY_POLICIES } from './temporal-consistency.js';
 import type { PythonBridgeConfig } from './python-bridge.js';
 import { buildFusionSnapshot, hashJson, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
 import type { DataQualityState } from './data-freshness.js';
@@ -373,8 +374,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
 
   let account: MasterAccountSnapshot | null = null;
   let accountEvidence = notAttemptedEvidence();
+  let accountFetchedAt: string | null = null;
   try {
-    account = await fetchMasterAccountSnapshot(config.alpaca, config.now());
+    accountFetchedAt = config.now();
+    account = await fetchMasterAccountSnapshot(config.alpaca, accountFetchedAt);
     const accountRequiredValuesPresent = account.accountStatus !== null
       && account.equity !== null
       && account.cash !== null
@@ -399,8 +402,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   // fine."
   let positions: readonly AlpacaPositionSnapshot[] = [];
   let positionsEvidence = notAttemptedEvidence();
+  let positionsFetchedAt: string | null = null;
   try {
-    positions = await fetchPositions(config.alpaca, config.now());
+    positionsFetchedAt = config.now();
+    positions = await fetchPositions(config.alpaca, positionsFetchedAt);
     positionsEvidence = { origin: 'REAL_PROVIDER', quality: 'GOOD' };
   } catch (error) {
     positionsEvidence = failedProviderEvidence(error);
@@ -409,8 +414,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
 
   let openOrders: readonly AlpacaOpenOrderSnapshot[] = [];
   let openOrdersEvidence = notAttemptedEvidence();
+  let openOrdersFetchedAt: string | null = null;
   try {
-    openOrders = await fetchOpenOrders(config.alpaca, config.now());
+    openOrdersFetchedAt = config.now();
+    openOrders = await fetchOpenOrders(config.alpaca, openOrdersFetchedAt);
     openOrdersEvidence = { origin: 'REAL_PROVIDER', quality: 'GOOD' };
   } catch (error) {
     openOrdersEvidence = failedProviderEvidence(error);
@@ -627,18 +634,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     };
   }
 
-  // A confirmed-closed market is a real, known VALUE -- an operational
-  // precondition, never a strategy WAIT/PASS and never a provider-quality
-  // SYSTEM_HOLD. Only short-circuits on a TRUSTWORTHY confirmation
-  // (clockEvidence.quality === 'GOOD', i.e. the clock call actually
-  // succeeded and returned isOpen) -- an unreachable/unknown clock still
-  // falls through to the normal provider-capability gate below, which
-  // already handles genuine data-quality uncertainty correctly.
-  if (clockEvidence.quality === 'GOOD' && clock?.isOpen === false) {
+  const runtimePreconditionHoldResult = (reasonCode: string, holdDetail: string): ThetaShadowCycleResult => {
     const receipt = assembleRuntimePreconditionHold({
       snapshotId: fusionSnapshot.contentHash, fusionSnapshotHash: fusionSnapshot.contentHash, timestamp: config.now(), underlying,
-      reasonCode: 'MARKET_CLOSED', detail: `Market is confirmed closed (nextOpen=${clock.nextOpen ?? 'UNKNOWN'}); new-risk evaluation deferred to the next session.`,
-      policyVersion: config.policyVersion, modelVersions: config.modelVersions,
+      reasonCode, detail: holdDetail, policyVersion: config.policyVersion, modelVersions: config.modelVersions,
     });
     const orchestration: NewRiskOrchestrationResult = {
       receipt, ownership: null, regime: null, routing: null, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [],
@@ -648,6 +647,40 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash,
       snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration, provenance, provenanceDetail: detail, blockers,
     };
+  };
+
+  // Cross-observation temporal consistency (item B): each required real
+  // observation must be individually fresh for ITS OWN class, AND the
+  // required observations together must describe close-enough-to-the-same
+  // moment to be treated as one coherent decision state -- see
+  // temporal-consistency.ts. OPTION_QUOTE itself is deliberately NOT
+  // checked here -- it remains the existing PER-CANDIDATE freshness gate
+  // inside new-risk-orchestrator.ts, which already produces WAIT_LIQUIDITY
+  // per candidate; duplicating it at the cycle level would double-gate the
+  // same fact under two different vocabularies.
+  const temporalCheck = checkTemporalConsistency(
+    [
+      { observationClass: 'ACCOUNT', observedAt: accountFetchedAt, required: true, valuePresent: account !== null, providerReachable: accountEvidence.quality !== 'UNKNOWN' || accountEvidence.origin === 'REAL_PROVIDER_UNKNOWN', providerEntitlement: accountEvidence.quality === 'NOT_ENTITLED' ? 'NOT_ENTITLED' : 'ENTITLED' },
+      { observationClass: 'POSITIONS', observedAt: positionsFetchedAt, required: true, valuePresent: positionsEvidence.origin !== 'NOT_ATTEMPTED', providerReachable: positionsEvidence.origin !== 'NOT_ATTEMPTED', providerEntitlement: 'ENTITLED' },
+      { observationClass: 'ORDERS', observedAt: openOrdersFetchedAt, required: true, valuePresent: openOrdersEvidence.origin !== 'NOT_ATTEMPTED', providerReachable: openOrdersEvidence.origin !== 'NOT_ATTEMPTED', providerEntitlement: 'ENTITLED' },
+      { observationClass: 'MARKET_CLOCK', observedAt: clock?.timestamp ?? null, required: true, valuePresent: clock !== null, providerReachable: clockEvidence.origin !== 'NOT_ATTEMPTED', providerEntitlement: 'ENTITLED' },
+    ],
+    config.now(),
+    DEFAULT_TEMPORAL_CONSISTENCY_POLICIES.NEW_RISK,
+  );
+  if (!temporalCheck.ok) {
+    return runtimePreconditionHoldResult(temporalCheck.reasonCode, temporalCheck.detail);
+  }
+
+  // A confirmed-closed market is a real, known VALUE -- an operational
+  // precondition, never a strategy WAIT/PASS and never a provider-quality
+  // SYSTEM_HOLD. Only short-circuits on a TRUSTWORTHY confirmation
+  // (clockEvidence.quality === 'GOOD', i.e. the clock call actually
+  // succeeded and returned isOpen) -- an unreachable/unknown clock still
+  // falls through to the normal provider-capability gate below, which
+  // already handles genuine data-quality uncertainty correctly.
+  if (clockEvidence.quality === 'GOOD' && clock?.isOpen === false) {
+    return runtimePreconditionHoldResult('MARKET_CLOSED', `Market is confirmed closed (nextOpen=${clock.nextOpen ?? 'UNKNOWN'}); new-risk evaluation deferred to the next session.`);
   }
 
   // Merge the real, derived exposure ratios into aegisInputs -- see
