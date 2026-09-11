@@ -97,7 +97,7 @@ const failClosed = (
  * combines every underlying that produced at least one feasible
  * candidate's economics into ONE Pareto-dominance comparison, and selects
  * the final winner among non-dominated survivors by ReturnPerCapitalDay
- * (highest known value; a survivor with an unknown ReturnPerCapitalDay is
+ * (highest positive value backed by positive after-cost EV; a survivor with an unknown ReturnPerCapitalDay is
  * never assumed to be zero or worst -- it simply cannot win the final
  * tie-break, though it still appears in combinedCandidates as a genuine
  * frontier survivor). Deterministic tie-break: candidates with equal
@@ -222,8 +222,8 @@ export interface FrontierDispositionResult {
  * fixture until R6 lands, which is exactly why it is split out on its
  * own rather than only reachable via a real subprocess call).
  *
- * EXECUTABLE tie-break: highest known ReturnPerCapitalDay -- the ONLY
- * criterion that may ever produce disposition='EXECUTABLE_SELECTION', as
+ * EXECUTABLE tie-break: highest positive ReturnPerCapitalDay backed by
+ * positive after-cost EV -- the ONLY criterion that may ever produce disposition='EXECUTABLE_SELECTION', as
  * it is the sole quantity here derived from a genuinely calibrated
  * economic estimate (ev_net). RESEARCH-ONLY fallback (lowest known
  * CapitalDays) is preserved purely for research/regret-tracking --
@@ -235,7 +235,10 @@ export function computeFrontierDisposition(
 ): FrontierDispositionResult {
   const survivors = combinedCandidates.filter((c) => c.survivesFrontier && survivorIds.has(c.combinedCandidateId));
 
-  const rankableByReturn = survivors.filter((c) => c.economics.returnPerCapitalDay !== null);
+  const rankableByReturn = survivors.filter((c) =>
+    c.economics.evNet !== null && c.economics.evNet > 0 &&
+    c.economics.returnPerCapitalDay !== null && c.economics.returnPerCapitalDay > 0,
+  );
   rankableByReturn.sort((a, b) => {
     const diff = (b.economics.returnPerCapitalDay as number) - (a.economics.returnPerCapitalDay as number);
     return diff !== 0 ? diff : byCombinedId(a, b);
@@ -270,7 +273,9 @@ export function computeFrontierDisposition(
     selectedUnderlying: researchPick?.underlying ?? null,
     selectedCandidateId: researchPick?.candidateId ?? null,
     reasonCodes: [
-      'WAIT_ECONOMIC_EXPECTANCY_UNCALIBRATED',
+      survivors.some((candidate) => candidate.economics.evNet !== null || candidate.economics.returnPerCapitalDay !== null)
+        ? 'WAIT_ECONOMIC_EXPECTANCY_NOT_POSITIVE'
+        : 'WAIT_ECONOMIC_EXPECTANCY_UNCALIBRATED',
       researchPick !== null
         ? 'RESEARCH_RANKING_BY_LOWEST_CAPITAL_DAYS_ONLY_NOT_EXECUTABLE'
         : 'NO_SURVIVOR_HAS_A_KNOWN_CAPITAL_DAYS_EITHER',

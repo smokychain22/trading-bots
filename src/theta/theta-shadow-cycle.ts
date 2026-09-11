@@ -677,7 +677,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
       optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
       snapshotValidForNewRisk: fusionSnapshot.validForNewRisk,
-      orchestration: { receipt, ownership: null, regime: null, routing: null, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [] },
+      orchestration: { receipt, ownership: null, regime: null, routing: null, thetaQ: null, candidateEconomics: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [] },
       provenance, provenanceDetail: detail,
       blockers: [...blockers, 'NO_CANDIDATES_AVAILABLE'],
     };
@@ -689,8 +689,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       reasonCode, detail: holdDetail, policyVersion: config.policyVersion, modelVersions: config.modelVersions,
     });
     const orchestration: NewRiskOrchestrationResult = {
-      receipt, ownership: null, regime: null, routing: null, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [],
-      candidateEconomics: null,
+      receipt, ownership: null, regime: null, routing: null, thetaQ: null, candidateEconomics: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [],
     };
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
@@ -746,7 +745,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
       optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
       snapshotValidForNewRisk: fusionSnapshot.validForNewRisk,
-      orchestration: { receipt, ownership: null, regime: null, routing: null, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [] },
+      orchestration: { receipt, ownership: null, regime: null, routing: null, thetaQ: null, candidateEconomics: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [] },
       provenance, provenanceDetail: detail, blockers,
     };
   }
