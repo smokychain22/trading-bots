@@ -85,8 +85,9 @@ async function applyTransition(client: PoolClient, application: LifecycleApplica
     [application.chainId,current,next,application.decisionId,application.occurredAt],
   );
   await client.query(
-    `UPDATE trade.economic_chain SET lifecycle_state=$2,
-       closed_at=CASE WHEN $2='CLOSED' THEN $3::timestamptz ELSE closed_at END WHERE chain_id=$1`,
+    `UPDATE trade.economic_chain SET lifecycle_state=$2::trade.lifecycle_state,
+       closed_at=CASE WHEN $2::trade.lifecycle_state='CLOSED'::trade.lifecycle_state
+         THEN $3::timestamptz ELSE closed_at END WHERE chain_id=$1`,
     [application.chainId,next,application.occurredAt],
   );
 }
