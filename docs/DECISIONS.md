@@ -201,3 +201,19 @@ open market, the cycle must also find the dated exchange session with known open
 close times. Missing, malformed, or unavailable calendar truth returns
 `SYSTEM_HOLD/MARKET_SESSION_UNCONFIRMED`. A confirmed closed clock still returns
 `SYSTEM_HOLD/MARKET_CLOSED`. Neither state can authorize execution.
+
+## 2026-09-11: selective R1 temporal and AEGIS integration
+
+Provider reads in one THETA cycle share a canonical decision timestamp, while each
+read also records its own local request timestamp. This preserves deterministic
+snapshot and receipt identity without hiding a slow acquisition sequence from the
+temporal-consistency policy.
+
+AEGIS evidence remains three-valued. An empty required-capability set is unknown,
+not healthy. A contract with missing bid, ask, timestamp, or quality evidence is also
+unknown for execution quality. `false` is reserved for a fully observed failure.
+
+Pending-order collateral and assignment capacity must consume explicit position
+intents. They cannot infer `SELL_TO_OPEN` from order side and current holdings. Cross-
+symbol routing must use after-cost economics and risk constraints, not raw premium or
+an incorrectly scaled premium-to-collateral proxy.

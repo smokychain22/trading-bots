@@ -20,6 +20,7 @@ const contract = (overrides: Partial<Parameters<typeof normalizeOptionContract>[
 
 test('deriveProviderState maps all-GOOD required capabilities to OK', () => {
   assert.equal(deriveProviderState(['GOOD', 'GOOD', 'GOOD']), 'OK');
+  assert.equal(deriveProviderState([]), null);
 });
 
 test('deriveProviderState maps any INVALID/NOT_ENTITLED capability to the literal string INVALID (matching aegis.py exact-check)', () => {
@@ -55,9 +56,11 @@ test('deriveExecutionQualityAcceptable is true when at least one candidate is ge
   assert.equal(deriveExecutionQualityAcceptable([executable]), true);
 });
 
-test('deriveExecutionQualityAcceptable is false when no candidate is executable, and UNKNOWN when there are no candidates at all', () => {
-  const nonExecutable = contract({ bid: null, ask: null });
-  assert.equal(deriveExecutionQualityAcceptable([nonExecutable]), false);
+test('deriveExecutionQualityAcceptable distinguishes an observed failure from missing evidence', () => {
+  const unknown = contract({ bid: null, ask: null });
+  const observedWideSpread = contract({ bid: 3, ask: 5 });
+  assert.equal(deriveExecutionQualityAcceptable([unknown]), null);
+  assert.equal(deriveExecutionQualityAcceptable([observedWideSpread]), false);
   assert.equal(deriveExecutionQualityAcceptable([]), null);
 });
 

@@ -319,13 +319,13 @@ itMockedProviderRealCodePath('a confirmed-closed market becomes a real precondit
 });
 
 itMockedProviderRealCodePath('a stale required observation (account fetched long before the decision moment) becomes SYSTEM_HOLD_STALE_ACCOUNT, never a strategy WAIT/PASS', async () => {
-  // A monotonically advancing clock (60s per config.now() call) makes the
+  // A monotonically advancing clock (120s per config.now() call) makes the
   // gap between the account fetch (early in the cycle) and the temporal-
   // consistency check (near the end) exceed the NEW_RISK policy's 300s
   // ACCOUNT staleMinAgeSeconds, without needing to fake any HTTP response.
   let callCount = 0;
   const advancingNow = (): string => {
-    const value = new Date(new Date(NOW).getTime() + callCount * 60_000).toISOString();
+    const value = new Date(new Date(NOW).getTime() + callCount * 120_000).toISOString();
     callCount += 1;
     return value;
   };

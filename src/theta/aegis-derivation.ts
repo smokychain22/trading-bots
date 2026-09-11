@@ -38,6 +38,7 @@ import type { NormalizedOptionContract } from './option-contract.js';
  * null, never guessed as "OK" or as a fabricated failure string.
  */
 export function deriveProviderState(requiredCapabilityQualities: readonly DataQualityState[]): string | null {
+  if (requiredCapabilityQualities.length === 0) return null;
   if (requiredCapabilityQualities.some((q) => q === 'INVALID' || q === 'NOT_ENTITLED')) return 'INVALID';
   if (requiredCapabilityQualities.every((q) => q === 'GOOD')) return 'OK';
   return null;
@@ -72,7 +73,9 @@ export function deriveLiquidityAcceptable(
 export function deriveExecutionQualityAcceptable(candidateContracts: readonly NormalizedOptionContract[]): boolean | null {
   if (candidateContracts.length === 0) return null;
   if (candidateContracts.some((c) => c.executable)) return true;
-  return false;
+  const everyFailureObserved = candidateContracts.every((c) =>
+    c.bid !== null && c.ask !== null && c.quoteTimestamp !== null && c.dataQuality !== 'UNKNOWN');
+  return everyFailureObserved ? false : null;
 }
 
 /**

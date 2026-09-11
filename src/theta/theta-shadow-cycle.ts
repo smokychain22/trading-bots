@@ -390,7 +390,11 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let accountEvidence = notAttemptedEvidence();
   let accountFetchedAt: string | null = null;
   try {
-    accountFetchedAt = decisionTime;
+    // Keep the decision timestamp stable across the cycle, while recording
+    // when each external observation was actually requested. Reusing the
+    // cycle start here would hide a slow/stalled provider sequence from the
+    // temporal-consistency gate.
+    accountFetchedAt = config.now();
     account = await fetchMasterAccountSnapshot(config.alpaca, decisionTime);
     const accountRequiredValuesPresent = account.accountStatus !== null
       && account.equity !== null
@@ -418,7 +422,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let positionsEvidence = notAttemptedEvidence();
   let positionsFetchedAt: string | null = null;
   try {
-    positionsFetchedAt = decisionTime;
+    positionsFetchedAt = config.now();
     positions = await fetchPositions(config.alpaca, decisionTime);
     positionsEvidence = { origin: 'REAL_PROVIDER', quality: 'GOOD' };
   } catch (error) {
@@ -430,7 +434,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let openOrdersEvidence = notAttemptedEvidence();
   let openOrdersFetchedAt: string | null = null;
   try {
-    openOrdersFetchedAt = decisionTime;
+    openOrdersFetchedAt = config.now();
     openOrders = await fetchOpenOrders(config.alpaca, decisionTime);
     openOrdersEvidence = { origin: 'REAL_PROVIDER', quality: 'GOOD' };
   } catch (error) {
