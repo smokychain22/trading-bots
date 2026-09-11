@@ -77,3 +77,7 @@ jobs:
               client.sendall(b"*1\r\n$4\r\nPING\r\n")
               assert client.recv(64) == b"+PONG\r\n"
           PY
+      - name: Test real customer persistence in disposable PostgreSQL
+        env:
+          TEST_DATABASE_URL: postgresql://trading_bots:ci-only-password@127.0.0.1:5432/trading_bots
+        run: npx tsx --test tests/db/customer-persistence.test.ts

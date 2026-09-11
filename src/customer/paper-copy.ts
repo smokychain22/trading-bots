@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { paperCopyPolicySchema } from "./copy-policy.js";
+export { paperCopyPolicySchema } from "./copy-policy.js";
 import type { Environment } from "../config/environment.js";
 import { loadEnvironment, missingProviderVariables } from "../config/environment.js";
 import { checkAlpaca, type CheckResult } from "../providers/readiness.js";
@@ -11,30 +12,6 @@ import type {
 import type { FollowerRecord } from "./customer-store.js";
 import { oauthConfiguration } from "./alpaca-oauth.js";
 import { privatePaperApiKeyConfiguration } from "./private-paper-api-key.js";
-
-export const paperCopyPolicySchema = z
-  .object({
-    allocation_usd: z.number().finite().min(0).max(10_000_000),
-    max_bot_capital_pct: z.number().finite().min(0).max(100),
-    max_ticker_exposure_pct: z.number().finite().min(0).max(100),
-    max_contracts: z.number().int().min(0).max(1_000),
-    max_daily_loss_usd: z.number().finite().min(0).max(10_000_000),
-    max_open_positions: z.number().int().min(0).max(1_000),
-    min_dte: z.number().int().min(0).max(730),
-    max_dte: z.number().int().min(0).max(730),
-    allow_0dte: z.boolean(),
-    max_slippage_per_contract_usd: z.number().finite().min(0).max(100_000),
-    min_open_interest: z.number().int().min(0).max(100_000_000),
-    join_existing_positions: z.literal(false),
-    start_new_trades_only: z.literal(true),
-  })
-  .strict()
-  .refine((policy) => policy.min_dte <= policy.max_dte, {
-    message: "Minimum DTE must not exceed maximum DTE.",
-  })
-  .refine((policy) => policy.allow_0dte || policy.min_dte > 0, {
-    message: "Minimum DTE must be at least one when 0DTE is disabled.",
-  });
 
 export function paperCopyReadiness(
   source: NodeJS.ProcessEnv = process.env,
@@ -57,12 +34,14 @@ export function paperCopyReadiness(
           : "READY_TO_COPY";
   return {
     extension_version: "THETA_v1.2_PAPER_COPY",
+    saved_policy: follower?.policy ?? null,
     stage: connected ? "CHOOSE_ALLOCATION" : "CONNECT_ALPACA",
     follower_account: {
       follower_account_id: follower?.followerAccountId ?? null,
       provider: "ALPACA",
       environment: "PAPER",
       connection_method: follower?.connectionMethod ?? null,
+      account_role: follower?.accountRole ?? null,
       connected,
       ready_for_theta: follower?.accountReady ?? false,
       masked_account: follower?.maskedAccount ?? null,

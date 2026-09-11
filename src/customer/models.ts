@@ -232,6 +232,7 @@ export type FollowerParticipation =
   | "RECONCILING";
 
 export interface FollowerAccount {
+  account_role?: 'MASTER_THETA_PAPER' | 'FOLLOWER_THETA_PAPER' | null;
   follower_account_id: string | null;
   provider: "ALPACA";
   environment: "PAPER";
@@ -255,23 +256,25 @@ export interface FollowerAccount {
   market_open: boolean | null;
 }
 
-export interface FollowerRiskPolicy {
+  export interface FollowerRiskPolicy {
+    limit_mode?: 'RECOMMENDED' | 'CUSTOM';
   allocation_usd: number;
-  max_bot_capital_pct: number;
-  max_ticker_exposure_pct: number;
-  max_contracts: number;
-  max_daily_loss_usd: number;
-  max_open_positions: number;
-  min_dte: number;
-  max_dte: number;
+    max_bot_capital_pct: number | null;
+    max_ticker_exposure_pct: number | null;
+    max_contracts: number | null;
+    max_daily_loss_usd: number | null;
+    max_open_positions: number | null;
+    min_dte: number | null;
+    max_dte: number | null;
   allow_0dte: boolean;
-  max_slippage_per_contract_usd: number;
-  min_open_interest: number;
+    max_slippage_per_contract_usd: number | null;
+    min_open_interest: number | null;
   join_existing_positions: false;
   start_new_trades_only: true;
 }
 
 export interface PaperCopyReadiness {
+  saved_policy?: FollowerRiskPolicy | null;
   extension_version: "THETA_v1.2_PAPER_COPY";
   stage: PaperCopyStage;
   follower_account: FollowerAccount;

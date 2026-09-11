@@ -241,11 +241,19 @@ export function bindAccount() {
 }
 
 export function paperCopyPage(readiness) {
-  const number = (name, text, value, min, max, step = "1") =>
-    `<label>${text}<input name="${name}" type="number" value="${value}" min="${min}" max="${max}" step="${step}" required></label>`;
+  const saved = readiness.saved_policy;
+  const recommended = !saved || saved.limit_mode === "RECOMMENDED";
+  const amount = saved?.allocation_usd ?? 10000;
+  const limit = (name, text, max, step = "1") => {
+    const value = saved?.[name] ?? null;
+    const custom = !recommended && value !== null;
+    return `<div><label>${text}<select data-limit="${name}" ${recommended ? "disabled" : ""}><option value="none" ${!custom ? "selected" : ""}>No additional user limit</option><option value="custom" ${custom ? "selected" : ""}>Set my own limit</option></select></label><label ${custom ? "" : "hidden"} data-limit-field="${name}">${text}, custom value<input name="${name}" type="number" min="0" max="${max}" step="${step}" value="${value ?? ""}" ${custom ? "required" : "disabled"}></label></div>`;
+  };
   const connected = readiness.follower_account.connected === true;
   const ready = readiness.follower_account.ready_for_theta === true;
   const status = new URL(location.href).searchParams.get("connection");
+  if (readiness.follower_account.account_role === "MASTER_THETA_PAPER")
+    return `<section class="panel copy-focus"><h2>THETA Paper master account</h2><p>This account is designated for THETA. It cannot copy itself. Use a separate Paper account to test follower copying.</p><p>Order submission remains locked.</p>${link("/account", "View account", "button secondary")}</section>`;
   if (!connected) {
     const action = readiness.private_paper_api_key?.state === "READY"
       ? paperApiKeyForm()
@@ -260,7 +268,14 @@ export function paperCopyPage(readiness) {
   if (!ready) {
     return `<div class="copy-heading"><div><p class="eyebrow">PAPER COPY SETUP</p><h2>Copy THETA</h2><p>Your Alpaca Paper account is connected, but needs attention.</p></div>${badge("NEEDS ATTENTION", "amber")}</div><section class="panel copy-focus"><p class="step-label">STEP 1 OF 3</p><h2>Verify account readiness</h2><p>THETA requires options level 1 or higher for cash-secured puts. Recheck your connection before choosing an amount.</p>${link("/account", "Review account", "button primary")}</section>`;
   }
-  return `<div class="copy-heading"><div><p class="eyebrow">PAPER COPY SETUP</p><h2>Copy THETA</h2><p>Your Alpaca Paper account is connected.</p></div>${badge("CONNECTED", "green")}</div><form id="copy-policy" class="copy-policy customer-copy-form"><section class="panel copy-focus"><div class="section-heading"><div><p class="step-label">STEP 2 OF 3</p><h2>How much should THETA use?</h2><p>This is the maximum paper capital THETA can use.</p></div><output id="allocation-output">$10,000</output></div><input type="hidden" name="allocation_usd" value="10000"><div class="allocation-choices" role="group" aria-label="Allocation"><button type="button" class="choice" data-allocation="5000">$5,000</button><button type="button" class="choice active" data-allocation="10000">$10,000</button><button type="button" class="choice" data-allocation="25000">$25,000</button><button type="button" class="choice" data-allocation="custom">Custom</button></div><label id="custom-allocation" hidden>Custom allocation ($)<input type="number" min="0" max="10000000" step="100" value="10000"></label><details class="advanced-copy"><summary>Safety limits</summary><div class="advanced-fields">${number("max_open_positions", "Maximum open positions", 3, 0, 1000)}${number("max_bot_capital_pct", "Maximum allocation (%)", 25, 0, 100, "0.1")}${number("max_daily_loss_usd", "Daily loss limit ($)", 500, 0, 10000000)}${number("max_slippage_per_contract_usd", "Price protection ($)", 10, 0, 100000, "0.01")}</div></details><button class="button primary review-button" type="submit">Continue</button><p id="copy-error" role="alert"></p></section></form><section id="copy-review" class="panel copy-review" aria-live="polite" hidden></section>`;
+  return `<div class="copy-heading"><div><p class="eyebrow">PAPER COPY SETUP</p><h2>Copy THETA</h2><p>Your Alpaca Paper account is connected.</p></div>${badge("CONNECTED", "green")}</div>
+    <form id="copy-policy" class="copy-policy customer-copy-form" data-saved-policy="${esc(JSON.stringify(saved ?? {}))}"><section class="panel copy-focus">
+    <div class="section-heading"><div><p class="step-label">STEP 2 OF 3</p><h2>How much should THETA use?</h2><p>THETA manages position sizing, entries and exits within this amount.</p></div><output id="allocation-output">${money(amount)}</output></div>
+    <input type="hidden" name="allocation_usd" value="${amount}"><div class="allocation-choices" role="group" aria-label="Allocation">${[5000,10000,25000].map((value) => `<button type="button" class="choice ${amount === value ? "active" : ""}" data-allocation="${value}">${money(value)}</button>`).join("")}<button type="button" class="choice" data-allocation="custom">Custom</button></div>
+    <label id="custom-allocation" hidden>Custom allocation ($)<input type="number" min="0" max="10000000" step="0.01" value="${amount}"></label>
+    <label><input type="checkbox" id="recommended-limits" ${recommended ? "checked" : ""}> Use THETA recommended account limits</label>
+    <details class="advanced-copy"><summary>Advanced account limits</summary><p>These limits are optional. THETA still applies its own trading and risk controls. Zero means no permission, not unlimited.</p><div class="advanced-fields">${limit("max_open_positions", "Maximum open positions", 1000)}${limit("max_bot_capital_pct", "Maximum account allocation (%)", 100, "0.1")}${limit("max_daily_loss_usd", "Daily loss pause ($)", 10000000, "0.01")}${limit("max_slippage_per_contract_usd", "Price protection ($ per contract)", 100000, "0.01")}</div></details>
+    <button class="button primary review-button" type="submit">Continue</button><p id="copy-error" role="alert"></p></section></form><section id="copy-review" class="panel copy-review" aria-live="polite" hidden></section>`;
 }
 
 export function bindPaperCopy() {
@@ -271,11 +286,24 @@ export function bindPaperCopy() {
   const output = document.querySelector("#allocation-output");
   const custom = document.querySelector("#custom-allocation");
   const customInput = custom.querySelector("input");
+  const recommended = document.querySelector("#recommended-limits");
+  const savedPolicy = JSON.parse(form.dataset.savedPolicy);
+  const updateLimits = () => form.querySelectorAll("[data-limit]").forEach((select) => {
+    select.disabled = recommended.checked;
+    const field = form.querySelector(`[data-limit-field="${select.dataset.limit}"]`);
+    const enabled = !recommended.checked && select.value === "custom";
+    field.hidden = !enabled;
+    field.querySelector("input").disabled = !enabled;
+    field.querySelector("input").required = enabled;
+  });
+  recommended.addEventListener("change", updateLimits);
+  form.querySelectorAll("[data-limit]").forEach((select) => select.addEventListener("change", updateLimits));
   document.querySelectorAll("[data-allocation]").forEach((choice) => {
     choice.addEventListener("click", () => {
       document.querySelectorAll("[data-allocation]").forEach((item) => item.classList.toggle("active", item === choice));
       const isCustom = choice.dataset.allocation === "custom";
       custom.hidden = !isCustom;
+      customInput.required = isCustom;
       if (!isCustom) {
         allocation.value = choice.dataset.allocation;
         output.textContent = money(Number(allocation.value));
@@ -294,18 +322,20 @@ export function bindPaperCopy() {
     button.disabled = true;
     document.querySelector("#copy-error").textContent = "";
     const data = new FormData(form);
+    const optionalLimit = (name) => {
+      if (recommended.checked || form.querySelector(`[data-limit="${name}"]`).value !== "custom") return null;
+      const value = data.get(name);
+      return value === null || String(value).trim() === "" ? null : Number(value);
+    };
     const policy = {
       allocation_usd: Number(data.get("allocation_usd")),
-      max_bot_capital_pct: Number(data.get("max_bot_capital_pct")),
-      max_open_positions: Number(data.get("max_open_positions")),
-      max_daily_loss_usd: Number(data.get("max_daily_loss_usd")),
-      max_slippage_per_contract_usd: Number(data.get("max_slippage_per_contract_usd")),
-      max_ticker_exposure_pct: 10,
-      max_contracts: 1,
-      min_dte: 7,
-      max_dte: 60,
-      min_open_interest: 500,
-      allow_0dte: false,
+      limit_mode: recommended.checked ? "RECOMMENDED" : "CUSTOM",
+      max_bot_capital_pct: optionalLimit("max_bot_capital_pct"),
+      max_open_positions: optionalLimit("max_open_positions"),
+      max_daily_loss_usd: optionalLimit("max_daily_loss_usd"),
+      max_slippage_per_contract_usd: optionalLimit("max_slippage_per_contract_usd"),
+      ...Object.fromEntries(["max_ticker_exposure_pct","max_contracts","min_dte","max_dte","min_open_interest"].map((name) => [name, recommended.checked ? null : savedPolicy[name] ?? null])),
+      allow_0dte: recommended.checked ? false : savedPolicy.allow_0dte ?? false,
     };
     policy.join_existing_positions = false;
     policy.start_new_trades_only = true;
@@ -325,7 +355,7 @@ export function bindPaperCopy() {
       document.querySelector("#start-copying")?.addEventListener("click", async () => {
         const start = document.querySelector("#start-copying");
         start.disabled = true;
-        const response = await fetch("/api/v1/copy/participation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ allocation_usd: review.policy.allocation_usd }) });
+        const response = await fetch("/api/v1/copy/participation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(review.policy) });
         document.querySelector("#activation-note").textContent = response.ok
           ? "Your paper-copy setup was saved. Order submission is still locked."
           : "Your setup couldn’t be saved.";

@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import type { EncryptedSecret } from "./customer-security.js";
+import { paperCopyPolicySchema, recommendedCopyPolicy, storedCopyPolicy, type PaperCopyPolicy } from "./copy-policy.js";
 
 export type CustomerIdentity = {
   readonly customerId: string;
@@ -15,6 +16,7 @@ export type OAuthStateRecord = {
 export type BrokerConnectionMethod = "ALPACA_OAUTH" | "PAPER_API_KEY_PRIVATE_BETA";
 
 export type FollowerRecord = {
+  readonly policy?: PaperCopyPolicy | null;
   readonly accountRole?: "MASTER_THETA_PAPER" | "FOLLOWER_THETA_PAPER";
   readonly customerId: string;
   readonly followerAccountId: string;
@@ -91,7 +93,7 @@ export interface CustomerStore {
   getFollowerCredential(customerId: string): Promise<StoredFollowerCredential | null>;
   updateFollowerVerification(customerId: string, input: FollowerVerificationUpdate): Promise<FollowerRecord>;
   markFollowerNeedsAttention(customerId: string): Promise<void>;
-  saveParticipation(customerId: string, allocationUsd: number): Promise<FollowerRecord>;
+  saveParticipation(customerId: string, allocationUsd: number, policy?: PaperCopyPolicy): Promise<FollowerRecord>;
   disconnectFollower(customerId: string): Promise<void>;
 }
 
@@ -100,6 +102,7 @@ const numberOrNull = (value: unknown): number | null =>
 
 function followerFromRow(row: Record<string, unknown>): FollowerRecord {
   return {
+    policy: storedCopyPolicy((row.saved_policy as Record<string, unknown> | null) ?? null),
     accountRole: row.account_role === "MASTER_THETA_PAPER" ? "MASTER_THETA_PAPER" : "FOLLOWER_THETA_PAPER",
     customerId: String(row.customer_id),
     followerAccountId: String(row.follower_account_id),
@@ -302,6 +305,7 @@ export class PostgresCustomerStore implements CustomerStore {
     const result = await this.pool.query(
       `SELECT f.customer_id, f.follower_account_id,
         to_jsonb(f)->>'account_role' AS account_role,
+        to_jsonb(fp) AS saved_policy,
         ('••••' || right(f.provider_account_ref, 4)) AS provider_account_ref_masked,
         f.connection_method, f.account_status, f.equity, f.buying_power, f.cash, f.options_buying_power,
         f.options_approved_level, f.options_trading_level, f.account_ready,
@@ -309,6 +313,7 @@ export class PostgresCustomerStore implements CustomerStore {
         f.last_broker_sync_at, p.state AS participation_state, p.allocation_usd
        FROM copy.follower_account f
        LEFT JOIN copy.customer_participation p ON p.customer_id = f.customer_id
+       LEFT JOIN copy.follower_policy fp ON fp.follower_account_id = f.follower_account_id AND fp.superseded_at IS NULL
        WHERE f.customer_id = $1 AND f.disconnected_at IS NULL
        ORDER BY f.updated_at DESC LIMIT 1`,
       [customerId],
@@ -375,7 +380,9 @@ export class PostgresCustomerStore implements CustomerStore {
     );
   }
 
-  async saveParticipation(customerId: string, allocationUsd: number) {
+  async saveParticipation(customerId: string, allocationUsd: number, selectedPolicy?: PaperCopyPolicy) {
+    const policy = paperCopyPolicySchema.parse(selectedPolicy ?? recommendedCopyPolicy(allocationUsd));
+    if (policy.allocation_usd !== allocationUsd) throw new Error("ALLOCATION_POLICY_MISMATCH");
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -392,22 +399,25 @@ export class PostgresCustomerStore implements CustomerStore {
          WHERE follower_account_id = $1 AND superseded_at IS NULL`,
         [follower.rows[0].follower_account_id],
       );
-      await client.query(
+      const insertedPolicy = await client.query(
         `INSERT INTO copy.follower_policy(
           follower_account_id, policy_version, allocation_usd,
           max_bot_capital_pct, max_ticker_exposure_pct, max_contracts,
           max_daily_loss_usd, max_open_positions, max_slippage_per_contract_usd,
           min_dte, max_dte, allow_0dte, min_open_interest,
-          join_existing_positions, start_new_trades_only
-        ) VALUES ($1, 'theta-copy-policy-v1:' || gen_random_uuid()::text, $2,
-          25, 10, 1, 500, 3, 10, 7, 60, false, 500, false, true)`,
-        [follower.rows[0].follower_account_id, allocationUsd],
+          join_existing_positions, start_new_trades_only, limit_mode
+        ) VALUES ($1, 'theta-copy-policy-v2:' || gen_random_uuid()::text, $2,
+          $3,$4,$5,$6,$7,$8,$9,$10,$11,$12,false,true,$13) RETURNING policy_version`,
+        [follower.rows[0].follower_account_id, allocationUsd, policy.max_bot_capital_pct,
+          policy.max_ticker_exposure_pct, policy.max_contracts, policy.max_daily_loss_usd,
+          policy.max_open_positions, policy.max_slippage_per_contract_usd, policy.min_dte,
+          policy.max_dte, policy.allow_0dte, policy.min_open_interest, policy.limit_mode],
       );
       await client.query(
         `UPDATE copy.customer_participation
-         SET allocation_usd = $2, state = 'READY', policy_version = 'theta-copy-policy-v1', updated_at = now()
+         SET allocation_usd = $2, state = 'READY', policy_version = $3, updated_at = now()
          WHERE customer_id = $1`,
-        [customerId, allocationUsd],
+        [customerId, allocationUsd, insertedPolicy.rows[0].policy_version],
       );
       await client.query("COMMIT");
     } catch (error) {

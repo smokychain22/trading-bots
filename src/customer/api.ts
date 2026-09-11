@@ -34,6 +34,7 @@ import { executionMode } from "../execution/execution-control.js";
 import { connectPrivatePaperApiKey, privatePaperApiKeyConfiguration } from "./private-paper-api-key.js";
 import { AlpacaPaperBrokerError } from "../execution/broker.js";
 import { designateConnectedPaperMaster, masterRoleStore } from "./paper-account-role.js";
+import { paperCopyPolicySchema, recommendedCopyPolicy } from "./copy-policy.js";
 
 const simulationSchema = z
   .object({
@@ -618,16 +619,18 @@ export default async function customerHandler(
       }
       const customer = await currentCustomer(request, store);
       if (!customer) return send(response, 401, { error: { code: "LOGIN_REQUIRED" } });
-      const payload = z.object({ allocation_usd: z.number().finite().min(0).max(10_000_000) }).strict().parse(await readJson(request));
+      const rawPolicy = await readJson(request);
+      const allocationOnly = z.object({ allocation_usd: z.number().finite().min(0).max(10_000_000) }).strict().safeParse(rawPolicy);
+      const payload = allocationOnly.success ? recommendedCopyPolicy(allocationOnly.data.allocation_usd) : paperCopyPolicySchema.parse(rawPolicy);
       const follower = await store.getFollower(customer.customerId);
       if (!follower?.accountReady)
         return send(response, 409, { error: { code: "FOLLOWER_ACCOUNT_NOT_READY" } });
       if (follower.accountRole === "MASTER_THETA_PAPER")
         return send(response, 409, { error: { code: "MASTER_SELF_COPY_FORBIDDEN" } });
-      const saved = await store.saveParticipation(customer.customerId, payload.allocation_usd);
+      const saved = await store.saveParticipation(customer.customerId, payload.allocation_usd, payload);
       return send(response, 200, {
         api_version: "v1",
-        data: { participation: saved.participation, allocation_usd: saved.allocationUsd, order_submission: "LOCKED" },
+        data: { participation: saved.participation, allocation_usd: saved.allocationUsd, policy: saved.policy, order_submission: "LOCKED" },
       });
     }
     if (request.method === "POST" && route === "bots/theta/simulate")
