@@ -44,7 +44,12 @@ export function evaluateExecutionGate(control: PaperExecutionControl, context: E
   if (!['ALLOW_FULL', 'ALLOW_REDUCED'].includes(context.aegisState)) blockers.push('AEGIS_NOT_APPROVED');
   if (!Number.isInteger(context.quantity) || context.quantity <= 0) blockers.push('QUANTITY_NOT_POSITIVE_INTEGER');
   if (!context.quoteFresh) blockers.push('QUOTE_NOT_FRESH');
-  if (Date.parse(context.decisionExpiresAt) <= Date.parse(context.now)) blockers.push('DECISION_EXPIRED');
+  const expiresAt = Date.parse(context.decisionExpiresAt);
+  const now = Date.parse(context.now);
+  // Invalid timestamps compare false against everything, including expiry.
+  // Missing temporal truth must fail closed before issuing a broker permit.
+  if (!Number.isFinite(expiresAt) || !Number.isFinite(now)) blockers.push('DECISION_TIME_INVALID');
+  else if (expiresAt <= now) blockers.push('DECISION_EXPIRED');
   if (context.clientOrderId.trim().length === 0) blockers.push('CLIENT_ORDER_ID_MISSING');
   return { allowed: blockers.length === 0, blockers };
 }

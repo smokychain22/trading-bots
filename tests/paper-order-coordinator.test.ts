@@ -34,6 +34,16 @@ test('execution defaults LOCKED and cannot call the broker', async () => {
   assert.equal(broker.submitCalls, 0);
   assert.equal(executionMode(control(), 'MASTER_API_KEY'), 'LOCKED');
 });
+
+test('invalid temporal truth cannot submit even when Paper execution is enabled', async () => {
+  for (const invalid of [{ now: '' }, { decisionExpiresAt: 'invalid' }]) {
+    const broker = new MockBroker();
+    const coordinator = new PaperOrderCoordinator(broker, new InMemoryPaperOrderStore(), control({ masterEnabled: true, pauseNewOrders: false }));
+    await prepare(coordinator);
+    await assert.rejects(coordinator.submit('11111111-1111-4111-8111-111111111111', { ...gate, ...invalid }), /DECISION_TIME_INVALID/);
+    assert.equal(broker.submitCalls, 0);
+  }
+});
 test('even enabled execution remains READY while PAUSE NEW ORDERS is active', async () => {
   const broker = new MockBroker(); const store = new InMemoryPaperOrderStore(); const c = control({ masterEnabled: true });
   const coordinator = new PaperOrderCoordinator(broker, store, c); await prepare(coordinator);
