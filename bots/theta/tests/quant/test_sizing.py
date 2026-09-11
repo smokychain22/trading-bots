@@ -84,5 +84,33 @@ class NoMartingaleTests(unittest.TestCase):
         self.assertEqual(first.quantity, second.quantity)
 
 
+class CapConsistencyTests(unittest.TestCase):
+    """GitHub research finding (docs/research/GITHUB_REPO_RESEARCH_LEDGER.md,
+    HasibVortex369/riskkit): a sizer that derives capital_required from a
+    SEPARATE risk-fraction representation risks that figure silently going
+    stale once a hard cap binds and overrides the fraction-derived quantity.
+    THETA's compute_sizing structurally cannot suffer this: capital_required
+    is always recomputed directly from the FINAL, already-capped quantity,
+    never from an intermediate fractional representation -- there is no
+    second number that could drift. These tests pin that invariant down as a
+    permanent regression test, not just a documented comparison."""
+
+    def test_capital_required_always_matches_the_final_capped_quantity(self):
+        # risk_budget_qty_cap=2 binds well below what buying power/collateral
+        # alone would allow (10 contracts) -- capital_required must reflect
+        # the CAPPED quantity (2), never the pre-cap affordable quantity.
+        result = compute_sizing(_policy(risk_budget_qty_cap=2), _inputs())
+        self.assertEqual(result.quantity, 2)
+        self.assertEqual(result.capital_required, 2 * 5000.0)
+
+    def test_capital_required_reflects_the_reduced_state_multiplier_too(self):
+        # ALLOW_REDUCED scales quantity down AFTER the cap is chosen --
+        # capital_required must reflect that final, scaled-down quantity.
+        result = compute_sizing(_policy(risk_budget_qty_cap=4), _inputs(risk_state=RiskState.ALLOW_REDUCED))
+        self.assertEqual(result.quantity, 2)  # floor(4 * 0.5)
+        self.assertEqual(result.capital_required, 2 * 5000.0)
+        self.assertEqual(result.binding_constraint, "AEGIS_ALLOW_REDUCED")
+
+
 if __name__ == "__main__":
     unittest.main()
