@@ -434,7 +434,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       const mergedProbe = mergeOptionChain({
         underlying: candidate.symbol, asOfDate: config.now().slice(0, 10), contracts: contractsProbe.items,
         snapshotsBySymbol: snapshotsProbe.snapshots, optionomicsBySymbol: new Map(), requestedFeed: 'INDICATIVE',
-        multiplier: 100, receivedAt: config.now(), maxQuoteAgeSecondsForExecutable: 30, maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
+        defaultMultiplierForUnknownContracts: 100, receivedAt: config.now(), maxQuoteAgeSecondsForExecutable: 30, maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
       });
       shortlistProxies.push(computeUnderlyingReturnProxy(candidate.symbol, mergedProbe));
     } catch (error) {
@@ -712,7 +712,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     const mergedContracts = mergeOptionChain({
       underlying, asOfDate: config.now().slice(0, 10), contracts: contractsResult.items,
       snapshotsBySymbol: snapshotsResult.snapshots, optionomicsBySymbol, requestedFeed: 'INDICATIVE',
-      multiplier: 100, receivedAt, maxQuoteAgeSecondsForExecutable: 30, maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
+      defaultMultiplierForUnknownContracts: 100, receivedAt, maxQuoteAgeSecondsForExecutable: 30, maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
     });
     mergedContractsForSnapshot = mergedContracts;
 

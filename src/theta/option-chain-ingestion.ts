@@ -27,6 +27,14 @@ export interface AlpacaOptionContractListing {
   readonly strikePrice: number;
   readonly expirationDate: string; // YYYY-MM-DD
   readonly optionType: OptionType;
+  // Alpaca's own real per-contract shares multiplier (from its `size`
+  // field), when the provider supplied one. null when Alpaca's response
+  // omitted or malformed it -- never fabricated. mergeOptionChain below
+  // prefers THIS real, contract-derived value over any caller-supplied
+  // default, so a genuinely non-standard contract's premium/collateral
+  // math is never silently computed as if it were a standard 100-share
+  // contract.
+  readonly multiplier: number | null;
 }
 
 export interface AlpacaOptionSnapshot {
@@ -65,7 +73,12 @@ export interface MergeOptionChainInput {
   readonly snapshotsBySymbol: ReadonlyMap<string, AlpacaOptionSnapshot>;
   readonly optionomicsBySymbol: ReadonlyMap<string, OptionomicsChainEntry>;
   readonly requestedFeed: 'OPRA' | 'INDICATIVE';
-  readonly multiplier: number; // standard contracts are 100; caller confirms via contractIsStandard upstream
+  // Fallback ONLY for a contract whose own real multiplier Alpaca did not
+  // supply (AlpacaOptionContractListing.multiplier === null) -- every
+  // contract that DOES carry its own real multiplier uses that value
+  // instead, never this default, per the standing "do not assume
+  // multiplier=100 when contract metadata provides the actual value" rule.
+  readonly defaultMultiplierForUnknownContracts: number;
   readonly receivedAt: string;
   readonly maxQuoteAgeSecondsForExecutable: number;
   readonly maxSpreadPctForExecutable: number;
@@ -121,7 +134,7 @@ export function mergeOptionChain(input: MergeOptionChainInput): readonly Normali
         strike: contract.strikePrice,
         expiration: contract.expirationDate,
         asOfDate: input.asOfDate,
-        multiplier: input.multiplier,
+        multiplier: contract.multiplier ?? input.defaultMultiplierForUnknownContracts,
         underlyingBid: null, underlyingAsk: null, underlyingLast: null, underlyingTimestamp: null,
         bid: snapshot?.bid ?? null, ask: snapshot?.ask ?? null, bidSize: snapshot?.bidSize ?? null, askSize: snapshot?.askSize ?? null,
         lastTradePrice: null, lastTradeSize: null,

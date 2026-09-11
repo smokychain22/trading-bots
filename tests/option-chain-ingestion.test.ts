@@ -7,11 +7,11 @@ const NOW = '2026-09-10T15:00:00.000Z';
 const baseInput = (overrides: Partial<MergeOptionChainInput> = {}): MergeOptionChainInput => ({
   underlying: 'SPY',
   asOfDate: '2026-09-10',
-  contracts: [{ symbol: 'SPY261009P00500000', strikePrice: 500, expirationDate: '2026-10-09', optionType: 'PUT' }],
+  contracts: [{ symbol: 'SPY261009P00500000', strikePrice: 500, expirationDate: '2026-10-09', optionType: 'PUT', multiplier: 100 }],
   snapshotsBySymbol: new Map(),
   optionomicsBySymbol: new Map(),
   requestedFeed: 'INDICATIVE',
-  multiplier: 100,
+  defaultMultiplierForUnknownContracts: 100,
   receivedAt: NOW,
   maxQuoteAgeSecondsForExecutable: 30,
   maxSpreadPctForExecutable: 0.5,
@@ -92,4 +92,20 @@ test('a contract absent from the Alpaca listing entirely never appears (no fabri
   const contracts = mergeOptionChain(baseInput());
   assert.equal(contracts.length, 1);
   assert.equal(contracts[0]?.optionSymbol, 'SPY261009P00500000');
+});
+
+test('a contract\'s own real multiplier is used over the caller-supplied default when both are present', () => {
+  const [contract] = mergeOptionChain(baseInput({
+    contracts: [{ symbol: 'ADJ261009P00500000', strikePrice: 500, expirationDate: '2026-10-09', optionType: 'PUT', multiplier: 250 }],
+    defaultMultiplierForUnknownContracts: 100,
+  }));
+  assert.equal(contract?.multiplier, 250);
+});
+
+test('the caller-supplied default is used ONLY when the contract\'s own multiplier is genuinely unknown', () => {
+  const [contract] = mergeOptionChain(baseInput({
+    contracts: [{ symbol: 'SPY261009P00500000', strikePrice: 500, expirationDate: '2026-10-09', optionType: 'PUT', multiplier: null }],
+    defaultMultiplierForUnknownContracts: 100,
+  }));
+  assert.equal(contract?.multiplier, 100);
 });

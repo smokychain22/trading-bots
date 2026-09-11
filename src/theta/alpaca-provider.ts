@@ -399,6 +399,14 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
         strikePrice: asNumberOrNull(c.strike_price) ?? 0,
         expirationDate: asStringOrNull(c.expiration_date) ?? '',
         optionType: params.optionType === 'put' ? 'PUT' : 'CALL',
+        // Alpaca's real /v2/options/contracts payload documents `size` as
+        // the shares-per-contract multiplier (a numeric string, typically
+        // "100" but not guaranteed -- an adjusted/non-standard contract
+        // can carry a different value). Parsed here so callers never have
+        // to fall back to assuming 100 for a contract that actually told
+        // them otherwise; null (never a fabricated 100) when Alpaca's
+        // response genuinely omits or malforms the field.
+        multiplier: asNumberOrNull(c.size),
       });
     }
     pageToken = body.next_page_token ?? null;
