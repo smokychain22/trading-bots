@@ -25,6 +25,8 @@ test('priority ladder ranks reconciliation before management before wait-recheck
   assert.ok(comparePriority('ORDER_RECONCILIATION', 'POSITION_MANAGEMENT_SCAN') < 0);
   assert.ok(comparePriority('POSITION_MANAGEMENT_SCAN', 'ASSIGNMENT_EXPIRY_RECONCILIATION') < 0);
   assert.ok(comparePriority('ASSIGNMENT_EXPIRY_RECONCILIATION', 'WAIT_RECHECK') < 0);
+  assert.ok(comparePriority('ASSIGNMENT_EXPIRY_RECONCILIATION', 'PENDING_ORDER_MANAGEMENT') < 0);
+  assert.ok(comparePriority('PENDING_ORDER_MANAGEMENT', 'WAIT_RECHECK') < 0);
   assert.ok(comparePriority('WAIT_RECHECK', 'OPPORTUNITY_SCAN') < 0);
 });
 
@@ -80,16 +82,18 @@ test('a job that keeps failing stops being retried once maxAttempts is exceeded 
   assert.equal(thirdOutcome.outcome, 'MAX_ATTEMPTS_EXCEEDED');
 });
 
-test('a checkpoint with an expired lease still marked LEASED forces reconciliation before any retry -- crash recovery', async () => {
+test('an expired lease runs the executor in reconciliation mode before any retry -- crash recovery', async () => {
   const repo = new InMemorySchedulerCheckpointRepository();
   const jobId = deterministicJobId('ORDER_RECONCILIATION', 'order-3');
   const past = new Date(Date.now() - 60_000).toISOString();
   await repo.tryAcquireLease(jobId, 'crashed-worker', past); // simulates a worker that died mid-execution
   let ran = false;
-  const executor: JobExecutor = async () => { ran = true; return { status: 'SUCCEEDED', errorCode: null, errorDetail: null, nextRunAt: null }; };
+  let recoveryAction = 'SAFE_TO_RESCHEDULE';
+  const executor: JobExecutor = async (_type, _key, _id, recovery) => { ran = true; recoveryAction = recovery; return { status: 'SUCCEEDED', errorCode: null, errorDetail: null, nextRunAt: null }; };
   const outcome = await dispatchOneJob(repo, config(), { jobType: 'ORDER_RECONCILIATION', correlationKey: 'order-3' }, () => new Date().toISOString(), executor);
-  assert.equal(outcome.outcome, 'RECONCILE_BEFORE_RETRY');
-  assert.equal(ran, false);
+  assert.equal(outcome.outcome, 'RECOVERY_RECONCILIATION_RAN');
+  assert.equal(recoveryAction, 'RECONCILE_BEFORE_RETRY');
+  assert.equal(ran, true);
 });
 
 test('dispatchDueJobs runs a whole batch in priority order and returns one outcome per job', async () => {

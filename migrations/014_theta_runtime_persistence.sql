@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS ops.scheduler_checkpoint (
   next_run_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  CHECK ((status = 'LEASED') = (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL AND last_heartbeat_at IS NOT NULL))
+  CHECK (status <> 'LEASED' OR (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL AND last_heartbeat_at IS NOT NULL))
 );
 CREATE INDEX IF NOT EXISTS ix_scheduler_due ON ops.scheduler_checkpoint(status, next_run_at, lease_expires_at);
 

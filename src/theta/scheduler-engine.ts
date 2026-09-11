@@ -27,16 +27,17 @@ import type { SchedulerCheckpointRepository, SchedulerCheckpointRecord } from '.
 // since every trading-relevant job depends on fresh market/account state.
 
 const JOB_TYPE_PRIORITY: Readonly<Record<JobType, number>> = {
-  MARKET_STATE_REFRESH: 0,
-  ACCOUNT_STATE_REFRESH: 0,
-  HEALTH_HEARTBEAT: 0,
-  POSITION_RECONCILIATION: 1,
-  ORDER_RECONCILIATION: 2,
+  POSITION_RECONCILIATION: 0,
+  ORDER_RECONCILIATION: 1,
+  MARKET_STATE_REFRESH: 2,
+  ACCOUNT_STATE_REFRESH: 2,
   POSITION_MANAGEMENT_SCAN: 3,
   ASSIGNMENT_EXPIRY_RECONCILIATION: 4,
-  WAIT_RECHECK: 5,
-  OPPORTUNITY_SCAN: 6,
-  COPY_FANOUT_PREPARATION: 7,
+  PENDING_ORDER_MANAGEMENT: 5,
+  WAIT_RECHECK: 6,
+  OPPORTUNITY_SCAN: 7,
+  COPY_FANOUT_PREPARATION: 8,
+  HEALTH_HEARTBEAT: 9,
 };
 
 export function comparePriority(a: JobType, b: JobType): number {
@@ -75,11 +76,11 @@ export interface DueJob {
 export interface DispatchOutcome {
   readonly jobId: string;
   readonly jobType: JobType;
-  readonly outcome: 'RAN' | 'LEASE_HELD_BY_ANOTHER_OWNER' | 'RECONCILE_BEFORE_RETRY' | 'MAX_ATTEMPTS_EXCEEDED';
+  readonly outcome: 'RAN' | 'RECOVERY_RECONCILIATION_RAN' | 'LEASE_HELD_BY_ANOTHER_OWNER' | 'MAX_ATTEMPTS_EXCEEDED';
   readonly runResult: JobRunResult | null;
 }
 
-export type JobExecutor = (jobType: JobType, correlationKey: string, jobId: string) => Promise<JobRunResult>;
+export type JobExecutor = (jobType: JobType, correlationKey: string, jobId: string, recoveryAction: 'SAFE_TO_RESCHEDULE' | 'RECONCILE_BEFORE_RETRY') => Promise<JobRunResult>;
 
 /**
  * Sorts due jobs by the fixed priority ladder (stable within a priority
@@ -114,9 +115,9 @@ export async function dispatchOneJob(
   const jobId = deterministicJobId(job.jobType, job.correlationKey);
   const existing = await repo.findById(jobId);
 
-  if (existing !== null && restartRecoveryAction(jobStatusFromCheckpoint(existing, now())) === 'RECONCILE_BEFORE_RETRY') {
-    return { jobId, jobType: job.jobType, outcome: 'RECONCILE_BEFORE_RETRY', runResult: null };
-  }
+  const recoveryAction = existing === null
+    ? 'SAFE_TO_RESCHEDULE' as const
+    : restartRecoveryAction(jobStatusFromCheckpoint(existing, now()));
 
   if (existing !== null && existing.attempt >= config.maxAttempts && existing.status !== 'COMPLETED') {
     return { jobId, jobType: job.jobType, outcome: 'MAX_ATTEMPTS_EXCEEDED', runResult: null };
@@ -130,7 +131,7 @@ export async function dispatchOneJob(
 
   let runResult: JobRunResult;
   try {
-    runResult = await executor(job.jobType, job.correlationKey, jobId);
+    runResult = await executor(job.jobType, job.correlationKey, jobId, recoveryAction);
   } catch (error) {
     runResult = {
       status: 'FAILED',
@@ -160,7 +161,8 @@ export async function dispatchOneJob(
     lastError: runResult.errorDetail,
   });
 
-  return { jobId, jobType: job.jobType, outcome: 'RAN', runResult };
+  return { jobId, jobType: job.jobType,
+    outcome: recoveryAction === 'RECONCILE_BEFORE_RETRY' ? 'RECOVERY_RECONCILIATION_RAN' : 'RAN', runResult };
 }
 
 /**
