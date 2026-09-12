@@ -106,6 +106,9 @@ export const normalizedOptionContractSchema = z.object({
   executable: z.boolean(),
   nonExecutableReason: z.string().min(1).nullable(),
 }).superRefine((contract, context) => {
+  if (contract.executable && (contract.source !== 'ALPACA' || contract.feed !== 'OPRA')) {
+    context.addIssue({ code: 'custom', message: 'executable option quotes require Alpaca OPRA provenance' });
+  }
   if (contract.executable && contract.nonExecutableReason !== null) {
     context.addIssue({ code: 'custom', message: 'executable contracts must not carry a nonExecutableReason' });
   }
@@ -206,10 +209,14 @@ export function normalizeOptionContract(raw: RawOptionQuoteInput, receivedAt: st
   const quoteAgeSeconds = raw.quoteTimestamp !== null ? (new Date(receivedAt).getTime() - new Date(raw.quoteTimestamp).getTime()) / 1000 : null;
 
   const reasons: string[] = [];
+  if (raw.source !== 'ALPACA') reasons.push('quote source is not Alpaca executable truth');
+  if (raw.feed !== 'OPRA') reasons.push('official OPRA BBO unavailable');
   if (dte <= 0) reasons.push('contract expired or expires today');
   if (raw.bid === null || raw.ask === null) reasons.push('quote unavailable');
   if (quoteAgeSeconds === null) reasons.push('quote age unknown');
+  else if (!Number.isFinite(quoteAgeSeconds) || quoteAgeSeconds < 0) reasons.push('quote timestamp invalid or in future');
   else if (quoteAgeSeconds > raw.maxQuoteAgeSecondsForExecutable) reasons.push('quote stale');
+  if (raw.bid !== null && raw.ask !== null && (raw.bid < 0 || raw.ask <= 0 || raw.bid > raw.ask)) reasons.push('invalid or crossed BBO');
   if (spreadPct === null) reasons.push('spread unknown');
   else if (spreadPct > raw.maxSpreadPctForExecutable) reasons.push('spread too wide');
   if (raw.dataQuality !== 'GOOD') reasons.push(`data quality is ${raw.dataQuality}`);

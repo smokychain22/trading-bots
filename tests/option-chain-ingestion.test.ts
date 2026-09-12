@@ -124,6 +124,7 @@ test('a contract with a genuinely unknown multiplier is forced non-executable, e
 
 test('a contract with a real, contract-derived multiplier is unaffected by the unverified-multiplier gate', () => {
   const [contract] = mergeOptionChain(baseInput({
+    requestedFeed: 'OPRA',
     contracts: [{ symbol: 'SPY261009P00500000', strikePrice: 500, expirationDate: '2026-10-09', optionType: 'PUT', multiplier: 100 }],
     defaultMultiplierForUnknownContracts: 100,
     snapshotsBySymbol: new Map([
@@ -158,6 +159,7 @@ test('a T=0 contract is isolated as non-executable while a future sibling remain
     greeks: { delta: -0.2, gamma: 0.01, theta: -0.03, vega: 0.1, rho: 0 }, impliedVolatility: iv, dailyVolume: 10,
   });
   const contracts = mergeOptionChain(baseInput({
+    requestedFeed: 'OPRA',
     contracts: [
       { symbol: symbols[0], strikePrice: 500, expirationDate: '2026-09-10', optionType: 'PUT', multiplier: 100 },
       { symbol: symbols[1], strikePrice: 495, expirationDate: '2026-10-09', optionType: 'PUT', multiplier: 100 },

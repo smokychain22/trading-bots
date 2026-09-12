@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeOptionContract, type RawOptionQuoteInput } from '../src/theta/option-contract.js';
+import { normalizedOptionContractSchema, normalizeOptionContract, type RawOptionQuoteInput } from '../src/theta/option-contract.js';
 
 const NOW = '2026-09-10T15:00:00.000Z';
 
@@ -93,6 +93,20 @@ test('OPRA feed is preserved distinctly from INDICATIVE, never conflated', () =>
   const indicative = normalizeOptionContract(baseRaw({ feed: 'INDICATIVE' }), NOW);
   assert.equal(opra.feed, 'OPRA');
   assert.equal(indicative.feed, 'INDICATIVE');
+  assert.equal(indicative.executable, false);
+  assert.ok(indicative.nonExecutableReason?.includes('OPRA'));
+});
+
+test('unknown feed and research provider cannot supply executable BBO', () => {
+  assert.equal(normalizeOptionContract(baseRaw({ feed: null }), NOW).executable, false);
+  assert.equal(normalizeOptionContract(baseRaw({ source: 'OPTIONOMICS' }), NOW).executable, false);
+  const valid = normalizeOptionContract(baseRaw(), NOW);
+  assert.equal(normalizedOptionContractSchema.safeParse({ ...valid, feed: 'INDICATIVE' }).success, false);
+});
+
+test('future timestamps and crossed BBO cannot authorize execution', () => {
+  assert.equal(normalizeOptionContract(baseRaw({ quoteTimestamp: '2026-09-10T15:01:00.000Z' }), NOW).executable, false);
+  assert.equal(normalizeOptionContract(baseRaw({ bid: 4, ask: 3 }), NOW).executable, false);
 });
 
 test('unknown feed (null) is preserved as null, never defaulted to a feed type', () => {

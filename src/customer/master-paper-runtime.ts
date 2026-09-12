@@ -25,10 +25,19 @@ const accountSchema = z.object({
 }).passthrough();
 
 const numberOrNull = (value: string | number | null | undefined): number | null => {
-  if (value === null || value === undefined) return null;
+  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+
+export function masterOptionsAccountReady(input: {
+  status: string | null; approvedLevel: number | null; tradingLevel: number | null;
+  tradingBlocked: boolean | null;
+}): boolean {
+  return input.status === 'ACTIVE' && input.tradingBlocked === false
+    && input.approvedLevel !== null && Number.isInteger(input.approvedLevel) && input.approvedLevel >= 1
+    && input.tradingLevel !== null && Number.isInteger(input.tradingLevel) && input.tradingLevel >= 1;
+}
 
 export interface StoredMasterPaperReadiness {
   readonly connectionState: 'CONNECTED' | 'NOT_CONFIGURED' | 'INVALID';
@@ -94,7 +103,8 @@ export async function verifyStoredMasterPaperConnection(
   const optionsApprovedLevel = numberOrNull(rawAccount.options_approved_level);
   const optionsTradingLevel = numberOrNull(rawAccount.options_trading_level);
   const restrictions = { tradingBlocked: rawAccount.trading_blocked === true, transfersBlocked: rawAccount.transfers_blocked === true };
-  const accountReady = accountStatus === 'ACTIVE' && Math.max(optionsApprovedLevel ?? 0, optionsTradingLevel ?? 0) >= 1 && !restrictions.tradingBlocked;
+  const accountReady = masterOptionsAccountReady({status:accountStatus,approvedLevel:optionsApprovedLevel,
+    tradingLevel:optionsTradingLevel,tradingBlocked:rawAccount.trading_blocked ?? null});
   await store.updateFollowerVerification(resolved.customerId, {
     accountStatus, equity: numberOrNull(rawAccount.equity), cash: numberOrNull(rawAccount.cash),
     buyingPower: numberOrNull(rawAccount.buying_power), optionsBuyingPower: numberOrNull(rawAccount.options_buying_power),

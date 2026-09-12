@@ -86,7 +86,8 @@ const itMockedProviderRealCodePath = pythonExecutablePath === undefined ? test.s
 itMockedProviderRealCodePath('OI/volume hard-gate breakdown: UNKNOWN vs known-below-floor vs sufficient, using realistic (non-live) values', async () => {
   const contracts = mergeOptionChain({
     underlying: 'SPY', asOfDate: '2026-09-10', contracts: CONTRACTS, snapshotsBySymbol: SNAPSHOTS,
-    optionomicsBySymbol: OPTIONOMICS, requestedFeed: 'INDICATIVE', defaultMultiplierForUnknownContracts: 100, receivedAt: NOW,
+    // An executable OPRA fixture isolates OI/volume gates from feed entitlement.
+    optionomicsBySymbol: OPTIONOMICS, requestedFeed: 'OPRA', defaultMultiplierForUnknownContracts: 100, receivedAt: NOW,
     maxQuoteAgeSecondsForExecutable: 30, maxSpreadPctForExecutable: 0.5,
   });
   assert.equal(contracts.length, 5);

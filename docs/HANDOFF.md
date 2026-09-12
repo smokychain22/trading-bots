@@ -1113,3 +1113,50 @@ NEXT RECOMMENDED TASK: Keep the locked worker online through the next supported 
 session. Audit the first complete real export, then let the idempotent empirical pipeline
 run once for its dataset hash. Do not promote a strategy or submit an order before the
 evidence gates pass.
+
+## 2026-09-13 Master Paper activation prerequisite audit
+
+OWNER: Codex
+
+TASK: Verify the existing master independently of followers and repair executable
+quote and account-permission readiness before autonomous Paper activation.
+
+AUTHORITY UPDATE: The owner's latest directive authorizes autonomous Paper after
+technical gates pass, superseding the earlier stop-before-first-POST instruction.
+Live trading remains forbidden. This authorization does not establish readiness.
+No execution configuration or broker mutation was made in this audit.
+
+WHAT WAS IMPLEMENTED: Option contracts cannot be marked executable from indicative,
+unknown, or non-Alpaca quote provenance. Future timestamps and crossed/invalid BBO
+are rejected. Master readiness requires both known approval and current trading
+levels, plus an explicitly unblocked account. Blank numeric fields remain null.
+
+TESTS RUN / RESULTS: Node 664 passed, four skipped, zero failures. Full Python
+452 passed. TypeScript, ESLint, build and security scan passed with zero findings.
+Executable test fixtures now explicitly use OPRA, with a regression assertion
+that an otherwise healthy indicative quote is not execution-ready.
+
+REAL PROVIDER EVIDENCE: The authenticated deployed read-only readiness operation
+resolved MASTER_THETA_PAPER, verified broker identity at the exact Paper host,
+and returned ACTIVE with options approval/trading levels 3/3, zero positions and
+zero open orders. Account connection does not depend on follower enrollment.
+Market was closed. OPRA snapshots and Greeks returned NOT_ENTITLED, HTTP 403.
+Indicative snapshots/Greeks returned HTTP 200 with limits. Optionomics documented
+authentication and current context operations returned HTTP 200. No credentials
+were printed. Local verification lacks the encryption configuration, while the
+deployed encrypted credential path works.
+
+KNOWN LIMITATIONS: The autonomous runtime still enforces THETA_SHADOW_ONLY and
+uses a read-only broker wrapper. Its copy-preparation skip does not block master
+execution. Submission and executable management integration remain unfinished.
+The local worker remains stopped. No strategy profitability is demonstrated by
+provider connectivity. No migration is required by these prerequisite repairs.
+
+RISKS: Indicative quotes are modified quotes, not official executable OPRA BBO.
+Do not bypass this distinction by relabeling the feed or flipping runtime flags.
+Followers require separate sizing and reconciliation, not promised identical P&L.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Account permission null handling and the
+execution-feed boundary. Preserve independent master routing and existing quant
+work. NEXT RECOMMENDED TASK: Complete the gated Paper orchestration and management
+path, and resolve executable quote entitlement before enabling broker submission.

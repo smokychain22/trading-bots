@@ -3,7 +3,7 @@ import test from 'node:test';
 import type { Environment } from '../src/config/environment.js';
 import { encryptSecret } from '../src/customer/customer-security.js';
 import type { CustomerStore, FollowerVerificationUpdate, MasterCredentialStore } from '../src/customer/customer-store.js';
-import { verifyStoredMasterPaperConnection } from '../src/customer/master-paper-runtime.js';
+import { masterOptionsAccountReady, verifyStoredMasterPaperConnection } from '../src/customer/master-paper-runtime.js';
 
 const NOW = new Date('2026-09-11T15:00:00.000Z');
 const customerId = 'synthetic-master-customer';
@@ -15,6 +15,17 @@ const environment = {
   MASTER_PAPER_EXECUTION_ENABLED: false, FOLLOWER_PAPER_EXECUTION_ENABLED: false, PAPER_PAUSE_NEW_ORDERS: true,
   PAPER_COPY_TOKEN_KEY_REF: 'private-beta-v1', PAPER_COPY_TOKEN_ENCRYPTION_KEY: encryptionKey,
 } as Environment;
+
+test('master options readiness needs current trading permission and known restrictions, independently of followers', () => {
+  const input = {status:'ACTIVE',approvedLevel:3,tradingLevel:3,tradingBlocked:false};
+  assert.equal(masterOptionsAccountReady(input),true);
+  for (const tradingLevel of [null,0,-1,1.5]) {
+    assert.equal(masterOptionsAccountReady({...input,tradingLevel}),false);
+  }
+  assert.equal(masterOptionsAccountReady({...input,approvedLevel:null}),false);
+  assert.equal(masterOptionsAccountReady({...input,tradingBlocked:null}),false);
+  assert.equal(masterOptionsAccountReady({...input,tradingBlocked:true}),false);
+});
 
 test('stored master readiness verifies exact identity, refreshes read-only state, and keeps order submission locked', async () => {
   let update: FollowerVerificationUpdate | null = null;
