@@ -22,6 +22,12 @@ export interface WorkerRuntimeStore {
   stop(workerId: string, at: string, state: 'STOPPING'|'OFFLINE'|'ERROR', reason?: string): Promise<void>;
 }
 
+export function completedCandidateEvidenceScan(report:AutonomousRuntimeReport):boolean {
+  return report.jobResults.some((row)=>row.jobType==='OPPORTUNITY_SCAN'&&(
+    row.status==='SUCCEEDED'||(row.status==='DEGRADED'&&row.errorCode?.startsWith('SHADOW_SCAN_')===true)
+  ));
+}
+
 export class PostgresWorkerRuntimeStore implements WorkerRuntimeStore {
   constructor(private readonly pool: Pool) {}
 
@@ -87,7 +93,7 @@ export class PostgresWorkerRuntimeStore implements WorkerRuntimeStore {
     const failed=report.status==='FAILED'||report.status==='QUARANTINED';
     const degraded=failed||report.status==='DEGRADED';
     const state:WorkerRuntimeState=degraded?'DEGRADED':market==='OPEN'?'SHADOW_RUNNING':market==='CLOSED'?'WAITING_FOR_MARKET':'DEGRADED';
-    const candidateScan=report.jobResults.some((row)=>row.jobType==='OPPORTUNITY_SCAN'&&row.status!==null);
+    const candidateScan=completedCandidateEvidenceScan(report);
     await this.pool.query(`UPDATE ops.runtime_worker_status SET state=$3,last_cycle_completed=$2,last_heartbeat=$2,
       last_reconciliation=CASE WHEN $4 THEN $2 ELSE last_reconciliation END,
       last_candidate_scan=CASE WHEN $5 THEN $2 ELSE last_candidate_scan END,
