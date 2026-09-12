@@ -27,6 +27,7 @@ try {
     "020_local_worker_runtime",
     "021_disabled_copy_planning",
     "022_disabled_copy_engine_closure",
+    "023_shadow_virtual_trader",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -57,6 +58,13 @@ try {
     ["ops", "runtime_worker_event"],
     ["copy", "follower_chain_participation"],
     ["copy", "follower_chain_participation_event"],
+    ["research", "theta_shadow_virtual_account"],
+    ["research", "theta_shadow_order_intent"],
+    ["research", "theta_shadow_order_event"],
+    ["research", "theta_shadow_fill"],
+    ["research", "theta_shadow_chain"],
+    ["research", "theta_shadow_lifecycle_event"],
+    ["research", "theta_shadow_account_snapshot"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -138,6 +146,18 @@ try {
   if(!copyClosure.rows[0]?.participation||!copyClosure.rows[0]?.boundary_guard||!copyClosure.rows[0]?.execution_lock||
     !copyClosure.rows[0]?.participation_tenant_fk)
     throw new Error('DISABLED_COPY_ENGINE_CLOSURE_MISSING');
+  const shadowVirtualProtection=await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='research'
+      AND table_name='theta_shadow_order_intent' AND constraint_type='CHECK') AS intent_checks,
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='research'
+      AND event_object_table='theta_shadow_fill' AND trigger_name='reject_immutable_mutation') AS immutable_fills,
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='research'
+      AND event_object_table='theta_shadow_lifecycle_event' AND trigger_name='reject_immutable_mutation') AS immutable_lifecycle,
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='research'
+      AND event_object_table='theta_shadow_account_snapshot' AND trigger_name='reject_immutable_mutation') AS immutable_account_snapshots`);
+  if(!shadowVirtualProtection.rows[0]?.intent_checks||!shadowVirtualProtection.rows[0]?.immutable_fills||
+    !shadowVirtualProtection.rows[0]?.immutable_lifecycle||!shadowVirtualProtection.rows[0]?.immutable_account_snapshots)
+    throw new Error('SHADOW_VIRTUAL_TRADER_PROTECTION_MISSING');
   const lifecycleEvidence = await client.query(`SELECT
     EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade' AND trigger_name='reject_immutable_mutation' AND event_object_table='broker_position_snapshot') AS immutable_positions,
     EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade' AND trigger_name='protect_broker_activity_fact' AND event_object_table='broker_activity_fact') AS protected_activities`);
@@ -159,6 +179,10 @@ try {
   const activeCredentials = await client.query("SELECT count(*)::int AS count FROM copy.alpaca_oauth_token WHERE revoked_at IS NULL");
   const roles = await client.query("SELECT account_role, count(*)::int AS count FROM copy.follower_account WHERE disconnected_at IS NULL GROUP BY account_role");
   const orderCount = await client.query("SELECT count(*)::int AS count FROM trade.broker_order");
+  const shadowCounts=await client.query(`SELECT
+    (SELECT count(*)::int FROM research.theta_shadow_order_intent) AS intents,
+    (SELECT count(*)::int FROM research.theta_shadow_fill) AS fills,
+    (SELECT count(*)::int FROM research.theta_shadow_chain) AS chains`);
   process.stdout.write(JSON.stringify({
     state: "CONNECTED",
     migrations: expected.length,
@@ -178,9 +202,13 @@ try {
     localWorkerRuntime: "ENFORCED",
     disabledCopyPlanning: "ENFORCED",
     disabledCopyEngineClosure:"ENFORCED",
+    shadowVirtualTrader:"ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
     brokerOrders: orderCount.rows[0]?.count ?? 0,
+    shadowIntents:shadowCounts.rows[0]?.intents??0,
+    shadowFills:shadowCounts.rows[0]?.fills??0,
+    shadowChains:shadowCounts.rows[0]?.chains??0,
   }) + "\n");
 } finally {
   await client.end();

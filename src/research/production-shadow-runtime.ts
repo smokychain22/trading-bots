@@ -10,13 +10,16 @@ import { PostgresThetaCycleStore } from '../theta/postgres-theta-cycle-store.js'
 import { buildObservationSchedule, PostgresShadowEvidenceRuntimeStore, runCrossSymbolShadowScan } from './shadow-evidence-runtime.js';
 import { PostgresPointInTimeEvidenceStore } from './point-in-time-evidence.js';
 import { ensureMasterShadowContext } from './master-shadow-context.js';
+import { PostgresShadowVirtualTrader, type ShadowIntentCreationReport } from './postgres-shadow-virtual-trader.js';
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
   readonly symbolsAttempted:number; readonly symbolsCompleted:number; readonly observationsScheduled:number;
+  readonly virtualOpening:ShadowIntentCreationReport;
 }
 
-export interface ObservationProcessingReport {readonly due:number;readonly observed:number;readonly missed:number;}
+export interface ObservationProcessingReport {readonly due:number;readonly observed:number;readonly missed:number;
+  readonly shadowFilled:number;readonly shadowPartial:number;readonly shadowExpiredUnfilled:number;}
 
 export type ObservationMissReason='HOST_OFFLINE'|'PROVIDER_UNAVAILABLE'|'SESSION_ENDED'|'INVALID_CONTRACT'|'INVALID_QUOTE';
 export function classifyObservationFailure(error:unknown):ObservationMissReason {
@@ -38,7 +41,8 @@ export async function processDueExecutionObservations(input:{pool:Pool;alpaca:Al
     JOIN market.underlying u ON u.underlying_id=oc.underlying_id
     WHERE j.status='PENDING' AND j.target_at <= $1 ORDER BY j.target_at,j.observation_job_id LIMIT 50`,[observedAt]);
   const store=new PostgresShadowEvidenceRuntimeStore(input.pool);
-  const quoteStore=new PostgresPointInTimeEvidenceStore(input.pool); let observed=0,missed=0;
+  const quoteStore=new PostgresPointInTimeEvidenceStore(input.pool); const virtualTrader=new PostgresShadowVirtualTrader(input.pool);
+  let observed=0,missed=0,shadowFilled=0,shadowPartial=0,shadowExpiredUnfilled=0;
   const byUnderlyingAndType=new Map<string,typeof jobs.rows>();
   for(const row of jobs.rows){
     if(Date.parse(observedAt)-Date.parse(String(row.target_at))>120_000){
@@ -70,14 +74,20 @@ export async function processDueExecutionObservations(input:{pool:Pool;alpaca:Al
           source:'ALPACA',operationAlias:'alpaca.get_option_snapshots',feed:'INDICATIVE',contractVersion:'alpaca-option-snapshots-v1',
           bid:quote.bid,ask:quote.ask,bidSize:quote.bidSize,askSize:quote.askSize,proposedLimit:null,
           dataQuality:age===null?'UNKNOWN':age>60?'STALE':'GOOD'});
-        if(await store.markObservationObserved(String(row.observation_job_id),quoteId,observedAt)) observed++;
+        if(await store.markObservationObserved(String(row.observation_job_id),quoteId,observedAt)) {
+          observed++;
+          const resolved=await virtualTrader.resolveObservation(String(row.candidate_id),quoteId,String(row.horizon_code),observedAt);
+          if(resolved.state==='FILLED_SHADOW')shadowFilled+=resolved.filledQuantity;
+          if(resolved.state==='PARTIAL_SHADOW')shadowPartial+=resolved.filledQuantity;
+          if(resolved.state==='EXPIRED_UNFILLED')shadowExpiredUnfilled++;
+        }
       }
     }catch(error){
       const reason=classifyObservationFailure(error);
       for(const row of rows) if(await store.markObservationMissed(String(row.observation_job_id),observedAt,reason)) missed++;
     }
   }
-  return {due:jobs.rowCount??0,observed,missed};
+  return {due:jobs.rowCount??0,observed,missed,shadowFilled,shadowPartial,shadowExpiredUnfilled};
 }
 
 const bridge=(environment:Environment):PythonBridgeConfig=>({
@@ -132,8 +142,9 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     }
   }
   await evidenceStore.saveScan(scan,persisted);
+  const virtualOpening=await new PostgresShadowVirtualTrader(input.pool).createOpeningIntent(scan.scanId,scan.finishedAt);
   return {scanId:scan.scanId,completeness:scan.completeness,candidateCount:scan.candidateCount,
-    symbolsAttempted:scan.symbolsAttempted,symbolsCompleted:scan.symbolsCompleted,observationsScheduled};
+    symbolsAttempted:scan.symbolsAttempted,symbolsCompleted:scan.symbolsCompleted,observationsScheduled,virtualOpening};
 }
 
 async function loadPersistenceContext(pool:Pool,alpaca:AlpacaProviderConfig,asOf:string){

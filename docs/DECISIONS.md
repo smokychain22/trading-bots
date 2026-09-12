@@ -495,3 +495,6 @@ challenger pipeline before it can influence policy.
 The existing Windows supervisor runs the empirical pipeline once per new deterministic
 dataset hash. Research output cannot mutate Production strategy, unlock execution, or
 submit an order.
+# 2026-09-12: Virtual shadow execution is separate from broker truth
+
+Real-market shadow intents, inferred fills, positions, and account snapshots live under `research.theta_shadow_*`. They do not enter `trade.broker_order`, `trade.fill`, or broker-confirmed economic-chain tables. A virtual fill requires a later observed price-through and displayed size. A simple touch and midpoint are insufficient. Unknown costs keep after-cost account economics null. This preserves provenance while the strategy remains non-executable.
