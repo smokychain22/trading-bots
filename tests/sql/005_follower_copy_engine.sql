@@ -50,13 +50,24 @@ INSERT INTO copy.follower_policy(
   'copy-policy-test-v1', 10000, 25, 10, 1, 500, 3, 10
 );
 
+INSERT INTO trade.broker_activity_fact(
+  broker_activity_fact_id,connection_id,provider_activity_ref_hash,activity_type,symbol,
+  quantity,price,activity_at,first_observed_at,last_observed_at,payload_hash
+) VALUES (
+  '00000000-0000-0000-0000-000000000207',
+  '00000000-0000-0000-0000-000000000205',repeat('b',64),'FILL','SYN',5,1,
+  '2026-09-10T14:00:00Z','2026-09-10T14:00:01Z','2026-09-10T14:00:01Z',repeat('c',64)
+);
+
 INSERT INTO copy.master_copy_event(
   master_copy_event_id, master_bot_instance_id, action, symbol,
-  master_quantity, master_filled_quantity, occurred_at, payload_hash
+  master_quantity, master_filled_quantity, occurred_at, payload_hash,
+  source_broker_activity_fact_id, broker_confirmation_kind
 ) VALUES (
   'master-copy-event-1',
   '00000000-0000-0000-0000-000000000204',
-  'OPEN_CSP', 'SYN', 5, 5, '2026-09-10T14:00:00Z', repeat('a', 64)
+  'HOLD_STOCK', 'SYN', 5, 5, '2026-09-10T14:00:00Z', repeat('a', 64),
+  '00000000-0000-0000-0000-000000000207', 'LIFECYCLE_ACTIVITY'
 );
 
 INSERT INTO copy.follower_copy_event(

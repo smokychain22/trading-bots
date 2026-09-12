@@ -25,6 +25,7 @@ try {
     "018_point_in_time_evidence_pipeline",
     "019_real_shadow_evidence_activation",
     "020_local_worker_runtime",
+    "021_disabled_copy_planning",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -113,6 +114,15 @@ try {
       AND table_name='runtime_worker_status' AND constraint_type='CHECK') AS state_checks`);
   if (!localWorkerProtection.rows[0]?.immutable_events || !localWorkerProtection.rows[0]?.state_checks)
     throw new Error("LOCAL_WORKER_RUNTIME_PROTECTION_MISSING");
+  const disabledCopyProtection = await client.query(`SELECT
+    EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='copy'
+      AND table_name='follower_copy_event' AND column_name='risk_execution_evidence_json') AS follower_evidence,
+    EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='copy'
+      AND table_name='master_copy_event' AND constraint_name='master_copy_event_requires_broker_confirmation') AS fill_first,
+    EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='copy'
+      AND table_name='master_copy_event' AND constraint_name='master_copy_event_explicit_roll_legs') AS explicit_rolls`);
+  if (!disabledCopyProtection.rows[0]?.follower_evidence || !disabledCopyProtection.rows[0]?.fill_first ||
+    !disabledCopyProtection.rows[0]?.explicit_rolls) throw new Error("DISABLED_COPY_PLANNING_PROTECTION_MISSING");
   const lifecycleEvidence = await client.query(`SELECT
     EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade' AND trigger_name='reject_immutable_mutation' AND event_object_table='broker_position_snapshot') AS immutable_positions,
     EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade' AND trigger_name='protect_broker_activity_fact' AND event_object_table='broker_activity_fact') AS protected_activities`);
@@ -151,6 +161,7 @@ try {
     pointInTimeEvidencePipeline: "ENFORCED",
     realShadowEvidenceActivation: "ENFORCED",
     localWorkerRuntime: "ENFORCED",
+    disabledCopyPlanning: "ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
     brokerOrders: orderCount.rows[0]?.count ?? 0,
