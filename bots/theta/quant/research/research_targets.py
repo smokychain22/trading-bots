@@ -28,9 +28,10 @@ class PrimaryTarget(str, Enum):
 
 class RiskTarget(str, Enum):
     MAX_DRAWDOWN = "MAX_DRAWDOWN"  # drawdown_metrics.py::compute_drawdown_summary().max_drawdown_pct
-    MAX_ADVERSE_EXCURSION = "MAX_ADVERSE_EXCURSION"  # worst intra-episode mark-to-market, NOT yet its own module -- computed the same way drawdown_metrics.py tracks troughs, applied within one episode's own equity path rather than the whole account curve
+    MAX_ADVERSE_EXCURSION = "MAX_ADVERSE_EXCURSION"  # R6H: a real Production column (research.theta_outcome_label.max_adverse_excursion) -- consumed directly, not recomputed here
+    MAX_FAVORABLE_EXCURSION = "MAX_FAVORABLE_EXCURSION"  # R6H addition: also a real Production column (max_favorable_excursion), found during migration-018 schema-parity review; not part of the original R6G list
     EXPECTED_SHORTFALL = "EXPECTED_SHORTFALL"  # tail_risk_metrics.py::compute_tail_risk_summary (frozen Loss = -PnL convention, explicit alpha)
-    SEVERE_DRAWDOWN_EVENT = "SEVERE_DRAWDOWN_EVENT"  # a boolean derived from severe_drawdown_spec.py's own threshold, never invented here
+    SEVERE_DRAWDOWN_EVENT = "SEVERE_DRAWDOWN_EVENT"  # a boolean derived from severe_drawdown_spec.py's own threshold -- NOT a dedicated Production column (no such column exists in research.theta_outcome_label); never invented as if it were one
 
 
 class LifecycleTarget(str, Enum):

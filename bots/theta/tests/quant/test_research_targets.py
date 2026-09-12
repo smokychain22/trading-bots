@@ -27,8 +27,8 @@ class TargetRegistryTests(unittest.TestCase):
         expected = {"WHOLE_CHAIN_NET_PNL", "MANAGED_EPISODE_NET_PNL", "RETURN_ON_SECURED_CAPITAL", "RETURN_PER_CAPITAL_DAY"}
         self.assertEqual({t.value for t in PrimaryTarget}, expected)
 
-    def test_risk_targets_cover_the_four_required_metrics(self):
-        expected = {"MAX_DRAWDOWN", "MAX_ADVERSE_EXCURSION", "EXPECTED_SHORTFALL", "SEVERE_DRAWDOWN_EVENT"}
+    def test_risk_targets_cover_the_five_required_metrics(self):
+        expected = {"MAX_DRAWDOWN", "MAX_ADVERSE_EXCURSION", "MAX_FAVORABLE_EXCURSION", "EXPECTED_SHORTFALL", "SEVERE_DRAWDOWN_EVENT"}
         self.assertEqual({t.value for t in RiskTarget}, expected)
 
     def test_lifecycle_targets_cover_the_five_required_metrics(self):
