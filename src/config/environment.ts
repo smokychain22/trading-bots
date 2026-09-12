@@ -30,6 +30,7 @@ const environmentSchema = z.object({
   FOLLOWER_PAPER_EXECUTION_ENABLED: safeFlag,
   PAPER_PAUSE_NEW_ORDERS: booleanFlag('true'),
   THETA_AUTONOMOUS_WORKER_ENABLED: safeFlag,
+  THETA_RUNTIME_MODE: z.literal('THETA_SHADOW_ONLY').default('THETA_SHADOW_ONLY'),
   THETA_WORKER_PORT: z.coerce.number().int().min(1).max(65_535).default(3001),
   THETA_WORKER_INTERVAL_MS: z.coerce.number().int().min(10_000).max(900_000).default(60_000),
   THETA_PYTHON_EXECUTABLE: z.string().min(1).default('python3'),
@@ -63,7 +64,10 @@ export const loadEnvironmentFile = (
   const fileSource = Object.fromEntries(
     Object.entries(parse(readFileSync(filePath))).filter(([, value]) => value !== VERCEL_REDACTED_VALUE),
   );
-  return environmentSchema.parse({ ...processSource, ...fileSource });
+  const safeProcessSource = Object.fromEntries(
+    Object.entries(processSource).filter(([, value]) => value !== VERCEL_REDACTED_VALUE),
+  );
+  return environmentSchema.parse({ ...safeProcessSource, ...fileSource });
 };
 
 export const loadEnvironment = (source: NodeJS.ProcessEnv = process.env): Environment =>
@@ -122,4 +126,5 @@ export const assertAutonomousWorkerConfiguration = (environment: Environment): v
   if (!environment.PAPER_PAUSE_NEW_ORDERS || environment.MASTER_PAPER_EXECUTION_ENABLED || environment.FOLLOWER_PAPER_EXECUTION_ENABLED) {
     throw new Error('FIRST_PAPER_ORDER_BOUNDARY_NOT_LOCKED');
   }
+  if (environment.THETA_RUNTIME_MODE !== 'THETA_SHADOW_ONLY') throw new Error('THETA_SHADOW_ONLY_REQUIRED');
 };

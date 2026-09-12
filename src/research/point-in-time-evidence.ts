@@ -33,6 +33,7 @@ const forbiddenFeatureKeys = new Set([
   'returnonsecuredcapital','returnpercapitaldaylabel','maxadverseexcursion','maxfavorableexcursion',
   'assignmentoutcome','recoveryduration','closeoutcome','rolloutcome','ccoutcome','callawayoutcome',
   'realizedexecutioncost','eventualrealizedpnl','futureoutcome','outcomelabel',
+  'outcome','future','result','realizedreturn','pnl',
 ]);
 
 function normalizedKey(value:string): string { return value.replace(/[^a-z0-9]/gi,'').toLowerCase(); }
@@ -156,7 +157,7 @@ export class PostgresPointInTimeEvidenceStore {
     await this.pool.query(`INSERT INTO market.execution_quote_observation(quote_observation_id,candidate_id,
       management_input_snapshot_id,observation_role,observed_at,provider_timestamp,ingestion_timestamp,source,
       operation_alias,feed,contract_version,bid,ask,bid_size,ask_size,proposed_limit,data_quality,content_hash)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT(content_hash) DO NOTHING`,[
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT DO NOTHING`,[
       value.quoteObservationId,value.candidateId,value.managementInputSnapshotId,value.observationRole,value.observedAt,
       value.providerTimestamp,value.ingestionTimestamp,value.source,value.operationAlias,value.feed,value.contractVersion,
       value.bid,value.ask,value.bidSize,value.askSize,value.proposedLimit,value.dataQuality,sha256(canonicalJson(value))]);

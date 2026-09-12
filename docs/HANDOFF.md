@@ -829,3 +829,49 @@ No wholesale merge was performed.
 NEXT RECOMMENDED TASK: Run real SHADOW cycles with a complete cross-symbol frontier,
 capture subsequent BBO observations, resolve full economic chains, and export the first
 non-empty reproducible dataset for paired OOS validation. Keep Paper submission locked.
+
+## 2026-09-12 R6H real shadow activation
+
+OWNER: Codex
+
+TASK: Activate the Production-safe R6 evidence path while preserving the absolute
+zero-order boundary.
+
+FILES CHANGED: Migration 019, autonomous runtime, read-only broker contract, cross-symbol
+shadow scan, point-in-time and replay stores, broker-fill lifecycle router, deterministic
+outcome resolver, master SHADOW context provisioner, R6 readiness reporting, environment
+loader, AEGIS UNKNOWN handling, tests, decisions, and research parity review.
+
+WHAT WAS IMPLEMENTED: The runtime can only run in `THETA_SHADOW_ONLY` and has no broker
+mutation methods. A bounded cross-symbol scan records completeness, members, candidates,
+WAIT/PASS evidence, and deterministic +1m/+5m/+30m/EOD observation jobs. Market-closed
+cycles record no fake candidate evidence. Confirmed fills route to atomic CSP, close,
+roll, stock, covered-call, and call-away writers. External or unmatched broker activity
+stays unknown. Outcome labels require a closed chain, fully resolved economic facts, and
+known execution fees. The Production master now has one complete, versioned SHADOW bot
+context backed by an encrypted credential reference.
+
+TEST RESULTS: TypeScript, ESLint, build, security, 356 Python tests, focused Node tests,
+and Production Neon invariants pass. The combined Node suite produced five Python bridge
+timeouts under parallel process load. Every affected test file passed in isolation.
+Migration 019 is applied. Neon reports one complete SHADOW context, zero broker orders,
+and zero broker fills.
+
+KNOWN LIMITATIONS: The market is closed and no genuine decision-time candidate scan has
+run. Point-in-time rows, shadow candidates, subsequent BBO observations, and resolved
+labels remain empty. Model training and strategy promotion remain blocked. Vercel cannot
+provide an always-on process, so this phase only activates authenticated scheduled/manual
+shadow cycles on the existing control plane.
+
+RISKS: A bounded two-symbol scan is evidence collection, not proof that the bound is
+economically adequate. Missing empirical action values stay UNKNOWN. No performance or
+win-rate claim is supported.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude `4ffbd49` and follow-up `a744939` were reviewed.
+The migration-018-aligned dataset contracts, fail-closed export loader, readiness state
+machine, and R6H audit documents are approved for selective integration. Runtime and
+Production schema authority remains TypeScript/PostgreSQL.
+
+NEXT RECOMMENDED TASK: Run the first authenticated SHADOW cycle during an open confirmed
+market session, inspect its first evidence audit, then accumulate enough resolved Paper
+episodes for descriptive audit before any model fitting or strategy promotion.

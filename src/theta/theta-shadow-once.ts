@@ -1,4 +1,5 @@
 import { assertProviderConfiguration, loadEnvironment, loadEnvironmentFile } from '../config/environment.js';
+import { pathToFileURL } from 'node:url';
 import { runThetaShadowCycle, type ProvenanceOrigin, type ThetaShadowCycleConfig } from './theta-shadow-cycle.js';
 import type { AlpacaProviderConfig } from './alpaca-provider.js';
 import type { OptionomicsProviderConfig } from './optionomics-provider.js';
@@ -45,7 +46,7 @@ function requireAlpacaConfig(environment: ReturnType<typeof loadEnvironment>): A
 // (whose absence blocks the whole run), a missing Optionomics credential
 // just means OI/volume/IV-fallback stay UNKNOWN this cycle. `null` here is
 // honestly NOT_ATTEMPTED, never a fixture standing in for a real call.
-function optionomicsConfigFromEnvironment(environment: ReturnType<typeof loadEnvironment>): OptionomicsProviderConfig | null {
+export function optionomicsConfigFromEnvironment(environment: ReturnType<typeof loadEnvironment>): OptionomicsProviderConfig | null {
   if (environment.OPTIONOMICS_EMAIL === undefined || environment.OPTIONOMICS_API_KEY === undefined) return null;
   return { apiBase: 'https://optionomics.ai', email: environment.OPTIONOMICS_EMAIL, apiToken: environment.OPTIONOMICS_API_KEY };
 }
@@ -54,7 +55,7 @@ function optionomicsConfigFromEnvironment(environment: ReturnType<typeof loadEnv
 // production-optimal (same discipline as every other policy default in
 // this repo). A real deployment should supply its own versioned policy
 // records; these exist so this entrypoint is runnable at all.
-function defaultShadowCycleConfig(
+export function defaultShadowCycleConfig(
   alpaca: AlpacaProviderConfig,
   optionomics: OptionomicsProviderConfig | null,
   bridge: PythonBridgeConfig,
@@ -173,7 +174,9 @@ async function main(): Promise<number> {
   return result.blockers.length > 0 ? 1 : 0;
 }
 
-main().then((code) => { process.exitCode = code; }).catch((error: unknown) => {
-  console.info(JSON.stringify({ status: 'UNCAUGHT_ERROR', detail: error instanceof Error ? error.message : 'unknown error' }));
-  process.exitCode = 1;
-});
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().then((code) => { process.exitCode = code; }).catch((error: unknown) => {
+    console.info(JSON.stringify({ status: 'UNCAUGHT_ERROR', detail: error instanceof Error ? error.message : 'unknown error' }));
+    process.exitCode = 1;
+  });
+}

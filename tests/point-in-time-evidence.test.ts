@@ -36,3 +36,12 @@ test('feature side cannot contain future labels even when outcome tables are sep
       candidates:[{...value,market:{futureOutcome:'WIN'}}],shadowCandidates:[],managementSnapshots:[],lifecycleOutcomes:[],
       wholeChainOutcomes:[],executionEvidence:[]}}),/FUTURE_LABEL_IN_FEATURE_PAYLOAD/);
 });
+
+test('nested generic outcome and result keys are excluded from point-in-time features',()=>{
+  for (const payload of [
+    { features:{ outcome:{ pnl:10 } } },
+    { features:{ future:{ assignment:true } } },
+    { features:{ result:'WIN' } },
+    { features:{ realized_return:0.2 } },
+  ]) assert.throws(()=>assertNoFutureLabels(payload),/FUTURE_LABEL_IN_FEATURE_PAYLOAD/);
+});

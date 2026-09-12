@@ -118,6 +118,17 @@ test('Vercel redaction markers without a real fallback fail closed', () => {
   }
 });
 
+test('a Vercel redaction sentinel already loaded into process env is ignored', () => {
+  const filePath = 'tests/.environment-precedence.env';
+  writeFileSync(filePath, 'PRIVATE_PAPER_API_KEY_BETA_ENABLED="[SENSITIVE]"\n');
+  try {
+    const parsed = loadEnvironmentFile(filePath, { PRIVATE_PAPER_API_KEY_BETA_ENABLED:'[SENSITIVE]' });
+    assert.equal(parsed.PRIVATE_PAPER_API_KEY_BETA_ENABLED, false);
+  } finally {
+    unlinkSync(filePath);
+  }
+});
+
 // Security correction: a credential-loading/validation failure must report
 // PRESENT/MISSING/VALID/INVALID by name only -- never the secret value
 // itself, even when the value is realistic-shaped. Every thrown message and
@@ -155,10 +166,15 @@ test('paper execution flags fail closed when absent or blank', () => {
   assert.equal(absent.MASTER_PAPER_EXECUTION_ENABLED, false);
   assert.equal(absent.FOLLOWER_PAPER_EXECUTION_ENABLED, false);
   assert.equal(absent.PAPER_PAUSE_NEW_ORDERS, true);
+  assert.equal(absent.THETA_RUNTIME_MODE, 'THETA_SHADOW_ONLY');
   const blank = loadEnvironment({
     NODE_ENV: 'test', MASTER_PAPER_EXECUTION_ENABLED: '', FOLLOWER_PAPER_EXECUTION_ENABLED: '', PAPER_PAUSE_NEW_ORDERS: '',
   });
   assert.equal(blank.MASTER_PAPER_EXECUTION_ENABLED, false);
   assert.equal(blank.FOLLOWER_PAPER_EXECUTION_ENABLED, false);
   assert.equal(blank.PAPER_PAUSE_NEW_ORDERS, true);
+});
+
+test('runtime mode cannot be configured to a broker-mutating mode',()=>{
+  assert.throws(()=>loadEnvironment({THETA_RUNTIME_MODE:'PAPER_EXECUTION'}),/THETA_RUNTIME_MODE/);
 });

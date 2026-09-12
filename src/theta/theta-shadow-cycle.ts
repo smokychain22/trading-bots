@@ -61,6 +61,7 @@ export interface ThetaShadowCycleConfig {
   readonly universePolicy: UniversePolicy;
   readonly universeCandidates: readonly UnderlyingCandidateInput[]; // caller supplies the raw per-underlying facts; a full Alpaca-asset-universe fetch is not built this pass
   readonly universeCandidatesOrigin: ProvenanceOrigin; // caller must honestly declare whether these facts came from a real asset-discovery call or a fixture/manual list -- drives automatic provenance, never guessed
+  readonly evaluationMode?: 'STANDARD' | 'SHADOW_EVIDENCE';
   readonly optionExpirationDateGte: string;
   readonly optionExpirationDateLte: string;
   readonly optionType: 'put';
@@ -365,7 +366,15 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
 
   const { decisions, funnel } = evaluateUniverse(config.universePolicy, config.universeCandidates);
   const inputsBySymbol = new Map(config.universeCandidates.map((c) => [c.symbol, c]));
-  const ranked = rankEligibleUnderlyings(decisions, inputsBySymbol);
+  const ranked = config.evaluationMode === 'SHADOW_EVIDENCE'
+    ? decisions.filter((decision) => decision.state !== 'REJECTED').map((decision) => inputsBySymbol.get(decision.symbol))
+      .filter((input): input is UnderlyingCandidateInput => input !== undefined && input.currentPrice !== null
+        && input.avgDollarVolume !== null && input.hasUsableOptionChain !== false)
+      .sort((a,b) => (b.avgDollarVolume as number)-(a.avgDollarVolume as number) || a.symbol.localeCompare(b.symbol))
+      .map((input,index) => ({symbol:input.symbol,rank:index+1,rankingFeature:'avgDollarVolume' as const,
+        rankingValue:input.avgDollarVolume as number,
+        reason:`shadow-evidence lattice rank ${index+1}; soft UNKNOWN/DEFERRED evidence is retained without promoting eligibility`}))
+    : rankEligibleUnderlyings(decisions, inputsBySymbol);
   const topRanked = ranked[0];
 
   if (topRanked === undefined) {

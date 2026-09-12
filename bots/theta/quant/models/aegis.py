@@ -89,9 +89,9 @@ class AegisInputs:
     liquidity_acceptable: Optional[bool]
     execution_quality_acceptable: Optional[bool]
     provider_state: Optional[str]
-    stress_gap_detected: bool
-    stress_iv_shock_detected: bool
-    stress_spread_widening_detected: bool
+    stress_gap_detected: Optional[bool]
+    stress_iv_shock_detected: Optional[bool]
+    stress_spread_widening_detected: Optional[bool]
 
 
 @dataclass(frozen=True)
@@ -150,7 +150,10 @@ def _provider(policy: AegisPolicy, inputs: AegisInputs) -> RiskFamilyAssessment:
 
 
 def _system(inputs: AegisInputs) -> RiskFamilyAssessment:
-    stress_count = sum([inputs.stress_gap_detected, inputs.stress_iv_shock_detected, inputs.stress_spread_widening_detected])
+    stress_states = [inputs.stress_gap_detected, inputs.stress_iv_shock_detected, inputs.stress_spread_widening_detected]
+    if any(state is None for state in stress_states):
+        return RiskFamilyAssessment(RiskFamily.SYSTEM, RiskState.HOLD_ONLY, [ReasonCode("SYSTEM_STRESS_STATE_UNKNOWN", -1, "One or more system stress inputs are UNKNOWN.")])
+    stress_count = sum(bool(state) for state in stress_states)
     if stress_count >= 2:
         return RiskFamilyAssessment(RiskFamily.SYSTEM, RiskState.HOLD_ONLY, [ReasonCode("COMPOUND_STRESS_DETECTED", -1, f"{stress_count} simultaneous stress signals detected.")])
     if stress_count == 1:

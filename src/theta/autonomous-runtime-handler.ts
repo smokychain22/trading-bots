@@ -18,8 +18,8 @@ export default async function autonomousRuntimeHandler(
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
-  if (request.method !== 'GET') {
-    response.setHeader('Allow', 'GET');
+  if (request.method !== 'POST') {
+    response.setHeader('Allow', 'POST');
     send(response, 405, { error: 'method_not_allowed' });
     return;
   }

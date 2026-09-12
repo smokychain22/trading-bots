@@ -11,6 +11,8 @@ type BaseApplication = {
 };
 
 export type LifecycleApplication = BaseApplication & (
+  | { readonly eventKind: 'SHORT_PUT_OPEN'; readonly optionLegId: string; readonly optionContractId: string;
+      readonly quantity: number; readonly entryPricePerShare: number; readonly entryCreditDebit: number }
   | { readonly eventKind: 'SHORT_PUT_ASSIGNMENT'; readonly optionLegId: string; readonly stockLotId: string;
       readonly shares: number; readonly strikePrice: number; readonly brokerBasisPerShare: number | null;
       readonly economicBasisPerShare: number; readonly realizedOptionPnl: number }
@@ -57,6 +59,7 @@ interface OpenLegEconomics {
 }
 
 function transitionPath(application: LifecycleApplication, current: ThetaLifecycleState): readonly ThetaLifecycleState[] {
+  if (application.eventKind === 'SHORT_PUT_OPEN' && current === 'WAIT') return ['CSP_PROPOSED', 'CSP_OPEN'];
   if (application.eventKind === 'SHORT_PUT_ASSIGNMENT' && current === 'CSP_OPEN') return ['ASSIGNED', 'STOCK_HELD', 'RECOVERY_WAIT'];
   if (application.eventKind === 'COVERED_CALL_ASSIGNMENT' && current === 'CC_OPEN') return ['CALL_AWAY', 'CLOSED'];
   if (application.eventKind === 'OPTION_EXPIRATION') {
@@ -146,6 +149,23 @@ export class PostgresLifecycleApplicationStore {
 
   private async mutateEconomicState(client: PoolClient, application: LifecycleApplication,
     current: ThetaLifecycleState): Promise<void> {
+    if (application.eventKind === 'SHORT_PUT_OPEN') {
+      if (application.quantity <= 0) throw new Error('SHORT_PUT_QUANTITY_INVALID');
+      const contract = await this.contractEconomics(client, application.optionContractId, application.chainId);
+      if (contract.optionType !== 'PUT' || contract.contractUnderlyingId !== contract.chainUnderlyingId
+        || !closeEnough(application.entryCreditDebit,
+          application.entryPricePerShare * contract.multiplier * application.quantity)) {
+        throw new Error('SHORT_PUT_OPEN_ECONOMICS_INVALID');
+      }
+      await client.query(
+        `INSERT INTO trade.option_leg(option_leg_id,chain_id,option_contract_id,decision_id,side,quantity,
+           entry_price_per_share,entry_credit_debit,opened_at)
+         VALUES($1,$2,$3,$4,'SHORT',$5,$6,$7,$8)`,
+        [application.optionLegId,application.chainId,application.optionContractId,application.decisionId,
+          application.quantity,application.entryPricePerShare,application.entryCreditDebit,application.occurredAt],
+      );
+      return;
+    }
     if (application.eventKind === 'SHORT_PUT_ASSIGNMENT') {
       if (application.providerActivityRefHash === null) throw new Error('BROKER_ASSIGNMENT_EVIDENCE_REQUIRED');
       const leg = await this.openLegEconomics(client, application.optionLegId, application.chainId);

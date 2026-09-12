@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
-import type { BrokerActivity, BrokerCalendarSession, BrokerMarketClock, BrokerOrderSnapshot, PaperBrokerAdapter } from './broker.js';
+import type { BrokerActivity, BrokerCalendarSession, BrokerMarketClock, BrokerOrderSnapshot } from './broker.js';
+import type { ReadOnlyPaperBroker } from './read-only-paper-broker.js';
 import { isValidOrderIntentTransition, type OrderIntentState } from '../theta/order-intent-state.js';
 
 const accountSchema = z.object({ id: z.string().min(1), status: z.string().nullable().optional() }).passthrough();
@@ -153,7 +154,7 @@ function marketDateAt(iso: string): string {
  * different broker identity than the designated master connection.
  */
 export async function runReadOnlyBrokerReconciliation(input: {
-  readonly broker: PaperBrokerAdapter;
+  readonly broker: ReadOnlyPaperBroker;
   readonly store: BrokerReconciliationStore;
   readonly connectionId: string;
   readonly expectedProviderAccountRef: string;

@@ -124,6 +124,11 @@ class ExecutionQualityFamilyTests(unittest.TestCase):
 
 
 class StressTests(unittest.TestCase):
+    def test_unknown_stress_input_holds_new_risk(self):
+        assessment = assess_aegis(_policy(), _clean_inputs(stress_iv_shock_detected=None))
+        self.assertEqual(assessment.new_risk_state, RiskState.HOLD_ONLY)
+        self.assertTrue(any(reason.code == "SYSTEM_STRESS_STATE_UNKNOWN" for reason in assessment.reasons))
+
     def test_single_stress_signal_reduces_new_risk(self):
         assessment = assess_aegis(_policy(), _clean_inputs(stress_gap_detected=True))
         self.assertEqual(assessment.new_risk_state, RiskState.ALLOW_REDUCED)

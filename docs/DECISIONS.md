@@ -367,6 +367,24 @@ loader. It cannot override a real process value or pass validation as a credenti
 boolean flag. Standard dotenv parsing still owns quote removal, and arbitrary secret
 values are never modified.
 
+## 2026-09-12: Production shadow capture is a broker-read-only runtime
+
+`THETA_RUNTIME_MODE` has one accepted value, `THETA_SHADOW_ONLY`. The autonomous
+runtime receives a frozen broker interface that exposes account, positions, open orders,
+activities, clock, calendar, assets, contracts, bars, and snapshots. Submit, replace,
+cancel, exercise, and do-not-exercise operations do not exist on that interface.
+
+The SHADOW bot context is resolved from exactly one database-designated
+`MASTER_THETA_PAPER` account and an exact broker-account identity match. Its strategy,
+feature, risk, execution, and cost records are immutable, hash-checked, unvalidated
+research versions. A semantic-version/hash mismatch fails closed. The credential column
+contains only a reference to the existing encrypted token row.
+
+Replay observations use the option type stored on the exact contract. Their IDs derive
+from the observation job, making provider retries idempotent. Missing observations become
+explicit missed evidence and never implied fills. A closed economic chain with no option,
+stock, or fee facts cannot produce a zero-PnL outcome label.
+
 ## 2026-09-12: empirical evidence is a separate immutable production concern
 
 Candidate features, resolved outcomes, quote replay observations, and dataset identities

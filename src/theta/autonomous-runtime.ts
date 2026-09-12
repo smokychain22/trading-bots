@@ -6,8 +6,6 @@ import {
   PostgresBrokerReconciliationStore, runReadOnlyBrokerReconciliation,
   type BrokerReconciliationResult,
 } from '../execution/broker-reconciliation-worker.js';
-import { PaperOrderCoordinator } from '../execution/paper-order-coordinator.js';
-import { PostgresPaperOrderStore } from '../execution/postgres-paper-order-store.js';
 import { MasterEncryptedStoreBrokerCredentialProvider } from '../customer/broker-credential-provider.js';
 import { customerStore } from '../customer/customer-store.js';
 import { dispatchDueJobs, type DueJob } from './scheduler-engine.js';
@@ -16,6 +14,12 @@ import { PostgresSchedulerCheckpointRepository } from './postgres-scheduler-chec
 import { PostgresManagementInputStore } from './management-input-state.js';
 import { buildManagementActionFrontier } from './management-action-frontier.js';
 import { applyConfirmedTerminalLifecycle } from '../execution/postgres-broker-lifecycle-orchestrator.js';
+import { asReadOnlyPaperBroker, assertShadowBrokerHasNoMutationSurface, type ReadOnlyPaperBroker } from '../execution/read-only-paper-broker.js';
+import type { AlpacaProviderConfig } from './alpaca-provider.js';
+import { processDueExecutionObservations, runProductionShadowEvidenceScan } from '../research/production-shadow-runtime.js';
+import { PostgresOutcomeResolver } from '../research/outcome-resolver.js';
+import { shadowSessionDecision } from '../research/shadow-evidence-runtime.js';
+import { applyConfirmedFillLifecycle } from '../execution/postgres-broker-fill-lifecycle-orchestrator.js';
 
 export const autonomousRuntimeVersion = 'theta-autonomous-runtime-v1' as const;
 export const autonomousPolicyVersion = 'theta-scheduler-policy-v1' as const;
@@ -45,7 +49,8 @@ interface MasterRuntimeContext {
   readonly connectionId: string;
   readonly providerAccountRef: string;
   readonly executionAccountId: string | null;
-  readonly broker: AlpacaPaperBrokerAdapter;
+  readonly broker: ReadOnlyPaperBroker;
+  readonly alpaca: AlpacaProviderConfig;
 }
 
 const minuteBucket = (date: Date): string => date.toISOString().slice(0, 16);
@@ -106,7 +111,9 @@ export class PostgresRuntimeCycleStore {
       connectionId: String(connection.rows[0].follower_account_id),
       providerAccountRef: resolved.providerAccountRef,
       executionAccountId: execution.rows[0]?.execution_account_id == null ? null : String(execution.rows[0].execution_account_id),
-      broker: new AlpacaPaperBrokerAdapter({ baseUrl: PAPER_HOST, authentication: resolved.authentication }),
+      broker: asReadOnlyPaperBroker(new AlpacaPaperBrokerAdapter({ baseUrl: PAPER_HOST, authentication: resolved.authentication })),
+      alpaca: { tradingApiBase:PAPER_HOST,marketDataApiBase:'https://data.alpaca.markets',
+        apiKey:resolved.authentication.apiKey,apiSecret:resolved.authentication.apiSecret },
     };
   }
 
@@ -151,6 +158,7 @@ export async function runAutonomousRuntimeCycle(
   if (!environment.PAPER_PAUSE_NEW_ORDERS || environment.MASTER_PAPER_EXECUTION_ENABLED || environment.FOLLOWER_PAPER_EXECUTION_ENABLED) {
     throw new Error('FIRST_PAPER_ORDER_BOUNDARY_NOT_LOCKED');
   }
+  if (environment.THETA_RUNTIME_MODE !== 'THETA_SHADOW_ONLY') throw new Error('THETA_SHADOW_ONLY_REQUIRED');
   const bucket = minuteBucket(now);
   const correlationId = `theta-runtime:${bucket}`;
   const workerInstance = `${process.env.VERCEL_REGION ?? 'local'}:${randomUUID()}`;
@@ -165,6 +173,7 @@ export async function runAutonomousRuntimeCycle(
   }
   try {
   const master = await cycleStore.resolveMasterContext(environment);
+  assertShadowBrokerHasNoMutationSurface(master.broker);
   const checkpointStore = new PostgresSchedulerCheckpointRepository(pool, 3);
   const [expired, retryable] = await Promise.all([
     checkpointStore.findExpiredLeases(now.toISOString()),
@@ -193,13 +202,10 @@ export async function runAutonomousRuntimeCycle(
           ? succeeded() : degraded('BROKER_SESSION_STATE_UNKNOWN', retryAt);
       }
       if (jobType === 'ORDER_RECONCILIATION') {
+        if (reconciliation === null) return degraded('BROKER_RECONCILIATION_REQUIRED', retryAt);
         if (master.executionAccountId === null) return skipped('MASTER_EXECUTION_ACCOUNT_NOT_CREATED');
-        const coordinator = new PaperOrderCoordinator(
-          master.broker, new PostgresPaperOrderStore(pool, master.executionAccountId),
-          { pauseNewOrders: true, masterEnabled: false, followerEnabled: false },
-        );
-        await coordinator.recoverAfterRestart();
-        return succeeded();
+        return reconciliation.localOnlyIntentCount > 0
+          ? degraded('AMBIGUOUS_ORDER_REQUIRES_READ_ONLY_RECONCILIATION', retryAt) : succeeded();
       }
       if (jobType === 'POSITION_MANAGEMENT_SCAN') {
         if (reconciliation === null) return degraded('BROKER_RECONCILIATION_REQUIRED', retryAt);
@@ -218,7 +224,9 @@ export async function runAutonomousRuntimeCycle(
       if (jobType === 'ASSIGNMENT_EXPIRY_RECONCILIATION') {
         if (reconciliation===null) return degraded('BROKER_RECONCILIATION_REQUIRED',retryAt);
         const lifecycle=await applyConfirmedTerminalLifecycle(pool,master.connectionId,reconciliation.snapshotId,reconciliation.observedAt);
-        return lifecycle.unresolved>0 ? degraded('BROKER_LIFECYCLE_FACTS_UNRESOLVED',retryAt) : succeeded();
+        const fills=await applyConfirmedFillLifecycle(pool,master.connectionId,reconciliation.observedAt);
+        await new PostgresOutcomeResolver(pool).resolveClosedChains(reconciliation.observedAt);
+        return lifecycle.unresolved>0||fills.unresolved>0 ? degraded('BROKER_LIFECYCLE_FACTS_UNRESOLVED',retryAt) : succeeded();
       }
       if (jobType === 'PENDING_ORDER_MANAGEMENT') {
         return reconciliation === null ? degraded('BROKER_RECONCILIATION_REQUIRED', retryAt) : succeeded();
@@ -228,10 +236,21 @@ export async function runAutonomousRuntimeCycle(
           ? skipped('NO_DUE_WAIT_DECISIONS') : degraded('WAIT_REEVALUATION_INPUT_ASSEMBLY_INCOMPLETE', retryAt);
       }
       if (jobType === 'OPPORTUNITY_SCAN') {
-        return degraded('PRODUCTION_QUANT_RUNTIME_NOT_DEPLOYABLE_ON_CURRENT_VERCEL_NODE_FUNCTION', retryAt);
+        const session=shadowSessionDecision(reconciliation?.marketOpen??null,reconciliation?.calendarSessionConfirmed??false);
+        if (session==='MARKET_CLOSED') return skipped('MARKET_CLOSED_NO_SHADOW_EVIDENCE');
+        if (session!=='RUN') {
+          return degraded('OPTION_MARKET_SESSION_UNCONFIRMED', retryAt);
+        }
+        const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,now:()=>new Date().toISOString()});
+        return scan.completeness==='COMPLETE' ? succeeded() : degraded(`SHADOW_SCAN_${scan.completeness}`,retryAt);
       }
       if (jobType === 'COPY_FANOUT_PREPARATION') return skipped('FOLLOWER_SUBMISSION_LOCKED');
-      if (jobType === 'ACCOUNT_STATE_REFRESH' || jobType === 'MARKET_STATE_REFRESH') {
+      if (jobType === 'MARKET_STATE_REFRESH') {
+        if (reconciliation === null || reconciliation.dataQuality !== 'GOOD') return degraded('BROKER_RECONCILIATION_REQUIRED',retryAt);
+        await processDueExecutionObservations({pool,alpaca:master.alpaca,now:()=>new Date().toISOString()});
+        return succeeded();
+      }
+      if (jobType === 'ACCOUNT_STATE_REFRESH') {
         return reconciliation === null || reconciliation.dataQuality !== 'GOOD'
           ? degraded('BROKER_RECONCILIATION_REQUIRED', retryAt) : succeeded();
       }

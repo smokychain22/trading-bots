@@ -33,7 +33,7 @@ export interface ManagementInputState {
     readonly unrealizedStockPnl: number | null;
     readonly realizedStockPnl: number;
     readonly dividends: number;
-    readonly fees: number;
+    readonly fees: number | null;
     readonly wholeChainPnl: number | null;
   };
   readonly market: {
@@ -156,13 +156,13 @@ export function assembleManagementInput(row: Row, input: {
   const realizedOptionPnl = numeric(row.realized_option_pnl) ?? 0;
   const realizedStockPnl = numeric(row.realized_stock_pnl) ?? 0;
   const dividends = numeric(row.dividends) ?? 0;
-  const fees = numeric(row.fees) ?? 0;
+  const fees = row.unknown_fill_fees === true ? null : numeric(row.fees) ?? 0;
   const optionMark = entryCreditDebit !== null && ask !== null && multiplier !== null && contracts !== null
     ? entryCreditDebit - ask * multiplier * contracts : null;
   const stockMtm = stockShares === 0 ? 0
     : stockBasis !== null && stockMark !== null ? (stockMark - stockBasis) * stockShares : null;
   const hasOpenOption = contractSymbol !== null && contracts !== null && contracts > 0;
-  const wholeChainPnl = (!hasOpenOption || optionMark !== null) && stockMtm !== null
+  const wholeChainPnl = (!hasOpenOption || optionMark !== null) && stockMtm !== null && fees !== null
     ? realizedOptionPnl + (optionMark ?? 0) + realizedStockPnl + stockMtm + dividends - fees : null;
   const expiration = text(row.expiration_date)?.slice(0, 10) ?? null;
   const spot = stockMark ?? numeric(snapshot.underlyingState && object(snapshot.underlyingState).last);
@@ -195,6 +195,7 @@ export function assembleManagementInput(row: Row, input: {
   required('context.regimeState', snapshot.regimeState ?? null);
   required('context.opportunityAlternatives', snapshot.strategyRouterState ?? null);
   required('context.strategyVersions', snapshot.versions ?? null);
+  required('economics.fees', fees);
   if (row.fusion_snapshot_id == null) unknownFields.push('fusionSnapshotId');
 
   const hardBlockers: string[] = [];
@@ -261,7 +262,7 @@ export class PostgresManagementInputStore {
         oc.strike,oc.expiration_date,oc.multiplier,
         oq.bid,oq.ask,oq.as_of AS quote_as_of,oq.feed,oq.quality AS quote_quality,
         totals.realized_option_pnl,stocks.open_stock_shares,stocks.stock_basis_per_share,
-        totals.realized_stock_pnl,totals.dividends,totals.fees,
+        totals.realized_stock_pnl,totals.dividends,totals.fees,totals.unknown_fill_fees,
         a.buying_power,a.options_buying_power,a.as_of AS account_as_of,fs.fusion_snapshot_id,fs.snapshot_json,
         CASE WHEN bp.symbol IS NULL THEN NULL ELSE jsonb_build_object(
           'averageEntryPrice',bp.average_entry_price,'currentPrice',bp.current_price,
@@ -285,7 +286,9 @@ export class PostgresManagementInputStore {
         SELECT COALESCE(sum(l.realized_pnl),0) AS realized_option_pnl,
           COALESCE((SELECT sum(s.realized_pnl) FROM trade.stock_lot s WHERE s.chain_id=ec.chain_id),0) AS realized_stock_pnl,
           COALESCE((SELECT sum(d.amount_per_share*s.shares) FROM trade.dividend_event d JOIN trade.stock_lot s ON s.stock_lot_id=d.stock_lot_id WHERE s.chain_id=ec.chain_id),0) AS dividends,
-          COALESCE((SELECT sum(f.amount) FROM trade.fee_event f WHERE f.chain_id=ec.chain_id),0) AS fees
+          COALESCE((SELECT sum(f.amount) FROM trade.fee_event f WHERE f.chain_id=ec.chain_id),0) AS fees,
+          EXISTS(SELECT 1 FROM trade.fill fi JOIN trade.broker_order bo ON bo.broker_order_id=fi.broker_order_id
+            JOIN trade.order_intent oi ON oi.order_intent_id=bo.order_intent_id WHERE oi.chain_id=ec.chain_id AND fi.fees IS NULL) AS unknown_fill_fees
         FROM trade.option_leg l WHERE l.chain_id=ec.chain_id
       ) totals ON true
       LEFT JOIN LATERAL (

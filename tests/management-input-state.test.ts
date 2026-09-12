@@ -9,6 +9,7 @@ const base = {
   quote_as_of: '2026-09-12T14:00:00.000Z', feed: 'OPRA', quote_quality: 'GOOD', realized_option_pnl: '-50',
   open_stock_shares: '0', stock_basis_per_share: null, realized_stock_pnl: '0', dividends: '0', fees: '2',
   buying_power: '50000', options_buying_power: '40000', fusion_snapshot_id: 'fusion-1',
+  unknown_fill_fees: false,
   snapshot_json: { eventState: { state: 'CLEAR' }, riskState: { assignmentCapacity: 2 },
     portfolioExposure: { concentration: 0.1, sectorCorrelation: 0.2 }, expertPriorState: { state: 'GOOD' } },
   broker_position: null,
@@ -34,6 +35,14 @@ test('missing quote and multiplier stay unknown and create mechanical blockers',
   assert.deepEqual(state.hardBlockers, ['EXECUTABLE_QUOTE_UNAVAILABLE', 'MULTIPLIER_UNKNOWN']);
   assert.ok(state.unknownFields.includes('market.iv'));
   assert.ok(state.unknownFields.includes('context.dividendExDateState'));
+});
+
+test('unknown broker fill fees keep whole-chain economics unknown',()=>{
+  const state=assembleManagementInput({...base,unknown_fill_fees:true},{managementInputSnapshotId:'input-fees',
+    reconciliationSnapshotId:'recon-1',observedAt:'2026-09-12T14:00:00.000Z'});
+  assert.equal(state.economics.fees,null);
+  assert.equal(state.economics.wholeChainPnl,null);
+  assert.ok(state.unknownFields.includes('economics.fees'));
 });
 
 test('real broker stock marks expose assigned inventory losses', () => {

@@ -23,6 +23,7 @@ try {
     "016_broker_lifecycle_evidence",
     "017_management_decision_vertical_slice",
     "018_point_in_time_evidence_pipeline",
+    "019_real_shadow_evidence_activation",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -47,6 +48,8 @@ try {
     ["research", "theta_outcome_label"], ["research", "theta_counterfactual_outcome"],
     ["research", "theta_dataset_export"], ["ops", "decision_trigger_evidence"],
     ["trade", "decision_invalidation_snapshot"],
+    ["research", "theta_shadow_scan_run"], ["research", "theta_shadow_scan_member"],
+    ["research", "theta_execution_observation_job"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -136,6 +139,7 @@ try {
     brokerLifecycleEvidence: "ENFORCED",
     managementDecisionVerticalSlice: "ENFORCED",
     pointInTimeEvidencePipeline: "ENFORCED",
+    realShadowEvidenceActivation: "ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
     brokerOrders: orderCount.rows[0]?.count ?? 0,
