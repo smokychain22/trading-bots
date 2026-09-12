@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { BrokerActivity, BrokerCalendarSession, BrokerMarketClock, BrokerOrderSnapshot } from './broker.js';
 import type { ReadOnlyPaperBroker } from './read-only-paper-broker.js';
 import { isValidOrderIntentTransition, type OrderIntentState } from '../theta/order-intent-state.js';
+import { brokerOrderIntentState } from './broker-order-state.js';
 
 const accountSchema = z.object({ id: z.string().min(1), status: z.string().nullable().optional() }).passthrough();
 const positionSchema = z.object({
@@ -52,16 +53,7 @@ export interface ReconciledBrokerOrder {
   readonly brokerIntentState: OrderIntentState | null;
 }
 
-export function brokerOrderIntentState(order: BrokerOrderSnapshot): OrderIntentState | null {
-  if (order.filledQty >= order.qty && order.qty > 0) return 'FILLED';
-  if (order.filledQty > 0) return ['canceled', 'expired', 'rejected'].includes(order.status) ? 'CANCELED' : 'PARTIAL';
-  const byStatus: Readonly<Record<string, OrderIntentState>> = {
-    accepted: 'ACKNOWLEDGED', new: 'ACKNOWLEDGED', pending_new: 'SUBMITTED',
-    partially_filled: 'PARTIAL', filled: 'FILLED', pending_cancel: 'CANCEL_REQUESTED',
-    canceled: 'CANCELED', expired: 'EXPIRED', rejected: 'REJECTED',
-  };
-  return byStatus[order.status] ?? null;
-}
+export { brokerOrderIntentState } from './broker-order-state.js';
 
 export interface BrokerReconciliationSnapshotInput {
   readonly snapshotId: string;

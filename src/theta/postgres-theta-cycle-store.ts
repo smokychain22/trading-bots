@@ -335,7 +335,11 @@ export class PostgresThetaCycleStore {
         flow:{optionomicsNetFlowWindows:flowWindows,interpretation:'UNMODELED_RESEARCH_CONTEXT'},
         ownership:{state:snapshot.expertPriorState},account:snapshot.accountState,portfolio:snapshot.portfolioExposure,
         aegis:{state:cycle.orchestration?.aegis ?? null},execution:{...market,executable:contract.executable,
-          proposedLimit:alternative?.executionRecommendedAction ?? null},knownEconomics:candidate.economics ?? {},
+          // Execution quality currently decides SUBMIT/SKIP but does not price
+          // an order. Keep the limit UNKNOWN until a fresh executable OPRA BBO
+          // is passed through the versioned limit-price policy immediately
+          // before submission. An action string must never masquerade as price.
+          proposedLimit:null,recommendedAction:alternative?.executionRecommendedAction ?? null},knownEconomics:candidate.economics ?? {},
         unknownEconomics:candidate.economics?.ev_net===null?[candidate.economics.ev_net_unknown_reason]:[],
         hardBlockers:candidate.actionFeasible?[]:candidate.reasons.filter((reason) => reason.polarity<0).map((reason) => reason.code),
         softEvidence:candidate.reasons,provenance,lineage:{strategyVersion:String(versions.strategyVersion ?? context.strategyVersionId),

@@ -28,6 +28,7 @@ try {
     "021_disabled_copy_planning",
     "022_disabled_copy_engine_closure",
     "023_shadow_virtual_trader",
+    "024_paper_execution_lineage",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -103,6 +104,13 @@ try {
     EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='trade' AND table_name='order_intent' AND constraint_name='ck_order_intent_position_intent') AS has_constraint`);
   if (!intentProtection.rows[0]?.has_column || !intentProtection.rows[0]?.has_constraint)
     throw new Error("EXPLICIT_POSITION_INTENT_PROTECTION_MISSING");
+  const executionLineage=await client.query(`SELECT
+    count(*) FILTER(WHERE column_name IN ('quote_source','quote_feed','quote_content_hash'))::int AS column_count,
+    EXISTS(SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='trade'
+      AND table_name='order_intent' AND constraint_name='ck_order_intent_quote_lineage') AS has_constraint
+    FROM information_schema.columns WHERE table_schema='trade' AND table_name='order_intent'`);
+  if(executionLineage.rows[0]?.column_count!==3||!executionLineage.rows[0]?.has_constraint)
+    throw new Error('PAPER_EXECUTION_LINEAGE_PROTECTION_MISSING');
   const intentNullGuard = await client.query(`SELECT
     pg_get_constraintdef(oid) AS definition, convalidated
     FROM pg_constraint WHERE conrelid='trade.order_intent'::regclass
@@ -193,6 +201,7 @@ try {
     optionalFollowerLimits: "ENFORCED",
     paperExecutionGate: "LOCKED",
     explicitOptionPositionIntent: "ENFORCED",
+    paperExecutionLineage:"ENFORCED",
     autonomousRuntimeEvidence: "ENFORCED",
     replayFeatureLabelSeparation: "ENFORCED",
     brokerLifecycleEvidence: "ENFORCED",

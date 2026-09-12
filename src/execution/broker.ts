@@ -64,6 +64,7 @@ export interface PaperBrokerAdapter {
   getAccount(): Promise<unknown>;
   getPositions(): Promise<readonly unknown[]>;
   getOrders(status?: 'open' | 'closed' | 'all'): Promise<readonly BrokerOrderSnapshot[]>;
+  getOrder(providerOrderId: string): Promise<BrokerOrderSnapshot | null>;
   getOrderByClientOrderId(clientOrderId: string): Promise<BrokerOrderSnapshot | null>;
   getActivities(activityTypes?: readonly string[]): Promise<readonly BrokerActivity[]>;
   getClock?(): Promise<BrokerMarketClock>;
@@ -183,6 +184,8 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
   }
 
   private async request(path: string, init: RequestInit = {}, allowNotFound = false): Promise<unknown> {
+    const method = init.method ?? 'GET';
+    const isMutation = method === 'POST' || method === 'PATCH' || method === 'DELETE';
     let response: Response;
     try {
       response = await this.fetchImpl(new URL(path, this.baseUrl), { ...init, headers: { ...this.headers, ...init.headers } });
@@ -191,7 +194,8 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
     }
     if (allowNotFound && response.status === 404) return null;
     if (!response.ok) {
-      const category = response.status === 401 ? 'INVALID_AUTH'
+      const category = isMutation && response.status >= 500 ? 'AMBIGUOUS_NETWORK'
+        : response.status === 401 ? 'INVALID_AUTH'
         : response.status === 403 ? 'NOT_ENTITLED'
           : response.status === 429 ? 'RATE_LIMITED'
             : 'BROKER_REJECTED';
@@ -201,7 +205,8 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
     try {
       return await response.json();
     } catch {
-      throw new AlpacaPaperBrokerError('MALFORMED_RESPONSE', response.status, 'Alpaca PAPER returned an invalid JSON response.');
+      throw new AlpacaPaperBrokerError(isMutation ? 'AMBIGUOUS_NETWORK' : 'MALFORMED_RESPONSE', response.status,
+        'Alpaca PAPER returned an invalid JSON response.');
     }
   }
 
@@ -216,6 +221,10 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
   }
   async getOrderByClientOrderId(clientOrderId: string): Promise<BrokerOrderSnapshot | null> {
     const body = await this.request(`/v2/orders:by_client_order_id?client_order_id=${encodeURIComponent(clientOrderId)}`, {}, true);
+    return body === null ? null : parseBrokerOrder(body);
+  }
+  async getOrder(providerOrderId: string): Promise<BrokerOrderSnapshot | null> {
+    const body = await this.request(`/v2/orders/${encodeURIComponent(providerOrderId)}`, {}, true);
     return body === null ? null : parseBrokerOrder(body);
   }
   async getActivities(activityTypes?: readonly string[]): Promise<readonly BrokerActivity[]> {
@@ -252,15 +261,15 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
     return body.map((session) => ({ date: session.date, open: session.open ?? null, close: session.close ?? null }));
   }
   async submitOrder(order: BrokerOrderRequest, authorization: BrokerMutationAuthorization): Promise<BrokerOrderSnapshot> {
-    assertBrokerMutationAuthorized(authorization, order.client_order_id, order.qty);
+    assertBrokerMutationAuthorized(authorization, order.client_order_id, order.qty, 'SUBMIT');
     return parseBrokerOrder(await this.request('/v2/orders', { method: 'POST', body: JSON.stringify(order) }));
   }
   async replaceOrder(providerOrderId: string, replacement: Pick<BrokerOrderRequest, 'qty' | 'limit_price' | 'time_in_force' | 'client_order_id'>, authorization: BrokerMutationAuthorization): Promise<BrokerOrderSnapshot> {
-    assertBrokerMutationAuthorized(authorization, replacement.client_order_id, replacement.qty);
+    assertBrokerMutationAuthorized(authorization, replacement.client_order_id, replacement.qty, 'REPLACE');
     return parseBrokerOrder(await this.request(`/v2/orders/${encodeURIComponent(providerOrderId)}`, { method: 'PATCH', body: JSON.stringify(replacement) }));
   }
   async cancelOrder(providerOrderId: string, authorization: BrokerMutationAuthorization): Promise<void> {
-    assertBrokerMutationAuthorized(authorization);
+    assertBrokerMutationAuthorized(authorization, undefined, undefined, 'CANCEL');
     await this.request(`/v2/orders/${encodeURIComponent(providerOrderId)}`, { method: 'DELETE' });
   }
 }

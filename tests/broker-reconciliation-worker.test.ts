@@ -42,6 +42,7 @@ function broker(accountId = 'paper-account-owner') {
     getPositions: async () => [{ symbol: 'MSFT', qty: '100', side: 'long', asset_class: 'us_equity' }],
     getOrders: async () => [order(), order({ id: 'broker-external', clientOrderId: 'manual-1', symbol: 'MSFT' })],
     getOrderByClientOrderId: async () => null,
+    getOrder: async () => null,
     getActivities: async () => activities,
     getClock: async () => ({
       timestamp: '2026-09-11T14:32:00Z', isOpen: true,

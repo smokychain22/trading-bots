@@ -5,6 +5,7 @@ export interface PaperExecutionControl {
 }
 
 export interface ExecutionGateContext {
+  readonly operation?: 'SUBMIT' | 'REPLACE' | 'CANCEL';
   readonly accountKind: 'MASTER_API_KEY' | 'FOLLOWER_API_KEY' | 'FOLLOWER_OAUTH';
   readonly environment: 'PAPER';
   readonly baseHostname: string;
@@ -14,6 +15,7 @@ export interface ExecutionGateContext {
   readonly aegisState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO';
   readonly quantity: number;
   readonly quoteFresh: boolean;
+  readonly priceEvidence: 'ALPACA_OPRA_BBO' | 'ALPACA_STOCK_BBO' | 'UNVERIFIED';
   readonly decisionExpiresAt: string;
   readonly clientOrderId: string;
   readonly now: string;
@@ -30,10 +32,12 @@ export interface BrokerMutationAuthorization {
   readonly authorizedAt: string;
   readonly clientOrderId: string;
   readonly quantity: number;
+  readonly operation: 'SUBMIT' | 'REPLACE' | 'CANCEL';
 }
 
 export function evaluateExecutionGate(control: PaperExecutionControl, context: ExecutionGateContext): ExecutionGateResult {
   const blockers: string[] = [];
+  const operation = context.operation ?? 'SUBMIT';
   const enabled = context.accountKind === 'MASTER_API_KEY' ? control.masterEnabled : control.followerEnabled;
   if (!enabled) blockers.push(context.accountKind === 'MASTER_API_KEY' ? 'MASTER_EXECUTION_DISABLED' : 'FOLLOWER_EXECUTION_DISABLED');
   if (context.environment !== 'PAPER' || context.baseHostname !== 'paper-api.alpaca.markets') blockers.push('PAPER_ENVIRONMENT_REQUIRED');
@@ -41,15 +45,16 @@ export function evaluateExecutionGate(control: PaperExecutionControl, context: E
   if (!context.accountVerified) blockers.push('ACCOUNT_NOT_VERIFIED');
   if (!context.optionsCapabilityVerified) blockers.push('OPTIONS_CAPABILITY_NOT_VERIFIED');
   if (!context.intentPersisted) blockers.push('INTENT_NOT_PERSISTED');
-  if (!['ALLOW_FULL', 'ALLOW_REDUCED'].includes(context.aegisState)) blockers.push('AEGIS_NOT_APPROVED');
+  if (operation !== 'CANCEL' && context.isNewEntry && !['ALLOW_FULL', 'ALLOW_REDUCED'].includes(context.aegisState)) blockers.push('AEGIS_NOT_APPROVED');
   if (!Number.isInteger(context.quantity) || context.quantity <= 0) blockers.push('QUANTITY_NOT_POSITIVE_INTEGER');
-  if (!context.quoteFresh) blockers.push('QUOTE_NOT_FRESH');
+  if (operation !== 'CANCEL' && !context.quoteFresh) blockers.push('QUOTE_NOT_FRESH');
+  if (operation !== 'CANCEL' && context.priceEvidence === 'UNVERIFIED') blockers.push('EXECUTABLE_PRICE_EVIDENCE_NOT_VERIFIED');
   const expiresAt = Date.parse(context.decisionExpiresAt);
   const now = Date.parse(context.now);
   // Invalid timestamps compare false against everything, including expiry.
   // Missing temporal truth must fail closed before issuing a broker permit.
-  if (!Number.isFinite(expiresAt) || !Number.isFinite(now)) blockers.push('DECISION_TIME_INVALID');
-  else if (expiresAt <= now) blockers.push('DECISION_EXPIRED');
+  if (!Number.isFinite(now) || (operation !== 'CANCEL' && !Number.isFinite(expiresAt))) blockers.push('DECISION_TIME_INVALID');
+  else if (operation !== 'CANCEL' && expiresAt <= now) blockers.push('DECISION_EXPIRED');
   if (context.clientOrderId.trim().length === 0) blockers.push('CLIENT_ORDER_ID_MISSING');
   return { allowed: blockers.length === 0, blockers };
 }
@@ -57,15 +62,16 @@ export function evaluateExecutionGate(control: PaperExecutionControl, context: E
 export function authorizeBrokerMutation(control: PaperExecutionControl, context: ExecutionGateContext): BrokerMutationAuthorization {
   const result = evaluateExecutionGate(control, context);
   if (!result.allowed) throw new Error(`Paper order blocked: ${result.blockers.join(',')}`);
-  const permit = Object.freeze({ authorizedAt: context.now, clientOrderId: context.clientOrderId, quantity: context.quantity });
+  const permit = Object.freeze({ authorizedAt: context.now, clientOrderId: context.clientOrderId, quantity: context.quantity, operation: context.operation ?? 'SUBMIT' });
   issuedPermits.add(permit);
   return permit;
 }
 
-export function assertBrokerMutationAuthorized(permit: BrokerMutationAuthorization, clientOrderId?: string, quantity?: number): void {
+export function assertBrokerMutationAuthorized(permit: BrokerMutationAuthorization, clientOrderId?: string, quantity?: number, operation?: BrokerMutationAuthorization['operation']): void {
   if (!issuedPermits.has(permit)) throw new Error('Broker mutation requires a valid execution-gate permit.');
   if (clientOrderId !== undefined && permit.clientOrderId !== clientOrderId) throw new Error('Execution-gate permit does not match client_order_id.');
   if (quantity !== undefined && permit.quantity !== quantity) throw new Error('Execution-gate permit does not match quantity.');
+  if (operation !== undefined && permit.operation !== operation) throw new Error('Execution-gate permit does not match broker operation.');
 }
 
 export const executionMode = (control: PaperExecutionControl, kind: 'MASTER_API_KEY' | 'FOLLOWER_API_KEY' | 'FOLLOWER_OAUTH'): 'LOCKED' | 'READY' | 'ACTIVE' => {

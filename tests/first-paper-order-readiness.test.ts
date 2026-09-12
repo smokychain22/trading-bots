@@ -26,7 +26,7 @@ const validInput = (): FirstPaperOrderReadinessInput => ({
     ownershipQuality: good('ACCEPTABLE', 'THETA'), eventState: good('CLEAR', 'OPTIONOMICS'),
   },
   quote: {
-    bid: good(1.20), ask: good(1.30), midpoint: good(1.25), proposedLimit: good(1.24, 'EXECUTION_POLICY'),
+    feed:good('OPRA'), bid: good(1.20), ask: good(1.30), midpoint: good(1.25), proposedLimit: good(1.24, 'EXECUTION_POLICY'),
     pricingPolicy:good('PASSIVE_LIMIT_V1','EXECUTION_POLICY'),
     ageSeconds: good(2), maximumAgeSeconds: 10, spreadProtectionPassed: good(true, 'EXECUTION_POLICY'),
   },
@@ -47,7 +47,8 @@ const validInput = (): FirstPaperOrderReadinessInput => ({
     schedulerHealthy: good(true, 'WORKER'), reconciliationHealthy: good(true, 'WORKER'),workerOnline:good(true,'WORKER'),
     workerBuildSha:good('abc123','WORKER'),marketSession:good('OPEN','WORKER'),leaseHealthy:good(true,'DATABASE'),
     providerHealth:good('GOOD','WORKER'),executionBoundary: good('LOCKED_BEFORE_FIRST_POST', 'EXECUTION_CONTROL'),
-    workerMode:'LOCAL_LAPTOP',ownerAuthorization:'NOT_GRANTED',
+    submissionPathReady:good(true,'TEST'),managementPathReady:good(true,'TEST'),lifecyclePathReady:good(true,'TEST'),
+    executableBboReady:good(true,'ALPACA'),workerMode:'LOCAL_LAPTOP',ownerAuthorization:'GRANTED',
   },
 });
 
@@ -116,4 +117,15 @@ test('the first THETA order can only be a SELL_TO_OPEN put on the Paper master',
   assert.ok(receipt.blockers.includes('BROKER_HOST_NOT_EXACT_PAPER_HOST'));
   assert.ok(receipt.blockers.includes('FIRST_THETA_ORDER_MUST_BE_CSP_PUT'));
   assert.ok(receipt.blockers.includes('FIRST_THETA_INTENT_NOT_SELL_TO_OPEN'));
+});
+
+test('indicative quotes and missing owner authorization stay explicit blockers', () => {
+  const input = validInput();
+  const receipt = buildFirstPaperOrderReadinessReceipt({
+    ...input, quote: { ...input.quote, feed: good('INDICATIVE') },
+    operations: { ...input.operations, ownerAuthorization: 'NOT_GRANTED', executableBboReady: good(false) },
+  });
+  assert.ok(receipt.blockers.includes('EXECUTABLE_BBO_NOT_OPRA'));
+  assert.ok(receipt.blockers.includes('EXECUTABLE_BBO_NOT_READY'));
+  assert.ok(receipt.blockers.includes('OWNER_PAPER_AUTHORIZATION_NOT_GRANTED'));
 });

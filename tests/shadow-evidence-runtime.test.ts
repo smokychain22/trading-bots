@@ -64,7 +64,7 @@ test('partial contract pagination and interrupted symbols remain explicit',async
 
 test('shadow-only broker object has no submit, replace, cancel, exercise, or DNE function',()=>{
   const mutable={environment:'PAPER',accountKind:'MASTER_API_KEY',getAccount:async()=>({}),getPositions:async()=>[],
-    getOrders:async()=>[],getOrderByClientOrderId:async()=>null,getActivities:async()=>[],
+    getOrders:async()=>[],getOrderByClientOrderId:async()=>null,getOrder:async()=>null,getActivities:async()=>[],
     getClock:async()=>({timestamp:null,isOpen:null,nextOpen:null,nextClose:null}),getCalendar:async()=>[],
     submitOrder:async()=>{throw new Error('should never run');},replaceOrder:async()=>{throw new Error('should never run');},
     cancelOrder:async()=>{throw new Error('should never run');}} as unknown as PaperBrokerAdapter;

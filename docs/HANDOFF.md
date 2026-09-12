@@ -1160,3 +1160,55 @@ WHAT THE OTHER AGENT SHOULD REVIEW: Account permission null handling and the
 execution-feed boundary. Preserve independent master routing and existing quant
 work. NEXT RECOMMENDED TASK: Complete the gated Paper orchestration and management
 path, and resolve executable quote entitlement before enabling broker submission.
+
+## 2026-09-13 Paper execution and lifecycle engineering closure
+
+OWNER: Codex
+
+TASK: Finish the Alpaca Paper mutation, restart, cancel/replace, roll, persistence,
+readiness, and operator-reporting contracts without submitting an order or weakening the
+OPRA boundary.
+
+FILES CHANGED: Broker adapter and reconciliation mapping, execution gate, order
+construction, Paper coordinator, PostgreSQL order store, master execution orchestrator,
+first-order readiness, R7 status, point-in-time evidence persistence, migration 024,
+database verification, operator status, tests, decisions, and this handoff.
+
+WHAT WAS IMPLEMENTED: The exact Paper adapter supports submit, get by broker ID, get by
+client ID, list, cancel, and replace. Every mutation needs an operation-bound execution
+permit. Server failures and malformed successful mutation responses are ambiguous, not
+definitive rejections. The coordinator persists before POST, reconciles before retry,
+survives an accepted POST followed by a local write failure, handles broker state and
+partial-fill truth, cancels safely through fill races, and replaces through a distinct
+lineage intent without increasing exposure. CSP and covered-call rolls are explicit
+close-old then open-new sequences, with the new leg blocked until the old leg is fully
+filled. Migration 024 persists executable quote source, feed, and content hash, and
+enforces OPRA for options and SIP/IEX for stock. Existing lifecycle writers continue to
+handle broker-confirmed CSP, assignment, expiry, recovery stock, covered calls, and
+call-away atomically. Owner Paper authorization now reports GRANTED rather than the old
+hardcoded state.
+
+TESTS RUN: Focused execution tests, full Node, TypeScript, ESLint, build, Python, security,
+PostgreSQL/Redis integration where available, CI, and Production verification.
+
+TEST RESULTS: See the final handoff for exact counts and external verification status.
+No broker mutation was attempted. Master Paper, follower Paper, and live order counts
+remain zero.
+
+KNOWN LIMITATIONS: The current Alpaca account is not entitled to OPRA, so executable option
+BBO is unavailable. The champion strategy still lacks empirical after-cost and tail
+validation. The Production runtime remains shadow-only and its broker object remains
+read-only by design. These gates prevent autonomous Paper entry even though the mutation
+and lifecycle engineering contracts are now present.
+
+RISKS: Enabling execution flags or relabeling indicative data would bypass financial truth.
+Do not activate the separate mutation orchestrator until a real selected decision, current
+account reconciliation, current session, OPRA quote, AEGIS approval, durable command, and
+complete readiness receipt all agree.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Empirical model outputs and strategy promotion evidence
+only. The TypeScript execution and lifecycle path is the Production authority.
+
+NEXT RECOMMENDED TASK: Obtain legitimate OPRA entitlement, capture enough real point-in-time
+and Paper evidence for empirical validation, then run the sanitized first-order receipt.
+Only after it says YES should a later cycle submit the first Paper order.

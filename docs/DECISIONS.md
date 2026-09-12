@@ -498,3 +498,29 @@ submit an order.
 # 2026-09-12: Virtual shadow execution is separate from broker truth
 
 Real-market shadow intents, inferred fills, positions, and account snapshots live under `research.theta_shadow_*`. They do not enter `trade.broker_order`, `trade.fill`, or broker-confirmed economic-chain tables. A virtual fill requires a later observed price-through and displayed size. A simple touch and midpoint are insufficient. Unknown costs keep after-cost account economics null. This preserves provenance while the strategy remains non-executable.
+
+## 2026-09-13: Paper mutation engineering stays separate from the shadow worker
+
+The Production shadow worker remains structurally read-only and keeps no broker mutation
+surface. A separate master-Paper execution orchestrator owns submit, get, cancel, replace,
+restart recovery, and two-leg roll sequencing. It accepts only a fully assembled command
+whose decision, account, contract, chain, quote, AEGIS, and deterministic client-order
+identity have already been persisted.
+
+Every mutation receives an unforgeable in-process permit from the execution gate. The
+permit is bound to operation, quantity, and client order ID. Option orders require a fresh
+Alpaca OPRA BBO. Stock disposal requires an Alpaca stock BBO. Optionomics and Alpaca
+indicative quotes cannot satisfy either gate. Cancellation remains available for risk
+reduction after a decision expires or new entries pause, while exact Paper host, account,
+identity, persistence, and quantity checks continue to apply.
+
+A broker response can arrive before local acknowledgement. Persistence failures after an
+accepted POST leave the intent restart-recoverable in `SUBMITTING`. Ambiguous network or
+5xx mutation results move through reconciliation by deterministic client order ID and are
+never blindly retried. Replacement is a distinct intent, cannot increase exposure, and
+cannot reduce total order quantity to or below an already-filled amount. Rolls close the
+old leg to a broker-confirmed full fill before the new leg can submit.
+
+Point-in-time candidate evidence records `proposedLimit` as null until a real pricing
+policy produces a numeric value from fresh executable BBO evidence. Execution-quality
+actions such as `SUBMIT` or `SKIP` are retained separately and never stored as prices.

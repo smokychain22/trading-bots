@@ -50,6 +50,7 @@ export interface FirstPaperOrderReadinessInput {
     readonly eventState: Evidence<string>;
   };
   readonly quote: {
+    readonly feed: Evidence<'OPRA' | 'INDICATIVE' | 'UNKNOWN'>;
     readonly bid: Evidence<number>;
     readonly ask: Evidence<number>;
     readonly midpoint: Evidence<number>;
@@ -91,8 +92,12 @@ export interface FirstPaperOrderReadinessInput {
     readonly leaseHealthy: Evidence<boolean>;
     readonly providerHealth: Evidence<string>;
     readonly executionBoundary: Evidence<string>;
+    readonly submissionPathReady: Evidence<boolean>;
+    readonly managementPathReady: Evidence<boolean>;
+    readonly lifecyclePathReady: Evidence<boolean>;
+    readonly executableBboReady: Evidence<boolean>;
     readonly workerMode: 'LOCAL_LAPTOP';
-    readonly ownerAuthorization: 'NOT_GRANTED';
+    readonly ownerAuthorization: 'GRANTED' | 'NOT_GRANTED';
   };
 }
 
@@ -199,6 +204,7 @@ export function buildFirstPaperOrderReadinessReceipt(input: FirstPaperOrderReadi
     if (!Number.isFinite(collateral) || Math.abs(collateral - expected) > 0.000001) blockers.push('COLLATERAL_FORMULA_MISMATCH');
   }
 
+  const feed = requireGood(input.quote.feed, 'QUOTE_FEED', blockers);
   const bid = requireGood(input.quote.bid, 'BID', blockers);
   const ask = requireGood(input.quote.ask, 'ASK', blockers);
   const midpoint = requireGood(input.quote.midpoint, 'MIDPOINT', blockers);
@@ -211,6 +217,7 @@ export function buildFirstPaperOrderReadinessReceipt(input: FirstPaperOrderReadi
   if (bid !== null && ask !== null && limit !== null && (limit < bid || limit > ask)) blockers.push('LIMIT_OUTSIDE_BBO');
   if (quoteAge !== null && (!Number.isFinite(quoteAge) || quoteAge < 0 || quoteAge > input.quote.maximumAgeSeconds)) blockers.push('QUOTE_STALE');
   if (input.quote.bid.source !== 'ALPACA' || input.quote.ask.source !== 'ALPACA') blockers.push('QUOTE_PROVENANCE_NOT_ALPACA');
+  if (feed !== null && feed !== 'OPRA') blockers.push('EXECUTABLE_BBO_NOT_OPRA');
   if (spreadPassed === false) blockers.push('SPREAD_PROTECTION_FAILED');
 
   const empirical = requireGood(input.economics.empiricalState, 'EV_MODEL', blockers);
@@ -247,6 +254,10 @@ export function buildFirstPaperOrderReadinessReceipt(input: FirstPaperOrderReadi
   const leaseHealthy = requireGood(input.operations.leaseHealthy, 'WORKER_LEASE', blockers);
   const providerHealth = requireGood(input.operations.providerHealth, 'PROVIDER_HEALTH', blockers);
   const boundary = requireGood(input.operations.executionBoundary, 'EXECUTION_BOUNDARY', blockers);
+  const submissionPath = requireGood(input.operations.submissionPathReady, 'SUBMISSION_PATH', blockers);
+  const managementPath = requireGood(input.operations.managementPathReady, 'MANAGEMENT_PATH', blockers);
+  const lifecyclePath = requireGood(input.operations.lifecyclePathReady, 'LIFECYCLE_PATH', blockers);
+  const executableBbo = requireGood(input.operations.executableBboReady, 'EXECUTABLE_BBO', blockers);
   if (idempotency === false) blockers.push('IDEMPOTENCY_NOT_RESERVED');
   if (persistence === false) blockers.push('PERSISTENCE_NOT_DURABLE');
   if (scheduler === false) blockers.push('SCHEDULER_NOT_HEALTHY');
@@ -256,6 +267,11 @@ export function buildFirstPaperOrderReadinessReceipt(input: FirstPaperOrderReadi
   if (leaseHealthy === false) blockers.push('WORKER_LEASE_NOT_HEALTHY');
   if (providerHealth !== null && providerHealth !== 'GOOD') blockers.push('PROVIDER_HEALTH_NOT_GOOD');
   if (boundary !== null && boundary !== 'LOCKED_BEFORE_FIRST_POST') blockers.push('FIRST_POST_BOUNDARY_NOT_LOCKED');
+  if (submissionPath === false) blockers.push('SUBMISSION_PATH_NOT_READY');
+  if (managementPath === false) blockers.push('MANAGEMENT_PATH_NOT_READY');
+  if (lifecyclePath === false) blockers.push('LIFECYCLE_PATH_NOT_READY');
+  if (executableBbo === false) blockers.push('EXECUTABLE_BBO_NOT_READY');
+  if (input.operations.ownerAuthorization !== 'GRANTED') blockers.push('OWNER_PAPER_AUTHORIZATION_NOT_GRANTED');
 
   const uniqueBlockers = [...new Set(blockers)].sort();
   const base = {

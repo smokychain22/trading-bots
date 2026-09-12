@@ -24,16 +24,30 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
   async insertIntent(intent: PersistedPaperOrderIntent): Promise<void> {
     const instrumentType = intent.action === 'SELL_STOCK' ? 'STOCK' : 'OPTION';
     persistedPositionIntent(instrumentType, intent.request.side, intent.request.position_intent?.toUpperCase());
+    const evidence=intent.executionEvidence;
+    if (!/^[0-9a-f]{64}$/.test(evidence.quoteContentHash)
+      || !Number.isFinite(Date.parse(evidence.quoteAsOf)) || !Number.isFinite(Date.parse(evidence.decisionExpiresAt))
+      || Date.parse(evidence.decisionExpiresAt)<=Date.parse(evidence.quoteAsOf)) throw new Error('ORDER_EXECUTION_EVIDENCE_INVALID');
+    if (instrumentType==='OPTION' && (intent.optionContractId===null || evidence.quoteFeed!=='OPRA')) {
+      throw new Error('OPTION_ORDER_REQUIRES_OPRA_CONTRACT_EVIDENCE');
+    }
+    if (instrumentType==='STOCK' && (intent.optionContractId!==null || !['SIP','IEX'].includes(evidence.quoteFeed))) {
+      throw new Error('STOCK_ORDER_EXECUTION_EVIDENCE_INVALID');
+    }
     await this.pool.query(
       `INSERT INTO trade.order_intent
         (order_intent_id, execution_account_id, decision_id, client_order_id, status,
          instrument_type, broker_symbol, side, quantity, limit_price, time_in_force,
-         theta_action, position_intent, intent_persisted_at, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $14, $6, $7, $8, $9, $10, $11, $12, $13, $13, $13)`,
+         theta_action, position_intent, intent_persisted_at, created_at, updated_at,
+         chain_id, option_contract_id, underlying_id, quote_as_of, decision_expires_at, aegis_state,
+         quote_source, quote_feed, quote_content_hash)
+       VALUES ($1,$2,$3,$4,$5,$14,$6,$7,$8,$9,$10,$11,$12,$13,$13,$13,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
       [intent.orderIntentId, intent.executionAccountId, intent.decisionId, intent.request.client_order_id,
         intent.status, intent.request.symbol, intent.request.side, intent.request.qty,
         intent.request.limit_price, intent.request.time_in_force, intent.action,
-        intent.request.position_intent?.toUpperCase() ?? null, intent.persistedAt, instrumentType],
+        intent.request.position_intent?.toUpperCase() ?? null, intent.persistedAt, instrumentType,
+        intent.chainId,intent.optionContractId,intent.underlyingId,evidence.quoteAsOf,evidence.decisionExpiresAt,
+        evidence.aegisState,evidence.quoteSource,evidence.quoteFeed,evidence.quoteContentHash],
     );
   }
 
@@ -41,7 +55,9 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
     const result = await this.pool.query(
       `SELECT i.order_intent_id, i.execution_account_id, i.decision_id, i.client_order_id,
               i.status, i.broker_symbol, i.side, i.quantity, i.limit_price, i.time_in_force,
-              i.theta_action, i.instrument_type, i.position_intent, i.intent_persisted_at, b.provider_order_id
+              i.theta_action, i.instrument_type, i.position_intent, i.intent_persisted_at,
+              i.chain_id,i.option_contract_id,i.underlying_id,i.quote_as_of,i.decision_expires_at,i.aegis_state,
+              i.quote_source,i.quote_feed,i.quote_content_hash,b.provider_order_id
        FROM trade.order_intent i
        LEFT JOIN LATERAL (
          SELECT provider_order_id FROM trade.broker_order
@@ -52,6 +68,16 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
     );
     const row = result.rows[0] as Record<string, unknown> | undefined;
     if (row === undefined) return null;
+    if (row.chain_id === null || row.chain_id === undefined
+      || row.underlying_id === null || row.underlying_id === undefined
+      || row.quote_source === null || row.quote_source === undefined
+      || row.quote_feed === null || row.quote_feed === undefined
+      || row.quote_as_of === null || row.quote_as_of === undefined
+      || row.decision_expires_at === null || row.decision_expires_at === undefined
+      || row.quote_content_hash === null || row.quote_content_hash === undefined
+      || row.aegis_state === null || row.aegis_state === undefined) {
+      throw new Error('ORDER_INTENT_EXECUTION_LINEAGE_MISSING');
+    }
     const positionIntent = persistedPositionIntent(String(row.instrument_type), row.side, row.position_intent);
     return {
       orderIntentId: String(row.order_intent_id),
@@ -61,6 +87,11 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
       status: String(row.status) as OrderIntentState,
       persistedAt: toIso(row.intent_persisted_at),
       brokerOrderId: row.provider_order_id === null ? null : String(row.provider_order_id),
+      chainId:String(row.chain_id),optionContractId:row.option_contract_id===null?null:String(row.option_contract_id),
+      underlyingId:String(row.underlying_id),executionEvidence:{quoteSource:z.literal('ALPACA').parse(row.quote_source),
+        quoteFeed:z.enum(['OPRA','SIP','IEX']).parse(row.quote_feed),quoteAsOf:toIso(row.quote_as_of),
+        decisionExpiresAt:toIso(row.decision_expires_at),quoteContentHash:String(row.quote_content_hash),
+        aegisState:z.enum(['ALLOW_FULL','ALLOW_REDUCED','HOLD_ONLY','HARD_VETO']).parse(row.aegis_state)},
       request: {
         symbol: String(row.broker_symbol), qty: Number(row.quantity), side: String(row.side) as 'buy' | 'sell',
         type: 'limit', time_in_force: 'day', limit_price: String(row.limit_price), client_order_id: String(row.client_order_id),

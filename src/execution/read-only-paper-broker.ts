@@ -16,6 +16,7 @@ export interface ReadOnlyPaperBroker {
   getAccount(): Promise<unknown>;
   getPositions(): Promise<readonly unknown[]>;
   getOrders(status?: 'open' | 'closed' | 'all'): Promise<readonly BrokerOrderSnapshot[]>;
+  getOrder(providerOrderId: string): Promise<BrokerOrderSnapshot | null>;
   getOrderByClientOrderId(clientOrderId: string): Promise<BrokerOrderSnapshot | null>;
   getActivities(activityTypes?: readonly string[]): Promise<readonly BrokerActivity[]>;
   getClock(): Promise<BrokerMarketClock>;
@@ -33,6 +34,7 @@ export function asReadOnlyPaperBroker(broker: PaperBrokerAdapter): ReadOnlyPaper
     getAccount: broker.getAccount.bind(broker),
     getPositions: broker.getPositions.bind(broker),
     getOrders: broker.getOrders.bind(broker),
+    getOrder: broker.getOrder.bind(broker),
     getOrderByClientOrderId: broker.getOrderByClientOrderId.bind(broker),
     getActivities: broker.getActivities.bind(broker),
     getClock: broker.getClock.bind(broker),

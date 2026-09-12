@@ -13,14 +13,15 @@ const input=():FirstPaperOrderReadinessInput=>({asOf:now,broker:{role:good('MAST
   candidateSetId:good('set-1'),candidateId:good('candidate-1'),symbol:good('AAPL'),occContract:good('AAPL261016P00150000'),optionType:good('PUT'),
   strike:good(150),expiration:good('2026-10-16'),dte:good(34),multiplier:good(100),positionIntent:good('SELL_TO_OPEN'),quantity:good(1),
   quantityDerivation:good('min(capacities)=1'),collateral:good(15000),userAllocation:good(20000),assignmentCapacity:good(true),ownershipQuality:good('ACCEPTABLE'),eventState:good('CLEAR')},
-  quote:{bid:good(1.2,'ALPACA'),ask:good(1.3,'ALPACA'),midpoint:good(1.25,'ALPACA'),proposedLimit:good(1.24),pricingPolicy:good('PASSIVE_LIMIT_V1'),
+  quote:{feed:good('OPRA','ALPACA'),bid:good(1.2,'ALPACA'),ask:good(1.3,'ALPACA'),midpoint:good(1.25,'ALPACA'),proposedLimit:good(1.24),pricingPolicy:good('PASSIVE_LIMIT_V1'),
   ageSeconds:good(2),maximumAgeSeconds:10,spreadProtectionPassed:good(true)},economics:{empiricalState:good('EV_MODEL_NOT_EMPIRICALLY_READY'),
   empiricalModelVersion:unknown(),expectedAfterCost:unknown(),downsideTailEvidence:unknown(),returnPerCapitalDay:unknown(),uncertainty:unknown(),
   calibrationCohort:unknown(),promotionEvidence:good('NOT_READY')},aegis:{result:good('ALLOW_FULL'),finalQuantity:good(1)},identity:{fusionSnapshotId:good('fusion-1'),
   fusionSnapshotHash:good('hash-1'),decisionId:good('decision-1'),orderIntentId:good('intent-1'),clientOrderId:good('theta-first-1')},operations:{
   idempotencyReserved:good(true),persistenceDurable:good(true),schedulerHealthy:good(true),reconciliationHealthy:good(true),workerOnline:good(true),
   workerBuildSha:good('sha-1'),marketSession:good('OPEN'),leaseHealthy:good(true),providerHealth:good('GOOD'),executionBoundary:good('LOCKED_BEFORE_FIRST_POST'),
-  workerMode:'LOCAL_LAPTOP',ownerAuthorization:'NOT_GRANTED'}});
+  submissionPathReady:good(true),managementPathReady:good(true),lifecyclePathReady:good(true),executableBboReady:good(true),
+  workerMode:'LOCAL_LAPTOP',ownerAuthorization:'GRANTED'}});
 
 test('dry run constructs the exact limit request without any broker network capability',()=>{
   const result=buildFirstPaperOrderDryRun(input());

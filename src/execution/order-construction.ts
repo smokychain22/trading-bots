@@ -26,6 +26,12 @@ const instructionSchema = z.object({
 
 const buyActions: readonly ThetaOrderAction[] = ['CLOSE_CSP', 'ROLL_CSP_CLOSE', 'CLOSE_CC', 'ROLL_CC_CLOSE'];
 const coveredCallOpenActions: readonly ThetaOrderAction[] = ['OPEN_CC', 'ROLL_CC_OPEN'];
+const newRiskActions = new Set<ThetaOrderAction>(['OPEN_CSP', 'ROLL_CSP_OPEN', 'OPEN_CC', 'ROLL_CC_OPEN']);
+const allThetaOrderActions = new Set<ThetaOrderAction>(instructionSchema.shape.action.options);
+export const thetaActionOpensNewRisk = (action: string): boolean => {
+  if (!allThetaOrderActions.has(action as ThetaOrderAction)) throw new Error('THETA_ORDER_ACTION_INVALID');
+  return newRiskActions.has(action as ThetaOrderAction);
+};
 const optionPositionIntent: Readonly<Partial<Record<ThetaOrderAction, NonNullable<BrokerOrderRequest['position_intent']>>>> = {
   OPEN_CSP: 'sell_to_open', CLOSE_CSP: 'buy_to_close',
   ROLL_CSP_CLOSE: 'buy_to_close', ROLL_CSP_OPEN: 'sell_to_open',

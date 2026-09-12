@@ -508,7 +508,7 @@ export default async function customerHandler(
             option_data: "UNKNOWN",
             scheduler: localWorker.online ? "RUNNING" : "OFFLINE",
             aegis: "PARTIAL_REAL_INPUTS",
-            execution: "PAPER_ADAPTER_READY_EXECUTION_LOCKED",
+            execution: "PAPER_LIFECYCLE_ENGINEERING_READY_EXECUTION_LOCKED",
             ledger: database.state === "CONNECTED" ? "READY" : "SCHEMA_READY_DATABASE_REQUIRED",
             reconciliation: localWorker.last_reconciliation ? "RUNNING" : database.state === "CONNECTED" ? "READY_NOT_RUNNING" : "CONTRACT_READY_DATABASE_REQUIRED",
             customer_iam: database.customer_iam ? "READY" : "BLOCKED",
@@ -565,7 +565,7 @@ export default async function customerHandler(
             ...(localWorker.online ? [] : ["The local shadow worker is offline"]),
             "OPRA entitlement not established for future execution",
             ...(database.state === "CONNECTED" ? [] : ["Production PostgreSQL is required for durable order and reconciliation workers"]),
-            "First PAPER order requires separate owner authorization after a genuine preview",
+            "Owner Paper authorization is granted; executable OPRA BBO and empirical strategy gates remain required",
             "No validated customer performance publication",
             connectionConfigured
               ? "Private team Paper connection is available; public accounts still require Alpaca Connect approval"

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AlpacaPaperBrokerAdapter } from '../src/execution/broker.js';
+import { AlpacaPaperBrokerAdapter, AlpacaPaperBrokerError } from '../src/execution/broker.js';
 import { assertRollPair, buildAlpacaLimitOrder, type ThetaOrderInstruction } from '../src/execution/order-construction.js';
 import { authorizeBrokerMutation } from '../src/execution/execution-control.js';
 
@@ -65,17 +65,19 @@ test('submit, replace, cancel, retrieve, and activities use documented paths wit
     baseUrl: 'https://paper-api.alpaca.markets', authentication: { kind: 'MASTER_API_KEY', apiKey: 'test-key-private', apiSecret: 'test-secret-private' }, fetchImpl,
   });
   const request = buildAlpacaLimitOrder({ action: 'OPEN_CSP', symbol: 'AAPL261016P00150000', quantity: 1, limitPrice: 1.25, clientOrderId: 'theta-client-1' });
-  const permit = (clientOrderId: string, isNewEntry: boolean) => authorizeBrokerMutation(
+  const permit = (clientOrderId: string, isNewEntry: boolean, operation: 'SUBMIT'|'REPLACE'|'CANCEL' = 'SUBMIT') => authorizeBrokerMutation(
     { masterEnabled: true, followerEnabled: false, pauseNewOrders: false },
     { accountKind: 'MASTER_API_KEY', environment: 'PAPER', baseHostname: 'paper-api.alpaca.markets', accountVerified: true,
       optionsCapabilityVerified: true, intentPersisted: true, aegisState: 'ALLOW_FULL', quantity: 1, quoteFresh: true,
-      decisionExpiresAt: '2026-09-11T15:00:00Z', clientOrderId, now: '2026-09-11T14:00:00Z', isNewEntry },
+      priceEvidence: 'ALPACA_OPRA_BBO',
+      decisionExpiresAt: '2026-09-11T15:00:00Z', clientOrderId, now: '2026-09-11T14:00:00Z', isNewEntry, operation },
   );
   await assert.rejects(adapter.submitOrder(request, { authorizedAt: '2026-09-11T14:00:00Z', clientOrderId: request.client_order_id, quantity: 1 }), /valid execution-gate permit/);
   await adapter.submitOrder(request, permit('theta-client-1', true));
-  await adapter.replaceOrder('broker-1', { qty: 1, limit_price: '1.20', time_in_force: 'day', client_order_id: 'theta-reprice-2' }, permit('theta-reprice-2', false));
-  await adapter.cancelOrder('broker-2', permit('theta-cancel-3', false));
+  await adapter.replaceOrder('broker-1', { qty: 1, limit_price: '1.20', time_in_force: 'day', client_order_id: 'theta-reprice-2' }, permit('theta-reprice-2', false, 'REPLACE'));
+  await adapter.cancelOrder('broker-2', permit('theta-cancel-3', false, 'CANCEL'));
   assert.equal((await adapter.getOrderByClientOrderId('theta-client-1'))?.id, 'broker-1');
+  assert.equal((await adapter.getOrder('broker-1'))?.id, 'broker-1');
   assert.equal((await adapter.getOrders()).length, 1);
   assert.equal((await adapter.getActivities()).at(0)?.activityType, 'OPASN');
   const activitiesUrl = calls.find((call) => call.url.includes('/activities'))?.url ?? '';
@@ -85,4 +87,21 @@ test('submit, replace, cancel, retrieve, and activities use documented paths wit
   assert.equal(calls[0]?.url, 'https://paper-api.alpaca.markets/v2/orders');
   assert.equal(calls[1]?.url, 'https://paper-api.alpaca.markets/v2/orders/broker-1');
   assert.equal(calls[0]?.body && (calls[0]?.body as Record<string, unknown>).type, 'limit');
+});
+
+test('a mutation 5xx or malformed success body is ambiguous and must reconcile before retry', async () => {
+  for (const response of [new Response('{}', { status: 503 }), new Response('not-json', { status: 200 })]) {
+    const adapter = new AlpacaPaperBrokerAdapter({ baseUrl: 'https://paper-api.alpaca.markets',
+      authentication: { kind: 'MASTER_API_KEY', apiKey: 'synthetic', apiSecret: 'synthetic' },
+      fetchImpl: async () => response.clone() });
+    const request = buildAlpacaLimitOrder({ action: 'OPEN_CSP', symbol: 'AAPL261016P00150000', quantity: 1,
+      limitPrice: 1.25, clientOrderId: 'theta-ambiguous' });
+    const authorization = authorizeBrokerMutation({ masterEnabled: true, followerEnabled: false, pauseNewOrders: false }, {
+      accountKind:'MASTER_API_KEY',environment:'PAPER',baseHostname:'paper-api.alpaca.markets',accountVerified:true,
+      optionsCapabilityVerified:true,intentPersisted:true,aegisState:'ALLOW_FULL',quantity:1,quoteFresh:true,
+      priceEvidence:'ALPACA_OPRA_BBO',decisionExpiresAt:'2026-09-11T15:00:00Z',clientOrderId:'theta-ambiguous',
+      now:'2026-09-11T14:00:00Z',isNewEntry:true,operation:'SUBMIT' });
+    await assert.rejects(adapter.submitOrder(request, authorization), (error: unknown) =>
+      error instanceof AlpacaPaperBrokerError && error.category === 'AMBIGUOUS_NETWORK');
+  }
 });

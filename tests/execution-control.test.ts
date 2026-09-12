@@ -13,6 +13,7 @@ const context: ExecutionGateContext = {
   baseHostname: 'paper-api.alpaca.markets', accountVerified: true,
   optionsCapabilityVerified: true, intentPersisted: true,
   aegisState: 'ALLOW_FULL', quantity: 1, quoteFresh: true,
+  priceEvidence: 'ALPACA_OPRA_BBO',
   decisionExpiresAt: '2026-09-11T14:01:00.000Z',
   now: '2026-09-11T14:00:00.000Z', clientOrderId: 'test-time-gate', isNewEntry: true,
 };
@@ -42,4 +43,21 @@ test('valid unexpired decision passes only when other gates pass', () => {
   assert.equal(evaluateExecutionGate({ ...control, masterEnabled: false }, context).allowed, false);
   assert.equal(evaluateExecutionGate(control, { ...context, quantity: 0 }).allowed, false);
   assert.equal(evaluateExecutionGate(control, { ...context, baseHostname: 'api.alpaca.markets' }).allowed, false);
+});
+
+test('unverified executable price evidence always blocks broker mutation', () => {
+  const result = evaluateExecutionGate(control, { ...context, priceEvidence: 'UNVERIFIED' });
+  assert.deepEqual(result, { allowed: false, blockers: ['EXECUTABLE_PRICE_EVIDENCE_NOT_VERIFIED'] });
+  assert.throws(
+    () => authorizeBrokerMutation(control, { ...context, priceEvidence: 'UNVERIFIED' }),
+    /EXECUTABLE_PRICE_EVIDENCE_NOT_VERIFIED/,
+  );
+});
+
+test('cancel remains available for risk reduction during a new-entry pause and stale decision', () => {
+  const result = evaluateExecutionGate({ ...control, pauseNewOrders: true }, {
+    ...context, operation: 'CANCEL', isNewEntry: false, quoteFresh: false,
+    aegisState: 'HOLD_ONLY', decisionExpiresAt: '2026-09-11T13:00:00.000Z',
+  });
+  assert.deepEqual(result, { allowed: true, blockers: [] });
 });
