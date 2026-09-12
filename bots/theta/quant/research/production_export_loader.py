@@ -328,16 +328,19 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
     _assert_deterministic_order(rows_raw.get("candidateSets", []), canonical_json)
     _assert_deterministic_order(rows_raw.get("candidates", []), canonical_json)
 
-    unsigned = {
+    # Must mirror TypeScript buildDatasetExport() exactly. exportedAt is
+    # provenance about file creation and is deliberately excluded from
+    # dataset identity, so an identical immutable window re-export hashes
+    # to the same value.
+    identity = {
         "schemaVersion": schema_version,
         "sourceWindow": raw["sourceWindow"],
-        "exportedAt": raw["exportedAt"],
         "featureSetVersion": raw["featureSetVersion"],
         "strategyVersions": sorted(set(raw.get("strategyVersions", []))),
         "rows": {k: sorted(v, key=canonical_json) for k, v in rows_raw.items()},
         "rowCounts": raw.get("rowCounts", {k: len(v) for k, v in rows_raw.items()}),
     }
-    recomputed_hash = sha256_hex(canonical_json(unsigned))
+    recomputed_hash = sha256_hex(canonical_json(identity))
     dataset_hash = raw.get("datasetHash", "")
     hash_verified = recomputed_hash == dataset_hash
     if not hash_verified:

@@ -19,6 +19,11 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /npm run theta:research-export -- --latest/);
   assert.match(source, /CURRENT_SESSION_EXPORTED/);
   assert.match(source, /BLOCKED_ON_EVIDENCE/);
+  assert.match(source, /last-empirical-dataset-hash/);
+  assert.match(source, /research\.empirical_pipeline/);
+  assert.match(source, /EXPORTED_AND_RESEARCHED/);
+  assert.match(source, /RESEARCH_CURRENT/);
+  assert.match(source, /NO_SPLIT_DESCRIPTIVE_ONLY/);
   assert.doesNotMatch(source, /\/v2\/orders/i);
   assert.doesNotMatch(source, /APCA-API-KEY-ID|APCA-API-SECRET-KEY/);
 });

@@ -95,6 +95,7 @@ test-results/
 playwright-report/
 .theta-local-worker/
 research_exports/
+research_outputs/
 paper_preflight/
 
 .vercel

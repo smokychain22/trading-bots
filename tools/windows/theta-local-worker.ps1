@@ -12,6 +12,7 @@ $tokenFile = Join-Path $stateRoot 'worker.token'
 $statusFile = Join-Path $stateRoot 'status.json'
 $stopFile = Join-Path $stateRoot 'stop.request'
 $exportSessionFile = Join-Path $stateRoot 'last-auto-export-session'
+$researchHashFile = Join-Path $stateRoot 'last-empirical-dataset-hash'
 if (!(Test-Path -LiteralPath $runtimeFile)) { throw 'THETA_LOCAL_WORKER_NOT_INSTALLED' }
 if (!(Test-Path -LiteralPath $tokenFile)) { throw 'THETA_LOCAL_WORKER_TOKEN_NOT_PROVISIONED' }
 $runtime = Get-Content -Raw -LiteralPath $runtimeFile | ConvertFrom-Json
@@ -55,6 +56,37 @@ try {
           $researchExport = 'EXPORTED_FIRST_COMPLETE_SCAN'
         } else {
           $researchExport = 'BLOCKED_ON_EVIDENCE'
+        }
+      }
+      $latestDataset = Join-Path $RepositoryPath 'research_exports\latest\dataset.json'
+      $latestManifest = Join-Path $RepositoryPath 'research_exports\latest\manifest.json'
+      if ((Test-Path -LiteralPath $latestDataset) -and (Test-Path -LiteralPath $latestManifest)) {
+        $manifest = Get-Content -Raw -LiteralPath $latestManifest | ConvertFrom-Json
+        $datasetHash = [string]$manifest.datasetHash
+        $lastResearchHash = if (Test-Path -LiteralPath $researchHashFile) {
+          (Get-Content -Raw -LiteralPath $researchHashFile).Trim()
+        } else { '' }
+        if ($datasetHash -match '^[0-9a-f]{64}$' -and $datasetHash -ne $lastResearchHash) {
+          $python = Join-Path $RepositoryPath '.venv\Scripts\python.exe'
+          if (!(Test-Path -LiteralPath $python)) { $python = 'python' }
+          $env:PYTHONPATH = Join-Path $RepositoryPath 'bots\theta\quant'
+          $runTimestamp = (Get-Date).ToUniversalTime().ToString('o')
+          & $python -m research.empirical_pipeline --export $latestDataset --output (Join-Path $RepositoryPath 'research_outputs') `
+            --evidence-source LIVE_SHADOW --strategy-branch THETA_CONVENTIONAL `
+            --experiment-id AUTO-DESCRIPTIVE --target-version theta-research-targets-v1 `
+            --feature-version ([string]$manifest.featureSetVersion) --cost-model-version theta-cost-model-v1 `
+            --split-definition NO_SPLIT_DESCRIPTIVE_ONLY --source-code-commit $runtime.buildSha `
+            --run-timestamp $runTimestamp *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Set-Content -LiteralPath $researchHashFile -Value $datasetHash -Encoding ascii
+            $researchExport = 'EXPORTED_AND_RESEARCHED'
+          } else {
+            $researchExport = 'RESEARCH_PIPELINE_BLOCKED'
+          }
+        } elseif ($datasetHash -eq $lastResearchHash) {
+          $researchExport = 'RESEARCH_CURRENT'
+        } elseif ($datasetHash) {
+          $researchExport = 'RESEARCH_DATASET_HASH_INVALID'
         }
       }
       @{state='ONLINE';lastCycle=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
