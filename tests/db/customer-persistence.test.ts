@@ -98,7 +98,7 @@ test('real disposable PostgreSQL preserves user limits, master role and tenant i
     try {
       const first = await runAutonomousRuntimeCycle(environment, pool, cycleAt);
       const duplicate = await runAutonomousRuntimeCycle(environment, pool, cycleAt);
-      assert.equal(first.status, 'DEGRADED');
+      assert.equal(first.status, 'DEGRADED', JSON.stringify(first.jobResults));
       assert.equal(first.reconciliation?.dataQuality, 'GOOD');
       assert.equal(first.reconciliation?.accountStatus, 'ACTIVE');
       assert.equal(duplicate.status, 'DUPLICATE');
