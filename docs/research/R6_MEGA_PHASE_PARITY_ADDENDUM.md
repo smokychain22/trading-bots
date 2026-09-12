@@ -123,3 +123,63 @@ three terms this branch had already unioned in the previous run.
 Convergent; no conflict.
 
 **`PARITY_STILL_VALID` = YES. `REQUIRED_CODEX_CHANGE` count for this run: 0.**
+
+## Real-evidence trigger run: `115285b..b64946f` (research export bridge)
+
+Inspected on copy/research/export paths only. Six commits, all additive at
+the schema level.
+
+### DATASET_ABSENT confirmed by Codex's own handoff and export tool
+
+`tools/theta-research-export.ts` (new) queries
+`trade.candidate_point_in_time_evidence` for the newest evidence window and
+throws `NO_POINT_IN_TIME_EVIDENCE_TO_EXPORT` / `NO_POINT_IN_TIME_EVIDENCE_IN_WINDOW`
+when none exists. Codex's own 2026-09-12 HANDOFF.md entry states directly:
+"No point-in-time rows exist yet, so the export command correctly reports a
+data blocker and creates no artifact." No `research_exports/` directory
+exists in this working tree (now also `.gitignore`d, confirming it is
+Production-side-generated, not a checked-in fixture).
+
+**`DATASET_ABSENT` stands. No dataset hash, no rows, nothing to load.**
+
+### Canonical R4 direction-aware pricing is now independently enforced in TypeScript
+
+`copy-engine-contract.ts` gained `directionAwarePriceDeterioration({direction,
+masterPrice, followerPrice})` with `OrderCashflowDirection = "CREDIT"|"DEBIT"`
+and the IDENTICAL sign convention this branch's Python
+`compute_price_deterioration` already uses: CREDIT →
+`masterPrice - followerPrice`, DEBIT → `followerPrice - masterPrice`,
+positive = ADVERSE. Migration 022 persists `economic_direction`,
+`master_execution_price`, `follower_observed_price`,
+`price_deterioration_per_share` directly on `copy.follower_copy_event`.
+
+Codex's own CLAUDE REVIEW note in `docs/HANDOFF.md` (2026-09-12) already
+classifies this branch's Python economics as `RESEARCH_ONLY`: "The
+direction-aware Python follower economics are RESEARCH_ONLY because the
+same correction is now enforced by the canonical TypeScript planner." No
+action needed on this branch beyond acknowledging the convergence -- the
+Python module remains a research-side mirror, never Production authority,
+per the standing ownership split.
+
+### Roll legs: canonical vocabulary changed name, not shape
+
+`ROLL_CSP`/`ROLL_CC` (rejected at persistence) were replaced by four
+explicit actions: `ROLL_CSP_CLOSE`/`ROLL_CSP_OPEN`/`ROLL_CC_CLOSE`/
+`ROLL_CC_OPEN`, with `master_copy_event_roll_lineage` requiring
+`parent_master_copy_event_id` on every `*_OPEN` leg. This is the SAME
+two-independent-legs invariant `evaluate_follower_roll` already encodes
+(`ROLL_CLOSE_OLD`/`ROLL_OPEN_NEW`) -- naming differs, semantics match.
+`CANONICAL_ACTION_TO_LIFECYCLE_EVENT` in `follower_copy_economics.py` still
+maps the OLD six-action enum; this is now stale against the renamed
+canonical actions.
+
+**REQUIRED_CODEX_CHANGE: 0** (nothing Production needs from research).
+**DEFERRED (research-side, non-blocking):** update
+`CANONICAL_ACTION_TO_LIFECYCLE_EVENT`'s keys from `ROLL_CSP`/`ROLL_CC` to
+the four explicit `*_CLOSE`/`*_OPEN` actions the next time this module is
+touched for a substantive reason -- not done here per the "no busywork
+while DATASET_ABSENT" instruction, since it changes no behavior (the old
+keys were already unreachable placeholders, not consumed by any dataset
+row).
+
+**`PARITY_STILL_VALID` = YES. `REQUIRED_CODEX_CHANGE` count for this run: 0.**
