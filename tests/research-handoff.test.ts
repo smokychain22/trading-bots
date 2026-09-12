@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildResearchHandoff } from '../src/research/research-handoff.js';
+import { buildResearchHandoff, hasExportableEvidence } from '../src/research/research-handoff.js';
 
 test('research handoff is deterministic, concise, and contains no secret material',()=>{
   const artifact={schemaVersion:'theta-research-dataset-v1',datasetHash:'a'.repeat(64),
@@ -13,4 +13,9 @@ test('research handoff is deterministic, concise, and contains no secret materia
   assert.equal(handoff.datasetHash,'a'.repeat(64));
   assert.equal(handoff.sourceClass,'REAL_POINT_IN_TIME_SHADOW');
   assert.doesNotMatch(JSON.stringify(handoff),/api[_-]?key|secret|authorization/i);
+});
+
+test('a complete candidate set with zero candidates remains exportable WAIT evidence',()=>{
+  assert.equal(hasExportableEvidence({candidateSets:1,candidates:0}),true);
+  assert.equal(hasExportableEvidence({candidateSets:0,candidates:0}),false);
 });

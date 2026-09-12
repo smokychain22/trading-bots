@@ -14,7 +14,8 @@ export class PostgresDatasetExporter {
   async newestEvidenceWindow():Promise<DatasetEvidenceWindow|null> {
     const result=await this.pool.query(`SELECT min(decision_time)::text AS start,
       (max(decision_time) + interval '1 millisecond')::text AS "end",count(*)::int AS rows
-      FROM trade.candidate_point_in_time_evidence`);
+      FROM (SELECT decision_time FROM trade.candidate_set_evidence
+        UNION ALL SELECT decision_time FROM trade.candidate_point_in_time_evidence) evidence_window`);
     const row=result.rows[0];
     return row?.start&&row?.end&&Number(row.rows)>0
       ? {start:String(row.start),end:String(row.end),rows:Number(row.rows)} : null;

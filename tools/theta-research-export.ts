@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { Pool } from 'pg';
 import { PostgresDatasetExporter } from '../src/research/postgres-dataset-export.js';
 import { buildR6ReadinessReceipt } from '../src/research/r6-readiness.js';
-import { buildResearchHandoff } from '../src/research/research-handoff.js';
+import { buildResearchHandoff, hasExportableEvidence } from '../src/research/research-handoff.js';
 
 const args=process.argv.slice(2);
 const value=(name:string):string|null => {
@@ -30,7 +30,7 @@ async function main():Promise<void>{
   if (start===null||end===null) throw new Error('NO_POINT_IN_TIME_EVIDENCE_TO_EXPORT');
   const exportedAt=new Date().toISOString();
   const artifact=await exporter.export({start,end,exportedAt,featureSetVersion});
-  if (artifact.rowCounts.candidates===0) throw new Error('NO_POINT_IN_TIME_EVIDENCE_IN_WINDOW');
+  if (!hasExportableEvidence(artifact.rowCounts)) throw new Error('NO_POINT_IN_TIME_EVIDENCE_IN_WINDOW');
   const readiness=await buildR6ReadinessReceipt(pool);
   const root=resolve('research_exports');
   const destination=resolve(root,artifact.datasetHash);

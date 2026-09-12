@@ -2,6 +2,10 @@ import type { DatasetExportArtifact } from './point-in-time-evidence.js';
 
 export const researchHandoffVersion='theta-research-handoff-v1' as const;
 
+export function hasExportableEvidence(rowCounts:{candidateSets:number;candidates:number}):boolean {
+  return rowCounts.candidateSets>0||rowCounts.candidates>0;
+}
+
 export function buildResearchHandoff(input:{artifact:DatasetExportArtifact;exportPath:string;manifestPath:string}){
   return {
     handoffVersion:researchHandoffVersion,

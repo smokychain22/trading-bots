@@ -998,7 +998,8 @@ report separate engineering and empirical evidence states. Observation processin
 records offline host, provider/unbounded-enumeration failure, invalid contract, and
 invalid BBO distinctly, with a session-ended code reserved for confirmed session state. The first
 deterministic export writes an ignored `handoff.json` beside the dataset, manifest, and
-quality receipt for one-command research consumption.
+quality receipt for one-command research consumption. Export window discovery includes
+candidate-set evidence, so a complete zero-candidate WAIT session is not discarded.
 
 KNOWN LIMITATIONS: 2026-09-12 is a Saturday, so no supported open session occurred and no
 real scan, quote horizon, or resolved label exists. Production master credentials stay
