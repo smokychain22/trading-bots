@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { Pool } from 'pg';
 import type { Environment } from '../config/environment.js';
-import { fetchOptionSnapshots, type AlpacaProviderConfig } from '../theta/alpaca-provider.js';
+import { AlpacaProviderError, fetchOptionSnapshots, type AlpacaProviderConfig } from '../theta/alpaca-provider.js';
 import { discoverRealUniverse } from '../theta/universe-discovery.js';
 import { defaultShadowCycleConfig, optionomicsConfigFromEnvironment } from '../theta/theta-shadow-once.js';
 import { runThetaShadowCycle } from '../theta/theta-shadow-cycle.js';
@@ -18,9 +18,20 @@ export interface ProductionShadowScanReport {
 
 export interface ObservationProcessingReport {readonly due:number;readonly observed:number;readonly missed:number;}
 
+export type ObservationMissReason='HOST_OFFLINE'|'PROVIDER_UNAVAILABLE'|'SESSION_ENDED'|'INVALID_CONTRACT'|'INVALID_QUOTE';
+export function classifyObservationFailure(error:unknown):ObservationMissReason {
+  if(error instanceof AlpacaProviderError)return 'PROVIDER_UNAVAILABLE';
+  return 'PROVIDER_UNAVAILABLE';
+}
+export function missingObservationReason(contractFound:boolean,enumerationComplete=true,sessionConfirmedEnded=false):ObservationMissReason {
+  if(contractFound)return 'INVALID_QUOTE';
+  if(!enumerationComplete)return 'PROVIDER_UNAVAILABLE';
+  return sessionConfirmedEnded?'SESSION_ENDED':'INVALID_CONTRACT';
+}
+
 export async function processDueExecutionObservations(input:{pool:Pool;alpaca:AlpacaProviderConfig;now:()=>string}):Promise<ObservationProcessingReport>{
   const observedAt=input.now();
-  const jobs=await input.pool.query(`SELECT j.observation_job_id,j.candidate_id,j.contract_symbol,j.target_at,u.symbol AS underlying,
+  const jobs=await input.pool.query(`SELECT j.observation_job_id,j.candidate_id,j.contract_symbol,j.horizon_code,j.target_at,u.symbol AS underlying,
     lower(oc.option_type::text) AS option_type
     FROM research.theta_execution_observation_job j JOIN trade.candidate c ON c.candidate_id=j.candidate_id
     JOIN market.option_contract oc ON oc.option_contract_id=c.option_contract_id
@@ -43,8 +54,13 @@ export async function processDueExecutionObservations(input:{pool:Pool;alpaca:Al
       const result=await fetchOptionSnapshots(input.alpaca,{underlyingSymbol:underlying,feed:'indicative',optionType,limit:1000,maxPages:10});
       for(const row of rows){
         const quote=result.snapshots.get(String(row.contract_symbol));
-        if(quote===undefined||quote.bid===null||quote.ask===null){
-          if(await store.markObservationMissed(String(row.observation_job_id),observedAt,'QUOTE_NOT_AVAILABLE')) missed++;
+        if(quote===undefined){
+          const reason=missingObservationReason(false,result.complete);
+          if(await store.markObservationMissed(String(row.observation_job_id),observedAt,reason)) missed++;
+          continue;
+        }
+        if(quote.bid===null||quote.ask===null||quote.bid<0||quote.ask<=0||quote.bid>quote.ask){
+          if(await store.markObservationMissed(String(row.observation_job_id),observedAt,missingObservationReason(true))) missed++;
           continue;
         }
         const quoteId=String(row.observation_job_id);
@@ -56,8 +72,9 @@ export async function processDueExecutionObservations(input:{pool:Pool;alpaca:Al
           dataQuality:age===null?'UNKNOWN':age>60?'STALE':'GOOD'});
         if(await store.markObservationObserved(String(row.observation_job_id),quoteId,observedAt)) observed++;
       }
-    }catch{
-      for(const row of rows) if(await store.markObservationMissed(String(row.observation_job_id),observedAt,'PROVIDER_OBSERVATION_FAILED')) missed++;
+    }catch(error){
+      const reason=classifyObservationFailure(error);
+      for(const row of rows) if(await store.markObservationMissed(String(row.observation_job_id),observedAt,reason)) missed++;
     }
   }
   return {due:jobs.rowCount??0,observed,missed};

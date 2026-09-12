@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { Pool } from 'pg';
 import { PostgresDatasetExporter } from '../src/research/postgres-dataset-export.js';
 import { buildR6ReadinessReceipt } from '../src/research/r6-readiness.js';
+import { buildResearchHandoff } from '../src/research/research-handoff.js';
 
 const args=process.argv.slice(2);
 const value=(name:string):string|null => {
@@ -37,16 +38,20 @@ async function main():Promise<void>{
   const manifest={schemaVersion:artifact.schemaVersion,datasetHash:artifact.datasetHash,
     sourceWindow:artifact.sourceWindow,exportedAt:artifact.exportedAt,featureSetVersion:artifact.featureSetVersion,
     strategyVersions:artifact.strategyVersions,rowCounts:artifact.rowCounts};
+  const handoff=buildResearchHandoff({artifact,exportPath:resolve(destination,'dataset.json'),
+    manifestPath:resolve(destination,'manifest.json')});
   await mkdir(destination,{recursive:true});
   await writeFile(resolve(destination,'dataset.json'),`${JSON.stringify(artifact,null,2)}\n`,'utf8');
   await writeFile(resolve(destination,'manifest.json'),`${JSON.stringify(manifest,null,2)}\n`,'utf8');
   await writeFile(resolve(destination,'data-quality.json'),`${JSON.stringify(readiness,null,2)}\n`,'utf8');
+  await writeFile(resolve(destination,'handoff.json'),`${JSON.stringify(handoff,null,2)}\n`,'utf8');
   await rm(latest,{recursive:true,force:true});
   await mkdir(latest,{recursive:true});
   await Promise.all([
     writeFile(resolve(latest,'dataset.json'),`${JSON.stringify(artifact,null,2)}\n`,'utf8'),
     writeFile(resolve(latest,'manifest.json'),`${JSON.stringify(manifest,null,2)}\n`,'utf8'),
     writeFile(resolve(latest,'data-quality.json'),`${JSON.stringify(readiness,null,2)}\n`,'utf8'),
+    writeFile(resolve(latest,'handoff.json'),`${JSON.stringify(handoff,null,2)}\n`,'utf8'),
   ]);
   process.stdout.write(`${JSON.stringify({state:'EXPORTED',datasetHash:artifact.datasetHash,
     sourceWindow:artifact.sourceWindow,rowCounts:artifact.rowCounts,latest:'research_exports/latest',

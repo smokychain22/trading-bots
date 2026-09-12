@@ -983,3 +983,29 @@ NEXT RECOMMENDED TASK: Let the installed worker capture the first complete open-
 cross-symbol scan, audit the first non-empty export, and accumulate resolved point-in-time
 episodes. Keep all order submission locked until the separate empirical promotion gate
 passes.
+
+## 2026-09-12 evidence acceleration and first-session watchdog
+
+OWNER: Codex
+
+TASK: Remove ambiguity from the first open-session proof and the R6 engineering versus
+evidence boundary without creating another runtime subsystem.
+
+WHAT WAS IMPLEMENTED: Complete zero-candidate scans now remain `COMPLETE`. The R6 receipt
+contains a first-session proof with expected, started, completed, partial, failed, and
+candidate counts plus market and provider states. Execution replay and outcome resolution
+report separate engineering and empirical evidence states. Observation processing now
+records offline host, provider/unbounded-enumeration failure, invalid contract, and
+invalid BBO distinctly, with a session-ended code reserved for confirmed session state. The first
+deterministic export writes an ignored `handoff.json` beside the dataset, manifest, and
+quality receipt for one-command research consumption.
+
+KNOWN LIMITATIONS: 2026-09-12 is a Saturday, so no supported open session occurred and no
+real scan, quote horizon, or resolved label exists. Production master credentials stay
+encrypted server-side. Exact historical Alpaca BBO and Optionomics API entitlements remain
+unverified, so no historical BBO adapter was added.
+
+NEXT RECOMMENDED TASK: Keep the pinned locked worker online through the next supported
+options session. Inspect the automatically generated first export and its handoff receipt,
+then run the secure field-specific entitlement probes from the Production credential
+boundary. No broker order is permitted.

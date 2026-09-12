@@ -84,7 +84,7 @@ export async function runCrossSymbolShadowScan(
   const completeness: ScanCompleteness = providerLimited ? 'PROVIDER_LIMITED'
     : failed && results.some((result) => result.status === 'COMPLETED') ? 'INTERRUPTED'
       : failed || partial ? 'PARTIAL'
-        : candidateCount === 0 ? 'DATA_INSUFFICIENT' : 'COMPLETE';
+        : 'COMPLETE';
   return {
     scanId: randomUUID(), mode: shadowRuntimeMode, contractVersion: shadowScanContractVersion,
     startedAt, finishedAt: now(),

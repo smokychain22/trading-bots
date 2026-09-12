@@ -56,3 +56,37 @@ Optionomics documents a date-aware full recorded chain with contract pricing, si
 - `INTRADAY_HISTORICAL_EXECUTABLE_BBO`: unavailable in the current repository.
 - `ASSIGNMENT_AND_CORPORATE_ACTION_REPLAY`: not implemented.
 - `R6_BACKTEST_RESULT`: blocked. No performance number may be published.
+
+## 2026-09-12 field-by-field status
+
+These states separate public documentation from this account's tested entitlement. The
+private master credential is encrypted in Production and is intentionally unavailable to
+local research commands. The closed-session worker has therefore not produced a valid
+historical entitlement receipt yet. A documented product feature remains `UNVERIFIED`
+until the secure runtime receives a real provider response for that exact operation.
+
+| Field | Provider | Status | Evidence and limit |
+|---|---|---|---|
+| Stock bars | Alpaca | AVAILABLE | `/v2/stocks/bars` is implemented, paginated, adjustment-explicit, and covered by provider-contract tests. |
+| Option bars | Alpaca | UNVERIFIED | `/v1beta1/options/bars` is documented. The Production master entitlement has not been probed for this operation. |
+| Option trades | Alpaca | UNVERIFIED | `/v1beta1/options/trades` is documented. Trades are not BBO and cannot imply a fill. |
+| Historical option BBO | Alpaca | UNVERIFIED | Alpaca documents historical option data since February 2024. OPRA is consolidated BBO and subscription-only. Indicative quotes are modified derivatives. The account-specific feed entitlement is not yet proven for historical quotes. |
+| Current Greeks | Alpaca | AVAILABLE_WITH_LIMITS | Current indicative snapshots and Greeks are wired for SHADOW use. This does not prove historical Greeks or execution-grade OPRA. |
+| Historical Greeks | Alpaca | UNVERIFIED | No exact historical Greeks operation has passed an account-specific entitlement and timestamp test. |
+| Contract metadata | Alpaca | AVAILABLE | `/v2/options/contracts` is implemented with pagination and null-preserving multiplier parsing. Historical adjusted-contract coverage remains unverified. |
+| IV | Optionomics | UNVERIFIED | The documented date-aware analytics product supports IV research, but the exact Production API operation and entitlement have not produced a secure runtime receipt. |
+| Surface | Optionomics | UNVERIFIED | Documented daily snapshot/Time Travel feature, not tick replay. Account-specific API coverage is unverified. |
+| Skew | Optionomics | UNVERIFIED | Documented daily and Historical Lab feature. Empty observations must remain null. |
+| Term structure | Optionomics | UNVERIFIED | Documented daily and Historical Lab feature. Account-specific API coverage is unverified. |
+| Flow/UOA | Optionomics | UNVERIFIED | Documented live and historical research feature. It is never executable-price truth. |
+| Events | Optionomics | UNVERIFIED | Documented research context exists, but exact as-known timestamp semantics and API entitlement remain unverified. |
+| Historical analytics | Optionomics | UNVERIFIED | Historical Lab is documented. Availability varies by symbol/date and is not proof of an exportable point-in-time API contract. |
+
+The authoritative public references are Alpaca's [historical option data](https://docs.alpaca.markets/us/docs/historical-option-data),
+[option bars](https://docs.alpaca.markets/us/reference/optionbars), [option trades](https://docs.alpaca.markets/us/reference/optiontrades),
+and [stock bars](https://docs.alpaca.markets/us/reference/stockbars), plus Optionomics' [daily analytics](https://docs.optionomics.ai/analytics/daily-analytics/),
+[Historical Lab](https://docs.optionomics.ai/analytics/history/), and [volatility surface](https://docs.optionomics.ai/analytics/volatility-surface/).
+
+No historical BBO adapter is added in this release. The exact account entitlement and
+feed identity remain unverified, so adapting bars, trades, or indicative derivatives as
+execution BBO would violate the evidence standard.

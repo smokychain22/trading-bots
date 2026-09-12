@@ -41,6 +41,16 @@ test('bounded scan never claims completeness when the eligible universe exceeds 
   assert.deepEqual(result.missingScope,['UNDERLYING_BOUND_REACHED']);
 });
 
+test('a fully evaluated zero-candidate universe is complete evidence',async()=>{
+  const result=await runCrossSymbolShadowScan(boundary([underlying('AAPL'),underlying('MSFT')]),
+    async(item)=>cycle(item.symbol,0,true),()=> '2026-09-14T14:30:00Z');
+  assert.equal(result.completeness,'COMPLETE');
+  assert.equal(result.symbolsAttempted,2);
+  assert.equal(result.symbolsCompleted,2);
+  assert.equal(result.candidateCount,0);
+  assert.deepEqual(result.missingScope,[]);
+});
+
 test('partial contract pagination and interrupted symbols remain explicit',async()=>{
   const partial=await runCrossSymbolShadowScan(boundary([underlying('A')]),async()=>cycle('A',1,false),()=> '2026-09-14T14:30:00Z');
   assert.equal(partial.completeness,'PARTIAL');

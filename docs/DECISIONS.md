@@ -445,3 +445,16 @@ R7 now has a deterministic dry-run preflight that constructs the exact Alpaca li
 request and request hash but has no broker adapter and cannot submit a network call.
 The current empirical values remain UNKNOWN, owner authorization remains not granted,
 and `READY_FOR_FIRST_PAPER_ORDER` remains NO.
+
+## 2026-09-12: first-session proof reports evidence, including a valid empty result
+
+A bounded cross-symbol scan is complete when every in-scope symbol finishes contract,
+quote, and strategy evaluation. Candidate count does not determine completeness. A
+complete zero-candidate scan is valid evidence and can support an explained global WAIT.
+
+R6 readiness now reports separate engineering and evidence states for execution replay
+and outcome resolution. The first-session watchdog derives one of the canonical proof
+states from immutable scan members and the latest worker health. Closed-market cycles do
+not become scans. Historical option bars, trades, and public analytics documentation do
+not establish this account's BBO entitlement, so no historical execution adapter is
+enabled before an exact secure entitlement test succeeds.
