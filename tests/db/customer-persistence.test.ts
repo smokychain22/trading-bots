@@ -71,6 +71,7 @@ test('real disposable PostgreSQL preserves user limits, master role and tenant i
       PRIVATE_PAPER_API_KEY_BETA_ENABLED: true,
       MASTER_PAPER_EXECUTION_ENABLED: false, FOLLOWER_PAPER_EXECUTION_ENABLED: false,
       PAPER_PAUSE_NEW_ORDERS: true, THETA_AUTONOMOUS_WORKER_ENABLED: true,
+      THETA_RUNTIME_MODE: 'THETA_SHADOW_ONLY',
       PAPER_COPY_TOKEN_KEY_REF: 'synthetic', PAPER_COPY_TOKEN_ENCRYPTION_KEY: encryptionKey,
     } as Environment;
     const originalFetch = globalThis.fetch;
@@ -87,7 +88,7 @@ test('real disposable PostgreSQL preserves user limits, master role and tenant i
       if (requestUrl.pathname === '/v2/orders') return Response.json([]);
       if (requestUrl.pathname === '/v2/account/activities') return Response.json([]);
       if (requestUrl.pathname === '/v2/clock') return Response.json({
-        timestamp: cycleAt.toISOString(), is_open: true,
+        timestamp: cycleAt.toISOString(), is_open: false,
         next_open: new Date(cycleAt.getTime() + 86_400_000).toISOString(),
         next_close: new Date(cycleAt.getTime() + 3_600_000).toISOString(),
       });
@@ -97,7 +98,7 @@ test('real disposable PostgreSQL preserves user limits, master role and tenant i
     try {
       const first = await runAutonomousRuntimeCycle(environment, pool, cycleAt);
       const duplicate = await runAutonomousRuntimeCycle(environment, pool, cycleAt);
-      assert.equal(first.status, 'DEGRADED');
+      assert.equal(first.status, 'SUCCEEDED');
       assert.equal(first.reconciliation?.dataQuality, 'GOOD');
       assert.equal(first.reconciliation?.accountStatus, 'ACTIVE');
       assert.equal(duplicate.status, 'DUPLICATE');
