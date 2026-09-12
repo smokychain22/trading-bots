@@ -1010,3 +1010,7 @@ NEXT RECOMMENDED TASK: Keep the pinned locked worker online through the next sup
 options session. Inspect the automatically generated first export and its handoff receipt,
 then run the secure field-specific entitlement probes from the Production credential
 boundary. No broker order is permitted.
+
+The Windows task explicitly allows start and continuation on laptop battery. The prior
+Task Scheduler defaults could leave the otherwise healthy evidence worker queued until
+AC power returned, which would miss observation horizons without a code or provider error.

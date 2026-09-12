@@ -23,6 +23,12 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.doesNotMatch(source, /APCA-API-KEY-ID|APCA-API-SECRET-KEY/);
 });
 
+test('Windows installer does not silently queue evidence capture on laptop battery',async()=>{
+  const source=await readFile('tools/windows/install-theta-local-worker.ps1','utf8');
+  assert.match(source,/-AllowStartIfOnBatteries/);
+  assert.match(source,/-DontStopIfGoingOnBatteries/);
+});
+
 test('candidate scan timestamp advances only for a real complete or partial evidence scan',()=>{
   assert.equal(completedCandidateEvidenceScan(report('SUCCEEDED',null)),true);
   assert.equal(completedCandidateEvidenceScan(report('DEGRADED','SHADOW_SCAN_PARTIAL')),true);
