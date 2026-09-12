@@ -218,11 +218,12 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
     const body = await this.request(`/v2/orders:by_client_order_id?client_order_id=${encodeURIComponent(clientOrderId)}`, {}, true);
     return body === null ? null : parseBrokerOrder(body);
   }
-  async getActivities(activityTypes: readonly string[] = ['FILL', 'OPASN', 'OPEXP', 'OPXRC']): Promise<readonly BrokerActivity[]> {
+  async getActivities(activityTypes?: readonly string[]): Promise<readonly BrokerActivity[]> {
     const activities: BrokerActivity[] = [];
     let pageToken: string | null = null;
     for (let page = 0; page < 20; page += 1) {
-      const query = new URLSearchParams({ activity_types: activityTypes.join(','), direction: 'asc', page_size: '100' });
+      const query = new URLSearchParams({ direction: 'asc', page_size: '100' });
+      if (activityTypes !== undefined && activityTypes.length > 0) query.set('activity_types', activityTypes.join(','));
       if (pageToken !== null) query.set('page_token', pageToken);
       const body = z.array(z.unknown()).parse(await this.request(`/v2/account/activities?${query.toString()}`));
       const parsed = body.map(parseBrokerActivity);
