@@ -78,6 +78,9 @@ test('submit, replace, cancel, retrieve, and activities use documented paths wit
   assert.equal((await adapter.getOrderByClientOrderId('theta-client-1'))?.id, 'broker-1');
   assert.equal((await adapter.getOrders()).length, 1);
   assert.equal((await adapter.getActivities()).at(0)?.activityType, 'OPASN');
+  const activitiesUrl = calls.find((call) => call.url.includes('/activities'))?.url ?? '';
+  assert.match(activitiesUrl, /activity_types=FILL%2COPASN%2COPEXP%2COPXRC/);
+  assert.doesNotMatch(activitiesUrl, /OPEXC|OPTRD/);
   assert.deepEqual(calls.slice(0, 3).map((call) => call.method), ['POST', 'PATCH', 'DELETE']);
   assert.equal(calls[0]?.url, 'https://paper-api.alpaca.markets/v2/orders');
   assert.equal(calls[1]?.url, 'https://paper-api.alpaca.markets/v2/orders/broker-1');
