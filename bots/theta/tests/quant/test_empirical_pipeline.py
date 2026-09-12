@@ -78,17 +78,18 @@ def _build_export(candidates=None, candidate_sets=None, **row_overrides):
         "wholeChainOutcomes": [], "executionEvidence": [],
     }
     rows.update(row_overrides)
-    unsigned = {
+    identity = {
         "schemaVersion": DATASET_SCHEMA_VERSION,
         "sourceWindow": {"start": "2026-01-01T00:00:00+00:00", "end": "2026-01-02T00:00:00+00:00"},
-        "exportedAt": "2026-01-02T00:00:00+00:00", "featureSetVersion": "fv-1",
+        "featureSetVersion": "fv-1",
         "strategyVersions": ["sv-1"],
         "rows": {k: sorted(v, key=canonical_json) for k, v in rows.items()},
         "rowCounts": {k: len(v) for k, v in rows.items()},
     }
-    export = dict(unsigned)
+    export = dict(identity)
+    export["exportedAt"] = "2026-01-02T00:00:00+00:00"
     export["rows"] = rows
-    export["datasetHash"] = sha256_hex(canonical_json(unsigned))
+    export["datasetHash"] = sha256_hex(canonical_json(identity))
     return export
 
 

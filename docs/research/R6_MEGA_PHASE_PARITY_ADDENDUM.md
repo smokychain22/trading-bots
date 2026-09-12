@@ -183,3 +183,63 @@ keys were already unreachable placeholders, not consumed by any dataset
 row).
 
 **`PARITY_STILL_VALID` = YES. `REQUIRED_CODEX_CHANGE` count for this run: 0.**
+
+## Root-cause repair run: adopting Codex's port-time fixes (`b64946f..281b3f9`)
+
+Canonical main advanced again mid-run (six commits: Optionomics flow
+evidence, virtual shadow trader, provider entitlement audit). Per Codex's
+own `docs/HANDOFF.md` (2026-09-12, "Optionomics evidence closure and
+research autopilot"): **"The empirical pipeline was selectively ported
+from Claude with dataset-hash, null-outcome, and branch-lineage
+repairs."** Main now carries `empirical_pipeline.py`, `experiment_
+registry.py`, `production_export_loader.py`, `dataset_contracts.py`,
+`dataset_readiness.py`, and `research_targets.py` as a curated subset --
+not a merge of this branch. Diffing HEAD against that ported subset found
+three real defects Codex's repair introduced fixes for, all now applied
+here too (this branch is the source of truth for research engineering;
+these were genuine bugs, not stylistic drift):
+
+1. **UNKNOWN-to-zero in sufficiency counting** (`empirical_pipeline.py`):
+   `(e.whole_chain_net_pnl or 0) > 0` / `<= 0` coerced a RESOLVED-but-
+   unknown-PnL row into a zero-PnL outcome, silently counting it as a
+   loss. This is the exact failure mode this codebase is built to forbid.
+   Fixed to filter to `whole_chain_net_pnl is not None` first, then bucket
+   only labeled outcomes.
+2. **Fabricated branch lineage in slicing** (`empirical_pipeline.py`):
+   every episode was grouped under `config.strategy_branch` regardless of
+   its own actual branch, because the v1 outcome row carries no branch
+   field of its own -- an artifact of the config being reused as if it
+   were per-row data. `branch_slices` now stays empty until a defensible
+   per-episode branch join exists in the export, rather than fabricating
+   one.
+3. **CLI dataset-hash key mismatch** (`empirical_pipeline.py`): the CLI
+   read `raw_export.get("dataset_hash")` (snake_case), but the real
+   export (and every fixture) uses `datasetHash` (camelCase, mirroring
+   the TypeScript schema). Fixed.
+4. **Hash-identity `exportedAt` inclusion** (`production_export_loader.py`):
+   this branch's recomputed hash still included `exportedAt` in the
+   signed object, but Codex's `point-in-time-evidence.ts` fix (previous
+   run's addendum) excludes it from dataset IDENTITY as pure file-creation
+   provenance. Two exports of the identical immutable window would
+   otherwise hash differently. Fixed to match exactly; all six test
+   fixtures that independently recomputed a tampered hash updated to the
+   same convention, plus the same `test_export_timestamp_is_provenance_
+   not_dataset_identity` regression test Codex added.
+
+**Not adopted (cosmetic, not a defect):** `dataset_readiness.py`'s
+`run_empirical_program` fingerprint on main now calls `production_export_
+loader.canonical_json`/`sha256_hex` instead of `reproducibility._canonical_
+json`/`_sha256_hex`. Both produce identical output for this call's actual
+input (a dict of plain strings/enum values -- no floats, so the two
+implementations' JS-number-formatting divergence never triggers). This is
+a dedup/cleanup, not a correctness fix, so left as-is per the no-busywork
+rule while `DATASET_ABSENT`.
+
+**947 -> 948 Python tests** (net +1: the new `test_export_timestamp_is_
+provenance_not_dataset_identity` regression, matching main's own addition).
+Full suite passes. Security scan: 0 findings.
+
+**`DATASET_ABSENT` still stands** -- these are engineering repairs to code
+that has never yet run against a real dataset, found here specifically
+BECAUSE Codex's port exercised the same logic against its own fixtures.
+`PARITY_STILL_VALID` = YES. `REQUIRED_CODEX_CHANGE` count for this run: 0.

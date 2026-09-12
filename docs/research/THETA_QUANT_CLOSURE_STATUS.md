@@ -107,7 +107,9 @@ absent one, the result is `UNKNOWN`/refused, never a made-up default.
 
 `tests/quant/test_failure_dna_regression.py` holds one test per known
 project failure mode: delta-as-probability, forced quantity ≥ 1, roll
-resetting the old loss, midpoint fills, UNKNOWN→zero, missing fees→zero,
+resetting the old loss, midpoint fills, UNKNOWN→zero (including the
+`(x or 0)` sufficiency-counting variant Codex's port caught and this
+branch then fixed), missing fees→zero,
 stale quotes passing, soft signals acting as hidden hard gates, partial
 candidate sets treated as complete, research branches becoming executable,
 followers copying skipped lifecycle events, master self-copy, follower size

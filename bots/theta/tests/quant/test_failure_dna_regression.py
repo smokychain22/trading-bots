@@ -446,14 +446,15 @@ class DuplicateExperimentResultTests(unittest.TestCase):
             "candidateSets": [], "candidates": [], "shadowCandidates": [], "managementSnapshots": [],
             "lifecycleOutcomes": [], "wholeChainOutcomes": [], "executionEvidence": [],
         }
-        unsigned = {
+        identity = {
             "schemaVersion": DATASET_SCHEMA_VERSION,
             "sourceWindow": {"start": "2026-01-01T00:00:00+00:00", "end": "2026-01-02T00:00:00+00:00"},
-            "exportedAt": "2026-01-02T00:00:00+00:00", "featureSetVersion": "fv-1",
+            "featureSetVersion": "fv-1",
             "strategyVersions": [], "rows": rows, "rowCounts": {k: 0 for k in rows},
         }
-        export = dict(unsigned)
-        export["datasetHash"] = sha256_hex(canonical_json(unsigned))
+        export = dict(identity)
+        export["exportedAt"] = "2026-01-02T00:00:00+00:00"
+        export["datasetHash"] = sha256_hex(canonical_json(identity))
         config = ExperimentConfig(
             dataset_hash="h1", target_version="tv1", feature_version="fv-1",
             strategy_branch=ThetaStrategyBranch.THETA_CONVENTIONAL, cost_model_version="cm-1",

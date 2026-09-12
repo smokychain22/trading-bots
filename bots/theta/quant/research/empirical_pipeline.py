@@ -390,14 +390,16 @@ def run_theta_empirical_pipeline(
 
     sufficiency: Optional[SufficiencyReport] = None
     if thresholds is not None:
-        positive = sum(
-            1 for e in export.whole_chain_outcomes
-            if e.censoring_state == CensoringState.RESOLVED and (e.whole_chain_net_pnl or 0) > 0
-        )
-        negative = sum(
-            1 for e in export.whole_chain_outcomes
-            if e.censoring_state == CensoringState.RESOLVED and (e.whole_chain_net_pnl or 0) <= 0
-        )
+        # `or 0` here would be the exact UNKNOWN-to-zero failure mode this
+        # codebase forbids: a RESOLVED row with an unknown net PnL is not a
+        # zero-PnL outcome, and coercing it to 0 would silently count it as
+        # a loss (0 <= 0) rather than excluding it from both buckets.
+        labeled_outcomes = [
+            e for e in export.whole_chain_outcomes
+            if e.censoring_state == CensoringState.RESOLVED and e.whole_chain_net_pnl is not None
+        ]
+        positive = sum(1 for e in labeled_outcomes if e.whole_chain_net_pnl > 0)
+        negative = sum(1 for e in labeled_outcomes if e.whole_chain_net_pnl <= 0)
         sufficiency = assess_model_fit_sufficiency(
             raw_n=quality.candidates, independent_n=effective_n, positive_outcomes=positive,
             negative_outcomes=negative, branch_coverage=quality.branches,
@@ -418,11 +420,13 @@ def run_theta_empirical_pipeline(
     if not cross_symbol.usable_for_best_in_market_claims:
         refused.append(("BEST_IN_MARKET_CLAIMS", "CROSS_SYMBOL_SCAN_INCOMPLETE:" + ",".join(cross_symbol.reasons)))
 
-    # Branch slicing: grouped by branch, then by censoring state, never pooled.
-    branch_groups: Dict[ThetaStrategyBranch, List[Any]] = {}
-    for episode in export.whole_chain_outcomes:
-        branch_groups.setdefault(ThetaStrategyBranch(config.strategy_branch.value), []).append(episode)
-    branch_slices = slice_by_branch(branch_groups) if branch_groups else {}
+    # Branch slicing: grouped by EACH episode's OWN branch, then by
+    # censoring state, never pooled. The v1 outcome row carries no branch
+    # field of its own, and assigning every outcome to the caller's
+    # configured `config.strategy_branch` would fabricate lineage a real
+    # dataset never asserted -- so branch-resolved slicing stays empty
+    # until a defensible per-episode branch join exists in the export.
+    branch_slices: Dict[ThetaStrategyBranch, Any] = {}
 
     manifest = _build_manifest(config, export, readiness, source_code_commit, run_timestamp)
 
@@ -543,7 +547,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     raw_export = json.loads(export_path.read_text(encoding="utf-8"))
 
     config = ExperimentConfig(
-        dataset_hash=str(raw_export.get("dataset_hash", "")),
+        dataset_hash=str(raw_export.get("datasetHash", "")),
         target_version=args.target_version,
         feature_version=args.feature_version,
         strategy_branch=ThetaStrategyBranch(args.strategy_branch),

@@ -67,17 +67,17 @@ def _minimal_rows():
 
 def _build_valid_export():
     rows = _minimal_rows()
-    unsigned = {
+    identity = {
         "schemaVersion": DATASET_SCHEMA_VERSION,
         "sourceWindow": {"start": "2026-01-01T00:00:00+00:00", "end": "2026-01-02T00:00:00+00:00"},
-        "exportedAt": "2026-01-02T00:00:00+00:00",
         "featureSetVersion": "fv-1",
         "strategyVersions": ["sv-1"],
         "rows": {k: sorted(v, key=canonical_json) for k, v in rows.items()},
         "rowCounts": {k: len(v) for k, v in rows.items()},
     }
-    dataset_hash = sha256_hex(canonical_json(unsigned))
-    export = dict(unsigned)
+    dataset_hash = sha256_hex(canonical_json(identity))
+    export = dict(identity)
+    export["exportedAt"] = "2026-01-02T00:00:00+00:00"
     export["rows"] = rows
     export["datasetHash"] = dataset_hash
     return export
@@ -117,7 +117,7 @@ class DuplicateIdentityTests(unittest.TestCase):
         rows = export["rows"]
         unsigned = {
             "schemaVersion": export["schemaVersion"], "sourceWindow": export["sourceWindow"],
-            "exportedAt": export["exportedAt"], "featureSetVersion": export["featureSetVersion"],
+            "featureSetVersion": export["featureSetVersion"],
             "strategyVersions": export["strategyVersions"],
             "rows": {k: sorted(v, key=canonical_json) for k, v in rows.items()},
             "rowCounts": export["rowCounts"],
@@ -135,7 +135,7 @@ class CandidateSetReferentialIntegrityTests(unittest.TestCase):
         rows = export["rows"]
         unsigned = {
             "schemaVersion": export["schemaVersion"], "sourceWindow": export["sourceWindow"],
-            "exportedAt": export["exportedAt"], "featureSetVersion": export["featureSetVersion"],
+            "featureSetVersion": export["featureSetVersion"],
             "strategyVersions": export["strategyVersions"],
             "rows": {k: sorted(v, key=canonical_json) for k, v in rows.items()},
             "rowCounts": export["rowCounts"],
@@ -172,7 +172,7 @@ class FutureLabelFirewallTests(unittest.TestCase):
         rows = export["rows"]
         unsigned = {
             "schemaVersion": export["schemaVersion"], "sourceWindow": export["sourceWindow"],
-            "exportedAt": export["exportedAt"], "featureSetVersion": export["featureSetVersion"],
+            "featureSetVersion": export["featureSetVersion"],
             "strategyVersions": export["strategyVersions"],
             "rows": {k: sorted(v, key=canonical_json) for k, v in rows.items()},
             "rowCounts": export["rowCounts"],
@@ -190,7 +190,7 @@ class PitTimestampTests(unittest.TestCase):
         rows = export["rows"]
         unsigned = {
             "schemaVersion": export["schemaVersion"], "sourceWindow": export["sourceWindow"],
-            "exportedAt": export["exportedAt"], "featureSetVersion": export["featureSetVersion"],
+            "featureSetVersion": export["featureSetVersion"],
             "strategyVersions": export["strategyVersions"],
             "rows": {k: sorted(v, key=canonical_json) for k, v in rows.items()},
             "rowCounts": export["rowCounts"],
@@ -217,7 +217,7 @@ class CrossedBboTests(unittest.TestCase):
         rows = export["rows"]
         unsigned = {
             "schemaVersion": export["schemaVersion"], "sourceWindow": export["sourceWindow"],
-            "exportedAt": export["exportedAt"], "featureSetVersion": export["featureSetVersion"],
+            "featureSetVersion": export["featureSetVersion"],
             "strategyVersions": export["strategyVersions"],
             "rows": {k: sorted(v, key=canonical_json) for k, v in rows.items()},
             "rowCounts": export["rowCounts"],
@@ -234,6 +234,14 @@ class DeterministicFingerprintTests(unittest.TestCase):
         first = load_dataset_export(copy.deepcopy(export))
         second = load_dataset_export(copy.deepcopy(export))
         self.assertEqual(first.recomputed_hash, second.recomputed_hash)
+
+    def test_export_timestamp_is_provenance_not_dataset_identity(self):
+        export = _build_valid_export()
+        original_hash = export["datasetHash"]
+        export["exportedAt"] = "2026-01-03T00:00:00+00:00"
+        loaded = load_dataset_export(export)
+        self.assertEqual(loaded.dataset_hash, original_hash)
+        self.assertTrue(loaded.hash_verified)
 
 
 if __name__ == "__main__":
