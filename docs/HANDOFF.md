@@ -1,5 +1,57 @@
 # Codex handoff: standalone platform Phase 1
 
+## 2026-09-12: R4 engineering closure, R7 non-data closure, and research export bridge
+
+OWNER: Codex, canonical integration owner.
+
+TASK: Complete the disabled follower-copy engineering path, build a deterministic
+no-network first-order preflight, and make real R6 evidence directly exportable.
+
+FILES CHANGED: Copy contracts and planner, broker lifecycle orchestrators, one
+cohesive migration 022, readiness and preflight contracts, research exporter and CLI,
+database verification, tests, package scripts, ignore rules, and operator docs.
+
+WHAT WAS IMPLEMENTED: Tenant-bound chain participation, skipped-entry exclusion,
+follower-owned lifecycle truth, explicit roll legs, direction-aware copy economics,
+freshness and timing evidence, conservative nullable capacity, immutable copy audit
+events, automatic broker-confirmed master copy events, disabled planned intents,
+deterministic export bundles, and a dry-run request that stops before broker I/O.
+
+TESTS RUN: Full Node and Python suites, TypeScript, ESLint, build, security scan,
+Production Neon migration and schema verification. Final Playwright and CI status are
+recorded in the release report.
+
+TEST RESULTS: Migration 022 applied successfully to Neon and the database verifier
+confirmed 22 migrations, the participation ledger, tenant guard, and hard execution
+lock. No point-in-time rows exist yet, so the export command correctly reports a data
+blocker and creates no artifact.
+
+KNOWN LIMITATIONS: There is no real follower account, no follower Paper fill, no
+resolved economic episode, and no empirically qualified EV model. Local Docker is not
+running, so disposable PostgreSQL and Redis validation remains delegated to CI.
+
+RISKS: The first open market session may reveal provider or entitlement limits. The
+copy engine is structurally ready but cannot be validated against real follower drift
+until a separate tester account exists.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Research export schema consumption and empirical
+gate semantics only. Python must not become runtime authority, and directionless
+follower price deterioration must not be ported.
+
+NEXT RECOMMENDED TASK: Let the pinned shadow worker collect the first complete market
+session, export it, and run the research pipeline. Do not submit any order.
+
+CLAUDE REVIEW: The single final fetch inspected
+`origin/claude/theta-r1-real-state` at `f6251966d528ef6e9d2a82894b0a54780c8f6d93`.
+The direction-aware Python follower economics are `RESEARCH_ONLY` because the same
+correction is now enforced by the canonical TypeScript planner. The Python phase
+manifest and R7/R9 evidence packets are `RESEARCH_ONLY`; they describe research
+readiness but cannot control Production. The export loader's expanded future-label
+firewall is `PORT` in substance and already matches the TypeScript firewall, so no
+duplicate source change was required. The remaining broad branch delta is `DEFER`.
+The branch was not merged wholesale because it also diverges from newer Production
+account, migration, runtime, and documentation work.
+
 ## 2026-09-11: commit-pinned GitHub methods audit and ledger UNKNOWN fix
 
 OWNER: Codex, sole integration owner.

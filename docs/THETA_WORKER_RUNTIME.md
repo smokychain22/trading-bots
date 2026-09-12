@@ -66,3 +66,18 @@ docker compose -f docker-compose.worker.example.yml up -d --build
 
 This command is documentation only during the current phase. Docker Desktop was not
 running during initial verification, so an image build remains an explicit gap.
+
+## Research evidence export
+
+After genuine point-in-time candidate evidence exists, create the deterministic,
+Git-ignored research handoff with:
+
+```text
+npm run theta:research-export -- --latest
+```
+
+For a bounded window, use `--from <ISO time> --to <ISO time>`. The command writes
+`dataset.json`, `manifest.json`, and `data-quality.json` under both
+`research_exports/<dataset hash>/` and `research_exports/latest/`. It returns a
+truthful `NO_POINT_IN_TIME_EVIDENCE_TO_EXPORT` receipt when no real evidence exists.
+It never creates synthetic evidence and never exports secrets.

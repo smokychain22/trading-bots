@@ -94,6 +94,8 @@ tmp/
 test-results/
 playwright-report/
 .theta-local-worker/
+research_exports/
+paper_preflight/
 
 .vercel
 .env*

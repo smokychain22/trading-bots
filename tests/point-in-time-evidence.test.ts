@@ -26,6 +26,7 @@ test('dataset export ordering and identity are deterministic',()=>{
     rows:{candidateSets:[],candidates:[a,b],shadowCandidates:[],managementSnapshots:[],lifecycleOutcomes:[],wholeChainOutcomes:[],executionEvidence:[]}};
   const first=buildDatasetExport(base),second=buildDatasetExport({...base,rows:{...base.rows,candidates:[b,a]}});
   assert.equal(first.datasetHash,second.datasetHash);
+  assert.equal(first.datasetHash,buildDatasetExport({...base,exportedAt:'2026-09-12T02:00:00Z'}).datasetHash);
   assert.equal(first.rowCounts.candidates,2);
 });
 

@@ -8,6 +8,8 @@ export const copyActionSchema = z.enum([
   "REDUCE_CSP",
   "CLOSE_CSP",
   "ROLL_CSP",
+  "ROLL_CSP_CLOSE",
+  "ROLL_CSP_OPEN",
   "EXPIRE_CSP",
   "ASSIGN_STOCK",
   "HOLD_STOCK",
@@ -16,6 +18,8 @@ export const copyActionSchema = z.enum([
   "REDUCE_CC",
   "CLOSE_CC",
   "ROLL_CC",
+  "ROLL_CC_CLOSE",
+  "ROLL_CC_OPEN",
   "EXPIRE_CC",
   "CALL_AWAY",
 ]);
@@ -45,7 +49,7 @@ export const followerParticipationSchema = z.enum([
 ]);
 
 export const masterCopyEventSchema = z.object({
-  masterDecisionId: z.string().min(1),
+  masterDecisionId: z.string().min(1).nullable(),
   masterLifecycleId: z.string().min(1),
   masterOrderId: z.string().min(1).nullable(),
   masterFillId: z.string().min(1).nullable(),
@@ -75,6 +79,14 @@ export const followerCopyStateSchema = z.object({
   maxContractsPerPosition: z.number().int().nonnegative(),
   existingCopiedQuantity: z.number().int().nonnegative(),
   actualBrokerQuantity: z.number().int().nonnegative(),
+  chainEntryParticipated: z.boolean(),
+  assignmentCapacityContracts: z.number().int().nonnegative().nullable(),
+  tailCapacityContracts: z.number().int().nonnegative().nullable(),
+  concentrationCapacityContracts: z.number().int().nonnegative().nullable(),
+  accountLimitContracts: z.number().int().nonnegative().nullable(),
+  actualCoveredShares: z.number().int().nonnegative().nullable(),
+  contractMultiplier: z.number().int().positive().nullable(),
+  followerBrokerLifecycleConfirmed: z.boolean(),
   freshFollowerQuote: z.boolean(),
   expectedSlippagePerContract: z.number().finite().nonnegative().nullable(),
   maxSlippagePerContract: z.number().finite().nonnegative(),
@@ -118,6 +130,12 @@ export interface FollowerCopyPlan {
     | "NEW_TRADES_STOPPED"
     | "STALE_FOLLOWER_QUOTE"
     | "SLIPPAGE_LIMIT_EXCEEDED"
+    | "EXECUTION_ECONOMICS_UNKNOWN"
+    | "FOLLOWER_CAPACITY_UNKNOWN"
+    | "FOLLOWER_SKIPPED_ENTRY"
+    | "FOLLOWER_BROKER_LIFECYCLE_UNCONFIRMED"
+    | "INSUFFICIENT_FOLLOWER_COVERED_SHARES"
+    | "ROLL_REQUIRES_EXPLICIT_LEGS"
     | "BROKER_REJECTED"
     | "UNKNOWN_SUBMISSION_REQUIRES_RECONCILIATION"
     | "BROKER_POSITION_DIVERGED"
@@ -132,7 +150,7 @@ const stableId = (prefix: string, values: readonly string[]) =>
 export function copyEventId(event: MasterCopyEvent, followerId: string): string {
   const parsed = masterCopyEventSchema.parse(event);
   return stableId("copy", [
-    parsed.masterDecisionId,
+    parsed.masterDecisionId ?? "none",
     parsed.masterLifecycleId,
     parsed.masterOrderId ?? "none",
     parsed.masterFillId ?? "none",
@@ -148,19 +166,18 @@ export function followerClientOrderId(copyId: string, attempt = 1): string {
 }
 
 const opensNewStandaloneRisk = (action: MasterCopyEvent["action"]) =>
-  action === "OPEN_CSP";
+  action === "OPEN_CSP" || action === "ROLL_CSP_OPEN";
 
 const closesExposure = (action: MasterCopyEvent["action"]) =>
-  ["REDUCE_CSP", "CLOSE_CSP", "SELL_STOCK", "REDUCE_CC", "CLOSE_CC"].includes(action);
+  ["REDUCE_CSP", "CLOSE_CSP", "ROLL_CSP_CLOSE", "SELL_STOCK", "REDUCE_CC", "CLOSE_CC", "ROLL_CC_CLOSE"].includes(action);
 
 const lifecycleManagement = (action: MasterCopyEvent["action"]) =>
   [
-    "ROLL_CSP",
     "EXPIRE_CSP",
     "ASSIGN_STOCK",
     "HOLD_STOCK",
     "OPEN_CC",
-    "ROLL_CC",
+    "ROLL_CC_OPEN",
     "EXPIRE_CC",
     "CALL_AWAY",
   ].includes(action);
@@ -206,6 +223,9 @@ export function planFollowerCopy(
   const follower = followerCopyStateSchema.parse(rawFollower);
   const base = basePlan(event, follower);
 
+  if (event.action === "ROLL_CSP" || event.action === "ROLL_CC")
+    return blocked(base, "ROLL_REQUIRES_EXPLICIT_LEGS");
+
   if (follower.processedCopyEventIds.includes(base.copyEventId)) {
     return {
       ...base,
@@ -231,6 +251,13 @@ export function planFollowerCopy(
   if (!follower.optionsApproved && event.contractId !== null)
     return blocked(base, "OPTIONS_NOT_APPROVED");
 
+  if (event.action !== "OPEN_CSP" && !follower.chainEntryParticipated)
+    return blocked(base, "FOLLOWER_SKIPPED_ENTRY");
+
+  if (["EXPIRE_CSP", "ASSIGN_STOCK", "EXPIRE_CC", "CALL_AWAY"].includes(event.action)
+    && !follower.followerBrokerLifecycleConfirmed)
+    return blocked(base, "FOLLOWER_BROKER_LIFECYCLE_UNCONFIRMED", "RECONCILING", "RECONCILE");
+
   if (follower.actualBrokerQuantity !== follower.existingCopiedQuantity && follower.existingCopiedQuantity > 0)
     return blocked(base, "BROKER_POSITION_DIVERGED", "DIVERGED", "RECONCILE");
   if (event.action === "ASSIGN_STOCK" && follower.followerAssigned === false)
@@ -239,33 +266,47 @@ export function planFollowerCopy(
   if (opensNewStandaloneRisk(event.action) && follower.participation === "STOP_NEW_TRADES_MANAGE_EXISTING")
     return blocked(base, "NEW_TRADES_STOPPED");
 
-  const requiresExecutableQuote = opensNewStandaloneRisk(event.action) || closesExposure(event.action) || ["ROLL_CSP", "OPEN_CC", "ROLL_CC"].includes(event.action);
+  const masterQuantity = event.masterFilledQuantity;
+  const managementQuantity = Math.min(masterQuantity, follower.existingCopiedQuantity);
+  if ((event.action === "OPEN_CC" || event.action === "ROLL_CC_OPEN") &&
+    (follower.actualCoveredShares === null || follower.contractMultiplier === null ||
+      follower.actualCoveredShares < managementQuantity * follower.contractMultiplier))
+    return blocked(base, "INSUFFICIENT_FOLLOWER_COVERED_SHARES");
+
+  const requiresExecutableQuote = opensNewStandaloneRisk(event.action) || closesExposure(event.action) || ["OPEN_CC", "ROLL_CC_OPEN"].includes(event.action);
   if (requiresExecutableQuote && !follower.freshFollowerQuote)
     return blocked(base, "STALE_FOLLOWER_QUOTE");
   if (
     requiresExecutableQuote &&
-    follower.expectedSlippagePerContract !== null &&
-    follower.expectedSlippagePerContract > follower.maxSlippagePerContract
+    follower.expectedSlippagePerContract === null
+  ) return blocked(base, "EXECUTION_ECONOMICS_UNKNOWN");
+  if (
+    requiresExecutableQuote && follower.expectedSlippagePerContract !== null &&
+      follower.expectedSlippagePerContract > follower.maxSlippagePerContract
   )
     return blocked(base, "SLIPPAGE_LIMIT_EXCEEDED");
 
-  const masterQuantity = event.masterFilledQuantity;
-  const capacity = Math.min(
+  const collateralCapacity = Math.min(
     follower.maxContractsPerPosition,
     Math.floor(follower.authorizedCapitalRemaining / follower.collateralPerContract),
   );
-  const managementQuantity = Math.min(masterQuantity, follower.existingCopiedQuantity);
+  const riskCapacities = [follower.assignmentCapacityContracts,follower.tailCapacityContracts,
+    follower.concentrationCapacityContracts];
+  if (opensNewStandaloneRisk(event.action) && riskCapacities.some((value) => value === null))
+    return blocked(base, "FOLLOWER_CAPACITY_UNKNOWN");
+  const capacity = Math.min(collateralCapacity,...riskCapacities.map((value) => value ?? 0),
+    follower.accountLimitContracts ?? Number.POSITIVE_INFINITY);
   const intendedQuantity = opensNewStandaloneRisk(event.action)
     ? Math.min(masterQuantity, capacity)
     : closesExposure(event.action) || lifecycleManagement(event.action)
       ? managementQuantity
       : 0;
-  const closeQuantity = closesExposure(event.action) || ["ROLL_CSP", "ROLL_CC"].includes(event.action)
+  const closeQuantity = closesExposure(event.action)
     ? managementQuantity
     : 0;
-  const openQuantity = opensNewStandaloneRisk(event.action) || ["ROLL_CSP", "ROLL_CC"].includes(event.action)
+  const openQuantity = opensNewStandaloneRisk(event.action)
     ? intendedQuantity
-    : event.action === "OPEN_CC"
+    : event.action === "OPEN_CC" || event.action === "ROLL_CC_OPEN"
       ? managementQuantity
       : 0;
 
@@ -292,6 +333,23 @@ export function planFollowerCopy(
     nextAction: "PERSIST_PLAN",
     reason: outcome === "COPY_FULL" ? "FULL_ACCOUNT_CAPACITY" : "FOLLOWER_QUANTITY_REDUCED",
   };
+}
+
+export type OrderCashflowDirection = "CREDIT" | "DEBIT";
+export interface PriceDeterioration {
+  readonly direction:OrderCashflowDirection;
+  readonly amount:number;
+  readonly classification:"ADVERSE"|"UNCHANGED"|"IMPROVED";
+}
+
+export function directionAwarePriceDeterioration(input:{
+  readonly direction:OrderCashflowDirection; readonly masterPrice:number; readonly followerPrice:number;
+}):PriceDeterioration {
+  const parsed=z.object({direction:z.enum(["CREDIT","DEBIT"]),masterPrice:z.number().finite().nonnegative(),
+    followerPrice:z.number().finite().nonnegative()}).parse(input);
+  const raw=parsed.direction==="CREDIT" ? parsed.masterPrice-parsed.followerPrice : parsed.followerPrice-parsed.masterPrice;
+  const amount=Math.abs(raw)<1e-12?0:raw;
+  return {direction:parsed.direction,amount,classification:amount>0?"ADVERSE":amount<0?"IMPROVED":"UNCHANGED"};
 }
 
 export function syncStateAfterBrokerResult(input: {

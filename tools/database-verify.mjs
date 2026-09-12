@@ -26,6 +26,7 @@ try {
     "019_real_shadow_evidence_activation",
     "020_local_worker_runtime",
     "021_disabled_copy_planning",
+    "022_disabled_copy_engine_closure",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -54,6 +55,8 @@ try {
     ["research", "theta_execution_observation_job"],
     ["ops", "runtime_worker_status"], ["ops", "runtime_worker_lease"],
     ["ops", "runtime_worker_event"],
+    ["copy", "follower_chain_participation"],
+    ["copy", "follower_chain_participation_event"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -123,6 +126,18 @@ try {
       AND table_name='master_copy_event' AND constraint_name='master_copy_event_explicit_roll_legs') AS explicit_rolls`);
   if (!disabledCopyProtection.rows[0]?.follower_evidence || !disabledCopyProtection.rows[0]?.fill_first ||
     !disabledCopyProtection.rows[0]?.explicit_rolls) throw new Error("DISABLED_COPY_PLANNING_PROTECTION_MISSING");
+  const copyClosure=await client.query(`SELECT
+    to_regclass('copy.follower_chain_participation') IS NOT NULL AS participation,
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='copy'
+      AND event_object_table='follower_copy_event' AND trigger_name='guard_disabled_follower_plan') AS boundary_guard,
+    EXISTS(SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='copy'
+      AND table_name='follower_copy_event' AND constraint_name='follower_copy_event_copy_locked') AS execution_lock,
+    EXISTS(SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='copy'
+      AND table_name='follower_chain_participation_event'
+      AND constraint_name='follower_chain_participation_event_workspace_fk') AS participation_tenant_fk`);
+  if(!copyClosure.rows[0]?.participation||!copyClosure.rows[0]?.boundary_guard||!copyClosure.rows[0]?.execution_lock||
+    !copyClosure.rows[0]?.participation_tenant_fk)
+    throw new Error('DISABLED_COPY_ENGINE_CLOSURE_MISSING');
   const lifecycleEvidence = await client.query(`SELECT
     EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade' AND trigger_name='reject_immutable_mutation' AND event_object_table='broker_position_snapshot') AS immutable_positions,
     EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade' AND trigger_name='protect_broker_activity_fact' AND event_object_table='broker_activity_fact') AS protected_activities`);
@@ -162,6 +177,7 @@ try {
     realShadowEvidenceActivation: "ENFORCED",
     localWorkerRuntime: "ENFORCED",
     disabledCopyPlanning: "ENFORCED",
+    disabledCopyEngineClosure:"ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
     brokerOrders: orderCount.rows[0]?.count ?? 0,

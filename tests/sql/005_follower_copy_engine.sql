@@ -29,6 +29,12 @@ VALUES (
   'PAPER'
 );
 
+INSERT INTO market.underlying(underlying_id,symbol,asset_type,exchange)
+VALUES('00000000-0000-0000-0000-000000000208','SYN','EQUITY','TEST');
+INSERT INTO trade.economic_chain(chain_id,bot_instance_id,underlying_id,lifecycle_state,opened_at)
+VALUES('00000000-0000-0000-0000-000000000209','00000000-0000-0000-0000-000000000204',
+  '00000000-0000-0000-0000-000000000208','STOCK_HELD','2026-09-10T13:00:00Z');
+
 INSERT INTO copy.follower_account(
   follower_account_id, workspace_id, provider_account_ref, oauth_secret_ref,
   participation, account_ready, options_approved
@@ -62,20 +68,27 @@ INSERT INTO trade.broker_activity_fact(
 INSERT INTO copy.master_copy_event(
   master_copy_event_id, master_bot_instance_id, action, symbol,
   master_quantity, master_filled_quantity, occurred_at, payload_hash,
-  source_broker_activity_fact_id, broker_confirmation_kind
+  source_broker_activity_fact_id, broker_confirmation_kind,master_chain_id
 ) VALUES (
   'master-copy-event-1',
   '00000000-0000-0000-0000-000000000204',
   'HOLD_STOCK', 'SYN', 5, 5, '2026-09-10T14:00:00Z', repeat('a', 64),
-  '00000000-0000-0000-0000-000000000207', 'LIFECYCLE_ACTIVITY'
+  '00000000-0000-0000-0000-000000000207', 'LIFECYCLE_ACTIVITY',
+  '00000000-0000-0000-0000-000000000209'
 );
 
+INSERT INTO copy.follower_chain_participation(workspace_id,follower_account_id,master_chain_id,entry_state,
+  entry_participated,follower_chain_id,current_lifecycle_state,last_master_copy_event_id,policy_version,
+  version_lineage_json,updated_at) VALUES('00000000-0000-0000-0000-000000000201',
+  '00000000-0000-0000-0000-000000000205','00000000-0000-0000-0000-000000000209','CONFIRMED',true,
+  '00000000-0000-0000-0000-000000000209','STOCK_HELD','master-copy-event-1','copy-policy-test-v1','{}',now());
+
 INSERT INTO copy.follower_copy_event(
-  follower_copy_event_id, master_copy_event_id, follower_account_id,
+  follower_copy_event_id, master_copy_event_id, workspace_id,follower_account_id,
   follower_policy_id, outcome, sync_state, intended_quantity,
   close_quantity, open_quantity, reason
 ) VALUES (
-  'copy-event-follower-1', 'master-copy-event-1',
+  'copy-event-follower-1', 'master-copy-event-1','00000000-0000-0000-0000-000000000201',
   '00000000-0000-0000-0000-000000000205',
   '00000000-0000-0000-0000-000000000206',
   'SKIP_ACCOUNT', 'BLOCKED', 0, 0, 0,
@@ -86,11 +99,11 @@ DO $$
 BEGIN
   BEGIN
     INSERT INTO copy.follower_copy_event(
-      follower_copy_event_id, master_copy_event_id, follower_account_id,
+      follower_copy_event_id, master_copy_event_id, workspace_id,follower_account_id,
       follower_policy_id, outcome, sync_state, intended_quantity,
       close_quantity, open_quantity, reason
     ) VALUES (
-      'copy-event-replay', 'master-copy-event-1',
+      'copy-event-replay', 'master-copy-event-1','00000000-0000-0000-0000-000000000201',
       '00000000-0000-0000-0000-000000000205',
       '00000000-0000-0000-0000-000000000206',
       'COPY_FULL', 'PENDING_SYNC', 1, 0, 1, 'REPLAY'

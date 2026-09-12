@@ -426,3 +426,22 @@ follower is checked against its own active account, policy, capital, assignment 
 concentration, BBO, and freshness evidence. Quantity zero remains valid. Persisted
 follower order intents are `PLANNED` with `execution_authorized=false`, and no broker
 submission surface is called.
+
+## 2026-09-12: disabled copy-engine closure and Paper preflight boundary
+
+The disabled R4 engine records master events only after a broker-confirmed fill or
+lifecycle activity. Roll close and open legs are separate events with explicit
+lineage. Every follower plan is tenant-bound, uses the follower's own current BBO
+and capacity, and remains `EXECUTION_DISABLED`. A persistent chain-participation
+ledger prevents a follower that skipped entry from receiving later lifecycle actions.
+Assignment, expiration, and call-away require that follower's own broker activity.
+
+Follower price deterioration is cashflow-direction aware. Less credit is adverse
+for credit orders, while more debit is adverse for debit orders. Missing capacity,
+multiplier, execution economics, or fresh quote evidence blocks the plan instead of
+increasing size. Zero remains a valid result.
+
+R7 now has a deterministic dry-run preflight that constructs the exact Alpaca limit
+request and request hash but has no broker adapter and cannot submit a network call.
+The current empirical values remain UNKNOWN, owner authorization remains not granted,
+and `READY_FOR_FIRST_PAPER_ORDER` remains NO.

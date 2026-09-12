@@ -6,8 +6,19 @@ export interface DatasetExportRequest {
   readonly start:string; readonly end:string; readonly exportedAt:string; readonly featureSetVersion:string;
 }
 
+export interface DatasetEvidenceWindow { readonly start:string; readonly end:string; readonly rows:number; }
+
 export class PostgresDatasetExporter {
   constructor(private readonly pool:Pool) {}
+
+  async newestEvidenceWindow():Promise<DatasetEvidenceWindow|null> {
+    const result=await this.pool.query(`SELECT min(decision_time)::text AS start,
+      (max(decision_time) + interval '1 millisecond')::text AS "end",count(*)::int AS rows
+      FROM trade.candidate_point_in_time_evidence`);
+    const row=result.rows[0];
+    return row?.start&&row?.end&&Number(row.rows)>0
+      ? {start:String(row.start),end:String(row.end),rows:Number(row.rows)} : null;
+  }
 
   async export(request:DatasetExportRequest):Promise<DatasetExportArtifact> {
     if (Date.parse(request.end)<Date.parse(request.start)) throw new Error('DATASET_WINDOW_INVALID');

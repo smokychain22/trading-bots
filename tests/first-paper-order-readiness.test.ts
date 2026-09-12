@@ -16,19 +16,25 @@ const validInput = (): FirstPaperOrderReadinessInput => ({
   },
   market: { clockOpen: good(true), calendarSessionConfirmed: good(true) },
   selection: {
-    strategyBranch: good('THETA_Q', 'THETA'), symbol: good('AAPL'), occContract: good('AAPL261016P00150000'),
+    strategyBranch: good('THETA_Q', 'THETA'), strategyVersion:good('theta-q-v1','THETA'),
+    candidateSetId:good('candidate-set-1','DATABASE'),candidateId:good('candidate-1','DATABASE'),
+    symbol: good('AAPL'), occContract: good('AAPL261016P00150000'),
     optionType: good('PUT'), strike: good(150), expiration: good('2026-10-16'), dte: good(34),
     multiplier: good(100), positionIntent: good('SELL_TO_OPEN', 'THETA'), quantity: good(1, 'AEGIS'),
-    collateral: good(15_000, 'THETA'), assignmentCapacity: good(true, 'AEGIS'),
+    quantityDerivation:good('min(allocation,collateral,assignment,tail,concentration)=1','AEGIS'),
+    collateral: good(15_000, 'THETA'),userAllocation:good(20_000,'CUSTOMER_POLICY'), assignmentCapacity: good(true, 'AEGIS'),
     ownershipQuality: good('ACCEPTABLE', 'THETA'), eventState: good('CLEAR', 'OPTIONOMICS'),
   },
   quote: {
     bid: good(1.20), ask: good(1.30), midpoint: good(1.25), proposedLimit: good(1.24, 'EXECUTION_POLICY'),
+    pricingPolicy:good('PASSIVE_LIMIT_V1','EXECUTION_POLICY'),
     ageSeconds: good(2), maximumAgeSeconds: 10, spreadProtectionPassed: good(true, 'EXECUTION_POLICY'),
   },
   economics: {
-    empiricalState: good('EMPIRICALLY_READY', 'RESEARCH_REGISTRY'), expectedAfterCost: good(18, 'THETA_Q'),
-    downsideTailEvidence: good('VALIDATED', 'RESEARCH_REGISTRY'), returnPerCapitalDay: good(0.0004, 'THETA_Q'),
+    empiricalState: good('EMPIRICALLY_READY', 'RESEARCH_REGISTRY'),empiricalModelVersion:good('ev-v1','RESEARCH_REGISTRY'),
+    expectedAfterCost: good(18, 'THETA_Q'),downsideTailEvidence: good('VALIDATED', 'RESEARCH_REGISTRY'),
+    returnPerCapitalDay: good(0.0004, 'THETA_Q'),uncertainty:good(0.1,'THETA_Q'),
+    calibrationCohort:good('oos-c1','RESEARCH_REGISTRY'),promotionEvidence:good('READY','RESEARCH_REGISTRY'),
   },
   aegis: { result: good('ALLOW_FULL', 'AEGIS'), finalQuantity: good(1, 'AEGIS') },
   identity: {
@@ -38,8 +44,10 @@ const validInput = (): FirstPaperOrderReadinessInput => ({
   },
   operations: {
     idempotencyReserved: good(true, 'DATABASE'), persistenceDurable: good(true, 'DATABASE'),
-    schedulerHealthy: good(true, 'WORKER'), reconciliationHealthy: good(true, 'WORKER'),
-    executionBoundary: good('LOCKED_BEFORE_FIRST_POST', 'EXECUTION_CONTROL'), alwaysOnWorker: 'NOT_YET_DEPLOYED',
+    schedulerHealthy: good(true, 'WORKER'), reconciliationHealthy: good(true, 'WORKER'),workerOnline:good(true,'WORKER'),
+    workerBuildSha:good('abc123','WORKER'),marketSession:good('OPEN','WORKER'),leaseHealthy:good(true,'DATABASE'),
+    providerHealth:good('GOOD','WORKER'),executionBoundary: good('LOCKED_BEFORE_FIRST_POST', 'EXECUTION_CONTROL'),
+    workerMode:'LOCAL_LAPTOP',ownerAuthorization:'NOT_GRANTED',
   },
 });
 
@@ -51,7 +59,7 @@ test('complete evidence produces a deterministic YES receipt while every order c
   assert.deepEqual(first.blockers, []);
   assert.equal(first.receiptHash, second.receiptHash);
   assert.match(first.receiptHash, /^[0-9a-f]{64}$/);
-  assert.equal(first.operations.alwaysOnWorker, 'NOT_YET_DEPLOYED');
+  assert.equal(first.operations.workerMode, 'LOCAL_LAPTOP');
   assert.deepEqual([first.masterPaperOrders, first.followerPaperOrders, first.liveOrders], [0, 0, 0]);
 });
 

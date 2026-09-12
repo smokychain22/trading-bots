@@ -187,7 +187,11 @@ export function buildDatasetExport(input:{sourceWindow:{start:string;end:string}
   const rowCounts = Object.fromEntries(Object.entries(rows).map(([key,value]) => [key,value.length])) as Readonly<Record<keyof DatasetExportRows,number>>;
   const unsigned = { schemaVersion:datasetExportVersion,sourceWindow:input.sourceWindow,exportedAt:input.exportedAt,
     featureSetVersion:input.featureSetVersion,strategyVersions:[...new Set(input.strategyVersions)].sort(),rows,rowCounts };
-  return { ...unsigned,datasetHash:sha256(canonicalJson(unsigned)) };
+  // Export time is provenance about the file creation, not dataset identity. Two
+  // exports of the same immutable rows and source window must have the same hash.
+  const identity = { schemaVersion:unsigned.schemaVersion,sourceWindow:unsigned.sourceWindow,
+    featureSetVersion:unsigned.featureSetVersion,strategyVersions:unsigned.strategyVersions,rows:unsigned.rows,rowCounts };
+  return { ...unsigned,datasetHash:sha256(canonicalJson(identity)) };
 }
 
 export function newQuoteObservationId():string { return randomUUID(); }

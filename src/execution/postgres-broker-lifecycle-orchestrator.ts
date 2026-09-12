@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import { deterministicRuntimeUuid } from '../theta/postgres-theta-cycle-store.js';
 import { PostgresLifecycleApplicationStore,type LifecycleApplicationResult,type LifecycleApplication } from '../theta/postgres-lifecycle-application-store.js';
+import { confirmedMasterCopyEventId,PostgresDisabledCopyPlanner } from '../customer/postgres-disabled-copy-planner.js';
+import type { MasterCopyEvent } from '../customer/copy-engine-contract.js';
 
 type Row = Record<string,unknown>;
 const n=(value:unknown):number|null=>value==null?null:Number.isFinite(Number(value))?Number(value):null;
@@ -24,12 +26,12 @@ export async function applyConfirmedTerminalLifecycle(pool:Pool,connectionId:str
     WHERE connection_id=$1 AND reconciliation_snapshot_id<>$2 AND observed_at <= (SELECT observed_at FROM trade.broker_reconciliation_snapshot WHERE reconciliation_snapshot_id=$2)
     ORDER BY observed_at DESC LIMIT 1`,[connectionId,currentSnapshotId]);
   if (previous.rowCount!==1) return {inspected:0,applied:0,duplicates:0,unresolved:0,results:[]};
-  const rows=await pool.query(`SELECT ec.chain_id,ec.lifecycle_state,ol.option_leg_id,ol.quantity AS contracts,
-      ol.entry_credit_debit,oc.contract_symbol,oc.option_type,oc.strike,oc.multiplier,u.symbol AS underlying,
+  const rows=await pool.query(`SELECT ec.chain_id,ec.bot_instance_id,ec.lifecycle_state,ol.option_leg_id,ol.option_contract_id,
+      ol.quantity AS contracts,ol.entry_credit_debit,oc.contract_symbol,oc.option_type,oc.strike,oc.multiplier,u.symbol AS underlying,
       previous_option.quantity AS previous_option_qty,current_option.quantity AS current_option_qty,
       previous_stock.quantity AS previous_stock_qty,current_stock.quantity AS current_stock_qty,
       current_stock.average_entry_price AS broker_stock_basis,
-      activity.provider_activity_ref_hash,activity.activity_type,activity.quantity AS activity_quantity,
+      activity.broker_activity_fact_id,activity.provider_activity_ref_hash,activity.activity_type,activity.quantity AS activity_quantity,
       activity.price AS activity_price,activity.activity_at,stock.stock_lot_id,stock.shares AS stock_lot_shares,
       stock.economic_basis_per_share
     FROM trade.economic_chain ec JOIN core.bot_instance bi ON bi.bot_instance_id=ec.bot_instance_id
@@ -48,7 +50,7 @@ export async function applyConfirmedTerminalLifecycle(pool:Pool,connectionId:str
       AND fa.account_role='MASTER_THETA_PAPER' AND fa.environment='PAPER' AND fa.disconnected_at IS NULL)
       AND bi.bot_code='THETA' AND ec.closed_at IS NULL AND ec.lifecycle_state IN ('CSP_OPEN','CC_OPEN')`,
     [connectionId,String(previous.rows[0].reconciliation_snapshot_id),currentSnapshotId,observedAt]);
-  const store=new PostgresLifecycleApplicationStore(pool),results:LifecycleApplicationResult[]=[];
+  const store=new PostgresLifecycleApplicationStore(pool),copyPlanner=new PostgresDisabledCopyPlanner(pool),results:LifecycleApplicationResult[]=[];
   let unresolved=0;
   for (const row of rows.rows as Row[]) {
     const contracts=n(row.contracts),multiplier=n(row.multiplier),previousOption=n(row.previous_option_qty)??0,
@@ -76,7 +78,15 @@ export async function applyConfirmedTerminalLifecycle(pool:Pool,connectionId:str
         evidenceKey:hash(`${activityHash}:${row.chain_id}:COVERED_CALL_ASSIGNMENT`)};
     }
     if (application===null) { unresolved++; continue; }
-    results.push(await store.apply(application));
+    const applied=await store.apply(application); results.push(applied);
+    const copyAction:MasterCopyEvent['action']=application.eventKind==='SHORT_PUT_ASSIGNMENT'?'ASSIGN_STOCK':
+      application.eventKind==='COVERED_CALL_ASSIGNMENT'?'CALL_AWAY':String(row.lifecycle_state)==='CSP_OPEN'?'EXPIRE_CSP':'EXPIRE_CC';
+    const event:MasterCopyEvent={masterDecisionId:null,masterLifecycleId:String(row.chain_id),masterOrderId:null,masterFillId:null,
+      action:copyAction,symbol:String(row.contract_symbol),contractId:String(row.option_contract_id),masterQuantity:contracts,
+      masterFilledQuantity:contracts,occurredAt};
+    await copyPlanner.persistConfirmedEvent({masterCopyEventId:confirmedMasterCopyEventId(event),masterBotInstanceId:String(row.bot_instance_id),
+      masterChainId:String(row.chain_id),parentMasterCopyEventId:null,brokerActivityFactId:String(row.broker_activity_fact_id),
+      payloadHash:hash(JSON.stringify(event)),event},[]);
   }
   return {inspected:rows.rowCount??0,applied:results.filter((item)=>!item.duplicate).length,
     duplicates:results.filter((item)=>item.duplicate).length,unresolved,results};

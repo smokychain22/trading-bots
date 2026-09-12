@@ -3,6 +3,8 @@ import type { Pool } from 'pg';
 import { routeConfirmedFillLifecycle,routeConfirmedRollPair,type ConfirmedFillFact,type FillLifecycleContext } from './broker-fill-lifecycle-router.js';
 import { PostgresLifecycleApplicationStore,type LifecycleApplicationResult } from '../theta/postgres-lifecycle-application-store.js';
 import { deterministicRuntimeUuid } from '../theta/postgres-theta-cycle-store.js';
+import { confirmedMasterCopyEventId,PostgresDisabledCopyPlanner } from '../customer/postgres-disabled-copy-planner.js';
+import type { MasterCopyEvent } from '../customer/copy-engine-contract.js';
 
 type Row=Record<string,unknown>;
 const n=(v:unknown):number|null=>v==null||!Number.isFinite(Number(v))?null:Number(v);
@@ -18,13 +20,17 @@ export interface FillLifecycleOrchestrationReport{readonly inspected:number;read
 
 /** Routes fully broker-confirmed THETA fills into the same atomic lifecycle writer used by assignment and expiry. */
 export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,observedAt:string):Promise<FillLifecycleOrchestrationReport>{
-  const rows=await pool.query(`SELECT oi.order_intent_id,oi.chain_id,oi.decision_id,oi.theta_action,oi.status,oi.quantity AS order_quantity,
-    oi.option_contract_id,oi.underlying_id,oc.multiplier,ol.option_leg_id,ol.entry_credit_debit,
+  const rows=await pool.query(`SELECT oi.order_intent_id,oi.chain_id,ec.bot_instance_id,oi.decision_id,oi.theta_action,oi.status,oi.quantity AS order_quantity,
+    oi.option_contract_id,oi.underlying_id,oc.contract_symbol,u.symbol AS underlying_symbol,oc.multiplier,ol.option_leg_id,ol.entry_credit_debit,
     sl.stock_lot_id,sl.economic_basis_per_share,
     COALESCE(jsonb_agg(jsonb_build_object('provider_fill_id',f.provider_fill_id,'quantity',f.quantity,
       'price_per_share',f.price_per_share,'filled_at',f.filled_at,'fees',f.fees) ORDER BY f.filled_at,f.provider_fill_id)
       FILTER(WHERE f.fill_id IS NOT NULL),'[]'::jsonb) AS fills
+    ,COALESCE(jsonb_agg(f.fill_id::text ORDER BY f.filled_at,f.provider_fill_id)
+      FILTER(WHERE f.fill_id IS NOT NULL),'[]'::jsonb) AS fill_ids
     FROM trade.order_intent oi JOIN trade.execution_account ea ON ea.execution_account_id=oi.execution_account_id
+    JOIN trade.economic_chain ec ON ec.chain_id=oi.chain_id
+    JOIN market.underlying u ON u.underlying_id=ec.underlying_id
     JOIN copy.follower_account fa ON encode(digest(fa.provider_account_ref,'sha256'),'hex')=ea.provider_account_ref_hash
       AND fa.follower_account_id=$1 AND fa.account_role='MASTER_THETA_PAPER' AND fa.environment='PAPER' AND fa.disconnected_at IS NULL
     LEFT JOIN market.option_contract oc ON oc.option_contract_id=oi.option_contract_id
@@ -34,10 +40,24 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
     LEFT JOIN LATERAL(SELECT x.stock_lot_id,x.economic_basis_per_share FROM trade.stock_lot x WHERE x.chain_id=oi.chain_id AND x.disposed_at IS NULL ORDER BY x.acquired_at LIMIT 1) sl ON true
     WHERE oi.chain_id IS NOT NULL AND (f.filled_at IS NULL OR f.filled_at <= $2)
       AND oi.theta_action IN ('OPEN_CSP','CLOSE_CSP','ROLL_CSP_CLOSE','ROLL_CSP_OPEN','OPEN_CC','CLOSE_CC','ROLL_CC_CLOSE','ROLL_CC_OPEN','SELL_STOCK')
-    GROUP BY oi.order_intent_id,oc.multiplier,ol.option_leg_id,ol.entry_credit_debit,sl.stock_lot_id,sl.economic_basis_per_share
+    GROUP BY oi.order_intent_id,ec.bot_instance_id,oc.contract_symbol,u.symbol,oc.multiplier,ol.option_leg_id,ol.entry_credit_debit,sl.stock_lot_id,sl.economic_basis_per_share
     ORDER BY oi.created_at,oi.order_intent_id`,[connectionId,observedAt]);
-  const store=new PostgresLifecycleApplicationStore(pool),results:LifecycleApplicationResult[]=[];
+  const store=new PostgresLifecycleApplicationStore(pool),copyPlanner=new PostgresDisabledCopyPlanner(pool),results:LifecycleApplicationResult[]=[];
   let partial=0,unresolved=0; const rollRows=new Map<string,Row[]>();
+  const persistMasterFillEvent=async(row:Row,parentMasterCopyEventId:string|null=null):Promise<string|null>=>{
+    const decision=s(row.decision_id),chain=s(row.chain_id),bot=s(row.bot_instance_id),order=s(row.order_intent_id);
+    const fillIds=Array.isArray(row.fill_ids)?row.fill_ids.map(String):[],facts=fills(row.fills);
+    const fillId=fillIds.at(-1)??null,filled=facts.reduce((sum,item)=>sum+item.quantity,0),quantity=n(row.order_quantity);
+    if(decision===null||chain===null||bot===null||order===null||fillId===null||quantity===null||filled<=0||filled>quantity) return null;
+    const action=String(row.theta_action) as MasterCopyEvent['action'];
+    const event:MasterCopyEvent={masterDecisionId:decision,masterLifecycleId:chain,masterOrderId:order,masterFillId:fillId,
+      action,symbol:String(row.contract_symbol??row.underlying_symbol),contractId:s(row.option_contract_id),
+      masterQuantity:quantity,masterFilledQuantity:filled,occurredAt:facts.at(-1)?.occurredAt??observedAt};
+    const id=confirmedMasterCopyEventId(event);
+    await copyPlanner.persistConfirmedEvent({masterCopyEventId:id,masterBotInstanceId:bot,masterChainId:chain,
+      parentMasterCopyEventId,brokerActivityFactId:null,payloadHash:h(JSON.stringify(event)),event},[]);
+    return id;
+  };
   for(const row of rows.rows as Row[]){
     const action=String(row.theta_action) as FillLifecycleContext['action'];
     if(action.startsWith('ROLL_')){const key=`${row.chain_id}:${row.decision_id}`;const list=rollRows.get(key)??[];list.push(row);rollRows.set(key,list);continue;}
@@ -49,6 +69,7 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
     const routed=routeConfirmedFillLifecycle(context);
     if(routed.state==='PARTIAL'){partial++;continue;} if(routed.application===null){unresolved++;continue;}
     results.push(await store.apply(routed.application));
+    if(await persistMasterFillEvent(row)===null) unresolved++;
   }
   for(const pair of rollRows.values()){
     const close=pair.find((row)=>String(row.theta_action).endsWith('_CLOSE'));
@@ -63,6 +84,8 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
       open:{orderStatus:String(open.status),orderQuantity:Number(open.order_quantity),fills:fills(open.fills)}});
     if(routed.state==='PARTIAL'){partial++;continue;} if(routed.application===null){unresolved++;continue;}
     results.push(await store.apply(routed.application));
+    const closeEventId=await persistMasterFillEvent(close);
+    if(closeEventId===null||await persistMasterFillEvent(open,closeEventId)===null) unresolved++;
   }
   return {inspected:rows.rowCount??0,applied:results.filter((r)=>!r.duplicate).length,duplicates:results.filter((r)=>r.duplicate).length,partial,unresolved,results};
 }

@@ -10,6 +10,10 @@ export interface R6DataQualityReport {
   readonly partialScanRate:number|null; readonly waitRate:number|null;
   readonly invalidQuoteRate:number|null; readonly providerFailureRate:number|null;
   readonly observationMissedRate:number|null;
+  readonly completeScans:number; readonly partialScans:number;
+  readonly missedObservations:number; readonly providerFailures:number;
+  readonly invalidQuotes:number; readonly staleCandidates:number;
+  readonly resolvedLabels:number; readonly unresolvedLabels:number;
   readonly hardVetoDistribution:Readonly<Record<string,number>>;
   readonly softRejectionDistribution:Readonly<Record<string,number>>;
   readonly providerStateDistribution:Readonly<Record<string,number>>;
@@ -60,6 +64,8 @@ export async function buildR6ReadinessReceipt(pool:Pool):Promise<R6ReadinessRece
     (SELECT count(*) FROM trade.decision WHERE action_code='WAIT')::int AS waits,
     (SELECT count(*) FROM research.theta_outcome_label WHERE subject_type='WHOLE_CHAIN' AND censoring_state='RESOLVED')::int AS chain_labels,
     (SELECT count(*) FROM research.theta_outcome_label WHERE subject_type='MANAGED_EPISODE' AND censoring_state='RESOLVED')::int AS management_labels,
+    (SELECT count(*) FROM research.theta_outcome_label WHERE censoring_state='RESOLVED')::int AS resolved_labels,
+    (SELECT count(*) FROM research.theta_outcome_label WHERE censoring_state<>'RESOLVED')::int AS unresolved_labels,
     (SELECT count(*) FROM market.execution_quote_observation WHERE observation_role='SUBSEQUENT')::int AS subsequent_quotes,
     (SELECT count(*) FROM research.theta_execution_observation_job WHERE status='PENDING')::int AS pending_jobs,
     (SELECT count(*) FROM research.theta_execution_observation_job WHERE status='MISSED')::int AS missed_jobs,
@@ -86,6 +92,9 @@ export async function buildR6ReadinessReceipt(pool:Pool):Promise<R6ReadinessRece
     partialScanRate:rate(num(c.partial_scans),scanCount),waitRate:rate(num(c.waits),num(c.all_decisions)),
     invalidQuoteRate:rate(num(c.invalid_quotes),num(c.quote_count)),providerFailureRate:rate(num(c.provider_failures),num(c.scan_members)),
     observationMissedRate:rate(num(c.missed_jobs),num(c.missed_jobs)+num(c.subsequent_quotes)+num(c.pending_jobs)),
+    completeScans:num(c.complete_scans),partialScans:num(c.partial_scans),missedObservations:num(c.missed_jobs),
+    providerFailures:num(c.provider_failures),invalidQuotes:num(c.invalid_quotes),staleCandidates:num(c.stale_candidates),
+    resolvedLabels:num(c.resolved_labels),unresolvedLabels:num(c.unresolved_labels),
     hardVetoDistribution:distribution(hard.rows,'code'),softRejectionDistribution:distribution(soft.rows,'code'),
     providerStateDistribution:distribution(providers.rows,'state')};
   const pointData=pitCount>0,liveCapture=pointData&&num(c.complete_scans)>0;
