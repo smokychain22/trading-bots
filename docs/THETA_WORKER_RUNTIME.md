@@ -81,3 +81,10 @@ For a bounded window, use `--from <ISO time> --to <ISO time>`. The command write
 `research_exports/<dataset hash>/` and `research_exports/latest/`. It returns a
 truthful `NO_POINT_IN_TIME_EVIDENCE_TO_EXPORT` receipt when no real evidence exists.
 It never creates synthetic evidence and never exports secrets.
+
+The Windows supervisor also invokes this export once after the first complete
+opportunity scan of each Eastern market date. It writes a local ignored session
+marker only after the export succeeds. A complete scan with no candidate evidence
+leaves the marker unset, reports `BLOCKED_ON_EVIDENCE`, and retries on a later
+complete scan. Partial scans are persisted by the runtime but never mislabeled as
+the first complete-session export. Further exports remain available on demand.

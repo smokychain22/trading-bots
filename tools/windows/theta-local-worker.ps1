@@ -11,6 +11,7 @@ $runtimeFile = Join-Path $stateRoot 'runtime.json'
 $tokenFile = Join-Path $stateRoot 'worker.token'
 $statusFile = Join-Path $stateRoot 'status.json'
 $stopFile = Join-Path $stateRoot 'stop.request'
+$exportSessionFile = Join-Path $stateRoot 'last-auto-export-session'
 if (!(Test-Path -LiteralPath $runtimeFile)) { throw 'THETA_LOCAL_WORKER_NOT_INSTALLED' }
 if (!(Test-Path -LiteralPath $tokenFile)) { throw 'THETA_LOCAL_WORKER_TOKEN_NOT_PROVISIONED' }
 $runtime = Get-Content -Raw -LiteralPath $runtimeFile | ConvertFrom-Json
@@ -35,9 +36,29 @@ try {
       'X-Theta-Host-Id'=$env:COMPUTERNAME; 'X-Theta-Build-Sha'=$runtime.buildSha }
     $workerExit = 0
     try {
-      Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $headers -TimeoutSec 120 | Out-Null
+      $report = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $headers -TimeoutSec 120
+      $marketSessionDate = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
+        [DateTimeOffset]::UtcNow, 'Eastern Standard Time').ToString('yyyy-MM-dd')
+      $lastExportedSession = if (Test-Path -LiteralPath $exportSessionFile) {
+        (Get-Content -Raw -LiteralPath $exportSessionFile).Trim()
+      } else { '' }
+      $researchExport = if ($lastExportedSession -eq $marketSessionDate) {
+        'CURRENT_SESSION_EXPORTED'
+      } else { 'WAITING_FOR_COMPLETE_SCAN' }
+      $completeScan = @($report.jobResults | Where-Object {
+        $_.jobType -eq 'OPPORTUNITY_SCAN' -and $_.status -eq 'SUCCEEDED'
+      }).Count -gt 0
+      if ($completeScan -and $lastExportedSession -ne $marketSessionDate) {
+        & npm run theta:research-export -- --latest *> $null
+        if ($LASTEXITCODE -eq 0) {
+          Set-Content -LiteralPath $exportSessionFile -Value $marketSessionDate -Encoding ascii
+          $researchExport = 'EXPORTED_FIRST_COMPLETE_SCAN'
+        } else {
+          $researchExport = 'BLOCKED_ON_EVIDENCE'
+        }
+      }
       @{state='ONLINE';lastCycle=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
-        mode='THETA_LOCAL_SHADOW';executionGate='LOCKED'} | ConvertTo-Json |
+        mode='THETA_LOCAL_SHADOW';executionGate='LOCKED';researchExport=$researchExport} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
       $delaySeconds = 5
     } catch {
