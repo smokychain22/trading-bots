@@ -24,7 +24,7 @@ export type EvidenceCapabilityAvailability =
   | 'UNVERIFIED';
 
 export type EvidenceCapabilityResult = {
-  readonly provider: 'ALPACA';
+  readonly provider: 'ALPACA' | 'OPTIONOMICS';
   readonly capability: string;
   readonly operationAlias: string;
   readonly availability: EvidenceCapabilityAvailability;
@@ -616,3 +616,175 @@ export const checkOptionomics = async (environment: Environment): Promise<readon
   }));
   return [reference, ...results];
 };
+
+const optionomicsEvidenceAvailability = (response: Response, limited = false): EvidenceCapabilityAvailability => {
+  if (response.ok) return limited ? 'AVAILABLE_WITH_LIMITS' : 'AVAILABLE';
+  if (response.status === 402 || response.status === 403) return 'NOT_ENTITLED';
+  return 'UNVERIFIED';
+};
+
+const readOptionomicsEvidenceJson = async (
+  environment: Environment,
+  capability: string,
+  operationAlias: string,
+  url: URL,
+  limited: boolean,
+  evaluate: (body: unknown, response: Response) => EvidenceCapabilityResult['details'],
+): Promise<EvidenceCapabilityResult> => {
+  const requestedAt = performance.now();
+  const retrievedAt = observedAt();
+  try {
+    const response = await fetch(url, { method: 'GET', headers: optionomicsHeaders(environment) });
+    const contentType = response.headers.get('content-type') ?? '';
+    const body: unknown = contentType.includes('application/json')
+      ? await response.json().catch(() => null)
+      : await response.text().catch(() => '');
+    return {
+      provider: 'OPTIONOMICS', capability, operationAlias,
+      availability: optionomicsEvidenceAvailability(response, limited),
+      httpStatus: response.status, observedAt: observedAt(), retrievedAt,
+      latencyMs: Math.round(performance.now() - requestedAt),
+      provenance: optionomicsProvenance(url.pathname),
+      details: evaluate(body, response),
+    };
+  } catch (error) {
+    return {
+      provider: 'OPTIONOMICS', capability, operationAlias, availability: 'UNVERIFIED',
+      httpStatus: null, observedAt: observedAt(), retrievedAt,
+      latencyMs: Math.round(performance.now() - requestedAt),
+      provenance: optionomicsProvenance(url.pathname),
+      details: { networkError: error instanceof Error ? error.name : 'UnknownError' },
+    };
+  }
+};
+
+const historicalWeekday = (now: Date): string => {
+  const candidate = new Date(now.getTime() - 7 * 86_400_000);
+  while (candidate.getUTCDay() === 0 || candidate.getUTCDay() === 6) {
+    candidate.setUTCDate(candidate.getUTCDate() - 1);
+  }
+  return candidate.toISOString().slice(0, 10);
+};
+
+/**
+ * Probes only date/window parameters published by the current Optionomics
+ * API reference. These observations are research context, never executable
+ * price truth. HTTP 200 with an empty historical session proves the contract
+ * is reachable, while row/value availability remains explicit in details.
+ */
+export async function checkOptionomicsEvidenceCapabilities(
+  environment: Environment,
+  now = new Date(),
+): Promise<readonly EvidenceCapabilityResult[]> {
+  const historicalDate = historicalWeekday(now);
+  const dateAware = async (
+    capability: string,
+    operationAlias: string,
+    path: string,
+    extra: Readonly<Record<string, string>> = {},
+  ): Promise<EvidenceCapabilityResult> => {
+    const url = new URL(path.replace('{symbol}', 'SPY'), optionomicsApiBaseUrl);
+    url.search = new URLSearchParams({ date: historicalDate, ...extra }).toString();
+    return readOptionomicsEvidenceJson(environment, capability, operationAlias, url, true, (body, response) => {
+      const record = object(body);
+      const shape = responseShape(body);
+      const rows = Array.isArray(record.options) ? record.options
+        : Array.isArray(record.cells) ? record.cells
+          : Array.isArray(record.metrics) ? record.metrics : null;
+      return {
+        requestedHistoricalDate: historicalDate,
+        responseDateMatchesRequest: record.date === historicalDate,
+        observationCount: rows?.length ?? (record.metrics !== null && typeof record.metrics === 'object' ? Object.keys(object(record.metrics)).length : null),
+        ...shape,
+        rateLimitHeadersPresent: response.headers.has('x-ratelimit-limit')
+          && response.headers.has('x-ratelimit-remaining')
+          && response.headers.has('x-ratelimit-reset'),
+        evidenceClass: 'HISTORICAL_CONTEXT_ONLY',
+      };
+    });
+  };
+
+  const historicalMetrics = dateAware(
+    'OPTIONOMICS_HISTORICAL_IV_SKEW_TERM', 'opt.get_symbol_metrics',
+    '/api/v1/stocks/{symbol}/metrics',
+  );
+  const historicalChain = await dateAware(
+    'OPTIONOMICS_HISTORICAL_OPTION_CHAIN_ANALYTICS', 'opt.get_option_chain',
+    '/api/v1/stocks/{symbol}/options',
+  );
+  const historicalVolatilitySurface: EvidenceCapabilityResult = {
+    ...historicalChain,
+    capability: 'OPTIONOMICS_HISTORICAL_VOLATILITY_SURFACE',
+    operationAlias: 'opt.derive_iv_surface_from_historical_chain',
+    availability: historicalChain.availability === 'AVAILABLE_WITH_LIMITS'
+      && historicalChain.details.ivFieldPresent === true
+      && Number(historicalChain.details.observationCount ?? 0) > 0
+      ? 'AVAILABLE_WITH_LIMITS' : historicalChain.availability === 'NOT_ENTITLED'
+        ? 'NOT_ENTITLED' : 'UNVERIFIED',
+    details: {
+      sourceCapability: historicalChain.capability,
+      derivation: 'STRIKE_EXPIRATION_IMPLIED_VOLATILITY_GRID',
+      executableTruth: false,
+      evidenceClass: 'HISTORICAL_CONTEXT_ONLY',
+    },
+  };
+  const historicalFlowUrl = new URL('/api/v1/flow/aggregates', optionomicsApiBaseUrl);
+  historicalFlowUrl.search = new URLSearchParams({ date: historicalDate, limit: '5' }).toString();
+  const historicalFlow = readOptionomicsEvidenceJson(
+    environment, 'OPTIONOMICS_HISTORICAL_FLOW', 'opt.get_flow_aggregates', historicalFlowUrl, true,
+    (body, response) => {
+      const record = object(body);
+      return {
+        requestedHistoricalDate: historicalDate,
+        bullishRows: Array.isArray(record.bullish_flow) ? record.bullish_flow.length : null,
+        bearishRows: Array.isArray(record.bearish_flow) ? record.bearish_flow.length : null,
+        topCallRows: Array.isArray(record.top_calls) ? record.top_calls.length : null,
+        topPutRows: Array.isArray(record.top_puts) ? record.top_puts.length : null,
+        rateLimitHeadersPresent: response.headers.has('x-ratelimit-limit'),
+        evidenceClass: 'HISTORICAL_CONTEXT_ONLY',
+      };
+    },
+  );
+
+  const flowWindow = async (hours: 8 | 24 | 48): Promise<EvidenceCapabilityResult> => {
+    const to = Math.floor(now.getTime() / 1000);
+    const from = to - hours * 3_600;
+    const url = new URL('/api/v1/flow/net', optionomicsApiBaseUrl);
+    url.search = new URLSearchParams({ symbol: 'SPY', from: String(from), to: String(to), resolution: '5m' }).toString();
+    return readOptionomicsEvidenceJson(
+      environment, `OPTIONOMICS_FLOW_WINDOW_${hours}H`, 'opt.get_flow_net', url, true,
+      (body) => {
+        const record = object(body);
+        const calls = Array.isArray(record.net_calls) ? record.net_calls : [];
+        const puts = Array.isArray(record.net_puts) ? record.net_puts : [];
+        return {
+          requestedWindowHours: hours, netCallPoints: calls.length, netPutPoints: puts.length,
+          directWindowParametersSupported: true,
+          windowSemantics: 'UNIX_SECONDS_RESOLVED_TO_EASTERN_MARKET_DATE',
+          evidenceClass: 'HISTORICAL_CONTEXT_ONLY',
+        };
+      },
+    );
+  };
+
+  const eventFrom = daysAgo(now, 30).slice(0, 10);
+  const eventsUrl = new URL('/api/v1/events', optionomicsApiBaseUrl);
+  eventsUrl.search = new URLSearchParams({ from: eventFrom, to: historicalDate, order: 'desc', per_page: '5' }).toString();
+  const historicalEvents = readOptionomicsEvidenceJson(
+    environment, 'OPTIONOMICS_HISTORICAL_EVENT_CONTEXT', 'opt.list_events', eventsUrl, true,
+    (body) => {
+      const record = object(body);
+      const events = Array.isArray(record.events) ? record.events.map(object) : [];
+      return {
+        requestedFrom: eventFrom, requestedTo: historicalDate, eventCount: events.length,
+        knownAtPresentCount: events.filter((event) => typeof event.known_at === 'string').length,
+        evidenceClass: 'HISTORICAL_CONTEXT_ONLY',
+      };
+    },
+  );
+
+  return Promise.all([
+    historicalMetrics, historicalChain, historicalVolatilitySurface, historicalFlow,
+    flowWindow(8), flowWindow(24), flowWindow(48), historicalEvents,
+  ]);
+}

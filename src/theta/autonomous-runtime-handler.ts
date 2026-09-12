@@ -2,7 +2,13 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Pool } from 'pg';
 import { loadEnvironment } from '../config/environment.js';
 import { matchesOperatorToken } from '../providers/readiness-handler.js';
-import { checkAlpacaEvidenceCapabilities, checkOptionomics, type CheckResult } from '../providers/readiness.js';
+import {
+  checkAlpacaEvidenceCapabilities,
+  checkOptionomics,
+  checkOptionomicsEvidenceCapabilities,
+  type CheckResult,
+  type EvidenceCapabilityResult,
+} from '../providers/readiness.js';
 import { persistProviderCapabilities } from '../providers/capability-registry.js';
 import { customerStore } from '../customer/customer-store.js';
 import { verifyStoredMasterPaperConnection } from '../customer/master-paper-runtime.js';
@@ -107,10 +113,12 @@ export default async function autonomousRuntimeHandler(
         cycleStore.resolveMasterContext(environment),
         verifyStoredMasterPaperConnection(environment, customerStore(environment.DATABASE_URL)),
       ]);
-      const [alpaca, optionomics] = await Promise.all([
+      const [alpaca, optionomicsCurrent, optionomicsEvidence] = await Promise.all([
         checkAlpacaEvidenceCapabilities(masterContext.alpaca),
         checkOptionomics(environment),
+        checkOptionomicsEvidenceCapabilities(environment),
       ]);
+      const optionomics = [...optionomicsCurrent, ...optionomicsEvidence];
       const [alpacaPersistence, optionomicsPersistence, counts] = await Promise.all([
         persistProviderCapabilities(runtimePool, 'ALPACA', alpaca),
         persistProviderCapabilities(runtimePool, 'OPTIONOMICS', optionomics),
@@ -137,7 +145,8 @@ export default async function autonomousRuntimeHandler(
         })),
         optionomics: optionomics.map((result) => ({
           capability: result.capability, operationAlias: result.operationAlias,
-          availability: optionomicsAvailability(result), state: result.state,
+          availability: optionomicsAvailability(result),
+          state: 'state' in result ? result.state : capabilityState(result),
           httpStatus: result.httpStatus, observedAt: result.observedAt, details: result.details,
         })),
         persistence: {
@@ -184,10 +193,17 @@ export default async function autonomousRuntimeHandler(
   }
 }
 
-function optionomicsAvailability(result: CheckResult): string {
+function optionomicsAvailability(result: CheckResult | EvidenceCapabilityResult): string {
+  if ('availability' in result) return result.availability;
   if (result.state === 'GOOD') return 'AVAILABLE';
   if (result.state === 'NOT_ENTITLED') return 'NOT_ENTITLED';
   return 'UNVERIFIED';
+}
+
+function capabilityState(result: EvidenceCapabilityResult): CheckResult['state'] {
+  if (result.availability === 'AVAILABLE' || result.availability === 'AVAILABLE_WITH_LIMITS') return 'GOOD';
+  if (result.availability === 'NOT_ENTITLED') return 'NOT_ENTITLED';
+  return 'UNKNOWN';
 }
 
 function validHeader(value: IncomingMessage['headers'][string], pattern: RegExp): string | null {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { checkAlpacaEvidenceCapabilities } from '../src/providers/readiness.js';
+import { checkAlpacaEvidenceCapabilities, checkOptionomicsEvidenceCapabilities } from '../src/providers/readiness.js';
+import type { Environment } from '../src/config/environment.js';
 
 const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), {
   status, headers: { 'content-type': 'application/json', 'x-request-id': 'safe-request-id' },
@@ -74,4 +75,43 @@ test('does not guess historical requests without an observed contract identity',
   assert.equal(calls.includes('/v1beta1/options/bars'), false);
   assert.equal(calls.includes('/v1beta1/options/trades'), false);
   assert.equal(results.find((result) => result.capability === 'HISTORICAL_OPTION_BARS')?.availability, 'UNVERIFIED');
+});
+
+test('Optionomics evidence probes use only documented date and Unix-window parameters', async () => {
+  const original = globalThis.fetch;
+  const calls: URL[] = [];
+  globalThis.fetch = (async (input) => {
+    const url = new URL(String(input));
+    calls.push(url);
+    const headers = {
+      'content-type': 'application/json', 'x-ratelimit-limit': '1000',
+      'x-ratelimit-remaining': '999', 'x-ratelimit-reset': '1',
+    };
+    if (url.pathname.endsWith('/metrics')) return new Response(JSON.stringify({ date: '2026-09-04', metrics: { iv_rank: 50, put_skew: 1, term_slope: 0.1 } }), { status: 200, headers });
+    if (url.pathname.endsWith('/options')) return new Response(JSON.stringify({ date: '2026-09-04', options: [{ symbol: 'SPY261016P00500000', implied_volatility: '0.2', delta: '-0.2' }] }), { status: 200, headers });
+    if (url.pathname === '/api/v1/flow/aggregates') return new Response(JSON.stringify({ bullish_flow: [], bearish_flow: [], top_calls: [], top_puts: [] }), { status: 200, headers });
+    if (url.pathname === '/api/v1/flow/net') return new Response(JSON.stringify({ net_calls: [], net_puts: [] }), { status: 200, headers });
+    if (url.pathname === '/api/v1/events') return new Response(JSON.stringify({ events: [{ known_at: '2026-08-01T00:00:00Z' }] }), { status: 200, headers });
+    return new Response(JSON.stringify({ error: 'unexpected' }), { status: 404, headers });
+  }) as typeof fetch;
+  try {
+    const environment = {
+      NODE_ENV: 'test', PORT: 3000, OPTIONOMICS_EMAIL: 'tester@example.com',
+      OPTIONOMICS_API_KEY: 'PRIVATE-TOKEN-MUST-NOT-LEAK',
+    } as Environment;
+    const results = await checkOptionomicsEvidenceCapabilities(environment, new Date('2026-09-11T20:00:00Z'));
+    assert.equal(results.length, 8);
+    assert.ok(results.every((result) => result.availability === 'AVAILABLE_WITH_LIMITS'));
+    assert.ok(calls.filter((url) => url.pathname.endsWith('/metrics') || url.pathname.endsWith('/options'))
+      .every((url) => url.searchParams.get('date') === '2026-09-04'));
+    assert.equal(calls.filter((url) => url.pathname.endsWith('/options')).length, 1);
+    assert.equal(results.find((result) => result.capability === 'OPTIONOMICS_HISTORICAL_VOLATILITY_SURFACE')?.availability, 'AVAILABLE_WITH_LIMITS');
+    const flowCalls = calls.filter((url) => url.pathname === '/api/v1/flow/net');
+    assert.equal(flowCalls.length, 3);
+    assert.ok(flowCalls.every((url) => url.searchParams.has('from') && url.searchParams.has('to') && url.searchParams.get('symbol') === 'SPY'));
+    assert.equal(calls.some((url) => url.pathname.includes('/orders')), false);
+    assert.equal(JSON.stringify(results).includes('PRIVATE-TOKEN-MUST-NOT-LEAK'), false);
+  } finally {
+    globalThis.fetch = original;
+  }
 });
