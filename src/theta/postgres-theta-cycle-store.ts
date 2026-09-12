@@ -264,8 +264,9 @@ export class PostgresThetaCycleStore {
     const evaluated=cycle.orchestration?.thetaQ?.candidates ?? [];
     const receipt=cycle.orchestration?.receipt;
     const ranked=evaluated.toSorted((a,b) => (a.rank ?? Number.MAX_SAFE_INTEGER)-(b.rank ?? Number.MAX_SAFE_INTEGER));
-    const best=ranked[0]===undefined?null:candidateIds.get(ranked[0].candidateId) ?? null;
-    const second=ranked[1]===undefined?null:candidateIds.get(ranked[1].candidateId) ?? null;
+    const feasible=ranked.filter((candidate) => candidate.actionFeasible);
+    const best=feasible[0]===undefined?null:candidateIds.get(feasible[0].candidateId) ?? null;
+    const second=feasible[1]===undefined?null:candidateIds.get(feasible[1].candidateId) ?? null;
     const rejected=ranked.find((candidate) => !candidate.actionFeasible);
     const bestRejected=rejected===undefined?null:candidateIds.get(rejected.candidateId) ?? null;
     const ranking=Array.isArray(cycle.underlyingRanking) ? cycle.underlyingRanking : [];
