@@ -36,7 +36,7 @@ gross premium = fill price × multiplier × filled quantity
 secured collateral = strike × multiplier × filled quantity
 ```
 
-The current canonical shadow cost model says empirical costs are not ready. Gross cashflow and collateral are therefore known, while cash, equity, realized P&L, unrealized P&L, and buying power after a fill remain `NULL`. Missing costs are not converted to zero.
+The canonical `theta-cost-model-v2` uses the existing conservative research assumptions of $0.65 commission, $0.05 fees, and $1.00 estimated slippage per contract. These assumptions are uncalibrated and are never presented as observed execution cost. When the versioned assumptions are available, the virtual account records modeled after-cost values. If they are missing, cash, equity, realized P&L, unrealized P&L, and buying power remain `NULL`. Missing costs are never converted to zero.
 
 ## Persistence
 

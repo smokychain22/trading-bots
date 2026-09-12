@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 import { deterministicRuntimeUuid } from '../theta/postgres-theta-cycle-store.js';
-import { classifyConservativeShadowFill, selectShadowOpeningCandidate,
+import { applyShadowCspOpening, classifyConservativeShadowFill, selectShadowOpeningCandidate,
   shadowAccountingPolicyVersion, shadowContentHash, shadowFillPolicyVersion, shadowSelectionPolicyVersion,
   type ShadowOpeningCandidate } from './shadow-virtual-trader.js';
 
@@ -107,9 +107,11 @@ export class PostgresShadowVirtualTrader {
           q.bid::text,q.ask::text,q.bid_size::text,q.ask_size::text,
           latest.state AS latest_state,latest.remaining_quantity,
           a.cash::text,a.equity::text,a.reserved_collateral::text,a.buying_power::text,a.realized_pnl::text,
-          a.unrealized_pnl::text,a.open_option_contracts,a.stock_shares
+          a.unrealized_pnl::text,a.open_option_contracts,a.stock_shares,cv.assumptions_json AS cost_assumptions
         FROM research.theta_shadow_order_intent i
         JOIN market.option_contract oc ON oc.option_contract_id=i.option_contract_id JOIN market.underlying u ON u.underlying_id=oc.underlying_id
+        JOIN trade.candidate_point_in_time_evidence p ON p.candidate_id=i.candidate_id
+        JOIN core.cost_model_version cv ON cv.cost_model_version_id::text=p.cost_model_version
         JOIN market.execution_quote_observation q ON q.quote_observation_id=$2
         JOIN LATERAL (SELECT state,remaining_quantity FROM research.theta_shadow_order_event e WHERE e.shadow_intent_id=i.shadow_intent_id
           ORDER BY e.occurred_at DESC,e.created_at DESC LIMIT 1) latest ON true
@@ -135,11 +137,13 @@ export class PostgresShadowVirtualTrader {
       if(assessment.filledQuantity!==null&&assessment.fillPrice!==null){
         const fillId=deterministicRuntimeUuid(`shadow-fill:${row.shadow_intent_id}:${quoteObservationId}`);
         const gross=assessment.fillPrice*Number(row.multiplier)*assessment.filledQuantity;
-        const fillPayload={fillId,intentId:row.shadow_intent_id,quoteObservationId,quantity:assessment.filledQuantity,price:assessment.fillPrice,gross};
+        const perContractCost=finite(row.cost_assumptions?.totalModeledCostPerContract);
+        const modeledCost=perContractCost===null?null:perContractCost*assessment.filledQuantity;
+        const fillPayload={fillId,intentId:row.shadow_intent_id,quoteObservationId,quantity:assessment.filledQuantity,price:assessment.fillPrice,gross,modeledCost};
         await client.query(`INSERT INTO research.theta_shadow_fill(shadow_fill_id,shadow_intent_id,quote_observation_id,quantity,price,multiplier,
           gross_cashflow,modeled_cost,filled_at,fill_policy_version,evidence_class,content_hash,created_at)
-          VALUES($1,$2,$3,$4,$5,$6,$7,NULL,$8,$9,'LIVE_SHADOW',$10,$8) ON CONFLICT(shadow_intent_id,quote_observation_id) DO NOTHING`,
-          [fillId,row.shadow_intent_id,quoteObservationId,assessment.filledQuantity,assessment.fillPrice,row.multiplier,gross,observedAt,shadowFillPolicyVersion,shadowContentHash(fillPayload)]);
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'LIVE_SHADOW',$11,$9) ON CONFLICT(shadow_intent_id,quote_observation_id) DO NOTHING`,
+          [fillId,row.shadow_intent_id,quoteObservationId,assessment.filledQuantity,assessment.fillPrice,row.multiplier,gross,modeledCost,observedAt,shadowFillPolicyVersion,shadowContentHash(fillPayload)]);
         const chainId=deterministicRuntimeUuid(`shadow-chain:${row.shadow_intent_id}`);
         await client.query(`INSERT INTO research.theta_shadow_chain(shadow_chain_id,shadow_account_id,underlying_id,opening_intent_id,opened_at,
           strategy_version,risk_version,feature_version,cost_model_version,execution_model_version,evidence_class,created_at)
@@ -157,14 +161,21 @@ export class PostgresShadowVirtualTrader {
             observedAt,fillId,assessment.filledQuantity,gross,collateral,assessment.reasonCode,JSON.stringify({quoteObservationId,modeledCost:'UNKNOWN'}),shadowContentHash(lifecyclePayload)]);
         const nextCollateral=Number(row.reserved_collateral)+collateral;
         const nextOpenContracts=Number(row.open_option_contracts)+assessment.filledQuantity;
-        const snapshotPayload={shadowAccountId:row.shadow_account_id,asOf:observedAt,cash:null,equity:null,reservedCollateral:nextCollateral,
-          buyingPower:null,realizedPnl:null,unrealizedPnl:null,openOptionContracts:nextOpenContracts,stockShares:Number(row.stock_shares),
-          sourceEventId:lifecycleId,costState:'UNKNOWN'};
+        const economicInputsKnown=modeledCost!==null&&finite(row.cash)!==null&&finite(row.equity)!==null&&finite(row.buying_power)!==null
+          &&finite(row.realized_pnl)!==null&&finite(row.unrealized_pnl)!==null;
+        const next=economicInputsKnown?applyShadowCspOpening({prior:{cash:Number(row.cash),equity:Number(row.equity),
+          reservedCollateral:Number(row.reserved_collateral),buyingPower:Number(row.buying_power),realizedPnl:Number(row.realized_pnl),
+          unrealizedPnl:Number(row.unrealized_pnl),openOptionContracts:Number(row.open_option_contracts)},quantity:assessment.filledQuantity,
+          strike:Number(row.strike),multiplier:Number(row.multiplier),fillPrice:assessment.fillPrice,markAsk:Number(row.ask),modeledCost}):null;
+        const snapshotPayload={shadowAccountId:row.shadow_account_id,asOf:observedAt,cash:next?.cash??null,equity:next?.equity??null,
+          reservedCollateral:nextCollateral,buyingPower:next?.buyingPower??null,realizedPnl:next?.realizedPnl??null,
+          unrealizedPnl:next?.unrealizedPnl??null,openOptionContracts:nextOpenContracts,stockShares:Number(row.stock_shares),
+          sourceEventId:lifecycleId,costState:modeledCost===null?'UNKNOWN':'MODELED_UNCALIBRATED'};
         await client.query(`INSERT INTO research.theta_shadow_account_snapshot(shadow_account_snapshot_id,shadow_account_id,as_of,cash,equity,
           reserved_collateral,buying_power,realized_pnl,unrealized_pnl,open_option_contracts,stock_shares,source_event_id,policy_version,content_hash,created_at)
           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$3) ON CONFLICT(content_hash) DO NOTHING`,
-          [deterministicRuntimeUuid(`shadow-account-snapshot:${lifecycleId}`),row.shadow_account_id,observedAt,null,null,nextCollateral,
-            null,null,null,nextOpenContracts,row.stock_shares,lifecycleId,shadowAccountingPolicyVersion,shadowContentHash(snapshotPayload)]);
+          [deterministicRuntimeUuid(`shadow-account-snapshot:${lifecycleId}`),row.shadow_account_id,observedAt,next?.cash??null,next?.equity??null,nextCollateral,
+            next?.buyingPower??null,next?.realizedPnl??null,next?.unrealizedPnl??null,nextOpenContracts,row.stock_shares,lifecycleId,shadowAccountingPolicyVersion,shadowContentHash(snapshotPayload)]);
       }
       await client.query('COMMIT');
       return {state:assessment.state,filledQuantity:assessment.filledQuantity??0};

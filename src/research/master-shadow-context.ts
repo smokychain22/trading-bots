@@ -9,7 +9,7 @@ export const masterShadowContextVersions = Object.freeze({
   feature: 'theta-feature-set-v1',
   risk: 'theta-aegis-runtime-v1',
   execution: 'theta-execution-quality-runtime-v2',
-  cost: 'theta-cost-model-v1',
+  cost: 'theta-cost-model-v2',
 });
 
 export interface MasterShadowContext {
@@ -101,7 +101,9 @@ export async function ensureMasterShadowContext(pool: Pool, verifiedProviderAcco
       payload:{ policyVersion:masterShadowContextVersions.execution, mode:'SHADOW_EVIDENCE', brokerMutationSurface:false }, status:'UNVALIDATED' });
     const costModelVersionId = await upsertVersion(client, { table:'cost_model_version', idColumn:'cost_model_version_id',
       semanticVersion:masterShadowContextVersions.cost, jsonColumn:'assumptions_json',
-      payload:{ costModelVersion:masterShadowContextVersions.cost, empiricalCalibration:'NOT_READY', unknownCostsRemainUnknown:true }, status:'UNVALIDATED' });
+      payload:{ costModelVersion:masterShadowContextVersions.cost, commissionPerContract:0.65,
+        regulatoryFeesPerContract:0.05,estimatedSlippagePerContract:1.0,totalModeledCostPerContract:1.70,
+        empiricalCalibration:'NOT_READY',assumptionClass:'CONSERVATIVE_RESEARCH_BASELINE',unknownCostsRemainUnknown:true }, status:'UNVALIDATED' });
 
     const botInstanceId = deterministicRuntimeUuid(`bot-instance:${resolvedAccountId}:THETA`);
     await client.query(`INSERT INTO core.bot_instance(bot_instance_id,workspace_id,account_id,bot_code,mode,scheduler_enabled,
