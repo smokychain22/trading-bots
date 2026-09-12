@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseLocalWorkerIdentity } from '../src/theta/autonomous-runtime-handler.js';
+import { parseLocalWorkerIdentity, parseLocalWorkerOperation } from '../src/theta/autonomous-runtime-handler.js';
 
 test('local worker identity is absent when no identity headers are supplied', () => {
   assert.deepEqual(parseLocalWorkerIdentity({ headers: {} }), { kind: 'ABSENT' });
@@ -34,4 +34,14 @@ test('local worker identity accepts a complete sanitized identity', () => {
       buildSha: '38f1f6e31758fc1cf130f5a69501b110a17df709',
     },
   });
+});
+
+test('local worker operation accepts only the read-only evidence probe selector', () => {
+  assert.equal(parseLocalWorkerOperation({ headers: {} }), 'RUNTIME_CYCLE');
+  assert.equal(parseLocalWorkerOperation({ headers: {
+    'x-theta-operation': 'provider-evidence-readiness',
+  } }), 'PROVIDER_EVIDENCE_READINESS');
+  assert.equal(parseLocalWorkerOperation({ headers: {
+    'x-theta-operation': 'submit-order',
+  } }), 'INVALID');
 });

@@ -1,4 +1,5 @@
 import type { Environment } from '../config/environment.js';
+import type { AlpacaProviderConfig } from '../theta/alpaca-provider.js';
 
 export type CapabilityState = 'GOOD' | 'DEGRADED' | 'STALE' | 'UNKNOWN' | 'INVALID' | 'NOT_ENTITLED';
 
@@ -7,6 +8,26 @@ export type CheckResult = {
   readonly capability: string;
   readonly operationAlias: string;
   readonly state: CapabilityState;
+  readonly httpStatus: number | null;
+  readonly observedAt: string;
+  readonly retrievedAt: string;
+  readonly latencyMs: number | null;
+  readonly provenance: Readonly<Record<string, string | number | boolean | null>>;
+  readonly details: Readonly<Record<string, boolean | number | string | null>>;
+};
+
+export type EvidenceCapabilityAvailability =
+  | 'AVAILABLE'
+  | 'AVAILABLE_WITH_LIMITS'
+  | 'NOT_ENTITLED'
+  | 'NOT_SUPPORTED'
+  | 'UNVERIFIED';
+
+export type EvidenceCapabilityResult = {
+  readonly provider: 'ALPACA';
+  readonly capability: string;
+  readonly operationAlias: string;
+  readonly availability: EvidenceCapabilityAvailability;
   readonly httpStatus: number | null;
   readonly observedAt: string;
   readonly retrievedAt: string;
@@ -159,6 +180,239 @@ const readJson = async (
     };
   }
 };
+
+const evidenceAvailability = (
+  response: Response,
+  limited: boolean,
+): EvidenceCapabilityAvailability => {
+  if (response.ok) return limited ? 'AVAILABLE_WITH_LIMITS' : 'AVAILABLE';
+  if (response.status === 402 || response.status === 403) return 'NOT_ENTITLED';
+  return 'UNVERIFIED';
+};
+
+const readEvidenceJson = async (
+  config: AlpacaProviderConfig,
+  capability: string,
+  operationAlias: string,
+  url: URL,
+  limited: boolean,
+  evaluate: (body: unknown, response: Response) => EvidenceCapabilityResult['details'],
+): Promise<EvidenceCapabilityResult> => {
+  const requestedAt = performance.now();
+  const elapsedMs = (): number => Math.round(performance.now() - requestedAt);
+  const retrievedAt = observedAt();
+  try {
+    const response = await (config.fetchImpl ?? fetch)(url, {
+      method: 'GET',
+      headers: {
+        'APCA-API-KEY-ID': config.apiKey,
+        'APCA-API-SECRET-KEY': config.apiSecret,
+      },
+    });
+    const contentType = response.headers.get('content-type') ?? '';
+    const body: unknown = contentType.includes('application/json')
+      ? await response.json().catch(() => null)
+      : await response.text().catch(() => '');
+    return {
+      provider: 'ALPACA', capability, operationAlias,
+      availability: evidenceAvailability(response, limited),
+      httpStatus: response.status, observedAt: observedAt(), retrievedAt,
+      latencyMs: elapsedMs(), provenance: alpacaProvenance(url.host, url.pathname),
+      details: evaluate(body, response),
+    };
+  } catch (error) {
+    return {
+      provider: 'ALPACA', capability, operationAlias, availability: 'UNVERIFIED',
+      httpStatus: null, observedAt: observedAt(), retrievedAt, latencyMs: elapsedMs(),
+      provenance: alpacaProvenance(url.host, url.pathname),
+      details: { networkError: error instanceof Error ? error.name : 'UnknownError' },
+    };
+  }
+};
+
+const unsupportedEvidenceCapability = (
+  capability: string,
+  operationAlias: string,
+  documentationUrl: string,
+): EvidenceCapabilityResult => ({
+  provider: 'ALPACA', capability, operationAlias, availability: 'NOT_SUPPORTED',
+  httpStatus: null, observedAt: observedAt(), retrievedAt: observedAt(), latencyMs: null,
+  provenance: {
+    host: 'docs.alpaca.markets', path: documentationUrl, method: 'DOCUMENTATION_REVIEW',
+    executableTruth: true, credentialValuesLogged: false,
+  },
+  details: { endpointDocumented: false },
+});
+
+const daysAgo = (date: Date, days: number): string =>
+  new Date(date.getTime() - days * 86_400_000).toISOString();
+
+/**
+ * Probes only documented, read-only Alpaca endpoints needed by the R6 evidence
+ * path. Historical option quotes and historical Greeks deliberately have no
+ * guessed REST path. Alpaca's current official endpoint inventory documents
+ * historical bars/trades and latest quotes/snapshots, but no historical option
+ * quote or historical Greeks REST operation.
+ */
+export async function checkAlpacaEvidenceCapabilities(
+  config: AlpacaProviderConfig,
+  now = new Date(),
+): Promise<readonly EvidenceCapabilityResult[]> {
+  const start = daysAgo(now, 30);
+  const end = daysAgo(now, 1);
+  const stockBarsUrl = new URL('/v2/stocks/bars', config.marketDataApiBase);
+  stockBarsUrl.search = new URLSearchParams({
+    symbols: 'SPY', timeframe: '1Day', start, end, adjustment: 'raw', feed: 'iex', limit: '10',
+  }).toString();
+  const stockBars = await readEvidenceJson(
+    config, 'HISTORICAL_STOCK_BARS', 'alpaca.get_stock_bars', stockBarsUrl, false,
+    (body) => {
+      const record = object(body);
+      const bars = object(record.bars);
+      return {
+        requestedFeed: 'iex', symbolCount: Object.keys(bars).length,
+        observationCount: Object.values(bars).reduce<number>(
+          (count, observations) => count + (Array.isArray(observations) ? observations.length : 0), 0,
+        ),
+        nextPageTokenPresent: typeof record.next_page_token === 'string',
+      };
+    },
+  );
+
+  const contractsUrl = new URL('/v2/options/contracts', config.tradingApiBase);
+  contractsUrl.search = new URLSearchParams({
+    underlying_symbols: 'SPY', status: 'active', type: 'put', limit: '100',
+  }).toString();
+  const contracts = await readEvidenceJson(
+    config, 'OPTION_CONTRACT_DISCOVERY', 'alpaca.get_option_contracts', contractsUrl, false,
+    (body) => {
+      const record = object(body);
+      return {
+        contractCount: Array.isArray(record.option_contracts) ? record.option_contracts.length : null,
+        pageTokenPresent: typeof record.next_page_token === 'string',
+      };
+    },
+  );
+
+  const snapshot = async (feed: 'indicative' | 'opra'): Promise<{
+    result: EvidenceCapabilityResult;
+    contractSymbol: string | null;
+    greeksObserved: boolean;
+  }> => {
+    const url = new URL('/v1beta1/options/snapshots/SPY', config.marketDataApiBase);
+    url.search = new URLSearchParams({ feed, type: 'put', limit: '1000' }).toString();
+    let contractSymbol: string | null = null;
+    let greeksObserved = false;
+    const result = await readEvidenceJson(
+      config, `CURRENT_OPTION_SNAPSHOTS_${feed.toUpperCase()}`,
+      'alpaca.get_option_chain_snapshots', url, feed === 'indicative',
+      (body, response) => {
+        const snapshots = object(body).snapshots;
+        const entries = snapshots !== null && typeof snapshots === 'object' && !Array.isArray(snapshots)
+          ? Object.entries(snapshots as Record<string, unknown>) : [];
+        let highestVolume = Number.NEGATIVE_INFINITY;
+        for (const [symbol, raw] of entries) {
+          const record = object(raw);
+          const volume = finiteNumber(object(record.dailyBar).v) ?? Number.NEGATIVE_INFINITY;
+          if (contractSymbol === null || volume > highestVolume) {
+            contractSymbol = symbol;
+            highestVolume = volume;
+          }
+          if (Object.keys(object(record.greeks)).length > 0) greeksObserved = true;
+        }
+        return {
+          requestedFeed: feed, snapshotCount: entries.length,
+          validContractIdentityObserved: contractSymbol !== null,
+          greeksObserved, requestIdPresent: response.headers.has('x-request-id'),
+        };
+      },
+    );
+    return { result, contractSymbol, greeksObserved };
+  };
+
+  const indicative = await snapshot('indicative');
+  const opra = await snapshot('opra');
+  const greeksResult = (
+    feed: 'INDICATIVE' | 'OPRA',
+    source: EvidenceCapabilityResult,
+    observed: boolean,
+  ): EvidenceCapabilityResult => ({
+    ...source,
+    capability: `CURRENT_OPTION_GREEKS_${feed}`,
+    operationAlias: 'alpaca.get_option_chain_snapshots',
+    availability: source.availability === 'NOT_ENTITLED'
+      ? 'NOT_ENTITLED'
+      : source.httpStatus === 200 && observed
+        ? source.availability
+        : 'UNVERIFIED',
+    details: { requestedFeed: feed.toLowerCase(), greeksObserved: observed },
+  });
+
+  const historical = async (
+    kind: 'bars' | 'trades',
+    feed: 'indicative' | 'opra',
+  ): Promise<EvidenceCapabilityResult> => {
+    const symbol = indicative.contractSymbol;
+    if (symbol === null) {
+      return {
+        provider: 'ALPACA', capability: `HISTORICAL_OPTION_${kind.toUpperCase()}_${feed.toUpperCase()}`,
+        operationAlias: `alpaca.get_option_${kind}`, availability: 'UNVERIFIED', httpStatus: null,
+        observedAt: observedAt(), retrievedAt: observedAt(), latencyMs: null,
+        provenance: alpacaProvenance(new URL(config.marketDataApiBase).host, `/v1beta1/options/${kind}`),
+        details: { dependencyAvailable: false, reason: 'NO_CURRENT_CONTRACT_IDENTITY' },
+      };
+    }
+    const url = new URL(`/v1beta1/options/${kind}`, config.marketDataApiBase);
+    const query: Record<string, string> = { symbols: symbol, start, end, feed, limit: '10' };
+    if (kind === 'bars') query.timeframe = '1Day';
+    url.search = new URLSearchParams(query).toString();
+    return readEvidenceJson(
+      config, `HISTORICAL_OPTION_${kind.toUpperCase()}_${feed.toUpperCase()}`,
+      `alpaca.get_option_${kind}`, url, feed === 'indicative',
+      (body) => {
+        const record = object(body);
+        const observationsByContract = object(record[kind]);
+        return {
+          requestedFeed: feed, exactContractRequested: true,
+          contractCount: Object.keys(observationsByContract).length,
+          observationCount: Object.values(observationsByContract).reduce<number>(
+            (count, observations) => count + (Array.isArray(observations) ? observations.length : 0), 0,
+          ),
+          nextPageTokenPresent: typeof record.next_page_token === 'string',
+        };
+      },
+    );
+  };
+
+  const [barsIndicative, barsOpra, tradesIndicative, tradesOpra] = await Promise.all([
+    historical('bars', 'indicative'), historical('bars', 'opra'),
+    historical('trades', 'indicative'), historical('trades', 'opra'),
+  ]);
+  const corporateActionsUrl = new URL('/v1/corporate-actions', config.marketDataApiBase);
+  corporateActionsUrl.search = new URLSearchParams({
+    symbols: 'SPY', start: start.slice(0, 10), end: end.slice(0, 10), limit: '10',
+  }).toString();
+  const corporateActions = await readEvidenceJson(
+    config, 'CORPORATE_ACTIONS', 'alpaca.get_corporate_actions', corporateActionsUrl, false,
+    (body) => ({ responseIsObject: body !== null && typeof body === 'object' }),
+  );
+
+  return [
+    stockBars, contracts, indicative.result, opra.result,
+    greeksResult('INDICATIVE', indicative.result, indicative.greeksObserved),
+    greeksResult('OPRA', opra.result, opra.greeksObserved),
+    barsIndicative, barsOpra, tradesIndicative, tradesOpra,
+    unsupportedEvidenceCapability(
+      'HISTORICAL_OPTION_BBO', 'alpaca.historical_option_quotes',
+      '/us/docs/options-trading-overview#market-data',
+    ),
+    unsupportedEvidenceCapability(
+      'HISTORICAL_OPTION_GREEKS', 'alpaca.historical_option_greeks',
+      '/us/docs/options-trading-overview#market-data',
+    ),
+    corporateActions,
+  ];
+}
 
 const alpacaHeaders = (environment: Environment): HeadersInit => ({
   'APCA-API-KEY-ID': environment.ALPACA_API_KEY ?? '',

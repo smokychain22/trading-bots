@@ -2,7 +2,11 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Pool } from 'pg';
 import { loadEnvironment } from '../config/environment.js';
 import { matchesOperatorToken } from '../providers/readiness-handler.js';
-import { runAutonomousRuntimeCycle } from './autonomous-runtime.js';
+import { checkAlpacaEvidenceCapabilities, checkOptionomics, type CheckResult } from '../providers/readiness.js';
+import { persistProviderCapabilities } from '../providers/capability-registry.js';
+import { customerStore } from '../customer/customer-store.js';
+import { verifyStoredMasterPaperConnection } from '../customer/master-paper-runtime.js';
+import { PostgresRuntimeCycleStore, runAutonomousRuntimeCycle } from './autonomous-runtime.js';
 import { PostgresWorkerRuntimeStore } from '../worker/postgres-worker-runtime-store.js';
 
 let runtimePool: Pool | null = null;
@@ -17,6 +21,15 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'ABSENT' }
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
+
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'INVALID';
+
+export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
+  const value = request.headers['x-theta-operation'];
+  if (value === undefined) return 'RUNTIME_CYCLE';
+  if (value === 'provider-evidence-readiness') return 'PROVIDER_EVIDENCE_READINESS';
+  return 'INVALID';
+}
 
 export function parseLocalWorkerIdentity(request: Pick<IncomingMessage, 'headers'>): LocalWorkerIdentityResult {
   const rawWorkerId = request.headers['x-theta-worker-id'];
@@ -78,7 +91,66 @@ export default async function autonomousRuntimeHandler(
     send(response,200,{state:'OFFLINE',executionGate:'LOCKED'});
     return;
   }
+  const operation = parseLocalWorkerOperation(request);
+  if (operation === 'INVALID') {
+    send(response, 400, { error: 'invalid_local_worker_operation', executionGate: 'LOCKED' });
+    return;
+  }
   try {
+    if (operation === 'PROVIDER_EVIDENCE_READINESS') {
+      if (localIdentity.kind !== 'VALID') {
+        send(response, 400, { error: 'local_worker_identity_required', executionGate: 'LOCKED' });
+        return;
+      }
+      const cycleStore = new PostgresRuntimeCycleStore(runtimePool);
+      const [masterContext, masterReadiness] = await Promise.all([
+        cycleStore.resolveMasterContext(environment),
+        verifyStoredMasterPaperConnection(environment, customerStore(environment.DATABASE_URL)),
+      ]);
+      const [alpaca, optionomics] = await Promise.all([
+        checkAlpacaEvidenceCapabilities(masterContext.alpaca),
+        checkOptionomics(environment),
+      ]);
+      const [alpacaPersistence, optionomicsPersistence, counts] = await Promise.all([
+        persistProviderCapabilities(runtimePool, 'ALPACA', alpaca),
+        persistProviderCapabilities(runtimePool, 'OPTIONOMICS', optionomics),
+        runtimePool.query(`SELECT
+          (SELECT count(broker_order_id)::int FROM trade.broker_order) AS broker_orders,
+          (SELECT count(fill_id)::int FROM trade.fill) AS broker_fills`),
+      ]);
+      send(response, 200, {
+        generatedAt: new Date().toISOString(), trading: 'DISABLED', executionGate: 'LOCKED',
+        master: {
+          accountRole: masterReadiness.accountRole, brokerHost: masterReadiness.brokerHost,
+          brokerIdentityVerified: masterReadiness.brokerIdentityVerified,
+          connectionState: masterReadiness.connectionState, accountStatus: masterReadiness.accountStatus,
+          optionsApprovedLevel: masterReadiness.optionsApprovedLevel,
+          optionsTradingLevel: masterReadiness.optionsTradingLevel,
+          openPositions: masterReadiness.openPositions, openOrders: masterReadiness.openOrders,
+          marketOpen: masterReadiness.marketOpen,
+          calendarSessionConfirmed: masterReadiness.calendarSessionConfirmed,
+        },
+        alpaca: alpaca.map((result) => ({
+          capability: result.capability, operationAlias: result.operationAlias,
+          availability: result.availability, httpStatus: result.httpStatus,
+          observedAt: result.observedAt, details: result.details,
+        })),
+        optionomics: optionomics.map((result) => ({
+          capability: result.capability, operationAlias: result.operationAlias,
+          availability: optionomicsAvailability(result), state: result.state,
+          httpStatus: result.httpStatus, observedAt: result.observedAt, details: result.details,
+        })),
+        persistence: {
+          alpacaCapabilities: alpacaPersistence.capabilityCount,
+          optionomicsCapabilities: optionomicsPersistence.capabilityCount,
+        },
+        orders: {
+          brokerOrders: Number(counts.rows[0]?.broker_orders ?? 0),
+          brokerFills: Number(counts.rows[0]?.broker_fills ?? 0),
+        },
+      });
+      return;
+    }
     if(localIdentity.kind === 'ABSENT'){
       const active=await workerStore.activeLeaseOwner(new Date().toISOString());
       if(active!==null){send(response,409,{error:'local_primary_worker_active',executionGate:'LOCKED'});return;}
@@ -102,7 +174,7 @@ export default async function autonomousRuntimeHandler(
   } catch (error) {
     const code = error instanceof Error && /^[A-Z0-9_:-]+$/.test(error.message)
       ? error.message : 'AUTONOMOUS_RUNTIME_FAILED';
-    if (localWorkerId !== null) {
+    if (localWorkerId !== null && operation === 'RUNTIME_CYCLE') {
       await workerStore.stop(localWorkerId, new Date().toISOString(), 'ERROR', code).catch(() => undefined);
     }
     send(response, 503, {
@@ -110,6 +182,12 @@ export default async function autonomousRuntimeHandler(
       followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
     });
   }
+}
+
+function optionomicsAvailability(result: CheckResult): string {
+  if (result.state === 'GOOD') return 'AVAILABLE';
+  if (result.state === 'NOT_ENTITLED') return 'NOT_ENTITLED';
+  return 'UNVERIFIED';
 }
 
 function validHeader(value: IncomingMessage['headers'][string], pattern: RegExp): string | null {
