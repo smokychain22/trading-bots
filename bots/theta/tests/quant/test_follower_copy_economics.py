@@ -19,7 +19,12 @@ from research.follower_copy_economics import (  # noqa: E402
     compute_copy_delay_seconds,
     compute_edge_degradation,
     compute_follower_quantity,
+    CANONICAL_ACTION_TO_LIFECYCLE_EVENT,
+    CANONICAL_ROLL_ACTIONS_REJECTED_AT_PERSISTENCE,
+    CashflowDirection,
+    CopyabilityAssessment,
     compute_price_deterioration,
+    to_canonical_copy_outcome,
     compute_return_degradation_pct,
     evaluate_follower_roll,
     follower_may_participate,
@@ -66,13 +71,16 @@ class ComputeFollowerQuantityTests(unittest.TestCase):
 
 
 class PriceDeteriorationTests(unittest.TestCase):
-    def test_computes_signed_deterioration(self):
-        deterioration = compute_price_deterioration(master_fill_price=1.00, follower_actual_fill_price=1.05)
+    def test_computes_signed_deterioration_for_a_debit(self):
+        deterioration = compute_price_deterioration(1.00, 1.05, CashflowDirection.DEBIT)
         self.assertAlmostEqual(deterioration, 0.05)
 
     def test_unknown_inputs_produce_none_never_zero(self):
-        self.assertIsNone(compute_price_deterioration(None, 1.05))
-        self.assertIsNone(compute_price_deterioration(1.00, None))
+        self.assertIsNone(compute_price_deterioration(None, 1.05, CashflowDirection.DEBIT))
+        self.assertIsNone(compute_price_deterioration(1.00, None, CashflowDirection.DEBIT))
+
+    def test_unknown_direction_produces_none_never_a_guessed_direction(self):
+        self.assertIsNone(compute_price_deterioration(1.00, 1.05, None))
 
 
 class AssessCopyabilityTests(unittest.TestCase):
@@ -232,6 +240,36 @@ class R4ExitCheckTests(unittest.TestCase):
     def test_any_unmet_criterion_is_fail(self):
         for name in R4ExitCheck.__dataclass_fields__:
             self.assertEqual(r4_quant_copy_contract(self._check(**{name: False})), "FAIL", f"{name}=False must FAIL")
+
+
+class CanonicalVocabularyTests(unittest.TestCase):
+    """Research adapts to Production's own copy vocabulary
+    (src/customer/copy-engine-contract.ts, migration 021) rather than
+    inventing a competing one."""
+
+    def test_every_canonical_copy_action_is_mapped(self):
+        canonical = {
+            "OPEN_CSP", "REDUCE_CSP", "CLOSE_CSP", "EXPIRE_CSP", "ASSIGN_STOCK", "HOLD_STOCK",
+            "SELL_STOCK", "OPEN_CC", "REDUCE_CC", "CLOSE_CC", "EXPIRE_CC", "CALL_AWAY",
+        }
+        self.assertEqual(set(CANONICAL_ACTION_TO_LIFECYCLE_EVENT), canonical)
+
+    def test_combined_roll_actions_are_recorded_as_rejected_at_persistence(self):
+        # Migration 021's master_copy_event_explicit_roll_legs CHECK and the
+        # planner both refuse these -- a roll must arrive as two legs.
+        self.assertEqual(set(CANONICAL_ROLL_ACTIONS_REJECTED_AT_PERSISTENCE), {"ROLL_CSP", "ROLL_CC"})
+        for action in CANONICAL_ROLL_ACTIONS_REJECTED_AT_PERSISTENCE:
+            self.assertNotIn(action, CANONICAL_ACTION_TO_LIFECYCLE_EVENT)
+
+    def test_copy_decisions_map_onto_canonical_outcomes(self):
+        self.assertEqual(to_canonical_copy_outcome(
+            CopyabilityAssessment(CopyDecision.COPY_ELIGIBLE, ["ok"])), "COPY_FULL")
+        self.assertEqual(to_canonical_copy_outcome(
+            CopyabilityAssessment(CopyDecision.COPY_REDUCED, ["smaller"])), "COPY_REDUCED")
+        self.assertEqual(to_canonical_copy_outcome(CopyabilityAssessment(
+            CopyDecision.SKIP, ["FOLLOWER_ACCOUNT_CAPACITY_YIELDS_ZERO_QUANTITY"])), "SKIP_ACCOUNT")
+        self.assertEqual(to_canonical_copy_outcome(CopyabilityAssessment(
+            CopyDecision.SKIP, ["FOLLOWER_QUOTE_STALE_AT_COPY_TIME"])), "BLOCKED")
 
 
 if __name__ == "__main__":

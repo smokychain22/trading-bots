@@ -53,7 +53,7 @@ _ITEMS: Tuple[PhaseItem, ...] = (
     PhaseItem("R6_PROMOTION_CONTRACT", PhaseState.COMPLETE, ("promotion_checker.py", "champion_challenger.py"),
               note="Six failure classes plus PROMOTION_ELIGIBLE_RESEARCH ceiling."),
     PhaseItem("R6_AUTO_PIPELINE", PhaseState.COMPLETE, ("empirical_pipeline.py",),
-              note="One entry point: load -> audit -> readiness -> eligible experiments -> artifacts."),
+              note="One entry point plus a thin `python -m research.empirical_pipeline` CLI: load -> audit -> readiness -> eligible experiments -> artifacts."),
     PhaseItem("R6_WALK_FORWARD_ENGINE", PhaseState.COMPLETE, ("walk_forward.py",),
               note="Purge/embargo/label-availability/chain-grouping all implemented and tested."),
     PhaseItem("R6_SELECTION_BIAS", PhaseState.COMPLETE, ("selection_bias.py",),
@@ -79,7 +79,7 @@ _ITEMS: Tuple[PhaseItem, ...] = (
     PhaseItem("R3_QUANT", PhaseState.COMPLETE, ("account_risk_capacity.py",),
               note="Per-account isolated capacities, min-of-capacities quantity, isolation violations, exit check."),
     PhaseItem("R4_QUANT", PhaseState.COMPLETE, ("follower_copy_economics.py",),
-              note="Follower sizing from own capacity only, copyability decisions, lifecycle eligibility, roll leg independence, degradation metrics, exit check."),
+              note="Follower sizing from own capacity only, copyability decisions, lifecycle eligibility, roll leg independence, degradation metrics, master-fill-first confirmation, DIRECTION-AWARE credit/debit price deterioration (Codex-identified defect, repaired), exit check."),
     PhaseItem("R5_QUANT", PhaseState.COMPLETE, ("quant_explanation_contracts.py",),
               note="Candidate/position/strategy/performance explanations, uncalibrated-probability guard, decision-field consistency validation, exit check."),
     PhaseItem("R7_RESEARCH_GATE", PhaseState.COMPLETE, ("research_evidence_packet.py",),
@@ -94,8 +94,8 @@ _ITEMS: Tuple[PhaseItem, ...] = (
               note="src/theta/strategy-package.ts is the canonical strategy-version/config authority; do not extend the research copy."),
     PhaseItem("RESEARCH_FEATURE_TAXONOMY", PhaseState.SUPERSEDED, ("feature_taxonomy.py",),
               note="Codex's TypeScript hard/soft evidence contract owns runtime classification; the Python taxonomy stays research-only."),
-    PhaseItem("NARROW_PAPER_READINESS_PRECHECK", PhaseState.SUPERSEDED, ("dataset_readiness.py",),
-              note="dataset_readiness.research_ready_for_paper is an 8-dimension subset precheck; research_evidence_packet.research_ready_for_paper (14 dimensions) is the canonical R7 gate."),
+    PhaseItem("NARROW_PAPER_READINESS_PRECHECK", PhaseState.SUPERSEDED, ("research_evidence_packet.py",),
+              note="REMOVED from dataset_readiness.py (Codex removed the same helper on canonical main, 115285b). research_evidence_packet.research_ready_for_paper (14 dimensions) is now the ONLY R7 entry point; do not reintroduce an 8-dimension subset."),
 )
 
 PHASE_STATUS: Dict[str, PhaseItem] = {item.key: item for item in _ITEMS}

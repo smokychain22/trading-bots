@@ -2,6 +2,10 @@
 
 import sys
 import tempfile
+import contextlib
+import io
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -18,6 +22,7 @@ from research.dataset_readiness import (  # noqa: E402
 from research.empirical_pipeline import (  # noqa: E402
     assess_cross_symbol_completeness,
     audit_contract_identity,
+    main as empirical_pipeline_main,
     run_theta_empirical_pipeline,
 )
 from research.production_export_loader import (  # noqa: E402
@@ -257,6 +262,56 @@ class ArtifactTests(unittest.TestCase):
     def test_evidence_source_is_always_explicit_in_the_manifest(self):
         result = run_theta_empirical_pipeline(_build_export(), _config(evidence_source=EvidenceSourceLabel.PAPER_EXECUTION))
         self.assertEqual(result.manifest["evidence_source"], "PAPER_EXECUTION")
+
+
+class CliWrapperTests(unittest.TestCase):
+    """The CLI is a THIN wrapper: it loads, delegates, prints, exits. It
+    owns no pipeline logic and must never relax a readiness gate."""
+
+    def _argv(self, export_path, output, extra=()):
+        return [
+            "--export", str(export_path), "--output", str(output),
+            "--evidence-source", "LIVE_SHADOW", "--strategy-branch", "THETA_CONVENTIONAL",
+            "--experiment-id", "CLI_TEST", "--target-version", "v1",
+            "--feature-version", "v1", "--cost-model-version", "v1",
+            "--split-definition", "s1", *extra,
+        ]
+
+    def test_a_missing_export_file_exits_nonzero_without_running_anything(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "absent.json"
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                code = empirical_pipeline_main(self._argv(missing, tmp))
+            self.assertEqual(code, 2)
+            self.assertIn("EXPORT_NOT_FOUND", out.getvalue())
+
+    def test_a_structurally_invalid_export_exits_nonzero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = Path(tmp) / "bad.json"
+            bad.write_text(json.dumps({"schema_version": "not-the-contract"}), encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                code = empirical_pipeline_main(self._argv(bad, tmp))
+            self.assertEqual(code, 2)
+            self.assertIn("DATASET_PRESENT_UNUSABLE", out.getvalue())
+
+    def test_partial_sufficiency_thresholds_are_refused_rather_than_defaulted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            export = Path(tmp) / "export.json"
+            export.write_text(json.dumps(_build_export()), encoding="utf-8")
+            with self.assertRaises(SystemExit) as raised:
+                empirical_pipeline_main(self._argv(export, tmp, extra=["--min-raw-n", "10"]))
+            self.assertIn("SUFFICIENCY_THRESHOLDS_INCOMPLETE", str(raised.exception))
+
+    def test_a_valid_export_runs_and_reports_its_readiness(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            export = Path(tmp) / "export.json"
+            export.write_text(json.dumps(_build_export()), encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                code = empirical_pipeline_main(self._argv(export, tmp))
+            printed = out.getvalue()
+            self.assertEqual(code, 0)
+            self.assertIn("readiness=", printed)
+            self.assertIn("evidence_source=LIVE_SHADOW", printed)
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@ without re-deriving it from commit history or re-auditing finished work.
 | Walk-forward engine (purge/embargo/label availability/chain grouping) | `walk_forward.py` |
 | Selection bias (DSR sigma-scaled, PBO average-rank ties) | `selection_bias.py` |
 | R3 account risk capacity + isolation + exit check | `account_risk_capacity.py` |
-| R4 follower sizing, copyability, lifecycle eligibility, roll legs, degradation, exit check | `follower_copy_economics.py` |
+| R4 follower sizing, copyability, lifecycle eligibility, roll legs, degradation, master-fill-first, direction-aware pricing, exit check | `follower_copy_economics.py` |
 | R5 explanation contracts, consistency validation, exit check | `quant_explanation_contracts.py` |
 | R7/R9 research evidence gates (14 / 23 dimensions) | `research_evidence_packet.py` |
 | R8 Paper analytics, incident tally, stability recommendation | `paper_validation_analytics.py` |
@@ -65,6 +65,19 @@ Behavior by readiness, never bypassable:
 | `WALK_FORWARD_ELIGIBLE` | Adds paired feature and flow ablations. |
 | `OOS_EVALUATION_ELIGIBLE` | Adds untouched-OOS evaluation. |
 
+A thin CLI wraps the same function with no logic of its own:
+
+```
+PYTHONPATH=bots/theta/quant python -m research.empirical_pipeline \
+  --export path/to/dataset.json --output research_outputs/ \
+  --evidence-source LIVE_SHADOW --strategy-branch THETA_CONVENTIONAL \
+  --experiment-id E1 --target-version v1 --feature-version v1 \
+  --cost-model-version v1 --split-definition s1
+```
+
+It exits non-zero on a missing or structurally invalid export, and refuses
+a partial `--min-*` threshold set rather than inventing the missing ones.
+
 Artifacts land at `research_outputs/<dataset_hash>/<experiment_id>/` with
 `manifest.json`, `data_quality.json`, `readiness.json`, `descriptive.json`,
 `experiments.json`, `failures.json`. A repeat run of the same experiment
@@ -102,7 +115,27 @@ copied from master, uncalibrated probability shown to a user, Paper evidence
 mixed with shadow evidence, future labels inside feature payloads, open
 chains counted as wins, premium-based return denominators, fabricated fill
 probabilities, duplicate experiment-result overwrites, readiness-gate
-bypass, and martingale/loss-conditioned sizing.
+bypass, martingale/loss-conditioned sizing, **direction-agnostic copy price
+deterioration**, and **copying a master order intent that never filled**.
+
+### The direction-aware copy-pricing repair
+
+Codex found that `follower_price - master_price` is correct only for a
+DEBIT. THETA is a premium *seller*, so most copied events are CREDITs,
+where receiving **less** is worse — the opposite arithmetic. The old
+formula therefore scored adverse credit fills as improvements and
+improvements as adverse, inverting any limit built on it.
+
+`CashflowDirection` (CREDIT/DEBIT) is now explicit and required.
+Direction is never inferred from CALL/PUT (either can be bought or sold)
+nor from OPEN/CLOSE alone; `cashflow_direction_for_event` supplies only
+the conventional value for the short-premium lifecycle and can be
+overridden. One sign convention holds everywhere: **positive = adverse,
+negative = price improvement**. A roll's two legs carry opposite
+directions (close-old DEBIT, open-new CREDIT), which is precisely why a
+roll is never scored as one combined deterioration number. The percentage
+form divides by `abs(master price)` and returns `None` — never `0.0` —
+when that is zero or unknown.
 
 ## Standing truth
 

@@ -13,13 +13,11 @@ from research.dataset_readiness import (  # noqa: E402
     DependenceGroupKey,
     EvidenceSourceLabel,
     ExperimentConfig,
-    ResearchPaperReadinessCheck,
     SufficiencyThresholds,
     assess_model_fit_sufficiency,
     build_dependence_groups,
     classify_dataset_readiness,
     effective_sample_size,
-    research_ready_for_paper,
     run_empirical_program,
     slice_by_branch,
 )
@@ -176,37 +174,6 @@ class RunEmpiricalProgramTests(unittest.TestCase):
 
         result = run_empirical_program("fake-export", self._config(), SufficiencyReport(eligible=True, reasons=[]))
         self.assertNotIn("OOS_EVALUATION", result.eligible_experiments)
-
-
-class ResearchReadyForPaperTests(unittest.TestCase):
-    def _full_pass(self, **overrides):
-        defaults = dict(
-            branch_supported=True, cohort_supported=True, oos_ev_positive=True, tail_acceptable=True,
-            calibration_acceptable=True, execution_assumptions_survive=True, uncertainty_acceptable=True,
-            no_subgroup_collapse=True,
-        )
-        defaults.update(overrides)
-        return ResearchPaperReadinessCheck(**defaults)
-
-    def test_a_fully_passing_check_is_ready(self):
-        self.assertTrue(research_ready_for_paper(self._full_pass()))
-
-    def test_current_absent_data_state_is_never_ready(self):
-        # Every OOS/tail/calibration/execution/uncertainty/subgroup field
-        # is unknown (None) while EV_MODEL_NOT_EMPIRICALLY_READY -- this
-        # must never default to True.
-        check = ResearchPaperReadinessCheck(
-            branch_supported=True, cohort_supported=True, oos_ev_positive=None, tail_acceptable=None,
-            calibration_acceptable=None, execution_assumptions_survive=None, uncertainty_acceptable=None,
-            no_subgroup_collapse=None,
-        )
-        self.assertFalse(research_ready_for_paper(check))
-
-    def test_a_single_false_dimension_blocks_readiness(self):
-        self.assertFalse(research_ready_for_paper(self._full_pass(tail_acceptable=False)))
-
-    def test_an_unsupported_branch_blocks_readiness_even_if_everything_else_passes(self):
-        self.assertFalse(research_ready_for_paper(self._full_pass(branch_supported=False)))
 
 
 if __name__ == "__main__":

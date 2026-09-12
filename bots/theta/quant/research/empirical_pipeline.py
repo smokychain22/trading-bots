@@ -467,3 +467,114 @@ def run_theta_empirical_pipeline(
         eligible_experiments=eligible_ids, refused_experiments=refused,
         integrity_failures=integrity_failures, manifest=manifest, artifacts_written=artifacts,
     )
+
+
+# ---------------------------------------------------------------------------
+# Thin CLI wrapper -- zero pipeline logic of its own
+# ---------------------------------------------------------------------------
+#
+#   PYTHONPATH=bots/theta/quant python -m research.empirical_pipeline \
+#       --export path/to/dataset.json --output research_outputs/
+#
+# It only loads JSON from disk, builds the two config objects the function
+# already requires, calls `run_theta_empirical_pipeline`, prints a concise
+# summary, and chooses an exit code. Every decision -- readiness, which
+# experiments are eligible, what is written -- stays in the function above.
+# No credential is read, printed, or accepted.
+
+
+_SUFFICIENCY_FLAGS = (
+    "min-raw-n", "min-independent-n", "min-positive-outcomes",
+    "min-negative-outcomes", "min-branch-coverage", "min-regime-coverage",
+)
+
+
+def _build_arg_parser():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="python -m research.empirical_pipeline",
+        description="Run the THETA auto-empirical pipeline over a Production dataset export.",
+    )
+    parser.add_argument("--export", required=True, help="path to the dataset export JSON")
+    parser.add_argument("--output", default="research_outputs", help="artifact root directory")
+    parser.add_argument("--evidence-source", required=True,
+                        choices=[label.value for label in EvidenceSourceLabel],
+                        help="evidence class of this export -- never inferred, never blended")
+    parser.add_argument("--strategy-branch", required=True,
+                        choices=[branch.value for branch in ThetaStrategyBranch])
+    parser.add_argument("--experiment-id", required=True)
+    parser.add_argument("--hypothesis-id", default=None)
+    parser.add_argument("--target-version", required=True)
+    parser.add_argument("--feature-version", required=True)
+    parser.add_argument("--cost-model-version", required=True)
+    parser.add_argument("--split-definition", required=True)
+    parser.add_argument("--source-code-commit", default=None)
+    parser.add_argument("--run-timestamp", default="")
+    for flag in _SUFFICIENCY_FLAGS:
+        # Caller-supplied and caller-justified: omitting them leaves
+        # thresholds unset, which caps readiness rather than inventing one.
+        parser.add_argument(f"--{flag}", type=int, default=None)
+    return parser
+
+
+def _thresholds_from_args(args) -> Optional[SufficiencyThresholds]:
+    values = [getattr(args, flag.replace("-", "_")) for flag in _SUFFICIENCY_FLAGS]
+    if all(value is None for value in values):
+        return None
+    if any(value is None for value in values):
+        raise SystemExit(
+            "SUFFICIENCY_THRESHOLDS_INCOMPLETE: supply all six --min-* flags or none. "
+            "There is no default minimum sample size."
+        )
+    return SufficiencyThresholds(*values)
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """Exit 0 when the pipeline ran to a status it can stand behind,
+    2 when the dataset is structurally invalid or absent, 1 on a usage
+    error. Prints the readiness state and artifact path, nothing else."""
+    args = _build_arg_parser().parse_args(argv)
+
+    export_path = Path(args.export)
+    if not export_path.is_file():
+        print(f"EXPORT_NOT_FOUND: {export_path}")
+        return 2
+    raw_export = json.loads(export_path.read_text(encoding="utf-8"))
+
+    config = ExperimentConfig(
+        dataset_hash=str(raw_export.get("dataset_hash", "")),
+        target_version=args.target_version,
+        feature_version=args.feature_version,
+        strategy_branch=ThetaStrategyBranch(args.strategy_branch),
+        cost_model_version=args.cost_model_version,
+        split_definition=args.split_definition,
+        experiment_id=args.experiment_id,
+        hypothesis_id=args.hypothesis_id,
+        evidence_source=EvidenceSourceLabel(args.evidence_source),
+    )
+
+    result = run_theta_empirical_pipeline(
+        raw_export=raw_export,
+        config=config,
+        thresholds=_thresholds_from_args(args),
+        output_root=Path(args.output),
+        source_code_commit=args.source_code_commit,
+        run_timestamp=args.run_timestamp,
+    )
+
+    print(f"status={result.status}")
+    print(f"readiness={result.readiness_state.value}")
+    print(f"evidence_source={config.evidence_source.value}")
+    print(f"dataset_hash={result.dataset_hash}")
+    print(f"eligible_experiments={len(result.eligible_experiments)}")
+    print(f"refused_experiments={len(result.refused_experiments)}")
+    for failure in result.integrity_failures:
+        print(f"integrity_failure: {failure}")
+    for artifact in result.artifacts_written:
+        print(f"artifact: {artifact}")
+    return 0 if result.status == "OK" else 2
+
+
+if __name__ == "__main__":  # pragma: no cover -- thin dispatch only
+    raise SystemExit(main())

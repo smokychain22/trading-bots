@@ -81,3 +81,45 @@ coverage preference, not a mathematical defect -- recorded here rather
 than raised as a `REQUIRED_CODEX_CHANGE`.
 
 **`REQUIRED_CODEX_CHANGE` count for this closure run: 0.**
+
+## Bug-fix run re-check: `103725f..115285b` (copy engine + migration 021)
+
+Three canonical commits, inspected on copy/research/export paths only.
+
+### Migration 021 (`021_disabled_copy_planning.sql`) + `postgres-disabled-copy-planner.ts`
+
+Canonical Production now requires, at the database level, exactly the
+invariants this branch's R4 research contract asserts:
+
+| Canonical constraint | Research equivalent | Status |
+|---|---|---|
+| `master_copy_event_requires_broker_confirmation` (FILL or LIFECYCLE_ACTIVITY) | `master_confirmation_sufficient` | **NEWLY ADDED this run** |
+| `master_copy_event_explicit_roll_legs` CHECK (`action NOT IN ('ROLL_CSP','ROLL_CC')`) + planner's `ROLL_REQUIRES_EXPLICIT_CLOSE_AND_OPEN_EVENTS` | `evaluate_follower_roll` (two independent legs) | already held; now cross-referenced by `CANONICAL_ROLL_ACTIONS_REJECTED_AT_PERSISTENCE` |
+| `MASTER_FILL_REQUIRED_BEFORE_COPY` / `MASTER_BROKER_CONFIRMATION_REQUIRED` | same reason codes reused verbatim | aligned |
+| `copyOutcomeSchema` (COPY_FULL / COPY_REDUCED / SKIP_ACCOUNT / BLOCKED / RECONCILE / DUPLICATE_NOOP) | `to_canonical_copy_outcome` maps the research `CopyDecision` onto it | **NEWLY ADDED this run** — research does not keep a competing outcome vocabulary |
+| `copyActionSchema` (14 actions) | `CANONICAL_ACTION_TO_LIFECYCLE_EVENT` | **NEWLY ADDED this run** |
+| `execution_authorized=false` on every persisted follower intent | research contract activates nothing, ever | aligned |
+| Own-account capacity only (`authorizedCapitalRemaining`, `maxContractsPerPosition`) | `compute_follower_quantity` (own capacity, master qty only as an upper bound) | aligned |
+| `followerAssigned === false` ⇒ `ASSIGNMENT_DIVERGED` | `follower_may_participate` refuses assignment without the follower's own short | aligned |
+
+**Deliberate non-adoption:** Production's `expectedSlippagePerContract` /
+`maxSlippagePerContract` pair is an execution-engine input. Research keeps
+price deterioration as a *measured, signed* quantity with a
+caller-supplied limit and does NOT model a follower fill probability or an
+expected slippage — that remains future Paper TCA evidence.
+
+### `115285b` — Codex removed the superseded readiness subset
+
+Codex deleted `ResearchPaperReadinessCheck`/`research_ready_for_paper`
+from `dataset_readiness.py` on canonical main. This branch has now removed
+the same helper and its tests, so exactly ONE R7 entry point exists:
+`research_evidence_packet.research_ready_for_paper` (14 dimensions).
+
+### `3bebd33` — forbidden-feature-key union
+
+Codex added `future`, `pnl`, `realizedreturn` to
+`production_export_loader.py`'s `_FORBIDDEN_FEATURE_KEYS` — the identical
+three terms this branch had already unioned in the previous run.
+Convergent; no conflict.
+
+**`PARITY_STILL_VALID` = YES. `REQUIRED_CODEX_CHANGE` count for this run: 0.**

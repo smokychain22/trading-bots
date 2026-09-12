@@ -53,13 +53,19 @@ from research.execution_simulator import (  # noqa: E402
     simulate_fill,
 )
 from research.follower_copy_economics import (  # noqa: E402
+    CashflowDirection,
     ChainLifecycleEvent,
     CopyDecision,
     FollowerChainParticipation,
     FollowerSizingInputs,
+    MasterConfirmation,
     assess_copyability,
+    cashflow_direction_for_event,
     compute_follower_quantity,
+    compute_price_deterioration,
+    compute_price_deterioration_pct,
     follower_may_participate,
+    master_confirmation_sufficient,
 )
 from research.management_policy import ActionEconomics, ManagementAction, management_utility  # noqa: E402
 from research.paper_validation_analytics import (  # noqa: E402
@@ -491,6 +497,147 @@ class MartingaleTests(unittest.TestCase):
         field_names = {f.name for f in dataclasses.fields(_account())}
         for forbidden in ("recent_losses", "loss_streak", "consecutive_losses"):
             self.assertNotIn(forbidden, field_names)
+
+
+class DirectionAgnosticCopyPricingTests(unittest.TestCase):
+    """FAILURE DNA: scoring copy price deterioration with one
+    direction-agnostic subtraction.
+
+    `follower - master` is correct ONLY for a debit. THETA is a premium
+    SELLER, so most of its events are credits, where receiving LESS is
+    worse -- the opposite arithmetic. The original formula therefore
+    scored adverse credit fills as improvements and improvements as
+    adverse, inverting every limit built on it."""
+
+    def test_credit_receiving_less_is_adverse_and_positive(self):
+        # master sold for 2.00, follower only got 1.90 -> genuinely worse.
+        self.assertAlmostEqual(
+            compute_price_deterioration(2.00, 1.90, CashflowDirection.CREDIT), 0.10)
+
+    def test_credit_receiving_more_is_an_improvement_and_negative(self):
+        self.assertAlmostEqual(
+            compute_price_deterioration(2.00, 2.10, CashflowDirection.CREDIT), -0.10)
+
+    def test_debit_paying_more_is_adverse_and_positive(self):
+        self.assertAlmostEqual(
+            compute_price_deterioration(1.00, 1.10, CashflowDirection.DEBIT), 0.10)
+
+    def test_debit_paying_less_is_an_improvement_and_negative(self):
+        self.assertAlmostEqual(
+            compute_price_deterioration(1.00, 0.90, CashflowDirection.DEBIT), -0.10)
+
+    def test_the_two_directions_disagree_on_identical_numbers(self):
+        # The regression itself: one formula cannot serve both.
+        credit = compute_price_deterioration(2.00, 1.90, CashflowDirection.CREDIT)
+        debit = compute_price_deterioration(2.00, 1.90, CashflowDirection.DEBIT)
+        self.assertAlmostEqual(credit, -debit)
+        self.assertGreater(credit, 0)
+        self.assertLess(debit, 0)
+
+    def test_roll_legs_carry_opposite_cash_directions(self):
+        self.assertEqual(
+            cashflow_direction_for_event(ChainLifecycleEvent.ROLL_CLOSE_OLD), CashflowDirection.DEBIT)
+        self.assertEqual(
+            cashflow_direction_for_event(ChainLifecycleEvent.ROLL_OPEN_NEW), CashflowDirection.CREDIT)
+
+    def test_short_put_and_covered_call_opens_are_credits_and_closes_are_debits(self):
+        self.assertEqual(cashflow_direction_for_event(ChainLifecycleEvent.ENTRY), CashflowDirection.CREDIT)
+        self.assertEqual(cashflow_direction_for_event(ChainLifecycleEvent.SELL_CC), CashflowDirection.CREDIT)
+        self.assertEqual(cashflow_direction_for_event(ChainLifecycleEvent.CLOSE), CashflowDirection.DEBIT)
+
+    def test_non_transaction_lifecycle_events_have_no_guessed_direction(self):
+        self.assertIsNone(cashflow_direction_for_event(ChainLifecycleEvent.ASSIGNMENT))
+        self.assertIsNone(cashflow_direction_for_event(ChainLifecycleEvent.CALL_AWAY))
+
+    def test_zero_master_price_makes_the_percentage_undefined_not_zero(self):
+        self.assertIsNone(compute_price_deterioration_pct(0.0, 1.00, CashflowDirection.CREDIT))
+
+    def test_unknown_master_price_makes_the_percentage_undefined_not_zero(self):
+        self.assertIsNone(compute_price_deterioration_pct(None, 1.00, CashflowDirection.DEBIT))
+
+    def test_percentage_preserves_the_sign_convention(self):
+        self.assertAlmostEqual(
+            compute_price_deterioration_pct(2.00, 1.90, CashflowDirection.CREDIT), 0.05)
+        self.assertAlmostEqual(
+            compute_price_deterioration_pct(2.00, 2.10, CashflowDirection.CREDIT), -0.05)
+
+    def _copy_inputs(self):
+        return FollowerSizingInputs(
+            follower_capacity=_account("follower-1", AccountRole.FOLLOWER, collateral_capacity=1_000_000.0,
+                                       assignment_capacity=1_000_000.0, portfolio_tail_budget=1_000_000.0,
+                                       concentration_capacity={"SPY": 1_000_000.0}),
+            required_collateral_per_contract=5_000.0, stress_loss_per_contract=100.0,
+            concentration_key="SPY", exposure_per_contract=1_000.0,
+            assignment_shares_per_contract=100.0, master_quantity=1,
+        )
+
+    def test_copyability_blocks_adverse_credit_deterioration(self):
+        adverse = compute_price_deterioration(2.00, 1.80, CashflowDirection.CREDIT)
+        assessment = assess_copyability(
+            self._copy_inputs(), branch_compatible=True, quote_fresh=True,
+            account_isolation_violations=[], price_deterioration=adverse,
+            max_price_deterioration=0.10)
+        self.assertEqual(assessment.decision, CopyDecision.SKIP)
+        self.assertTrue(any("ADVERSE_PRICE_DETERIORATION" in r for r in assessment.reasons))
+
+    def test_copyability_never_blocks_a_credit_price_improvement(self):
+        improvement = compute_price_deterioration(2.00, 2.50, CashflowDirection.CREDIT)
+        assessment = assess_copyability(
+            self._copy_inputs(), branch_compatible=True, quote_fresh=True,
+            account_isolation_violations=[], price_deterioration=improvement,
+            max_price_deterioration=0.10)
+        self.assertEqual(assessment.decision, CopyDecision.COPY_ELIGIBLE)
+
+    def test_copyability_never_blocks_a_debit_price_improvement(self):
+        improvement = compute_price_deterioration(1.00, 0.50, CashflowDirection.DEBIT)
+        assessment = assess_copyability(
+            self._copy_inputs(), branch_compatible=True, quote_fresh=True,
+            account_isolation_violations=[], price_deterioration=improvement,
+            max_price_deterioration=0.10)
+        self.assertEqual(assessment.decision, CopyDecision.COPY_ELIGIBLE)
+
+    def test_unknown_deterioration_under_an_active_limit_is_refused_not_waved_through(self):
+        assessment = assess_copyability(
+            self._copy_inputs(), branch_compatible=True, quote_fresh=True,
+            account_isolation_violations=[], price_deterioration=None,
+            max_price_deterioration=0.10)
+        self.assertEqual(assessment.decision, CopyDecision.SKIP)
+        self.assertTrue(any("UNKNOWN_UNDER_ACTIVE_LIMIT" in r for r in assessment.reasons))
+
+
+class MasterIntentIsNotConfirmationTests(unittest.TestCase):
+    """FAILURE DNA: copying a master ORDER the master never actually got
+    filled on, manufacturing follower positions from intent alone."""
+
+    def test_an_unfilled_master_order_cannot_be_copied(self):
+        sufficient, reason = master_confirmation_sufficient(MasterConfirmation(
+            event=ChainLifecycleEvent.ENTRY, master_fill_id="fill-1",
+            master_filled_quantity=0, broker_activity_fact_id=None))
+        self.assertFalse(sufficient)
+        self.assertEqual(reason, "MASTER_FILL_REQUIRED_BEFORE_COPY")
+
+    def test_a_missing_master_fill_id_cannot_be_copied(self):
+        sufficient, _ = master_confirmation_sufficient(MasterConfirmation(
+            event=ChainLifecycleEvent.ROLL_OPEN_NEW, master_fill_id=None,
+            master_filled_quantity=1, broker_activity_fact_id=None))
+        self.assertFalse(sufficient)
+
+    def test_a_confirmed_master_fill_is_sufficient(self):
+        sufficient, _ = master_confirmation_sufficient(MasterConfirmation(
+            event=ChainLifecycleEvent.ENTRY, master_fill_id="fill-1",
+            master_filled_quantity=1, broker_activity_fact_id=None))
+        self.assertTrue(sufficient)
+
+    def test_assignment_requires_a_broker_activity_fact_not_a_fill(self):
+        sufficient, reason = master_confirmation_sufficient(MasterConfirmation(
+            event=ChainLifecycleEvent.ASSIGNMENT, master_fill_id=None,
+            master_filled_quantity=0, broker_activity_fact_id=None))
+        self.assertFalse(sufficient)
+        self.assertEqual(reason, "MASTER_BROKER_CONFIRMATION_REQUIRED")
+        sufficient, _ = master_confirmation_sufficient(MasterConfirmation(
+            event=ChainLifecycleEvent.ASSIGNMENT, master_fill_id=None,
+            master_filled_quantity=0, broker_activity_fact_id="activity-1"))
+        self.assertTrue(sufficient)
 
 
 if __name__ == "__main__":

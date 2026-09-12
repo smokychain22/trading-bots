@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from research.account_risk_capacity import AccountRiskCapacity, compute_account_qty_cap
 
@@ -48,6 +48,58 @@ def compute_follower_quantity(inputs: FollowerSizingInputs) -> int:
     return max(0, min(own_cap, inputs.master_quantity))
 
 
+# ---------------------------------------------------------------------------
+# Direction-aware copy pricing (Codex-identified defect, this session)
+# ---------------------------------------------------------------------------
+#
+# THE BUG: `follower_price - master_price` was direction-agnostic. It is
+# correct only for DEBIT transactions. For a CREDIT transaction (the
+# overwhelming majority of THETA's own events -- it is a premium SELLER)
+# the same arithmetic inverts the economics: a follower that received
+# LESS credit than the master was scored as having a NEGATIVE (i.e.
+# "better") deterioration, and a follower that received MORE credit was
+# scored as worse. Any copyability limit built on it would therefore have
+# blocked price IMPROVEMENTS and waved through genuine adverse fills.
+
+
+class CashflowDirection(str, Enum):
+    """The transaction's CASH direction -- the only thing that determines
+    which way "worse" points.
+
+    Never inferred from CALL/PUT: both a call and a put can be bought or
+    sold. Never inferred from OPEN/CLOSE alone either: what matters is
+    whether cash is received or paid, which is a property of the
+    transaction, not of its lifecycle position. Callers pass it
+    explicitly; `cashflow_direction_for_event` below offers only the
+    CONVENTIONAL value for THETA's short-premium lifecycle and may be
+    overridden."""
+
+    CREDIT = "CREDIT"  # cash received -- MORE credit is better
+    DEBIT = "DEBIT"  # cash paid -- LESS debit is better
+
+
+#: The single signed convention used everywhere in this module.
+DETERIORATION_SIGN_CONVENTION = (
+    "positive = ADVERSE for the follower (worse than the master got); "
+    "negative = follower PRICE IMPROVEMENT; zero = identical economics"
+)
+
+
+def cashflow_direction_for_event(event: "ChainLifecycleEvent") -> Optional[CashflowDirection]:
+    """Conventional cash direction for THETA's SHORT-PREMIUM lifecycle
+    only. Opening a short leg receives premium (CREDIT); buying that short
+    leg back pays premium (DEBIT).
+
+    Returns None -- never a guess -- for events that are not option
+    transactions at all (ASSIGNMENT, CALL_AWAY are broker lifecycle
+    outcomes with no quoted option fill price of their own).
+
+    This is a CONVENIENCE for the standard case. A caller with a
+    transaction whose real cash direction differs must pass the direction
+    explicitly; nothing downstream infers it."""
+    return _CONVENTIONAL_DIRECTION.get(event)
+
+
 @dataclass(frozen=True)
 class CopyDegradation:
     """Every field measuring how much worse (or better) the follower's
@@ -55,21 +107,63 @@ class CopyDegradation:
     field Optional/None until real Paper/live TCA exists -- never
     fabricated as a fixed assumed degradation."""
 
+    cashflow_direction: Optional[CashflowDirection]  # None = unknown; deterioration is then unknown too
     master_fill_price: Optional[float]
     follower_observed_bbo_mid: Optional[float]
     follower_theoretical_limit: Optional[float]
     follower_actual_fill_price: Optional[float]
     follower_fill_delay_seconds: Optional[float]
-    price_deterioration_per_unit: Optional[float]  # follower_actual_fill_price - master_fill_price, signed: positive = worse for the follower
+    price_deterioration_per_unit: Optional[float]  # signed per DETERIORATION_SIGN_CONVENTION
+    price_deterioration_pct: Optional[float]  # same sign; denominator is abs(master price); None if that is 0/unknown
     spread_degradation: Optional[float]  # follower's own spread at fill time minus the master's own spread at fill time
     edge_decay: Optional[float]  # modeled_edge_at_master_fill - modeled_edge_at_follower_fill, positive = edge eroded during the copy delay
     return_degradation_pct: Optional[float]  # (follower_return - master_return) / abs(master_return), None if master_return is 0 or unknown
 
 
-def compute_price_deterioration(master_fill_price: Optional[float], follower_actual_fill_price: Optional[float]) -> Optional[float]:
-    if master_fill_price is None or follower_actual_fill_price is None:
+def compute_price_deterioration(
+    master_price: Optional[float],
+    follower_price: Optional[float],
+    direction: Optional[CashflowDirection],
+) -> Optional[float]:
+    """Signed adverse price movement between the master's economics and
+    the follower's, per `DETERIORATION_SIGN_CONVENTION`.
+
+    CREDIT (cash received, more is better):
+        deterioration = master_credit - follower_credit
+        master 2.00, follower 1.90 -> +0.10 adverse
+        master 2.00, follower 2.10 -> -0.10 improvement
+
+    DEBIT (cash paid, less is better):
+        deterioration = follower_debit - master_debit
+        master 1.00, follower 1.10 -> +0.10 adverse
+        master 1.00, follower 0.90 -> -0.10 improvement
+
+    Returns None when either price OR the direction is unknown. An
+    unknown direction is never defaulted to one of the two -- guessing it
+    would silently invert the economics of half the lifecycle."""
+    if master_price is None or follower_price is None or direction is None:
         return None
-    return follower_actual_fill_price - master_fill_price
+    if direction is CashflowDirection.CREDIT:
+        return master_price - follower_price
+    return follower_price - master_price
+
+
+def compute_price_deterioration_pct(
+    master_price: Optional[float],
+    follower_price: Optional[float],
+    direction: Optional[CashflowDirection],
+) -> Optional[float]:
+    """Deterioration as a fraction of the MASTER's own economic price --
+    the explicit, stated denominator.
+
+    Returns None (never 0.0, never a division error) whenever the
+    deterioration itself is unknown or the master price is zero or
+    unknown, because the ratio is then genuinely undefined. Sign matches
+    `compute_price_deterioration`."""
+    deterioration = compute_price_deterioration(master_price, follower_price, direction)
+    if deterioration is None or not master_price:
+        return None
+    return deterioration / abs(master_price)
 
 
 @dataclass(frozen=True)
@@ -83,12 +177,23 @@ def assess_copyability(
     branch_compatible: bool,
     quote_fresh: bool,
     account_isolation_violations: List[str],
+    price_deterioration: Optional[float] = None,
+    max_price_deterioration: Optional[float] = None,
 ) -> CopyabilityAssessment:
     """Determines whether a master event can be economically replicated
     for this follower AT THIS MOMENT. Never an opaque copy score --
     every non-COPY_ELIGIBLE result carries an explicit reason. A follower
     may SKIP even when the master traded; nothing here assumes the
-    follower's economics mirror the master's."""
+    follower's economics mirror the master's.
+
+    `price_deterioration` must already be SIGNED per
+    `DETERIORATION_SIGN_CONVENTION` (compute it with
+    `compute_price_deterioration`, which needs the cash direction). Only a
+    POSITIVE value is adverse, so a price improvement can never block a
+    copy. `max_price_deterioration` is caller-supplied and
+    caller-justified -- this module invents no limit. When a limit IS
+    active but the deterioration is unknown, the copy is refused rather
+    than allowed: unknown adverse pricing is not costless."""
     reasons: List[str] = []
 
     if account_isolation_violations:
@@ -102,6 +207,17 @@ def assess_copyability(
     if not quote_fresh:
         reasons.append("FOLLOWER_QUOTE_STALE_AT_COPY_TIME")
         return CopyabilityAssessment(CopyDecision.SKIP, reasons)
+
+    if max_price_deterioration is not None:
+        if price_deterioration is None:
+            reasons.append("FOLLOWER_PRICE_DETERIORATION_UNKNOWN_UNDER_ACTIVE_LIMIT")
+            return CopyabilityAssessment(CopyDecision.SKIP, reasons)
+        if price_deterioration > max_price_deterioration:
+            reasons.append(
+                f"FOLLOWER_ADVERSE_PRICE_DETERIORATION_EXCEEDS_LIMIT: "
+                f"{price_deterioration} > {max_price_deterioration}"
+            )
+            return CopyabilityAssessment(CopyDecision.SKIP, reasons)
 
     quantity = compute_follower_quantity(inputs)
     if quantity <= 0:
@@ -129,6 +245,118 @@ class ChainLifecycleEvent(str, Enum):
     ASSIGNMENT = "ASSIGNMENT"
     SELL_CC = "SELL_CC"
     CALL_AWAY = "CALL_AWAY"
+
+
+#: Conventional cash direction for THETA's short-premium lifecycle. A roll
+#: is deliberately split: ROLL_CLOSE_OLD buys back the existing short leg
+#: (DEBIT) while ROLL_OPEN_NEW sells the replacement leg (CREDIT) -- the
+#: two legs have OPPOSITE cash directions, which is exactly why a roll can
+#: never be scored as one combined deterioration number.
+#: ASSIGNMENT/CALL_AWAY map to None: they are broker lifecycle outcomes,
+#: not option transactions with a fill price of their own.
+_CONVENTIONAL_DIRECTION: Dict["ChainLifecycleEvent", CashflowDirection] = {
+    ChainLifecycleEvent.ENTRY: CashflowDirection.CREDIT,  # short put STO
+    ChainLifecycleEvent.CLOSE: CashflowDirection.DEBIT,  # short put/CC BTC
+    ChainLifecycleEvent.ROLL_CLOSE_OLD: CashflowDirection.DEBIT,
+    ChainLifecycleEvent.ROLL_OPEN_NEW: CashflowDirection.CREDIT,
+    ChainLifecycleEvent.SELL_CC: CashflowDirection.CREDIT,  # covered call STO
+}
+
+
+# ---------------------------------------------------------------------------
+# Canonical Production vocabulary (src/customer/copy-engine-contract.ts,
+# migration 021) -- research ADAPTS to it rather than competing with it
+# ---------------------------------------------------------------------------
+
+#: Canonical `copyActionSchema` action -> this module's research lifecycle
+#: event, or None where the canonical action has no follower option
+#: transaction to price (HOLD_STOCK, expiries, SELL_STOCK is equity).
+CANONICAL_ACTION_TO_LIFECYCLE_EVENT: Dict[str, Optional["ChainLifecycleEvent"]] = {
+    "OPEN_CSP": ChainLifecycleEvent.ENTRY,
+    "REDUCE_CSP": ChainLifecycleEvent.CLOSE,
+    "CLOSE_CSP": ChainLifecycleEvent.CLOSE,
+    "EXPIRE_CSP": None,
+    "ASSIGN_STOCK": ChainLifecycleEvent.ASSIGNMENT,
+    "HOLD_STOCK": None,
+    "SELL_STOCK": None,
+    "OPEN_CC": ChainLifecycleEvent.SELL_CC,
+    "REDUCE_CC": ChainLifecycleEvent.CLOSE,
+    "CLOSE_CC": ChainLifecycleEvent.CLOSE,
+    "EXPIRE_CC": None,
+    "CALL_AWAY": ChainLifecycleEvent.CALL_AWAY,
+}
+
+#: Migration 021's `master_copy_event_explicit_roll_legs` CHECK and the
+#: planner's `ROLL_REQUIRES_EXPLICIT_CLOSE_AND_OPEN_EVENTS` both REJECT
+#: these two canonical actions at persistence time. They exist in the
+#: TypeScript enum but can never reach a follower plan as one event --
+#: the same invariant this module enforces via `evaluate_follower_roll`.
+CANONICAL_ROLL_ACTIONS_REJECTED_AT_PERSISTENCE: Tuple[str, ...] = ("ROLL_CSP", "ROLL_CC")
+
+
+def to_canonical_copy_outcome(assessment: "CopyabilityAssessment") -> str:
+    """Maps this module's research `CopyDecision` onto canonical
+    `copyOutcomeSchema` so research and Production speak one vocabulary.
+
+    COPY_ELIGIBLE -> COPY_FULL; COPY_REDUCED -> COPY_REDUCED. A SKIP is
+    split the way the canonical planner splits it: a capacity shortfall
+    is SKIP_ACCOUNT (the follower is simply smaller), while an
+    eligibility/integrity refusal is BLOCKED."""
+    if assessment.decision is CopyDecision.COPY_ELIGIBLE:
+        return "COPY_FULL"
+    if assessment.decision is CopyDecision.COPY_REDUCED:
+        return "COPY_REDUCED"
+    capacity_skip = any("CAPACITY_YIELDS_ZERO_QUANTITY" in reason for reason in assessment.reasons)
+    return "SKIP_ACCOUNT" if capacity_skip else "BLOCKED"
+
+
+# ---------------------------------------------------------------------------
+# Master-fill-first: master INTENT is never enough to justify a copy
+# ---------------------------------------------------------------------------
+
+#: Canonical actions whose copy requires a real master FILL (migration
+#: 021's `master_copy_event_confirmation_matches_action`).
+ORDER_PRODUCING_EVENTS: Tuple[ChainLifecycleEvent, ...] = (
+    ChainLifecycleEvent.ENTRY, ChainLifecycleEvent.CLOSE,
+    ChainLifecycleEvent.ROLL_CLOSE_OLD, ChainLifecycleEvent.ROLL_OPEN_NEW,
+    ChainLifecycleEvent.SELL_CC,
+)
+
+#: Broker lifecycle outcomes: no fill exists, so a broker activity fact is
+#: the confirmation instead.
+LIFECYCLE_CONFIRMED_EVENTS: Tuple[ChainLifecycleEvent, ...] = (
+    ChainLifecycleEvent.ASSIGNMENT, ChainLifecycleEvent.CALL_AWAY,
+)
+
+
+@dataclass(frozen=True)
+class MasterConfirmation:
+    """Broker truth about what the MASTER actually did. A decision, an
+    order intent, or a submitted-but-unfilled order is NOT confirmation."""
+
+    event: ChainLifecycleEvent
+    master_fill_id: Optional[str]
+    master_filled_quantity: int
+    broker_activity_fact_id: Optional[str]
+
+
+def master_confirmation_sufficient(confirmation: MasterConfirmation) -> Tuple[bool, str]:
+    """R4 master-fill-first contract, mirroring the canonical planner's
+    own `requireBrokerConfirmation`. Copying a master INTENT would copy
+    trades the master never actually got, so an order-producing event
+    needs a fill id AND a positive filled quantity, and a lifecycle event
+    needs a broker activity fact.
+
+    Returns (sufficient, reason) using canonical reason codes."""
+    if confirmation.event in ORDER_PRODUCING_EVENTS:
+        if confirmation.master_fill_id is None or confirmation.master_filled_quantity <= 0:
+            return False, "MASTER_FILL_REQUIRED_BEFORE_COPY"
+        return True, "MASTER_FILL_CONFIRMED"
+    if confirmation.event in LIFECYCLE_CONFIRMED_EVENTS:
+        if confirmation.broker_activity_fact_id is None:
+            return False, "MASTER_BROKER_CONFIRMATION_REQUIRED"
+        return True, "MASTER_LIFECYCLE_ACTIVITY_CONFIRMED"
+    return False, f"UNHANDLED_LIFECYCLE_EVENT:{confirmation.event.value}"
 
 
 @dataclass(frozen=True)
@@ -171,16 +399,22 @@ def follower_may_participate(
         return True, "NEW_LEG_REQUIRES_ITS_OWN_INDEPENDENT_FEASIBILITY_CHECK"
 
     if event == ChainLifecycleEvent.ASSIGNMENT:
+        # A MASTER assignment never creates follower shares. Only the
+        # follower's OWN short contract can be assigned to the follower.
         if participation.open_option_quantity <= 0:
             return False, f"FOLLOWER_HAS_NO_SHORT_OPTION_TO_BE_ASSIGNED_ON:{participation.chain_id}"
         return True, "FOLLOWER_HOLDS_THE_SHORT_OPTION_SUBJECT_TO_ASSIGNMENT"
 
     if event == ChainLifecycleEvent.SELL_CC:
+        # Share ownership is read from the FOLLOWER's own lifecycle state;
+        # the master's stock position is never borrowed as cover.
         if not participation.owns_assigned_shares:
             return False, f"FOLLOWER_OWNS_NO_SHARES_TO_COVER_A_CALL:{participation.chain_id}"
         return True, "FOLLOWER_OWNS_THE_SHARES_BEING_COVERED"
 
     if event == ChainLifecycleEvent.CALL_AWAY:
+        # Master call-away is CONTEXT, not follower truth: the follower is
+        # called away only when its own broker exercises its own CC.
         if not participation.has_open_covered_call:
             return False, f"FOLLOWER_HAS_NO_OPEN_COVERED_CALL_TO_BE_CALLED_AWAY:{participation.chain_id}"
         return True, "FOLLOWER_HOLDS_THE_COVERED_CALL_BEING_EXERCISED"
@@ -300,6 +534,8 @@ class R4ExitCheck:
     skipped_entry_excludes_whole_chain: bool
     roll_legs_evaluated_independently: bool
     degradation_metrics_unknown_until_paper: bool
+    direction_aware_price_deterioration: bool  # CREDIT and DEBIT score adverse movement in OPPOSITE arithmetic directions
+    master_fill_confirmed_before_copy: bool  # master INTENT is never sufficient
 
 
 def r4_quant_copy_contract(check: R4ExitCheck) -> str:
