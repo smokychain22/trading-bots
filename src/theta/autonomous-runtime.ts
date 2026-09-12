@@ -58,7 +58,15 @@ const accountHash = (value: string): string => createHash('sha256').update(value
 
 function safeFailure(error: unknown): { code: string; detail: string } {
   if (error instanceof AlpacaPaperBrokerError) {
-    return { code: `ALPACA_${error.category}`, detail: `Alpaca PAPER reconciliation failed${error.httpStatus === null ? '' : ` with HTTP ${error.httpStatus}`}.` };
+    const operation = error.message.includes('/v2/account/activities') ? 'ACCOUNT_ACTIVITIES'
+      : error.message.includes('/v2/positions') ? 'POSITIONS'
+        : error.message.includes('/v2/orders') ? 'ORDERS'
+          : error.message.includes('/v2/calendar') ? 'CALENDAR'
+            : error.message.includes('/v2/clock') ? 'CLOCK'
+              : error.message.includes('/v2/account') ? 'ACCOUNT' : 'UNKNOWN_OPERATION';
+    const status = error.httpStatus === null ? 'NO_HTTP_STATUS' : `HTTP_${error.httpStatus}`;
+    return { code: `ALPACA_${operation}_${error.category}_${status}`,
+      detail: `Alpaca PAPER ${operation} failed with ${status}.` };
   }
   if (error instanceof Error && /^[A-Z0-9_:-]+$/.test(error.message)) return { code: error.message, detail: error.message };
   return { code: 'RUNTIME_OPERATION_FAILED', detail: 'The runtime operation failed without exposing sensitive error data.' };
