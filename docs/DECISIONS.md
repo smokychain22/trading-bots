@@ -524,3 +524,10 @@ old leg to a broker-confirmed full fill before the new leg can submit.
 Point-in-time candidate evidence records `proposedLimit` as null until a real pricing
 policy produces a numeric value from fresh executable BBO evidence. Execution-quality
 actions such as `SUBMIT` or `SKIP` are retained separately and never stored as prices.
+
+The master command assembler is the typed boundary between strategy or management output
+and execution. It derives deterministic order and client identities from decision,
+candidate, strategy, action, chain, account, and attempt lineage. It validates current
+BBO, limit bounds, freshness, multiplier, quantity, contract identity, covered shares,
+account verification, options capability, and AEGIS state before producing a command.
+It cannot accept indicative option data.

@@ -1188,6 +1188,11 @@ handle broker-confirmed CSP, assignment, expiry, recovery stock, covered calls, 
 call-away atomically. Owner Paper authorization now reports GRANTED rather than the old
 hardcoded state.
 
+The command assembler closes the boundary from an already-selected strategy or management
+action into the persisted execution command. It creates deterministic lineage identities
+and rejects indicative options data, stale or crossed BBO, out-of-BBO limits, invalid
+quantity or multiplier, missing option contracts, and uncovered calls before persistence.
+
 TESTS RUN: Focused execution tests, full Node, TypeScript, ESLint, build, Python, security,
 PostgreSQL/Redis integration where available, CI, and Production verification.
 
