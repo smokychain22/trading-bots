@@ -1,8 +1,11 @@
 # THETA Provider Capability Audit
 
-Audit time: 2026-09-12T17:17Z  
-Production build tested: `7063076`  
-Broker environment: Alpaca PAPER only  
+Audit time: 2026-09-12T17:17Z
+
+Production build tested: `7063076`
+
+Broker environment: Alpaca PAPER only
+
 Order submission: `LOCKED`
 
 ## Research question
