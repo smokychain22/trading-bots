@@ -107,3 +107,47 @@ def total_master_and_follower_exposure_never_shared(master: AccountRiskCapacity,
     master's (which would mean a write to one silently affects the
     other's remaining budget)."""
     return master.concentration_capacity is not follower.concentration_capacity
+
+
+def unknown_capacity_never_increases_quantity(
+    known: AccountRiskCapacity,
+    with_unknown_field: AccountRiskCapacity,
+    required_collateral_per_contract: float,
+    stress_loss_per_contract: float,
+    concentration_key: str,
+    exposure_per_contract: float,
+    assignment_shares_per_contract: float,
+) -> bool:
+    """R3 invariant: replacing any known capacity with UNKNOWN must never
+    produce a LARGER quantity than the fully-known account. Unknown is a
+    restriction, never a licence."""
+    known_qty = compute_account_qty_cap(
+        known, required_collateral_per_contract, stress_loss_per_contract,
+        concentration_key, exposure_per_contract, assignment_shares_per_contract,
+    )
+    unknown_qty = compute_account_qty_cap(
+        with_unknown_field, required_collateral_per_contract, stress_loss_per_contract,
+        concentration_key, exposure_per_contract, assignment_shares_per_contract,
+    )
+    return unknown_qty <= known_qty
+
+
+@dataclass(frozen=True)
+class R3ExitCheck:
+    """R3 research-side exit criteria. Each field is a property that must
+    hold for the account-risk research contract to be considered closed."""
+
+    every_account_has_isolated_capacities: bool
+    no_follower_uses_master_state: bool
+    quantity_is_min_of_feasible_capacities: bool
+    zero_quantity_is_valid: bool
+    unknown_capacity_cannot_increase_quantity: bool
+
+
+def r3_quant_risk_contract(check: R3ExitCheck) -> str:
+    """Returns "PASS" only when EVERY criterion holds; otherwise "FAIL"
+    -- there is no partial pass. This is a research-side statement about
+    the contract's completeness, never an authorization of anything."""
+    return "PASS" if all(
+        getattr(check, name) for name in check.__dataclass_fields__
+    ) else "FAIL"

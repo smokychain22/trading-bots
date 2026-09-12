@@ -48,3 +48,36 @@ parity. All 14 loader tests still pass unchanged.
 condition the R6 mega-phase directive names as the trigger to fast-forward
 into R3/R4/R5 quant responsibilities rather than wait idle -- see this
 session's R3/R4/R5 deliverables below.
+
+## Closure-run re-check: `38f1f6e..103725f` (migration 020 + local worker)
+
+Inspected only research-contract-relevant paths. Two commits, both
+additive and non-semantic for research contracts:
+
+1. **Migration 020 (`020_local_worker_runtime.sql`)** creates
+   `ops.runtime_worker_status` and `ops.runtime_worker_lease` -- worker
+   lease/heartbeat/health tables in the `ops` schema, with zero overlap
+   with any research evidence table (`trade.candidate_*`,
+   `market.execution_quote_observation`, `research.theta_*`). No field
+   this branch models changed. **PARITY_STILL_VALID.**
+
+2. **`src/research/r6-readiness.ts`** gained `marketSessions`,
+   `quoteObservations`, `invalidQuoteRate`, `providerFailureRate` and
+   `observationMissedRate`. Notably, the first three are the SAME quality
+   dimensions this session's `empirical_pipeline.py::DataQualityReport`
+   computes independently (`sessions`, `execution_observations`,
+   `invalid_quote_rate`) -- convergent, not conflicting. **PARITY_STILL_
+   VALID.**
+
+**OPTIONAL_CODEX_ENHANCEMENT (not required, nothing is wrong today):**
+`providerFailureRate` and `observationMissedRate` derive from
+`research.theta_shadow_scan_member` and
+`research.theta_execution_observation_job`, neither of which appears in
+`postgres-dataset-export.ts`'s own SELECT list. They are therefore
+computable DB-side (where Codex already computes them) but NOT from a
+dataset export. If an export-side audit should ever report those two
+rates, the export would need to carry those two tables. This is a
+coverage preference, not a mathematical defect -- recorded here rather
+than raised as a `REQUIRED_CODEX_CHANGE`.
+
+**`REQUIRED_CODEX_CHANGE` count for this closure run: 0.**

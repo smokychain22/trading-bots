@@ -9,11 +9,21 @@ sys.path.insert(0, str(_QUANT_DIR))
 
 from research.account_risk_capacity import AccountRiskCapacity, AccountRole  # noqa: E402
 from research.follower_copy_economics import (  # noqa: E402
+    ChainLifecycleEvent,
     CopyDecision,
+    CopyTimeline,
+    FollowerChainParticipation,
     FollowerSizingInputs,
+    R4ExitCheck,
     assess_copyability,
+    compute_copy_delay_seconds,
+    compute_edge_degradation,
     compute_follower_quantity,
     compute_price_deterioration,
+    compute_return_degradation_pct,
+    evaluate_follower_roll,
+    follower_may_participate,
+    r4_quant_copy_contract,
 )
 
 
@@ -100,6 +110,128 @@ class AssessCopyabilityTests(unittest.TestCase):
     def test_every_non_eligible_decision_carries_an_explicit_reason(self):
         assessment = assess_copyability(_inputs(), branch_compatible=False, quote_fresh=True, account_isolation_violations=[])
         self.assertGreater(len(assessment.reasons), 0)
+
+
+class LifecycleEligibilityTests(unittest.TestCase):
+    """A follower that skipped ENTRY must remain absent from that chain's
+    whole downstream lifecycle -- copying a close for a position never
+    opened would manufacture a phantom short."""
+
+    def _skipped(self):
+        return FollowerChainParticipation(chain_id="chain-1", entered=False)
+
+    def _entered_with_option(self):
+        return FollowerChainParticipation(chain_id="chain-1", entered=True, open_option_quantity=1.0)
+
+    def test_a_follower_that_skipped_entry_cannot_copy_any_downstream_event(self):
+        skipped = self._skipped()
+        for event in (ChainLifecycleEvent.CLOSE, ChainLifecycleEvent.ROLL_CLOSE_OLD,
+                       ChainLifecycleEvent.ROLL_OPEN_NEW, ChainLifecycleEvent.ASSIGNMENT,
+                       ChainLifecycleEvent.SELL_CC, ChainLifecycleEvent.CALL_AWAY):
+            may, reason = follower_may_participate(skipped, event)
+            self.assertFalse(may, f"{event.value} must be refused for a chain never entered")
+            self.assertIn("NEVER_ENTERED_CHAIN", reason)
+
+    def test_entry_is_always_the_followers_own_independent_decision(self):
+        may, _ = follower_may_participate(self._skipped(), ChainLifecycleEvent.ENTRY)
+        self.assertTrue(may)
+
+    def test_a_follower_holding_the_option_may_close_it(self):
+        may, _ = follower_may_participate(self._entered_with_option(), ChainLifecycleEvent.CLOSE)
+        self.assertTrue(may)
+
+    def test_an_entered_follower_holding_no_option_cannot_be_assigned(self):
+        participation = FollowerChainParticipation(chain_id="chain-1", entered=True, open_option_quantity=0.0)
+        may, reason = follower_may_participate(participation, ChainLifecycleEvent.ASSIGNMENT)
+        self.assertFalse(may)
+        self.assertIn("NO_SHORT_OPTION", reason)
+
+    def test_a_follower_without_shares_cannot_sell_a_covered_call(self):
+        participation = FollowerChainParticipation(chain_id="chain-1", entered=True, owns_assigned_shares=False)
+        may, reason = follower_may_participate(participation, ChainLifecycleEvent.SELL_CC)
+        self.assertFalse(may)
+        self.assertIn("OWNS_NO_SHARES", reason)
+
+    def test_a_follower_without_an_open_cc_cannot_be_called_away(self):
+        participation = FollowerChainParticipation(chain_id="chain-1", entered=True, owns_assigned_shares=True,
+                                                    has_open_covered_call=False)
+        may, reason = follower_may_participate(participation, ChainLifecycleEvent.CALL_AWAY)
+        self.assertFalse(may)
+        self.assertIn("NO_OPEN_COVERED_CALL", reason)
+
+
+class RollSemanticsTests(unittest.TestCase):
+    """A master roll is two independent legs, never one magical action."""
+
+    def _participation(self, entered=True):
+        return FollowerChainParticipation(chain_id="chain-1", entered=entered, open_option_quantity=1.0)
+
+    def test_follower_may_close_the_old_leg_and_skip_the_new_one(self):
+        # Zero capacity for the new leg -- close old, skip new.
+        broke = _follower_capacity(collateral_capacity=0.0)
+        decision = evaluate_follower_roll(
+            self._participation(), _inputs(follower_capacity=broke),
+            new_leg_branch_compatible=True, new_leg_quote_fresh=True, account_isolation_violations=[],
+        )
+        self.assertNotEqual(decision.close_old_decision, CopyDecision.SKIP)
+        self.assertEqual(decision.open_new_decision, CopyDecision.SKIP)
+        self.assertTrue(decision.is_partial_roll)
+
+    def test_a_follower_that_never_entered_skips_both_legs(self):
+        decision = evaluate_follower_roll(
+            self._participation(entered=False), _inputs(),
+            new_leg_branch_compatible=True, new_leg_quote_fresh=True, account_isolation_violations=[],
+        )
+        self.assertEqual(decision.close_old_decision, CopyDecision.SKIP)
+        self.assertEqual(decision.open_new_decision, CopyDecision.SKIP)
+        self.assertFalse(decision.is_partial_roll)
+
+    def test_a_stale_new_leg_quote_skips_only_the_new_leg(self):
+        decision = evaluate_follower_roll(
+            self._participation(), _inputs(),
+            new_leg_branch_compatible=True, new_leg_quote_fresh=False, account_isolation_violations=[],
+        )
+        self.assertNotEqual(decision.close_old_decision, CopyDecision.SKIP)
+        self.assertEqual(decision.open_new_decision, CopyDecision.SKIP)
+
+
+class DegradationMetricTests(unittest.TestCase):
+    def test_copy_delay_is_none_when_a_timestamp_is_missing(self):
+        timeline = CopyTimeline(master_decision_time=None, master_fill_time=None,
+                                 copy_event_time=None, follower_observation_time=None, follower_fill_time=None)
+        self.assertIsNone(compute_copy_delay_seconds(timeline))
+
+    def test_copy_delay_is_computed_when_both_fills_are_known(self):
+        timeline = CopyTimeline(
+            master_decision_time="2026-01-01T14:30:00+00:00", master_fill_time="2026-01-01T14:30:00+00:00",
+            copy_event_time="2026-01-01T14:30:01+00:00", follower_observation_time="2026-01-01T14:30:02+00:00",
+            follower_fill_time="2026-01-01T14:30:05+00:00",
+        )
+        self.assertAlmostEqual(compute_copy_delay_seconds(timeline), 5.0)
+
+    def test_edge_degradation_is_none_until_an_ev_model_exists(self):
+        self.assertIsNone(compute_edge_degradation(None, None))
+        self.assertIsNone(compute_edge_degradation(10.0, None))
+
+    def test_return_degradation_is_none_when_master_return_is_zero(self):
+        self.assertIsNone(compute_return_degradation_pct(0.0, 5.0))
+
+    def test_return_degradation_is_signed_relative_shortfall(self):
+        self.assertAlmostEqual(compute_return_degradation_pct(0.10, 0.08), -0.2)
+
+
+class R4ExitCheckTests(unittest.TestCase):
+    def _check(self, **overrides):
+        fields = {name: True for name in R4ExitCheck.__dataclass_fields__}
+        fields.update(overrides)
+        return R4ExitCheck(**fields)
+
+    def test_all_criteria_satisfied_is_pass(self):
+        self.assertEqual(r4_quant_copy_contract(self._check()), "PASS")
+
+    def test_any_unmet_criterion_is_fail(self):
+        for name in R4ExitCheck.__dataclass_fields__:
+            self.assertEqual(r4_quant_copy_contract(self._check(**{name: False})), "FAIL", f"{name}=False must FAIL")
 
 
 if __name__ == "__main__":

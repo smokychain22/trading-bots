@@ -10,9 +10,12 @@ sys.path.insert(0, str(_QUANT_DIR))
 from research.account_risk_capacity import (  # noqa: E402
     AccountRiskCapacity,
     AccountRole,
+    R3ExitCheck,
     assert_account_isolation,
     compute_account_qty_cap,
+    r3_quant_risk_contract,
     total_master_and_follower_exposure_never_shared,
+    unknown_capacity_never_increases_quantity,
 )
 
 
@@ -94,6 +97,44 @@ class AccountIsolationTests(unittest.TestCase):
 
         follower_own_dict = _capacity("follower-2", AccountRole.FOLLOWER, concentration_capacity={"SPY": 1_000.0})
         self.assertTrue(total_master_and_follower_exposure_never_shared(master, follower_own_dict))
+
+
+class UnknownCapacityInvariantTests(unittest.TestCase):
+    def test_unknown_capacity_never_increases_quantity(self):
+        known = _capacity()
+        for field_name in ("collateral_capacity", "assignment_capacity", "portfolio_tail_budget"):
+            with_unknown = _capacity(**{field_name: None})
+            self.assertTrue(
+                unknown_capacity_never_increases_quantity(
+                    known, with_unknown, required_collateral_per_contract=5_000.0,
+                    stress_loss_per_contract=100.0, concentration_key="SPY",
+                    exposure_per_contract=1_000.0, assignment_shares_per_contract=100.0,
+                ),
+                f"UNKNOWN {field_name} must never permit a larger quantity",
+            )
+
+    def test_unknown_concentration_key_never_increases_quantity(self):
+        known = _capacity()
+        with_unknown = _capacity(concentration_capacity={})
+        self.assertTrue(unknown_capacity_never_increases_quantity(
+            known, with_unknown, required_collateral_per_contract=5_000.0,
+            stress_loss_per_contract=100.0, concentration_key="SPY",
+            exposure_per_contract=1_000.0, assignment_shares_per_contract=100.0,
+        ))
+
+
+class R3ExitCheckTests(unittest.TestCase):
+    def _check(self, **overrides):
+        fields = {name: True for name in R3ExitCheck.__dataclass_fields__}
+        fields.update(overrides)
+        return R3ExitCheck(**fields)
+
+    def test_all_criteria_satisfied_is_pass(self):
+        self.assertEqual(r3_quant_risk_contract(self._check()), "PASS")
+
+    def test_any_unmet_criterion_is_fail_there_is_no_partial_pass(self):
+        for name in R3ExitCheck.__dataclass_fields__:
+            self.assertEqual(r3_quant_risk_contract(self._check(**{name: False})), "FAIL", f"{name}=False must FAIL")
 
 
 if __name__ == "__main__":

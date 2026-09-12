@@ -16,7 +16,7 @@ stays `None`.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from research.action_value_distribution import OutcomeDistribution
 from research.champion_challenger import BranchStatus
@@ -77,6 +77,85 @@ class PerformanceExplanation:
     assignment_burden: Optional[float]  # e.g. fraction of committed capital currently held as assigned stock
     recovery_duration_days: Optional[float]
     execution_degradation: Optional[float]  # realized slippage/spread-capture shortfall vs. the structural (non-calibrated) execution model
+
+
+"""Every management action a position explanation must be able to justify
+(R5 section 35). Kept as a frozen tuple over the CANONICAL action
+vocabulary -- never a new parallel action enum."""
+REQUIRED_POSITION_EXPLANATION_ACTIONS: Tuple[ThetaStrategyAction, ...] = (
+    ThetaStrategyAction.HOLD,
+    ThetaStrategyAction.CLOSE_FULL,
+    ThetaStrategyAction.ROLL,
+    ThetaStrategyAction.ACCEPT_ASSIGNMENT,
+    ThetaStrategyAction.LET_EXPIRE,
+    ThetaStrategyAction.RECOVERY_WAIT,
+    ThetaStrategyAction.SELL_STOCK,
+    ThetaStrategyAction.SELL_CC,
+    ThetaStrategyAction.HOLD_CC,
+    ThetaStrategyAction.CLOSE_CC,
+    ThetaStrategyAction.ROLL_CC,
+    ThetaStrategyAction.ALLOW_CALL_AWAY,
+)
+
+
+def missing_position_explanation_actions(covered: Tuple[ThetaStrategyAction, ...]) -> List[ThetaStrategyAction]:
+    """Which of the twelve required actions a given explanation surface
+    cannot yet justify. Empty list = full coverage."""
+    return [action for action in REQUIRED_POSITION_EXPLANATION_ACTIONS if action not in covered]
+
+
+@dataclass(frozen=True)
+class ExplanationConsistencyReport:
+    consistent: bool
+    invented_fields: List[str]
+    reasons: List[str]
+
+
+def validate_explanation_consistency(
+    explanation_fields: Dict[str, object],
+    decision_fields: Dict[str, object],
+) -> ExplanationConsistencyReport:
+    """R5 section 36: the human-readable explanation must derive from the
+    SAME machine-readable fields that produced the decision. Any key
+    present in the explanation but absent from the decision state is an
+    INVENTED field -- a reason, probability, EV, blocker or threshold that
+    the decision never actually used -- and is reported as a consistency
+    violation. A value that disagrees with the decision's own value for a
+    shared key is likewise a violation."""
+    invented = [key for key in explanation_fields if key not in decision_fields]
+    mismatched = [
+        key for key in explanation_fields
+        if key in decision_fields and explanation_fields[key] != decision_fields[key]
+    ]
+
+    reasons: List[str] = []
+    if invented:
+        reasons.append(f"EXPLANATION_INVENTED_FIELDS:{','.join(sorted(invented))}")
+    if mismatched:
+        reasons.append(f"EXPLANATION_CONTRADICTS_DECISION_FIELDS:{','.join(sorted(mismatched))}")
+    if not reasons:
+        reasons.append("EXPLANATION_DERIVES_ENTIRELY_FROM_DECISION_FIELDS")
+
+    return ExplanationConsistencyReport(
+        consistent=(not invented and not mismatched),
+        invented_fields=sorted(invented + mismatched),
+        reasons=reasons,
+    )
+
+
+@dataclass(frozen=True)
+class R5ExitCheck:
+    candidate_explanation_complete: bool
+    position_explanation_covers_every_action: bool
+    strategy_explanation_reuses_branch_status: bool
+    performance_explanation_complete: bool
+    uncalibrated_probability_guard_active: bool
+    explanation_consistency_validated: bool
+
+
+def r5_quant_explanation_contract(check: R5ExitCheck) -> str:
+    """"PASS" only when every criterion holds."""
+    return "PASS" if all(getattr(check, name) for name in check.__dataclass_fields__) else "FAIL"
 
 
 def validate_no_uncalibrated_confidence(distribution: OutcomeDistribution, calibration_confirmed: bool) -> Optional[str]:

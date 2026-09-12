@@ -11,10 +11,15 @@ from research.action_value_distribution import unknown_distribution  # noqa: E40
 from research.champion_challenger import BranchStatus  # noqa: E402
 from research.dataset_contracts import ThetaStrategyAction  # noqa: E402
 from research.quant_explanation_contracts import (  # noqa: E402
+    REQUIRED_POSITION_EXPLANATION_ACTIONS,
     CandidateExplanation,
     PerformanceExplanation,
     PositionExplanation,
+    R5ExitCheck,
     StrategyExplanation,
+    missing_position_explanation_actions,
+    r5_quant_explanation_contract,
+    validate_explanation_consistency,
     validate_no_uncalibrated_confidence,
 )
 
@@ -97,6 +102,65 @@ class UncalibratedConfidenceGuardTests(unittest.TestCase):
         distribution = unknown_distribution("v1", ThetaStrategyAction.HOLD)
         violation = validate_no_uncalibrated_confidence(distribution, calibration_confirmed=False)
         self.assertIsNone(violation)
+
+
+class ActionCoverageTests(unittest.TestCase):
+    def test_all_twelve_required_position_actions_are_named(self):
+        self.assertEqual(len(REQUIRED_POSITION_EXPLANATION_ACTIONS), 12)
+
+    def test_full_coverage_reports_nothing_missing(self):
+        self.assertEqual(missing_position_explanation_actions(REQUIRED_POSITION_EXPLANATION_ACTIONS), [])
+
+    def test_partial_coverage_names_the_exact_missing_actions(self):
+        covered = tuple(a for a in REQUIRED_POSITION_EXPLANATION_ACTIONS if a != ThetaStrategyAction.ROLL_CC)
+        missing = missing_position_explanation_actions(covered)
+        self.assertEqual(missing, [ThetaStrategyAction.ROLL_CC])
+
+    def test_required_actions_reuse_the_canonical_vocabulary(self):
+        for action in REQUIRED_POSITION_EXPLANATION_ACTIONS:
+            self.assertIsInstance(action, ThetaStrategyAction)
+
+
+class ExplanationConsistencyTests(unittest.TestCase):
+    """No LLM-generated explanation may invent a reason, probability, EV,
+    blocker, or threshold the decision never used."""
+
+    def test_an_explanation_derived_entirely_from_decision_fields_is_consistent(self):
+        decision = {"ev_net": None, "hard_blockers": ["SPREAD_TOO_WIDE"], "iv_rank": 0.5}
+        explanation = {"hard_blockers": ["SPREAD_TOO_WIDE"], "iv_rank": 0.5}
+        report = validate_explanation_consistency(explanation, decision)
+        self.assertTrue(report.consistent)
+
+    def test_an_invented_probability_is_flagged(self):
+        decision = {"ev_net": None}
+        explanation = {"ev_net": None, "probability_of_profit": 0.93}
+        report = validate_explanation_consistency(explanation, decision)
+        self.assertFalse(report.consistent)
+        self.assertIn("probability_of_profit", report.invented_fields)
+
+    def test_an_invented_blocker_is_flagged(self):
+        report = validate_explanation_consistency({"hard_blockers": ["MADE_UP"]}, {})
+        self.assertFalse(report.consistent)
+
+    def test_a_value_contradicting_the_decision_is_flagged(self):
+        report = validate_explanation_consistency({"iv_rank": 0.9}, {"iv_rank": 0.5})
+        self.assertFalse(report.consistent)
+        self.assertIn("iv_rank", report.invented_fields)
+        self.assertTrue(any("CONTRADICTS" in r for r in report.reasons))
+
+
+class R5ExitCheckTests(unittest.TestCase):
+    def _check(self, **overrides):
+        fields = {name: True for name in R5ExitCheck.__dataclass_fields__}
+        fields.update(overrides)
+        return R5ExitCheck(**fields)
+
+    def test_all_criteria_satisfied_is_pass(self):
+        self.assertEqual(r5_quant_explanation_contract(self._check()), "PASS")
+
+    def test_any_unmet_criterion_is_fail(self):
+        for name in R5ExitCheck.__dataclass_fields__:
+            self.assertEqual(r5_quant_explanation_contract(self._check(**{name: False})), "FAIL", f"{name}=False must FAIL")
 
 
 if __name__ == "__main__":

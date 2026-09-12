@@ -272,10 +272,18 @@ def run_empirical_program(
 
 @dataclass(frozen=True)
 class ResearchPaperReadinessCheck:
-    """R7 fast-forward: the research-side gate a branch must pass before
-    Claude's research would ever recommend "ready for first Paper" --
-    Claude never submits or activates anything itself; this is a
-    checklist output only, for Codex/owner to act on."""
+    """NARROW SUBSET PRECHECK -- superseded as the canonical R7 gate.
+
+    `research_evidence_packet.research_ready_for_paper` is the canonical,
+    STRICTER R7 gate (fourteen dimensions: this eight plus drawdown,
+    effective N, regime stability, reproducibility, leakage findings and
+    the promotion-checker result). This eight-dimension version is kept
+    only because it already has callers/tests; it can never be MORE
+    permissive than the canonical gate, since its dimensions are a strict
+    subset. Prefer the canonical gate for any new caller.
+
+    Claude never submits or activates anything either way -- both are
+    checklist outputs for Codex/owner to act on."""
 
     branch_supported: bool
     cohort_supported: bool
