@@ -24,7 +24,7 @@ Evidence labels used below:
 | Field | Primary | Secondary | Status | Notes |
 |---|---|---|---|---|
 | Account equity/cash/buying power/options level | Alpaca `/v2/account` | none | **OBSERVED** | Real PAPER account returned all of these this session (values not reproduced here). |
-| Positions / open orders / activities | Alpaca `/v2/positions`, `/v2/orders`, `/v2/account/activities/*` | none | **OBSERVED** (positions/activities; orders endpoint not separately probed yet) | |
+| Positions / open orders / activities | Alpaca `/v2/positions`, `/v2/orders`, `/v2/account/activities/*` | none | **OBSERVED** | The designated PAPER master returned readable empty positions and open-orders arrays. Empty is a real zero here, not missing provider data. |
 | Market clock / calendar | Alpaca `/v2/clock`, `/v2/calendar` | none | **OBSERVED** | |
 | Option contract discovery (symbol/strike/expiration/tradable) | Alpaca `/v2/options/contracts` | none | **OBSERVED** | Real 25-60 DTE SPY put contracts returned. |
 | Option bid/ask/quote timestamp | Alpaca `/v1beta1/options/snapshots/{symbol}` | none | **OBSERVED** | Both `feed=opra` (this account: `NOT_ENTITLED`, 403) and `feed=indicative` (GOOD) probed for real; indicative returned real, non-null bid/ask for real 25-60 DTE puts once filtered `type=put`. |
@@ -35,7 +35,9 @@ Evidence labels used below:
 | IV skew / term structure / surface shape | — | Optionomics (documented product capability) | **DOCUMENTED, not yet OBSERVED** in this session's calls (only single-symbol chain/metrics endpoints were probed) | Not yet wired into any THETA feature. |
 | Flow / unusual options activity | — | Optionomics `/api/v1/flow/net` | **OBSERVED reachable** (real 200 response), field-level shape not yet inspected in depth | Not yet wired into any THETA feature. |
 | Earnings / dividend / corporate-action event data | — | Optionomics `/api/v1/events` (reachable, real 200) + Alpaca `/v1/corporate-actions` (reachable, real 200) | **OBSERVED reachable, field-level shape not yet inspected** | Real event-state assembly (R1F item 17 in the product instructions) is NOT yet built — this is the concrete blocker, not provider unavailability. |
-| Underlying (stock) trend/RV/drawdown/gap history for ownership/regime features | — | Neither provider's historical-bars capability has been probed this session | **VERIFY** | This is the actual blocker for real ownership/regime input assembly (see below) — not a missing-vendor question; Alpaca's stock-bars REST endpoint is documented and was not yet probed this session. |
+| Underlying (stock) trend/RV/drawdown/gap history for ownership/regime features | Alpaca `/v2/stocks/bars` | Optionomics price history | **OBSERVED** | The designated PAPER master returned HTTP 200 with real SPY daily observations through IEX. The existing no-future-leakage feature code can consume this source. |
+| Historical option bars / trades | Alpaca `/v1beta1/options/bars`, `/v1beta1/options/trades` | none | **OBSERVED WITH LIMITS** | Exact-contract requests returned HTTP 200 through the account-default indicative entitlement. These are bars/prints, not executable historical BBO. |
+| Historical option BBO / Greeks | none | unverified | **NOT SUPPORTED by tested Alpaca REST inventory** | Alpaca documents historical option bars/trades and latest quotes/snapshots. It does not document historical option quotes or historical Greeks. No route was guessed. |
 
 ## Currently missing REQUIRED runtime fields (as of this register's writing)
 
@@ -43,19 +45,10 @@ None have been proven unsupported by Alpaca + Optionomics after actual
 investigation. The two real gaps identified are:
 
 1. **Historical underlying bars for ownership/regime feature computation**
-   (trend, realized volatility, drawdown, gap history) — **PROVIDER AVAILABLE
-   = Alpaca** (`GET /v2/stocks/bars`, `GET /v2/stocks/{symbol}/bars` are
-   documented, pagination-capable endpoints); **IMPLEMENTATION STATUS =
-   PARTIALLY WIRED**. `src/theta/underlying-history.ts` implements the pure
-   response-parsing, pagination-following (`next_page_token`, never silently
-   truncated), and no-future-leakage (`barsAsOf`) logic, tested without live
-   credentials. NOT yet wired: the actual `fetch()` call against a live
-   account, and the feature-computation layer (trend/RV/drawdown/gap) that
-   consumes these bars for ownership/regime inputs. This is an
-   implementation gap, not a provider/vendor gap — reclassified from VERIFY
-   this session. Optionomics's own `/price_history` endpoint (confirmed
-   reachable, real 200 earlier this session, shape not yet inspected)
-   remains a documented secondary candidate if ever needed.
+   are now provider-verified. Alpaca returned real IEX bars through the exact
+   production credential. `src/theta/alpaca-provider.ts` already implements
+   the bounded paginated fetch, and `src/theta/underlying-history.ts` preserves
+   as-of filtering. This item is no longer a provider blocker.
 2. **Event-state assembly** (earnings/dividend/corporate-action, structured
    into THETA's `EventState` contract) — the underlying data is reachable
    (both providers responded 200 to their respective event endpoints this

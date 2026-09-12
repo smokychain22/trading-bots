@@ -1014,3 +1014,54 @@ boundary. No broker order is permitted.
 The Windows task explicitly allows start and continuation on laptop battery. The prior
 Task Scheduler defaults could leave the otherwise healthy evidence worker queued until
 AC power returned, which would miss observation horizons without a code or provider error.
+
+## 2026-09-12 Production provider evidence entitlement closure
+
+OWNER: Codex
+
+TASK: Resolve the remaining real Alpaca and Optionomics evidence entitlements through the
+encrypted Production credential boundary, persist the sanitized capability registry, and
+decide whether a historical PIT adapter is defensible.
+
+FILES CHANGED: `src/providers/readiness.ts`, `src/providers/capability-registry.ts`,
+`src/theta/autonomous-runtime-handler.ts`, provider/worker tests, the Phase 6 data-gap
+register, decisions, and this handoff.
+
+WHAT WAS IMPLEMENTED: The locked Production worker route accepts one explicit read-only
+provider-audit selector. It requires the existing worker bearer token and complete local
+identity, uses only GET requests, decrypts the designated master credentials only inside
+Production, and returns/persists sanitized metadata. Unknown selectors are rejected.
+Capability results and documented operation aliases are upserted into the existing Neon
+registries. No credential, account balance, authorization header, or full account ID is
+stored in capability metadata.
+
+TESTS RUN: 654 Node tests passed with four environment-only skips. TypeScript, ESLint,
+build, secret scan, GitHub CI, its disposable PostgreSQL/Redis services, browser tests,
+Python tests, Production deployment, real Production provider probes, and Neon registry
+queries were run.
+
+TEST RESULTS: The master PAPER account was CONNECTED, ACTIVE, identity-matched, options
+level 3, with zero positions and zero open orders. Alpaca current indicative snapshots and
+Greeks, contracts, IEX stock history, historical option bars/trades, and corporate actions
+returned HTTP 200. OPRA returned 403 `NOT_ENTITLED`. Optionomics authentication, metrics,
+chain/Greeks, price history, current net flow, and events returned HTTP 200. Neon holds two
+provider connections and 18 current sanitized capability rows. Broker orders and fills
+remain zero.
+
+KNOWN LIMITATIONS: Alpaca has no documented historical option BBO or historical Greeks
+REST endpoint. Optionomics's tested history route did not prove historical IV/skew/term/
+surface, date-aware option analytics, or independent current/24h/48h flow trajectories.
+No open-session scan, candidate, quote observation, outcome label, or dataset export
+exists yet.
+
+RISKS: Current indicative data is suitable for engineering and shadow evidence but is not
+automatically approved as execution-grade. Historical prints/bars cannot be treated as
+fills. Current provider reachability does not prove a profitable policy.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: The empirical pipeline should consume the first real
+export as-is and preserve the field/label firewall. No strategy or feature should be
+promoted from this capability audit alone.
+
+NEXT RECOMMENDED TASK: Keep the pinned worker online through the next supported options
+session. Validate the first complete scan, automatic export, quote horizons, and empirical
+pipeline result. Keep all order submission locked.

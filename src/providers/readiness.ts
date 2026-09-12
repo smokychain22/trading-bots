@@ -559,7 +559,7 @@ export const optionomicsProbeUrl = (operationAlias: string, documentedPath: stri
 
 const responseShape = (value: unknown): {
   readonly keyCount: number;
-  readonly arrayObservationCount: number;
+  readonly sampledArrayElementCount: number;
   readonly ivFieldPresent: boolean;
   readonly skewFieldPresent: boolean;
   readonly termFieldPresent: boolean;
@@ -567,11 +567,11 @@ const responseShape = (value: unknown): {
   readonly dateOrTimestampFieldPresent: boolean;
 } => {
   const keys = new Set<string>();
-  let arrayObservationCount = 0;
+  let sampledArrayElementCount = 0;
   const visit = (current: unknown, depth: number): void => {
     if (depth > 6 || current === null || typeof current !== 'object') return;
     if (Array.isArray(current)) {
-      arrayObservationCount += current.length;
+      sampledArrayElementCount += current.length;
       for (const item of current.slice(0, 100)) visit(item, depth + 1);
       return;
     }
@@ -583,7 +583,7 @@ const responseShape = (value: unknown): {
   visit(value, 0);
   const has = (pattern: RegExp): boolean => [...keys].some((key) => pattern.test(key));
   return {
-    keyCount: keys.size, arrayObservationCount,
+    keyCount: keys.size, sampledArrayElementCount,
     ivFieldPresent: has(/(^iv$|implied.?vol|iv_rank|iv_percentile)/),
     skewFieldPresent: has(/skew/), termFieldPresent: has(/term/), surfaceFieldPresent: has(/surface/),
     dateOrTimestampFieldPresent: has(/(^date$|timestamp|as_of|observed_at|created_at|updated_at)/),

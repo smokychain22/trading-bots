@@ -458,3 +458,22 @@ states from immutable scan members and the latest worker health. Closed-market c
 not become scans. Historical option bars, trades, and public analytics documentation do
 not establish this account's BBO entitlement, so no historical execution adapter is
 enabled before an exact secure entitlement test succeeds.
+
+## 2026-09-12: historical R6 evidence stays live-shadow-first
+
+The encrypted Production master credential now drives a one-shot, authenticated,
+read-only entitlement audit. Actual checks proved historical stock bars, historical
+option bars, historical option trades, current indicative snapshots/Greeks, contracts,
+and corporate actions. OPRA returned 403 `NOT_ENTITLED`. Alpaca's documented options
+inventory has no historical quote/BBO or historical Greeks REST operation.
+
+Historical bars and prints are not enough to reconstruct an executable decision-time
+BBO or point-in-time Greeks. No historical option adapter will be built from them. The
+existing live-shadow evidence path remains primary. Optionomics current metrics, chain,
+history, flow, and events authenticated successfully, but undocumented date-aware option
+analytics and three-horizon crowd trajectories remain `UNVERIFIED`.
+
+The capability audit writes only sanitized metadata to the existing provider capability
+and operation registries. It does not create an order surface. R6 remains
+`BLOCKED_ON_DATA` until real open-session candidate sets, follow-up quotes, and outcomes
+exist.
