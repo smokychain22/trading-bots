@@ -557,6 +557,39 @@ export const optionomicsProbeUrl = (operationAlias: string, documentedPath: stri
   return url;
 };
 
+const responseShape = (value: unknown): {
+  readonly keyCount: number;
+  readonly arrayObservationCount: number;
+  readonly ivFieldPresent: boolean;
+  readonly skewFieldPresent: boolean;
+  readonly termFieldPresent: boolean;
+  readonly surfaceFieldPresent: boolean;
+  readonly dateOrTimestampFieldPresent: boolean;
+} => {
+  const keys = new Set<string>();
+  let arrayObservationCount = 0;
+  const visit = (current: unknown, depth: number): void => {
+    if (depth > 6 || current === null || typeof current !== 'object') return;
+    if (Array.isArray(current)) {
+      arrayObservationCount += current.length;
+      for (const item of current.slice(0, 100)) visit(item, depth + 1);
+      return;
+    }
+    for (const [key, nested] of Object.entries(current as Record<string, unknown>).slice(0, 200)) {
+      keys.add(key.toLowerCase());
+      visit(nested, depth + 1);
+    }
+  };
+  visit(value, 0);
+  const has = (pattern: RegExp): boolean => [...keys].some((key) => pattern.test(key));
+  return {
+    keyCount: keys.size, arrayObservationCount,
+    ivFieldPresent: has(/(^iv$|implied.?vol|iv_rank|iv_percentile)/),
+    skewFieldPresent: has(/skew/), termFieldPresent: has(/term/), surfaceFieldPresent: has(/surface/),
+    dateOrTimestampFieldPresent: has(/(^date$|timestamp|as_of|observed_at|created_at|updated_at)/),
+  };
+};
+
 export const checkOptionomics = async (environment: Environment): Promise<readonly CheckResult[]> => {
   const reference = await readJson('OPTIONOMICS', 'OPTIONOMICS_DOCUMENTED_CONTRACTS', 'opt.discover_documented_operations', optionomicsReferenceUrl, {}, optionomicsProvenance('/docs/api'), (body) => {
     const paths = extractDocumentedOperationPaths(typeof body === 'string' ? body : '');
@@ -570,9 +603,11 @@ export const checkOptionomics = async (environment: Environment): Promise<readon
     const url = optionomicsProbeUrl(probe.operationAlias, probe.path);
     return readJson('OPTIONOMICS', probe.capability, probe.operationAlias, url, { headers }, optionomicsProvenance(url.pathname), (body, response) => {
       const record = object(body);
+      const shape = responseShape(body);
       return {
         responseIsObject: typeof body === 'object' && body !== null,
         explicitNullObserved: Object.values(record).some((value) => value === null),
+        ...shape,
         rateLimitLimitPresent: response.headers.has('x-ratelimit-limit'),
         rateLimitRemainingPresent: response.headers.has('x-ratelimit-remaining'),
         rateLimitResetPresent: response.headers.has('x-ratelimit-reset')
