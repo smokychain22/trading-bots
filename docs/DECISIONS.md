@@ -366,3 +366,26 @@ Vercel's exact downloaded redaction marker `[SENSITIVE]` is ignored by the doten
 loader. It cannot override a real process value or pass validation as a credential or
 boolean flag. Standard dotenv parsing still owns quote removal, and arbitrary secret
 values are never modified.
+
+## 2026-09-12: empirical evidence is a separate immutable production concern
+
+Candidate features, resolved outcomes, quote replay observations, and dataset identities
+live in separate tables. A recursive boundary check rejects outcome-label names from
+feature payloads. Each candidate records exact contract identity, decision BBO, provider
+and ingestion times, null-preserving feature families, blockers, rank, selection state,
+and all strategy, risk, feature, cost, regime, and execution versions.
+
+The current single-underlying shadow cycle cannot earn a global WAIT when other eligible
+underlyings, management actions, recovery, covered-call, or redeployment surfaces remain
+unevaluated. The evidence row records those omissions and marks the WAIT unearned. No
+soft RSI, IV, flow, trend, or momentum observation can stand in for exhaustive search.
+
+Dataset exports are bounded, deterministically ordered, schema-versioned, and SHA-256
+identified. Outcome labels remain in their own export section. Counterfactual records
+remain `BLOCKED_ON_DATA` until a defensible fill and outcome method exists.
+
+Runtime priority is reconciliation, broker lifecycle application, open-position review,
+portfolio risk, then new-risk discovery. Existing breaches require `MANAGEMENT_FIRST`.
+Unknown pre-existing risk produces a system hold. Broker FILL activities are persisted
+idempotently as immutable fill facts. Assignment and expiration reach the atomic writer
+only when consecutive position snapshots and broker activity agree.

@@ -782,3 +782,50 @@ NEXT RECOMMENDED TASK: Persist candidate-funnel telemetry and complete the globa
 cross-symbol, management, recovery, CC, and redeployment frontier in SHADOW. Then build
 the point-in-time resolved-episode dataset required to calibrate action values. Keep all
 broker submission gates locked.
+
+## 2026-09-12 R1/R2 closure and R6 evidence foundation
+
+OWNER: Codex
+
+TASK: Complete the Production-side point-in-time evidence, lifecycle orchestration,
+management-first ordering, replay, label, and deterministic dataset-export foundation.
+
+FILES CHANGED: Migration 018, candidate-cycle persistence, management input projection,
+broker reconciliation and lifecycle orchestration, scheduler priority, research evidence
+and export contracts, decision trigger and invalidation contracts, database verification,
+tests, decisions, and this handoff.
+
+WHAT WAS IMPLEMENTED: Every persisted evaluated candidate now receives a feature-only
+point-in-time record with contract, BBO, Greeks and IV when observed, null-preserving
+research families, account and portfolio state, AEGIS and execution state, reason codes,
+provider timestamps, and complete version lineage. Candidate sets record search counts,
+best, second-best, best-rejected, and missing search scope. WAIT decisions persist an
+earned/unearned search proof. Decision quotes and subsequent observations have a replay
+table. Resolved outcomes are physically separate. Counterfactuals can only be stored as
+`BLOCKED_ON_DATA`. Dataset exports are bounded, deterministic, schema-versioned, and
+hash-identified. The runtime applies broker-confirmed assignment and expiry before
+management review. Aggregate and partial broker fills are persisted idempotently.
+
+TESTS RUN: Full Node, Python, TypeScript, ESLint, production build, security scan,
+Production migration, database invariant verification, and CI after push.
+
+KNOWN LIMITATIONS: The Production evidence tables begin empty. Existing historical
+rows cannot be backfilled as genuine point-in-time evidence. The single-underlying
+shadow cycle records a partial candidate-set proof and cannot yet earn global WAIT.
+No resolved whole-chain or management labels and no subsequent quote observations exist.
+The runtime still needs a deployable opportunity scanner and always-on host before it can
+accumulate a useful empirical sample.
+
+RISKS: The empirical EV, fill, assignment, recovery, and action-value models remain
+unready. Dataset infrastructure does not establish profitability. No order submission
+gate changed.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude `811da56` remains selectively reviewed.
+Its UNKNOWN-safe management repair is correct. Its parallel strategy registry and config
+remain research-only because the Production TypeScript package is the runtime authority.
+Execution-failure promotion gates and the feature family-role taxonomy are useful for R6.
+No wholesale merge was performed.
+
+NEXT RECOMMENDED TASK: Run real SHADOW cycles with a complete cross-symbol frontier,
+capture subsequent BBO observations, resolve full economic chains, and export the first
+non-empty reproducible dataset for paired OOS validation. Keep Paper submission locked.

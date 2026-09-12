@@ -20,10 +20,10 @@ test('deterministic job id is stable for the same (jobType, correlationKey)', ()
   assert.notEqual(deterministicJobId('POSITION_MANAGEMENT_SCAN', 'chain-1'), deterministicJobId('POSITION_MANAGEMENT_SCAN', 'chain-2'));
 });
 
-test('priority ladder ranks reconciliation before management before wait-recheck before opportunity scan', () => {
+test('priority ladder applies broker lifecycle before management, then wait-recheck and opportunity scan', () => {
   assert.ok(comparePriority('POSITION_RECONCILIATION', 'ORDER_RECONCILIATION') < 0);
   assert.ok(comparePriority('ORDER_RECONCILIATION', 'POSITION_MANAGEMENT_SCAN') < 0);
-  assert.ok(comparePriority('POSITION_MANAGEMENT_SCAN', 'ASSIGNMENT_EXPIRY_RECONCILIATION') < 0);
+  assert.ok(comparePriority('ASSIGNMENT_EXPIRY_RECONCILIATION', 'POSITION_MANAGEMENT_SCAN') < 0);
   assert.ok(comparePriority('ASSIGNMENT_EXPIRY_RECONCILIATION', 'WAIT_RECHECK') < 0);
   assert.ok(comparePriority('ASSIGNMENT_EXPIRY_RECONCILIATION', 'PENDING_ORDER_MANAGEMENT') < 0);
   assert.ok(comparePriority('PENDING_ORDER_MANAGEMENT', 'WAIT_RECHECK') < 0);

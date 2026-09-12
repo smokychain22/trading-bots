@@ -50,6 +50,7 @@ export interface ManagementInputState {
     readonly theta: number | null;
     readonly vega: number | null;
     readonly iv: number | null;
+    readonly ivState: unknown | null;
   };
   readonly account: {
     readonly buyingPower: number | null;
@@ -66,6 +67,9 @@ export interface ManagementInputState {
     readonly sectorCorrelation: unknown | null;
     readonly aegisState: unknown | null;
     readonly executionState: unknown | null;
+    readonly regimeState: unknown | null;
+    readonly opportunityAlternatives: unknown | null;
+    readonly strategyVersions: unknown | null;
   };
   readonly unknownFields: readonly string[];
   readonly hardBlockers: readonly string[];
@@ -134,8 +138,13 @@ export function assembleManagementInput(row: Row, input: {
   readonly observedAt: string;
 }): ManagementInputState {
   const snapshot = object(row.snapshot_json);
+  const snapshotContracts = Array.isArray(snapshot.contractCandidates) ? snapshot.contractCandidates : [];
   const position = object(row.broker_position);
   const contractSymbol = text(row.contract_symbol);
+  const snapshotContract = object(snapshotContracts.find((value) => {
+    const candidate=object(value);
+    return contractSymbol!==null && (candidate.occSymbol===contractSymbol || candidate.optionSymbol===contractSymbol);
+  }));
   const multiplier = numeric(row.multiplier);
   const contracts = numeric(row.quantity);
   const entryCreditDebit = numeric(row.entry_credit_debit);
@@ -165,23 +174,27 @@ export function assembleManagementInput(row: Row, input: {
     required('market.optionBid', bid);
     required('market.optionAsk', ask);
     required('market.quoteTimestamp', row.quote_as_of);
-    required('market.delta', null);
-    required('market.gamma', null);
-    required('market.theta', null);
-    required('market.vega', null);
-    required('market.iv', null);
+    required('market.delta', snapshotContract.delta ?? null);
+    required('market.gamma', snapshotContract.gamma ?? null);
+    required('market.theta', snapshotContract.theta ?? null);
+    required('market.vega', snapshotContract.vega ?? null);
+    required('market.iv', snapshotContract.iv ?? null);
   }
   if (stockShares > 0) required('economics.stockMarkPerShare', stockMark);
   required('account.buyingPower', row.buying_power);
   required('account.optionsBuyingPower', row.options_buying_power);
   required('context.eventState', snapshot.eventState ?? null);
-  required('context.dividendExDateState', null);
+  const eventState=object(snapshot.eventState);
+  required('context.dividendExDateState', eventState.exDividendState ?? eventState.exDividendDate ?? null);
   required('context.ownershipQuality', snapshot.expertPriorState ?? null);
   required('context.assignmentCapacity', object(snapshot.riskState).assignmentCapacity ?? null);
   required('context.concentration', object(snapshot.portfolioExposure).concentration ?? null);
   required('context.sectorCorrelation', object(snapshot.portfolioExposure).sectorCorrelation ?? null);
   required('context.aegisState', snapshot.riskState ?? null);
-  required('context.executionState', null);
+  required('context.executionState', hasOpenOption ? snapshotContract.executable ?? null : 'NO_OPEN_OPTION');
+  required('context.regimeState', snapshot.regimeState ?? null);
+  required('context.opportunityAlternatives', snapshot.strategyRouterState ?? null);
+  required('context.strategyVersions', snapshot.versions ?? null);
   if (row.fusion_snapshot_id == null) unknownFields.push('fusionSnapshotId');
 
   const hardBlockers: string[] = [];
@@ -213,16 +226,22 @@ export function assembleManagementInput(row: Row, input: {
     market: { spot, optionBid: bid, optionAsk: ask, quoteTimestamp: text(row.quote_as_of),
       quoteFeed: text(row.feed), quoteQuality: text(row.quote_quality), dte: daysToExpiration(expiration, input.observedAt),
       moneyness: spot !== null && strike !== null && spot > 0 ? strike / spot : null,
-      delta: null, gamma: null, theta: null, vega: null, iv: null },
+      delta: numeric(snapshotContract.delta), gamma: numeric(snapshotContract.gamma), theta: numeric(snapshotContract.theta),
+      vega: numeric(snapshotContract.vega), iv: numeric(snapshotContract.iv),
+      ivState: snapshot.optionomicsFeatureState ?? null },
     account: { buyingPower: numeric(row.buying_power), optionsBuyingPower: numeric(row.options_buying_power),
       availableCapital: numeric(row.options_buying_power) ?? numeric(row.buying_power) },
-    context: { eventState: snapshot.eventState ?? null, dividendExDateState: null,
+    context: { eventState: snapshot.eventState ?? null,
+      dividendExDateState: eventState.exDividendState ?? eventState.exDividendDate ?? null,
       ownershipQuality: snapshot.expertPriorState ?? null,
       assignmentCapacity: object(snapshot.riskState).assignmentCapacity ?? null,
       recoveryState: snapshot.recoveryState ?? null,
       concentration: object(snapshot.portfolioExposure).concentration ?? null,
       sectorCorrelation: object(snapshot.portfolioExposure).sectorCorrelation ?? null,
-      aegisState: snapshot.riskState ?? null, executionState: null },
+      aegisState: snapshot.riskState ?? null,
+      executionState: hasOpenOption ? snapshotContract.executable ?? null : 'NO_OPEN_OPTION',
+      regimeState: snapshot.regimeState ?? null, opportunityAlternatives: snapshot.strategyRouterState ?? null,
+      strategyVersions: snapshot.versions ?? null },
     unknownFields: [...new Set(unknownFields)].sort(), hardBlockers: [...new Set(hardBlockers)].sort(),
     economicModelState: 'EV_MODEL_NOT_EMPIRICALLY_READY' as const,
   };

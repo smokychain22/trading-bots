@@ -22,6 +22,7 @@ try {
     "015_autonomous_runtime_evidence",
     "016_broker_lifecycle_evidence",
     "017_management_decision_vertical_slice",
+    "018_point_in_time_evidence_pipeline",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -41,6 +42,11 @@ try {
     ["trade", "broker_position_snapshot"], ["trade", "broker_activity_fact"],
     ["trade", "management_input_snapshot"], ["trade", "management_action_frontier"],
     ["trade", "lifecycle_application"],
+    ["trade", "candidate_set_evidence"], ["trade", "candidate_point_in_time_evidence"],
+    ["trade", "global_wait_evidence"], ["market", "execution_quote_observation"],
+    ["research", "theta_outcome_label"], ["research", "theta_counterfactual_outcome"],
+    ["research", "theta_dataset_export"], ["ops", "decision_trigger_evidence"],
+    ["trade", "decision_invalidation_snapshot"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -99,6 +105,15 @@ try {
     EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade' AND trigger_name='protect_broker_activity_fact' AND event_object_table='broker_activity_fact') AS protected_activities`);
   if (!lifecycleEvidence.rows[0]?.immutable_positions || !lifecycleEvidence.rows[0]?.protected_activities)
     throw new Error("BROKER_LIFECYCLE_EVIDENCE_PROTECTION_MISSING");
+  const evidencePipeline = await client.query(`SELECT
+    EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade' AND trigger_name='reject_immutable_mutation' AND event_object_table='candidate_point_in_time_evidence') AS immutable_features,
+    EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='research' AND trigger_name='reject_immutable_mutation' AND event_object_table='theta_outcome_label') AS immutable_labels,
+    EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='market' AND table_name='execution_quote_observation' AND constraint_type='CHECK') AS quote_checks`);
+  if (!evidencePipeline.rows[0]?.immutable_features || !evidencePipeline.rows[0]?.immutable_labels || !evidencePipeline.rows[0]?.quote_checks)
+    throw new Error("POINT_IN_TIME_EVIDENCE_PROTECTION_MISSING");
+  const fillFees = await client.query("SELECT is_nullable,column_default FROM information_schema.columns WHERE table_schema='trade' AND table_name='fill' AND column_name='fees'");
+  if (fillFees.rows[0]?.is_nullable !== "YES" || fillFees.rows[0]?.column_default !== null)
+    throw new Error("UNKNOWN_FILL_FEES_COERCED_TO_ZERO");
   const gate = executionControl.rows[0];
   if (!gate?.pause_new_orders || gate.master_execution_enabled || gate.follower_execution_enabled)
     throw new Error("PAPER_EXECUTION_NOT_LOCKED");
@@ -120,6 +135,7 @@ try {
     replayFeatureLabelSeparation: "ENFORCED",
     brokerLifecycleEvidence: "ENFORCED",
     managementDecisionVerticalSlice: "ENFORCED",
+    pointInTimeEvidencePipeline: "ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
     brokerOrders: orderCount.rows[0]?.count ?? 0,

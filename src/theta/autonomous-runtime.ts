@@ -15,6 +15,7 @@ import type { JobRunResult, JobType } from './scheduler.js';
 import { PostgresSchedulerCheckpointRepository } from './postgres-scheduler-checkpoint-repository.js';
 import { PostgresManagementInputStore } from './management-input-state.js';
 import { buildManagementActionFrontier } from './management-action-frontier.js';
+import { applyConfirmedTerminalLifecycle } from '../execution/postgres-broker-lifecycle-orchestrator.js';
 
 export const autonomousRuntimeVersion = 'theta-autonomous-runtime-v1' as const;
 export const autonomousPolicyVersion = 'theta-scheduler-policy-v1' as const;
@@ -215,7 +216,9 @@ export async function runAutonomousRuntimeCycle(
         return degraded('EV_MODEL_NOT_EMPIRICALLY_READY', retryAt);
       }
       if (jobType === 'ASSIGNMENT_EXPIRY_RECONCILIATION') {
-        return reconciliation === null ? degraded('BROKER_RECONCILIATION_REQUIRED', retryAt) : succeeded();
+        if (reconciliation===null) return degraded('BROKER_RECONCILIATION_REQUIRED',retryAt);
+        const lifecycle=await applyConfirmedTerminalLifecycle(pool,master.connectionId,reconciliation.snapshotId,reconciliation.observedAt);
+        return lifecycle.unresolved>0 ? degraded('BROKER_LIFECYCLE_FACTS_UNRESOLVED',retryAt) : succeeded();
       }
       if (jobType === 'PENDING_ORDER_MANAGEMENT') {
         return reconciliation === null ? degraded('BROKER_RECONCILIATION_REQUIRED', retryAt) : succeeded();

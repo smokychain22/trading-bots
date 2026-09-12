@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from 'pg';
 import { verifyFusionSnapshot, type JsonValue } from '../market/fusion-snapshot.js';
 import type { ThetaShadowCycleResult } from './theta-shadow-cycle.js';
 import { buildStrategyDecisionEnvelope } from './strategy-decision-envelope.js';
+import { validateGlobalWaitEvidence, type GlobalWaitEvidence } from './decision-evidence.js';
 
 export interface ThetaCyclePersistenceContext {
   readonly botInstanceId: string;
@@ -39,6 +40,10 @@ function objectField(snapshot: Readonly<Record<string, JsonValue>>, key: string)
   return snapshot[key] ?? null;
 }
 
+function jsonObject(value: JsonValue | undefined): Record<string, JsonValue> {
+  return value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
 export class PostgresThetaCycleStore {
   constructor(private readonly pool: Pool) {}
 
@@ -71,6 +76,8 @@ export class PostgresThetaCycleStore {
       const strategyRouteId = await this.persistRoute(client, fusionSnapshotId, cycle);
       const decisionId = await this.persistDecision(client, fusionSnapshotId, cycle, candidates.candidateSetId, candidates.candidateIds,
         context.strategyVersionId);
+      await this.persistPointInTimeEvidence(client,context,cycle,fusionSnapshotId,candidates.candidateSetId,
+        candidates.candidateIds,decisionId);
       let shadowOpportunityCount = 0;
       for (const entry of cycle.orchestration?.shadowOpportunities ?? []) {
         const result = await client.query(
@@ -246,5 +253,132 @@ export class PostgresThetaCycleStore {
       }
     }
     return decisionId;
+  }
+
+  private async persistPointInTimeEvidence(client:PoolClient,context:ThetaCyclePersistenceContext,
+    cycle:ThetaShadowCycleResult,fusionSnapshotId:string,candidateSetId:string|null,
+    candidateIds:ReadonlyMap<string,string>,decisionId:string|null):Promise<void> {
+    if (candidateSetId===null || cycle.fusionSnapshot===null) return;
+    const snapshot=cycle.fusionSnapshot.snapshot;
+    const contracts=(Array.isArray(snapshot.contractCandidates) ? snapshot.contractCandidates : []).map((item) => jsonObject(item));
+    const evaluated=cycle.orchestration?.thetaQ?.candidates ?? [];
+    const receipt=cycle.orchestration?.receipt;
+    const ranked=evaluated.toSorted((a,b) => (a.rank ?? Number.MAX_SAFE_INTEGER)-(b.rank ?? Number.MAX_SAFE_INTEGER));
+    const best=ranked[0]===undefined?null:candidateIds.get(ranked[0].candidateId) ?? null;
+    const second=ranked[1]===undefined?null:candidateIds.get(ranked[1].candidateId) ?? null;
+    const rejected=ranked.find((candidate) => !candidate.actionFeasible);
+    const bestRejected=rejected===undefined?null:candidateIds.get(rejected.candidateId) ?? null;
+    const ranking=Array.isArray(cycle.underlyingRanking) ? cycle.underlyingRanking : [];
+    const universe=ranking.map((item) => {
+      if (item!==null && typeof item==='object' && 'symbol' in item) return String(item.symbol);
+      if (item!==null && typeof item==='object' && 'underlying' in item) return String(item.underlying);
+      return null;
+    }).filter((value):value is string => value!==null);
+    const branchResults=cycle.orchestration?.routing?.results ?? [];
+    const branches=branchResults.map((item) => item.strategyFamily);
+    const missingScope:string[]=[];
+    if (universe.length>1) missingScope.push('OPTION_LATTICE_ONLY_BUILT_FOR_SELECTED_UNDERLYING');
+    if (branchResults.some((item) => item.eligible && item.strategyFamily!=='THETA_Q')) missingScope.push('ELIGIBLE_NON_PRIMARY_BRANCH_NOT_EVALUATED');
+    if (receipt===undefined || receipt===null) missingScope.push('DECISION_RECEIPT_UNAVAILABLE');
+    const counts={ underlyings:universe.length,expirations:new Set(contracts.map((item) => item.expiration)).size,
+      strikes:new Set(contracts.map((item) => item.strike)).size,branches:branches.length,
+      mechanicallyInvalid:contracts.filter((item) => item.identityValid===false).length,
+      hardVetoed:evaluated.filter((item) => !item.actionFeasible).length,
+      softRanked:evaluated.filter((item) => item.rank!==null && item.rank>0).length,
+      dataInsufficient:evaluated.filter((item) => item.economics?.ev_net===null).length,
+      selected:receipt?.selectedCandidateId===null || receipt?.selectedCandidateId===undefined ? 0:1,
+      notSelected:Math.max(0,evaluated.length-(receipt?.selectedCandidateId===null||receipt?.selectedCandidateId===undefined?0:1)) };
+    const setPayload={candidateSetId,decisionTime:String(snapshot.decisionTimeUtc),universe:[...universe].sort(),
+      branches:[...branches].sort(),counts,best,second,bestRejected,missingScope:[...missingScope].sort()};
+    await client.query(`INSERT INTO trade.candidate_set_evidence(candidate_set_id,decision_time,universe_evaluated_json,
+      branches_considered_json,counts_json,best_candidate_id,second_best_candidate_id,best_rejected_candidate_id,
+      completeness_state,missing_scope_json,content_hash) VALUES($1,$2,$3::jsonb,$4::jsonb,$5::jsonb,$6,$7,$8,$9,$10::jsonb,$11)
+      ON CONFLICT(candidate_set_id) DO NOTHING`,[candidateSetId,String(snapshot.decisionTimeUtc),JSON.stringify(setPayload.universe),
+      JSON.stringify(setPayload.branches),JSON.stringify(counts),best,second,bestRejected,missingScope.length===0?'COMPLETE':'PARTIAL',
+      JSON.stringify(setPayload.missingScope),createHash('sha256').update(JSON.stringify(setPayload)).digest('hex')]);
+
+    const provenance=(Array.isArray(snapshot.sourceProvenance) ? snapshot.sourceProvenance : []).map((raw) => {
+      const item=jsonObject(raw);
+      return { source:String(item.provider ?? 'UNKNOWN'),operationAlias:String(item.operationAlias ?? 'UNKNOWN'),
+        providerTimestamp:item.asOf ?? null,ingestionTimestamp:item.retrievedAt ?? snapshot.decisionTimeUtc,
+        asOf:item.asOf ?? snapshot.decisionTimeUtc,version:String(item.contractVersion ?? 'UNKNOWN'),
+        state:String(item.state ?? 'UNKNOWN'),feed:item.feed ?? null,contentHash:item.contentHash ?? null };
+    });
+    const versions=snapshot.versions !== null && typeof snapshot.versions==='object' && !Array.isArray(snapshot.versions)
+      ? snapshot.versions as Record<string,JsonValue> : {};
+    for (const candidate of evaluated) {
+      const persistedId=candidateIds.get(candidate.candidateId); if (persistedId===undefined) continue;
+      const contract=contracts.find((item) => item.optionSymbol===candidate.candidateId || item.occSymbol===candidate.candidateId);
+      if (contract===undefined) continue;
+      const selected=receipt?.selectedCandidateId===candidate.candidateId;
+      const alternative=receipt?.alternatives.find((item) => item.candidateId===candidate.candidateId) ?? null;
+      const market={stockPrice:contract.underlyingLast,bid:contract.bid,ask:contract.ask,bidSize:contract.bidSize,
+        askSize:contract.askSize,quoteTimestamp:contract.quoteTimestamp,quoteAgeSeconds:contract.quoteAgeSeconds,feed:contract.feed};
+      const evidencePayload={candidateId:persistedId,decisionId,fusionSnapshotId,decisionTime:String(snapshot.decisionTimeUtc),
+        branch:'THETA_CONVENTIONAL',rank:candidate.rank,selected,contract:{underlying:contract.underlying,
+          contractSymbol:contract.occSymbol,optionType:contract.optionType,strike:contract.strike,expiration:contract.expiration,
+          multiplier:contract.multiplier},market,volatility:{iv:contract.iv,ivRank:null,ivPercentile:null,skew:null,
+          termStructure:null,surface:null},technical:{trend:snapshot.regimeState,momentum:null,drawdown:null,realizedVolatility:null},
+        event:{state:snapshot.eventState,earningsDistance:null,exDividendState:null},flow:{uoa:null},
+        ownership:{state:snapshot.expertPriorState},account:snapshot.accountState,portfolio:snapshot.portfolioExposure,
+        aegis:{state:cycle.orchestration?.aegis ?? null},execution:{...market,executable:contract.executable,
+          proposedLimit:alternative?.executionRecommendedAction ?? null},knownEconomics:candidate.economics ?? {},
+        unknownEconomics:candidate.economics?.ev_net===null?[candidate.economics.ev_net_unknown_reason]:[],
+        hardBlockers:candidate.actionFeasible?[]:candidate.reasons.filter((reason) => reason.polarity<0).map((reason) => reason.code),
+        softEvidence:candidate.reasons,provenance,lineage:{strategyVersion:String(versions.strategyVersion ?? context.strategyVersionId),
+          riskVersion:String(versions.riskLimitVersion ?? context.riskLimitVersionId),featureVersion:String(versions.featureVersion ?? context.featureVersionId),
+          costModelVersion:String(versions.costModelVersion ?? context.costModelVersionId),regimeVersion:String(versions.regimeVersion ?? 'UNKNOWN'),
+          executionModelVersion:String(versions.executionVersion ?? context.executionVersionId)}};
+      const hash=createHash('sha256').update(JSON.stringify(evidencePayload)).digest('hex');
+      await client.query(`INSERT INTO trade.candidate_point_in_time_evidence(candidate_id,decision_id,fusion_snapshot_id,
+        decision_time,branch,rank_at_decision,selected,hard_status,soft_status,rejection_reason,contract_json,market_json,
+        volatility_json,technical_json,event_json,flow_json,ownership_json,account_json,portfolio_json,aegis_json,
+        execution_json,known_economics_json,unknown_economics_json,hard_blockers_json,soft_evidence_json,
+        provider_provenance_json,strategy_version,risk_version,feature_version,cost_model_version,regime_version,
+        execution_model_version,content_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,
+        $14::jsonb,$15::jsonb,$16::jsonb,$17::jsonb,$18::jsonb,$19::jsonb,$20::jsonb,$21::jsonb,$22::jsonb,$23::jsonb,
+        $24::jsonb,$25::jsonb,$26::jsonb,$27,$28,$29,$30,$31,$32,$33) ON CONFLICT(candidate_id) DO NOTHING`,[
+        persistedId,decisionId,fusionSnapshotId,String(snapshot.decisionTimeUtc),'THETA_CONVENTIONAL',candidate.rank,selected,
+        candidate.actionFeasible?'FEASIBLE':candidate.economics?.ev_net===null?'DATA_INSUFFICIENT':'HARD_VETO',
+        candidate.actionFeasible?'RANKED':alternative?.disposition==='PASS'?'REJECTED':'UNKNOWN',alternative?.rejectionReason ?? null,
+        JSON.stringify(evidencePayload.contract),JSON.stringify(evidencePayload.market),JSON.stringify(evidencePayload.volatility),
+        JSON.stringify(evidencePayload.technical),JSON.stringify(evidencePayload.event),JSON.stringify(evidencePayload.flow),
+        JSON.stringify(evidencePayload.ownership),JSON.stringify(evidencePayload.account),JSON.stringify(evidencePayload.portfolio),
+        JSON.stringify(evidencePayload.aegis),JSON.stringify(evidencePayload.execution),JSON.stringify(evidencePayload.knownEconomics),
+        JSON.stringify(evidencePayload.unknownEconomics),JSON.stringify(evidencePayload.hardBlockers),JSON.stringify(evidencePayload.softEvidence),
+        JSON.stringify(provenance),evidencePayload.lineage.strategyVersion,evidencePayload.lineage.riskVersion,
+        evidencePayload.lineage.featureVersion,evidencePayload.lineage.costModelVersion,evidencePayload.lineage.regimeVersion,
+        evidencePayload.lineage.executionModelVersion,hash]);
+      if (contract.bid!==null || contract.ask!==null) {
+        const quotePayload={candidateId:persistedId,observedAt:String(snapshot.decisionTimeUtc),providerTimestamp:contract.quoteTimestamp,
+          source:contract.source,feed:contract.feed,bid:contract.bid,ask:contract.ask,bidSize:contract.bidSize,askSize:contract.askSize};
+        const quoteHash=createHash('sha256').update(JSON.stringify(quotePayload)).digest('hex');
+        await client.query(`INSERT INTO market.execution_quote_observation(quote_observation_id,candidate_id,observation_role,
+          observed_at,provider_timestamp,ingestion_timestamp,source,operation_alias,feed,contract_version,bid,ask,bid_size,
+          ask_size,proposed_limit,data_quality,content_hash) VALUES($1,$2,'DECISION',$3,$4,$3,$5,'option_snapshot',$6,'v1',$7,$8,$9,$10,NULL,$11,$12)
+          ON CONFLICT(content_hash) DO NOTHING`,[deterministicRuntimeUuid(`quote:${quoteHash}`),persistedId,
+          String(snapshot.decisionTimeUtc),contract.quoteTimestamp,contract.source,contract.feed,contract.bid,contract.ask,
+          contract.bidSize,contract.askSize,contract.dataQuality,quoteHash]);
+      }
+    }
+    if (decisionId!==null && receipt?.winningAction==='WAIT') {
+      const eligibleBranches=branchResults.filter((item) => item.eligible).map((item) => item.strategyFamily);
+      const global:GlobalWaitEvidence={reason:'DATA_INSUFFICIENT',eligibleUnderlyingCount:universe.length,
+        underlyingsEvaluated:cycle.selectedUnderlying===null?0:1,contractsEvaluated:evaluated.length,
+        validatedBranchesEligible:eligibleBranches,validatedBranchesEvaluated:['THETA_Q'],
+        existingPositionManagementEvaluated:false,recoveryOpportunitiesEvaluated:false,coveredCallOpportunitiesEvaluated:false,
+        redeploymentAlternativesEvaluated:false,hardGateCounts:{},softEvidenceFamiliesObserved:[],blockedBranches:{},
+        bestCandidateId:best,secondBestCandidateId:second,bestRejectedCandidateId:bestRejected};
+      const validation=validateGlobalWaitEvidence(global);
+      const waitPayload={...global,validation};
+      await client.query(`INSERT INTO trade.global_wait_evidence(decision_id,candidate_set_id,decision_time,wait_reason,
+        underlyings_evaluated,contracts_evaluated,branches_considered_json,best_rejected_candidate_id,best_feasible_action,
+        blockers_json,data_missing_json,search_proof_json,earned,validation_violations_json,content_hash)
+        VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14::jsonb,$15)
+        ON CONFLICT(decision_id) DO NOTHING`,[decisionId,candidateSetId,String(snapshot.decisionTimeUtc),global.reason,
+        global.underlyingsEvaluated,global.contractsEvaluated,JSON.stringify(branches),bestRejected,null,
+        JSON.stringify(receipt.reasonCodes),JSON.stringify(snapshot.unknownFeatures),JSON.stringify(global),validation.earned,
+        JSON.stringify(validation.violations),createHash('sha256').update(JSON.stringify(waitPayload)).digest('hex')]);
+    }
   }
 }

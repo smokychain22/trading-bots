@@ -328,6 +328,7 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
         );
       }
       for (const order of input.matchedOrders) await this.recordMatchedOrder(client, input, order);
+      for (const activity of input.activities) await this.recordBrokerFill(client,input,activity);
       for (const orderIntentId of input.missingLocalIntentIds) {
         await client.query(
           `INSERT INTO trade.reconciliation_event(order_intent_id,state,detected_at,detail_json)
@@ -342,6 +343,24 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
       await client.query('ROLLBACK');
       throw error;
     } finally { client.release(); }
+  }
+
+  private async recordBrokerFill(client:PoolClient,input:BrokerReconciliationSnapshotInput,activity:BrokerActivity):Promise<void> {
+    if (activity.activityType!=='FILL' || activity.orderId===null || activity.quantity===null || activity.quantity<=0
+      || activity.price===null || !Number.isFinite(activity.price) || activity.date===null) return;
+    const brokerOrder=await client.query(`SELECT bo.broker_order_id FROM trade.broker_order bo
+      JOIN trade.order_intent oi ON oi.order_intent_id=bo.order_intent_id
+      JOIN trade.execution_account ea ON ea.execution_account_id=oi.execution_account_id
+      WHERE bo.provider_order_id=$1 AND ea.provider_account_ref_hash=$2`,[activity.orderId,input.providerAccountRefHash]);
+    if (brokerOrder.rowCount!==1) return;
+    const brokerOrderId=String(brokerOrder.rows[0].broker_order_id);
+    await client.query(`INSERT INTO trade.broker_order_event(broker_order_id,provider_event_id,event_type,event_time,
+      quantity_delta,price_per_share,payload_hash) VALUES($1,$2,'FILL',$3,$4,$5,$6)
+      ON CONFLICT(broker_order_id,provider_event_id) DO NOTHING`,[brokerOrderId,activity.id,activity.date,
+      activity.quantity,activity.price,sha256(canonicalJson(activity))]);
+    await client.query(`INSERT INTO trade.fill(fill_id,broker_order_id,provider_fill_id,quantity,price_per_share,filled_at,fees)
+      VALUES($1,$2,$3,$4,$5,$6,NULL) ON CONFLICT(broker_order_id,provider_fill_id) DO NOTHING`,[
+      deterministicFillUuid(`${brokerOrderId}:${activity.id}`),brokerOrderId,activity.id,activity.quantity,activity.price,activity.date]);
   }
 
   private async recordMatchedOrder(client: PoolClient, input: BrokerReconciliationSnapshotInput, order: ReconciledBrokerOrder) {
@@ -376,4 +395,11 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
       })],
     );
   }
+}
+
+function deterministicFillUuid(value:string):string {
+  const bytes=Buffer.from(sha256(value).slice(0,32),'hex');
+  const version=bytes.at(6),variant=bytes.at(8); if (version===undefined||variant===undefined) throw new Error('FILL_UUID_INVALID');
+  bytes[6]=(version&0x0f)|0x40; bytes[8]=(variant&0x3f)|0x80; const hex=bytes.toString('hex');
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
 }
