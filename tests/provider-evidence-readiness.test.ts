@@ -24,14 +24,12 @@ test('probes only read-only evidence endpoints and preserves entitlement limits'
       } });
     }
     if (url.pathname === '/v1beta1/options/bars') {
-      return url.searchParams.get('feed') === 'opra'
-        ? json({ message: 'subscription required' }, 403)
-        : json({ bars: { SPY261016P00500000: [{ t: '2026-09-10T00:00:00Z' }] } });
+      assert.equal(url.searchParams.has('feed'), false);
+      return json({ bars: { SPY261016P00500000: [{ t: '2026-09-10T00:00:00Z' }] } });
     }
     if (url.pathname === '/v1beta1/options/trades') {
-      return url.searchParams.get('feed') === 'opra'
-        ? json({ message: 'subscription required' }, 403)
-        : json({ trades: { SPY261016P00500000: [{ t: '2026-09-10T00:00:00Z' }] } });
+      assert.equal(url.searchParams.has('feed'), false);
+      return json({ trades: { SPY261016P00500000: [{ t: '2026-09-10T00:00:00Z' }] } });
     }
     if (url.pathname === '/v1/corporate-actions') return json({ corporate_actions: [] });
     return json({ message: 'unexpected' }, 404);
@@ -47,8 +45,8 @@ test('probes only read-only evidence endpoints and preserves entitlement limits'
   assert.equal(availability.CURRENT_OPTION_SNAPSHOTS_INDICATIVE, 'AVAILABLE_WITH_LIMITS');
   assert.equal(availability.CURRENT_OPTION_GREEKS_INDICATIVE, 'AVAILABLE_WITH_LIMITS');
   assert.equal(availability.CURRENT_OPTION_SNAPSHOTS_OPRA, 'NOT_ENTITLED');
-  assert.equal(availability.HISTORICAL_OPTION_BARS_INDICATIVE, 'AVAILABLE_WITH_LIMITS');
-  assert.equal(availability.HISTORICAL_OPTION_TRADES_OPRA, 'NOT_ENTITLED');
+  assert.equal(availability.HISTORICAL_OPTION_BARS, 'AVAILABLE_WITH_LIMITS');
+  assert.equal(availability.HISTORICAL_OPTION_TRADES, 'AVAILABLE_WITH_LIMITS');
   assert.equal(availability.HISTORICAL_OPTION_BBO, 'NOT_SUPPORTED');
   assert.equal(availability.HISTORICAL_OPTION_GREEKS, 'NOT_SUPPORTED');
   assert.equal(calls.some((call) => call.includes('/v2/orders')), false);
@@ -75,5 +73,5 @@ test('does not guess historical requests without an observed contract identity',
   }, new Date('2026-09-12T12:00:00Z'));
   assert.equal(calls.includes('/v1beta1/options/bars'), false);
   assert.equal(calls.includes('/v1beta1/options/trades'), false);
-  assert.equal(results.find((result) => result.capability === 'HISTORICAL_OPTION_BARS_INDICATIVE')?.availability, 'UNVERIFIED');
+  assert.equal(results.find((result) => result.capability === 'HISTORICAL_OPTION_BARS')?.availability, 'UNVERIFIED');
 });

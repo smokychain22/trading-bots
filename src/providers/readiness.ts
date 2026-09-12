@@ -350,12 +350,12 @@ export async function checkAlpacaEvidenceCapabilities(
 
   const historical = async (
     kind: 'bars' | 'trades',
-    feed: 'indicative' | 'opra',
+    limitedByCurrentEntitlement: boolean,
   ): Promise<EvidenceCapabilityResult> => {
     const symbol = indicative.contractSymbol;
     if (symbol === null) {
       return {
-        provider: 'ALPACA', capability: `HISTORICAL_OPTION_${kind.toUpperCase()}_${feed.toUpperCase()}`,
+        provider: 'ALPACA', capability: `HISTORICAL_OPTION_${kind.toUpperCase()}`,
         operationAlias: `alpaca.get_option_${kind}`, availability: 'UNVERIFIED', httpStatus: null,
         observedAt: observedAt(), retrievedAt: observedAt(), latencyMs: null,
         provenance: alpacaProvenance(new URL(config.marketDataApiBase).host, `/v1beta1/options/${kind}`),
@@ -363,17 +363,19 @@ export async function checkAlpacaEvidenceCapabilities(
       };
     }
     const url = new URL(`/v1beta1/options/${kind}`, config.marketDataApiBase);
-    const query: Record<string, string> = { symbols: symbol, start, end, feed, limit: '10' };
+    const query: Record<string, string> = { symbols: symbol, start, end, limit: '10' };
     if (kind === 'bars') query.timeframe = '1Day';
     url.search = new URLSearchParams(query).toString();
     return readEvidenceJson(
-      config, `HISTORICAL_OPTION_${kind.toUpperCase()}_${feed.toUpperCase()}`,
-      `alpaca.get_option_${kind}`, url, feed === 'indicative',
+      config, `HISTORICAL_OPTION_${kind.toUpperCase()}`,
+      `alpaca.get_option_${kind}`, url, limitedByCurrentEntitlement,
       (body) => {
         const record = object(body);
         const observationsByContract = object(record[kind]);
         return {
-          requestedFeed: feed, exactContractRequested: true,
+          feedParameterSent: false,
+          effectiveFeed: limitedByCurrentEntitlement ? 'INDICATIVE' : 'ACCOUNT_DEFAULT',
+          exactContractRequested: true,
           contractCount: Object.keys(observationsByContract).length,
           observationCount: Object.values(observationsByContract).reduce<number>(
             (count, observations) => count + (Array.isArray(observations) ? observations.length : 0), 0,
@@ -384,9 +386,12 @@ export async function checkAlpacaEvidenceCapabilities(
     );
   };
 
-  const [barsIndicative, barsOpra, tradesIndicative, tradesOpra] = await Promise.all([
-    historical('bars', 'indicative'), historical('bars', 'opra'),
-    historical('trades', 'indicative'), historical('trades', 'opra'),
+  // The official historical bars/trades contracts do not accept a feed query
+  // parameter. The account-default feed is therefore probed once. A current
+  // OPRA entitlement failure makes that default known to be INDICATIVE.
+  const historicalIsLimited = opra.result.availability === 'NOT_ENTITLED';
+  const [historicalBars, historicalTrades] = await Promise.all([
+    historical('bars', historicalIsLimited), historical('trades', historicalIsLimited),
   ]);
   const corporateActionsUrl = new URL('/v1/corporate-actions', config.marketDataApiBase);
   corporateActionsUrl.search = new URLSearchParams({
@@ -401,7 +406,7 @@ export async function checkAlpacaEvidenceCapabilities(
     stockBars, contracts, indicative.result, opra.result,
     greeksResult('INDICATIVE', indicative.result, indicative.greeksObserved),
     greeksResult('OPRA', opra.result, opra.greeksObserved),
-    barsIndicative, barsOpra, tradesIndicative, tradesOpra,
+    historicalBars, historicalTrades,
     unsupportedEvidenceCapability(
       'HISTORICAL_OPTION_BBO', 'alpaca.historical_option_quotes',
       '/us/docs/options-trading-overview#market-data',

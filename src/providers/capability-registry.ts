@@ -72,6 +72,15 @@ export async function persistProviderCapabilities(
   try {
     await client.query('BEGIN');
     const providerConnectionId = await ensureConnection(client, provider);
+    if (provider === 'ALPACA' && results.some((result) => result.capability === 'HISTORICAL_OPTION_BARS')) {
+      await client.query(
+        `DELETE FROM core.provider_capability WHERE provider_connection_id=$1 AND capability_code = ANY($2::text[])`,
+        [providerConnectionId, [
+          'HISTORICAL_OPTION_BARS_INDICATIVE', 'HISTORICAL_OPTION_BARS_OPRA',
+          'HISTORICAL_OPTION_TRADES_INDICATIVE', 'HISTORICAL_OPTION_TRADES_OPRA',
+        ]],
+      );
+    }
     for (const result of results) {
       if (result.provider !== provider) throw new Error('PROVIDER_CAPABILITY_RESULT_MISMATCH');
       await client.query(
