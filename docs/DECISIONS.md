@@ -407,3 +407,22 @@ portfolio risk, then new-risk discovery. Existing breaches require `MANAGEMENT_F
 Unknown pre-existing risk produces a system hold. Broker FILL activities are persisted
 idempotently as immutable fill facts. Assignment and expiration reach the atomic writer
 only when consecutive position snapshots and broker activity agree.
+
+## 2026-09-12: local shadow supervision keeps Production secrets in Vercel
+
+The Windows laptop runs one pinned Task Scheduler supervisor that calls the authenticated
+Production shadow endpoint once per minute. The laptop stores only an ignored random
+trigger token. Alpaca, Optionomics, encryption, and Neon credentials stay in Vercel.
+Neon owns the singleton lease, heartbeat, cycle state, resume gaps, and immutable runtime
+events. A current local lease blocks competing manual Production cycles. The supervisor
+is pinned to a clean `origin/main` SHA and all execution gates remain locked.
+
+## 2026-09-12: follower plans require confirmed master evidence
+
+The disabled copy planner accepts only a real master fill or broker-confirmed lifecycle
+activity. Order-producing master actions require a fill. Rolls must arrive as explicit
+close-old and open-new events, with lineage, rather than one opaque roll event. Every
+follower is checked against its own active account, policy, capital, assignment capacity,
+concentration, BBO, and freshness evidence. Quantity zero remains valid. Persisted
+follower order intents are `PLANNED` with `execution_authorized=false`, and no broker
+submission surface is called.

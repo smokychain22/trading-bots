@@ -13,11 +13,13 @@ from research.dataset_readiness import (  # noqa: E402
     DependenceGroupKey,
     EvidenceSourceLabel,
     ExperimentConfig,
+    ResearchPaperReadinessCheck,
     SufficiencyThresholds,
     assess_model_fit_sufficiency,
     build_dependence_groups,
     classify_dataset_readiness,
     effective_sample_size,
+    research_ready_for_paper,
     run_empirical_program,
     slice_by_branch,
 )
@@ -174,6 +176,29 @@ class RunEmpiricalProgramTests(unittest.TestCase):
 
         result = run_empirical_program("fake-export", self._config(), SufficiencyReport(eligible=True, reasons=[]))
         self.assertNotIn("OOS_EVALUATION", result.eligible_experiments)
+
+
+class ResearchReadyForPaperTests(unittest.TestCase):
+    def _check(self, **overrides):
+        values = dict(
+            branch_supported=True, cohort_supported=True, oos_ev_positive=True,
+            tail_acceptable=True, calibration_acceptable=True,
+            execution_assumptions_survive=True, uncertainty_acceptable=True,
+            no_subgroup_collapse=True,
+        )
+        values.update(overrides)
+        return ResearchPaperReadinessCheck(**values)
+
+    def test_every_dimension_must_pass(self):
+        self.assertTrue(research_ready_for_paper(self._check()))
+        self.assertFalse(research_ready_for_paper(self._check(tail_acceptable=False)))
+
+    def test_unknown_empirical_dimensions_never_default_to_ready(self):
+        self.assertFalse(research_ready_for_paper(self._check(
+            oos_ev_positive=None, tail_acceptable=None, calibration_acceptable=None,
+            execution_assumptions_survive=None, uncertainty_acceptable=None,
+            no_subgroup_collapse=None,
+        )))
 
 
 if __name__ == "__main__":

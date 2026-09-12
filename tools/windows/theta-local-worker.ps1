@@ -57,7 +57,8 @@ try {
 } finally {
   try {
     if ($token.Length -ge 32) {
-      $headers = @{ Authorization="Bearer $token"; 'X-Theta-Worker-Id'=$runtime.workerId }
+      $headers = @{ Authorization="Bearer $token"; 'X-Theta-Worker-Id'=$runtime.workerId;
+        'X-Theta-Host-Id'=$env:COMPUTERNAME; 'X-Theta-Build-Sha'=$runtime.buildSha }
       Invoke-RestMethod -Method Delete -Uri $runtime.endpoint -Headers $headers -TimeoutSec 15 | Out-Null
     }
   } catch {}

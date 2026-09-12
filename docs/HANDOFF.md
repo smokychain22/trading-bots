@@ -875,3 +875,57 @@ Production schema authority remains TypeScript/PostgreSQL.
 NEXT RECOMMENDED TASK: Run the first authenticated SHADOW cycle during an open confirmed
 market session, inspect its first evidence audit, then accumulate enough resolved Paper
 episodes for descriptive audit before any model fitting or strategy promotion.
+
+## 2026-09-12 rapid closure: pinned laptop shadow runtime and disabled copy planning
+
+OWNER: Codex
+
+TASK: Close R1/R2 engineering, activate continuous read-only shadow collection on the
+owner's Windows laptop, and advance safe R3/R4/R5 work without crossing the order boundary.
+
+FILES CHANGED: Migrations 020 and 021, local worker runtime/lease store, authenticated
+shadow handler, Windows Task Scheduler scripts, operator readiness UI, environment loader,
+disabled copy planner, R6 quality reporting, database verification, tests, decisions, and
+this handoff.
+
+WHAT WAS IMPLEMENTED: A clean, pinned `origin/main` checkout now drives a one-minute
+Windows Task Scheduler supervisor. It authenticates to Vercel with an ignored trigger
+token, while provider, encryption, and Neon secrets remain server-side. Neon persists the
+singleton lease, heartbeat, market state, provider health, cycle count, sleep gaps, and
+immutable runtime events. The worker reconciles before scans, waits correctly while the
+market is closed, and has no broker mutation API. A disabled copy planner now requires a
+broker-confirmed master fill or lifecycle activity, rejects aggregate roll events in favor
+of explicit close/open legs, validates follower identity and active policy, persists each
+follower's own risk/BBO evidence, and creates only locked `PLANNED` intents.
+
+TESTS RUN: 625 Node tests passed, four disposable-database tests skipped locally. ESLint,
+TypeScript, Production build, browser suite, PowerShell parsing, security scan, Production
+Neon migrations/invariants, Vercel deployment, and GitHub CI passed. The live laptop task
+completed repeated authenticated cycles with Alpaca GOOD, database GOOD, market CLOSED,
+and execution LOCKED.
+
+TEST RESULTS: R1 engineering PASS. R2 lifecycle/replay PASS. R6 infrastructure PASS.
+R6 evidence remains BLOCKED_ON_DATA because the market is closed and point-in-time rows
+are still empty. R3 account architecture PASS. R4 disabled planning is PARTIAL because
+follower broker execution remains intentionally absent and no real follower account is
+connected. R5 operational status is PASS for the required owner heartbeat surface.
+
+KNOWN LIMITATIONS: No open-session cross-symbol scan exists yet. There are zero candidate
+rows, quote observations, resolved labels, master orders, follower orders, and broker
+fills. Optionomics remains UNKNOWN on market-closed reconciliation-only cycles. Historical
+option bars/trades do not establish historical decision-time Greeks or executable BBO
+without a separately verified entitlement and timestamp contract.
+
+RISKS: Continuous infrastructure does not prove positive expectancy. The EV, assignment,
+recovery, execution, and action-value models remain empirically unready. Laptop sleep or
+power loss creates explicit missed observations and resumes with reconciliation.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude `c2c75af` account-risk and copy-economics
+research is useful as research-only input. Its direction-agnostic price-deterioration sign
+is unsafe for option credits versus debits and needs repair before porting. Its Production
+loader firewall parity addition is valid. No wholesale branch merge occurred.
+
+NEXT RECOMMENDED TASK: Let the installed worker capture the first complete open-session
+cross-symbol scan, audit the first non-empty export, and accumulate resolved point-in-time
+episodes. Keep all order submission locked until the separate empirical promotion gate
+passes.
