@@ -266,31 +266,3 @@ def run_empirical_program(
         readiness_state=state, sufficiency=sufficiency, eligible_experiments=eligible,
         refused_experiments=refused, reproducibility_fingerprint=fingerprint,
     )
-
-
-@dataclass(frozen=True)
-class ResearchPaperReadinessCheck:
-    """Research recommendation only. This type cannot authorize an order."""
-
-    branch_supported: bool
-    cohort_supported: bool
-    oos_ev_positive: Optional[bool]
-    tail_acceptable: Optional[bool]
-    calibration_acceptable: Optional[bool]
-    execution_assumptions_survive: Optional[bool]
-    uncertainty_acceptable: Optional[bool]
-    no_subgroup_collapse: Optional[bool]
-
-
-def research_ready_for_paper(check: ResearchPaperReadinessCheck) -> bool:
-    """Every empirical dimension must be explicitly true. None is never a pass."""
-    return all([
-        check.branch_supported,
-        check.cohort_supported,
-        check.oos_ev_positive is True,
-        check.tail_acceptable is True,
-        check.calibration_acceptable is True,
-        check.execution_assumptions_survive is True,
-        check.uncertainty_acceptable is True,
-        check.no_subgroup_collapse is True,
-    ])

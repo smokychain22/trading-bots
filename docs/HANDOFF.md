@@ -920,10 +920,12 @@ RISKS: Continuous infrastructure does not prove positive expectancy. The EV, ass
 recovery, execution, and action-value models remain empirically unready. Laptop sleep or
 power loss creates explicit missed observations and resumes with reconciliation.
 
-WHAT THE OTHER AGENT SHOULD REVIEW: Claude `c2c75af` account-risk and copy-economics
-research is useful as research-only input. Its direction-agnostic price-deterioration sign
-is unsafe for option credits versus debits and needs repair before porting. Its Production
-loader firewall parity addition is valid. No wholesale branch merge occurred.
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude `c2c75af` and `dd1d3c3` account-risk and
+copy-economics research is useful as research-only input. Its direction-agnostic
+price-deterioration sign remains unsafe for option credits versus debits and needs repair
+before porting. The latest manifest also supersedes its earlier eight-factor Paper gate,
+so that obsolete subset was not retained. Its Production loader firewall parity addition
+is valid and was ported. No wholesale branch merge occurred.
 
 NEXT RECOMMENDED TASK: Let the installed worker capture the first complete open-session
 cross-symbol scan, audit the first non-empty export, and accumulate resolved point-in-time
