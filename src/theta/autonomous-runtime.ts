@@ -192,8 +192,12 @@ export async function runAutonomousRuntimeCycle(
     const kind = record.jobKind as JobType;
     return separator > 0 ? [{ jobType: kind, correlationKey: record.jobId.slice(separator + 1) }] : [];
   });
-  const jobs = [...recoveredJobs, ...scheduledJobs(bucket)].filter((job, index, all) =>
-    all.findIndex((candidate) => candidate.jobType === job.jobType && candidate.correlationKey === job.correlationKey) === index);
+  // Run at most one logical job per family in a cycle. Historical failed
+  // minute buckets are reconciled one at a time and suppress a fresh job of
+  // the same family, preventing a restart from creating a retry storm.
+  const recoveredByType=new Map<JobType,DueJob>();
+  for(const job of recoveredJobs)if(!recoveredByType.has(job.jobType))recoveredByType.set(job.jobType,job);
+  const jobs=[...recoveredByType.values(),...scheduledJobs(bucket).filter((job)=>!recoveredByType.has(job.jobType))];
   let reconciliation: BrokerReconciliationResult | null = null;
   const retryAt = new Date(now.getTime() + 60_000).toISOString();
 

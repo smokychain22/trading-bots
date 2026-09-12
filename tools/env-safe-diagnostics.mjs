@@ -44,5 +44,13 @@ console.info(
       alpacaBase: Boolean(process.env.ALPACA_BASE_URL),
       optionomicsEmail: Boolean(process.env.OPTIONOMICS_EMAIL),
     },
+    sensitivePresence: Object.fromEntries([
+      "CRON_SECRET", "PAPER_COPY_TOKEN_ENCRYPTION_KEY", "ALPACA_API_KEY",
+      "ALPACA_SECRET_KEY", "OPTIONOMICS_API_KEY",
+    ].map((name) => [name, {
+      present: typeof values[name] === "string" && values[name].length > 0,
+      length: typeof values[name] === "string" ? values[name].length : 0,
+      redacted: values[name] === "[SENSITIVE]",
+    }])),
   }),
 );

@@ -93,6 +93,7 @@ tmp/
 .vercel/
 test-results/
 playwright-report/
+.theta-local-worker/
 
 .vercel
 .env*

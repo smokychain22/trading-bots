@@ -1,11 +1,14 @@
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { hostname } from 'node:os';
 import { Pool } from 'pg';
 import pino, { type Logger } from 'pino';
 import type { Environment } from '../config/environment.js';
 import { assertAutonomousWorkerConfiguration } from '../config/environment.js';
 import { runAutonomousRuntimeCycle, type AutonomousRuntimeReport } from '../theta/autonomous-runtime.js';
+import type { WorkerRuntimeState, WorkerRuntimeStore } from './postgres-worker-runtime-store.js';
 
 export const externalWorkerHostState = 'EXTERNAL_WORKER_HOST_DEFERRED_UNTIL_PAPER_READINESS' as const;
 
@@ -25,6 +28,13 @@ export interface WorkerHealth {
   readonly executionGate: 'LOCKED';
   readonly alwaysOnWorker: 'NOT_YET_DEPLOYED';
   readonly hostState: typeof externalWorkerHostState;
+  readonly runtimeState: WorkerRuntimeState;
+  readonly workerId: string;
+  readonly hostId: string;
+  readonly buildSha: string;
+  readonly leaseOwned: boolean;
+  readonly currentDelayMs: number;
+  readonly lastResumeGap: { readonly startedAt:string;readonly resumedAt:string;readonly missedObservations:number }|null;
 }
 
 type Timer = ReturnType<typeof setTimeout>;
@@ -59,7 +69,13 @@ export class ResidentThetaWorker {
   private timer: Timer | null = null;
   private activeCycle: Promise<AutonomousRuntimeReport | null> | null = null;
   private server: Server | null = null;
+  private heartbeatTimer: Timer | null = null;
   private stopping = false;
+  private leaseOwned = false;
+  private scheduledForAt: number | null = null;
+  private readonly workerId: string;
+  private readonly hostId: string;
+  private readonly buildSha: string;
 
   constructor(
     private readonly environment: Environment,
@@ -67,12 +83,19 @@ export class ResidentThetaWorker {
     private readonly runner: WorkerCycleRunner = runAutonomousRuntimeCycle,
     private readonly logger: Logger = redactedLogger(),
     private readonly now: () => Date = () => new Date(),
+    private readonly runtimeStore: WorkerRuntimeStore | null = null,
+    identity?: {readonly workerId?:string;readonly hostId?:string;readonly buildSha?:string},
   ) {
+    this.hostId=identity?.hostId??hostname();
+    this.workerId=identity?.workerId??`${this.hostId}:${randomUUID()}`;
+    this.buildSha=identity?.buildSha??environment.THETA_BUILD_SHA??'unknown-build';
     this.health = {
       status: 'STARTING', runningCycle: false, pythonReady: false,
       databaseConfigured: Boolean(environment.DATABASE_URL), lastCycleStartedAt: null,
       lastCycleCompletedAt: null, lastCycleStatus: null, consecutiveFailures: 0,
       executionGate: 'LOCKED', alwaysOnWorker: 'NOT_YET_DEPLOYED', hostState: externalWorkerHostState,
+      runtimeState:'STARTING',workerId:this.workerId,hostId:this.hostId,buildSha:this.buildSha,
+      leaseOwned:false,currentDelayMs:environment.THETA_WORKER_INTERVAL_MS,lastResumeGap:null,
     };
   }
 
@@ -93,8 +116,11 @@ export class ResidentThetaWorker {
       return null;
     }
     const startedAt = this.now();
-    this.health = { ...this.health, runningCycle: true, lastCycleStartedAt: startedAt.toISOString() };
-    const cycle = this.runner(this.environment, this.pool, startedAt);
+    this.health = { ...this.health, runningCycle: true, runtimeState:'RECONCILING',lastCycleStartedAt: startedAt.toISOString() };
+    const cycle = (async()=>{
+      await this.runtimeStore?.cycleStarted(this.workerId,startedAt.toISOString());
+      return this.runner(this.environment,this.pool,startedAt);
+    })();
     this.activeCycle = cycle;
     try {
       const report = await cycle;
@@ -103,7 +129,11 @@ export class ResidentThetaWorker {
         ...this.health, status: failed ? 'DEGRADED' : 'READY', runningCycle: false,
         lastCycleCompletedAt: this.now().toISOString(), lastCycleStatus: report.status,
         consecutiveFailures: failed ? this.health.consecutiveFailures + 1 : 0,
+        runtimeState:failed?'DEGRADED':report.reconciliation?.marketOpen===true?'SHADOW_RUNNING'
+          :report.reconciliation?.marketOpen===false?'WAITING_FOR_MARKET':'DEGRADED',
       };
+      this.health={...this.health,currentDelayMs:this.nextDelayMs()};
+      await this.runtimeStore?.cycleCompleted(this.workerId,report,this.health.lastCycleCompletedAt??this.now().toISOString());
       this.logger.info({
         event: 'cycle_complete', status: report.status, correlationId: report.correlationId,
         jobsAttempted: report.jobsAttempted, jobsCompleted: report.jobsCompleted,
@@ -115,7 +145,9 @@ export class ResidentThetaWorker {
         ...this.health, status: 'DEGRADED', runningCycle: false,
         lastCycleCompletedAt: this.now().toISOString(), lastCycleStatus: 'FAILED',
         consecutiveFailures: this.health.consecutiveFailures + 1,
+        runtimeState:'DEGRADED',
       };
+      this.health={...this.health,currentDelayMs:this.nextDelayMs()};
       this.logger.error({ event: 'cycle_failed', errorCode: safeErrorCode(error) }, 'THETA worker cycle failed');
       return null;
     } finally {
@@ -125,6 +157,26 @@ export class ResidentThetaWorker {
 
   async start(): Promise<void> {
     await this.initialize();
+    if(this.runtimeStore!==null){
+      if(this.environment.THETA_WORKER_HEARTBEAT_MS*2>=this.environment.THETA_WORKER_LEASE_MS)
+        throw new Error('WORKER_HEARTBEAT_MUST_BE_LESS_THAN_HALF_LEASE');
+      const startedAt=this.now();
+      const previousHeartbeat=await this.runtimeStore.register({workerId:this.workerId,hostId:this.hostId,
+        buildSha:this.buildSha,startedAt:startedAt.toISOString(),strategyVersions:['theta-shadow-once-v1']});
+      const expiry=new Date(startedAt.getTime()+this.environment.THETA_WORKER_LEASE_MS).toISOString();
+      const acquired=await this.runtimeStore.acquireLease(this.workerId,startedAt.toISOString(),expiry);
+      if(acquired==='HELD_BY_OTHER')throw new Error('PRIMARY_SHADOW_WORKER_LEASE_HELD');
+      this.leaseOwned=true;
+      this.health={...this.health,leaseOwned:true};
+      if(previousHeartbeat!==null){
+        const gapMs=startedAt.getTime()-Date.parse(previousHeartbeat);
+        if(Number.isFinite(gapMs)&&gapMs>this.environment.THETA_WORKER_INTERVAL_MS*2){
+          const missed=await this.runtimeStore.recordResumeGap(this.workerId,previousHeartbeat,startedAt.toISOString());
+          this.health={...this.health,lastResumeGap:{startedAt:previousHeartbeat,resumedAt:startedAt.toISOString(),missedObservations:missed}};
+        }
+      }
+      this.startHeartbeat();
+    }
     await this.listen();
     await this.runOnce();
     this.scheduleNext();
@@ -132,10 +184,40 @@ export class ResidentThetaWorker {
 
   private scheduleNext(): void {
     if (this.stopping) return;
+    const delay=this.nextDelayMs();
+    this.scheduledForAt=Date.now()+delay;
+    this.health={...this.health,currentDelayMs:delay};
     this.timer = setTimeout(() => {
+      const firedAt=Date.now();
+      if(this.scheduledForAt!==null&&firedAt-this.scheduledForAt>this.environment.THETA_WORKER_INTERVAL_MS){
+        this.logger.warn({event:'resume_gap_detected'},'THETA worker detected a timer gap and will reconcile before continuing');
+      }
       void this.runOnce().finally(() => this.scheduleNext());
-    }, this.environment.THETA_WORKER_INTERVAL_MS);
+    }, delay);
     this.timer.unref();
+  }
+
+  private nextDelayMs():number{
+    const exponent=Math.min(this.health.consecutiveFailures,4);
+    return Math.min(900_000,this.environment.THETA_WORKER_INTERVAL_MS*(2**exponent));
+  }
+
+  private startHeartbeat():void{
+    this.heartbeatTimer=setInterval(()=>{
+      if(this.stopping||!this.leaseOwned||this.runtimeStore===null)return;
+      const at=this.now();
+      const expiry=new Date(at.getTime()+this.environment.THETA_WORKER_LEASE_MS).toISOString();
+      void this.runtimeStore.heartbeat(this.workerId,at.toISOString(),expiry,this.health.runtimeState).then((owned)=>{
+        if(owned)return;
+        this.leaseOwned=false;
+        this.health={...this.health,leaseOwned:false,status:'DEGRADED',runtimeState:'ERROR'};
+        this.logger.error({event:'primary_lease_lost'},'THETA worker lost the primary shadow lease');
+        void this.stop('PRIMARY_SHADOW_WORKER_LEASE_LOST');
+      }).catch(()=>{
+        this.health={...this.health,status:'DEGRADED',runtimeState:'DEGRADED'};
+      });
+    },this.environment.THETA_WORKER_HEARTBEAT_MS);
+    this.heartbeatTimer.unref();
   }
 
   private async listen(): Promise<void> {
@@ -162,15 +244,19 @@ export class ResidentThetaWorker {
     this.logger.info({ event: 'worker_listening', port: address?.port ?? this.environment.THETA_WORKER_PORT, executionGate: 'LOCKED' }, 'THETA resident worker started');
   }
 
-  async stop(): Promise<void> {
+  async stop(reason?:string): Promise<void> {
     if (this.stopping) return;
     this.stopping = true;
-    this.health = { ...this.health, status: 'STOPPING' };
+    this.health = { ...this.health, status: 'STOPPING',runtimeState:'STOPPING' };
+    await this.runtimeStore?.stop(this.workerId,this.now().toISOString(),'STOPPING',reason).catch(()=>undefined);
     if (this.timer !== null) clearTimeout(this.timer);
+    if (this.heartbeatTimer !== null) clearInterval(this.heartbeatTimer);
     if (this.activeCycle !== null) await this.activeCycle.catch(() => null);
     if (this.server !== null) await new Promise<void>((resolve) => this.server?.close(() => resolve()));
+    await this.runtimeStore?.stop(this.workerId,this.now().toISOString(),reason?'ERROR':'OFFLINE',reason).catch(()=>undefined);
     await this.pool.end();
-    this.health = { ...this.health, status: 'STOPPED', runningCycle: false };
+    this.leaseOwned=false;
+    this.health = { ...this.health, status: 'STOPPED', runtimeState:reason?'ERROR':'OFFLINE',runningCycle: false,leaseOwned:false };
   }
 }
 

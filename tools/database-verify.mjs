@@ -24,6 +24,7 @@ try {
     "017_management_decision_vertical_slice",
     "018_point_in_time_evidence_pipeline",
     "019_real_shadow_evidence_activation",
+    "020_local_worker_runtime",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -50,6 +51,8 @@ try {
     ["trade", "decision_invalidation_snapshot"],
     ["research", "theta_shadow_scan_run"], ["research", "theta_shadow_scan_member"],
     ["research", "theta_execution_observation_job"],
+    ["ops", "runtime_worker_status"], ["ops", "runtime_worker_lease"],
+    ["ops", "runtime_worker_event"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -103,6 +106,13 @@ try {
   const runtimeProtection = runtimeEvidence.rows[0];
   if (!runtimeProtection?.lease_evidence || !runtimeProtection?.runtime_version || !runtimeProtection?.anti_leakage || !runtimeProtection?.immutable_reconciliation)
     throw new Error("AUTONOMOUS_RUNTIME_PROTECTION_MISSING");
+  const localWorkerProtection = await client.query(`SELECT
+    EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='ops'
+      AND trigger_name='reject_immutable_mutation' AND event_object_table='runtime_worker_event') AS immutable_events,
+    EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='ops'
+      AND table_name='runtime_worker_status' AND constraint_type='CHECK') AS state_checks`);
+  if (!localWorkerProtection.rows[0]?.immutable_events || !localWorkerProtection.rows[0]?.state_checks)
+    throw new Error("LOCAL_WORKER_RUNTIME_PROTECTION_MISSING");
   const lifecycleEvidence = await client.query(`SELECT
     EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade' AND trigger_name='reject_immutable_mutation' AND event_object_table='broker_position_snapshot') AS immutable_positions,
     EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade' AND trigger_name='protect_broker_activity_fact' AND event_object_table='broker_activity_fact') AS protected_activities`);
@@ -140,6 +150,7 @@ try {
     managementDecisionVerticalSlice: "ENFORCED",
     pointInTimeEvidencePipeline: "ENFORCED",
     realShadowEvidenceActivation: "ENFORCED",
+    localWorkerRuntime: "ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
     brokerOrders: orderCount.rows[0]?.count ?? 0,

@@ -106,6 +106,16 @@ test('Vercel redaction markers never override real process values', () => {
   }
 });
 
+test('empty dotenv placeholders never override securely injected process values',()=>{
+  const filePath='tests/.environment-precedence.env';
+  writeFileSync(filePath,'CRON_SECRET=\nOPTIONOMICS_EMAIL=\n');
+  try{
+    const environment=loadEnvironmentFile(filePath,{CRON_SECRET:'x'.repeat(40),OPTIONOMICS_EMAIL:'ops@example.com'});
+    assert.equal(environment.CRON_SECRET,'x'.repeat(40));
+    assert.equal(environment.OPTIONOMICS_EMAIL,'ops@example.com');
+  }finally{unlinkSync(filePath);}
+});
+
 test('Vercel redaction markers without a real fallback fail closed', () => {
   const filePath = 'tests/.environment-precedence.env';
   writeFileSync(filePath, 'ALPACA_API_KEY="[SENSITIVE]"\nPAPER_PAUSE_NEW_ORDERS="[SENSITIVE]"\n');

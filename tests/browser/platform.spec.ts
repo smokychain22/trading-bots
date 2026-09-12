@@ -279,11 +279,29 @@ test("ops requires a server session and shows partial runtime honestly", async (
   await page.goto("/bots");
   await expect(page.getByRole("link", { name: /ops|admin|owner/i })).toHaveCount(0);
   await page.goto("/ops/login");
+  await page.route("**/api/v1/operator/status", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.local_worker = {
+      configured: true, online: true, state: "WAITING_FOR_MARKET", host_type: "LOCAL_LAPTOP",
+      runtime_mode: "THETA_LOCAL_SHADOW", build_sha: "38f1f6e", last_heartbeat: "2026-09-12T14:00:00Z",
+      last_cycle_started: "2026-09-12T13:59:50Z", last_cycle_completed: "2026-09-12T14:00:00Z",
+      last_reconciliation: "2026-09-12T14:00:00Z", last_candidate_scan: null, market_session: "CLOSED",
+      alpaca_health: "GOOD", optionomics_health: "UNKNOWN", database_health: "GOOD", execution_gate: "LOCKED",
+      failure_reason: null,
+    };
+    body.data.systems.theta_runtime = "LOCAL_SHADOW_RUNNING";
+    body.data.systems.scheduler = "RUNNING";
+    body.data.runtime_detail.stage = "THETA_LOCAL_SHADOW";
+    await route.fulfill({ response, json: body });
+  });
   await page.getByLabel("Operator access key").fill("synthetic-browser-test-operator-access-only");
   await page.getByRole("button", { name: "Open operations" }).click();
   await expect(page).toHaveURL(/\/ops$/);
   await expect(page.getByRole("heading", { name: "Operations overview" })).toBeVisible();
   await expect(page.locator("main")).toContainText("Order submission remains locked");
+  await expect(page.locator("main")).toContainText("Local laptop");
+  await expect(page.locator("main")).toContainText("THETA LOCAL SHADOW");
   await expect(page.getByRole("navigation", { name: "Operations" }).getByRole("link")).toHaveCount(5);
   for (const route of ["/ops/theta", "/ops/trading", "/ops/copy", "/ops/system"]) {
     await page.goto(route);

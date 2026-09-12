@@ -33,7 +33,10 @@ const environmentSchema = z.object({
   THETA_RUNTIME_MODE: z.literal('THETA_SHADOW_ONLY').default('THETA_SHADOW_ONLY'),
   THETA_WORKER_PORT: z.coerce.number().int().min(1).max(65_535).default(3001),
   THETA_WORKER_INTERVAL_MS: z.coerce.number().int().min(10_000).max(900_000).default(60_000),
+  THETA_WORKER_HEARTBEAT_MS: z.coerce.number().int().min(5_000).max(60_000).default(15_000),
+  THETA_WORKER_LEASE_MS: z.coerce.number().int().min(30_000).max(300_000).default(120_000),
   THETA_PYTHON_EXECUTABLE: z.string().min(1).default('python3'),
+  THETA_BUILD_SHA: z.string().regex(/^[0-9a-f]{7,40}$/).optional(),
   CRON_SECRET: z.string().min(32).optional(),
   VERCEL_PROJECT_ID: z.string().min(1).optional(),
   VERCEL_ORG_ID: z.string().min(1).optional(),
@@ -44,7 +47,7 @@ export type Environment = z.infer<typeof environmentSchema>;
 export type ProviderName = 'ALPACA' | 'OPTIONOMICS';
 
 export const environmentPrecedence = [
-  'explicit dotenv file parsed by dotenv, excluding the exact Vercel redaction sentinel',
+  'explicit non-empty dotenv values parsed by dotenv, excluding the exact Vercel redaction sentinel',
   'process environment fallback',
   'schema defaults'
 ] as const;
@@ -62,7 +65,7 @@ export const loadEnvironmentFile = (
   // Ignore only the exact marker. Never strip quotes or mutate arbitrary
   // secret values here. dotenv already owns quote parsing.
   const fileSource = Object.fromEntries(
-    Object.entries(parse(readFileSync(filePath))).filter(([, value]) => value !== VERCEL_REDACTED_VALUE),
+    Object.entries(parse(readFileSync(filePath))).filter(([, value]) => value !== '' && value !== VERCEL_REDACTED_VALUE),
   );
   const safeProcessSource = Object.fromEntries(
     Object.entries(processSource).filter(([, value]) => value !== VERCEL_REDACTED_VALUE),

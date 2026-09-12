@@ -28,6 +28,7 @@ import {
 import { checkDatabaseReadiness } from "./database-readiness.js";
 import {
   privatePaperBetaReadiness,
+  readLocalWorkerReadiness,
   verifyOptionomicsConnection,
 } from "./operator-readiness.js";
 import { executionMode } from "../execution/execution-control.js";
@@ -473,7 +474,9 @@ export default async function customerHandler(
       const oauth = oauthConfiguration(environment);
       const privateBeta = privatePaperApiKeyConfiguration(environment);
       const connectionConfigured = oauth.configured || privateBeta.configured;
-      const database = await checkDatabaseReadiness(environment.DATABASE_URL);
+      const [database,localWorker] = await Promise.all([
+        checkDatabaseReadiness(environment.DATABASE_URL),readLocalWorkerReadiness(environment.DATABASE_URL),
+      ]);
       const executionControl = {
         masterEnabled: environment.MASTER_PAPER_EXECUTION_ENABLED,
         followerEnabled: environment.FOLLOWER_PAPER_EXECUTION_ENABLED,
@@ -494,7 +497,7 @@ export default async function customerHandler(
           deployment_sha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
           provider_runtime: "UNKNOWN",
           systems: {
-            theta_runtime: "REAL_INPUT_READY_NOT_SCHEDULED",
+            theta_runtime: localWorker.online ? "LOCAL_SHADOW_RUNNING" : "LOCAL_SHADOW_OFFLINE",
             quant_models: "HEALTHY",
             python_bridge: "HEALTHY",
             strategy_router: "HEALTHY",
@@ -503,11 +506,11 @@ export default async function customerHandler(
             alpaca_master_paper: masterConnectionMetadata().connection_state,
             market_data: "UNKNOWN",
             option_data: "UNKNOWN",
-            scheduler: "NOT_RUNNING",
+            scheduler: localWorker.online ? "RUNNING" : "OFFLINE",
             aegis: "PARTIAL_REAL_INPUTS",
             execution: "PAPER_ADAPTER_READY_EXECUTION_LOCKED",
             ledger: database.state === "CONNECTED" ? "READY" : "SCHEMA_READY_DATABASE_REQUIRED",
-            reconciliation: database.state === "CONNECTED" ? "READY_NOT_RUNNING" : "CONTRACT_READY_DATABASE_REQUIRED",
+            reconciliation: localWorker.last_reconciliation ? "RUNNING" : database.state === "CONNECTED" ? "READY_NOT_RUNNING" : "CONTRACT_READY_DATABASE_REQUIRED",
             customer_iam: database.customer_iam ? "READY" : "BLOCKED",
             database: database.state,
             alpaca_oauth: oauth.configured ? "READY" : "BLOCKED",
@@ -518,11 +521,11 @@ export default async function customerHandler(
             system_errors: "UNKNOWN",
           },
           runtime_detail: {
-            stage: "REAL_INPUT_READY_NOT_SCHEDULED",
+            stage: localWorker.online ? "THETA_LOCAL_SHADOW" : "REAL_INPUT_READY_NOT_SCHEDULED",
             policy_version: null,
             model_versions: ["theta-q-v0", "quant contract baselines"],
             last_market_snapshot: null,
-            last_scan: null,
+            last_scan: localWorker.last_candidate_scan,
             last_decision: null,
             next_scan: null,
             candidates_evaluated: null,
@@ -533,8 +536,9 @@ export default async function customerHandler(
             open_positions: null,
             pending_orders: null,
             unknown_submissions: null,
-            reconciliation: database.state === "CONNECTED" ? "READY_NOT_RUNNING" : "DATABASE_REQUIRED",
+            reconciliation: localWorker.last_reconciliation ?? (database.state === "CONNECTED" ? "READY_NOT_RUNNING" : "DATABASE_REQUIRED"),
           },
+          local_worker: localWorker,
           execution_control: {
             environment: "PAPER",
             live_host_allowed: false,
@@ -558,7 +562,7 @@ export default async function customerHandler(
           published_performance: false,
           gates: [
             "Real event-state assembly and remaining AEGIS exposure families are incomplete",
-            "Shadow decision receipts are not yet persisted by a production scheduler",
+            ...(localWorker.online ? [] : ["The local shadow worker is offline"]),
             "OPRA entitlement not established for future execution",
             ...(database.state === "CONNECTED" ? [] : ["Production PostgreSQL is required for durable order and reconciliation workers"]),
             "First PAPER order requires separate owner authorization after a genuine preview",

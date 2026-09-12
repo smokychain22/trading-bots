@@ -4,9 +4,12 @@ type ReadinessState='YES'|'NO'|'PARTIAL'|'BLOCKED';
 export interface R6DataQualityReport {
   readonly evidenceRows:number; readonly decisionCycles:number; readonly candidateSets:number;
   readonly underlyings:number; readonly contracts:number; readonly branches:number;
+  readonly marketSessions:number; readonly quoteObservations:number;
   readonly firstTimestamp:string|null; readonly lastTimestamp:string|null;
   readonly missingProviderFieldRate:number|null; readonly staleCandidateRate:number|null;
   readonly partialScanRate:number|null; readonly waitRate:number|null;
+  readonly invalidQuoteRate:number|null; readonly providerFailureRate:number|null;
+  readonly observationMissedRate:number|null;
   readonly hardVetoDistribution:Readonly<Record<string,number>>;
   readonly softRejectionDistribution:Readonly<Record<string,number>>;
   readonly providerStateDistribution:Readonly<Record<string,number>>;
@@ -46,6 +49,7 @@ export async function buildR6ReadinessReceipt(pool:Pool):Promise<R6ReadinessRece
     (SELECT count(DISTINCT contract_json->>'underlying') FROM trade.candidate_point_in_time_evidence)::int AS underlyings,
     (SELECT count(DISTINCT contract_json->>'contractSymbol') FROM trade.candidate_point_in_time_evidence)::int AS contracts,
     (SELECT count(DISTINCT branch) FROM trade.candidate_point_in_time_evidence)::int AS branches,
+    (SELECT count(DISTINCT decision_time::date) FROM trade.candidate_point_in_time_evidence)::int AS market_sessions,
     (SELECT min(decision_time)::text FROM trade.candidate_point_in_time_evidence) AS first_at,
     (SELECT max(decision_time)::text FROM trade.candidate_point_in_time_evidence) AS last_at,
     (SELECT count(*) FROM research.theta_shadow_scan_run)::int AS scans_count,
@@ -59,6 +63,10 @@ export async function buildR6ReadinessReceipt(pool:Pool):Promise<R6ReadinessRece
     (SELECT count(*) FROM market.execution_quote_observation WHERE observation_role='SUBSEQUENT')::int AS subsequent_quotes,
     (SELECT count(*) FROM research.theta_execution_observation_job WHERE status='PENDING')::int AS pending_jobs,
     (SELECT count(*) FROM research.theta_execution_observation_job WHERE status='MISSED')::int AS missed_jobs,
+    (SELECT count(*) FROM market.execution_quote_observation)::int AS quote_count,
+    (SELECT count(*) FROM market.execution_quote_observation WHERE data_quality='INVALID')::int AS invalid_quotes,
+    (SELECT count(*) FROM research.theta_shadow_scan_member WHERE status='FAILED')::int AS provider_failures,
+    (SELECT count(*) FROM research.theta_shadow_scan_member)::int AS scan_members,
     (SELECT count(*) FROM trade.candidate_point_in_time_evidence WHERE EXISTS(
       SELECT 1 FROM jsonb_array_elements(provider_provenance_json) p WHERE p->>'state'='STALE'))::int AS stale_candidates,
     (SELECT count(*) FROM trade.candidate_point_in_time_evidence WHERE jsonb_array_length(unknown_economics_json)>0)::int AS missing_candidates`);
@@ -72,9 +80,12 @@ export async function buildR6ReadinessReceipt(pool:Pool):Promise<R6ReadinessRece
       LATERAL jsonb_array_elements(provider_provenance_json) p GROUP BY COALESCE(p->>'state','UNKNOWN') ORDER BY state`),
   ]);
   const quality:R6DataQualityReport={evidenceRows:pitCount,decisionCycles:num(c.decisions),candidateSets:num(c.sets_count),
-    underlyings:num(c.underlyings),contracts:num(c.contracts),branches:num(c.branches),firstTimestamp:c.first_at??null,lastTimestamp:c.last_at??null,
+    underlyings:num(c.underlyings),contracts:num(c.contracts),branches:num(c.branches),marketSessions:num(c.market_sessions),
+    quoteObservations:num(c.quote_count),firstTimestamp:c.first_at??null,lastTimestamp:c.last_at??null,
     missingProviderFieldRate:rate(num(c.missing_candidates),pitCount),staleCandidateRate:rate(num(c.stale_candidates),pitCount),
     partialScanRate:rate(num(c.partial_scans),scanCount),waitRate:rate(num(c.waits),num(c.all_decisions)),
+    invalidQuoteRate:rate(num(c.invalid_quotes),num(c.quote_count)),providerFailureRate:rate(num(c.provider_failures),num(c.scan_members)),
+    observationMissedRate:rate(num(c.missed_jobs),num(c.missed_jobs)+num(c.subsequent_quotes)+num(c.pending_jobs)),
     hardVetoDistribution:distribution(hard.rows,'code'),softRejectionDistribution:distribution(soft.rows,'code'),
     providerStateDistribution:distribution(providers.rows,'state')};
   const pointData=pitCount>0,liveCapture=pointData&&num(c.complete_scans)>0;
