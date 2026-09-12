@@ -268,3 +268,34 @@ def run_empirical_program(
         readiness_state=state, sufficiency=sufficiency, eligible_experiments=eligible,
         refused_experiments=refused, reproducibility_fingerprint=fingerprint,
     )
+
+
+@dataclass(frozen=True)
+class ResearchPaperReadinessCheck:
+    """R7 fast-forward: the research-side gate a branch must pass before
+    Claude's research would ever recommend "ready for first Paper" --
+    Claude never submits or activates anything itself; this is a
+    checklist output only, for Codex/owner to act on."""
+
+    branch_supported: bool
+    cohort_supported: bool
+    oos_ev_positive: Optional[bool]
+    tail_acceptable: Optional[bool]
+    calibration_acceptable: Optional[bool]
+    execution_assumptions_survive: Optional[bool]
+    uncertainty_acceptable: Optional[bool]
+    no_subgroup_collapse: Optional[bool]
+
+
+def research_ready_for_paper(check: ResearchPaperReadinessCheck) -> bool:
+    """Returns True only when EVERY dimension is explicitly True -- any
+    None (genuinely unknown, e.g. because no data exists yet) or False
+    makes the whole result False, never treated as a passing default.
+    This function's result is a RESEARCH RECOMMENDATION ONLY; Claude
+    never submits or activates a Paper order regardless of this value."""
+    return all([
+        check.branch_supported, check.cohort_supported, check.oos_ev_positive is True,
+        check.tail_acceptable is True, check.calibration_acceptable is True,
+        check.execution_assumptions_survive is True, check.uncertainty_acceptable is True,
+        check.no_subgroup_collapse is True,
+    ])

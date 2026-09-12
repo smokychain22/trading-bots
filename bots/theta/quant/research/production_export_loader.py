@@ -89,6 +89,10 @@ _FORBIDDEN_FEATURE_KEYS = frozenset({
     # R6H directive item 6 additions:
     "realizedpnl", "futurepnl", "outcome", "result", "assignedafter", "recoveredafter",
     "futurefill", "futurequote", "futurereturn",
+    # R6-mega-phase parity update: Codex's own forbidden-key set grew (origin/main
+    # diff of point-in-time-evidence.ts) to also include these bare terms --
+    # unioned here for the same reason as the original R6H set.
+    "future", "pnl", "realizedreturn",
 })
 
 
