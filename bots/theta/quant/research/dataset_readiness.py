@@ -14,7 +14,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Sequence
 
 from research.dataset_contracts import CensoringState, EconomicEpisode, ThetaStrategyBranch
-from research.production_export_loader import LoadedDatasetExport
+from research.production_export_loader import LoadedDatasetExport, canonical_json, sha256_hex
 
 
 class DatasetReadinessState(str, Enum):
@@ -253,8 +253,6 @@ def run_empirical_program(
 
     fingerprint = None
     if export is not None:
-        from research.reproducibility import _canonical_json, _sha256_hex
-
         identity = {
             "dataset_hash": config.dataset_hash, "target_version": config.target_version,
             "feature_version": config.feature_version, "strategy_branch": config.strategy_branch.value,
@@ -262,7 +260,7 @@ def run_empirical_program(
             "experiment_id": config.experiment_id, "hypothesis_id": config.hypothesis_id,
             "evidence_source": config.evidence_source.value,
         }
-        fingerprint = _sha256_hex(_canonical_json(identity))
+        fingerprint = sha256_hex(canonical_json(identity))
 
     return EmpiricalRunResult(
         readiness_state=state, sufficiency=sufficiency, eligible_experiments=eligible,
