@@ -227,6 +227,21 @@ export interface OptionomicsChainQuery {
   readonly strikeMax?: number;
 }
 
+export type OptionomicsFlowWindowHours = 8 | 24 | 48;
+
+export interface NormalizedOptionomicsFlowWindow {
+  readonly underlying: string;
+  readonly windowHours: OptionomicsFlowWindowHours;
+  readonly requestedFromUnixSeconds: number;
+  readonly requestedToUnixSeconds: number;
+  readonly resolution: '5m';
+  readonly netCalls: readonly unknown[];
+  readonly netPuts: readonly unknown[];
+  readonly retrievedAt: string;
+  readonly evidenceClass: 'RESEARCH_CONTEXT_ONLY';
+  readonly executableTruth: false;
+}
+
 function applyDocumentedChainQuery(url: URL, query: OptionomicsChainQuery): void {
   if (query.sessionDate !== undefined) url.searchParams.set('date', query.sessionDate);
   if (query.expirationDate !== undefined) url.searchParams.set('expiration_date', query.expirationDate);
@@ -342,6 +357,70 @@ export async function fetchOptionomicsOptionChain(
       value: { underlying: underlyingSymbol, retrievedAt, entries: body.filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object').map((e) => normalizeOneEntry(e, retrievedAt)), pagesFetched: 1, complete: true },
       httpStatus,
       retrievedAt,
+    };
+  } catch (error) {
+    if (error instanceof OptionomicsProviderError) {
+      return {
+        kind: 'REQUEST_ERROR', errorClass: error.errorClass, httpStatus: error.httpStatus, retrievedAt: now(),
+        detail: error.message, retryAfterSeconds: error.retryAfterSeconds, attemptCount: error.attemptCount,
+      };
+    }
+    return { kind: 'REQUEST_ERROR', errorClass: 'NETWORK_FAILURE', httpStatus: null, retrievedAt: now(), detail: 'Unknown error.', retryAfterSeconds: null, attemptCount: 1 };
+  }
+}
+
+/**
+ * Captures the documented Optionomics net-flow contract at one exact
+ * point in time. The raw provider points are retained because their
+ * timestamps and fields are evidence for later research. No directional
+ * interpretation is added here. In particular, call flow is never assumed
+ * bullish and put flow is never assumed bearish without aggressor evidence.
+ */
+export async function fetchOptionomicsNetFlowWindow(
+  config: OptionomicsProviderConfig,
+  underlyingSymbol: string,
+  windowHours: OptionomicsFlowWindowHours,
+  decisionTime: string,
+): Promise<OptionomicsFetchOutcome<NormalizedOptionomicsFlowWindow>> {
+  const now = config.now ?? defaultNow;
+  const requestedToUnixSeconds = Math.floor(Date.parse(decisionTime) / 1000);
+  if (!Number.isFinite(requestedToUnixSeconds)) {
+    return {
+      kind: 'REQUEST_ERROR', errorClass: 'INVALID_PROVIDER_RESPONSE', httpStatus: null, retrievedAt: now(),
+      detail: 'Decision time is not a valid timestamp.', retryAfterSeconds: null, attemptCount: 0,
+    };
+  }
+  const requestedFromUnixSeconds = requestedToUnixSeconds - windowHours * 3_600;
+  const url = new URL('/api/v1/flow/net', config.apiBase);
+  url.search = new URLSearchParams({
+    symbol: underlyingSymbol,
+    from: String(requestedFromUnixSeconds),
+    to: String(requestedToUnixSeconds),
+    resolution: '5m',
+  }).toString();
+  try {
+    const { body, httpStatus, retrievedAt } = await requestJsonBounded(config, url);
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+      return { kind: 'VALUE_UNKNOWN_AFTER_SUCCESS', httpStatus, retrievedAt, detail: `${url.pathname} returned a 2xx body that was not an object.` };
+    }
+    const record = body as Record<string, unknown>;
+    if (!Array.isArray(record.net_calls) || !Array.isArray(record.net_puts)) {
+      return { kind: 'VALUE_UNKNOWN_AFTER_SUCCESS', httpStatus, retrievedAt, detail: `${url.pathname} omitted the documented net_calls or net_puts arrays.` };
+    }
+    return {
+      kind: 'VALUE_PRESENT', httpStatus, retrievedAt,
+      value: {
+        underlying: underlyingSymbol,
+        windowHours,
+        requestedFromUnixSeconds,
+        requestedToUnixSeconds,
+        resolution: '5m',
+        netCalls: record.net_calls,
+        netPuts: record.net_puts,
+        retrievedAt,
+        evidenceClass: 'RESEARCH_CONTEXT_ONLY',
+        executableTruth: false,
+      },
     };
   } catch (error) {
     if (error instanceof OptionomicsProviderError) {

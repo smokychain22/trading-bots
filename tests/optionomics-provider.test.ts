@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   classifyProviderDisagreement,
+  fetchOptionomicsNetFlowWindow,
   fetchOptionomicsOptionChain,
   matchOptionomicsContractIdentity,
   type AlpacaContractIdentity,
@@ -115,6 +116,41 @@ test('implied volatility outside the conservative decimal band is reported UNKNO
   assert.equal(entry?.impliedVolatility, null);
   assert.equal(entry?.impliedVolatilityUnits, 'UNKNOWN');
   assert.equal(entry?.impliedVolatilityRaw, 45);
+});
+
+test('net-flow evidence uses documented 8h/24h/48h window parameters without inventing sentiment', async () => {
+  let requested: URL | null = null;
+  const fetchImpl = (async (input) => {
+    requested = new URL(String(input));
+    return jsonResponse(200, { net_calls: [{ timestamp: NOW, value: 12 }], net_puts: [] });
+  }) as typeof fetch;
+  const outcome = await fetchOptionomicsNetFlowWindow(baseConfig(fetchImpl), 'SPY', 24, NOW);
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  assert.equal(requested?.pathname, '/api/v1/flow/net');
+  assert.equal(requested?.searchParams.get('symbol'), 'SPY');
+  assert.equal(requested?.searchParams.get('resolution'), '5m');
+  assert.equal(Number(requested?.searchParams.get('to')) - Number(requested?.searchParams.get('from')), 24 * 3_600);
+  assert.equal(outcome.value.netCalls.length, 1);
+  assert.equal(outcome.value.netPuts.length, 0);
+  assert.equal(outcome.value.evidenceClass, 'RESEARCH_CONTEXT_ONLY');
+  assert.equal(outcome.value.executableTruth, false);
+  assert.equal('sentiment' in outcome.value, false);
+});
+
+test('empty net-flow arrays remain a successful real observation, not fabricated zero sentiment', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { net_calls: [], net_puts: [] })) as typeof fetch;
+  const outcome = await fetchOptionomicsNetFlowWindow(baseConfig(fetchImpl), 'SPY', 8, NOW);
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  assert.deepEqual(outcome.value.netCalls, []);
+  assert.deepEqual(outcome.value.netPuts, []);
+});
+
+test('net-flow schema omission is UNKNOWN after success, never an empty invented series', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { result: [] })) as typeof fetch;
+  const outcome = await fetchOptionomicsNetFlowWindow(baseConfig(fetchImpl), 'SPY', 48, NOW);
+  assert.equal(outcome.kind, 'VALUE_UNKNOWN_AFTER_SUCCESS');
 });
 
 test('one invalid IV remains UNKNOWN without contaminating valid sibling contracts', async () => {

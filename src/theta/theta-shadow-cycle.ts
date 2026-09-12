@@ -15,8 +15,8 @@ import type { PythonBridgeConfig } from './python-bridge.js';
 import { buildFusionSnapshot, hashJson, type FusionSnapshot, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
 import type { DataQualityState } from './data-freshness.js';
 import {
-  fetchOptionomicsOptionChain, matchOptionomicsContractIdentity,
-  type AlpacaContractIdentity, type NormalizedOptionomicsEntry, type OptionomicsProviderConfig,
+  fetchOptionomicsNetFlowWindow, fetchOptionomicsOptionChain, matchOptionomicsContractIdentity,
+  type AlpacaContractIdentity, type NormalizedOptionomicsEntry, type NormalizedOptionomicsFlowWindow, type OptionomicsProviderConfig,
 } from './optionomics-provider.js';
 import { deriveAccountExposure, mergeDerivedExposureIntoAegisInputs, type DerivedAccountExposure } from './account-exposure.js';
 import { deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProviderState, deriveStressGapDetected } from './aegis-derivation.js';
@@ -163,6 +163,9 @@ function assembleFusionSnapshotInput(params: {
   readonly optionomicsOrigin: ProvenanceOrigin;
   readonly optionomicsQuality: DataQualityState;
   readonly optionomicsEntries: readonly NormalizedOptionomicsEntry[];
+  readonly optionomicsFlowWindows: readonly NormalizedOptionomicsFlowWindow[];
+  readonly optionomicsFlowOrigin: ProvenanceOrigin;
+  readonly optionomicsFlowQuality: DataQualityState;
   readonly positions: readonly AlpacaPositionSnapshot[];
   readonly positionsOrigin: ProvenanceOrigin;
   readonly positionsQuality: DataQualityState;
@@ -186,7 +189,7 @@ function assembleFusionSnapshotInput(params: {
   const contractsJson: JsonValue = params.mergedContracts as unknown as JsonValue;
   const optionomicsAttempted = params.optionomicsOrigin !== 'NOT_ATTEMPTED';
   const optionomicsJson: JsonValue = optionomicsAttempted
-    ? (params.optionomicsEntries as unknown as JsonValue)
+    ? ({ optionChain: params.optionomicsEntries, netFlowWindows: params.optionomicsFlowWindows } as unknown as JsonValue)
     : { attempted: false };
 
   // unknownFeatures reflects what actually happened THIS cycle -- when
@@ -202,6 +205,11 @@ function assembleFusionSnapshotInput(params: {
   } else if (params.optionomicsQuality !== 'GOOD') {
     unknownFeatures.push({ feature: 'optionOpenInterest', reasonCode: `OPTIONOMICS_${params.optionomicsQuality}`, provider: 'OPTIONOMICS' });
     unknownFeatures.push({ feature: 'optionVolume', reasonCode: `OPTIONOMICS_${params.optionomicsQuality}`, provider: 'OPTIONOMICS' });
+  }
+  if (!optionomicsAttempted) {
+    unknownFeatures.push({ feature: 'optionFlowTrajectory', reasonCode: 'OPTIONOMICS_NOT_CONFIGURED', provider: null });
+  } else if (params.optionomicsFlowQuality !== 'GOOD') {
+    unknownFeatures.push({ feature: 'optionFlowTrajectory', reasonCode: `OPTIONOMICS_${params.optionomicsFlowQuality}`, provider: 'OPTIONOMICS' });
   }
   unknownFeatures.push({ feature: 'eventState', reasonCode: 'EVENT_STATE_NOT_IMPLEMENTED', provider: null });
 
@@ -250,8 +258,13 @@ function assembleFusionSnapshotInput(params: {
       },
       {
         provider: 'OPTIONOMICS', operationAlias: 'optionomics.get_option_chain', asOf: params.optionomicsOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
-        state: optionomicsAttempted ? params.optionomicsQuality : 'UNKNOWN', contentHash: hashJson(optionomicsJson), feed: null,
+        state: optionomicsAttempted ? params.optionomicsQuality : 'UNKNOWN', contentHash: hashJson(params.optionomicsEntries as unknown as JsonValue), feed: null,
         contractVersion: 'optionomics-option-chain-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
+      },
+      {
+        provider: 'OPTIONOMICS', operationAlias: 'optionomics.get_flow_net', asOf: params.optionomicsFlowOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        state: optionomicsAttempted ? params.optionomicsFlowQuality : 'UNKNOWN', contentHash: hashJson(params.optionomicsFlowWindows as unknown as JsonValue), feed: null,
+        contractVersion: 'optionomics-net-flow-windows-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
       },
       {
         provider: 'ALPACA', operationAlias: 'alpaca.get_positions', asOf: params.positionsOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
@@ -280,7 +293,7 @@ function assembleFusionSnapshotInput(params: {
         state: aggregateProviderQuality([params.accountQuality, params.contractsQuality, params.quotesQuality, params.positionsQuality, params.openOrdersQuality, params.clockQuality, params.calendarQuality]),
         asOf: params.now, retrievedAt: params.now,
       },
-      { provider: 'OPTIONOMICS', state: optionomicsAttempted ? params.optionomicsQuality : 'UNKNOWN', asOf: optionomicsAttempted ? params.now : null, retrievedAt: params.now },
+      { provider: 'OPTIONOMICS', state: optionomicsAttempted ? aggregateProviderQuality([params.optionomicsQuality, params.optionomicsFlowQuality]) : 'UNKNOWN', asOf: optionomicsAttempted ? params.now : null, retrievedAt: params.now },
     ],
     freshnessFlags: [],
     unknownFeatures,
@@ -526,7 +539,9 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   // Matching its entries to specific Alpaca contracts (exact identity only)
   // happens below, once Alpaca's contract list is known.
   let optionomicsEntries: readonly NormalizedOptionomicsEntry[] = [];
+  let optionomicsFlowWindows: readonly NormalizedOptionomicsFlowWindow[] = [];
   let optionomicsEvidence = notAttemptedEvidence();
+  let optionomicsFlowEvidence = notAttemptedEvidence();
   if (config.optionomics !== null) {
     const outcome = await fetchOptionomicsOptionChain(config.optionomics, underlying);
     if (outcome.kind === 'VALUE_PRESENT') {
@@ -544,6 +559,27 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
         : 'DEGRADED';
       optionomicsEvidence = { origin: 'REAL_PROVIDER_ERROR', quality };
       blockers.push(`OPTIONOMICS_FETCH_FAILED:${outcome.errorClass}:${outcome.detail}`);
+    }
+
+    const flowOutcomes = await Promise.all(
+      ([8, 24, 48] as const).map((hours) => fetchOptionomicsNetFlowWindow(config.optionomics as OptionomicsProviderConfig, underlying, hours, decisionTime)),
+    );
+    optionomicsFlowWindows = flowOutcomes.flatMap((outcome) => outcome.kind === 'VALUE_PRESENT' ? [outcome.value] : []);
+    const flowPointCount = optionomicsFlowWindows.reduce((total, window) => total + window.netCalls.length + window.netPuts.length, 0);
+    const flowError = flowOutcomes.find((outcome) => outcome.kind === 'REQUEST_ERROR');
+    const flowUnknown = flowOutcomes.find((outcome) => outcome.kind === 'VALUE_UNKNOWN_AFTER_SUCCESS');
+    if (flowError?.kind === 'REQUEST_ERROR') {
+      const quality: DataQualityState =
+        flowError.errorClass === 'AUTHENTICATION_FAILED' || flowError.errorClass === 'INVALID_PROVIDER_RESPONSE' ? 'INVALID'
+        : flowError.errorClass === 'SUBSCRIPTION_REQUIRED' || flowError.errorClass === 'NOT_ENTITLED' ? 'NOT_ENTITLED'
+        : 'DEGRADED';
+      optionomicsFlowEvidence = { origin: 'REAL_PROVIDER_ERROR', quality };
+      blockers.push(`OPTIONOMICS_FLOW_FETCH_FAILED:${flowError.errorClass}:${flowError.detail}`);
+    } else if (flowUnknown?.kind === 'VALUE_UNKNOWN_AFTER_SUCCESS' || optionomicsFlowWindows.length !== 3 || flowPointCount === 0) {
+      optionomicsFlowEvidence = { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
+      if (flowUnknown?.kind === 'VALUE_UNKNOWN_AFTER_SUCCESS') blockers.push(`OPTIONOMICS_FLOW_RESPONSE_UNRECOGNIZED:${flowUnknown.detail}`);
+    } else {
+      optionomicsFlowEvidence = { origin: 'REAL_PROVIDER', quality: 'GOOD' };
     }
   }
 
@@ -646,7 +682,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     underlyingHistory: historyOrigin,
     optionContracts: contractsEvidence.origin,
     optionSnapshots: quotesEvidence.origin,
-    optionomics: optionomicsEvidence.origin,
+    optionomicsChain: optionomicsEvidence.origin,
+    optionomicsFlow: optionomicsFlowEvidence.origin,
     eventState: 'NOT_ATTEMPTED', // no event-state assembly exists yet
     aegisInputs: config.aegisInputsOrigin,
   });
@@ -660,6 +697,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     contractsOrigin: contractsEvidence.origin, contractsQuality: contractsEvidence.quality,
     quotesOrigin: quotesEvidence.origin, quotesQuality: quotesEvidence.quality,
     optionomicsOrigin: optionomicsEvidence.origin, optionomicsQuality: optionomicsEvidence.quality, optionomicsEntries,
+    optionomicsFlowWindows, optionomicsFlowOrigin: optionomicsFlowEvidence.origin, optionomicsFlowQuality: optionomicsFlowEvidence.quality,
     positions, positionsOrigin: positionsEvidence.origin, positionsQuality: positionsEvidence.quality,
     openOrders, openOrdersOrigin: openOrdersEvidence.origin, openOrdersQuality: openOrdersEvidence.quality,
     clock, clockOrigin: clockEvidence.origin, clockQuality: clockEvidence.quality,

@@ -307,6 +307,17 @@ export class PostgresThetaCycleStore {
     });
     const versions=snapshot.versions !== null && typeof snapshot.versions==='object' && !Array.isArray(snapshot.versions)
       ? snapshot.versions as Record<string,JsonValue> : {};
+    const optionomicsState=jsonObject(snapshot.optionomicsFeatureState);
+    const flowWindows=(Array.isArray(optionomicsState.netFlowWindows) ? optionomicsState.netFlowWindows : []).map((raw) => {
+      const window=jsonObject(raw);
+      const netCalls=Array.isArray(window.netCalls) ? window.netCalls : [];
+      const netPuts=Array.isArray(window.netPuts) ? window.netPuts : [];
+      return {windowHours:window.windowHours ?? null,requestedFromUnixSeconds:window.requestedFromUnixSeconds ?? null,
+        requestedToUnixSeconds:window.requestedToUnixSeconds ?? null,resolution:window.resolution ?? null,
+        netCallPointCount:netCalls.length,netPutPointCount:netPuts.length,lastNetCallPoint:netCalls.at(-1) ?? null,
+        lastNetPutPoint:netPuts.at(-1) ?? null,retrievedAt:window.retrievedAt ?? null,
+        evidenceClass:window.evidenceClass ?? null,executableTruth:false};
+    });
     for (const candidate of evaluated) {
       const persistedId=candidateIds.get(candidate.candidateId); if (persistedId===undefined) continue;
       const contract=contracts.find((item) => item.optionSymbol===candidate.candidateId || item.occSymbol===candidate.candidateId);
@@ -320,7 +331,8 @@ export class PostgresThetaCycleStore {
           contractSymbol:contract.occSymbol,optionType:contract.optionType,strike:contract.strike,expiration:contract.expiration,
           multiplier:contract.multiplier},market,volatility:{iv:contract.iv,ivRank:null,ivPercentile:null,skew:null,
           termStructure:null,surface:null},technical:{trend:snapshot.regimeState,momentum:null,drawdown:null,realizedVolatility:null},
-        event:{state:snapshot.eventState,earningsDistance:null,exDividendState:null},flow:{uoa:null},
+        event:{state:snapshot.eventState,earningsDistance:null,exDividendState:null},
+        flow:{optionomicsNetFlowWindows:flowWindows,interpretation:'UNMODELED_RESEARCH_CONTEXT'},
         ownership:{state:snapshot.expertPriorState},account:snapshot.accountState,portfolio:snapshot.portfolioExposure,
         aegis:{state:cycle.orchestration?.aegis ?? null},execution:{...market,executable:contract.executable,
           proposedLimit:alternative?.executionRecommendedAction ?? null},knownEconomics:candidate.economics ?? {},

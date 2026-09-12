@@ -1065,3 +1065,51 @@ promoted from this capability audit alone.
 NEXT RECOMMENDED TASK: Keep the pinned worker online through the next supported options
 session. Validate the first complete scan, automatic export, quote horizons, and empirical
 pipeline result. Keep all order submission locked.
+
+## 2026-09-12 Optionomics evidence closure and research autopilot
+
+OWNER: Codex
+
+TASK: Close the remaining provider-context and first-dataset automation gaps while the
+market is closed, without changing strategy or crossing the zero-order boundary.
+
+FILES CHANGED: Optionomics provider and shadow-cycle evidence capture, point-in-time
+candidate persistence, provider readiness, Python production export loader, empirical
+pipeline and experiment registry, Windows supervisor research trigger, tests, capability
+audit, data-gap register, decisions, and this handoff.
+
+WHAT WAS IMPLEMENTED: Production read-only checks proved dated Optionomics metrics,
+option-chain analytics, a research-only surface grid, flow aggregates, bounded 8h/24h/48h
+net-flow windows, and event history. The shadow cycle now retains those three flow windows
+with exact query bounds and no invented sentiment. The dataset loader now computes the
+same export identity as TypeScript by excluding the non-identity export timestamp. The
+Windows supervisor runs the existing empirical pipeline once for each new dataset hash.
+
+TESTS RUN: Targeted Optionomics/shadow tests, full Node, full Python, TypeScript, ESLint,
+build, security scan, Vercel Production provider audit, deployment, and GitHub CI.
+
+TEST RESULTS: The real Optionomics calls returned HTTP 200. Historical metrics returned
+83 entries, the dated chain returned 12,456 rows, flow aggregates returned five rows per
+documented list, 24h and 48h net flow returned 81 and 162 points per side, and four bounded
+events retained `known_at`. The closed-session 8h result was a real empty series and was
+not converted into sentiment. Alpaca remained PAPER, ACTIVE, options level 3, with zero
+positions and zero open orders. No broker mutation occurred.
+
+KNOWN LIMITATIONS: No supported open session occurred on Saturday 2026-09-12. Candidate
+sets, candidates, replay observations, labels, and datasets remain empty. Historical
+executable BBO and historical Greeks remain unavailable as one defensible PIT contract.
+
+RISKS: Flow call/put series do not prove trade aggressor, opening/closing intent, account
+positioning, or trader profitability. They remain research-only until OOS evidence proves
+incremental value. An always-on cloud worker remains deferred, and the laptop must remain
+available for the next session.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: The empirical pipeline was selectively ported from
+Claude with dataset-hash, null-outcome, and branch-lineage repairs. No wholesale branch
+merge occurred. Future research should consume the immutable export rather than create a
+parallel dataset contract.
+
+NEXT RECOMMENDED TASK: Keep the locked worker online through the next supported options
+session. Audit the first complete real export, then let the idempotent empirical pipeline
+run once for its dataset hash. Do not promote a strategy or submit an order before the
+evidence gates pass.

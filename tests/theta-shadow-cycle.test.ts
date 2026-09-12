@@ -253,13 +253,18 @@ itMockedProviderRealCodePath('with multiple eligible underlyings, selection is b
 });
 
 itMockedProviderRealCodePath('a real (mocked) Optionomics fetch supplies OI/volume/IV for the exact-matched contract, honestly UNKNOWN if unmatched', async () => {
-  const optionomicsFetch = (async () => new Response(JSON.stringify([
-    { symbol: 'SPY261009P00500000', underlying: 'SPY', expiration: '2026-10-09', option_type: 'put', strike: 500, open_interest: 1200, volume: 340, implied_volatility: 0.31 },
-  ]), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+  const optionomicsFetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    const body = url.pathname === '/api/v1/flow/net'
+      ? { net_calls: [{ timestamp: NOW, value: 5 }], net_puts: [{ timestamp: NOW, value: -2 }] }
+      : [{ symbol: 'SPY261009P00500000', underlying: 'SPY', expiration: '2026-10-09', option_type: 'put', strike: 500, open_interest: 1200, volume: 340, implied_volatility: 0.31 }];
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
   const result = await runThetaShadowCycle(baseConfig({
     optionomics: { apiBase: 'https://optionomics.ai', email: 'test-synthetic@example.com', apiToken: 'TEST-SYNTHETIC-TOKEN', fetchImpl: optionomicsFetch, now: () => NOW },
   }));
-  assert.ok(result.provenanceDetail.some((d) => d.startsWith('optionomics=REAL_PROVIDER')));
+  assert.ok(result.provenanceDetail.some((d) => d.startsWith('optionomicsChain=REAL_PROVIDER')));
+  assert.ok(result.provenanceDetail.some((d) => d.startsWith('optionomicsFlow=REAL_PROVIDER')));
   assert.ok(!result.blockers.some((b) => b.startsWith('OPTIONOMICS_')));
   assert.ok(result.orchestration !== null);
 });
@@ -269,7 +274,7 @@ itMockedProviderRealCodePath('an Optionomics provider failure is recorded honest
   const result = await runThetaShadowCycle(baseConfig({
     optionomics: { apiBase: 'https://optionomics.ai', email: 'test-synthetic@example.com', apiToken: 'TEST-SYNTHETIC-TOKEN', fetchImpl: optionomicsFetch, now: () => NOW, sleepImpl: async () => {} },
   }));
-  assert.ok(result.provenanceDetail.some((d) => d.startsWith('optionomics=REAL_PROVIDER_ERROR')));
+  assert.ok(result.provenanceDetail.some((d) => d.startsWith('optionomicsChain=REAL_PROVIDER_ERROR')));
   assert.ok(result.blockers.some((b) => b.startsWith('OPTIONOMICS_FETCH_FAILED')));
   // The rest of the cycle still completes -- Optionomics is supplemental,
   // never a hard gate on new-risk evaluation.

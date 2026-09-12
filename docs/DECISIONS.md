@@ -477,3 +477,21 @@ The capability audit writes only sanitized metadata to the existing provider cap
 and operation registries. It does not create an order surface. R6 remains
 `BLOCKED_ON_DATA` until real open-session candidate sets, follow-up quotes, and outcomes
 exist.
+
+## 2026-09-12: Optionomics context is captured without becoming a trading rule
+
+Authenticated read-only checks proved the documented dated metrics, option chain, flow,
+and event contracts. THETA will use them only as historical or live research context.
+Historical execution remains blocked because no tested provider contract supplies a
+decision-time historical option BBO and Greeks together.
+
+The existing Optionomics adapter now captures 8h, 24h, and 48h net-flow windows during a
+shadow decision cycle. The immutable FusionSnapshot retains the provider points and exact
+query bounds. Candidate evidence retains a compact view and the snapshot link. The runtime
+does not infer bullishness, bearishness, aggressor side, opening or closing intent, or
+trader profitability. Any crowd-direction feature must pass the empirical champion versus
+challenger pipeline before it can influence policy.
+
+The existing Windows supervisor runs the empirical pipeline once per new deterministic
+dataset hash. Research output cannot mutate Production strategy, unlock execution, or
+submit an order.

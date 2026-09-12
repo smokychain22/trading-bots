@@ -32,9 +32,9 @@ Evidence labels used below:
 | Option open interest | ~~Alpaca~~ (not observed present in this endpoint's response for any probed contract) | Optionomics `/api/v1/stocks/{symbol}/options` (`open_interest` field) | **OBSERVED (Optionomics only)** | Real Optionomics response included a numeric `open_interest` field per contract (e.g. `10`, `21`) for real SPY contracts. Alpaca's snapshot endpoint did not surface an equivalent field in any response observed this session — treated as Alpaca-side UNKNOWN, not zero, per `src/theta/option-chain-ingestion.ts`. |
 | Option volume | Alpaca `/v1beta1/options/snapshots` (`dailyBar.v` observed present in one real response) | Optionomics `/api/v1/stocks/{symbol}/options` (`volume` field) | **OBSERVED (both, partially)** | Alpaca's real response included a `dailyBar` with a `v` (volume) field for at least one contract observed; Optionomics's real response also independently included a numeric `volume` field per contract. `option-chain-ingestion.ts` prefers Alpaca's `dailyBar.v` when present, else Optionomics's `volume`. |
 | Contract identity for merging Alpaca ↔ Optionomics | Both providers' real responses this session used the same OCC-style symbol format (e.g. `SPY260910P00500000` / `SPY261009P00500000`) | — | **OBSERVED** | `option-chain-ingestion.ts` merges by exact symbol string equality — never fuzzy strike/expiry matching, per the standing instruction. |
-| IV skew / term structure / surface shape | — | Optionomics (documented product capability) | **DOCUMENTED, not yet OBSERVED** in this session's calls (only single-symbol chain/metrics endpoints were probed) | Not yet wired into any THETA feature. |
-| Flow / unusual options activity | — | Optionomics `/api/v1/flow/net` | **OBSERVED reachable** (real 200 response), field-level shape not yet inspected in depth | Not yet wired into any THETA feature. |
-| Earnings / dividend / corporate-action event data | — | Optionomics `/api/v1/events` (reachable, real 200) + Alpaca `/v1/corporate-actions` (reachable, real 200) | **OBSERVED reachable, field-level shape not yet inspected** | Real event-state assembly (R1F item 17 in the product instructions) is NOT yet built — this is the concrete blocker, not provider unavailability. |
+| IV skew / term structure / surface shape | — | Optionomics dated metrics and option-chain endpoints | **OBSERVED WITH LIMITS** | A real dated metrics request returned IV, skew, and term fields. A dated chain returned 12,456 exact-contract IV rows, enough for a research-only surface grid. This does not prove historical execution. |
+| Flow / unusual options activity | — | Optionomics `/api/v1/flow/net` and `/api/v1/flow/aggregates` | **OBSERVED WITH LIMITS** | Real bounded 8h, 24h, and 48h requests returned documented net-call/net-put series, including an empty closed-session 8h result. The shadow runtime now retains these as uninterpreted research context with exact query provenance. |
+| Earnings / dividend / corporate-action event data | — | Optionomics `/api/v1/events` + Alpaca `/v1/corporate-actions` | **OBSERVED WITH LIMITS** | A real bounded event query returned four events with `known_at`. Real event-state assembly is still an engineering gap. Provider reachability is no longer the blocker. |
 | Underlying (stock) trend/RV/drawdown/gap history for ownership/regime features | Alpaca `/v2/stocks/bars` | Optionomics price history | **OBSERVED** | The designated PAPER master returned HTTP 200 with real SPY daily observations through IEX. The existing no-future-leakage feature code can consume this source. |
 | Historical option bars / trades | Alpaca `/v1beta1/options/bars`, `/v1beta1/options/trades` | none | **OBSERVED WITH LIMITS** | Exact-contract requests returned HTTP 200 through the account-default indicative entitlement. These are bars/prints, not executable historical BBO. |
 | Historical option BBO / Greeks | none | unverified | **NOT SUPPORTED by tested Alpaca REST inventory** | Alpaca documents historical option bars/trades and latest quotes/snapshots. It does not document historical option quotes or historical Greeks. No route was guessed. |
@@ -54,6 +54,11 @@ investigation. The two real gaps identified are:
    (both providers responded 200 to their respective event endpoints this
    session) but no code parses either into the runtime's `EventState` shape
    yet. This is an engineering gap, not a data-availability gap.
+
+Historical context is available for selected IV, skew, term, surface, flow,
+and event research. Historical execution-grade evidence remains unavailable
+because the tested providers do not expose historical option BBO and historical
+Greeks together at the decision timestamp.
 
 **`NEW_VENDOR_REQUIRED`: NO.** Nothing in this register currently justifies
 raising that flag. Re-evaluate only if either gap above, after actual
