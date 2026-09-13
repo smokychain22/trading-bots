@@ -531,3 +531,33 @@ candidate, strategy, action, chain, account, and attempt lineage. It validates c
 BBO, limit bounds, freshness, multiplier, quantity, contract identity, covered shares,
 account verification, options capability, and AEGIS state before producing a command.
 It cannot accept indicative option data.
+
+## 2026-09-13: Provider-neutral trusted quote gate and embedded benchmark workstreams
+
+The remaining R3/R4/R6/R7/R8/R9 roadmap permanently includes Optionomics,
+QuantWheel, and Alertsify workstreams. This is an architecture evolution from
+the earlier blanket statement that only Alpaca can supply an executable option
+price. Alpaca remains broker, order, fill, account, contract-tradability, and
+lifecycle truth. Optionomics remains the primary options-intelligence authority.
+
+The canonical option price prerequisite is now
+`FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_READY`. Alpaca satisfies it only through
+proven OPRA consolidated BBO evidence. Optionomics may satisfy the narrower
+trusted-two-sided-quote authority only after a documented authenticated
+operation and actual response prove exact contract identity, bid, ask, provider
+timestamp, freshness, units, schema version, and documented order-pricing use.
+THETA will not call it raw OPRA or NBBO without explicit provenance.
+
+The provider-neutral validator is deliberately not wired into the Paper broker
+mutation path yet. Current evidence proves Optionomics research context, not the
+required quote contract. The deployed Alpaca account is not OPRA-entitled.
+Therefore the present result remains
+`FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_READY = NO`, execution stays locked, and
+no order is authorized by this decision.
+
+QuantWheel and Alertsify remain benchmark and hypothesis sources. They are not
+added as runtime providers. QuantWheel mechanisms must pass THETA's formula and
+empirical review. Alertsify mechanisms inform master-fill-first copying,
+follower-specific controls, durable duplicate prevention, skip evidence, and
+broker-derived performance. THETA additionally requires whole-chain open
+inventory and MTM truth.

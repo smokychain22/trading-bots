@@ -1,10 +1,49 @@
 # THETA Phased Build Plan
 
+## 2026-09-13 remaining-roadmap authority update
+
+The active remaining roadmap is R3/R4 follower completion plus R6/R7/R8/R9.
+Optionomics, QuantWheel, and Alertsify are permanent workstreams inside those
+phases. They do not create extra phases and they do not weaken an existing exit
+gate.
+
+- R3: master/follower identity, custody separation, encrypted credentials,
+  tenant isolation, and follower-specific risk controls.
+- R4: master-fill-first copy planning, independent follower sizing and quotes,
+  slippage and liquidity protection, duplicate protection, skip evidence,
+  lifecycle participation, and follower counterfactual replay. Activation stays
+  disabled until its safety gate passes.
+- R6: Optionomics feature research, QuantWheel mechanism hypotheses, trader
+  behavior research, PIT reconstruction, ablation, walk-forward, untouched OOS,
+  calibration, DSR/PBO, and failure attribution.
+- R7: authenticated Optionomics data contracts, provider provenance, trusted
+  quote qualification, rich decision receipts, complete Paper execution and
+  lifecycle wiring. The current strategy and quote gates remain closed.
+- R8: real Paper fills and lifecycle evidence, management-frontier evaluation,
+  whole-chain accounting, execution analysis, and continuous evidence capture.
+- R9: empirical, risk, execution, reliability, and operational graduation proof.
+
+Alpaca remains broker truth. Optionomics is the primary options-intelligence
+authority. QuantWheel and Alertsify remain research and product benchmarks, not
+runtime dependencies. The option pricing gate is
+`FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_READY`. An Optionomics quote cannot satisfy
+it until a documented authenticated operation and actual response prove exact
+contract identity, two-sided price, timestamp, freshness, units, schema, and
+order-pricing suitability. It must not be described as OPRA or NBBO without that
+specific provenance.
+
+The permanent supporting records live in `docs/research/THETA_*OPTIONOMICS*`,
+`docs/research/THETA_QUANTWHEEL_*`,
+`docs/research/THETA_ALERTSIFY_COMPETITOR_MAP.md`,
+`docs/research/THETA_EXTERNAL_MECHANISM_MATRIX.md`, and
+`docs/research/THETA_PROVIDER_AUTHORITY_MATRIX.md`.
+
 Derived from TRD §38 (Build Plan and Milestones) and §57 (Release Signature Matrix /
 Gates G1–G7), cross-checked against the prior Codex read-through's independent phase
 breakdown. Each phase names its Claude-owned and Codex-owned work and its exit gate.
-**Do not start phase N+1 before phase N's exit gate is met** — this is a working
-agreement in `CLAUDE.md`, not a suggestion.
+Engineering and research workstreams may overlap when they cannot activate a
+gated capability. An exit gate still controls promotion and activation of the
+capability it protects.
 
 This document describes *what* each phase delivers, not a calendar. No dates are
 attached; a phase is done when its gate is met.
@@ -61,8 +100,10 @@ attached; a phase is done when its gate is met.
 - Missing data persists as `UNKNOWN` with a reason, never a fabricated zero.
 - Claude: confirm every ingested feature family has a `feature_definition` before it's
   usable downstream (FEAT-001) — this is the seam between Phase 2 and quant work.
-- **Exit gate:** documented-contract fixture mapping and degraded-mode tests pass. No
-  Optionomics response can place an order.
+- **Exit gate:** documented-contract fixture mapping and degraded-mode tests pass. A
+  raw Optionomics response can never place an order. A separately normalized and
+  qualified quote may become price evidence only under the provider-authority rule
+  above, while Alpaca remains the broker mutation and fill authority.
 
 ## Phase 3 — Immutable decision truth (Codex builds; Claude specifies the snapshot contract)
 
@@ -117,20 +158,33 @@ attached; a phase is done when its gate is met.
   SLOs (§35, §55).
 - **Exit gate:** stable paper evidence across lifecycle and TCA scenarios.
 
-## Phase 8 — Live-small and production consideration (joint; gated operational program, not a coding milestone)
+## Phase 8 — Paper validation and evidence accumulation (joint)
 
-- Requires all documented data/quant/strategy/risk/execution/accounting/security
-  sign-offs (§57 Release Signature Matrix), verified OPRA/SIP entitlement, small-live
-  behavior confirmation, and preserved evidence trail.
-- Copy trading and any additional bot remain out of scope for v1 regardless of how this
-  phase goes.
-- **Exit gate:** gates G1 (mechanics) through G7 (production) all pass. No single
-  metric, including win rate, waives another failed gate (SIGN-001).
+- Accumulate real Alpaca Paper order, fill, lifecycle, execution, management, and
+  whole-chain evidence using PIT Optionomics intelligence where proven.
+- Classify losses by decision, contract, size, limit, execution, regime, flow,
+  management, provider, state-machine, and accounting cause.
+- **Exit gate:** sufficient independent Paper evidence supports stable after-cost
+  economics and operational integrity. Paper profit alone is insufficient.
+
+## Phase 9 — Graduation consideration (joint, no automatic live authorization)
+
+- Requires data, quant, strategy, risk, execution, accounting, security, and
+  operational sign-offs, plus walk-forward and untouched OOS evidence.
+- Evaluate after-cost EV, PF, average win/loss, drawdown, ES/CVaR, effective N,
+  calibration, capital-days, assignment and recovery, execution quality,
+  restart safety, reconciliation, idempotency, provider degradation, and Paper
+  versus simulation discrepancy.
+- **Exit gate:** all applicable release gates pass. No metric, including win rate,
+  waives another failed gate. Live trading remains forbidden until a separate
+  explicit authorization and architecture decision.
 
 ## Cross-cutting rules for every phase
 
 - No phase may add a runtime vendor beyond Alpaca + Optionomics without a documented
   missing capability and a controlled OOS ablation (TRD canonical constraint).
+- Optionomics alerts and webhooks may trigger an idempotent reevaluation. They
+  must never trigger an order directly.
 - No phase may redefine outcome metrics, lifecycle, provider ownership, risk semantics,
   or economic formulas without a versioned TRD revision (§58) — raise it to the user
   instead of quietly implementing something else.

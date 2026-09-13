@@ -1217,3 +1217,37 @@ only. The TypeScript execution and lifecycle path is the Production authority.
 NEXT RECOMMENDED TASK: Obtain legitimate OPRA entitlement, capture enough real point-in-time
 and Paper evidence for empirical validation, then run the sanitized first-order receipt.
 Only after it says YES should a later cycle submit the first Paper order.
+
+## 2026-09-13 permanent provider and competitor workstreams
+
+OWNER: Codex
+
+TASK: Make Optionomics, QuantWheel, and Alertsify permanent workstreams inside
+R3/R4/R6/R7/R8/R9 without adding an unproven runtime dependency or weakening the
+Paper execution gate.
+
+FILES CHANGED: Active phased plan, provider and mechanism research records,
+provider-neutral trusted option quote contract, tests, decisions, and handoff.
+
+WHAT WAS IMPLEMENTED: The roadmap now assigns Optionomics intelligence and
+contract work to every relevant remaining phase. QuantWheel is tracked as a
+Wheel and management hypothesis source. Alertsify is tracked as a copy-safety
+and broker-evidence benchmark. A typed quote assessment can distinguish proven
+Alpaca OPRA consolidated BBO from a narrower proven Optionomics two-sided quote
+without relabeling either. It rejects missing, crossed, stale, future,
+indicative, undocumented, degraded, and wrong-contract evidence.
+
+CURRENT SAFETY STATE: Optionomics has not yet proven the documented two-sided
+order-pricing contract required by the new qualifier. The current Alpaca account
+is not entitled to OPRA. The new contract is not connected to broker mutation.
+`FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_READY = NO` and all trading remains locked.
+
+KNOWN LIMITATIONS: Public product documentation supports research hypotheses,
+not empirical THETA results. GEX, DEX, Vanna, Charm, walls, detailed flow, quote,
+alert, and webhook operation schemas still require authenticated capability-by-
+capability validation. R4 copy activation and R6 empirical readiness remain open.
+
+NEXT RECOMMENDED TASK: Audit the authenticated Optionomics API reference for the
+new catalog, capture sanitized operation schemas, and keep unproven families
+UNKNOWN. Run each QuantWheel and Alertsify mechanism through the external
+mechanism ledger before implementation or policy use.
