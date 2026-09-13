@@ -21,8 +21,12 @@ const alpacaContract = (overrides: Partial<Parameters<typeof normalizeOptionCont
 
 const optionomicsEntry = (overrides: Partial<NormalizedOptionomicsEntry> = {}): NormalizedOptionomicsEntry => ({
   rawSymbol: 'SPY260910P00500000', underlying: 'SPY', expiration: '2026-10-10', optionType: 'PUT', strike: 500,
+  price: 4.6, bid: 4.5, ask: 4.7, bidSize: 10, askSize: 12, dte: 30,
   openInterest: 1200, volume: 340, impliedVolatility: 0.22, impliedVolatilityUnits: 'DECIMAL', impliedVolatilityRaw: 0.22,
-  delta: -0.3, gamma: 0.01, theta: -0.05, vega: 0.1, rho: -0.02, asOf: NOW, retrievedAt: NOW,
+  delta: -0.3, gamma: 0.01, theta: -0.05, vega: 0.1, rho: -0.02,
+  theoreticalPrice: 4.58, gammaDollar: 30, deltaExposure: -100000, gammaExposure: 40000,
+  notionalOpenInterest: 8000000, moneyness: 0.92, asOf: NOW, retrievedAt: NOW,
+  quoteSemantics: 'SESSION_RECORDED_RESEARCH', executionEligible: false,
   ...overrides,
 });
 

@@ -3,8 +3,9 @@
 // structured provider-error taxonomy, no process.env reads inside this
 // module, no header/credential value ever logged or included in an error
 // message) -- but Optionomics is NEVER broker/execution truth. It supplies
-// supplementary analytics (open interest, volume, implied volatility,
-// Greeks fallback) only; Alpaca's own bid/ask/executable identity are never
+// supplementary analytics (recorded quote observations, open interest,
+// volume, implied volatility, Greeks and exposure measures) only; Alpaca's
+// own bid/ask/executable identity are never
 // overwritten by anything this module returns (see optionomics-merge.ts).
 //
 // Endpoint and auth are the documented public contract already probed by
@@ -170,6 +171,12 @@ export interface NormalizedOptionomicsEntry {
   readonly expiration: string | null; // YYYY-MM-DD, as reported
   readonly optionType: 'CALL' | 'PUT' | null;
   readonly strike: number | null;
+  readonly price: number | null;
+  readonly bid: number | null;
+  readonly ask: number | null;
+  readonly bidSize: number | null;
+  readonly askSize: number | null;
+  readonly dte: number | null;
   readonly openInterest: number | null; // null = UNKNOWN (absent/unparseable) -- 0 is a real, distinct, provider-reported zero
   readonly volume: number | null; // same null-vs-zero discipline
   readonly impliedVolatility: number | null; // null if absent or out of the conservative decimal validation band
@@ -180,8 +187,20 @@ export interface NormalizedOptionomicsEntry {
   readonly theta: number | null;
   readonly vega: number | null;
   readonly rho: number | null;
+  readonly theoreticalPrice: number | null;
+  readonly gammaDollar: number | null;
+  readonly deltaExposure: number | null;
+  readonly gammaExposure: number | null;
+  readonly notionalOpenInterest: number | null;
+  readonly moneyness: number | null;
   readonly asOf: string | null; // provider-reported observation timestamp, if documented/present -- never fabricated from retrievedAt
   readonly retrievedAt: string;
+  // The public Optionomics API reference describes chain/quote data as the
+  // most recent completed session ingestion and explicitly says the API is
+  // not a real-time quote or execution feed. Preserve the observations for
+  // research and replay, but never silently promote them to order pricing.
+  readonly quoteSemantics: 'SESSION_RECORDED_RESEARCH';
+  readonly executionEligible: false;
 }
 
 export interface NormalizedOptionomicsChain {
@@ -298,6 +317,12 @@ function normalizeOneEntry(raw: Record<string, unknown>, retrievedAt: string): N
     expiration: asStringOrNull(raw.expiration ?? raw.expiration_date),
     optionType: asOptionTypeOrNull(raw.option_type ?? raw.type),
     strike: presentNumberOrNull(raw, ['strike', 'strike_price']),
+    price: presentNumberOrNull(raw, ['price']),
+    bid: presentNumberOrNull(raw, ['bid']),
+    ask: presentNumberOrNull(raw, ['ask']),
+    bidSize: presentNumberOrNull(raw, ['bid_size', 'bidSize']),
+    askSize: presentNumberOrNull(raw, ['ask_size', 'askSize']),
+    dte: presentNumberOrNull(raw, ['dte']),
     openInterest: presentNumberOrNull(raw, ['open_interest', 'openInterest']),
     volume: presentNumberOrNull(raw, ['volume']),
     impliedVolatility: iv.value,
@@ -308,8 +333,16 @@ function normalizeOneEntry(raw: Record<string, unknown>, retrievedAt: string): N
     theta: presentNumberOrNull(raw, ['theta']),
     vega: presentNumberOrNull(raw, ['vega']),
     rho: presentNumberOrNull(raw, ['rho']),
+    theoreticalPrice: presentNumberOrNull(raw, ['theo', 'theoretical_price', 'theoreticalPrice']),
+    gammaDollar: presentNumberOrNull(raw, ['gamma_dollar', 'gammaDollar']),
+    deltaExposure: presentNumberOrNull(raw, ['delta_exposure', 'deltaExposure']),
+    gammaExposure: presentNumberOrNull(raw, ['gamma_exposure', 'gammaExposure']),
+    notionalOpenInterest: presentNumberOrNull(raw, ['notional_oi', 'notionalOpenInterest']),
+    moneyness: presentNumberOrNull(raw, ['moneyness']),
     asOf: asStringOrNull(raw.as_of ?? raw.timestamp ?? raw.updated_at),
     retrievedAt,
+    quoteSemantics: 'SESSION_RECORDED_RESEARCH',
+    executionEligible: false,
   };
 }
 

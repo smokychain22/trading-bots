@@ -139,3 +139,28 @@ quote observations through the existing evidence schema.
 R6 therefore remains `BLOCKED_ON_DATA`. The provider audit resolves entitlement
 uncertainty, but it does not create observations, labels, empirical expectancy,
 or permission to trade.
+
+## 2026-09-13 Optionomics execution-quote proof
+
+The current public API reference documents contract-specific `bid`, `ask`,
+`bid_size`, `ask_size`, DTE, Greeks, IV, theoretical price, and exposure fields
+on `GET /api/v1/stocks/{symbol}/options`. The adapter now retains those values as
+point-in-time research evidence with explicit null semantics.
+
+The same reference states that market data reflects the most recent completed
+session ingestion and that the API is not a real-time quote or execution feed.
+Field presence therefore does not establish execution fitness. Even a valid
+two-sided response is classified `SESSION_RECORDED_RESEARCH` and has
+`executionEligible = false`.
+
+Result:
+
+- `FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_READY = NO`
+- `OPTIONOMICS_EXECUTION_QUOTE_AUTHORITY = REJECTED`
+- blocker = `PROVIDER_DOCUMENTS_SESSION_INGESTION_NOT_EXECUTION_FEED`
+- `NEW_EXECUTION_QUOTE_PROVIDER_PROPOSAL_NEEDED = YES`
+- Paper and live broker mutation remain locked
+
+No additional provider has been chosen or added. The missing input is a fresh,
+contract-specific, two-sided option quote whose authenticated contract explicitly
+permits order-pricing use. Official contract: [Optionomics API reference](https://optionomics.ai/docs/api).

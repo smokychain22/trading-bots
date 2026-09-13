@@ -561,3 +561,19 @@ empirical review. Alertsify mechanisms inform master-fill-first copying,
 follower-specific controls, durable duplicate prevention, skip evidence, and
 broker-derived performance. THETA additionally requires whole-chain open
 inventory and MTM truth.
+
+## 2026-09-13: Optionomics recorded quotes cannot authorize orders
+
+The official Optionomics option-chain contract exposes bid, ask, bid size, ask
+size, Greeks, DTE, theoretical value, and exposure fields. THETA retains those
+fields for evidence, research, and provider comparison. The provider also states
+that the data follows completed ingestion cadence and is not a real-time quote or
+execution feed. The execution decision follows the documented semantics, not
+the presence of price-shaped fields.
+
+Every normalized Optionomics chain entry is therefore labeled
+`SESSION_RECORDED_RESEARCH` with `executionEligible = false`. A credential-free
+proof records shape counts and the fixed blocker
+`PROVIDER_DOCUMENTS_SESSION_INGESTION_NOT_EXECUTION_FEED`. It cannot unlock the
+Paper broker adapter. Alpaca OPRA also remains `NOT_ENTITLED`, so the first Paper
+order stays blocked pending a separately approved execution-quote solution.

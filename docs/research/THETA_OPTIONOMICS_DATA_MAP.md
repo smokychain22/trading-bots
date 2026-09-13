@@ -9,7 +9,7 @@ authenticated operation is present in the discovered API contract.
 | Family | Required normalized fields | THETA use | Current confidence |
 |---|---|---|---|
 | Contract | OCC identity, underlying, type, strike, expiry, multiplier | Exact merge and research | Proven with limits |
-| Quote | bid, ask, provider time, sizes when present, units | Candidate pricing after separate trust qualification | Unverified for execution |
+| Quote | recorded price, bid, ask, sizes, provider time, DTE | Research, replay, and provider comparison only | Fields documented and normalized. Provider contract rejects execution use |
 | Greeks | delta, gamma, theta, vega, provider time | Candidate and management state | Proven with limits |
 | Volatility | IV, IV rank, IV percentile, realized volatility | Separate research features | Partial |
 | Skew | definition, tenor, put/call points, units | Assignment and tail research | Proven with limits |
@@ -37,7 +37,11 @@ Provider bodies and credentials are never written to logs.
 - Historical relationships do not become predictions without walk-forward and OOS evidence.
 - Webhooks schedule an idempotent reevaluation. They never place an order directly.
 - Optionomics never submits or reconciles a broker order.
+- A two-sided recorded Optionomics observation never becomes an executable
+  quote. The provider documents session-ingested data and excludes real-time
+  quote and execution-feed use.
 
 Official references: [plans](https://docs.optionomics.ai/getting-started/plans/),
 [Historical Lab](https://docs.optionomics.ai/analytics/history/), and
-[Developer Console](https://docs.optionomics.ai/features/developer-console/).
+[Developer Console](https://docs.optionomics.ai/features/developer-console/),
+and [API reference](https://optionomics.ai/docs/api).

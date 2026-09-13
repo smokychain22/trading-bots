@@ -1251,3 +1251,40 @@ NEXT RECOMMENDED TASK: Audit the authenticated Optionomics API reference for the
 new catalog, capture sanitized operation schemas, and keep unproven families
 UNKNOWN. Run each QuantWheel and Alertsify mechanism through the external
 mechanism ledger before implementation or policy use.
+
+## 2026-09-13 Optionomics execution-quote decision
+
+OWNER: Codex
+
+TASK: Prove whether the currently authenticated Optionomics contract can supply
+the fresh two-sided price authority required for autonomous Alpaca Paper orders.
+
+FILES CHANGED: Optionomics provider normalization, quote-contract proof, provider
+tests, provider authority/data-map/audit records, decisions, and this handoff.
+
+WHAT WAS IMPLEMENTED: The documented option-chain quote, size, DTE, theoretical
+price, moneyness, and exposure fields are retained without converting missing
+values to zero. Every observation is explicitly session-recorded research and
+non-executable. A deterministic sanitized proof counts available fields but
+rejects execution regardless of a valid two-sided shape because Optionomics
+documents the API as session-ingested and not a real-time quote or execution
+feed.
+
+TEST RESULTS: Unit tests prove numeric-string parsing, null safety, two-sided
+field capture, empty response behavior, fixed semantic rejection, and no token
+leakage. Full repository and external verification results are recorded in the
+completion report for this milestone.
+
+KNOWN LIMITATIONS: Alpaca OPRA remains not entitled. Optionomics is valuable for
+research and decision context but cannot supply the missing order-pricing
+authority under its current documented contract. No provider has been added.
+
+RISKS: Treating recorded bid and ask fields as live execution truth could create
+unbounded slippage or stale-limit errors. The execution gate stays locked.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Quant and research use of the newly retained
+fields only. Do not connect them to broker mutation.
+
+NEXT RECOMMENDED TASK: Prepare one explicit provider or entitlement proposal for
+a real-time execution quote contract, then obtain owner approval before changing
+the provider stack. Continue shadow evidence collection in parallel.

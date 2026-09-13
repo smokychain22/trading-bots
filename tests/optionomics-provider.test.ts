@@ -9,6 +9,7 @@ import {
   type DisagreementTolerancePolicy,
   type OptionomicsProviderConfig,
 } from '../src/theta/optionomics-provider.js';
+import { proveOptionomicsExecutionQuoteContract } from '../src/theta/optionomics-quote-proof.js';
 
 // All tests use an injected fetchImpl -- NEVER live network, never real
 // credentials. Test credentials below are obvious synthetic placeholders.
@@ -116,6 +117,63 @@ test('implied volatility outside the conservative decimal band is reported UNKNO
   assert.equal(entry?.impliedVolatility, null);
   assert.equal(entry?.impliedVolatilityUnits, 'UNKNOWN');
   assert.equal(entry?.impliedVolatilityRaw, 45);
+});
+
+test('documented chain quote, size, DTE and exposure fields are preserved as research evidence', async () => {
+  const fetchImpl = (async () => jsonResponse(200, [{
+    symbol: 'SPY261218P00500000', underlying: 'SPY', expiration: '2026-12-18',
+    option_type: 'put', strike: '500', price: '4.60', bid: '4.50', ask: '4.70',
+    bid_size: '11', ask_size: '13', dte: '96', theo: '4.58', moneyness: '0.92',
+    gamma_dollar: '31.2', delta_exposure: '-120000', gamma_exposure: '45000',
+    notional_oi: '8400000', as_of: NOW,
+  }])) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY');
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  const entry = outcome.value.entries[0];
+  assert.equal(entry?.price, 4.6);
+  assert.equal(entry?.bid, 4.5);
+  assert.equal(entry?.ask, 4.7);
+  assert.equal(entry?.bidSize, 11);
+  assert.equal(entry?.askSize, 13);
+  assert.equal(entry?.dte, 96);
+  assert.equal(entry?.theoreticalPrice, 4.58);
+  assert.equal(entry?.gammaDollar, 31.2);
+  assert.equal(entry?.deltaExposure, -120000);
+  assert.equal(entry?.gammaExposure, 45000);
+  assert.equal(entry?.notionalOpenInterest, 8400000);
+  assert.equal(entry?.moneyness, 0.92);
+  assert.equal(entry?.quoteSemantics, 'SESSION_RECORDED_RESEARCH');
+  assert.equal(entry?.executionEligible, false);
+});
+
+test('two-sided Optionomics observations remain rejected for execution by documented semantics', async () => {
+  const fetchImpl = (async () => jsonResponse(200, [{
+    symbol: 'SPY261218P00500000', bid: 4.5, ask: 4.7, bid_size: 11, ask_size: 13, as_of: NOW,
+  }])) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY');
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  const proof = proveOptionomicsExecutionQuoteContract(outcome.value);
+  assert.equal(proof.observationCount, 1);
+  assert.equal(proof.twoSidedQuoteCount, 1);
+  assert.equal(proof.twoSidedSizeCount, 1);
+  assert.equal(proof.providerTimestampCount, 1);
+  assert.equal(proof.executionQuoteAuthority, 'REJECTED');
+  assert.equal(proof.freshTrustedTwoSidedOptionQuoteReady, false);
+  assert.equal(proof.blocker, 'PROVIDER_DOCUMENTS_SESSION_INGESTION_NOT_EXECUTION_FEED');
+  assert.equal(JSON.stringify(proof).includes('TEST-SYNTHETIC-TOKEN'), false);
+});
+
+test('empty authenticated chain produces zero observations without inventing readiness', async () => {
+  const fetchImpl = (async () => jsonResponse(200, [])) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY');
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  const proof = proveOptionomicsExecutionQuoteContract(outcome.value);
+  assert.equal(proof.observationCount, 0);
+  assert.equal(proof.twoSidedQuoteCount, 0);
+  assert.equal(proof.freshTrustedTwoSidedOptionQuoteReady, false);
 });
 
 test('net-flow evidence uses documented 8h/24h/48h window parameters without inventing sentiment', async () => {
