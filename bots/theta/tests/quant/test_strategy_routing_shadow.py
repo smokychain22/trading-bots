@@ -9,6 +9,7 @@ sys.path.insert(0, str(_QUANT_DIR))
 
 from models.strategy_router import StrategyFamily  # noqa: E402
 from research.strategy_routing_shadow import (  # noqa: E402
+    AlternativeContractRegret,
     GateRegretRecord,
     GateRegretSummary,
     MissedStrategyOpportunity,
@@ -66,6 +67,33 @@ class ShadowRecordShapeTests(unittest.TestCase):
     def test_missed_strategy_opportunity_defaults_to_blocked_on_data(self):
         missed = MissedStrategyOpportunity("2024-01-01T00:00:00", StrategyFamily.THETA_D, "GATE_NOT_SATISFIED", None)
         self.assertEqual(missed.status, "BLOCKED_ON_DATA")
+
+
+class AlternativeContractRegretTests(unittest.TestCase):
+    def _regret(self, **overrides):
+        defaults = dict(
+            decision_timestamp="2024-01-01T00:00:00", strategy_family=StrategyFamily.THETA_Q,
+            selected_contract_id="c1", selected_outcome=None,
+            alternative_contract_id="c2", alternative_dte=30, alternative_delta=0.20,
+            counterfactual_outcome=None,
+        )
+        defaults.update(overrides)
+        return AlternativeContractRegret(**defaults)
+
+    def test_defaults_to_blocked_on_data(self):
+        self.assertEqual(self._regret().status, "BLOCKED_ON_DATA")
+
+    def test_regret_is_none_when_either_side_is_unknown(self):
+        self.assertIsNone(self._regret(selected_outcome=10.0, counterfactual_outcome=None).regret)
+        self.assertIsNone(self._regret(selected_outcome=None, counterfactual_outcome=10.0).regret)
+
+    def test_regret_is_the_signed_difference_when_both_are_known(self):
+        regret = self._regret(selected_outcome=10.0, counterfactual_outcome=25.0)
+        self.assertAlmostEqual(regret.regret, 15.0)
+
+    def test_negative_regret_means_the_alternative_would_have_underperformed(self):
+        regret = self._regret(selected_outcome=10.0, counterfactual_outcome=-5.0)
+        self.assertAlmostEqual(regret.regret, -15.0)
 
 
 if __name__ == "__main__":

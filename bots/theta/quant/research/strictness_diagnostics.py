@@ -17,6 +17,7 @@ what happened and why, never what SHOULD have happened.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Dict, List, Optional
 
 
@@ -120,3 +121,92 @@ def is_funnel_internally_consistent(funnel: CandidateFunnel) -> List[str]:
     if funnel.positive_ev_count is not None and funnel.selected_count > funnel.positive_ev_count:
         violations.append("selected_count exceeds positive_ev_count -- cannot select more candidates than had positive EV")
     return violations
+
+
+# ---------------------------------------------------------------------------
+# AEGIS disposition: reduced-size acceptance is NOT the same event as an
+# outright block, and conflating them hides exactly the "too strict or
+# correctly disciplined" answer this module exists to give.
+# ---------------------------------------------------------------------------
+
+
+class AegisDisposition(str, Enum):
+    ALLOWED_FULL = "ALLOWED_FULL"
+    ALLOWED_REDUCED = "ALLOWED_REDUCED"  # AEGIS sized the candidate DOWN rather than blocking it outright
+    BLOCKED = "BLOCKED"
+
+
+@dataclass(frozen=True)
+class AegisDispositionBreakdown:
+    """Counts by AEGIS disposition for one session/cycle. A funnel that
+    only reports "selected vs rejected" cannot distinguish a bot that is
+    trading its full intended size from one that AEGIS is quietly
+    trimming on every single trade -- both look like "selected_count > 0"
+    from `CandidateFunnel` alone."""
+
+    counts: Dict[AegisDisposition, int] = field(default_factory=dict)
+
+    def total(self) -> int:
+        return sum(self.counts.values())
+
+    def reduced_rate(self) -> Optional[float]:
+        """Fraction of non-blocked dispositions that were sized down rather
+        than allowed at full size. None when there were zero non-blocked
+        dispositions (undefined, never fabricated as 0.0)."""
+        allowed = self.counts.get(AegisDisposition.ALLOWED_FULL, 0) + self.counts.get(AegisDisposition.ALLOWED_REDUCED, 0)
+        if allowed == 0:
+            return None
+        return self.counts.get(AegisDisposition.ALLOWED_REDUCED, 0) / allowed
+
+    def block_rate(self) -> Optional[float]:
+        total = self.total()
+        if total == 0:
+            return None
+        return self.counts.get(AegisDisposition.BLOCKED, 0) / total
+
+
+# ---------------------------------------------------------------------------
+# Near-miss candidates: ranked just below the selection cutoff by MARGIN,
+# as distinct from a candidate a NAMED gate explicitly rejected
+# (`GateRegretRecord` in strategy_routing_shadow.py already covers the
+# latter). A near-miss never failed a hard or soft gate outright -- it
+# simply ranked one or two places too low this cycle.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class NearMissCandidate:
+    """A candidate that passed every hard AND soft gate but was not
+    selected because its rank fell just outside the cutoff. `rank_margin`
+    is the number of positions by which it missed (1 = immediately below
+    the last selected candidate). `reconstructed_outcome` stays None --
+    BLOCKED_ON_DATA -- until a real historical replay resolves what would
+    have happened had it been selected instead."""
+
+    candidate_id: str
+    rank: int
+    rank_margin: int
+    reconstructed_outcome: Optional[float]
+    status: str = "BLOCKED_ON_DATA"
+
+    @property
+    def would_have_been_profitable(self) -> Optional[bool]:
+        if self.reconstructed_outcome is None:
+            return None
+        return self.reconstructed_outcome > 0
+
+
+@dataclass(frozen=True)
+class NearMissSummary:
+    """Aggregates near-misses. `resolved_count`/`profitable_count` only
+    count candidates whose outcome has actually been reconstructed --
+    unresolved near-misses contribute to neither, never treated as
+    "presumed unprofitable" just because they weren't selected."""
+
+    candidates: List[NearMissCandidate] = field(default_factory=list)
+
+    def resolved_count(self) -> int:
+        return sum(1 for c in self.candidates if c.reconstructed_outcome is not None)
+
+    def profitable_count(self) -> int:
+        return sum(1 for c in self.candidates if c.would_have_been_profitable is True)

@@ -8,7 +8,11 @@ _QUANT_DIR = Path(__file__).resolve().parents[2] / "quant"
 sys.path.insert(0, str(_QUANT_DIR))
 
 from research.strictness_diagnostics import (  # noqa: E402
+    AegisDisposition,
+    AegisDispositionBreakdown,
     CandidateFunnel,
+    NearMissCandidate,
+    NearMissSummary,
     RejectionBreakdown,
     funnel_ratios,
     is_funnel_internally_consistent,
@@ -72,6 +76,45 @@ class FunnelConsistencyTests(unittest.TestCase):
     def test_hard_veto_exceeding_remaining_pool_is_flagged(self):
         violations = is_funnel_internally_consistent(_funnel(contracts_enumerated=100, mechanically_invalid_count=50, hard_veto_count=200, soft_rejected_count=0, ranked_count=0, selected_count=0))
         self.assertTrue(any("hard_veto_count" in v for v in violations))
+
+
+class AegisDispositionTests(unittest.TestCase):
+    def test_reduced_rate_is_none_when_nothing_was_allowed(self):
+        breakdown = AegisDispositionBreakdown({AegisDisposition.BLOCKED: 5})
+        self.assertIsNone(breakdown.reduced_rate())
+
+    def test_reduced_rate_computed_over_allowed_only(self):
+        breakdown = AegisDispositionBreakdown({
+            AegisDisposition.ALLOWED_FULL: 3, AegisDisposition.ALLOWED_REDUCED: 1, AegisDisposition.BLOCKED: 6,
+        })
+        self.assertAlmostEqual(breakdown.reduced_rate(), 0.25)
+
+    def test_block_rate_is_none_for_an_empty_breakdown(self):
+        self.assertIsNone(AegisDispositionBreakdown().block_rate())
+
+    def test_block_rate_computed_over_the_whole_total(self):
+        breakdown = AegisDispositionBreakdown({AegisDisposition.ALLOWED_FULL: 1, AegisDisposition.BLOCKED: 3})
+        self.assertAlmostEqual(breakdown.block_rate(), 0.75)
+
+
+class NearMissTests(unittest.TestCase):
+    def test_unresolved_near_miss_has_unknown_profitability(self):
+        candidate = NearMissCandidate("cand-1", rank=6, rank_margin=1, reconstructed_outcome=None)
+        self.assertIsNone(candidate.would_have_been_profitable)
+        self.assertEqual(candidate.status, "BLOCKED_ON_DATA")
+
+    def test_resolved_positive_outcome_is_profitable(self):
+        candidate = NearMissCandidate("cand-1", rank=6, rank_margin=1, reconstructed_outcome=42.0)
+        self.assertTrue(candidate.would_have_been_profitable)
+
+    def test_summary_only_counts_resolved_near_misses(self):
+        summary = NearMissSummary([
+            NearMissCandidate("c1", 6, 1, reconstructed_outcome=None),
+            NearMissCandidate("c2", 7, 2, reconstructed_outcome=10.0),
+            NearMissCandidate("c3", 8, 3, reconstructed_outcome=-5.0),
+        ])
+        self.assertEqual(summary.resolved_count(), 2)
+        self.assertEqual(summary.profitable_count(), 1)
 
 
 if __name__ == "__main__":

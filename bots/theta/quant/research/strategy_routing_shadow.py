@@ -84,6 +84,37 @@ class RouteRegret:
 
 
 @dataclass(frozen=True)
+class AlternativeContractRegret:
+    """A DIFFERENT question from `RouteRegret`: not "should another
+    strategy family have been eligible" but "within the SAME family/
+    underlying/branch, would a different strike or expiry have done
+    better." Requires the same real-historical-replay evidence as every
+    other regret contract here -- never approximated by re-scoring the
+    same decision-time snapshot with a different theoretical price, which
+    would silently assume a fill that never happened."""
+
+    decision_timestamp: str
+    strategy_family: StrategyFamily
+    selected_contract_id: str
+    selected_outcome: Optional[float]  # the SAME episode's actual realized/reconstructed outcome
+    alternative_contract_id: str
+    alternative_dte: Optional[int]
+    alternative_delta: Optional[float]
+    counterfactual_outcome: Optional[float]  # the alternative contract's reconstructed outcome, same historical window
+    status: str = "BLOCKED_ON_DATA"
+
+    @property
+    def regret(self) -> Optional[float]:
+        """counterfactual_outcome - selected_outcome. Positive means the
+        alternative strike/expiry would have outperformed the one actually
+        selected. None unless BOTH sides are real reconstructed values --
+        never a theoretical re-pricing standing in for either."""
+        if self.counterfactual_outcome is None or self.selected_outcome is None:
+            return None
+        return self.counterfactual_outcome - self.selected_outcome
+
+
+@dataclass(frozen=True)
 class MissedStrategyOpportunity:
     """A family was ineligible, but its never-generated candidate would
     very likely have been strongly positive-EV. Requires retrospectively

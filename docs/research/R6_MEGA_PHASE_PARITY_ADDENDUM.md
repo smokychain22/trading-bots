@@ -441,3 +441,75 @@ synthetic fixtures, no fabricated performance number anywhere.
 **981 Python tests pass** (+22). Security scan: 0 findings.
 **`REQUIRED_CODEX_CHANGE` count for this run: 0** (no new canonical
 commits existed to review).
+
+## Anti-paralysis audit + funnel/regret gap closure: `66b3f7d..eafee51`
+
+Two canonical commits reviewed: R7 execution-price/TCA vertical slice
+(migrations 025-026, `transaction-cost-analysis.ts`, `adaptive-limit-
+policy.ts`, `execution-option-quote.ts`) and provider-neutral quote
+lineage. Codex's own handoff explicitly asked for review of "TCA sign
+conventions" and "common-horizon action economics."
+
+**TCA sign convention: independently re-derived, correct, no defect.**
+`buildTransactionCostAnalysis`'s `perShareCost = side==='BUY' ? fillPrice
+- decisionMid : decisionMid - fillPrice` matches this branch's own
+`CashflowDirection` convention exactly for THETA's short-premium lifecycle
+(SELL/STO = CREDIT-open, BUY/BTC = DEBIT-close): positive = adverse in
+both. `spreadCapture`'s SELL/BUY branches are correctly oriented (1.0 =
+filled at the favorable side of the spread for that side). No double-
+counting found: fees, market impact, and slippage are three separate
+Optional fields, never summed into each other.
+
+**management-input-state.ts/management-action-frontier.ts: two real
+correctness repairs, both HARD safety gates, both correctly tightening
+(not evidence of paralysis).** (1) `aegisState` was being assigned the
+ENTIRE `riskState` object rather than its actual approval-status field --
+fixed to `riskState.newRiskState ?? riskState.state`, and a new check now
+rejects any AEGIS state other than `ALLOW_FULL`/`ALLOW_REDUCED`. (2) a
+`null` `accountAgeMs` previously did NOT count as `BROKER_DATA_STALE` --
+fixed to fail closed. Both are genuine correctness fixes to a previously
+UNDER-strict path (a broken object could silently pass any truthy check;
+a missing timestamp was silently treated as fresh), not new business
+strictness. **No `REQUIRED_CODEX_CHANGE`.**
+
+### Closed three genuine, non-duplicative research-contract gaps
+
+This run's directive asked specifically for `ALLOW_REDUCED` vs hard-
+rejection tracking, near-miss candidates, and alternative strike/expiry
+outcomes -- none of which existed, unlike GLOBAL_WAIT/funnel/
+OpportunityCaptureRate/GateRegret/regime-frequency, which were all already
+built (`management_policy.GlobalWaitEvidence`, `strictness_diagnostics.
+CandidateFunnel`/`funnel_ratios`, `strategy_routing_shadow.GateRegretRecord`,
+`regime_report.build_regime_report` -- the last already generically
+answers "trade frequency by regime" via a caller-supplied cell key, so
+nothing new was needed there).
+
+1. **`AegisDisposition`/`AegisDispositionBreakdown`** (`strictness_
+   diagnostics.py`): distinguishes `ALLOWED_FULL`/`ALLOWED_REDUCED`/
+   `BLOCKED` -- a funnel reporting only "selected vs rejected" cannot tell
+   a bot trading full size from one AEGIS quietly trims on every trade.
+   `reduced_rate()`/`block_rate()`, both None (never fabricated 0.0) when
+   their denominator is zero.
+2. **`NearMissCandidate`/`NearMissSummary`** (`strictness_diagnostics.py`):
+   a candidate that passed every gate but ranked just below the cutoff by
+   MARGIN -- distinct from `GateRegretRecord`'s named-gate rejection.
+   `resolved_count`/`profitable_count` only count candidates whose
+   outcome was actually reconstructed, never presumed unprofitable from
+   non-selection alone.
+3. **`AlternativeContractRegret`** (`strategy_routing_shadow.py`): the
+   same-family/same-underlying question "would a different strike/expiry
+   have done better," distinct from `RouteRegret`'s family-level
+   substitution. `regret = counterfactual_outcome - selected_outcome`,
+   None unless BOTH sides are real reconstructed values -- never a
+   theoretical re-pricing standing in for either.
+
+11 new tests. **PAPER_ACTIVE_BASELINE note (no code needed):** this is not
+a distinct metric class requiring new machinery -- it is simply a
+`policy_version` value flowing through `ExperimentConfig`, and must be
+judged on the identical `SLICE_METRICS` (EV/tail/drawdown/capital-days/
+execution-quality/gate-regret) as any candidate policy, never exempted
+from them merely because its purpose is bootstrapping data.
+
+**992 Python tests pass** (+11). Security scan: 0 findings.
+`DATASET_ABSENT` still stands. **`REQUIRED_CODEX_CHANGE` count for this
+run: 0.**
