@@ -29,6 +29,7 @@ try {
     "022_disabled_copy_engine_closure",
     "023_shadow_virtual_trader",
     "024_paper_execution_lineage",
+    "025_execution_pricing_and_tca",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -66,6 +67,8 @@ try {
     ["research", "theta_shadow_chain"],
     ["research", "theta_shadow_lifecycle_event"],
     ["research", "theta_shadow_account_snapshot"],
+    ["trade", "execution_price_event"],
+    ["trade", "transaction_cost_analysis"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -111,6 +114,13 @@ try {
     FROM information_schema.columns WHERE table_schema='trade' AND table_name='order_intent'`);
   if(executionLineage.rows[0]?.column_count!==3||!executionLineage.rows[0]?.has_constraint)
     throw new Error('PAPER_EXECUTION_LINEAGE_PROTECTION_MISSING');
+  const executionEconomics=await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade'
+      AND event_object_table='execution_price_event' AND trigger_name='reject_immutable_mutation') AS immutable_prices,
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade'
+      AND event_object_table='transaction_cost_analysis' AND trigger_name='reject_immutable_mutation') AS immutable_tca`);
+  if(!executionEconomics.rows[0]?.immutable_prices||!executionEconomics.rows[0]?.immutable_tca)
+    throw new Error('EXECUTION_PRICING_TCA_PROTECTION_MISSING');
   const intentNullGuard = await client.query(`SELECT
     pg_get_constraintdef(oid) AS definition, convalidated
     FROM pg_constraint WHERE conrelid='trade.order_intent'::regclass

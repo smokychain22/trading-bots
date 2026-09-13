@@ -51,15 +51,22 @@ function evaluateAction(input: ManagementInputState, action: ManagementFrontierA
       (input.market.optionBid === null || input.market.optionAsk === null || input.market.quoteTimestamp === null)) {
     blockers.push('EXECUTABLE_OPTION_QUOTE_UNKNOWN');
   }
+  if (needsExecutableOptionQuote.has(action) && input.hardBlockers.some((value) =>
+    ['EXECUTABLE_QUOTE_UNAVAILABLE','BROKER_DATA_INVALID','BROKER_DATA_STALE'].includes(value))) {
+    blockers.push('EXECUTION_MARKET_NOT_QUALIFIED');
+  }
   if ((action === 'SELL_STOCK' || action === 'SELL_CC') && input.economics.openStockShares <= 0) {
     blockers.push('NO_OPEN_STOCK_INVENTORY');
   }
   if (action === 'SELL_STOCK' && input.economics.stockMarkPerShare === null) blockers.push('EXECUTABLE_STOCK_PRICE_UNKNOWN');
   if (action === 'LET_EXPIRE' && (input.market.dte === null || input.market.dte > 0)) blockers.push('NOT_AT_EXPIRATION');
   if (action === 'ACCEPT_ASSIGNMENT' && input.context.assignmentCapacity === null) blockers.push('ASSIGNMENT_CAPACITY_UNKNOWN');
+  if (action === 'ACCEPT_ASSIGNMENT' && typeof input.context.assignmentCapacity === 'number'
+    && input.context.assignmentCapacity <= 0) blockers.push('NO_ASSIGNMENT_CAPACITY');
   if (action === 'REDEPLOY') blockers.push('CURRENT_EXPOSURE_NOT_RESOLVED');
   if (opensNewRisk.has(action)) {
     if (input.context.aegisState === null) blockers.push('AEGIS_STATE_UNKNOWN');
+    else if (!['ALLOW_FULL','ALLOW_REDUCED'].includes(String(input.context.aegisState))) blockers.push('AEGIS_NOT_APPROVED');
     if (input.economicModelState === 'EV_MODEL_NOT_EMPIRICALLY_READY') blockers.push('EMPIRICAL_ACTION_EV_UNKNOWN');
   }
 

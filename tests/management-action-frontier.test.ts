@@ -18,8 +18,8 @@ const state = (lifecycleState: string) => assembleManagementInput({
   expiration_date: '2026-10-16', multiplier: '100', bid: '1', ask: '1.1', quote_as_of: '2026-09-12T14:00:00.000Z',
   feed: 'OPRA', quote_quality: 'GOOD', realized_option_pnl: '0', open_stock_shares: lifecycleState === 'RECOVERY_WAIT' ? '100' : '0',
   stock_basis_per_share: lifecycleState === 'RECOVERY_WAIT' ? '195' : null, realized_stock_pnl: '0', dividends: '0', fees: '0',
-  buying_power: '50000', options_buying_power: '40000', fusion_snapshot_id: 'fusion',
-  snapshot_json: { riskState: { assignmentCapacity: 1 }, eventState: { state: 'CLEAR' } },
+  buying_power: '50000', options_buying_power: '40000', account_as_of:'2026-09-12T14:00:00.000Z', fusion_snapshot_id: 'fusion',
+  snapshot_json: { riskState: { assignmentCapacity: 1, newRiskState:'ALLOW_FULL' }, eventState: { state: 'CLEAR' } },
   broker_position: lifecycleState === 'RECOVERY_WAIT' ? { currentPrice: 190 } : null,
 }, { managementInputSnapshotId: 'input', reconciliationSnapshotId: 'recon', observedAt: '2026-09-12T14:00:00.000Z' });
 
@@ -43,4 +43,12 @@ test('covered call management exposes hold, close, roll, and call-away', () => {
   const frontier = buildManagementActionFrontier(state('CC_OPEN'));
   assert.deepEqual(frontier.actions.map((action) => action.action), ['HOLD_CC', 'CLOSE_CC', 'ROLL_CC', 'ALLOW_CALL_AWAY']);
   assert.equal(frontier.selectedAction, 'HOLD_CC');
+});
+
+test('stale broker state blocks quote-dependent actions but keeps passive management available',()=>{
+  const input=state('CSP_OPEN');
+  const stale={...input,hardBlockers:['BROKER_DATA_STALE']};
+  const frontier=buildManagementActionFrontier(stale);
+  assert.equal(frontier.selectedAction,'HOLD');
+  assert.ok(frontier.actions.find((action)=>action.action==='CLOSE_FULL')?.blockers.includes('EXECUTION_MARKET_NOT_QUALIFIED'));
 });

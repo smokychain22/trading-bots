@@ -80,7 +80,8 @@ export interface ManagementInputState {
 type Row = Record<string, unknown>;
 
 const numeric = (value: unknown): number | null => {
-  if (value === null || value === undefined) return null;
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value.trim())) return null;
   const result = Number(value);
   return Number.isFinite(result) ? result : null;
 };
@@ -138,6 +139,7 @@ export function assembleManagementInput(row: Row, input: {
   readonly observedAt: string;
 }): ManagementInputState {
   const snapshot = object(row.snapshot_json);
+  const riskState = object(snapshot.riskState);
   const snapshotContracts = Array.isArray(snapshot.contractCandidates) ? snapshot.contractCandidates : [];
   const position = object(row.broker_position);
   const contractSymbol = text(row.contract_symbol);
@@ -187,10 +189,10 @@ export function assembleManagementInput(row: Row, input: {
   const eventState=object(snapshot.eventState);
   required('context.dividendExDateState', eventState.exDividendState ?? eventState.exDividendDate ?? null);
   required('context.ownershipQuality', snapshot.expertPriorState ?? null);
-  required('context.assignmentCapacity', object(snapshot.riskState).assignmentCapacity ?? null);
+  required('context.assignmentCapacity', riskState.assignmentCapacity ?? null);
   required('context.concentration', object(snapshot.portfolioExposure).concentration ?? null);
   required('context.sectorCorrelation', object(snapshot.portfolioExposure).sectorCorrelation ?? null);
-  required('context.aegisState', snapshot.riskState ?? null);
+  required('context.aegisState', riskState.newRiskState ?? riskState.state ?? null);
   required('context.executionState', hasOpenOption ? snapshotContract.executable ?? null : 'NO_OPEN_OPTION');
   required('context.regimeState', snapshot.regimeState ?? null);
   required('context.opportunityAlternatives', snapshot.strategyRouterState ?? null);
@@ -200,14 +202,14 @@ export function assembleManagementInput(row: Row, input: {
 
   const hardBlockers: string[] = [];
   if (hasOpenOption && multiplier === null) hardBlockers.push('MULTIPLIER_UNKNOWN');
-  if (hasOpenOption && (bid === null || ask === null || row.quote_as_of == null)) hardBlockers.push('EXECUTABLE_QUOTE_UNAVAILABLE');
+  if (hasOpenOption && (bid === null || ask === null || bid <= 0 || ask <= 0 || bid > ask || row.quote_as_of == null)) hardBlockers.push('EXECUTABLE_QUOTE_UNAVAILABLE');
   if (hasOpenOption && text(row.quote_quality) !== 'GOOD') hardBlockers.push('BROKER_DATA_INVALID');
   const quoteAgeMs = row.quote_as_of == null ? null : Date.parse(input.observedAt) - Date.parse(String(row.quote_as_of));
   if (quoteAgeMs !== null && (!Number.isFinite(quoteAgeMs) || quoteAgeMs < 0 || quoteAgeMs > 30_000)) {
     hardBlockers.push('BROKER_DATA_STALE');
   }
   const accountAgeMs = row.account_as_of == null ? null : Date.parse(input.observedAt) - Date.parse(String(row.account_as_of));
-  if (accountAgeMs !== null && (!Number.isFinite(accountAgeMs) || accountAgeMs < 0 || accountAgeMs > 180_000)) {
+  if (accountAgeMs === null || !Number.isFinite(accountAgeMs) || accountAgeMs < 0 || accountAgeMs > 180_000) {
     hardBlockers.push('BROKER_DATA_STALE');
   }
   if (contracts !== null && contracts < 0) hardBlockers.push('INVALID_CONTRACT');
@@ -235,11 +237,11 @@ export function assembleManagementInput(row: Row, input: {
     context: { eventState: snapshot.eventState ?? null,
       dividendExDateState: eventState.exDividendState ?? eventState.exDividendDate ?? null,
       ownershipQuality: snapshot.expertPriorState ?? null,
-      assignmentCapacity: object(snapshot.riskState).assignmentCapacity ?? null,
+      assignmentCapacity: riskState.assignmentCapacity ?? null,
       recoveryState: snapshot.recoveryState ?? null,
       concentration: object(snapshot.portfolioExposure).concentration ?? null,
       sectorCorrelation: object(snapshot.portfolioExposure).sectorCorrelation ?? null,
-      aegisState: snapshot.riskState ?? null,
+      aegisState: riskState.newRiskState ?? riskState.state ?? null,
       executionState: hasOpenOption ? snapshotContract.executable ?? null : 'NO_OPEN_OPTION',
       regimeState: snapshot.regimeState ?? null, opportunityAlternatives: snapshot.strategyRouterState ?? null,
       strategyVersions: snapshot.versions ?? null },

@@ -1,5 +1,46 @@
 # Codex handoff: standalone platform Phase 1
 
+## 2026-09-14: R7 execution-price and TCA vertical slice
+
+OWNER: Codex.
+
+TASK: Implement the provider-neutral quote, deterministic adaptive pricing, canonical
+TCA, immutable evidence persistence, and stricter management-state checks requested
+by the R7 closure directive without activating broker submission.
+
+FILES CHANGED: New execution quote, adaptive policy, TCA and PostgreSQL evidence
+store modules, migration 025, database verification, management input/frontier
+guards, unit and SQL tests, decisions and handoff.
+
+WHAT WAS IMPLEMENTED: Fresh authenticated execution quote qualification with
+connection/subscription/sequence guards. Direction-correct bounded price concessions,
+economic cancellation, optional size-weighted microprice, direction-aware TCA, and
+immutable price/TCA evidence. Management now fails closed on missing/stale account
+state, malformed quote numbers, invalid BBO, non-positive assignment capacity, and
+unapproved AEGIS state.
+
+TESTS RUN: Focused Node tests, full Node/Python, TypeScript, ESLint, build, security.
+PostgreSQL migration/invariants and browser regression run in CI after push. Reticle
+was skipped because there is no UI surface.
+
+TEST RESULTS: Record final local, CI and Production results in the release response.
+
+KNOWN LIMITATIONS: The adaptive loop is a pure policy plus persistence boundary, not
+yet wired to a live quote subscription and coordinator timer. TCA has no real fills.
+Management utilities remain UNKNOWN until empirical models qualify. Paper stays
+locked.
+
+RISKS: A caller must requalify each quote and recompute economics before replacement.
+Receipt-time freshness needs provider-specific proof. No generic boolean may promote
+recorded research data.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: TCA sign conventions, common-horizon action
+economics, and empirical boundary provenance. Production TypeScript remains runtime
+authority.
+
+NEXT RECOMMENDED TASK: Wire quote-qualified adaptive observations through the Paper
+coordinator with reconciliation before every mutation, then gather real PIT evidence.
+
 ## 2026-09-13: quote freshness, UNKNOWN parsing and management certainty repair
 
 OWNER: Codex.

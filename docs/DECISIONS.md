@@ -1,5 +1,26 @@
 # Engineering decisions
 
+## 2026-09-14: provider-neutral execution quotes, bounded limits, and TCA
+
+Keep broker mutation in Alpaca, while representing execution-price evidence through
+the provider-neutral `ExecutionOptionQuote` contract. Qualification requires exact
+contract identity, positive uncrossed bid/ask, fresh provider or defensible receipt
+time, stable connection, active subscription, authenticated provenance, documented
+order-pricing semantics, market-open state, and monotonic sequencing where supplied.
+Recorded Optionomics research data cannot satisfy this contract.
+
+Adaptive pricing is deterministic and direction-aware. A sell begins at the ask and
+concedes toward the bid only through a versioned bounded schedule. A buy-to-close
+begins at the bid and reverses the concession direction. The economic credit floor
+or debit ceiling is never crossed. Exhausted attempts, invalid markets, or vanished
+economics produce CANCEL, never a market order.
+
+TCA uses decision-mid implementation shortfall with side, quantity, and multiplier.
+Fees, impact, fills, and markouts stay null with reasons when unavailable. Immutable
+price events and one immutable TCA row per order intent land in migration 025. These
+contracts remain disabled evidence infrastructure until the runtime integration and
+external quote gates pass.
+
 ## 2026-09-11: research references and incomplete valuation
 
 Review the owner's fifteen GitHub repositories plus QuantLib and LEAN at
