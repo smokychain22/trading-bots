@@ -130,12 +130,35 @@ export class PostgresRuntimeCycleStore {
     return Number(result.rows[0]?.count ?? 0);
   }
 
-  async dueWaitCount(): Promise<number> {
+  async pendingNearMisses(): Promise<readonly {candidateId:string;scanId:string;triggerKind:string;correlationKey:string}[]> {
     const result = await this.pool.query(
-      `SELECT count(*)::int AS count FROM trade.shadow_opportunity
-       WHERE outcome='WAIT' AND observed_at >= now() - interval '7 days'`,
+      `SELECT candidate_id,scan_id,trigger_kind,correlation_key FROM (
+         SELECT DISTINCT ON (candidate_id) candidate_id,scan_id,trigger_kind,correlation_key,event_type
+         FROM research.theta_near_miss_reevaluation_event
+         ORDER BY candidate_id,occurred_at DESC,created_at DESC
+       ) latest WHERE event_type='QUEUED' ORDER BY candidate_id`,
     );
-    return Number(result.rows[0]?.count ?? 0);
+    return result.rows.map((row)=>({candidateId:String(row.candidate_id),scanId:String(row.scan_id),
+      triggerKind:String(row.trigger_kind),correlationKey:String(row.correlation_key)}));
+  }
+
+  async markNearMissesTriggered(
+    pending:readonly {candidateId:string;scanId:string;triggerKind:string;correlationKey:string}[],
+    occurredAt:string,sourceCycle:string,
+  ):Promise<number>{
+    let recorded=0;
+    for(const item of pending){
+      const payload={candidateId:item.candidateId,sourceCycle,triggeredAt:occurredAt,triggerKind:item.triggerKind};
+      const contentHash=createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+      const result=await this.pool.query(`INSERT INTO research.theta_near_miss_reevaluation_event(
+        near_miss_event_id,scan_id,candidate_id,event_type,trigger_kind,occurred_at,correlation_key,
+        reason_codes_json,trigger_payload_json,policy_version,content_hash,created_at)
+        VALUES($1,$2,$3,'TRIGGERED',$4,$5,$6,'["FULL_FRONTIER_RESCAN_COMPLETED"]'::jsonb,$7::jsonb,$8,$9,$5)
+        ON CONFLICT(content_hash) DO NOTHING`,[randomUUID(),item.scanId,item.candidateId,item.triggerKind,occurredAt,
+          item.correlationKey,JSON.stringify(payload),autonomousPolicyVersion,contentHash]);
+      recorded+=result.rowCount??0;
+    }
+    return recorded;
   }
 }
 
@@ -199,6 +222,7 @@ export async function runAutonomousRuntimeCycle(
   for(const job of recoveredJobs)if(!recoveredByType.has(job.jobType))recoveredByType.set(job.jobType,job);
   const jobs=[...recoveredByType.values(),...scheduledJobs(bucket).filter((job)=>!recoveredByType.has(job.jobType))];
   let reconciliation: BrokerReconciliationResult | null = null;
+  let opportunityScanCompleted = false;
   const retryAt = new Date(now.getTime() + 60_000).toISOString();
 
   const executor = async (jobType: JobType, _key: string, jobId: string): Promise<JobRunResult> => {
@@ -244,10 +268,19 @@ export async function runAutonomousRuntimeCycle(
         return reconciliation === null ? degraded('BROKER_RECONCILIATION_REQUIRED', retryAt) : succeeded();
       }
       if (jobType === 'WAIT_RECHECK') {
-        return await cycleStore.dueWaitCount() === 0
-          ? skipped('NO_DUE_WAIT_DECISIONS') : degraded('WAIT_REEVALUATION_INPUT_ASSEMBLY_INCOMPLETE', retryAt);
+        const pending=await cycleStore.pendingNearMisses();
+        if(pending.length===0)return skipped('NO_DUE_WAIT_DECISIONS');
+        const session=shadowSessionDecision(reconciliation?.marketOpen??null,reconciliation?.calendarSessionConfirmed??false);
+        if(session==='MARKET_CLOSED')return skipped('MARKET_CLOSED_NO_WAIT_RECHECK');
+        if(session!=='RUN')return degraded('OPTION_MARKET_SESSION_UNCONFIRMED',retryAt);
+        const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,now:()=>new Date().toISOString()});
+        if(scan.completeness!=='COMPLETE')return degraded(`WAIT_RECHECK_SCAN_${scan.completeness}`,retryAt);
+        await cycleStore.markNearMissesTriggered(pending,new Date().toISOString(),scan.scanId);
+        opportunityScanCompleted=true;
+        return succeeded();
       }
       if (jobType === 'OPPORTUNITY_SCAN') {
+        if(opportunityScanCompleted)return skipped('FULL_FRONTIER_ALREADY_RESCANNED');
         const session=shadowSessionDecision(reconciliation?.marketOpen??null,reconciliation?.calendarSessionConfirmed??false);
         if (session==='MARKET_CLOSED') return skipped('MARKET_CLOSED_NO_SHADOW_EVIDENCE');
         if (session!=='RUN') {

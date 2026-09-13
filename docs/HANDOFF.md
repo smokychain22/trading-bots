@@ -1364,3 +1364,23 @@ fields only. Do not connect them to broker mutation.
 NEXT RECOMMENDED TASK: Prepare one explicit provider or entitlement proposal for
 a real-time execution quote contract, then obtain owner approval before changing
 the provider stack. Continue shadow evidence collection in parallel.
+
+## 2026-09-14 master anti-paralysis and Paper baseline closure
+
+OWNER: Codex
+
+TASK: Make the existing structural shadow selector explicit, auditable, Pareto-safe, and restart-visible without enabling an Alpaca order.
+
+FILES CHANGED: Shadow baseline selection and persistence, autonomous WAIT reevaluation, migration 027, SQL invariants, unit tests, decisions, and this handoff.
+
+WHAT WAS IMPLEMENTED: `theta-paper-active-baseline-v2` filters mechanical blockers, keeps UNKNOWN distinct, calculates only descriptive premium-per-collateral-day, builds a multi-dimensional Pareto frontier, and selects deterministically without an invented EV or probability. Every scan writes an immutable baseline receipt with why-not-wait evidence. Non-selected feasible and transiently blocked candidates enter an append-only near-miss queue. The management-first scheduler now consumes queued near misses through a full market-session-confirmed rescan, records the trigger, and suppresses a duplicate opportunity scan in the same cycle.
+
+TESTS RUN: Full Node, Python, TypeScript, ESLint, build, security, PostgreSQL migration and invariants through CI/Production where available.
+
+KNOWN LIMITATIONS: The Production account still lacks a proven fresh execution-grade option quote. Global WAIT is not earned while the bounded discovery scan or branch/management coverage is incomplete. The calibrated EV model remains unavailable. None of these states are converted into zero or success.
+
+RISKS: Structural premium return is descriptive and must never be presented as expected return. The baseline is an evidence generator, not proof of profitability. The runtime and broker mutation gates remain separate and locked.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Empirical outcomes and strictness diagnostics after enough point-in-time episodes exist. Production TypeScript remains the authority for persistence, scheduling, reconciliation, and execution safety.
+
+NEXT RECOMMENDED TASK: Run the always-on worker during a confirmed options session, collect the first complete structural baseline and near-miss receipts, then use the export to measure coverage and execution replay. Do not submit a Paper order until the full readiness receipt passes.

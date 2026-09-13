@@ -17,6 +17,8 @@ test('shadow selection is deterministic, research-only, and never authorizes exe
   assert.equal(selected.empiricalEvReady,false);
   assert.equal(selected.executionAuthorized,false);
   assert.ok(selected.reasonCodes.includes('EMPIRICAL_EV_UNKNOWN'));
+  assert.equal(selected.whyNotWait.selectedCandidateId,'candidate-a');
+  assert.equal(selected.candidateAssessments.length,2);
 });
 
 test('shadow selection rejects calls, zero quantity, invalid BBO, and stale quotes',()=>{
@@ -24,7 +26,26 @@ test('shadow selection rejects calls, zero quantity, invalid BBO, and stale quot
     candidate({optionType:'CALL'}),candidate({quantity:0}),candidate({bid:3,ask:2}),candidate({quoteQuality:'STALE'}),
   ]);
   assert.equal(selected.candidate,null);
-  assert.deepEqual(selected.reasonCodes,['SHADOW_WAIT_NO_STRUCTURALLY_FEASIBLE_CANDIDATE']);
+  assert.deepEqual(selected.reasonCodes,['PAPER_BASELINE_WAIT_NO_STRUCTURALLY_FEASIBLE_CANDIDATE']);
+  assert.equal(selected.candidateAssessments.every((item)=>item.hardBlockers.length>0),true);
+});
+
+test('paper baseline uses a structural Pareto frontier without fabricating EV or win probability',()=>{
+  const stronger=candidate({candidateId:'stronger',contractSymbol:'STRONG',bid:3,ask:3.1,ownershipScore:0.9});
+  const dominated=candidate({candidateId:'dominated',contractSymbol:'DOMINATED',bid:2,ask:2.4,ownershipScore:0.7});
+  const selected=selectShadowOpeningCandidate([dominated,stronger]);
+  assert.equal(selected.candidate?.candidateId,'stronger');
+  assert.deepEqual(selected.paretoFrontierCandidateIds,['stronger']);
+  assert.deepEqual(selected.candidateAssessments.find((item)=>item.candidateId==='dominated')?.dominatedBy,['stronger']);
+  assert.equal(selected.empiricalEvReady,false);
+  assert.equal('evNet' in selected.whyNotWait,false);
+  assert.equal('winProbability' in selected.whyNotWait,false);
+});
+
+test('unknown ownership remains a blocker rather than becoming a neutral score',()=>{
+  const selected=selectShadowOpeningCandidate([candidate({ownershipScore:null})]);
+  assert.equal(selected.candidate,null);
+  assert.deepEqual(selected.candidateAssessments[0]?.hardBlockers.includes('OWNERSHIP_SCORE_UNKNOWN'),true);
 });
 
 test('a simple touch never becomes a shadow fill because queue priority is unknown',()=>{

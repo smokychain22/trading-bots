@@ -31,6 +31,7 @@ try {
     "024_paper_execution_lineage",
     "025_execution_pricing_and_tca",
     "026_provider_neutral_execution_lineage",
+    "027_paper_active_baseline_and_near_miss",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -70,6 +71,8 @@ try {
     ["research", "theta_shadow_account_snapshot"],
     ["trade", "execution_price_event"],
     ["trade", "transaction_cost_analysis"],
+    ["research", "theta_paper_active_baseline_receipt"],
+    ["research", "theta_near_miss_reevaluation_event"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -122,6 +125,13 @@ try {
       AND event_object_table='transaction_cost_analysis' AND trigger_name='reject_immutable_mutation') AS immutable_tca`);
   if(!executionEconomics.rows[0]?.immutable_prices||!executionEconomics.rows[0]?.immutable_tca)
     throw new Error('EXECUTION_PRICING_TCA_PROTECTION_MISSING');
+  const baselineEvidence=await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='research'
+      AND event_object_table='theta_paper_active_baseline_receipt' AND trigger_name='reject_immutable_mutation') AS immutable_receipts,
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='research'
+      AND event_object_table='theta_near_miss_reevaluation_event' AND trigger_name='reject_immutable_mutation') AS immutable_near_miss`);
+  if(!baselineEvidence.rows[0]?.immutable_receipts||!baselineEvidence.rows[0]?.immutable_near_miss)
+    throw new Error('PAPER_ACTIVE_BASELINE_EVIDENCE_PROTECTION_MISSING');
   const intentNullGuard = await client.query(`SELECT
     pg_get_constraintdef(oid) AS definition, convalidated
     FROM pg_constraint WHERE conrelid='trade.order_intent'::regclass
@@ -201,7 +211,9 @@ try {
   const shadowCounts=await client.query(`SELECT
     (SELECT count(*)::int FROM research.theta_shadow_order_intent) AS intents,
     (SELECT count(*)::int FROM research.theta_shadow_fill) AS fills,
-    (SELECT count(*)::int FROM research.theta_shadow_chain) AS chains`);
+    (SELECT count(*)::int FROM research.theta_shadow_chain) AS chains,
+    (SELECT count(*)::int FROM research.theta_paper_active_baseline_receipt) AS baseline_receipts,
+    (SELECT count(*)::int FROM research.theta_near_miss_reevaluation_event) AS near_miss_events`);
   process.stdout.write(JSON.stringify({
     state: "CONNECTED",
     migrations: expected.length,
@@ -223,12 +235,15 @@ try {
     disabledCopyPlanning: "ENFORCED",
     disabledCopyEngineClosure:"ENFORCED",
     shadowVirtualTrader:"ENFORCED",
+    paperActiveBaselineEvidence:"ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
     brokerOrders: orderCount.rows[0]?.count ?? 0,
     shadowIntents:shadowCounts.rows[0]?.intents??0,
     shadowFills:shadowCounts.rows[0]?.fills??0,
     shadowChains:shadowCounts.rows[0]?.chains??0,
+    baselineReceipts:shadowCounts.rows[0]?.baseline_receipts??0,
+    nearMissEvents:shadowCounts.rows[0]?.near_miss_events??0,
   }) + "\n");
 } finally {
   await client.end();

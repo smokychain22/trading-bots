@@ -604,3 +604,11 @@ proof records shape counts and the fixed blocker
 `PROVIDER_DOCUMENTS_SESSION_INGESTION_NOT_EXECUTION_FEED`. It cannot unlock the
 Paper broker adapter. Alpaca OPRA also remains `NOT_ENTITLED`, so the first Paper
 order stays blocked pending a separately approved execution-quote solution.
+
+## 2026-09-14: PAPER_ACTIVE_BASELINE is explicit evidence, never empirical alpha
+
+THETA may select one structurally feasible CSP for shadow and Paper-evidence rehearsal while the calibrated EV model remains unavailable. The versioned `theta-paper-active-baseline-v2` policy uses only point-in-time contract identity, quantity, ownership, fresh two-sided quote quality, structural premium return per collateral-day, and spread. It first removes mechanically unsafe candidates, computes a Pareto frontier without arbitrary scalar weights, and uses a deterministic tie break inside that frontier.
+
+The resulting receipt states `empirical_ev_ready=false` and `execution_authorized=false`. It contains no win probability, expected profit, fill probability, or fabricated EV. It cannot unlock the broker adapter. Near-miss alternatives are recorded as append-only reevaluation events so the scheduler can perform another complete scan when the market session is confirmed. A follower is never needed for this master research path.
+
+Global WAIT remains unearned whenever universe, branch, management, recovery, covered-call, or redeployment coverage is incomplete. The Paper baseline receipt provides a separate why-not-wait proof for its bounded structural frontier and does not relabel incomplete global search as complete.

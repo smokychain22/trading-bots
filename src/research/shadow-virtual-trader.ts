@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { canonicalJson } from './point-in-time-evidence.js';
 
-export const shadowSelectionPolicyVersion = 'theta-shadow-structural-baseline-v1' as const;
+export const shadowSelectionPolicyVersion = 'theta-paper-active-baseline-v2' as const;
 export const shadowFillPolicyVersion = 'theta-shadow-price-through-size-v1' as const;
 export const shadowAccountingPolicyVersion = 'theta-shadow-csp-accounting-v1' as const;
 
@@ -36,18 +36,55 @@ export interface ShadowOpeningCandidate {
 export interface ShadowOpeningSelection {
   readonly candidate: ShadowOpeningCandidate | null;
   readonly reasonCodes: readonly string[];
+  readonly candidateAssessments: readonly ShadowCandidateAssessment[];
+  readonly paretoFrontierCandidateIds: readonly string[];
+  readonly whyNotWait: Readonly<Record<string, unknown>>;
   readonly empiricalEvReady: false;
   readonly executionAuthorized: false;
 }
 
-const validOpeningCandidate = (candidate: ShadowOpeningCandidate): boolean =>
-  candidate.optionType === 'PUT'
-  && Number.isInteger(candidate.quantity) && candidate.quantity > 0
-  && Number.isFinite(candidate.strike) && candidate.strike > 0
-  && Number.isFinite(candidate.multiplier) && candidate.multiplier > 0
-  && candidate.bid !== null && candidate.ask !== null
-  && candidate.bid > 0 && candidate.ask >= candidate.bid
-  && candidate.quoteQuality === 'GOOD';
+export interface ShadowCandidateAssessment {
+  readonly candidateId: string;
+  readonly eligible: boolean;
+  readonly hardBlockers: readonly string[];
+  readonly structuralPremiumReturnPerCapitalDay: number | null;
+  readonly spreadPct: number | null;
+  readonly ownershipScore: number | null;
+  readonly dominatedBy: readonly string[];
+}
+
+function assess(candidate: ShadowOpeningCandidate): Omit<ShadowCandidateAssessment, 'dominatedBy'> {
+  const blockers: string[] = [];
+  if (candidate.optionType !== 'PUT') blockers.push('BASELINE_REQUIRES_CSP_PUT');
+  if (!Number.isInteger(candidate.quantity) || candidate.quantity <= 0) blockers.push('QUANTITY_ZERO_OR_INVALID');
+  if (!Number.isFinite(candidate.strike) || candidate.strike <= 0) blockers.push('STRIKE_INVALID');
+  if (!Number.isFinite(candidate.multiplier) || candidate.multiplier <= 0) blockers.push('MULTIPLIER_INVALID');
+  if (candidate.bid === null || candidate.ask === null || candidate.bid <= 0 || candidate.ask < candidate.bid) blockers.push('TWO_SIDED_BBO_INVALID');
+  if (candidate.quoteQuality !== 'GOOD') blockers.push('QUOTE_QUALITY_NOT_GOOD');
+  if (candidate.quoteTimestamp === null) blockers.push('QUOTE_TIMESTAMP_UNKNOWN');
+  if (candidate.ownershipScore === null) blockers.push('OWNERSHIP_SCORE_UNKNOWN');
+  const decisionMs=Date.parse(candidate.decisionTime),expirationMs=Date.parse(`${candidate.expiration}T20:00:00.000Z`);
+  const dte=Number.isFinite(decisionMs)&&Number.isFinite(expirationMs)?Math.max(1,Math.ceil((expirationMs-decisionMs)/86_400_000)):null;
+  const collateral=candidate.strike*candidate.multiplier;
+  const premium=candidate.bid===null?null:candidate.bid*candidate.multiplier;
+  const structuralReturn=premium!==null&&collateral>0&&dte!==null?premium/collateral/dte:null;
+  const spread=candidate.bid!==null&&candidate.ask!==null&&candidate.ask+candidate.bid>0
+    ? (candidate.ask-candidate.bid)/((candidate.ask+candidate.bid)/2):null;
+  if (structuralReturn===null||!Number.isFinite(structuralReturn)||structuralReturn<=0) blockers.push('STRUCTURAL_PREMIUM_RETURN_INVALID');
+  if (spread===null||!Number.isFinite(spread)||spread<0) blockers.push('SPREAD_INVALID');
+  return {candidateId:candidate.candidateId,eligible:blockers.length===0,hardBlockers:blockers,
+    structuralPremiumReturnPerCapitalDay:structuralReturn,spreadPct:spread,ownershipScore:candidate.ownershipScore};
+}
+
+function dominates(left:Omit<ShadowCandidateAssessment,'dominatedBy'>,right:Omit<ShadowCandidateAssessment,'dominatedBy'>):boolean{
+  if(!left.eligible||!right.eligible||left.structuralPremiumReturnPerCapitalDay===null||right.structuralPremiumReturnPerCapitalDay===null
+    ||left.spreadPct===null||right.spreadPct===null||left.ownershipScore===null||right.ownershipScore===null)return false;
+  const noWorse=left.structuralPremiumReturnPerCapitalDay>=right.structuralPremiumReturnPerCapitalDay
+    &&left.spreadPct<=right.spreadPct&&left.ownershipScore>=right.ownershipScore;
+  const better=left.structuralPremiumReturnPerCapitalDay>right.structuralPremiumReturnPerCapitalDay
+    ||left.spreadPct<right.spreadPct||left.ownershipScore>right.ownershipScore;
+  return noWorse&&better;
+}
 
 /**
  * Picks one research-only CSP candidate across the complete scan. Ranking is
@@ -55,20 +92,35 @@ const validOpeningCandidate = (candidate: ShadowOpeningCandidate): boolean =>
  * authorization. The executable strategy remains blocked until R6 evidence.
  */
 export function selectShadowOpeningCandidate(candidates: readonly ShadowOpeningCandidate[]): ShadowOpeningSelection {
-  const eligible = candidates.filter(validOpeningCandidate).toSorted((left, right) => {
-    const ownership = (right.ownershipScore ?? -1) - (left.ownershipScore ?? -1);
-    if (ownership !== 0) return ownership;
-    const rank = (left.rank ?? Number.MAX_SAFE_INTEGER) - (right.rank ?? Number.MAX_SAFE_INTEGER);
-    if (rank !== 0) return rank;
-    const collateral = left.strike * left.multiplier * left.quantity - right.strike * right.multiplier * right.quantity;
-    return collateral !== 0 ? collateral : left.contractSymbol.localeCompare(right.contractSymbol);
+  const initial=candidates.map(assess);
+  const assessments:ShadowCandidateAssessment[]=initial.map((candidate)=>({...candidate,
+    dominatedBy:initial.filter((other)=>dominates(other,candidate)).map((other)=>other.candidateId).sort()}));
+  const frontierIds=new Set(assessments.filter((candidate)=>candidate.eligible&&candidate.dominatedBy.length===0).map((candidate)=>candidate.candidateId));
+  const eligible = candidates.filter((candidate)=>frontierIds.has(candidate.candidateId)).toSorted((left, right) => {
+    const la=assessments.find((item)=>item.candidateId===left.candidateId);
+    const ra=assessments.find((item)=>item.candidateId===right.candidateId);
+    const structural=(ra?.structuralPremiumReturnPerCapitalDay??-1)-(la?.structuralPremiumReturnPerCapitalDay??-1);
+    if(structural!==0)return structural;
+    const spread=(la?.spreadPct??Number.MAX_SAFE_INTEGER)-(ra?.spreadPct??Number.MAX_SAFE_INTEGER);
+    if(spread!==0)return spread;
+    const ownership=(ra?.ownershipScore??-1)-(la?.ownershipScore??-1);
+    if(ownership!==0)return ownership;
+    const rank=(left.rank??Number.MAX_SAFE_INTEGER)-(right.rank??Number.MAX_SAFE_INTEGER);
+    return rank!==0?rank:left.contractSymbol.localeCompare(right.contractSymbol);
   });
   const selected = eligible[0] ?? null;
+  const hardBlocked=assessments.filter((candidate)=>!candidate.eligible).map((candidate)=>candidate.candidateId);
   return {
     candidate: selected,
     reasonCodes: selected === null
-      ? ['SHADOW_WAIT_NO_STRUCTURALLY_FEASIBLE_CANDIDATE']
-      : ['RESEARCH_ONLY_STRUCTURAL_RANK', 'EMPIRICAL_EV_UNKNOWN', 'BROKER_EXECUTION_LOCKED'],
+      ? ['PAPER_BASELINE_WAIT_NO_STRUCTURALLY_FEASIBLE_CANDIDATE']
+      : ['PAPER_ACTIVE_BASELINE_PARETO_FRONTIER', 'EMPIRICAL_EV_UNKNOWN', 'BROKER_EXECUTION_LOCKED'],
+    candidateAssessments:assessments,
+    paretoFrontierCandidateIds:[...frontierIds].sort(),
+    whyNotWait:{policyVersion:shadowSelectionPolicyVersion,candidatesEvaluated:candidates.length,
+      structurallyEligible:assessments.filter((candidate)=>candidate.eligible).length,hardBlockedCandidateIds:hardBlocked,
+      selectedCandidateId:selected?.candidateId??null,selectionBasis:'STRUCTURAL_PARETO_NO_EMPIRICAL_EV',
+      empiricalEvReady:false,brokerExecutionLocked:true},
     empiricalEvReady: false,
     executionAuthorized: false,
   };

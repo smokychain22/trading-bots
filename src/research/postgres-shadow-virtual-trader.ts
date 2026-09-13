@@ -59,6 +59,39 @@ export class PostgresShadowVirtualTrader {
         executionModelVersion:String(row.execution_model_version),
       }));
       const selection=selectShadowOpeningCandidate(candidates);
+      const receiptPayload={scanId,observedAt:createdAt,policyVersion:shadowSelectionPolicyVersion,
+        selectedCandidateId:selection.candidate?.candidateId??null,empiricalEvReady:false,executionAuthorized:false,
+        candidateAssessments:selection.candidateAssessments,paretoFrontierCandidateIds:selection.paretoFrontierCandidateIds,
+        whyNotWait:selection.whyNotWait,reasonCodes:selection.reasonCodes};
+      const receiptHash=shadowContentHash(receiptPayload);
+      await client.query(`INSERT INTO research.theta_paper_active_baseline_receipt(
+        baseline_receipt_id,scan_id,decision_id,selected_candidate_id,observed_at,policy_version,empirical_ev_ready,
+        execution_authorized,candidate_assessments_json,pareto_frontier_candidate_ids_json,why_not_wait_json,
+        reason_codes_json,content_hash,created_at)
+        VALUES($1,$2,$3,$4,$5,$6,false,false,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11,$5)
+        ON CONFLICT(scan_id) DO NOTHING`,[deterministicRuntimeUuid(`paper-active-baseline:${scanId}`),scanId,
+          selection.candidate?.decisionId??null,selection.candidate?.candidateId??null,createdAt,shadowSelectionPolicyVersion,
+          JSON.stringify(selection.candidateAssessments),JSON.stringify(selection.paretoFrontierCandidateIds),
+          JSON.stringify(selection.whyNotWait),JSON.stringify(selection.reasonCodes),receiptHash]);
+      for(const assessment of selection.candidateAssessments){
+        if(assessment.candidateId===selection.candidate?.candidateId)continue;
+        const transient=assessment.eligible||assessment.hardBlockers.some((code)=>
+          ['TWO_SIDED_BBO_INVALID','QUOTE_QUALITY_NOT_GOOD','QUOTE_TIMESTAMP_UNKNOWN','QUANTITY_ZERO_OR_INVALID','OWNERSHIP_SCORE_UNKNOWN'].includes(code));
+        if(!transient)continue;
+        const triggerKind=assessment.hardBlockers.some((code)=>code.includes('QUOTE')||code.includes('BBO'))?'QUOTE_REFRESH'
+          :assessment.hardBlockers.includes('QUANTITY_ZERO_OR_INVALID')?'ACCOUNT_OR_RISK_CHANGE'
+            :assessment.hardBlockers.includes('OWNERSHIP_SCORE_UNKNOWN')?'DATA_RECOVERY':'ALTERNATIVE_REEVALUATION';
+        const payload={scanId,candidateId:assessment.candidateId,triggerKind,assessment,
+          selectedCandidateId:selection.candidate?.candidateId??null,empiricalEvReady:false};
+        const hash=shadowContentHash(payload);
+        await client.query(`INSERT INTO research.theta_near_miss_reevaluation_event(
+          near_miss_event_id,scan_id,candidate_id,event_type,trigger_kind,occurred_at,correlation_key,
+          reason_codes_json,trigger_payload_json,policy_version,content_hash,created_at)
+          VALUES($1,$2,$3,'QUEUED',$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$5) ON CONFLICT(content_hash) DO NOTHING`,
+          [deterministicRuntimeUuid(`near-miss:${hash}`),scanId,assessment.candidateId,triggerKind,createdAt,
+            `near-miss:${assessment.candidateId}`,JSON.stringify(assessment.hardBlockers.length===0?['PARETO_ALTERNATIVE_NOT_SELECTED']:assessment.hardBlockers),
+            JSON.stringify(payload),shadowSelectionPolicyVersion,hash]);
+      }
       if(selection.candidate===null){await client.query('COMMIT');return {state:'WAIT',intentId:null,candidateId:null,reasonCodes:selection.reasonCodes};}
       const selected=selection.candidate,row=result.rows.find((item)=>String(item.candidate_id)===selected.candidateId);
       const equity=finite(row?.equity),cash=finite(row?.cash),buyingPower=finite(row?.buying_power);
