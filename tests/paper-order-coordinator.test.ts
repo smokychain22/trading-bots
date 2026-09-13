@@ -34,10 +34,10 @@ const control = (overrides: Partial<PaperExecutionControl> = {}): PaperExecution
 const gate: Omit<ExecutionGateContext, 'intentPersisted' | 'accountKind' | 'environment' | 'clientOrderId' | 'quantity'> = {
   baseHostname: 'paper-api.alpaca.markets', accountVerified: true, optionsCapabilityVerified: true,
   aegisState: 'ALLOW_FULL', quoteFresh: true, decisionExpiresAt: '2026-09-11T15:00:00Z', now: '2026-09-11T14:00:00Z', isNewEntry: true,
-  priceEvidence: 'ALPACA_OPRA_BBO',
+  priceEvidence: 'QUALIFIED_OPTION_BBO',
 };
 const executionLineage = { chainId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',optionContractId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-  underlyingId:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',executionEvidence:{quoteSource:'ALPACA' as const,quoteFeed:'OPRA' as const,
+  underlyingId:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',executionEvidence:{quoteSource:'ALPACA' as const,quoteFeed:'OPRA' as const,quoteSemantics:'CONSOLIDATED_NBBO' as const,
     quoteAsOf:'2026-09-11T14:00:00Z',decisionExpiresAt:'2026-09-11T15:00:00Z',quoteContentHash:'a'.repeat(64),aegisState:'ALLOW_FULL' as const}};
 const prepare = async (coordinator: PaperOrderCoordinator) => coordinator.prepare({ orderIntentId: '11111111-1111-4111-8111-111111111111', executionAccountId: '22222222-2222-4222-8222-222222222222', request: order, action: 'OPEN_CSP', decisionId: '33333333-3333-4333-8333-333333333333', persistedAt: gate.now, ...executionLineage });
 

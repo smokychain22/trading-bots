@@ -18,7 +18,7 @@ test('selected CSP becomes one deterministic OPRA-bound persisted command',()=>{
   assert.deepEqual(first,second);
   assert.equal(first.request.position_intent,'sell_to_open');
   assert.equal(first.request.qty,1);
-  assert.equal(first.gate.priceEvidence,'ALPACA_OPRA_BBO');
+  assert.equal(first.gate.priceEvidence,'QUALIFIED_OPTION_BBO');
   assert.match(first.executionEvidence.quoteContentHash,/^[0-9a-f]{64}$/);
 });
 

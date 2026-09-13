@@ -9,7 +9,7 @@ TCA, immutable evidence persistence, and stricter management-state checks reques
 by the R7 closure directive without activating broker submission.
 
 FILES CHANGED: New execution quote, adaptive policy, TCA and PostgreSQL evidence
-store modules, migration 025, database verification, management input/frontier
+store modules, migrations 025-026, database verification, management input/frontier
 guards, unit and SQL tests, decisions and handoff.
 
 WHAT WAS IMPLEMENTED: Fresh authenticated execution quote qualification with
@@ -18,6 +18,10 @@ economic cancellation, optional size-weighted microprice, direction-aware TCA, a
 immutable price/TCA evidence. Management now fails closed on missing/stale account
 state, malformed quote numbers, invalid BBO, non-positive assignment capacity, and
 unapproved AEGIS state.
+
+Option order lineage now stores provider-neutral qualified quote semantics. Canonical
+commands use QUALIFIED_OPTION_BBO, while Alpaca remains the only broker mutation
+adapter. Session-recorded research semantics remain forbidden by a database check.
 
 TESTS RUN: Focused Node tests, full Node/Python, TypeScript, ESLint, build, security.
 PostgreSQL migration/invariants and browser regression run in CI after push. Reticle

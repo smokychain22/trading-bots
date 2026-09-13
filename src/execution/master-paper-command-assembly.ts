@@ -102,11 +102,12 @@ export function assembleMasterPaperExecutionCommand(raw: MasterPaperCommandAssem
     action: input.action, chainId: input.chainId, optionContractId: input.optionContractId,
     underlyingId: input.underlyingId, request, persistedAt: input.now,
     executionEvidence: { quoteSource: 'ALPACA', quoteFeed: input.quote.feed as 'OPRA' | 'SIP' | 'IEX',
+      quoteSemantics: input.quote.feed === 'OPRA' ? 'CONSOLIDATED_NBBO' : 'TRUSTED_TWO_SIDED_ORDER_PRICING',
       quoteAsOf: input.quote.observedAt, decisionExpiresAt: input.decisionExpiresAt,
       quoteContentHash: canonicalQuoteHash(input), aegisState: input.aegisState },
     gate: { baseHostname: 'paper-api.alpaca.markets', accountVerified: input.accountVerified,
       optionsCapabilityVerified: input.optionsCapabilityVerified, aegisState: input.aegisState,
-      quoteFresh: true, priceEvidence: isStock ? 'ALPACA_STOCK_BBO' : 'ALPACA_OPRA_BBO',
+      quoteFresh: true, priceEvidence: isStock ? 'ALPACA_STOCK_BBO' : 'QUALIFIED_OPTION_BBO',
       decisionExpiresAt: input.decisionExpiresAt, now: input.now, isNewEntry: thetaActionOpensNewRisk(input.action) },
   };
 }

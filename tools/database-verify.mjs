@@ -30,6 +30,7 @@ try {
     "023_shadow_virtual_trader",
     "024_paper_execution_lineage",
     "025_execution_pricing_and_tca",
+    "026_provider_neutral_execution_lineage",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -108,11 +109,11 @@ try {
   if (!intentProtection.rows[0]?.has_column || !intentProtection.rows[0]?.has_constraint)
     throw new Error("EXPLICIT_POSITION_INTENT_PROTECTION_MISSING");
   const executionLineage=await client.query(`SELECT
-    count(*) FILTER(WHERE column_name IN ('quote_source','quote_feed','quote_content_hash'))::int AS column_count,
+    count(*) FILTER(WHERE column_name IN ('quote_source','quote_feed','quote_semantics','quote_content_hash'))::int AS column_count,
     EXISTS(SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='trade'
       AND table_name='order_intent' AND constraint_name='ck_order_intent_quote_lineage') AS has_constraint
     FROM information_schema.columns WHERE table_schema='trade' AND table_name='order_intent'`);
-  if(executionLineage.rows[0]?.column_count!==3||!executionLineage.rows[0]?.has_constraint)
+  if(executionLineage.rows[0]?.column_count!==4||!executionLineage.rows[0]?.has_constraint)
     throw new Error('PAPER_EXECUTION_LINEAGE_PROTECTION_MISSING');
   const executionEconomics=await client.query(`SELECT
     EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade'

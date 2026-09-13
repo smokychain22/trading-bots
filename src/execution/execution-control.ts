@@ -15,7 +15,7 @@ export interface ExecutionGateContext {
   readonly aegisState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO';
   readonly quantity: number;
   readonly quoteFresh: boolean;
-  readonly priceEvidence: 'ALPACA_OPRA_BBO' | 'ALPACA_STOCK_BBO' | 'UNVERIFIED';
+  readonly priceEvidence: 'QUALIFIED_OPTION_BBO' | 'ALPACA_OPRA_BBO' | 'ALPACA_STOCK_BBO' | 'UNVERIFIED';
   readonly decisionExpiresAt: string;
   readonly clientOrderId: string;
   readonly now: string;

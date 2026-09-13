@@ -21,6 +21,12 @@ price events and one immutable TCA row per order intent land in migration 025. T
 contracts remain disabled evidence infrastructure until the runtime integration and
 external quote gates pass.
 
+Migration 026 replaces provider-name coupling in option order lineage with qualified
+source semantics. Stock mutation remains explicitly Alpaca SIP/IEX. Alpaca remains
+the broker for every mutation. Legacy evidence names remain accepted by the generic
+gate only for compatibility, while canonical option commands emit
+`QUALIFIED_OPTION_BBO`.
+
 ## 2026-09-11: research references and incomplete valuation
 
 Review the owner's fifteen GitHub repositories plus QuantLib and LEAN at

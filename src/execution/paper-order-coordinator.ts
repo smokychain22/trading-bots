@@ -19,8 +19,9 @@ export interface PersistedPaperOrderIntent {
   readonly optionContractId: string | null;
   readonly underlyingId: string;
   readonly executionEvidence: {
-    readonly quoteSource: 'ALPACA';
-    readonly quoteFeed: 'OPRA' | 'SIP' | 'IEX';
+    readonly quoteSource: string;
+    readonly quoteFeed: string | null;
+    readonly quoteSemantics: 'CONSOLIDATED_NBBO' | 'TRUSTED_TWO_SIDED_ORDER_PRICING';
     readonly quoteAsOf: string;
     readonly decisionExpiresAt: string;
     readonly quoteContentHash: string;
@@ -81,7 +82,7 @@ export class PaperOrderCoordinator {
     if (intent === null) throw new Error('Order intent must be persisted before submission.');
     const expectedNewRisk = thetaActionOpensNewRisk(intent.action);
     if (gate.isNewEntry !== expectedNewRisk) throw new Error('ORDER_ACTION_RISK_CLASSIFICATION_MISMATCH');
-    const expectedPriceEvidence = intent.action === 'SELL_STOCK' ? 'ALPACA_STOCK_BBO' : 'ALPACA_OPRA_BBO';
+    const expectedPriceEvidence = intent.action === 'SELL_STOCK' ? 'ALPACA_STOCK_BBO' : 'QUALIFIED_OPTION_BBO';
     if (gate.priceEvidence !== expectedPriceEvidence) throw new Error('ORDER_EXECUTABLE_PRICE_PROVENANCE_MISMATCH');
     const authorization = authorizeBrokerMutation(this.control, {
       ...gate,
@@ -207,7 +208,7 @@ export class PaperOrderCoordinator {
     }
     const persistedReplacement = await this.prepare(replacement);
     if (persistedReplacement.status !== 'READY') return this.reconcileIntent(replacement.orderIntentId);
-    const expectedPriceEvidence = original.action === 'SELL_STOCK' ? 'ALPACA_STOCK_BBO' : 'ALPACA_OPRA_BBO';
+    const expectedPriceEvidence = original.action === 'SELL_STOCK' ? 'ALPACA_STOCK_BBO' : 'QUALIFIED_OPTION_BBO';
     if (gate.priceEvidence !== expectedPriceEvidence) throw new Error('ORDER_EXECUTABLE_PRICE_PROVENANCE_MISMATCH');
     const authorization = authorizeBrokerMutation(this.control, {
       ...gate, operation: 'REPLACE', isNewEntry: false, intentPersisted: true,

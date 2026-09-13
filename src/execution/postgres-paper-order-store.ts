@@ -28,10 +28,11 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
     if (!/^[0-9a-f]{64}$/.test(evidence.quoteContentHash)
       || !Number.isFinite(Date.parse(evidence.quoteAsOf)) || !Number.isFinite(Date.parse(evidence.decisionExpiresAt))
       || Date.parse(evidence.decisionExpiresAt)<=Date.parse(evidence.quoteAsOf)) throw new Error('ORDER_EXECUTION_EVIDENCE_INVALID');
-    if (instrumentType==='OPTION' && (intent.optionContractId===null || evidence.quoteFeed!=='OPRA')) {
-      throw new Error('OPTION_ORDER_REQUIRES_OPRA_CONTRACT_EVIDENCE');
+    if (instrumentType==='OPTION' && intent.optionContractId===null) {
+      throw new Error('OPTION_ORDER_REQUIRES_QUALIFIED_CONTRACT_EVIDENCE');
     }
-    if (instrumentType==='STOCK' && (intent.optionContractId!==null || !['SIP','IEX'].includes(evidence.quoteFeed))) {
+    if (instrumentType==='STOCK' && (intent.optionContractId!==null || evidence.quoteSource!=='ALPACA'
+      || evidence.quoteFeed===null || !['SIP','IEX'].includes(evidence.quoteFeed))) {
       throw new Error('STOCK_ORDER_EXECUTION_EVIDENCE_INVALID');
     }
     await this.pool.query(
@@ -40,14 +41,14 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
          instrument_type, broker_symbol, side, quantity, limit_price, time_in_force,
          theta_action, position_intent, intent_persisted_at, created_at, updated_at,
          chain_id, option_contract_id, underlying_id, quote_as_of, decision_expires_at, aegis_state,
-         quote_source, quote_feed, quote_content_hash)
-       VALUES ($1,$2,$3,$4,$5,$14,$6,$7,$8,$9,$10,$11,$12,$13,$13,$13,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+         quote_source, quote_feed, quote_semantics, quote_content_hash)
+       VALUES ($1,$2,$3,$4,$5,$14,$6,$7,$8,$9,$10,$11,$12,$13,$13,$13,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
       [intent.orderIntentId, intent.executionAccountId, intent.decisionId, intent.request.client_order_id,
         intent.status, intent.request.symbol, intent.request.side, intent.request.qty,
         intent.request.limit_price, intent.request.time_in_force, intent.action,
         intent.request.position_intent?.toUpperCase() ?? null, intent.persistedAt, instrumentType,
         intent.chainId,intent.optionContractId,intent.underlyingId,evidence.quoteAsOf,evidence.decisionExpiresAt,
-        evidence.aegisState,evidence.quoteSource,evidence.quoteFeed,evidence.quoteContentHash],
+        evidence.aegisState,evidence.quoteSource,evidence.quoteFeed,evidence.quoteSemantics,evidence.quoteContentHash],
     );
   }
 
@@ -57,7 +58,7 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
               i.status, i.broker_symbol, i.side, i.quantity, i.limit_price, i.time_in_force,
               i.theta_action, i.instrument_type, i.position_intent, i.intent_persisted_at,
               i.chain_id,i.option_contract_id,i.underlying_id,i.quote_as_of,i.decision_expires_at,i.aegis_state,
-              i.quote_source,i.quote_feed,i.quote_content_hash,b.provider_order_id
+              i.quote_source,i.quote_feed,i.quote_semantics,i.quote_content_hash,b.provider_order_id
        FROM trade.order_intent i
        LEFT JOIN LATERAL (
          SELECT provider_order_id FROM trade.broker_order
@@ -71,7 +72,7 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
     if (row.chain_id === null || row.chain_id === undefined
       || row.underlying_id === null || row.underlying_id === undefined
       || row.quote_source === null || row.quote_source === undefined
-      || row.quote_feed === null || row.quote_feed === undefined
+      || row.quote_semantics === null || row.quote_semantics === undefined
       || row.quote_as_of === null || row.quote_as_of === undefined
       || row.decision_expires_at === null || row.decision_expires_at === undefined
       || row.quote_content_hash === null || row.quote_content_hash === undefined
@@ -88,8 +89,9 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
       persistedAt: toIso(row.intent_persisted_at),
       brokerOrderId: row.provider_order_id === null ? null : String(row.provider_order_id),
       chainId:String(row.chain_id),optionContractId:row.option_contract_id===null?null:String(row.option_contract_id),
-      underlyingId:String(row.underlying_id),executionEvidence:{quoteSource:z.literal('ALPACA').parse(row.quote_source),
-        quoteFeed:z.enum(['OPRA','SIP','IEX']).parse(row.quote_feed),quoteAsOf:toIso(row.quote_as_of),
+      underlyingId:String(row.underlying_id),executionEvidence:{quoteSource:z.string().min(1).parse(row.quote_source),
+        quoteFeed:row.quote_feed===null?null:String(row.quote_feed),
+        quoteSemantics:z.enum(['CONSOLIDATED_NBBO','TRUSTED_TWO_SIDED_ORDER_PRICING']).parse(row.quote_semantics),quoteAsOf:toIso(row.quote_as_of),
         decisionExpiresAt:toIso(row.decision_expires_at),quoteContentHash:String(row.quote_content_hash),
         aegisState:z.enum(['ALLOW_FULL','ALLOW_REDUCED','HOLD_ONLY','HARD_VETO']).parse(row.aegis_state)},
       request: {
