@@ -243,3 +243,60 @@ Full suite passes. Security scan: 0 findings.
 that has never yet run against a real dataset, found here specifically
 BECAUSE Codex's port exercised the same logic against its own fixtures.
 `PARITY_STILL_VALID` = YES. `REQUIRED_CODEX_CHANGE` count for this run: 0.
+
+## Provider/mechanism research review: `d9e13f9..605f6dd`
+
+Three commits: Paper execution/lifecycle engineering closure (migration 024,
+`trusted-option-quote.ts`, command assembly/orchestrator, order store) and
+six new research documents (`THETA_OPTIONOMICS_DATA_MAP.md`,
+`THETA_OPTIONOMICS_FEATURE_CATALOG.md`, `THETA_QUANTWHEEL_TEARDOWN.md`,
+`THETA_QUANTWHEEL_HYPOTHESES.md`, `THETA_ALERTSIFY_COMPETITOR_MAP.md`,
+`THETA_EXTERNAL_MECHANISM_MATRIX.md`).
+
+**Execution engineering: `NO_RESEARCH_IMPACT`.** Migration 024 adds
+`quote_source`/`quote_feed`/`quote_content_hash` to `trade.order_intent` --
+confirmed absent from `point-in-time-evidence.ts`'s and
+`postgres-dataset-export.ts`'s SELECT lists, so this branch's dataset
+contracts/loader are unaffected. `trusted-option-quote.ts`'s
+`assessTrustedOptionQuote` is upstream of order placement, not a dataset
+row shape. `first-paper-order-readiness.ts`/`r7-phase-status.ts` gained an
+OPERATIONAL R7 gate (`R7_FULL_PHASE`, submission/management/lifecycle-path
+readiness) -- this is Codex's execution-readiness receipt (can Production
+mechanically submit an order safely), a different R7 facet from this
+branch's `research_evidence_packet.research_ready_for_paper` (does the
+strategy have positive empirical evidence). No naming collision, no
+overlap, no conflict.
+
+**Research documents: reviewed, not duplicated.** Codex's six new docs are
+disciplined and already encode the standing invariants this branch
+enforces in code: `THETA_QUANTWHEEL_TEARDOWN.md`/`_HYPOTHESES.md`
+explicitly reject "positive roll credit = success," "annualized yield
+flatters small credits," and "GEX level/sweep size establishes expectancy
+by itself" -- the exact assumptions this run's directive named to attack.
+`THETA_ALERTSIFY_COMPETITOR_MAP.md`'s adopted mechanisms (master-fill-first,
+deterministic lineage IDs, cashflow-direction-aware slippage guards) match
+this branch's `follower_copy_economics.py` (`master_confirmation_sufficient`,
+canonical `copyEventId`, `CashflowDirection`) with no gap found.
+`THETA_QUANTWHEEL_HYPOTHESES.md`'s 9 mechanisms (put-wall distance,
+gamma-flip, Vanna, Charm, expected-move-relative strikes, Real Cost, roll
+frontier, equity released, per-ticker chain accounting) are genuinely NEW
+structural/GEX-family mechanisms not present in this branch's 14-hypothesis
+registry (`quant/research/data/hypotheses.json`) -- no duplication found,
+and none added, since every one is `INSUFFICIENT_DATA`/`TEST CONTRACT
+READY` pending real data, and `experiment_registry.py`'s existing generic
+`EXPERT_PRIOR` ablation family is sufficient to hold them until a specific
+experiment is actually eligible to run (adding named experiment IDs now
+would be architecture-building against `DATASET_ABSENT`, which this run's
+directive forbids).
+
+**Minor, non-blocking observation (not a `REQUIRED_CODEX_CHANGE`):**
+`THETA_OPTIONOMICS_FEATURE_CATALOG.md`'s experiment-outcome vocabulary
+(`KEEP`/`KEEP_CONDITIONALLY`/`REMOVE`/`REJECT`/`INSUFFICIENT_DATA`) omits
+`CHALLENGER` and `RESEARCH_ONLY`, which this branch's `champion_
+challenger.py`/`promotion_checker.py` and prior directives both use. Worth
+aligning next time that document is touched substantively; not raised as a
+required change since it is a documentation vocabulary gap, not a contract
+defect.
+
+**`DATASET_ABSENT` still stands.** No `research_exports/` artifact exists.
+`PARITY_STILL_VALID` = YES. `REQUIRED_CODEX_CHANGE` count for this run: 0.
