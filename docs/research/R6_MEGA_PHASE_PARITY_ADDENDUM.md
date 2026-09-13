@@ -390,3 +390,54 @@ selection_bias.py, follower_copy_economics.py) already exists and was not
 rebuilt.
 
 **`REQUIRED_CODEX_CHANGE` count for this run: 0.**
+
+## No-new-evidence checkpoint + two provider-independent additions: `66b3f7d` unchanged
+
+`git log --oneline 66b3f7d..origin/main` empty -- origin/main has not
+advanced since the previous review. No `research_exports/` artifact
+exists. `DATASET_ABSENT` stands unchanged; every empirical item this
+run's directive asked for (entry experiments, profit-taking comparisons,
+loss-management episode matrix, assignment/recovery findings, model
+fitting, calibration, DSR/PBO, feature ablation, copy-drift measurement)
+remains `BLOCKED_ON_DATA`, correctly, since the machinery each requires
+already exists (`experiment_registry.py`, `management_policy.py`,
+`walk_forward.py`, `selection_bias.py`, `loss_taxonomy.py`).
+
+Two genuine, provider-independent, no-data-required gaps were found and
+closed rather than manufacturing empirical work against absent data:
+
+1. **Sizing-basis research (`follower_copy_economics.py`)**: the
+   directive asked whether proportional follower sizing should use
+   equity/risk-budget/collateral/ES-CVaR ratios or a hybrid, and this
+   branch had only ONE sizing basis (capacity-cap minimum). Added
+   `SizingBasis` (5 variants), `compute_proportional_target_quantity`
+   (per-basis ratio, None-safe, zero is a valid target), `compute_hybrid_
+   target_quantity` (min of known component targets -- conservative by
+   construction, never an average or a max), and `resolve_follower_
+   quantity`, which combines a basis TARGET with the existing HARD
+   capacity cap via `min()` -- the capacity cap always wins, generalizing
+   the standing "never let Kelly override AEGIS" invariant to every
+   sizing basis, not only Kelly. 12 new tests.
+2. **R8 cohort reporting + P&L decomposition (`paper_cohort_analytics.py`,
+   new module)**: the directive asked for cohort breakdowns across 15
+   named dimensions and a decision-alpha/execution-alpha/sizing-effect/
+   management-effect/tail-realization decomposition, and
+   `paper_validation_analytics.py` had neither -- only a flat summary,
+   incident tally, and stability recommendation. Added `CohortDimension`
+   (15 values matching the directive exactly), `CohortKey`/`CohortEpisode`/
+   `CohortAggregate`, `build_cohort_report` (means computed only over
+   known values -- an unresolved episode contributes to `n` but never
+   silently to a mean), `PnLDecomposition` with `reconcile_decomposition`
+   and `require_reconciled_decomposition` (**raises**
+   `DecompositionReconciliationError` when a fully-known decomposition's
+   five components do not sum to the realized whole-chain P&L, catching a
+   double-counted or omitted term structurally rather than by convention).
+   10 new tests.
+
+Both are CONTRACT/SHAPE modules in the same pattern as `action_value_
+distribution.py`: every numeric field Optional, exercised only against
+synthetic fixtures, no fabricated performance number anywhere.
+
+**981 Python tests pass** (+22). Security scan: 0 findings.
+**`REQUIRED_CODEX_CHANGE` count for this run: 0** (no new canonical
+commits existed to review).

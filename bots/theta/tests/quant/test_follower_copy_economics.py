@@ -23,12 +23,17 @@ from research.follower_copy_economics import (  # noqa: E402
     CANONICAL_ROLL_ACTIONS_REJECTED_AT_PERSISTENCE,
     CashflowDirection,
     CopyabilityAssessment,
+    ProportionalSizingInputs,
+    SizingBasis,
+    compute_hybrid_target_quantity,
     compute_price_deterioration,
+    compute_proportional_target_quantity,
     to_canonical_copy_outcome,
     compute_return_degradation_pct,
     evaluate_follower_roll,
     follower_may_participate,
     r4_quant_copy_contract,
+    resolve_follower_quantity,
 )
 
 
@@ -270,6 +275,55 @@ class CanonicalVocabularyTests(unittest.TestCase):
             CopyDecision.SKIP, ["FOLLOWER_ACCOUNT_CAPACITY_YIELDS_ZERO_QUANTITY"])), "SKIP_ACCOUNT")
         self.assertEqual(to_canonical_copy_outcome(CopyabilityAssessment(
             CopyDecision.SKIP, ["FOLLOWER_QUOTE_STALE_AT_COPY_TIME"])), "BLOCKED")
+
+
+class ProportionalSizingBasisTests(unittest.TestCase):
+    """Sizing-basis research: which RATIO a follower should target, always
+    subordinate to the follower's own hard capacity cap."""
+
+    def test_unknown_denominator_yields_no_target_never_a_guess(self):
+        inputs = ProportionalSizingInputs(SizingBasis.EQUITY_PROPORTIONAL, master_denominator=None, follower_denominator=5_000.0)
+        self.assertIsNone(compute_proportional_target_quantity(10, inputs))
+
+    def test_zero_master_denominator_yields_no_target(self):
+        inputs = ProportionalSizingInputs(SizingBasis.EQUITY_PROPORTIONAL, master_denominator=0.0, follower_denominator=5_000.0)
+        self.assertIsNone(compute_proportional_target_quantity(10, inputs))
+
+    def test_equity_proportional_target_scales_by_ratio(self):
+        # follower equity is 1/10th of master equity -> target 1/10th of master qty
+        inputs = ProportionalSizingInputs(SizingBasis.EQUITY_PROPORTIONAL, master_denominator=200_000.0, follower_denominator=20_000.0)
+        self.assertEqual(compute_proportional_target_quantity(10, inputs), 1)
+
+    def test_zero_follower_denominator_is_a_valid_zero_target(self):
+        inputs = ProportionalSizingInputs(SizingBasis.RISK_BUDGET_PROPORTIONAL, master_denominator=100_000.0, follower_denominator=0.0)
+        self.assertEqual(compute_proportional_target_quantity(10, inputs), 0)
+
+    def test_hybrid_takes_the_minimum_of_known_component_targets(self):
+        components = [
+            ProportionalSizingInputs(SizingBasis.EQUITY_PROPORTIONAL, 200_000.0, 20_000.0),  # -> 1
+            ProportionalSizingInputs(SizingBasis.COLLATERAL_PROPORTIONAL, 100_000.0, 40_000.0),  # -> 4
+        ]
+        self.assertEqual(compute_hybrid_target_quantity(10, components), 1)
+
+    def test_hybrid_is_none_only_when_every_component_is_unknown(self):
+        components = [
+            ProportionalSizingInputs(SizingBasis.EQUITY_PROPORTIONAL, None, 20_000.0),
+            ProportionalSizingInputs(SizingBasis.COLLATERAL_PROPORTIONAL, 100_000.0, None),
+        ]
+        self.assertIsNone(compute_hybrid_target_quantity(10, components))
+
+    def test_capacity_cap_binds_even_when_the_basis_target_is_larger(self):
+        # capacity cap for the default fixture is 2 (10000/5000); basis proposes 8.
+        inputs = ProportionalSizingInputs(SizingBasis.EQUITY_PROPORTIONAL, master_denominator=10_000.0, follower_denominator=8_000.0)
+        basis_target, final_qty = resolve_follower_quantity(_inputs(master_quantity=10), SizingBasis.EQUITY_PROPORTIONAL, [inputs])
+        self.assertEqual(basis_target, 8)
+        self.assertEqual(final_qty, 2)
+
+    def test_unknown_basis_target_falls_back_to_capacity_cap_alone(self):
+        inputs = ProportionalSizingInputs(SizingBasis.EQUITY_PROPORTIONAL, master_denominator=None, follower_denominator=8_000.0)
+        basis_target, final_qty = resolve_follower_quantity(_inputs(), SizingBasis.EQUITY_PROPORTIONAL, [inputs])
+        self.assertIsNone(basis_target)
+        self.assertEqual(final_qty, 2)
 
 
 if __name__ == "__main__":

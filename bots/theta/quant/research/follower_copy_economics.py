@@ -543,3 +543,106 @@ def r4_quant_copy_contract(check: R4ExitCheck) -> str:
     RESEARCH side is ready -- it does NOT mean a Production copy engine
     exists or that follower execution is activated."""
     return "PASS" if all(getattr(check, name) for name in check.__dataclass_fields__) else "FAIL"
+
+
+# ---------------------------------------------------------------------------
+# Proportional sizing-basis research (which ratio should a follower target?)
+# ---------------------------------------------------------------------------
+#
+# `compute_follower_quantity` above answers "what is the most this follower
+# can safely/affordably copy" -- a HARD CAP from the follower's own capacity.
+# It never changes. The question here is different and purely a research
+# one: when a follower's own capacity is not the binding constraint, what
+# RATIO of the master's size should the follower aim to preserve? Different
+# bases preserve different things (raw dollars, risk budget, tail exposure),
+# and none is assumed correct -- they are compared empirically once Paper
+# evidence exists, never chosen a priori.
+
+
+class SizingBasis(str, Enum):
+    EQUITY_PROPORTIONAL = "EQUITY_PROPORTIONAL"
+    RISK_BUDGET_PROPORTIONAL = "RISK_BUDGET_PROPORTIONAL"
+    COLLATERAL_PROPORTIONAL = "COLLATERAL_PROPORTIONAL"
+    ES_CVAR_PROPORTIONAL = "ES_CVAR_PROPORTIONAL"
+    HYBRID_MIN_OF_ALL = "HYBRID_MIN_OF_ALL"  # the most conservative of the four ratios that are known
+
+
+@dataclass(frozen=True)
+class ProportionalSizingInputs:
+    """One basis's paired master/follower denominator, e.g. (master_equity,
+    follower_equity) for EQUITY_PROPORTIONAL or (master_expected_shortfall,
+    follower_es_budget) for ES_CVAR_PROPORTIONAL. The SAME quantity, measured
+    on each account -- never a master figure divided by a follower figure of
+    a different kind."""
+
+    basis: SizingBasis
+    master_denominator: Optional[float]
+    follower_denominator: Optional[float]
+
+
+def compute_proportional_target_quantity(
+    master_quantity: int, inputs: ProportionalSizingInputs,
+) -> Optional[int]:
+    """Target quantity implied by ONE sizing basis, before any capacity cap.
+    `master_quantity * (follower_denominator / master_denominator)`, floored
+    (never rounded up past what the ratio actually supports). Returns None
+    -- never a guessed ratio -- when either denominator is unknown or the
+    master's own denominator is zero/negative (an undefined ratio). Zero is
+    a valid result: a follower whose own risk budget/equity/ES capacity is
+    genuinely tiny relative to the master's should target zero, not one."""
+    if inputs.master_denominator is None or inputs.follower_denominator is None:
+        return None
+    if inputs.master_denominator <= 0:
+        return None
+    ratio = inputs.follower_denominator / inputs.master_denominator
+    return max(0, int(master_quantity * ratio))
+
+
+def compute_hybrid_target_quantity(
+    master_quantity: int, component_inputs: List[ProportionalSizingInputs],
+) -> Optional[int]:
+    """HYBRID_MIN_OF_ALL: the most conservative of whichever component
+    targets are actually computable. Preserving economic risk rather than
+    raw contract count means a follower should never be sized UP by picking
+    whichever basis happens to be most generous -- this takes the min of
+    the known targets, not the max, and not an average. None only when
+    EVERY component basis is unknown (never a default like 0 disguised as
+    "hybrid says wait")."""
+    targets = [
+        compute_proportional_target_quantity(master_quantity, inputs)
+        for inputs in component_inputs
+    ]
+    known = [t for t in targets if t is not None]
+    if not known:
+        return None
+    return min(known)
+
+
+def resolve_follower_quantity(
+    capacity_inputs: FollowerSizingInputs,
+    basis: SizingBasis,
+    component_inputs: List[ProportionalSizingInputs],
+) -> Tuple[Optional[int], int]:
+    """The final answer combines a RESEARCH sizing-basis target with the
+    HARD capacity cap: `min(basis_target, capacity_cap)`. The capacity cap
+    ALWAYS wins if it is smaller -- a sizing basis may propose more than the
+    follower can actually afford/absorb, and affordability never yields to
+    a preferred ratio (this is the same "never let Kelly override AEGIS"
+    invariant, generalized to every sizing basis, not only Kelly).
+
+    Returns (basis_target, final_quantity). `basis_target` is None when the
+    chosen basis's inputs are unknown -- in that case `final_quantity` falls
+    back to the capacity cap alone (capacity is always computable from the
+    follower's own account state), never to a fabricated basis target."""
+    capacity_cap = compute_follower_quantity(capacity_inputs)
+    if basis == SizingBasis.HYBRID_MIN_OF_ALL:
+        basis_target = compute_hybrid_target_quantity(capacity_inputs.master_quantity, component_inputs)
+    else:
+        matching = [inputs for inputs in component_inputs if inputs.basis == basis]
+        basis_target = (
+            compute_proportional_target_quantity(capacity_inputs.master_quantity, matching[0])
+            if matching else None
+        )
+    if basis_target is None:
+        return None, capacity_cap
+    return basis_target, min(basis_target, capacity_cap)
