@@ -66,9 +66,9 @@ function evaluateAction(input: ManagementInputState, action: ManagementFrontierA
   const noOrderAction = action === 'HOLD' || action === 'RECOVERY_WAIT' || action === 'HOLD_CC';
   const feasibility = blockers.length === 0 ? 'FEASIBLE'
     : blockers.some((blocker) => blocker.endsWith('_UNKNOWN') || blocker === 'EMPIRICAL_ACTION_EV_UNKNOWN') ? 'UNKNOWN' : 'INFEASIBLE';
-  const certainEconomicPnl = (action === 'CLOSE_FULL' || action === 'CLOSE_CC')
-    ? input.economics.wholeChainPnl
-    : action === 'SELL_STOCK' ? input.economics.wholeChainPnl : null;
+  // A pre-trade mark is not a confirmed liquidation result. Broker fills and
+  // final costs belong to the economic ledger, not this prospective frontier.
+  const certainEconomicPnl = null;
   return {
     action, feasibility, expectedFutureValue: null, certainEconomicPnl,
     downsideTailEstimate: null, incrementalCapitalDays: null, executionCostRisk: null,

@@ -52,7 +52,9 @@ export function assessTrustedOptionQuote(
   const asOf = Date.parse(candidate.asOf);
   const currentTime = Date.parse(now);
 
-  if (candidate.contractSymbol !== candidate.expectedContractSymbol) blockers.push('CONTRACT_IDENTITY_MISMATCH');
+  if (!candidate.contractSymbol.trim() || candidate.contractSymbol !== candidate.expectedContractSymbol) blockers.push('CONTRACT_IDENTITY_MISMATCH');
+  const validAgePolicy = Number.isFinite(candidate.maximumAgeMs) && candidate.maximumAgeMs >= 0;
+  if (!validAgePolicy) blockers.push('QUOTE_AGE_POLICY_INVALID');
   if (!isPositiveFinite(candidate.bid) || !isPositiveFinite(candidate.ask)) blockers.push('TWO_SIDED_QUOTE_MISSING');
   else if (candidate.bid > candidate.ask) blockers.push('QUOTE_CROSSED');
   if (candidate.quality !== 'GOOD') blockers.push(`QUOTE_QUALITY_${candidate.quality}`);
@@ -64,7 +66,9 @@ export function assessTrustedOptionQuote(
   if (![providerTime, ingestionTime, asOf, currentTime].every(Number.isFinite)) blockers.push('QUOTE_TIMESTAMP_INVALID');
   else {
     if (providerTime > currentTime || asOf > currentTime || ingestionTime > currentTime) blockers.push('QUOTE_TIMESTAMP_IN_FUTURE');
-    if (currentTime - asOf > candidate.maximumAgeMs) blockers.push('QUOTE_STALE');
+    if (providerTime > ingestionTime) blockers.push('QUOTE_TIMESTAMP_SEQUENCE_INVALID');
+    // A fresh wrapper or ingestion time must never refresh an old provider quote.
+    if (validAgePolicy && [providerTime, ingestionTime, asOf].some((time) => currentTime - time > candidate.maximumAgeMs)) blockers.push('QUOTE_STALE');
   }
 
   let authority: TrustedOptionQuoteAuthority | null = null;

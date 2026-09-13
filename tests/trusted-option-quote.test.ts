@@ -4,6 +4,27 @@ import { assessTrustedOptionQuote, type TrustedOptionQuoteCandidate } from '../s
 
 const NOW = '2026-09-13T14:30:10.000Z';
 
+test('fresh assessment cannot refresh an old provider quote', () => {
+  const result = assessTrustedOptionQuote(optionomicsQuote({ providerTimestamp: '2026-09-12T14:30:07.000Z', asOf: NOW }), NOW);
+  assert.equal(result.ready, false);
+  assert.ok(result.blockers.includes('QUOTE_STALE'));
+});
+
+test('invalid age policies fail closed and exact maximum age is allowed', () => {
+  for (const maximumAgeMs of [NaN, Infinity, -1]) {
+    const result = assessTrustedOptionQuote(optionomicsQuote({ maximumAgeMs }), NOW);
+    assert.equal(result.ready, false);
+    assert.ok(result.blockers.includes('QUOTE_AGE_POLICY_INVALID'));
+  }
+  assert.equal(assessTrustedOptionQuote(optionomicsQuote({ maximumAgeMs: 3000 }), NOW).ready, true);
+});
+
+test('provider timestamp cannot follow ingestion and identity cannot be empty', () => {
+  const result = assessTrustedOptionQuote(optionomicsQuote({ providerTimestamp: NOW, contractSymbol: '', expectedContractSymbol: '' }), NOW);
+  assert.ok(result.blockers.includes('QUOTE_TIMESTAMP_SEQUENCE_INVALID'));
+  assert.ok(result.blockers.includes('CONTRACT_IDENTITY_MISMATCH'));
+});
+
 const optionomicsQuote = (overrides: Partial<TrustedOptionQuoteCandidate> = {}): TrustedOptionQuoteCandidate => ({
   provider: 'OPTIONOMICS',
   operationAlias: 'documented-option-quote',

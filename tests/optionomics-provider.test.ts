@@ -21,6 +21,25 @@ const jsonResponse = (status: number, body: unknown, headers: HeadersInit = {}):
 
 const noSleep = async (): Promise<void> => {};
 
+test('malformed numeric values remain UNKNOWN while decimal zero and negative Greeks survive', async () => {
+  for (const value of ['', '  ', false, true, [], {}, '0x10', 'Infinity']) {
+    const fetchImpl = (async () => jsonResponse(200, [{ symbol: 'X', bid: value, delta: value, volume: value }])) as typeof fetch;
+    const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY');
+    assert.equal(outcome.kind, 'VALUE_PRESENT');
+    if (outcome.kind !== 'VALUE_PRESENT') continue;
+    assert.equal(outcome.value.entries[0]?.bid, null);
+    assert.equal(outcome.value.entries[0]?.delta, null);
+    assert.equal(outcome.value.entries[0]?.volume, null);
+  }
+  const fetchImpl = (async () => jsonResponse(200, [{ symbol: 'X', bid: ' 0 ', delta: '-3e-1', volume: 0 }])) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY');
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  assert.equal(outcome.value.entries[0]?.bid, 0);
+  assert.equal(outcome.value.entries[0]?.delta, -0.3);
+  assert.equal(outcome.value.entries[0]?.volume, 0);
+});
+
 const baseConfig = (fetchImpl: typeof fetch, overrides: Partial<OptionomicsProviderConfig> = {}): OptionomicsProviderConfig => ({
   apiBase: 'https://optionomics.ai',
   email: 'test-synthetic@example.com',

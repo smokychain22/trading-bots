@@ -3,6 +3,15 @@ import test from 'node:test';
 import { buildManagementActionFrontier } from '../src/theta/management-action-frontier.js';
 import { assembleManagementInput } from '../src/theta/management-input-state.js';
 
+test('prospective close and stock sale never present marked PnL as certain proceeds', () => {
+  for (const lifecycle of ['CSP_OPEN', 'CC_OPEN', 'RECOVERY_WAIT']) {
+    const input = state(lifecycle);
+    assert.notEqual(input.economics.wholeChainPnl, null);
+    const frontier = buildManagementActionFrontier(input);
+    assert.ok(frontier.actions.every((action) => action.certainEconomicPnl === null));
+  }
+});
+
 const state = (lifecycleState: string) => assembleManagementInput({
   chain_id: 'chain', lifecycle_state: lifecycleState, underlying: 'AAPL', option_leg_id: 'leg', quantity: '1',
   entry_credit_debit: '200', contract_symbol: 'AAPL261016P00200000', option_type: 'PUT', strike: '200',

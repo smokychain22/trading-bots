@@ -1,5 +1,36 @@
 # Codex handoff: standalone platform Phase 1
 
+## 2026-09-13: quote freshness, UNKNOWN parsing and management certainty repair
+
+OWNER: Codex.
+
+TASK: Reconcile the new master handoff with implementation and repair concrete
+decision-input defects without activating execution.
+
+FILES CHANGED: Trusted quote validator, Optionomics parser, management frontier,
+their tests, this handoff and THETA_PROFITABILITY_CLOSURE_REVIEW_2026-09-13.md.
+
+WHAT WAS IMPLEMENTED: Original provider quote age is mandatory, malformed age
+policies fail closed, invalid numeric values stay null, and marked P&L is never
+presented as certain pre-trade liquidation proceeds.
+
+TESTS RUN: 46 focused tests, full Node, Python, TypeScript, ESLint, build, security.
+
+TEST RESULTS: 694 Node passed, 4 local DB skips, 0 failed. 452 Python passed.
+Static/build checks passed and secret scan found zero issues.
+
+KNOWN LIMITATIONS: Engineering is not globally complete. See the closure review
+for management feasibility, empirical utility, quote integration and execution gaps.
+
+RISKS: Field availability must not be mistaken for execution freshness. Cashflow
+must not become profit while open liabilities remain. No execution gates changed.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Common-horizon management economics and
+research label semantics, preserving canonical runtime ownership.
+
+NEXT RECOMMENDED TASK: Complete management risk/quote feasibility integration and
+bounded execution policy evidence, then gather PIT evidence without invented fills.
+
 ## 2026-09-12: R4 engineering closure, R7 non-data closure, and research export bridge
 
 OWNER: Codex, canonical integration owner.
