@@ -58,6 +58,8 @@ _ITEMS: Tuple[PhaseItem, ...] = (
               note="Purge/embargo/label-availability/chain-grouping all implemented and tested."),
     PhaseItem("R6_SELECTION_BIAS", PhaseState.COMPLETE, ("selection_bias.py",),
               note="DSR (sigma-scaled) and PBO (average-rank tie handling) both repaired and fixture-tested."),
+    PhaseItem("R6_LOSS_TAXONOMY", PhaseState.COMPLETE, ("loss_taxonomy.py",),
+              note="Failure-category enum + process/outcome grid; attribution requires evidence (raises without it) -- never labels every loss a mistake."),
 
     # ---- R6 empirical evidence: only real data is missing ----
     PhaseItem("R6_REAL_PIT_DATA", PhaseState.BLOCKED_ON_DATA, ("empirical_pipeline.py",),

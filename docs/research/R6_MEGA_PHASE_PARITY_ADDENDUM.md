@@ -300,3 +300,93 @@ defect.
 
 **`DATASET_ABSENT` still stands.** No `research_exports/` artifact exists.
 `PARITY_STILL_VALID` = YES. `REQUIRED_CODEX_CHANGE` count for this run: 0.
+
+## Adversarial review + loss-taxonomy build: `f8a3c11..66b3f7d`
+
+One canonical commit reviewed (`66b3f7d`, "preserve quote age and uncertain
+economics") plus Codex's own `docs/THETA_PROFITABILITY_CLOSURE_REVIEW_
+2026-09-13.md`, which independently performed the identical adversarial
+review this session's directive asked for and found three real defects,
+all already fixed:
+
+1. **Quote staleness laundering**: freshness previously checked only
+   `asOf` against `maximumAgeMs`; a stale provider quote wrapped in a
+   fresh ingestion timestamp could pass. Now every one of provider/
+   ingestion/as-of timestamps is checked, plus a `providerTime <=
+   ingestionTime` sequence invariant and validation that the age policy
+   itself isn't garbage (NaN/negative).
+2. **Array/object-to-number coercion**: `Number([5])` evaluates to `5` and
+   `Number([])` to `0` in JS -- `asFiniteNumberOrNull` previously ran
+   `Number(value)` on anything non-null/undefined, so an array-wrapped
+   numeric field would silently coerce. Now restricted to `typeof value
+   === 'number' | 'string'` first, with a strict decimal regex for
+   strings.
+3. **Certain-P&L fabrication**: `certainEconomicPnl` previously returned
+   `wholeChainPnl` (a pre-trade MARK) for `CLOSE_FULL`/`CLOSE_CC`/
+   `SELL_STOCK` as if it were a confirmed liquidation result. Fixed to
+   always `null` -- a mark is not a fill price plus realized costs.
+
+All three are exactly the class of defect this run's directive asked
+Claude to hunt for adversarially (UNKNOWN handling, certainty
+fabrication, unit/type coercion). Independently re-derived and confirmed
+correct; no residual gap found on inspection. **No `REQUIRED_CODEX_CHANGE`
+produced -- Codex's own repair already closes all three.**
+
+### Math cross-check against this branch's existing formulas
+
+Verified this branch's `management_policy.management_utility` already
+implements the directive's `Q(a|s)` exactly: `remaining_ev - λ·tail_risk -
+κ·capital_days - ξ·execution_cost - opportunity_cost`, with the R6D
+UNKNOWN-never-zero invariant (any `None` component -> `None`, never
+silently substituted). `episode_economics.return_per_capital_day` already
+matches `RPCD = E[PnL_net] / (CapitalRequired × ExpectedHoldingDays)`
+exactly. `episode_economics.whole_episode_pnl` already enforces the
+roll-accounting invariant the directive names (`[200,-350,180,-15] ==
+15`, never `195`).
+
+One deliberate non-gap worth recording: the directive's `U(a)` formula
+also lists standalone `ν·Concentration` and `ω·ModelUncertainty` penalty
+terms that `management_utility` does not fold in as scalar weights.
+Concentration is instead enforced as a HARD capacity gate in
+`account_risk_capacity.py` (a marginal EV gain can never buy its way past
+a concentration limit) -- a stricter design than a soft penalty weight,
+consistent with THETA's existing hard-gate/soft-signal architecture.
+Model uncertainty is carried as an explicit field on
+`action_value_distribution.OutcomeDistribution` (a full outcome
+distribution, not a collapsed scalar) rather than inside the point-
+estimate utility. Both are correct places for these terms to live, not
+omissions -- recorded here so a future session does not "fix" a
+non-defect.
+
+### New this run: `loss_taxonomy.py`
+
+Provider-independent, no-data-required, and not previously covered by any
+existing module: a `FailureCategory` enum (20 categories, covering both
+this run's 16-item list and the earlier session's 15-item "mistake
+diagnostics" list, deduplicated) plus a `DecisionQuality` process/outcome
+grid (`GOOD_PROCESS_GOOD_OUTCOME` / `GOOD_PROCESS_BAD_OUTCOME` /
+`BAD_PROCESS_LUCKY_OUTCOME` / `BAD_PROCESS_BAD_OUTCOME`). Critically,
+`attribute_failure()` **raises** `AttributionWithoutEvidenceError` if
+called with an empty evidence list for any named category (only the
+explicit `unattributed()` "normal variance" path needs no evidence) --
+structurally enforcing "require failure attribution before recommending
+policy changes" rather than leaving it as a convention to remember.
+`loss_requires_no_policy_change()` returns True only for
+`GOOD_PROCESS_BAD_OUTCOME`, so a single bad realization of a
+well-specified decision can never trigger a policy change on its own, and
+a lucky win from a bad process can never certify that process as sound.
+11 new tests, all passing.
+
+**959 Python tests pass** (+11). Security scan: 0 findings.
+`DATASET_ABSENT` still stands -- no `research_exports/` artifact exists,
+so every EMPIRICAL item from this run's directive (loss-management
+matrix results, profit-taking comparisons, assignment/recovery findings,
+sizing/stress tests, model fitting, feature ablations, copy-drift
+measurement, OOS/calibration/DSR/PBO) remains `BLOCKED_ON_DATA` -- the
+machinery each requires (management_policy.py, experiment_registry.py's
+PROFIT_TAKING_POLICIES/LOSS_POLICIES/ROLL_ALTERNATIVES/DTE_BINS/
+DELTA_MAGNITUDE_BINS/FEATURE_ABLATION_FAMILIES, walk_forward.py,
+selection_bias.py, follower_copy_economics.py) already exists and was not
+rebuilt.
+
+**`REQUIRED_CODEX_CHANGE` count for this run: 0.**
