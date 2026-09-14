@@ -44,6 +44,18 @@ DO $$ BEGIN
   RAISE EXCEPTION 'second master accepted';
  EXCEPTION WHEN unique_violation THEN NULL; END;
 END $$;
+-- The master identity has its own execution projection. It deliberately has
+-- no follower_account_id, so it cannot enter follower copy fan-out.
+INSERT INTO trade.execution_account(account_kind,follower_account_id,
+  provider_account_ref_hash,provider_account_ref_masked,account_ready)
+VALUES ('MASTER_API_KEY',NULL,encode(digest('synthetic-master-role','sha256'),'hex'),
+  'Alpaca Paper ••••role',true);
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM trade.execution_account
+   WHERE account_kind='MASTER_API_KEY' AND follower_account_id IS NULL
+     AND provider_account_ref_hash=encode(digest('synthetic-master-role','sha256'),'hex'))
+ THEN RAISE EXCEPTION 'master execution identity missing'; END IF;
+END $$;
 -- Disconnect preserves role and identity. It must not free a self-copy loophole.
 UPDATE copy.follower_account SET participation='DISCONNECTED',disconnected_at=now()
  WHERE follower_account_id='00000000-0000-0000-0000-000000001003';

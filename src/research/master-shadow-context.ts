@@ -53,7 +53,8 @@ export async function ensureMasterShadowContext(pool: Pool, verifiedProviderAcco
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(863801019)');
     const master = await client.query(`SELECT f.workspace_id,f.token_secret_id,f.provider_account_ref,
-      f.account_status,f.connection_status,f.disconnected_at
+      f.account_status,f.connection_status,f.disconnected_at,f.account_ready,
+      f.options_approved_level,f.options_trading_level
       FROM copy.follower_account f
       WHERE f.account_role='MASTER_THETA_PAPER' AND f.environment='PAPER' FOR UPDATE`);
     if (master.rowCount !== 1) throw new Error(master.rowCount === 0
@@ -85,6 +86,25 @@ export async function ensureMasterShadowContext(pool: Pool, verifiedProviderAcco
     const account = await client.query(`SELECT account_id FROM core.trading_account
       WHERE provider_connection_id=$1 AND provider_account_id=$2`, [resolvedConnectionId, verifiedProviderAccountId]);
     const resolvedAccountId = String(account.rows[0].account_id);
+
+    // The customer connection owns the encrypted credential. The execution
+    // account is only its broker-identity and readiness projection, so order
+    // reconciliation and future gated Paper execution share one canonical
+    // account identity without copying credential material.
+    const providerAccountRefHash = createHash('sha256').update(verifiedProviderAccountId).digest('hex');
+    const executionAccountId = deterministicRuntimeUuid(`execution-account:MASTER_API_KEY:${providerAccountRefHash}`);
+    await client.query(`INSERT INTO trade.execution_account(execution_account_id,account_kind,follower_account_id,
+      environment,provider_account_ref_hash,provider_account_ref_masked,account_ready,options_approved_level,
+      options_trading_level,last_verified_at)
+      VALUES($1,'MASTER_API_KEY',NULL,'PAPER',$2,$3,$4,$5,$6,now())
+      ON CONFLICT(account_kind,provider_account_ref_hash) DO UPDATE SET
+        provider_account_ref_masked=EXCLUDED.provider_account_ref_masked,
+        account_ready=EXCLUDED.account_ready,
+        options_approved_level=EXCLUDED.options_approved_level,
+        options_trading_level=EXCLUDED.options_trading_level,
+        last_verified_at=now(),updated_at=now()`, [executionAccountId, providerAccountRefHash,
+        `Alpaca Paper ••••${verifiedProviderAccountId.slice(-4)}`, row.account_ready === true,
+        row.options_approved_level, row.options_trading_level]);
 
     const strategy = canonicalThetaStrategyRegistry.get(masterShadowContextVersions.strategy);
     if (strategy === undefined || strategy.executionEnabled || strategy.status !== 'SHADOW') throw new Error('CANONICAL_SHADOW_STRATEGY_INVALID');
