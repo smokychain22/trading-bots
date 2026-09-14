@@ -27,6 +27,7 @@ import { PaperOrderCoordinator } from '../execution/paper-order-coordinator.js';
 import { MasterPaperExecutionOrchestrator } from '../execution/master-paper-execution-orchestrator.js';
 import { MasterPaperActionHandoff, classifyMasterPaperActionExecution } from '../execution/master-paper-action-handoff.js';
 import { AlpacaProviderError } from './alpaca-provider.js';
+import { OptionomicsProviderError } from './optionomics-provider.js';
 
 export const autonomousRuntimeVersion = 'theta-autonomous-runtime-v1' as const;
 export const autonomousPolicyVersion = 'theta-scheduler-policy-v1' as const;
@@ -67,7 +68,7 @@ interface MasterRuntimeContext {
 const minuteBucket = (date: Date): string => date.toISOString().slice(0, 16);
 const accountHash = (value: string): string => createHash('sha256').update(value).digest('hex');
 
-function safeFailure(error: unknown): { code: string; detail: string } {
+export function safeRuntimeFailure(error: unknown): { code: string; detail: string } {
   if (error instanceof AlpacaPaperBrokerError) {
     const operation = error.message.includes('/v2/account/activities') ? 'ACCOUNT_ACTIVITIES'
       : error.message.includes('/v2/positions') ? 'POSITIONS'
@@ -78,6 +79,25 @@ function safeFailure(error: unknown): { code: string; detail: string } {
     const status = error.httpStatus === null ? 'NO_HTTP_STATUS' : `HTTP_${error.httpStatus}`;
     return { code: `ALPACA_${operation}_${error.category}_${status}`,
       detail: `Alpaca PAPER ${operation} failed with ${status}.` };
+  }
+  if (error instanceof AlpacaProviderError) {
+    const status = error.httpStatus === null ? 'NO_HTTP_STATUS' : `HTTP_${error.httpStatus}`;
+    return { code:`ALPACA_PROVIDER_${error.errorClass}_${status}`,
+      detail:`Alpaca PAPER data operation failed with ${error.errorClass} and ${status}.` };
+  }
+  if (error instanceof OptionomicsProviderError) {
+    const status = error.httpStatus === null ? 'NO_HTTP_STATUS' : `HTTP_${error.httpStatus}`;
+    return { code:`OPTIONOMICS_PROVIDER_${error.errorClass}_${status}`,
+      detail:`Optionomics operation failed with ${error.errorClass} and ${status}.` };
+  }
+  if (error !== null && typeof error === 'object') {
+    const record=error as {code?:unknown;constraint?:unknown};
+    if(typeof record.code==='string'&&/^[0-9A-Z]{5}$/.test(record.code)){
+      const constraint=typeof record.constraint==='string'&&/^[a-zA-Z0-9_]{1,96}$/.test(record.constraint)
+        ? record.constraint.toUpperCase():'';
+      return {code:`POSTGRES_${record.code}${constraint?`_${constraint}`:''}`,
+        detail:`PostgreSQL operation failed with SQLSTATE ${record.code}${constraint?` at ${constraint}`:''}.`};
+    }
   }
   if (error instanceof Error && /^[A-Z0-9_:-]+$/.test(error.message)) return { code: error.message, detail: error.message };
   return { code: 'RUNTIME_OPERATION_FAILED', detail: 'The runtime operation failed without exposing sensitive error data.' };
@@ -341,7 +361,7 @@ export async function runAutonomousRuntimeCycle(
           await planStore.wait(plan.actionPlanId,result.blockers,retryAt,at);
           return degraded(result.blockers[0]??result.state,retryAt);
         }catch(error){
-          const failure=safeFailure(error);
+          const failure=safeRuntimeFailure(error);
           if(isRetryableExternalExecutionFailure(error)){
             await planStore.wait(plan.actionPlanId,[failure.code],retryAt,new Date().toISOString());
             return degraded(failure.code,retryAt);
@@ -362,7 +382,7 @@ export async function runAutonomousRuntimeCycle(
       }
       return succeeded();
     } catch (error) {
-      const failure = safeFailure(error);
+      const failure = safeRuntimeFailure(error);
       return { status: 'FAILED', errorCode: failure.code, errorDetail: failure.detail, nextRunAt: retryAt };
     }
   };
@@ -390,7 +410,7 @@ export async function runAutonomousRuntimeCycle(
   await cycleStore.finish(correlationId, report, new Date().toISOString());
   return report;
   } catch (error) {
-    const failure = safeFailure(error);
+    const failure = safeRuntimeFailure(error);
     const report: AutonomousRuntimeReport = {
       correlationId, status: 'FAILED', runtimeVersion: autonomousRuntimeVersion,
       policyVersion: autonomousPolicyVersion, jobsAttempted: 0, jobsCompleted: 0,
