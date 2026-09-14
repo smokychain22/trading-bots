@@ -18,6 +18,7 @@ if ($LASTEXITCODE -ne 0) { throw 'THETA_BUILD_FAILED' }
 $stateRoot = Join-Path $repositoryPath '.theta-local-worker'
 New-Item -ItemType Directory -Force -Path $stateRoot | Out-Null
 if (!(Test-Path -LiteralPath (Join-Path $stateRoot 'worker.token'))) { throw 'THETA_LOCAL_WORKER_TOKEN_NOT_PROVISIONED' }
+if (!(Test-Path -LiteralPath (Join-Path $stateRoot 'production.env'))) { throw 'THETA_PRODUCTION_ENV_NOT_PROVISIONED' }
 $legacyTaskName = 'THETA Local Shadow Worker'
 if ($TaskName -ne $legacyTaskName -and (Get-ScheduledTask -TaskName $legacyTaskName -ErrorAction SilentlyContinue)) {
   $legacyStopFile = Join-Path $stateRoot 'stop.request'

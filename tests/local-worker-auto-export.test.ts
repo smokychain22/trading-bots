@@ -16,7 +16,9 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /last-auto-export-session/);
   assert.match(source, /OPPORTUNITY_SCAN/);
   assert.match(source, /\.status -eq 'SUCCEEDED'/);
-  assert.match(source, /npm run theta:research-export -- --latest/);
+  assert.match(source, /--env-file=\$productionEnvFile/);
+  assert.match(source, /tools\/theta-research-export\.ts --latest/);
+  assert.match(source, /THETA_PRODUCTION_ENV_NOT_PROVISIONED/);
   assert.match(source, /CURRENT_SESSION_EXPORTED/);
   assert.match(source, /BLOCKED_ON_EVIDENCE/);
   assert.match(source, /last-empirical-dataset-hash/);
@@ -36,6 +38,7 @@ test('Windows installer does not silently queue evidence capture on laptop batte
   assert.match(source,/-WakeToRun/);
   assert.match(source,/-StartWhenAvailable/);
   assert.match(source,/-MultipleInstances IgnoreNew/);
+  assert.match(source,/THETA_PRODUCTION_ENV_NOT_PROVISIONED/);
 });
 
 test('candidate scan timestamp advances only for a real complete or partial evidence scan',()=>{

@@ -10,12 +10,14 @@ $stateRoot = Join-Path $RepositoryPath '.theta-local-worker'
 $runtimeFile = Join-Path $stateRoot 'runtime.json'
 $tokenFile = Join-Path $stateRoot 'worker.token'
 $statusFile = Join-Path $stateRoot 'status.json'
+$productionEnvFile = Join-Path $stateRoot 'production.env'
 $stopFile = Join-Path $stateRoot 'stop.request'
 $exportSessionFile = Join-Path $stateRoot 'last-auto-export-session'
 $researchHashFile = Join-Path $stateRoot 'last-empirical-dataset-hash'
 $qualificationSessionFile = Join-Path $stateRoot 'last-optionomics-qualification-session'
 if (!(Test-Path -LiteralPath $runtimeFile)) { throw 'THETA_LOCAL_WORKER_NOT_INSTALLED' }
 if (!(Test-Path -LiteralPath $tokenFile)) { throw 'THETA_LOCAL_WORKER_TOKEN_NOT_PROVISIONED' }
+if (!(Test-Path -LiteralPath $productionEnvFile)) { throw 'THETA_PRODUCTION_ENV_NOT_PROVISIONED' }
 $runtime = Get-Content -Raw -LiteralPath $runtimeFile | ConvertFrom-Json
 $token = (Get-Content -Raw -LiteralPath $tokenFile).Trim()
 if ($runtime.repositoryPath -ne $RepositoryPath) { throw 'THETA_RUNTIME_PATH_MISMATCH' }
@@ -62,7 +64,7 @@ try {
         $_.jobType -eq 'OPPORTUNITY_SCAN' -and $_.status -eq 'SUCCEEDED'
       }).Count -gt 0
       if ($completeScan -and $lastExportedSession -ne $marketSessionDate) {
-        & npm run theta:research-export -- --latest *> $null
+        & node "--env-file=$productionEnvFile" --import tsx tools/theta-research-export.ts --latest *> $null
         if ($LASTEXITCODE -eq 0) {
           Set-Content -LiteralPath $exportSessionFile -Value $marketSessionDate -Encoding ascii
           $researchExport = 'EXPORTED_FIRST_COMPLETE_SCAN'
@@ -107,8 +109,15 @@ try {
       $delaySeconds = 5
     } catch {
       $workerExit = 1
+      $httpStatus = if ($null -ne $_.Exception.Response -and $null -ne $_.Exception.Response.StatusCode) {
+        [int]$_.Exception.Response.StatusCode
+      } else { $null }
+      $exceptionType = $_.Exception.GetType().Name
+      $failureCode = if ($null -ne $httpStatus) { "HTTP_$httpStatus" }
+        elseif ($exceptionType -match '^[A-Za-z0-9_.-]{1,96}$') { "LOCAL_$exceptionType" }
+        else { 'LOCAL_WORKER_LOOP_FAILED' }
       @{state='DEGRADED';lastFailure=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
-        mode='MASTER_THETA_PAPER';executionGate='EXTERNAL_QUOTE_BLOCKER'} | ConvertTo-Json |
+        mode='MASTER_THETA_PAPER';executionGate='EXTERNAL_QUOTE_BLOCKER';failureCode=$failureCode} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
     }
     if (Test-Path -LiteralPath $stopFile) { break }
