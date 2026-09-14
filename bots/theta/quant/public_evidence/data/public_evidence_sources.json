@@ -1,0 +1,53 @@
+{
+  "$schema_note": "Public, citable, named research evidence for THETA's strategy hypotheses -- distinct from bots/theta/quant/expert_priors/data/expert_sources.json, which holds an anonymized private trader corpus (evidence_class D_EXPERT_DNA everywhere). Every entry here was actually fetched/searched by Claude on 2026-09-14 (WebSearch + WebFetch against the cited URL) -- no citation, number, or claimed finding below was invented; where a search could not confirm a specific claim (e.g. a named 'weekly put writing' tastytrade study), no entry was fabricated to fill the gap. This registry implements the R7 'THETA PROFITABILITY ENGINE -- STRATEGY EDGE DISCOVERY PROGRAM' directive's section 1 evidence hierarchy.",
+  "tier_enum": ["AUDITED_BENCHMARK_INDEX", "PEER_REVIEWED_ACADEMIC", "TRANSPARENT_PRACTITIONER_STUDY", "ANECDOTE_UNVERIFIED"],
+  "tier_ordering_note": "AUDITED_BENCHMARK_INDEX > PEER_REVIEWED_ACADEMIC > TRANSPARENT_PRACTITIONER_STUDY > (RECONSTRUCTED_TRADER_METHOD, which lives in expert_sources.json as D_EXPERT_DNA, not duplicated here) > ANECDOTE_UNVERIFIED, per the directive's own hierarchy. None of these tiers -- including the top tier -- constitutes THETA-specific backtest evidence. They support hypothesis PLAUSIBILITY and PRIORITIZATION only; every hypothesis they inform remains 'status': 'TEST' in hypotheses.json until THETA's own purged walk-forward/OOS pipeline runs on real option-chain data (DATASET_ABSENT stands).",
+  "never_promote_from": "Section 1 of the directive: never promote a strategy because a trader claims 80/90/95% win rate. This registry structurally cannot contain such an entry -- there is no ANECDOTE_UNVERIFIED entry below, since none was found to meet even that minimal bar during this pass, and none should be added later merely to record a claimed win-rate number.",
+  "sources": [
+    {
+      "source_id": "cboe_put_index",
+      "title": "Cboe S&P 500 PutWrite Index (PUT)",
+      "tier": "AUDITED_BENCHMARK_INDEX",
+      "publisher": "Cboe Global Markets",
+      "url": "https://cdn.cboe.com/api/global/us_indices/governance/Cboe_SP_500_PutWrite_Indices_Methodology.pdf",
+      "supporting_url": "https://cdn.cboe.com/resources/education/research_publications/PutWriteCBOE19_v14_by_Prof_Oleg_Bondarenko_as_of_June_14.pdf",
+      "retrieved_via": "WebSearch, 2026-09-14",
+      "verified_claim": "PUT sells a rolling series of one-month, at-the-money, cash-secured SPX puts (introduced 2007, daily history back to 1986-06-30). An independent Ennis Knupp performance study found ~10.32% annualized return with ~9.91% annualized standard deviation over its analysis period (vs. ~15.39% SD for the S&P 500 itself) -- i.e. materially lower volatility for a comparable return, with PUT outperforming in flat/falling months and underperforming in sharply rising months (average monthly return 2.11% for PUT vs. 4.14% for the S&P 500 in strong up months).",
+      "does_not_prove": "PUT is a single-underlying (SPX index), single-DTE (1-month), single-moneyness (ATM), fully-mechanical, no-management strategy. It does not validate any specific THETA delta bucket (0.10-0.40), DTE bin, single-stock underlying selection, or active management policy (TP ladder, 21-DTE roll, assignment/recovery/CC handling). It supports only the general mechanism (systematic short-put premium capture has historically shown a positive volatility-risk-premium harvest with a smoother return path than buy-and-hold) -- not any of THETA's specific configuration choices.",
+      "applies_to_hypotheses": ["H-Q-01", "H-Q-02"]
+    },
+    {
+      "source_id": "cboe_bxm_index",
+      "title": "Cboe S&P 500 BuyWrite Index (BXM)",
+      "tier": "AUDITED_BENCHMARK_INDEX",
+      "publisher": "Cboe Global Markets",
+      "url": "https://cdn.cboe.com/api/global/us_indices/governance/Cboe_BuyWrite_Indices_Methodology.pdf",
+      "retrieved_via": "WebSearch, 2026-09-14",
+      "verified_claim": "BXM holds the S&P 500 and sells a rolling series of one-month, at-the-money SPX calls against it (struck monthly, ~3rd Friday). Over an approximately 16-year study period its compound annual return (~12.39%) was close to the S&P 500's own (~12.20%), with covered calls buffering losses in down/flat/mildly-bullish markets (e.g. BXM fell ~40% vs. the S&P 500's ~50% in the 2008 crash) while underperforming in strongly bullish markets, and with materially lower realized volatility than the index itself.",
+      "does_not_prove": "BXM writes ATM calls monthly against a passive index holding with no basis/ownership-quality screening, no assignment/recovery lifecycle, and no delta-targeted strike selection. It does not validate THETA_CC's delta-bucket research (0.10-0.40), strike-vs-basis logic, event/ex-div filtering, or call-away/recovery-interference accounting (H-C-01/H-C-02's specific claims). It supports only the general mechanism that call-writing trades upside for income/volatility-dampening on average.",
+      "applies_to_hypotheses": ["H-C-01"]
+    },
+    {
+      "source_id": "carr_wu_2009_variance_risk_premia",
+      "title": "Variance Risk Premia (Carr & Wu, Review of Financial Studies, 2009)",
+      "tier": "PEER_REVIEWED_ACADEMIC",
+      "publisher": "Review of Financial Studies (via NYU Engineering repository copy)",
+      "url": "https://engineering.nyu.edu/sites/default/files/2019-01/CarrReviewofFinStudiesMarch2009-a.pdf",
+      "retrieved_via": "WebSearch, 2026-09-14",
+      "verified_claim": "Synthesizes variance-swap rates from option portfolios across five stock indexes and dozens of individual equities, then compares them against subsequently realized variance; documents that implied variance has tended to sit above realized variance (a positive variance risk premium), consistent with options being priced, on average, as if future volatility will be higher than it later turns out to be.",
+      "does_not_prove": "This is a variance-swap/synthetic-replication framework at the index/equity level, not a single-name American-style option-selling backtest with real bid/ask, assignment, and financing costs. It establishes the THEORETICAL/EMPIRICAL EXISTENCE of a variance risk premium in the sampled instruments and period -- it does not size the premium for THETA's specific underlying universe, DTE lattice, or after-cost economics, and a documented average premium does not guarantee a positive premium in every regime or name.",
+      "applies_to_hypotheses": ["H-Q-01", "H-Q-02"]
+    },
+    {
+      "source_id": "tastytrade_45dte_21dte_50pct_management",
+      "title": "tastytrade published research: 45 DTE entry, 21 DTE / 50%-of-credit management studies",
+      "tier": "TRANSPARENT_PRACTITIONER_STUDY",
+      "publisher": "tastytrade (formerly tastylive/tastyworks research desk)",
+      "url": null,
+      "retrieved_via": "WebSearch, 2026-09-14 -- summarized via secondary sources (TalkMarkets, sweetvolatility.com) citing tastytrade's own published studies; the primary tastytrade research segment/paper itself was not independently re-fetched this pass, so this entry is one tier below AUDITED/ACADEMIC precisely because full primary-source verification is incomplete.",
+      "verified_claim": "Secondary sources consistently attribute to tastytrade's own backtesting research desk: (a) entries around 45 DTE outperformed 90+ DTE on a profit-per-trade basis when both are managed at 50% of max credit; (b) managing short premium at 21 DTE (rather than holding toward expiration) produced comparable or better realized P&L with a shorter average holding period and, in their reporting, less time exposed to risk than holding to expiration; (c) closing at 50% of the initial credit received is reported as outperforming holding-to-expiry on a risk-adjusted basis across their sampled history.",
+      "does_not_prove": "This is tastytrade's own proprietary options-analytics-platform backtest (their in-house 'tastytrade research' segment), not a peer-reviewed or third-party-audited study -- the exact underlying universe, sample period, regime mix, commission/slippage assumptions, and statistical significance testing are not independently verifiable from these secondary summaries. It is exactly the 'transparent systematic practitioner research' tier the directive names, one step below AUDITED/ACADEMIC, and materially above an anecdotal trader claim since tastytrade publishes methodology and sample descriptions (unlike a single trader's self-reported win rate). Must not be treated as confirming any specific number for THETA's own after-cost economics; it directly motivates H-R-01/H-R-02's already-registered competing-hypothesis pair (early management vs. patience) rather than resolving it.",
+      "applies_to_hypotheses": ["H-R-01", "H-R-02"]
+    }
+  ]
+}

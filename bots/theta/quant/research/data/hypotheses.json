@@ -14,6 +14,7 @@
   ],
   "shared_evidence_requirement": "Per TRD v1.1 FINAL section 50: report raw N and independent-cluster N together; a claim approaching the 70-80% headline range needs ~300+ independent OOS episodes, preferably 500+ across regimes, plus a Wilson interval (simple proportions) or cluster/bootstrap interval (dependent episodes). The final untouched OOS period is never used to select the threshold or feature that produced the reported number (ML-002).",
   "shared_calibration_requirement": "Per TRD MODEL-003: any model output (not a hand-built deterministic score) feeding this hypothesis must be calibrated (Brier score, log-loss, reliability plot) and monitored by regime/DTE/delta/ticker-family cohort, not by one global number.",
+  "public_evidence_refs_note": "An optional per-hypothesis 'public_evidence_refs' field (list of source_id values from bots/theta/quant/public_evidence/data/public_evidence_sources.json) links a hypothesis to named, publicly citable research (Cboe benchmark indices, peer-reviewed academic work, transparent practitioner studies) per the R7 'STRATEGY EDGE DISCOVERY PROGRAM' directive's evidence hierarchy. Absent on hypotheses with no such link yet -- never required, and never a substitute for this file's own OOS acceptance/rejection criteria.",
   "hypotheses": [
     {
       "hypothesis_id": "H-Q-01",
@@ -44,7 +45,8 @@
       "experiment_id": "EXP-Q-01",
       "status": "TEST",
       "rationale": "Structurally supported by TRD UNIV-001..003 and section 43's ownership model, and is exactly what ablation A1 (B1 + ownership model) already exists to measure -- but it has not been run, so it stays TEST rather than RETAIN.",
-      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
+      "public_evidence_refs": ["cboe_put_index", "carr_wu_2009_variance_risk_premia"]
     },
     {
       "hypothesis_id": "H-Q-02",
@@ -74,7 +76,8 @@
       "experiment_id": "EXP-Q-02",
       "status": "TEST",
       "rationale": "TRD UNIV-002 already forbids 'high IV alone is sufficient' as a hard rule (RETAIN at the architecture level), but the empirical size of the effect is unmeasured -- this hypothesis is the confirmatory measurement of that rule, not a new claim, and stays TEST until A1 is actually run.",
-      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
+      "public_evidence_refs": ["cboe_put_index", "carr_wu_2009_variance_risk_premia"]
     },
     {
       "hypothesis_id": "H-H-01",
@@ -167,7 +170,9 @@
       "experiment_id": "EXP-R-01",
       "status": "TEST",
       "rationale": "Directly contradicts H-R-02's patience thesis. Both are corpus-supported by different experts and both stay open -- TRD's own failure-DNA table explicitly rejects both 'roll every loser' and a universal hold-to-expiry assumption, so resolving this by averaging the two experts' behavior would manufacture a compromise neither actually demonstrated. The correct resolution is regime/DTE/branch-conditional, decided by A5 (dynamic management ablation) evidence, not by picking a side here.",
-      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
+      "public_evidence_refs": ["tastytrade_45dte_21dte_50pct_management"],
+      "public_evidence_note": "tastytrade's own published secondary-sourced findings (see public_evidence_sources.json) lean toward THIS side (early 21-DTE/50%-credit management beating hold-to-expiry in their sampled history) -- recorded as a TRANSPARENT_PRACTITIONER_STUDY-tier prior favoring H-R-01, not as confirmation; H-R-02 remains open and must still be tested head-to-head on THETA's own data per this hypothesis's acceptance/rejection criteria."
     },
     {
       "hypothesis_id": "H-R-02",
@@ -197,7 +202,9 @@
       "experiment_id": "EXP-R-02",
       "status": "TEST",
       "rationale": "See H-R-01 -- this pair is deliberately preserved as competing hypotheses rather than resolved by inspection. TRD Appendix I explicitly frames the 25/50/75% profit-take grid and hold-to-expiry as baselines to test, not laws.",
-      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
+      "public_evidence_refs": ["tastytrade_45dte_21dte_50pct_management"],
+      "public_evidence_note": "The same tastytrade-sourced prior linked from H-R-01 leans AGAINST this hypothesis's patience thesis in their own sampled history -- recorded here too so the competing-hypothesis pair carries the same evidence context on both sides, not asymmetrically. A practitioner prior leaning one way is not evidence this hypothesis should be rejected without THETA's own OOS test; single-source practitioner backtests are also known to disagree with each other across platforms and periods."
     },
     {
       "hypothesis_id": "H-R-03",
@@ -257,7 +264,8 @@
       "experiment_id": "EXP-C-01",
       "status": "RETAIN",
       "rationale": "Already required by TRD LIFE-004 (the CC optimizer must trade off premium, retained upside, call-away regret, event risk and capital-days, not maximize yield alone). RETAIN at the architecture level; the experiment sizes the effect against BC-1.",
-      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
+      "public_evidence_refs": ["cboe_bxm_index"]
     },
     {
       "hypothesis_id": "H-C-02",
