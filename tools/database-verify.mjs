@@ -40,6 +40,7 @@ try {
     "033_master_paper_runtime",
     "034_master_paper_action_handoff",
     "035_paper_evidence_authorization",
+    "036_runtime_behavior_diagnostics",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -87,6 +88,7 @@ try {
     ["research", "optionomics_quote_qualification_run"],
     ["trade", "canonical_strategy_frontier"],
     ["trade", "master_paper_action_plan"], ["trade", "master_paper_action_plan_event"],
+    ["research", "theta_runtime_behavior_diagnostic"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -185,6 +187,12 @@ try {
       AND constraint_name='order_intent_submitted_quantity_matches_evidence') AS quantity_matches`);
   if(!paperEvidenceAuthorization.rows[0]?.tier||!paperEvidenceAuthorization.rows[0]?.reduces_only||
     !paperEvidenceAuthorization.rows[0]?.quantity_matches)throw new Error('PAPER_EVIDENCE_AUTHORIZATION_PROTECTION_MISSING');
+  const runtimeBehaviorProtection=await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='research'
+      AND event_object_table='theta_runtime_behavior_diagnostic'
+      AND trigger_name='reject_immutable_mutation') AS immutable_diagnostic`);
+  if(!runtimeBehaviorProtection.rows[0]?.immutable_diagnostic)
+    throw new Error('RUNTIME_BEHAVIOR_DIAGNOSTIC_PROTECTION_MISSING');
   const intentNullGuard = await client.query(`SELECT
     pg_get_constraintdef(oid) AS definition, convalidated
     FROM pg_constraint WHERE conrelid='trade.order_intent'::regclass
@@ -294,6 +302,7 @@ try {
     optionomicsContextLineage:"ENFORCED",
     masterPaperActionHandoff:"ENFORCED",
     paperEvidenceAuthorization:"ENFORCED",
+    runtimeBehaviorDiagnostic:"ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeMasters: activeMasters.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
