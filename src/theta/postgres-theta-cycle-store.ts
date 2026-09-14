@@ -5,6 +5,15 @@ import type { ThetaShadowCycleResult } from './theta-shadow-cycle.js';
 import type { ThetaQResponse } from './theta-q-contract.js';
 import { buildStrategyDecisionEnvelope } from './strategy-decision-envelope.js';
 import { validateGlobalWaitEvidence, type GlobalWaitEvidence } from './decision-evidence.js';
+import {
+  deriveOptionomicsTemporalFeatures,
+  type OptionomicsFeatureSnapshotReference,
+} from './optionomics-temporal-features.js';
+
+const optionomicsTemporalResearchPolicy = {
+  policyVersion: 'theta-optionomics-temporal-research-policy-v1',
+  maximumGapSeconds: 3_600,
+} as const;
 
 export interface ThetaCyclePersistenceContext {
   readonly botInstanceId: string;
@@ -407,6 +416,59 @@ export class PostgresThetaCycleStore {
         `INSERT INTO market.optionomics_feature_observation_link(feature_snapshot_id,observation_id,observation_role)
          VALUES($1,$2,$3) ON CONFLICT(feature_snapshot_id,observation_id) DO NOTHING`,
         [featureSnapshotId, observation.id, observation.operationAlias === 'optionomics.get_option_chain' ? 'PRIMARY_CHAIN' : 'CONTEXT'],
+      );
+    }
+    await this.persistOptionomicsTemporalEvidence(client, {
+      featureSnapshotId, underlying, observedAt: primary.retrievedAt, schemaVersion, featureState: features,
+    });
+  }
+
+  private async persistOptionomicsTemporalEvidence(
+    client: PoolClient,
+    current: OptionomicsFeatureSnapshotReference,
+  ): Promise<void> {
+    const priorResult = await client.query<{
+      feature_snapshot_id: string;
+      underlying: string;
+      observed_at: Date | string;
+      schema_version: string;
+      feature_state_json: Record<string, unknown>;
+    }>(
+      `SELECT feature_snapshot_id,underlying,observed_at,schema_version,feature_state_json
+       FROM market.optionomics_feature_snapshot
+       WHERE underlying=$1 AND feature_snapshot_id<>$2 AND observed_at<$3
+       ORDER BY observed_at DESC,feature_snapshot_id DESC LIMIT 1`,
+      [current.underlying, current.featureSnapshotId, current.observedAt],
+    );
+    const row = priorResult.rows[0];
+    if (row === undefined) return;
+    const earlier: OptionomicsFeatureSnapshotReference = {
+      featureSnapshotId: row.feature_snapshot_id,
+      underlying: row.underlying,
+      observedAt: row.observed_at instanceof Date ? row.observed_at.toISOString() : String(row.observed_at),
+      schemaVersion: row.schema_version,
+      featureState: row.feature_state_json,
+    };
+    for (const feature of deriveOptionomicsTemporalFeatures({
+      earlier, current, maximumGapSeconds: optionomicsTemporalResearchPolicy.maximumGapSeconds,
+    })) {
+      const persistedMethodVersion = `${feature.methodVersion}:${optionomicsTemporalResearchPolicy.policyVersion}`;
+      const contentHash = createHash('sha256').update(JSON.stringify({ feature, policy: optionomicsTemporalResearchPolicy })).digest('hex');
+      const temporalFeatureId = deterministicRuntimeUuid(`optionomics-temporal:${contentHash}`);
+      await client.query(
+        `INSERT INTO research.optionomics_temporal_feature_observation(
+          temporal_feature_id,underlying,feature_family,metric_key,earlier_feature_snapshot_id,
+          current_feature_snapshot_id,earlier_observed_at,current_observed_at,elapsed_seconds,value_state,
+          units,earlier_value,current_value,absolute_change,rate_per_hour,reason_code,method_version,
+          execution_eligible,content_hash)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,false,$18)
+         ON CONFLICT(current_feature_snapshot_id,feature_family,metric_key,method_version) DO NOTHING`,
+        [temporalFeatureId, current.underlying, feature.family, feature.metricKey,
+          feature.earlierFeatureSnapshotId, feature.currentFeatureSnapshotId, feature.earlierObservedAt,
+          feature.currentObservedAt, feature.elapsedSeconds, feature.state, feature.units,
+          feature.earlierValue, feature.currentValue, feature.absoluteChange, feature.ratePerHour,
+          feature.reasonCode, persistedMethodVersion,
+          contentHash],
       );
     }
   }

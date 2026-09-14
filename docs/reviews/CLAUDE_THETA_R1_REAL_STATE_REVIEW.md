@@ -52,6 +52,13 @@ means useful intent exists but the implementation needs correction and focused t
 | `48b522a` `bs_reference.py` | RESEARCH_ONLY | Useful numerical fixture reference. Optionomics remains the production IV source and this solver is not a trading fallback. |
 | `48b522a` `regime_report.py` | RESEARCH_ONLY | Correctly separates raw N and independent-chain N, but it does not close the live management-input or calibration gap. |
 | `48b522a` flow and friend-bot documents | RESEARCH_ONLY | The anti-leakage and fail-open warnings are valid. No unvalidated flow threshold or claimed performance was adopted. |
+| `b249625` | SUPERSEDED | Main already normalizes gamma, Vanna, and Charm heatmaps separately, verifies the metric echo, retains provider-unverified units/sign, and routes them as non-executable context. The proposed Python parser duplicates that boundary, accepts non-finite values, and its ablation registry splits subfeatures before a dataset exists. No duplicate engine was added. |
+| `8f1be58` | REPAIR_AND_PORT | The exact-identity and UNKNOWN discipline are useful research patterns. The implementation was not ported because it can return `COMPOSITE_CANDIDATE` with missing BBO, uses absolute event-to-chain time so a pre-event chain can pass, and does not recursively redact dictionaries inside lists. No speculative webhook schema or execution authority was accepted. |
+| `9c05da9` | RESEARCH_ONLY | Useful dated audit, but its main SHA and management-connectivity result are superseded. Canonical Production evidence now records REST and MCP HTTP 401, and management dispatch is connected by migration 037. The execution-quote conclusion remains NO. |
+| `514cdf7` intelligence synthesis | ADAPT_NOW | The identified missing temporal observation layer is correct. It was independently implemented on main as immutable, versioned, research-only temporal deltas with strict time ordering, UNKNOWN propagation, source snapshot lineage, and no execution eligibility. |
+| `514cdf7` external repository matrix | REJECT | It openly relies mostly on existence checks and README reads. The canonical `THETA_PROFESSIONAL_REFERENCE_PACK_2026-09-14.md` and `GITHUB_REPO_RESEARCH_LEDGER.md` already contain the stronger exact-SHA, file-level review required by the owner. |
+| `715c97f` management dispatch | SUPERSEDED | Migration 037 and the typed management assembler connect the persisted frontier to close, stock exit, covered-call, and dependency-aware roll plans. |
+| `715c97f` active action selection | REJECT | Feasibility alone does not prove `CLOSE_FULL` is economically preferable. `LET_EXPIRE` also requires exact OTM/session/broker lifecycle evidence, not DTE alone. Active selection remains blocked until a versioned policy supplies defensible economic and invalidation authority. |
 
 No Claude commit was merged wholesale. The repaired branch now addresses the
 previous six defects, but the repair commit depends on the unintegrated R6 base bundle.
@@ -64,3 +71,11 @@ evidence are distinct, global WAIT requires exhaustive evidence, every lifecycle
 has an explicit action frontier, and unknown economic terms remain null. The research
 utility function's use of `or 0.0` for missing penalties was rejected because it would
 make unknown risk look costless.
+
+The 2026-09-15 review also resolved two external-repo questions. Cancellation
+already re-reads Alpaca state before cancellation and immediately reconciles the
+post-cancel broker state. Ambiguous cancellation remains unresolved until broker
+reconciliation, so collateral cannot be released from an assumed cancel. Explicit
+`SELL_TO_CLOSE` is represented in the canonical position-intent contract, but no
+broker behavior was changed from a third-party README claim without an official
+Alpaca contract or reproduced Paper evidence.

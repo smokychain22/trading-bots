@@ -1867,3 +1867,46 @@ must not treat a successful login as quote qualification.
 
 NEXT RECOMMENDED TASK: Deploy this diagnostic contract and run one bounded
 Production qualification to establish the current non-secret provider result.
+
+OWNER: Codex
+
+TASK: Durable Optionomics temporal evidence and selective Claude review.
+
+FILES CHANGED: Temporal feature engine, cycle persistence, migration 038,
+database verifier, Node/SQL tests, completion matrix, decision log, and Claude
+review ledger.
+
+WHAT WAS IMPLEMENTED: Consecutive same-underlying Optionomics feature snapshots
+now produce immutable research-only volatility, skew, term-structure, and
+exposure changes. The engine rejects reversed timestamps, incompatible schemas,
+cross-underlying pairs, non-finite values, and excessive gaps. UNKNOWN never
+becomes zero. Every result links both source snapshots and is permanently
+non-executable. Claude commits `b249625`, `8f1be58`, `9c05da9`, `514cdf7`, and
+`715c97f` were classified individually. No branch or speculative provider parser
+was merged wholesale.
+
+TESTS RUN: TypeScript and full Node suite. Full repository, PostgreSQL, browser,
+Python, security, deployment, and Production migration checks remain required
+before release of this milestone.
+
+TEST RESULTS: TypeScript passed. Full Node passed 792 tests with five disposable
+database tests skipped because local PostgreSQL was unavailable.
+
+KNOWN LIMITATIONS: Optionomics Production authentication still returns HTTP 401,
+so no new real temporal rows can be collected. One-hour pairing is a versioned
+research data-quality policy, not a strategy threshold. Direction, persistence,
+acceleration, and profitability remain unmodeled until real repeated observations
+and resolved labels exist.
+
+RISKS: Temporal correlations can be mistaken for alpha. No temporal feature may
+enter Production selection until paired point-in-time ablation and independent
+OOS evidence show incremental economic value after cost.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Quant research should test the temporal
+families one at a time and preserve source-pair lineage. The rejected composite
+quote code must not be used until BBO completeness, causal event ordering,
+recursive redaction, and real authenticated payload semantics are proven.
+
+NEXT RECOMMENDED TASK: Apply migration 038, resume authenticated Optionomics
+collection when the provider accepts Production credentials, and accumulate
+resolved Paper lifecycle evidence after a real execution quote qualifies.

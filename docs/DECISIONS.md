@@ -744,6 +744,14 @@ quote remains mandatory at the last pricing boundary.
 - Runtime behavior: Every management scan now persists and reads back its immutable frontier, invokes the typed action-plan assembler, and publishes only a fully ready active result. Passive HOLD/RECOVERY_WAIT/HOLD_CC creates no broker action. Pending intents are reconciled from Alpaca before a dependent plan can advance.
 - Execution boundary: This does not qualify Optionomics or Alpaca option quotes and does not authorize an order. The external quote gate, Paper controls, live-host rejection, and follower lock remain unchanged.
 
+## 2026-09-15 - Derive temporal Optionomics evidence without creating a signal
+
+- Decision: Pair only strictly ordered, same-underlying, schema-compatible Optionomics feature snapshots and persist transparent scalar changes as immutable research evidence.
+- Scope: The first method version covers IV level/rank/percentile, IV-vs-RV, skew, term, risk reversal, GEX/DEX, gamma flip, and wall locations. It records numeric deltas and rates, not bullish/bearish labels or trade recommendations.
+- Missing data: UNKNOWN and INVALID inputs remain non-numeric. A schema mismatch or observation gap beyond the versioned one-hour research policy produces UNKNOWN. Zero remains a known value.
+- Provenance: Each row references both source feature snapshots and retains observation times, elapsed seconds, units, method/policy version, content hash, and reason code. Database constraints enforce time order, known-value shape, immutability, and `execution_eligible=false`.
+- Research boundary: These deltas may enter later paired ablation and OOS work. They cannot authorize a strategy branch, price an order, or repair the current Optionomics 401 and execution-quote blockers.
+
 ## 2026-09-14 - Run deterministic Python contracts in a private Vercel Python function
 
 The Production Node function cannot spawn `python3`. Canonical market scans

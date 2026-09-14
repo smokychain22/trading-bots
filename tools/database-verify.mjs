@@ -42,6 +42,7 @@ try {
     "035_paper_evidence_authorization",
     "036_runtime_behavior_diagnostics",
     "037_management_action_plan_dispatch",
+    "038_optionomics_temporal_feature_evidence",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -90,6 +91,7 @@ try {
     ["trade", "canonical_strategy_frontier"],
     ["trade", "master_paper_action_plan"], ["trade", "master_paper_action_plan_event"],
     ["research", "theta_runtime_behavior_diagnostic"],
+    ["research", "optionomics_temporal_feature_observation"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -161,6 +163,16 @@ try {
   if(!optionomicsEvidence.rows[0]?.immutable_raw||!optionomicsEvidence.rows[0]?.immutable_features||
     !optionomicsEvidence.rows[0]?.immutable_qualification||!optionomicsEvidence.rows[0]?.immutable_context_lineage)
     throw new Error('OPTIONOMICS_LAYERED_EVIDENCE_PROTECTION_MISSING');
+  const optionomicsTemporalEvidence=await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='research'
+      AND event_object_table='optionomics_temporal_feature_observation' AND trigger_name='reject_immutable_mutation') AS immutable_temporal,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='research.optionomics_temporal_feature_observation'::regclass
+      AND conname='optionomics_temporal_known_shape') AS known_shape,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='research.optionomics_temporal_feature_observation'::regclass
+      AND conname='optionomics_temporal_time_order') AS time_order`);
+  if(!optionomicsTemporalEvidence.rows[0]?.immutable_temporal||!optionomicsTemporalEvidence.rows[0]?.known_shape||
+    !optionomicsTemporalEvidence.rows[0]?.time_order)
+    throw new Error('OPTIONOMICS_TEMPORAL_EVIDENCE_PROTECTION_MISSING');
   const optionomicsProvenance=await client.query(`SELECT count(*)::int AS column_count
     FROM information_schema.columns WHERE table_schema='market' AND table_name='optionomics_raw_observation'
       AND column_name IN ('requested_at','request_path','request_parameters_json','http_status','rate_limit_json',
