@@ -619,3 +619,99 @@ paths, via `gh api`):
 **`DATASET_ABSENT` still stands.** No Python code changed this run
 (reference-corpus and adversarial-review work only). Security scan: 0
 findings. **`REQUIRED_CODEX_CHANGE` count for this run: 0.**
+
+## Optionomics feature-engine adversarial review: `a9d8ffa..33ac674`
+
+Two commits: "layer Optionomics decision evidence" (migration 028,
+`optionomics-feature-engine.ts`, `optionomics-quote-qualification.ts`)
+and "schedule open-session quote proof". Read both new modules in full.
+
+### Core boundary re-confirmed: OPTIONOMICS_INTELLIGENCE != EXECUTION_QUOTE_AUTHORITY
+
+`OptionomicsContractFeatureState.quote.executable` is hardcoded `false`;
+`semantics` is hardcoded `'SESSION_RECORDED_RESEARCH'`.
+`assessOptionomicsQuoteQualification` hardcodes `ready: false` and always
+includes `PROVIDER_DOCUMENTS_SESSION_INGESTION_NOT_EXECUTION_FEED` /
+`ORDER_PRICING_USE_NOT_DOCUMENTED` in its blockers regardless of how good
+the observed evidence is -- this harness cannot be made to report positive
+execution-quote readiness under the current provider contract, no matter
+what data it observes. Boundary held. **NO_CHANGE_REQUIRED.**
+
+### Provider/derived separation re-confirmed
+
+Every numeric field is a `FeatureValue<T>` with an explicit `KNOWN`/
+`UNKNOWN`/`INVALID` state and a `reason` string -- no field defaults to
+zero. Raw IV value (`rawValue`) is preserved alongside the parsed/typed
+`impliedVolatility`, and `units` stays `'UNKNOWN'` rather than assuming
+decimal when the provider doesn't confirm it. `responseHash` travels with
+every snapshot. **NO_CHANGE_REQUIRED.**
+
+### REQUIRED_CODEX_CHANGE: skew/risk-reversal has no delta-proximity tolerance
+
+**Problem:** `deriveSkew` (and `deriveTerm`'s expiry-averaging) select the
+chain entry CLOSEST to a 0.25-delta target by absolute distance, with NO
+tolerance check on how close "closest" actually is:
+```
+const put25 = entries.filter(...).toSorted((a,b) =>
+  Math.abs(Math.abs(a.delta)-0.25) - Math.abs(Math.abs(b.delta)-0.25))[0];
+```
+If the nearest available put delta in a sparse/illiquid chain is, say,
+0.05 or 0.70, this code still selects it, still treats it as "the 25-delta
+point," and returns a `KNOWN` skew value with no `UNKNOWN`/degraded state
+--indistinguishable downstream from a genuine near-25-delta skew computed
+from a liquid chain.
+
+**Canonical SHA:** `33ac674452f58b511edc215a528e8b29a6e04b377`
+**Exact evidence:** `src/theta/optionomics-feature-engine.ts`, function
+`deriveSkew` (put/call nearest-delta selection has no distance bound
+before `known(...)` is returned).
+**Affected invariant:** "UNKNOWN is preserved, never silently converted to
+a confident value" -- the same standing invariant this repository already
+enforces everywhere else in this exact file (every OTHER field here
+correctly returns `unknown(...)` when its precondition isn't met).
+**Affected files/modules:** `src/theta/optionomics-feature-engine.ts`
+(`deriveSkew`), and by the same pattern, `deriveTerm`'s per-expiration
+averaging includes every listed strike/type rather than an ATM-relative
+subset (related but distinct, see the RESEARCH_CHALLENGER below).
+**Minimal suggested fix:** require `Math.abs(Math.abs(delta) - 0.25) <=`
+some explicit, caller-supplied tolerance (never an invented default; make
+the caller pass it, per this repository's own no-invented-threshold
+discipline) before returning `known(...)`; otherwise return
+`unknown('NO_CONTRACT_WITHIN_TOLERANCE_OF_25_DELTA')`.
+**Tests required:** a chain with only far-from-25-delta contracts (e.g.
+0.05 and 0.70) must produce `UNKNOWN`, not a numeric skew.
+**Research consequence:** without this, a sparse-chain skew value could
+silently enter the feature set looking exactly as trustworthy as a
+liquid-chain skew value, which would corrupt any later skew ablation
+(`THETA_OPTIONOMICS_FEATURE_CATALOG.md`'s "Downside skew" row) without any
+visible signal that it happened.
+
+### RESEARCH_CHALLENGER: term structure conflates moneyness with tenor
+
+`deriveTerm` averages IV across EVERY strike and option type available at
+each expiration, then takes `far_average - near_average`. If the near and
+far expirations have different strike coverage (very plausible -- near-
+dated chains often list more strikes than far-dated ones), the result
+mixes a genuine term-structure effect with a moneyness-mix artifact, not
+a clean "far ATM IV minus near ATM IV" signal. Not a defect (well-defined,
+reproducible, never fabricated) -- but worth testing whether an ATM-
+relative version (nearest-strike-to-spot per expiration, matching this
+same file's own 25-delta selection pattern) produces a materially
+different and more stable signal before either version is trusted as a
+feature. `BLOCKED_ON_DATA` for the actual comparison.
+
+### Reference-corpus convergence
+
+Codex independently built `THETA_PROFESSIONAL_REFERENCE_MAP.md`, correctly
+classifying `py_vollib` as `TEST_ONLY` (matching this branch's own
+independent finding from the prior run) and flagging Optopsy's AGPL-3.0
+license as `REFERENCE_ONLY` (never adopted as a dependency) -- verified
+Codex's license claim independently via `gh api repos/goldspanlabs/optopsy`
+and confirmed `AGPL-3.0` is correct. No duplication: Codex's map is a
+routing table, this branch's `GITHUB_REPO_RESEARCH_LEDGER.md` is the
+detailed per-repo dossier -- complementary, not competing.
+
+**No Python code changed this run** (TypeScript adversarial review only).
+Security scan: 0 findings. `DATASET_ABSENT` still stands.
+**`REQUIRED_CODEX_CHANGE` count for this run: 1** (delta-proximity
+tolerance, above).
