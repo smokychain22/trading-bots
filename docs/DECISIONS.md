@@ -733,3 +733,10 @@ remote model fails closed and can never become an OPEN decision.
 Production calls the project's canonical production URL. Vercel protects
 deployment-specific hostnames, so using `VERCEL_URL` would return a platform
 401 before the private function could validate the runtime secret.
+
+Unknown ownership remains an execution blocker but no longer prevents the
+Conventional branch from enumerating contracts in reduced research mode. The
+untrained recovery-history component otherwise made ownership permanently
+unknown and starved the point-in-time evidence ledger. The existing candidate
+model still marks unknown-ownership contracts infeasible, so this change
+captures rejection evidence without treating missing data as acceptable.

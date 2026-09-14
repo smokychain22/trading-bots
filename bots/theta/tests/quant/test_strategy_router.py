@@ -133,11 +133,12 @@ class ThetaDGateTests(unittest.TestCase):
 
 
 class UnknownOwnershipTests(unittest.TestCase):
-    def test_unknown_ownership_excludes_theta_q_never_assumed_acceptable(self):
+    def test_unknown_ownership_enumerates_theta_q_as_reduced_research_without_assuming_acceptability(self):
         results = route_strategies(_policy(), _portfolio(), _market(ownership_acceptable=None))
         by_family = {r.strategy_family: r for r in results}
-        self.assertFalse(by_family[StrategyFamily.THETA_Q].eligible)
-        self.assertEqual(by_family[StrategyFamily.THETA_Q].eligibility_state, EligibilityState.INELIGIBLE_DATA)
+        self.assertTrue(by_family[StrategyFamily.THETA_Q].eligible)
+        self.assertEqual(by_family[StrategyFamily.THETA_Q].eligibility_state, EligibilityState.ELIGIBLE_REDUCED)
+        self.assertEqual(by_family[StrategyFamily.THETA_Q].reasons[0].code, "OWNERSHIP_UNKNOWN_RESEARCH_ONLY")
 
 
 class EligibleFamiliesHelperTests(unittest.TestCase):

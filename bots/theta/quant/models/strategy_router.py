@@ -208,8 +208,15 @@ def route_strategies(
                                         "NOT_A_FRESH_ENTRY_STATE", f"lifecycle_state={lifecycle.value}", policy))
     else:
         if market.ownership_acceptable is None:
-            results.append(_ineligible(StrategyFamily.THETA_Q, EligibilityState.INELIGIBLE_DATA,
-                                        "OWNERSHIP_UNKNOWN", "Ownership acceptability is UNKNOWN, not assumed acceptable.", policy))
+            # Unknown ownership is soft evidence for the conventional
+            # research path. Keep the family eligible at reduced authority so
+            # its exact contracts and rejection evidence can be captured.
+            # theta_q_baseline still marks every such candidate infeasible,
+            # so UNKNOWN is never assumed acceptable and cannot authorize an
+            # opening trade.
+            results.append(_eligible(StrategyFamily.THETA_Q, EligibilityState.ELIGIBLE_REDUCED,
+                                     "OWNERSHIP_UNKNOWN_RESEARCH_ONLY",
+                                     "Ownership is UNKNOWN. Enumerate for evidence, but downstream ownership and risk gates remain binding.", policy))
         elif market.ownership_acceptable < policy.theta_q_min_ownership_acceptability:
             results.append(_ineligible(StrategyFamily.THETA_Q, EligibilityState.INELIGIBLE_RISK,
                                         "OWNERSHIP_UNACCEPTABLE", f"ownership_acceptable={market.ownership_acceptable} below THETA-Q floor.", policy))
