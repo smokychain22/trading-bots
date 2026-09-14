@@ -13,6 +13,7 @@ $statusFile = Join-Path $stateRoot 'status.json'
 $stopFile = Join-Path $stateRoot 'stop.request'
 $exportSessionFile = Join-Path $stateRoot 'last-auto-export-session'
 $researchHashFile = Join-Path $stateRoot 'last-empirical-dataset-hash'
+$qualificationSessionFile = Join-Path $stateRoot 'last-optionomics-qualification-session'
 if (!(Test-Path -LiteralPath $runtimeFile)) { throw 'THETA_LOCAL_WORKER_NOT_INSTALLED' }
 if (!(Test-Path -LiteralPath $tokenFile)) { throw 'THETA_LOCAL_WORKER_TOKEN_NOT_PROVISIONED' }
 $runtime = Get-Content -Raw -LiteralPath $runtimeFile | ConvertFrom-Json
@@ -40,6 +41,17 @@ try {
       $report = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $headers -TimeoutSec 120
       $marketSessionDate = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
         [DateTimeOffset]::UtcNow, 'Eastern Standard Time').ToString('yyyy-MM-dd')
+      $lastQualificationSession = if (Test-Path -LiteralPath $qualificationSessionFile) {
+        (Get-Content -Raw -LiteralPath $qualificationSessionFile).Trim()
+      } else { '' }
+      if ($report.reconciliation.marketOpen -eq $true -and $lastQualificationSession -ne $marketSessionDate) {
+        $qualificationHeaders = $headers.Clone()
+        $qualificationHeaders['X-Theta-Operation'] = 'optionomics-quote-qualification'
+        $qualification = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $qualificationHeaders -TimeoutSec 120
+        if ($null -ne $qualification -and $qualification.marketSession -eq 'OPEN') {
+          Set-Content -LiteralPath $qualificationSessionFile -Value $marketSessionDate -Encoding ascii
+        }
+      }
       $lastExportedSession = if (Test-Path -LiteralPath $exportSessionFile) {
         (Get-Content -Raw -LiteralPath $exportSessionFile).Trim()
       } else { '' }
