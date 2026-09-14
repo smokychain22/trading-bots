@@ -1205,3 +1205,117 @@ missing, non-duplicative pieces:
 `DATASET_ABSENT` still stands -- both modules are exercised only against
 synthetic fixtures and will run the instant real Paper/historical
 episodes exist.
+
+## Optionomics execution-quote qualification: access-boundary finding + fresh corroborating evidence
+
+**Reviewed `7a68db6..c45653e`** ("connect approved actions to Paper
+execution" -- migration 034, `master-paper-action-handoff.ts`,
+`alpaca-execution-quote-source.ts`, `THETA_ORCHESTRATION_REFERENCE_MAP.md`).
+
+### Security note relayed, not investigated
+
+Codex's own `docs/HANDOFF.md` entry for this commit states: **"Credentials
+previously pasted into chat must be rotated before any Paper activation
+if they are still active."** This branch has no visibility into what was
+pasted or where -- relaying this verbatim to the user as a standing,
+unresolved action item, per this session's own security discipline. No
+credential value has been viewed, stored, or logged by this review.
+
+### Hard access-boundary confirmed before attempting any live work
+
+Checked this environment directly: no `OPTIONOMICS_*`/`ALPACA_*`
+environment variables, no `.env` file, and `.env.local` contains only
+`VERCEL_OIDC_TOKEN` -- no provider credentials of any kind. This is a
+structural fact, not a market-hours timing issue: **Claude's research
+environment has never had, and does not now have, authenticated access to
+either Optionomics or Alpaca.** Every section of the directive requiring
+an authenticated GET request (contract identity sampling, BBO capture,
+live-change testing, cross-provider comparison) is therefore genuinely
+`BLOCKED_NO_AUTHENTICATED_ACCESS_IN_CLAUDE_ENVIRONMENT` -- a different,
+more precise state than "waiting for market open." Codex already owns
+this exact capability: `optionomics-quote-qualification-runtime.ts` and
+`tools/optionomics-quote-qualification.ts` (reviewed two rounds ago) are
+the canonical live-sampling harness, built with real Production
+credentials Claude will never hold.
+
+### Fresh public-documentation evidence (fetched today, not stale assumption)
+
+Fetched `optionomics.ai/docs/api` directly (WebFetch flagged it as
+requiring authentication to view in full, so treat with appropriate
+caution, but it returned substantive, internally consistent content --
+possibly a cached/indexed excerpt). It independently corroborates, with
+NEW evidence gathered today rather than repeating an old assumption,
+exactly what Codex's own already-implemented `optionomics-quote-
+qualification.ts` hardcodes:
+
+- **Endpoint confirmed**: `GET /api/v1/stocks/{symbol}/options` (matches
+  the directive's own cited example exactly).
+- **Contract identity fields confirmed**: `symbol` (OCC format
+  `{STOCK}{YYMMDD}{C/P}{STRIKE×1000}`), `type` (call/put),
+  `expiration_date`, `strike` -- sufficient for exact, non-fuzzy contract
+  identity per the standing "no fuzzy contract matching" requirement.
+- **`bid`/`ask`/`price`/`strike` are returned as STRINGS**, not numbers
+  -- consistent with, and already correctly handled by, `optionomics-
+  provider.ts`'s `asFiniteNumberOrNull` (verified in an earlier round to
+  parse numeric strings while rejecting non-numeric ones).
+- **No per-contract intraday timestamp field** -- the only timestamp-
+  shaped field on a contract row is `expiration_date` (a date, not an
+  observation time). This directly answers this run's own timestamp
+  investigation: there is no `quoteTimestamp`/`observedAt`/`asOf`
+  equivalent at the per-quote level to measure freshness against.
+- **The provider's own documentation states, in its own words**: *"research
+  and analytics data, not a streaming market-data feed"* that serves
+  *"recorded and derived data on an ingestion cadence"* where *"Quotes and
+  chains reflect the most recent completed ingestion for the requested
+  session."* This is the exact "session snapshot" semantic Codex's own
+  `PROVIDER_DOCUMENTS_SESSION_INGESTION_NOT_EXECUTION_FEED` blocker
+  encodes -- now independently reconfirmed via fresh evidence, not merely
+  repeated from an older reading.
+- **Rate limit confirmed**: 1,000 requests/minute shared across REST/MCP/
+  playground, `429` + `Retry-After` on exhaustion -- matches Codex's
+  already-implemented bounded-retry behavior (reviewed two rounds ago).
+- **No public OpenAPI specification URL exists** on the account/API-keys
+  documentation page -- only a human-readable "API Reference" page,
+  contrary to the directive's premise that a served OpenAPI spec could be
+  inspected directly.
+
+### Alpaca's role in the actual execution-quote pipeline
+
+Read the new `alpaca-execution-quote-source.ts` directly: Codex has
+implemented `AlpacaExecutionQuoteSource` (not an Optionomics
+implementation) as the concrete `ExecutionOptionQuoteSource` -- stock
+exits via IEX (`sourceSemantics: 'TRUSTED_TWO_SIDED_ORDER_PRICING'`),
+options via Alpaca OPRA (`sourceSemantics: 'CONSOLIDATED_NBBO'`, which
+still requires the OPRA entitlement that remains `NOT_ENTITLED` per every
+prior round's review). **No `OptionomicsExecutionQuoteSource` exists in
+Production** -- Optionomics is not currently wired as an execution-quote
+candidate in the actual pipeline at all, independent of today's
+qualification question.
+
+### Conclusion, with exact blockers per the directive's own required format
+
+`OPTIONOMICS_EXECUTION_QUOTE = NOT_QUALIFIED`, because:
+- `SESSION_SNAPSHOT_ONLY` (provider's own documentation, fetched today)
+- `NO_PROVIDER_QUOTE_TIMESTAMP` (confirmed field-level: only
+  `expiration_date` exists per contract, no observation timestamp)
+
+These two together make `QUOTE_FRESHNESS_MEASURABLE` fail structurally --
+there is no timestamp to diff against receipt time, independent of
+whether live sampling ever occurs. **No live sampling is required to
+reach this conclusion**, though live sampling remains valuable to Codex
+(who holds the credentials) for the OTHER qualification dimensions
+(BBO validity rates, intraday change detection) this branch cannot test.
+
+Per the standing instruction, Optionomics remains a fully valid
+intelligence/research provider regardless of this execution-quote
+finding -- nothing here changes `OPTIONOMICS_INTELLIGENCE_PROVIDER =
+CONFIRMED` or any of the confirmed research-data classifications from
+prior rounds.
+
+**No new code this round** -- the deliverable is an evidence-based
+finding, not a rebuild of Codex's already-correct qualification logic
+(which this review re-confirms rather than duplicates). No Python code
+changed; no test suite run. `DATASET_ABSENT` still stands.
+
+**`REQUIRED_CODEX_CHANGE` = NONE.** Codex's own conclusion is
+independently reconfirmed, not contradicted.
