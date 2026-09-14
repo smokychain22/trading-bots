@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { JsonValue } from '../market/fusion-snapshot.js';
 import type { NormalizedOptionContract } from './option-contract.js';
-import type { StrategyRoutingResponse } from './strategy-router-contract.js';
+import type { StrategyFamily, StrategyRoutingResponse } from './strategy-router-contract.js';
 import { canonicalThetaStrategySources, type ThetaStrategyBranch } from './strategy-package.js';
 
 export const canonicalStrategyFrontierVersion = 'theta-canonical-strategy-frontier-v1' as const;
@@ -145,6 +145,10 @@ const familyByBranch = {
   THETA_CONVENTIONAL: 'THETA_Q', THETA_HOLD_STRIKE: 'THETA_H', THETA_DEFINED_RISK: 'THETA_D',
   THETA_RECOVERY: 'THETA_A', THETA_CC: 'THETA_C',
 } as const;
+
+export function strategyFamilyForCanonicalBranch(branch: ThetaStrategyBranch): StrategyFamily {
+  return familyByBranch[branch];
+}
 
 const sourceByBranch = new Map(canonicalThetaStrategySources.map((source) => [source.branch, source]));
 const finite = (value: number | null): value is number => value !== null && Number.isFinite(value);

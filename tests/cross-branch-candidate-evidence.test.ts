@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type {
-  CanonicalBranchFrontier,
-  CanonicalFrontierCandidate,
-  CanonicalStrategyFrontier,
+import {
+  strategyFamilyForCanonicalBranch,
+  type CanonicalBranchFrontier,
+  type CanonicalFrontierCandidate,
+  type CanonicalStrategyFrontier,
 } from '../src/theta/canonical-strategy-frontier.js';
 import { projectCanonicalStrategyEvidence } from '../src/theta/postgres-theta-cycle-store.js';
 
@@ -142,4 +143,14 @@ test('rejects an inconsistent branch candidate count before persistence', () => 
     selectedCandidateId: null,
   } as unknown as CanonicalStrategyFrontier;
   assert.throws(() => projectCanonicalStrategyEvidence(frontier), /CANONICAL_BRANCH_CANDIDATE_COUNT_MISMATCH/);
+});
+
+test('maps canonical branch names to the persisted runtime routing vocabulary', () => {
+  assert.deepEqual([
+    strategyFamilyForCanonicalBranch('THETA_CONVENTIONAL'),
+    strategyFamilyForCanonicalBranch('THETA_HOLD_STRIKE'),
+    strategyFamilyForCanonicalBranch('THETA_DEFINED_RISK'),
+    strategyFamilyForCanonicalBranch('THETA_RECOVERY'),
+    strategyFamilyForCanonicalBranch('THETA_CC'),
+  ], ['THETA_Q', 'THETA_H', 'THETA_D', 'THETA_A', 'THETA_C']);
 });

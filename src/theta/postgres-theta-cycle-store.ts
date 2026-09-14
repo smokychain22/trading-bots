@@ -3,7 +3,7 @@ import type { Pool, PoolClient } from 'pg';
 import { verifyFusionSnapshot, type JsonValue } from '../market/fusion-snapshot.js';
 import type { ThetaShadowCycleResult } from './theta-shadow-cycle.js';
 import type { ThetaQResponse } from './theta-q-contract.js';
-import type { CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
+import { strategyFamilyForCanonicalBranch, type CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
 import { buildStrategyDecisionEnvelope } from './strategy-decision-envelope.js';
 import { validateGlobalWaitEvidence, type GlobalWaitEvidence } from './decision-evidence.js';
 import {
@@ -301,7 +301,10 @@ export class PostgresThetaCycleStore {
     await client.query(
       `INSERT INTO trade.strategy_route(strategy_route_id,fusion_snapshot_id,evaluated_at,branch_eligibility_json,selected_branch,policy_version)
        VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(fusion_snapshot_id) DO NOTHING`,
-      [routeId, fusionSnapshotId, routing.timestamp, JSON.stringify(eligibility), cycle.strategyFrontier?.selectedBranch ?? null, routing.policyVersion],
+      [routeId, fusionSnapshotId, routing.timestamp, JSON.stringify(eligibility),
+        cycle.strategyFrontier?.selectedBranch === null || cycle.strategyFrontier?.selectedBranch === undefined
+          ? null : strategyFamilyForCanonicalBranch(cycle.strategyFrontier.selectedBranch),
+        routing.policyVersion],
     );
     return routeId;
   }
