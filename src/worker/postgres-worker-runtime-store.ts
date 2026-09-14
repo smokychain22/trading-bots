@@ -97,10 +97,14 @@ export class PostgresWorkerRuntimeStore implements WorkerRuntimeStore {
     const degraded=failed||report.status==='DEGRADED';
     const firstBlocker=report.jobResults.find((row)=>row.status==='FAILED'||row.status==='QUARANTINED'||row.status==='DEGRADED')?.errorCode??null;
     const riskBlocked=firstBlocker?.includes('HARD_BLOCKER')===true||firstBlocker?.includes('RISK')===true;
+    const quoteBlocked=firstBlocker==='FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_NOT_YET_QUALIFIED'
+      ||firstBlocker?.includes('QUOTE_')===true;
     const state:WorkerRuntimeState=market==='CLOSED'?'MASTER_PAPER_MARKET_CLOSED'
       :riskBlocked?'MASTER_PAPER_RISK_BLOCKED'
+        :quoteBlocked?'MASTER_PAPER_QUOTE_BLOCKED'
         :degraded?'MASTER_PAPER_PROVIDER_DEGRADED'
-          :market==='OPEN'?'MASTER_PAPER_QUOTE_BLOCKED':'MASTER_PAPER_PROVIDER_DEGRADED';
+          :market==='OPEN'&&report.executionGate==='ACTIVE'?'MASTER_PAPER_ACTIVE'
+            :market==='OPEN'?'MASTER_PAPER_QUOTE_BLOCKED':'MASTER_PAPER_PROVIDER_DEGRADED';
     const candidateScan=completedCandidateEvidenceScan(report);
     await this.pool.query(`UPDATE ops.runtime_worker_status SET state=$3,last_cycle_completed=$2,last_heartbeat=$2,
       last_reconciliation=CASE WHEN $4 THEN $2 ELSE last_reconciliation END,
@@ -108,10 +112,11 @@ export class PostgresWorkerRuntimeStore implements WorkerRuntimeStore {
       last_provider_success=CASE WHEN $6 THEN $2 ELSE last_provider_success END,
       market_session=$7,alpaca_health=$8,database_health='GOOD',cycle_count=cycle_count+1,
       consecutive_failures=CASE WHEN $6 THEN 0 ELSE consecutive_failures+1 END,
-      failure_reason=$9,updated_at=$2 WHERE worker_id=$1`,
+      failure_reason=$9,execution_gate=$10,updated_at=$2 WHERE worker_id=$1`,
     [workerId,at,state,report.reconciliation!==null,candidateScan,!degraded,market,
       report.reconciliation===null?'DEGRADED':report.reconciliation.dataQuality==='GOOD'?'GOOD':'DEGRADED',
-      degraded?firstBlocker??report.status:'FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_NOT_YET_QUALIFIED']);
+      degraded?firstBlocker??report.status:report.executionGate==='ACTIVE'?null:'FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_NOT_YET_QUALIFIED',
+      report.executionGate]);
   }
 
   async recordResumeGap(workerId:string,gapStartedAt:string,resumedAt:string):Promise<number>{

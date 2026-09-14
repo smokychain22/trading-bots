@@ -38,6 +38,7 @@ try {
     "031_canonical_strategy_frontier",
     "032_canonical_decision_authority",
     "033_master_paper_runtime",
+    "034_master_paper_action_handoff",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -84,6 +85,7 @@ try {
     ["market", "optionomics_feature_observation_link"],
     ["research", "optionomics_quote_qualification_run"],
     ["trade", "canonical_strategy_frontier"],
+    ["trade", "master_paper_action_plan"], ["trade", "master_paper_action_plan_event"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -166,6 +168,13 @@ try {
       AND event_object_table='canonical_strategy_frontier' AND trigger_name='reject_immutable_mutation') AS immutable_frontier`);
   if(!strategyFrontierProtection.rows[0]?.immutable_frontier)
     throw new Error('CANONICAL_STRATEGY_FRONTIER_PROTECTION_MISSING');
+  const actionHandoffProtection=await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade'
+      AND event_object_table='master_paper_action_plan_event' AND trigger_name='reject_immutable_mutation') AS immutable_events,
+    EXISTS(SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='trade'
+      AND table_name='master_paper_action_plan' AND constraint_type='CHECK') AS plan_checks`);
+  if(!actionHandoffProtection.rows[0]?.immutable_events||!actionHandoffProtection.rows[0]?.plan_checks)
+    throw new Error('MASTER_PAPER_ACTION_HANDOFF_PROTECTION_MISSING');
   const intentNullGuard = await client.query(`SELECT
     pg_get_constraintdef(oid) AS definition, convalidated
     FROM pg_constraint WHERE conrelid='trade.order_intent'::regclass
@@ -273,6 +282,7 @@ try {
     paperActiveBaselineEvidence:"ENFORCED",
     optionomicsLayeredEvidence:"ENFORCED",
     optionomicsContextLineage:"ENFORCED",
+    masterPaperActionHandoff:"ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeMasters: activeMasters.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,

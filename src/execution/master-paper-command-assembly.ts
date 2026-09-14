@@ -20,8 +20,9 @@ export interface MasterPaperCommandAssemblyInput {
   readonly limitPrice: number;
   readonly pricingPolicyVersion: string;
   readonly quote: {
-    readonly source: 'ALPACA';
-    readonly feed: 'OPRA' | 'SIP' | 'IEX' | 'INDICATIVE';
+    readonly source: 'ALPACA' | 'OPTIONOMICS';
+    readonly feed: 'OPRA' | 'SIP' | 'IEX' | 'TRUSTED_TWO_SIDED';
+    readonly semantics: 'CONSOLIDATED_NBBO' | 'TRUSTED_TWO_SIDED_ORDER_PRICING';
     readonly bid: number;
     readonly ask: number;
     readonly observedAt: string;
@@ -42,7 +43,8 @@ const inputSchema = z.object({
   underlyingId: z.string().uuid(), symbol: z.string().min(1).max(64), quantity: z.number().int().positive(),
   multiplier: z.number().int().positive(), confirmedCoveredShares: z.number().int().nonnegative().optional(),
   limitPrice: z.number().positive().finite(), pricingPolicyVersion: z.string().min(1),
-  quote: z.object({ source: z.literal('ALPACA'), feed: z.enum(['OPRA', 'SIP', 'IEX', 'INDICATIVE']),
+  quote: z.object({ source: z.enum(['ALPACA','OPTIONOMICS']), feed: z.enum(['OPRA', 'SIP', 'IEX', 'TRUSTED_TWO_SIDED']),
+    semantics: z.enum(['CONSOLIDATED_NBBO','TRUSTED_TWO_SIDED_ORDER_PRICING']),
     bid: z.number().nonnegative().finite(), ask: z.number().positive().finite(), observedAt: z.string().datetime({ offset: true }),
     maximumAgeSeconds: z.number().positive().finite() }).strict(),
   accountVerified: z.boolean(), optionsCapabilityVerified: z.boolean(),
@@ -62,7 +64,7 @@ const deterministicUuid = (value: string): string => {
 };
 
 const canonicalQuoteHash = (input: z.infer<typeof inputSchema>): string => createHash('sha256').update(JSON.stringify({
-  source: input.quote.source, feed: input.quote.feed, symbol: input.symbol,
+  source: input.quote.source, feed: input.quote.feed, semantics:input.quote.semantics, symbol: input.symbol,
   bid: input.quote.bid, ask: input.quote.ask, observedAt: input.quote.observedAt,
   pricingPolicyVersion: input.pricingPolicyVersion, limitPrice: input.limitPrice,
 })).digest('hex');
@@ -77,11 +79,18 @@ export function assembleMasterPaperExecutionCommand(raw: MasterPaperCommandAssem
   const input = inputSchema.parse(raw);
   const isStock = input.action === 'SELL_STOCK';
   if (isStock) {
-    if (input.optionContractId !== null || !['SIP', 'IEX'].includes(input.quote.feed)) {
+    if (input.optionContractId !== null || input.quote.source !== 'ALPACA' || !['SIP', 'IEX'].includes(input.quote.feed)
+      || input.quote.semantics !== 'TRUSTED_TWO_SIDED_ORDER_PRICING') {
       throw new Error('STOCK_EXECUTION_LINEAGE_INVALID');
     }
-  } else if (input.optionContractId === null || input.quote.feed !== 'OPRA') {
-    throw new Error('OPTION_EXECUTION_REQUIRES_ALPACA_OPRA_BBO');
+  } else {
+    const alpacaOpra = input.quote.source === 'ALPACA' && input.quote.feed === 'OPRA'
+      && input.quote.semantics === 'CONSOLIDATED_NBBO';
+    const trustedTwoSided = input.quote.source === 'OPTIONOMICS' && input.quote.feed === 'TRUSTED_TWO_SIDED'
+      && input.quote.semantics === 'TRUSTED_TWO_SIDED_ORDER_PRICING';
+    if (input.optionContractId === null || (!alpacaOpra && !trustedTwoSided)) {
+      throw new Error('OPTION_EXECUTION_REQUIRES_QUALIFIED_TWO_SIDED_BBO');
+    }
   }
   if (input.quote.bid > input.quote.ask) throw new Error('EXECUTION_BBO_CROSSED');
   if (input.limitPrice < input.quote.bid || input.limitPrice > input.quote.ask) throw new Error('EXECUTION_LIMIT_OUTSIDE_BBO');
@@ -101,8 +110,8 @@ export function assembleMasterPaperExecutionCommand(raw: MasterPaperCommandAssem
     orderIntentId, executionAccountId: input.executionAccountId, decisionId: input.decisionId,
     action: input.action, chainId: input.chainId, optionContractId: input.optionContractId,
     underlyingId: input.underlyingId, request, persistedAt: input.now,
-    executionEvidence: { quoteSource: 'ALPACA', quoteFeed: input.quote.feed as 'OPRA' | 'SIP' | 'IEX',
-      quoteSemantics: input.quote.feed === 'OPRA' ? 'CONSOLIDATED_NBBO' : 'TRUSTED_TWO_SIDED_ORDER_PRICING',
+    executionEvidence: { quoteSource: input.quote.source, quoteFeed: input.quote.feed,
+      quoteSemantics: input.quote.semantics,
       quoteAsOf: input.quote.observedAt, decisionExpiresAt: input.decisionExpiresAt,
       quoteContentHash: canonicalQuoteHash(input), aegisState: input.aegisState },
     gate: { baseHostname: 'paper-api.alpaca.markets', accountVerified: input.accountVerified,

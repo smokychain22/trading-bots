@@ -1543,3 +1543,24 @@ and should not relabel structural ranking as empirical alpha.
 NEXT RECOMMENDED TASK: Observe the next open options session, run the existing
 execution-quote qualification, and keep the worker operating even if the quote
 remains externally blocked.
+# 2026-09-14, master Paper action handoff
+
+OWNER: Codex
+
+TASK: Close the missing internal seam between a canonically approved THETA action and the existing Paper execution coordinator, without enabling orders.
+
+FILES CHANGED: `src/execution/master-paper-action-handoff.ts`, `src/execution/postgres-master-paper-action-plan-store.ts`, `src/execution/alpaca-opra-execution-quote-source.ts`, `src/execution/master-paper-command-assembly.ts`, `src/theta/autonomous-runtime.ts`, scheduler and worker files, migration `034`, tests, database verification, and the orchestration reference map.
+
+WHAT WAS IMPLEMENTED: A typed approved-action contract, durable PostgreSQL queue with immutable events and restart-safe claims, provider-neutral current option-quote qualification, adaptive pricing delegation, resident-worker handoff job, and explicit separation of structural strategy evidence from execution-quote readiness.
+
+TESTS RUN: Full verification is recorded in the milestone commit report. Focused action-handoff tests and the full Node suite passed before final verification.
+
+TEST RESULTS: No broker mutation occurred. Production execution switches remain locked. Master Paper, follower Paper, and live order counts remain zero.
+
+KNOWN LIMITATIONS: No current strategy branch has empirically ready positive after-cost EV. The currently proven external execution-quote capability remains blocked. Docker was unavailable for local PostgreSQL and Redis testing, so those checks require CI and the approved Production migration path.
+
+RISKS: Enabling the execution flags before empirical promotion and external quote qualification would be unsafe. Credentials previously pasted into chat must be rotated before any Paper activation if they are still active.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Strategy research may consume the plan interface, but must not bypass canonical selection, AEGIS, empirical EV, or quote qualification. Quant work stays on its isolated branch.
+
+NEXT RECOMMENDED TASK: Accumulate point-in-time R6 evidence and qualify the external execution quote contract. When both gates pass, produce the full readiness receipt and stop before the first `POST /v2/orders`.

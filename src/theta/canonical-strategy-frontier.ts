@@ -225,7 +225,11 @@ function commonEvidence(contract: NormalizedOptionContract, input: CanonicalStra
   const softEvidence: string[] = [];
   const unknownEvidence: string[] = [];
   if (contract.occSymbol === null) hardBlockers.push('OCC_IDENTITY_UNKNOWN');
-  if (!contract.executable) hardBlockers.push(`EXECUTION_QUOTE_NOT_QUALIFIED:${contract.nonExecutableReason ?? 'UNKNOWN'}`);
+  // Strategy enumeration and execution qualification are separate stages.
+  // A session-recorded research quote may support transparent structural
+  // comparison, but it can never authorize a broker order. The execution
+  // handoff must obtain and qualify a new current quote independently.
+  if (!contract.executable) unknownEvidence.push(`EXECUTION_QUOTE_REQUIRED:${contract.nonExecutableReason ?? 'UNKNOWN'}`);
   if (input.aegisNewRiskState === null) unknownEvidence.push('AEGIS_STATE_UNKNOWN');
   else if (['HOLD_ONLY', 'HARD_VETO', 'EMERGENCY_EXIT_ONLY'].includes(input.aegisNewRiskState)) hardBlockers.push(`AEGIS_${input.aegisNewRiskState}`);
   if (input.eventState === null) unknownEvidence.push('EVENT_STATE_UNKNOWN');

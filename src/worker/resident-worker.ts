@@ -25,7 +25,7 @@ export interface WorkerHealth {
   readonly lastCycleCompletedAt: string | null;
   readonly lastCycleStatus: AutonomousRuntimeReport['status'] | null;
   readonly consecutiveFailures: number;
-  readonly executionGate: 'EXTERNAL_QUOTE_BLOCKER';
+  readonly executionGate: 'EXTERNAL_QUOTE_BLOCKER'|'ACTIVE';
   readonly alwaysOnWorker: 'WINDOWS_AUTOSTART';
   readonly hostState: typeof localWorkerHostState;
   readonly runtimeState: WorkerRuntimeState;
@@ -46,6 +46,11 @@ const redactedLogger = (): Logger => pino({
     censor: '[REDACTED]',
   },
 });
+
+const configuredExecutionGate = (environment: Environment): WorkerHealth['executionGate'] =>
+  environment.MASTER_PAPER_EXECUTION_ENABLED && !environment.PAPER_PAUSE_NEW_ORDERS
+    ? 'ACTIVE'
+    : 'EXTERNAL_QUOTE_BLOCKER';
 
 export async function verifyPythonRuntime(executable: string, timeoutMs = 5_000): Promise<boolean> {
   return new Promise((resolve) => {
@@ -93,7 +98,7 @@ export class ResidentThetaWorker {
       status: 'STARTING', runningCycle: false, pythonReady: false,
       databaseConfigured: Boolean(environment.DATABASE_URL), lastCycleStartedAt: null,
       lastCycleCompletedAt: null, lastCycleStatus: null, consecutiveFailures: 0,
-      executionGate: 'EXTERNAL_QUOTE_BLOCKER', alwaysOnWorker: 'WINDOWS_AUTOSTART', hostState: localWorkerHostState,
+      executionGate: configuredExecutionGate(environment), alwaysOnWorker: 'WINDOWS_AUTOSTART', hostState: localWorkerHostState,
       runtimeState:'MASTER_PAPER_STARTING',workerId:this.workerId,hostId:this.hostId,buildSha:this.buildSha,
       leaseOwned:false,currentDelayMs:environment.THETA_WORKER_INTERVAL_MS,lastResumeGap:null,
     };
@@ -125,11 +130,16 @@ export class ResidentThetaWorker {
     try {
       const report = await cycle;
       const failed = report.status === 'FAILED' || report.status === 'QUARANTINED';
+      const quoteBlocked=report.jobResults.some((row)=>row.errorCode==='FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_NOT_YET_QUALIFIED'
+        ||row.errorCode?.includes('QUOTE_')===true);
       this.health = {
         ...this.health, status: failed ? 'DEGRADED' : 'READY', runningCycle: false,
         lastCycleCompletedAt: this.now().toISOString(), lastCycleStatus: report.status,
         consecutiveFailures: failed ? this.health.consecutiveFailures + 1 : 0,
-        runtimeState:failed?'MASTER_PAPER_PROVIDER_DEGRADED':report.reconciliation?.marketOpen===true?'MASTER_PAPER_QUOTE_BLOCKED'
+        executionGate:report.executionGate,
+        runtimeState:failed?'MASTER_PAPER_PROVIDER_DEGRADED':report.reconciliation?.marketOpen===true&&quoteBlocked?'MASTER_PAPER_QUOTE_BLOCKED'
+          :report.reconciliation?.marketOpen===true&&report.executionGate==='ACTIVE'?'MASTER_PAPER_ACTIVE'
+          :report.reconciliation?.marketOpen===true?'MASTER_PAPER_QUOTE_BLOCKED'
           :report.reconciliation?.marketOpen===false?'MASTER_PAPER_MARKET_CLOSED':'MASTER_PAPER_PROVIDER_DEGRADED',
       };
       this.health={...this.health,currentDelayMs:this.nextDelayMs()};
@@ -242,7 +252,7 @@ export class ResidentThetaWorker {
     });
     const address = this.server.address() as AddressInfo | null;
     this.logger.info({ event: 'worker_listening', port: address?.port ?? this.environment.THETA_WORKER_PORT,
-      executionGate: 'EXTERNAL_QUOTE_BLOCKER' }, 'THETA resident master Paper worker started');
+      executionGate: configuredExecutionGate(this.environment) }, 'THETA resident master Paper worker started');
   }
 
   async stop(reason?:string): Promise<void> {

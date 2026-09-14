@@ -678,3 +678,10 @@ triggers, requires network availability, wakes the machine when Windows permits,
 restarts after failure, ignores overlapping task instances, and is additionally
 protected by a process mutex and PostgreSQL lease. Every recovered process
 reconciles broker truth before considering new exposure.
+# 2026-09-14, approved action plans use the existing execution coordinator
+
+- Decision: Keep the canonical strategy, AEGIS, execution, broker, and lifecycle modules separate. Persist one typed `ApprovedMasterPaperActionPlan` after a canonical decision is approved, claim it durably in the resident worker, qualify a current execution quote, price it with the existing adaptive-limit policy, and delegate to the existing `MasterPaperExecutionOrchestrator`.
+- Reason: The resident cycle previously had no production-reachable handoff from an approved strategy action to the tested Paper coordinator. A durable queue closes that internal seam without creating another trading architecture.
+- Safety: Enqueue verifies the immutable decision's selected candidate, quantity, AEGIS result, and master execution-account readiness inside one transaction. The worker reconciles first. Claims are restart-safe. New risk requires empirical positive after-cost EV. The kill switch, Paper host, market-session, quote freshness, account capability, idempotency, and order-state gates remain mandatory.
+- Execution quote semantics: Alpaca consolidated OPRA and an Optionomics two-sided quote may satisfy the same provider-neutral contract only when their actual provenance proves the stated semantics. Research or indicative Optionomics data does not qualify. Stock disposal remains Alpaca-priced.
+- Current state: The Production execution switches remain locked. The strategy package remains non-executable, and no plan exists merely because the transport path now exists.

@@ -101,14 +101,23 @@ test('recovery and covered-call frontiers require confirmed stock and preserve w
 });
 
 test('GLOBAL_WAIT is earned only after every applicable branch is evaluated and no risk-feasible action exists', () => {
-  const blockedQuote = contract({ feed: 'INDICATIVE' });
-  const exhausted = buildCanonicalStrategyFrontier({ ...base, contracts: [blockedQuote], routing: routing(['THETA_Q']) });
+  const invalidIdentity = contract({ occSymbol: null });
+  const exhausted = buildCanonicalStrategyFrontier({ ...base, contracts: [invalidIdentity], routing: routing(['THETA_Q']) });
   assert.equal(exhausted.globalWaitEarned, true);
   assert.deepEqual(exhausted.globalWaitReasons, ['ALL_APPLICABLE_BRANCHES_EVALUATED', 'NO_RISK_FEASIBLE_ACTION']);
 
   const incomplete = buildCanonicalStrategyFrontier({ ...base, contracts: [], routing: routing(['THETA_Q']) });
   assert.equal(incomplete.globalWaitEarned, false);
   assert.ok(incomplete.globalWaitReasons.includes('BRANCH_NOT_FULLY_EVALUATED:THETA_CONVENTIONAL'));
+});
+
+test('research quote limitations stay separate from strategy feasibility and never authorize execution',()=>{
+  const recorded=contract({feed:'INDICATIVE'});
+  const result=buildCanonicalStrategyFrontier({...base,contracts:[recorded],routing:routing(['THETA_Q'])});
+  const candidate=result.branches.find((branch)=>branch.branch==='THETA_CONVENTIONAL')?.candidates[0];
+  assert.equal(candidate?.structurallyFeasible,true);
+  assert.ok(candidate?.unknownEvidence.some((reason)=>reason.startsWith('EXECUTION_QUOTE_REQUIRED:')));
+  assert.equal(result.executionAuthorized,false);
 });
 
 test('canonical authority compares independently eligible branches and does not leave THETA_Q authoritative', () => {

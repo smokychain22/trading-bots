@@ -393,6 +393,35 @@ function parseOneSnapshot(raw: Record<string, unknown>): AlpacaOptionSnapshot {
   };
 }
 
+export interface AlpacaStockQuote {
+  readonly bid: number | null;
+  readonly ask: number | null;
+  readonly bidSize: number | null;
+  readonly askSize: number | null;
+  readonly timestamp: string | null;
+  readonly feed: 'iex' | 'sip';
+}
+
+export async function fetchLatestStockQuote(
+  config: AlpacaProviderConfig,
+  symbol: string,
+  feed: 'iex' | 'sip',
+): Promise<AlpacaStockQuote> {
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const url = new URL(`/v2/stocks/${encodeURIComponent(symbol)}/quotes/latest`, config.marketDataApiBase);
+  url.search = new URLSearchParams({ feed }).toString();
+  const body = await requestJson(fetchImpl, url, authHeaders(config)) as { quote?: Record<string, unknown> };
+  const quote = body.quote;
+  if (quote === undefined) {
+    throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/stocks/{symbol}/quotes/latest did not return a quote.');
+  }
+  return {
+    bid: asNumberOrNull(quote.bp), ask: asNumberOrNull(quote.ap),
+    bidSize: asNumberOrNull(quote.bs), askSize: asNumberOrNull(quote.as),
+    timestamp: asStringOrNull(quote.t), feed,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Historical stock bars -- real fetch wiring around underlying-history.ts's
 // pure pagination/parsing logic.

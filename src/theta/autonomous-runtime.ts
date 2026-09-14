@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import type { Environment } from '../config/environment.js';
-import { AlpacaPaperBrokerAdapter, AlpacaPaperBrokerError } from '../execution/broker.js';
+import { AlpacaPaperBrokerAdapter, AlpacaPaperBrokerError, type PaperBrokerAdapter } from '../execution/broker.js';
 import {
   PostgresBrokerReconciliationStore, runReadOnlyBrokerReconciliation,
   type BrokerReconciliationResult,
@@ -20,6 +20,12 @@ import { processDueExecutionObservations, runProductionShadowEvidenceScan } from
 import { PostgresOutcomeResolver } from '../research/outcome-resolver.js';
 import { shadowSessionDecision } from '../research/shadow-evidence-runtime.js';
 import { applyConfirmedFillLifecycle } from '../execution/postgres-broker-fill-lifecycle-orchestrator.js';
+import { PostgresMasterPaperActionPlanStore } from '../execution/postgres-master-paper-action-plan-store.js';
+import { AlpacaExecutionQuoteSource } from '../execution/alpaca-execution-quote-source.js';
+import { PostgresPaperOrderStore } from '../execution/postgres-paper-order-store.js';
+import { PaperOrderCoordinator } from '../execution/paper-order-coordinator.js';
+import { MasterPaperExecutionOrchestrator } from '../execution/master-paper-execution-orchestrator.js';
+import { MasterPaperActionHandoff } from '../execution/master-paper-action-handoff.js';
 
 export const autonomousRuntimeVersion = 'theta-autonomous-runtime-v1' as const;
 export const autonomousPolicyVersion = 'theta-scheduler-policy-v1' as const;
@@ -42,8 +48,8 @@ export interface AutonomousRuntimeReport {
   }[];
   readonly reconciliation: BrokerReconciliationResult | null;
   readonly runtimeMode: typeof masterPaperRuntimeMode;
-  readonly executionGate: typeof executionQuoteBlocker;
-  readonly masterPaperOrdersSubmitted: 0;
+  readonly executionGate: typeof executionQuoteBlocker | 'ACTIVE';
+  readonly masterPaperOrdersSubmitted: number;
   readonly followerPaperOrdersSubmitted: 0;
   readonly liveOrdersSubmitted: 0;
 }
@@ -53,6 +59,7 @@ interface MasterRuntimeContext {
   readonly providerAccountRef: string;
   readonly executionAccountId: string | null;
   readonly broker: ReadOnlyPaperBroker;
+  readonly executionBroker: PaperBrokerAdapter;
   readonly alpaca: AlpacaProviderConfig;
 }
 
@@ -119,11 +126,12 @@ export class PostgresRuntimeCycleStore {
        WHERE provider_account_ref_hash=$1 AND environment='PAPER'`,
       [accountHash(resolved.providerAccountRef)],
     );
+    const executionBroker=new AlpacaPaperBrokerAdapter({ baseUrl: PAPER_HOST, authentication: resolved.authentication });
     return {
       connectionId: String(connection.rows[0].follower_account_id),
       providerAccountRef: resolved.providerAccountRef,
       executionAccountId: execution.rows[0]?.execution_account_id == null ? null : String(execution.rows[0].execution_account_id),
-      broker: asReadOnlyPaperBroker(new AlpacaPaperBrokerAdapter({ baseUrl: PAPER_HOST, authentication: resolved.authentication })),
+      broker: asReadOnlyPaperBroker(executionBroker),executionBroker,
       alpaca: { tradingApiBase:PAPER_HOST,marketDataApiBase:'https://data.alpaca.markets',
         apiKey:resolved.authentication.apiKey,apiSecret:resolved.authentication.apiSecret },
     };
@@ -170,7 +178,7 @@ function scheduledJobs(bucket: string): readonly DueJob[] {
   return [
     'POSITION_RECONCILIATION', 'ORDER_RECONCILIATION', 'POSITION_MANAGEMENT_SCAN',
     'ASSIGNMENT_EXPIRY_RECONCILIATION', 'PENDING_ORDER_MANAGEMENT', 'WAIT_RECHECK',
-    'OPPORTUNITY_SCAN', 'ACCOUNT_STATE_REFRESH', 'MARKET_STATE_REFRESH',
+    'OPPORTUNITY_SCAN', 'PAPER_EXECUTION_HANDOFF', 'ACCOUNT_STATE_REFRESH', 'MARKET_STATE_REFRESH',
     'COPY_FANOUT_PREPARATION', 'HEALTH_HEARTBEAT',
   ].map((jobType) => ({ jobType: jobType as JobType, correlationKey: bucket }));
 }
@@ -192,9 +200,7 @@ export async function runAutonomousRuntimeCycle(
 ): Promise<AutonomousRuntimeReport> {
   if (!environment.THETA_AUTONOMOUS_WORKER_ENABLED) throw new Error('THETA_AUTONOMOUS_WORKER_DISABLED');
   if (!environment.DATABASE_URL) throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');
-  if (!environment.PAPER_PAUSE_NEW_ORDERS || environment.MASTER_PAPER_EXECUTION_ENABLED || environment.FOLLOWER_PAPER_EXECUTION_ENABLED) {
-    throw new Error('FIRST_PAPER_ORDER_BOUNDARY_NOT_LOCKED');
-  }
+  if (environment.FOLLOWER_PAPER_EXECUTION_ENABLED) throw new Error('FOLLOWER_PAPER_EXECUTION_NOT_AUTHORIZED');
   if (environment.THETA_RUNTIME_MODE !== masterPaperRuntimeMode) throw new Error('MASTER_THETA_PAPER_RUNTIME_REQUIRED');
   const bucket = minuteBucket(now);
   const correlationId = `theta-runtime:${bucket}`;
@@ -205,7 +211,7 @@ export async function runAutonomousRuntimeCycle(
       correlationId, status: 'DUPLICATE', runtimeVersion: autonomousRuntimeVersion,
       policyVersion: autonomousPolicyVersion, jobsAttempted: 0, jobsCompleted: 0,
       jobResults: [], reconciliation: null, runtimeMode: masterPaperRuntimeMode,
-      executionGate: executionQuoteBlocker,
+      executionGate: environment.MASTER_PAPER_EXECUTION_ENABLED&&!environment.PAPER_PAUSE_NEW_ORDERS?'ACTIVE':executionQuoteBlocker,
       masterPaperOrdersSubmitted: 0, followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
     };
   }
@@ -230,6 +236,7 @@ export async function runAutonomousRuntimeCycle(
   const jobs=[...recoveredByType.values(),...scheduledJobs(bucket).filter((job)=>!recoveredByType.has(job.jobType))];
   let reconciliation: BrokerReconciliationResult | null = null;
   let opportunityScanCompleted = false;
+  let masterPaperOrdersSubmitted = 0;
   const retryAt = new Date(now.getTime() + 60_000).toISOString();
 
   const executor = async (jobType: JobType, _key: string, jobId: string): Promise<JobRunResult> => {
@@ -296,6 +303,35 @@ export async function runAutonomousRuntimeCycle(
         const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,now:()=>new Date().toISOString()});
         return scan.completeness==='COMPLETE' ? succeeded() : degraded(`SHADOW_SCAN_${scan.completeness}`,retryAt);
       }
+      if(jobType==='PAPER_EXECUTION_HANDOFF'){
+        if(reconciliation===null)return degraded('BROKER_RECONCILIATION_REQUIRED',retryAt);
+        if(reconciliation.marketOpen!==true)return skipped('MARKET_CLOSED_NO_PAPER_EXECUTION');
+        if(!environment.MASTER_PAPER_EXECUTION_ENABLED||environment.PAPER_PAUSE_NEW_ORDERS)
+          return degraded('FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_NOT_YET_QUALIFIED',retryAt);
+        if(master.executionAccountId===null)return degraded('MASTER_EXECUTION_ACCOUNT_NOT_CREATED',retryAt);
+        const planStore=new PostgresMasterPaperActionPlanStore(pool);
+        const plan=await planStore.claimNext(master.executionAccountId,workerInstance,new Date().toISOString());
+        if(plan===null)return skipped('NO_APPROVED_MASTER_ACTION_PLAN');
+        const coordinator=new PaperOrderCoordinator(master.executionBroker,new PostgresPaperOrderStore(pool,master.executionAccountId),{
+          masterEnabled:environment.MASTER_PAPER_EXECUTION_ENABLED,followerEnabled:false,pauseNewOrders:environment.PAPER_PAUSE_NEW_ORDERS});
+        const handoff=new MasterPaperActionHandoff(new AlpacaExecutionQuoteSource(master.alpaca),
+          new MasterPaperExecutionOrchestrator(coordinator));
+        try{
+          const at=new Date().toISOString();
+          const result=await handoff.execute(plan,at,true);
+          if(result.state==='EXECUTED'&&result.execution!==null){
+            if(result.execution.submittedNow)masterPaperOrdersSubmitted+=1;
+            await planStore.submitted(plan.actionPlanId,result.execution.orderIntentId,at);
+            return succeeded();
+          }
+          await planStore.wait(plan.actionPlanId,result.blockers,retryAt,at);
+          return degraded(result.blockers[0]??result.state,retryAt);
+        }catch(error){
+          const failure=safeFailure(error);
+          await planStore.quarantine(plan.actionPlanId,[failure.code],new Date().toISOString());
+          return {status:'QUARANTINED',errorCode:failure.code,errorDetail:failure.detail,nextRunAt:null};
+        }
+      }
       if (jobType === 'COPY_FANOUT_PREPARATION') return skipped('FOLLOWER_SUBMISSION_LOCKED');
       if (jobType === 'MARKET_STATE_REFRESH') {
         if (reconciliation === null || reconciliation.dataQuality !== 'GOOD') return degraded('BROKER_RECONCILIATION_REQUIRED',retryAt);
@@ -329,8 +365,9 @@ export async function runAutonomousRuntimeCycle(
     correlationId, status, runtimeVersion: autonomousRuntimeVersion, policyVersion: autonomousPolicyVersion,
     jobsAttempted: outcomes.length,
     jobsCompleted: outcomes.filter((outcome) => outcome.runResult !== null).length,
-    jobResults, reconciliation, runtimeMode: masterPaperRuntimeMode, executionGate: executionQuoteBlocker,
-    masterPaperOrdersSubmitted: 0, followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
+    jobResults, reconciliation, runtimeMode: masterPaperRuntimeMode,
+    executionGate:environment.MASTER_PAPER_EXECUTION_ENABLED&&!environment.PAPER_PAUSE_NEW_ORDERS?'ACTIVE':executionQuoteBlocker,
+    masterPaperOrdersSubmitted, followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
   };
   await cycleStore.finish(correlationId, report, new Date().toISOString());
   return report;
@@ -340,7 +377,8 @@ export async function runAutonomousRuntimeCycle(
       correlationId, status: 'FAILED', runtimeVersion: autonomousRuntimeVersion,
       policyVersion: autonomousPolicyVersion, jobsAttempted: 0, jobsCompleted: 0,
       jobResults: [{ jobType: 'HEALTH_HEARTBEAT', outcome: 'STARTUP_FAILED', status: 'FAILED', errorCode: failure.code }],
-      reconciliation: null, runtimeMode: masterPaperRuntimeMode, executionGate: executionQuoteBlocker,
+      reconciliation: null, runtimeMode: masterPaperRuntimeMode,
+      executionGate:environment.MASTER_PAPER_EXECUTION_ENABLED&&!environment.PAPER_PAUSE_NEW_ORDERS?'ACTIVE':executionQuoteBlocker,
       masterPaperOrdersSubmitted: 0, followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
     };
     await cycleStore.finish(correlationId, report, new Date().toISOString());

@@ -8,7 +8,7 @@ const base: MasterPaperCommandAssemblyInput = {
   strategyVersion:'theta-conventional-v1',chainId:'33333333-3333-4333-8333-333333333333',
   optionContractId:'44444444-4444-4444-8444-444444444444',underlyingId:'55555555-5555-4555-8555-555555555555',
   symbol:'AAPL261016P00150000',quantity:1,multiplier:100,limitPrice:1.25,pricingPolicyVersion:'passive-limit-v1',
-  quote:{source:'ALPACA',feed:'OPRA',bid:1.2,ask:1.3,observedAt:'2026-09-13T14:00:00Z',maximumAgeSeconds:10},
+  quote:{source:'ALPACA',feed:'OPRA',semantics:'CONSOLIDATED_NBBO',bid:1.2,ask:1.3,observedAt:'2026-09-13T14:00:00Z',maximumAgeSeconds:10},
   accountVerified:true,optionsCapabilityVerified:true,aegisState:'ALLOW_FULL',now:'2026-09-13T14:00:05Z',
   decisionExpiresAt:'2026-09-13T14:01:00Z',attempt:1,
 };
@@ -23,7 +23,7 @@ test('selected CSP becomes one deterministic OPRA-bound persisted command',()=>{
 });
 
 test('indicative option data, stale quotes and out-of-BBO limits fail before persistence',()=>{
-  assert.throws(()=>assembleMasterPaperExecutionCommand({...base,quote:{...base.quote,feed:'INDICATIVE'}}),/REQUIRES_ALPACA_OPRA/);
+  assert.throws(()=>assembleMasterPaperExecutionCommand({...base,quote:{...base.quote,feed:'TRUSTED_TWO_SIDED'}}),/REQUIRES_QUALIFIED_TWO_SIDED/);
   assert.throws(()=>assembleMasterPaperExecutionCommand({...base,now:'2026-09-13T14:00:20Z'}),/QUOTE_NOT_FRESH/);
   assert.throws(()=>assembleMasterPaperExecutionCommand({...base,limitPrice:1.31}),/LIMIT_OUTSIDE_BBO/);
 });
@@ -37,10 +37,15 @@ test('covered-call opening requires actual reconciled share coverage',()=>{
 
 test('stock disposal requires stock BBO lineage and no option contract',()=>{
   const command=assembleMasterPaperExecutionCommand({...base,action:'SELL_STOCK',symbol:'AAPL',candidateId:'assigned-stock',
-    optionContractId:null,multiplier:1,limitPrice:149.95,quote:{...base.quote,feed:'SIP',bid:149.9,ask:150}});
+    optionContractId:null,multiplier:1,limitPrice:149.95,quote:{...base.quote,feed:'SIP',semantics:'TRUSTED_TWO_SIDED_ORDER_PRICING',bid:149.9,ask:150}});
   assert.equal(command.request.position_intent,undefined);
   assert.equal(command.gate.priceEvidence,'ALPACA_STOCK_BBO');
   assert.equal(command.gate.isNewEntry,false);
   assert.throws(()=>assembleMasterPaperExecutionCommand({...base,action:'SELL_STOCK',symbol:'AAPL',candidateId:'assigned-stock',
     optionContractId:null,multiplier:1,limitPrice:149.95,quote:{...base.quote,feed:'OPRA',bid:149.9,ask:150}}),/STOCK_EXECUTION_LINEAGE_INVALID/);
+
+  const optionomics=assembleMasterPaperExecutionCommand({...base,quote:{...base.quote,source:'OPTIONOMICS',
+    feed:'TRUSTED_TWO_SIDED',semantics:'TRUSTED_TWO_SIDED_ORDER_PRICING'}});
+  assert.equal(optionomics.executionEvidence.quoteSource,'OPTIONOMICS');
+  assert.equal(optionomics.executionEvidence.quoteSemantics,'TRUSTED_TWO_SIDED_ORDER_PRICING');
 });

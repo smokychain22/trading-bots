@@ -25,18 +25,13 @@ const report = (status: AutonomousRuntimeReport['status'] = 'SUCCEEDED'): Autono
 const fakePool = () => ({ query: async () => ({ rows: [{ '?column?': 1 }] }), end: async () => undefined }) as unknown as Pool;
 const logger = pino({ level: 'silent' });
 
-test('worker configuration rejects every order-unlock combination', () => {
+test('worker permits the master Paper handoff but permanently rejects follower execution', () => {
   assert.doesNotThrow(() => assertAutonomousWorkerConfiguration(lockedEnvironment()));
-  for (const override of [
-    { PAPER_PAUSE_NEW_ORDERS: 'false' },
-    { MASTER_PAPER_EXECUTION_ENABLED: 'true' },
-    { FOLLOWER_PAPER_EXECUTION_ENABLED: 'true' },
-  ]) {
-    assert.throws(() => assertAutonomousWorkerConfiguration(loadEnvironment({
-      ...Object.fromEntries(Object.entries(lockedEnvironment()).map(([key, value]) => [key, String(value)])),
-      ...override,
-    })), /FIRST_PAPER_ORDER_BOUNDARY_NOT_LOCKED/);
-  }
+  const source=Object.fromEntries(Object.entries(lockedEnvironment()).map(([key,value])=>[key,String(value)]));
+  assert.doesNotThrow(()=>assertAutonomousWorkerConfiguration(loadEnvironment({...source,
+    PAPER_PAUSE_NEW_ORDERS:'false',MASTER_PAPER_EXECUTION_ENABLED:'true'})));
+  assert.throws(()=>assertAutonomousWorkerConfiguration(loadEnvironment({...source,
+    FOLLOWER_PAPER_EXECUTION_ENABLED:'true'})),/FOLLOWER_PAPER_EXECUTION_NOT_AUTHORIZED/);
 });
 
 test('worker skips an overlapping trigger and never runs two cycles concurrently', async () => {

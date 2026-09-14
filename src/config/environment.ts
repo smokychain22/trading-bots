@@ -126,8 +126,6 @@ export const assertAutonomousWorkerConfiguration = (environment: Environment): v
   if (!environment.THETA_AUTONOMOUS_WORKER_ENABLED) throw new Error('THETA_AUTONOMOUS_WORKER_DISABLED');
   if (!environment.DATABASE_URL) throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');
   if (!environment.PAPER_COPY_TOKEN_ENCRYPTION_KEY) throw new Error('PAPER_CREDENTIAL_ENCRYPTION_NOT_CONFIGURED');
-  if (!environment.PAPER_PAUSE_NEW_ORDERS || environment.MASTER_PAPER_EXECUTION_ENABLED || environment.FOLLOWER_PAPER_EXECUTION_ENABLED) {
-    throw new Error('FIRST_PAPER_ORDER_BOUNDARY_NOT_LOCKED');
-  }
+  if (environment.FOLLOWER_PAPER_EXECUTION_ENABLED) throw new Error('FOLLOWER_PAPER_EXECUTION_NOT_AUTHORIZED');
   if (environment.THETA_RUNTIME_MODE !== 'MASTER_THETA_PAPER') throw new Error('MASTER_THETA_PAPER_RUNTIME_REQUIRED');
 };

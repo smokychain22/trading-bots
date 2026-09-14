@@ -5,6 +5,7 @@ import {
   fetchMasterAccountSnapshot,
   fetchMarketCalendar,
   fetchMarketClock,
+  fetchLatestStockQuote,
   fetchOpenOrders,
   fetchOptionContracts,
   fetchOptionSnapshots,
@@ -242,6 +243,19 @@ test('fetchOptionSnapshots marks complete=false when maxPages is hit with more r
   const result = await fetchOptionSnapshots(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', feed: 'indicative', optionType: 'put', limit: 1, maxPages: 1 });
   assert.equal(result.complete, false);
   assert.equal(result.snapshots.size, 1);
+});
+
+test('fetchLatestStockQuote uses the market-data host, explicit feed, and preserves two-sided timestamped evidence', async () => {
+  let requested = '';
+  const fetchImpl = (async (request: string | URL | Request) => {
+    requested = String(request);
+    return jsonResponse(200, { quote: { bp: 199.91, ap: 199.94, bs: 8, as: 11, t: NOW } });
+  }) as typeof fetch;
+  const result = await fetchLatestStockQuote(baseConfig(fetchImpl), 'AAPL', 'iex');
+  assert.equal(new URL(requested).host, 'data.alpaca.markets');
+  assert.equal(new URL(requested).pathname, '/v2/stocks/AAPL/quotes/latest');
+  assert.equal(new URL(requested).searchParams.get('feed'), 'iex');
+  assert.deepEqual(result, { bid: 199.91, ask: 199.94, bidSize: 8, askSize: 11, timestamp: NOW, feed: 'iex' });
 });
 
 test('fetchStockBars follows next_page_token across pages, including a first page containing only one symbol of a multi-symbol request', async () => {
