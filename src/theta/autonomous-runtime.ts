@@ -25,7 +25,8 @@ import { AlpacaExecutionQuoteSource } from '../execution/alpaca-execution-quote-
 import { PostgresPaperOrderStore } from '../execution/postgres-paper-order-store.js';
 import { PaperOrderCoordinator } from '../execution/paper-order-coordinator.js';
 import { MasterPaperExecutionOrchestrator } from '../execution/master-paper-execution-orchestrator.js';
-import { MasterPaperActionHandoff } from '../execution/master-paper-action-handoff.js';
+import { MasterPaperActionHandoff, classifyMasterPaperActionExecution } from '../execution/master-paper-action-handoff.js';
+import { AlpacaProviderError } from './alpaca-provider.js';
 
 export const autonomousRuntimeVersion = 'theta-autonomous-runtime-v1' as const;
 export const autonomousPolicyVersion = 'theta-scheduler-policy-v1' as const;
@@ -174,6 +175,11 @@ export class PostgresRuntimeCycleStore {
   }
 }
 
+function isRetryableExternalExecutionFailure(error:unknown):boolean{
+  if(error instanceof AlpacaProviderError)return true;
+  return error instanceof AlpacaPaperBrokerError&&error.category!=='BROKER_REJECTED';
+}
+
 function scheduledJobs(bucket: string): readonly DueJob[] {
   return [
     'POSITION_RECONCILIATION', 'ORDER_RECONCILIATION', 'POSITION_MANAGEMENT_SCAN',
@@ -320,14 +326,24 @@ export async function runAutonomousRuntimeCycle(
           const at=new Date().toISOString();
           const result=await handoff.execute(plan,at,true);
           if(result.state==='EXECUTED'&&result.execution!==null){
+            const disposition=classifyMasterPaperActionExecution(result.execution);
+            if(disposition==='WAIT_RECONCILIATION'){
+              await planStore.wait(plan.actionPlanId,['BROKER_RECONCILIATION_REQUIRED'],retryAt,at);
+              return degraded('BROKER_RECONCILIATION_REQUIRED',retryAt);
+            }
             if(result.execution.submittedNow)masterPaperOrdersSubmitted+=1;
-            await planStore.submitted(plan.actionPlanId,result.execution.orderIntentId,at);
+            if(disposition==='TERMINAL')await planStore.terminal(plan.actionPlanId,result.execution.orderIntentId,at);
+            else await planStore.submitted(plan.actionPlanId,result.execution.orderIntentId,at);
             return succeeded();
           }
           await planStore.wait(plan.actionPlanId,result.blockers,retryAt,at);
           return degraded(result.blockers[0]??result.state,retryAt);
         }catch(error){
           const failure=safeFailure(error);
+          if(isRetryableExternalExecutionFailure(error)){
+            await planStore.wait(plan.actionPlanId,[failure.code],retryAt,new Date().toISOString());
+            return degraded(failure.code,retryAt);
+          }
           await planStore.quarantine(plan.actionPlanId,[failure.code],new Date().toISOString());
           return {status:'QUARANTINED',errorCode:failure.code,errorDetail:failure.detail,nextRunAt:null};
         }

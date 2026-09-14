@@ -68,6 +68,14 @@ export interface MasterPaperActionHandoffResult {
   readonly execution: MasterPaperExecutionResult | null;
 }
 
+export type MasterPaperActionDisposition = 'WAIT_RECONCILIATION' | 'SUBMITTED' | 'TERMINAL';
+
+export function classifyMasterPaperActionExecution(result: MasterPaperExecutionResult): MasterPaperActionDisposition {
+  if (result.state === 'BLOCKED_UNRESOLVED_ORDER' || result.state === 'PERSISTED') return 'WAIT_RECONCILIATION';
+  if (result.state === 'TERMINAL') return 'TERMINAL';
+  return 'SUBMITTED';
+}
+
 const sideFor = (action: ThetaOrderAction): 'BUY' | 'SELL' =>
   ['CLOSE_CSP','ROLL_CSP_CLOSE','CLOSE_CC','ROLL_CC_CLOSE'].includes(action) ? 'BUY' : 'SELL';
 

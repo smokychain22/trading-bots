@@ -67,6 +67,10 @@ export class PostgresMasterPaperActionPlanStore {
     await this.transition(actionPlanId,'SUBMITTED',at,[],null,{orderIntentId});
   }
 
+  async terminal(actionPlanId:string,orderIntentId:string,at:string):Promise<void>{
+    await this.transition(actionPlanId,'TERMINAL',at,[],null,{orderIntentId});
+  }
+
   async quarantine(actionPlanId:string,blockers:readonly string[],at:string):Promise<void>{
     await this.transition(actionPlanId,'QUARANTINED',at,blockers,null);
   }

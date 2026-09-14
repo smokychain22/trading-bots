@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { BrokerOrderRequest, BrokerOrderSnapshot, PaperBrokerAdapter } from '../src/execution/broker.js';
 import { executionOptionQuoteContractVersion, type ExecutionOptionQuote } from '../src/execution/execution-option-quote.js';
-import { MasterPaperActionHandoff, masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan,
+import { MasterPaperActionHandoff, classifyMasterPaperActionExecution, masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan,
   type ExecutionOptionQuoteSource } from '../src/execution/master-paper-action-handoff.js';
 import { MasterPaperExecutionOrchestrator } from '../src/execution/master-paper-execution-orchestrator.js';
 import { InMemoryPaperOrderStore, PaperOrderCoordinator } from '../src/execution/paper-order-coordinator.js';
@@ -66,4 +66,12 @@ test('a risk-reducing stock exit reaches the coordinator through a qualified Alp
   const {broker,handoff}=setup(stockQuote);const result=await handoff.execute(plan({action:'SELL_STOCK',symbol:'AAPL',
     optionContractId:null,optionType:null,multiplier:1,expectedAfterCostEv:null,empiricalEconomicsReady:false,aegisState:'HOLD_ONLY'}),now,true);
   assert.equal(result.state,'EXECUTED');assert.equal(broker.submitCalls,1);
+});
+
+test('an unresolved or merely persisted intent waits for reconciliation instead of marking the action submitted',()=>{
+  const base={orderIntentId:'intent-1',brokerOrder:null,submittedNow:false} as const;
+  assert.equal(classifyMasterPaperActionExecution({...base,state:'BLOCKED_UNRESOLVED_ORDER'}),'WAIT_RECONCILIATION');
+  assert.equal(classifyMasterPaperActionExecution({...base,state:'PERSISTED'}),'WAIT_RECONCILIATION');
+  assert.equal(classifyMasterPaperActionExecution({...base,state:'WORKING'}),'SUBMITTED');
+  assert.equal(classifyMasterPaperActionExecution({...base,state:'TERMINAL'}),'TERMINAL');
 });
