@@ -543,6 +543,7 @@ type OptionomicsProbe = {
   readonly path: string;
   readonly thetaDestination: string;
   readonly classification: 'RUNTIME_INPUT' | 'RESEARCH_INPUT' | 'REFERENCE_ONLY';
+  readonly expectedHeatmapMetric?: 'gamma_exposure' | 'vanna_exposure' | 'charm_exposure';
 };
 
 export const optionomicsProbes = (documentedPaths: readonly string[]): readonly OptionomicsProbe[] => {
@@ -553,9 +554,9 @@ export const optionomicsProbes = (documentedPaths: readonly string[]): readonly 
     { capability: 'OPTIONOMICS_OPTION_CHAIN_GREEKS', operationAlias: 'opt.get_option_chain', path: '/api/v1/stocks/{symbol}/options', thetaDestination: 'CONTRACT_QUOTE_GREEKS_VOLATILITY_LIQUIDITY', classification: 'RUNTIME_INPUT' },
     { capability: 'OPTIONOMICS_HISTORY', operationAlias: 'opt.get_price_history', path: '/api/v1/stocks/{symbol}/price_history', thetaDestination: 'HISTORICAL_CONTEXT', classification: 'RESEARCH_INPUT' },
     { capability: 'OPTIONOMICS_IV_SKEW_TERM_SURFACE', operationAlias: 'opt.get_symbol_metrics', path: '/api/v1/stocks/{symbol}/metrics', thetaDestination: 'VOLATILITY_EXPOSURE_STATE', classification: 'RUNTIME_INPUT' },
-    { capability: 'OPTIONOMICS_GAMMA_EXPOSURE_HEATMAP', operationAlias: 'opt.get_gamma_exposure_heatmap', path: '/api/v1/stocks/{symbol}/heatmap', thetaDestination: 'EXPOSURE_STATE', classification: 'RESEARCH_INPUT' },
-    { capability: 'OPTIONOMICS_VANNA_EXPOSURE_HEATMAP', operationAlias: 'opt.get_vanna_exposure_heatmap', path: '/api/v1/stocks/{symbol}/heatmap', thetaDestination: 'EXPOSURE_STATE', classification: 'RESEARCH_INPUT' },
-    { capability: 'OPTIONOMICS_CHARM_EXPOSURE_HEATMAP', operationAlias: 'opt.get_charm_exposure_heatmap', path: '/api/v1/stocks/{symbol}/heatmap', thetaDestination: 'EXPOSURE_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_GAMMA_EXPOSURE_HEATMAP', operationAlias: 'opt.get_gamma_exposure_heatmap', path: '/api/v1/stocks/{symbol}/heatmap', thetaDestination: 'EXPOSURE_STATE', classification: 'RESEARCH_INPUT', expectedHeatmapMetric: 'gamma_exposure' },
+    { capability: 'OPTIONOMICS_VANNA_EXPOSURE_HEATMAP', operationAlias: 'opt.get_vanna_exposure_heatmap', path: '/api/v1/stocks/{symbol}/heatmap', thetaDestination: 'EXPOSURE_STATE', classification: 'RESEARCH_INPUT', expectedHeatmapMetric: 'vanna_exposure' },
+    { capability: 'OPTIONOMICS_CHARM_EXPOSURE_HEATMAP', operationAlias: 'opt.get_charm_exposure_heatmap', path: '/api/v1/stocks/{symbol}/heatmap', thetaDestination: 'EXPOSURE_STATE', classification: 'RESEARCH_INPUT', expectedHeatmapMetric: 'charm_exposure' },
     { capability: 'OPTIONOMICS_FLOW_AGGREGATES', operationAlias: 'opt.get_flow_aggregates', path: '/api/v1/flow/aggregates', thetaDestination: 'FLOW_STATE', classification: 'RESEARCH_INPUT' },
     { capability: 'OPTIONOMICS_FLOW_BULLISH', operationAlias: 'opt.get_flow_bullish', path: '/api/v1/flow/bullish', thetaDestination: 'FLOW_STATE', classification: 'RESEARCH_INPUT' },
     { capability: 'OPTIONOMICS_FLOW_BEARISH', operationAlias: 'opt.get_flow_bearish', path: '/api/v1/flow/bearish', thetaDestination: 'FLOW_STATE', classification: 'RESEARCH_INPUT' },
@@ -651,6 +652,9 @@ export const checkOptionomics = async (environment: Environment): Promise<readon
       const shape = responseShape(body);
       return {
         documentedPath: probe.path, thetaDestination: probe.thetaDestination, classification: probe.classification,
+        requestedMetric: probe.expectedHeatmapMetric ?? null,
+        returnedMetric: typeof record.metric === 'string' ? record.metric : null,
+        metricResponseMatchesRequest: probe.expectedHeatmapMetric === undefined ? null : record.metric === probe.expectedHeatmapMetric,
         responseIsObject: typeof body === 'object' && body !== null,
         explicitNullObserved: Object.values(record).some((value) => value === null),
         ...shape,

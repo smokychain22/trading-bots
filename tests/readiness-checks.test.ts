@@ -23,7 +23,7 @@ const baseEnvironment: Environment = {
 
 type MockRoute = {
   readonly match: (url: string) => boolean;
-  readonly respond: () => Response | Promise<Response>;
+  readonly respond: (url: string) => Response | Promise<Response>;
 };
 
 const jsonResponse = (status: number, body: unknown, headers: Record<string, string> = {}): Response =>
@@ -41,7 +41,7 @@ const withMockedFetch = async (routes: readonly MockRoute[], run: () => Promise<
     if (!route) {
       throw new Error(`Unmocked request in test: ${url}`);
     }
-    return route.respond();
+    return route.respond(url);
   }) as typeof fetch;
   try {
     await run();
@@ -273,6 +273,34 @@ test('Optionomics explicit null values are surfaced as a fact, never coerced to 
       const results = await checkOptionomics(baseEnvironment);
       const tickers = results.find((r) => r.operationAlias === 'opt.list_tickers');
       assert.equal(tickers?.details.explicitNullObserved, true);
+    }
+  );
+});
+
+test('Optionomics readiness proves each documented exposure metric independently', async () => {
+  await withMockedFetch(
+    [
+      {
+        match: (u) => u.includes('optionomics.ai/docs/api'),
+        respond: () => new Response('X-USER-EMAIL X-USER-TOKEN Authorization: Bearer <token> <code>GET /api/v1/stocks/{symbol}/heatmap</code>', { status: 200, headers: { 'content-type': 'text/html' } })
+      },
+      {
+        match: (u) => u.includes('/heatmap'),
+        respond: (u) => {
+          const metric = new URL(u).searchParams.get('metric');
+          return jsonResponse(200, { metric, cells: [{ strike: 500, expiration: '2026-10-16', value: 1 }] });
+        }
+      }
+    ],
+    async () => {
+      const results = await checkOptionomics(baseEnvironment);
+      const reference = results.find((result) => result.operationAlias === 'opt.discover_documented_operations');
+      assert.equal(reference?.details.preferredHeaderAuthDocumented, true);
+      assert.equal(reference?.details.bearerAuthDocumented, true);
+      const heatmaps = results.filter((result) => result.capability.includes('EXPOSURE_HEATMAP'));
+      assert.equal(heatmaps.length, 3);
+      assert.equal(heatmaps.every((result) => result.details.metricResponseMatchesRequest === true), true);
+      assert.deepEqual(heatmaps.map((result) => result.details.requestedMetric), ['gamma_exposure', 'vanna_exposure', 'charm_exposure']);
     }
   );
 });

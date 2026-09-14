@@ -1574,9 +1574,9 @@ FILES CHANGED: Optionomics provider, feature engine, shadow cadence, provider re
 
 WHAT WAS IMPLEMENTED: Separate gamma, Vanna, and Charm heatmap requests using the documented `metric` values. Responses must echo the exact requested metric or remain unknown. Each grid has a distinct operation alias, raw-observation lineage, normalized feature destination, and unavailable-family state. The context budget rose from six to eight requests only to cover the two new documented reads.
 
-TESTS RUN: Full Node suite and TypeScript check before deployment. Production provider verification follows the deployment.
+TESTS RUN: Full Node suite, focused Optionomics/readiness suites, TypeScript, ESLint, build, Python, security scan, CI PostgreSQL/Redis/browser integration, and authenticated Production provider verification.
 
-TEST RESULTS: 748 passed, 4 local PostgreSQL integration tests skipped, 0 failed. TypeScript passed.
+TEST RESULTS: 748 Node tests passed with 4 local PostgreSQL integration skips and 0 failures. The focused final suite passed 21/21. Python passed 452/452. TypeScript, ESLint, build, security scan, browser tests, CI PostgreSQL/Redis checks, and real customer persistence passed. Production returned HTTP 200 populated gamma, Vanna, and Charm heatmap schemas and persisted 37 Optionomics capabilities. No broker order or fill was created.
 
 KNOWN LIMITATIONS: Optionomics explicitly documents session-ingested research data rather than a streaming execution feed. Vanna/Charm units, sign convention, methodology, and point-in-time availability still require provider documentation or empirical research before quantitative use.
 
