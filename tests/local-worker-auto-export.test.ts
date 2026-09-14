@@ -19,6 +19,8 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /--env-file=\$productionEnvFile/);
   assert.match(source, /tools\/theta-research-export\.ts --latest/);
   assert.match(source, /THETA_PRODUCTION_ENV_NOT_PROVISIONED/);
+  assert.match(source, /\$researchExit = \$LASTEXITCODE/);
+  assert.match(source, /\$pipelineExit = \$LASTEXITCODE/);
   assert.match(source, /CURRENT_SESSION_EXPORTED/);
   assert.match(source, /BLOCKED_ON_EVIDENCE/);
   assert.match(source, /last-empirical-dataset-hash/);

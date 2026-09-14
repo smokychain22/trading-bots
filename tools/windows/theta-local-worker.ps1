@@ -64,8 +64,13 @@ try {
         $_.jobType -eq 'OPPORTUNITY_SCAN' -and $_.status -eq 'SUCCEEDED'
       }).Count -gt 0
       if ($completeScan -and $lastExportedSession -ne $marketSessionDate) {
-        & node "--env-file=$productionEnvFile" --import tsx tools/theta-research-export.ts --latest *> $null
-        if ($LASTEXITCODE -eq 0) {
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+          & node "--env-file=$productionEnvFile" --import tsx tools/theta-research-export.ts --latest *> $null
+          $researchExit = $LASTEXITCODE
+        } finally { $ErrorActionPreference = $previousErrorActionPreference }
+        if ($researchExit -eq 0) {
           Set-Content -LiteralPath $exportSessionFile -Value $marketSessionDate -Encoding ascii
           $researchExport = 'EXPORTED_FIRST_COMPLETE_SCAN'
         } else {
@@ -85,13 +90,18 @@ try {
           if (!(Test-Path -LiteralPath $python)) { $python = 'python' }
           $env:PYTHONPATH = Join-Path $RepositoryPath 'bots\theta\quant'
           $runTimestamp = (Get-Date).ToUniversalTime().ToString('o')
-          & $python -m research.empirical_pipeline --export $latestDataset --output (Join-Path $RepositoryPath 'research_outputs') `
-            --evidence-source LIVE_SHADOW --strategy-branch THETA_CONVENTIONAL `
-            --experiment-id AUTO-DESCRIPTIVE --target-version theta-research-targets-v1 `
-            --feature-version ([string]$manifest.featureSetVersion) --cost-model-version theta-cost-model-v1 `
-            --split-definition NO_SPLIT_DESCRIPTIVE_ONLY --source-code-commit $runtime.buildSha `
-            --run-timestamp $runTimestamp *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $previousErrorActionPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          try {
+            & $python -m research.empirical_pipeline --export $latestDataset --output (Join-Path $RepositoryPath 'research_outputs') `
+              --evidence-source LIVE_SHADOW --strategy-branch THETA_CONVENTIONAL `
+              --experiment-id AUTO-DESCRIPTIVE --target-version theta-research-targets-v1 `
+              --feature-version ([string]$manifest.featureSetVersion) --cost-model-version theta-cost-model-v1 `
+              --split-definition NO_SPLIT_DESCRIPTIVE_ONLY --source-code-commit $runtime.buildSha `
+              --run-timestamp $runTimestamp *> $null
+            $pipelineExit = $LASTEXITCODE
+          } finally { $ErrorActionPreference = $previousErrorActionPreference }
+          if ($pipelineExit -eq 0) {
             Set-Content -LiteralPath $researchHashFile -Value $datasetHash -Encoding ascii
             $researchExport = 'EXPORTED_AND_RESEARCHED'
           } else {
