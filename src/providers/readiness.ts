@@ -553,7 +553,9 @@ export const optionomicsProbes = (documentedPaths: readonly string[]): readonly 
     { capability: 'OPTIONOMICS_OPTION_CHAIN_GREEKS', operationAlias: 'opt.get_option_chain', path: '/api/v1/stocks/{symbol}/options', thetaDestination: 'CONTRACT_QUOTE_GREEKS_VOLATILITY_LIQUIDITY', classification: 'RUNTIME_INPUT' },
     { capability: 'OPTIONOMICS_HISTORY', operationAlias: 'opt.get_price_history', path: '/api/v1/stocks/{symbol}/price_history', thetaDestination: 'HISTORICAL_CONTEXT', classification: 'RESEARCH_INPUT' },
     { capability: 'OPTIONOMICS_IV_SKEW_TERM_SURFACE', operationAlias: 'opt.get_symbol_metrics', path: '/api/v1/stocks/{symbol}/metrics', thetaDestination: 'VOLATILITY_EXPOSURE_STATE', classification: 'RUNTIME_INPUT' },
-    { capability: 'OPTIONOMICS_EXPOSURE_HEATMAP', operationAlias: 'opt.get_heatmap', path: '/api/v1/stocks/{symbol}/heatmap', thetaDestination: 'EXPOSURE_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_GAMMA_EXPOSURE_HEATMAP', operationAlias: 'opt.get_gamma_exposure_heatmap', path: '/api/v1/stocks/{symbol}/heatmap', thetaDestination: 'EXPOSURE_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_VANNA_EXPOSURE_HEATMAP', operationAlias: 'opt.get_vanna_exposure_heatmap', path: '/api/v1/stocks/{symbol}/heatmap', thetaDestination: 'EXPOSURE_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_CHARM_EXPOSURE_HEATMAP', operationAlias: 'opt.get_charm_exposure_heatmap', path: '/api/v1/stocks/{symbol}/heatmap', thetaDestination: 'EXPOSURE_STATE', classification: 'RESEARCH_INPUT' },
     { capability: 'OPTIONOMICS_FLOW_AGGREGATES', operationAlias: 'opt.get_flow_aggregates', path: '/api/v1/flow/aggregates', thetaDestination: 'FLOW_STATE', classification: 'RESEARCH_INPUT' },
     { capability: 'OPTIONOMICS_FLOW_BULLISH', operationAlias: 'opt.get_flow_bullish', path: '/api/v1/flow/bullish', thetaDestination: 'FLOW_STATE', classification: 'RESEARCH_INPUT' },
     { capability: 'OPTIONOMICS_FLOW_BEARISH', operationAlias: 'opt.get_flow_bearish', path: '/api/v1/flow/bearish', thetaDestination: 'FLOW_STATE', classification: 'RESEARCH_INPUT' },
@@ -581,6 +583,9 @@ export const optionomicsProbeUrl = (operationAlias: string, documentedPath: stri
   const path = documentedPath.replace('{symbol}', 'SPY');
   const url = new URL(path, optionomicsApiBaseUrl);
   if (operationAlias === 'opt.get_flow_net') url.searchParams.set('symbol', 'SPY');
+  if (operationAlias === 'opt.get_gamma_exposure_heatmap') url.searchParams.set('metric', 'gamma_exposure');
+  if (operationAlias === 'opt.get_vanna_exposure_heatmap') url.searchParams.set('metric', 'vanna_exposure');
+  if (operationAlias === 'opt.get_charm_exposure_heatmap') url.searchParams.set('metric', 'charm_exposure');
   return url;
 };
 
@@ -626,8 +631,13 @@ const responseShape = (value: unknown): {
 
 export const checkOptionomics = async (environment: Environment): Promise<readonly CheckResult[]> => {
   const reference = await readJson('OPTIONOMICS', 'OPTIONOMICS_DOCUMENTED_CONTRACTS', 'opt.discover_documented_operations', optionomicsReferenceUrl, {}, optionomicsProvenance('/docs/api'), (body) => {
-    const paths = extractDocumentedOperationPaths(typeof body === 'string' ? body : '');
-    return { documentedPathCount: paths.length, preferredHeaderAuthDocumented: true, bearerAuthDocumented: false };
+    const referenceText = typeof body === 'string' ? body : '';
+    const paths = extractDocumentedOperationPaths(referenceText);
+    return {
+      documentedPathCount: paths.length,
+      preferredHeaderAuthDocumented: /X-USER-EMAIL/i.test(referenceText) && /X-USER-TOKEN/i.test(referenceText),
+      bearerAuthDocumented: /Authorization:\s*Bearer/i.test(referenceText),
+    };
   });
   if (reference.state !== 'GOOD') return [reference];
   const documentedPaths = extractDocumentedOperationPaths(await (await fetch(optionomicsReferenceUrl)).text());

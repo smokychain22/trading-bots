@@ -13,7 +13,7 @@ The authenticated Production rerun at 2026-09-14T08:26Z persisted 35 capability 
 | Authentication/universe | `/api/v1/tickers`, `/api/v1/stocks` | ProviderQualityState, research universe | HTTP 200, 6,118 sampled ticker/stock elements |
 | Underlying | `/api/v1/stocks/{symbol}/quote`, `/price_history` | HistoricalContextState | HTTP 200. Current quote payload contained an explicit null, so it is research context only |
 | Chain and Greeks | `/api/v1/stocks/{symbol}/options` | ContractIdentity, QuoteObservation, GreekState, VolatilityState, LiquidityState | HTTP 200, populated schema, current schema fingerprint recorded |
-| Metrics/exposure | `/metrics`, `/heatmap`, `/levels` | VolatilityState, SkewState, TermStructureState, ExposureState | HTTP 200. Metrics and heatmap populated. Levels returned a valid empty array |
+| Metrics/exposure | `/metrics`, `/heatmap?metric=gamma_exposure`, `/heatmap?metric=vanna_exposure`, `/heatmap?metric=charm_exposure`, `/levels` | VolatilityState, SkewState, TermStructureState, ExposureState | Gamma was authenticated before this correction. The public contract documents three separate heatmap metrics. Vanna and Charm are now queried and normalized independently, with Production response proof required after deployment. Levels returned a valid empty array. |
 | Flow | `/flow/aggregates`, `/bullish`, `/bearish`, `/top_calls`, `/top_puts`, `/net` | FlowState and CrowdState research | HTTP 200. Aggregates and current net series populated. Dated 8h/24h/48h windows were empty |
 | Dark pool | `/dark_pool_levels` | HistoricalContextState | HTTP 200, populated research context |
 | Disclosures | `/insider_trades`, `/congress_trades`, `/disclosure_trades`, `/stocks/{symbol}/disclosure_trades` | EventState research | HTTP 200, provenance and lifecycle fields observed |
@@ -35,7 +35,7 @@ Only field names, counts and SHA-256 schema fingerprints are retained here. No r
 | Events | `known_at`, scheduled time, date, status, importance, region, ticker and pagination | Fingerprint `9fe9fa44...1dc` |
 | News | publish/analyze timestamps, tickers, topic, sentiment, confidence and source URL | Fingerprint `cc5baab9...6da0` |
 
-No explicit Vanna or Charm field appeared in the authenticated chain, metrics or heatmap schema samples. No print-level sweep, block, ISO, paid-up or hit-bid schema appeared in the documented flow responses sampled. Those capabilities remain unverified and cannot enter runtime decisions.
+Vanna and Charm aren't scalar chain or metrics fields. The current public contract exposes them as explicit `metric` values on the heatmap route. THETA now requests `gamma_exposure`, `vanna_exposure`, and `charm_exposure` separately and rejects a response whose returned `metric` doesn't match the request. These grids remain contextual research evidence with provider-reported units and unverified sign conventions. No print-level sweep, block, ISO, paid-up or hit-bid schema appeared in the documented flow responses sampled.
 
 ## Fields documented on the chain route
 
@@ -115,7 +115,7 @@ Historical Optionomics observations must retain decision cutoff, session date, s
 |---|---|---|
 | `OPTIONOMICS_ENDPOINT_CENSUS` | COMPLETE_WITH_LIMITS | 35 authenticated results persisted. ID-child routes and POST assessment remain deliberately uncalled. |
 | `OPTIONOMICS_RAW_OBSERVATION` | COMPLETE | Code: `src/theta/optionomics-provider.ts`, migration 029, persistence store. Production migration applied. |
-| `OPTIONOMICS_NORMALIZATION` | COMPLETE_WITH_LIMITS | Chain, quote, Greeks, IV, liquidity, metric, heatmap, aggregate-flow, event, earnings-filing, and symbol-news adapters are implemented for confirmed schemas. Unsupported print-level and Vanna/Charm families remain explicit unknowns. |
+| `OPTIONOMICS_NORMALIZATION` | COMPLETE_WITH_LIMITS | Chain, quote, Greeks, IV, liquidity, separate gamma/Vanna/Charm heatmaps, aggregate-flow, event, earnings-filing, and symbol-news adapters are implemented for confirmed schemas. Unsupported print-level families remain explicit unknowns. |
 | `OPTIONOMICS_CHAIN` | COMPLETE_WITH_LIMITS | Authenticated HTTP 200. Current schema populated. Historical date returned 11,966 direct observations. Session-oriented quote semantics remain non-executable. |
 | `OPTIONOMICS_GREEKS` | COMPLETE_IN_CODE | Provider units still need authenticated documentation confirmation before independent discrepancy thresholds. |
 | `OPTIONOMICS_VOLATILITY` | PARTIAL | IV rank, percentile, RV and related metric fields are normalized with provider-reported units marked unverified. Horizon, unit and availability-time contracts still block economic interpretation. |
@@ -124,8 +124,8 @@ Historical Optionomics observations must retain decision cutoff, session date, s
 | `OPTIONOMICS_SURFACE` | PARTIAL | Raw strike-expiry IV grid implemented. SVI/SSVI fit and arbitrage diagnostics stay R6 challengers. |
 | `OPTIONOMICS_GEX` | PARTIAL | Authenticated metrics expose total/call/put gamma exposure, gamma flip and walls. Definition, sign and units remain unverified. |
 | `OPTIONOMICS_DEX` | PARTIAL | Authenticated metrics expose call/put delta exposure and total DDE. DEX naming, definition and units remain unverified. |
-| `OPTIONOMICS_VANNA` | UNAVAILABLE_API | No explicit Vanna field appeared in authenticated public response schemas. Exact missing capability: a documented field, units and timestamp contract. |
-| `OPTIONOMICS_CHARM` | UNAVAILABLE_API | No explicit Charm field appeared in authenticated public response schemas. Exact missing capability: a documented field, units and timestamp contract. |
+| `OPTIONOMICS_VANNA` | IMPLEMENTED_PENDING_PRODUCTION_RESPONSE | The public contract documents `metric=vanna_exposure` on `/heatmap`. A separate typed adapter, query, response-metric guard, lineage record, feature destination, and tests are implemented. Provider methodology, units, sign convention, and session-time semantics remain unverified. |
+| `OPTIONOMICS_CHARM` | IMPLEMENTED_PENDING_PRODUCTION_RESPONSE | The public contract documents `metric=charm_exposure` on `/heatmap`. A separate typed adapter, query, response-metric guard, lineage record, feature destination, and tests are implemented. Provider methodology, units, sign convention, and session-time semantics remain unverified. |
 | `OPTIONOMICS_FLOW` | PARTIAL | Aggregate and net-series schemas are normalized and cycle-integrated. Print-level sweep/block/ISO/aggressor schemas remain unavailable in the sampled public contract. |
 | `OPTIONOMICS_CROWD` | RESEARCH_ONLY_PARTIAL | Typed destination exists. No validated crowd model. |
 | `OPTIONOMICS_EVENTS` | PARTIAL | Events, earnings filings, and symbol news are normalized and cycle-integrated with publication fields retained. Upcoming earnings distance, ex-dividend coverage, and full publication-time guarantees remain unverified. |

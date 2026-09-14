@@ -409,6 +409,29 @@ test('confirmed context endpoints reject unrecognized 2xx shapes instead of fabr
   assert.equal(outcome.kind, 'VALUE_UNKNOWN_AFTER_SUCCESS');
 });
 
+test('Vanna and Charm heatmaps use explicit documented metrics and preserve separate state', async () => {
+  const requestedMetrics: string[] = [];
+  const fetchImpl = (async (input) => {
+    const url = new URL(String(input));
+    const metric = url.searchParams.get('metric') ?? '';
+    requestedMetrics.push(metric);
+    return jsonResponse(200, { symbol: 'SPY', date: '2026-09-14', metric, strikes: [500], expirations: ['2026-10-16'], cells: [{ strike: 500, expiration: '2026-10-16', value: 12 }] });
+  }) as typeof fetch;
+  const vanna = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'VANNA_EXPOSURE_HEATMAP', 'SPY');
+  const charm = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'CHARM_EXPOSURE_HEATMAP', 'SPY');
+  assert.equal(vanna.kind, 'VALUE_PRESENT');
+  assert.equal(charm.kind, 'VALUE_PRESENT');
+  assert.deepEqual(requestedMetrics, ['vanna_exposure', 'charm_exposure']);
+  if (vanna.kind === 'VALUE_PRESENT') assert.equal(vanna.value.normalized.metric, 'vanna_exposure');
+  if (charm.kind === 'VALUE_PRESENT') assert.equal(charm.value.normalized.metric, 'charm_exposure');
+});
+
+test('heatmap metric mismatch remains unknown instead of accepting provider fallback', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { metric: 'gamma_exposure', cells: [{ value: 1 }] })) as typeof fetch;
+  const outcome = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'VANNA_EXPOSURE_HEATMAP', 'SPY');
+  assert.equal(outcome.kind, 'VALUE_UNKNOWN_AFTER_SUCCESS');
+});
+
 test('empty event arrays prove reachability but do not fabricate populated event context', async () => {
   const fetchImpl = (async () => jsonResponse(200, { events: [] })) as typeof fetch;
   const outcome = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'EVENTS', 'SPY');

@@ -1564,3 +1564,24 @@ RISKS: Enabling the execution flags before empirical promotion and external quot
 WHAT THE OTHER AGENT SHOULD REVIEW: Strategy research may consume the plan interface, but must not bypass canonical selection, AEGIS, empirical EV, or quote qualification. Quant work stays on its isolated branch.
 
 NEXT RECOMMENDED TASK: Accumulate point-in-time R6 evidence and qualify the external execution quote contract. When both gates pass, produce the full readiness receipt and stop before the first `POST /v2/orders`.
+## 2026-09-14 Optionomics exposure heatmap correction
+
+OWNER: Codex
+
+TASK: Reconcile the authenticated Optionomics census with the current public contract and close the missing Vanna/Charm adapter gap.
+
+FILES CHANGED: Optionomics provider, feature engine, shadow cadence, provider readiness, focused tests, capability census, decisions, and handoff.
+
+WHAT WAS IMPLEMENTED: Separate gamma, Vanna, and Charm heatmap requests using the documented `metric` values. Responses must echo the exact requested metric or remain unknown. Each grid has a distinct operation alias, raw-observation lineage, normalized feature destination, and unavailable-family state. The context budget rose from six to eight requests only to cover the two new documented reads.
+
+TESTS RUN: Full Node suite and TypeScript check before deployment. Production provider verification follows the deployment.
+
+TEST RESULTS: 748 passed, 4 local PostgreSQL integration tests skipped, 0 failed. TypeScript passed.
+
+KNOWN LIMITATIONS: Optionomics explicitly documents session-ingested research data rather than a streaming execution feed. Vanna/Charm units, sign convention, methodology, and point-in-time availability still require provider documentation or empirical research before quantitative use.
+
+RISKS: Treating these exposure grids as observed dealer inventory or deterministic direction would be invalid. They remain versioned context and R6 ablation candidates.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude may test incremental OOS value and sign-convention assumptions. It must not promote these grids directly into Production strategy authority.
+
+NEXT RECOMMENDED TASK: Verify both metric-specific routes through Production, then let the existing market-open qualification worker gather execution-quote evidence while keeping submission blocked.

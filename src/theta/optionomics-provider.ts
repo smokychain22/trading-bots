@@ -518,6 +518,8 @@ export async function fetchOptionomicsNetFlowWindow(
 export type OptionomicsContextFamily =
   | 'METRICS'
   | 'EXPOSURE_HEATMAP'
+  | 'VANNA_EXPOSURE_HEATMAP'
+  | 'CHARM_EXPOSURE_HEATMAP'
   | 'FLOW_AGGREGATES'
   | 'EVENTS'
   | 'EARNINGS_FILINGS'
@@ -562,11 +564,14 @@ export interface OptionomicsContextQuery {
   readonly perPage?: number;
 }
 
+type OptionomicsHeatmapMetric = 'gamma_exposure' | 'vanna_exposure' | 'charm_exposure';
+
 interface ContextContract {
   readonly family: OptionomicsContextFamily;
   readonly operationAlias: string;
   readonly path: (symbol: string) => string;
   readonly allowedQueryParameters: readonly ('from' | 'to' | 'date' | 'per_page')[];
+  readonly fixedQueryParameters?: Readonly<Record<string, string>>;
   readonly normalize: (body: unknown, symbol: string) => Readonly<Record<string, unknown>> | null;
 }
 
@@ -644,9 +649,10 @@ function normalizeMetrics(body: unknown): Readonly<Record<string, unknown>> | nu
   };
 }
 
-function normalizeHeatmap(body: unknown): Readonly<Record<string, unknown>> | null {
+function normalizeHeatmap(body: unknown, expectedMetric: OptionomicsHeatmapMetric): Readonly<Record<string, unknown>> | null {
   const envelope = objectOrNull(body);
   if (envelope === null) return null;
+  if (envelope.metric !== expectedMetric) return null;
   const cells = Array.isArray(envelope.cells) ? envelope.cells : Array.isArray(envelope.values) ? envelope.values : null;
   if (cells === null) return null;
   return {
@@ -717,7 +723,9 @@ function normalizeEventRows(body: unknown, symbol: string, keys: readonly string
 
 const contextContracts: Readonly<Record<OptionomicsContextFamily, ContextContract>> = {
   METRICS: { family: 'METRICS', operationAlias: 'optionomics.get_symbol_metrics', path: (symbol) => `/api/v1/stocks/${encodeURIComponent(symbol)}/metrics`, allowedQueryParameters: ['date'], normalize: (body) => normalizeMetrics(body) },
-  EXPOSURE_HEATMAP: { family: 'EXPOSURE_HEATMAP', operationAlias: 'optionomics.get_heatmap', path: (symbol) => `/api/v1/stocks/${encodeURIComponent(symbol)}/heatmap`, allowedQueryParameters: ['date'], normalize: (body) => normalizeHeatmap(body) },
+  EXPOSURE_HEATMAP: { family: 'EXPOSURE_HEATMAP', operationAlias: 'optionomics.get_gamma_exposure_heatmap', path: (symbol) => `/api/v1/stocks/${encodeURIComponent(symbol)}/heatmap`, allowedQueryParameters: ['date'], fixedQueryParameters: { metric: 'gamma_exposure' }, normalize: (body) => normalizeHeatmap(body, 'gamma_exposure') },
+  VANNA_EXPOSURE_HEATMAP: { family: 'VANNA_EXPOSURE_HEATMAP', operationAlias: 'optionomics.get_vanna_exposure_heatmap', path: (symbol) => `/api/v1/stocks/${encodeURIComponent(symbol)}/heatmap`, allowedQueryParameters: ['date'], fixedQueryParameters: { metric: 'vanna_exposure' }, normalize: (body) => normalizeHeatmap(body, 'vanna_exposure') },
+  CHARM_EXPOSURE_HEATMAP: { family: 'CHARM_EXPOSURE_HEATMAP', operationAlias: 'optionomics.get_charm_exposure_heatmap', path: (symbol) => `/api/v1/stocks/${encodeURIComponent(symbol)}/heatmap`, allowedQueryParameters: ['date'], fixedQueryParameters: { metric: 'charm_exposure' }, normalize: (body) => normalizeHeatmap(body, 'charm_exposure') },
   FLOW_AGGREGATES: { family: 'FLOW_AGGREGATES', operationAlias: 'optionomics.get_flow_aggregates', path: () => '/api/v1/flow/aggregates', allowedQueryParameters: ['date'], normalize: normalizeFlowAggregates },
   EVENTS: { family: 'EVENTS', operationAlias: 'optionomics.list_events', path: () => '/api/v1/events', allowedQueryParameters: ['from', 'to', 'per_page'], normalize: (body, symbol) => normalizeEventRows(body, symbol, ['events']) },
   EARNINGS_FILINGS: { family: 'EARNINGS_FILINGS', operationAlias: 'optionomics.get_earnings_filings', path: (symbol) => `/api/v1/stocks/${encodeURIComponent(symbol)}/earning_filings`, allowedQueryParameters: [], normalize: (body, symbol) => normalizeEventRows(body, symbol, ['earning_filings', 'filings', 'earnings']) },
@@ -729,7 +737,9 @@ function normalizedContextIsPopulated(family: OptionomicsContextFamily, normaliz
     const field = objectOrNull(value);
     return field?.state === 'KNOWN';
   });
-  if (family === 'EXPOSURE_HEATMAP') return Array.isArray(normalized.cells) && normalized.cells.length > 0;
+  if (family === 'EXPOSURE_HEATMAP' || family === 'VANNA_EXPOSURE_HEATMAP' || family === 'CHARM_EXPOSURE_HEATMAP') {
+    return Array.isArray(normalized.cells) && normalized.cells.length > 0;
+  }
   if (family === 'FLOW_AGGREGATES') {
     if (['bullishClassified', 'bearishClassified', 'topCalls', 'topPuts'].some((key) => Array.isArray(normalized[key]) && normalized[key].length > 0)) return true;
     return ['totalPremium', 'tradeCount'].some((key) => objectOrNull(normalized[key])?.state === 'KNOWN');
@@ -746,6 +756,7 @@ export async function fetchOptionomicsContextObservation(
   const now = config.now ?? defaultNow;
   const contract = contextContracts[family];
   const url = new URL(contract.path(underlyingSymbol), config.apiBase);
+  for (const [key, value] of Object.entries(contract.fixedQueryParameters ?? {})) url.searchParams.set(key, value);
   if (query.from !== undefined && contract.allowedQueryParameters.includes('from')) url.searchParams.set('from', query.from);
   if (query.to !== undefined && contract.allowedQueryParameters.includes('to')) url.searchParams.set('to', query.to);
   if (query.sessionDate !== undefined && contract.allowedQueryParameters.includes('date')) url.searchParams.set('date', query.sessionDate);

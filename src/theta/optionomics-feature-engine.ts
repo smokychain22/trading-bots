@@ -6,7 +6,7 @@ import type {
   NormalizedOptionomicsFlowWindow,
 } from './optionomics-provider.js';
 
-export const optionomicsFeatureSchemaVersion = 'theta-optionomics-features-v2' as const;
+export const optionomicsFeatureSchemaVersion = 'theta-optionomics-features-v3' as const;
 
 export type FeatureState = 'KNOWN' | 'UNKNOWN' | 'INVALID';
 
@@ -74,6 +74,8 @@ export interface OptionomicsFeatureSnapshot {
   readonly providerContext: {
     readonly metrics: Readonly<Record<string, unknown>> | null;
     readonly exposureHeatmap: Readonly<Record<string, unknown>> | null;
+    readonly vannaExposureHeatmap: Readonly<Record<string, unknown>> | null;
+    readonly charmExposureHeatmap: Readonly<Record<string, unknown>> | null;
     readonly flowAggregates: Readonly<Record<string, unknown>> | null;
     readonly events: Readonly<Record<string, unknown>> | null;
     readonly earningsFilings: Readonly<Record<string, unknown>> | null;
@@ -246,7 +248,9 @@ export function buildOptionomicsFeatureSnapshot(input: {
     input.flowWindows.length > 0 ? null : 'FLOW',
     knownContextValue('METRICS', 'ivRank') ? null : 'IV_RANK',
     knownContextValue('METRICS', 'ivPercentile') ? null : 'IV_PERCENTILE',
-    'VANNA', 'CHARM', 'DARK_POOL',
+    observation('VANNA_EXPOSURE_HEATMAP')?.populated === true ? null : 'VANNA',
+    observation('CHARM_EXPOSURE_HEATMAP')?.populated === true ? null : 'CHARM',
+    'DARK_POOL',
     eventContextPopulated ? null : 'EVENTS',
   ].filter((value): value is string => value !== null);
   return {
@@ -257,6 +261,8 @@ export function buildOptionomicsFeatureSnapshot(input: {
     flow: { windows: input.flowWindows, interpretation: 'UNMODELED_RESEARCH_CONTEXT' },
     providerContext: {
       metrics: context('METRICS'), exposureHeatmap: context('EXPOSURE_HEATMAP'),
+      vannaExposureHeatmap: context('VANNA_EXPOSURE_HEATMAP'),
+      charmExposureHeatmap: context('CHARM_EXPOSURE_HEATMAP'),
       flowAggregates: context('FLOW_AGGREGATES'), events: context('EVENTS'),
       earningsFilings: context('EARNINGS_FILINGS'), symbolNews: context('SYMBOL_NEWS'),
       observations: contextObservations.map((contextObservation) => {

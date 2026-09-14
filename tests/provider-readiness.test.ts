@@ -18,6 +18,12 @@ test('adds the documented required symbol to the net-flow operation', () => {
   assert.equal(url.searchParams.get('symbol'), 'SPY');
 });
 
+test('uses the documented heatmap metric for each exposure family', () => {
+  assert.equal(optionomicsProbeUrl('opt.get_gamma_exposure_heatmap', '/api/v1/stocks/{symbol}/heatmap').searchParams.get('metric'), 'gamma_exposure');
+  assert.equal(optionomicsProbeUrl('opt.get_vanna_exposure_heatmap', '/api/v1/stocks/{symbol}/heatmap').searchParams.get('metric'), 'vanna_exposure');
+  assert.equal(optionomicsProbeUrl('opt.get_charm_exposure_heatmap', '/api/v1/stocks/{symbol}/heatmap').searchParams.get('metric'), 'charm_exposure');
+});
+
 test('capability discovery rejects routes absent from the documentation', () => {
   const probes = optionomicsProbes(['/api/v1/tickers']);
   assert.deepEqual(probes.map((probe) => probe.path), ['/api/v1/tickers']);

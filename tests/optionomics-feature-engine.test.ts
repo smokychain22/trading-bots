@@ -91,6 +91,28 @@ test('keeps raw context payloads out of normalized feature snapshots while retai
   assert.equal(JSON.stringify(result).includes('"metrics":{"iv_rank":42'), false);
 });
 
+test('routes documented Vanna and Charm grids separately without making them executable', async () => {
+  const chainOutcome = await fetchOptionomicsOptionChain(config([{ symbol: 'X', implied_volatility: 0.2 }]), 'SPY');
+  const vannaOutcome = await fetchOptionomicsContextObservation(config({
+    date: '2026-09-14', metric: 'vanna_exposure', strikes: [500], expirations: ['2026-10-16'], cells: [{ strike: 500, expiration: '2026-10-16', value: 12 }],
+  }), 'VANNA_EXPOSURE_HEATMAP', 'SPY');
+  const charmOutcome = await fetchOptionomicsContextObservation(config({
+    date: '2026-09-14', metric: 'charm_exposure', strikes: [500], expirations: ['2026-10-16'], cells: [{ strike: 500, expiration: '2026-10-16', value: -4 }],
+  }), 'CHARM_EXPOSURE_HEATMAP', 'SPY');
+  assert.equal(chainOutcome.kind, 'VALUE_PRESENT');
+  assert.equal(vannaOutcome.kind, 'VALUE_PRESENT');
+  assert.equal(charmOutcome.kind, 'VALUE_PRESENT');
+  if (chainOutcome.kind !== 'VALUE_PRESENT' || vannaOutcome.kind !== 'VALUE_PRESENT' || charmOutcome.kind !== 'VALUE_PRESENT') return;
+  const result = buildOptionomicsFeatureSnapshot({
+    chain: chainOutcome.value, flowWindows: [], contextObservations: [vannaOutcome.value, charmOutcome.value], stockPrice: 500,
+  });
+  assert.equal(result.providerContext.vannaExposureHeatmap?.metric, 'vanna_exposure');
+  assert.equal(result.providerContext.charmExposureHeatmap?.metric, 'charm_exposure');
+  assert.equal(result.unavailableFamilies.includes('VANNA'), false);
+  assert.equal(result.unavailableFamilies.includes('CHARM'), false);
+  assert.equal(result.providerContext.observations.every((observation) => observation.executableTruth === false), true);
+});
+
 test('does not mark metric or event families available merely because an empty context response exists', async () => {
   const chainOutcome = await fetchOptionomicsOptionChain(config([{ symbol: 'X', implied_volatility: 0.2 }]), 'SPY');
   const metricsOutcome = await fetchOptionomicsContextObservation(config({ metrics: { iv_rank: null } }), 'METRICS', 'SPY');
