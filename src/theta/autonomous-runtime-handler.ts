@@ -15,6 +15,7 @@ import { verifyStoredMasterPaperConnection } from '../customer/master-paper-runt
 import { PostgresRuntimeCycleStore, runAutonomousRuntimeCycle } from './autonomous-runtime.js';
 import { PostgresWorkerRuntimeStore } from '../worker/postgres-worker-runtime-store.js';
 import { runOptionomicsQuoteQualification, sanitizeQualificationReport } from './optionomics-quote-qualification-runtime.js';
+import { qualifyOptionomicsProductionSurfaces } from '../providers/optionomics-mcp-qualification.js';
 
 let runtimePool: Pool | null = null;
 
@@ -29,13 +30,14 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
   if (value === undefined) return 'RUNTIME_CYCLE';
   if (value === 'provider-evidence-readiness') return 'PROVIDER_EVIDENCE_READINESS';
   if (value === 'optionomics-quote-qualification') return 'OPTIONOMICS_QUOTE_QUALIFICATION';
+  if (value === 'optionomics-mcp-qualification') return 'OPTIONOMICS_MCP_QUALIFICATION';
   return 'INVALID';
 }
 
@@ -105,6 +107,15 @@ export default async function autonomousRuntimeHandler(
     return;
   }
   try {
+    if (operation === 'OPTIONOMICS_MCP_QUALIFICATION') {
+      if (localIdentity.kind !== 'VALID') {
+        send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+        return;
+      }
+      const report = await qualifyOptionomicsProductionSurfaces(environment);
+      send(response, 200, { ...report, executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0 });
+      return;
+    }
     if (operation === 'OPTIONOMICS_QUOTE_QUALIFICATION') {
       if (localIdentity.kind !== 'VALID') {
         send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
