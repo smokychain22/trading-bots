@@ -93,6 +93,9 @@ export async function processDueExecutionObservations(input:{pool:Pool;alpaca:Al
   return {due:jobs.rowCount??0,observed,missed,shadowFilled,shadowPartial,shadowExpiredUnfilled};
 }
 
+const productionPythonHost:string|undefined=process.env.VERCEL_ENV==='production'
+  ? process.env.VERCEL_PROJECT_PRODUCTION_URL??'trading-bots-one.vercel.app':undefined;
+
 const bridge=(environment:Environment):PythonBridgeConfig=>({
   pythonExecutablePath:environment.THETA_PYTHON_EXECUTABLE,
   scriptAllowlist:new Map([
@@ -106,8 +109,8 @@ const bridge=(environment:Environment):PythonBridgeConfig=>({
     ['sizing',path.resolve('bots/theta/quant/runtime/sizing_contract.py')],
     ['executionQuality',path.resolve('bots/theta/quant/runtime/execution_quality_contract.py')],
   ]),timeoutMs:10_000,maxOutputBytes:2_000_000,
-  remote:process.env.VERCEL_URL&&environment.CRON_SECRET?{
-    endpoint:`https://${process.env.VERCEL_URL}/api/quant-runtime`,
+  remote:productionPythonHost&&environment.CRON_SECRET?{
+    endpoint:`https://${productionPythonHost}/api/quant-runtime`,
     bearerToken:environment.CRON_SECRET,
   }:undefined,
 });

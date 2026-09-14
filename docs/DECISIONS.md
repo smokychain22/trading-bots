@@ -729,3 +729,7 @@ no provider or broker I/O, suppresses request logging, caps request and response
 sizes, and returns generic errors. The TypeScript caller still performs schema,
 snapshot, policy, and model-version validation. An unavailable or invalid
 remote model fails closed and can never become an OPEN decision.
+
+Production calls the project's canonical production URL. Vercel protects
+deployment-specific hostnames, so using `VERCEL_URL` would return a platform
+401 before the private function could validate the runtime secret.
