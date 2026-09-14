@@ -6,20 +6,36 @@ Status date: 2026-09-14. Documentation contract: [Optionomics public API referen
 
 The current public API page contains 41 literal versioned path strings, including concrete examples and their corresponding templates. They reduce to 29 logical operation paths. The Production readiness runner first discovers this page, then probes only discovered, read-only GET routes. Probes run sequentially. POST assessment is never called. Routes needing an identifier from a parent collection remain `BLOCKED_ON_PARENT_IDENTIFIER` until the parent supplies one. A UI or marketing field absent from the public contract remains `UI_ONLY`, `MCP_ONLY`, or `UNAVAILABLE_API`.
 
-The authenticated Production rerun persisted 35 capability results. All 35 returned or inherited an HTTP 200 `GOOD` transport state. Rate-limit limit, remaining and reset headers were present on every primary probe except trade-idea track record. Transport health doesn't prove populated feature data. The current/session SPY chain returned zero observations and explicit null state, while the dated historical chain for 2026-09-07 returned 11,966 observations. Current metrics contained explicit null state, while dated historical metrics returned 83 values and exposed IV, skew and term fields. The 8h, 24h and 48h historical net-flow windows returned zero points. Historical event context returned two events with two `known_at` timestamps.
+The authenticated Production rerun at 2026-09-14T08:26Z persisted 35 capability results. All 35 returned or inherited an HTTP 200 `GOOD` transport state. Rate-limit limit, remaining and reset headers were present on every primary probe except trade-idea track record. Transport health doesn't prove populated feature data. The current SPY chain was populated and contained 12,838 sampled array elements. This is a bounded schema-census count, not a promise that every element is a distinct executable quote. The dated historical chain for 2026-09-07 returned 11,966 direct option observations. Current and dated metrics shared the same schema fingerprint. Dated metrics returned 83 named metric values. The 8h, 24h and 48h historical net-flow windows returned zero points. Historical event context returned two events with two `known_at` timestamps.
 
-| Family | Documented operation paths | Runtime destination | Current status before authenticated Production rerun |
+| Family | Documented operation paths | Runtime destination | Authenticated status |
 |---|---|---|---|
-| Authentication/universe | `/api/v1/tickers`, `/api/v1/stocks` | ProviderQualityState, research universe | CONTRACT_DISCOVERED |
-| Underlying | `/api/v1/stocks/{symbol}/quote`, `/price_history` | HistoricalContextState | CONTRACT_DISCOVERED, research only |
-| Chain and Greeks | `/api/v1/stocks/{symbol}/options` | ContractIdentity, QuoteObservation, GreekState, VolatilityState, LiquidityState | IMPLEMENTED, authenticated rerun required |
-| Metrics/exposure | `/metrics`, `/heatmap`, `/levels` | VolatilityState, SkewState, TermStructureState, ExposureState | CONTRACT_DISCOVERED, response-schema census required |
-| Flow | `/flow/aggregates`, `/bullish`, `/bearish`, `/top_calls`, `/top_puts`, `/net` | FlowState and CrowdState research | PARTIAL. Net windows implemented. Other response schemas require census |
-| Dark pool | `/dark_pool_levels` | HistoricalContextState | CONTRACT_DISCOVERED, research only |
-| Disclosures | `/insider_trades`, `/congress_trades`, `/disclosure_trades`, `/stocks/{symbol}/disclosure_trades` | EventState research | CONTRACT_DISCOVERED |
-| News/events | `/news`, `/stocks/{symbol}/news`, `/events`, `/stocks/{symbol}/earning_filings`, `/earning_filings/{id}` | EventState | CONTRACT_DISCOVERED. ID route blocked on parent ID |
+| Authentication/universe | `/api/v1/tickers`, `/api/v1/stocks` | ProviderQualityState, research universe | HTTP 200, 6,118 sampled ticker/stock elements |
+| Underlying | `/api/v1/stocks/{symbol}/quote`, `/price_history` | HistoricalContextState | HTTP 200. Current quote payload contained an explicit null, so it is research context only |
+| Chain and Greeks | `/api/v1/stocks/{symbol}/options` | ContractIdentity, QuoteObservation, GreekState, VolatilityState, LiquidityState | HTTP 200, populated schema, current schema fingerprint recorded |
+| Metrics/exposure | `/metrics`, `/heatmap`, `/levels` | VolatilityState, SkewState, TermStructureState, ExposureState | HTTP 200. Metrics and heatmap populated. Levels returned a valid empty array |
+| Flow | `/flow/aggregates`, `/bullish`, `/bearish`, `/top_calls`, `/top_puts`, `/net` | FlowState and CrowdState research | HTTP 200. Aggregates and current net series populated. Dated 8h/24h/48h windows were empty |
+| Dark pool | `/dark_pool_levels` | HistoricalContextState | HTTP 200, populated research context |
+| Disclosures | `/insider_trades`, `/congress_trades`, `/disclosure_trades`, `/stocks/{symbol}/disclosure_trades` | EventState research | HTTP 200, provenance and lifecycle fields observed |
+| News/events | `/news`, `/stocks/{symbol}/news`, `/events`, `/stocks/{symbol}/earning_filings`, `/earning_filings/{id}` | EventState | HTTP 200 for parent routes. ID route remains blocked on a validated parent ID |
 | Vendor ideas | `/trade_ideas`, `/trade_ideas/{id}`, `/trade_ideas/track_record`, GET/POST `/trade_ideas/{id}/assessment` | No Production strategy authority | REFERENCE_ONLY. POST rejected |
 | Commentary | `/market_commentaries` | HistoricalContextState | REFERENCE_ONLY |
+
+## Authenticated response-schema evidence
+
+Only field names, counts and SHA-256 schema fingerprints are retained here. No response values, account identifiers or credentials are included.
+
+| Capability | Observed field families | Safe schema evidence |
+|---|---|---|
+| Chain | `bid`, `ask`, sizes, strike, expiry, DTE, IV, delta, gamma, theta, vega, rho, OI, volume, theoretical price, moneyness and exposure fields | Current and historical fingerprint `cef88a5a...50e3d` |
+| Metrics | ATM/front/tenor IV, IV rank/percentile, RV, IV-minus-RV, skew, RR25, term slope, expected move, total GEX, delta exposures, gamma flip, walls, max pain and put/call ratios | Current and historical fingerprint `2682dc76...1aa9` |
+| Heatmap | symbol, date, metric, strikes, expirations, cells and values | Fingerprint `564ca83d...086f` |
+| Flow aggregates | bullish/bearish flow, top calls/puts, total premium and trade count | Fingerprint `ec92cd50...b8b` |
+| Net flow | time/value series for net calls and puts | Fingerprint `c8e036be...f283` |
+| Events | `known_at`, scheduled time, date, status, importance, region, ticker and pagination | Fingerprint `9fe9fa44...1dc` |
+| News | publish/analyze timestamps, tickers, topic, sentiment, confidence and source URL | Fingerprint `cc5baab9...6da0` |
+
+No explicit Vanna or Charm field appeared in the authenticated chain, metrics or heatmap schema samples. No print-level sweep, block, ISO, paid-up or hit-bid schema appeared in the documented flow responses sampled. Those capabilities remain unverified and cannot enter runtime decisions.
 
 ## Fields documented on the chain route
 
@@ -99,20 +115,20 @@ Historical Optionomics observations must retain decision cutoff, session date, s
 |---|---|---|
 | `OPTIONOMICS_ENDPOINT_CENSUS` | COMPLETE_WITH_LIMITS | 35 authenticated results persisted. ID-child routes and POST assessment remain deliberately uncalled. |
 | `OPTIONOMICS_RAW_OBSERVATION` | COMPLETE | Code: `src/theta/optionomics-provider.ts`, migration 029, persistence store. Production migration applied. |
-| `OPTIONOMICS_NORMALIZATION` | PARTIAL | Chain, quote, Greeks, IV, liquidity and provider exposure scalars implemented. Dedicated crowd, event and full metric response normalizers await authenticated schemas. |
-| `OPTIONOMICS_CHAIN` | COMPLETE_WITH_LIMITS | Authenticated HTTP 200. Current/session result empty. Historical date returned 11,966 observations. |
+| `OPTIONOMICS_NORMALIZATION` | PARTIAL | Chain, quote, Greeks, IV, liquidity and provider exposure scalars implemented. Authenticated schemas are fingerprinted. Dedicated crowd, event and full metric response normalizers remain. |
+| `OPTIONOMICS_CHAIN` | COMPLETE_WITH_LIMITS | Authenticated HTTP 200. Current schema populated. Historical date returned 11,966 direct observations. Session-oriented quote semantics remain non-executable. |
 | `OPTIONOMICS_GREEKS` | COMPLETE_IN_CODE | Provider units still need authenticated documentation confirmation before independent discrepancy thresholds. |
-| `OPTIONOMICS_VOLATILITY` | PARTIAL | Contract IV implemented. IV rank, percentile, RV and vol-of-vol require verified fields and horizons. |
+| `OPTIONOMICS_VOLATILITY` | PARTIAL | IV rank, percentile, RV and vol-of-vol fields are authenticated. Horizon, unit and availability-time contracts still need verification before normalization. |
 | `OPTIONOMICS_SKEW` | PARTIAL | Raw 25-delta research difference implemented. Historical z-score requires PIT history. |
 | `OPTIONOMICS_TERM` | PARTIAL | Expiry IV difference implemented. Total and forward variance require defensible tenor selection and day count. |
 | `OPTIONOMICS_SURFACE` | PARTIAL | Raw strike-expiry IV grid implemented. SVI/SSVI fit and arbitrage diagnostics stay R6 challengers. |
-| `OPTIONOMICS_GEX` | PARTIAL | Provider contract scalar retained. Definition/sign/units census required. |
-| `OPTIONOMICS_DEX` | PARTIAL | Provider scalar retained. Definition/units census required. |
-| `OPTIONOMICS_VANNA` | PARTIAL | Documented capability needs authenticated response proof and normalizer. |
-| `OPTIONOMICS_CHARM` | PARTIAL | Documented capability needs authenticated response proof and normalizer. |
-| `OPTIONOMICS_FLOW` | PARTIAL | Net-flow windows preserved without sentiment. Print-level sweep/block/ISO/aggressor schemas require authenticated proof. |
+| `OPTIONOMICS_GEX` | PARTIAL | Authenticated metrics expose total/call/put gamma exposure, gamma flip and walls. Definition, sign and units remain unverified. |
+| `OPTIONOMICS_DEX` | PARTIAL | Authenticated metrics expose call/put delta exposure and total DDE. DEX naming, definition and units remain unverified. |
+| `OPTIONOMICS_VANNA` | PARTIAL | No explicit Vanna field appeared in authenticated public response schemas. Exact missing capability: a documented field, units and timestamp contract. |
+| `OPTIONOMICS_CHARM` | PARTIAL | No explicit Charm field appeared in authenticated public response schemas. Exact missing capability: a documented field, units and timestamp contract. |
+| `OPTIONOMICS_FLOW` | PARTIAL | Aggregate and net-series schemas are proven. Print-level sweep/block/ISO/aggressor schemas remain unavailable in the sampled public contract. |
 | `OPTIONOMICS_CROWD` | RESEARCH_ONLY_PARTIAL | Typed destination exists. No validated crowd model. |
-| `OPTIONOMICS_EVENTS` | PARTIAL | Routes discovered. Point-in-time `known_at`, earnings and ex-dividend coverage need authenticated schema validation. |
+| `OPTIONOMICS_EVENTS` | PARTIAL | `known_at` was proven on two historical events. Earnings parent route is proven. Ex-dividend coverage and full publication-time guarantees remain unverified. |
 | `OPTIONOMICS_HISTORICAL` | PARTIAL | Dated chain/metrics/flow/events probes exist. Bulk archive contract and retention cadence remain unverified. |
 | `OPTIONOMICS_BACKTEST_BRIDGE` | PARTIAL | THETA deterministic export exists. Vendor backtest import/reproduction mapping isn't complete. |
 | `OPTIONOMICS_FEATURE_DESTINATION_MAP` | COMPLETE_IN_CODE | Typed allowlists added and tested. |
