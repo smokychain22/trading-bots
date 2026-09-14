@@ -1721,3 +1721,41 @@ small sample.
 NEXT RECOMMENDED TASK: Complete typed management action-plan assembly and
 dispatch, then use resolved Paper episodes to calibrate soft-gate regret and
 activity limits. Keep live and follower order submission locked.
+
+OWNER: Codex
+
+TASK: Production-to-research evidence integrity closure.
+
+FILES CHANGED: TypeScript dataset canonicalization, Python Production export
+loader, focused tests, R6H schema parity and integrity documentation.
+
+WHAT WAS IMPLEMENTED: PostgreSQL Date values now hash as their serialized ISO
+timestamps. The Python verifier reproduces TypeScript Unicode, ECMAScript
+finite-number formatting, and v1 key ordering byte-for-byte. PostgreSQL
+numeric strings are parsed as finite values before BBO and research checks.
+Unambiguous legacy shadow router codes map explicitly to canonical branches,
+while ambiguous THETA_R fails closed.
+
+TESTS RUN: TypeScript point-in-time tests, Python Production-export tests,
+the real Production dataset hash verification, and the empirical descriptive
+pipeline.
+
+TEST RESULTS: The Python recomputation exactly matched dataset hash
+`25478c74e2464325d0c4c0358d4915f276a2d8da4766a092b065e95e448f32da`.
+The empirical pipeline returned `DESCRIPTIVE_AUDIT_ONLY`, allowed three
+descriptive audits, and refused 43 unsupported empirical experiments.
+
+KNOWN LIMITATIONS: The accepted export contains no resolved whole-chain or
+management labels. It cannot establish expected value, profitability, or a
+win rate.
+
+RISKS: Future changes to dataset canonicalization require an explicit schema
+version change. Ambiguous legacy strategy codes must never be guessed.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Quant research may consume this verified
+export for descriptive audit. Model fitting and policy promotion remain
+blocked until enough point-in-time outcomes resolve.
+
+NEXT RECOMMENDED TASK: Resume evidence collection, complete management action
+dispatch, and resolve genuine Paper lifecycle outcomes after execution-quote
+qualification. Keep every order tier locked until readiness passes.

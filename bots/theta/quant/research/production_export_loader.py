@@ -9,20 +9,17 @@ ignored column, and no enum value that falls back to a default.
 
 Hashing/canonicalization here mirrors `point-in-time-evidence.ts`'s own
 `canonicalize`/`canonicalJson`/`sha256` functions (sorted-key JSON, then
-SHA-256 hex) so a Python-recomputed hash matches the TS-computed one
-whenever the underlying values serialize identically. KNOWN LIMITATION,
-stated here rather than glossed over: JSON number formatting can differ
-between Python's `json.dumps` and JavaScript's `JSON.stringify` for
-certain float representations; a hash mismatch found by this loader
-against a REAL Production export must be triaged for that possibility
-before being treated as proof of corruption, per this module's own
-`DatasetHashMismatch` message.
+SHA-256 hex). Strings retain Unicode and finite numbers use ECMAScript
+`JSON.stringify` formatting, including its fixed/scientific notation
+boundaries, so Python verifies the exact Production TypeScript identity.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import re
+from decimal import Decimal
 from dataclasses import dataclass
 from typing import Any, Dict, List, Sequence
 
@@ -55,19 +52,98 @@ class DatasetLoadError(Exception):
     or firewall violation -- this loader never degrades to a warning."""
 
 
+def _optional_float(value: Any, field: str) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise DatasetLoadError(f"INVALID_NUMERIC_VALUE:{field}")
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        raise DatasetLoadError(f"INVALID_NUMERIC_VALUE:{field}") from None
+    if not math.isfinite(parsed):
+        raise DatasetLoadError(f"INVALID_NUMERIC_VALUE:{field}")
+    return parsed
+
+
+def _ecmascript_key_sort(value: str) -> Any:
+    """Match the localeCompare ordering used by the v1 TypeScript contract.
+
+    Dataset object keys are restricted to the contract's ASCII identifiers.
+    ICU's default ordering compares those identifiers case-insensitively first,
+    then places lowercase before uppercase when only case differs.
+    """
+    return (
+        value.casefold(),
+        tuple(0 if character.islower() else 1 if character.isupper() else 0 for character in value),
+    )
+
+
 def _canonicalize(value: Any) -> Any:
     if isinstance(value, list):
         return [_canonicalize(v) for v in value]
     if isinstance(value, dict):
-        return {k: _canonicalize(value[k]) for k in sorted(value.keys())}
+        return {k: _canonicalize(value[k]) for k in sorted(value.keys(), key=_ecmascript_key_sort)}
     return value
 
 
+def _ecmascript_number(value: Any) -> str:
+    """Serialize a finite JSON number like ECMAScript JSON.stringify.
+
+    Python and JavaScript use compatible shortest-round-trip float
+    representations, but select fixed versus scientific notation at different
+    boundaries and format exponents differently. Production dataset hashes are
+    created in TypeScript, so the research verifier must reproduce JavaScript's
+    wire representation exactly rather than accepting a weakened comparison.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError("value must be a JSON number")
+    if isinstance(value, int):
+        return str(value)
+    if not math.isfinite(value):
+        raise DatasetLoadError("NON_FINITE_NUMBER_IN_DATASET_IDENTITY")
+    if value == 0:
+        return "0"
+
+    absolute = abs(value)
+    representation = repr(value).lower()
+    if 1e-6 <= absolute < 1e21:
+        if "e" in representation:
+            representation = format(Decimal(representation), "f")
+        return representation
+
+    if "e" not in representation:
+        return representation
+    mantissa, exponent_text = representation.split("e", 1)
+    exponent = int(exponent_text)
+    sign = "+" if exponent >= 0 else "-"
+    return f"{mantissa}e{sign}{abs(exponent)}"
+
+
+def _canonical_json_text(value: Any) -> str:
+    if value is None:
+        return "null"
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, (int, float)):
+        return _ecmascript_number(value)
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    if isinstance(value, list):
+        return "[" + ",".join(_canonical_json_text(item) for item in value) + "]"
+    if isinstance(value, dict):
+        return "{" + ",".join(
+            f"{json.dumps(key, ensure_ascii=False)}:{_canonical_json_text(value[key])}"
+            for key in sorted(value.keys(), key=_ecmascript_key_sort)
+        ) + "}"
+    raise DatasetLoadError(f"UNSUPPORTED_CANONICAL_JSON_TYPE:{type(value).__name__}")
+
+
 def canonical_json(value: Any) -> str:
-    """Mirrors `point-in-time-evidence.ts`'s `canonicalJson` -- sorted-key
-    JSON, no extra whitespace, matching `JSON.stringify`'s own compact
-    separator convention as closely as Python's json module allows."""
-    return json.dumps(_canonicalize(value), separators=(",", ":"))
+    """Return sorted-key JSON byte-compatible with Production TypeScript."""
+    return _canonical_json_text(_canonicalize(value))
 
 
 def sha256_hex(text: str) -> str:
@@ -186,8 +262,12 @@ def _load_execution_evidence(raw: Dict[str, Any]) -> ExecutionEvidence:
         observation_role=ObservationRole(raw["observationRole"]), observed_at=raw["observedAt"],
         provider_timestamp=raw.get("providerTimestamp"), ingestion_timestamp=raw["ingestionTimestamp"],
         source=raw["source"], operation_alias=raw["operationAlias"], feed=raw.get("feed"),
-        contract_version=raw["contractVersion"], bid=raw.get("bid"), ask=raw.get("ask"),
-        bid_size=raw.get("bidSize"), ask_size=raw.get("askSize"), proposed_limit=raw.get("proposedLimit"),
+        contract_version=raw["contractVersion"],
+        bid=_optional_float(raw.get("bid"), "execution.bid"),
+        ask=_optional_float(raw.get("ask"), "execution.ask"),
+        bid_size=_optional_float(raw.get("bidSize"), "execution.bidSize"),
+        ask_size=_optional_float(raw.get("askSize"), "execution.askSize"),
+        proposed_limit=_optional_float(raw.get("proposedLimit"), "execution.proposedLimit"),
         data_quality=DataQuality(raw["dataQuality"]), content_hash=raw.get("contentHash", ""),
     )
     _assert_pit_order(evidence.provider_timestamp, evidence.ingestion_timestamp, evidence.observed_at, "OBSERVED_AT", evidence.quote_observation_id)
@@ -203,11 +283,15 @@ def _load_economic_episode(raw: Dict[str, Any]) -> EconomicEpisode:
     return EconomicEpisode(
         outcome_label_id=raw["outcomeLabelId"], subject_type=SubjectType(raw["subjectType"]),
         subject_id=raw["subjectId"], label_available_at=raw["labelAvailableAt"], label_version=raw["labelVersion"],
-        censoring_state=CensoringState(raw["censoringState"]), whole_chain_net_pnl=raw.get("wholeChainNetPnl"),
-        managed_episode_pnl=raw.get("managedEpisodePnl"), return_on_secured_capital=raw.get("returnOnSecuredCapital"),
-        return_per_capital_day=raw.get("returnPerCapitalDay"), max_adverse_excursion=raw.get("maxAdverseExcursion"),
-        max_favorable_excursion=raw.get("maxFavorableExcursion"), recovery_duration_days=raw.get("recoveryDurationDays"),
-        realized_execution_cost=raw.get("realizedExecutionCost"), outcomes=raw.get("outcomes", {}),
+        censoring_state=CensoringState(raw["censoringState"]),
+        whole_chain_net_pnl=_optional_float(raw.get("wholeChainNetPnl"), "episode.wholeChainNetPnl"),
+        managed_episode_pnl=_optional_float(raw.get("managedEpisodePnl"), "episode.managedEpisodePnl"),
+        return_on_secured_capital=_optional_float(raw.get("returnOnSecuredCapital"), "episode.returnOnSecuredCapital"),
+        return_per_capital_day=_optional_float(raw.get("returnPerCapitalDay"), "episode.returnPerCapitalDay"),
+        max_adverse_excursion=_optional_float(raw.get("maxAdverseExcursion"), "episode.maxAdverseExcursion"),
+        max_favorable_excursion=_optional_float(raw.get("maxFavorableExcursion"), "episode.maxFavorableExcursion"),
+        recovery_duration_days=_optional_float(raw.get("recoveryDurationDays"), "episode.recoveryDurationDays"),
+        realized_execution_cost=_optional_float(raw.get("realizedExecutionCost"), "episode.realizedExecutionCost"), outcomes=raw.get("outcomes", {}),
         provenance=raw.get("provenance", {}), content_hash=raw.get("contentHash", ""),
     )
 
@@ -217,9 +301,12 @@ def _load_management_snapshot(raw: Dict[str, Any]) -> ManagementSnapshot:
     actions = tuple(
         ManagementActionValue(
             action=ThetaStrategyAction(a["action"]), feasible=bool(a["feasible"]),
-            certain_cashflow=a.get("certainCashflow"), estimated_future_value=a.get("estimatedFutureValue"),
-            tail_risk_penalty=a.get("tailRiskPenalty"), capital_days_penalty=a.get("capitalDaysPenalty"),
-            execution_penalty=a.get("executionPenalty"), utility=a.get("utility"),
+            certain_cashflow=_optional_float(a.get("certainCashflow"), "management.certainCashflow"),
+            estimated_future_value=_optional_float(a.get("estimatedFutureValue"), "management.estimatedFutureValue"),
+            tail_risk_penalty=_optional_float(a.get("tailRiskPenalty"), "management.tailRiskPenalty"),
+            capital_days_penalty=_optional_float(a.get("capitalDaysPenalty"), "management.capitalDaysPenalty"),
+            execution_penalty=_optional_float(a.get("executionPenalty"), "management.executionPenalty"),
+            utility=_optional_float(a.get("utility"), "management.utility"),
         )
         for a in actions_raw
     )
@@ -243,14 +330,45 @@ def _load_lifecycle_event(raw: Dict[str, Any]) -> LifecycleEvent:
     )
 
 
+_LEGACY_ROUTER_BRANCHES = {
+    "THETA_Q": ThetaStrategyBranch.THETA_CONVENTIONAL,
+    "THETA_H": ThetaStrategyBranch.THETA_HOLD_STRIKE,
+    "THETA_A": ThetaStrategyBranch.THETA_RECOVERY,
+    "THETA_C": ThetaStrategyBranch.THETA_CC,
+    "THETA_D": ThetaStrategyBranch.THETA_DEFINED_RISK,
+}
+
+
+def _load_shadow_strategy_branch(value: Any) -> ThetaStrategyBranch:
+    """Normalize unambiguous legacy router families at the research boundary.
+
+    The immutable shadow-opportunity ledger predates canonical business branch
+    names. THETA_R cannot be mapped without lifecycle state, so it remains a
+    hard error rather than being guessed.
+    """
+    try:
+        return ThetaStrategyBranch(value)
+    except ValueError:
+        if value == "THETA_R":
+            raise DatasetLoadError("AMBIGUOUS_LEGACY_STRATEGY_BRANCH:THETA_R") from None
+        mapped = _LEGACY_ROUTER_BRANCHES.get(value)
+        if mapped is None:
+            raise DatasetLoadError(f"UNSUPPORTED_STRATEGY_BRANCH:{value}") from None
+        return mapped
+
+
 def _load_shadow_candidate(raw: Dict[str, Any]) -> ShadowCandidate:
     return ShadowCandidate(
         opportunity_id=raw["opportunityId"], fusion_snapshot_id=raw["fusionSnapshotId"], observed_at=raw["observedAt"],
         underlying=raw["underlying"], contract_symbol=raw.get("contractSymbol"),
-        strategy_branch=ThetaStrategyBranch(raw["strategyBranch"]), ev_net=raw.get("evNet"),
-        tail_adjusted_ev=raw.get("tailAdjustedEv"), return_per_capital_day=raw.get("returnPerCapitalDay"),
-        capital_required=raw.get("capitalRequired"), uncertainty=raw.get("uncertainty"),
-        aegis_state=raw.get("aegisState"), recommended_quantity=raw.get("recommendedQuantity"),
+        strategy_branch=_load_shadow_strategy_branch(raw["strategyBranch"]),
+        ev_net=_optional_float(raw.get("evNet"), "shadow.evNet"),
+        tail_adjusted_ev=_optional_float(raw.get("tailAdjustedEv"), "shadow.tailAdjustedEv"),
+        return_per_capital_day=_optional_float(raw.get("returnPerCapitalDay"), "shadow.returnPerCapitalDay"),
+        capital_required=_optional_float(raw.get("capitalRequired"), "shadow.capitalRequired"),
+        uncertainty=_optional_float(raw.get("uncertainty"), "shadow.uncertainty"),
+        aegis_state=raw.get("aegisState"),
+        recommended_quantity=_optional_float(raw.get("recommendedQuantity"), "shadow.recommendedQuantity"),
         execution_quality_acceptable=raw.get("executionQualityAcceptable"), outcome=raw.get("outcome"),
         wait_reason=raw.get("waitReason"), rejection_category=raw.get("rejectionCategory"),
         reasons=tuple(raw.get("reasons", [])), policy_version=raw["policyVersion"],
@@ -325,8 +443,11 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
             if cid is not None and cid not in all_candidate_ids:
                 raise DatasetLoadError(f"CANDIDATE_SET_REFERENCES_UNKNOWN_CANDIDATE:{candidate_set.candidate_set_id}:{field_name}={cid}")
 
-    _assert_deterministic_order(rows_raw.get("candidateSets", []), canonical_json)
-    _assert_deterministic_order(rows_raw.get("candidates", []), canonical_json)
+    for row_family in (
+        "candidateSets", "candidates", "shadowCandidates", "strategyFrontiers",
+        "managementSnapshots", "lifecycleOutcomes", "wholeChainOutcomes", "executionEvidence",
+    ):
+        _assert_deterministic_order(rows_raw.get(row_family, []), canonical_json)
 
     # Must mirror TypeScript buildDatasetExport() exactly. exportedAt is
     # provenance about file creation and is deliberately excluded from
@@ -337,7 +458,10 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
         "sourceWindow": raw["sourceWindow"],
         "featureSetVersion": raw["featureSetVersion"],
         "strategyVersions": sorted(set(raw.get("strategyVersions", []))),
-        "rows": {k: sorted(v, key=canonical_json) for k, v in rows_raw.items()},
+        # Production already emits every row family in canonical order. Preserve
+        # that order for identity and verify it above. Re-sorting here would make
+        # the verifier itself a second dataset producer.
+        "rows": rows_raw,
         "rowCounts": raw.get("rowCounts", {k: len(v) for k, v in rows_raw.items()}),
     }
     recomputed_hash = sha256_hex(canonical_json(identity))
@@ -345,8 +469,7 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
     hash_verified = recomputed_hash == dataset_hash
     if not hash_verified:
         raise DatasetLoadError(
-            f"DATASET_HASH_MISMATCH: recomputed {recomputed_hash} != declared {dataset_hash} "
-            "(may be a real corruption, or a cross-language JSON-number-formatting artifact -- triage before concluding corruption)"
+            f"DATASET_HASH_MISMATCH: recomputed {recomputed_hash} != declared {dataset_hash}"
         )
 
     return LoadedDatasetExport(

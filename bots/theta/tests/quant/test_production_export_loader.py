@@ -90,6 +90,56 @@ class HappyPathTests(unittest.TestCase):
         self.assertEqual(len(loaded.candidates), 1)
         self.assertEqual(len(loaded.candidate_sets), 1)
 
+    def test_unambiguous_legacy_shadow_router_branch_is_normalized(self):
+        export = _build_valid_export()
+        export["rows"]["shadowCandidates"] = [{
+            "opportunityId": "legacy-q-1", "fusionSnapshotId": "fs1",
+            "observedAt": "2026-01-01T00:00:00+00:00", "underlying": "AAPL",
+            "contractSymbol": None, "strategyBranch": "THETA_Q", "evNet": None,
+            "tailAdjustedEv": None, "returnPerCapitalDay": None, "capitalRequired": None,
+            "uncertainty": None, "aegisState": None, "recommendedQuantity": 0,
+            "executionQualityAcceptable": None, "outcome": "WAIT", "waitReason": "UNKNOWN",
+            "rejectionCategory": "DATA_INSUFFICIENT", "reasons": [], "policyVersion": "p1",
+            "modelVersions": {},
+        }]
+        export["rowCounts"]["shadowCandidates"] = 1
+        rows = export["rows"]
+        unsigned = {
+            "schemaVersion": export["schemaVersion"], "sourceWindow": export["sourceWindow"],
+            "featureSetVersion": export["featureSetVersion"],
+            "strategyVersions": export["strategyVersions"],
+            "rows": {k: sorted(v, key=canonical_json) for k, v in rows.items()},
+            "rowCounts": export["rowCounts"],
+        }
+        export["datasetHash"] = sha256_hex(canonical_json(unsigned))
+        loaded = load_dataset_export(export)
+        self.assertEqual(loaded.shadow_candidates[0].strategy_branch.value, "THETA_CONVENTIONAL")
+
+    def test_ambiguous_legacy_management_router_branch_is_rejected(self):
+        export = _build_valid_export()
+        export["rows"]["shadowCandidates"] = [{
+            "opportunityId": "legacy-r-1", "fusionSnapshotId": "fs1",
+            "observedAt": "2026-01-01T00:00:00+00:00", "underlying": "AAPL",
+            "contractSymbol": None, "strategyBranch": "THETA_R", "evNet": None,
+            "tailAdjustedEv": None, "returnPerCapitalDay": None, "capitalRequired": None,
+            "uncertainty": None, "aegisState": None, "recommendedQuantity": 0,
+            "executionQualityAcceptable": None, "outcome": "WAIT", "waitReason": "UNKNOWN",
+            "rejectionCategory": "DATA_INSUFFICIENT", "reasons": [], "policyVersion": "p1",
+            "modelVersions": {},
+        }]
+        export["rowCounts"]["shadowCandidates"] = 1
+        rows = export["rows"]
+        unsigned = {
+            "schemaVersion": export["schemaVersion"], "sourceWindow": export["sourceWindow"],
+            "featureSetVersion": export["featureSetVersion"],
+            "strategyVersions": export["strategyVersions"],
+            "rows": {k: sorted(v, key=canonical_json) for k, v in rows.items()},
+            "rowCounts": export["rowCounts"],
+        }
+        export["datasetHash"] = sha256_hex(canonical_json(unsigned))
+        with self.assertRaisesRegex(DatasetLoadError, "AMBIGUOUS_LEGACY_STRATEGY_BRANCH"):
+            load_dataset_export(export)
+
 
 class SchemaVersionTests(unittest.TestCase):
     def test_wrong_schema_version_fails_loudly(self):
@@ -202,6 +252,30 @@ class PitTimestampTests(unittest.TestCase):
 
 
 class CrossedBboTests(unittest.TestCase):
+    def test_postgresql_numeric_strings_are_compared_numerically(self):
+        export = _build_valid_export()
+        quote = {
+            "quoteObservationId": "q1", "candidateId": "c1", "managementInputSnapshotId": None,
+            "observationRole": "DECISION", "observedAt": "2026-01-01T00:00:00+00:00",
+            "providerTimestamp": "2026-01-01T00:00:00+00:00", "ingestionTimestamp": "2026-01-01T00:00:01+00:00",
+            "source": "ALPACA", "operationAlias": "options.snapshots", "feed": "indicative",
+            "contractVersion": "v1", "bid": "6.02000000", "ask": "10.02000000",
+            "bidSize": "109.00000000", "askSize": "21.00000000", "proposedLimit": None,
+            "dataQuality": "GOOD", "contentHash": "e" * 64,
+        }
+        export["rows"]["executionEvidence"] = [quote]
+        export["rowCounts"]["executionEvidence"] = 1
+        rows = export["rows"]
+        unsigned = {
+            "schemaVersion": export["schemaVersion"], "sourceWindow": export["sourceWindow"],
+            "featureSetVersion": export["featureSetVersion"], "strategyVersions": export["strategyVersions"],
+            "rows": {k: sorted(v, key=canonical_json) for k, v in rows.items()}, "rowCounts": export["rowCounts"],
+        }
+        export["datasetHash"] = sha256_hex(canonical_json(unsigned))
+        loaded = load_dataset_export(export)
+        self.assertEqual(loaded.execution_evidence[0].bid, 6.02)
+        self.assertEqual(loaded.execution_evidence[0].ask, 10.02)
+
     def test_a_crossed_quote_fails_loudly(self):
         export = _build_valid_export()
         quote = {
@@ -229,6 +303,22 @@ class CrossedBboTests(unittest.TestCase):
 
 
 class DeterministicFingerprintTests(unittest.TestCase):
+    def test_canonical_json_matches_ecmascript_unicode_and_number_formatting(self):
+        self.assertEqual(
+            canonical_json({
+                "label": "café Δ",
+                "smallScientific": 1e-7,
+                "fixedLowerBoundary": 1e-6,
+                "fixedUpperRange": 1e20,
+                "largeScientific": 1e21,
+                "negativeZero": -0.0,
+                "productionRatio": 0.0034583333333333332,
+            }),
+            '{"fixedLowerBoundary":0.000001,"fixedUpperRange":100000000000000000000,'
+            '"label":"café Δ","largeScientific":1e+21,"negativeZero":0,'
+            '"productionRatio":0.0034583333333333332,"smallScientific":1e-7}',
+        )
+
     def test_reloading_an_identical_export_produces_the_identical_recomputed_hash(self):
         export = _build_valid_export()
         first = load_dataset_export(copy.deepcopy(export))

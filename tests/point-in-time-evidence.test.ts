@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
-import { assertNoFutureLabels,buildDatasetExport,candidateEvidenceHash,type CandidatePointInTimeEvidence } from '../src/research/point-in-time-evidence.js';
+import { assertNoFutureLabels,buildDatasetExport,candidateEvidenceHash,canonicalJson,sha256,type CandidatePointInTimeEvidence } from '../src/research/point-in-time-evidence.js';
 
 const candidate=():CandidatePointInTimeEvidence => ({candidateId:randomUUID(),decisionId:null,fusionSnapshotId:randomUUID(),
   decisionTime:'2026-09-12T14:30:00Z',branch:'THETA_CONVENTIONAL',rankAtDecision:1,selected:false,
@@ -28,6 +28,20 @@ test('dataset export ordering and identity are deterministic',()=>{
   assert.equal(first.datasetHash,second.datasetHash);
   assert.equal(first.datasetHash,buildDatasetExport({...base,exportedAt:'2026-09-12T02:00:00Z'}).datasetHash);
   assert.equal(first.rowCounts.candidates,2);
+});
+
+test('dataset identity survives JSON serialization of PostgreSQL Date objects',()=>{
+  const artifact=buildDatasetExport({
+    sourceWindow:{start:'2026-09-01T00:00:00Z',end:'2026-09-12T00:00:00Z'},
+    exportedAt:'2026-09-12T01:00:00Z',featureSetVersion:'f1',strategyVersions:['s1'],
+    rows:{candidateSets:[{decisionTime:new Date('2026-09-10T14:30:00Z')}],candidates:[],shadowCandidates:[],
+      strategyFrontiers:[],managementSnapshots:[],lifecycleOutcomes:[],wholeChainOutcomes:[],executionEvidence:[]},
+  });
+  const serialized=JSON.parse(JSON.stringify(artifact)) as typeof artifact;
+  const identity={schemaVersion:serialized.schemaVersion,sourceWindow:serialized.sourceWindow,
+    featureSetVersion:serialized.featureSetVersion,strategyVersions:serialized.strategyVersions,
+    rows:serialized.rows,rowCounts:serialized.rowCounts};
+  assert.equal(serialized.datasetHash,sha256(canonicalJson(identity)));
 });
 
 test('feature side cannot contain future labels even when outcome tables are separate',()=>{

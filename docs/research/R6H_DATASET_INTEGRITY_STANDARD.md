@@ -17,16 +17,16 @@ best-effort parsing of an unrecognized schema is ever attempted.
 
 The loader recomputes the same canonical-JSON + SHA-256 hash Production's
 own `buildDatasetExport` computes and compares it to the declared
-`datasetHash`. A mismatch raises `DATASET_HASH_MISMATCH`. Known limitation
-(documented in the loader's own docstring): cross-language JSON number
-formatting can differ; a real mismatch must be triaged for that
-possibility, not assumed to be corruption on sight.
+`datasetHash`. A mismatch raises `DATASET_HASH_MISMATCH`. The Python
+canonical serializer exactly reproduces the v1 TypeScript contract's Unicode,
+ECMAScript finite-number formatting, and `localeCompare` ordering for contract
+keys. It verified the real Production export hash byte-for-byte on 2026-09-14.
 
 ## 3. Deterministic ordering check
 
 Production's own export sorts every row group by canonical JSON
-(`byCanonical`, per `point-in-time-evidence.ts`). The loader verifies
-candidate/candidate-set rows are already in that order and raises
+(`byCanonical`, per `point-in-time-evidence.ts`). The loader verifies all
+eight row families are already in that order and raises
 `NON_DETERMINISTIC_ORDERING` if not -- this catches a broken export
 pipeline (e.g. an unsorted intermediate step) independent of the hash
 check.
@@ -57,6 +57,11 @@ constructor. An unrecognized value raises `ValueError` (a Python
 `ValueError`, not a silently-substituted default) -- there is no `.get(x,
 DEFAULT)` fallback anywhere in the loader.
 
+Immutable shadow rows that predate canonical branch names have one explicit
+compatibility boundary. Unambiguous router families map to their canonical
+business branch. Ambiguous `THETA_R` is rejected until lifecycle state can
+disambiguate Recovery from Covered Call. No branch is guessed.
+
 ## 7. Unit validation
 
 Crossed BBO (`bid > ask`) is rejected (`CROSSED_BBO_INVALID`), mirroring
@@ -66,6 +71,11 @@ unit CONVERSION at all -- per the directive's own instruction ("unit
 mismatch should be a HARD_DATA_FAILURE, not auto-converted unless
 conversion provenance is explicit"), a genuine unit ambiguity is a reason
 to reject the row, never silently normalize it.
+
+PostgreSQL `numeric` columns arrive in JSON as decimal strings. Known numeric
+contract fields are parsed as finite numbers before comparisons or model
+input. This prevents lexicographic BBO errors while preserving null as
+UNKNOWN.
 
 ## 8. UNKNOWN preservation
 
