@@ -4,7 +4,9 @@ Status date: 2026-09-14. Documentation contract: [Optionomics public API referen
 
 ## Contract discovery result
 
-The current public API page exposes 29 unique versioned paths. The Production readiness runner first discovers this page, then probes only discovered, read-only GET routes. Probes run sequentially. POST assessment is never called. Routes needing an identifier from a parent collection remain `BLOCKED_ON_PARENT_IDENTIFIER` until the parent supplies one. A UI or marketing field absent from the public contract remains `UI_ONLY`, `MCP_ONLY`, or `UNAVAILABLE_API`.
+The current public API page contains 41 literal versioned path strings, including concrete examples and their corresponding templates. They reduce to 29 logical operation paths. The Production readiness runner first discovers this page, then probes only discovered, read-only GET routes. Probes run sequentially. POST assessment is never called. Routes needing an identifier from a parent collection remain `BLOCKED_ON_PARENT_IDENTIFIER` until the parent supplies one. A UI or marketing field absent from the public contract remains `UI_ONLY`, `MCP_ONLY`, or `UNAVAILABLE_API`.
+
+The authenticated Production rerun persisted 35 capability results. All 35 returned or inherited an HTTP 200 `GOOD` transport state. Rate-limit limit, remaining and reset headers were present on every primary probe except trade-idea track record. Transport health doesn't prove populated feature data. The current/session SPY chain returned zero observations and explicit null state, while the dated historical chain for 2026-09-07 returned 11,966 observations. Current metrics contained explicit null state, while dated historical metrics returned 83 values and exposed IV, skew and term fields. The 8h, 24h and 48h historical net-flow windows returned zero points. Historical event context returned two events with two `known_at` timestamps.
 
 | Family | Documented operation paths | Runtime destination | Current status before authenticated Production rerun |
 |---|---|---|---|
@@ -94,10 +96,10 @@ Historical Optionomics observations must retain decision cutoff, session date, s
 
 | Receipt item | State | Exact blocker and next action when partial |
 |---|---|---|
-| `OPTIONOMICS_ENDPOINT_CENSUS` | PARTIAL | Code: `src/providers/readiness.ts`. Current docs routes are discovered and safe GET probes expanded. Deploy and rerun with encrypted Production credential to persist actual statuses and schemas. |
-| `OPTIONOMICS_RAW_OBSERVATION` | COMPLETE_IN_CODE | Code: `src/theta/optionomics-provider.ts`, migration 029, persistence store. Production migration required. |
+| `OPTIONOMICS_ENDPOINT_CENSUS` | COMPLETE_WITH_LIMITS | 35 authenticated results persisted. ID-child routes and POST assessment remain deliberately uncalled. |
+| `OPTIONOMICS_RAW_OBSERVATION` | COMPLETE | Code: `src/theta/optionomics-provider.ts`, migration 029, persistence store. Production migration applied. |
 | `OPTIONOMICS_NORMALIZATION` | PARTIAL | Chain, quote, Greeks, IV, liquidity and provider exposure scalars implemented. Dedicated crowd, event and full metric response normalizers await authenticated schemas. |
-| `OPTIONOMICS_CHAIN` | COMPLETE_IN_CODE | Authenticated Production evidence must be refreshed after deployment. |
+| `OPTIONOMICS_CHAIN` | COMPLETE_WITH_LIMITS | Authenticated HTTP 200. Current/session result empty. Historical date returned 11,966 observations. |
 | `OPTIONOMICS_GREEKS` | COMPLETE_IN_CODE | Provider units still need authenticated documentation confirmation before independent discrepancy thresholds. |
 | `OPTIONOMICS_VOLATILITY` | PARTIAL | Contract IV implemented. IV rank, percentile, RV and vol-of-vol require verified fields and horizons. |
 | `OPTIONOMICS_SKEW` | PARTIAL | Raw 25-delta research difference implemented. Historical z-score requires PIT history. |
@@ -114,8 +116,8 @@ Historical Optionomics observations must retain decision cutoff, session date, s
 | `OPTIONOMICS_BACKTEST_BRIDGE` | PARTIAL | THETA deterministic export exists. Vendor backtest import/reproduction mapping isn't complete. |
 | `OPTIONOMICS_FEATURE_DESTINATION_MAP` | COMPLETE_IN_CODE | Typed allowlists added and tested. |
 | `OPTIONOMICS_MISSINGNESS_POLICY` | COMPLETE_IN_CODE | UNKNOWN-safe parser and feature states tested. |
-| `OPTIONOMICS_PROVENANCE` | COMPLETE_IN_CODE | Migration 029 must be applied in Production. |
-| `OPTIONOMICS_RATE_LIMIT_POLICY` | PARTIAL | Bounded 429 retry and headers implemented. Per-family observed budgets require Production census. |
+| `OPTIONOMICS_PROVENANCE` | COMPLETE | Migration 029 applied and invariants verified in Production. |
+| `OPTIONOMICS_RATE_LIMIT_POLICY` | PARTIAL | Bounded 429 retry and header capture implemented. Per-family request budgets still need observed update cadence and capacity policy. |
 | `OPTIONOMICS_PIT_SAFETY` | PARTIAL | Raw/feature/label separation exists. Full historical availability-time proof remains a data-contract blocker. |
 | `OPTIONOMICS_QUOTE_INTELLIGENCE_READY` | YES_WITH_LIMITS | Recorded two-sided research observations can inform research only. |
 | `OPTIONOMICS_EXECUTION_QUOTE_STATUS` | REJECTED | Provider docs describe session-oriented research data, not an execution feed. Qualification guard remains locked. |

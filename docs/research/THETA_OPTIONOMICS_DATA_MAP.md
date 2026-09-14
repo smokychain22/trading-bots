@@ -51,3 +51,8 @@ Official references: [plans](https://docs.optionomics.ai/getting-started/plans/)
 [Historical Lab](https://docs.optionomics.ai/analytics/history/), and
 [Developer Console](https://docs.optionomics.ai/features/developer-console/),
 and [API reference](https://optionomics.ai/docs/api).
+
+The 2026-09-14 authenticated Production census persisted 35 capability results,
+all with HTTP 200 transport state. Current SPY chain and metrics were empty/null,
+historical chain and metrics were populated, and historical flow windows were
+empty. Reachability and usable observations remain separate facts.

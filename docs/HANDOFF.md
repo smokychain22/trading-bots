@@ -24,6 +24,12 @@ documented GET route sequentially.
 TESTS RUN: Full Node, Python, TypeScript, ESLint, build, security, PostgreSQL
 migration/invariants and CI before release.
 
+TEST RESULTS: 718 Node tests passed, 4 database-only tests skipped locally, 452
+Python tests passed, lint/type/build/security passed, security findings zero,
+Production Neon migration 029 and all invariants passed, and GitHub CI including
+browser, PostgreSQL and Redis passed. The authenticated Production census
+persisted 35 Optionomics capabilities with zero broker orders and fills.
+
 KNOWN LIMITATIONS: Full authenticated schemas, units, historical availability
 time, flow print detail, event coverage, fitted surface research and model
 cross-checks remain partial until verified. Optionomics remains research-only
@@ -34,6 +40,11 @@ empty array or lack a feature, so reachability never implies useful data.
 
 NEXT RECOMMENDED TASK: Use persisted census results to implement only the
 verified missing normalizers, then collect PIT evidence for R6 ablations.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude's `9e7a679` skew review was accepted
+and repaired. Skew now stays UNKNOWN without a caller-supplied proximity policy
+and rejects far-from-25-delta pairs. Its term-structure challenger is deferred
+until real data can compare tenor and moneyness controls.
 
 ## 2026-09-14: R7 execution-price and TCA vertical slice
 
