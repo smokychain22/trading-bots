@@ -75,6 +75,11 @@ SLICE_METRICS: Tuple[str, ...] = (
 FEATURE_ABLATION_FAMILIES: Tuple[str, ...] = (
     "UNDERLYING", "VOLATILITY", "CONTRACT", "FLOW", "EVENT",
     "OWNERSHIP", "PORTFOLIO", "EXECUTION", "REGIME", "EXPERT_PRIOR",
+    # SKEW/TERM/SURFACE separated from the general VOLATILITY bucket now
+    # that dedicated modules exist for each (volatility_surface_research.py,
+    # term_structure_research.py) -- first-order effects must be measured
+    # individually before any interaction (e.g. SKEW x OWNERSHIP) is tested.
+    "SKEW", "TERM", "SURFACE",
 )
 
 ABLATION_DELTA_METRICS: Tuple[str, ...] = (
@@ -154,6 +159,51 @@ def _definitions() -> Tuple[ExperimentDefinition, ...]:
             "ROLL-01", ExperimentKind.ROLL_EVALUATION, MinimumReadiness.MODEL_FIT_ELIGIBLE,
             "Whether net roll credit predicts whole-chain outcome. Old realized P&L stays immutable; net credit is a feature, not success.",
             hypothesis_id="H-R-03", parameters={"alternatives": ROLL_ALTERNATIVES},
+        ),
+        # Four hypotheses (H-H-01/02, H-C-01/02, H-A-02/03/04, H-D-01) from
+        # the standing 14-hypothesis registry had no linked experiment_id --
+        # closed per this run's explicit "verify every expert-derived
+        # hypothesis can be linked to an experiment ID" instruction. Each
+        # experiment tests ONLY its own branch, never pooled with THETA_CONVENTIONAL.
+        ExperimentDefinition(
+            "HOLD-STRIKE-01", ExperimentKind.SLICE_ECONOMICS, MinimumReadiness.MODEL_FIT_ELIGIBLE,
+            "THETA_HOLD_STRIKE whole-chain economics on a separately validated 2-5 DTE ATM/near-ATM cohort with intentional assignment. Never pooled with THETA_CONVENTIONAL.",
+            hypothesis_id="H-H-01",
+        ),
+        ExperimentDefinition(
+            "HOLD-STRIKE-WR-DISCIPLINE-01", ExperimentKind.DESCRIPTIVE, MinimumReadiness.MODEL_FIT_ELIGIBLE,
+            "Reports THETA_HOLD_STRIKE closed-trade WR alongside Whole-Chain WR and open MTM inventory side by side -- a high closed-trade WR is never reported without both.",
+            hypothesis_id="H-H-02",
+        ),
+        ExperimentDefinition(
+            "CC-STRIKE-TIMING-01", ExperimentKind.MANAGEMENT_POLICY, MinimumReadiness.MODEL_FIT_ELIGIBLE,
+            "Compares covered-call strike/timing policies against a yield-maximizing baseline on full stock-plus-call lifecycle EV, not annualized yield alone.",
+            hypothesis_id="H-C-01",
+        ),
+        ExperimentDefinition(
+            "CC-RECOVERY-WAIT-CONDITION-01", ExperimentKind.MANAGEMENT_POLICY, MinimumReadiness.MODEL_FIT_ELIGIBLE,
+            "Compares immediate-CC-on-assignment against a recovery-wait-conditioned CC entry policy on full-chain economics.",
+            hypothesis_id="H-C-02",
+        ),
+        ExperimentDefinition(
+            "RECOVERY-BOUND-SWEEP-01", ExperimentKind.MANAGEMENT_POLICY, MinimumReadiness.MODEL_FIT_ELIGIBLE,
+            "Sweeps a pre-registered set of explicit recovery-wait bounds (max-wait-days x thesis-invalidation trigger combinations); unbounded unconditional waiting is never a candidate policy.",
+            hypothesis_id="H-A-02",
+        ),
+        ExperimentDefinition(
+            "ASSIGNMENT-WR-OVERSTATEMENT-01", ExperimentKind.DESCRIPTIVE, MinimumReadiness.MODEL_FIT_ELIGIBLE,
+            "Compares closed-trade/Leg WR against Whole-Chain WR on assignment-heavy cohorts specifically, to quantify how much closed-trade WR overstates safety once unresolved assigned-stock losses are included.",
+            hypothesis_id="H-A-03",
+        ),
+        ExperimentDefinition(
+            "RECOVERY-BOUND-PROMOTION-01", ExperimentKind.SLICE_ECONOMICS, MinimumReadiness.WALK_FORWARD_ELIGIBLE,
+            "Selects among the RECOVERY-BOUND-SWEEP-01 candidate bounds using only walk-forward/OOS evidence, never the same data used to define the bound sweep.",
+            hypothesis_id="H-A-04",
+        ),
+        ExperimentDefinition(
+            "DEFINED-RISK-ZERO-QTY-FALLBACK-01", ExperimentKind.SLICE_ECONOMICS, MinimumReadiness.MODEL_FIT_ELIGIBLE,
+            "THETA_DEFINED_RISK whole-chain economics specifically on episodes where full CSP quantity would have been zero or tail risk poorly bounded -- the exact cohort H-D-01 concerns, never generalized beyond it.",
+            hypothesis_id="H-D-01",
         ),
     ]
 

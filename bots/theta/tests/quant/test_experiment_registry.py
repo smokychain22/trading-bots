@@ -74,8 +74,8 @@ class PolicyCoverageTests(unittest.TestCase):
         for policy in LOSS_POLICIES:
             self.assertIn(f"LOSS-{policy}", EXPERIMENTS_BY_ID)
 
-    def test_all_ten_ablation_families_are_registered_as_paired_experiments(self):
-        self.assertEqual(len(FEATURE_ABLATION_FAMILIES), 10)
+    def test_all_thirteen_ablation_families_are_registered_as_paired_experiments(self):
+        self.assertEqual(len(FEATURE_ABLATION_FAMILIES), 13)
         for family in FEATURE_ABLATION_FAMILIES:
             experiment = EXPERIMENTS_BY_ID[f"ABLATE-{family}"]
             self.assertTrue(experiment.parameters["paired"])
@@ -115,6 +115,28 @@ class ReadinessGatingTests(unittest.TestCase):
     def test_ablations_require_walk_forward_not_merely_a_model_fit(self):
         model_fit = {e.experiment_id for e in experiments_eligible_at("MODEL_FIT_ELIGIBLE")}
         self.assertNotIn("ABLATE-FLOW", model_fit)
+
+
+class HypothesisLinkageTests(unittest.TestCase):
+    """Every hypothesis in the standing 14-hypothesis registry
+    (quant/research/data/hypotheses.json) must resolve to at least one
+    experiment_id -- an unlinked hypothesis has no path from priors to
+    evidence."""
+
+    _ALL_FOURTEEN_HYPOTHESIS_IDS = (
+        "H-Q-01", "H-Q-02", "H-H-01", "H-H-02", "H-R-01", "H-R-02", "H-R-03",
+        "H-C-01", "H-C-02", "H-A-01", "H-A-02", "H-A-04", "H-A-03", "H-D-01",
+    )
+
+    def test_every_hypothesis_id_has_at_least_one_linked_experiment(self):
+        linked_ids = {e.hypothesis_id for e in EXPERIMENTS if e.hypothesis_id is not None}
+        for hypothesis_id in self._ALL_FOURTEEN_HYPOTHESIS_IDS:
+            self.assertIn(hypothesis_id, linked_ids, f"{hypothesis_id} has no linked experiment_id")
+
+    def test_hold_strike_experiment_carries_its_own_hypothesis_id_not_conventionals(self):
+        hold_strike = EXPERIMENTS_BY_ID["HOLD-STRIKE-01"]
+        self.assertEqual(hold_strike.hypothesis_id, "H-H-01")
+        self.assertNotEqual(hold_strike.hypothesis_id, "H-Q-01")
 
 
 if __name__ == "__main__":

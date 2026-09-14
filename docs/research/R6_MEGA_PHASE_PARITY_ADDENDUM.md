@@ -847,3 +847,104 @@ veto from soft-evidence ranking by construction).
 `DATASET_ABSENT` still stands -- these are all provider-independent,
 no-data-required deliverables, exercised only against synthetic ground
 truth.
+
+## Pipeline integration of the four new research modules
+
+Per this run's directive: integrated (not merely built) `volatility_
+surface_research.py`, `iv_realized_vol_research.py`, `term_structure_
+research.py`, `paper_baseline_dte_bias.py` into the existing R6 framework.
+
+### New: `research_family_adapters.py`
+
+Four adapters, one composed entry point (`run_all_family_adapters`), each
+returning an explicit `AdapterState` (`READY`/`INSUFFICIENT_DATA`/
+`INVALID_INPUT`/`NOT_APPLICABLE`) -- never a fabricated zero. Deliberately
+a COMPANION to `empirical_pipeline.run_theta_empirical_pipeline`, not a
+modification of it: that module is independently ported to and maintained
+on canonical main (see the closed-loop repair history earlier in this
+document), so changing its signature here would manufacture a new parity
+gap rather than a real integration. A caller invokes the pipeline first,
+then -- once `status == "OK"` -- passes the SAME already-loaded
+`LoadedDatasetExport`'s candidates to `run_all_family_adapters`. No
+dataset is loaded or validated twice.
+
+**Schema honesty, not a guessed contract:** `dataset_contracts.Candidate.
+contract`/`market`/`volatility` are confirmed opaque `Dict[str, Any]` both
+in this branch's own types AND in Production's `point-in-time-evidence.
+ts` (`contract:jsonObject, market:jsonObject, volatility:jsonObject` --
+verified directly against `origin/main`). No internal key name inside
+those blobs is a confirmed, versioned contract anywhere in this
+repository. Extraction therefore requires an explicit, caller-supplied
+`FeatureFieldMap`; with none supplied, every adapter correctly reports
+`NOT_APPLICABLE` naming exactly which mapping is missing, rather than
+guessing a key name that might not exist. **Confirming the real key names
+is the one precise, narrow item in this run's `RESEARCH_HANDOFF`, not
+something fabricated here.**
+
+**Caught a real bug in this new code before shipping it:** the first
+draft of `extract_surface_points` used `_as_float(...) or _as_float(...)`
+to fall back from `volatility` to `contract` for log-moneyness --
+`0.0` (a completely legitimate ATM log-moneyness) is falsy in Python, so
+`or` silently discarded every genuine ATM point and fell through to the
+wrong source. This is the EXACT class of defect this session has spent
+many rounds auditing Codex's own code for. Found by the module's own test
+suite (a test asserting a known ATM point count failed 0 != 1),
+fixed to an explicit `is None` check, and the regression test now covers
+it directly.
+
+### `IV/RV`: historical OHLC bars are explicitly OUT of the candidate export schema
+
+`Candidate` rows carry per-decision feature blobs, not a daily price
+series -- `run_iv_rv_adapter` correctly requires `historical_bars` as a
+SEPARATE input and reports `NOT_APPLICABLE` (not `INSUFFICIENT_DATA`,
+which would wrongly imply the candidate dataset itself could someday
+satisfy it) when absent.
+
+### `DTE bias`: baseline receipts confirmed absent from the export schema
+
+`theta_paper_active_baseline_receipt`/`theta_near_miss_reevaluation_
+event` (migration 027) remain outside `postgres-dataset-export.ts`'s own
+SELECT list (confirmed in an earlier review this document already
+records). `run_dte_bias_adapter` correctly reports `NOT_APPLICABLE` with
+that exact reason, not a guess.
+
+### Hypothesis/experiment-registry closure
+
+All 14 hypotheses in `hypotheses.json` now resolve to at least one
+`experiment_id` -- 7 were previously unlinked (`H-H-01`/`H-H-02`
+Hold-Strike, `H-C-01`/`H-C-02` covered call, `H-A-02`/`H-A-03`/`H-A-04`
+recovery/assignment, `H-D-01` defined-risk), closed with 7 new,
+narrowly-scoped `ExperimentDefinition` entries, each testing only its own
+branch (never pooled with `THETA_CONVENTIONAL`). `FEATURE_ABLATION_
+FAMILIES` gained `SKEW`/`TERM`/`SURFACE` as first-order ablations distinct
+from the general `VOLATILITY` bucket, now that dedicated modules back
+each.
+
+### QuantWheel hypothesis linkage (no competing document created)
+
+Codex's own `docs/research/THETA_QUANTWHEEL_HYPOTHESES.md` lives on
+canonical main; creating a second copy at the same path on this branch
+would manufacture a merge conflict rather than a real link, so the
+mapping is recorded here instead. Of its 9 hypotheses: "Roll frontier
+beats credit-first rolling" (status `TEST CONTRACT READY`) already maps
+exactly to this branch's `ROLL-01` (`hypothesis_id="H-R-03"`). The
+remaining 7 GEX/Vanna/Charm/Real-Cost/expected-move hypotheses correctly
+stay `INSUFFICIENT_DATA` -- Codex's own capability census still reports
+Vanna/Charm as unconfirmed/unavailable, so building named experiments for
+them now would be speculative against a feature family that may not even
+exist under the current provider contract. They remain held in the
+generic `ABLATE-EXPERT_PRIOR` bucket until that capability question
+resolves; "Per-ticker chain accounting detects false premium success" is
+already `ADOPTED MECHANICALLY` (implemented, not an experiment).
+
+**1045 Python tests pass** (+14 this section: 12 adapter tests + 2
+hypothesis-linkage tests). Security scan: 0 findings. `DATASET_ABSENT`
+still stands -- every adapter above is exercised only against synthetic
+fixtures.
+
+**`RESEARCH_HANDOFF` to Codex (informational only, no code change
+requested):** confirm the actual internal key names inside `Candidate.
+contract`/`market`/`volatility` (or point to the module that assembles
+them) so `FeatureFieldMap` can be populated with real values instead of
+staying `NOT_APPLICABLE` by design. `REQUIRED_CODEX_CHANGE = NONE` --
+this is a request for information, not a defect.
