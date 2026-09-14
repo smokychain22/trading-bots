@@ -171,11 +171,14 @@ $$;
 -- UNKNOWN_SUBMISSION status (never resubmitted blindly -- reconciled).
 INSERT INTO trade.order_intent(
   order_intent_id, chain_id, client_order_id, status, instrument_type,
-  option_contract_id, side, position_intent, quantity, limit_price
+  option_contract_id, side, position_intent, quantity, limit_price,
+  execution_tier, canonical_quantity, paper_evidence_quantity,
+  empirical_economics_ready, expected_after_cost_ev
 ) VALUES (
   '00000000-0000-0000-0000-000000000124', '00000000-0000-0000-0000-000000000120',
   'theta-test-client-order-1', 'UNKNOWN_SUBMISSION', 'OPTION',
-  '00000000-0000-0000-0000-000000000112', 'SELL_TO_OPEN', 'SELL_TO_OPEN', 1, 0.80
+  '00000000-0000-0000-0000-000000000112', 'SELL_TO_OPEN', 'SELL_TO_OPEN', 1, 0.80,
+  'PAPER_EVIDENCE', 1, 1, false, NULL
 );
 
 INSERT INTO trade.reconciliation_event(order_intent_id, chain_id, state, detail_json)
