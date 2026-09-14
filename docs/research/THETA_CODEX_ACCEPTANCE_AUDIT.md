@@ -178,3 +178,68 @@ sessions ago -- that audit's other findings (management-cycle orchestrator
 cluster still disconnected, etc.) are UNCHANGED (no diff touched those files)
 and are not repeated here mechanically; see that session's own report for
 their standing status.
+
+## 7. Precise fix spec: the minimal first step to connect active management (still `e17b932`)
+
+The owner asked whether the remaining blockers can just be fixed. They can't
+be fixed from this branch -- only Codex can touch `main`/execution -- but the
+root cause of the `ACTION_NOT_YET_CONNECTED` gap (section 1 above) is now
+precise enough to hand over as a bounded, minimal, low-risk first PR rather
+than a vague "connect everything" ask.
+
+**Root cause, read directly from the code:** `buildManagementActionFrontier`
+in `src/theta/management-action-frontier.ts` computes real feasibility for
+every action in `actionSets[lifecycleState]` (including `CLOSE_FULL` and
+`LET_EXPIRE`), but its final selection step only ever looks for a PASSIVE
+action:
+
+```ts
+const passive = actions.find((action) => ['HOLD', 'RECOVERY_WAIT', 'HOLD_CC'].includes(action.action));
+const selectedAction = passive?.feasibility === 'FEASIBLE' ? passive.action : null;
+```
+
+`decisionState` is then unconditionally `'SYSTEM_HOLD_MISSING_EVIDENCE'`.
+**`CLOSE_FULL` and `LET_EXPIRE` are not even candidates for selection today,
+regardless of their own computed feasibility** -- and critically, neither of
+them is in the `opensNewRisk` set (`ROLL`, `SELL_CC`, `ROLL_CC`, `REDEPLOY`
+only), so neither carries the `EMPIRICAL_ACTION_EV_UNKNOWN` blocker that
+correctly gates the EV-dependent actions. In other words: the empirical-EV
+gate is not what's blocking `CLOSE_FULL`/`LET_EXPIRE` today -- the selection
+function's own hardcoded action list is.
+
+**Minimal required change (two files, both already-existing, no new
+architecture):**
+
+1. `management-action-frontier.ts`: extend the selection candidate set from
+   `['HOLD', 'RECOVERY_WAIT', 'HOLD_CC']` to also include `'CLOSE_FULL'` and
+   `'LET_EXPIRE'` -- the two actions that (a) never open new risk, (b) never
+   require empirical EV under the existing `opensNewRisk` gate, and (c) are
+   the structurally simplest to execute (`LET_EXPIRE` requires no broker
+   order at all; `CLOSE_FULL` requires exactly one `BUY_TO_CLOSE` order,
+   symmetric to the already-built `OPEN_CSP` path's one `SELL_TO_OPEN`
+   order). Do NOT extend it to `ROLL`/`SELL_CC`/`ROLL_CC`/`REDEPLOY` in this
+   same change -- those still correctly require empirical EV readiness and
+   multi-leg plan assembly, a separate, larger piece of work. Set
+   `decisionState: 'ACTION_SELECTED'` when one of these is chosen instead of
+   the passive default.
+2. A new function alongside `assembleMasterPaperEvidencePlan` in
+   `master-paper-plan-assembly.ts` (or a sibling file), e.g.
+   `assembleMasterPaperManagementPlan`, mirroring the existing function's
+   exact validation shape (hard-validity/AEGIS/account/options-level/
+   equivalent-exposure/cost-model/expiry checks) but keyed off
+   `ManagementActionFrontier.selectedAction` instead of
+   `CanonicalStrategyFrontier.primaryAction`, producing a `BUY_TO_CLOSE`
+   `ApprovedMasterPaperActionPlan` for `CLOSE_FULL` and a no-order lifecycle
+   transition (no plan at all -- just advancing `lifecycleState` toward
+   `EXPIRE_OTM`) for `LET_EXPIRE`.
+
+ACCEPTANCE TEST for this specific change: a synthetic `CSP_OPEN` fixture at
+DTE=0 with no economic reason to close should select `LET_EXPIRE`, never a
+forced `CLOSE_FULL` -- directly exercising the exact regression this
+session's `MEICAgent` repo-study dossier flagged (a comparable system
+previously shipped a bug forcing an active close on a position that should
+have been left to expire).
+
+This is offered as the single highest-leverage, lowest-risk next PR for
+Codex -- not a demand, and not something this branch can implement, since it
+touches `src/theta/`/`src/execution/` on `main`.
