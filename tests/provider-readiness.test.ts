@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assertPaperAlpacaUrl, extractDocumentedOperationPaths, optionomicsProbeUrl } from '../src/providers/readiness.js';
+import { assertPaperAlpacaUrl, extractDocumentedOperationPaths, optionomicsProbes, optionomicsProbeUrl } from '../src/providers/readiness.js';
 
 test('accepts the Alpaca paper endpoint only', () => {
   assert.equal(assertPaperAlpacaUrl('https://paper-api.alpaca.markets').hostname, 'paper-api.alpaca.markets');
@@ -16,4 +16,10 @@ test('adds the documented required symbol to the net-flow operation', () => {
   const url = optionomicsProbeUrl('opt.get_flow_net', '/api/v1/flow/net');
   assert.equal(url.pathname, '/api/v1/flow/net');
   assert.equal(url.searchParams.get('symbol'), 'SPY');
+});
+
+test('capability discovery rejects routes absent from the documentation', () => {
+  const probes = optionomicsProbes(['/api/v1/tickers']);
+  assert.deepEqual(probes.map((probe) => probe.path), ['/api/v1/tickers']);
+  assert.equal(probes.some((probe) => probe.path === '/api/v1/stocks/{symbol}/options'), false);
 });

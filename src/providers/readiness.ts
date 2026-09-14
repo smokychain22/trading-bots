@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Environment } from '../config/environment.js';
 import type { AlpacaProviderConfig } from '../theta/alpaca-provider.js';
 
@@ -544,7 +545,7 @@ type OptionomicsProbe = {
   readonly classification: 'RUNTIME_INPUT' | 'RESEARCH_INPUT' | 'REFERENCE_ONLY';
 };
 
-const optionomicsProbes = (documentedPaths: readonly string[]): readonly OptionomicsProbe[] => {
+export const optionomicsProbes = (documentedPaths: readonly string[]): readonly OptionomicsProbe[] => {
   const expected: readonly OptionomicsProbe[] = [
     { capability: 'OPTIONOMICS_AUTHENTICATION', operationAlias: 'opt.list_tickers', path: '/api/v1/tickers', thetaDestination: 'PROVIDER_QUALITY', classification: 'RUNTIME_INPUT' },
     { capability: 'OPTIONOMICS_STOCK_UNIVERSE', operationAlias: 'opt.list_stocks', path: '/api/v1/stocks', thetaDestination: 'R6_RESEARCH', classification: 'RESEARCH_INPUT' },
@@ -585,6 +586,8 @@ export const optionomicsProbeUrl = (operationAlias: string, documentedPath: stri
 
 const responseShape = (value: unknown): {
   readonly keyCount: number;
+  readonly sampledFieldNames: string;
+  readonly schemaFingerprint: string;
   readonly sampledArrayElementCount: number;
   readonly ivFieldPresent: boolean;
   readonly skewFieldPresent: boolean;
@@ -608,8 +611,13 @@ const responseShape = (value: unknown): {
   };
   visit(value, 0);
   const has = (pattern: RegExp): boolean => [...keys].some((key) => pattern.test(key));
+  const safeFieldName = (key: string): boolean => !/(authorization|api.?key|secret|token|password|email)/i.test(key);
+  const sampledFieldNames = [...keys].filter(safeFieldName).sort().slice(0, 120).join(',');
   return {
-    keyCount: keys.size, sampledArrayElementCount,
+    keyCount: keys.size,
+    sampledFieldNames,
+    schemaFingerprint: createHash('sha256').update(sampledFieldNames).digest('hex'),
+    sampledArrayElementCount,
     ivFieldPresent: has(/(^iv$|implied.?vol|iv_rank|iv_percentile)/),
     skewFieldPresent: has(/skew/), termFieldPresent: has(/term/), surfaceFieldPresent: has(/surface/),
     dateOrTimestampFieldPresent: has(/(^date$|timestamp|as_of|observed_at|created_at|updated_at)/),

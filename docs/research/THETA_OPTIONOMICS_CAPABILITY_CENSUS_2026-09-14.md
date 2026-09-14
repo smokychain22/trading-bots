@@ -35,6 +35,7 @@ Migration 029 extends each stored chain observation with:
 - safe request path and documented parameters
 - HTTP status
 - rate-limit limit, remaining, reset, and Retry-After metadata
+- safe response field-name sample and SHA-256 schema fingerprint for schema discovery, with credential-like names excluded
 - documentation reference and contract version
 - SHA-256 credential identity reference, never the email or token
 - provider session date
