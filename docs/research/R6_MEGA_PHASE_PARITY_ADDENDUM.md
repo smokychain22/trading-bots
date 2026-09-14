@@ -1158,3 +1158,50 @@ against already-implemented architecture, per this run's explicit
 "do not build another trading architecture" instruction.
 
 **`REQUIRED_CODEX_CHANGE` count for this run: 0.**
+
+## Parallel research engineering (no main delta): gamma regime + WR illusion detector
+
+origin/main unchanged at `7a68db6`. Per this run's directive ("do not
+return NO_NEW_EVIDENCE merely because main did not move"), searched for
+existing equivalents first (`models/regime_v0.py` already fully
+implements the simple-baseline-before-HMM regime classifier the standing
+directive asks for -- 5 orthogonal axes, versioned thresholds, UNKNOWN
+preserved, HMM explicitly documented as a challenger requiring OOS proof
+-- **COMPLETE, no gap, nothing rebuilt**), then built two genuinely
+missing, non-duplicative pieces:
+
+1. **`gamma_regime_research.py`** -- a gamma-regime classifier matching
+   `regime_v0.py`'s exact discipline byte-for-byte in spirit (versioned
+   policy, required thresholds, UNKNOWN-preserving, reason codes),
+   explicitly built as a CHALLENGER input to `regime_v0`'s axes (per that
+   module's own documented promotion rule: replace one axis only if it
+   beats the baseline OOS), never a silent replacement. Consumes the
+   NOW-CONFIRMED `optionomics_context_metrics.py` fields (`totalGex`,
+   `gammaFlipStrike`). Structurally refuses to classify a GEX sign at all
+   unless the caller explicitly asserts `sign_convention_verified=True`
+   -- since Optionomics' own sign convention remains unverified, this is
+   not a soft caveat but a hard refusal to output a state. `FEATURE_
+   ABLATION_FAMILIES` gained `GEX`/`DEX` as first-order ablations (13->15
+   total), matching the precedent set when `SKEW`/`TERM`/`SURFACE` were
+   split out. 14 tests.
+
+2. **`wr_illusion_detector.py`** -- operationalizes this run's own primary
+   mission question ("is the apparent 70-80% WR real or an accounting
+   illusion?") as five explicit, independently-testable structural
+   checks: many-small-wins-vs-few-unresolved-large-losses, closed-vs-
+   whole-chain WR divergence, open-inventory excluded from the
+   denominator, roll-loss erasure (reporting-path declaration check, a
+   necessary-not-sufficient companion to `episode_economics.whole_
+   episode_pnl`'s own arithmetic invariant), and event-period cherry-
+   picking. Every check returns `None` (never a guessed verdict) until
+   its own specific inputs are known; `any_illusion_confirmed` is
+   likewise `None` until every check has actually run -- a cohort can
+   only be called "clean" once all five have resolved and none
+   triggered, matching the directive's explicit "high WR is interesting
+   only if it coexists with a clean result across every one of these
+   checks" framing. 15 tests.
+
+**1095 Python tests pass** (+15). Security scan: 0 findings.
+`DATASET_ABSENT` still stands -- both modules are exercised only against
+synthetic fixtures and will run the instant real Paper/historical
+episodes exist.

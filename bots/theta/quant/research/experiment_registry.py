@@ -80,6 +80,10 @@ FEATURE_ABLATION_FAMILIES: Tuple[str, ...] = (
     # term_structure_research.py) -- first-order effects must be measured
     # individually before any interaction (e.g. SKEW x OWNERSHIP) is tested.
     "SKEW", "TERM", "SURFACE",
+    # GEX/DEX separated the same way now that gamma_regime_research.py
+    # exists to consume the confirmed Optionomics METRICS fields
+    # (totalGex, gammaFlipStrike, callDeltaExposure/putDeltaExposure).
+    "GEX", "DEX",
 )
 
 ABLATION_DELTA_METRICS: Tuple[str, ...] = (

@@ -74,6 +74,10 @@ _ITEMS: Tuple[PhaseItem, ...] = (
               note="All 14 hypotheses now resolve to at least one experiment_id (7 were previously unlinked: H-H-01/02, H-C-01/02, H-A-02/03/04, H-D-01); FEATURE_ABLATION_FAMILIES gained SKEW/TERM/SURFACE as first-order ablations distinct from the general VOLATILITY bucket, backed by the new dedicated research modules."),
     PhaseItem("R6_OPTIONOMICS_CONTEXT_METRICS", PhaseState.COMPLETE, ("optionomics_context_metrics.py",),
               note="Consumes Codex's confirmed normalizeMetrics field mapping (verified directly against src/theta/optionomics-provider.ts @ 1a00fa9 -- not a guess), preserving KNOWN/UNKNOWN/INVALID exactly. Wires TermMethod.PROVIDER_TERM_METRIC using the confirmed termSlope<-vol_term_structure_slope mapping."),
+    PhaseItem("R6_GAMMA_REGIME", PhaseState.COMPLETE, ("gamma_regime_research.py",),
+              note="Simple rule-based gamma-regime classifier matching models/regime_v0.py's exact discipline (versioned/required thresholds, UNKNOWN preserved, reason codes) -- a CHALLENGER input to regime_v0's axes, never a replacement without OOS evidence. Never asserts GEX-sign-implies-direction; requires explicit sign_convention_verified=True before classifying a sign at all. FEATURE_ABLATION_FAMILIES gained GEX/DEX as first-order ablations backed by this module."),
+    PhaseItem("R6_WR_ILLUSION_DETECTOR", PhaseState.COMPLETE, ("wr_illusion_detector.py",),
+              note="Five structural checks for the primary mission question (\"is the apparent 70-80% WR real or an accounting illusion?\"): many-small-wins/few-unresolved-large-losses, closed-vs-whole-chain WR divergence, open-inventory exclusion, roll-loss erasure, event-period cherry-picking. Every check is None (never a guessed verdict) until its own inputs are known; any_illusion_confirmed is likewise None until every check has actually run."),
 
     # ---- R6 empirical evidence: only real data is missing ----
     PhaseItem("R6_REAL_PIT_DATA", PhaseState.BLOCKED_ON_DATA, ("empirical_pipeline.py",),

@@ -74,8 +74,8 @@ class PolicyCoverageTests(unittest.TestCase):
         for policy in LOSS_POLICIES:
             self.assertIn(f"LOSS-{policy}", EXPERIMENTS_BY_ID)
 
-    def test_all_thirteen_ablation_families_are_registered_as_paired_experiments(self):
-        self.assertEqual(len(FEATURE_ABLATION_FAMILIES), 13)
+    def test_all_fifteen_ablation_families_are_registered_as_paired_experiments(self):
+        self.assertEqual(len(FEATURE_ABLATION_FAMILIES), 15)
         for family in FEATURE_ABLATION_FAMILIES:
             experiment = EXPERIMENTS_BY_ID[f"ABLATE-{family}"]
             self.assertTrue(experiment.parameters["paired"])
