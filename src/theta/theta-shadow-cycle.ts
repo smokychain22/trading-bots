@@ -16,8 +16,9 @@ import { buildFusionSnapshot, hashJson, type FusionSnapshot, type FusionSnapshot
 import type { DataQualityState } from './data-freshness.js';
 import {
   fetchOptionomicsNetFlowWindow, fetchOptionomicsOptionChain, matchOptionomicsContractIdentity,
-  type AlpacaContractIdentity, type NormalizedOptionomicsEntry, type NormalizedOptionomicsFlowWindow, type OptionomicsProviderConfig,
+  type AlpacaContractIdentity, type NormalizedOptionomicsChain, type NormalizedOptionomicsEntry, type NormalizedOptionomicsFlowWindow, type OptionomicsProviderConfig,
 } from './optionomics-provider.js';
+import { buildOptionomicsFeatureSnapshot } from './optionomics-feature-engine.js';
 import { deriveAccountExposure, mergeDerivedExposureIntoAegisInputs, type DerivedAccountExposure } from './account-exposure.js';
 import { deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProviderState, deriveStressGapDetected } from './aegis-derivation.js';
 
@@ -162,6 +163,7 @@ function assembleFusionSnapshotInput(params: {
   readonly quotesQuality: DataQualityState;
   readonly optionomicsOrigin: ProvenanceOrigin;
   readonly optionomicsQuality: DataQualityState;
+  readonly optionomicsChain: NormalizedOptionomicsChain | null;
   readonly optionomicsEntries: readonly NormalizedOptionomicsEntry[];
   readonly optionomicsFlowWindows: readonly NormalizedOptionomicsFlowWindow[];
   readonly optionomicsFlowOrigin: ProvenanceOrigin;
@@ -188,8 +190,29 @@ function assembleFusionSnapshotInput(params: {
   const accountJson: JsonValue = params.account === null ? { fetched: false } : { ...params.account };
   const contractsJson: JsonValue = params.mergedContracts as unknown as JsonValue;
   const optionomicsAttempted = params.optionomicsOrigin !== 'NOT_ATTEMPTED';
+  const optionomicsFeatures = params.optionomicsChain === null ? null : buildOptionomicsFeatureSnapshot({
+    chain: params.optionomicsChain,
+    flowWindows: params.optionomicsFlowWindows,
+    stockPrice: params.mergedContracts[0]?.underlyingLast ?? null,
+    multiplierByContract: new Map(params.mergedContracts
+      .filter((contract): contract is typeof contract & { occSymbol: string } => contract.occSymbol !== null)
+      .map((contract) => [contract.occSymbol, contract.multiplier])),
+  });
+  const optionomicsProviderTimestamp = params.optionomicsChain?.entries.map((entry) => entry.asOf)
+    .filter((value): value is string => value !== null && Number.isFinite(Date.parse(value)) && Date.parse(value) <= Date.parse(params.now))
+    .toSorted((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
   const optionomicsJson: JsonValue = optionomicsAttempted
-    ? ({ optionChain: params.optionomicsEntries, netFlowWindows: params.optionomicsFlowWindows } as unknown as JsonValue)
+    ? ({
+        rawObservation: params.optionomicsChain === null ? null : {
+          responseHash: params.optionomicsChain.responseHash,
+          retrievedAt: params.optionomicsChain.retrievedAt,
+          providerTimestamp: optionomicsProviderTimestamp,
+          payload: params.optionomicsChain.rawPayload,
+        },
+        optionChain: params.optionomicsEntries,
+        netFlowWindows: params.optionomicsFlowWindows,
+        features: optionomicsFeatures,
+      } as unknown as JsonValue)
     : { attempted: false };
 
   // unknownFeatures reflects what actually happened THIS cycle -- when
@@ -539,12 +562,14 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   // Matching its entries to specific Alpaca contracts (exact identity only)
   // happens below, once Alpaca's contract list is known.
   let optionomicsEntries: readonly NormalizedOptionomicsEntry[] = [];
+  let optionomicsChain: NormalizedOptionomicsChain | null = null;
   let optionomicsFlowWindows: readonly NormalizedOptionomicsFlowWindow[] = [];
   let optionomicsEvidence = notAttemptedEvidence();
   let optionomicsFlowEvidence = notAttemptedEvidence();
   if (config.optionomics !== null) {
     const outcome = await fetchOptionomicsOptionChain(config.optionomics, underlying);
     if (outcome.kind === 'VALUE_PRESENT') {
+      optionomicsChain = outcome.value;
       optionomicsEntries = outcome.value.entries;
       optionomicsEvidence = optionomicsEntries.length > 0
         ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
@@ -696,7 +721,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     accountOrigin: accountEvidence.origin, accountQuality: accountEvidence.quality,
     contractsOrigin: contractsEvidence.origin, contractsQuality: contractsEvidence.quality,
     quotesOrigin: quotesEvidence.origin, quotesQuality: quotesEvidence.quality,
-    optionomicsOrigin: optionomicsEvidence.origin, optionomicsQuality: optionomicsEvidence.quality, optionomicsEntries,
+    optionomicsOrigin: optionomicsEvidence.origin, optionomicsQuality: optionomicsEvidence.quality, optionomicsChain, optionomicsEntries,
     optionomicsFlowWindows, optionomicsFlowOrigin: optionomicsFlowEvidence.origin, optionomicsFlowQuality: optionomicsFlowEvidence.quality,
     positions, positionsOrigin: positionsEvidence.origin, positionsQuality: positionsEvidence.quality,
     openOrders, openOrdersOrigin: openOrdersEvidence.origin, openOrdersQuality: openOrdersEvidence.quality,

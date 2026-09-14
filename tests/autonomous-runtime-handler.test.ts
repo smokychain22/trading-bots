@@ -36,11 +36,14 @@ test('local worker identity accepts a complete sanitized identity', () => {
   });
 });
 
-test('local worker operation accepts only the read-only evidence probe selector', () => {
+test('local worker operation accepts only the runtime and read-only evidence selectors', () => {
   assert.equal(parseLocalWorkerOperation({ headers: {} }), 'RUNTIME_CYCLE');
   assert.equal(parseLocalWorkerOperation({ headers: {
     'x-theta-operation': 'provider-evidence-readiness',
   } }), 'PROVIDER_EVIDENCE_READINESS');
+  assert.equal(parseLocalWorkerOperation({ headers: {
+    'x-theta-operation': 'optionomics-quote-qualification',
+  } }), 'OPTIONOMICS_QUOTE_QUALIFICATION');
   assert.equal(parseLocalWorkerOperation({ headers: {
     'x-theta-operation': 'submit-order',
   } }), 'INVALID');

@@ -14,6 +14,7 @@ import { customerStore } from '../customer/customer-store.js';
 import { verifyStoredMasterPaperConnection } from '../customer/master-paper-runtime.js';
 import { PostgresRuntimeCycleStore, runAutonomousRuntimeCycle } from './autonomous-runtime.js';
 import { PostgresWorkerRuntimeStore } from '../worker/postgres-worker-runtime-store.js';
+import { runOptionomicsQuoteQualification, sanitizeQualificationReport } from './optionomics-quote-qualification-runtime.js';
 
 let runtimePool: Pool | null = null;
 
@@ -28,12 +29,13 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
   if (value === undefined) return 'RUNTIME_CYCLE';
   if (value === 'provider-evidence-readiness') return 'PROVIDER_EVIDENCE_READINESS';
+  if (value === 'optionomics-quote-qualification') return 'OPTIONOMICS_QUOTE_QUALIFICATION';
   return 'INVALID';
 }
 
@@ -103,6 +105,15 @@ export default async function autonomousRuntimeHandler(
     return;
   }
   try {
+    if (operation === 'OPTIONOMICS_QUOTE_QUALIFICATION') {
+      if (localIdentity.kind !== 'VALID') {
+        send(response, 400, { error: 'local_worker_identity_required', executionGate: 'LOCKED' });
+        return;
+      }
+      const report = await runOptionomicsQuoteQualification(environment, runtimePool);
+      send(response, 200, { ...sanitizeQualificationReport(report), executionGate: 'LOCKED', ordersSubmitted: 0 });
+      return;
+    }
     if (operation === 'PROVIDER_EVIDENCE_READINESS') {
       if (localIdentity.kind !== 'VALID') {
         send(response, 400, { error: 'local_worker_identity_required', executionGate: 'LOCKED' });

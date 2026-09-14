@@ -72,6 +72,8 @@ export class PostgresThetaCycleStore {
           JSON.stringify(objectField(fusion.snapshot, 'unknownFeatures')), JSON.stringify(fusion.snapshot), fusion.contentHash],
       );
 
+      await this.persistOptionomicsEvidence(client, fusionSnapshotId, fusion.snapshot);
+
       const candidates = await this.persistCandidates(client, fusionSnapshotId, cycle);
       const strategyRouteId = await this.persistRoute(client, fusionSnapshotId, cycle);
       const decisionId = await this.persistDecision(client, fusionSnapshotId, cycle, candidates.candidateSetId, candidates.candidateIds,
@@ -255,6 +257,47 @@ export class PostgresThetaCycleStore {
     return decisionId;
   }
 
+  private async persistOptionomicsEvidence(
+    client: PoolClient,
+    fusionSnapshotId: string,
+    snapshot: Readonly<Record<string, JsonValue>>,
+  ): Promise<void> {
+    const state = jsonObject(snapshot.optionomicsFeatureState);
+    const raw = jsonObject(state.rawObservation);
+    const features = jsonObject(state.features);
+    if (Object.keys(raw).length === 0 || Object.keys(features).length === 0) return;
+    const responseHash = typeof raw.responseHash === 'string' ? raw.responseHash : null;
+    const retrievedAt = typeof raw.retrievedAt === 'string' ? raw.retrievedAt : null;
+    const providerTimestamp = typeof raw.providerTimestamp === 'string' ? raw.providerTimestamp : null;
+    const underlying = typeof features.underlying === 'string' ? features.underlying : null;
+    const schemaVersion = typeof features.schemaVersion === 'string' ? features.schemaVersion : null;
+    if (responseHash === null || retrievedAt === null || underlying === null || schemaVersion === null) {
+      throw new Error('OPTIONOMICS_LAYERED_EVIDENCE_METADATA_INVALID');
+    }
+    const provenance = (Array.isArray(snapshot.sourceProvenance) ? snapshot.sourceProvenance : [])
+      .map((item) => jsonObject(item))
+      .find((item) => item.provider === 'OPTIONOMICS' && item.operationAlias === 'optionomics.get_option_chain');
+    const quality = typeof provenance?.state === 'string' ? provenance.state : 'UNKNOWN';
+    const asOf = typeof provenance?.asOf === 'string' ? provenance.asOf : String(snapshot.decisionTimeUtc);
+    const observationId = deterministicRuntimeUuid(`optionomics-raw:${fusionSnapshotId}:${responseHash}`);
+    await client.query(
+      `INSERT INTO market.optionomics_raw_observation(observation_id,fusion_snapshot_id,operation_alias,underlying,
+        provider_timestamp,ingestion_timestamp,as_of,contract_version,data_quality,response_hash,payload_json)
+       VALUES($1,$2,'optionomics.get_option_chain',$3,$4,$5,$6,'optionomics-option-chain-v1',$7,$8,$9::jsonb)
+       ON CONFLICT(fusion_snapshot_id,operation_alias,response_hash) DO NOTHING`,
+      [observationId, fusionSnapshotId, underlying, providerTimestamp, retrievedAt, asOf, quality, responseHash, JSON.stringify(raw.payload ?? null)],
+    );
+    const featureHash = createHash('sha256').update(JSON.stringify(features)).digest('hex');
+    const featureSnapshotId = deterministicRuntimeUuid(`optionomics-features:${observationId}:${featureHash}`);
+    await client.query(
+      `INSERT INTO market.optionomics_feature_snapshot(feature_snapshot_id,observation_id,fusion_snapshot_id,underlying,
+        observed_at,schema_version,data_quality,feature_state_json,content_hash)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
+       ON CONFLICT(observation_id,schema_version) DO NOTHING`,
+      [featureSnapshotId, observationId, fusionSnapshotId, underlying, retrievedAt, schemaVersion, quality, JSON.stringify(features), featureHash],
+    );
+  }
+
   private async persistPointInTimeEvidence(client:PoolClient,context:ThetaCyclePersistenceContext,
     cycle:ThetaShadowCycleResult,fusionSnapshotId:string,candidateSetId:string|null,
     candidateIds:ReadonlyMap<string,string>,decisionId:string|null):Promise<void> {
@@ -308,6 +351,9 @@ export class PostgresThetaCycleStore {
     const versions=snapshot.versions !== null && typeof snapshot.versions==='object' && !Array.isArray(snapshot.versions)
       ? snapshot.versions as Record<string,JsonValue> : {};
     const optionomicsState=jsonObject(snapshot.optionomicsFeatureState);
+    const optionomicsFeatures=jsonObject(optionomicsState.features);
+    const optionomicsContracts=Array.isArray(optionomicsFeatures.contracts)
+      ? optionomicsFeatures.contracts.map((raw) => jsonObject(raw)) : [];
     const flowWindows=(Array.isArray(optionomicsState.netFlowWindows) ? optionomicsState.netFlowWindows : []).map((raw) => {
       const window=jsonObject(raw);
       const netCalls=Array.isArray(window.netCalls) ? window.netCalls : [];
@@ -322,6 +368,7 @@ export class PostgresThetaCycleStore {
       const persistedId=candidateIds.get(candidate.candidateId); if (persistedId===undefined) continue;
       const contract=contracts.find((item) => item.optionSymbol===candidate.candidateId || item.occSymbol===candidate.candidateId);
       if (contract===undefined) continue;
+      const optionomicsContract=optionomicsContracts.find((item) => item.contractSymbol===contract.occSymbol) ?? {};
       const selected=receipt?.selectedCandidateId===candidate.candidateId;
       const alternative=receipt?.alternatives.find((item) => item.candidateId===candidate.candidateId) ?? null;
       const market={stockPrice:contract.underlyingLast,bid:contract.bid,ask:contract.ask,bidSize:contract.bidSize,
@@ -329,10 +376,13 @@ export class PostgresThetaCycleStore {
       const evidencePayload={candidateId:persistedId,decisionId,fusionSnapshotId,decisionTime:String(snapshot.decisionTimeUtc),
         branch:'THETA_CONVENTIONAL',rank:candidate.rank,selected,contract:{underlying:contract.underlying,
           contractSymbol:contract.occSymbol,optionType:contract.optionType,strike:contract.strike,expiration:contract.expiration,
-          multiplier:contract.multiplier},market,volatility:{iv:contract.iv,ivRank:null,ivPercentile:null,skew:null,
-          termStructure:null,surface:null},technical:{trend:snapshot.regimeState,momentum:null,drawdown:null,realizedVolatility:null},
+          multiplier:contract.multiplier},market,volatility:{iv:contract.iv,ivRank:null,ivPercentile:null,
+          skew:optionomicsFeatures.skew ?? null,termStructure:optionomicsFeatures.termStructure ?? null,
+          surface:optionomicsFeatures.volatilitySurface ?? null,contractVolatility:optionomicsContract.volatility ?? null,
+          marketStructure:optionomicsContract.marketStructure ?? null},technical:{trend:snapshot.regimeState,momentum:null,drawdown:null,realizedVolatility:null},
         event:{state:snapshot.eventState,earningsDistance:null,exDividendState:null},
-        flow:{optionomicsNetFlowWindows:flowWindows,interpretation:'UNMODELED_RESEARCH_CONTEXT'},
+        flow:{optionomicsNetFlowWindows:flowWindows,interpretation:'UNMODELED_RESEARCH_CONTEXT',
+          featureSchemaVersion:optionomicsFeatures.schemaVersion ?? null,unavailableFamilies:optionomicsFeatures.unavailableFamilies ?? []},
         ownership:{state:snapshot.expertPriorState},account:snapshot.accountState,portfolio:snapshot.portfolioExposure,
         aegis:{state:cycle.orchestration?.aegis ?? null},execution:{...market,executable:contract.executable,
           // Execution quality currently decides SUBMIT/SKIP but does not price

@@ -1384,3 +1384,24 @@ RISKS: Structural premium return is descriptive and must never be presented as e
 WHAT THE OTHER AGENT SHOULD REVIEW: Empirical outcomes and strictness diagnostics after enough point-in-time episodes exist. Production TypeScript remains the authority for persistence, scheduling, reconciliation, and execution safety.
 
 NEXT RECOMMENDED TASK: Run the always-on worker during a confirmed options session, collect the first complete structural baseline and near-miss receipts, then use the export to measure coverage and execution replay. Do not submit a Paper order until the full readiness receipt passes.
+## 2026-09-14 Optionomics layered evidence and quote qualification
+
+OWNER: Codex production engineering
+
+TASK: Extend the existing Optionomics and point-in-time evidence paths without changing execution authority.
+
+FILES CHANGED: Optionomics provider, layered feature engine, FusionSnapshot assembly, PostgreSQL cycle persistence, quote-qualification harness, migration 028, tests and professional reference map.
+
+WHAT WAS IMPLEMENTED: Raw authenticated response hashes/payloads now survive normalization. Every real shadow FusionSnapshot carries a versioned layered Optionomics feature snapshot. PostgreSQL stores immutable raw and derived records separately. Candidate evidence consumes the layered volatility and market-structure state. A repeated-symbol qualification harness records observed coverage, two-sided shape and timestamp freshness but remains research-only under the current provider contract.
+
+TESTS RUN: TypeScript check and full Node test suite.
+
+TEST RESULTS: 720 tests, 716 passed and 4 PostgreSQL-dependent tests skipped in the ordinary Node run. Migration 028 and all 28 migration invariants passed against Production Neon. TypeScript and lint passed. Build, security, CI and deployment results are recorded at release completion.
+
+KNOWN LIMITATIONS: Current Optionomics documentation still describes session-recorded research data, so it cannot authorize an order. IV rank, IV percentile, vanna, charm, dark-pool and event families remain unavailable until documented authenticated operations and units are observed. Empirical EV remains unavailable.
+
+RISKS: Provider field meanings and units can change. The raw/derived split and schema versioning make that detectable but do not eliminate provider risk.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Quant review should test feature definitions and determine whether any family adds OOS WholeChain economic value. It must not promote a feature from shape or intuition alone.
+
+NEXT RECOMMENDED TASK: Run migration 028, execute the market-session qualification harness when the session is open, then continue the branch-complete frontier and management policy integration using captured evidence.

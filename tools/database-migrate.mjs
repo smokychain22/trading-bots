@@ -19,7 +19,16 @@ const client = new pg.Client({ connectionString });
 await client.connect();
 try {
   await client.query("SELECT pg_advisory_lock($1)", [863_801_009]);
+  const registry = await client.query("SELECT to_regclass('core.schema_migration')::text AS name");
+  const applied = new Set(registry.rows[0]?.name
+    ? (await client.query("SELECT version FROM core.schema_migration")).rows.map((row) => row.version)
+    : []);
   for (const file of files) {
+    const version = file.replace(/\.sql$/, "");
+    if (applied.has(version)) {
+      process.stdout.write(`skipped ${file}\n`);
+      continue;
+    }
     await client.query(await readFile(resolve(directory, file), "utf8"));
     process.stdout.write(`applied ${file}\n`);
   }

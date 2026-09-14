@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 // R1 parallel slice: production Optionomics REST adapter. Follows the same
 // conventions as alpaca-provider.ts (typed config, injectable fetchImpl,
 // structured provider-error taxonomy, no process.env reads inside this
@@ -41,6 +43,19 @@ export interface OptionomicsProviderConfig {
 
 const defaultNow = (): string => new Date().toISOString();
 const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+const hashRawPayload = (payload: unknown): string => createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+const sensitiveResponseKey = /(?:authorization|api[_-]?key|secret|token|x[_-]?user[_-]?email|x[_-]?user[_-]?token)/i;
+
+function sanitizeProviderPayload(value: unknown, config: Pick<OptionomicsProviderConfig, 'email' | 'apiToken'>): unknown {
+  if (typeof value === 'string' && (value === config.email || value === config.apiToken)) return '[REDACTED]';
+  if (Array.isArray(value)) return value.map((entry) => sanitizeProviderPayload(entry, config));
+  if (value !== null && typeof value === 'object') return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+      key, sensitiveResponseKey.test(key) ? '[REDACTED]' : sanitizeProviderPayload(entry, config),
+    ]),
+  );
+  return value;
+}
 
 const authHeaders = (config: OptionomicsProviderConfig): HeadersInit => ({
   'X-USER-EMAIL': config.email,
@@ -206,6 +221,8 @@ export interface NormalizedOptionomicsEntry {
 export interface NormalizedOptionomicsChain {
   readonly underlying: string;
   readonly retrievedAt: string;
+  readonly responseHash: string;
+  readonly rawPayload: unknown;
   readonly entries: readonly NormalizedOptionomicsEntry[];
   // Pagination is NOT documented for this endpoint at the time this adapter
   // was written -- per standing instruction, this module does not invent
@@ -381,14 +398,14 @@ export async function fetchOptionomicsOptionChain(
       }
       return {
         kind: 'VALUE_PRESENT',
-        value: { underlying: underlyingSymbol, retrievedAt, entries: wrapped.filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object').map((e) => normalizeOneEntry(e, retrievedAt)), pagesFetched: 1, complete: true },
+        value: { underlying: underlyingSymbol, retrievedAt, responseHash: hashRawPayload(body), rawPayload: sanitizeProviderPayload(body, config), entries: wrapped.filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object').map((e) => normalizeOneEntry(e, retrievedAt)), pagesFetched: 1, complete: true },
         httpStatus,
         retrievedAt,
       };
     }
     return {
       kind: 'VALUE_PRESENT',
-      value: { underlying: underlyingSymbol, retrievedAt, entries: body.filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object').map((e) => normalizeOneEntry(e, retrievedAt)), pagesFetched: 1, complete: true },
+      value: { underlying: underlyingSymbol, retrievedAt, responseHash: hashRawPayload(body), rawPayload: sanitizeProviderPayload(body, config), entries: body.filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object').map((e) => normalizeOneEntry(e, retrievedAt)), pagesFetched: 1, complete: true },
       httpStatus,
       retrievedAt,
     };

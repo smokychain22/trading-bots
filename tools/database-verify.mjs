@@ -32,6 +32,7 @@ try {
     "025_execution_pricing_and_tca",
     "026_provider_neutral_execution_lineage",
     "027_paper_active_baseline_and_near_miss",
+    "028_optionomics_layered_evidence",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -73,6 +74,9 @@ try {
     ["trade", "transaction_cost_analysis"],
     ["research", "theta_paper_active_baseline_receipt"],
     ["research", "theta_near_miss_reevaluation_event"],
+    ["market", "optionomics_raw_observation"],
+    ["market", "optionomics_feature_snapshot"],
+    ["research", "optionomics_quote_qualification_run"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -132,6 +136,15 @@ try {
       AND event_object_table='theta_near_miss_reevaluation_event' AND trigger_name='reject_immutable_mutation') AS immutable_near_miss`);
   if(!baselineEvidence.rows[0]?.immutable_receipts||!baselineEvidence.rows[0]?.immutable_near_miss)
     throw new Error('PAPER_ACTIVE_BASELINE_EVIDENCE_PROTECTION_MISSING');
+  const optionomicsEvidence=await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='market'
+      AND event_object_table='optionomics_raw_observation' AND trigger_name='reject_immutable_mutation') AS immutable_raw,
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='market'
+      AND event_object_table='optionomics_feature_snapshot' AND trigger_name='reject_immutable_mutation') AS immutable_features,
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='research'
+      AND event_object_table='optionomics_quote_qualification_run' AND trigger_name='reject_immutable_mutation') AS immutable_qualification`);
+  if(!optionomicsEvidence.rows[0]?.immutable_raw||!optionomicsEvidence.rows[0]?.immutable_features||
+    !optionomicsEvidence.rows[0]?.immutable_qualification) throw new Error('OPTIONOMICS_LAYERED_EVIDENCE_PROTECTION_MISSING');
   const intentNullGuard = await client.query(`SELECT
     pg_get_constraintdef(oid) AS definition, convalidated
     FROM pg_constraint WHERE conrelid='trade.order_intent'::regclass
@@ -236,6 +249,7 @@ try {
     disabledCopyEngineClosure:"ENFORCED",
     shadowVirtualTrader:"ENFORCED",
     paperActiveBaselineEvidence:"ENFORCED",
+    optionomicsLayeredEvidence:"ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
     brokerOrders: orderCount.rows[0]?.count ?? 0,

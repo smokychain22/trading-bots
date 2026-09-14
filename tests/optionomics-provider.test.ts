@@ -351,6 +351,22 @@ test('credential values never appear in a thrown/returned error message', async 
   assert.ok(!outcome.detail.includes('leaky@example.com'));
 });
 
+test('credential-like values echoed by a provider are redacted from retained raw evidence', async () => {
+  const fetchImpl = (async () => jsonResponse(200, [{
+    symbol: 'SPY261016P00500000', api_key: 'SECRET-VALUE-MUST-NOT-LEAK',
+    nested: { token: 'SECRET-VALUE-MUST-NOT-LEAK', email: 'leaky@example.com' },
+  }])) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl, {
+    apiToken: 'SECRET-VALUE-MUST-NOT-LEAK', email: 'leaky@example.com',
+  }), 'SPY');
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  const raw = JSON.stringify(outcome.value.rawPayload);
+  assert.equal(raw.includes('SECRET-VALUE-MUST-NOT-LEAK'), false);
+  assert.equal(raw.includes('leaky@example.com'), false);
+  assert.ok(raw.includes('[REDACTED]'));
+});
+
 // --- Exact contract identity (never fuzzy) ---
 
 const alpacaContracts: readonly AlpacaContractIdentity[] = [
