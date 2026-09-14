@@ -17,6 +17,50 @@
       "applies_to_hypotheses": ["H-Q-01", "H-Q-02"]
     },
     {
+      "source_id": "cboe_weekly_putwrite_wput",
+      "title": "Cboe S&P 500 One-Week PutWrite Index (WPUT)",
+      "tier": "AUDITED_BENCHMARK_INDEX",
+      "publisher": "Cboe Global Markets",
+      "url": "https://cdn.cboe.com/api/global/us_indices/governance/Cboe_One-Week_PutWrite_Indices_Methodology.pdf",
+      "retrieved_via": "WebSearch, 2026-09-14",
+      "verified_claim": "WPUT sells a rolling series of one-week, at-the-money, cash-secured SPX puts held to maturity, rolled every Friday. Per a Cboe-commissioned comparative study (reported via Hedgeweek): WPUT's per-trade premium is smaller than PUT's (monthly) but its AGGREGATE annual premium was higher (52 sales/year vs. 12); WPUT showed lower standard deviation than both PUT and the S&P 500, with max drawdown of ~24.2% vs. ~32.7% for PUT and ~50.9% for the S&P 500 over the study period.",
+      "does_not_prove": "Same single-underlying/ATM/fully-mechanical limitation as the monthly PUT index, applied to a 1-week tenor. Does not validate THETA_HOLD_STRIKE's specific 2-5 DTE window (WPUT's ~5-7 day tenor is adjacent but not identical), nor any delta-targeted (rather than ATM) short-dated policy. The lower-drawdown finding is a single study's comparative result, not an out-of-sample-confirmed universal property of short-DTE put-writing.",
+      "applies_to_hypotheses": ["H-H-01"]
+    },
+    {
+      "source_id": "cboe_30delta_buywrite_bxmd",
+      "title": "Cboe S&P 500 30-Delta BuyWrite Index (BXMD)",
+      "tier": "AUDITED_BENCHMARK_INDEX",
+      "publisher": "Cboe Global Markets",
+      "url": "https://cdn.cboe.com/resources/indices/factsheet/CboeGlobalIndices_BXMD-Index.pdf",
+      "retrieved_via": "WebSearch, 2026-09-14",
+      "verified_claim": "BXMD holds the S&P 500 and writes a monthly OTM SPX call targeted at approximately 30 delta (rather than BXM's at-the-money strike) -- a Cboe-published benchmark for a delta-targeted, rather than ATM, systematic covered-call policy.",
+      "does_not_prove": "Still a single-underlying (broad index), single-DTE (1-month), no-basis/no-ownership-screening, no-event-filtering benchmark. It supports THETA_CC's choice to research a DELTA LATTICE (0.10-0.40) rather than ATM-only as directionally consistent with an existing real benchmark methodology -- it does not validate any specific delta within that lattice, single-stock selection, or THETA's basis/call-away-regret accounting (H-C-01/H-C-02).",
+      "applies_to_hypotheses": ["H-C-01"]
+    },
+    {
+      "source_id": "bondarenko_2019_historical_put_writing_performance",
+      "title": "Historical Performance of Put-Writing Strategies (Oleg Bondarenko, 2019, Cboe-published)",
+      "tier": "PEER_REVIEWED_ACADEMIC",
+      "publisher": "Prof. Oleg Bondarenko (University of Illinois at Chicago), published via Cboe's research library",
+      "url": "https://cdn.cboe.com/resources/education/research_publications/PutWriteCBOE19_v14_by_Prof_Oleg_Bondarenko_as_of_June_14.pdf",
+      "retrieved_via": "WebSearch, 2026-09-14 -- located via search result title/URL; full text not independently re-fetched this pass beyond the abstract-level summary already folded into the cboe_put_index entry's Ennis Knupp figures. Kept as its own entry (rather than only a supporting_url) because the directive explicitly names this author/study as a required source.",
+      "verified_claim": "An academic-style historical performance study (Cboe's own research library, authored by a named finance professor rather than Cboe marketing staff) of put-writing strategies, examining risk/return characteristics across the PUT/WPUT-style benchmark family. Its headline figures overlap with the Ennis Knupp performance numbers already cited under cboe_put_index (~10.32% annualized return, ~9.91% SD).",
+      "does_not_prove": "Same benchmark-index limitations as cboe_put_index/cboe_weekly_putwrite_wput -- a single-underlying, single-DTE, single-moneyness study is not evidence for THETA's multi-underlying, delta/DTE-lattice, actively-managed design. Recorded separately from cboe_put_index per the directive's explicit requirement, not because it adds an independent dataset finding beyond what that entry already states.",
+      "applies_to_hypotheses": ["H-Q-01", "H-Q-02"]
+    },
+    {
+      "source_id": "israelov_tummala_2017_which_index_options",
+      "title": "Which Index Options Should You Sell? (Roni Israelov & Harsha Tummala, AQR, 2017)",
+      "tier": "PEER_REVIEWED_ACADEMIC",
+      "publisher": "AQR Capital Management (working paper; also on SSRN)",
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2990542",
+      "retrieved_via": "WebSearch, 2026-09-14 -- direct WebFetch of the AQR page failed (network/DNS error in this environment); summary drawn from the SSRN abstract and independent secondary summaries (CXO Advisory, paperswithbacktest.com), not the full PDF text.",
+      "verified_claim": "Analyzes historical return/risk properties of equity-index (S&P 500) option-selling positions across the full strike/moneyness/DTE surface, explicitly comparing conclusions under DIFFERENT risk measures (e.g. standard deviation vs. stress-test/tail-loss). Reported finding: front-month options with strikes near-the-money to moderately below the index level were the most compensated to sell PER UNIT OF STRESS-TEST LOSS -- and the paper's own point is that the 'best' strike to sell changes depending on which risk measure is used to judge it.",
+      "does_not_prove": "This is the paper's own central caution, not a defect of this citation: it does not name one universally best strike, and it studies a single broad index (not THETA's specific single-stock underlying universe, DTE lattice beyond front-month, or active management). It directly motivates -- but does not settle -- section 5's requirement to measure CSP compensation under multiple risk definitions (SD, max DD, ES, stress loss, capital-days) rather than assuming one 'best' delta from premium alone.",
+      "applies_to_hypotheses": ["H-Q-01", "H-Q-02"]
+    },
+    {
       "source_id": "cboe_bxm_index",
       "title": "Cboe S&P 500 BuyWrite Index (BXM)",
       "tier": "AUDITED_BENCHMARK_INDEX",

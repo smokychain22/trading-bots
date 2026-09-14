@@ -108,7 +108,8 @@
       "experiment_id": "EXP-H-01",
       "status": "TEST",
       "rationale": "TRD itself frames THETA_HOLD_STRIKE as 'research challenger,' explicitly requiring separate OOS validation before promotion -- never assume its reputation transfers.",
-      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
+      "public_evidence_refs": ["cboe_weekly_putwrite_wput"]
     },
     {
       "hypothesis_id": "H-H-02",
@@ -265,7 +266,7 @@
       "status": "RETAIN",
       "rationale": "Already required by TRD LIFE-004 (the CC optimizer must trade off premium, retained upside, call-away regret, event risk and capital-days, not maximize yield alone). RETAIN at the architecture level; the experiment sizes the effect against BC-1.",
       "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
-      "public_evidence_refs": ["cboe_bxm_index"]
+      "public_evidence_refs": ["cboe_bxm_index", "cboe_30delta_buywrite_bxmd"]
     },
     {
       "hypothesis_id": "H-C-02",

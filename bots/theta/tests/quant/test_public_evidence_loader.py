@@ -76,7 +76,7 @@ class TierRankTests(unittest.TestCase):
 
     def test_none_when_hypothesis_has_no_linked_evidence(self):
         sources = load_public_evidence_sources()
-        self.assertIsNone(strongest_tier_for_hypothesis(sources, "H-H-01"))
+        self.assertIsNone(strongest_tier_for_hypothesis(sources, "H-A-01"))
 
 
 class CrossReferenceTests(unittest.TestCase):
