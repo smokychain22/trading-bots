@@ -66,6 +66,7 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
       runId: randomUUID(), startedAt: now, finishedAt: now, universeFunnel: {}, selectedUnderlying: 'SPY', underlyingRanking: [],
       optionChainComplete: true, optionContractsComplete: true, snapshotContentHash: fusion.contentHash, fusionSnapshot: fusion,
       snapshotValidForNewRisk: true, provenance: 'HYBRID', provenanceDetail: [], blockers: [],
+      strategyFrontier: null,
       orchestration: {
         receipt: { decisionId: 'runtime-receipt', snapshotId: fusion.contentHash, fusionSnapshotHash: fusion.contentHash, timestamp: now,
           underlying: 'SPY', winningAction: 'PASS', selectedCandidateId: null, quantity: 0,

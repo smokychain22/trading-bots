@@ -263,7 +263,10 @@ export class PostgresThetaCycleStore {
   private async persistCanonicalStrategyFrontier(client: PoolClient, fusionSnapshotId: string,
     cycle: ThetaShadowCycleResult): Promise<string | null> {
     const frontier = cycle.strategyFrontier;
-    if (frontier === null) return null;
+    // Older replay fixtures and persisted cycle envelopes predate the canonical
+    // frontier. Treat an absent frontier as legacy input instead of breaking
+    // atomic replay while all newly produced cycles still carry the field.
+    if (frontier == null) return null;
     const frontierId = deterministicRuntimeUuid(`canonical-frontier:${fusionSnapshotId}:${frontier.contentHash}`);
     await client.query(
       `INSERT INTO trade.canonical_strategy_frontier(frontier_id,fusion_snapshot_id,observed_at,contract_version,
