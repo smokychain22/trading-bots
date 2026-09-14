@@ -1,6 +1,6 @@
 export const managementFirstSequence = [
-  'RECONCILE','APPLY_BROKER_LIFECYCLE_EVENTS','REVIEW_OPEN_POSITIONS','RECOMPUTE_PORTFOLIO_RISK',
-  'DISCOVER_NEW_RISK','ENUMERATE_CANDIDATES','EVALUATE_STRATEGIES','AEGIS','DECISION',
+  'RECONCILE', 'MANAGE_OPEN_POSITIONS', 'EXPIRY_ASSIGNMENT', 'OPEN_ORDER_REVIEW', 'PORTFOLIO_RISK',
+  'DISCOVERY', 'STRATEGY_ROUTER', 'STRATEGY_FRONTIER', 'SIZING', 'AEGIS', 'EXECUTION_PREFLIGHT',
 ] as const;
 export type ManagementFirstStage = typeof managementFirstSequence[number];
 
@@ -29,6 +29,6 @@ export class ManagementFirstLoopGuard {
     this.completed.add(stage);
   }
   mayDiscoverNewRisk():boolean {
-    return managementFirstSequence.slice(0,4).every((stage) => this.completed.has(stage));
+    return managementFirstSequence.slice(0,5).every((stage) => this.completed.has(stage));
   }
 }

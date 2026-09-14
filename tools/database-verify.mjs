@@ -35,6 +35,7 @@ try {
     "028_optionomics_layered_evidence",
     "029_optionomics_request_provenance",
     "030_optionomics_context_lineage",
+    "031_canonical_strategy_frontier",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -80,6 +81,7 @@ try {
     ["market", "optionomics_feature_snapshot"],
     ["market", "optionomics_feature_observation_link"],
     ["research", "optionomics_quote_qualification_run"],
+    ["trade", "canonical_strategy_frontier"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -157,6 +159,11 @@ try {
         'documentation_reference','credential_identity_ref_hash','session_date')`);
   if(optionomicsProvenance.rows[0]?.column_count!==8)
     throw new Error('OPTIONOMICS_REQUEST_PROVENANCE_MISSING');
+  const strategyFrontierProtection=await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade'
+      AND event_object_table='canonical_strategy_frontier' AND trigger_name='reject_immutable_mutation') AS immutable_frontier`);
+  if(!strategyFrontierProtection.rows[0]?.immutable_frontier)
+    throw new Error('CANONICAL_STRATEGY_FRONTIER_PROTECTION_MISSING');
   const intentNullGuard = await client.query(`SELECT
     pg_get_constraintdef(oid) AS definition, convalidated
     FROM pg_constraint WHERE conrelid='trade.order_intent'::regclass

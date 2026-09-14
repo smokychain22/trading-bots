@@ -23,7 +23,7 @@ test('dataset export ordering and identity are deterministic',()=>{
   const a=candidate(), b={...candidate(),candidateId:randomUUID()};
   const base={sourceWindow:{start:'2026-09-01T00:00:00Z',end:'2026-09-12T00:00:00Z'},
     exportedAt:'2026-09-12T01:00:00Z',featureSetVersion:'f1',strategyVersions:['s1'],
-    rows:{candidateSets:[],candidates:[a,b],shadowCandidates:[],managementSnapshots:[],lifecycleOutcomes:[],wholeChainOutcomes:[],executionEvidence:[]}};
+    rows:{candidateSets:[],candidates:[a,b],shadowCandidates:[],strategyFrontiers:[],managementSnapshots:[],lifecycleOutcomes:[],wholeChainOutcomes:[],executionEvidence:[]}};
   const first=buildDatasetExport(base),second=buildDatasetExport({...base,rows:{...base.rows,candidates:[b,a]}});
   assert.equal(first.datasetHash,second.datasetHash);
   assert.equal(first.datasetHash,buildDatasetExport({...base,exportedAt:'2026-09-12T02:00:00Z'}).datasetHash);
@@ -34,7 +34,7 @@ test('feature side cannot contain future labels even when outcome tables are sep
   const value=candidate();
   assert.throws(()=>buildDatasetExport({sourceWindow:{start:'2026-09-01T00:00:00Z',end:'2026-09-12T00:00:00Z'},
     exportedAt:'2026-09-12T01:00:00Z',featureSetVersion:'f1',strategyVersions:['s1'],rows:{candidateSets:[],
-      candidates:[{...value,market:{futureOutcome:'WIN'}}],shadowCandidates:[],managementSnapshots:[],lifecycleOutcomes:[],
+      candidates:[{...value,market:{futureOutcome:'WIN'}}],shadowCandidates:[],strategyFrontiers:[],managementSnapshots:[],lifecycleOutcomes:[],
       wholeChainOutcomes:[],executionEvidence:[]}}),/FUTURE_LABEL_IN_FEATURE_PAYLOAD/);
 });
 

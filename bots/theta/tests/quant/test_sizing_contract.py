@@ -19,6 +19,7 @@ def _request(**overrides):
         "policy": {
             "policyVersion": "sizing-v1-test", "riskBudgetQtyCap": 4, "collateralQtyCap": 3,
             "concentrationQtyCap": 5, "assignmentCapacityQtyCap": 6, "reducedStateMultiplier": 0.5,
+            "tailRiskQtyCap": 7, "correlationQtyCap": 8, "liquidityQtyCap": 9,
         },
         "inputs": {
             "equity": 100_000.0, "cash": 50_000.0, "buyingPower": 40_000.0,

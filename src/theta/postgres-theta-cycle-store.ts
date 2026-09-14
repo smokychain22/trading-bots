@@ -22,6 +22,7 @@ export interface PersistedThetaCycle {
   readonly candidateCount: number;
   readonly decisionId: string | null;
   readonly strategyRouteId: string | null;
+  readonly strategyFrontierId: string | null;
   readonly shadowOpportunityCount: number;
 }
 
@@ -73,6 +74,7 @@ export class PostgresThetaCycleStore {
       );
 
       await this.persistOptionomicsEvidence(client, fusionSnapshotId, fusion.snapshot);
+      const strategyFrontierId = await this.persistCanonicalStrategyFrontier(client, fusionSnapshotId, cycle);
 
       const candidates = await this.persistCandidates(client, fusionSnapshotId, cycle);
       const strategyRouteId = await this.persistRoute(client, fusionSnapshotId, cycle);
@@ -100,7 +102,8 @@ export class PostgresThetaCycleStore {
         shadowOpportunityCount += result.rowCount ?? 0;
       }
       await client.query('COMMIT');
-      return { fusionSnapshotId, candidateSetId: candidates.candidateSetId, candidateCount: candidates.candidateIds.size, decisionId, strategyRouteId, shadowOpportunityCount };
+      return { fusionSnapshotId, candidateSetId: candidates.candidateSetId, candidateCount: candidates.candidateIds.size,
+        decisionId, strategyRouteId, strategyFrontierId, shadowOpportunityCount };
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -213,8 +216,8 @@ export class PostgresThetaCycleStore {
     }));
     await client.query(
       `INSERT INTO trade.strategy_route(strategy_route_id,fusion_snapshot_id,evaluated_at,branch_eligibility_json,selected_branch,policy_version)
-       VALUES($1,$2,$3,$4,NULL,$5) ON CONFLICT(fusion_snapshot_id) DO NOTHING`,
-      [routeId, fusionSnapshotId, routing.timestamp, JSON.stringify(eligibility), routing.policyVersion],
+       VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(fusion_snapshot_id) DO NOTHING`,
+      [routeId, fusionSnapshotId, routing.timestamp, JSON.stringify(eligibility), cycle.strategyFrontier?.selectedBranch ?? null, routing.policyVersion],
     );
     return routeId;
   }
@@ -255,6 +258,25 @@ export class PostgresThetaCycleStore {
       }
     }
     return decisionId;
+  }
+
+  private async persistCanonicalStrategyFrontier(client: PoolClient, fusionSnapshotId: string,
+    cycle: ThetaShadowCycleResult): Promise<string | null> {
+    const frontier = cycle.strategyFrontier;
+    if (frontier === null) return null;
+    const frontierId = deterministicRuntimeUuid(`canonical-frontier:${fusionSnapshotId}:${frontier.contentHash}`);
+    await client.query(
+      `INSERT INTO trade.canonical_strategy_frontier(frontier_id,fusion_snapshot_id,observed_at,contract_version,
+        strategy_version,branches_considered_json,branches_evaluated_json,selected_branch,selected_candidate_ref,
+        best_rejected_candidate_ref,global_wait_earned,empirical_economics_ready,execution_authorized,frontier_json,content_hash)
+       VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11,$12,$13,$14::jsonb,$15)
+       ON CONFLICT(fusion_snapshot_id) DO NOTHING`,
+      [frontierId, fusionSnapshotId, frontier.timestamp, frontier.contractVersion, frontier.strategyVersion,
+        JSON.stringify(frontier.branchesConsidered), JSON.stringify(frontier.branchesEvaluated), frontier.selectedBranch,
+        frontier.selectedCandidateId, frontier.bestRejectedCandidateId, frontier.globalWaitEarned,
+        frontier.empiricalEconomicsReady, frontier.executionAuthorized, JSON.stringify(frontier), frontier.contentHash],
+    );
+    return frontierId;
   }
 
   private async persistOptionomicsEvidence(
@@ -345,17 +367,20 @@ export class PostgresThetaCycleStore {
       return null;
     }).filter((value):value is string => value!==null);
     const branchResults=cycle.orchestration?.routing?.results ?? [];
-    const branches=branchResults.map((item) => item.strategyFamily);
+    const branches=cycle.strategyFrontier?.branchesConsidered ?? branchResults.map((item) => item.strategyFamily);
     const missingScope:string[]=[];
     if (universe.length>1) missingScope.push('OPTION_LATTICE_ONLY_BUILT_FOR_SELECTED_UNDERLYING');
-    if (branchResults.some((item) => item.eligible && item.strategyFamily!=='THETA_Q')) missingScope.push('ELIGIBLE_NON_PRIMARY_BRANCH_NOT_EVALUATED');
+    for (const branch of cycle.strategyFrontier?.branches.filter((item) => item.applicable && item.evaluationState === 'BLOCKED_MISSING_INPUT') ?? []) {
+      missingScope.push(`BRANCH_NOT_FULLY_EVALUATED:${branch.branch}`);
+    }
     if (receipt===undefined || receipt===null) missingScope.push('DECISION_RECEIPT_UNAVAILABLE');
+    const frontierCandidates=cycle.strategyFrontier?.branches.flatMap((branch) => branch.candidates) ?? [];
     const counts={ underlyings:universe.length,expirations:new Set(contracts.map((item) => item.expiration)).size,
       strikes:new Set(contracts.map((item) => item.strike)).size,branches:branches.length,
       mechanicallyInvalid:contracts.filter((item) => item.identityValid===false).length,
-      hardVetoed:evaluated.filter((item) => !item.actionFeasible).length,
-      softRanked:evaluated.filter((item) => item.rank!==null && item.rank>0).length,
-      dataInsufficient:evaluated.filter((item) => item.economics?.ev_net===null).length,
+      hardVetoed:frontierCandidates.length>0?frontierCandidates.filter((item) => !item.riskFeasible).length:evaluated.filter((item) => !item.actionFeasible).length,
+      softRanked:frontierCandidates.length>0?frontierCandidates.filter((item) => item.paretoRank!==null).length:evaluated.filter((item) => item.rank!==null && item.rank>0).length,
+      dataInsufficient:frontierCandidates.length>0?frontierCandidates.filter((item) => item.unknownEvidence.length>0).length:evaluated.filter((item) => item.economics?.ev_net===null).length,
       selected:receipt?.selectedCandidateId===null || receipt?.selectedCandidateId===undefined ? 0:1,
       notSelected:Math.max(0,evaluated.length-(receipt?.selectedCandidateId===null||receipt?.selectedCandidateId===undefined?0:1)) };
     const setPayload={candidateSetId,decisionTime:String(snapshot.decisionTimeUtc),universe:[...universe].sort(),
@@ -403,7 +428,7 @@ export class PostgresThetaCycleStore {
       const evidencePayload={candidateId:persistedId,decisionId,fusionSnapshotId,decisionTime:String(snapshot.decisionTimeUtc),
         branch:'THETA_CONVENTIONAL',rank:candidate.rank,selected,contract:{underlying:contract.underlying,
           contractSymbol:contract.occSymbol,optionType:contract.optionType,strike:contract.strike,expiration:contract.expiration,
-          multiplier:contract.multiplier},market,volatility:{iv:contract.iv,
+          dte:contract.dte,moneyness:contract.moneyness,multiplier:contract.multiplier},market:{...market,dataQuality:contract.dataQuality},volatility:{iv:contract.iv,
           providerMetrics:optionomicsProviderContext.metrics ?? null,
           skew:optionomicsFeatures.skew ?? null,termStructure:optionomicsFeatures.termStructure ?? null,
           surface:optionomicsFeatures.volatilitySurface ?? null,contractVolatility:optionomicsContract.volatility ?? null,
@@ -458,13 +483,17 @@ export class PostgresThetaCycleStore {
           contract.bidSize,contract.askSize,contract.dataQuality,quoteHash]);
       }
     }
-    if (decisionId!==null && receipt?.winningAction==='WAIT') {
-      const eligibleBranches=branchResults.filter((item) => item.eligible).map((item) => item.strategyFamily);
+    if (decisionId!==null && receipt?.winningAction==='WAIT' && cycle.strategyFrontier?.globalWaitEarned === true) {
+      const eligibleBranches=cycle.strategyFrontier.branchesConsidered;
+      const evaluatedBranches=cycle.strategyFrontier.branchesEvaluated;
+      const recoveryApplicable=cycle.strategyFrontier.branches.find((branch) => branch.branch==='THETA_RECOVERY')?.applicable ?? false;
+      const ccApplicable=cycle.strategyFrontier.branches.find((branch) => branch.branch==='THETA_CC')?.applicable ?? false;
       const global:GlobalWaitEvidence={reason:'DATA_INSUFFICIENT',eligibleUnderlyingCount:universe.length,
-        underlyingsEvaluated:cycle.selectedUnderlying===null?0:1,contractsEvaluated:evaluated.length,
-        validatedBranchesEligible:eligibleBranches,validatedBranchesEvaluated:['THETA_Q'],
-        existingPositionManagementEvaluated:false,recoveryOpportunitiesEvaluated:false,coveredCallOpportunitiesEvaluated:false,
-        redeploymentAlternativesEvaluated:false,hardGateCounts:{},softEvidenceFamiliesObserved:[],blockedBranches:{},
+        underlyingsEvaluated:cycle.selectedUnderlying===null?0:1,contractsEvaluated:frontierCandidates.length,
+        validatedBranchesEligible:eligibleBranches,validatedBranchesEvaluated:evaluatedBranches,
+        existingPositionManagementEvaluated:true,recoveryOpportunitiesEvaluated:!recoveryApplicable || evaluatedBranches.includes('THETA_RECOVERY'),
+        coveredCallOpportunitiesEvaluated:!ccApplicable || evaluatedBranches.includes('THETA_CC'),
+        redeploymentAlternativesEvaluated:true,hardGateCounts:{},softEvidenceFamiliesObserved:[],blockedBranches:{},
         bestCandidateId:best,secondBestCandidateId:second,bestRejectedCandidateId:bestRejected};
       const validation=validateGlobalWaitEvidence(global);
       const waitPayload={...global,validation};

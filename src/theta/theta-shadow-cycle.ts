@@ -5,7 +5,7 @@ import {
   fetchPositions, fetchStockBars, type AlpacaCalendarSession, type AlpacaMarketClock, type AlpacaOpenOrderSnapshot, type AlpacaPositionSnapshot,
   type AlpacaProviderConfig, type MasterAccountSnapshot,
 } from './alpaca-provider.js';
-import { mergeOptionChain, type OptionomicsChainEntry } from './option-chain-ingestion.js';
+import { mergeOptionChain, type AlpacaOptionContractListing, type AlpacaOptionSnapshot, type OptionomicsChainEntry } from './option-chain-ingestion.js';
 import { computeCurrentDrawdown, computeGapFrequency, computeMaxAdverseGap, computeRealizedVolatility, computeReturn, computeTrendSlope } from './underlying-features.js';
 import { evaluateUniverse, rankEligibleUnderlyings, type RankedUnderlying, type UnderlyingCandidateInput, type UniverseFunnelReport, type UniversePolicy } from './universe-policy.js';
 import { runNewRiskOrchestration, type NewRiskOrchestrationRequest, type NewRiskOrchestrationResult, type RawCandidateInput } from './new-risk-orchestrator.js';
@@ -22,6 +22,7 @@ import {
 import { buildOptionomicsFeatureSnapshot } from './optionomics-feature-engine.js';
 import { deriveAccountExposure, mergeDerivedExposureIntoAegisInputs, type DerivedAccountExposure } from './account-exposure.js';
 import { deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProviderState, deriveStressGapDetected } from './aegis-derivation.js';
+import { buildCanonicalStrategyFrontier, type CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
 
 // R1: runThetaShadowCycle -- the reusable, server-side, non-executing shadow
 // decision cycle. This is the "success condition" deliverable: a single
@@ -115,6 +116,7 @@ export interface ThetaShadowCycleResult {
   readonly fusionSnapshot: FusionSnapshot | null; // complete immutable evidence required by durable persistence and replay
   readonly snapshotValidForNewRisk: boolean | null;
   readonly orchestration: NewRiskOrchestrationResult | null;
+  readonly strategyFrontier: CanonicalStrategyFrontier | null;
   readonly provenance: ShadowCycleProvenance;
   readonly provenanceDetail: readonly string[];
   readonly blockers: readonly string[];
@@ -493,7 +495,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: null, underlyingRanking: ranked,
       optionChainComplete: null, optionContractsComplete: null, snapshotContentHash: null, fusionSnapshot: null, snapshotValidForNewRisk: null,
-      orchestration: null,
+      orchestration: null, strategyFrontier: null,
       provenance: noUnderlyingProvenance, provenanceDetail: ['no eligible underlying survived UniversePolicy this cycle', ...noUnderlyingDetail],
       blockers: ['NO_ELIGIBLE_UNDERLYING'],
     };
@@ -717,48 +719,62 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let quotesEvidence = notAttemptedEvidence();
   const candidates: RawCandidateInput[] = [];
   let mergedContractsForSnapshot: ReturnType<typeof mergeOptionChain> = [];
-  const contractsResult = await (async () => {
+  const hasCoveredStock = positions.some((position) => position.symbol === underlying
+    && position.assetClass === 'us_equity' && (position.quantity ?? 0) > 0);
+  // A covered-call frontier cannot be evaluated from a put-only chain. Calls
+  // are fetched only when broker-confirmed stock exists, which avoids spending
+  // provider budget on an inapplicable management branch.
+  const optionTypes: readonly ('put' | 'call')[] = hasCoveredStock ? ['put', 'call'] : ['put'];
+  const contractItems: AlpacaOptionContractListing[] = [];
+  const snapshotsBySymbol = new Map<string, AlpacaOptionSnapshot>();
+  const contractEvidenceByType: ProviderEvidence[] = [];
+  const quoteEvidenceByType: ProviderEvidence[] = [];
+  for (const optionType of optionTypes) {
     try {
       const result = await fetchOptionContracts(config.alpaca, {
-        underlyingSymbol: underlying, expirationDateGte: config.optionExpirationDateGte, expirationDateLte: config.optionExpirationDateLte,
-        optionType: config.optionType, limit: 100, maxPages: config.maxOptionPages,
+        underlyingSymbol: underlying, expirationDateGte: config.optionExpirationDateGte,
+        expirationDateLte: config.optionExpirationDateLte, optionType, limit: 100, maxPages: config.maxOptionPages,
       });
-      optionContractsComplete = result.complete;
-      contractsEvidence = result.complete
+      contractItems.push(...result.items);
+      optionContractsComplete = optionContractsComplete !== false && result.complete;
+      contractEvidenceByType.push(result.complete
         ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
-        : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
-      return result;
+        : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' });
     } catch (error) {
-      contractsEvidence = failedProviderEvidence(error);
-      blockers.push(`OPTION_CONTRACTS_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
-      return null;
+      contractEvidenceByType.push(failedProviderEvidence(error));
+      optionContractsComplete = false;
+      blockers.push(`OPTION_CONTRACTS_FETCH_FAILED:${optionType.toUpperCase()}:${error instanceof Error ? error.message : 'unknown'}`);
     }
-  })();
-
-  const snapshotsResult = contractsResult === null ? null : await (async () => {
     try {
       const result = await fetchOptionSnapshots(config.alpaca, {
-        underlyingSymbol: underlying, feed: 'indicative', optionType: config.optionType, limit: 100, maxPages: config.maxOptionPages,
+        underlyingSymbol: underlying, feed: 'indicative', optionType, limit: 100, maxPages: config.maxOptionPages,
       });
-      optionChainComplete = result.complete;
-      quotesEvidence = result.complete
+      for (const [symbol, snapshot] of result.snapshots) snapshotsBySymbol.set(symbol, snapshot);
+      optionChainComplete = optionChainComplete !== false && result.complete;
+      quoteEvidenceByType.push(result.complete
         ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
-        : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
-      return result;
+        : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' });
     } catch (error) {
-      quotesEvidence = failedProviderEvidence(error);
-      blockers.push(`OPTION_SNAPSHOTS_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
-      return null;
+      quoteEvidenceByType.push(failedProviderEvidence(error));
+      optionChainComplete = false;
+      blockers.push(`OPTION_SNAPSHOTS_FETCH_FAILED:${optionType.toUpperCase()}:${error instanceof Error ? error.message : 'unknown'}`);
     }
-  })();
+  }
+  const evidenceFor = (evidence: readonly ProviderEvidence[]): ProviderEvidence => ({
+    origin: evidence.some((item) => item.origin === 'REAL_PROVIDER_ERROR') ? 'REAL_PROVIDER_ERROR'
+      : evidence.every((item) => item.origin === 'REAL_PROVIDER') ? 'REAL_PROVIDER' : 'REAL_PROVIDER_UNKNOWN',
+    quality: aggregateProviderQuality(evidence.map((item) => item.quality)),
+  });
+  contractsEvidence = evidenceFor(contractEvidenceByType);
+  quotesEvidence = evidenceFor(quoteEvidenceByType);
 
-  if (contractsResult !== null && snapshotsResult !== null) {
+  if (contractItems.length > 0 && snapshotsBySymbol.size > 0) {
 
     // Exact identity only (OCC symbol, then exact underlying+expiration+
     // type+strike) -- never fuzzy. An Optionomics entry that cannot be
     // proven to match a specific Alpaca contract contributes nothing;
     // that contract's OI/volume/Greeks-fallback simply stay UNKNOWN.
-    const alpacaIdentities: readonly AlpacaContractIdentity[] = contractsResult.items.map((c) => ({
+    const alpacaIdentities: readonly AlpacaContractIdentity[] = contractItems.map((c) => ({
       symbol: c.symbol, underlying, expiration: c.expirationDate, optionType: c.optionType, strike: c.strikePrice,
     }));
     const optionomicsBySymbol = new Map<string, OptionomicsChainEntry>();
@@ -772,8 +788,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     }
 
     const mergedContracts = mergeOptionChain({
-      underlying, asOfDate: decisionTime.slice(0, 10), contracts: contractsResult.items,
-      snapshotsBySymbol: snapshotsResult.snapshots, optionomicsBySymbol, requestedFeed: 'INDICATIVE',
+      underlying, asOfDate: decisionTime.slice(0, 10), contracts: contractItems,
+      snapshotsBySymbol, optionomicsBySymbol, requestedFeed: 'INDICATIVE',
       defaultMultiplierForUnknownContracts: 100, receivedAt, maxQuoteAgeSecondsForExecutable: 30, maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
     });
     mergedContractsForSnapshot = mergedContracts;
@@ -848,6 +864,37 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     policyVersion: config.policyVersion, modelVersions: config.modelVersions,
   });
   const fusionSnapshot = buildFusionSnapshot(snapshotInput);
+  const stockPosition = positions.find((position) => position.symbol === underlying
+    && position.assetClass === 'us_equity' && (position.quantity ?? 0) > 0) ?? null;
+  const stockState = stockPosition === null ? null : {
+    underlying,
+    shares: stockPosition.quantity as number,
+    currentPrice: stockPosition.marketValue !== null && stockPosition.quantity !== null && stockPosition.quantity > 0
+      ? stockPosition.marketValue / stockPosition.quantity : null,
+    brokerCostBasisPerShare: stockPosition.avgEntryPrice,
+    // Whole-chain basis must come from the immutable economic ledger. The
+    // broker position snapshot cannot establish it, so this remains UNKNOWN
+    // until the chain is resolved by the lifecycle/accounting integration.
+    wholeChainEconomicBasisPerShare: null,
+  };
+  const optionomicsSnapshotState = fusionSnapshot.snapshot.optionomicsFeatureState;
+  const optionomicsDerivedContext = optionomicsSnapshotState !== null && typeof optionomicsSnapshotState === 'object'
+    && !Array.isArray(optionomicsSnapshotState)
+    ? optionomicsSnapshotState.features ?? null : null;
+  const strategyFrontierFor = (
+    routing: NewRiskOrchestrationResult['routing'],
+    aegis: NewRiskOrchestrationResult['aegis'],
+  ): CanonicalStrategyFrontier => buildCanonicalStrategyFrontier({
+    snapshotId: fusionSnapshot.contentHash, timestamp: decisionTime, strategyVersion: config.policyVersion,
+    contracts: mergedContractsForSnapshot, routing, stock: stockState, assignmentCapacityQty: null,
+    aegisNewRiskState: aegis?.newRiskState ?? null, eventState: eventContextPopulated ? 'OBSERVED' : null,
+    unmanagedBrokerPositionCount: positions.filter((position) => position.assetClass === 'us_option').length,
+    unevaluatedUnderlyingCount: Math.max(0, ranked.length - 1),
+    // The frontier stores normalized/derived feature state only. Immutable
+    // raw provider payloads already have their own table and are not copied
+    // into every strategy candidate record.
+    optionomicsContext: optionomicsDerivedContext,
+  });
 
   if (candidates.length === 0) {
     const receipt = assembleNoCandidateDecision({
@@ -864,6 +911,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
       snapshotValidForNewRisk: fusionSnapshot.validForNewRisk,
       orchestration: { receipt, ownership: null, regime: null, routing: null, thetaQ: null, candidateEconomics: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [] },
+      strategyFrontier: strategyFrontierFor(null, null),
       provenance, provenanceDetail: detail,
       blockers: [...blockers, 'NO_CANDIDATES_AVAILABLE'],
     };
@@ -880,7 +928,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
       optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
-      snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration, provenance, provenanceDetail: detail, blockers,
+      snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration, strategyFrontier: strategyFrontierFor(null, null),
+      provenance, provenanceDetail: detail, blockers,
     };
   };
 
@@ -932,6 +981,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
       snapshotValidForNewRisk: fusionSnapshot.validForNewRisk,
       orchestration: { receipt, ownership: null, regime: null, routing: null, thetaQ: null, candidateEconomics: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [] },
+      strategyFrontier: strategyFrontierFor(null, null),
       provenance, provenanceDetail: detail, blockers,
     };
   }
@@ -1002,6 +1052,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   return {
     runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
     optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
-    snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration, provenance, provenanceDetail: detail, blockers,
+    snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration,
+    strategyFrontier: strategyFrontierFor(orchestration.routing, orchestration.aegis),
+    provenance, provenanceDetail: detail, blockers,
   };
 }

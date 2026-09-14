@@ -23,6 +23,9 @@ class SizingPolicy:
     collateral_qty_cap: int
     concentration_qty_cap: int
     assignment_capacity_qty_cap: int
+    tail_risk_qty_cap: int
+    correlation_qty_cap: int
+    liquidity_qty_cap: int
     reduced_state_multiplier: float  # applied only under ALLOW_REDUCED, e.g. 0.5 -- required, not defaulted
 
 
@@ -72,6 +75,9 @@ def compute_sizing(policy: SizingPolicy, inputs: SizingInputs) -> SizingResult:
         "COLLATERAL_CAP": policy.collateral_qty_cap,
         "CONCENTRATION_CAP": policy.concentration_qty_cap,
         "ASSIGNMENT_CAPACITY_CAP": policy.assignment_capacity_qty_cap,
+        "TAIL_RISK_CAP": policy.tail_risk_qty_cap,
+        "CORRELATION_CAP": policy.correlation_qty_cap,
+        "LIQUIDITY_CAP": policy.liquidity_qty_cap,
         "BUYING_POWER_AFFORDABLE": collateral_affordable_qty,
         "BROKER_ALLOWED": inputs.broker_allowed_qty,
     }

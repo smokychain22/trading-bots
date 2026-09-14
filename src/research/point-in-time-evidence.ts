@@ -166,6 +166,7 @@ export class PostgresPointInTimeEvidenceStore {
 
 export interface DatasetExportRows {
   readonly candidateSets:readonly unknown[]; readonly candidates:readonly unknown[]; readonly shadowCandidates:readonly unknown[];
+  readonly strategyFrontiers:readonly unknown[];
   readonly managementSnapshots:readonly unknown[]; readonly lifecycleOutcomes:readonly unknown[];
   readonly wholeChainOutcomes:readonly unknown[]; readonly executionEvidence:readonly unknown[];
 }
@@ -182,6 +183,7 @@ export function buildDatasetExport(input:{sourceWindow:{start:string;end:string}
   assertNoFutureLabels(input.rows.candidateSets,'candidateSets');
   assertNoFutureLabels(input.rows.candidates,'candidates');
   assertNoFutureLabels(input.rows.shadowCandidates,'shadowCandidates');
+  assertNoFutureLabels(input.rows.strategyFrontiers,'strategyFrontiers');
   assertNoFutureLabels(input.rows.managementSnapshots,'managementSnapshots');
   const rows = Object.fromEntries(Object.entries(input.rows).map(([key,value]) => [key,[...value].sort(byCanonical)])) as unknown as DatasetExportRows;
   const rowCounts = Object.fromEntries(Object.entries(rows).map(([key,value]) => [key,value.length])) as Readonly<Record<keyof DatasetExportRows,number>>;

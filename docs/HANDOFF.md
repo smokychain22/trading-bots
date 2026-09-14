@@ -1452,6 +1452,28 @@ WHAT THE OTHER AGENT SHOULD REVIEW: Quant review should test feature definitions
 
 NEXT RECOMMENDED TASK: Run migration 028, execute the market-session qualification harness when the session is open, then continue the branch-complete frontier and management policy integration using captured evidence.
 
+## 2026-09-14 R7 Run 1 internal strategy closure
+
+OWNER: Codex production engineering
+
+TASK: Close the internal strategy-router, branch-frontier, sizing, management-intent, global-WAIT, and evidence-export gaps without changing execution authority.
+
+FILES CHANGED: Canonical strategy frontier, shadow cycle, cross-symbol scan evidence, PostgreSQL cycle persistence, dataset export, sizing model and contract, management action frontier, scheduler ordering, migration 031, tests, decisions, and this handoff.
+
+WHAT WAS IMPLEMENTED: All five canonical branches now have independent candidate or action frontiers. The cycle conditionally fetches call contracts only for confirmed stock inventory. Conventional, Hold Strike, Defined Risk, Recovery, and CC retain complete candidates, blockers, unknown evidence, branch-local Pareto ranks, and structural economics. The database stores the full immutable frontier and exports it with R6 evidence. Scan-level global WAIT requires complete underlying and branch exhaustion. Sizing includes tail, correlation, and liquidity caps. Management rolls persist explicit close-old and open-new option intents.
+
+TESTS RUN: Focused TypeScript and Python tests, full Node tests, TypeScript check, migration 031, and all Production Neon invariants. Final lint, build, security, browser, CI, deployment, and worker verification are reported in the release receipt.
+
+TEST RESULTS: Production Neon reports migrations 001 through 031, 56 required tables, one `MASTER_THETA_PAPER`, zero active followers, one encrypted credential, and zero broker orders. All checked protections remain enforced and the execution gate remains locked.
+
+KNOWN LIMITATIONS: Expected after-cost EV and cross-branch action values remain empirically unavailable. Optionomics remains non-executable under its documented session-recorded contract. Alpaca OPRA is not entitled. Whole-chain basis is not inferred from a broker position snapshot and remains unknown until ledger lineage supplies it. The cross-cycle Optionomics context cache is still absent.
+
+RISKS: A structural Pareto reference is an evidence-selection device, not a profitability claim. Hold Strike and Defined Risk remain research-only. Recovery and CC are not cross-ranked when action EV is unknown. The current runtime must not submit any order.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude branch `fc87df3` was reviewed. Its latest research adapters are research-only and do not request a Production runtime change. The exact Production candidate-export keys are `contract.strike`, `contract.expiration`, `contract.optionType`, `contract.dte`, `contract.moneyness`, `market.bid`, `market.ask`, `market.stockPrice`, `market.dataQuality`, and `volatility.iv`. Forward log-moneyness remains unavailable because a defensible forward is not yet exported. Claude's `FeatureFieldMap` must leave that key unset rather than substitute simple moneyness.
+
+NEXT RECOMMENDED TASK: Collect complete market-session frontier evidence, resolve a proven execution-grade option quote, then run Claude's branch-isolated R6 adapters and action-value research against the immutable export. Keep Paper and live order submission locked.
+
 ## 2026-09-14 R7 Run 1 Optionomics context milestone
 
 OWNER: Codex production engineering

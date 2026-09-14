@@ -35,6 +35,9 @@ def _policy(data: dict[str, Any]) -> SizingPolicy:
         collateral_qty_cap=_required(data, "collateralQtyCap"),
         concentration_qty_cap=_required(data, "concentrationQtyCap"),
         assignment_capacity_qty_cap=_required(data, "assignmentCapacityQtyCap"),
+        tail_risk_qty_cap=_required(data, "tailRiskQtyCap"),
+        correlation_qty_cap=_required(data, "correlationQtyCap"),
+        liquidity_qty_cap=_required(data, "liquidityQtyCap"),
         reduced_state_multiplier=_required(data, "reducedStateMultiplier"),
     )
 

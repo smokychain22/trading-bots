@@ -18,6 +18,9 @@ def _policy(**overrides) -> SizingPolicy:
         collateral_qty_cap=10,
         concentration_qty_cap=10,
         assignment_capacity_qty_cap=10,
+        tail_risk_qty_cap=10,
+        correlation_qty_cap=10,
+        liquidity_qty_cap=10,
         reduced_state_multiplier=0.5,
     )
     defaults.update(overrides)
@@ -117,14 +120,14 @@ class MonotonicityInvariantTests(unittest.TestCase):
 
     def test_tightening_each_capacity_never_increases_quantity(self):
         for field in ("risk_budget_qty_cap", "collateral_qty_cap", "concentration_qty_cap",
-                      "assignment_capacity_qty_cap"):
+                      "assignment_capacity_qty_cap", "tail_risk_qty_cap", "correlation_qty_cap", "liquidity_qty_cap"):
             loose = compute_sizing(_policy(**{field: 8}), _inputs())
             tight = compute_sizing(_policy(**{field: 2}), _inputs())
             self.assertLessEqual(tight.quantity, loose.quantity, field)
 
     def test_zero_capacity_on_any_dimension_zeros_quantity(self):
         for field in ("risk_budget_qty_cap", "collateral_qty_cap", "concentration_qty_cap",
-                      "assignment_capacity_qty_cap"):
+                      "assignment_capacity_qty_cap", "tail_risk_qty_cap", "correlation_qty_cap", "liquidity_qty_cap"):
             result = compute_sizing(_policy(**{field: 0}), _inputs())
             self.assertEqual(result.quantity, 0, field)
 

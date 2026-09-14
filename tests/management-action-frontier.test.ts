@@ -30,6 +30,8 @@ test('CSP management enumerates the full required action surface', () => {
   assert.equal(frontier.selectedAction, 'HOLD');
   assert.equal(frontier.secondBestAction, null);
   assert.ok(frontier.actions.find((action) => action.action === 'ROLL')?.blockers.includes('EMPIRICAL_ACTION_EV_UNKNOWN'));
+  assert.deepEqual(frontier.actions.find((action) => action.action === 'ROLL')?.requiredOptionPositionIntents,
+    ['BUY_TO_CLOSE', 'SELL_TO_OPEN']);
 });
 
 test('assigned stock compares recovery wait, stock sale, and covered call without forcing a CC', () => {

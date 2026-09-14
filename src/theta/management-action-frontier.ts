@@ -9,6 +9,7 @@ export type ManagementFrontierAction =
 
 export interface ManagementActionEconomics {
   readonly action: ManagementFrontierAction;
+  readonly requiredOptionPositionIntents: readonly ('SELL_TO_OPEN' | 'BUY_TO_CLOSE' | 'SELL_TO_CLOSE' | 'BUY_TO_OPEN')[];
   readonly feasibility: 'FEASIBLE' | 'INFEASIBLE' | 'UNKNOWN';
   readonly expectedFutureValue: number | null;
   readonly certainEconomicPnl: number | null;
@@ -76,8 +77,12 @@ function evaluateAction(input: ManagementInputState, action: ManagementFrontierA
   // A pre-trade mark is not a confirmed liquidation result. Broker fills and
   // final costs belong to the economic ledger, not this prospective frontier.
   const certainEconomicPnl = null;
+  const requiredOptionPositionIntents: ManagementActionEconomics['requiredOptionPositionIntents'] =
+    action === 'ROLL' || action === 'ROLL_CC' ? ['BUY_TO_CLOSE', 'SELL_TO_OPEN']
+      : action === 'CLOSE_FULL' || action === 'CLOSE_CC' ? ['BUY_TO_CLOSE']
+        : action === 'SELL_CC' ? ['SELL_TO_OPEN'] : [];
   return {
-    action, feasibility, expectedFutureValue: null, certainEconomicPnl,
+    action, requiredOptionPositionIntents, feasibility, expectedFutureValue: null, certainEconomicPnl,
     downsideTailEstimate: null, incrementalCapitalDays: null, executionCostRisk: null,
     opportunityCost: null,
     assignmentInventoryConsequence: action === 'ACCEPT_ASSIGNMENT' ? 'ADD_FUNDED_STOCK_INVENTORY'

@@ -641,3 +641,13 @@ Authenticated schema evidence now supports dedicated read-only adapters for symb
 Production requests follow a versioned per-family cadence and a six-request cycle cap. Calls run sequentially because the Optionomics allowance is shared. Skipped cadence families are not backfilled with guessed or stale values. Raw provider payloads remain immutable and are linked to the normalized feature snapshot by migration 030. This keeps the provider, normalized, derived, decision, and execution layers separate.
 
 The new event context does not derive earnings distance from earnings filings and does not invent ex-dividend coverage. Those values remain unknown. Optionomics remains non-executable under its current session-oriented contract.
+
+## 2026-09-14: canonical branch frontiers remain structural until R6 evidence exists
+
+Every shadow cycle now evaluates the five canonical branches independently. Conventional and Hold Strike enumerate single-leg put structures within their own DTE ranges. Defined Risk enumerates same-expiry put spreads and uses broker multiplier metadata for max-profit and max-loss arithmetic. Recovery compares waiting, selling stock, and covered-call alternatives. The covered-call branch enumerates calls only when Alpaca confirms sufficient stock inventory.
+
+Ranking is structural and Pareto-based. Missing soft evidence is recorded and does not become a veto. Hard contract, quote, account-capacity, and AEGIS failures remain blockers. Cross-branch action utilities are unknown, so simultaneous recovery and covered-call alternatives do not produce an invented winner. Every result states `empiricalEconomicsReady=false` and `executionAuthorized=false`.
+
+Global WAIT is earned only at the bounded cross-symbol scan level after every scheduled underlying and every applicable branch finishes with no risk-feasible action. An incomplete branch, skipped symbol, or unattached open-position management surface prevents the claim. Migration 031 stores the immutable frontier and scan-level proof for deterministic R6 export.
+
+Sizing now takes the minimum of risk-budget, collateral, concentration, assignment, tail-risk, correlation, liquidity, buying-power, and broker caps. Quantity zero remains valid. Roll actions explicitly require `BUY_TO_CLOSE` followed by `SELL_TO_OPEN`, preserving the old leg and realized loss rather than mutating them into the new exposure.

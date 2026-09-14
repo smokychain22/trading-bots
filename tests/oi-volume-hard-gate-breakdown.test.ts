@@ -126,7 +126,8 @@ itMockedProviderRealCodePath('OI/volume hard-gate breakdown: UNKNOWN vs known-be
     opportunityFrontierPolicy: { policyVersion: 'opp-frontier-v1', reducedSizeUncertaintyThreshold: 0.5 },
     maxAcceptableSpreadPct: 1.0,
     candidates,
-    sizingPolicy: { policyVersion: 'sizing-v1', riskBudgetQtyCap: 4, collateralQtyCap: 3, concentrationQtyCap: 5, assignmentCapacityQtyCap: 6, reducedStateMultiplier: 0.5 },
+    sizingPolicy: { policyVersion: 'sizing-v2', riskBudgetQtyCap: 4, collateralQtyCap: 3, concentrationQtyCap: 5, assignmentCapacityQtyCap: 6,
+      tailRiskQtyCap: 6, correlationQtyCap: 6, liquidityQtyCap: 6, reducedStateMultiplier: 0.5 },
     sizingAccount: { equity: 100_000, cash: 50_000, buyingPower: 40_000, brokerAllowedQty: 10 },
     executionQualityPolicy: { policyVersion: 'execq-v1', maxAcceptableSpreadPct: 1.0, minQuoteSizeForFullConfidence: 1, maxQuoteAgeSeconds: 999_999, minAfterCostUtilityToCross: -999_999 },
   });

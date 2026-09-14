@@ -24,7 +24,7 @@ export class PostgresDatasetExporter {
   async export(request:DatasetExportRequest):Promise<DatasetExportArtifact> {
     if (Date.parse(request.end)<Date.parse(request.start)) throw new Error('DATASET_WINDOW_INVALID');
     const parameters = [request.start,request.end];
-    const [sets,candidates,shadow,management,lifecycle,chains,quotes] = await Promise.all([
+    const [sets,candidates,shadow,frontiers,management,lifecycle,chains,quotes] = await Promise.all([
       this.pool.query(`SELECT cse.* FROM trade.candidate_set_evidence cse WHERE decision_time >= $1 AND decision_time < $2 ORDER BY decision_time,candidate_set_id`,parameters),
       this.pool.query(`SELECT cp.* FROM trade.candidate_point_in_time_evidence cp WHERE decision_time >= $1 AND decision_time < $2 ORDER BY decision_time,candidate_id`,parameters),
       this.pool.query(`SELECT so.opportunity_id,so.fusion_snapshot_id,so.observed_at,so.underlying,so.contract_symbol,
@@ -32,6 +32,11 @@ export class PostgresDatasetExporter {
         so.aegis_state,so.recommended_quantity,so.execution_quality_acceptable,so.outcome,so.wait_reason,
         so.rejection_category,so.reasons_json,so.policy_version,so.model_versions_json
         FROM trade.shadow_opportunity so WHERE observed_at >= $1 AND observed_at < $2 ORDER BY observed_at,opportunity_id`,parameters),
+      this.pool.query(`SELECT frontier_id,fusion_snapshot_id,observed_at,contract_version,strategy_version,
+        branches_considered_json,branches_evaluated_json,selected_branch,selected_candidate_ref,
+        best_rejected_candidate_ref,global_wait_earned,empirical_economics_ready,execution_authorized,
+        frontier_json,content_hash FROM trade.canonical_strategy_frontier
+        WHERE observed_at >= $1 AND observed_at < $2 ORDER BY observed_at,frontier_id`,parameters),
       this.pool.query(`SELECT mis.management_input_snapshot_id,mis.fusion_snapshot_id,mis.chain_id,mis.observed_at,
         mis.lifecycle_state,mis.input_json,mis.unknown_fields_json,mis.change_json,mis.content_hash,maf.actions_json,
         maf.selected_action,maf.second_best_action,maf.decision_state,maf.reason_codes_json
@@ -48,7 +53,7 @@ export class PostgresDatasetExporter {
     const versions = [...new Set(candidates.rows.map((row) => String(row.strategy_version)))];
     const artifact = buildDatasetExport({ sourceWindow:{start:request.start,end:request.end},exportedAt:request.exportedAt,
       featureSetVersion:request.featureSetVersion,strategyVersions:versions,rows:{candidateSets:sets.rows,candidates:candidates.rows,
-        shadowCandidates:shadow.rows,managementSnapshots:management.rows,lifecycleOutcomes:lifecycle.rows,
+        shadowCandidates:shadow.rows,strategyFrontiers:frontiers.rows,managementSnapshots:management.rows,lifecycleOutcomes:lifecycle.rows,
         wholeChainOutcomes:chains.rows,executionEvidence:quotes.rows} });
     await this.pool.query(`INSERT INTO research.theta_dataset_export(dataset_export_id,source_window_start,source_window_end,
       exported_at,schema_version,feature_set_version,strategy_versions_json,row_counts_json,dataset_hash)

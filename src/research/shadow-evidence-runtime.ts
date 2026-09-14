@@ -45,6 +45,8 @@ export interface CrossSymbolShadowScanResult {
   readonly symbolsAttempted: number;
   readonly symbolsCompleted: number;
   readonly candidateCount: number;
+  readonly globalWaitEarned: boolean;
+  readonly globalWaitReasons: readonly string[];
   readonly results: readonly ShadowSymbolScanResult[];
 }
 
@@ -85,6 +87,16 @@ export async function runCrossSymbolShadowScan(
     : failed && results.some((result) => result.status === 'COMPLETED') ? 'INTERRUPTED'
       : failed || partial ? 'PARTIAL'
         : 'COMPLETE';
+  const allCompletedFrontiers = results.filter((result) => result.status === 'COMPLETED')
+    .map((result) => result.cycle?.strategyFrontier ?? null);
+  const globalWaitEarned = completeness === 'COMPLETE' && results.length > 0
+    && allCompletedFrontiers.length === results.length
+    && allCompletedFrontiers.every((frontier) => frontier?.globalWaitEarned === true);
+  const globalWaitReasons = globalWaitEarned ? ['FULL_UNIVERSE_EVALUATED', 'ALL_APPLICABLE_BRANCHES_EXHAUSTED']
+    : [...new Set([
+        ...(completeness !== 'COMPLETE' ? [`SCAN_${completeness}`] : []),
+        ...allCompletedFrontiers.flatMap((frontier) => frontier?.globalWaitReasons ?? ['FRONTIER_UNAVAILABLE']),
+      ])].sort();
   return {
     scanId: randomUUID(), mode: shadowRuntimeMode, contractVersion: shadowScanContractVersion,
     startedAt, finishedAt: now(),
@@ -95,7 +107,7 @@ export async function runCrossSymbolShadowScan(
     },
     completeness, missingScope: [...new Set(missingScope)].sort(), symbolsAttempted: scope.length,
     symbolsCompleted: results.filter((result) => result.status === 'COMPLETED').length,
-    candidateCount, results,
+    candidateCount, globalWaitEarned, globalWaitReasons, results,
   };
 }
 
@@ -149,13 +161,15 @@ export class PostgresShadowEvidenceRuntimeStore {
       await client.query('BEGIN');
       await client.query(`INSERT INTO research.theta_shadow_scan_run(scan_id,mode,contract_version,started_at,finished_at,
         universe_version,lattice_version,strategy_version,branches_json,eligible_symbols_json,max_underlyings,
-        symbols_attempted,symbols_completed,candidate_count,completeness_state,missing_scope_json,content_hash)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11,$12,$13,$14,$15,$16::jsonb,$17)
+        symbols_attempted,symbols_completed,candidate_count,completeness_state,missing_scope_json,global_wait_earned,
+        global_wait_evidence_json,content_hash)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11,$12,$13,$14,$15,$16::jsonb,$17,$18::jsonb,$19)
         ON CONFLICT(scan_id) DO NOTHING`, [scan.scanId, scan.mode, scan.contractVersion, scan.startedAt, scan.finishedAt,
         scan.boundary.universeVersion, scan.boundary.latticeVersion, scan.boundary.strategyVersion,
         JSON.stringify(scan.boundary.branches), JSON.stringify(scan.boundary.eligibleSymbols), scan.boundary.maxUnderlyings,
         scan.symbolsAttempted, scan.symbolsCompleted, scan.candidateCount, scan.completeness,
-        JSON.stringify(scan.missingScope), hash]);
+        JSON.stringify(scan.missingScope), scan.globalWaitEarned,
+        JSON.stringify({ earned:scan.globalWaitEarned, reasons:scan.globalWaitReasons }), hash]);
       for (const member of scan.results) {
         const refs = persisted.get(member.symbol);
         await client.query(`INSERT INTO research.theta_shadow_scan_member(scan_id,symbol,ordinal,status,error_code,
