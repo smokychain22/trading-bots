@@ -417,7 +417,7 @@ export class PostgresThetaCycleStore {
     if (candidateSetId===null || cycle.fusionSnapshot===null) return;
     const snapshot=cycle.fusionSnapshot.snapshot;
     const contracts=(Array.isArray(snapshot.contractCandidates) ? snapshot.contractCandidates : []).map((item) => jsonObject(item));
-    const evaluated=cycle.orchestration?.thetaQ?.candidates ?? [];
+    const evaluated=persistenceCandidates(cycle);
     const receipt=cycle.orchestration?.receipt;
     const ranked=evaluated.toSorted((a,b) => (a.rank ?? Number.MAX_SAFE_INTEGER)-(b.rank ?? Number.MAX_SAFE_INTEGER));
     const feasible=ranked.filter((candidate) => candidate.actionFeasible);
