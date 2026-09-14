@@ -277,6 +277,82 @@ test('Optionomics explicit null values are surfaced as a fact, never coerced to 
   );
 });
 
+test('Optionomics uses documented Bearer auth only after the preferred email/token pair returns 401', async () => {
+  const original = globalThis.fetch;
+  const observedSchemes: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    if (url.includes('optionomics.ai/docs/api')) {
+      return new Response('X-USER-EMAIL X-USER-TOKEN Authorization: Bearer &lt;token&gt; <code>GET /api/v1/tickers</code>', {
+        status: 200, headers: { 'content-type': 'text/html' },
+      });
+    }
+    const headers = new Headers(init?.headers);
+    if (headers.has('X-USER-EMAIL')) {
+      observedSchemes.push('EMAIL_TOKEN');
+      return jsonResponse(401, { error: 'unauthorized' });
+    }
+    observedSchemes.push('BEARER');
+    assert.equal(headers.get('Authorization'), `Bearer ${baseEnvironment.OPTIONOMICS_API_KEY}`);
+    assert.equal(headers.has('X-USER-EMAIL'), false);
+    return jsonResponse(200, { tickers: [] });
+  }) as typeof fetch;
+  try {
+    const results = await checkOptionomics(baseEnvironment);
+    const authentication = results.find((result) => result.capability === 'OPTIONOMICS_AUTHENTICATION');
+    assert.deepEqual(observedSchemes, ['EMAIL_TOKEN', 'BEARER']);
+    assert.equal(authentication?.state, 'GOOD');
+    assert.equal(authentication?.details.authenticationVerdict, 'PASS_BEARER');
+    assert.equal(authentication?.details.emailTokenHttpStatus, 401);
+    assert.equal(authentication?.details.bearerHttpStatus, 200);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('Optionomics reports a fixed safe verdict and stops capability probing when both documented auth schemes fail', async () => {
+  const original = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    if (url.includes('optionomics.ai/docs/api')) {
+      return new Response('X-USER-EMAIL X-USER-TOKEN Authorization: Bearer &lt;token&gt; <code>GET /api/v1/tickers</code> <code>GET /api/v1/stocks</code>', {
+        status: 200, headers: { 'content-type': 'text/html' },
+      });
+    }
+    providerCalls += 1;
+    return jsonResponse(401, { error: 'API key expired' });
+  }) as typeof fetch;
+  try {
+    const results = await checkOptionomics(baseEnvironment);
+    const authentication = results.find((result) => result.capability === 'OPTIONOMICS_AUTHENTICATION');
+    assert.equal(providerCalls, 2);
+    assert.equal(results.length, 2, 'reference plus one consolidated authentication result');
+    assert.equal(authentication?.state, 'INVALID');
+    assert.equal(authentication?.details.authenticationVerdict, 'KEY_REVOKED_OR_EXPIRED');
+    assert.equal(JSON.stringify(results).includes(String(baseEnvironment.OPTIONOMICS_API_KEY)), false);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('Optionomics distinguishes an explicit provider email-verification rejection from a generic 401', async () => {
+  await withMockedFetch(
+    [
+      {
+        match: (u) => u.includes('optionomics.ai/docs/api'),
+        respond: () => new Response('X-USER-EMAIL X-USER-TOKEN <code>GET /api/v1/tickers</code>', { status: 200, headers: { 'content-type': 'text/html' } }),
+      },
+      { match: (u) => u.includes('/api/v1/tickers'), respond: () => jsonResponse(401, { message: 'Confirm your email before API access' }) },
+    ],
+    async () => {
+      const results = await checkOptionomics(baseEnvironment);
+      const authentication = results.find((result) => result.capability === 'OPTIONOMICS_AUTHENTICATION');
+      assert.equal(authentication?.details.authenticationVerdict, 'EMAIL_NOT_VERIFIED');
+    },
+  );
+});
+
 test('Optionomics readiness proves each documented exposure metric independently', async () => {
   await withMockedFetch(
     [

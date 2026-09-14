@@ -430,6 +430,39 @@ const optionomicsHeaders = (environment: Environment): HeadersInit => ({
   'X-USER-TOKEN': environment.OPTIONOMICS_API_KEY ?? ''
 });
 
+const optionomicsBearerHeaders = (environment: Environment): HeadersInit => ({
+  Authorization: `Bearer ${environment.OPTIONOMICS_API_KEY ?? ''}`
+});
+
+export type OptionomicsAuthenticationVerdict =
+  | 'PASS_EMAIL_TOKEN'
+  | 'PASS_BEARER'
+  | '401_UNAUTHORIZED'
+  | 'EMAIL_NOT_VERIFIED'
+  | 'KEY_REVOKED_OR_EXPIRED'
+  | 'WRONG_AUTH_SCHEME'
+  | 'PLAN_RESTRICTION'
+  | 'PROVIDER_DEGRADED'
+  | 'UNKNOWN';
+
+const optionomicsAuthenticationVerdict = (
+  body: unknown,
+  status: number,
+): OptionomicsAuthenticationVerdict => {
+  const record = object(body);
+  const safeText = ['error', 'message', 'code', 'detail']
+    .map((key) => typeof record[key] === 'string' ? record[key] : '')
+    .join(' ')
+    .toLowerCase();
+  if (/email.{0,30}(confirm|verif)|(?:confirm|verif).{0,30}email/.test(safeText)) return 'EMAIL_NOT_VERIFIED';
+  if (/(token|key).{0,30}(revok|expir|disabled)|(?:revok|expir|disabled).{0,30}(token|key)/.test(safeText)) return 'KEY_REVOKED_OR_EXPIRED';
+  if (/missing.{0,30}(authorization|header|token)|unsupported.{0,20}auth/.test(safeText)) return 'WRONG_AUTH_SCHEME';
+  if (/(plan|subscription|upgrade|entitlement)/.test(safeText) || status === 402 || status === 403) return 'PLAN_RESTRICTION';
+  if (status === 401) return '401_UNAUTHORIZED';
+  if (status === 429 || status >= 500) return 'PROVIDER_DEGRADED';
+  return 'UNKNOWN';
+};
+
 const alpacaProvenance = (host: string, path: string): CheckResult['provenance'] => ({
   host,
   path,
@@ -642,10 +675,74 @@ export const checkOptionomics = async (environment: Environment): Promise<readon
   });
   if (reference.state !== 'GOOD') return [reference];
   const documentedPaths = extractDocumentedOperationPaths(await (await fetch(optionomicsReferenceUrl)).text());
-  const headers = optionomicsHeaders(environment);
   const probes = optionomicsProbes(documentedPaths);
-  const results: CheckResult[] = [];
+  const authenticationProbe = probes.find((probe) => probe.capability === 'OPTIONOMICS_AUTHENTICATION');
+  if (authenticationProbe === undefined) {
+    const results: CheckResult[] = [];
+    for (const probe of probes) {
+      const url = optionomicsProbeUrl(probe.operationAlias, probe.path);
+      results.push(await readJson('OPTIONOMICS', probe.capability, probe.operationAlias, url, { headers: optionomicsHeaders(environment) }, optionomicsProvenance(url.pathname), (body, response) => {
+        const record = object(body);
+        return {
+          documentedPath: probe.path, thetaDestination: probe.thetaDestination, classification: probe.classification,
+          requestedMetric: probe.expectedHeatmapMetric ?? null,
+          returnedMetric: typeof record.metric === 'string' ? record.metric : null,
+          metricResponseMatchesRequest: probe.expectedHeatmapMetric === undefined ? null : record.metric === probe.expectedHeatmapMetric,
+          responseIsObject: typeof body === 'object' && body !== null,
+          explicitNullObserved: Object.values(record).some((value) => value === null),
+          ...responseShape(body),
+          rateLimitLimitPresent: response.headers.has('x-ratelimit-limit'),
+          rateLimitRemainingPresent: response.headers.has('x-ratelimit-remaining'),
+          rateLimitResetPresent: response.headers.has('x-ratelimit-reset'),
+        };
+      }));
+    }
+    return [reference, ...results];
+  }
+  const authenticationUrl = optionomicsProbeUrl(authenticationProbe.operationAlias, authenticationProbe.path);
+  const evaluateAuthentication = (scheme: 'EMAIL_TOKEN' | 'BEARER') => (body: unknown, response: Response): CheckResult['details'] => ({
+    documentedPath: authenticationProbe.path,
+    thetaDestination: authenticationProbe.thetaDestination,
+    classification: authenticationProbe.classification,
+    authenticationScheme: scheme,
+    authenticationVerdict: response.ok
+      ? scheme === 'EMAIL_TOKEN' ? 'PASS_EMAIL_TOKEN' : 'PASS_BEARER'
+      : optionomicsAuthenticationVerdict(body, response.status),
+    explicitNullObserved: Object.values(object(body)).some((value) => value === null),
+    ...responseShape(body),
+    rateLimitLimitPresent: response.headers.has('x-ratelimit-limit'),
+    rateLimitRemainingPresent: response.headers.has('x-ratelimit-remaining'),
+    rateLimitResetPresent: response.headers.has('x-ratelimit-reset'),
+  });
+  const emailTokenResult = await readJson(
+    'OPTIONOMICS', authenticationProbe.capability, authenticationProbe.operationAlias,
+    authenticationUrl, { headers: optionomicsHeaders(environment) }, optionomicsProvenance(authenticationUrl.pathname),
+    evaluateAuthentication('EMAIL_TOKEN'),
+  );
+  let authenticationResult = emailTokenResult;
+  let headers = optionomicsHeaders(environment);
+  if (emailTokenResult.httpStatus === 401 && reference.details.bearerAuthDocumented === true) {
+    const bearerResult = await readJson(
+      'OPTIONOMICS', authenticationProbe.capability, authenticationProbe.operationAlias,
+      authenticationUrl, { headers: optionomicsBearerHeaders(environment) }, optionomicsProvenance(authenticationUrl.pathname),
+      evaluateAuthentication('BEARER'),
+    );
+    authenticationResult = {
+      ...bearerResult,
+      details: {
+        ...bearerResult.details,
+        emailTokenHttpStatus: emailTokenResult.httpStatus,
+        emailTokenVerdict: emailTokenResult.details.authenticationVerdict ?? 'UNKNOWN',
+        bearerHttpStatus: bearerResult.httpStatus,
+        bearerVerdict: bearerResult.details.authenticationVerdict ?? 'UNKNOWN',
+      },
+    };
+    if (bearerResult.state === 'GOOD') headers = optionomicsBearerHeaders(environment);
+  }
+  const results: CheckResult[] = [authenticationResult];
+  if (authenticationResult.state !== 'GOOD') return [reference, ...results];
   for (const probe of probes) {
+    if (probe.capability === 'OPTIONOMICS_AUTHENTICATION') continue;
     const url = optionomicsProbeUrl(probe.operationAlias, probe.path);
     results.push(await readJson('OPTIONOMICS', probe.capability, probe.operationAlias, url, { headers }, optionomicsProvenance(url.pathname), (body, response) => {
       const record = object(body);
