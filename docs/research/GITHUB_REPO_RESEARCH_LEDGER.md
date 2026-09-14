@@ -448,6 +448,116 @@ License labels are an engineering intake screen, not legal clearance. MIT/Apache
 - Recommended action: REJECT (as a dependency) / NO_CHANGE_REQUIRED (as an architectural pattern, already matched).
 - Integration status: Reference-only, no code copied, no dependency added.
 
+## vnpy/vnpy
+
+- Repository / URL: [vnpy/vnpy](https://github.com/vnpy/vnpy)
+- Commit SHA inspected: `fa5206fe63836f3f8cd1ebd7168fbd19a5e2ff09`
+- Last inspected: 2026-09-14
+- License: MIT (verified via GitHub API).
+- Category: Event-driven trading kernel / OMS architecture reference
+- Relevant files: [vnpy/trader/engine.py](https://github.com/vnpy/vnpy/blob/fa5206fe63836f3f8cd1ebd7168fbd19a5e2ff09/vnpy/trader/engine.py), [vnpy/event/engine.py](https://github.com/vnpy/vnpy/blob/fa5206fe63836f3f8cd1ebd7168fbd19a5e2ff09/vnpy/event/engine.py).
+- Problem solved / algorithms / architecture: `MainEngine` wraps an `EventEngine` and owns pluggable gateway/app/engine components. `OmsEngine` (verified directly, not assumed) maintains `self.ticks`/`self.orders`/`self.trades`/`self.positions`/`self.accounts` as plain dicts, populated ONLY through registered event handlers (`process_tick_event`, `process_order_event`, etc.) subscribed via `event_engine.register(EVENT_TICK, ...)` and so on -- broker/market truth becomes internal state exclusively through the event bus, never through a strategy writing to state directly.
+- Strategy logic: No THETA-relevant strategy content; a broker/OMS architecture only.
+- Risk logic / assumptions: No built-in risk engine inspected in this pass; risk is left to app-level plugins.
+- Execution logic / weaknesses: Gateway abstraction is generic (many venues); no options-specific execution semantics.
+- Backtesting logic: Not reviewed in this pass.
+- Useful tests / invariants: The event-registration-populates-state pattern is directly testable: verify that `OmsEngine`'s dicts change ONLY in response to a dispatched event, never via a direct strategy call -- the same invariant this repository's own `theta-shadow-cycle.ts`/reconciliation-owns-broker-truth design already enforces.
+- Weaknesses: A large multi-venue Python framework; no case to adopt as a dependency for a TypeScript-plus-Python research stack.
+- Look-ahead risk: Not applicable -- architecture-only review.
+- Survivorship-bias risk: Not applicable.
+- THETA relevance / existing equivalent: Confirms, rather than changes, the existing "broker reconciliation owns factual state transitions" discipline already reviewed in `theta-shadow-cycle.ts`/`canonical-strategy-frontier.ts`.
+- Better than current THETA: NO CHANGE -- pattern already matched by existing Production architecture.
+- Recommended action: REJECT (as a dependency) / NO_CHANGE_REQUIRED (as an architectural pattern, already matched).
+- Integration status: Reference-only, no code copied, no dependency added.
+
+## AsyncAlgoTrading/aat
+
+- Repository / URL: [AsyncAlgoTrading/aat](https://github.com/AsyncAlgoTrading/aat)
+- Commit SHA inspected: `c4a07d4102a811c779957033aa26a598c1795cdb`
+- Last inspected: 2026-09-14
+- License: Apache-2.0 (verified via GitHub API).
+- Category: Compact trading-engine reference
+- Relevant files: [aat/engine/engine.py](https://github.com/AsyncAlgoTrading/aat/blob/c4a07d4102a811c779957033aa26a598c1795cdb/aat/engine/engine.py).
+- Problem solved / algorithms / architecture: **Correction to a claim in this session's user-supplied summary**: `aat` does NOT implement four independent top-level engines (Trading/Risk/Execution/Backtest). Verified directly: a single `TradingEngine(Application)` class COMPOSES `StrategyManager`, `OrderManager`, `PortfolioManager`, and `RiskManager` as constituent manager instances (`from .dispatch import StrategyManager, OrderManager, PortfolioManager, RiskManager`). The separation-of-concerns idea is real and worth noting; the "four engines" framing overstates the file-level structure.
+- Strategy logic: No THETA-relevant strategy content.
+- Risk logic / assumptions: `RiskManager` exists as a distinct composed object a strategy request passes through -- the separation THETA already has (sizing/AEGIS as distinct from strategy branches) is the same idea, already implemented.
+- Execution logic / weaknesses: Not reviewed in depth this pass.
+- Backtesting logic: Not reviewed in this pass.
+- Useful tests / invariants: The manager-composition pattern (one coordinating class, several single-responsibility composed managers) is a lighter-weight alternative to a fully separate-module architecture -- worth citing as evidence that "separate concerns" does not require "separate top-level engines," if that question ever comes up.
+- Weaknesses: Small project (834 stars); general architecture reference only, not a maturity signal.
+- Look-ahead risk: Not applicable.
+- Survivorship-bias risk: Not applicable.
+- THETA relevance / existing equivalent: Confirms the existing strategy/sizing/AEGIS separation is not over-engineered relative to a recognized lighter-weight reference.
+- Better than current THETA: NO CHANGE.
+- Recommended action: REJECT (as a dependency) / NO_CHANGE_REQUIRED (pattern already matched, framing in the source summary corrected above).
+- Integration status: Reference-only, no code copied, no dependency added.
+
+## temporalio/temporal
+
+- Repository / URL: [temporalio/temporal](https://github.com/temporalio/temporal)
+- Commit SHA inspected: `9ab3a9f770da20df7d94bcc0030f28eec7b0b947`
+- Last inspected: 2026-09-14
+- License: MIT (verified via GitHub API).
+- Category: Durable-workflow orchestration platform (Go server + multi-language SDKs) -- **not a Python/TypeScript library**, a full distributed system requiring its own server cluster.
+- Relevant files: Architecture reviewed at the conceptual/README level only in this pass; no specific file-level extraction performed, consistent with the "adapt concepts, do not add the dependency" recommendation below.
+- Problem solved / algorithms / architecture: Workflows are durable: a workflow function's execution history is persisted step-by-step, so a crash mid-workflow resumes from the last completed step rather than re-running from the start or losing state entirely.
+- Strategy logic: None -- a general-purpose durable-execution platform.
+- Risk logic / assumptions: N/A.
+- Execution logic / weaknesses: Requires running and operating a Temporal server cluster (or Temporal Cloud) -- a substantial new infrastructure dependency, explicitly rejected for THETA's current single-laptop-worker scale.
+- Backtesting logic: N/A.
+- Useful tests / invariants: The CONCEPT worth adapting without the platform: persist each lifecycle step's confirmed outcome (broker fill, not just "order submitted") before proceeding to the next step, so a restart resumes from confirmed broker truth rather than replaying an already-submitted action. THETA's existing migration-backed `trade.decision`/`broker_reconciliation_snapshot`/lease tables (reviewed in prior rounds) already implement an equivalent idea at smaller scale -- this is a durability PATTERN match, not a capability gap.
+- Weaknesses: Massive operational surface (a whole distributed server) for a single-worker Paper bot; would violate the standing "no new architecture" and "no new dependency without a proven missing capability" rules.
+- Look-ahead risk: N/A.
+- Survivorship-bias risk: N/A.
+- THETA relevance / existing equivalent: `ops.runtime_worker_lease`/`ops.runtime_worker_status` (migration 020) plus the broker-confirmation-before-persist pattern already reviewed in `postgres-disabled-copy-planner.ts` are the lightweight, already-implemented equivalent of Temporal's core durability guarantee, at a scale appropriate to one worker.
+- Better than current THETA: NO -- Temporal solves a distributed-orchestration problem THETA does not have yet (one worker, one broker connection).
+- Recommended action: **ADAPT_CONCEPTS_ONLY, REJECT_AS_DEPENDENCY** -- exactly the source summary's own conclusion, independently confirmed rather than merely repeated.
+- Integration status: Not adopted. No code, no dependency, no server.
+
+## BehaviorTree/BehaviorTree.CPP
+
+- Repository / URL: [BehaviorTree/BehaviorTree.CPP](https://github.com/BehaviorTree/BehaviorTree.CPP)
+- Commit SHA inspected: `9b63b505983f76e46d90d71c87d21fad0001f8a3`
+- Last inspected: 2026-09-14
+- License: MIT (verified via GitHub API).
+- Category: Behavior-tree runtime library -- **C++, not Python/TypeScript**.
+- Relevant files: Architecture reviewed at the repository-structure/README level (`src/`, `include/`, `examples/`) -- language mismatch makes file-level code extraction inapplicable; per the standing "use mechanisms, not code" instruction, no implementation detail is extracted below.
+- Problem solved / algorithms / architecture: Composable reactive trees of async/concurrent actions with runtime-loadable structure, logging, and replay of past transitions.
+- Strategy logic: None -- a general behavior/workflow engine, not a trading strategy.
+- Risk logic / assumptions: N/A.
+- Execution logic / weaknesses: N/A (C++ library; no direct integration path into this repository's TypeScript/Python stack).
+- Backtesting logic: N/A.
+- Useful tests / invariants: N/A -- no code inspected.
+- Weaknesses: Wrong language for this stack; adopting it would mean reimplementing the PATTERN in TypeScript, not using the library.
+- Look-ahead risk: N/A.
+- Survivorship-bias risk: N/A.
+- THETA relevance / existing equivalent: The pattern (reactive fallback tree for OPERATIONAL sequencing, e.g. management action selection or execution retry/cancel/replace flow) is conceptually similar to what `management-action-frontier.ts`'s blocker-accumulation-then-decide structure already does, and to the execution coordinator's retry/replace state handling (`paper-order-coordinator.ts`, reviewed in prior rounds) -- both already exist as explicit conditional logic, not a tree, and there is no demonstrated gap a tree would close.
+- Better than current THETA: NOT DEMONSTRATED -- no concrete THETA workflow was shown to be poorly served by its current explicit-conditional implementation.
+- Recommended action: REJECT (as a dependency, wrong language) / NOT_REQUIRED_CURRENT_PHASE (as a pattern to reimplement -- existing conditional logic already covers the same cases; do not introduce a tree abstraction without a demonstrated concrete gap, per the standing "no new architecture" rule).
+- Integration status: Not adopted.
+
+## pytransitions/transitions
+
+- Repository / URL: [pytransitions/transitions](https://github.com/pytransitions/transitions)
+- Commit SHA inspected: `bd42b38f3627e6bca7274fb4d9af2e105f75da7c`
+- Last inspected: 2026-09-14
+- License: MIT (verified via GitHub API).
+- Category: Finite/hierarchical state-machine library (Python)
+- Relevant files: [transitions/core.py](https://github.com/pytransitions/transitions/blob/bd42b38f3627e6bca7274fb4d9af2e105f75da7c/transitions/core.py) (existence and role confirmed; full API not extracted in this pass).
+- Problem solved / algorithms / architecture: Explicit states, triggers, conditional transitions, callbacks, and (via extensions) hierarchical/async state machines -- a direct fit for a position lifecycle (`NO_POSITION -> SHORT_PUT_OPEN -> ROLL_PENDING -> ASSIGNMENT_PENDING -> STOCK_ASSIGNED -> RECOVERY -> CC_OPEN -> CALL_AWAY_PENDING -> CLOSED`).
+- Strategy logic: None -- a generic state-machine library.
+- Risk logic / assumptions: N/A.
+- Execution logic / weaknesses: A library-level FSM does not itself enforce that transitions are broker-confirmed rather than model-inferred -- that discipline must still come from the caller (THETA's own standing rule: "broker reconciliation owns factual transitions, never inferred from a model").
+- Backtesting logic: N/A.
+- Useful tests / invariants: Illegal-transition rejection (e.g. `SHORT_PUT_OPEN -> CC_OPEN` directly, skipping assignment) is the exact invariant worth testing regardless of whether this library or a hand-rolled equivalent is used.
+- Weaknesses: A Python dependency; THETA's canonical runtime is TypeScript, so direct adoption would require either a Python subprocess boundary (this repository already has several, e.g. `sizing_contract.py`) or a from-scratch TypeScript equivalent.
+- Look-ahead risk: N/A.
+- Survivorship-bias risk: N/A.
+- THETA relevance / existing equivalent: **Verified directly against `origin/main`, resolving the open question below.** `src/theta/management-cycle.ts` documents and implements an explicit `ThetaLifecycleState` type -- an "ELEVEN-state canonical lifecycle machine" (`WAIT`, `CSP_PROPOSED`, `CSP_OPEN`, `BTC_CLOSE`, `EXPIRE_OTM`, `ROLL_DECISION`, `ASSIGNED`, `STOCK_HELD`, `RECOVERY_WAIT`, `CC_PROPOSED`, `CC_OPEN`, `CLOSE_CC`, `CALL_AWAY`, `CLOSE_STOCK`, `REDEPLOY`, `CLOSED` appear as named states/routes) -- routed through a `ROUTE_BY_LIFECYCLE_STATE` lookup table to one of `SHORT_PUT`/`ASSIGNMENT_PENDING`/`STOCK_RECOVERY`/`COVERED_CALL`/`CLOSED`/`UNKNOWN`. States with no defined management decision from a given cycle's perspective route to `UNKNOWN` explicitly rather than being guessed. This is a real, working, hand-rolled TypeScript state machine -- functionally equivalent to what `pytransitions` would provide, already implemented, already tested (per prior-round review of this file's neighbors).
+- Better than current THETA: NO -- the existing hand-rolled TypeScript state machine already provides the exact guarantee (explicit states, fail-closed on an unrouted state) `pytransitions` would add.
+- Recommended action: NO_CHANGE_REQUIRED -- confirmed already implemented; do not add a Python dependency or reimplement this in a new library.
+- Integration status: Not adopted. Verified equivalent already exists in Production.
+
 ## Implemented consequence and retained blockers
 
 The reviewed LEAN holding design reinforces the canonical requirement to value both option and stock inventory. THETA's old ledger returned a numeric total while substituting zero for open option MTM or omitting unmarked stock. The independent fix versions the calculation contract to v2, returns null for incomplete aggregates, exposes deterministic valuation issues, and retains known realized losses. No DB schema, strategy weight, broker endpoint or execution gate changed.
