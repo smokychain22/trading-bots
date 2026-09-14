@@ -47,7 +47,8 @@ export class PostgresDatasetExporter {
         so.strategy_branch AS "strategyBranch",so.ev_net AS "evNet",so.tail_adjusted_ev AS "tailAdjustedEv",
         so.return_per_capital_day AS "returnPerCapitalDay",so.capital_required AS "capitalRequired",so.uncertainty,
         so.aegis_state AS "aegisState",so.recommended_quantity AS "recommendedQuantity",
-        so.execution_quality_acceptable AS "executionQualityAcceptable",so.outcome,so.wait_reason AS "waitReason",
+        so.execution_quality_acceptable AS "executionQualityAcceptable",so.outcome AS "decisionDisposition",
+        so.wait_reason AS "waitReason",
         so.rejection_category AS "rejectionCategory",so.reasons_json AS reasons,so.policy_version AS "policyVersion",
         so.model_versions_json AS "modelVersions"
         FROM trade.shadow_opportunity so WHERE observed_at >= $1 AND observed_at < $2 ORDER BY observed_at,opportunity_id`,parameters),
