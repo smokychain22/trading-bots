@@ -10,8 +10,20 @@ export interface SecretShapeDiagnostics {
   readonly EMAIL_HAS_LEADING_OR_TRAILING_WHITESPACE: boolean;
   readonly TOKEN_HAS_LEADING_OR_TRAILING_WHITESPACE: boolean;
   readonly TOKEN_HAS_NEWLINE: boolean;
+  readonly TOKEN_HAS_CARRIAGE_RETURN: boolean;
+  readonly TOKEN_HAS_LINE_FEED: boolean;
+  readonly TOKEN_HAS_BOM: boolean;
+  readonly TOKEN_HAS_NON_BREAKING_SPACE: boolean;
+  readonly TOKEN_HAS_ZERO_WIDTH_CHARACTER: boolean;
   readonly TOKEN_HAS_OUTER_QUOTES: boolean;
   readonly TOKEN_ALREADY_HAS_BEARER_PREFIX: boolean;
+  readonly TOKEN_IS_SENSITIVE_PLACEHOLDER: boolean;
+  readonly TOKEN_LOOKS_LIKE_JSON: boolean;
+  readonly TOKEN_LOOKS_LIKE_ENV_ASSIGNMENT: boolean;
+  readonly EMAIL_FORMAT_VALID: boolean;
+  readonly EMAIL_UNICODE_NORMALIZATION_CHANGED: boolean;
+  readonly EMAIL_CASE_NORMALIZATION_CHANGED: boolean;
+  readonly TOKEN_FORMAT_VALID: boolean;
 }
 
 export interface SanitizedHttpProbe {
@@ -19,6 +31,11 @@ export interface SanitizedHttpProbe {
   readonly contentType: string | null;
   readonly errorFieldPresent: boolean;
   readonly rateLimitHeadersPresent: boolean;
+  readonly retryAfterPresent: boolean;
+  readonly wwwAuthenticatePresent: boolean;
+  readonly wwwAuthenticateScheme: string | null;
+  readonly requestIdHeader: string | null;
+  readonly serverDatePresent: boolean;
   readonly responseFieldNames: readonly string[];
 }
 
@@ -43,12 +60,18 @@ export interface OptionomicsMcpQualificationReport {
   };
   readonly secretShape: SecretShapeDiagnostics;
   readonly rest: {
-    readonly headerPair: SanitizedHttpProbe;
-    readonly rawBearer: SanitizedHttpProbe;
+    readonly overviewHeaderPair: SanitizedHttpProbe;
+    readonly tickersHeaderPair: SanitizedHttpProbe;
+    readonly overviewRawBearer: SanitizedHttpProbe;
+    readonly tickersRawBearer: SanitizedHttpProbe;
   };
   readonly mcp: {
     readonly headerPairStatus: number | null;
     readonly base64BearerStatus: number | null;
+    readonly headerPairDirectStatus: number | null;
+    readonly base64BearerDirectStatus: number | null;
+    readonly headerPairToolsListStatus: number | null;
+    readonly base64BearerToolsListStatus: number | null;
     readonly authenticatedScheme: 'HEADER_PAIR' | 'BASE64_BEARER' | 'NONE';
     readonly toolCount: number;
     readonly tools: readonly McpToolSummary[];
@@ -84,6 +107,16 @@ export function inspectOptionomicsSecretShape(environment: Environment): SecretS
   const token = environment.OPTIONOMICS_API_KEY ?? '';
   const emailTrimmed = email.trim();
   const tokenTrimmed = token.trim();
+  const emailNormalized = emailTrimmed.normalize('NFKC');
+  const tokenContainerInvalid = tokenTrimmed.length === 0
+    || /^\[SENSITIVE\]$/i.test(tokenTrimmed)
+    || /^bearer\s+/i.test(tokenTrimmed)
+    || /^OPTIONOMICS_API_KEY\s*=/.test(tokenTrimmed)
+    || /^[{[]/.test(tokenTrimmed)
+    || (tokenTrimmed.length >= 2 && (
+      (tokenTrimmed.startsWith('"') && tokenTrimmed.endsWith('"'))
+      || (tokenTrimmed.startsWith("'") && tokenTrimmed.endsWith("'"))
+    ));
   return {
     OPTIONOMICS_EMAIL_PRESENT: email.length > 0,
     OPTIONOMICS_TOKEN_PRESENT: token.length > 0,
@@ -92,11 +125,23 @@ export function inspectOptionomicsSecretShape(environment: Environment): SecretS
     EMAIL_HAS_LEADING_OR_TRAILING_WHITESPACE: email !== emailTrimmed,
     TOKEN_HAS_LEADING_OR_TRAILING_WHITESPACE: token !== tokenTrimmed,
     TOKEN_HAS_NEWLINE: /[\r\n]/.test(token),
+    TOKEN_HAS_CARRIAGE_RETURN: token.includes('\r'),
+    TOKEN_HAS_LINE_FEED: token.includes('\n'),
+    TOKEN_HAS_BOM: token.includes('\uFEFF'),
+    TOKEN_HAS_NON_BREAKING_SPACE: token.includes('\u00A0'),
+    TOKEN_HAS_ZERO_WIDTH_CHARACTER: /[\u200B-\u200D\u2060]/.test(token),
     TOKEN_HAS_OUTER_QUOTES: tokenTrimmed.length >= 2 && (
       (tokenTrimmed.startsWith('"') && tokenTrimmed.endsWith('"'))
       || (tokenTrimmed.startsWith("'") && tokenTrimmed.endsWith("'"))
     ),
     TOKEN_ALREADY_HAS_BEARER_PREFIX: /^bearer\s+/i.test(tokenTrimmed),
+    TOKEN_IS_SENSITIVE_PLACEHOLDER: /^\[SENSITIVE\]$/i.test(tokenTrimmed),
+    TOKEN_LOOKS_LIKE_JSON: /^[{[]/.test(tokenTrimmed),
+    TOKEN_LOOKS_LIKE_ENV_ASSIGNMENT: /^OPTIONOMICS_API_KEY\s*=/.test(tokenTrimmed),
+    EMAIL_FORMAT_VALID: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNormalized),
+    EMAIL_UNICODE_NORMALIZATION_CHANGED: emailTrimmed !== emailNormalized,
+    EMAIL_CASE_NORMALIZATION_CHANGED: emailNormalized !== emailNormalized.toLowerCase(),
+    TOKEN_FORMAT_VALID: !tokenContainerInvalid,
   };
 }
 
@@ -163,12 +208,19 @@ const initializeMcp = async (
   };
 };
 
+const safeWwwAuthenticateScheme = (value: string | null): string | null => {
+  if (value === null) return null;
+  const match = /^([A-Za-z][A-Za-z0-9_-]*)/.exec(value.trim());
+  return match?.[1] ?? 'PRESENT_UNPARSEABLE';
+};
+
 const httpProbe = async (
+  path: '/api/v1/overview' | '/api/v1/tickers',
   headers: Readonly<Record<string, string>>,
   fetchImpl: typeof fetch,
 ): Promise<SanitizedHttpProbe> => {
   try {
-    const response = await fetchImpl('https://optionomics.ai/api/v1/tickers', { method: 'GET', headers });
+    const response = await fetchImpl(`https://optionomics.ai${path}`, { method: 'GET', headers });
     const contentType = response.headers.get('content-type');
     const body: unknown = contentType?.includes('application/json') ? await response.json().catch(() => null) : await response.text().catch(() => '');
     const record = asRecord(body);
@@ -177,10 +229,19 @@ const httpProbe = async (
       contentType,
       errorFieldPresent: record !== null && ('error' in record || 'message' in record),
       rateLimitHeadersPresent: ['x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset'].some((name) => response.headers.has(name)),
+      retryAfterPresent: response.headers.has('retry-after'),
+      wwwAuthenticatePresent: response.headers.has('www-authenticate'),
+      wwwAuthenticateScheme: safeWwwAuthenticateScheme(response.headers.get('www-authenticate')),
+      requestIdHeader: ['x-request-id', 'x-correlation-id', 'traceparent'].find((name) => response.headers.has(name)) ?? null,
+      serverDatePresent: response.headers.has('date'),
       responseFieldNames: record === null ? [] : Object.keys(record).filter(safeFieldName).sort().slice(0, 80),
     };
   } catch {
-    return { status: null, contentType: null, errorFieldPresent: false, rateLimitHeadersPresent: false, responseFieldNames: [] };
+    return {
+      status: null, contentType: null, errorFieldPresent: false, rateLimitHeadersPresent: false,
+      retryAfterPresent: false, wwwAuthenticatePresent: false, wwwAuthenticateScheme: null,
+      requestIdHeader: null, serverDatePresent: false, responseFieldNames: [],
+    };
   }
 };
 
@@ -315,11 +376,22 @@ export async function qualifyOptionomicsProductionSurfaces(
   const rawBearer = { Authorization: `Bearer ${token}` };
   const base64Bearer = { Authorization: `Bearer ${Buffer.from(`${email}:${token}`, 'utf8').toString('base64')}` };
 
-  const [restHeaderPair, restRawBearer, pairSession, base64Session] = await Promise.all([
-    httpProbe(headerPair, fetchImpl),
-    httpProbe(rawBearer, fetchImpl),
+  const directPayload = {
+    jsonrpc: '2.0', id: 91, method: 'tools/call', params: { name: 'market_overview', arguments: {} },
+  } as const;
+  const listPayload = { jsonrpc: '2.0', id: 92, method: 'tools/list', params: {} } as const;
+  const [restOverviewHeaderPair, restTickersHeaderPair, restOverviewRawBearer, restTickersRawBearer,
+    pairSession, base64Session, pairDirect, base64Direct, pairList, base64List] = await Promise.all([
+    httpProbe('/api/v1/overview', headerPair, fetchImpl),
+    httpProbe('/api/v1/tickers', headerPair, fetchImpl),
+    httpProbe('/api/v1/overview', rawBearer, fetchImpl),
+    httpProbe('/api/v1/tickers', rawBearer, fetchImpl),
     initializeMcp('HEADER_PAIR', headerPair, fetchImpl),
     initializeMcp('BASE64_BEARER', base64Bearer, fetchImpl),
+    exchange('https://optionomics.ai/mcp', headerPair, directPayload, null, fetchImpl),
+    exchange('https://optionomics.ai/mcp', base64Bearer, directPayload, null, fetchImpl),
+    exchange('https://optionomics.ai/mcp', headerPair, listPayload, null, fetchImpl),
+    exchange('https://optionomics.ai/mcp', base64Bearer, listPayload, null, fetchImpl),
   ]);
   const session = pairSession.authenticated
     ? pairSession
@@ -330,6 +402,15 @@ export async function qualifyOptionomicsProductionSurfaces(
   let evidence: readonly McpToolEvidence[] = capabilityMatchers.map(({ capability }) => ({
     requestedCapability: capability, matchedTool: null, status: 'NOT_FOUND', httpStatus: null, fieldTypes: {},
   }));
+  const directAuthenticated = (exchangeResult: McpExchange): boolean => exchangeResult.status !== null
+    && exchangeResult.status >= 200 && exchangeResult.status < 300
+    && asRecord(exchangeResult.message?.error) === null
+    && asRecord(exchangeResult.message?.result) !== null;
+  const statelessScheme = directAuthenticated(pairList) || directAuthenticated(pairDirect)
+    ? 'HEADER_PAIR'
+    : directAuthenticated(base64List) || directAuthenticated(base64Direct)
+      ? 'BASE64_BEARER'
+      : null;
   if (session !== null) {
     await exchange('https://optionomics.ai/mcp', session.headers, {
       jsonrpc: '2.0', method: 'notifications/initialized', params: {},
@@ -339,19 +420,36 @@ export async function qualifyOptionomicsProductionSurfaces(
     }, session.sessionId, fetchImpl);
     tools = extractTools(catalog.message, [email, token, base64Bearer.Authorization]);
     evidence = await inspectTools({ ...session, sessionId: catalog.sessionId }, tools, fetchImpl);
+  } else if (statelessScheme !== null) {
+    const catalog = statelessScheme === 'HEADER_PAIR' ? pairList : base64List;
+    const statelessHeaders = statelessScheme === 'HEADER_PAIR' ? headerPair : base64Bearer;
+    tools = extractTools(catalog.message, [email, token, base64Bearer.Authorization]);
+    evidence = await inspectTools({
+      scheme: statelessScheme, headers: statelessHeaders, sessionId: null,
+      initializeStatus: null, authenticated: true,
+    }, tools, fetchImpl);
   }
-  const restAuthenticated = restHeaderPair.status !== null && restHeaderPair.status >= 200 && restHeaderPair.status < 300
-    || restRawBearer.status !== null && restRawBearer.status >= 200 && restRawBearer.status < 300;
-  const mcpAuthenticated = session !== null;
+  const restProbes = [restOverviewHeaderPair, restTickersHeaderPair, restOverviewRawBearer, restTickersRawBearer];
+  const restAuthenticated = restProbes.some((probe) => probe.status !== null && probe.status >= 200 && probe.status < 300);
+  const mcpAuthenticated = session !== null || statelessScheme !== null;
   return {
     generatedAt: new Date().toISOString(),
     runtimeSources: { email: 'OPTIONOMICS_EMAIL', token: 'OPTIONOMICS_API_KEY' },
     secretShape: inspectOptionomicsSecretShape(environment),
-    rest: { headerPair: restHeaderPair, rawBearer: restRawBearer },
+    rest: {
+      overviewHeaderPair: restOverviewHeaderPair,
+      tickersHeaderPair: restTickersHeaderPair,
+      overviewRawBearer: restOverviewRawBearer,
+      tickersRawBearer: restTickersRawBearer,
+    },
     mcp: {
       headerPairStatus: pairSession.initializeStatus,
       base64BearerStatus: base64Session.initializeStatus,
-      authenticatedScheme: session?.scheme ?? 'NONE',
+      headerPairDirectStatus: pairDirect.status,
+      base64BearerDirectStatus: base64Direct.status,
+      headerPairToolsListStatus: pairList.status,
+      base64BearerToolsListStatus: base64List.status,
+      authenticatedScheme: session?.scheme ?? statelessScheme ?? 'NONE',
       toolCount: tools.length,
       tools,
       evidence,

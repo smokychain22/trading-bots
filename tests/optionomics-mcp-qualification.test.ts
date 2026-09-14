@@ -26,8 +26,20 @@ test('secret-shape diagnostics expose booleans only and detect accidental format
     EMAIL_HAS_LEADING_OR_TRAILING_WHITESPACE: true,
     TOKEN_HAS_LEADING_OR_TRAILING_WHITESPACE: true,
     TOKEN_HAS_NEWLINE: true,
+    TOKEN_HAS_CARRIAGE_RETURN: true,
+    TOKEN_HAS_LINE_FEED: true,
+    TOKEN_HAS_BOM: false,
+    TOKEN_HAS_NON_BREAKING_SPACE: false,
+    TOKEN_HAS_ZERO_WIDTH_CHARACTER: false,
     TOKEN_HAS_OUTER_QUOTES: true,
     TOKEN_ALREADY_HAS_BEARER_PREFIX: false,
+    TOKEN_IS_SENSITIVE_PLACEHOLDER: false,
+    TOKEN_LOOKS_LIKE_JSON: false,
+    TOKEN_LOOKS_LIKE_ENV_ASSIGNMENT: false,
+    EMAIL_FORMAT_VALID: true,
+    EMAIL_UNICODE_NORMALIZATION_CHANGED: false,
+    EMAIL_CASE_NORMALIZATION_CHANGED: false,
+    TOKEN_FORMAT_VALID: false,
   });
   assert.equal(JSON.stringify(result).includes('tester@example.com'), false);
   assert.equal(JSON.stringify(result).includes('fake-token'), false);
@@ -38,7 +50,7 @@ test('MCP base64 bearer authenticates, discovers actual tools and returns field 
   const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const headers = new Headers(init?.headers);
-    if (url.endsWith('/api/v1/tickers')) return json(401, { error: 'unauthorized' });
+    if (url.includes('/api/v1/')) return json(401, { error: 'unauthorized' });
     assert.equal(url, 'https://optionomics.ai/mcp');
     const body = JSON.parse(String(init?.body ?? '{}')) as { method?: string; params?: { name?: string } };
     if (headers.has('X-USER-EMAIL')) return json(401, { error: 'unauthorized' });
@@ -82,11 +94,36 @@ test('REST and MCP rejection stays NONE and never fabricates a tool catalog', as
   const fetchImpl = (async () => json(401, { error: 'unauthorized' })) as typeof fetch;
   const report = await qualifyOptionomicsProductionSurfaces(environment, fetchImpl);
   assert.equal(report.authenticatedSurface, 'NONE');
-  assert.equal(report.rest.headerPair.status, 401);
-  assert.equal(report.rest.rawBearer.status, 401);
+  assert.equal(report.rest.overviewHeaderPair.status, 401);
+  assert.equal(report.rest.tickersHeaderPair.status, 401);
+  assert.equal(report.rest.overviewRawBearer.status, 401);
+  assert.equal(report.rest.tickersRawBearer.status, 401);
   assert.equal(report.mcp.headerPairStatus, 401);
   assert.equal(report.mcp.base64BearerStatus, 401);
   assert.equal(report.mcp.toolCount, 0);
   assert.equal(report.mcp.tools.length, 0);
   assert.equal(report.orderSubmission, 'DISABLED');
+});
+
+test('stateless MCP tools/list authenticates when initialize is unsupported', async () => {
+  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    if (url.includes('/api/v1/')) return json(401, { error: 'unauthorized' });
+    const headers = new Headers(init?.headers);
+    const body = JSON.parse(String(init?.body ?? '{}')) as { method?: string; params?: { name?: string } };
+    if (!headers.has('X-USER-EMAIL')) return json(401, { error: 'unauthorized' });
+    if (body.method === 'initialize') return json(400, { error: 'method unsupported' });
+    if (body.method === 'tools/list') return json(200, { jsonrpc: '2.0', id: 92, result: { tools: [
+      { name: 'options_chain', inputSchema: { type: 'object', properties: { symbol: { type: 'string' } }, required: ['symbol'] } },
+    ] } });
+    if (body.method === 'tools/call') return json(200, { jsonrpc: '2.0', id: 91, result: { structuredContent: { records: [] } } });
+    return json(400, { error: 'unexpected test method' });
+  }) as typeof fetch;
+  const report = await qualifyOptionomicsProductionSurfaces(environment, fetchImpl);
+  assert.equal(report.authenticatedSurface, 'MCP');
+  assert.equal(report.mcp.authenticatedScheme, 'HEADER_PAIR');
+  assert.equal(report.mcp.headerPairStatus, 400);
+  assert.equal(report.mcp.headerPairToolsListStatus, 200);
+  assert.equal(report.mcp.toolCount, 1);
+  assert.equal(report.mcp.evidence.find((entry) => entry.requestedCapability === 'OPTIONS_CHAIN')?.status, 'CALLED');
 });
