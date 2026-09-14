@@ -84,6 +84,11 @@ FEATURE_ABLATION_FAMILIES: Tuple[str, ...] = (
     # exists to consume the confirmed Optionomics METRICS fields
     # (totalGex, gammaFlipStrike, callDeltaExposure/putDeltaExposure).
     "GEX", "DEX",
+    # VANNA/CHARM confirmed accessible (Codex canonical main a36ac88/92f9fc1:
+    # separate gamma/vanna/charm exposure heatmap requests, each validated to
+    # echo its own requested `metric`) -- optionomics_exposure_heatmap.py
+    # consumes them. Units/sign convention remain provider-unverified.
+    "VANNA", "CHARM",
 )
 
 ABLATION_DELTA_METRICS: Tuple[str, ...] = (

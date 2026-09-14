@@ -1319,3 +1319,69 @@ changed; no test suite run. `DATASET_ABSENT` still stands.
 
 **`REQUIRED_CODEX_CHANGE` = NONE.** Codex's own conclusion is
 independently reconfirmed, not contradicted.
+
+## Codex delta review: `712b81a..92f9fc1` (Vanna/Charm confirmed + ledger convergence)
+
+Three commits: reconciliation fix (already independently verified last
+round), a ledger commit ("verify five orchestration-pattern repos with
+real evidence") whose content is **identical to this branch's own prior
+commit** -- Codex integrated this branch's research documentation
+directly into canonical main (docs-only, no conflict, expected
+collaboration pattern, not investigated further), and the substantive new
+work: **Vanna and Charm exposure heatmaps are now confirmed accessible**
+(`a36ac88`/`92f9fc1`).
+
+### Vanna/Charm: real, confirmed, correctly disciplined
+
+Read `optionomics-provider.ts` directly: separate gamma/Vanna/Charm
+heatmap requests via the same `/heatmap` endpoint with a `metric` query
+parameter, each normalizer validating the response ECHOES the exact
+requested metric (`if (envelope.metric !== expectedMetric) return null`)
+before treating it as populated -- a real defensive check, not merely
+requested and assumed. Confirmed in Production: "Production returned HTTP
+200 populated gamma, Vanna, and Charm heatmap schemas" (Codex's own
+handoff). `valueUnits: 'PROVIDER_REPORTED_UNVERIFIED'`/`signConvention:
+'PROVIDER_DEFINITION_UNVERIFIED'` still carried on every grid -- Codex's
+own known limitation stands: "Vanna/Charm units, sign convention,
+methodology, and point-in-time availability still require provider
+documentation or empirical research before quantitative use."
+
+Also verified `src/providers/readiness.ts`'s capability-census probe
+layer: auth-documented flags (`preferredHeaderAuthDocumented`/
+`bearerAuthDocumented`) are now derived from actually regex-matching the
+fetched reference text, rather than the previous hardcoded `true`/`false`
+literals -- independently matches this branch's own WebFetch finding last
+round that the public docs mention both `X-USER-EMAIL`/`X-USER-TOKEN`
+headers and Bearer auth. A new `metricResponseMatchesRequest` cross-check
+exists at the census level too. **NO_CHANGE_REQUIRED** -- correctly
+classified `RESEARCH_INPUT`, no bypass of the runtime/research separation
+found.
+
+### New research module: `optionomics_exposure_heatmap.py`
+
+Consumes the confirmed heatmap grid shape (distinct from the scalar
+METRICS shape `optionomics_context_metrics.py` already consumes).
+`parse_exposure_heatmap` refuses to parse a grid whose `metric` field
+doesn't match the requested one (mirroring Codex's own metric-echo
+discipline), and every result carries the unverified units/sign
+convention through unchanged. `nearest_cell_to_strike`/`grid_value_range`
+are purely STRUCTURAL summaries (closest cell, min/max) -- neither
+interprets a cell's sign or magnitude as a directional claim.
+`FEATURE_ABLATION_FAMILIES` gained `VANNA`/`CHARM` as first-order
+ablations (15->17), now that real, confirmed provider access backs them
+(previously withheld as speculative per the standing "no premature
+ablation entries" discipline). 11 new tests.
+
+**Paper-evidence tier / live-isolation audit (this run's sections 3-4):**
+no `PAPER_EVIDENCE` vs `EMPIRICALLY_PROMOTED_PAPER` vs `LIVE` type
+separation exists yet in this delta -- the directive describes this as
+something Codex is "being asked" to build (future tense), not something
+already delivered to review. Reporting this honestly as **NOT YET
+IMPLEMENTED** rather than fabricating a PASS/FAIL verdict against code
+that doesn't exist yet. The existing safety chain (hard validity / AEGIS
+/ execution-quote qualification / sizing caps, all independently verified
+correct in prior rounds) remains intact and unchanged in this delta.
+
+**1106 Python tests pass** (+11). Security scan: 0 findings.
+`DATASET_ABSENT` still stands. **`REQUIRED_CODEX_CHANGE` count for this
+run: 0.**

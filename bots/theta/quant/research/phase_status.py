@@ -78,6 +78,8 @@ _ITEMS: Tuple[PhaseItem, ...] = (
               note="Simple rule-based gamma-regime classifier matching models/regime_v0.py's exact discipline (versioned/required thresholds, UNKNOWN preserved, reason codes) -- a CHALLENGER input to regime_v0's axes, never a replacement without OOS evidence. Never asserts GEX-sign-implies-direction; requires explicit sign_convention_verified=True before classifying a sign at all. FEATURE_ABLATION_FAMILIES gained GEX/DEX as first-order ablations backed by this module."),
     PhaseItem("R6_WR_ILLUSION_DETECTOR", PhaseState.COMPLETE, ("wr_illusion_detector.py",),
               note="Five structural checks for the primary mission question (\"is the apparent 70-80% WR real or an accounting illusion?\"): many-small-wins/few-unresolved-large-losses, closed-vs-whole-chain WR divergence, open-inventory exclusion, roll-loss erasure, event-period cherry-picking. Every check is None (never a guessed verdict) until its own inputs are known; any_illusion_confirmed is likewise None until every check has actually run."),
+    PhaseItem("R6_EXPOSURE_HEATMAP", PhaseState.COMPLETE, ("optionomics_exposure_heatmap.py",),
+              note="Consumes Codex's now-confirmed gamma/Vanna/Charm exposure-heatmap grids (canonical main a36ac88/92f9fc1; each request validated to echo its own requested metric). Never interprets a cell's sign/magnitude as directional -- units and sign convention stay provider-unverified through every result. FEATURE_ABLATION_FAMILIES gained VANNA/CHARM as first-order ablations (15->17)."),
 
     # ---- R6 empirical evidence: only real data is missing ----
     PhaseItem("R6_REAL_PIT_DATA", PhaseState.BLOCKED_ON_DATA, ("empirical_pipeline.py",),
