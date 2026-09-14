@@ -83,7 +83,7 @@ export interface LocalWorkerReadiness {
   readonly alpaca_health: string;
   readonly optionomics_health: string;
   readonly database_health: string;
-  readonly execution_gate: "LOCKED";
+  readonly execution_gate: "LOCKED"|"EXTERNAL_QUOTE_BLOCKER";
   readonly failure_reason: string|null;
 }
 
@@ -91,7 +91,7 @@ export async function readLocalWorkerReadiness(databaseUrl?:string):Promise<Loca
   const unknown:LocalWorkerReadiness={configured:false,online:false,state:'NOT_INSTALLED',host_type:null,runtime_mode:null,
     build_sha:null,last_heartbeat:null,last_cycle_started:null,last_cycle_completed:null,last_reconciliation:null,
     last_candidate_scan:null,market_session:'UNKNOWN',alpaca_health:'UNKNOWN',optionomics_health:'UNKNOWN',
-    database_health:databaseUrl?'UNKNOWN':'NOT_CONFIGURED',execution_gate:'LOCKED',failure_reason:null};
+    database_health:databaseUrl?'UNKNOWN':'NOT_CONFIGURED',execution_gate:'EXTERNAL_QUOTE_BLOCKER',failure_reason:null};
   if(!databaseUrl)return unknown;
   const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000});
   try{
@@ -110,6 +110,70 @@ export async function readLocalWorkerReadiness(databaseUrl?:string):Promise<Loca
       last_reconciliation:iso(row.last_reconciliation),last_candidate_scan:iso(row.last_candidate_scan),
       market_session:String(row.market_session),alpaca_health:String(row.alpaca_health),
       optionomics_health:String(row.optionomics_health),database_health:String(row.database_health),
-      execution_gate:'LOCKED',failure_reason:row.failure_reason==null?null:String(row.failure_reason)};
+      execution_gate:row.execution_gate==='EXTERNAL_QUOTE_BLOCKER'?'EXTERNAL_QUOTE_BLOCKER':'LOCKED',
+      failure_reason:row.failure_reason==null?null:String(row.failure_reason)};
   }catch{return {...unknown,state:'UNAVAILABLE',database_health:'DEGRADED'};}finally{await pool.end();}
+}
+
+export interface MasterRuntimeEvidence {
+  readonly last_decision: string|null;
+  readonly last_decision_at: string|null;
+  readonly strategy_branch: string|null;
+  readonly last_snapshot: string|null;
+  readonly candidates_evaluated: number|null;
+  readonly open_positions: number|null;
+  readonly pending_orders: number|null;
+  readonly broker_orders: number|null;
+  readonly broker_fills: number|null;
+  readonly open_chains: number|null;
+  readonly option_realized_pnl: number|null;
+  readonly stock_realized_pnl: number|null;
+  readonly whole_chain_pnl: number|null;
+}
+
+export async function readMasterRuntimeEvidence(databaseUrl?:string):Promise<MasterRuntimeEvidence>{
+  const empty:MasterRuntimeEvidence={last_decision:null,last_decision_at:null,strategy_branch:null,last_snapshot:null,
+    candidates_evaluated:null,open_positions:null,pending_orders:null,broker_orders:null,broker_fills:null,open_chains:null,
+    option_realized_pnl:null,stock_realized_pnl:null,whole_chain_pnl:null};
+  if(!databaseUrl)return empty;
+  const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000});
+  try{
+    const result=await pool.query(`WITH latest_decision AS (
+        SELECT action_code,decided_at,strategy_branch,fusion_snapshot_id
+        FROM trade.decision ORDER BY decided_at DESC LIMIT 1
+      ), latest_set AS (
+        SELECT candidate_count FROM trade.candidate_set ORDER BY generated_at DESC LIMIT 1
+      ), latest_reconciliation AS (
+        SELECT position_count,open_order_count FROM trade.broker_reconciliation_snapshot ORDER BY observed_at DESC LIMIT 1
+      ), economics AS (
+        SELECT
+          (SELECT sum(realized_pnl) FROM trade.option_leg WHERE realized_pnl IS NOT NULL) AS option_realized,
+          (SELECT sum(realized_pnl) FROM trade.stock_lot WHERE realized_pnl IS NOT NULL) AS stock_realized,
+          (SELECT sum(amount) FROM trade.fee_event) AS fees
+      ) SELECT
+        (SELECT action_code FROM latest_decision) AS last_decision,
+        (SELECT decided_at FROM latest_decision) AS last_decision_at,
+        (SELECT strategy_branch FROM latest_decision) AS strategy_branch,
+        (SELECT fusion_snapshot_id FROM latest_decision) AS last_snapshot,
+        (SELECT candidate_count FROM latest_set) AS candidates_evaluated,
+        (SELECT position_count FROM latest_reconciliation) AS open_positions,
+        (SELECT open_order_count FROM latest_reconciliation) AS pending_orders,
+        (SELECT count(*)::int FROM trade.broker_order) AS broker_orders,
+        (SELECT count(*)::int FROM trade.fill) AS broker_fills,
+        (SELECT count(*)::int FROM trade.economic_chain WHERE closed_at IS NULL) AS open_chains,
+        economics.option_realized,economics.stock_realized,economics.fees
+      FROM economics`);
+    const row=result.rows[0]??{};
+    const iso=(value:unknown)=>value instanceof Date?value.toISOString():value==null?null:String(value);
+    const number=(value:unknown):number|null=>value==null?null:Number(value);
+    const optionPnl=number(row.option_realized);const stockPnl=number(row.stock_realized);const fees=number(row.fees);
+    const openChains=Number(row.open_chains??0);
+    const hasResolvedEconomics=optionPnl!==null||stockPnl!==null||fees!==null;
+    return {last_decision:row.last_decision==null?null:String(row.last_decision),last_decision_at:iso(row.last_decision_at),
+      strategy_branch:row.strategy_branch==null?null:String(row.strategy_branch),last_snapshot:row.last_snapshot==null?null:String(row.last_snapshot),
+      candidates_evaluated:number(row.candidates_evaluated),open_positions:number(row.open_positions),pending_orders:number(row.pending_orders),
+      broker_orders:Number(row.broker_orders??0),broker_fills:Number(row.broker_fills??0),open_chains:openChains,
+      option_realized_pnl:optionPnl,stock_realized_pnl:stockPnl,
+      whole_chain_pnl:hasResolvedEconomics&&openChains===0?(optionPnl??0)+(stockPnl??0)-(fees??0):null};
+  }catch{return empty;}finally{await pool.end();}
 }

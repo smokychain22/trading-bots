@@ -71,7 +71,7 @@ test('real disposable PostgreSQL preserves user limits, master role and tenant i
       PRIVATE_PAPER_API_KEY_BETA_ENABLED: true,
       MASTER_PAPER_EXECUTION_ENABLED: false, FOLLOWER_PAPER_EXECUTION_ENABLED: false,
       PAPER_PAUSE_NEW_ORDERS: true, THETA_AUTONOMOUS_WORKER_ENABLED: true,
-      THETA_RUNTIME_MODE: 'THETA_SHADOW_ONLY',
+      THETA_RUNTIME_MODE: 'MASTER_THETA_PAPER',
       PAPER_COPY_TOKEN_KEY_REF: 'synthetic', PAPER_COPY_TOKEN_ENCRYPTION_KEY: encryptionKey,
     } as Environment;
     const originalFetch = globalThis.fetch;

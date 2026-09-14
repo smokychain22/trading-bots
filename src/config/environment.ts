@@ -30,7 +30,7 @@ const environmentSchema = z.object({
   FOLLOWER_PAPER_EXECUTION_ENABLED: safeFlag,
   PAPER_PAUSE_NEW_ORDERS: booleanFlag('true'),
   THETA_AUTONOMOUS_WORKER_ENABLED: safeFlag,
-  THETA_RUNTIME_MODE: z.literal('THETA_SHADOW_ONLY').default('THETA_SHADOW_ONLY'),
+  THETA_RUNTIME_MODE: z.enum(['MASTER_THETA_PAPER', 'THETA_SHADOW_ONLY']).default('MASTER_THETA_PAPER'),
   THETA_WORKER_PORT: z.coerce.number().int().min(1).max(65_535).default(3001),
   THETA_WORKER_INTERVAL_MS: z.coerce.number().int().min(10_000).max(900_000).default(60_000),
   THETA_WORKER_HEARTBEAT_MS: z.coerce.number().int().min(5_000).max(60_000).default(15_000),
@@ -129,5 +129,5 @@ export const assertAutonomousWorkerConfiguration = (environment: Environment): v
   if (!environment.PAPER_PAUSE_NEW_ORDERS || environment.MASTER_PAPER_EXECUTION_ENABLED || environment.FOLLOWER_PAPER_EXECUTION_ENABLED) {
     throw new Error('FIRST_PAPER_ORDER_BOUNDARY_NOT_LOCKED');
   }
-  if (environment.THETA_RUNTIME_MODE !== 'THETA_SHADOW_ONLY') throw new Error('THETA_SHADOW_ONLY_REQUIRED');
+  if (environment.THETA_RUNTIME_MODE !== 'MASTER_THETA_PAPER') throw new Error('MASTER_THETA_PAPER_RUNTIME_REQUIRED');
 };

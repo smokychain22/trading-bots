@@ -38,7 +38,8 @@ if(stopFile){
 worker.start().catch(async (error: unknown) => {
   const errorCode = error instanceof Error && /^[A-Z0-9_:-]+$/.test(error.message)
     ? error.message : 'WORKER_STARTUP_FAILED';
-  logger.fatal({ event: 'startup_failed', errorCode, executionGate: 'LOCKED' }, 'THETA resident worker failed to start');
+  logger.fatal({ event: 'startup_failed', errorCode, executionGate: 'EXTERNAL_QUOTE_BLOCKER' },
+    'THETA resident master Paper worker failed to start');
   await worker.stop().catch(() => undefined);
   process.exitCode = 1;
 });

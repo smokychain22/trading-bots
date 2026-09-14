@@ -176,7 +176,7 @@ test('paper execution flags fail closed when absent or blank', () => {
   assert.equal(absent.MASTER_PAPER_EXECUTION_ENABLED, false);
   assert.equal(absent.FOLLOWER_PAPER_EXECUTION_ENABLED, false);
   assert.equal(absent.PAPER_PAUSE_NEW_ORDERS, true);
-  assert.equal(absent.THETA_RUNTIME_MODE, 'THETA_SHADOW_ONLY');
+  assert.equal(absent.THETA_RUNTIME_MODE, 'MASTER_THETA_PAPER');
   const blank = loadEnvironment({
     NODE_ENV: 'test', MASTER_PAPER_EXECUTION_ENABLED: '', FOLLOWER_PAPER_EXECUTION_ENABLED: '', PAPER_PAUSE_NEW_ORDERS: '',
   });

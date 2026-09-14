@@ -37,6 +37,7 @@ try {
     "030_optionomics_context_lineage",
     "031_canonical_strategy_frontier",
     "032_canonical_decision_authority",
+    "033_master_paper_runtime",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {

@@ -29,6 +29,7 @@ import { checkDatabaseReadiness } from "./database-readiness.js";
 import {
   privatePaperBetaReadiness,
   readLocalWorkerReadiness,
+  readMasterRuntimeEvidence,
   verifyOptionomicsConnection,
 } from "./operator-readiness.js";
 import { executionMode } from "../execution/execution-control.js";
@@ -474,8 +475,9 @@ export default async function customerHandler(
       const oauth = oauthConfiguration(environment);
       const privateBeta = privatePaperApiKeyConfiguration(environment);
       const connectionConfigured = oauth.configured || privateBeta.configured;
-      const [database,localWorker] = await Promise.all([
+      const [database,localWorker,runtimeEvidence] = await Promise.all([
         checkDatabaseReadiness(environment.DATABASE_URL),readLocalWorkerReadiness(environment.DATABASE_URL),
+        readMasterRuntimeEvidence(environment.DATABASE_URL),
       ]);
       const executionControl = {
         masterEnabled: environment.MASTER_PAPER_EXECUTION_ENABLED,
@@ -491,13 +493,13 @@ export default async function customerHandler(
             process.env.VERCEL_ENV === "production"
               ? "PRODUCTION"
               : "DEVELOPMENT_OR_PREVIEW",
-          trading: masterExecutionMode,
+          trading: localWorker.online ? "EXTERNAL_QUOTE_BLOCKER" : masterExecutionMode,
           bot_mode: "PAPER",
           copy: connectionConfigured ? "READY_TO_CONNECT" : "BLOCKED",
           deployment_sha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
           provider_runtime: "UNKNOWN",
           systems: {
-            theta_runtime: localWorker.online ? "LOCAL_SHADOW_RUNNING" : "LOCAL_SHADOW_OFFLINE",
+            theta_runtime: localWorker.online ? localWorker.state : "MASTER_PAPER_OFFLINE",
             quant_models: "HEALTHY",
             python_bridge: "HEALTHY",
             strategy_router: "HEALTHY",
@@ -508,7 +510,7 @@ export default async function customerHandler(
             option_data: "UNKNOWN",
             scheduler: localWorker.online ? "RUNNING" : "OFFLINE",
             aegis: "PARTIAL_REAL_INPUTS",
-            execution: "PAPER_LIFECYCLE_ENGINEERING_READY_EXECUTION_LOCKED",
+            execution: "MASTER_PAPER_EXTERNAL_QUOTE_BLOCKER",
             ledger: database.state === "CONNECTED" ? "READY" : "SCHEMA_READY_DATABASE_REQUIRED",
             reconciliation: localWorker.last_reconciliation ? "RUNNING" : database.state === "CONNECTED" ? "READY_NOT_RUNNING" : "CONTRACT_READY_DATABASE_REQUIRED",
             customer_iam: database.customer_iam ? "READY" : "BLOCKED",
@@ -521,32 +523,33 @@ export default async function customerHandler(
             system_errors: "UNKNOWN",
           },
           runtime_detail: {
-            stage: localWorker.online ? "THETA_LOCAL_SHADOW" : "REAL_INPUT_READY_NOT_SCHEDULED",
+            stage: localWorker.online ? localWorker.state : "MASTER_PAPER_OFFLINE",
             policy_version: null,
             model_versions: ["theta-q-v0", "quant contract baselines"],
-            last_market_snapshot: null,
+            last_market_snapshot: runtimeEvidence.last_snapshot,
             last_scan: localWorker.last_candidate_scan,
-            last_decision: null,
+            last_decision: runtimeEvidence.last_decision,
             next_scan: null,
-            candidates_evaluated: null,
+            candidates_evaluated: runtimeEvidence.candidates_evaluated,
             candidates_passing: null,
             candidates_rejected: null,
             candidates_waiting: null,
             candidates_q_zero: null,
-            open_positions: null,
-            pending_orders: null,
+            open_positions: runtimeEvidence.open_positions,
+            pending_orders: runtimeEvidence.pending_orders,
             unknown_submissions: null,
             reconciliation: localWorker.last_reconciliation ?? (database.state === "CONNECTED" ? "READY_NOT_RUNNING" : "DATABASE_REQUIRED"),
           },
           local_worker: localWorker,
+          runtime_evidence: runtimeEvidence,
           execution_control: {
             environment: "PAPER",
             live_host_allowed: false,
-            master_paper_execution: masterExecutionMode,
+            master_paper_execution: localWorker.online ? "EXTERNAL_QUOTE_BLOCKER" : masterExecutionMode,
             follower_paper_execution: followerExecutionMode,
             pause_new_orders: environment.PAPER_PAUSE_NEW_ORDERS,
             customer_can_enable: false,
-            orders_submitted_by_release: 0,
+            orders_submitted_by_release: runtimeEvidence.broker_orders,
           },
           master_connection: masterConnectionMetadata(),
           database,
@@ -561,11 +564,10 @@ export default async function customerHandler(
           },
           published_performance: false,
           gates: [
-            "Real event-state assembly and remaining AEGIS exposure families are incomplete",
-            ...(localWorker.online ? [] : ["The local shadow worker is offline"]),
-            "OPRA entitlement not established for future execution",
+            ...(localWorker.online ? [] : ["The master Paper worker is offline"]),
+            "Fresh trusted two-sided execution quote authority is not yet qualified",
             ...(database.state === "CONNECTED" ? [] : ["Production PostgreSQL is required for durable order and reconciliation workers"]),
-            "Owner Paper authorization is granted; executable OPRA BBO and empirical strategy gates remain required",
+            "Owner Paper authorization is granted. The execution-quote safety gate remains required",
             "No validated customer performance publication",
             connectionConfigured
               ? "Private team Paper connection is available; public accounts still require Alpaca Connect approval"

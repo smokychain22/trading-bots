@@ -1,4 +1,4 @@
-param([string]$TaskName = 'THETA Local Shadow Worker')
+param([string]$TaskName = 'THETA Master Paper Worker')
 $ErrorActionPreference = 'Stop'
 $repositoryPath = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location -LiteralPath $repositoryPath
@@ -18,8 +18,22 @@ if ($LASTEXITCODE -ne 0) { throw 'THETA_BUILD_FAILED' }
 $stateRoot = Join-Path $repositoryPath '.theta-local-worker'
 New-Item -ItemType Directory -Force -Path $stateRoot | Out-Null
 if (!(Test-Path -LiteralPath (Join-Path $stateRoot 'worker.token'))) { throw 'THETA_LOCAL_WORKER_TOKEN_NOT_PROVISIONED' }
+$legacyTaskName = 'THETA Local Shadow Worker'
+if ($TaskName -ne $legacyTaskName -and (Get-ScheduledTask -TaskName $legacyTaskName -ErrorAction SilentlyContinue)) {
+  $legacyStopFile = Join-Path $stateRoot 'stop.request'
+  New-Item -ItemType File -Force -Path $legacyStopFile | Out-Null
+  for ($attempt = 0; $attempt -lt 30; $attempt++) {
+    $legacyTask = Get-ScheduledTask -TaskName $legacyTaskName -ErrorAction SilentlyContinue
+    if ($null -eq $legacyTask -or $legacyTask.State -ne 'Running') { break }
+    Start-Sleep -Seconds 1
+  }
+  $legacyTask = Get-ScheduledTask -TaskName $legacyTaskName -ErrorAction SilentlyContinue
+  if ($null -ne $legacyTask -and $legacyTask.State -eq 'Running') { Stop-ScheduledTask -TaskName $legacyTaskName }
+  Unregister-ScheduledTask -TaskName $legacyTaskName -Confirm:$false
+  Remove-Item -LiteralPath $legacyStopFile -Force -ErrorAction SilentlyContinue
+}
 @{ repositoryPath=$repositoryPath;buildSha=$buildSha;installedAt=(Get-Date).ToUniversalTime().ToString('o');
-  mode='THETA_LOCAL_SHADOW';projectName=$project.projectName;workerId=('local-'+[guid]::NewGuid().ToString());
+  mode='MASTER_THETA_PAPER';projectName=$project.projectName;workerId=('local-'+[guid]::NewGuid().ToString());
   endpoint='https://trading-bots-one.vercel.app/api/theta-runtime' } |
   ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stateRoot 'runtime.json') -Encoding utf8
 
@@ -28,10 +42,12 @@ $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfil
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
   -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries `
-  -DontStopIfGoingOnBatteries
+  -DontStopIfGoingOnBatteries -RunOnlyIfNetworkAvailable -WakeToRun
 $principal = New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) `
   -LogonType Interactive -RunLevel Limited
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
-  -Description "Pinned THETA read-only shadow worker at $buildSha. No broker mutation surface." -Force | Out-Null
+  -Description "Pinned THETA master Alpaca Paper worker at $buildSha. Reconciliation first. Execution quote blocked." -Force | Out-Null
 Start-ScheduledTask -TaskName $TaskName
-Write-Output (@{installed=$true;task=$TaskName;buildSha=$buildSha;mode='THETA_LOCAL_SHADOW';executionGate='LOCKED'} | ConvertTo-Json -Compress)
+Write-Output (@{installed=$true;task=$TaskName;buildSha=$buildSha;mode='MASTER_THETA_PAPER';
+  trigger='AT_LOGON_START_WHEN_AVAILABLE';wakeToRun=$true;restartOnFailure=$true;
+  executionGate='EXTERNAL_QUOTE_BLOCKER'} | ConvertTo-Json -Compress)

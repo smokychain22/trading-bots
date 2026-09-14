@@ -656,3 +656,25 @@ Sizing now takes the minimum of risk-budget, collateral, concentration, assignme
 The immutable five-branch frontier is now the current Production decision authority under `theta-canonical-decision-authority-v1`. Legacy THETA_Q output remains embedded for replay and compatibility, but it no longer determines the persisted selected branch, selected candidate, primary action, or quantity when a canonical frontier is present.
 
 Cross-branch selection uses known structural economics, global Pareto dominance, complete sizing caps, and deterministic tie-breaking. Empirical utility is explicitly `UNKNOWN_NOT_YET_CALIBRATED`. Management inventory is delegated to the management-first authority and is never converted into an automatic covered call. The sole Production-to-research wire contract is documented in `docs/research/THETA_PRODUCTION_RESEARCH_EXPORT_CONTRACT.md`.
+
+## 2026-09-14: the laptop worker is the independent master Paper runtime
+
+The canonical Windows process is `MASTER_THETA_PAPER`. It runs reconciliation,
+management, lifecycle processing, portfolio-risk refresh, opportunity discovery,
+strategy routing, sizing, evidence capture, and research export independently of
+all followers. Zero followers is a valid normal state and cannot pause the
+master. Shadow selection remains an internal challenger and evidence mechanism,
+not the runtime identity displayed to operators.
+
+The current broker mutation boundary remains structurally unavailable. The
+runtime reports `EXTERNAL_QUOTE_BLOCKER` until an exact-contract, fresh,
+two-sided option quote passes the provider-neutral execution-quote contract.
+The worker still runs while blocked, including when the market is closed. Live
+hosts and live credentials remain forbidden. This change does not claim
+profitability or authorize a Paper order.
+
+The Windows task starts at owner logon, starts when available after missed
+triggers, requires network availability, wakes the machine when Windows permits,
+restarts after failure, ignores overlapping task instances, and is additionally
+protected by a process mutex and PostgreSQL lease. Every recovered process
+reconciles broker truth before considering new exposure.

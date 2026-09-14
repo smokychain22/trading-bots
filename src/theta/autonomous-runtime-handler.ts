@@ -78,17 +78,17 @@ export default async function autonomousRuntimeHandler(
     return;
   }
   if (!environment.THETA_AUTONOMOUS_WORKER_ENABLED) {
-    send(response, 503, { error: 'worker_disabled', orderSubmission: 'LOCKED' });
+    send(response, 503, { error: 'worker_disabled', orderSubmission: 'EXTERNAL_QUOTE_BLOCKER' });
     return;
   }
   if (!environment.DATABASE_URL) {
-    send(response, 503, { error: 'database_not_configured', orderSubmission: 'LOCKED' });
+    send(response, 503, { error: 'database_not_configured', orderSubmission: 'EXTERNAL_QUOTE_BLOCKER' });
     return;
   }
   runtimePool ??= new Pool({ connectionString: environment.DATABASE_URL, max: 2, connectionTimeoutMillis: 8_000 });
   const localIdentity = parseLocalWorkerIdentity(request);
   if (localIdentity.kind === 'INVALID') {
-    send(response, 400, { error: 'invalid_local_worker_identity', executionGate: 'LOCKED' });
+    send(response, 400, { error: 'invalid_local_worker_identity', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
     return;
   }
   const localWorkerId = localIdentity.kind === 'VALID' ? localIdentity.identity.workerId : null;
@@ -96,27 +96,27 @@ export default async function autonomousRuntimeHandler(
   if(request.method==='DELETE'){
     if(localWorkerId===null){send(response,400,{error:'local_worker_identity_required'});return;}
     await workerStore.stop(localWorkerId,new Date().toISOString(),'OFFLINE');
-    send(response,200,{state:'OFFLINE',executionGate:'LOCKED'});
+    send(response,200,{state:'OFFLINE',executionGate:'EXTERNAL_QUOTE_BLOCKER'});
     return;
   }
   const operation = parseLocalWorkerOperation(request);
   if (operation === 'INVALID') {
-    send(response, 400, { error: 'invalid_local_worker_operation', executionGate: 'LOCKED' });
+    send(response, 400, { error: 'invalid_local_worker_operation', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
     return;
   }
   try {
     if (operation === 'OPTIONOMICS_QUOTE_QUALIFICATION') {
       if (localIdentity.kind !== 'VALID') {
-        send(response, 400, { error: 'local_worker_identity_required', executionGate: 'LOCKED' });
+        send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
         return;
       }
       const report = await runOptionomicsQuoteQualification(environment, runtimePool);
-      send(response, 200, { ...sanitizeQualificationReport(report), executionGate: 'LOCKED', ordersSubmitted: 0 });
+      send(response, 200, { ...sanitizeQualificationReport(report), executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0 });
       return;
     }
     if (operation === 'PROVIDER_EVIDENCE_READINESS') {
       if (localIdentity.kind !== 'VALID') {
-        send(response, 400, { error: 'local_worker_identity_required', executionGate: 'LOCKED' });
+        send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
         return;
       }
       const cycleStore = new PostgresRuntimeCycleStore(runtimePool);
@@ -138,7 +138,7 @@ export default async function autonomousRuntimeHandler(
           (SELECT count(fill_id)::int FROM trade.fill) AS broker_fills`),
       ]);
       send(response, 200, {
-        generatedAt: new Date().toISOString(), trading: 'DISABLED', executionGate: 'LOCKED',
+        generatedAt: new Date().toISOString(), trading: 'PAPER_QUOTE_BLOCKED', executionGate: 'EXTERNAL_QUOTE_BLOCKER',
         master: {
           accountRole: masterReadiness.accountRole, brokerHost: masterReadiness.brokerHost,
           brokerIdentityVerified: masterReadiness.brokerIdentityVerified,
@@ -173,7 +173,7 @@ export default async function autonomousRuntimeHandler(
     }
     if(localIdentity.kind === 'ABSENT'){
       const active=await workerStore.activeLeaseOwner(new Date().toISOString());
-      if(active!==null){send(response,409,{error:'local_primary_worker_active',executionGate:'LOCKED'});return;}
+      if(active!==null){send(response,409,{error:'local_primary_worker_active',executionGate:'EXTERNAL_QUOTE_BLOCKER'});return;}
     }else{
       const at=new Date();
       const identity = localIdentity.identity;
@@ -183,7 +183,7 @@ export default async function autonomousRuntimeHandler(
         buildSha: identity.buildSha,
         startedAt:at.toISOString(),strategyVersions:['theta-shadow-once-v1']});
       const lease=await workerStore.acquireLease(identity.workerId,at.toISOString(),new Date(at.getTime()+150_000).toISOString());
-      if(lease==='HELD_BY_OTHER'){send(response,409,{error:'primary_shadow_worker_lease_held',executionGate:'LOCKED'});return;}
+      if(lease==='HELD_BY_OTHER'){send(response,409,{error:'primary_master_paper_worker_lease_held',executionGate:'EXTERNAL_QUOTE_BLOCKER'});return;}
       if(previous!==null&&at.getTime()-Date.parse(previous)>120_000)
         await workerStore.recordResumeGap(identity.workerId,previous,at.toISOString());
       await workerStore.cycleStarted(identity.workerId,at.toISOString());
@@ -198,7 +198,7 @@ export default async function autonomousRuntimeHandler(
       await workerStore.stop(localWorkerId, new Date().toISOString(), 'ERROR', code).catch(() => undefined);
     }
     send(response, 503, {
-      error: code, executionGate: 'LOCKED', masterPaperOrdersSubmitted: 0,
+      error: code, executionGate: 'EXTERNAL_QUOTE_BLOCKER', masterPaperOrdersSubmitted: 0,
       followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
     });
   }

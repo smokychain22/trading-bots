@@ -1,4 +1,4 @@
-param([string]$TaskName = 'THETA Local Shadow Worker',[int]$GraceSeconds = 30)
+param([string]$TaskName = 'THETA Master Paper Worker',[int]$GraceSeconds = 30)
 $ErrorActionPreference = 'Stop'
 $repositoryPath = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $stateRoot = Join-Path $repositoryPath '.theta-local-worker'
@@ -12,4 +12,5 @@ for($attempt=0;$attempt -lt $GraceSeconds;$attempt++){
 }
 $task=Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($null -ne $task -and $task.State -eq 'Running') { Stop-ScheduledTask -TaskName $TaskName }
-Write-Output (@{stopped=$true;task=$TaskName;gracefulRequested=$true;executionGate='LOCKED'} | ConvertTo-Json -Compress)
+Write-Output (@{stopped=$true;task=$TaskName;gracefulRequested=$true;
+  executionGate='EXTERNAL_QUOTE_BLOCKER'} | ConvertTo-Json -Compress)

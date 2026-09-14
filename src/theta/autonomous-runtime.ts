@@ -23,6 +23,8 @@ import { applyConfirmedFillLifecycle } from '../execution/postgres-broker-fill-l
 
 export const autonomousRuntimeVersion = 'theta-autonomous-runtime-v1' as const;
 export const autonomousPolicyVersion = 'theta-scheduler-policy-v1' as const;
+export const masterPaperRuntimeMode = 'MASTER_THETA_PAPER' as const;
+export const executionQuoteBlocker = 'EXTERNAL_QUOTE_BLOCKER' as const;
 const PAPER_HOST = 'https://paper-api.alpaca.markets' as const;
 
 export interface AutonomousRuntimeReport {
@@ -39,7 +41,8 @@ export interface AutonomousRuntimeReport {
     readonly errorCode: string | null;
   }[];
   readonly reconciliation: BrokerReconciliationResult | null;
-  readonly executionGate: 'LOCKED';
+  readonly runtimeMode: typeof masterPaperRuntimeMode;
+  readonly executionGate: typeof executionQuoteBlocker;
   readonly masterPaperOrdersSubmitted: 0;
   readonly followerPaperOrdersSubmitted: 0;
   readonly liveOrdersSubmitted: 0;
@@ -94,7 +97,8 @@ export class PostgresRuntimeCycleStore {
        WHERE correlation_id=$1 AND status='RUNNING'`,
       [correlationId, at, report.status, report.jobsAttempted, report.jobsCompleted,
         error?.errorCode ?? null, error?.errorCode ?? null,
-        JSON.stringify({ executionGate: 'LOCKED', jobResults: report.jobResults, reconciliation: report.reconciliation })],
+        JSON.stringify({ runtimeMode: report.runtimeMode, executionGate: report.executionGate,
+          jobResults: report.jobResults, reconciliation: report.reconciliation })],
     );
   }
 
@@ -176,8 +180,10 @@ const skipped = (code: string): JobRunResult => ({ status: 'SKIPPED', errorCode:
 const degraded = (code: string, nextRunAt: string): JobRunResult => ({ status: 'DEGRADED', errorCode: code, errorDetail: code, nextRunAt });
 
 /**
- * Runs one bounded, restart-safe, read-only production cycle. This module
- * cannot submit, replace, or cancel an order. Its only broker calls are GETs.
+ * Runs one bounded, restart-safe master Paper cycle. Reconciliation,
+ * management, scanning, evidence, and decision work remain active while the
+ * execution-quote gate is externally blocked. This module has no broker
+ * mutation surface and therefore cannot bypass that gate.
  */
 export async function runAutonomousRuntimeCycle(
   environment: Environment,
@@ -189,7 +195,7 @@ export async function runAutonomousRuntimeCycle(
   if (!environment.PAPER_PAUSE_NEW_ORDERS || environment.MASTER_PAPER_EXECUTION_ENABLED || environment.FOLLOWER_PAPER_EXECUTION_ENABLED) {
     throw new Error('FIRST_PAPER_ORDER_BOUNDARY_NOT_LOCKED');
   }
-  if (environment.THETA_RUNTIME_MODE !== 'THETA_SHADOW_ONLY') throw new Error('THETA_SHADOW_ONLY_REQUIRED');
+  if (environment.THETA_RUNTIME_MODE !== masterPaperRuntimeMode) throw new Error('MASTER_THETA_PAPER_RUNTIME_REQUIRED');
   const bucket = minuteBucket(now);
   const correlationId = `theta-runtime:${bucket}`;
   const workerInstance = `${process.env.VERCEL_REGION ?? 'local'}:${randomUUID()}`;
@@ -198,7 +204,8 @@ export async function runAutonomousRuntimeCycle(
     return {
       correlationId, status: 'DUPLICATE', runtimeVersion: autonomousRuntimeVersion,
       policyVersion: autonomousPolicyVersion, jobsAttempted: 0, jobsCompleted: 0,
-      jobResults: [], reconciliation: null, executionGate: 'LOCKED',
+      jobResults: [], reconciliation: null, runtimeMode: masterPaperRuntimeMode,
+      executionGate: executionQuoteBlocker,
       masterPaperOrdersSubmitted: 0, followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
     };
   }
@@ -322,7 +329,7 @@ export async function runAutonomousRuntimeCycle(
     correlationId, status, runtimeVersion: autonomousRuntimeVersion, policyVersion: autonomousPolicyVersion,
     jobsAttempted: outcomes.length,
     jobsCompleted: outcomes.filter((outcome) => outcome.runResult !== null).length,
-    jobResults, reconciliation, executionGate: 'LOCKED',
+    jobResults, reconciliation, runtimeMode: masterPaperRuntimeMode, executionGate: executionQuoteBlocker,
     masterPaperOrdersSubmitted: 0, followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
   };
   await cycleStore.finish(correlationId, report, new Date().toISOString());
@@ -333,8 +340,8 @@ export async function runAutonomousRuntimeCycle(
       correlationId, status: 'FAILED', runtimeVersion: autonomousRuntimeVersion,
       policyVersion: autonomousPolicyVersion, jobsAttempted: 0, jobsCompleted: 0,
       jobResults: [{ jobType: 'HEALTH_HEARTBEAT', outcome: 'STARTUP_FAILED', status: 'FAILED', errorCode: failure.code }],
-      reconciliation: null, executionGate: 'LOCKED', masterPaperOrdersSubmitted: 0,
-      followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
+      reconciliation: null, runtimeMode: masterPaperRuntimeMode, executionGate: executionQuoteBlocker,
+      masterPaperOrdersSubmitted: 0, followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
     };
     await cycleStore.finish(correlationId, report, new Date().toISOString());
     return report;

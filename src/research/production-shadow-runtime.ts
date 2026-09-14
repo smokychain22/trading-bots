@@ -106,7 +106,7 @@ const bridge=(environment:Environment):PythonBridgeConfig=>({
 });
 
 export async function runProductionShadowEvidenceScan(input:{environment:Environment;pool:Pool;alpaca:AlpacaProviderConfig;now:()=>string}):Promise<ProductionShadowScanReport>{
-  if(input.environment.THETA_RUNTIME_MODE!=='THETA_SHADOW_ONLY') throw new Error('THETA_SHADOW_ONLY_REQUIRED');
+  if(input.environment.THETA_RUNTIME_MODE!=='MASTER_THETA_PAPER') throw new Error('MASTER_THETA_PAPER_RUNTIME_REQUIRED');
   const discovery=await discoverRealUniverse(input.alpaca,{discoveryVersion:'theta-shadow-universe-v1',maxCandidateAssets:100,
     allowedExchanges:['NYSE','NASDAQ','ARCA','BATS'],barsLookbackDays:30,barsBatchSize:100,maxOptionabilityChecks:2,minCurrentPrice:5},input.now);
   const optionomics=optionomicsConfigFromEnvironment(input.environment);

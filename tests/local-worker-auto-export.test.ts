@@ -8,7 +8,7 @@ const report=(status:string|null,errorCode:string|null):AutonomousRuntimeReport=
   correlationId:'theta-runtime:2026-09-12T14:30',status:status==='DEGRADED'?'DEGRADED':'SUCCEEDED',
   runtimeVersion:'test',policyVersion:'test',jobsAttempted:1,jobsCompleted:1,
   jobResults:[{jobType:'OPPORTUNITY_SCAN',outcome:'RAN',status,errorCode}],reconciliation:null,
-  executionGate:'LOCKED',masterPaperOrdersSubmitted:0,followerPaperOrdersSubmitted:0,liveOrdersSubmitted:0,
+  runtimeMode:'MASTER_THETA_PAPER',executionGate:'EXTERNAL_QUOTE_BLOCKER',masterPaperOrdersSubmitted:0,followerPaperOrdersSubmitted:0,liveOrdersSubmitted:0,
 });
 
 test('Windows supervisor exports once after a complete scan without gaining an order surface', async () => {
@@ -32,6 +32,10 @@ test('Windows installer does not silently queue evidence capture on laptop batte
   const source=await readFile('tools/windows/install-theta-local-worker.ps1','utf8');
   assert.match(source,/-AllowStartIfOnBatteries/);
   assert.match(source,/-DontStopIfGoingOnBatteries/);
+  assert.match(source,/-RunOnlyIfNetworkAvailable/);
+  assert.match(source,/-WakeToRun/);
+  assert.match(source,/-StartWhenAvailable/);
+  assert.match(source,/-MultipleInstances IgnoreNew/);
 });
 
 test('candidate scan timestamp advances only for a real complete or partial evidence scan',()=>{

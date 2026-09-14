@@ -1504,3 +1504,42 @@ TASK: Replace legacy THETA_Q final authority with the canonical five-branch stru
 WHAT WAS IMPLEMENTED: Versioned cross-branch authority, complete structural sizing caps with quantity zero preserved, global Pareto selection, management delegation, explicit empirical-utility unknown state, durable authority lineage, and camel-case Production research export fields matching the Python loader.
 
 KNOWN LIMITATIONS: Execution-grade option quote qualification still requires supported market-open evidence. Empirical profitability, feature ablation, historical alpha research, and real lifecycle statistics belong to R6/R8.
+
+## 2026-09-14 master Paper always-on operating milestone
+
+OWNER: Codex
+
+TASK: Replace the shadow-only laptop identity with the independent always-on
+master Paper operating identity without bypassing the execution-quote gate.
+
+FILES CHANGED: Environment contract, autonomous runtime, worker registration and
+lease state, Windows Task Scheduler scripts, operator status API/UI, migration
+033, SQL and runtime tests, decisions, and this handoff.
+
+WHAT WAS IMPLEMENTED: `MASTER_THETA_PAPER` now owns the canonical worker. The
+database and website distinguish active, market-closed, quote-blocked,
+risk-blocked, provider-degraded, and kill-switch states. Runtime evidence exposes
+real persisted decisions, scans, reconciliation, positions, orders, fills, open
+chains, and resolved economics without inventing missing MTM. The worker remains
+independent of follower count. Task Scheduler adds network-aware start, wake,
+restart, single-instance, heartbeat, mutex, lease, and stale-lease recovery.
+
+TESTS RUN: Node, Python, TypeScript, ESLint, build, security scan, browser,
+PostgreSQL migration and invariants, Windows stop/install/start/restart status,
+Production deployment, and CI.
+
+KNOWN LIMITATIONS: The current documented Optionomics feed cannot authorize an
+execution price, and Alpaca OPRA entitlement is unavailable. The master remains
+running with `EXTERNAL_QUOTE_BLOCKER`. No Paper or live order is authorized by
+this milestone.
+
+RISKS: A Windows laptop is available only while powered and connected. WakeToRun
+cannot recover a powered-off machine. Whole-chain P&L remains unknown whenever
+open inventory lacks a current reconciled mark.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: R6/R8 should consume only persisted evidence
+and should not relabel structural ranking as empirical alpha.
+
+NEXT RECOMMENDED TASK: Observe the next open options session, run the existing
+execution-quote qualification, and keep the worker operating even if the quote
+remains externally blocked.

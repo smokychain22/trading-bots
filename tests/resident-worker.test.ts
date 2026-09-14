@@ -3,7 +3,7 @@ import test from 'node:test';
 import pino from 'pino';
 import type { Pool } from 'pg';
 import { loadEnvironment, assertAutonomousWorkerConfiguration } from '../src/config/environment.js';
-import { ResidentThetaWorker, externalWorkerHostState, verifyPythonRuntime } from '../src/worker/resident-worker.js';
+import { ResidentThetaWorker, localWorkerHostState, verifyPythonRuntime } from '../src/worker/resident-worker.js';
 import type { AutonomousRuntimeReport } from '../src/theta/autonomous-runtime.js';
 import type { WorkerRegistration, WorkerRuntimeState, WorkerRuntimeStore } from '../src/worker/postgres-worker-runtime-store.js';
 
@@ -18,7 +18,7 @@ const lockedEnvironment = () => loadEnvironment({
 const report = (status: AutonomousRuntimeReport['status'] = 'SUCCEEDED'): AutonomousRuntimeReport => ({
   correlationId: 'theta-runtime:2026-09-12T00:00', status,
   runtimeVersion: 'test-runtime', policyVersion: 'test-policy', jobsAttempted: 1, jobsCompleted: 1,
-  jobResults: [], reconciliation: null, executionGate: 'LOCKED', masterPaperOrdersSubmitted: 0,
+  jobResults: [], reconciliation: null, runtimeMode: 'MASTER_THETA_PAPER', executionGate: 'EXTERNAL_QUOTE_BLOCKER', masterPaperOrdersSubmitted: 0,
   followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
 });
 
@@ -63,15 +63,15 @@ test('worker health is sanitized and records degraded cycle state', async () => 
   await worker.runOnce();
   const snapshot=worker.snapshot();
   assert.equal(snapshot.status,'DEGRADED');
-  assert.equal(snapshot.runtimeState,'DEGRADED');
+  assert.equal(snapshot.runtimeState,'MASTER_PAPER_PROVIDER_DEGRADED');
   assert.equal(snapshot.runningCycle,false);
   assert.equal(snapshot.databaseConfigured,true);
   assert.equal(snapshot.lastCycleStatus,'FAILED');
   assert.equal(snapshot.consecutiveFailures,1);
   assert.equal(snapshot.currentDelayMs,120_000);
-  assert.equal(snapshot.executionGate,'LOCKED');
-  assert.equal(snapshot.alwaysOnWorker,'NOT_YET_DEPLOYED');
-  assert.equal(snapshot.hostState,externalWorkerHostState);
+  assert.equal(snapshot.executionGate,'EXTERNAL_QUOTE_BLOCKER');
+  assert.equal(snapshot.alwaysOnWorker,'WINDOWS_AUTOSTART');
+  assert.equal(snapshot.hostState,localWorkerHostState);
   assert.equal(JSON.stringify(worker.snapshot()).includes('pass'), false);
 });
 
@@ -82,18 +82,18 @@ class CaptureRuntimeStore implements WorkerRuntimeStore {
   async acquireLease(){return this.lease;}
   async heartbeat(_workerId:string,_at:string,_expiresAt:string,state:WorkerRuntimeState){this.states.push(state);return true;}
   async cycleStarted(){this.states.push('RECONCILING');}
-  async cycleCompleted(){this.states.push('WAITING_FOR_MARKET');}
+  async cycleCompleted(){this.states.push('MASTER_PAPER_MARKET_CLOSED');}
   async recordResumeGap(_workerId:string,start:string,end:string){this.gaps.push({start,end});return 3;}
   async stop(_workerId:string,_at:string,state:'STOPPING'|'OFFLINE'|'ERROR'){this.states.push(state);}
 }
 
-test('worker refuses startup when another primary shadow lease is active',async()=>{
+test('worker refuses startup when another primary master Paper lease is active',async()=>{
   const store=new CaptureRuntimeStore('HELD_BY_OTHER');
   const env=loadEnvironment({...Object.fromEntries(Object.entries(lockedEnvironment()).map(([key,value])=>[key,String(value)])),
     THETA_WORKER_PORT:'32041'});
   const worker=new ResidentThetaWorker(env,fakePool(),async()=>report(),logger,()=>new Date('2026-09-12T14:00:00Z'),store,
     {workerId:'worker-a',hostId:'host-a',buildSha:'38f1f6e'});
-  await assert.rejects(()=>worker.start(),/PRIMARY_SHADOW_WORKER_LEASE_HELD/);
+  await assert.rejects(()=>worker.start(),/PRIMARY_MASTER_PAPER_WORKER_LEASE_HELD/);
   assert.equal(worker.snapshot().leaseOwned,false);
 });
 

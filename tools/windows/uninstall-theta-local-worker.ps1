@@ -1,4 +1,4 @@
-param([string]$TaskName = 'THETA Local Shadow Worker')
+param([string]$TaskName = 'THETA Master Paper Worker')
 $ErrorActionPreference = 'Stop'
 & (Join-Path $PSScriptRoot 'stop-theta-local-worker.ps1') -TaskName $TaskName -GraceSeconds 30
 if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) { Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false }

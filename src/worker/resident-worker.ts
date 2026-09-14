@@ -10,7 +10,7 @@ import { assertAutonomousWorkerConfiguration } from '../config/environment.js';
 import { runAutonomousRuntimeCycle, type AutonomousRuntimeReport } from '../theta/autonomous-runtime.js';
 import type { WorkerRuntimeState, WorkerRuntimeStore } from './postgres-worker-runtime-store.js';
 
-export const externalWorkerHostState = 'EXTERNAL_WORKER_HOST_DEFERRED_UNTIL_PAPER_READINESS' as const;
+export const localWorkerHostState = 'LOCAL_WINDOWS_PRIMARY' as const;
 
 export interface WorkerCycleRunner {
   (environment: Environment, pool: Pool, now: Date): Promise<AutonomousRuntimeReport>;
@@ -25,9 +25,9 @@ export interface WorkerHealth {
   readonly lastCycleCompletedAt: string | null;
   readonly lastCycleStatus: AutonomousRuntimeReport['status'] | null;
   readonly consecutiveFailures: number;
-  readonly executionGate: 'LOCKED';
-  readonly alwaysOnWorker: 'NOT_YET_DEPLOYED';
-  readonly hostState: typeof externalWorkerHostState;
+  readonly executionGate: 'EXTERNAL_QUOTE_BLOCKER';
+  readonly alwaysOnWorker: 'WINDOWS_AUTOSTART';
+  readonly hostState: typeof localWorkerHostState;
   readonly runtimeState: WorkerRuntimeState;
   readonly workerId: string;
   readonly hostId: string;
@@ -93,8 +93,8 @@ export class ResidentThetaWorker {
       status: 'STARTING', runningCycle: false, pythonReady: false,
       databaseConfigured: Boolean(environment.DATABASE_URL), lastCycleStartedAt: null,
       lastCycleCompletedAt: null, lastCycleStatus: null, consecutiveFailures: 0,
-      executionGate: 'LOCKED', alwaysOnWorker: 'NOT_YET_DEPLOYED', hostState: externalWorkerHostState,
-      runtimeState:'STARTING',workerId:this.workerId,hostId:this.hostId,buildSha:this.buildSha,
+      executionGate: 'EXTERNAL_QUOTE_BLOCKER', alwaysOnWorker: 'WINDOWS_AUTOSTART', hostState: localWorkerHostState,
+      runtimeState:'MASTER_PAPER_STARTING',workerId:this.workerId,hostId:this.hostId,buildSha:this.buildSha,
       leaseOwned:false,currentDelayMs:environment.THETA_WORKER_INTERVAL_MS,lastResumeGap:null,
     };
   }
@@ -116,7 +116,7 @@ export class ResidentThetaWorker {
       return null;
     }
     const startedAt = this.now();
-    this.health = { ...this.health, runningCycle: true, runtimeState:'RECONCILING',lastCycleStartedAt: startedAt.toISOString() };
+    this.health = { ...this.health, runningCycle: true, runtimeState:'MASTER_PAPER_RECONCILING',lastCycleStartedAt: startedAt.toISOString() };
     const cycle = (async()=>{
       await this.runtimeStore?.cycleStarted(this.workerId,startedAt.toISOString());
       return this.runner(this.environment,this.pool,startedAt);
@@ -129,8 +129,8 @@ export class ResidentThetaWorker {
         ...this.health, status: failed ? 'DEGRADED' : 'READY', runningCycle: false,
         lastCycleCompletedAt: this.now().toISOString(), lastCycleStatus: report.status,
         consecutiveFailures: failed ? this.health.consecutiveFailures + 1 : 0,
-        runtimeState:failed?'DEGRADED':report.reconciliation?.marketOpen===true?'SHADOW_RUNNING'
-          :report.reconciliation?.marketOpen===false?'WAITING_FOR_MARKET':'DEGRADED',
+        runtimeState:failed?'MASTER_PAPER_PROVIDER_DEGRADED':report.reconciliation?.marketOpen===true?'MASTER_PAPER_QUOTE_BLOCKED'
+          :report.reconciliation?.marketOpen===false?'MASTER_PAPER_MARKET_CLOSED':'MASTER_PAPER_PROVIDER_DEGRADED',
       };
       this.health={...this.health,currentDelayMs:this.nextDelayMs()};
       await this.runtimeStore?.cycleCompleted(this.workerId,report,this.health.lastCycleCompletedAt??this.now().toISOString());
@@ -145,7 +145,7 @@ export class ResidentThetaWorker {
         ...this.health, status: 'DEGRADED', runningCycle: false,
         lastCycleCompletedAt: this.now().toISOString(), lastCycleStatus: 'FAILED',
         consecutiveFailures: this.health.consecutiveFailures + 1,
-        runtimeState:'DEGRADED',
+        runtimeState:'MASTER_PAPER_PROVIDER_DEGRADED',
       };
       this.health={...this.health,currentDelayMs:this.nextDelayMs()};
       this.logger.error({ event: 'cycle_failed', errorCode: safeErrorCode(error) }, 'THETA worker cycle failed');
@@ -165,7 +165,7 @@ export class ResidentThetaWorker {
         buildSha:this.buildSha,startedAt:startedAt.toISOString(),strategyVersions:['theta-shadow-once-v1']});
       const expiry=new Date(startedAt.getTime()+this.environment.THETA_WORKER_LEASE_MS).toISOString();
       const acquired=await this.runtimeStore.acquireLease(this.workerId,startedAt.toISOString(),expiry);
-      if(acquired==='HELD_BY_OTHER')throw new Error('PRIMARY_SHADOW_WORKER_LEASE_HELD');
+      if(acquired==='HELD_BY_OTHER')throw new Error('PRIMARY_MASTER_PAPER_WORKER_LEASE_HELD');
       this.leaseOwned=true;
       this.health={...this.health,leaseOwned:true};
       if(previousHeartbeat!==null){
@@ -211,10 +211,10 @@ export class ResidentThetaWorker {
         if(owned)return;
         this.leaseOwned=false;
         this.health={...this.health,leaseOwned:false,status:'DEGRADED',runtimeState:'ERROR'};
-        this.logger.error({event:'primary_lease_lost'},'THETA worker lost the primary shadow lease');
-        void this.stop('PRIMARY_SHADOW_WORKER_LEASE_LOST');
+        this.logger.error({event:'primary_lease_lost'},'THETA worker lost the primary master Paper lease');
+        void this.stop('PRIMARY_MASTER_PAPER_WORKER_LEASE_LOST');
       }).catch(()=>{
-        this.health={...this.health,status:'DEGRADED',runtimeState:'DEGRADED'};
+        this.health={...this.health,status:'DEGRADED',runtimeState:'MASTER_PAPER_PROVIDER_DEGRADED'};
       });
     },this.environment.THETA_WORKER_HEARTBEAT_MS);
     this.heartbeatTimer.unref();
@@ -241,7 +241,8 @@ export class ResidentThetaWorker {
       this.server?.listen(this.environment.THETA_WORKER_PORT, '0.0.0.0', resolve);
     });
     const address = this.server.address() as AddressInfo | null;
-    this.logger.info({ event: 'worker_listening', port: address?.port ?? this.environment.THETA_WORKER_PORT, executionGate: 'LOCKED' }, 'THETA resident worker started');
+    this.logger.info({ event: 'worker_listening', port: address?.port ?? this.environment.THETA_WORKER_PORT,
+      executionGate: 'EXTERNAL_QUOTE_BLOCKER' }, 'THETA resident master Paper worker started');
   }
 
   async stop(reason?:string): Promise<void> {

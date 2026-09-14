@@ -27,7 +27,7 @@ if ($LASTEXITCODE -ne 0 -or $currentSha -ne $runtime.buildSha) { throw 'THETA_RU
 if ((& git status --porcelain --untracked-files=no).Count -gt 0) { throw 'THETA_RUNTIME_TRACKED_FILES_DIRTY' }
 if (Test-Path -LiteralPath $stopFile) { Remove-Item -LiteralPath $stopFile -Force }
 
-$mutex = [Threading.Mutex]::new($false, 'Local\THETA_LOCAL_SHADOW_SUPERVISOR')
+$mutex = [Threading.Mutex]::new($false, 'Local\THETA_MASTER_PAPER_SUPERVISOR')
 $owned = $false
 try {
   $owned = $mutex.WaitOne(0)
@@ -102,13 +102,13 @@ try {
         }
       }
       @{state='ONLINE';lastCycle=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
-        mode='THETA_LOCAL_SHADOW';executionGate='LOCKED';researchExport=$researchExport} | ConvertTo-Json |
+        mode='MASTER_THETA_PAPER';executionGate='EXTERNAL_QUOTE_BLOCKER';researchExport=$researchExport} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
       $delaySeconds = 5
     } catch {
       $workerExit = 1
       @{state='DEGRADED';lastFailure=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
-        mode='THETA_LOCAL_SHADOW';executionGate='LOCKED'} | ConvertTo-Json |
+        mode='MASTER_THETA_PAPER';executionGate='EXTERNAL_QUOTE_BLOCKER'} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
     }
     if (Test-Path -LiteralPath $stopFile) { break }
@@ -128,7 +128,7 @@ try {
     }
   } catch {}
   @{state='OFFLINE';lastShutdown=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
-    mode='THETA_LOCAL_SHADOW';executionGate='LOCKED'} | ConvertTo-Json |
+    mode='MASTER_THETA_PAPER';executionGate='EXTERNAL_QUOTE_BLOCKER'} | ConvertTo-Json |
     Set-Content -LiteralPath $statusFile -Encoding utf8
   if ($owned) { $mutex.ReleaseMutex() }
   $mutex.Dispose()
