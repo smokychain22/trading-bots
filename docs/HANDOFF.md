@@ -1647,3 +1647,39 @@ defensible model is trained and validated.
 NEXT RECOMMENDED TASK: Qualify an external exact-contract two-sided quote,
 complete typed management action producers, and accumulate resolved Paper
 episodes. Keep follower submission and all live tiers locked.
+
+OWNER: Codex
+
+TASK: Production Python contract runtime compatibility.
+
+FILES CHANGED: Private Vercel Python model endpoint, TypeScript Python bridge,
+Production shadow runtime configuration, Vercel function configuration, bridge
+tests, decisions, and handoff.
+
+WHAT WAS IMPLEMENTED: Added an authenticated, allowlisted Python function for
+the canonical deterministic quant contracts. Vercel Node functions use this
+remote boundary because they cannot spawn Python. Local and CI callers keep the
+existing fixed-argv child-process path. All responses still pass the existing
+TypeScript schema and version checks, and all failures remain fail-closed.
+
+TESTS RUN: Full Node suite, Python module import check, TypeScript, ESLint,
+build, security scan, and a local Vercel Production build including the Python
+function.
+
+KNOWN LIMITATIONS: This removes the internal `spawn python3 ENOENT` blocker. A
+deployed market scan must still prove candidate generation. The fresh trusted
+two-sided option execution quote remains externally blocked, empirical expected
+value remains unknown, and no order is authorized by this transport change.
+
+RISKS: A model endpoint must never accept arbitrary module or script names.
+Keep the static allowlist, runtime-secret authentication, body caps, generic
+errors, and TypeScript response validation intact.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude may verify that remote and local
+contract results are deterministic for the same payload. It must not change the
+Production transport into a second quantitative authority.
+
+NEXT RECOMMENDED TASK: Deploy, run the protected open-session scan, confirm real
+candidate and point-in-time evidence rows, then continue resolving quote
+qualification and management action production. Keep all live and follower
+orders locked.

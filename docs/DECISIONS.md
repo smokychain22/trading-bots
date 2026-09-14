@@ -714,3 +714,18 @@ Expired decisions are quarantined before queue claims and receive immutable
 events. This prevents an old external-quote-blocked plan from starving newer
 decisions. Alpaca OPRA or an independently qualified Optionomics two-sided
 quote remains mandatory at the last pricing boundary.
+
+## 2026-09-14 - Run deterministic Python contracts in a private Vercel Python function
+
+The Production Node function cannot spawn `python3`. Canonical market scans
+were therefore failing closed at ownership despite the same Python contracts
+passing locally and in CI. The deployed control plane now invokes a private,
+allowlisted Vercel Python function using the existing runtime secret. Local and
+CI execution keeps the child-process bridge, so the contract validators and
+model methodology remain unchanged.
+
+The Python function accepts only named deterministic model families, performs
+no provider or broker I/O, suppresses request logging, caps request and response
+sizes, and returns generic errors. The TypeScript caller still performs schema,
+snapshot, policy, and model-version validation. An unavailable or invalid
+remote model fails closed and can never become an OPEN decision.

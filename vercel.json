@@ -2,7 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "outputDirectory": "public",
   "functions": {
-    "api/theta-runtime.ts": { "maxDuration": 60 }
+    "api/theta-runtime.ts": { "maxDuration": 60 },
+    "api/quant-runtime.py": { "maxDuration": 30 }
   },
   "rewrites": [
     { "source": "/api/v1/:path*", "destination": "/api/customer?route=:path" },

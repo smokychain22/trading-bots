@@ -138,3 +138,32 @@ test('correlationId is present on every result, success or failure', async () =>
   const failure = await invokePythonModel(baseConfig(), 'nonexistent-family', {});
   assert.ok(failure.correlationId.length > 0);
 });
+
+test('remote bridge preserves the existing JSON validation boundary', async () => {
+  const config = baseConfig({
+    remote: {
+      endpoint: 'https://deployment.invalid/api/quant-runtime', bearerToken: 'test-token-not-a-real-secret',
+      fetchImpl: async () => new Response(JSON.stringify({
+        policyVersion: 'v1', fusionSnapshotHash: 'abc123', modelVersions: { ownership: 'v1' },
+      }), { status: 200 }),
+    },
+  });
+  const result = await invokeAndValidate(config, 'valid', { fusionSnapshotHash: 'abc123' },
+    (payload) => responseSchema.parse(payload), { expectedSnapshotHash: 'abc123', expectedPolicyVersion: 'v1' });
+  assert.equal(result.ok, true);
+});
+
+test('remote bridge fails closed on an HTTP error without returning a response body', async () => {
+  const config = baseConfig({
+    remote: {
+      endpoint: 'https://deployment.invalid/api/quant-runtime', bearerToken: 'test-token-not-a-real-secret',
+      fetchImpl: async () => new Response(JSON.stringify({ secret: 'must-not-propagate' }), { status: 503 }),
+    },
+  });
+  const result = await invokePythonModel(config, 'valid', {});
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.failureCode, 'NON_ZERO_EXIT');
+    assert.equal(result.detail, 'remote model HTTP 503');
+  }
+});

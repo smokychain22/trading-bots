@@ -22,6 +22,11 @@ export interface PythonBridgeConfig {
   readonly scriptAllowlist: ReadonlyMap<string, string>; // model family name -> absolute script path
   readonly timeoutMs: number;
   readonly maxOutputBytes: number;
+  readonly remote?: {
+    readonly endpoint: string;
+    readonly bearerToken: string;
+    readonly fetchImpl?: typeof fetch;
+  };
 }
 
 export type PythonBridgeFailureCode =
@@ -107,6 +112,10 @@ export function invokePythonModel(
     });
   }
 
+  if (config.remote !== undefined) {
+    return invokeRemotePythonModel(config, modelFamily, requestPayload, correlationId, startedAt);
+  }
+
   return new Promise((resolve) => {
     const child = spawn(config.pythonExecutablePath, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
 
@@ -170,6 +179,52 @@ export function invokePythonModel(
     child.stdin.write(JSON.stringify(requestPayload));
     child.stdin.end();
   });
+}
+
+async function invokeRemotePythonModel(
+  config: PythonBridgeConfig,
+  modelFamily: string,
+  requestPayload: unknown,
+  correlationId: string,
+  startedAt: number,
+): Promise<PythonBridgeResult> {
+  const remote = config.remote;
+  if (remote === undefined) throw new Error('REMOTE_PYTHON_CONFIGURATION_MISSING');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), config.timeoutMs);
+  try {
+    const response = await (remote.fetchImpl ?? fetch)(remote.endpoint, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${remote.bearerToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ modelFamily, payload: requestPayload }),
+      signal: controller.signal,
+    });
+    const stdout = await response.text();
+    if (stdout.length > config.maxOutputBytes) {
+      return { ok: false, correlationId, durationMs: Date.now() - startedAt, failureCode: 'OUTPUT_TOO_LARGE',
+        detail: `remote output exceeded the ${config.maxOutputBytes}-byte limit.` };
+    }
+    if (!response.ok) {
+      return { ok: false, correlationId, durationMs: Date.now() - startedAt, failureCode: 'NON_ZERO_EXIT',
+        detail: redactSecretShapedContent(`remote model HTTP ${response.status}`) };
+    }
+    if (stdout.trim().length === 0) {
+      return { ok: false, correlationId, durationMs: Date.now() - startedAt, failureCode: 'EMPTY_OUTPUT',
+        detail: 'Remote Python model produced no response.' };
+    }
+    return { ok: true, correlationId, durationMs: Date.now() - startedAt, stdout };
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === 'AbortError';
+    return { ok: false, correlationId, durationMs: Date.now() - startedAt,
+      failureCode: timedOut ? 'TIMEOUT' : 'PROCESS_ERROR',
+      detail: timedOut ? `Remote Python model exceeded ${config.timeoutMs}ms timeout.`
+        : redactSecretShapedContent(error instanceof Error ? error.message : 'Remote Python request failed.') };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

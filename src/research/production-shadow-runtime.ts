@@ -106,6 +106,10 @@ const bridge=(environment:Environment):PythonBridgeConfig=>({
     ['sizing',path.resolve('bots/theta/quant/runtime/sizing_contract.py')],
     ['executionQuality',path.resolve('bots/theta/quant/runtime/execution_quality_contract.py')],
   ]),timeoutMs:10_000,maxOutputBytes:2_000_000,
+  remote:process.env.VERCEL_URL&&environment.CRON_SECRET?{
+    endpoint:`https://${process.env.VERCEL_URL}/api/quant-runtime`,
+    bearerToken:environment.CRON_SECRET,
+  }:undefined,
 });
 
 export async function runProductionShadowEvidenceScan(input:{environment:Environment;pool:Pool;alpaca:AlpacaProviderConfig;
