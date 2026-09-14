@@ -382,6 +382,72 @@ License labels are an engineering intake screen, not legal clearance. MIT/Apache
 - Recommended action: ADAPT.
 - Integration status: Concrete THETA UNKNOWN-valuation fix and regression tests implemented in this milestone. Broader scheduler adaptation pending.
 
+## vollib/py_vollib
+
+- Repository / URL: [vollib/py_vollib](https://github.com/vollib/py_vollib)
+- Commit SHA inspected: `11f2058f709328339e3906d99cb04ff41af97776`
+- Last inspected: 2026-09-14
+- License: MIT (repository LICENSE, verified via GitHub API). The wrapped `lets_be_rational` core carries Peter Jäckel's own separate "free to use, copy, modify, distribute, provided this notice is preserved" grant, checked via the file's own header comment -- not a standard OSI license, so any adoption would need to preserve that exact notice, not just cite MIT.
+- Category: Mature pricing / IV-solver numerical oracle
+- Relevant files: [vollib/black_scholes_merton/implied_volatility.py](https://github.com/vollib/py_vollib/blob/11f2058f709328339e3906d99cb04ff41af97776/vollib/black_scholes_merton/implied_volatility.py), [vollib/lets_be_rational/core.py](https://github.com/vollib/py_vollib/blob/11f2058f709328339e3906d99cb04ff41af97776/vollib/lets_be_rational/core.py), [LICENSE](https://github.com/vollib/py_vollib/blob/11f2058f709328339e3906d99cb04ff41af97776/LICENSE).
+- Problem solved / algorithms / architecture: Wraps Peter Jäckel's "Let's Be Rational" method -- a rational-function initial guess refined by Householder iteration, converging to machine (float64) precision in a bounded, small number of iterations, with explicit `PriceIsAboveMaximum`/`PriceIsBelowIntrinsic` exceptions rather than a silent NaN or an unbounded Newton loop. This is the industry-standard fast/robust IV-solving algorithm, not a hand-rolled bisection.
+- Strategy logic: No trading policy inferred; this is a pricing/IV utility only.
+- Risk logic / assumptions: `black_scholes_merton` variant assumes European exercise with a continuous dividend yield -- does not model discrete dividends, early exercise, or American-style assignment risk. Matches this repo's own `bs_reference.py` documented limitation, not a new gap.
+- Execution logic / weaknesses: No execution/fill logic; pricing only.
+- Backtesting logic: Not a data source; a verification oracle only.
+- Useful tests / invariants: Re-verified against this repo's own `bs_reference.implied_volatility` (not merely assumed): it already returns `None` (never raises, never guesses) for exactly the same two conditions `py_vollib` raises `PriceIsBelowIntrinsic`/`PriceIsAboveMaximum` for -- below-intrinsic price, and an unbracketed bisection root (structurally equivalent to "above the maximum achievable price"). Same invariant, different failure signal (`None` vs. exception), each idiomatic to its own codebase -- **not a gap**, recorded here to avoid a future session "fixing" a non-defect.
+- Weaknesses: A new runtime dependency; this repo's own `bs_reference.py` is deliberately dependency-free for the identical verification-only role, so adopting `py_vollib` outright would duplicate rather than replace it.
+- Look-ahead risk: Not applicable -- a pure numerical solver has no data-timing concept of its own; the CALLER must inject only PIT-valid quote/rate/dividend inputs.
+- Survivorship-bias risk: Not applicable.
+- THETA relevance / existing equivalent: `bs_reference.py` (this repo's own dependency-free reference Black-Scholes/IV solver, R6D).
+- Better than current THETA: YES, limited to the specific numerical method (Jäckel's rational-function IV solver is faster and more robust across the deep-ITM/deep-OTM/near-expiry edge cases `bs_reference.py`'s own tests already document as catastrophic-cancellation-prone) -- never a profitability ranking.
+- Recommended action: TEST -- cross-check `bs_reference.py`'s existing IV fixtures (including the documented catastrophic-cancellation deep-ITM case) against `py_vollib`'s solver output as an independent second oracle, without adding it as a runtime dependency.
+- Integration status: Not adopted. Reference-only; no code copied into this repository.
+
+## SVI / SSVI / eSSVI volatility-surface parameterization
+
+- Repository / URL: none meeting this repository's credibility bar. GitHub search (`SVI implied volatility calibration`, `SSVI volatility surface`) returned only low-star (0-8 stars), unmaintained student/hobby implementations -- none is a credible near-primary source per the standing evidence hierarchy (TEAM_CHARTER: prefer institutional methodology and peer-reviewed research over an arbitrary repository).
+- Commit SHA inspected: not applicable -- no repository adopted as a reference.
+- Last inspected: 2026-09-14
+- License: not applicable.
+- Category: Volatility-surface parameterization (research method, not a repository)
+- Primary sources instead: Gatheral, "A parsimonious arbitrage-free implied volatility parameterization with application to the equity and FX markets" (2004) for raw SVI; Gatheral & Jacquier, "Arbitrage-free SVI volatility surfaces" (2013) for SSVI and the explicit no-butterfly/no-calendar-arbitrage conditions on the SSVI parameter surface.
+- Problem solved / algorithms / architecture: SVI parameterizes one expiry's total implied variance as a function of log-moneyness `k = ln(K/F)`: `w(k) = a + b(ρ(k−m) + sqrt((k−m)² + σ²))`. SSVI ties the five per-expiry SVI parameters to two global functions of at-the-money total variance, collapsing the calibration surface to far fewer free parameters and making a calendar-consistent surface easier to keep arbitrage-free.
+- Strategy logic: None -- a market-data smoothing/interpolation method, not a trading policy.
+- Risk logic / assumptions: SVI/SSVI fit already-observed IVs; a poor fit (few strikes, thin liquidity, wide spreads) can silently produce an arbitrable or unstable surface unless the closed-form no-arbitrage conditions in Gatheral & Jacquier (2013) are checked explicitly.
+- Execution logic / weaknesses: No execution content.
+- Backtesting logic: Not a data source.
+- Useful tests / invariants: Butterfly-arbitrage (`w'(k)` boundedness) and calendar-arbitrage (`w` non-decreasing in `T` at fixed `k`) checks from the 2013 paper are the two invariants worth implementing as tests BEFORE any curvature-based feature (`SurfaceResidual`) is trusted.
+- Weaknesses: Both papers assume liquid enough strikes/expiries to fit a stable surface; Optionomics' own documented coverage/liquidity limits must be checked before assuming a THETA-relevant underlying has enough quoted strikes to calibrate against.
+- Look-ahead risk: A surface must be fit using ONLY quotes with `provider_timestamp <= decision_time` -- fitting against same-day-but-later strikes would leak.
+- Survivorship-bias risk: Not applicable.
+- THETA relevance / existing equivalent: none yet -- `THETA_OPTIONOMICS_FEATURE_CATALOG.md`'s "Surface shape" row (status `TEST`) and this run's requested `SurfaceResidual = MarketIV - FittedIV` feature would need an SVI/SSVI fit as their input, which does not exist in this repository yet.
+- Better than current THETA: N/A -- no current THETA surface-fitting method exists to compare against.
+- Recommended action: TEST -- implement raw SVI (five parameters per expiry) as the simpler baseline before SSVI's cross-expiry constraint, per the standing "earn complexity through OOS economics" discipline; verify the two named arbitrage invariants before trusting any fitted value.
+- Integration status: Not implemented. `BLOCKED_ON_DATA` -- requires enough real per-expiry strike/IV observations to fit against, which does not exist (`DATASET_ABSENT`).
+
+## OpenGamma/Strata
+
+- Repository / URL: [OpenGamma/Strata](https://github.com/OpenGamma/Strata)
+- Commit SHA inspected: `987932ee95bf53e2baaff9a6b8e738a00f558b10`
+- Last inspected: 2026-09-14
+- License: Apache-2.0 (verified via GitHub API).
+- Category: Institutional market-data/surface architecture benchmark
+- Relevant files: [modules/market/.../surface/Surface.java](https://github.com/OpenGamma/Strata/blob/987932ee95bf53e2baaff9a6b8e738a00f558b10/modules/market/src/main/java/com/opengamma/strata/market/surface/Surface.java), [modules/market/.../surface/SurfaceMetadata.java](https://github.com/OpenGamma/Strata/blob/987932ee95bf53e2baaff9a6b8e738a00f558b10/modules/market/src/main/java/com/opengamma/strata/market/surface/SurfaceMetadata.java), [modules/market/.../surface/interpolator/SurfaceInterpolator.java](https://github.com/OpenGamma/Strata/blob/987932ee95bf53e2baaff9a6b8e738a00f558b10/modules/market/src/main/java/com/opengamma/strata/market/surface/interpolator/SurfaceInterpolator.java).
+- Problem solved / algorithms / architecture: Every `Surface` carries its own `SurfaceMetadata` (parameter names, x/y value types, day-count) rather than a bare numeric grid, and interpolation is a distinct, injected `SurfaceInterpolator` strategy -- the architecture directly enforces "a derived/interpolated value can never be mistaken for a raw quoted observation" at the type level.
+- Strategy logic: None -- a risk/market-data platform, not a trading strategy.
+- Risk logic / assumptions: Institutional-grade FX/rates surface conventions; equity-option-specific skew/smile conventions are thinner than the FX-option module.
+- Execution logic / weaknesses: No broker execution content in the reviewed files.
+- Backtesting logic: Not reviewed in this pass.
+- Useful tests / invariants: The `SurfaceMetadata`-carries-provenance pattern is the direct architectural analogue of this repository's own `ProviderProvenance`/`DataQuality` fields on every candidate/quote row (`dataset_contracts.py`) -- confirms, rather than changes, that existing discipline.
+- Weaknesses: A large Java platform; no case exists to add it as a dependency to a Python/TypeScript research stack.
+- Look-ahead risk: Not evaluated in this pass -- architecture-only review.
+- Survivorship-bias risk: Not applicable.
+- THETA relevance / existing equivalent: `dataset_contracts.ProviderProvenance`/`DataQuality`, already independently enforcing the same "provenance travels with every value" discipline this benchmark confirms.
+- Better than current THETA: NO CHANGE -- confirms this repository's existing provenance discipline is already aligned with an institutional-grade benchmark; nothing to adopt.
+- Recommended action: REJECT (as a dependency) / NO_CHANGE_REQUIRED (as an architectural pattern, already matched).
+- Integration status: Reference-only, no code copied, no dependency added.
+
 ## Implemented consequence and retained blockers
 
 The reviewed LEAN holding design reinforces the canonical requirement to value both option and stock inventory. THETA's old ledger returned a numeric total while substituting zero for open option MTM or omitting unmarked stock. The independent fix versions the calculation contract to v2, returns null for incomplete aggregates, exposes deterministic valuation issues, and retains known realized losses. No DB schema, strategy weight, broker endpoint or execution gate changed.

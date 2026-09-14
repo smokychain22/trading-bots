@@ -513,3 +513,109 @@ from them merely because its purpose is bootstrapping data.
 **992 Python tests pass** (+11). Security scan: 0 findings.
 `DATASET_ABSENT` still stands. **`REQUIRED_CODEX_CHANGE` count for this
 run: 0.**
+
+## PAPER_ACTIVE_BASELINE adversarial review + reference-corpus completion: `eafee51..a9d8ffa`
+
+One canonical commit ("make paper baseline and rechecks explicit",
+migration 027, `shadow-virtual-trader.ts`). This is exactly the
+`theta-paper-active-baseline-v2` policy this run's directive asked to be
+judged as a DATA-GENERATION policy, not a proven-alpha policy.
+
+### What the code actually does (verified by reading it, not assumed)
+
+`selectShadowOpeningCandidate` computes `structuralPremiumReturnPerCapitalDay
+= premium / collateral / dte` (a purely descriptive ratio), builds a
+three-dimensional Pareto frontier (structural return, spread%, ownership
+score -- `dominates()` requires no-worse-on-all-three and strictly-better-
+on-at-least-one), and picks deterministically among frontier members by a
+disclosed, versioned tie-break order. `empiricalEvReady: false` and
+`executionAuthorized: false` are hardcoded constants, not derived values --
+they cannot silently flip true. No probability or EV is fabricated
+anywhere in the file.
+
+**Confirms the four `PAPER_ACTIVE_BASELINE` review questions positively:**
+no fabricated probability (verified: only a ratio, never called "expected
+return" anywhere in the file or its `whyNotWait` receipt); Pareto logic is
+transparent (`paretoFrontierCandidateIds` and each candidate's own
+`dominatedBy` list are both exposed, not hidden inside a score); the
+tie-break order is disclosed and itself versioned
+(`shadowSelectionPolicyVersion`); search breadth is whatever the caller's
+candidate list contains -- not restricted by this function itself.
+
+### Genuine finding: structural-return-per-capital-day mathematically favors short DTE
+
+`structuralReturn = premium / (collateral * dte)`. Under the standard
+Brenner-Subrahmanyam Black-Scholes ATM approximation (`premium ≈ k * S *
+sigma * sqrt(T)` for a constant `k`), `premium / collateral` scales
+approximately with `sqrt(T)` for a fixed underlying/strike/IV, so
+`structuralReturn ~ sqrt(T) / T = 1 / sqrt(T)` -- **strictly decreasing in
+DTE**. Two contracts with genuinely identical annualized premium yield
+will be ranked as if the shorter-dated one is a better trade, purely as
+an artifact of dividing by raw calendar days rather than by a
+time-scaling-consistent denominator (e.g. dividing by `sqrt(dte)` instead
+of `dte`, or reporting an annualized rate). Since this ratio is also the
+PRIMARY tie-break/ranking dimension in the Pareto frontier's sort order
+(checked first, before spread and ownership), the resulting Paper dataset
+this policy generates will be systematically skewed toward short-DTE
+contracts -- not because short DTE is empirically better, but because of
+this specific formula's own time-scaling artifact. This directly matters
+because the dataset THIS baseline generates is the evidence the eventual
+model-fitting stage will train on; a systematically DTE-skewed sample
+would under-represent the 25-45 DTE cohort this repository's own
+hypothesis registry (`H-Q-01`/`H-Q-02`, `hypotheses.json`) is actually
+about.
+
+This is NOT a code defect (the formula is honestly labeled descriptive,
+per Codex's own handoff: "calculates only descriptive premium-per-
+collateral-day", and the whole policy is explicitly `NOT` presented as
+proven alpha) and is therefore correctly classified `RESEARCH_CHALLENGER`,
+not `REQUIRED_CODEX_CHANGE`, per this run's own instruction ("issue
+REQUIRED_CODEX_CHANGE only if it creates a concrete production safety/
+correctness defect" -- a sampling-breadth concern for a data-GENERATION
+policy is not a safety/correctness defect).
+
+**RESEARCH_CHALLENGER recommendation:** once enough scans accumulate to
+check, verify whether the resulting Paper dataset's DTE distribution is in
+fact skewed short before concluding anything needs to change -- and if it
+is, the fix belongs in DATASET INTERPRETATION (stratify analysis by DTE
+bucket, per `experiment_registry.DTE_BINS`, which this repository already
+has) or in a FUTURE baseline policy version, never a retroactive relabel
+of already-collected v2 receipts.
+
+### Reference-corpus completion (directive section 3)
+
+Checked `GITHUB_REPO_RESEARCH_LEDGER.md` against the directive's named
+list (QuantConnect LEAN, QuantLib, OpenGamma Strata, py_vollib, Optopsy,
+credible SVI/SSVI/eSSVI). LEAN, QuantLib, and Optopsy were already
+substantively documented from an earlier session. `py_vollib`, SVI/SSVI,
+and OpenGamma Strata had zero prior mentions anywhere in the repository --
+added all three with real evidence (verified commit SHAs, licenses, file
+paths, via `gh api`):
+
+- **`vollib/py_vollib`** (MIT, commit `11f2058f...`): wraps Peter Jäckel's
+  "Let's Be Rational" rational-function IV solver. Cross-checked against
+  this repo's own `bs_reference.implied_volatility` and found the two are
+  ALREADY equivalent in their bound-checking (both refuse a below-
+  intrinsic or unbracketed price; `bs_reference.py` returns `None`,
+  `py_vollib` raises an exception) -- recorded explicitly as **not a gap**,
+  to prevent a future session from "fixing" a non-defect. Recommended
+  action: `TEST` (cross-check IV fixtures as a second oracle), never
+  adopted as a dependency.
+- **SVI/SSVI/eSSVI**: GitHub search for a credible implementation returned
+  only 0-8-star unmaintained repositories -- below this repository's own
+  evidence-credibility bar. Documented the primary academic sources
+  instead (Gatheral 2004; Gatheral & Jacquier 2013) with the actual
+  closed-form parameterization and the two explicit no-arbitrage
+  invariants (butterfly, calendar) that must be checked before any
+  `SurfaceResidual` feature is trusted. `BLOCKED_ON_DATA` for
+  implementation -- no per-expiry strike/IV observations exist yet to fit
+  against.
+- **`OpenGamma/Strata`** (Apache-2.0, commit `987932ee...`): confirms,
+  rather than changes, this repository's existing provenance-travels-
+  with-every-value discipline (`dataset_contracts.ProviderProvenance`/
+  `DataQuality`) already matches an institutional-grade benchmark.
+  `NO_CHANGE_REQUIRED`.
+
+**`DATASET_ABSENT` still stands.** No Python code changed this run
+(reference-corpus and adversarial-review work only). Security scan: 0
+findings. **`REQUIRED_CODEX_CHANGE` count for this run: 0.**
