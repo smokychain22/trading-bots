@@ -715,3 +715,62 @@ detailed per-repo dossier -- complementary, not competing.
 Security scan: 0 findings. `DATASET_ABSENT` still stands.
 **`REQUIRED_CODEX_CHANGE` count for this run: 1** (delta-proximity
 tolerance, above).
+
+## Round-trip confirmation + formula audit: `33ac674..0f609fb`
+
+Four commits: professional reference pack verification (12 repos re-
+checked at exact SHAs), Optionomics capability census (35 authenticated
+capabilities persisted), Optionomics evidence hardening (migration 029:
+request timing/rate-limit/HTTP-status/one-way-hashed credential-identity
+provenance on `market.optionomics_raw_observation`), and Optionomics
+feature-engine v2.
+
+### My prior REQUIRED_CODEX_CHANGE was fixed exactly as specified
+
+`docs/HANDOFF.md`: "Claude's `9e7a679` skew review was accepted and
+repaired. Skew now stays UNKNOWN without a caller-supplied proximity
+policy and rejects far-from-25-delta pairs." Verified directly:
+`deriveSkew` now takes a required `deltaTolerance` parameter -- `UNKNOWN`
+when not configured, `INVALID` for a nonsensical value (`<=0` or `>=0.25`),
+and `UNKNOWN` (not a numeric value) when neither the nearest put nor call
+is actually within tolerance. Exactly the fix recommended: caller-supplied,
+never an invented default. **Confirmed correct. Closed.**
+
+### New formulas (v2): all verified correct
+
+`mid=(bid+ask)/2`, `spread=ask-bid`, `relativeSpread=spread/mid` (mid<=0
+guarded to `UNKNOWN`, crossed/negative quote to `INVALID` -- matches this
+run's directive exactly). `downsideCushion=(S-breakeven)/S` matches the
+directive's formula exactly. `creditYieldOnCollateral=grossPremium/
+collateral` algebraically reduces to `bid/strike` (multiplier cancels),
+matching the directive's `CreditYield=credit*multiplier/collateral`.
+`expectedMoveApprox=S*IV*sqrt(dte/365)` correctly annualizes DTE (days) to
+years before the sqrt -- the exact T-units check this run's directive
+asked for, done correctly.
+`expectedMoveNormalizedStrikeDistance=|S-strike|/expectedMove` is honestly
+named (never called a probability). **NO_CHANGE_REQUIRED for all of the
+above -- independently re-derived and correct.**
+
+### Feature-destination allowlist: strategy isolation preserved
+
+New `optionomics-feature-destinations.ts` gives each of the five canonical
+branches (plus `MANAGEMENT` and `R6_RESEARCH`) its OWN feature-family
+allowlist rather than one universal set -- e.g. `THETA_HOLD_STRIKE`
+excludes `VOLATILITY`/`SKEW`/`SURFACE`/`CROWD`/`HISTORICAL_CONTEXT` (a
+short-DTE specialist has no use for term/skew/surface research context),
+while `R6_RESEARCH` alone gets everything including `CROWD`. This is
+exactly the "did delta/DTE/IVR/GEX/flow become an accidental universal
+gate across every branch" concern this run's directive raised, answered
+structurally rather than by convention. **NO_CHANGE_REQUIRED.**
+
+### Provenance/security
+
+Migration 029 adds `requested_at`/`request_path`/`http_status`/
+`rate_limit_json`/`credential_identity_ref_hash` (one-way SHA-256, not the
+credential itself) to `market.optionomics_raw_observation`, plus a
+`requested_at <= ingestion_timestamp` PIT-order CHECK. Purely additive,
+zero overlap with the dataset export's SELECT list. **NO_RESEARCH_IMPACT.**
+
+**No Python code changed this run.** Security scan: 0 findings.
+`DATASET_ABSENT` still stands. **`REQUIRED_CODEX_CHANGE` count for this
+run: 0** (one was closed, none newly found).
