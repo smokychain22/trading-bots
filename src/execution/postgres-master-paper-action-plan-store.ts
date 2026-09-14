@@ -10,7 +10,9 @@ const hash=(value:unknown)=>createHash('sha256').update(canonicalJson(value)).di
 export class PostgresMasterPaperActionPlanStore {
   constructor(private readonly pool:Pool){}
 
-  async enqueue(raw:ApprovedMasterPaperActionPlan,createdAt:string):Promise<boolean>{
+  async enqueue(raw:ApprovedMasterPaperActionPlan,createdAt:string,chain?:{
+    readonly botInstanceId:string;readonly underlyingId:string;
+  }):Promise<boolean>{
     const plan=masterPaperActionPlanSchema.parse(raw) as ApprovedMasterPaperActionPlan;
     const contentHash=hash(plan);
     const client=await this.pool.connect();
@@ -26,6 +28,12 @@ export class PostgresMasterPaperActionPlanStore {
       if(String(row.candidate_id??'')!==plan.candidateId)throw new Error('ACTION_PLAN_SELECTED_CANDIDATE_MISMATCH');
       if(Number(row.quantity)!==plan.canonicalQuantity)throw new Error('ACTION_PLAN_CANONICAL_QUANTITY_MISMATCH');
       if(String(row.aegis_action)!==plan.aegisState)throw new Error('ACTION_PLAN_AEGIS_MISMATCH');
+      if(chain!==undefined){
+        if(chain.underlyingId!==plan.underlyingId)throw new Error('ACTION_PLAN_CHAIN_UNDERLYING_MISMATCH');
+        await client.query(`INSERT INTO trade.economic_chain(chain_id,bot_instance_id,underlying_id,lifecycle_state,opened_at)
+          VALUES($1,$2,$3,'WAIT',$4) ON CONFLICT(chain_id) DO NOTHING`,
+        [plan.chainId,chain.botInstanceId,chain.underlyingId,createdAt]);
+      }
       const result=await client.query(`INSERT INTO trade.master_paper_action_plan(action_plan_id,decision_id,execution_account_id,
         plan_version,status,plan_json,content_hash,not_before,created_at,updated_at,execution_tier,canonical_quantity,
         paper_evidence_quantity,empirical_economics_ready,expected_after_cost_ev)
@@ -43,6 +51,15 @@ export class PostgresMasterPaperActionPlanStore {
     const client=await this.pool.connect();
     try{
       await client.query('BEGIN');
+      const expired=await client.query(`UPDATE trade.master_paper_action_plan SET status='QUARANTINED',
+        last_blockers_json='["DECISION_EXPIRED"]'::jsonb,claimed_by=NULL,claimed_at=NULL,claim_expires_at=NULL,updated_at=$2
+        WHERE execution_account_id=$1 AND status IN ('READY','WAITING_GATE','CLAIMED')
+          AND (plan_json->>'decisionExpiresAt')::timestamptz <= $2
+        RETURNING action_plan_id`,[executionAccountId,now]);
+      if((expired.rowCount??0)>0)await client.query(`INSERT INTO trade.master_paper_action_plan_event(
+        action_plan_event_id,action_plan_id,state,event_time,detail_json)
+        SELECT gen_random_uuid(),action_plan_id,'QUARANTINED',$2,'{"blockers":["DECISION_EXPIRED"]}'::jsonb
+        FROM unnest($1::uuid[]) AS expired_id(action_plan_id)`,[expired.rows.map((row)=>String(row.action_plan_id)),now]);
       const result=await client.query(`SELECT action_plan_id,plan_json FROM trade.master_paper_action_plan
         WHERE execution_account_id=$1 AND not_before<=$2 AND
           (status IN ('READY','WAITING_GATE') OR (status='CLAIMED' AND claim_expires_at<=$2))

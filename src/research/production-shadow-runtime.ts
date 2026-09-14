@@ -11,10 +11,13 @@ import { buildObservationSchedule, PostgresShadowEvidenceRuntimeStore, runCrossS
 import { PostgresPointInTimeEvidenceStore } from './point-in-time-evidence.js';
 import { ensureMasterShadowContext } from './master-shadow-context.js';
 import { PostgresShadowVirtualTrader, type ShadowIntentCreationReport } from './postgres-shadow-virtual-trader.js';
+import { assembleMasterPaperEvidencePlan } from '../execution/master-paper-plan-assembly.js';
+import { PostgresMasterPaperActionPlanStore } from '../execution/postgres-master-paper-action-plan-store.js';
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
   readonly symbolsAttempted:number; readonly symbolsCompleted:number; readonly observationsScheduled:number;
+  readonly actionPlansReady:number; readonly actionPlansBlocked:readonly string[];
   readonly virtualOpening:ShadowIntentCreationReport;
 }
 
@@ -105,7 +108,8 @@ const bridge=(environment:Environment):PythonBridgeConfig=>({
   ]),timeoutMs:10_000,maxOutputBytes:2_000_000,
 });
 
-export async function runProductionShadowEvidenceScan(input:{environment:Environment;pool:Pool;alpaca:AlpacaProviderConfig;now:()=>string}):Promise<ProductionShadowScanReport>{
+export async function runProductionShadowEvidenceScan(input:{environment:Environment;pool:Pool;alpaca:AlpacaProviderConfig;
+  executionAccountId?:string|null;now:()=>string}):Promise<ProductionShadowScanReport>{
   if(input.environment.THETA_RUNTIME_MODE!=='MASTER_THETA_PAPER') throw new Error('MASTER_THETA_PAPER_RUNTIME_REQUIRED');
   const discovery=await discoverRealUniverse(input.alpaca,{discoveryVersion:'theta-shadow-universe-v1',maxCandidateAssets:100,
     allowedExchanges:['NYSE','NASDAQ','ARCA','BATS'],barsLookbackDays:30,barsBatchSize:100,maxOptionabilityChecks:2,minCurrentPrice:5},input.now);
@@ -124,11 +128,59 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const runtimeContext=await loadPersistenceContext(input.pool,input.alpaca,scan.startedAt);
   const cycleStore=new PostgresThetaCycleStore(input.pool),persisted=new Map<string,{fusionSnapshotId:string|null;candidateSetId:string|null}>();
   let observationsScheduled=0;
+  let actionPlansReady=0;
+  const actionPlansBlocked:string[]=[];
   const evidenceStore=new PostgresShadowEvidenceRuntimeStore(input.pool);
   for(const member of scan.results){
     if(member.cycle?.fusionSnapshot===null||member.cycle===null) continue;
     const saved=await cycleStore.persist(runtimeContext,member.cycle);
     persisted.set(member.symbol,{fusionSnapshotId:saved.fusionSnapshotId,candidateSetId:saved.candidateSetId});
+    if(input.environment.MASTER_PAPER_EXECUTION_ENABLED&&!input.environment.PAPER_PAUSE_NEW_ORDERS
+      &&member.cycle.strategyFrontier!==null&&saved.decisionId!==null){
+      const selected=await input.pool.query(`SELECT d.selected_candidate_id::text AS candidate_id,
+        c.option_contract_id::text,oc.underlying_id::text,cv.assumptions_json
+        FROM trade.decision d
+        LEFT JOIN trade.candidate c ON c.candidate_id=d.selected_candidate_id
+        LEFT JOIN market.option_contract oc ON oc.option_contract_id=c.option_contract_id
+        JOIN core.bot_instance bi ON bi.bot_instance_id=$2
+        JOIN core.cost_model_version cv ON cv.cost_model_version_id=bi.cost_model_version_id
+        WHERE d.decision_id=$1`,[saved.decisionId,runtimeContext.botInstanceId]);
+      const row=selected.rows[0] as Record<string,unknown>|undefined;
+      const snapshot=member.cycle.fusionSnapshot.snapshot;
+      const account=snapshot.accountState!==null&&typeof snapshot.accountState==='object'&&!Array.isArray(snapshot.accountState)
+        ? snapshot.accountState as Record<string,unknown>:{};
+      const positionState=snapshot.positionState!==null&&typeof snapshot.positionState==='object'&&!Array.isArray(snapshot.positionState)
+        ? snapshot.positionState as Record<string,unknown>:{};
+      const positions=Array.isArray(positionState.positions)?positionState.positions:[];
+      const orders=Array.isArray(positionState.openOrders)?positionState.openOrders:[];
+      const assumptions=row?.assumptions_json!==null&&typeof row?.assumptions_json==='object'
+        ? row.assumptions_json as Record<string,unknown>:{};
+      const marketSession=snapshot.marketSession!==null&&typeof snapshot.marketSession==='object'&&!Array.isArray(snapshot.marketSession)
+        ? snapshot.marketSession as Record<string,unknown>:{};
+      const planNow=input.now();
+      const boundedExpiry=new Date(Date.parse(planNow)+45_000).toISOString();
+      const sessionClose=typeof marketSession.nextClose==='string'&&Number.isFinite(Date.parse(marketSession.nextClose))
+        ? new Date(marketSession.nextClose).toISOString():null;
+      const decisionExpiresAt=sessionClose!==null&&Date.parse(sessionClose)<Date.parse(boundedExpiry)?sessionClose:boundedExpiry;
+      const assembled=assembleMasterPaperEvidencePlan({frontier:member.cycle.strategyFrontier,
+        executionAccountId:input.executionAccountId??null,decisionId:saved.decisionId,
+        persistedCandidateId:row?.candidate_id==null?null:String(row.candidate_id),
+        optionContractId:row?.option_contract_id==null?null:String(row.option_contract_id),
+        underlyingId:row?.underlying_id==null?null:String(row.underlying_id),
+        accountStatus:typeof account.accountStatus==='string'?account.accountStatus:null,
+        optionsApprovedLevel:n(account.optionsApprovedLevel),optionsTradingLevel:n(account.optionsTradingLevel),
+        aegisState:member.cycle.orchestration?.aegis?.newRiskState??null,
+        openPositionSymbols:positions.flatMap((value)=>value!==null&&typeof value==='object'&&!Array.isArray(value)
+          &&typeof (value as Record<string,unknown>).symbol==='string'?[String((value as Record<string,unknown>).symbol)]:[]),
+        openOrderSymbols:orders.flatMap((value)=>value!==null&&typeof value==='object'&&!Array.isArray(value)
+          &&typeof (value as Record<string,unknown>).symbol==='string'?[String((value as Record<string,unknown>).symbol)]:[]),
+        paperEvidenceRiskCap:input.environment.PAPER_EVIDENCE_RISK_CAP,
+        modeledRoundTripCostPerContract:n(assumptions.totalModeledCostPerContract),now:planNow,decisionExpiresAt});
+      if(assembled.state==='READY'){
+        if(await new PostgresMasterPaperActionPlanStore(input.pool).enqueue(assembled.plan,planNow,
+          {botInstanceId:runtimeContext.botInstanceId,underlyingId:assembled.plan.underlyingId}))actionPlansReady++;
+      }else if(assembled.state==='BLOCKED')actionPlansBlocked.push(...assembled.blockers.map((blocker)=>`${member.symbol}:${blocker}`));
+    }
     if(saved.candidateSetId===null) continue;
     const candidates=await input.pool.query(`SELECT c.candidate_id,oc.contract_symbol FROM trade.candidate c
       JOIN market.option_contract oc ON oc.option_contract_id=c.option_contract_id WHERE c.candidate_set_id=$1`,[saved.candidateSetId]);
@@ -144,7 +196,8 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   await evidenceStore.saveScan(scan,persisted);
   const virtualOpening=await new PostgresShadowVirtualTrader(input.pool).createOpeningIntent(scan.scanId,scan.finishedAt);
   return {scanId:scan.scanId,completeness:scan.completeness,candidateCount:scan.candidateCount,
-    symbolsAttempted:scan.symbolsAttempted,symbolsCompleted:scan.symbolsCompleted,observationsScheduled,virtualOpening};
+    symbolsAttempted:scan.symbolsAttempted,symbolsCompleted:scan.symbolsCompleted,observationsScheduled,
+    actionPlansReady,actionPlansBlocked:[...new Set(actionPlansBlocked)].toSorted(),virtualOpening};
 }
 
 async function loadPersistenceContext(pool:Pool,alpaca:AlpacaProviderConfig,asOf:string){

@@ -1602,3 +1602,48 @@ RISKS: Paper evidence can lose money in Paper and does not establish profitabili
 WHAT THE OTHER AGENT SHOULD REVIEW: Research should treat `PAPER_EVIDENCE` observations as unpromoted evidence and must not reinterpret UNKNOWN EV as zero or positive.
 
 NEXT RECOMMENDED TASK: Run the existing Alpaca OPRA qualification at market open. If entitled, connect structurally selected actions to the v2 plan producer under the one-contract cap. If not entitled, record `ALPACA_OPRA_ENTITLEMENT_REQUIRED` without redesigning THETA.
+
+OWNER: Codex
+
+TASK: End-to-end master Paper decision-to-plan integration and system gap audit.
+
+FILES CHANGED: Master plan assembly and store, Production evidence runtime,
+autonomous runtime, canonical candidate persistence, tests, decisions, handoff,
+and the system completion matrix.
+
+WHAT WAS IMPLEMENTED: Connected a canonical persisted `OPEN_CSP` decision to
+the durable master action-plan queue. Quantity is reducing-only under the Paper
+evidence cap. The cost floor uses the real contract multiplier. Expected EV
+stays unknown. Exact duplicate exposure, missing account/options/AEGIS/cost
+evidence, research-only branches, zero quantity, and invalid expiry all block.
+Expired queued plans are quarantined before claiming. Canonical Conventional
+candidate aliases now resolve to their persisted THETA-Q row instead of losing
+the selected candidate relationship.
+
+TESTS RUN: Full Node suite, TypeScript, ESLint, build, security scan, focused
+plan-assembly tests, and an authenticated open-session Production provider
+readiness check.
+
+TEST RESULTS: 765 Node tests passed, 4 local PostgreSQL tests skipped, and 0
+failed. TypeScript and build passed. ESLint passed after the final test cleanup.
+Security scan found 0 findings. Production reported an ACTIVE options-level-3
+master account, zero positions, zero open orders, Alpaca indicative snapshots
+HTTP 200, Alpaca OPRA HTTP 403 NOT_ENTITLED, and Optionomics HTTP 401.
+
+KNOWN LIMITATIONS: Docker Desktop was not available for local PostgreSQL/Redis
+integration. The new SQL path must be exercised by CI and the authenticated
+Production worker after deployment. Only `OPEN_CSP` has a canonical action-plan
+producer. Management and other lifecycle actions still need typed plan
+assemblers. No empirical strategy edge is proven.
+
+RISKS: A structural credit above modeled costs is not positive expected value.
+The Paper tier can lose simulated money. No execution quote is currently
+qualified, so the broker submission boundary remains blocked.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Research may evaluate the evidence created
+by Paper observations. It must preserve `expectedAfterCostEv=null` until a
+defensible model is trained and validated.
+
+NEXT RECOMMENDED TASK: Qualify an external exact-contract two-sided quote,
+complete typed management action producers, and accumulate resolved Paper
+episodes. Keep follower submission and all live tiers locked.

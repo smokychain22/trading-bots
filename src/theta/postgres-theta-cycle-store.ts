@@ -182,6 +182,12 @@ export class PostgresThetaCycleStore {
 
       const candidateId = deterministicRuntimeUuid(`candidate:${candidateSetId}:${evaluatedCandidate.candidateId}`);
       candidateIds.set(evaluatedCandidate.candidateId, candidateId);
+      for (const canonical of cycle.strategyFrontier?.branches
+        .filter((branch) => branch.branch === 'THETA_CONVENTIONAL')
+        .flatMap((branch) => branch.candidates)
+        .filter((candidate) => candidate.legs.length === 1 && candidate.legs[0]?.optionSymbol === evaluatedCandidate.candidateId) ?? []) {
+        candidateIds.set(canonical.candidateId, candidateId);
+      }
       const alternative = receipt.alternatives.find((item) => item.candidateId === evaluatedCandidate.candidateId) ?? null;
       const inserted = await client.query(
         `INSERT INTO trade.candidate(candidate_id,candidate_set_id,underlying_id,option_contract_id,structure_code,rank,action_feasible,
@@ -229,8 +235,9 @@ export class PostgresThetaCycleStore {
     const authority = cycle.strategyFrontier;
     const selectedCandidateRef = authority?.selectedCandidateId ?? receipt.selectedCandidateId;
     const selectedCandidateId = selectedCandidateRef === null ? null : candidateIds.get(selectedCandidateRef) ?? null;
-    if (authority === null && receipt.selectedCandidateId !== null && selectedCandidateId === null) {
-      throw new Error(`SELECTED_CANDIDATE_NOT_PERSISTED:${receipt.selectedCandidateId}`);
+    const selectedBranchStatus = authority?.branches.find((branch) => branch.branch === authority.selectedBranch)?.status ?? null;
+    if (selectedCandidateRef !== null && selectedCandidateId === null && (authority === null || selectedBranchStatus === 'SHADOW')) {
+      throw new Error(`SELECTED_CANDIDATE_NOT_PERSISTED:${selectedCandidateRef}`);
     }
     const decisionAuthorityVersion = authority?.decisionAuthorityVersion ?? 'legacy-theta-q-decision-authority-v1';
     const actionCode = authority?.primaryAction ?? receipt.winningAction;

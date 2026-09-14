@@ -196,8 +196,8 @@ const degraded = (code: string, nextRunAt: string): JobRunResult => ({ status: '
 /**
  * Runs one bounded, restart-safe master Paper cycle. Reconciliation,
  * management, scanning, evidence, and decision work remain active while the
- * execution-quote gate is externally blocked. This module has no broker
- * mutation surface and therefore cannot bypass that gate.
+ * execution-quote gate is externally blocked. The only broker mutation seam
+ * is the typed Paper action handoff, which cannot bypass that gate.
  */
 export async function runAutonomousRuntimeCycle(
   environment: Environment,
@@ -293,7 +293,8 @@ export async function runAutonomousRuntimeCycle(
         const session=shadowSessionDecision(reconciliation?.marketOpen??null,reconciliation?.calendarSessionConfirmed??false);
         if(session==='MARKET_CLOSED')return skipped('MARKET_CLOSED_NO_WAIT_RECHECK');
         if(session!=='RUN')return degraded('OPTION_MARKET_SESSION_UNCONFIRMED',retryAt);
-        const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,now:()=>new Date().toISOString()});
+        const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,
+          executionAccountId:master.executionAccountId,now:()=>new Date().toISOString()});
         if(scan.completeness!=='COMPLETE')return degraded(`WAIT_RECHECK_SCAN_${scan.completeness}`,retryAt);
         await cycleStore.markNearMissesTriggered(pending,new Date().toISOString(),scan.scanId);
         opportunityScanCompleted=true;
@@ -306,7 +307,8 @@ export async function runAutonomousRuntimeCycle(
         if (session!=='RUN') {
           return degraded('OPTION_MARKET_SESSION_UNCONFIRMED', retryAt);
         }
-        const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,now:()=>new Date().toISOString()});
+        const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,
+          executionAccountId:master.executionAccountId,now:()=>new Date().toISOString()});
         return scan.completeness==='COMPLETE' ? succeeded() : degraded(`SHADOW_SCAN_${scan.completeness}`,retryAt);
       }
       if(jobType==='PAPER_EXECUTION_HANDOFF'){

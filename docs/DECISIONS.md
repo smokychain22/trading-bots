@@ -695,3 +695,22 @@ THETA now records four distinct authorization concepts: `PAPER_EVIDENCE`, `EMPIR
 `PAPER_EVIDENCE` may preserve `empiricalEconomicsReady=false` and `expectedAfterCostEv=null`. It still requires canonical selection, structural validity, exact contract identity, a fresh qualified Alpaca BBO, Paper account verification, options capability, no equivalent exposure conflict, market-open state, positive forward structural economics, AEGIS approval, persisted intent, idempotency, and reconciliation-before-retry. A separate `PAPER_EVIDENCE_RISK_CAP` defaults to one contract and can only reduce canonical quantity. Zero remains a valid no-order result.
 
 `EMPIRICALLY_PROMOTED_PAPER` keeps the positive, known after-cost EV requirement for new risk. Future live eligibility continues to require empirical promotion and a separate owner authorization. Current live eligibility and authorization are false.
+
+## 2026-09-14 - Produce Paper plans only from canonical persisted decisions
+
+The Production opportunity scan now owns the missing producer side of the
+durable master action-plan queue. It may create a plan only for an exact,
+single-leg `OPEN_CSP` selected by the canonical authority and stored as the
+decision's candidate foreign key. The plan is capped by
+`PAPER_EVIDENCE_RISK_CAP`, which can only reduce quantity.
+
+The structural minimum-credit boundary is the versioned modeled round-trip
+cost per contract divided by the actual contract multiplier, plus one tick.
+This proves only that the quoted opening credit clears the declared cost floor.
+Expected after-cost EV remains `null` and empirical readiness remains false.
+Research-only branches cannot enter this Paper path.
+
+Expired decisions are quarantined before queue claims and receive immutable
+events. This prevents an old external-quote-blocked plan from starving newer
+decisions. Alpaca OPRA or an independently qualified Optionomics two-sided
+quote remains mandatory at the last pricing boundary.
