@@ -1451,3 +1451,25 @@ RISKS: Provider field meanings and units can change. The raw/derived split and s
 WHAT THE OTHER AGENT SHOULD REVIEW: Quant review should test feature definitions and determine whether any family adds OOS WholeChain economic value. It must not promote a feature from shape or intuition alone.
 
 NEXT RECOMMENDED TASK: Run migration 028, execute the market-session qualification harness when the session is open, then continue the branch-complete frontier and management policy integration using captured evidence.
+
+## 2026-09-14 R7 Run 1 Optionomics context milestone
+
+OWNER: Codex production engineering
+
+TASK: Convert the confirmed Optionomics census families into bounded Production adapters and preserve complete raw-to-feature lineage without changing execution authority.
+
+FILES CHANGED: Optionomics provider and feature engine, THETA shadow cycle, PostgreSQL cycle store, migration 030, database verifier, focused tests, decisions, census, and the R7 Run 1 handoff.
+
+WHAT WAS IMPLEMENTED: Typed normalizers now cover metrics, exposure heatmap, aggregate flow, events, earnings filings, and symbol news. The real cycle fetches due families sequentially under a versioned request budget. FusionSnapshot retains normalized context and event observations. Raw payloads are stored once and linked to the feature snapshot through an immutable join table.
+
+TESTS RUN: Full Node, Python, TypeScript, ESLint, build, security, browser, and real Neon migration/invariant verification.
+
+TEST RESULTS: Node 733 total, 729 passed and four disposable-PostgreSQL-only tests skipped. Python 452 passed. Browser 22 passed. TypeScript, lint, build, and security passed. Neon reports migrations 001 through 030 and all checked invariants. Docker Desktop was unavailable locally.
+
+KNOWN LIMITATIONS: Provider metric units and exposure sign semantics remain unverified. Upcoming earnings distance and ex-dividend state remain unknown. Cross-cycle context caching is not complete. Independent branch frontiers and empirical action values remain open R7 work.
+
+RISKS: A context family that isn't due is absent rather than reused. This is safe but can reduce decision context until durable timestamp-aware caching is added. Optionomics context remains non-executable.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Claude should attack the normalized metric aliases, DTE-selection bias, term-structure composition, and whether each feature family has incremental point-in-time OOS value. Claude must not promote or push Production code.
+
+NEXT RECOMMENDED TASK: Complete durable context reuse with freshness semantics, then build independent applicable-branch frontiers and management action comparisons. Keep broker submission locked.

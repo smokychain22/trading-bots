@@ -263,50 +263,65 @@ export class PostgresThetaCycleStore {
     snapshot: Readonly<Record<string, JsonValue>>,
   ): Promise<void> {
     const state = jsonObject(snapshot.optionomicsFeatureState);
-    const raw = jsonObject(state.rawObservation);
     const features = jsonObject(state.features);
-    if (Object.keys(raw).length === 0 || Object.keys(features).length === 0) return;
-    const responseHash = typeof raw.responseHash === 'string' ? raw.responseHash : null;
-    const requestedAt = typeof raw.requestedAt === 'string' ? raw.requestedAt : null;
-    const retrievedAt = typeof raw.retrievedAt === 'string' ? raw.retrievedAt : null;
-    const providerTimestamp = typeof raw.providerTimestamp === 'string' ? raw.providerTimestamp : null;
+    const rawObservations = Array.isArray(state.rawObservations)
+      ? state.rawObservations.map((value) => jsonObject(value))
+      : [jsonObject(state.rawObservation)].filter((value) => Object.keys(value).length > 0);
+    if (rawObservations.length === 0 || Object.keys(features).length === 0) return;
     const underlying = typeof features.underlying === 'string' ? features.underlying : null;
     const schemaVersion = typeof features.schemaVersion === 'string' ? features.schemaVersion : null;
-    if (responseHash === null || retrievedAt === null || underlying === null || schemaVersion === null) {
+    if (underlying === null || schemaVersion === null) {
       throw new Error('OPTIONOMICS_LAYERED_EVIDENCE_METADATA_INVALID');
     }
-    const provenance = (Array.isArray(snapshot.sourceProvenance) ? snapshot.sourceProvenance : [])
-      .map((item) => jsonObject(item))
-      .find((item) => item.provider === 'OPTIONOMICS' && item.operationAlias === 'optionomics.get_option_chain');
-    const quality = typeof provenance?.state === 'string' ? provenance.state : 'UNKNOWN';
-    const asOf = typeof provenance?.asOf === 'string' ? provenance.asOf : String(snapshot.decisionTimeUtc);
-    const observationId = deterministicRuntimeUuid(`optionomics-raw:${fusionSnapshotId}:${responseHash}`);
-    await client.query(
-      `INSERT INTO market.optionomics_raw_observation(observation_id,fusion_snapshot_id,operation_alias,underlying,
-        provider_timestamp,ingestion_timestamp,as_of,contract_version,data_quality,response_hash,payload_json,
-        requested_at,request_path,request_parameters_json,http_status,rate_limit_json,documentation_reference,
-        credential_identity_ref_hash,session_date)
-       VALUES($1,$2,'optionomics.get_option_chain',$3,$4,$5,$6,$7,$8,$9,$10::jsonb,
-        $11,$12,$13::jsonb,$14,$15::jsonb,$16,$17,$18)
-       ON CONFLICT(fusion_snapshot_id,operation_alias,response_hash) DO NOTHING`,
-      [observationId, fusionSnapshotId, underlying, providerTimestamp, retrievedAt, asOf,
-        typeof raw.contractVersion === 'string' ? raw.contractVersion : 'optionomics-public-api-unknown',
-        quality, responseHash, JSON.stringify(raw.payload ?? null), requestedAt,
-        typeof raw.requestPath === 'string' ? raw.requestPath : null, JSON.stringify(jsonObject(raw.requestParameters)),
-        typeof raw.httpStatus === 'number' ? raw.httpStatus : null, JSON.stringify(jsonObject(raw.rateLimit)),
-        typeof raw.documentationReference === 'string' ? raw.documentationReference : null,
-        typeof raw.credentialIdentityRefHash === 'string' ? raw.credentialIdentityRefHash : null,
-        typeof raw.sessionDate === 'string' ? raw.sessionDate : null],
-    );
+    const provenanceRows = (Array.isArray(snapshot.sourceProvenance) ? snapshot.sourceProvenance : []).map((item) => jsonObject(item));
+    const observationIds: { id: string; operationAlias: string; retrievedAt: string; quality: string }[] = [];
+    for (const raw of rawObservations) {
+      const responseHash = typeof raw.responseHash === 'string' ? raw.responseHash : null;
+      const retrievedAt = typeof raw.retrievedAt === 'string' ? raw.retrievedAt : null;
+      const operationAlias = typeof raw.operationAlias === 'string' ? raw.operationAlias : 'optionomics.get_option_chain';
+      if (responseHash === null || retrievedAt === null) throw new Error('OPTIONOMICS_LAYERED_EVIDENCE_METADATA_INVALID');
+      const provenance = provenanceRows.find((item) => item.provider === 'OPTIONOMICS' && item.operationAlias === operationAlias);
+      const quality = typeof provenance?.state === 'string' ? provenance.state : 'UNKNOWN';
+      const asOf = typeof provenance?.asOf === 'string' ? provenance.asOf : String(snapshot.decisionTimeUtc);
+      const observationId = deterministicRuntimeUuid(`optionomics-raw:${fusionSnapshotId}:${operationAlias}:${responseHash}`);
+      await client.query(
+        `INSERT INTO market.optionomics_raw_observation(observation_id,fusion_snapshot_id,operation_alias,underlying,
+          provider_timestamp,ingestion_timestamp,as_of,contract_version,data_quality,response_hash,payload_json,
+          requested_at,request_path,request_parameters_json,http_status,rate_limit_json,documentation_reference,
+          credential_identity_ref_hash,session_date)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14::jsonb,$15,$16::jsonb,$17,$18,$19)
+         ON CONFLICT(fusion_snapshot_id,operation_alias,response_hash) DO NOTHING`,
+        [observationId, fusionSnapshotId, operationAlias, underlying,
+          typeof raw.providerTimestamp === 'string' ? raw.providerTimestamp : null, retrievedAt, asOf,
+          typeof raw.contractVersion === 'string' ? raw.contractVersion : 'optionomics-public-api-unknown',
+          quality, responseHash, JSON.stringify(raw.payload ?? null),
+          typeof raw.requestedAt === 'string' ? raw.requestedAt : null,
+          typeof raw.requestPath === 'string' ? raw.requestPath : null, JSON.stringify(jsonObject(raw.requestParameters)),
+          typeof raw.httpStatus === 'number' ? raw.httpStatus : null, JSON.stringify(jsonObject(raw.rateLimit)),
+          typeof raw.documentationReference === 'string' ? raw.documentationReference : null,
+          typeof raw.credentialIdentityRefHash === 'string' ? raw.credentialIdentityRefHash : null,
+          typeof raw.sessionDate === 'string' ? raw.sessionDate : null],
+      );
+      observationIds.push({ id: observationId, operationAlias, retrievedAt, quality });
+    }
+    const primary = observationIds.find((row) => row.operationAlias === 'optionomics.get_option_chain') ?? observationIds[0];
+    if (primary === undefined) return;
     const featureHash = createHash('sha256').update(JSON.stringify(features)).digest('hex');
-    const featureSnapshotId = deterministicRuntimeUuid(`optionomics-features:${observationId}:${featureHash}`);
+    const featureSnapshotId = deterministicRuntimeUuid(`optionomics-features:${primary.id}:${featureHash}`);
     await client.query(
       `INSERT INTO market.optionomics_feature_snapshot(feature_snapshot_id,observation_id,fusion_snapshot_id,underlying,
         observed_at,schema_version,data_quality,feature_state_json,content_hash)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
        ON CONFLICT(observation_id,schema_version) DO NOTHING`,
-      [featureSnapshotId, observationId, fusionSnapshotId, underlying, retrievedAt, schemaVersion, quality, JSON.stringify(features), featureHash],
+      [featureSnapshotId, primary.id, fusionSnapshotId, underlying, primary.retrievedAt, schemaVersion, primary.quality, JSON.stringify(features), featureHash],
     );
+    for (const observation of observationIds) {
+      await client.query(
+        `INSERT INTO market.optionomics_feature_observation_link(feature_snapshot_id,observation_id,observation_role)
+         VALUES($1,$2,$3) ON CONFLICT(feature_snapshot_id,observation_id) DO NOTHING`,
+        [featureSnapshotId, observation.id, observation.operationAlias === 'optionomics.get_option_chain' ? 'PRIMARY_CHAIN' : 'CONTEXT'],
+      );
+    }
   }
 
   private async persistPointInTimeEvidence(client:PoolClient,context:ThetaCyclePersistenceContext,
@@ -363,6 +378,7 @@ export class PostgresThetaCycleStore {
       ? snapshot.versions as Record<string,JsonValue> : {};
     const optionomicsState=jsonObject(snapshot.optionomicsFeatureState);
     const optionomicsFeatures=jsonObject(optionomicsState.features);
+    const optionomicsProviderContext=jsonObject(optionomicsFeatures.providerContext);
     const optionomicsContracts=Array.isArray(optionomicsFeatures.contracts)
       ? optionomicsFeatures.contracts.map((raw) => jsonObject(raw)) : [];
     const flowWindows=(Array.isArray(optionomicsState.netFlowWindows) ? optionomicsState.netFlowWindows : []).map((raw) => {
@@ -387,12 +403,15 @@ export class PostgresThetaCycleStore {
       const evidencePayload={candidateId:persistedId,decisionId,fusionSnapshotId,decisionTime:String(snapshot.decisionTimeUtc),
         branch:'THETA_CONVENTIONAL',rank:candidate.rank,selected,contract:{underlying:contract.underlying,
           contractSymbol:contract.occSymbol,optionType:contract.optionType,strike:contract.strike,expiration:contract.expiration,
-          multiplier:contract.multiplier},market,volatility:{iv:contract.iv,ivRank:null,ivPercentile:null,
+          multiplier:contract.multiplier},market,volatility:{iv:contract.iv,
+          providerMetrics:optionomicsProviderContext.metrics ?? null,
           skew:optionomicsFeatures.skew ?? null,termStructure:optionomicsFeatures.termStructure ?? null,
           surface:optionomicsFeatures.volatilitySurface ?? null,contractVolatility:optionomicsContract.volatility ?? null,
-          marketStructure:optionomicsContract.marketStructure ?? null},technical:{trend:snapshot.regimeState,momentum:null,drawdown:null,realizedVolatility:null},
+          marketStructure:optionomicsContract.marketStructure ?? null,
+          providerExposureHeatmap:optionomicsProviderContext.exposureHeatmap ?? null},technical:{trend:snapshot.regimeState,momentum:null,drawdown:null,realizedVolatility:null},
         event:{state:snapshot.eventState,earningsDistance:null,exDividendState:null},
         flow:{optionomicsNetFlowWindows:flowWindows,interpretation:'UNMODELED_RESEARCH_CONTEXT',
+          providerFlowAggregates:optionomicsProviderContext.flowAggregates ?? null,
           featureSchemaVersion:optionomicsFeatures.schemaVersion ?? null,unavailableFamilies:optionomicsFeatures.unavailableFamilies ?? []},
         ownership:{state:snapshot.expertPriorState},account:snapshot.accountState,portfolio:snapshot.portfolioExposure,
         aegis:{state:cycle.orchestration?.aegis ?? null},execution:{...market,executable:contract.executable,

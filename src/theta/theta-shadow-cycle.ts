@@ -15,8 +15,9 @@ import type { PythonBridgeConfig } from './python-bridge.js';
 import { buildFusionSnapshot, hashJson, type FusionSnapshot, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
 import type { DataQualityState } from './data-freshness.js';
 import {
-  fetchOptionomicsNetFlowWindow, fetchOptionomicsOptionChain, matchOptionomicsContractIdentity,
-  type AlpacaContractIdentity, type NormalizedOptionomicsChain, type NormalizedOptionomicsEntry, type NormalizedOptionomicsFlowWindow, type OptionomicsProviderConfig,
+  fetchOptionomicsContextObservation, fetchOptionomicsNetFlowWindow, fetchOptionomicsOptionChain, matchOptionomicsContractIdentity,
+  type AlpacaContractIdentity, type NormalizedOptionomicsChain, type NormalizedOptionomicsContextObservation, type NormalizedOptionomicsEntry,
+  type NormalizedOptionomicsFlowWindow, type OptionomicsContextFamily, type OptionomicsProviderConfig,
 } from './optionomics-provider.js';
 import { buildOptionomicsFeatureSnapshot } from './optionomics-feature-engine.js';
 import { deriveAccountExposure, mergeDerivedExposureIntoAegisInputs, type DerivedAccountExposure } from './account-exposure.js';
@@ -58,6 +59,13 @@ import { deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProv
 export interface ThetaShadowCycleConfig {
   readonly alpaca: AlpacaProviderConfig;
   readonly optionomics: OptionomicsProviderConfig | null; // null when Optionomics credentials are not configured -- honestly NOT_ATTEMPTED, never a fixture
+  readonly optionomicsContextPolicy?: {
+    readonly policyVersion: string;
+    readonly families: readonly OptionomicsContextFamily[];
+    readonly maxRequestsPerCycle: number;
+    readonly cadenceMinutesByFamily?: Readonly<Partial<Record<OptionomicsContextFamily, number>>>;
+    readonly eventLookaheadDays: number;
+  };
   readonly bridge: PythonBridgeConfig;
   readonly universePolicy: UniversePolicy;
   readonly universeCandidates: readonly UnderlyingCandidateInput[]; // caller supplies the raw per-underlying facts; a full Alpaca-asset-universe fetch is not built this pass
@@ -142,6 +150,17 @@ function aggregateProviderQuality(states: readonly DataQualityState[]): DataQual
   return 'GOOD';
 }
 
+function dueOptionomicsContextFamilies(config: ThetaShadowCycleConfig, decisionTime: string): readonly OptionomicsContextFamily[] {
+  const policy = config.optionomicsContextPolicy;
+  if (policy === undefined || policy.maxRequestsPerCycle <= 0) return [];
+  const minute = Math.floor(Date.parse(decisionTime) / 60_000);
+  if (!Number.isFinite(minute)) return [];
+  return [...new Set(policy.families)].filter((family) => {
+    const cadence = policy.cadenceMinutesByFamily?.[family] ?? 1;
+    return Number.isInteger(cadence) && cadence > 0 && minute % cadence === 0;
+  }).slice(0, Math.max(0, Math.floor(policy.maxRequestsPerCycle)));
+}
+
 /**
  * Assembles the canonical FusionSnapshotInput (src/market/fusion-snapshot.ts,
  * reused -- never duplicated) from the actual observations this cycle
@@ -166,6 +185,9 @@ function assembleFusionSnapshotInput(params: {
   readonly optionomicsChain: NormalizedOptionomicsChain | null;
   readonly optionomicsEntries: readonly NormalizedOptionomicsEntry[];
   readonly optionomicsFlowWindows: readonly NormalizedOptionomicsFlowWindow[];
+  readonly optionomicsContextObservations: readonly NormalizedOptionomicsContextObservation[];
+  readonly optionomicsContextOrigin: ProvenanceOrigin;
+  readonly optionomicsContextQuality: DataQualityState;
   readonly optionomicsFlowOrigin: ProvenanceOrigin;
   readonly optionomicsFlowQuality: DataQualityState;
   readonly positions: readonly AlpacaPositionSnapshot[];
@@ -193,6 +215,7 @@ function assembleFusionSnapshotInput(params: {
   const optionomicsFeatures = params.optionomicsChain === null ? null : buildOptionomicsFeatureSnapshot({
     chain: params.optionomicsChain,
     flowWindows: params.optionomicsFlowWindows,
+    contextObservations: params.optionomicsContextObservations,
     stockPrice: params.mergedContracts[0]?.underlyingLast ?? null,
     multiplierByContract: new Map(params.mergedContracts
       .filter((contract): contract is typeof contract & { occSymbol: string } => contract.occSymbol !== null)
@@ -218,6 +241,26 @@ function assembleFusionSnapshotInput(params: {
           sessionDate: params.optionomicsChain.sessionDate,
           payload: params.optionomicsChain.rawPayload,
         },
+        rawObservations: [
+          ...(params.optionomicsChain === null ? [] : [{
+            operationAlias: 'optionomics.get_option_chain', responseHash: params.optionomicsChain.responseHash,
+            requestedAt: params.optionomicsChain.requestedAt, retrievedAt: params.optionomicsChain.retrievedAt,
+            providerTimestamp: optionomicsProviderTimestamp, requestPath: params.optionomicsChain.requestPath,
+            requestParameters: params.optionomicsChain.requestParameters, httpStatus: params.optionomicsChain.httpStatus,
+            rateLimit: params.optionomicsChain.rateLimit, documentationReference: params.optionomicsChain.documentationReference,
+            contractVersion: params.optionomicsChain.contractVersion, credentialIdentityRefHash: params.optionomicsChain.credentialIdentityRefHash,
+            sessionDate: params.optionomicsChain.sessionDate, payload: params.optionomicsChain.rawPayload,
+          }]),
+          ...params.optionomicsContextObservations.map((observation) => ({
+            operationAlias: observation.operationAlias, responseHash: observation.responseHash,
+            requestedAt: observation.requestedAt, retrievedAt: observation.retrievedAt,
+            providerTimestamp: observation.providerTimestamp, requestPath: observation.requestPath,
+            requestParameters: observation.requestParameters, httpStatus: observation.httpStatus,
+            rateLimit: observation.rateLimit, documentationReference: observation.documentationReference,
+            contractVersion: observation.contractVersion, credentialIdentityRefHash: observation.credentialIdentityRefHash,
+            sessionDate: observation.sessionDate, payload: observation.rawPayload,
+          })),
+        ],
         optionChain: params.optionomicsEntries,
         netFlowWindows: params.optionomicsFlowWindows,
         features: optionomicsFeatures,
@@ -243,7 +286,12 @@ function assembleFusionSnapshotInput(params: {
   } else if (params.optionomicsFlowQuality !== 'GOOD') {
     unknownFeatures.push({ feature: 'optionFlowTrajectory', reasonCode: `OPTIONOMICS_${params.optionomicsFlowQuality}`, provider: 'OPTIONOMICS' });
   }
-  unknownFeatures.push({ feature: 'eventState', reasonCode: 'EVENT_STATE_NOT_IMPLEMENTED', provider: null });
+  const eventContextObservations = params.optionomicsContextObservations.filter((observation) =>
+    observation.family === 'EVENTS' || observation.family === 'EARNINGS_FILINGS' || observation.family === 'SYMBOL_NEWS');
+  const eventContextPopulated = eventContextObservations.some((observation) => observation.populated);
+  if (!eventContextPopulated) {
+    unknownFeatures.push({ feature: 'eventState', reasonCode: 'OPTIONOMICS_EVENT_CONTEXT_NOT_OBSERVED_THIS_CYCLE', provider: 'OPTIONOMICS' });
+  }
 
   const positionsJson: JsonValue = params.positions as unknown as JsonValue;
   const openOrdersJson: JsonValue = params.openOrders as unknown as JsonValue;
@@ -262,7 +310,12 @@ function assembleFusionSnapshotInput(params: {
     portfolioExposure: params.derivedExposure as unknown as JsonValue, // real, pure arithmetic over account/positions/orders -- see account-exposure.ts
     alpacaQuoteState: null,
     optionomicsFeatureState: optionomicsAttempted ? optionomicsJson : null, // honestly absent when not configured, never fabricated
-    eventState: null, // no event-state assembly exists yet -- UNKNOWN, never "no event nearby"
+    eventState: eventContextObservations.length > 0
+      ? ({ provider: 'OPTIONOMICS', observations: eventContextObservations,
+          populated: eventContextPopulated,
+          earningsDistanceDays: null, exDividendState: null,
+          missingSemantics: ['UPCOMING_EARNINGS_DISTANCE_NOT_PROVEN_FROM_FILINGS', 'EX_DIVIDEND_STATE_UNAVAILABLE'] } as unknown as JsonValue)
+      : null,
     regimeState: params.regimeFeatures,
     expertPriorState: null,
     riskState: null,
@@ -298,6 +351,12 @@ function assembleFusionSnapshotInput(params: {
         state: optionomicsAttempted ? params.optionomicsFlowQuality : 'UNKNOWN', contentHash: hashJson(params.optionomicsFlowWindows as unknown as JsonValue), feed: null,
         contractVersion: 'optionomics-net-flow-windows-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
       },
+      ...params.optionomicsContextObservations.map((observation) => ({
+        provider: 'OPTIONOMICS' as const, operationAlias: observation.operationAlias,
+        asOf: observation.providerTimestamp ?? (observation.sessionDate === null ? null : `${observation.sessionDate}T00:00:00.000Z`), retrievedAt: observation.retrievedAt,
+        state: observation.populated ? 'GOOD' as const : 'UNKNOWN' as const, contentHash: observation.responseHash,
+        feed: null, contractVersion: observation.contractVersion, truthRole: 'CONTEXT' as const, requiredForNewRisk: false,
+      })),
       {
         provider: 'ALPACA', operationAlias: 'alpaca.get_positions', asOf: params.positionsOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
         state: params.positionsQuality, contentHash: hashJson(positionsJson), feed: null,
@@ -325,7 +384,7 @@ function assembleFusionSnapshotInput(params: {
         state: aggregateProviderQuality([params.accountQuality, params.contractsQuality, params.quotesQuality, params.positionsQuality, params.openOrdersQuality, params.clockQuality, params.calendarQuality]),
         asOf: params.now, retrievedAt: params.now,
       },
-      { provider: 'OPTIONOMICS', state: optionomicsAttempted ? aggregateProviderQuality([params.optionomicsQuality, params.optionomicsFlowQuality]) : 'UNKNOWN', asOf: optionomicsAttempted ? params.now : null, retrievedAt: params.now },
+      { provider: 'OPTIONOMICS', state: optionomicsAttempted ? aggregateProviderQuality([params.optionomicsQuality, params.optionomicsFlowQuality, params.optionomicsContextQuality]) : 'UNKNOWN', asOf: optionomicsAttempted ? params.now : null, retrievedAt: params.now },
     ],
     freshnessFlags: [],
     unknownFeatures,
@@ -573,8 +632,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let optionomicsEntries: readonly NormalizedOptionomicsEntry[] = [];
   let optionomicsChain: NormalizedOptionomicsChain | null = null;
   let optionomicsFlowWindows: readonly NormalizedOptionomicsFlowWindow[] = [];
+  let optionomicsContextObservations: readonly NormalizedOptionomicsContextObservation[] = [];
   let optionomicsEvidence = notAttemptedEvidence();
   let optionomicsFlowEvidence = notAttemptedEvidence();
+  let optionomicsContextEvidence = notAttemptedEvidence();
   if (config.optionomics !== null) {
     const outcome = await fetchOptionomicsOptionChain(config.optionomics, underlying);
     if (outcome.kind === 'VALUE_PRESENT') {
@@ -614,6 +675,39 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       if (flowUnknown?.kind === 'VALUE_UNKNOWN_AFTER_SUCCESS') blockers.push(`OPTIONOMICS_FLOW_RESPONSE_UNRECOGNIZED:${flowUnknown.detail}`);
     } else {
       optionomicsFlowEvidence = { origin: 'REAL_PROVIDER', quality: 'GOOD' };
+    }
+
+    const contextFamilies = dueOptionomicsContextFamilies(config, decisionTime);
+    if (contextFamilies.length > 0) {
+      const eventTo = new Date(decisionTime);
+      eventTo.setUTCDate(eventTo.getUTCDate() + (config.optionomicsContextPolicy?.eventLookaheadDays ?? 0));
+      const contextOutcomes = [];
+      // Sequential calls respect the provider's shared account allowance.
+      // Each GET still has its own bounded 429 policy in the adapter.
+      for (const family of contextFamilies) {
+        const eventQuery = family === 'EVENTS'
+          ? { from: decisionTime.slice(0, 10), to: eventTo.toISOString().slice(0, 10), perPage: 100 }
+          : {};
+        contextOutcomes.push(await fetchOptionomicsContextObservation(config.optionomics, family, underlying, eventQuery));
+      }
+      optionomicsContextObservations = contextOutcomes.flatMap((outcome) => outcome.kind === 'VALUE_PRESENT' ? [outcome.value] : []);
+      const contextError = contextOutcomes.find((outcome) => outcome.kind === 'REQUEST_ERROR');
+      const contextUnknown = contextOutcomes.find((outcome) => outcome.kind === 'VALUE_UNKNOWN_AFTER_SUCCESS');
+      if (contextError?.kind === 'REQUEST_ERROR') {
+        const quality: DataQualityState =
+          contextError.errorClass === 'AUTHENTICATION_FAILED' || contextError.errorClass === 'INVALID_PROVIDER_RESPONSE' ? 'INVALID'
+          : contextError.errorClass === 'SUBSCRIPTION_REQUIRED' || contextError.errorClass === 'NOT_ENTITLED' ? 'NOT_ENTITLED'
+          : 'DEGRADED';
+        optionomicsContextEvidence = { origin: 'REAL_PROVIDER_ERROR', quality };
+        blockers.push(`OPTIONOMICS_CONTEXT_FETCH_FAILED:${contextError.errorClass}:${contextError.detail}`);
+      } else if (contextUnknown?.kind === 'VALUE_UNKNOWN_AFTER_SUCCESS'
+        || optionomicsContextObservations.length !== contextFamilies.length
+        || optionomicsContextObservations.every((observation) => !observation.populated)) {
+        optionomicsContextEvidence = { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
+        if (contextUnknown?.kind === 'VALUE_UNKNOWN_AFTER_SUCCESS') blockers.push(`OPTIONOMICS_CONTEXT_RESPONSE_UNRECOGNIZED:${contextUnknown.detail}`);
+      } else {
+        optionomicsContextEvidence = { origin: 'REAL_PROVIDER', quality: 'GOOD' };
+      }
     }
   }
 
@@ -706,6 +800,14 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const derivedExposure: DerivedAccountExposure = deriveAccountExposure(account, positions, openOrders);
   const exposureDerivationTrustworthy = accountEvidence.quality === 'GOOD' && positionsEvidence.quality === 'GOOD' && openOrdersEvidence.quality === 'GOOD';
 
+  const eventContextObservations = optionomicsContextObservations.filter((observation) =>
+    observation.family === 'EVENTS' || observation.family === 'EARNINGS_FILINGS' || observation.family === 'SYMBOL_NEWS');
+  const eventContextPopulated = eventContextObservations.some((observation) => observation.populated);
+  const eventContextOrigin: ProvenanceOrigin = eventContextPopulated
+    ? 'REAL_PROVIDER'
+    : eventContextObservations.length > 0 ? 'REAL_PROVIDER_UNKNOWN' : 'NOT_ATTEMPTED';
+  const eventContextQuality: DataQualityState = eventContextPopulated ? 'GOOD' : 'UNKNOWN';
+
   const { provenance, detail } = classifyShadowCycleProvenance({
     universeCandidates: config.universeCandidatesOrigin,
     account: accountEvidence.origin,
@@ -718,7 +820,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     optionSnapshots: quotesEvidence.origin,
     optionomicsChain: optionomicsEvidence.origin,
     optionomicsFlow: optionomicsFlowEvidence.origin,
-    eventState: 'NOT_ATTEMPTED', // no event-state assembly exists yet
+    optionomicsContext: optionomicsContextEvidence.origin,
+    eventState: eventContextOrigin,
     aegisInputs: config.aegisInputsOrigin,
   });
 
@@ -732,6 +835,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     quotesOrigin: quotesEvidence.origin, quotesQuality: quotesEvidence.quality,
     optionomicsOrigin: optionomicsEvidence.origin, optionomicsQuality: optionomicsEvidence.quality, optionomicsChain, optionomicsEntries,
     optionomicsFlowWindows, optionomicsFlowOrigin: optionomicsFlowEvidence.origin, optionomicsFlowQuality: optionomicsFlowEvidence.quality,
+    optionomicsContextObservations, optionomicsContextOrigin: optionomicsContextEvidence.origin,
+    optionomicsContextQuality: optionomicsContextEvidence.quality,
     positions, positionsOrigin: positionsEvidence.origin, positionsQuality: positionsEvidence.quality,
     openOrders, openOrdersOrigin: openOrdersEvidence.origin, openOrdersQuality: openOrdersEvidence.quality,
     clock, clockOrigin: clockEvidence.origin, clockQuality: clockEvidence.quality,
@@ -865,7 +970,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       ALPACA_POSITIONS: positionsEvidence.quality,
       ALPACA_OPEN_ORDERS: openOrdersEvidence.quality,
       OPTIONOMICS: optionomicsEvidence.quality,
-      EVENT_DATA: 'UNKNOWN', // no event-state assembly exists yet
+      EVENT_DATA: eventContextQuality,
     },
     policyVersion: config.policyVersion, modelVersions: config.modelVersions, requiredModelVersions: config.requiredModelVersions,
     ownershipPolicy: config.ownershipPolicy,

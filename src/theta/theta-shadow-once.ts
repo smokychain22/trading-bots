@@ -69,6 +69,20 @@ export function defaultShadowCycleConfig(
 
   return {
     alpaca, optionomics, bridge, universeCandidates,
+    optionomicsContextPolicy: {
+      policyVersion: 'optionomics-context-cadence-v1',
+      families: ['METRICS', 'EXPOSURE_HEATMAP', 'FLOW_AGGREGATES', 'EVENTS', 'EARNINGS_FILINGS', 'SYMBOL_NEWS'],
+      maxRequestsPerCycle: 6,
+      cadenceMinutesByFamily: {
+        METRICS: 1,
+        EVENTS: 1,
+        FLOW_AGGREGATES: 5,
+        EXPOSURE_HEATMAP: 15,
+        SYMBOL_NEWS: 15,
+        EARNINGS_FILINGS: 30,
+      },
+      eventLookaheadDays: 60,
+    },
     universeCandidatesOrigin,
     universePolicy: { policyVersion: 'universe-v1-shadow-once', minAvgDollarVolume: 10_000_000, minCurrentPrice: 5 },
     optionExpirationDateGte: optionExpirationGte, optionExpirationDateLte: optionExpirationLte, optionType: 'put', maxOptionPages: 10,

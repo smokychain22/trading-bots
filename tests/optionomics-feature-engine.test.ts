@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildOptionomicsFeatureSnapshot } from '../src/theta/optionomics-feature-engine.js';
-import { fetchOptionomicsOptionChain, type OptionomicsProviderConfig } from '../src/theta/optionomics-provider.js';
+import { fetchOptionomicsContextObservation, fetchOptionomicsOptionChain, type OptionomicsProviderConfig } from '../src/theta/optionomics-provider.js';
 
 const NOW = '2026-09-14T15:00:00.000Z';
 const config = (payload: unknown): OptionomicsProviderConfig => ({
@@ -69,4 +69,40 @@ test('keeps absent feature families and multiplier-dependent economics UNKNOWN',
   assert.equal(result.contracts[0]?.structuralEconomics.securedCollateral.state, 'UNKNOWN');
   assert.ok(result.unavailableFamilies.includes('IV'));
   assert.ok(result.unavailableFamilies.includes('VANNA'));
+});
+
+test('keeps raw context payloads out of normalized feature snapshots while retaining typed context and lineage', async () => {
+  const chainOutcome = await fetchOptionomicsOptionChain(config([{ symbol: 'X', implied_volatility: 0.2 }]), 'SPY');
+  const metricsOutcome = await fetchOptionomicsContextObservation(config({
+    date: '2026-09-14', metrics: { iv_rank: 42, iv_percentile: 55, total_gex: -10 },
+  }), 'METRICS', 'SPY');
+  assert.equal(chainOutcome.kind, 'VALUE_PRESENT');
+  assert.equal(metricsOutcome.kind, 'VALUE_PRESENT');
+  if (chainOutcome.kind !== 'VALUE_PRESENT' || metricsOutcome.kind !== 'VALUE_PRESENT') return;
+  const result = buildOptionomicsFeatureSnapshot({
+    chain: chainOutcome.value, flowWindows: [], contextObservations: [metricsOutcome.value], stockPrice: 500,
+  });
+  const metrics = result.providerContext.metrics as Record<string, { state: string; value: number | null }>;
+  assert.equal(metrics.ivRank?.value, 42);
+  assert.equal(metrics.ivPercentile?.value, 55);
+  assert.equal(metrics.totalGex?.value, -10);
+  assert.equal(result.unavailableFamilies.includes('IV_RANK'), false);
+  assert.equal('rawPayload' in (result.providerContext.observations[0] ?? {}), false);
+  assert.equal(JSON.stringify(result).includes('"metrics":{"iv_rank":42'), false);
+});
+
+test('does not mark metric or event families available merely because an empty context response exists', async () => {
+  const chainOutcome = await fetchOptionomicsOptionChain(config([{ symbol: 'X', implied_volatility: 0.2 }]), 'SPY');
+  const metricsOutcome = await fetchOptionomicsContextObservation(config({ metrics: { iv_rank: null } }), 'METRICS', 'SPY');
+  const eventsOutcome = await fetchOptionomicsContextObservation(config({ events: [] }), 'EVENTS', 'SPY');
+  assert.equal(chainOutcome.kind, 'VALUE_PRESENT');
+  assert.equal(metricsOutcome.kind, 'VALUE_PRESENT');
+  assert.equal(eventsOutcome.kind, 'VALUE_PRESENT');
+  if (chainOutcome.kind !== 'VALUE_PRESENT' || metricsOutcome.kind !== 'VALUE_PRESENT' || eventsOutcome.kind !== 'VALUE_PRESENT') return;
+  const result = buildOptionomicsFeatureSnapshot({
+    chain: chainOutcome.value, flowWindows: [], contextObservations: [metricsOutcome.value, eventsOutcome.value], stockPrice: 500,
+  });
+  assert.ok(result.unavailableFamilies.includes('IV_RANK'));
+  assert.ok(result.unavailableFamilies.includes('IV_PERCENTILE'));
+  assert.ok(result.unavailableFamilies.includes('EVENTS'));
 });

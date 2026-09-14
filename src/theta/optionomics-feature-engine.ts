@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type {
   NormalizedOptionomicsChain,
+  NormalizedOptionomicsContextObservation,
   NormalizedOptionomicsEntry,
   NormalizedOptionomicsFlowWindow,
 } from './optionomics-provider.js';
@@ -69,6 +70,16 @@ export interface OptionomicsFeatureSnapshot {
   readonly flow: {
     readonly windows: readonly NormalizedOptionomicsFlowWindow[];
     readonly interpretation: 'UNMODELED_RESEARCH_CONTEXT';
+  };
+  readonly providerContext: {
+    readonly metrics: Readonly<Record<string, unknown>> | null;
+    readonly exposureHeatmap: Readonly<Record<string, unknown>> | null;
+    readonly flowAggregates: Readonly<Record<string, unknown>> | null;
+    readonly events: Readonly<Record<string, unknown>> | null;
+    readonly earningsFilings: Readonly<Record<string, unknown>> | null;
+    readonly symbolNews: Readonly<Record<string, unknown>> | null;
+    readonly observations: readonly Omit<NormalizedOptionomicsContextObservation, 'rawPayload'>[];
+    readonly interpretation: 'PROVIDER_CONTEXT_WITH_UNVERIFIED_UNITS_NO_EXECUTION_AUTHORITY';
   };
   readonly unavailableFamilies: readonly string[];
   readonly empiricalEvReady: false;
@@ -210,17 +221,33 @@ function deriveSurface(entries: readonly NormalizedOptionomicsEntry[]): FeatureV
 export function buildOptionomicsFeatureSnapshot(input: {
   readonly chain: NormalizedOptionomicsChain;
   readonly flowWindows: readonly NormalizedOptionomicsFlowWindow[];
+  readonly contextObservations?: readonly NormalizedOptionomicsContextObservation[];
   readonly stockPrice: number | null;
   readonly multiplierByContract?: ReadonlyMap<string, number>;
   readonly skewDeltaTolerance?: number | null;
 }): OptionomicsFeatureSnapshot {
+  const contextObservations = input.contextObservations ?? [];
+  const observation = (family: NormalizedOptionomicsContextObservation['family']): NormalizedOptionomicsContextObservation | null =>
+    contextObservations.find((candidate) => candidate.family === family) ?? null;
+  const context = (family: NormalizedOptionomicsContextObservation['family']): Readonly<Record<string, unknown>> | null =>
+    observation(family)?.normalized ?? null;
+  const knownContextValue = (family: NormalizedOptionomicsContextObservation['family'], field: string): boolean => {
+    const candidate = context(family)?.[field];
+    return candidate !== null && typeof candidate === 'object' && !Array.isArray(candidate)
+      && (candidate as { state?: unknown }).state === 'KNOWN';
+  };
+  const eventContextPopulated = (['EVENTS', 'EARNINGS_FILINGS', 'SYMBOL_NEWS'] as const)
+    .some((family) => observation(family)?.populated === true);
   const contracts = input.chain.entries.map((entry) => contractFeatures(
     entry, input.stockPrice, entry.rawSymbol === null ? null : input.multiplierByContract?.get(entry.rawSymbol) ?? null,
   ));
   const unavailableFamilies = [
     input.chain.entries.some((entry) => entry.impliedVolatility !== null) ? null : 'IV',
     input.flowWindows.length > 0 ? null : 'FLOW',
-    'IV_RANK', 'IV_PERCENTILE', 'VANNA', 'CHARM', 'DARK_POOL', 'EVENTS',
+    knownContextValue('METRICS', 'ivRank') ? null : 'IV_RANK',
+    knownContextValue('METRICS', 'ivPercentile') ? null : 'IV_PERCENTILE',
+    'VANNA', 'CHARM', 'DARK_POOL',
+    eventContextPopulated ? null : 'EVENTS',
   ].filter((value): value is string => value !== null);
   return {
     schemaVersion: optionomicsFeatureSchemaVersion, provider: 'OPTIONOMICS', underlying: input.chain.underlying,
@@ -228,6 +255,17 @@ export function buildOptionomicsFeatureSnapshot(input: {
     contracts, skew: deriveSkew(input.chain.entries, input.skewDeltaTolerance ?? null), termStructure: deriveTerm(input.chain.entries),
     volatilitySurface: deriveSurface(input.chain.entries),
     flow: { windows: input.flowWindows, interpretation: 'UNMODELED_RESEARCH_CONTEXT' },
+    providerContext: {
+      metrics: context('METRICS'), exposureHeatmap: context('EXPOSURE_HEATMAP'),
+      flowAggregates: context('FLOW_AGGREGATES'), events: context('EVENTS'),
+      earningsFilings: context('EARNINGS_FILINGS'), symbolNews: context('SYMBOL_NEWS'),
+      observations: contextObservations.map((contextObservation) => {
+        const { rawPayload, ...normalizedObservation } = contextObservation;
+        void rawPayload;
+        return normalizedObservation;
+      }),
+      interpretation: 'PROVIDER_CONTEXT_WITH_UNVERIFIED_UNITS_NO_EXECUTION_AUTHORITY',
+    },
     unavailableFamilies, empiricalEvReady: false,
   };
 }

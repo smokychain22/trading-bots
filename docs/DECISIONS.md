@@ -633,3 +633,11 @@ market data or profitability evidence. AGPL, GPL and no-license code isn't
 copied into Production. Equivalent THETA engines aren't duplicated. Advanced
 pricing, surface and hedging methods remain research challengers until they add
 incremental PIT/OOS value over simple baselines.
+
+## 2026-09-14: Optionomics context observations use bounded typed adapters
+
+Authenticated schema evidence now supports dedicated read-only adapters for symbol metrics, exposure heatmaps, aggregate flow, events, earnings filings, and symbol news. These families are normalized separately and attached to a FusionSnapshot without granting execution authority. Numeric zero remains known, missing and null remain unknown, malformed values are invalid, and provider units or sign definitions remain unverified unless the public contract proves them.
+
+Production requests follow a versioned per-family cadence and a six-request cycle cap. Calls run sequentially because the Optionomics allowance is shared. Skipped cadence families are not backfilled with guessed or stale values. Raw provider payloads remain immutable and are linked to the normalized feature snapshot by migration 030. This keeps the provider, normalized, derived, decision, and execution layers separate.
+
+The new event context does not derive earnings distance from earnings filings and does not invent ex-dividend coverage. Those values remain unknown. Optionomics remains non-executable under its current session-oriented contract.

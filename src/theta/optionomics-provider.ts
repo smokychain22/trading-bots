@@ -116,7 +116,7 @@ function parseRetryAfterSeconds(header: string | null): number | null {
   return null;
 }
 
-interface RequestOutcome {
+export interface OptionomicsRequestOutcome {
   readonly body: unknown;
   readonly httpStatus: number;
   readonly requestedAt: string;
@@ -132,10 +132,10 @@ interface RequestOutcome {
 // Bounded GET with timeout + a single bounded retry loop for 429 only.
 // Never an infinite retry, never applied to a non-GET method (this module
 // issues GET requests exclusively -- Optionomics never receives a write).
-async function requestJsonBounded(
+export async function requestOptionomicsJsonBounded(
   config: OptionomicsProviderConfig,
   url: URL,
-): Promise<RequestOutcome> {
+): Promise<OptionomicsRequestOutcome> {
   const fetchImpl = config.fetchImpl ?? fetch;
   const now = config.now ?? defaultNow;
   const sleep = config.sleepImpl ?? defaultSleep;
@@ -239,7 +239,7 @@ export interface NormalizedOptionomicsChain {
   readonly httpStatus: number;
   readonly requestPath: string;
   readonly requestParameters: Readonly<Record<string, string>>;
-  readonly rateLimit: RequestOutcome['rateLimit'];
+  readonly rateLimit: OptionomicsRequestOutcome['rateLimit'];
   readonly documentationReference: 'https://optionomics.ai/docs/api';
   readonly contractVersion: 'optionomics-public-api-2026-09-14';
   readonly credentialIdentityRefHash: string;
@@ -406,7 +406,7 @@ export async function fetchOptionomicsOptionChain(
   const url = new URL(`/api/v1/stocks/${encodeURIComponent(underlyingSymbol)}/options`, config.apiBase);
   applyDocumentedChainQuery(url, query);
   try {
-    const { body, httpStatus, requestedAt, retrievedAt, rateLimit } = await requestJsonBounded(config, url);
+    const { body, httpStatus, requestedAt, retrievedAt, rateLimit } = await requestOptionomicsJsonBounded(config, url);
     const provenance = {
       underlying: underlyingSymbol, requestedAt, retrievedAt, httpStatus, requestPath: url.pathname,
       requestParameters: Object.fromEntries(url.searchParams.entries()), rateLimit,
@@ -477,7 +477,7 @@ export async function fetchOptionomicsNetFlowWindow(
     resolution: '5m',
   }).toString();
   try {
-    const { body, httpStatus, retrievedAt } = await requestJsonBounded(config, url);
+    const { body, httpStatus, retrievedAt } = await requestOptionomicsJsonBounded(config, url);
     if (body === null || typeof body !== 'object' || Array.isArray(body)) {
       return { kind: 'VALUE_UNKNOWN_AFTER_SUCCESS', httpStatus, retrievedAt, detail: `${url.pathname} returned a 2xx body that was not an object.` };
     }
@@ -507,6 +507,281 @@ export async function fetchOptionomicsNetFlowWindow(
         detail: error.message, retryAfterSeconds: error.retryAfterSeconds, attemptCount: error.attemptCount,
       };
     }
+    return { kind: 'REQUEST_ERROR', errorClass: 'NETWORK_FAILURE', httpStatus: null, retrievedAt: now(), detail: 'Unknown error.', retryAfterSeconds: null, attemptCount: 1 };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Confirmed Optionomics context families
+// ---------------------------------------------------------------------------
+
+export type OptionomicsContextFamily =
+  | 'METRICS'
+  | 'EXPOSURE_HEATMAP'
+  | 'FLOW_AGGREGATES'
+  | 'EVENTS'
+  | 'EARNINGS_FILINGS'
+  | 'SYMBOL_NEWS';
+
+export type OptionomicsValueState = 'KNOWN' | 'UNKNOWN' | 'INVALID';
+
+export interface OptionomicsProviderValue<T> {
+  readonly state: OptionomicsValueState;
+  readonly value: T | null;
+  readonly reason: string | null;
+  readonly units: 'PROVIDER_REPORTED_UNVERIFIED' | 'COUNT' | 'TIMESTAMP' | 'TEXT';
+}
+
+export interface NormalizedOptionomicsContextObservation {
+  readonly family: OptionomicsContextFamily;
+  readonly operationAlias: string;
+  readonly underlying: string | null;
+  readonly requestedAt: string;
+  readonly retrievedAt: string;
+  readonly providerTimestamp: string | null;
+  readonly sessionDate: string | null;
+  readonly httpStatus: number;
+  readonly requestPath: string;
+  readonly requestParameters: Readonly<Record<string, string>>;
+  readonly rateLimit: OptionomicsRequestOutcome['rateLimit'];
+  readonly documentationReference: 'https://optionomics.ai/docs/api';
+  readonly contractVersion: 'optionomics-public-api-2026-09-14';
+  readonly credentialIdentityRefHash: string;
+  readonly responseHash: string;
+  readonly rawPayload: unknown;
+  readonly normalized: Readonly<Record<string, unknown>>;
+  readonly populated: boolean;
+  readonly evidenceClass: 'RESEARCH_AND_STRATEGY_CONTEXT';
+  readonly executableTruth: false;
+}
+
+export interface OptionomicsContextQuery {
+  readonly from?: string;
+  readonly to?: string;
+  readonly sessionDate?: string;
+  readonly perPage?: number;
+}
+
+interface ContextContract {
+  readonly family: OptionomicsContextFamily;
+  readonly operationAlias: string;
+  readonly path: (symbol: string) => string;
+  readonly allowedQueryParameters: readonly ('from' | 'to' | 'date' | 'per_page')[];
+  readonly normalize: (body: unknown, symbol: string) => Readonly<Record<string, unknown>> | null;
+}
+
+const providerKnown = (value: unknown): OptionomicsProviderValue<number> => {
+  if (value === null || value === undefined) return { state: 'UNKNOWN', value: null, reason: 'PROVIDER_VALUE_MISSING_OR_NULL', units: 'PROVIDER_REPORTED_UNVERIFIED' };
+  const parsed = asFiniteNumberOrNull(value);
+  return parsed === null
+    ? { state: 'INVALID', value: null, reason: 'PROVIDER_VALUE_NOT_FINITE_NUMBER', units: 'PROVIDER_REPORTED_UNVERIFIED' }
+    : { state: 'KNOWN', value: parsed, reason: null, units: 'PROVIDER_REPORTED_UNVERIFIED' };
+};
+
+function firstPresentValue(record: Record<string, unknown>, aliases: readonly string[]): OptionomicsProviderValue<number> {
+  for (const alias of aliases) if (alias in record) return providerKnown(record[alias]);
+  return providerKnown(undefined);
+}
+
+function objectOrNull(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function arrayFromEnvelope(body: unknown, keys: readonly string[]): readonly unknown[] | null {
+  if (Array.isArray(body)) return body;
+  const record = objectOrNull(body);
+  if (record === null) return null;
+  for (const key of keys) {
+    const value = record[key];
+    if (Array.isArray(value)) return value;
+  }
+  return null;
+}
+
+function normalizeMetrics(body: unknown): Readonly<Record<string, unknown>> | null {
+  const envelope = objectOrNull(body);
+  if (envelope === null) return null;
+  const metrics = objectOrNull(envelope.metrics) ?? envelope;
+  const providerNumericFields = Object.fromEntries(Object.entries(metrics)
+    .filter(([, value]) => value === null || asFiniteNumberOrNull(value) !== null)
+    .map(([key, value]) => [key, providerKnown(value)]));
+  return {
+    atmIv: firstPresentValue(metrics, ['atm_iv']),
+    ivRank: firstPresentValue(metrics, ['iv_rank']),
+    ivPercentile: firstPresentValue(metrics, ['iv_percentile']),
+    realizedVolatility5d: firstPresentValue(metrics, ['rv5']),
+    realizedVolatility10d: firstPresentValue(metrics, ['rv10']),
+    realizedVolatility20d: firstPresentValue(metrics, ['rv20']),
+    realizedVolatility30d: firstPresentValue(metrics, ['rv30']),
+    realizedVolatility60d: firstPresentValue(metrics, ['rv60']),
+    ivMinusRealizedVolatility20d: firstPresentValue(metrics, ['iv_minus_rv20']),
+    impliedVolatilityPremium20d: firstPresentValue(metrics, ['iv_premium20']),
+    volatilityRiskPremium20d: firstPresentValue(metrics, ['vrp_20']),
+    impliedVolatilitySkewZScore: firstPresentValue(metrics, ['iv_skew_z_score']),
+    riskReversal25: firstPresentValue(metrics, ['rr25']),
+    termSlope: firstPresentValue(metrics, ['vol_term_structure_slope']),
+    expectedMoveLower: firstPresentValue(metrics, ['expected_move_lower']),
+    expectedMoveUpper: firstPresentValue(metrics, ['expected_move_upper']),
+    expectedMovePercent: firstPresentValue(metrics, ['expected_move_pct']),
+    totalGex: firstPresentValue(metrics, ['total_gex']),
+    callGammaExposure: firstPresentValue(metrics, ['call_gamma_exposure']),
+    putGammaExposure: firstPresentValue(metrics, ['put_gamma_exposure']),
+    callDeltaExposure: firstPresentValue(metrics, ['call_delta_exposure']),
+    putDeltaExposure: firstPresentValue(metrics, ['put_delta_exposure']),
+    totalDeltaExposure: firstPresentValue(metrics, ['total_dde']),
+    deltaExposureDelta: firstPresentValue(metrics, ['dde_delta']),
+    gammaFlipStrike: firstPresentValue(metrics, ['gamma_flip_strike']),
+    putWall: firstPresentValue(metrics, ['put_wall']),
+    callWall: firstPresentValue(metrics, ['call_wall']),
+    maxPainStrike: firstPresentValue(metrics, ['max_pain_strike']),
+    putCallVolumeRatio: firstPresentValue(metrics, ['pcr_volume']),
+    putCallOpenInterestRatio: firstPresentValue(metrics, ['pcr_open_interest']),
+    putCallPremiumRatio: firstPresentValue(metrics, ['pcr_premium']),
+    putCallDeltaExposureRatio: firstPresentValue(metrics, ['pcr_delta_exposure']),
+    putCallGammaExposureRatio: firstPresentValue(metrics, ['pcr_gamma_exposure']),
+    providerNumericFields,
+    providerFieldsPresent: Object.keys(metrics).toSorted(),
+  };
+}
+
+function normalizeHeatmap(body: unknown): Readonly<Record<string, unknown>> | null {
+  const envelope = objectOrNull(body);
+  if (envelope === null) return null;
+  const cells = Array.isArray(envelope.cells) ? envelope.cells : Array.isArray(envelope.values) ? envelope.values : null;
+  if (cells === null) return null;
+  return {
+    metric: typeof envelope.metric === 'string' ? envelope.metric : null,
+    strikes: Array.isArray(envelope.strikes) ? envelope.strikes : [],
+    expirations: Array.isArray(envelope.expirations) ? envelope.expirations : [],
+    cells,
+    valueUnits: 'PROVIDER_REPORTED_UNVERIFIED',
+    signConvention: 'PROVIDER_DEFINITION_UNVERIFIED',
+  };
+}
+
+function normalizeFlowAggregates(body: unknown, symbol: string): Readonly<Record<string, unknown>> | null {
+  const record = objectOrNull(body);
+  if (record === null) return null;
+  const filter = (value: unknown): readonly Record<string, unknown>[] => (Array.isArray(value) ? value : [])
+    .filter((item): item is Record<string, unknown> => objectOrNull(item) !== null)
+    .filter((item) => {
+      const reported = item.symbol ?? item.ticker ?? item.underlying;
+      return typeof reported !== 'string' || reported.toUpperCase() === symbol.toUpperCase();
+    });
+  return {
+    bullishClassified: filter(record.bullish_flow),
+    bearishClassified: filter(record.bearish_flow),
+    topCalls: filter(record.top_calls),
+    topPuts: filter(record.top_puts),
+    totalPremium: firstPresentValue(record, ['total_premium', 'premium']),
+    tradeCount: firstPresentValue(record, ['trade_count', 'trades']),
+    interpretation: 'PROVIDER_CLASSIFICATION_RETAINED_NO_TRADER_INTENT_INFERRED',
+  };
+}
+
+function normalizeEventRows(body: unknown, symbol: string, keys: readonly string[]): Readonly<Record<string, unknown>> | null {
+  const rows = arrayFromEnvelope(body, keys);
+  if (rows === null) return null;
+  const filtered = rows.filter((item) => {
+    const row = objectOrNull(item);
+    if (row === null) return true;
+    const ticker = row.ticker ?? row.symbol ?? row.underlying;
+    const tickers = Array.isArray(row.tickers) ? row.tickers.filter((value): value is string => typeof value === 'string') : [];
+    return (typeof ticker !== 'string' && tickers.length === 0)
+      || (typeof ticker === 'string' && ticker.toUpperCase() === symbol.toUpperCase())
+      || tickers.some((value) => value.toUpperCase() === symbol.toUpperCase());
+  });
+  return {
+    rows: filtered.map((item) => {
+      const row = objectOrNull(item);
+      if (row === null) return { providerRecord: item };
+      return {
+      knownAt: asStringOrNull(row.known_at ?? row.knownAt),
+      scheduledAt: asStringOrNull(row.scheduled_at ?? row.scheduledAt ?? row.date),
+      publishedAt: asStringOrNull(row.published_at ?? row.publishedAt),
+      analyzedAt: asStringOrNull(row.analyzed_at ?? row.analyzedAt),
+      ticker: asStringOrNull(row.ticker ?? row.symbol ?? row.underlying),
+      tickers: Array.isArray(row.tickers) ? row.tickers : null,
+      type: asStringOrNull(row.type ?? row.event_type ?? row.topic),
+      status: asStringOrNull(row.status),
+      importance: row.importance ?? null,
+      sentiment: row.sentiment ?? null,
+      confidence: row.confidence ?? null,
+      sourceUrl: asStringOrNull(row.source_url ?? row.url),
+      providerRecord: row,
+      };
+    }),
+    publicationTimeContract: 'PROVIDER_FIELDS_RETAINED_NO_UNDOCUMENTED_INFERENCE',
+  };
+}
+
+const contextContracts: Readonly<Record<OptionomicsContextFamily, ContextContract>> = {
+  METRICS: { family: 'METRICS', operationAlias: 'optionomics.get_symbol_metrics', path: (symbol) => `/api/v1/stocks/${encodeURIComponent(symbol)}/metrics`, allowedQueryParameters: ['date'], normalize: (body) => normalizeMetrics(body) },
+  EXPOSURE_HEATMAP: { family: 'EXPOSURE_HEATMAP', operationAlias: 'optionomics.get_heatmap', path: (symbol) => `/api/v1/stocks/${encodeURIComponent(symbol)}/heatmap`, allowedQueryParameters: ['date'], normalize: (body) => normalizeHeatmap(body) },
+  FLOW_AGGREGATES: { family: 'FLOW_AGGREGATES', operationAlias: 'optionomics.get_flow_aggregates', path: () => '/api/v1/flow/aggregates', allowedQueryParameters: ['date'], normalize: normalizeFlowAggregates },
+  EVENTS: { family: 'EVENTS', operationAlias: 'optionomics.list_events', path: () => '/api/v1/events', allowedQueryParameters: ['from', 'to', 'per_page'], normalize: (body, symbol) => normalizeEventRows(body, symbol, ['events']) },
+  EARNINGS_FILINGS: { family: 'EARNINGS_FILINGS', operationAlias: 'optionomics.get_earnings_filings', path: (symbol) => `/api/v1/stocks/${encodeURIComponent(symbol)}/earning_filings`, allowedQueryParameters: [], normalize: (body, symbol) => normalizeEventRows(body, symbol, ['earning_filings', 'filings', 'earnings']) },
+  SYMBOL_NEWS: { family: 'SYMBOL_NEWS', operationAlias: 'optionomics.get_symbol_news', path: (symbol) => `/api/v1/stocks/${encodeURIComponent(symbol)}/news`, allowedQueryParameters: [], normalize: (body, symbol) => normalizeEventRows(body, symbol, ['news', 'articles']) },
+};
+
+function normalizedContextIsPopulated(family: OptionomicsContextFamily, normalized: Readonly<Record<string, unknown>>): boolean {
+  if (family === 'METRICS') return Object.values(normalized).some((value) => {
+    const field = objectOrNull(value);
+    return field?.state === 'KNOWN';
+  });
+  if (family === 'EXPOSURE_HEATMAP') return Array.isArray(normalized.cells) && normalized.cells.length > 0;
+  if (family === 'FLOW_AGGREGATES') {
+    if (['bullishClassified', 'bearishClassified', 'topCalls', 'topPuts'].some((key) => Array.isArray(normalized[key]) && normalized[key].length > 0)) return true;
+    return ['totalPremium', 'tradeCount'].some((key) => objectOrNull(normalized[key])?.state === 'KNOWN');
+  }
+  return Array.isArray(normalized.rows) && normalized.rows.length > 0;
+}
+
+export async function fetchOptionomicsContextObservation(
+  config: OptionomicsProviderConfig,
+  family: OptionomicsContextFamily,
+  underlyingSymbol: string,
+  query: OptionomicsContextQuery = {},
+): Promise<OptionomicsFetchOutcome<NormalizedOptionomicsContextObservation>> {
+  const now = config.now ?? defaultNow;
+  const contract = contextContracts[family];
+  const url = new URL(contract.path(underlyingSymbol), config.apiBase);
+  if (query.from !== undefined && contract.allowedQueryParameters.includes('from')) url.searchParams.set('from', query.from);
+  if (query.to !== undefined && contract.allowedQueryParameters.includes('to')) url.searchParams.set('to', query.to);
+  if (query.sessionDate !== undefined && contract.allowedQueryParameters.includes('date')) url.searchParams.set('date', query.sessionDate);
+  if (query.perPage !== undefined && contract.allowedQueryParameters.includes('per_page')) url.searchParams.set('per_page', String(query.perPage));
+  try {
+    const outcome = await requestOptionomicsJsonBounded(config, url);
+    const normalized = contract.normalize(outcome.body, underlyingSymbol);
+    if (normalized === null) return {
+      kind: 'VALUE_UNKNOWN_AFTER_SUCCESS', httpStatus: outcome.httpStatus, retrievedAt: outcome.retrievedAt,
+      detail: `${url.pathname} returned a 2xx body that did not match its confirmed response family.`,
+    };
+    const envelope = objectOrNull(outcome.body);
+    const providerTimestampRaw = asStringOrNull(envelope?.as_of ?? envelope?.timestamp ?? envelope?.updated_at);
+    const providerTimestamp = providerTimestampRaw !== null && Number.isFinite(Date.parse(providerTimestampRaw))
+      ? new Date(providerTimestampRaw).toISOString() : null;
+    const sessionDate = asStringOrNull(envelope?.date);
+    const populated = normalizedContextIsPopulated(family, normalized);
+    return {
+      kind: 'VALUE_PRESENT', httpStatus: outcome.httpStatus, retrievedAt: outcome.retrievedAt,
+      value: {
+        family, operationAlias: contract.operationAlias, underlying: underlyingSymbol,
+        requestedAt: outcome.requestedAt, retrievedAt: outcome.retrievedAt, providerTimestamp,
+        sessionDate: sessionDate !== null && /^\d{4}-\d{2}-\d{2}$/.test(sessionDate) ? sessionDate : null,
+        httpStatus: outcome.httpStatus, requestPath: url.pathname,
+        requestParameters: Object.fromEntries(url.searchParams.entries()), rateLimit: outcome.rateLimit,
+        documentationReference: 'https://optionomics.ai/docs/api', contractVersion: 'optionomics-public-api-2026-09-14',
+        credentialIdentityRefHash: createHash('sha256').update(config.email.trim().toLowerCase()).digest('hex'),
+        responseHash: hashRawPayload(outcome.body), rawPayload: sanitizeProviderPayload(outcome.body, config), normalized,
+        populated, evidenceClass: 'RESEARCH_AND_STRATEGY_CONTEXT', executableTruth: false,
+      },
+    };
+  } catch (error) {
+    if (error instanceof OptionomicsProviderError) return {
+      kind: 'REQUEST_ERROR', errorClass: error.errorClass, httpStatus: error.httpStatus, retrievedAt: now(),
+      detail: error.message, retryAfterSeconds: error.retryAfterSeconds, attemptCount: error.attemptCount,
+    };
     return { kind: 'REQUEST_ERROR', errorClass: 'NETWORK_FAILURE', httpStatus: null, retrievedAt: now(), detail: 'Unknown error.', retryAfterSeconds: null, attemptCount: 1 };
   }
 }

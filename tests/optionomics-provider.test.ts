@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   classifyProviderDisagreement,
+  fetchOptionomicsContextObservation,
   fetchOptionomicsNetFlowWindow,
   fetchOptionomicsOptionChain,
   matchOptionomicsContractIdentity,
@@ -364,6 +365,96 @@ test('credential-like values echoed by a provider are redacted from retained raw
   assert.equal(raw.includes('SECRET-VALUE-MUST-NOT-LEAK'), false);
   assert.equal(raw.includes('leaky@example.com'), false);
   assert.ok(raw.includes('[REDACTED]'));
+});
+
+test('metrics normalizer preserves zero, UNKNOWN, INVALID and provider units honestly', async () => {
+  const fetchImpl = (async () => jsonResponse(200, {
+    date: '2026-09-10',
+    metrics: { iv_rank: 0, iv_percentile: null, iv_skew_z_score: 'not-a-number', rr25: 0.12, total_gex: -15 },
+  }, { 'x-ratelimit-remaining': '99' })) as typeof fetch;
+  const outcome = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'METRICS', 'SPY');
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  const normalized = outcome.value.normalized as Record<string, { state: string; value: number | null }>;
+  assert.deepEqual(normalized.ivRank, { state: 'KNOWN', value: 0, reason: null, units: 'PROVIDER_REPORTED_UNVERIFIED' });
+  assert.equal(normalized.ivPercentile?.state, 'UNKNOWN');
+  assert.equal(normalized.impliedVolatilitySkewZScore?.state, 'INVALID');
+  assert.equal(normalized.riskReversal25?.value, 0.12);
+  assert.equal(normalized.totalGex?.value, -15);
+  assert.equal(outcome.value.executableTruth, false);
+  assert.equal(outcome.value.sessionDate, '2026-09-10');
+  assert.equal(outcome.value.rateLimit.remaining, '99');
+});
+
+test('event normalizer retains known-at and filters explicit other-symbol rows', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { events: [
+    { ticker: 'SPY', known_at: '2026-09-09T12:00:00Z', scheduled_at: '2026-09-15T14:00:00Z', type: 'MACRO' },
+    { ticker: 'AAPL', known_at: '2026-09-09T12:00:00Z', scheduled_at: '2026-09-16T14:00:00Z' },
+    { region: 'US', known_at: '2026-09-08T12:00:00Z', date: '2026-09-17' },
+  ] })) as typeof fetch;
+  const outcome = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'EVENTS', 'SPY', {
+    from: '2026-09-10', to: '2026-10-10', perPage: 100,
+  });
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  const rows = (outcome.value.normalized.rows as readonly Record<string, unknown>[]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0]?.knownAt, '2026-09-09T12:00:00Z');
+  assert.deepEqual(outcome.value.requestParameters, { from: '2026-09-10', to: '2026-10-10', per_page: '100' });
+});
+
+test('confirmed context endpoints reject unrecognized 2xx shapes instead of fabricating empty state', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { unexpected: true })) as typeof fetch;
+  const outcome = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'EXPOSURE_HEATMAP', 'SPY');
+  assert.equal(outcome.kind, 'VALUE_UNKNOWN_AFTER_SUCCESS');
+});
+
+test('empty event arrays prove reachability but do not fabricate populated event context', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { events: [] })) as typeof fetch;
+  const outcome = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'EVENTS', 'SPY');
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  assert.equal(outcome.value.populated, false);
+});
+
+test('provider-reported zero flow totals remain populated known observations', async () => {
+  const fetchImpl = (async () => jsonResponse(200, {
+    bullish_flow: [], bearish_flow: [], top_calls: [], top_puts: [], total_premium: 0, trade_count: 0,
+  })) as typeof fetch;
+  const outcome = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'FLOW_AGGREGATES', 'SPY');
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  assert.equal(outcome.value.populated, true);
+  assert.equal((outcome.value.normalized.totalPremium as { value: number }).value, 0);
+});
+
+test('context adapters send only query parameters confirmed for that operation', async () => {
+  let requestUrl = '';
+  const fetchImpl = (async (input) => {
+    requestUrl = String(input);
+    return jsonResponse(200, { bullish_flow: [], bearish_flow: [], top_calls: [], top_puts: [], total_premium: 0, trade_count: 0 });
+  }) as typeof fetch;
+  const outcome = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'FLOW_AGGREGATES', 'SPY', {
+    from: '2026-09-01', to: '2026-09-14', sessionDate: '2026-09-14', perPage: 100,
+  });
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  const url = new URL(requestUrl);
+  assert.deepEqual(Object.fromEntries(url.searchParams), { date: '2026-09-14' });
+});
+
+test('context observations redact echoed credentials and never return executable truth', async () => {
+  const fetchImpl = (async () => jsonResponse(200, {
+    metrics: { iv_rank: 20 }, token: 'SECRET-VALUE-MUST-NOT-LEAK', email: 'leaky@example.com',
+  })) as typeof fetch;
+  const outcome = await fetchOptionomicsContextObservation(baseConfig(fetchImpl, {
+    apiToken: 'SECRET-VALUE-MUST-NOT-LEAK', email: 'leaky@example.com',
+  }), 'METRICS', 'SPY');
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  const raw = JSON.stringify(outcome.value.rawPayload);
+  assert.equal(raw.includes('SECRET-VALUE-MUST-NOT-LEAK'), false);
+  assert.equal(raw.includes('leaky@example.com'), false);
+  assert.equal(outcome.value.executableTruth, false);
 });
 
 // --- Exact contract identity (never fuzzy) ---

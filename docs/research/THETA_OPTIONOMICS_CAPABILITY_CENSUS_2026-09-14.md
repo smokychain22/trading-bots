@@ -115,26 +115,26 @@ Historical Optionomics observations must retain decision cutoff, session date, s
 |---|---|---|
 | `OPTIONOMICS_ENDPOINT_CENSUS` | COMPLETE_WITH_LIMITS | 35 authenticated results persisted. ID-child routes and POST assessment remain deliberately uncalled. |
 | `OPTIONOMICS_RAW_OBSERVATION` | COMPLETE | Code: `src/theta/optionomics-provider.ts`, migration 029, persistence store. Production migration applied. |
-| `OPTIONOMICS_NORMALIZATION` | PARTIAL | Chain, quote, Greeks, IV, liquidity and provider exposure scalars implemented. Authenticated schemas are fingerprinted. Dedicated crowd, event and full metric response normalizers remain. |
+| `OPTIONOMICS_NORMALIZATION` | COMPLETE_WITH_LIMITS | Chain, quote, Greeks, IV, liquidity, metric, heatmap, aggregate-flow, event, earnings-filing, and symbol-news adapters are implemented for confirmed schemas. Unsupported print-level and Vanna/Charm families remain explicit unknowns. |
 | `OPTIONOMICS_CHAIN` | COMPLETE_WITH_LIMITS | Authenticated HTTP 200. Current schema populated. Historical date returned 11,966 direct observations. Session-oriented quote semantics remain non-executable. |
 | `OPTIONOMICS_GREEKS` | COMPLETE_IN_CODE | Provider units still need authenticated documentation confirmation before independent discrepancy thresholds. |
-| `OPTIONOMICS_VOLATILITY` | PARTIAL | IV rank, percentile, RV and vol-of-vol fields are authenticated. Horizon, unit and availability-time contracts still need verification before normalization. |
+| `OPTIONOMICS_VOLATILITY` | PARTIAL | IV rank, percentile, RV and related metric fields are normalized with provider-reported units marked unverified. Horizon, unit and availability-time contracts still block economic interpretation. |
 | `OPTIONOMICS_SKEW` | PARTIAL | Raw 25-delta research difference implemented. Historical z-score requires PIT history. |
 | `OPTIONOMICS_TERM` | PARTIAL | Expiry IV difference implemented. Total and forward variance require defensible tenor selection and day count. |
 | `OPTIONOMICS_SURFACE` | PARTIAL | Raw strike-expiry IV grid implemented. SVI/SSVI fit and arbitrage diagnostics stay R6 challengers. |
 | `OPTIONOMICS_GEX` | PARTIAL | Authenticated metrics expose total/call/put gamma exposure, gamma flip and walls. Definition, sign and units remain unverified. |
 | `OPTIONOMICS_DEX` | PARTIAL | Authenticated metrics expose call/put delta exposure and total DDE. DEX naming, definition and units remain unverified. |
-| `OPTIONOMICS_VANNA` | PARTIAL | No explicit Vanna field appeared in authenticated public response schemas. Exact missing capability: a documented field, units and timestamp contract. |
-| `OPTIONOMICS_CHARM` | PARTIAL | No explicit Charm field appeared in authenticated public response schemas. Exact missing capability: a documented field, units and timestamp contract. |
-| `OPTIONOMICS_FLOW` | PARTIAL | Aggregate and net-series schemas are proven. Print-level sweep/block/ISO/aggressor schemas remain unavailable in the sampled public contract. |
+| `OPTIONOMICS_VANNA` | UNAVAILABLE_API | No explicit Vanna field appeared in authenticated public response schemas. Exact missing capability: a documented field, units and timestamp contract. |
+| `OPTIONOMICS_CHARM` | UNAVAILABLE_API | No explicit Charm field appeared in authenticated public response schemas. Exact missing capability: a documented field, units and timestamp contract. |
+| `OPTIONOMICS_FLOW` | PARTIAL | Aggregate and net-series schemas are normalized and cycle-integrated. Print-level sweep/block/ISO/aggressor schemas remain unavailable in the sampled public contract. |
 | `OPTIONOMICS_CROWD` | RESEARCH_ONLY_PARTIAL | Typed destination exists. No validated crowd model. |
-| `OPTIONOMICS_EVENTS` | PARTIAL | `known_at` was proven on two historical events. Earnings parent route is proven. Ex-dividend coverage and full publication-time guarantees remain unverified. |
+| `OPTIONOMICS_EVENTS` | PARTIAL | Events, earnings filings, and symbol news are normalized and cycle-integrated with publication fields retained. Upcoming earnings distance, ex-dividend coverage, and full publication-time guarantees remain unverified. |
 | `OPTIONOMICS_HISTORICAL` | PARTIAL | Dated chain/metrics/flow/events probes exist. Bulk archive contract and retention cadence remain unverified. |
 | `OPTIONOMICS_BACKTEST_BRIDGE` | PARTIAL | THETA deterministic export exists. Vendor backtest import/reproduction mapping isn't complete. |
 | `OPTIONOMICS_FEATURE_DESTINATION_MAP` | COMPLETE_IN_CODE | Typed allowlists added and tested. |
 | `OPTIONOMICS_MISSINGNESS_POLICY` | COMPLETE_IN_CODE | UNKNOWN-safe parser and feature states tested. |
 | `OPTIONOMICS_PROVENANCE` | COMPLETE | Migration 029 applied and invariants verified in Production. |
-| `OPTIONOMICS_RATE_LIMIT_POLICY` | PARTIAL | Bounded 429 retry and header capture implemented. Per-family request budgets still need observed update cadence and capacity policy. |
+| `OPTIONOMICS_RATE_LIMIT_POLICY` | PARTIAL | Bounded 429 retry, header capture, sequential calls, per-family cadence, and a per-cycle request cap are implemented. Durable cross-cycle caching and empirically tuned cadence remain open. |
 | `OPTIONOMICS_PIT_SAFETY` | PARTIAL | Raw/feature/label separation exists. Full historical availability-time proof remains a data-contract blocker. |
 | `OPTIONOMICS_QUOTE_INTELLIGENCE_READY` | YES_WITH_LIMITS | Recorded two-sided research observations can inform research only. |
 | `OPTIONOMICS_EXECUTION_QUOTE_STATUS` | REJECTED | Provider docs describe session-oriented research data, not an execution feed. Qualification guard remains locked. |

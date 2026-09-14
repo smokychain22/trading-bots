@@ -34,6 +34,7 @@ try {
     "027_paper_active_baseline_and_near_miss",
     "028_optionomics_layered_evidence",
     "029_optionomics_request_provenance",
+    "030_optionomics_context_lineage",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -77,6 +78,7 @@ try {
     ["research", "theta_near_miss_reevaluation_event"],
     ["market", "optionomics_raw_observation"],
     ["market", "optionomics_feature_snapshot"],
+    ["market", "optionomics_feature_observation_link"],
     ["research", "optionomics_quote_qualification_run"],
   ];
   const tables = await client.query(
@@ -143,9 +145,12 @@ try {
     EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='market'
       AND event_object_table='optionomics_feature_snapshot' AND trigger_name='reject_immutable_mutation') AS immutable_features,
     EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='research'
-      AND event_object_table='optionomics_quote_qualification_run' AND trigger_name='reject_immutable_mutation') AS immutable_qualification`);
+      AND event_object_table='optionomics_quote_qualification_run' AND trigger_name='reject_immutable_mutation') AS immutable_qualification,
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='market'
+      AND event_object_table='optionomics_feature_observation_link' AND trigger_name='reject_immutable_mutation') AS immutable_context_lineage`);
   if(!optionomicsEvidence.rows[0]?.immutable_raw||!optionomicsEvidence.rows[0]?.immutable_features||
-    !optionomicsEvidence.rows[0]?.immutable_qualification) throw new Error('OPTIONOMICS_LAYERED_EVIDENCE_PROTECTION_MISSING');
+    !optionomicsEvidence.rows[0]?.immutable_qualification||!optionomicsEvidence.rows[0]?.immutable_context_lineage)
+    throw new Error('OPTIONOMICS_LAYERED_EVIDENCE_PROTECTION_MISSING');
   const optionomicsProvenance=await client.query(`SELECT count(*)::int AS column_count
     FROM information_schema.columns WHERE table_schema='market' AND table_name='optionomics_raw_observation'
       AND column_name IN ('requested_at','request_path','request_parameters_json','http_status','rate_limit_json',
@@ -224,7 +229,8 @@ try {
   const gate = executionControl.rows[0];
   if (!gate?.pause_new_orders || gate.master_execution_enabled || gate.follower_execution_enabled)
     throw new Error("PAPER_EXECUTION_NOT_LOCKED");
-  const activeFollowers = await client.query("SELECT count(*)::int AS count FROM copy.follower_account WHERE disconnected_at IS NULL");
+  const activeFollowers = await client.query("SELECT count(*)::int AS count FROM copy.follower_account WHERE disconnected_at IS NULL AND account_role='FOLLOWER_THETA_PAPER'");
+  const activeMasters = await client.query("SELECT count(*)::int AS count FROM copy.follower_account WHERE disconnected_at IS NULL AND account_role='MASTER_THETA_PAPER'");
   const activeCredentials = await client.query("SELECT count(*)::int AS count FROM copy.alpaca_oauth_token WHERE revoked_at IS NULL");
   const roles = await client.query("SELECT account_role, count(*)::int AS count FROM copy.follower_account WHERE disconnected_at IS NULL GROUP BY account_role");
   const orderCount = await client.query("SELECT count(*)::int AS count FROM trade.broker_order");
@@ -257,7 +263,9 @@ try {
     shadowVirtualTrader:"ENFORCED",
     paperActiveBaselineEvidence:"ENFORCED",
     optionomicsLayeredEvidence:"ENFORCED",
+    optionomicsContextLineage:"ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
+    activeMasters: activeMasters.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
     brokerOrders: orderCount.rows[0]?.count ?? 0,
     shadowIntents:shadowCounts.rows[0]?.intents??0,
