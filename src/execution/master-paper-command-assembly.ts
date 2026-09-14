@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { generateClientOrderId } from '../theta/order-intent-state.js';
 import type { MasterPaperExecutionCommand } from './master-paper-execution-orchestrator.js';
+import { executionAuthorizationTiers, type ExecutionAuthorizationTier } from './execution-authorization-tier.js';
 import { buildAlpacaLimitOrder, thetaActionOpensNewRisk, type ThetaOrderAction } from './order-construction.js';
 
 export interface MasterPaperCommandAssemblyInput {
@@ -16,6 +17,11 @@ export interface MasterPaperCommandAssemblyInput {
   readonly symbol: string;
   readonly quantity: number;
   readonly multiplier: number;
+  readonly executionTier: ExecutionAuthorizationTier;
+  readonly canonicalQuantity: number;
+  readonly paperEvidenceQuantity: number;
+  readonly empiricalEconomicsReady: boolean;
+  readonly expectedAfterCostEv: number | null;
   readonly confirmedCoveredShares?: number;
   readonly limitPrice: number;
   readonly pricingPolicyVersion: string;
@@ -42,6 +48,9 @@ const inputSchema = z.object({
   strategyVersion: z.string().min(1), chainId: z.string().uuid(), optionContractId: z.string().uuid().nullable(),
   underlyingId: z.string().uuid(), symbol: z.string().min(1).max(64), quantity: z.number().int().positive(),
   multiplier: z.number().int().positive(), confirmedCoveredShares: z.number().int().nonnegative().optional(),
+  executionTier:z.enum(executionAuthorizationTiers),canonicalQuantity:z.number().int().nonnegative(),
+  paperEvidenceQuantity:z.number().int().nonnegative(),empiricalEconomicsReady:z.boolean(),
+  expectedAfterCostEv:z.number().finite().nullable(),
   limitPrice: z.number().positive().finite(), pricingPolicyVersion: z.string().min(1),
   quote: z.object({ source: z.enum(['ALPACA','OPTIONOMICS']), feed: z.enum(['OPRA', 'SIP', 'IEX', 'TRUSTED_TWO_SIDED']),
     semantics: z.enum(['CONSOLIDATED_NBBO','TRUSTED_TWO_SIDED_ORDER_PRICING']),
@@ -77,6 +86,12 @@ const canonicalQuoteHash = (input: z.infer<typeof inputSchema>): string => creat
  */
 export function assembleMasterPaperExecutionCommand(raw: MasterPaperCommandAssemblyInput): MasterPaperExecutionCommand {
   const input = inputSchema.parse(raw);
+  if(input.executionTier==='LIVE_ELIGIBLE'||input.executionTier==='LIVE_AUTHORIZED')throw new Error('LIVE_EXECUTION_NOT_AUTHORIZED');
+  if(input.quantity!==input.paperEvidenceQuantity||input.paperEvidenceQuantity>input.canonicalQuantity)
+    throw new Error('PAPER_EVIDENCE_QUANTITY_INVALID');
+  if(thetaActionOpensNewRisk(input.action)&&input.executionTier==='EMPIRICALLY_PROMOTED_PAPER'&&
+    (!input.empiricalEconomicsReady||input.expectedAfterCostEv===null||input.expectedAfterCostEv<=0))
+    throw new Error('EMPIRICAL_PROMOTION_ECONOMICS_NOT_READY');
   const isStock = input.action === 'SELL_STOCK';
   if (isStock) {
     if (input.optionContractId !== null || input.quote.source !== 'ALPACA' || !['SIP', 'IEX'].includes(input.quote.feed)
@@ -114,6 +129,9 @@ export function assembleMasterPaperExecutionCommand(raw: MasterPaperCommandAssem
       quoteSemantics: input.quote.semantics,
       quoteAsOf: input.quote.observedAt, decisionExpiresAt: input.decisionExpiresAt,
       quoteContentHash: canonicalQuoteHash(input), aegisState: input.aegisState },
+    authorizationEvidence:{executionTier:input.executionTier,canonicalQuantity:input.canonicalQuantity,
+      paperEvidenceQuantity:input.paperEvidenceQuantity,empiricalEconomicsReady:input.empiricalEconomicsReady,
+      expectedAfterCostEv:input.expectedAfterCostEv},
     gate: { baseHostname: 'paper-api.alpaca.markets', accountVerified: input.accountVerified,
       optionsCapabilityVerified: input.optionsCapabilityVerified, aegisState: input.aegisState,
       quoteFresh: true, priceEvidence: isStock ? 'ALPACA_STOCK_BBO' : 'QUALIFIED_OPTION_BBO',

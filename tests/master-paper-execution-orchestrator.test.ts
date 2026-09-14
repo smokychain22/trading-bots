@@ -28,6 +28,8 @@ const command = (overrides: Partial<MasterPaperExecutionCommand> = {}): MasterPa
   chainId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',optionContractId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   underlyingId:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',executionEvidence:{quoteSource:'ALPACA',quoteFeed:'OPRA',quoteSemantics:'CONSOLIDATED_NBBO',
     quoteAsOf:now,decisionExpiresAt:'2026-09-14T14:01:00.000Z',quoteContentHash:'a'.repeat(64),aegisState:'ALLOW_FULL'},
+  authorizationEvidence:{executionTier:'PAPER_EVIDENCE',canonicalQuantity:1,paperEvidenceQuantity:1,
+    empiricalEconomicsReady:false,expectedAfterCostEv:null},
   request: { symbol: 'AAPL261016P00150000', qty: 1, side: 'sell', type: 'limit', time_in_force: 'day',
     limit_price: '1.25', client_order_id: 'theta-open-1', position_intent: 'sell_to_open' },
   gate: { baseHostname: 'paper-api.alpaca.markets', accountVerified: true, optionsCapabilityVerified: true,

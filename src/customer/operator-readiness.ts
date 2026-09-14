@@ -83,7 +83,7 @@ export interface LocalWorkerReadiness {
   readonly alpaca_health: string;
   readonly optionomics_health: string;
   readonly database_health: string;
-  readonly execution_gate: "LOCKED"|"EXTERNAL_QUOTE_BLOCKER";
+  readonly execution_gate: "LOCKED"|"EXTERNAL_QUOTE_BLOCKER"|"ACTIVE";
   readonly failure_reason: string|null;
 }
 
@@ -110,7 +110,7 @@ export async function readLocalWorkerReadiness(databaseUrl?:string):Promise<Loca
       last_reconciliation:iso(row.last_reconciliation),last_candidate_scan:iso(row.last_candidate_scan),
       market_session:String(row.market_session),alpaca_health:String(row.alpaca_health),
       optionomics_health:String(row.optionomics_health),database_health:String(row.database_health),
-      execution_gate:row.execution_gate==='EXTERNAL_QUOTE_BLOCKER'?'EXTERNAL_QUOTE_BLOCKER':'LOCKED',
+      execution_gate:row.execution_gate==='ACTIVE'?'ACTIVE':row.execution_gate==='EXTERNAL_QUOTE_BLOCKER'?'EXTERNAL_QUOTE_BLOCKER':'LOCKED',
       failure_reason:row.failure_reason==null?null:String(row.failure_reason)};
   }catch{return {...unknown,state:'UNAVAILABLE',database_health:'DEGRADED'};}finally{await pool.end();}
 }

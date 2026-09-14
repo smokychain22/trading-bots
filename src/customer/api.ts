@@ -493,7 +493,7 @@ export default async function customerHandler(
             process.env.VERCEL_ENV === "production"
               ? "PRODUCTION"
               : "DEVELOPMENT_OR_PREVIEW",
-          trading: localWorker.online ? "EXTERNAL_QUOTE_BLOCKER" : masterExecutionMode,
+          trading: localWorker.online ? localWorker.execution_gate : masterExecutionMode,
           bot_mode: "PAPER",
           copy: connectionConfigured ? "READY_TO_CONNECT" : "BLOCKED",
           deployment_sha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
@@ -545,7 +545,16 @@ export default async function customerHandler(
           execution_control: {
             environment: "PAPER",
             live_host_allowed: false,
-            master_paper_execution: localWorker.online ? "EXTERNAL_QUOTE_BLOCKER" : masterExecutionMode,
+            execution_tier: "PAPER_EVIDENCE",
+            empirical_promotion_tier: "NOT_PROMOTED",
+            live_eligible: false,
+            live_authorized: false,
+            empirical_economics_ready: false,
+            expected_after_cost_ev_state: "UNKNOWN",
+            paper_evidence_risk_cap: environment.PAPER_EVIDENCE_RISK_CAP,
+            paper_evidence_eligible: localWorker.execution_gate === "ACTIVE" ? "ACTION_DEPENDENT" : "QUOTE_BLOCKED",
+            execution_quote_gate: localWorker.execution_gate === "ACTIVE" ? "PASS" : "BLOCKED",
+            master_paper_execution: localWorker.online ? localWorker.execution_gate : masterExecutionMode,
             follower_paper_execution: followerExecutionMode,
             pause_new_orders: environment.PAPER_PAUSE_NEW_ORDERS,
             customer_can_enable: false,
@@ -567,7 +576,7 @@ export default async function customerHandler(
             ...(localWorker.online ? [] : ["The master Paper worker is offline"]),
             "Fresh trusted two-sided execution quote authority is not yet qualified",
             ...(database.state === "CONNECTED" ? [] : ["Production PostgreSQL is required for durable order and reconciliation workers"]),
-            "Owner Paper authorization is granted. The execution-quote safety gate remains required",
+            "Paper evidence authorization is separate from empirical promotion and future live eligibility",
             "No validated customer performance publication",
             connectionConfigured
               ? "Private team Paper connection is available; public accounts still require Alpaca Connect approval"

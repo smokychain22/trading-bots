@@ -176,6 +176,7 @@ test('paper execution flags fail closed when absent or blank', () => {
   assert.equal(absent.MASTER_PAPER_EXECUTION_ENABLED, false);
   assert.equal(absent.FOLLOWER_PAPER_EXECUTION_ENABLED, false);
   assert.equal(absent.PAPER_PAUSE_NEW_ORDERS, true);
+  assert.equal(absent.PAPER_EVIDENCE_RISK_CAP,1);
   assert.equal(absent.THETA_RUNTIME_MODE, 'MASTER_THETA_PAPER');
   const blank = loadEnvironment({
     NODE_ENV: 'test', MASTER_PAPER_EXECUTION_ENABLED: '', FOLLOWER_PAPER_EXECUTION_ENABLED: '', PAPER_PAUSE_NEW_ORDERS: '',
@@ -183,6 +184,13 @@ test('paper execution flags fail closed when absent or blank', () => {
   assert.equal(blank.MASTER_PAPER_EXECUTION_ENABLED, false);
   assert.equal(blank.FOLLOWER_PAPER_EXECUTION_ENABLED, false);
   assert.equal(blank.PAPER_PAUSE_NEW_ORDERS, true);
+});
+
+test('Paper evidence risk cap is a nonnegative integer and zero remains a real cap',()=>{
+  assert.equal(loadEnvironment({PAPER_EVIDENCE_RISK_CAP:'0'}).PAPER_EVIDENCE_RISK_CAP,0);
+  assert.equal(loadEnvironment({PAPER_EVIDENCE_RISK_CAP:'3'}).PAPER_EVIDENCE_RISK_CAP,3);
+  assert.throws(()=>loadEnvironment({PAPER_EVIDENCE_RISK_CAP:'-1'}),/PAPER_EVIDENCE_RISK_CAP/);
+  assert.throws(()=>loadEnvironment({PAPER_EVIDENCE_RISK_CAP:'1.5'}),/PAPER_EVIDENCE_RISK_CAP/);
 });
 
 test('runtime mode cannot be configured to a broker-mutating mode',()=>{

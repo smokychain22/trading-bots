@@ -1585,3 +1585,20 @@ RISKS: Treating these exposure grids as observed dealer inventory or determinist
 WHAT THE OTHER AGENT SHOULD REVIEW: Claude may test incremental OOS value and sign-convention assumptions. It must not promote these grids directly into Production strategy authority.
 
 NEXT RECOMMENDED TASK: Verify both metric-specific routes through Production, then let the existing market-open qualification worker gather execution-quote evidence while keeping submission blocked.
+OWNER: Codex
+
+TASK: R7 Paper evidence authorization boundary
+
+FILES CHANGED: execution authorization tier, master Paper handoff and command assembly, Paper coordinator and PostgreSQL stores, environment configuration, migration 035, operator status API/UI, tests, decisions and handoff.
+
+WHAT WAS IMPLEMENTED: Removed empirical-model readiness as a universal prerequisite only for bounded `PAPER_EVIDENCE`. Added a reducing-only configurable evidence cap, immutable tier and sizing evidence on plans and order intents, database constraints, and repeated live-tier rejection at the handoff, command assembly, coordinator, and database boundaries. `EMPIRICALLY_PROMOTED_PAPER` still requires known positive after-cost EV for new risk. Existing quote, account, AEGIS, market, idempotency, and reconciliation controls remain.
+
+TESTS RUN: Focused execution/configuration tests and full repository verification.
+
+KNOWN LIMITATIONS: Actual Paper evidence remains externally blocked until Alpaca returns a qualified fresh OPRA BBO for an exact contract during a regular options session. The current canonical selector still produces research-only rankings when empirical economics are unknown. No order was submitted.
+
+RISKS: Paper evidence can lose money in Paper and does not establish profitability. Previously exposed Alpaca credentials must be rotated before mutation if still active.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Research should treat `PAPER_EVIDENCE` observations as unpromoted evidence and must not reinterpret UNKNOWN EV as zero or positive.
+
+NEXT RECOMMENDED TASK: Run the existing Alpaca OPRA qualification at market open. If entitled, connect structurally selected actions to the v2 plan producer under the one-contract cap. If not entitled, record `ALPACA_OPRA_ENTITLEMENT_REQUIRED` without redesigning THETA.

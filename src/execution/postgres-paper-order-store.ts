@@ -23,6 +23,9 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
 
   async insertIntent(intent: PersistedPaperOrderIntent): Promise<void> {
     const instrumentType = intent.action === 'SELL_STOCK' ? 'STOCK' : 'OPTION';
+    if(intent.request.qty!==intent.authorizationEvidence.paperEvidenceQuantity||
+      intent.authorizationEvidence.paperEvidenceQuantity>intent.authorizationEvidence.canonicalQuantity)
+      throw new Error('PAPER_EVIDENCE_QUANTITY_INVALID');
     persistedPositionIntent(instrumentType, intent.request.side, intent.request.position_intent?.toUpperCase());
     const evidence=intent.executionEvidence;
     if (!/^[0-9a-f]{64}$/.test(evidence.quoteContentHash)
@@ -41,14 +44,18 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
          instrument_type, broker_symbol, side, quantity, limit_price, time_in_force,
          theta_action, position_intent, intent_persisted_at, created_at, updated_at,
          chain_id, option_contract_id, underlying_id, quote_as_of, decision_expires_at, aegis_state,
-         quote_source, quote_feed, quote_semantics, quote_content_hash)
-       VALUES ($1,$2,$3,$4,$5,$14,$6,$7,$8,$9,$10,$11,$12,$13,$13,$13,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+         quote_source, quote_feed, quote_semantics, quote_content_hash, execution_tier, canonical_quantity,
+         paper_evidence_quantity, empirical_economics_ready, expected_after_cost_ev)
+       VALUES ($1,$2,$3,$4,$5,$14,$6,$7,$8,$9,$10,$11,$12,$13,$13,$13,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
       [intent.orderIntentId, intent.executionAccountId, intent.decisionId, intent.request.client_order_id,
         intent.status, intent.request.symbol, intent.request.side, intent.request.qty,
         intent.request.limit_price, intent.request.time_in_force, intent.action,
         intent.request.position_intent?.toUpperCase() ?? null, intent.persistedAt, instrumentType,
         intent.chainId,intent.optionContractId,intent.underlyingId,evidence.quoteAsOf,evidence.decisionExpiresAt,
-        evidence.aegisState,evidence.quoteSource,evidence.quoteFeed,evidence.quoteSemantics,evidence.quoteContentHash],
+        evidence.aegisState,evidence.quoteSource,evidence.quoteFeed,evidence.quoteSemantics,evidence.quoteContentHash,
+        intent.authorizationEvidence.executionTier,intent.authorizationEvidence.canonicalQuantity,
+        intent.authorizationEvidence.paperEvidenceQuantity,intent.authorizationEvidence.empiricalEconomicsReady,
+        intent.authorizationEvidence.expectedAfterCostEv],
     );
   }
 
@@ -58,7 +65,8 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
               i.status, i.broker_symbol, i.side, i.quantity, i.limit_price, i.time_in_force,
               i.theta_action, i.instrument_type, i.position_intent, i.intent_persisted_at,
               i.chain_id,i.option_contract_id,i.underlying_id,i.quote_as_of,i.decision_expires_at,i.aegis_state,
-              i.quote_source,i.quote_feed,i.quote_semantics,i.quote_content_hash,b.provider_order_id
+              i.quote_source,i.quote_feed,i.quote_semantics,i.quote_content_hash,i.execution_tier,i.canonical_quantity,
+              i.paper_evidence_quantity,i.empirical_economics_ready,i.expected_after_cost_ev,b.provider_order_id
        FROM trade.order_intent i
        LEFT JOIN LATERAL (
          SELECT provider_order_id FROM trade.broker_order
@@ -89,7 +97,12 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
       persistedAt: toIso(row.intent_persisted_at),
       brokerOrderId: row.provider_order_id === null ? null : String(row.provider_order_id),
       chainId:String(row.chain_id),optionContractId:row.option_contract_id===null?null:String(row.option_contract_id),
-      underlyingId:String(row.underlying_id),executionEvidence:{quoteSource:z.string().min(1).parse(row.quote_source),
+      underlyingId:String(row.underlying_id),authorizationEvidence:{
+        executionTier:z.enum(['PAPER_EVIDENCE','EMPIRICALLY_PROMOTED_PAPER']).parse(row.execution_tier),
+        canonicalQuantity:Number(row.canonical_quantity),paperEvidenceQuantity:Number(row.paper_evidence_quantity),
+        empiricalEconomicsReady:z.boolean().parse(row.empirical_economics_ready),
+        expectedAfterCostEv:row.expected_after_cost_ev===null?null:Number(row.expected_after_cost_ev)},
+      executionEvidence:{quoteSource:z.string().min(1).parse(row.quote_source),
         quoteFeed:row.quote_feed===null?null:String(row.quote_feed),
         quoteSemantics:z.enum(['CONSOLIDATED_NBBO','TRUSTED_TWO_SIDED_ORDER_PRICING']).parse(row.quote_semantics),quoteAsOf:toIso(row.quote_as_of),
         decisionExpiresAt:toIso(row.decision_expires_at),quoteContentHash:String(row.quote_content_hash),

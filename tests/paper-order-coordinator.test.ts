@@ -38,7 +38,9 @@ const gate: Omit<ExecutionGateContext, 'intentPersisted' | 'accountKind' | 'envi
 };
 const executionLineage = { chainId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',optionContractId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   underlyingId:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',executionEvidence:{quoteSource:'ALPACA' as const,quoteFeed:'OPRA' as const,quoteSemantics:'CONSOLIDATED_NBBO' as const,
-    quoteAsOf:'2026-09-11T14:00:00Z',decisionExpiresAt:'2026-09-11T15:00:00Z',quoteContentHash:'a'.repeat(64),aegisState:'ALLOW_FULL' as const}};
+    quoteAsOf:'2026-09-11T14:00:00Z',decisionExpiresAt:'2026-09-11T15:00:00Z',quoteContentHash:'a'.repeat(64),aegisState:'ALLOW_FULL' as const},
+  authorizationEvidence:{executionTier:'PAPER_EVIDENCE' as const,canonicalQuantity:1,paperEvidenceQuantity:1,
+    empiricalEconomicsReady:false,expectedAfterCostEv:null}};
 const prepare = async (coordinator: PaperOrderCoordinator) => coordinator.prepare({ orderIntentId: '11111111-1111-4111-8111-111111111111', executionAccountId: '22222222-2222-4222-8222-222222222222', request: order, action: 'OPEN_CSP', decisionId: '33333333-3333-4333-8333-333333333333', persistedAt: gate.now, ...executionLineage });
 
 test('execution defaults LOCKED and cannot call the broker', async () => {

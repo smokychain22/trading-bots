@@ -4,8 +4,9 @@ import { qualifyExecutionOptionQuote, type ExecutionOptionQuote } from './execut
 import { assembleMasterPaperExecutionCommand } from './master-paper-command-assembly.js';
 import { MasterPaperExecutionOrchestrator, type MasterPaperExecutionResult } from './master-paper-execution-orchestrator.js';
 import { thetaActionOpensNewRisk, type ThetaOrderAction } from './order-construction.js';
+import { executionAuthorizationTiers, type ExecutionAuthorizationTier, type PaperEvidenceSizing } from './execution-authorization-tier.js';
 
-export const masterPaperActionPlanVersion = 'theta-master-paper-action-plan-v1' as const;
+export const masterPaperActionPlanVersion = 'theta-master-paper-action-plan-v2' as const;
 
 export interface ApprovedMasterPaperActionPlan {
   readonly contractVersion: typeof masterPaperActionPlanVersion;
@@ -21,6 +22,11 @@ export interface ApprovedMasterPaperActionPlan {
   readonly optionType: 'PUT'|'CALL'|null;
   readonly symbol: string;
   readonly quantity: number;
+  readonly canonicalQuantity: number;
+  readonly paperEvidenceQuantity: number;
+  readonly paperEvidenceRiskCap: number;
+  readonly paperEvidenceCapReason: PaperEvidenceSizing['paperEvidenceCapReason'];
+  readonly executionTier: ExecutionAuthorizationTier;
   readonly multiplier: number;
   readonly confirmedCoveredShares?: number;
   readonly action: ThetaOrderAction;
@@ -46,7 +52,10 @@ export const masterPaperActionPlanSchema = z.object({
   decisionId:z.string().uuid(),candidateId:z.string().min(1),strategyVersion:z.string().min(1),chainId:z.string().uuid(),
   optionContractId:z.string().uuid().nullable(),underlyingId:z.string().uuid(),underlying:z.string().min(1).max(16),
   optionType:z.enum(['PUT','CALL']).nullable(),symbol:z.string().min(1).max(64),
-  quantity:z.number().int().positive(),multiplier:z.number().int().positive(),confirmedCoveredShares:z.number().int().nonnegative().optional(),
+  quantity:z.number().int().nonnegative(),canonicalQuantity:z.number().int().nonnegative(),
+  paperEvidenceQuantity:z.number().int().nonnegative(),paperEvidenceRiskCap:z.number().int().nonnegative(),
+  paperEvidenceCapReason:z.enum(['PAPER_EVIDENCE_RISK_CAP','CANONICAL_QUANTITY_LOWER','QUANTITY_ZERO']),
+  executionTier:z.enum(executionAuthorizationTiers),multiplier:z.number().int().positive(),confirmedCoveredShares:z.number().int().nonnegative().optional(),
   action:z.enum(['OPEN_CSP','CLOSE_CSP','ROLL_CSP_CLOSE','ROLL_CSP_OPEN','OPEN_CC','CLOSE_CC','ROLL_CC_CLOSE','ROLL_CC_OPEN','SELL_STOCK']),
   economicBoundary:z.number().positive().finite(),economicsRemainPositive:z.boolean(),expectedAfterCostEv:z.number().finite().nullable(),
   empiricalEconomicsReady:z.boolean(),selectedByCanonicalAuthority:z.boolean(),hardValidityPassed:z.boolean(),
@@ -55,7 +64,11 @@ export const masterPaperActionPlanSchema = z.object({
   decisionExpiresAt:z.string().datetime({offset:true}),pricingPolicy:z.object({waitIntervalMs:z.number().nonnegative(),
     maxAttempts:z.number().int().positive(),concessionFractions:z.array(z.number().min(0).max(1)),tickSize:z.number().positive()}),
   pricingAttempt:z.number().int().nonnegative(),previousLimit:z.number().positive().finite().nullable(),
-}).strict();
+}).strict().superRefine((plan,context)=>{
+  if(plan.quantity!==plan.paperEvidenceQuantity)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_QUANTITY_MISMATCH'});
+  if(plan.paperEvidenceQuantity>plan.canonicalQuantity)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_QUANTITY_MAY_NOT_INCREASE'});
+  if(plan.paperEvidenceQuantity>plan.paperEvidenceRiskCap)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_RISK_CAP_EXCEEDED'});
+});
 
 export interface ExecutionOptionQuoteSource {
   getCurrentQuote(plan: ApprovedMasterPaperActionPlan, now: string): Promise<ExecutionOptionQuote | null>;
@@ -95,6 +108,8 @@ export class MasterPaperActionHandoff {
     const plan=masterPaperActionPlanSchema.parse(raw) as ApprovedMasterPaperActionPlan;
     const blockers:string[]=[];
     const opensNewRisk=thetaActionOpensNewRisk(plan.action);
+    if(plan.executionTier==='LIVE_ELIGIBLE'||plan.executionTier==='LIVE_AUTHORIZED')blockers.push('LIVE_EXECUTION_NOT_AUTHORIZED');
+    if(plan.quantity===0)blockers.push('QUANTITY_ZERO');
     if(!plan.selectedByCanonicalAuthority)blockers.push('CANONICAL_SELECTION_REQUIRED');
     if(!plan.hardValidityPassed)blockers.push('HARD_VALIDITY_FAILED');
     if(!plan.accountVerified)blockers.push('MASTER_ACCOUNT_NOT_VERIFIED');
@@ -103,7 +118,8 @@ export class MasterPaperActionHandoff {
     if(plan.killSwitchActive)blockers.push('KILL_SWITCH_ACTIVE');
     if(!marketOpen)blockers.push('MARKET_CLOSED');
     if(!plan.economicsRemainPositive)blockers.push('FORWARD_ECONOMICS_NOT_POSITIVE');
-    if(opensNewRisk&&(!plan.empiricalEconomicsReady||plan.expectedAfterCostEv===null||plan.expectedAfterCostEv<=0))
+    if(opensNewRisk&&plan.executionTier==='EMPIRICALLY_PROMOTED_PAPER'&&
+      (!plan.empiricalEconomicsReady||plan.expectedAfterCostEv===null||plan.expectedAfterCostEv<=0))
       blockers.push('POSITIVE_AFTER_COST_EV_NOT_EMPIRICALLY_READY');
     if(opensNewRisk&&!['ALLOW_FULL','ALLOW_REDUCED'].includes(plan.aegisState))blockers.push('AEGIS_NOT_APPROVED');
     if(blockers.length>0)return {actionPlanId:plan.actionPlanId,state:'BLOCKED',blockers,execution:null};
@@ -133,6 +149,8 @@ export class MasterPaperActionHandoff {
         semantics:quote.sourceSemantics as 'CONSOLIDATED_NBBO'|'TRUSTED_TWO_SIDED_ORDER_PRICING',bid:quote.bid,ask:quote.ask,
         observedAt:quote.providerTimestamp??quote.receivedAtUtc,maximumAgeSeconds:Math.max(0.001,(Date.parse(plan.decisionExpiresAt)-Date.parse(now))/1000)},
       accountVerified:plan.accountVerified,optionsCapabilityVerified:plan.optionsCapabilityVerified,aegisState:plan.aegisState,
+      executionTier:plan.executionTier,canonicalQuantity:plan.canonicalQuantity,paperEvidenceQuantity:plan.paperEvidenceQuantity,
+      empiricalEconomicsReady:plan.empiricalEconomicsReady,expectedAfterCostEv:plan.expectedAfterCostEv,
       now,decisionExpiresAt:plan.decisionExpiresAt,attempt:plan.pricingAttempt+1});
     return {actionPlanId:plan.actionPlanId,state:'EXECUTED',blockers:[],execution:await this.execution.execute(command)};
   }

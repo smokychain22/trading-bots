@@ -27,6 +27,13 @@ export interface PersistedPaperOrderIntent {
     readonly quoteContentHash: string;
     readonly aegisState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO';
   };
+  readonly authorizationEvidence: {
+    readonly executionTier: 'PAPER_EVIDENCE'|'EMPIRICALLY_PROMOTED_PAPER';
+    readonly canonicalQuantity: number;
+    readonly paperEvidenceQuantity: number;
+    readonly empiricalEconomicsReady: boolean;
+    readonly expectedAfterCostEv: number|null;
+  };
 }
 
 export interface ExecutionAttemptRecord {
@@ -67,7 +74,8 @@ export class PaperOrderCoordinator {
     if (existing !== null) {
       const identity=(value:PersistedPaperOrderIntent|PrepareIntentInput)=>hashBrokerPayload({executionAccountId:value.executionAccountId,
         decisionId:value.decisionId,action:value.action,request:value.request,chainId:value.chainId,
-        optionContractId:value.optionContractId,underlyingId:value.underlyingId,executionEvidence:value.executionEvidence});
+        optionContractId:value.optionContractId,underlyingId:value.underlyingId,executionEvidence:value.executionEvidence,
+        authorizationEvidence:value.authorizationEvidence});
       const same = identity(existing) === identity(input);
       if (!same) throw new Error('ORDER_INTENT_IDEMPOTENCY_COLLISION');
       return existing;
@@ -81,6 +89,14 @@ export class PaperOrderCoordinator {
     const intent = await this.store.getIntent(orderIntentId);
     if (intent === null) throw new Error('Order intent must be persisted before submission.');
     const expectedNewRisk = thetaActionOpensNewRisk(intent.action);
+    const tierEvidence=intent.authorizationEvidence;
+    if(!['PAPER_EVIDENCE','EMPIRICALLY_PROMOTED_PAPER'].includes(tierEvidence.executionTier))
+      throw new Error('LIVE_EXECUTION_NOT_AUTHORIZED');
+    if(intent.request.qty!==tierEvidence.paperEvidenceQuantity||tierEvidence.paperEvidenceQuantity>tierEvidence.canonicalQuantity)
+      throw new Error('PAPER_EVIDENCE_QUANTITY_INVALID');
+    if(expectedNewRisk&&tierEvidence.executionTier==='EMPIRICALLY_PROMOTED_PAPER'&&
+      (!tierEvidence.empiricalEconomicsReady||tierEvidence.expectedAfterCostEv===null||tierEvidence.expectedAfterCostEv<=0))
+      throw new Error('EMPIRICAL_PROMOTION_ECONOMICS_NOT_READY');
     if (gate.isNewEntry !== expectedNewRisk) throw new Error('ORDER_ACTION_RISK_CLASSIFICATION_MISMATCH');
     const expectedPriceEvidence = intent.action === 'SELL_STOCK' ? 'ALPACA_STOCK_BBO' : 'QUALIFIED_OPTION_BBO';
     if (gate.priceEvidence !== expectedPriceEvidence) throw new Error('ORDER_EXECUTABLE_PRICE_PROVENANCE_MISMATCH');

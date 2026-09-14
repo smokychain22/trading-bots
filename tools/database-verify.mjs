@@ -39,6 +39,7 @@ try {
     "032_canonical_decision_authority",
     "033_master_paper_runtime",
     "034_master_paper_action_handoff",
+    "035_paper_evidence_authorization",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -175,6 +176,15 @@ try {
       AND table_name='master_paper_action_plan' AND constraint_type='CHECK') AS plan_checks`);
   if(!actionHandoffProtection.rows[0]?.immutable_events||!actionHandoffProtection.rows[0]?.plan_checks)
     throw new Error('MASTER_PAPER_ACTION_HANDOFF_PROTECTION_MISSING');
+  const paperEvidenceAuthorization=await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='trade' AND table_name='order_intent'
+      AND column_name='execution_tier') AS tier,
+    EXISTS(SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='trade' AND table_name='order_intent'
+      AND constraint_name='order_intent_paper_evidence_quantity_reduces_only') AS reduces_only,
+    EXISTS(SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='trade' AND table_name='order_intent'
+      AND constraint_name='order_intent_submitted_quantity_matches_evidence') AS quantity_matches`);
+  if(!paperEvidenceAuthorization.rows[0]?.tier||!paperEvidenceAuthorization.rows[0]?.reduces_only||
+    !paperEvidenceAuthorization.rows[0]?.quantity_matches)throw new Error('PAPER_EVIDENCE_AUTHORIZATION_PROTECTION_MISSING');
   const intentNullGuard = await client.query(`SELECT
     pg_get_constraintdef(oid) AS definition, convalidated
     FROM pg_constraint WHERE conrelid='trade.order_intent'::regclass
@@ -283,6 +293,7 @@ try {
     optionomicsLayeredEvidence:"ENFORCED",
     optionomicsContextLineage:"ENFORCED",
     masterPaperActionHandoff:"ENFORCED",
+    paperEvidenceAuthorization:"ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeMasters: activeMasters.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,

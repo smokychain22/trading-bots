@@ -688,3 +688,10 @@ reconciles broker truth before considering new exposure.
 ## 2026-09-14 - Treat Optionomics gamma, Vanna, and Charm as separate heatmap observations
 
 The current public API contract documents three values for the heatmap `metric` query: `gamma_exposure`, `vanna_exposure`, and `charm_exposure`. THETA previously called only the default heatmap and incorrectly classified Vanna and Charm as unavailable. The provider adapter now issues three explicit, rate-budgeted requests, verifies that each response echoes the requested metric, and stores each response with a distinct operation alias. The feature snapshot keeps three separate grids. Provider methodology, units, sign convention, and session freshness remain unverified, so all three are contextual research evidence and never execution-price authority.
+# 2026-09-14: Separate bounded Paper evidence from empirical and live promotion
+
+THETA now records four distinct authorization concepts: `PAPER_EVIDENCE`, `EMPIRICALLY_PROMOTED_PAPER`, `LIVE_ELIGIBLE`, and `LIVE_AUTHORIZED`. Only the first two can enter Paper persistence. The runtime and broker coordinator reject both live tiers.
+
+`PAPER_EVIDENCE` may preserve `empiricalEconomicsReady=false` and `expectedAfterCostEv=null`. It still requires canonical selection, structural validity, exact contract identity, a fresh qualified Alpaca BBO, Paper account verification, options capability, no equivalent exposure conflict, market-open state, positive forward structural economics, AEGIS approval, persisted intent, idempotency, and reconciliation-before-retry. A separate `PAPER_EVIDENCE_RISK_CAP` defaults to one contract and can only reduce canonical quantity. Zero remains a valid no-order result.
+
+`EMPIRICALLY_PROMOTED_PAPER` keeps the positive, known after-cost EV requirement for new risk. Future live eligibility continues to require empirical promotion and a separate owner authorization. Current live eligibility and authorization are false.

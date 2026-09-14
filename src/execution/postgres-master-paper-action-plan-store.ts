@@ -24,12 +24,15 @@ export class PostgresMasterPaperActionPlanStore {
       if(row===undefined)throw new Error('ACTION_PLAN_DECISION_OR_ACCOUNT_NOT_FOUND');
       if(row.account_kind!=='MASTER_API_KEY'||row.account_ready!==true)throw new Error('ACTION_PLAN_MASTER_ACCOUNT_NOT_READY');
       if(String(row.candidate_id??'')!==plan.candidateId)throw new Error('ACTION_PLAN_SELECTED_CANDIDATE_MISMATCH');
-      if(Number(row.quantity)!==plan.quantity)throw new Error('ACTION_PLAN_QUANTITY_MISMATCH');
+      if(Number(row.quantity)!==plan.canonicalQuantity)throw new Error('ACTION_PLAN_CANONICAL_QUANTITY_MISMATCH');
       if(String(row.aegis_action)!==plan.aegisState)throw new Error('ACTION_PLAN_AEGIS_MISMATCH');
       const result=await client.query(`INSERT INTO trade.master_paper_action_plan(action_plan_id,decision_id,execution_account_id,
-        plan_version,status,plan_json,content_hash,not_before,created_at,updated_at)
-        VALUES($1,$2,$3,$4,'READY',$5::jsonb,$6,$7,$7,$7) ON CONFLICT(decision_id) DO NOTHING RETURNING action_plan_id`,
-      [plan.actionPlanId,plan.decisionId,plan.executionAccountId,plan.contractVersion,JSON.stringify(plan),contentHash,createdAt]);
+        plan_version,status,plan_json,content_hash,not_before,created_at,updated_at,execution_tier,canonical_quantity,
+        paper_evidence_quantity,empirical_economics_ready,expected_after_cost_ev)
+        VALUES($1,$2,$3,$4,'READY',$5::jsonb,$6,$7,$7,$7,$8,$9,$10,$11,$12)
+        ON CONFLICT(decision_id) DO NOTHING RETURNING action_plan_id`,
+      [plan.actionPlanId,plan.decisionId,plan.executionAccountId,plan.contractVersion,JSON.stringify(plan),contentHash,createdAt,
+        plan.executionTier,plan.canonicalQuantity,plan.paperEvidenceQuantity,plan.empiricalEconomicsReady,plan.expectedAfterCostEv]);
       if((result.rowCount??0)>0)await this.event(plan.actionPlanId,'READY',createdAt,null,client);
       await client.query('COMMIT');
       return (result.rowCount??0)>0;

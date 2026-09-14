@@ -8,6 +8,8 @@ const base: MasterPaperCommandAssemblyInput = {
   strategyVersion:'theta-conventional-v1',chainId:'33333333-3333-4333-8333-333333333333',
   optionContractId:'44444444-4444-4444-8444-444444444444',underlyingId:'55555555-5555-4555-8555-555555555555',
   symbol:'AAPL261016P00150000',quantity:1,multiplier:100,limitPrice:1.25,pricingPolicyVersion:'passive-limit-v1',
+  executionTier:'PAPER_EVIDENCE',canonicalQuantity:1,paperEvidenceQuantity:1,
+  empiricalEconomicsReady:false,expectedAfterCostEv:null,
   quote:{source:'ALPACA',feed:'OPRA',semantics:'CONSOLIDATED_NBBO',bid:1.2,ask:1.3,observedAt:'2026-09-13T14:00:00Z',maximumAgeSeconds:10},
   accountVerified:true,optionsCapabilityVerified:true,aegisState:'ALLOW_FULL',now:'2026-09-13T14:00:05Z',
   decisionExpiresAt:'2026-09-13T14:01:00Z',attempt:1,
@@ -20,6 +22,18 @@ test('selected CSP becomes one deterministic OPRA-bound persisted command',()=>{
   assert.equal(first.request.qty,1);
   assert.equal(first.gate.priceEvidence,'QUALIFIED_OPTION_BBO');
   assert.match(first.executionEvidence.quoteContentHash,/^[0-9a-f]{64}$/);
+  assert.equal(first.authorizationEvidence.executionTier,'PAPER_EVIDENCE');
+  assert.equal(first.authorizationEvidence.expectedAfterCostEv,null);
+});
+
+test('promoted Paper requires empirical positive EV and live tiers stay impossible',()=>{
+  assert.throws(()=>assembleMasterPaperExecutionCommand({...base,executionTier:'EMPIRICALLY_PROMOTED_PAPER'}),
+    /EMPIRICAL_PROMOTION_ECONOMICS_NOT_READY/);
+  assert.doesNotThrow(()=>assembleMasterPaperExecutionCommand({...base,executionTier:'EMPIRICALLY_PROMOTED_PAPER',
+    empiricalEconomicsReady:true,expectedAfterCostEv:1}));
+  assert.throws(()=>assembleMasterPaperExecutionCommand({...base,executionTier:'LIVE_AUTHORIZED'}),/LIVE_EXECUTION_NOT_AUTHORIZED/);
+  assert.throws(()=>assembleMasterPaperExecutionCommand({...base,quantity:2,paperEvidenceQuantity:2,canonicalQuantity:1}),
+    /PAPER_EVIDENCE_QUANTITY_INVALID/);
 });
 
 test('indicative option data, stale quotes and out-of-BBO limits fail before persistence',()=>{

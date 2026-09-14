@@ -6,6 +6,7 @@ import { MasterPaperActionHandoff, classifyMasterPaperActionExecution, masterPap
   type ExecutionOptionQuoteSource } from '../src/execution/master-paper-action-handoff.js';
 import { MasterPaperExecutionOrchestrator } from '../src/execution/master-paper-execution-orchestrator.js';
 import { InMemoryPaperOrderStore, PaperOrderCoordinator } from '../src/execution/paper-order-coordinator.js';
+import { applyPaperEvidenceRiskCap } from '../src/execution/execution-authorization-tier.js';
 
 const now='2026-09-14T14:00:00.000Z';
 const quote:ExecutionOptionQuote={contractVersion:executionOptionQuoteContractVersion,contractId:'AAPL261016P00150000',
@@ -19,7 +20,9 @@ const plan=(overrides:Partial<ApprovedMasterPaperActionPlan>={}):ApprovedMasterP
   candidateId:'44444444-4444-4444-8444-444444444444',strategyVersion:'theta-conventional-v1',
   chainId:'55555555-5555-4555-8555-555555555555',optionContractId:'66666666-6666-4666-8666-666666666666',
   underlyingId:'77777777-7777-4777-8777-777777777777',underlying:'AAPL',optionType:'PUT',symbol:'AAPL261016P00150000',
-  quantity:1,multiplier:100,action:'OPEN_CSP',economicBoundary:1.2,economicsRemainPositive:true,expectedAfterCostEv:15,
+  quantity:1,canonicalQuantity:1,paperEvidenceQuantity:1,paperEvidenceRiskCap:1,
+  paperEvidenceCapReason:'CANONICAL_QUANTITY_LOWER',executionTier:'EMPIRICALLY_PROMOTED_PAPER',
+  multiplier:100,action:'OPEN_CSP',economicBoundary:1.2,economicsRemainPositive:true,expectedAfterCostEv:15,
   empiricalEconomicsReady:true,selectedByCanonicalAuthority:true,hardValidityPassed:true,accountVerified:true,
   optionsCapabilityVerified:true,noEquivalentExposureConflict:true,aegisState:'ALLOW_FULL',killSwitchActive:false,
   decisionExpiresAt:'2026-09-14T14:01:00.000Z',pricingPolicy:{waitIntervalMs:1000,maxAttempts:2,
@@ -44,7 +47,7 @@ test('approved canonical action reaches the existing Paper coordinator exactly o
   assert.equal(result.state,'EXECUTED');assert.equal(result.execution?.submittedNow,true);assert.equal(broker.submitCalls,1);
 });
 
-test('missing quote, hard veto, and unknown new-risk EV produce zero broker mutation',async()=>{
+test('missing quote, hard veto, and unpromoted economics in promoted tier produce zero broker mutation',async()=>{
   const noQuote=setup(null);assert.equal((await noQuote.handoff.execute(plan(),now,true)).state,'NO_QUOTE');
   assert.equal(noQuote.broker.submitCalls,0);
   const veto=setup();const vetoed=await veto.handoff.execute(plan({aegisState:'HARD_VETO'}),now,true);
@@ -58,6 +61,40 @@ test('qualified Optionomics two-sided semantics can reach command assembly witho
   const optionomics={...quote,provider:'OPTIONOMICS',sourceSemantics:'TRUSTED_TWO_SIDED_ORDER_PRICING'} as const;
   const {broker,handoff}=setup(optionomics);const result=await handoff.execute(plan(),now,true);
   assert.equal(result.state,'EXECUTED');assert.equal(broker.submitCalls,1);
+});
+
+test('Paper evidence tier reaches coordinator while empirical EV stays explicitly UNKNOWN',async()=>{
+  const {broker,handoff}=setup();
+  const result=await handoff.execute(plan({executionTier:'PAPER_EVIDENCE',expectedAfterCostEv:null,
+    empiricalEconomicsReady:false}),now,true);
+  assert.equal(result.state,'EXECUTED');assert.equal(broker.submitCalls,1);
+  assert.equal(result.execution?.brokerOrder?.status,'accepted');
+});
+
+test('Paper evidence cap can only reduce canonical quantity and quantity zero never submits',async()=>{
+  assert.deepEqual(applyPaperEvidenceRiskCap(3,1),{canonicalQuantity:3,paperEvidenceQuantity:1,paperEvidenceRiskCap:1,
+    paperEvidenceCapReason:'PAPER_EVIDENCE_RISK_CAP'});
+  assert.deepEqual(applyPaperEvidenceRiskCap(0,4),{canonicalQuantity:0,paperEvidenceQuantity:0,paperEvidenceRiskCap:4,
+    paperEvidenceCapReason:'QUANTITY_ZERO'});
+  const {broker,handoff}=setup();
+  const result=await handoff.execute(plan({executionTier:'PAPER_EVIDENCE',quantity:0,canonicalQuantity:0,
+    paperEvidenceQuantity:0,paperEvidenceRiskCap:1,paperEvidenceCapReason:'QUANTITY_ZERO',
+    expectedAfterCostEv:null,empiricalEconomicsReady:false}),now,true);
+  assert.equal(result.state,'BLOCKED');assert.ok(result.blockers.includes('QUANTITY_ZERO'));assert.equal(broker.submitCalls,0);
+});
+
+test('live tiers and stale or wrong contract evidence never reach broker submission',async()=>{
+  for(const executionTier of ['LIVE_ELIGIBLE','LIVE_AUTHORIZED'] as const){
+    const candidate=setup();const result=await candidate.handoff.execute(plan({executionTier}),now,true);
+    assert.equal(result.state,'BLOCKED');assert.ok(result.blockers.includes('LIVE_EXECUTION_NOT_AUTHORIZED'));
+    assert.equal(candidate.broker.submitCalls,0);
+  }
+  const stale=setup({...quote,providerTimestamp:'2026-09-14T13:58:00.000Z'});
+  assert.equal((await stale.handoff.execute(plan({executionTier:'PAPER_EVIDENCE'}),now,true)).state,'QUOTE_REJECTED');
+  assert.equal(stale.broker.submitCalls,0);
+  const wrong=setup({...quote,contractId:'MSFT261016P00300000',providerContractId:'MSFT261016P00300000'});
+  assert.equal((await wrong.handoff.execute(plan({executionTier:'PAPER_EVIDENCE'}),now,true)).state,'QUOTE_REJECTED');
+  assert.equal(wrong.broker.submitCalls,0);
 });
 
 test('a risk-reducing stock exit reaches the coordinator through a qualified Alpaca IEX quote',async()=>{

@@ -34,6 +34,8 @@ test('stock persistence records STOCK and decoding omits position_intent', async
       instrument_type: stored[13],chain_id:stored[14],option_contract_id:stored[15],underlying_id:stored[16],
       quote_as_of:stored[17],decision_expires_at:stored[18],aegis_state:stored[19],quote_source:stored[20],
       quote_feed:stored[21],quote_semantics:stored[22],quote_content_hash:stored[23],provider_order_id: null,
+      execution_tier:stored[24],canonical_quantity:stored[25],paper_evidence_quantity:stored[26],
+      empirical_economics_ready:stored[27],expected_after_cost_ev:stored[28],
     }] };
   } } as unknown as Pool;
   const store = new PostgresPaperOrderStore(pool);
@@ -43,6 +45,8 @@ test('stock persistence records STOCK and decoding omits position_intent', async
     chainId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',optionContractId:null,underlyingId:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
     executionEvidence:{quoteSource:'ALPACA',quoteFeed:'SIP',quoteSemantics:'TRUSTED_TWO_SIDED_ORDER_PRICING',quoteAsOf:'2026-09-11T00:00:00Z',
       decisionExpiresAt:'2026-09-11T00:01:00Z',quoteContentHash:'a'.repeat(64),aegisState:'HOLD_ONLY'},
+    authorizationEvidence:{executionTier:'PAPER_EVIDENCE',canonicalQuantity:1,paperEvidenceQuantity:1,
+      empiricalEconomicsReady:false,expectedAfterCostEv:null},
     request: { symbol: 'AAPL', qty: 1, side: 'sell', type: 'limit', time_in_force: 'day',
       limit_price: '100', client_order_id: 'test-stock' },
   };
@@ -62,6 +66,8 @@ test('option persistence rejects absent intent before issuing SQL', async () => 
     chainId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',optionContractId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',underlyingId:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
     executionEvidence:{quoteSource:'ALPACA',quoteFeed:'OPRA',quoteSemantics:'CONSOLIDATED_NBBO',quoteAsOf:'2026-09-11T00:00:00Z',
       decisionExpiresAt:'2026-09-11T00:01:00Z',quoteContentHash:'a'.repeat(64),aegisState:'ALLOW_FULL'},
+    authorizationEvidence:{executionTier:'PAPER_EVIDENCE',canonicalQuantity:1,paperEvidenceQuantity:1,
+      empiricalEconomicsReady:false,expectedAfterCostEv:null},
     request: { symbol: 'AAPL261016P00100000', qty: 1, side: 'sell', type: 'limit', time_in_force: 'day',
       limit_price: '1', client_order_id: 'test-option' },
   }));
