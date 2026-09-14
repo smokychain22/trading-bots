@@ -60,6 +60,14 @@ _ITEMS: Tuple[PhaseItem, ...] = (
               note="DSR (sigma-scaled) and PBO (average-rank tie handling) both repaired and fixture-tested."),
     PhaseItem("R6_LOSS_TAXONOMY", PhaseState.COMPLETE, ("loss_taxonomy.py",),
               note="Failure-category enum + process/outcome grid; attribution requires evidence (raises without it) -- never labels every loss a mistake."),
+    PhaseItem("R6_VOLATILITY_SURFACE", PhaseState.COMPLETE, ("volatility_surface_research.py",),
+              note="Dependency-free raw-SVI quasi-explicit calibration (grid search + exact linear sub-solve), butterfly/calendar arbitrage diagnostics, SurfaceResidual. Verified against noiseless synthetic SVI data (near-zero residual, exact curve recovery)."),
+    PhaseItem("R6_IV_RV", PhaseState.COMPLETE, ("iv_realized_vol_research.py",),
+              note="Four RV estimators (close-to-close/Parkinson/Garman-Klass/Rogers-Satchell) with documented assumptions; VRP quantities refuse to compute across mismatched IV/RV horizons."),
+    PhaseItem("R6_TERM_STRUCTURE_CHALLENGER", PhaseState.COMPLETE, ("term_structure_research.py",),
+              note="Resolves RESEARCH_CHALLENGER A: implements all-strike-mean (mirrors Production), ATM-relative, matched-log-moneyness, total-variance, and forward-variance term methods side-by-side; declares no winner."),
+    PhaseItem("R6_PAPER_BASELINE_DTE_BIAS", PhaseState.COMPLETE, ("paper_baseline_dte_bias.py",),
+              note="Resolves RESEARCH_CHALLENGER B: DTE-bucket funnel (raw/eligible/frontier/selected/near-miss) built ahead of data per the standing instruction; auto-detects a genuine short-DTE selection skew the moment real baseline receipts exist."),
 
     # ---- R6 empirical evidence: only real data is missing ----
     PhaseItem("R6_REAL_PIT_DATA", PhaseState.BLOCKED_ON_DATA, ("empirical_pipeline.py",),

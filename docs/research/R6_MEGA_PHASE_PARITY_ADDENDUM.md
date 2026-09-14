@@ -774,3 +774,76 @@ zero overlap with the dataset export's SELECT list. **NO_RESEARCH_IMPACT.**
 **No Python code changed this run.** Security scan: 0 findings.
 `DATASET_ABSENT` still stands. **`REQUIRED_CODEX_CHANGE` count for this
 run: 0** (one was closed, none newly found).
+
+## Parallel research engineering (no main delta): four new modules
+
+origin/main unchanged at `0f609fb`. Per this run's directive, continued
+independent research engineering rather than idling. Built four
+genuinely new, non-duplicative, dependency-free modules (searched the
+existing registry first per the "search for an existing equivalent"
+instruction -- none found):
+
+1. **`volatility_surface_research.py`** -- raw-SVI (Gatheral 2004)
+   quasi-explicit calibration: grid-searches `(m, sigma)`, solving the
+   LINEAR `(a, d, c)` sub-problem exactly via a dependency-free 3x3
+   Gaussian-elimination solve at each grid point. Verified against
+   noiseless synthetic SVI-generated data: recovers the exact total-
+   variance curve (residual < 1e-6, matches at held-out log-moneyness
+   points to 3 decimal places). Diagnostics: strike-count/liquidity
+   gating (no invented minimum), Gatheral's sufficient (not necessary,
+   explicitly labeled) butterfly-arbitrage condition `b*sigma*(1+|rho|)
+   <= 4`, a calendar-arbitrage check (total variance non-decreasing in T
+   at matched k), and `SurfaceResidual = MarketIV - FittedIV` that
+   refuses to compute for an `UNRELIABLE` fit. 12 tests.
+2. **`iv_realized_vol_research.py`** -- four RV estimators (close-to-
+   close baseline; Parkinson, Garman-Klass, Rogers-Satchell challengers,
+   each with its own documented assumption set: no-drift vs drift-
+   independent, jump-sensitivity). `compute_vrp` refuses to produce
+   IV-RV/IV²-RV²/IV÷RV quantities unless both sides' horizons match
+   within a caller-supplied tolerance -- the classic 30-day-IV-vs-252-
+   day-RV methodological error this run's directive named is
+   structurally blocked, not just documented. 9 tests.
+3. **`term_structure_research.py`** -- resolves standing
+   `RESEARCH_CHALLENGER A`. Implements ALL_STRIKE_MEAN (an exact mirror
+   of Codex's current production `deriveTerm`, reproduced so it can be
+   compared on identical data), ATM_RELATIVE, MATCHED_LOG_MONEYNESS
+   (with a required, no-invented-default moneyness tolerance),
+   TOTAL_VARIANCE, and FORWARD_VARIANCE (recovers the correct forward
+   vol under a flat term structure; refuses a negative forward variance,
+   which is itself the calendar-arbitrage condition). `TermMethod
+   Comparison.all_strike_diverges_from_matched` gives a direct, testable
+   answer to whether the production method's moneyness-mix concern is
+   real on a given observation. Declares no winner. 11 tests.
+4. **`paper_baseline_dte_bias.py`** -- resolves standing
+   `RESEARCH_CHALLENGER B`. A DTE-bucket funnel (raw candidates ->
+   eligible -> Pareto frontier -> selected -> near-miss) across the
+   canonical 7 buckets (2-5 through 60+), built AHEAD of data per the
+   explicit "build the diagnostic now" instruction. `build_dte_bias_
+   report` requires a caller-supplied minimum-receipt-count and skew-
+   significance threshold (no invented defaults) and reports `skew_
+   detected=None` -- never a guess -- below that minimum. The moment real
+   `theta_paper_active_baseline_receipt` rows exist, this runs
+   immediately with zero further engineering. 7 tests.
+
+All four verified against exact/synthetic ground truth (not merely "it
+runs") -- the SVI fit against noiseless generated curves, the RV
+estimators against hand-computed stddev and zero-range edge cases, the
+term methods against hand-derived expected values, the DTE diagnostic
+against a constructed skewed-vs-unskewed selection pattern.
+
+**Explicitly NOT built this run** (scoped out, not silently skipped):
+a full trader-DNA mechanism registry (the existing 14-hypothesis
+`hypotheses.json` plus `THETA_QUANTWHEEL_HYPOTHESES.md` already cover the
+same discipline -- OBSERVED/RECONSTRUCTED/INFERRED/UNKNOWN evidence
+levels for a large registry expansion is a multi-hour undertaking better
+scoped to its own run); a literal anti-paralysis test harness that drives
+Codex's actual TypeScript runtime (not buildable from this Python
+research branch -- the EXPECTED behaviors for all eight named scenarios
+are already structurally encoded in `management_policy.GlobalWaitEvidence`
+/`strictness_diagnostics.AegisDisposition`, which distinguish hard-safety
+veto from soft-evidence ranking by construction).
+
+**1031 Python tests pass** (+39). Security scan: 0 findings.
+`DATASET_ABSENT` still stands -- these are all provider-independent,
+no-data-required deliverables, exercised only against synthetic ground
+truth.
