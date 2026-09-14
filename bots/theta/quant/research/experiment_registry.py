@@ -58,9 +58,17 @@ class ExperimentDefinition:
 
 # --- Research lattices (bins, never claims) -------------------------------
 
-DTE_BINS: Tuple[Tuple[int, int], ...] = ((25, 35), (36, 45), (46, 60))
+#: Extended to match the R7 "CLAUDE -- THETA FULL QUANT / STRATEGY /
+#: ADVERSARIAL RESEARCH PROGRAM" directive's explicit Conventional
+#: Research Grid (section 4): 15-24, 25-35, 36-45, 46-60, 60+. `9999` is
+#: an explicit open-upper-bound sentinel for "60+", not a claimed real
+#: DTE ceiling -- a research bin boundary, never a strategy rule.
+DTE_BINS: Tuple[Tuple[int, int], ...] = ((15, 24), (25, 35), (36, 45), (46, 60), (60, 9999))
+#: Six bins whose edges are exactly the seven discrete deltas the same
+#: directive lists (0.10/0.15/0.20/0.25/0.30/0.35/0.40) -- finer than the
+#: prior (0.30, 0.40) bin, which this splits into two.
 DELTA_MAGNITUDE_BINS: Tuple[Tuple[float, float], ...] = (
-    (0.10, 0.15), (0.15, 0.20), (0.20, 0.25), (0.25, 0.30), (0.30, 0.40),
+    (0.10, 0.15), (0.15, 0.20), (0.20, 0.25), (0.25, 0.30), (0.30, 0.35), (0.35, 0.40),
 )
 
 # Per-slice metrics every SLICE_ECONOMICS experiment must report together

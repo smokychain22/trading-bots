@@ -39,11 +39,13 @@ class RegistryStructureTests(unittest.TestCase):
 
 
 class LatticeTests(unittest.TestCase):
-    def test_all_three_dte_bins_have_their_own_slice_experiment(self):
+    def test_all_dte_bins_have_their_own_slice_experiment(self):
+        self.assertEqual(len(DTE_BINS), 5)  # 15-24, 25-35, 36-45, 46-60, 60+
         for low, high in DTE_BINS:
             self.assertIn(f"SLICE-DTE-{low}-{high}", EXPERIMENTS_BY_ID)
 
-    def test_all_five_delta_bins_have_their_own_slice_experiment(self):
+    def test_all_delta_bins_have_their_own_slice_experiment(self):
+        self.assertEqual(len(DELTA_MAGNITUDE_BINS), 6)  # edges at 0.10/0.15/0.20/0.25/0.30/0.35/0.40
         for low, high in DELTA_MAGNITUDE_BINS:
             self.assertIn(f"SLICE-DELTA-{low}-{high}", EXPERIMENTS_BY_ID)
 
