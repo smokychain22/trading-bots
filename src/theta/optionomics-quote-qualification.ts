@@ -1,13 +1,19 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { NormalizedOptionomicsChain } from './optionomics-provider.js';
 
-export const optionomicsQuoteQualificationVersion = 'theta-optionomics-quote-qualification-v1' as const;
+export const optionomicsQuoteQualificationVersion = 'theta-optionomics-quote-qualification-v2' as const;
+
+export type OptionomicsProductionAuthState = 'PASS' | 'FAIL' | 'UNKNOWN';
 
 export interface OptionomicsQuoteQualificationSample {
   readonly symbol: string;
   readonly requestedAt: string;
   readonly chain: NormalizedOptionomicsChain | null;
+  readonly operationAlias: 'OPTION_CHAIN';
+  readonly httpStatus: number | null;
   readonly failureCode: string | null;
+  readonly retryAfterSeconds: number | null;
+  readonly attemptCount: number;
 }
 
 export interface OptionomicsQuoteQualificationReport {
@@ -20,13 +26,17 @@ export interface OptionomicsQuoteQualificationReport {
   readonly samplesObserved: number;
   readonly twoSidedObservations: number;
   readonly freshObservations: number;
+  readonly productionAuth: OptionomicsProductionAuthState;
+  readonly authenticationFailure: '401_UNAUTHORIZED' | null;
   readonly semanticAuthority: 'RESEARCH_ONLY';
   readonly readinessState: 'BLOCKED_ON_QUOTE_PROOF' | 'BLOCKED_ON_MARKET_SESSION' | 'BLOCKED_ON_DATA';
   readonly ready: false;
   readonly blockers: readonly string[];
   readonly sampleEvidence: readonly {
     symbol: string; responseHash: string | null; observationCount: number;
-    twoSidedCount: number; freshCount: number; failureCode: string | null;
+    twoSidedCount: number; freshCount: number; operationAlias: 'OPTION_CHAIN';
+    httpStatus: number | null; failureCode: string | null;
+    retryAfterSeconds: number | null; attemptCount: number;
   }[];
   readonly contentHash: string;
 }
@@ -63,12 +73,21 @@ export function assessOptionomicsQuoteQualification(input: {
     return {
       symbol: sample.symbol, responseHash: sample.chain?.responseHash ?? null,
       observationCount: entries.length, twoSidedCount: twoSided.length, freshCount: fresh.length,
-      failureCode: sample.failureCode,
+      operationAlias: sample.operationAlias, httpStatus: sample.httpStatus,
+      failureCode: sample.failureCode, retryAfterSeconds: sample.retryAfterSeconds,
+      attemptCount: sample.attemptCount,
     };
   });
   const samplesObserved = evidence.filter((item) => item.responseHash !== null).length;
   const twoSidedObservations = evidence.reduce((sum, item) => sum + item.twoSidedCount, 0);
   const freshObservations = evidence.reduce((sum, item) => sum + item.freshCount, 0);
+  const productionAuth: OptionomicsProductionAuthState = evidence.some((item) =>
+    item.httpStatus !== null && item.httpStatus >= 200 && item.httpStatus < 300)
+    ? 'PASS'
+    : evidence.some((item) => item.failureCode === 'AUTHENTICATION_FAILED' || item.httpStatus === 401)
+      ? 'FAIL'
+      : 'UNKNOWN';
+  const authenticationFailure = productionAuth === 'FAIL' ? '401_UNAUTHORIZED' as const : null;
   const blockers = [
     input.marketSession !== 'OPEN' ? `MARKET_SESSION_${input.marketSession}` : null,
     samplesObserved < input.samples.length ? 'REPEATED_SAMPLE_COVERAGE_INCOMPLETE' : null,
@@ -82,7 +101,8 @@ export function assessOptionomicsQuoteQualification(input: {
   const unsigned = {
     contractVersion: optionomicsQuoteQualificationVersion, runAt: input.runAt, marketSession: input.marketSession,
     symbols: [...new Set(input.samples.map((sample) => sample.symbol))].sort(), samplesRequested: input.samples.length,
-    samplesObserved, twoSidedObservations, freshObservations, semanticAuthority: 'RESEARCH_ONLY' as const,
+    samplesObserved, twoSidedObservations, freshObservations, productionAuth, authenticationFailure,
+    semanticAuthority: 'RESEARCH_ONLY' as const,
     readinessState, ready: false as const, blockers, sampleEvidence: evidence,
   };
   return {

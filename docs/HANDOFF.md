@@ -1791,3 +1791,35 @@ be regenerated under a new build-specific experiment identity.
 
 NEXT RECOMMENDED TASK: Continue real point-in-time capture and resolve the
 external execution-quote gate without weakening it.
+
+OWNER: Codex
+
+TASK: Optionomics Production qualification diagnostics.
+
+FILES CHANGED: Quote-qualification contract/runtime, focused tests, decision
+record, and handoff.
+
+WHAT WAS IMPLEMENTED: The protected server-side qualification now preserves
+and returns sanitized per-sample operation alias, HTTP status, normalized
+failure class, retry timing, attempt count, and observation counts. It reports
+an explicit Production authentication verdict without including credentials,
+headers, response bodies, or provider messages. HTTP 2xx proves auth even if
+the response shape is unusable. HTTP 401 is reported as
+`401_UNAUTHORIZED`. Other no-data states remain distinct.
+
+TESTS RUN: Focused quote-qualification tests, full Node suite, TypeScript,
+ESLint, build, and security scan.
+
+KNOWN LIMITATIONS: Authentication success alone does not qualify Optionomics
+as execution-price truth. Fresh exact-contract two-sided quote observations
+and documented order-pricing semantics remain required.
+
+RISKS: Exposing arbitrary provider messages could leak reflected request data.
+The public diagnostic deliberately excludes all such text.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Research can use the normalized status
+codes to separate auth, entitlement, schema, and quote-coverage failures. It
+must not treat a successful login as quote qualification.
+
+NEXT RECOMMENDED TASK: Deploy this diagnostic contract and run one bounded
+Production qualification to establish the current non-secret provider result.

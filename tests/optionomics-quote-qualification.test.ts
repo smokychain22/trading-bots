@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { assessOptionomicsQuoteQualification } from '../src/theta/optionomics-quote-qualification.js';
+import { sanitizeQualificationReport } from '../src/theta/optionomics-quote-qualification-runtime.js';
 import type { NormalizedOptionomicsChain } from '../src/theta/optionomics-provider.js';
 
 const NOW = '2026-09-14T15:00:05.000Z';
@@ -23,9 +24,12 @@ const chain = (symbol: string, asOf: string): NormalizedOptionomicsChain => ({
 
 test('open-session repeated fresh shapes still cannot override research-only provider semantics', () => {
   const report = assessOptionomicsQuoteQualification({ marketSession: 'OPEN', runAt: NOW, maximumAgeMs: 10_000,
-    samples: ['SPY', 'QQQ', 'AAPL'].map((symbol) => ({ symbol, requestedAt: NOW, chain: chain(symbol, '2026-09-14T15:00:02.000Z'), failureCode: null })) });
+    samples: ['SPY', 'QQQ', 'AAPL'].map((symbol) => ({ symbol, requestedAt: NOW,
+      chain: chain(symbol, '2026-09-14T15:00:02.000Z'), operationAlias: 'OPTION_CHAIN' as const,
+      httpStatus: 200, failureCode: null, retryAfterSeconds: null, attemptCount: 1 })) });
   assert.equal(report.samplesObserved, 3);
   assert.equal(report.freshObservations, 3);
+  assert.equal(report.productionAuth, 'PASS');
   assert.equal(report.ready, false);
   assert.equal(report.readinessState, 'BLOCKED_ON_QUOTE_PROOF');
   assert.ok(report.blockers.includes('ORDER_PRICING_USE_NOT_DOCUMENTED'));
@@ -34,8 +38,36 @@ test('open-session repeated fresh shapes still cannot override research-only pro
 
 test('closed sessions and provider failures are distinguished without fake readiness', () => {
   const report = assessOptionomicsQuoteQualification({ marketSession: 'CLOSED', runAt: NOW, maximumAgeMs: 10_000,
-    samples: [{ symbol: 'SPY', requestedAt: NOW, chain: null, failureCode: 'NOT_ENTITLED' }] });
+    samples: [{ symbol: 'SPY', requestedAt: NOW, chain: null, operationAlias: 'OPTION_CHAIN',
+      httpStatus: 403, failureCode: 'NOT_ENTITLED', retryAfterSeconds: null, attemptCount: 1 }] });
   assert.equal(report.readinessState, 'BLOCKED_ON_MARKET_SESSION');
   assert.equal(report.samplesObserved, 0);
   assert.equal(report.ready, false);
+  assert.equal(report.productionAuth, 'UNKNOWN');
+});
+
+test('sanitized report exposes exact non-secret authentication evidence', () => {
+  const report = assessOptionomicsQuoteQualification({ marketSession: 'OPEN', runAt: NOW, maximumAgeMs: 10_000,
+    samples: [{ symbol: 'SPY', requestedAt: NOW, chain: null, operationAlias: 'OPTION_CHAIN',
+      httpStatus: 401, failureCode: 'AUTHENTICATION_FAILED', retryAfterSeconds: null, attemptCount: 1 }] });
+  assert.equal(report.productionAuth, 'FAIL');
+  assert.equal(report.authenticationFailure, '401_UNAUTHORIZED');
+  const sanitized = sanitizeQualificationReport(report);
+  assert.equal(sanitized.productionAuth, 'FAIL');
+  assert.equal(sanitized.authenticationFailure, '401_UNAUTHORIZED');
+  assert.deepEqual(sanitized.sampleEvidence, [{
+    symbol: 'SPY', operationAlias: 'OPTION_CHAIN', httpStatus: 401, observationCount: 0,
+    twoSidedCount: 0, freshCount: 0, failureCode: 'AUTHENTICATION_FAILED',
+    retryAfterSeconds: null, attemptCount: 1,
+  }]);
+  assert.equal(JSON.stringify(sanitized).includes('detail'), false);
+});
+
+test('a schema-unknown 2xx still proves authentication while preserving no-data readiness', () => {
+  const report = assessOptionomicsQuoteQualification({ marketSession: 'OPEN', runAt: NOW, maximumAgeMs: 10_000,
+    samples: [{ symbol: 'SPY', requestedAt: NOW, chain: null, operationAlias: 'OPTION_CHAIN',
+      httpStatus: 200, failureCode: 'UNRECOGNIZED_RESPONSE', retryAfterSeconds: null, attemptCount: 1 }] });
+  assert.equal(report.productionAuth, 'PASS');
+  assert.equal(report.samplesObserved, 0);
+  assert.equal(report.readinessState, 'BLOCKED_ON_DATA');
 });

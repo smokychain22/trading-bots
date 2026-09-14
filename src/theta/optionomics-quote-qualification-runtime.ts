@@ -19,12 +19,18 @@ export async function runOptionomicsQuoteQualification(environment: Environment,
         const requestedAt = new Date().toISOString();
         const result = await fetchOptionomicsOptionChain(optionomics, symbol);
         samples.push(result.kind === 'VALUE_PRESENT'
-          ? { symbol, requestedAt, chain: result.value, failureCode: null }
-          : { symbol, requestedAt, chain: null, failureCode: result.kind === 'REQUEST_ERROR' ? result.errorClass : 'UNRECOGNIZED_RESPONSE' });
+          ? { symbol, requestedAt, chain: result.value, operationAlias: 'OPTION_CHAIN', httpStatus: result.httpStatus,
+              failureCode: null, retryAfterSeconds: null, attemptCount: 1 }
+          : { symbol, requestedAt, chain: null, operationAlias: 'OPTION_CHAIN', httpStatus: result.httpStatus,
+              failureCode: result.kind === 'REQUEST_ERROR' ? result.errorClass : 'UNRECOGNIZED_RESPONSE',
+              retryAfterSeconds: result.kind === 'REQUEST_ERROR' ? result.retryAfterSeconds : null,
+              attemptCount: result.kind === 'REQUEST_ERROR' ? result.attemptCount : 1 });
       }
     }
   } else {
-    for (const symbol of symbols) samples.push({ symbol, requestedAt: new Date().toISOString(), chain: null, failureCode: `MARKET_SESSION_${marketSession}` });
+    for (const symbol of symbols) samples.push({ symbol, requestedAt: new Date().toISOString(), chain: null,
+      operationAlias: 'OPTION_CHAIN', httpStatus: null, failureCode: `MARKET_SESSION_${marketSession}`,
+      retryAfterSeconds: null, attemptCount: 0 });
   }
   const report = assessOptionomicsQuoteQualification({ runAt: new Date().toISOString(), marketSession, maximumAgeMs: 15_000, samples });
   await pool.query(`INSERT INTO research.optionomics_quote_qualification_run(
@@ -42,7 +48,13 @@ export function sanitizeQualificationReport(report: OptionomicsQuoteQualificatio
   return {
     marketSession:report.marketSession, symbols:report.symbols, samplesRequested:report.samplesRequested,
     samplesObserved:report.samplesObserved, twoSidedObservations:report.twoSidedObservations,
-    freshObservations:report.freshObservations, readinessState:report.readinessState, ready:report.ready,
-    blockers:report.blockers,
+    freshObservations:report.freshObservations, productionAuth:report.productionAuth,
+    authenticationFailure:report.authenticationFailure, readinessState:report.readinessState, ready:report.ready,
+    blockers:report.blockers, sampleEvidence:report.sampleEvidence.map((sample) => ({
+      symbol:sample.symbol, operationAlias:sample.operationAlias, httpStatus:sample.httpStatus,
+      observationCount:sample.observationCount, twoSidedCount:sample.twoSidedCount,
+      freshCount:sample.freshCount, failureCode:sample.failureCode,
+      retryAfterSeconds:sample.retryAfterSeconds, attemptCount:sample.attemptCount,
+    })),
   };
 }

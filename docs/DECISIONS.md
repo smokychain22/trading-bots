@@ -1,5 +1,19 @@
 # Engineering decisions
 
+## 2026-09-15: sanitized Optionomics qualification evidence
+
+Keep Optionomics credentials and provider response bodies server-side. The
+protected Production qualification response may expose only the documented
+operation alias, HTTP status, normalized failure class, retry timing, attempt
+count, and observation counts for each sampled symbol. A 2xx response proves
+authentication even when its schema cannot produce a normalized chain. HTTP
+401 maps to `FAIL` plus `401_UNAUTHORIZED`. Closed sessions and other failures
+remain `UNKNOWN` rather than being misreported as bad credentials.
+
+This diagnostic evidence does not promote Optionomics to executable-price
+authority. Quote freshness, exact-contract identity, two-sided BBO, and
+documented order-pricing semantics remain independent requirements.
+
 ## 2026-09-14: provider-neutral execution quotes, bounded limits, and TCA
 
 Keep broker mutation in Alpaca, while representing execution-price evidence through
