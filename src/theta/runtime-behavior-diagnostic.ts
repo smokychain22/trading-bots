@@ -60,6 +60,9 @@ export function classifyRuntimeBehavior(input: RuntimeBehaviorDiagnosticInput): 
   readonly overtradingState: OvertradingState;
   readonly reasonCodes: readonly string[];
 } {
+  if (input.feasibleCandidateCount > input.candidateCount || input.selectedCandidateCount > input.candidateCount) {
+    throw new Error('RUNTIME_BEHAVIOR_DIAGNOSTIC_COUNTS_INVALID');
+  }
   const blockers = [...new Set([...input.providerBlockers, ...input.actionPlanBlockers])].toSorted();
   const overtradingState: OvertradingState = input.actionPlansReady === 0 ? 'NO_NEW_ACTION'
     : input.actionPlansReady === 1 ? 'SINGLE_BOUNDED_ACTION' : 'MULTIPLE_ACTION_PLANS_SAME_SCAN';

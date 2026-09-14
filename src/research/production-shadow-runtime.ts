@@ -209,7 +209,10 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const behaviorDiagnostic=await new PostgresRuntimeBehaviorDiagnosticStore(input.pool).persist({
     scanId:scan.scanId,observedAt:scan.finishedAt,completeness:scan.completeness,
     globalWaitEarned:scan.globalWaitEarned,globalWaitReasons:scan.globalWaitReasons,
-    candidateCount:scan.candidateCount,
+    // All diagnostic cohort counts must share the canonical strategy-frontier
+    // population. The legacy scan count comes from thetaQ and can be zero while
+    // the canonical frontier still contains structural candidates.
+    candidateCount:allCandidates.length,
     feasibleCandidateCount:allCandidates.filter((candidate)=>candidate.structurallyFeasible&&candidate.riskFeasible
       &&candidate.hardBlockers.length===0).length,
     selectedCandidateCount:strategyFrontiers.filter((frontier)=>frontier.selectedCandidateId!==null).length,

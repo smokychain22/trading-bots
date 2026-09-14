@@ -36,3 +36,10 @@ test('multiple action plans in one bounded scan are visible as a potential overt
   assert.equal(multiple.waitClassification,'ACTION_READY');
   assert.equal(multiple.overtradingState,'MULTIPLE_ACTION_PLANS_SAME_SCAN');
 });
+
+test('mixed candidate populations are rejected before they can create contradictory evidence',()=>{
+  assert.throws(
+    ()=>classifyRuntimeBehavior(input({candidateCount:0,feasibleCandidateCount:1})),
+    /RUNTIME_BEHAVIOR_DIAGNOSTIC_COUNTS_INVALID/,
+  );
+});
