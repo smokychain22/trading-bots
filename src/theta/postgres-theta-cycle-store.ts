@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { verifyFusionSnapshot, type JsonValue } from '../market/fusion-snapshot.js';
 import type { ThetaShadowCycleResult } from './theta-shadow-cycle.js';
+import type { ThetaQResponse } from './theta-q-contract.js';
 import { buildStrategyDecisionEnvelope } from './strategy-decision-envelope.js';
 import { validateGlobalWaitEvidence, type GlobalWaitEvidence } from './decision-evidence.js';
 
@@ -39,6 +40,39 @@ export function deterministicRuntimeUuid(value: string): string {
 
 function objectField(snapshot: Readonly<Record<string, JsonValue>>, key: string): JsonValue {
   return snapshot[key] ?? null;
+}
+
+type PersistableCandidate = ThetaQResponse['candidates'][number];
+
+function persistenceCandidates(cycle:ThetaShadowCycleResult):readonly PersistableCandidate[]{
+  const evaluated=[...(cycle.orchestration?.thetaQ?.candidates??[])];
+  const known=new Set(evaluated.map((candidate)=>candidate.candidateId));
+  const ownershipScore=cycle.orchestration?.ownership?.ownability??null;
+  const canonical=cycle.strategyFrontier?.branches.find((branch)=>branch.branch==='THETA_CONVENTIONAL')?.candidates??[];
+  for(const [index,candidate] of canonical.entries()){
+    const optionSymbol=candidate.legs.length===1?candidate.legs[0]?.optionSymbol:undefined;
+    if(optionSymbol===undefined||known.has(optionSymbol))continue;
+    const reasons=[
+      ...candidate.hardBlockers.map((code)=>({code,polarity:-1 as const,detail:'Canonical structural hard blocker.'})),
+      ...(ownershipScore===null?[{code:'OWNERSHIP_ACCEPTABILITY_UNKNOWN',polarity:0 as const,
+        detail:'Ownership acceptability is UNKNOWN.'}]:[]),
+      ...candidate.unknownEvidence.map((code)=>({code,polarity:0 as const,detail:'Canonical point-in-time evidence is UNKNOWN.'})),
+      ...candidate.softEvidence.map((code)=>({code,polarity:0 as const,detail:'Canonical soft evidence recorded without directional assumption.'})),
+    ];
+    const complete=ownershipScore!==null&&candidate.hardBlockers.length===0&&candidate.unknownEvidence.length===0;
+    const collateral=candidate.economics.collateral;
+    const maxProfit=candidate.economics.maxProfit;
+    evaluated.push({candidateId:optionSymbol,rank:candidate.paretoRank??index+1,
+      actionFeasible:complete&&candidate.structurallyFeasible&&candidate.riskFeasible,
+      quantity:complete?candidate.sizing.quantity:0,ownershipScore,reasons,
+      economics:collateral===null||maxProfit===null?null:{max_profit:maxProfit,
+        break_even_price:candidate.economics.breakEven??candidate.legs[0]?.strike??0,
+        secured_collateral_per_contract:collateral,
+        credit_collateral_ratio:collateral>0?maxProfit/collateral:0,ev_net:null,
+        ev_net_unknown_reason:'EV_MODEL_NOT_EMPIRICALLY_READY'}});
+    known.add(optionSymbol);
+  }
+  return evaluated;
 }
 
 function jsonObject(value: JsonValue | undefined): Record<string, JsonValue> {
@@ -118,7 +152,7 @@ export class PostgresThetaCycleStore {
     const receipt = cycle.orchestration?.receipt;
     if (receipt === null || receipt === undefined) return { candidateSetId: null, candidateIds: new Map() };
 
-    const evaluated = cycle.orchestration?.thetaQ?.candidates ?? [];
+    const evaluated = persistenceCandidates(cycle);
     const setPayload = JSON.stringify(evaluated);
     const setHash = createHash('sha256').update(setPayload).digest('hex');
     const candidateSetId = deterministicRuntimeUuid(`candidate-set:${fusionSnapshotId}:THETA_CONVENTIONAL:${setHash}`);
@@ -126,7 +160,8 @@ export class PostgresThetaCycleStore {
       `INSERT INTO trade.candidate_set(candidate_set_id,fusion_snapshot_id,branch,candidate_count,generated_at,generator_version,set_hash)
        VALUES($1,$2,'THETA_CONVENTIONAL',$3,$4,$5,$6)
        ON CONFLICT(fusion_snapshot_id,branch,set_hash) DO NOTHING`,
-      [candidateSetId, fusionSnapshotId, evaluated.length, receipt.timestamp, cycle.orchestration?.thetaQ?.contractVersion ?? 'theta-runtime-no-candidate-v1', setHash],
+      [candidateSetId, fusionSnapshotId, evaluated.length, receipt.timestamp,
+        cycle.orchestration?.thetaQ?.contractVersion ?? cycle.strategyFrontier?.contractVersion ?? 'theta-runtime-no-candidate-v1', setHash],
     );
 
     const snapshotContracts = cycle.fusionSnapshot?.snapshot.contractCandidates;

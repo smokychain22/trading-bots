@@ -740,3 +740,10 @@ untrained recovery-history component otherwise made ownership permanently
 unknown and starved the point-in-time evidence ledger. The existing candidate
 model still marks unknown-ownership contracts infeasible, so this change
 captures rejection evidence without treating missing data as acceptable.
+
+Canonical Conventional contracts are persisted even when they are excluded
+before the legacy THETA-Q scorer, such as when the only available quote is
+indicative. Persisted synthetic evaluation rows retain actual contract identity
+and structural economics, mark unknown evidence explicitly, force quantity to
+zero, and keep expected EV unknown. This closes the gap where a decision receipt
+listed 21 evaluated contracts while the point-in-time ledger stored none.
