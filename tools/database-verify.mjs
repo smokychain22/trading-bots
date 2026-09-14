@@ -43,6 +43,7 @@ try {
     "036_runtime_behavior_diagnostics",
     "037_management_action_plan_dispatch",
     "038_optionomics_temporal_feature_evidence",
+    "039_cross_branch_candidate_evidence",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -92,6 +93,8 @@ try {
     ["trade", "master_paper_action_plan"], ["trade", "master_paper_action_plan_event"],
     ["research", "theta_runtime_behavior_diagnostic"],
     ["research", "optionomics_temporal_feature_observation"],
+    ["trade", "canonical_strategy_branch_evidence"],
+    ["trade", "canonical_strategy_candidate_evidence"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -173,6 +176,16 @@ try {
   if(!optionomicsTemporalEvidence.rows[0]?.immutable_temporal||!optionomicsTemporalEvidence.rows[0]?.known_shape||
     !optionomicsTemporalEvidence.rows[0]?.time_order)
     throw new Error('OPTIONOMICS_TEMPORAL_EVIDENCE_PROTECTION_MISSING');
+  const crossBranchEvidence=await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade'
+      AND event_object_table='canonical_strategy_branch_evidence' AND trigger_name='reject_immutable_mutation') AS immutable_branches,
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade'
+      AND event_object_table='canonical_strategy_candidate_evidence' AND trigger_name='reject_immutable_mutation') AS immutable_candidates,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='trade.canonical_strategy_candidate_evidence'::regclass
+      AND conname='canonical_candidate_execution_locked') AS execution_locked`);
+  if(!crossBranchEvidence.rows[0]?.immutable_branches||!crossBranchEvidence.rows[0]?.immutable_candidates||
+    !crossBranchEvidence.rows[0]?.execution_locked)
+    throw new Error('CROSS_BRANCH_CANDIDATE_EVIDENCE_PROTECTION_MISSING');
   const optionomicsProvenance=await client.query(`SELECT count(*)::int AS column_count
     FROM information_schema.columns WHERE table_schema='market' AND table_name='optionomics_raw_observation'
       AND column_name IN ('requested_at','request_path','request_parameters_json','http_status','rate_limit_json',

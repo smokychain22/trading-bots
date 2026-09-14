@@ -4,6 +4,13 @@ Canonical version: `theta-r6-dataset-v1`
 
 This is the sole Production-to-research evidence interface for R6 and R8. The TypeScript exporter emits the camel-case wire contract consumed by `production_export_loader.py`. PostgreSQL column names and database-specific JSON column suffixes do not appear on the wire.
 
+Each `rows.strategyFrontiers[]` record also carries deterministic
+`branchEvidence` and `candidateEvidence` arrays. They are immutable relational
+projections of all five canonical branches. This preserves two-leg Defined
+Risk structures and zero-order Recovery actions without pretending they are
+single-leg CSP candidates. These fields are point-in-time decision evidence,
+not profitability labels and not execution authority.
+
 ## Candidate identity and state
 
 Every `rows.candidates[]` record contains stable top-level fields:

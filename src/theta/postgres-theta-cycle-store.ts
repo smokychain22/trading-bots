@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from 'pg';
 import { verifyFusionSnapshot, type JsonValue } from '../market/fusion-snapshot.js';
 import type { ThetaShadowCycleResult } from './theta-shadow-cycle.js';
 import type { ThetaQResponse } from './theta-q-contract.js';
+import type { CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
 import { buildStrategyDecisionEnvelope } from './strategy-decision-envelope.js';
 import { validateGlobalWaitEvidence, type GlobalWaitEvidence } from './decision-evidence.js';
 import {
@@ -52,6 +53,36 @@ function objectField(snapshot: Readonly<Record<string, JsonValue>>, key: string)
 }
 
 type PersistableCandidate = ThetaQResponse['candidates'][number];
+export interface RelationalCanonicalBranchEvidence {
+  readonly branch: CanonicalStrategyFrontier['branches'][number];
+  readonly selectedCandidateRef: string | null;
+  readonly candidates: readonly {
+    readonly candidate: CanonicalStrategyFrontier['branches'][number]['candidates'][number];
+    readonly selected: boolean;
+  }[];
+}
+
+export function projectCanonicalStrategyEvidence(
+  frontier: CanonicalStrategyFrontier,
+): readonly RelationalCanonicalBranchEvidence[] {
+  const seen = new Set<string>();
+  return frontier.branches.map((branch) => {
+    if (branch.candidateCount !== branch.candidates.length) {
+      throw new Error(`CANONICAL_BRANCH_CANDIDATE_COUNT_MISMATCH:${branch.branch}`);
+    }
+    const candidates = branch.candidates.map((candidate) => {
+      if (candidate.branch !== branch.branch) throw new Error(`CANONICAL_CANDIDATE_BRANCH_MISMATCH:${candidate.candidateId}`);
+      if (seen.has(candidate.candidateId)) throw new Error(`CANONICAL_CANDIDATE_REF_DUPLICATE:${candidate.candidateId}`);
+      seen.add(candidate.candidateId);
+      return { candidate, selected: frontier.selectedCandidateId === candidate.candidateId };
+    });
+    return {
+      branch,
+      selectedCandidateRef: candidates.some((entry) => entry.selected) ? frontier.selectedCandidateId : null,
+      candidates,
+    };
+  });
+}
 
 function persistenceCandidates(cycle:ThetaShadowCycleResult):readonly PersistableCandidate[]{
   const evaluated=[...(cycle.orchestration?.thetaQ?.candidates??[])];
@@ -118,6 +149,9 @@ export class PostgresThetaCycleStore {
 
       await this.persistOptionomicsEvidence(client, fusionSnapshotId, fusion.snapshot);
       const strategyFrontierId = await this.persistCanonicalStrategyFrontier(client, fusionSnapshotId, cycle);
+      if (strategyFrontierId !== null) {
+        await this.persistRelationalCanonicalStrategyEvidence(client, strategyFrontierId, fusionSnapshotId, cycle);
+      }
 
       const candidates = await this.persistCandidates(client, fusionSnapshotId, cycle);
       const strategyRouteId = await this.persistRoute(client, fusionSnapshotId, cycle);
@@ -351,6 +385,82 @@ export class PostgresThetaCycleStore {
         frontier.decisionAuthorityVersion, frontier.primaryAction, frontier.selectedQuantity, frontier.empiricalUtilityState],
     );
     return frontierId;
+  }
+
+  private async persistRelationalCanonicalStrategyEvidence(
+    client: PoolClient,
+    frontierId: string,
+    fusionSnapshotId: string,
+    cycle: ThetaShadowCycleResult,
+  ): Promise<void> {
+    const frontier = cycle.strategyFrontier;
+    if (frontier === null) return;
+    for (const projection of projectCanonicalStrategyEvidence(frontier)) {
+      const { branch } = projection;
+      const branchPayload = {
+        frontierId,
+        fusionSnapshotId,
+        branch: branch.branch,
+        strategyVersion: branch.strategyVersion,
+        status: branch.status,
+        applicable: branch.applicable,
+        evaluated: branch.evaluated,
+        evaluationState: branch.evaluationState,
+        candidateCount: branch.candidateCount,
+        mechanicallyRejected: branch.mechanicallyRejected,
+        hardVetoed: branch.hardVetoed,
+        softRanked: branch.softRanked,
+        dataInsufficient: branch.dataInsufficient,
+        enumerationTruncated: branch.enumerationTruncated,
+        bestCandidateRef: branch.bestCandidateId,
+        secondBestCandidateRef: branch.secondBestCandidateId,
+        bestRejectedCandidateRef: branch.bestRejectedCandidateId,
+        routeReasons: branch.routeReasons,
+        empiricalEconomicsReady: branch.empiricalEconomicsReady,
+        executionAuthorized: branch.executionAuthorized,
+      };
+      const branchHash = createHash('sha256').update(JSON.stringify(branchPayload)).digest('hex');
+      const branchEvidenceId = deterministicRuntimeUuid(`canonical-branch-evidence:${branchHash}`);
+      await client.query(
+        `INSERT INTO trade.canonical_strategy_branch_evidence(
+          branch_evidence_id,frontier_id,fusion_snapshot_id,branch,strategy_version,status,applicable,evaluated,
+          evaluation_state,candidate_count,mechanically_rejected,hard_vetoed,soft_ranked,data_insufficient,
+          enumeration_truncated,best_candidate_ref,second_best_candidate_ref,best_rejected_candidate_ref,
+          route_reasons_json,empirical_economics_ready,execution_authorized,content_hash)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20,$21,$22)
+         ON CONFLICT(frontier_id,branch) DO NOTHING`,
+        [branchEvidenceId, frontierId, fusionSnapshotId, branch.branch, branch.strategyVersion, branch.status,
+          branch.applicable, branch.evaluated, branch.evaluationState, branch.candidateCount,
+          branch.mechanicallyRejected, branch.hardVetoed, branch.softRanked, branch.dataInsufficient,
+          branch.enumerationTruncated, branch.bestCandidateId, branch.secondBestCandidateId,
+          branch.bestRejectedCandidateId, JSON.stringify(branch.routeReasons), branch.empiricalEconomicsReady,
+          branch.executionAuthorized, branchHash],
+      );
+      for (const { candidate, selected } of projection.candidates) {
+        const candidatePayload = { frontierId, branchEvidenceId, candidate, selected };
+        const candidateHash = createHash('sha256').update(JSON.stringify(candidatePayload)).digest('hex');
+        const candidateEvidenceId = deterministicRuntimeUuid(`canonical-candidate-evidence:${candidateHash}`);
+        await client.query(
+          `INSERT INTO trade.canonical_strategy_candidate_evidence(
+            candidate_evidence_id,branch_evidence_id,frontier_id,candidate_ref,branch,action,underlying,
+            rank_at_decision,selected,legs_json,dte,delta,moneyness,spread_pct,liquidity_json,economics_json,
+            assignment_capacity_qty,hard_blockers_json,soft_evidence_json,unknown_evidence_json,
+            structurally_feasible,risk_feasible,quantity,binding_constraint,sizing_reasons_json,
+            execution_authorized,content_hash)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14,$15::jsonb,$16::jsonb,$17,
+            $18::jsonb,$19::jsonb,$20::jsonb,$21,$22,$23,$24,$25::jsonb,$26,$27)
+           ON CONFLICT(frontier_id,candidate_ref) DO NOTHING`,
+          [candidateEvidenceId, branchEvidenceId, frontierId, candidate.candidateId, candidate.branch,
+            candidate.action, candidate.underlying, candidate.paretoRank, selected, JSON.stringify(candidate.legs),
+            candidate.dte, candidate.delta, candidate.moneyness, candidate.spreadPct,
+            JSON.stringify(candidate.liquidity), JSON.stringify(candidate.economics), candidate.assignmentCapacityQty,
+            JSON.stringify(candidate.hardBlockers), JSON.stringify(candidate.softEvidence),
+            JSON.stringify(candidate.unknownEvidence), candidate.structurallyFeasible, candidate.riskFeasible,
+            candidate.sizing.quantity, candidate.sizing.bindingConstraint, JSON.stringify(candidate.sizing.reasons),
+            candidate.executionAuthorized, candidateHash],
+        );
+      }
+    }
   }
 
   private async persistOptionomicsEvidence(

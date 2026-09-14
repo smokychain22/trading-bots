@@ -1,5 +1,27 @@
 # Codex handoff: standalone platform Phase 1
 
+## 2026-09-15: cross-branch candidate evidence
+
+OWNER: Codex.
+
+TASK: Close the relational evidence gap between the canonical five-branch strategy frontier and the R6 dataset export.
+
+FILES CHANGED: Migration 039, PostgreSQL cycle persistence, research export, database verification, tests, and canonical completion documentation.
+
+WHAT WAS IMPLEMENTED: Every canonical branch and candidate is now projected into immutable relational evidence. Native leg shape, structural economics, blockers, unknowns, sizing, selection, and execution-disabled status are preserved. The deterministic export includes the projections under each frontier.
+
+TESTS RUN: TypeScript, ESLint, focused projection tests, full Node/Python/browser/build/security suites, PostgreSQL migration and schema invariants through CI.
+
+TEST RESULTS: Record final CI and Production migration status in the release receipt after push.
+
+KNOWN LIMITATIONS: Existing Production cycles predate migration 039 and are not backfilled. New rows begin with newly persisted frontiers. Real outcomes remain unavailable.
+
+RISKS: Research consumers must keep these candidate features separate from future labels. The database and export preserve that boundary.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: R6 loaders may consume the nested branch/candidate projections, but must not reimplement Production selection.
+
+NEXT RECOMMENDED TASK: Collect authenticated point-in-time Optionomics observations or qualify another already-approved execution quote path. Do not weaken the quote gate.
+
 ## 2026-09-14: professional reference pack and Optionomics contract hardening
 
 OWNER: Codex.

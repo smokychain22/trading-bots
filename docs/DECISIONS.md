@@ -1,5 +1,13 @@
 # Engineering decisions
 
+## 2026-09-15: Preserve every canonical strategy candidate as relational PIT evidence
+
+- The canonical frontier remains the decision authority and immutable JSON source.
+- Migration 039 adds queryable branch and candidate projections for all five strategy branches.
+- Multi-leg Defined Risk candidates keep both legs. Recovery WAIT and stock actions keep zero option legs and quantity zero where appropriate.
+- The projection cannot authorize execution and expected after-cost EV remains UNKNOWN.
+- Research exports include these rows beneath their source frontier so R6 can measure strictness and branch regret without a second strategy brain.
+
 ## 2026-09-15: sanitized Optionomics qualification evidence
 
 Keep Optionomics credentials and provider response bodies server-side. The

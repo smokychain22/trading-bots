@@ -5,6 +5,8 @@ import { Pool } from 'pg';
 import { buildFusionSnapshot, type FusionSnapshotInput } from '../../src/market/fusion-snapshot.js';
 import { PostgresThetaCycleStore } from '../../src/theta/postgres-theta-cycle-store.js';
 import { normalizeOptionContract } from '../../src/theta/option-contract.js';
+import { buildCanonicalStrategyFrontier } from '../../src/theta/canonical-strategy-frontier.js';
+import type { StrategyRoutingResponse } from '../../src/theta/strategy-router-contract.js';
 import type { ThetaShadowCycleResult } from '../../src/theta/theta-shadow-cycle.js';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -62,11 +64,24 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
     };
     const fusion = buildFusionSnapshot(snapshotInput);
     const families = ['THETA_Q','THETA_H','THETA_R','THETA_A','THETA_C','THETA_D'] as const;
+    const routing = {
+      contractVersion: 'theta-strategy-router-runtime-v1', snapshotId: fusion.contentHash, timestamp: now, policyVersion: 'router-v1',
+      results: families.map((strategyFamily) => ({ strategyFamily, eligible: strategyFamily === 'THETA_Q', eligibilityState: 'PASS' as const, reasons: [], policyVersion: 'router-v1' })),
+    } satisfies StrategyRoutingResponse;
+    const strategyFrontier = buildCanonicalStrategyFrontier({
+      snapshotId: fusion.contentHash, timestamp: now, strategyVersion: 'test-strategy-package', contracts: [contract], routing,
+      stock: null, assignmentCapacityQty: 1, buyingPower: 100_000, brokerAllowedQty: 1,
+      sizingPolicy: { riskBudgetQtyCap: 1, collateralQtyCap: 1, concentrationQtyCap: 1,
+        assignmentCapacityQtyCap: 1, tailRiskQtyCap: 1, correlationQtyCap: 1, liquidityQtyCap: 1,
+        reducedStateMultiplier: 0.5 },
+      aegisNewRiskState: 'ALLOW_FULL', eventState: 'CLEAR', unmanagedBrokerPositionCount: 0,
+      unevaluatedUnderlyingCount: 0, optionomicsContext: null,
+    });
     const cycle = {
       runId: randomUUID(), startedAt: now, finishedAt: now, universeFunnel: {}, selectedUnderlying: 'SPY', underlyingRanking: [],
       optionChainComplete: true, optionContractsComplete: true, snapshotContentHash: fusion.contentHash, fusionSnapshot: fusion,
       snapshotValidForNewRisk: true, provenance: 'HYBRID', provenanceDetail: [], blockers: [],
-      strategyFrontier: null,
+      strategyFrontier,
       orchestration: {
         receipt: { decisionId: 'runtime-receipt', snapshotId: fusion.contentHash, fusionSnapshotHash: fusion.contentHash, timestamp: now,
           underlying: 'SPY', winningAction: 'PASS', selectedCandidateId: null, quantity: 0,
@@ -74,8 +89,7 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
           regimeSnapshotId: null, executionAuthorized: false, reasonCodes: ['NO_ELIGIBLE_CANDIDATE'], plainEnglishExplanation: 'No candidate qualified.',
           failClosedReason: null, policyVersion: 'test-policy', modelVersions: {} },
         ownership: null, regime: null,
-        routing: { contractVersion: 'theta-strategy-router-runtime-v1', snapshotId: fusion.contentHash, timestamp: now, policyVersion: 'router-v1',
-          results: families.map((strategyFamily) => ({ strategyFamily, eligible: false, eligibilityState: 'PASS' as const, reasons: [], policyVersion: 'router-v1' })) },
+        routing,
         thetaQ: { contractVersion: 'theta-q-runtime-v1', fusionSnapshotHash: fusion.contentHash,
           candidates: [{ candidateId: contract.optionSymbol, rank: 1, actionFeasible: false, quantity: 0,
             economics: { max_profit: 250, break_even_price: 497.5, secured_collateral_per_contract: 50000,
@@ -105,7 +119,12 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
       (SELECT count(*) FROM trade.candidate_reason cr JOIN trade.candidate c USING(candidate_id) JOIN trade.candidate_set cs USING(candidate_set_id) WHERE cs.fusion_snapshot_id=$2)::int AS candidate_reasons,
       (SELECT count(*) FROM trade.decision WHERE fusion_snapshot_id=$2)::int AS decisions,
       (SELECT count(*) FROM trade.strategy_route WHERE fusion_snapshot_id=$2)::int AS routes,
-      (SELECT count(*) FROM trade.shadow_opportunity WHERE fusion_snapshot_id=$2)::int AS opportunities`, [botId, first.fusionSnapshotId]);
-    assert.deepEqual(counts.rows[0], { snapshots: 1, candidate_sets: 1, candidates: 1, candidate_reasons: 1, decisions: 1, routes: 1, opportunities: 1 });
+      (SELECT count(*) FROM trade.shadow_opportunity WHERE fusion_snapshot_id=$2)::int AS opportunities,
+      (SELECT count(*) FROM trade.canonical_strategy_branch_evidence WHERE fusion_snapshot_id=$2)::int AS canonical_branches,
+      (SELECT count(*) FROM trade.canonical_strategy_candidate_evidence c
+        JOIN trade.canonical_strategy_branch_evidence b USING(branch_evidence_id) WHERE b.fusion_snapshot_id=$2)::int AS canonical_candidates`,
+      [botId, first.fusionSnapshotId]);
+    assert.deepEqual(counts.rows[0], { snapshots: 1, candidate_sets: 1, candidates: 1, candidate_reasons: 1, decisions: 1,
+      routes: 1, opportunities: 1, canonical_branches: 5, canonical_candidates: 1 });
   } finally { await pool.end(); }
 });

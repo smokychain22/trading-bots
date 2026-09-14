@@ -44,7 +44,7 @@ developer requests returned HTTP 401. Indicative quotes remain research-only.
 | Market clock and calendar | COMPLETE | Both are required before an open-session scan | None known |
 | Point-in-time FusionSnapshot | COMPLETE | Immutable content hash and version lineage persisted | Optionomics families remain unavailable while auth fails |
 | Optionomics temporal evidence | COMPLETE engineering, dormant on auth failure | Consecutive compatible feature snapshots produce immutable research-only deltas for volatility, skew, term structure, and exposure. Source snapshots, elapsed time, units, method/policy version, missing reason, and content hash are retained | Needs authenticated repeated market-session observations and later OOS ablation. It is never execution authority |
-| Candidate and WAIT evidence | COMPLETE for THETA-Q, PARTIAL cross-branch | Full THETA-Q candidate set, frontier, rejection and WAIT evidence persisted | Multi-leg and non-THETA-Q candidates need normalized relational persistence |
+| Candidate and WAIT evidence | COMPLETE engineering | THETA-Q PIT rows plus immutable relational branch/candidate evidence for all five canonical branches. Multi-leg Defined Risk structures and quantity-zero Recovery actions retain their native shapes. The deterministic research export nests both projections under each canonical frontier | Real market-session observations and resolved outcomes are still needed |
 | WAIT-paralysis and overtrading diagnostics | COMPLETE | Every completed Production scan persists causal WAIT class, funnel counts, consecutive WAITs, last broker-action age, near misses, AEGIS/quantity blocks and action-plan multiplicity. The operator API exposes the latest sanitized record | Outcome-based false-reject rates and calibrated activity limits require resolved episodes |
 | Canonical decision | COMPLETE | One versioned cross-branch authority is stored with receipt | Research-only structural winners intentionally cannot execute |
 | Decision to action-plan handoff | COMPLETE engineering | New-risk and management authorities publish distinct typed plans. Close, stock exit, CC entry/close, and two-leg CSP/CC rolls are mapped. Roll-open remains blocked until the close intent is broker-confirmed FILLED | Current management policy selects passive HOLD because empirical action EV is unknown. Exact active-action directives still require validated policy output |
@@ -76,6 +76,11 @@ developer requests returned HTTP 401. Indicative quotes remain research-only.
    diagnostic after every scan. No arbitrary trade-frequency threshold is
    embedded. Multiple plans from one scan are surfaced explicitly instead of
    being hidden as ordinary activity.
+6. Cross-branch candidates were previously available only inside the canonical
+   frontier JSON, while the older relational PIT projection covered the
+   Conventional path. Migration 039 adds immutable branch and candidate
+   projections for Hold-Strike, Defined Risk, Recovery, and Covered Call
+   without coercing multi-leg or stock actions into a single-option row.
 
 ## R1 through R9 state
 

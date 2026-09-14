@@ -59,7 +59,13 @@ export class PostgresDatasetExporter {
         selected_candidate_ref AS "selectedCandidateId",best_rejected_candidate_ref AS "bestRejectedCandidateId",
         primary_action AS "primaryAction",selected_quantity AS "selectedQuantity",global_wait_earned AS "globalWaitEarned",
         empirical_utility_state AS "empiricalUtilityState",empirical_economics_ready AS "empiricalEconomicsReady",
-        execution_authorized AS "executionAuthorized",frontier_json AS frontier,content_hash AS "contentHash"
+        execution_authorized AS "executionAuthorized",frontier_json AS frontier,content_hash AS "contentHash",
+        COALESCE((SELECT jsonb_agg(to_jsonb(branch_evidence)-'created_at' ORDER BY branch_evidence.branch)
+          FROM trade.canonical_strategy_branch_evidence branch_evidence
+          WHERE branch_evidence.frontier_id=canonical_strategy_frontier.frontier_id),'[]'::jsonb) AS "branchEvidence",
+        COALESCE((SELECT jsonb_agg(to_jsonb(candidate_evidence)-'created_at' ORDER BY candidate_evidence.branch,candidate_evidence.candidate_ref)
+          FROM trade.canonical_strategy_candidate_evidence candidate_evidence
+          WHERE candidate_evidence.frontier_id=canonical_strategy_frontier.frontier_id),'[]'::jsonb) AS "candidateEvidence"
         FROM trade.canonical_strategy_frontier
         WHERE observed_at >= $1 AND observed_at < $2 ORDER BY observed_at,frontier_id`,parameters),
       this.pool.query(`SELECT mis.management_input_snapshot_id AS "managementInputSnapshotId",
