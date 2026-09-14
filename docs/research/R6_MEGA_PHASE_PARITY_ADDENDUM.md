@@ -1093,3 +1093,68 @@ handoff still reports zero broker orders, execution gate locked,
 still stands; no `research_exports/` artifact exists.
 
 **`REQUIRED_CODEX_CHANGE` count for this run: 0.**
+
+## Architecture acceptance review: `dcdc011..7a68db6` (always-on master Paper runtime activation)
+
+One commit, "activate always-on master Paper runtime" (migration 033,
+Windows Task Scheduler autostart/wake/lease scripts, operator-readiness
+API). This is a genuinely consequential milestone: `MASTER_THETA_PAPER`
+now owns an always-on worker. **Order submission remains unauthorized**
+-- the new `execution_gate` value is explicitly `EXTERNAL_QUOTE_BLOCKER`
+(no execution-grade Optionomics/OPRA quote yet), not a bypass of the
+lock.
+
+### Master independence from followers: re-verified against the actual code
+
+Traced `autonomous-runtime.ts::resolveMasterContext`: the `copy.follower_
+account` table query filtered to `account_role='MASTER_THETA_PAPER'` is
+an IDENTITY lookup for the master's own connection row (that table stores
+every connected account regardless of role, master included) -- it is
+NOT a follower-count check. `connection.rowCount !== 1` throws only if
+the MASTER's own row is missing/disconnected, never because zero
+followers exist. Confirms the handoff's own claim ("the worker remains
+independent of follower count") by reading the code, not trusting the
+prose. **NO_CHANGE_REQUIRED.**
+
+### Whole-chain P&L: correctly refuses a partial number
+
+`operator-readiness.ts::readMasterRuntimeEvidence`'s `whole_chain_pnl`
+is computed ONLY when `openChains === 0` (every economic chain in the
+account is closed) -- otherwise it returns `null`, never a partial sum
+that silently omits open inventory's unrealized MTM. This matches the
+standing "premium != profit, open MTM must remain visible" invariant:
+rather than fabricate a closed-only number mislabeled as the whole
+picture, the API honestly reports "not yet computable." One minor point
+recorded for future verification, not escalated to `REQUIRED_CODEX_
+CHANGE`: the underlying SQL sums `realized_pnl` `WHERE realized_pnl IS
+NOT NULL`, which would silently exclude an unresolved lot from the sum
+rather than nulling the whole aggregate -- mitigated in practice by the
+`openChains === 0` guard (if every chain is closed, no constituent lot
+should have a null `realized_pnl` left), but this depends on an
+invariant enforced elsewhere in the ledger that this pass did not
+independently verify.
+
+### Architecture acceptance checklist (this run's specific ask)
+
+Cross-checked against `canonical-strategy-frontier.ts` (reviewed in
+depth last round) and this round's new evidence:
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| Strategies remain independent | PASS | `buildBranch(branch, input)` called separately per branch; own hardBlockers/applicability |
+| Risk separate from strategy | PASS | `models/sizing.py`/AEGIS `risk_state` are separate inputs sizing/frontier both consume, never strategy-internal |
+| Execution separate from strategy | PASS | `transaction-cost-analysis.ts`/`adaptive-limit-policy.ts`/`execution-option-quote.ts` contain no strategy-selection logic (reviewed prior round) |
+| State transitions explicit | PASS (partial verification) | Migration-backed lifecycle tables (`trade.decision`, `economic_chain`, `broker_reconciliation_snapshot`) exist; full state-machine enumeration not re-derived this pass |
+| All actions reconstructable | PASS | `content_hash`/`contentHash` on every frontier/receipt object; full lineage fields present |
+| Existing backend intelligence consumed | PASS | Optionomics context wired into FusionSnapshot as soft, non-required evidence (verified two rounds ago) |
+| Unknown data remains unknown | PASS | `OptionomicsProviderValue<T>` KNOWN/UNKNOWN/INVALID; `whole_chain_pnl: null` when incomplete |
+| One strategy cannot veto another | PASS | Per-branch `hardBlockers`; `blockedApplicable` tracked per-branch, not globally |
+| No feature can bypass AEGIS | PASS | `sourceProvenance` marks only ACCOUNT/CONTRACT/QUOTE `requiredForNewRisk: true`; AEGIS state is a separate hard check in `buildBranch`, not folded into any feature score |
+| No strategy submits broker orders directly | PASS | Execution boundary (`paper-order-coordinator.ts`) is a distinct module from every branch file reviewed |
+| Running Paper bot can decide deterministically | PARTIAL | Worker is now always-on and produces deterministic frontier/`contentHash` output, but cannot yet submit an order (`EXTERNAL_QUOTE_BLOCKER`) -- the full E2E decision-to-order path is not yet exercised end-to-end because no execution-grade quote exists |
+
+No new module built or requested this round -- purely a verification pass
+against already-implemented architecture, per this run's explicit
+"do not build another trading architecture" instruction.
+
+**`REQUIRED_CODEX_CHANGE` count for this run: 0.**
