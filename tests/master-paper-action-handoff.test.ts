@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { BrokerOrderRequest, BrokerOrderSnapshot, PaperBrokerAdapter } from '../src/execution/broker.js';
 import { executionOptionQuoteContractVersion, type ExecutionOptionQuote } from '../src/execution/execution-option-quote.js';
-import { MasterPaperActionHandoff, classifyMasterPaperActionExecution, masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan,
+import { MasterPaperActionHandoff, classifyMasterPaperActionExecution, masterPaperActionPlanSchema, masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan,
   type ExecutionOptionQuoteSource } from '../src/execution/master-paper-action-handoff.js';
 import { MasterPaperExecutionOrchestrator } from '../src/execution/master-paper-execution-orchestrator.js';
 import { InMemoryPaperOrderStore, PaperOrderCoordinator } from '../src/execution/paper-order-coordinator.js';
@@ -16,6 +16,8 @@ const quote:ExecutionOptionQuote={contractVersion:executionOptionQuoteContractVe
 
 const plan=(overrides:Partial<ApprovedMasterPaperActionPlan>={}):ApprovedMasterPaperActionPlan=>({
   contractVersion:masterPaperActionPlanVersion,actionPlanId:'11111111-1111-4111-8111-111111111111',
+  decisionAuthority:'NEW_RISK',managementInputSnapshotId:null,managementActionFrontierId:null,
+  actionGroupId:'11111111-1111-4111-8111-111111111111',legSequence:1,dependsOnActionPlanId:null,
   executionAccountId:'22222222-2222-4222-8222-222222222222',decisionId:'33333333-3333-4333-8333-333333333333',
   candidateId:'44444444-4444-4444-8444-444444444444',strategyVersion:'theta-conventional-v1',
   chainId:'55555555-5555-4555-8555-555555555555',optionContractId:'66666666-6666-4666-8666-666666666666',
@@ -111,4 +113,11 @@ test('an unresolved or merely persisted intent waits for reconciliation instead 
   assert.equal(classifyMasterPaperActionExecution({...base,state:'PERSISTED'}),'WAIT_RECONCILIATION');
   assert.equal(classifyMasterPaperActionExecution({...base,state:'WORKING'}),'SUBMITTED');
   assert.equal(classifyMasterPaperActionExecution({...base,state:'TERMINAL'}),'TERMINAL');
+});
+
+test('new-risk authority is always a single independent leg',()=>{
+  assert.throws(()=>masterPaperActionPlanSchema.parse(plan({legSequence:2,
+    dependsOnActionPlanId:'99999999-9999-4999-8999-999999999999'})),/NEW_RISK_PLAN_MUST_BE_SINGLE_LEG/);
+  assert.throws(()=>masterPaperActionPlanSchema.parse(plan({actionGroupId:'99999999-9999-4999-8999-999999999999'})),
+    /NEW_RISK_PLAN_MUST_BE_SINGLE_LEG/);
 });

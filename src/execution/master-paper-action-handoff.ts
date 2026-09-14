@@ -6,11 +6,19 @@ import { MasterPaperExecutionOrchestrator, type MasterPaperExecutionResult } fro
 import { thetaActionOpensNewRisk, type ThetaOrderAction } from './order-construction.js';
 import { executionAuthorizationTiers, type ExecutionAuthorizationTier, type PaperEvidenceSizing } from './execution-authorization-tier.js';
 
-export const masterPaperActionPlanVersion = 'theta-master-paper-action-plan-v2' as const;
+export const masterPaperActionPlanVersion = 'theta-master-paper-action-plan-v3' as const;
+
+export type MasterPaperDecisionAuthority = 'NEW_RISK' | 'MANAGEMENT';
 
 export interface ApprovedMasterPaperActionPlan {
   readonly contractVersion: typeof masterPaperActionPlanVersion;
   readonly actionPlanId: string;
+  readonly decisionAuthority: MasterPaperDecisionAuthority;
+  readonly managementInputSnapshotId: string | null;
+  readonly managementActionFrontierId: string | null;
+  readonly actionGroupId: string;
+  readonly legSequence: number;
+  readonly dependsOnActionPlanId: string | null;
   readonly executionAccountId: string;
   readonly decisionId: string;
   readonly candidateId: string;
@@ -49,6 +57,9 @@ export interface ApprovedMasterPaperActionPlan {
 
 export const masterPaperActionPlanSchema = z.object({
   contractVersion:z.literal(masterPaperActionPlanVersion),actionPlanId:z.string().uuid(),executionAccountId:z.string().uuid(),
+  decisionAuthority:z.enum(['NEW_RISK','MANAGEMENT']),managementInputSnapshotId:z.string().uuid().nullable(),
+  managementActionFrontierId:z.string().uuid().nullable(),actionGroupId:z.string().uuid(),legSequence:z.number().int().positive(),
+  dependsOnActionPlanId:z.string().uuid().nullable(),
   decisionId:z.string().uuid(),candidateId:z.string().min(1),strategyVersion:z.string().min(1),chainId:z.string().uuid(),
   optionContractId:z.string().uuid().nullable(),underlyingId:z.string().uuid(),underlying:z.string().min(1).max(16),
   optionType:z.enum(['PUT','CALL']).nullable(),symbol:z.string().min(1).max(64),
@@ -68,6 +79,18 @@ export const masterPaperActionPlanSchema = z.object({
   if(plan.quantity!==plan.paperEvidenceQuantity)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_QUANTITY_MISMATCH'});
   if(plan.paperEvidenceQuantity>plan.canonicalQuantity)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_QUANTITY_MAY_NOT_INCREASE'});
   if(plan.paperEvidenceQuantity>plan.paperEvidenceRiskCap)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_RISK_CAP_EXCEEDED'});
+  if(plan.decisionAuthority==='NEW_RISK'&&(plan.managementInputSnapshotId!==null||plan.managementActionFrontierId!==null))
+    context.addIssue({code:'custom',message:'NEW_RISK_PLAN_MAY_NOT_REFERENCE_MANAGEMENT_AUTHORITY'});
+  if(plan.decisionAuthority==='NEW_RISK'&&(plan.actionGroupId!==plan.actionPlanId||plan.legSequence!==1||plan.dependsOnActionPlanId!==null))
+    context.addIssue({code:'custom',message:'NEW_RISK_PLAN_MUST_BE_SINGLE_LEG'});
+  if(plan.decisionAuthority==='MANAGEMENT'&&(plan.managementInputSnapshotId===null||plan.managementActionFrontierId===null))
+    context.addIssue({code:'custom',message:'MANAGEMENT_PLAN_AUTHORITY_REQUIRED'});
+  if(plan.legSequence===1&&plan.dependsOnActionPlanId!==null)
+    context.addIssue({code:'custom',message:'FIRST_ACTION_LEG_MAY_NOT_HAVE_DEPENDENCY'});
+  if(plan.legSequence>1&&plan.dependsOnActionPlanId===null)
+    context.addIssue({code:'custom',message:'DEPENDENT_ACTION_LEG_REQUIRES_PARENT'});
+  if(plan.dependsOnActionPlanId===plan.actionPlanId)
+    context.addIssue({code:'custom',message:'ACTION_PLAN_SELF_DEPENDENCY'});
 });
 
 export interface ExecutionOptionQuoteSource {

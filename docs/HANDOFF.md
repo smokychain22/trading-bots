@@ -1794,6 +1794,47 @@ external execution-quote gate without weakening it.
 
 OWNER: Codex
 
+TASK: Management decision-to-execution dispatch closure.
+
+FILES CHANGED: Typed management action assembler, action-plan contract/store,
+management input identity, runtime management and pending-order jobs, migration
+037, database verifier, focused tests, completion matrix, and decisions.
+
+WHAT WAS IMPLEMENTED: Management actions now have a distinct immutable
+authority path from the persisted management input and frontier to durable
+Paper action plans. Close, stock exit, covered-call entry/close, CSP roll, and
+covered-call roll mappings are explicit. Roll legs are persisted atomically,
+and the open leg cannot be claimed until broker reconciliation proves the
+close intent is FILLED. Risk-reducing quantities are not clipped, while an
+opening leg may only shrink under the Paper evidence cap. The scheduler now
+invokes this bridge after management-first reconciliation and reconciles every
+active local intent from broker truth.
+
+TESTS RUN: Focused management/action-handoff tests, full Node suite,
+TypeScript, ESLint, build, and security scan. PostgreSQL migration verification
+is the deployment gate for this milestone.
+
+KNOWN LIMITATIONS: The current management frontier intentionally selects
+passive HOLD because empirical continuation EV is unavailable. No active
+management plan is manufactured from structural marks. The execution quote
+gate remains externally blocked.
+
+RISKS: A two-leg roll must never be treated as one atomic broker fill. The
+database dependency enforces close-first ordering, but real Paper partial-fill,
+cancel, expiry, and restart evidence is still required before claiming
+operational proof.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Quant research may supply versioned active
+management directives only after point-in-time/OOS validation. It must preserve
+the exact contract multiplier, UNKNOWN values, and immutable old-leg loss.
+
+NEXT RECOMMENDED TASK: Accumulate real point-in-time and resolved lifecycle
+evidence, qualify a fresh trusted two-sided execution quote, then produce the
+first-order readiness receipt. Keep follower submission and all live trading
+locked.
+
+OWNER: Codex
+
 TASK: Optionomics Production qualification diagnostics.
 
 FILES CHANGED: Quote-qualification contract/runtime, focused tests, decision

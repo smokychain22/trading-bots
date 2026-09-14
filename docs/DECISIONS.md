@@ -735,6 +735,15 @@ events. This prevents an old external-quote-blocked plan from starving newer
 decisions. Alpaca OPRA or an independently qualified Optionomics two-sided
 quote remains mandatory at the last pricing boundary.
 
+## 2026-09-15 - Management actions use their own atomic, dependency-aware authority
+
+- Decision: Publish active management decisions and all of their broker legs in one PostgreSQL transaction. A management plan must reference the immutable management input snapshot and action frontier that selected it. New-risk decisions keep their existing candidate authority.
+- Roll safety: A roll is two independent orders. The open-new plan cannot be claimed until the close-old plan is linked to a local order intent whose state is `FILLED` from broker reconciliation. The opening quantity may shrink under the Paper evidence cap and may never exceed the close quantity.
+- No invented policy: The assembler maps a selected action to explicit order intents, but it does not invent the selected action, target contract, quantity, economic boundary, or expected value. Current frontiers remain passive HOLD while empirical continuation economics are unknown.
+- Recovery safety: Stock disposal requires the exact confirmed share inventory. Covered-call opening requires a real call contract and enough confirmed shares for the contract multiplier. Missing identity, coverage, quote, AEGIS, or strategy evidence blocks publication.
+- Runtime behavior: Every management scan now persists and reads back its immutable frontier, invokes the typed action-plan assembler, and publishes only a fully ready active result. Passive HOLD/RECOVERY_WAIT/HOLD_CC creates no broker action. Pending intents are reconciled from Alpaca before a dependent plan can advance.
+- Execution boundary: This does not qualify Optionomics or Alpaca option quotes and does not authorize an order. The external quote gate, Paper controls, live-host rejection, and follower lock remain unchanged.
+
 ## 2026-09-14 - Run deterministic Python contracts in a private Vercel Python function
 
 The Production Node function cannot spawn `python3`. Canonical market scans

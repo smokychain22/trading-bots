@@ -41,6 +41,7 @@ try {
     "034_master_paper_action_handoff",
     "035_paper_evidence_authorization",
     "036_runtime_behavior_diagnostics",
+    "037_management_action_plan_dispatch",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -178,6 +179,19 @@ try {
       AND table_name='master_paper_action_plan' AND constraint_type='CHECK') AS plan_checks`);
   if(!actionHandoffProtection.rows[0]?.immutable_events||!actionHandoffProtection.rows[0]?.plan_checks)
     throw new Error('MASTER_PAPER_ACTION_HANDOFF_PROTECTION_MISSING');
+  const managementDispatchProtection=await client.query(`SELECT
+    count(*) FILTER(WHERE column_name IN ('authority_kind','management_input_snapshot_id','management_action_frontier_id',
+      'action_group_id','leg_sequence','depends_on_action_plan_id','execution_order_intent_id'))::int AS column_count,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='trade.master_paper_action_plan'::regclass
+      AND conname='master_paper_action_plan_authority_shape_check') AS authority_shape,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='trade.master_paper_action_plan'::regclass
+      AND conname='master_paper_action_plan_dependency_shape_check') AS dependency_shape,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='trade.master_paper_action_plan'::regclass
+      AND conname='master_paper_action_plan_execution_intent_key') AS intent_link
+    FROM information_schema.columns WHERE table_schema='trade' AND table_name='master_paper_action_plan'`);
+  if(managementDispatchProtection.rows[0]?.column_count!==7||!managementDispatchProtection.rows[0]?.authority_shape||
+    !managementDispatchProtection.rows[0]?.dependency_shape||!managementDispatchProtection.rows[0]?.intent_link)
+    throw new Error('MANAGEMENT_ACTION_PLAN_DISPATCH_PROTECTION_MISSING');
   const paperEvidenceAuthorization=await client.query(`SELECT
     EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='trade' AND table_name='order_intent'
       AND column_name='execution_tier') AS tier,
@@ -301,6 +315,7 @@ try {
     optionomicsLayeredEvidence:"ENFORCED",
     optionomicsContextLineage:"ENFORCED",
     masterPaperActionHandoff:"ENFORCED",
+    managementActionPlanDispatch:"ENFORCED",
     paperEvidenceAuthorization:"ENFORCED",
     runtimeBehaviorDiagnostic:"ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,

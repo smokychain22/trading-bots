@@ -103,6 +103,12 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
     plan: {
       contractVersion: masterPaperActionPlanVersion,
       actionPlanId,
+      decisionAuthority: 'NEW_RISK',
+      managementInputSnapshotId: null,
+      managementActionFrontierId: null,
+      actionGroupId: actionPlanId,
+      legSequence: 1,
+      dependsOnActionPlanId: null,
       executionAccountId: input.executionAccountId,
       decisionId: input.decisionId,
       candidateId: input.persistedCandidateId,

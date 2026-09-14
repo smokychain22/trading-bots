@@ -26,6 +26,7 @@ import { PostgresPaperOrderStore } from '../execution/postgres-paper-order-store
 import { PaperOrderCoordinator } from '../execution/paper-order-coordinator.js';
 import { MasterPaperExecutionOrchestrator } from '../execution/master-paper-execution-orchestrator.js';
 import { MasterPaperActionHandoff, classifyMasterPaperActionExecution } from '../execution/master-paper-action-handoff.js';
+import { assembleManagementPaperPlans } from '../execution/management-paper-plan-assembly.js';
 import { AlpacaProviderError } from './alpaca-provider.js';
 import { OptionomicsProviderError } from './optionomics-provider.js';
 
@@ -60,6 +61,7 @@ interface MasterRuntimeContext {
   readonly connectionId: string;
   readonly providerAccountRef: string;
   readonly executionAccountId: string | null;
+  readonly optionsCapabilityVerified: boolean;
   readonly broker: ReadOnlyPaperBroker;
   readonly executionBroker: PaperBrokerAdapter;
   readonly alpaca: AlpacaProviderConfig;
@@ -143,7 +145,7 @@ export class PostgresRuntimeCycleStore {
     );
     if (connection.rowCount !== 1) throw new Error('MASTER_CONNECTION_ROLE_INVALID');
     const execution = await this.pool.query(
-      `SELECT execution_account_id FROM trade.execution_account
+      `SELECT execution_account_id,account_ready,options_approved_level,options_trading_level FROM trade.execution_account
        WHERE provider_account_ref_hash=$1 AND environment='PAPER'`,
       [accountHash(resolved.providerAccountRef)],
     );
@@ -152,6 +154,9 @@ export class PostgresRuntimeCycleStore {
       connectionId: String(connection.rows[0].follower_account_id),
       providerAccountRef: resolved.providerAccountRef,
       executionAccountId: execution.rows[0]?.execution_account_id == null ? null : String(execution.rows[0].execution_account_id),
+      optionsCapabilityVerified: execution.rows[0]?.account_ready===true
+        && Number(execution.rows[0]?.options_approved_level??0)>0
+        && Number(execution.rows[0]?.options_trading_level??0)>0,
       broker: asReadOnlyPaperBroker(executionBroker),executionBroker,
       alpaca: { tradingApiBase:PAPER_HOST,marketDataApiBase:'https://data.alpaca.markets',
         apiKey:resolved.authentication.apiKey,apiSecret:resolved.authentication.apiSecret },
@@ -291,7 +296,28 @@ export async function runAutonomousRuntimeCycle(
         );
         if (states.length === 0) return skipped('NO_OPEN_THETA_CHAINS');
         const frontiers = states.map(buildManagementActionFrontier);
-        await managementStore.persistFrontiers(states, frontiers);
+        const persistedFrontiers=await managementStore.persistFrontiers(states, frontiers);
+        const actionPlanStore=new PostgresMasterPaperActionPlanStore(pool);
+        for(let index=0;index<states.length;index+=1){
+          const state=states[index],persisted=persistedFrontiers[index];
+          if(state===undefined||persisted===undefined)throw new Error('MANAGEMENT_PERSISTENCE_ALIGNMENT_FAILED');
+          const versions=state.context.strategyVersions;
+          const strategyVersion=versions!==null&&typeof versions==='object'&&!Array.isArray(versions)
+            ? (['strategyVersion','strategy_version','strategy'].map((key)=>(versions as Record<string,unknown>)[key])
+              .find((value)=>typeof value==='string'&&value.trim()) as string|undefined)??null:null;
+          const rawAegis=state.context.aegisState;
+          const aegisState=typeof rawAegis==='string'&&['ALLOW_FULL','ALLOW_REDUCED','HOLD_ONLY','HARD_VETO'].includes(rawAegis)
+            ? rawAegis as 'ALLOW_FULL'|'ALLOW_REDUCED'|'HOLD_ONLY'|'HARD_VETO':null;
+          const assembly=assembleManagementPaperPlans({state,frontier:persisted.frontier,
+            managementActionFrontierId:persisted.managementActionFrontierId,
+            executionAccountId:master.executionAccountId,strategyVersion,accountStatus:reconciliation.accountStatus,
+            optionsCapabilityVerified:master.optionsCapabilityVerified,aegisState,
+            killSwitchActive:environment.PAPER_PAUSE_NEW_ORDERS||!environment.MASTER_PAPER_EXECUTION_ENABLED,
+            paperEvidenceRiskCap:environment.PAPER_EVIDENCE_RISK_CAP,executionLegs:[],
+            now:reconciliation.observedAt,decisionExpiresAt:new Date(Date.parse(reconciliation.observedAt)+30_000).toISOString()});
+          if(assembly.state==='READY')await actionPlanStore.publishManagementPlans(assembly.decision,assembly.plans,reconciliation.observedAt);
+          if(assembly.state==='BLOCKED')return degraded(assembly.blockers[0]??'MANAGEMENT_ACTION_PLAN_BLOCKED',retryAt);
+        }
         if (states.some((state) => state.hardBlockers.length > 0)) {
           return degraded('MANAGEMENT_HARD_BLOCKERS_PRESENT', retryAt);
         }
@@ -305,7 +331,20 @@ export async function runAutonomousRuntimeCycle(
         return lifecycle.unresolved>0||fills.unresolved>0 ? degraded('BROKER_LIFECYCLE_FACTS_UNRESOLVED',retryAt) : succeeded();
       }
       if (jobType === 'PENDING_ORDER_MANAGEMENT') {
-        return reconciliation === null ? degraded('BROKER_RECONCILIATION_REQUIRED', retryAt) : succeeded();
+        if(reconciliation===null)return degraded('BROKER_RECONCILIATION_REQUIRED',retryAt);
+        if(master.executionAccountId===null)return skipped('MASTER_EXECUTION_ACCOUNT_NOT_CREATED');
+        const store=new PostgresPaperOrderStore(pool,master.executionAccountId);
+        const coordinator=new PaperOrderCoordinator(master.executionBroker,store,{
+          masterEnabled:environment.MASTER_PAPER_EXECUTION_ENABLED,followerEnabled:false,
+          pauseNewOrders:environment.PAPER_PAUSE_NEW_ORDERS});
+        const recovered=await coordinator.recoverAfterRestart();
+        if(recovered.some((item)=>!item.resolved))return degraded('AMBIGUOUS_ORDER_REQUIRES_READ_ONLY_RECONCILIATION',retryAt);
+        const active=await store.activeIntents();
+        for(const intent of active){
+          const brokerOrder=await coordinator.reconcileIntent(intent.orderIntentId);
+          if(brokerOrder===null)return degraded('LOCAL_ORDER_MISSING_AT_BROKER',retryAt);
+        }
+        return succeeded();
       }
       if (jobType === 'WAIT_RECHECK') {
         const pending=await cycleStore.pendingNearMisses();

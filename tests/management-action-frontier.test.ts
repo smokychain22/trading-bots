@@ -13,7 +13,8 @@ test('prospective close and stock sale never present marked PnL as certain proce
 });
 
 const state = (lifecycleState: string) => assembleManagementInput({
-  chain_id: 'chain', lifecycle_state: lifecycleState, underlying: 'AAPL', option_leg_id: 'leg', quantity: '1',
+  chain_id: 'chain', lifecycle_state: lifecycleState, underlying_id:'underlying', underlying: 'AAPL',
+  option_leg_id: 'leg', option_contract_id:'contract', quantity: '1',
   entry_credit_debit: '200', contract_symbol: 'AAPL261016P00200000', option_type: 'PUT', strike: '200',
   expiration_date: '2026-10-16', multiplier: '100', bid: '1', ask: '1.1', quote_as_of: '2026-09-12T14:00:00.000Z',
   feed: 'OPRA', quote_quality: 'GOOD', realized_option_pnl: '0', open_stock_shares: lifecycleState === 'RECOVERY_WAIT' ? '100' : '0',

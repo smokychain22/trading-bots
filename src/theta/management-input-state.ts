@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import type { ThetaLifecycleState } from './runtime-state.js';
 import type { ManagementActionFrontier } from './management-action-frontier.js';
 
-export const managementInputVersion = 'theta-management-input-v1' as const;
+export const managementInputVersion = 'theta-management-input-v2' as const;
 
 export interface ManagementInputState {
   readonly contractVersion: typeof managementInputVersion;
@@ -14,8 +14,10 @@ export interface ManagementInputState {
   readonly observedAt: string;
   readonly lifecycleState: ThetaLifecycleState;
   readonly underlying: string;
+  readonly underlyingId: string;
   readonly contract: {
     readonly optionLegId: string | null;
+    readonly optionContractId: string | null;
     readonly symbol: string | null;
     readonly optionType: 'PUT' | 'CALL' | null;
     readonly strike: number | null;
@@ -108,6 +110,12 @@ export interface ManagementInputChange {
   readonly path: string;
   readonly before: unknown;
   readonly after: unknown;
+}
+
+export interface PersistedManagementFrontier {
+  readonly managementActionFrontierId: string;
+  readonly managementInputSnapshotId: string;
+  readonly frontier: ManagementActionFrontier;
 }
 
 const ignoredChangePaths = new Set([
@@ -221,7 +229,8 @@ export function assembleManagementInput(row: Row, input: {
     reconciliationSnapshotId: input.reconciliationSnapshotId,
     fusionSnapshotId: text(row.fusion_snapshot_id), chainId: String(row.chain_id), observedAt: input.observedAt,
     lifecycleState: String(row.lifecycle_state) as ThetaLifecycleState, underlying: String(row.underlying),
-    contract: { optionLegId: text(row.option_leg_id), symbol: contractSymbol,
+    underlyingId: String(row.underlying_id),
+    contract: { optionLegId: text(row.option_leg_id), optionContractId: text(row.option_contract_id), symbol: contractSymbol,
       optionType: text(row.option_type) as 'PUT' | 'CALL' | null, strike, expiration, multiplier, contracts },
     economics: { entryCreditDebit, realizedOptionPnl, unrealizedOptionPnl: hasOpenOption ? optionMark : 0,
       openStockShares: stockShares, stockBasisPerShare: stockBasis, stockMarkPerShare: stockMark,
@@ -259,8 +268,8 @@ export class PostgresManagementInputStore {
 
   async assembleAndPersistOpenChains(connectionId: string, reconciliationSnapshotId: string, observedAt: string): Promise<readonly ManagementInputState[]> {
     const result = await this.pool.query(`
-      SELECT ec.chain_id,ec.lifecycle_state,u.symbol AS underlying,
-        ol.option_leg_id,ol.quantity,ol.entry_credit_debit,oc.contract_symbol,oc.option_type,
+      SELECT ec.chain_id,ec.lifecycle_state,u.underlying_id,u.symbol AS underlying,
+        ol.option_leg_id,ol.quantity,ol.entry_credit_debit,oc.option_contract_id,oc.contract_symbol,oc.option_type,
         oc.strike,oc.expiration_date,oc.multiplier,
         oq.bid,oq.ask,oq.as_of AS quote_as_of,oq.feed,oq.quality AS quote_quality,
         totals.realized_option_pnl,stocks.open_stock_shares,stocks.stock_basis_per_share,
@@ -347,9 +356,10 @@ export class PostgresManagementInputStore {
     return states;
   }
 
-  async persistFrontiers(states: readonly ManagementInputState[], frontiers: readonly ManagementActionFrontier[]): Promise<void> {
+  async persistFrontiers(states: readonly ManagementInputState[], frontiers: readonly ManagementActionFrontier[]): Promise<readonly PersistedManagementFrontier[]> {
     if (states.length !== frontiers.length) throw new Error('MANAGEMENT_FRONTIER_INPUT_COUNT_MISMATCH');
     const client = await this.pool.connect();
+    const persisted: PersistedManagementFrontier[] = [];
     try {
       await client.query('BEGIN');
       for (let index = 0; index < states.length; index += 1) {
@@ -359,6 +369,7 @@ export class PostgresManagementInputStore {
           throw new Error('MANAGEMENT_FRONTIER_CHAIN_MISMATCH');
         }
         const payload = canonicalJson(frontier);
+        const contentHash=createHash('sha256').update(payload).digest('hex');
         await client.query(
           `INSERT INTO trade.management_action_frontier(
             management_action_frontier_id,management_input_snapshot_id,chain_id,observed_at,lifecycle_state,
@@ -368,13 +379,19 @@ export class PostgresManagementInputStore {
           [randomUUID(),state.managementInputSnapshotId,state.chainId,state.observedAt,state.lifecycleState,
             frontier.economicModelState,JSON.stringify(frontier.actions),frontier.selectedAction,
             frontier.secondBestAction,frontier.decisionState,JSON.stringify(frontier.reasonCodes),
-            createHash('sha256').update(payload).digest('hex')],
+            contentHash],
         );
+        const stored=await client.query(`SELECT management_action_frontier_id FROM trade.management_action_frontier
+          WHERE management_input_snapshot_id=$1 AND content_hash=$2`,[state.managementInputSnapshotId,contentHash]);
+        const id=stored.rows[0]?.management_action_frontier_id as string|undefined;
+        if(id===undefined)throw new Error('MANAGEMENT_FRONTIER_PERSISTENCE_FAILED');
+        persisted.push({managementActionFrontierId:id,managementInputSnapshotId:state.managementInputSnapshotId,frontier});
       }
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
     } finally { client.release(); }
+    return persisted;
   }
 }

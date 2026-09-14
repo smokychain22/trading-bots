@@ -3,7 +3,8 @@ import test from 'node:test';
 import { assembleManagementInput, diffManagementInputs } from '../src/theta/management-input-state.js';
 
 const base = {
-  chain_id: 'chain-1', lifecycle_state: 'CSP_OPEN', underlying: 'AAPL', option_leg_id: 'leg-1', quantity: '1',
+  chain_id: 'chain-1', lifecycle_state: 'CSP_OPEN', underlying_id:'underlying-1', underlying: 'AAPL',
+  option_leg_id: 'leg-1', option_contract_id:'contract-1', quantity: '1',
   entry_credit_debit: '200', contract_symbol: 'AAPL261016P00200000', option_type: 'PUT', strike: '200',
   expiration_date: '2026-10-16', multiplier: '100', bid: '1.00', ask: '1.10',
   quote_as_of: '2026-09-12T14:00:00.000Z', feed: 'OPRA', quote_quality: 'GOOD', realized_option_pnl: '-50',
@@ -23,6 +24,8 @@ test('management assembly uses executable ask for a short option and preserves w
   assert.equal(state.economics.realizedOptionPnl, -50);
   assert.ok(state.economics.wholeChainPnl !== null && Math.abs(state.economics.wholeChainPnl - 38) < 1e-9);
   assert.equal(state.market.moneyness, null);
+  assert.equal(state.underlyingId,'underlying-1');
+  assert.equal(state.contract.optionContractId,'contract-1');
   assert.equal(state.economicModelState, 'EV_MODEL_NOT_EMPIRICALLY_READY');
 });
 

@@ -1,6 +1,6 @@
 # THETA system completion matrix
 
-As of 2026-09-14. This is an implementation audit, not a profitability claim.
+As of 2026-09-15. This is an implementation audit, not a profitability claim.
 `COMPLETE` means the named path is wired and tested. It does not mean the
 strategy has empirical edge. `BLOCKED_EXTERNAL` identifies proof that cannot be
 created inside the repository.
@@ -46,12 +46,12 @@ developer requests returned HTTP 401. Indicative quotes remain research-only.
 | Candidate and WAIT evidence | COMPLETE for THETA-Q, PARTIAL cross-branch | Full THETA-Q candidate set, frontier, rejection and WAIT evidence persisted | Multi-leg and non-THETA-Q candidates need normalized relational persistence |
 | WAIT-paralysis and overtrading diagnostics | COMPLETE | Every completed Production scan persists causal WAIT class, funnel counts, consecutive WAITs, last broker-action age, near misses, AEGIS/quantity blocks and action-plan multiplicity. The operator API exposes the latest sanitized record | Outcome-based false-reject rates and calibrated activity limits require resolved episodes |
 | Canonical decision | COMPLETE | One versioned cross-branch authority is stored with receipt | Research-only structural winners intentionally cannot execute |
-| Decision to action-plan handoff | COMPLETE for OPEN_CSP | Canonical persisted selection now creates a bounded durable Paper plan | Close, roll, assignment recovery and CC plan assemblers remain |
+| Decision to action-plan handoff | COMPLETE engineering | New-risk and management authorities publish distinct typed plans. Close, stock exit, CC entry/close, and two-leg CSP/CC rolls are mapped. Roll-open remains blocked until the close intent is broker-confirmed FILLED | Current management policy selects passive HOLD because empirical action EV is unknown. Exact active-action directives still require validated policy output |
 | Action-plan restart safety | COMPLETE | Claimed plans lease, retry, quarantine, and expire durably | None known |
 | Execution quote | BLOCKED_EXTERNAL | Alpaca OPRA and Optionomics qualified two-sided paths are implemented | OPRA entitlement or successful Optionomics auth and quote proof |
 | Paper order intent | COMPLETE but externally gated | Durable intent precedes broker mutation, deterministic idempotency | No real submission until quote gate passes |
 | Partial fills and ambiguous submission | COMPLETE | Partial state is preserved and ambiguous submission reconciles before retry | Needs real Paper evidence |
-| CSP and CC rolls | COMPLETE mechanics | Close-old and open-new are distinct, open quantity cannot exceed confirmed close | Management decision dispatch remains incomplete |
+| CSP and CC rolls | COMPLETE engineering | Close-old and open-new are distinct durable plans. The open leg depends on the close plan's linked order intent reaching broker-confirmed FILLED, and its quantity cannot exceed the confirmed close plan | Needs real Paper lifecycle evidence after execution qualification |
 | Assignment, expiry, call-away | COMPLETE classifier/writer | Exact broker evidence and position deltas required | Needs real Paper lifecycle evidence |
 | Whole-chain accounting | COMPLETE mechanics | Multiplier-correct immutable realized loss and stock/option lineage | Needs resolved real Paper episodes |
 | Copy planning | COMPLETE, submission locked | Master-fill-first follower-specific planning and skip evidence exist | R3/R4 follower submission intentionally deferred |
@@ -81,7 +81,7 @@ developer requests returned HTTP 401. Indicative quotes remain research-only.
 | Phase | State | Evidence required to close |
 |---|---|---|
 | R1 provider and broker truth | PARTIAL | Optionomics Production authentication and quote semantics |
-| R2 lifecycle, persistence and accounting | PARTIAL | Real Paper lifecycle observations and management dispatch |
+| R2 lifecycle, persistence and accounting | PARTIAL | Real Paper lifecycle observations and empirically validated active management decisions |
 | R3 follower account foundation | COMPLETE engineering | Real multi-tenant beta validation |
 | R4 follower copy execution | LOCKED | Master strategy proof and explicit later activation |
 | R5 customer product | FUNCTIONAL, not current bottleneck | Real evidence must replace unavailable metrics over time |
