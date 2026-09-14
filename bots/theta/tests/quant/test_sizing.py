@@ -18,6 +18,9 @@ def _policy(**overrides) -> SizingPolicy:
         collateral_qty_cap=10,
         concentration_qty_cap=10,
         assignment_capacity_qty_cap=10,
+        tail_risk_qty_cap=10,
+        correlation_qty_cap=10,
+        liquidity_qty_cap=10,
         reduced_state_multiplier=0.5,
     )
     defaults.update(overrides)
@@ -114,15 +117,14 @@ class CapConsistencyTests(unittest.TestCase):
 
 class MonotonicityInvariantTests(unittest.TestCase):
     """R6E item 12: Qty = min(collateral_capacity, assignment_capacity,
-    expected_shortfall_capacity, concentration_capacity, portfolio_stress_
-    capacity) must never let TIGHTENING any one of those capacities
-    INCREASE the resulting quantity, and zero capacity on any dimension
-    must zero the whole quantity. `risk_budget_qty_cap` is the existing
-    stand-in for the tail-risk/ES/portfolio-stress capacity in the current
-    `sizing.py` implementation -- there is no separate named field for
-    each of those three yet, so this test exercises the cap that exists
-    today; a future session that splits them into distinct fields must
-    re-verify this same monotonicity property per field."""
+    tail_risk_capacity, concentration_capacity, correlation_capacity,
+    liquidity_capacity) must never let TIGHTENING any one of those
+    capacities INCREASE the resulting quantity, and zero capacity on any
+    dimension must zero the whole quantity. Tail risk, correlation, and
+    liquidity became distinct named fields (ported from Codex's own
+    `SizingPolicy` extension, canonical main `dcdc011`) -- this class now
+    verifies the property per field, closing the gap the previous
+    docstring flagged as future work."""
 
     def test_tightening_the_risk_budget_cap_never_increases_quantity(self):
         loose = compute_sizing(_policy(risk_budget_qty_cap=8), _inputs())
@@ -139,6 +141,21 @@ class MonotonicityInvariantTests(unittest.TestCase):
         tight = compute_sizing(_policy(assignment_capacity_qty_cap=1), _inputs())
         self.assertLessEqual(tight.quantity, loose.quantity)
 
+    def test_tightening_the_tail_risk_cap_never_increases_quantity(self):
+        loose = compute_sizing(_policy(tail_risk_qty_cap=8), _inputs())
+        tight = compute_sizing(_policy(tail_risk_qty_cap=1), _inputs())
+        self.assertLessEqual(tight.quantity, loose.quantity)
+
+    def test_tightening_the_correlation_cap_never_increases_quantity(self):
+        loose = compute_sizing(_policy(correlation_qty_cap=8), _inputs())
+        tight = compute_sizing(_policy(correlation_qty_cap=1), _inputs())
+        self.assertLessEqual(tight.quantity, loose.quantity)
+
+    def test_tightening_the_liquidity_cap_never_increases_quantity(self):
+        loose = compute_sizing(_policy(liquidity_qty_cap=8), _inputs())
+        tight = compute_sizing(_policy(liquidity_qty_cap=1), _inputs())
+        self.assertLessEqual(tight.quantity, loose.quantity)
+
     def test_zero_risk_budget_capacity_zeros_the_quantity(self):
         result = compute_sizing(_policy(risk_budget_qty_cap=0), _inputs())
         self.assertEqual(result.quantity, 0)
@@ -149,6 +166,18 @@ class MonotonicityInvariantTests(unittest.TestCase):
 
     def test_zero_assignment_capacity_zeros_the_quantity(self):
         result = compute_sizing(_policy(assignment_capacity_qty_cap=0), _inputs())
+        self.assertEqual(result.quantity, 0)
+
+    def test_zero_tail_risk_capacity_zeros_the_quantity(self):
+        result = compute_sizing(_policy(tail_risk_qty_cap=0), _inputs())
+        self.assertEqual(result.quantity, 0)
+
+    def test_zero_correlation_capacity_zeros_the_quantity(self):
+        result = compute_sizing(_policy(correlation_qty_cap=0), _inputs())
+        self.assertEqual(result.quantity, 0)
+
+    def test_zero_liquidity_capacity_zeros_the_quantity(self):
+        result = compute_sizing(_policy(liquidity_qty_cap=0), _inputs())
         self.assertEqual(result.quantity, 0)
 
     def test_unknown_multiplier_makes_required_collateral_unknown_and_sizing_non_executable(self):

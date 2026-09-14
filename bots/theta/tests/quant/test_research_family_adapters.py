@@ -157,5 +157,40 @@ class RunAllFamilyAdaptersTests(unittest.TestCase):
             self.assertIn(result.state, (AdapterState.NOT_APPLICABLE, AdapterState.INSUFFICIENT_DATA))
 
 
+class ConfirmedFieldMapTests(unittest.TestCase):
+    """Codex's docs/HANDOFF.md (2026-09-14) answered this branch's prior
+    RESEARCH_HANDOFF directly: contract.strike/expiration/optionType/dte/
+    moneyness, market.bid/ask/stockPrice/dataQuality, volatility.iv are
+    confirmed. Forward log-moneyness is explicitly NOT available and must
+    not be substituted with simple moneyness -- these tests enforce
+    exactly that discipline structurally, not just by comment."""
+
+    def test_confirmed_map_leaves_log_moneyness_deliberately_unset(self):
+        from research.research_family_adapters import CONFIRMED_CANDIDATE_FIELD_MAP
+        self.assertIsNone(CONFIRMED_CANDIDATE_FIELD_MAP.log_moneyness_key)
+        self.assertEqual(CONFIRMED_CANDIDATE_FIELD_MAP.simple_moneyness_key, "moneyness")
+
+    def test_surface_adapter_is_not_applicable_under_the_confirmed_map(self):
+        from research.research_family_adapters import CONFIRMED_CANDIDATE_FIELD_MAP
+        candidates = [_candidate("c1", {"strike": 100.0, "expiration": "2026-10-17", "dte": 30, "moneyness": 1.0}, {}, {"iv": 0.25})]
+        result = run_surface_adapter(candidates, "2026-10-17", CONFIRMED_CANDIDATE_FIELD_MAP, min_strike_count=1, m_grid=_M_GRID, sigma_grid=_SIGMA_GRID)
+        self.assertEqual(result.state, AdapterState.NOT_APPLICABLE)
+        self.assertIn("log_moneyness_key", result.blocker)
+
+    def test_confirmed_keys_correctly_extract_known_and_zero_and_missing_and_invalid_values(self):
+        # KNOWN (including a legitimate 0.0), UNKNOWN (missing key), and
+        # INVALID (wrong type) must all round-trip correctly through the
+        # confirmed nested blob structure -- the exact check this run's
+        # directive named ("KNOWN, UNKNOWN, INVALID, 0.0 values").
+        strike_field_map = FeatureFieldMap(strike_key="strike", dte_key="dte")
+        known_zero = _candidate("c1", {"strike": 0.0, "dte": 30}, {}, {})
+        missing = _candidate("c2", {"dte": 30}, {}, {})
+        wrong_type = _candidate("c3", {"strike": "not-a-number", "dte": 30}, {}, {})
+        from research.research_family_adapters import _as_float, _get
+        self.assertEqual(_as_float(_get(known_zero.contract, strike_field_map.strike_key)), 0.0)
+        self.assertIsNone(_as_float(_get(missing.contract, strike_field_map.strike_key)))
+        self.assertIsNone(_as_float(_get(wrong_type.contract, strike_field_map.strike_key)))
+
+
 if __name__ == "__main__":
     unittest.main()

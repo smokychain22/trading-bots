@@ -73,12 +73,41 @@ class FeatureFieldMap:
     expiration_key: Optional[str] = None
     option_type_key: Optional[str] = None
     log_moneyness_key: Optional[str] = None
+    simple_moneyness_key: Optional[str] = None  # a DIFFERENT quantity from log_moneyness_key -- see CONFIRMED_CANDIDATE_FIELD_MAP
     implied_volatility_key: Optional[str] = None
     bid_key: Optional[str] = None
     ask_key: Optional[str] = None
     quote_quality_key: Optional[str] = None
     underlying_price_key: Optional[str] = None
     dte_key: Optional[str] = None
+
+
+#: The confirmed Production candidate-export field map, per Codex's own
+#: `docs/research/THETA_PRODUCTION_RESEARCH_EXPORT_CONTRACT.md` and its
+#: `docs/HANDOFF.md` (2026-09-14, "R7 final internal engineering
+#: closure") direct answer to this branch's prior `RESEARCH_HANDOFF`:
+#: "the exact Production candidate-export keys are contract.strike,
+#: contract.expiration, contract.optionType, contract.dte, contract.
+#: moneyness, market.bid, market.ask, market.stockPrice, market.
+#: dataQuality, and volatility.iv."
+#:
+#: `log_moneyness_key` is DELIBERATELY left unset: Codex's own contract
+#: doc states "moneyness must not be treated as ln(K/F)... forward
+#: log-moneyness remains unavailable until a defensible point-in-time
+#: forward is persisted." Substituting `contract.moneyness` (simple
+#: moneyness) for true forward log-moneyness would be exactly the kind
+#: of silent field substitution this repository's own discipline
+#: forbids -- so `run_surface_adapter`/`run_term_adapter` correctly stay
+#: `NOT_APPLICABLE` under this map until Codex exports a real forward.
+#: `simple_moneyness_key` carries the confirmed field separately so a
+#: future, EXPLICITLY simple-moneyness-based research path (never fed
+#: into the SVI/log-moneyness-based modules) can use it honestly.
+CONFIRMED_CANDIDATE_FIELD_MAP = FeatureFieldMap(
+    strike_key="strike", expiration_key="expiration", option_type_key="optionType",
+    log_moneyness_key=None, simple_moneyness_key="moneyness",
+    implied_volatility_key="iv", bid_key="bid", ask_key="ask",
+    quote_quality_key="dataQuality", underlying_price_key="stockPrice", dte_key="dte",
+)
 
 
 def _get(blob: Dict[str, Any], key: Optional[str]) -> Optional[Any]:

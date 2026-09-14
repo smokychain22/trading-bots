@@ -79,7 +79,9 @@ from research.quant_explanation_contracts import validate_no_uncalibrated_confid
 
 def _sizing_policy(**overrides):
     defaults = dict(policy_version="DNA-1", risk_budget_qty_cap=5, collateral_qty_cap=10,
-                     concentration_qty_cap=10, assignment_capacity_qty_cap=10, reduced_state_multiplier=0.5)
+                     concentration_qty_cap=10, assignment_capacity_qty_cap=10,
+                     tail_risk_qty_cap=10, correlation_qty_cap=10, liquidity_qty_cap=10,
+                     reduced_state_multiplier=0.5)
     defaults.update(overrides)
     return SizingPolicy(**defaults)
 

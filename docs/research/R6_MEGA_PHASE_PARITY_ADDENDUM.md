@@ -1023,3 +1023,73 @@ per-underlying mapping above is now resolved and does not need re-asking).
 
 **1057 Python tests pass** (+12). Security scan: 0 findings.
 **`REQUIRED_CODEX_CHANGE` count for this run: 0.**
+
+## Codex R7 delta review: `1a00fa9..dcdc011` (canonical five-branch frontier + FeatureFieldMap resolution)
+
+Three commits: "complete canonical strategy frontiers" (migration 031,
+`canonical-strategy-frontier.ts`, sizing extension), "preserve legacy
+cycle replay", "close R7 decision authority" (migration 032, export
+contract finalization).
+
+### RESEARCH_HANDOFF resolved: Codex answered directly
+
+Prior run's narrow handoff ("confirm the internal key names inside
+`Candidate.contract`/`market`/`volatility`") was answered explicitly in
+`docs/HANDOFF.md` and formalized in the new
+`docs/research/THETA_PRODUCTION_RESEARCH_EXPORT_CONTRACT.md`:
+`contract.strike`, `contract.expiration`, `contract.optionType`,
+`contract.dte`, `contract.moneyness`, `market.bid`, `market.ask`,
+`market.stockPrice`, `market.dataQuality`, `volatility.iv` are confirmed
+stable keys. Critically, Codex's own doc states: **"`moneyness` must not
+be treated as `ln(K/F)`. Forward log-moneyness remains unavailable until
+a defensible point-in-time forward is persisted."**
+
+Added `CONFIRMED_CANDIDATE_FIELD_MAP` to `research_family_adapters.py`
+using exactly these keys, with `log_moneyness_key` DELIBERATELY left
+`None` and a new, separate `simple_moneyness_key="moneyness"` field on
+`FeatureFieldMap` so the two quantities can never be conflated. This
+means `run_surface_adapter`/`run_term_adapter` correctly stay `NOT_
+APPLICABLE` under the confirmed map today (no forward exists yet) --
+exactly the discipline Codex's own instruction demands, enforced
+structurally (a test asserts this), not merely documented. 3 new tests,
+including a KNOWN/UNKNOWN/INVALID/0.0 round-trip through the confirmed
+nested-blob structure.
+
+### Strategy isolation / GLOBAL_WAIT: verified correct by reading the algorithm, not the prose
+
+`canonical-strategy-frontier.ts::buildCanonicalStrategyFrontier` builds
+each of the five branches independently (`buildBranch(branch, input)`,
+each with its own `hardBlockers`/`applicable`/`evaluationState`), then
+merges only the resulting CANDIDATES (not the gating) into one globally-
+ranked list for cross-branch selection. `globalWaitEarned` requires
+`blockedApplicable.length === 0` -- i.e. GLOBAL_WAIT can only be claimed
+when EVERY applicable branch was actually evaluated (not silently
+skipped for missing input) AND no branch produced a sized, feasible
+candidate. A branch blocked by missing data produces `BRANCH_NOT_
+FULLY_EVALUATED:{branch}` in `globalWaitReasons` instead -- WAIT is never
+silently earned on incomplete evaluation. **NO_CHANGE_REQUIRED** --
+this is exactly the "GLOBAL_WAIT must be earned" discipline prior
+directives asked for, already correctly implemented.
+
+### Sizing parity restored (Codex-initiated divergence, closed)
+
+Codex extended the SHARED `models/sizing.py`/`runtime/sizing_contract.py`
+(present on both branches) with `tail_risk_qty_cap`/`correlation_qty_cap`/
+`liquidity_qty_cap` -- completing the long-standing `Qty = min(collateral,
+tail/ES, concentration, assignment, correlation, liquidity, broker)`
+formula. This branch's copy had silently gone stale. Ported the identical
+three fields (same names, same wiring into `compute_sizing`'s `caps`
+dict and `sizing_contract.py`'s JSON loader) and extended the existing
+per-field monotonicity/zero-caps-to-zero-quantity test matrix to cover
+all three new dimensions, matching Codex's own test additions exactly.
+
+**1066 Python tests pass** (+9: 3 confirmed-field-map tests + 6 sizing
+monotonicity/zero-cap tests for the three new dimensions). Security
+scan: 0 findings.
+
+**No MASTER Paper activation evidence in this delta** -- Codex's own
+handoff still reports zero broker orders, execution gate locked,
+`READY_FOR_FIRST_PAPER_ORDER` not yet claimed true. `DATASET_ABSENT`
+still stands; no `research_exports/` artifact exists.
+
+**`REQUIRED_CODEX_CHANGE` count for this run: 0.**
