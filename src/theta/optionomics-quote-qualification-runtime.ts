@@ -17,7 +17,7 @@ export async function runOptionomicsQuoteQualification(environment: Environment,
     for (const symbol of symbols) {
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const requestedAt = new Date().toISOString();
-        const result = await fetchOptionomicsOptionChain(optionomics, symbol, { limit: 250 });
+        const result = await fetchOptionomicsOptionChain(optionomics, symbol);
         samples.push(result.kind === 'VALUE_PRESENT'
           ? { symbol, requestedAt, chain: result.value, failureCode: null }
           : { symbol, requestedAt, chain: null, failureCode: result.kind === 'REQUEST_ERROR' ? result.errorClass : 'UNRECOGNIZED_RESPONSE' });

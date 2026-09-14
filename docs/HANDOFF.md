@@ -1,5 +1,40 @@
 # Codex handoff: standalone platform Phase 1
 
+## 2026-09-14: professional reference pack and Optionomics contract hardening
+
+OWNER: Codex.
+
+TASK: Verify the owner's 12-repository professional reference pack at exact
+SHAs, extract file-level methods, and deepen the Optionomics observation and
+feature contracts without changing execution authority.
+
+FILES CHANGED: Professional reference pack, Optionomics census/data map and
+research ledger, Optionomics adapter/feature routing/persistence, migration 029,
+database verification, tests, decisions and handoff.
+
+WHAT WAS IMPLEMENTED: Current default branches, SHAs, licenses, source, tests
+and implementation symbols were verified for all 12 repositories. Documented
+Optionomics chain requests now send only `date`. Raw observations add request
+timing, safe parameters, HTTP status, rate-limit metadata, documentation/version,
+session date and a one-way credential identity reference. Feature v2 adds
+transparent quote and CSP structural economics. Strategy destinations use typed
+feature-family allowlists. Authenticated readiness covers every safe, current,
+documented GET route sequentially.
+
+TESTS RUN: Full Node, Python, TypeScript, ESLint, build, security, PostgreSQL
+migration/invariants and CI before release.
+
+KNOWN LIMITATIONS: Full authenticated schemas, units, historical availability
+time, flow print detail, event coverage, fitted surface research and model
+cross-checks remain partial until verified. Optionomics remains research-only
+for quotes and empirical EV remains unready.
+
+RISKS: Public docs and entitlements can change. A documented route can return an
+empty array or lack a feature, so reachability never implies useful data.
+
+NEXT RECOMMENDED TASK: Use persisted census results to implement only the
+verified missing normalizers, then collect PIT evidence for R6 ablations.
+
 ## 2026-09-14: R7 execution-price and TCA vertical slice
 
 OWNER: Codex.

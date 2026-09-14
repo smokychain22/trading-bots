@@ -1,6 +1,10 @@
 # THETA Optionomics Data Map
 
-Status date: 2026-09-13
+Status date: 2026-09-14
+
+The file-level capability census and exact implementation receipt are in
+`THETA_OPTIONOMICS_CAPABILITY_CENSUS_2026-09-14.md`. The professional methods
+audit is in `THETA_PROFESSIONAL_REFERENCE_PACK_2026-09-14.md`.
 
 Optionomics is THETA's primary options-intelligence provider. Alpaca remains the
 broker and lifecycle authority. An Optionomics field is usable only when its
@@ -24,9 +28,11 @@ authenticated operation is present in the discovered API contract.
 
 ## Required observation envelope
 
-Every stored observation carries provider, operation alias, request-safe query
-identity, provider timestamp, ingestion timestamp, `as_of`, symbol, contract ID,
-units, schema version, quality state, missing reason, and response-content hash.
+Every stored observation carries provider, operation alias, request time,
+request-safe path and documented parameters, HTTP status, rate-limit metadata,
+provider timestamp, ingestion timestamp, `as_of`, session date, symbol, contract
+ID, units, schema version, quality state, one-way credential identity reference,
+missing reason, and response-content hash.
 Provider bodies and credentials are never written to logs.
 
 ## Missing-data and action rules

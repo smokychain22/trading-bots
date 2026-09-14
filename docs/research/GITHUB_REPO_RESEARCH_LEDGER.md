@@ -1,5 +1,16 @@
 # GitHub repository research ledger
 
+## Professional reference pack refresh, 2026-09-14
+
+The current exact-SHA, file-level audit of LEAN, QuantLib, py_vollib, Strata,
+Optopsy, Optopsy-MCP, the three FlashAlpha repositories, PyFENG, FinancePy and
+pfhedge is recorded in
+[`THETA_PROFESSIONAL_REFERENCE_PACK_2026-09-14.md`](./THETA_PROFESSIONAL_REFERENCE_PACK_2026-09-14.md).
+That pack supersedes older SHA and license statements for those repositories.
+All 12 identities, source trees and tests were verified. No external code was
+copied. AGPL, GPL and no-license blockers are explicit. Production changes are
+independently implemented from provider and finance invariants.
+
 ## Audited pass, 2026-09-11
 
 Baseline: `dc3df23bebd5144d4bc9eed5cd109ffdbfec0dda`. Scope: the owner's named 15 repositories plus QuantLib and LEAN. This is targeted file-level review, not a claim to have read every line of every repository. Complete small modules and selected functions/tests in larger modules were inspected using GitHub's raw-content API at the commits below. No upstream code was executed, no upstream test suite was run, and no repository was installed as a dependency. Test suggestions below are extracted cases, not claims of passing upstream tests.

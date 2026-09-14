@@ -27,16 +27,36 @@ test('builds layered contract features and contract-multiplier-safe structural e
   const result = buildOptionomicsFeatureSnapshot({
     chain: outcome.value, flowWindows: [], stockPrice: 510,
     multiplierByContract: new Map([['SPY261016P00500000', 100]]),
+    skewDeltaTolerance: 0.05,
   });
   assert.equal(result.responseHash.length, 64);
   assert.equal(result.contracts[0]?.structuralEconomics.securedCollateral.value, 50_000);
   assert.equal(result.contracts[0]?.structuralEconomics.grossBidPremiumCash.value, 790);
+  assert.ok(Math.abs((result.contracts[0]?.quote.mid.value ?? 0) - 8) < 1e-12);
+  assert.ok(Math.abs((result.contracts[0]?.quote.relativeSpread.value ?? 0) - 0.025) < 1e-12);
+  assert.ok(Math.abs((result.contracts[0]?.structuralEconomics.downsideCushion.value ?? 0) - (17.9 / 510)) < 1e-12);
+  assert.ok(Math.abs((result.contracts[0]?.structuralEconomics.creditYieldOnCollateral.value ?? 0) - (790 / 50_000)) < 1e-12);
   assert.equal(result.contracts[0]?.liquidity.volume.value, 0);
   assert.equal(result.contracts[0]?.marketStructure.gammaExposure.value, -1200);
   assert.ok(Math.abs((result.skew.value ?? 0) - 0.04) < 1e-12);
   assert.equal(result.termStructure.state, 'KNOWN');
   assert.equal(result.volatilitySurface.state, 'KNOWN');
   assert.equal(result.empiricalEvReady, false);
+});
+
+test('keeps sparse far-from-25-delta skew UNKNOWN unless both legs satisfy the caller policy', async () => {
+  const outcome = await fetchOptionomicsOptionChain(config([
+    { option_type: 'put', delta: -0.05, implied_volatility: 0.4 },
+    { option_type: 'call', delta: 0.70, implied_volatility: 0.2 },
+  ]), 'SPY');
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  const absentPolicy = buildOptionomicsFeatureSnapshot({ chain: outcome.value, flowWindows: [], stockPrice: 500 });
+  assert.equal(absentPolicy.skew.state, 'UNKNOWN');
+  assert.equal(absentPolicy.skew.reason, '25_DELTA_PROXIMITY_TOLERANCE_NOT_CONFIGURED');
+  const boundedPolicy = buildOptionomicsFeatureSnapshot({ chain: outcome.value, flowWindows: [], stockPrice: 500, skewDeltaTolerance: 0.05 });
+  assert.equal(boundedPolicy.skew.state, 'UNKNOWN');
+  assert.equal(boundedPolicy.skew.reason, 'NO_PUT_CALL_PAIR_WITHIN_25_DELTA_TOLERANCE');
 });
 
 test('keeps absent feature families and multiplier-dependent economics UNKNOWN', async () => {

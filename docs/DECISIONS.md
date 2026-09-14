@@ -617,3 +617,19 @@ Global WAIT remains unearned whenever universe, branch, management, recovery, co
 Authenticated Optionomics chain payloads are now retained as immutable raw observations and transformed into a versioned feature snapshot. Contract identity, two-sided recorded quote fields, Greeks, IV, market-structure fields, liquidity, structural economics, skew, term structure, surface points and flow remain separate. Each unavailable value is explicit `UNKNOWN`; zero remains a valid observed value. Multiplier-dependent cash economics are produced only when broker contract metadata supplies the multiplier. `empiricalEvReady` remains false.
 
 Repeated SPY, QQQ and AAPL quote-shape evidence is measured by a separate qualification harness. The harness cannot promote the current documented `SESSION_RECORDED_RESEARCH` semantics. A fresh-looking response remains blocked until authenticated provider documentation and observed timestamps prove order-pricing use. The database also prevents a `READY` qualification row without `ORDER_PRICING_DOCUMENTED` authority.
+
+## 2026-09-14: documented provider requests and method intake are pinned
+
+Optionomics operation requests may include only parameters present in the
+current discovered public contract. The chain adapter previously sent five
+extra filters that weren't in the current documentation. They are removed.
+Filtering happens locally, while the raw observation records the safe request,
+response status, rate-limit metadata, contract version, session date and a
+one-way credential identity reference.
+
+External finance repositories are pinned at exact SHAs and reviewed through
+implementation and test files. They provide method and test references, not
+market data or profitability evidence. AGPL, GPL and no-license code isn't
+copied into Production. Equivalent THETA engines aren't duplicated. Advanced
+pricing, surface and hedging methods remain research challengers until they add
+incremental PIT/OOS value over simple baselines.

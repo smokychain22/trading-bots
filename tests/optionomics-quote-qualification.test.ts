@@ -5,7 +5,12 @@ import type { NormalizedOptionomicsChain } from '../src/theta/optionomics-provid
 
 const NOW = '2026-09-14T15:00:05.000Z';
 const chain = (symbol: string, asOf: string): NormalizedOptionomicsChain => ({
-  underlying: symbol, retrievedAt: NOW, responseHash: 'a'.repeat(64), rawPayload: [], pagesFetched: 1, complete: true,
+  underlying: symbol, requestedAt: NOW, retrievedAt: NOW, httpStatus: 200,
+  requestPath: `/api/v1/stocks/${symbol}/options`, requestParameters: {},
+  rateLimit: { limit: null, remaining: null, reset: null, retryAfter: null },
+  documentationReference: 'https://optionomics.ai/docs/api', contractVersion: 'optionomics-public-api-2026-09-14',
+  credentialIdentityRefHash: 'b'.repeat(64), sessionDate: null,
+  responseHash: 'a'.repeat(64), rawPayload: [], pagesFetched: 1, complete: true,
   entries: [{
     rawSymbol: `${symbol}261016P00500000`, underlying: symbol, expiration: '2026-10-16', optionType: 'PUT', strike: 500,
     price: 2.05, bid: 2, ask: 2.1, bidSize: 10, askSize: 12, dte: 32, openInterest: 100, volume: 10,

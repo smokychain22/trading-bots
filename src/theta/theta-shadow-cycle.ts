@@ -205,8 +205,17 @@ function assembleFusionSnapshotInput(params: {
     ? ({
         rawObservation: params.optionomicsChain === null ? null : {
           responseHash: params.optionomicsChain.responseHash,
+          requestedAt: params.optionomicsChain.requestedAt,
           retrievedAt: params.optionomicsChain.retrievedAt,
           providerTimestamp: optionomicsProviderTimestamp,
+          requestPath: params.optionomicsChain.requestPath,
+          requestParameters: params.optionomicsChain.requestParameters,
+          httpStatus: params.optionomicsChain.httpStatus,
+          rateLimit: params.optionomicsChain.rateLimit,
+          documentationReference: params.optionomicsChain.documentationReference,
+          contractVersion: params.optionomicsChain.contractVersion,
+          credentialIdentityRefHash: params.optionomicsChain.credentialIdentityRefHash,
+          sessionDate: params.optionomicsChain.sessionDate,
           payload: params.optionomicsChain.rawPayload,
         },
         optionChain: params.optionomicsEntries,

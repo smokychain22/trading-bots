@@ -33,6 +33,7 @@ try {
     "026_provider_neutral_execution_lineage",
     "027_paper_active_baseline_and_near_miss",
     "028_optionomics_layered_evidence",
+    "029_optionomics_request_provenance",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -145,6 +146,12 @@ try {
       AND event_object_table='optionomics_quote_qualification_run' AND trigger_name='reject_immutable_mutation') AS immutable_qualification`);
   if(!optionomicsEvidence.rows[0]?.immutable_raw||!optionomicsEvidence.rows[0]?.immutable_features||
     !optionomicsEvidence.rows[0]?.immutable_qualification) throw new Error('OPTIONOMICS_LAYERED_EVIDENCE_PROTECTION_MISSING');
+  const optionomicsProvenance=await client.query(`SELECT count(*)::int AS column_count
+    FROM information_schema.columns WHERE table_schema='market' AND table_name='optionomics_raw_observation'
+      AND column_name IN ('requested_at','request_path','request_parameters_json','http_status','rate_limit_json',
+        'documentation_reference','credential_identity_ref_hash','session_date')`);
+  if(optionomicsProvenance.rows[0]?.column_count!==8)
+    throw new Error('OPTIONOMICS_REQUEST_PROVENANCE_MISSING');
   const intentNullGuard = await client.query(`SELECT
     pg_get_constraintdef(oid) AS definition, convalidated
     FROM pg_constraint WHERE conrelid='trade.order_intent'::regclass

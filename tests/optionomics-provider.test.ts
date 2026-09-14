@@ -59,6 +59,11 @@ test('200 valid response: entries normalize with full Greeks/OI/volume/IV', asyn
   assert.equal(outcome.kind, 'VALUE_PRESENT');
   if (outcome.kind !== 'VALUE_PRESENT') return;
   assert.equal(outcome.value.entries.length, 1);
+  assert.equal(outcome.value.httpStatus, 200);
+  assert.equal(outcome.value.requestPath, '/api/v1/stocks/SPY/options');
+  assert.deepEqual(outcome.value.requestParameters, {});
+  assert.equal(outcome.value.documentationReference, 'https://optionomics.ai/docs/api');
+  assert.equal(outcome.value.credentialIdentityRefHash.length, 64);
   const entry = outcome.value.entries[0];
   assert.equal(entry?.openInterest, 1200);
   assert.equal(entry?.volume, 340);
@@ -73,18 +78,12 @@ test('historical chain fetch uses only documented point-in-time filters', async 
     requested = new URL(String(input));
     return jsonResponse(200, []);
   }) as typeof fetch;
-  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY', {
-    sessionDate: '2025-04-21', expirationDate: '2025-05-16', limit: 250,
-    optionType: 'put', strikeMin: 450, strikeMax: 550,
-  });
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY', { sessionDate: '2025-04-21' });
   assert.equal(outcome.kind, 'VALUE_PRESENT');
-  assert.equal(requested?.pathname, '/api/v1/stocks/SPY/options');
-  assert.equal(requested?.searchParams.get('date'), '2025-04-21');
-  assert.equal(requested?.searchParams.get('expiration_date'), '2025-05-16');
-  assert.equal(requested?.searchParams.get('option_type'), 'put');
-  assert.equal(requested?.searchParams.get('limit'), '250');
-  assert.equal(requested?.searchParams.get('strike_min'), '450');
-  assert.equal(requested?.searchParams.get('strike_max'), '550');
+  assert.ok(requested !== null);
+  assert.equal(requested.pathname, '/api/v1/stocks/SPY/options');
+  assert.equal(requested.searchParams.get('date'), '2025-04-21');
+  assert.deepEqual([...requested.searchParams.keys()], ['date']);
 });
 
 test('200 legitimate empty response: a real query that found nothing is VALUE_PRESENT with zero entries, never an error', async () => {

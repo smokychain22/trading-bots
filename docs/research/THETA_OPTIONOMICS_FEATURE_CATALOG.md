@@ -1,6 +1,6 @@
 # THETA Optionomics Feature Catalog
 
-Status date: 2026-09-13
+Status date: 2026-09-14
 
 Features stay separate until evidence supports an interaction. There is no
 single unexplained Optionomics score.
@@ -20,6 +20,9 @@ single unexplained Optionomics score.
 | OI and volume | Liquidity reduces execution and exit risk | spread, size, quote age | ADOPT as safety evidence after validation |
 | Earnings and events | Near-event risk changes feasible action set | known-at timestamp | ADOPT where contract is proven |
 | Historical analytics | Accelerates hypothesis selection | no future leakage, no assumed fills | ADAPT |
+| Recorded quote economics | Mid, spread and relative spread describe the observed market | two-sided non-crossed quote, provider time | ADOPT as research context, never assumed fill |
+| CSP structural economics | Breakeven, cushion, multiplier-safe collateral and credit yield compare feasible contracts | broker multiplier, stock price, recorded bid | ADOPT as transparent context, not alpha |
+| Expected-move distance | Strike distance scaled by `S * IV * sqrt(DTE/365)` improves cohort comparison | verified IV units and DTE | TEST, never POP |
 
 ## Experiment outcome vocabulary
 

@@ -57,7 +57,7 @@ type JsonRecord = Record<string, unknown>;
 const alpacaDataBaseUrl = 'https://data.alpaca.markets';
 const optionomicsReferenceUrl = 'https://optionomics.ai/docs/api';
 const optionomicsApiBaseUrl = 'https://optionomics.ai';
-const optionomicsContractVersion = 'optionomics-api-v1-docs-2026-09-09';
+const optionomicsContractVersion = 'optionomics-api-v1-docs-2026-09-14';
 
 const object = (value: unknown): JsonRecord =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : {};
@@ -536,16 +536,42 @@ export const checkAlpaca = async (environment: Environment): Promise<readonly Ch
   return [account, configuration, clock, calendar, stockData, contracts, optionData, optionDataIndicative, positions, openOrders, activities, corporateActions];
 };
 
-type OptionomicsProbe = { readonly capability: string; readonly operationAlias: string; readonly path: string };
+type OptionomicsProbe = {
+  readonly capability: string;
+  readonly operationAlias: string;
+  readonly path: string;
+  readonly thetaDestination: string;
+  readonly classification: 'RUNTIME_INPUT' | 'RESEARCH_INPUT' | 'REFERENCE_ONLY';
+};
 
 const optionomicsProbes = (documentedPaths: readonly string[]): readonly OptionomicsProbe[] => {
   const expected: readonly OptionomicsProbe[] = [
-    { capability: 'OPTIONOMICS_AUTHENTICATION', operationAlias: 'opt.list_tickers', path: '/api/v1/tickers' },
-    { capability: 'OPTIONOMICS_IV_SKEW_TERM_SURFACE', operationAlias: 'opt.get_symbol_metrics', path: '/api/v1/stocks/{symbol}/metrics' },
-    { capability: 'OPTIONOMICS_OPTION_CHAIN_GREEKS', operationAlias: 'opt.get_option_chain', path: '/api/v1/stocks/{symbol}/options' },
-    { capability: 'OPTIONOMICS_HISTORY', operationAlias: 'opt.get_price_history', path: '/api/v1/stocks/{symbol}/price_history' },
-    { capability: 'OPTIONOMICS_FLOW_UOA', operationAlias: 'opt.get_flow_net', path: '/api/v1/flow/net' },
-    { capability: 'OPTIONOMICS_EVENTS', operationAlias: 'opt.list_events', path: '/api/v1/events' }
+    { capability: 'OPTIONOMICS_AUTHENTICATION', operationAlias: 'opt.list_tickers', path: '/api/v1/tickers', thetaDestination: 'PROVIDER_QUALITY', classification: 'RUNTIME_INPUT' },
+    { capability: 'OPTIONOMICS_STOCK_UNIVERSE', operationAlias: 'opt.list_stocks', path: '/api/v1/stocks', thetaDestination: 'R6_RESEARCH', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_UNDERLYING_QUOTE_CONTEXT', operationAlias: 'opt.get_stock_quote', path: '/api/v1/stocks/{symbol}/quote', thetaDestination: 'NORMALIZED_MARKET_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_OPTION_CHAIN_GREEKS', operationAlias: 'opt.get_option_chain', path: '/api/v1/stocks/{symbol}/options', thetaDestination: 'CONTRACT_QUOTE_GREEKS_VOLATILITY_LIQUIDITY', classification: 'RUNTIME_INPUT' },
+    { capability: 'OPTIONOMICS_HISTORY', operationAlias: 'opt.get_price_history', path: '/api/v1/stocks/{symbol}/price_history', thetaDestination: 'HISTORICAL_CONTEXT', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_IV_SKEW_TERM_SURFACE', operationAlias: 'opt.get_symbol_metrics', path: '/api/v1/stocks/{symbol}/metrics', thetaDestination: 'VOLATILITY_EXPOSURE_STATE', classification: 'RUNTIME_INPUT' },
+    { capability: 'OPTIONOMICS_EXPOSURE_HEATMAP', operationAlias: 'opt.get_heatmap', path: '/api/v1/stocks/{symbol}/heatmap', thetaDestination: 'EXPOSURE_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_FLOW_AGGREGATES', operationAlias: 'opt.get_flow_aggregates', path: '/api/v1/flow/aggregates', thetaDestination: 'FLOW_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_FLOW_BULLISH', operationAlias: 'opt.get_flow_bullish', path: '/api/v1/flow/bullish', thetaDestination: 'FLOW_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_FLOW_BEARISH', operationAlias: 'opt.get_flow_bearish', path: '/api/v1/flow/bearish', thetaDestination: 'FLOW_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_FLOW_TOP_CALLS', operationAlias: 'opt.get_flow_top_calls', path: '/api/v1/flow/top_calls', thetaDestination: 'FLOW_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_FLOW_TOP_PUTS', operationAlias: 'opt.get_flow_top_puts', path: '/api/v1/flow/top_puts', thetaDestination: 'FLOW_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_FLOW_UOA', operationAlias: 'opt.get_flow_net', path: '/api/v1/flow/net', thetaDestination: 'FLOW_STATE', classification: 'RUNTIME_INPUT' },
+    { capability: 'OPTIONOMICS_LEVELS', operationAlias: 'opt.list_levels', path: '/api/v1/levels', thetaDestination: 'EXPOSURE_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_DARK_POOL_LEVELS', operationAlias: 'opt.list_dark_pool_levels', path: '/api/v1/dark_pool_levels', thetaDestination: 'HISTORICAL_CONTEXT', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_INSIDER_TRADES', operationAlias: 'opt.list_insider_trades', path: '/api/v1/insider_trades', thetaDestination: 'EVENT_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_CONGRESS_TRADES', operationAlias: 'opt.list_congress_trades', path: '/api/v1/congress_trades', thetaDestination: 'EVENT_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_DISCLOSURE_TRADES', operationAlias: 'opt.list_disclosure_trades', path: '/api/v1/disclosure_trades', thetaDestination: 'EVENT_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_SYMBOL_DISCLOSURE_TRADES', operationAlias: 'opt.get_symbol_disclosure_trades', path: '/api/v1/stocks/{symbol}/disclosure_trades', thetaDestination: 'EVENT_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_NEWS', operationAlias: 'opt.list_news', path: '/api/v1/news', thetaDestination: 'EVENT_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_SYMBOL_NEWS', operationAlias: 'opt.get_symbol_news', path: '/api/v1/stocks/{symbol}/news', thetaDestination: 'EVENT_STATE', classification: 'RESEARCH_INPUT' },
+    { capability: 'OPTIONOMICS_EVENTS', operationAlias: 'opt.list_events', path: '/api/v1/events', thetaDestination: 'EVENT_STATE', classification: 'RUNTIME_INPUT' },
+    { capability: 'OPTIONOMICS_EARNINGS_FILINGS', operationAlias: 'opt.get_earnings_filings', path: '/api/v1/stocks/{symbol}/earning_filings', thetaDestination: 'EVENT_STATE', classification: 'RUNTIME_INPUT' },
+    { capability: 'OPTIONOMICS_TRADE_IDEAS', operationAlias: 'opt.list_trade_ideas', path: '/api/v1/trade_ideas', thetaDestination: 'NONE', classification: 'REFERENCE_ONLY' },
+    { capability: 'OPTIONOMICS_TRADE_IDEA_TRACK_RECORD', operationAlias: 'opt.get_trade_idea_track_record', path: '/api/v1/trade_ideas/track_record', thetaDestination: 'NONE', classification: 'REFERENCE_ONLY' },
+    { capability: 'OPTIONOMICS_MARKET_COMMENTARIES', operationAlias: 'opt.list_market_commentaries', path: '/api/v1/market_commentaries', thetaDestination: 'HISTORICAL_CONTEXT', classification: 'REFERENCE_ONLY' },
   ];
   return expected.filter((probe) => documentedPaths.includes(probe.path));
 };
@@ -593,18 +619,20 @@ const responseShape = (value: unknown): {
 export const checkOptionomics = async (environment: Environment): Promise<readonly CheckResult[]> => {
   const reference = await readJson('OPTIONOMICS', 'OPTIONOMICS_DOCUMENTED_CONTRACTS', 'opt.discover_documented_operations', optionomicsReferenceUrl, {}, optionomicsProvenance('/docs/api'), (body) => {
     const paths = extractDocumentedOperationPaths(typeof body === 'string' ? body : '');
-    return { documentedPathCount: paths.length, preferredHeaderAuthDocumented: true, bearerAuthDocumented: true };
+    return { documentedPathCount: paths.length, preferredHeaderAuthDocumented: true, bearerAuthDocumented: false };
   });
   if (reference.state !== 'GOOD') return [reference];
   const documentedPaths = extractDocumentedOperationPaths(await (await fetch(optionomicsReferenceUrl)).text());
   const headers = optionomicsHeaders(environment);
   const probes = optionomicsProbes(documentedPaths);
-  const results = await Promise.all(probes.map(async (probe) => {
+  const results: CheckResult[] = [];
+  for (const probe of probes) {
     const url = optionomicsProbeUrl(probe.operationAlias, probe.path);
-    return readJson('OPTIONOMICS', probe.capability, probe.operationAlias, url, { headers }, optionomicsProvenance(url.pathname), (body, response) => {
+    results.push(await readJson('OPTIONOMICS', probe.capability, probe.operationAlias, url, { headers }, optionomicsProvenance(url.pathname), (body, response) => {
       const record = object(body);
       const shape = responseShape(body);
       return {
+        documentedPath: probe.path, thetaDestination: probe.thetaDestination, classification: probe.classification,
         responseIsObject: typeof body === 'object' && body !== null,
         explicitNullObserved: Object.values(record).some((value) => value === null),
         ...shape,
@@ -612,8 +640,8 @@ export const checkOptionomics = async (environment: Environment): Promise<readon
         rateLimitRemainingPresent: response.headers.has('x-ratelimit-remaining'),
         rateLimitResetPresent: response.headers.has('x-ratelimit-reset')
       };
-    });
-  }));
+    }));
+  }
   return [reference, ...results];
 };
 

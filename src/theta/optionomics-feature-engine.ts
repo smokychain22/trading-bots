@@ -5,7 +5,7 @@ import type {
   NormalizedOptionomicsFlowWindow,
 } from './optionomics-provider.js';
 
-export const optionomicsFeatureSchemaVersion = 'theta-optionomics-features-v1' as const;
+export const optionomicsFeatureSchemaVersion = 'theta-optionomics-features-v2' as const;
 
 export type FeatureState = 'KNOWN' | 'UNKNOWN' | 'INVALID';
 
@@ -28,6 +28,9 @@ export interface OptionomicsContractFeatureState {
     readonly ask: FeatureValue<number>;
     readonly bidSize: FeatureValue<number>;
     readonly askSize: FeatureValue<number>;
+    readonly mid: FeatureValue<number>;
+    readonly spread: FeatureValue<number>;
+    readonly relativeSpread: FeatureValue<number>;
     readonly providerTimestamp: FeatureValue<string>;
     readonly semantics: 'SESSION_RECORDED_RESEARCH';
     readonly executable: false;
@@ -46,6 +49,10 @@ export interface OptionomicsContractFeatureState {
     readonly cspBreakeven: FeatureValue<number>;
     readonly securedCollateral: FeatureValue<number>;
     readonly grossBidPremiumCash: FeatureValue<number>;
+    readonly downsideCushion: FeatureValue<number>;
+    readonly creditYieldOnCollateral: FeatureValue<number>;
+    readonly expectedMoveApprox: FeatureValue<number>;
+    readonly expectedMoveNormalizedStrikeDistance: FeatureValue<number>;
   };
 }
 
@@ -93,6 +100,8 @@ function structuralEconomics(entry: NormalizedOptionomicsEntry, stockPrice: numb
     return {
       intrinsicPerShare: unknown<number>(reason), extrinsicPerShare: unknown<number>(reason),
       cspBreakeven: unknown<number>(reason), securedCollateral: unknown<number>(reason), grossBidPremiumCash: unknown<number>(reason),
+      downsideCushion: unknown<number>(reason), creditYieldOnCollateral: unknown<number>(reason),
+      expectedMoveApprox: unknown<number>(reason), expectedMoveNormalizedStrikeDistance: unknown<number>(reason),
     };
   }
   const intrinsic = entry.optionType === 'PUT'
@@ -102,21 +111,45 @@ function structuralEconomics(entry: NormalizedOptionomicsEntry, stockPrice: numb
   const extrinsic = mark === null ? unknown<number>('OPTION_MARK_UNKNOWN') : known(Math.max(mark - intrinsic, 0));
   const validMultiplier = multiplier !== null && Number.isFinite(multiplier) && multiplier > 0;
   const isPut = entry.optionType === 'PUT';
+  const breakeven = isPut && entry.bid !== null ? entry.strike - entry.bid : null;
+  const collateral = isPut && validMultiplier ? entry.strike * multiplier : null;
+  const grossPremium = entry.bid !== null && validMultiplier ? entry.bid * multiplier : null;
+  const expectedMove = entry.impliedVolatility !== null && entry.dte !== null && entry.dte > 0
+    ? stockPrice * entry.impliedVolatility * Math.sqrt(entry.dte / 365) : null;
   return {
     intrinsicPerShare: known(intrinsic), extrinsicPerShare: extrinsic,
-    cspBreakeven: isPut && entry.bid !== null ? known(entry.strike - entry.bid) : unknown<number>(isPut ? 'BID_UNKNOWN' : 'NOT_A_CSP'),
-    securedCollateral: isPut && validMultiplier ? known(entry.strike * multiplier) : unknown<number>(isPut ? 'CONTRACT_MULTIPLIER_UNKNOWN' : 'NOT_A_CSP'),
-    grossBidPremiumCash: entry.bid !== null && validMultiplier ? known(entry.bid * multiplier) : unknown<number>(entry.bid === null ? 'BID_UNKNOWN' : 'CONTRACT_MULTIPLIER_UNKNOWN'),
+    cspBreakeven: breakeven === null ? unknown<number>(isPut ? 'BID_UNKNOWN' : 'NOT_A_CSP') : known(breakeven),
+    securedCollateral: collateral === null ? unknown<number>(isPut ? 'CONTRACT_MULTIPLIER_UNKNOWN' : 'NOT_A_CSP') : known(collateral),
+    grossBidPremiumCash: grossPremium === null ? unknown<number>(entry.bid === null ? 'BID_UNKNOWN' : 'CONTRACT_MULTIPLIER_UNKNOWN') : known(grossPremium),
+    downsideCushion: breakeven === null ? unknown<number>(isPut ? 'BID_UNKNOWN' : 'NOT_A_CSP') : known((stockPrice - breakeven) / stockPrice),
+    creditYieldOnCollateral: collateral === null || grossPremium === null ? unknown<number>('CSP_CREDIT_OR_COLLATERAL_UNKNOWN') : known(grossPremium / collateral),
+    expectedMoveApprox: expectedMove === null ? unknown<number>('IV_OR_DTE_UNKNOWN') : known(expectedMove),
+    expectedMoveNormalizedStrikeDistance: expectedMove === null || expectedMove === 0
+      ? unknown<number>('EXPECTED_MOVE_UNAVAILABLE') : known(Math.abs(stockPrice - entry.strike) / expectedMove),
   };
 }
 
+function quoteEconomics(entry: NormalizedOptionomicsEntry): Pick<OptionomicsContractFeatureState['quote'], 'mid' | 'spread' | 'relativeSpread'> {
+  if (entry.bid === null || entry.ask === null) {
+    return { mid: unknown('TWO_SIDED_QUOTE_REQUIRED'), spread: unknown('TWO_SIDED_QUOTE_REQUIRED'), relativeSpread: unknown('TWO_SIDED_QUOTE_REQUIRED') };
+  }
+  if (entry.bid < 0 || entry.ask < entry.bid) {
+    return { mid: invalid('CROSSED_OR_NEGATIVE_QUOTE'), spread: invalid('CROSSED_OR_NEGATIVE_QUOTE'), relativeSpread: invalid('CROSSED_OR_NEGATIVE_QUOTE') };
+  }
+  const mid = (entry.bid + entry.ask) / 2;
+  const spread = entry.ask - entry.bid;
+  return { mid: known(mid), spread: known(spread), relativeSpread: mid > 0 ? known(spread / mid) : unknown('MID_NOT_POSITIVE') };
+}
+
 function contractFeatures(entry: NormalizedOptionomicsEntry, stockPrice: number | null, multiplier: number | null): OptionomicsContractFeatureState {
+  const derivedQuote = quoteEconomics(entry);
   return {
     contractSymbol: entry.rawSymbol,
     identity: { underlying: entry.underlying, expiration: entry.expiration, optionType: entry.optionType, strike: entry.strike },
     quote: {
       bid: positive(entry.bid, 'BID_UNKNOWN'), ask: positive(entry.ask, 'ASK_UNKNOWN'),
       bidSize: positive(entry.bidSize, 'BID_SIZE_UNKNOWN'), askSize: positive(entry.askSize, 'ASK_SIZE_UNKNOWN'),
+      ...derivedQuote,
       providerTimestamp: timestamp(entry.asOf), semantics: entry.quoteSemantics, executable: false,
     },
     greeks: {
@@ -133,13 +166,20 @@ function contractFeatures(entry: NormalizedOptionomicsEntry, stockPrice: number 
   };
 }
 
-function deriveSkew(entries: readonly NormalizedOptionomicsEntry[]): FeatureValue<number> {
+function deriveSkew(entries: readonly NormalizedOptionomicsEntry[], deltaTolerance: number | null): FeatureValue<number> {
+  if (deltaTolerance === null) return unknown('25_DELTA_PROXIMITY_TOLERANCE_NOT_CONFIGURED');
+  if (!Number.isFinite(deltaTolerance) || deltaTolerance <= 0 || deltaTolerance >= 0.25) return invalid('25_DELTA_PROXIMITY_TOLERANCE_INVALID');
   const put25 = entries.filter((entry) => entry.optionType === 'PUT' && entry.delta !== null && entry.impliedVolatility !== null)
     .toSorted((a, b) => Math.abs(Math.abs(a.delta as number) - 0.25) - Math.abs(Math.abs(b.delta as number) - 0.25))[0];
   const call25 = entries.filter((entry) => entry.optionType === 'CALL' && entry.delta !== null && entry.impliedVolatility !== null)
     .toSorted((a, b) => Math.abs(Math.abs(a.delta as number) - 0.25) - Math.abs(Math.abs(b.delta as number) - 0.25))[0];
   if (put25?.impliedVolatility === null || put25?.impliedVolatility === undefined || call25?.impliedVolatility === null || call25?.impliedVolatility === undefined) {
     return unknown('PUT_CALL_25_DELTA_IV_PAIR_UNAVAILABLE');
+  }
+  if (put25.delta === null || call25.delta === null
+    || Math.abs(Math.abs(put25.delta) - 0.25) > deltaTolerance
+    || Math.abs(Math.abs(call25.delta) - 0.25) > deltaTolerance) {
+    return unknown('NO_PUT_CALL_PAIR_WITHIN_25_DELTA_TOLERANCE');
   }
   return known(put25.impliedVolatility - call25.impliedVolatility);
 }
@@ -172,6 +212,7 @@ export function buildOptionomicsFeatureSnapshot(input: {
   readonly flowWindows: readonly NormalizedOptionomicsFlowWindow[];
   readonly stockPrice: number | null;
   readonly multiplierByContract?: ReadonlyMap<string, number>;
+  readonly skewDeltaTolerance?: number | null;
 }): OptionomicsFeatureSnapshot {
   const contracts = input.chain.entries.map((entry) => contractFeatures(
     entry, input.stockPrice, entry.rawSymbol === null ? null : input.multiplierByContract?.get(entry.rawSymbol) ?? null,
@@ -184,7 +225,7 @@ export function buildOptionomicsFeatureSnapshot(input: {
   return {
     schemaVersion: optionomicsFeatureSchemaVersion, provider: 'OPTIONOMICS', underlying: input.chain.underlying,
     observedAt: input.chain.retrievedAt, responseHash: input.chain.responseHash,
-    contracts, skew: deriveSkew(input.chain.entries), termStructure: deriveTerm(input.chain.entries),
+    contracts, skew: deriveSkew(input.chain.entries, input.skewDeltaTolerance ?? null), termStructure: deriveTerm(input.chain.entries),
     volatilitySurface: deriveSurface(input.chain.entries),
     flow: { windows: input.flowWindows, interpretation: 'UNMODELED_RESEARCH_CONTEXT' },
     unavailableFamilies, empiricalEvReady: false,

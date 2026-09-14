@@ -267,6 +267,7 @@ export class PostgresThetaCycleStore {
     const features = jsonObject(state.features);
     if (Object.keys(raw).length === 0 || Object.keys(features).length === 0) return;
     const responseHash = typeof raw.responseHash === 'string' ? raw.responseHash : null;
+    const requestedAt = typeof raw.requestedAt === 'string' ? raw.requestedAt : null;
     const retrievedAt = typeof raw.retrievedAt === 'string' ? raw.retrievedAt : null;
     const providerTimestamp = typeof raw.providerTimestamp === 'string' ? raw.providerTimestamp : null;
     const underlying = typeof features.underlying === 'string' ? features.underlying : null;
@@ -282,10 +283,20 @@ export class PostgresThetaCycleStore {
     const observationId = deterministicRuntimeUuid(`optionomics-raw:${fusionSnapshotId}:${responseHash}`);
     await client.query(
       `INSERT INTO market.optionomics_raw_observation(observation_id,fusion_snapshot_id,operation_alias,underlying,
-        provider_timestamp,ingestion_timestamp,as_of,contract_version,data_quality,response_hash,payload_json)
-       VALUES($1,$2,'optionomics.get_option_chain',$3,$4,$5,$6,'optionomics-option-chain-v1',$7,$8,$9::jsonb)
+        provider_timestamp,ingestion_timestamp,as_of,contract_version,data_quality,response_hash,payload_json,
+        requested_at,request_path,request_parameters_json,http_status,rate_limit_json,documentation_reference,
+        credential_identity_ref_hash,session_date)
+       VALUES($1,$2,'optionomics.get_option_chain',$3,$4,$5,$6,$7,$8,$9,$10::jsonb,
+        $11,$12,$13::jsonb,$14,$15::jsonb,$16,$17,$18)
        ON CONFLICT(fusion_snapshot_id,operation_alias,response_hash) DO NOTHING`,
-      [observationId, fusionSnapshotId, underlying, providerTimestamp, retrievedAt, asOf, quality, responseHash, JSON.stringify(raw.payload ?? null)],
+      [observationId, fusionSnapshotId, underlying, providerTimestamp, retrievedAt, asOf,
+        typeof raw.contractVersion === 'string' ? raw.contractVersion : 'optionomics-public-api-unknown',
+        quality, responseHash, JSON.stringify(raw.payload ?? null), requestedAt,
+        typeof raw.requestPath === 'string' ? raw.requestPath : null, JSON.stringify(jsonObject(raw.requestParameters)),
+        typeof raw.httpStatus === 'number' ? raw.httpStatus : null, JSON.stringify(jsonObject(raw.rateLimit)),
+        typeof raw.documentationReference === 'string' ? raw.documentationReference : null,
+        typeof raw.credentialIdentityRefHash === 'string' ? raw.credentialIdentityRefHash : null,
+        typeof raw.sessionDate === 'string' ? raw.sessionDate : null],
     );
     const featureHash = createHash('sha256').update(JSON.stringify(features)).digest('hex');
     const featureSnapshotId = deterministicRuntimeUuid(`optionomics-features:${observationId}:${featureHash}`);

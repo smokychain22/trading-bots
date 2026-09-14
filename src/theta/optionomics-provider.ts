@@ -119,7 +119,14 @@ function parseRetryAfterSeconds(header: string | null): number | null {
 interface RequestOutcome {
   readonly body: unknown;
   readonly httpStatus: number;
+  readonly requestedAt: string;
   readonly retrievedAt: string;
+  readonly rateLimit: {
+    readonly limit: string | null;
+    readonly remaining: string | null;
+    readonly reset: string | null;
+    readonly retryAfter: string | null;
+  };
 }
 
 // Bounded GET with timeout + a single bounded retry loop for 429 only.
@@ -139,6 +146,7 @@ async function requestJsonBounded(
   let attempt = 0;
   for (;;) {
     attempt += 1;
+    const requestedAt = now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
@@ -170,7 +178,13 @@ async function requestJsonBounded(
     } catch {
       throw new OptionomicsProviderError('INVALID_PROVIDER_RESPONSE', response.status, `${url.pathname} returned a non-JSON body.`, null, attempt);
     }
-    return { body, httpStatus: response.status, retrievedAt: now() };
+    return {
+      body, httpStatus: response.status, requestedAt, retrievedAt: now(),
+      rateLimit: {
+        limit: response.headers.get('x-ratelimit-limit'), remaining: response.headers.get('x-ratelimit-remaining'),
+        reset: response.headers.get('x-ratelimit-reset'), retryAfter: response.headers.get('retry-after'),
+      },
+    };
   }
 }
 
@@ -220,7 +234,16 @@ export interface NormalizedOptionomicsEntry {
 
 export interface NormalizedOptionomicsChain {
   readonly underlying: string;
+  readonly requestedAt: string;
   readonly retrievedAt: string;
+  readonly httpStatus: number;
+  readonly requestPath: string;
+  readonly requestParameters: Readonly<Record<string, string>>;
+  readonly rateLimit: RequestOutcome['rateLimit'];
+  readonly documentationReference: 'https://optionomics.ai/docs/api';
+  readonly contractVersion: 'optionomics-public-api-2026-09-14';
+  readonly credentialIdentityRefHash: string;
+  readonly sessionDate: string | null;
   readonly responseHash: string;
   readonly rawPayload: unknown;
   readonly entries: readonly NormalizedOptionomicsEntry[];
@@ -256,11 +279,6 @@ export type OptionomicsFetchOutcome<T> =
 
 export interface OptionomicsChainQuery {
   readonly sessionDate?: string;
-  readonly expirationDate?: string;
-  readonly limit?: number;
-  readonly optionType?: 'call' | 'put';
-  readonly strikeMin?: number;
-  readonly strikeMax?: number;
 }
 
 export type OptionomicsFlowWindowHours = 8 | 24 | 48;
@@ -280,11 +298,12 @@ export interface NormalizedOptionomicsFlowWindow {
 
 function applyDocumentedChainQuery(url: URL, query: OptionomicsChainQuery): void {
   if (query.sessionDate !== undefined) url.searchParams.set('date', query.sessionDate);
-  if (query.expirationDate !== undefined) url.searchParams.set('expiration_date', query.expirationDate);
-  if (query.limit !== undefined) url.searchParams.set('limit', String(query.limit));
-  if (query.optionType !== undefined) url.searchParams.set('option_type', query.optionType);
-  if (query.strikeMin !== undefined) url.searchParams.set('strike_min', String(query.strikeMin));
-  if (query.strikeMax !== undefined) url.searchParams.set('strike_max', String(query.strikeMax));
+}
+
+function chainEnvelopeSessionDate(body: unknown): string | null {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return null;
+  const date = (body as Record<string, unknown>).date;
+  return typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
 }
 
 const asFiniteNumberOrNull = (value: unknown): number | null => {
@@ -387,7 +406,15 @@ export async function fetchOptionomicsOptionChain(
   const url = new URL(`/api/v1/stocks/${encodeURIComponent(underlyingSymbol)}/options`, config.apiBase);
   applyDocumentedChainQuery(url, query);
   try {
-    const { body, httpStatus, retrievedAt } = await requestJsonBounded(config, url);
+    const { body, httpStatus, requestedAt, retrievedAt, rateLimit } = await requestJsonBounded(config, url);
+    const provenance = {
+      underlying: underlyingSymbol, requestedAt, retrievedAt, httpStatus, requestPath: url.pathname,
+      requestParameters: Object.fromEntries(url.searchParams.entries()), rateLimit,
+      documentationReference: 'https://optionomics.ai/docs/api' as const,
+      contractVersion: 'optionomics-public-api-2026-09-14' as const,
+      credentialIdentityRefHash: createHash('sha256').update(config.email.trim().toLowerCase()).digest('hex'),
+      sessionDate: chainEnvelopeSessionDate(body),
+    };
     if (!Array.isArray(body)) {
       // Some documented option-data APIs wrap the array in an envelope
       // object (e.g. { options: [...] }) -- tolerate that one documented
@@ -398,14 +425,14 @@ export async function fetchOptionomicsOptionChain(
       }
       return {
         kind: 'VALUE_PRESENT',
-        value: { underlying: underlyingSymbol, retrievedAt, responseHash: hashRawPayload(body), rawPayload: sanitizeProviderPayload(body, config), entries: wrapped.filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object').map((e) => normalizeOneEntry(e, retrievedAt)), pagesFetched: 1, complete: true },
+        value: { ...provenance, responseHash: hashRawPayload(body), rawPayload: sanitizeProviderPayload(body, config), entries: wrapped.filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object').map((e) => normalizeOneEntry(e, retrievedAt)), pagesFetched: 1, complete: true },
         httpStatus,
         retrievedAt,
       };
     }
     return {
       kind: 'VALUE_PRESENT',
-      value: { underlying: underlyingSymbol, retrievedAt, responseHash: hashRawPayload(body), rawPayload: sanitizeProviderPayload(body, config), entries: body.filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object').map((e) => normalizeOneEntry(e, retrievedAt)), pagesFetched: 1, complete: true },
+      value: { ...provenance, responseHash: hashRawPayload(body), rawPayload: sanitizeProviderPayload(body, config), entries: body.filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object').map((e) => normalizeOneEntry(e, retrievedAt)), pagesFetched: 1, complete: true },
       httpStatus,
       retrievedAt,
     };
