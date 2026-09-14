@@ -464,10 +464,10 @@ export function classifyShadowCycleProvenance(dimensions: Readonly<Record<string
 export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promise<ThetaShadowCycleResult> {
   const runId = randomUUID();
   const startedAt = config.now();
-  // One immutable decision timestamp anchors every input and hash in this
-  // cycle. Provider retrieval timestamps may differ inside their adapters,
-  // but repeated config.now() calls can never create a mixed-time snapshot.
-  const decisionTime = startedAt;
+  // The cycle start bounds the provider requests. The immutable decision
+  // timestamp is finalized after observations are collected, so a quote
+  // produced during this cycle can never appear to come from the future.
+  let decisionTime = startedAt;
   const blockers: string[] = [];
 
   const { decisions, funnel } = evaluateUniverse(config.universePolicy, config.universeCandidates);
@@ -592,7 +592,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   }
 
   let historyOrigin: ProvenanceOrigin = 'NOT_ATTEMPTED';
-  const receivedAt = decisionTime;
+  let receivedAt = decisionTime;
   let ret1d: number | null = null;
   let rv20: number | null = null;
   let drawdown: number | null = null;
@@ -767,6 +767,12 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   });
   contractsEvidence = evidenceFor(contractEvidenceByType);
   quotesEvidence = evidenceFor(quoteEvidenceByType);
+
+  // This is the actual point-in-time feature cutoff. All observations above
+  // were requested no later than this instant. Keep startedAt separately for
+  // cycle duration and operational audit evidence.
+  decisionTime = config.now();
+  receivedAt = decisionTime;
 
   if (contractItems.length > 0 && snapshotsBySymbol.size > 0) {
 

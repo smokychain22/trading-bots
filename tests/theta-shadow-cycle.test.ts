@@ -139,6 +139,21 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   assert.equal(result.provenance, 'HYBRID');
 });
 
+itMockedProviderRealCodePath('decision time is finalized after collected quote timestamps', async () => {
+  let tick=0;
+  const advancingNow=()=>new Date(Date.parse(NOW)-1_000+(tick++*250)).toISOString();
+  const result=await runThetaShadowCycle(baseConfig({now:advancingNow}));
+  assert.ok(result.fusionSnapshot!==null);
+  const decisionAt=Date.parse(String(result.fusionSnapshot?.snapshot.decisionTimeUtc));
+  const contracts=result.fusionSnapshot?.snapshot.contractCandidates;
+  assert.ok(Array.isArray(contracts));
+  for(const raw of contracts??[]){
+    if(raw===null||typeof raw!=='object'||Array.isArray(raw))continue;
+    const quoteTimestamp=raw.quoteTimestamp;
+    if(typeof quoteTimestamp==='string')assert.ok(Date.parse(quoteTimestamp)<=decisionAt);
+  }
+});
+
 itMockedProviderRealCodePath('no candidates on this underlying yields a coherent result, never a crash', async () => {
   const result = await runThetaShadowCycle(baseConfig({ alpaca: alpacaConfig({ hasContracts: false, hasBars: true }) }));
   assert.equal(result.blockers.includes('NO_CANDIDATES_AVAILABLE'), true);
