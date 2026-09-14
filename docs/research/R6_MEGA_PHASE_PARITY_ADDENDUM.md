@@ -1385,3 +1385,150 @@ correct in prior rounds) remains intact and unchanged in this delta.
 **1106 Python tests pass** (+11). Security scan: 0 findings.
 `DATASET_ABSENT` still stands. **`REQUIRED_CODEX_CHANGE` count for this
 run: 0.**
+
+## Optionomics live-flow / webhook execution-evidence deep qualification (2026-09-14)
+
+**Scope:** independent, read-only qualification of whether Optionomics'
+live-flow / webhook surface can serve as a THETA execution-quote source,
+either directly or via a composite temporal-fusion (flow print + an
+immediate chain fetch for the same exact contract). No credentials used;
+none exist in this environment (`env | grep -iE "OPTIONOMICS|ALPACA"`
+empty; `.env` absent; `.env.local` carries only `VERCEL_OIDC_TOKEN`).
+
+**`origin/main`:** unchanged since last review (`92f9fc1`); no new
+webhook/flow engineering landed on canonical main during this task.
+
+**Existing implementation search:** `git grep -lni "webhook"` and
+`git grep -lni "alert"` against both `origin/main` and this branch --
+zero hits in either location. The only existing "flow" concept in
+`src/theta/optionomics-provider.ts` is `NormalizedOptionomicsFlowWindow`,
+an AGGREGATE 5-minute net-flow bucket (`netCalls`/`netPuts` typed as raw
+`unknown[]`, never parsed into individual print fields), tagged
+`evidenceClass: 'RESEARCH_CONTEXT_ONLY'`, `executableTruth: false`. No
+print-level live flow parsing and no webhook/alert receiver exist
+anywhere in the codebase today.
+
+**Documentation finding (WebFetch, public pages, 2026-09-14):**
+- `optionomics.ai/features/api`: advertises "Every trade, as it happens"
+  and a generic webhook delivery mechanism ("Webhooks with receipts:
+  Post to your own endpoint and read back every delivery") for alert
+  channels (Unusual prints, Trade ideas, Market commentary, Flow
+  acceleration, Insider and congress filings) -- zero documented payload
+  field schema for any channel.
+- `optionomics.ai/docs/api` (the actual developer reference): states
+  verbatim that there is no webhook functionality described for Option
+  Alerts or Options Flow, and reconfirms the standing session-snapshot/
+  non-streaming statement for chain reads. Documented flow endpoints are
+  GET-only historical/ranking/aggregate endpoints.
+- Net finding: webhook TRANSPORT is an officially advertised developer
+  feature (not private/unsupported), but the FLOW-SPECIFIC PAYLOAD
+  SCHEMA is undocumented in the developer reference. Every specific
+  field (trade timestamp, bid, ask, execution classification, sweep/
+  block/ISO flags, greeks) is therefore UNKNOWN pending an actual
+  observed payload -- not INFERRED, not CONFIRMED_DOCUMENTED.
+
+**FLOW_FEATURE_MATRIX (20 fields, all classified from the evidence above):**
+
+| Field | Classification |
+|---|---|
+| FLOW_TRADE_TIMESTAMP | UNKNOWN |
+| FLOW_EXACT_CONTRACT | UNKNOWN |
+| FLOW_TRADE_PRICE | UNKNOWN |
+| FLOW_BID | UNKNOWN |
+| FLOW_ASK | UNKNOWN |
+| FLOW_BID_SIZE | UNKNOWN |
+| FLOW_ASK_SIZE | UNKNOWN |
+| FLOW_EXECUTION_CLASSIFICATION | UNKNOWN |
+| FLOW_SPREAD | UNKNOWN |
+| FLOW_IV | UNKNOWN |
+| FLOW_DELTA | UNKNOWN |
+| FLOW_GAMMA | UNKNOWN |
+| FLOW_THETA | UNKNOWN |
+| FLOW_VEGA | UNKNOWN |
+| FLOW_VOLUME | INFERRED (aggregate net-flow buckets already confirmed to carry directional volume context; per-print volume unconfirmed) |
+| FLOW_OI | UNKNOWN |
+| FLOW_SWEEP | UNKNOWN |
+| FLOW_BLOCK | UNKNOWN |
+| FLOW_ISO | UNKNOWN |
+| FLOW_MULTI_LEG | UNKNOWN |
+
+No field reaches CONFIRMED_REAL_PAYLOAD or CONFIRMED_DOCUMENTED --
+consistent with "webhook transport documented, flow payload schema not."
+
+**New research modules (all schema-agnostic, built ahead of any observed
+real payload, activate the moment a real payload supplies actual field
+names):**
+- `optionomics_flow_event.py` -- `FlowEventFieldMap` mirrors
+  `research_family_adapters.FeatureFieldMap`'s "every field defaults to
+  None, nothing guessed" discipline. `ExecutionClassification` is a
+  closed enum (AT_ASK/AT_BID/MID/BETWEEN/ABOVE_ASK/BELOW_BID/UNKNOWN);
+  `classify_execution_label` never coerces an unrecognized provider
+  label into MID or drops it -- always UNKNOWN. 10 tests.
+- `optionomics_webhook_validation.py` -- pure validation functions only
+  (schema check, secret redaction via denylisted key-name fragments,
+  SHA-256 sanitized-payload hashing, event-ID duplicate rejection,
+  per-contract staleness rejection). Explicitly not a network listener/
+  server -- research/validation logic a future Codex-owned receiver
+  could call. 16 tests.
+- `optionomics_flow_chain_fusion.py` -- the composite/temporal-fusion
+  qualifier. `match_contract_identity` mirrors
+  `matchOptionomicsContractIdentity` exactly (exact OCC symbol, else
+  exact underlying+expiration+type+strike, else UNMATCHED -- never
+  fuzzy). `check_classification_bbo_consistency` and
+  `build_composite_quote` require caller-supplied, justified
+  `max_event_to_chain_latency_seconds` and `classification_tolerance`
+  (no hardcoded threshold). Flags, rather than silently resolves, a real
+  contract gap: no `ExecutionOptionQuote.sourceSemantics` value
+  represents a temporally-fused composite today. 18 tests.
+
+**Total new tests: 44 (all passing). Full Python suite: 1150 passing
+(+44). Security scan: 0 findings.**
+
+`phase_status.py` gained `R6_FLOW_WEBHOOK_COMPOSITE_QUALIFICATION` as
+`BLOCKED_ON_DATA` (machinery complete; only a real payload sample is
+missing) -- distinct from `R6_EXPOSURE_HEATMAP`'s `COMPLETE`, since that
+family's schema is actually confirmed and this one's is not.
+`FEATURE_ABLATION_FAMILIES` left at 17: no new confirmed feature family
+results from this task, since the flow-event schema remains UNKNOWN
+throughout -- adding a family here would be exactly the kind of
+premature-ablation-entry this repository's own discipline forbids.
+
+**Primary classification: `OPTIONOMICS_EXECUTION_QUOTE (composite path)
+= LIVE_VALIDATION_REQUIRED`.** All buildable static/code/test work is
+complete; the remaining blocker is a real observed webhook/flow payload,
+which requires authenticated Optionomics developer-console access this
+environment does not have (`BLOCKED_NO_AUTHENTICATED_ACCESS_IN_CLAUDE_
+ENVIRONMENT`) -- not a `NOT_QUALIFIED` finding, since nothing about the
+transport or the concept has been shown to be impossible. The DIRECT
+execution-quote path remains separately, independently `NOT_QUALIFIED`
+(session-snapshot chain reads; unchanged from the prior round).
+`ALPACA_OPRA` (currently `NOT_ENTITLED`) remains the only path to a true
+streaming NBBO; this composite path, even if it activates, would still
+be a strictly weaker evidence class than that.
+
+**`CODEX_LIVE_HANDOFF` (minimal, precise, credential-dependent only):**
+1. Enable a temporary Optionomics developer webhook subscription for the
+   "Options Flow"/"Unusual prints" channel(s), pointed at a safe HTTPS
+   receiver Codex controls (never a Claude-branch endpoint).
+2. Capture 20 or more real delivery payloads during a live session
+   (headers plus body), redacting nothing needed for schema discovery.
+3. Export the exact observed field names (trade timestamp, contract
+   identity fields, trade price, execution-classification label if
+   present, sweep/block/ISO flags, any greeks) -- no interpretation
+   needed, just the raw key names and example values.
+4. Hand the sanitized field-name list back to this branch to populate a
+   real `FlowEventFieldMap` (this branch's modules already do the rest);
+   alternatively Codex can run `optionomics_flow_event.parse_flow_event`
+   directly against a captured sample using the real map once known.
+5. Return the qualification receipt: which of the 20
+   `FLOW_FEATURE_MATRIX` fields actually appear, and whether execution-
+   classification labels (if any) match the closed enum this module
+   already handles or require adding new recognized labels.
+
+**`REQUIRED_CODEX_CHANGE` count for this run: 1** (the
+`ExecutionOptionQuote.sourceSemantics` gap noted above -- flagged only,
+not acted on by this branch, since redefining that provider-neutral
+contract is Codex's call).
+
+MASTER PAPER = 0, FOLLOWER PAPER = 0, LIVE = 0. No broker orders. No
+main push. No Production change.
