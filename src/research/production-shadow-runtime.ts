@@ -13,12 +13,14 @@ import { ensureMasterShadowContext } from './master-shadow-context.js';
 import { PostgresShadowVirtualTrader, type ShadowIntentCreationReport } from './postgres-shadow-virtual-trader.js';
 import { assembleMasterPaperEvidencePlan } from '../execution/master-paper-plan-assembly.js';
 import { PostgresMasterPaperActionPlanStore } from '../execution/postgres-master-paper-action-plan-store.js';
+import { PostgresRuntimeBehaviorDiagnosticStore, type RuntimeBehaviorDiagnostic } from '../theta/runtime-behavior-diagnostic.js';
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
   readonly symbolsAttempted:number; readonly symbolsCompleted:number; readonly observationsScheduled:number;
   readonly actionPlansReady:number; readonly actionPlansBlocked:readonly string[];
   readonly virtualOpening:ShadowIntentCreationReport;
+  readonly behaviorDiagnostic:RuntimeBehaviorDiagnostic;
 }
 
 export interface ObservationProcessingReport {readonly due:number;readonly observed:number;readonly missed:number;
@@ -201,10 +203,29 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     }
   }
   await evidenceStore.saveScan(scan,persisted);
+  const strategyFrontiers=scan.results.flatMap((member)=>member.cycle?.strategyFrontier?[member.cycle.strategyFrontier]:[]);
+  const branchFrontiers=strategyFrontiers.flatMap((frontier)=>frontier.branches);
+  const allCandidates=branchFrontiers.flatMap((branch)=>branch.candidates);
+  const behaviorDiagnostic=await new PostgresRuntimeBehaviorDiagnosticStore(input.pool).persist({
+    scanId:scan.scanId,observedAt:scan.finishedAt,completeness:scan.completeness,
+    globalWaitEarned:scan.globalWaitEarned,globalWaitReasons:scan.globalWaitReasons,
+    candidateCount:scan.candidateCount,
+    feasibleCandidateCount:allCandidates.filter((candidate)=>candidate.structurallyFeasible&&candidate.riskFeasible
+      &&candidate.hardBlockers.length===0).length,
+    selectedCandidateCount:strategyFrontiers.filter((frontier)=>frontier.selectedCandidateId!==null).length,
+    hardRejectedCount:branchFrontiers.reduce((total,branch)=>total+branch.mechanicallyRejected+branch.hardVetoed,0),
+    softRankedCount:branchFrontiers.reduce((total,branch)=>total+branch.softRanked,0),
+    dataInsufficientCount:branchFrontiers.reduce((total,branch)=>total+branch.dataInsufficient,0),
+    quantityZeroCount:allCandidates.filter((candidate)=>candidate.sizing.quantity===0).length,
+    aegisVetoCount:scan.results.filter((member)=>member.cycle?.orchestration?.aegis?.newRiskState==='HARD_VETO').length,
+    nearMissCount:strategyFrontiers.filter((frontier)=>frontier.nearMissCandidateId!==null).length,
+    providerBlockers:[...new Set([...scan.missingScope,...scan.results.flatMap((member)=>member.errorCode?[member.errorCode]:[])])].toSorted(),
+    actionPlansReady,actionPlanBlockers:[...new Set(actionPlansBlocked)].toSorted(),
+  });
   const virtualOpening=await new PostgresShadowVirtualTrader(input.pool).createOpeningIntent(scan.scanId,scan.finishedAt);
   return {scanId:scan.scanId,completeness:scan.completeness,candidateCount:scan.candidateCount,
     symbolsAttempted:scan.symbolsAttempted,symbolsCompleted:scan.symbolsCompleted,observationsScheduled,
-    actionPlansReady,actionPlansBlocked:[...new Set(actionPlansBlocked)].toSorted(),virtualOpening};
+    actionPlansReady,actionPlansBlocked:[...new Set(actionPlansBlocked)].toSorted(),virtualOpening,behaviorDiagnostic};
 }
 
 async function loadPersistenceContext(pool:Pool,alpaca:AlpacaProviderConfig,asOf:string){

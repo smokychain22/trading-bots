@@ -30,6 +30,7 @@ import {
   privatePaperBetaReadiness,
   readLocalWorkerReadiness,
   readMasterRuntimeEvidence,
+  readLatestRuntimeBehavior,
   verifyOptionomicsConnection,
 } from "./operator-readiness.js";
 import { executionMode } from "../execution/execution-control.js";
@@ -475,9 +476,9 @@ export default async function customerHandler(
       const oauth = oauthConfiguration(environment);
       const privateBeta = privatePaperApiKeyConfiguration(environment);
       const connectionConfigured = oauth.configured || privateBeta.configured;
-      const [database,localWorker,runtimeEvidence] = await Promise.all([
+      const [database,localWorker,runtimeEvidence,runtimeBehavior] = await Promise.all([
         checkDatabaseReadiness(environment.DATABASE_URL),readLocalWorkerReadiness(environment.DATABASE_URL),
-        readMasterRuntimeEvidence(environment.DATABASE_URL),
+        readMasterRuntimeEvidence(environment.DATABASE_URL),readLatestRuntimeBehavior(environment.DATABASE_URL),
       ]);
       const executionControl = {
         masterEnabled: environment.MASTER_PAPER_EXECUTION_ENABLED,
@@ -521,6 +522,7 @@ export default async function customerHandler(
             copy_engine: environment.DATABASE_URL ? "ORDER_INTENT_READY_EXECUTION_LOCKED" : "BLOCKED",
             followers: database.active_followers === null ? "UNKNOWN" : String(database.active_followers),
             system_errors: "UNKNOWN",
+            runtime_behavior: runtimeBehavior.wait_classification,
           },
           runtime_detail: {
             stage: localWorker.online ? localWorker.state : "MASTER_PAPER_OFFLINE",
@@ -535,6 +537,7 @@ export default async function customerHandler(
             candidates_rejected: null,
             candidates_waiting: null,
             candidates_q_zero: null,
+            behavior_diagnostic: runtimeBehavior,
             open_positions: runtimeEvidence.open_positions,
             pending_orders: runtimeEvidence.pending_orders,
             unknown_submissions: null,

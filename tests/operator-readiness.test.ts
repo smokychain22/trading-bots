@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   privatePaperBetaReadiness,
+  readLatestRuntimeBehavior,
   summarizeOptionomicsReadiness,
   verifyOptionomicsConnection,
 } from "../src/customer/operator-readiness.js";
@@ -45,6 +46,13 @@ test("private paper key beta is configuration-gated and execution remains separa
   assert.equal(readiness.policy_status, "PRIVATE_TEAM_PAPER_ONLY");
   assert.equal(readiness.raw_key_endpoint_available, true);
   assert.equal(readiness.follower_count, 2);
+});
+
+test("runtime behavior evidence stays explicitly UNKNOWN without a database", async () => {
+  const evidence = await readLatestRuntimeBehavior();
+  assert.equal(evidence.wait_classification, "UNKNOWN");
+  assert.equal(evidence.overtrading_state, "UNKNOWN");
+  assert.equal(evidence.candidate_count, null);
 });
 
 test("missing master configuration returns MISSING without a provider request", async () => {

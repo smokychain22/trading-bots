@@ -20,6 +20,7 @@ local always-on worker
   -> Optionomics intelligence attempt
   -> FusionSnapshot + candidate/frontier/WAIT evidence
   -> canonical persisted decision
+  -> immutable WAIT-paralysis / overtrading diagnostic
   -> bounded Paper evidence action-plan assembly
   -> durable action-plan queue
   -> fresh execution-quote qualification
@@ -43,6 +44,7 @@ developer requests returned HTTP 401. Indicative quotes remain research-only.
 | Market clock and calendar | COMPLETE | Both are required before an open-session scan | None known |
 | Point-in-time FusionSnapshot | COMPLETE | Immutable content hash and version lineage persisted | Optionomics families remain unavailable while auth fails |
 | Candidate and WAIT evidence | COMPLETE for THETA-Q, PARTIAL cross-branch | Full THETA-Q candidate set, frontier, rejection and WAIT evidence persisted | Multi-leg and non-THETA-Q candidates need normalized relational persistence |
+| WAIT-paralysis and overtrading diagnostics | COMPLETE | Every completed Production scan persists causal WAIT class, funnel counts, consecutive WAITs, last broker-action age, near misses, AEGIS/quantity blocks and action-plan multiplicity. The operator API exposes the latest sanitized record | Outcome-based false-reject rates and calibrated activity limits require resolved episodes |
 | Canonical decision | COMPLETE | One versioned cross-branch authority is stored with receipt | Research-only structural winners intentionally cannot execute |
 | Decision to action-plan handoff | COMPLETE for OPEN_CSP | Canonical persisted selection now creates a bounded durable Paper plan | Close, roll, assignment recovery and CC plan assemblers remain |
 | Action-plan restart safety | COMPLETE | Claimed plans lease, retry, quarantine, and expire durably | None known |
@@ -68,6 +70,11 @@ developer requests returned HTTP 401. Indicative quotes remain research-only.
 4. Paper evidence economics now preserve empirical EV as `null`. A transparent
    multiplier-correct modeled-cost floor is used only as a structural minimum
    credit boundary. It is never reported as expected profitability.
+5. Cycle-level WAIT and activity behavior was previously reconstructable only
+   by joining several tables. The runtime now writes one immutable causal
+   diagnostic after every scan. No arbitrary trade-frequency threshold is
+   embedded. Multiple plans from one scan are surfaced explicitly instead of
+   being hidden as ordinary activity.
 
 ## R1 through R9 state
 

@@ -177,3 +177,52 @@ export async function readMasterRuntimeEvidence(databaseUrl?:string):Promise<Mas
       whole_chain_pnl:hasResolvedEconomics&&openChains===0?(optionPnl??0)+(stockPnl??0)-(fees??0):null};
   }catch{return empty;}finally{await pool.end();}
 }
+
+export interface RuntimeBehaviorEvidence {
+  readonly observed_at:string|null;
+  readonly wait_classification:string;
+  readonly overtrading_state:string;
+  readonly consecutive_wait_cycles:number|null;
+  readonly seconds_since_last_broker_action:number|null;
+  readonly candidate_count:number|null;
+  readonly feasible_candidate_count:number|null;
+  readonly selected_candidate_count:number|null;
+  readonly hard_rejected_count:number|null;
+  readonly soft_ranked_count:number|null;
+  readonly data_insufficient_count:number|null;
+  readonly quantity_zero_count:number|null;
+  readonly aegis_veto_count:number|null;
+  readonly near_miss_count:number|null;
+  readonly action_plans_ready:number|null;
+  readonly threshold_policy_state:string;
+}
+
+export async function readLatestRuntimeBehavior(databaseUrl?:string):Promise<RuntimeBehaviorEvidence>{
+  const empty:RuntimeBehaviorEvidence={observed_at:null,wait_classification:'UNKNOWN',overtrading_state:'UNKNOWN',
+    consecutive_wait_cycles:null,seconds_since_last_broker_action:null,candidate_count:null,feasible_candidate_count:null,
+    selected_candidate_count:null,hard_rejected_count:null,soft_ranked_count:null,data_insufficient_count:null,
+    quantity_zero_count:null,aegis_veto_count:null,near_miss_count:null,action_plans_ready:null,threshold_policy_state:'UNKNOWN'};
+  if(!databaseUrl)return empty;
+  const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000});
+  try{
+    const relation=await pool.query(`SELECT to_regclass('research.theta_runtime_behavior_diagnostic') IS NOT NULL AS ready`);
+    if(relation.rows[0]?.ready!==true)return empty;
+    const result=await pool.query(`SELECT observed_at,wait_classification,overtrading_state,consecutive_wait_cycles,
+      seconds_since_last_broker_action,candidate_count,feasible_candidate_count,selected_candidate_count,
+      hard_rejected_count,soft_ranked_count,data_insufficient_count,quantity_zero_count,aegis_veto_count,
+      near_miss_count,action_plans_ready,threshold_policy_state
+      FROM research.theta_runtime_behavior_diagnostic ORDER BY observed_at DESC,created_at DESC LIMIT 1`);
+    const row=result.rows[0];
+    if(!row)return empty;
+    const number=(value:unknown):number|null=>value==null?null:Number(value);
+    return {observed_at:row.observed_at instanceof Date?row.observed_at.toISOString():String(row.observed_at),
+      wait_classification:String(row.wait_classification),overtrading_state:String(row.overtrading_state),
+      consecutive_wait_cycles:number(row.consecutive_wait_cycles),seconds_since_last_broker_action:number(row.seconds_since_last_broker_action),
+      candidate_count:number(row.candidate_count),feasible_candidate_count:number(row.feasible_candidate_count),
+      selected_candidate_count:number(row.selected_candidate_count),hard_rejected_count:number(row.hard_rejected_count),
+      soft_ranked_count:number(row.soft_ranked_count),data_insufficient_count:number(row.data_insufficient_count),
+      quantity_zero_count:number(row.quantity_zero_count),aegis_veto_count:number(row.aegis_veto_count),
+      near_miss_count:number(row.near_miss_count),action_plans_ready:number(row.action_plans_ready),
+      threshold_policy_state:String(row.threshold_policy_state)};
+  }catch{return empty;}finally{await pool.end();}
+}

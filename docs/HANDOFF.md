@@ -1683,3 +1683,41 @@ NEXT RECOMMENDED TASK: Deploy, run the protected open-session scan, confirm real
 candidate and point-in-time evidence rows, then continue resolving quote
 qualification and management action production. Keep all live and follower
 orders locked.
+
+OWNER: Codex
+
+TASK: Runtime WAIT-paralysis and overtrading evidence vertical slice.
+
+FILES CHANGED: Runtime behavior classifier/store, Production evidence scan,
+operator status projection, migration 036, database and unit tests, system
+completion matrix, and handoff.
+
+WHAT WAS IMPLEMENTED: Every Production opportunity scan now creates an
+immutable cycle-level behavior diagnostic. It distinguishes healthy, empty,
+risk, quote, data, overstrict-policy, and possible-logic-paralysis waits from a
+ready action. It records consecutive WAIT cycles, last broker-action age,
+candidate funnel counts, near misses, quantity-zero and AEGIS veto counts,
+provider/action-plan blockers, and whether one scan produced zero, one, or
+multiple plans. Operator status exposes only the sanitized latest projection.
+No empirical trade-frequency threshold or future outcome is invented.
+
+TESTS RUN: Full Node suite, Python quant suite, TypeScript, ESLint, build,
+security scan, and PostgreSQL integration through CI.
+
+KNOWN LIMITATIONS: False-reject rate, opportunity-capture rate, and calibrated
+overtrading limits require resolved point-in-time episodes. Docker Desktop was
+unavailable locally, so disposable PostgreSQL proof is delegated to CI before
+Production migration. Management action-to-plan dispatch remains incomplete.
+
+RISKS: Consecutive WAIT is descriptive evidence. It must not become an
+automatic instruction to trade. Multiple plans in one scan is surfaced for
+review and does not by itself prove overtrading.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Research may use the diagnostic as a
+strictness cohort feature after outcome labels exist. It must not use the
+future label in the decision-time feature set or invent a threshold from a
+small sample.
+
+NEXT RECOMMENDED TASK: Complete typed management action-plan assembly and
+dispatch, then use resolved Paper episodes to calibrate soft-gate regret and
+activity limits. Keep live and follower order submission locked.
