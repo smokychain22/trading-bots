@@ -170,6 +170,24 @@ def total_variance_term(
     )
 
 
+def provider_term_metric_result(
+    slope: Optional[float], underlying: str, observed_at: str,
+) -> TermStructureResult:
+    """Wraps Codex's own provider-reported term-structure slope
+    (`optionomics_context_metrics.provider_reported_term_slope`, sourced
+    from `normalizeMetrics`'s confirmed `termSlope <- vol_term_structure_
+    slope` mapping) as a `TermStructureResult` so it can sit directly
+    alongside `ALL_STRIKE_MEAN`/`ATM_RELATIVE`/`MATCHED_LOG_MONEYNESS` in
+    one `TermMethodComparison`. Unlike the other methods, this one carries
+    no separate near/far IV or expiry of its own -- the provider reports
+    only the aggregate slope -- so those fields stay None rather than
+    fabricated from the single number."""
+    return TermStructureResult(
+        TermMethod.PROVIDER_TERM_METRIC, underlying, underlying, None, None, None, None, None, None,
+        slope, "NONE" if slope is not None else "PROVIDER_TERM_SLOPE_UNKNOWN", "NOT_APPLICABLE", None,
+    )
+
+
 def forward_variance_term(
     near_iv: Optional[float], near_dte: Optional[int], far_iv: Optional[float], far_dte: Optional[int],
 ) -> Optional[float]:

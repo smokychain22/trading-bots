@@ -16,6 +16,7 @@ from research.term_structure_research import (  # noqa: E402
     atm_relative_term,
     forward_variance_term,
     matched_log_moneyness_term,
+    provider_term_metric_result,
     total_variance_term,
 )
 
@@ -103,6 +104,19 @@ class MethodComparisonTests(unittest.TestCase):
     def test_no_divergence_when_a_method_is_unknown(self):
         comparison = TermMethodComparison({TermMethod.ALL_STRIKE_MEAN: all_strike_mean_term([], [], None, None)})
         self.assertIsNone(comparison.all_strike_diverges_from_matched(tolerance=0.01))
+
+
+class ProviderTermMetricTests(unittest.TestCase):
+    def test_known_slope_produces_a_ready_result(self):
+        result = provider_term_metric_result(0.015, "SPY", "2026-09-14T00:00:00Z")
+        self.assertEqual(result.method, TermMethod.PROVIDER_TERM_METRIC)
+        self.assertAlmostEqual(result.slope, 0.015)
+        self.assertIsNone(result.near_iv)  # provider gives only the aggregate slope, never fabricated near/far IV
+
+    def test_unknown_slope_carries_an_explicit_missingness_note(self):
+        result = provider_term_metric_result(None, "SPY", "2026-09-14T00:00:00Z")
+        self.assertIsNone(result.slope)
+        self.assertEqual(result.missingness_note, "PROVIDER_TERM_SLOPE_UNKNOWN")
 
 
 if __name__ == "__main__":

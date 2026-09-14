@@ -72,6 +72,8 @@ _ITEMS: Tuple[PhaseItem, ...] = (
               note="Wires surface/IV-RV/term/DTE-bias research into READY/INSUFFICIENT_DATA/INVALID_INPUT/NOT_APPLICABLE states. Candidate.contract/market/volatility are confirmed opaque (both here and in Production's own point-in-time-evidence.ts) -- extraction requires an explicit caller-supplied FeatureFieldMap rather than a guessed key name; confirming the real key names is a named, narrow RESEARCH_HANDOFF item, not fabricated here. Companion to, never a modification of, empirical_pipeline.py (which is independently ported/maintained on canonical main)."),
     PhaseItem("R6_HYPOTHESIS_EXPERIMENT_LINKAGE", PhaseState.COMPLETE, ("experiment_registry.py",),
               note="All 14 hypotheses now resolve to at least one experiment_id (7 were previously unlinked: H-H-01/02, H-C-01/02, H-A-02/03/04, H-D-01); FEATURE_ABLATION_FAMILIES gained SKEW/TERM/SURFACE as first-order ablations distinct from the general VOLATILITY bucket, backed by the new dedicated research modules."),
+    PhaseItem("R6_OPTIONOMICS_CONTEXT_METRICS", PhaseState.COMPLETE, ("optionomics_context_metrics.py",),
+              note="Consumes Codex's confirmed normalizeMetrics field mapping (verified directly against src/theta/optionomics-provider.ts @ 1a00fa9 -- not a guess), preserving KNOWN/UNKNOWN/INVALID exactly. Wires TermMethod.PROVIDER_TERM_METRIC using the confirmed termSlope<-vol_term_structure_slope mapping."),
 
     # ---- R6 empirical evidence: only real data is missing ----
     PhaseItem("R6_REAL_PIT_DATA", PhaseState.BLOCKED_ON_DATA, ("empirical_pipeline.py",),

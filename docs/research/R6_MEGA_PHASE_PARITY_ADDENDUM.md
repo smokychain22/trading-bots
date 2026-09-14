@@ -948,3 +948,78 @@ contract`/`market`/`volatility` (or point to the module that assembles
 them) so `FeatureFieldMap` can be populated with real values instead of
 staying `NOT_APPLICABLE` by design. `REQUIRED_CODEX_CHANGE = NONE` --
 this is a request for information, not a defect.
+
+## Codex R7 delta review: `0f609fb..1a00fa9` (Optionomics context integration)
+
+One commit, "integrate Optionomics context evidence" (migration 030, six
+confirmed context families: metrics/heatmap/flow-aggregates/events/
+earnings-filings/symbol-news). Read the handoff doc
+(`docs/handoffs/THETA_R7_RUN1_OPTIONOMICS_CONTEXT.md`) and the diff in
+full.
+
+### Strategy isolation / universal-gate risk: verified NO, not a defect
+
+Traced the exact code path (`theta-shadow-cycle.ts`'s new `sourceProvenance`
+entry for Optionomics context, and `fusion-snapshot.ts`'s `validForNewRisk`
+formula, which depends ONLY on provenance items flagged `requiredForNewRisk:
+true`). The new context observation is explicitly constructed with
+`truthRole: 'CONTEXT' as const, requiredForNewRisk: false` -- only Alpaca
+ACCOUNT/CONTRACT/QUOTE remain hard-required. A missing, degraded, or
+failed Optionomics context family (any of the six) can never by itself
+flip `validForNewRisk` to false or block candidate generation. The
+per-cycle `blockers` array these failures push into is a diagnostic
+RECEIPT field, not the input to the actual hard-gate computation.
+**NO_CHANGE_REQUIRED.**
+
+### Provider/derived separation, sign conventions: re-confirmed clean
+
+`normalizeHeatmap` explicitly tags `signConvention: 'PROVIDER_DEFINITION_
+UNVERIFIED'`. `normalizeFlowAggregates` explicitly tags `interpretation:
+'PROVIDER_CLASSIFICATION_RETAINED_NO_TRADER_INTENT_INFERRED'`. Neither
+Vanna, Charm, sweep/block/ISO, nor a GEX sign claim appears anywhere in
+the new normalizers -- matching the handoff's own stated scope exactly.
+Every `OptionomicsProviderValue<T>` carries `state`/`value`/`reason`/
+`units` together; zero is never conflated with missing (confirmed by
+reading `providerKnown`'s explicit `value === null || value === undefined`
+branch, distinct from the finite-number check). **NO_CHANGE_REQUIRED.**
+
+### Rate-limit / cadence: confirmed bounded, no infinite retry
+
+`dueOptionomicsContextFamilies` implements explicit per-family cadence
+(`cadenceMinutesByFamily`) and a bounded `maxRequestsPerCycle` cap; a
+family not due for this cycle is correctly left unobserved rather than
+carrying a stale value forward (per the handoff's own explicit claim,
+verified against the code). `requestOptionomicsJsonBounded`'s own comment
+confirms "a single bounded retry loop for 429 only... never an infinite
+retry." **NO_CHANGE_REQUIRED.** Durable cross-cycle caching remains an
+acknowledged engineering gap (Codex's own handoff), correctly not
+mischaracterized as a fabricated defect.
+
+### New: `optionomics_context_metrics.py` -- the first CONFIRMED (not guessed) field mapping
+
+Unlike `Candidate.contract`/`market`/`volatility` (still genuinely opaque
+-- unchanged by this commit, confirmed by checking `point-in-time-
+evidence.ts` was not in the diff), the new METRICS context family's field
+names ARE directly confirmed: read verbatim from `normalizeMetrics` in
+`optionomics-provider.ts` (e.g. `atmIv <- atm_iv`, `termSlope <-
+vol_term_structure_slope`, `volatilityRiskPremium20d <- vrp_20`,
+`putWall <- put_wall`, `gammaFlipStrike <- gamma_flip_strike`). Built a
+typed Python consumer (`OptionomicsMetricsSnapshot`/`ProviderMetricValue`)
+mirroring `OptionomicsProviderValue<T>`'s three-state contract exactly,
+and wired `term_structure_research.TermMethod.PROVIDER_TERM_METRIC`
+(previously an enum member with no implementation) to the confirmed
+`termSlope` field -- it can now sit directly alongside `ALL_STRIKE_MEAN`/
+`ATM_RELATIVE`/`MATCHED_LOG_MONEYNESS` in one comparison the moment real
+metrics observations exist. 12 new tests, including the zero-is-not-
+missing regression (`totalGex: KNOWN, value: 0.0` must not be dropped)
+and a malformed-shape-is-INVALID-not-coerced regression.
+
+**The `Candidate.contract`/`market`/`volatility` per-contract blob shape
+remains genuinely unconfirmed** -- this commit added context-family
+adapters, not a candidate-export schema change. The narrow `RESEARCH_
+HANDOFF` from the previous run stands unchanged, now scoped precisely:
+confirm the per-contract JSON blob key names specifically (the METRICS
+per-underlying mapping above is now resolved and does not need re-asking).
+
+**1057 Python tests pass** (+12). Security scan: 0 findings.
+**`REQUIRED_CODEX_CHANGE` count for this run: 0.**
