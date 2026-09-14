@@ -1806,6 +1806,9 @@ an explicit Production authentication verdict without including credentials,
 headers, response bodies, or provider messages. HTTP 2xx proves auth even if
 the response shape is unusable. HTTP 401 is reported as
 `401_UNAUTHORIZED`. Other no-data states remain distinct.
+The typed Optionomics environment boundary also trims accidental outer
+whitespace from its documented single-line email/token headers and rejects
+embedded line breaks without modifying other secret contents.
 
 TESTS RUN: Focused quote-qualification tests, full Node suite, TypeScript,
 ESLint, build, and security scan.

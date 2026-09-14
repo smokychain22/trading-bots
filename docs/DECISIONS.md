@@ -14,6 +14,12 @@ This diagnostic evidence does not promote Optionomics to executable-price
 authority. Quote freshness, exact-contract identity, two-sided BBO, and
 documented order-pricing semantics remain independent requirements.
 
+Optionomics documents its email and API key as single-line HTTP header values.
+The typed environment boundary trims accidental leading and trailing
+whitespace on those two fields and rejects embedded line breaks. It does not
+strip quotes, auth prefixes, or arbitrary characters. Other credentials remain
+untouched.
+
 ## 2026-09-14: provider-neutral execution quotes, bounded limits, and TCA
 
 Keep broker mutation in Alpaca, while representing execution-price evidence through

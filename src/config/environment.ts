@@ -3,6 +3,10 @@ import { parse } from 'dotenv';
 import { z } from 'zod';
 
 const optionalUrl = z.string().url().optional();
+const optionalSingleLineProviderIdentity = z.string().trim().min(1).refine(
+  (value) => !/[\r\n]/.test(value),
+  { message: 'must be a single-line value' },
+).optional();
 const booleanFlag = (defaultValue: 'true' | 'false') => z.preprocess(
   (value) => value === '' || value === undefined ? undefined : value,
   z.enum(['true', 'false']).default(defaultValue),
@@ -18,8 +22,11 @@ const environmentSchema = z.object({
   ALPACA_API_KEY: z.string().min(1).optional(),
   ALPACA_SECRET_KEY: z.string().min(1).optional(),
   ALPACA_BASE_URL: z.string().min(1).optional(),
-  OPTIONOMICS_API_KEY: z.string().min(1).optional(),
-  OPTIONOMICS_EMAIL: z.string().min(1).optional(),
+  // Optionomics documents both values as single-line HTTP header values.
+  // Normalize accidental boundary whitespace at the typed environment edge,
+  // but never strip quotes, prefixes, or arbitrary characters from secrets.
+  OPTIONOMICS_API_KEY: optionalSingleLineProviderIdentity,
+  OPTIONOMICS_EMAIL: optionalSingleLineProviderIdentity,
   ALPACA_OAUTH_CLIENT_ID: z.string().min(1).optional(),
   ALPACA_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
   ALPACA_OAUTH_REDIRECT_URI: optionalUrl,

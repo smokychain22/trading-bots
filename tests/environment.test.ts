@@ -92,6 +92,20 @@ test('parses dotenv quotes and lets the explicit file override stale process val
   }
 });
 
+test('normalizes only accidental boundary whitespace on documented single-line Optionomics headers', () => {
+  const environment = loadEnvironment({
+    OPTIONOMICS_EMAIL: '  info@techisthenewblack.com  ',
+    OPTIONOMICS_API_KEY: '\tprovider-token\n',
+  });
+  assert.equal(environment.OPTIONOMICS_EMAIL, 'info@techisthenewblack.com');
+  assert.equal(environment.OPTIONOMICS_API_KEY, 'provider-token');
+});
+
+test('rejects embedded newlines and never strips literal outer quotes from an Optionomics token', () => {
+  assert.throws(() => loadEnvironment({ OPTIONOMICS_API_KEY: 'token\nextra' }), /single-line value/);
+  assert.equal(loadEnvironment({ OPTIONOMICS_API_KEY: '"token"' }).OPTIONOMICS_API_KEY, '"token"');
+});
+
 test('Vercel redaction markers never override real process values', () => {
   const filePath = 'tests/.environment-precedence.env';
   writeFileSync(filePath, 'ALPACA_API_KEY="[SENSITIVE]"\nMASTER_PAPER_EXECUTION_ENABLED="[SENSITIVE]"\n');
