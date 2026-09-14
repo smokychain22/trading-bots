@@ -651,3 +651,8 @@ Ranking is structural and Pareto-based. Missing soft evidence is recorded and do
 Global WAIT is earned only at the bounded cross-symbol scan level after every scheduled underlying and every applicable branch finishes with no risk-feasible action. An incomplete branch, skipped symbol, or unattached open-position management surface prevents the claim. Migration 031 stores the immutable frontier and scan-level proof for deterministic R6 export.
 
 Sizing now takes the minimum of risk-budget, collateral, concentration, assignment, tail-risk, correlation, liquidity, buying-power, and broker caps. Quantity zero remains valid. Roll actions explicitly require `BUY_TO_CLOSE` followed by `SELL_TO_OPEN`, preserving the old leg and realized loss rather than mutating them into the new exposure.
+# 2026-09-14: Canonical multi-branch decision authority closes R7 internal routing
+
+The immutable five-branch frontier is now the current Production decision authority under `theta-canonical-decision-authority-v1`. Legacy THETA_Q output remains embedded for replay and compatibility, but it no longer determines the persisted selected branch, selected candidate, primary action, or quantity when a canonical frontier is present.
+
+Cross-branch selection uses known structural economics, global Pareto dominance, complete sizing caps, and deterministic tie-breaking. Empirical utility is explicitly `UNKNOWN_NOT_YET_CALIBRATED`. Management inventory is delegated to the management-first authority and is never converted into an automatic covered call. The sole Production-to-research wire contract is documented in `docs/research/THETA_PRODUCTION_RESEARCH_EXPORT_CONTRACT.md`.

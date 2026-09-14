@@ -226,31 +226,49 @@ export class PostgresThetaCycleStore {
     candidateSetId: string | null, candidateIds: ReadonlyMap<string, string>, strategyVersionId: string): Promise<string | null> {
     const receipt = cycle.orchestration?.receipt;
     if (receipt === null || receipt === undefined) return null;
-    const selectedCandidateId = receipt.selectedCandidateId === null ? null : candidateIds.get(receipt.selectedCandidateId);
-    if (receipt.selectedCandidateId !== null && selectedCandidateId === undefined) {
+    const authority = cycle.strategyFrontier;
+    const selectedCandidateRef = authority?.selectedCandidateId ?? receipt.selectedCandidateId;
+    const selectedCandidateId = selectedCandidateRef === null ? null : candidateIds.get(selectedCandidateRef) ?? null;
+    if (authority === null && receipt.selectedCandidateId !== null && selectedCandidateId === null) {
       throw new Error(`SELECTED_CANDIDATE_NOT_PERSISTED:${receipt.selectedCandidateId}`);
     }
-    const decisionId = deterministicRuntimeUuid(`decision:${fusionSnapshotId}:${receipt.underlying}`);
-    const strategyEnvelope = buildStrategyDecisionEnvelope({
-      strategyVersionId,
-      strategyBranch: 'THETA_CONVENTIONAL',
-      receipt,
-    });
+    const decisionAuthorityVersion = authority?.decisionAuthorityVersion ?? 'legacy-theta-q-decision-authority-v1';
+    const actionCode = authority?.primaryAction ?? receipt.winningAction;
+    const quantity = authority?.selectedQuantity ?? receipt.quantity;
+    const strategyBranch = authority?.selectedBranch ?? (authority === null ? 'THETA_CONVENTIONAL' : null);
+    const explanation = authority === null ? receipt.plainEnglishExplanation
+      : authority.primaryAction === 'GLOBAL_WAIT'
+        ? 'All applicable canonical branches were evaluated and no risk-feasible, positive-quantity structural action remained.'
+        : authority.primaryAction === 'MANAGEMENT_AUTHORITY'
+          ? 'Existing inventory was delegated to the management-first authority before any new-risk decision.'
+          : authority.selectedCandidateId === null
+            ? 'The canonical strategy authority held because no complete structural selection was available.'
+            : `${authority.selectedCandidateId} was selected by the versioned cross-branch structural/Pareto authority. Empirical utility remains unknown.`;
+    const reasonCodes = authority === null ? receipt.reasonCodes
+      : authority.globalWaitEarned ? authority.globalWaitReasons
+        : authority.primaryAction === 'MANAGEMENT_AUTHORITY' ? ['MANAGEMENT_FIRST']
+          : authority.selectedCandidateId === null ? ['CANONICAL_STRUCTURAL_SELECTION_UNAVAILABLE'] : ['CANONICAL_STRUCTURAL_SELECTION'];
+    const decisionId = deterministicRuntimeUuid(`decision:${fusionSnapshotId}:${receipt.underlying}:${decisionAuthorityVersion}`);
+    const receiptPayload = authority === null
+      ? buildStrategyDecisionEnvelope({ strategyVersionId, strategyBranch: 'THETA_CONVENTIONAL', receipt })
+      : { contractVersion: decisionAuthorityVersion, authority, legacyThetaQReceipt: receipt,
+          empiricalUtilityState: authority.empiricalUtilityState, executionAuthorized: false };
     const inserted = await client.query(
       `INSERT INTO trade.decision(decision_id,fusion_snapshot_id,candidate_set_id,selected_candidate_id,decision_kind,action_code,quantity,
          aegis_action,strategy_branch,decided_at,status,explanation_text,explanation_hash,runtime_selected_candidate_ref,
-         policy_version,model_versions_json,fail_closed_reason,receipt_json)
-       VALUES($1,$2,$3,$4,'NEW_RISK',$5,$6,$7,'THETA_CONVENTIONAL',$8,'RECORDED',$9,$10,$11,$12,$13,$14,$15)
+         policy_version,model_versions_json,fail_closed_reason,receipt_json,decision_authority_version)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'RECORDED',$11,$12,$13,$14,$15,$16,$17,$18)
        ON CONFLICT(decision_id) DO NOTHING RETURNING decision_id`,
-      [decisionId, fusionSnapshotId, candidateSetId,
-        selectedCandidateId ?? null,
-        receipt.winningAction, receipt.quantity,
-        cycle.orchestration?.aegis?.newRiskState ?? null, receipt.timestamp, receipt.plainEnglishExplanation,
-        createHash('sha256').update(receipt.plainEnglishExplanation).digest('hex'), receipt.selectedCandidateId,
-        receipt.policyVersion, JSON.stringify(receipt.modelVersions), receipt.failClosedReason, JSON.stringify(strategyEnvelope)],
+      [decisionId, fusionSnapshotId, candidateSetId, selectedCandidateId,
+        authority?.primaryAction === 'MANAGEMENT_AUTHORITY' ? 'MANAGEMENT_DELEGATION' : 'NEW_RISK',
+        actionCode, quantity, cycle.orchestration?.aegis?.newRiskState ?? null, strategyBranch,
+        authority?.timestamp ?? receipt.timestamp, explanation,
+        createHash('sha256').update(explanation).digest('hex'), selectedCandidateRef,
+        authority?.strategyVersion ?? receipt.policyVersion, JSON.stringify(receipt.modelVersions), receipt.failClosedReason,
+        JSON.stringify(receiptPayload), decisionAuthorityVersion],
     );
     if ((inserted.rowCount ?? 0) > 0) {
-      for (const [index, reasonCode] of receipt.reasonCodes.entries()) {
+      for (const [index, reasonCode] of reasonCodes.entries()) {
         await client.query(
           `INSERT INTO trade.decision_reason(decision_id,reason_family,reason_code,polarity,importance_rank,evidence_state)
            VALUES($1,'RUNTIME',$2,0,$3,'RECORDED')`, [decisionId, reasonCode, index + 1],
@@ -271,13 +289,15 @@ export class PostgresThetaCycleStore {
     await client.query(
       `INSERT INTO trade.canonical_strategy_frontier(frontier_id,fusion_snapshot_id,observed_at,contract_version,
         strategy_version,branches_considered_json,branches_evaluated_json,selected_branch,selected_candidate_ref,
-        best_rejected_candidate_ref,global_wait_earned,empirical_economics_ready,execution_authorized,frontier_json,content_hash)
-       VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11,$12,$13,$14::jsonb,$15)
+        best_rejected_candidate_ref,global_wait_earned,empirical_economics_ready,execution_authorized,frontier_json,content_hash,
+        decision_authority_version,primary_action,selected_quantity,empirical_utility_state)
+       VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19)
        ON CONFLICT(fusion_snapshot_id) DO NOTHING`,
       [frontierId, fusionSnapshotId, frontier.timestamp, frontier.contractVersion, frontier.strategyVersion,
         JSON.stringify(frontier.branchesConsidered), JSON.stringify(frontier.branchesEvaluated), frontier.selectedBranch,
         frontier.selectedCandidateId, frontier.bestRejectedCandidateId, frontier.globalWaitEarned,
-        frontier.empiricalEconomicsReady, frontier.executionAuthorized, JSON.stringify(frontier), frontier.contentHash],
+        frontier.empiricalEconomicsReady, frontier.executionAuthorized, JSON.stringify(frontier), frontier.contentHash,
+        frontier.decisionAuthorityVersion, frontier.primaryAction, frontier.selectedQuantity, frontier.empiricalUtilityState],
     );
     return frontierId;
   }
@@ -486,7 +506,7 @@ export class PostgresThetaCycleStore {
           contract.bidSize,contract.askSize,contract.dataQuality,quoteHash]);
       }
     }
-    if (decisionId!==null && receipt?.winningAction==='WAIT' && cycle.strategyFrontier?.globalWaitEarned === true) {
+    if (decisionId!==null && cycle.strategyFrontier?.globalWaitEarned === true) {
       const eligibleBranches=cycle.strategyFrontier.branchesConsidered;
       const evaluatedBranches=cycle.strategyFrontier.branchesEvaluated;
       const recoveryApplicable=cycle.strategyFrontier.branches.find((branch) => branch.branch==='THETA_RECOVERY')?.applicable ?? false;
@@ -506,7 +526,7 @@ export class PostgresThetaCycleStore {
         VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14::jsonb,$15)
         ON CONFLICT(decision_id) DO NOTHING`,[decisionId,candidateSetId,String(snapshot.decisionTimeUtc),global.reason,
         global.underlyingsEvaluated,global.contractsEvaluated,JSON.stringify(branches),bestRejected,null,
-        JSON.stringify(receipt.reasonCodes),JSON.stringify(snapshot.unknownFeatures),JSON.stringify(global),validation.earned,
+        JSON.stringify(cycle.strategyFrontier.globalWaitReasons),JSON.stringify(snapshot.unknownFeatures),JSON.stringify(global),validation.earned,
         JSON.stringify(validation.violations),createHash('sha256').update(JSON.stringify(waitPayload)).digest('hex')]);
     }
   }

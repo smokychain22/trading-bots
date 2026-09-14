@@ -887,6 +887,9 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   ): CanonicalStrategyFrontier => buildCanonicalStrategyFrontier({
     snapshotId: fusionSnapshot.contentHash, timestamp: decisionTime, strategyVersion: config.policyVersion,
     contracts: mergedContractsForSnapshot, routing, stock: stockState, assignmentCapacityQty: null,
+    buyingPower: account?.optionsBuyingPower ?? account?.buyingPower ?? null,
+    brokerAllowedQty: 10,
+    sizingPolicy: config.sizingPolicy,
     aegisNewRiskState: aegis?.newRiskState ?? null, eventState: eventContextPopulated ? 'OBSERVED' : null,
     unmanagedBrokerPositionCount: positions.filter((position) => position.assetClass === 'us_option').length,
     unevaluatedUnderlyingCount: Math.max(0, ranked.length - 1),

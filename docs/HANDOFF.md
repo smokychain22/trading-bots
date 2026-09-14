@@ -1495,3 +1495,12 @@ RISKS: A context family that isn't due is absent rather than reused. This is saf
 WHAT THE OTHER AGENT SHOULD REVIEW: Claude should attack the normalized metric aliases, DTE-selection bias, term-structure composition, and whether each feature family has incremental point-in-time OOS value. Claude must not promote or push Production code.
 
 NEXT RECOMMENDED TASK: Complete durable context reuse with freshness semantics, then build independent applicable-branch frontiers and management action comparisons. Keep broker submission locked.
+# 2026-09-14: R7 final internal engineering closure
+
+OWNER: Codex
+
+TASK: Replace legacy THETA_Q final authority with the canonical five-branch structural authority and finalize the Production research export wire contract.
+
+WHAT WAS IMPLEMENTED: Versioned cross-branch authority, complete structural sizing caps with quantity zero preserved, global Pareto selection, management delegation, explicit empirical-utility unknown state, durable authority lineage, and camel-case Production research export fields matching the Python loader.
+
+KNOWN LIMITATIONS: Execution-grade option quote qualification still requires supported market-open evidence. Empirical profitability, feature ablation, historical alpha research, and real lifecycle statistics belong to R6/R8.

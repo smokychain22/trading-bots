@@ -5,6 +5,7 @@ import type { StrategyRoutingResponse } from './strategy-router-contract.js';
 import { canonicalThetaStrategySources, type ThetaStrategyBranch } from './strategy-package.js';
 
 export const canonicalStrategyFrontierVersion = 'theta-canonical-strategy-frontier-v1' as const;
+export const canonicalDecisionAuthorityVersion = 'theta-canonical-decision-authority-v1' as const;
 
 export type CanonicalFrontierAction =
   | 'OPEN_CSP' | 'OPEN_DEFINED_RISK' | 'RECOVERY_WAIT' | 'SELL_STOCK' | 'SELL_CC';
@@ -54,6 +55,11 @@ export interface CanonicalFrontierCandidate {
   readonly unknownEvidence: readonly string[];
   readonly structurallyFeasible: boolean;
   readonly riskFeasible: boolean;
+  readonly sizing: {
+    readonly quantity: number;
+    readonly bindingConstraint: string;
+    readonly reasons: readonly string[];
+  };
   readonly paretoRank: number | null;
   readonly dominatedBy: readonly string[];
   readonly executionAuthorized: false;
@@ -86,11 +92,17 @@ export interface CanonicalStrategyFrontier {
   readonly snapshotId: string;
   readonly timestamp: string;
   readonly strategyVersion: string;
+  readonly decisionAuthorityVersion: typeof canonicalDecisionAuthorityVersion;
   readonly branches: readonly CanonicalBranchFrontier[];
   readonly branchesConsidered: readonly ThetaStrategyBranch[];
   readonly branchesEvaluated: readonly ThetaStrategyBranch[];
   readonly selectedBranch: ThetaStrategyBranch | null;
   readonly selectedCandidateId: string | null;
+  readonly primaryAction: CanonicalFrontierAction | 'GLOBAL_WAIT' | 'MANAGEMENT_AUTHORITY' | 'SYSTEM_HOLD';
+  readonly selectedQuantity: number;
+  readonly empiricalUtilityState: 'UNKNOWN_NOT_YET_CALIBRATED';
+  readonly secondBestCandidateId: string | null;
+  readonly nearMissCandidateId: string | null;
   readonly bestRejectedCandidateId: string | null;
   readonly globalWaitEarned: boolean;
   readonly globalWaitReasons: readonly string[];
@@ -114,6 +126,9 @@ export interface CanonicalStrategyFrontierInput {
     readonly wholeChainEconomicBasisPerShare: number | null;
   } | null;
   readonly assignmentCapacityQty: number | null;
+  readonly buyingPower?: number | null;
+  readonly brokerAllowedQty?: number;
+  readonly sizingPolicy?: Readonly<Record<string, unknown>>;
   readonly aegisNewRiskState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO' | 'DEFINED_RISK_ONLY' | 'EMERGENCY_EXIT_ONLY' | null;
   readonly eventState: string | null;
   readonly unmanagedBrokerPositionCount: number;
@@ -140,6 +155,60 @@ const stable = (value: unknown): string => {
   return JSON.stringify(value);
 };
 const digest = (value: unknown): string => createHash('sha256').update(stable(value)).digest('hex');
+
+const nonnegativeInteger = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
+
+function structuralSizing(
+  action: CanonicalFrontierAction,
+  collateral: number | null,
+  actionCapacityQty: number | null,
+  input: CanonicalStrategyFrontierInput,
+): CanonicalFrontierCandidate['sizing'] {
+  if (action === 'RECOVERY_WAIT') return { quantity: 0, bindingConstraint: 'WAIT_ACTION', reasons: ['NO_ORDER_REQUIRED'] };
+  if (action === 'SELL_STOCK') {
+    return actionCapacityQty === null
+      ? { quantity: 0, bindingConstraint: 'UNKNOWN_STOCK_CAPACITY', reasons: ['STOCK_CAPACITY_UNKNOWN'] }
+      : { quantity: Math.max(0, Math.floor(actionCapacityQty)), bindingConstraint: 'CONFIRMED_STOCK_SHARES', reasons: ['BROKER_STOCK_CAPACITY'] };
+  }
+  const policy = input.sizingPolicy;
+  const namedCaps: Array<[string, unknown]> = [
+    ['RISK_BUDGET', policy?.riskBudgetQtyCap], ['COLLATERAL_CAP', policy?.collateralQtyCap],
+    ['CONCENTRATION_CAP', policy?.concentrationQtyCap], ['ASSIGNMENT_CAPACITY_CAP', policy?.assignmentCapacityQtyCap],
+    ['TAIL_RISK_CAP', policy?.tailRiskQtyCap], ['CORRELATION_CAP', policy?.correlationQtyCap],
+    ['LIQUIDITY_CAP', policy?.liquidityQtyCap], ['BROKER_ALLOWED', input.brokerAllowedQty],
+  ];
+  const parsed: Array<[string, number | null]> = namedCaps.map(([name, value]) => [name, nonnegativeInteger(value)]);
+  if (parsed.some(([, value]) => value === null)) {
+    return { quantity: 0, bindingConstraint: 'SIZING_POLICY_INCOMPLETE', reasons: ['REQUIRED_SIZING_CAP_UNKNOWN'] };
+  }
+  if (action === 'SELL_CC') {
+    if (actionCapacityQty === null) return { quantity: 0, bindingConstraint: 'COVERED_SHARES_UNKNOWN', reasons: ['COVERED_SHARE_CAPACITY_UNKNOWN'] };
+    parsed.push(['COVERED_SHARE_CAPACITY', Math.max(0, Math.floor(actionCapacityQty))]);
+  } else {
+    const buyingPower = input.buyingPower ?? null;
+    if (!finite(collateral) || collateral <= 0 || !finite(buyingPower) || buyingPower < 0) {
+      return { quantity: 0, bindingConstraint: 'COLLATERAL_INPUT_UNKNOWN', reasons: ['BUYING_POWER_OR_COLLATERAL_UNKNOWN'] };
+    }
+    parsed.push(['BUYING_POWER_AFFORDABLE', Math.floor(buyingPower / collateral)]);
+    if (action === 'OPEN_CSP' && actionCapacityQty !== null) parsed.push(['REAL_ASSIGNMENT_CAPACITY', Math.max(0, Math.floor(actionCapacityQty))]);
+  }
+  let [bindingConstraint, quantity] = parsed[0] as [string, number];
+  for (const [name, value] of parsed.slice(1) as Array<[string, number]>) {
+    if (value < quantity) [bindingConstraint, quantity] = [name, value];
+  }
+  const reducedMultiplier = typeof policy?.reducedStateMultiplier === 'number' && Number.isFinite(policy.reducedStateMultiplier)
+    ? Math.max(0, Math.min(1, policy.reducedStateMultiplier)) : null;
+  if (input.aegisNewRiskState === null || ['HOLD_ONLY', 'HARD_VETO', 'EMERGENCY_EXIT_ONLY'].includes(input.aegisNewRiskState)) {
+    return { quantity: 0, bindingConstraint: input.aegisNewRiskState === null ? 'AEGIS_UNKNOWN' : `AEGIS_${input.aegisNewRiskState}`, reasons: ['AEGIS_DOES_NOT_PERMIT_NEW_RISK'] };
+  }
+  if (input.aegisNewRiskState === 'ALLOW_REDUCED') {
+    if (reducedMultiplier === null) return { quantity: 0, bindingConstraint: 'REDUCED_MULTIPLIER_UNKNOWN', reasons: ['REDUCED_MULTIPLIER_UNKNOWN'] };
+    quantity = Math.floor(quantity * reducedMultiplier);
+    bindingConstraint = 'AEGIS_ALLOW_REDUCED';
+  }
+  return { quantity, bindingConstraint, reasons: quantity === 0 ? ['QUANTITY_ZERO_VALID'] : ['STRUCTURAL_SIZING_COMPUTED'] };
+}
 
 function leg(contract: NormalizedOptionContract, positionIntent: CanonicalFrontierLeg['positionIntent']): CanonicalFrontierLeg {
   return {
@@ -174,8 +243,10 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
   if (input.aegisNewRiskState === 'DEFINED_RISK_ONLY') evidence.hardBlockers.push('AEGIS_DEFINED_RISK_ONLY');
   const premium = finite(contract.bid) ? contract.bid : null;
   const collateral = contract.strike * contract.multiplier;
-  if (input.assignmentCapacityQty === null) evidence.unknownEvidence.push('ASSIGNMENT_CAPACITY_UNKNOWN');
-  else if (input.assignmentCapacityQty <= 0) evidence.hardBlockers.push('NO_ASSIGNMENT_CAPACITY');
+  const assignmentCapacityQty = input.assignmentCapacityQty ??
+    (finite(input.buyingPower ?? null) && collateral > 0 ? Math.floor((input.buyingPower as number) / collateral) : null);
+  if (assignmentCapacityQty === null) evidence.unknownEvidence.push('ASSIGNMENT_CAPACITY_UNKNOWN');
+  else if (assignmentCapacityQty <= 0) evidence.hardBlockers.push('NO_ASSIGNMENT_CAPACITY');
   const cushion = finite(contract.underlyingReferencePrice) && finite(contract.breakEven) && contract.underlyingReferencePrice > 0
     ? (contract.underlyingReferencePrice - contract.breakEven) / contract.underlyingReferencePrice : null;
   return {
@@ -189,8 +260,9 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
       wholeChainPnlAtCallAway: null, capitalDayYield: premium === null || contract.dte <= 0 ? null : premium * contract.multiplier / (collateral * contract.dte),
       expectedAfterCostEv: null,
     },
-    assignmentCapacityQty: input.assignmentCapacityQty, ...evidence,
+    assignmentCapacityQty, ...evidence,
     structurallyFeasible: evidence.hardBlockers.length === 0, riskFeasible: evidence.hardBlockers.length === 0,
+    sizing: structuralSizing('OPEN_CSP', collateral, assignmentCapacityQty, input),
     paretoRank: null, dominatedBy: [], executionAuthorized: false,
   };
 }
@@ -231,6 +303,7 @@ function definedRiskCandidate(shortPut: NormalizedOptionContract, longPut: Norma
     softEvidence: [...new Set([...shortEvidence.softEvidence, ...longEvidence.softEvidence])],
     unknownEvidence: [...new Set([...shortEvidence.unknownEvidence, ...longEvidence.unknownEvidence])],
     structurallyFeasible: hardBlockers.length === 0, riskFeasible: hardBlockers.length === 0,
+    sizing: structuralSizing('OPEN_DEFINED_RISK', maxLoss, null, input),
     paretoRank: null, dominatedBy: [], executionAuthorized: false,
   };
 }
@@ -253,8 +326,9 @@ function stockActionCandidate(action: 'RECOVERY_WAIT' | 'SELL_STOCK', input: Can
       downsideCushion: null, retainedUpside: null, callAwayProceeds: null, wholeChainPnlAtCallAway: null,
       capitalDayYield: null, expectedAfterCostEv: null,
     },
-    assignmentCapacityQty: null, hardBlockers, softEvidence: [`OWNERSHIP_STATE:STOCK_HELD`, `ACTION:${action}`], unknownEvidence,
+    assignmentCapacityQty: stock.shares, hardBlockers, softEvidence: [`OWNERSHIP_STATE:STOCK_HELD`, `ACTION:${action}`], unknownEvidence,
     structurallyFeasible: hardBlockers.length === 0, riskFeasible: hardBlockers.length === 0,
+    sizing: structuralSizing(action, null, stock.shares, input),
     paretoRank: null, dominatedBy: [], executionAuthorized: false,
   };
 }
@@ -282,6 +356,7 @@ function coveredCallCandidate(contract: NormalizedOptionContract, input: Canonic
     },
     assignmentCapacityQty: coveredQty, ...evidence,
     structurallyFeasible: evidence.hardBlockers.length === 0, riskFeasible: evidence.hardBlockers.length === 0,
+    sizing: structuralSizing('SELL_CC', 0, coveredQty, input),
     paretoRank: null, dominatedBy: [], executionAuthorized: false,
   };
 }
@@ -377,23 +452,37 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
   const branches = branchOrder.map((branch) => buildBranch(branch, input));
   const applicable = branches.filter((branch) => branch.applicable);
   const evaluated = applicable.filter((branch) => branch.evaluated && branch.evaluationState !== 'BLOCKED_MISSING_INPUT');
-  const feasible = branches.flatMap((branch) => branch.candidates).filter((candidate) => candidate.riskFeasible)
-    .toSorted((a, b) => (a.paretoRank ?? Number.MAX_SAFE_INTEGER) - (b.paretoRank ?? Number.MAX_SAFE_INTEGER)
-      || a.unknownEvidence.length - b.unknownEvidence.length || a.candidateId.localeCompare(b.candidateId));
+  const globallyRanked = rankCandidates(branches.flatMap((branch) => branch.candidates));
+  const feasible = globallyRanked.filter((candidate) => candidate.riskFeasible);
   const blockedApplicable = applicable.filter((branch) => branch.evaluationState === 'BLOCKED_MISSING_INPUT');
-  const feasibleBranches = [...new Set(feasible.map((candidate) => candidate.branch))];
-  const structuralSelection = feasibleBranches.length === 1 ? feasible[0] ?? null : null;
+  const managementAuthorityRequired = applicable.some((branch) => branch.branch === 'THETA_RECOVERY' || branch.branch === 'THETA_CC');
+  const sizedNewRisk = feasible.filter((candidate) =>
+    (candidate.action === 'OPEN_CSP' || candidate.action === 'OPEN_DEFINED_RISK') && candidate.sizing.quantity > 0);
+  const structuralSelection = managementAuthorityRequired ? null : sizedNewRisk[0] ?? null;
+  const secondBest = managementAuthorityRequired ? null : sizedNewRisk[1] ?? null;
+  const rejected = globallyRanked.filter((candidate) => !candidate.riskFeasible);
+  const nearMiss = globallyRanked.find((candidate) => candidate.riskFeasible && candidate.sizing.quantity === 0)
+    ?? rejected[0] ?? null;
   const managementIncomplete = input.unmanagedBrokerPositionCount > 0;
   const universeIncomplete = input.unevaluatedUnderlyingCount > 0;
-  const globalWaitEarned = applicable.length > 0 && blockedApplicable.length === 0 && !managementIncomplete && !universeIncomplete && feasible.length === 0;
+  const globalWaitEarned = !managementAuthorityRequired && applicable.length > 0 && blockedApplicable.length === 0
+    && !managementIncomplete && !universeIncomplete && structuralSelection === null;
   const partial = {
     contractVersion: canonicalStrategyFrontierVersion, snapshotId: input.snapshotId, timestamp: input.timestamp,
-    strategyVersion: input.strategyVersion, branches, branchesConsidered: applicable.map((branch) => branch.branch),
+    strategyVersion: input.strategyVersion, decisionAuthorityVersion: canonicalDecisionAuthorityVersion,
+    branches, branchesConsidered: applicable.map((branch) => branch.branch),
     branchesEvaluated: evaluated.map((branch) => branch.branch), selectedBranch: structuralSelection?.branch ?? null,
     selectedCandidateId: structuralSelection?.candidateId ?? null,
-    bestRejectedCandidateId: branches.map((branch) => branch.bestRejectedCandidateId).find((id) => id !== null) ?? null,
+    primaryAction: managementAuthorityRequired ? 'MANAGEMENT_AUTHORITY' as const
+      : structuralSelection?.action ?? (globalWaitEarned ? 'GLOBAL_WAIT' as const : 'SYSTEM_HOLD' as const),
+    selectedQuantity: structuralSelection?.sizing.quantity ?? 0,
+    empiricalUtilityState: 'UNKNOWN_NOT_YET_CALIBRATED' as const,
+    secondBestCandidateId: secondBest?.candidateId ?? null,
+    nearMissCandidateId: nearMiss?.candidateId ?? null,
+    bestRejectedCandidateId: rejected[0]?.candidateId ?? null,
     globalWaitEarned, globalWaitReasons: globalWaitEarned ? ['ALL_APPLICABLE_BRANCHES_EVALUATED', 'NO_RISK_FEASIBLE_ACTION']
       : [...blockedApplicable.map((branch) => `BRANCH_NOT_FULLY_EVALUATED:${branch.branch}`),
+          ...(managementAuthorityRequired ? ['EXISTING_POSITION_DELEGATED_TO_MANAGEMENT_AUTHORITY'] : []),
           ...(managementIncomplete ? ['OPEN_POSITION_MANAGEMENT_NOT_ATTACHED'] : []),
           ...(universeIncomplete ? [`UNDERLYINGS_NOT_EVALUATED:${input.unevaluatedUnderlyingCount}`] : [])],
     empiricalEconomicsReady: false as const, executionAuthorized: false as const, optionomicsContext: input.optionomicsContext,

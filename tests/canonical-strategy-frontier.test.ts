@@ -35,6 +35,10 @@ function routing(eligible: readonly StrategyFamily[]) {
 const base = {
   snapshotId: 'snap-1', timestamp: NOW, strategyVersion: 'theta-strategy-package-v1',
   stock: null, assignmentCapacityQty: 2, aegisNewRiskState: 'ALLOW_FULL' as const,
+  buyingPower: 100_000, brokerAllowedQty: 10,
+  sizingPolicy: { riskBudgetQtyCap: 4, collateralQtyCap: 4, concentrationQtyCap: 3,
+    assignmentCapacityQtyCap: 3, tailRiskQtyCap: 2, correlationQtyCap: 2,
+    liquidityQtyCap: 2, reducedStateMultiplier: 0.5 },
   eventState: null, unmanagedBrokerPositionCount: 0, unevaluatedUnderlyingCount: 0,
   optionomicsContext: { state: 'UNKNOWN' } as const,
 };
@@ -49,6 +53,10 @@ test('evaluates all five canonical branches exactly once and soft UNKNOWN eviden
   assert.equal(conventional?.candidates[0]?.riskFeasible, true);
   assert.ok(conventional?.candidates[0]?.unknownEvidence.includes('EVENT_STATE_UNKNOWN'));
   assert.equal(result.selectedBranch, 'THETA_CONVENTIONAL');
+  assert.equal(result.decisionAuthorityVersion, 'theta-canonical-decision-authority-v1');
+  assert.equal(result.primaryAction, 'OPEN_CSP');
+  assert.equal(result.selectedQuantity, 2);
+  assert.equal(result.empiricalUtilityState, 'UNKNOWN_NOT_YET_CALIBRATED');
   assert.equal(result.globalWaitEarned, false);
   assert.equal(result.executionAuthorized, false);
   assert.equal(result.empiricalEconomicsReady, false);
@@ -101,4 +109,28 @@ test('GLOBAL_WAIT is earned only after every applicable branch is evaluated and 
   const incomplete = buildCanonicalStrategyFrontier({ ...base, contracts: [], routing: routing(['THETA_Q']) });
   assert.equal(incomplete.globalWaitEarned, false);
   assert.ok(incomplete.globalWaitReasons.includes('BRANCH_NOT_FULLY_EVALUATED:THETA_CONVENTIONAL'));
+});
+
+test('canonical authority compares independently eligible branches and does not leave THETA_Q authoritative', () => {
+  const conventional = contract();
+  const hold = contract({ optionSymbol: 'AAPL260918P00195000', occSymbol: 'AAPL260918P00195000',
+    strike: 195, expiration: '2026-09-18', bid: 1.1, ask: 1.15, delta: null });
+  const result = buildCanonicalStrategyFrontier({ ...base, contracts: [conventional, hold], routing: routing(['THETA_Q', 'THETA_H']) });
+  assert.deepEqual(result.branchesConsidered, ['THETA_CONVENTIONAL', 'THETA_HOLD_STRIKE']);
+  assert.ok(result.selectedBranch === 'THETA_CONVENTIONAL' || result.selectedBranch === 'THETA_HOLD_STRIKE');
+  assert.notEqual(result.selectedCandidateId, null);
+  assert.notEqual(result.secondBestCandidateId, null);
+  assert.equal(result.executionAuthorized, false);
+});
+
+test('quantity zero is authoritative GLOBAL_WAIT after complete evaluation, never forced to one', () => {
+  const result = buildCanonicalStrategyFrontier({
+    ...base, contracts: [contract()], routing: routing(['THETA_Q']),
+    sizingPolicy: { ...base.sizingPolicy, tailRiskQtyCap: 0 },
+  });
+  assert.equal(result.selectedQuantity, 0);
+  assert.equal(result.selectedCandidateId, null);
+  assert.equal(result.primaryAction, 'GLOBAL_WAIT');
+  assert.equal(result.globalWaitEarned, true);
+  assert.equal(result.nearMissCandidateId, 'THETA_CONVENTIONAL:AAPL261016P00190000');
 });

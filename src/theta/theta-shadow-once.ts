@@ -177,9 +177,12 @@ async function main(): Promise<number> {
     universeFunnel: result.universeFunnel,
     optionContractsComplete: result.optionContractsComplete,
     optionChainComplete: result.optionChainComplete,
-    finalAction: result.orchestration?.receipt.winningAction ?? null,
-    plainEnglishExplanation: result.orchestration?.receipt.plainEnglishExplanation ?? null,
-    quantity: result.orchestration?.receipt.quantity ?? null,
+    decisionAuthorityVersion: result.strategyFrontier?.decisionAuthorityVersion ?? null,
+    finalAction: result.strategyFrontier?.primaryAction ?? result.orchestration?.receipt.winningAction ?? null,
+    plainEnglishExplanation: result.strategyFrontier?.selectedCandidateId != null
+      ? 'Canonical multi-branch structural authority selected the recorded candidate. Empirical utility is not calibrated.'
+      : result.orchestration?.receipt.plainEnglishExplanation ?? null,
+    quantity: result.strategyFrontier?.selectedQuantity ?? result.orchestration?.receipt.quantity ?? null,
     provenance: result.provenance,
     provenanceDetail: result.provenanceDetail,
     blockers: result.blockers,
