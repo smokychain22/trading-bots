@@ -296,6 +296,7 @@ try {
   const activeCredentials = await client.query("SELECT count(*)::int AS count FROM copy.alpaca_oauth_token WHERE revoked_at IS NULL");
   const roles = await client.query("SELECT account_role, count(*)::int AS count FROM copy.follower_account WHERE disconnected_at IS NULL GROUP BY account_role");
   const orderCount = await client.query("SELECT count(*)::int AS count FROM trade.broker_order");
+  const optionomicsTemporalCount = await client.query("SELECT count(*)::int AS count FROM research.optionomics_temporal_feature_observation");
   const shadowCounts=await client.query(`SELECT
     (SELECT count(*)::int FROM research.theta_shadow_order_intent) AS intents,
     (SELECT count(*)::int FROM research.theta_shadow_fill) AS fills,
@@ -326,6 +327,7 @@ try {
     paperActiveBaselineEvidence:"ENFORCED",
     optionomicsLayeredEvidence:"ENFORCED",
     optionomicsContextLineage:"ENFORCED",
+    optionomicsTemporalEvidence:"ENFORCED",
     masterPaperActionHandoff:"ENFORCED",
     managementActionPlanDispatch:"ENFORCED",
     paperEvidenceAuthorization:"ENFORCED",
@@ -334,6 +336,7 @@ try {
     activeMasters: activeMasters.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
     brokerOrders: orderCount.rows[0]?.count ?? 0,
+    optionomicsTemporalFeatureRows:optionomicsTemporalCount.rows[0]?.count??0,
     shadowIntents:shadowCounts.rows[0]?.intents??0,
     shadowFills:shadowCounts.rows[0]?.fills??0,
     shadowChains:shadowCounts.rows[0]?.chains??0,
