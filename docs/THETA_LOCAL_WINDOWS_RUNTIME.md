@@ -17,6 +17,7 @@ The local supervisor is pinned to the exact tested `origin/main` SHA recorded at
 7. Network failures use bounded exponential backoff.
 8. A graceful stop writes a stop request, releases the lease, and records the worker offline.
 9. A heartbeat gap records missed observation horizons as `HOST_OFFLINE`. No later quote is substituted for the missed timestamp.
+10. A complete dataset is researched once per dataset-hash and worker-build pair. An existing immutable result is reused only after its dataset, code, experiment, feature, evidence-source, and strategy identities all match.
 
 The endpoint and worker both retain `executionGate=LOCKED`. The read-only runtime has no submit, replace, cancel, exercise, or DNE broker methods.
 

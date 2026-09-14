@@ -1759,3 +1759,35 @@ blocked until enough point-in-time outcomes resolve.
 NEXT RECOMMENDED TASK: Resume evidence collection, complete management action
 dispatch, and resolve genuine Paper lifecycle outcomes after execution-quote
 qualification. Keep every order tier locked until readiness passes.
+
+OWNER: Codex
+
+TASK: Restart-safe empirical supervisor identity.
+
+FILES CHANGED: Windows THETA supervisor, supervisor contract test, local
+runtime documentation, and handoff.
+
+WHAT WAS IMPLEMENTED: Automatic descriptive research is keyed by both the
+immutable dataset hash and exact worker build SHA. Experiment output paths also
+include the build SHA. On restart, an existing result is reused only after its
+dataset, source-code, experiment, feature, evidence-source, and strategy fields
+match. A conflicting artifact fails closed instead of being overwritten.
+
+TESTS RUN: Focused supervisor contract test, repository verification, and a
+real worker restart on the exact Production SHA.
+
+TEST RESULTS: Local supervisor contract, TypeScript, lint, build, security, full
+Node, and full Python suites passed. Canonical deployment and worker restart
+remain the operational verification step for this commit.
+
+KNOWN LIMITATIONS: Descriptive audit remains distinct from empirical model
+readiness. Resolved labels are still required for profitability claims.
+
+RISKS: Reusing an artifact on dataset hash alone would hide code-version
+changes. This implementation binds both identities.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Research output remains immutable and may
+be regenerated under a new build-specific experiment identity.
+
+NEXT RECOMMENDED TASK: Continue real point-in-time capture and resolve the
+external execution-quote gate without weakening it.

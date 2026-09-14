@@ -13,7 +13,7 @@ $statusFile = Join-Path $stateRoot 'status.json'
 $productionEnvFile = Join-Path $stateRoot 'production.env'
 $stopFile = Join-Path $stateRoot 'stop.request'
 $exportSessionFile = Join-Path $stateRoot 'last-auto-export-session'
-$researchHashFile = Join-Path $stateRoot 'last-empirical-dataset-hash'
+$researchIdentityFile = Join-Path $stateRoot 'last-empirical-dataset-identity'
 $qualificationSessionFile = Join-Path $stateRoot 'last-optionomics-qualification-session'
 if (!(Test-Path -LiteralPath $runtimeFile)) { throw 'THETA_LOCAL_WORKER_NOT_INSTALLED' }
 if (!(Test-Path -LiteralPath $tokenFile)) { throw 'THETA_LOCAL_WORKER_TOKEN_NOT_PROVISIONED' }
@@ -82,32 +82,53 @@ try {
       if ((Test-Path -LiteralPath $latestDataset) -and (Test-Path -LiteralPath $latestManifest)) {
         $manifest = Get-Content -Raw -LiteralPath $latestManifest | ConvertFrom-Json
         $datasetHash = [string]$manifest.datasetHash
-        $lastResearchHash = if (Test-Path -LiteralPath $researchHashFile) {
-          (Get-Content -Raw -LiteralPath $researchHashFile).Trim()
+        $researchIdentity = "$datasetHash`:$($runtime.buildSha)"
+        $lastResearchIdentity = if (Test-Path -LiteralPath $researchIdentityFile) {
+          (Get-Content -Raw -LiteralPath $researchIdentityFile).Trim()
         } else { '' }
-        if ($datasetHash -match '^[0-9a-f]{64}$' -and $datasetHash -ne $lastResearchHash) {
+        if ($datasetHash -match '^[0-9a-f]{64}$' -and $researchIdentity -ne $lastResearchIdentity) {
           $python = Join-Path $RepositoryPath '.venv\Scripts\python.exe'
           if (!(Test-Path -LiteralPath $python)) { $python = 'python' }
           $env:PYTHONPATH = Join-Path $RepositoryPath 'bots\theta\quant'
           $runTimestamp = (Get-Date).ToUniversalTime().ToString('o')
-          $previousErrorActionPreference = $ErrorActionPreference
-          $ErrorActionPreference = 'Continue'
-          try {
-            & $python -m research.empirical_pipeline --export $latestDataset --output (Join-Path $RepositoryPath 'research_outputs') `
-              --evidence-source LIVE_SHADOW --strategy-branch THETA_CONVENTIONAL `
-              --experiment-id AUTO-DESCRIPTIVE --target-version theta-research-targets-v1 `
-              --feature-version ([string]$manifest.featureSetVersion) --cost-model-version theta-cost-model-v1 `
-              --split-definition NO_SPLIT_DESCRIPTIVE_ONLY --source-code-commit $runtime.buildSha `
-              --run-timestamp $runTimestamp *> $null
-            $pipelineExit = $LASTEXITCODE
-          } finally { $ErrorActionPreference = $previousErrorActionPreference }
-          if ($pipelineExit -eq 0) {
-            Set-Content -LiteralPath $researchHashFile -Value $datasetHash -Encoding ascii
-            $researchExport = 'EXPORTED_AND_RESEARCHED'
-          } else {
-            $researchExport = 'RESEARCH_PIPELINE_BLOCKED'
+          $experimentId = "AUTO-DESCRIPTIVE-$($runtime.buildSha.Substring(0,12))"
+          $resultManifestPath = Join-Path $RepositoryPath "research_outputs\$datasetHash\$experimentId\manifest.json"
+          $existingResultValid = $false
+          if (Test-Path -LiteralPath $resultManifestPath) {
+            $existingResult = Get-Content -Raw -LiteralPath $resultManifestPath | ConvertFrom-Json
+            $existingResultValid = `
+              [string]$existingResult.dataset_hash -eq $datasetHash -and `
+              [string]$existingResult.source_code_commit -eq [string]$runtime.buildSha -and `
+              [string]$existingResult.experiment_id -eq $experimentId -and `
+              [string]$existingResult.feature_version -eq [string]$manifest.featureSetVersion -and `
+              [string]$existingResult.evidence_source -eq 'LIVE_SHADOW' -and `
+              [string]$existingResult.strategy_branch -eq 'THETA_CONVENTIONAL'
           }
-        } elseif ($datasetHash -eq $lastResearchHash) {
+          if ($existingResultValid) {
+            Set-Content -LiteralPath $researchIdentityFile -Value $researchIdentity -Encoding ascii
+            $researchExport = 'RESEARCH_CURRENT'
+          } elseif (Test-Path -LiteralPath $resultManifestPath) {
+            $researchExport = 'RESEARCH_RESULT_IDENTITY_INVALID'
+          } else {
+            $previousErrorActionPreference = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            try {
+              & $python -m research.empirical_pipeline --export $latestDataset --output (Join-Path $RepositoryPath 'research_outputs') `
+                --evidence-source LIVE_SHADOW --strategy-branch THETA_CONVENTIONAL `
+                --experiment-id $experimentId --target-version theta-research-targets-v1 `
+                --feature-version ([string]$manifest.featureSetVersion) --cost-model-version theta-cost-model-v1 `
+                --split-definition NO_SPLIT_DESCRIPTIVE_ONLY --source-code-commit $runtime.buildSha `
+                --run-timestamp $runTimestamp *> $null
+              $pipelineExit = $LASTEXITCODE
+            } finally { $ErrorActionPreference = $previousErrorActionPreference }
+            if ($pipelineExit -eq 0) {
+              Set-Content -LiteralPath $researchIdentityFile -Value $researchIdentity -Encoding ascii
+              $researchExport = 'EXPORTED_AND_RESEARCHED'
+            } else {
+              $researchExport = 'RESEARCH_PIPELINE_BLOCKED'
+            }
+          }
+        } elseif ($researchIdentity -eq $lastResearchIdentity) {
           $researchExport = 'RESEARCH_CURRENT'
         } elseif ($datasetHash) {
           $researchExport = 'RESEARCH_DATASET_HASH_INVALID'

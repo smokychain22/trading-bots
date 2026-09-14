@@ -23,7 +23,10 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /\$pipelineExit = \$LASTEXITCODE/);
   assert.match(source, /CURRENT_SESSION_EXPORTED/);
   assert.match(source, /BLOCKED_ON_EVIDENCE/);
-  assert.match(source, /last-empirical-dataset-hash/);
+  assert.match(source, /last-empirical-dataset-identity/);
+  assert.match(source, /AUTO-DESCRIPTIVE-\$\(\$runtime\.buildSha\.Substring\(0,12\)\)/);
+  assert.match(source, /RESEARCH_RESULT_IDENTITY_INVALID/);
+  assert.match(source, /existingResult\.source_code_commit/);
   assert.match(source, /research\.empirical_pipeline/);
   assert.match(source, /EXPORTED_AND_RESEARCHED/);
   assert.match(source, /RESEARCH_CURRENT/);
