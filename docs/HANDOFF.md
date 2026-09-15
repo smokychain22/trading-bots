@@ -2018,6 +2018,8 @@ TESTS RUN: TypeScript and the complete Node suite passed before database/deploym
 
 KNOWN LIMITATIONS: No empirically promoted management policy exists. Optionomics Production capability proof and a qualified fresh two-sided execution quote remain external blockers. Path classification is descriptive and must not be treated as alpha.
 
+RUNTIME CORRECTION: Production exposed an immutable strategy-version hash mismatch that predated this release. The Conventional research definition is now `theta-conventional@1.0.1-research`, preserving `1.0.0` and allowing evidence collection to resume without mutating history or promoting the strategy.
+
 RISKS: Small samples can make WAIT regret, giveback, and timing cohorts look predictive. Promotion still requires PIT-safe walk-forward and untouched OOS results with after-cost EV, tails, capital-days, calibration, and execution evidence.
 
 WHAT THE OTHER AGENT SHOULD REVIEW: Quant research should test path and timing families one at a time and keep whole-chain episodes grouped. It must not turn descriptive states into fixed trade rules or bypass runtime gates.

@@ -124,7 +124,7 @@ const refs = {
 };
 
 export const canonicalThetaStrategySources: readonly ThetaStrategyVersionSource[] = [
-  { ...refs, strategyId: 'theta-conventional', strategyVersion: '1.0.0-research', branch: 'THETA_CONVENTIONAL',
+  { ...refs, strategyId: 'theta-conventional', strategyVersion: '1.0.1-research', branch: 'THETA_CONVENTIONAL',
     status: 'SHADOW', executionEnabled: false,
     lattice: { dteMin: 25, dteMax: 60, optionType: 'PUT', deltaResearchBuckets: [0.10, 0.15, 0.20, 0.25, 0.30, 0.40] },
     softFeatureFamilies: ['LIQUIDITY', 'OWNERSHIP', 'DRAWDOWN_RECOVERY', 'TREND', 'MOMENTUM', 'REALIZED_VOLATILITY', 'IV', 'SKEW', 'TERM_STRUCTURE', 'VOLATILITY_SURFACE', 'FLOW', 'UNUSUAL_ACTIVITY', 'VOLUME_OPEN_INTEREST', 'EVENT_CONTEXT', 'SECTOR', 'CORRELATION', 'PORTFOLIO_EXPOSURE', 'FUNDAMENTAL_QUALITY', 'REGIME', 'EXECUTION_QUALITY'],

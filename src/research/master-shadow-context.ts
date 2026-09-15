@@ -5,7 +5,7 @@ import { deterministicRuntimeUuid } from '../theta/postgres-theta-cycle-store.js
 import { canonicalJson } from './point-in-time-evidence.js';
 
 export const masterShadowContextVersions = Object.freeze({
-  strategy: 'theta-conventional@1.0.0-research',
+  strategy: 'theta-conventional@1.0.1-research',
   feature: 'theta-feature-set-v1',
   risk: 'theta-aegis-runtime-v1',
   execution: 'theta-execution-quality-runtime-v2',

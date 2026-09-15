@@ -806,6 +806,7 @@ quote remains mandatory at the last pricing boundary.
 - Optionomics: The provider-ready capability model accepts only authenticated documented evidence. Intelligence readiness remains separate from execution quote qualification.
 - Controls: Owner pause and emergency-lock events are immutable, same-origin, confirmed, idempotent, and unable to enable execution.
 - Authorization: All new research tables enforce `execution_authorized=false`. The external quote blocker, unpromoted management provider, follower lock, and live prohibition remain unchanged.
+- Version lineage: The Conventional research definition advances to `theta-conventional@1.0.1-research`. Production rejected the changed payload under the immutable `1.0.0` hash, so the prior version remains untouched and the updated definition receives a new identity.
 
 ## 2026-09-14 - Run deterministic Python contracts in a private Vercel Python function
 

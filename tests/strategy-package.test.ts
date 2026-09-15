@@ -14,6 +14,7 @@ test('all five canonical branches are registered and execution remains disabled'
   const branches = [...canonicalThetaStrategyRegistry.values()].map((config) => config.branch);
   assert.deepEqual(new Set(branches), new Set(['THETA_CONVENTIONAL', 'THETA_HOLD_STRIKE', 'THETA_RECOVERY', 'THETA_CC', 'THETA_DEFINED_RISK']));
   assert.equal([...canonicalThetaStrategyRegistry.values()].every((config) => config.executionEnabled === false), true);
+  assert.equal(canonicalThetaStrategyRegistry.has('theta-conventional@1.0.1-research'), true);
 });
 
 test('resolved versions are immutable and have stable configuration hashes', () => {
