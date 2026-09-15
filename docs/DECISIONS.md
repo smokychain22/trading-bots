@@ -752,6 +752,16 @@ quote remains mandatory at the last pricing boundary.
 - Runtime behavior: Every management scan now persists and reads back its immutable frontier, invokes the typed action-plan assembler, and publishes only a fully ready active result. Passive HOLD/RECOVERY_WAIT/HOLD_CC creates no broker action. Pending intents are reconciled from Alpaca before a dependent plan can advance.
 - Execution boundary: This does not qualify Optionomics or Alpaca option quotes and does not authorize an order. The external quote gate, Paper controls, live-host rejection, and follower lock remain unchanged.
 
+## 2026-09-15 - Bind active management to immutable same-snapshot policy evidence
+
+- Decision: The autonomous runtime accepts management output only through a typed policy-evidence provider. The evidence must identify the exact management-input content hash and timestamp, value every feasible action, select the known-utility argmax, and carry a non-empty policy version.
+- Fail-closed behavior: Missing, stale, incomplete, malformed, or non-argmax evidence falls back to the lifecycle's passive action. The existing Python transparent baseline is not installed as Production authority because an unknown HOLD forecast can otherwise make a known CLOSE value win by default.
+- New-risk boundary: ROLL, SELL_CC, ROLL_CC, and REDEPLOY remain blocked unless their execution evidence has known positive empirical after-cost EV. The evidence cannot remove AEGIS, quote, inventory, or lifecycle blockers.
+- Expiration boundary: LET_EXPIRE, ACCEPT_ASSIGNMENT, and ALLOW_CALL_AWAY are no-order structural outcomes. They may be selected without a fitted EV model only at DTE zero, after the broker session is closed, with exact moneyness and required share or assignment capacity known.
+- Execution compilation: CLOSE_FULL, ROLL, SELL_STOCK, SELL_CC, CLOSE_CC, and ROLL_CC now compile from the selected immutable frontier. Current-leg identity and quantity come only from reconciled state. Target contracts and economic boundaries come only from the selected evidence. Covered calls cannot exceed broker-confirmed shares.
+- Durable lineage: Migration 041 adds policy version and evidence hash to the immutable frontier. The atomic action-plan writer verifies both before creating a management decision or plan. Research exports include the same lineage.
+- Authorization: This closes an engineering seam only. No empirical policy provider is configured, the execution-quote gate is unchanged, follower submission remains disabled, and live trading remains forbidden.
+
 ## 2026-09-15 - Derive temporal Optionomics evidence without creating a signal
 
 - Decision: Pair only strictly ordered, same-underlying, schema-compatible Optionomics feature snapshots and persist transparent scalar changes as immutable research evidence.

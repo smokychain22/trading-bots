@@ -45,6 +45,7 @@ try {
     "038_optionomics_temporal_feature_evidence",
     "039_cross_branch_candidate_evidence",
     "040_follower_paper_runtime",
+    "041_management_policy_evidence",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -242,6 +243,13 @@ try {
   if(managementDispatchProtection.rows[0]?.column_count!==7||!managementDispatchProtection.rows[0]?.authority_shape||
     !managementDispatchProtection.rows[0]?.dependency_shape||!managementDispatchProtection.rows[0]?.intent_link)
     throw new Error('MANAGEMENT_ACTION_PLAN_DISPATCH_PROTECTION_MISSING');
+  const managementPolicyEvidence=await client.query(`SELECT
+    count(*) FILTER(WHERE column_name IN ('policy_version','policy_evidence_hash'))::int AS column_count,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='trade.management_action_frontier'::regclass
+      AND conname='management_policy_evidence_shape') AS evidence_shape
+    FROM information_schema.columns WHERE table_schema='trade' AND table_name='management_action_frontier'`);
+  if(managementPolicyEvidence.rows[0]?.column_count!==2||!managementPolicyEvidence.rows[0]?.evidence_shape)
+    throw new Error('MANAGEMENT_POLICY_EVIDENCE_PROTECTION_MISSING');
   const paperEvidenceAuthorization=await client.query(`SELECT
     EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='trade' AND table_name='order_intent'
       AND column_name='execution_tier') AS tier,

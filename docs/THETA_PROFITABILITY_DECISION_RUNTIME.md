@@ -73,11 +73,25 @@ or roll back together. A hashed evidence key makes replay idempotent. Broker act
 mandatory for assignment and expiration.
 
 The production runtime still does not have calibrated continuation EV, assignment
-probability, recovery duration, fill probability, or Expected Shortfall. It therefore
-persists the full frontier but selects no claimed profit-maximizing action. Passive hold
-or recovery wait is recorded as a system safety state while missing evidence is resolved.
-This is intentionally conservative, but it is no longer unexplained or caused by a chain
-of soft-indicator vetoes.
+probability, recovery duration, fill probability, or Expected Shortfall. It persists the
+full frontier and can consume a versioned policy-evidence result produced from the exact
+management-input hash and timestamp. The frontier rejects incomplete comparisons, stale
+evidence, non-finite values, infeasible selections, and any non-argmax choice. Actions
+that open replacement risk also require known positive empirical after-cost EV.
+
+When validated policy evidence is absent, passive hold or recovery wait remains the
+system safety state. At expiration, the runtime may select the broker-observed no-order
+outcome only after the regular session is closed and exact contract moneyness and funded
+inventory capacity are known. This avoids both an unexplained hold and a fabricated
+profit-maximizing action.
+
+Selected active actions compile into typed broker legs using the exact reconciled current
+contract, quantity, multiplier, and stock inventory. A replacement contract and price
+boundary may only come from the selected policy evidence. The policy version and evidence
+hash are stored with the immutable frontier, carried into the management decision, and
+checked again inside the atomic action-plan transaction. The resident worker currently
+has no empirically promoted policy provider configured, so this wiring does not authorize
+an order or change the fresh two-sided execution-quote gate.
 
 ## How we learn whether the policy works
 

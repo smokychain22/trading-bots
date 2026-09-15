@@ -73,7 +73,9 @@ export class PostgresDatasetExporter {
         mis.lifecycle_state AS "lifecycleState",mis.input_json AS "inputFields",mis.unknown_fields_json AS "unknownFields",
         mis.change_json AS "changeFields",mis.content_hash AS "contentHash",COALESCE(maf.actions_json,'[]'::jsonb) AS actions,
         maf.selected_action AS "selectedAction",maf.second_best_action AS "secondBestAction",
-        maf.decision_state AS "decisionState",COALESCE(maf.reason_codes_json,'[]'::jsonb) AS "reasonCodes"
+        maf.decision_state AS "decisionState",maf.policy_version AS "managementPolicyVersion",
+        maf.policy_evidence_hash AS "managementPolicyEvidenceHash",
+        COALESCE(maf.reason_codes_json,'[]'::jsonb) AS "reasonCodes"
         FROM trade.management_input_snapshot mis LEFT JOIN trade.management_action_frontier maf USING(management_input_snapshot_id)
         WHERE mis.observed_at >= $1 AND mis.observed_at < $2 ORDER BY mis.observed_at,mis.management_input_snapshot_id`,parameters),
       this.pool.query(`SELECT lifecycle_application_id AS "lifecycleApplicationId",evidence_key AS "evidenceKey",

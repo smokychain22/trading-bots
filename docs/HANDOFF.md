@@ -1949,3 +1949,21 @@ RISKS: A follower can diverge economically from the master through quantity, pri
 WHAT THE OTHER AGENT SHOULD REVIEW: Quant work may review follower AEGIS inputs and sizing evidence. It must not change execution gates, tenant boundaries, broker truth, or follower lifecycle accounting.
 
 NEXT RECOMMENDED TASK: Accumulate master Paper evidence after a qualified execution quote exists, then test the full copy path with a separate authenticated follower Paper account while keeping submission locked until its independent release gate is approved.
+
+OWNER: Codex
+
+TASK: Close the active-management selection, execution-leg compilation, and policy-lineage seam.
+
+FILES CHANGED: Management input/frontier, autonomous runtime dependency boundary, management Paper plan compiler and atomic publisher, research export, migration 041, database readiness/verifier, focused tests, completion matrix, decision log, and this handoff.
+
+WHAT WAS IMPLEMENTED: Management can accept a complete same-snapshot policy comparison and select a non-passive action without letting stale or partial evidence displace HOLD. Exact no-order expiration outcomes use broker session and moneyness facts. Selected active actions compile into exact CSP close/roll, stock exit, covered-call open/close/roll directives. Current exposure comes only from reconciliation. New target identity and economic limits come only from selected evidence. Policy version and evidence hash are persisted and revalidated in the atomic plan transaction. Research export retains that lineage.
+
+TESTS RUN: Focused management frontier, input, compiler/assembler, runtime provider, and research export tests. Full Node, Python, PostgreSQL, Redis, browser, build, security, and CI results are recorded in the release report.
+
+KNOWN LIMITATIONS: Production has no empirically promoted management-policy evidence provider. The worker therefore remains passive outside exact no-order expiration outcomes. A fresh qualified two-sided execution quote is still required at order time.
+
+RISKS: A fitted management model can still be poorly calibrated even when its contract is valid. Promotion needs independent whole-chain evidence and must preserve tail, capital-day, execution, and inventory outcomes rather than optimizing win rate.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Quant research should produce the versioned same-snapshot evidence contract and prove each active policy through paired walk-forward and untouched OOS evaluation. It must not mutate runtime thresholds or bypass the evidence, AEGIS, quote, inventory, and broker-reconciliation gates.
+
+NEXT RECOMMENDED TASK: Accumulate point-in-time and resolved Paper evidence, promote a management challenger only after empirical acceptance, and qualify a fresh two-sided execution quote. Keep follower submission and all live trading locked.

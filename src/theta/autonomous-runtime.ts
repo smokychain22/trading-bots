@@ -11,8 +11,12 @@ import { customerStore } from '../customer/customer-store.js';
 import { dispatchDueJobs, type DueJob } from './scheduler-engine.js';
 import type { JobRunResult, JobType } from './scheduler.js';
 import { PostgresSchedulerCheckpointRepository } from './postgres-scheduler-checkpoint-repository.js';
-import { PostgresManagementInputStore } from './management-input-state.js';
-import { buildManagementActionFrontier } from './management-action-frontier.js';
+import { PostgresManagementInputStore, type ManagementInputState } from './management-input-state.js';
+import {
+  buildManagementActionFrontier,
+  type ManagementActionFrontier,
+  type ManagementPolicyEvidence,
+} from './management-action-frontier.js';
 import { applyConfirmedTerminalLifecycle } from '../execution/postgres-broker-lifecycle-orchestrator.js';
 import { asReadOnlyPaperBroker, assertShadowBrokerHasNoMutationSurface, type ReadOnlyPaperBroker } from '../execution/read-only-paper-broker.js';
 import type { AlpacaProviderConfig } from './alpaca-provider.js';
@@ -26,7 +30,7 @@ import { PostgresPaperOrderStore } from '../execution/postgres-paper-order-store
 import { PaperOrderCoordinator } from '../execution/paper-order-coordinator.js';
 import { MasterPaperExecutionOrchestrator } from '../execution/master-paper-execution-orchestrator.js';
 import { MasterPaperActionHandoff, classifyMasterPaperActionExecution } from '../execution/master-paper-action-handoff.js';
-import { assembleManagementPaperPlans } from '../execution/management-paper-plan-assembly.js';
+import { assembleManagementPaperPlans, compileManagementExecutionLegDirectives } from '../execution/management-paper-plan-assembly.js';
 import { AlpacaProviderError } from './alpaca-provider.js';
 import { OptionomicsProviderError } from './optionomics-provider.js';
 
@@ -200,6 +204,29 @@ export class PostgresRuntimeCycleStore {
   }
 }
 
+export interface ManagementPolicyEvidenceProvider {
+  evaluate(state: ManagementInputState): Promise<ManagementPolicyEvidence | null>;
+}
+
+export interface AutonomousRuntimeDependencies {
+  readonly managementPolicyEvidenceProvider?: ManagementPolicyEvidenceProvider;
+}
+
+/**
+ * Connects an optional, validated policy service to the canonical frontier.
+ * Absence, timeout handling by the provider, or a null result remains a
+ * conservative passive action. The frontier independently validates the
+ * input hash, timestamp, complete comparison, and selected argmax.
+ */
+export async function buildRuntimeManagementFrontiers(
+  states: readonly ManagementInputState[],
+  provider?: ManagementPolicyEvidenceProvider,
+): Promise<readonly ManagementActionFrontier[]> {
+  if (provider === undefined) return states.map((state) => buildManagementActionFrontier(state));
+  const evidence = await Promise.all(states.map((state) => provider.evaluate(state)));
+  return states.map((state, index) => buildManagementActionFrontier(state, evidence[index] ?? null));
+}
+
 function isRetryableExternalExecutionFailure(error:unknown):boolean{
   if(error instanceof AlpacaProviderError)return true;
   return error instanceof AlpacaPaperBrokerError&&error.category!=='BROKER_REJECTED';
@@ -228,6 +255,7 @@ export async function runAutonomousRuntimeCycle(
   environment: Environment,
   pool: Pool,
   now = new Date(),
+  dependencies: AutonomousRuntimeDependencies = {},
 ): Promise<AutonomousRuntimeReport> {
   if (!environment.THETA_AUTONOMOUS_WORKER_ENABLED) throw new Error('THETA_AUTONOMOUS_WORKER_DISABLED');
   if (!environment.DATABASE_URL) throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');
@@ -295,7 +323,9 @@ export async function runAutonomousRuntimeCycle(
           master.connectionId, reconciliation.snapshotId, reconciliation.observedAt,
         );
         if (states.length === 0) return skipped('NO_OPEN_THETA_CHAINS');
-        const frontiers = states.map(buildManagementActionFrontier);
+        const frontiers = await buildRuntimeManagementFrontiers(
+          states, dependencies.managementPolicyEvidenceProvider,
+        );
         const persistedFrontiers=await managementStore.persistFrontiers(states, frontiers);
         const actionPlanStore=new PostgresMasterPaperActionPlanStore(pool);
         for(let index=0;index<states.length;index+=1){
@@ -308,12 +338,14 @@ export async function runAutonomousRuntimeCycle(
           const rawAegis=state.context.aegisState;
           const aegisState=typeof rawAegis==='string'&&['ALLOW_FULL','ALLOW_REDUCED','HOLD_ONLY','HARD_VETO'].includes(rawAegis)
             ? rawAegis as 'ALLOW_FULL'|'ALLOW_REDUCED'|'HOLD_ONLY'|'HARD_VETO':null;
+          const compiled=compileManagementExecutionLegDirectives(state,persisted.frontier);
+          if(compiled.state==='BLOCKED')return degraded(compiled.blockers[0]??'MANAGEMENT_LEG_COMPILATION_BLOCKED',retryAt);
           const assembly=assembleManagementPaperPlans({state,frontier:persisted.frontier,
             managementActionFrontierId:persisted.managementActionFrontierId,
             executionAccountId:master.executionAccountId,strategyVersion,accountStatus:reconciliation.accountStatus,
             optionsCapabilityVerified:master.optionsCapabilityVerified,aegisState,
             killSwitchActive:environment.PAPER_PAUSE_NEW_ORDERS||!environment.MASTER_PAPER_EXECUTION_ENABLED,
-            paperEvidenceRiskCap:environment.PAPER_EVIDENCE_RISK_CAP,executionLegs:[],
+            paperEvidenceRiskCap:environment.PAPER_EVIDENCE_RISK_CAP,executionLegs:compiled.legs,
             now:reconciliation.observedAt,decisionExpiresAt:new Date(Date.parse(reconciliation.observedAt)+30_000).toISOString()});
           if(assembly.state==='READY')await actionPlanStore.publishManagementPlans(assembly.decision,assembly.plans,reconciliation.observedAt);
           if(assembly.state==='BLOCKED')return degraded(assembly.blockers[0]??'MANAGEMENT_ACTION_PLAN_BLOCKED',retryAt);

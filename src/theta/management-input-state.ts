@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import type { ThetaLifecycleState } from './runtime-state.js';
 import type { ManagementActionFrontier } from './management-action-frontier.js';
 
-export const managementInputVersion = 'theta-management-input-v2' as const;
+export const managementInputVersion = 'theta-management-input-v3' as const;
 
 export interface ManagementInputState {
   readonly contractVersion: typeof managementInputVersion;
@@ -45,6 +45,7 @@ export interface ManagementInputState {
     readonly quoteTimestamp: string | null;
     readonly quoteFeed: string | null;
     readonly quoteQuality: string | null;
+    readonly marketOpen: boolean | null;
     readonly dte: number | null;
     readonly moneyness: number | null;
     readonly delta: number | null;
@@ -147,6 +148,7 @@ export function assembleManagementInput(row: Row, input: {
   readonly observedAt: string;
 }): ManagementInputState {
   const snapshot = object(row.snapshot_json);
+  const marketSession = object(snapshot.marketSession);
   const riskState = object(snapshot.riskState);
   const snapshotContracts = Array.isArray(snapshot.contractCandidates) ? snapshot.contractCandidates : [];
   const position = object(row.broker_position);
@@ -191,6 +193,7 @@ export function assembleManagementInput(row: Row, input: {
     required('market.iv', snapshotContract.iv ?? null);
   }
   if (stockShares > 0) required('economics.stockMarkPerShare', stockMark);
+  required('market.marketOpen', typeof marketSession.isOpen === 'boolean' ? marketSession.isOpen : null);
   required('account.buyingPower', row.buying_power);
   required('account.optionsBuyingPower', row.options_buying_power);
   required('context.eventState', snapshot.eventState ?? null);
@@ -237,6 +240,7 @@ export function assembleManagementInput(row: Row, input: {
       unrealizedStockPnl: stockMtm, realizedStockPnl, dividends, fees, wholeChainPnl },
     market: { spot, optionBid: bid, optionAsk: ask, quoteTimestamp: text(row.quote_as_of),
       quoteFeed: text(row.feed), quoteQuality: text(row.quote_quality), dte: daysToExpiration(expiration, input.observedAt),
+      marketOpen: typeof marketSession.isOpen === 'boolean' ? marketSession.isOpen : null,
       moneyness: spot !== null && strike !== null && spot > 0 ? strike / spot : null,
       delta: numeric(snapshotContract.delta), gamma: numeric(snapshotContract.gamma), theta: numeric(snapshotContract.theta),
       vega: numeric(snapshotContract.vega), iv: numeric(snapshotContract.iv),
@@ -373,12 +377,14 @@ export class PostgresManagementInputStore {
         await client.query(
           `INSERT INTO trade.management_action_frontier(
             management_action_frontier_id,management_input_snapshot_id,chain_id,observed_at,lifecycle_state,
-            economic_model_state,actions_json,selected_action,second_best_action,decision_state,reason_codes_json,content_hash)
-           VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11::jsonb,$12)
+            policy_version,policy_evidence_hash,economic_model_state,actions_json,selected_action,second_best_action,
+            decision_state,reason_codes_json,content_hash)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13::jsonb,$14)
            ON CONFLICT(management_input_snapshot_id,content_hash) DO NOTHING`,
           [randomUUID(),state.managementInputSnapshotId,state.chainId,state.observedAt,state.lifecycleState,
-            frontier.economicModelState,JSON.stringify(frontier.actions),frontier.selectedAction,
-            frontier.secondBestAction,frontier.decisionState,JSON.stringify(frontier.reasonCodes),
+            frontier.policyVersion, frontier.policyEvidenceHash, frontier.economicModelState,
+            JSON.stringify(frontier.actions), frontier.selectedAction,
+            frontier.secondBestAction, frontier.decisionState, JSON.stringify(frontier.reasonCodes),
             contentHash],
         );
         const stored=await client.query(`SELECT management_action_frontier_id FROM trade.management_action_frontier

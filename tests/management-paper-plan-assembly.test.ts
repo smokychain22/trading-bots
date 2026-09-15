@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assembleManagementPaperPlans, type ManagementPaperPlanAssemblyInput } from '../src/execution/management-paper-plan-assembly.js';
+import { assembleManagementPaperPlans, compileManagementExecutionLegDirectives,
+  type ManagementPaperPlanAssemblyInput } from '../src/execution/management-paper-plan-assembly.js';
 import { PostgresMasterPaperActionPlanStore } from '../src/execution/postgres-master-paper-action-plan-store.js';
 import { buildManagementActionFrontier, type ManagementActionFrontier, type ManagementFrontierAction } from '../src/theta/management-action-frontier.js';
 import { assembleManagementInput } from '../src/theta/management-input-state.js';
@@ -22,10 +23,34 @@ const state=()=>assembleManagementInput({chain_id:ids.chain,lifecycle_state:'CSP
     expertPriorState:{state:'GOOD'},versions:{strategyVersion:'theta-conventional-v1'}},broker_position:null},
 {managementInputSnapshotId:ids.input,reconciliationSnapshotId:ids.reconciliation,observedAt:now});
 
-const selectedFrontier=(action:ManagementFrontierAction):ManagementActionFrontier=>{
+const lifecycleState=(lifecycle:'RECOVERY_WAIT'|'CC_OPEN',optionType:'PUT'|'CALL',shares:number)=>assembleManagementInput({
+  chain_id:ids.chain,lifecycle_state:lifecycle,underlying_id:ids.underlying,underlying:'AAPL',option_leg_id:ids.leg,
+  option_contract_id:ids.contract,quantity:lifecycle==='CC_OPEN'?'2':null,entry_credit_debit:lifecycle==='CC_OPEN'?'400':null,
+  contract_symbol:lifecycle==='CC_OPEN'?`AAPL261016${optionType==='CALL'?'C':'P'}00200000`:null,option_type:lifecycle==='CC_OPEN'?optionType:null,
+  strike:lifecycle==='CC_OPEN'?'200':null,expiration_date:lifecycle==='CC_OPEN'?'2026-10-16':null,
+  multiplier:lifecycle==='CC_OPEN'?'100':null,bid:lifecycle==='CC_OPEN'?'1':null,ask:lifecycle==='CC_OPEN'?'1.1':null,
+  quote_as_of:lifecycle==='CC_OPEN'?now:null,feed:lifecycle==='CC_OPEN'?'OPRA':null,quote_quality:lifecycle==='CC_OPEN'?'GOOD':null,
+  realized_option_pnl:'0',open_stock_shares:String(shares),stock_basis_per_share:'195',realized_stock_pnl:'0',dividends:'0',fees:'0',
+  unknown_fill_fees:false,buying_power:'50000',options_buying_power:'40000',account_as_of:now,fusion_snapshot_id:ids.fusion,
+  snapshot_json:{eventState:{state:'CLEAR'},riskState:{assignmentCapacity:2,newRiskState:'ALLOW_FULL'},versions:{strategyVersion:'theta-cc-v1'}},
+  broker_position:{currentPrice:190}},
+{managementInputSnapshotId:ids.input,reconciliationSnapshotId:ids.reconciliation,observedAt:now});
+
+const frontierFor=(managementState:ReturnType<typeof lifecycleState>,action:ManagementFrontierAction,
+  executionEvidence:ManagementActionFrontier['actions'][number]['executionEvidence']):ManagementActionFrontier=>{
+  const base=buildManagementActionFrontier(managementState);
+  return {...base,selectedAction:action,decisionState:'ACTION_SELECTED',reasonCodes:[`SELECT_${action}`],
+    policyVersion:'management-test-policy-v1',policyEvidenceHash:'a'.repeat(64),
+    actions:base.actions.map((candidate)=>candidate.action===action
+      ?{...candidate,feasibility:'FEASIBLE',blockers:[],executionEvidence}:candidate)};
+};
+
+const selectedFrontier=(action:ManagementFrontierAction,executionEvidence:ManagementActionFrontier['actions'][number]['executionEvidence']=null):ManagementActionFrontier=>{
   const base=buildManagementActionFrontier(state());
   return {...base,selectedAction:action,decisionState:'ACTION_SELECTED',reasonCodes:[`SELECT_${action}`],
-    actions:base.actions.map((candidate)=>candidate.action===action?{...candidate,feasibility:'FEASIBLE',blockers:[]}:candidate)};
+    policyVersion:'management-test-policy-v1',policyEvidenceHash:'a'.repeat(64),
+    actions:base.actions.map((candidate)=>candidate.action===action
+      ?{...candidate,feasibility:'FEASIBLE',blockers:[],executionEvidence}:candidate)};
 };
 
 const input=(action:ManagementFrontierAction,overrides:Partial<ManagementPaperPlanAssemblyInput>={}):ManagementPaperPlanAssemblyInput=>({
@@ -48,6 +73,8 @@ test('selected CSP close becomes one authority-linked risk-reducing plan without
   assert.equal(result.state,'READY');
   if(result.state!=='READY')return;
   assert.equal(result.decision.actionCode,'CLOSE_FULL');
+  assert.equal(result.decision.managementPolicyVersion,'management-test-policy-v1');
+  assert.equal(result.decision.managementPolicyEvidenceHash,'a'.repeat(64));
   assert.equal(result.plans.length,1);
   assert.equal(result.plans[0]?.decisionAuthority,'MANAGEMENT');
   assert.equal(result.plans[0]?.action,'CLOSE_CSP');
@@ -99,4 +126,70 @@ test('atomic management publisher rejects tampered leg order before touching Pos
   const tampered=[second,first];
   await assert.rejects(store.publishManagementPlans(assembled.decision,tampered,now),/MANAGEMENT_ACTION_PLAN_GROUP_INVALID/);
   assert.equal(connected,false);
+});
+
+test('compiler reconstructs a CSP close from authoritative position identity and quantity',()=>{
+  const frontier=selectedFrontier('CLOSE_FULL',{closeEconomicBoundary:1.25,openEconomicBoundary:null,
+    stockEconomicBoundary:null,economicsRemainPositive:true,expectedAfterCostEv:null,
+    empiricalEconomicsReady:false,targetContract:null});
+  const compiled=compileManagementExecutionLegDirectives(state(),frontier);
+  assert.equal(compiled.state,'READY');
+  if(compiled.state!=='READY')return;
+  assert.deepEqual(compiled.legs,[{action:'CLOSE_CSP',symbol:'AAPL261016P00200000',optionContractId:ids.contract,
+    optionType:'PUT',multiplier:100,canonicalQuantity:2,economicBoundary:1.25,economicsRemainPositive:true,
+    expectedAfterCostEv:null,empiricalEconomicsReady:false}]);
+});
+
+test('compiler rejects active management without persisted execution evidence',()=>{
+  const compiled=compileManagementExecutionLegDirectives(state(),selectedFrontier('CLOSE_FULL'));
+  assert.equal(compiled.state,'BLOCKED');
+  assert.deepEqual(compiled.blockers,['MANAGEMENT_EXECUTION_EVIDENCE_MISSING']);
+});
+
+test('compiler builds a dependency-ready empirical roll without changing current close identity',()=>{
+  const frontier=selectedFrontier('ROLL',{closeEconomicBoundary:1.25,openEconomicBoundary:1.5,
+    stockEconomicBoundary:null,economicsRemainPositive:true,expectedAfterCostEv:25,empiricalEconomicsReady:true,
+    targetContract:{symbol:'AAPL261120P00195000',optionContractId:ids.target,optionType:'PUT',multiplier:100,quantity:1}});
+  const compiled=compileManagementExecutionLegDirectives(state(),frontier);
+  assert.equal(compiled.state,'READY');
+  if(compiled.state!=='READY')return;
+  assert.equal(compiled.legs[0]?.action,'ROLL_CSP_CLOSE');
+  assert.equal(compiled.legs[0]?.symbol,'AAPL261016P00200000');
+  assert.equal(compiled.legs[0]?.canonicalQuantity,2);
+  assert.equal(compiled.legs[1]?.action,'ROLL_CSP_OPEN');
+  assert.equal(compiled.legs[1]?.symbol,'AAPL261120P00195000');
+  assert.equal(compiled.legs[1]?.canonicalQuantity,1);
+});
+
+test('compiler derives a full stock exit from confirmed recovery inventory',()=>{
+  const recovery=lifecycleState('RECOVERY_WAIT','PUT',100);
+  const frontier=frontierFor(recovery,'SELL_STOCK',{closeEconomicBoundary:null,openEconomicBoundary:null,
+    stockEconomicBoundary:189,economicsRemainPositive:true,expectedAfterCostEv:null,empiricalEconomicsReady:false,targetContract:null});
+  const compiled=compileManagementExecutionLegDirectives(recovery,frontier);
+  assert.equal(compiled.state,'READY');
+  if(compiled.state!=='READY')return;
+  assert.deepEqual(compiled.legs[0],{action:'SELL_STOCK',symbol:'AAPL',optionContractId:null,optionType:null,multiplier:1,
+    canonicalQuantity:100,economicBoundary:189,economicsRemainPositive:true,expectedAfterCostEv:null,empiricalEconomicsReady:false});
+});
+
+test('covered-call compiler enforces broker-confirmed share coverage',()=>{
+  const recovery=lifecycleState('RECOVERY_WAIT','PUT',100);
+  const evidence={closeEconomicBoundary:null,openEconomicBoundary:1,stockEconomicBoundary:null,economicsRemainPositive:true,
+    expectedAfterCostEv:20,empiricalEconomicsReady:true,targetContract:{symbol:'AAPL261016C00200000',optionContractId:ids.target,
+      optionType:'CALL' as const,multiplier:100,quantity:2}};
+  const compiled=compileManagementExecutionLegDirectives(recovery,frontierFor(recovery,'SELL_CC',evidence));
+  assert.equal(compiled.state,'BLOCKED');
+  assert.deepEqual(compiled.blockers,['COVERED_CALL_COVERAGE_NOT_CONFIRMED']);
+});
+
+test('covered-call close is compiled as BUY_TO_CLOSE against the exact current call',()=>{
+  const covered=lifecycleState('CC_OPEN','CALL',200);
+  const frontier=frontierFor(covered,'CLOSE_CC',{closeEconomicBoundary:1.25,openEconomicBoundary:null,
+    stockEconomicBoundary:null,economicsRemainPositive:true,expectedAfterCostEv:null,empiricalEconomicsReady:false,targetContract:null});
+  const compiled=compileManagementExecutionLegDirectives(covered,frontier);
+  assert.equal(compiled.state,'READY');
+  if(compiled.state!=='READY')return;
+  assert.equal(compiled.legs[0]?.action,'CLOSE_CC');
+  assert.equal(compiled.legs[0]?.optionType,'CALL');
+  assert.equal(compiled.legs[0]?.canonicalQuantity,2);
 });

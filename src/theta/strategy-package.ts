@@ -117,7 +117,7 @@ const sharedHardRules: ThetaStrategyVersionSource['hardRules'] = [
 const refs = {
   candidateLatticeVersion: 'theta-lattice-v1', featureSetVersion: 'theta-feature-set-v1',
   entryModelVersion: 'EV_MODEL_NOT_EMPIRICALLY_READY', ownershipModelVersion: 'theta-ownership-runtime-v1',
-  managementPolicyVersion: 'theta-management-action-frontier-v1', riskLimitVersion: 'theta-aegis-runtime-v1',
+  managementPolicyVersion: 'theta-management-action-frontier-v2', riskLimitVersion: 'theta-aegis-runtime-v1',
   costModelVersion: 'theta-cost-model-v1', executionModelVersion: 'theta-execution-quality-runtime-v2',
   promotionStatus: 'UNVALIDATED' as const, multiplierSemantics: 'BROKER_CONTRACT_METADATA_REQUIRED' as const,
   hardRules: sharedHardRules,

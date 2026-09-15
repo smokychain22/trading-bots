@@ -22,6 +22,11 @@ export interface ManagementExecutionLegDirective {
   readonly confirmedCoveredShares?: number;
 }
 
+export type ManagementExecutionLegCompilation =
+  | { readonly state: 'NO_BROKER_ACTION'; readonly legs: readonly []; readonly blockers: readonly string[] }
+  | { readonly state: 'BLOCKED'; readonly legs: readonly []; readonly blockers: readonly string[] }
+  | { readonly state: 'READY'; readonly legs: readonly ManagementExecutionLegDirective[]; readonly blockers: readonly [] };
+
 export interface ManagementPaperPlanAssemblyInput {
   readonly state: ManagementInputState;
   readonly frontier: ManagementActionFrontier;
@@ -45,6 +50,8 @@ export interface ManagementDecisionDraft {
   readonly quantity: number;
   readonly aegisAction: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO';
   readonly strategyVersion: string;
+  readonly managementPolicyVersion: string;
+  readonly managementPolicyEvidenceHash: string;
   readonly authorityRef: string;
   readonly decidedAt: string;
   readonly reasonCodes: readonly string[];
@@ -78,6 +85,85 @@ const adaptivePricingPolicy = Object.freeze({
   concessionFractions: [0, 0.5, 1] as const,
   tickSize: 0.01,
 });
+
+const validPositive = (value: number | null): value is number => value !== null && Number.isFinite(value) && value > 0;
+
+/**
+ * Compiles broker legs from the selected immutable frontier. Current-leg
+ * identity and quantity always come from reconciled management state. A
+ * replacement/opening contract may only come from the selected action's
+ * persisted policy evidence. No caller may substitute a different close
+ * contract or quantity at this boundary.
+ */
+export function compileManagementExecutionLegDirectives(state: ManagementInputState,
+  frontier: ManagementActionFrontier): ManagementExecutionLegCompilation {
+  const selected = frontier.selectedAction;
+  if (selected === null) return { state:'NO_BROKER_ACTION',legs:[],blockers:['NO_MANAGEMENT_ACTION_SELECTED'] };
+  if (passiveActions.has(selected) || selected === 'REDEPLOY') {
+    return { state:'NO_BROKER_ACTION',legs:[],blockers:[`MANAGEMENT_ACTION_${selected}`] };
+  }
+  const action = frontier.actions.find((candidate) => candidate.action === selected);
+  if (frontier.chainId !== state.chainId || frontier.decisionState !== 'ACTION_SELECTED' || action === undefined
+    || action.feasibility !== 'FEASIBLE') {
+    return { state:'BLOCKED',legs:[],blockers:['MANAGEMENT_SELECTION_AUTHORITY_INVALID'] };
+  }
+  const execution = action.executionEvidence;
+  if (execution === null || !execution.economicsRemainPositive) {
+    return { state:'BLOCKED',legs:[],blockers:['MANAGEMENT_EXECUTION_EVIDENCE_MISSING'] };
+  }
+  const currentOption = (): {symbol:string;optionContractId:string;optionType:'PUT'|'CALL';multiplier:number;quantity:number}|null =>
+    state.contract.symbol !== null && state.contract.optionContractId !== null && state.contract.optionType !== null
+      && state.contract.multiplier !== null && state.contract.contracts !== null && Number.isInteger(state.contract.contracts)
+      && state.contract.contracts > 0
+      ? {symbol:state.contract.symbol,optionContractId:state.contract.optionContractId,optionType:state.contract.optionType,
+          multiplier:state.contract.multiplier,quantity:state.contract.contracts}:null;
+  const close = currentOption();
+  const common = { economicsRemainPositive:execution.economicsRemainPositive,
+    expectedAfterCostEv:execution.expectedAfterCostEv,empiricalEconomicsReady:execution.empiricalEconomicsReady };
+  if (selected === 'CLOSE_FULL' || selected === 'CLOSE_CC') {
+    if (close === null || !validPositive(execution.closeEconomicBoundary)) {
+      return { state:'BLOCKED',legs:[],blockers:['MANAGEMENT_CLOSE_DIRECTIVE_INCOMPLETE'] };
+    }
+    const expectedType=selected==='CLOSE_FULL'?'PUT':'CALL';
+    if(close.optionType!==expectedType)return {state:'BLOCKED',legs:[],blockers:['MANAGEMENT_CLOSE_LIFECYCLE_MISMATCH']};
+    return {state:'READY',blockers:[],legs:[{action:selected==='CLOSE_FULL'?'CLOSE_CSP':'CLOSE_CC',
+      symbol:close.symbol,optionContractId:close.optionContractId,optionType:close.optionType,multiplier:close.multiplier,
+      canonicalQuantity:close.quantity,economicBoundary:execution.closeEconomicBoundary,...common}]};
+  }
+  if (selected === 'SELL_STOCK') {
+    if (!Number.isInteger(state.economics.openStockShares) || state.economics.openStockShares <= 0
+      || !validPositive(execution.stockEconomicBoundary)) {
+      return { state:'BLOCKED',legs:[],blockers:['MANAGEMENT_STOCK_EXIT_DIRECTIVE_INCOMPLETE'] };
+    }
+    return {state:'READY',blockers:[],legs:[{action:'SELL_STOCK',symbol:state.underlying,optionContractId:null,
+      optionType:null,multiplier:1,canonicalQuantity:state.economics.openStockShares,
+      economicBoundary:execution.stockEconomicBoundary,...common}]};
+  }
+  const target=execution.targetContract;
+  if(target===null||!Number.isInteger(target.quantity)||target.quantity<=0||!Number.isInteger(target.multiplier)
+    ||target.multiplier<=0||!validPositive(execution.openEconomicBoundary)){
+    return {state:'BLOCKED',legs:[],blockers:['MANAGEMENT_NEW_RISK_TARGET_INCOMPLETE']};
+  }
+  const openLeg=(actionCode:'ROLL_CSP_OPEN'|'OPEN_CC'|'ROLL_CC_OPEN'):ManagementExecutionLegDirective=>({
+    action:actionCode,symbol:target.symbol,optionContractId:target.optionContractId,optionType:target.optionType,
+    multiplier:target.multiplier,canonicalQuantity:target.quantity,economicBoundary:execution.openEconomicBoundary as number,
+    ...common,...(target.optionType==='CALL'?{confirmedCoveredShares:state.economics.openStockShares}:{})});
+  if((selected==='SELL_CC'||selected==='ROLL_CC')&&
+    (target.optionType!=='CALL'||state.economics.openStockShares<target.quantity*target.multiplier)){
+    return {state:'BLOCKED',legs:[],blockers:['COVERED_CALL_COVERAGE_NOT_CONFIRMED']};
+  }
+  if(selected==='SELL_CC')return {state:'READY',blockers:[],legs:[openLeg('OPEN_CC')]};
+  if(close===null||!validPositive(execution.closeEconomicBoundary)){
+    return {state:'BLOCKED',legs:[],blockers:['MANAGEMENT_ROLL_CLOSE_DIRECTIVE_INCOMPLETE']};
+  }
+  if(selected==='ROLL'&&close.optionType==='PUT'&&target.optionType==='PUT')return {state:'READY',blockers:[],legs:[
+    {action:'ROLL_CSP_CLOSE',symbol:close.symbol,optionContractId:close.optionContractId,optionType:'PUT',multiplier:close.multiplier,
+      canonicalQuantity:close.quantity,economicBoundary:execution.closeEconomicBoundary,...common},openLeg('ROLL_CSP_OPEN')]};
+  if(selected==='ROLL_CC'&&close.optionType==='CALL'&&target.optionType==='CALL')return {state:'READY',blockers:[],legs:[
+    {action:'ROLL_CC_CLOSE',symbol:close.symbol,optionContractId:close.optionContractId,optionType:'CALL',multiplier:close.multiplier,
+      canonicalQuantity:close.quantity,economicBoundary:execution.closeEconomicBoundary,...common},openLeg('ROLL_CC_OPEN')]};
+  return {state:'BLOCKED',legs:[],blockers:['MANAGEMENT_ACTION_LEG_COMPILATION_UNSUPPORTED']};
+}
 
 function validateLegIdentity(state: ManagementInputState, leg: ManagementExecutionLegDirective, blockers: string[]): void {
   if (!Number.isInteger(leg.canonicalQuantity) || leg.canonicalQuantity <= 0) blockers.push(`LEG_QUANTITY_INVALID:${leg.action}`);
@@ -129,6 +215,9 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
   const blockers: string[] = [];
   if (input.frontier.chainId !== input.state.chainId) blockers.push('MANAGEMENT_FRONTIER_CHAIN_MISMATCH');
   if (input.frontier.decisionState !== 'ACTION_SELECTED') blockers.push('MANAGEMENT_ACTION_NOT_SELECTED_BY_AUTHORITY');
+  if (input.frontier.policyVersion === null || input.frontier.policyEvidenceHash === null) {
+    blockers.push('MANAGEMENT_POLICY_LINEAGE_MISSING');
+  }
   blockers.push(...input.state.hardBlockers.map((blocker) => `MANAGEMENT_STATE_BLOCKER:${blocker}`));
   if (selectedEconomics === undefined) blockers.push('SELECTED_MANAGEMENT_ACTION_NOT_IN_FRONTIER');
   else {
@@ -168,7 +257,8 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
       blockers.push('ROLL_OPEN_QUANTITY_EXCEEDS_CLOSE');
     }
   }
-  if (blockers.length > 0 || input.executionAccountId === null || input.strategyVersion === null || input.aegisState === null) {
+  if (blockers.length > 0 || input.executionAccountId === null || input.strategyVersion === null || input.aegisState === null
+    || input.frontier.policyVersion === null || input.frontier.policyEvidenceHash === null) {
     return { state: 'BLOCKED', decision: null, plans: [], blockers: [...new Set(blockers)] };
   }
 
@@ -234,6 +324,8 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
       quantity: plans[0]?.canonicalQuantity ?? 0,
       aegisAction: input.aegisState as ManagementDecisionDraft['aegisAction'],
       strategyVersion: input.strategyVersion,
+      managementPolicyVersion: input.frontier.policyVersion,
+      managementPolicyEvidenceHash: input.frontier.policyEvidenceHash,
       authorityRef, decidedAt: input.now,
       reasonCodes: input.frontier.reasonCodes,
     },

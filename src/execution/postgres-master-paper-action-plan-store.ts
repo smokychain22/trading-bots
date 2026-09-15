@@ -71,6 +71,7 @@ export class PostgresMasterPaperActionPlanStore {
     try{
       await client.query('BEGIN');
       const authority=await client.query(`SELECT maf.management_action_frontier_id,maf.selected_action,maf.decision_state,
+        maf.policy_version,maf.policy_evidence_hash,
         mis.management_input_snapshot_id,mis.fusion_snapshot_id,mis.chain_id,mis.input_json,
         ea.account_kind::text AS account_kind,ea.account_ready
         FROM trade.management_action_frontier maf
@@ -83,6 +84,10 @@ export class PostgresMasterPaperActionPlanStore {
       if(row.account_kind!=='MASTER_API_KEY'||row.account_ready!==true)throw new Error('ACTION_PLAN_MASTER_ACCOUNT_NOT_READY');
       if(row.decision_state!=='ACTION_SELECTED'||String(row.selected_action)!==decision.actionCode)
         throw new Error('MANAGEMENT_ACTION_SELECTION_MISMATCH');
+      if(row.policy_version!==decision.managementPolicyVersion
+        ||row.policy_evidence_hash!==decision.managementPolicyEvidenceHash){
+        throw new Error('MANAGEMENT_POLICY_LINEAGE_MISMATCH');
+      }
       if(String(row.chain_id)!==first.chainId)throw new Error('MANAGEMENT_ACTION_CHAIN_MISMATCH');
       if(row.fusion_snapshot_id===null)throw new Error('MANAGEMENT_FUSION_SNAPSHOT_MISSING');
       const inputJson=row.input_json as Record<string,unknown>|null;
@@ -99,10 +104,12 @@ export class PostgresMasterPaperActionPlanStore {
           NULL,$9::jsonb,'theta-management-action-authority-v1')
         ON CONFLICT(decision_id) DO NOTHING RETURNING decision_id`,
       [decision.decisionId,row.fusion_snapshot_id,decision.actionCode,decision.quantity,decision.aegisAction,
-        decision.decidedAt,decision.authorityRef,decision.strategyVersion,JSON.stringify({
+        decision.decidedAt,decision.authorityRef,decision.managementPolicyVersion,JSON.stringify({
           managementActionFrontierId:first.managementActionFrontierId,
           managementInputSnapshotId:first.managementInputSnapshotId,
           actionGroupId:first.actionGroupId,
+          strategyVersion:decision.strategyVersion,
+          managementPolicyEvidenceHash:decision.managementPolicyEvidenceHash,
           planIds:plans.map((plan)=>plan.actionPlanId),
         })]);
       if((insertedDecision.rowCount??0)>0){
