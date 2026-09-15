@@ -428,6 +428,133 @@ promotion anywhere in this registry -- every trader-derived hypothesis in
 `hypotheses.json` remains `evidence_class: D_EXPERT_DNA` or cites a real
 public source with an explicit tier, never asserted as proven.
 
+## P2C Pass 2 (owner-authorized push + bounded gap-closure)
+
+Continuation pass, previous commit `95f1a4c` pushed to
+`claude/theta-r1-real-state` per explicit owner authorization. Closes the
+gaps this document itself left open (`EVENT_STATE_RESEARCH`,
+`GEX_DECISION_HYPOTHESES` distance-features, TCA/fill-model depth,
+strategy-switch cost accounting) plus the directive's new DEX/Vanna/Charm
+deep-dive and temporal-change ask. Codex remains actively working on P2C
+in parallel this whole pass -- not audited.
+
+### DEX / Vanna / Charm deep research (closed this pass)
+
+New module: `bots/theta/quant/research/exposure_temporal_convention_research.py`
+(9 tests). Formalizes:
+- **DEX**: dollar-delta convention (`delta * OI * multiplier * spot`),
+  units = dollars of underlying-equivalent exposure per $1 spot move,
+  same unverified long/short-assumption problem as GEX's own sign
+  convention (never asserted resolved).
+- **Vanna**: `dVega/dSpot = dDelta/dSigma` (identical by Schwarz's
+  theorem for BS-style pricing functions), units = vega change per $1
+  spot move. Sign is moneyness/T-dependent by construction -- there is no
+  single "positive Vanna" fact independent of the contract's own
+  strike/spot/T relationship, making a blanket "Vanna positive -> trade"
+  rule invalid on its face, not merely empirically unproven.
+- **Charm**: `dDelta/dTime` (equivalently `-dTheta/dSpot`), units = delta
+  decay per unit time. Explicitly unstable near expiry / 0DTE, mirroring
+  the same instability regime `gamma_regime_research.py` already flags
+  for GEX.
+
+**Temporal-change interface**: `derive_exposure_temporal_change()` extends
+`optionomics_flow_temporal_research.py`'s exact discipline (same
+underlying/scope, strict causal ordering, caller-supplied bounded gap,
+UNKNOWN/INVALID propagation) with the one requirement unique to exposure
+Greeks: it REFUSES to diff two observations whose `sign_convention.
+convention_id` differ, or whose `provenance` differ (PROVIDER_FACT vs.
+THETA_DERIVED) -- comparing values computed under different, unreconciled
+methodologies would silently fabricate a "change" that is actually just a
+convention switch. Real test:
+`test_incompatible_sign_convention_is_invalid_never_silently_diffed`.
+
+All hypotheses stated (portfolio DEX concentration near a candidate
+strike, Vanna/Charm context for short-DTE/pinning/late-session behavior)
+remain explicitly untested, per the directive's own "no rules, hypotheses
+only" instruction.
+
+### Volatility-surface remaining gaps (closed this pass)
+
+New function in the EXISTING `volatility_surface_research.py` (no
+duplicate architecture): `classify_surface_quality_state()`, mapping an
+already-computed `SurfaceFitResult` onto `GOOD` / `THIN` /
+`ARBITRAGE_INCONSISTENT` / `UNKNOWN`, each with an explicit reaction
+posture (`FULL_CONFIDENCE_FEATURE_USE` /
+`REDUCED_CONFIDENCE_WIDEN_UNCERTAINTY` /
+`DO_NOT_USE_SURFACE_FEATURES_THIS_CYCLE`). `UNKNOWN` (no fit at all) and
+`THIN` (a converged but DEGRADED fit) are kept structurally distinct --
+"we have no surface" and "we have a marginal surface" are different
+research states, never merged. `ARBITRAGE_INCONSISTENT` blocks feature use
+even when `fit.parameters` is technically present, since a fit that failed
+its own butterfly/calendar check is not a usable surface regardless of
+whether numbers came out the other end (5 new tests, `bad surface -> zero
+skew` never happens -- callers are contractually required to check `state`
+before touching `fit.parameters` at all).
+
+A genuinely stronger diagnostic method was found this pass (see
+`THETA_EVENT_STATE_RESEARCH.md`'s repo dossier on `marwinsteiner/pysvi`):
+a full risk-neutral-density non-negativity check plus a Lee (2004) wing-
+slope bound, both stricter than THETA's current sufficient-condition-only
+butterfly check. Flagged as a genuine future improvement, not implemented
+this pass (would require either a numpy dependency or a dependency-free
+reimplementation, a deliberate scope decision left to a future pass).
+
+### Sample independence, calibration, policy-target design -- unchanged, verified still COMPLETE
+
+Reviewed this pass, not redone per the directive's own "do not research
+everything again" instruction: `dataset_readiness.py`'s
+`DependenceGroupKey` (wheel_chain_id/economic_episode_id/underlying/
+session_date/correlation_cluster) and `effective_sample_size()` already
+implement exactly the clustered-grouping methodology the directive asks
+for, including event-episode grouping via `economic_episode_id` --
+confirmed by direct source read this pass, not assumed from memory.
+`calibration_metrics.py` (Brier score et al.) already exists and already
+enforces the Delta-is-not-probability distinction. Both remain
+`NO_CHANGE_REQUIRED`.
+
+### Strategy-switch targets -- closed this pass
+
+Previously `NO_CHANGE_REQUIRED` on the strength of `H-Q-04`'s existing
+registration; this pass found `H-Q-04` had no concrete implementing
+function anywhere in the codebase, so one was built:
+`strategy_switch_research.py`'s `evaluate_strategy_switch()` (7 tests) --
+see `THETA_EXECUTION_TCA_RESEARCH.md` section 4 for full detail. Upgraded
+from `NO_CHANGE_REQUIRED` to `COMPLETE`.
+
+### Fill model / multi-leg / TCA -- deepened this pass
+
+Previously `NO_CHANGE_REQUIRED` (citing Optopsy's taxonomy only); this
+pass built the concrete sensitivity-band machinery itself:
+`execution_tca_research.py` (21 tests) -- see
+`THETA_EXECUTION_TCA_RESEARCH.md` for full detail. Upgraded from
+`NO_CHANGE_REQUIRED` to `COMPLETE`.
+
+### Repo mining this pass
+
+Searched for event/earnings/IV-crush, execution/TCA/multi-leg, and
+regime/policy-selector repos. Two real, license-clear, deep-read finds
+(`anthonymakarewicz/volatility-trading`, MIT, 42 stars;
+`marwinsteiner/pysvi`, MIT) -- full dossiers in
+`THETA_EVENT_STATE_RESEARCH.md`. One repo explicitly investigated and
+REJECTED (`AKhromin/Counterback` -- despite a directly on-topic name and
+description, file-tree verification showed it is a Binance crypto
+order-book recorder, not an options project). Several other surfaced repos
+(`pmak99/trading-desk-public`, `ProgramComputer/earnings-trade-automation`,
+`Acelogic/Earnings-Volatility-Calculator`, `lambdaclass/options_portfolio_backtester`
+already cited in a prior session, `XanderRobbins/Arbitrage-Free-Volatility-Surface`,
+`arkonique/ssvi`) were existence-verified via search results only, not
+deep-read this pass -- named honestly rather than silently claimed
+covered.
+
+### Trader-management research continuation
+
+No new evidence found this pass for QuantWheel/Alertsify/Collective2
+beyond what prior sessions already established (the non-fabrication
+finding: no public source provides enough granular, timestamped
+winner/loser-management decision data to derive a proprietary algorithm,
+and this engagement continues to treat any such claim as unverifiable).
+Time budget this pass went to the code-backed sections above instead.
+
 ## Receipt
 
 ```
@@ -518,6 +645,103 @@ RECOMMENDATIONS_FOR_CODEX: none required -- pure research pass. One design
   note offered (section 14): the ManagementPolicyEvidenceProvider interface's
   `uncertainty` field currently has no populating caller anywhere; worth
   keeping in mind for whenever a real provider is built, not urgent.
+
+MAIN_PUSHED = NO
+PRODUCTION_CHANGED = NO
+BROKER_ORDERS_BY_CLAUDE = 0
+LIVE_OWNER_AUTHORIZATION = NOT_GRANTED
+LIVE_ELIGIBLE = NO
+```
+
+## P2C Pass 2 Receipt (supersedes the above per-field statuses where listed)
+
+```
+PUSHED_PREVIOUS_COMMIT: YES
+PREVIOUS_COMMIT: 95f1a4c
+CURRENT_CLAUDE_SHA: (see the commit this pass produces on claude/theta-r1-real-state)
+
+EVENT_STATE_CHANGE: COMPLETE (event_state_research.py, 16 tests -- seven-state
+  model, freshness/UNKNOWN discipline, never inferred from IV/skew)
+EVENT_STRATEGY_HYPOTHESES: 7 hypotheses stated (CSP/Defined Risk/short-DTE/CC
+  crossing event, WAIT before event, post-event normalization) -- none
+  registered as hypotheses.json entries yet, pending resolved event-crossing
+  episode data
+
+DEX_RESEARCH: COMPLETE (deepened this pass -- definition/units/sign-convention
+  distinctness formalized in exposure_temporal_convention_research.py's docstring)
+VANNA_RESEARCH: COMPLETE (mathematical identity dVega/dSpot=dDelta/dSigma
+  documented; moneyness/T-dependent sign explicitly rules out any blanket rule)
+CHARM_RESEARCH: COMPLETE (dDelta/dTime definition, 0DTE instability flagged,
+  matching GEX's own instability regime)
+DEX_VANNA_CHARM_TEMPORAL: COMPLETE (derive_exposure_temporal_change, 9 tests --
+  refuses to diff incompatible sign conventions or mismatched provenance)
+
+VOL_SURFACE_REMAINING_GAPS: CLOSED (classify_surface_quality_state added to
+  the existing volatility_surface_research.py, 5 new tests -- GOOD/THIN/
+  ARBITRAGE_INCONSISTENT/UNKNOWN with explicit reaction postures; a stronger
+  diagnostic method found in marwinsteiner/pysvi flagged as a future
+  improvement, not implemented this pass)
+SURFACE_STRATEGY_HYPOTHESES: unchanged from pass 1 (already registered as
+  H-Q-03/H-Q-05/H-Q-06, restated not re-derived)
+
+FILL_MODEL_RESEARCH: COMPLETE (execution_tca_research.py, 6-model sensitivity
+  band, wide-market/zero-bid/invalid-quote handling, 21 tests total across
+  the module)
+MULTI_LEG_FILL_RESEARCH: COMPLETE (SIMULTANEOUS_PACKAGE vs.
+  INDEPENDENT_LEGGING, required legging-gap disclosure, never assumes a
+  canonical delay)
+TCA_RESEARCH: COMPLETE (compute_tca -- slippage vs. decision mid/arrival side,
+  spread capture/concession; compute_roll_execution_cost kept strictly
+  additive to the old leg's immutable realized P&L per ROLL-001)
+
+SAMPLE_INDEPENDENCE: COMPLETE (verified unchanged and already sufficient --
+  DependenceGroupKey/effective_sample_size in dataset_readiness.py already
+  covers underlying/session/episode/chain/correlation-cluster grouping)
+
+POLICY_TARGET_DESIGN: COMPLETE (unchanged from pass 1 -- multi-objective/
+  Pareto framing, mirroring canonical-strategy-frontier.ts's existing approach)
+CALIBRATION_RESEARCH: COMPLETE (verified unchanged and already sufficient --
+  calibration_metrics.py's Brier score + Delta-is-not-probability discipline)
+
+STRATEGY_SWITCH_TARGETS: COMPLETE (strategy_switch_research.py, 7 tests --
+  evaluate_strategy_switch structurally cannot accept a realized future
+  outcome as its edge input, preventing the "destination profitable = switch
+  correct" fallacy by construction, not just by convention)
+
+TRADER_MANAGEMENT_FINDINGS: no new evidence this pass beyond prior sessions'
+  established non-fabrication finding (QuantWheel/Alertsify/Collective2)
+
+REPOS_DEEP_STUDIED: anthonymakarewicz/volatility-trading (MIT, 42 stars --
+  VRP-harvesting + skew-mispricing config/strategy shapes), marwinsteiner/pysvi
+  (MIT -- risk-neutral-density butterfly test + Lee wing bound, stronger than
+  THETA's current sufficient-condition-only check)
+NEW_HIGH_VALUE_REPOS: same two above; one repo investigated and REJECTED
+  (AKhromin/Counterback -- on-topic name/description, but file-tree
+  verification showed a Binance crypto depth-recorder, not an options project)
+
+NEW_HYPOTHESES: 0 new hypotheses.json entries this pass (the 7 event-strategy
+  hypotheses above are stated but not yet registered, pending resolved
+  event-crossing episode data to test against)
+
+POINT_IN_TIME_DATASET: PRESENT
+RESOLVED_WHOLE_CHAIN_LABELS: INSUFFICIENT
+RESOLVED_MANAGEMENT_LABELS: INSUFFICIENT
+RESOLVED_COUNTERFACTUAL_LABELS: INSUFFICIENT
+MODEL_TRAINING_DATA: INSUFFICIENT
+
+70_80_WR_STATUS: NOT_PROVEN
+40_PLUS_RETURN_STATUS: ASPIRATIONAL_NOT_TAKE_PROFIT
+
+PROVIDER_BLOCKERS: Optionomics production auth/current-data semantics, unchanged
+
+RECOMMENDATIONS_FOR_CODEX: research findings only -- (1) marwinsteiner/pysvi's
+  full risk-neutral-density butterfly check + Lee wing bound is a stronger
+  diagnostic than THETA's current sufficient-condition-only check, worth a
+  future dependency-free reimplementation; (2) EVENT_STATE_CHANGE's seven
+  states and temporal features are now available for whichever engineering
+  layer eventually needs to surface event context to the management/contract-
+  selection evidence -- purely a research-side offering, no integration
+  performed or implied.
 
 MAIN_PUSHED = NO
 PRODUCTION_CHANGED = NO

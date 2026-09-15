@@ -270,3 +270,64 @@ def compute_surface_residual(market_iv: Optional[float], fit: SurfaceFitResult, 
         return None
     fitted_iv = math.sqrt(fitted_total_variance / years_to_expiry)
     return market_iv - fitted_iv
+
+
+# ---------------------------------------------------------------------------
+# Surface-quality gating (P2C pass 2, directive section 9): closes the
+# remaining "how should a strategy react to surface quality" gap left open
+# in `docs/research/THETA_FLOW_GEX_VOLATILITY_DECISION_RESEARCH.md`'s
+# receipt. Maps an already-computed `SurfaceFitResult` onto one of four
+# named states with an explicit reaction posture -- never collapses a bad
+# surface into a fabricated zero-skew reading, per the directive's own
+# instruction.
+# ---------------------------------------------------------------------------
+
+
+class SurfaceQualityState(str, Enum):
+    GOOD = "GOOD"
+    THIN = "THIN"  # fit converged but is DEGRADED (marginal coverage or near-expiry) -- usable with caution, never treated as GOOD
+    ARBITRAGE_INCONSISTENT = "ARBITRAGE_INCONSISTENT"
+    UNKNOWN = "UNKNOWN"  # no fit at all (insufficient data or non-convergence) -- distinct from THIN, which at least produced parameters
+
+
+class SurfaceQualityReaction(str, Enum):
+    """A posture, never a trade command -- matches this module's own
+    standing "context feature, not trade authority" discipline."""
+
+    FULL_CONFIDENCE_FEATURE_USE = "FULL_CONFIDENCE_FEATURE_USE"
+    REDUCED_CONFIDENCE_WIDEN_UNCERTAINTY = "REDUCED_CONFIDENCE_WIDEN_UNCERTAINTY"
+    DO_NOT_USE_SURFACE_FEATURES_THIS_CYCLE = "DO_NOT_USE_SURFACE_FEATURES_THIS_CYCLE"
+
+
+@dataclass(frozen=True)
+class SurfaceQualityAssessment:
+    state: SurfaceQualityState
+    reaction: SurfaceQualityReaction
+    reason: str
+
+
+def classify_surface_quality_state(fit: SurfaceFitResult) -> SurfaceQualityAssessment:
+    """Never returns a skew/term reading of zero for a bad surface -- the
+    caller-facing contract is: check `state` first, and only consult
+    `fit.parameters` at all when `reaction` is not
+    `DO_NOT_USE_SURFACE_FEATURES_THIS_CYCLE`."""
+    if fit.parameters is None:
+        return SurfaceQualityAssessment(
+            SurfaceQualityState.UNKNOWN, SurfaceQualityReaction.DO_NOT_USE_SURFACE_FEATURES_THIS_CYCLE,
+            f"NO_FIT_AVAILABLE_{fit.evidence_state}",
+        )
+    if fit.fit_quality == FitQuality.UNRELIABLE or fit.arbitrage_status in (
+        ArbitrageStatus.BUTTERFLY_VIOLATION, ArbitrageStatus.CALENDAR_VIOLATION, ArbitrageStatus.BOTH_VIOLATIONS,
+    ):
+        return SurfaceQualityAssessment(
+            SurfaceQualityState.ARBITRAGE_INCONSISTENT, SurfaceQualityReaction.DO_NOT_USE_SURFACE_FEATURES_THIS_CYCLE,
+            f"ARBITRAGE_STATUS_{fit.arbitrage_status.value}",
+        )
+    if fit.fit_quality == FitQuality.DEGRADED:
+        return SurfaceQualityAssessment(
+            SurfaceQualityState.THIN, SurfaceQualityReaction.REDUCED_CONFIDENCE_WIDEN_UNCERTAINTY,
+            "FIT_CONVERGED_BUT_DEGRADED_COVERAGE_OR_NEAR_EXPIRY",
+        )
+    return SurfaceQualityAssessment(
+        SurfaceQualityState.GOOD, SurfaceQualityReaction.FULL_CONFIDENCE_FEATURE_USE, "FIT_CONVERGED_GOOD_QUALITY",
+    )

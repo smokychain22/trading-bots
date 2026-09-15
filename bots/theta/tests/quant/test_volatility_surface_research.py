@@ -12,9 +12,14 @@ from research.volatility_surface_research import (  # noqa: E402
     ArbitrageStatus,
     FitQuality,
     RawSviParameters,
+    SurfaceFitDiagnostics,
+    SurfaceFitResult,
     SurfacePoint,
+    SurfaceQualityReaction,
+    SurfaceQualityState,
     check_butterfly_arbitrage_sufficient,
     check_calendar_arbitrage,
+    classify_surface_quality_state,
     compute_surface_residual,
     fit_raw_svi,
     raw_svi_total_variance,
@@ -131,6 +136,45 @@ class SurfaceResidualTests(unittest.TestCase):
         residual = compute_surface_residual(market_iv, fit, k, t)
         self.assertIsNotNone(residual)
         self.assertAlmostEqual(residual, 0.0, places=3)
+
+
+class ClassifySurfaceQualityStateTests(unittest.TestCase):
+    def _diagnostics(self, **overrides):
+        defaults = dict(strike_count_total=10, strike_count_liquid=8, min_strike_count_required=5, fit_residual_rms=0.001, butterfly_sufficient_condition_holds=True, near_expiry_flag=False)
+        defaults.update(overrides)
+        return SurfaceFitDiagnostics(**defaults)
+
+    def test_no_fit_is_unknown_and_blocks_feature_use(self):
+        fit = SurfaceFitResult(expiry="2026-10-17", parameters=None, diagnostics=self._diagnostics(fit_residual_rms=None), fit_quality=None, arbitrage_status=ArbitrageStatus.NOT_CHECKED, evidence_state="INSUFFICIENT_DATA")
+        result = classify_surface_quality_state(fit)
+        self.assertEqual(result.state, SurfaceQualityState.UNKNOWN)
+        self.assertEqual(result.reaction, SurfaceQualityReaction.DO_NOT_USE_SURFACE_FEATURES_THIS_CYCLE)
+
+    def test_arbitrage_violation_is_inconsistent_and_blocks_feature_use_even_with_parameters_present(self):
+        params = RawSviParameters(a=0.04, b=0.3, rho=-0.2, m=0.0, sigma=0.25)
+        fit = SurfaceFitResult(expiry="2026-10-17", parameters=params, diagnostics=self._diagnostics(butterfly_sufficient_condition_holds=False), fit_quality=FitQuality.UNRELIABLE, arbitrage_status=ArbitrageStatus.BUTTERFLY_VIOLATION, evidence_state="FITTED")
+        result = classify_surface_quality_state(fit)
+        self.assertEqual(result.state, SurfaceQualityState.ARBITRAGE_INCONSISTENT)
+        self.assertEqual(result.reaction, SurfaceQualityReaction.DO_NOT_USE_SURFACE_FEATURES_THIS_CYCLE)
+
+    def test_degraded_fit_is_thin_with_reduced_confidence_not_blocked(self):
+        params = RawSviParameters(a=0.04, b=0.3, rho=-0.2, m=0.0, sigma=0.25)
+        fit = SurfaceFitResult(expiry="2026-10-17", parameters=params, diagnostics=self._diagnostics(near_expiry_flag=True), fit_quality=FitQuality.DEGRADED, arbitrage_status=ArbitrageStatus.NO_VIOLATION_DETECTED, evidence_state="FITTED")
+        result = classify_surface_quality_state(fit)
+        self.assertEqual(result.state, SurfaceQualityState.THIN)
+        self.assertEqual(result.reaction, SurfaceQualityReaction.REDUCED_CONFIDENCE_WIDEN_UNCERTAINTY)
+
+    def test_good_fit_is_full_confidence(self):
+        params = RawSviParameters(a=0.04, b=0.3, rho=-0.2, m=0.0, sigma=0.25)
+        fit = SurfaceFitResult(expiry="2026-10-17", parameters=params, diagnostics=self._diagnostics(), fit_quality=FitQuality.GOOD, arbitrage_status=ArbitrageStatus.NO_VIOLATION_DETECTED, evidence_state="FITTED")
+        result = classify_surface_quality_state(fit)
+        self.assertEqual(result.state, SurfaceQualityState.GOOD)
+        self.assertEqual(result.reaction, SurfaceQualityReaction.FULL_CONFIDENCE_FEATURE_USE)
+
+    def test_a_real_insufficient_data_fit_from_fit_raw_svi_is_unknown(self):
+        fit = fit_raw_svi("2026-10-17", [SurfacePoint(log_moneyness=0.0, total_variance=0.04, liquid=True)], min_strike_count=5, m_grid=_M_GRID, sigma_grid=_SIGMA_GRID)
+        result = classify_surface_quality_state(fit)
+        self.assertEqual(result.state, SurfaceQualityState.UNKNOWN)
 
 
 if __name__ == "__main__":
