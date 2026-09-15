@@ -243,3 +243,143 @@ have been left to expire).
 This is offered as the single highest-leverage, lowest-risk next PR for
 Codex -- not a demand, and not something this branch can implement, since it
 touches `src/theta/`/`src/execution/` on `main`.
+
+## 8. Refresh against `a8418cb1c273522eb7112bf4aa661393088c49bf` -- management dispatch verified in depth
+
+Verified via a fresh isolated detached worktree (not this branch's stale
+checkout). Full delta `e17b932..a8418cb`: 31 files, 1742 insertions -- real,
+substantial, matching the owner's description.
+
+**The precise, load-bearing finding this round:** Codex built the entire
+management ASSEMBLY/DISPATCH/PERSISTENCE layer this session's own prior fix
+spec asked for -- and built it more completely than the minimal two-action
+spec suggested (all six order-bearing actions: `CLOSE_FULL`, `ROLL`,
+`SELL_STOCK`, `SELL_CC`, `CLOSE_CC`, `ROLL_CC`, not just two). Read in full:
+
+- `src/execution/management-paper-plan-assembly.ts` (new, 241 lines):
+  `assembleManagementPaperPlans` validates exact contract/quantity/terms
+  identity for closing legs against `ManagementInputState.contract`, exact
+  share-count match for `SELL_STOCK`, and a real no-naked-call guard for
+  `OPEN_CC`/`ROLL_CC_OPEN` (`confirmedCoveredShares !== openStockShares ||
+  coveredShares < quantity*multiplier` both reject). Correctly still gates
+  `ROLL`/`SELL_CC`/`ROLL_CC` (risk-opening legs) behind
+  `EMPIRICAL_ACTION_EV_UNKNOWN` when `empiricalEconomicsReady` is false.
+  `REDEPLOY` explicitly returns `BLOCKED` pending its own future exit/entry
+  resolution -- not silently allowed through.
+- `migrations/037_management_action_plan_dispatch.sql`: DB-level shape checks
+  (`authority_kind` NEW_RISK vs MANAGEMENT tied to required fields by a CHECK
+  constraint, not just application code; `leg_sequence=1 <=> depends_on_
+  action_plan_id IS NULL`; no-self-dependency; unique `(decision_id,
+  action_group_id,leg_sequence)`).
+- `src/execution/postgres-master-paper-action-plan-store.ts`'s new
+  `publishManagementPlans`: publishes an entire leg group in ONE transaction
+  (atomic), re-validates against the authoritative `management_action_
+  frontier`/`management_input_snapshot`/`execution_account` rows under
+  `FOR SHARE` locks at publish time (defense in depth against a stale/
+  tampered plan object), and is idempotent via content-hash collision
+  detection. **`claimNext`'s WHERE clause requires `depends_on_action_plan_id
+  IS NULL OR EXISTS(...JOIN order_intent oi ON oi.status='FILLED')`** -- the
+  open leg of a roll is genuinely unclaimable at the SQL level until the
+  close leg's linked order_intent shows a broker-confirmed fill. This is
+  real, DB-enforced close-before-open dependency gating, not merely recorded
+  metadata.
+
+**Verdict on all of the above in isolation: CORRECT, no defects found.**
+
+**But the actual runtime connectivity claim does not hold, for two
+independent, precisely-located reasons -- verified by reading the exact
+call site, not inferred:**
+
+1. `src/theta/management-action-frontier.ts`'s `buildManagementActionFrontier`
+   is **byte-for-byte UNCHANGED** in this delta (confirmed: it does not
+   appear in the 31-file changed list at all). Its selection logic is still
+   exactly `const passive = actions.find((a) => ['HOLD','RECOVERY_WAIT',
+   'HOLD_CC'].includes(a.action))`, and `decisionState` is still
+   unconditionally `'SYSTEM_HOLD_MISSING_EVIDENCE'`. It **never** selects
+   `CLOSE_FULL`/`ROLL`/`SELL_STOCK`/`SELL_CC`/`CLOSE_CC`/`ROLL_CC` regardless
+   of their own computed feasibility, and never produces `decisionState:
+   'ACTION_SELECTED'` -- which `assembleManagementPaperPlans` (and
+   `publishManagementPlans`'s own `FOR SHARE` re-check) both require to ever
+   leave `NO_BROKER_ACTION`/throw `MANAGEMENT_ACTION_SELECTION_MISMATCH`.
+2. The one real runtime call site, `autonomous-runtime.ts`'s
+   `POSITION_MANAGEMENT_SCAN` job, calls `assembleManagementPaperPlans` with
+   **`executionLegs: []` hardcoded, verbatim, in the diff.** Even hypothetically
+   with (1) fixed, every active action would immediately hit
+   `MANAGEMENT_EXECUTION_LEG_SEQUENCE_INVALID` (required leg count for any
+   non-passive action is >= 1, supplied is always 0) -- there is no code
+   anywhere in this delta that computes a real `ManagementExecutionLegDirective`
+   (fresh quote, economic boundary, contract identity for the target leg) to
+   feed this array.
+3. Confirmed by reading `tests/management-paper-plan-assembly.test.ts`
+   directly: its own fixtures **manually override** `buildManagementActionFrontier`'s
+   real output (`selectedAction`/`decisionState`/per-action `feasibility`)
+   to force the exact condition needed to exercise `assembleManagementPaperPlans` --
+   proof, by the test's own necessary construction, that this condition does
+   not occur from real runtime code today.
+
+**Conclusion: `OLD_E17_MANAGEMENT_FINDING = PARTIALLY_RESOLVED`.** The
+dispatch/persistence/dependency-safety engineering (this document's own
+prior fix-spec ask) is now genuinely built and well-tested in isolation --
+that part is real progress, not a false claim. What remains missing is (a)
+the actual decision logic that selects a non-passive action in
+`buildManagementActionFrontier`, and (b) the leg-directive computation that
+turns a selected action into real `executionLegs`. Both are new, precisely-
+located gaps, not a reopening of the old one.
+
+**Everything else verified this round, with no defects found:**
+- `src/theta/optionomics-temporal-features.ts` (new, 185 lines):
+  `deriveOptionomicsTemporalFeatures` correctly rejects cross-underlying
+  comparison, requires strictly-increasing timestamps (rejects same-or-
+  reversed order), enforces a caller-supplied `maximumGapSeconds` bound (no
+  hardcoded magic number), checks schema-version compatibility, and
+  propagates `INVALID`/`UNKNOWN` correctly (never coerces either into a
+  computed delta). `executionEligible: false` is a literal type, not just a
+  runtime default. **COMPLETE, matches this branch's own prior FlashAlpha-
+  inspired recommendation for a temporal layer.** One open refinement, not a
+  defect: the bound is a single uniform value across all four feature
+  families in one call, not yet a per-family cadence-aware envelope the way
+  FlashAlpha's `data_as_of` is per-feed -- **`PER_FEED_FRESHNESS_ENVELOPE =
+  ADAPT`** (a real, currently-correct single-bound implementation exists;
+  a per-family bound would be a genuine refinement, not required to close a
+  gap).
+- `migrations/039_cross_branch_candidate_evidence.sql`: `trade.canonical_
+  strategy_branch_evidence` has a DB-level `CHECK(execution_authorized=false)`
+  constraint (named `canonical_branch_execution_locked`) and `CHECK(
+  empirical_economics_ready=false)` -- structurally, not just by convention,
+  no row in this evidence table can ever claim execution authority. Action
+  vocabulary (`OPEN_CSP`, `OPEN_DEFINED_RISK`, `RECOVERY_WAIT`, `SELL_STOCK`,
+  `SELL_CC`) covers zero-leg stock/recovery actions. **COMPLETE at the
+  schema level** (did not re-verify the exporter's actual consumption of
+  every branch this round, given time budget -- not claimed).
+- `strategyFamilyForCanonicalBranch` (new export, `canonical-strategy-
+  frontier.ts`) is consumed exactly once, at the persistence boundary in
+  `postgres-theta-cycle-store.ts:306` -- a minimal, correctly-scoped
+  translation, not a duplicate routing engine. **COMPLETE.**
+- Copy-trading files (`copy-engine-contract.ts`, `paper-copy.ts`,
+  `postgres-disabled-copy-planner.ts`) do **not** appear in this delta at
+  all -- confirmed unchanged; last session's findings (sizing correctly
+  capped, execution correctly still `EXECUTION_DISABLED`) stand without
+  re-verification.
+
+## 9. One new repo pattern worth flagging (section 10 of this directive)
+
+`sgdividends/spx-dealer-gamma` (no license -- facts about the CBOE public
+delayed-quotes feed and Black-Scholes math extracted, no code adopted):
+its `find_zero_gamma` function independently derives a gamma-flip level by
+re-computing Black-Scholes gamma across a RANGE of hypothetical spot prices
+(holding each contract's own IV/strike/T fixed) and finding where cumulative
+signed GEX crosses zero -- a "spot-scan" methodology, distinct from reading
+a single provider-reported `gamma_flip` scalar at the current spot. THETA/
+Optionomics today only consumes the latter (an opaque, provider-computed
+value). This is a genuine, currently-unbuilt RESEARCH OPPORTUNITY: an
+independent THETA-side cross-check of Optionomics' reported `gammaFlipStrike`/
+`totalGex` against a self-computed spot-scan value, using THETA's own
+already-available IV/OI/strike/multiplier fields and its own Black-Scholes
+reference implementation (`bs_reference.py`) -- not a defect, not urgent,
+and not something this pass builds, but worth naming precisely rather than
+leaving as a vague "study more repos" note. `FlashAlpha-lab/volatility-
+surface-python`'s `arbitrage_detection_butterfly_calendar.py` example also
+confirms the exact formal definitions THETA's own deferred SVI/SSVI
+arbitrage-diagnostic work would need (`d^2w/dk^2 >= 0` for butterfly-free;
+`w(k,T1) <= w(k,T2)` for T1<T2 for calendar-free) -- reference material for
+whenever that deferred work is prioritized, not a new requirement.
