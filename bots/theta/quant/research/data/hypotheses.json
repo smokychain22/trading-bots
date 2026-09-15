@@ -14,6 +14,7 @@
   ],
   "shared_evidence_requirement": "Per TRD v1.1 FINAL section 50: report raw N and independent-cluster N together; a claim approaching the 70-80% headline range needs ~300+ independent OOS episodes, preferably 500+ across regimes, plus a Wilson interval (simple proportions) or cluster/bootstrap interval (dependent episodes). The final untouched OOS period is never used to select the threshold or feature that produced the reported number (ML-002).",
   "shared_calibration_requirement": "Per TRD MODEL-003: any model output (not a hand-built deterministic score) feeding this hypothesis must be calibrated (Brier score, log-loss, reliability plot) and monitored by regime/DTE/delta/ticker-family cohort, not by one global number.",
+  "public_evidence_refs_note": "An optional per-hypothesis 'public_evidence_refs' field (list of source_id values from bots/theta/quant/public_evidence/data/public_evidence_sources.json) links a hypothesis to named, publicly citable research (Cboe benchmark indices, peer-reviewed academic work, transparent practitioner studies) per the R7 'STRATEGY EDGE DISCOVERY PROGRAM' directive's evidence hierarchy. Absent on hypotheses with no such link yet -- never required, and never a substitute for this file's own OOS acceptance/rejection criteria.",
   "hypotheses": [
     {
       "hypothesis_id": "H-Q-01",
@@ -44,7 +45,8 @@
       "experiment_id": "EXP-Q-01",
       "status": "TEST",
       "rationale": "Structurally supported by TRD UNIV-001..003 and section 43's ownership model, and is exactly what ablation A1 (B1 + ownership model) already exists to measure -- but it has not been run, so it stays TEST rather than RETAIN.",
-      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
+      "public_evidence_refs": ["cboe_put_index", "carr_wu_2009_variance_risk_premia"]
     },
     {
       "hypothesis_id": "H-Q-02",
@@ -74,7 +76,8 @@
       "experiment_id": "EXP-Q-02",
       "status": "TEST",
       "rationale": "TRD UNIV-002 already forbids 'high IV alone is sufficient' as a hard rule (RETAIN at the architecture level), but the empirical size of the effect is unmeasured -- this hypothesis is the confirmatory measurement of that rule, not a new claim, and stays TEST until A1 is actually run.",
-      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
+      "public_evidence_refs": ["cboe_put_index", "carr_wu_2009_variance_risk_premia"]
     },
     {
       "hypothesis_id": "H-H-01",
@@ -105,7 +108,8 @@
       "experiment_id": "EXP-H-01",
       "status": "TEST",
       "rationale": "TRD itself frames THETA_HOLD_STRIKE as 'research challenger,' explicitly requiring separate OOS validation before promotion -- never assume its reputation transfers.",
-      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
+      "public_evidence_refs": ["cboe_weekly_putwrite_wput"]
     },
     {
       "hypothesis_id": "H-H-02",
@@ -167,7 +171,9 @@
       "experiment_id": "EXP-R-01",
       "status": "TEST",
       "rationale": "Directly contradicts H-R-02's patience thesis. Both are corpus-supported by different experts and both stay open -- TRD's own failure-DNA table explicitly rejects both 'roll every loser' and a universal hold-to-expiry assumption, so resolving this by averaging the two experts' behavior would manufacture a compromise neither actually demonstrated. The correct resolution is regime/DTE/branch-conditional, decided by A5 (dynamic management ablation) evidence, not by picking a side here.",
-      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
+      "public_evidence_refs": ["tastytrade_45dte_21dte_50pct_management"],
+      "public_evidence_note": "tastytrade's own published secondary-sourced findings (see public_evidence_sources.json) lean toward THIS side (early 21-DTE/50%-credit management beating hold-to-expiry in their sampled history) -- recorded as a TRANSPARENT_PRACTITIONER_STUDY-tier prior favoring H-R-01, not as confirmation; H-R-02 remains open and must still be tested head-to-head on THETA's own data per this hypothesis's acceptance/rejection criteria."
     },
     {
       "hypothesis_id": "H-R-02",
@@ -197,7 +203,9 @@
       "experiment_id": "EXP-R-02",
       "status": "TEST",
       "rationale": "See H-R-01 -- this pair is deliberately preserved as competing hypotheses rather than resolved by inspection. TRD Appendix I explicitly frames the 25/50/75% profit-take grid and hold-to-expiry as baselines to test, not laws.",
-      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
+      "public_evidence_refs": ["tastytrade_45dte_21dte_50pct_management"],
+      "public_evidence_note": "The same tastytrade-sourced prior linked from H-R-01 leans AGAINST this hypothesis's patience thesis in their own sampled history -- recorded here too so the competing-hypothesis pair carries the same evidence context on both sides, not asymmetrically. A practitioner prior leaning one way is not evidence this hypothesis should be rejected without THETA's own OOS test; single-source practitioner backtests are also known to disagree with each other across platforms and periods."
     },
     {
       "hypothesis_id": "H-R-03",
@@ -257,7 +265,8 @@
       "experiment_id": "EXP-C-01",
       "status": "RETAIN",
       "rationale": "Already required by TRD LIFE-004 (the CC optimizer must trade off premium, retained upside, call-away regret, event risk and capital-days, not maximize yield alone). RETAIN at the architecture level; the experiment sizes the effect against BC-1.",
-      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA"
+      "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
+      "public_evidence_refs": ["cboe_bxm_index", "cboe_30delta_buywrite_bxmd"]
     },
     {
       "hypothesis_id": "H-C-02",
@@ -501,6 +510,64 @@
       "status": "RETAIN",
       "rationale": "New this pass, same directive section 9 ('switching itself costs money... do not reward strategy switching merely because it increases activity'). RETAIN at the architecture level from the moment any switching logic exists -- this is a reporting discipline, not an open empirical question.",
       "data_availability_status": "ARCHITECTURE_CHECK_NOT_DATA_DEPENDENT"
+    },
+    {
+      "hypothesis_id": "H-Q-05",
+      "archetype_id": "THETA-Q",
+      "hypothesis_type": "trading",
+      "statement": "Options-first, contract-level restatement of the VRP-collapse switching dimension (R7 P2 directive section 24). When the SAME candidate contract's own VRP (contract_iv minus a horizon-matched realized-vol estimate, per this repository's existing horizon-alignment discipline) compresses toward or through zero across the SAME strike/expiration ladder that previously showed positive VRP, THETA_CONVENTIONAL's entire candidate ladder for that underlying becomes structurally less attractive as a GROUP, and evaluating THETA_DEFINED_RISK's ladder (same underlying, contemporaneous strikes/expirations) alongside it produces superior after-cost whole-portfolio economics than continuing to rank THETA_CONVENTIONAL candidates on premium/Delta alone. This is deliberately scoped to the OPTION CHAIN's own VRP state, never the underlying's price/trend alone -- a VRP collapse can occur with the underlying flat.",
+      "mechanism": "VRP collapsing toward zero at the CONTRACT level means the specific strikes/expirations THETA would sell are no longer compensating for realized-volatility risk the way they were -- selling premium into a compressed VRP is closer to selling insurance below its expected claim cost. A bounded-risk structure on the SAME contract ladder can still extract a smaller, better-compensated slice of what VRP remains, at materially lower tail exposure, exactly when the unbounded structure's own edge has eroded.",
+      "state": {"trend": "any -- VRP compression is a volatility-surface state, not a trend signal", "volatility": "VRP measured contract-by-contract on the SAME strike/expiration ladder, never the underlying's IV alone divorced from its own realized-vol horizon match", "event_state": "any", "liquidity_state": "must remain checked on both the Conventional and Defined-Risk candidate ladders independently", "stress_state": "NORMAL or CORRECTION"},
+      "alternatives": ["WAIT (if neither ladder's VRP-adjusted economics clear the bar)"],
+      "label_type": "entry_label",
+      "label_definition": "Same managed-episode after-cost outcome framework as H-Q-03, compared at the whole-portfolio level, with the comparison keyed to the SAME underlying's contemporaneous option chain rather than a market-wide VRP proxy.",
+      "payoff_target": "Whole-portfolio after-cost EV, ES/CVaR, and max drawdown together, exactly as H-Q-03 requires -- never EV alone.",
+      "failure_mode": "Must not substitute the underlying's OWN historical IV level for a genuine horizon-matched IV-minus-RV comparison on the specific candidate contracts -- a stock that merely 'looks less volatile' is not the same claim as 'this specific strike/expiration's VRP has compressed,' and conflating the two would silently readmit the exact underlying-only drift this directive's boundary section explicitly forbids.",
+      "calibration_requirement": "See shared_calibration_requirement.",
+      "evidence_requirement": "See shared_evidence_requirement -- plus the contract-level VRP measurement itself must reuse `iv_realized_vol_research.py`'s existing horizon-alignment discipline (IV vs. RV compared only when their horizons match), not a new ad hoc comparison.",
+      "acceptance_criterion": "Same as H-Q-03, with the deterioration signal specifically defined as contract-ladder VRP compression rather than a generic volatility-regime label.",
+      "rejection_criterion": "Same as H-Q-03 -- no portfolio-level improvement, or the improvement is not concentrated in genuinely VRP-compressed episodes.",
+      "source_experts": [],
+      "candidate_actions": ["WAIT", "OPEN_CSP"],
+      "feature_families_required": ["contract_iv", "rv20"],
+      "baseline_ref": null,
+      "null_ref": "B5",
+      "ablation_ref": null,
+      "contradicts": [],
+      "experiment_id": null,
+      "status": "TEST",
+      "gated_until": "Same THETA-D gate as H-D-01/H-Q-03.",
+      "rationale": "New this pass (R7 P2 directive, section 24's VRP-collapse switching dimension, restated per the R7 options-trading-research-boundary directive's explicit requirement that switching hypotheses concern the option chain's own state, not the underlying alone). A specialization of H-Q-03's mechanism to one specific, measurable deterioration signal rather than a new independent claim.",
+      "data_availability_status": "BLOCKED_ON_AUTHENTICATED_OPTIONOMICS_CHAIN_HISTORY_AND_RESOLVED_LABELS"
+    },
+    {
+      "hypothesis_id": "H-Q-06",
+      "archetype_id": "THETA-Q",
+      "hypothesis_type": "trading",
+      "statement": "Options-first restatement of the skew-steepening switching dimension. When downside put skew (25-delta put IV minus 25-delta call IV, or this repository's existing raw skew definition) on the SAME candidate expiration steepens materially relative to its own recent history, the SPECIFIC downside strikes THETA_CONVENTIONAL would otherwise sell are pricing in disproportionately more tail risk than the corresponding upside/ATM strikes -- and a defined-risk structure that caps the tail exactly where skew says the market is most worried produces superior after-cost whole-portfolio economics than continuing to sell an unbounded downside strike into a steepening skew.",
+      "mechanism": "Skew steepening is the option chain's own, contract-level signal that the market is pricing crash/gap risk asymmetrically into exactly the strikes a CSP seller is short -- unlike a VRP-level signal (H-Q-05), this is specifically about the SHAPE of risk across strikes on one expiration, not the overall richness of premium. A bounded structure priced on the same steepened skew captures a comparable credit while capping the exact tail the skew is warning about.",
+      "state": {"trend": "any", "volatility": "skew measured on the SAME expiration as the candidate strike, never a market-wide skew index substituted for the underlying's own chain", "event_state": "any -- skew steepening ahead of an event is itself one of the mechanisms this would detect, not a separate condition", "liquidity_state": "both legs of any Defined Risk candidate must be independently liquid", "stress_state": "NORMAL or CORRECTION"},
+      "alternatives": ["WAIT"],
+      "label_type": "entry_label",
+      "label_definition": "Same framework as H-Q-03/H-Q-05.",
+      "payoff_target": "Whole-portfolio after-cost EV, ES/CVaR, and max drawdown together.",
+      "failure_mode": "Must not use a market-wide skew proxy (e.g. an index skew measure) as a stand-in for the SPECIFIC candidate underlying's own 25-delta skew -- this is the same underlying-only-drift risk H-Q-05 guards against, restated for skew.",
+      "calibration_requirement": "See shared_calibration_requirement.",
+      "evidence_requirement": "See shared_evidence_requirement -- reuses the existing raw-skew-difference implementation (`research_family_adapters.py`'s skew extraction), not a new skew definition.",
+      "acceptance_criterion": "Same as H-Q-03/H-Q-05, with the deterioration signal specifically defined as same-expiration 25-delta skew steepening relative to recent history.",
+      "rejection_criterion": "Same as H-Q-03/H-Q-05.",
+      "source_experts": [],
+      "candidate_actions": ["WAIT", "OPEN_CSP"],
+      "feature_families_required": ["contract_iv"],
+      "baseline_ref": null,
+      "null_ref": "B5",
+      "ablation_ref": null,
+      "contradicts": [],
+      "experiment_id": null,
+      "status": "TEST",
+      "gated_until": "Same THETA-D gate as H-D-01/H-Q-03.",
+      "rationale": "New this pass (R7 P2 directive, section 24's skew-steepening switching dimension, restated in strictly options-chain terms per the boundary directive).",
+      "data_availability_status": "BLOCKED_ON_AUTHENTICATED_OPTIONOMICS_SKEW_HISTORY_AND_RESOLVED_LABELS"
     }
   ]
 }

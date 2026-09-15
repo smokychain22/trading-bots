@@ -771,6 +771,7 @@ quote remains mandatory at the last pricing boundary.
 - Strategy switching: STAY, SWITCH, and WAIT share one record. Exit spread, new-entry spread, fees, slippage, foregone theta, capital churn, and added duration must be present before a switching policy can be compared. A prior loss never triggers a strategy switch by itself.
 - Hard boundary: The shadow provider has no conversion path to `ManagementPolicyEvidence`, stores `comparison_complete=false`, `execution_authorized=false`, and `NOT_EMPIRICALLY_PROMOTED` under database constraints, and leaves the production provider unconfigured.
 - Promotion contract: `theta-empirical-policy-promotion-v1` requires reproducible dataset identity, separated train/validation/OOS windows with embargo, the full economic/risk metric set, versioned acceptance evidence, execution evidence, and explicit approval. Passing it can only mark evidence ready for human review. The validator cannot self-promote a policy or authorize an order.
+- Options-first boundary: Strategy switching research must compare exact contract ladders and structures. VRP must align the candidate contract IV with a defensible realized-volatility horizon. Skew must come from the candidate underlying and expiration. Market-wide or ticker-only proxies cannot silently replace those observations. These remain hypotheses until authenticated Optionomics history and resolved whole-chain labels exist.
 
 ## 2026-09-15 - Derive temporal Optionomics evidence without creating a signal
 
