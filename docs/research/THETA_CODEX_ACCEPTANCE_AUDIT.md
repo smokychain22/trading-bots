@@ -541,3 +541,120 @@ skipped (DB-only), 0 failing. `npx tsc --noEmit` -- clean, zero errors.
 **No defects found.** Follower-runtime and Optionomics files do not appear in this delta at
 all (confirmed via the diff stat) -- no regression risk from this delta by construction.
 No hardcoded fixed-percentage profit-target comparison found anywhere in the delta.
+
+## 12. P2B FINAL ACCEPTANCE AUDIT against `3855846e093d23b6aa8cb1f5956ef7217d850909`
+
+Verified via a fresh isolated detached worktree, full source read (not excerpts) of the
+entire new `src/theta/options-chain-decision-intelligence.ts` (453 lines), its full test
+file, migration 043, and the `production_export_loader.py` diff -- plus independently RAN
+(not trusted from Codex's own report) the focused Node tests, full `npm test`, `tsc
+--noEmit`, and the full Python quant test suite.
+
+**Every one of Codex's P2B claims verified TRUE at the engineering level, by direct code
+read, not inferred:**
+
+- **Chain snapshot completeness**: `ChainContractEvidence` carries exact contract identity
+  (symbol/underlying/expiration/dte/optionType/strike/multiplier), bid/ask/mid/spread/
+  relativeSpread/sizes, full Greeks, OI/volume/Vol-OI, intrinsic/extrinsic/breakeven/
+  distance/expected-move-normalized-distance, provider/received/quote-age timestamps,
+  source/feed/dataQuality, and separate hard/soft/unknown evidence arrays. Every field a
+  provider genuinely cannot supply is `null` with an explicit `unknownReasons` entry, never
+  a fabricated value.
+- **Empty-chain/WAIT safety**: `buildOptionsChainDecisionEvidence([], ...)` does not throw
+  -- confirmed by reading the function (no early-exit on empty `contracts`) and by running
+  the real test `supports an underlying-only snapshot and emits WAIT research evidence
+  without a fake contract`, which passed independently. Produces `contracts:[]`,
+  `expirationFrontier:[]`, `selectedContractId:null`, and the WAIT structure-comparison row
+  is still appended unconditionally (`structureComparisons.push({structure:'WAIT',...})`
+  runs regardless of contract count) -- the cycle is never thrown away.
+- **Liquidity safety**: zero bid is an unconditional HARD blocker
+  (`ZERO_BID_UNUSABLE_FOR_SELLER`) regardless of OI; unknown quote age is HARD-blocked
+  (`QUOTE_AGE_UNKNOWN_OR_INVALID`), never defaulted to "fresh"; every threshold is
+  `HARD`/`SOFT`-tagged from a caller-supplied, versioned `OptionLiquidityResearchPolicy`
+  (`policyVersion` field), never a hardcoded universal number; a missing OI/volume/size
+  value pushes to `unknownReasons`, never silently passes or fails the threshold.
+- **GEX dual-provenance**: confirmed by reading the actual test
+  (`retains invalid surface and provider/derived GEX disagreement as separate evidence`,
+  independently run, passed) -- constructs PROVIDER_FACT=100 and THETA_DERIVED=-80 (opposite
+  signs, deliberately) for the same family/scope and asserts BOTH survive as distinct
+  attachments after assembly. No THETA-derived spot-scan GEX is actually computed anywhere
+  in current code (that's a separate, not-yet-built feature) -- the test proves the
+  CONTAINER won't silently merge/overwrite conflicting sources whenever one exists.
+  ENGINEERING_COMPLETE, ready to accept the feature; the feature itself is a research gap.
+- **Flow/Optionomics UNKNOWN-safety**: every attachment family (`VANNA`, `CHARM`, `FLOW`,
+  `EVENTS`, `EARNINGS`) that has no provider context becomes
+  `state:'UNKNOWN', reason:'<FAMILY>_PROVIDER_SCHEMA_OR_VALUE_UNAVAILABLE'` -- confirmed by
+  direct code read of `optionomicsChainAttachmentsFromFeatureState`, never a fabricated
+  bullish/bearish/neutral/zero.
+- **Vol-surface invalid-safety**: `SKEW`/`TERM`/`SURFACE` attachments pass through whatever
+  `state` the upstream feature already carries (`KNOWN`/`UNKNOWN`/`INVALID`) unchanged --
+  `add()`'s own guard (`if(state!=='KNOWN'&&state!=='UNKNOWN'&&state!=='INVALID')return`)
+  refuses to accept or fabricate any other state.
+- **Counterfactual/future-outcome separation**: EVERY subject (`SELECTED_STRIKE`,
+  `NEIGHBOR_STRIKE` x2, `OTHER_EXPIRATION`, `OTHER_STRUCTURE` x up to 50, `WAIT`) is
+  constructed with `outcome:null, labelAvailableAt:null, state:'BLOCKED_ON_FUTURE_OUTCOME'
+  as const` -- literal types, not runtime defaults that could drift. A keyword search
+  (`future|outcome|resolved|terminal|nextPrice|futurePrice|realizedReturn|profitAfter|
+  label`) across the whole file found only this exact label-side construction -- no
+  lookahead leakage anywhere else in the file.
+- **Contract-selection receipt**: `contractSelectionReceipt` carries all nine typed
+  `why*` reason-array fields the directive names (`whyThisExpiration` through `whyNotWait`)
+  -- confirmed by direct read of `selectionReceipt()`. `whyThisDelta` explicitly includes
+  the literal reason codes `'DELTA_IS_NOT_WIN_PROBABILITY'` and `'NO_FIXED_DELTA_AUTHORITY'`
+  baked into the evidence itself, not just a comment.
+- **Structure comparator / whole-chain basis**: `StructureResearchComparison.executionAuthorized`
+  is a `false as const` literal on every row including WAIT; `afterCostValue`/
+  `portfolioImpact` are `null`-typed, never computed (no fake universal scalar). The
+  covered-call whole-chain-loss test (independently run, passed) confirms
+  `wholeChainPnlAtCallAway === -400` on a call-away scenario priced below the real economic
+  basis -- CC premium cannot mask the larger chain loss. `RECOVERY_WAIT`/`SELL_STOCK`/
+  `SELL_CC` alternatives (`canonical.length>=2`) remain visible, not narrowed to one choice.
+- **Dataset v3 / counterfactual hard-rejection**: `production_export_loader.py`'s diff, read
+  in full, confirms `DATASET_SCHEMA_VERSION` bumped to `theta-r6-dataset-v3`, and the loader
+  HARD-REJECTS (raises `DatasetLoadError`) any `optionChainDecisions` row where
+  `executionAuthorized is not False`, `empiricalEconomicsReady is not False`, any subject's
+  `outcome`/`labelAvailableAt` is non-null, or any subject's `state !=
+  'BLOCKED_ON_FUTURE_OUTCOME'` -- independently confirmed by running
+  `test_option_chain_evidence_with_a_future_outcome_is_rejected` and
+  `test_locked_option_chain_evidence_loads_with_future_labels_empty`, both passing.
+- **Migration 043**: `CHECK (empirical_economics_ready = false)` and
+  `CHECK (execution_authorized = false)` at the DB level (same structural-lock pattern as
+  039/040/041); a `reject_immutable_mutation` trigger on UPDATE/DELETE; a real
+  `UNIQUE REFERENCES trade.fusion_snapshot(fusion_snapshot_id)` FK tying one decision-
+  evidence row to exactly one PIT snapshot.
+- **Same-PIT-snapshot enforcement**: `buildOptionsChainDecisionEvidence` throws
+  `CHAIN_FRONTIER_SNAPSHOT_MISMATCH` if `frontier.snapshotId !== snapshotContentHash`, and
+  `CHAIN_UNDERLYING_MISMATCH` if any contract's underlying disagrees with the declared
+  underlying -- prevents exactly the "different strategies compared using mismatched
+  snapshots" risk the directive names.
+- **Production policy provider**: confirmed via direct grep, unchanged from the P1 audit --
+  `autonomous-runtime-handler.ts:202` still calls `runAutonomousRuntimeCycle(environment,
+  runtimePool)` with no third/fourth argument. No policy provider wired. `NOT_PROMOTED`
+  confirmed, not merely claimed.
+- **40%/70-80% guards**: targeted grep across every changed file in this delta for
+  `0.4x`/`40`/`0.7x`/`70`/`0.8x`/`80` outside the existing 7-value delta-research-lattice
+  literal found zero hits -- no fixed take-profit or WR-threshold rule anywhere in this
+  delta.
+- **Underlying-only drift**: this file is a DECISION-EVIDENCE RECORDER for whatever
+  `CanonicalStrategyFrontier` already selected -- it introduces no new selection path of
+  its own, so it cannot itself introduce underlying-only drift; confirmed by reading the
+  full file, no `if (bullish) -> OPEN_CSP`-shaped logic exists anywhere in it.
+
+**Test realism: PASS.** The empty-chain, GEX-dual-provenance, and whole-chain-loss tests
+all construct real synthetic chain/candidate fixtures and call the real
+`buildOptionsChainDecisionEvidence`/attachment functions -- none manually overrides
+`selected`, `executionAuthorized`, `empiricalEconomicsReady`, or a future outcome after
+construction.
+
+**Independently run** (not trusted from Codex's own numbers): focused Node tests (19
+files/tests across the P2B-relevant set) -- 19/19 passing. Full `npm test` -- 839 tests,
+834 passing, 5 skipped (DB-only), 0 failing. `npx tsc --noEmit` -- clean. Python
+`test_production_export_loader.py` -- 22/22 passing. Full Python quant suite (main's own,
+not this branch's) -- 470/470 passing.
+
+**No defects found.** No engineering gap identified. The items Claude's own P2B research
+pass listed as `GAPS`/`NOT_ATTEMPTED` (Flow/GEX/vol-surface research depth, WAIT-hypothesis
+registration) are correctly RESEARCH gaps, not engineering gaps -- the schema and assembly
+code are structurally ready to accept richer Optionomics attachments, a real spot-scan GEX
+computation, and formal WAIT hypotheses the moment that research/data exists, without
+requiring a redesign.
