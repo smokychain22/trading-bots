@@ -24,7 +24,8 @@ export class PostgresDatasetExporter {
   async export(request:DatasetExportRequest):Promise<DatasetExportArtifact> {
     if (Date.parse(request.end)<Date.parse(request.start)) throw new Error('DATASET_WINDOW_INVALID');
     const parameters = [request.start,request.end];
-    const [sets,candidates,shadow,frontiers,optionChains,management,lifecycle,chains,quotes] = await Promise.all([
+    const [sets,candidates,shadow,frontiers,optionChains,management,lifecycle,chains,quotes,outcomeSubjects,
+      outcomeObservations,outcomeReceipts,resolvedLabels] = await Promise.all([
       this.pool.query(`SELECT candidate_set_id AS "candidateSetId",decision_time AS "decisionTime",
         universe_evaluated_json AS "universeEvaluated",branches_considered_json AS "branchesConsidered",counts_json AS counts,
         best_candidate_id AS "bestCandidateId",second_best_candidate_id AS "secondBestCandidateId",
@@ -115,6 +116,40 @@ export class PostgresDatasetExporter {
         ask_size AS "askSize",proposed_limit AS "proposedLimit",data_quality AS "dataQuality",content_hash AS "contentHash"
         FROM market.execution_quote_observation WHERE observed_at >= $1 AND observed_at < $2
         ORDER BY observed_at,quote_observation_id`,parameters),
+      this.pool.query(`SELECT outcome_subject_id AS "outcomeSubjectId",subject_id AS "subjectId",label_type AS "labelType",
+        decision_timestamp AS "decisionTimestamp",feature_snapshot_hash AS "featureSnapshotHash",
+        candidate_universe_hash AS "candidateUniverseHash",exact_contract_id AS "exactContractId",
+        strategy_version AS "strategyVersion",horizon_id AS "horizonId",horizon_closes_at AS "horizonClosesAt",
+        resolver_contract_version AS "resolverContractVersion",execution_authorized AS "executionAuthorized",
+        content_hash AS "contentHash" FROM research.theta_outcome_subject
+        WHERE decision_timestamp >= $1 AND decision_timestamp < $2 ORDER BY decision_timestamp,outcome_subject_id`,parameters),
+      this.pool.query(`SELECT o.outcome_observation_id AS "outcomeObservationId",o.outcome_subject_id AS "outcomeSubjectId",
+        o.observed_at AS "observedAt",o.provider_timestamp AS "providerTimestamp",o.received_at AS "receivedAt",
+        o.source,o.provenance_class AS "provenanceClass",o.completeness,o.reason_codes_json AS "reasonCodes",
+        o.exact_contract_id AS "exactContractId",o.bid,o.ask,o.underlying_spot AS "underlyingSpot",
+        o.economic_pnl AS "economicPnl",o.fees,o.slippage,o.capital_days AS "capitalDays",
+        o.lifecycle_state AS "lifecycleState",o.terminal,o.observation_json AS observation,o.content_hash AS "contentHash"
+        FROM research.theta_outcome_observation o JOIN research.theta_outcome_subject s USING(outcome_subject_id)
+        WHERE s.decision_timestamp >= $1 AND s.decision_timestamp < $2 ORDER BY o.observed_at,o.outcome_observation_id`,parameters),
+      this.pool.query(`SELECT r.outcome_resolution_receipt_id AS "outcomeResolutionReceiptId",
+        r.outcome_subject_id AS "outcomeSubjectId",r.resolution_state AS "resolutionState",
+        r.provenance_class AS "provenanceClass",r.completeness,r.decision_timestamp AS "decisionTimestamp",
+        r.outcome_observation_start AS "outcomeObservationStart",r.outcome_observation_end AS "outcomeObservationEnd",
+        r.label_available_at AS "labelAvailableAt",r.resolution_timestamp AS "resolutionTimestamp",
+        r.execution_model_class AS "executionModelClass",r.execution_model_version AS "executionModelVersion",
+        r.receipt_json AS receipt,r.execution_authorized AS "executionAuthorized",r.content_hash AS "contentHash"
+        FROM research.theta_outcome_resolution_receipt r JOIN research.theta_outcome_subject s USING(outcome_subject_id)
+        WHERE s.decision_timestamp >= $1 AND s.decision_timestamp < $2
+        ORDER BY r.resolution_timestamp,r.outcome_resolution_receipt_id`,parameters),
+      this.pool.query(`SELECT l.resolved_outcome_label_id AS "resolvedOutcomeLabelId",l.outcome_subject_id AS "outcomeSubjectId",
+        l.outcome_resolution_receipt_id AS "outcomeResolutionReceiptId",l.label_type AS "labelType",
+        l.provenance_class AS "provenanceClass",l.completeness,l.decision_timestamp AS "decisionTimestamp",
+        l.label_available_at AS "labelAvailableAt",l.label_version AS "labelVersion",l.market_mark_json AS "marketMark",
+        l.modeled_execution_json AS "modeledExecution",l.path_statistics_json AS "pathStatistics",l.tca_json AS tca,
+        l.outcome_json AS outcome,l.execution_authorized AS "executionAuthorized",l.content_hash AS "contentHash"
+        FROM research.theta_resolved_outcome_label l JOIN research.theta_outcome_subject s USING(outcome_subject_id)
+        WHERE s.decision_timestamp >= $1 AND s.decision_timestamp < $2
+        ORDER BY l.label_available_at,l.resolved_outcome_label_id`,parameters),
     ]);
     const versions = [...new Set(candidates.rows.flatMap((row) => {
       const lineage = row.lineage as Record<string, unknown> | undefined;
@@ -124,7 +159,9 @@ export class PostgresDatasetExporter {
       featureSetVersion:request.featureSetVersion,strategyVersions:versions,rows:{candidateSets:sets.rows,candidates:candidates.rows,
         shadowCandidates:shadow.rows,strategyFrontiers:frontiers.rows,optionChainDecisions:optionChains.rows,
         managementSnapshots:management.rows,lifecycleOutcomes:lifecycle.rows,
-        wholeChainOutcomes:chains.rows,executionEvidence:quotes.rows} });
+        wholeChainOutcomes:chains.rows,executionEvidence:quotes.rows,outcomeSubjects:outcomeSubjects.rows,
+        outcomeObservations:outcomeObservations.rows,outcomeResolutionReceipts:outcomeReceipts.rows,
+        resolvedOutcomeLabels:resolvedLabels.rows} });
     await this.pool.query(`INSERT INTO research.theta_dataset_export(dataset_export_id,source_window_start,source_window_end,
       exported_at,schema_version,feature_set_version,strategy_versions_json,row_counts_json,dataset_hash)
       VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9) ON CONFLICT(dataset_hash) DO NOTHING`,[

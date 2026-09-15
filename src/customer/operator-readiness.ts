@@ -178,6 +178,46 @@ export async function readMasterRuntimeEvidence(databaseUrl?:string):Promise<Mas
   }catch{return empty;}finally{await pool.end();}
 }
 
+export interface OutcomeResearchVisibility {
+  readonly pending_labels:number|null;readonly resolved_labels:number|null;readonly unresolved_receipts:number|null;
+  readonly invalid_receipts:number|null;readonly whole_chains_resolved:number|null;readonly management_labels:number|null;
+  readonly wait_labels:number|null;readonly counterfactual_labels:number|null;readonly modeled_labels:number|null;
+  readonly broker_actual_labels:number|null;readonly policy_evaluation_readiness:'NOT_EVALUABLE'|'INSUFFICIENT_SAMPLE'|'EVALUABLE'|'UNKNOWN';
+}
+export async function readOutcomeResearchVisibility(databaseUrl?:string):Promise<OutcomeResearchVisibility>{
+  const empty:OutcomeResearchVisibility={pending_labels:null,resolved_labels:null,unresolved_receipts:null,invalid_receipts:null,
+    whole_chains_resolved:null,management_labels:null,wait_labels:null,counterfactual_labels:null,modeled_labels:null,
+    broker_actual_labels:null,policy_evaluation_readiness:'UNKNOWN'};
+  if(!databaseUrl)return empty;
+  const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000});
+  try{
+    const exists=await pool.query(`SELECT to_regclass('research.theta_resolved_outcome_label') IS NOT NULL AS ready`);
+    if(exists.rows[0]?.ready!==true)return empty;
+    const result=await pool.query(`SELECT
+      (SELECT count(*)::int FROM research.theta_outcome_subject s WHERE NOT EXISTS(
+        SELECT 1 FROM research.theta_resolved_outcome_label l WHERE l.outcome_subject_id=s.outcome_subject_id)) AS pending_labels,
+      (SELECT count(*)::int FROM research.theta_resolved_outcome_label) AS resolved_labels,
+      (SELECT count(*)::int FROM research.theta_outcome_resolution_receipt WHERE resolution_state='UNRESOLVED') AS unresolved_receipts,
+      (SELECT count(*)::int FROM research.theta_outcome_resolution_receipt WHERE resolution_state='INVALID') AS invalid_receipts,
+      (SELECT count(*)::int FROM research.theta_outcome_label WHERE subject_type='WHOLE_CHAIN' AND censoring_state='RESOLVED') AS whole_chains_resolved,
+      (SELECT count(*)::int FROM research.theta_resolved_outcome_label WHERE label_type IN
+        ('MANAGEMENT_ACTION_OUTCOME','MANAGEMENT_ALTERNATIVE_OUTCOME')) AS management_labels,
+      (SELECT count(*)::int FROM research.theta_resolved_outcome_label WHERE label_type='WAIT_OUTCOME') AS wait_labels,
+      (SELECT count(*)::int FROM research.theta_resolved_outcome_label WHERE label_type IN
+        ('NEIGHBOR_STRIKE_OUTCOME','OTHER_EXPIRATION_OUTCOME','OTHER_STRUCTURE_OUTCOME')) AS counterfactual_labels,
+      (SELECT count(*)::int FROM research.theta_resolved_outcome_label WHERE provenance_class='MODELED_RESEARCH') AS modeled_labels,
+      (SELECT count(*)::int FROM research.theta_resolved_outcome_label WHERE provenance_class='BROKER_ACTUAL') AS broker_actual_labels,
+      (SELECT state FROM research.theta_policy_challenger_evaluation ORDER BY created_at DESC LIMIT 1) AS policy_state`);
+    const row=result.rows[0]??{},number=(value:unknown)=>Number(value??0);
+    return {pending_labels:number(row.pending_labels),resolved_labels:number(row.resolved_labels),
+      unresolved_receipts:number(row.unresolved_receipts),invalid_receipts:number(row.invalid_receipts),
+      whole_chains_resolved:number(row.whole_chains_resolved),management_labels:number(row.management_labels),
+      wait_labels:number(row.wait_labels),counterfactual_labels:number(row.counterfactual_labels),modeled_labels:number(row.modeled_labels),
+      broker_actual_labels:number(row.broker_actual_labels),policy_evaluation_readiness:row.policy_state==='EVALUABLE'?'EVALUABLE':
+        row.policy_state==='INSUFFICIENT_SAMPLE'?'INSUFFICIENT_SAMPLE':row.policy_state==='NOT_EVALUABLE'?'NOT_EVALUABLE':'NOT_EVALUABLE'};
+  }catch{return empty;}finally{await pool.end();}
+}
+
 export interface RuntimeBehaviorEvidence {
   readonly observed_at:string|null;
   readonly wait_classification:string;

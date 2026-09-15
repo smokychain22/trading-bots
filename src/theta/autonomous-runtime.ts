@@ -365,7 +365,9 @@ export async function runAutonomousRuntimeCycle(
         if (reconciliation===null) return degraded('BROKER_RECONCILIATION_REQUIRED',retryAt);
         const lifecycle=await applyConfirmedTerminalLifecycle(pool,master.connectionId,reconciliation.snapshotId,reconciliation.observedAt);
         const fills=await applyConfirmedFillLifecycle(pool,master.connectionId,reconciliation.observedAt);
-        await new PostgresOutcomeResolver(pool).resolveClosedChains(reconciliation.observedAt);
+        const outcomeResolver=new PostgresOutcomeResolver(pool);
+        await outcomeResolver.resolveClosedChains(reconciliation.observedAt);
+        await outcomeResolver.resolveEligibleOutcomes(reconciliation.observedAt);
         return lifecycle.unresolved>0||fills.unresolved>0 ? degraded('BROKER_LIFECYCLE_FACTS_UNRESOLVED',retryAt) : succeeded();
       }
       if (jobType === 'PENDING_ORDER_MANAGEMENT') {

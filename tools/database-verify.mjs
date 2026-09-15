@@ -48,6 +48,8 @@ try {
     "041_management_policy_evidence",
     "042_shadow_management_policy",
     "043_options_chain_decision_intelligence",
+    "044_resolved_outcome_engine",
+    "045_outcome_subject_decision_identity",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -105,6 +107,11 @@ try {
     ["copy", "follower_runtime_checkpoint"],
     ["research", "theta_shadow_management_policy_evidence"],
     ["research", "theta_option_chain_decision_evidence"],
+    ["research", "theta_outcome_subject"],
+    ["research", "theta_outcome_observation"],
+    ["research", "theta_outcome_resolution_receipt"],
+    ["research", "theta_resolved_outcome_label"],
+    ["research", "theta_policy_challenger_evaluation"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -353,6 +360,14 @@ try {
       AND constraint_name IS NOT NULL) AS chain_checks`);
   if (!chainDecisionProtection.rows[0]?.immutable_chain || !chainDecisionProtection.rows[0]?.chain_checks)
     throw new Error("OPTION_CHAIN_DECISION_PROTECTION_MISSING");
+  const resolvedOutcomeProtection=await client.query(`SELECT
+    (SELECT count(DISTINCT event_object_table)::int FROM information_schema.triggers WHERE trigger_schema='research'
+      AND trigger_name='reject_immutable_mutation' AND event_object_table IN
+      ('theta_outcome_subject','theta_outcome_observation','theta_outcome_resolution_receipt','theta_resolved_outcome_label','theta_policy_challenger_evaluation')) AS immutable_tables,
+    EXISTS(SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='research'
+      AND table_name='theta_resolved_outcome_label' AND constraint_type='CHECK') AS label_checks`);
+  if(Number(resolvedOutcomeProtection.rows[0]?.immutable_tables)!==5||!resolvedOutcomeProtection.rows[0]?.label_checks)
+    throw new Error('RESOLVED_OUTCOME_PROTECTION_MISSING');
   const fillFees = await client.query("SELECT is_nullable,column_default FROM information_schema.columns WHERE table_schema='trade' AND table_name='fill' AND column_name='fees'");
   if (fillFees.rows[0]?.is_nullable !== "YES" || fillFees.rows[0]?.column_default !== null)
     throw new Error("UNKNOWN_FILL_FEES_COERCED_TO_ZERO");

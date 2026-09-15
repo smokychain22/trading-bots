@@ -14,6 +14,7 @@ from research.production_export_loader import (  # noqa: E402
     assert_no_future_labels,
     canonical_json,
     load_dataset_export,
+    labels_available_for_training,
     sha256_hex,
 )
 
@@ -64,6 +65,10 @@ def _minimal_rows():
         "lifecycleOutcomes": [],
         "wholeChainOutcomes": [],
         "executionEvidence": [],
+        "outcomeSubjects": [],
+        "outcomeObservations": [],
+        "outcomeResolutionReceipts": [],
+        "resolvedOutcomeLabels": [],
     }
 
 
@@ -86,11 +91,48 @@ def _build_valid_export():
 
 
 class HappyPathTests(unittest.TestCase):
+    def test_training_split_excludes_labels_not_available_by_the_feature_cutoff(self):
+        rows = [{"labelAvailableAt": "2026-01-02T00:00:00+00:00", "id": "known"},
+                {"labelAvailableAt": "2026-01-03T00:00:00+00:00", "id": "future"}]
+        self.assertEqual([row["id"] for row in labels_available_for_training(
+            rows, "2026-01-02T12:00:00+00:00")], ["known"])
+
     def test_a_valid_export_loads_successfully_with_hash_verified(self):
         loaded = load_dataset_export(_build_valid_export())
         self.assertTrue(loaded.hash_verified)
         self.assertEqual(len(loaded.candidates), 1)
         self.assertEqual(len(loaded.candidate_sets), 1)
+
+    def test_resolved_label_is_separate_causal_and_execution_locked(self):
+        export = _build_valid_export()
+        export["rows"]["outcomeSubjects"] = [{
+            "outcomeSubjectId": "os1", "subjectId": "wait:1", "labelType": "WAIT_OUTCOME",
+            "decisionTimestamp": "2026-01-01T00:00:00+00:00", "executionAuthorized": False,
+        }]
+        export["rows"]["resolvedOutcomeLabels"] = [{
+            "resolvedOutcomeLabelId": "ol1", "outcomeSubjectId": "os1",
+            "decisionTimestamp": "2026-01-01T00:00:00+00:00",
+            "labelAvailableAt": "2026-01-01T01:00:00+00:00", "executionAuthorized": False,
+        }]
+        export["rowCounts"] = {key: len(value) for key, value in export["rows"].items()}
+        identity = {"schemaVersion": export["schemaVersion"], "sourceWindow": export["sourceWindow"],
+                    "featureSetVersion": export["featureSetVersion"], "strategyVersions": export["strategyVersions"],
+                    "rows": {key: sorted(value, key=canonical_json) for key, value in export["rows"].items()},
+                    "rowCounts": export["rowCounts"]}
+        export["datasetHash"] = sha256_hex(canonical_json(identity))
+        loaded = load_dataset_export(export)
+        self.assertEqual(len(loaded.resolved_outcome_labels), 1)
+
+    def test_label_at_decision_time_is_rejected_as_leakage(self):
+        export = _build_valid_export()
+        export["rows"]["outcomeSubjects"] = [{"outcomeSubjectId": "os1", "executionAuthorized": False}]
+        export["rows"]["resolvedOutcomeLabels"] = [{
+            "resolvedOutcomeLabelId": "ol1", "outcomeSubjectId": "os1",
+            "decisionTimestamp": "2026-01-01T00:00:00+00:00",
+            "labelAvailableAt": "2026-01-01T00:00:00+00:00", "executionAuthorized": False,
+        }]
+        with self.assertRaisesRegex(DatasetLoadError, "RESOLVED_LABEL_TIME_CAUSALITY_VIOLATION"):
+            load_dataset_export(export)
 
     def test_locked_option_chain_evidence_loads_with_future_labels_empty(self):
         export = _build_valid_export()

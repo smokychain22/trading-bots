@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const empiricalPolicyPromotionContractVersion = 'theta-empirical-policy-promotion-v1' as const;
+export const empiricalPolicyPromotionContractVersion = 'theta-empirical-policy-promotion-v2' as const;
 
 const finiteMetric = z.number().finite();
 const nullableMetric = finiteMetric.nullable();
@@ -16,6 +16,8 @@ export const empiricalPolicyPromotionReceiptSchema = z.object({
   datasetVersion: z.string().min(1),
   datasetHash: z.string().regex(/^[0-9a-f]{64}$/),
   featureSetVersion: z.string().min(1),
+  labelResolverVersion: z.string().min(1),
+  executionModelVersion: z.string().min(1),
   strategyVersions: z.array(z.string().min(1)).min(1),
   trainWindow: evidenceWindowSchema,
   validationWindow: evidenceWindowSchema,
@@ -34,6 +36,8 @@ export const empiricalPolicyPromotionReceiptSchema = z.object({
     capitalDays: nullableMetric,
     brierScore: nullableMetric,
     realizedSlippage: nullableMetric,
+    returnOnSecuredCapital: nullableMetric,
+    annualizedCapitalReturn: nullableMetric,
     deflatedSharpeRatio: nullableMetric,
     probabilityOfBacktestOverfitting: nullableMetric,
   }).strict(),
@@ -46,6 +50,8 @@ export const empiricalPolicyPromotionReceiptSchema = z.object({
   }).strict()).min(1),
   executionEvidence: z.enum(['PROVEN', 'NOT_PROVEN']),
   approval: z.enum(['NOT_REQUESTED', 'APPROVED', 'REJECTED']),
+  approvalIdentity: z.string().min(1).nullable(),
+  approvalTimestamp: z.iso.datetime().nullable(),
 }).strict();
 
 export type EmpiricalPolicyPromotionReceipt = z.infer<typeof empiricalPolicyPromotionReceiptSchema>;
@@ -96,6 +102,7 @@ export function assessEmpiricalPolicyPromotion(
     'effectiveIndependentN', 'managedEpisodeWinRate', 'wholeChainWinRate',
     'afterCostExpectedValue', 'profitFactor', 'averageWin', 'averageLoss',
     'maxDrawdown', 'expectedShortfall', 'capitalDays', 'brierScore', 'realizedSlippage',
+    'returnOnSecuredCapital','annualizedCapitalReturn','deflatedSharpeRatio','probabilityOfBacktestOverfitting',
   ];
   for (const metric of requiredMetrics) {
     if (receipt.metrics[metric] === null) blockers.push(`METRIC_${metric.toUpperCase()}_UNKNOWN`);
@@ -105,6 +112,12 @@ export function assessEmpiricalPolicyPromotion(
   }
   if (receipt.executionEvidence !== 'PROVEN') blockers.push('EXECUTION_EVIDENCE_NOT_PROVEN');
   if (receipt.approval !== 'APPROVED') blockers.push('HUMAN_APPROVAL_NOT_GRANTED');
+  if (receipt.approval === 'APPROVED' && (receipt.approvalIdentity === null || receipt.approvalTimestamp === null)) {
+    blockers.push('APPROVAL_PROVENANCE_MISSING');
+  }
+  if (receipt.approvalTimestamp !== null && Date.parse(receipt.approvalTimestamp) <= Date.parse(receipt.outOfSampleWindow.end)) {
+    blockers.push('APPROVAL_PRECEDES_OOS_COMPLETION');
+  }
 
   return {
     contractVersion: empiricalPolicyPromotionContractVersion,

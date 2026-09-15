@@ -1,5 +1,13 @@
 # Engineering decisions
 
+## 2026-09-15: P2C uses a separate immutable outcome side
+
+- Preserve P2B snapshots byte-for-byte and resolve future observations into separate subjects, observations, receipts, and labels.
+- Advance the deterministic research export to `theta-r6-dataset-v4` because resolved label-side relations are new research row families.
+- Treat midpoint as a market mark only. Modeled execution identifies its fill model and cannot claim broker-actual provenance.
+- Keep the Production management policy provider unavailable unless a complete empirical receipt and an explicit, hash-verified governance promotion both exist.
+- Every P2C relation is immutable. Resolved labels, challenger evaluations, and the provider adapter cannot authorize execution or self-promote.
+
 ## 2026-09-15: Preserve every canonical strategy candidate as relational PIT evidence
 
 - The canonical frontier remains the decision authority and immutable JSON source.

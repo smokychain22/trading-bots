@@ -9,8 +9,9 @@ function receipt() {
   return {
     contractVersion: empiricalPolicyPromotionContractVersion,
     policyKind: 'MANAGEMENT', policyVersion: 'challenger-v1',
-    datasetVersion: 'theta-r6-dataset-v3', datasetHash: 'a'.repeat(64),
+    datasetVersion: 'theta-r6-dataset-v4', datasetHash: 'a'.repeat(64),
     featureSetVersion: 'theta-profit-preservation-v1', strategyVersions: ['theta-conventional-v1'],
+    labelResolverVersion:'theta-outcome-resolution-v1',executionModelVersion:'theta-market-mark-v1',
     trainWindow: { start: '2025-01-01T00:00:00.000Z', end: '2025-06-01T00:00:00.000Z' },
     validationWindow: { start: '2025-06-08T00:00:00.000Z', end: '2025-09-01T00:00:00.000Z' },
     outOfSampleWindow: { start: '2025-09-08T00:00:00.000Z', end: '2026-01-01T00:00:00.000Z' },
@@ -19,12 +20,14 @@ function receipt() {
       effectiveIndependentN: 100, managedEpisodeWinRate: 0.6, wholeChainWinRate: 0.55,
       afterCostExpectedValue: 12, profitFactor: 1.4, averageWin: 50, averageLoss: -35,
       maxDrawdown: -500, expectedShortfall: -80, capitalDays: 25_000, brierScore: 0.2,
-      realizedSlippage: 3, deflatedSharpeRatio: null, probabilityOfBacktestOverfitting: null,
+      realizedSlippage: 3, deflatedSharpeRatio: 0.8, probabilityOfBacktestOverfitting: 0.2,
+      returnOnSecuredCapital:0.08,annualizedCapitalReturn:0.12,
     },
     acceptanceCriteriaVersion: 'research-acceptance-v1',
     acceptanceCriteria: [{ id: 'positive-ev', description: 'After-cost EV passes the versioned threshold',
       passed: true, evidenceReference: 'experiment:1' }],
-    executionEvidence: 'PROVEN', approval: 'APPROVED',
+    executionEvidence: 'PROVEN', approval: 'APPROVED',approvalIdentity:'owner-governance',
+    approvalTimestamp:'2026-01-02T00:00:00.000Z',
   } as const;
 }
 

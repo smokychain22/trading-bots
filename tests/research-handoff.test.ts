@@ -8,7 +8,7 @@ test('research handoff is deterministic, concise, and contains no secret materia
     exportedAt:'2026-09-14T20:01:00.000Z',featureSetVersion:'f1',strategyVersions:['s1'],
     rowCounts:{candidateSets:1,candidates:0,shadowCandidates:0,managementSnapshots:0,lifecycleOutcomes:0,
       wholeChainOutcomes:0,executionEvidence:0},rows:{candidateSets:[],candidates:[],shadowCandidates:[],
-      managementSnapshots:[],lifecycleOutcomes:[],wholeChainOutcomes:[],executionEvidence:[]}} as const;
+      managementSnapshots:[],lifecycleOutcomes:[],wholeChainOutcomes:[],executionEvidence:[],outcomeSubjects:[],outcomeObservations:[],outcomeResolutionReceipts:[],resolvedOutcomeLabels:[]}} as const;
   const handoff=buildResearchHandoff({artifact,exportPath:'x/dataset.json',manifestPath:'x/manifest.json'});
   assert.equal(handoff.datasetHash,'a'.repeat(64));
   assert.equal(handoff.sourceClass,'REAL_POINT_IN_TIME_SHADOW');

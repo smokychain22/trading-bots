@@ -31,6 +31,7 @@ export interface R6ReadinessReceipt {
   readonly OUTCOME_RESOLVER_READY:ReadinessState; readonly POINT_IN_TIME_DATA_EXISTS:ReadinessState;
   readonly POINT_IN_TIME_DATASET_READY:ReadinessState; readonly SHADOW_CAPTURE_READY:ReadinessState;
   readonly WHOLE_CHAIN_LABELS_READY:ReadinessState; readonly MANAGEMENT_LABELS_READY:ReadinessState;
+  readonly WAIT_LABELS_READY:ReadinessState; readonly COUNTERFACTUAL_LABELS_READY:ReadinessState;
   readonly EXECUTION_REPLAY_READY:ReadinessState; readonly DATASET_EXPORT_READY:ReadinessState;
   readonly EXECUTION_REPLAY_ENGINEERING:'COMPLETE'|'INCOMPLETE';
   readonly EXECUTION_REPLAY_EVIDENCE:'AVAILABLE'|'BLOCKED_ON_DATA';
@@ -53,6 +54,7 @@ export async function buildR6ReadinessReceipt(pool:Pool):Promise<R6ReadinessRece
     to_regclass('trade.candidate_set_evidence') IS NOT NULL AS sets,
     to_regclass('trade.shadow_opportunity') IS NOT NULL AS shadow,
     to_regclass('research.theta_outcome_label') IS NOT NULL AS labels,
+    to_regclass('research.theta_resolved_outcome_label') IS NOT NULL AS resolved_labels,
     to_regclass('market.execution_quote_observation') IS NOT NULL AS replay,
     to_regclass('research.theta_dataset_export') IS NOT NULL AS exports,
     to_regclass('research.theta_shadow_scan_run') IS NOT NULL AS scans,
@@ -78,6 +80,11 @@ export async function buildR6ReadinessReceipt(pool:Pool):Promise<R6ReadinessRece
     (SELECT count(*) FROM research.theta_outcome_label WHERE subject_type='MANAGED_EPISODE' AND censoring_state='RESOLVED')::int AS management_labels,
     (SELECT count(*) FROM research.theta_outcome_label WHERE censoring_state='RESOLVED')::int AS resolved_labels,
     (SELECT count(*) FROM research.theta_outcome_label WHERE censoring_state<>'RESOLVED')::int AS unresolved_labels,
+    (SELECT count(*) FROM research.theta_resolved_outcome_label WHERE label_type='WAIT_OUTCOME')::int AS wait_labels,
+    (SELECT count(*) FROM research.theta_resolved_outcome_label WHERE label_type IN
+      ('NEIGHBOR_STRIKE_OUTCOME','OTHER_EXPIRATION_OUTCOME','OTHER_STRUCTURE_OUTCOME'))::int AS counterfactual_labels,
+    (SELECT count(*) FROM research.theta_resolved_outcome_label WHERE label_type IN
+      ('MANAGEMENT_ACTION_OUTCOME','MANAGEMENT_ALTERNATIVE_OUTCOME'))::int AS resolved_management_labels,
     (SELECT count(*) FROM market.execution_quote_observation WHERE observation_role='SUBSEQUENT')::int AS subsequent_quotes,
     (SELECT count(*) FROM research.theta_execution_observation_job WHERE status='PENDING')::int AS pending_jobs,
     (SELECT count(*) FROM research.theta_execution_observation_job WHERE status='MISSED')::int AS missed_jobs,
@@ -120,7 +127,8 @@ export async function buildR6ReadinessReceipt(pool:Pool):Promise<R6ReadinessRece
     hardVetoDistribution:distribution(hard.rows,'code'),softRejectionDistribution:distribution(soft.rows,'code'),
     providerStateDistribution:distribution(providers.rows,'state')};
   const pointData=pitCount>0,liveCapture=pointData&&num(c.complete_scans)>0;
-  const pipeline=e.jobs&&e.replay,whole=num(c.chain_labels)>0,management=num(c.management_labels)>0;
+  const pipeline=e.jobs&&e.replay,whole=num(c.chain_labels)>0,management=num(c.management_labels)+num(c.resolved_management_labels)>0;
+  const waitLabels=num(c.wait_labels)>0,counterfactualLabels=num(c.counterfactual_labels)>0;
   const replay=num(c.subsequent_quotes)>0,exportReady=Boolean(e.exports&&e.pit&&e.labels);
   const openSessionProof=buildOpenSessionProof(proofRows.rows[0],workerRows.rows[0]);
   return {
@@ -130,16 +138,18 @@ export async function buildR6ReadinessReceipt(pool:Pool):Promise<R6ReadinessRece
     EXECUTION_OBSERVATION_PIPELINE_READY:pipeline?'YES':'NO',OUTCOME_RESOLVER_READY:e.labels?'PARTIAL':'NO',
     POINT_IN_TIME_DATA_EXISTS:pointData?'YES':'NO',POINT_IN_TIME_DATASET_READY:pointData?'YES':'NO',
     SHADOW_CAPTURE_READY:shadowCount>0?'YES':'NO',WHOLE_CHAIN_LABELS_READY:whole?'YES':'NO',
-    MANAGEMENT_LABELS_READY:management?'YES':'NO',EXECUTION_REPLAY_READY:replay?'YES':pipeline?'PARTIAL':'NO',
+    MANAGEMENT_LABELS_READY:management?'YES':'NO',WAIT_LABELS_READY:waitLabels?'YES':'NO',
+    COUNTERFACTUAL_LABELS_READY:counterfactualLabels?'YES':'NO',EXECUTION_REPLAY_READY:replay?'YES':pipeline?'PARTIAL':'NO',
     EXECUTION_REPLAY_ENGINEERING:pipeline?'COMPLETE':'INCOMPLETE',
     EXECUTION_REPLAY_EVIDENCE:replay?'AVAILABLE':'BLOCKED_ON_DATA',
-    OUTCOME_RESOLVER_ENGINEERING:e.labels?'COMPLETE':'INCOMPLETE',
+    OUTCOME_RESOLVER_ENGINEERING:e.labels&&e.resolved_labels?'COMPLETE':'INCOMPLETE',
     OUTCOME_RESOLVER_EVIDENCE:whole||management?'AVAILABLE':'BLOCKED_ON_DATA',
     DATASET_EXPORT_READY:exportReady?'YES':'NO',MODEL_TRAINING_DATA_SUFFICIENT:'NO',dataQuality:quality,
     openSessionProof,
     reasons:{liveCapture:liveCapture?[]:['NO_COMPLETE_REAL_CROSS_SYMBOL_SCAN'],crossSymbol:num(c.complete_scans)>0?[]:['NO_COMPLETE_SCAN'],
       pointInTime:pointData?[]:['NO_POINT_IN_TIME_ROWS'],shadow:shadowCount>0?[]:['NO_SHADOW_ROWS'],
       wholeChain:whole?[]:['NO_RESOLVED_WHOLE_CHAIN_LABELS'],management:management?[]:['NO_RESOLVED_MANAGEMENT_LABELS'],
+      wait:waitLabels?[]:['NO_RESOLVED_WAIT_LABELS'],counterfactual:counterfactualLabels?[]:['NO_RESOLVED_COUNTERFACTUAL_LABELS'],
       executionReplay:replay?[]:['NO_SUBSEQUENT_QUOTE_OBSERVATIONS'],modelTraining:['SAMPLE_SUFFICIENCY_AND_OOS_NOT_ESTABLISHED']},
   };
 }

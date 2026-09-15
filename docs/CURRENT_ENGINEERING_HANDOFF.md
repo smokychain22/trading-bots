@@ -1,5 +1,11 @@
 # Current Engineering Handoff
 
+## 2026-09-15 P2C resolved outcome engine
+
+P2C is implemented on top of the accepted P2B baseline. Migration 044 adds immutable label-side relations. The restart-safe master worker invokes outcome resolution after broker lifecycle reconciliation. Dataset export is now `theta-r6-dataset-v4` and keeps feature rows separate from future labels.
+
+No policy is promoted. No execution gate changed. Follower execution remains locked. Current evidence status uses precise language: the point-in-time dataset is present, while whole-chain, management, WAIT, and counterfactual resolved-label samples remain insufficient until real horizons and episodes close.
+
 ## 2026-09-15 P2B options-chain decision intelligence
 
 Canonical implementation adds one research-only options-first evidence layer on top of the existing normalized contracts and canonical five-branch frontier. The atomic cycle writer now stores exact contract rows, expiry frontiers, strike/delta/liquidity ladders, CSP/Hold-Strike/Defined-Risk/Recovery/CC structures, WAIT, scoped Optionomics attachments, and a selection explanation under migration `043_options_chain_decision_intelligence`.

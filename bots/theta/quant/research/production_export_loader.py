@@ -44,12 +44,28 @@ from research.dataset_contracts import (
     ThetaStrategyBranch,
 )
 
-DATASET_SCHEMA_VERSION = "theta-r6-dataset-v3"  # mirrors point-in-time-evidence.ts's datasetExportVersion exactly
+DATASET_SCHEMA_VERSION = "theta-r6-dataset-v4"  # mirrors point-in-time-evidence.ts's datasetExportVersion exactly
 
 
 class DatasetLoadError(Exception):
     """Raised for ANY structural, hash, ordering, identity, lineage, unit,
     or firewall violation -- this loader never degrades to a warning."""
+
+
+def labels_available_for_training(rows: Sequence[Dict[str, Any]], feature_cutoff: str) -> List[Dict[str, Any]]:
+    """Return only labels genuinely knowable by a training cutoff.
+
+    This is deliberately stricter than filtering on decision time. A decision
+    may predate the split while its outcome is still unavailable at the split.
+    """
+    selected = []
+    for row in rows:
+        available = row.get("labelAvailableAt")
+        if not isinstance(available, str):
+            raise DatasetLoadError("TRAINING_LABEL_AVAILABILITY_MISSING")
+        if available <= feature_cutoff:
+            selected.append(row)
+    return selected
 
 
 def _optional_float(value: Any, field: str) -> Any:
@@ -421,6 +437,10 @@ class LoadedDatasetExport:
     lifecycle_outcomes: List[LifecycleEvent]
     whole_chain_outcomes: List[EconomicEpisode]
     execution_evidence: List[ExecutionEvidence]
+    outcome_subjects: List[Dict[str, Any]]
+    outcome_observations: List[Dict[str, Any]]
+    outcome_resolution_receipts: List[Dict[str, Any]]
+    resolved_outcome_labels: List[Dict[str, Any]]
     row_counts: Dict[str, int]
 
 
@@ -457,12 +477,43 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
     lifecycle_outcomes = [_load_lifecycle_event(r) for r in rows_raw.get("lifecycleOutcomes", [])]
     whole_chain_outcomes = [_load_economic_episode(r) for r in rows_raw.get("wholeChainOutcomes", [])]
     execution_evidence = [_load_execution_evidence(r) for r in rows_raw.get("executionEvidence", [])]
+    outcome_subjects = list(rows_raw.get("outcomeSubjects", []))
+    outcome_observations = list(rows_raw.get("outcomeObservations", []))
+    outcome_resolution_receipts = list(rows_raw.get("outcomeResolutionReceipts", []))
+    resolved_outcome_labels = list(rows_raw.get("resolvedOutcomeLabels", []))
+    subjects_by_id = {}
+    for row in outcome_subjects:
+        subject_id = row.get("outcomeSubjectId")
+        if row.get("executionAuthorized") is not False:
+            raise DatasetLoadError(f"OUTCOME_SUBJECT_EXECUTION_AUTHORITY_FORBIDDEN:{subject_id}")
+        subjects_by_id[subject_id] = row
+    for row in outcome_resolution_receipts:
+        receipt_id = row.get("outcomeResolutionReceiptId")
+        if row.get("executionAuthorized") is not False:
+            raise DatasetLoadError(f"OUTCOME_RECEIPT_EXECUTION_AUTHORITY_FORBIDDEN:{receipt_id}")
+        decision_at, label_at = row.get("decisionTimestamp"), row.get("labelAvailableAt")
+        if label_at is not None and decision_at is not None and label_at <= decision_at:
+            raise DatasetLoadError(f"OUTCOME_RECEIPT_TIME_CAUSALITY_VIOLATION:{receipt_id}")
+        if row.get("provenanceClass") == "BROKER_ACTUAL" and row.get("executionModelClass") != "BROKER_ACTUAL":
+            raise DatasetLoadError(f"OUTCOME_BROKER_PROVENANCE_MISMATCH:{receipt_id}")
+    for row in resolved_outcome_labels:
+        label_id = row.get("resolvedOutcomeLabelId")
+        if row.get("executionAuthorized") is not False:
+            raise DatasetLoadError(f"RESOLVED_LABEL_EXECUTION_AUTHORITY_FORBIDDEN:{label_id}")
+        if row.get("labelAvailableAt") is None or row.get("decisionTimestamp") is None or row["labelAvailableAt"] <= row["decisionTimestamp"]:
+            raise DatasetLoadError(f"RESOLVED_LABEL_TIME_CAUSALITY_VIOLATION:{label_id}")
+        if row.get("outcomeSubjectId") not in subjects_by_id:
+            raise DatasetLoadError(f"RESOLVED_LABEL_SUBJECT_MISSING:{label_id}")
 
     _assert_unique_ids(candidate_sets, lambda c: c.candidate_set_id, "candidate_set")
     _assert_unique_ids(candidates, lambda c: c.candidate_id, "candidate")
     _assert_unique_ids(option_chain_decisions, lambda r: r.get("chainDecisionEvidenceId"), "option_chain_decision")
     _assert_unique_ids(execution_evidence, lambda e: e.quote_observation_id, "execution_evidence")
     _assert_unique_ids(whole_chain_outcomes, lambda e: e.outcome_label_id, "economic_episode")
+    _assert_unique_ids(outcome_subjects, lambda r: r.get("outcomeSubjectId"), "outcome_subject")
+    _assert_unique_ids(outcome_observations, lambda r: r.get("outcomeObservationId"), "outcome_observation")
+    _assert_unique_ids(outcome_resolution_receipts, lambda r: r.get("outcomeResolutionReceiptId"), "outcome_resolution_receipt")
+    _assert_unique_ids(resolved_outcome_labels, lambda r: r.get("resolvedOutcomeLabelId"), "resolved_outcome_label")
 
     all_candidate_ids = {c.candidate_id for c in candidates}
     for candidate_set in candidate_sets:
@@ -474,6 +525,7 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
     for row_family in (
         "candidateSets", "candidates", "shadowCandidates", "strategyFrontiers",
         "optionChainDecisions", "managementSnapshots", "lifecycleOutcomes", "wholeChainOutcomes", "executionEvidence",
+        "outcomeSubjects", "outcomeObservations", "outcomeResolutionReceipts", "resolvedOutcomeLabels",
     ):
         _assert_deterministic_order(rows_raw.get(row_family, []), canonical_json)
 
@@ -509,5 +561,7 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
         candidate_sets=candidate_sets, candidates=candidates, shadow_candidates=shadow_candidates,
         management_snapshots=management_snapshots, lifecycle_outcomes=lifecycle_outcomes,
         whole_chain_outcomes=whole_chain_outcomes, execution_evidence=execution_evidence,
+        outcome_subjects=outcome_subjects,outcome_observations=outcome_observations,
+        outcome_resolution_receipts=outcome_resolution_receipts,resolved_outcome_labels=resolved_outcome_labels,
         row_counts=raw.get("rowCounts", {}),
     )

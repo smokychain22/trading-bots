@@ -31,6 +31,7 @@ import {
   readLocalWorkerReadiness,
   readMasterRuntimeEvidence,
   readLatestRuntimeBehavior,
+  readOutcomeResearchVisibility,
   verifyOptionomicsConnection,
 } from "./operator-readiness.js";
 import { executionMode } from "../execution/execution-control.js";
@@ -476,9 +477,10 @@ export default async function customerHandler(
       const oauth = oauthConfiguration(environment);
       const privateBeta = privatePaperApiKeyConfiguration(environment);
       const connectionConfigured = oauth.configured || privateBeta.configured;
-      const [database,localWorker,runtimeEvidence,runtimeBehavior] = await Promise.all([
+      const [database,localWorker,runtimeEvidence,runtimeBehavior,outcomeResearch] = await Promise.all([
         checkDatabaseReadiness(environment.DATABASE_URL),readLocalWorkerReadiness(environment.DATABASE_URL),
         readMasterRuntimeEvidence(environment.DATABASE_URL),readLatestRuntimeBehavior(environment.DATABASE_URL),
+        readOutcomeResearchVisibility(environment.DATABASE_URL),
       ]);
       const executionControl = {
         masterEnabled: environment.MASTER_PAPER_EXECUTION_ENABLED,
@@ -545,6 +547,7 @@ export default async function customerHandler(
           },
           local_worker: localWorker,
           runtime_evidence: runtimeEvidence,
+          outcome_research: outcomeResearch,
           execution_control: {
             environment: "PAPER",
             live_host_allowed: false,
