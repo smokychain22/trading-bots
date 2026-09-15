@@ -16,6 +16,8 @@ import { PostgresRuntimeCycleStore, runAutonomousRuntimeCycle } from './autonomo
 import { PostgresWorkerRuntimeStore } from '../worker/postgres-worker-runtime-store.js';
 import { runOptionomicsQuoteQualification, sanitizeQualificationReport } from './optionomics-quote-qualification-runtime.js';
 import { qualifyOptionomicsProductionSurfaces } from '../providers/optionomics-mcp-qualification.js';
+import { qualifyOptionomicsProvider, persistOptionomicsQualification } from '../providers/optionomics-qualification.js';
+import { optionomicsConfigFromEnvironment } from './theta-shadow-once.js';
 
 let runtimePool: Pool | null = null;
 
@@ -30,12 +32,13 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
   if (value === undefined) return 'RUNTIME_CYCLE';
   if (value === 'provider-evidence-readiness') return 'PROVIDER_EVIDENCE_READINESS';
+  if (value === 'optionomics-provider-qualification') return 'OPTIONOMICS_PROVIDER_QUALIFICATION';
   if (value === 'optionomics-quote-qualification') return 'OPTIONOMICS_QUOTE_QUALIFICATION';
   if (value === 'optionomics-mcp-qualification') return 'OPTIONOMICS_MCP_QUALIFICATION';
   return 'INVALID';
@@ -107,6 +110,20 @@ export default async function autonomousRuntimeHandler(
     return;
   }
   try {
+    if (operation === 'OPTIONOMICS_PROVIDER_QUALIFICATION') {
+      if (localIdentity.kind !== 'VALID') {
+        send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+        return;
+      }
+      const receipt=await qualifyOptionomicsProvider({mode:'REAL_AUTHENTICATED',at:new Date().toISOString(),symbol:'SPY',
+        config:optionomicsConfigFromEnvironment(environment)});
+      await persistOptionomicsQualification(runtimePool,receipt);
+      send(response,receipt.secretState==='AUTH_VALID'?200:207,{version:receipt.version,secretState:receipt.secretState,
+        families:receipt.families.map(({family,state,blockers})=>({family,state,blockers})),realPayloadCount:receipt.realPayloadCount,
+        staleCapabilityCount:receipt.staleCapabilityCount,receiptHash:receipt.receiptHash,executionGate:'EXTERNAL_QUOTE_BLOCKER',
+        executionAuthorized:false,ordersSubmitted:0});
+      return;
+    }
     if (operation === 'OPTIONOMICS_MCP_QUALIFICATION') {
       if (localIdentity.kind !== 'VALID') {
         send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });

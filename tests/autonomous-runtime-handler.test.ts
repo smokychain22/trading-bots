@@ -42,6 +42,9 @@ test('local worker operation accepts only the runtime and read-only evidence sel
     'x-theta-operation': 'provider-evidence-readiness',
   } }), 'PROVIDER_EVIDENCE_READINESS');
   assert.equal(parseLocalWorkerOperation({ headers: {
+    'x-theta-operation': 'optionomics-provider-qualification',
+  } }), 'OPTIONOMICS_PROVIDER_QUALIFICATION');
+  assert.equal(parseLocalWorkerOperation({ headers: {
     'x-theta-operation': 'optionomics-quote-qualification',
   } }), 'OPTIONOMICS_QUOTE_QUALIFICATION');
   assert.equal(parseLocalWorkerOperation({ headers: {
