@@ -26,9 +26,10 @@ const validInput = (): FirstPaperOrderReadinessInput => ({
     ownershipQuality: good('ACCEPTABLE', 'THETA'), eventState: good('CLEAR', 'OPTIONOMICS'),
   },
   quote: {
-    feed:good('OPRA'), bid: good(1.20), ask: good(1.30), midpoint: good(1.25), proposedLimit: good(1.24, 'EXECUTION_POLICY'),
+    feed:good('TRUSTED_TWO_SIDED_ORDER_PRICING'), bid: good(1.20), ask: good(1.30), midpoint: good(1.25), proposedLimit: good(1.24, 'EXECUTION_POLICY'),
     pricingPolicy:good('PASSIVE_LIMIT_V1','EXECUTION_POLICY'),
     ageSeconds: good(2), maximumAgeSeconds: 10, spreadProtectionPassed: good(true, 'EXECUTION_POLICY'),
+    providerAuthenticated:good(true),exactContractMapping:good(true),documentedForOrderPricing:good(true),
   },
   economics: {
     empiricalState: good('EMPIRICALLY_READY', 'RESEARCH_REGISTRY'),empiricalModelVersion:good('ev-v1','RESEARCH_REGISTRY'),
@@ -119,13 +120,14 @@ test('the first THETA order can only be a SELL_TO_OPEN put on the Paper master',
   assert.ok(receipt.blockers.includes('FIRST_THETA_INTENT_NOT_SELL_TO_OPEN'));
 });
 
-test('indicative quotes and missing owner authorization stay explicit blockers', () => {
+test('indicative or undocumented quotes and missing owner authorization stay explicit blockers', () => {
   const input = validInput();
   const receipt = buildFirstPaperOrderReadinessReceipt({
-    ...input, quote: { ...input.quote, feed: good('INDICATIVE') },
+    ...input, quote: { ...input.quote, feed: good('INDICATIVE'), documentedForOrderPricing:good(false) },
     operations: { ...input.operations, ownerAuthorization: 'NOT_GRANTED', executableBboReady: good(false) },
   });
-  assert.ok(receipt.blockers.includes('EXECUTABLE_BBO_NOT_OPRA'));
+  assert.ok(receipt.blockers.includes('ORDER_PRICING_SEMANTICS_NOT_PROVEN'));
+  assert.ok(receipt.blockers.includes('QUOTE_ORDER_PRICING_USE_NOT_DOCUMENTED'));
   assert.ok(receipt.blockers.includes('EXECUTABLE_BBO_NOT_READY'));
   assert.ok(receipt.blockers.includes('OWNER_PAPER_AUTHORIZATION_NOT_GRANTED'));
 });

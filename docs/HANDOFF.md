@@ -2045,3 +2045,21 @@ RISKS: Authentication success could be mistaken for execution-quote authority, a
 WHAT THE OTHER AGENT SHOULD REVIEW: Quant research may evaluate normalized Optionomics feature families and outcome cohorts. It must preserve the provider/execution boundary, feature-label firewall, strategy version identity, and all execution locks.
 
 NEXT RECOMMENDED TASK: Run the deployed real-auth qualification from an authenticated operator session, qualify each documented capability with real response evidence, and continue collecting resolved Paper evidence. Stop before any broker order until the independent first-order and execution-quote gates both pass.
+
+OWNER: Codex
+
+TASK: Complete P2G synthetic lifecycle proof, non-submitting Paper order preview, provider-family failure isolation, and OPRA-independent pricing semantics.
+
+FILES CHANGED: P2G simulator, Paper order preview, Optionomics Vega family-health evaluator, immutable migration 049, persistence helpers, database invariants, readiness contract, tests, and P2G documentation.
+
+WHAT WAS IMPLEMENTED: A deterministic full Wheel chain and representative scenario registry now prove lifecycle and accounting mechanics while remaining excluded from real evidence and policy learning. Single-leg and multi-leg previews record exact terms, pricing provenance, risk, AEGIS, locks, persistence, and idempotency while hard-coding all broker submission fields false. The first-order receipt now accepts either proven consolidated NBBO or proven trusted two-sided order pricing and no longer assumes every valid source must be Alpaca OPRA. Optionomics families fail independently across empty, partial, stale, malformed, missing-timestamp, duplicate-page, and pagination-loop evidence.
+
+TESTS RUN: Full Node and Python suites, TypeScript, ESLint, build, security, migration 049, PostgreSQL invariants, CI, Production deployment, and worker verification are recorded in the P2G release receipt.
+
+KNOWN LIMITATIONS: Simulation is not market evidence. Optionomics Production authentication currently returns HTTP 401 and no execution-price source has produced authenticated, documented, fresh exact-contract two-sided evidence. The policy provider remains unpromoted.
+
+RISKS: Synthetic PnL could be misread as performance. Database constraints and receipt flags prevent it from entering real evidence. Trusted two-sided pricing must not be labeled NBBO unless the source proves consolidated semantics.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Quant research may inspect scenario coverage but must not treat simulated rows as training evidence or resolved R8 samples.
+
+NEXT RECOMMENDED TASK: Resolve the Optionomics Production authentication failure and capture actual per-family schemas and fresh price semantics. Then create a real candidate-specific preview and stop before the first Paper broker submission.

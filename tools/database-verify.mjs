@@ -53,6 +53,7 @@ try {
     "046_real_label_materialization",
     "047_p2e_time_path_intelligence",
     "048_p2f_provider_activation_readiness",
+    "049_p2g_simulation_and_preview",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -405,6 +406,16 @@ try {
   if(Number(p2fProtection.rows[0]?.immutable_tables)!==3||!p2fProtection.rows[0]?.state_versioned||
     !p2fProtection.rows[0]?.state_version_unique||!p2fProtection.rows[0]?.semantic_checkpoints)
     throw new Error('P2F_PROVIDER_ACTIVATION_PROTECTION_MISSING');
+  const p2gProtection=await client.query(`SELECT
+    (SELECT count(DISTINCT event_object_table)::int FROM information_schema.triggers WHERE trigger_schema='research'
+      AND trigger_name='reject_immutable_mutation' AND event_object_table IN
+      ('theta_synthetic_lifecycle_receipt','theta_paper_order_preview_receipt','optionomics_family_health_observation')) AS immutable_tables,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='research.theta_synthetic_lifecycle_receipt'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%real_paper_evidence = false%') AS simulated_not_real,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='research.theta_paper_order_preview_receipt'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%submit_to_broker = false%') AS preview_never_submits`);
+  if(Number(p2gProtection.rows[0]?.immutable_tables)!==3||!p2gProtection.rows[0]?.simulated_not_real||
+    !p2gProtection.rows[0]?.preview_never_submits)throw new Error('P2G_SIMULATION_PREVIEW_PROTECTION_MISSING');
   const fillFees = await client.query("SELECT is_nullable,column_default FROM information_schema.columns WHERE table_schema='trade' AND table_name='fill' AND column_name='fees'");
   if (fillFees.rows[0]?.is_nullable !== "YES" || fillFees.rows[0]?.column_default !== null)
     throw new Error("UNKNOWN_FILL_FEES_COERCED_TO_ZERO");
@@ -460,6 +471,7 @@ try {
     realLabelMaterialization:"ENFORCED",
     p2eTimePathIntelligence:"ENFORCED",
     p2fProviderActivationReadiness:"ENFORCED",
+    p2gSimulationPreviewIsolation:"ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeMasters: activeMasters.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,

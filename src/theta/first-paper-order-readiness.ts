@@ -50,7 +50,7 @@ export interface FirstPaperOrderReadinessInput {
     readonly eventState: Evidence<string>;
   };
   readonly quote: {
-    readonly feed: Evidence<'OPRA' | 'INDICATIVE' | 'UNKNOWN'>;
+    readonly feed: Evidence<'CONSOLIDATED_NBBO' | 'TRUSTED_TWO_SIDED_ORDER_PRICING' | 'INDICATIVE' | 'UNKNOWN'>;
     readonly bid: Evidence<number>;
     readonly ask: Evidence<number>;
     readonly midpoint: Evidence<number>;
@@ -59,6 +59,9 @@ export interface FirstPaperOrderReadinessInput {
     readonly ageSeconds: Evidence<number>;
     readonly maximumAgeSeconds: number;
     readonly spreadProtectionPassed: Evidence<boolean>;
+    readonly providerAuthenticated: Evidence<boolean>;
+    readonly exactContractMapping: Evidence<boolean>;
+    readonly documentedForOrderPricing: Evidence<boolean>;
   };
   readonly economics: {
     readonly empiricalState: Evidence<string>;
@@ -212,12 +215,18 @@ export function buildFirstPaperOrderReadinessReceipt(input: FirstPaperOrderReadi
   requireGood(input.quote.pricingPolicy, 'PRICING_POLICY', blockers);
   const quoteAge = requireGood(input.quote.ageSeconds, 'QUOTE_AGE', blockers);
   const spreadPassed = requireGood(input.quote.spreadProtectionPassed, 'SPREAD_PROTECTION', blockers);
+  const providerAuthenticated = requireGood(input.quote.providerAuthenticated, 'QUOTE_PROVIDER_AUTH', blockers);
+  const exactContractMapping = requireGood(input.quote.exactContractMapping, 'QUOTE_CONTRACT_MAPPING', blockers);
+  const documentedForOrderPricing = requireGood(input.quote.documentedForOrderPricing, 'QUOTE_ORDER_PRICING_DOCUMENTATION', blockers);
   if (!positiveFinite(bid) || !positiveFinite(ask) || (bid !== null && ask !== null && bid > ask)) blockers.push('BBO_INVALID');
   if (bid !== null && ask !== null && midpoint !== null && Math.abs(midpoint - (bid + ask) / 2) > 0.000001) blockers.push('MIDPOINT_MISMATCH');
   if (bid !== null && ask !== null && limit !== null && (limit < bid || limit > ask)) blockers.push('LIMIT_OUTSIDE_BBO');
   if (quoteAge !== null && (!Number.isFinite(quoteAge) || quoteAge < 0 || quoteAge > input.quote.maximumAgeSeconds)) blockers.push('QUOTE_STALE');
-  if (input.quote.bid.source !== 'ALPACA' || input.quote.ask.source !== 'ALPACA') blockers.push('QUOTE_PROVENANCE_NOT_ALPACA');
-  if (feed !== null && feed !== 'OPRA') blockers.push('EXECUTABLE_BBO_NOT_OPRA');
+  if (!input.quote.bid.source.trim() || input.quote.bid.source !== input.quote.ask.source) blockers.push('QUOTE_PROVENANCE_INCONSISTENT');
+  if (feed !== null && !['CONSOLIDATED_NBBO', 'TRUSTED_TWO_SIDED_ORDER_PRICING'].includes(feed)) blockers.push('ORDER_PRICING_SEMANTICS_NOT_PROVEN');
+  if (providerAuthenticated === false) blockers.push('QUOTE_PROVIDER_NOT_AUTHENTICATED');
+  if (exactContractMapping === false) blockers.push('QUOTE_CONTRACT_MAPPING_NOT_PROVEN');
+  if (documentedForOrderPricing === false) blockers.push('QUOTE_ORDER_PRICING_USE_NOT_DOCUMENTED');
   if (spreadPassed === false) blockers.push('SPREAD_PROTECTION_FAILED');
 
   const empirical = requireGood(input.economics.empiricalState, 'EV_MODEL', blockers);

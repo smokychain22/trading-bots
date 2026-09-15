@@ -13,8 +13,8 @@ const input=():FirstPaperOrderReadinessInput=>({asOf:now,broker:{role:good('MAST
   candidateSetId:good('set-1'),candidateId:good('candidate-1'),symbol:good('AAPL'),occContract:good('AAPL261016P00150000'),optionType:good('PUT'),
   strike:good(150),expiration:good('2026-10-16'),dte:good(34),multiplier:good(100),positionIntent:good('SELL_TO_OPEN'),quantity:good(1),
   quantityDerivation:good('min(capacities)=1'),collateral:good(15000),userAllocation:good(20000),assignmentCapacity:good(true),ownershipQuality:good('ACCEPTABLE'),eventState:good('CLEAR')},
-  quote:{feed:good('OPRA','ALPACA'),bid:good(1.2,'ALPACA'),ask:good(1.3,'ALPACA'),midpoint:good(1.25,'ALPACA'),proposedLimit:good(1.24),pricingPolicy:good('PASSIVE_LIMIT_V1'),
-  ageSeconds:good(2),maximumAgeSeconds:10,spreadProtectionPassed:good(true)},economics:{empiricalState:good('EV_MODEL_NOT_EMPIRICALLY_READY'),
+  quote:{feed:good('TRUSTED_TWO_SIDED_ORDER_PRICING','OPTIONOMICS'),bid:good(1.2,'OPTIONOMICS'),ask:good(1.3,'OPTIONOMICS'),midpoint:good(1.25,'OPTIONOMICS'),proposedLimit:good(1.24),pricingPolicy:good('PASSIVE_LIMIT_V1'),
+  ageSeconds:good(2),maximumAgeSeconds:10,spreadProtectionPassed:good(true),providerAuthenticated:good(true),exactContractMapping:good(true),documentedForOrderPricing:good(true)},economics:{empiricalState:good('EV_MODEL_NOT_EMPIRICALLY_READY'),
   empiricalModelVersion:unknown(),expectedAfterCost:unknown(),downsideTailEvidence:unknown(),returnPerCapitalDay:unknown(),uncertainty:unknown(),
   calibrationCohort:unknown(),promotionEvidence:good('NOT_READY')},aegis:{result:good('ALLOW_FULL'),finalQuantity:good(1)},identity:{fusionSnapshotId:good('fusion-1'),
   fusionSnapshotHash:good('hash-1'),decisionId:good('decision-1'),orderIntentId:good('intent-1'),clientOrderId:good('theta-first-1')},operations:{
