@@ -1,9 +1,7 @@
 # Customer Copy-Trading UX Specification
 
-Specification correcting the product direction from a research/educational site to an
-autonomous copy-trading platform. Not yet implemented (priority order: R1-R4 runtime
-first). This document is the target design future UI work must match — it does not
-change any existing UI code.
+Implemented customer Paper-copy direction for the autonomous copy-trading platform.
+The product remains execution-locked while provider and empirical gates are unresolved.
 
 ## Language correction (audit target, not yet applied)
 
@@ -118,6 +116,6 @@ responsiveness.
 
 ## Status
 
-SPECIFIED. No UI code changed by this document — per the product correction's own
-priority order, this is prepared now and implemented once R1-R4 runtime work provides
-the real state this design depends on rendering truthfully.
+IMPLEMENTED FOR THE LOCKED PAPER STAGE. My Bots shows persisted allocation, account,
+position count, sync time, and stop/resume controls. My Results shows only follower-owned
+tracking and leaves P&L unknown until reconciled follower lifecycle economics exist.

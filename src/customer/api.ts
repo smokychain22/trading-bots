@@ -607,12 +607,19 @@ export default async function customerHandler(
         data: paperCopyReadiness(process.env, follower, authenticated),
       });
     }
-    if (route === "copy/results" && request.method === "GET")
+    if (route === "copy/results" && request.method === "GET") {
+      let follower=null,tracking=null;
+      if(environment.DATABASE_URL){
+        const store=customerStore(environment.DATABASE_URL);
+        const customer=await currentCustomer(request,store);
+        if(customer){follower=await store.getFollower(customer.customerId);tracking=await store.getFollowerCopyTracking(customer.customerId);}
+      }
       return send(response, 200, {
         api_version: "v1",
         dataset: "published",
-        data: followerResults(),
+        data: followerResults(follower,tracking),
       });
+    }
     if (route === "copy/policy/validate" && request.method === "POST") {
       let accountReady = false;
       if (environment.DATABASE_URL) {
@@ -650,6 +657,18 @@ export default async function customerHandler(
         api_version: "v1",
         data: { participation: saved.participation, allocation_usd: saved.allocationUsd, policy: saved.policy, order_submission: "LOCKED" },
       });
+    }
+    if (route === "copy/participation/state" && request.method === "POST") {
+      if (!sameOrigin(request)) return send(response, 403, { error: { code: "ORIGIN_REJECTED" } });
+      let store;
+      try { store = customerStore(environment.DATABASE_URL); }
+      catch { return send(response, 503, { error: { code: "COPY_PERSISTENCE_NOT_AVAILABLE" } }); }
+      const customer = await currentCustomer(request, store);
+      if (!customer) return send(response, 401, { error: { code: "LOGIN_REQUIRED" } });
+      const command=z.object({command:z.enum(["PAUSE_NEW_TRADES","RESUME_NEW_TRADES"])}).strict().parse(await readJson(request));
+      const saved=await store.setParticipation(customer.customerId,command.command);
+      return send(response,200,{api_version:"v1",data:{participation:saved.participation,
+        existing_positions_remain_managed:true,order_submission:"LOCKED"}});
     }
     if (request.method === "POST" && route === "bots/theta/simulate")
       return send(response, 200, {

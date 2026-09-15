@@ -44,6 +44,7 @@ try {
     "037_management_action_plan_dispatch",
     "038_optionomics_temporal_feature_evidence",
     "039_cross_branch_candidate_evidence",
+    "040_follower_paper_runtime",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -95,6 +96,10 @@ try {
     ["research", "optionomics_temporal_feature_observation"],
     ["trade", "canonical_strategy_branch_evidence"],
     ["trade", "canonical_strategy_candidate_evidence"],
+    ["copy", "follower_paper_action_plan"],
+    ["copy", "follower_paper_action_plan_event"],
+    ["copy", "follower_lifecycle_divergence_event"],
+    ["copy", "follower_runtime_checkpoint"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -186,6 +191,26 @@ try {
   if(!crossBranchEvidence.rows[0]?.immutable_branches||!crossBranchEvidence.rows[0]?.immutable_candidates||
     !crossBranchEvidence.rows[0]?.execution_locked)
     throw new Error('CROSS_BRANCH_CANDIDATE_EVIDENCE_PROTECTION_MISSING');
+  const followerPaperRuntime=await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='copy'
+      AND event_object_table='follower_paper_action_plan' AND trigger_name='reject_immutable_mutation') AS immutable_plans,
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='copy'
+      AND event_object_table='follower_paper_action_plan_event' AND trigger_name='reject_immutable_mutation') AS immutable_events,
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='copy'
+      AND event_object_table='follower_lifecycle_divergence_event' AND trigger_name='reject_immutable_mutation') AS immutable_divergence,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='copy.follower_paper_action_plan'::regclass
+      AND conname='follower_paper_action_plan_execution_authorized_check') AS authorization_locked,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='copy.follower_paper_action_plan'::regclass
+      AND conname='follower_paper_action_plan_execution_gate_check') AS gate_locked,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='copy.follower_paper_action_plan'::regclass
+      AND conname='follower_paper_action_plan_order_shape') AS order_shape,
+    EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='copy'
+      AND table_name='follower_reconciliation_event' AND column_name='event_key') AS reconciliation_idempotency`);
+  if(!followerPaperRuntime.rows[0]?.immutable_plans||!followerPaperRuntime.rows[0]?.immutable_events||
+    !followerPaperRuntime.rows[0]?.immutable_divergence||!followerPaperRuntime.rows[0]?.authorization_locked||
+    !followerPaperRuntime.rows[0]?.gate_locked||!followerPaperRuntime.rows[0]?.order_shape||
+    !followerPaperRuntime.rows[0]?.reconciliation_idempotency)
+    throw new Error('FOLLOWER_PAPER_RUNTIME_PROTECTION_MISSING');
   const optionomicsProvenance=await client.query(`SELECT count(*)::int AS column_count
     FROM information_schema.columns WHERE table_schema='market' AND table_name='optionomics_raw_observation'
       AND column_name IN ('requested_at','request_path','request_parameters_json','http_status','rate_limit_json',

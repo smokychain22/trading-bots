@@ -1,8 +1,8 @@
 # Copy THETA Setup Flow
 
-Specification for the customer-facing wizard (R3C/R4 UI, not yet implemented — see
-priority order in the product-correction instruction: runtime R1-R4 first, UI wiring
-after). Extends the existing fail-closed copy-setup contract this takeover's earlier
+Customer-facing Paper-copy workflow. The three-step connection, allocation, and review
+experience is implemented. Follower action-plan and lifecycle evidence remain behind the
+disabled execution gate. Extends the existing fail-closed copy-setup contract this takeover's earlier
 phases already specified (`JOIN_EXISTING = OFF`, `START_NEW_TRADES_ONLY = ON` by
 default, per `docs/quant/phase2/` and earlier phase docs).
 
@@ -47,5 +47,6 @@ Covered by `docs/product/CUSTOMER_COPY_UX.md` — this document ends at activati
 
 ## Status
 
-SPECIFIED. No UI or wizard code implemented yet — this is the design contract for when
-R3/R4 backend readiness genuinely supports it.
+IMPLEMENTED WITH EXECUTION LOCKED. Account connection, optional limits, saved allocation,
+stop-new-trades, resume, customer tracking, owner visibility, and durable follower planning
+are present. No follower broker submission is enabled.

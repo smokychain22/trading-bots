@@ -53,6 +53,8 @@ class MemoryStore implements CustomerStore {
   async updateFollowerVerification(customerId: string) { const record = this.records.get(customerId); if (!record) throw new Error("missing"); return record; }
   async markFollowerNeedsAttention(): Promise<void> { this.needsAttentionCount += 1; }
   async saveParticipation(customerId: string) { const record = this.records.get(customerId); if (!record) throw new Error("missing"); return record; }
+  async setParticipation(customerId:string){const record=this.records.get(customerId);if(!record)throw new Error("missing");return record;}
+  async getFollowerCopyTracking(){return {masterEventsSeen:0,copiedFull:0,copiedReduced:0,skipped:0,diverged:0,lastSyncAt:null};}
   async disconnectFollower(customerId: string) { this.records.delete(customerId); this.inputs.delete(customerId); }
 }
 

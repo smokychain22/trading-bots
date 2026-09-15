@@ -83,6 +83,8 @@ export type StoredMasterCredential = StoredFollowerCredential & {
   readonly customerId: string;
   readonly providerAccountRef: string;
 };
+export type FollowerCopyTracking={readonly masterEventsSeen:number;readonly copiedFull:number;
+  readonly copiedReduced:number;readonly skipped:number;readonly diverged:number;readonly lastSyncAt:string|null};
 
 export interface MasterCredentialStore {
   getMasterCredential(): Promise<StoredMasterCredential | null>;
@@ -102,6 +104,8 @@ export interface CustomerStore {
   updateFollowerVerification(customerId: string, input: FollowerVerificationUpdate): Promise<FollowerRecord>;
   markFollowerNeedsAttention(customerId: string): Promise<void>;
   saveParticipation(customerId: string, allocationUsd: number, policy?: PaperCopyPolicy): Promise<FollowerRecord>;
+  setParticipation(customerId:string,command:"PAUSE_NEW_TRADES"|"RESUME_NEW_TRADES"):Promise<FollowerRecord>;
+  getFollowerCopyTracking(customerId:string):Promise<FollowerCopyTracking>;
   disconnectFollower(customerId: string): Promise<void>;
 }
 
@@ -445,7 +449,7 @@ export class PostgresCustomerStore implements CustomerStore {
       );
       await client.query(
         `UPDATE copy.customer_participation
-         SET allocation_usd = $2, state = 'READY', policy_version = $3, updated_at = now()
+         SET allocation_usd = $2, state = 'ACTIVE', policy_version = $3, updated_at = now()
          WHERE customer_id = $1`,
         [customerId, allocationUsd, insertedPolicy.rows[0].policy_version],
       );
@@ -459,6 +463,46 @@ export class PostgresCustomerStore implements CustomerStore {
     const follower = await this.getFollower(customerId);
     if (!follower) throw new Error("FOLLOWER_NOT_CONNECTED");
     return follower;
+  }
+
+  async setParticipation(customerId:string,command:"PAUSE_NEW_TRADES"|"RESUME_NEW_TRADES"){
+    const participation=command==="PAUSE_NEW_TRADES"?"STOP_NEW_TRADES_MANAGE_EXISTING":"COPY_NEW_AND_MANAGE";
+    const customerState=command==="PAUSE_NEW_TRADES"?"STOP_NEW_ENTRIES":"ACTIVE";
+    const client=await this.pool.connect();
+    try{
+      await client.query("BEGIN");
+      const follower=await client.query(`UPDATE copy.follower_account SET participation=$2,updated_at=now()
+        WHERE customer_id=$1 AND account_role='FOLLOWER_THETA_PAPER' AND account_ready=true
+          AND disconnected_at IS NULL RETURNING follower_account_id`,[customerId,participation]);
+      if(follower.rowCount!==1)throw new Error("FOLLOWER_NOT_READY");
+      const changed=await client.query(`UPDATE copy.customer_participation SET state=$2,updated_at=now()
+        WHERE customer_id=$1 AND follower_account_id=$3 AND allocation_usd IS NOT NULL RETURNING customer_id`,
+      [customerId,customerState,follower.rows[0].follower_account_id]);
+      if(changed.rowCount!==1)throw new Error("FOLLOWER_POLICY_NOT_SAVED");
+      await client.query(`INSERT INTO copy.operator_audit_event(operator_subject,action,target_type,target_id,result,metadata_json)
+        VALUES($1,$2,'FOLLOWER_ACCOUNT',$3,'APPLIED',$4::jsonb)`,[customerId,command,
+        follower.rows[0].follower_account_id,JSON.stringify({orderSubmission:'LOCKED'})]);
+      await client.query("COMMIT");
+    }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
+    const result=await this.getFollower(customerId);
+    if(!result)throw new Error("FOLLOWER_NOT_CONNECTED");
+    return result;
+  }
+
+  async getFollowerCopyTracking(customerId:string):Promise<FollowerCopyTracking>{
+    const result=await this.pool.query(`SELECT count(fce.*)::int AS master_events_seen,
+      count(*) FILTER(WHERE fce.outcome='COPY_FULL')::int AS copied_full,
+      count(*) FILTER(WHERE fce.outcome='COPY_REDUCED')::int AS copied_reduced,
+      count(*) FILTER(WHERE fce.outcome IN('SKIP_ACCOUNT','BLOCKED'))::int AS skipped,
+      count(*) FILTER(WHERE fce.sync_state IN('DIVERGED','PARTIAL_SYNC','RECONCILING'))::int AS diverged,
+      max(COALESCE(fce.evaluated_at,fce.created_at)) AS last_sync_at
+      FROM copy.follower_account fa LEFT JOIN copy.follower_copy_event fce
+        ON fce.follower_account_id=fa.follower_account_id
+      WHERE fa.customer_id=$1 AND fa.disconnected_at IS NULL`,[customerId]);
+    const row=result.rows[0]??{};
+    return {masterEventsSeen:Number(row.master_events_seen??0),copiedFull:Number(row.copied_full??0),
+      copiedReduced:Number(row.copied_reduced??0),skipped:Number(row.skipped??0),diverged:Number(row.diverged??0),
+      lastSyncAt:row.last_sync_at instanceof Date?row.last_sync_at.toISOString():row.last_sync_at==null?null:String(row.last_sync_at)};
   }
 
   async disconnectFollower(customerId: string) {

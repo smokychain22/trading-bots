@@ -1932,3 +1932,20 @@ recursive redaction, and real authenticated payload semantics are proven.
 NEXT RECOMMENDED TASK: Apply migration 038, resume authenticated Optionomics
 collection when the provider accepts Production credentials, and accumulate
 resolved Paper lifecycle evidence after a real execution quote qualifies.
+OWNER: Codex
+
+TASK: Complete the locked follower Paper action-plan, reconciliation, divergence, and customer-control slice.
+
+FILES CHANGED: Follower Paper runtime contracts and PostgreSQL store, migration 040, database readiness and verifier, copy participation persistence/API, My Bots and My Results surfaces, browser/unit/SQL tests, decisions, and handoff.
+
+WHAT WAS IMPLEMENTED: Broker-confirmed master events can already create follower-specific copy decisions. The new layer turns an eligible decision into an immutable follower Paper action plan only after follower AEGIS and a fresh exact-contract approved two-sided quote pass. Explicit option position intents are preserved. Plans remain permanently locked. Read-only broker observations now classify absent, external, partial, filled, canceled, rejected, and ambiguous states without retrying. Follower lifecycle divergence covers skipped master entry, CSP close/roll, assignment, stock recovery, covered calls, call-away, partial fill, pause, broker drift, and restart reconciliation. Customers can persistently stop new entries or resume them while existing positions remain managed. Customer and operator pages now show persisted allocation, broker state, copy tracking, and follower-runtime counts.
+
+TESTS RUN: Focused TypeScript, ESLint, follower runtime, customer credential, OAuth, database readiness, browser, full Node, Python, build, security, PostgreSQL migration/invariants, and CI before release.
+
+KNOWN LIMITATIONS: Follower submission remains disabled and no follower is active. No follower economic result exists. The execution quote gate is unchanged. Production evidence rows can only appear after a real follower and broker-confirmed master fill exist.
+
+RISKS: A follower can diverge economically from the master through quantity, price, fill, assignment, and lifecycle timing. The system records those differences and must never publish master results as follower results.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Quant work may review follower AEGIS inputs and sizing evidence. It must not change execution gates, tenant boundaries, broker truth, or follower lifecycle accounting.
+
+NEXT RECOMMENDED TASK: Accumulate master Paper evidence after a qualified execution quote exists, then test the full copy path with a separate authenticated follower Paper account while keeping submission locked until its independent release gate is approved.

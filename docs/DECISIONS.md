@@ -792,3 +792,6 @@ indicative. Persisted synthetic evaluation rows retain actual contract identity
 and structural economics, mark unknown evidence explicitly, force quantity to
 zero, and keep expected EV unknown. This closes the gap where a decision receipt
 listed 21 evaluated contracts while the point-in-time ledger stored none.
+## 2026-09-15: follower Paper runtime stays fully downstream and disabled
+
+Follower copy work begins only from a broker-confirmed master fill or lifecycle fact. A follower receives an independent account check, quantity, AEGIS result, current qualified quote, limit, action plan, and reconciliation stream. Follower action plans are immutable and constrained to `FOLLOWER_EXECUTION_DISABLED` with `execution_authorized=false`. No planner or customer route can submit an order. Missed entry, partial fill, close/roll, assignment, recovery, covered-call, call-away, pause, and restart divergence are follower-specific evidence rather than inferred from the master chain.

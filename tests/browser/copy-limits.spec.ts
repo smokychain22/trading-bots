@@ -60,3 +60,28 @@ test('master account cannot enter copy setup', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'THETA Paper master account' })).toBeVisible();
   await expect(page.locator('#copy-policy')).toHaveCount(0);
 });
+
+test('My Bots uses persisted follower facts and pause keeps management active',async({page})=>{
+  let command:string|null=null;
+  await page.route('**/api/v1/copy/readiness',async(route)=>{
+    const response=await route.fetch();
+    const body=await response.json();
+    body.data.participation='COPY_NEW_AND_MANAGE';
+    body.data.saved_policy={allocation_usd:12500,limit_mode:'RECOMMENDED'};
+    body.data.follower_account={...body.data.follower_account,connected:true,ready_for_theta:true,
+      masked_account:'••••1234',open_positions:2,last_sync_at:'2026-09-15T14:30:00Z'};
+    await route.fulfill({json:body});
+  });
+  await page.route('**/api/v1/copy/participation/state',async(route)=>{
+    command=route.request().postDataJSON().command;
+    await route.fulfill({json:{data:{participation:'STOP_NEW_ENTRIES',existing_positions_remain_managed:true,
+      order_submission:'LOCKED'}}});
+  });
+  await page.goto('/my-bots');
+  await expect(page.getByText('$12,500')).toBeVisible();
+  await expect(page.getByText('••••1234')).toBeVisible();
+  await expect(page.getByText('2',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Stop new trades'}).click();
+  await expect.poll(()=>command).toBe('PAUSE_NEW_TRADES');
+  await expect(page.getByText('New entries stopped. Existing copied positions remain managed.')).toBeVisible();
+});

@@ -421,9 +421,22 @@ function myBots(readiness) {
       link("/bots/theta/copy", "Copy THETA", "button primary"),
     ) +
       (active || stopped
-        ? `<section class="panel copied-bot"><div class="section-heading"><div><p class="eyebrow">THETA</p><h2>${stopped ? "Managing existing positions" : "Paper setup saved"}</h2><p>${stopped ? "New entries are stopped. Existing copied positions remain under THETA management." : "Your paper allocation is saved. Order submission remains locked."}</p></div>${badge(stopped ? "STOPPED NEW" : "SETUP SAVED", stopped ? "amber" : "blue")}</div><dl class="account-facts"><div><dt>Allocation</dt><dd>—</dd></div><div><dt>Your P&amp;L</dt><dd>—</dd></div><div><dt>Open positions</dt><dd>—</dd></div><div><dt>Last sync</dt><dd>—</dd></div></dl><div class="heading-actions">${link("/bots/theta/my-results", "View my results", "button secondary")}</div><p class="simple-status">No order can be submitted from this saved setup.</p></section>`
+        ? `<section class="panel copied-bot"><div class="section-heading"><div><p class="eyebrow">THETA</p><h2>${stopped ? "Managing existing positions" : "Paper setup saved"}</h2><p>${stopped ? "New entries are stopped. Existing copied positions remain under THETA management." : "Your paper allocation is saved. Order submission remains locked."}</p></div>${badge(stopped ? "STOPPED NEW" : "SETUP SAVED", stopped ? "amber" : "blue")}</div><dl class="account-facts"><div><dt>Allocation</dt><dd>${readiness.saved_policy?.allocation_usd == null ? "—" : money(readiness.saved_policy.allocation_usd)}</dd></div><div><dt>Connected account</dt><dd>${esc(readiness.follower_account.masked_account ?? "Alpaca Paper")}</dd></div><div><dt>Open positions</dt><dd>${readiness.follower_account.open_positions ?? "—"}</dd></div><div><dt>Last sync</dt><dd>${readiness.follower_account.last_sync_at ? date(readiness.follower_account.last_sync_at) : "—"}</dd></div></dl><div class="heading-actions">${link("/bots/theta/my-results", "View my results", "button secondary")}<button id="toggle-copy-state" class="button ${stopped ? "primary" : "secondary"}">${stopped ? "Resume new trades" : "Stop new trades"}</button></div><p id="copy-state-result" class="simple-status">No order can be submitted from this saved setup.</p></section>`
         : `<section class="panel my-bots-empty">${empty("No bots are copying yet", "Connect an Alpaca Paper account and choose how much you want THETA to use.", link("/bots/theta/copy", "Copy THETA", "button primary"))}<p class="simple-status">No customer account or copied position is inferred from the master paper account.</p></section>`),
   );
+  const toggle=document.querySelector("#toggle-copy-state");
+  toggle?.addEventListener("click",async()=>{
+    toggle.disabled=true;
+    const result=document.querySelector("#copy-state-result");
+    try{
+      const response=await fetch("/api/v1/copy/participation/state",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({command:stopped?"RESUME_NEW_TRADES":"PAUSE_NEW_TRADES"})});
+      if(!response.ok)throw new Error("STATE_CHANGE_FAILED");
+      result.textContent=stopped?"New-trade participation resumed. Follower order submission remains locked.":
+        "New entries stopped. Existing copied positions remain managed.";
+      setTimeout(()=>location.reload(),500);
+    }catch{result.textContent="The copy state could not be changed.";toggle.disabled=false;}
+  });
 }
 function home(readiness) {
   const active = readiness.participation === "COPY_NEW_AND_MANAGE";
@@ -448,9 +461,11 @@ function home(readiness) {
   );
 }
 function myResults(results) {
+  const tracking=results.tracking;
+  const connected=results.participation!=="NOT_CONNECTED";
   shell(
     detailHeader("my-results") +
-      `<section class="panel follower-results"><div class="section-heading"><div><p class="eyebrow">YOUR PAPER ACCOUNT</p><h2>My Results</h2><p>Follower results are calculated from your own broker-reconciled fills, positions, costs, and assigned stock.</p></div>${badge("PAPER", "blue")}</div><div class="kpi-strip customer-kpis">${results.metrics.map((item) => metricCard(item, false)).join("")}</div>${empty("No personal results yet", results.reason, link("/bots/theta/copy", "Review copy setup", "button secondary"))}<div class="notice"><strong>Master performance and your results are separate.</strong> Your quantity, fills, slippage, skipped trades, and lifecycle divergence can differ from THETA’s master paper account.</div></section>`,
+      `<section class="panel follower-results"><div class="section-heading"><div><p class="eyebrow">YOUR PAPER ACCOUNT</p><h2>My Results</h2><p>Follower results are calculated from your own broker-reconciled fills, positions, costs, and assigned stock.</p></div>${badge("PAPER", "blue")}</div><div class="kpi-strip customer-kpis">${results.metrics.map((item) => metricCard(item, false)).join("")}</div>${connected?`<dl class="account-facts"><div><dt>Allocation</dt><dd>${results.allocation_usd==null?"—":money(results.allocation_usd)}</dd></div><div><dt>Master events evaluated</dt><dd>${tracking.master_events_seen??"—"}</dd></div><div><dt>Copied in full</dt><dd>${tracking.copied_full??"—"}</dd></div><div><dt>Reduced</dt><dd>${tracking.copied_reduced??"—"}</dd></div><div><dt>Skipped safely</dt><dd>${tracking.skipped??"—"}</dd></div><div><dt>Needs reconciliation</dt><dd>${tracking.diverged??"—"}</dd></div><div><dt>Last copy sync</dt><dd>${tracking.last_sync_at?date(tracking.last_sync_at):"—"}</dd></div></dl>`:empty("No personal results yet", results.reason, link("/bots/theta/copy", "Review copy setup", "button secondary"))}<p class="simple-status">${esc(results.reason)}</p><div class="notice"><strong>Master performance and your results are separate.</strong> Your quantity, fills, slippage, skipped trades, and lifecycle divergence can differ from THETA’s master paper account.</div></section>`,
   );
 }
 

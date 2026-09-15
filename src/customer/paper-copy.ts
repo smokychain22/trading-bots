@@ -9,7 +9,7 @@ import type {
   MasterPaperConnection,
   PaperCopyReadiness,
 } from "./models.js";
-import type { FollowerRecord } from "./customer-store.js";
+import type { FollowerCopyTracking, FollowerRecord } from "./customer-store.js";
 import { oauthConfiguration } from "./alpaca-oauth.js";
 import { privatePaperApiKeyConfiguration } from "./private-paper-api-key.js";
 
@@ -119,7 +119,10 @@ export function paperCopyReadiness(
   };
 }
 
-export function followerResults(): FollowerResults {
+export function followerResults(follower:FollowerRecord|null=null,tracking:FollowerCopyTracking|null=null): FollowerResults {
+  const connected=follower!==null;
+  const openPositions=follower?.openPositionCount??null;
+  const noEconomics="Follower Whole-Chain P&L remains unavailable until broker-reconciled follower fills and lifecycle economics exist.";
   return {
     bot_id: "theta",
     strategy_version: null,
@@ -127,8 +130,9 @@ export function followerResults(): FollowerResults {
     as_of: null,
     data_quality: "UNKNOWN",
     provenance: "PAPER",
-    participation: "NOT_CONNECTED",
-    allocation_usd: null,
+    participation: !follower?"NOT_CONNECTED":follower.participation==="ACTIVE"?"COPY_NEW_AND_MANAGE":
+      follower.participation==="STOP_NEW_ENTRIES"?"STOP_NEW_TRADES_MANAGE_EXISTING":"READY_TO_COPY",
+    allocation_usd: follower?.allocationUsd??null,
     metrics: [
       {
         label: "Your economic P&L",
@@ -136,7 +140,7 @@ export function followerResults(): FollowerResults {
         value: null,
         unit: "USD",
         explanation: "Your option, stock, dividend, fee, and slippage economics.",
-        reason: "No follower paper account is connected.",
+        reason: connected?noEconomics:"No follower paper account is connected.",
       },
       {
         label: "Your return",
@@ -144,29 +148,30 @@ export function followerResults(): FollowerResults {
         value: null,
         unit: "PERCENT",
         explanation: "Economic return on your allocated paper capital.",
-        reason: "No follower paper account is connected.",
+        reason: connected?noEconomics:"No follower paper account is connected.",
       },
       {
         label: "Open positions",
         technical_name: "Follower Open Positions",
-        value: null,
+        value: openPositions,
         unit: "COUNT",
         explanation: "Broker-reconciled positions in your account.",
-        reason: "No follower paper account is connected.",
+        reason: connected?(openPositions===null?"Broker position count is unavailable.":null):"No follower paper account is connected.",
       },
     ],
     positions: [],
     history: [],
     tracking: {
-      master_events_seen: null,
-      copied_full: null,
-      copied_reduced: null,
-      skipped: null,
-      diverged: null,
-      last_sync_at: null,
+      master_events_seen: tracking?.masterEventsSeen??null,
+      copied_full: tracking?.copiedFull??null,
+      copied_reduced: tracking?.copiedReduced??null,
+      skipped: tracking?.skipped??null,
+      diverged: tracking?.diverged??null,
+      last_sync_at: tracking?.lastSyncAt??follower?.lastBrokerSyncAt??null,
     },
     reason:
-      "Connect an Alpaca Paper account and start copying before personal results can be measured.",
+      connected?"Your connection and copy events are shown from your own Paper account. Economic results appear only after reconciled follower fills.":
+        "Connect an Alpaca Paper account and start copying before personal results can be measured.",
   };
 }
 
