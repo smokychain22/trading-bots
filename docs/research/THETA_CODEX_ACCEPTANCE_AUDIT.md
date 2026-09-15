@@ -444,3 +444,100 @@ REQUIRED_CODEX_CHANGE (unchanged from section 7, restated because still
 accurate): the two management-connectivity gaps (frontier selection,
 executionLegs computation) remain the single highest-leverage next step;
 this round's copy-trading work, while real progress, did not touch them.
+
+## 11. P1 FINAL ACCEPTANCE AUDIT against `bbd13cb9028636d080fe6ec4bb093a7de1dfb243`
+
+Both gaps from sections 7-8/10 are now genuinely closed at the engineering level.
+Verified via a fresh isolated detached worktree, full source reads (not excerpts) of
+`management-action-frontier.ts` (now 281 lines, `-v2` contract), the diff to
+`management-paper-plan-assembly.ts` (+94 lines: `compileManagementExecutionLegDirectives`),
+`autonomous-runtime.ts`'s diff (+42 lines), migration 041, and the full new/changed test
+files -- plus independently RAN (not trusted from Codex's own report) the focused
+management tests, the full test suite, and a typecheck, all in the isolated worktree.
+
+**`buildManagementActionFrontier(input, evidence?)`** now takes an optional
+`ManagementPolicyEvidence` second argument. `applyPolicyEvidence` validates it exhaustively
+before ever trusting a `selectedAction`:
+- version/input-hash/timestamp binding (`MANAGEMENT_POLICY_INPUT_HASH_MISMATCH`/
+  `MANAGEMENT_POLICY_TIMESTAMP_MISMATCH` -- defeats stale/wrong-snapshot evidence)
+- every numeric field checked `Number.isFinite` (defeats NaN/Infinity)
+- no duplicate or out-of-set actions (`MANAGEMENT_POLICY_DUPLICATE_ACTION`/`_EXTRA_ACTION`)
+- **the core "no default close" safety property, verified by reading the exact code, not
+  inferred**: `for (const action of comparable) if (action.utility === null)
+  evidenceErrors.push('MANAGEMENT_POLICY_UTILITY_UNKNOWN:...')` where `comparable` is every
+  FEASIBLE action -- and HOLD/RECOVERY_WAIT/HOLD_CC have no structural blocker in
+  `evaluateAction`, so they are FEASIBLE (and thus REQUIRED to carry a real utility) in
+  essentially every normal state. A policy bundle that supplies CLOSE's utility but omits
+  HOLD's is REJECTED WHOLESALE (`SYSTEM_HOLD_MISSING_EVIDENCE`), not partially trusted. CLOSE
+  can never win by a missing HOLD comparison.
+- argmax re-verification: `ranked[0]?.action !== evidence.selectedAction ->
+  MANAGEMENT_POLICY_SELECTION_NOT_ARGMAX` -- the frontier recomputes the ranking itself
+  (tie-break: passive-action preference, then alphabetical) and rejects a tampered/
+  non-optimal claimed selection.
+- risk-opening actions (`opensNewRisk = {ROLL, SELL_CC, ROLL_CC, REDEPLOY}`) independently
+  re-checked for `empiricalEconomicsReady && expectedAfterCostEv > 0` even after passing
+  argmax -- an evidence bundle cannot promote a risk-opening action merely by being
+  internally consistent; it must also carry positive empirical support. `REDEPLOY` carries
+  an unconditional `CURRENT_EXPOSURE_NOT_RESOLVED` blocker in `evaluateAction`, making it
+  permanently INFEASIBLE regardless of evidence -- correctly still unimplemented, not
+  silently reachable.
+
+A separate, narrower `structuralExpirationSelection` function (used only when no evidence
+is supplied) requires `dte===0 && marketOpen===false && spot/strike/optionType all known`,
+then defers to `evaluateAction`'s own feasibility (which independently enforces assignment-
+capacity and call-away share-confirmation) before selecting `ACCEPT_ASSIGNMENT`/`LET_EXPIRE`/
+`ALLOW_CALL_AWAY`/`HOLD_CC` -- verified via two real tests (`DTE zero cannot select
+expiration while the broker session is still open`, `expiration actions require exact
+moneyness rather than DTE alone`) exercising real state construction, not manual override.
+
+**`compileManagementExecutionLegDirectives(state, frontier)`** (new): CLOSE_FULL/CLOSE_CC leg
+identity and quantity come strictly from `state.contract` (reconciled broker state) --
+policy evidence can never substitute a different close contract or quantity, verified by
+direct code read. ROLL/SELL_CC/ROLL_CC open-leg target contract comes from the policy
+evidence's own `executionEvidence.targetContract` (correct -- the new contract is
+inherently a policy decision). Covered-call coverage
+(`state.economics.openStockShares < target.quantity*target.multiplier ->
+COVERED_CALL_COVERAGE_NOT_CONFIRMED`) is checked against RECONCILED state, not evidence --
+no naked-call path, no local-ledger-only share assumption.
+
+**`autonomous-runtime.ts`'s real call site**: `executionLegs:[]` is REPLACED with
+`executionLegs:compiled.legs` from `compileManagementExecutionLegDirectives`. The hardcoded
+gap is gone. Separately, `runAutonomousRuntimeCycle` gained an optional 4th parameter
+`dependencies.managementPolicyEvidenceProvider`; `buildRuntimeManagementFrontiers` passes
+`undefined` evidence when no provider is supplied. **Confirmed by direct grep: the real
+worker entrypoint (`autonomous-runtime-handler.ts:202`) calls `runAutonomousRuntimeCycle(
+environment, runtimePool)` with only 2 arguments** -- no provider is wired in Production
+today. This means CLOSE_FULL/ROLL/SELL_STOCK/SELL_CC/CLOSE_CC/ROLL_CC remain unreachable in
+the currently deployed runtime -- **correctly classified as EMPIRICAL_BLOCKER
+(NOT_CONNECTED_BY_DESIGN: no validated policy-evidence provider exists yet, matching the
+standing EV_MODEL_NOT_EMPIRICALLY_READY state), not a reopened engineering gap.** The
+plumbing is real, tested, and ready for the moment a real provider is built; the two
+narrow order-avoiding transitions (structural expiration: `LET_EXPIRE`/`ACCEPT_ASSIGNMENT`/
+`ALLOW_CALL_AWAY`) ARE live today without any provider.
+
+**Policy lineage**: `managementPolicyVersion`/`managementPolicyEvidenceHash` flow from
+frontier -> `ManagementDecisionDraft` -> `publishManagementPlans`, which re-validates both
+against the authoritative DB row under a `FOR SHARE` lock (`MANAGEMENT_POLICY_LINEAGE_
+MISMATCH` on any divergence) before ever inserting a decision row -- verified by direct
+code read. Migration 041 adds `policy_version`/`policy_evidence_hash` with a paired-
+nullability CHECK constraint, matching the same structural-lock pattern as migrations
+037/039/040.
+
+**Test realism: PASS.** Read the new `management-action-frontier.test.ts` tests in full --
+the new `policy()` test helper calls `buildManagementActionFrontier(input)` first to derive
+real base actions, then constructs a real `ManagementPolicyEvidence` object passed as an
+actual second argument to `buildManagementActionFrontier(input, evidence)`. No test
+manually overrides `selectedAction`/`decisionState`/`feasibility` after construction --
+the exact defect this document flagged two sessions ago is fixed. One real gap: no test
+constructs evidence that supplies CLOSE's utility while specifically OMITTING HOLD's, to
+directly exercise the "no default close" property end-to-end (the code-level guarantee was
+independently verified by reading `applyPolicyEvidence` directly, so this is a coverage
+gap, not a live defect) -- worth one additional test, not urgent.
+
+**Independently run** (not trusted from Codex's own numbers): `npx tsx --test` on the three
+P1-relevant test files -- 25/25 passing. Full `npm test` -- 820 tests, 815 passing, 5
+skipped (DB-only), 0 failing. `npx tsc --noEmit` -- clean, zero errors.
+
+**No defects found.** Follower-runtime and Optionomics files do not appear in this delta at
+all (confirmed via the diff stat) -- no regression risk from this delta by construction.
+No hardcoded fixed-percentage profit-target comparison found anywhere in the delta.
