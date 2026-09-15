@@ -82,6 +82,21 @@ def bs_vega(inputs: BsInputs) -> float:
     return inputs.spot * _normal_pdf(d1) * sqrt_t
 
 
+def bs_gamma(inputs: BsInputs) -> float:
+    """Gamma (per 1.00 change in spot, per 1.00 change in sigma is NOT
+    applicable here -- this is d(delta)/d(spot), same for calls and puts).
+    Returns 0.0 at T=0 or sigma<=0 -- gamma is genuinely zero/undefined at
+    those boundaries, never a fabricated spike. Added for the R7 P2C
+    spot-scan gamma-flip research (`gex_spot_scan_research.py`) -- this
+    function itself carries no execution authority and is never used to
+    price an order; see this module's own standing role statement above."""
+    if inputs.years_to_expiry <= 0 or inputs.sigma <= 0 or inputs.spot <= 0:
+        return 0.0
+    sqrt_t = math.sqrt(inputs.years_to_expiry)
+    d1 = (math.log(inputs.spot / inputs.strike) + (inputs.risk_free_rate + 0.5 * inputs.sigma ** 2) * inputs.years_to_expiry) / (inputs.sigma * sqrt_t)
+    return _normal_pdf(d1) / (inputs.spot * inputs.sigma * sqrt_t)
+
+
 def implied_volatility(
     price: float,
     spot: float,
