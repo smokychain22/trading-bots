@@ -468,7 +468,7 @@ export class PostgresOutcomeResolver {
       policy_learning_record_id,outcome_subject_id,resolved_outcome_label_id,decision_timestamp,label_available_at,
       strategy_branch,selected_action,action_set_json,pit_context_json,option_context_json,portfolio_context_json,
       outcome_json,provenance_class,tca_json,return_metrics_json,return_cohort,win_rate_cohort,cluster_ids_json,
-      target_families_json,execution_authorized,content_hash)
+      target_families_json,return_cohort_definition_version,win_rate_aggregation_version,execution_authorized,content_hash)
       SELECT gen_random_uuid(),s.outcome_subject_id,l.resolved_outcome_label_id,s.decision_timestamp,l.label_available_at,
         s.strategy_branch,s.action_code,COALESCE(s.subject_context_json->'feasibleActions','[]'::jsonb),s.subject_context_json,
         COALESCE(s.subject_context_json->'optionContext','{}'::jsonb),
@@ -498,7 +498,7 @@ export class PostgresOutcomeResolver {
         jsonb_build_object('classification',jsonb_build_array('ACTION_PROFITABLE','ACTION_BEATS_WAIT','HOLD_BEATS_CLOSE'),
           'regression',jsonb_build_array('NET_PNL','RETURN_PER_CAPITAL_DAY','MFE','MAE'),
           'distribution',jsonb_build_array('QUANTILES','TAIL_LOSS','CVAR')),
-        false,encode(digest((s.outcome_subject_id::text||':'||l.resolved_outcome_label_id::text||':theta-policy-learning-v1')::bytea,'sha256'),'hex')
+        'theta-return-cohort-v1',NULL,false,encode(digest((s.outcome_subject_id::text||':'||l.resolved_outcome_label_id::text||':theta-policy-learning-v1')::bytea,'sha256'),'hex')
       FROM research.theta_outcome_subject s JOIN research.theta_resolved_outcome_label l USING(outcome_subject_id)
       ON CONFLICT(outcome_subject_id,resolved_outcome_label_id) DO NOTHING`);
     return result.rowCount??0;

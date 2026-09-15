@@ -70,6 +70,9 @@ def _minimal_rows():
         "outcomeResolutionReceipts": [],
         "resolvedOutcomeLabels": [],
         "policyLearningRecords": [],
+        "positionPathCheckpoints": [],
+        "actionInactionFrontiers": [],
+        "strategyTimingSnapshots": [],
     }
 
 

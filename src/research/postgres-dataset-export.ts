@@ -25,7 +25,7 @@ export class PostgresDatasetExporter {
     if (Date.parse(request.end)<Date.parse(request.start)) throw new Error('DATASET_WINDOW_INVALID');
     const parameters = [request.start,request.end];
     const [sets,candidates,shadow,frontiers,optionChains,management,lifecycle,chains,quotes,outcomeSubjects,
-      outcomeObservations,outcomeReceipts,resolvedLabels,policyLearning] = await Promise.all([
+      outcomeObservations,outcomeReceipts,resolvedLabels,policyLearning,positionPaths,actionFrontiers,timingSnapshots] = await Promise.all([
       this.pool.query(`SELECT candidate_set_id AS "candidateSetId",decision_time AS "decisionTime",
         universe_evaluated_json AS "universeEvaluated",branches_considered_json AS "branchesConsidered",counts_json AS counts,
         best_candidate_id AS "bestCandidateId",second_best_candidate_id AS "secondBestCandidateId",
@@ -156,10 +156,29 @@ export class PostgresDatasetExporter {
         action_set_json AS "actionSet",pit_context_json AS "pitContext",option_context_json AS "optionContext",
         portfolio_context_json AS "portfolioContext",outcome_json AS outcome,provenance_class AS "provenanceClass",
         tca_json AS tca,return_metrics_json AS "returnMetrics",return_cohort AS "returnCohort",
-        win_rate_cohort AS "winRateCohort",cluster_ids_json AS "clusterIds",target_families_json AS "targetFamilies",
+        win_rate_cohort AS "winRateCohort",return_cohort_definition_version AS "returnCohortDefinitionVersion",
+        win_rate_aggregation_version AS "winRateAggregationVersion",cluster_ids_json AS "clusterIds",target_families_json AS "targetFamilies",
         execution_authorized AS "executionAuthorized",content_hash AS "contentHash"
         FROM research.theta_policy_learning_record WHERE decision_timestamp >= $1 AND decision_timestamp < $2
         ORDER BY decision_timestamp,policy_learning_record_id`,parameters),
+      this.pool.query(`SELECT position_path_checkpoint_id AS "positionPathCheckpointId",chain_id AS "chainId",
+        management_input_snapshot_id AS "managementInputSnapshotId",observed_at AS "observedAt",
+        path_classification AS "pathClassification",checkpoint_json AS checkpoint,
+        execution_authorized AS "executionAuthorized",content_hash AS "contentHash"
+        FROM research.theta_position_path_checkpoint WHERE observed_at >= $1 AND observed_at < $2
+        ORDER BY observed_at,position_path_checkpoint_id`,parameters),
+      this.pool.query(`SELECT action_inaction_frontier_id AS "actionInactionFrontierId",chain_id AS "chainId",
+        management_input_snapshot_id AS "managementInputSnapshotId",observed_at AS "observedAt",
+        hold_evidence_state AS "holdEvidenceState",frontier_json AS frontier,
+        execution_authorized AS "executionAuthorized",content_hash AS "contentHash"
+        FROM research.theta_action_inaction_frontier WHERE observed_at >= $1 AND observed_at < $2
+        ORDER BY observed_at,action_inaction_frontier_id`,parameters),
+      this.pool.query(`SELECT strategy_timing_snapshot_id AS "strategyTimingSnapshotId",chain_id AS "chainId",
+        management_input_snapshot_id AS "managementInputSnapshotId",observed_at AS "observedAt",session_state AS "sessionState",
+        option_time_json AS "optionTime",timing_router_json AS "timingRouter",
+        execution_authorized AS "executionAuthorized",content_hash AS "contentHash"
+        FROM research.theta_strategy_timing_snapshot WHERE observed_at >= $1 AND observed_at < $2
+        ORDER BY observed_at,strategy_timing_snapshot_id`,parameters),
     ]);
     const versions = [...new Set(candidates.rows.flatMap((row) => {
       const lineage = row.lineage as Record<string, unknown> | undefined;
@@ -171,7 +190,9 @@ export class PostgresDatasetExporter {
         managementSnapshots:management.rows,lifecycleOutcomes:lifecycle.rows,
         wholeChainOutcomes:chains.rows,executionEvidence:quotes.rows,outcomeSubjects:outcomeSubjects.rows,
         outcomeObservations:outcomeObservations.rows,outcomeResolutionReceipts:outcomeReceipts.rows,
-        resolvedOutcomeLabels:resolvedLabels.rows,policyLearningRecords:policyLearning.rows} });
+        resolvedOutcomeLabels:resolvedLabels.rows,policyLearningRecords:policyLearning.rows,
+        positionPathCheckpoints:positionPaths.rows,actionInactionFrontiers:actionFrontiers.rows,
+        strategyTimingSnapshots:timingSnapshots.rows} });
     await this.pool.query(`INSERT INTO research.theta_dataset_export(dataset_export_id,source_window_start,source_window_end,
       exported_at,schema_version,feature_set_version,strategy_versions_json,row_counts_json,dataset_hash)
       VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9) ON CONFLICT(dataset_hash) DO NOTHING`,[

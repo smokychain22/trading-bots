@@ -2005,3 +2005,21 @@ RISKS: Structural premium and Pareto relationships can be mistaken for alpha. Th
 WHAT THE OTHER AGENT SHOULD REVIEW: Quant research should consume dataset v3, validate each feature family and structure through point-in-time ablation, preserve whole-chain grouping, and never populate counterfactual labels before their availability time.
 
 NEXT RECOMMENDED TASK: Accumulate authenticated chain snapshots and resolved whole-chain outcomes, then run the P2B contract and structure challengers through the existing empirical promotion process. Keep all Paper execution blocked until the separate quote and readiness gates pass.
+
+OWNER: Codex
+
+TASK: Complete P2E time-aware decision intelligence, position-path evidence, action/inaction research, Optionomics provider readiness, and safe operator controls.
+
+FILES CHANGED: Time, path, frontier, timing-router, Optionomics capability, operator-control, runtime persistence, dataset v6, migration 047, verifier/readiness, tests, phase ledger, decisions, and this handoff.
+
+WHAT WAS IMPLEMENTED: Reconciled open chains now persist immutable path checkpoints, non-scalar action/inaction frontiers, session/option-time state, and all-branch timing applicability. WAIT and HOLD can be audited for missed opportunity without becoming forced action rules. Optionomics capabilities require real documented evidence and an empty capability set cannot pass. Owner controls are authenticated, same-origin, confirmed, idempotent, immutable, and preserve management plus reconciliation. Dataset v6 exports the new point-in-time evidence. TCA includes submitted-limit slippage and aggregate cancel/replace attempts. Return cohorts carry a definition version.
+
+TESTS RUN: TypeScript and the complete Node suite passed before database/deployment verification. PostgreSQL, lint, build, security, browser, CI, Production migration, and worker checks are recorded in the release receipt.
+
+KNOWN LIMITATIONS: No empirically promoted management policy exists. Optionomics Production capability proof and a qualified fresh two-sided execution quote remain external blockers. Path classification is descriptive and must not be treated as alpha.
+
+RISKS: Small samples can make WAIT regret, giveback, and timing cohorts look predictive. Promotion still requires PIT-safe walk-forward and untouched OOS results with after-cost EV, tails, capital-days, calibration, and execution evidence.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Quant research should test path and timing families one at a time and keep whole-chain episodes grouped. It must not turn descriptive states into fixed trade rules or bypass runtime gates.
+
+NEXT RECOMMENDED TASK: Apply migration 047, collect real changed-state evidence, qualify authenticated Optionomics capabilities, and run P2E cohorts through the existing R6 acceptance process. Keep all order submission blocked.

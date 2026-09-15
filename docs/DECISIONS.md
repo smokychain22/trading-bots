@@ -798,6 +798,15 @@ quote remains mandatory at the last pricing boundary.
 - Performance discipline: Return and win-rate bands are descriptive cohorts. They do not impose a 40 percent take-profit rule, a 70 to 80 percent win-rate target, or any execution threshold.
 - Authorization: Policy-learning rows and challenger evaluations are research-only and database-locked to `execution_authorized=false`. No policy is promoted and no Paper or live order is authorized.
 
+## 2026-09-15 - Treat time, path, action, and inaction as evidence rather than fixed rules
+
+- Decision: Persist exchange-session context, option-time state, whole-chain position paths, action-versus-inaction Pareto frontiers, and strategy timing applicability for every changed open-chain management state.
+- Profit protection: Peak capture, giveback, winner-to-loser, loss acceleration, expiry proximity, and opportunity cost are research facts. No fixed PnL percentage selects an exit.
+- Anti-paralysis: WAIT and HOLD receive explicit outcome diagnostics so excessive inactivity can be measured against feasible rejected opportunities. Overtrading remains separately measurable.
+- Optionomics: The provider-ready capability model accepts only authenticated documented evidence. Intelligence readiness remains separate from execution quote qualification.
+- Controls: Owner pause and emergency-lock events are immutable, same-origin, confirmed, idempotent, and unable to enable execution.
+- Authorization: All new research tables enforce `execution_authorized=false`. The external quote blocker, unpromoted management provider, follower lock, and live prohibition remain unchanged.
+
 ## 2026-09-14 - Run deterministic Python contracts in a private Vercel Python function
 
 The Production Node function cannot spawn `python3`. Canonical market scans

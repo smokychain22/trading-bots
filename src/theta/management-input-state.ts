@@ -46,6 +46,10 @@ export interface ManagementInputState {
     readonly quoteFeed: string | null;
     readonly quoteQuality: string | null;
     readonly marketOpen: boolean | null;
+    readonly clockTimestamp: string | null;
+    readonly nextOpen: string | null;
+    readonly nextClose: string | null;
+    readonly calendarSessions: readonly {readonly date:string;readonly open:string|null;readonly close:string|null}[] | null;
     readonly dte: number | null;
     readonly moneyness: number | null;
     readonly delta: number | null;
@@ -148,7 +152,10 @@ export function assembleManagementInput(row: Row, input: {
   readonly observedAt: string;
 }): ManagementInputState {
   const snapshot = object(row.snapshot_json);
+  const reconciliationDetail = object(row.reconciliation_detail);
   const marketSession = object(snapshot.marketSession);
+  const reconciledMarketOpen = typeof reconciliationDetail.marketOpen==='boolean' ? reconciliationDetail.marketOpen
+    : typeof marketSession.isOpen==='boolean' ? marketSession.isOpen : null;
   const riskState = object(snapshot.riskState);
   const snapshotContracts = Array.isArray(snapshot.contractCandidates) ? snapshot.contractCandidates : [];
   const position = object(row.broker_position);
@@ -193,7 +200,7 @@ export function assembleManagementInput(row: Row, input: {
     required('market.iv', snapshotContract.iv ?? null);
   }
   if (stockShares > 0) required('economics.stockMarkPerShare', stockMark);
-  required('market.marketOpen', typeof marketSession.isOpen === 'boolean' ? marketSession.isOpen : null);
+  required('market.marketOpen', reconciledMarketOpen);
   required('account.buyingPower', row.buying_power);
   required('account.optionsBuyingPower', row.options_buying_power);
   required('context.eventState', snapshot.eventState ?? null);
@@ -240,7 +247,10 @@ export function assembleManagementInput(row: Row, input: {
       unrealizedStockPnl: stockMtm, realizedStockPnl, dividends, fees, wholeChainPnl },
     market: { spot, optionBid: bid, optionAsk: ask, quoteTimestamp: text(row.quote_as_of),
       quoteFeed: text(row.feed), quoteQuality: text(row.quote_quality), dte: daysToExpiration(expiration, input.observedAt),
-      marketOpen: typeof marketSession.isOpen === 'boolean' ? marketSession.isOpen : null,
+      marketOpen: reconciledMarketOpen,
+      clockTimestamp:text(row.clock_timestamp),nextOpen:text(reconciliationDetail.nextOpen),nextClose:text(reconciliationDetail.nextClose),
+      calendarSessions:Array.isArray(reconciliationDetail.calendarSessions)
+        ? reconciliationDetail.calendarSessions.map((item)=>{const value=object(item);return {date:String(value.date??''),open:text(value.open),close:text(value.close)};}) : null,
       moneyness: spot !== null && strike !== null && spot > 0 ? strike / spot : null,
       delta: numeric(snapshotContract.delta), gamma: numeric(snapshotContract.gamma), theta: numeric(snapshotContract.theta),
       vega: numeric(snapshotContract.vega), iv: numeric(snapshotContract.iv),
@@ -279,6 +289,7 @@ export class PostgresManagementInputStore {
         totals.realized_option_pnl,stocks.open_stock_shares,stocks.stock_basis_per_share,
         totals.realized_stock_pnl,totals.dividends,totals.fees,totals.unknown_fill_fees,
         a.buying_power,a.options_buying_power,a.as_of AS account_as_of,fs.fusion_snapshot_id,fs.snapshot_json,
+        brs.provider_timestamp AS clock_timestamp,brs.detail_json AS reconciliation_detail,
         CASE WHEN bp.symbol IS NULL THEN NULL ELSE jsonb_build_object(
           'averageEntryPrice',bp.average_entry_price,'currentPrice',bp.current_price,
           'marketValue',bp.market_value,'costBasis',bp.cost_basis,'unrealizedPnl',bp.unrealized_pnl

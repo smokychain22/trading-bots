@@ -15,7 +15,7 @@ All insert identities are deterministic or content-addressed. Replaying the same
 
 ## Feature and label firewall
 
-Point-in-time context is frozen in `research.theta_outcome_subject`. Future observations and labels live in separate immutable tables. Dataset schema `theta-r6-dataset-v5` exports both sides separately and rejects:
+Point-in-time context is frozen in `research.theta_outcome_subject`. Future observations and labels live in separate immutable tables. Dataset schema `theta-r6-dataset-v6` exports both sides separately and rejects:
 
 - future outcome fields inside feature payloads
 - a label timestamp at or before its decision timestamp

@@ -51,6 +51,7 @@ try {
     "044_resolved_outcome_engine",
     "045_outcome_subject_decision_identity",
     "046_real_label_materialization",
+    "047_p2e_time_path_intelligence",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -114,6 +115,10 @@ try {
     ["research", "theta_resolved_outcome_label"],
     ["research", "theta_policy_challenger_evaluation"],
     ["research", "theta_policy_learning_record"],
+    ["research", "theta_position_path_checkpoint"],
+    ["research", "theta_action_inaction_frontier"],
+    ["research", "theta_strategy_timing_snapshot"],
+    ["ops", "theta_operator_control_event"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -370,6 +375,17 @@ try {
       AND table_name='theta_resolved_outcome_label' AND constraint_type='CHECK') AS label_checks`);
   if(Number(resolvedOutcomeProtection.rows[0]?.immutable_tables)!==6||!resolvedOutcomeProtection.rows[0]?.label_checks)
     throw new Error('RESOLVED_OUTCOME_PROTECTION_MISSING');
+  const p2eProtection=await client.query(`SELECT
+    (SELECT count(DISTINCT event_object_table)::int FROM information_schema.triggers WHERE trigger_name='reject_immutable_mutation'
+      AND ((trigger_schema='research' AND event_object_table IN ('theta_position_path_checkpoint','theta_action_inaction_frontier','theta_strategy_timing_snapshot'))
+        OR (trigger_schema='ops' AND event_object_table='theta_operator_control_event'))) AS immutable_tables,
+    (SELECT count(*)::int FROM information_schema.columns WHERE table_schema IN ('research','ops')
+      AND table_name IN ('theta_position_path_checkpoint','theta_action_inaction_frontier','theta_strategy_timing_snapshot','theta_operator_control_event')
+      AND column_name='execution_authorized' AND column_default='false') AS locked_execution_columns,
+    EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='research' AND table_name='theta_policy_learning_record'
+      AND column_name='return_cohort_definition_version') AS cohort_versioned`);
+  if(Number(p2eProtection.rows[0]?.immutable_tables)!==4||Number(p2eProtection.rows[0]?.locked_execution_columns)!==4||
+    !p2eProtection.rows[0]?.cohort_versioned)throw new Error('P2E_TIME_PATH_PROTECTION_MISSING');
   const fillFees = await client.query("SELECT is_nullable,column_default FROM information_schema.columns WHERE table_schema='trade' AND table_name='fill' AND column_name='fees'");
   if (fillFees.rows[0]?.is_nullable !== "YES" || fillFees.rows[0]?.column_default !== null)
     throw new Error("UNKNOWN_FILL_FEES_COERCED_TO_ZERO");
@@ -423,6 +439,7 @@ try {
     paperEvidenceAuthorization:"ENFORCED",
     runtimeBehaviorDiagnostic:"ENFORCED",
     realLabelMaterialization:"ENFORCED",
+    p2eTimePathIntelligence:"ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeMasters: activeMasters.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,

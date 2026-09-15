@@ -278,6 +278,7 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
             marketOpen: input.marketClock?.isOpen ?? null,
             nextOpen: input.marketClock?.nextOpen ?? null,
             nextClose: input.marketClock?.nextClose ?? null,
+            calendarSessions: input.calendarSessions?.map((session)=>({date:session.date,open:session.open,close:session.close})) ?? null,
             calendarSessionConfirmed: input.calendarSessions?.some((session) =>
               session.open !== null && session.close !== null) ?? false,
           })],

@@ -44,7 +44,7 @@ from research.dataset_contracts import (
     ThetaStrategyBranch,
 )
 
-DATASET_SCHEMA_VERSION = "theta-r6-dataset-v5"  # mirrors point-in-time-evidence.ts's datasetExportVersion exactly
+DATASET_SCHEMA_VERSION = "theta-r6-dataset-v6"  # mirrors point-in-time-evidence.ts's datasetExportVersion exactly
 
 
 class DatasetLoadError(Exception):
@@ -442,6 +442,9 @@ class LoadedDatasetExport:
     outcome_resolution_receipts: List[Dict[str, Any]]
     resolved_outcome_labels: List[Dict[str, Any]]
     policy_learning_records: List[Dict[str, Any]]
+    position_path_checkpoints: List[Dict[str, Any]]
+    action_inaction_frontiers: List[Dict[str, Any]]
+    strategy_timing_snapshots: List[Dict[str, Any]]
     row_counts: Dict[str, int]
 
 
@@ -483,6 +486,9 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
     outcome_resolution_receipts = list(rows_raw.get("outcomeResolutionReceipts", []))
     resolved_outcome_labels = list(rows_raw.get("resolvedOutcomeLabels", []))
     policy_learning_records = list(rows_raw.get("policyLearningRecords", []))
+    position_path_checkpoints = list(rows_raw.get("positionPathCheckpoints", []))
+    action_inaction_frontiers = list(rows_raw.get("actionInactionFrontiers", []))
+    strategy_timing_snapshots = list(rows_raw.get("strategyTimingSnapshots", []))
     subjects_by_id = {}
     for row in outcome_subjects:
         subject_id = row.get("outcomeSubjectId")
@@ -518,6 +524,16 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
         if row.get("labelAvailableAt") is None or row.get("decisionTimestamp") is None \
                 or row["labelAvailableAt"] <= row["decisionTimestamp"]:
             raise DatasetLoadError(f"POLICY_LEARNING_TIME_CAUSALITY_VIOLATION:{record_id}")
+        if row.get("winRateCohort") is not None:
+            raise DatasetLoadError(f"PER_EPISODE_WIN_RATE_COHORT_FORBIDDEN:{record_id}")
+        if not isinstance(row.get("returnCohortDefinitionVersion"), str):
+            raise DatasetLoadError(f"RETURN_COHORT_VERSION_MISSING:{record_id}")
+    for family_name, rows in (("POSITION_PATH", position_path_checkpoints),
+                              ("ACTION_INACTION", action_inaction_frontiers),
+                              ("STRATEGY_TIMING", strategy_timing_snapshots)):
+        for row in rows:
+            if row.get("executionAuthorized") is not False:
+                raise DatasetLoadError(f"{family_name}_EXECUTION_AUTHORITY_FORBIDDEN")
 
     _assert_unique_ids(candidate_sets, lambda c: c.candidate_set_id, "candidate_set")
     _assert_unique_ids(candidates, lambda c: c.candidate_id, "candidate")
@@ -529,6 +545,9 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
     _assert_unique_ids(outcome_resolution_receipts, lambda r: r.get("outcomeResolutionReceiptId"), "outcome_resolution_receipt")
     _assert_unique_ids(resolved_outcome_labels, lambda r: r.get("resolvedOutcomeLabelId"), "resolved_outcome_label")
     _assert_unique_ids(policy_learning_records, lambda r: r.get("policyLearningRecordId"), "policy_learning_record")
+    _assert_unique_ids(position_path_checkpoints, lambda r: r.get("positionPathCheckpointId"), "position_path_checkpoint")
+    _assert_unique_ids(action_inaction_frontiers, lambda r: r.get("actionInactionFrontierId"), "action_inaction_frontier")
+    _assert_unique_ids(strategy_timing_snapshots, lambda r: r.get("strategyTimingSnapshotId"), "strategy_timing_snapshot")
 
     all_candidate_ids = {c.candidate_id for c in candidates}
     for candidate_set in candidate_sets:
@@ -541,6 +560,7 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
         "candidateSets", "candidates", "shadowCandidates", "strategyFrontiers",
         "optionChainDecisions", "managementSnapshots", "lifecycleOutcomes", "wholeChainOutcomes", "executionEvidence",
         "outcomeSubjects", "outcomeObservations", "outcomeResolutionReceipts", "resolvedOutcomeLabels", "policyLearningRecords",
+        "positionPathCheckpoints", "actionInactionFrontiers", "strategyTimingSnapshots",
     ):
         _assert_deterministic_order(rows_raw.get(row_family, []), canonical_json)
 
@@ -579,5 +599,7 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
         outcome_subjects=outcome_subjects,outcome_observations=outcome_observations,
         outcome_resolution_receipts=outcome_resolution_receipts,resolved_outcome_labels=resolved_outcome_labels,
         policy_learning_records=policy_learning_records,
+        position_path_checkpoints=position_path_checkpoints,action_inaction_frontiers=action_inaction_frontiers,
+        strategy_timing_snapshots=strategy_timing_snapshots,
         row_counts=raw.get("rowCounts", {}),
     )

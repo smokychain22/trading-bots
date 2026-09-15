@@ -40,6 +40,7 @@ import { AlpacaPaperBrokerError } from "../execution/broker.js";
 import { designateAuthenticatedPaperMaster, masterRoleStore } from "./paper-account-role.js";
 import { paperCopyPolicySchema, recommendedCopyPolicy } from "./copy-policy.js";
 import { verifyStoredMasterPaperConnection } from "./master-paper-runtime.js";
+import { PostgresOperatorControlStore } from "./operator-control.js";
 
 const simulationSchema = z
   .object({
@@ -470,6 +471,25 @@ export default async function customerHandler(
           return send(response, 503, { error: { code: "PROVIDER_READINESS_UNAVAILABLE" } });
         }
       }
+      if (route === "operator/controls" && request.method === "GET") {
+        if(!environment.DATABASE_URL)return send(response,503,{error:{code:"OPERATOR_CONTROL_DATABASE_UNAVAILABLE"}});
+        const store=new PostgresOperatorControlStore(environment.DATABASE_URL);
+        try{return send(response,200,{api_version:"v1",data:await store.current(environment.PAPER_PAUSE_NEW_ORDERS)});}
+        finally{await store.close();}
+      }
+      if (route === "operator/controls" && request.method === "POST") {
+        if(!environment.DATABASE_URL)return send(response,503,{error:{code:"OPERATOR_CONTROL_DATABASE_UNAVAILABLE"}});
+        if(!sameOrigin(request))return send(response,403,{error:{code:"ORIGIN_REJECTED"}});
+        const idempotencyKey=request.headers["idempotency-key"];
+        if(typeof idempotencyKey!=="string")return send(response,400,{error:{code:"IDEMPOTENCY_KEY_REQUIRED"}});
+        const body=z.object({command:z.enum(["PAUSE_NEW_ENTRIES","RESUME_NEW_ENTRIES","EMERGENCY_EXECUTION_LOCK"]),
+          confirmed:z.literal(true)}).strict().parse(await readJson(request));
+        const store=new PostgresOperatorControlStore(environment.DATABASE_URL);
+        try{const data=await store.apply({actorRef:request.headers.cookie??"operator",command:body.command,
+          idempotencyKey,confirmed:body.confirmed,requestedAt:new Date().toISOString(),defaultPaused:environment.PAPER_PAUSE_NEW_ORDERS});
+          return send(response,200,{api_version:"v1",data:{...data,execution_authorized:false}});
+        }finally{await store.close();}
+      }
       if (request.method !== "GET")
         return send(response, 405, { error: { code: "READ_ONLY_OPERATOR" } });
       if (route !== "operator/status")
@@ -477,15 +497,20 @@ export default async function customerHandler(
       const oauth = oauthConfiguration(environment);
       const privateBeta = privatePaperApiKeyConfiguration(environment);
       const connectionConfigured = oauth.configured || privateBeta.configured;
+      const operatorControl=environment.DATABASE_URL ? await (async()=>{
+        const store=new PostgresOperatorControlStore(environment.DATABASE_URL as string);
+        return store.current(environment.PAPER_PAUSE_NEW_ORDERS).finally(()=>store.close());
+      })() : {newEntriesPaused:environment.PAPER_PAUSE_NEW_ORDERS,emergencyExecutionLock:false,
+        brokerSubmissionBlocked:true,reconciliationEnabled:true,managementEnabled:true,source:"DEFAULT",asOf:null};
       const [database,localWorker,runtimeEvidence,runtimeBehavior,outcomeResearch] = await Promise.all([
         checkDatabaseReadiness(environment.DATABASE_URL),readLocalWorkerReadiness(environment.DATABASE_URL),
         readMasterRuntimeEvidence(environment.DATABASE_URL),readLatestRuntimeBehavior(environment.DATABASE_URL),
         readOutcomeResearchVisibility(environment.DATABASE_URL),
       ]);
       const executionControl = {
-        masterEnabled: environment.MASTER_PAPER_EXECUTION_ENABLED,
+        masterEnabled: environment.MASTER_PAPER_EXECUTION_ENABLED && !operatorControl.emergencyExecutionLock,
         followerEnabled: environment.FOLLOWER_PAPER_EXECUTION_ENABLED,
-        pauseNewOrders: environment.PAPER_PAUSE_NEW_ORDERS,
+        pauseNewOrders: environment.PAPER_PAUSE_NEW_ORDERS || operatorControl.newEntriesPaused,
       };
       const masterExecutionMode = executionMode(executionControl, "MASTER_API_KEY");
       const followerExecutionMode = executionMode(executionControl, "FOLLOWER_OAUTH");
@@ -562,7 +587,9 @@ export default async function customerHandler(
             execution_quote_gate: localWorker.execution_gate === "ACTIVE" ? "PASS" : "BLOCKED",
             master_paper_execution: localWorker.online ? localWorker.execution_gate : masterExecutionMode,
             follower_paper_execution: followerExecutionMode,
-            pause_new_orders: environment.PAPER_PAUSE_NEW_ORDERS,
+            pause_new_orders: executionControl.pauseNewOrders,
+            emergency_execution_lock: operatorControl.emergencyExecutionLock,
+            operator_control: operatorControl,
             customer_can_enable: false,
             orders_submitted_by_release: runtimeEvidence.broker_orders,
           },
@@ -589,7 +616,7 @@ export default async function customerHandler(
               : "A configured broker credential path is required for team accounts",
           ],
           security:
-            "Operator session expires in 15 minutes. Read-only release visibility. No trading mutations are exposed.",
+            "Operator session expires in 15 minutes. Safety controls can pause or lock execution but cannot submit an order or enable trading.",
           connection_change_policy:
             "Master credentials are managed through secure deployment configuration. Disconnect and reconnect require an audited secret-reference change and are not exposed in this UI.",
         },

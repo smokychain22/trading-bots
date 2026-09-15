@@ -101,6 +101,7 @@ export interface TcaLegBreakdown extends TcaLegInput {
   readonly decisionMid:number|null; readonly arrivalMid:number|null;
   readonly slippageVsDecisionMid:number|null; readonly slippageVsArrivalMid:number|null;
   readonly slippageVsArrivalSide:number|null; readonly spreadCost:number|null;
+  readonly slippageVsSubmittedLimit:number|null;
   readonly totalExecutionCost:number|null; readonly partialFill:boolean|null;
 }
 export interface TcaBreakdown {
@@ -108,7 +109,7 @@ export interface TcaBreakdown {
   readonly entryCost:number|null; readonly exitCost:number|null; readonly rollOldCloseCost:number|null;
   readonly rollNewOpenCost:number|null; readonly packageExecutionCost:number|null;
   readonly fees:number|null; readonly actualVsModeled:'BROKER_ACTUAL'|'MODELED_RESEARCH'|'MIXED'|'UNKNOWN';
-  readonly complete:boolean;
+  readonly cancelReplaceCount:number|null; readonly complete:boolean;
 }
 
 const midpoint=(observation:OutcomeObservation):number|null=>observation.bid!==null&&observation.ask!==null
@@ -129,10 +130,12 @@ export function computeTcaBreakdown(inputs:readonly TcaLegInput[]):TcaBreakdown 
     const slippageVsArrivalMid=scale!==null&&arrivalMid!==null?adverse(input.fillPrice as number,arrivalMid)*scale:null;
     const sideReference=input.side==='BUY'?input.arrivalAsk:input.arrivalBid;
     const slippageVsArrivalSide=scale!==null&&sideReference!==null?adverse(input.fillPrice as number,sideReference)*scale:null;
+    const slippageVsSubmittedLimit=scale!==null&&input.submittedLimit!==null
+      ?adverse(input.fillPrice as number,input.submittedLimit)*scale:null;
     const spreadCost=scale!==null&&input.arrivalBid!==null&&input.arrivalAsk!==null
       ?((input.arrivalAsk-input.arrivalBid)/2)*scale:null;
     const totalExecutionCost=slippageVsArrivalMid!==null&&input.fees!==null?slippageVsArrivalMid+input.fees:null;
-    return {...input,decisionMid,arrivalMid,slippageVsDecisionMid,slippageVsArrivalMid,slippageVsArrivalSide,
+    return {...input,decisionMid,arrivalMid,slippageVsDecisionMid,slippageVsArrivalMid,slippageVsArrivalSide,slippageVsSubmittedLimit,
       spreadCost,totalExecutionCost,partialFill:input.filledQuantity===null?null:input.filledQuantity<input.quantity};
   });
   const phase=(name:TcaLegInput['phase'])=>sumKnown(legs.filter((leg)=>leg.phase===name).map((leg)=>leg.totalExecutionCost));
@@ -140,6 +143,7 @@ export function computeTcaBreakdown(inputs:readonly TcaLegInput[]):TcaBreakdown 
   return {version:'theta-label-tca-v1',legs,entryCost:phase('ENTRY'),exitCost:phase('EXIT'),
     rollOldCloseCost:phase('ROLL_OLD_CLOSE'),rollNewOpenCost:phase('ROLL_NEW_OPEN'),
     packageExecutionCost:sumKnown(legs.map((leg)=>leg.totalExecutionCost)),fees:sumKnown(legs.map((leg)=>leg.fees)),
+    cancelReplaceCount:sumKnown(legs.map((leg)=>leg.cancelReplaceCount)),
     actualVsModeled:provenances.length===0?'UNKNOWN':provenances.length>1?'MIXED':provenances[0] as 'BROKER_ACTUAL'|'MODELED_RESEARCH',
     complete:legs.length>0&&legs.every((leg)=>leg.totalExecutionCost!==null)};
 }

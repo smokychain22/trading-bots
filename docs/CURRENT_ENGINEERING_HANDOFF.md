@@ -279,7 +279,7 @@ node tools/security-scan.mjs
 
 - Migration: `046_real_label_materialization` extends immutable outcome-subject lineage and adds immutable policy-learning records.
 - Runtime: the existing reconciliation job now materializes all P2D subject families, captures future observations, resolves eligible horizons, and produces causal learning rows. Replay and restart are idempotent.
-- Dataset: Production export contract is `theta-r6-dataset-v5` and includes policy-learning records with deterministic ordering and hashing.
+- Dataset: Production export contract is `theta-r6-dataset-v6` and includes policy-learning records, position paths, action/inaction frontiers, and strategy timing with deterministic ordering and hashing.
 - Economics: TCA separates entry, exit, roll-close, and roll-open legs. Closed-chain labels preserve old roll losses and include stock, dividends, and fees.
 - Safety: policy-learning rows cannot authorize execution. The provider quote gate, Production policy-provider state, follower lock, and live-trading prohibition are unchanged.
 - Empirical status: readiness must be read from the Production P2D resolver receipt. Engineering completion alone does not make the model empirically ready.

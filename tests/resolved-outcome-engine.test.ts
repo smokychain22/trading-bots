@@ -115,6 +115,8 @@ test('TCA separates entry, exit, roll legs, partial fills, fees, and actual prov
   assert.notEqual(tca.exitCost,null);
   assert.notEqual(tca.rollOldCloseCost,null);
   assert.notEqual(tca.rollNewOpenCost,null);
+  assert.equal(tca.cancelReplaceCount,1);
+  assert.ok(Math.abs((tca.legs[0]?.slippageVsSubmittedLimit??0)-5)<1e-9);
   assert.equal(tca.complete,true);
 });
 

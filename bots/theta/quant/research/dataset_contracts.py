@@ -376,7 +376,7 @@ class DatasetExportArtifact:
     """Mirrors `point-in-time-evidence.ts`'s `DatasetExportArtifact`
     exactly -- the top-level shape a Production export actually produces.
     `schema_version` must equal `datasetExportVersion` ("theta-r6-dataset-
-    v1") for this loader to accept it at all (see
+    v6") for this loader to accept it at all (see
     `production_export_loader.py`)."""
 
     schema_version: str

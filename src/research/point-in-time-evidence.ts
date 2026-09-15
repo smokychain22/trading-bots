@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 
 export const pointInTimeEvidenceVersion = 'theta-point-in-time-evidence-v1' as const;
-export const datasetExportVersion = 'theta-r6-dataset-v5' as const;
+export const datasetExportVersion = 'theta-r6-dataset-v6' as const;
 
 const quality = z.enum(['GOOD','DEGRADED','STALE','UNKNOWN','INVALID','NOT_ENTITLED']);
 const timestamp = z.string().datetime({ offset:true });
@@ -180,6 +180,8 @@ export interface DatasetExportRows {
   readonly outcomeSubjects:readonly unknown[]; readonly outcomeObservations:readonly unknown[];
   readonly outcomeResolutionReceipts:readonly unknown[]; readonly resolvedOutcomeLabels:readonly unknown[];
   readonly policyLearningRecords:readonly unknown[];
+  readonly positionPathCheckpoints:readonly unknown[]; readonly actionInactionFrontiers:readonly unknown[];
+  readonly strategyTimingSnapshots:readonly unknown[];
 }
 export interface DatasetExportArtifact {
   readonly schemaVersion:typeof datasetExportVersion; readonly sourceWindow:{readonly start:string;readonly end:string};
@@ -196,6 +198,9 @@ export function buildDatasetExport(input:{sourceWindow:{start:string;end:string}
   assertNoFutureLabels(input.rows.shadowCandidates,'shadowCandidates');
   assertNoFutureLabels(input.rows.strategyFrontiers,'strategyFrontiers');
   assertNoFutureLabels(input.rows.managementSnapshots,'managementSnapshots');
+  assertNoFutureLabels(input.rows.positionPathCheckpoints,'positionPathCheckpoints');
+  assertNoFutureLabels(input.rows.actionInactionFrontiers,'actionInactionFrontiers');
+  assertNoFutureLabels(input.rows.strategyTimingSnapshots,'strategyTimingSnapshots');
   const rows = Object.fromEntries(Object.entries(input.rows).map(([key,value]) => [key,[...value].sort(byCanonical)])) as unknown as DatasetExportRows;
   const rowCounts = Object.fromEntries(Object.entries(rows).map(([key,value]) => [key,value.length])) as Readonly<Record<keyof DatasetExportRows,number>>;
   const unsigned = { schemaVersion:datasetExportVersion,sourceWindow:input.sourceWindow,exportedAt:input.exportedAt,

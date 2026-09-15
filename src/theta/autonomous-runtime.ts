@@ -34,6 +34,8 @@ import { assembleManagementPaperPlans, compileManagementExecutionLegDirectives }
 import { AlpacaProviderError } from './alpaca-provider.js';
 import { OptionomicsProviderError } from './optionomics-provider.js';
 import { PostgresShadowManagementPolicyStore } from './shadow-management-policy.js';
+import { PostgresP2EEvidenceStore } from './p2e-evidence-store.js';
+import { PostgresOperatorControlStore } from '../customer/operator-control.js';
 
 export const autonomousRuntimeVersion = 'theta-autonomous-runtime-v1' as const;
 export const autonomousPolicyVersion = 'theta-scheduler-policy-v1' as const;
@@ -262,6 +264,10 @@ export async function runAutonomousRuntimeCycle(
   if (!environment.DATABASE_URL) throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');
   if (environment.FOLLOWER_PAPER_EXECUTION_ENABLED) throw new Error('FOLLOWER_PAPER_EXECUTION_NOT_AUTHORIZED');
   if (environment.THETA_RUNTIME_MODE !== masterPaperRuntimeMode) throw new Error('MASTER_THETA_PAPER_RUNTIME_REQUIRED');
+  const operatorStore=new PostgresOperatorControlStore(environment.DATABASE_URL);
+  const operatorControl=await operatorStore.current(environment.PAPER_PAUSE_NEW_ORDERS).finally(()=>operatorStore.close());
+  const pauseNewOrders=environment.PAPER_PAUSE_NEW_ORDERS||operatorControl.newEntriesPaused||operatorControl.emergencyExecutionLock;
+  const masterExecutionEnabled=environment.MASTER_PAPER_EXECUTION_ENABLED&&!operatorControl.emergencyExecutionLock;
   const bucket = minuteBucket(now);
   const correlationId = `theta-runtime:${bucket}`;
   const workerInstance = `${process.env.VERCEL_REGION ?? 'local'}:${randomUUID()}`;
@@ -271,7 +277,7 @@ export async function runAutonomousRuntimeCycle(
       correlationId, status: 'DUPLICATE', runtimeVersion: autonomousRuntimeVersion,
       policyVersion: autonomousPolicyVersion, jobsAttempted: 0, jobsCompleted: 0,
       jobResults: [], reconciliation: null, runtimeMode: masterPaperRuntimeMode,
-      executionGate: environment.MASTER_PAPER_EXECUTION_ENABLED&&!environment.PAPER_PAUSE_NEW_ORDERS?'ACTIVE':executionQuoteBlocker,
+      executionGate: masterExecutionEnabled&&!pauseNewOrders?'ACTIVE':executionQuoteBlocker,
       masterPaperOrdersSubmitted: 0, followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
     };
   }
@@ -332,6 +338,7 @@ export async function runAutonomousRuntimeCycle(
         const frontiers = await buildRuntimeManagementFrontiers(
           states, dependencies.managementPolicyEvidenceProvider,
         );
+        await new PostgresP2EEvidenceStore(pool).persistManagementEvidence(states,frontiers);
         const persistedFrontiers=await managementStore.persistFrontiers(states, frontiers);
         const actionPlanStore=new PostgresMasterPaperActionPlanStore(pool);
         for(let index=0;index<states.length;index+=1){
@@ -350,7 +357,7 @@ export async function runAutonomousRuntimeCycle(
             managementActionFrontierId:persisted.managementActionFrontierId,
             executionAccountId:master.executionAccountId,strategyVersion,accountStatus:reconciliation.accountStatus,
             optionsCapabilityVerified:master.optionsCapabilityVerified,aegisState,
-            killSwitchActive:environment.PAPER_PAUSE_NEW_ORDERS||!environment.MASTER_PAPER_EXECUTION_ENABLED,
+            killSwitchActive:pauseNewOrders||!masterExecutionEnabled,
             paperEvidenceRiskCap:environment.PAPER_EVIDENCE_RISK_CAP,executionLegs:compiled.legs,
             now:reconciliation.observedAt,decisionExpiresAt:new Date(Date.parse(reconciliation.observedAt)+30_000).toISOString()});
           if(assembly.state==='READY')await actionPlanStore.publishManagementPlans(assembly.decision,assembly.plans,reconciliation.observedAt);
@@ -375,8 +382,8 @@ export async function runAutonomousRuntimeCycle(
         if(master.executionAccountId===null)return skipped('MASTER_EXECUTION_ACCOUNT_NOT_CREATED');
         const store=new PostgresPaperOrderStore(pool,master.executionAccountId);
         const coordinator=new PaperOrderCoordinator(master.executionBroker,store,{
-          masterEnabled:environment.MASTER_PAPER_EXECUTION_ENABLED,followerEnabled:false,
-          pauseNewOrders:environment.PAPER_PAUSE_NEW_ORDERS});
+          masterEnabled:masterExecutionEnabled,followerEnabled:false,
+          pauseNewOrders});
         const recovered=await coordinator.recoverAfterRestart();
         if(recovered.some((item)=>!item.resolved))return degraded('AMBIGUOUS_ORDER_REQUIRES_READ_ONLY_RECONCILIATION',retryAt);
         const active=await store.activeIntents();
@@ -413,14 +420,14 @@ export async function runAutonomousRuntimeCycle(
       if(jobType==='PAPER_EXECUTION_HANDOFF'){
         if(reconciliation===null)return degraded('BROKER_RECONCILIATION_REQUIRED',retryAt);
         if(reconciliation.marketOpen!==true)return skipped('MARKET_CLOSED_NO_PAPER_EXECUTION');
-        if(!environment.MASTER_PAPER_EXECUTION_ENABLED||environment.PAPER_PAUSE_NEW_ORDERS)
+        if(!masterExecutionEnabled||pauseNewOrders)
           return degraded('FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_NOT_YET_QUALIFIED',retryAt);
         if(master.executionAccountId===null)return degraded('MASTER_EXECUTION_ACCOUNT_NOT_CREATED',retryAt);
         const planStore=new PostgresMasterPaperActionPlanStore(pool);
         const plan=await planStore.claimNext(master.executionAccountId,workerInstance,new Date().toISOString());
         if(plan===null)return skipped('NO_APPROVED_MASTER_ACTION_PLAN');
         const coordinator=new PaperOrderCoordinator(master.executionBroker,new PostgresPaperOrderStore(pool,master.executionAccountId),{
-          masterEnabled:environment.MASTER_PAPER_EXECUTION_ENABLED,followerEnabled:false,pauseNewOrders:environment.PAPER_PAUSE_NEW_ORDERS});
+          masterEnabled:masterExecutionEnabled,followerEnabled:false,pauseNewOrders});
         const handoff=new MasterPaperActionHandoff(new AlpacaExecutionQuoteSource(master.alpaca),
           new MasterPaperExecutionOrchestrator(coordinator));
         try{
@@ -483,7 +490,7 @@ export async function runAutonomousRuntimeCycle(
     jobsAttempted: outcomes.length,
     jobsCompleted: outcomes.filter((outcome) => outcome.runResult !== null).length,
     jobResults, reconciliation, runtimeMode: masterPaperRuntimeMode,
-    executionGate:environment.MASTER_PAPER_EXECUTION_ENABLED&&!environment.PAPER_PAUSE_NEW_ORDERS?'ACTIVE':executionQuoteBlocker,
+    executionGate:masterExecutionEnabled&&!pauseNewOrders?'ACTIVE':executionQuoteBlocker,
     masterPaperOrdersSubmitted, followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
   };
   await cycleStore.finish(correlationId, report, new Date().toISOString());
@@ -495,7 +502,7 @@ export async function runAutonomousRuntimeCycle(
       policyVersion: autonomousPolicyVersion, jobsAttempted: 0, jobsCompleted: 0,
       jobResults: [{ jobType: 'HEALTH_HEARTBEAT', outcome: 'STARTUP_FAILED', status: 'FAILED', errorCode: failure.code }],
       reconciliation: null, runtimeMode: masterPaperRuntimeMode,
-      executionGate:environment.MASTER_PAPER_EXECUTION_ENABLED&&!environment.PAPER_PAUSE_NEW_ORDERS?'ACTIVE':executionQuoteBlocker,
+      executionGate:masterExecutionEnabled&&!pauseNewOrders?'ACTIVE':executionQuoteBlocker,
       masterPaperOrdersSubmitted: 0, followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
     };
     await cycleStore.finish(correlationId, report, new Date().toISOString());
