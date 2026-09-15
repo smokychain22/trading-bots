@@ -55,7 +55,6 @@ HOLD_CONTINUATION_VALUE       -- FORWARD_EV_MODEL_REQUIRED (needs a calibrated f
 CLOSE_AND_REDEPLOY_VALUE      -- REDEPLOY_OPPORTUNITY_SET_REQUIRED (needs a real current
                                   alternative-candidate set with its own EV, not fabricated)
 ```
-
 **Edge cases the module explicitly handles, not glossed over:**
 - `GIVEBACK_RATIO` is `None` (`UNKNOWN`), never `0`, when `peak_unrealized_pnl <= 0` -- a
   position that was never profitable has no giveback ratio to report; reporting `0` would
