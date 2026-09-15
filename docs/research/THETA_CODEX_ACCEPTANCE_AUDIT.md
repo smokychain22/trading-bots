@@ -383,3 +383,64 @@ confirms the exact formal definitions THETA's own deferred SVI/SSVI
 arbitrage-diagnostic work would need (`d^2w/dk^2 >= 0` for butterfly-free;
 `w(k,T1) <= w(k,T2)` for T1<T2 for calendar-free) -- reference material for
 whenever that deferred work is prioritized, not a new requirement.
+
+## 10. Refresh against `934350b35856a1e1f00ad9e32beaccc015a2938e` -- follower-paper-runtime built, still unwired
+
+Verified via a fresh isolated detached worktree. Delta `a8418cb..934350b`:
+20 files, 762 insertions -- entirely copy-trading focused this round
+(`src/customer/follower-paper-runtime.ts`, new, 174 lines;
+`src/customer/postgres-follower-paper-runtime.ts`, new, 132 lines;
+`migrations/040_follower_paper_runtime.sql`). **`src/theta/management-action-
+frontier.ts` and `src/theta/autonomous-runtime.ts` do NOT appear in this
+delta** -- the active-management gap this document's section 7/8 named
+(frontier never selects a non-passive action; runtime passes
+`executionLegs:[]`) is confirmed **UNCHANGED** this round. Not reopened as a
+new finding -- restated only because this directive's own section 25
+explicitly asks the question again.
+
+**What this round actually built, read in full:**
+`assembleLockedFollowerPaperActionPlan` (`follower-paper-runtime.ts`) is a
+genuinely careful piece of engineering: it validates a real BBO-bounded limit
+price (`proposedLimit` must fall within `[bid, ask]`), a real quote-provider/
+semantics check (Alpaca `CONSOLIDATED_NBBO` or Optionomics
+`TRUSTED_TWO_SIDED_ORDER_PRICING` only -- and no live code path today ever
+produces the latter for an Optionomics quote, per this branch's own current-
+data-semantics audit, so that branch is correctly future-proofed but
+currently unreachable, not a live loophole), a real AEGIS check
+(`ALLOW_FULL`/`ALLOW_REDUCED` only), a decision-expiry check, and a secret-
+leak guard (`assertNoSecretShapedKeys`, recursively rejecting any key whose
+normalized name matches secret/token/authorization/apikey/credential). The
+safety rail is enforced in the type system itself, not just at runtime:
+`executionGate:'FOLLOWER_EXECUTION_DISABLED'` and `executionAuthorized:false`
+are literal types on `FollowerPaperActionPlan`, and
+`PostgresFollowerPaperRuntimeStore.persistLockedActionPlan` throws if either
+is ever anything else. Migration 040 repeats the same lock at the DB level
+(`CHECK(execution_gate='FOLLOWER_EXECUTION_DISABLED')`,
+`CHECK(execution_authorized=false)`) -- the same "structural lock, not just
+convention" pattern already verified for migration 039's canonical-branch
+evidence table. `classifyFollowerOrderReconciliation` and
+`classifyFollowerLifecycleDivergence` are real, and directly answer several
+of this branch's own previously-proposed copy-trading acceptance-test
+scenarios (missed master entry, partial fill, per-lifecycle-action
+divergence including assignment/recovery/CC/call-away, restart, pause) with
+actual enum-backed classification logic, not just documentation.
+
+**But confirmed by direct `grep` (zero hits in `src/customer/api.ts` and
+`src/theta/autonomous-runtime.ts`): nothing calls `assembleLockedFollowerPaperActionPlan`
+or `PostgresFollowerPaperRuntimeStore` anywhere yet.** This is the same
+"implemented, tested, DB-safe, but not yet wired to any producer" pattern
+this document has now found twice before (the master-paper-action-plan
+`enqueue()` gap, resolved two sessions ago; the management-dispatch
+`executionLegs` gap, found last session and still open). Given how safety-
+sensitive follower-copy execution is, building the locked-plan/reconciliation/
+divergence logic in isolation first, fully tested, before wiring a producer,
+is a reasonable and safe sequencing choice -- not a defect, and consistent
+with this platform's own stated "no copy execution until every safety
+prerequisite is proved" posture from two sessions ago. **`FOLLOWER_EXECUTION`
+remains correctly `EXECUTION_DISABLED`; this round added the machinery that
+would eventually let it be turned on safely, without turning it on.**
+
+REQUIRED_CODEX_CHANGE (unchanged from section 7, restated because still
+accurate): the two management-connectivity gaps (frontier selection,
+executionLegs computation) remain the single highest-leverage next step;
+this round's copy-trading work, while real progress, did not touch them.

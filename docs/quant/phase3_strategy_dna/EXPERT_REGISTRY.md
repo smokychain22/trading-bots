@@ -78,3 +78,22 @@ given action/state, consistent with `UNKNOWN != zero` everywhere else in this re
 
 IMPLEMENTED as data + code (`expert_sources.json`, `weighting.py`, `loader.py`) —
 unchanged by this durabilization pass. This file adds narrative visibility only.
+
+## Addendum (independent WebSearch verification, this branch, 2026-09-15)
+
+Re-checked whether the QuantWheel/Alertsify/Collective2 gap noted above could be closed
+by fresh, independently-verifiable public research rather than the original conversational
+source material. Result: **QuantWheel is a real, public options-trading TOOLS platform**
+(options screener for CSPs/covered calls, a "roll assistant" for pre-assignment roll
+comparison, a broker-synced options journal with true cost basis, and a GEX dashboard
+showing gamma flip/walls/Vanna/Charm — verified via WebSearch, 2026-09-15, against
+quantwheel.com's own product pages). This is evidence of what DECISION-SUPPORT TOOLING a
+professional wheel trader actually uses day to day (comparable in kind to this repo's
+`THETA_EXTERNAL_REPO_PATTERN_MATRIX.md` comparisons against FlashAlpha/gex-terminal) — it
+is **not** evidence of any single trader's specific entry/DTE/delta/management rules, and
+does not resolve the original gap (a named trader's reconstructed behavioral method). No
+public trace of "Alertsify" was found independent of what this repository's
+`THETA_EXPERT_TO_STRATEGY_MAP.md` already carries (the Alertsify/DannyMtb entry, evidence
+class D_EXPERT_DNA, already correctly attributed). Collective2 was not independently
+re-verified this pass. **The original non-fabrication finding above stands: no new
+structured trader-DNA entries are added here from this search.**
