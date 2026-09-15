@@ -102,9 +102,19 @@ FLOW_FAILURE_CONTROLS: Tuple[str, ...] = (
     "NO_SIMPLISTIC_CALL_PUT_DIRECTION",
 )
 
+#: Extended (2026-09-15, "DYNAMIC PROFIT PRESERVATION + STRATEGY SWITCHING"
+#: directive, section 4) to cover the full requested fixed-percentage TP
+#: lattice (25/35/40/50/60/70/75/80/90) plus named short-DTE exit variants
+#: and the new profit-GIVEBACK-aware dynamic policy this directive
+#: specifically asks for (distinct from DYNAMIC_REMAINING_EV, which reacts
+#: to remaining reward alone -- DYNAMIC_PROFIT_GIVEBACK additionally reacts
+#: to how much of a PEAK unrealized profit has already been surrendered;
+#: see profit_preservation_research.py for the formal definitions).
 PROFIT_TAKING_POLICIES: Tuple[str, ...] = (
-    "FIXED_25", "FIXED_50", "FIXED_75", "TIME_EXIT", "DTE_EXIT",
+    "FIXED_25", "FIXED_35", "FIXED_40", "FIXED_50", "FIXED_60", "FIXED_70", "FIXED_75", "FIXED_80", "FIXED_90",
+    "TIME_EXIT", "DTE_EXIT", "DTE_21_EXIT", "DTE_14_EXIT", "DTE_7_EXIT", "FIFTY_PERCENT_OR_DTE_21",
     "DYNAMIC_REMAINING_EV", "DYNAMIC_EV_PLUS_HARD_RISK", "DYNAMIC_EV_PLUS_FLOW_INVALIDATION",
+    "DYNAMIC_PROFIT_GIVEBACK",
 )
 
 LOSS_POLICIES: Tuple[str, ...] = (
