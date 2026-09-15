@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 
 export const pointInTimeEvidenceVersion = 'theta-point-in-time-evidence-v1' as const;
-export const datasetExportVersion = 'theta-r6-dataset-v4' as const;
+export const datasetExportVersion = 'theta-r6-dataset-v5' as const;
 
 const quality = z.enum(['GOOD','DEGRADED','STALE','UNKNOWN','INVALID','NOT_ENTITLED']);
 const timestamp = z.string().datetime({ offset:true });
@@ -179,6 +179,7 @@ export interface DatasetExportRows {
   readonly wholeChainOutcomes:readonly unknown[]; readonly executionEvidence:readonly unknown[];
   readonly outcomeSubjects:readonly unknown[]; readonly outcomeObservations:readonly unknown[];
   readonly outcomeResolutionReceipts:readonly unknown[]; readonly resolvedOutcomeLabels:readonly unknown[];
+  readonly policyLearningRecords:readonly unknown[];
 }
 export interface DatasetExportArtifact {
   readonly schemaVersion:typeof datasetExportVersion; readonly sourceWindow:{readonly start:string;readonly end:string};

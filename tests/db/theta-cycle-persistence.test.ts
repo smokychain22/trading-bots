@@ -4,6 +4,7 @@ import test from 'node:test';
 import { Pool } from 'pg';
 import { buildFusionSnapshot, type FusionSnapshotInput } from '../../src/market/fusion-snapshot.js';
 import { PostgresThetaCycleStore } from '../../src/theta/postgres-theta-cycle-store.js';
+import { PostgresOutcomeResolver } from '../../src/research/outcome-resolver.js';
 import { normalizeOptionContract } from '../../src/theta/option-contract.js';
 import { buildCanonicalStrategyFrontier } from '../../src/theta/canonical-strategy-frontier.js';
 import type { StrategyRoutingResponse } from '../../src/theta/strategy-router-contract.js';
@@ -112,6 +113,12 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
     const first = await store.persist(context, cycle);
     const second = await store.persist(context, cycle);
     assert.equal(first.fusionSnapshotId, second.fusionSnapshotId);
+    const resolver=new PostgresOutcomeResolver(pool);
+    const materialized=await resolver.materializeEligibleSubjects();
+    const replayed=await resolver.materializeEligibleSubjects();
+    assert.ok(materialized.strategy>0,'strategy subjects must be reachable from a persisted PIT frontier');
+    assert.ok(materialized.wait>0,'formal WAIT subjects must be reachable from persisted WAIT evidence');
+    assert.equal(Object.values(replayed).reduce((sum,value)=>sum+value,0),0,'subject materialization must be idempotent');
     const counts = await pool.query(`SELECT
       (SELECT count(*) FROM trade.fusion_snapshot WHERE bot_instance_id=$1)::int AS snapshots,
       (SELECT count(*) FROM trade.candidate_set WHERE fusion_snapshot_id=$2)::int AS candidate_sets,

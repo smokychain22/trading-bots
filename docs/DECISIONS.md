@@ -789,6 +789,15 @@ quote remains mandatory at the last pricing boundary.
 - Provenance: Each row references both source feature snapshots and retains observation times, elapsed seconds, units, method/policy version, content hash, and reason code. Database constraints enforce time order, known-value shape, immutability, and `execution_eligible=false`.
 - Research boundary: These deltas may enter later paired ablation and OOS work. They cannot authorize a strategy branch, price an order, or repair the current Optionomics 401 and execution-quote blockers.
 
+## 2026-09-15 - Materialize P2D outcome subjects without promoting policy
+
+- Decision: Materialize whole-chain, strategy, action-regret, contract-regret, strategy-regret, WAIT, management, and contract outcome subjects from existing immutable decision evidence.
+- Causality: Decision context and future observations remain in separate immutable tables. Labels become available strictly after the decision timestamp. Dataset schema v5 validates the separation and preserves deterministic identity.
+- Economic truth: Whole-chain labels require terminal broker-reconciled economic facts. Option, stock, dividend, and fee facts remain additive, and old roll losses remain immutable.
+- WAIT discipline: FALSE_REJECT requires an explicitly feasible and materially superior point-in-time alternative with risk, liquidity, event, portfolio, and execution evidence. Missing evidence cannot be treated as regret.
+- Performance discipline: Return and win-rate bands are descriptive cohorts. They do not impose a 40 percent take-profit rule, a 70 to 80 percent win-rate target, or any execution threshold.
+- Authorization: Policy-learning rows and challenger evaluations are research-only and database-locked to `execution_authorized=false`. No policy is promoted and no Paper or live order is authorized.
+
 ## 2026-09-14 - Run deterministic Python contracts in a private Vercel Python function
 
 The Production Node function cannot spawn `python3`. Canonical market scans

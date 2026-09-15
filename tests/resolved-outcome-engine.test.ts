@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  classifyWaitOutcome, evaluatePolicyChallenger, resolveOutcome,
+  classifyWaitOutcome, computeTcaBreakdown, evaluatePolicyChallenger, resolveOutcome,
   type OutcomeLabelType, type OutcomeObservation, type OutcomeSubject,
 } from '../src/research/resolved-outcome-engine.js';
 
@@ -84,6 +84,40 @@ test('WAIT classification requires a closed complete risk-aware comparison',()=>
     maxAdverseExcursion:-5,capitalDays:1,policyFeasibleAtDecision:false}]}),'HEALTHY_WAIT');
 });
 
+test('FALSE_REJECT requires executable PIT evidence, unjustified blockers, and material after-cost dominance',()=>{
+  const base={subjectId:'candidate',complete:true,afterCostPnl:40,maxAdverseExcursion:-5,capitalDays:1,
+    policyFeasibleAtDecision:false,researchExecutableAtDecision:true,riskAcceptableAtDecision:true,
+    liquidityAcceptableAtDecision:true,eventAcceptableAtDecision:true,portfolioFeasibleAtDecision:true,
+    blockersJustifiedAtDecision:false,materiallyDominatedWaitAfterCosts:true};
+  assert.equal(classifyWaitOutcome({windowClosed:true,alternatives:[base]}),'FALSE_REJECT');
+  assert.notEqual(classifyWaitOutcome({windowClosed:true,alternatives:[{...base,blockersJustifiedAtDecision:true}]}),'FALSE_REJECT');
+  assert.notEqual(classifyWaitOutcome({windowClosed:true,alternatives:[{...base,liquidityAcceptableAtDecision:false}]}),'FALSE_REJECT');
+});
+
+test('TCA separates entry, exit, roll legs, partial fills, fees, and actual provenance',()=>{
+  const tca=computeTcaBreakdown([
+    {legId:'entry',phase:'ENTRY',side:'SELL',quantity:2,multiplier:100,decisionBid:1,decisionAsk:1.2,
+      arrivalBid:0.98,arrivalAsk:1.18,submittedLimit:1.1,fillPrice:1.05,filledQuantity:1,fees:0.65,
+      provenance:'BROKER_ACTUAL',cancelReplaceCount:1},
+    {legId:'exit',phase:'EXIT',side:'BUY',quantity:1,multiplier:100,decisionBid:0.4,decisionAsk:0.5,
+      arrivalBid:0.42,arrivalAsk:0.52,submittedLimit:0.5,fillPrice:0.5,filledQuantity:1,fees:0.65,
+      provenance:'BROKER_ACTUAL',cancelReplaceCount:0},
+    {legId:'old',phase:'ROLL_OLD_CLOSE',side:'BUY',quantity:1,multiplier:100,decisionBid:2,decisionAsk:2.2,
+      arrivalBid:2.05,arrivalAsk:2.25,submittedLimit:2.2,fillPrice:2.2,filledQuantity:1,fees:0.65,
+      provenance:'BROKER_ACTUAL',cancelReplaceCount:0},
+    {legId:'new',phase:'ROLL_NEW_OPEN',side:'SELL',quantity:1,multiplier:100,decisionBid:2.8,decisionAsk:3,
+      arrivalBid:2.75,arrivalAsk:2.95,submittedLimit:2.85,fillPrice:2.8,filledQuantity:1,fees:0.65,
+      provenance:'BROKER_ACTUAL',cancelReplaceCount:0},
+  ]);
+  assert.equal(tca.legs[0]?.partialFill,true);
+  assert.equal(tca.actualVsModeled,'BROKER_ACTUAL');
+  assert.notEqual(tca.entryCost,null);
+  assert.notEqual(tca.exitCost,null);
+  assert.notEqual(tca.rollOldCloseCost,null);
+  assert.notEqual(tca.rollNewOpenCost,null);
+  assert.equal(tca.complete,true);
+});
+
 test('policy challenger evaluation reports correlated effective N and never promotes',()=>{
   const episodes=Array.from({length:35},(_,index)=>({clusterId:`day-${Math.floor(index/5)}`,selectedAction:'HOLD',
     outcomes:{FIXED_40:{afterCostPnl:1,capitalDays:2,complete:true}}}));
@@ -91,6 +125,15 @@ test('policy challenger evaluation reports correlated effective N and never prom
   assert.equal(result.state,'EVALUABLE');assert.equal(result.rawN,35);assert.equal(result.effectiveClusterN,7);
   assert.equal(result.promoted,false);assert.equal(result.executionAuthorized,false);
   assert.equal(evaluatePolicyChallenger('FIXED_75',episodes).state,'NOT_EVALUABLE');
+});
+
+test('high win rate with one loss larger than all wins fails tail-risk comparison',()=>{
+  const episodes=Array.from({length:40},(_,index)=>({clusterId:`d${index}`,selectedAction:'HOLD',
+    outcomes:{POLICY:{afterCostPnl:index===39?-1000:10,capitalDays:1,complete:true}}}));
+  const result=evaluatePolicyChallenger('POLICY',episodes);
+  assert.equal(result.wholeChainWinRate,39/40);
+  assert.equal(result.riskComparison,'FAIL_CATASTROPHIC_TAIL');
+  assert.equal(result.promoted,false);
 });
 
 for(const [name,labelType] of [

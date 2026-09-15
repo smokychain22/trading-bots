@@ -6,7 +6,7 @@ export type DatabaseReadiness = {
   readonly connection_type: "TRANSACTION_POOLED_RUNTIME";
   readonly migration_connection_type: "DIRECT_OR_SESSION_POOLED";
   readonly latest_migration: string | null;
-  readonly required_migration: "045_outcome_subject_decision_identity";
+  readonly required_migration: "046_real_label_materialization";
   readonly customer_iam: boolean;
   readonly token_vault: boolean;
   readonly paper_execution_schema: boolean;
@@ -26,7 +26,7 @@ export async function checkDatabaseReadiness(
     checked_at: checkedAt,
     connection_type: "TRANSACTION_POOLED_RUNTIME" as const,
     migration_connection_type: "DIRECT_OR_SESSION_POOLED" as const,
-    required_migration: "045_outcome_subject_decision_identity" as const,
+    required_migration: "046_real_label_materialization" as const,
   };
   if (!databaseUrl) {
     return {
@@ -56,11 +56,12 @@ export async function checkDatabaseReadiness(
       to_regclass('trade.execution_attempt') IS NOT NULL AS paper_execution_schema,
       to_regclass('research.theta_option_chain_decision_evidence') IS NOT NULL AS option_chain_schema,
       to_regclass('research.theta_resolved_outcome_label') IS NOT NULL AS outcome_label_schema,
+      to_regclass('research.theta_policy_learning_record') IS NOT NULL AS policy_learning_schema,
       to_regclass('copy.follower_account') IS NOT NULL AS follower_table,
       to_regclass('copy.follower_paper_action_plan') IS NOT NULL
         AND to_regclass('copy.follower_lifecycle_divergence_event') IS NOT NULL AS follower_runtime_schema`);
     const objectRow = objects.rows[0] ?? {};
-    if (objectRow.migration_table !== true || objectRow.follower_table !== true || objectRow.follower_runtime_schema !== true || objectRow.option_chain_schema !== true || objectRow.outcome_label_schema !== true) {
+    if (objectRow.migration_table !== true || objectRow.follower_table !== true || objectRow.follower_runtime_schema !== true || objectRow.option_chain_schema !== true || objectRow.outcome_label_schema !== true || objectRow.policy_learning_schema !== true) {
       return {
         ...base,
         state: "MIGRATION_REQUIRED",

@@ -73,6 +73,7 @@ export interface ResolvedOutcomeReceipt {
   readonly executionModelClass:ExecutionModelClass; readonly executionModelVersion:string;
   readonly marketMark:Readonly<{entryMid:number|null;exitMid:number|null}>;
   readonly modeledExecution:Readonly<{entryPrice:number|null;exitPrice:number|null;grossPnl:number|null;netPnl:number|null}>;
+  readonly tca:TcaBreakdown;
   readonly path:OutcomePathStatistics; readonly terminalState:string|null;
   readonly reasonCodes:readonly string[]; readonly observationIds:readonly string[];
   readonly featureSnapshotHash:string; readonly candidateUniverseHash:string;
@@ -84,11 +85,64 @@ export interface OutcomeExecutionModel {
   readonly positionSide:'SHORT'|'LONG'|null; readonly multiplier:number|null;
   readonly entryPrice:number|null; readonly entryFees:number|null; readonly exitFees:number|null;
   readonly perLegSlippage:number|null;
+  readonly tcaLegs?:readonly TcaLegInput[];
+}
+
+export interface TcaLegInput {
+  readonly legId:string; readonly phase:'ENTRY'|'EXIT'|'ROLL_OLD_CLOSE'|'ROLL_NEW_OPEN';
+  readonly side:'BUY'|'SELL'; readonly quantity:number; readonly multiplier:number;
+  readonly decisionBid:number|null; readonly decisionAsk:number|null;
+  readonly arrivalBid:number|null; readonly arrivalAsk:number|null;
+  readonly submittedLimit:number|null; readonly fillPrice:number|null; readonly filledQuantity:number|null;
+  readonly fees:number|null; readonly provenance:'BROKER_ACTUAL'|'MODELED_RESEARCH';
+  readonly cancelReplaceCount:number|null;
+}
+export interface TcaLegBreakdown extends TcaLegInput {
+  readonly decisionMid:number|null; readonly arrivalMid:number|null;
+  readonly slippageVsDecisionMid:number|null; readonly slippageVsArrivalMid:number|null;
+  readonly slippageVsArrivalSide:number|null; readonly spreadCost:number|null;
+  readonly totalExecutionCost:number|null; readonly partialFill:boolean|null;
+}
+export interface TcaBreakdown {
+  readonly version:'theta-label-tca-v1'; readonly legs:readonly TcaLegBreakdown[];
+  readonly entryCost:number|null; readonly exitCost:number|null; readonly rollOldCloseCost:number|null;
+  readonly rollNewOpenCost:number|null; readonly packageExecutionCost:number|null;
+  readonly fees:number|null; readonly actualVsModeled:'BROKER_ACTUAL'|'MODELED_RESEARCH'|'MIXED'|'UNKNOWN';
+  readonly complete:boolean;
 }
 
 const midpoint=(observation:OutcomeObservation):number|null=>observation.bid!==null&&observation.ask!==null
   ?(observation.bid+observation.ask)/2:null;
 const hash=(value:unknown):string=>createHash('sha256').update(canonicalJson(value)).digest('hex');
+const sumKnown=(values:readonly (number|null)[]):number|null=>values.length>0&&values.every((value)=>value!==null)
+  ? values.reduce<number>((sum,value)=>sum+(value as number),0):null;
+
+export function computeTcaBreakdown(inputs:readonly TcaLegInput[]):TcaBreakdown {
+  const legs=inputs.map((input):TcaLegBreakdown=>{
+    if(input.quantity<=0||input.multiplier<=0)throw new Error('TCA_QUANTITY_AND_MULTIPLIER_MUST_BE_POSITIVE');
+    if(input.filledQuantity!==null&&(input.filledQuantity<0||input.filledQuantity>input.quantity))throw new Error('TCA_FILLED_QUANTITY_INVALID');
+    const decisionMid=input.decisionBid!==null&&input.decisionAsk!==null?(input.decisionBid+input.decisionAsk)/2:null;
+    const arrivalMid=input.arrivalBid!==null&&input.arrivalAsk!==null?(input.arrivalBid+input.arrivalAsk)/2:null;
+    const scale=input.fillPrice!==null&&input.filledQuantity!==null?input.filledQuantity*input.multiplier:null;
+    const adverse=(fill:number,reference:number):number=>(input.side==='BUY'?fill-reference:reference-fill);
+    const slippageVsDecisionMid=scale!==null&&decisionMid!==null?adverse(input.fillPrice as number,decisionMid)*scale:null;
+    const slippageVsArrivalMid=scale!==null&&arrivalMid!==null?adverse(input.fillPrice as number,arrivalMid)*scale:null;
+    const sideReference=input.side==='BUY'?input.arrivalAsk:input.arrivalBid;
+    const slippageVsArrivalSide=scale!==null&&sideReference!==null?adverse(input.fillPrice as number,sideReference)*scale:null;
+    const spreadCost=scale!==null&&input.arrivalBid!==null&&input.arrivalAsk!==null
+      ?((input.arrivalAsk-input.arrivalBid)/2)*scale:null;
+    const totalExecutionCost=slippageVsArrivalMid!==null&&input.fees!==null?slippageVsArrivalMid+input.fees:null;
+    return {...input,decisionMid,arrivalMid,slippageVsDecisionMid,slippageVsArrivalMid,slippageVsArrivalSide,
+      spreadCost,totalExecutionCost,partialFill:input.filledQuantity===null?null:input.filledQuantity<input.quantity};
+  });
+  const phase=(name:TcaLegInput['phase'])=>sumKnown(legs.filter((leg)=>leg.phase===name).map((leg)=>leg.totalExecutionCost));
+  const provenances=[...new Set(legs.map((leg)=>leg.provenance))];
+  return {version:'theta-label-tca-v1',legs,entryCost:phase('ENTRY'),exitCost:phase('EXIT'),
+    rollOldCloseCost:phase('ROLL_OLD_CLOSE'),rollNewOpenCost:phase('ROLL_NEW_OPEN'),
+    packageExecutionCost:sumKnown(legs.map((leg)=>leg.totalExecutionCost)),fees:sumKnown(legs.map((leg)=>leg.fees)),
+    actualVsModeled:provenances.length===0?'UNKNOWN':provenances.length>1?'MIXED':provenances[0] as 'BROKER_ACTUAL'|'MODELED_RESEARCH',
+    complete:legs.length>0&&legs.every((leg)=>leg.totalExecutionCost!==null)};
+}
 
 function pathStatistics(observations:readonly OutcomeObservation[],profitAtDecision:number|null):OutcomePathStatistics{
   const points=observations.filter((item)=>item.economicPnl!==null);
@@ -146,6 +200,7 @@ export function resolveOutcome(input:{readonly subject:OutcomeSubject;readonly o
   const provenance:OutcomeProvenance=state==='INVALID'?'INVALID':state!=='RESOLVED'?'UNRESOLVED':
     provenances.length===1?(provenances[0] as OutcomeProvenance):provenances.includes('MODELED_RESEARCH')?'MODELED_RESEARCH':'REPLAY_OBSERVED';
   const prices=modeledPrices(eligible,input.executionModel),path=pathStatistics(eligible,input.profitAtDecision??null);
+  const tca=computeTcaBreakdown(input.executionModel.tcaLegs??[]);
   const labelAvailableAt=state==='RESOLVED'?subject.horizonClosesAt:null;
   if(labelAvailableAt!==null&&Date.parse(labelAvailableAt)<=Date.parse(subject.decisionTimestamp))throw new Error('LABEL_CAUSALITY_VIOLATION');
   const unsigned={contractVersion:outcomeResolutionContractVersion,subject,state,provenance,completeness,
@@ -153,7 +208,7 @@ export function resolveOutcome(input:{readonly subject:OutcomeSubject;readonly o
     outcomeObservationEnd:eligible.at(-1)?.observedAt??null,labelAvailableAt,resolutionTimestamp:asOf,
     executionModelClass:input.executionModel.modelClass,executionModelVersion:input.executionModel.version,
     marketMark:{entryMid:prices.entryMid,exitMid:prices.exitMid},modeledExecution:{entryPrice:prices.entryPrice,
-      exitPrice:prices.exitPrice,grossPnl:prices.grossPnl,netPnl:prices.netPnl},path,
+      exitPrice:prices.exitPrice,grossPnl:prices.grossPnl,netPnl:prices.netPnl},tca,path,
     terminalState:eligible.findLast((item)=>item.terminal)?.lifecycleState??null,
     reasonCodes:[...new Set([...reasons,...eligible.flatMap((item)=>item.reasonCodes)])].sort(),
     observationIds:eligible.map((item)=>item.observationId),featureSnapshotHash:subject.featureSnapshotHash,
@@ -162,10 +217,19 @@ export function resolveOutcome(input:{readonly subject:OutcomeSubject;readonly o
 }
 
 export interface WaitAlternativeOutcome {readonly subjectId:string;readonly complete:boolean;readonly afterCostPnl:number|null;
-  readonly maxAdverseExcursion:number|null;readonly capitalDays:number|null;readonly policyFeasibleAtDecision:boolean;}
+  readonly maxAdverseExcursion:number|null;readonly capitalDays:number|null;readonly policyFeasibleAtDecision:boolean;
+  readonly researchExecutableAtDecision?:boolean;readonly riskAcceptableAtDecision?:boolean;
+  readonly liquidityAcceptableAtDecision?:boolean;readonly eventAcceptableAtDecision?:boolean;
+  readonly portfolioFeasibleAtDecision?:boolean;readonly blockersJustifiedAtDecision?:boolean;
+  readonly materiallyDominatedWaitAfterCosts?:boolean;}
 export function classifyWaitOutcome(input:{readonly windowClosed:boolean;readonly alternatives:readonly WaitAlternativeOutcome[]}):
   'CORRECT_WAIT'|'FALSE_REJECT'|'HEALTHY_WAIT'|'OVERSTRICT_POLICY_WAIT'|'UNKNOWN'{
   if(!input.windowClosed||input.alternatives.length===0||input.alternatives.some((item)=>!item.complete||item.afterCostPnl===null))return 'UNKNOWN';
+  const falseReject=input.alternatives.some((item)=>item.researchExecutableAtDecision===true
+    &&item.riskAcceptableAtDecision===true&&item.liquidityAcceptableAtDecision===true
+    &&item.eventAcceptableAtDecision===true&&item.portfolioFeasibleAtDecision===true
+    &&item.blockersJustifiedAtDecision===false&&item.materiallyDominatedWaitAfterCosts===true);
+  if(falseReject)return 'FALSE_REJECT';
   const feasible=input.alternatives.filter((item)=>item.policyFeasibleAtDecision);
   if(feasible.length===0)return input.alternatives.some((item)=>(item.afterCostPnl as number)>0)?'HEALTHY_WAIT':'CORRECT_WAIT';
   const attractive=feasible.some((item)=>(item.afterCostPnl as number)>0&&(item.maxAdverseExcursion??Number.NEGATIVE_INFINITY)>=-(item.afterCostPnl as number));
@@ -177,14 +241,29 @@ export interface ChallengerEpisode {readonly clusterId:string;readonly selectedA
 export function evaluatePolicyChallenger(policyId:string,episodes:readonly ChallengerEpisode[]):{
   readonly contractVersion:typeof policyChallengerEvaluationVersion;readonly policyId:string;
   readonly state:'EVALUABLE'|'NOT_EVALUABLE'|'INSUFFICIENT_SAMPLE';readonly rawN:number;readonly effectiveClusterN:number;
-  readonly totalAfterCostPnl:number|null;readonly totalCapitalDays:number|null;readonly promoted:false;readonly executionAuthorized:false;
+  readonly totalAfterCostPnl:number|null;readonly totalCapitalDays:number|null;readonly wholeChainWinRate:number|null;
+  readonly profitFactor:number|null;readonly averageWin:number|null;readonly averageLoss:number|null;
+  readonly maximumDrawdown:number|null;readonly cvar05:number|null;
+  readonly riskComparison:'PASS'|'FAIL_CATASTROPHIC_TAIL'|'INSUFFICIENT_SAMPLE';
+  readonly promoted:false;readonly executionAuthorized:false;
 }{
   const matching=episodes.flatMap((episode)=>{const value=episode.outcomes[policyId];return value===undefined?[]:[{...value,clusterId:episode.clusterId}];});
   const complete=matching.filter((item)=>item.complete&&item.afterCostPnl!==null);
   const state=matching.length===0?'NOT_EVALUABLE':complete.length<30?'INSUFFICIENT_SAMPLE':'EVALUABLE';
+  const pnl=complete.map((item)=>item.afterCostPnl as number),wins=pnl.filter((value)=>value>0),losses=pnl.filter((value)=>value<0);
+  let equity=0,peak=0,maximumDrawdown=0;
+  for(const value of pnl){equity+=value;peak=Math.max(peak,equity);maximumDrawdown=Math.min(maximumDrawdown,equity-peak);}
+  const ordered=[...pnl].sort((a,b)=>a-b),tailN=Math.max(1,Math.ceil(ordered.length*0.05));
+  const catastrophic=losses.length>0&&Math.abs(Math.min(...losses))>wins.reduce((sum,value)=>sum+value,0);
   return {contractVersion:policyChallengerEvaluationVersion,policyId,state,rawN:complete.length,
     effectiveClusterN:new Set(complete.map((item)=>item.clusterId)).size,
     totalAfterCostPnl:complete.length===0?null:complete.reduce((sum,item)=>sum+(item.afterCostPnl as number),0),
     totalCapitalDays:complete.some((item)=>item.capitalDays===null)?null:complete.reduce((sum,item)=>sum+(item.capitalDays as number),0),
+    wholeChainWinRate:pnl.length===0?null:wins.length/pnl.length,
+    profitFactor:wins.length===0||losses.length===0?null:wins.reduce((a,b)=>a+b,0)/Math.abs(losses.reduce((a,b)=>a+b,0)),
+    averageWin:wins.length===0?null:wins.reduce((a,b)=>a+b,0)/wins.length,
+    averageLoss:losses.length===0?null:losses.reduce((a,b)=>a+b,0)/losses.length,
+    maximumDrawdown:pnl.length===0?null:maximumDrawdown,cvar05:pnl.length===0?null:ordered.slice(0,tailN).reduce((a,b)=>a+b,0)/tailN,
+    riskComparison:complete.length<30?'INSUFFICIENT_SAMPLE':catastrophic?'FAIL_CATASTROPHIC_TAIL':'PASS',
     promoted:false,executionAuthorized:false};
 }

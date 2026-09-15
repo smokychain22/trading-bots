@@ -19,3 +19,9 @@ test('unresolved chains and unknown execution fees never become labels',()=>{
   assert.equal(result.state,'BLOCKED');
   if(result.state==='BLOCKED') assert.deepEqual(result.reasons,['CHAIN_OPEN','EXECUTION_FEES_UNKNOWN']);
 });
+
+test('roll loss erasure is impossible in the terminal whole-chain label',()=>{
+  const result=resolveWholeChainOutcome({...complete(),economicFactCount:2,
+    optionRealizedPnl:-500+300,stockRealizedPnl:0,dividends:0,fees:0});
+  assert.deepEqual(result,{state:'RESOLVED',wholeChainNetPnl:-200,labelAvailableAt:'2026-09-14T20:00:00Z'});
+});

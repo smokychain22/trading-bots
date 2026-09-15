@@ -9,7 +9,7 @@ function receipt() {
   return {
     contractVersion: empiricalPolicyPromotionContractVersion,
     policyKind: 'MANAGEMENT', policyVersion: 'challenger-v1',
-    datasetVersion: 'theta-r6-dataset-v4', datasetHash: 'a'.repeat(64),
+    datasetVersion: 'theta-r6-dataset-v5', datasetHash: 'a'.repeat(64),
     featureSetVersion: 'theta-profit-preservation-v1', strategyVersions: ['theta-conventional-v1'],
     labelResolverVersion:'theta-outcome-resolution-v1',executionModelVersion:'theta-market-mark-v1',
     trainWindow: { start: '2025-01-01T00:00:00.000Z', end: '2025-06-01T00:00:00.000Z' },

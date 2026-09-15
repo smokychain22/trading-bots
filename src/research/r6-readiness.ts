@@ -21,6 +21,9 @@ export interface R6DataQualityReport {
   readonly missedObservations:number; readonly providerFailures:number;
   readonly invalidQuotes:number; readonly staleCandidates:number;
   readonly resolvedLabels:number; readonly unresolvedLabels:number;
+  readonly outcomeSubjects:number; readonly wholeChainSubjects:number; readonly strategySubjects:number;
+  readonly regretSubjects:number; readonly waitSubjects:number; readonly completeLabeledEpisodes:number;
+  readonly effectiveIndependentN:number;
   readonly hardVetoDistribution:Readonly<Record<string,number>>;
   readonly softRejectionDistribution:Readonly<Record<string,number>>;
   readonly providerStateDistribution:Readonly<Record<string,number>>;
@@ -38,6 +41,9 @@ export interface R6ReadinessReceipt {
   readonly OUTCOME_RESOLVER_ENGINEERING:'COMPLETE'|'INCOMPLETE';
   readonly OUTCOME_RESOLVER_EVIDENCE:'AVAILABLE'|'BLOCKED_ON_DATA';
   readonly MODEL_TRAINING_DATA_SUFFICIENT:ReadinessState;
+  readonly FEATURE_ROWS_PRESENT:ReadinessState; readonly LABEL_ROWS_PRESENT:ReadinessState;
+  readonly COMPLETE_LABELED_EPISODES:number; readonly EFFECTIVE_INDEPENDENT_N:number;
+  readonly TRAINING_READY:ReadinessState;
   readonly openSessionProof:OpenSessionProof;
   readonly dataQuality:R6DataQualityReport; readonly reasons:Readonly<Record<string,readonly string[]>>;
 }
@@ -79,12 +85,22 @@ export async function buildR6ReadinessReceipt(pool:Pool):Promise<R6ReadinessRece
     (SELECT count(*) FROM research.theta_outcome_label WHERE subject_type='WHOLE_CHAIN' AND censoring_state='RESOLVED')::int AS chain_labels,
     (SELECT count(*) FROM research.theta_outcome_label WHERE subject_type='MANAGED_EPISODE' AND censoring_state='RESOLVED')::int AS management_labels,
     (SELECT count(*) FROM research.theta_outcome_label WHERE censoring_state='RESOLVED')::int AS resolved_labels,
+    (SELECT count(*) FROM research.theta_resolved_outcome_label)::int AS resolved_outcome_labels,
     (SELECT count(*) FROM research.theta_outcome_label WHERE censoring_state<>'RESOLVED')::int AS unresolved_labels,
     (SELECT count(*) FROM research.theta_resolved_outcome_label WHERE label_type='WAIT_OUTCOME')::int AS wait_labels,
     (SELECT count(*) FROM research.theta_resolved_outcome_label WHERE label_type IN
       ('NEIGHBOR_STRIKE_OUTCOME','OTHER_EXPIRATION_OUTCOME','OTHER_STRUCTURE_OUTCOME'))::int AS counterfactual_labels,
     (SELECT count(*) FROM research.theta_resolved_outcome_label WHERE label_type IN
       ('MANAGEMENT_ACTION_OUTCOME','MANAGEMENT_ALTERNATIVE_OUTCOME'))::int AS resolved_management_labels,
+    (SELECT count(*) FROM research.theta_outcome_subject)::int AS outcome_subjects,
+    (SELECT count(*) FROM research.theta_outcome_subject WHERE label_type='WHOLE_CHAIN_OUTCOME')::int AS whole_chain_subjects,
+    (SELECT count(*) FROM research.theta_outcome_subject WHERE label_type='STRATEGY_OUTCOME')::int AS strategy_subjects,
+    (SELECT count(*) FROM research.theta_outcome_subject WHERE label_type IN ('ACTION_REGRET','CONTRACT_REGRET','STRATEGY_REGRET'))::int AS regret_subjects,
+    (SELECT count(*) FROM research.theta_outcome_subject WHERE label_type='WAIT_OUTCOME')::int AS wait_subjects,
+    (SELECT count(*) FROM research.theta_resolved_outcome_label WHERE completeness='COMPLETE')::int AS complete_labeled_episodes,
+    (SELECT count(DISTINCT COALESCE(s.comparison_group_id,s.subject_id||':'||s.decision_timestamp::date::text))
+      FROM research.theta_resolved_outcome_label l JOIN research.theta_outcome_subject s USING(outcome_subject_id)
+      WHERE l.completeness='COMPLETE')::int AS effective_independent_n,
     (SELECT count(*) FROM market.execution_quote_observation WHERE observation_role='SUBSEQUENT')::int AS subsequent_quotes,
     (SELECT count(*) FROM research.theta_execution_observation_job WHERE status='PENDING')::int AS pending_jobs,
     (SELECT count(*) FROM research.theta_execution_observation_job WHERE status='MISSED')::int AS missed_jobs,
@@ -123,7 +139,10 @@ export async function buildR6ReadinessReceipt(pool:Pool):Promise<R6ReadinessRece
     observationMissedRate:rate(num(c.missed_jobs),num(c.missed_jobs)+num(c.subsequent_quotes)+num(c.pending_jobs)),
     completeScans:num(c.complete_scans),partialScans:num(c.partial_scans),missedObservations:num(c.missed_jobs),
     providerFailures:num(c.provider_failures),invalidQuotes:num(c.invalid_quotes),staleCandidates:num(c.stale_candidates),
-    resolvedLabels:num(c.resolved_labels),unresolvedLabels:num(c.unresolved_labels),
+    resolvedLabels:num(c.resolved_labels)+num(c.resolved_outcome_labels),unresolvedLabels:num(c.unresolved_labels),
+    outcomeSubjects:num(c.outcome_subjects),wholeChainSubjects:num(c.whole_chain_subjects),
+    strategySubjects:num(c.strategy_subjects),regretSubjects:num(c.regret_subjects),waitSubjects:num(c.wait_subjects),
+    completeLabeledEpisodes:num(c.complete_labeled_episodes),effectiveIndependentN:num(c.effective_independent_n),
     hardVetoDistribution:distribution(hard.rows,'code'),softRejectionDistribution:distribution(soft.rows,'code'),
     providerStateDistribution:distribution(providers.rows,'state')};
   const pointData=pitCount>0,liveCapture=pointData&&num(c.complete_scans)>0;
@@ -144,7 +163,10 @@ export async function buildR6ReadinessReceipt(pool:Pool):Promise<R6ReadinessRece
     EXECUTION_REPLAY_EVIDENCE:replay?'AVAILABLE':'BLOCKED_ON_DATA',
     OUTCOME_RESOLVER_ENGINEERING:e.labels&&e.resolved_labels?'COMPLETE':'INCOMPLETE',
     OUTCOME_RESOLVER_EVIDENCE:whole||management?'AVAILABLE':'BLOCKED_ON_DATA',
-    DATASET_EXPORT_READY:exportReady?'YES':'NO',MODEL_TRAINING_DATA_SUFFICIENT:'NO',dataQuality:quality,
+    DATASET_EXPORT_READY:exportReady?'YES':'NO',MODEL_TRAINING_DATA_SUFFICIENT:'NO',
+    FEATURE_ROWS_PRESENT:pointData?'YES':'NO',LABEL_ROWS_PRESENT:num(c.resolved_labels)+num(c.resolved_outcome_labels)>0?'YES':'NO',
+    COMPLETE_LABELED_EPISODES:num(c.complete_labeled_episodes),EFFECTIVE_INDEPENDENT_N:num(c.effective_independent_n),
+    TRAINING_READY:'NO',dataQuality:quality,
     openSessionProof,
     reasons:{liveCapture:liveCapture?[]:['NO_COMPLETE_REAL_CROSS_SYMBOL_SCAN'],crossSymbol:num(c.complete_scans)>0?[]:['NO_COMPLETE_SCAN'],
       pointInTime:pointData?[]:['NO_POINT_IN_TIME_ROWS'],shadow:shadowCount>0?[]:['NO_SHADOW_ROWS'],

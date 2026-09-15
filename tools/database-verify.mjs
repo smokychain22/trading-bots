@@ -50,6 +50,7 @@ try {
     "043_options_chain_decision_intelligence",
     "044_resolved_outcome_engine",
     "045_outcome_subject_decision_identity",
+    "046_real_label_materialization",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -112,6 +113,7 @@ try {
     ["research", "theta_outcome_resolution_receipt"],
     ["research", "theta_resolved_outcome_label"],
     ["research", "theta_policy_challenger_evaluation"],
+    ["research", "theta_policy_learning_record"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -363,10 +365,10 @@ try {
   const resolvedOutcomeProtection=await client.query(`SELECT
     (SELECT count(DISTINCT event_object_table)::int FROM information_schema.triggers WHERE trigger_schema='research'
       AND trigger_name='reject_immutable_mutation' AND event_object_table IN
-      ('theta_outcome_subject','theta_outcome_observation','theta_outcome_resolution_receipt','theta_resolved_outcome_label','theta_policy_challenger_evaluation')) AS immutable_tables,
+      ('theta_outcome_subject','theta_outcome_observation','theta_outcome_resolution_receipt','theta_resolved_outcome_label','theta_policy_challenger_evaluation','theta_policy_learning_record')) AS immutable_tables,
     EXISTS(SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='research'
       AND table_name='theta_resolved_outcome_label' AND constraint_type='CHECK') AS label_checks`);
-  if(Number(resolvedOutcomeProtection.rows[0]?.immutable_tables)!==5||!resolvedOutcomeProtection.rows[0]?.label_checks)
+  if(Number(resolvedOutcomeProtection.rows[0]?.immutable_tables)!==6||!resolvedOutcomeProtection.rows[0]?.label_checks)
     throw new Error('RESOLVED_OUTCOME_PROTECTION_MISSING');
   const fillFees = await client.query("SELECT is_nullable,column_default FROM information_schema.columns WHERE table_schema='trade' AND table_name='fill' AND column_name='fees'");
   if (fillFees.rows[0]?.is_nullable !== "YES" || fillFees.rows[0]?.column_default !== null)
@@ -386,6 +388,10 @@ try {
     (SELECT count(*)::int FROM research.theta_shadow_chain) AS chains,
     (SELECT count(*)::int FROM research.theta_paper_active_baseline_receipt) AS baseline_receipts,
     (SELECT count(*)::int FROM research.theta_near_miss_reevaluation_event) AS near_miss_events`);
+  const p2dCounts=await client.query(`SELECT
+    (SELECT count(*)::int FROM research.theta_outcome_subject) AS outcome_subjects,
+    (SELECT count(*)::int FROM research.theta_resolved_outcome_label) AS resolved_labels,
+    (SELECT count(*)::int FROM research.theta_policy_learning_record) AS policy_learning_records`);
   process.stdout.write(JSON.stringify({
     state: "CONNECTED",
     migrations: expected.length,
@@ -416,6 +422,7 @@ try {
     managementActionPlanDispatch:"ENFORCED",
     paperEvidenceAuthorization:"ENFORCED",
     runtimeBehaviorDiagnostic:"ENFORCED",
+    realLabelMaterialization:"ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeMasters: activeMasters.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
@@ -426,6 +433,9 @@ try {
     shadowChains:shadowCounts.rows[0]?.chains??0,
     baselineReceipts:shadowCounts.rows[0]?.baseline_receipts??0,
     nearMissEvents:shadowCounts.rows[0]?.near_miss_events??0,
+    outcomeSubjects:p2dCounts.rows[0]?.outcome_subjects??0,
+    resolvedOutcomeLabels:p2dCounts.rows[0]?.resolved_labels??0,
+    policyLearningRecords:p2dCounts.rows[0]?.policy_learning_records??0,
   }) + "\n");
 } finally {
   await client.end();

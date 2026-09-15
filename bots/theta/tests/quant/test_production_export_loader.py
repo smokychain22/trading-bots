@@ -69,6 +69,7 @@ def _minimal_rows():
         "outcomeObservations": [],
         "outcomeResolutionReceipts": [],
         "resolvedOutcomeLabels": [],
+        "policyLearningRecords": [],
     }
 
 
@@ -122,6 +123,31 @@ class HappyPathTests(unittest.TestCase):
         export["datasetHash"] = sha256_hex(canonical_json(identity))
         loaded = load_dataset_export(export)
         self.assertEqual(len(loaded.resolved_outcome_labels), 1)
+
+    def test_policy_learning_record_cannot_authorize_execution(self):
+        export = _build_valid_export()
+        export["rows"]["outcomeSubjects"] = [{
+            "outcomeSubjectId": "os1", "subjectId": "wait:1", "labelType": "WAIT_OUTCOME",
+            "decisionTimestamp": "2026-01-01T00:00:00+00:00", "executionAuthorized": False,
+        }]
+        export["rows"]["resolvedOutcomeLabels"] = [{
+            "resolvedOutcomeLabelId": "ol1", "outcomeSubjectId": "os1",
+            "decisionTimestamp": "2026-01-01T00:00:00+00:00",
+            "labelAvailableAt": "2026-01-01T01:00:00+00:00", "executionAuthorized": False,
+        }]
+        export["rows"]["policyLearningRecords"] = [{
+            "policyLearningRecordId": "pl1", "outcomeSubjectId": "os1",
+            "resolvedOutcomeLabelId": "ol1", "decisionTimestamp": "2026-01-01T00:00:00+00:00",
+            "labelAvailableAt": "2026-01-01T01:00:00+00:00", "executionAuthorized": True,
+        }]
+        export["rowCounts"] = {key: len(value) for key, value in export["rows"].items()}
+        identity = {"schemaVersion": export["schemaVersion"], "sourceWindow": export["sourceWindow"],
+                    "featureSetVersion": export["featureSetVersion"], "strategyVersions": export["strategyVersions"],
+                    "rows": {key: sorted(value, key=canonical_json) for key, value in export["rows"].items()},
+                    "rowCounts": export["rowCounts"]}
+        export["datasetHash"] = sha256_hex(canonical_json(identity))
+        with self.assertRaisesRegex(DatasetLoadError, "POLICY_LEARNING_EXECUTION_AUTHORITY_FORBIDDEN"):
+            load_dataset_export(export)
 
     def test_label_at_decision_time_is_rejected_as_leakage(self):
         export = _build_valid_export()

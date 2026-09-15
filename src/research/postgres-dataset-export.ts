@@ -25,7 +25,7 @@ export class PostgresDatasetExporter {
     if (Date.parse(request.end)<Date.parse(request.start)) throw new Error('DATASET_WINDOW_INVALID');
     const parameters = [request.start,request.end];
     const [sets,candidates,shadow,frontiers,optionChains,management,lifecycle,chains,quotes,outcomeSubjects,
-      outcomeObservations,outcomeReceipts,resolvedLabels] = await Promise.all([
+      outcomeObservations,outcomeReceipts,resolvedLabels,policyLearning] = await Promise.all([
       this.pool.query(`SELECT candidate_set_id AS "candidateSetId",decision_time AS "decisionTime",
         universe_evaluated_json AS "universeEvaluated",branches_considered_json AS "branchesConsidered",counts_json AS counts,
         best_candidate_id AS "bestCandidateId",second_best_candidate_id AS "secondBestCandidateId",
@@ -150,6 +150,16 @@ export class PostgresDatasetExporter {
         FROM research.theta_resolved_outcome_label l JOIN research.theta_outcome_subject s USING(outcome_subject_id)
         WHERE s.decision_timestamp >= $1 AND s.decision_timestamp < $2
         ORDER BY l.label_available_at,l.resolved_outcome_label_id`,parameters),
+      this.pool.query(`SELECT policy_learning_record_id AS "policyLearningRecordId",outcome_subject_id AS "outcomeSubjectId",
+        resolved_outcome_label_id AS "resolvedOutcomeLabelId",decision_timestamp AS "decisionTimestamp",
+        label_available_at AS "labelAvailableAt",strategy_branch AS "strategyBranch",selected_action AS "selectedAction",
+        action_set_json AS "actionSet",pit_context_json AS "pitContext",option_context_json AS "optionContext",
+        portfolio_context_json AS "portfolioContext",outcome_json AS outcome,provenance_class AS "provenanceClass",
+        tca_json AS tca,return_metrics_json AS "returnMetrics",return_cohort AS "returnCohort",
+        win_rate_cohort AS "winRateCohort",cluster_ids_json AS "clusterIds",target_families_json AS "targetFamilies",
+        execution_authorized AS "executionAuthorized",content_hash AS "contentHash"
+        FROM research.theta_policy_learning_record WHERE decision_timestamp >= $1 AND decision_timestamp < $2
+        ORDER BY decision_timestamp,policy_learning_record_id`,parameters),
     ]);
     const versions = [...new Set(candidates.rows.flatMap((row) => {
       const lineage = row.lineage as Record<string, unknown> | undefined;
@@ -161,7 +171,7 @@ export class PostgresDatasetExporter {
         managementSnapshots:management.rows,lifecycleOutcomes:lifecycle.rows,
         wholeChainOutcomes:chains.rows,executionEvidence:quotes.rows,outcomeSubjects:outcomeSubjects.rows,
         outcomeObservations:outcomeObservations.rows,outcomeResolutionReceipts:outcomeReceipts.rows,
-        resolvedOutcomeLabels:resolvedLabels.rows} });
+        resolvedOutcomeLabels:resolvedLabels.rows,policyLearningRecords:policyLearning.rows} });
     await this.pool.query(`INSERT INTO research.theta_dataset_export(dataset_export_id,source_window_start,source_window_end,
       exported_at,schema_version,feature_set_version,strategy_versions_json,row_counts_json,dataset_hash)
       VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9) ON CONFLICT(dataset_hash) DO NOTHING`,[
