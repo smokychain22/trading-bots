@@ -66,8 +66,8 @@ class LatticeTests(unittest.TestCase):
 
 
 class PolicyCoverageTests(unittest.TestCase):
-    def test_all_eight_profit_taking_policies_are_registered(self):
-        self.assertEqual(len(PROFIT_TAKING_POLICIES), 8)
+    def test_all_nineteen_profit_taking_policies_are_registered(self):
+        self.assertEqual(len(PROFIT_TAKING_POLICIES), 19)
         for policy in PROFIT_TAKING_POLICIES:
             self.assertIn(f"EXIT-{policy}", EXPERIMENTS_BY_ID)
 
