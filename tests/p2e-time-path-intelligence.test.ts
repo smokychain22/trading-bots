@@ -39,7 +39,7 @@ test('Pareto frontier keeps unknown economics out of forced rankings',()=>{
 test('WAIT diagnostics distinguish false rejects, correct rejects, and unresolved evidence',()=>{
   const result=calculateInactionDiagnostics([{action:'WAIT',selected:false,resolvedOutcome:'POSITIVE'},
     {action:'WAIT',selected:false,resolvedOutcome:'NEGATIVE'},{action:'HOLD',selected:true,resolvedOutcome:'UNRESOLVED'}]);
-  assert.equal(result.waitRate,2/3);assert.equal(result.falseRejectRate,0.5);assert.equal(result.correctRejectRate,0.5);
+  assert.equal(result.waitRate,2/3);assert.equal(result.rejectedCandidatePositiveOutcomeRate,0.5);assert.equal(result.correctRejectRate,0.5);
 });
 
 test('position path detects winner-to-loser and never grants execution authority',()=>{

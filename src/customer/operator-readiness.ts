@@ -266,3 +266,28 @@ export async function readLatestRuntimeBehavior(databaseUrl?:string):Promise<Run
       threshold_policy_state:String(row.threshold_policy_state)};
   }catch{return empty;}finally{await pool.end();}
 }
+
+export interface P2FOperatorStatus {readonly optionomics:{readonly secret_state:string;readonly last_check:string|null;
+  readonly qualified_capabilities:number|null;readonly blocked_capabilities:number|null;readonly real_payload_count:number|null;
+  readonly stale_capability_count:number|null;readonly latest_receipt_hash:string|null};readonly alerts:readonly {type:string;severity:string;
+  first_seen:string;last_seen:string;count:number;state:string;source:string;related_ref:string|null}[];}
+export async function readP2FOperatorStatus(databaseUrl?:string):Promise<P2FOperatorStatus>{
+  const empty:P2FOperatorStatus={optionomics:{secret_state:'NOT_CONFIGURED',last_check:null,qualified_capabilities:null,
+    blocked_capabilities:null,real_payload_count:null,stale_capability_count:null,latest_receipt_hash:null},alerts:[]};
+  if(!databaseUrl)return empty;const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000});
+  try{const relation=await pool.query(`SELECT to_regclass('research.optionomics_provider_qualification_receipt') IS NOT NULL AS ready`);
+    if(relation.rows[0]?.ready!==true)return empty;
+    const [q,a]=await Promise.all([pool.query(`SELECT secret_state,attempted_at,real_payload_count,stale_capability_count,evidence_hash,
+      (SELECT count(*) FROM jsonb_array_elements(families_json) f WHERE f->>'state'='QUALIFIED') AS qualified,
+      (SELECT count(*) FROM jsonb_array_elements(families_json) f WHERE f->>'state' IN ('BLOCKED','INVALID','UNKNOWN')) AS blocked
+      FROM research.optionomics_provider_qualification_receipt ORDER BY attempted_at DESC LIMIT 1`),
+      pool.query(`SELECT event_type,severity,first_seen_at,last_seen_at,occurrence_count,state,source,related_ref
+        FROM ops.theta_alert_event WHERE state='ACTIVE' ORDER BY CASE severity WHEN 'CRITICAL' THEN 1 WHEN 'WARNING' THEN 2 ELSE 3 END,last_seen_at DESC LIMIT 50`)]);
+    const row=q.rows[0];const iso=(v:unknown)=>v instanceof Date?v.toISOString():v==null?null:String(v);
+    return {optionomics:row?{secret_state:String(row.secret_state),last_check:iso(row.attempted_at),qualified_capabilities:Number(row.qualified),
+      blocked_capabilities:Number(row.blocked),real_payload_count:Number(row.real_payload_count),stale_capability_count:Number(row.stale_capability_count),
+      latest_receipt_hash:String(row.evidence_hash)}:empty.optionomics,alerts:a.rows.map((x)=>({type:String(x.event_type),severity:String(x.severity),
+        first_seen:iso(x.first_seen_at)??'UNKNOWN',last_seen:iso(x.last_seen_at)??'UNKNOWN',count:Number(x.occurrence_count),state:String(x.state),source:String(x.source),
+        related_ref:x.related_ref==null?null:String(x.related_ref)}))};
+  }catch{return empty;}finally{await pool.end();}
+}

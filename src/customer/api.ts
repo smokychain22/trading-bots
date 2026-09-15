@@ -32,6 +32,7 @@ import {
   readMasterRuntimeEvidence,
   readLatestRuntimeBehavior,
   readOutcomeResearchVisibility,
+  readP2FOperatorStatus,
   verifyOptionomicsConnection,
 } from "./operator-readiness.js";
 import { executionMode } from "../execution/execution-control.js";
@@ -41,6 +42,11 @@ import { designateAuthenticatedPaperMaster, masterRoleStore } from "./paper-acco
 import { paperCopyPolicySchema, recommendedCopyPolicy } from "./copy-policy.js";
 import { verifyStoredMasterPaperConnection } from "./master-paper-runtime.js";
 import { PostgresOperatorControlStore } from "./operator-control.js";
+import { Pool } from "pg";
+import { qualifyOptionomicsProvider,persistOptionomicsQualification } from "../providers/optionomics-qualification.js";
+import { optionomicsConfigFromEnvironment } from "../theta/theta-shadow-once.js";
+import { canonicalThetaStrategyRegistry } from "../theta/strategy-package.js";
+import { buildR8Readiness } from "../theta/r8-readiness.js";
 
 const simulationSchema = z
   .object({
@@ -471,6 +477,18 @@ export default async function customerHandler(
           return send(response, 503, { error: { code: "PROVIDER_READINESS_UNAVAILABLE" } });
         }
       }
+      if (route === "operator/optionomics-qualification" && request.method === "POST") {
+        if(!sameOrigin(request))return send(response,403,{error:{code:"ORIGIN_REJECTED"}});
+        if(!environment.DATABASE_URL)return send(response,503,{error:{code:"QUALIFICATION_DATABASE_UNAVAILABLE"}});
+        const pool=new Pool({connectionString:environment.DATABASE_URL,max:1,connectionTimeoutMillis:5_000});
+        try{const receipt=await qualifyOptionomicsProvider({mode:'REAL_AUTHENTICATED',at:new Date().toISOString(),symbol:'SPY',
+          config:optionomicsConfigFromEnvironment(environment)});await persistOptionomicsQualification(pool,receipt);
+          return send(response,receipt.secretState==='AUTH_VALID'?200:207,{api_version:'v1',data:{version:receipt.version,
+            secret_state:receipt.secretState,families:receipt.families.map(({family,state,blockers})=>({family,state,blockers})),
+            real_payload_count:receipt.realPayloadCount,stale_capability_count:receipt.staleCapabilityCount,
+            receipt_hash:receipt.receiptHash,execution_authorized:false,orders_submitted:false}});
+        }finally{await pool.end();}
+      }
       if (route === "operator/controls" && request.method === "GET") {
         if(!environment.DATABASE_URL)return send(response,503,{error:{code:"OPERATOR_CONTROL_DATABASE_UNAVAILABLE"}});
         const store=new PostgresOperatorControlStore(environment.DATABASE_URL);
@@ -482,13 +500,15 @@ export default async function customerHandler(
         if(!sameOrigin(request))return send(response,403,{error:{code:"ORIGIN_REJECTED"}});
         const idempotencyKey=request.headers["idempotency-key"];
         if(typeof idempotencyKey!=="string")return send(response,400,{error:{code:"IDEMPOTENCY_KEY_REQUIRED"}});
-        const body=z.object({command:z.enum(["PAUSE_NEW_ENTRIES","RESUME_NEW_ENTRIES","EMERGENCY_EXECUTION_LOCK"]),
-          confirmed:z.literal(true)}).strict().parse(await readJson(request));
+        const body=z.object({command:z.enum(["PAUSE_NEW_ENTRIES","RESUME_NEW_ENTRIES","EMERGENCY_EXECUTION_LOCK","CLEAR_EMERGENCY_LOCK"]),
+          confirmed:z.literal(true),observed_state_version:z.number().int().nonnegative(),reason:z.string().max(500).nullable().default(null)}).strict().parse(await readJson(request));
         const store=new PostgresOperatorControlStore(environment.DATABASE_URL);
         try{const data=await store.apply({actorRef:request.headers.cookie??"operator",command:body.command,
-          idempotencyKey,confirmed:body.confirmed,requestedAt:new Date().toISOString(),defaultPaused:environment.PAPER_PAUSE_NEW_ORDERS});
+          idempotencyKey,confirmed:body.confirmed,requestedAt:new Date().toISOString(),defaultPaused:environment.PAPER_PAUSE_NEW_ORDERS,
+          observedStateVersion:body.observed_state_version,reason:body.reason});
           return send(response,200,{api_version:"v1",data:{...data,execution_authorized:false}});
-        }finally{await store.close();}
+        }catch(error){if(error instanceof Error&&error.message==='OPERATOR_STATE_VERSION_STALE')return send(response,409,{error:{code:error.message}});
+          throw error;}finally{await store.close();}
       }
       if (request.method !== "GET")
         return send(response, 405, { error: { code: "READ_ONLY_OPERATOR" } });
@@ -501,11 +521,11 @@ export default async function customerHandler(
         const store=new PostgresOperatorControlStore(environment.DATABASE_URL as string);
         return store.current(environment.PAPER_PAUSE_NEW_ORDERS).finally(()=>store.close());
       })() : {newEntriesPaused:environment.PAPER_PAUSE_NEW_ORDERS,emergencyExecutionLock:false,
-        brokerSubmissionBlocked:true,reconciliationEnabled:true,managementEnabled:true,source:"DEFAULT",asOf:null};
-      const [database,localWorker,runtimeEvidence,runtimeBehavior,outcomeResearch] = await Promise.all([
+        brokerSubmissionBlocked:true,reconciliationEnabled:true,managementEnabled:true,source:"DEFAULT",asOf:null,stateVersion:0};
+      const [database,localWorker,runtimeEvidence,runtimeBehavior,outcomeResearch,p2fStatus] = await Promise.all([
         checkDatabaseReadiness(environment.DATABASE_URL),readLocalWorkerReadiness(environment.DATABASE_URL),
         readMasterRuntimeEvidence(environment.DATABASE_URL),readLatestRuntimeBehavior(environment.DATABASE_URL),
-        readOutcomeResearchVisibility(environment.DATABASE_URL),
+        readOutcomeResearchVisibility(environment.DATABASE_URL),readP2FOperatorStatus(environment.DATABASE_URL),
       ]);
       const executionControl = {
         masterEnabled: environment.MASTER_PAPER_EXECUTION_ENABLED && !operatorControl.emergencyExecutionLock,
@@ -514,6 +534,18 @@ export default async function customerHandler(
       };
       const masterExecutionMode = executionMode(executionControl, "MASTER_API_KEY");
       const followerExecutionMode = executionMode(executionControl, "FOLLOWER_OAUTH");
+      const strategyRegistry=[...canonicalThetaStrategyRegistry.values()].map((strategy)=>({
+        strategy_id:strategy.strategyId,strategy_version:strategy.strategyVersion,branch:strategy.branch,
+        status:strategy.status,promotion_status:strategy.promotionStatus,execution_enabled:strategy.executionEnabled,
+        configuration_hash:strategy.configurationHash,
+      }));
+      const r8Readiness=buildR8Readiness({r7EngineeringComplete:true,brokerTruthReady:localWorker.alpaca_health==='GOOD',
+        sessionStateReady:localWorker.market_session!=='UNKNOWN',
+        positionLifecycleReady:database.state==='CONNECTED',strategyRouterReady:true,actionFrontierReady:true,
+        operatorSafetyReady:database.state==='CONNECTED',optionomicsTransportReady:true,
+        optionomicsRealAuthReady:p2fStatus.optionomics.secret_state==='AUTH_VALID',executionQuoteProviderReady:false,
+        firstPaperOrderReady:false,labelPipelineReady:database.state==='CONNECTED',wholeChainAccountingReady:database.state==='CONNECTED',
+        trainingReady:(outcomeResearch.resolved_labels??0)>0});
       return send(response, 200, {
         api_version: "v1",
         data: {
@@ -573,6 +605,10 @@ export default async function customerHandler(
           local_worker: localWorker,
           runtime_evidence: runtimeEvidence,
           outcome_research: outcomeResearch,
+          provider_qualification: p2fStatus.optionomics,
+          active_alerts: p2fStatus.alerts,
+          strategy_registry: strategyRegistry,
+          r8_readiness: r8Readiness,
           execution_control: {
             environment: "PAPER",
             live_host_allowed: false,

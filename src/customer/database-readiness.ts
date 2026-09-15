@@ -6,7 +6,7 @@ export type DatabaseReadiness = {
   readonly connection_type: "TRANSACTION_POOLED_RUNTIME";
   readonly migration_connection_type: "DIRECT_OR_SESSION_POOLED";
   readonly latest_migration: string | null;
-  readonly required_migration: "047_p2e_time_path_intelligence";
+  readonly required_migration: "048_p2f_provider_activation_readiness";
   readonly customer_iam: boolean;
   readonly token_vault: boolean;
   readonly paper_execution_schema: boolean;
@@ -26,7 +26,7 @@ export async function checkDatabaseReadiness(
     checked_at: checkedAt,
     connection_type: "TRANSACTION_POOLED_RUNTIME" as const,
     migration_connection_type: "DIRECT_OR_SESSION_POOLED" as const,
-    required_migration: "047_p2e_time_path_intelligence" as const,
+    required_migration: "048_p2f_provider_activation_readiness" as const,
   };
   if (!databaseUrl) {
     return {

@@ -2,23 +2,24 @@
 
 This ledger separates engineering completion from empirical proof. A completed contract does not prove an edge, authorize a policy, or qualify an execution quote.
 
-| Phase | State | Evidence | Remaining gate |
-| --- | --- | --- | --- |
-| R1 provider and account truth | Engineering complete | Alpaca Paper account, contract, quote, position, order, activity, clock, and calendar adapters | Optionomics Production authentication and capability evidence remain external |
-| R2 lifecycle, accounting, and master runtime | Engineering complete | Reconcile-first worker, explicit option intents, atomic lifecycle writer, whole-chain ledger, restart-safe scheduler | Fresh trusted two-sided option execution quote remains blocked |
-| R3 account isolation | Engineering complete | `MASTER_THETA_PAPER` and `FOLLOWER_THETA_PAPER`, encrypted credentials, self-copy prevention | Separate real follower account evidence |
-| R4 follower copy | Built and locked | Master-fill-first plans, follower sizing, AEGIS, quote checks, divergence, reconciliation | Submission disabled, no follower Paper orders |
-| R5 customer and operator product | Partial | Standalone customer product and private operations status | P2E safe controls need deployed Production verification |
-| R6 evidence and validation | Active | PIT ledger, shadow candidates, resolved labels, deterministic dataset v6 | Independent resolved N, walk-forward, untouched OOS, calibration, DSR/PBO |
-| R7 autonomous Paper engineering | Near closure | Management-first runtime, five branch evidence, path and timing evidence, action frontiers | Qualified execution quote and promoted policy provider |
-| R8 Paper validation | Not started | Infrastructure only | Real Paper fills and resolved whole-chain evidence |
-| R9 graduation | Not started | No live authority | Empirical, execution, risk, and operational acceptance |
-| P1 professional trader brain | Closed as engineering baseline | Canonical branch and management contracts | Empirical promotion remains separate |
-| P2A profit preservation | Closed as research evidence | Capture, giveback, remaining reward, challenger contracts | Forward outcome evidence |
-| P2B chain decision intelligence | Closed | Expiry, strike, structure, liquidity, exact-contract evidence | OOS feature and structure ablation |
-| P2C resolved outcomes | Closed | Causal subject, observation, resolution, and label separation | More resolved observations |
-| P2D label accumulation | Closed | Policy-learning records, regret labels, TCA, dataset v5 | Real sample accumulation |
-| P2E time and path intelligence | Implemented, deployment pending | Session state, position path, action/inaction frontier, timing router, Optionomics readiness contract, dataset v6 | Migration 047, Production deploy, worker verification |
+| Phase | Engineering status | Empirical status | Provider status | Owner-action status | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| R1 provider and account truth | COMPLETE | NOT_APPLICABLE | OPTIONOMICS_QUALIFICATION_BLOCKED | NONE | Alpaca Paper truth and typed provider adapters |
+| R2 lifecycle, accounting, and master runtime | COMPLETE | INSUFFICIENT_EVIDENCE | EXECUTION_QUOTE_BLOCKED | NONE | Reconcile-first worker, lifecycle writer, whole-chain ledger |
+| R3 account isolation | COMPLETE | INSUFFICIENT_FOLLOWER_EVIDENCE | READY | NONE | Master/follower role isolation and encrypted credentials |
+| R4 follower copy | COMPLETE_LOCKED | INSUFFICIENT_FOLLOWER_EVIDENCE | READY | ACTIVATION_NOT_AUTHORIZED | Master-fill-first follower plans and reconciliation |
+| R5 customer and operator product | COMPLETE_FOR_CURRENT_OPS | NOT_APPLICABLE | READY | NONE | Standalone product and version-safe operations controls |
+| R6 evidence and validation | COMPLETE_FOR_COLLECTION | INSUFFICIENT_EVIDENCE | OPTIONOMICS_REAL_DATA_BLOCKED | NONE | PIT ledger, shadow candidates, labels, deterministic dataset v6 |
+| R7 autonomous Paper engineering | COMPLETE_FOR_EXTERNAL_QUALIFICATION | INSUFFICIENT_EVIDENCE | EXECUTION_QUOTE_AND_OPTIONOMICS_BLOCKED | NONE | Provider qualification, management-first runtime, five-branch evidence |
+| R8 Paper validation | ENTRY_GATE_BUILT | NOT_STARTED | EXECUTION_QUOTE_BLOCKED | FIRST_ORDER_NOT_AUTHORIZED | Machine-checkable readiness contract, zero broker submissions |
+| R9 graduation | NOT_STARTED | NOT_STARTED | NOT_APPLICABLE | LIVE_FORBIDDEN | No live authority |
+| P1 professional trader brain | CLOSED | PROMOTION_BLOCKED | READY | NONE | Canonical branch and management contracts |
+| P2A profit preservation | CLOSED | FORWARD_OUTCOMES_REQUIRED | READY | NONE | Capture, giveback, remaining reward, challengers |
+| P2B chain decision intelligence | CLOSED | OOS_ABLATION_REQUIRED | READY | NONE | Expiry, strike, structure, liquidity, exact-contract evidence |
+| P2C resolved outcomes | CLOSED | SAMPLE_ACCUMULATION_ACTIVE | READY | NONE | Causal subjects, observations, resolutions, label separation |
+| P2D label accumulation | CLOSED | SAMPLE_ACCUMULATION_ACTIVE | READY | NONE | Policy-learning records, regret labels, TCA, dataset v5 |
+| P2E time and path intelligence | CLOSED | SAMPLE_ACCUMULATION_ACTIVE | READY | NONE | Session, position path, action frontier, timing, dataset v6 |
+| P2F provider activation readiness | IMPLEMENTED | INSUFFICIENT_EVIDENCE | EXTERNAL_QUALIFICATION_BLOCKED | NONE | Transport, qualification, quote authority, state versions, alerts, R8 gate |
 
 Permanent safety state:
 

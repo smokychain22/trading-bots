@@ -2,7 +2,7 @@ import { createHash,randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { ManagementInputState } from './management-input-state.js';
 import type { ManagementActionFrontier,ManagementActionEconomics } from './management-action-frontier.js';
-import { buildPositionPathCheckpoint,type PositionPathCheckpoint } from './position-path-state.js';
+import { buildPositionPathCheckpoint,classifyPathCheckpoint,type PositionPathCheckpoint } from './position-path-state.js';
 import { buildActionInactionFrontier,type ActionEconomics,type ResearchAction } from './action-inaction-frontier.js';
 import { deriveMarketSessionState,deriveOptionTimeState } from './time-aware-state.js';
 import { routeStrategyTiming } from './strategy-timing-router.js';
@@ -42,6 +42,8 @@ export class PostgresP2EEvidenceStore{
       const prior=await this.pool.query(`SELECT checkpoint_json FROM research.theta_position_path_checkpoint
         WHERE chain_id=$1 ORDER BY observed_at,position_path_checkpoint_id`,[state.chainId]);
       const path=buildPositionPathCheckpoint(state,prior.rows.map((row)=>row.checkpoint_json as PositionPathCheckpoint));
+      const priorRow=prior.rows.at(-1);const priorPath=priorRow===undefined?null:priorRow.checkpoint_json as PositionPathCheckpoint;
+      const checkpoint=classifyPathCheckpoint(path,priorPath);
       const actions=mapManagementFrontierActions(managementFrontier);
       const frontier=buildActionInactionFrontier({subjectId:state.managementInputSnapshotId,observedAt:state.observedAt,actions});
       const session=deriveMarketSessionState({observedAt:state.observedAt,clock:state.market.marketOpen===null?null:{
@@ -57,9 +59,10 @@ export class PostgresP2EEvidenceStore{
       try{
         await client.query('BEGIN');
         await client.query(`INSERT INTO research.theta_position_path_checkpoint(position_path_checkpoint_id,chain_id,
-          management_input_snapshot_id,observed_at,path_classification,checkpoint_json,content_hash)
-          VALUES($1,$2,$3,$4,$5,$6::jsonb,$7) ON CONFLICT(content_hash) DO NOTHING`,[randomUUID(),state.chainId,
-          state.managementInputSnapshotId,state.observedAt,path.classification,JSON.stringify(path),path.checkpointIdentity]);
+          management_input_snapshot_id,observed_at,path_classification,checkpoint_json,content_hash,evidence_kind,checkpoint_reason)
+          VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9) ON CONFLICT(content_hash) DO NOTHING`,[randomUUID(),state.chainId,
+          state.managementInputSnapshotId,state.observedAt,path.classification,JSON.stringify(path),path.checkpointIdentity,
+          checkpoint.evidenceKind,checkpoint.checkpointReason]);
         await client.query(`INSERT INTO research.theta_action_inaction_frontier(action_inaction_frontier_id,
           management_input_snapshot_id,chain_id,observed_at,hold_evidence_state,frontier_json,content_hash)
           VALUES($1,$2,$3,$4,$5,$6::jsonb,$7) ON CONFLICT(content_hash) DO NOTHING`,[randomUUID(),

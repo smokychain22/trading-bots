@@ -1,50 +1,71 @@
 import { createHash,randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 
-export type OperatorControlCommand='PAUSE_NEW_ENTRIES'|'RESUME_NEW_ENTRIES'|'EMERGENCY_EXECUTION_LOCK';
+export type OperatorControlCommand='PAUSE_NEW_ENTRIES'|'RESUME_NEW_ENTRIES'|'EMERGENCY_EXECUTION_LOCK'|'CLEAR_EMERGENCY_LOCK';
 export interface OperatorControlState {readonly newEntriesPaused:boolean;readonly emergencyExecutionLock:boolean;
   readonly brokerSubmissionBlocked:boolean;readonly reconciliationEnabled:true;readonly managementEnabled:true;
-  readonly source:'DEFAULT'|'OPERATOR_EVENT';readonly asOf:string|null;}
+  readonly source:'DEFAULT'|'OPERATOR_EVENT';readonly asOf:string|null;readonly stateVersion:number;}
 const base=(paused:boolean):OperatorControlState=>({newEntriesPaused:paused,emergencyExecutionLock:false,
-  brokerSubmissionBlocked:paused,reconciliationEnabled:true,managementEnabled:true,source:'DEFAULT',asOf:null});
+  brokerSubmissionBlocked:paused,reconciliationEnabled:true,managementEnabled:true,source:'DEFAULT',asOf:null,stateVersion:0});
 export function applyOperatorControl(previous:OperatorControlState,command:OperatorControlCommand,at:string):OperatorControlState{
-  if(command==='PAUSE_NEW_ENTRIES')return {...previous,newEntriesPaused:true,brokerSubmissionBlocked:true,source:'OPERATOR_EVENT',asOf:at};
+  const nextVersion=previous.stateVersion+1;
+  if(command==='PAUSE_NEW_ENTRIES')return {...previous,newEntriesPaused:true,brokerSubmissionBlocked:true,source:'OPERATOR_EVENT',asOf:at,stateVersion:nextVersion};
   if(command==='EMERGENCY_EXECUTION_LOCK')return {...previous,newEntriesPaused:true,emergencyExecutionLock:true,
-    brokerSubmissionBlocked:true,source:'OPERATOR_EVENT',asOf:at};
-  return {...previous,newEntriesPaused:false,brokerSubmissionBlocked:previous.emergencyExecutionLock,source:'OPERATOR_EVENT',asOf:at};
+    brokerSubmissionBlocked:true,source:'OPERATOR_EVENT',asOf:at,stateVersion:nextVersion};
+  if(command==='CLEAR_EMERGENCY_LOCK')return {...previous,newEntriesPaused:true,emergencyExecutionLock:false,
+    brokerSubmissionBlocked:true,source:'OPERATOR_EVENT',asOf:at,stateVersion:nextVersion};
+  return {...previous,newEntriesPaused:false,brokerSubmissionBlocked:previous.emergencyExecutionLock,source:'OPERATOR_EVENT',asOf:at,stateVersion:nextVersion};
 }
 export class PostgresOperatorControlStore{
   private readonly pool:Pool;
   constructor(databaseUrl:string){this.pool=new Pool({connectionString:databaseUrl,max:2,connectionTimeoutMillis:5_000});}
   async close():Promise<void>{await this.pool.end();}
   async current(defaultPaused:boolean):Promise<OperatorControlState>{
-    const result=await this.pool.query(`SELECT resulting_state_json,requested_at FROM ops.theta_operator_control_event
-      ORDER BY requested_at DESC,created_at DESC LIMIT 1`);
+    const result=await this.pool.query(`SELECT resulting_state_json,requested_at,state_version FROM ops.theta_operator_control_event
+      ORDER BY state_version DESC,created_at DESC LIMIT 1`);
     if(result.rowCount!==1)return base(defaultPaused);
     const raw=result.rows[0]?.resulting_state_json as Partial<OperatorControlState>|undefined;
     return {newEntriesPaused:raw?.newEntriesPaused===true,emergencyExecutionLock:raw?.emergencyExecutionLock===true,
       brokerSubmissionBlocked:raw?.brokerSubmissionBlocked!==false,reconciliationEnabled:true,managementEnabled:true,
-      source:'OPERATOR_EVENT',asOf:String(result.rows[0]?.requested_at)};
+      source:'OPERATOR_EVENT',asOf:String(result.rows[0]?.requested_at),stateVersion:Number(result.rows[0]?.state_version??0)};
   }
   async apply(input:{actorRef:string;command:OperatorControlCommand;idempotencyKey:string;confirmed:boolean;
-    requestedAt:string;defaultPaused:boolean}):Promise<OperatorControlState>{
+    requestedAt:string;defaultPaused:boolean;observedStateVersion:number;reason:string|null}):Promise<OperatorControlState>{
     if(!input.confirmed)throw new Error('OPERATOR_CONFIRMATION_REQUIRED');
     if(!/^[A-Za-z0-9._:-]{12,128}$/.test(input.idempotencyKey))throw new Error('IDEMPOTENCY_KEY_INVALID');
-    const previous=await this.current(input.defaultPaused);
+    if(!Number.isInteger(input.observedStateVersion)||input.observedStateVersion<0)throw new Error('OBSERVED_STATE_VERSION_INVALID');
+    if(input.command==='CLEAR_EMERGENCY_LOCK'&&(input.reason??'').trim().length<12)throw new Error('EMERGENCY_CLEAR_REASON_REQUIRED');
+    const client=await this.pool.connect();
+    try{await client.query('BEGIN');await client.query(`SELECT pg_advisory_xact_lock(hashtext('theta-operator-control'))`);
+    const replay=await client.query(`SELECT resulting_state_json FROM ops.theta_operator_control_event WHERE idempotency_key=$1`,[input.idempotencyKey]);
+    if(replay.rowCount===1){await client.query('COMMIT');return replay.rows[0]?.resulting_state_json as OperatorControlState;}
+    const currentResult=await client.query(`SELECT resulting_state_json,requested_at,state_version FROM ops.theta_operator_control_event
+      ORDER BY state_version DESC,created_at DESC LIMIT 1`);
+    const raw=currentResult.rows[0]?.resulting_state_json as Partial<OperatorControlState>|undefined;
+    const previous=currentResult.rowCount===1?{newEntriesPaused:raw?.newEntriesPaused===true,emergencyExecutionLock:raw?.emergencyExecutionLock===true,
+      brokerSubmissionBlocked:raw?.brokerSubmissionBlocked!==false,reconciliationEnabled:true as const,managementEnabled:true as const,
+      source:'OPERATOR_EVENT' as const,asOf:String(currentResult.rows[0]?.requested_at),stateVersion:Number(currentResult.rows[0]?.state_version??0)}:base(input.defaultPaused);
+    if(previous.stateVersion!==input.observedStateVersion)throw new Error('OPERATOR_STATE_VERSION_STALE');
+    if(input.command==='CLEAR_EMERGENCY_LOCK'&&!previous.emergencyExecutionLock)throw new Error('EMERGENCY_LOCK_NOT_SET');
     const resulting=applyOperatorControl(previous,input.command,input.requestedAt);
     const actorHash=createHash('sha256').update(input.actorRef).digest('hex');
     const payload={command:input.command,previous,resulting,requestedAt:input.requestedAt};
     const contentHash=createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-    const result=await this.pool.query(`INSERT INTO ops.theta_operator_control_event(operator_control_event_id,
-      actor_ref_hash,command,idempotency_key,requested_at,confirmed,previous_state_json,resulting_state_json,audit_json,content_hash)
-      VALUES($1,$2,$3,$4,$5,true,$6::jsonb,$7::jsonb,$8::jsonb,$9)
+    const result=await client.query(`INSERT INTO ops.theta_operator_control_event(operator_control_event_id,
+      actor_ref_hash,command,idempotency_key,requested_at,confirmed,previous_state_json,resulting_state_json,audit_json,content_hash,
+      observed_state_version,state_version,reason,correlation_id,result)
+      VALUES($1,$2,$3,$4,$5,true,$6::jsonb,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,'APPLIED')
       ON CONFLICT(idempotency_key) DO NOTHING RETURNING resulting_state_json`,[randomUUID(),actorHash,input.command,
       input.idempotencyKey,input.requestedAt,JSON.stringify(previous),JSON.stringify(resulting),
-      JSON.stringify({sameOriginRequired:true,role:'OWNER_OPERATOR',executionAuthorized:false}),contentHash]);
+      JSON.stringify({sameOriginRequired:true,role:'OWNER_OPERATOR',executionAuthorized:false}),contentHash,
+      input.observedStateVersion,resulting.stateVersion,input.reason,randomUUID()]);
     if(result.rowCount===0){
-      const existing=await this.pool.query(`SELECT resulting_state_json FROM ops.theta_operator_control_event WHERE idempotency_key=$1`,[input.idempotencyKey]);
+      const existing=await client.query(`SELECT resulting_state_json FROM ops.theta_operator_control_event WHERE idempotency_key=$1`,[input.idempotencyKey]);
+      await client.query('COMMIT');
       return existing.rows[0]?.resulting_state_json as OperatorControlState;
     }
+    await client.query('COMMIT');
     return result.rows[0]?.resulting_state_json as OperatorControlState;
+    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
   }
 }

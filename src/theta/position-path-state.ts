@@ -87,3 +87,16 @@ export function buildPositionPathCheckpoint(input:ManagementInputState,
       ? input.contract.strike*input.contract.multiplier*input.contract.contracts*elapsedHours/24:null,
     markQuality:input.market.quoteQuality,evidence,unknownFields:[...new Set(unknown)].sort(),executionAuthorized:false};
 }
+
+export function classifyPathCheckpoint(current:PositionPathCheckpoint,previous:PositionPathCheckpoint|null):{
+  evidenceKind:'RAW_CYCLE_SNAPSHOT'|'SEMANTIC_PATH_CHECKPOINT';checkpointReason:string}{
+  if(previous===null)return {evidenceKind:'SEMANTIC_PATH_CHECKPOINT',checkpointReason:'ENTRY'};
+  if(current.classification!==previous.classification)return {evidenceKind:'SEMANTIC_PATH_CHECKPOINT',checkpointReason:'PATH_CLASSIFICATION_CHANGED'};
+  if(current.peakWholeChainPnl!==null&&(previous.peakWholeChainPnl===null||current.peakWholeChainPnl>previous.peakWholeChainPnl))
+    return {evidenceKind:'SEMANTIC_PATH_CHECKPOINT',checkpointReason:'NEW_PEAK'};
+  if(current.troughWholeChainPnl!==null&&(previous.troughWholeChainPnl===null||current.troughWholeChainPnl<previous.troughWholeChainPnl))
+    return {evidenceKind:'SEMANTIC_PATH_CHECKPOINT',checkpointReason:'NEW_TROUGH'};
+  if(current.dte!==previous.dte)return {evidenceKind:'SEMANTIC_PATH_CHECKPOINT',checkpointReason:'DTE_BUCKET_TRANSITION'};
+  if(current.evidence.eventState!==previous.evidence.eventState)return {evidenceKind:'SEMANTIC_PATH_CHECKPOINT',checkpointReason:'EVENT_STATE_CHANGED'};
+  return {evidenceKind:'RAW_CYCLE_SNAPSHOT',checkpointReason:'CYCLE_OBSERVATION'};
+}

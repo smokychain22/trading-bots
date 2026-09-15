@@ -121,6 +121,10 @@ export interface OptionomicsRequestOutcome {
   readonly httpStatus: number;
   readonly requestedAt: string;
   readonly retrievedAt: string;
+  readonly correlationId: string;
+  readonly providerRequestId: string | null;
+  readonly latencyMs: number;
+  readonly responseClassification: 'SUCCESS';
   readonly rateLimit: {
     readonly limit: string | null;
     readonly remaining: string | null;
@@ -147,11 +151,13 @@ export async function requestOptionomicsJsonBounded(
   for (;;) {
     attempt += 1;
     const requestedAt = now();
+    const startedAt = Date.now();
+    const correlationId = createHash('sha256').update(`${url.pathname}:${requestedAt}:${attempt}`).digest('hex').slice(0, 32);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
     try {
-      response = await fetchImpl(url, { headers, signal: controller.signal });
+      response = await fetchImpl(url, { headers: { ...headers, 'X-THETA-CORRELATION-ID': correlationId }, signal: controller.signal });
     } catch (error) {
       clearTimeout(timer);
       if (error instanceof Error && error.name === 'AbortError') {
@@ -161,7 +167,7 @@ export async function requestOptionomicsJsonBounded(
     }
     clearTimeout(timer);
 
-    if (response.status === 429 && attempt < maxAttempts) {
+    if ((response.status === 429 || response.status >= 500) && attempt < maxAttempts) {
       const retryAfter = parseRetryAfterSeconds(response.headers.get('retry-after'));
       await sleep((retryAfter ?? 1) * 1000);
       continue;
@@ -172,6 +178,10 @@ export async function requestOptionomicsJsonBounded(
       throw new OptionomicsProviderError(classifyErrorStatus(response.status), response.status, `${url.pathname} returned HTTP ${response.status}.`, retryAfter, attempt);
     }
 
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    if (!contentType.includes('application/json') && !contentType.includes('+json')) {
+      throw new OptionomicsProviderError('INVALID_PROVIDER_RESPONSE', response.status, `${url.pathname} returned an unsupported content type.`, null, attempt);
+    }
     let body: unknown;
     try {
       body = await response.json();
@@ -179,7 +189,9 @@ export async function requestOptionomicsJsonBounded(
       throw new OptionomicsProviderError('INVALID_PROVIDER_RESPONSE', response.status, `${url.pathname} returned a non-JSON body.`, null, attempt);
     }
     return {
-      body, httpStatus: response.status, requestedAt, retrievedAt: now(),
+      body, httpStatus: response.status, requestedAt, retrievedAt: now(), correlationId,
+      providerRequestId: response.headers.get('x-request-id') ?? response.headers.get('request-id'),
+      latencyMs: Math.max(0, Date.now() - startedAt), responseClassification: 'SUCCESS',
       rateLimit: {
         limit: response.headers.get('x-ratelimit-limit'), remaining: response.headers.get('x-ratelimit-remaining'),
         reset: response.headers.get('x-ratelimit-reset'), retryAfter: response.headers.get('retry-after'),

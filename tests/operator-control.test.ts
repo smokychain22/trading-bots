@@ -3,7 +3,7 @@ import test from 'node:test';
 import { applyOperatorControl,type OperatorControlState } from '../src/customer/operator-control.js';
 
 const initial:OperatorControlState={newEntriesPaused:false,emergencyExecutionLock:false,brokerSubmissionBlocked:false,
-  reconciliationEnabled:true,managementEnabled:true,source:'DEFAULT',asOf:null};
+  reconciliationEnabled:true,managementEnabled:true,source:'DEFAULT',asOf:null,stateVersion:0};
 test('pause blocks new broker submissions while management and reconciliation remain active',()=>{
   const state=applyOperatorControl(initial,'PAUSE_NEW_ENTRIES','2026-09-15T14:00:00Z');
   assert.equal(state.brokerSubmissionBlocked,true);assert.equal(state.managementEnabled,true);assert.equal(state.reconciliationEnabled,true);
@@ -12,4 +12,10 @@ test('emergency lock cannot be cleared by ordinary resume',()=>{
   const locked=applyOperatorControl(initial,'EMERGENCY_EXECUTION_LOCK','2026-09-15T14:00:00Z');
   const resumed=applyOperatorControl(locked,'RESUME_NEW_ENTRIES','2026-09-15T14:01:00Z');
   assert.equal(resumed.emergencyExecutionLock,true);assert.equal(resumed.brokerSubmissionBlocked,true);
+});
+test('dedicated emergency clear keeps submissions blocked and increments state version',()=>{
+  const locked=applyOperatorControl(initial,'EMERGENCY_EXECUTION_LOCK','2026-09-15T14:00:00Z');
+  const cleared=applyOperatorControl(locked,'CLEAR_EMERGENCY_LOCK','2026-09-15T14:01:00Z');
+  assert.equal(cleared.emergencyExecutionLock,false);assert.equal(cleared.newEntriesPaused,true);
+  assert.equal(cleared.brokerSubmissionBlocked,true);assert.equal(cleared.stateVersion,2);
 });

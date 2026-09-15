@@ -52,6 +52,7 @@ try {
     "045_outcome_subject_decision_identity",
     "046_real_label_materialization",
     "047_p2e_time_path_intelligence",
+    "048_p2f_provider_activation_readiness",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -119,6 +120,9 @@ try {
     ["research", "theta_action_inaction_frontier"],
     ["research", "theta_strategy_timing_snapshot"],
     ["ops", "theta_operator_control_event"],
+    ["research", "optionomics_provider_qualification_receipt"],
+    ["research", "quote_provider_qualification_receipt"],
+    ["ops", "theta_alert_event"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -386,6 +390,21 @@ try {
       AND column_name='return_cohort_definition_version') AS cohort_versioned`);
   if(Number(p2eProtection.rows[0]?.immutable_tables)!==4||Number(p2eProtection.rows[0]?.locked_execution_columns)!==4||
     !p2eProtection.rows[0]?.cohort_versioned)throw new Error('P2E_TIME_PATH_PROTECTION_MISSING');
+  const p2fProtection=await client.query(`SELECT
+    (SELECT count(DISTINCT event_object_table)::int FROM information_schema.triggers
+      WHERE trigger_name='reject_immutable_mutation' AND
+        ((trigger_schema='research' AND event_object_table IN
+          ('optionomics_provider_qualification_receipt','quote_provider_qualification_receipt'))
+        OR (trigger_schema='ops' AND event_object_table='theta_alert_event'))) AS immutable_tables,
+    EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='ops'
+      AND table_name='theta_operator_control_event' AND column_name='state_version' AND is_nullable='NO') AS state_versioned,
+    EXISTS(SELECT 1 FROM pg_indexes WHERE schemaname='ops' AND tablename='theta_operator_control_event'
+      AND indexname='ux_theta_operator_control_state_version') AS state_version_unique,
+    EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='research'
+      AND table_name='theta_position_path_checkpoint' AND column_name='checkpoint_reason' AND is_nullable='NO') AS semantic_checkpoints`);
+  if(Number(p2fProtection.rows[0]?.immutable_tables)!==3||!p2fProtection.rows[0]?.state_versioned||
+    !p2fProtection.rows[0]?.state_version_unique||!p2fProtection.rows[0]?.semantic_checkpoints)
+    throw new Error('P2F_PROVIDER_ACTIVATION_PROTECTION_MISSING');
   const fillFees = await client.query("SELECT is_nullable,column_default FROM information_schema.columns WHERE table_schema='trade' AND table_name='fill' AND column_name='fees'");
   if (fillFees.rows[0]?.is_nullable !== "YES" || fillFees.rows[0]?.column_default !== null)
     throw new Error("UNKNOWN_FILL_FEES_COERCED_TO_ZERO");
@@ -440,6 +459,7 @@ try {
     runtimeBehaviorDiagnostic:"ENFORCED",
     realLabelMaterialization:"ENFORCED",
     p2eTimePathIntelligence:"ENFORCED",
+    p2fProviderActivationReadiness:"ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeMasters: activeMasters.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,

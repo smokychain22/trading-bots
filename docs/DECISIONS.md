@@ -851,3 +851,13 @@ Follower copy work begins only from a broker-confirmed master fill or lifecycle 
 - Missing data: UNKNOWN and INVALID Optionomics values retain their states. Provider and independently derived exposure values remain separate when they disagree. Delta is a Greek and is never represented as win probability.
 - Counterfactual safety: Neighboring strikes, other expirations, other structures, and WAIT receive empty future-label contracts. Outcomes remain null and blocked until the future label pipeline can resolve them without lookahead.
 - Execution boundary: The entire P2B object is research evidence. Database constraints and the Python export loader require `execution_authorized=false` and `empirical_economics_ready=false`. The fresh trusted two-sided quote gate, AEGIS, and Paper/live controls are unchanged.
+
+## 2026-09-15: Separate P2F provider proof, quote authority, and R8 activation
+
+- Provider transport: Use one bounded server-only Optionomics transport with timeouts, cancellation, JSON validation, correlation IDs, rate-limit evidence, and bounded retry. Synthetic and replay modes cannot qualify real authentication.
+- Quote authority: A provider capability or successful login cannot clear the execution gate. Exact-contract, fresh, uncrossed two-sided evidence with explicit semantics, entitlement, and provenance is required independently.
+- Operator concurrency: Every state-changing operator command carries the observed monotonic state version. Stale writes fail, idempotent replays return the original result, and database serialization prevents last-write-wins races.
+- Emergency recovery: Clearing the emergency lock requires an explicit reason and leaves new entries paused. Resume cannot clear the emergency lock.
+- Evidence quality: Raw management-cycle observations remain immutable, while semantic checkpoints identify actual path changes. Rejected-candidate positive outcomes are descriptive and are not called formal false rejects.
+- Version safety: A strategy semantic version is immutable. A configuration-hash change requires a new version rather than an in-place rewrite.
+- Phase boundary: R7 engineering readiness, Optionomics real authentication, trusted execution-quote qualification, first-order readiness, and empirical training readiness are separate machine-checkable dimensions. No P2F component can authorize an order.

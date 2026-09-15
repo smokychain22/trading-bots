@@ -38,7 +38,7 @@ export function buildActionInactionFrontier(input:{subjectId:string;observedAt:s
 
 export interface InactionDiagnostics {
   readonly totalDecisions:number; readonly waitRate:number|null; readonly holdRate:number|null;
-  readonly actionRate:number|null; readonly opportunityCaptureRate:number|null; readonly falseRejectRate:number|null;
+  readonly actionRate:number|null; readonly opportunityCaptureRate:number|null; readonly rejectedCandidatePositiveOutcomeRate:number|null;
   readonly correctRejectRate:number|null; readonly unresolvedRate:number|null;
 }
 export function calculateInactionDiagnostics(rows:readonly {action:ResearchAction;resolvedOutcome:'POSITIVE'|'NEGATIVE'|'UNRESOLVED';selected:boolean}[]):InactionDiagnostics{
@@ -48,7 +48,7 @@ export function calculateInactionDiagnostics(rows:readonly {action:ResearchActio
   const ratio=(n:number,d:number):number|null=>d===0?null:n/d;
   return {totalDecisions:total,waitRate:ratio(wait,total),holdRate:ratio(hold,total),actionRate:ratio(total-wait-hold,total),
     opportunityCaptureRate:ratio(opportunities.filter((row)=>row.selected).length,opportunities.length),
-    falseRejectRate:ratio(resolvedRejected.filter((row)=>row.resolvedOutcome==='POSITIVE').length,resolvedRejected.length),
+    rejectedCandidatePositiveOutcomeRate:ratio(resolvedRejected.filter((row)=>row.resolvedOutcome==='POSITIVE').length,resolvedRejected.length),
     correctRejectRate:ratio(resolvedRejected.filter((row)=>row.resolvedOutcome==='NEGATIVE').length,resolvedRejected.length),
     unresolvedRate:ratio(rows.filter((row)=>row.resolvedOutcome==='UNRESOLVED').length,total)};
 }

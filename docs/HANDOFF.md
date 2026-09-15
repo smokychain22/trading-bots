@@ -2025,3 +2025,23 @@ RISKS: Small samples can make WAIT regret, giveback, and timing cohorts look pre
 WHAT THE OTHER AGENT SHOULD REVIEW: Quant research should test path and timing families one at a time and keep whole-chain episodes grouped. It must not turn descriptive states into fixed trade rules or bypass runtime gates.
 
 NEXT RECOMMENDED TASK: Apply migration 047, collect real changed-state evidence, qualify authenticated Optionomics capabilities, and run P2E cohorts through the existing R6 acceptance process. Keep all order submission blocked.
+
+OWNER: Codex
+
+TASK: Complete P2F provider-activation readiness, execution-quote qualification infrastructure, concurrency-safe operator controls, and the machine-checkable R8 entry gate.
+
+FILES CHANGED: Optionomics transport and qualification, provider-neutral quote qualification, operator API and controls, immutable alerts, decision explanations, semantic path checkpoints, strategy-version persistence, migration 048, verification tools, tests, phase ledger, and P2F documentation.
+
+WHAT WAS IMPLEMENTED: Server-only Optionomics transport now records sanitized correlation, request, latency, rate-limit, content-type, and retry evidence. Real, replay, and synthetic qualification modes remain distinct. Execution quotes require exact contract identity and individually qualified two-sided evidence. Operator commands use monotonic state versions, serialized database writes, idempotency, and a reasoned emergency-lock clear that leaves new entries paused. Immutable qualification receipts and alerts are available to the operator view. Strategy payload drift under one semantic version is rejected. The R8 receipt separates engineering readiness, provider readiness, Paper activation, and empirical evidence and cannot authorize an order.
+
+TESTS RUN: Full Node and Python suites, TypeScript, ESLint, build, security scan, browser/accessibility tests, migration 048, Production Neon invariants, synthetic/replay provider qualification, quote qualification, and Reticle gate where available.
+
+TEST RESULTS: Recorded in the P2F release receipt. Production database verification confirms migration 048, immutable provider receipts, state-version controls, semantic checkpoints, one master account, zero followers, and zero broker orders.
+
+KNOWN LIMITATIONS: Local Vercel pulls redact the Optionomics secret, so genuine authentication and entitlement evidence must be collected by the deployed server-side qualification route. No execution quote source has passed the trusted fresh two-sided contract. Resolved outcome labels and an empirically promoted management policy remain unavailable.
+
+RISKS: Authentication success could be mistaken for execution-quote authority, and a fresh trade print could be mistaken for a two-sided quote. The separate qualification receipts and hard execution gate prevent both shortcuts.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Quant research may evaluate normalized Optionomics feature families and outcome cohorts. It must preserve the provider/execution boundary, feature-label firewall, strategy version identity, and all execution locks.
+
+NEXT RECOMMENDED TASK: Run the deployed real-auth qualification from an authenticated operator session, qualify each documented capability with real response evidence, and continue collecting resolved Paper evidence. Stop before any broker order until the independent first-order and execution-quote gates both pass.
