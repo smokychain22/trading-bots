@@ -46,6 +46,7 @@ try {
     "039_cross_branch_candidate_evidence",
     "040_follower_paper_runtime",
     "041_management_policy_evidence",
+    "042_shadow_management_policy",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -101,6 +102,7 @@ try {
     ["copy", "follower_paper_action_plan_event"],
     ["copy", "follower_lifecycle_divergence_event"],
     ["copy", "follower_runtime_checkpoint"],
+    ["research", "theta_shadow_management_policy_evidence"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -250,6 +252,16 @@ try {
     FROM information_schema.columns WHERE table_schema='trade' AND table_name='management_action_frontier'`);
   if(managementPolicyEvidence.rows[0]?.column_count!==2||!managementPolicyEvidence.rows[0]?.evidence_shape)
     throw new Error('MANAGEMENT_POLICY_EVIDENCE_PROTECTION_MISSING');
+  const shadowManagementPolicy=await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='research'
+      AND event_object_table='theta_shadow_management_policy_evidence' AND trigger_name='reject_immutable_mutation') AS immutable_evidence,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='research.theta_shadow_management_policy_evidence'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%execution_authorized = false%') AS execution_locked,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='research.theta_shadow_management_policy_evidence'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%comparison_complete = false%') AS comparison_locked`);
+  if(!shadowManagementPolicy.rows[0]?.immutable_evidence||!shadowManagementPolicy.rows[0]?.execution_locked||
+    !shadowManagementPolicy.rows[0]?.comparison_locked)
+    throw new Error('SHADOW_MANAGEMENT_POLICY_PROTECTION_MISSING');
   const paperEvidenceAuthorization=await client.query(`SELECT
     EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='trade' AND table_name='order_intent'
       AND column_name='execution_tier') AS tier,

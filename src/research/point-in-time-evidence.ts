@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 
 export const pointInTimeEvidenceVersion = 'theta-point-in-time-evidence-v1' as const;
-export const datasetExportVersion = 'theta-r6-dataset-v1' as const;
+export const datasetExportVersion = 'theta-r6-dataset-v2' as const;
 
 const quality = z.enum(['GOOD','DEGRADED','STALE','UNKNOWN','INVALID','NOT_ENTITLED']);
 const timestamp = z.string().datetime({ offset:true });
@@ -38,6 +38,8 @@ const forbiddenFeatureKeys = new Set([
 
 function normalizedKey(value:string): string { return value.replace(/[^a-z0-9]/gi,'').toLowerCase(); }
 
+const observedManagementFinancialKeys = new Set(['wholechainpnl']);
+
 export function assertNoFutureLabels(value:unknown,path='features'): void {
   if (Array.isArray(value)) {
     value.forEach((entry,index) => assertNoFutureLabels(entry,`${path}[${index}]`));
@@ -45,7 +47,11 @@ export function assertNoFutureLabels(value:unknown,path='features'): void {
   }
   if (value === null || typeof value !== 'object') return;
   for (const [key,entry] of Object.entries(value as Record<string,unknown>)) {
-    if (forbiddenFeatureKeys.has(normalizedKey(key))) throw new Error(`FUTURE_LABEL_IN_FEATURE_PAYLOAD:${path}.${key}`);
+    const normalized = normalizedKey(key);
+    const observedManagementFact = path.startsWith('managementSnapshots') && observedManagementFinancialKeys.has(normalized);
+    if (forbiddenFeatureKeys.has(normalized) && !observedManagementFact) {
+      throw new Error(`FUTURE_LABEL_IN_FEATURE_PAYLOAD:${path}.${key}`);
+    }
     assertNoFutureLabels(entry,`${path}.${key}`);
   }
 }

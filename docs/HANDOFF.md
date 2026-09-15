@@ -1967,3 +1967,21 @@ RISKS: A fitted management model can still be poorly calibrated even when its co
 WHAT THE OTHER AGENT SHOULD REVIEW: Quant research should produce the versioned same-snapshot evidence contract and prove each active policy through paired walk-forward and untouched OOS evaluation. It must not mutate runtime thresholds or bypass the evidence, AEGIS, quote, inventory, and broker-reconciliation gates.
 
 NEXT RECOMMENDED TASK: Accumulate point-in-time and resolved Paper evidence, promote a management challenger only after empirical acceptance, and qualify a fresh two-sided execution quote. Keep follower submission and all live trading locked.
+
+OWNER: Codex
+
+TASK: Build the P2 dynamic profit-preservation and shadow management-policy evidence slice.
+
+FILES CHANGED: Claude's bounded profit-preservation research commit, TypeScript shadow management policy, autonomous management collector, migration 042 and invariants, deterministic research export v2, database readiness/verifier, focused tests, decisions, system matrix, and this handoff.
+
+WHAT WAS IMPLEMENTED: Every reconciled open THETA chain now produces immutable research evidence for profit capture, peak profit since collection began, giveback, remaining structural reward, secured capital-days, current option Greeks and context through the linked input snapshot, the full lifecycle-specific action frontier, fixed and dynamic exit challengers, STAY/SWITCH/WAIT costs, and categorical event-state change. Structural close marks and maximum remaining reward are kept separate from expected after-cost value. Unknown tail, continuation, execution, opportunity, flow-acceleration, and strategy-switch inputs remain null with explicit reasons. The research dataset contract advanced to v2 and includes the shadow record. Database constraints permanently force this provider to stay incomplete, non-preferred, unpromoted, and non-executable. A separate empirical-promotion validator requires reproducible dataset identity, embargoed train/validation/OOS windows, complete economics and risk metrics, versioned acceptance evidence, execution evidence, and approval. Even a complete receipt remains non-executable and can only become ready for human review.
+
+TESTS RUN: TypeScript, focused Node and Python research tests, ESLint, build, and security scan. Full Node/Python/browser, PostgreSQL migration/invariants, Production deployment, and CI are completed in the release receipt.
+
+KNOWN LIMITATIONS: This makes professional management questions observable and testable. It does not predict the future or prove a profitable exit policy. Production continues to use passive management because no forward management model has passed walk-forward and untouched OOS validation. Flow acceleration/reversal needs a real repeated provider series. Docker is unavailable locally, so PostgreSQL validation runs in CI and Production.
+
+RISKS: A fixed take-profit challenger can look attractive through selection bias, and a trailing giveback rule can overtrade noisy options. Any later promotion must compare whole-chain after-cost EV, tail loss, drawdown, capital-days, calibration, and execution quality across independent OOS episodes. Win rate or a round percentage alone is insufficient.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Quant research should consume dataset v2, fit no values into the original feature cutoff, and compare each challenger on the same episodes. It must keep the production policy provider unconfigured until an explicit empirical promotion receipt passes.
+
+NEXT RECOMMENDED TASK: Accumulate real point-in-time management observations and resolved whole-chain labels, then run paired challenger experiments. Restore authenticated Optionomics observations for flow and event deltas without weakening quote qualification.

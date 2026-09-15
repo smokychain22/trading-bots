@@ -33,6 +33,7 @@ import { MasterPaperActionHandoff, classifyMasterPaperActionExecution } from '..
 import { assembleManagementPaperPlans, compileManagementExecutionLegDirectives } from '../execution/management-paper-plan-assembly.js';
 import { AlpacaProviderError } from './alpaca-provider.js';
 import { OptionomicsProviderError } from './optionomics-provider.js';
+import { PostgresShadowManagementPolicyStore } from './shadow-management-policy.js';
 
 export const autonomousRuntimeVersion = 'theta-autonomous-runtime-v1' as const;
 export const autonomousPolicyVersion = 'theta-scheduler-policy-v1' as const;
@@ -323,6 +324,11 @@ export async function runAutonomousRuntimeCycle(
           master.connectionId, reconciliation.snapshotId, reconciliation.observedAt,
         );
         if (states.length === 0) return skipped('NO_OPEN_THETA_CHAINS');
+        // Persist research-only profit-preservation and strategy-switching
+        // evidence before the production policy boundary is evaluated. This
+        // collector has no conversion path to ManagementPolicyEvidence and
+        // therefore cannot authorize or dispatch a broker action.
+        await new PostgresShadowManagementPolicyStore(pool).assembleAndPersist(states);
         const frontiers = await buildRuntimeManagementFrontiers(
           states, dependencies.managementPolicyEvidenceProvider,
         );

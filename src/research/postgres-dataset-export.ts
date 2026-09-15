@@ -75,7 +75,11 @@ export class PostgresDatasetExporter {
         maf.selected_action AS "selectedAction",maf.second_best_action AS "secondBestAction",
         maf.decision_state AS "decisionState",maf.policy_version AS "managementPolicyVersion",
         maf.policy_evidence_hash AS "managementPolicyEvidenceHash",
-        COALESCE(maf.reason_codes_json,'[]'::jsonb) AS "reasonCodes"
+        COALESCE(maf.reason_codes_json,'[]'::jsonb) AS "reasonCodes",
+        COALESCE((SELECT to_jsonb(shadow_policy)-'created_at'
+          FROM research.theta_shadow_management_policy_evidence shadow_policy
+          WHERE shadow_policy.management_input_snapshot_id=mis.management_input_snapshot_id
+          ORDER BY shadow_policy.created_at DESC LIMIT 1),'{}'::jsonb) AS "shadowPolicyEvidence"
         FROM trade.management_input_snapshot mis LEFT JOIN trade.management_action_frontier maf USING(management_input_snapshot_id)
         WHERE mis.observed_at >= $1 AND mis.observed_at < $2 ORDER BY mis.observed_at,mis.management_input_snapshot_id`,parameters),
       this.pool.query(`SELECT lifecycle_application_id AS "lifecycleApplicationId",evidence_key AS "evidenceKey",

@@ -9,7 +9,7 @@ is aspirational.
 ## 1. Schema-version check
 
 `load_dataset_export` rejects any `schemaVersion` other than
-`DATASET_SCHEMA_VERSION = "theta-r6-dataset-v1"` (mirroring `point-in-time-
+`DATASET_SCHEMA_VERSION = "theta-r6-dataset-v2"` (mirroring `point-in-time-
 evidence.ts`'s `datasetExportVersion`) with `SCHEMA_VERSION_MISMATCH`. No
 best-effort parsing of an unrecognized schema is ever attempted.
 

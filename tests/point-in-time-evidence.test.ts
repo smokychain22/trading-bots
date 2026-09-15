@@ -60,3 +60,12 @@ test('nested generic outcome and result keys are excluded from point-in-time fea
     { features:{ realized_return:0.2 } },
   ]) assert.throws(()=>assertNoFutureLabels(payload),/FUTURE_LABEL_IN_FEATURE_PAYLOAD/);
 });
+
+test('current whole-chain mark is allowed only inside timestamped management evidence',()=>{
+  assert.doesNotThrow(()=>assertNoFutureLabels([{ inputFields:{ economics:{ wholeChainPnl:12 } } }],
+    'managementSnapshots'));
+  assert.throws(()=>assertNoFutureLabels({ economics:{ wholeChainPnl:12 } },'candidates'),
+    /FUTURE_LABEL_IN_FEATURE_PAYLOAD/);
+  assert.throws(()=>assertNoFutureLabels([{ futureOutcome:'WIN' }],'managementSnapshots'),
+    /FUTURE_LABEL_IN_FEATURE_PAYLOAD/);
+});

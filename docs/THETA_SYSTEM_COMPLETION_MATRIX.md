@@ -41,6 +41,7 @@ developer requests returned HTTP 401. Indicative quotes remain research-only.
 | Reconciliation before decisions | COMPLETE | First scheduled jobs are position and order reconciliation | None known |
 | Broker lifecycle classification | COMPLETE | Broker evidence feeds the replay-safe atomic lifecycle writer | More real Paper lifecycle observations are needed |
 | Management-first ordering | COMPLETE | Open-position review precedes new-risk discovery | Empirical management utility remains UNKNOWN |
+| Dynamic profit-preservation evidence | COMPLETE engineering, SHADOW only | Each open option chain records capture ratio, peak-since-capture, giveback, remaining reward, capital-days, all management alternatives, fixed/dynamic challenger dispositions, event-state change, and strategy-switch cost gaps | Forward HOLD value, tail risk, execution cost, redeployment EV, flow acceleration/reversal, and resolved labels remain empirical/provider gaps. No challenger can execute |
 | Market clock and calendar | COMPLETE | Both are required before an open-session scan | None known |
 | Point-in-time FusionSnapshot | COMPLETE | Immutable content hash and version lineage persisted | Optionomics families remain unavailable while auth fails |
 | Optionomics temporal evidence | COMPLETE engineering, dormant on auth failure | Consecutive compatible feature snapshots produce immutable research-only deltas for volatility, skew, term structure, and exposure. Source snapshots, elapsed time, units, method/policy version, missing reason, and content hash are retained | Needs authenticated repeated market-session observations and later OOS ablation. It is never execution authority |
@@ -100,6 +101,7 @@ developer requests returned HTTP 401. Indicative quotes remain research-only.
 
 ```text
 EV_MODEL_NOT_EMPIRICALLY_READY = YES
+PRODUCTION_ACTIVE_MANAGEMENT_POLICY = NOT_EMPIRICALLY_PROMOTED
 OPTIONOMICS_PRODUCTION_AUTH = FAIL_401_UNAUTHORIZED
 ALPACA_OPRA = NOT_ENTITLED_HTTP_403
 INDICATIVE_OPTION_DATA = RESEARCH_ONLY

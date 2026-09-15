@@ -1,6 +1,6 @@
 # THETA Production Research Export Contract
 
-Canonical version: `theta-r6-dataset-v1`
+Canonical version: `theta-r6-dataset-v2`
 
 This is the sole Production-to-research evidence interface for R6 and R8. The TypeScript exporter emits the camel-case wire contract consumed by `production_export_loader.py`. PostgreSQL column names and database-specific JSON column suffixes do not appear on the wire.
 
@@ -10,6 +10,15 @@ projections of all five canonical branches. This preserves two-leg Defined
 Risk structures and zero-order Recovery actions without pretending they are
 single-leg CSP candidates. These fields are point-in-time decision evidence,
 not profitability labels and not execution authority.
+
+Each `rows.managementSnapshots[]` record now includes
+`shadowPolicyEvidence`. This is the immutable P2 profit-preservation record:
+observed capture and giveback facts, remaining structural reward, complete
+lifecycle action names, challenger policies, strategy-switch cost gaps, and
+temporal signals. The database and research loader both require
+`execution_authorized=false`, `comparison_complete=false`, and a null shadow
+preferred action. Expected values and outcome labels remain outside this
+point-in-time feature record.
 
 ## Candidate identity and state
 

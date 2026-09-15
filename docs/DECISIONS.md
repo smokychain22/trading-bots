@@ -762,6 +762,16 @@ quote remains mandatory at the last pricing boundary.
 - Durable lineage: Migration 041 adds policy version and evidence hash to the immutable frontier. The atomic action-plan writer verifies both before creating a management decision or plan. Research exports include the same lineage.
 - Authorization: This closes an engineering seam only. No empirical policy provider is configured, the execution-quote gate is unchanged, follower submission remains disabled, and live trading remains forbidden.
 
+## 2026-09-15 - Treat profit percentages as evidence, never exit authority
+
+- Decision: Record current profit capture, the highest observed profit since evidence capture, profit giveback, remaining reward, secured capital-days, and the current pre-cost close mark for every open THETA option chain. A 5%, 10%, 20%, 30%, or 40% gain is a point-in-time fact, not an order rule.
+- Forward comparison: HOLD, CLOSE, ROLL, assignment, recovery, covered-call, and WAIT alternatives retain separate structural facts and empirical values. HOLD continuation value, tail risk, execution cost, and redeployment opportunity cost remain `UNKNOWN` until a calibrated model and real observations supply them.
+- Challenger policies: Fixed 25% through 90%, 21/14/7-DTE, 50%-or-21-DTE, hold-to-expiry, dynamic remaining-EV, dynamic giveback, event-aware, and regime-aware policies are persisted side by side as research challengers. None can select a production action.
+- Peak semantics: Peak profit is explicitly `SINCE_EVIDENCE_CAPTURE`. It is never presented as the lifetime peak when data collection began after entry.
+- Strategy switching: STAY, SWITCH, and WAIT share one record. Exit spread, new-entry spread, fees, slippage, foregone theta, capital churn, and added duration must be present before a switching policy can be compared. A prior loss never triggers a strategy switch by itself.
+- Hard boundary: The shadow provider has no conversion path to `ManagementPolicyEvidence`, stores `comparison_complete=false`, `execution_authorized=false`, and `NOT_EMPIRICALLY_PROMOTED` under database constraints, and leaves the production provider unconfigured.
+- Promotion contract: `theta-empirical-policy-promotion-v1` requires reproducible dataset identity, separated train/validation/OOS windows with embargo, the full economic/risk metric set, versioned acceptance evidence, execution evidence, and explicit approval. Passing it can only mark evidence ready for human review. The validator cannot self-promote a policy or authorize an order.
+
 ## 2026-09-15 - Derive temporal Optionomics evidence without creating a signal
 
 - Decision: Pair only strictly ordered, same-underlying, schema-compatible Optionomics feature snapshots and persist transparent scalar changes as immutable research evidence.

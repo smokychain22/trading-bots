@@ -23,9 +23,10 @@ test('Production exporter emits the stable camel-case research wire contract', a
   assert.match(sql, /canonical_strategy_branch_evidence branch_evidence/);
   assert.match(sql, /canonical_strategy_candidate_evidence candidate_evidence/);
   assert.match(sql, /so\.outcome AS "decisionDisposition"/);
+  assert.match(sql, /theta_shadow_management_policy_evidence shadow_policy/);
   assert.doesNotMatch(sql, /so\.outcome,so\.wait_reason/);
   assert.match(sql, /quote_observation_id AS "quoteObservationId"/);
-  assert.equal(artifact.schemaVersion, 'theta-r6-dataset-v1');
+  assert.equal(artifact.schemaVersion, 'theta-r6-dataset-v2');
   assert.equal(artifact.rowCounts.candidates, 0);
   assert.match(artifact.datasetHash, /^[0-9a-f]{64}$/);
 });

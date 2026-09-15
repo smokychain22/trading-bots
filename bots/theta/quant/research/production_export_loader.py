@@ -44,7 +44,7 @@ from research.dataset_contracts import (
     ThetaStrategyBranch,
 )
 
-DATASET_SCHEMA_VERSION = "theta-r6-dataset-v1"  # mirrors point-in-time-evidence.ts's datasetExportVersion exactly
+DATASET_SCHEMA_VERSION = "theta-r6-dataset-v2"  # mirrors point-in-time-evidence.ts's datasetExportVersion exactly
 
 
 class DatasetLoadError(Exception):
@@ -297,15 +297,25 @@ def _load_economic_episode(raw: Dict[str, Any]) -> EconomicEpisode:
 
 
 def _load_management_snapshot(raw: Dict[str, Any]) -> ManagementSnapshot:
+    shadow_policy = raw.get("shadowPolicyEvidence", {})
+    if not isinstance(shadow_policy, dict):
+        raise DatasetLoadError("INVALID_SHADOW_MANAGEMENT_POLICY_EVIDENCE")
+    if shadow_policy:
+        if shadow_policy.get("execution_authorized") is not False:
+            raise DatasetLoadError("SHADOW_MANAGEMENT_POLICY_EXECUTION_NOT_LOCKED")
+        if shadow_policy.get("comparison_complete") is not False:
+            raise DatasetLoadError("SHADOW_MANAGEMENT_POLICY_COMPARISON_NOT_LOCKED")
+        if shadow_policy.get("shadow_preferred_action") is not None:
+            raise DatasetLoadError("SHADOW_MANAGEMENT_POLICY_SELECTED_ACTION_FORBIDDEN")
     actions_raw = raw.get("actions", [])
     actions = tuple(
         ManagementActionValue(
-            action=ThetaStrategyAction(a["action"]), feasible=bool(a["feasible"]),
-            certain_cashflow=_optional_float(a.get("certainCashflow"), "management.certainCashflow"),
-            estimated_future_value=_optional_float(a.get("estimatedFutureValue"), "management.estimatedFutureValue"),
-            tail_risk_penalty=_optional_float(a.get("tailRiskPenalty"), "management.tailRiskPenalty"),
-            capital_days_penalty=_optional_float(a.get("capitalDaysPenalty"), "management.capitalDaysPenalty"),
-            execution_penalty=_optional_float(a.get("executionPenalty"), "management.executionPenalty"),
+            action=ThetaStrategyAction(a["action"]), feasible=a.get("feasibility") == "FEASIBLE",
+            certain_cashflow=_optional_float(a.get("certainEconomicPnl"), "management.certainEconomicPnl"),
+            estimated_future_value=_optional_float(a.get("expectedFutureValue"), "management.expectedFutureValue"),
+            tail_risk_penalty=_optional_float(a.get("downsideTailEstimate"), "management.downsideTailEstimate"),
+            capital_days_penalty=_optional_float(a.get("incrementalCapitalDays"), "management.incrementalCapitalDays"),
+            execution_penalty=_optional_float(a.get("executionCostRisk"), "management.executionCostRisk"),
             utility=_optional_float(a.get("utility"), "management.utility"),
         )
         for a in actions_raw
@@ -318,6 +328,7 @@ def _load_management_snapshot(raw: Dict[str, Any]) -> ManagementSnapshot:
         actions=actions, selected_action=ThetaStrategyAction(raw["selectedAction"]) if raw.get("selectedAction") else None,
         second_best_action=ThetaStrategyAction(raw["secondBestAction"]) if raw.get("secondBestAction") else None,
         decision_state=raw.get("decisionState"), reason_codes=tuple(raw.get("reasonCodes", [])),
+        shadow_policy_evidence=shadow_policy,
     )
 
 

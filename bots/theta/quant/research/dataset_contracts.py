@@ -302,6 +302,7 @@ class ManagementSnapshot:
     second_best_action: Optional[ThetaStrategyAction]
     decision_state: Optional[str]
     reason_codes: Tuple[str, ...]
+    shadow_policy_evidence: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

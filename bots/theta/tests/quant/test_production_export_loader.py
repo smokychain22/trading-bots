@@ -90,6 +90,30 @@ class HappyPathTests(unittest.TestCase):
         self.assertEqual(len(loaded.candidates), 1)
         self.assertEqual(len(loaded.candidate_sets), 1)
 
+    def test_shadow_management_evidence_loads_only_while_permanently_locked(self):
+        export = _build_valid_export()
+        export["rows"]["managementSnapshots"] = [{
+            "managementInputSnapshotId": "mis1", "fusionSnapshotId": "fs1", "chainId": "chain1",
+            "observedAt": "2026-01-01T00:00:00+00:00", "lifecycleState": "CSP_OPEN",
+            "inputFields": {}, "unknownFields": [], "changeFields": {}, "contentHash": "e" * 64,
+            "actions": [{"action": "HOLD", "feasibility": "FEASIBLE", "certainEconomicPnl": None,
+                         "expectedFutureValue": None, "downsideTailEstimate": None,
+                         "incrementalCapitalDays": None, "executionCostRisk": None, "utility": None}],
+            "selectedAction": "HOLD", "secondBestAction": None,
+            "decisionState": "SYSTEM_HOLD_MISSING_EVIDENCE", "reasonCodes": [],
+            "shadowPolicyEvidence": {"execution_authorized": False, "comparison_complete": False,
+                                     "shadow_preferred_action": None},
+        }]
+        export["rowCounts"]["managementSnapshots"] = 1
+        identity = {"schemaVersion": export["schemaVersion"], "sourceWindow": export["sourceWindow"],
+                    "featureSetVersion": export["featureSetVersion"], "strategyVersions": export["strategyVersions"],
+                    "rows": {key: sorted(value, key=canonical_json) for key, value in export["rows"].items()},
+                    "rowCounts": export["rowCounts"]}
+        export["datasetHash"] = sha256_hex(canonical_json(identity))
+        loaded = load_dataset_export(export)
+        self.assertTrue(loaded.management_snapshots[0].actions[0].feasible)
+        self.assertFalse(loaded.management_snapshots[0].shadow_policy_evidence["execution_authorized"])
+
     def test_unambiguous_legacy_shadow_router_branch_is_normalized(self):
         export = _build_valid_export()
         export["rows"]["shadowCandidates"] = [{
