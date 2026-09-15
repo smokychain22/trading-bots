@@ -388,3 +388,83 @@ BROKER_ORDERS_BY_CLAUDE = 0
 LIVE_OWNER_AUTHORIZATION = NOT_GRANTED
 LIVE_ELIGIBLE = NO
 ```
+
+## L. P2 addendum: options-first boundary correction + two new switching hypotheses
+
+**The boundary correction, applied retroactively to this document's own prior content:**
+H-Q-03/H-Q-04 (section F above) were already framed at the branch/portfolio level, not as
+underlying-price signals -- re-reviewed this pass and found consistent with the options-
+first boundary (their deterioration signals are VRP/skew/flow/gamma-regime/event-proximity,
+never "the stock went down"). No correction needed to what already existed.
+
+**Two new switching hypotheses added this pass, deliberately restated in strictly
+option-chain terms** (per the explicit boundary directive: the research unit is
+underlying+expiration+strike+call/put+structure+chain state, not ticker alone):
+
+- **`H-Q-05`** (VRP collapse, options-first): when the SAME candidate contract's own VRP
+  (horizon-matched IV-minus-RV, reusing `iv_realized_vol_research.py`'s existing alignment
+  discipline -- never the underlying's raw IV level substituted for a genuine comparison)
+  compresses on the SAME strike/expiration ladder, evaluating Defined Risk alongside
+  Conventional on that SAME ladder is the hypothesis -- not "the stock looks calmer."
+- **`H-Q-06`** (skew steepening, options-first): when 25-delta put-minus-call skew on the
+  SAME expiration steepens relative to its own recent history, the SPECIFIC downside
+  strikes a CSP would sell are pricing disproportionate tail risk -- a defined-risk
+  structure priced on that same steepened skew is the hypothesis, not a general
+  "volatility regime" label divorced from which strikes are actually affected.
+
+Both explicitly guard against the exact underlying-only-drift risk the boundary directive
+names: their `failure_mode` fields each state, verbatim, that substituting a market-wide or
+underlying-level proxy for the contract-specific measurement would silently readmit generic
+stock-signal thinking.
+
+**New repo finding this pass** (added to `THETA_EXTERNAL_REPO_PATTERN_MATRIX.md`'s own
+dossier list, not duplicated here): `dominickkubica/options-scanner` -- a real, actively-
+maintained options-chain screener whose `screener/scoring.py` was read in full. Two genuine
+technique findings: a log-ramp normalization for wide-range annualized-return distributions
+(directly reusable reasoning for any future THETA candidate-ranking work), and a
+composite-score weight-renormalization-over-present-components technique, offered as an
+alternative to THETA's current "skip the whole adapter when an input is missing" discipline
+for RANKING (not gating) contexts specifically. Full dossier, formulas, and the module's own
+striking self-critique ("nothing here has been validated against outcomes yet... the honest
+possible answer is no" -- independently convergent with THETA's own `EV_MODEL_NOT_
+EMPIRICALLY_READY` posture) are in the repo matrix document.
+
+### Options-first final receipt (this addendum only)
+
+```
+OPTIONS_FIRST_RESEARCH = YES
+
+CHAIN_LEVEL_ANALYSIS = GAPS
+  (one real repo deep-read at the chain/scoring level this pass; the directive's full
+  program -- 20+ named search categories, full-ladder decision synthesis across strikes --
+  was not exhaustively covered given this pass's time budget)
+
+CONTRACT_SELECTION_RESEARCH = GAPS
+  (H-Q-05/H-Q-06 are contract-level switching hypotheses; a dedicated "why THIS strike over
+  that one" research module, as opposed to a switching hypothesis, was not built this pass)
+
+EXPIRATION_SELECTION_RESEARCH = GAPS (existing DTE lattice + H-H-01's short-DTE scope note
+  cover this at the research-lattice level; no new expiration-specific work this pass)
+
+STRIKE_SELECTION_RESEARCH = GAPS (existing delta lattice covers strike selection via delta
+  targeting; no dedicated strike-ladder-comparison module built this pass)
+
+DELTA_SELECTION_RESEARCH = NO_CHANGE_REQUIRED (existing 6-bin delta lattice, extended two
+  sessions ago, already answers "why 0.15 instead of 0.25" as a research LATTICE -- the
+  specific empirical answer remains DATASET_ABSENT/EMPIRICAL_BLOCKER, unchanged)
+
+OPTION_LIQUIDITY_RESEARCH = GAPS (dominickkubica's liquidity-score component read at a
+  high level; not deep-read this pass)
+
+OPTION_STRUCTURE_COMPARISON = GAPS (H-Q-05/H-Q-06 compare Conventional vs. Defined Risk at
+  the ladder level; no dedicated CSP-vs-put-credit-spread structure-comparison module
+  beyond the existing H-D-01 gating)
+
+UNDERLYING_ONLY_STRATEGY_DRIFT = NONE FOUND
+  Reviewed this document's own prior content (H-Q-03/H-Q-04) and this pass's new additions
+  (H-Q-05/H-Q-06) -- all are framed at the contract/chain/branch level with explicit
+  failure-mode guards against underlying-only substitution. No drift found in what exists;
+  this is a narrower claim than "the full options-first program is complete," which it is
+  not, per the GAPS entries above.
+```
+

@@ -905,3 +905,117 @@ THETA's order-construction never risks the sell-limit-misread-as-open quirk
 once THETA-D exists, and (2) verify a cancelled order's status is re-checked
 before being treated as cancelled, guarding the exact race
 `milgar7969/alpaca-options-framework` found in production.
+
+## Deep-study dossier: dominickkubica/options-scanner (P2, options-first pass)
+
+Found this pass via a targeted search for real chain-level, contract-selection
+implementations (per the R7 "OPTIONS-TRADING RESEARCH BOUNDARY" directive's
+explicit requirement to prioritize repos operating on actual option-chain rows,
+not ticker-only signals).
+
+REPO: `dominickkubica/options-scanner`
+SHA/TAG: not pinned (read via GitHub API `contents` at `main`, 2026-09-15)
+LICENSE: **NONE (all rights reserved) -- REFERENCE_ONLY, no code adoptable**
+FILES_READ: `src/optscan/screener/scoring.py` (full)
+
+PROBLEM: a mature, actively-maintained (pushed same day as this research pass)
+options-selling screener that ranks CANDIDATE CONTRACTS/STRUCTURES (singles and
+spreads) from daily option-chain captures, then "validates its own scores
+against settled outcomes" (per its own README framing) -- i.e. it is explicitly
+built to answer whether its own contract-selection score actually predicts
+anything, not just to rank contracts.
+
+DATA MODEL: a `Candidate` (contract/structure) scored into an `Opportunity`
+carrying every component that produced its score, plus a `ScoreComponents`
+record (premium, iv_rank, liquidity, probability, event_risk) and warnings.
+TIMESTAMP MODEL: `fetched_at`/`asof`/`source` carried on every scored
+component -- matches THETA's own per-observation provenance discipline.
+QUOTE MODEL: consumes real bid/ask/OI/volume from daily chain snapshots
+(providers: Alpaca, yfinance, Robinhood order import -- `src/optscan/providers/`).
+STRATEGY MODEL: `screener/strategies/{singles,spreads}.py` -- explicit
+contract-selection logic, not a ticker-level signal.
+MANAGEMENT MODEL: not read this pass (out of scope for the file actually read).
+EXECUTION MODEL: none (a screener, not an execution system).
+FORMULAS (read directly, not paraphrased from a README):
+- **Log-ramp normalization for annualized return**, with an explicit,
+  well-reasoned justification worth quoting: the population of candidates'
+  annualized returns spans orders of magnitude (13% to 13,572% in this
+  repo's own stated range), so a LINEAR 0-1 ramp either pins everything
+  above a low ceiling at 1.0 or squashes the interesting middle below a high
+  ceiling. A log ramp treats a 10x jump as equally significant wherever it
+  sits on the scale -- "20% versus 200% is the same kind of gap as 200%
+  versus 2000%." **Directly relevant to any future THETA candidate-ranking
+  work that would normalize premium/return across a wide DTE/delta lattice.**
+- **Composite-score weight renormalization over present components only**,
+  rather than scoring a missing component as zero: "a missing IV rank shifts
+  its weight onto the others instead of dragging every score down equally."
+  This is a genuine, different TECHNIQUE from THETA's own current discipline
+  (which avoids fabricating a composite score at all when inputs are
+  missing) -- not necessarily better, but a real, precisely-specified
+  alternative worth naming for Codex/future research to weigh, since THETA's
+  own candidate ranking may face the exact same "IV rank isn't available yet
+  for a new symbol" problem this repo explicitly built the renormalization
+  for.
+- **Event-risk as a graduated penalty, not a hard exclusion**, when the
+  earnings filter itself is turned off (earnings -0.6, early-assignment
+  risk -0.3, ex-dividend -0.1, floored at 0.0) -- an explicit design choice
+  distinct from THETA's own typical hard-block-on-event-proximity pattern.
+  Worth noting as a genuine alternative (soft-penalty vs. hard-block for
+  event risk), not adopted here.
+- **Thin-surface warning at a named threshold** (`THIN_SURFACE_SOLVE_RATE =
+  0.5`: fewer than half of an expiry's contracts solving for a usable
+  implied vol triggers an explicit warning) -- a concrete, citable reference
+  point for THETA's own deferred sparse-chain-behavior caveat in
+  `volatility_surface_research.py` (the 0.5 threshold is THIS repo's own
+  choice, not independently justified for THETA -- cited as a reference
+  point, not adopted as THETA's own number).
+- Term-structure backwardation flagged as "usually means a pending event" --
+  independently converges with THETA's own existing term-structure research
+  hypothesis (backwardation as an event/stress signal).
+
+TESTS: not read this pass (out of scope for the one file read).
+
+ASSUMPTIONS/FAILURE_MODES (from the module's own docstring, not this
+branch's inference -- an unusually honest self-critique worth quoting
+directly): *"The weights and the normalization ramps are the least
+defensible numbers in the project. They encode opinions like '25 percent
+annualized is full marks' that nothing outside the config file justifies...
+nothing here has been validated against outcomes yet... the honest possible
+answer is no."* This is the SAME epistemic discipline THETA's own
+`EV_MODEL_NOT_EMPIRICALLY_READY` standing status encodes, independently and
+convergently arrived at by an unrelated author -- strong validation that
+this is the right posture for an unvalidated scoring/ranking system, not an
+excess of caution.
+
+LOOKAHEAD_RISK/SURVIVORSHIP_RISK: not assessable from the one file read
+(would require reading `storage/holdout.py` and `analytics/outcomes.py`,
+not done this pass -- their existence in the tree is itself a positive
+signal that this repo takes OOS/holdout discipline seriously, worth a
+deeper read in a future pass).
+
+THETA_ALREADY_HAS: the same missing-data-is-UNKNOWN-never-zero discipline,
+applied at the FIELD level; the same "no validated score until outcomes
+prove it" posture.
+THETA_MISSING: a composite-score renormalization TECHNIQUE for the specific
+case of ranking many candidates where some optional features (e.g. IV rank
+for a newly-tracked symbol) are legitimately absent for SOME candidates but
+not others -- THETA's current approach (documented in
+`research_family_adapters.py`) is to report `NOT_APPLICABLE`/skip a whole
+adapter rather than renormalize a composite score, which is more
+conservative but may be too conservative for a RANKING (as opposed to a
+pass/fail gate) use case.
+
+ADOPT_METHOD: log-ramp normalization for wide-range return distributions;
+the renormalize-on-missing-component technique, as a candidate approach for
+a future THETA candidate-ranking (not gating) context specifically.
+ADAPT: n/a (no code path, no-license repo).
+TEST_ONLY: n/a.
+REFERENCE_ONLY: the thin-surface-solve-rate warning pattern, the graduated
+event-risk-penalty design, the whole repo's holdout/outcomes-validation
+architecture (unread this pass, flagged for a future deeper read).
+REJECT: no code adoption regardless of technique value, per the no-license
+finding.
+
+EXACT_CODEX_RECOMMENDATION: none proposed -- these are research-technique
+options for a future THETA candidate-scoring/ranking design decision, not a
+current defect or required change.
