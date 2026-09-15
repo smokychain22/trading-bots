@@ -59,7 +59,11 @@ test('explanations distinguish WAIT and preserve missing evidence',()=>{
 test('alert dedup increments occurrence count without changing first seen',()=>{
   const a=mergeAlert(null,{identity:'worker:offline',type:'WORKER_OFFLINE',severity:'CRITICAL',source:'worker',lastSeenAt:'2026-09-15T10:00:00Z',state:'ACTIVE',relatedRef:null,evidence:{}});
   const b=mergeAlert(a,{identity:'worker:offline',type:'WORKER_OFFLINE',severity:'CRITICAL',source:'worker',lastSeenAt:'2026-09-15T10:01:00Z',state:'ACTIVE',relatedRef:null,evidence:{}});
+  const resolved=mergeAlert(b,{identity:'worker:offline',type:'WORKER_OFFLINE',severity:'INFO',source:'worker',lastSeenAt:'2026-09-15T10:02:00Z',state:'RESOLVED',relatedRef:null,evidence:{}});
+  const reopened=mergeAlert(resolved,{identity:'worker:offline',type:'WORKER_OFFLINE',severity:'CRITICAL',source:'worker',lastSeenAt:'2026-09-15T10:03:00Z',state:'ACTIVE',relatedRef:null,evidence:{}});
   assert.equal(b.occurrenceCount,2);assert.equal(b.firstSeenAt,a.firstSeenAt);
+  assert.equal(a.lifecycleTransition,'OPENED');assert.equal(b.lifecycleTransition,'REPEATED');
+  assert.equal(resolved.lifecycleTransition,'RESOLVED');assert.equal(reopened.lifecycleTransition,'REOPENED');
 });
 
 const checkpoint=(classification:PositionPathCheckpoint['classification'],pnl:number):PositionPathCheckpoint=>({version:'theta-position-path-v1',checkpointIdentity:'x',chainId:'c',managementInputSnapshotId:'m',observedAt:'2026-09-15T10:00:00Z',classification,

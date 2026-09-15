@@ -291,3 +291,37 @@ export async function readP2FOperatorStatus(databaseUrl?:string):Promise<P2FOper
         related_ref:x.related_ref==null?null:String(x.related_ref)}))};
   }catch{return empty;}finally{await pool.end();}
 }
+
+export interface P2GOperatorStatus {readonly simulation:{state:'COMPLETE'|'MISSING';scenario_id:string|null;terminal_state:string|null;
+  whole_chain_net_pnl:number|null;capital_days:number|null;receipt_hash:string|null};readonly dry_run:{state:'DRY_RUN_READY'|'DRY_RUN_BLOCKED'|'MISSING';
+  blocker_codes:readonly string[];previewed_at:string|null;receipt_hash:string|null};readonly provider_families:readonly {family:string;status:string;
+  qualified:boolean;sample_count:number;missing_field_count:number;stale_count:number;last_observed:string}[];
+  readonly hold:{state:string;observed_at:string|null};readonly alert_history:readonly {type:string;severity:string;state:string;
+  transition:string;first_seen:string;last_seen:string;count:number;source:string;related_ref:string|null}[];}
+export async function readP2GOperatorStatus(databaseUrl?:string):Promise<P2GOperatorStatus>{
+  const empty:P2GOperatorStatus={simulation:{state:'MISSING',scenario_id:null,terminal_state:null,whole_chain_net_pnl:null,
+    capital_days:null,receipt_hash:null},dry_run:{state:'MISSING',blocker_codes:[],previewed_at:null,receipt_hash:null},
+    provider_families:[],hold:{state:'HOLD_UNKNOWN',observed_at:null},alert_history:[]};
+  if(!databaseUrl)return empty;const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000});
+  try{const relation=await pool.query(`SELECT to_regclass('research.theta_synthetic_lifecycle_receipt') IS NOT NULL AS ready`);
+    if(relation.rows[0]?.ready!==true)return empty;
+    const [simulation,preview,families,hold,alerts]=await Promise.all([
+      pool.query(`SELECT scenario_id,terminal_state,whole_chain_net_pnl,capital_days,content_hash FROM research.theta_synthetic_lifecycle_receipt ORDER BY simulated_at DESC LIMIT 1`),
+      pool.query(`SELECT result,blocker_codes,previewed_at,receipt_hash FROM research.theta_paper_order_preview_receipt ORDER BY previewed_at DESC LIMIT 1`),
+      pool.query(`SELECT DISTINCT ON(family) family,status,qualified,sample_count,missing_field_count,stale_count,observed_at
+        FROM research.optionomics_family_health_observation ORDER BY family,observed_at DESC`),
+      pool.query(`SELECT hold_evidence_state,observed_at FROM research.theta_action_inaction_frontier ORDER BY observed_at DESC LIMIT 1`),
+      pool.query(`SELECT event_type,severity,state,COALESCE(evidence_json->>'lifecycleTransition','UNKNOWN') AS transition,
+        first_seen_at,last_seen_at,occurrence_count,source,related_ref FROM ops.theta_alert_event ORDER BY last_seen_at DESC LIMIT 50`)]);
+    const iso=(value:unknown)=>value instanceof Date?value.toISOString():value==null?null:String(value),s=simulation.rows[0],p=preview.rows[0],h=hold.rows[0];
+    return {simulation:s?{state:'COMPLETE',scenario_id:String(s.scenario_id),terminal_state:String(s.terminal_state),
+      whole_chain_net_pnl:Number(s.whole_chain_net_pnl),capital_days:Number(s.capital_days),receipt_hash:String(s.content_hash)}:empty.simulation,
+    dry_run:p?{state:p.result,blocker_codes:Array.isArray(p.blocker_codes)?p.blocker_codes.map(String):[],previewed_at:iso(p.previewed_at),receipt_hash:String(p.receipt_hash)}:empty.dry_run,
+    provider_families:families.rows.map((row)=>({family:String(row.family),status:String(row.status),qualified:row.qualified===true,
+      sample_count:Number(row.sample_count),missing_field_count:Number(row.missing_field_count),stale_count:Number(row.stale_count),last_observed:iso(row.observed_at)??'UNKNOWN'})),
+    hold:h?{state:String(h.hold_evidence_state),observed_at:iso(h.observed_at)}:empty.hold,
+    alert_history:alerts.rows.map((row)=>({type:String(row.event_type),severity:String(row.severity),state:String(row.state),
+      transition:String(row.transition),first_seen:iso(row.first_seen_at)??'UNKNOWN',last_seen:iso(row.last_seen_at)??'UNKNOWN',
+      count:Number(row.occurrence_count),source:String(row.source),related_ref:row.related_ref==null?null:String(row.related_ref)}))};
+  }catch{return empty;}finally{await pool.end();}
+}

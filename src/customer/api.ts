@@ -33,6 +33,7 @@ import {
   readLatestRuntimeBehavior,
   readOutcomeResearchVisibility,
   readP2FOperatorStatus,
+  readP2GOperatorStatus,
   verifyOptionomicsConnection,
 } from "./operator-readiness.js";
 import { executionMode } from "../execution/execution-control.js";
@@ -522,10 +523,11 @@ export default async function customerHandler(
         return store.current(environment.PAPER_PAUSE_NEW_ORDERS).finally(()=>store.close());
       })() : {newEntriesPaused:environment.PAPER_PAUSE_NEW_ORDERS,emergencyExecutionLock:false,
         brokerSubmissionBlocked:true,reconciliationEnabled:true,managementEnabled:true,source:"DEFAULT",asOf:null,stateVersion:0};
-      const [database,localWorker,runtimeEvidence,runtimeBehavior,outcomeResearch,p2fStatus] = await Promise.all([
+      const [database,localWorker,runtimeEvidence,runtimeBehavior,outcomeResearch,p2fStatus,p2gStatus] = await Promise.all([
         checkDatabaseReadiness(environment.DATABASE_URL),readLocalWorkerReadiness(environment.DATABASE_URL),
         readMasterRuntimeEvidence(environment.DATABASE_URL),readLatestRuntimeBehavior(environment.DATABASE_URL),
         readOutcomeResearchVisibility(environment.DATABASE_URL),readP2FOperatorStatus(environment.DATABASE_URL),
+        readP2GOperatorStatus(environment.DATABASE_URL),
       ]);
       const executionControl = {
         masterEnabled: environment.MASTER_PAPER_EXECUTION_ENABLED && !operatorControl.emergencyExecutionLock,
@@ -607,6 +609,7 @@ export default async function customerHandler(
           outcome_research: outcomeResearch,
           provider_qualification: p2fStatus.optionomics,
           active_alerts: p2fStatus.alerts,
+          p2g_evidence: p2gStatus,
           strategy_registry: strategyRegistry,
           r8_readiness: r8Readiness,
           execution_control: {
