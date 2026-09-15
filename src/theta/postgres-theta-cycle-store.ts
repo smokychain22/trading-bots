@@ -10,6 +10,12 @@ import {
   deriveOptionomicsTemporalFeatures,
   type OptionomicsFeatureSnapshotReference,
 } from './optionomics-temporal-features.js';
+import { normalizedOptionContractSchema } from './option-contract.js';
+import {
+  buildOptionsChainDecisionEvidence,
+  optionomicsChainAttachmentsFromFeatureState,
+  persistOptionsChainDecisionEvidence,
+} from './options-chain-decision-intelligence.js';
 
 const optionomicsTemporalResearchPolicy = {
   policyVersion: 'theta-optionomics-temporal-research-policy-v1',
@@ -151,6 +157,33 @@ export class PostgresThetaCycleStore {
       const strategyFrontierId = await this.persistCanonicalStrategyFrontier(client, fusionSnapshotId, cycle);
       if (strategyFrontierId !== null) {
         await this.persistRelationalCanonicalStrategyEvidence(client, strategyFrontierId, fusionSnapshotId, cycle);
+        const contracts = normalizedOptionContractSchema.array().parse(fusion.snapshot.contractCandidates);
+        const optionomicsState = objectField(fusion.snapshot, 'optionomicsFeatureState');
+        const optionomicsObject = jsonObject(optionomicsState);
+        const normalizedFeatures = (optionomicsObject.features ?? null) as JsonValue;
+        const underlyingState = jsonObject(objectField(fusion.snapshot, 'underlyingState'));
+        const chainUnderlying = cycle.selectedUnderlying
+          ?? (typeof underlyingState.symbol === 'string' ? underlyingState.symbol : null);
+        if (chainUnderlying === null) throw new Error('OPTIONS_CHAIN_UNDERLYING_MISSING');
+        const chainDecision = buildOptionsChainDecisionEvidence({
+          fusionSnapshotId,
+          snapshotContentHash: fusion.contentHash,
+          observedAt: String(fusion.snapshot.decisionTimeUtc),
+          underlying: chainUnderlying,
+          contracts,
+          frontier: cycle.strategyFrontier as CanonicalStrategyFrontier,
+          liquidityPolicy: {
+            policyVersion: 'theta-option-liquidity-research-unthresholded-v1',
+            maximumQuoteAgeSeconds: null,
+            maximumRelativeSpread: null,
+            minimumOpenInterest: null,
+            minimumVolume: null,
+            minimumBidSize: null,
+            minimumAskSize: null,
+          },
+          optionomicsAttachments: optionomicsChainAttachmentsFromFeatureState(normalizedFeatures),
+        });
+        await persistOptionsChainDecisionEvidence(client, chainDecision);
       }
 
       const candidates = await this.persistCandidates(client, fusionSnapshotId, cycle);

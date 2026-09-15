@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 
 export const pointInTimeEvidenceVersion = 'theta-point-in-time-evidence-v1' as const;
-export const datasetExportVersion = 'theta-r6-dataset-v2' as const;
+export const datasetExportVersion = 'theta-r6-dataset-v3' as const;
 
 const quality = z.enum(['GOOD','DEGRADED','STALE','UNKNOWN','INVALID','NOT_ENTITLED']);
 const timestamp = z.string().datetime({ offset:true });
@@ -174,6 +174,7 @@ export class PostgresPointInTimeEvidenceStore {
 export interface DatasetExportRows {
   readonly candidateSets:readonly unknown[]; readonly candidates:readonly unknown[]; readonly shadowCandidates:readonly unknown[];
   readonly strategyFrontiers:readonly unknown[];
+  readonly optionChainDecisions:readonly unknown[];
   readonly managementSnapshots:readonly unknown[]; readonly lifecycleOutcomes:readonly unknown[];
   readonly wholeChainOutcomes:readonly unknown[]; readonly executionEvidence:readonly unknown[];
 }

@@ -24,7 +24,7 @@ export class PostgresDatasetExporter {
   async export(request:DatasetExportRequest):Promise<DatasetExportArtifact> {
     if (Date.parse(request.end)<Date.parse(request.start)) throw new Error('DATASET_WINDOW_INVALID');
     const parameters = [request.start,request.end];
-    const [sets,candidates,shadow,frontiers,management,lifecycle,chains,quotes] = await Promise.all([
+    const [sets,candidates,shadow,frontiers,optionChains,management,lifecycle,chains,quotes] = await Promise.all([
       this.pool.query(`SELECT candidate_set_id AS "candidateSetId",decision_time AS "decisionTime",
         universe_evaluated_json AS "universeEvaluated",branches_considered_json AS "branchesConsidered",counts_json AS counts,
         best_candidate_id AS "bestCandidateId",second_best_candidate_id AS "secondBestCandidateId",
@@ -68,6 +68,18 @@ export class PostgresDatasetExporter {
           WHERE candidate_evidence.frontier_id=canonical_strategy_frontier.frontier_id),'[]'::jsonb) AS "candidateEvidence"
         FROM trade.canonical_strategy_frontier
         WHERE observed_at >= $1 AND observed_at < $2 ORDER BY observed_at,frontier_id`,parameters),
+      this.pool.query(`SELECT chain_decision_evidence_id AS "chainDecisionEvidenceId",
+        fusion_snapshot_id AS "fusionSnapshotId",observed_at AS "observedAt",underlying,
+        contract_version AS "contractVersion",liquidity_policy_version AS "liquidityPolicyVersion",
+        chain_snapshot_json AS "chainSnapshot",expiration_frontier_json AS "expirationFrontier",
+        strike_delta_frontier_json AS "strikeDeltaFrontier",structure_comparator_json AS "structureComparator",
+        optionomics_attachments_json AS "optionomicsAttachments",
+        contract_selection_receipt_json AS "contractSelectionReceipt",
+        counterfactual_label_contract_json AS "counterfactualLabelContract",
+        empirical_economics_ready AS "empiricalEconomicsReady",execution_authorized AS "executionAuthorized",
+        content_hash AS "contentHash"
+        FROM research.theta_option_chain_decision_evidence
+        WHERE observed_at >= $1 AND observed_at < $2 ORDER BY observed_at,chain_decision_evidence_id`,parameters),
       this.pool.query(`SELECT mis.management_input_snapshot_id AS "managementInputSnapshotId",
         mis.fusion_snapshot_id AS "fusionSnapshotId",mis.chain_id AS "chainId",mis.observed_at AS "observedAt",
         mis.lifecycle_state AS "lifecycleState",mis.input_json AS "inputFields",mis.unknown_fields_json AS "unknownFields",
@@ -110,7 +122,8 @@ export class PostgresDatasetExporter {
     }))];
     const artifact = buildDatasetExport({ sourceWindow:{start:request.start,end:request.end},exportedAt:request.exportedAt,
       featureSetVersion:request.featureSetVersion,strategyVersions:versions,rows:{candidateSets:sets.rows,candidates:candidates.rows,
-        shadowCandidates:shadow.rows,strategyFrontiers:frontiers.rows,managementSnapshots:management.rows,lifecycleOutcomes:lifecycle.rows,
+        shadowCandidates:shadow.rows,strategyFrontiers:frontiers.rows,optionChainDecisions:optionChains.rows,
+        managementSnapshots:management.rows,lifecycleOutcomes:lifecycle.rows,
         wholeChainOutcomes:chains.rows,executionEvidence:quotes.rows} });
     await this.pool.query(`INSERT INTO research.theta_dataset_export(dataset_export_id,source_window_start,source_window_end,
       exported_at,schema_version,feature_set_version,strategy_versions_json,row_counts_json,dataset_hash)

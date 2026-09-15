@@ -9,7 +9,7 @@ is aspirational.
 ## 1. Schema-version check
 
 `load_dataset_export` rejects any `schemaVersion` other than
-`DATASET_SCHEMA_VERSION = "theta-r6-dataset-v2"` (mirroring `point-in-time-
+`DATASET_SCHEMA_VERSION = "theta-r6-dataset-v3"` (mirroring `point-in-time-
 evidence.ts`'s `datasetExportVersion`) with `SCHEMA_VERSION_MISMATCH`. No
 best-effort parsing of an unrecognized schema is ever attempted.
 
@@ -26,7 +26,7 @@ keys. It verified the real Production export hash byte-for-byte on 2026-09-14.
 
 Production's own export sorts every row group by canonical JSON
 (`byCanonical`, per `point-in-time-evidence.ts`). The loader verifies all
-eight row families are already in that order and raises
+nine row families are already in that order and raises
 `NON_DETERMINISTIC_ORDERING` if not -- this catches a broken export
 pipeline (e.g. an unsorted intermediate step) independent of the hash
 check.

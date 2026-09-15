@@ -44,7 +44,7 @@ from research.dataset_contracts import (
     ThetaStrategyBranch,
 )
 
-DATASET_SCHEMA_VERSION = "theta-r6-dataset-v2"  # mirrors point-in-time-evidence.ts's datasetExportVersion exactly
+DATASET_SCHEMA_VERSION = "theta-r6-dataset-v3"  # mirrors point-in-time-evidence.ts's datasetExportVersion exactly
 
 
 class DatasetLoadError(Exception):
@@ -416,6 +416,7 @@ class LoadedDatasetExport:
     candidate_sets: List[CandidateSet]
     candidates: List[Candidate]
     shadow_candidates: List[ShadowCandidate]
+    option_chain_decisions: List[Dict[str, Any]]
     management_snapshots: List[ManagementSnapshot]
     lifecycle_outcomes: List[LifecycleEvent]
     whole_chain_outcomes: List[EconomicEpisode]
@@ -437,6 +438,21 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
     candidate_sets = [_load_candidate_set(r) for r in rows_raw.get("candidateSets", [])]
     candidates = [_load_candidate(r) for r in rows_raw.get("candidates", [])]
     shadow_candidates = [_load_shadow_candidate(r) for r in rows_raw.get("shadowCandidates", [])]
+    option_chain_decisions = list(rows_raw.get("optionChainDecisions", []))
+    for row in option_chain_decisions:
+        row_id = row.get("chainDecisionEvidenceId", "?")
+        if row.get("executionAuthorized") is not False:
+            raise DatasetLoadError(f"OPTION_CHAIN_EXECUTION_NOT_LOCKED:{row_id}")
+        if row.get("empiricalEconomicsReady") is not False:
+            raise DatasetLoadError(f"OPTION_CHAIN_EMPIRICAL_READINESS_FORBIDDEN:{row_id}")
+        label_contract = row.get("counterfactualLabelContract", {})
+        if not isinstance(label_contract, dict):
+            raise DatasetLoadError(f"OPTION_CHAIN_COUNTERFACTUAL_CONTRACT_INVALID:{row_id}")
+        for subject in label_contract.get("subjects", []):
+            if subject.get("outcome") is not None or subject.get("labelAvailableAt") is not None:
+                raise DatasetLoadError(f"OPTION_CHAIN_FUTURE_LABEL_PRESENT:{row_id}")
+            if subject.get("state") != "BLOCKED_ON_FUTURE_OUTCOME":
+                raise DatasetLoadError(f"OPTION_CHAIN_COUNTERFACTUAL_STATE_INVALID:{row_id}")
     management_snapshots = [_load_management_snapshot(r) for r in rows_raw.get("managementSnapshots", [])]
     lifecycle_outcomes = [_load_lifecycle_event(r) for r in rows_raw.get("lifecycleOutcomes", [])]
     whole_chain_outcomes = [_load_economic_episode(r) for r in rows_raw.get("wholeChainOutcomes", [])]
@@ -444,6 +460,7 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
 
     _assert_unique_ids(candidate_sets, lambda c: c.candidate_set_id, "candidate_set")
     _assert_unique_ids(candidates, lambda c: c.candidate_id, "candidate")
+    _assert_unique_ids(option_chain_decisions, lambda r: r.get("chainDecisionEvidenceId"), "option_chain_decision")
     _assert_unique_ids(execution_evidence, lambda e: e.quote_observation_id, "execution_evidence")
     _assert_unique_ids(whole_chain_outcomes, lambda e: e.outcome_label_id, "economic_episode")
 
@@ -456,7 +473,7 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
 
     for row_family in (
         "candidateSets", "candidates", "shadowCandidates", "strategyFrontiers",
-        "managementSnapshots", "lifecycleOutcomes", "wholeChainOutcomes", "executionEvidence",
+        "optionChainDecisions", "managementSnapshots", "lifecycleOutcomes", "wholeChainOutcomes", "executionEvidence",
     ):
         _assert_deterministic_order(rows_raw.get(row_family, []), canonical_json)
 
@@ -488,6 +505,7 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
         source_window_start=raw["sourceWindow"]["start"], source_window_end=raw["sourceWindow"]["end"],
         exported_at=raw["exportedAt"], feature_set_version=raw["featureSetVersion"],
         strategy_versions=list(raw.get("strategyVersions", [])),
+        option_chain_decisions=option_chain_decisions,
         candidate_sets=candidate_sets, candidates=candidates, shadow_candidates=shadow_candidates,
         management_snapshots=management_snapshots, lifecycle_outcomes=lifecycle_outcomes,
         whole_chain_outcomes=whole_chain_outcomes, execution_evidence=execution_evidence,

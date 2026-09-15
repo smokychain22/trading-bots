@@ -47,6 +47,7 @@ try {
     "040_follower_paper_runtime",
     "041_management_policy_evidence",
     "042_shadow_management_policy",
+    "043_options_chain_decision_intelligence",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -103,6 +104,7 @@ try {
     ["copy", "follower_lifecycle_divergence_event"],
     ["copy", "follower_runtime_checkpoint"],
     ["research", "theta_shadow_management_policy_evidence"],
+    ["research", "theta_option_chain_decision_evidence"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
@@ -343,6 +345,14 @@ try {
     EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='market' AND table_name='execution_quote_observation' AND constraint_type='CHECK') AS quote_checks`);
   if (!evidencePipeline.rows[0]?.immutable_features || !evidencePipeline.rows[0]?.immutable_labels || !evidencePipeline.rows[0]?.quote_checks)
     throw new Error("POINT_IN_TIME_EVIDENCE_PROTECTION_MISSING");
+  const chainDecisionProtection = await client.query(`SELECT
+    EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='research'
+      AND trigger_name='reject_immutable_mutation' AND event_object_table='theta_option_chain_decision_evidence') AS immutable_chain,
+    EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='research'
+      AND table_name='theta_option_chain_decision_evidence' AND constraint_type='CHECK'
+      AND constraint_name IS NOT NULL) AS chain_checks`);
+  if (!chainDecisionProtection.rows[0]?.immutable_chain || !chainDecisionProtection.rows[0]?.chain_checks)
+    throw new Error("OPTION_CHAIN_DECISION_PROTECTION_MISSING");
   const fillFees = await client.query("SELECT is_nullable,column_default FROM information_schema.columns WHERE table_schema='trade' AND table_name='fill' AND column_name='fees'");
   if (fillFees.rows[0]?.is_nullable !== "YES" || fillFees.rows[0]?.column_default !== null)
     throw new Error("UNKNOWN_FILL_FEES_COERCED_TO_ZERO");
@@ -386,6 +396,7 @@ try {
     optionomicsLayeredEvidence:"ENFORCED",
     optionomicsContextLineage:"ENFORCED",
     optionomicsTemporalEvidence:"ENFORCED",
+    optionsChainDecisionEvidence:"ENFORCED",
     masterPaperActionHandoff:"ENFORCED",
     managementActionPlanDispatch:"ENFORCED",
     paperEvidenceAuthorization:"ENFORCED",

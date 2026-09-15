@@ -1,5 +1,14 @@
 # Current Engineering Handoff
 
+## 2026-09-15 P2B options-chain decision intelligence
+
+Canonical implementation adds one research-only options-first evidence layer on top of the existing normalized contracts and canonical five-branch frontier. The atomic cycle writer now stores exact contract rows, expiry frontiers, strike/delta/liquidity ladders, CSP/Hold-Strike/Defined-Risk/Recovery/CC structures, WAIT, scoped Optionomics attachments, and a selection explanation under migration `043_options_chain_decision_intelligence`.
+
+Research export is now `theta-r6-dataset-v3`. The Python loader fails closed if an options-chain row claims execution authority, claims empirical readiness, or contains a future counterfactual outcome. No fixed delta, DTE, profit target, OI threshold, or spread threshold was made canonical.
+
+Production Neon has migrations 001 through 043. Full database verification reports one `MASTER_THETA_PAPER`, no followers, one encrypted credential, zero broker orders, and the Paper execution gate locked. External blockers remain Optionomics Production authentication and a qualified fresh exact-contract two-sided execution quote. Empirical blockers remain insufficient independent point-in-time episodes, resolved whole-chain outcomes, and execution replay evidence.
+
+
 ## 2026-09-10 functional connection milestone
 
 OWNER: Codex

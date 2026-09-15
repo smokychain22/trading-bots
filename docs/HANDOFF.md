@@ -1985,3 +1985,23 @@ RISKS: A fixed take-profit challenger can look attractive through selection bias
 WHAT THE OTHER AGENT SHOULD REVIEW: Quant research should consume dataset v2, fit no values into the original feature cutoff, and compare each challenger on the same episodes. It must keep the production policy provider unconfigured until an explicit empirical promotion receipt passes.
 
 NEXT RECOMMENDED TASK: Accumulate real point-in-time management observations and resolved whole-chain labels, then run paired challenger experiments. Restore authenticated Optionomics observations for flow and event deltas without weakening quote qualification.
+
+OWNER: Codex
+
+TASK: Complete P2B options-chain decision intelligence as a research-only Production vertical slice.
+
+FILES CHANGED: Canonical chain decision module, atomic cycle persistence, migration 043 and invariant checks, deterministic dataset v3 and Python intake validation, focused tests, database readiness, decisions, completion matrix, and handoff documents.
+
+WHAT WAS IMPLEMENTED: Every persisted canonical frontier now produces one immutable exact-contract chain record. It includes quote age and liquidity state, Greeks, IV, OI, volume, intrinsic/extrinsic and breakeven context, expiry comparisons, strike/delta/liquidity ladders, all five THETA structures plus WAIT, exact-scope Optionomics attachments, explanation reasons, and empty future counterfactual labels. Structural economics retain contract multipliers and covered-call whole-chain call-away outcomes. Empty contract sets remain valid WAIT evidence.
+
+TESTS RUN: Full Node suite, Python quant suite, TypeScript, ESLint, build, security scan, Neon migration 043, full database verifier, and migration 043 invariants. Browser tests were not required because no UI changed. Docker Desktop was unavailable locally, so the canonical Production Neon database provided PostgreSQL verification.
+
+TEST RESULTS: Node 839 tests passed with 5 environment-dependent skips. Python 470 tests passed. TypeScript, lint, build, security, database verification, and migration invariants passed. Security scan found zero findings.
+
+KNOWN LIMITATIONS: Optionomics authenticated data is still unavailable to the runtime, and neither Optionomics nor Alpaca currently proves a qualified fresh exact-contract execution quote. The new policy has no invented universal liquidity thresholds. Empirical after-cost values and future counterfactual outcomes remain null.
+
+RISKS: Structural premium and Pareto relationships can be mistaken for alpha. This evidence layer cannot promote a model, authorize execution, or support a profitability claim without resolved independent OOS evidence.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Quant research should consume dataset v3, validate each feature family and structure through point-in-time ablation, preserve whole-chain grouping, and never populate counterfactual labels before their availability time.
+
+NEXT RECOMMENDED TASK: Accumulate authenticated chain snapshots and resolved whole-chain outcomes, then run the P2B contract and structure challengers through the existing empirical promotion process. Keep all Paper execution blocked until the separate quote and readiness gates pass.

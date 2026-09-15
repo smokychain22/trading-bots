@@ -816,3 +816,11 @@ listed 21 evaluated contracts while the point-in-time ledger stored none.
 ## 2026-09-15: follower Paper runtime stays fully downstream and disabled
 
 Follower copy work begins only from a broker-confirmed master fill or lifecycle fact. A follower receives an independent account check, quantity, AEGIS result, current qualified quote, limit, action plan, and reconciliation stream. Follower action plans are immutable and constrained to `FOLLOWER_EXECUTION_DISABLED` with `execution_authorized=false`. No planner or customer route can submit an order. Missed entry, partial fill, close/roll, assignment, recovery, covered-call, call-away, pause, and restart divergence are follower-specific evidence rather than inferred from the master chain.
+
+## 2026-09-15: Compare options contracts and structures before empirical promotion
+
+- Decision: Persist one immutable options-chain decision evidence record inside the existing atomic THETA cycle transaction. It contains exact contract observations, expiry and strike/delta frontiers, same-snapshot strategy structures, scoped Optionomics context, and a human-readable selection receipt.
+- Ranking discipline: Liquidity thresholds are versioned policy inputs. The initial Production evidence policy records quote validity and missing fields without inventing universal OI, volume, spread, or size cutoffs. Structural facts remain separate from empirical expected value.
+- Missing data: UNKNOWN and INVALID Optionomics values retain their states. Provider and independently derived exposure values remain separate when they disagree. Delta is a Greek and is never represented as win probability.
+- Counterfactual safety: Neighboring strikes, other expirations, other structures, and WAIT receive empty future-label contracts. Outcomes remain null and blocked until the future label pipeline can resolve them without lookahead.
+- Execution boundary: The entire P2B object is research evidence. Database constraints and the Python export loader require `execution_authorized=false` and `empirical_economics_ready=false`. The fresh trusted two-sided quote gate, AEGIS, and Paper/live controls are unchanged.

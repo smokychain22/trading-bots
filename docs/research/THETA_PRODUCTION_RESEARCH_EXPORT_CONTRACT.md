@@ -1,6 +1,6 @@
 # THETA Production Research Export Contract
 
-Canonical version: `theta-r6-dataset-v2`
+Canonical version: `theta-r6-dataset-v3`
 
 This is the sole Production-to-research evidence interface for R6 and R8. The TypeScript exporter emits the camel-case wire contract consumed by `production_export_loader.py`. PostgreSQL column names and database-specific JSON column suffixes do not appear on the wire.
 
@@ -19,6 +19,14 @@ temporal signals. The database and research loader both require
 `execution_authorized=false`, `comparison_complete=false`, and a null shadow
 preferred action. Expected values and outcome labels remain outside this
 point-in-time feature record.
+
+Each `rows.optionChainDecisions[]` record contains the immutable P2B chain
+snapshot, expiry and strike/delta frontiers, same-snapshot structure
+comparisons, scoped Optionomics attachments, the selection explanation, and
+an empty future-label contract. The Production writer and research loader both
+require `executionAuthorized=false` and `empiricalEconomicsReady=false`.
+Counterfactual outcomes and availability timestamps remain null until a
+separate future label pipeline resolves them.
 
 ## Candidate identity and state
 

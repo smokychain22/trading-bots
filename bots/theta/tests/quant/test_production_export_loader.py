@@ -58,6 +58,8 @@ def _minimal_rows():
         "candidateSets": [_candidate_set_raw()],
         "candidates": [_candidate_raw()],
         "shadowCandidates": [],
+        "strategyFrontiers": [],
+        "optionChainDecisions": [],
         "managementSnapshots": [],
         "lifecycleOutcomes": [],
         "wholeChainOutcomes": [],
@@ -89,6 +91,35 @@ class HappyPathTests(unittest.TestCase):
         self.assertTrue(loaded.hash_verified)
         self.assertEqual(len(loaded.candidates), 1)
         self.assertEqual(len(loaded.candidate_sets), 1)
+
+    def test_locked_option_chain_evidence_loads_with_future_labels_empty(self):
+        export = _build_valid_export()
+        export["rows"]["optionChainDecisions"] = [{
+            "chainDecisionEvidenceId": "chain-evidence-1", "fusionSnapshotId": "fs1",
+            "observedAt": "2026-01-01T00:00:00+00:00", "underlying": "AAPL",
+            "executionAuthorized": False, "empiricalEconomicsReady": False,
+            "counterfactualLabelContract": {"subjects": [{"subjectType": "WAIT", "subjectId": "wait-1",
+                "outcome": None, "labelAvailableAt": None, "state": "BLOCKED_ON_FUTURE_OUTCOME"}]},
+        }]
+        export["rowCounts"]["optionChainDecisions"] = 1
+        identity = {"schemaVersion": export["schemaVersion"], "sourceWindow": export["sourceWindow"],
+                    "featureSetVersion": export["featureSetVersion"], "strategyVersions": export["strategyVersions"],
+                    "rows": {key: sorted(value, key=canonical_json) for key, value in export["rows"].items()},
+                    "rowCounts": export["rowCounts"]}
+        export["datasetHash"] = sha256_hex(canonical_json(identity))
+        loaded = load_dataset_export(export)
+        self.assertEqual(loaded.option_chain_decisions[0]["underlying"], "AAPL")
+
+    def test_option_chain_evidence_with_a_future_outcome_is_rejected(self):
+        export = _build_valid_export()
+        export["rows"]["optionChainDecisions"] = [{
+            "chainDecisionEvidenceId": "chain-evidence-1", "executionAuthorized": False,
+            "empiricalEconomicsReady": False, "counterfactualLabelContract": {"subjects": [{
+                "outcome": "WIN", "labelAvailableAt": None, "state": "BLOCKED_ON_FUTURE_OUTCOME"}]},
+        }]
+        export["rowCounts"]["optionChainDecisions"] = 1
+        with self.assertRaisesRegex(DatasetLoadError, "OPTION_CHAIN_FUTURE_LABEL_PRESENT"):
+            load_dataset_export(export)
 
     def test_shadow_management_evidence_loads_only_while_permanently_locked(self):
         export = _build_valid_export()

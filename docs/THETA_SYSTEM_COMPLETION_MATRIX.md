@@ -45,6 +45,7 @@ developer requests returned HTTP 401. Indicative quotes remain research-only.
 | Market clock and calendar | COMPLETE | Both are required before an open-session scan | None known |
 | Point-in-time FusionSnapshot | COMPLETE | Immutable content hash and version lineage persisted | Optionomics families remain unavailable while auth fails |
 | Optionomics temporal evidence | COMPLETE engineering, dormant on auth failure | Consecutive compatible feature snapshots produce immutable research-only deltas for volatility, skew, term structure, and exposure. Source snapshots, elapsed time, units, method/policy version, missing reason, and content hash are retained | Needs authenticated repeated market-session observations and later OOS ablation. It is never execution authority |
+| Options-chain decision intelligence | COMPLETE engineering, RESEARCH only | Migration 043 stores exact chain observations, expiry and strike/delta ladders, liquidity evidence, five-branch structure comparisons plus WAIT, scoped Optionomics attachments, explanation receipts, and empty counterfactual label contracts in the atomic cycle | Needs authenticated chain intelligence, resolved labels, execution replay, and OOS ablation before any policy promotion |
 | Candidate and WAIT evidence | COMPLETE engineering | THETA-Q PIT rows plus immutable relational branch/candidate evidence for all five canonical branches. Multi-leg Defined Risk structures and quantity-zero Recovery actions retain their native shapes. The deterministic research export nests both projections under each canonical frontier | Real market-session observations and resolved outcomes are still needed |
 | WAIT-paralysis and overtrading diagnostics | COMPLETE | Every completed Production scan persists causal WAIT class, funnel counts, consecutive WAITs, last broker-action age, near misses, AEGIS/quantity blocks and action-plan multiplicity. The operator API exposes the latest sanitized record | Outcome-based false-reject rates and calibrated activity limits require resolved episodes |
 | Canonical decision | COMPLETE | One versioned cross-branch authority is stored with receipt | Research-only structural winners intentionally cannot execute |
@@ -92,7 +93,7 @@ developer requests returned HTTP 401. Indicative quotes remain research-only.
 | R3 follower account foundation | COMPLETE engineering | Real multi-tenant beta validation |
 | R4 follower copy execution | LOCKED | Master strategy proof and explicit later activation |
 | R5 customer product | FUNCTIONAL, not current bottleneck | Real evidence must replace unavailable metrics over time |
-| R6 empirical research | NOT READY | Sufficient independent point-in-time candidates and resolved labels |
+| R6 empirical research | DATA CONTRACT READY, evidence insufficient | Dataset v3 exports exact options-chain decisions. Sufficient independent point-in-time candidates and resolved labels are still required |
 | R7 Paper autonomy | BLOCKED_EXTERNAL | Fresh trusted two-sided execution quote |
 | R8 Paper validation | NOT STARTED | First genuine Paper lifecycle |
 | R9 graduation | NOT READY | OOS economics, risk, execution, reliability and effective N |
