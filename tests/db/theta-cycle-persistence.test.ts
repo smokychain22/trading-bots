@@ -72,7 +72,7 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
     const strategyFrontier = buildCanonicalStrategyFrontier({
       snapshotId: fusion.contentHash, timestamp: now, strategyVersion: 'test-strategy-package', contracts: [contract], routing,
       stock: null, assignmentCapacityQty: 1, buyingPower: 100_000, brokerAllowedQty: 1,
-      sizingPolicy: { riskBudgetQtyCap: 1, collateralQtyCap: 1, concentrationQtyCap: 1,
+      sizingPolicy: { riskBudgetQtyCap: 0, collateralQtyCap: 1, concentrationQtyCap: 1,
         assignmentCapacityQtyCap: 1, tailRiskQtyCap: 1, correlationQtyCap: 1, liquidityQtyCap: 1,
         reducedStateMultiplier: 0.5 },
       aegisNewRiskState: 'ALLOW_FULL', eventState: 'CLEAR', unmanagedBrokerPositionCount: 0,
