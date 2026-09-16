@@ -62,8 +62,12 @@ export async function preflightDatabaseTarget(connectionString: string): Promise
       (SELECT count(*)::integer FROM information_schema.tables
         WHERE table_schema IN ('iam','copy','core','market','strategy','execution','risk','analytics',
           'trade','ops','research')) AS canonical_table_count,
-      CASE WHEN to_regclass('core.schema_migration') IS NULL THEN NULL
-        ELSE (SELECT version FROM core.schema_migration ORDER BY version DESC LIMIT 1) END AS migration_head`);
+      to_regclass('core.schema_migration')::text AS migration_relation`);
+    const migrationHead = result.rows[0]?.migration_relation === null
+      ? null
+      : String((await client.query(
+        'SELECT version FROM core.schema_migration ORDER BY version DESC LIMIT 1',
+      )).rows[0]?.version ?? '') || null;
 
     await client.query('BEGIN');
     await client.query('CREATE TEMPORARY TABLE theta_database_target_write_probe(id integer PRIMARY KEY)');
@@ -80,7 +84,7 @@ export async function preflightDatabaseTarget(connectionString: string): Promise
       existingSchemaCount: Number(row.schema_count),
       existingTableCount: Number(row.table_count),
       canonicalTableCount: Number(row.canonical_table_count),
-      migrationHead: typeof row.migration_head === 'string' ? row.migration_head : null,
+      migrationHead,
       transactionWriteRollback: 'PASS',
     };
   } finally {
