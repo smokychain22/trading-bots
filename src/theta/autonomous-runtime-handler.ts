@@ -18,7 +18,12 @@ import { runOptionomicsQuoteQualification, sanitizeQualificationReport } from '.
 import { qualifyOptionomicsProductionSurfaces } from '../providers/optionomics-mcp-qualification.js';
 import { qualifyOptionomicsProvider, persistOptionomicsQualification } from '../providers/optionomics-qualification.js';
 import { optionomicsConfigFromEnvironment } from './theta-shadow-once.js';
-import { classifyDatabaseTargetError, preflightDatabaseTarget } from '../database/target-preflight.js';
+import {
+  classifyDatabaseTargetError,
+  describeDatabaseEndpoint,
+  preflightDatabaseSource,
+  preflightDatabaseTarget,
+} from '../database/target-preflight.js';
 
 let runtimePool: Pool | null = null;
 
@@ -33,7 +38,7 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'DATABASE_TARGET_PREFLIGHT' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
@@ -42,6 +47,7 @@ export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'header
   if (value === 'optionomics-provider-qualification') return 'OPTIONOMICS_PROVIDER_QUALIFICATION';
   if (value === 'optionomics-quote-qualification') return 'OPTIONOMICS_QUOTE_QUALIFICATION';
   if (value === 'optionomics-mcp-qualification') return 'OPTIONOMICS_MCP_QUALIFICATION';
+  if (value === 'database-source-preflight') return 'DATABASE_SOURCE_PREFLIGHT';
   if (value === 'database-target-preflight') return 'DATABASE_TARGET_PREFLIGHT';
   return 'INVALID';
 }
@@ -116,8 +122,34 @@ export default async function autonomousRuntimeHandler(
     } catch (error) {
       const failure = classifyDatabaseTargetError(error);
       send(response, 503, {
-        error: 'AIVEN_DATABASE_PREFLIGHT_FAILED', ...failure, target: 'AIVEN_POSTGRESQL', migrationAuthorized: false,
+        error: 'AIVEN_DATABASE_PREFLIGHT_FAILED', ...failure,
+        endpoint: describeDatabaseEndpoint(environment.AIVEN_DATABASE_URL),
+        target: 'AIVEN_POSTGRESQL', migrationAuthorized: false,
         cutoverAuthorized: false, executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0,
+      });
+    }
+    return;
+  }
+  if (operation === 'DATABASE_SOURCE_PREFLIGHT') {
+    if (localIdentity.kind !== 'VALID') {
+      send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    if (!environment.DATABASE_URL) {
+      send(response, 503, { error: 'database_not_configured', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    try {
+      const preflight = await preflightDatabaseSource(environment.DATABASE_URL);
+      send(response, 200, {
+        source: 'NEON_LEGACY', preflight, mutationAuthorized: false, runtimeAuthority: false,
+        executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0,
+      });
+    } catch (error) {
+      const failure = classifyDatabaseTargetError(error);
+      send(response, 503, {
+        error: 'NEON_DATABASE_PREFLIGHT_FAILED', ...failure, source: 'NEON_LEGACY', mutationAuthorized: false,
+        runtimeAuthority: false, executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0,
       });
     }
     return;

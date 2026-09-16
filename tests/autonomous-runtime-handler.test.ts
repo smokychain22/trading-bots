@@ -54,6 +54,9 @@ test('local worker operation accepts only the runtime and read-only evidence sel
     'x-theta-operation': 'database-target-preflight',
   } }), 'DATABASE_TARGET_PREFLIGHT');
   assert.equal(parseLocalWorkerOperation({ headers: {
+    'x-theta-operation': 'database-source-preflight',
+  } }), 'DATABASE_SOURCE_PREFLIGHT');
+  assert.equal(parseLocalWorkerOperation({ headers: {
     'x-theta-operation': 'submit-order',
   } }), 'INVALID');
 });
