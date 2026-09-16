@@ -54,7 +54,7 @@ export async function validateDatabaseTarget(
         await client.query('ROLLBACK');
       } catch {
         try { await client.query('ROLLBACK'); } catch { /* rollback best effort */ }
-        throw codedError(`INVARIANT_${file.replace(/\.sql$/, '').toUpperCase()}_FAILED`);
+        throw codedError(`INV_${file.slice(0, 3)}_FAILED`);
       }
     }
 
