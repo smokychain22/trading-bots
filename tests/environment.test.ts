@@ -1,7 +1,27 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { writeFileSync, unlinkSync } from 'node:fs';
-import { assertProviderConfiguration, assertRuntimeConfiguration, loadEnvironment, loadEnvironmentFile, missingProviderVariables } from '../src/config/environment.js';
+import {
+  assertProviderConfiguration,
+  assertRuntimeConfiguration,
+  loadEnvironment,
+  loadEnvironmentFile,
+  missingProviderVariables,
+  normalizePostgresConnectionString,
+} from '../src/config/environment.js';
+
+test('Aiven sslmode=require retains encrypted libpq semantics without changing other database hosts', () => {
+  const aiven = normalizePostgresConnectionString(
+    'postgres://user:fake-secret@service.aivencloud.com:25934/defaultdb?sslmode=require',
+  );
+  const parsed = new URL(aiven);
+  assert.equal(parsed.hostname, 'service.aivencloud.com');
+  assert.equal(parsed.searchParams.get('sslmode'), 'require');
+  assert.equal(parsed.searchParams.get('uselibpqcompat'), 'true');
+
+  const neon = 'postgres://user:fake-secret@service.neon.tech/theta?sslmode=require';
+  assert.equal(normalizePostgresConnectionString(neon), new URL(neon).toString());
+});
 
 test('reports missing Alpaca settings by name only', () => {
   const environment = loadEnvironment({});

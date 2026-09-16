@@ -3,6 +3,25 @@ import { parse } from 'dotenv';
 import { z } from 'zod';
 
 const optionalUrl = z.string().url().optional();
+
+// Aiven's service URI uses libpq's sslmode=require semantics: encryption is
+// mandatory, while CA verification requires the separate provider CA file.
+// pg-connection-string v2 otherwise aliases `require` to `verify-full` and
+// rejects Aiven's provider chain. Restrict compatibility mode to the exact
+// Aiven domain and keep every other PostgreSQL URL unchanged.
+export const normalizePostgresConnectionString = (value: string): string => {
+  const url = new URL(value);
+  if (
+    url.hostname.endsWith('.aivencloud.com') &&
+    url.searchParams.get('sslmode') === 'require' &&
+    !url.searchParams.has('uselibpqcompat')
+  ) {
+    url.searchParams.set('uselibpqcompat', 'true');
+  }
+  return url.toString();
+};
+
+const optionalPostgresUrl = z.string().url().transform(normalizePostgresConnectionString).optional();
 const optionalSingleLineProviderIdentity = z.string().trim().min(1).refine(
   (value) => !/[\r\n]/.test(value),
   { message: 'must be a single-line value' },
@@ -16,9 +35,9 @@ const safeFlag = booleanFlag('false');
 const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
-  DATABASE_URL: optionalUrl,
-  DATABASE_MIGRATION_URL: optionalUrl,
-  AIVEN_DATABASE_URL: optionalUrl,
+  DATABASE_URL: optionalPostgresUrl,
+  DATABASE_MIGRATION_URL: optionalPostgresUrl,
+  AIVEN_DATABASE_URL: optionalPostgresUrl,
   REDIS_URL: optionalUrl,
   ALPACA_API_KEY: z.string().min(1).optional(),
   ALPACA_SECRET_KEY: z.string().min(1).optional(),
