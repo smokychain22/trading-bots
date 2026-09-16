@@ -81,7 +81,9 @@ test('MCP base64 bearer authenticates, discovers actual tools and returns field 
   assert.equal(report.mcp.headerPairStatus, 401);
   assert.equal(report.mcp.base64BearerStatus, 200);
   assert.equal(report.mcp.toolCount, 4);
-  assert.equal(report.mcp.evidence.every((entry) => entry.status === 'CALLED'), true);
+  assert.equal(report.rest.capabilities.length, 14);
+  assert.equal(report.rest.capabilities.every((entry) => entry.operationAlias.length > 0 && !entry.path.includes('?')), true);
+  assert.equal(report.mcp.evidence.filter((entry) => entry.matchedTool !== null).every((entry) => entry.status === 'CALLED'), true);
   assert.equal(report.mcp.evidence[0]?.fieldTypes['records[].bid'], 'number');
   const serialized = JSON.stringify(report);
   assert.equal(serialized.includes(String(environment.OPTIONOMICS_EMAIL)), false);
@@ -101,6 +103,7 @@ test('REST and MCP rejection stays NONE and never fabricates a tool catalog', as
   assert.equal(report.mcp.headerPairStatus, 401);
   assert.equal(report.mcp.base64BearerStatus, 401);
   assert.equal(report.mcp.toolCount, 0);
+  assert.equal(report.rest.capabilities.every((entry) => entry.status === 401), true);
   assert.equal(report.mcp.tools.length, 0);
   assert.equal(report.orderSubmission, 'DISABLED');
 });

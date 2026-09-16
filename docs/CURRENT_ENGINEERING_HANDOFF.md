@@ -1,5 +1,13 @@
 # Current Engineering Handoff
 
+## 2026-09-16 P2H Optionomics intelligence activation
+
+P2G passed its bounded final acceptance suite, 25 of 25 tests, and is closed. Production Optionomics authentication passed through the secured worker endpoint using both REST and MCP. The real MCP catalog contained 23 read-only tools. No secret values appeared in the response.
+
+P2H adds a hashed typed registry for the documented REST, MCP, and alert-webhook surfaces, cadence and provenance classification, strategy-specific provider requirements, and semantic guards for schema drift, contract identity, provider date fallback, zero sentinels, and heatmap metric mismatches. The Production qualification now inventories 14 documented REST capability paths and classifies every discovered MCP tool without treating discovery as populated evidence or execution authority.
+
+Production Neon is externally blocked by SQLSTATE `53000`, data-transfer quota exceeded. The worker is therefore fail-closed and degraded. No migration was added, no execution gate changed, and no order was submitted. See `docs/THETA_P2H_OPTIONOMICS_INTELLIGENCE_ACTIVATION.md`.
+
 ## 2026-09-15 P2C resolved outcome engine
 
 P2C is implemented on top of the accepted P2B baseline. Migration 044 adds immutable label-side relations. The restart-safe master worker invokes outcome resolution after broker lifecycle reconciliation. Dataset export is now `theta-r6-dataset-v4` and keeps feature rows separate from future labels.

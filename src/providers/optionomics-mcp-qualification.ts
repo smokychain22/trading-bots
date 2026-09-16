@@ -1,4 +1,10 @@
 import type { Environment } from '../config/environment.js';
+import {
+  classifyOptionomicsTool,
+  hashOptionomicsToolCatalog,
+  optionomicsEndpointRegistryHash,
+  type OptionomicsToolCapability,
+} from '../theta/optionomics-intelligence-contract.js';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -39,13 +45,22 @@ export interface SanitizedHttpProbe {
   readonly responseFieldNames: readonly string[];
 }
 
+export interface SanitizedRestCapabilityProbe extends SanitizedHttpProbe {
+  readonly operationAlias: string;
+  readonly path: string;
+  readonly topLevelKind: 'OBJECT' | 'ARRAY' | 'SCALAR' | 'EMPTY';
+}
+
 export interface McpToolSummary {
   readonly name: string;
   readonly argumentSchema: unknown;
 }
 
 export interface McpToolEvidence {
-  readonly requestedCapability: 'UNUSUAL_ACTIVITY' | 'OPTIONS_FLOW' | 'OPTIONS_CHAIN' | 'NET_FLOW';
+  readonly requestedCapability:
+    | 'UNUSUAL_ACTIVITY' | 'OPTIONS_FLOW' | 'OPTIONS_CHAIN' | 'NET_FLOW'
+    | 'OPTION_METRICS' | 'IV_TERM_STRUCTURE' | 'GAMMA_EXPOSURE' | 'DARK_POOL_LEVELS'
+    | 'EVENTS' | 'NEWS' | 'EARNINGS' | 'DISCLOSURES' | 'LEVELS' | 'STOCK_QUOTE';
   readonly matchedTool: string | null;
   readonly status: 'AVAILABLE' | 'CALLED' | 'REQUIRED_ARGUMENTS_UNSUPPORTED' | 'NOT_FOUND' | 'CALL_FAILED';
   readonly httpStatus: number | null;
@@ -64,6 +79,7 @@ export interface OptionomicsMcpQualificationReport {
     readonly tickersHeaderPair: SanitizedHttpProbe;
     readonly overviewRawBearer: SanitizedHttpProbe;
     readonly tickersRawBearer: SanitizedHttpProbe;
+    readonly capabilities: readonly SanitizedRestCapabilityProbe[];
   };
   readonly mcp: {
     readonly headerPairStatus: number | null;
@@ -75,8 +91,11 @@ export interface OptionomicsMcpQualificationReport {
     readonly authenticatedScheme: 'HEADER_PAIR' | 'BASE64_BEARER' | 'NONE';
     readonly toolCount: number;
     readonly tools: readonly McpToolSummary[];
+    readonly toolCatalogHash: string;
+    readonly capabilities: readonly OptionomicsToolCapability[];
     readonly evidence: readonly McpToolEvidence[];
   };
+  readonly publicApiContractHash: string;
   readonly authenticatedSurface: 'REST' | 'MCP' | 'BOTH' | 'NONE';
   readonly orderSubmission: 'DISABLED';
 }
@@ -215,7 +234,7 @@ const safeWwwAuthenticateScheme = (value: string | null): string | null => {
 };
 
 const httpProbe = async (
-  path: '/api/v1/overview' | '/api/v1/tickers',
+  path: string,
   headers: Readonly<Record<string, string>>,
   fetchImpl: typeof fetch,
 ): Promise<SanitizedHttpProbe> => {
@@ -241,6 +260,59 @@ const httpProbe = async (
       status: null, contentType: null, errorFieldPresent: false, rateLimitHeadersPresent: false,
       retryAfterPresent: false, wwwAuthenticatePresent: false, wwwAuthenticateScheme: null,
       requestIdHeader: null, serverDatePresent: false, responseFieldNames: [],
+    };
+  }
+};
+
+const documentedRestCapabilityProbes = Object.freeze([
+  { operationAlias: 'stocks.quote', path: '/api/v1/stocks/SPY/quote' },
+  { operationAlias: 'stocks.options', path: '/api/v1/stocks/SPY/options' },
+  { operationAlias: 'stocks.metrics', path: '/api/v1/stocks/SPY/metrics' },
+  { operationAlias: 'stocks.heatmap.gamma', path: '/api/v1/stocks/SPY/heatmap?metric=gamma_exposure' },
+  { operationAlias: 'stocks.heatmap.vanna', path: '/api/v1/stocks/SPY/heatmap?metric=vanna_exposure' },
+  { operationAlias: 'stocks.heatmap.charm', path: '/api/v1/stocks/SPY/heatmap?metric=charm_exposure' },
+  { operationAlias: 'flow.aggregates', path: '/api/v1/flow/aggregates' },
+  { operationAlias: 'flow.net', path: '/api/v1/flow/net?symbol=SPY' },
+  { operationAlias: 'levels.flow', path: '/api/v1/levels?symbol=SPY' },
+  { operationAlias: 'levels.dark_pool', path: '/api/v1/dark_pool_levels?symbol=SPY' },
+  { operationAlias: 'events.list', path: '/api/v1/events?symbol=SPY&per_page=5' },
+  { operationAlias: 'news.symbol', path: '/api/v1/stocks/SPY/news?per_page=5' },
+  { operationAlias: 'disclosures.symbol', path: '/api/v1/stocks/SPY/disclosure_trades?per_page=5' },
+  { operationAlias: 'earnings.list', path: '/api/v1/stocks/SPY/earning_filings' },
+]);
+
+const restCapabilityProbe = async (
+  contract: typeof documentedRestCapabilityProbes[number],
+  headers: Readonly<Record<string, string>>,
+  fetchImpl: typeof fetch,
+): Promise<SanitizedRestCapabilityProbe> => {
+  try {
+    const response = await fetchImpl(`https://optionomics.ai${contract.path}`, { method: 'GET', headers });
+    const contentType = response.headers.get('content-type');
+    const body: unknown = contentType?.includes('application/json') ? await response.json().catch(() => null) : await response.text().catch(() => '');
+    const bodyRecord = asRecord(body);
+    const topLevelKind = body === null || body === '' ? 'EMPTY' : Array.isArray(body) ? 'ARRAY' : bodyRecord !== null ? 'OBJECT' : 'SCALAR';
+    return {
+      operationAlias: contract.operationAlias,
+      path: contract.path.split('?')[0] ?? contract.path,
+      status: response.status,
+      contentType,
+      errorFieldPresent: bodyRecord !== null && ('error' in bodyRecord || 'message' in bodyRecord),
+      rateLimitHeadersPresent: ['x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset'].some((name) => response.headers.has(name)),
+      retryAfterPresent: response.headers.has('retry-after'),
+      wwwAuthenticatePresent: response.headers.has('www-authenticate'),
+      wwwAuthenticateScheme: safeWwwAuthenticateScheme(response.headers.get('www-authenticate')),
+      requestIdHeader: ['x-request-id', 'x-correlation-id', 'traceparent'].find((name) => response.headers.has(name)) ?? null,
+      serverDatePresent: response.headers.has('date'),
+      responseFieldNames: bodyRecord === null ? [] : Object.keys(bodyRecord).filter(safeFieldName).sort().slice(0, 80),
+      topLevelKind,
+    };
+  } catch {
+    return {
+      operationAlias: contract.operationAlias, path: contract.path.split('?')[0] ?? contract.path,
+      status: null, contentType: null, errorFieldPresent: false, rateLimitHeadersPresent: false,
+      retryAfterPresent: false, wwwAuthenticatePresent: false, wwwAuthenticateScheme: null,
+      requestIdHeader: null, serverDatePresent: false, responseFieldNames: [], topLevelKind: 'EMPTY',
     };
   }
 };
@@ -303,7 +375,7 @@ const parsedToolPayload = (message: JsonRecord | null): unknown => {
   return result;
 };
 
-const toolArguments = (schema: unknown): JsonRecord | null => {
+const toolArguments = (toolName: string, schema: unknown): JsonRecord | null => {
   const schemaRecord = asRecord(schema);
   const properties = asRecord(schemaRecord?.properties) ?? {};
   const required = Array.isArray(schemaRecord?.required) ? schemaRecord.required.filter((value): value is string => typeof value === 'string') : [];
@@ -312,6 +384,7 @@ const toolArguments = (schema: unknown): JsonRecord | null => {
     if (/^(symbol|ticker|underlying)$/i.test(key)) args[key] = 'SPY';
     else if (/^(limit|count|page_size|max_results)$/i.test(key)) args[key] = 20;
     else if (/^(hours|window_hours)$/i.test(key)) args[key] = 8;
+    else if (key === 'type' && toolName === 'options_flow') args[key] = 'bullish';
     else return null;
   }
   for (const key of Object.keys(properties)) {
@@ -325,10 +398,20 @@ const capabilityMatchers: ReadonlyArray<{
   capability: McpToolEvidence['requestedCapability'];
   pattern: RegExp;
 }> = [
-  { capability: 'UNUSUAL_ACTIVITY', pattern: /unusual.*activity|activity.*unusual/i },
-  { capability: 'OPTIONS_FLOW', pattern: /options?.*flow|flow.*options?/i },
-  { capability: 'OPTIONS_CHAIN', pattern: /options?.*chain|chain.*options?/i },
-  { capability: 'NET_FLOW', pattern: /net.*flow|flow.*net/i },
+  { capability: 'UNUSUAL_ACTIVITY', pattern: /^unusual_activity$/i },
+  { capability: 'OPTIONS_FLOW', pattern: /^options_flow$/i },
+  { capability: 'OPTIONS_CHAIN', pattern: /^options_chain$/i },
+  { capability: 'NET_FLOW', pattern: /^net_flow$/i },
+  { capability: 'OPTION_METRICS', pattern: /^option_metrics$/i },
+  { capability: 'IV_TERM_STRUCTURE', pattern: /^iv_term_structure$/i },
+  { capability: 'GAMMA_EXPOSURE', pattern: /^gamma_exposure$/i },
+  { capability: 'DARK_POOL_LEVELS', pattern: /^dark_pool_levels$/i },
+  { capability: 'EVENTS', pattern: /^events$/i },
+  { capability: 'NEWS', pattern: /^news$/i },
+  { capability: 'EARNINGS', pattern: /^earnings_analyses$/i },
+  { capability: 'DISCLOSURES', pattern: /^insider_trades$/i },
+  { capability: 'LEVELS', pattern: /^support_resistance_levels$/i },
+  { capability: 'STOCK_QUOTE', pattern: /^stock_quote$/i },
 ];
 
 const inspectTools = async (
@@ -344,7 +427,7 @@ const inspectTools = async (
       evidence.push({ requestedCapability: target.capability, matchedTool: null, status: 'NOT_FOUND', httpStatus: null, fieldTypes: {} });
       continue;
     }
-    const args = toolArguments(tool.argumentSchema);
+    const args = toolArguments(tool.name, tool.argumentSchema);
     if (args === null) {
       evidence.push({ requestedCapability: target.capability, matchedTool: tool.name, status: 'REQUIRED_ARGUMENTS_UNSUPPORTED', httpStatus: null, fieldTypes: {} });
       continue;
@@ -393,6 +476,8 @@ export async function qualifyOptionomicsProductionSurfaces(
     exchange('https://optionomics.ai/mcp', headerPair, listPayload, null, fetchImpl),
     exchange('https://optionomics.ai/mcp', base64Bearer, listPayload, null, fetchImpl),
   ]);
+  const restCapabilities = await Promise.all(documentedRestCapabilityProbes.map((contract) =>
+    restCapabilityProbe(contract, headerPair, fetchImpl)));
   const session = pairSession.authenticated
     ? pairSession
     : base64Session.authenticated
@@ -441,6 +526,7 @@ export async function qualifyOptionomicsProductionSurfaces(
       tickersHeaderPair: restTickersHeaderPair,
       overviewRawBearer: restOverviewRawBearer,
       tickersRawBearer: restTickersRawBearer,
+      capabilities: restCapabilities,
     },
     mcp: {
       headerPairStatus: pairSession.initializeStatus,
@@ -452,8 +538,11 @@ export async function qualifyOptionomicsProductionSurfaces(
       authenticatedScheme: session?.scheme ?? statelessScheme ?? 'NONE',
       toolCount: tools.length,
       tools,
+      toolCatalogHash: hashOptionomicsToolCatalog(tools),
+      capabilities: tools.map(({ name }) => classifyOptionomicsTool(name)),
       evidence,
     },
+    publicApiContractHash: optionomicsEndpointRegistryHash,
     authenticatedSurface: restAuthenticated && mcpAuthenticated ? 'BOTH' : restAuthenticated ? 'REST' : mcpAuthenticated ? 'MCP' : 'NONE',
     orderSubmission: 'DISABLED',
   };

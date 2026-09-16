@@ -19,7 +19,9 @@ This ledger separates engineering completion from empirical proof. A completed c
 | P2C resolved outcomes | CLOSED | SAMPLE_ACCUMULATION_ACTIVE | READY | NONE | Causal subjects, observations, resolutions, label separation |
 | P2D label accumulation | CLOSED | SAMPLE_ACCUMULATION_ACTIVE | READY | NONE | Policy-learning records, regret labels, TCA, dataset v5 |
 | P2E time and path intelligence | CLOSED | SAMPLE_ACCUMULATION_ACTIVE | READY | NONE | Session, position path, action frontier, timing, dataset v6 |
-| P2F provider activation readiness | IMPLEMENTED | INSUFFICIENT_EVIDENCE | EXTERNAL_QUALIFICATION_BLOCKED | NONE | Transport, qualification, quote authority, state versions, alerts, R8 gate |
+| P2F provider activation readiness | CLOSED | INSUFFICIENT_EVIDENCE | EXTERNAL_EXECUTION_QUOTE_BLOCKED | NONE | Transport, qualification, quote authority, state versions, alerts, R8 gate |
+| P2G synthetic lifecycle and dry run | CLOSED | SYNTHETIC_ONLY | EXTERNAL_EXECUTION_QUOTE_BLOCKED | NONE | Isolated lifecycle proof, non-submittable previews, split operational and empirical gates |
+| P2H Optionomics intelligence activation | PARTIAL | INSUFFICIENT_EVIDENCE | PRODUCTION_AUTH_PASS; EXECUTION_QUOTE_UNQUALIFIED | NEON_QUOTA_ACTION_REQUIRED | Typed endpoint/cadence/provenance registry, real REST and MCP discovery, strategy family matrix |
 
 Permanent safety state:
 
