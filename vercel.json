@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "outputDirectory": "public",
   "functions": {
-    "api/theta-runtime.ts": { "maxDuration": 60, "includeFiles": "{migrations,tests/sql}/**" },
+    "api/theta-runtime.ts": { "maxDuration": 300, "includeFiles": "{migrations,tests/sql}/**" },
     "api/quant-runtime.py": { "maxDuration": 30 }
   },
   "rewrites": [
