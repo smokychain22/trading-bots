@@ -2063,3 +2063,21 @@ RISKS: Synthetic PnL could be misread as performance. Database constraints and r
 WHAT THE OTHER AGENT SHOULD REVIEW: Quant research may inspect scenario coverage but must not treat simulated rows as training evidence or resolved R8 samples.
 
 NEXT RECOMMENDED TASK: Resolve the Optionomics Production authentication failure and capture actual per-family schemas and fresh price semantics. Then create a real candidate-specific preview and stop before the first Paper broker submission.
+
+OWNER: Codex
+
+TASK: Preserve every Neon branch, exhaust all bounded recovery surfaces, and make Neon-to-Aiven historical recovery resumable without reintroducing Neon runtime authority.
+
+FILES CHANGED: Neon recovery runner, control-plane manifest importer, Aiven table-level recovery inventory, protected runtime operation, tests, manifests, recovery matrix, support request, decision record, and this handoff.
+
+WHAT WAS IMPLEMENTED: The Neon control plane was inventoried through the existing Vercel SSO without creating a new credential. Main and both Vercel preview branches are preserved. Main pooled and direct PostgreSQL returned SQLSTATE 53000, while preview SQL, Data API, Time Travel, snapshot, and operation-history surfaces were unavailable under the project-wide transfer quota. Local, Claude/Codex history, and GitHub artifact searches found no full database dump. The ignored recovery runner now probes each configured source once and will create hashed PostgreSQL 18 custom-format dumps immediately when source reads return. A protected Aiven operation inventories every canonical table and distinguishes staged history, reconstructed current state, schema-only state, confirmed empty order state, and Neon-blocked history. The exact control-plane manifest can be staged in Aiven with immutable provenance and no secret fields.
+
+TESTS RUN: Node syntax checks, complete Node suite, TypeScript, ESLint, build, and security scan. Production endpoint, Aiven inventory, manifest staging, CI, deployment, worker, and zero-order checks are recorded in the release receipt after deployment.
+
+KNOWN LIMITATIONS: Neon row data cannot be exported while the provider enforces the transfer quota. The existing 25,125 staged research records are valuable partial history, not a full source recovery. No source row counts, table hashes, full dump, or preview-branch dump can be claimed yet.
+
+RISKS: Restoring a source dump directly over Aiven would overwrite current runtime truth. All eventual dumps must enter isolated staging, retain source lineage, and pass table-by-table deduplication and authority checks.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Research may use only staged records whose real/synthetic and PIT classifications are known. It must not treat staged history as current broker state or complete training evidence.
+
+NEXT RECOMMENDED TASK: Ask Neon for a temporary read-only export window or provider-generated immutable export using the prepared support request. When access returns, run the recovery command once, hash the dumps, restore to isolated staging, compare every table, and backfill approved immutable history only.

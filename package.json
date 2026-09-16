@@ -28,6 +28,8 @@
     "db:verify": "node tools/database-verify.mjs",
     "db:aiven:preflight": "node tools/database-target-preflight.mjs",
     "db:aiven:import-legacy": "node tools/import-legacy-research-export.mjs",
+    "db:neon:recover": "node tools/neon-legacy-recovery.mjs",
+    "db:aiven:import-neon-manifest": "node tools/import-legacy-control-plane-manifest.mjs",
     "paper:designate-master": "tsx tools/designate-master-paper.ts",
     "paper:verify-master": "tsx tools/verify-stored-master-paper.ts",
     "r6:readiness": "node --env-file=.env.local --import tsx tools/r6-readiness.ts",

@@ -7,8 +7,8 @@ This manifest contains no database credentials or connection strings.
 ## Authority and preservation
 
 - Provider: `NEON`
-- Project identity: Vercel-connected Production PostgreSQL project, exact provider identifier intentionally omitted from the repository
-- Branch identity: provider default/main branch
+- Project identity: Vercel-connected Production PostgreSQL project. Exact provider identifiers are stored only in the ignored recovery receipt and Aiven legacy staging.
+- Branch identity: provider default/main branch plus two preserved Vercel preview branches
 - Branch role: legacy Production source
 - Runtime authority after cutover: `NO`
 - Historical value: `YES`
@@ -20,11 +20,19 @@ This manifest contains no database credentials or connection strings.
 - Recovery phase: `NEON_LEGACY_DATA_RECOVERY`
 - Recovery status: `PRESERVED_TEMPORARILY_INACCESSIBLE`
 - Last known migration head: `049_p2g_simulation_and_preview`
-- Last known PostgreSQL size: approximately 0.27 GB from the provider control-plane receipt, to be reverified when readable
+- Last known PostgreSQL version: 18
+- Last known PostgreSQL size: 270.1 MB logical storage plus 0.18 GB retained history, to be reverified when readable
 - Current access blocker: SQLSTATE `53000`, provider transfer/resource quota
-- Quota reset metadata: not available through the current database protocol response
-- Bootstrap lineage: repository migrations `001` through `049`
-- Aiven cutover SHA: `NOT_YET_CUT_OVER`
+- Quota metadata: 5.72 GB used against a 5 GB monthly network-transfer allowance. Reset metadata was not exposed.
+- Bootstrap lineage: repository migrations `001` through `050`
+- Aiven cutover SHA: `530ff2ceee632f7cce1c585669efe3dd22703a0b`
+
+## Preserved branches
+
+The control plane confirms the default `main` branch and the Vercel preview branches for
+`codex/master-paper-role` and `claude/theta-r1-real-state` remain present. The ignored manifest preserves
+their exact provider IDs. Each SQL editor and data-plane surface was tested once. The project-wide quota
+prevented row access on all three branches, so no preview branch is claimed as exported.
 
 ## Known data families
 
@@ -48,10 +56,12 @@ or worker-health state.
 
 ## Existing-copy search
 
-The 2026-09-16 non-destructive search found repository research exports with dataset manifests and hashes.
-These are candidate historical research artifacts, not a complete PostgreSQL backup. No validated
-`pg_dump` or custom-format PostgreSQL backup was identified. SQL files found in the workspace are schema
-migrations/specifications and are not database exports.
+The 2026-09-16 non-destructive search found 9,591 candidate archive/data files across the named workspace,
+Downloads, Desktop, and temporary roots. A second search covered GitHub workspaces, Claude history, and
+Codex temporary state. Repository research exports with dataset manifests and hashes are useful historical
+artifacts, but they are not a complete PostgreSQL backup. The only `.backup` file was unrelated CSS. No
+validated `pg_dump` or custom-format PostgreSQL backup was identified. GitHub contained 305 non-expired
+artifacts, all named `browser-evidence`, with no database dump.
 
 ## Deferred trigger
 

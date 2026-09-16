@@ -50,7 +50,7 @@ Inventory date: 2026-09-16. No secret values or database connection strings are 
 - `PAPER_PREFLIGHT_ARTIFACTS_FOUND = NO` as a dedicated local directory.
 - `LOCAL_WORKER_EVIDENCE_FOUND = YES`. Runtime/status receipts and dataset/qualification references exist.
   Secret configuration and worker-token files are excluded from inventory content.
-- `GITHUB_ACTIONS_ARTIFACTS_FOUND = YES`, 294 non-expired artifacts, all named `browser-evidence`. No CI
+- `GITHUB_ACTIONS_ARTIFACTS_FOUND = YES`, 305 non-expired artifacts, all named `browser-evidence`. No CI
   database dump, research export, migration backup, or operator evidence bundle was found.
 
 ## Recovery classification
@@ -69,6 +69,22 @@ Inventory date: 2026-09-16. No secret values or database connection strings are 
 - `NEON_CONTROL_PLANE = AVAILABLE`
 - `AIVEN_LEGACY_STAGING_REQUIRED = YES`
 - `HISTORICAL_RECOVERY_VERDICT = PARTIAL`
+
+## Bounded source-surface verdict
+
+- Main pooled PostgreSQL: `BLOCKED`, SQLSTATE `53000`, resource quota.
+- Main direct PostgreSQL: `BLOCKED`, SQLSTATE `53000`, resource quota.
+- Codex preview SQL surface: `BLOCKED`, project-wide quota.
+- Claude preview SQL surface: `BLOCKED`, project-wide quota.
+- Data API: no working provisioned data surface could be qualified.
+- Time Travel and snapshot surfaces: control-plane shells are present, but data cannot load under the quota.
+- No repeated retry loop was run.
+
+`npm run db:neon:recover` provides the resumable path. It makes one bounded probe per configured pooled and
+direct source, records a sanitized ignored receipt, and stops when blocked. Once readable, it enumerates
+non-template databases, creates PostgreSQL 18 custom-format dumps without owners or ACLs, stores them only
+under the ignored recovery directory, and computes SHA-256 for every dump. Credentials are supplied to the
+container through process environment and never printed or placed in command arguments.
 
 Recovered records must enter `legacy_neon` staging first. They require provenance, timestamp, point-in-time,
 synthetic/real, schema-compatibility, duplication, and content-hash validation before controlled backfill.

@@ -861,3 +861,12 @@ Follower copy work begins only from a broker-confirmed master fill or lifecycle 
 - Evidence quality: Raw management-cycle observations remain immutable, while semantic checkpoints identify actual path changes. Rejected-candidate positive outcomes are descriptive and are not called formal false rejects.
 - Version safety: A strategy semantic version is immutable. A configuration-hash change requires a new version rather than an in-place rewrite.
 - Phase boundary: R7 engineering readiness, Optionomics real authentication, trusted execution-quote qualification, first-order readiness, and empirical training readiness are separate machine-checkable dimensions. No P2F component can authorize an order.
+
+## 2026-09-16: Keep Neon immutable and make historical recovery resumable
+
+- Runtime authority: Aiven remains the only Production runtime database. Neon is a preserved read-only historical source and is never queried as part of normal trading runtime.
+- Current blocker: Main pooled, main direct, both preview SQL surfaces, Data API, Time Travel, snapshot, and operation-history paths are blocked by the Neon project-wide transfer quota. SQLSTATE `53000` is source unavailability, not evidence that historical rows are absent.
+- Recovery: One bounded runner probes each configured source once. Once readable, it enumerates every non-template database, creates PostgreSQL custom-format dumps in an ignored local directory, and hashes every dump. It never loops on quota failures or mutates Neon.
+- Import boundary: Source dumps restore into isolated staging before comparison and controlled backfill. Current Alpaca, provider, account, position, order, strategy, gate, and worker state cannot be overwritten by legacy rows.
+- Evidence: A protected read-only Aiven inventory classifies every canonical table. Empty schemas cannot be called recovered. The existing 25,125 staged research records remain partial recovery until source counts and identities can be compared.
+- Authorization: This work cannot submit orders, unlock followers, promote policy, clear the external quote gate, or add live-money capability.

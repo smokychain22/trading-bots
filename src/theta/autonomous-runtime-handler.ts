@@ -28,6 +28,7 @@ import { matchesAivenBootstrapConfirmation, migrateDatabaseTarget } from '../dat
 import { validateDatabaseTarget } from '../database/target-validation.js';
 import { applyLegacyImportRequest } from '../database/legacy-import.js';
 import { bootstrapAivenMasterPaperAccount, matchesMasterRecoveryConfirmation } from '../database/master-paper-bootstrap.js';
+import { inventoryLegacyRecovery } from '../database/legacy-recovery-inventory.js';
 
 let runtimePool: Pool | null = null;
 
@@ -42,7 +43,7 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
@@ -56,6 +57,7 @@ export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'header
   if (value === 'database-target-migrate') return 'DATABASE_TARGET_MIGRATE';
   if (value === 'database-target-validate') return 'DATABASE_TARGET_VALIDATE';
   if (value === 'database-legacy-import') return 'DATABASE_LEGACY_IMPORT';
+  if (value === 'database-legacy-inventory') return 'DATABASE_LEGACY_INVENTORY';
   if (value === 'database-target-bootstrap-master') return 'DATABASE_TARGET_BOOTSTRAP_MASTER';
   return 'INVALID';
 }
@@ -237,6 +239,27 @@ export default async function autonomousRuntimeHandler(
       const failure = classifyDatabaseTargetError(error);
       send(response, 400, { error: 'AIVEN_MASTER_RECOVERY_FAILED', ...failure, target: 'AIVEN_POSTGRESQL',
         cutoverAuthorized: false, executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0 });
+    }
+    return;
+  }
+  if (operation === 'DATABASE_LEGACY_INVENTORY') {
+    if (localIdentity.kind !== 'VALID') {
+      send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    if (!environment.AIVEN_DATABASE_URL) {
+      send(response, 503, { error: 'aiven_database_not_configured', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    try {
+      const receipt = await inventoryLegacyRecovery(environment.AIVEN_DATABASE_URL);
+      send(response, 200, { target: 'AIVEN_LEGACY_INVENTORY', receipt, runtimeAuthority: 'AIVEN',
+        legacyRuntimeAuthority: false, executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0 });
+    } catch (error) {
+      const failure = classifyDatabaseTargetError(error);
+      send(response, 503, { error: 'AIVEN_LEGACY_INVENTORY_FAILED', ...failure,
+        target: 'AIVEN_LEGACY_INVENTORY', runtimeAuthority: 'AIVEN', legacyRuntimeAuthority: false,
+        executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0 });
     }
     return;
   }
