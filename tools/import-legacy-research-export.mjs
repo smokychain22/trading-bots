@@ -36,10 +36,15 @@ const start = await post({
 });
 const importBatchId = start.receipt.importBatchId;
 let submitted = Number(start.receipt.importedRowCount ?? 0);
+const existingFamilyCounts = start.receipt.familyCounts ?? {};
 process.stdout.write(JSON.stringify({ state: 'STARTED', importBatchId, declaredRowCount, alreadyImported: submitted }) + '\n');
 
 for (const [sourceFamily, rows] of Object.entries(dataset.rows)) {
   if (!Array.isArray(rows) || rows.length === 0) continue;
+  if (Number(existingFamilyCounts[sourceFamily] ?? 0) === rows.length) {
+    process.stdout.write(JSON.stringify({ state: 'ALREADY_IMPORTED', sourceFamily, rowCount: rows.length }) + '\n');
+    continue;
+  }
   let batch = [];
   let batchBytes = 0;
   for (let index = 0; index < rows.length; index += 1) {
@@ -53,7 +58,7 @@ for (const [sourceFamily, rows] of Object.entries(dataset.rows)) {
       pitEligibility: 'ELIGIBLE', payload,
     };
     const recordBytes = Buffer.byteLength(JSON.stringify(record), 'utf8');
-    if (batch.length > 0 && batchBytes + recordBytes > 850_000) {
+    if (batch.length > 0 && (batchBytes + recordBytes > 850_000 || batch.length >= 400)) {
       const result = await post({ kind: 'RECORDS', importBatchId, sourceFamily, records: batch });
       submitted = Number(result.receipt.importedRowCount);
       process.stdout.write(JSON.stringify({ state: 'IMPORTING', sourceFamily, importedRowCount: submitted }) + '\n');

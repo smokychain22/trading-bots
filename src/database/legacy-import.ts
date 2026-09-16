@@ -75,9 +75,13 @@ export async function applyLegacyImportRequest(connectionString: string, input: 
             file.artifactFileId, batchId, file.fileName, file.byteLength, file.fileSha256, file.classification,
           ]);
         }
+        const familyCounts = await client.query(`SELECT source_family,count(*)::integer AS count
+          FROM legacy_neon.artifact_record WHERE import_batch_id=$1 GROUP BY source_family ORDER BY source_family`, [batchId]);
         await client.query('COMMIT');
         return { state: 'STAGED', importBatchId: batchId, declaredRowCount: request.declaredRowCount,
-          importedRowCount: Number(batch.rows[0].imported_row_count), executionAuthorized: false };
+          importedRowCount: Number(batch.rows[0].imported_row_count),
+          familyCounts: Object.fromEntries(familyCounts.rows.map((row) => [String(row.source_family), Number(row.count)])),
+          executionAuthorized: false };
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
