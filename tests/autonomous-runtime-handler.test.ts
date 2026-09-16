@@ -51,6 +51,9 @@ test('local worker operation accepts only the runtime and read-only evidence sel
     'x-theta-operation': 'optionomics-mcp-qualification',
   } }), 'OPTIONOMICS_MCP_QUALIFICATION');
   assert.equal(parseLocalWorkerOperation({ headers: {
+    'x-theta-operation': 'database-target-preflight',
+  } }), 'DATABASE_TARGET_PREFLIGHT');
+  assert.equal(parseLocalWorkerOperation({ headers: {
     'x-theta-operation': 'submit-order',
   } }), 'INVALID');
 });

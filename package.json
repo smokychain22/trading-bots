@@ -26,6 +26,7 @@
     "theta:shadow:once": "tsx src/theta/theta-shadow-once.ts",
     "db:migrate": "node tools/database-migrate.mjs",
     "db:verify": "node tools/database-verify.mjs",
+    "db:aiven:preflight": "node tools/database-target-preflight.mjs",
     "paper:designate-master": "tsx tools/designate-master-paper.ts",
     "paper:verify-master": "tsx tools/verify-stored-master-paper.ts",
     "r6:readiness": "node --env-file=.env.local --import tsx tools/r6-readiness.ts",

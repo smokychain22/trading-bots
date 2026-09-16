@@ -18,6 +18,7 @@ import { runOptionomicsQuoteQualification, sanitizeQualificationReport } from '.
 import { qualifyOptionomicsProductionSurfaces } from '../providers/optionomics-mcp-qualification.js';
 import { qualifyOptionomicsProvider, persistOptionomicsQualification } from '../providers/optionomics-qualification.js';
 import { optionomicsConfigFromEnvironment } from './theta-shadow-once.js';
+import { preflightDatabaseTarget } from '../database/target-preflight.js';
 
 let runtimePool: Pool | null = null;
 
@@ -32,7 +33,7 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'DATABASE_TARGET_PREFLIGHT' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
@@ -41,6 +42,7 @@ export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'header
   if (value === 'optionomics-provider-qualification') return 'OPTIONOMICS_PROVIDER_QUALIFICATION';
   if (value === 'optionomics-quote-qualification') return 'OPTIONOMICS_QUOTE_QUALIFICATION';
   if (value === 'optionomics-mcp-qualification') return 'OPTIONOMICS_MCP_QUALIFICATION';
+  if (value === 'database-target-preflight') return 'DATABASE_TARGET_PREFLIGHT';
   return 'INVALID';
 }
 
@@ -86,27 +88,52 @@ export default async function autonomousRuntimeHandler(
     send(response, 503, { error: 'worker_disabled', orderSubmission: 'EXTERNAL_QUOTE_BLOCKER' });
     return;
   }
-  if (!environment.DATABASE_URL) {
-    send(response, 503, { error: 'database_not_configured', orderSubmission: 'EXTERNAL_QUOTE_BLOCKER' });
+  const operation = parseLocalWorkerOperation(request);
+  if (operation === 'INVALID') {
+    send(response, 400, { error: 'invalid_local_worker_operation', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
     return;
   }
-  runtimePool ??= new Pool({ connectionString: environment.DATABASE_URL, max: 2, connectionTimeoutMillis: 8_000 });
   const localIdentity = parseLocalWorkerIdentity(request);
   if (localIdentity.kind === 'INVALID') {
     send(response, 400, { error: 'invalid_local_worker_identity', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
     return;
   }
+  if (operation === 'DATABASE_TARGET_PREFLIGHT') {
+    if (localIdentity.kind !== 'VALID') {
+      send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    if (!environment.AIVEN_DATABASE_URL) {
+      send(response, 503, { error: 'aiven_database_not_configured', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    try {
+      const preflight = await preflightDatabaseTarget(environment.AIVEN_DATABASE_URL);
+      send(response, 200, {
+        target: 'AIVEN_POSTGRESQL', preflight, migrationAuthorized: false,
+        cutoverAuthorized: false, executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0,
+      });
+    } catch (error) {
+      const code = error instanceof Error && /^[A-Z0-9_:-]+$/.test(error.message)
+        ? error.message : 'AIVEN_DATABASE_PREFLIGHT_FAILED';
+      send(response, 503, {
+        error: code, target: 'AIVEN_POSTGRESQL', migrationAuthorized: false,
+        cutoverAuthorized: false, executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0,
+      });
+    }
+    return;
+  }
+  if (!environment.DATABASE_URL) {
+    send(response, 503, { error: 'database_not_configured', orderSubmission: 'EXTERNAL_QUOTE_BLOCKER' });
+    return;
+  }
+  runtimePool ??= new Pool({ connectionString: environment.DATABASE_URL, max: 2, connectionTimeoutMillis: 8_000 });
   const localWorkerId = localIdentity.kind === 'VALID' ? localIdentity.identity.workerId : null;
   const workerStore=new PostgresWorkerRuntimeStore(runtimePool);
   if(request.method==='DELETE'){
     if(localWorkerId===null){send(response,400,{error:'local_worker_identity_required'});return;}
     await workerStore.stop(localWorkerId,new Date().toISOString(),'OFFLINE');
     send(response,200,{state:'OFFLINE',executionGate:'EXTERNAL_QUOTE_BLOCKER'});
-    return;
-  }
-  const operation = parseLocalWorkerOperation(request);
-  if (operation === 'INVALID') {
-    send(response, 400, { error: 'invalid_local_worker_operation', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
     return;
   }
   try {
