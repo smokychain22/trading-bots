@@ -26,6 +26,7 @@ import {
 } from '../database/target-preflight.js';
 import { matchesAivenBootstrapConfirmation, migrateDatabaseTarget } from '../database/target-migration.js';
 import { validateDatabaseTarget } from '../database/target-validation.js';
+import { applyLegacyImportRequest } from '../database/legacy-import.js';
 
 let runtimePool: Pool | null = null;
 
@@ -40,7 +41,7 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
@@ -53,6 +54,7 @@ export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'header
   if (value === 'database-target-preflight') return 'DATABASE_TARGET_PREFLIGHT';
   if (value === 'database-target-migrate') return 'DATABASE_TARGET_MIGRATE';
   if (value === 'database-target-validate') return 'DATABASE_TARGET_VALIDATE';
+  if (value === 'database-legacy-import') return 'DATABASE_LEGACY_IMPORT';
   return 'INVALID';
 }
 
@@ -183,6 +185,31 @@ export default async function autonomousRuntimeHandler(
         error: 'AIVEN_DATABASE_VALIDATION_FAILED', ...failure, target: 'AIVEN_POSTGRESQL', cutoverAuthorized: false,
         executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0,
       });
+    }
+    return;
+  }
+  if (operation === 'DATABASE_LEGACY_IMPORT') {
+    if (localIdentity.kind !== 'VALID') {
+      send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    if (!matchesAivenBootstrapConfirmation(request.headers['x-theta-database-change'])) {
+      send(response, 403, { error: 'aiven_bootstrap_confirmation_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    if (!environment.AIVEN_DATABASE_URL) {
+      send(response, 503, { error: 'aiven_database_not_configured', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    try {
+      const input = await readBoundedJson(request, 1_500_000);
+      const receipt = await applyLegacyImportRequest(environment.AIVEN_DATABASE_URL, input);
+      send(response, 200, { target: 'AIVEN_LEGACY_STAGING', receipt, cutoverAuthorized: false,
+        executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0 });
+    } catch (error) {
+      const failure = classifyDatabaseTargetError(error);
+      send(response, 400, { error: 'AIVEN_LEGACY_IMPORT_FAILED', ...failure, target: 'AIVEN_LEGACY_STAGING',
+        cutoverAuthorized: false, executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0 });
     }
     return;
   }
@@ -344,6 +371,24 @@ export default async function autonomousRuntimeHandler(
       followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
     });
   }
+}
+
+async function readBoundedJson(request: IncomingMessage, maximumBytes: number): Promise<unknown> {
+  const parsed = (request as IncomingMessage & { body?: unknown }).body;
+  if (parsed !== undefined) {
+    const serialized = typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+    if (Buffer.byteLength(serialized, 'utf8') > maximumBytes) throw Object.assign(new Error('BODY_TOO_LARGE'), { code: 'BODY_TOO_LARGE' });
+    return typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+  }
+  const chunks: Buffer[] = [];
+  let length = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    length += buffer.length;
+    if (length > maximumBytes) throw Object.assign(new Error('BODY_TOO_LARGE'), { code: 'BODY_TOO_LARGE' });
+    chunks.push(buffer);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
 function optionomicsAvailability(result: CheckResult | EvidenceCapabilityResult): string {
