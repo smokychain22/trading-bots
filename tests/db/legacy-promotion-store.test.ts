@@ -39,3 +39,30 @@ test('legacy promotion exposes validated PIT history without changing canonical 
     assert.equal(Number(canonical.rows[0].count),0);
   }finally{await pool.end();}
 });
+
+test('legacy promotion compares UUID-shaped text identifiers without a PostgreSQL type error', {
+  skip:!process.env.TEST_DATABASE_URL,
+}, async()=>{
+  const connectionString=process.env.TEST_DATABASE_URL; assert.ok(connectionString); const url=new URL(connectionString);
+  assert.ok(['localhost','127.0.0.1'].includes(url.hostname),'Disposable local database only');
+  const pool=new Pool({connectionString,max:1});
+  const importBatchId=randomUUID(), artifactRecordId=randomUUID(), opportunityId=randomUUID(), fusionSnapshotId=randomUUID();
+  const now='2026-09-15T15:00:00.000Z';
+  const payload={opportunityId,fusionSnapshotId,observedAt:now,underlying:'AAPL',strategyBranch:'THETA_CONVENTIONAL',
+    decisionDisposition:'SHADOW_ONLY',executionAuthorized:false};
+  try{
+    await pool.query(`INSERT INTO legacy_neon.import_batch(import_batch_id,source_system,source_project_hash,source_branch,
+      artifact_type,dataset_hash,schema_version,source_window_start,source_window_end,original_exported_at,status,
+      declared_row_count,imported_row_count,import_completed_at,metadata)
+      VALUES($1,'NEON_LEGACY',$2,'main','R6_DATASET',$3,'test-v1',$4,$4,$4,'VALIDATING',1,1,$4,'{}')`,
+    [importBatchId,sha('project'),sha(importBatchId),now]);
+    await pool.query(`INSERT INTO legacy_neon.artifact_record(artifact_record_id,import_batch_id,source_family,
+      source_record_key,source_checksum,original_created_at,classification,pit_eligibility,payload)
+      VALUES($1,$2,'shadowCandidates',$3,$4,$5,'REAL_PRODUCTION_EVIDENCE','ELIGIBLE',$6::jsonb)`,
+    [artifactRecordId,importBatchId,opportunityId,sha(JSON.stringify(payload)),now,JSON.stringify(payload)]);
+    const receipt=await promoteLegacyRecovery(connectionString,importBatchId);
+    assert.equal(receipt.state,'COMPLETE');
+    assert.equal(receipt.researchHistoryRows,1);
+    assert.equal(receipt.canonicalRowsChanged,0);
+  }finally{await pool.end();}
+});

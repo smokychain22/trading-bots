@@ -235,8 +235,12 @@ async function loadNativeIdentities(client: PoolClient, policy: FamilyPolicy, id
   const validIds = ids.filter((id) => new RegExp(uuidPattern).test(id));
   if (validIds.length === 0 || policy.nativeTable === undefined || policy.nativeIdColumn === undefined) return new Map();
   const hashSelect = policy.nativeHashColumn === undefined ? 'NULL::text' : `${policy.nativeHashColumn}::text`;
+  // Canonical evidence identifiers are not uniform. Most are UUID columns, while
+  // shadow_opportunity.opportunity_id is text even when its value is UUID-shaped.
+  // Compare the normalized textual representation so the same bounded query works
+  // for both physical types without relying on an implicit PostgreSQL operator.
   const result = await client.query(`SELECT ${policy.nativeIdColumn}::text AS id,${hashSelect} AS content_hash
-    FROM ${policy.nativeTable} WHERE ${policy.nativeIdColumn}=ANY($1::uuid[])`, [validIds]);
+    FROM ${policy.nativeTable} WHERE ${policy.nativeIdColumn}::text=ANY($1::text[])`, [validIds]);
   return new Map(result.rows.map((row) => [String(row.id), row.content_hash === null ? null : String(row.content_hash)]));
 }
 
