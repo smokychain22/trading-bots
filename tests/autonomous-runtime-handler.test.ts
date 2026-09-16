@@ -69,6 +69,9 @@ test('local worker operation accepts only the runtime and read-only evidence sel
     'x-theta-operation': 'database-legacy-inventory',
   } }), 'DATABASE_LEGACY_INVENTORY');
   assert.equal(parseLocalWorkerOperation({ headers: {
+    'x-theta-operation': 'database-legacy-promote',
+  } }), 'DATABASE_LEGACY_PROMOTE');
+  assert.equal(parseLocalWorkerOperation({ headers: {
     'x-theta-operation': 'database-target-bootstrap-master',
   } }), 'DATABASE_TARGET_BOOTSTRAP_MASTER');
   assert.equal(parseLocalWorkerOperation({ headers: {

@@ -57,7 +57,7 @@ const schemaPurpose: Readonly<Record<string, string>> = {
 };
 
 const localFamilyByTable: Readonly<Record<string, string>> = {
-  'trade.candidate_set': 'candidateSets',
+  'trade.candidate_set_evidence': 'candidateSets',
   'trade.candidate_point_in_time_evidence': 'candidates',
   'trade.shadow_opportunity': 'shadowCandidates',
   'trade.canonical_strategy_frontier': 'strategyFrontiers',

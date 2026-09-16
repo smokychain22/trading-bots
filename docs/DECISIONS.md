@@ -870,3 +870,11 @@ Follower copy work begins only from a broker-confirmed master fill or lifecycle 
 - Import boundary: Source dumps restore into isolated staging before comparison and controlled backfill. Current Alpaca, provider, account, position, order, strategy, gate, and worker state cannot be overwritten by legacy rows.
 - Evidence: A protected read-only Aiven inventory classifies every canonical table. Empty schemas cannot be called recovered. The existing 25,125 staged research records remain partial recovery until source counts and identities can be compared.
 - Authorization: This work cannot submit orders, unlock followers, promote policy, clear the external quote gate, or add live-money capability.
+
+## 2026-09-16: Promote recovered Neon exports into an isolated immutable history layer
+
+- Decision: Validate and classify every staged application-export record before exposing it to research. Records with complete point-in-time provenance enter `research.legacy_neon_recovered_evidence`. Control-plane metadata enters a separate operator-history view.
+- Canonical boundary: Legacy payloads do not insert directly into current trade, market, customer, broker, provider, gate, or worker tables when their original foreign-key parent set is unavailable. Current Aiven rows remain authoritative.
+- Deduplication: A matching native ID and content hash is classified as a canonical duplicate. A differing hash is quarantined. Native ID matches without a comparable source hash are also quarantined. No conflict is silently resolved.
+- Integrity: Promotion uses an ordered SHA-256 fingerprint over staged family, record key, and source checksum. Every promotion row is immutable and retains the source artifact-record reference.
+- Execution: Promotion records are permanently non-executable. This work cannot authorize Paper or live orders, clear the quote gate, activate followers, or promote a policy.

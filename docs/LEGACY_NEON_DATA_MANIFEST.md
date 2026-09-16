@@ -56,11 +56,13 @@ or worker-health state.
 
 ## Existing-copy search
 
-The 2026-09-16 non-destructive search found 9,591 candidate archive/data files across the named workspace,
-Downloads, Desktop, and temporary roots. A second search covered GitHub workspaces, Claude history, and
-Codex temporary state. Repository research exports with dataset manifests and hashes are useful historical
-artifacts, but they are not a complete PostgreSQL backup. The only `.backup` file was unrelated CSS. No
-validated `pg_dump` or custom-format PostgreSQL backup was identified. GitHub contained 305 non-expired
+The 2026-09-16 non-destructive search covered the named workspace, Downloads, Desktop, temporary roots,
+OneDrive, pgAdmin and DBeaver client directories, WSL homes, nine Docker volumes, GitHub workspaces,
+Claude history, and Codex temporary state. The incremental scan found no database-shaped artifact with
+validated Neon provenance. Docker volumes contained no dump, SQL, CSV, JSONL, or Parquet candidate. WSL
+contained unrelated project SQL and one unrelated application backup. Repository research exports with
+dataset manifests and hashes are useful historical artifacts, but they are not a complete PostgreSQL backup.
+No validated `pg_dump` or custom-format PostgreSQL backup was identified. GitHub contained 305 non-expired
 artifacts, all named `browser-evidence`, with no database dump.
 
 ## Deferred trigger

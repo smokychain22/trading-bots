@@ -107,7 +107,10 @@ export async function validateDatabaseTarget(
       (SELECT count(*)::integer FROM trade.fill) AS fills,
       (SELECT count(*)::integer FROM trade.broker_activity_fact) AS broker_activity_facts,
       (SELECT count(*)::integer FROM legacy_neon.import_batch) AS legacy_import_batches,
-      (SELECT count(*)::integer FROM legacy_neon.artifact_record) AS legacy_artifact_records`);
+      (SELECT count(*)::integer FROM legacy_neon.artifact_record) AS legacy_artifact_records,
+      (SELECT count(*)::integer FROM legacy_neon.promotion_batch) AS legacy_promotion_batches,
+      (SELECT count(*)::integer FROM legacy_neon.promotion_record) AS legacy_promotion_records,
+      (SELECT count(*)::integer FROM research.legacy_neon_recovered_evidence) AS legacy_promoted_research_rows`);
     const control = await client.query(`SELECT pause_new_orders,master_execution_enabled,follower_execution_enabled
       FROM ops.paper_execution_control WHERE singleton=true`);
     const row = summary.rows[0];

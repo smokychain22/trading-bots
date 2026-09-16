@@ -8,7 +8,7 @@ test('legacy recovery never labels an empty reconstructed table as migrated', ()
 });
 
 test('legacy recovery separates staged evidence, current reconstruction, and confirmed empty orders', () => {
-  assert.equal(classifyLegacyRecovery('trade.candidate_set', 0, 302), 'PARTIALLY_RECOVERED');
+  assert.equal(classifyLegacyRecovery('trade.candidate_set_evidence', 0, 302), 'PARTIALLY_RECOVERED');
   assert.equal(classifyLegacyRecovery('trade.broker_activity_fact', 9, 0), 'RECONSTRUCTED_CURRENT_STATE');
   assert.equal(classifyLegacyRecovery('trade.order_intent', 0, 0), 'EMPTY_BY_DESIGN');
 });
