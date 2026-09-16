@@ -40,7 +40,11 @@ try {
       'X-Theta-Host-Id'=$env:COMPUTERNAME; 'X-Theta-Build-Sha'=$runtime.buildSha }
     $workerExit = 0
     try {
-      $report = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $headers -TimeoutSec 120
+      # The complete management-first cycle performs reconciliation, provider
+      # collection, six-branch evaluation, and atomic evidence persistence.
+      # Keep the client deadline above the server's 300-second bound so the
+      # supervisor does not abandon a valid in-flight cycle and retry it.
+      $report = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $headers -TimeoutSec 330
       $marketSessionDate = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
         [DateTimeOffset]::UtcNow, 'Eastern Standard Time').ToString('yyyy-MM-dd')
       $lastQualificationSession = if (Test-Path -LiteralPath $qualificationSessionFile) {
@@ -49,7 +53,7 @@ try {
       if ($report.reconciliation.marketOpen -eq $true -and $lastQualificationSession -ne $marketSessionDate) {
         $qualificationHeaders = $headers.Clone()
         $qualificationHeaders['X-Theta-Operation'] = 'optionomics-quote-qualification'
-        $qualification = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $qualificationHeaders -TimeoutSec 120
+        $qualification = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $qualificationHeaders -TimeoutSec 180
         if ($null -ne $qualification -and $qualification.marketSession -eq 'OPEN') {
           Set-Content -LiteralPath $qualificationSessionFile -Value $marketSessionDate -Encoding ascii
         }
