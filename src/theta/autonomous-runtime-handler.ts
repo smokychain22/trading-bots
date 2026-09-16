@@ -18,7 +18,7 @@ import { runOptionomicsQuoteQualification, sanitizeQualificationReport } from '.
 import { qualifyOptionomicsProductionSurfaces } from '../providers/optionomics-mcp-qualification.js';
 import { qualifyOptionomicsProvider, persistOptionomicsQualification } from '../providers/optionomics-qualification.js';
 import { optionomicsConfigFromEnvironment } from './theta-shadow-once.js';
-import { preflightDatabaseTarget } from '../database/target-preflight.js';
+import { classifyDatabaseTargetError, preflightDatabaseTarget } from '../database/target-preflight.js';
 
 let runtimePool: Pool | null = null;
 
@@ -114,10 +114,9 @@ export default async function autonomousRuntimeHandler(
         cutoverAuthorized: false, executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0,
       });
     } catch (error) {
-      const code = error instanceof Error && /^[A-Z0-9_:-]+$/.test(error.message)
-        ? error.message : 'AIVEN_DATABASE_PREFLIGHT_FAILED';
+      const failure = classifyDatabaseTargetError(error);
       send(response, 503, {
-        error: code, target: 'AIVEN_POSTGRESQL', migrationAuthorized: false,
+        error: 'AIVEN_DATABASE_PREFLIGHT_FAILED', ...failure, target: 'AIVEN_POSTGRESQL', migrationAuthorized: false,
         cutoverAuthorized: false, executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0,
       });
     }

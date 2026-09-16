@@ -13,6 +13,33 @@ export interface DatabaseTargetPreflight {
   readonly transactionWriteRollback: 'PASS';
 }
 
+export interface DatabaseTargetFailure {
+  readonly failureCode: string;
+  readonly failureClass: 'AUTHENTICATION' | 'DATABASE_NOT_FOUND' | 'CONNECTION_LIMIT' | 'DNS' |
+    'NETWORK' | 'TLS_CERTIFICATE' | 'TLS_REQUIRED' | 'TIMEOUT' | 'UNKNOWN';
+}
+
+export function classifyDatabaseTargetError(error: unknown): DatabaseTargetFailure {
+  const candidate = typeof error === 'object' && error !== null
+    ? error as { readonly code?: unknown; readonly message?: unknown }
+    : {};
+  const rawCode = typeof candidate.code === 'string' && /^[A-Za-z0-9_]{2,40}$/.test(candidate.code)
+    ? candidate.code.toUpperCase()
+    : 'UNKNOWN';
+  const message = typeof candidate.message === 'string' ? candidate.message.toLowerCase() : '';
+  if (rawCode === '28P01') return { failureCode: rawCode, failureClass: 'AUTHENTICATION' };
+  if (rawCode === '3D000') return { failureCode: rawCode, failureClass: 'DATABASE_NOT_FOUND' };
+  if (rawCode === '53300') return { failureCode: rawCode, failureClass: 'CONNECTION_LIMIT' };
+  if (rawCode === 'ENOTFOUND' || rawCode === 'EAI_AGAIN') return { failureCode: rawCode, failureClass: 'DNS' };
+  if (rawCode === 'ECONNREFUSED' || rawCode === 'ECONNRESET') return { failureCode: rawCode, failureClass: 'NETWORK' };
+  if (rawCode === 'ETIMEDOUT' || message.includes('timeout')) return { failureCode: rawCode, failureClass: 'TIMEOUT' };
+  if (rawCode.includes('CERT') || message.includes('certificate') || message.includes('self-signed'))
+    return { failureCode: rawCode, failureClass: 'TLS_CERTIFICATE' };
+  if (message.includes('ssl') && message.includes('required'))
+    return { failureCode: rawCode, failureClass: 'TLS_REQUIRED' };
+  return { failureCode: rawCode, failureClass: 'UNKNOWN' };
+}
+
 export async function preflightDatabaseTarget(connectionString: string): Promise<DatabaseTargetPreflight> {
   const pool = new Pool({
     connectionString,
