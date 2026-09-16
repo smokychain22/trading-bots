@@ -6,6 +6,7 @@ import { Pool } from 'pg';
 export interface DatabaseTargetValidationReceipt {
   readonly state: 'VALIDATED';
   readonly invariantFileCount: number;
+  readonly psqlOnlyInvariantFileCount: number;
   readonly migrationCount: number;
   readonly migrationHead: string;
   readonly schemaCount: number;
@@ -33,10 +34,16 @@ export async function validateDatabaseTarget(
   connectionString: string,
   invariantDirectory = resolve(process.cwd(), 'tests', 'sql'),
 ): Promise<DatabaseTargetValidationReceipt> {
-  const files = (await readdir(invariantDirectory))
+  const allFiles = (await readdir(invariantDirectory))
     .filter((name) => /^\d{3}_[a-z0-9_]+\.sql$/.test(name))
     .sort();
-  if (files.length === 0) throw codedError('NO_BUNDLED_INVARIANTS');
+  if (allFiles.length === 0) throw codedError('NO_BUNDLED_INVARIANTS');
+  const loaded = await Promise.all(allFiles.map(async (file) => ({
+    file,
+    sql: await readFile(resolve(invariantDirectory, file), 'utf8'),
+  })));
+  const protocolSafe = loaded.filter(({ sql }) => !/^\\/m.test(sql));
+  const psqlOnlyInvariantFileCount = loaded.length - protocolSafe.length;
 
   const pool = new Pool({
     connectionString,
@@ -47,10 +54,13 @@ export async function validateDatabaseTarget(
   });
   const client = await pool.connect();
   try {
-    for (const file of files) {
+    for (const { file, sql } of protocolSafe) {
       await client.query('BEGIN');
       try {
-        await client.query(await readFile(resolve(invariantDirectory, file), 'utf8'));
+        const rollbackWrappedSql = sql
+          .replace(/^\s*BEGIN;\s*/i, '')
+          .replace(/\s*ROLLBACK;\s*$/i, '');
+        await client.query(rollbackWrappedSql);
         await client.query('ROLLBACK');
       } catch {
         try { await client.query('ROLLBACK'); } catch { /* rollback best effort */ }
@@ -106,7 +116,8 @@ export async function validateDatabaseTarget(
       controlRow.follower_execution_enabled !== false) throw codedError('PAPER_EXECUTION_CONTROL_NOT_LOCKED');
     return {
       state: 'VALIDATED',
-      invariantFileCount: files.length,
+      invariantFileCount: protocolSafe.length,
+      psqlOnlyInvariantFileCount,
       migrationCount: Number(row.migration_count),
       migrationHead: String(row.migration_head),
       schemaCount: Number(row.schema_count),
