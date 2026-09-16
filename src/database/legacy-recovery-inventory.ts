@@ -1,4 +1,4 @@
-import { Pool, type PoolClient } from 'pg';
+import { Pool } from 'pg';
 
 export type LegacyRecoveryStatus =
   | 'FULLY_RECOVERED'
@@ -112,12 +112,11 @@ export function classifyLegacyRecovery(
 }
 
 export async function inventoryLegacyRecovery(connectionString: string): Promise<LegacyRecoveryInventoryReceipt> {
-  const pool = new Pool({ connectionString, max: 1, connectionTimeoutMillis: 8_000, idleTimeoutMillis: 1_000,
+  const pool = new Pool({ connectionString, max: 3, connectionTimeoutMillis: 8_000, idleTimeoutMillis: 1_000,
     application_name: 'theta-legacy-recovery-inventory' });
-  const client = await pool.connect();
   try {
-    const tables = await loadTableCounts(client);
-    const familyCountsResult = await client.query(`SELECT source_family,count(*)::integer AS row_count
+    const tables = await loadTableCounts(pool);
+    const familyCountsResult = await pool.query(`SELECT source_family,count(*)::integer AS row_count
       FROM legacy_neon.artifact_record GROUP BY source_family ORDER BY source_family`);
     const stagingFamilyCounts = Object.fromEntries(familyCountsResult.rows.map((row) =>
       [String(row.source_family), Number(row.row_count)]));
@@ -134,25 +133,29 @@ export async function inventoryLegacyRecovery(connectionString: string): Promise
       rows, executionAuthorized: false,
     };
   } finally {
-    client.release();
     await pool.end();
   }
 }
 
-async function loadTableCounts(client: PoolClient): Promise<readonly TableCount[]> {
-  const result = await client.query(`SELECT table_schema,table_name
+async function loadTableCounts(pool: Pool): Promise<readonly TableCount[]> {
+  const result = await pool.query(`SELECT table_schema,table_name
     FROM information_schema.tables
     WHERE table_type='BASE TABLE' AND table_schema IN (
       'iam','copy','core','market','strategy','execution','risk','analytics','trade','ops','research'
     ) ORDER BY table_schema,table_name`);
+  const tables = result.rows.map((row) => ({ schema: String(row.table_schema), table: String(row.table_name) }));
   const counts: TableCount[] = [];
-  for (const row of result.rows) {
-    const schema = String(row.table_schema);
-    const table = String(row.table_name);
-    const countResult = await client.query(`SELECT count(*)::integer AS row_count FROM ${quoteIdent(schema)}.${quoteIdent(table)}`);
-    counts.push({ schema, table, rowCount: Number(countResult.rows[0]?.row_count ?? 0) });
-  }
-  return counts;
+  let nextIndex = 0;
+  await Promise.all(Array.from({ length: Math.min(3, tables.length) }, async () => {
+    while (nextIndex < tables.length) {
+      const item = tables[nextIndex++];
+      if (item === undefined) continue;
+      const countResult = await pool.query(`SELECT count(*)::integer AS row_count
+        FROM ${quoteIdent(item.schema)}.${quoteIdent(item.table)}`);
+      counts.push({ ...item, rowCount: Number(countResult.rows[0]?.row_count ?? 0) });
+    }
+  }));
+  return counts.sort((left, right) => `${left.schema}.${left.table}`.localeCompare(`${right.schema}.${right.table}`));
 }
 
 function buildMatrixRow(
