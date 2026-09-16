@@ -24,6 +24,7 @@ import {
   preflightDatabaseSource,
   preflightDatabaseTarget,
 } from '../database/target-preflight.js';
+import { matchesAivenBootstrapConfirmation, migrateDatabaseTarget } from '../database/target-migration.js';
 
 let runtimePool: Pool | null = null;
 
@@ -38,7 +39,7 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
@@ -49,6 +50,7 @@ export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'header
   if (value === 'optionomics-mcp-qualification') return 'OPTIONOMICS_MCP_QUALIFICATION';
   if (value === 'database-source-preflight') return 'DATABASE_SOURCE_PREFLIGHT';
   if (value === 'database-target-preflight') return 'DATABASE_TARGET_PREFLIGHT';
+  if (value === 'database-target-migrate') return 'DATABASE_TARGET_MIGRATE';
   return 'INVALID';
 }
 
@@ -126,6 +128,34 @@ export default async function autonomousRuntimeHandler(
         endpoint: describeDatabaseEndpoint(environment.AIVEN_DATABASE_URL),
         target: 'AIVEN_POSTGRESQL', migrationAuthorized: false,
         cutoverAuthorized: false, executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0,
+      });
+    }
+    return;
+  }
+  if (operation === 'DATABASE_TARGET_MIGRATE') {
+    if (localIdentity.kind !== 'VALID') {
+      send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    if (!matchesAivenBootstrapConfirmation(request.headers['x-theta-database-change'])) {
+      send(response, 403, { error: 'aiven_bootstrap_confirmation_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    if (!environment.AIVEN_DATABASE_URL) {
+      send(response, 503, { error: 'aiven_database_not_configured', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    try {
+      const receipt = await migrateDatabaseTarget(environment.AIVEN_DATABASE_URL);
+      send(response, 200, {
+        target: 'AIVEN_POSTGRESQL', receipt, cutoverAuthorized: false,
+        executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0,
+      });
+    } catch (error) {
+      const failure = classifyDatabaseTargetError(error);
+      send(response, 503, {
+        error: 'AIVEN_DATABASE_MIGRATION_FAILED', ...failure, target: 'AIVEN_POSTGRESQL', cutoverAuthorized: false,
+        executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0,
       });
     }
     return;
