@@ -2081,3 +2081,23 @@ RISKS: Restoring a source dump directly over Aiven would overwrite current runti
 WHAT THE OTHER AGENT SHOULD REVIEW: Research may use only staged records whose real/synthetic and PIT classifications are known. It must not treat staged history as current broker state or complete training evidence.
 
 NEXT RECOMMENDED TASK: Ask Neon for a temporary read-only export window or provider-generated immutable export using the prepared support request. When access returns, run the recovery command once, hash the dumps, restore to isolated staging, compare every table, and backfill approved immutable history only.
+
+OWNER: Codex
+
+TASK: Prove the Aiven legacy import and promote all safe recovered Neon history.
+
+FILES CHANGED: Migration 051, legacy promotion validator/store, protected Production operation, local promotion and recovery-method tools, inventory and database validation, tests, recovery documentation, decision record, and the production receipt.
+
+WHAT WAS IMPLEMENTED: Every staged legacy record now passes an explicit schema, provenance, PIT, evidence-class, native-identity, and execution-authority classification. Valid research evidence is exposed through an immutable research view. The control-plane manifest is exposed through a separate immutable operations view. Direct insertion into native runtime tables is forbidden when original parent lineage is incomplete. Canonical ID/hash matches deduplicate, conflicts quarantine, and unverifiable native-ID matches quarantine. An ordered SHA-256 staging fingerprint makes reruns reproducible. A PostgreSQL text/UUID comparison defect found by the first rolled-back Production run was fixed and covered by a real PostgreSQL 18 regression test.
+
+TESTS RUN: TypeScript, ESLint, full Node suite, Python suite, build, security scan, disposable PostgreSQL 18 migrations 001 through 051, promotion integration tests, schema invariants, Production migration, Production promotion, Production invariant validation, root HTTP check, Vercel deployment, GitHub CI, Windows worker repin, and zero-order checks.
+
+TEST RESULTS: Production classified all 25,126 staged rows. It promoted 25,125 PIT research rows and one engineering manifest, with zero rejects, zero conflicts, zero canonical rows changed, and execution authorization false. Migration head is 051. Production has zero invalid indexes, zero unvalidated constraints, and 3 of 20 client connections at the invariant probe. Exact receipts are in `docs/LEGACY_NEON_PROMOTION_RECEIPT_2026-09-16.md`.
+
+KNOWN LIMITATIONS: The staged export is a valuable partial application export, not a full PostgreSQL source dump. Neon still rejects source reads under the project transfer quota. No missing source table or preview-branch row may be claimed recovered until a provider export or restored read window permits a complete dump and comparison.
+
+RISKS: Mixing staged legacy payloads into current operational tables would break lineage and could overwrite current truth. The isolated immutable history layer prevents that. Research must still inspect source classification and PIT eligibility before using records for training or policy evaluation.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Quant research may consume `research.legacy_neon_recovered_evidence` only as point-in-time historical evidence and must keep it separate from current broker state and future labels. It must not infer completeness from promotion success.
+
+NEXT RECOMMENDED TASK: Resume the normal THETA roadmap using Aiven current state plus the promoted history. When Neon access returns, run the already prepared full-source recovery once and backfill only newly proven immutable history.

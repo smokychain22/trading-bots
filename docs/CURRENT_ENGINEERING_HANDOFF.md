@@ -171,6 +171,12 @@ Reticle project wiring is present and connected successfully, but `.agents/skill
 
 ## Last completed phase/subphase
 
+### 2026-09-16 - Legacy Neon evidence promoted safely into Aiven
+
+Canonical Aiven migration head is `051_legacy_neon_promotion`. All 25,126 staged legacy records were validated and classified. The immutable history layer now exposes 25,125 PIT research records and one sanitized engineering manifest. No canonical runtime row changed, and no record was rejected or quarantined. Exact counts, fingerprints, production invariants, source-recovery limits, and safety state are in `docs/LEGACY_NEON_PROMOTION_RECEIPT_2026-09-16.md`.
+
+Full Neon extraction remains blocked by the provider's project transfer quota after pooled/direct SQL, every bounded `pg_dump` form, `COPY`, logical-replication inspection, `aiven-db-migrate`, preview branches, Data API, Time Travel, snapshots, operation history, and alternate-backup searches were exhausted. The source is preserved and temporarily inaccessible. Aiven remains the only runtime authority. The external quote blocker, follower lock, Paper pause, and live-money prohibition are unchanged.
+
 **R1 (Phase 2C runtime orchestration): PARTIAL.**
 
 Done:
