@@ -27,6 +27,7 @@ import {
 import { matchesAivenBootstrapConfirmation, migrateDatabaseTarget } from '../database/target-migration.js';
 import { validateDatabaseTarget } from '../database/target-validation.js';
 import { applyLegacyImportRequest } from '../database/legacy-import.js';
+import { bootstrapAivenMasterPaperAccount, matchesMasterRecoveryConfirmation } from '../database/master-paper-bootstrap.js';
 
 let runtimePool: Pool | null = null;
 
@@ -41,7 +42,7 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
@@ -55,6 +56,7 @@ export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'header
   if (value === 'database-target-migrate') return 'DATABASE_TARGET_MIGRATE';
   if (value === 'database-target-validate') return 'DATABASE_TARGET_VALIDATE';
   if (value === 'database-legacy-import') return 'DATABASE_LEGACY_IMPORT';
+  if (value === 'database-target-bootstrap-master') return 'DATABASE_TARGET_BOOTSTRAP_MASTER';
   return 'INVALID';
 }
 
@@ -213,17 +215,42 @@ export default async function autonomousRuntimeHandler(
     }
     return;
   }
+  if (operation === 'DATABASE_TARGET_BOOTSTRAP_MASTER') {
+    if (localIdentity.kind !== 'VALID') {
+      send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    if (!matchesMasterRecoveryConfirmation(request.headers['x-theta-database-change'])) {
+      send(response, 403, { error: 'master_recovery_confirmation_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    if (!environment.AIVEN_DATABASE_URL) {
+      send(response, 503, { error: 'aiven_database_not_configured', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    try {
+      const receipt = await bootstrapAivenMasterPaperAccount(environment);
+      send(response, 200, { target: 'AIVEN_POSTGRESQL', receipt, cutoverAuthorized: false,
+        executionGate: 'EXTERNAL_QUOTE_BLOCKER', followerExecution: 'LOCKED', liveMoneyAuthorized: false,
+        masterPaperOrders: 0, followerPaperOrders: 0, liveOrders: 0 });
+    } catch (error) {
+      const failure = classifyDatabaseTargetError(error);
+      send(response, 400, { error: 'AIVEN_MASTER_RECOVERY_FAILED', ...failure, target: 'AIVEN_POSTGRESQL',
+        cutoverAuthorized: false, executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0 });
+    }
+    return;
+  }
   if (operation === 'DATABASE_SOURCE_PREFLIGHT') {
     if (localIdentity.kind !== 'VALID') {
       send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
       return;
     }
-    if (!environment.DATABASE_URL) {
+    if (!environment.LEGACY_NEON_DATABASE_URL) {
       send(response, 503, { error: 'database_not_configured', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
       return;
     }
     try {
-      const preflight = await preflightDatabaseSource(environment.DATABASE_URL);
+      const preflight = await preflightDatabaseSource(environment.LEGACY_NEON_DATABASE_URL);
       send(response, 200, {
         source: 'NEON_LEGACY', preflight, mutationAuthorized: false, runtimeAuthority: false,
         executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0,

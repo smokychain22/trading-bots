@@ -38,6 +38,7 @@ const environmentSchema = z.object({
   DATABASE_URL: optionalPostgresUrl,
   DATABASE_MIGRATION_URL: optionalPostgresUrl,
   AIVEN_DATABASE_URL: optionalPostgresUrl,
+  DATABASE_RUNTIME_AUTHORITY: z.enum(['NEON', 'AIVEN']).default('NEON'),
   REDIS_URL: optionalUrl,
   ALPACA_API_KEY: z.string().min(1).optional(),
   ALPACA_SECRET_KEY: z.string().min(1).optional(),
@@ -69,7 +70,17 @@ const environmentSchema = z.object({
   VERCEL_PROJECT_ID: z.string().min(1).optional(),
   VERCEL_ORG_ID: z.string().min(1).optional(),
   VERCEL_TOKEN: z.string().min(1).optional()
-});
+}).superRefine((environment, context) => {
+  if (environment.DATABASE_RUNTIME_AUTHORITY === 'AIVEN' && !environment.AIVEN_DATABASE_URL) {
+    context.addIssue({ code: 'custom', path: ['AIVEN_DATABASE_URL'], message: 'required when DATABASE_RUNTIME_AUTHORITY=AIVEN' });
+  }
+}).transform((environment) => ({
+  ...environment,
+  LEGACY_NEON_DATABASE_URL: environment.DATABASE_URL,
+  ...(environment.DATABASE_RUNTIME_AUTHORITY === 'AIVEN'
+    ? { DATABASE_URL: environment.AIVEN_DATABASE_URL, DATABASE_MIGRATION_URL: environment.AIVEN_DATABASE_URL }
+    : {}),
+}));
 
 export type Environment = z.infer<typeof environmentSchema>;
 export type ProviderName = 'ALPACA' | 'OPTIONOMICS';
