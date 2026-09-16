@@ -46,8 +46,11 @@ test('quote qualification receipt blocks session-recorded research',()=>{
 test('R8 readiness cannot be forced through an unqualified quote source',()=>{
   const receipt=buildR8Readiness({r7EngineeringComplete:true,brokerTruthReady:true,sessionStateReady:true,positionLifecycleReady:true,
     strategyRouterReady:true,actionFrontierReady:true,operatorSafetyReady:true,optionomicsTransportReady:true,optionomicsRealAuthReady:false,
-    executionQuoteProviderReady:false,firstPaperOrderReady:true,labelPipelineReady:true,wholeChainAccountingReady:true,trainingReady:false});
+    executionQuoteProviderReady:false,operationalFirstPaperReady:true,empiricalPolicyReady:false,managementPolicyPromoted:false,
+    labelPipelineReady:true,wholeChainAccountingReady:true,trainingReady:false});
   assert.equal(receipt.paperActivationGate,'BLOCKED');assert.equal(receipt.executionAuthorized,false);
+  assert.equal(receipt.empiricalValidationGate,'BLOCKED');
+  assert.equal(receipt.managementPolicyPromotion,'NOT_PROMOTED_UNAVAILABLE');
 });
 test('explanations distinguish WAIT and preserve missing evidence',()=>{
   const x=assembleDecisionExplanation({action:'WAIT',feasibleAlternatives:[],infeasibleAlternatives:[{action:'OPEN_CSP',reason:'QUOTE_MISSING'}],

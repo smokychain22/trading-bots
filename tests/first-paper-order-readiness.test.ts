@@ -36,6 +36,7 @@ const validInput = (): FirstPaperOrderReadinessInput => ({
     expectedAfterCost: good(18, 'THETA_Q'),downsideTailEvidence: good('VALIDATED', 'RESEARCH_REGISTRY'),
     returnPerCapitalDay: good(0.0004, 'THETA_Q'),uncertainty:good(0.1,'THETA_Q'),
     calibrationCohort:good('oos-c1','RESEARCH_REGISTRY'),promotionEvidence:good('READY','RESEARCH_REGISTRY'),
+    managementPolicyPromotion:good('READY','RESEARCH_REGISTRY'),
   },
   aegis: { result: good('ALLOW_FULL', 'AEGIS'), finalQuantity: good(1, 'AEGIS') },
   identity: {
@@ -49,7 +50,9 @@ const validInput = (): FirstPaperOrderReadinessInput => ({
     workerBuildSha:good('abc123','WORKER'),marketSession:good('OPEN','WORKER'),leaseHealthy:good(true,'DATABASE'),
     providerHealth:good('GOOD','WORKER'),executionBoundary: good('LOCKED_BEFORE_FIRST_POST', 'EXECUTION_CONTROL'),
     submissionPathReady:good(true,'TEST'),managementPathReady:good(true,'TEST'),lifecyclePathReady:good(true,'TEST'),
-    executableBboReady:good(true,'ALPACA'),workerMode:'LOCAL_LAPTOP',ownerAuthorization:'GRANTED',
+    executableBboReady:good(true,'ALPACA'),paperMode:good(true),decisionFresh:good(true),contractIdentityUnambiguous:good(true),
+    newEntriesPaused:good(false),emergencyExecutionLock:good(false),followerExecutionLocked:good(true),liveMoneyAuthorized:good(false),
+    workerMode:'LOCAL_LAPTOP',ownerAuthorization:'GRANTED',
   },
 });
 
@@ -58,6 +61,8 @@ test('complete evidence produces a deterministic YES receipt while every order c
   const first = buildFirstPaperOrderReadinessReceipt(input);
   const second = buildFirstPaperOrderReadinessReceipt(input);
   assert.equal(first.readyForFirstPaperOrder, 'YES');
+  assert.equal(first.operationallyReadyForFirstPaperOrder, true);
+  assert.equal(first.empiricalPolicyReady, true);
   assert.deepEqual(first.blockers, []);
   assert.equal(first.receiptHash, second.receiptHash);
   assert.match(first.receiptHash, /^[0-9a-f]{64}$/);
@@ -74,7 +79,7 @@ test('UNKNOWN inputs remain explicit blockers and never become zero', () => {
   });
   assert.equal(receipt.readyForFirstPaperOrder, 'NO');
   assert.ok(receipt.blockers.includes('CONTRACT_MULTIPLIER_UNKNOWN'));
-  assert.ok(receipt.blockers.includes('EXPECTED_AFTER_COST_UNKNOWN'));
+  assert.ok(receipt.empiricalBlockers.includes('EXPECTED_AFTER_COST_UNKNOWN'));
   assert.equal(receipt.selection.multiplier.value, null);
   assert.equal(receipt.economics.expectedAfterCost.value, null);
 });
@@ -89,7 +94,7 @@ test('premium and collateral units use the provider multiplier rather than assum
   assert.ok(receipt.blockers.includes('COLLATERAL_FORMULA_MISMATCH'));
 });
 
-test('stale quote, non-positive EV, AEGIS veto, and unlocked boundary all fail closed', () => {
+test('stale quote, AEGIS veto, and unlocked boundary fail operationally while empirical failures remain separate', () => {
   const input = validInput();
   const receipt = buildFirstPaperOrderReadinessReceipt({
     ...input,
@@ -100,10 +105,59 @@ test('stale quote, non-positive EV, AEGIS veto, and unlocked boundary all fail c
   });
   assert.equal(receipt.readyForFirstPaperOrder, 'NO');
   assert.ok(receipt.blockers.includes('QUOTE_STALE'));
-  assert.ok(receipt.blockers.includes('EV_MODEL_NOT_EMPIRICALLY_READY'));
-  assert.ok(receipt.blockers.includes('EXPECTED_AFTER_COST_NOT_POSITIVE'));
+  assert.ok(receipt.empiricalBlockers.includes('EV_MODEL_NOT_EMPIRICALLY_READY'));
+  assert.ok(receipt.empiricalBlockers.includes('EXPECTED_AFTER_COST_NOT_POSITIVE'));
   assert.ok(receipt.blockers.includes('AEGIS_BLOCKS_NEW_RISK'));
   assert.ok(receipt.blockers.includes('FIRST_POST_BOUNDARY_NOT_LOCKED'));
+});
+
+test('operational readiness can pass while empirical policy and management promotion remain unavailable', () => {
+  const input = validInput();
+  const receipt = buildFirstPaperOrderReadinessReceipt({
+    ...input,
+    economics: {
+      ...input.economics,
+      empiricalState: good('EV_MODEL_NOT_EMPIRICALLY_READY'),
+      expectedAfterCost: good(-1), downsideTailEvidence: good('NOT_VALIDATED'), returnPerCapitalDay: good(0),
+      promotionEvidence: good('NOT_READY'), managementPolicyPromotion: good('NOT_PROMOTED'),
+    },
+  });
+  assert.equal(receipt.operationallyReadyForFirstPaperOrder, true);
+  assert.equal(receipt.readyForFirstPaperOrder, 'YES');
+  assert.deepEqual(receipt.operationalBlockers, []);
+  assert.equal(receipt.empiricalPolicyReady, false);
+  assert.ok(receipt.empiricalBlockers.includes('EV_MODEL_NOT_EMPIRICALLY_READY'));
+  assert.ok(receipt.empiricalBlockers.includes('TAIL_EVIDENCE_NOT_VALIDATED'));
+  assert.ok(receipt.empiricalBlockers.includes('CAPITAL_DAY_ECONOMICS_NOT_POSITIVE'));
+  assert.ok(receipt.empiricalBlockers.includes('RESEARCH_PROMOTION_NOT_READY'));
+  assert.equal(receipt.managementPolicyPromotionStatus, 'NOT_PROMOTED_UNAVAILABLE');
+});
+
+test('missing execution price remains an operational blocker', () => {
+  const input = validInput();
+  const receipt = buildFirstPaperOrderReadinessReceipt({
+    ...input, operations: { ...input.operations, executableBboReady: good(false) },
+  });
+  assert.equal(receipt.operationallyReadyForFirstPaperOrder, false);
+  assert.ok(receipt.operationalBlockers.includes('EXECUTABLE_BBO_NOT_READY'));
+});
+
+test('emergency lock, stale decision, ambiguous contract, and live or follower execution fail closed', () => {
+  const input = validInput();
+  const receipt = buildFirstPaperOrderReadinessReceipt({
+    ...input,
+    operations: { ...input.operations, emergencyExecutionLock: good(true), decisionFresh: good(false),
+      contractIdentityUnambiguous: good(false), followerExecutionLocked: good(false), liveMoneyAuthorized: good(true),
+      paperMode: good(false), idempotencyReserved: good(false) },
+  });
+  assert.equal(receipt.operationallyReadyForFirstPaperOrder, false);
+  assert.ok(receipt.operationalBlockers.includes('EMERGENCY_EXECUTION_LOCKED'));
+  assert.ok(receipt.operationalBlockers.includes('DECISION_NOT_FRESH'));
+  assert.ok(receipt.operationalBlockers.includes('CONTRACT_IDENTITY_AMBIGUOUS'));
+  assert.ok(receipt.operationalBlockers.includes('FOLLOWER_EXECUTION_NOT_LOCKED'));
+  assert.ok(receipt.operationalBlockers.includes('LIVE_MONEY_AUTHORIZED'));
+  assert.ok(receipt.operationalBlockers.includes('PAPER_MODE_NOT_CONFIRMED'));
+  assert.ok(receipt.operationalBlockers.includes('IDEMPOTENCY_NOT_RESERVED'));
 });
 
 test('the first THETA order can only be a SELL_TO_OPEN put on the Paper master', () => {

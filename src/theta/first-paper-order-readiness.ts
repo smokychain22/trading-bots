@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isEmpiricalPolicyBlocker } from './readiness-blocker-classification.js';
 
 export type EvidenceState = 'GOOD' | 'UNKNOWN' | 'STALE' | 'INVALID' | 'NOT_ENTITLED';
 export interface Evidence<T> {
@@ -72,6 +73,7 @@ export interface FirstPaperOrderReadinessInput {
     readonly uncertainty: Evidence<number>;
     readonly calibrationCohort: Evidence<string>;
     readonly promotionEvidence: Evidence<string>;
+    readonly managementPolicyPromotion: Evidence<string>;
   };
   readonly aegis: {
     readonly result: Evidence<string>;
@@ -99,15 +101,29 @@ export interface FirstPaperOrderReadinessInput {
     readonly managementPathReady: Evidence<boolean>;
     readonly lifecyclePathReady: Evidence<boolean>;
     readonly executableBboReady: Evidence<boolean>;
+    readonly paperMode: Evidence<boolean>;
+    readonly decisionFresh: Evidence<boolean>;
+    readonly contractIdentityUnambiguous: Evidence<boolean>;
+    readonly newEntriesPaused: Evidence<boolean>;
+    readonly emergencyExecutionLock: Evidence<boolean>;
+    readonly followerExecutionLocked: Evidence<boolean>;
+    readonly liveMoneyAuthorized: Evidence<boolean>;
     readonly workerMode: 'LOCAL_LAPTOP';
     readonly ownerAuthorization: 'GRANTED' | 'NOT_GRANTED';
   };
 }
 
 export interface FirstPaperOrderReadinessReceipt extends FirstPaperOrderReadinessInput {
-  readonly receiptVersion: 'theta-first-paper-order-readiness-v1';
+  readonly receiptVersion: 'theta-first-paper-order-readiness-v2';
   readonly receiptHash: string;
+  /** Compatibility field. Its canonical meaning is operational blockers only. */
   readonly blockers: readonly string[];
+  readonly operationalBlockers: readonly string[];
+  readonly empiricalBlockers: readonly string[];
+  readonly operationallyReadyForFirstPaperOrder: boolean;
+  readonly empiricalPolicyReady: boolean;
+  readonly managementPolicyPromotionStatus: 'READY' | 'NOT_PROMOTED_UNAVAILABLE';
+  /** Compatibility field. This now reports operational first-Paper readiness. */
   readonly readyForFirstPaperOrder: 'YES' | 'NO';
   readonly masterPaperOrders: 0;
   readonly followerPaperOrders: 0;
@@ -237,6 +253,8 @@ export function buildFirstPaperOrderReadinessReceipt(input: FirstPaperOrderReadi
   const uncertainty = requireGood(input.economics.uncertainty, 'EV_UNCERTAINTY', blockers);
   requireGood(input.economics.calibrationCohort, 'CALIBRATION_COHORT', blockers);
   const promotion = requireGood(input.economics.promotionEvidence, 'PROMOTION_EVIDENCE', blockers);
+  const managementPromotion = input.economics.managementPolicyPromotion.state === 'GOOD'
+    ? input.economics.managementPolicyPromotion.value : null;
   if (empirical !== null && empirical !== 'EMPIRICALLY_READY') blockers.push('EV_MODEL_NOT_EMPIRICALLY_READY');
   if (ev !== null && (!Number.isFinite(ev) || ev <= 0)) blockers.push('EXPECTED_AFTER_COST_NOT_POSITIVE');
   if (tail !== null && tail !== 'VALIDATED') blockers.push('TAIL_EVIDENCE_NOT_VALIDATED');
@@ -267,6 +285,13 @@ export function buildFirstPaperOrderReadinessReceipt(input: FirstPaperOrderReadi
   const managementPath = requireGood(input.operations.managementPathReady, 'MANAGEMENT_PATH', blockers);
   const lifecyclePath = requireGood(input.operations.lifecyclePathReady, 'LIFECYCLE_PATH', blockers);
   const executableBbo = requireGood(input.operations.executableBboReady, 'EXECUTABLE_BBO', blockers);
+  const paperMode = requireGood(input.operations.paperMode, 'PAPER_MODE', blockers);
+  const decisionFresh = requireGood(input.operations.decisionFresh, 'DECISION_FRESHNESS', blockers);
+  const contractIdentityUnambiguous = requireGood(input.operations.contractIdentityUnambiguous, 'CONTRACT_IDENTITY', blockers);
+  const newEntriesPaused = requireGood(input.operations.newEntriesPaused, 'NEW_ENTRIES_PAUSED_STATE', blockers);
+  const emergencyExecutionLock = requireGood(input.operations.emergencyExecutionLock, 'EMERGENCY_EXECUTION_LOCK_STATE', blockers);
+  const followerExecutionLocked = requireGood(input.operations.followerExecutionLocked, 'FOLLOWER_EXECUTION_LOCK_STATE', blockers);
+  const liveMoneyAuthorized = requireGood(input.operations.liveMoneyAuthorized, 'LIVE_MONEY_AUTHORIZATION_STATE', blockers);
   if (idempotency === false) blockers.push('IDEMPOTENCY_NOT_RESERVED');
   if (persistence === false) blockers.push('PERSISTENCE_NOT_DURABLE');
   if (scheduler === false) blockers.push('SCHEDULER_NOT_HEALTHY');
@@ -280,14 +305,32 @@ export function buildFirstPaperOrderReadinessReceipt(input: FirstPaperOrderReadi
   if (managementPath === false) blockers.push('MANAGEMENT_PATH_NOT_READY');
   if (lifecyclePath === false) blockers.push('LIFECYCLE_PATH_NOT_READY');
   if (executableBbo === false) blockers.push('EXECUTABLE_BBO_NOT_READY');
+  if (paperMode === false) blockers.push('PAPER_MODE_NOT_CONFIRMED');
+  if (decisionFresh === false) blockers.push('DECISION_NOT_FRESH');
+  if (contractIdentityUnambiguous === false) blockers.push('CONTRACT_IDENTITY_AMBIGUOUS');
+  if (newEntriesPaused === true) blockers.push('NEW_ENTRIES_PAUSED');
+  if (emergencyExecutionLock === true) blockers.push('EMERGENCY_EXECUTION_LOCKED');
+  if (followerExecutionLocked === false) blockers.push('FOLLOWER_EXECUTION_NOT_LOCKED');
+  if (liveMoneyAuthorized === true) blockers.push('LIVE_MONEY_AUTHORIZED');
   if (input.operations.ownerAuthorization !== 'GRANTED') blockers.push('OWNER_PAPER_AUTHORIZATION_NOT_GRANTED');
 
   const uniqueBlockers = [...new Set(blockers)].sort();
+  const empiricalBlockers = uniqueBlockers.filter(isEmpiricalPolicyBlocker);
+  const operationalBlockers = uniqueBlockers.filter((blocker) => !isEmpiricalPolicyBlocker(blocker));
+  const operationallyReadyForFirstPaperOrder = operationalBlockers.length === 0;
+  const empiricalPolicyReady = empiricalBlockers.length === 0;
+  const managementPolicyPromotionStatus = managementPromotion === 'READY'
+    ? 'READY' as const : 'NOT_PROMOTED_UNAVAILABLE' as const;
   const base = {
-    receiptVersion: 'theta-first-paper-order-readiness-v1' as const,
+    receiptVersion: 'theta-first-paper-order-readiness-v2' as const,
     ...input,
-    blockers: uniqueBlockers,
-    readyForFirstPaperOrder: uniqueBlockers.length === 0 ? 'YES' as const : 'NO' as const,
+    blockers: operationalBlockers,
+    operationalBlockers,
+    empiricalBlockers,
+    operationallyReadyForFirstPaperOrder,
+    empiricalPolicyReady,
+    managementPolicyPromotionStatus,
+    readyForFirstPaperOrder: operationallyReadyForFirstPaperOrder ? 'YES' as const : 'NO' as const,
     masterPaperOrders: 0 as const, followerPaperOrders: 0 as const, liveOrders: 0 as const,
   };
   return { ...base, receiptHash: createHash('sha256').update(canonical(base)).digest('hex') };

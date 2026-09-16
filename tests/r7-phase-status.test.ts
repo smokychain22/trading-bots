@@ -8,13 +8,14 @@ test('mechanically complete dry run reports granted owner authorization while em
     request:{symbol:'AAPL261016P00150000',qty:1,side:'sell',type:'limit',time_in_force:'day',limit_price:'1.24',
       client_order_id:'theta-first-1',position_intent:'sell_to_open'},requestPayloadHash:'a'.repeat(64),
     networkSubmission:'NOT_ATTEMPTED',executionAuthorized:false,mechanicalBlockers:[],
-    receipt:{readyForFirstPaperOrder:'NO',blockers:['EV_MODEL_NOT_EMPIRICALLY_READY'],operations:{ownerAuthorization:'GRANTED'}}} as unknown as FirstPaperOrderDryRun;
+    receipt:{readyForFirstPaperOrder:'YES',blockers:[],operationalBlockers:[],empiricalBlockers:['EV_MODEL_NOT_EMPIRICALLY_READY'],
+      operations:{ownerAuthorization:'GRANTED'}}} as unknown as FirstPaperOrderDryRun;
   const status=buildR7PhaseStatus(dryRun);
   assert.equal(status.R7_ENGINEERING,'PASS');
   assert.equal(status.R7_EMPIRICAL_GATE,'BLOCKED');
   assert.equal(status.R7_OWNER_AUTHORIZATION,'GRANTED');
   assert.equal(status.R7_FULL_PHASE,'NO');
-  assert.equal(status.READY_FOR_FIRST_PAPER_ORDER,'NO');
+  assert.equal(status.READY_FOR_FIRST_PAPER_ORDER,'YES');
 });
 
 test('empirical gate is reported independently from an operational blocker',()=>{
@@ -22,7 +23,8 @@ test('empirical gate is reported independently from an operational blocker',()=>
     request:{symbol:'AAPL261016P00150000',qty:1,side:'sell',type:'limit',time_in_force:'day',limit_price:'1.24',
       client_order_id:'theta-first-1',position_intent:'sell_to_open'},requestPayloadHash:'a'.repeat(64),
     networkSubmission:'NOT_ATTEMPTED',executionAuthorized:false,mechanicalBlockers:[],
-    receipt:{readyForFirstPaperOrder:'NO',blockers:['SCHEDULER_NOT_HEALTHY'],operations:{ownerAuthorization:'GRANTED'}}} as unknown as FirstPaperOrderDryRun;
+    receipt:{readyForFirstPaperOrder:'NO',blockers:['SCHEDULER_NOT_HEALTHY'],operationalBlockers:['SCHEDULER_NOT_HEALTHY'],
+      empiricalBlockers:[],operations:{ownerAuthorization:'GRANTED'}}} as unknown as FirstPaperOrderDryRun;
   const status=buildR7PhaseStatus(dryRun);
   assert.equal(status.R7_ENGINEERING,'PASS');
   assert.equal(status.R7_EMPIRICAL_GATE,'PASS');

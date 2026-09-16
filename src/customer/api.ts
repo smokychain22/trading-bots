@@ -541,12 +541,19 @@ export default async function customerHandler(
         status:strategy.status,promotion_status:strategy.promotionStatus,execution_enabled:strategy.executionEnabled,
         configuration_hash:strategy.configurationHash,
       }));
+      const firstPaperOperationalBlockers=[
+        ...(p2fStatus.optionomics.secret_state==='AUTH_VALID'?[]:['OPTIONOMICS_AUTH_INVALID']),
+        ...(localWorker.execution_gate==='ACTIVE'?[]:['EXECUTION_PRICE_NOT_QUALIFIED']),
+        ...(p2gStatus.dry_run.state==='DRY_RUN_READY'?[]:['NO_CURRENT_CANDIDATE_PREVIEW']),
+      ];
       const r8Readiness=buildR8Readiness({r7EngineeringComplete:true,brokerTruthReady:localWorker.alpaca_health==='GOOD',
         sessionStateReady:localWorker.market_session!=='UNKNOWN',
         positionLifecycleReady:database.state==='CONNECTED',strategyRouterReady:true,actionFrontierReady:true,
         operatorSafetyReady:database.state==='CONNECTED',optionomicsTransportReady:true,
-        optionomicsRealAuthReady:p2fStatus.optionomics.secret_state==='AUTH_VALID',executionQuoteProviderReady:false,
-        firstPaperOrderReady:false,labelPipelineReady:database.state==='CONNECTED',wholeChainAccountingReady:database.state==='CONNECTED',
+        optionomicsRealAuthReady:p2fStatus.optionomics.secret_state==='AUTH_VALID',
+        executionQuoteProviderReady:localWorker.execution_gate==='ACTIVE',
+        operationalFirstPaperReady:firstPaperOperationalBlockers.length===0,empiricalPolicyReady:false,managementPolicyPromoted:false,
+        labelPipelineReady:database.state==='CONNECTED',wholeChainAccountingReady:database.state==='CONNECTED',
         trainingReady:(outcomeResearch.resolved_labels??0)>0});
       return send(response, 200, {
         api_version: "v1",
@@ -612,6 +619,15 @@ export default async function customerHandler(
           p2g_evidence: p2gStatus,
           strategy_registry: strategyRegistry,
           r8_readiness: r8Readiness,
+          first_paper_operational_readiness: {
+            status: firstPaperOperationalBlockers.length===0 ? "READY" : "BLOCKED",
+            blockers: firstPaperOperationalBlockers,
+          },
+          empirical_policy_readiness: {
+            status: "BLOCKED",
+            blockers: ["INSUFFICIENT_RESOLVED_PAPER_EVIDENCE"],
+          },
+          management_policy_promotion: { status: "NOT_PROMOTED_UNAVAILABLE" },
           execution_control: {
             environment: "PAPER",
             live_host_allowed: false,

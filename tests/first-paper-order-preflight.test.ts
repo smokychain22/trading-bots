@@ -16,20 +16,24 @@ const input=():FirstPaperOrderReadinessInput=>({asOf:now,broker:{role:good('MAST
   quote:{feed:good('TRUSTED_TWO_SIDED_ORDER_PRICING','OPTIONOMICS'),bid:good(1.2,'OPTIONOMICS'),ask:good(1.3,'OPTIONOMICS'),midpoint:good(1.25,'OPTIONOMICS'),proposedLimit:good(1.24),pricingPolicy:good('PASSIVE_LIMIT_V1'),
   ageSeconds:good(2),maximumAgeSeconds:10,spreadProtectionPassed:good(true),providerAuthenticated:good(true),exactContractMapping:good(true),documentedForOrderPricing:good(true)},economics:{empiricalState:good('EV_MODEL_NOT_EMPIRICALLY_READY'),
   empiricalModelVersion:unknown(),expectedAfterCost:unknown(),downsideTailEvidence:unknown(),returnPerCapitalDay:unknown(),uncertainty:unknown(),
-  calibrationCohort:unknown(),promotionEvidence:good('NOT_READY')},aegis:{result:good('ALLOW_FULL'),finalQuantity:good(1)},identity:{fusionSnapshotId:good('fusion-1'),
+  calibrationCohort:unknown(),promotionEvidence:good('NOT_READY'),managementPolicyPromotion:good('NOT_PROMOTED')},aegis:{result:good('ALLOW_FULL'),finalQuantity:good(1)},identity:{fusionSnapshotId:good('fusion-1'),
   fusionSnapshotHash:good('hash-1'),decisionId:good('decision-1'),orderIntentId:good('intent-1'),clientOrderId:good('theta-first-1')},operations:{
   idempotencyReserved:good(true),persistenceDurable:good(true),schedulerHealthy:good(true),reconciliationHealthy:good(true),workerOnline:good(true),
   workerBuildSha:good('sha-1'),marketSession:good('OPEN'),leaseHealthy:good(true),providerHealth:good('GOOD'),executionBoundary:good('LOCKED_BEFORE_FIRST_POST'),
   submissionPathReady:good(true),managementPathReady:good(true),lifecyclePathReady:good(true),executableBboReady:good(true),
+  paperMode:good(true),decisionFresh:good(true),contractIdentityUnambiguous:good(true),newEntriesPaused:good(false),
+  emergencyExecutionLock:good(false),followerExecutionLocked:good(true),liveMoneyAuthorized:good(false),
   workerMode:'LOCAL_LAPTOP',ownerAuthorization:'GRANTED'}});
 
 test('dry run constructs the exact limit request without any broker network capability',()=>{
   const result=buildFirstPaperOrderDryRun(input());
-  assert.equal(result.receipt.readyForFirstPaperOrder,'NO');
+  assert.equal(result.receipt.readyForFirstPaperOrder,'YES');
+  assert.equal(result.receipt.operationallyReadyForFirstPaperOrder,true);
+  assert.equal(result.receipt.empiricalPolicyReady,false);
   assert.equal(result.networkSubmission,'NOT_ATTEMPTED');
   assert.equal(result.executionAuthorized,false);
   assert.deepEqual(result.request,{symbol:'AAPL261016P00150000',qty:1,side:'sell',type:'limit',time_in_force:'day',
     limit_price:'1.24',client_order_id:'theta-first-1',position_intent:'sell_to_open'});
   assert.match(result.requestPayloadHash??'',/^[0-9a-f]{64}$/);
-  assert.ok(result.receipt.blockers.includes('EXPECTED_AFTER_COST_UNKNOWN'));
+  assert.ok(result.receipt.empiricalBlockers.includes('EXPECTED_AFTER_COST_UNKNOWN'));
 });
