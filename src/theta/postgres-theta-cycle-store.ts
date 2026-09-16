@@ -523,8 +523,11 @@ export class PostgresThetaCycleStore {
       const operationAlias = typeof raw.operationAlias === 'string' ? raw.operationAlias : 'optionomics.get_option_chain';
       if (responseHash === null || retrievedAt === null) throw new Error('OPTIONOMICS_LAYERED_EVIDENCE_METADATA_INVALID');
       const provenance = provenanceRows.find((item) => item.provider === 'OPTIONOMICS' && item.operationAlias === operationAlias);
-      const quality = typeof provenance?.state === 'string' ? provenance.state : 'UNKNOWN';
-      const asOf = typeof provenance?.asOf === 'string' ? provenance.asOf : String(snapshot.decisionTimeUtc);
+      // A raw observation becomes available at retrieval. Decision time can be
+      // later, so using it here breaks PIT ordering and the immutable schema.
+      // Future or malformed provider timestamps remain in the raw payload but
+      // are quarantined from typed temporal columns as INVALID.
+      const temporal = optionomicsRawObservationTime(retrievedAt, raw.providerTimestamp, provenance?.state);
       const observationId = deterministicRuntimeUuid(`optionomics-raw:${fusionSnapshotId}:${operationAlias}:${responseHash}`);
       await client.query(
         `INSERT INTO market.optionomics_raw_observation(observation_id,fusion_snapshot_id,operation_alias,underlying,
@@ -534,9 +537,9 @@ export class PostgresThetaCycleStore {
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14::jsonb,$15,$16::jsonb,$17,$18,$19)
          ON CONFLICT(fusion_snapshot_id,operation_alias,response_hash) DO NOTHING`,
         [observationId, fusionSnapshotId, operationAlias, underlying,
-          typeof raw.providerTimestamp === 'string' ? raw.providerTimestamp : null, retrievedAt, asOf,
+          temporal.providerTimestamp, retrievedAt, temporal.asOf,
           typeof raw.contractVersion === 'string' ? raw.contractVersion : 'optionomics-public-api-unknown',
-          quality, responseHash, JSON.stringify(raw.payload ?? null),
+          temporal.quality, responseHash, JSON.stringify(raw.payload ?? null),
           typeof raw.requestedAt === 'string' ? raw.requestedAt : null,
           typeof raw.requestPath === 'string' ? raw.requestPath : null, JSON.stringify(jsonObject(raw.requestParameters)),
           typeof raw.httpStatus === 'number' ? raw.httpStatus : null, JSON.stringify(jsonObject(raw.rateLimit)),
@@ -544,7 +547,7 @@ export class PostgresThetaCycleStore {
           typeof raw.credentialIdentityRefHash === 'string' ? raw.credentialIdentityRefHash : null,
           typeof raw.sessionDate === 'string' ? raw.sessionDate : null],
       );
-      observationIds.push({ id: observationId, operationAlias, retrievedAt, quality });
+      observationIds.push({ id: observationId, operationAlias, retrievedAt, quality: temporal.quality });
     }
     const primary = observationIds.find((row) => row.operationAlias === 'optionomics.get_option_chain') ?? observationIds[0];
     if (primary === undefined) return;
@@ -780,4 +783,22 @@ export class PostgresThetaCycleStore {
         JSON.stringify(validation.violations),createHash('sha256').update(JSON.stringify(waitPayload)).digest('hex')]);
     }
   }
+}
+const optionomicsQualityStates = new Set(['GOOD','DEGRADED','STALE','UNKNOWN','INVALID','NOT_ENTITLED']);
+
+export function optionomicsRawObservationTime(
+  retrievedAt: string,
+  providerTimestampValue: unknown,
+  provenanceQuality: unknown,
+): { readonly asOf: string; readonly providerTimestamp: string | null; readonly quality: string } {
+  const retrievedMillis = Date.parse(retrievedAt);
+  if (!Number.isFinite(retrievedMillis)) throw new Error('OPTIONOMICS_RETRIEVAL_TIMESTAMP_INVALID');
+  const quality = typeof provenanceQuality === 'string' && optionomicsQualityStates.has(provenanceQuality)
+    ? provenanceQuality : 'UNKNOWN';
+  if (typeof providerTimestampValue !== 'string') return { asOf: retrievedAt, providerTimestamp: null, quality };
+  const providerMillis = Date.parse(providerTimestampValue);
+  if (!Number.isFinite(providerMillis) || providerMillis > retrievedMillis) {
+    return { asOf: retrievedAt, providerTimestamp: null, quality: 'INVALID' };
+  }
+  return { asOf: retrievedAt, providerTimestamp: new Date(providerMillis).toISOString(), quality };
 }
