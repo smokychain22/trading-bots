@@ -47,8 +47,8 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 999 -
 $principal = New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) `
   -LogonType Interactive -RunLevel Limited
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
-  -Description "Pinned THETA master Alpaca Paper worker at $buildSha. Reconciliation first. Execution quote blocked." -Force | Out-Null
+  -Description "Pinned THETA master Alpaca Paper worker at $buildSha. Reconciliation first. New risk locked until runtime gates pass." -Force | Out-Null
 Start-ScheduledTask -TaskName $TaskName
 Write-Output (@{installed=$true;task=$TaskName;buildSha=$buildSha;mode='MASTER_THETA_PAPER';
   trigger='AT_LOGON_START_WHEN_AVAILABLE';wakeToRun=$true;restartOnFailure=$true;
-  executionGate='EXTERNAL_QUOTE_BLOCKER'} | ConvertTo-Json -Compress)
+  executionGate='LOCKED'} | ConvertTo-Json -Compress)

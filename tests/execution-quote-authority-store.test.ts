@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Pool } from 'pg';
-import { PostgresRuntimeCycleStore } from '../src/theta/autonomous-runtime.js';
+import { jobTypesForScope, PostgresRuntimeCycleStore } from '../src/theta/autonomous-runtime.js';
 
 const poolReturning = (ready: boolean) => ({
   query: async (sql: string) => {
@@ -37,4 +37,14 @@ test('first Paper canary is available only before any broker order has been pers
 
   assert.equal(await emptyStore.firstCanarySubmissionAvailable(), true);
   assert.equal(await usedStore.firstCanarySubmissionAvailable(), false);
+});
+
+test('serverless runtime scopes keep management and evidence bounded without dropping reconciliation', () => {
+  const core = jobTypesForScope('CORE');
+  const evidence = jobTypesForScope('EVIDENCE');
+  assert.ok(core.includes('POSITION_RECONCILIATION'));
+  assert.ok(core.includes('POSITION_MANAGEMENT_SCAN'));
+  assert.ok(core.includes('PAPER_EXECUTION_HANDOFF'));
+  assert.ok(!core.includes('OPPORTUNITY_SCAN'));
+  assert.deepEqual(evidence, ['POSITION_RECONCILIATION', 'WAIT_RECHECK', 'OPPORTUNITY_SCAN']);
 });

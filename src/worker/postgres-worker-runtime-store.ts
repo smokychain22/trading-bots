@@ -4,7 +4,8 @@ import type { AutonomousRuntimeReport } from '../theta/autonomous-runtime.js';
 export const masterPaperLeaseKey = 'THETA_MASTER_PAPER_RUNTIME' as const;
 export type WorkerRuntimeState = 'MASTER_PAPER_STARTING'|'MASTER_PAPER_RECONCILING'|'MASTER_PAPER_ACTIVE'|
   'MASTER_PAPER_MARKET_CLOSED'|'MASTER_PAPER_QUOTE_BLOCKED'|'MASTER_PAPER_RISK_BLOCKED'|
-  'MASTER_PAPER_PROVIDER_DEGRADED'|'MASTER_PAPER_PAUSED_BY_KILL_SWITCH'|'OFFLINE'|'STOPPING'|'ERROR';
+  'MASTER_PAPER_PROVIDER_DEGRADED'|'MASTER_PAPER_PAUSED_BY_KILL_SWITCH'|'MASTER_PAPER_NEW_RISK_LOCKED'|
+  'OFFLINE'|'STOPPING'|'ERROR';
 
 export interface WorkerRegistration {
   readonly workerId: string;
@@ -40,7 +41,7 @@ export class PostgresWorkerRuntimeStore implements WorkerRuntimeStore {
       worker_id,lease_key,host_id,host_type,runtime_mode,build_sha,runtime_version,policy_version,
       strategy_versions_json,started_at,last_heartbeat,execution_gate,state,database_health)
       VALUES($1,$2,$3,'LOCAL_LAPTOP','MASTER_THETA_PAPER',$4,'theta-autonomous-runtime-v1',
-        'theta-scheduler-policy-v1',$5::jsonb,$6,$6,'EXTERNAL_QUOTE_BLOCKER','MASTER_PAPER_STARTING','GOOD')
+        'theta-scheduler-policy-v1',$5::jsonb,$6,$6,'LOCKED','MASTER_PAPER_STARTING','GOOD')
       ON CONFLICT(worker_id) DO UPDATE SET build_sha=EXCLUDED.build_sha,runtime_version=EXCLUDED.runtime_version,
         policy_version=EXCLUDED.policy_version,strategy_versions_json=EXCLUDED.strategy_versions_json,
         stopped_at=NULL,last_heartbeat=EXCLUDED.last_heartbeat,state='MASTER_PAPER_STARTING',failure_reason=NULL,
@@ -104,7 +105,8 @@ export class PostgresWorkerRuntimeStore implements WorkerRuntimeStore {
         :quoteBlocked?'MASTER_PAPER_QUOTE_BLOCKED'
         :degraded?'MASTER_PAPER_PROVIDER_DEGRADED'
           :market==='OPEN'&&report.executionGate==='ACTIVE'?'MASTER_PAPER_ACTIVE'
-            :market==='OPEN'?'MASTER_PAPER_QUOTE_BLOCKED':'MASTER_PAPER_PROVIDER_DEGRADED';
+            :market==='OPEN'&&report.executionGate==='EXTERNAL_QUOTE_BLOCKER'?'MASTER_PAPER_QUOTE_BLOCKED'
+              :market==='OPEN'?'MASTER_PAPER_NEW_RISK_LOCKED':'MASTER_PAPER_PROVIDER_DEGRADED';
     const candidateScan=completedCandidateEvidenceScan(report);
     await this.pool.query(`UPDATE ops.runtime_worker_status SET state=$3,last_cycle_completed=$2,last_heartbeat=$2,
       last_reconciliation=CASE WHEN $4 THEN $2 ELSE last_reconciliation END,
@@ -115,7 +117,8 @@ export class PostgresWorkerRuntimeStore implements WorkerRuntimeStore {
       failure_reason=$9,execution_gate=$10,updated_at=$2 WHERE worker_id=$1`,
     [workerId,at,state,report.reconciliation!==null,candidateScan,!degraded,market,
       report.reconciliation===null?'DEGRADED':report.reconciliation.dataQuality==='GOOD'?'GOOD':'DEGRADED',
-      degraded?firstBlocker??report.status:report.executionGate==='ACTIVE'?null:'FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_NOT_YET_QUALIFIED',
+      degraded?firstBlocker??report.status:report.executionGate==='EXTERNAL_QUOTE_BLOCKER'
+        ?'FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_NOT_YET_QUALIFIED':null,
       report.executionGate]);
   }
 

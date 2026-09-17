@@ -58,11 +58,13 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'MASTER_PAPER_AUTHORIZE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'RUNTIME_CORE_CYCLE' | 'RUNTIME_EVIDENCE_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'MASTER_PAPER_AUTHORIZE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
   if (value === undefined) return 'RUNTIME_CYCLE';
+  if (value === 'runtime-core-cycle') return 'RUNTIME_CORE_CYCLE';
+  if (value === 'runtime-evidence-cycle') return 'RUNTIME_EVIDENCE_CYCLE';
   if (value === 'provider-evidence-readiness') return 'PROVIDER_EVIDENCE_READINESS';
   if (value === 'alpaca-indicative-quote-qualification') return 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION';
   if (value === 'optionomics-provider-qualification') return 'OPTIONOMICS_PROVIDER_QUALIFICATION';
@@ -154,7 +156,7 @@ export default async function autonomousRuntimeHandler(
     });
     send(response,200,{accountRole:'MASTER_THETA_PAPER',environment:'PAPER',
       masterManagementAuthorized:control.masterExecutionEnabled,newRiskPaused:control.pauseNewOrders,
-      followerExecution:'LOCKED',liveMoneyAuthorized:false,executionGate:'EXTERNAL_QUOTE_BLOCKER',ordersSubmitted:0});
+      followerExecution:'LOCKED',liveMoneyAuthorized:false,executionGate:'LOCKED',ordersSubmitted:0});
     return;
   }
   if (operation === 'DATABASE_TARGET_PREFLIGHT') {
@@ -422,7 +424,7 @@ export default async function autonomousRuntimeHandler(
   if(request.method==='DELETE'){
     if(localWorkerId===null){send(response,400,{error:'local_worker_identity_required'});return;}
     await workerStore.stop(localWorkerId,new Date().toISOString(),'OFFLINE');
-    send(response,200,{state:'OFFLINE',executionGate:'EXTERNAL_QUOTE_BLOCKER'});
+    send(response,200,{state:'OFFLINE',executionGate:'LOCKED'});
     return;
   }
   try {
@@ -568,7 +570,7 @@ export default async function autonomousRuntimeHandler(
     }
     if(localIdentity.kind === 'ABSENT'){
       const active=await workerStore.activeLeaseOwner(new Date().toISOString());
-      if(active!==null){send(response,409,{error:'local_primary_worker_active',executionGate:'EXTERNAL_QUOTE_BLOCKER'});return;}
+      if(active!==null){send(response,409,{error:'local_primary_worker_active',executionGate:'LOCKED'});return;}
     }else{
       const at=new Date();
       const identity = localIdentity.identity;
@@ -578,12 +580,13 @@ export default async function autonomousRuntimeHandler(
         buildSha: identity.buildSha,
         startedAt:at.toISOString(),strategyVersions:['theta-shadow-once-v1']});
       const lease=await workerStore.acquireLease(identity.workerId,at.toISOString(),new Date(at.getTime()+150_000).toISOString());
-      if(lease==='HELD_BY_OTHER'){send(response,409,{error:'primary_master_paper_worker_lease_held',executionGate:'EXTERNAL_QUOTE_BLOCKER'});return;}
+      if(lease==='HELD_BY_OTHER'){send(response,409,{error:'primary_master_paper_worker_lease_held',executionGate:'LOCKED'});return;}
       if(previous!==null&&at.getTime()-Date.parse(previous)>120_000)
         await workerStore.recordResumeGap(identity.workerId,previous,at.toISOString());
       await workerStore.cycleStarted(identity.workerId,at.toISOString());
     }
-    const report = await runAutonomousRuntimeCycle(environment, runtimePool);
+    const scope=operation==='RUNTIME_CORE_CYCLE'?'CORE':operation==='RUNTIME_EVIDENCE_CYCLE'?'EVIDENCE':'FULL';
+    const report = await runAutonomousRuntimeCycle(environment, runtimePool, new Date(),{scope});
     if(localWorkerId!==null)await workerStore.cycleCompleted(localWorkerId,report,new Date().toISOString());
     send(response, report.status === 'FAILED' || report.status === 'QUARANTINED' ? 503 : report.status === 'DEGRADED' ? 207 : 200, report);
   } catch (error) {
@@ -593,7 +596,7 @@ export default async function autonomousRuntimeHandler(
       await workerStore.stop(localWorkerId, new Date().toISOString(), 'ERROR', code).catch(() => undefined);
     }
     send(response, 503, {
-      error: code, executionGate: 'EXTERNAL_QUOTE_BLOCKER', masterPaperOrdersSubmitted: 0,
+      error: code, executionGate: 'LOCKED', masterPaperOrdersSubmitted: 0,
       followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
     });
   }

@@ -1,5 +1,13 @@
 # Engineering decisions
 
+## 2026-09-17: Paper indicative pricing and control locks have distinct semantics
+
+- Use fresh exact-contract Alpaca Basic `feed=indicative` bid and ask observations as `PAPER_INDICATIVE_REFERENCE` for the dedicated master Paper account.
+- Never label that feed OPRA, consolidated, or NBBO. It is forbidden for live execution and cannot unlock followers.
+- Refresh the sanitized qualification receipt once per open market session. Provider timestamps, exact OCC identity, uncrossed two-sided prices, sizes, and quote age remain mandatory.
+- Report `EXTERNAL_QUOTE_BLOCKER` only when no qualified Paper pricing authority exists. Report `LOCKED` when pricing exists but owner, runtime, emergency, empirical, or single-canary controls prevent new risk.
+- Allow at most one first-canary broker order. Once any broker order is persisted, new-risk submission locks automatically while reconciliation and management keep running.
+
 ## 2026-09-17: split first-canary bootstrap management from empirical promotion
 
 - Use `PAPER_BOOTSTRAP_MANAGEMENT_POLICY` for bounded first-canary lifecycle safety.

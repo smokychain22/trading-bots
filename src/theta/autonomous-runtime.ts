@@ -243,6 +243,7 @@ export interface ManagementPolicyEvidenceProvider {
 
 export interface AutonomousRuntimeDependencies {
   readonly managementPolicyEvidenceProvider?: ManagementPolicyEvidenceProvider;
+  readonly scope?: 'FULL' | 'CORE' | 'EVIDENCE';
 }
 
 /**
@@ -265,13 +266,20 @@ function isRetryableExternalExecutionFailure(error:unknown):boolean{
   return error instanceof AlpacaPaperBrokerError&&error.category!=='BROKER_REJECTED';
 }
 
-function scheduledJobs(bucket: string): readonly DueJob[] {
-  return [
+export const jobTypesForScope=(scope:'FULL'|'CORE'|'EVIDENCE'):readonly JobType[]=>{
+  const all:readonly JobType[]=[
     'POSITION_RECONCILIATION', 'ORDER_RECONCILIATION', 'POSITION_MANAGEMENT_SCAN',
     'ASSIGNMENT_EXPIRY_RECONCILIATION', 'PENDING_ORDER_MANAGEMENT', 'WAIT_RECHECK',
     'OPPORTUNITY_SCAN', 'PAPER_EXECUTION_HANDOFF', 'ACCOUNT_STATE_REFRESH', 'MARKET_STATE_REFRESH',
     'COPY_FANOUT_PREPARATION', 'HEALTH_HEARTBEAT',
-  ].map((jobType) => ({ jobType: jobType as JobType, correlationKey: bucket }));
+  ];
+  if(scope==='FULL')return all;
+  if(scope==='EVIDENCE')return ['POSITION_RECONCILIATION','WAIT_RECHECK','OPPORTUNITY_SCAN'];
+  return all.filter((jobType)=>jobType!=='WAIT_RECHECK'&&jobType!=='OPPORTUNITY_SCAN');
+};
+
+function scheduledJobs(bucket: string,scope:'FULL'|'CORE'|'EVIDENCE'): readonly DueJob[] {
+  return jobTypesForScope(scope).map((jobType) => ({ jobType, correlationKey: `${bucket}:${scope.toLowerCase()}` }));
 }
 
 const succeeded = (): JobRunResult => ({ status: 'SUCCEEDED', errorCode: null, errorDetail: null, nextRunAt: null });
@@ -319,7 +327,9 @@ export async function runAutonomousRuntimeCycle(
   const runtimeExecutionGate = !executionQuoteAuthorityReady ? executionQuoteBlocker
     : newRiskRuntimeEnabled ? 'ACTIVE' as const : 'LOCKED' as const;
   const bucket = minuteBucket(now);
-  const correlationId = `theta-runtime:${bucket}`;
+  const scope=dependencies.scope??'FULL';
+  const allowedJobTypes=new Set(jobTypesForScope(scope));
+  const correlationId = `theta-runtime:${bucket}:${scope.toLowerCase()}`;
   const workerInstance = `${process.env.VERCEL_REGION ?? 'local'}:${randomUUID()}`;
   const cycleStore = new PostgresRuntimeCycleStore(pool);
   if (!await cycleStore.begin(correlationId, workerInstance, now.toISOString())) {
@@ -348,8 +358,8 @@ export async function runAutonomousRuntimeCycle(
   // minute buckets are reconciled one at a time and suppress a fresh job of
   // the same family, preventing a restart from creating a retry storm.
   const recoveredByType=new Map<JobType,DueJob>();
-  for(const job of recoveredJobs)if(!recoveredByType.has(job.jobType))recoveredByType.set(job.jobType,job);
-  const jobs=[...recoveredByType.values(),...scheduledJobs(bucket).filter((job)=>!recoveredByType.has(job.jobType))];
+  for(const job of recoveredJobs)if(allowedJobTypes.has(job.jobType)&&!recoveredByType.has(job.jobType))recoveredByType.set(job.jobType,job);
+  const jobs=[...recoveredByType.values(),...scheduledJobs(bucket,scope).filter((job)=>!recoveredByType.has(job.jobType))];
   let reconciliation: BrokerReconciliationResult | null = null;
   let opportunityScanCompleted = false;
   let masterPaperOrdersSubmitted = 0;

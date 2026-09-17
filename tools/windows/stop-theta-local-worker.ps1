@@ -13,4 +13,4 @@ for($attempt=0;$attempt -lt $GraceSeconds;$attempt++){
 $task=Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($null -ne $task -and $task.State -eq 'Running') { Stop-ScheduledTask -TaskName $TaskName }
 Write-Output (@{stopped=$true;task=$TaskName;gracefulRequested=$true;
-  executionGate='EXTERNAL_QUOTE_BLOCKER'} | ConvertTo-Json -Compress)
+  executionGate='LOCKED'} | ConvertTo-Json -Compress)

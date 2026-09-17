@@ -24,6 +24,9 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /CURRENT_SESSION_EXPORTED/);
   assert.match(source, /BLOCKED_ON_EVIDENCE/);
   assert.match(source, /last-empirical-dataset-identity/);
+  assert.match(source, /last-alpaca-indicative-qualification-session/);
+  assert.match(source, /alpaca-indicative-quote-qualification/);
+  assert.match(source, /\.qualified -eq \$true/);
   assert.match(source, /AUTO-DESCRIPTIVE-\$\(\$runtime\.buildSha\.Substring\(0,12\)\)/);
   assert.match(source, /RESEARCH_RESULT_IDENTITY_INVALID/);
   assert.match(source, /existingResult\.source_code_commit/);
@@ -31,7 +34,10 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /EXPORTED_AND_RESEARCHED/);
   assert.match(source, /RESEARCH_CURRENT/);
   assert.match(source, /NO_SPLIT_DESCRIPTIVE_ONLY/);
-  assert.match(source, /Invoke-RestMethod[^\r\n]+-TimeoutSec 390/);
+  assert.match(source, /runtime-core-cycle/);
+  assert.match(source, /runtime-evidence-cycle/);
+  assert.match(source, /Invoke-RestMethod[^\r\n]+-TimeoutSec 240/);
+  assert.match(source, /Invoke-RestMethod[^\r\n]+-TimeoutSec 290/);
   assert.doesNotMatch(source, /\/v2\/orders/i);
   assert.doesNotMatch(source, /APCA-API-KEY-ID|APCA-API-SECRET-KEY/);
 });

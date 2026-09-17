@@ -15,6 +15,7 @@ $stopFile = Join-Path $stateRoot 'stop.request'
 $exportSessionFile = Join-Path $stateRoot 'last-auto-export-session'
 $researchIdentityFile = Join-Path $stateRoot 'last-empirical-dataset-identity'
 $qualificationSessionFile = Join-Path $stateRoot 'last-optionomics-qualification-session'
+$alpacaQualificationSessionFile = Join-Path $stateRoot 'last-alpaca-indicative-qualification-session'
 if (!(Test-Path -LiteralPath $runtimeFile)) { throw 'THETA_LOCAL_WORKER_NOT_INSTALLED' }
 if (!(Test-Path -LiteralPath $tokenFile)) { throw 'THETA_LOCAL_WORKER_TOKEN_NOT_PROVISIONED' }
 if (!(Test-Path -LiteralPath $productionEnvFile)) { throw 'THETA_PRODUCTION_ENV_NOT_PROVISIONED' }
@@ -45,9 +46,29 @@ try {
       # Keep the client deadline above the longest observed server completion
       # window so the supervisor does not abandon a valid in-flight cycle and
       # retry it while Production is still persisting evidence.
-      $report = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $headers -TimeoutSec 390
+      $coreHeaders = $headers.Clone()
+      $coreHeaders['X-Theta-Operation'] = 'runtime-core-cycle'
+      $coreReport = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $coreHeaders -TimeoutSec 240
+      if ($coreReport.status -eq 'FAILED' -or $coreReport.status -eq 'QUARANTINED') {
+        throw 'THETA_CORE_CYCLE_FAILED'
+      }
+      $evidenceHeaders = $headers.Clone()
+      $evidenceHeaders['X-Theta-Operation'] = 'runtime-evidence-cycle'
+      $report = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $evidenceHeaders -TimeoutSec 290
       $marketSessionDate = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
         [DateTimeOffset]::UtcNow, 'Eastern Standard Time').ToString('yyyy-MM-dd')
+      $lastAlpacaQualificationSession = if (Test-Path -LiteralPath $alpacaQualificationSessionFile) {
+        (Get-Content -Raw -LiteralPath $alpacaQualificationSessionFile).Trim()
+      } else { '' }
+      if ($report.reconciliation.marketOpen -eq $true -and $lastAlpacaQualificationSession -ne $marketSessionDate) {
+        $alpacaQualificationHeaders = $headers.Clone()
+        $alpacaQualificationHeaders['X-Theta-Operation'] = 'alpaca-indicative-quote-qualification'
+        $alpacaQualification = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $alpacaQualificationHeaders -TimeoutSec 180
+        if ($null -ne $alpacaQualification -and $alpacaQualification.qualified -eq $true -and
+          $alpacaQualification.marketOpen -eq $true) {
+          Set-Content -LiteralPath $alpacaQualificationSessionFile -Value $marketSessionDate -Encoding ascii
+        }
+      }
       $lastQualificationSession = if (Test-Path -LiteralPath $qualificationSessionFile) {
         (Get-Content -Raw -LiteralPath $qualificationSessionFile).Trim()
       } else { '' }
@@ -153,7 +174,7 @@ try {
         elseif ($exceptionType -match '^[A-Za-z0-9_.-]{1,96}$') { "LOCAL_$exceptionType" }
         else { 'LOCAL_WORKER_LOOP_FAILED' }
       @{state='DEGRADED';lastFailure=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
-        mode='MASTER_THETA_PAPER';executionGate='EXTERNAL_QUOTE_BLOCKER';failureCode=$failureCode} | ConvertTo-Json |
+        mode='MASTER_THETA_PAPER';executionGate='LOCKED';failureCode=$failureCode} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
     }
     if (Test-Path -LiteralPath $stopFile) { break }
@@ -173,7 +194,7 @@ try {
     }
   } catch {}
   @{state='OFFLINE';lastShutdown=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
-    mode='MASTER_THETA_PAPER';executionGate='EXTERNAL_QUOTE_BLOCKER'} | ConvertTo-Json |
+    mode='MASTER_THETA_PAPER';executionGate='LOCKED'} | ConvertTo-Json |
     Set-Content -LiteralPath $statusFile -Encoding utf8
   if ($owned) { $mutex.ReleaseMutex() }
   $mutex.Dispose()
