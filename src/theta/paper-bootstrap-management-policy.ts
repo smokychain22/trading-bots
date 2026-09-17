@@ -7,6 +7,7 @@ import {
 } from './management-action-frontier.js';
 import { buildCommonHorizonComparison, forwardContinuationCashFlow, sunkRealizedEconomics } from './common-horizon-economics.js';
 import { evaluateRollCandidates, type RollCandidateEconomics } from './roll-incremental-utility.js';
+import { assessThesisInvalidation, type ThesisInvalidationAssessment } from './thesis-invalidation.js';
 
 export const paperBootstrapManagementPolicyVersion = 'theta-paper-bootstrap-management-policy-v1' as const;
 
@@ -87,6 +88,20 @@ export interface PaperBootstrapPolicyInput extends ManagementInputState {
    * committed per additional day extended by a roll. Defaults to 0 (no
    * capital-day penalty applied) when omitted -- never invented internally. */
   readonly rollIncrementalCapitalDayWeight?: number;
+  /**
+   * Required, caller-justified continuous utility bias applied ONLY when
+   * `assessThesisInvalidation` reports a THESIS_FAILURE_* classification --
+   * it shifts CLOSE_FULL/CLOSE_CC utility up and ROLL/ROLL_CC utility down
+   * by this amount. Defaults to 0 (thesis classification has NO effect on
+   * ranking -- pure economics) when omitted, matching the same
+   * caller-supplies-every-threshold convention as
+   * `rollIncrementalCapitalDayWeight`. This is a continuous ordinal
+   * adjustment, never a boolean gate: a mild bias lets a large economic
+   * upside still outrank a suspected (not confirmed) thesis failure, and
+   * the dollar loss magnitude itself never appears in this bias at all --
+   * only the SEPARATE thesis classification does.
+   */
+  readonly thesisFailureUtilityBias?: number;
 }
 
 function finite(value: number | null): value is number {
@@ -134,8 +149,35 @@ const UNKNOWN_VALUE: Omit<ManagementPolicyActionValue, 'action'> = {
   executionEvidence: null, reasons: ['DETERMINISTIC_INPUT_INCOMPLETE'],
 };
 
+const THESIS_FAILURE_CLASSIFICATIONS = new Set<ThesisInvalidationAssessment['classification']>([
+  'THESIS_FAILURE_SUSPECTED', 'THESIS_FAILURE_AND_PRICE_LOSS',
+]);
+
+/**
+ * Reads the SEPARATE thesis classification (never the dollar loss itself)
+ * to produce a continuous utility adjustment. `bias` of 0 (the default)
+ * makes this fully inert -- classification never affects ranking unless
+ * the caller explicitly supplies a justified non-zero value. This is the
+ * mechanism the directive requires: PRICE_LOSS and THESIS_HEALTH stay
+ * structurally separate all the way through, and thesis state never acts
+ * as a single boolean magic gate -- it only nudges an ordinal comparison
+ * that the position's own forward economics still dominate.
+ */
+function thesisUtilityAdjustment(thesis: ThesisInvalidationAssessment, bias: number): {
+  readonly closeBias: number; readonly rollPenalty: number; readonly failurePresent: boolean; readonly reasons: readonly string[];
+} {
+  const failurePresent = THESIS_FAILURE_CLASSIFICATIONS.has(thesis.classification);
+  const reasons = [
+    `PRICE_LOSS_KNOWN_${thesis.priceLossKnown}`,
+    `THESIS_CLASSIFICATION_${thesis.classification}`,
+    ...(failurePresent ? thesis.thesisFailureSignals : []),
+    ...(thesis.uninterpretedSignals.length > 0 ? [`THESIS_UNCERTAINTY_SIGNALS_${thesis.uninterpretedSignals.length}`] : []),
+  ];
+  return { closeBias: failurePresent ? bias : 0, rollPenalty: failurePresent ? bias : 0, failurePresent, reasons };
+}
+
 function valueForSingleRollCandidate(
-  action: 'ROLL' | 'ROLL_CC', state: PaperBootstrapPolicyInput, currentMark: number | null,
+  action: 'ROLL' | 'ROLL_CC', state: PaperBootstrapPolicyInput, currentMark: number | null, thesis: ThesisInvalidationAssessment,
 ): ManagementPolicyActionValue {
   const base = { action };
   const candidate = action === 'ROLL' ? state.rollCandidate : state.ccCandidate;
@@ -150,6 +192,7 @@ function valueForSingleRollCandidate(
   const forward = forwardContinuationCashFlow({ closeCostDollars: currentMark, openCreditDollars });
   const netCredit = forward.netCashFlow as number; // complete=true guaranteed: both legs are known here
   const horizon = buildCommonHorizonComparison(state.observedAt, state.economics, state.contract.expiration, [candidate.expiration]);
+  const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
   const executionEvidence: ManagementActionExecutionEvidence = {
     closeEconomicBoundary: currentMark, openEconomicBoundary: openCreditDollars, stockEconomicBoundary: null,
     economicsRemainPositive: netCredit >= 0, expectedAfterCostEv: null, empiricalEconomicsReady: false,
@@ -163,10 +206,13 @@ function valueForSingleRollCandidate(
     ...base, expectedFutureValue: null, downsideTailEstimate: null,
     incrementalCapitalDays: null, executionCostRisk: Math.abs(currentMark) + Math.abs(openCreditDollars) * 0.01,
     opportunityCost: null, uncertainty: null,
-    utility: netCredit >= 0 ? 0.5 : -2, // a net-debit roll never outranks passive HOLD under this bootstrap policy
+    // a net-debit roll never outranks passive HOLD under this bootstrap
+    // policy; a suspected thesis failure additionally penalizes extending
+    // exposure via `rollPenalty` (0 unless the caller supplied a bias).
+    utility: (netCredit >= 0 ? 0.5 : -2) - adjustment.rollPenalty,
     executionEvidence,
     reasons: [`DETERMINISTIC_NET_CREDIT_${netCredit.toFixed(2)}`, `HORIZON_ANCHOR_${horizon.horizonAnchor ?? 'UNKNOWN'}`,
-      'SUNK_REALIZED_PNL_EXCLUDED_FROM_FORWARD_COMPARISON'],
+      'SUNK_REALIZED_PNL_EXCLUDED_FROM_FORWARD_COMPARISON', ...adjustment.reasons],
   };
 }
 
@@ -178,7 +224,7 @@ function valueForSingleRollCandidate(
  * every assessment rather than being collapsed away.
  */
 function valueForRollFromCandidates(
-  action: 'ROLL', state: PaperBootstrapPolicyInput, currentMark: number,
+  action: 'ROLL', state: PaperBootstrapPolicyInput, currentMark: number, thesis: ThesisInvalidationAssessment,
 ): ManagementPolicyActionValue {
   const base = { action };
   const candidates = state.rollCandidates ?? [];
@@ -205,6 +251,7 @@ function valueForRollFromCandidates(
   const matchedSource = usable.find((candidate) => candidate.optionContractId === best.candidate.optionContractId);
   if (matchedSource === undefined) return { ...base, ...UNKNOWN_VALUE, reasons: ['ROLL_CANDIDATE_MATCH_FAILED'] };
   const netCredit = best.netCreditDollars as number;
+  const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
   const executionEvidence: ManagementActionExecutionEvidence = {
     closeEconomicBoundary: currentMark, openEconomicBoundary: best.candidate.openCreditDollars, stockEconomicBoundary: null,
     economicsRemainPositive: comparison.bestBeatsHold, expectedAfterCostEv: null, empiricalEconomicsReady: false,
@@ -220,11 +267,12 @@ function valueForRollFromCandidates(
     opportunityCost: null, uncertainty: null,
     // A roll is preferred only when its RollIncrementalUtility clears the
     // same HOLD baseline (0) every other bootstrap action is compared
-    // against -- never merely because netCredit >= 0.
-    utility: comparison.bestBeatsHold ? 0.5 : -2,
+    // against -- never merely because netCredit >= 0 -- and a suspected
+    // thesis failure additionally penalizes it via `rollPenalty`.
+    utility: (comparison.bestBeatsHold ? 0.5 : -2) - adjustment.rollPenalty,
     executionEvidence,
     reasons: [`BEST_OF_${usable.length}_ROLL_CANDIDATES`, ...best.reasons,
-      `SUNK_REALIZED_PNL_${sunk === null ? 'UNKNOWN' : sunk.toFixed(2)}_EXCLUDED_FROM_FORWARD_COMPARISON`],
+      `SUNK_REALIZED_PNL_${sunk === null ? 'UNKNOWN' : sunk.toFixed(2)}_EXCLUDED_FROM_FORWARD_COMPARISON`, ...adjustment.reasons],
   };
 }
 
@@ -238,7 +286,7 @@ function valueForRollFromCandidates(
  */
 function valueFor(
   action: ManagementFrontierAction, state: PaperBootstrapPolicyInput, currentMark: number | null,
-  remainingFraction: number | null, dte: number | null, capital: number | null,
+  remainingFraction: number | null, dte: number | null, capital: number | null, thesis: ThesisInvalidationAssessment,
 ): ManagementPolicyActionValue {
   const base = { action };
   switch (action) {
@@ -247,8 +295,13 @@ function valueFor(
     case 'HOLD_CC': {
       // Passive: the deterministic case for continuing is exactly "we have
       // not found a concrete, known reason to act." Utility 0 is the
-      // neutral anchor every other action's score is compared against.
-      return { ...base, ...UNKNOWN_VALUE, utility: 0, reasons: ['NO_KNOWN_REASON_TO_ACT'] };
+      // neutral anchor every other action's score is compared against --
+      // thesis classification is surfaced for transparency but never moves
+      // this baseline; only CLOSE/ROLL react to it.
+      return {
+        ...base, ...UNKNOWN_VALUE, utility: 0,
+        reasons: ['NO_KNOWN_REASON_TO_ACT', `THESIS_CLASSIFICATION_${thesis.classification}`],
+      };
     }
     case 'CLOSE_FULL':
     case 'CLOSE_CC': {
@@ -262,32 +315,36 @@ function valueFor(
       // must be supplied by the caller, never invented here).
       const nearExhausted = remainingFraction !== null && remainingFraction <= 0.10 && dte <= 5;
       // Informational only -- surfaces the KNOWN current mark-to-market
-      // magnitude relative to entry credit for operator/model visibility.
-      // This is never used to gate or force a close: a large deterministic
-      // "loss" reading here does NOT select CLOSE_FULL/CLOSE_CC by itself,
-      // since that would be an undisclosed fixed-threshold stop-loss rule
-      // (forbidden as production authority; may remain a benchmark
-      // challenger elsewhere).
+      // magnitude relative to entry credit. The dollar loss magnitude
+      // itself NEVER decides this action; only `adjustment.closeBias`
+      // (driven purely by the SEPARATE thesis classification) can shift
+      // this utility, and it defaults to 0 (inert) unless the caller
+      // supplies a justified bias.
       const lossMagnitudeReason = remainingFraction !== null && remainingFraction > 1
         ? [`KNOWN_MARK_EXCEEDS_ENTRY_CREDIT_FRACTION_${remainingFraction.toFixed(2)}`] : [];
+      const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
       return {
         ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: 0,
-        executionCostRisk: currentMark, opportunityCost: null, uncertainty: null,
-        utility: nearExhausted ? 1 : -1,
+        executionCostRisk: currentMark, opportunityCost: null,
+        uncertainty: thesis.uninterpretedSignals.length > 0 ? thesis.uninterpretedSignals.length : null,
+        utility: (nearExhausted ? 1 : -1) + adjustment.closeBias,
         executionEvidence: null,
-        reasons: nearExhausted
-          ? [`REMAINING_VALUE_FRACTION_${remainingFraction?.toFixed(2)}`, `DTE_${dte}`, 'CLOSE_FREES_CAPITAL_FOR_NEAR_EXHAUSTED_POSITION']
-          : ['REMAINING_VALUE_NOT_KNOWN_EXHAUSTED', ...lossMagnitudeReason],
+        reasons: [
+          ...(nearExhausted
+            ? [`REMAINING_VALUE_FRACTION_${remainingFraction?.toFixed(2)}`, `DTE_${dte}`, 'CLOSE_FREES_CAPITAL_FOR_NEAR_EXHAUSTED_POSITION']
+            : ['REMAINING_VALUE_NOT_KNOWN_EXHAUSTED', ...lossMagnitudeReason]),
+          ...adjustment.reasons,
+        ],
       };
     }
     case 'ROLL': {
       if (state.rollCandidates !== undefined && state.rollCandidates.length > 0 && currentMark !== null) {
-        return valueForRollFromCandidates(action, state, currentMark);
+        return valueForRollFromCandidates(action, state, currentMark, thesis);
       }
-      return valueForSingleRollCandidate(action, state, currentMark);
+      return valueForSingleRollCandidate(action, state, currentMark, thesis);
     }
     case 'ROLL_CC': {
-      return valueForSingleRollCandidate(action, state, currentMark);
+      return valueForSingleRollCandidate(action, state, currentMark, thesis);
     }
     case 'ALLOW_CALL_AWAY':
       // Structural expiration handling already selects this correctly from
@@ -367,8 +424,12 @@ export function evaluatePaperBootstrapManagementPolicy(
   const remainingFraction = remainingValueFraction(state, currentMark);
   const dte = daysToExpiration(state);
   const capital = capitalCommitted(state);
+  // Computed once per state, shared by every action -- the SAME thesis
+  // read is never re-derived per action, so a HOLD/CLOSE/ROLL comparison
+  // can never see a different thesis picture than another.
+  const thesis = assessThesisInvalidation(state);
 
-  const actionValues = actionSet.map((action) => valueFor(action, state, currentMark, remainingFraction, dte, capital));
+  const actionValues = actionSet.map((action) => valueFor(action, state, currentMark, remainingFraction, dte, capital, thesis));
   const known = actionValues.filter((value) => value.utility !== null);
   if (known.length === 0) return null;
 

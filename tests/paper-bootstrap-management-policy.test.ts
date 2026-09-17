@@ -105,6 +105,70 @@ test('rollCandidates takes precedence over the single rollCandidate field when b
   assert.equal(execution?.targetContract?.optionContractId, 'plural-path-candidate');
 });
 
+test('a mildly losing position with an intact thesis stays HOLD by default -- thesis bias defaults to inert (no fixed stop-loss authority)', () => {
+  // Spot still above strike (OTM, thesis intact); a genuine price loss
+  // (remainingFraction > 1) but not near-exhausted/near-expiry, so
+  // CLOSE_FULL's own economic trigger does not fire either. No
+  // thesisFailureUtilityBias is supplied, so the default (0) applies.
+  const input = state('CSP_OPEN', { bid: 3, ask: 3.1 });
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  assert.equal(evidence?.selectedAction, 'HOLD');
+});
+
+test('the SAME mildly losing position closes when a broken thesis is present and the caller supplies a justified bias', () => {
+  // Spot now BELOW strike -- ITM against the original short-put thesis, a
+  // real structural break -- with the same mild price loss as above.
+  const overrides = {
+    bid: 3, ask: 3.1,
+    snapshot_json: { underlyingState: { last: 195 }, marketSession: { isOpen: false },
+      riskState: { assignmentCapacity: 1, newRiskState: 'ALLOW_FULL' }, eventState: { state: 'CLEAR' } },
+  };
+  const withoutBias = evaluatePaperBootstrapManagementPolicy(state('CSP_OPEN', overrides));
+  assert.equal(withoutBias?.selectedAction, 'HOLD', 'thesis classification alone (bias=0) must not force a close');
+
+  const withBias = evaluatePaperBootstrapManagementPolicy({ ...state('CSP_OPEN', overrides), thesisFailureUtilityBias: 2 });
+  assert.equal(withBias?.selectedAction, 'CLOSE_FULL');
+  const closeValue = withBias?.actionValues.find((value) => value.action === 'CLOSE_FULL');
+  assert.ok(closeValue?.reasons.includes('THESIS_CLASSIFICATION_THESIS_FAILURE_AND_PRICE_LOSS')
+    || closeValue?.reasons.includes('THESIS_CLASSIFICATION_THESIS_FAILURE_SUSPECTED'));
+  assert.ok(closeValue?.reasons.some((reason) => reason === 'PRICE_LOSS_KNOWN_true'));
+});
+
+test('a losing position with an intact thesis still lets ROLL win on its own forward economics, unaffected by the bias', () => {
+  const input = state('CSP_OPEN', { bid: 3, ask: 3.1 }); // OTM, thesis intact, but a real price loss
+  const withCandidate = {
+    ...input, rollCandidate: rollCandidate({ bid: 4, ask: 4.1 }), // large enough credit to beat currentMark
+    thesisFailureUtilityBias: 5, // even a large bias must not matter when thesis is intact
+  };
+  const evidence = evaluatePaperBootstrapManagementPolicy(withCandidate);
+  assert.equal(evidence?.selectedAction, 'ROLL');
+});
+
+test('a suspected (not confirmed) thesis failure penalizes but does not categorically forbid ROLL when economics are strong enough', () => {
+  const overrides = {
+    bid: 1, ask: 1.1,
+    snapshot_json: { underlyingState: { last: 195 }, marketSession: { isOpen: false },
+      riskState: { assignmentCapacity: 1, newRiskState: 'ALLOW_FULL' }, eventState: { state: 'CLEAR' } },
+  };
+  const input = state('CSP_OPEN', overrides);
+  // A tiny bias (0.1) is easily outweighed by a genuinely large net credit.
+  const withCandidate = { ...input, rollCandidate: rollCandidate({ bid: 4, ask: 4.1 }), thesisFailureUtilityBias: 0.1 };
+  const evidence = evaluatePaperBootstrapManagementPolicy(withCandidate);
+  assert.equal(evidence?.selectedAction, 'ROLL');
+});
+
+test('uncertainty on CLOSE_FULL reflects the count of uninterpreted context signals, never a fabricated probability', () => {
+  const overrides = {
+    snapshot_json: { underlyingState: { last: 205 }, marketSession: { isOpen: false },
+      riskState: { assignmentCapacity: 1, newRiskState: 'ALLOW_FULL' }, eventState: { state: 'CLEAR' },
+      expertPriorState: { anything: 'unverified' }, regimeState: { anything: true } },
+  };
+  const input = state('CSP_OPEN', { ...overrides, bid: 0.05, ask: 0.06 }, '2026-10-13T14:00:00.000Z');
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  const closeValue = evidence?.actionValues.find((value) => value.action === 'CLOSE_FULL');
+  assert.equal(closeValue?.uncertainty, 2);
+});
+
 test('RECOVERY_WAIT with a covered call candidate at or above cost basis sells the call', () => {
   const input = state('RECOVERY_WAIT');
   const cc = rollCandidate({ optionType: 'CALL', strike: 200, bid: 1, ask: 1.2 });
