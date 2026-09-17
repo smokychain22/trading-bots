@@ -91,7 +91,7 @@ export async function importLegacyReconstructionManifest(connectionString:string
       }
       await client.query('COMMIT');
     }catch(error){await client.query('ROLLBACK');throw error;}
-    return loadReceipt(client,manifestHash);
+    return await loadReceipt(client,manifestHash);
   }finally{client.release();await pool.end();}
 }
 
