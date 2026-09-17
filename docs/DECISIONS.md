@@ -1,5 +1,14 @@
 # Engineering decisions
 
+## 2026-09-17: split first-canary bootstrap management from empirical promotion
+
+- Use `PAPER_BOOTSTRAP_MANAGEMENT_POLICY` for bounded first-canary lifecycle safety.
+- Keep `EMPIRICALLY_PROMOTED_MANAGEMENT_POLICY` as a separate authority that still requires PIT, OOS, calibration, and governance evidence.
+- The bootstrap policy may hold, defer to broker-confirmed expiration transitions, and close current exposure when AEGIS issues a hard veto and executable state is complete.
+- The bootstrap policy cannot roll, redeploy, sell a covered call, increase size, claim positive EV, or claim empirical profitability.
+- Require a provider observation timestamp for execution-price freshness. HTTP receipt time cannot refresh an old or untimestamped quote.
+- Keep Alpaca Basic option quotes in the explicit `INDICATIVE` semantic class.
+
 ## 2026-09-15: P2C uses a separate immutable outcome side
 
 - Preserve P2B snapshots byte-for-byte and resolve future observations into separate subjects, observations, receipts, and labels.

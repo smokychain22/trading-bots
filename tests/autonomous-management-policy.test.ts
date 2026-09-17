@@ -36,7 +36,7 @@ const closeEvidence=(input:ReturnType<typeof state>):ManagementPolicyEvidence=>{
 test('runtime accepts a same-snapshot management provider and selects its validated close',async()=>{
   const input=state();
   const calls:string[]=[];
-  const frontiers=await buildRuntimeManagementFrontiers([input],{evaluate:async(current)=>{
+  const frontiers=await buildRuntimeManagementFrontiers([input],{authority:'EMPIRICALLY_PROMOTED_MANAGEMENT_POLICY',evaluate:async(current)=>{
     calls.push(current.contentHash);
     return closeEvidence(current);
   }});
@@ -53,7 +53,7 @@ test('runtime stays passive when no empirical policy provider is configured',asy
 
 test('runtime rejects stale provider evidence and returns to passive management',async()=>{
   const input=state();
-  const frontiers=await buildRuntimeManagementFrontiers([input],{evaluate:async(current)=>({
+  const frontiers=await buildRuntimeManagementFrontiers([input],{authority:'EMPIRICALLY_PROMOTED_MANAGEMENT_POLICY',evaluate:async(current)=>({
     ...closeEvidence(current),inputContentHash:'0'.repeat(64),
   })});
   assert.equal(frontiers[0]?.selectedAction,'HOLD');

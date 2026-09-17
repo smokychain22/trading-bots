@@ -20,7 +20,8 @@ const input=():FirstPaperOrderReadinessInput=>({asOf:now,broker:{role:good('MAST
   fusionSnapshotHash:good('hash-1'),decisionId:good('decision-1'),orderIntentId:good('intent-1'),clientOrderId:good('theta-first-1')},operations:{
   idempotencyReserved:good(true),persistenceDurable:good(true),schedulerHealthy:good(true),reconciliationHealthy:good(true),workerOnline:good(true),
   workerBuildSha:good('sha-1'),marketSession:good('OPEN'),leaseHealthy:good(true),providerHealth:good('GOOD'),executionBoundary:good('LOCKED_BEFORE_FIRST_POST'),
-  submissionPathReady:good(true),managementPathReady:good(true),lifecyclePathReady:good(true),executableBboReady:good(true),
+  submissionPathReady:good(true),managementPathReady:good(true),lifecyclePathReady:good(true),
+  bootstrapManagementPolicyReady:good(true),executableBboReady:good(true),
   paperMode:good(true),decisionFresh:good(true),contractIdentityUnambiguous:good(true),newEntriesPaused:good(false),
   emergencyExecutionLock:good(false),followerExecutionLocked:good(true),liveMoneyAuthorized:good(false),
   workerMode:'LOCAL_LAPTOP',ownerAuthorization:'GRANTED'}});

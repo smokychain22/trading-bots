@@ -57,7 +57,8 @@ test('sanitized report exposes exact non-secret authentication evidence', () => 
   assert.equal(sanitized.authenticationFailure, '401_UNAUTHORIZED');
   assert.deepEqual(sanitized.sampleEvidence, [{
     symbol: 'SPY', operationAlias: 'OPTION_CHAIN', httpStatus: 401, observationCount: 0,
-    twoSidedCount: 0, freshCount: 0, failureCode: 'AUTHENTICATION_FAILED',
+    twoSidedCount: 0, timestampedCount: 0, freshCount: 0,
+    oldestProviderTimestamp: null, latestProviderTimestamp: null, failureCode: 'AUTHENTICATION_FAILED',
     retryAfterSeconds: null, attemptCount: 1,
   }]);
   assert.equal(JSON.stringify(sanitized).includes('detail'), false);

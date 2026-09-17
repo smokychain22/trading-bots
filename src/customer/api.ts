@@ -628,6 +628,13 @@ export default async function customerHandler(
             blockers: ["INSUFFICIENT_RESOLVED_PAPER_EVIDENCE"],
           },
           management_policy_promotion: { status: "NOT_PROMOTED_UNAVAILABLE" },
+          paper_bootstrap_management_policy: {
+            status: "READY",
+            policy_version: "theta-paper-bootstrap-management-policy-v1",
+            authority: "PAPER_BOOTSTRAP_MANAGEMENT_POLICY",
+            empirical_profitability_claimed: false,
+            new_risk_management_actions: "DISABLED",
+          },
           execution_control: {
             environment: "PAPER",
             live_host_allowed: false,

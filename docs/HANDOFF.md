@@ -1,5 +1,27 @@
 # Codex handoff: standalone platform Phase 1
 
+## 2026-09-17: R8A bootstrap management and live-session quote qualification
+
+OWNER: Codex.
+
+TASK: Split first-canary bootstrap management from empirical promotion and perform open-session execution-quote qualification.
+
+FILES CHANGED: Bootstrap management provider, runtime provider authority contract, first-canary readiness contract, execution timestamp qualifier, Alpaca indicative semantic adapter, Optionomics qualification evidence, phase ledger, provider fallback decision, tests, decisions, and handoff.
+
+WHAT WAS IMPLEMENTED: Added an explicit bounded Paper bootstrap management authority separate from empirical promotion. The resident runtime now has a fail-closed lifecycle policy for a first canary without claiming profitability. It defaults to HOLD, RECOVERY_WAIT, or HOLD_CC, delegates broker-confirmed expiration and assignment transitions to the structural path, and permits risk-reducing CSP or stock exits only on an explicit AEGIS HARD_VETO with complete executable state. New-risk management actions stay blocked. Execution quote freshness now always requires a provider timestamp. Alpaca's free option feed has an explicit indicative-only adapter that cannot pass the execution qualifier. Production Optionomics open-session evidence is retained with timestamp coverage.
+
+TESTS RUN: Full Node suite, TypeScript check, ESLint, and the Production open-session Optionomics qualification route.
+
+TEST RESULTS: 943 Node tests ran with 933 passed, 10 database-only skips, and 0 failures before final documentation. TypeScript and ESLint passed. Optionomics authentication passed. Six live-session calls returned HTTP 200 and 50,656 two-sided observations, but zero fresh provider timestamps, so order pricing remains unqualified.
+
+KNOWN LIMITATIONS: No exact-contract fresh execution-price authority is currently entitled and qualified. The bootstrap policy is an operational safety policy, not an alpha model. New entries remain paused. No Paper order was submitted.
+
+RISKS: Enabling entries before a provider passes the exact timestamped two-sided contract would make receipt time look like freshness. Scaling beyond one canary without empirical management evidence would exceed the bootstrap policy's intended authority.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Bootstrap action selection, provider-timestamp requirement, and any later empirically promoted challenger against the immutable Paper evidence.
+
+NEXT RECOMMENDED TASK: Qualify Alpaca OPRA if the existing account receives entitlement, or make an explicit third-provider decision using the fallback report. Then assemble a fresh exact-candidate receipt and allow at most one naturally qualifying Paper canary.
+
 ## 2026-09-17: exhaustive local and agent forensic recovery
 
 OWNER: Codex.

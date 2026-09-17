@@ -53,7 +53,9 @@ export function sanitizeQualificationReport(report: OptionomicsQuoteQualificatio
     blockers:report.blockers, sampleEvidence:report.sampleEvidence.map((sample) => ({
       symbol:sample.symbol, operationAlias:sample.operationAlias, httpStatus:sample.httpStatus,
       observationCount:sample.observationCount, twoSidedCount:sample.twoSidedCount,
-      freshCount:sample.freshCount, failureCode:sample.failureCode,
+      timestampedCount:sample.timestampedCount,freshCount:sample.freshCount,
+      oldestProviderTimestamp:sample.oldestProviderTimestamp,latestProviderTimestamp:sample.latestProviderTimestamp,
+      failureCode:sample.failureCode,
       retryAfterSeconds:sample.retryAfterSeconds, attemptCount:sample.attemptCount,
     })),
   };

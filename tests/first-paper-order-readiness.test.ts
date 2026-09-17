@@ -50,6 +50,7 @@ const validInput = (): FirstPaperOrderReadinessInput => ({
     workerBuildSha:good('abc123','WORKER'),marketSession:good('OPEN','WORKER'),leaseHealthy:good(true,'DATABASE'),
     providerHealth:good('GOOD','WORKER'),executionBoundary: good('LOCKED_BEFORE_FIRST_POST', 'EXECUTION_CONTROL'),
     submissionPathReady:good(true,'TEST'),managementPathReady:good(true,'TEST'),lifecyclePathReady:good(true,'TEST'),
+    bootstrapManagementPolicyReady:good(true,'TEST'),
     executableBboReady:good(true,'ALPACA'),paperMode:good(true),decisionFresh:good(true),contractIdentityUnambiguous:good(true),
     newEntriesPaused:good(false),emergencyExecutionLock:good(false),followerExecutionLocked:good(true),liveMoneyAuthorized:good(false),
     workerMode:'LOCAL_LAPTOP',ownerAuthorization:'GRANTED',
@@ -140,6 +141,18 @@ test('missing execution price remains an operational blocker', () => {
   });
   assert.equal(receipt.operationallyReadyForFirstPaperOrder, false);
   assert.ok(receipt.operationalBlockers.includes('EXECUTABLE_BBO_NOT_READY'));
+});
+
+test('a first canary requires the bounded bootstrap management policy but not empirical promotion', () => {
+  const input=validInput();
+  const receipt=buildFirstPaperOrderReadinessReceipt({
+    ...input,
+    operations:{...input.operations,bootstrapManagementPolicyReady:good(false)},
+    economics:{...input.economics,managementPolicyPromotion:good('NOT_PROMOTED')},
+  });
+  assert.equal(receipt.readyForFirstPaperOrder,'NO');
+  assert.ok(receipt.operationalBlockers.includes('PAPER_BOOTSTRAP_MANAGEMENT_POLICY_NOT_READY'));
+  assert.equal(receipt.managementPolicyPromotionStatus,'NOT_PROMOTED_UNAVAILABLE');
 });
 
 test('emergency lock, stale decision, ambiguous contract, and live or follower execution fail closed', () => {

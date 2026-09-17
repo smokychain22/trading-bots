@@ -39,7 +39,7 @@ export function createPromotedManagementPolicyProvider(
   artifact:PromotedManagementPolicyArtifact|null,evaluator:ManagementPolicyEvaluator,
 ):ManagementPolicyEvidenceProvider|null{
   if(artifact===null||validateExplicitPromotion(artifact).length>0)return null;
-  return {evaluate:async(state)=>{
+  return {authority:'EMPIRICALLY_PROMOTED_MANAGEMENT_POLICY',evaluate:async(state)=>{
     const evidence=await evaluator(state,artifact);
     if(evidence===null||evidence.policyVersion!==artifact.receipt.policyVersion)return null;
     if(evidence.inputContentHash!==state.contentHash||evidence.decidedAt!==state.observedAt)return null;

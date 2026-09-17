@@ -100,6 +100,7 @@ export interface FirstPaperOrderReadinessInput {
     readonly submissionPathReady: Evidence<boolean>;
     readonly managementPathReady: Evidence<boolean>;
     readonly lifecyclePathReady: Evidence<boolean>;
+    readonly bootstrapManagementPolicyReady: Evidence<boolean>;
     readonly executableBboReady: Evidence<boolean>;
     readonly paperMode: Evidence<boolean>;
     readonly decisionFresh: Evidence<boolean>;
@@ -284,6 +285,8 @@ export function buildFirstPaperOrderReadinessReceipt(input: FirstPaperOrderReadi
   const submissionPath = requireGood(input.operations.submissionPathReady, 'SUBMISSION_PATH', blockers);
   const managementPath = requireGood(input.operations.managementPathReady, 'MANAGEMENT_PATH', blockers);
   const lifecyclePath = requireGood(input.operations.lifecyclePathReady, 'LIFECYCLE_PATH', blockers);
+  const bootstrapManagementPolicy = requireGood(input.operations.bootstrapManagementPolicyReady,
+    'PAPER_BOOTSTRAP_MANAGEMENT_POLICY', blockers);
   const executableBbo = requireGood(input.operations.executableBboReady, 'EXECUTABLE_BBO', blockers);
   const paperMode = requireGood(input.operations.paperMode, 'PAPER_MODE', blockers);
   const decisionFresh = requireGood(input.operations.decisionFresh, 'DECISION_FRESHNESS', blockers);
@@ -304,6 +307,7 @@ export function buildFirstPaperOrderReadinessReceipt(input: FirstPaperOrderReadi
   if (submissionPath === false) blockers.push('SUBMISSION_PATH_NOT_READY');
   if (managementPath === false) blockers.push('MANAGEMENT_PATH_NOT_READY');
   if (lifecyclePath === false) blockers.push('LIFECYCLE_PATH_NOT_READY');
+  if (bootstrapManagementPolicy === false) blockers.push('PAPER_BOOTSTRAP_MANAGEMENT_POLICY_NOT_READY');
   if (executableBbo === false) blockers.push('EXECUTABLE_BBO_NOT_READY');
   if (paperMode === false) blockers.push('PAPER_MODE_NOT_CONFIRMED');
   if (decisionFresh === false) blockers.push('DECISION_NOT_FRESH');

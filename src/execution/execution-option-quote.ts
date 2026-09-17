@@ -75,7 +75,10 @@ export function qualifyExecutionOptionQuote(input: {
   const now = validTime(input.nowUtc);
   const received = validTime(input.quote.receivedAtUtc);
   const provider = validTime(input.quote.providerTimestamp);
-  const authoritativeTime = provider ?? received;
+  // Receipt time proves when THETA observed a response. It cannot make a
+  // provider observation fresh. Order-pricing qualification therefore always
+  // requires the provider's own timestamp.
+  const authoritativeTime = provider;
   const agePolicyValid = Number.isFinite(input.maximumAgeMs) && input.maximumAgeMs >= 0;
   if (!input.quote.contractId.trim() || input.quote.contractId !== input.expectedContractId
     || !input.quote.providerContractId.trim()) blockers.push('CONTRACT_IDENTITY_MISMATCH');
@@ -88,6 +91,7 @@ export function qualifyExecutionOptionQuote(input: {
   if (input.quote.subscriptionState !== 'ACTIVE') blockers.push('QUOTE_SUBSCRIPTION_NOT_ACTIVE');
   if (!input.marketOpen) blockers.push('MARKET_CLOSED');
   if (!agePolicyValid) blockers.push('QUOTE_AGE_POLICY_INVALID');
+  if (provider === null) blockers.push('PROVIDER_TIMESTAMP_REQUIRED');
   if (now === null || received === null || authoritativeTime === null) blockers.push('QUOTE_TIMESTAMP_INVALID');
   else {
     if (received > now || (provider !== null && (provider > received || provider > now))) blockers.push('QUOTE_TIMESTAMP_SEQUENCE_INVALID');

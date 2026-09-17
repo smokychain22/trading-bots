@@ -28,12 +28,13 @@ test('recorded, stale, closed, mismatched and out-of-order evidence fails closed
     'ORDER_PRICING_SEMANTICS_NOT_PROVEN','QUOTE_OUT_OF_ORDER']) assert.ok(result.blockers.includes(blocker));
 });
 
-test('receipt time is an explicit fallback only when provider timestamp is absent', () => {
+test('receipt time never substitutes for the provider observation timestamp', () => {
   const result = qualifyExecutionOptionQuote({ quote: quote({ providerTimestamp: null }),
     expectedContractId: 'AAPL261016P00200000', nowUtc: '2026-09-14T14:30:10Z',
     maximumAgeMs: 1500, marketOpen: true });
-  assert.equal(result.qualified, true);
-  assert.equal(result.quoteAgeMs, 1000);
+  assert.equal(result.qualified, false);
+  assert.equal(result.quoteAgeMs, null);
+  assert.ok(result.blockers.includes('PROVIDER_TIMESTAMP_REQUIRED'));
 });
 
 test('reconnect, subscription restore, or unproven provenance cannot qualify',()=>{

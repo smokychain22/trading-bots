@@ -34,7 +34,9 @@ export interface OptionomicsQuoteQualificationReport {
   readonly blockers: readonly string[];
   readonly sampleEvidence: readonly {
     symbol: string; responseHash: string | null; observationCount: number;
-    twoSidedCount: number; freshCount: number; operationAlias: 'OPTION_CHAIN';
+    twoSidedCount: number; timestampedCount: number; freshCount: number;
+    oldestProviderTimestamp: string | null; latestProviderTimestamp: string | null;
+    operationAlias: 'OPTION_CHAIN';
     httpStatus: number | null; failureCode: string | null;
     retryAfterSeconds: number | null; attemptCount: number;
   }[];
@@ -66,13 +68,17 @@ export function assessOptionomicsQuoteQualification(input: {
   const evidence = input.samples.map((sample) => {
     const entries = sample.chain?.entries ?? [];
     const twoSided = entries.filter((entry) => positive(entry.bid) && positive(entry.ask) && entry.bid <= entry.ask);
+    const providerTimes = entries.map((entry) => entry.asOf).filter((value): value is string =>
+      value !== null && Number.isFinite(Date.parse(value))).sort((left,right)=>Date.parse(left)-Date.parse(right));
     const fresh = twoSided.filter((entry) => {
       const timestamp = Date.parse(entry.asOf ?? '');
       return Number.isFinite(now) && Number.isFinite(timestamp) && timestamp <= now && now - timestamp <= input.maximumAgeMs;
     });
     return {
       symbol: sample.symbol, responseHash: sample.chain?.responseHash ?? null,
-      observationCount: entries.length, twoSidedCount: twoSided.length, freshCount: fresh.length,
+      observationCount: entries.length, twoSidedCount: twoSided.length, timestampedCount:providerTimes.length,
+      freshCount: fresh.length,oldestProviderTimestamp:providerTimes[0]??null,
+      latestProviderTimestamp:providerTimes.at(-1)??null,
       operationAlias: sample.operationAlias, httpStatus: sample.httpStatus,
       failureCode: sample.failureCode, retryAfterSeconds: sample.retryAfterSeconds,
       attemptCount: sample.attemptCount,

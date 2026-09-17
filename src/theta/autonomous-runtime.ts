@@ -39,6 +39,7 @@ import { PostgresOperatorControlStore } from '../customer/operator-control.js';
 import {
   PostgresPaperExecutionAuthorizationStore, resolveEffectivePaperExecutionControl,
 } from '../execution/paper-execution-authorization.js';
+import { createPaperBootstrapManagementPolicyProvider } from './paper-bootstrap-management-policy.js';
 
 export const autonomousRuntimeVersion = 'theta-autonomous-runtime-v1' as const;
 export const autonomousPolicyVersion = 'theta-scheduler-policy-v1' as const;
@@ -190,6 +191,20 @@ export class PostgresRuntimeCycleStore {
       triggerKind:String(row.trigger_kind),correlationKey:String(row.correlation_key)}));
   }
 
+  async executionQuoteAuthorityReady(): Promise<boolean> {
+    const result=await this.pool.query(`SELECT
+      EXISTS(
+        SELECT 1 FROM core.provider_capability pc
+        JOIN core.provider_connection cn ON cn.provider_connection_id=pc.provider_connection_id
+        WHERE cn.provider_code='ALPACA' AND pc.capability_code='OPTIONS_MARKET_DATA_OPRA'
+          AND pc.status='GOOD' AND pc.entitlement IN ('AVAILABLE','AVAILABLE_WITH_LIMITS')
+      ) OR EXISTS(
+        SELECT 1 FROM research.optionomics_quote_qualification_run
+        WHERE ready=true AND readiness_state='READY' AND semantic_authority='ORDER_PRICING_DOCUMENTED'
+      ) AS ready`);
+    return result.rows[0]?.ready===true;
+  }
+
   async markNearMissesTriggered(
     pending:readonly {candidateId:string;scanId:string;triggerKind:string;correlationKey:string}[],
     occurredAt:string,sourceCycle:string,
@@ -211,6 +226,7 @@ export class PostgresRuntimeCycleStore {
 }
 
 export interface ManagementPolicyEvidenceProvider {
+  readonly authority: 'PAPER_BOOTSTRAP_MANAGEMENT_POLICY' | 'EMPIRICALLY_PROMOTED_MANAGEMENT_POLICY';
   evaluate(state: ManagementInputState): Promise<ManagementPolicyEvidence | null>;
 }
 
@@ -281,8 +297,11 @@ export async function runAutonomousRuntimeCycle(
   });
   const pauseNewOrders=executionControl.pauseNewOrders;
   const masterExecutionEnabled=executionControl.masterEnabled;
+  const managementPolicyEvidenceProvider=dependencies.managementPolicyEvidenceProvider
+    ??createPaperBootstrapManagementPolicyProvider();
+  const executionQuoteAuthorityReady=await new PostgresRuntimeCycleStore(pool).executionQuoteAuthorityReady();
   const newRiskRuntimeEnabled=executionControl.newRiskSubmissionEnabled
-    &&dependencies.managementPolicyEvidenceProvider!==undefined;
+    &&managementPolicyEvidenceProvider!==undefined&&executionQuoteAuthorityReady;
   const bucket = minuteBucket(now);
   const correlationId = `theta-runtime:${bucket}`;
   const workerInstance = `${process.env.VERCEL_REGION ?? 'local'}:${randomUUID()}`;
@@ -351,7 +370,7 @@ export async function runAutonomousRuntimeCycle(
         // therefore cannot authorize or dispatch a broker action.
         await new PostgresShadowManagementPolicyStore(pool).assembleAndPersist(states);
         const frontiers = await buildRuntimeManagementFrontiers(
-          states, dependencies.managementPolicyEvidenceProvider,
+          states, managementPolicyEvidenceProvider,
         );
         await new PostgresP2EEvidenceStore(pool).persistManagementEvidence(states,frontiers);
         const persistedFrontiers=await managementStore.persistFrontiers(states, frontiers);
