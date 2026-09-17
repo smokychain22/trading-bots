@@ -59,6 +59,7 @@ try {
     "052_legacy_reconstruction_registry",
     "053_local_forensic_recovery",
     "054_master_paper_authorization",
+    "055_paper_indicative_quote_reference",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {

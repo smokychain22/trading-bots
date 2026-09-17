@@ -51,7 +51,7 @@ export interface FirstPaperOrderReadinessInput {
     readonly eventState: Evidence<string>;
   };
   readonly quote: {
-    readonly feed: Evidence<'CONSOLIDATED_NBBO' | 'TRUSTED_TWO_SIDED_ORDER_PRICING' | 'INDICATIVE' | 'UNKNOWN'>;
+    readonly feed: Evidence<'CONSOLIDATED_NBBO' | 'TRUSTED_TWO_SIDED_ORDER_PRICING' | 'PAPER_INDICATIVE_REFERENCE' | 'INDICATIVE' | 'UNKNOWN'>;
     readonly bid: Evidence<number>;
     readonly ask: Evidence<number>;
     readonly midpoint: Evidence<number>;
@@ -240,10 +240,11 @@ export function buildFirstPaperOrderReadinessReceipt(input: FirstPaperOrderReadi
   if (bid !== null && ask !== null && limit !== null && (limit < bid || limit > ask)) blockers.push('LIMIT_OUTSIDE_BBO');
   if (quoteAge !== null && (!Number.isFinite(quoteAge) || quoteAge < 0 || quoteAge > input.quote.maximumAgeSeconds)) blockers.push('QUOTE_STALE');
   if (!input.quote.bid.source.trim() || input.quote.bid.source !== input.quote.ask.source) blockers.push('QUOTE_PROVENANCE_INCONSISTENT');
-  if (feed !== null && !['CONSOLIDATED_NBBO', 'TRUSTED_TWO_SIDED_ORDER_PRICING'].includes(feed)) blockers.push('ORDER_PRICING_SEMANTICS_NOT_PROVEN');
+  const paperIndicative = feed === 'PAPER_INDICATIVE_REFERENCE';
+  if (feed !== null && !['CONSOLIDATED_NBBO', 'TRUSTED_TWO_SIDED_ORDER_PRICING', 'PAPER_INDICATIVE_REFERENCE'].includes(feed)) blockers.push('ORDER_PRICING_SEMANTICS_NOT_PROVEN');
   if (providerAuthenticated === false) blockers.push('QUOTE_PROVIDER_NOT_AUTHENTICATED');
   if (exactContractMapping === false) blockers.push('QUOTE_CONTRACT_MAPPING_NOT_PROVEN');
-  if (documentedForOrderPricing === false) blockers.push('QUOTE_ORDER_PRICING_USE_NOT_DOCUMENTED');
+  if (documentedForOrderPricing === false && !paperIndicative) blockers.push('QUOTE_ORDER_PRICING_USE_NOT_DOCUMENTED');
   if (spreadPassed === false) blockers.push('SPREAD_PROTECTION_FAILED');
 
   const empirical = requireGood(input.economics.empiricalState, 'EV_MODEL', blockers);

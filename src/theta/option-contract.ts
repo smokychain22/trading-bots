@@ -106,8 +106,8 @@ export const normalizedOptionContractSchema = z.object({
   executable: z.boolean(),
   nonExecutableReason: z.string().min(1).nullable(),
 }).superRefine((contract, context) => {
-  if (contract.executable && (contract.source !== 'ALPACA' || contract.feed !== 'OPRA')) {
-    context.addIssue({ code: 'custom', message: 'executable option quotes require Alpaca OPRA provenance' });
+  if (contract.executable && (contract.source !== 'ALPACA' || !['OPRA','INDICATIVE'].includes(contract.feed ?? ''))) {
+    context.addIssue({ code: 'custom', message: 'Paper-executable option quotes require Alpaca OPRA or indicative provenance' });
   }
   if (contract.executable && contract.nonExecutableReason !== null) {
     context.addIssue({ code: 'custom', message: 'executable contracts must not carry a nonExecutableReason' });
@@ -210,7 +210,7 @@ export function normalizeOptionContract(raw: RawOptionQuoteInput, receivedAt: st
 
   const reasons: string[] = [];
   if (raw.source !== 'ALPACA') reasons.push('quote source is not Alpaca executable truth');
-  if (raw.feed !== 'OPRA') reasons.push('official OPRA BBO unavailable');
+  if (!['OPRA','INDICATIVE'].includes(raw.feed ?? '')) reasons.push('supported Alpaca Paper quote feed unavailable');
   if (dte <= 0) reasons.push('contract expired or expires today');
   if (raw.bid === null || raw.ask === null) reasons.push('quote unavailable');
   if (quoteAgeSeconds === null) reasons.push('quote age unknown');

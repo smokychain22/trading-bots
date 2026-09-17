@@ -1,5 +1,6 @@
 export type TrustedOptionQuoteAuthority =
   | 'ALPACA_OPRA_CONSOLIDATED_BBO'
+  | 'ALPACA_INDICATIVE_PAPER_REFERENCE'
   | 'OPTIONOMICS_TRUSTED_TWO_SIDED_QUOTE';
 
 export type TrustedOptionQuoteProvider = 'ALPACA' | 'OPTIONOMICS';
@@ -45,6 +46,7 @@ const isPositiveFinite = (value: number | null): value is number =>
 export function assessTrustedOptionQuote(
   candidate: TrustedOptionQuoteCandidate,
   now: string,
+  usage: 'MASTER_PAPER' | 'LIVE' = 'LIVE',
 ): TrustedOptionQuoteAssessment {
   const blockers: string[] = [];
   const providerTime = Date.parse(candidate.providerTimestamp ?? '');
@@ -59,7 +61,10 @@ export function assessTrustedOptionQuote(
   else if (candidate.bid > candidate.ask) blockers.push('QUOTE_CROSSED');
   if (candidate.quality !== 'GOOD') blockers.push(`QUOTE_QUALITY_${candidate.quality}`);
   if (!candidate.provenance.documentedTwoSidedQuoteContract) blockers.push('TWO_SIDED_QUOTE_CONTRACT_NOT_DOCUMENTED');
-  if (!candidate.provenance.documentedForOrderPricing) blockers.push('ORDER_PRICING_USE_NOT_DOCUMENTED');
+  const alpacaIndicativePaper = candidate.provider === 'ALPACA'
+    && candidate.provenance.feed === 'INDICATIVE'
+    && usage === 'MASTER_PAPER';
+  if (!candidate.provenance.documentedForOrderPricing && !alpacaIndicativePaper) blockers.push('ORDER_PRICING_USE_NOT_DOCUMENTED');
   if (!candidate.operationAlias.trim()) blockers.push('OPERATION_ALIAS_MISSING');
   if (!candidate.schemaVersion.trim()) blockers.push('SCHEMA_VERSION_MISSING');
   if (!candidate.responseHash.trim()) blockers.push('RESPONSE_HASH_MISSING');
@@ -73,9 +78,13 @@ export function assessTrustedOptionQuote(
 
   let authority: TrustedOptionQuoteAuthority | null = null;
   if (candidate.provider === 'ALPACA') {
-    if (candidate.provenance.feed !== 'OPRA') blockers.push('ALPACA_OPRA_REQUIRED');
-    if (!candidate.provenance.consolidatedNbboClaimProven) blockers.push('CONSOLIDATED_NBBO_NOT_PROVEN');
-    authority = 'ALPACA_OPRA_CONSOLIDATED_BBO';
+    if (alpacaIndicativePaper) {
+      authority = 'ALPACA_INDICATIVE_PAPER_REFERENCE';
+    } else {
+      if (candidate.provenance.feed !== 'OPRA') blockers.push('ALPACA_OPRA_REQUIRED');
+      if (!candidate.provenance.consolidatedNbboClaimProven) blockers.push('CONSOLIDATED_NBBO_NOT_PROVEN');
+      authority = 'ALPACA_OPRA_CONSOLIDATED_BBO';
+    }
   } else {
     if (candidate.provenance.feed === 'INDICATIVE') blockers.push('INDICATIVE_QUOTE_FORBIDDEN');
     // Optionomics may qualify as trusted two-sided price evidence without

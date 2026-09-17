@@ -61,7 +61,7 @@ test('builds strike, delta, and expiration ladders without turning delta into pr
   assert.ok(result.contractSelectionReceipt.whyThisDelta.includes('DELTA_IS_NOT_WIN_PROBABILITY'));
 });
 
-test('separates hard liquidity policy, stale quotes, zero bids, and indicative research evidence',()=>{
+test('separates hard liquidity policy, stale quotes, zero bids, and Paper indicative evidence',()=>{
   const wide=contract({optionSymbol:'WIDE',occSymbol:'WIDE',bid:1,ask:2});
   const zero=contract({optionSymbol:'ZERO',occSymbol:'ZERO',bid:0,ask:0.1});
   const stale=contract({optionSymbol:'STALE',occSymbol:'STALE',quoteTimestamp:'2026-09-14T14:00:00.000Z',openInterest:50_000});
@@ -71,7 +71,7 @@ test('separates hard liquidity policy, stale quotes, zero bids, and indicative r
   assert.ok(result.contracts.find((row)=>row.optionSymbol==='ZERO')?.hardLiquidityBlockers.includes('ZERO_BID_UNUSABLE_FOR_SELLER'));
   assert.ok(result.contracts.find((row)=>row.optionSymbol==='STALE')?.hardLiquidityBlockers.includes('QUOTE_STALE_BY_POLICY'));
   assert.equal(result.contracts.find((row)=>row.optionSymbol==='INDICATIVE')?.researchUsable,true);
-  assert.equal(result.contracts.find((row)=>row.optionSymbol==='INDICATIVE')?.executionUsable,false);
+  assert.equal(result.contracts.find((row)=>row.optionSymbol==='INDICATIVE')?.executionUsable,true);
   assert.equal(result.executionAuthorized,false);
 });
 

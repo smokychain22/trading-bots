@@ -27,7 +27,7 @@ export function buildPaperOrderPreview(input:PaperOrderPreviewInput):PaperOrderP
   if(input.limitPrice===null||!Number.isFinite(input.limitPrice)||input.limitPrice<=0)blockers.push('LIMIT_PRICE_INVALID');
   if(input.bid===null||input.ask===null||input.bid<=0||input.ask<=0||input.bid>input.ask)blockers.push('TWO_SIDED_QUOTE_INVALID');
   if(input.quoteAgeMs===null||input.quoteAgeMs<0||input.quoteAgeMs>input.maximumQuoteAgeMs)blockers.push('QUOTE_STALE_OR_UNKNOWN');
-  if(!['CONSOLIDATED_NBBO','TRUSTED_TWO_SIDED_ORDER_PRICING'].includes(input.quoteSemantics))blockers.push('ORDER_PRICING_SEMANTICS_NOT_PROVEN');
+  if(!['CONSOLIDATED_NBBO','TRUSTED_TWO_SIDED_ORDER_PRICING','PAPER_INDICATIVE_REFERENCE'].includes(input.quoteSemantics))blockers.push('ORDER_PRICING_SEMANTICS_NOT_PROVEN');
   if(!input.executionQuoteQualified)blockers.push('EXECUTION_QUOTE_NOT_QUALIFIED');
   if(input.operatorPaused)blockers.push('OPERATOR_PAUSED');
   if(input.emergencyLocked)blockers.push('EMERGENCY_EXECUTION_LOCKED');

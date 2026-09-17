@@ -15,4 +15,4 @@ Write-Output (@{installed=$null-ne$task;taskState=if($null-ne$task){[string]$tas
   runOnlyIfNetworkAvailable=if($null-ne$settings){[bool]$settings.RunOnlyIfNetworkAvailable}else{$false};
   wakeToRun=if($null-ne$settings){[bool]$settings.WakeToRun}else{$false};
   multipleInstances=if($null-ne$settings){[string]$settings.MultipleInstances}else{'UNKNOWN'};
-  executionGate='EXTERNAL_QUOTE_BLOCKER'} | ConvertTo-Json -Depth 6 -Compress)
+  executionGate=if($null-ne$health){[string]$health.executionGate}else{'UNKNOWN'}} | ConvertTo-Json -Depth 6 -Compress)

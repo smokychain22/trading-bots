@@ -140,7 +140,7 @@ try {
         }
       }
       @{state='ONLINE';lastCycle=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
-        mode='MASTER_THETA_PAPER';executionGate='EXTERNAL_QUOTE_BLOCKER';researchExport=$researchExport} | ConvertTo-Json |
+        mode='MASTER_THETA_PAPER';executionGate=[string]$report.executionGate;researchExport=$researchExport} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
       $delaySeconds = 5
     } catch {

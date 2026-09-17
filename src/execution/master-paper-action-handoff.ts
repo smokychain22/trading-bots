@@ -150,7 +150,7 @@ export class MasterPaperActionHandoff {
     const quote=await this.quoteSource.getCurrentQuote(plan,now);
     if(quote===null)return {actionPlanId:plan.actionPlanId,state:'NO_QUOTE',blockers:['FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_NOT_YET_QUALIFIED'],execution:null};
     const qualification=qualifyExecutionOptionQuote({quote,expectedContractId:plan.symbol,nowUtc:now,
-      maximumAgeMs:Math.max(0,Date.parse(plan.decisionExpiresAt)-Date.parse(now)),marketOpen});
+      maximumAgeMs:Math.max(0,Date.parse(plan.decisionExpiresAt)-Date.parse(now)),marketOpen,usage:'MASTER_PAPER'});
     if(!qualification.qualified)return {actionPlanId:plan.actionPlanId,state:'QUOTE_REJECTED',blockers:qualification.blockers,execution:null};
     const pricing=decideAdaptiveLimit({side:sideFor(plan.action),quote,attempt:plan.pricingAttempt,
       previousLimit:plan.previousLimit,economicBoundary:plan.economicBoundary,
@@ -160,17 +160,18 @@ export class MasterPaperActionHandoff {
     if(!['ALPACA','OPTIONOMICS'].includes(quote.provider))
       return {actionPlanId:plan.actionPlanId,state:'QUOTE_REJECTED',blockers:['EXECUTION_QUOTE_PROVIDER_NOT_APPROVED'],execution:null};
     const alpaca=quote.provider==='ALPACA'&&quote.sourceSemantics==='CONSOLIDATED_NBBO';
+    const alpacaIndicative=quote.provider==='ALPACA'&&quote.sourceSemantics==='PAPER_INDICATIVE_REFERENCE';
     const optionomics=quote.provider==='OPTIONOMICS'&&quote.sourceSemantics==='TRUSTED_TWO_SIDED_ORDER_PRICING';
-    if(plan.action!=='SELL_STOCK'&&!alpaca&&!optionomics)
+    if(plan.action!=='SELL_STOCK'&&!alpaca&&!alpacaIndicative&&!optionomics)
       return {actionPlanId:plan.actionPlanId,state:'QUOTE_REJECTED',blockers:['ORDER_PRICING_SEMANTICS_NOT_PROVEN'],execution:null};
     const command=assembleMasterPaperExecutionCommand({action:plan.action,executionAccountId:plan.executionAccountId,
       decisionId:plan.decisionId,candidateId:plan.candidateId,strategyVersion:plan.strategyVersion,chainId:plan.chainId,
       optionContractId:plan.optionContractId,underlyingId:plan.underlyingId,symbol:plan.symbol,quantity:plan.quantity,
       multiplier:plan.multiplier,...(plan.confirmedCoveredShares===undefined?{}:{confirmedCoveredShares:plan.confirmedCoveredShares}),
       limitPrice:pricing.limitPrice,pricingPolicyVersion:pricing.policyVersion,
-      quote:{source:quote.provider as 'ALPACA'|'OPTIONOMICS',feed:plan.action==='SELL_STOCK'?'IEX':alpaca?'OPRA':'TRUSTED_TWO_SIDED',
-        semantics:quote.sourceSemantics as 'CONSOLIDATED_NBBO'|'TRUSTED_TWO_SIDED_ORDER_PRICING',bid:quote.bid,ask:quote.ask,
-        observedAt:quote.providerTimestamp??quote.receivedAtUtc,maximumAgeSeconds:Math.max(0.001,(Date.parse(plan.decisionExpiresAt)-Date.parse(now))/1000)},
+      quote:{source:quote.provider as 'ALPACA'|'OPTIONOMICS',feed:plan.action==='SELL_STOCK'?'IEX':alpaca?'OPRA':alpacaIndicative?'INDICATIVE':'TRUSTED_TWO_SIDED',
+        semantics:quote.sourceSemantics as 'CONSOLIDATED_NBBO'|'TRUSTED_TWO_SIDED_ORDER_PRICING'|'PAPER_INDICATIVE_REFERENCE',bid:quote.bid,ask:quote.ask,
+        observedAt:quote.providerTimestamp as string,maximumAgeSeconds:Math.max(0.001,(Date.parse(plan.decisionExpiresAt)-Date.parse(now))/1000)},
       accountVerified:plan.accountVerified,optionsCapabilityVerified:plan.optionsCapabilityVerified,aegisState:plan.aegisState,
       executionTier:plan.executionTier,canonicalQuantity:plan.canonicalQuantity,paperEvidenceQuantity:plan.paperEvidenceQuantity,
       empiricalEconomicsReady:plan.empiricalEconomicsReady,expectedAfterCostEv:plan.expectedAfterCostEv,

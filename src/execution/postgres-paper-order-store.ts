@@ -104,7 +104,7 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
         expectedAfterCostEv:row.expected_after_cost_ev===null?null:Number(row.expected_after_cost_ev)},
       executionEvidence:{quoteSource:z.string().min(1).parse(row.quote_source),
         quoteFeed:row.quote_feed===null?null:String(row.quote_feed),
-        quoteSemantics:z.enum(['CONSOLIDATED_NBBO','TRUSTED_TWO_SIDED_ORDER_PRICING']).parse(row.quote_semantics),quoteAsOf:toIso(row.quote_as_of),
+        quoteSemantics:z.enum(['CONSOLIDATED_NBBO','TRUSTED_TWO_SIDED_ORDER_PRICING','PAPER_INDICATIVE_REFERENCE']).parse(row.quote_semantics),quoteAsOf:toIso(row.quote_as_of),
         decisionExpiresAt:toIso(row.decision_expires_at),quoteContentHash:String(row.quote_content_hash),
         aegisState:z.enum(['ALLOW_FULL','ALLOW_REDUCED','HOLD_ONLY','HARD_VETO']).parse(row.aegis_state)},
       request: {

@@ -3,6 +3,7 @@ export const executionOptionQuoteContractVersion = 'execution-option-quote-v1' a
 export type ExecutionQuoteSemantics =
   | 'CONSOLIDATED_NBBO'
   | 'TRUSTED_TWO_SIDED_ORDER_PRICING'
+  | 'PAPER_INDICATIVE_REFERENCE'
   | 'INDICATIVE'
   | 'SESSION_RECORDED_RESEARCH'
   | 'UNKNOWN';
@@ -34,12 +35,12 @@ export interface ExecutionOptionQuote {
 export interface AggregatedExecutionQuote {
   readonly contractId:string; readonly bid:number; readonly ask:number;
   readonly bidProvider:string; readonly askProvider:string; readonly sourceCount:number;
-  readonly semantics:Extract<ExecutionQuoteSemantics,'CONSOLIDATED_NBBO'|'TRUSTED_TWO_SIDED_ORDER_PRICING'>;
+  readonly semantics:Extract<ExecutionQuoteSemantics,'CONSOLIDATED_NBBO'|'TRUSTED_TWO_SIDED_ORDER_PRICING'|'PAPER_INDICATIVE_REFERENCE'>;
 }
 
-export function aggregateCompatibleExecutionQuotes(quotes:readonly ExecutionOptionQuote[],input:{expectedContractId:string;nowUtc:string;maximumAgeMs:number;marketOpen:boolean}):AggregatedExecutionQuote|null{
+export function aggregateCompatibleExecutionQuotes(quotes:readonly ExecutionOptionQuote[],input:{expectedContractId:string;nowUtc:string;maximumAgeMs:number;marketOpen:boolean;usage?:'MASTER_PAPER'|'LIVE'}):AggregatedExecutionQuote|null{
   const valid=quotes.filter((quote)=>qualifyExecutionOptionQuote({quote,expectedContractId:input.expectedContractId,
-    nowUtc:input.nowUtc,maximumAgeMs:input.maximumAgeMs,marketOpen:input.marketOpen}).qualified);
+    nowUtc:input.nowUtc,maximumAgeMs:input.maximumAgeMs,marketOpen:input.marketOpen,usage:input.usage??'LIVE'}).qualified);
   if(valid.length===0)return null;
   const first=valid[0];if(first===undefined)return null;
   const semantics=first.sourceSemantics;
@@ -70,6 +71,8 @@ export function qualifyExecutionOptionQuote(input: {
   readonly maximumAgeMs: number;
   readonly previousSequence?: number | null;
   readonly marketOpen: boolean;
+  /** Indicative quotes are authorized only for the isolated Alpaca Paper runtime. */
+  readonly usage?: 'MASTER_PAPER' | 'LIVE';
 }): ExecutionQuoteQualification {
   const blockers: string[] = [];
   const now = validTime(input.nowUtc);
@@ -97,12 +100,18 @@ export function qualifyExecutionOptionQuote(input: {
     if (received > now || (provider !== null && (provider > received || provider > now))) blockers.push('QUOTE_TIMESTAMP_SEQUENCE_INVALID');
     if (agePolicyValid && now - authoritativeTime > input.maximumAgeMs) blockers.push('QUOTE_STALE');
   }
-  if (!['CONSOLIDATED_NBBO', 'TRUSTED_TWO_SIDED_ORDER_PRICING'].includes(input.quote.sourceSemantics)) {
+  const paperIndicative = input.usage === 'MASTER_PAPER'
+    && input.quote.provider === 'ALPACA'
+    && input.quote.source === 'BROKER_INDICATIVE'
+    && input.quote.sourceSemantics === 'PAPER_INDICATIVE_REFERENCE'
+    && input.quote.provenance.feed === 'INDICATIVE'
+    && input.quote.provenance.paperOnly === true;
+  if (!['CONSOLIDATED_NBBO', 'TRUSTED_TWO_SIDED_ORDER_PRICING'].includes(input.quote.sourceSemantics) && !paperIndicative) {
     blockers.push('ORDER_PRICING_SEMANTICS_NOT_PROVEN');
   }
   if (input.quote.provenance.authenticated !== true
     || input.quote.provenance.exactContractMapping !== true
-    || input.quote.provenance.documentedForOrderPricing !== true) blockers.push('QUOTE_PROVENANCE_NOT_PROVEN');
+    || (!paperIndicative && input.quote.provenance.documentedForOrderPricing !== true)) blockers.push('QUOTE_PROVENANCE_NOT_PROVEN');
   if (input.previousSequence !== undefined && input.previousSequence !== null && input.quote.sequence !== null
     && input.quote.sequence <= input.previousSequence) blockers.push('QUOTE_OUT_OF_ORDER');
   return {

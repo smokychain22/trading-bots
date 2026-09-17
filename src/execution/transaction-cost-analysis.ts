@@ -18,6 +18,7 @@ export interface TransactionCostAnalysis {
   readonly postFillMove: Readonly<Record<string, number | null>>;
   readonly quoteProvider: string;
   readonly quoteSemantics: string;
+  readonly benchmarkClass: 'ALPACA_INDICATIVE_TCA' | 'CONSOLIDATED_NBBO_TCA' | 'TRUSTED_TWO_SIDED_TCA' | 'UNCLASSIFIED_TCA';
   readonly providerTimestamp: string | null;
   readonly receivedAt: string;
   readonly quoteAgeMs: number | null;
@@ -86,6 +87,10 @@ export function buildTransactionCostAnalysis(input: {
     slippageBps, spreadCapture, fees: input.fees,
     estimatedMarketImpact: input.estimatedMarketImpact, postFillMove: input.postFillMove,
     quoteProvider: input.quoteProvider, quoteSemantics: input.quoteSemantics,
+    benchmarkClass: input.quoteProvider === 'ALPACA' && input.quoteSemantics === 'PAPER_INDICATIVE_REFERENCE'
+      ? 'ALPACA_INDICATIVE_TCA'
+      : input.quoteSemantics === 'CONSOLIDATED_NBBO' ? 'CONSOLIDATED_NBBO_TCA'
+      : input.quoteSemantics === 'TRUSTED_TWO_SIDED_ORDER_PRICING' ? 'TRUSTED_TWO_SIDED_TCA' : 'UNCLASSIFIED_TCA',
     providerTimestamp: input.providerTimestamp, receivedAt: input.receivedAt,
     quoteAgeMs: input.quoteAgeMs, unknownReasons,
   };

@@ -198,3 +198,11 @@ test('indicative or undocumented quotes and missing owner authorization stay exp
   assert.ok(receipt.blockers.includes('EXECUTABLE_BBO_NOT_READY'));
   assert.ok(receipt.blockers.includes('OWNER_PAPER_AUTHORIZATION_NOT_GRANTED'));
 });
+
+test('explicit Paper indicative reference does not require an OPRA or NBBO claim',()=>{
+  const input=validInput();
+  const receipt=buildFirstPaperOrderReadinessReceipt({...input,quote:{...input.quote,
+    feed:good('PAPER_INDICATIVE_REFERENCE'),documentedForOrderPricing:good(false)}});
+  assert.equal(receipt.operationalBlockers.includes('ORDER_PRICING_SEMANTICS_NOT_PROVEN'),false);
+  assert.equal(receipt.operationalBlockers.includes('QUOTE_ORDER_PRICING_USE_NOT_DOCUMENTED'),false);
+});

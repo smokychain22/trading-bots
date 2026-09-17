@@ -906,3 +906,11 @@ Follower copy work begins only from a broker-confirmed master fill or lifecycle 
 - New-risk plans cannot be claimed while entries are paused. Management plans remain claimable.
 - New risk also requires a configured promoted management policy provider. Shadow policy evidence and fixed profit targets cannot authorize orders.
 - Alpaca OPRA remains not entitled. Optionomics remains research intelligence until its documented execution-price semantics are proven. The execution-price gate stays closed.
+
+## 2026-09-17: Alpaca indicative is the scoped master Paper price reference
+
+- Alpaca Basic `feed=indicative` may qualify only as `PAPER_INDICATIVE_REFERENCE` for the isolated `MASTER_THETA_PAPER` runtime. It must carry exact OCC identity, a two-sided uncrossed quote, provider observation time, receipt time, acceptable age and spread, and authenticated Alpaca provenance.
+- This evidence is never described as OPRA, consolidated NBBO, or live-money price authority. Live use rejects the semantic class. Follower submission remains locked.
+- Every initial placement and bounded replacement re-fetches and requalifies the exact contract. The broker-confirmed Alpaca Paper order and fill remain execution truth. Transaction-cost records derived from this reference are labeled `ALPACA_INDICATIVE_TCA`.
+- Optionomics remains options intelligence and research context. It is not required to supply the Paper execution reference.
+- Review of `origin/claude/theta-management-intelligence` at `336b4cf` found useful research modules for common-horizon economics, loss-state description, thesis invalidation, roll comparison, and policy promotion. They remain `RESEARCH_ONLY` for this correction. The branch's management-frontier change treats complete deterministic net-credit arithmetic as sufficient to clear an empirical new-risk blocker. That semantic weakening is rejected. Main's bounded bootstrap provider remains the single runtime provider and makes no empirical profitability claim.

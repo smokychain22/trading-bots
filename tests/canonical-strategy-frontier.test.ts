@@ -112,7 +112,7 @@ test('GLOBAL_WAIT is earned only after every applicable branch is evaluated and 
 });
 
 test('research quote limitations stay separate from strategy feasibility and never authorize execution',()=>{
-  const recorded=contract({feed:'INDICATIVE'});
+  const recorded=contract({source:'OPTIONOMICS',feed:null});
   const result=buildCanonicalStrategyFrontier({...base,contracts:[recorded],routing:routing(['THETA_Q'])});
   const candidate=result.branches.find((branch)=>branch.branch==='THETA_CONVENTIONAL')?.candidates[0];
   assert.equal(candidate?.structurallyFeasible,true);

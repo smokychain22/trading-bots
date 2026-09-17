@@ -45,3 +45,14 @@ test('reconnect, subscription restore, or unproven provenance cannot qualify',()
   assert.ok(result.blockers.includes('QUOTE_SUBSCRIPTION_NOT_ACTIVE'));
   assert.ok(result.blockers.includes('QUOTE_PROVENANCE_NOT_PROVEN'));
 });
+
+test('Alpaca indicative quote qualifies only for the explicit master Paper use',()=>{
+  const indicative=quote({provider:'ALPACA',source:'BROKER_INDICATIVE',sourceSemantics:'PAPER_INDICATIVE_REFERENCE',
+    provenance:{authenticated:true,exactContractMapping:true,documentedForOrderPricing:false,feed:'INDICATIVE',paperOnly:true}});
+  assert.equal(qualifyExecutionOptionQuote({quote:indicative,expectedContractId:'AAPL261016P00200000',nowUtc:'2026-09-14T14:30:10Z',
+    maximumAgeMs:10_000,marketOpen:true,usage:'MASTER_PAPER'}).qualified,true);
+  const live=qualifyExecutionOptionQuote({quote:indicative,expectedContractId:'AAPL261016P00200000',nowUtc:'2026-09-14T14:30:10Z',
+    maximumAgeMs:10_000,marketOpen:true,usage:'LIVE'});
+  assert.equal(live.qualified,false);
+  assert.ok(live.blockers.includes('ORDER_PRICING_SEMANTICS_NOT_PROVEN'));
+});

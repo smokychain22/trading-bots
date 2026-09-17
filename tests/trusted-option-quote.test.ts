@@ -106,3 +106,12 @@ test('Alpaca still requires proven OPRA consolidated evidence', () => {
   assert.ok(result.blockers.includes('ALPACA_OPRA_REQUIRED'));
   assert.ok(result.blockers.includes('CONSOLIDATED_NBBO_NOT_PROVEN'));
 });
+
+test('Alpaca indicative is accepted only as a master Paper reference',()=>{
+  const candidate=optionomicsQuote({provider:'ALPACA',provenance:{documentedTwoSidedQuoteContract:true,
+    documentedForOrderPricing:false,feed:'INDICATIVE',consolidatedNbboClaimProven:false}});
+  const paper=assessTrustedOptionQuote(candidate,NOW,'MASTER_PAPER');
+  assert.equal(paper.ready,true);
+  assert.equal(paper.authority,'ALPACA_INDICATIVE_PAPER_REFERENCE');
+  assert.equal(assessTrustedOptionQuote(candidate,NOW,'LIVE').ready,false);
+});

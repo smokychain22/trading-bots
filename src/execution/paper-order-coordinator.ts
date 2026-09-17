@@ -21,7 +21,7 @@ export interface PersistedPaperOrderIntent {
   readonly executionEvidence: {
     readonly quoteSource: string;
     readonly quoteFeed: string | null;
-    readonly quoteSemantics: 'CONSOLIDATED_NBBO' | 'TRUSTED_TWO_SIDED_ORDER_PRICING';
+    readonly quoteSemantics: 'CONSOLIDATED_NBBO' | 'TRUSTED_TWO_SIDED_ORDER_PRICING' | 'PAPER_INDICATIVE_REFERENCE';
     readonly quoteAsOf: string;
     readonly decisionExpiresAt: string;
     readonly quoteContentHash: string;

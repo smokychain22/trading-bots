@@ -7,7 +7,7 @@ export interface QuoteProviderQualificationReceipt {readonly qualificationRunId:
   readonly evidenceHash:string;readonly executionAuthorized:false;}
 const stable=(v:unknown):string=>JSON.stringify(v,(_k,x)=>x!==null&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x as Record<string,unknown>).sort(([a],[b])=>a.localeCompare(b))):x);
 export function qualifyQuoteProvider(input:{quote:ExecutionOptionQuote;expectedContractId:string;attemptedAt:string;maximumAgeMs:number;marketOpen:boolean}):QuoteProviderQualificationReceipt{
-  const assessment=qualifyExecutionOptionQuote({quote:input.quote,expectedContractId:input.expectedContractId,nowUtc:input.attemptedAt,maximumAgeMs:input.maximumAgeMs,marketOpen:input.marketOpen});
+  const assessment=qualifyExecutionOptionQuote({quote:input.quote,expectedContractId:input.expectedContractId,nowUtc:input.attemptedAt,maximumAgeMs:input.maximumAgeMs,marketOpen:input.marketOpen,usage:'MASTER_PAPER'});
   const entitlementState:QuoteEntitlementState=assessment.qualified?'QUALIFIED':assessment.blockers.includes('QUOTE_STALE')?'STALE':
     input.quote.sourceSemantics==='INDICATIVE'?'INDICATIVE_ONLY':input.quote.entitlementState??'ENTITLED_UNVERIFIED';
   const unsigned={provider:input.quote.provider,source:input.quote.source??'UNKNOWN',entitlementState,attemptedAt:input.attemptedAt,

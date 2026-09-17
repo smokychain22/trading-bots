@@ -196,7 +196,7 @@ export class PostgresRuntimeCycleStore {
       EXISTS(
         SELECT 1 FROM core.provider_capability pc
         JOIN core.provider_connection cn ON cn.provider_connection_id=pc.provider_connection_id
-        WHERE cn.provider_code='ALPACA' AND pc.capability_code='OPTIONS_MARKET_DATA_OPRA'
+        WHERE cn.provider_code='ALPACA' AND pc.capability_code IN ('OPTIONS_MARKET_DATA_OPRA','OPTIONS_MARKET_DATA_INDICATIVE')
           AND pc.status='GOOD' AND pc.entitlement IN ('AVAILABLE','AVAILABLE_WITH_LIMITS')
       ) OR EXISTS(
         SELECT 1 FROM research.optionomics_quote_qualification_run

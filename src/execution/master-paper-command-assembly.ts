@@ -27,8 +27,8 @@ export interface MasterPaperCommandAssemblyInput {
   readonly pricingPolicyVersion: string;
   readonly quote: {
     readonly source: 'ALPACA' | 'OPTIONOMICS';
-    readonly feed: 'OPRA' | 'SIP' | 'IEX' | 'TRUSTED_TWO_SIDED';
-    readonly semantics: 'CONSOLIDATED_NBBO' | 'TRUSTED_TWO_SIDED_ORDER_PRICING';
+    readonly feed: 'OPRA' | 'INDICATIVE' | 'SIP' | 'IEX' | 'TRUSTED_TWO_SIDED';
+    readonly semantics: 'CONSOLIDATED_NBBO' | 'TRUSTED_TWO_SIDED_ORDER_PRICING' | 'PAPER_INDICATIVE_REFERENCE';
     readonly bid: number;
     readonly ask: number;
     readonly observedAt: string;
@@ -52,8 +52,8 @@ const inputSchema = z.object({
   paperEvidenceQuantity:z.number().int().nonnegative(),empiricalEconomicsReady:z.boolean(),
   expectedAfterCostEv:z.number().finite().nullable(),
   limitPrice: z.number().positive().finite(), pricingPolicyVersion: z.string().min(1),
-  quote: z.object({ source: z.enum(['ALPACA','OPTIONOMICS']), feed: z.enum(['OPRA', 'SIP', 'IEX', 'TRUSTED_TWO_SIDED']),
-    semantics: z.enum(['CONSOLIDATED_NBBO','TRUSTED_TWO_SIDED_ORDER_PRICING']),
+  quote: z.object({ source: z.enum(['ALPACA','OPTIONOMICS']), feed: z.enum(['OPRA', 'INDICATIVE', 'SIP', 'IEX', 'TRUSTED_TWO_SIDED']),
+    semantics: z.enum(['CONSOLIDATED_NBBO','TRUSTED_TWO_SIDED_ORDER_PRICING','PAPER_INDICATIVE_REFERENCE']),
     bid: z.number().nonnegative().finite(), ask: z.number().positive().finite(), observedAt: z.string().datetime({ offset: true }),
     maximumAgeSeconds: z.number().positive().finite() }).strict(),
   accountVerified: z.boolean(), optionsCapabilityVerified: z.boolean(),
@@ -101,9 +101,11 @@ export function assembleMasterPaperExecutionCommand(raw: MasterPaperCommandAssem
   } else {
     const alpacaOpra = input.quote.source === 'ALPACA' && input.quote.feed === 'OPRA'
       && input.quote.semantics === 'CONSOLIDATED_NBBO';
+    const alpacaIndicativePaper = input.quote.source === 'ALPACA' && input.quote.feed === 'INDICATIVE'
+      && input.quote.semantics === 'PAPER_INDICATIVE_REFERENCE';
     const trustedTwoSided = input.quote.source === 'OPTIONOMICS' && input.quote.feed === 'TRUSTED_TWO_SIDED'
       && input.quote.semantics === 'TRUSTED_TWO_SIDED_ORDER_PRICING';
-    if (input.optionContractId === null || (!alpacaOpra && !trustedTwoSided)) {
+    if (input.optionContractId === null || (!alpacaOpra && !alpacaIndicativePaper && !trustedTwoSided)) {
       throw new Error('OPTION_EXECUTION_REQUIRES_QUALIFIED_TWO_SIDED_BBO');
     }
   }

@@ -26,6 +26,14 @@ test('selected CSP becomes one deterministic OPRA-bound persisted command',()=>{
   assert.equal(first.authorizationEvidence.expectedAfterCostEv,null);
 });
 
+test('Alpaca indicative reference creates Paper-only lineage without an OPRA claim',()=>{
+  const command=assembleMasterPaperExecutionCommand({...base,quote:{...base.quote,feed:'INDICATIVE',
+    semantics:'PAPER_INDICATIVE_REFERENCE'}});
+  assert.equal(command.executionEvidence.quoteFeed,'INDICATIVE');
+  assert.equal(command.executionEvidence.quoteSemantics,'PAPER_INDICATIVE_REFERENCE');
+  assert.equal(command.gate.priceEvidence,'QUALIFIED_OPTION_BBO');
+});
+
 test('promoted Paper requires empirical positive EV and live tiers stay impossible',()=>{
   assert.throws(()=>assembleMasterPaperExecutionCommand({...base,executionTier:'EMPIRICALLY_PROMOTED_PAPER'}),
     /EMPIRICAL_PROMOTION_ECONOMICS_NOT_READY/);

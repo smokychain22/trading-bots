@@ -88,20 +88,20 @@ test('a stale quote makes the contract non-executable', () => {
   assert.ok(contract.nonExecutableReason?.includes('stale'));
 });
 
-test('OPRA feed is preserved distinctly from INDICATIVE, never conflated', () => {
+test('OPRA and Paper indicative feeds remain distinct while both can pass Paper quote checks', () => {
   const opra = normalizeOptionContract(baseRaw({ feed: 'OPRA' }), NOW);
   const indicative = normalizeOptionContract(baseRaw({ feed: 'INDICATIVE' }), NOW);
   assert.equal(opra.feed, 'OPRA');
   assert.equal(indicative.feed, 'INDICATIVE');
-  assert.equal(indicative.executable, false);
-  assert.ok(indicative.nonExecutableReason?.includes('OPRA'));
+  assert.equal(indicative.executable, true);
+  assert.equal(indicative.nonExecutableReason, null);
 });
 
 test('unknown feed and research provider cannot supply executable BBO', () => {
   assert.equal(normalizeOptionContract(baseRaw({ feed: null }), NOW).executable, false);
   assert.equal(normalizeOptionContract(baseRaw({ source: 'OPTIONOMICS' }), NOW).executable, false);
   const valid = normalizeOptionContract(baseRaw(), NOW);
-  assert.equal(normalizedOptionContractSchema.safeParse({ ...valid, feed: 'INDICATIVE' }).success, false);
+  assert.equal(normalizedOptionContractSchema.safeParse({ ...valid, feed: 'INDICATIVE' }).success, true);
 });
 
 test('future timestamps and crossed BBO cannot authorize execution', () => {

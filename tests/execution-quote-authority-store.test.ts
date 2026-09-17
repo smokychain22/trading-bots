@@ -6,6 +6,7 @@ import { PostgresRuntimeCycleStore } from '../src/theta/autonomous-runtime.js';
 const poolReturning = (ready: boolean) => ({
   query: async (sql: string) => {
     assert.match(sql, /OPTIONS_MARKET_DATA_OPRA/);
+    assert.match(sql, /OPTIONS_MARKET_DATA_INDICATIVE/);
     assert.match(sql, /ORDER_PRICING_DOCUMENTED/);
     assert.doesNotMatch(sql, /INDICATIVE_ONLY/);
     return { rows: [{ ready }], rowCount: 1 };
