@@ -110,17 +110,22 @@ const summary={
   executionGate:'EXTERNAL_QUOTE_BLOCKER',followerExecution:'LOCKED',liveMoneyAuthorized:false,executionAuthorized:false,
   searchedScopes,rootSearches:scopedSearch.rootReceipts,
 };
-const rootManifestHash=sha256(canonicalJson({sourceCodeSha,methodVersion:LOCAL_FORENSIC_METHOD_VERSION,summary,
+const rootManifestHash=sha256(canonicalJson({generatedAt,sourceCodeSha,methodVersion:LOCAL_FORENSIC_METHOD_VERSION,summary,
   sourceHashes:uniqueSources.map((item)=>`${item.sourceLocator}:${item.contentHash}`).sort(),
   variantHashes:exportVariants.map((item)=>`${item.family}:${item.recordIdentity}:${item.payloadHash}`).sort(),
   missingSearchHashes:missingSearches.map((item)=>sha256(canonicalJson(item))).sort()}));
 const forensicSweepId=stableUuid(`forensic-sweep\0${rootManifestHash}`);
-const partitions=partitionItems(uniqueSources,exportVariants,missingSearches,700_000);
+const scopedSources=uniqueSources.map((item)=>({...item,sourceId:stableUuid(`source\0${forensicSweepId}\0${item.sourceId}`)}));
+const scopedVariants=exportVariants.map((item)=>({...item,
+  variantId:stableUuid(`variant\0${forensicSweepId}\0${item.family}\0${item.recordIdentity}\0${item.payloadHash}`)}));
+const scopedMissingSearches=missingSearches.map((item)=>({...item,
+  searchId:stableUuid(`missing\0${forensicSweepId}\0${item.targetTable}\0${item.missingRecordKey}`)}));
+const partitions=partitionItems(scopedSources,scopedVariants,scopedMissingSearches,700_000);
 const chunks=partitions.map((partition,chunkIndex)=>{
   const unsigned={schemaVersion:'theta-local-forensic-chunk-v1' as const,forensicSweepId,generatedAt,sourceCodeSha,
     methodVersion:LOCAL_FORENSIC_METHOD_VERSION,rootManifestHash,chunkIndex,chunkCount:partitions.length,
-    expectedSourceCount:uniqueSources.length,expectedVariantCount:exportVariants.length,
-    expectedMissingSearchCount:missingSearches.length,summary,sources:partition.sources,variants:partition.variants,
+    expectedSourceCount:scopedSources.length,expectedVariantCount:scopedVariants.length,
+    expectedMissingSearchCount:scopedMissingSearches.length,summary,sources:partition.sources,variants:partition.variants,
     missingSearches:partition.missingSearches};
   return localForensicChunkSchema.parse({...unsigned,chunkHash:computeLocalForensicChunkHash(unsigned)});
 });
@@ -129,8 +134,8 @@ await mkdir(outputRoot,{recursive:true});await rm(chunkRoot,{recursive:true,forc
 for(const chunk of chunks)await writeFile(resolve(chunkRoot,`${String(chunk.chunkIndex).padStart(4,'0')}.json`),`${JSON.stringify(chunk)}\n`,'utf8');
 await writeJson('forensic-manifest.json',{schemaVersion:'theta-local-forensic-root-v1',generatedAt,sourceCodeSha,
   methodVersion:LOCAL_FORENSIC_METHOD_VERSION,forensicSweepId,rootManifestHash,chunkCount:chunks.length,
-  expectedSourceCount:uniqueSources.length,expectedVariantCount:exportVariants.length,
-  expectedMissingSearchCount:missingSearches.length,summary,chunkHashes:chunks.map((item)=>item.chunkHash)});
+  expectedSourceCount:scopedSources.length,expectedVariantCount:scopedVariants.length,
+  expectedMissingSearchCount:scopedMissingSearches.length,summary,chunkHashes:chunks.map((item)=>item.chunkHash)});
 await writeJson('forensic-catalog.json',{generatedAt,recordCount:uniqueSources.length,sources:uniqueSources});
 await writeJson('research-export-variants.json',{generatedAt,recordCount:exportVariants.length,variants:exportVariants});
 await writeJson('missing-parent-search.json',{generatedAt,recordCount:missingSearches.length,records:missingSearches});

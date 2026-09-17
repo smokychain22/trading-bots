@@ -64,7 +64,8 @@ const research = await inspectResearchExports();
 const search = await inspectSearchSurfaces();
 const providerSources = await inspectProviderReconstructionSources();
 const missingParentSource = makeMissingParentSource(research.missingParentDetails);
-const sources = [
+const reconstructionSweepId=stableUuid(`sweep\0${sourceCodeSha}\0${generatedAt}\0${research.latestDatasetHash ?? 'none'}`);
+const rawSources = [
   ...research.sources,
   ...await inspectResearchOutputs(),
   ...await inspectWorkerState(),
@@ -75,6 +76,8 @@ const sources = [
   ...providerSources,
   missingParentSource,
 ];
+const sources=rawSources.map((source)=>({...source,
+  reconstructionSourceId:stableUuid(`source\0${reconstructionSweepId}\0${source.reconstructionSourceId}`)}));
 
 const families = inventoryEnvelope.receipt.rows.map((row) => {
   const targetRelation = `${row.schema}.${row.table}`;
@@ -118,7 +121,7 @@ const families = inventoryEnvelope.receipt.rows.map((row) => {
     blocking:false,evidence,
   };
   return {
-    familyRecoveryAssessmentId:stableUuid(`family\0${targetRelation}\0${sourceCodeSha}`),
+    familyRecoveryAssessmentId:stableUuid(`family\0${reconstructionSweepId}\0${targetRelation}`),
     ...unsigned,assessmentHash:sha256(canonicalJson(unsigned)),
   };
 });
@@ -137,7 +140,7 @@ const summary = {
 };
 const unsignedManifest = {
   schemaVersion:'theta-legacy-reconstruction-manifest-v1' as const,
-  reconstructionSweepId:stableUuid(`sweep\0${sourceCodeSha}\0${research.latestDatasetHash ?? 'none'}`),
+  reconstructionSweepId,
   generatedAt,sourceCodeSha,methodVersion:LEGACY_RECONSTRUCTION_METHOD_VERSION,sources,families,summary,
 };
 const manifest = legacyReconstructionManifestSchema.parse({
