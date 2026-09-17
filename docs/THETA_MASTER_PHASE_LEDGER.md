@@ -4,12 +4,12 @@ This ledger separates engineering completion from empirical proof. A completed c
 
 | Phase | Engineering status | Empirical status | Provider status | Owner-action status | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| R1 provider and account truth | COMPLETE | NOT_APPLICABLE | OPTIONOMICS_QUALIFICATION_BLOCKED | NONE | Alpaca Paper truth and typed provider adapters |
+| R1 provider and account truth | COMPLETE | NOT_APPLICABLE | OPTIONOMICS_AUTH_PASS; ALPACA_PAPER_READY | NONE | Alpaca Paper truth and typed provider adapters |
 | R2 lifecycle, accounting, and master runtime | COMPLETE | INSUFFICIENT_EVIDENCE | EXECUTION_QUOTE_BLOCKED | NONE | Reconcile-first worker, lifecycle writer, whole-chain ledger |
 | R3 account isolation | COMPLETE | INSUFFICIENT_FOLLOWER_EVIDENCE | READY | NONE | Master/follower role isolation and encrypted credentials |
 | R4 follower copy | COMPLETE_LOCKED | INSUFFICIENT_FOLLOWER_EVIDENCE | READY | ACTIVATION_NOT_AUTHORIZED | Master-fill-first follower plans and reconciliation |
 | R5 customer and operator product | COMPLETE_FOR_CURRENT_OPS | NOT_APPLICABLE | READY | NONE | Standalone product and version-safe operations controls |
-| R6 evidence and validation | COMPLETE_FOR_COLLECTION | INSUFFICIENT_EVIDENCE | OPTIONOMICS_REAL_DATA_BLOCKED | NONE | PIT ledger, shadow candidates, labels, deterministic dataset v6 |
+| R6 evidence and validation | COMPLETE_FOR_COLLECTION | INSUFFICIENT_EVIDENCE | OPTIONOMICS_INTELLIGENCE_READY | NONE | PIT ledger, shadow candidates, labels, deterministic dataset v6 |
 | R7 autonomous Paper engineering | COMPLETE_FOR_EXTERNAL_QUALIFICATION | INSUFFICIENT_EVIDENCE | OPTIONOMICS_AUTH_PASS; EXECUTION_QUOTE_BLOCKED | MASTER_PAPER_AUTHORIZATION_PERSISTED | Provider qualification, management-first runtime, five-branch evidence, bounded bootstrap management policy |
 | R8 Paper validation | ENTRY_GATE_BUILT | NOT_STARTED | EXECUTION_QUOTE_BLOCKED | NEW_ENTRIES_PAUSED | Machine-checkable readiness contract, zero broker submissions |
 | R9 graduation | NOT_STARTED | NOT_STARTED | NOT_APPLICABLE | LIVE_FORBIDDEN | No live authority |

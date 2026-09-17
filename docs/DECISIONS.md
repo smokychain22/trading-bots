@@ -49,9 +49,10 @@ untouched.
 
 Keep broker mutation in Alpaca, while representing execution-price evidence through
 the provider-neutral `ExecutionOptionQuote` contract. Qualification requires exact
-contract identity, positive uncrossed bid/ask, fresh provider or defensible receipt
-time, stable connection, active subscription, authenticated provenance, documented
+contract identity, positive uncrossed bid/ask, a fresh provider observation timestamp,
+stable connection, active subscription, authenticated provenance, documented
 order-pricing semantics, market-open state, and monotonic sequencing where supplied.
+Receipt time records THETA ingestion and can never substitute for provider freshness.
 Recorded Optionomics research data cannot satisfy this contract.
 
 Adaptive pricing is deterministic and direction-aware. A sell begins at the ask and

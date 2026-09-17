@@ -12,7 +12,7 @@ WHAT WAS IMPLEMENTED: Added an explicit bounded Paper bootstrap management autho
 
 TESTS RUN: Full Node suite, TypeScript check, ESLint, and the Production open-session Optionomics qualification route.
 
-TEST RESULTS: 943 Node tests ran with 933 passed, 10 database-only skips, and 0 failures before final documentation. TypeScript and ESLint passed. Optionomics authentication passed. Six live-session calls returned HTTP 200 and 50,656 two-sided observations, but zero fresh provider timestamps, so order pricing remains unqualified.
+TEST RESULTS: 946 Node tests ran with 936 passed, 10 database-only skips, and 0 failures. TypeScript, ESLint, build, security scan, browser tests, Python tests, disposable PostgreSQL migrations/invariants, and customer persistence passed locally or in CI. Optionomics authentication passed. The final Production open-session run made six HTTP 200 calls and found 50,670 two-sided observations, but zero provider-timestamped observations, so order pricing remains unqualified. Aiven validated through migration 054 with zero invalid indexes or unvalidated constraints. The deployed SHA and Windows worker SHA are `226c3782923c3515e49040252c05572e9333c6af`.
 
 KNOWN LIMITATIONS: No exact-contract fresh execution-price authority is currently entitled and qualified. The bootstrap policy is an operational safety policy, not an alpha model. New entries remain paused. No Paper order was submitted.
 
