@@ -39,6 +39,7 @@ import {
   PostgresPaperExecutionAuthorizationStore, resolveEffectivePaperExecutionControl,
 } from '../execution/paper-execution-authorization.js';
 import { createPaperBootstrapManagementPolicyProvider } from './paper-bootstrap-management-policy.js';
+import type { SchedulerCheckpointRecord } from './persistence-repositories.js';
 
 export const autonomousRuntimeVersion = 'theta-autonomous-runtime-v1' as const;
 export const autonomousPolicyVersion = 'theta-scheduler-policy-v1' as const;
@@ -282,6 +283,21 @@ export const jobTypesForScope=(scope:'FULL'|'CORE'|'BROKER'|'LIFECYCLE'|'MANAGEM
   return all.filter((jobType)=>jobType!=='WAIT_RECHECK'&&jobType!=='OPPORTUNITY_SCAN');
 };
 
+const autonomousSchedulerMaxAttempts=3;
+const safeToSupersedeAfterExhaustion=new Set<JobType>([
+  'OPPORTUNITY_SCAN','WAIT_RECHECK','MARKET_STATE_REFRESH','ACCOUNT_STATE_REFRESH','HEALTH_HEARTBEAT',
+]);
+
+/**
+ * Keep an exhausted read-only checkpoint as audit evidence without allowing
+ * it to suppress every later minute bucket of the same job family. Broker
+ * mutation and lifecycle checkpoints remain fail-closed for operator review.
+ */
+export function shouldRecoverRuntimeCheckpoint(record:Pick<SchedulerCheckpointRecord,'jobKind'|'attempt'>):boolean{
+  const kind=record.jobKind as JobType;
+  return record.attempt<autonomousSchedulerMaxAttempts||!safeToSupersedeAfterExhaustion.has(kind);
+}
+
 function scheduledJobs(bucket: string,scope:'FULL'|'CORE'|'BROKER'|'LIFECYCLE'|'MANAGEMENT'|'OBSERVATION'|'EVIDENCE'): readonly DueJob[] {
   return jobTypesForScope(scope).map((jobType) => ({ jobType, correlationKey: `${bucket}:${scope.toLowerCase()}` }));
 }
@@ -348,12 +364,12 @@ export async function runAutonomousRuntimeCycle(
   try {
   const master = await cycleStore.resolveMasterContext(environment);
   assertShadowBrokerHasNoMutationSurface(master.broker);
-  const checkpointStore = new PostgresSchedulerCheckpointRepository(pool, 3);
+  const checkpointStore = new PostgresSchedulerCheckpointRepository(pool, autonomousSchedulerMaxAttempts);
   const [expired, retryable] = await Promise.all([
     checkpointStore.findExpiredLeases(now.toISOString()),
     checkpointStore.findRetryableFailures(now.toISOString()),
   ]);
-  const recoveredJobs: DueJob[] = [...expired, ...retryable].flatMap((record) => {
+  const recoveredJobs: DueJob[] = [...expired, ...retryable].filter(shouldRecoverRuntimeCheckpoint).flatMap((record) => {
     const separator = record.jobId.indexOf(':');
     const kind = record.jobKind as JobType;
     return separator > 0 ? [{ jobType: kind, correlationKey: record.jobId.slice(separator + 1) }] : [];

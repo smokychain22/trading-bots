@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Pool } from 'pg';
-import { jobTypesForScope, PostgresRuntimeCycleStore } from '../src/theta/autonomous-runtime.js';
+import {
+  jobTypesForScope, PostgresRuntimeCycleStore, shouldRecoverRuntimeCheckpoint,
+} from '../src/theta/autonomous-runtime.js';
 
 const poolReturning = (ready: boolean) => ({
   query: async (sql: string) => {
@@ -53,4 +55,12 @@ test('serverless runtime scopes keep management and evidence bounded without dro
   assert.ok(!jobTypesForScope('BROKER').includes('ASSIGNMENT_EXPIRY_RECONCILIATION'));
   assert.ok(!jobTypesForScope('BROKER').includes('PAPER_EXECUTION_HANDOFF'));
   assert.deepEqual(evidence, ['POSITION_RECONCILIATION', 'WAIT_RECHECK', 'OPPORTUNITY_SCAN']);
+});
+
+test('an exhausted read-only checkpoint cannot permanently suppress fresh evidence', () => {
+  assert.equal(shouldRecoverRuntimeCheckpoint({ jobKind: 'OPPORTUNITY_SCAN', attempt: 3 }), false);
+  assert.equal(shouldRecoverRuntimeCheckpoint({ jobKind: 'MARKET_STATE_REFRESH', attempt: 3 }), false);
+  assert.equal(shouldRecoverRuntimeCheckpoint({ jobKind: 'OPPORTUNITY_SCAN', attempt: 2 }), true);
+  assert.equal(shouldRecoverRuntimeCheckpoint({ jobKind: 'PAPER_EXECUTION_HANDOFF', attempt: 3 }), true);
+  assert.equal(shouldRecoverRuntimeCheckpoint({ jobKind: 'ASSIGNMENT_EXPIRY_RECONCILIATION', attempt: 3 }), true);
 });
