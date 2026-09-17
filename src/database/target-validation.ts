@@ -16,10 +16,17 @@ export interface DatabaseTargetValidationReceipt {
   readonly triggerCount: number;
   readonly indexCount: number;
   readonly sequenceCount: number;
+  readonly databaseSizeBytes: number;
   readonly invalidIndexCount: number;
   readonly unvalidatedConstraintCount: number;
   readonly schemaFingerprint: string;
   readonly criticalRowCounts: Readonly<Record<string, number>>;
+  readonly legacyParentCoverage: {
+    readonly referencedFusionSnapshots: number;
+    readonly fusionSnapshotsPresentInAiven: number;
+    readonly referencedDecisions: number;
+    readonly decisionsPresentInAiven: number;
+  };
   readonly executionControl: {
     readonly pauseNewOrders: boolean;
     readonly masterExecutionEnabled: boolean;
@@ -87,6 +94,7 @@ export async function validateDatabaseTarget(
         WHERE sequence_schema NOT IN ('pg_catalog','information_schema')) AS sequence_count,
       (SELECT count(*)::integer FROM pg_index WHERE NOT indisvalid) AS invalid_index_count,
       (SELECT count(*)::integer FROM pg_constraint WHERE NOT convalidated) AS unvalidated_constraint_count,
+      pg_database_size(current_database())::bigint AS database_size_bytes,
       current_setting('max_connections')::integer AS max_connections,
       (SELECT count(*)::integer FROM pg_stat_activity WHERE backend_type='client backend') AS client_connections,
       (SELECT count(*)::integer FROM pg_stat_activity
@@ -110,7 +118,28 @@ export async function validateDatabaseTarget(
       (SELECT count(*)::integer FROM legacy_neon.artifact_record) AS legacy_artifact_records,
       (SELECT count(*)::integer FROM legacy_neon.promotion_batch) AS legacy_promotion_batches,
       (SELECT count(*)::integer FROM legacy_neon.promotion_record) AS legacy_promotion_records,
-      (SELECT count(*)::integer FROM research.legacy_neon_recovered_evidence) AS legacy_promoted_research_rows`);
+      (SELECT count(*)::integer FROM research.legacy_neon_recovered_evidence) AS legacy_promoted_research_rows,
+      (SELECT count(*)::integer FROM legacy_neon.reconstruction_sweep) AS legacy_reconstruction_sweeps,
+      (SELECT count(*)::integer FROM legacy_neon.reconstruction_source) AS legacy_reconstruction_sources,
+      (SELECT count(*)::integer FROM legacy_neon.family_recovery_assessment) AS legacy_family_assessments`);
+    const parentCoverage = await client.query(`WITH
+      fusion_refs AS (
+        SELECT DISTINCT payload->>'fusionSnapshotId' AS id
+        FROM research.legacy_neon_recovered_evidence
+        WHERE payload ? 'fusionSnapshotId' AND NULLIF(payload->>'fusionSnapshotId','') IS NOT NULL
+      ),
+      decision_refs AS (
+        SELECT DISTINCT payload->>'decisionId' AS id
+        FROM research.legacy_neon_recovered_evidence
+        WHERE payload ? 'decisionId' AND NULLIF(payload->>'decisionId','') IS NOT NULL
+      )
+      SELECT
+        (SELECT count(*)::integer FROM fusion_refs) AS referenced_fusion_snapshots,
+        (SELECT count(*)::integer FROM fusion_refs r JOIN trade.fusion_snapshot f ON f.fusion_snapshot_id::text=r.id)
+          AS fusion_snapshots_present,
+        (SELECT count(*)::integer FROM decision_refs) AS referenced_decisions,
+        (SELECT count(*)::integer FROM decision_refs r JOIN trade.decision d ON d.decision_id::text=r.id)
+          AS decisions_present`);
     const control = await client.query(`SELECT pause_new_orders,master_execution_enabled,follower_execution_enabled
       FROM ops.paper_execution_control WHERE singleton=true`);
     const row = summary.rows[0];
@@ -130,10 +159,17 @@ export async function validateDatabaseTarget(
       triggerCount: Number(row.trigger_count),
       indexCount: Number(row.index_count),
       sequenceCount: Number(row.sequence_count),
+      databaseSizeBytes: Number(row.database_size_bytes),
       invalidIndexCount: Number(row.invalid_index_count),
       unvalidatedConstraintCount: Number(row.unvalidated_constraint_count),
       schemaFingerprint,
       criticalRowCounts: Object.fromEntries(Object.entries(counts.rows[0]).map(([key, value]) => [key, Number(value)])),
+      legacyParentCoverage: {
+        referencedFusionSnapshots:Number(parentCoverage.rows[0].referenced_fusion_snapshots),
+        fusionSnapshotsPresentInAiven:Number(parentCoverage.rows[0].fusion_snapshots_present),
+        referencedDecisions:Number(parentCoverage.rows[0].referenced_decisions),
+        decisionsPresentInAiven:Number(parentCoverage.rows[0].decisions_present),
+      },
       executionControl: {
         pauseNewOrders: controlRow.pause_new_orders === true,
         masterExecutionEnabled: controlRow.master_execution_enabled === true,
