@@ -62,7 +62,7 @@ export interface AutonomousRuntimeReport {
   }[];
   readonly reconciliation: BrokerReconciliationResult | null;
   readonly runtimeMode: typeof masterPaperRuntimeMode;
-  readonly executionGate: typeof executionQuoteBlocker | 'ACTIVE';
+  readonly executionGate: typeof executionQuoteBlocker | 'LOCKED' | 'ACTIVE';
   readonly masterPaperOrdersSubmitted: number;
   readonly followerPaperOrdersSubmitted: 0;
   readonly liveOrdersSubmitted: 0;
@@ -302,6 +302,8 @@ export async function runAutonomousRuntimeCycle(
   const executionQuoteAuthorityReady=await new PostgresRuntimeCycleStore(pool).executionQuoteAuthorityReady();
   const newRiskRuntimeEnabled=executionControl.newRiskSubmissionEnabled
     &&managementPolicyEvidenceProvider!==undefined&&executionQuoteAuthorityReady;
+  const runtimeExecutionGate = !executionQuoteAuthorityReady ? executionQuoteBlocker
+    : newRiskRuntimeEnabled ? 'ACTIVE' as const : 'LOCKED' as const;
   const bucket = minuteBucket(now);
   const correlationId = `theta-runtime:${bucket}`;
   const workerInstance = `${process.env.VERCEL_REGION ?? 'local'}:${randomUUID()}`;
@@ -311,7 +313,7 @@ export async function runAutonomousRuntimeCycle(
       correlationId, status: 'DUPLICATE', runtimeVersion: autonomousRuntimeVersion,
       policyVersion: autonomousPolicyVersion, jobsAttempted: 0, jobsCompleted: 0,
       jobResults: [], reconciliation: null, runtimeMode: masterPaperRuntimeMode,
-      executionGate: newRiskRuntimeEnabled?'ACTIVE':executionQuoteBlocker,
+      executionGate: runtimeExecutionGate,
       masterPaperOrdersSubmitted: 0, followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
     };
   }
@@ -525,7 +527,7 @@ export async function runAutonomousRuntimeCycle(
     jobsAttempted: outcomes.length,
     jobsCompleted: outcomes.filter((outcome) => outcome.runResult !== null).length,
     jobResults, reconciliation, runtimeMode: masterPaperRuntimeMode,
-    executionGate:newRiskRuntimeEnabled?'ACTIVE':executionQuoteBlocker,
+    executionGate:runtimeExecutionGate,
     masterPaperOrdersSubmitted, followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
   };
   await cycleStore.finish(correlationId, report, new Date().toISOString());
@@ -537,7 +539,7 @@ export async function runAutonomousRuntimeCycle(
       policyVersion: autonomousPolicyVersion, jobsAttempted: 0, jobsCompleted: 0,
       jobResults: [{ jobType: 'HEALTH_HEARTBEAT', outcome: 'STARTUP_FAILED', status: 'FAILED', errorCode: failure.code }],
       reconciliation: null, runtimeMode: masterPaperRuntimeMode,
-      executionGate:newRiskRuntimeEnabled?'ACTIVE':executionQuoteBlocker,
+      executionGate:runtimeExecutionGate,
       masterPaperOrdersSubmitted: 0, followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
     };
     await cycleStore.finish(correlationId, report, new Date().toISOString());

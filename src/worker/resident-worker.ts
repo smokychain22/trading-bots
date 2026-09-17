@@ -25,7 +25,7 @@ export interface WorkerHealth {
   readonly lastCycleCompletedAt: string | null;
   readonly lastCycleStatus: AutonomousRuntimeReport['status'] | null;
   readonly consecutiveFailures: number;
-  readonly executionGate: 'EXTERNAL_QUOTE_BLOCKER'|'ACTIVE';
+  readonly executionGate: 'LOCKED'|'EXTERNAL_QUOTE_BLOCKER'|'ACTIVE';
   readonly alwaysOnWorker: 'WINDOWS_AUTOSTART';
   readonly hostState: typeof localWorkerHostState;
   readonly runtimeState: WorkerRuntimeState;
@@ -50,7 +50,7 @@ const redactedLogger = (): Logger => pino({
 const configuredExecutionGate = (environment: Environment): WorkerHealth['executionGate'] =>
   environment.MASTER_PAPER_EXECUTION_ENABLED && !environment.PAPER_PAUSE_NEW_ORDERS
     ? 'ACTIVE'
-    : 'EXTERNAL_QUOTE_BLOCKER';
+    : 'LOCKED';
 
 export async function verifyPythonRuntime(executable: string, timeoutMs = 5_000): Promise<boolean> {
   return new Promise((resolve) => {
