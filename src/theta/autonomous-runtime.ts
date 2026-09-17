@@ -196,13 +196,24 @@ export class PostgresRuntimeCycleStore {
       EXISTS(
         SELECT 1 FROM core.provider_capability pc
         JOIN core.provider_connection cn ON cn.provider_connection_id=pc.provider_connection_id
-        WHERE cn.provider_code='ALPACA' AND pc.capability_code IN ('OPTIONS_MARKET_DATA_OPRA','OPTIONS_MARKET_DATA_INDICATIVE')
+        WHERE cn.provider_code='ALPACA' AND pc.capability_code IN (
+          'OPTIONS_MARKET_DATA_OPRA','OPTIONS_MARKET_DATA_INDICATIVE','CURRENT_OPTION_SNAPSHOTS_INDICATIVE'
+        )
           AND pc.status='GOOD' AND pc.entitlement IN ('AVAILABLE','AVAILABLE_WITH_LIMITS')
+      ) OR EXISTS(
+        SELECT 1 FROM research.quote_provider_qualification_receipt
+        WHERE provider='ALPACA' AND semantics='PAPER_INDICATIVE_REFERENCE' AND qualified=true
+          AND entitlement_state='QUALIFIED' AND attempted_at>now()-interval '1 hour'
       ) OR EXISTS(
         SELECT 1 FROM research.optionomics_quote_qualification_run
         WHERE ready=true AND readiness_state='READY' AND semantic_authority='ORDER_PRICING_DOCUMENTED'
       ) AS ready`);
     return result.rows[0]?.ready===true;
+  }
+
+  async firstCanarySubmissionAvailable():Promise<boolean>{
+    const result=await this.pool.query(`SELECT count(*)::int AS count FROM trade.broker_order`);
+    return Number(result.rows[0]?.count??0)===0;
   }
 
   async markNearMissesTriggered(
@@ -269,9 +280,9 @@ const degraded = (code: string, nextRunAt: string): JobRunResult => ({ status: '
 
 /**
  * Runs one bounded, restart-safe master Paper cycle. Reconciliation,
- * management, scanning, evidence, and decision work remain active while the
- * execution-quote gate is externally blocked. The only broker mutation seam
- * is the typed Paper action handoff, which cannot bypass that gate.
+ * management, scanning, evidence, and decision work remain active regardless
+ * of whether new risk is locked. The only broker mutation seam is the typed
+ * Paper action handoff, which cannot bypass quote, control, or canary gates.
  */
 export async function runAutonomousRuntimeCycle(
   environment: Environment,
@@ -299,9 +310,12 @@ export async function runAutonomousRuntimeCycle(
   const masterExecutionEnabled=executionControl.masterEnabled;
   const managementPolicyEvidenceProvider=dependencies.managementPolicyEvidenceProvider
     ??createPaperBootstrapManagementPolicyProvider();
-  const executionQuoteAuthorityReady=await new PostgresRuntimeCycleStore(pool).executionQuoteAuthorityReady();
+  const runtimeStore=new PostgresRuntimeCycleStore(pool);
+  const [executionQuoteAuthorityReady,firstCanarySubmissionAvailable]=await Promise.all([
+    runtimeStore.executionQuoteAuthorityReady(),runtimeStore.firstCanarySubmissionAvailable(),
+  ]);
   const newRiskRuntimeEnabled=executionControl.newRiskSubmissionEnabled
-    &&managementPolicyEvidenceProvider!==undefined&&executionQuoteAuthorityReady;
+    &&managementPolicyEvidenceProvider!==undefined&&executionQuoteAuthorityReady&&firstCanarySubmissionAvailable;
   const runtimeExecutionGate = !executionQuoteAuthorityReady ? executionQuoteBlocker
     : newRiskRuntimeEnabled ? 'ACTIVE' as const : 'LOCKED' as const;
   const bucket = minuteBucket(now);
