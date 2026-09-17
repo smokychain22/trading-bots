@@ -5,6 +5,7 @@ import {
   type ManagementActionExecutionEvidence, type ManagementFrontierAction,
   type ManagementPolicyActionValue, type ManagementPolicyEvidence,
 } from './management-action-frontier.js';
+import { buildCommonHorizonComparison, forwardContinuationCashFlow } from './common-horizon-economics.js';
 
 export const paperBootstrapManagementPolicyVersion = 'theta-paper-bootstrap-management-policy-v1' as const;
 
@@ -151,6 +152,15 @@ function valueFor(
       // a fixed universal profit-target percentage (the threshold itself
       // must be supplied by the caller, never invented here).
       const nearExhausted = remainingFraction !== null && remainingFraction <= 0.10 && dte <= 5;
+      // Informational only -- surfaces the KNOWN current mark-to-market
+      // magnitude relative to entry credit for operator/model visibility.
+      // This is never used to gate or force a close: a large deterministic
+      // "loss" reading here does NOT select CLOSE_FULL/CLOSE_CC by itself,
+      // since that would be an undisclosed fixed-threshold stop-loss rule
+      // (forbidden as production authority; may remain a benchmark
+      // challenger elsewhere).
+      const lossMagnitudeReason = remainingFraction !== null && remainingFraction > 1
+        ? [`KNOWN_MARK_EXCEEDS_ENTRY_CREDIT_FRACTION_${remainingFraction.toFixed(2)}`] : [];
       return {
         ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: 0,
         executionCostRisk: currentMark, opportunityCost: null, uncertainty: null,
@@ -158,7 +168,7 @@ function valueFor(
         executionEvidence: null,
         reasons: nearExhausted
           ? [`REMAINING_VALUE_FRACTION_${remainingFraction?.toFixed(2)}`, `DTE_${dte}`, 'CLOSE_FREES_CAPITAL_FOR_NEAR_EXHAUSTED_POSITION']
-          : ['REMAINING_VALUE_NOT_KNOWN_EXHAUSTED'],
+          : ['REMAINING_VALUE_NOT_KNOWN_EXHAUSTED', ...lossMagnitudeReason],
       };
     }
     case 'ROLL':
@@ -168,7 +178,13 @@ function valueFor(
         return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_IDENTIFIED_ROLL_TARGET'] };
       }
       const openCreditDollars = ((candidate.bid + candidate.ask) / 2) * candidate.multiplier * candidate.quantity;
-      const netCredit = openCreditDollars - currentMark; // known cost to close old, known credit to open new
+      // Sunk (already-realized) economics are deliberately NOT read anywhere
+      // in this block -- forwardContinuationCashFlow only ever sees the two
+      // current-quote dollar boundaries, so the old leg's realized P&L
+      // cannot be silently re-added into this roll's forward comparison.
+      const forward = forwardContinuationCashFlow({ closeCostDollars: currentMark, openCreditDollars });
+      const netCredit = forward.netCashFlow as number; // complete=true guaranteed: both legs are known here
+      const horizon = buildCommonHorizonComparison(state.observedAt, state.economics, state.contract.expiration, [candidate.expiration]);
       const executionEvidence: ManagementActionExecutionEvidence = {
         closeEconomicBoundary: currentMark, openEconomicBoundary: openCreditDollars, stockEconomicBoundary: null,
         economicsRemainPositive: netCredit >= 0, expectedAfterCostEv: null, empiricalEconomicsReady: false,
@@ -183,7 +199,9 @@ function valueFor(
         incrementalCapitalDays: null, executionCostRisk: Math.abs(currentMark) + Math.abs(openCreditDollars) * 0.01,
         opportunityCost: null, uncertainty: null,
         utility: netCredit >= 0 ? 0.5 : -2, // a net-debit roll never outranks passive HOLD under this bootstrap policy
-        executionEvidence, reasons: [`DETERMINISTIC_NET_CREDIT_${netCredit.toFixed(2)}`],
+        executionEvidence,
+        reasons: [`DETERMINISTIC_NET_CREDIT_${netCredit.toFixed(2)}`, `HORIZON_ANCHOR_${horizon.horizonAnchor ?? 'UNKNOWN'}`,
+          `SUNK_REALIZED_PNL_EXCLUDED_FROM_FORWARD_COMPARISON`],
       };
     }
     case 'ALLOW_CALL_AWAY':
@@ -217,7 +235,10 @@ function valueFor(
       if (candidate.strike < basis) {
         return { ...base, ...UNKNOWN_VALUE, utility: -3, reasons: ['CC_STRIKE_BELOW_KNOWN_COST_BASIS_REJECTED'] };
       }
-      const premiumDollars = ((candidate.bid + candidate.ask) / 2) * candidate.multiplier * candidate.quantity;
+      const forward = forwardContinuationCashFlow({ closeCostDollars: null, openCreditDollars:
+        ((candidate.bid + candidate.ask) / 2) * candidate.multiplier * candidate.quantity });
+      const premiumDollars = forward.netCashFlow as number;
+      const horizon = buildCommonHorizonComparison(state.observedAt, state.economics, null, [candidate.expiration]);
       const executionEvidence: ManagementActionExecutionEvidence = {
         closeEconomicBoundary: null, openEconomicBoundary: premiumDollars, stockEconomicBoundary: null,
         economicsRemainPositive: premiumDollars > 0, expectedAfterCostEv: null, empiricalEconomicsReady: false,
@@ -230,7 +251,9 @@ function valueFor(
       return {
         ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: null,
         executionCostRisk: premiumDollars * 0.01, opportunityCost: null, uncertainty: null,
-        utility: 0.5, executionEvidence, reasons: [`KNOWN_CC_PREMIUM_${premiumDollars.toFixed(2)}`, 'STRIKE_AT_OR_ABOVE_COST_BASIS'],
+        utility: 0.5, executionEvidence,
+        reasons: [`KNOWN_CC_PREMIUM_${premiumDollars.toFixed(2)}`, 'STRIKE_AT_OR_ABOVE_COST_BASIS',
+          `HORIZON_ANCHOR_${horizon.horizonAnchor ?? 'UNKNOWN'}`],
       };
     }
     case 'REDEPLOY':
