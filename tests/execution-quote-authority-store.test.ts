@@ -46,5 +46,8 @@ test('serverless runtime scopes keep management and evidence bounded without dro
   assert.ok(core.includes('POSITION_MANAGEMENT_SCAN'));
   assert.ok(core.includes('PAPER_EXECUTION_HANDOFF'));
   assert.ok(!core.includes('OPPORTUNITY_SCAN'));
+  assert.deepEqual(jobTypesForScope('MANAGEMENT'), ['POSITION_RECONCILIATION', 'POSITION_MANAGEMENT_SCAN', 'PAPER_EXECUTION_HANDOFF']);
+  assert.ok(jobTypesForScope('BROKER').includes('ASSIGNMENT_EXPIRY_RECONCILIATION'));
+  assert.ok(!jobTypesForScope('BROKER').includes('PAPER_EXECUTION_HANDOFF'));
   assert.deepEqual(evidence, ['POSITION_RECONCILIATION', 'WAIT_RECHECK', 'OPPORTUNITY_SCAN']);
 });

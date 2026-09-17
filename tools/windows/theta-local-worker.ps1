@@ -46,11 +46,17 @@ try {
       # Keep the client deadline above the longest observed server completion
       # window so the supervisor does not abandon a valid in-flight cycle and
       # retry it while Production is still persisting evidence.
-      $coreHeaders = $headers.Clone()
-      $coreHeaders['X-Theta-Operation'] = 'runtime-core-cycle'
-      $coreReport = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $coreHeaders -TimeoutSec 240
-      if ($coreReport.status -eq 'FAILED' -or $coreReport.status -eq 'QUARANTINED') {
-        throw 'THETA_CORE_CYCLE_FAILED'
+      $brokerHeaders = $headers.Clone()
+      $brokerHeaders['X-Theta-Operation'] = 'runtime-broker-cycle'
+      $brokerReport = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $brokerHeaders -TimeoutSec 180
+      if ($brokerReport.status -eq 'FAILED' -or $brokerReport.status -eq 'QUARANTINED') {
+        throw 'THETA_BROKER_CYCLE_FAILED'
+      }
+      $managementHeaders = $headers.Clone()
+      $managementHeaders['X-Theta-Operation'] = 'runtime-management-cycle'
+      $managementReport = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $managementHeaders -TimeoutSec 180
+      if ($managementReport.status -eq 'FAILED' -or $managementReport.status -eq 'QUARANTINED') {
+        throw 'THETA_MANAGEMENT_CYCLE_FAILED'
       }
       $evidenceHeaders = $headers.Clone()
       $evidenceHeaders['X-Theta-Operation'] = 'runtime-evidence-cycle'
