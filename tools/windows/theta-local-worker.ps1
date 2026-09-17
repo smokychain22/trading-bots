@@ -42,9 +42,10 @@ try {
     try {
       # The complete management-first cycle performs reconciliation, provider
       # collection, six-branch evaluation, and atomic evidence persistence.
-      # Keep the client deadline above the server's 300-second bound so the
-      # supervisor does not abandon a valid in-flight cycle and retry it.
-      $report = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $headers -TimeoutSec 330
+      # Keep the client deadline above the longest observed server completion
+      # window so the supervisor does not abandon a valid in-flight cycle and
+      # retry it while Production is still persisting evidence.
+      $report = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $headers -TimeoutSec 390
       $marketSessionDate = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
         [DateTimeOffset]::UtcNow, 'Eastern Standard Time').ToString('yyyy-MM-dd')
       $lastQualificationSession = if (Test-Path -LiteralPath $qualificationSessionFile) {

@@ -31,6 +31,7 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /EXPORTED_AND_RESEARCHED/);
   assert.match(source, /RESEARCH_CURRENT/);
   assert.match(source, /NO_SPLIT_DESCRIPTIVE_ONLY/);
+  assert.match(source, /Invoke-RestMethod[^\r\n]+-TimeoutSec 390/);
   assert.doesNotMatch(source, /\/v2\/orders/i);
   assert.doesNotMatch(source, /APCA-API-KEY-ID|APCA-API-SECRET-KEY/);
 });
