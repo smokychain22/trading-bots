@@ -1,7 +1,7 @@
 # Legacy reconstruction matrix
 
-Generated: 2026-09-17T09:05:54.997Z
-Manifest hash: `b21b47e8246693bc1155c2394e997b014ac8c7879a3deffe370b79f882556ee8`
+Generated: 2026-09-17T10:58:49.906Z
+Manifest hash: `6a6d5d4b371be947327c75133690a3b08361fbf4608407cec58e557461bdd1f3`
 
 ## Recovery result
 
@@ -9,8 +9,8 @@ Manifest hash: `b21b47e8246693bc1155c2394e997b014ac8c7879a3deffe370b79f882556ee8
 - Exact original PIT rows already promoted: 25125
 - Additional stable identities found only in older exports: 0
 - Conflicting stable identities: 230, all retained as source-version metadata and never overwritten
-- Unique unresolved parent keys: 1548
-- Parent references across child families: 2037
+- Unique unresolved parent keys: 553
+- Parent references across child families: 827
 - Local database dumps found: 0
 - Relevant GitHub Actions data artifacts found: 0
 - Status counts: NEON_ONLY_UNRECOVERABLE_CURRENTLY=101, RECONSTRUCTED_CURRENT_STATE=11, EMPTY_BY_DESIGN=13, RECONSTRUCTED_SCHEMA_ONLY=1, PARTIALLY_RECOVERED=8
@@ -84,7 +84,7 @@ The 101 `NEON_ONLY_UNRECOVERABLE_CURRENTLY` classifications refer to missing leg
 | research.theta_dataset_export | NEON_LEGACY, GIT_SCHEMA | dataset_export_id | dataset_hash | 0 | NEON_ONLY_UNRECOVERABLE_CURRENTLY | 0 | 0 | 0 | 0 | 0 | YES | NO |
 | research.theta_execution_observation_job | NEON_LEGACY, GIT_SCHEMA | observation_job_id | UNKNOWN | 2 | NEON_ONLY_UNRECOVERABLE_CURRENTLY | 0 | 0 | 0 | 0 | 502 | YES | NO |
 | research.theta_near_miss_reevaluation_event | NEON_LEGACY, GIT_SCHEMA | near_miss_event_id | content_hash | 2 | NEON_ONLY_UNRECOVERABLE_CURRENTLY | 0 | 0 | 0 | 0 | 0 | YES | NO |
-| research.theta_option_chain_decision_evidence | NEON_LEGACY, GIT_SCHEMA, LOCAL_RESEARCH_EXPORT | chain_decision_evidence_id | fusion_snapshot_id<br>content_hash | 1 | PARTIALLY_RECOVERED | 2 | 2 | 0 | 219 | 9 | YES | NO |
+| research.theta_option_chain_decision_evidence | NEON_LEGACY, GIT_SCHEMA, LOCAL_RESEARCH_EXPORT | chain_decision_evidence_id | fusion_snapshot_id<br>content_hash | 1 | PARTIALLY_RECOVERED | 2 | 2 | 0 | 2 | 9 | YES | NO |
 | research.theta_outcome_label | NEON_LEGACY, GIT_SCHEMA, LOCAL_RESEARCH_EXPORT | outcome_label_id | content_hash | 0 | NEON_ONLY_UNRECOVERABLE_CURRENTLY | 0 | 0 | 0 | 0 | 0 | YES | NO |
 | research.theta_outcome_observation | NEON_LEGACY, GIT_SCHEMA | outcome_observation_id | content_hash | 1 | NEON_ONLY_UNRECOVERABLE_CURRENTLY | 0 | 0 | 0 | 0 | 0 | YES | NO |
 | research.theta_outcome_resolution_receipt | NEON_LEGACY, GIT_SCHEMA, LOCAL_RESEARCH_EXPORT | outcome_resolution_receipt_id | content_hash | 1 | PARTIALLY_RECOVERED | 112 | 112 | 0 | 0 | 148 | YES | NO |
@@ -125,7 +125,7 @@ The 101 `NEON_ONLY_UNRECOVERABLE_CURRENTLY` classifications refer to missing leg
 | trade.candidate_set_evidence | NEON_LEGACY, GIT_SCHEMA, LOCAL_RESEARCH_EXPORT | candidate_set_id | UNKNOWN | 2 | PARTIALLY_RECOVERED | 302 | 302 | 0 | 0 | 9 | YES | YES |
 | trade.canonical_strategy_branch_evidence | NEON_LEGACY, GIT_SCHEMA | branch_evidence_id | content_hash | 2 | NEON_ONLY_UNRECOVERABLE_CURRENTLY | 0 | 0 | 0 | 0 | 45 | YES | YES |
 | trade.canonical_strategy_candidate_evidence | NEON_LEGACY, GIT_SCHEMA | candidate_evidence_id | content_hash | 2 | NEON_ONLY_UNRECOVERABLE_CURRENTLY | 0 | 0 | 0 | 0 | 139 | YES | YES |
-| trade.canonical_strategy_frontier | NEON_LEGACY, GIT_SCHEMA, LOCAL_RESEARCH_EXPORT | frontier_id | fusion_snapshot_id<br>content_hash | 1 | PARTIALLY_RECOVERED | 302 | 302 | 0 | 1295 | 9 | YES | YES |
+| trade.canonical_strategy_frontier | NEON_LEGACY, GIT_SCHEMA, LOCAL_RESEARCH_EXPORT | frontier_id | fusion_snapshot_id<br>content_hash | 1 | PARTIALLY_RECOVERED | 302 | 302 | 0 | 302 | 9 | YES | YES |
 | trade.decision | NEON_LEGACY, GIT_SCHEMA | decision_id | UNKNOWN | 3 | NEON_ONLY_UNRECOVERABLE_CURRENTLY | 0 | 0 | 0 | 0 | 9 | YES | YES |
 | trade.decision_invalidation_snapshot | NEON_LEGACY, GIT_SCHEMA | decision_invalidation_snapshot_id | content_hash | 2 | NEON_ONLY_UNRECOVERABLE_CURRENTLY | 0 | 0 | 0 | 0 | 0 | YES | YES |
 | trade.decision_reason | NEON_LEGACY, GIT_SCHEMA | decision_reason_id | UNKNOWN | 1 | NEON_ONLY_UNRECOVERABLE_CURRENTLY | 0 | 0 | 0 | 0 | 14 | YES | YES |

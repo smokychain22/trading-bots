@@ -54,6 +54,10 @@ try {
     "047_p2e_time_path_intelligence",
     "048_p2f_provider_activation_readiness",
     "049_p2g_simulation_and_preview",
+    "050_legacy_neon_staging",
+    "051_legacy_neon_promotion",
+    "052_legacy_reconstruction_registry",
+    "053_local_forensic_recovery",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -124,6 +128,10 @@ try {
     ["research", "optionomics_provider_qualification_receipt"],
     ["research", "quote_provider_qualification_receipt"],
     ["ops", "theta_alert_event"],
+    ["legacy_neon", "local_forensic_sweep"],
+    ["legacy_neon", "local_forensic_source"],
+    ["legacy_neon", "research_export_variant"],
+    ["legacy_neon", "missing_record_forensic_search"],
   ];
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",

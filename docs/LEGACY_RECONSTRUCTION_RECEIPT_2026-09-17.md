@@ -17,18 +17,21 @@ Production accepted the manifest once and replayed it without changing canonical
 | Source | Inspected | Recoverable additional legacy rows |
 | --- | ---: | ---: |
 | Immutable research exports | 109 | 0 older-only stable rows |
-| Research-output run directories | 23 | 0 real legacy rows |
-| Research-output JSON files | 138 | 0 real legacy rows |
+| Research-output run directories | 24 | 0 real legacy rows |
+| Research-output JSON files | 144 | 0 real legacy rows |
 | Worker state and Paper-preflight locations | Yes | 0 |
 | Codex, Claude, local workspace, and bounded user-data candidates | 46 candidate files | 0 |
 | Local PostgreSQL dumps or backups | 0 found | 0 |
 | Git tracked candidate paths and history | 26 paths | 0 |
-| GitHub Actions artifacts | 310 inspected | 0 relevant row-bearing artifacts |
+| GitHub Actions artifacts | 314 inspected | 0 relevant row-bearing artifacts |
 | Vercel deployment history | 20 recent deployment records inspected | 0 row-bearing artifacts |
 | Alpaca Paper reconciliation | Account ACTIVE, 9 activity facts verified, 0 positions, 0 open orders | 0 new legacy rows |
 | Optionomics qualified historical evidence | Current metadata inspected | 0 additional qualified legacy rows |
 
-The export union retained 230 conflicting strategy-frontier identities as source-version metadata. It did not overwrite any version. No export contained a stable identity absent from the latest promoted export.
+The export union found 230 conflicting strategy-frontier identities. The expanded
+local forensic pass preserved all 460 exact payload variants with dataset lineage
+in a separate immutable archive. It did not overwrite canonical runtime rows. No
+export contained a stable identity absent from the latest promoted export.
 
 ## Recovery totals
 
@@ -60,15 +63,19 @@ Thirteen additional families are `EMPTY_BY_DESIGN`, including order and fill fam
 
 ## Exact unresolved lineage
 
-The recovered child evidence references 2,037 missing-parent occurrences across 1,548 unique keys:
+The original generic JSON walk reported 2,037 apparent parent references across
+1,548 keys. A schema-aware audit proved that 995 were text strategy-frontier
+candidate references, while the supposed parent column is UUID. Those text values
+are not parent references. The corrected unresolved set is 827 occurrences across
+553 unique keys:
 
 - `trade.fusion_snapshot`: 302 unique keys, 0 present in Aiven
 - `trade.decision`: 125 unique keys, 0 present in Aiven
-- `trade.candidate_point_in_time_evidence`: 1,121 unique keys
+- `trade.candidate_point_in_time_evidence`: 126 unique UUID keys
 
-These parents were not fabricated. The complete list of 101 Neon-only data families, all 134 family statuses, origins, keys, parent counts, row counts, and research/runtime relevance is in [LEGACY_RECONSTRUCTION_MATRIX.md](./LEGACY_RECONSTRUCTION_MATRIX.md). Writer, source-event, derivation, timestamp, point-in-time, and reconstruction lineage is in [LEGACY_RECONSTRUCTION_PROVENANCE_GRAPH.md](./LEGACY_RECONSTRUCTION_PROVENANCE_GRAPH.md).
+These parents were not fabricated. The complete list of 101 Neon-only data families, all 134 family statuses, origins, keys, parent counts, row counts, and research/runtime relevance is in [LEGACY_RECONSTRUCTION_MATRIX.md](./LEGACY_RECONSTRUCTION_MATRIX.md). Writer, source-event, derivation, timestamp, point-in-time, and reconstruction lineage is in [LEGACY_RECONSTRUCTION_PROVENANCE_GRAPH.md](./LEGACY_RECONSTRUCTION_PROVENANCE_GRAPH.md). The expanded search and false-parent correction are recorded in [LOCAL_FORENSIC_RECOVERY_RECEIPT_2026-09-17.md](./LOCAL_FORENSIC_RECOVERY_RECEIPT_2026-09-17.md).
 
-The exact remaining Neon-only gaps are the original row sets and source identities for those 101 matrix entries, the 1,548 unique missing parent keys, all unobserved resolved outcome labels, and any original lifecycle, management, or whole-chain records not present in the promoted export. Current Aiven rows in similarly named runtime tables remain authoritative current state and are not claimed as recovered Neon history.
+The exact remaining Neon-only gaps are the original row sets and source identities for those 101 matrix entries, the 553 unique unresolved parent keys, all unobserved resolved outcome labels, and any original lifecycle, management, or whole-chain records not present in the promoted export. Current Aiven rows in similarly named runtime tables remain authoritative current state and are not claimed as recovered Neon history.
 
 ## Aiven validation
 

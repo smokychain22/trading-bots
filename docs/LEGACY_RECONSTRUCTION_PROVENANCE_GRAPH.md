@@ -1,8 +1,8 @@
 # Legacy reconstruction provenance graph
 
-Generated: 2026-09-17T09:05:54.997Z
-Analyzed code: `c0be0eb49e5ba23b585857c2eaae3fa5e05c5a30`
-Manifest hash: `b21b47e8246693bc1155c2394e997b014ac8c7879a3deffe370b79f882556ee8`
+Generated: 2026-09-17T10:58:49.906Z
+Analyzed code: `04b6d3ebd3ba7eff77f8874d14c9ee1c652aab87`
+Manifest hash: `6a6d5d4b371be947327c75133690a3b08361fbf4608407cec58e557461bdd1f3`
 
 ## Authority graph
 
@@ -18,12 +18,12 @@ Current operational authority is Aiven. Alpaca Paper remains broker truth. Optio
 
 ## Source registry
 
-The manifest registers 147 checksummed sources. This includes 109 immutable research exports, 23 parsed research-output runs, safe worker and operator receipts, current read-only Alpaca reconciliation, current Optionomics capability metadata, Git schema lineage, bounded local search, Git history search, GitHub Actions artifact search, and the authenticated Aiven inventory.
+The manifest registers 148 checksummed sources. This includes 109 immutable research exports, 24 parsed research-output runs, safe worker and operator receipts, current read-only Alpaca reconciliation, current Optionomics capability metadata, Git schema lineage, bounded local search, Git history search, GitHub Actions artifact search, and the authenticated Aiven inventory.
 
 | Source class | Count | Strongest confidence | PIT use |
 | --- | ---: | --- | --- |
 | LOCAL_EXPORT | 109 | A | ELIGIBLE |
-| RESEARCH_OUTPUT | 23 | D | INELIGIBLE |
+| RESEARCH_OUTPUT | 24 | D | INELIGIBLE |
 | WORKER_STATE | 5 | C | UNKNOWN |
 | OPERATOR_RECEIPT | 2 | B | UNKNOWN |
 | GITHUB_DETERMINISTIC | 1 | A | INELIGIBLE |

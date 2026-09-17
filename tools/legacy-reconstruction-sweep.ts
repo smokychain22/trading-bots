@@ -238,6 +238,7 @@ function computeMissingParents(rows:Readonly<Record<string,readonly unknown[]>>,
     for(const item of items)walk(item,(key,value)=>{
       if(typeof value!=='string'||!(key in parentByKey))return;
       const parent=parentByKey[key]!;
+      if(key==='candidateId'&&!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value))return;
       if(parent.family===null||!(idSets.get(parent.family)?.has(value)??false)){
         missing.add(`${key}:${value}`);const identity=`${parent.targetTable}\0${value}`;
         const detail=detailMap.get(identity)??{targetTable:parent.targetTable,missingParentKey:value,childCount:0,childFamilies:new Set<string>(),possibleSource:parent.possibleSource};

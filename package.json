@@ -34,6 +34,8 @@
     "db:aiven:promote-legacy": "node tools/promote-legacy-research-history.mjs",
     "db:legacy:reconstruct": "node --import tsx tools/legacy-reconstruction-sweep.ts",
     "db:aiven:import-reconstruction": "node tools/import-legacy-reconstruction-manifest.mjs",
+    "db:legacy:forensic": "node --import tsx tools/local-forensic-recovery-sweep.ts",
+    "db:aiven:import-forensic": "node tools/import-local-forensic-recovery.mjs",
     "paper:designate-master": "tsx tools/designate-master-paper.ts",
     "paper:verify-master": "tsx tools/verify-stored-master-paper.ts",
     "r6:readiness": "node --env-file=.env.local --import tsx tools/r6-readiness.ts",

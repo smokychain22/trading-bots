@@ -1,5 +1,41 @@
 # Codex handoff: standalone platform Phase 1
 
+## 2026-09-17: exhaustive local and agent forensic recovery
+
+OWNER: Codex.
+
+TASK: Exhaust local, agent, Git, export, temp, download, editor, WSL, Docker and
+retained-origin copies before classifying legacy evidence as Neon-only.
+
+FILES CHANGED: Migration 053, forensic sweep and chunk importer, authenticated
+runtime import operation, database validation, tests, and recovery receipts.
+
+WHAT WAS IMPLEMENTED: A reproducible source catalog, deep research-output parse,
+unreachable-Git scan, exact missing-key search, immutable export-variant archive,
+and replay-safe Aiven import. The audit corrected a schema error in the earlier
+missing-parent analysis. There are 553 unresolved UUID parents, not 1,548. The
+other 995 values are typed text strategy-frontier references and cannot reference
+the UUID parent table.
+
+TESTS RUN: TypeScript, ESLint, the full Node suite, deterministic forensic sweep,
+and migration/invariant checks in CI and Production after release.
+
+TEST RESULTS: Local TypeScript and ESLint passed. All 925 runnable Node tests
+passed, 10 database-only tests were skipped. Record Production migration/import
+and final CI results in the release response.
+
+KNOWN LIMITATIONS: Docker Desktop's engine was unavailable. OneDrive offline
+placeholders were not hydrated. The 553 keys have references but no complete
+parent payload outside currently inaccessible Neon.
+
+RISKS: A reference must never be converted into an invented parent. Historical
+payload variants are research evidence only and cannot overwrite runtime truth.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: No quant or strategy behavior changed.
+
+NEXT RECOMMENDED TASK: When Neon becomes readable, recover the 553 exact parents
+into isolated staging, compare hashes, and backfill only provenance-safe rows.
+
 ## 2026-09-15: cross-branch candidate evidence
 
 OWNER: Codex.

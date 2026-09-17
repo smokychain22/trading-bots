@@ -121,7 +121,11 @@ export async function validateDatabaseTarget(
       (SELECT count(*)::integer FROM research.legacy_neon_recovered_evidence) AS legacy_promoted_research_rows,
       (SELECT count(*)::integer FROM legacy_neon.reconstruction_sweep) AS legacy_reconstruction_sweeps,
       (SELECT count(*)::integer FROM legacy_neon.reconstruction_source) AS legacy_reconstruction_sources,
-      (SELECT count(*)::integer FROM legacy_neon.family_recovery_assessment) AS legacy_family_assessments`);
+      (SELECT count(*)::integer FROM legacy_neon.family_recovery_assessment) AS legacy_family_assessments,
+      (SELECT count(*)::integer FROM legacy_neon.local_forensic_sweep) AS local_forensic_sweeps,
+      (SELECT count(*)::integer FROM legacy_neon.local_forensic_source) AS local_forensic_sources,
+      (SELECT count(*)::integer FROM legacy_neon.research_export_variant) AS research_export_variants,
+      (SELECT count(*)::integer FROM legacy_neon.missing_record_forensic_search) AS missing_record_searches`);
     const parentCoverage = await client.query(`WITH
       fusion_refs AS (
         SELECT DISTINCT payload->>'fusionSnapshotId' AS id
