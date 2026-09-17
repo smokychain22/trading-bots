@@ -42,6 +42,9 @@ test('local worker operation accepts the bounded runtime, evidence, and owner au
     'x-theta-operation': 'provider-evidence-readiness',
   } }), 'PROVIDER_EVIDENCE_READINESS');
   assert.equal(parseLocalWorkerOperation({ headers: {
+    'x-theta-operation': 'alpaca-indicative-quote-qualification',
+  } }), 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION');
+  assert.equal(parseLocalWorkerOperation({ headers: {
     'x-theta-operation': 'optionomics-provider-qualification',
   } }), 'OPTIONOMICS_PROVIDER_QUALIFICATION');
   assert.equal(parseLocalWorkerOperation({ headers: {

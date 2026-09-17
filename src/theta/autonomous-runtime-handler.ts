@@ -41,6 +41,9 @@ import {
 import {
   masterPaperAuthorizationConfirmation, PostgresPaperExecutionAuthorizationStore,
 } from '../execution/paper-execution-authorization.js';
+import { fetchMarketClock, fetchOptionContracts, fetchOptionSnapshots } from './alpaca-provider.js';
+import { executionOptionQuoteContractVersion, type ExecutionOptionQuote } from '../execution/execution-option-quote.js';
+import { persistQuoteProviderQualification, qualifyQuoteProvider } from '../execution/quote-provider-qualification.js';
 
 let runtimePool: Pool | null = null;
 
@@ -55,12 +58,13 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'MASTER_PAPER_AUTHORIZE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'MASTER_PAPER_AUTHORIZE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
   if (value === undefined) return 'RUNTIME_CYCLE';
   if (value === 'provider-evidence-readiness') return 'PROVIDER_EVIDENCE_READINESS';
+  if (value === 'alpaca-indicative-quote-qualification') return 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION';
   if (value === 'optionomics-provider-qualification') return 'OPTIONOMICS_PROVIDER_QUALIFICATION';
   if (value === 'optionomics-quote-qualification') return 'OPTIONOMICS_QUOTE_QUALIFICATION';
   if (value === 'optionomics-mcp-qualification') return 'OPTIONOMICS_MCP_QUALIFICATION';
@@ -422,6 +426,57 @@ export default async function autonomousRuntimeHandler(
     return;
   }
   try {
+    if (operation === 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION') {
+      if (localIdentity.kind !== 'VALID') {
+        send(response, 400, { error: 'local_worker_identity_required', executionGate: 'LOCKED' });
+        return;
+      }
+      const cycleStore = new PostgresRuntimeCycleStore(runtimePool);
+      const master = await cycleStore.resolveMasterContext(environment);
+      const requestedAt = new Date().toISOString();
+      const from = requestedAt.slice(0, 10);
+      const through = new Date(Date.parse(requestedAt) + 60 * 86_400_000).toISOString().slice(0, 10);
+      const contracts = await fetchOptionContracts(master.alpaca, { underlyingSymbol:'SPY', expirationDateGte:from,
+        expirationDateLte:through, optionType:'put', limit:100, maxPages:3 });
+      const snapshots = await fetchOptionSnapshots(master.alpaca, { underlyingSymbol:'SPY', feed:'indicative',
+        optionType:'put', limit:1000, maxPages:3 });
+      const clock = await fetchMarketClock(master.alpaca,new Date().toISOString());
+      const listing = [...contracts.items].filter((item) => {
+        const snapshot=snapshots.snapshots.get(item.symbol);
+        return snapshot?.bid!==null&&snapshot?.ask!==null&&snapshot?.quoteTimestamp!==null
+          && Number.isFinite(snapshot?.bid)&&Number.isFinite(snapshot?.ask)
+          && (snapshot?.bid??0)>0&&(snapshot?.ask??0)>=(snapshot?.bid??0);
+      }).sort((left,right)=>Date.parse(snapshots.snapshots.get(right.symbol)?.quoteTimestamp??'')
+        -Date.parse(snapshots.snapshots.get(left.symbol)?.quoteTimestamp??''))[0];
+      if (listing === undefined) {
+        send(response, 207, { provider:'ALPACA', semantics:'PAPER_INDICATIVE_REFERENCE', qualified:false,
+          blockers:['NO_FRESH_TWO_SIDED_EXACT_CONTRACT_QUOTE'], contractDiscoveryComplete:contracts.complete,
+          snapshotPaginationComplete:snapshots.complete, executionAuthorized:false, ordersSubmitted:0 });
+        return;
+      }
+      const snapshot=snapshots.snapshots.get(listing.symbol);
+      if(snapshot===undefined||snapshot.bid===null||snapshot.ask===null||snapshot.quoteTimestamp===null)
+        throw new Error('QUALIFICATION_SNAPSHOT_ALIGNMENT_FAILED');
+      const attemptedAt = new Date().toISOString();
+      const quote:ExecutionOptionQuote={contractVersion:executionOptionQuoteContractVersion,contractId:listing.symbol,
+        providerContractId:listing.symbol,bid:snapshot.bid,ask:snapshot.ask,bidSize:snapshot.bidSize,
+        askSize:snapshot.askSize,providerTimestamp:snapshot.quoteTimestamp,receivedAtUtc:attemptedAt,
+        receivedAtMonotonic:performance.now(),sequence:1,provider:'ALPACA',source:'BROKER_INDICATIVE',
+        entitlementState:'QUALIFIED',sourceSemantics:'PAPER_INDICATIVE_REFERENCE',connectionState:'CONNECTED',
+        subscriptionState:'ACTIVE',provenance:{authenticated:true,exactContractMapping:true,
+          documentedForOrderPricing:false,feed:'INDICATIVE',paperOnly:true,semanticUse:'MASTER_THETA_PAPER_LIMIT_REFERENCE'}};
+      const receipt=qualifyQuoteProvider({quote,expectedContractId:listing.symbol,attemptedAt,maximumAgeMs:10_000,marketOpen:clock.isOpen===true});
+      await persistQuoteProviderQualification(runtimePool,receipt);
+      send(response,receipt.qualified?200:207,{provider:receipt.provider,source:receipt.source,
+        semantics:receipt.semantics,entitlementState:receipt.entitlementState,qualified:receipt.qualified,
+        blockers:receipt.blockers,httpStatus:200,exactContractIdentity:true,bidPresent:true,askPresent:true,
+        bidSizePresent:snapshot.bidSize!==null,askSizePresent:snapshot.askSize!==null,
+        providerTimestampPresent:true,quoteAgeMs:Date.parse(attemptedAt)-Date.parse(snapshot.quoteTimestamp),
+        marketOpen:clock.isOpen,
+        contractDiscoveryComplete:contracts.complete,snapshotPaginationComplete:snapshots.complete,
+        evidenceHash:receipt.evidenceHash,executionAuthorized:false,ordersSubmitted:0});
+      return;
+    }
     if (operation === 'OPTIONOMICS_PROVIDER_QUALIFICATION') {
       if (localIdentity.kind !== 'VALID') {
         send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
