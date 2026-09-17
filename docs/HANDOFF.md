@@ -2101,3 +2101,23 @@ RISKS: Mixing staged legacy payloads into current operational tables would break
 WHAT THE OTHER AGENT SHOULD REVIEW: Quant research may consume `research.legacy_neon_recovered_evidence` only as point-in-time historical evidence and must keep it separate from current broker state and future labels. It must not infer completeness from promotion success.
 
 NEXT RECOMMENDED TASK: Resume the normal THETA roadmap using Aiven current state plus the promoted history. When Neon access returns, run the already prepared full-source recovery once and backfill only newly proven immutable history.
+
+OWNER: Codex
+
+TASK: Complete the maximum bounded reconstruction of legacy Neon history from every accessible authoritative non-Neon source.
+
+FILES CHANGED: Migration 052, immutable reconstruction registry and analysis, protected import operation, Production validation, reconstruction sweep and importer tools, tests, provenance graph, complete recovery matrix, decisions, receipt, and this handoff.
+
+WHAT WAS IMPLEMENTED: All 134 canonical data families were mapped to writers, origins, keys, time semantics, point-in-time requirements, and reconstruction status. The sweep inspected 109 immutable exports, 23 research-output runs, 138 research-output JSON files, bounded local and agent locations, Git history, 310 GitHub Actions artifacts, Vercel metadata, Alpaca Paper, and qualified Optionomics evidence. Aiven now records one immutable sweep, 147 source assessments, and 134 family assessments. Replays are transaction-serialized and idempotent. No canonical trading row is changed by the registry.
+
+TESTS RUN: Focused Node tests, TypeScript, full CI Node, ESLint, build, security, browser, Python, PostgreSQL 18 migrations and invariants, real customer persistence, Production replay, Production Aiven validation, Vercel deployment, and root HTTP verification.
+
+TEST RESULTS: CI run 35204020884 passed. Production is at migration 052 with 0 invalid indexes, 0 unvalidated constraints, 2 of 20 connections, and 136,033,983 database bytes. The maximum proven recovery remains 25,125 exact PIT research rows plus one engineering manifest. No additional older-only record was found.
+
+KNOWN LIMITATIONS: Full Neon source recovery remains unavailable while transfer quota blocks row access. There are 1,548 unique unresolved parent keys and 101 families whose original legacy history remains Neon-only. No resolved outcome label, management event, or whole chain could be reconstructed safely from the available evidence.
+
+RISKS: Current Aiven rows must not be mistaken for recovered historical Neon rows. Generic Alpaca activities must not be assigned THETA intent or chain lineage. Conflicting strategy-frontier variants must remain distinct source versions.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Research may consume only the 25,125 promoted PIT rows under their recorded source and missing-parent limits. It must not infer dataset completeness, reconstruct missing labels, or treat metadata-only registry rows as empirical evidence.
+
+NEXT RECOMMENDED TASK: Resume the normal THETA roadmap with Aiven as runtime authority and the execution quote gate intact. When Neon reads become available, run the prepared full-source recovery and compare the source dump against this immutable registry.

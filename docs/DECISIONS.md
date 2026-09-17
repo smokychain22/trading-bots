@@ -878,3 +878,12 @@ Follower copy work begins only from a broker-confirmed master fill or lifecycle 
 - Deduplication: A matching native ID and content hash is classified as a canonical duplicate. A differing hash is quarantined. Native ID matches without a comparable source hash are also quarantined. No conflict is silently resolved.
 - Integrity: Promotion uses an ordered SHA-256 fingerprint over staged family, record key, and source checksum. Every promotion row is immutable and retains the source artifact-record reference.
 - Execution: Promotion records are permanently non-executable. This work cannot authorize Paper or live orders, clear the quote gate, activate followers, or promote a policy.
+
+## 2026-09-17: Close the bounded non-Neon legacy reconstruction sweep
+
+- Decision: Register every inspected recovery source and every canonical data-family assessment in an immutable Aiven registry. Keep the registry separate from canonical trading state and permanently non-executable.
+- Source discipline: Search all 109 immutable exports, 23 research-output runs, 138 research-output JSON files, bounded local and agent workspaces, Git history, 310 GitHub Actions artifacts, Vercel metadata, Alpaca Paper, and qualified Optionomics evidence before classifying a family as currently Neon-only.
+- Identity discipline: Deduplicate export evidence by stable identity and content hash. Retain conflicting variants as source-version metadata. Never overwrite a conflicting version and never invent a missing parent.
+- Recovery result: No older-only stable row was found. The existing 25,125 exact PIT rows remain the maximum proven historical recovery from accessible non-Neon sources. Current Alpaca activity confirms current broker facts but does not reconstruct THETA reasoning or a whole chain.
+- Runtime authority: Aiven remains current runtime authority. Neon remains preserved, read-only, and required only for eventual historical completeness. Its unavailability does not block the normal roadmap.
+- Safety: The external quote blocker, follower lock, Paper execution pause, and live-money prohibition remain unchanged.
