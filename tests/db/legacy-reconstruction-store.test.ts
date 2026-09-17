@@ -31,8 +31,10 @@ test('legacy reconstruction manifest imports once and cannot authorize execution
     families:[{familyRecoveryAssessmentId:assessmentId,...assessmentUnsigned,
       assessmentHash:sha(canonicalJson(assessmentUnsigned))}],summary:{executionAuthorized:false}};
   const manifest={...unsigned,manifestHash:computeLegacyReconstructionManifestHash(unsigned)};
-  const first=await importLegacyReconstructionManifest(connectionString,manifest);
-  const replay=await importLegacyReconstructionManifest(connectionString,manifest);
+  const [first,replay]=await Promise.all([
+    importLegacyReconstructionManifest(connectionString,manifest),
+    importLegacyReconstructionManifest(connectionString,manifest),
+  ]);
   assert.equal(first.state,'IMPORTED');assert.deepEqual(replay,first);assert.equal(first.executionAuthorized,false);
   assert.equal(first.sourceCount,1);assert.equal(first.familyCount,1);assert.equal(first.canonicalRowsChanged,0);
   const pool=new Pool({connectionString,max:1});

@@ -77,6 +77,7 @@ export async function importLegacyReconstructionManifest(connectionString:string
   try{
     await client.query('BEGIN');
     try{
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('theta-legacy-reconstruction:'||$1))`,[manifestHash]);
       const existing=await client.query(`SELECT reconstruction_sweep_id FROM legacy_neon.reconstruction_sweep
         WHERE manifest_hash=$1`,[manifestHash]);
       if(existing.rowCount===0){
