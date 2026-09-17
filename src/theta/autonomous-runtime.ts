@@ -21,7 +21,6 @@ import { applyConfirmedTerminalLifecycle } from '../execution/postgres-broker-li
 import { asReadOnlyPaperBroker, assertShadowBrokerHasNoMutationSurface, type ReadOnlyPaperBroker } from '../execution/read-only-paper-broker.js';
 import type { AlpacaProviderConfig } from './alpaca-provider.js';
 import { processDueExecutionObservations, runProductionShadowEvidenceScan } from '../research/production-shadow-runtime.js';
-import { PostgresOutcomeResolver } from '../research/outcome-resolver.js';
 import { shadowSessionDecision } from '../research/shadow-evidence-runtime.js';
 import { applyConfirmedFillLifecycle } from '../execution/postgres-broker-fill-lifecycle-orchestrator.js';
 import { PostgresMasterPaperActionPlanStore } from '../execution/postgres-master-paper-action-plan-store.js';
@@ -437,9 +436,6 @@ export async function runAutonomousRuntimeCycle(
         if (reconciliation===null) return degraded('BROKER_RECONCILIATION_REQUIRED',retryAt);
         const lifecycle=await applyConfirmedTerminalLifecycle(pool,master.connectionId,reconciliation.snapshotId,reconciliation.observedAt);
         const fills=await applyConfirmedFillLifecycle(pool,master.connectionId,reconciliation.observedAt);
-        const outcomeResolver=new PostgresOutcomeResolver(pool);
-        await outcomeResolver.resolveClosedChains(reconciliation.observedAt);
-        await outcomeResolver.resolveEligibleOutcomes(reconciliation.observedAt);
         return lifecycle.unresolved>0||fills.unresolved>0 ? degraded('BROKER_LIFECYCLE_FACTS_UNRESOLVED',retryAt) : succeeded();
       }
       if (jobType === 'PENDING_ORDER_MANAGEMENT') {

@@ -7,6 +7,7 @@
 - Refresh the sanitized qualification receipt once per open market session. Provider timestamps, exact OCC identity, uncrossed two-sided prices, sizes, and quote age remain mandatory.
 - Report `EXTERNAL_QUOTE_BLOCKER` only when no qualified Paper pricing authority exists. Report `LOCKED` when pricing exists but owner, runtime, emergency, empirical, or single-canary controls prevent new risk.
 - Allow at most one first-canary broker order. Once any broker order is persisted, new-risk submission locks automatically while reconciliation and management keep running.
+- Keep broker lifecycle application inside the latency-bounded autonomous worker. Historical outcome materialization remains a separate research workload so a large legacy evidence backlog cannot delay assignment, fill, expiry, or order reconciliation.
 
 ## 2026-09-17: split first-canary bootstrap management from empirical promotion
 
