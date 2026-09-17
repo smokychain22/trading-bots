@@ -90,6 +90,26 @@ Generated local artifacts stay ignored under:
 
 The tracked code can regenerate them from the retained sources.
 
+## Production import verification
+
+Aiven accepted the complete forensic archive through the authenticated,
+confirmation-bound worker operation:
+
+| Evidence | Imported |
+| --- | ---: |
+| Import chunks | 11 of 11 |
+| Sanitized source receipts | 295 |
+| Exact historical payload variants | 460 |
+| Missing-parent key search receipts | 553 |
+| Canonical runtime rows changed | 0 |
+| Execution-authorized rows | 0 |
+
+The corrected reconstruction manifest was also replayed after the UUID-only
+candidate-reference fix. It records 148 inspected sources and all 134 canonical
+data-family assessments. Aiven's migration head is
+`053_local_forensic_recovery`. Production validation found zero invalid indexes
+and zero unvalidated constraints.
+
 ## Authority and safety
 
 ```text

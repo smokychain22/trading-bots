@@ -2157,3 +2157,23 @@ RISKS: Current Aiven rows must not be mistaken for recovered historical Neon row
 WHAT THE OTHER AGENT SHOULD REVIEW: Research may consume only the 25,125 promoted PIT rows under their recorded source and missing-parent limits. It must not infer dataset completeness, reconstruct missing labels, or treat metadata-only registry rows as empirical evidence.
 
 NEXT RECOMMENDED TASK: Resume the normal THETA roadmap with Aiven as runtime authority and the execution quote gate intact. When Neon reads become available, run the prepared full-source recovery and compare the source dump against this immutable registry.
+
+OWNER: Codex
+
+TASK: Exhaust local, agent, export, Git, workspace, temporary, and retained-origin evidence before classifying legacy records as Neon-only.
+
+FILES CHANGED: Migration 053, immutable local-forensic registry, hash-bound chunk importer, forensic sweep, protected Production operation, tests, corrected reconstruction logic, recovery receipt, reconstruction matrix and provenance graph, handoff, and Windows worker timeout guard.
+
+WHAT WAS IMPLEMENTED: The sweep inspected 109 immutable research exports with 244,566 row occurrences, 144 research-output JSON files with 1,704 parsed objects, Codex and Claude state, Downloads, temp storage, the old repository, every current worktree, Cursor history, locally available OneDrive files, WSL storage, 134 unreachable Git objects, and retained CI artifact metadata. It preserved 460 exact payload variants from 230 conflicting identities and 553 key-level search receipts in Aiven. The earlier 1,548-key estimate was corrected: 995 entries are typed strategy-frontier text references and cannot reference the UUID candidate parent table. The actual unresolved parent set is 302 fusion snapshots, 125 decisions, and 126 UUID candidate evidence rows. No child reference was fabricated into a parent. Migration 053 makes the forensic archive immutable, replay-safe, and permanently non-executable.
+
+TESTS RUN: Full Node suite, TypeScript, ESLint, build, security scan, browser suite, Python quant suite, disposable PostgreSQL migrations and invariants, real customer persistence, Production Aiven import/replay and invariants, Vercel deployment, CI, and one full Windows worker cycle.
+
+TEST RESULTS: 935 Node tests ran with 925 passed, 10 database-only skips, and 0 failures locally. CI passed all Node, browser, Python, PostgreSQL, persistence, build, lint, type, and security checks. The security scan found zero findings. Aiven accepted 11 of 11 chunks, 295 source receipts, 460 payload variants, and 553 missing-key search receipts, with zero canonical rows changed and no execution authorization. Migration head is 053. The repinned worker completed a full cycle ONLINE in `MASTER_THETA_PAPER` mode under `EXTERNAL_QUOTE_BLOCKER`.
+
+KNOWN LIMITATIONS: Docker Desktop's engine was unavailable, so Docker volumes remain an unavailable search surface rather than a proven empty one. OneDrive had 149 offline placeholders that could not be read. No complete record for the remaining 553 parents was found outside Neon. Those parents and 101 original legacy data families remain recoverable only from Neon unless a future independent full record with valid provenance is found.
+
+RISKS: Child evidence can look like a recoverable parent when searched without schema typing. The UUID-only correction prevents that error. Historical variants must remain evidence and cannot overwrite current Aiven runtime truth or authorize execution.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Research may use only records with explicit point-in-time and evidence classifications. It must not infer missing labels, complete parents, fills, management actions, or whole-chain histories from child references.
+
+NEXT RECOMMENDED TASK: Continue normal THETA work using Aiven as the only runtime authority. Keep Neon preserved and read-only. When Neon becomes readable, run the prepared full export, stage it in isolation, compare stable identities and hashes against the forensic registry, and backfill only proven immutable history.
