@@ -58,6 +58,7 @@ try {
     "051_legacy_neon_promotion",
     "052_legacy_reconstruction_registry",
     "053_local_forensic_recovery",
+    "054_master_paper_authorization",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -164,7 +165,7 @@ try {
   const protection = protections.rows[0];
   if (!protection?.global_identity || !protection?.single_master || !protection?.self_copy_trigger || !protection?.recommended_null_constraint)
     throw new Error("PAPER_ACCOUNT_PROTECTION_MISSING");
-  const executionControl = await client.query("SELECT pause_new_orders, master_execution_enabled, follower_execution_enabled FROM ops.paper_execution_control WHERE singleton=true");
+  const executionControl = await client.query("SELECT pause_new_orders, master_execution_enabled, follower_execution_enabled, authorization_event_id FROM ops.paper_execution_control WHERE singleton=true");
   const intentProtection = await client.query(`SELECT
     EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='trade' AND table_name='order_intent' AND column_name='position_intent') AS has_column,
     EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='trade' AND table_name='order_intent' AND constraint_name='ck_order_intent_position_intent') AS has_constraint`);
@@ -428,8 +429,10 @@ try {
   if (fillFees.rows[0]?.is_nullable !== "YES" || fillFees.rows[0]?.column_default !== null)
     throw new Error("UNKNOWN_FILL_FEES_COERCED_TO_ZERO");
   const gate = executionControl.rows[0];
-  if (!gate?.pause_new_orders || gate.master_execution_enabled || gate.follower_execution_enabled)
-    throw new Error("PAPER_EXECUTION_NOT_LOCKED");
+  const locked=gate?.pause_new_orders===true&&gate?.master_execution_enabled===false&&gate?.follower_execution_enabled===false;
+  const ownerAuthorized=gate?.master_execution_enabled===true&&gate?.follower_execution_enabled===false
+    &&typeof gate?.authorization_event_id==='string';
+  if (!locked&&!ownerAuthorized) throw new Error("PAPER_EXECUTION_AUTHORIZATION_INVALID");
   const activeFollowers = await client.query("SELECT count(*)::int AS count FROM copy.follower_account WHERE disconnected_at IS NULL AND account_role='FOLLOWER_THETA_PAPER'");
   const activeMasters = await client.query("SELECT count(*)::int AS count FROM copy.follower_account WHERE disconnected_at IS NULL AND account_role='MASTER_THETA_PAPER'");
   const activeCredentials = await client.query("SELECT count(*)::int AS count FROM copy.alpaca_oauth_token WHERE revoked_at IS NULL");
@@ -454,7 +457,7 @@ try {
     accountRoles: Object.fromEntries(roles.rows.map((row) => [row.account_role, row.count])),
     selfCopyProtection: "ENFORCED",
     optionalFollowerLimits: "ENFORCED",
-    paperExecutionGate: "LOCKED",
+    paperExecutionGate: ownerAuthorized?(gate.pause_new_orders?"MANAGEMENT_ONLY":"MASTER_PAPER_ACTIVE"):"LOCKED",
     explicitOptionPositionIntent: "ENFORCED",
     paperExecutionLineage:"ENFORCED",
     autonomousRuntimeEvidence: "ENFORCED",

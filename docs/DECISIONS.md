@@ -887,3 +887,12 @@ Follower copy work begins only from a broker-confirmed master fill or lifecycle 
 - Recovery result: No older-only stable row was found. The existing 25,125 exact PIT rows remain the maximum proven historical recovery from accessible non-Neon sources. Current Alpaca activity confirms current broker facts but does not reconstruct THETA reasoning or a whole chain.
 - Runtime authority: Aiven remains current runtime authority. Neon remains preserved, read-only, and required only for eventual historical completeness. Its unavailability does not block the normal roadmap.
 - Safety: The external quote blocker, follower lock, Paper execution pause, and live-money prohibition remain unchanged.
+# 2026-09-17: Master Paper authority is staged and management-safe
+
+- The owner's connected account is the dedicated `MASTER_THETA_PAPER` account.
+- Paper authority is recorded as immutable database evidence. Follower submission and live money remain structurally false.
+- Process configuration, persisted authorization, operator control, broker truth, strategy authority, AEGIS, and fresh execution pricing must all agree before a broker mutation.
+- A pause on new entries does not disable risk-reducing management. The emergency lock still disables every broker mutation.
+- New-risk plans cannot be claimed while entries are paused. Management plans remain claimable.
+- New risk also requires a configured promoted management policy provider. Shadow policy evidence and fixed profit targets cannot authorize orders.
+- Alpaca OPRA remains not entitled. Optionomics remains research intelligence until its documented execution-price semantics are proven. The execution-price gate stays closed.

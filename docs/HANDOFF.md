@@ -2177,3 +2177,24 @@ RISKS: Child evidence can look like a recoverable parent when searched without s
 WHAT THE OTHER AGENT SHOULD REVIEW: Research may use only records with explicit point-in-time and evidence classifications. It must not infer missing labels, complete parents, fills, management actions, or whole-chain histories from child references.
 
 NEXT RECOMMENDED TASK: Continue normal THETA work using Aiven as the only runtime authority. Keep Neon preserved and read-only. When Neon becomes readable, run the prepared full export, stage it in isolation, compare stable identities and hashes against the forensic registry, and backfill only proven immutable history.
+# 2026-09-17 master Paper activation safety slice
+
+OWNER: Codex
+
+TASK: Persist the owner's Paper-only authority and make existing-position management independent from the new-entry pause without weakening quote, policy, AEGIS, or broker gates.
+
+FILES CHANGED: migration 054, Paper authorization store, autonomous runtime and handler, action-plan claiming, database verification, tests, and decisions.
+
+WHAT WAS IMPLEMENTED: Immutable `MASTER_THETA_PAPER` authorization lineage, fail-closed effective control composition, follower/live exclusion, management-only staged mode, management-priority plan claiming while new entries are paused, and a protected idempotent authorization operation. New risk stays blocked unless a production management policy provider is present and all existing gates pass.
+
+TESTS RUN: TypeScript check, full Node suite, ESLint, production build, security scan.
+
+TEST RESULTS: Passed. Alpaca account is ACTIVE at the Paper host with options level 3, zero positions, and zero open orders. Alpaca OPRA returned HTTP 403 NOT_ENTITLED. Optionomics Production authentication and intelligence capabilities passed, but its documented chain semantics remain session-recorded research rather than execution-price authority.
+
+KNOWN LIMITATIONS: No empirically promoted production management policy provider exists. No qualified fresh exact-contract two-sided execution-price source exists for order pricing. New entries remain paused.
+
+RISKS: Activating new risk before both blockers are resolved would create positions that the current production policy cannot manage with validated forward economics.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Management policy research and empirical promotion evidence only. Do not alter production execution controls or provider semantics.
+
+NEXT RECOMMENDED TASK: Qualify an authorized execution-price source, promote a validated management policy from real evidence, then use the staged authorization to open one bounded Paper canary.

@@ -38,6 +38,9 @@ import {
   importLocalForensicChunk,
   matchesLocalForensicConfirmation,
 } from '../database/local-forensic-recovery.js';
+import {
+  masterPaperAuthorizationConfirmation, PostgresPaperExecutionAuthorizationStore,
+} from '../execution/paper-execution-authorization.js';
 
 let runtimePool: Pool | null = null;
 
@@ -52,7 +55,7 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'MASTER_PAPER_AUTHORIZE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
@@ -61,6 +64,7 @@ export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'header
   if (value === 'optionomics-provider-qualification') return 'OPTIONOMICS_PROVIDER_QUALIFICATION';
   if (value === 'optionomics-quote-qualification') return 'OPTIONOMICS_QUOTE_QUALIFICATION';
   if (value === 'optionomics-mcp-qualification') return 'OPTIONOMICS_MCP_QUALIFICATION';
+  if (value === 'master-paper-authorize') return 'MASTER_PAPER_AUTHORIZE';
   if (value === 'database-source-preflight') return 'DATABASE_SOURCE_PREFLIGHT';
   if (value === 'database-target-preflight') return 'DATABASE_TARGET_PREFLIGHT';
   if (value === 'database-target-migrate') return 'DATABASE_TARGET_MIGRATE';
@@ -124,6 +128,29 @@ export default async function autonomousRuntimeHandler(
   const localIdentity = parseLocalWorkerIdentity(request);
   if (localIdentity.kind === 'INVALID') {
     send(response, 400, { error: 'invalid_local_worker_identity', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+    return;
+  }
+  if (operation === 'MASTER_PAPER_AUTHORIZE') {
+    if (localIdentity.kind !== 'VALID') {
+      send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    if (request.headers['x-theta-confirmation'] !== masterPaperAuthorizationConfirmation) {
+      send(response, 403, { error: 'master_paper_authorization_confirmation_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    if (!environment.DATABASE_URL) {
+      send(response, 503, { error: 'database_not_configured', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
+      return;
+    }
+    runtimePool ??= new Pool({ connectionString: environment.DATABASE_URL, max: 2, connectionTimeoutMillis: 8_000 });
+    const control=await new PostgresPaperExecutionAuthorizationStore(runtimePool).authorizeManagementOnly({
+      confirmation:masterPaperAuthorizationConfirmation,authorizedAt:new Date().toISOString(),
+      sourceRef:'OWNER_DIRECTIVE_2026_09_17_MASTER_THETA_PAPER',
+    });
+    send(response,200,{accountRole:'MASTER_THETA_PAPER',environment:'PAPER',
+      masterManagementAuthorized:control.masterExecutionEnabled,newRiskPaused:control.pauseNewOrders,
+      followerExecution:'LOCKED',liveMoneyAuthorized:false,executionGate:'EXTERNAL_QUOTE_BLOCKER',ordersSubmitted:0});
     return;
   }
   if (operation === 'DATABASE_TARGET_PREFLIGHT') {

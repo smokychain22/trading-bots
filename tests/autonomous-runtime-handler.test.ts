@@ -36,7 +36,7 @@ test('local worker identity accepts a complete sanitized identity', () => {
   });
 });
 
-test('local worker operation accepts only the runtime and read-only evidence selectors', () => {
+test('local worker operation accepts the bounded runtime, evidence, and owner authorization selectors', () => {
   assert.equal(parseLocalWorkerOperation({ headers: {} }), 'RUNTIME_CYCLE');
   assert.equal(parseLocalWorkerOperation({ headers: {
     'x-theta-operation': 'provider-evidence-readiness',
@@ -50,6 +50,9 @@ test('local worker operation accepts only the runtime and read-only evidence sel
   assert.equal(parseLocalWorkerOperation({ headers: {
     'x-theta-operation': 'optionomics-mcp-qualification',
   } }), 'OPTIONOMICS_MCP_QUALIFICATION');
+  assert.equal(parseLocalWorkerOperation({ headers: {
+    'x-theta-operation': 'master-paper-authorize',
+  } }), 'MASTER_PAPER_AUTHORIZE');
   assert.equal(parseLocalWorkerOperation({ headers: {
     'x-theta-operation': 'database-target-preflight',
   } }), 'DATABASE_TARGET_PREFLIGHT');

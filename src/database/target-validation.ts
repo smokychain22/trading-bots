@@ -144,12 +144,15 @@ export async function validateDatabaseTarget(
         (SELECT count(*)::integer FROM decision_refs) AS referenced_decisions,
         (SELECT count(*)::integer FROM decision_refs r JOIN trade.decision d ON d.decision_id::text=r.id)
           AS decisions_present`);
-    const control = await client.query(`SELECT pause_new_orders,master_execution_enabled,follower_execution_enabled
+    const control = await client.query(`SELECT pause_new_orders,master_execution_enabled,follower_execution_enabled,authorization_event_id
       FROM ops.paper_execution_control WHERE singleton=true`);
     const row = summary.rows[0];
     const controlRow = control.rows[0];
-    if (!controlRow || controlRow.pause_new_orders !== true || controlRow.master_execution_enabled !== false ||
-      controlRow.follower_execution_enabled !== false) throw codedError('PAPER_EXECUTION_CONTROL_NOT_LOCKED');
+    const locked=controlRow?.pause_new_orders===true&&controlRow?.master_execution_enabled===false
+      &&controlRow?.follower_execution_enabled===false;
+    const ownerAuthorized=controlRow?.master_execution_enabled===true&&controlRow?.follower_execution_enabled===false
+      &&typeof controlRow?.authorization_event_id==='string';
+    if (!locked&&!ownerAuthorized) throw codedError('PAPER_EXECUTION_AUTHORIZATION_INVALID');
     return {
       state: 'VALIDATED',
       invariantFileCount: protocolSafe.length,

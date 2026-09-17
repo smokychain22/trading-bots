@@ -154,7 +154,8 @@ export class PostgresMasterPaperActionPlanStore {
     return false;
   }
 
-  async claimNext(executionAccountId:string,workerId:string,now:string):Promise<ApprovedMasterPaperActionPlan|null>{
+  async claimNext(executionAccountId:string,workerId:string,now:string,
+    options:{readonly allowNewRisk:boolean}={allowNewRisk:true}):Promise<ApprovedMasterPaperActionPlan|null>{
     const client=await this.pool.connect();
     try{
       await client.query('BEGIN');
@@ -169,13 +170,14 @@ export class PostgresMasterPaperActionPlanStore {
         FROM unnest($1::uuid[]) AS expired_id(action_plan_id)`,[expired.rows.map((row)=>String(row.action_plan_id)),now]);
       const result=await client.query(`SELECT p.action_plan_id,p.plan_json FROM trade.master_paper_action_plan p
         WHERE p.execution_account_id=$1 AND p.not_before<=$2 AND p.plan_version=$3 AND
+          ($4::boolean OR p.authority_kind='MANAGEMENT') AND
           (p.status IN ('READY','WAITING_GATE') OR (p.status='CLAIMED' AND p.claim_expires_at<=$2))
           AND (p.depends_on_action_plan_id IS NULL OR EXISTS(
             SELECT 1 FROM trade.master_paper_action_plan parent
             JOIN trade.order_intent oi ON oi.order_intent_id=parent.execution_order_intent_id
             WHERE parent.action_plan_id=p.depends_on_action_plan_id AND oi.status='FILLED'))
         ORDER BY p.created_at,p.action_group_id,p.leg_sequence,p.action_plan_id
-        FOR UPDATE OF p SKIP LOCKED LIMIT 1`,[executionAccountId,now,'theta-master-paper-action-plan-v3']);
+        FOR UPDATE OF p SKIP LOCKED LIMIT 1`,[executionAccountId,now,'theta-master-paper-action-plan-v3',options.allowNewRisk]);
       const row=result.rows[0] as {action_plan_id:string;plan_json:unknown}|undefined;
       if(row===undefined){await client.query('COMMIT');return null;}
       const claimExpiresAt=new Date(Date.parse(now)+120_000).toISOString();
