@@ -8,6 +8,10 @@ import {
 import { buildCommonHorizonComparison, forwardContinuationCashFlow, sunkRealizedEconomics } from './common-horizon-economics.js';
 import { evaluateRollCandidates, type RollCandidateEconomics } from './roll-incremental-utility.js';
 import { assessThesisInvalidation, type ThesisInvalidationAssessment } from './thesis-invalidation.js';
+import { buildRecoveryState, type RecoveryState } from './recovery-state.js';
+import {
+  evaluateCoveredCallCandidates, selectableCoveredCallCandidates, type CoveredCallCandidate,
+} from './covered-call-lattice.js';
 
 export const paperBootstrapManagementPolicyVersion = 'theta-paper-bootstrap-management-policy-v1' as const;
 
@@ -102,6 +106,17 @@ export interface PaperBootstrapPolicyInput extends ManagementInputState {
    * only the SEPARATE thesis classification does.
    */
   readonly thesisFailureUtilityBias?: number;
+  /**
+   * Optional ALTERNATIVE covered-call targets (different strike/DTE),
+   * compared via `evaluateCoveredCallCandidates`/`selectableCoveredCallCandidates`
+   * on whole-chain economics rather than the single `ccCandidate` path.
+   * Falls back to `ccCandidate` when absent/empty (fully backward compatible).
+   */
+  readonly ccCandidates?: readonly RollCandidate[];
+  /** Caller-supplied, honest inputs for `buildRecoveryState` -- both optional;
+   * omitted, capital-days/opportunity-cost stay UNKNOWN rather than fabricated. */
+  readonly assignedAtObservedAt?: string | null;
+  readonly annualOpportunityCostRate?: number | null;
 }
 
 function finite(value: number | null): value is number {
@@ -277,6 +292,62 @@ function valueForRollFromCandidates(
 }
 
 /**
+ * Compares multiple ALTERNATIVE covered-call targets on whole-chain
+ * economics (via covered-call-lattice.ts) instead of only ever evaluating
+ * one pre-picked candidate. Whole-chain components this bootstrap policy
+ * cannot honestly know from `ManagementInputState` alone (initial put
+ * premium, roll credits/close costs from an earlier leg of THIS chain) are
+ * passed as `null` -- `wholeChainPnlIfCalledAway`/`IfNotCalled` then stay
+ * honestly UNKNOWN rather than fabricated, while the candidate's own
+ * premium/call-away-price/below-basis facts remain fully known and usable
+ * for selection.
+ */
+function valueForSellCcFromCandidates(state: PaperBootstrapPolicyInput): ManagementPolicyActionValue {
+  const base = { action: 'SELL_CC' as const };
+  const basis = state.economics.stockBasisPerShare;
+  const candidates = state.ccCandidates ?? [];
+  if (!finite(basis) || candidates.length === 0) {
+    return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_IDENTIFIED_CC_CANDIDATE'] };
+  }
+  const latticeCandidates: CoveredCallCandidate[] = candidates.map((candidate) => ({
+    symbol: candidate.symbol, optionContractId: candidate.optionContractId, strike: candidate.strike,
+    expiration: candidate.expiration, delta: null, bid: candidate.bid, ask: candidate.ask,
+    multiplier: candidate.multiplier, quantity: candidate.quantity,
+    openInterest: null, volume: null, dividendExDateRisk: false, eventRisk: false,
+  }));
+  const wholeChainBase = {
+    initialPutPremium: null, rollCredits: null, rollCloseCosts: null, assignmentStrike: basis,
+    stockSharesAssigned: state.economics.openStockShares, dividends: state.economics.dividends,
+    fees: state.economics.fees ?? 0, slippage: null,
+  };
+  const assessments = evaluateCoveredCallCandidates(
+    basis, state.economics.stockMarkPerShare, state.economics.openStockShares, wholeChainBase, latticeCandidates,
+  );
+  const selectable = selectableCoveredCallCandidates(assessments, false);
+  if (selectable.length === 0) {
+    return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_SELECTABLE_CC_CANDIDATES_ALL_BELOW_BASIS_OR_UNQUOTED'] };
+  }
+  const best = selectable.reduce((champion, candidate) =>
+    (candidate.premiumIncomeDollars ?? -Infinity) > (champion.premiumIncomeDollars ?? -Infinity) ? candidate : champion);
+  const premiumDollars = best.premiumIncomeDollars as number;
+  const executionEvidence: ManagementActionExecutionEvidence = {
+    closeEconomicBoundary: null, openEconomicBoundary: premiumDollars, stockEconomicBoundary: null,
+    economicsRemainPositive: premiumDollars > 0, expectedAfterCostEv: null, empiricalEconomicsReady: false,
+    deterministicEconomicsValidated: true, deterministicNetCredit: premiumDollars,
+    targetContract: {
+      symbol: best.candidate.symbol, optionContractId: best.candidate.optionContractId, optionType: 'CALL',
+      multiplier: best.candidate.multiplier, quantity: best.candidate.quantity,
+    },
+  };
+  return {
+    ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: null,
+    executionCostRisk: premiumDollars * 0.01, opportunityCost: null, uncertainty: null,
+    utility: 0.5, executionEvidence,
+    reasons: [`BEST_OF_${selectable.length}_SELECTABLE_CC_CANDIDATES`, ...best.reasons],
+  };
+}
+
+/**
  * Builds a deterministic value for one action. `utility` here is NEVER a
  * dollar EV estimate -- it is an ORDINAL score (higher = more consistent
  * with continuing to hold less exposed/more resolved risk) built only from
@@ -287,11 +358,11 @@ function valueForRollFromCandidates(
 function valueFor(
   action: ManagementFrontierAction, state: PaperBootstrapPolicyInput, currentMark: number | null,
   remainingFraction: number | null, dte: number | null, capital: number | null, thesis: ThesisInvalidationAssessment,
+  recoveryState: RecoveryState,
 ): ManagementPolicyActionValue {
   const base = { action };
   switch (action) {
     case 'HOLD':
-    case 'RECOVERY_WAIT':
     case 'HOLD_CC': {
       // Passive: the deterministic case for continuing is exactly "we have
       // not found a concrete, known reason to act." Utility 0 is the
@@ -301,6 +372,20 @@ function valueFor(
       return {
         ...base, ...UNKNOWN_VALUE, utility: 0,
         reasons: ['NO_KNOWN_REASON_TO_ACT', `THESIS_CLASSIFICATION_${thesis.classification}`],
+      };
+    }
+    case 'RECOVERY_WAIT': {
+      // Same passive baseline as HOLD/HOLD_CC, with RecoveryState's known
+      // (never fabricated) distance-to-basis/capital-days surfaced purely
+      // as transparency -- it never shifts this action's own utility.
+      return {
+        ...base, ...UNKNOWN_VALUE, utility: 0,
+        reasons: [
+          'NO_KNOWN_REASON_TO_ACT',
+          `DISTANCE_TO_BASIS_FRACTION_${recoveryState.distanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.distanceToBasisFraction.toFixed(4)}`,
+          `CAPITAL_DAYS_SO_FAR_${recoveryState.capitalDaysSoFar === null ? 'UNKNOWN' : recoveryState.capitalDaysSoFar.toFixed(1)}`,
+          'RECOVERY_PROBABILITY_NOT_MODELED_NO_FABRICATED_ESTIMATE',
+        ],
       };
     }
     case 'CLOSE_FULL':
@@ -362,10 +447,18 @@ function valueFor(
         executionCostRisk: null, opportunityCost: null, uncertainty: null,
         utility: -0.5, // deterministic HOLD/CC bias: selling stock is never preferred by this bootstrap policy over a
         // known-safe covered call unless a caller-level override exists, since it forecloses all future upside
-        executionEvidence: null, reasons: [`KNOWN_STOCK_PNL_IF_SOLD_${knownStockPnl.toFixed(2)}`],
+        executionEvidence: null,
+        reasons: [
+          `KNOWN_STOCK_PNL_IF_SOLD_${knownStockPnl.toFixed(2)}`,
+          `DISTANCE_TO_BASIS_FRACTION_${recoveryState.distanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.distanceToBasisFraction.toFixed(4)}`,
+          `CAPITAL_OPPORTUNITY_COST_${recoveryState.capitalOpportunityCostDollars === null ? 'UNKNOWN' : recoveryState.capitalOpportunityCostDollars.toFixed(2)}`,
+        ],
       };
     }
     case 'SELL_CC': {
+      if (state.ccCandidates !== undefined && state.ccCandidates.length > 0) {
+        return valueForSellCcFromCandidates(state);
+      }
       const candidate = state.ccCandidate, basis = state.economics.stockBasisPerShare;
       if (!candidate || !finite(candidate.bid) || !finite(candidate.ask) || !finite(basis)) {
         return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_IDENTIFIED_CC_CANDIDATE'] };
@@ -428,8 +521,10 @@ export function evaluatePaperBootstrapManagementPolicy(
   // read is never re-derived per action, so a HOLD/CLOSE/ROLL comparison
   // can never see a different thesis picture than another.
   const thesis = assessThesisInvalidation(state);
+  const recoveryState = buildRecoveryState(state, state.assignedAtObservedAt ?? null, state.annualOpportunityCostRate ?? null);
 
-  const actionValues = actionSet.map((action) => valueFor(action, state, currentMark, remainingFraction, dte, capital, thesis));
+  const actionValues = actionSet.map((action) =>
+    valueFor(action, state, currentMark, remainingFraction, dte, capital, thesis, recoveryState));
   const known = actionValues.filter((value) => value.utility !== null);
   if (known.length === 0) return null;
 

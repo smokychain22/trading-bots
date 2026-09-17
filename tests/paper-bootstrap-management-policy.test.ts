@@ -188,6 +188,49 @@ test('RECOVERY_WAIT rejects a covered call candidate priced below the known cost
   assert.ok(rejected?.reasons.includes('CC_STRIKE_BELOW_KNOWN_COST_BASIS_REJECTED'));
 });
 
+test('RECOVERY_WAIT with multiple CC candidates picks the highest-premium SELECTABLE one, skipping below-basis alternatives', () => {
+  const input = state('RECOVERY_WAIT');
+  const withCandidates = {
+    ...input,
+    ccCandidates: [
+      rollCandidate({ optionContractId: 'below-basis', optionType: 'CALL', strike: 190, bid: 3, ask: 3.2 }),
+      rollCandidate({ optionContractId: 'above-basis-small', optionType: 'CALL', strike: 200, bid: 1, ask: 1.2 }),
+      rollCandidate({ optionContractId: 'above-basis-large', optionType: 'CALL', strike: 205, bid: 2, ask: 2.2 }),
+    ],
+  };
+  const evidence = evaluatePaperBootstrapManagementPolicy(withCandidates);
+  assert.equal(evidence?.selectedAction, 'SELL_CC');
+  const execution = evidence?.actionValues.find((value) => value.action === 'SELL_CC')?.executionEvidence;
+  assert.equal(execution?.targetContract?.optionContractId, 'above-basis-large');
+});
+
+test('ccCandidates takes precedence over the single ccCandidate field when both are present', () => {
+  const input = state('RECOVERY_WAIT');
+  const withBoth = {
+    ...input,
+    ccCandidate: rollCandidate({ optionContractId: 'single-path', optionType: 'CALL', strike: 200, bid: 1, ask: 1.2 }),
+    ccCandidates: [rollCandidate({ optionContractId: 'plural-path', optionType: 'CALL', strike: 200, bid: 1, ask: 1.2 })],
+  };
+  const evidence = evaluatePaperBootstrapManagementPolicy(withBoth);
+  const execution = evidence?.actionValues.find((value) => value.action === 'SELL_CC')?.executionEvidence;
+  assert.equal(execution?.targetContract?.optionContractId, 'plural-path');
+});
+
+test('RECOVERY_WAIT surfaces known distance-to-basis honestly, and UNKNOWN for capital-days without caller-supplied entry data', () => {
+  const evidence = evaluatePaperBootstrapManagementPolicy(state('RECOVERY_WAIT'));
+  const recoveryValue = evidence?.actionValues.find((value) => value.action === 'RECOVERY_WAIT');
+  assert.ok(recoveryValue?.reasons.some((reason) => reason.startsWith('DISTANCE_TO_BASIS_FRACTION_') && !reason.endsWith('UNKNOWN')));
+  assert.ok(recoveryValue?.reasons.includes('CAPITAL_DAYS_SO_FAR_UNKNOWN'));
+  assert.ok(recoveryValue?.reasons.includes('RECOVERY_PROBABILITY_NOT_MODELED_NO_FABRICATED_ESTIMATE'));
+});
+
+test('SELL_STOCK surfaces capital opportunity cost once the caller supplies entry data and a justified rate', () => {
+  const input = { ...state('RECOVERY_WAIT'), assignedAtObservedAt: '2026-08-13T14:00:00.000Z', annualOpportunityCostRate: 0.05 };
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  const sellStockValue = evidence?.actionValues.find((value) => value.action === 'SELL_STOCK');
+  assert.ok(sellStockValue?.reasons.some((reason) => reason.startsWith('CAPITAL_OPPORTUNITY_COST_') && !reason.endsWith('UNKNOWN')));
+});
+
 test('CC_OPEN with no known reason to act holds the covered call', () => {
   const evidence = evaluatePaperBootstrapManagementPolicy(state('CC_OPEN'));
   assert.equal(evidence?.selectedAction, 'HOLD_CC');
