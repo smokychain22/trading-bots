@@ -5,7 +5,8 @@ import {
   type ManagementActionExecutionEvidence, type ManagementFrontierAction,
   type ManagementPolicyActionValue, type ManagementPolicyEvidence,
 } from './management-action-frontier.js';
-import { buildCommonHorizonComparison, forwardContinuationCashFlow } from './common-horizon-economics.js';
+import { buildCommonHorizonComparison, forwardContinuationCashFlow, sunkRealizedEconomics } from './common-horizon-economics.js';
+import { evaluateRollCandidates, type RollCandidateEconomics } from './roll-incremental-utility.js';
 
 export const paperBootstrapManagementPolicyVersion = 'theta-paper-bootstrap-management-policy-v1' as const;
 
@@ -72,6 +73,20 @@ export interface RollCandidate {
 export interface PaperBootstrapPolicyInput extends ManagementInputState {
   readonly rollCandidate?: RollCandidate | null;
   readonly ccCandidate?: RollCandidate | null;
+  /**
+   * Optional ALTERNATIVE short-put roll targets (different strike and/or
+   * expiration). When supplied (length >= 1), ROLL is evaluated across all
+   * of them via `evaluateRollCandidates`/`RollIncrementalUtility` rather
+   * than the single `rollCandidate` path -- this is what lets the policy
+   * genuinely compare "this strike vs. that strike, this expiry vs. that
+   * expiry" instead of only ever seeing one pre-picked target. Falls back
+   * to `rollCandidate` when absent/empty (fully backward compatible).
+   */
+  readonly rollCandidates?: readonly RollCandidate[];
+  /** Required, caller-justified penalty per dollar of additional capital
+   * committed per additional day extended by a roll. Defaults to 0 (no
+   * capital-day penalty applied) when omitted -- never invented internally. */
+  readonly rollIncrementalCapitalDayWeight?: number;
 }
 
 function finite(value: number | null): value is number {
@@ -118,6 +133,100 @@ const UNKNOWN_VALUE: Omit<ManagementPolicyActionValue, 'action'> = {
   executionCostRisk: null, opportunityCost: null, uncertainty: null, utility: null,
   executionEvidence: null, reasons: ['DETERMINISTIC_INPUT_INCOMPLETE'],
 };
+
+function valueForSingleRollCandidate(
+  action: 'ROLL' | 'ROLL_CC', state: PaperBootstrapPolicyInput, currentMark: number | null,
+): ManagementPolicyActionValue {
+  const base = { action };
+  const candidate = action === 'ROLL' ? state.rollCandidate : state.ccCandidate;
+  if (!candidate || !finite(candidate.bid) || !finite(candidate.ask) || currentMark === null) {
+    return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_IDENTIFIED_ROLL_TARGET'] };
+  }
+  const openCreditDollars = ((candidate.bid + candidate.ask) / 2) * candidate.multiplier * candidate.quantity;
+  // Sunk (already-realized) economics are deliberately NOT read anywhere in
+  // this block -- forwardContinuationCashFlow only ever sees the two
+  // current-quote dollar boundaries, so the old leg's realized P&L cannot
+  // be silently re-added into this roll's forward comparison.
+  const forward = forwardContinuationCashFlow({ closeCostDollars: currentMark, openCreditDollars });
+  const netCredit = forward.netCashFlow as number; // complete=true guaranteed: both legs are known here
+  const horizon = buildCommonHorizonComparison(state.observedAt, state.economics, state.contract.expiration, [candidate.expiration]);
+  const executionEvidence: ManagementActionExecutionEvidence = {
+    closeEconomicBoundary: currentMark, openEconomicBoundary: openCreditDollars, stockEconomicBoundary: null,
+    economicsRemainPositive: netCredit >= 0, expectedAfterCostEv: null, empiricalEconomicsReady: false,
+    deterministicEconomicsValidated: true, deterministicNetCredit: netCredit,
+    targetContract: {
+      symbol: candidate.symbol, optionContractId: candidate.optionContractId, optionType: candidate.optionType,
+      multiplier: candidate.multiplier, quantity: candidate.quantity,
+    },
+  };
+  return {
+    ...base, expectedFutureValue: null, downsideTailEstimate: null,
+    incrementalCapitalDays: null, executionCostRisk: Math.abs(currentMark) + Math.abs(openCreditDollars) * 0.01,
+    opportunityCost: null, uncertainty: null,
+    utility: netCredit >= 0 ? 0.5 : -2, // a net-debit roll never outranks passive HOLD under this bootstrap policy
+    executionEvidence,
+    reasons: [`DETERMINISTIC_NET_CREDIT_${netCredit.toFixed(2)}`, `HORIZON_ANCHOR_${horizon.horizonAnchor ?? 'UNKNOWN'}`,
+      'SUNK_REALIZED_PNL_EXCLUDED_FROM_FORWARD_COMPARISON'],
+  };
+}
+
+/**
+ * Compares multiple ALTERNATIVE roll targets (different strike/expiry) via
+ * `RollIncrementalUtility` instead of only ever evaluating one pre-picked
+ * candidate. Old-leg economics (close cost, strike, expiration, delta,
+ * capital committed) and the sunk realized P&L are preserved explicitly on
+ * every assessment rather than being collapsed away.
+ */
+function valueForRollFromCandidates(
+  action: 'ROLL', state: PaperBootstrapPolicyInput, currentMark: number,
+): ManagementPolicyActionValue {
+  const base = { action };
+  const candidates = state.rollCandidates ?? [];
+  const usable = candidates.filter((candidate): candidate is RollCandidate & { bid: number; ask: number } =>
+    finite(candidate.bid) && finite(candidate.ask));
+  if (usable.length === 0) return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_USABLE_ROLL_CANDIDATES_IN_LIST'] };
+
+  const oldLeg = {
+    closeCostDollars: currentMark, strike: state.contract.strike, expiration: state.contract.expiration,
+    delta: state.market.delta, capitalCommittedDollars: capitalCommitted(state),
+  };
+  const sunk = sunkRealizedEconomics(state.economics);
+  const candidateEconomics: RollCandidateEconomics[] = usable.map((candidate) => ({
+    symbol: candidate.symbol, optionContractId: candidate.optionContractId, strike: candidate.strike,
+    expiration: candidate.expiration, delta: null,
+    openCreditDollars: ((candidate.bid + candidate.ask) / 2) * candidate.multiplier * candidate.quantity,
+    capitalCommittedDollars: candidate.strike * candidate.multiplier * candidate.quantity,
+  }));
+  const comparison = evaluateRollCandidates(oldLeg, sunk, candidateEconomics, state.rollIncrementalCapitalDayWeight ?? 0);
+  if (comparison.bestCandidate === null) {
+    return { ...base, ...UNKNOWN_VALUE, reasons: ['ROLL_CANDIDATE_COMPARISON_INCOMPLETE'] };
+  }
+  const best = comparison.bestCandidate;
+  const matchedSource = usable.find((candidate) => candidate.optionContractId === best.candidate.optionContractId);
+  if (matchedSource === undefined) return { ...base, ...UNKNOWN_VALUE, reasons: ['ROLL_CANDIDATE_MATCH_FAILED'] };
+  const netCredit = best.netCreditDollars as number;
+  const executionEvidence: ManagementActionExecutionEvidence = {
+    closeEconomicBoundary: currentMark, openEconomicBoundary: best.candidate.openCreditDollars, stockEconomicBoundary: null,
+    economicsRemainPositive: comparison.bestBeatsHold, expectedAfterCostEv: null, empiricalEconomicsReady: false,
+    deterministicEconomicsValidated: true, deterministicNetCredit: netCredit,
+    targetContract: {
+      symbol: matchedSource.symbol, optionContractId: matchedSource.optionContractId, optionType: matchedSource.optionType,
+      multiplier: matchedSource.multiplier, quantity: matchedSource.quantity,
+    },
+  };
+  return {
+    ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: best.daysExtended,
+    executionCostRisk: Math.abs(currentMark) + Math.abs(best.candidate.openCreditDollars ?? 0) * 0.01,
+    opportunityCost: null, uncertainty: null,
+    // A roll is preferred only when its RollIncrementalUtility clears the
+    // same HOLD baseline (0) every other bootstrap action is compared
+    // against -- never merely because netCredit >= 0.
+    utility: comparison.bestBeatsHold ? 0.5 : -2,
+    executionEvidence,
+    reasons: [`BEST_OF_${usable.length}_ROLL_CANDIDATES`, ...best.reasons,
+      `SUNK_REALIZED_PNL_${sunk === null ? 'UNKNOWN' : sunk.toFixed(2)}_EXCLUDED_FROM_FORWARD_COMPARISON`],
+  };
+}
 
 /**
  * Builds a deterministic value for one action. `utility` here is NEVER a
@@ -171,38 +280,14 @@ function valueFor(
           : ['REMAINING_VALUE_NOT_KNOWN_EXHAUSTED', ...lossMagnitudeReason],
       };
     }
-    case 'ROLL':
-    case 'ROLL_CC': {
-      const candidate = action === 'ROLL' ? state.rollCandidate : state.ccCandidate;
-      if (!candidate || !finite(candidate.bid) || !finite(candidate.ask) || currentMark === null) {
-        return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_IDENTIFIED_ROLL_TARGET'] };
+    case 'ROLL': {
+      if (state.rollCandidates !== undefined && state.rollCandidates.length > 0 && currentMark !== null) {
+        return valueForRollFromCandidates(action, state, currentMark);
       }
-      const openCreditDollars = ((candidate.bid + candidate.ask) / 2) * candidate.multiplier * candidate.quantity;
-      // Sunk (already-realized) economics are deliberately NOT read anywhere
-      // in this block -- forwardContinuationCashFlow only ever sees the two
-      // current-quote dollar boundaries, so the old leg's realized P&L
-      // cannot be silently re-added into this roll's forward comparison.
-      const forward = forwardContinuationCashFlow({ closeCostDollars: currentMark, openCreditDollars });
-      const netCredit = forward.netCashFlow as number; // complete=true guaranteed: both legs are known here
-      const horizon = buildCommonHorizonComparison(state.observedAt, state.economics, state.contract.expiration, [candidate.expiration]);
-      const executionEvidence: ManagementActionExecutionEvidence = {
-        closeEconomicBoundary: currentMark, openEconomicBoundary: openCreditDollars, stockEconomicBoundary: null,
-        economicsRemainPositive: netCredit >= 0, expectedAfterCostEv: null, empiricalEconomicsReady: false,
-        deterministicEconomicsValidated: true, deterministicNetCredit: netCredit,
-        targetContract: {
-          symbol: candidate.symbol, optionContractId: candidate.optionContractId, optionType: candidate.optionType,
-          multiplier: candidate.multiplier, quantity: candidate.quantity,
-        },
-      };
-      return {
-        ...base, expectedFutureValue: null, downsideTailEstimate: null,
-        incrementalCapitalDays: null, executionCostRisk: Math.abs(currentMark) + Math.abs(openCreditDollars) * 0.01,
-        opportunityCost: null, uncertainty: null,
-        utility: netCredit >= 0 ? 0.5 : -2, // a net-debit roll never outranks passive HOLD under this bootstrap policy
-        executionEvidence,
-        reasons: [`DETERMINISTIC_NET_CREDIT_${netCredit.toFixed(2)}`, `HORIZON_ANCHOR_${horizon.horizonAnchor ?? 'UNKNOWN'}`,
-          `SUNK_REALIZED_PNL_EXCLUDED_FROM_FORWARD_COMPARISON`],
-      };
+      return valueForSingleRollCandidate(action, state, currentMark);
+    }
+    case 'ROLL_CC': {
+      return valueForSingleRollCandidate(action, state, currentMark);
     }
     case 'ALLOW_CALL_AWAY':
       // Structural expiration handling already selects this correctly from

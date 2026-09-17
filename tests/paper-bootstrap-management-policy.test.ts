@@ -71,6 +71,40 @@ test('a roll candidate with a net debit never outranks passive HOLD', () => {
   assert.ok((rejected?.executionEvidence?.deterministicNetCredit ?? 0) < 0);
 });
 
+test('CSP_OPEN with multiple roll candidates picks the one with the best RollIncrementalUtility, not merely the largest net credit', () => {
+  const input = state('CSP_OPEN');
+  const withCandidates = {
+    ...input,
+    rollCandidates: [
+      // Much larger net credit (405 vs. 20), but a far-out expiration (91
+      // extra days) and a much larger capital commitment -- expensive to carry.
+      rollCandidate({ optionContractId: 'far-and-big', strike: 250, expiration: '2027-01-15', bid: 5, ask: 5.2 }),
+      // Small net credit, short extension (7 days), and slightly LESS
+      // capital committed than the old leg -- cheap to carry.
+      rollCandidate({ optionContractId: 'near-and-small', strike: 195, expiration: '2026-10-23', bid: 1.2, ask: 1.3 }),
+    ],
+    rollIncrementalCapitalDayWeight: 0.005,
+  };
+  const evidence = evaluatePaperBootstrapManagementPolicy(withCandidates);
+  assert.equal(evidence?.selectedAction, 'ROLL');
+  const execution = evidence?.actionValues.find((value) => value.action === 'ROLL')?.executionEvidence;
+  assert.equal(execution?.targetContract?.optionContractId, 'near-and-small');
+  const rollValue = evidence?.actionValues.find((value) => value.action === 'ROLL');
+  assert.ok(rollValue?.reasons.includes('BEST_OF_2_ROLL_CANDIDATES'));
+});
+
+test('rollCandidates takes precedence over the single rollCandidate field when both are present', () => {
+  const input = state('CSP_OPEN');
+  const withBoth = {
+    ...input,
+    rollCandidate: rollCandidate({ optionContractId: 'single-path-candidate' }),
+    rollCandidates: [rollCandidate({ optionContractId: 'plural-path-candidate' })],
+  };
+  const evidence = evaluatePaperBootstrapManagementPolicy(withBoth);
+  const execution = evidence?.actionValues.find((value) => value.action === 'ROLL')?.executionEvidence;
+  assert.equal(execution?.targetContract?.optionContractId, 'plural-path-candidate');
+});
+
 test('RECOVERY_WAIT with a covered call candidate at or above cost basis sells the call', () => {
   const input = state('RECOVERY_WAIT');
   const cc = rollCandidate({ optionType: 'CALL', strike: 200, bid: 1, ask: 1.2 });
