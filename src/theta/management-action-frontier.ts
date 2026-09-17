@@ -34,6 +34,22 @@ export interface ManagementActionExecutionEvidence {
   readonly economicsRemainPositive: boolean;
   readonly expectedAfterCostEv: number | null;
   readonly empiricalEconomicsReady: boolean;
+  /**
+   * A DIFFERENT, narrower claim than `empiricalEconomicsReady`. This asserts
+   * only that the action's net cash-flow effect (e.g. a roll's close-cost
+   * plus open-credit, a covered call's premium net of known assignment
+   * consequence) has been computed COMPLETELY from known, current,
+   * non-statistical inputs -- arithmetic on real quotes/fees, never a
+   * forecasted or modeled edge. It exists so a deterministic bootstrap
+   * policy (no learned EV model, no promotion) can still open new risk with
+   * honest, complete economics, without requiring the empirical readiness
+   * bar that only an empirically-validated policy can ever satisfy. It
+   * NEVER substitutes for empirical validation when a policy claims a
+   * statistical edge -- `expectedAfterCostEv`/`empiricalEconomicsReady`
+   * remain the only path for that claim.
+   */
+  readonly deterministicEconomicsValidated: boolean;
+  readonly deterministicNetCredit: number | null;
   readonly targetContract: {
     readonly symbol: string;
     readonly optionContractId: string;
@@ -157,6 +173,30 @@ function evaluateAction(input: ManagementInputState, action: ManagementFrontierA
 
 const passiveActions = new Set<ManagementFrontierAction>(['HOLD', 'RECOVERY_WAIT', 'HOLD_CC']);
 
+/**
+ * A new-risk action (ROLL/SELL_CC/ROLL_CC/REDEPLOY) may open only when its
+ * economics are genuinely KNOWN, via EITHER of two structurally distinct
+ * evidence classes -- never fabricated, never merely absent-and-assumed-fine:
+ *   - EMPIRICAL: a statistically validated EV model claims a positive edge
+ *     (`empiricalEconomicsReady` + a positive `expectedAfterCostEv`) --
+ *     reserved for an empirically-promoted policy.
+ *   - DETERMINISTIC: a bootstrap (non-empirical) policy has computed the
+ *     action's complete, honest, non-statistical net cash-flow effect
+ *     (`deterministicEconomicsValidated` + a real, finite
+ *     `deterministicNetCredit`) -- this makes no claim of a validated edge,
+ *     only that the arithmetic is complete and not fabricated. The policy's
+ *     own utility ranking (unchanged elsewhere in this file) still decides
+ *     whether opening the risk is actually the best available action.
+ */
+function newRiskEconomicsAreKnown(execution: ManagementActionExecutionEvidence | null): boolean {
+  if (execution === null) return false;
+  const empirical = execution.empiricalEconomicsReady === true
+    && execution.expectedAfterCostEv !== null && execution.expectedAfterCostEv > 0;
+  const deterministic = execution.deterministicEconomicsValidated === true
+    && execution.deterministicNetCredit !== null && Number.isFinite(execution.deterministicNetCredit);
+  return empirical || deterministic;
+}
+
 function applyPolicyEvidence(actions: readonly ManagementActionEconomics[], input: ManagementInputState,
   evidence: ManagementPolicyEvidence | null): {
     readonly actions: readonly ManagementActionEconomics[];
@@ -201,9 +241,8 @@ function applyPolicyEvidence(actions: readonly ManagementActionEconomics[], inpu
   const merged = actions.map((action): ManagementActionEconomics => {
     const value = values.get(action.action);
     if (value === undefined) return action;
-    const empiricalResolved = opensNewRisk.has(action.action) && value.executionEvidence?.empiricalEconomicsReady === true
-      && value.executionEvidence.expectedAfterCostEv !== null && value.executionEvidence.expectedAfterCostEv > 0;
-    const blockers = empiricalResolved
+    const newRiskEconomicsResolved = opensNewRisk.has(action.action) && newRiskEconomicsAreKnown(value.executionEvidence);
+    const blockers = newRiskEconomicsResolved
       ? action.blockers.filter((blocker) => blocker !== 'EMPIRICAL_ACTION_EV_UNKNOWN') : action.blockers;
     const feasibility = blockers.length === 0 ? 'FEASIBLE' : blockers.some((blocker) => blocker.endsWith('_UNKNOWN')
       || blocker === 'EMPIRICAL_ACTION_EV_UNKNOWN') ? 'UNKNOWN' : 'INFEASIBLE';
@@ -221,12 +260,8 @@ function applyPolicyEvidence(actions: readonly ManagementActionEconomics[], inpu
   if (ranked[0]?.action !== evidence.selectedAction) evidenceErrors.push('MANAGEMENT_POLICY_SELECTION_NOT_ARGMAX');
   const selected = merged.find((action) => action.action === evidence.selectedAction);
   if (selected === undefined || selected.feasibility !== 'FEASIBLE') evidenceErrors.push('MANAGEMENT_POLICY_SELECTED_ACTION_NOT_FEASIBLE');
-  if (opensNewRisk.has(evidence.selectedAction)) {
-    const execution = selected?.executionEvidence;
-    if (execution === null || execution === undefined || !execution.empiricalEconomicsReady
-      || execution.expectedAfterCostEv === null || execution.expectedAfterCostEv <= 0) {
-      evidenceErrors.push('MANAGEMENT_NEW_RISK_NOT_EMPIRICALLY_SUPPORTED');
-    }
+  if (opensNewRisk.has(evidence.selectedAction) && !newRiskEconomicsAreKnown(selected?.executionEvidence ?? null)) {
+    evidenceErrors.push('MANAGEMENT_NEW_RISK_NOT_EMPIRICALLY_SUPPORTED');
   }
   if (evidenceErrors.length > 0) {
     return {

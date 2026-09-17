@@ -28,7 +28,8 @@ const state = (lifecycleState: string, observedAt='2026-09-12T14:00:00.000Z', ex
 
 const execution=(overrides:Partial<ManagementActionExecutionEvidence>={}):ManagementActionExecutionEvidence=>({
   closeEconomicBoundary:1.2,openEconomicBoundary:null,stockEconomicBoundary:null,economicsRemainPositive:true,
-  expectedAfterCostEv:null,empiricalEconomicsReady:false,targetContract:null,...overrides,
+  expectedAfterCostEv:null,empiricalEconomicsReady:false,deterministicEconomicsValidated:false,deterministicNetCredit:null,
+  targetContract:null,...overrides,
 });
 
 const policy=(input:ReturnType<typeof state>,selectedAction:ManagementFrontierAction,
@@ -113,6 +114,27 @@ test('a complete positive empirical comparison can select a bounded roll target'
   assert.equal(frontier.selectedAction,'ROLL');
   assert.equal(frontier.decisionState,'ACTION_SELECTED');
   assert.equal(frontier.actions.find((candidate)=>candidate.action==='ROLL')?.feasibility,'FEASIBLE');
+});
+
+test('a deterministic (non-empirical) bootstrap roll can select without any statistical EV model',()=>{
+  const input=state('CSP_OPEN');
+  const rollExecution=execution({openEconomicBoundary:1,deterministicEconomicsValidated:true,deterministicNetCredit:0.45,
+    targetContract:{symbol:'AAPL261120P00195000',optionContractId:'target',optionType:'PUT',multiplier:100,quantity:1}});
+  const frontier=buildManagementActionFrontier(input,policy(input,'ROLL',rollExecution));
+  assert.equal(frontier.selectedAction,'ROLL');
+  assert.equal(frontier.decisionState,'ACTION_SELECTED');
+  assert.equal(frontier.actions.find((candidate)=>candidate.action==='ROLL')?.feasibility,'FEASIBLE');
+  assert.ok(!frontier.actions.find((candidate)=>candidate.action==='ROLL')?.blockers.includes('EMPIRICAL_ACTION_EV_UNKNOWN'));
+});
+
+test('deterministicEconomicsValidated alone without a real net-credit number does not unlock new risk',()=>{
+  const input=state('CSP_OPEN');
+  const rollExecution=execution({openEconomicBoundary:1,deterministicEconomicsValidated:true,deterministicNetCredit:null,
+    targetContract:{symbol:'AAPL261120P00195000',optionContractId:'target',optionType:'PUT',multiplier:100,quantity:1}});
+  const frontier=buildManagementActionFrontier(input,policy(input,'ROLL',rollExecution));
+  assert.equal(frontier.selectedAction,'HOLD');
+  assert.ok(frontier.reasonCodes.includes('MANAGEMENT_POLICY_SELECTION_NOT_ARGMAX')
+    || frontier.reasonCodes.includes('MANAGEMENT_NEW_RISK_NOT_EMPIRICALLY_SUPPORTED'));
 });
 
 test('expiration actions require exact moneyness rather than DTE alone',()=>{
