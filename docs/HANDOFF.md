@@ -2220,3 +2220,25 @@ RISKS: Activating new risk before both blockers are resolved would create positi
 WHAT THE OTHER AGENT SHOULD REVIEW: Management policy research and empirical promotion evidence only. Do not alter production execution controls or provider semantics.
 
 NEXT RECOMMENDED TASK: Qualify an authorized execution-price source, promote a validated management policy from real evidence, then use the staged authorization to open one bounded Paper canary.
+
+# 2026-09-18 single-brain and local-durability slice
+
+OWNER: Codex
+
+TASK: Preserve one THETA economic authority, review professional orchestration references, and add a safe local recovery layer without creating dual-database runtime state.
+
+FILES CHANGED: Canonical orchestration architecture, orchestration reference ledger, Windows runtime documentation and supervisor, strict local receipt writer, tests, decisions, and this handoff.
+
+WHAT WAS IMPLEMENTED: The actual new-risk, management, execution, lifecycle, and accounting authority path is now documented against concrete source modules. Nine orchestration repositories were pinned and reviewed from source plus tests. The Windows worker now writes a strict allowlisted append-only runtime receipt after each cycle. Receipts are SHA-256 hash-chained and stored only under the ignored local worker directory. They contain safe status and count evidence, never credentials, account identifiers, symbols, positions, or raw payloads. Aiven remains the sole transactional authority.
+
+TESTS RUN: Targeted local receipt and Windows supervisor tests, followed by the repository TypeScript, lint, build, security, and full Node verification for this milestone.
+
+TEST RESULTS: 955 Node tests ran, 945 passed, 10 database-only tests skipped, and 0 failed. TypeScript, ESLint, build, and the security scan passed with zero findings. The protected Production Aiven validation reported migration head 056, 152 tables, 379 indexes, zero invalid indexes, zero unvalidated constraints, and 3 of 20 database connections. The current broker cycle reported an ACTIVE Paper account, zero positions, zero open orders, a confirmed closed session, and zero master, follower, or live orders. No broker order path was added to the supervisor.
+
+KNOWN LIMITATIONS: The local ledger is recovery and audit evidence, not a full database backup. Full Aiven disaster recovery still requires provider snapshots or encrypted database backups under an operator-owned retention policy. Full OpenTelemetry propagation, Testcontainers CI adoption, and fast-check state-machine properties remain bounded future improvements.
+
+RISKS: Treating the local ledger as runtime truth would create split-brain behavior. The writer's fixed schema and the documented authority order prevent that use. Claude's management branch is based before migrations 055 and 056 and must not be merged wholesale.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Only pure management-model modules and tests that can fit behind the existing single provider interface. Do not alter broker mutation, quote semantics, migrations 055 or 056, or the one-brain authority path.
+
+NEXT RECOMMENDED TASK: Rotate the credentials exposed in chat, verify the secure Production connection, complete one natural-candidate readiness receipt, and stop before the first Paper submission if every gate is valid.

@@ -178,8 +178,28 @@ try {
           $researchExport = 'RESEARCH_DATASET_HASH_INVALID'
         }
       }
+      # Keep a sanitized, append-only local recovery mirror of operational
+      # receipts. Aiven remains runtime authority. The writer accepts only a
+      # fixed safe schema and cannot persist credentials, account identifiers,
+      # symbols, positions, or raw provider payloads.
+      $localReceiptState = 'NOT_WRITTEN'
+      $localReceiptHash = $null
+      try {
+        $receiptInput = @{ observedAt=(Get-Date).ToUniversalTime().ToString('o'); marketSessionDate=$marketSessionDate;
+          buildSha=$runtime.buildSha;mode='MASTER_THETA_PAPER';executionGate=[string]$report.executionGate;
+          researchExport=$researchExport;scopes=@{BROKER=$brokerReport;LIFECYCLE=$lifecycleReport;
+            MANAGEMENT=$managementReport;OBSERVATION=$observationReport;EVIDENCE=$report} } |
+          ConvertTo-Json -Depth 12 -Compress
+        $receiptOutput = $receiptInput | & node tools/write-local-runtime-receipt.mjs
+        if ($LASTEXITCODE -eq 0) {
+          $receiptResult = $receiptOutput | ConvertFrom-Json
+          $localReceiptState = [string]$receiptResult.state
+          $localReceiptHash = [string]$receiptResult.receiptHash
+        } else { $localReceiptState = 'FAILED' }
+      } catch { $localReceiptState = 'FAILED' }
       @{state='ONLINE';lastCycle=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
-        mode='MASTER_THETA_PAPER';executionGate=[string]$report.executionGate;researchExport=$researchExport} | ConvertTo-Json |
+        mode='MASTER_THETA_PAPER';executionGate=[string]$report.executionGate;researchExport=$researchExport;
+        localReceiptState=$localReceiptState;localReceiptHash=$localReceiptHash} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
       $delaySeconds = 5
     } catch {

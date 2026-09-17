@@ -39,10 +39,14 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /runtime-management-cycle/);
   assert.match(source, /runtime-observation-cycle/);
   assert.match(source, /runtime-evidence-cycle/);
+  assert.match(source, /write-local-runtime-receipt\.mjs/);
+  assert.match(source, /localReceiptState/);
+  assert.match(source, /localReceiptHash/);
   assert.match(source, /Invoke-RestMethod[^\r\n]+-TimeoutSec 180/);
   assert.match(source, /Invoke-RestMethod[^\r\n]+-TimeoutSec 290/);
   assert.doesNotMatch(source, /\/v2\/orders/i);
   assert.doesNotMatch(source, /APCA-API-KEY-ID|APCA-API-SECRET-KEY/);
+  assert.doesNotMatch(source, /\$report\.(providerAccountRefHash|positions|rawPayload)/);
 });
 
 test('Windows installer does not silently queue evidence capture on laptop battery',async()=>{
