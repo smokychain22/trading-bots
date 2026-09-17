@@ -243,7 +243,7 @@ export interface ManagementPolicyEvidenceProvider {
 
 export interface AutonomousRuntimeDependencies {
   readonly managementPolicyEvidenceProvider?: ManagementPolicyEvidenceProvider;
-  readonly scope?: 'FULL' | 'CORE' | 'BROKER' | 'MANAGEMENT' | 'EVIDENCE';
+  readonly scope?: 'FULL' | 'CORE' | 'BROKER' | 'LIFECYCLE' | 'MANAGEMENT' | 'OBSERVATION' | 'EVIDENCE';
 }
 
 /**
@@ -266,7 +266,7 @@ function isRetryableExternalExecutionFailure(error:unknown):boolean{
   return error instanceof AlpacaPaperBrokerError&&error.category!=='BROKER_REJECTED';
 }
 
-export const jobTypesForScope=(scope:'FULL'|'CORE'|'BROKER'|'MANAGEMENT'|'EVIDENCE'):readonly JobType[]=>{
+export const jobTypesForScope=(scope:'FULL'|'CORE'|'BROKER'|'LIFECYCLE'|'MANAGEMENT'|'OBSERVATION'|'EVIDENCE'):readonly JobType[]=>{
   const all:readonly JobType[]=[
     'POSITION_RECONCILIATION', 'ORDER_RECONCILIATION', 'POSITION_MANAGEMENT_SCAN',
     'ASSIGNMENT_EXPIRY_RECONCILIATION', 'PENDING_ORDER_MANAGEMENT', 'WAIT_RECHECK',
@@ -276,12 +276,14 @@ export const jobTypesForScope=(scope:'FULL'|'CORE'|'BROKER'|'MANAGEMENT'|'EVIDEN
   if(scope==='FULL')return all;
   if(scope==='EVIDENCE')return ['POSITION_RECONCILIATION','WAIT_RECHECK','OPPORTUNITY_SCAN'];
   if(scope==='MANAGEMENT')return ['POSITION_RECONCILIATION','POSITION_MANAGEMENT_SCAN','PAPER_EXECUTION_HANDOFF'];
-  if(scope==='BROKER')return all.filter((jobType)=>!['POSITION_MANAGEMENT_SCAN','WAIT_RECHECK','OPPORTUNITY_SCAN',
-    'PAPER_EXECUTION_HANDOFF'].includes(jobType));
+  if(scope==='LIFECYCLE')return ['POSITION_RECONCILIATION','ASSIGNMENT_EXPIRY_RECONCILIATION'];
+  if(scope==='OBSERVATION')return ['POSITION_RECONCILIATION','MARKET_STATE_REFRESH'];
+  if(scope==='BROKER')return ['POSITION_RECONCILIATION','ORDER_RECONCILIATION','PENDING_ORDER_MANAGEMENT',
+    'ACCOUNT_STATE_REFRESH','COPY_FANOUT_PREPARATION','HEALTH_HEARTBEAT'];
   return all.filter((jobType)=>jobType!=='WAIT_RECHECK'&&jobType!=='OPPORTUNITY_SCAN');
 };
 
-function scheduledJobs(bucket: string,scope:'FULL'|'CORE'|'BROKER'|'MANAGEMENT'|'EVIDENCE'): readonly DueJob[] {
+function scheduledJobs(bucket: string,scope:'FULL'|'CORE'|'BROKER'|'LIFECYCLE'|'MANAGEMENT'|'OBSERVATION'|'EVIDENCE'): readonly DueJob[] {
   return jobTypesForScope(scope).map((jobType) => ({ jobType, correlationKey: `${bucket}:${scope.toLowerCase()}` }));
 }
 

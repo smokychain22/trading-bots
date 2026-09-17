@@ -58,14 +58,16 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'RUNTIME_CORE_CYCLE' | 'RUNTIME_BROKER_CYCLE' | 'RUNTIME_MANAGEMENT_CYCLE' | 'RUNTIME_EVIDENCE_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'MASTER_PAPER_AUTHORIZE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'RUNTIME_CORE_CYCLE' | 'RUNTIME_BROKER_CYCLE' | 'RUNTIME_LIFECYCLE_CYCLE' | 'RUNTIME_MANAGEMENT_CYCLE' | 'RUNTIME_OBSERVATION_CYCLE' | 'RUNTIME_EVIDENCE_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'MASTER_PAPER_AUTHORIZE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
   if (value === undefined) return 'RUNTIME_CYCLE';
   if (value === 'runtime-core-cycle') return 'RUNTIME_CORE_CYCLE';
   if (value === 'runtime-broker-cycle') return 'RUNTIME_BROKER_CYCLE';
+  if (value === 'runtime-lifecycle-cycle') return 'RUNTIME_LIFECYCLE_CYCLE';
   if (value === 'runtime-management-cycle') return 'RUNTIME_MANAGEMENT_CYCLE';
+  if (value === 'runtime-observation-cycle') return 'RUNTIME_OBSERVATION_CYCLE';
   if (value === 'runtime-evidence-cycle') return 'RUNTIME_EVIDENCE_CYCLE';
   if (value === 'provider-evidence-readiness') return 'PROVIDER_EVIDENCE_READINESS';
   if (value === 'alpaca-indicative-quote-qualification') return 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION';
@@ -588,7 +590,8 @@ export default async function autonomousRuntimeHandler(
       await workerStore.cycleStarted(identity.workerId,at.toISOString());
     }
     const scope=operation==='RUNTIME_CORE_CYCLE'?'CORE':operation==='RUNTIME_BROKER_CYCLE'?'BROKER'
-      :operation==='RUNTIME_MANAGEMENT_CYCLE'?'MANAGEMENT':operation==='RUNTIME_EVIDENCE_CYCLE'?'EVIDENCE':'FULL';
+      :operation==='RUNTIME_LIFECYCLE_CYCLE'?'LIFECYCLE':operation==='RUNTIME_MANAGEMENT_CYCLE'?'MANAGEMENT'
+        :operation==='RUNTIME_OBSERVATION_CYCLE'?'OBSERVATION':operation==='RUNTIME_EVIDENCE_CYCLE'?'EVIDENCE':'FULL';
     const report = await runAutonomousRuntimeCycle(environment, runtimePool, new Date(),{scope});
     if(localWorkerId!==null)await workerStore.cycleCompleted(localWorkerId,report,new Date().toISOString());
     send(response, report.status === 'FAILED' || report.status === 'QUARANTINED' ? 503 : report.status === 'DEGRADED' ? 207 : 200, report);

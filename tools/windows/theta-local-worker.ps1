@@ -52,11 +52,23 @@ try {
       if ($brokerReport.status -eq 'FAILED' -or $brokerReport.status -eq 'QUARANTINED') {
         throw 'THETA_BROKER_CYCLE_FAILED'
       }
+      $lifecycleHeaders = $headers.Clone()
+      $lifecycleHeaders['X-Theta-Operation'] = 'runtime-lifecycle-cycle'
+      $lifecycleReport = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $lifecycleHeaders -TimeoutSec 180
+      if ($lifecycleReport.status -eq 'FAILED' -or $lifecycleReport.status -eq 'QUARANTINED') {
+        throw 'THETA_LIFECYCLE_CYCLE_FAILED'
+      }
       $managementHeaders = $headers.Clone()
       $managementHeaders['X-Theta-Operation'] = 'runtime-management-cycle'
       $managementReport = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $managementHeaders -TimeoutSec 180
       if ($managementReport.status -eq 'FAILED' -or $managementReport.status -eq 'QUARANTINED') {
         throw 'THETA_MANAGEMENT_CYCLE_FAILED'
+      }
+      $observationHeaders = $headers.Clone()
+      $observationHeaders['X-Theta-Operation'] = 'runtime-observation-cycle'
+      $observationReport = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $observationHeaders -TimeoutSec 180
+      if ($observationReport.status -eq 'FAILED' -or $observationReport.status -eq 'QUARANTINED') {
+        throw 'THETA_OBSERVATION_CYCLE_FAILED'
       }
       $evidenceHeaders = $headers.Clone()
       $evidenceHeaders['X-Theta-Operation'] = 'runtime-evidence-cycle'

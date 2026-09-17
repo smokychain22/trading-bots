@@ -35,7 +35,9 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /RESEARCH_CURRENT/);
   assert.match(source, /NO_SPLIT_DESCRIPTIVE_ONLY/);
   assert.match(source, /runtime-broker-cycle/);
+  assert.match(source, /runtime-lifecycle-cycle/);
   assert.match(source, /runtime-management-cycle/);
+  assert.match(source, /runtime-observation-cycle/);
   assert.match(source, /runtime-evidence-cycle/);
   assert.match(source, /Invoke-RestMethod[^\r\n]+-TimeoutSec 180/);
   assert.match(source, /Invoke-RestMethod[^\r\n]+-TimeoutSec 290/);
