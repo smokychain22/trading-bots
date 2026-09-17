@@ -10,8 +10,13 @@ import { evaluateRollCandidates, type RollCandidateEconomics } from './roll-incr
 import { assessThesisInvalidation, type ThesisInvalidationAssessment } from './thesis-invalidation.js';
 import { buildRecoveryState, type RecoveryState } from './recovery-state.js';
 import {
-  evaluateCoveredCallCandidates, selectableCoveredCallCandidates, type CoveredCallCandidate,
+  bestCoveredCallCandidate, evaluateCoveredCallCandidates, type CoveredCallCandidate, type CoveredCallUtilityWeights,
 } from './covered-call-lattice.js';
+
+const DEFAULT_CC_UTILITY_WEIGHTS: CoveredCallUtilityWeights = {
+  upsideSacrificePerDollarWeight: 0, spreadPerDollarWeight: 0, eventRiskPenalty: 0,
+  dividendExDateRiskPenalty: 0, belowBasisPenalty: 0,
+};
 
 export const paperBootstrapManagementPolicyVersion = 'theta-paper-bootstrap-management-policy-v1' as const;
 
@@ -73,6 +78,12 @@ export interface RollCandidate {
   readonly quantity: number;
   readonly bid: number | null;
   readonly ask: number | null;
+  /** Only meaningful for `ccCandidates` (covered-call targets) -- ignored
+   * for ROLL. Defaults to false (no known risk) when omitted; this is a
+   * simplification, not a claim the risk is verified absent -- a genuinely
+   * UNKNOWN risk flag is out of scope for this simple candidate shape. */
+  readonly dividendExDateRisk?: boolean;
+  readonly eventRisk?: boolean;
 }
 
 export interface PaperBootstrapPolicyInput extends ManagementInputState {
@@ -113,6 +124,11 @@ export interface PaperBootstrapPolicyInput extends ManagementInputState {
    * Falls back to `ccCandidate` when absent/empty (fully backward compatible).
    */
   readonly ccCandidates?: readonly RollCandidate[];
+  /** Required, caller-justified weights for `computeCoveredCallUtility`.
+   * Defaults to all-zero (utility reduces to pure premium income) when
+   * omitted -- the architecture supports a richer, multi-factor ranking,
+   * but this bootstrap policy never invents non-zero weights itself. */
+  readonly ccUtilityWeights?: CoveredCallUtilityWeights;
   /** Caller-supplied, honest inputs for `buildRecoveryState` -- both optional;
    * omitted, capital-days/opportunity-cost stay UNKNOWN rather than fabricated. */
   readonly assignedAtObservedAt?: string | null;
@@ -313,7 +329,8 @@ function valueForSellCcFromCandidates(state: PaperBootstrapPolicyInput): Managem
     symbol: candidate.symbol, optionContractId: candidate.optionContractId, strike: candidate.strike,
     expiration: candidate.expiration, delta: null, bid: candidate.bid, ask: candidate.ask,
     multiplier: candidate.multiplier, quantity: candidate.quantity,
-    openInterest: null, volume: null, dividendExDateRisk: false, eventRisk: false,
+    openInterest: null, volume: null,
+    dividendExDateRisk: candidate.dividendExDateRisk ?? false, eventRisk: candidate.eventRisk ?? false,
   }));
   const wholeChainBase = {
     initialPutPremium: null, rollCredits: null, rollCloseCosts: null, assignmentStrike: basis,
@@ -322,13 +339,12 @@ function valueForSellCcFromCandidates(state: PaperBootstrapPolicyInput): Managem
   };
   const assessments = evaluateCoveredCallCandidates(
     basis, state.economics.stockMarkPerShare, state.economics.openStockShares, wholeChainBase, latticeCandidates,
+    state.ccUtilityWeights ?? DEFAULT_CC_UTILITY_WEIGHTS,
   );
-  const selectable = selectableCoveredCallCandidates(assessments, false);
-  if (selectable.length === 0) {
+  const best = bestCoveredCallCandidate(assessments, false);
+  if (best === null) {
     return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_SELECTABLE_CC_CANDIDATES_ALL_BELOW_BASIS_OR_UNQUOTED'] };
   }
-  const best = selectable.reduce((champion, candidate) =>
-    (candidate.premiumIncomeDollars ?? -Infinity) > (champion.premiumIncomeDollars ?? -Infinity) ? candidate : champion);
   const premiumDollars = best.premiumIncomeDollars as number;
   const executionEvidence: ManagementActionExecutionEvidence = {
     closeEconomicBoundary: null, openEconomicBoundary: premiumDollars, stockEconomicBoundary: null,
@@ -343,7 +359,7 @@ function valueForSellCcFromCandidates(state: PaperBootstrapPolicyInput): Managem
     ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: null,
     executionCostRisk: premiumDollars * 0.01, opportunityCost: null, uncertainty: null,
     utility: 0.5, executionEvidence,
-    reasons: [`BEST_OF_${selectable.length}_SELECTABLE_CC_CANDIDATES`, ...best.reasons],
+    reasons: [`BEST_OF_${candidates.length}_CC_CANDIDATES_BY_UTILITY`, ...best.reasons],
   };
 }
 

@@ -204,6 +204,38 @@ test('RECOVERY_WAIT with multiple CC candidates picks the highest-premium SELECT
   assert.equal(execution?.targetContract?.optionContractId, 'above-basis-large');
 });
 
+test('with justified CC utility weights, a farther-OTM lower-premium candidate can outrank a near-basis high-premium one with event risk', () => {
+  const input = state('RECOVERY_WAIT');
+  const withCandidates = {
+    ...input,
+    ccCandidates: [
+      rollCandidate({ optionContractId: 'near-rich-risky', optionType: 'CALL', strike: 196, bid: 4, ask: 4.6, eventRisk: true }),
+      rollCandidate({ optionContractId: 'far-modest-safe', optionType: 'CALL', strike: 210, bid: 0.5, ask: 0.55 }),
+    ],
+    ccUtilityWeights: {
+      upsideSacrificePerDollarWeight: 0, spreadPerDollarWeight: 3, eventRiskPenalty: 500,
+      dividendExDateRiskPenalty: 100, belowBasisPenalty: 1000,
+    },
+  };
+  const evidence = evaluatePaperBootstrapManagementPolicy(withCandidates);
+  const execution = evidence?.actionValues.find((value) => value.action === 'SELL_CC')?.executionEvidence;
+  assert.equal(execution?.targetContract?.optionContractId, 'far-modest-safe');
+});
+
+test('with the default (inert) CC utility weights, the highest-premium selectable candidate still wins -- the honest no-information fallback', () => {
+  const input = state('RECOVERY_WAIT');
+  const withCandidates = {
+    ...input,
+    ccCandidates: [
+      rollCandidate({ optionContractId: 'lower', optionType: 'CALL', strike: 200, bid: 0.5, ask: 0.6 }),
+      rollCandidate({ optionContractId: 'higher', optionType: 'CALL', strike: 200, bid: 1, ask: 1.2 }),
+    ],
+  };
+  const evidence = evaluatePaperBootstrapManagementPolicy(withCandidates);
+  const execution = evidence?.actionValues.find((value) => value.action === 'SELL_CC')?.executionEvidence;
+  assert.equal(execution?.targetContract?.optionContractId, 'higher');
+});
+
 test('ccCandidates takes precedence over the single ccCandidate field when both are present', () => {
   const input = state('RECOVERY_WAIT');
   const withBoth = {

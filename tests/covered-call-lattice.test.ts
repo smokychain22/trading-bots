@@ -1,13 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  evaluateCoveredCallCandidates, selectableCoveredCallCandidates, type CoveredCallCandidate,
+  bestCoveredCallCandidate, computeCoveredCallUtility, evaluateCoveredCallCandidates,
+  selectableCoveredCallCandidates, type CoveredCallCandidate, type CoveredCallUtilityWeights,
 } from '../src/theta/covered-call-lattice.js';
 import type { WholeChainComponents } from '../src/theta/whole-chain-economics.js';
 
 const wholeChainBase: Omit<WholeChainComponents, 'coveredCallPremium' | 'coveredCallCloseCosts' | 'stockSaleOrCallAwayProceeds' | 'currentStockMarkPerShare' | 'openStockShares'> = {
   initialPutPremium: 200, rollCredits: 0, rollCloseCosts: 0, assignmentStrike: 195, stockSharesAssigned: 100,
   dividends: 0, fees: 2, slippage: 0,
+};
+
+const inertWeights: CoveredCallUtilityWeights = {
+  upsideSacrificePerDollarWeight: 0, spreadPerDollarWeight: 0, eventRiskPenalty: 0,
+  dividendExDateRiskPenalty: 0, belowBasisPenalty: 0,
+};
+
+const justifiedWeights: CoveredCallUtilityWeights = {
+  upsideSacrificePerDollarWeight: 1, spreadPerDollarWeight: 3, eventRiskPenalty: 500,
+  dividendExDateRiskPenalty: 100, belowBasisPenalty: 1000,
 };
 
 const candidate = (overrides: Partial<CoveredCallCandidate> = {}): CoveredCallCandidate => ({
@@ -17,7 +28,7 @@ const candidate = (overrides: Partial<CoveredCallCandidate> = {}): CoveredCallCa
 });
 
 test('computes premium income, call-away price, and both whole-chain P&L scenarios for an at/above-basis candidate', () => {
-  const [assessment] = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [candidate()]);
+  const [assessment] = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [candidate()], inertWeights);
   assert.ok(assessment !== undefined);
   assert.equal(assessment.premiumIncomeDollars, 105);
   assert.equal(assessment.callAwayPriceDollars, 200 * 100);
@@ -27,15 +38,15 @@ test('computes premium income, call-away price, and both whole-chain P&L scenari
   assert.notEqual(assessment.wholeChainPnlIfCalledAway, assessment.wholeChainPnlIfNotCalled);
 });
 
-test('flags a below-basis candidate but does not discard it from the assessment list', () => {
-  const [assessment] = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [candidate({ strike: 190 })]);
+test('flags a below-basis candidate with the exact required reason code, but does not discard it from the list', () => {
+  const [assessment] = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [candidate({ strike: 190 })], inertWeights);
   assert.equal(assessment?.belowBasis, true);
-  assert.ok(assessment?.reasons.includes('BELOW_BASIS_REJECTED_BY_DEFAULT_CONSERVATIVE_POSTURE'));
+  assert.ok(assessment?.reasons.includes('BELOW_BASIS_CC_REJECTED_BY_BOOTSTRAP_POLICY'));
 });
 
 test('selectableCoveredCallCandidates excludes below-basis candidates by default but includes them when explicitly allowed', () => {
   const assessments = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase,
-    [candidate({ optionContractId: 'above', strike: 200 }), candidate({ optionContractId: 'below', strike: 190 })]);
+    [candidate({ optionContractId: 'above', strike: 200 }), candidate({ optionContractId: 'below', strike: 190 })], inertWeights);
   const defaultSelectable = selectableCoveredCallCandidates(assessments);
   assert.equal(defaultSelectable.length, 1);
   assert.equal(defaultSelectable[0]?.candidate.optionContractId, 'above');
@@ -45,19 +56,73 @@ test('selectableCoveredCallCandidates excludes below-basis candidates by default
 });
 
 test('never fabricates upsideSacrificed without a caller-supplied reference price', () => {
-  const [assessment] = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [candidate()]);
+  const [assessment] = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [candidate()], inertWeights);
   assert.equal(assessment?.upsideSacrificedDollars, null);
 });
 
 test('computes upsideSacrificed honestly once a reference price is supplied', () => {
-  const [assessment] = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [candidate({ strike: 200 })], 220);
+  const [assessment] = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [candidate({ strike: 200 })], inertWeights, 220);
   assert.equal(assessment?.upsideSacrificedDollars, (220 - 200) * 100);
 });
 
-test('a candidate with no usable quote reports QUOTE_UNKNOWN and never fabricates a premium', () => {
-  const [assessment] = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [candidate({ bid: null, ask: null })]);
+test('a candidate with no usable quote reports QUOTE_UNKNOWN, never fabricates a premium, and has a null (unrankable) utility', () => {
+  const [assessment] = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [candidate({ bid: null, ask: null })], inertWeights);
   assert.equal(assessment?.premiumIncomeDollars, null);
   assert.ok(assessment?.reasons.includes('QUOTE_UNKNOWN'));
+  assert.equal(assessment?.utility.utility, null);
   const selectable = selectableCoveredCallCandidates([assessment as ReturnType<typeof evaluateCoveredCallCandidates>[number]]);
   assert.equal(selectable.length, 0);
+});
+
+test('computeCoveredCallUtility never fabricates the premium-unknown case and names every unknown component', () => {
+  const result = computeCoveredCallUtility(
+    { premiumIncomeDollars: null, upsideSacrificedDollars: null, spreadDollars: null, belowBasis: false, eventRisk: false, dividendExDateRisk: false },
+    inertWeights,
+  );
+  assert.equal(result.utility, null);
+  assert.deepEqual(result.reasons, ['PREMIUM_UNKNOWN_CANNOT_RANK']);
+});
+
+test('with inert (all-zero) weights, CCUtility reduces to pure premium income -- the honest no-information default', () => {
+  const result = computeCoveredCallUtility(
+    { premiumIncomeDollars: 100, upsideSacrificedDollars: 500, spreadDollars: 50, belowBasis: false, eventRisk: true, dividendExDateRisk: true },
+    inertWeights,
+  );
+  assert.equal(result.utility, 100);
+});
+
+test('with justified non-zero weights, a large upside-sacrifice/spread/event-risk candidate is penalized below a modest one', () => {
+  const richButRisky = computeCoveredCallUtility(
+    { premiumIncomeDollars: 400, upsideSacrificedDollars: 1000, spreadDollars: 50, belowBasis: false, eventRisk: true, dividendExDateRisk: false },
+    justifiedWeights,
+  );
+  const modestButSafe = computeCoveredCallUtility(
+    { premiumIncomeDollars: 100, upsideSacrificedDollars: 20, spreadDollars: 2, belowBasis: false, eventRisk: false, dividendExDateRisk: false },
+    justifiedWeights,
+  );
+  assert.ok((modestButSafe.utility as number) > (richButRisky.utility as number));
+});
+
+test('bestCoveredCallCandidate selects a farther-OTM, lower-premium candidate over a near-the-money, high-premium one when the latter carries event risk and a wide spread', () => {
+  const assessments = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [
+    candidate({ optionContractId: 'near-rich-risky', strike: 196, bid: 4, ask: 4.6, eventRisk: true }),
+    candidate({ optionContractId: 'far-modest-safe', strike: 210, bid: 0.5, ask: 0.55 }),
+  ], justifiedWeights, 215);
+  const best = bestCoveredCallCandidate(assessments);
+  assert.equal(best?.candidate.optionContractId, 'far-modest-safe');
+});
+
+test('bestCoveredCallCandidate still prefers the higher-premium candidate when nothing else distinguishes them', () => {
+  const assessments = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [
+    candidate({ optionContractId: 'lower', bid: 0.5, ask: 0.6 }),
+    candidate({ optionContractId: 'higher', bid: 1, ask: 1.1 }),
+  ], inertWeights);
+  const best = bestCoveredCallCandidate(assessments);
+  assert.equal(best?.candidate.optionContractId, 'higher');
+});
+
+test('bestCoveredCallCandidate returns null when every candidate is unselectable', () => {
+  const assessments = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase,
+    [candidate({ bid: null, ask: null })], inertWeights);
+  assert.equal(bestCoveredCallCandidate(assessments), null);
 });

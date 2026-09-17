@@ -23,6 +23,50 @@ test('computeEffectiveStockBasis lowers the strike by net retained premium per s
   assert.ok(result.effectiveStockBasisPerShare !== null && Math.abs(result.effectiveStockBasisPerShare - expected) < 1e-9);
 });
 
+test('computeEffectiveStockBasis with no rolls at all reduces to strike minus initial premium retained per share', () => {
+  const result = computeEffectiveStockBasis(components({ rollCredits: 0, rollCloseCosts: 0 }));
+  const expected = 195 - (200 - 2 - 1) / 100;
+  assert.ok(result.effectiveStockBasisPerShare !== null && Math.abs(result.effectiveStockBasisPerShare - expected) < 1e-9);
+});
+
+test('computeEffectiveStockBasis with one credit roll (rollCredits > rollCloseCosts) lowers the basis further than no roll at all', () => {
+  const noRoll = computeEffectiveStockBasis(components({ rollCredits: 0, rollCloseCosts: 0 }));
+  const creditRoll = computeEffectiveStockBasis(components({ rollCredits: 80, rollCloseCosts: 20 }));
+  assert.ok(noRoll.effectiveStockBasisPerShare !== null && creditRoll.effectiveStockBasisPerShare !== null);
+  assert.ok(creditRoll.effectiveStockBasisPerShare < noRoll.effectiveStockBasisPerShare);
+});
+
+test('computeEffectiveStockBasis with one losing (net-debit) roll raises the basis above the no-roll case', () => {
+  const noRoll = computeEffectiveStockBasis(components({ rollCredits: 0, rollCloseCosts: 0 }));
+  const losingRoll = computeEffectiveStockBasis(components({ rollCredits: 10, rollCloseCosts: 60 }));
+  assert.ok(noRoll.effectiveStockBasisPerShare !== null && losingRoll.effectiveStockBasisPerShare !== null);
+  assert.ok(losingRoll.effectiveStockBasisPerShare > noRoll.effectiveStockBasisPerShare);
+});
+
+test('computeEffectiveStockBasis with multiple rolls uses the ALREADY-SUMMED aggregate credits/costs across every roll in the chain', () => {
+  // rollCredits/rollCloseCosts represent the SUM across every roll this
+  // chain has undergone -- three rolls each netting +40 credit sum to the
+  // same aggregate as one roll netting +120, proving no roll is silently
+  // dropped when multiple have occurred.
+  const threeRolls = computeEffectiveStockBasis(components({ rollCredits: 3 * 60, rollCloseCosts: 3 * 20 }));
+  const oneEquivalentRoll = computeEffectiveStockBasis(components({ rollCredits: 180, rollCloseCosts: 60 }));
+  assert.equal(threeRolls.effectiveStockBasisPerShare, oneEquivalentRoll.effectiveStockBasisPerShare);
+});
+
+test('computeEffectiveStockBasis never double-counts fees -- doubling fees alone moves the basis by exactly the fee delta per share', () => {
+  const base = computeEffectiveStockBasis(components({ fees: 2 }));
+  const doubledFees = computeEffectiveStockBasis(components({ fees: 4 }));
+  assert.ok(base.effectiveStockBasisPerShare !== null && doubledFees.effectiveStockBasisPerShare !== null);
+  const delta = doubledFees.effectiveStockBasisPerShare - base.effectiveStockBasisPerShare;
+  assert.ok(Math.abs(delta - 2 / 100) < 1e-9);
+});
+
+test('computeEffectiveStockBasis handles a non-100 multiplier/share count correctly (e.g. a partial or mini-contract position)', () => {
+  const result = computeEffectiveStockBasis(components({ stockSharesAssigned: 50 }));
+  const expected = 195 - (220 - 2 - 1) / 50;
+  assert.ok(result.effectiveStockBasisPerShare !== null && Math.abs(result.effectiveStockBasisPerShare - expected) < 1e-9);
+});
+
 test('computeEffectiveStockBasis names every missing component rather than guessing', () => {
   const result = computeEffectiveStockBasis(components({ rollCredits: null, slippage: null }));
   assert.equal(result.complete, false);
