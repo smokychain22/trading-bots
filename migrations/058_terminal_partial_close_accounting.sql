@@ -31,6 +31,14 @@ CREATE TABLE IF NOT EXISTS trade.option_partial_close_realization (
 CREATE INDEX IF NOT EXISTS ix_option_partial_close_leg
   ON trade.option_partial_close_realization(option_leg_id, occurred_at);
 
+ALTER TABLE trade.lifecycle_application
+  DROP CONSTRAINT IF EXISTS lifecycle_application_event_kind_check;
+ALTER TABLE trade.lifecycle_application
+  ADD CONSTRAINT lifecycle_application_event_kind_check CHECK (event_kind IN (
+    'SHORT_PUT_ASSIGNMENT','COVERED_CALL_ASSIGNMENT','OPTION_EXPIRATION',
+    'OPTION_CLOSE','OPTION_PARTIAL_CLOSE','OPTION_ROLL','COVERED_CALL_OPEN','STOCK_DISPOSAL'
+  ));
+
 DROP TRIGGER IF EXISTS reject_immutable_mutation ON trade.option_partial_close_realization;
 CREATE TRIGGER reject_immutable_mutation BEFORE UPDATE OR DELETE ON trade.option_partial_close_realization
   FOR EACH ROW EXECUTE FUNCTION core.reject_immutable_mutation();

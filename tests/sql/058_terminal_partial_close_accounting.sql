@@ -17,6 +17,14 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'terminal partial-close replay guard missing';
   END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid='trade.lifecycle_application'::regclass
+      AND conname='lifecycle_application_event_kind_check'
+      AND pg_get_constraintdef(oid) LIKE '%OPTION_PARTIAL_CLOSE%'
+  ) THEN
+    RAISE EXCEPTION 'partial-close lifecycle application kind missing';
+  END IF;
 END $$;
 
 SELECT 'terminal partial-close accounting invariants passed' AS result;
