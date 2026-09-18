@@ -13,7 +13,7 @@ import { ensureMasterShadowContext } from './master-shadow-context.js';
 import { PostgresShadowVirtualTrader, type ShadowIntentCreationReport } from './postgres-shadow-virtual-trader.js';
 import { assembleMasterPaperEvidencePlan } from '../execution/master-paper-plan-assembly.js';
 import { PostgresMasterPaperActionPlanStore } from '../execution/postgres-master-paper-action-plan-store.js';
-import { PostgresRuntimeBehaviorDiagnosticStore, type RuntimeBehaviorDiagnostic } from '../theta/runtime-behavior-diagnostic.js';
+import { deriveAntiParalysisFindings, PostgresRuntimeBehaviorDiagnosticStore, type RuntimeBehaviorDiagnostic } from '../theta/runtime-behavior-diagnostic.js';
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
@@ -31,6 +31,12 @@ export function classifyObservationFailure(error:unknown):ObservationMissReason 
   if(error instanceof AlpacaProviderError)return 'PROVIDER_UNAVAILABLE';
   return 'PROVIDER_UNAVAILABLE';
 }
+
+const blockerCount=(values:readonly string[]):Readonly<Record<string,number>>=>values.reduce<Record<string,number>>((counts,value)=>{
+  counts[value]=(counts[value]??0)+1;return counts;
+},{});
+const isQuoteEvidence=(value:string):boolean=>/QUOTE|BBO|EXECUTABLE|PRICE/.test(value);
+const isLiquidityEvidence=(value:string):boolean=>/LIQUID|SPREAD|OPEN_INTEREST|VOLUME/.test(value);
 export function missingObservationReason(contractFound:boolean,enumerationComplete=true,sessionConfirmedEnded=false):ObservationMissReason {
   if(contractFound)return 'INVALID_QUOTE';
   if(!enumerationComplete)return 'PROVIDER_UNAVAILABLE';
@@ -135,7 +141,9 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       }});
     },input.now);
   const runtimeContext=await loadPersistenceContext(input.pool,input.alpaca,scan.startedAt);
-  const cycleStore=new PostgresThetaCycleStore(input.pool),persisted=new Map<string,{fusionSnapshotId:string|null;candidateSetId:string|null}>();
+  const cycleStore=new PostgresThetaCycleStore(input.pool),persisted=new Map<string,{
+    fusionSnapshotId:string|null;candidateSetId:string|null;decisionId:string|null;
+  }>();
   let observationsScheduled=0;
   let actionPlansReady=0;
   const actionPlansBlocked:string[]=[];
@@ -143,7 +151,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   for(const member of scan.results){
     if(member.cycle?.fusionSnapshot===null||member.cycle===null) continue;
     const saved=await cycleStore.persist(runtimeContext,member.cycle);
-    persisted.set(member.symbol,{fusionSnapshotId:saved.fusionSnapshotId,candidateSetId:saved.candidateSetId});
+    persisted.set(member.symbol,{fusionSnapshotId:saved.fusionSnapshotId,candidateSetId:saved.candidateSetId,decisionId:saved.decisionId});
     if(input.environment.MASTER_PAPER_EXECUTION_ENABLED&&!input.environment.PAPER_PAUSE_NEW_ORDERS
       &&member.cycle.strategyFrontier!==null&&saved.decisionId!==null){
       const selected=await input.pool.query(`SELECT d.selected_candidate_id::text AS candidate_id,
@@ -207,8 +215,51 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const strategyFrontiers=scan.results.flatMap((member)=>member.cycle?.strategyFrontier?[member.cycle.strategyFrontier]:[]);
   const branchFrontiers=strategyFrontiers.flatMap((frontier)=>frontier.branches);
   const allCandidates=branchFrontiers.flatMap((branch)=>branch.candidates);
+  const selectedCandidateIds=new Set(strategyFrontiers.flatMap((frontier)=>frontier.selectedCandidateId?[frontier.selectedCandidateId]:[]));
+  const rejectedCandidates=allCandidates.filter((candidate)=>!selectedCandidateIds.has(candidate.candidateId));
+  const hardGateCounts=blockerCount(allCandidates.flatMap((candidate)=>[...new Set(candidate.hardBlockers)]));
+  const strategyDiagnostics=[...new Set(branchFrontiers.map((branch)=>branch.branch))].toSorted().map((branchName)=>{
+    const rows=branchFrontiers.filter((branch)=>branch.branch===branchName);
+    const candidates=rows.flatMap((branch)=>branch.candidates);
+    return {branch:branchName,status:rows[0]?.status??'RESEARCH_ONLY' as const,consideredCount:rows.length,
+      applicableCount:rows.filter((branch)=>branch.applicable).length,
+      evaluatedCount:rows.filter((branch)=>branch.applicable&&branch.evaluated&&branch.evaluationState!=='BLOCKED_MISSING_INPUT').length,
+      rejectedCount:candidates.filter((candidate)=>!selectedCandidateIds.has(candidate.candidateId)).length,
+      candidateCount:candidates.length,hardGateRejectionCount:candidates.filter((candidate)=>candidate.hardBlockers.length>0).length,
+      dataUnknownCount:candidates.filter((candidate)=>candidate.unknownEvidence.length>0).length,
+      routeReasons:[...new Set(rows.flatMap((branch)=>branch.routeReasons))].toSorted(),
+      hardGates:blockerCount(candidates.flatMap((candidate)=>[...new Set(candidate.hardBlockers)])),
+      missingDataReasons:blockerCount(candidates.flatMap((candidate)=>[...new Set(candidate.unknownEvidence)])),
+      reachabilityState:rows.every((branch)=>!branch.applicable)?'NOT_APPLICABLE_CURRENT_SCAN' as const
+        :rows.some((branch)=>branch.applicable&&branch.evaluated&&branch.evaluationState!=='BLOCKED_MISSING_INPUT')?'REACHED' as const
+          :'BLOCKED_WHEN_APPLICABLE' as const,
+    };
+  });
+  const sessionStates=scan.results.flatMap((member)=>{
+    const session=member.cycle?.fusionSnapshot?.snapshot.marketSession;
+    if(session===null||typeof session!=='object'||Array.isArray(session))return ['UNKNOWN' as const];
+    return [(session as Record<string,unknown>).isOpen===true?'OPEN' as const
+      :(session as Record<string,unknown>).isOpen===false?'CLOSED' as const:'UNCONFIRMED' as const];
+  });
+  const distinctSessions=[...new Set(sessionStates)];
+  const session=distinctSessions.length===1?distinctSessions[0]??'UNKNOWN':distinctSessions.length>1?'MIXED' as const:'UNKNOWN' as const;
+  const antiParalysisFindings=deriveAntiParalysisFindings({
+    candidateHardBlockers:allCandidates.map((candidate)=>candidate.hardBlockers),strategyReachability:strategyDiagnostics,
+  });
+  const bestRejectedCandidates=scan.results.flatMap((member)=>{
+    const frontier=member.cycle?.strategyFrontier;
+    if(frontier===null||frontier===undefined||frontier.bestRejectedCandidateId===null)return [];
+    const candidate=frontier.branches.flatMap((branch)=>branch.candidates)
+      .find((item)=>item.candidateId===frontier.bestRejectedCandidateId);
+    return candidate===undefined?[]:[{symbol:member.symbol,branch:candidate.branch,candidateId:candidate.candidateId,
+      hardBlockers:candidate.hardBlockers,unknownEvidence:candidate.unknownEvidence}];
+  });
   const behaviorDiagnostic=await new PostgresRuntimeBehaviorDiagnosticStore(input.pool).persist({
-    scanId:scan.scanId,observedAt:scan.finishedAt,completeness:scan.completeness,
+    scanId:scan.scanId,decisionIds:[...persisted.values()].flatMap((value)=>value.decisionId?[value.decisionId]:[]).toSorted(),
+    observedAt:scan.finishedAt,session,universeSize:scan.boundary.eligibleSymbols.length,
+    strategiesConsidered:branchFrontiers.length,strategiesApplicable:branchFrontiers.filter((branch)=>branch.applicable).length,
+    strategiesRejected:branchFrontiers.filter((branch)=>!branch.applicable||branch.evaluationState==='BLOCKED_MISSING_INPUT').length,
+    strategyDiagnostics,completeness:scan.completeness,
     globalWaitEarned:scan.globalWaitEarned,globalWaitReasons:scan.globalWaitReasons,
     // All diagnostic cohort counts must share the canonical strategy-frontier
     // population. The legacy scan count comes from thetaQ and can be zero while
@@ -223,6 +274,16 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     quantityZeroCount:allCandidates.filter((candidate)=>candidate.sizing.quantity===0).length,
     aegisVetoCount:scan.results.filter((member)=>member.cycle?.orchestration?.aegis?.newRiskState==='HARD_VETO').length,
     nearMissCount:strategyFrontiers.filter((frontier)=>frontier.nearMissCandidateId!==null).length,
+    softEconomicRejectionCount:rejectedCandidates.filter((candidate)=>candidate.riskFeasible
+      &&candidate.hardBlockers.length===0&&candidate.sizing.quantity>0).length,
+    dataUnknownRejectionCount:rejectedCandidates.filter((candidate)=>candidate.unknownEvidence.length>0).length,
+    quoteRejectionCount:rejectedCandidates.filter((candidate)=>[...candidate.hardBlockers,...candidate.unknownEvidence]
+      .some(isQuoteEvidence)).length,
+    liquidityRejectionCount:rejectedCandidates.filter((candidate)=>[...candidate.hardBlockers,...candidate.unknownEvidence]
+      .some(isLiquidityEvidence)).length,
+    hardGateCounts,finalAction:actionPlansReady>0?'ACTION_READY':scan.globalWaitEarned?'WAIT':'SYSTEM_HOLD',
+    waitReasons:actionPlansReady>0?[]:[...new Set([...scan.globalWaitReasons,...actionPlansBlocked])].toSorted(),
+    bestRejectedCandidates,antiParalysisFindings,
     providerBlockers:[...new Set([...scan.missingScope,...scan.results.flatMap((member)=>member.errorCode?[member.errorCode]:[])])].toSorted(),
     actionPlansReady,actionPlanBlockers:[...new Set(actionPlansBlocked)].toSorted(),
   });

@@ -3,7 +3,31 @@ import type { Pool } from 'pg';
 import { canonicalJson } from '../research/point-in-time-evidence.js';
 import type { ScanCompleteness } from '../research/shadow-evidence-runtime.js';
 
-export const runtimeBehaviorDiagnosticVersion = 'theta-runtime-behavior-diagnostic-v1' as const;
+export const runtimeBehaviorDiagnosticVersion = 'theta-runtime-behavior-diagnostic-v2' as const;
+
+export interface RuntimeStrategyDiagnostic {
+  readonly branch: string;
+  readonly status: 'RESEARCH_ONLY' | 'SHADOW';
+  readonly consideredCount: number;
+  readonly applicableCount: number;
+  readonly evaluatedCount: number;
+  readonly rejectedCount: number;
+  readonly candidateCount: number;
+  readonly hardGateRejectionCount: number;
+  readonly dataUnknownCount: number;
+  readonly routeReasons: readonly string[];
+  readonly hardGates: Readonly<Record<string, number>>;
+  readonly missingDataReasons: Readonly<Record<string, number>>;
+  readonly reachabilityState: 'REACHED' | 'NOT_APPLICABLE_CURRENT_SCAN' | 'BLOCKED_WHEN_APPLICABLE';
+}
+
+export interface BestRejectedCandidateDiagnostic {
+  readonly symbol: string;
+  readonly branch: string;
+  readonly candidateId: string;
+  readonly hardBlockers: readonly string[];
+  readonly unknownEvidence: readonly string[];
+}
 
 export type WaitClassification =
   | 'ACTION_READY'
@@ -22,7 +46,14 @@ export type OvertradingState =
 
 export interface RuntimeBehaviorDiagnosticInput {
   readonly scanId: string;
+  readonly decisionIds: readonly string[];
   readonly observedAt: string;
+  readonly session: 'OPEN' | 'CLOSED' | 'UNCONFIRMED' | 'MIXED' | 'UNKNOWN';
+  readonly universeSize: number;
+  readonly strategiesConsidered: number;
+  readonly strategiesApplicable: number;
+  readonly strategiesRejected: number;
+  readonly strategyDiagnostics: readonly RuntimeStrategyDiagnostic[];
   readonly completeness: ScanCompleteness;
   readonly globalWaitEarned: boolean;
   readonly globalWaitReasons: readonly string[];
@@ -35,6 +66,15 @@ export interface RuntimeBehaviorDiagnosticInput {
   readonly quantityZeroCount: number;
   readonly aegisVetoCount: number;
   readonly nearMissCount: number;
+  readonly softEconomicRejectionCount: number;
+  readonly dataUnknownRejectionCount: number;
+  readonly quoteRejectionCount: number;
+  readonly liquidityRejectionCount: number;
+  readonly hardGateCounts: Readonly<Record<string, number>>;
+  readonly finalAction: 'ACTION_READY' | 'WAIT' | 'SYSTEM_HOLD';
+  readonly waitReasons: readonly string[];
+  readonly bestRejectedCandidates: readonly BestRejectedCandidateDiagnostic[];
+  readonly antiParalysisFindings: readonly string[];
   readonly providerBlockers: readonly string[];
   readonly actionPlansReady: number;
   readonly actionPlanBlockers: readonly string[];
@@ -55,6 +95,25 @@ export interface RuntimeBehaviorDiagnostic extends RuntimeBehaviorDiagnosticInpu
 const quoteBlocker = (value: string): boolean => /QUOTE|BBO|OPRA|ORDER_PRICING|ENTITLEMENT/.test(value);
 const riskBlocker = (value: string): boolean => /AEGIS|QUANTITY|ACCOUNT|ASSIGNMENT|COLLATERAL|CONCENTRATION|CONFLICT|BUYING_POWER/.test(value);
 
+export function deriveAntiParalysisFindings(input: {
+  readonly candidateHardBlockers: readonly (readonly string[])[];
+  readonly strategyReachability: readonly {
+    branch: string; status: 'RESEARCH_ONLY' | 'SHADOW'; consideredCount: number;
+    applicableCount: number; reachabilityState: RuntimeStrategyDiagnostic['reachabilityState'];
+  }[];
+}): readonly string[] {
+  const otherwiseValid=input.candidateHardBlockers.filter((blockers)=>blockers.length<=1);
+  const gates=[...new Set(otherwiseValid.flatMap((blockers)=>blockers))];
+  return [
+    ...gates.filter((gate)=>otherwiseValid.length>0
+      &&otherwiseValid.filter((blockers)=>blockers.length===1&&blockers[0]===gate).length/otherwiseValid.length>0.9)
+      .map((gate)=>`DOMINANT_HARD_GATE_OBSERVED:${gate}`),
+    ...input.strategyReachability.filter((strategy)=>strategy.status==='SHADOW'&&strategy.consideredCount>0
+      &&strategy.applicableCount>0&&strategy.reachabilityState==='BLOCKED_WHEN_APPLICABLE')
+      .map((strategy)=>`SHADOW_STRATEGY_UNREACHABLE:${strategy.branch}`),
+  ].toSorted();
+}
+
 export function classifyRuntimeBehavior(input: RuntimeBehaviorDiagnosticInput): {
   readonly waitClassification: WaitClassification;
   readonly overtradingState: OvertradingState;
@@ -72,6 +131,7 @@ export function classifyRuntimeBehavior(input: RuntimeBehaviorDiagnosticInput): 
   else if (input.completeness !== 'COMPLETE' || input.providerBlockers.length > 0) waitClassification = 'DATA_WAIT';
   else if (blockers.some(quoteBlocker)) waitClassification = 'QUOTE_WAIT';
   else if (input.aegisVetoCount > 0 || input.quantityZeroCount > 0 || blockers.some(riskBlocker)) waitClassification = 'RISK_WAIT';
+  else if (input.antiParalysisFindings.length > 0) waitClassification = 'POSSIBLE_LOGIC_PARALYSIS';
   else if (input.globalWaitEarned) waitClassification = 'HEALTHY_WAIT';
   else if (input.feasibleCandidateCount > 0 && input.selectedCandidateCount === 0) waitClassification = 'OVERSTRICT_POLICY_WAIT';
   else waitClassification = 'POSSIBLE_LOGIC_PARALYSIS';
@@ -83,6 +143,7 @@ export function classifyRuntimeBehavior(input: RuntimeBehaviorDiagnosticInput): 
     ...blockers,
     ...(input.feasibleCandidateCount > 0 ? ['FEASIBLE_CANDIDATE_OBSERVED'] : []),
     ...(input.nearMissCount > 0 ? ['NEAR_MISS_OBSERVED'] : []),
+    ...input.antiParalysisFindings,
     'NO_EMPIRICAL_FREQUENCY_THRESHOLD',
   ];
   return { waitClassification, overtradingState, reasonCodes: [...new Set(reasonCodes)].toSorted() };

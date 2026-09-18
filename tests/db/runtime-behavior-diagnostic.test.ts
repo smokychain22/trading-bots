@@ -24,9 +24,14 @@ test('PostgreSQL behavior diagnostics are immutable, replay-safe, and count cons
       1,1,2,'COMPLETE','[]',$3,true,'{"earned":true}')`,[scanId,at,hash(scanId)]);
   };
   const diagnosticInput = (scanId:string,observedAt:string):RuntimeBehaviorDiagnosticInput => ({
-    scanId,observedAt,completeness:'COMPLETE',globalWaitEarned:true,globalWaitReasons:['ALL_APPLICABLE_BRANCHES_EXHAUSTED'],
+    scanId,decisionIds:[],observedAt,session:'OPEN',universeSize:1,strategiesConsidered:5,strategiesApplicable:1,
+    strategiesRejected:4,strategyDiagnostics:[],completeness:'COMPLETE',globalWaitEarned:true,
+    globalWaitReasons:['ALL_APPLICABLE_BRANCHES_EXHAUSTED'],
     candidateCount:2,feasibleCandidateCount:0,selectedCandidateCount:0,hardRejectedCount:1,softRankedCount:1,
     dataInsufficientCount:0,quantityZeroCount:0,aegisVetoCount:0,nearMissCount:1,providerBlockers:[],
+    softEconomicRejectionCount:1,dataUnknownRejectionCount:0,quoteRejectionCount:0,liquidityRejectionCount:0,
+    hardGateCounts:{},finalAction:'WAIT',waitReasons:['ALL_APPLICABLE_BRANCHES_EXHAUSTED'],bestRejectedCandidates:[],
+    antiParalysisFindings:[],
     actionPlansReady:0,actionPlanBlockers:[],
   });
   try {

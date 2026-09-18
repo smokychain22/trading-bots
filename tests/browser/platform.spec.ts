@@ -293,6 +293,12 @@ test("ops requires a server session and shows partial runtime honestly", async (
     body.data.systems.theta_runtime = "MASTER_PAPER_MARKET_CLOSED";
     body.data.systems.scheduler = "RUNNING";
     body.data.runtime_detail.stage = "MASTER_PAPER_MARKET_CLOSED";
+    body.data.runtime_detail.behavior_diagnostic = {
+      wait_classification:"HEALTHY_WAIT",final_action:"WAIT",session:"CLOSED",universe_size:52,
+      strategies_applicable:1,candidate_count:18,hard_rejected_count:3,soft_economic_rejection_count:12,
+      data_unknown_rejection_count:2,quote_rejection_count:1,liquidity_rejection_count:1,aegis_veto_count:0,
+      near_miss_count:1,anti_paralysis_findings:[],
+    };
     body.data.trading = "EXTERNAL_QUOTE_BLOCKER";
     body.data.execution_control.master_paper_execution = "EXTERNAL_QUOTE_BLOCKER";
     await route.fulfill({ response, json: body });
@@ -308,6 +314,11 @@ test("ops requires a server session and shows partial runtime honestly", async (
   for (const route of ["/ops/theta", "/ops/trading", "/ops/copy", "/ops/system"]) {
     await page.goto(route);
     await expect(page.locator("main h1:visible")).toBeVisible();
+    if(route==="/ops/theta"){
+      await expect(page.getByRole("heading",{name:"Decision funnel"})).toBeVisible();
+      await expect(page.locator("main")).toContainText("HEALTHY WAIT");
+      await expect(page.locator("main")).toContainText("Soft economic rejections");
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1280);
     const overflowCount = await page.locator(".ops-health article, .ops-control-card").evaluateAll((elements) =>
       elements.filter((element) => element.scrollWidth > element.clientWidth).length,
