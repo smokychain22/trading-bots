@@ -9,6 +9,8 @@ export interface ConfirmedFillFact {
 }
 export interface FillLifecycleContext {
   readonly action:FillLifecycleAction; readonly orderStatus:string; readonly orderQuantity:number;
+  readonly orderIntentId?:string|null; readonly originalLegQuantity?:number|null;
+  readonly priorPartialClosedQuantity?:number; readonly priorPartialRealizedOptionPnl?:number;
   readonly chainId:string; readonly decisionId:string|null; readonly optionLegId:string|null;
   readonly optionContractId:string|null; readonly stockLotId:string|null;
   readonly multiplier:number|null; readonly entryCreditDebit:number|null; readonly economicBasisPerShare:number|null;
@@ -36,6 +38,10 @@ const weightedPrice=(fills:readonly ConfirmedFillFact[]):number|null=>{
 const evidence=(fills:readonly ConfirmedFillFact[])=>createHash('sha256').update(
   fills.map((fill)=>fill.providerActivityRefHash).sort().join(':'),
 ).digest('hex');
+const fees=(fills:readonly ConfirmedFillFact[]):number|null=>fills.every((fill)=>fill.fees!==null)
+  ? fills.reduce((sum,fill)=>sum+(fill.fees as number),0):null;
+const terminalCloseStatus=(status:string):status is 'CANCELED'|'REJECTED'|'EXPIRED'=>
+  ['CANCELED','REJECTED','EXPIRED'].includes(status);
 
 /** Builds an atomic lifecycle application only from fully confirmed fills. */
 export function routeConfirmedFillLifecycle(input:FillLifecycleContext):RoutedFillLifecycle{
@@ -44,7 +50,28 @@ export function routeConfirmedFillLifecycle(input:FillLifecycleContext):RoutedFi
     return {state:'UNKNOWN',reasonCode:'BROKER_FILL_EVIDENCE_INVALID',application:null};
   }
   const filled=total(input.fills);
-  if(filled<input.orderQuantity || input.orderStatus!=='FILLED') return {state:'PARTIAL',reasonCode:'ORDER_NOT_FULLY_FILLED',application:null};
+  const closeAction=['CLOSE_CSP','CLOSE_CC','ROLL_CSP_CLOSE','ROLL_CC_CLOSE'].includes(input.action);
+  if(filled<input.orderQuantity || input.orderStatus!=='FILLED') {
+    if(closeAction&&filled>0&&terminalCloseStatus(input.orderStatus)&&input.orderIntentId
+      &&input.optionLegId!==null&&input.entryCreditDebit!==null&&input.multiplier!==null){
+      const original=input.originalLegQuantity??input.orderQuantity;
+      const priorClosed=input.priorPartialClosedQuantity??0;
+      const price=weightedPrice(input.fills);
+      if(price===null||original<=0||priorClosed<0||filled+priorClosed>=original)return missing();
+      const occurredAt=[...input.fills].sort((a,b)=>a.occurredAt.localeCompare(b.occurredAt)).at(-1)?.occurredAt;
+      if(occurredAt===undefined)return missing();
+      const allocated=input.entryCreditDebit*(filled/original),closingDebit=price*input.multiplier*filled;
+      const explicitFees=fees(input.fills),realizedPnlBeforeFees=allocated-closingDebit;
+      return {state:'PARTIAL',reasonCode:'TERMINAL_PARTIAL_CLOSE_RECORDED',application:{
+        eventKind:'OPTION_PARTIAL_CLOSE',evidenceKey:evidence(input.fills),providerActivityRefHash:evidence(input.fills),
+        chainId:input.chainId,decisionId:input.decisionId,occurredAt,optionLegId:input.optionLegId,
+        orderIntentId:input.orderIntentId,terminalOrderStatus:input.orderStatus,closedQuantity:filled,
+        remainingQuantityAfter:original-priorClosed-filled,weightedClosePricePerShare:price,
+        allocatedOpeningCredit:allocated,closingDebit,explicitFees,realizedPnlBeforeFees,
+        realizedPnlAfterFees:explicitFees===null?null:realizedPnlBeforeFees-explicitFees}};
+    }
+    return {state:'PARTIAL',reasonCode:'ORDER_NOT_FULLY_FILLED',application:null};
+  }
   if(filled!==input.orderQuantity) return {state:'UNKNOWN',reasonCode:'BROKER_FILL_QUANTITY_MISMATCH',application:null};
   const price=weightedPrice(input.fills);
   if(price===null) return {state:'UNKNOWN',reasonCode:'BROKER_FILL_PRICE_UNKNOWN',application:null};
@@ -64,8 +91,12 @@ export function routeConfirmedFillLifecycle(input:FillLifecycleContext):RoutedFi
   }
   if(input.action==='CLOSE_CSP'||input.action==='CLOSE_CC'||input.action==='ROLL_CSP_CLOSE'||input.action==='ROLL_CC_CLOSE'){
     if(input.optionLegId===null||input.entryCreditDebit===null||input.multiplier===null||input.nextState===null) return missing();
+    const original=input.originalLegQuantity??input.orderQuantity;
+    const priorRealized=input.priorPartialRealizedOptionPnl??0;
+    if(original<=0)return missing();
     return confirmed({...common,eventKind:'OPTION_CLOSE',optionLegId:input.optionLegId,closePricePerShare:price,
-      realizedOptionPnl:input.entryCreditDebit-price*input.multiplier*filled,nextState:input.nextState});
+      closedQuantity:filled,realizedOptionPnl:priorRealized+input.entryCreditDebit*(filled/original)-price*input.multiplier*filled,
+      nextState:input.nextState});
   }
   if(input.action==='SELL_STOCK'){
     if(input.stockLotId===null||input.economicBasisPerShare===null) return missing();

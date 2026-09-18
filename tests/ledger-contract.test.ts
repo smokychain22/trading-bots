@@ -136,6 +136,28 @@ test('known gains cannot mask an unknown open inventory valuation', () => {
   assert.deepEqual(result.valuationIssues, ['OPEN_OPTION_MARK_UNAVAILABLE', 'STOCK_MARK_UNAVAILABLE']);
 });
 
+test('terminal partial close exposes realized cash P&L while the remaining option valuation stays unknown',()=>{
+  const leg=openLeg({optionLegId:'partial-leg',quantity:2,entryCreditDebit:400,rolledFromOptionLegId:null});
+  const result=computeWholeChainPnl([leg],[],[],[],[{
+    optionLegId:'partial-leg',closedQuantity:1,remainingQuantityAfter:1,
+    realizedPnlBeforeFees:50,occurredAt:NOW,
+  }]);
+  assert.equal(result.realizedOptionPnl,50);
+  assert.equal(result.unrealizedOptionPnl,null);
+  assert.equal(result.wholeChainPnl,null);
+  assert.equal(result.hasUnresolvedOpenPositions,true);
+});
+
+test('a final leg realization already includes earlier partials and never counts them twice',()=>{
+  const leg=closedLeg({optionLegId:'partial-leg',quantity:2,entryCreditDebit:400,realizedPnl:125});
+  const result=computeWholeChainPnl([leg],[],[],[],[{
+    optionLegId:'partial-leg',closedQuantity:1,remainingQuantityAfter:1,
+    realizedPnlBeforeFees:50,occurredAt:NOW,
+  }]);
+  assert.equal(result.realizedOptionPnl,125);
+  assert.equal(result.wholeChainPnl,125);
+});
+
 test('zero inventory and an empty ledger have known zero MTM', () => {
   const result = computeWholeChainPnl([openLeg({ quantity: 0 })],
     [openLot({ shares: 0, currentPricePerShare: null })], [], []);

@@ -22,6 +22,8 @@ export interface FillLifecycleOrchestrationReport{readonly inspected:number;read
 export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,observedAt:string):Promise<FillLifecycleOrchestrationReport>{
   const rows=await pool.query(`SELECT oi.order_intent_id,oi.chain_id,ec.bot_instance_id,oi.decision_id,oi.theta_action,oi.status,oi.quantity AS order_quantity,
     oi.option_contract_id,oi.underlying_id,oc.contract_symbol,u.symbol AS underlying_symbol,oc.multiplier,ol.option_leg_id,ol.entry_credit_debit,
+    ol.original_leg_quantity,COALESCE(pc.partial_closed_quantity,0) AS partial_closed_quantity,
+    COALESCE(pc.partial_realized_pnl,0) AS partial_realized_pnl,
     sl.stock_lot_id,sl.economic_basis_per_share,
     COALESCE(jsonb_agg(jsonb_build_object('provider_fill_id',f.provider_fill_id,'quantity',f.quantity,
       'price_per_share',f.price_per_share,'filled_at',f.filled_at,'fees',f.fees) ORDER BY f.filled_at,f.provider_fill_id)
@@ -36,12 +38,17 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
     LEFT JOIN market.option_contract oc ON oc.option_contract_id=oi.option_contract_id
     LEFT JOIN trade.broker_order bo ON bo.order_intent_id=oi.order_intent_id
     LEFT JOIN trade.fill f ON f.broker_order_id=bo.broker_order_id
-    LEFT JOIN LATERAL(SELECT l.option_leg_id,l.entry_credit_debit FROM trade.option_leg l WHERE l.chain_id=oi.chain_id
+    LEFT JOIN LATERAL(SELECT l.option_leg_id,l.entry_credit_debit,l.quantity AS original_leg_quantity FROM trade.option_leg l WHERE l.chain_id=oi.chain_id
       AND l.option_contract_id=oi.option_contract_id AND l.opened_at<=oi.created_at ORDER BY l.opened_at DESC,l.option_leg_id LIMIT 1) ol ON true
+    LEFT JOIN LATERAL(SELECT sum(p.closed_quantity) AS partial_closed_quantity,
+      sum(p.realized_pnl_before_fees) AS partial_realized_pnl
+      FROM trade.option_partial_close_realization p WHERE p.option_leg_id=ol.option_leg_id) pc ON true
     LEFT JOIN LATERAL(SELECT x.stock_lot_id,x.economic_basis_per_share FROM trade.stock_lot x WHERE x.chain_id=oi.chain_id AND x.disposed_at IS NULL ORDER BY x.acquired_at LIMIT 1) sl ON true
     WHERE oi.chain_id IS NOT NULL AND (f.filled_at IS NULL OR f.filled_at <= $2)
       AND oi.theta_action IN ('OPEN_CSP','CLOSE_CSP','ROLL_CSP_CLOSE','ROLL_CSP_OPEN','OPEN_CC','CLOSE_CC','ROLL_CC_CLOSE','ROLL_CC_OPEN','SELL_STOCK')
-    GROUP BY oi.order_intent_id,ec.bot_instance_id,oc.contract_symbol,u.symbol,oc.multiplier,ol.option_leg_id,ol.entry_credit_debit,sl.stock_lot_id,sl.economic_basis_per_share
+    GROUP BY oi.order_intent_id,ec.bot_instance_id,oc.contract_symbol,u.symbol,oc.multiplier,ol.option_leg_id,
+      ol.entry_credit_debit,ol.original_leg_quantity,pc.partial_closed_quantity,pc.partial_realized_pnl,
+      sl.stock_lot_id,sl.economic_basis_per_share
     ORDER BY oi.created_at,oi.order_intent_id`,[connectionId,observedAt]);
   const store=new PostgresLifecycleApplicationStore(pool),copyPlanner=new PostgresDisabledCopyPlanner(pool),results:LifecycleApplicationResult[]=[];
   let partial=0,unresolved=0; const rollRows=new Map<string,Row[]>();
@@ -62,13 +69,20 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
   for(const row of rows.rows as Row[]){
     const action=String(row.theta_action) as FillLifecycleContext['action'];
     if(action.startsWith('ROLL_')){const key=`${row.chain_id}:${row.decision_id}`;const list=rollRows.get(key)??[];list.push(row);rollRows.set(key,list);continue;}
-    const context:FillLifecycleContext={action,orderStatus:String(row.status),orderQuantity:Number(row.order_quantity),chainId:String(row.chain_id),
+    const context:FillLifecycleContext={action,orderStatus:String(row.status),orderQuantity:Number(row.order_quantity),
+      orderIntentId:s(row.order_intent_id),originalLegQuantity:n(row.original_leg_quantity),
+      priorPartialClosedQuantity:n(row.partial_closed_quantity)??0,priorPartialRealizedOptionPnl:n(row.partial_realized_pnl)??0,
+      chainId:String(row.chain_id),
       decisionId:s(row.decision_id),optionLegId:action==='OPEN_CSP'||action==='OPEN_CC'?deterministicRuntimeUuid(`option-leg:${row.order_intent_id}`):s(row.option_leg_id),
       optionContractId:s(row.option_contract_id),stockLotId:s(row.stock_lot_id),multiplier:n(row.multiplier),entryCreditDebit:n(row.entry_credit_debit),
       economicBasisPerShare:n(row.economic_basis_per_share),nextState:action==='CLOSE_CSP'?'REDEPLOY':action==='CLOSE_CC'?'RECOVERY_WAIT':action==='SELL_STOCK'?'CLOSED':null,
       fills:fills(row.fills)};
     const routed=routeConfirmedFillLifecycle(context);
-    if(routed.state==='PARTIAL'){partial++;continue;} if(routed.application===null){unresolved++;continue;}
+    if(routed.state==='PARTIAL'){
+      partial++;
+      if(routed.application!==null){results.push(await store.apply(routed.application));if(await persistMasterFillEvent(row)===null)unresolved++;}
+      continue;
+    } if(routed.application===null){unresolved++;continue;}
     results.push(await store.apply(routed.application));
     if(await persistMasterFillEvent(row)===null) unresolved++;
   }
@@ -76,11 +90,19 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
     const close=pair.find((row)=>String(row.theta_action).endsWith('_CLOSE'));
     const open=pair.find((row)=>String(row.theta_action).endsWith('_OPEN'));
     if(close===undefined){unresolved++;continue;}
+    if((n(close.partial_closed_quantity)??0)>0){partial++;unresolved++;continue;}
     const closed=routeConfirmedFillLifecycle({action:String(close.theta_action) as FillLifecycleContext['action'],
       orderStatus:String(close.status),orderQuantity:Number(close.order_quantity),chainId:String(close.chain_id),
+      orderIntentId:s(close.order_intent_id),originalLegQuantity:n(close.original_leg_quantity),
+      priorPartialClosedQuantity:n(close.partial_closed_quantity)??0,priorPartialRealizedOptionPnl:n(close.partial_realized_pnl)??0,
       decisionId:s(close.decision_id),optionLegId:s(close.option_leg_id),optionContractId:s(close.option_contract_id),
       stockLotId:null,multiplier:n(close.multiplier),entryCreditDebit:n(close.entry_credit_debit),economicBasisPerShare:null,
       nextState:'ROLL_DECISION',fills:fills(close.fills)});
+    if(closed.state==='PARTIAL'){
+      partial++;
+      if(closed.application!==null){results.push(await store.apply(closed.application));if(await persistMasterFillEvent(close)===null)unresolved++;}
+      continue;
+    }
     if(closed.application===null){partial++;continue;}
     results.push(await store.apply(closed.application));
     if(open===undefined){unresolved++;continue;}

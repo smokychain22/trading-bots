@@ -27,7 +27,9 @@ export async function applyConfirmedTerminalLifecycle(pool:Pool,connectionId:str
     ORDER BY observed_at DESC LIMIT 1`,[connectionId,currentSnapshotId]);
   if (previous.rowCount!==1) return {inspected:0,applied:0,duplicates:0,unresolved:0,results:[]};
   const rows=await pool.query(`SELECT ec.chain_id,ec.bot_instance_id,ec.lifecycle_state,ol.option_leg_id,ol.option_contract_id,
-      ol.quantity AS contracts,ol.entry_credit_debit,oc.contract_symbol,oc.option_type,oc.strike,oc.multiplier,u.symbol AS underlying,
+      ol.quantity AS original_contracts,(ol.quantity-COALESCE(pc.closed_quantity,0)) AS contracts,
+      ol.entry_credit_debit,COALESCE(pc.realized_pnl,0) AS partial_realized_pnl,
+      oc.contract_symbol,oc.option_type,oc.strike,oc.multiplier,u.symbol AS underlying,
       previous_option.quantity AS previous_option_qty,current_option.quantity AS current_option_qty,
       previous_stock.quantity AS previous_stock_qty,current_stock.quantity AS current_stock_qty,
       current_stock.average_entry_price AS broker_stock_basis,
@@ -38,6 +40,9 @@ export async function applyConfirmedTerminalLifecycle(pool:Pool,connectionId:str
     JOIN market.underlying u ON u.underlying_id=ec.underlying_id
     JOIN trade.option_leg ol ON ol.chain_id=ec.chain_id AND ol.closed_at IS NULL
     JOIN market.option_contract oc ON oc.option_contract_id=ol.option_contract_id
+    LEFT JOIN LATERAL(SELECT sum(closed_quantity) AS closed_quantity,
+      sum(realized_pnl_before_fees) AS realized_pnl
+      FROM trade.option_partial_close_realization p WHERE p.option_leg_id=ol.option_leg_id) pc ON true
     LEFT JOIN trade.broker_position_snapshot previous_option ON previous_option.reconciliation_snapshot_id=$2 AND previous_option.symbol=oc.contract_symbol
     LEFT JOIN trade.broker_position_snapshot current_option ON current_option.reconciliation_snapshot_id=$3 AND current_option.symbol=oc.contract_symbol
     LEFT JOIN trade.broker_position_snapshot previous_stock ON previous_stock.reconciliation_snapshot_id=$2 AND previous_stock.symbol=u.symbol
@@ -53,28 +58,30 @@ export async function applyConfirmedTerminalLifecycle(pool:Pool,connectionId:str
   const store=new PostgresLifecycleApplicationStore(pool),copyPlanner=new PostgresDisabledCopyPlanner(pool),results:LifecycleApplicationResult[]=[];
   let unresolved=0;
   for (const row of rows.rows as Row[]) {
-    const contracts=n(row.contracts),multiplier=n(row.multiplier),previousOption=n(row.previous_option_qty)??0,
+    const contracts=n(row.contracts),originalContracts=n(row.original_contracts),multiplier=n(row.multiplier),previousOption=n(row.previous_option_qty)??0,
       currentOption=n(row.current_option_qty)??0,activityType=s(row.activity_type),activityQty=n(row.activity_quantity),
       priorShares=n(row.previous_stock_qty)??0,currentShares=n(row.current_stock_qty)??0,strike=n(row.strike),
-      credit=n(row.entry_credit_debit),activityHash=s(row.provider_activity_ref_hash);
-    if (contracts===null||multiplier===null||strike===null||credit===null||activityHash===null||previousOption>=0||currentOption!==0) { unresolved++; continue; }
+      credit=n(row.entry_credit_debit),partialRealized=n(row.partial_realized_pnl),activityHash=s(row.provider_activity_ref_hash);
+    if (contracts===null||originalContracts===null||multiplier===null||strike===null||credit===null||partialRealized===null
+      ||activityHash===null||previousOption>=0||currentOption!==0) { unresolved++; continue; }
     const expectedShares=contracts*multiplier, occurredAt=s(row.activity_at)??observedAt;
+    const terminalOptionPnl=partialRealized+credit*(contracts/originalContracts);
     let application:LifecycleApplication|null=null;
     const common={chainId:String(row.chain_id),occurredAt,decisionId:null,providerActivityRefHash:activityHash};
     if (activityType==='OPEXP') {
       if (String(row.lifecycle_state)==='CC_OPEN'&&currentShares<expectedShares) { unresolved++; continue; }
-      application={...common,eventKind:'OPTION_EXPIRATION',optionLegId:String(row.option_leg_id),itm:false,realizedOptionPnl:credit,
+      application={...common,eventKind:'OPTION_EXPIRATION',optionLegId:String(row.option_leg_id),itm:false,realizedOptionPnl:terminalOptionPnl,
         evidenceKey:hash(`${activityHash}:${row.chain_id}:OPTION_EXPIRATION`)};
     } else if (activityType==='OPASN'&&activityQty!==null&&Math.abs(activityQty)===contracts&&String(row.lifecycle_state)==='CSP_OPEN'&&currentShares-priorShares>=expectedShares) {
       application={...common,eventKind:'SHORT_PUT_ASSIGNMENT',optionLegId:String(row.option_leg_id),
         stockLotId:deterministicRuntimeUuid(`stock-lot:${activityHash}:${row.chain_id}`),shares:expectedShares,strikePrice:strike,
-        brokerBasisPerShare:n(row.broker_stock_basis),economicBasisPerShare:strike,realizedOptionPnl:credit,
+        brokerBasisPerShare:n(row.broker_stock_basis),economicBasisPerShare:strike,realizedOptionPnl:terminalOptionPnl,
         evidenceKey:hash(`${activityHash}:${row.chain_id}:SHORT_PUT_ASSIGNMENT`)};
     } else if (activityType==='OPASN'&&activityQty!==null&&Math.abs(activityQty)===contracts&&String(row.lifecycle_state)==='CC_OPEN'&&priorShares-currentShares>=expectedShares) {
       const basis=n(row.economic_basis_per_share),lotShares=n(row.stock_lot_shares);
       if (basis===null||lotShares===null||s(row.stock_lot_id)===null||lotShares!==expectedShares) { unresolved++; continue; }
       application={...common,eventKind:'COVERED_CALL_ASSIGNMENT',optionLegId:String(row.option_leg_id),stockLotId:String(row.stock_lot_id),
-        shares:expectedShares,strikePrice:strike,realizedOptionPnl:credit,realizedStockPnl:(strike-basis)*expectedShares,
+        shares:expectedShares,strikePrice:strike,realizedOptionPnl:terminalOptionPnl,realizedStockPnl:(strike-basis)*expectedShares,
         evidenceKey:hash(`${activityHash}:${row.chain_id}:COVERED_CALL_ASSIGNMENT`)};
     }
     if (application===null) { unresolved++; continue; }

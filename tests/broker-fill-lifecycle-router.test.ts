@@ -24,6 +24,55 @@ test('partial fills never advance lifecycle state',()=>{
   assert.deepEqual(result,{state:'PARTIAL',reasonCode:'ORDER_NOT_FULLY_FILLED',application:null});
 });
 
+test('terminal partial close records cumulative actual-fill economics and leaves the remainder open',()=>{
+  const value=base();
+  const first=value.fills[0],second=value.fills[1];
+  assert.ok(first); assert.ok(second);
+  const result=routeConfirmedFillLifecycle({...value,action:'CLOSE_CSP',orderStatus:'CANCELED',orderQuantity:3,
+    orderIntentId:'intent',originalLegQuantity:3,priorPartialClosedQuantity:0,priorPartialRealizedOptionPnl:0,
+    entryCreditDebit:600,nextState:'REDEPLOY',fills:[
+      {...first,pricePerShare:2.4,fees:0.5},
+      {...second,pricePerShare:2.6,fees:0.5},
+    ]});
+  assert.equal(result.state,'PARTIAL');
+  assert.equal(result.reasonCode,'TERMINAL_PARTIAL_CLOSE_RECORDED');
+  assert.equal(result.application?.eventKind,'OPTION_PARTIAL_CLOSE');
+  if(result.application?.eventKind==='OPTION_PARTIAL_CLOSE'){
+    assert.equal(result.application.closedQuantity,2);
+    assert.equal(result.application.remainingQuantityAfter,1);
+    assert.equal(result.application.allocatedOpeningCredit,400);
+    assert.equal(result.application.closingDebit,500);
+    assert.equal(result.application.realizedPnlBeforeFees,-100);
+    assert.equal(result.application.realizedPnlAfterFees,-101);
+  }
+});
+
+test('a later close of the remaining quantity includes prior partial realized economics exactly once',()=>{
+  const value=base();
+  const first=value.fills[0]; assert.ok(first);
+  const result=routeConfirmedFillLifecycle({...value,action:'CLOSE_CSP',orderStatus:'FILLED',orderQuantity:1,
+    originalLegQuantity:3,priorPartialClosedQuantity:2,priorPartialRealizedOptionPnl:-100,
+    entryCreditDebit:600,nextState:'REDEPLOY',fills:[{...first,quantity:1,pricePerShare:1.5}]});
+  assert.equal(result.application?.eventKind,'OPTION_CLOSE');
+  if(result.application?.eventKind==='OPTION_CLOSE'){
+    assert.equal(result.application.closedQuantity,1);
+    assert.equal(result.application.realizedOptionPnl,-50);
+  }
+});
+
+test('terminal partial roll close never authorizes a successor leg',()=>{
+  const value=base();
+  const close=routeConfirmedFillLifecycle({...value,action:'ROLL_CSP_CLOSE',orderStatus:'EXPIRED',orderQuantity:2,
+    orderIntentId:'roll-close',originalLegQuantity:2,entryCreditDebit:400,nextState:'ROLL_DECISION',fills:value.fills.slice(0,1)});
+  assert.equal(close.application?.eventKind,'OPTION_PARTIAL_CLOSE');
+  const successor=routeConfirmedRollPair({legKind:'SHORT_PUT',chainId:'chain',decisionId:'decision',oldOptionLegId:'old',
+    newOptionLegId:'new',newOptionContractId:'new-contract',multiplier:100,oldEntryCreditDebit:400,
+    close:{orderStatus:'EXPIRED',orderQuantity:2,fills:value.fills.slice(0,1)},
+    open:{orderStatus:'FILLED',orderQuantity:2,fills:value.fills}});
+  assert.equal(successor.application,null);
+  assert.equal(successor.state,'PARTIAL');
+});
+
 test('a confirmed roll close records the old loss without requiring an opening fill',()=>{
   const value=base();
   const result=routeConfirmedFillLifecycle({...value,action:'ROLL_CSP_CLOSE',entryCreditDebit:200,nextState:'ROLL_DECISION'});
