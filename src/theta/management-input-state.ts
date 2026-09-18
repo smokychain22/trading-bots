@@ -2,6 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { ThetaLifecycleState } from './runtime-state.js';
 import type { ManagementActionFrontier } from './management-action-frontier.js';
+import { PostgresWholeChainComponentsRepository } from './postgres-whole-chain-components-repository.js';
+import type { WholeChainComponentEvidence } from './whole-chain-component-evidence.js';
 
 export const managementInputVersion = 'theta-management-input-v3' as const;
 
@@ -121,6 +123,11 @@ export interface PersistedManagementFrontier {
   readonly managementActionFrontierId: string;
   readonly managementInputSnapshotId: string;
   readonly frontier: ManagementActionFrontier;
+}
+
+export interface ManagementInputWithWholeChainEvidence {
+  readonly state: ManagementInputState;
+  readonly wholeChainEvidence: WholeChainComponentEvidence;
 }
 
 const ignoredChangePaths = new Set([
@@ -410,5 +417,22 @@ export class PostgresManagementInputStore {
       throw error;
     } finally { client.release(); }
     return persisted;
+  }
+
+  /**
+   * Inert integration surface for the future canonical management provider.
+   * The resident runtime does not call it yet, so it cannot add a second policy
+   * invocation or alter the current locked execution path.
+   */
+  async attachWholeChainEvidence(states: readonly ManagementInputState[], connectionId: string):
+  Promise<readonly ManagementInputWithWholeChainEvidence[]> {
+    const repository = new PostgresWholeChainComponentsRepository(this.pool);
+    return Promise.all(states.map(async (state) => ({
+      state,
+      wholeChainEvidence: await repository.load(state.chainId, state.observedAt, {
+        connectionId,
+        reconciliationSnapshotId: state.reconciliationSnapshotId,
+      }),
+    })));
   }
 }
