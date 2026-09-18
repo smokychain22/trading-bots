@@ -40,36 +40,48 @@ try {
     $headers = @{ Authorization = "Bearer $token"; 'X-Theta-Worker-Id'=$runtime.workerId;
       'X-Theta-Host-Id'=$env:COMPUTERNAME; 'X-Theta-Build-Sha'=$runtime.buildSha }
     $workerExit = 0
+    $currentOperation = 'LOOP_START'
+    $operationStartedAt = [DateTimeOffset]::UtcNow
     try {
       # The complete management-first cycle performs reconciliation, provider
       # collection, six-branch evaluation, and atomic evidence persistence.
       # Keep the client deadline above the longest observed server completion
       # window so the supervisor does not abandon a valid in-flight cycle and
       # retry it while Production is still persisting evidence.
+      $currentOperation = 'RUNTIME_BROKER_CYCLE'
+      $operationStartedAt = [DateTimeOffset]::UtcNow
       $brokerHeaders = $headers.Clone()
       $brokerHeaders['X-Theta-Operation'] = 'runtime-broker-cycle'
       $brokerReport = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $brokerHeaders -TimeoutSec 180
       if ($brokerReport.status -eq 'FAILED' -or $brokerReport.status -eq 'QUARANTINED') {
         throw 'THETA_BROKER_CYCLE_FAILED'
       }
+      $currentOperation = 'RUNTIME_LIFECYCLE_CYCLE'
+      $operationStartedAt = [DateTimeOffset]::UtcNow
       $lifecycleHeaders = $headers.Clone()
       $lifecycleHeaders['X-Theta-Operation'] = 'runtime-lifecycle-cycle'
       $lifecycleReport = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $lifecycleHeaders -TimeoutSec 180
       if ($lifecycleReport.status -eq 'FAILED' -or $lifecycleReport.status -eq 'QUARANTINED') {
         throw 'THETA_LIFECYCLE_CYCLE_FAILED'
       }
+      $currentOperation = 'RUNTIME_MANAGEMENT_CYCLE'
+      $operationStartedAt = [DateTimeOffset]::UtcNow
       $managementHeaders = $headers.Clone()
       $managementHeaders['X-Theta-Operation'] = 'runtime-management-cycle'
       $managementReport = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $managementHeaders -TimeoutSec 180
       if ($managementReport.status -eq 'FAILED' -or $managementReport.status -eq 'QUARANTINED') {
         throw 'THETA_MANAGEMENT_CYCLE_FAILED'
       }
+      $currentOperation = 'RUNTIME_OBSERVATION_CYCLE'
+      $operationStartedAt = [DateTimeOffset]::UtcNow
       $observationHeaders = $headers.Clone()
       $observationHeaders['X-Theta-Operation'] = 'runtime-observation-cycle'
       $observationReport = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $observationHeaders -TimeoutSec 180
       if ($observationReport.status -eq 'FAILED' -or $observationReport.status -eq 'QUARANTINED') {
         throw 'THETA_OBSERVATION_CYCLE_FAILED'
       }
+      $currentOperation = 'RUNTIME_EVIDENCE_CYCLE'
+      $operationStartedAt = [DateTimeOffset]::UtcNow
       $evidenceHeaders = $headers.Clone()
       $evidenceHeaders['X-Theta-Operation'] = 'runtime-evidence-cycle'
       $report = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $evidenceHeaders -TimeoutSec 290
@@ -79,6 +91,8 @@ try {
         (Get-Content -Raw -LiteralPath $alpacaQualificationSessionFile).Trim()
       } else { '' }
       if ($report.reconciliation.marketOpen -eq $true -and $lastAlpacaQualificationSession -ne $marketSessionDate) {
+        $currentOperation = 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION'
+        $operationStartedAt = [DateTimeOffset]::UtcNow
         $alpacaQualificationHeaders = $headers.Clone()
         $alpacaQualificationHeaders['X-Theta-Operation'] = 'alpaca-indicative-quote-qualification'
         $alpacaQualification = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $alpacaQualificationHeaders -TimeoutSec 180
@@ -91,6 +105,8 @@ try {
         (Get-Content -Raw -LiteralPath $qualificationSessionFile).Trim()
       } else { '' }
       if ($report.reconciliation.marketOpen -eq $true -and $lastQualificationSession -ne $marketSessionDate) {
+        $currentOperation = 'OPTIONOMICS_QUOTE_QUALIFICATION'
+        $operationStartedAt = [DateTimeOffset]::UtcNow
         $qualificationHeaders = $headers.Clone()
         $qualificationHeaders['X-Theta-Operation'] = 'optionomics-quote-qualification'
         $qualification = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $qualificationHeaders -TimeoutSec 180
@@ -221,6 +237,7 @@ try {
       $delaySeconds = 5
     } catch {
       $workerExit = 1
+      $failedAt = [DateTimeOffset]::UtcNow
       $httpStatus = if ($null -ne $_.Exception.Response -and $null -ne $_.Exception.Response.StatusCode) {
         [int]$_.Exception.Response.StatusCode
       } else { $null }
@@ -228,8 +245,10 @@ try {
       $failureCode = if ($null -ne $httpStatus) { "HTTP_$httpStatus" }
         elseif ($exceptionType -match '^[A-Za-z0-9_.-]{1,96}$') { "LOCAL_$exceptionType" }
         else { 'LOCAL_WORKER_LOOP_FAILED' }
-      @{state='DEGRADED';lastFailure=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
-        mode='MASTER_THETA_PAPER';executionGate='LOCKED';failureCode=$failureCode} | ConvertTo-Json |
+      @{state='DEGRADED';lastFailure=$failedAt.ToString('o');buildSha=$runtime.buildSha;
+        mode='MASTER_THETA_PAPER';executionGate='LOCKED';failureCode=$failureCode;
+        failedOperation=$currentOperation;operationStartedAt=$operationStartedAt.ToString('o');
+        elapsedMilliseconds=[Math]::Max(0,[Math]::Round(($failedAt - $operationStartedAt).TotalMilliseconds))} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
     }
     if (Test-Path -LiteralPath $stopFile) { break }
