@@ -35,6 +35,17 @@ test('cross-symbol scan evaluates every bounded eligible symbol in deterministic
   assert.equal(result.mode,shadowRuntimeMode);
 });
 
+test('bounded independent symbols evaluate concurrently while results retain deterministic order',async()=>{
+  let active=0,maxActive=0;
+  const result=await runCrossSymbolShadowScan(boundary([underlying('MSFT'),underlying('AAPL')]),async(item)=>{
+    active++;maxActive=Math.max(maxActive,active);
+    await new Promise((resolve)=>setTimeout(resolve,item.symbol==='AAPL'?20:5));
+    active--;return cycle(item.symbol);
+  },()=> '2026-09-14T14:30:00Z');
+  assert.equal(maxActive,2);
+  assert.deepEqual(result.results.map((item)=>item.symbol),['AAPL','MSFT']);
+});
+
 test('bounded scan never claims completeness when the eligible universe exceeds its versioned bound',async()=>{
   const result=await runCrossSymbolShadowScan(boundary([underlying('A'),underlying('B')],1),async(item)=>cycle(item),()=> '2026-09-14T14:30:00Z');
   assert.equal(result.completeness,'PROVIDER_LIMITED');

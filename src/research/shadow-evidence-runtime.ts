@@ -66,18 +66,27 @@ export async function runCrossSymbolShadowScan(
   const scope = ordered.slice(0, boundary.maxUnderlyings);
   const missingScope: string[] = [];
   if (scope.length < ordered.length) missingScope.push('UNDERLYING_BOUND_REACHED');
-  const results: ShadowSymbolScanResult[] = [];
-  for (const [index, underlying] of scope.entries()) {
+  // The Production evidence endpoint has a bounded serverless request window.
+  // Each symbol is independent until the cross-symbol frontier is assembled,
+  // so evaluate the already-bounded scope concurrently and retain the stable
+  // ordinal order in the returned array. Provider adapters still own their
+  // endpoint-specific rate-limit and retry policies.
+  const results = await Promise.all(scope.map(async (underlying, index): Promise<ShadowSymbolScanResult> => {
     try {
       const cycle = await evaluate(underlying);
-      results.push({ symbol: underlying.symbol, ordinal: index + 1, status: 'COMPLETED', cycle, errorCode: null });
-      if (cycle.optionContractsComplete !== true) missingScope.push(`${underlying.symbol}:CONTRACT_ENUMERATION_INCOMPLETE`);
-      if (cycle.optionChainComplete !== true) missingScope.push(`${underlying.symbol}:QUOTE_ENUMERATION_INCOMPLETE`);
-      if (cycle.orchestration === null) missingScope.push(`${underlying.symbol}:STRATEGY_EVALUATION_INCOMPLETE`);
+      return { symbol: underlying.symbol, ordinal: index + 1, status: 'COMPLETED', cycle, errorCode: null };
     } catch (error) {
-      results.push({ symbol: underlying.symbol, ordinal: index + 1, status: 'FAILED', cycle: null, errorCode: safeErrorCode(error) });
-      missingScope.push(`${underlying.symbol}:SCAN_FAILED`);
+      return { symbol: underlying.symbol, ordinal: index + 1, status: 'FAILED', cycle: null, errorCode: safeErrorCode(error) };
     }
+  }));
+  for (const result of results) {
+    if (result.status === 'FAILED') {
+      missingScope.push(`${result.symbol}:SCAN_FAILED`);
+      continue;
+    }
+    if (result.cycle?.optionContractsComplete !== true) missingScope.push(`${result.symbol}:CONTRACT_ENUMERATION_INCOMPLETE`);
+    if (result.cycle?.optionChainComplete !== true) missingScope.push(`${result.symbol}:QUOTE_ENUMERATION_INCOMPLETE`);
+    if (result.cycle?.orchestration === null) missingScope.push(`${result.symbol}:STRATEGY_EVALUATION_INCOMPLETE`);
   }
   const candidateCount = results.reduce((sum, result) => sum + (result.cycle?.orchestration?.thetaQ?.candidates.length ?? 0), 0);
   const failed = results.some((result) => result.status === 'FAILED');
