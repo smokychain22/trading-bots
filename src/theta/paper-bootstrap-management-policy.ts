@@ -133,19 +133,49 @@ export interface PaperBootstrapPolicyInput extends ManagementInputState {
    * omitted, capital-days/opportunity-cost stay UNKNOWN rather than fabricated. */
   readonly assignedAtObservedAt?: string | null;
   readonly annualOpportunityCostRate?: number | null;
+  /**
+   * Required, caller-justified weight converting a KNOWN capital
+   * opportunity cost (RecoveryState.capitalOpportunityCostDollars) into a
+   * positive utility contribution for SELL_STOCK. Defaults to 0 (inert)
+   * when omitted. This -- together with `thesisFailureUtilityBias`, which
+   * SELL_STOCK now also reacts to exactly like CLOSE_FULL/ROLL -- replaces
+   * the previous PERMANENT, unconditional -0.5 handicap against
+   * liquidating assigned stock. SELL_STOCK's baseline utility is now the
+   * same neutral 0 as RECOVERY_WAIT/HOLD; it wins only through these two
+   * explicit, versioned, default-neutral mechanisms, never a hidden bias.
+   */
+  readonly sellStockOpportunityCostUtilityWeight?: number;
 }
 
 function finite(value: number | null): value is number {
   return value !== null && Number.isFinite(value);
 }
 
-/** Current mark-to-market value of the OPEN option leg, in dollars (not
- * per-share) -- the cost to close it right now at the midpoint. Returns
- * null (never zero) when the quote is missing. */
+/**
+ * Conservative, executable cost to close the OPEN short option leg right
+ * now, in dollars (not per-share) -- the ASK side, never the midpoint. A
+ * midpoint is not a guaranteed fill; buying back a short option is a
+ * debit, and the conservative (worst-realistic-case) reference for a
+ * debit is the higher of the two sides, not the average. Returns null
+ * (never zero) when the quote is missing or crossed.
+ */
 function currentOptionMarkDollars(state: ManagementInputState): number | null {
   const { optionBid, optionAsk } = state.market;
   const { multiplier, contracts } = state.contract;
-  if (!finite(optionBid) || !finite(optionAsk) || !finite(multiplier) || !finite(contracts)) return null;
+  if (!finite(optionBid) || !finite(optionAsk) || optionBid < 0 || optionAsk < optionBid
+    || !finite(multiplier) || !finite(contracts)) return null;
+  return optionAsk * multiplier * contracts;
+}
+
+/** The midpoint close cost -- an ANALYTICAL/research reference only,
+ * never fed into any action's utility or execution economics. Exists so
+ * a reviewer can see the gap between "what mid suggests" and the
+ * conservative ask-side reference this policy actually uses. */
+function currentOptionMidDollars(state: ManagementInputState): number | null {
+  const { optionBid, optionAsk } = state.market;
+  const { multiplier, contracts } = state.contract;
+  if (!finite(optionBid) || !finite(optionAsk) || optionBid < 0 || optionAsk < optionBid
+    || !finite(multiplier) || !finite(contracts)) return null;
   return ((optionBid + optionAsk) / 2) * multiplier * contracts;
 }
 
@@ -208,14 +238,22 @@ function thesisUtilityAdjustment(thesis: ThesisInvalidationAssessment, bias: num
 }
 
 function valueForSingleRollCandidate(
-  action: 'ROLL' | 'ROLL_CC', state: PaperBootstrapPolicyInput, currentMark: number | null, thesis: ThesisInvalidationAssessment,
+  action: 'ROLL' | 'ROLL_CC', state: PaperBootstrapPolicyInput, currentMark: number | null, midMark: number | null,
+  thesis: ThesisInvalidationAssessment,
 ): ManagementPolicyActionValue {
   const base = { action };
   const candidate = action === 'ROLL' ? state.rollCandidate : state.ccCandidate;
-  if (!candidate || !finite(candidate.bid) || !finite(candidate.ask) || currentMark === null) {
+  const hasQuote = !!candidate && finite(candidate.bid) && finite(candidate.ask)
+    && candidate.bid >= 0 && candidate.ask >= candidate.bid;
+  if (!candidate || !hasQuote || currentMark === null) {
     return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_IDENTIFIED_ROLL_TARGET'] };
   }
-  const openCreditDollars = ((candidate.bid + candidate.ask) / 2) * candidate.multiplier * candidate.quantity;
+  // Conservative, executable reference for OPENING the new short leg: the
+  // BID side, never the midpoint -- a midpoint premium is not a
+  // guaranteed fill. The midpoint is reported below only as an
+  // informational reason, never fed into the economics.
+  const openCreditDollars = candidate.bid * candidate.multiplier * candidate.quantity;
+  const openCreditMidDollars = (candidate.bid + candidate.ask) / 2 * candidate.multiplier * candidate.quantity;
   // Sunk (already-realized) economics are deliberately NOT read anywhere in
   // this block -- forwardContinuationCashFlow only ever sees the two
   // current-quote dollar boundaries, so the old leg's realized P&L cannot
@@ -243,6 +281,8 @@ function valueForSingleRollCandidate(
     utility: (netCredit >= 0 ? 0.5 : -2) - adjustment.rollPenalty,
     executionEvidence,
     reasons: [`DETERMINISTIC_NET_CREDIT_${netCredit.toFixed(2)}`, `HORIZON_ANCHOR_${horizon.horizonAnchor ?? 'UNKNOWN'}`,
+      `OPEN_CREDIT_BID_SIDE_${openCreditDollars.toFixed(2)}`, `OPEN_CREDIT_MID_REFERENCE_ANALYTICAL_ONLY_${openCreditMidDollars.toFixed(2)}`,
+      `CLOSE_COST_ASK_SIDE_${currentMark.toFixed(2)}`, `CLOSE_COST_MID_REFERENCE_ANALYTICAL_ONLY_${midMark === null ? 'UNKNOWN' : midMark.toFixed(2)}`,
       'SUNK_REALIZED_PNL_EXCLUDED_FROM_FORWARD_COMPARISON', ...adjustment.reasons],
   };
 }
@@ -255,12 +295,12 @@ function valueForSingleRollCandidate(
  * every assessment rather than being collapsed away.
  */
 function valueForRollFromCandidates(
-  action: 'ROLL', state: PaperBootstrapPolicyInput, currentMark: number, thesis: ThesisInvalidationAssessment,
+  action: 'ROLL', state: PaperBootstrapPolicyInput, currentMark: number, midMark: number | null, thesis: ThesisInvalidationAssessment,
 ): ManagementPolicyActionValue {
   const base = { action };
   const candidates = state.rollCandidates ?? [];
   const usable = candidates.filter((candidate): candidate is RollCandidate & { bid: number; ask: number } =>
-    finite(candidate.bid) && finite(candidate.ask));
+    finite(candidate.bid) && finite(candidate.ask) && candidate.bid >= 0 && candidate.ask >= candidate.bid);
   if (usable.length === 0) return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_USABLE_ROLL_CANDIDATES_IN_LIST'] };
 
   const oldLeg = {
@@ -268,10 +308,13 @@ function valueForRollFromCandidates(
     delta: state.market.delta, capitalCommittedDollars: capitalCommitted(state),
   };
   const sunk = sunkRealizedEconomics(state.economics);
+  // Conservative, executable reference for each candidate's new-leg
+  // opening credit: BID side, never the midpoint (see
+  // valueForSingleRollCandidate's identical rule).
   const candidateEconomics: RollCandidateEconomics[] = usable.map((candidate) => ({
     symbol: candidate.symbol, optionContractId: candidate.optionContractId, strike: candidate.strike,
     expiration: candidate.expiration, delta: null,
-    openCreditDollars: ((candidate.bid + candidate.ask) / 2) * candidate.multiplier * candidate.quantity,
+    openCreditDollars: candidate.bid * candidate.multiplier * candidate.quantity,
     capitalCommittedDollars: candidate.strike * candidate.multiplier * candidate.quantity,
   }));
   const comparison = evaluateRollCandidates(oldLeg, sunk, candidateEconomics, state.rollIncrementalCapitalDayWeight ?? 0);
@@ -303,6 +346,7 @@ function valueForRollFromCandidates(
     utility: (comparison.bestBeatsHold ? 0.5 : -2) - adjustment.rollPenalty,
     executionEvidence,
     reasons: [`BEST_OF_${usable.length}_ROLL_CANDIDATES`, ...best.reasons,
+      `CLOSE_COST_ASK_SIDE_${currentMark.toFixed(2)}`, `CLOSE_COST_MID_REFERENCE_ANALYTICAL_ONLY_${midMark === null ? 'UNKNOWN' : midMark.toFixed(2)}`,
       `SUNK_REALIZED_PNL_${sunk === null ? 'UNKNOWN' : sunk.toFixed(2)}_EXCLUDED_FROM_FORWARD_COMPARISON`, ...adjustment.reasons],
   };
 }
@@ -372,7 +416,7 @@ function valueForSellCcFromCandidates(state: PaperBootstrapPolicyInput): Managem
  * a real utility here reports UNKNOWN honestly via `UNKNOWN_VALUE`.
  */
 function valueFor(
-  action: ManagementFrontierAction, state: PaperBootstrapPolicyInput, currentMark: number | null,
+  action: ManagementFrontierAction, state: PaperBootstrapPolicyInput, currentMark: number | null, midMark: number | null,
   remainingFraction: number | null, dte: number | null, capital: number | null, thesis: ThesisInvalidationAssessment,
   recoveryState: RecoveryState,
 ): ManagementPolicyActionValue {
@@ -434,18 +478,19 @@ function valueFor(
           ...(nearExhausted
             ? [`REMAINING_VALUE_FRACTION_${remainingFraction?.toFixed(2)}`, `DTE_${dte}`, 'CLOSE_FREES_CAPITAL_FOR_NEAR_EXHAUSTED_POSITION']
             : ['REMAINING_VALUE_NOT_KNOWN_EXHAUSTED', ...lossMagnitudeReason]),
+          `CLOSE_COST_ASK_SIDE_${currentMark.toFixed(2)}`, `CLOSE_COST_MID_REFERENCE_ANALYTICAL_ONLY_${midMark === null ? 'UNKNOWN' : midMark.toFixed(2)}`,
           ...adjustment.reasons,
         ],
       };
     }
     case 'ROLL': {
       if (state.rollCandidates !== undefined && state.rollCandidates.length > 0 && currentMark !== null) {
-        return valueForRollFromCandidates(action, state, currentMark, thesis);
+        return valueForRollFromCandidates(action, state, currentMark, midMark, thesis);
       }
-      return valueForSingleRollCandidate(action, state, currentMark, thesis);
+      return valueForSingleRollCandidate(action, state, currentMark, midMark, thesis);
     }
     case 'ROLL_CC': {
-      return valueForSingleRollCandidate(action, state, currentMark, thesis);
+      return valueForSingleRollCandidate(action, state, currentMark, midMark, thesis);
     }
     case 'ALLOW_CALL_AWAY':
       // Structural expiration handling already selects this correctly from
@@ -458,16 +503,33 @@ function valueFor(
       const basis = state.economics.stockBasisPerShare, mark = state.economics.stockMarkPerShare;
       if (!finite(basis) || !finite(mark) || capital === null) return { ...base, ...UNKNOWN_VALUE };
       const knownStockPnl = (mark - basis) * state.economics.openStockShares;
+      const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
+      // Neutral baseline (0, the SAME anchor as RECOVERY_WAIT/HOLD) -- this
+      // bootstrap policy no longer carries a permanent handicap against
+      // liquidating the shares. SELL_STOCK can win when the SEPARATE,
+      // caller-justified mechanisms below actually apply:
+      //   (a) a suspected thesis failure -- reuses the exact same
+      //       thesisFailureUtilityBias already governing CLOSE_FULL/ROLL,
+      //       never a second, independently-invented bias.
+      //   (b) a known, real capital opportunity cost (from
+      //       RecoveryState.capitalOpportunityCostDollars, itself only
+      //       computed when the caller supplied entry data + a justified
+      //       annual rate) times a caller-justified weight -- an honest,
+      //       quantified economic reason, never a fabricated one.
+      // Both default to 0/neutral. Neither is invented internally.
+      const opportunityCostWeight = state.sellStockOpportunityCostUtilityWeight ?? 0;
+      const opportunityCostContribution = recoveryState.capitalOpportunityCostDollars !== null
+        ? opportunityCostWeight * recoveryState.capitalOpportunityCostDollars : 0;
       return {
         ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: 0,
-        executionCostRisk: null, opportunityCost: null, uncertainty: null,
-        utility: -0.5, // deterministic HOLD/CC bias: selling stock is never preferred by this bootstrap policy over a
-        // known-safe covered call unless a caller-level override exists, since it forecloses all future upside
+        executionCostRisk: null, opportunityCost: recoveryState.capitalOpportunityCostDollars, uncertainty: null,
+        utility: adjustment.closeBias + opportunityCostContribution,
         executionEvidence: null,
         reasons: [
           `KNOWN_STOCK_PNL_IF_SOLD_${knownStockPnl.toFixed(2)}`,
           `DISTANCE_TO_BASIS_FRACTION_${recoveryState.distanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.distanceToBasisFraction.toFixed(4)}`,
           `CAPITAL_OPPORTUNITY_COST_${recoveryState.capitalOpportunityCostDollars === null ? 'UNKNOWN' : recoveryState.capitalOpportunityCostDollars.toFixed(2)}`,
+          ...adjustment.reasons,
         ],
       };
     }
@@ -537,6 +599,7 @@ export function evaluatePaperBootstrapManagementPolicy(
   if (actionSet.length === 0) return null;
 
   const currentMark = currentOptionMarkDollars(state);
+  const midMark = currentOptionMidDollars(state);
   const remainingFraction = remainingValueFraction(state, currentMark);
   const dte = daysToExpiration(state);
   const capital = capitalCommitted(state);
@@ -547,7 +610,7 @@ export function evaluatePaperBootstrapManagementPolicy(
   const recoveryState = buildRecoveryState(state, state.assignedAtObservedAt ?? null, state.annualOpportunityCostRate ?? null);
 
   const actionValues = actionSet.map((action) =>
-    valueFor(action, state, currentMark, remainingFraction, dte, capital, thesis, recoveryState));
+    valueFor(action, state, currentMark, midMark, remainingFraction, dte, capital, thesis, recoveryState));
   const known = actionValues.filter((value) => value.utility !== null);
   if (known.length === 0) return null;
 

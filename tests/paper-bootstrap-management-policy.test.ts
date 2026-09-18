@@ -81,7 +81,7 @@ test('CSP_OPEN with multiple roll candidates picks the one with the best RollInc
       rollCandidate({ optionContractId: 'far-and-big', strike: 250, expiration: '2027-01-15', bid: 5, ask: 5.2 }),
       // Small net credit, short extension (7 days), and slightly LESS
       // capital committed than the old leg -- cheap to carry.
-      rollCandidate({ optionContractId: 'near-and-small', strike: 195, expiration: '2026-10-23', bid: 1.2, ask: 1.3 }),
+      rollCandidate({ optionContractId: 'near-and-small', strike: 195, expiration: '2026-10-23', bid: 1.6, ask: 1.7 }),
     ],
     rollIncrementalCapitalDayWeight: 0.005,
   };
@@ -103,6 +103,77 @@ test('rollCandidates takes precedence over the single rollCandidate field when b
   const evidence = evaluatePaperBootstrapManagementPolicy(withBoth);
   const execution = evidence?.actionValues.find((value) => value.action === 'ROLL')?.executionEvidence;
   assert.equal(execution?.targetContract?.optionContractId, 'plural-path-candidate');
+});
+
+test('ROLL never uses the midpoint as the deterministic new-leg credit -- it uses the bid side', () => {
+  const input = state('CSP_OPEN');
+  // bid=1.5, ask=1.6 -> mid would be 155, bid-side is 150.
+  const withCandidate = { ...input, rollCandidate: rollCandidate({ bid: 1.5, ask: 1.6 }) };
+  const evidence = evaluatePaperBootstrapManagementPolicy(withCandidate);
+  const execution = evidence?.actionValues.find((value) => value.action === 'ROLL')?.executionEvidence;
+  // openEconomicBoundary is the new leg's credit; currentMark (close cost)
+  // is now the ASK side (110), so deterministicNetCredit = 150 - 110 = 40,
+  // never the mid-based 155 - 105 = 50 this would have been before the fix.
+  assert.equal(execution?.openEconomicBoundary, 150);
+  assert.ok(execution?.deterministicNetCredit !== null && Math.abs((execution.deterministicNetCredit ?? 0) - 40) < 1e-9);
+  const rollValue = evidence?.actionValues.find((value) => value.action === 'ROLL');
+  assert.ok(rollValue?.reasons.some((reason) => reason.startsWith('OPEN_CREDIT_BID_SIDE_150')));
+  assert.ok(rollValue?.reasons.some((reason) => reason.startsWith('OPEN_CREDIT_MID_REFERENCE_ANALYTICAL_ONLY_155')));
+});
+
+test('ROLL_CC never uses the midpoint as the deterministic new-leg credit -- it uses the bid side', () => {
+  const input = state('CC_OPEN');
+  const withCandidate = { ...input, ccCandidate: rollCandidate({ optionType: 'CALL', bid: 1.5, ask: 1.6 }) };
+  const evidence = evaluatePaperBootstrapManagementPolicy(withCandidate);
+  const execution = evidence?.actionValues.find((value) => value.action === 'ROLL_CC')?.executionEvidence;
+  assert.equal(execution?.openEconomicBoundary, 150);
+});
+
+test('a crossed roll-candidate quote (bid > ask) is treated as unknown/ineligible, never used to compute a nonsensical credit', () => {
+  const input = state('CSP_OPEN');
+  const withCandidate = { ...input, rollCandidate: rollCandidate({ bid: 5, ask: 1 }) };
+  const evidence = evaluatePaperBootstrapManagementPolicy(withCandidate);
+  assert.equal(evidence?.selectedAction, 'HOLD');
+  const rollValue = evidence?.actionValues.find((value) => value.action === 'ROLL');
+  assert.equal(rollValue?.executionEvidence, null);
+});
+
+test('a crossed roll-candidate quote in a multi-candidate list is excluded, never fabricated into a nonsensical credit', () => {
+  const input = state('CSP_OPEN');
+  const withCandidates = {
+    ...input,
+    rollCandidates: [rollCandidate({ optionContractId: 'crossed', bid: 5, ask: 1 })],
+  };
+  const evidence = evaluatePaperBootstrapManagementPolicy(withCandidates);
+  assert.equal(evidence?.selectedAction, 'HOLD');
+  const rollValue = evidence?.actionValues.find((value) => value.action === 'ROLL');
+  assert.ok(rollValue?.reasons.includes('NO_USABLE_ROLL_CANDIDATES_IN_LIST'));
+});
+
+test('CLOSE_FULL uses the ask side (conservative debit) as the close-cost reference, never the midpoint', () => {
+  const input = state('CSP_OPEN', {}, '2026-10-13T14:00:00.000Z'); // bid=1,ask=1.1 by default -> near expiry, near-exhausted
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  const closeValue = evidence?.actionValues.find((value) => value.action === 'CLOSE_FULL');
+  assert.ok(closeValue?.reasons.some((reason) => reason.startsWith('CLOSE_COST_ASK_SIDE_110.00')));
+  assert.ok(closeValue?.reasons.some((reason) => reason.startsWith('CLOSE_COST_MID_REFERENCE_ANALYTICAL_ONLY_105.00')));
+  assert.ok(closeValue?.executionCostRisk !== null && Math.abs((closeValue.executionCostRisk ?? 0) - 110) < 1e-9);
+});
+
+test('deterministic pre-fill execution economics and empirical broker-fill readiness remain structurally separate fields -- no double-counting path exists', () => {
+  // deterministicEconomicsValidated/deterministicNetCredit are computed
+  // purely from CURRENT QUOTES (never a broker fill); empiricalEconomicsReady/
+  // expectedAfterCostEv are a SEPARATE field pair this bootstrap policy
+  // never sets true. A future fill-reconciliation layer that later
+  // populates empiricalEconomicsReady cannot silently overwrite or double-
+  // count the deterministic pre-fill reference, because they are
+  // different fields on the same object, not the same field reused.
+  const input = state('CSP_OPEN');
+  const evidence = evaluatePaperBootstrapManagementPolicy({ ...input, rollCandidate: rollCandidate() });
+  const execution = evidence?.actionValues.find((value) => value.action === 'ROLL')?.executionEvidence;
+  assert.equal(execution?.empiricalEconomicsReady, false);
+  assert.equal(execution?.expectedAfterCostEv, null);
+  assert.equal(execution?.deterministicEconomicsValidated, true);
+  assert.notEqual(execution?.deterministicNetCredit, null);
 });
 
 test('a mildly losing position with an intact thesis stays HOLD by default -- thesis bias defaults to inert (no fixed stop-loss authority)', () => {
@@ -261,6 +332,40 @@ test('SELL_STOCK surfaces capital opportunity cost once the caller supplies entr
   const evidence = evaluatePaperBootstrapManagementPolicy(input);
   const sellStockValue = evidence?.actionValues.find((value) => value.action === 'SELL_STOCK');
   assert.ok(sellStockValue?.reasons.some((reason) => reason.startsWith('CAPITAL_OPPORTUNITY_COST_') && !reason.endsWith('UNKNOWN')));
+});
+
+test('RECOVERY_WAIT wins by default when no candidates or economic reason to act exist', () => {
+  const evidence = evaluatePaperBootstrapManagementPolicy(state('RECOVERY_WAIT'));
+  assert.equal(evidence?.selectedAction, 'RECOVERY_WAIT');
+});
+
+test('SELL_STOCK is no longer permanently handicapped -- it wins over RECOVERY_WAIT when a justified opportunity-cost weight applies to a real, known capital cost', () => {
+  const input = {
+    ...state('RECOVERY_WAIT'), assignedAtObservedAt: '2026-08-13T14:00:00.000Z', annualOpportunityCostRate: 0.05,
+    sellStockOpportunityCostUtilityWeight: 0.02,
+  };
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  assert.equal(evidence?.selectedAction, 'SELL_STOCK');
+});
+
+test('SELL_STOCK wins over RECOVERY_WAIT when a broken thesis is present and a justified thesisFailureUtilityBias applies -- the SAME lever that already governs CLOSE_FULL/ROLL, not a second invented bias', () => {
+  const overrides = {
+    snapshot_json: { underlyingState: { last: 190 }, marketSession: { isOpen: false },
+      riskState: { assignmentCapacity: 1, newRiskState: 'HARD_VETO' }, eventState: { state: 'CLEAR' } },
+    broker_position: { currentPrice: 190 },
+  };
+  const withoutBias = evaluatePaperBootstrapManagementPolicy(state('RECOVERY_WAIT', overrides));
+  assert.equal(withoutBias?.selectedAction, 'RECOVERY_WAIT', 'thesis classification alone (bias=0) must not force a sale');
+
+  const withBias = evaluatePaperBootstrapManagementPolicy({ ...state('RECOVERY_WAIT', overrides), thesisFailureUtilityBias: 1 });
+  assert.equal(withBias?.selectedAction, 'SELL_STOCK');
+});
+
+test('with no opportunity-cost weight or thesis bias supplied, SELL_STOCK stays neutral (tied with RECOVERY_WAIT, never worse by a hidden permanent handicap)', () => {
+  const input = { ...state('RECOVERY_WAIT'), assignedAtObservedAt: '2026-08-13T14:00:00.000Z', annualOpportunityCostRate: 0.05 };
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  const sellStockValue = evidence?.actionValues.find((value) => value.action === 'SELL_STOCK');
+  assert.equal(sellStockValue?.utility, 0);
 });
 
 test('CC_OPEN with no known reason to act holds the covered call', () => {
