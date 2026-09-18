@@ -23,14 +23,17 @@ test('execution price evidence is replay-idempotent by deterministic content has
 });
 
 test('TCA persistence preserves null fees and explicit unknown reasons',async()=>{
-  let values:unknown[]=[]; const pool={query:async(_text:string,input:unknown[])=>{values=input;return {}}};
+  let values:unknown[]=[]; let sql=''; const pool={query:async(text:string,input:unknown[])=>{sql=text;values=input;return {}}};
   const store=new PostgresExecutionEvidenceStore(pool as never);
   await store.recordTca('11111111-1111-4111-8111-111111111111','2026-09-14T14:01:00Z',{
     contractVersion:transactionCostAnalysisVersion,decisionMid:1.1,arrivalMid:1.1,fillPrice:null,
     spreadAtDecision:.2,spreadAtArrival:.2,spreadAtFill:null,limitAttempts:1,latencyMs:null,
     slippageDollars:null,slippageBps:null,spreadCapture:null,fees:null,estimatedMarketImpact:null,
-    postFillMove:{'5s':null},quoteProvider:'TEST',quoteSemantics:'TRUSTED_TWO_SIDED_ORDER_PRICING',
+    postFillMove:{'5s':null},quoteProvider:'TEST',quoteSemantics:'TRUSTED_TWO_SIDED_ORDER_PRICING',benchmarkClass:'TRUSTED_TWO_SIDED_TCA',
     providerTimestamp:null,receivedAt:'2026-09-14T14:00:00Z',quoteAgeMs:0,
     unknownReasons:['FEES_UNKNOWN','NO_FILL']});
   assert.equal(values[14],null); assert.equal(values[22],JSON.stringify(['FEES_UNKNOWN','NO_FILL']));
+  assert.equal(Math.max(...[...sql.matchAll(/\$(\d+)/g)].map(match=>Number(match[1]))),values.length);
+  assert.match(sql,/\$17::jsonb/);
+  assert.match(sql,/\$23::jsonb/);
 });

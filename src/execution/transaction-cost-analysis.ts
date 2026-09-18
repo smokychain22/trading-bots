@@ -36,7 +36,7 @@ export function buildTransactionCostAnalysis(input: {
   readonly multiplier: number;
   readonly decision: { bid: number; ask: number; at: string };
   readonly arrival: { bid: number; ask: number; at: string };
-  readonly fill: { price: number; bid: number; ask: number; at: string } | null;
+  readonly fill: { price: number; bid: number | null; ask: number | null; at: string } | null;
   readonly limitAttempts: number;
   readonly fees: number | null;
   readonly feeMissingReason?: string;
@@ -66,8 +66,14 @@ export function buildTransactionCostAnalysis(input: {
   else {
     if (!Number.isFinite(input.fill.price) || input.fill.price <= 0) throw new Error('TCA_FILL_INVALID');
     fillPrice = input.fill.price;
-    spreadAtFill = input.fill.ask - input.fill.bid;
-    mid(input.fill.bid, input.fill.ask);
+    if (input.fill.bid === null || input.fill.ask === null) unknownReasons.push('FILL_BBO_UNKNOWN');
+    else {
+      mid(input.fill.bid, input.fill.ask);
+      spreadAtFill = input.fill.ask - input.fill.bid;
+      spreadCapture = spreadAtFill > 0
+        ? (input.side === 'SELL' ? fillPrice - input.fill.bid : input.fill.ask - fillPrice) / spreadAtFill
+        : null;
+    }
     const decisionTime = Date.parse(input.decision.at);
     const fillTime = Date.parse(input.fill.at);
     if (!Number.isFinite(decisionTime) || !Number.isFinite(fillTime) || fillTime < decisionTime) throw new Error('TCA_TIME_INVALID');
@@ -75,9 +81,6 @@ export function buildTransactionCostAnalysis(input: {
     const perShareCost = input.side === 'BUY' ? fillPrice - decisionMid : decisionMid - fillPrice;
     slippageDollars = perShareCost * input.quantity * input.multiplier;
     slippageBps = decisionMid > 0 ? perShareCost / decisionMid * 10_000 : null;
-    spreadCapture = spreadAtFill > 0
-      ? (input.side === 'SELL' ? fillPrice - input.fill.bid : input.fill.ask - fillPrice) / spreadAtFill
-      : null;
   }
   return {
     contractVersion: transactionCostAnalysisVersion, decisionMid, arrivalMid, fillPrice,

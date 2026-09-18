@@ -3,6 +3,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { Pool } from 'pg';
 import { PostgresWholeChainComponentsRepository } from '../../src/theta/postgres-whole-chain-components-repository.js';
+import { PostgresExecutionEvidenceStore } from '../../src/execution/postgres-execution-evidence-store.js';
+import { buildTransactionCostAnalysis } from '../../src/execution/transaction-cost-analysis.js';
 
 const hash = (value: string): string => createHash('sha256').update(value).digest('hex');
 const at = (day: number): string => `2026-09-${String(day).padStart(2,'0')}T15:00:00.000Z`;
@@ -95,7 +97,7 @@ test('whole-chain adapter is PIT-safe, deterministic, chain-isolated, and preser
     [openSnapshot,connectionId,symbol,at(14),hash('position-'+openSnapshot)]);
     await insertSnapshot(closedSnapshot,at(16),0);
 
-    const intentId=randomUUID(),brokerOrderId=randomUUID(),fillId=randomUUID(),tcaId=randomUUID();
+    const intentId=randomUUID(),brokerOrderId=randomUUID(),fillId=randomUUID();
     await pool.query(`INSERT INTO trade.order_intent(order_intent_id,chain_id,client_order_id,status,instrument_type,
       option_contract_id,side,position_intent,quantity,canonical_quantity,paper_evidence_quantity,created_at,updated_at)
       VALUES($1,$2,$3,'FILLED','OPTION',$4,'SELL_TO_OPEN','SELL_TO_OPEN',1,1,1,$5,$5)`,
@@ -105,13 +107,19 @@ test('whole-chain adapter is PIT-safe, deterministic, chain-isolated, and preser
     [brokerOrderId,intentId,`provider-${brokerOrderId}`,at(10),hash('order-'+brokerOrderId)]);
     await pool.query(`INSERT INTO trade.fill(fill_id,broker_order_id,provider_fill_id,quantity,price_per_share,filled_at,fees)
       VALUES($1,$2,$3,1,2,$4,0)`,[fillId,brokerOrderId,`fill-${fillId}`,at(10)]);
-    await pool.query(`INSERT INTO trade.transaction_cost_analysis(transaction_cost_analysis_id,order_intent_id,
-      contract_version,calculated_at,decision_mid,arrival_mid,fill_price,spread_at_decision,spread_at_arrival,
-      spread_at_fill,limit_attempts,latency_ms,slippage_dollars,slippage_bps,spread_capture,fees,
-      estimated_market_impact,post_fill_move_json,quote_provider,quote_semantics,provider_timestamp,received_at,
-      quote_age_ms,unknown_reasons_json,content_hash) VALUES
-      ($1,$2,'test-v1',$3,2.05,2.04,2.00,0.10,0.10,0.10,1,10,5,25,0.5,0,0,'{}','ALPACA',
-      'INDICATIVE',$3,$3,0,'[]',$4)`,[tcaId,intentId,at(10),hash('tca-'+tcaId)]);
+    const tcaStore=new PostgresExecutionEvidenceStore(pool);
+    const tca=buildTransactionCostAnalysis({side:'SELL',quantity:1,multiplier:100,
+      decision:{bid:2,ask:2.1,at:at(10)},arrival:{bid:1.99,ask:2.09,at:at(10)},
+      fill:{price:2,bid:null,ask:null,at:at(10)},limitAttempts:1,fees:0,
+      estimatedMarketImpact:null,postFillMove:{},quoteProvider:'ALPACA',quoteSemantics:'PAPER_INDICATIVE_REFERENCE',
+      providerTimestamp:at(10),receivedAt:at(10),quoteAgeMs:0});
+    const tcaHash=await tcaStore.recordTca(intentId,at(10),tca);
+    assert.equal(await tcaStore.recordTca(intentId,at(10),tca),tcaHash);
+    const storedTca=await pool.query(`SELECT * FROM trade.transaction_cost_analysis WHERE order_intent_id=$1`,[intentId]);
+    assert.equal(storedTca.rowCount,1,'identical replay must not duplicate persisted TCA');
+    assert.equal(storedTca.rows[0].quote_semantics,'PAPER_INDICATIVE_REFERENCE');
+    assert.equal(storedTca.rows[0].spread_at_fill,null);
+    assert.ok(storedTca.rows[0].unknown_reasons_json.includes('FILL_BBO_UNKNOWN'));
 
     const repository=new PostgresWholeChainComponentsRepository(pool);
     const beforeRoll=await repository.load(chainId,'2026-09-10T18:00:00.000Z',{
@@ -122,7 +130,7 @@ test('whole-chain adapter is PIT-safe, deterministic, chain-isolated, and preser
     assert.equal(beforeRoll.rollCloseCosts.status,'KNOWN_ZERO');
     assert.equal(beforeRoll.stockSharesAssigned.value,0);
     assert.equal(beforeRoll.fees.status,'KNOWN_ZERO');
-    assert.equal(beforeRoll.slippage.value,5);
+    assert.ok(Math.abs((beforeRoll.slippage.value??0)-5)<1e-9);
     assert.equal(beforeRoll.dividends.status,'UNKNOWN','empty dividend rows are never assumed zero');
     assert.equal(beforeRoll.components,null,'unknown dividends keep the economic component set incomplete');
 
@@ -155,7 +163,7 @@ test('whole-chain adapter is PIT-safe, deterministic, chain-isolated, and preser
     assert.equal(final.openStockShares.value,0);
     assert.equal(final.currentStockMarkPerShare.status,'UNKNOWN');
     assert.equal(final.fees.status,'KNOWN_ZERO');
-    assert.equal(final.slippage.value,5);
+    assert.ok(Math.abs((final.slippage.value??0)-5)<1e-9);
     assert.equal(final.dividends.status,'UNKNOWN');
 
     const replay=await repository.load(chainId,'2026-09-12T18:00:00.000Z',{
