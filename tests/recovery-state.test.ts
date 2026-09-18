@@ -45,13 +45,16 @@ test('computes capital-days and opportunity cost honestly when the caller suppli
   assert.ok(recovery.capitalOpportunityCostDollars !== null && recovery.capitalOpportunityCostDollars > 0);
 });
 
-test('without wholeChainComponents, effective basis falls back to the broker-recorded stockBasisPerShare, honestly named as a fallback', () => {
+test('without wholeChainComponents, canonicalEffectiveBasisPerShare is null and the broker-recorded figure is exposed separately with an honest source label', () => {
   const recovery = buildRecoveryState(state());
-  assert.equal(recovery.effectiveBasisPerShare, 195); // the fixture's raw stock_basis_per_share
+  assert.equal(recovery.canonicalEffectiveBasisPerShare, null);
+  assert.equal(recovery.brokerRecordedBasisPerShare, 195); // the fixture's raw stock_basis_per_share
+  assert.equal(recovery.basisSource, 'BROKER_RECORDED_REFERENCE');
+  assert.equal(recovery.bestAvailableBasisPerShare, 195); // the lower-confidence reference actually used for calculations
   assert.ok(recovery.dataCompleteness.requiresCallerInput.some((field) => field.startsWith('wholeChainComponents (for the ONE canonical')));
 });
 
-test('with complete wholeChainComponents, effective basis is the SAME canonical figure computeEffectiveStockBasis itself produces -- never a second formula', () => {
+test('with complete wholeChainComponents, canonicalEffectiveBasisPerShare is the SAME figure computeEffectiveStockBasis itself produces -- never a second formula, and basisSource is CANONICAL_WHOLE_CHAIN', () => {
   const chain: WholeChainComponents = {
     initialPutPremium: 300, rollCredits: 50, rollCloseCosts: 20, assignmentStrike: 195, stockSharesAssigned: 100,
     dividends: 0, coveredCallPremium: null, coveredCallCloseCosts: null, stockSaleOrCallAwayProceeds: null,
@@ -60,23 +63,36 @@ test('with complete wholeChainComponents, effective basis is the SAME canonical 
   const canonical = computeEffectiveStockBasis(chain);
   assert.equal(canonical.complete, true);
   const recovery = buildRecoveryState(state(), null, null, chain);
-  assert.equal(recovery.effectiveBasisPerShare, canonical.effectiveStockBasisPerShare);
-  // Explicitly NOT the raw broker-recorded stockBasisPerShare (195) --
-  // proving the canonical formula actually took over rather than the
-  // fallback silently remaining in effect.
-  assert.notEqual(recovery.effectiveBasisPerShare, 195);
+  assert.equal(recovery.canonicalEffectiveBasisPerShare, canonical.effectiveStockBasisPerShare);
+  assert.equal(recovery.basisSource, 'CANONICAL_WHOLE_CHAIN');
+  assert.equal(recovery.bestAvailableBasisPerShare, canonical.effectiveStockBasisPerShare);
+  // The broker-recorded reference remains separately visible and
+  // unchanged -- the canonical figure never overwrites it, it only takes
+  // priority for bestAvailableBasisPerShare/basisSource.
+  assert.equal(recovery.brokerRecordedBasisPerShare, 195);
+  assert.notEqual(recovery.canonicalEffectiveBasisPerShare, 195);
 });
 
-test('with incomplete wholeChainComponents, effective basis falls back honestly and names exactly what was missing', () => {
+test('with incomplete wholeChainComponents, canonicalEffectiveBasisPerShare stays null (never fabricated from partial data) and the broker reference is used as the lower-confidence fallback, named exactly why', () => {
   const incompleteChain: WholeChainComponents = {
     initialPutPremium: null, rollCredits: null, rollCloseCosts: null, assignmentStrike: 195, stockSharesAssigned: 100,
     dividends: 0, coveredCallPremium: null, coveredCallCloseCosts: null, stockSaleOrCallAwayProceeds: null,
     fees: 3, slippage: null, currentStockMarkPerShare: 180, openStockShares: 100,
   };
   const recovery = buildRecoveryState(state(), null, null, incompleteChain);
-  assert.equal(recovery.effectiveBasisPerShare, 195); // fallback, never fabricated from partial components
+  assert.equal(recovery.canonicalEffectiveBasisPerShare, null);
+  assert.equal(recovery.basisSource, 'BROKER_RECORDED_REFERENCE');
+  assert.equal(recovery.bestAvailableBasisPerShare, 195);
   assert.ok(recovery.dataCompleteness.requiresCallerInput.some((field) =>
     field.includes('incomplete') && field.includes('initialPutPremium')));
+});
+
+test('with no canonical AND no broker basis available, basisSource is UNKNOWN and bestAvailableBasisPerShare is null -- never a fabricated zero', () => {
+  const recovery = buildRecoveryState(state({ stock_basis_per_share: null }));
+  assert.equal(recovery.canonicalEffectiveBasisPerShare, null);
+  assert.equal(recovery.brokerRecordedBasisPerShare, null);
+  assert.equal(recovery.basisSource, 'UNKNOWN');
+  assert.equal(recovery.bestAvailableBasisPerShare, null);
 });
 
 test('a position at or above basis reports no drawdown', () => {

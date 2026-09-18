@@ -8,7 +8,7 @@ import {
 import { buildCommonHorizonComparison, forwardContinuationCashFlow, sunkRealizedEconomics } from './common-horizon-economics.js';
 import { evaluateRollCandidates, type RollCandidateEconomics } from './roll-incremental-utility.js';
 import { assessThesisInvalidation, type ThesisInvalidationAssessment } from './thesis-invalidation.js';
-import { buildRecoveryState, type RecoveryState } from './recovery-state.js';
+import { buildRecoveryState, type BasisSource, type RecoveryState } from './recovery-state.js';
 import { evaluateAssignmentUtility } from './assignment-utility.js';
 import type { WholeChainComponents } from './whole-chain-economics.js';
 import {
@@ -462,7 +462,9 @@ function valueForRollFromCandidates(
  * premium/call-away-price/below-basis facts remain fully known and usable
  * for selection.
  */
-function valueForSellCcFromCandidates(state: PaperBootstrapPolicyInput, basis: number | null): ManagementPolicyActionValue {
+function valueForSellCcFromCandidates(
+  state: PaperBootstrapPolicyInput, basis: number | null, basisSource: BasisSource,
+): ManagementPolicyActionValue {
   const base = { action: 'SELL_CC' as const };
   const candidates = state.ccCandidates ?? [];
   if (!finite(basis) || candidates.length === 0) {
@@ -508,7 +510,8 @@ function valueForSellCcFromCandidates(state: PaperBootstrapPolicyInput, basis: n
     ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: null,
     executionCostRisk: premiumDollars * 0.01, opportunityCost: null, uncertainty: null,
     utility: ccWeight * premiumDollars, executionEvidence,
-    reasons: [`BEST_OF_${candidates.length}_CC_CANDIDATES_BY_UTILITY`, `SELL_CC_UTILITY_WEIGHT_${ccWeight}`, ...best.reasons],
+    reasons: [`BEST_OF_${candidates.length}_CC_CANDIDATES_BY_UTILITY`, `SELL_CC_UTILITY_WEIGHT_${ccWeight}`,
+      `BASIS_SOURCE_${basisSource}`, ...best.reasons],
   };
 }
 
@@ -534,9 +537,42 @@ function valueFor(
       // neutral anchor every other action's score is compared against --
       // thesis classification is surfaced for transparency but never moves
       // this baseline; only CLOSE/ROLL react to it.
+      //
+      // ASSIGNMENT INTENT (informational metadata only, never a new
+      // broker action, never a change to HOLD's utility): for a genuinely
+      // ITM short put, this labels WHICH continuation HOLD represents --
+      // "accept assignment if expiration is reached" vs. "not yet
+      // determined" -- by consulting assignment-utility.ts's own real
+      // CLOSE/ROLL/LET_EXPIRE/ACCEPT_ASSIGNMENT comparison. This does NOT
+      // make ACCEPT_ASSIGNMENT a competing value before the broker cutoff
+      // (management-action-frontier.ts's own feasibility gate, correctly
+      // unchanged, still requires dte===0 for that) -- it only names what
+      // HOLD's neutral 0 utility currently means in context, so a
+      // reviewer can see the intent without a second decision authority
+      // being created.
+      const assignmentIntentReasons = action === 'HOLD' && currentMark !== null
+        && state.market.spot !== null && state.contract.strike !== null && state.market.spot < state.contract.strike
+        ? (() => {
+            const rollCandidate = state.rollCandidate;
+            const assignment = evaluateAssignmentUtility(state, currentMark,
+              rollCandidate && finite(rollCandidate.bid) && finite(rollCandidate.ask)
+                ? { openCreditDollars: rollCandidate.bid * rollCandidate.multiplier * rollCandidate.quantity } : null);
+            // assignment-utility.ts's own comparison gives LET_EXPIRE and
+            // ACCEPT_ASSIGNMENT the SAME known $0 option-side cash flow
+            // (neither claims anything about the resulting stock
+            // position) -- its tie-break (first pushed wins) can label
+            // the winner 'LET_EXPIRE' even here, but LET_EXPIRE is not
+            // economically real in this ITM branch (we are already
+            // inside the isItmShortPut guard). Either label winning means
+            // the SAME thing here: continuing (0 known cash flow) is at
+            // least as good as CLOSE/ROLL's own known cash flow.
+            const continuationWins = assignment.best?.action === 'LET_EXPIRE' || assignment.best?.action === 'ACCEPT_ASSIGNMENT';
+            return [`ASSIGNMENT_INTENT_${continuationWins ? 'ACCEPT_IF_EXPIRATION_REACHED' : 'NOT_YET_DETERMINED'}`];
+          })()
+        : [];
       return {
         ...base, ...UNKNOWN_VALUE, utility: 0,
-        reasons: ['NO_KNOWN_REASON_TO_ACT', `THESIS_CLASSIFICATION_${thesis.classification}`],
+        reasons: ['NO_KNOWN_REASON_TO_ACT', `THESIS_CLASSIFICATION_${thesis.classification}`, ...assignmentIntentReasons],
       };
     }
     case 'RECOVERY_WAIT': {
@@ -635,11 +671,12 @@ function valueFor(
     case 'ACCEPT_ASSIGNMENT':
       return { ...base, ...UNKNOWN_VALUE, utility: 0, reasons: ['DEFERRED_TO_STRUCTURAL_EXPIRATION_HANDLING'] };
     case 'SELL_STOCK': {
-      // The ONE canonical effective basis (RecoveryState.effectiveBasisPerShare,
-      // itself sourced from computeEffectiveStockBasis when full chain
-      // history is supplied) -- never a second, independently-derived
-      // basis figure for this action.
-      const basis = recoveryState.effectiveBasisPerShare, mark = state.economics.stockMarkPerShare;
+      // The best AVAILABLE basis reference -- canonical whole-chain when
+      // complete, otherwise the broker-recorded figure as an explicitly
+      // lower-confidence reference. `recoveryState.basisSource` names
+      // WHICH one this is; this action never silently presents a broker
+      // reference as if it were the canonical figure.
+      const basis = recoveryState.bestAvailableBasisPerShare, mark = state.economics.stockMarkPerShare;
       if (!finite(basis) || !finite(mark) || capital === null) return { ...base, ...UNKNOWN_VALUE };
       const knownStockPnl = (mark - basis) * state.economics.openStockShares;
       const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
@@ -666,6 +703,7 @@ function valueFor(
         executionEvidence: null,
         reasons: [
           `KNOWN_STOCK_PNL_IF_SOLD_${knownStockPnl.toFixed(2)}`,
+          `BASIS_SOURCE_${recoveryState.basisSource}`,
           `DISTANCE_TO_BASIS_FRACTION_${recoveryState.distanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.distanceToBasisFraction.toFixed(4)}`,
           `CAPITAL_OPPORTUNITY_COST_${recoveryState.capitalOpportunityCostDollars === null ? 'UNKNOWN' : recoveryState.capitalOpportunityCostDollars.toFixed(2)}`,
           ...adjustment.reasons,
@@ -674,10 +712,11 @@ function valueFor(
     }
     case 'SELL_CC': {
       if (state.ccCandidates !== undefined && state.ccCandidates.length > 0) {
-        return valueForSellCcFromCandidates(state, recoveryState.effectiveBasisPerShare);
+        return valueForSellCcFromCandidates(state, recoveryState.bestAvailableBasisPerShare, recoveryState.basisSource);
       }
-      // Same ONE canonical basis as SELL_STOCK -- never a second formula.
-      const candidate = state.ccCandidate, basis = recoveryState.effectiveBasisPerShare;
+      // Best available basis reference -- see SELL_STOCK's comment above;
+      // never a second, independently-derived formula.
+      const candidate = state.ccCandidate, basis = recoveryState.bestAvailableBasisPerShare;
       if (!candidate || !finite(candidate.bid) || !finite(candidate.ask) || !finite(basis)) {
         return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_IDENTIFIED_CC_CANDIDATE'] };
       }
@@ -686,7 +725,8 @@ function valueFor(
       // in a loss regardless of the premium collected. This is an
       // arithmetic safety rule, not a profitability forecast.
       if (candidate.strike < basis) {
-        return { ...base, ...UNKNOWN_VALUE, utility: -3, reasons: ['CC_STRIKE_BELOW_KNOWN_COST_BASIS_REJECTED'] };
+        return { ...base, ...UNKNOWN_VALUE, utility: -3,
+          reasons: ['CC_STRIKE_BELOW_KNOWN_COST_BASIS_REJECTED', `BASIS_SOURCE_${recoveryState.basisSource}`] };
       }
       // Conservative, executable reference: the BID side, never the
       // midpoint -- a midpoint premium must never silently become the
@@ -715,7 +755,8 @@ function valueFor(
         executionCostRisk: premiumDollars * 0.01, opportunityCost: null, uncertainty: null,
         utility: ccWeight * premiumDollars, executionEvidence,
         reasons: [`BID_SIDE_EXECUTABLE_REFERENCE_${premiumDollars.toFixed(2)}`, `MID_REFERENCE_ANALYTICAL_ONLY_${midDollars.toFixed(2)}`,
-          'STRIKE_AT_OR_ABOVE_COST_BASIS', `HORIZON_ANCHOR_${horizon.horizonAnchor ?? 'UNKNOWN'}`, `SELL_CC_UTILITY_WEIGHT_${ccWeight}`],
+          'STRIKE_AT_OR_ABOVE_COST_BASIS', `BASIS_SOURCE_${recoveryState.basisSource}`,
+          `HORIZON_ANCHOR_${horizon.horizonAnchor ?? 'UNKNOWN'}`, `SELL_CC_UTILITY_WEIGHT_${ccWeight}`],
       };
     }
     case 'REDEPLOY':

@@ -529,6 +529,21 @@ test('SELL_STOCK and SELL_CC both consume the ONE canonical effective basis when
   const sellCcValue = withCcEvidence?.actionValues.find((value) => value.action === 'SELL_CC');
   assert.ok(sellCcValue?.reasons.includes('STRIKE_AT_OR_ABOVE_COST_BASIS'));
   assert.ok(!sellCcValue?.reasons.includes('CC_STRIKE_BELOW_KNOWN_COST_BASIS_REJECTED'));
+  assert.ok(sellCcValue?.reasons.includes('BASIS_SOURCE_CANONICAL_WHOLE_CHAIN'));
+  assert.ok(sellStockValue?.reasons.includes('BASIS_SOURCE_CANONICAL_WHOLE_CHAIN'));
+});
+
+test('SELL_STOCK and SELL_CC reason codes distinguish a broker-recorded basis reference from the canonical one -- never silently presenting one as the other', () => {
+  const input = state('RECOVERY_WAIT'); // no wholeChainComponents supplied -> falls back to broker basis
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  const sellStockValue = evidence?.actionValues.find((value) => value.action === 'SELL_STOCK');
+  assert.ok(sellStockValue?.reasons.includes('BASIS_SOURCE_BROKER_RECORDED_REFERENCE'));
+  assert.ok(!sellStockValue?.reasons.includes('BASIS_SOURCE_CANONICAL_WHOLE_CHAIN'));
+
+  const withCcCandidate = { ...input, ccCandidate: rollCandidate({ optionType: 'CALL', strike: 200, bid: 1, ask: 1.2 }) };
+  const withCcEvidence = evaluatePaperBootstrapManagementPolicy(withCcCandidate);
+  const sellCcValue = withCcEvidence?.actionValues.find((value) => value.action === 'SELL_CC');
+  assert.ok(sellCcValue?.reasons.includes('BASIS_SOURCE_BROKER_RECORDED_REFERENCE'));
 });
 
 test('the provider defaults to no candidates and stays passive', async () => {
@@ -555,4 +570,45 @@ test('DETERMINISM: this holds across every lifecycle branch this policy covers, 
     const second = evaluatePaperBootstrapManagementPolicy(input);
     assert.deepEqual(first, second, `lifecycle ${lifecycle} must be deterministic`);
   }
+});
+
+const itmOverrides = { snapshot_json: { underlyingState: { last: 190 }, marketSession: { isOpen: false },
+  riskState: { assignmentCapacity: 1, newRiskState: 'ALLOW_FULL' }, eventState: { state: 'CLEAR' } } };
+
+test('ASSIGNMENT INTENT: CLOSE wins over assignment-intent continuation when the position is ITM but near-exhausted/near-expiry', () => {
+  const input = state('CSP_OPEN', { ...itmOverrides, bid: 0.01, ask: 0.02 }, '2026-10-13T14:00:00.000Z');
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  assert.equal(evidence?.selectedAction, 'CLOSE_FULL');
+});
+
+test('ASSIGNMENT INTENT: ROLL wins over assignment-intent continuation when a genuinely credit-positive roll candidate exists', () => {
+  const input = { ...state('CSP_OPEN', itmOverrides), rollCandidate: rollCandidate() };
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  assert.equal(evidence?.selectedAction, 'ROLL');
+});
+
+test('ASSIGNMENT INTENT: continuation wins (no roll candidate, not near-exhausted) -- HOLD is selected and its reasons name the intent WITHOUT creating a second broker action', () => {
+  const input = state('CSP_OPEN', itmOverrides); // ITM, default bid/ask (not near-exhausted), no roll candidate, dte far out
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  assert.equal(evidence?.selectedAction, 'HOLD');
+  const holdValue = evidence?.actionValues.find((value) => value.action === 'HOLD');
+  assert.ok(holdValue?.reasons.includes('ASSIGNMENT_INTENT_ACCEPT_IF_EXPIRATION_REACHED'));
+  // The utility is UNCHANGED (still the neutral 0 baseline) -- the intent
+  // is informational metadata, never a second decision authority.
+  assert.equal(holdValue?.utility, 0);
+});
+
+test('ASSIGNMENT INTENT: ordinary HOLD carries no assignment-intent label at all when the short put is OTM -- the intent is not yet applicable', () => {
+  const input = state('CSP_OPEN'); // default fixture: OTM (spot 205 > strike 200)
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  assert.equal(evidence?.selectedAction, 'HOLD');
+  const holdValue = evidence?.actionValues.find((value) => value.action === 'HOLD');
+  assert.ok(!holdValue?.reasons.some((reason) => reason.startsWith('ASSIGNMENT_INTENT_')));
+});
+
+test('ASSIGNMENT INTENT: never becomes a second broker action -- ACCEPT_ASSIGNMENT remains structurally infeasible before the exact cutoff regardless of the intent label', () => {
+  const input = state('CSP_OPEN', itmOverrides); // same ITM, continuation-wins scenario as above
+  const frontier = buildManagementActionFrontier(input);
+  const acceptAssignmentAction = frontier.actions.find((action) => action.action === 'ACCEPT_ASSIGNMENT');
+  assert.equal(acceptAssignmentAction?.feasibility, 'INFEASIBLE');
 });
