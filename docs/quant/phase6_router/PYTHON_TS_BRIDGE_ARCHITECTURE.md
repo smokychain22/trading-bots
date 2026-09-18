@@ -1,5 +1,14 @@
 # Python ↔ TypeScript Bridge — Architecture Specification
 
+> **Production authority correction (2026-09-18):** This document is a
+> research-only design record. It is not the active Production architecture.
+> The canonical live management authority is the TypeScript
+> `ManagementPolicyEvidenceProvider` wired by `src/theta/autonomous-runtime.ts`.
+> Python policy modules are research, shadow, and test inputs only. They have
+> no broker-mutation authority. A future Python bridge may be reconsidered only
+> through an explicit architecture decision and must replace, not duplicate,
+> the single provider authority.
+
 Durability artifact. **SPECIFIED, not implemented** — this is the single most
 consequential remaining R1 gap flagged across this engagement's last several handoffs,
 and this document exists so the design is settled before implementation, not
@@ -7,7 +16,8 @@ discovered ad hoc.
 
 ## Principle
 
-Python quant (`bots/theta/quant/`) is mathematical/policy truth. TypeScript
+For this historical proposal, Python quant (`bots/theta/quant/`) was intended
+to be mathematical/policy truth. TypeScript
 (`src/theta/`) orchestrates: validates, type-checks, sequences, and packages Python's
 output — it never recomputes a formula Python already owns. Every existing TS contract
 in this repository (`theta-q-contract.ts`, `management-contract.ts`, `aegis-contract.ts`,
@@ -77,7 +87,6 @@ piece connecting already-built endpoints.
 
 ## Status
 
-SPECIFIED. No process-spawning code exists yet. This is the concrete next
-implementation task once a session has the budget to build it carefully (it is
-genuinely security-relevant — process invocation, secret-scrubbing, and injection
-avoidance all need real care, not a rushed first pass).
+SUPERSEDED_FOR_PRODUCTION. No process-spawning policy bridge should be added to
+the live management path. The TypeScript provider is the current policy truth.
+The proposal remains available for research provenance only.

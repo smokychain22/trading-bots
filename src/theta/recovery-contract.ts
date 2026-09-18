@@ -2,8 +2,9 @@ import { z } from 'zod';
 
 // Versioned request/response contract for
 // bots/theta/quant/models/recovery_decision.py (R1H item K2). TypeScript
-// never recomputes the RECOVERY_WAIT/SELL_STOCK/SELL_CC decision itself
-// -- Python quant is mathematical policy truth.
+// never recomputes the RECOVERY_WAIT/SELL_STOCK/SELL_CC research result
+// itself. This contract has no live broker authority. The canonical
+// Production management policy is TypeScript.
 //
 // partialSellStock is always {modeled: false} -- recovery_decision.py has
 // no partial-sell economics yet, and this contract never fabricates one

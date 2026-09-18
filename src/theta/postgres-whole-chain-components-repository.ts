@@ -106,11 +106,14 @@ export class PostgresWholeChainComponentsRepository {
           CASE WHEN l.closed_at <= $2 THEN l.close_price_per_share END AS close_price_per_share,
           CASE WHEN l.closed_at <= $2 THEN l.realized_pnl END AS realized_pnl,
           l.rolled_from_option_leg_id,
+          COALESCE(pc.partial_closing_debit,0) AS partial_closing_debit,
           CASE WHEN l.closed_at <= $2 AND EXISTS(SELECT 1 FROM trade.option_leg successor
             WHERE successor.option_leg_id=l.rolled_to_option_leg_id AND successor.opened_at <= $2)
             THEN l.rolled_to_option_leg_id END AS rolled_to_option_leg_id,
           oc.option_type,oc.multiplier
         FROM trade.option_leg l JOIN market.option_contract oc ON oc.option_contract_id=l.option_contract_id
+        LEFT JOIN LATERAL(SELECT sum(p.closing_debit) AS partial_closing_debit
+          FROM trade.option_partial_close_realization p WHERE p.option_leg_id=l.option_leg_id AND p.occurred_at <= $2) pc ON true
         WHERE l.chain_id=$1 AND l.opened_at <= $2 ORDER BY l.opened_at,l.option_leg_id`, [chainId, asOf]),
       client.query(`SELECT ae.assignment_event_id,ae.option_leg_id,ae.stock_lot_id,ae.assigned_at,ae.shares,
           ae.strike_price,oc.option_type
@@ -169,6 +172,7 @@ export class PostgresWholeChainComponentsRepository {
     const originalPuts = legs.filter((row) => row.side === 'SHORT' && row.option_type === 'PUT'
       && row.rolled_from_option_leg_id == null);
     const initialPutPremium = this.singlePremium(originalPuts, asOf, 'INITIAL_PUT_LEG_MISSING_OR_AMBIGUOUS');
+    const putCloseCosts = this.putCloseCosts(legs, asOf);
 
     const rolledPuts = legs.filter((row) => row.side === 'SHORT' && row.option_type === 'PUT'
       && row.rolled_from_option_leg_id != null);
@@ -199,7 +203,7 @@ export class PostgresWholeChainComponentsRepository {
     const stockExit = this.stockExitEvidence(lots, assignment.stockSharesAssigned, openStockShares, asOf);
     const dividendEvidence = this.dividendEvidence(dividends, asOf);
     const feeEvidence = this.feeEvidence(fills, feeEvents, asOf);
-    const slippageEvidence = this.slippageEvidence(tcaRows, asOf);
+    const tcaExecutionShortfall = this.slippageEvidence(tcaRows, asOf);
     const stockMark = this.stockMarkEvidence(markRows, openStockShares, asOf);
     const stockLotBasisReferences = this.stockLotReferences(lots);
 
@@ -208,6 +212,7 @@ export class PostgresWholeChainComponentsRepository {
       chainId,
       asOf,
       initialPutPremium,
+      putCloseCosts,
       rollCredits,
       rollCloseCosts,
       assignmentStrike: assignment.assignmentStrike,
@@ -218,7 +223,7 @@ export class PostgresWholeChainComponentsRepository {
       coveredCallCloseCosts,
       stockSaleOrCallAwayProceeds: stockExit,
       fees: feeEvidence,
-      slippage: slippageEvidence,
+      tcaExecutionShortfall,
       currentStockMarkPerShare: stockMark,
       openStockShares,
       stockLotBasisReferences,
@@ -242,6 +247,24 @@ export class PostgresWholeChainComponentsRepository {
     if (rows.length === 0) return knownField(0, asOf, [evidenceSource], ['NO_MATCHING_OPENING_LEGS']);
     const value = dollarAggregate(rows, 'entry_credit_debit');
     return value === null ? unknownField(asOf, [invalidReason], [evidenceSource]) : knownField(value, asOf, [evidenceSource]);
+  }
+
+  private putCloseCosts(rows: readonly Row[],asOf:string):WholeChainEvidenceField<number>{
+    const puts=rows.filter((row)=>row.side==='SHORT'&&row.option_type==='PUT');
+    const evidenceSource=source('trade.option_leg + trade.option_partial_close_realization',
+      ['close_price_per_share','quantity','close_reason','partial_closing_debit'],puts,'option_leg_id','closed_at');
+    const costs=puts.map((row)=>{
+      const reason=text(row.close_reason),partial=number(row.partial_closing_debit)??0;
+      if(reason==='BTC_CLOSE'){
+        const close=number(row.close_price_per_share),quantity=number(row.quantity),multiplier=number(row.multiplier);
+        return close===null||quantity===null||multiplier===null?null:close*quantity*multiplier;
+      }
+      if(reason==='ROLLED')return 0;
+      return partial;
+    });
+    return costs.every((value):value is number=>value!==null)
+      ?knownField(sum(costs),asOf,[evidenceSource])
+      :unknownField(asOf,['PUT_CLOSE_COST_INCOMPLETE'],[evidenceSource]);
   }
 
   private sumCloseCosts(rows: readonly Row[], asOf: string, invalidReason: string): WholeChainEvidenceField<number> {

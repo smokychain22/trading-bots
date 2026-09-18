@@ -3,7 +3,8 @@ import { z } from 'zod';
 // Versioned request/response contract for
 // bots/theta/quant/models/assignment_model.py (R1H item K1). TypeScript
 // never recomputes economic_basis_per_share/mechanical_close_realized_pnl
-// itself -- Python quant is mathematical policy truth. This file only
+// itself. Python is the calculation authority for this research/shadow
+// contract only. It is not the Production management authority. This file
 // validates and types what Python returns.
 //
 // This contract deliberately reports ONLY the economic/ownership

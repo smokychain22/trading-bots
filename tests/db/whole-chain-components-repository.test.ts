@@ -140,7 +140,7 @@ test('whole-chain adapter is PIT-safe, deterministic, chain-isolated, and preser
     assert.equal(beforeRoll.rollCloseCosts.status,'KNOWN_ZERO');
     assert.equal(beforeRoll.stockSharesAssigned.value,0);
     assert.equal(beforeRoll.fees.status,'KNOWN_ZERO');
-    assert.ok(Math.abs((beforeRoll.slippage.value??0)-5)<1e-9);
+    assert.ok(Math.abs((beforeRoll.tcaExecutionShortfall.value??0)-5)<1e-9);
     assert.equal(beforeRoll.dividends.status,'UNKNOWN','empty dividend rows are never assumed zero');
     assert.equal(beforeRoll.components,null,'unknown dividends keep the economic component set incomplete');
 
@@ -173,7 +173,7 @@ test('whole-chain adapter is PIT-safe, deterministic, chain-isolated, and preser
     assert.equal(final.openStockShares.value,0);
     assert.equal(final.currentStockMarkPerShare.status,'UNKNOWN');
     assert.equal(final.fees.status,'KNOWN_ZERO');
-    assert.ok(Math.abs((final.slippage.value??0)-5)<1e-9);
+    assert.ok(Math.abs((final.tcaExecutionShortfall.value??0)-5)<1e-9);
     assert.equal(final.dividends.status,'UNKNOWN');
 
     const replay=await repository.load(chainId,'2026-09-12T18:00:00.000Z',{
@@ -201,7 +201,7 @@ test('whole-chain adapter is PIT-safe, deterministic, chain-isolated, and preser
       connectionId,reconciliationSnapshotId:zeroSnapshot,
     });
     assert.equal(unknownFee.fees.status,'UNKNOWN');
-    assert.equal(unknownFee.slippage.status,'UNKNOWN','missing TCA is never zero slippage');
+    assert.equal(unknownFee.tcaExecutionShortfall.status,'UNKNOWN','missing TCA is never zero slippage');
     const executionAccount=await pool.query(`INSERT INTO trade.execution_account(account_kind,environment,
       provider_account_ref_hash,provider_account_ref_masked) SELECT 'MASTER_API_KEY','PAPER',
       encode(digest(provider_account_ref,'sha256'),'hex'),'test-masked' FROM copy.follower_account WHERE follower_account_id=$1
