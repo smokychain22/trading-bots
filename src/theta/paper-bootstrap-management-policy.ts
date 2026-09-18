@@ -602,7 +602,15 @@ function valueForSellCcFromCandidates(
   );
   const best = bestCoveredCallCandidate(assessments, false);
   if (best === null) {
-    return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_SELECTABLE_CC_CANDIDATES_ALL_BELOW_BASIS_OR_UNQUOTED'] };
+    // Named per-basis so a rejection driven only by the lower-confidence
+    // recorded-lot REFERENCE is never presented with canonical-economics
+    // wording -- see the single-candidate SELL_CC path's identical
+    // requirement (section 7 of the standing management directive).
+    return { ...base, ...UNKNOWN_VALUE, reasons: [
+      'NO_SELECTABLE_CC_CANDIDATES_ALL_BELOW_BASIS_OR_UNQUOTED',
+      isCanonicalBasis ? 'CANONICAL_EFFECTIVE_BASIS_KNOWN' : 'REFERENCE_BASIS_POLICY_REJECTION',
+      `BASIS_SOURCE_${basisSource}`,
+    ] };
   }
   const premiumDollars = best.premiumIncomeDollars as number;
   const executionEvidence: ManagementActionExecutionEvidence = {
@@ -955,10 +963,24 @@ function valueFor(
       // locking in a loss regardless of the premium collected. This is
       // an arithmetic safety rule, not a profitability forecast, and it
       // never claims canonical economics when only a reference is known.
+      //
+      // When canonical effective basis IS known, this rejection is a real,
+      // canonical-economics-grounded fact (CC_STRIKE_BELOW_KNOWN_COST_BASIS_REJECTED,
+      // preserved unchanged for existing consumers). When only the
+      // recorded-lot REFERENCE is known, this is explicitly a conservative
+      // POLICY posture, not an economic truth -- the reference basis may
+      // not reflect put-premium/roll/fee history at all, so rejecting on
+      // it is a caller-removable safety choice, never presented with
+      // "COST_BASIS" wording that could be mistaken for canonical
+      // economics. Both the legacy string (kept for backward
+      // compatibility with existing consumers) and the directive's
+      // required REFERENCE_BASIS_POLICY_REJECTION vocabulary are emitted
+      // together so this distinction is unambiguous in `reasons`.
       if (candidate.strike < basis) {
         return { ...base, ...UNKNOWN_VALUE, utility: -3,
           reasons: [
             isCanonicalBasis ? 'CC_STRIKE_BELOW_KNOWN_COST_BASIS_REJECTED' : 'CC_STRIKE_BELOW_RECORDED_REFERENCE_REJECTED',
+            isCanonicalBasis ? 'CANONICAL_EFFECTIVE_BASIS_KNOWN' : 'REFERENCE_BASIS_POLICY_REJECTION',
             `BASIS_SOURCE_${recoveryState.basisSource}`,
           ] };
       }

@@ -267,6 +267,48 @@ test('RECOVERY_WAIT rejects a covered call candidate priced below the recorded-l
   const rejected = evidence?.actionValues.find((value) => value.action === 'SELL_CC');
   assert.ok(rejected?.reasons.includes('CC_STRIKE_BELOW_RECORDED_REFERENCE_REJECTED'));
   assert.ok(!rejected?.reasons.includes('CC_STRIKE_BELOW_KNOWN_COST_BASIS_REJECTED'));
+  // This rejection is a conservative POLICY posture (the reference basis
+  // may not reflect put-premium/roll/fee history), never an economic
+  // truth -- it must never carry canonical-economics wording.
+  assert.ok(rejected?.reasons.includes('REFERENCE_BASIS_POLICY_REJECTION'));
+  assert.ok(!rejected?.reasons.includes('CANONICAL_EFFECTIVE_BASIS_KNOWN'));
+});
+
+test('a below-CANONICAL-basis CC rejection is labeled as grounded in real canonical economics, never the reference-only policy wording', () => {
+  const completeChain = {
+    initialPutPremium: 300, rollCredits: 0, rollCloseCosts: 0, assignmentStrike: 195, stockSharesAssigned: 100,
+    dividends: 0, coveredCallPremium: null, coveredCallCloseCosts: null, stockSaleOrCallAwayProceeds: null,
+    fees: 0, slippage: 0, currentStockMarkPerShare: null, openStockShares: 100,
+  };
+  // canonicalBasis = 195 - 300/100 = 192. A strike of 190 is below it.
+  const input = { ...state('RECOVERY_WAIT'), wholeChainComponents: completeChain };
+  const cc = rollCandidate({ optionType: 'CALL', strike: 190, bid: 1, ask: 1.2 });
+  const evidence = evaluatePaperBootstrapManagementPolicy({ ...input, ccCandidate: cc });
+  const rejected = evidence?.actionValues.find((value) => value.action === 'SELL_CC');
+  assert.ok(rejected?.reasons.includes('CC_STRIKE_BELOW_KNOWN_COST_BASIS_REJECTED'));
+  assert.ok(rejected?.reasons.includes('CANONICAL_EFFECTIVE_BASIS_KNOWN'));
+  assert.ok(!rejected?.reasons.includes('REFERENCE_BASIS_POLICY_REJECTION'));
+});
+
+test('the multi-candidate SELL_CC path also distinguishes a reference-only below-basis rejection from a canonical one when every candidate is unselectable', () => {
+  const referenceOnly = evaluatePaperBootstrapManagementPolicy({
+    ...state('RECOVERY_WAIT'),
+    ccCandidates: [rollCandidate({ optionType: 'CALL', strike: 190, bid: 1, ask: 1.2 })],
+  });
+  const referenceRejected = referenceOnly?.actionValues.find((value) => value.action === 'SELL_CC');
+  assert.ok(referenceRejected?.reasons.includes('REFERENCE_BASIS_POLICY_REJECTION'));
+
+  const completeChain = {
+    initialPutPremium: 300, rollCredits: 0, rollCloseCosts: 0, assignmentStrike: 195, stockSharesAssigned: 100,
+    dividends: 0, coveredCallPremium: null, coveredCallCloseCosts: null, stockSaleOrCallAwayProceeds: null,
+    fees: 0, slippage: 0, currentStockMarkPerShare: null, openStockShares: 100,
+  };
+  const canonicalRejected = evaluatePaperBootstrapManagementPolicy({
+    ...state('RECOVERY_WAIT'), wholeChainComponents: completeChain,
+    ccCandidates: [rollCandidate({ optionType: 'CALL', strike: 190, bid: 1, ask: 1.2 })],
+  })?.actionValues.find((value) => value.action === 'SELL_CC');
+  assert.ok(canonicalRejected?.reasons.includes('CANONICAL_EFFECTIVE_BASIS_KNOWN'));
+  assert.ok(!canonicalRejected?.reasons.includes('REFERENCE_BASIS_POLICY_REJECTION'));
 });
 
 test('RECOVERY_WAIT with multiple CC candidates picks the highest-premium SELECTABLE one, skipping below-basis alternatives', () => {
