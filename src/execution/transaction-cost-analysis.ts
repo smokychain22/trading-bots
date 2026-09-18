@@ -65,6 +65,9 @@ export function buildTransactionCostAnalysis(input: {
   if (input.fill === null) unknownReasons.push('NO_FILL');
   else {
     if (!Number.isFinite(input.fill.price) || input.fill.price <= 0) throw new Error('TCA_FILL_INVALID');
+    if ([input.fill.bid, input.fill.ask].some(value => value !== null && (!Number.isFinite(value) || value <= 0))) {
+      throw new Error('TCA_QUOTE_INVALID');
+    }
     fillPrice = input.fill.price;
     if (input.fill.bid === null || input.fill.ask === null) unknownReasons.push('FILL_BBO_UNKNOWN');
     else {

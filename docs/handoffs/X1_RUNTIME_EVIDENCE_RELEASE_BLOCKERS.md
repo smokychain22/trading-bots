@@ -29,8 +29,8 @@ These are internal engineering and evidence defects. They are not OPRA, future p
 
 - Local Node suite: 956 passed, 11 database tests skipped without a disposable database URL.
 - TypeScript, ESLint, build, and security scan passed. Security scan reported zero findings.
-- Targeted TCA unit tests: 6 passed.
-- Local Docker engine unavailable, including after requesting Docker Desktop startup. The real PostgreSQL regression requires CI or a disposable local database, never Production fixture insertion.
+- Targeted TCA unit tests: 7 passed, including rejection of an invalid observed side when the other quote side is missing.
+- Local Docker engine unavailable, including after requesting Docker Desktop startup. CI run `35347974740` passed the real PostgreSQL regression, schema invariants, Redis check, Python suite, and Playwright. No Production fixtures were inserted.
 - No UI changes. Reticle visual verification is not applicable to this backend-only change.
 - No migration, Production deployment, worker restart, broker mutation, policy promotion, or execution-gate change performed.
 - This change submitted zero master, follower, and live orders. Lifetime broker order counts were not independently queried during this patch.

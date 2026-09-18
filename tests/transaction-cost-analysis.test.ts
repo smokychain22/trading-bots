@@ -37,3 +37,8 @@ test('confirmed fill without observed fill BBO retains shortfall but not spread 
   assert.equal(tca.benchmarkClass,'ALPACA_INDICATIVE_TCA');
   assert.ok(tca.unknownReasons.includes('FILL_BBO_UNKNOWN'));
 });
+
+test('missing one quote side does not hide an invalid observed opposite side',()=>{
+  assert.throws(()=>buildTransactionCostAnalysis({...base,
+    fill:{price:1.05,bid:null,ask:-1,at:'2026-09-14T14:00:02Z'}}),/TCA_QUOTE_INVALID/);
+});
