@@ -84,6 +84,69 @@ test('computeWholeChainPnl sums every known leg and never hides a prior option l
   assert.notEqual(breakdown.wholeChainPnl, null);
 });
 
+test('REGRESSION: stock acquisition cost at assignment is netted against sale proceeds, never omitted', () => {
+  // Confirmed defect (found by review, fixed here): the stock leg previously
+  // reported RAW sale proceeds with no acquisition-cost deduction, inflating
+  // whole-chain P&L by exactly the assignment cost. 100 shares assigned at
+  // $195 = $19,500 acquisition cost; sold later at exactly that price nets to
+  // a $0 stock leg, not a $19,500 phantom gain.
+  const breakdown = computeWholeChainPnl(components({
+    stockSaleOrCallAwayProceeds: 195 * 100, openStockShares: 0, coveredCallPremium: 0, coveredCallCloseCosts: 0,
+  }));
+  const stockLeg = breakdown.legLevelPnl.find((leg) => leg.label === 'STOCK_PNL_AT_SALE_OR_CALL_AWAY');
+  assert.equal(stockLeg?.amount, 0);
+  // put premiums (200+50-30=220) + fees(-2) + slippage(-1) + stock(0) = 217
+  assert.equal(breakdown.wholeChainPnl, 217);
+});
+
+test('stock sold BELOW basis registers a real stock-leg loss, not a phantom gain from ignoring acquisition cost', () => {
+  const breakdown = computeWholeChainPnl(components({
+    stockSaleOrCallAwayProceeds: 180 * 100, openStockShares: 0, coveredCallPremium: 0, coveredCallCloseCosts: 0,
+  }));
+  const stockLeg = breakdown.legLevelPnl.find((leg) => leg.label === 'STOCK_PNL_AT_SALE_OR_CALL_AWAY');
+  // sold at $180, acquired at $195 assignment strike -> -$1,500 stock loss
+  assert.equal(stockLeg?.amount, (180 - 195) * 100);
+  assert.ok((stockLeg?.amount ?? 0) < 0);
+});
+
+test('stock sold ABOVE basis registers a real stock-leg gain', () => {
+  const breakdown = computeWholeChainPnl(components({
+    stockSaleOrCallAwayProceeds: 210 * 100, openStockShares: 0, coveredCallPremium: 0, coveredCallCloseCosts: 0,
+  }));
+  const stockLeg = breakdown.legLevelPnl.find((leg) => leg.label === 'STOCK_PNL_AT_SALE_OR_CALL_AWAY');
+  assert.equal(stockLeg?.amount, (210 - 195) * 100);
+  assert.ok((stockLeg?.amount ?? 0) > 0);
+});
+
+test('CASH-FLOW IDENTITY: wholeChainPnl equals the exact sum of every actual leg cash flow, for a full CSP-to-call-away chain', () => {
+  // A complete, explicit worked example spanning every leg category named
+  // in the accounting requirement: initial put premium, one profitable
+  // roll, assignment, dividends, a covered call, and a call-away exit.
+  const chain = components({
+    initialPutPremium: 300,      // sold the original CSP for $300
+    rollCredits: 120,            // one roll opened for a $120 credit
+    rollCloseCosts: 70,          // that roll's old leg cost $70 to close
+    assignmentStrike: 195,       // assigned 100 shares @ $195 = $19,500 acquisition
+    stockSharesAssigned: 100,
+    dividends: 15,               // $15 dividend received while holding
+    coveredCallPremium: 140,     // sold a covered call for $140
+    coveredCallCloseCosts: 0,    // held to call-away, no close needed
+    stockSaleOrCallAwayProceeds: 200 * 100, // called away at $200 strike = $20,000
+    fees: 6, slippage: 3,
+    currentStockMarkPerShare: null, openStockShares: 0,
+  });
+  const breakdown = computeWholeChainPnl(chain);
+  const expected =
+    300            // initial put premium
+    + 120 - 70     // net roll result
+    + 15           // dividends
+    + 140 - 0      // net covered-call result
+    + (200 * 100 - 195 * 100) // stock P&L at call-away: (500)
+    - 6 - 3;       // fees + slippage
+  assert.equal(breakdown.wholeChainPnl, expected);
+  assert.equal(expected, 300 + 50 + 15 + 140 + 500 - 9);
+});
+
 test('an unknown leg makes wholeChainPnl null but still reports every known leg', () => {
   const breakdown = computeWholeChainPnl(components({ dividends: 0, coveredCallPremium: null, stockSaleOrCallAwayProceeds: null }));
   // stock still open (openStockShares>0, no sale proceeds) -> unrealized stock mtm leg added
@@ -100,4 +163,6 @@ test('a fully closed chain reports a complete whole-chain P&L with no unrealized
   }));
   assert.ok(!breakdown.legLevelPnl.some((leg) => leg.label === 'UNREALIZED_STOCK_MTM'));
   assert.notEqual(breakdown.wholeChainPnl, null);
+  // put premiums (220) + CC net (110) + stock leg (19500 - 195*100 = 0) - fees(2) - slippage(1) = 327
+  assert.equal(breakdown.wholeChainPnl, 327);
 });

@@ -486,8 +486,15 @@ function valueFor(
       if (candidate.strike < basis) {
         return { ...base, ...UNKNOWN_VALUE, utility: -3, reasons: ['CC_STRIKE_BELOW_KNOWN_COST_BASIS_REJECTED'] };
       }
+      // Conservative, executable reference: the BID side, never the
+      // midpoint -- a midpoint premium must never silently become the
+      // number this policy treats as realizable income (see
+      // covered-call-lattice.ts's same fix). The midpoint is retained
+      // below only as an informational reason code, never as the value
+      // driving economics or selection.
+      const midDollars = (candidate.bid + candidate.ask) / 2 * candidate.multiplier * candidate.quantity;
       const forward = forwardContinuationCashFlow({ closeCostDollars: null, openCreditDollars:
-        ((candidate.bid + candidate.ask) / 2) * candidate.multiplier * candidate.quantity });
+        candidate.bid * candidate.multiplier * candidate.quantity });
       const premiumDollars = forward.netCashFlow as number;
       const horizon = buildCommonHorizonComparison(state.observedAt, state.economics, null, [candidate.expiration]);
       const executionEvidence: ManagementActionExecutionEvidence = {
@@ -503,8 +510,8 @@ function valueFor(
         ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: null,
         executionCostRisk: premiumDollars * 0.01, opportunityCost: null, uncertainty: null,
         utility: 0.5, executionEvidence,
-        reasons: [`KNOWN_CC_PREMIUM_${premiumDollars.toFixed(2)}`, 'STRIKE_AT_OR_ABOVE_COST_BASIS',
-          `HORIZON_ANCHOR_${horizon.horizonAnchor ?? 'UNKNOWN'}`],
+        reasons: [`BID_SIDE_EXECUTABLE_REFERENCE_${premiumDollars.toFixed(2)}`, `MID_REFERENCE_ANALYTICAL_ONLY_${midDollars.toFixed(2)}`,
+          'STRIKE_AT_OR_ABOVE_COST_BASIS', `HORIZON_ANCHOR_${horizon.horizonAnchor ?? 'UNKNOWN'}`],
       };
     }
     case 'REDEPLOY':

@@ -28,7 +28,25 @@ export interface CoveredCallCandidate {
 
 export interface CoveredCallAssessment {
   readonly candidate: CoveredCallCandidate;
+  /**
+   * The CONSERVATIVE, executable premium reference -- computed from the
+   * BID side (what a seller could actually expect to receive posting at
+   * or near the bid), never the midpoint. This is the value fed into
+   * `computeCoveredCallUtility`/`wholeChainPnlIfCalledAway`/
+   * `wholeChainPnlIfNotCalled` -- i.e., the only value this module treats
+   * as "deterministic economics" for ranking/selection purposes. It is
+   * still NOT a realized fill -- BROKER ACTUAL FILL remains the only
+   * truth for whole-chain accounting once a real order exists; this is
+   * the pre-fill reference used to decide WHETHER to act.
+   */
   readonly premiumIncomeDollars: number | null;
+  /**
+   * The midpoint premium ((bid+ask)/2) -- an ANALYTICAL/research
+   * reference only. Never fed into utility, ranking, or whole-chain P&L.
+   * Exists so a reviewer can see the gap between "what mid suggests" and
+   * "what this module conservatively assumes is actually executable."
+   */
+  readonly midReferenceDollars: number | null;
   readonly callAwayPriceDollars: number | null;
   /** Only computed when the caller supplies a reference upside price
    * (e.g. a target the operator names) -- this module has no price
@@ -141,8 +159,15 @@ export function evaluateCoveredCallCandidates(
         ? 'BELOW_BASIS_EVALUATED_UNDER_CALLER_JUSTIFIED_POLICY' : 'BELOW_BASIS_CC_REJECTED_BY_BOOTSTRAP_POLICY');
     }
 
-    const hasQuote = candidate.bid !== null && candidate.ask !== null && Number.isFinite(candidate.bid) && Number.isFinite(candidate.ask);
+    const hasQuote = candidate.bid !== null && candidate.ask !== null && Number.isFinite(candidate.bid) && Number.isFinite(candidate.ask)
+      && (candidate.bid as number) >= 0 && (candidate.ask as number) >= (candidate.bid as number);
+    // Conservative, executable reference: the BID side, never the
+    // midpoint -- a midpoint is not a guaranteed fill, and this module
+    // must never let an optimistic mid silently become the number that
+    // decides whether a covered call gets sold.
     const premiumIncomeDollars = hasQuote
+      ? (candidate.bid as number) * candidate.multiplier * candidate.quantity : null;
+    const midReferenceDollars = hasQuote
       ? ((candidate.bid as number) + (candidate.ask as number)) / 2 * candidate.multiplier * candidate.quantity : null;
     const spreadDollars = hasQuote ? ((candidate.ask as number) - (candidate.bid as number)) * candidate.multiplier : null;
     const callAwayPriceDollars = candidate.strike * candidate.multiplier * candidate.quantity;
@@ -159,8 +184,10 @@ export function evaluateCoveredCallCandidates(
       stockSaleOrCallAwayProceeds: null, currentStockMarkPerShare: currentStockPrice, openStockShares: sharesHeld,
     }).wholeChainPnl;
 
-    if (premiumIncomeDollars !== null) reasons.push(`KNOWN_PREMIUM_${premiumIncomeDollars.toFixed(2)}`);
-    else reasons.push('QUOTE_UNKNOWN');
+    if (premiumIncomeDollars !== null) {
+      reasons.push(`BID_SIDE_EXECUTABLE_REFERENCE_${premiumIncomeDollars.toFixed(2)}`,
+        `MID_REFERENCE_ANALYTICAL_ONLY_${(midReferenceDollars as number).toFixed(2)}`);
+    } else reasons.push('QUOTE_UNKNOWN');
     if (candidate.dividendExDateRisk) reasons.push('DIVIDEND_EX_DATE_RISK_PRESENT');
     if (candidate.eventRisk) reasons.push('EVENT_RISK_PRESENT');
 
@@ -171,7 +198,7 @@ export function evaluateCoveredCallCandidates(
     );
 
     return {
-      candidate, premiumIncomeDollars, callAwayPriceDollars, upsideSacrificedDollars,
+      candidate, premiumIncomeDollars, midReferenceDollars, callAwayPriceDollars, upsideSacrificedDollars,
       wholeChainPnlIfCalledAway, wholeChainPnlIfNotCalled, belowBasis, spreadDollars, utility,
       reasons: [...reasons, ...utility.reasons],
     };

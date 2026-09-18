@@ -112,9 +112,18 @@ export function computeWholeChainPnl(components: WholeChainComponents): WholeCha
       ? (components.currentStockMarkPerShare - components.assignmentStrike) * components.openStockShares : null;
     legs.push({ label: 'UNREALIZED_STOCK_MTM', amount: unrealizedStockMtm });
   } else if (components.assignmentStrike !== null) {
-    // Shares were assigned at some point and are no longer held -- the sale/
-    // call-away proceeds leg genuinely applies and its amount must be known.
-    legs.push({ label: 'STOCK_SALE_OR_CALL_AWAY_PROCEEDS', amount: components.stockSaleOrCallAwayProceeds });
+    // Shares were assigned at some point and are no longer held. The
+    // ACQUISITION cost paid at assignment (assignmentStrike * shares) is a
+    // real, distinct cash outflow that must be netted against the sale/
+    // call-away proceeds here -- reporting raw proceeds alone would count
+    // the money received for the stock while silently forgetting the money
+    // paid to acquire it in the first place (a confirmed defect found by
+    // review: a $19,500 acquisition was previously omitted entirely,
+    // inflating whole-chain P&L by exactly that amount). This leg is the
+    // stock position's own realized P&L, not its gross proceeds.
+    const stockPnl = components.stockSaleOrCallAwayProceeds === null ? null
+      : components.stockSaleOrCallAwayProceeds - components.assignmentStrike * components.stockSharesAssigned;
+    legs.push({ label: 'STOCK_PNL_AT_SALE_OR_CALL_AWAY', amount: stockPnl });
   }
   const anyUnknown = legs.some((leg) => leg.amount === null);
   const wholeChainPnl = anyUnknown ? null : legs.reduce((sum, leg) => sum + (leg.amount as number), 0);

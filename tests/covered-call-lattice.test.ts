@@ -27,15 +27,30 @@ const candidate = (overrides: Partial<CoveredCallCandidate> = {}): CoveredCallCa
   dividendExDateRisk: false, eventRisk: false, ...overrides,
 });
 
-test('computes premium income, call-away price, and both whole-chain P&L scenarios for an at/above-basis candidate', () => {
+test('computes premium income (bid-side, conservative, never midpoint), call-away price, and both whole-chain P&L scenarios for an at/above-basis candidate', () => {
   const [assessment] = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [candidate()], inertWeights);
   assert.ok(assessment !== undefined);
-  assert.equal(assessment.premiumIncomeDollars, 105);
+  // bid=1, ask=1.1, multiplier=100 -> premiumIncomeDollars is the BID-side
+  // reference (100), never the midpoint (105) -- midReferenceDollars keeps
+  // the midpoint available as an analytical-only figure.
+  assert.equal(assessment.premiumIncomeDollars, 100);
+  assert.equal(assessment.midReferenceDollars, 105);
   assert.equal(assessment.callAwayPriceDollars, 200 * 100);
   assert.equal(assessment.belowBasis, false);
   assert.notEqual(assessment.wholeChainPnlIfCalledAway, null);
   assert.notEqual(assessment.wholeChainPnlIfNotCalled, null);
   assert.notEqual(assessment.wholeChainPnlIfCalledAway, assessment.wholeChainPnlIfNotCalled);
+});
+
+test('wholeChainPnlIfCalledAway correctly nets the assignment acquisition cost against the call-away proceeds', () => {
+  // assignmentStrike=195, stockSharesAssigned=100 -> $19,500 acquisition.
+  // Called away at strike=200 -> proceeds $20,000. Stock leg must be net
+  // ($20,000 - $19,500 = $500), never the raw $20,000 proceeds alone.
+  const [assessment] = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [candidate({ strike: 200 })], inertWeights);
+  const premium = assessment?.premiumIncomeDollars as number;
+  // wholeChainPnlIfCalledAway = initialPutPremium(200) + premium - fees(2) + stockLeg(500)
+  const expected = 200 + premium - 2 + 500;
+  assert.equal(assessment?.wholeChainPnlIfCalledAway, expected);
 });
 
 test('flags a below-basis candidate with the exact required reason code, but does not discard it from the list', () => {
@@ -72,6 +87,13 @@ test('a candidate with no usable quote reports QUOTE_UNKNOWN, never fabricates a
   assert.equal(assessment?.utility.utility, null);
   const selectable = selectableCoveredCallCandidates([assessment as ReturnType<typeof evaluateCoveredCallCandidates>[number]]);
   assert.equal(selectable.length, 0);
+});
+
+test('a crossed quote (bid > ask) is treated as unknown, never used to compute a nonsensical negative premium', () => {
+  const [assessment] = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [candidate({ bid: 2, ask: 1 })], inertWeights);
+  assert.equal(assessment?.premiumIncomeDollars, null);
+  assert.equal(assessment?.midReferenceDollars, null);
+  assert.ok(assessment?.reasons.includes('QUOTE_UNKNOWN'));
 });
 
 test('computeCoveredCallUtility never fabricates the premium-unknown case and names every unknown component', () => {
