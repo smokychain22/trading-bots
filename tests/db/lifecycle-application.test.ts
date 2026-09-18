@@ -15,6 +15,7 @@ test('broker-confirmed lifecycle changes are atomic, replay-safe, and preserve w
   assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname), 'Disposable local database only');
   const pool = new Pool({ connectionString:url.toString(), max:4 });
   const now = '2026-09-12T15:00:00.000Z';
+  const at = (minutes: number): string => new Date(Date.parse(now) + minutes * 60_000).toISOString();
   try {
     const workspaceId=randomUUID(), providerId=randomUUID(), accountId=randomUUID(), botId=randomUUID();
     const strategyId=randomUUID(), featureId=randomUUID(), riskId=randomUUID(), executionId=randomUUID(), costId=randomUUID();
