@@ -97,7 +97,8 @@ test('whole-chain adapter is PIT-safe, deterministic, chain-isolated, and preser
 
     const intentId=randomUUID(),brokerOrderId=randomUUID(),fillId=randomUUID(),tcaId=randomUUID();
     await pool.query(`INSERT INTO trade.order_intent(order_intent_id,chain_id,client_order_id,status,instrument_type,
-      option_contract_id,side,quantity,created_at,updated_at) VALUES($1,$2,$3,'FILLED','OPTION',$4,'SELL',1,$5,$5)`,
+      option_contract_id,side,position_intent,quantity,canonical_quantity,paper_evidence_quantity,created_at,updated_at)
+      VALUES($1,$2,$3,'FILLED','OPTION',$4,'SELL_TO_OPEN','SELL_TO_OPEN',1,1,1,$5,$5)`,
     [intentId,chainId,`test-${intentId}`,put0,at(10)]);
     await pool.query(`INSERT INTO trade.broker_order(broker_order_id,order_intent_id,provider_order_id,submitted_at,
       acknowledged_at,broker_status,raw_payload_hash) VALUES($1,$2,$3,$4,$4,'filled',$5)`,
@@ -171,7 +172,8 @@ test('whole-chain adapter is PIT-safe, deterministic, chain-isolated, and preser
       entry_price_per_share,entry_credit_debit,opened_at) VALUES($1,$2,$3,'SHORT',1,2,200,$4)`,
     [unknownFeeLeg,unknownFeeChain,put0,at(10)]);
     await pool.query(`INSERT INTO trade.order_intent(order_intent_id,chain_id,client_order_id,status,instrument_type,
-      option_contract_id,side,quantity,created_at,updated_at) VALUES($1,$2,$3,'FILLED','OPTION',$4,'SELL',1,$5,$5)`,
+      option_contract_id,side,position_intent,quantity,canonical_quantity,paper_evidence_quantity,created_at,updated_at)
+      VALUES($1,$2,$3,'FILLED','OPTION',$4,'SELL_TO_OPEN','SELL_TO_OPEN',1,1,1,$5,$5)`,
     [unknownIntent,unknownFeeChain,`test-${unknownIntent}`,put0,at(10)]);
     await pool.query(`INSERT INTO trade.broker_order(broker_order_id,order_intent_id,provider_order_id,broker_status)
       VALUES($1,$2,$3,'filled')`,[unknownOrder,unknownIntent,`provider-${unknownOrder}`]);
