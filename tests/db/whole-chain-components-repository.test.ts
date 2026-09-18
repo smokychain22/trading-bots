@@ -18,7 +18,8 @@ test('whole-chain adapter is PIT-safe, deterministic, chain-isolated, and preser
   try {
     const workspaceId=randomUUID(),providerId=randomUUID(),accountId=randomUUID(),botId=randomUUID();
     const strategyId=randomUUID(),featureId=randomUUID(),riskId=randomUUID(),executionId=randomUUID(),costId=randomUUID();
-    const underlyingId=randomUUID(),connectionId=randomUUID();
+    const underlyingId=randomUUID();
+    let connectionId=randomUUID();
     const symbol=`W${underlyingId.replaceAll('-','').slice(0,8).toUpperCase()}`;
     await pool.query(`INSERT INTO iam.workspace(workspace_id,name) VALUES($1,$2)`,[workspaceId,`whole-chain-${workspaceId}`]);
     await pool.query(`INSERT INTO core.provider_connection(provider_connection_id,workspace_id,provider_code,environment,secret_ref,status)
@@ -39,7 +40,10 @@ test('whole-chain adapter is PIT-safe, deterministic, chain-isolated, and preser
       risk_limit_version_id,execution_version_id,cost_model_version_id,feature_version_id)
       VALUES($1,$2,$3,'PAPER',$4,$5,$6,$7,$8)`,[botId,workspaceId,accountId,strategyId,riskId,executionId,costId,featureId]);
     await pool.query(`INSERT INTO market.underlying(underlying_id,symbol,asset_type) VALUES($1,$2,'EQUITY')`,[underlyingId,symbol]);
-    await pool.query(`INSERT INTO copy.follower_account(follower_account_id,workspace_id,provider_account_ref,oauth_secret_ref,
+    const existingMaster=await pool.query(`SELECT follower_account_id FROM copy.follower_account
+      WHERE account_role='MASTER_THETA_PAPER' LIMIT 1`);
+    if(existingMaster.rowCount===1) connectionId=String(existingMaster.rows[0]?.follower_account_id);
+    else await pool.query(`INSERT INTO copy.follower_account(follower_account_id,workspace_id,provider_account_ref,oauth_secret_ref,
       participation,account_ready,account_role) VALUES($1,$2,$3,$4,'STOP_NEW_TRADES_MANAGE_EXISTING',true,'MASTER_THETA_PAPER')`,
     [connectionId,workspaceId,`paper-${connectionId}`,`test-secret-${connectionId}`]);
 
