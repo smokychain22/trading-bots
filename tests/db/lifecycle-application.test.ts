@@ -43,7 +43,7 @@ test('broker-confirmed lifecycle changes are atomic, replay-safe, and preserve w
       await pool.query(`INSERT INTO trade.economic_chain(chain_id,bot_instance_id,underlying_id,lifecycle_state,opened_at) VALUES($1,$2,$3,$4,$5)`,
         [chainId,botId,underlyingId,state,now]);
       if (state === 'CSP_OPEN') await pool.query(`INSERT INTO trade.option_leg(option_leg_id,chain_id,option_contract_id,side,quantity,entry_price_per_share,entry_credit_debit,opened_at)
-        VALUES($1,$2,$3,'SHORT',$5,2,200*$5,$4)`, [legId,chainId,contractId,now,quantity]);
+        VALUES($1,$2,$3,'SHORT',$5::numeric,2,200::numeric*$5::numeric,$4)`, [legId,chainId,contractId,now,quantity]);
       return { chainId,legId };
     };
     const store = new PostgresLifecycleApplicationStore(pool);
