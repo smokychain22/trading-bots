@@ -57,6 +57,9 @@ try {
     "053_local_forensic_recovery",
     "054_master_paper_authorization",
     "055_paper_indicative_quote_reference",
+    "056_paper_runtime_gate_semantics",
+    "057_broker_cash_activity_evidence",
+    "058_terminal_partial_close_accounting",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -76,6 +79,7 @@ try {
     ["trade", "broker_position_snapshot"], ["trade", "broker_activity_fact"],
     ["trade", "management_input_snapshot"], ["trade", "management_action_frontier"],
     ["trade", "lifecycle_application"],
+    ["trade", "option_partial_close_realization"],
     ["trade", "candidate_set_evidence"], ["trade", "candidate_point_in_time_evidence"],
     ["trade", "global_wait_evidence"], ["market", "execution_quote_observation"],
     ["research", "theta_outcome_label"], ["research", "theta_counterfactual_outcome"],
@@ -426,6 +430,17 @@ try {
   const fillFees = await client.query("SELECT is_nullable,column_default FROM information_schema.columns WHERE table_schema='trade' AND table_name='fill' AND column_name='fees'");
   if (fillFees.rows[0]?.is_nullable !== "YES" || fillFees.rows[0]?.column_default !== null)
     throw new Error("UNKNOWN_FILL_FEES_COERCED_TO_ZERO");
+  const brokerCashColumns=await client.query(`SELECT count(*)::int AS count FROM information_schema.columns
+    WHERE table_schema='trade' AND table_name='broker_activity_fact'
+      AND column_name IN ('net_amount','per_share_amount') AND is_nullable='YES' AND column_default IS NULL`);
+  if(Number(brokerCashColumns.rows[0]?.count)!==2)throw new Error('BROKER_CASH_ACTIVITY_EVIDENCE_MISSING');
+  const terminalPartialClose = await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='trade'
+      AND event_object_table='option_partial_close_realization' AND trigger_name='reject_immutable_mutation') AS immutable,
+    EXISTS(SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema='trade'
+      AND table_name='option_partial_close_realization' AND constraint_type='UNIQUE') AS replay_guard`);
+  if(!terminalPartialClose.rows[0]?.immutable||!terminalPartialClose.rows[0]?.replay_guard)
+    throw new Error('TERMINAL_PARTIAL_CLOSE_PROTECTION_MISSING');
   const gate = executionControl.rows[0];
   const locked=gate?.pause_new_orders===true&&gate?.master_execution_enabled===false&&gate?.follower_execution_enabled===false;
   const ownerAuthorized=gate?.master_execution_enabled===true&&gate?.follower_execution_enabled===false
@@ -481,6 +496,7 @@ try {
     p2eTimePathIntelligence:"ENFORCED",
     p2fProviderActivationReadiness:"ENFORCED",
     p2gSimulationPreviewIsolation:"ENFORCED",
+    terminalPartialCloseAccounting:"ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeMasters: activeMasters.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,
