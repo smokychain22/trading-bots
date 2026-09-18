@@ -1,6 +1,6 @@
 # Claude management branch review, 2026-09-18
 
-Reviewed branch: `origin/claude/theta-management-intelligence` through `ce0c8df`.
+Reviewed branch: `origin/claude/theta-management-intelligence` through `bdb3f1c`.
 
 Canonical baseline: `origin/main` at `d17b4c1f77ba257ae906e72dd980c5d12d3bdc74`.
 
@@ -18,16 +18,19 @@ The branch is not integration-ready and was not merged. Its aggregate diff would
 | `869bb18` | REJECT_RUNTIME_WIRING | It wires incomplete research modules directly into the bootstrap provider. |
 | `082029d` | REPAIR_AND_PORT | Multi-factor covered-call comparison is stronger than max-premium selection, but current execution economics and weights are not safe for Production. |
 | `ce0c8df` | ADAPT_DOCUMENTATION | Source research is useful. Its claim that THETA lacks an explicit lifecycle table is incorrect on current main. The canonical architecture document corrects the record. |
+| `bdb3f1c` | REPAIR_AND_PORT_AFTER_REMAINING_GATES | Correctly nets assigned-stock acquisition cost from sale/call-away proceeds, adds cash-flow identity tests, and replaces covered-call opening midpoint economics with a conservative bid-side reference. The commit explicitly leaves roll/roll-CC midpoint treatment unresolved and does not close the assignment, recovery, Pareto, or policy-provenance gates. |
 
 ## Blocking defects
 
-1. `whole-chain-economics.ts` adds gross stock sale or call-away proceeds to premiums and costs without subtracting the assigned-stock acquisition cost. That can overstate whole-chain P&L by the full stock notional.
-2. `covered-call-lattice.ts` values seller premium at midpoint. THETA forbids assuming midpoint fills. Structural seller economics must use a conservative executable side or remain unknown.
-3. Covered-call utility weights are caller-supplied and not tied to a validated, versioned policy artifact. They can silently manufacture a preferred strike.
-4. `assignment-utility.ts` assigns zero utility to `LET_EXPIRE` and `ACCEPT_ASSIGNMENT` while omitting resulting stock downside, capital duration, and recovery economics. It then ranks known values, which can make incomplete actions appear comparable.
-5. The assignment roll comparison treats deterministic net credit as utility. A positive credit does not establish positive forward value.
-6. `recovery-state.ts` labels event risk present whenever event-state data exists. Data presence and risk state are different facts.
-7. The branch predates the current scoped Alpaca Paper indicative semantics, migration head, control-state semantics, and local worker fixes.
+`bdb3f1c` closes the previously identified gross-proceeds accounting defect and covered-call opening midpoint defect. The remaining blockers are:
+
+1. Roll and roll-CC new-leg credits still use midpoint economics, acknowledged in the commit itself.
+2. Covered-call utility weights remain caller-supplied and are not tied to a validated, immutable policy artifact. They can silently manufacture a preferred strike.
+3. `assignment-utility.ts` assigns incomplete deterministic values to `LET_EXPIRE` and `ACCEPT_ASSIGNMENT` while omitting resulting stock downside, capital duration, and recovery economics. Incomplete actions must not be numerically ranked as fully known.
+4. The assignment roll comparison treats deterministic net credit as utility. A positive credit does not establish positive forward value.
+5. `recovery-state.ts` still conflates event-data presence with event risk.
+6. The branch has not yet proved the directive's full recovery action frontier, `SELL_STOCK` winning scenario, true CC Pareto stage, `ROLL_CC`, `ALLOW_CALL_AWAY`, or duplicate management path audit.
+7. The branch still predates current main's migrations 055 and 056, scoped Alpaca Paper indicative semantics, current execution-control semantics, and storage-authority fixes. Wholesale merge remains unsafe.
 
 ## Safe path to one provider
 
