@@ -394,6 +394,54 @@ test('the provider wires an injected candidate source into evaluate()', async ()
   assert.equal(evidence?.selectedAction, 'ROLL');
 });
 
+test('at the exact structural expiration cutoff (dte=0, session closed), the bootstrap policy defers entirely so broker-truth ACCEPT_ASSIGNMENT wins -- never loses a tiebreak to HOLD', () => {
+  // ITM short put at the exact cutoff: spot(190) < strike(200).
+  const input = state('CSP_OPEN', { snapshot_json: { underlyingState: { last: 190 }, marketSession: { isOpen: false },
+    riskState: { assignmentCapacity: 1, newRiskState: 'ALLOW_FULL' }, eventState: { state: 'CLEAR' } } },
+    '2026-10-16T20:01:00.000Z', '2026-10-16');
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  assert.equal(evidence, null, 'the bootstrap policy must step aside, not offer a competing (tie-losing) evidence set');
+  const frontier = buildManagementActionFrontier(input, evidence);
+  assert.equal(frontier.selectedAction, 'ACCEPT_ASSIGNMENT');
+  assert.equal(frontier.decisionState, 'ACTION_SELECTED');
+  assert.ok(frontier.reasonCodes.includes('STRUCTURAL_EXPIRATION_NO_ORDER'));
+});
+
+test('at the exact structural expiration cutoff, an OTM short put correctly resolves to LET_EXPIRE, not HOLD', () => {
+  const input = state('CSP_OPEN', {}, '2026-10-16T20:01:00.000Z', '2026-10-16'); // default fixture: spot 205 > strike 200, OTM
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  assert.equal(evidence, null);
+  const frontier = buildManagementActionFrontier(input, evidence);
+  assert.equal(frontier.selectedAction, 'LET_EXPIRE');
+});
+
+test('before the cutoff (dte > 0), the bootstrap policy still actively compares CLOSE/ROLL -- the deferral affects only the exact structural instant', () => {
+  const input = state('CSP_OPEN', { bid: 0.01, ask: 0.02 }, '2026-10-13T14:00:00.000Z'); // 3 days out, near-exhausted
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  assert.notEqual(evidence, null);
+  assert.equal(evidence?.selectedAction, 'CLOSE_FULL');
+});
+
+test('CLOSE_FULL surfaces real assignment-utility.ts facts (secured cash, ownership-quality data presence) when the short put is genuinely ITM before the cutoff', () => {
+  const overrides = {
+    snapshot_json: { underlyingState: { last: 190 }, marketSession: { isOpen: false },
+      riskState: { assignmentCapacity: 1, newRiskState: 'ALLOW_FULL' }, eventState: { state: 'CLEAR' } },
+  };
+  const input = state('CSP_OPEN', overrides, '2026-10-10T14:00:00.000Z'); // 6 days out, ITM, before the exact cutoff
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  const closeValue = evidence?.actionValues.find((value) => value.action === 'CLOSE_FULL');
+  assert.ok(closeValue?.reasons.includes('ASSIGNMENT_RELEVANT_ITM_SHORT_PUT'));
+  assert.ok(closeValue?.reasons.some((reason) => reason.startsWith('SECURED_CASH_IF_ASSIGNED_20000.00')));
+  assert.ok(closeValue?.reasons.some((reason) => reason.startsWith('OWNERSHIP_QUALITY_DATA_PRESENT_')));
+});
+
+test('CLOSE_FULL does NOT surface assignment-utility facts when the short put is OTM', () => {
+  const input = state('CSP_OPEN', {}, '2026-10-10T14:00:00.000Z'); // default fixture: OTM (spot 205 > strike 200)
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  const closeValue = evidence?.actionValues.find((value) => value.action === 'CLOSE_FULL');
+  assert.ok(!closeValue?.reasons.includes('ASSIGNMENT_RELEVANT_ITM_SHORT_PUT'));
+});
+
 test('the provider defaults to no candidates and stays passive', async () => {
   const provider = new PaperBootstrapManagementPolicyProvider();
   const evidence = await provider.evaluate(state('CSP_OPEN'));

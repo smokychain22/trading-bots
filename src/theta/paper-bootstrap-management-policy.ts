@@ -9,6 +9,7 @@ import { buildCommonHorizonComparison, forwardContinuationCashFlow, sunkRealized
 import { evaluateRollCandidates, type RollCandidateEconomics } from './roll-incremental-utility.js';
 import { assessThesisInvalidation, type ThesisInvalidationAssessment } from './thesis-invalidation.js';
 import { buildRecoveryState, type RecoveryState } from './recovery-state.js';
+import { evaluateAssignmentUtility } from './assignment-utility.js';
 import {
   bestCoveredCallCandidate, evaluateCoveredCallCandidates, type CoveredCallCandidate, type CoveredCallUtilityWeights,
 } from './covered-call-lattice.js';
@@ -190,6 +191,26 @@ function remainingValueFraction(state: ManagementInputState, currentMark: number
 
 function daysToExpiration(state: ManagementInputState): number | null {
   return finite(state.market.dte) ? state.market.dte : null;
+}
+
+/**
+ * Mirrors management-action-frontier.ts's own `structuralExpirationSelection`
+ * condition EXACTLY (dte===0, broker session confirmed closed, spot/
+ * strike/optionType all known). `buildManagementActionFrontier` only
+ * engages that already-correct, already-tested LET_EXPIRE-vs-
+ * ACCEPT_ASSIGNMENT/ALLOW_CALL_AWAY-vs-HOLD_CC broker-truth selection
+ * when it receives NO policy evidence (`evidence === null`) -- this
+ * bootstrap policy must therefore explicitly STEP ASIDE (return null,
+ * not merely a tied utility=0) at this exact moment, or its own
+ * always-non-null evidence would silently override that mechanism and
+ * let HOLD win a tiebreak against the one action broker truth has
+ * already made feasible. Before this exact point, this policy's own
+ * CLOSE_FULL/ROLL comparison remains fully active -- this guard affects
+ * ONLY the precise dte=0/session-closed instant, nothing earlier.
+ */
+function atStructuralExpirationCutoff(state: ManagementInputState): boolean {
+  return state.market.dte === 0 && state.market.marketOpen === false
+    && state.market.spot !== null && state.contract.strike !== null && state.contract.optionType !== null;
 }
 
 function capitalCommitted(state: ManagementInputState): number | null {
@@ -468,6 +489,30 @@ function valueFor(
       const lossMagnitudeReason = remainingFraction !== null && remainingFraction > 1
         ? [`KNOWN_MARK_EXCEEDS_ENTRY_CREDIT_FRACTION_${remainingFraction.toFixed(2)}`] : [];
       const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
+      // When CLOSE_FULL is being weighed on a short put that is genuinely
+      // ITM (assignment-relevant), surface assignment-utility.ts's own
+      // known facts (secured cash, ownership-quality data presence) as
+      // transparency -- consuming the real module rather than leaving it
+      // standalone. This NEVER changes CLOSE_FULL's own utility; the
+      // module's own ACCEPT_ASSIGNMENT valuation is deliberately neutral
+      // (0) and makes no claim about the resulting stock position, so
+      // there is nothing here that could legitimately shift a number.
+      const spot = state.market.spot, strike = state.contract.strike;
+      const isItmShortPut = action === 'CLOSE_FULL' && spot !== null && strike !== null && spot < strike;
+      const assignmentReasons = isItmShortPut
+        ? (() => {
+            const rollCandidate = state.rollCandidate;
+            const assignment = evaluateAssignmentUtility(state, currentMark,
+              rollCandidate && finite(rollCandidate.bid) && finite(rollCandidate.ask)
+                ? { openCreditDollars: rollCandidate.bid * rollCandidate.multiplier * rollCandidate.quantity } : null);
+            return [
+              `ASSIGNMENT_RELEVANT_ITM_SHORT_PUT`,
+              `SECURED_CASH_IF_ASSIGNED_${assignment.assignmentState.securedCashDollars === null ? 'UNKNOWN' : assignment.assignmentState.securedCashDollars.toFixed(2)}`,
+              `OWNERSHIP_QUALITY_DATA_PRESENT_${assignment.assignmentState.ownershipQualityPresent}`,
+              `ASSIGNMENT_ALTERNATIVE_BEST_ACTION_${assignment.best?.action ?? 'UNKNOWN'}`,
+            ];
+          })()
+        : [];
       return {
         ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: 0,
         executionCostRisk: currentMark, opportunityCost: null,
@@ -479,7 +524,7 @@ function valueFor(
             ? [`REMAINING_VALUE_FRACTION_${remainingFraction?.toFixed(2)}`, `DTE_${dte}`, 'CLOSE_FREES_CAPITAL_FOR_NEAR_EXHAUSTED_POSITION']
             : ['REMAINING_VALUE_NOT_KNOWN_EXHAUSTED', ...lossMagnitudeReason]),
           `CLOSE_COST_ASK_SIDE_${currentMark.toFixed(2)}`, `CLOSE_COST_MID_REFERENCE_ANALYTICAL_ONLY_${midMark === null ? 'UNKNOWN' : midMark.toFixed(2)}`,
-          ...adjustment.reasons,
+          ...assignmentReasons, ...adjustment.reasons,
         ],
       };
     }
@@ -594,6 +639,12 @@ function valueFor(
 export function evaluatePaperBootstrapManagementPolicy(
   state: PaperBootstrapPolicyInput,
 ): ManagementPolicyEvidence | null {
+  // Defer entirely to the frontier's own structural expiration mechanism
+  // at the exact broker-truth cutoff -- see atStructuralExpirationCutoff's
+  // doc comment for why this must be an explicit null, not a competing
+  // (and tie-losing) utility value.
+  if (atStructuralExpirationCutoff(state)) return null;
+
   const frontier = buildManagementActionFrontier(state);
   const actionSet = frontier.actions.map((action) => action.action);
   if (actionSet.length === 0) return null;
