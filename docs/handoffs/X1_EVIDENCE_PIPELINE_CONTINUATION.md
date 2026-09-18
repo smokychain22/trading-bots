@@ -31,4 +31,13 @@ Local full Node run: 961 passed, 11 disposable-database tests skipped, zero fail
 
 Reticle is not applicable to this backend-only change. No UI flow was changed.
 
+CI acceptance for implementation commit `55e2e79b7eb223603182155c199892dda0ec21a6`: run `35350349496` passed all steps, including real PostgreSQL migration/invariant and persistence tests, Redis, Python and Playwright. Migration 057 was applied only to the disposable CI database, not Production.
+
+## Concrete activation safety issues
+
+1. A partially filled close that becomes canceled/rejected is retained in broker fill evidence but does not yet have canonical partial realized-P&L application. The existing fully-filled lifecycle router intentionally returns PARTIAL. This must not be represented as complete lifecycle support.
+2. Frozen C1 `computeWholeChainPnl` subtracts `components.slippage`, while this adapter obtains option credits/debits from actual broker fill prices. Passing measured TCA shortfall directly would double-charge embedded execution effects. Example: actual $200 opening credit less actual $150 closing debit is $50 before explicit fees. A $10 diagnostic benchmark shortfall is already represented in those fills and must not turn realized cash P&L into $40. Integration must explicitly distinguish benchmark-priced hypothetical cashflows from actual-fill cashflows and retain TCA as a separate diagnostic for the latter.
+
+These findings keep X1 final acceptance and X2/X3 activation incomplete. No policy promotion, main merge, Production migration/deployment, or order was performed. No owner secret or new provider is needed to correct them.
+
 OWNER: Codex. No main merge, Production migration, deployment, worker change, or broker mutation is authorized by this receipt alone. The owner's conditional Paper authorization remains subject to the specified phase gates. Followers remain locked and live money remains forbidden.
