@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import type { Pool } from 'pg';
 import { asReadOnlyPaperBroker, assertShadowBrokerHasNoMutationSurface } from '../src/execution/read-only-paper-broker.js';
 import type { PaperBrokerAdapter } from '../src/execution/broker.js';
 import {
-  buildObservationSchedule, classifyObservedLimitTouch, runCrossSymbolShadowScan, shadowSessionDecision,
+  buildObservationSchedule, classifyObservedLimitTouch, PostgresShadowEvidenceRuntimeStore,
+  runCrossSymbolShadowScan, shadowSessionDecision,
   shadowRuntimeMode, type ShadowScanBoundary,
 } from '../src/research/shadow-evidence-runtime.js';
 import type { ThetaShadowCycleResult } from '../src/theta/theta-shadow-cycle.js';
@@ -96,6 +98,24 @@ test('observation horizons are deterministic and never imply a fill',()=>{
   assert.deepEqual(first.map((item)=>item.horizonCode),['1M','5M','30M','EOD']);
   assert.equal(classifyObservedLimitTouch({side:'SELL',limit:2.5,bid:2.5,ask:2.6}),'LIMIT_TOUCHED');
   assert.equal(classifyObservedLimitTouch({side:'SELL',limit:null,bid:2.5,ask:2.6}),'BLOCKED_ON_DATA');
+});
+
+test('observation scheduling uses one set-based database write for the full candidate batch',async()=>{
+  const calls:{sql:string;params:unknown[]}[]=[];
+  const pool={query:async(sql:string,params:unknown[])=>{
+    calls.push({sql,params});return {rowCount:8,rows:[]};
+  }} as unknown as Pool;
+  const rows=[
+    ...buildObservationSchedule({candidateId:'11111111-1111-4111-8111-111111111111',contractSymbol:'SPY261009P00500000',
+      decisionTime:'2026-09-14T14:30:00Z',marketClose:'2026-09-14T20:00:00Z'}),
+    ...buildObservationSchedule({candidateId:'22222222-2222-4222-8222-222222222222',contractSymbol:'QQQ261009P00500000',
+      decisionTime:'2026-09-14T14:30:00Z',marketClose:'2026-09-14T20:00:00Z'}),
+  ];
+  const inserted=await new PostgresShadowEvidenceRuntimeStore(pool).scheduleObservations(rows);
+  assert.equal(inserted,8);
+  assert.equal(calls.length,1);
+  assert.match(calls[0]?.sql??'',/jsonb_to_recordset/);
+  assert.equal(JSON.parse(String(calls[0]?.params[0])).length,8);
 });
 
 test('closed or unconfirmed sessions cannot create candidate evidence',()=>{

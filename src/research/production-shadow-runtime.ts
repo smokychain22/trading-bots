@@ -197,10 +197,11 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     const marketClose=session!==null&&typeof session==='object'&&!Array.isArray(session)&&typeof session.nextClose==='string'
       ? session.nextClose:null;
     if(marketClose===null) continue;
-    for(const candidate of candidates.rows){
-      observationsScheduled+=await evidenceStore.scheduleObservations(buildObservationSchedule({candidateId:String(candidate.candidate_id),
-        contractSymbol:String(candidate.contract_symbol),decisionTime:member.cycle.startedAt,marketClose}));
-    }
+    const observationRows=candidates.rows.flatMap((candidate)=>buildObservationSchedule({
+      candidateId:String(candidate.candidate_id),contractSymbol:String(candidate.contract_symbol),
+      decisionTime:member.cycle?.startedAt??scan.startedAt,marketClose,
+    }));
+    observationsScheduled+=await evidenceStore.scheduleObservations(observationRows);
   }
   await evidenceStore.saveScan(scan,persisted);
   const strategyFrontiers=scan.results.flatMap((member)=>member.cycle?.strategyFrontier?[member.cycle.strategyFrontier]:[]);

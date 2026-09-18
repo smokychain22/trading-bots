@@ -193,15 +193,18 @@ export class PostgresShadowEvidenceRuntimeStore {
   }
 
   async scheduleObservations(rows: readonly ScheduledObservation[]): Promise<number> {
-    let inserted = 0;
-    for (const row of rows) {
-      const result = await this.pool.query(`INSERT INTO research.theta_execution_observation_job(
-        observation_job_id,candidate_id,contract_symbol,horizon_code,horizon_version,target_at,status)
-        VALUES($1,$2,$3,$4,$5,$6,'PENDING') ON CONFLICT(candidate_id,horizon_version,horizon_code) DO NOTHING`,
-      [row.observationJobId,row.candidateId,row.contractSymbol,row.horizonCode,row.horizonVersion,row.targetAt]);
-      inserted += result.rowCount ?? 0;
-    }
-    return inserted;
+    if(rows.length===0)return 0;
+    const result=await this.pool.query(`INSERT INTO research.theta_execution_observation_job(
+      observation_job_id,candidate_id,contract_symbol,horizon_code,horizon_version,target_at,status)
+      SELECT x.observation_job_id::uuid,x.candidate_id::uuid,x.contract_symbol,x.horizon_code,
+        x.horizon_version,x.target_at::timestamptz,'PENDING'
+      FROM jsonb_to_recordset($1::jsonb) AS x(observation_job_id text,candidate_id text,
+        contract_symbol text,horizon_code text,horizon_version text,target_at text)
+      ON CONFLICT(candidate_id,horizon_version,horizon_code) DO NOTHING`,[JSON.stringify(rows.map((row)=>({
+        observation_job_id:row.observationJobId,candidate_id:row.candidateId,contract_symbol:row.contractSymbol,
+        horizon_code:row.horizonCode,horizon_version:row.horizonVersion,target_at:row.targetAt,
+      })))]);
+    return result.rowCount??0;
   }
 
   async markMissedDueObservations(asOf: string, reason: string): Promise<number> {
