@@ -1,6 +1,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Pool } from 'pg';
+import { loadEnvironment } from '../src/config/environment.js';
 import { PostgresDatasetExporter } from '../src/research/postgres-dataset-export.js';
 import { buildR6ReadinessReceipt } from '../src/research/r6-readiness.js';
 import { buildResearchHandoff, hasExportableEvidence } from '../src/research/research-handoff.js';
@@ -17,7 +18,7 @@ const parsedDate=(raw:string|null,name:string):string|null => {
   return new Date(epoch).toISOString();
 };
 async function main():Promise<void>{
-  const connectionString=process.env.DATABASE_URL;
+  const connectionString=loadEnvironment().DATABASE_URL;
   if (!connectionString) throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');
   const featureSetVersion=value('--feature-set-version')??'theta-r6-feature-set-v1';
   const pool=new Pool({connectionString,max:2});

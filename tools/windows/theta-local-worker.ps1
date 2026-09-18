@@ -178,6 +178,22 @@ try {
           $researchExport = 'RESEARCH_DATASET_HASH_INVALID'
         }
       }
+      # Mirror the deterministic research export into a separate, immutable,
+      # content-addressed local bundle. This is recovery/research support only,
+      # never transactional authority, and failure must not stop broker
+      # reconciliation or the Aiven-backed runtime.
+      $localEvidenceState = 'NO_EXPORT_AVAILABLE'
+      $localEvidenceHash = $null
+      if ((Test-Path -LiteralPath $latestDataset) -and (Test-Path -LiteralPath $latestManifest)) {
+        try {
+          $localEvidenceOutput = & node tools/write-local-durable-evidence.mjs research_exports/latest .theta-local-worker/evidence
+          if ($LASTEXITCODE -eq 0) {
+            $localEvidenceResult = $localEvidenceOutput | ConvertFrom-Json
+            $localEvidenceState = [string]$localEvidenceResult.state
+            $localEvidenceHash = [string]$localEvidenceResult.bundleHash
+          } else { $localEvidenceState = 'FAILED_NONCRITICAL' }
+        } catch { $localEvidenceState = 'FAILED_NONCRITICAL' }
+      }
       # Keep a sanitized, append-only local recovery mirror of operational
       # receipts. Aiven remains runtime authority. The writer accepts only a
       # fixed safe schema and cannot persist credentials, account identifiers,
@@ -199,7 +215,8 @@ try {
       } catch { $localReceiptState = 'FAILED' }
       @{state='ONLINE';lastCycle=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
         mode='MASTER_THETA_PAPER';executionGate=[string]$report.executionGate;researchExport=$researchExport;
-        localReceiptState=$localReceiptState;localReceiptHash=$localReceiptHash} | ConvertTo-Json |
+        localReceiptState=$localReceiptState;localReceiptHash=$localReceiptHash;
+        localEvidenceState=$localEvidenceState;localEvidenceHash=$localEvidenceHash} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
       $delaySeconds = 5
     } catch {

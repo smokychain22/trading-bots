@@ -42,6 +42,9 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /write-local-runtime-receipt\.mjs/);
   assert.match(source, /localReceiptState/);
   assert.match(source, /localReceiptHash/);
+  assert.match(source, /write-local-durable-evidence\.mjs/);
+  assert.match(source, /localEvidenceState/);
+  assert.match(source, /FAILED_NONCRITICAL/);
   assert.match(source, /Invoke-RestMethod[^\r\n]+-TimeoutSec 180/);
   assert.match(source, /Invoke-RestMethod[^\r\n]+-TimeoutSec 290/);
   assert.doesNotMatch(source, /\/v2\/orders/i);

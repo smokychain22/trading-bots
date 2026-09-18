@@ -1,12 +1,9 @@
 import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import pg from "pg";
+import { resolveDatabaseConnection } from "./database-connection.mjs";
 
-const connectionString = process.env.DATABASE_MIGRATION_URL
-  ?? process.env.DATABASE_URL_UNPOOLED
-  ?? process.env.POSTGRES_URL_NON_POOLING;
-
-if (!connectionString) throw new Error("DATABASE_MIGRATION_CONNECTION_NOT_CONFIGURED");
+const { connectionString } = resolveDatabaseConnection(process.env, "migration");
 
 const directory = resolve("migrations");
 const files = (await readdir(directory))

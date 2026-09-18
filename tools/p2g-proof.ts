@@ -1,8 +1,10 @@
 import pg from 'pg';
+import {loadEnvironment} from '../src/config/environment.js';
 import {buildPaperOrderPreview} from '../src/execution/paper-order-preview.js';
 import {persistPaperOrderPreview,persistSyntheticLifecycleReceipt} from '../src/research/p2g-receipt-store.js';
 import {canonicalFullChainScenario,simulateLifecycle} from '../src/theta/p2g-lifecycle-simulator.js';
-const databaseUrl=process.env.DATABASE_MIGRATION_URL??process.env.DATABASE_URL_UNPOOLED??process.env.POSTGRES_URL_NON_POOLING??process.env.DATABASE_URL;
+const environment=loadEnvironment();
+const databaseUrl=environment.DATABASE_MIGRATION_URL??environment.DATABASE_URL;
 if(!databaseUrl)throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');
 const asOf=new Date().toISOString();const lifecycle=simulateLifecycle(canonicalFullChainScenario());
 const preview=buildPaperOrderPreview({previewId:`p2g-${asOf}`,asOf,strategyBranch:'THETA_CONVENTIONAL',strategyVersion:'NOT_PROMOTED',legs:[],

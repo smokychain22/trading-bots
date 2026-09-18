@@ -933,3 +933,8 @@ Follower copy work begins only from a broker-confirmed master fill or lifecycle 
 - Failure behavior: Local receipt failure is observable but does not create a second authority or block risk management. Local data cannot drive an order or overwrite Aiven or Alpaca truth.
 - Security: Credentials pasted into chat are treated as exposed and are never copied into source, local receipts, commands, or logs. Broker mutation remains blocked until secure stored credentials are confirmed rotated and all normal readiness gates pass.
 - Claude review: `origin/claude/theta-management-intelligence` through `ce0c8df` is not integration-ready. Gross stock proceeds omit acquisition cost in whole-chain P&L, covered-call candidates assume midpoint income, deterministic roll credit is treated as utility, event-data presence is confused with event risk, and unvalidated caller weights can select a strike. These modules remain research or repair candidates and are not wired into Production.
+# 2026-09-18: Make Aiven selection explicit and add non-authoritative local evidence bundles
+
+Production runtime and migration tooling must select `AIVEN_DATABASE_URL` when `DATABASE_RUNTIME_AUTHORITY=AIVEN`. A generic `DATABASE_URL` cannot override or silently redirect that choice. Neon archive access uses `NEON_ARCHIVE_DATABASE_URL`, with a compatibility fallback only for a verified `*.neon.tech` generic URL.
+
+Deterministic research exports are mirrored into immutable content-addressed local bundles after secret-shape validation. These bundles support recovery and research, remain outside Git, and have no order, lifecycle, or transactional authority. Failure is noncritical and is surfaced in worker status.

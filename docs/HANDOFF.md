@@ -2242,3 +2242,13 @@ RISKS: Treating the local ledger as runtime truth would create split-brain behav
 WHAT THE OTHER AGENT SHOULD REVIEW: Only pure management-model modules and tests that can fit behind the existing single provider interface. Do not alter broker mutation, quote semantics, migrations 055 or 056, or the one-brain authority path.
 
 NEXT RECOMMENDED TASK: Rotate the credentials exposed in chat, verify the secure Production connection, complete one natural-candidate readiness receipt, and stop before the first Paper submission if every gate is valid.
+OWNER: Codex
+TASK: Current-phase storage-authority cleanup while management integration remains blocked
+FILES CHANGED: typed environment and tests, database CLI resolver, affected research/readiness CLIs, local durable evidence writer/tests, Windows supervisor, package script, storage authority documentation
+WHAT WAS IMPLEMENTED: Aiven authority now wins explicitly across runtime, migration, verification, outcome, readiness, simulation and export paths. Neon archive access has a separate variable and cannot be inferred from an Aiven generic URL. Existing deterministic PIT exports now gain a secret-checked, immutable, content-addressed local durability bundle. Local durability failures remain noncritical. Claude management commit `ce0c8df` was rechecked and remains excluded because the previously documented whole-chain, midpoint, assignment, roll and event-semantics defects are unchanged.
+TESTS RUN: Focused Node tests, followed by full repository verification before release.
+TEST RESULTS: Focused storage/environment/worker tests passed.
+KNOWN LIMITATIONS: Local bundles depend on a completed deterministic research export. They are recovery and research support only. Claude management work is still not integration-ready.
+RISKS: A future operator could misconfigure `DATABASE_RUNTIME_AUTHORITY`; validation fails closed when Aiven is selected without its explicit URL.
+WHAT THE OTHER AGENT SHOULD REVIEW: Correct whole-chain cash-flow identity, assigned-stock acquisition cost, executable covered-call economics, assignment/recovery frontier and true CC Pareto behavior on `claude/theta-management-intelligence`.
+NEXT RECOMMENDED TASK: Integrate only a new frozen Claude commit that passes those economic gates, then run the full one-brain dependency and canary readiness audit.

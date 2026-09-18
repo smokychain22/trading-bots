@@ -38,6 +38,7 @@ const environmentSchema = z.object({
   DATABASE_URL: optionalPostgresUrl,
   DATABASE_MIGRATION_URL: optionalPostgresUrl,
   AIVEN_DATABASE_URL: optionalPostgresUrl,
+  NEON_ARCHIVE_DATABASE_URL: optionalPostgresUrl,
   DATABASE_RUNTIME_AUTHORITY: z.enum(['NEON', 'AIVEN']).default('NEON'),
   REDIS_URL: optionalUrl,
   ALPACA_API_KEY: z.string().min(1).optional(),
@@ -76,7 +77,10 @@ const environmentSchema = z.object({
   }
 }).transform((environment) => ({
   ...environment,
-  LEGACY_NEON_DATABASE_URL: environment.DATABASE_URL,
+  LEGACY_NEON_DATABASE_URL: environment.NEON_ARCHIVE_DATABASE_URL
+    ?? (environment.DATABASE_URL && new URL(environment.DATABASE_URL).hostname.endsWith('.neon.tech')
+      ? environment.DATABASE_URL
+      : undefined),
   ...(environment.DATABASE_RUNTIME_AUTHORITY === 'AIVEN'
     ? { DATABASE_URL: environment.AIVEN_DATABASE_URL, DATABASE_MIGRATION_URL: environment.AIVEN_DATABASE_URL }
     : {}),

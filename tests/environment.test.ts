@@ -36,6 +36,29 @@ test('database runtime authority selects Aiven while retaining Neon only as the 
   assert.equal(new URL(environment.LEGACY_NEON_DATABASE_URL ?? '').hostname, 'service.neon.tech');
 });
 
+test('explicit Neon archive identity is separate from the Aiven runtime URL', () => {
+  const generic = 'postgres://user:fake-secret@service.aivencloud.com:25934/defaultdb?sslmode=require';
+  const archive = 'postgres://user:fake-secret@archive.neon.tech/theta?sslmode=require';
+  const environment = loadEnvironment({
+    DATABASE_URL: generic,
+    AIVEN_DATABASE_URL: generic,
+    NEON_ARCHIVE_DATABASE_URL: archive,
+    DATABASE_RUNTIME_AUTHORITY: 'AIVEN',
+  });
+  assert.equal(new URL(environment.DATABASE_URL ?? '').hostname, 'service.aivencloud.com');
+  assert.equal(new URL(environment.LEGACY_NEON_DATABASE_URL ?? '').hostname, 'archive.neon.tech');
+});
+
+test('an Aiven generic URL is never mislabeled as the legacy Neon source', () => {
+  const aiven = 'postgres://user:fake-secret@service.aivencloud.com:25934/defaultdb?sslmode=require';
+  const environment = loadEnvironment({
+    DATABASE_URL: aiven,
+    AIVEN_DATABASE_URL: aiven,
+    DATABASE_RUNTIME_AUTHORITY: 'AIVEN',
+  });
+  assert.equal(environment.LEGACY_NEON_DATABASE_URL, undefined);
+});
+
 test('Aiven runtime authority fails closed without a configured Aiven target', () => {
   assert.throws(() => loadEnvironment({ DATABASE_RUNTIME_AUTHORITY: 'AIVEN' }), /AIVEN_DATABASE_URL/);
 });

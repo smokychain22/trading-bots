@@ -1,10 +1,7 @@
 import pg from "pg";
+import { resolveDatabaseConnection } from "./database-connection.mjs";
 
-const connectionString = process.env.DATABASE_MIGRATION_URL
-  ?? process.env.DATABASE_URL_UNPOOLED
-  ?? process.env.POSTGRES_URL_NON_POOLING
-  ?? process.env.DATABASE_URL;
-if (!connectionString) throw new Error("DATABASE_CONNECTION_NOT_CONFIGURED");
+const { connectionString } = resolveDatabaseConnection(process.env, "migration");
 
 const client = new pg.Client({ connectionString });
 await client.connect();
