@@ -463,13 +463,17 @@ function valueForRollFromCandidates(
  * for selection.
  */
 function valueForSellCcFromCandidates(
-  state: PaperBootstrapPolicyInput, basis: number | null, basisSource: BasisSource,
+  state: PaperBootstrapPolicyInput, canonicalBasis: number | null, referenceBasis: number | null, basisSource: BasisSource,
 ): ManagementPolicyActionValue {
   const base = { action: 'SELL_CC' as const };
   const candidates = state.ccCandidates ?? [];
-  if (!finite(basis) || candidates.length === 0) {
+  // Used for the conservative strike-comparison safety check only --
+  // canonical preferred, the recorded-lot reference otherwise.
+  const operationalBasis = canonicalBasis ?? referenceBasis;
+  if (!finite(operationalBasis) || candidates.length === 0) {
     return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_IDENTIFIED_CC_CANDIDATE'] };
   }
+  const isCanonicalBasis = canonicalBasis !== null;
   const latticeCandidates: CoveredCallCandidate[] = candidates.map((candidate) => ({
     symbol: candidate.symbol, optionContractId: candidate.optionContractId, strike: candidate.strike,
     expiration: candidate.expiration, delta: null, bid: candidate.bid, ask: candidate.ask,
@@ -477,13 +481,22 @@ function valueForSellCcFromCandidates(
     openInterest: null, volume: null,
     dividendExDateRisk: candidate.dividendExDateRisk ?? false, eventRisk: candidate.eventRisk ?? false,
   }));
+  // wholeChainPnlIfCalledAway/IfNotCalled make a CANONICAL whole-chain
+  // P&L claim -- assignmentStrike here is therefore ONLY ever the
+  // canonical basis, never the reference. When canonical is unknown,
+  // this stays null, which correctly propagates into
+  // computeWholeChainPnl's own stock-leg logic reporting those figures
+  // as UNKNOWN rather than fabricated from a lower-confidence reference.
   const wholeChainBase = {
-    initialPutPremium: null, rollCredits: null, rollCloseCosts: null, assignmentStrike: basis,
+    initialPutPremium: null, rollCredits: null, rollCloseCosts: null, assignmentStrike: canonicalBasis,
     stockSharesAssigned: state.economics.openStockShares, dividends: state.economics.dividends,
-    fees: state.economics.fees ?? 0, slippage: null,
+    // Passed through honestly -- `?? 0` would silently convert genuinely
+    // UNKNOWN fee evidence (state.economics.fees is null specifically
+    // when unknown_fill_fees is true) into a fabricated real zero.
+    fees: state.economics.fees, slippage: null,
   };
   const assessments = evaluateCoveredCallCandidates(
-    basis, state.economics.stockMarkPerShare, state.economics.openStockShares, wholeChainBase, latticeCandidates,
+    operationalBasis, state.economics.stockMarkPerShare, state.economics.openStockShares, wholeChainBase, latticeCandidates,
     state.ccUtilityWeights ?? DEFAULT_CC_UTILITY_WEIGHTS,
   );
   const best = bestCoveredCallCandidate(assessments, false);
@@ -511,7 +524,8 @@ function valueForSellCcFromCandidates(
     executionCostRisk: premiumDollars * 0.01, opportunityCost: null, uncertainty: null,
     utility: ccWeight * premiumDollars, executionEvidence,
     reasons: [`BEST_OF_${candidates.length}_CC_CANDIDATES_BY_UTILITY`, `SELL_CC_UTILITY_WEIGHT_${ccWeight}`,
-      `BASIS_SOURCE_${basisSource}`, ...best.reasons],
+      `BASIS_SOURCE_${basisSource}`, isCanonicalBasis ? 'BASIS_COMPARISON_CANONICAL' : 'BASIS_COMPARISON_REFERENCE_ONLY_NOT_CANONICAL',
+      ...best.reasons],
   };
 }
 
@@ -579,11 +593,16 @@ function valueFor(
       // Same passive baseline as HOLD/HOLD_CC, with RecoveryState's known
       // (never fabricated) distance-to-basis/capital-days surfaced purely
       // as transparency -- it never shifts this action's own utility.
+      // Canonical and reference distances are reported SEPARATELY and
+      // never conflated -- the canonical one stays UNKNOWN whenever
+      // canonicalEffectiveBasisPerShare itself is UNKNOWN.
       return {
         ...base, ...UNKNOWN_VALUE, utility: 0,
         reasons: [
           'NO_KNOWN_REASON_TO_ACT',
-          `DISTANCE_TO_BASIS_FRACTION_${recoveryState.distanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.distanceToBasisFraction.toFixed(4)}`,
+          `BASIS_SOURCE_${recoveryState.basisSource}`,
+          `CANONICAL_DISTANCE_TO_BASIS_FRACTION_${recoveryState.canonicalDistanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.canonicalDistanceToBasisFraction.toFixed(4)}`,
+          `REFERENCE_DISTANCE_TO_BASIS_FRACTION_${recoveryState.referenceDistanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.referenceDistanceToBasisFraction.toFixed(4)}`,
           `CAPITAL_DAYS_SO_FAR_${recoveryState.capitalDaysSoFar === null ? 'UNKNOWN' : recoveryState.capitalDaysSoFar.toFixed(1)}`,
           'RECOVERY_PROBABILITY_NOT_MODELED_NO_FABRICATED_ESTIMATE',
         ],
@@ -671,19 +690,36 @@ function valueFor(
     case 'ACCEPT_ASSIGNMENT':
       return { ...base, ...UNKNOWN_VALUE, utility: 0, reasons: ['DEFERRED_TO_STRUCTURAL_EXPIRATION_HANDLING'] };
     case 'SELL_STOCK': {
-      // The best AVAILABLE basis reference -- canonical whole-chain when
-      // complete, otherwise the broker-recorded figure as an explicitly
-      // lower-confidence reference. `recoveryState.basisSource` names
-      // WHICH one this is; this action never silently presents a broker
-      // reference as if it were the canonical figure.
-      const basis = recoveryState.bestAvailableBasisPerShare, mark = state.economics.stockMarkPerShare;
-      if (!finite(basis) || !finite(mark) || capital === null) return { ...base, ...UNKNOWN_VALUE };
-      const knownStockPnl = (mark - basis) * state.economics.openStockShares;
+      // CRITICAL: SELL_STOCK's own selectability must NOT depend on
+      // canonical (or even reference) basis being known -- "THETA must
+      // not refuse to sell bad stock merely because accounting history is
+      // incomplete." Only the current mark is required here (`capital`
+      // is deliberately NOT gated on -- capitalCommitted() itself derives
+      // from stockBasisPerShare, which would silently reintroduce the
+      // exact basis dependency this fix removes); basis only affects
+      // which P&L reason codes can be reported, never whether this
+      // action can be evaluated at all.
+      const mark = state.economics.stockMarkPerShare;
+      if (!finite(mark)) return { ...base, ...UNKNOWN_VALUE };
+      // CANONICAL-DEPENDENT claim: null (UNKNOWN) whenever
+      // canonicalEffectiveBasisPerShare itself is null -- NEVER computed
+      // from the recorded-lot reference instead. This is exactly the
+      // "canonical whole-chain P&L" claim that must not be fabricated.
+      const canonicalBasis = recoveryState.canonicalEffectiveBasisPerShare;
+      const canonicalKnownStockPnl = finite(canonicalBasis)
+        ? (mark - canonicalBasis) * state.economics.openStockShares : null;
+      // REFERENCE-ONLY claim: always computed from the recorded-lot
+      // reference when available, explicitly labeled non-canonical --
+      // never presented as, or silently merged with, the canonical figure.
+      const referenceBasis = recoveryState.recordedLotBasisReferencePerShare;
+      const referenceStockPnl = finite(referenceBasis)
+        ? (mark - referenceBasis) * state.economics.openStockShares : null;
       const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
       // Neutral baseline (0, the SAME anchor as RECOVERY_WAIT/HOLD) -- this
       // bootstrap policy no longer carries a permanent handicap against
       // liquidating the shares. SELL_STOCK can win when the SEPARATE,
-      // caller-justified mechanisms below actually apply:
+      // caller-justified mechanisms below actually apply -- NEITHER of
+      // which requires canonical (or any) basis to be known:
       //   (a) a suspected thesis failure -- reuses the exact same
       //       thesisFailureUtilityBias already governing CLOSE_FULL/ROLL,
       //       never a second, independently-invented bias.
@@ -702,9 +738,13 @@ function valueFor(
         utility: adjustment.closeBias + opportunityCostContribution,
         executionEvidence: null,
         reasons: [
-          `KNOWN_STOCK_PNL_IF_SOLD_${knownStockPnl.toFixed(2)}`,
+          canonicalKnownStockPnl !== null ? `CANONICAL_KNOWN_STOCK_PNL_IF_SOLD_${canonicalKnownStockPnl.toFixed(2)}`
+            : 'CANONICAL_STOCK_PNL_UNKNOWN_BASIS_INCOMPLETE',
+          referenceStockPnl !== null ? `REFERENCE_STOCK_PNL_USING_RECORDED_LOT_BASIS_${referenceStockPnl.toFixed(2)}`
+            : 'REFERENCE_STOCK_PNL_UNKNOWN',
           `BASIS_SOURCE_${recoveryState.basisSource}`,
-          `DISTANCE_TO_BASIS_FRACTION_${recoveryState.distanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.distanceToBasisFraction.toFixed(4)}`,
+          `CANONICAL_DISTANCE_TO_BASIS_FRACTION_${recoveryState.canonicalDistanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.canonicalDistanceToBasisFraction.toFixed(4)}`,
+          `REFERENCE_DISTANCE_TO_BASIS_FRACTION_${recoveryState.referenceDistanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.referenceDistanceToBasisFraction.toFixed(4)}`,
           `CAPITAL_OPPORTUNITY_COST_${recoveryState.capitalOpportunityCostDollars === null ? 'UNKNOWN' : recoveryState.capitalOpportunityCostDollars.toFixed(2)}`,
           ...adjustment.reasons,
         ],
@@ -712,21 +752,33 @@ function valueFor(
     }
     case 'SELL_CC': {
       if (state.ccCandidates !== undefined && state.ccCandidates.length > 0) {
-        return valueForSellCcFromCandidates(state, recoveryState.bestAvailableBasisPerShare, recoveryState.basisSource);
+        return valueForSellCcFromCandidates(
+          state, recoveryState.canonicalEffectiveBasisPerShare, recoveryState.recordedLotBasisReferencePerShare, recoveryState.basisSource,
+        );
       }
-      // Best available basis reference -- see SELL_STOCK's comment above;
-      // never a second, independently-derived formula.
-      const candidate = state.ccCandidate, basis = recoveryState.bestAvailableBasisPerShare;
+      // Below/above-basis classification uses whichever basis is
+      // actually available (canonical preferred, the recorded-lot
+      // reference otherwise) purely so the conservative safety check can
+      // still run -- but the REASON CODE always names which kind of
+      // basis backed it, so a reference-based rejection is never
+      // presented as a canonical economic classification.
+      const candidate = state.ccCandidate;
+      const basis = recoveryState.canonicalEffectiveBasisPerShare ?? recoveryState.recordedLotBasisReferencePerShare;
       if (!candidate || !finite(candidate.bid) || !finite(candidate.ask) || !finite(basis)) {
         return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_IDENTIFIED_CC_CANDIDATE'] };
       }
+      const isCanonicalBasis = recoveryState.canonicalEffectiveBasisPerShare !== null;
       // Deterministic, sensible guard: never write a covered call at a
-      // strike below the stock's own known cost basis -- that would lock
-      // in a loss regardless of the premium collected. This is an
-      // arithmetic safety rule, not a profitability forecast.
+      // strike below the available basis reference -- that would risk
+      // locking in a loss regardless of the premium collected. This is
+      // an arithmetic safety rule, not a profitability forecast, and it
+      // never claims canonical economics when only a reference is known.
       if (candidate.strike < basis) {
         return { ...base, ...UNKNOWN_VALUE, utility: -3,
-          reasons: ['CC_STRIKE_BELOW_KNOWN_COST_BASIS_REJECTED', `BASIS_SOURCE_${recoveryState.basisSource}`] };
+          reasons: [
+            isCanonicalBasis ? 'CC_STRIKE_BELOW_KNOWN_COST_BASIS_REJECTED' : 'CC_STRIKE_BELOW_RECORDED_REFERENCE_REJECTED',
+            `BASIS_SOURCE_${recoveryState.basisSource}`,
+          ] };
       }
       // Conservative, executable reference: the BID side, never the
       // midpoint -- a midpoint premium must never silently become the
@@ -755,7 +807,8 @@ function valueFor(
         executionCostRisk: premiumDollars * 0.01, opportunityCost: null, uncertainty: null,
         utility: ccWeight * premiumDollars, executionEvidence,
         reasons: [`BID_SIDE_EXECUTABLE_REFERENCE_${premiumDollars.toFixed(2)}`, `MID_REFERENCE_ANALYTICAL_ONLY_${midDollars.toFixed(2)}`,
-          'STRIKE_AT_OR_ABOVE_COST_BASIS', `BASIS_SOURCE_${recoveryState.basisSource}`,
+          isCanonicalBasis ? 'STRIKE_AT_OR_ABOVE_COST_BASIS' : 'STRIKE_AT_OR_ABOVE_RECORDED_REFERENCE',
+          `BASIS_SOURCE_${recoveryState.basisSource}`,
           `HORIZON_ANCHOR_${horizon.horizonAnchor ?? 'UNKNOWN'}`, `SELL_CC_UTILITY_WEIGHT_${ccWeight}`],
       };
     }

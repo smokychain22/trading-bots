@@ -20,13 +20,29 @@ export interface WholeChainComponents {
   /** Strike at which stock was assigned, or null if this chain was never assigned. */
   readonly assignmentStrike: number | null;
   readonly stockSharesAssigned: number;
-  readonly dividends: number;
+  /**
+   * `null` means UNKNOWN -- no trusted dividend evidence exists for this
+   * chain. This is a DIFFERENT state from a real, observed zero (no
+   * dividend occurred). Callers must never pass `0` merely because
+   * dividend evidence has not been verified -- that would silently
+   * convert "we don't know" into "we know it was nothing," corrupting
+   * both this leg and (via `computeWholeChainPnl`'s completeness check)
+   * the entire whole-chain P&L identity.
+   */
+  readonly dividends: number | null;
   readonly coveredCallPremium: number | null;
   readonly coveredCallCloseCosts: number | null;
   /** Proceeds from selling the stock outright OR from a call-away (per-share price * shares), or
    * null if the stock (or a covered-call obligation on it) is still open. */
   readonly stockSaleOrCallAwayProceeds: number | null;
-  readonly fees: number;
+  /**
+   * `null` means UNKNOWN -- no trusted fee evidence exists. See the
+   * `dividends` doc comment above; the same UNKNOWN-vs-real-zero
+   * distinction applies here, and a genuinely fee-free fill (a real
+   * observed `0`) is honestly different from fee evidence that was never
+   * verified at all.
+   */
+  readonly fees: number | null;
   readonly slippage: number | null;
   /** Current mark-to-market stock price, used only for an UNREALIZED component when shares are
    * still held (never treated as realized proceeds). */
@@ -61,13 +77,14 @@ export function computeEffectiveStockBasis(components: WholeChainComponents): Ef
   if (components.initialPutPremium === null) missingComponents.push('initialPutPremium');
   if (components.rollCredits === null) missingComponents.push('rollCredits');
   if (components.rollCloseCosts === null) missingComponents.push('rollCloseCosts');
+  if (components.fees === null) missingComponents.push('fees');
   if (components.slippage === null) missingComponents.push('slippage');
   if (missingComponents.length > 0) {
     return { contractVersion: wholeChainEconomicsVersion, effectiveStockBasisPerShare: null, complete: false, missingComponents };
   }
   const netPutPremiumRetained = (components.initialPutPremium as number)
     + (components.rollCredits as number) - (components.rollCloseCosts as number);
-  const perShareAdjustment = (netPutPremiumRetained - components.fees - (components.slippage as number)) / components.stockSharesAssigned;
+  const perShareAdjustment = (netPutPremiumRetained - (components.fees as number) - (components.slippage as number)) / components.stockSharesAssigned;
   return {
     contractVersion: wholeChainEconomicsVersion,
     effectiveStockBasisPerShare: components.assignmentStrike - perShareAdjustment,
@@ -100,7 +117,10 @@ export function computeWholeChainPnl(components: WholeChainComponents): WholeCha
     { label: 'DIVIDENDS', amount: components.dividends },
     { label: 'COVERED_CALL_PREMIUM', amount: components.coveredCallPremium },
     { label: 'COVERED_CALL_CLOSE_COSTS', amount: components.coveredCallCloseCosts === null ? null : -components.coveredCallCloseCosts },
-    { label: 'FEES', amount: -components.fees },
+    // components.fees === null means UNKNOWN (no trusted fee evidence) --
+    // `-null` would coerce to 0 in JS, silently turning "unknown" into "a
+    // real observed zero." The explicit check prevents that.
+    { label: 'FEES', amount: components.fees === null ? null : -components.fees },
     { label: 'SLIPPAGE', amount: components.slippage === null ? null : -components.slippage },
   ];
   // The stock leg is EITHER still-open (an unrealized mark) OR closed (sale/

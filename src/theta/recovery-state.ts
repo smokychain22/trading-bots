@@ -13,7 +13,8 @@ export const recoveryStateVersion = 'theta-recovery-state-v1' as const;
  * challenger model may populate a PARALLEL, separately-labeled probabilistic
  * field set -- it must never silently overwrite these deterministic ones.
  */
-export type BasisSource = 'CANONICAL_WHOLE_CHAIN' | 'BROKER_RECORDED_REFERENCE' | 'UNKNOWN';
+export type BasisSource = 'CANONICAL_WHOLE_CHAIN' | 'RECORDED_LOT_REFERENCE' | 'UNKNOWN';
+export type BasisConfidence = 'CANONICAL_COMPLETE' | 'NON_CANONICAL_REFERENCE' | 'UNKNOWN';
 
 export interface RecoveryState {
   readonly contractVersion: typeof recoveryStateVersion;
@@ -22,32 +23,48 @@ export interface RecoveryState {
    * economics.ts) -- STRICTLY only populated when the full chain-history
    * components (initial put premium, roll credits/close costs, fees,
    * slippage) are supplied and complete. `null` otherwise -- this field
-   * NEVER silently falls back to anything else.
+   * NEVER silently falls back to anything else, and NOTHING in this
+   * module (or its consumers) may treat any other value as equivalent to
+   * this one.
    */
   readonly canonicalEffectiveBasisPerShare: number | null;
   /**
-   * The broker/DB-recorded stock lot basis (`economics.stockBasisPerShare`),
-   * exposed separately and unconditionally so callers can always see it
-   * on its own terms -- it may or may not include the same economic
-   * adjustments (put premiums, roll history, fees) the canonical formula
-   * applies, and this module makes no claim that the two are equivalent.
+   * The runtime-recorded stock LOT basis reference (`economics.stockBasisPerShare`).
+   * Named deliberately to avoid implying it is broker-verified truth --
+   * the canonical runtime this ManagementInputState is drawn from
+   * currently sources this from `trade.stock_lot.economic_basis_per_share`,
+   * which is initially written as the assignment strike and may or may not
+   * ever be adjusted for the original put premium, roll debits/credits,
+   * fees, or slippage. It is exposed here purely as a REFERENCE value,
+   * never as a substitute for `canonicalEffectiveBasisPerShare`.
    */
-  readonly brokerRecordedBasisPerShare: number | null;
-  /** Which of the two above is actually backing `bestAvailableBasisPerShare`
-   * below -- never left implicit. */
+  readonly recordedLotBasisReferencePerShare: number | null;
+  /** Which of the two above is the more authoritative one available --
+   * never left implicit. */
   readonly basisSource: BasisSource;
+  /** Whether that source is the strict canonical formula or a lower-
+   * confidence reference -- a second, explicit label so a consumer
+   * cannot mistake `basisSource` alone for a confidence claim. */
+  readonly basisConfidence: BasisConfidence;
   /**
-   * The reference actually used for this state's own calculations
-   * (distance-to-basis, capital locked, etc.) -- the canonical figure when
-   * available, otherwise the broker-recorded figure as an explicitly
-   * lower-confidence reference (never silently presented as canonical),
-   * otherwise `null`. Consumers needing to know WHICH kind of basis this
-   * is must read `basisSource`, not assume.
+   * CANONICAL-BASIS-DEPENDENT economics -- these claim to represent the
+   * position's TRUE economic state relative to its whole-chain-adjusted
+   * basis, and are therefore `null` (UNKNOWN, never substituted) whenever
+   * `canonicalEffectiveBasisPerShare` itself is null.
    */
-  readonly bestAvailableBasisPerShare: number | null;
+  readonly canonicalDistanceToBasisFraction: number | null;
+  readonly canonicalDrawdownFraction: number | null;
+  /**
+   * REFERENCE-ONLY economics -- computed from `recordedLotBasisReferencePerShare`
+   * whenever that is available, explicitly labeled as non-canonical. These
+   * exist so a reviewer/policy can still see SOMETHING when canonical
+   * history is incomplete, without ever presenting it as the canonical
+   * figure. Consumers must not silently prefer these over the canonical
+   * fields when making a whole-chain P&L or below/above-effective-basis
+   * claim -- only the canonical fields may back those specific claims.
+   */
+  readonly referenceDistanceToBasisFraction: number | null;
   readonly currentStockPrice: number | null;
-  readonly distanceToBasisFraction: number | null;
-  readonly drawdownFraction: number | null;
   /** Always null in this module -- no realized/implied-vol feed is plumbed
    * into ManagementInputState for a position with no open option leg. */
   readonly realizedVolatility: number | null;
@@ -62,7 +79,17 @@ export interface RecoveryState {
   readonly furtherDownsideEstimate: null;
   readonly coveredCallCandidateQualityKnown: boolean;
   readonly capitalDaysSoFar: number | null;
+  /**
+   * Capital opportunity cost is treated as BASIS-INDEPENDENT-ish evidence
+   * (per the standing directive: THETA may still evaluate this even when
+   * canonical basis is UNKNOWN) -- it uses whichever basis reference is
+   * actually available (canonical when known, the recorded-lot reference
+   * otherwise) purely to size "how much capital is tied up," not to make
+   * a whole-chain P&L claim. `capitalBasisSource` names which one backed
+   * it, so this is never silently conflated with a canonical P&L figure.
+   */
   readonly capitalOpportunityCostDollars: number | null;
+  readonly capitalBasisSource: BasisSource;
   readonly portfolioBurdenDataPresent: boolean;
   readonly dataCompleteness: {
     readonly missingUpstreamFields: readonly string[];
@@ -81,6 +108,10 @@ function daysBetween(fromIso: string | null, toIso: string): number | null {
   return Math.max(0, (to - from) / 86_400_000);
 }
 
+function fraction(mark: number | null, basis: number | null): number | null {
+  return finite(mark) && finite(basis) && basis !== 0 ? (mark - basis) / basis : null;
+}
+
 /**
  * `assignedAtObservedAt` and `annualOpportunityCostRate` are optional,
  * caller-supplied (and caller-justified, per the standing no-invented-
@@ -88,17 +119,15 @@ function daysBetween(fromIso: string | null, toIso: string): number | null {
  * honestly UNKNOWN rather than defaulting to a fabricated rate.
  *
  * `wholeChainComponents` is the ONE canonical basis input -- when
- * supplied and complete, `effectiveBasisPerShare` comes from
+ * supplied and complete, `canonicalEffectiveBasisPerShare` comes from
  * `computeEffectiveStockBasis` (whole-chain-economics.ts), the SAME
- * formula whole-chain accounting itself uses, so recovery/SELL_STOCK/
- * SELL_CC economics can never silently disagree with whole-chain P&L
- * about what the basis is. `ManagementInputState` does not currently
- * carry the roll-history fields that formula needs
- * (initialPutPremium/rollCredits/rollCloseCosts), so most callers today
- * will omit this and fall back to the broker-recorded
- * `economics.stockBasisPerShare` -- that fallback is reported honestly
- * via `dataCompleteness`, never silently presented as the canonical
- * figure.
+ * formula whole-chain accounting itself uses. When absent or incomplete,
+ * `canonicalEffectiveBasisPerShare` is `null` -- STRICTLY never
+ * substituted with the recorded-lot reference, spot, zero, or any prior
+ * value. The recorded-lot reference remains separately visible via
+ * `recordedLotBasisReferencePerShare` for informational/degraded use,
+ * but every field whose name says "canonical" only ever comes from the
+ * canonical formula.
  */
 export function buildRecoveryState(
   state: ManagementInputState, assignedAtObservedAt: string | null = null, annualOpportunityCostRate: number | null = null,
@@ -107,15 +136,29 @@ export function buildRecoveryState(
   const { stockBasisPerShare, stockMarkPerShare, openStockShares } = state.economics;
   const canonicalBasis = wholeChainComponents === null ? null : computeEffectiveStockBasis(wholeChainComponents);
   const canonicalEffectiveBasisPerShare = canonicalBasis?.complete === true ? canonicalBasis.effectiveStockBasisPerShare : null;
-  const brokerRecordedBasisPerShare = stockBasisPerShare;
+  const recordedLotBasisReferencePerShare = stockBasisPerShare;
   const basisSource: BasisSource = canonicalEffectiveBasisPerShare !== null ? 'CANONICAL_WHOLE_CHAIN'
-    : finite(brokerRecordedBasisPerShare) ? 'BROKER_RECORDED_REFERENCE' : 'UNKNOWN';
-  const bestAvailableBasisPerShare = canonicalEffectiveBasisPerShare ?? brokerRecordedBasisPerShare;
-  const distanceToBasisFraction = finite(stockMarkPerShare) && finite(bestAvailableBasisPerShare) && bestAvailableBasisPerShare !== 0
-    ? (stockMarkPerShare - bestAvailableBasisPerShare) / bestAvailableBasisPerShare : null;
-  const drawdownFraction = distanceToBasisFraction !== null && distanceToBasisFraction < 0 ? distanceToBasisFraction : null;
+    : finite(recordedLotBasisReferencePerShare) ? 'RECORDED_LOT_REFERENCE' : 'UNKNOWN';
+  const basisConfidence: BasisConfidence = canonicalEffectiveBasisPerShare !== null ? 'CANONICAL_COMPLETE'
+    : finite(recordedLotBasisReferencePerShare) ? 'NON_CANONICAL_REFERENCE' : 'UNKNOWN';
+
+  // CANONICAL-DEPENDENT: null whenever canonicalEffectiveBasisPerShare is
+  // null -- never substituted with the reference value.
+  const canonicalDistanceToBasisFraction = fraction(stockMarkPerShare, canonicalEffectiveBasisPerShare);
+  const canonicalDrawdownFraction = canonicalDistanceToBasisFraction !== null && canonicalDistanceToBasisFraction < 0
+    ? canonicalDistanceToBasisFraction : null;
+  // REFERENCE-ONLY: always computed from the recorded-lot reference when
+  // available, explicitly a SEPARATE, non-canonical field.
+  const referenceDistanceToBasisFraction = fraction(stockMarkPerShare, recordedLotBasisReferencePerShare);
+
   const capitalDaysSoFar = daysBetween(assignedAtObservedAt, state.observedAt);
-  const capitalLocked = finite(bestAvailableBasisPerShare) && openStockShares > 0 ? bestAvailableBasisPerShare * openStockShares : null;
+  // Capital opportunity cost is basis-independent-ish evidence -- it may
+  // use whichever basis is actually available (canonical preferred, the
+  // recorded-lot reference otherwise) purely to size capital locked, and
+  // `capitalBasisSource` names which one, so it is never silently
+  // conflated with a canonical whole-chain P&L claim.
+  const capitalBasisReference = canonicalEffectiveBasisPerShare ?? recordedLotBasisReferencePerShare;
+  const capitalLocked = finite(capitalBasisReference) && openStockShares > 0 ? capitalBasisReference * openStockShares : null;
   const capitalOpportunityCostDollars = capitalLocked !== null && capitalDaysSoFar !== null && annualOpportunityCostRate !== null
     ? capitalLocked * annualOpportunityCostRate * (capitalDaysSoFar / 365) : null;
 
@@ -123,20 +166,21 @@ export function buildRecoveryState(
   if (assignedAtObservedAt === null) requiresCallerInput.push('assignedAtObservedAt (for capitalDaysSoFar)');
   if (annualOpportunityCostRate === null) requiresCallerInput.push('annualOpportunityCostRate (for capitalOpportunityCostDollars)');
   if (wholeChainComponents === null) {
-    requiresCallerInput.push(`wholeChainComponents (for the ONE canonical effective basis -- currently using ${basisSource} as a lower-confidence reference, never presented as canonical)`);
+    requiresCallerInput.push(`wholeChainComponents (for the ONE canonical effective basis -- canonicalEffectiveBasisPerShare stays UNKNOWN; basisSource=${basisSource} is a lower-confidence reference only, never presented as canonical)`);
   } else if (canonicalBasis?.complete === false) {
-    requiresCallerInput.push(`wholeChainComponents (incomplete -- missing: ${canonicalBasis.missingComponents.join(', ')}; currently using ${basisSource} as a lower-confidence reference, never presented as canonical)`);
+    requiresCallerInput.push(`wholeChainComponents (incomplete -- missing: ${canonicalBasis.missingComponents.join(', ')}; canonicalEffectiveBasisPerShare stays UNKNOWN; basisSource=${basisSource} is a lower-confidence reference only, never presented as canonical)`);
   }
 
   return {
     contractVersion: recoveryStateVersion,
-    canonicalEffectiveBasisPerShare, brokerRecordedBasisPerShare, basisSource, bestAvailableBasisPerShare,
+    canonicalEffectiveBasisPerShare, recordedLotBasisReferencePerShare, basisSource, basisConfidence,
+    canonicalDistanceToBasisFraction, canonicalDrawdownFraction, referenceDistanceToBasisFraction,
     currentStockPrice: stockMarkPerShare,
-    distanceToBasisFraction, drawdownFraction,
     realizedVolatility: null, impliedVolatility: state.market.iv,
     eventRiskPresent: state.context.eventState !== null,
     recoveryProbabilityEstimate: null, expectedRecoveryTimeDays: null, furtherDownsideEstimate: null,
     coveredCallCandidateQualityKnown: false, capitalDaysSoFar, capitalOpportunityCostDollars,
+    capitalBasisSource: finite(capitalBasisReference) ? basisSource : 'UNKNOWN',
     portfolioBurdenDataPresent: state.context.concentration !== null,
     dataCompleteness: {
       missingUpstreamFields: ['realized_volatility_feed', 'covered_call_candidate_quality_scoring'],

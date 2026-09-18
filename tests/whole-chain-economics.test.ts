@@ -73,6 +73,49 @@ test('computeEffectiveStockBasis names every missing component rather than guess
   assert.deepEqual(result.missingComponents, ['rollCredits', 'slippage']);
 });
 
+test('UNKNOWN != ZERO: unverified fees make canonical basis UNKNOWN, never silently treated as a real zero fee', () => {
+  const withUnknownFees = computeEffectiveStockBasis(components({ fees: null }));
+  assert.equal(withUnknownFees.complete, false);
+  assert.deepEqual(withUnknownFees.missingComponents, ['fees']);
+  // A genuinely observed zero fee is a DIFFERENT, valid state -- it must
+  // still compute normally, proving the two are not conflated in either
+  // direction.
+  const withRealZeroFees = computeEffectiveStockBasis(components({ fees: 0 }));
+  assert.equal(withRealZeroFees.complete, true);
+});
+
+test('UNKNOWN != ZERO: unverified slippage makes canonical basis UNKNOWN, distinct from a real zero-slippage fill', () => {
+  const withUnknownSlippage = computeEffectiveStockBasis(components({ slippage: null }));
+  assert.equal(withUnknownSlippage.complete, false);
+  assert.deepEqual(withUnknownSlippage.missingComponents, ['slippage']);
+  const withRealZeroSlippage = computeEffectiveStockBasis(components({ slippage: 0 }));
+  assert.equal(withRealZeroSlippage.complete, true);
+});
+
+test('UNKNOWN != ZERO: unverified initial put premium makes canonical basis UNKNOWN, never silently defaulted', () => {
+  const result = computeEffectiveStockBasis(components({ initialPutPremium: null }));
+  assert.equal(result.complete, false);
+  assert.deepEqual(result.missingComponents, ['initialPutPremium']);
+});
+
+test('UNKNOWN != ZERO: unverified dividend evidence makes its own leg UNKNOWN in computeWholeChainPnl -- never silently -0/0', () => {
+  const withUnknownDividends = computeWholeChainPnl(components({ dividends: null }));
+  const dividendLeg = withUnknownDividends.legLevelPnl.find((leg) => leg.label === 'DIVIDENDS');
+  assert.equal(dividendLeg?.amount, null);
+  assert.equal(withUnknownDividends.wholeChainPnl, null); // an unknown leg poisons the total, never silently ignored
+  // A real observed zero dividend is a different, valid, complete state.
+  const withRealZeroDividends = computeWholeChainPnl(components({ dividends: 0 }));
+  const realZeroLeg = withRealZeroDividends.legLevelPnl.find((leg) => leg.label === 'DIVIDENDS');
+  assert.equal(realZeroLeg?.amount, 0);
+});
+
+test('UNKNOWN != ZERO: unverified fee evidence makes the FEES leg UNKNOWN in computeWholeChainPnl, never coerced by `-null` accidentally becoming -0', () => {
+  const withUnknownFees = computeWholeChainPnl(components({ fees: null }));
+  const feesLeg = withUnknownFees.legLevelPnl.find((leg) => leg.label === 'FEES');
+  assert.equal(feesLeg?.amount, null);
+  assert.equal(withUnknownFees.wholeChainPnl, null);
+});
+
 test('computeWholeChainPnl sums every known leg and never hides a prior option loss inside a later leg', () => {
   const breakdown = computeWholeChainPnl(components({
     stockSaleOrCallAwayProceeds: 19_000, openStockShares: 0, coveredCallPremium: 0, coveredCallCloseCosts: 0,

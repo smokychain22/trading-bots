@@ -259,13 +259,14 @@ test('RECOVERY_WAIT with a covered call candidate at or above cost basis sells t
   assert.ok((execution?.deterministicNetCredit ?? 0) > 0);
 });
 
-test('RECOVERY_WAIT rejects a covered call candidate priced below the known cost basis', () => {
+test('RECOVERY_WAIT rejects a covered call candidate priced below the recorded-lot reference basis (no wholeChainComponents supplied, so this is a reference-only rejection, never a canonical one)', () => {
   const input = state('RECOVERY_WAIT');
   const cc = rollCandidate({ optionType: 'CALL', strike: 190, bid: 1, ask: 1.2 });
   const evidence = evaluatePaperBootstrapManagementPolicy({ ...input, ccCandidate: cc });
   assert.equal(evidence?.selectedAction, 'RECOVERY_WAIT');
   const rejected = evidence?.actionValues.find((value) => value.action === 'SELL_CC');
-  assert.ok(rejected?.reasons.includes('CC_STRIKE_BELOW_KNOWN_COST_BASIS_REJECTED'));
+  assert.ok(rejected?.reasons.includes('CC_STRIKE_BELOW_RECORDED_REFERENCE_REJECTED'));
+  assert.ok(!rejected?.reasons.includes('CC_STRIKE_BELOW_KNOWN_COST_BASIS_REJECTED'));
 });
 
 test('RECOVERY_WAIT with multiple CC candidates picks the highest-premium SELECTABLE one, skipping below-basis alternatives', () => {
@@ -328,10 +329,11 @@ test('ccCandidates takes precedence over the single ccCandidate field when both 
   assert.equal(execution?.targetContract?.optionContractId, 'plural-path');
 });
 
-test('RECOVERY_WAIT surfaces known distance-to-basis honestly, and UNKNOWN for capital-days without caller-supplied entry data', () => {
+test('RECOVERY_WAIT surfaces the known REFERENCE distance-to-basis honestly (canonical stays UNKNOWN, no wholeChainComponents supplied), and UNKNOWN for capital-days without caller-supplied entry data', () => {
   const evidence = evaluatePaperBootstrapManagementPolicy(state('RECOVERY_WAIT'));
   const recoveryValue = evidence?.actionValues.find((value) => value.action === 'RECOVERY_WAIT');
-  assert.ok(recoveryValue?.reasons.some((reason) => reason.startsWith('DISTANCE_TO_BASIS_FRACTION_') && !reason.endsWith('UNKNOWN')));
+  assert.ok(recoveryValue?.reasons.some((reason) => reason.startsWith('REFERENCE_DISTANCE_TO_BASIS_FRACTION_') && !reason.endsWith('UNKNOWN')));
+  assert.ok(recoveryValue?.reasons.includes('CANONICAL_DISTANCE_TO_BASIS_FRACTION_UNKNOWN'));
   assert.ok(recoveryValue?.reasons.includes('CAPITAL_DAYS_SO_FAR_UNKNOWN'));
   assert.ok(recoveryValue?.reasons.includes('RECOVERY_PROBABILITY_NOT_MODELED_NO_FABRICATED_ESTIMATE'));
 });
@@ -368,6 +370,21 @@ test('SELL_STOCK wins over RECOVERY_WAIT when a broken thesis is present and a j
 
   const withBias = evaluatePaperBootstrapManagementPolicy({ ...state('RECOVERY_WAIT', overrides), thesisFailureUtilityBias: 1 });
   assert.equal(withBias?.selectedAction, 'SELL_STOCK');
+});
+
+test('SELL_STOCK can still win from non-basis evidence even when canonical basis is COMPLETELY unknown (no recorded-lot reference either) -- accounting incompleteness must never block a rational sale', () => {
+  const overrides = {
+    snapshot_json: { underlyingState: { last: 190 }, marketSession: { isOpen: false },
+      riskState: { assignmentCapacity: 1, newRiskState: 'HARD_VETO' }, eventState: { state: 'CLEAR' } },
+    broker_position: { currentPrice: 190 }, stock_basis_per_share: null, // NO basis reference at all
+  };
+  const input = { ...state('RECOVERY_WAIT', overrides), thesisFailureUtilityBias: 1 };
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  assert.equal(evidence?.selectedAction, 'SELL_STOCK');
+  const sellStockValue = evidence?.actionValues.find((value) => value.action === 'SELL_STOCK');
+  assert.ok(sellStockValue?.reasons.includes('CANONICAL_STOCK_PNL_UNKNOWN_BASIS_INCOMPLETE'));
+  assert.ok(sellStockValue?.reasons.includes('REFERENCE_STOCK_PNL_UNKNOWN'));
+  assert.ok(sellStockValue?.reasons.includes('BASIS_SOURCE_UNKNOWN'));
 });
 
 test('with no opportunity-cost weight or thesis bias supplied, SELL_STOCK stays neutral (tied with RECOVERY_WAIT, never worse by a hidden permanent handicap)', () => {
@@ -517,9 +534,9 @@ test('SELL_STOCK and SELL_CC both consume the ONE canonical effective basis when
   const evidence = evaluatePaperBootstrapManagementPolicy(input);
   const sellStockValue = evidence?.actionValues.find((value) => value.action === 'SELL_STOCK');
   // Using the canonical basis (185), mark(190) is ABOVE basis -- a known
-  // gain of (190-185)*100=500, not the loss (190-195)*100=-500 the raw
-  // broker basis would have produced.
-  assert.ok(sellStockValue?.reasons.includes('KNOWN_STOCK_PNL_IF_SOLD_500.00'));
+  // CANONICAL gain of (190-185)*100=500, not the loss (190-195)*100=-500
+  // the recorded-lot reference (195) would have produced.
+  assert.ok(sellStockValue?.reasons.includes('CANONICAL_KNOWN_STOCK_PNL_IF_SOLD_500.00'));
 
   // A covered-call candidate at strike 190 is ABOVE the canonical basis
   // (185) and therefore selectable -- it would have been REJECTED as
@@ -537,13 +554,13 @@ test('SELL_STOCK and SELL_CC reason codes distinguish a broker-recorded basis re
   const input = state('RECOVERY_WAIT'); // no wholeChainComponents supplied -> falls back to broker basis
   const evidence = evaluatePaperBootstrapManagementPolicy(input);
   const sellStockValue = evidence?.actionValues.find((value) => value.action === 'SELL_STOCK');
-  assert.ok(sellStockValue?.reasons.includes('BASIS_SOURCE_BROKER_RECORDED_REFERENCE'));
+  assert.ok(sellStockValue?.reasons.includes('BASIS_SOURCE_RECORDED_LOT_REFERENCE'));
   assert.ok(!sellStockValue?.reasons.includes('BASIS_SOURCE_CANONICAL_WHOLE_CHAIN'));
 
   const withCcCandidate = { ...input, ccCandidate: rollCandidate({ optionType: 'CALL', strike: 200, bid: 1, ask: 1.2 }) };
   const withCcEvidence = evaluatePaperBootstrapManagementPolicy(withCcCandidate);
   const sellCcValue = withCcEvidence?.actionValues.find((value) => value.action === 'SELL_CC');
-  assert.ok(sellCcValue?.reasons.includes('BASIS_SOURCE_BROKER_RECORDED_REFERENCE'));
+  assert.ok(sellCcValue?.reasons.includes('BASIS_SOURCE_RECORDED_LOT_REFERENCE'));
 });
 
 test('the provider defaults to no candidates and stays passive', async () => {
