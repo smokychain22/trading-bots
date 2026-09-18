@@ -290,12 +290,16 @@ test('with justified CC utility weights, a farther-OTM lower-premium candidate c
   const withCandidates = {
     ...input,
     ccCandidates: [
-      rollCandidate({ optionContractId: 'near-rich-risky', optionType: 'CALL', strike: 196, bid: 4, ask: 4.6, eventRisk: true }),
+      rollCandidate({ optionContractId: 'near-rich-risky', optionType: 'CALL', strike: 196, bid: 4, ask: 4.6, eventRisk: 'PRESENT' }),
       rollCandidate({ optionContractId: 'far-modest-safe', optionType: 'CALL', strike: 210, bid: 0.5, ask: 0.55 }),
     ],
     ccUtilityWeights: {
       upsideSacrificePerDollarWeight: 0, spreadPerDollarWeight: 3, eventRiskPenalty: 500,
       dividendExDateRiskPenalty: 100, belowBasisPenalty: 1000,
+      provenance: {
+        policyVersion: 'test-policy-v1', configurationId: 'TEST_JUSTIFIED_CC_WEIGHTS',
+        effectiveVersion: 'test-policy-v1', sourceReason: 'TEST_FIXTURE_JUSTIFIED_NON_ZERO_WEIGHTS',
+      },
     },
   };
   const evidence = evaluatePaperBootstrapManagementPolicy(withCandidates);
@@ -392,6 +396,139 @@ test('with no opportunity-cost weight or thesis bias supplied, SELL_STOCK stays 
   const evidence = evaluatePaperBootstrapManagementPolicy(input);
   const sellStockValue = evidence?.actionValues.find((value) => value.action === 'SELL_STOCK');
   assert.equal(sellStockValue?.utility, 0);
+});
+
+test('RECOVERY_WAIT/SELL_STOCK/SELL_CC can EACH win rationally -- no action carries a hidden permanent law over the other two', () => {
+  // RECOVERY_WAIT wins: a SELL_CC candidate with real, known, heavily
+  // penalized economics (event risk + wide spread) goes negative while
+  // RECOVERY_WAIT and SELL_STOCK both sit at their neutral 0 baseline.
+  const recoveryWins = evaluatePaperBootstrapManagementPolicy({
+    ...state('RECOVERY_WAIT'),
+    ccCandidates: [rollCandidate({ optionType: 'CALL', strike: 200, bid: 1, ask: 4, eventRisk: 'PRESENT' })],
+    ccUtilityWeights: {
+      upsideSacrificePerDollarWeight: 0, spreadPerDollarWeight: 10, eventRiskPenalty: 1000, dividendExDateRiskPenalty: 0,
+      belowBasisPenalty: 0, provenance: {
+        policyVersion: 'test-policy-v1', configurationId: 'TEST_RECOVERY_WAIT_WINS', effectiveVersion: 'test-policy-v1',
+        sourceReason: 'TEST_FIXTURE_HEAVY_EVENT_RISK_AND_SPREAD_PENALTY',
+      },
+    },
+    sellCcPremiumUtilityWeight: 0.01,
+  });
+  assert.equal(recoveryWins?.selectedAction, 'RECOVERY_WAIT');
+
+  // SELL_STOCK wins: an already-established scenario (justified opportunity-
+  // cost weight against a real, known capital cost).
+  const sellStockWins = evaluatePaperBootstrapManagementPolicy({
+    ...state('RECOVERY_WAIT'), assignedAtObservedAt: '2026-08-13T14:00:00.000Z', annualOpportunityCostRate: 0.05,
+    sellStockOpportunityCostUtilityWeight: 0.02,
+  });
+  assert.equal(sellStockWins?.selectedAction, 'SELL_STOCK');
+
+  // SELL_CC wins: a clean, positive-premium candidate with no penalties and
+  // a justified positive weight.
+  const sellCcWins = evaluatePaperBootstrapManagementPolicy({
+    ...state('RECOVERY_WAIT'), ccCandidate: rollCandidate({ optionType: 'CALL', strike: 200, bid: 1, ask: 1.2 }),
+    sellCcPremiumUtilityWeight: 0.01,
+  });
+  assert.equal(sellCcWins?.selectedAction, 'SELL_CC');
+});
+
+test('RECOVERY_WAIT carries a real (non-flat-zero) forward-economics utility once a known capital opportunity cost applies -- it is the mirror image of SELL_STOCK\'s own benefit-of-selling term', () => {
+  const input = { ...state('RECOVERY_WAIT'), assignedAtObservedAt: '2026-08-13T14:00:00.000Z', annualOpportunityCostRate: 0.05,
+    sellStockOpportunityCostUtilityWeight: 0.02 };
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  const recoveryValue = evidence?.actionValues.find((value) => value.action === 'RECOVERY_WAIT');
+  const sellStockValue = evidence?.actionValues.find((value) => value.action === 'SELL_STOCK');
+  assert.ok((recoveryValue?.utility as number) < 0, 'RECOVERY_WAIT must pay the known cost of continuing to wait');
+  assert.equal(recoveryValue?.utility, -(sellStockValue?.utility as number));
+  assert.ok(recoveryValue?.reasons.some((reason) => reason.startsWith('CONTINUING_CAPITAL_OPPORTUNITY_COST_') && !reason.endsWith('UNKNOWN')));
+});
+
+test('ROLL_CC with multiple candidates picks the best combination of NetRollCredit and AdditionalUpsideDollars, not merely the largest credit', () => {
+  const input = {
+    ...state('CC_OPEN', { option_type: 'CALL', contract_symbol: 'AAPL261016C00200000' }),
+    rollCcAdditionalUpsideDollarWeight: 1,
+  };
+  const withCandidates = {
+    ...input,
+    rollCcCandidates: [
+      // Bigger net credit, but gives up strike (loses upside): strike drops from 200 to 195.
+      rollCandidate({ optionContractId: 'big-credit-loses-upside', optionType: 'CALL', strike: 195, bid: 3, ask: 3.2 }),
+      // Smaller net credit, but buys real upside: strike rises from 200 to 210.
+      rollCandidate({ optionContractId: 'small-credit-buys-upside', optionType: 'CALL', strike: 210, bid: 0.5, ask: 0.6 }),
+    ],
+  };
+  const evidence = evaluatePaperBootstrapManagementPolicy(withCandidates);
+  assert.equal(evidence?.selectedAction, 'ROLL_CC');
+  const rollCcValue = evidence?.actionValues.find((value) => value.action === 'ROLL_CC');
+  assert.equal(rollCcValue?.executionEvidence?.targetContract?.optionContractId, 'small-credit-buys-upside');
+  assert.ok(rollCcValue?.reasons.some((reason) => reason.startsWith('ADDITIONAL_UPSIDE_DOLLARS_') && !reason.endsWith('UNKNOWN')));
+});
+
+test('ROLL_CC falls back to the single-candidate path (valueForSingleRollCandidate) when no rollCcCandidates list is supplied', () => {
+  const input = { ...state('CC_OPEN'), ccCandidate: rollCandidate({ optionType: 'CALL', strike: 210, bid: 0.5, ask: 0.6 }) };
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  const rollCcValue = evidence?.actionValues.find((value) => value.action === 'ROLL_CC');
+  // The single-candidate path reports OPEN_CREDIT_/CLOSE_COST_ reasons, never the
+  // multi-candidate path's BEST_OF_..._ROLL_CC_CANDIDATES/NET_ROLL_CREDIT_ reasons.
+  assert.ok(rollCcValue?.reasons.some((reason) => reason.startsWith('OPEN_CREDIT_BID_SIDE_')));
+  assert.ok(!rollCcValue?.reasons.some((reason) => reason.startsWith('BEST_OF_')));
+
+  const noCandidateInput = state('CC_OPEN');
+  const noCandidateEvidence = evaluatePaperBootstrapManagementPolicy(noCandidateInput);
+  const noCandidateRollCcValue = noCandidateEvidence?.actionValues.find((value) => value.action === 'ROLL_CC');
+  assert.ok(noCandidateRollCcValue?.reasons.some((reason) => reason === 'NO_IDENTIFIED_ROLL_TARGET'));
+});
+
+test('ALLOW_CALL_AWAY surfaces the real canonical whole-chain call-away P&L (never a second formula, gross proceeds never presented as profit), and stays UNKNOWN when canonical basis is unknown', () => {
+  const completeChain = {
+    initialPutPremium: 300, rollCredits: 0, rollCloseCosts: 0, assignmentStrike: 195, stockSharesAssigned: 100,
+    dividends: 0, coveredCallPremium: null, coveredCallCloseCosts: null, stockSaleOrCallAwayProceeds: null,
+    fees: 0, slippage: 0, currentStockMarkPerShare: null, openStockShares: 100,
+  };
+  // canonicalBasis = 195 - (300/100) = 192. Call away at strike 200:
+  // proceeds = 200*100 = 20,000. Stock leg = 20,000 - 192*100 = 800.
+  // Plus the CC premium already collected (entry_credit_debit = 200 by
+  // the fixture default) minus fees (0): wholeChainPnl = 200 + 800 = 1000.
+  const withCanonical = evaluatePaperBootstrapManagementPolicy({
+    ...state('CC_OPEN', { open_stock_shares: '100', stock_basis_per_share: '195' }),
+    wholeChainComponents: completeChain,
+  });
+  const callAwayWithCanonical = withCanonical?.actionValues.find((value) => value.action === 'ALLOW_CALL_AWAY');
+  assert.ok(callAwayWithCanonical?.reasons.includes('CANONICAL_WHOLE_CHAIN_CALL_AWAY_PNL_1000.00'));
+  assert.ok(!callAwayWithCanonical?.reasons.some((reason) => reason === 'CANONICAL_WHOLE_CHAIN_CALL_AWAY_PNL_UNKNOWN_BASIS_INCOMPLETE'));
+
+  const withoutCanonical = evaluatePaperBootstrapManagementPolicy(
+    state('CC_OPEN', { open_stock_shares: '100', stock_basis_per_share: '195' }),
+  );
+  const callAwayWithoutCanonical = withoutCanonical?.actionValues.find((value) => value.action === 'ALLOW_CALL_AWAY');
+  assert.ok(callAwayWithoutCanonical?.reasons.includes('CANONICAL_WHOLE_CHAIN_CALL_AWAY_PNL_UNKNOWN_BASIS_INCOMPLETE'));
+  assert.ok(callAwayWithoutCanonical?.reasons.some((reason) => reason.startsWith('REFERENCE_WHOLE_CHAIN_CALL_AWAY_PNL_')));
+  // ALLOW_CALL_AWAY never competes on utility -- it remains deferred to
+  // the broker-truth structural mechanism regardless of this figure.
+  assert.equal(callAwayWithoutCanonical?.utility, 0);
+});
+
+test('ALLOW_CALL_AWAY correctly registers a loss when called away below the canonical basis, never masked by gross proceeds', () => {
+  const completeChain = {
+    initialPutPremium: 50, rollCredits: 0, rollCloseCosts: 0, assignmentStrike: 195, stockSharesAssigned: 100,
+    dividends: 0, coveredCallPremium: null, coveredCallCloseCosts: null, stockSaleOrCallAwayProceeds: null,
+    fees: 0, slippage: 0, currentStockMarkPerShare: null, openStockShares: 100,
+  };
+  // canonicalBasis = 195 - (50/100) = 194.5. Call-away strike 200 is
+  // still above 194.5, so use a lower call strike (190) via the contract
+  // fixture override to force a below-basis call-away.
+  const evidence = evaluatePaperBootstrapManagementPolicy({
+    ...state('CC_OPEN', {
+      open_stock_shares: '100', stock_basis_per_share: '195', strike: '190', option_type: 'CALL',
+      contract_symbol: 'AAPL261016C00190000',
+    }),
+    wholeChainComponents: completeChain,
+  });
+  const callAway = evidence?.actionValues.find((value) => value.action === 'ALLOW_CALL_AWAY');
+  // proceeds = 190*100 = 19,000. Stock leg = 19,000 - 194.5*100 = -450.
+  // Plus CC premium 200, fees 0: wholeChainPnl = 200 - 450 = -250.
+  assert.ok(callAway?.reasons.includes('CANONICAL_WHOLE_CHAIN_CALL_AWAY_PNL_-250.00'));
 });
 
 test('CC_OPEN with no known reason to act holds the covered call', () => {

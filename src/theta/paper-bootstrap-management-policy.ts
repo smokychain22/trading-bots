@@ -10,14 +10,16 @@ import { evaluateRollCandidates, type RollCandidateEconomics } from './roll-incr
 import { assessThesisInvalidation, type ThesisInvalidationAssessment } from './thesis-invalidation.js';
 import { buildRecoveryState, type BasisSource, type RecoveryState } from './recovery-state.js';
 import { evaluateAssignmentUtility } from './assignment-utility.js';
-import type { WholeChainComponents } from './whole-chain-economics.js';
+import { computeWholeChainPnl, type WholeChainComponents } from './whole-chain-economics.js';
+import { type EventRiskState } from './event-risk-state.js';
 import {
-  bestCoveredCallCandidate, evaluateCoveredCallCandidates, type CoveredCallCandidate, type CoveredCallUtilityWeights,
+  BOOTSTRAP_NEUTRAL_CC_WEIGHT_PROVENANCE, bestCoveredCallCandidate, evaluateCoveredCallCandidates,
+  type CoveredCallCandidate, type CoveredCallUtilityWeights,
 } from './covered-call-lattice.js';
 
 const DEFAULT_CC_UTILITY_WEIGHTS: CoveredCallUtilityWeights = {
   upsideSacrificePerDollarWeight: 0, spreadPerDollarWeight: 0, eventRiskPenalty: 0,
-  dividendExDateRiskPenalty: 0, belowBasisPenalty: 0,
+  dividendExDateRiskPenalty: 0, belowBasisPenalty: 0, provenance: BOOTSTRAP_NEUTRAL_CC_WEIGHT_PROVENANCE,
 };
 
 export const paperBootstrapManagementPolicyVersion = 'theta-paper-bootstrap-management-policy-v1' as const;
@@ -81,11 +83,11 @@ export interface RollCandidate {
   readonly bid: number | null;
   readonly ask: number | null;
   /** Only meaningful for `ccCandidates` (covered-call targets) -- ignored
-   * for ROLL. Defaults to false (no known risk) when omitted; this is a
-   * simplification, not a claim the risk is verified absent -- a genuinely
-   * UNKNOWN risk flag is out of scope for this simple candidate shape. */
-  readonly dividendExDateRisk?: boolean;
-  readonly eventRisk?: boolean;
+   * for ROLL. Defaults to `UNKNOWN` (never `ABSENT_VERIFIED`) when omitted
+   * -- an omitted risk flag means nobody checked, which must never be
+   * silently read as "verified safe." */
+  readonly dividendExDateRisk?: EventRiskState;
+  readonly eventRisk?: EventRiskState;
 }
 
 export interface PaperBootstrapPolicyInput extends ManagementInputState {
@@ -171,6 +173,27 @@ export interface PaperBootstrapPolicyInput extends ManagementInputState {
    * favoring it over another).
    */
   readonly sellCcPremiumUtilityWeight?: number;
+  /**
+   * Optional ALTERNATIVE ROLL_CC targets (different call strike/expiry).
+   * When supplied, ROLL_CC is evaluated across all of them via
+   * `valueForRollCcFromCandidates` (NetRollCredit + AdditionalUpsideDollars,
+   * neither deciding alone) rather than the single `ccCandidate` path used
+   * by `valueForSingleRollCandidate`. Falls back to that single-candidate
+   * path when absent/empty (fully backward compatible).
+   */
+  readonly rollCcCandidates?: readonly RollCandidate[];
+  /**
+   * Required, caller-justified weight converting a ROLL_CC candidate's
+   * KNOWN `AdditionalUpsideDollars` (the strike-distance gained or given
+   * up, in dollars) into a comparable contribution alongside its
+   * `NetRollCredit`. Defaults to 0 (the comparison reduces to pure net
+   * credit, matching ROLL's own default) when omitted -- never invented
+   * internally. A non-zero, caller-justified value lets a debit roll that
+   * purchases real strike upside outrank a shallow credit roll that
+   * surrenders more upside than the credit is worth, and vice versa --
+   * exactly the "neither decides alone" requirement.
+   */
+  readonly rollCcAdditionalUpsideDollarWeight?: number;
 }
 
 function finite(value: number | null): value is number {
@@ -452,6 +475,71 @@ function valueForRollFromCandidates(
 }
 
 /**
+ * Compares multiple ALTERNATIVE ROLL_CC targets (different call strike/
+ * expiry) on BOTH `NetRollCredit` (old call's ask-side close cost vs. the
+ * new call's bid-side opening credit) AND `AdditionalUpsideDollars` (the
+ * strike distance gained or given up, in dollars) -- neither decides
+ * alone. A debit roll (`NetRollCredit < 0`) can still be the best
+ * candidate when it purchases enough real, known strike upside; a credit
+ * roll can still lose to a smaller-credit alternative when it sacrifices
+ * more upside than the credit is worth. `rollCcAdditionalUpsideDollarWeight`
+ * is the required, caller-justified conversion between the two -- 0 (the
+ * default) reduces this to the same pure-net-credit rule ROLL itself uses
+ * when uninformed.
+ */
+function valueForRollCcFromCandidates(
+  state: PaperBootstrapPolicyInput, currentMark: number, midMark: number | null, thesis: ThesisInvalidationAssessment,
+): ManagementPolicyActionValue {
+  const base = { action: 'ROLL_CC' as const };
+  const candidates = state.rollCcCandidates ?? [];
+  const usable = candidates.filter((candidate): candidate is RollCandidate & { bid: number; ask: number } =>
+    finite(candidate.bid) && finite(candidate.ask) && candidate.bid >= 0 && candidate.ask >= candidate.bid);
+  if (usable.length === 0) return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_USABLE_ROLL_CC_CANDIDATES_IN_LIST'] };
+
+  const oldStrike = state.contract.strike;
+  const upsideWeight = state.rollCcAdditionalUpsideDollarWeight ?? 0;
+  const assessments = usable.map((candidate) => {
+    const newCreditDollars = candidate.bid * candidate.multiplier * candidate.quantity;
+    const newCreditMidDollars = (candidate.bid + candidate.ask) / 2 * candidate.multiplier * candidate.quantity;
+    const forward = forwardContinuationCashFlow({ closeCostDollars: currentMark, openCreditDollars: newCreditDollars });
+    const netRollCredit = forward.netCashFlow as number; // complete=true guaranteed: both legs known here
+    const additionalUpsideDollars = finite(oldStrike)
+      ? (candidate.strike - oldStrike) * candidate.multiplier * candidate.quantity : null;
+    const combinedScore = additionalUpsideDollars === null ? netRollCredit : netRollCredit + upsideWeight * additionalUpsideDollars;
+    return { candidate, newCreditDollars, newCreditMidDollars, netRollCredit, additionalUpsideDollars, combinedScore };
+  });
+  const best = assessments.reduce((champion, candidate) => candidate.combinedScore > champion.combinedScore ? candidate : champion);
+  const beatsHold = best.combinedScore > 0;
+  const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
+  const executionEvidence: ManagementActionExecutionEvidence = {
+    closeEconomicBoundary: currentMark, openEconomicBoundary: best.newCreditDollars, stockEconomicBoundary: null,
+    economicsRemainPositive: beatsHold, expectedAfterCostEv: null, empiricalEconomicsReady: false,
+    deterministicEconomicsValidated: true, deterministicNetCredit: best.netRollCredit,
+    targetContract: {
+      symbol: best.candidate.symbol, optionContractId: best.candidate.optionContractId, optionType: best.candidate.optionType,
+      multiplier: best.candidate.multiplier, quantity: best.candidate.quantity,
+    },
+  };
+  return {
+    ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: null,
+    executionCostRisk: Math.abs(currentMark) + Math.abs(best.newCreditDollars) * 0.01, opportunityCost: null, uncertainty: null,
+    // Same HOLD-baseline convention as valueForSingleRollCandidate/
+    // valueForRollFromCandidates -- a roll must clear 0 on its COMBINED
+    // score (net credit + weighted additional upside), never merely on
+    // net credit alone.
+    utility: (beatsHold ? 0.5 : -2) - adjustment.rollPenalty,
+    executionEvidence,
+    reasons: [`BEST_OF_${usable.length}_ROLL_CC_CANDIDATES`,
+      `NET_ROLL_CREDIT_${best.netRollCredit.toFixed(2)}`,
+      best.additionalUpsideDollars === null ? 'ADDITIONAL_UPSIDE_DOLLARS_UNKNOWN' : `ADDITIONAL_UPSIDE_DOLLARS_${best.additionalUpsideDollars.toFixed(2)}`,
+      `COMBINED_SCORE_${best.combinedScore.toFixed(2)}`, `ROLL_CC_ADDITIONAL_UPSIDE_DOLLAR_WEIGHT_${upsideWeight}`,
+      `NEW_CREDIT_BID_SIDE_${best.newCreditDollars.toFixed(2)}`, `NEW_CREDIT_MID_REFERENCE_ANALYTICAL_ONLY_${best.newCreditMidDollars.toFixed(2)}`,
+      `OLD_CALL_CLOSE_COST_ASK_SIDE_${currentMark.toFixed(2)}`, `OLD_CALL_CLOSE_COST_MID_REFERENCE_ANALYTICAL_ONLY_${midMark === null ? 'UNKNOWN' : midMark.toFixed(2)}`,
+      ...adjustment.reasons],
+  };
+}
+
+/**
  * Compares multiple ALTERNATIVE covered-call targets on whole-chain
  * economics (via covered-call-lattice.ts) instead of only ever evaluating
  * one pre-picked candidate. Whole-chain components this bootstrap policy
@@ -479,7 +567,7 @@ function valueForSellCcFromCandidates(
     expiration: candidate.expiration, delta: null, bid: candidate.bid, ask: candidate.ask,
     multiplier: candidate.multiplier, quantity: candidate.quantity,
     openInterest: null, volume: null,
-    dividendExDateRisk: candidate.dividendExDateRisk ?? false, eventRisk: candidate.eventRisk ?? false,
+    dividendExDateRisk: candidate.dividendExDateRisk ?? 'UNKNOWN', eventRisk: candidate.eventRisk ?? 'UNKNOWN',
   }));
   // wholeChainPnlIfCalledAway/IfNotCalled make a CANONICAL whole-chain
   // P&L claim -- assignmentStrike here is therefore ONLY ever the
@@ -487,13 +575,26 @@ function valueForSellCcFromCandidates(
   // this stays null, which correctly propagates into
   // computeWholeChainPnl's own stock-leg logic reporting those figures
   // as UNKNOWN rather than fabricated from a lower-confidence reference.
+  //
+  // When canonicalBasis IS known, it already came from
+  // computeEffectiveStockBasis folding initialPutPremium/rollCredits/
+  // rollCloseCosts/slippage INTO the strike itself -- passing those same
+  // components again here as `null` would wrongly re-flag them as
+  // genuinely unknown and force the combined sum to UNKNOWN even though
+  // they are honestly, structurally already accounted for (0, not
+  // fabricated, not double-counted -- a real defect this pass fixes: a
+  // KNOWN canonical basis was silently unable to ever produce a KNOWN
+  // combined whole-chain P&L here). They remain `null` (genuinely
+  // unknown) only when canonicalBasis itself is unknown.
+  const embeddedInCanonicalBasis = canonicalBasis !== null ? 0 : null;
   const wholeChainBase = {
-    initialPutPremium: null, rollCredits: null, rollCloseCosts: null, assignmentStrike: canonicalBasis,
+    initialPutPremium: embeddedInCanonicalBasis, rollCredits: embeddedInCanonicalBasis,
+    rollCloseCosts: embeddedInCanonicalBasis, assignmentStrike: canonicalBasis,
     stockSharesAssigned: state.economics.openStockShares, dividends: state.economics.dividends,
     // Passed through honestly -- `?? 0` would silently convert genuinely
     // UNKNOWN fee evidence (state.economics.fees is null specifically
     // when unknown_fill_fees is true) into a fabricated real zero.
-    fees: state.economics.fees, slippage: null,
+    fees: state.economics.fees, slippage: embeddedInCanonicalBasis,
   };
   const assessments = evaluateCoveredCallCandidates(
     operationalBasis, state.economics.stockMarkPerShare, state.economics.openStockShares, wholeChainBase, latticeCandidates,
@@ -514,16 +615,21 @@ function valueForSellCcFromCandidates(
     },
   };
   // No permanent "SELL_CC beats RECOVERY_WAIT" law: utility scales with
-  // the ACTUAL known premium via a required, caller-justified weight
-  // (default 0/neutral, matching every other weight in this file) --
-  // never a flat constant that would make any positive premium
-  // automatically win regardless of size or genuine attractiveness.
+  // the FULL weighted CCUtility (premium net of upside-sacrifice/spread/
+  // event/ex-date/below-basis penalties -- covered-call-lattice.ts's own
+  // versioned utility, already used to pick `best` among candidates) via
+  // a required, caller-justified weight (default 0/neutral, matching
+  // every other weight in this file) -- never the raw premium alone,
+  // which would silently discard the very penalties that just decided
+  // which candidate won.
   const ccWeight = state.sellCcPremiumUtilityWeight ?? 0;
+  const bestUtility = best.utility.utility as number;
   return {
     ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: null,
     executionCostRisk: premiumDollars * 0.01, opportunityCost: null, uncertainty: null,
-    utility: ccWeight * premiumDollars, executionEvidence,
+    utility: ccWeight * bestUtility, executionEvidence,
     reasons: [`BEST_OF_${candidates.length}_CC_CANDIDATES_BY_UTILITY`, `SELL_CC_UTILITY_WEIGHT_${ccWeight}`,
+      `BEST_CANDIDATE_WEIGHTED_CC_UTILITY_${bestUtility.toFixed(2)}`,
       `BASIS_SOURCE_${basisSource}`, isCanonicalBasis ? 'BASIS_COMPARISON_CANONICAL' : 'BASIS_COMPARISON_REFERENCE_ONLY_NOT_CANONICAL',
       ...best.reasons],
   };
@@ -590,21 +696,53 @@ function valueFor(
       };
     }
     case 'RECOVERY_WAIT': {
-      // Same passive baseline as HOLD/HOLD_CC, with RecoveryState's known
-      // (never fabricated) distance-to-basis/capital-days surfaced purely
-      // as transparency -- it never shifts this action's own utility.
-      // Canonical and reference distances are reported SEPARATELY and
-      // never conflated -- the canonical one stays UNKNOWN whenever
-      // canonicalEffectiveBasisPerShare itself is UNKNOWN.
+      // RECOVERY_WAIT now carries REAL forward economics -- the KNOWN
+      // cost of continuing to wait -- rather than a flat, always-0
+      // baseline. It is the exact SIGN-MIRROR of the two mechanisms
+      // SELL_STOCK already uses (never a second, independently-invented
+      // pair of levers): what SELL_STOCK gains by acting NOW, RECOVERY_WAIT
+      // loses by NOT acting:
+      //   (a) a suspected thesis failure -- SELL_STOCK's `closeBias` makes
+      //       closing more attractive; RECOVERY_WAIT subtracts that SAME
+      //       bias, since continuing to hold a suspected-broken thesis is
+      //       the mirror-image cost.
+      //   (b) a known capital opportunity cost -- SELL_STOCK treats it as
+      //       a benefit of releasing capital; RECOVERY_WAIT treats the
+      //       SAME known dollar figure as a cost of keeping it locked up.
+      // Both default to 0 (fully neutral, matching every other weight in
+      // this file) and use the SAME caller-supplied
+      // `sellStockOpportunityCostUtilityWeight`/`thesisFailureUtilityBias`
+      // -- one physical quantity, two mirrored consumers, never two
+      // independently-configurable numbers that could silently disagree.
+      // This module NEVER adds an expected-appreciation, recovery-
+      // probability, or time-to-recovery term -- those remain permanently
+      // null on RecoveryState and contribute nothing here.
+      //
+      // Portfolio concentration and event exposure are surfaced as
+      // TRANSPARENCY reasons only (no numeric interpretation of the
+      // `unknown`-typed upstream context fields exists yet to convert
+      // into an honest dollar penalty) -- they never fabricate a
+      // magnitude the way the two mechanisms above never do either.
+      const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
+      const waitOpportunityCostWeight = state.sellStockOpportunityCostUtilityWeight ?? 0;
+      const waitOpportunityCostContribution = recoveryState.capitalOpportunityCostDollars !== null
+        ? waitOpportunityCostWeight * recoveryState.capitalOpportunityCostDollars : 0;
       return {
-        ...base, ...UNKNOWN_VALUE, utility: 0,
+        ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: recoveryState.capitalDaysSoFar,
+        executionCostRisk: null, opportunityCost: recoveryState.capitalOpportunityCostDollars, uncertainty: null,
+        utility: -adjustment.closeBias - waitOpportunityCostContribution,
+        executionEvidence: null,
         reasons: [
           'NO_KNOWN_REASON_TO_ACT',
           `BASIS_SOURCE_${recoveryState.basisSource}`,
           `CANONICAL_DISTANCE_TO_BASIS_FRACTION_${recoveryState.canonicalDistanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.canonicalDistanceToBasisFraction.toFixed(4)}`,
           `REFERENCE_DISTANCE_TO_BASIS_FRACTION_${recoveryState.referenceDistanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.referenceDistanceToBasisFraction.toFixed(4)}`,
           `CAPITAL_DAYS_SO_FAR_${recoveryState.capitalDaysSoFar === null ? 'UNKNOWN' : recoveryState.capitalDaysSoFar.toFixed(1)}`,
+          `CONTINUING_CAPITAL_OPPORTUNITY_COST_${recoveryState.capitalOpportunityCostDollars === null ? 'UNKNOWN' : recoveryState.capitalOpportunityCostDollars.toFixed(2)}`,
+          `PORTFOLIO_BURDEN_DATA_PRESENT_${recoveryState.portfolioBurdenDataPresent}`,
+          `EVENT_RISK_CONTEXT_PRESENT_${recoveryState.eventRiskPresent}`,
           'RECOVERY_PROBABILITY_NOT_MODELED_NO_FABRICATED_ESTIMATE',
+          ...adjustment.reasons,
         ],
       };
     }
@@ -680,12 +818,56 @@ function valueFor(
       return valueForSingleRollCandidate(action, state, currentMark, midMark, thesis);
     }
     case 'ROLL_CC': {
+      if (state.rollCcCandidates !== undefined && state.rollCcCandidates.length > 0 && currentMark !== null) {
+        return valueForRollCcFromCandidates(state, currentMark, midMark, thesis);
+      }
       return valueForSingleRollCandidate(action, state, currentMark, midMark, thesis);
     }
-    case 'ALLOW_CALL_AWAY':
+    case 'ALLOW_CALL_AWAY': {
       // Structural expiration handling already selects this correctly from
-      // broker-confirmed moneyness; this policy adds no competing claim.
-      return { ...base, ...UNKNOWN_VALUE, utility: 0, reasons: ['DEFERRED_TO_STRUCTURAL_EXPIRATION_HANDLING'] };
+      // broker-confirmed moneyness; this policy adds no competing claim on
+      // utility (0, deferred, exactly like LET_EXPIRE/ACCEPT_ASSIGNMENT
+      // below). It DOES surface the real canonical whole-chain call-away
+      // P&L as informational reasons -- reusing computeWholeChainPnl (never
+      // a second formula): gross call-away proceeds are never presented as
+      // profit, and this stays UNKNOWN whenever canonical basis is unknown
+      // rather than silently substituting the recorded-lot reference.
+      const { strike, multiplier, contracts } = state.contract;
+      const proceeds = finite(strike) && finite(multiplier) && finite(contracts) ? strike * multiplier * contracts : null;
+      const canonicalBasis = recoveryState.canonicalEffectiveBasisPerShare;
+      const referenceBasis = recoveryState.recordedLotBasisReferencePerShare;
+      // When canonicalBasis IS known, it already folds
+      // initialPutPremium/rollCredits/rollCloseCosts/slippage into the
+      // strike itself -- re-passing those as `null` would wrongly force
+      // this combined sum to UNKNOWN even though they are honestly,
+      // structurally already accounted for (0, not fabricated, not
+      // double-counted). The REFERENCE basis carries no such adjustment
+      // (it may be nothing more than the raw assignment strike), so those
+      // components genuinely stay unknown for that lower-confidence path.
+      const canonicalCallAwayPnl = proceeds === null || canonicalBasis === null ? null : computeWholeChainPnl({
+        initialPutPremium: 0, rollCredits: 0, rollCloseCosts: 0, assignmentStrike: canonicalBasis,
+        stockSharesAssigned: state.economics.openStockShares, dividends: state.economics.dividends,
+        fees: state.economics.fees, slippage: 0, coveredCallPremium: state.economics.entryCreditDebit,
+        coveredCallCloseCosts: 0, stockSaleOrCallAwayProceeds: proceeds, currentStockMarkPerShare: null, openStockShares: 0,
+      }).wholeChainPnl;
+      const referenceCallAwayPnl = proceeds === null || referenceBasis === null ? null : computeWholeChainPnl({
+        initialPutPremium: null, rollCredits: null, rollCloseCosts: null, assignmentStrike: referenceBasis,
+        stockSharesAssigned: state.economics.openStockShares, dividends: state.economics.dividends,
+        fees: state.economics.fees, slippage: null, coveredCallPremium: state.economics.entryCreditDebit,
+        coveredCallCloseCosts: 0, stockSaleOrCallAwayProceeds: proceeds, currentStockMarkPerShare: null, openStockShares: 0,
+      }).wholeChainPnl;
+      return {
+        ...base, ...UNKNOWN_VALUE, utility: 0,
+        reasons: [
+          'DEFERRED_TO_STRUCTURAL_EXPIRATION_HANDLING',
+          canonicalCallAwayPnl !== null ? `CANONICAL_WHOLE_CHAIN_CALL_AWAY_PNL_${canonicalCallAwayPnl.toFixed(2)}`
+            : 'CANONICAL_WHOLE_CHAIN_CALL_AWAY_PNL_UNKNOWN_BASIS_INCOMPLETE',
+          referenceCallAwayPnl !== null ? `REFERENCE_WHOLE_CHAIN_CALL_AWAY_PNL_USING_RECORDED_LOT_BASIS_${referenceCallAwayPnl.toFixed(2)}`
+            : 'REFERENCE_WHOLE_CHAIN_CALL_AWAY_PNL_UNKNOWN',
+          `BASIS_SOURCE_${recoveryState.basisSource}`,
+        ],
+      };
+    }
     case 'LET_EXPIRE':
     case 'ACCEPT_ASSIGNMENT':
       return { ...base, ...UNKNOWN_VALUE, utility: 0, reasons: ['DEFERRED_TO_STRUCTURAL_EXPIRATION_HANDLING'] };

@@ -1,6 +1,7 @@
 import { computeWholeChainPnl, type WholeChainComponents } from './whole-chain-economics.js';
+import { eventRiskPenaltyContribution, isEventRiskUnknown, type EventRiskState } from './event-risk-state.js';
 
-export const coveredCallLatticeVersion = 'theta-covered-call-lattice-v1' as const;
+export const coveredCallLatticeVersion = 'theta-covered-call-lattice-v2' as const;
 
 /**
  * Evaluates ALTERNATIVE covered-call candidates (never blindly picks the
@@ -9,6 +10,13 @@ export const coveredCallLatticeVersion = 'theta-covered-call-lattice-v1' as cons
  * contract lattice itself, matching the same boundary as
  * roll-incremental-utility.ts: contract discovery belongs to the
  * strategy-router/execution domain, comparison belongs here.
+ *
+ * Pipeline (the directive's required shape):
+ *   CANDIDATES -> HARD FEASIBILITY (`selectableCoveredCallCandidates`)
+ *   -> PARETO / NONDOMINATED SET (`nondominatedCoveredCallCandidates`)
+ *   -> VERSIONED UTILITY (`computeCoveredCallUtility`, whose result carries
+ *      `weightsProvenance` + this module's own `coveredCallLatticeVersion`)
+ *   -> BEST CANDIDATE (`bestCoveredCallCandidate`).
  */
 export interface CoveredCallCandidate {
   readonly symbol: string;
@@ -22,8 +30,8 @@ export interface CoveredCallCandidate {
   readonly quantity: number;
   readonly openInterest: number | null;
   readonly volume: number | null;
-  readonly dividendExDateRisk: boolean;
-  readonly eventRisk: boolean;
+  readonly dividendExDateRisk: EventRiskState;
+  readonly eventRisk: EventRiskState;
 }
 
 export interface CoveredCallAssessment {
@@ -61,6 +69,26 @@ export interface CoveredCallAssessment {
 }
 
 /**
+ * Provenance metadata for the weight configuration actually used to score
+ * a candidate. Required on every `CoveredCallUtilityWeights` -- a non-zero
+ * production weight must always be traceable to WHICH policy version,
+ * WHICH configuration, and WHY it was set, never a bare magic number with
+ * no history. This adds domain-type metadata only; it does not require a
+ * database migration or persistence layer.
+ */
+export interface CoveredCallWeightProvenance {
+  readonly policyVersion: string;
+  readonly configurationId: string;
+  readonly effectiveVersion: string;
+  readonly sourceReason: string;
+}
+
+export const BOOTSTRAP_NEUTRAL_CC_WEIGHT_PROVENANCE: CoveredCallWeightProvenance = {
+  policyVersion: coveredCallLatticeVersion, configurationId: 'BOOTSTRAP_DEFAULT_ALL_ZERO',
+  effectiveVersion: coveredCallLatticeVersion, sourceReason: 'NO_CALLER_JUSTIFIED_WEIGHTS_SUPPLIED_NEUTRAL_DEFAULT',
+};
+
+/**
  * Every weight is caller-supplied and caller-justified -- never invented
  * internally. A weight of 0 is valid (that penalty term ignored entirely)
  * if the caller has justified that choice. This is a MULTI-FACTOR utility,
@@ -74,6 +102,7 @@ export interface CoveredCallUtilityWeights {
   readonly eventRiskPenalty: number;
   readonly dividendExDateRiskPenalty: number;
   readonly belowBasisPenalty: number;
+  readonly provenance: CoveredCallWeightProvenance;
 }
 
 export interface CoveredCallUtilityResult {
@@ -81,15 +110,22 @@ export interface CoveredCallUtilityResult {
   readonly knownComponents: readonly string[];
   readonly unknownComponents: readonly string[];
   readonly reasons: readonly string[];
+  readonly weightsProvenance: CoveredCallWeightProvenance;
+  readonly utilityVersion: typeof coveredCallLatticeVersion;
 }
 
 /**
  * CCUtility = premiumIncome
  *   - upsideSacrificePerDollarWeight * upsideSacrificed   (if known)
  *   - spreadPerDollarWeight * spread                      (execution-risk proxy)
- *   - eventRiskPenalty                                    (if event risk present)
- *   - dividendExDateRiskPenalty                            (if ex-date risk present)
+ *   - eventRiskPenalty                                    (only when eventRisk === PRESENT)
+ *   - dividendExDateRiskPenalty                            (only when dividendExDateRisk === PRESENT)
  *   - belowBasisPenalty                                   (if below basis)
+ *
+ * A tri-state risk of UNKNOWN never silently applies the penalty (that
+ * would be fabricating a known-present risk) but also never behaves like
+ * a confirmed-absent risk -- it is named explicitly in `reasons` as an
+ * uncertainty signal so "we don't know" is never read as "it's safe."
  *
  * Every OTHER factor named in the wider CCUtility concept
  * (capital-release benefit, recovery benefit, call-away-regret, tail risk,
@@ -103,14 +139,17 @@ export interface CoveredCallUtilityResult {
  */
 export function computeCoveredCallUtility(
   assessment: Pick<CoveredCallAssessment, 'premiumIncomeDollars' | 'upsideSacrificedDollars' | 'spreadDollars' | 'belowBasis'>
-    & { readonly eventRisk: boolean; readonly dividendExDateRisk: boolean },
+    & { readonly eventRisk: EventRiskState; readonly dividendExDateRisk: EventRiskState },
   weights: CoveredCallUtilityWeights,
 ): CoveredCallUtilityResult {
   const knownComponents: string[] = [];
   const unknownComponents: string[] = ['capitalReleaseBenefit', 'recoveryBenefit', 'callAwayProbabilityProxy', 'tailRisk', 'executionUncertaintyBeyondSpread'];
   const reasons: string[] = [];
   if (assessment.premiumIncomeDollars === null) {
-    return { utility: null, knownComponents, unknownComponents, reasons: ['PREMIUM_UNKNOWN_CANNOT_RANK'] };
+    return {
+      utility: null, knownComponents, unknownComponents, reasons: ['PREMIUM_UNKNOWN_CANNOT_RANK'],
+      weightsProvenance: weights.provenance, utilityVersion: coveredCallLatticeVersion,
+    };
   }
   let utility = assessment.premiumIncomeDollars;
   knownComponents.push('premiumIncomeDollars');
@@ -128,11 +167,22 @@ export function computeCoveredCallUtility(
     reasons.push(`SPREAD_PENALTY_${(weights.spreadPerDollarWeight * assessment.spreadDollars).toFixed(2)}`);
   } else unknownComponents.push('spreadDollars');
 
-  if (assessment.eventRisk) { utility -= weights.eventRiskPenalty; reasons.push(`EVENT_RISK_PENALTY_${weights.eventRiskPenalty.toFixed(2)}`); }
-  if (assessment.dividendExDateRisk) { utility -= weights.dividendExDateRiskPenalty; reasons.push(`EX_DATE_RISK_PENALTY_${weights.dividendExDateRiskPenalty.toFixed(2)}`); }
+  utility -= eventRiskPenaltyContribution(assessment.eventRisk, weights.eventRiskPenalty);
+  if (assessment.eventRisk === 'PRESENT') reasons.push(`EVENT_RISK_PENALTY_${weights.eventRiskPenalty.toFixed(2)}`);
+  else if (isEventRiskUnknown(assessment.eventRisk)) reasons.push('EVENT_RISK_UNKNOWN_NOT_TREATED_AS_SAFE');
+  else reasons.push('EVENT_RISK_ABSENT_VERIFIED');
+
+  utility -= eventRiskPenaltyContribution(assessment.dividendExDateRisk, weights.dividendExDateRiskPenalty);
+  if (assessment.dividendExDateRisk === 'PRESENT') reasons.push(`EX_DATE_RISK_PENALTY_${weights.dividendExDateRiskPenalty.toFixed(2)}`);
+  else if (isEventRiskUnknown(assessment.dividendExDateRisk)) reasons.push('EX_DATE_RISK_UNKNOWN_NOT_TREATED_AS_SAFE');
+  else reasons.push('EX_DATE_RISK_ABSENT_VERIFIED');
+
   if (assessment.belowBasis) { utility -= weights.belowBasisPenalty; reasons.push(`BELOW_BASIS_PENALTY_${weights.belowBasisPenalty.toFixed(2)}`); }
 
-  return { utility, knownComponents, unknownComponents, reasons };
+  return {
+    utility, knownComponents, unknownComponents, reasons,
+    weightsProvenance: weights.provenance, utilityVersion: coveredCallLatticeVersion,
+  };
 }
 
 /**
@@ -188,8 +238,10 @@ export function evaluateCoveredCallCandidates(
       reasons.push(`BID_SIDE_EXECUTABLE_REFERENCE_${premiumIncomeDollars.toFixed(2)}`,
         `MID_REFERENCE_ANALYTICAL_ONLY_${(midReferenceDollars as number).toFixed(2)}`);
     } else reasons.push('QUOTE_UNKNOWN');
-    if (candidate.dividendExDateRisk) reasons.push('DIVIDEND_EX_DATE_RISK_PRESENT');
-    if (candidate.eventRisk) reasons.push('EVENT_RISK_PRESENT');
+    if (candidate.dividendExDateRisk === 'PRESENT') reasons.push('DIVIDEND_EX_DATE_RISK_PRESENT');
+    else if (isEventRiskUnknown(candidate.dividendExDateRisk)) reasons.push('DIVIDEND_EX_DATE_RISK_UNKNOWN');
+    if (candidate.eventRisk === 'PRESENT') reasons.push('EVENT_RISK_PRESENT');
+    else if (isEventRiskUnknown(candidate.eventRisk)) reasons.push('EVENT_RISK_UNKNOWN');
 
     const utility = computeCoveredCallUtility(
       { premiumIncomeDollars, upsideSacrificedDollars, spreadDollars, belowBasis,
@@ -209,7 +261,7 @@ export function evaluateCoveredCallCandidates(
  * Filters out candidates this module will not recommend SELECTING (below-
  * basis when not explicitly allowed, or missing a usable quote) without
  * discarding them from the returned assessment list -- callers can still
- * see why each candidate was excluded.
+ * see why each candidate was excluded. This is the HARD FEASIBILITY stage.
  */
 export function selectableCoveredCallCandidates(
   assessments: readonly CoveredCallAssessment[], belowBasisAllowed = false,
@@ -218,17 +270,82 @@ export function selectableCoveredCallCandidates(
     assessment.utility.utility !== null && (belowBasisAllowed || !assessment.belowBasis));
 }
 
+interface DominanceDimension {
+  readonly label: string;
+  readonly higherIsBetter: boolean;
+  readonly value: number | null;
+}
+
+function ordinal(state: EventRiskState): number | null {
+  // Lower is better (less risk); UNKNOWN is deliberately null -- it must
+  // never be treated as either better or worse than a verified state, so
+  // it is simply excluded from any pairwise dominance comparison on this
+  // dimension, never assumed to favor either candidate.
+  return state === 'PRESENT' ? 1 : state === 'ABSENT_VERIFIED' ? 0 : null;
+}
+
+function dominanceDimensions(assessment: CoveredCallAssessment): readonly DominanceDimension[] {
+  return [
+    { label: 'premiumIncomeDollars', higherIsBetter: true, value: assessment.premiumIncomeDollars },
+    { label: 'upsideSacrificedDollars', higherIsBetter: false, value: assessment.upsideSacrificedDollars },
+    { label: 'spreadDollars', higherIsBetter: false, value: assessment.spreadDollars },
+    { label: 'eventRiskOrdinal', higherIsBetter: false, value: ordinal(assessment.candidate.eventRisk) },
+    { label: 'dividendExDateRiskOrdinal', higherIsBetter: false, value: ordinal(assessment.candidate.dividendExDateRisk) },
+  ];
+}
+
 /**
- * Ranks selectable candidates by CCUtility (never raw premium) and returns
- * the winner, or null when none are selectable. A lower-premium, farther-
- * OTM, tighter-spread, no-event-risk candidate can and should outrank a
- * high-premium, near-the-money, wide-spread, event-risk one here.
+ * Conservative dominance: `a` dominates `b` only on dimensions BOTH know
+ * (a dimension unknown to either side is simply skipped for that pair --
+ * it can never manufacture false dominance either way), and only when `a`
+ * is at least as good on every shared-known dimension and strictly better
+ * on at least one. A candidate with no shared-known dimensions at all
+ * dominates nothing.
+ */
+function dominates(a: CoveredCallAssessment, b: CoveredCallAssessment): boolean {
+  const dimsA = dominanceDimensions(a), dimsB = dominanceDimensions(b);
+  let comparedAny = false, strictlyBetterSomewhere = false;
+  for (let index = 0; index < dimsA.length; index += 1) {
+    const dimA = dimsA[index] as DominanceDimension, dimB = dimsB[index] as DominanceDimension;
+    if (dimA.value === null || dimB.value === null) continue;
+    comparedAny = true;
+    const normA = dimA.higherIsBetter ? dimA.value : -dimA.value;
+    const normB = dimB.higherIsBetter ? dimB.value : -dimB.value;
+    if (normA < normB) return false;
+    if (normA > normB) strictlyBetterSomewhere = true;
+  }
+  return comparedAny && strictlyBetterSomewhere;
+}
+
+/**
+ * The PARETO / NONDOMINATED SET stage. Removes only candidates for which
+ * some OTHER candidate is unambiguously at least as good on every
+ * shared-known dimension and strictly better on one -- never removes a
+ * candidate merely because it scores lower on the FINAL weighted utility
+ * (that ranking happens strictly afterward, in `bestCoveredCallCandidate`).
+ * A lower-premium, farther-OTM, tighter-spread, no-known-event-risk
+ * candidate is never removed here merely for having lower premium --
+ * dominance requires being WORSE on every known dimension, not just one.
+ */
+export function nondominatedCoveredCallCandidates(
+  assessments: readonly CoveredCallAssessment[],
+): readonly CoveredCallAssessment[] {
+  return assessments.filter((candidate) => !assessments.some((other) => other !== candidate && dominates(other, candidate)));
+}
+
+/**
+ * Ranks selectable, nondominated candidates by CCUtility (never raw
+ * premium) and returns the winner, or null when none are selectable. A
+ * lower-premium, farther-OTM, tighter-spread, no-event-risk candidate can
+ * and should outrank a high-premium, near-the-money, wide-spread,
+ * event-risk one here.
  */
 export function bestCoveredCallCandidate(
   assessments: readonly CoveredCallAssessment[], belowBasisAllowed = false,
 ): CoveredCallAssessment | null {
   const selectable = selectableCoveredCallCandidates(assessments, belowBasisAllowed);
-  if (selectable.length === 0) return null;
-  return selectable.reduce((champion, candidate) =>
+  const nondominated = nondominatedCoveredCallCandidates(selectable);
+  if (nondominated.length === 0) return null;
+  return nondominated.reduce((champion, candidate) =>
     (candidate.utility.utility as number) > (champion.utility.utility as number) ? candidate : champion);
 }
