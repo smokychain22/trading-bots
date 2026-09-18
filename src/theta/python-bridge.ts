@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto';
 // R1I: the controlled Python <-> TypeScript bridge, per
 // docs/quant/phase6_router/PYTHON_TS_BRIDGE_ARCHITECTURE.md.
 //
-// Python owns quantitative/policy calculations; this module owns
+// Python owns calculations invoked through this research/shadow bridge.
+// It is not the live Production management-policy authority. This module owns
 // invocation, validation, and fail-closed packaging only -- it never
 // interprets or recomputes what a Python script returns. No shell is ever
 // invoked (spawn() with a fixed argv array, never a concatenated command

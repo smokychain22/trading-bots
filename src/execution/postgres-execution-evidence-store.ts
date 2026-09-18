@@ -48,7 +48,7 @@ export class PostgresExecutionEvidenceStore {
         spread_at_decision,spread_at_arrival,spread_at_fill,limit_attempts,latency_ms,
         slippage_dollars,slippage_bps,spread_capture,fees,estimated_market_impact,post_fill_move_json,
         quote_provider,quote_semantics,provider_timestamp,received_at,quote_age_ms,unknown_reasons_json,content_hash)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19,$20,$21,$22,$23,$24::jsonb,$25)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22,$23::jsonb,$24)
        ON CONFLICT(content_hash) DO NOTHING`,
       [orderIntentId,tca.contractVersion,calculatedAt,tca.decisionMid,tca.arrivalMid,tca.fillPrice,
         tca.spreadAtDecision,tca.spreadAtArrival,tca.spreadAtFill,tca.limitAttempts,tca.latencyMs,

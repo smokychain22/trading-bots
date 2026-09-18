@@ -15,6 +15,7 @@ test('broker-confirmed lifecycle changes are atomic, replay-safe, and preserve w
   assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname), 'Disposable local database only');
   const pool = new Pool({ connectionString:url.toString(), max:4 });
   const now = '2026-09-12T15:00:00.000Z';
+  const at = (minutes: number): string => new Date(Date.parse(now) + minutes * 60_000).toISOString();
   try {
     const workspaceId=randomUUID(), providerId=randomUUID(), accountId=randomUUID(), botId=randomUUID();
     const strategyId=randomUUID(), featureId=randomUUID(), riskId=randomUUID(), executionId=randomUUID(), costId=randomUUID();
@@ -38,12 +39,12 @@ test('broker-confirmed lifecycle changes are atomic, replay-safe, and preserve w
       VALUES($1,$2,$4,'PUT',50,'2026-10-16',100,true,'ACTIVE'),($3,$5,$4,'PUT',48,'2026-11-20',100,true,'ACTIVE'),($6,$7,$4,'CALL',55,'2026-11-20',100,true,'ACTIVE')`,
     [putContract,`P${putContract.replaceAll('-','')}`,rolledPutContract,underlyingId,`P${rolledPutContract.replaceAll('-','')}`,callContract,`C${callContract.replaceAll('-','')}`]);
 
-    const makeChain = async (state: 'CSP_OPEN' | 'RECOVERY_WAIT', contractId=putContract) => {
+    const makeChain = async (state: 'CSP_OPEN' | 'RECOVERY_WAIT', contractId=putContract, quantity=1) => {
       const chainId=randomUUID(), legId=randomUUID();
       await pool.query(`INSERT INTO trade.economic_chain(chain_id,bot_instance_id,underlying_id,lifecycle_state,opened_at) VALUES($1,$2,$3,$4,$5)`,
         [chainId,botId,underlyingId,state,now]);
       if (state === 'CSP_OPEN') await pool.query(`INSERT INTO trade.option_leg(option_leg_id,chain_id,option_contract_id,side,quantity,entry_price_per_share,entry_credit_debit,opened_at)
-        VALUES($1,$2,$3,'SHORT',1,2,200,$4)`, [legId,chainId,contractId,now]);
+        VALUES($1,$2,$3,'SHORT',$5::numeric,2,200::numeric*$5::numeric,$4)`, [legId,chainId,contractId,now,quantity]);
       return { chainId,legId };
     };
     const store = new PostgresLifecycleApplicationStore(pool);
@@ -90,6 +91,61 @@ test('broker-confirmed lifecycle changes are atomic, replay-safe, and preserve w
     const rollLegs = await pool.query(`SELECT realized_pnl,rolled_to_option_leg_id FROM trade.option_leg WHERE option_leg_id=$1`, [rolled.legId]);
     assert.equal(Number(rollLegs.rows[0].realized_pnl),-150);
     assert.equal(rollLegs.rows[0].rolled_to_option_leg_id,newLegId);
+    const interrupted=await makeChain('CSP_OPEN');
+    const closeTime='2026-09-12T15:01:00.000Z',openTime='2026-09-12T15:02:00.000Z';
+    const closeOnly={eventKind:'OPTION_CLOSE' as const,evidenceKey:hash('interrupted-close-'+interrupted.chainId),
+      chainId:interrupted.chainId,occurredAt:closeTime,decisionId:null,providerActivityRefHash:hash('close-broker-fact'),
+      optionLegId:interrupted.legId,closePricePerShare:3.5,closedQuantity:1,realizedOptionPnl:-150,nextState:'ROLL_DECISION' as const};
+    assert.equal((await store.apply(closeOnly)).finalState,'ROLL_DECISION');
+    assert.equal((await new PostgresLifecycleApplicationStore(pool).apply(closeOnly)).duplicate,true);
+    const beforeOpen=await pool.query(`SELECT realized_pnl,closed_at,rolled_to_option_leg_id FROM trade.option_leg WHERE option_leg_id=$1`,[interrupted.legId]);
+    assert.equal(Number(beforeOpen.rows[0].realized_pnl),-150);
+    assert.equal(beforeOpen.rows[0].rolled_to_option_leg_id,null);
+    const resume={eventKind:'OPTION_ROLL' as const,evidenceKey:hash('interrupted-open-'+interrupted.chainId),
+      chainId:interrupted.chainId,occurredAt:openTime,decisionId:null,providerActivityRefHash:hash('open-broker-fact'),
+      oldOptionLegId:interrupted.legId,newOptionLegId:randomUUID(),newOptionContractId:rolledPutContract,
+      newQuantity:1,newEntryPricePerShare:1.8,newEntryCreditDebit:180,oldClosePricePerShare:3.5,
+      oldRealizedPnl:-150,legKind:'SHORT_PUT' as const};
+    assert.equal((await store.apply(resume)).finalState,'CSP_OPEN');
+    assert.equal((await store.apply(resume)).duplicate,true);
+    const afterOpen=await pool.query(`SELECT realized_pnl,closed_at FROM trade.option_leg WHERE option_leg_id=$1`,[interrupted.legId]);
+    assert.equal(Number(afterOpen.rows[0].realized_pnl),-150);
+    assert.equal(new Date(afterOpen.rows[0].closed_at).toISOString(),closeTime,'later open never shifts old realized loss timestamp');
+
+    const partial=await makeChain('CSP_OPEN',putContract,3),partialIntent=randomUUID(),partialOrder=randomUUID();
+    await pool.query(`INSERT INTO trade.order_intent(order_intent_id,chain_id,client_order_id,status,instrument_type,
+      option_contract_id,side,position_intent,theta_action,quantity,canonical_quantity,paper_evidence_quantity)
+      VALUES($1,$2,$3,'CANCELED','OPTION',$4,'BUY_TO_CLOSE','BUY_TO_CLOSE','CLOSE_CSP',3,3,3)`,
+    [partialIntent,partial.chainId,`partial-${partialIntent}`,putContract]);
+    await pool.query(`INSERT INTO trade.broker_order(broker_order_id,order_intent_id,provider_order_id,broker_status)
+      VALUES($1,$2,$3,'canceled')`,[partialOrder,partialIntent,`broker-${partialOrder}`]);
+    await pool.query(`INSERT INTO trade.fill(broker_order_id,provider_fill_id,quantity,price_per_share,filled_at,fees)
+      VALUES($1,$2,1,2.4,$4,0.5),($1,$3,1,2.6,$5,0.5)`,
+    [partialOrder,`partial-a-${partialOrder}`,`partial-b-${partialOrder}`,at(1),at(2)]);
+    const partialEvidence=hash([hash(`partial-a-${partialOrder}`),hash(`partial-b-${partialOrder}`)].sort().join(':'));
+    const partialApplication={eventKind:'OPTION_PARTIAL_CLOSE' as const,evidenceKey:partialEvidence,
+      providerActivityRefHash:partialEvidence,chainId:partial.chainId,decisionId:null,occurredAt:at(2),
+      optionLegId:partial.legId,orderIntentId:partialIntent,terminalOrderStatus:'CANCELED' as const,
+      closedQuantity:2,remainingQuantityAfter:1,weightedClosePricePerShare:2.5,allocatedOpeningCredit:400,
+      closingDebit:500,explicitFees:1,realizedPnlBeforeFees:-100,realizedPnlAfterFees:-101};
+    const recordedPartial=await store.apply(partialApplication);
+    assert.equal(recordedPartial.finalState,'CSP_OPEN');
+    assert.equal(recordedPartial.transitionPath.length,0);
+    assert.equal((await new PostgresLifecycleApplicationStore(pool).apply(partialApplication)).duplicate,true);
+    const partialState=await pool.query(`SELECT l.closed_at,l.realized_pnl,
+      (SELECT sum(closed_quantity) FROM trade.option_partial_close_realization p WHERE p.option_leg_id=l.option_leg_id) AS closed_quantity,
+      (SELECT sum(remaining_quantity_after) FROM trade.option_partial_close_realization p WHERE p.option_leg_id=l.option_leg_id) AS remaining_quantity
+      FROM trade.option_leg l WHERE l.option_leg_id=$1`,[partial.legId]);
+    assert.equal(partialState.rows[0].closed_at,null);
+    assert.equal(partialState.rows[0].realized_pnl,null);
+    assert.equal(Number(partialState.rows[0].closed_quantity),2);
+    assert.equal(Number(partialState.rows[0].remaining_quantity),1);
+    await store.apply({eventKind:'OPTION_CLOSE',evidenceKey:hash('partial-final-'+partial.chainId),
+      providerActivityRefHash:hash('partial-final-broker'),chainId:partial.chainId,decisionId:null,occurredAt:at(3),
+      optionLegId:partial.legId,closePricePerShare:1.5,closedQuantity:1,realizedOptionPnl:-50,nextState:'REDEPLOY'});
+    const partialFinal=await pool.query(`SELECT realized_pnl,close_price_per_share FROM trade.option_leg WHERE option_leg_id=$1`,[partial.legId]);
+    assert.equal(Number(partialFinal.rows[0].realized_pnl),-50,'partial loss and final close economics are counted exactly once');
+    assert.ok(Math.abs(Number(partialFinal.rows[0].close_price_per_share)-(650/300))<1e-6);
 
     const recovery = await makeChain('RECOVERY_WAIT');
     const recoveryLot=randomUUID();
@@ -101,7 +157,7 @@ test('broker-confirmed lifecycle changes are atomic, replay-safe, and preserve w
       quantity:1,entryPricePerShare:1,entryCreditDebit:100 });
     const closeCc = await store.apply({ eventKind:'OPTION_CLOSE',evidenceKey:hash('cc2-close-'+recovery.chainId),chainId:recovery.chainId,
       occurredAt:now,decisionId:null,providerActivityRefHash:null,optionLegId:recoveryCallLeg,closePricePerShare:0.5,
-      realizedOptionPnl:50,nextState:'RECOVERY_WAIT' });
+      closedQuantity:1,realizedOptionPnl:50,nextState:'RECOVERY_WAIT' });
     assert.equal(closeCc.finalState,'RECOVERY_WAIT');
     const sold = await store.apply({ eventKind:'STOCK_DISPOSAL',evidenceKey:hash('stock-sale-'+recovery.chainId),chainId:recovery.chainId,
       occurredAt:now,decisionId:null,providerActivityRefHash:null,stockLotId:recoveryLot,disposedPricePerShare:49,realizedStockPnl:-100 });
@@ -118,7 +174,7 @@ test('broker-confirmed lifecycle changes are atomic, replay-safe, and preserve w
     const wrongPnl = await makeChain('CSP_OPEN');
     await assert.rejects(() => store.apply({ eventKind:'OPTION_CLOSE',evidenceKey:hash('wrong-pnl-'+wrongPnl.chainId),
       chainId:wrongPnl.chainId,occurredAt:now,decisionId:null,providerActivityRefHash:null,
-      optionLegId:wrongPnl.legId,closePricePerShare:1,realizedOptionPnl:999,nextState:'REDEPLOY' }),
+      optionLegId:wrongPnl.legId,closePricePerShare:1,closedQuantity:1,realizedOptionPnl:999,nextState:'REDEPLOY' }),
     /OPTION_REALIZED_PNL_MISMATCH/);
     const wrongPnlState = await pool.query(`SELECT lifecycle_state FROM trade.economic_chain WHERE chain_id=$1`, [wrongPnl.chainId]);
     assert.equal(wrongPnlState.rows[0].lifecycle_state,'CSP_OPEN');

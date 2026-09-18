@@ -22,7 +22,13 @@ export type LifecycleApplication = BaseApplication & (
   | { readonly eventKind: 'OPTION_EXPIRATION'; readonly optionLegId: string; readonly itm: false;
       readonly realizedOptionPnl: number }
   | { readonly eventKind: 'OPTION_CLOSE'; readonly optionLegId: string; readonly closePricePerShare: number;
-      readonly realizedOptionPnl: number; readonly nextState: 'RECOVERY_WAIT' | 'REDEPLOY' | 'CLOSED' }
+      readonly closedQuantity: number; readonly realizedOptionPnl: number;
+      readonly nextState: 'RECOVERY_WAIT' | 'REDEPLOY' | 'CLOSED' | 'ROLL_DECISION' }
+  | { readonly eventKind: 'OPTION_PARTIAL_CLOSE'; readonly optionLegId: string; readonly orderIntentId: string;
+      readonly terminalOrderStatus: 'CANCELED' | 'REJECTED' | 'EXPIRED'; readonly closedQuantity: number;
+      readonly remainingQuantityAfter: number; readonly weightedClosePricePerShare: number;
+      readonly allocatedOpeningCredit: number; readonly closingDebit: number; readonly explicitFees: number | null;
+      readonly realizedPnlBeforeFees: number; readonly realizedPnlAfterFees: number | null }
   | { readonly eventKind: 'OPTION_ROLL'; readonly oldOptionLegId: string; readonly newOptionLegId: string;
       readonly newOptionContractId: string; readonly newQuantity: number; readonly newEntryPricePerShare: number;
       readonly newEntryCreditDebit: number; readonly oldClosePricePerShare: number; readonly oldRealizedPnl: number;
@@ -49,7 +55,11 @@ const closeEnough = (actual: number, expected: number): boolean =>
 
 interface OpenLegEconomics {
   readonly side: string;
-  readonly quantity: number;
+  readonly optionContractId: string;
+  readonly originalQuantity: number;
+  readonly remainingQuantity: number;
+  readonly partialRealizedPnl: number;
+  readonly partialClosingDebit: number;
   readonly entryCreditDebit: number | null;
   readonly optionType: 'PUT' | 'CALL';
   readonly strike: number;
@@ -59,6 +69,7 @@ interface OpenLegEconomics {
 }
 
 function transitionPath(application: LifecycleApplication, current: ThetaLifecycleState): readonly ThetaLifecycleState[] {
+  if (application.eventKind === 'OPTION_PARTIAL_CLOSE' && ['CSP_OPEN','CC_OPEN'].includes(current)) return [];
   if (application.eventKind === 'SHORT_PUT_OPEN' && current === 'WAIT') return ['CSP_PROPOSED', 'CSP_OPEN'];
   if (application.eventKind === 'SHORT_PUT_ASSIGNMENT' && current === 'CSP_OPEN') return ['ASSIGNED', 'STOCK_HELD', 'RECOVERY_WAIT'];
   if (application.eventKind === 'COVERED_CALL_ASSIGNMENT' && current === 'CC_OPEN') return ['CALL_AWAY', 'CLOSED'];
@@ -67,10 +78,12 @@ function transitionPath(application: LifecycleApplication, current: ThetaLifecyc
     if (current === 'CC_OPEN') return ['EXPIRE_OTM', 'RECOVERY_WAIT'];
   }
   if (application.eventKind === 'OPTION_CLOSE') {
+    if(application.nextState==='ROLL_DECISION'&&['CSP_OPEN','CC_OPEN'].includes(current))return ['ROLL_DECISION'];
     if (current === 'CSP_OPEN' && ['REDEPLOY', 'CLOSED'].includes(application.nextState)) return ['BTC_CLOSE', application.nextState];
     if (current === 'CC_OPEN' && ['RECOVERY_WAIT', 'REDEPLOY'].includes(application.nextState)) return ['CLOSE_CC', application.nextState];
   }
   if (application.eventKind === 'OPTION_ROLL') {
+    if(current==='ROLL_DECISION')return application.legKind==='SHORT_PUT'?['CSP_PROPOSED','CSP_OPEN']:['CC_PROPOSED','CC_OPEN'];
     if (application.legKind === 'SHORT_PUT' && current === 'CSP_OPEN') return ['ROLL_DECISION', 'CSP_PROPOSED', 'CSP_OPEN'];
     if (application.legKind === 'COVERED_CALL' && current === 'CC_OPEN') return ['ROLL_DECISION', 'CC_PROPOSED', 'CC_OPEN'];
   }
@@ -172,7 +185,7 @@ export class PostgresLifecycleApplicationStore {
       if (leg.side !== 'SHORT' || leg.optionType !== 'PUT' || leg.contractUnderlyingId !== leg.chainUnderlyingId) {
         throw new Error('ASSIGNMENT_OPTION_LEG_INVALID');
       }
-      const expectedShares = leg.quantity * leg.multiplier;
+      const expectedShares = leg.remainingQuantity * leg.multiplier;
       if (application.shares <= 0 || application.strikePrice <= 0
         || !closeEnough(application.shares, expectedShares)
         || !closeEnough(application.strikePrice, leg.strike)
@@ -201,7 +214,7 @@ export class PostgresLifecycleApplicationStore {
       if (application.providerActivityRefHash === null) throw new Error('BROKER_ASSIGNMENT_EVIDENCE_REQUIRED');
       const leg = await this.openLegEconomics(client, application.optionLegId, application.chainId);
       if (leg.side !== 'SHORT' || leg.optionType !== 'CALL' || leg.contractUnderlyingId !== leg.chainUnderlyingId
-        || !closeEnough(application.shares, leg.quantity * leg.multiplier)
+        || !closeEnough(application.shares, leg.remainingQuantity * leg.multiplier)
         || !closeEnough(application.strikePrice, leg.strike)) {
         throw new Error('CALL_AWAY_OPTION_LEG_INVALID');
       }
@@ -248,14 +261,72 @@ export class PostgresLifecycleApplicationStore {
         || (current === 'CC_OPEN' && leg.optionType !== 'CALL')) {
         throw new Error('CLOSING_OPTION_LEG_INVALID');
       }
+      if (!closeEnough(application.closedQuantity, leg.remainingQuantity)) throw new Error('OPTION_CLOSE_REMAINING_QUANTITY_MISMATCH');
       this.assertOptionRealizedPnl(leg, application.closePricePerShare, application.realizedOptionPnl);
+      const cumulativeClosePrice=(leg.partialClosingDebit
+        +application.closePricePerShare*leg.multiplier*leg.remainingQuantity)/(leg.multiplier*leg.originalQuantity);
       await this.closeLeg(client, application.optionLegId, application.chainId, application.occurredAt,
-        'BTC_CLOSE', application.closePricePerShare, application.realizedOptionPnl);
+        application.nextState==='ROLL_DECISION'?'ROLLED':'BTC_CLOSE', cumulativeClosePrice, application.realizedOptionPnl);
+      return;
+    }
+    if (application.eventKind === 'OPTION_PARTIAL_CLOSE') {
+      if (!['CSP_OPEN','CC_OPEN'].includes(current)) throw new Error('PARTIAL_CLOSE_STATE_INVALID');
+      const leg = await this.openLegEconomics(client, application.optionLegId, application.chainId);
+      if (leg.side !== 'SHORT' || leg.contractUnderlyingId !== leg.chainUnderlyingId
+        || (current === 'CSP_OPEN' && leg.optionType !== 'PUT')
+        || (current === 'CC_OPEN' && leg.optionType !== 'CALL')) throw new Error('PARTIAL_CLOSE_LEG_INVALID');
+      const order = await client.query(`SELECT oi.status,oi.chain_id,oi.option_contract_id,
+          COALESCE(sum(f.quantity),0) AS filled_quantity,
+          CASE WHEN sum(f.quantity)>0 THEN sum(f.quantity*f.price_per_share)/sum(f.quantity) END AS weighted_price,
+          CASE WHEN bool_and(f.fees IS NOT NULL) THEN sum(f.fees) END AS explicit_fees
+        FROM trade.order_intent oi LEFT JOIN trade.broker_order bo ON bo.order_intent_id=oi.order_intent_id
+        LEFT JOIN trade.fill f ON f.broker_order_id=bo.broker_order_id
+        WHERE oi.order_intent_id=$1 GROUP BY oi.order_intent_id`,[application.orderIntentId]);
+      const row=order.rows[0];
+      if(order.rowCount!==1||String(row.status)!==application.terminalOrderStatus
+        ||!['CANCELED','REJECTED','EXPIRED'].includes(String(row.status))
+        ||String(row.chain_id)!==application.chainId||String(row.option_contract_id)!==leg.optionContractId
+        ||!closeEnough(Number(row.filled_quantity),application.closedQuantity)
+        ||!closeEnough(Number(row.weighted_price),application.weightedClosePricePerShare)
+        ||((row.explicit_fees==null)!==(application.explicitFees===null))
+        ||(row.explicit_fees!=null&&!closeEnough(Number(row.explicit_fees),application.explicitFees as number))) {
+        throw new Error('PARTIAL_CLOSE_BROKER_EVIDENCE_MISMATCH');
+      }
+      if(application.closedQuantity<=0||application.closedQuantity>=leg.remainingQuantity)throw new Error('PARTIAL_CLOSE_QUANTITY_INVALID');
+      const remaining=leg.remainingQuantity-application.closedQuantity;
+      const allocated=leg.entryCreditDebit===null?null:leg.entryCreditDebit*(application.closedQuantity/leg.originalQuantity);
+      const debit=application.weightedClosePricePerShare*leg.multiplier*application.closedQuantity;
+      if(allocated===null||!closeEnough(remaining,application.remainingQuantityAfter)
+        ||!closeEnough(allocated,application.allocatedOpeningCredit)||!closeEnough(debit,application.closingDebit)
+        ||!closeEnough(allocated-debit,application.realizedPnlBeforeFees)
+        ||(application.explicitFees===null?application.realizedPnlAfterFees!==null:
+          !closeEnough(allocated-debit-application.explicitFees,application.realizedPnlAfterFees as number))) {
+        throw new Error('PARTIAL_CLOSE_ECONOMICS_MISMATCH');
+      }
+      await client.query(`INSERT INTO trade.option_partial_close_realization(
+          option_leg_id,order_intent_id,terminal_order_status,closed_quantity,remaining_quantity_after,
+          weighted_close_price_per_share,allocated_opening_credit,closing_debit,explicit_fees,
+          realized_pnl_before_fees,realized_pnl_after_fees,fill_evidence_hash,occurred_at)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,[
+        application.optionLegId,application.orderIntentId,application.terminalOrderStatus,application.closedQuantity,
+        application.remainingQuantityAfter,application.weightedClosePricePerShare,application.allocatedOpeningCredit,
+        application.closingDebit,application.explicitFees,application.realizedPnlBeforeFees,
+        application.realizedPnlAfterFees,application.providerActivityRefHash,application.occurredAt]);
       return;
     }
     if (application.eventKind === 'OPTION_ROLL') {
       if (application.newQuantity <= 0) throw new Error('OPEN_ROLL_LEG_INVALID');
-      const oldLegEconomics = await this.openLegEconomics(client, application.oldOptionLegId, application.chainId);
+      const priorClose=current==='ROLL_DECISION';
+      const oldLegEconomics = await this.openLegEconomics(client, application.oldOptionLegId, application.chainId,priorClose);
+      if(priorClose){
+        const recorded=await client.query(`SELECT closed_at,close_reason,close_price_per_share,realized_pnl,rolled_to_option_leg_id
+          FROM trade.option_leg WHERE option_leg_id=$1 AND chain_id=$2`,[application.oldOptionLegId,application.chainId]);
+        const old=recorded.rows[0];
+        if(!old?.closed_at||old.close_reason!=='ROLLED'||old.rolled_to_option_leg_id!==null
+          ||new Date(old.closed_at).getTime()>Date.parse(application.occurredAt)
+          ||!closeEnough(Number(old.close_price_per_share),application.oldClosePricePerShare)
+          ||!closeEnough(Number(old.realized_pnl),application.oldRealizedPnl))throw new Error('ROLL_PRIOR_CLOSE_MISMATCH');
+      }
       const expectedType = application.legKind === 'SHORT_PUT' ? 'PUT' : 'CALL';
       if (oldLegEconomics.side !== 'SHORT' || oldLegEconomics.optionType !== expectedType
         || oldLegEconomics.contractUnderlyingId !== oldLegEconomics.chainUnderlyingId) {
@@ -276,6 +347,11 @@ export class PostgresLifecycleApplicationStore {
           application.newQuantity,application.newEntryPricePerShare,application.newEntryCreditDebit,
           application.occurredAt,application.oldOptionLegId],
       );
+      if(priorClose){
+        await client.query(`UPDATE trade.option_leg SET rolled_to_option_leg_id=$2 WHERE option_leg_id=$1 AND chain_id=$3`,
+          [application.oldOptionLegId,application.newOptionLegId,application.chainId]);
+        return;
+      }
       const oldLeg = await client.query(
         `UPDATE trade.option_leg SET closed_at=$2,close_reason='ROLLED',close_price_per_share=$3,
            realized_pnl=$4,rolled_to_option_leg_id=$5
@@ -324,7 +400,7 @@ export class PostgresLifecycleApplicationStore {
   }
 
   private async closeLeg(client: PoolClient, optionLegId: string, chainId: string, occurredAt: string,
-    closeReason: 'BTC_CLOSE' | 'EXPIRE_OTM' | 'ASSIGNED', closePrice: number | null, realizedPnl: number): Promise<void> {
+    closeReason: 'BTC_CLOSE' | 'EXPIRE_OTM' | 'ASSIGNED' | 'ROLLED', closePrice: number | null, realizedPnl: number): Promise<void> {
     const leg = await client.query(
       `UPDATE trade.option_leg SET closed_at=$2,close_reason=$3,close_price_per_share=$4,realized_pnl=$5
        WHERE option_leg_id=$1 AND chain_id=$6 AND closed_at IS NULL RETURNING option_leg_id`,
@@ -334,27 +410,39 @@ export class PostgresLifecycleApplicationStore {
   }
 
   private async openLegEconomics(client: PoolClient, optionLegId: string,
-    chainId: string): Promise<OpenLegEconomics> {
+    chainId: string, allowClosed=false): Promise<OpenLegEconomics> {
     const result = await client.query(
-      `SELECT l.side,l.quantity,l.entry_credit_debit,oc.option_type,oc.strike,oc.multiplier,
+      `SELECT l.side,l.quantity,l.entry_credit_debit,l.option_contract_id,oc.option_type,oc.strike,oc.multiplier,
+         COALESCE(pc.closed_quantity,0) AS partial_closed_quantity,
+         COALESCE(pc.realized_pnl_before_fees,0) AS partial_realized_pnl,
+         COALESCE(pc.closing_debit,0) AS partial_closing_debit,
          oc.underlying_id AS contract_underlying_id,ec.underlying_id AS chain_underlying_id
        FROM trade.option_leg l
        JOIN market.option_contract oc ON oc.option_contract_id=l.option_contract_id
        JOIN trade.economic_chain ec ON ec.chain_id=l.chain_id
-       WHERE l.option_leg_id=$1 AND l.chain_id=$2 AND l.closed_at IS NULL`,
-      [optionLegId,chainId],
+       LEFT JOIN LATERAL(SELECT sum(closed_quantity) AS closed_quantity,
+          sum(realized_pnl_before_fees) AS realized_pnl_before_fees,sum(closing_debit) AS closing_debit
+          FROM trade.option_partial_close_realization p WHERE p.option_leg_id=l.option_leg_id) pc ON true
+       WHERE l.option_leg_id=$1 AND l.chain_id=$2 AND ($3 OR l.closed_at IS NULL)`,
+      [optionLegId,chainId,allowClosed],
     );
     if (result.rowCount !== 1) throw new Error('OPEN_OPTION_LEG_NOT_FOUND');
     const row = result.rows[0];
     const optionType = String(row.option_type);
-    const quantity = Number(row.quantity), strike = Number(row.strike), multiplier = Number(row.multiplier);
-    if (!['PUT','CALL'].includes(optionType) || !Number.isFinite(quantity) || quantity <= 0
+    const originalQuantity = Number(row.quantity), partialClosed=Number(row.partial_closed_quantity),
+      partialRealizedPnl=Number(row.partial_realized_pnl),partialClosingDebit=Number(row.partial_closing_debit),
+      strike = Number(row.strike), multiplier = Number(row.multiplier);
+    const remainingQuantity=originalQuantity-partialClosed;
+    if (!['PUT','CALL'].includes(optionType) || !Number.isFinite(originalQuantity) || originalQuantity <= 0
+      || !Number.isFinite(remainingQuantity) || remainingQuantity <= 0 || !Number.isFinite(partialRealizedPnl)
+      || !Number.isFinite(partialClosingDebit) || partialClosingDebit<0
       || !Number.isFinite(strike) || strike <= 0 || !Number.isFinite(multiplier) || multiplier <= 0) {
       throw new Error('OPTION_LEG_ECONOMICS_INVALID');
     }
     const entryCreditDebit = row.entry_credit_debit == null ? null : Number(row.entry_credit_debit);
     if (entryCreditDebit !== null && !Number.isFinite(entryCreditDebit)) throw new Error('OPTION_LEG_ECONOMICS_INVALID');
-    return { side:String(row.side),quantity,entryCreditDebit,optionType:optionType as 'PUT' | 'CALL',strike,multiplier,
+    return { side:String(row.side),optionContractId:String(row.option_contract_id),originalQuantity,remainingQuantity,
+      partialRealizedPnl,partialClosingDebit,entryCreditDebit,optionType:optionType as 'PUT' | 'CALL',strike,multiplier,
       contractUnderlyingId:String(row.contract_underlying_id),chainUnderlyingId:String(row.chain_underlying_id) };
   }
 
@@ -397,7 +485,8 @@ export class PostgresLifecycleApplicationStore {
     if (leg.entryCreditDebit === null || !Number.isFinite(closePricePerShare) || closePricePerShare < 0) {
       throw new Error('OPTION_REALIZED_PNL_INPUT_UNKNOWN');
     }
-    const expected = leg.entryCreditDebit - closePricePerShare * leg.multiplier * leg.quantity;
+    const remainingOpeningCredit=leg.entryCreditDebit*(leg.remainingQuantity/leg.originalQuantity);
+    const expected = leg.partialRealizedPnl+remainingOpeningCredit-closePricePerShare*leg.multiplier*leg.remainingQuantity;
     if (!closeEnough(suppliedRealizedPnl, expected)) throw new Error('OPTION_REALIZED_PNL_MISMATCH');
   }
 }

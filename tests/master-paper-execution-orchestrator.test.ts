@@ -44,6 +44,13 @@ const setup = () => {
   return { broker, store, coordinator, runtime: new MasterPaperExecutionOrchestrator(coordinator) };
 };
 
+test('runtime quote evidence must persist before broker submission',async()=>{
+  const {broker,coordinator}=setup();
+  const runtime=new MasterPaperExecutionOrchestrator(coordinator,{recordPriceEvent:async()=>{throw new Error('write failed');}});
+  await assert.rejects(()=>runtime.execute(command()),/ORDER_REFERENCE_QUOTE_EVIDENCE_REQUIRED/);
+  assert.equal(broker.submitCalls,0);
+});
+
 test('replaying the same approved command reconciles by client_order_id and submits once', async () => {
   const { broker, runtime } = setup();
   assert.equal((await runtime.execute(command())).submittedNow, true);

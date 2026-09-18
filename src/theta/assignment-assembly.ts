@@ -4,8 +4,10 @@ import type { AssignmentCapacityAssessment } from './account-exposure.js';
 // R1H item K1: combines assignment_model.py's economic/ownership
 // recommendation with the account-exposure quantities TS already derives
 // (account-exposure.ts) into one final receipt. Neither half re-derives
-// the other's math -- Python owns economics/ownership policy, TS owns
-// exposure/capacity arithmetic over already-fetched account state.
+// the other's math. This is a research/shadow assembly contract. Python
+// owns the research calculation inside this contract, while the canonical
+// live management policy remains the TypeScript provider wired by
+// autonomous-runtime.ts.
 
 export interface AssignmentAssemblyInput {
   readonly snapshotId: string;

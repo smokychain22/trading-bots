@@ -82,10 +82,19 @@ export const feeEventSchema = z.object({
   incurredAt: z.string().datetime({ offset: true }),
 });
 
+export const optionPartialCloseSchema = z.object({
+  optionLegId: z.string().min(1),
+  closedQuantity: z.number().positive(),
+  remainingQuantityAfter: z.number().positive(),
+  realizedPnlBeforeFees: z.number().finite(),
+  occurredAt: z.string().datetime({ offset: true }),
+});
+
 export type OptionLeg = z.infer<typeof optionLegSchema>;
 export type StockLot = z.infer<typeof stockLotSchema>;
 export type DividendEvent = z.infer<typeof dividendEventSchema>;
 export type FeeEvent = z.infer<typeof feeEventSchema>;
+export type OptionPartialClose = z.infer<typeof optionPartialCloseSchema>;
 
 export interface WholeChainPnlBreakdown {
   readonly realizedOptionPnl: number;
@@ -120,12 +129,21 @@ export function computeWholeChainPnl(
   lots: readonly StockLot[],
   dividends: readonly DividendEvent[],
   fees: readonly FeeEvent[],
+  partialCloses: readonly OptionPartialClose[] = [],
 ): WholeChainPnlBreakdown {
-  const realizedOptionPnl = legs.reduce((sum, leg) => sum + (leg.realizedPnl ?? 0), 0);
+  const closedLegIds=new Set(legs.filter((leg)=>leg.closedAt!==null).map((leg)=>leg.optionLegId));
+  const realizedOptionPnl = legs.reduce((sum, leg) => sum + (leg.realizedPnl ?? 0), 0)
+    +partialCloses.filter((close)=>!closedLegIds.has(close.optionLegId))
+      .reduce((sum,close)=>sum+close.realizedPnlBeforeFees,0);
   const realizedStockPnl = lots.reduce((sum, lot) => sum + (lot.realizedPnl ?? 0), 0);
 
   const valuationIssues: WholeChainPnlBreakdown['valuationIssues'][number][] = [];
-  const unrealizedOptionPnl = legs.some((leg) => leg.closedAt === null && leg.quantity > 0) ? null : 0;
+  const latestRemaining=new Map<string,number>();
+  for(const close of [...partialCloses].sort((left,right)=>left.occurredAt.localeCompare(right.occurredAt))){
+    latestRemaining.set(close.optionLegId,close.remainingQuantityAfter);
+  }
+  const unrealizedOptionPnl = legs.some((leg) => leg.closedAt === null
+    && (latestRemaining.get(leg.optionLegId)??leg.quantity)>0) ? null : 0;
   if (unrealizedOptionPnl === null) valuationIssues.push('OPEN_OPTION_MARK_UNAVAILABLE');
   const missingStockMark = lots.some((lot) => lot.disposedAt === null && lot.shares > 0 && lot.currentPricePerShare === null);
   if (missingStockMark) valuationIssues.push('STOCK_MARK_UNAVAILABLE');

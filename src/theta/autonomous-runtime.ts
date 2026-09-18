@@ -40,6 +40,8 @@ import {
 } from '../execution/paper-execution-authorization.js';
 import { createPaperBootstrapManagementPolicyProvider } from './paper-bootstrap-management-policy.js';
 import type { SchedulerCheckpointRecord } from './persistence-repositories.js';
+import { PostgresExecutionEvidenceStore } from '../execution/postgres-execution-evidence-store.js';
+import { persistConfirmedFillTca } from '../execution/confirmed-fill-tca.js';
 
 export const autonomousRuntimeVersion = 'theta-autonomous-runtime-v1' as const;
 export const autonomousPolicyVersion = 'theta-scheduler-policy-v1' as const;
@@ -452,6 +454,9 @@ export async function runAutonomousRuntimeCycle(
         if (reconciliation===null) return degraded('BROKER_RECONCILIATION_REQUIRED',retryAt);
         const lifecycle=await applyConfirmedTerminalLifecycle(pool,master.connectionId,reconciliation.snapshotId,reconciliation.observedAt);
         const fills=await applyConfirmedFillLifecycle(pool,master.connectionId,reconciliation.observedAt);
+        const tca=await persistConfirmedFillTca(pool,master.connectionId,reconciliation.observedAt);
+        if(tca.failed>0)return degraded('TCA_EVIDENCE_PERSISTENCE_FAILURE',retryAt);
+        if(tca.missing>0)return degraded('TCA_EVIDENCE_MISSING',retryAt);
         return lifecycle.unresolved>0||fills.unresolved>0 ? degraded('BROKER_LIFECYCLE_FACTS_UNRESOLVED',retryAt) : succeeded();
       }
       if (jobType === 'PENDING_ORDER_MANAGEMENT') {
@@ -507,7 +512,7 @@ export async function runAutonomousRuntimeCycle(
         const coordinator=new PaperOrderCoordinator(master.executionBroker,new PostgresPaperOrderStore(pool,master.executionAccountId),{
           masterEnabled:masterExecutionEnabled,followerEnabled:false,pauseNewOrders});
         const handoff=new MasterPaperActionHandoff(new AlpacaExecutionQuoteSource(master.alpaca),
-          new MasterPaperExecutionOrchestrator(coordinator));
+          new MasterPaperExecutionOrchestrator(coordinator,new PostgresExecutionEvidenceStore(pool)));
         try{
           const at=new Date().toISOString();
           const result=await handoff.execute(plan,at,true);

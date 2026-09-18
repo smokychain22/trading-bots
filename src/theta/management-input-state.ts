@@ -2,6 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { ThetaLifecycleState } from './runtime-state.js';
 import type { ManagementActionFrontier } from './management-action-frontier.js';
+import { PostgresWholeChainComponentsRepository } from './postgres-whole-chain-components-repository.js';
+import type { WholeChainComponentEvidence } from './whole-chain-component-evidence.js';
 
 export const managementInputVersion = 'theta-management-input-v3' as const;
 
@@ -121,6 +123,11 @@ export interface PersistedManagementFrontier {
   readonly managementActionFrontierId: string;
   readonly managementInputSnapshotId: string;
   readonly frontier: ManagementActionFrontier;
+}
+
+export interface ManagementInputWithWholeChainEvidence {
+  readonly state: ManagementInputState;
+  readonly wholeChainEvidence: WholeChainComponentEvidence;
 }
 
 const ignoredChangePaths = new Set([
@@ -283,7 +290,7 @@ export class PostgresManagementInputStore {
   async assembleAndPersistOpenChains(connectionId: string, reconciliationSnapshotId: string, observedAt: string): Promise<readonly ManagementInputState[]> {
     const result = await this.pool.query(`
       SELECT ec.chain_id,ec.lifecycle_state,u.underlying_id,u.symbol AS underlying,
-        ol.option_leg_id,ol.quantity,ol.entry_credit_debit,oc.option_contract_id,oc.contract_symbol,oc.option_type,
+        ol.option_leg_id,ol.remaining_quantity AS quantity,ol.entry_credit_debit,oc.option_contract_id,oc.contract_symbol,oc.option_type,
         oc.strike,oc.expiration_date,oc.multiplier,
         oq.bid,oq.ask,oq.as_of AS quote_as_of,oq.feed,oq.quality AS quote_quality,
         totals.realized_option_pnl,stocks.open_stock_shares,stocks.stock_basis_per_share,
@@ -300,7 +307,9 @@ export class PostgresManagementInputStore {
       JOIN trade.broker_reconciliation_snapshot brs
         ON brs.reconciliation_snapshot_id=$2 AND brs.connection_id=$1
       LEFT JOIN LATERAL (
-        SELECT l.* FROM trade.option_leg l WHERE l.chain_id=ec.chain_id AND l.closed_at IS NULL
+        SELECT l.*,l.quantity-COALESCE((SELECT sum(p.closed_quantity)
+          FROM trade.option_partial_close_realization p WHERE p.option_leg_id=l.option_leg_id),0) AS remaining_quantity
+        FROM trade.option_leg l WHERE l.chain_id=ec.chain_id AND l.closed_at IS NULL
         ORDER BY l.opened_at DESC LIMIT 1
       ) ol ON true
       LEFT JOIN market.option_contract oc ON oc.option_contract_id=ol.option_contract_id
@@ -309,7 +318,9 @@ export class PostgresManagementInputStore {
         ORDER BY q.as_of DESC LIMIT 1
       ) oq ON true
       LEFT JOIN LATERAL (
-        SELECT COALESCE(sum(l.realized_pnl),0) AS realized_option_pnl,
+        SELECT COALESCE(sum(l.realized_pnl),0)+COALESCE((SELECT sum(p.realized_pnl_before_fees)
+          FROM trade.option_partial_close_realization p JOIN trade.option_leg pl ON pl.option_leg_id=p.option_leg_id
+          WHERE pl.chain_id=ec.chain_id AND pl.closed_at IS NULL),0) AS realized_option_pnl,
           COALESCE((SELECT sum(s.realized_pnl) FROM trade.stock_lot s WHERE s.chain_id=ec.chain_id),0) AS realized_stock_pnl,
           COALESCE((SELECT sum(d.amount_per_share*s.shares) FROM trade.dividend_event d JOIN trade.stock_lot s ON s.stock_lot_id=d.stock_lot_id WHERE s.chain_id=ec.chain_id),0) AS dividends,
           COALESCE((SELECT sum(f.amount) FROM trade.fee_event f WHERE f.chain_id=ec.chain_id),0) AS fees,
@@ -410,5 +421,22 @@ export class PostgresManagementInputStore {
       throw error;
     } finally { client.release(); }
     return persisted;
+  }
+
+  /**
+   * Inert integration surface for the future canonical management provider.
+   * The resident runtime does not call it yet, so it cannot add a second policy
+   * invocation or alter the current locked execution path.
+   */
+  async attachWholeChainEvidence(states: readonly ManagementInputState[], connectionId: string):
+  Promise<readonly ManagementInputWithWholeChainEvidence[]> {
+    const repository = new PostgresWholeChainComponentsRepository(this.pool);
+    return Promise.all(states.map(async (state) => ({
+      state,
+      wholeChainEvidence: await repository.load(state.chainId, state.observedAt, {
+        connectionId,
+        reconciliationSnapshotId: state.reconciliationSnapshotId,
+      }),
+    })));
   }
 }

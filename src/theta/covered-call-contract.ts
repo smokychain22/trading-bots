@@ -3,8 +3,9 @@ import { z } from 'zod';
 // Versioned request/response contract for
 // bots/theta/quant/models/covered_call_ranker.py (R1H item K2/K3): the
 // OPENING decision among WAIT / SELL_STOCK / SELL_CC(candidates) for
-// stock currently held. TypeScript never recomputes CCUtility itself --
-// Python quant is mathematical policy truth.
+// stock currently held. TypeScript never recomputes CCUtility inside this
+// research/shadow contract. The live Production policy remains the single
+// TypeScript ManagementPolicyEvidenceProvider.
 
 export const coveredCallContractVersion = 'theta-covered-call-runtime-v1' as const;
 
