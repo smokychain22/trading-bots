@@ -243,7 +243,7 @@ export class PostgresThetaCycleStore {
     const snapshotContracts = cycle.fusionSnapshot?.snapshot.contractCandidates;
     if (!Array.isArray(snapshotContracts)) throw new Error('FUSION_SNAPSHOT_CONTRACT_CANDIDATES_INVALID');
     const candidateIds = new Map<string, string>();
-    for (const evaluatedCandidate of evaluated) {
+    const prepared = evaluated.map((evaluatedCandidate) => {
       const contract = snapshotContracts.find((item) => {
         if (item === null || typeof item !== 'object' || Array.isArray(item)) return false;
         return item.optionSymbol === evaluatedCandidate.candidateId || item.occSymbol === evaluatedCandidate.candidateId;
@@ -260,7 +260,19 @@ export class PostgresThetaCycleStore {
       if (!underlying || !contractSymbol || !['CALL', 'PUT'].includes(optionType) || !Number.isFinite(strike) || !Number.isFinite(multiplier)) {
         throw new Error(`EVALUATED_CANDIDATE_IDENTITY_INVALID:${evaluatedCandidate.candidateId}`);
       }
+      const candidateId = deterministicRuntimeUuid(`candidate:${candidateSetId}:${evaluatedCandidate.candidateId}`);
+      candidateIds.set(evaluatedCandidate.candidateId, candidateId);
+      for (const canonical of cycle.strategyFrontier?.branches
+        .filter((branch) => branch.branch === 'THETA_CONVENTIONAL')
+        .flatMap((branch) => branch.candidates)
+        .filter((candidate) => candidate.legs.length === 1 && candidate.legs[0]?.optionSymbol === evaluatedCandidate.candidateId) ?? []) {
+        candidateIds.set(canonical.candidateId, candidateId);
+      }
+      return { evaluatedCandidate, contract, underlying, contractSymbol, optionType, strike, expiration, multiplier, candidateId };
+    });
 
+    const underlyingIds = new Map<string, string>();
+    for (const underlying of new Set(prepared.map((row) => row.underlying))) {
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`theta-underlying:${underlying}`]);
       let underlyingResult = await client.query<{ underlying_id: string }>(
         `SELECT underlying_id FROM market.underlying WHERE symbol=$1 ORDER BY active DESC, created_at ASC LIMIT 1`, [underlying],
@@ -274,51 +286,81 @@ export class PostgresThetaCycleStore {
       }
       const underlyingId = underlyingResult.rows[0]?.underlying_id;
       if (underlyingId === undefined) throw new Error(`UNDERLYING_PERSISTENCE_FAILED:${underlying}`);
+      underlyingIds.set(underlying, underlyingId);
+    }
 
-      const optionContractId = deterministicRuntimeUuid(`option-contract:${contractSymbol}`);
+    if (prepared.length > 0) {
       await client.query(
         `INSERT INTO market.option_contract(option_contract_id,provider_contract_id,contract_symbol,underlying_id,option_type,strike,expiration_date,multiplier,tradable,status)
-         VALUES($1,$2::text,$2::varchar(64),$3,$4,$5,$6,$7,$8,'ACTIVE')
+         SELECT x.option_contract_id::uuid,x.contract_symbol,x.contract_symbol::varchar(64),x.underlying_id::uuid,
+           x.option_type::core.option_type,x.strike,x.expiration_date::date,x.multiplier,x.tradable,'ACTIVE'
+         FROM jsonb_to_recordset($1::jsonb) AS x(option_contract_id text,contract_symbol text,underlying_id text,
+           option_type text,strike numeric,expiration_date text,multiplier integer,tradable boolean)
          ON CONFLICT(contract_symbol) DO NOTHING`,
-        [optionContractId, contractSymbol, underlyingId, optionType, strike, expiration, multiplier, Boolean(contract.executable)],
+        [JSON.stringify(prepared.map((row) => ({
+          option_contract_id: deterministicRuntimeUuid(`option-contract:${row.contractSymbol}`),
+          contract_symbol: row.contractSymbol,
+          underlying_id: underlyingIds.get(row.underlying),
+          option_type: row.optionType,
+          strike: row.strike,
+          expiration_date: row.expiration,
+          multiplier: row.multiplier,
+          tradable: Boolean(row.contract.executable),
+        })))],
       );
-      const persistedContract = await client.query<{ option_contract_id: string; underlying_id: string; option_type: string; strike: string; expiration_date: string; multiplier: string }>(
+    }
+    const persistedContracts = prepared.length === 0 ? { rows: [] } : await client.query<{
+      option_contract_id: string; contract_symbol: string; underlying_id: string; option_type: string;
+      strike: string; expiration_date: string; multiplier: string;
+    }>(
         `SELECT option_contract_id,underlying_id,option_type,strike::text,expiration_date::text,multiplier::text
-         FROM market.option_contract WHERE contract_symbol=$1`, [contractSymbol],
+              ,contract_symbol
+         FROM market.option_contract WHERE contract_symbol=ANY($1::text[])`,
+        [prepared.map((row) => row.contractSymbol)],
       );
-      const stored = persistedContract.rows[0];
-      if (stored === undefined || stored.underlying_id !== underlyingId || stored.option_type !== optionType || Number(stored.strike) !== strike || stored.expiration_date !== expiration || Number(stored.multiplier) !== multiplier) {
-        throw new Error(`OPTION_CONTRACT_IDENTITY_CONFLICT:${contractSymbol}`);
+    const contractsBySymbol = new Map(persistedContracts.rows.map((row) => [row.contract_symbol, row]));
+    const candidateRows = prepared.map((row) => {
+      const underlyingId = underlyingIds.get(row.underlying);
+      if (underlyingId === undefined) throw new Error(`UNDERLYING_PERSISTENCE_FAILED:${row.underlying}`);
+      const stored = contractsBySymbol.get(row.contractSymbol);
+      if (stored === undefined || stored.underlying_id !== underlyingId || stored.option_type !== row.optionType
+        || Number(stored.strike) !== row.strike || stored.expiration_date !== row.expiration
+        || Number(stored.multiplier) !== row.multiplier) {
+        throw new Error(`OPTION_CONTRACT_IDENTITY_CONFLICT:${row.contractSymbol}`);
       }
-
-      const candidateId = deterministicRuntimeUuid(`candidate:${candidateSetId}:${evaluatedCandidate.candidateId}`);
-      candidateIds.set(evaluatedCandidate.candidateId, candidateId);
-      for (const canonical of cycle.strategyFrontier?.branches
-        .filter((branch) => branch.branch === 'THETA_CONVENTIONAL')
-        .flatMap((branch) => branch.candidates)
-        .filter((candidate) => candidate.legs.length === 1 && candidate.legs[0]?.optionSymbol === evaluatedCandidate.candidateId) ?? []) {
-        candidateIds.set(canonical.candidateId, candidateId);
-      }
-      const alternative = receipt.alternatives.find((item) => item.candidateId === evaluatedCandidate.candidateId) ?? null;
-      const inserted = await client.query(
+      const alternative = receipt.alternatives.find((item) => item.candidateId === row.evaluatedCandidate.candidateId) ?? null;
+      return { candidate_id:row.candidateId,candidate_set_id:candidateSetId,underlying_id:underlyingId,
+        option_contract_id:stored.option_contract_id,rank:row.evaluatedCandidate.rank,
+        action_feasible:row.evaluatedCandidate.actionFeasible,ev_net:row.evaluatedCandidate.economics?.ev_net ?? null,
+        ownership_score:row.evaluatedCandidate.ownershipScore,
+        capital_required:row.evaluatedCandidate.economics?.secured_collateral_per_contract ?? null,
+        metrics_json:{ thetaQ: row.evaluatedCandidate, decisionAlternative: alternative, contract: row.contract },
+        reasons:row.evaluatedCandidate.reasons };
+    });
+    const inserted = candidateRows.length === 0 ? { rows: [] } : await client.query<{ candidate_id: string }>(
         `INSERT INTO trade.candidate(candidate_id,candidate_set_id,underlying_id,option_contract_id,structure_code,rank,action_feasible,
            ev_net,ownership_score,capital_required,metrics_json)
-         VALUES($1,$2,$3,$4,'CSP',$5,$6,$7,$8,$9,$10)
+         SELECT x.candidate_id::uuid,x.candidate_set_id::uuid,x.underlying_id::uuid,x.option_contract_id::uuid,'CSP',
+           x.rank,x.action_feasible,x.ev_net,x.ownership_score,x.capital_required,x.metrics_json
+         FROM jsonb_to_recordset($1::jsonb) AS x(candidate_id text,candidate_set_id text,underlying_id text,
+           option_contract_id text,rank integer,action_feasible boolean,ev_net numeric,ownership_score numeric,
+           capital_required numeric,metrics_json jsonb)
          ON CONFLICT(candidate_id) DO NOTHING RETURNING candidate_id`,
-        [candidateId, candidateSetId, underlyingId, stored.option_contract_id, evaluatedCandidate.rank, evaluatedCandidate.actionFeasible,
-          evaluatedCandidate.economics?.ev_net ?? null, evaluatedCandidate.ownershipScore,
-          evaluatedCandidate.economics?.secured_collateral_per_contract ?? null,
-          JSON.stringify({ thetaQ: evaluatedCandidate, decisionAlternative: alternative, contract })],
+        [JSON.stringify(candidateRows)],
       );
-      if ((inserted.rowCount ?? 0) > 0) {
-        for (const [index, reason] of evaluatedCandidate.reasons.entries()) {
-          await client.query(
+    const insertedIds = new Set(inserted.rows.map((row) => row.candidate_id));
+    const reasonRows = candidateRows.flatMap((row) => insertedIds.has(row.candidate_id)
+      ? row.reasons.map((reason,index) => ({candidate_id:row.candidate_id,reason_code:reason.code,
+          polarity:reason.polarity,value_json:{detail:reason.detail},importance_rank:index+1}))
+      : []);
+    if (reasonRows.length > 0) {
+      await client.query(
             `INSERT INTO trade.candidate_reason(candidate_id,reason_family,reason_code,polarity,value_json,importance_rank)
-             VALUES($1,'THETA_Q',$2,$3,$4,$5)`,
-            [candidateId, reason.code, reason.polarity, JSON.stringify({ detail: reason.detail }), index + 1],
-          );
-        }
-      }
+             SELECT x.candidate_id::uuid,'THETA_Q',x.reason_code,x.polarity,x.value_json,x.importance_rank
+             FROM jsonb_to_recordset($1::jsonb) AS x(candidate_id text,reason_code text,polarity smallint,
+               value_json jsonb,importance_rank integer)`,
+        [JSON.stringify(reasonRows)],
+      );
     }
     return { candidateSetId, candidateIds };
   }
@@ -472,10 +514,25 @@ export class PostgresThetaCycleStore {
           branch.bestRejectedCandidateId, JSON.stringify(branch.routeReasons), branch.empiricalEconomicsReady,
           branch.executionAuthorized, branchHash],
       );
-      for (const { candidate, selected } of projection.candidates) {
+      const candidateRows = projection.candidates.map(({ candidate, selected }) => {
         const candidatePayload = { frontierId, branchEvidenceId, candidate, selected };
         const candidateHash = createHash('sha256').update(JSON.stringify(candidatePayload)).digest('hex');
         const candidateEvidenceId = deterministicRuntimeUuid(`canonical-candidate-evidence:${candidateHash}`);
+        return {
+          candidateEvidenceId, branchEvidenceId, frontierId, candidateRef:candidate.candidateId,
+          branch:candidate.branch, action:candidate.action, underlying:candidate.underlying,
+          rankAtDecision:candidate.paretoRank, selected, legs:candidate.legs, dte:candidate.dte,
+          delta:candidate.delta, moneyness:candidate.moneyness, spreadPct:candidate.spreadPct,
+          liquidity:candidate.liquidity, economics:candidate.economics,
+          assignmentCapacityQty:candidate.assignmentCapacityQty, hardBlockers:candidate.hardBlockers,
+          softEvidence:candidate.softEvidence, unknownEvidence:candidate.unknownEvidence,
+          structurallyFeasible:candidate.structurallyFeasible, riskFeasible:candidate.riskFeasible,
+          quantity:candidate.sizing.quantity, bindingConstraint:candidate.sizing.bindingConstraint,
+          sizingReasons:candidate.sizing.reasons, executionAuthorized:candidate.executionAuthorized,
+          contentHash:candidateHash,
+        };
+      });
+      if (candidateRows.length > 0) {
         await client.query(
           `INSERT INTO trade.canonical_strategy_candidate_evidence(
             candidate_evidence_id,branch_evidence_id,frontier_id,candidate_ref,branch,action,underlying,
@@ -483,17 +540,28 @@ export class PostgresThetaCycleStore {
             assignment_capacity_qty,hard_blockers_json,soft_evidence_json,unknown_evidence_json,
             structurally_feasible,risk_feasible,quantity,binding_constraint,sizing_reasons_json,
             execution_authorized,content_hash)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14,$15::jsonb,$16::jsonb,$17,
-            $18::jsonb,$19::jsonb,$20::jsonb,$21,$22,$23,$24,$25::jsonb,$26,$27)
+           SELECT x.candidate_evidence_id::uuid,x.branch_evidence_id::uuid,x.frontier_id::uuid,x.candidate_ref,
+            x.branch::core.strategy_branch,x.action,x.underlying,x.rank_at_decision,x.selected,x.legs_json,
+            x.dte,x.delta,x.moneyness,x.spread_pct,x.liquidity_json,x.economics_json,x.assignment_capacity_qty,
+            x.hard_blockers_json,x.soft_evidence_json,x.unknown_evidence_json,x.structurally_feasible,
+            x.risk_feasible,x.quantity,x.binding_constraint,x.sizing_reasons_json,x.execution_authorized,x.content_hash
+           FROM jsonb_to_recordset($1::jsonb) AS x(candidate_evidence_id text,branch_evidence_id text,frontier_id text,
+            candidate_ref text,branch text,action text,underlying text,rank_at_decision integer,selected boolean,
+            legs_json jsonb,dte integer,delta numeric,moneyness numeric,spread_pct numeric,liquidity_json jsonb,
+            economics_json jsonb,assignment_capacity_qty numeric,hard_blockers_json jsonb,soft_evidence_json jsonb,
+            unknown_evidence_json jsonb,structurally_feasible boolean,risk_feasible boolean,quantity integer,
+            binding_constraint text,sizing_reasons_json jsonb,execution_authorized boolean,content_hash char(64))
            ON CONFLICT(frontier_id,candidate_ref) DO NOTHING`,
-          [candidateEvidenceId, branchEvidenceId, frontierId, candidate.candidateId, candidate.branch,
-            candidate.action, candidate.underlying, candidate.paretoRank, selected, JSON.stringify(candidate.legs),
-            candidate.dte, candidate.delta, candidate.moneyness, candidate.spreadPct,
-            JSON.stringify(candidate.liquidity), JSON.stringify(candidate.economics), candidate.assignmentCapacityQty,
-            JSON.stringify(candidate.hardBlockers), JSON.stringify(candidate.softEvidence),
-            JSON.stringify(candidate.unknownEvidence), candidate.structurallyFeasible, candidate.riskFeasible,
-            candidate.sizing.quantity, candidate.sizing.bindingConstraint, JSON.stringify(candidate.sizing.reasons),
-            candidate.executionAuthorized, candidateHash],
+          [JSON.stringify(candidateRows.map((row)=>({candidate_evidence_id:row.candidateEvidenceId,
+            branch_evidence_id:row.branchEvidenceId,frontier_id:row.frontierId,candidate_ref:row.candidateRef,
+            branch:row.branch,action:row.action,underlying:row.underlying,rank_at_decision:row.rankAtDecision,
+            selected:row.selected,legs_json:row.legs,dte:row.dte,delta:row.delta,moneyness:row.moneyness,
+            spread_pct:row.spreadPct,liquidity_json:row.liquidity,economics_json:row.economics,
+            assignment_capacity_qty:row.assignmentCapacityQty,hard_blockers_json:row.hardBlockers,
+            soft_evidence_json:row.softEvidence,unknown_evidence_json:row.unknownEvidence,
+            structurally_feasible:row.structurallyFeasible,risk_feasible:row.riskFeasible,quantity:row.quantity,
+            binding_constraint:row.bindingConstraint,sizing_reasons_json:row.sizingReasons,
+            execution_authorized:row.executionAuthorized,content_hash:row.contentHash})))],
         );
       }
     }
@@ -692,6 +760,8 @@ export class PostgresThetaCycleStore {
         lastNetPutPoint:netPuts.at(-1) ?? null,retrievedAt:window.retrievedAt ?? null,
         evidenceClass:window.evidenceClass ?? null,executableTruth:false};
     });
+    const evidenceRows:Record<string,unknown>[]=[];
+    const quoteRows:Record<string,unknown>[]=[];
     for (const candidate of evaluated) {
       const persistedId=candidateIds.get(candidate.candidateId); if (persistedId===undefined) continue;
       const contract=contracts.find((item) => item.optionSymbol===candidate.candidateId || item.occSymbol===candidate.candidateId);
@@ -728,36 +798,64 @@ export class PostgresThetaCycleStore {
           costModelVersion:String(versions.costModelVersion ?? context.costModelVersionId),regimeVersion:String(versions.regimeVersion ?? 'UNKNOWN'),
           executionModelVersion:String(versions.executionVersion ?? context.executionVersionId)}};
       const hash=createHash('sha256').update(JSON.stringify(evidencePayload)).digest('hex');
+      evidenceRows.push({candidate_id:persistedId,decision_id:decisionId,fusion_snapshot_id:fusionSnapshotId,
+        decision_time:String(snapshot.decisionTimeUtc),branch:'THETA_CONVENTIONAL',rank_at_decision:candidate.rank,selected,
+        hard_status:candidate.actionFeasible?'FEASIBLE':candidate.economics?.ev_net===null?'DATA_INSUFFICIENT':'HARD_VETO',
+        soft_status:candidate.actionFeasible?'RANKED':alternative?.disposition==='PASS'?'REJECTED':'UNKNOWN',
+        rejection_reason:alternative?.rejectionReason ?? null,contract_json:evidencePayload.contract,
+        market_json:evidencePayload.market,volatility_json:evidencePayload.volatility,technical_json:evidencePayload.technical,
+        event_json:evidencePayload.event,flow_json:evidencePayload.flow,ownership_json:evidencePayload.ownership,
+        account_json:evidencePayload.account,portfolio_json:evidencePayload.portfolio,aegis_json:evidencePayload.aegis,
+        execution_json:evidencePayload.execution,known_economics_json:evidencePayload.knownEconomics,
+        unknown_economics_json:evidencePayload.unknownEconomics,hard_blockers_json:evidencePayload.hardBlockers,
+        soft_evidence_json:evidencePayload.softEvidence,provider_provenance_json:provenance,
+        strategy_version:evidencePayload.lineage.strategyVersion,risk_version:evidencePayload.lineage.riskVersion,
+        feature_version:evidencePayload.lineage.featureVersion,cost_model_version:evidencePayload.lineage.costModelVersion,
+        regime_version:evidencePayload.lineage.regimeVersion,execution_model_version:evidencePayload.lineage.executionModelVersion,
+        content_hash:hash});
+      if (contract.bid!==null || contract.ask!==null) {
+        const quotePayload={candidateId:persistedId,observedAt:String(snapshot.decisionTimeUtc),providerTimestamp:contract.quoteTimestamp,
+          source:contract.source,feed:contract.feed,bid:contract.bid,ask:contract.ask,bidSize:contract.bidSize,askSize:contract.askSize};
+        const quoteHash=createHash('sha256').update(JSON.stringify(quotePayload)).digest('hex');
+        quoteRows.push({quote_observation_id:deterministicRuntimeUuid(`quote:${quoteHash}`),candidate_id:persistedId,
+          observed_at:String(snapshot.decisionTimeUtc),provider_timestamp:contract.quoteTimestamp,source:contract.source,
+          feed:contract.feed,bid:contract.bid,ask:contract.ask,bid_size:contract.bidSize,ask_size:contract.askSize,
+          data_quality:contract.dataQuality,content_hash:quoteHash});
+      }
+    }
+    if(evidenceRows.length>0){
       await client.query(`INSERT INTO trade.candidate_point_in_time_evidence(candidate_id,decision_id,fusion_snapshot_id,
         decision_time,branch,rank_at_decision,selected,hard_status,soft_status,rejection_reason,contract_json,market_json,
         volatility_json,technical_json,event_json,flow_json,ownership_json,account_json,portfolio_json,aegis_json,
         execution_json,known_economics_json,unknown_economics_json,hard_blockers_json,soft_evidence_json,
         provider_provenance_json,strategy_version,risk_version,feature_version,cost_model_version,regime_version,
-        execution_model_version,content_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,
-        $14::jsonb,$15::jsonb,$16::jsonb,$17::jsonb,$18::jsonb,$19::jsonb,$20::jsonb,$21::jsonb,$22::jsonb,$23::jsonb,
-        $24::jsonb,$25::jsonb,$26::jsonb,$27,$28,$29,$30,$31,$32,$33) ON CONFLICT(candidate_id) DO NOTHING`,[
-        persistedId,decisionId,fusionSnapshotId,String(snapshot.decisionTimeUtc),'THETA_CONVENTIONAL',candidate.rank,selected,
-        candidate.actionFeasible?'FEASIBLE':candidate.economics?.ev_net===null?'DATA_INSUFFICIENT':'HARD_VETO',
-        candidate.actionFeasible?'RANKED':alternative?.disposition==='PASS'?'REJECTED':'UNKNOWN',alternative?.rejectionReason ?? null,
-        JSON.stringify(evidencePayload.contract),JSON.stringify(evidencePayload.market),JSON.stringify(evidencePayload.volatility),
-        JSON.stringify(evidencePayload.technical),JSON.stringify(evidencePayload.event),JSON.stringify(evidencePayload.flow),
-        JSON.stringify(evidencePayload.ownership),JSON.stringify(evidencePayload.account),JSON.stringify(evidencePayload.portfolio),
-        JSON.stringify(evidencePayload.aegis),JSON.stringify(evidencePayload.execution),JSON.stringify(evidencePayload.knownEconomics),
-        JSON.stringify(evidencePayload.unknownEconomics),JSON.stringify(evidencePayload.hardBlockers),JSON.stringify(evidencePayload.softEvidence),
-        JSON.stringify(provenance),evidencePayload.lineage.strategyVersion,evidencePayload.lineage.riskVersion,
-        evidencePayload.lineage.featureVersion,evidencePayload.lineage.costModelVersion,evidencePayload.lineage.regimeVersion,
-        evidencePayload.lineage.executionModelVersion,hash]);
-      if (contract.bid!==null || contract.ask!==null) {
-        const quotePayload={candidateId:persistedId,observedAt:String(snapshot.decisionTimeUtc),providerTimestamp:contract.quoteTimestamp,
-          source:contract.source,feed:contract.feed,bid:contract.bid,ask:contract.ask,bidSize:contract.bidSize,askSize:contract.askSize};
-        const quoteHash=createHash('sha256').update(JSON.stringify(quotePayload)).digest('hex');
-        await client.query(`INSERT INTO market.execution_quote_observation(quote_observation_id,candidate_id,observation_role,
-          observed_at,provider_timestamp,ingestion_timestamp,source,operation_alias,feed,contract_version,bid,ask,bid_size,
-          ask_size,proposed_limit,data_quality,content_hash) VALUES($1,$2,'DECISION',$3,$4,$3,$5,'option_snapshot',$6,'v1',$7,$8,$9,$10,NULL,$11,$12)
-          ON CONFLICT(content_hash) DO NOTHING`,[deterministicRuntimeUuid(`quote:${quoteHash}`),persistedId,
-          String(snapshot.decisionTimeUtc),contract.quoteTimestamp,contract.source,contract.feed,contract.bid,contract.ask,
-          contract.bidSize,contract.askSize,contract.dataQuality,quoteHash]);
-      }
+        execution_model_version,content_hash)
+        SELECT x.candidate_id::uuid,x.decision_id::uuid,x.fusion_snapshot_id::uuid,x.decision_time::timestamptz,
+          x.branch,x.rank_at_decision,x.selected,x.hard_status,x.soft_status,x.rejection_reason,x.contract_json,x.market_json,
+          x.volatility_json,x.technical_json,x.event_json,x.flow_json,x.ownership_json,x.account_json,x.portfolio_json,
+          x.aegis_json,x.execution_json,x.known_economics_json,x.unknown_economics_json,x.hard_blockers_json,
+          x.soft_evidence_json,x.provider_provenance_json,x.strategy_version,x.risk_version,x.feature_version,
+          x.cost_model_version,x.regime_version,x.execution_model_version,x.content_hash
+        FROM jsonb_to_recordset($1::jsonb) AS x(candidate_id text,decision_id text,fusion_snapshot_id text,
+          decision_time text,branch text,rank_at_decision integer,selected boolean,hard_status text,soft_status text,
+          rejection_reason text,contract_json jsonb,market_json jsonb,volatility_json jsonb,technical_json jsonb,
+          event_json jsonb,flow_json jsonb,ownership_json jsonb,account_json jsonb,portfolio_json jsonb,aegis_json jsonb,
+          execution_json jsonb,known_economics_json jsonb,unknown_economics_json jsonb,hard_blockers_json jsonb,
+          soft_evidence_json jsonb,provider_provenance_json jsonb,strategy_version text,risk_version text,
+          feature_version text,cost_model_version text,regime_version text,execution_model_version text,content_hash char(64))
+        ON CONFLICT(candidate_id) DO NOTHING`,[JSON.stringify(evidenceRows)]);
+    }
+    if(quoteRows.length>0){
+      await client.query(`INSERT INTO market.execution_quote_observation(quote_observation_id,candidate_id,observation_role,
+        observed_at,provider_timestamp,ingestion_timestamp,source,operation_alias,feed,contract_version,bid,ask,bid_size,
+        ask_size,proposed_limit,data_quality,content_hash)
+        SELECT x.quote_observation_id::uuid,x.candidate_id::uuid,'DECISION',x.observed_at::timestamptz,
+          x.provider_timestamp::timestamptz,x.observed_at::timestamptz,x.source,'option_snapshot',x.feed,'v1',x.bid,x.ask,
+          x.bid_size,x.ask_size,NULL,x.data_quality,x.content_hash
+        FROM jsonb_to_recordset($1::jsonb) AS x(quote_observation_id text,candidate_id text,observed_at text,
+          provider_timestamp text,source text,feed text,bid numeric,ask numeric,bid_size numeric,ask_size numeric,
+          data_quality text,content_hash char(64))
+        ON CONFLICT(content_hash) DO NOTHING`,[JSON.stringify(quoteRows)]);
     }
     if (decisionId!==null && cycle.strategyFrontier?.globalWaitEarned === true) {
       const eligibleBranches=cycle.strategyFrontier.branchesConsidered;
