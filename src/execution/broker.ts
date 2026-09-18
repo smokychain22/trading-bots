@@ -36,6 +36,8 @@ export interface BrokerOrderSnapshot {
 }
 
 export interface BrokerActivity {
+  readonly netAmount?: number | null;
+  readonly perShareAmount?: number | null;
   readonly id: string;
   readonly activityType: string;
   readonly symbol: string | null;
@@ -117,6 +119,8 @@ export const parseBrokerOrder = (raw: unknown): BrokerOrderSnapshot => {
 };
 
 const activitySchema = z.object({
+  net_amount: z.union([z.string().trim().min(1),z.number()]).nullable().optional(),
+  per_share_amount: z.union([z.string().trim().min(1),z.number()]).nullable().optional(),
   id: z.string().min(1),
   activity_type: z.string().min(1),
   symbol: z.string().nullable().optional(),
@@ -137,6 +141,8 @@ export const parseBrokerActivity = (raw: unknown): BrokerActivity => {
     price: nullableNumber(activity.price),
     date: activity.transaction_time ?? activity.date ?? null,
     orderId: activity.order_id ?? null,
+    netAmount: nullableNumber(activity.net_amount),
+    perShareAmount: nullableNumber(activity.per_share_amount),
   };
 };
 

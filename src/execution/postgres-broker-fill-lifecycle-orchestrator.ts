@@ -36,7 +36,8 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
     LEFT JOIN market.option_contract oc ON oc.option_contract_id=oi.option_contract_id
     LEFT JOIN trade.broker_order bo ON bo.order_intent_id=oi.order_intent_id
     LEFT JOIN trade.fill f ON f.broker_order_id=bo.broker_order_id
-    LEFT JOIN LATERAL(SELECT l.option_leg_id,l.entry_credit_debit FROM trade.option_leg l WHERE l.chain_id=oi.chain_id AND l.closed_at IS NULL ORDER BY l.opened_at DESC LIMIT 1) ol ON true
+    LEFT JOIN LATERAL(SELECT l.option_leg_id,l.entry_credit_debit FROM trade.option_leg l WHERE l.chain_id=oi.chain_id
+      AND l.option_contract_id=oi.option_contract_id AND l.opened_at<=oi.created_at ORDER BY l.opened_at DESC,l.option_leg_id LIMIT 1) ol ON true
     LEFT JOIN LATERAL(SELECT x.stock_lot_id,x.economic_basis_per_share FROM trade.stock_lot x WHERE x.chain_id=oi.chain_id AND x.disposed_at IS NULL ORDER BY x.acquired_at LIMIT 1) sl ON true
     WHERE oi.chain_id IS NOT NULL AND (f.filled_at IS NULL OR f.filled_at <= $2)
       AND oi.theta_action IN ('OPEN_CSP','CLOSE_CSP','ROLL_CSP_CLOSE','ROLL_CSP_OPEN','OPEN_CC','CLOSE_CC','ROLL_CC_CLOSE','ROLL_CC_OPEN','SELL_STOCK')
@@ -74,7 +75,15 @@ export async function applyConfirmedFillLifecycle(pool:Pool,connectionId:string,
   for(const pair of rollRows.values()){
     const close=pair.find((row)=>String(row.theta_action).endsWith('_CLOSE'));
     const open=pair.find((row)=>String(row.theta_action).endsWith('_OPEN'));
-    if(close===undefined||open===undefined){unresolved++;continue;}
+    if(close===undefined){unresolved++;continue;}
+    const closed=routeConfirmedFillLifecycle({action:String(close.theta_action) as FillLifecycleContext['action'],
+      orderStatus:String(close.status),orderQuantity:Number(close.order_quantity),chainId:String(close.chain_id),
+      decisionId:s(close.decision_id),optionLegId:s(close.option_leg_id),optionContractId:s(close.option_contract_id),
+      stockLotId:null,multiplier:n(close.multiplier),entryCreditDebit:n(close.entry_credit_debit),economicBasisPerShare:null,
+      nextState:'ROLL_DECISION',fills:fills(close.fills)});
+    if(closed.application===null){partial++;continue;}
+    results.push(await store.apply(closed.application));
+    if(open===undefined){unresolved++;continue;}
     const multiplier=n(open.multiplier),credit=n(close.entry_credit_debit),oldLeg=s(close.option_leg_id),contract=s(open.option_contract_id);
     if(multiplier===null||credit===null||oldLeg===null||contract===null){unresolved++;continue;}
     const routed=routeConfirmedRollPair({legKind:String(close.theta_action).includes('CSP')?'SHORT_PUT':'COVERED_CALL',chainId:String(close.chain_id),

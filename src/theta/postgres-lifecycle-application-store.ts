@@ -22,7 +22,7 @@ export type LifecycleApplication = BaseApplication & (
   | { readonly eventKind: 'OPTION_EXPIRATION'; readonly optionLegId: string; readonly itm: false;
       readonly realizedOptionPnl: number }
   | { readonly eventKind: 'OPTION_CLOSE'; readonly optionLegId: string; readonly closePricePerShare: number;
-      readonly realizedOptionPnl: number; readonly nextState: 'RECOVERY_WAIT' | 'REDEPLOY' | 'CLOSED' }
+      readonly realizedOptionPnl: number; readonly nextState: 'RECOVERY_WAIT' | 'REDEPLOY' | 'CLOSED' | 'ROLL_DECISION' }
   | { readonly eventKind: 'OPTION_ROLL'; readonly oldOptionLegId: string; readonly newOptionLegId: string;
       readonly newOptionContractId: string; readonly newQuantity: number; readonly newEntryPricePerShare: number;
       readonly newEntryCreditDebit: number; readonly oldClosePricePerShare: number; readonly oldRealizedPnl: number;
@@ -67,10 +67,12 @@ function transitionPath(application: LifecycleApplication, current: ThetaLifecyc
     if (current === 'CC_OPEN') return ['EXPIRE_OTM', 'RECOVERY_WAIT'];
   }
   if (application.eventKind === 'OPTION_CLOSE') {
+    if(application.nextState==='ROLL_DECISION'&&['CSP_OPEN','CC_OPEN'].includes(current))return ['ROLL_DECISION'];
     if (current === 'CSP_OPEN' && ['REDEPLOY', 'CLOSED'].includes(application.nextState)) return ['BTC_CLOSE', application.nextState];
     if (current === 'CC_OPEN' && ['RECOVERY_WAIT', 'REDEPLOY'].includes(application.nextState)) return ['CLOSE_CC', application.nextState];
   }
   if (application.eventKind === 'OPTION_ROLL') {
+    if(current==='ROLL_DECISION')return application.legKind==='SHORT_PUT'?['CSP_PROPOSED','CSP_OPEN']:['CC_PROPOSED','CC_OPEN'];
     if (application.legKind === 'SHORT_PUT' && current === 'CSP_OPEN') return ['ROLL_DECISION', 'CSP_PROPOSED', 'CSP_OPEN'];
     if (application.legKind === 'COVERED_CALL' && current === 'CC_OPEN') return ['ROLL_DECISION', 'CC_PROPOSED', 'CC_OPEN'];
   }
@@ -250,12 +252,22 @@ export class PostgresLifecycleApplicationStore {
       }
       this.assertOptionRealizedPnl(leg, application.closePricePerShare, application.realizedOptionPnl);
       await this.closeLeg(client, application.optionLegId, application.chainId, application.occurredAt,
-        'BTC_CLOSE', application.closePricePerShare, application.realizedOptionPnl);
+        application.nextState==='ROLL_DECISION'?'ROLLED':'BTC_CLOSE', application.closePricePerShare, application.realizedOptionPnl);
       return;
     }
     if (application.eventKind === 'OPTION_ROLL') {
       if (application.newQuantity <= 0) throw new Error('OPEN_ROLL_LEG_INVALID');
-      const oldLegEconomics = await this.openLegEconomics(client, application.oldOptionLegId, application.chainId);
+      const priorClose=current==='ROLL_DECISION';
+      const oldLegEconomics = await this.openLegEconomics(client, application.oldOptionLegId, application.chainId,priorClose);
+      if(priorClose){
+        const recorded=await client.query(`SELECT closed_at,close_reason,close_price_per_share,realized_pnl,rolled_to_option_leg_id
+          FROM trade.option_leg WHERE option_leg_id=$1 AND chain_id=$2`,[application.oldOptionLegId,application.chainId]);
+        const old=recorded.rows[0];
+        if(!old?.closed_at||old.close_reason!=='ROLLED'||old.rolled_to_option_leg_id!==null
+          ||new Date(old.closed_at).getTime()>Date.parse(application.occurredAt)
+          ||!closeEnough(Number(old.close_price_per_share),application.oldClosePricePerShare)
+          ||!closeEnough(Number(old.realized_pnl),application.oldRealizedPnl))throw new Error('ROLL_PRIOR_CLOSE_MISMATCH');
+      }
       const expectedType = application.legKind === 'SHORT_PUT' ? 'PUT' : 'CALL';
       if (oldLegEconomics.side !== 'SHORT' || oldLegEconomics.optionType !== expectedType
         || oldLegEconomics.contractUnderlyingId !== oldLegEconomics.chainUnderlyingId) {
@@ -276,6 +288,11 @@ export class PostgresLifecycleApplicationStore {
           application.newQuantity,application.newEntryPricePerShare,application.newEntryCreditDebit,
           application.occurredAt,application.oldOptionLegId],
       );
+      if(priorClose){
+        await client.query(`UPDATE trade.option_leg SET rolled_to_option_leg_id=$2 WHERE option_leg_id=$1 AND chain_id=$3`,
+          [application.oldOptionLegId,application.newOptionLegId,application.chainId]);
+        return;
+      }
       const oldLeg = await client.query(
         `UPDATE trade.option_leg SET closed_at=$2,close_reason='ROLLED',close_price_per_share=$3,
            realized_pnl=$4,rolled_to_option_leg_id=$5
@@ -324,7 +341,7 @@ export class PostgresLifecycleApplicationStore {
   }
 
   private async closeLeg(client: PoolClient, optionLegId: string, chainId: string, occurredAt: string,
-    closeReason: 'BTC_CLOSE' | 'EXPIRE_OTM' | 'ASSIGNED', closePrice: number | null, realizedPnl: number): Promise<void> {
+    closeReason: 'BTC_CLOSE' | 'EXPIRE_OTM' | 'ASSIGNED' | 'ROLLED', closePrice: number | null, realizedPnl: number): Promise<void> {
     const leg = await client.query(
       `UPDATE trade.option_leg SET closed_at=$2,close_reason=$3,close_price_per_share=$4,realized_pnl=$5
        WHERE option_leg_id=$1 AND chain_id=$6 AND closed_at IS NULL RETURNING option_leg_id`,
@@ -334,15 +351,15 @@ export class PostgresLifecycleApplicationStore {
   }
 
   private async openLegEconomics(client: PoolClient, optionLegId: string,
-    chainId: string): Promise<OpenLegEconomics> {
+    chainId: string, allowClosed=false): Promise<OpenLegEconomics> {
     const result = await client.query(
       `SELECT l.side,l.quantity,l.entry_credit_debit,oc.option_type,oc.strike,oc.multiplier,
          oc.underlying_id AS contract_underlying_id,ec.underlying_id AS chain_underlying_id
        FROM trade.option_leg l
        JOIN market.option_contract oc ON oc.option_contract_id=l.option_contract_id
        JOIN trade.economic_chain ec ON ec.chain_id=l.chain_id
-       WHERE l.option_leg_id=$1 AND l.chain_id=$2 AND l.closed_at IS NULL`,
-      [optionLegId,chainId],
+       WHERE l.option_leg_id=$1 AND l.chain_id=$2 AND ($3 OR l.closed_at IS NULL)`,
+      [optionLegId,chainId,allowClosed],
     );
     if (result.rowCount !== 1) throw new Error('OPEN_OPTION_LEG_NOT_FOUND');
     const row = result.rows[0];

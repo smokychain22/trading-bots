@@ -90,6 +90,26 @@ test('broker-confirmed lifecycle changes are atomic, replay-safe, and preserve w
     const rollLegs = await pool.query(`SELECT realized_pnl,rolled_to_option_leg_id FROM trade.option_leg WHERE option_leg_id=$1`, [rolled.legId]);
     assert.equal(Number(rollLegs.rows[0].realized_pnl),-150);
     assert.equal(rollLegs.rows[0].rolled_to_option_leg_id,newLegId);
+    const interrupted=await makeChain('CSP_OPEN');
+    const closeTime='2026-09-12T15:01:00.000Z',openTime='2026-09-12T15:02:00.000Z';
+    const closeOnly={eventKind:'OPTION_CLOSE' as const,evidenceKey:hash('interrupted-close-'+interrupted.chainId),
+      chainId:interrupted.chainId,occurredAt:closeTime,decisionId:null,providerActivityRefHash:hash('close-broker-fact'),
+      optionLegId:interrupted.legId,closePricePerShare:3.5,realizedOptionPnl:-150,nextState:'ROLL_DECISION' as const};
+    assert.equal((await store.apply(closeOnly)).finalState,'ROLL_DECISION');
+    assert.equal((await new PostgresLifecycleApplicationStore(pool).apply(closeOnly)).duplicate,true);
+    const beforeOpen=await pool.query(`SELECT realized_pnl,closed_at,rolled_to_option_leg_id FROM trade.option_leg WHERE option_leg_id=$1`,[interrupted.legId]);
+    assert.equal(Number(beforeOpen.rows[0].realized_pnl),-150);
+    assert.equal(beforeOpen.rows[0].rolled_to_option_leg_id,null);
+    const resume={eventKind:'OPTION_ROLL' as const,evidenceKey:hash('interrupted-open-'+interrupted.chainId),
+      chainId:interrupted.chainId,occurredAt:openTime,decisionId:null,providerActivityRefHash:hash('open-broker-fact'),
+      oldOptionLegId:interrupted.legId,newOptionLegId:randomUUID(),newOptionContractId:rolledPutContract,
+      newQuantity:1,newEntryPricePerShare:1.8,newEntryCreditDebit:180,oldClosePricePerShare:3.5,
+      oldRealizedPnl:-150,legKind:'SHORT_PUT' as const};
+    assert.equal((await store.apply(resume)).finalState,'CSP_OPEN');
+    assert.equal((await store.apply(resume)).duplicate,true);
+    const afterOpen=await pool.query(`SELECT realized_pnl,closed_at FROM trade.option_leg WHERE option_leg_id=$1`,[interrupted.legId]);
+    assert.equal(Number(afterOpen.rows[0].realized_pnl),-150);
+    assert.equal(new Date(afterOpen.rows[0].closed_at).toISOString(),closeTime,'later open never shifts old realized loss timestamp');
 
     const recovery = await makeChain('RECOVERY_WAIT');
     const recoveryLot=randomUUID();

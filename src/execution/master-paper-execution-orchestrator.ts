@@ -2,6 +2,7 @@ import type { BrokerOrderSnapshot } from './broker.js';
 import type { PaperOrderGate, PrepareIntentInput } from './paper-order-coordinator.js';
 import { PaperOrderCoordinator } from './paper-order-coordinator.js';
 import type { ThetaOrderAction } from './order-construction.js';
+import type { ExecutionPriceEventInput, PostgresExecutionEvidenceStore } from './postgres-execution-evidence-store.js';
 
 export interface MasterPaperExecutionCommand extends PrepareIntentInput {
   readonly action: ThetaOrderAction;
@@ -30,15 +31,20 @@ const terminalWithoutFill = new Set(['CANCELED', 'REJECTED', 'EXPIRED']);
  * considering a new broker mutation.
  */
 export class MasterPaperExecutionOrchestrator {
-  constructor(private readonly coordinator: PaperOrderCoordinator) {}
+  constructor(private readonly coordinator: PaperOrderCoordinator,
+    private readonly evidence?: Pick<PostgresExecutionEvidenceStore,'recordPriceEvent'>) {}
 
-  async execute(command: MasterPaperExecutionCommand): Promise<MasterPaperExecutionResult> {
+  async execute(command: MasterPaperExecutionCommand, priceEvidence?: Omit<ExecutionPriceEventInput,'orderIntentId'>): Promise<MasterPaperExecutionResult> {
     const recovery = await this.coordinator.recoverAfterRestart();
     if (recovery.some((item) => !item.resolved)) {
       return { orderIntentId: command.orderIntentId, state: 'BLOCKED_UNRESOLVED_ORDER', brokerOrder: null, submittedNow: false };
     }
     const intent = await this.coordinator.prepare(command);
     if (intent.status === 'READY') {
+      if(this.evidence!==undefined){
+        if(priceEvidence===undefined)throw new Error('ORDER_REFERENCE_QUOTE_EVIDENCE_REQUIRED');
+        await this.evidence.recordPriceEvent({...priceEvidence,orderIntentId:intent.orderIntentId});
+      }
       const brokerOrder = await this.coordinator.submit(command.orderIntentId, command.gate);
       return { orderIntentId: command.orderIntentId, state: brokerOrder === null ? 'PERSISTED' : stateOf(brokerOrder), brokerOrder, submittedNow: brokerOrder !== null };
     }

@@ -24,6 +24,17 @@ test('partial fills never advance lifecycle state',()=>{
   assert.deepEqual(result,{state:'PARTIAL',reasonCode:'ORDER_NOT_FULLY_FILLED',application:null});
 });
 
+test('a confirmed roll close records the old loss without requiring an opening fill',()=>{
+  const value=base();
+  const result=routeConfirmedFillLifecycle({...value,action:'ROLL_CSP_CLOSE',entryCreditDebit:200,nextState:'ROLL_DECISION'});
+  assert.equal(result.application?.eventKind,'OPTION_CLOSE');
+  if(result.application?.eventKind==='OPTION_CLOSE'){
+    assert.equal(result.application.realizedOptionPnl,-220);
+    assert.equal(result.application.nextState,'ROLL_DECISION');
+    assert.equal(result.application.occurredAt,value.fills[1]?.occurredAt);
+  }
+});
+
 test('manual or unlinked activity stays unknown instead of receiving THETA attribution',()=>{
   const result=routeConfirmedFillLifecycle({...base(),optionLegId:null,optionContractId:null});
   assert.deepEqual(result,{state:'UNKNOWN',reasonCode:'LIFECYCLE_LINKAGE_INCOMPLETE',application:null});

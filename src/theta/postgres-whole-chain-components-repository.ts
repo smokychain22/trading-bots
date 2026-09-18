@@ -79,11 +79,23 @@ export class PostgresWholeChainComponentsRepository {
 
   private async loadInTransaction(client: PoolClient, chainId: string, asOf: string,
     context: WholeChainLoadContext): Promise<WholeChainComponentEvidence> {
-    const chainResult = await client.query(`SELECT ec.chain_id,ec.opened_at,ec.closed_at,ec.underlying_id,u.symbol
+    const chainResult = await client.query(`SELECT ec.chain_id,ec.opened_at,ec.closed_at,ec.underlying_id,u.symbol,b.account_id
       FROM trade.economic_chain ec JOIN market.underlying u ON u.underlying_id=ec.underlying_id
-      WHERE ec.chain_id=$1 AND ec.opened_at <= $2`, [chainId, asOf]);
+      JOIN core.bot_instance b ON b.bot_instance_id=ec.bot_instance_id
+      JOIN core.trading_account a ON a.account_id=b.account_id AND a.environment='PAPER'
+      JOIN core.provider_connection pc ON pc.provider_connection_id=a.provider_connection_id
+        AND pc.provider_code='ALPACA' AND pc.environment='PAPER'
+      JOIN copy.follower_account fa ON fa.provider_account_ref=a.provider_account_id
+        AND fa.follower_account_id=$3 AND fa.environment='PAPER'
+        AND fa.account_role='MASTER_THETA_PAPER' AND fa.disconnected_at IS NULL
+      WHERE ec.chain_id=$1 AND ec.opened_at <= $2`, [chainId, asOf,context.connectionId]);
     if (chainResult.rowCount !== 1) throw new Error('WHOLE_CHAIN_NOT_FOUND_AT_AS_OF');
     const chain = chainResult.rows[0] as Row;
+    const inventory = await client.query(`SELECT COALESCE(sum(sl.shares),0) AS shares
+      FROM trade.stock_lot sl JOIN trade.economic_chain ec ON ec.chain_id=sl.chain_id
+      JOIN core.bot_instance b ON b.bot_instance_id=ec.bot_instance_id
+      WHERE b.account_id=$1 AND sl.underlying_id=$2 AND sl.acquired_at <= $3
+        AND (sl.disposed_at IS NULL OR sl.disposed_at > $3)`,[chain.account_id,chain.underlying_id,asOf]);
 
     const [legsResult, assignmentsResult, expirationsResult, lotsResult, dividendsResult, feeEventsResult,
       fillsResult, tcaResult, markResult] = await Promise.all([
@@ -94,7 +106,9 @@ export class PostgresWholeChainComponentsRepository {
           CASE WHEN l.closed_at <= $2 THEN l.close_price_per_share END AS close_price_per_share,
           CASE WHEN l.closed_at <= $2 THEN l.realized_pnl END AS realized_pnl,
           l.rolled_from_option_leg_id,
-          CASE WHEN l.closed_at <= $2 THEN l.rolled_to_option_leg_id END AS rolled_to_option_leg_id,
+          CASE WHEN l.closed_at <= $2 AND EXISTS(SELECT 1 FROM trade.option_leg successor
+            WHERE successor.option_leg_id=l.rolled_to_option_leg_id AND successor.opened_at <= $2)
+            THEN l.rolled_to_option_leg_id END AS rolled_to_option_leg_id,
           oc.option_type,oc.multiplier
         FROM trade.option_leg l JOIN market.option_contract oc ON oc.option_contract_id=l.option_contract_id
         WHERE l.chain_id=$1 AND l.opened_at <= $2 ORDER BY l.opened_at,l.option_leg_id`, [chainId, asOf]),
@@ -164,9 +178,7 @@ export class PostgresWholeChainComponentsRepository {
       : unknownField<number>(asOf, ['PUT_ROLL_LINEAGE_INVALID']);
     const rolledOldPuts = legs.filter((row) => row.side === 'SHORT' && row.option_type === 'PUT'
       && row.close_reason === 'ROLLED' && iso(row.closed_at) !== null && (iso(row.closed_at) as string) <= asOf);
-    const rollCloseCosts = putRollLinksValid
-      ? this.sumCloseCosts(rolledOldPuts, asOf, 'ROLL_CLOSE_COST_INCOMPLETE')
-      : unknownField<number>(asOf, ['PUT_ROLL_LINEAGE_INVALID']);
+    const rollCloseCosts = this.sumCloseCosts(rolledOldPuts, asOf, 'ROLL_CLOSE_COST_INCOMPLETE');
 
     const putAssignments = assignments.filter((row) => row.option_type === 'PUT');
     const assignment = this.assignmentEvidence(putAssignments, lots, asOf);
@@ -177,7 +189,7 @@ export class PostgresWholeChainComponentsRepository {
       ? knownField(sum(openShareValues), asOf, [source('trade.stock_lot', ['shares','acquired_at','disposed_at'], openLots,
         'stock_lot_id', 'acquired_at')])
       : unknownField<number>(asOf, ['OPEN_STOCK_SHARES_INVALID']);
-    const openStockShares = this.reconcileOpenShares(lifecycleOpenShares, markRows, asOf);
+    const openStockShares = this.reconcileOpenShares(lifecycleOpenShares, markRows, asOf,number(inventory.rows[0]?.shares));
 
     const calls = legs.filter((row) => row.side === 'SHORT' && row.option_type === 'CALL');
     const coveredCallPremium = this.sumPremiums(calls, asOf, 'COVERED_CALL_OPEN_CREDIT_INCOMPLETE');
@@ -381,16 +393,17 @@ export class PostgresWholeChainComponentsRepository {
   }
 
   private reconcileOpenShares(lifecycleShares: WholeChainEvidenceField<number>, rows: readonly Row[],
-    asOf: string): WholeChainEvidenceField<number> {
+    asOf: string, aggregateShares: number | null): WholeChainEvidenceField<number> {
     if (lifecycleShares.status === 'UNKNOWN' || rows.length !== 1 || rows[0]?.data_quality !== 'GOOD') {
       return lifecycleShares;
     }
-    const brokerQuantity = number(rows[0]?.quantity);
-    const lifecycleQuantity = lifecycleShares.value ?? 0;
-    if (brokerQuantity !== null && Math.abs(brokerQuantity) !== lifecycleQuantity) {
+    // Absence in a complete account snapshot is zero account inventory, never
+    // a license to reallocate an account position to one economic chain.
+    const brokerQuantity = rows[0]?.quantity == null ? 0 : number(rows[0]?.quantity);
+    if (brokerQuantity === null || aggregateShares === null || brokerQuantity !== aggregateShares) {
       const reconciliationSource = source('trade.broker_position_snapshot', ['quantity','observed_at','data_quality'], rows,
         'reconciliation_snapshot_id', 'observed_at');
-      return unknownField(asOf, ['BROKER_LIFECYCLE_SHARE_MISMATCH'], [...lifecycleShares.sources, reconciliationSource]);
+      return unknownField(asOf, ['BROKER_LIFECYCLE_DRIFT'], [...lifecycleShares.sources, reconciliationSource]);
     }
     return lifecycleShares;
   }
@@ -399,6 +412,10 @@ export class PostgresWholeChainComponentsRepository {
     const matching = rows.filter((row) => row.option_type === optionType && row.side === 'SHORT');
     const byId = new Map(matching.map((row) => [String(row.option_leg_id), row]));
     return matching.every((row) => {
+      if(row.close_reason==='ROLLED'){
+        const successor=byId.get(text(row.rolled_to_option_leg_id)??'');
+        if(successor===undefined||text(successor.rolled_from_option_leg_id)!==String(row.option_leg_id))return false;
+      }
       const predecessorId = text(row.rolled_from_option_leg_id);
       if (predecessorId === null) return true;
       const predecessor = byId.get(predecessorId);

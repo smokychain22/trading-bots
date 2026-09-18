@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { PostgresWholeChainComponentsRepository } from '../../src/theta/postgres-whole-chain-components-repository.js';
 import { PostgresExecutionEvidenceStore } from '../../src/execution/postgres-execution-evidence-store.js';
 import { buildTransactionCostAnalysis } from '../../src/execution/transaction-cost-analysis.js';
+import { persistConfirmedFillTca } from '../../src/execution/confirmed-fill-tca.js';
 
 const hash = (value: string): string => createHash('sha256').update(value).digest('hex');
 const at = (day: number): string => `2026-09-${String(day).padStart(2,'0')}T15:00:00.000Z`;
@@ -48,6 +49,9 @@ test('whole-chain adapter is PIT-safe, deterministic, chain-isolated, and preser
     else await pool.query(`INSERT INTO copy.follower_account(follower_account_id,workspace_id,provider_account_ref,oauth_secret_ref,
       participation,account_ready,account_role) VALUES($1,$2,$3,$4,'STOP_NEW_TRADES_MANAGE_EXISTING',true,'MASTER_THETA_PAPER')`,
     [connectionId,workspaceId,`paper-${connectionId}`,`test-secret-${connectionId}`]);
+    await pool.query(`UPDATE core.trading_account SET provider_account_id=(
+      SELECT provider_account_ref FROM copy.follower_account WHERE follower_account_id=$2) WHERE account_id=$1`,
+    [accountId,connectionId]);
 
     const put0=randomUUID(),put1=randomUUID(),put2=randomUUID(),call0=randomUUID(),call1=randomUUID();
     await pool.query(`INSERT INTO market.option_contract(option_contract_id,contract_symbol,underlying_id,option_type,strike,
@@ -122,6 +126,12 @@ test('whole-chain adapter is PIT-safe, deterministic, chain-isolated, and preser
     assert.ok(storedTca.rows[0].unknown_reasons_json.includes('FILL_BBO_UNKNOWN'));
 
     const repository=new PostgresWholeChainComponentsRepository(pool);
+    await assert.rejects(()=>repository.load(chainId,at(16),{connectionId:randomUUID()}),/WHOLE_CHAIN_NOT_FOUND_AT_AS_OF/);
+    await assert.rejects(()=>repository.load(randomUUID(),at(16),{connectionId}),/WHOLE_CHAIN_NOT_FOUND_AT_AS_OF/);
+    await pool.query(`UPDATE core.trading_account SET provider_account_id=$2 WHERE account_id=$1`,[accountId,`other-${accountId}`]);
+    await assert.rejects(()=>repository.load(chainId,at(16),{connectionId}),/WHOLE_CHAIN_NOT_FOUND_AT_AS_OF/);
+    await pool.query(`UPDATE core.trading_account SET provider_account_id=(SELECT provider_account_ref FROM copy.follower_account
+      WHERE follower_account_id=$2) WHERE account_id=$1`,[accountId,connectionId]);
     const beforeRoll=await repository.load(chainId,'2026-09-10T18:00:00.000Z',{
       connectionId,reconciliationSnapshotId:zeroSnapshot,
     });
@@ -192,6 +202,27 @@ test('whole-chain adapter is PIT-safe, deterministic, chain-isolated, and preser
     });
     assert.equal(unknownFee.fees.status,'UNKNOWN');
     assert.equal(unknownFee.slippage.status,'UNKNOWN','missing TCA is never zero slippage');
+    const executionAccount=await pool.query(`INSERT INTO trade.execution_account(account_kind,environment,
+      provider_account_ref_hash,provider_account_ref_masked) SELECT 'MASTER_API_KEY','PAPER',
+      encode(digest(provider_account_ref,'sha256'),'hex'),'test-masked' FROM copy.follower_account WHERE follower_account_id=$1
+      ON CONFLICT(account_kind,provider_account_ref_hash) DO UPDATE SET updated_at=trade.execution_account.updated_at
+      RETURNING execution_account_id`,[connectionId]);
+    await pool.query(`UPDATE trade.order_intent SET execution_account_id=$2 WHERE order_intent_id=$1`,
+      [unknownIntent,executionAccount.rows[0].execution_account_id]);
+    const missingTca=await persistConfirmedFillTca(pool,connectionId,at(11));
+    assert.ok(missingTca.missing>=1);
+    await pool.query(`INSERT INTO trade.execution_price_event(order_intent_id,event_type,event_time,provider,source_semantics,
+      provider_timestamp,received_at,quote_age_ms,bid,ask,attempt_no,reason_code,content_hash)
+      VALUES($1,'INITIAL_LIMIT',$2,'ALPACA','PAPER_INDICATIVE_REFERENCE',$2,$2,0,2,2.1,1,'ORDER_HANDOFF_REFERENCE',$3)`,
+    [unknownIntent,at(10),hash(unknownIntent+'reference')]);
+    const capturedTca=await persistConfirmedFillTca(pool,connectionId,at(11));
+    assert.equal(capturedTca.failed,0);
+    assert.equal(capturedTca.persisted,1);
+    assert.equal((await persistConfirmedFillTca(pool,connectionId,at(11))).persisted,0,'restart cannot duplicate TCA');
+    const tcaResult=await pool.query(`SELECT fees,slippage_dollars,quote_semantics FROM trade.transaction_cost_analysis WHERE order_intent_id=$1`,[unknownIntent]);
+    assert.equal(tcaResult.rows[0].fees,null);
+    assert.equal(Number(tcaResult.rows[0].slippage_dollars),5);
+    assert.equal(tcaResult.rows[0].quote_semantics,'PAPER_INDICATIVE_REFERENCE');
 
     const ccCloseChain=randomUUID(),ccCloseLeg=randomUUID(),ccCloseLot=randomUUID();
     const ccExpiryChain=randomUUID(),ccExpiryLeg=randomUUID(),ccExpiryLot=randomUUID();
@@ -227,6 +258,18 @@ test('whole-chain adapter is PIT-safe, deterministic, chain-isolated, and preser
       connectionId,reconciliationSnapshotId:closedSnapshot,
     });
     assert.equal(stockSold.stockSaleOrCallAwayProceeds.value,4900);
+    const aggregateSnapshot=randomUUID();
+    await insertSnapshot(aggregateSnapshot,at(16),1);
+    await pool.query(`INSERT INTO trade.broker_position_snapshot(reconciliation_snapshot_id,connection_id,symbol,quantity,
+      side,asset_class,observed_at,payload_hash,current_price) VALUES($1,$2,$3,200,'long','us_equity',$4,$5,49)`,
+    [aggregateSnapshot,connectionId,symbol,at(16),hash(aggregateSnapshot)]);
+    for(const id of [ccCloseChain,ccExpiryChain]){
+      const value=await repository.load(id,at(16),{connectionId,reconciliationSnapshotId:aggregateSnapshot});
+      assert.equal(value.openStockShares.value,100,'broker aggregate must never replace chain allocation');
+    }
+    const drift=await repository.load(ccCloseChain,at(16),{connectionId,reconciliationSnapshotId:closedSnapshot});
+    assert.equal(drift.openStockShares.status,'UNKNOWN');
+    assert.ok(drift.openStockShares.reasons.includes('BROKER_LIFECYCLE_DRIFT'));
   } finally {
     await pool.end();
   }

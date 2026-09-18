@@ -176,6 +176,9 @@ export class MasterPaperActionHandoff {
       executionTier:plan.executionTier,canonicalQuantity:plan.canonicalQuantity,paperEvidenceQuantity:plan.paperEvidenceQuantity,
       empiricalEconomicsReady:plan.empiricalEconomicsReady,expectedAfterCostEv:plan.expectedAfterCostEv,
       now,decisionExpiresAt:plan.decisionExpiresAt,attempt:plan.pricingAttempt+1});
-    return {actionPlanId:plan.actionPlanId,state:'EXECUTED',blockers:[],execution:await this.execution.execute(command)};
+    return {actionPlanId:plan.actionPlanId,state:'EXECUTED',blockers:[],execution:await this.execution.execute(command,{
+      eventType:'INITIAL_LIMIT',eventTime:now,quote,quoteAgeMs:quote.providerTimestamp===null?null:Date.parse(now)-Date.parse(quote.providerTimestamp),
+      pricing,fillPrice:null,filledQuantity:null,attemptNo:plan.pricingAttempt+1,reasonCode:'ORDER_HANDOFF_REFERENCE',
+    })};
   }
 }

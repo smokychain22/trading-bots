@@ -309,16 +309,16 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
         await client.query(
           `INSERT INTO trade.broker_activity_fact(
              connection_id,provider_activity_ref_hash,activity_type,symbol,quantity,price,
-             activity_at,provider_order_ref_hash,first_observed_at,last_observed_at,payload_hash)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10)
+             activity_at,provider_order_ref_hash,first_observed_at,last_observed_at,payload_hash,net_amount,per_share_amount)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11,$12)
            ON CONFLICT(connection_id,provider_activity_ref_hash) DO UPDATE SET
              last_observed_at=EXCLUDED.last_observed_at`,
           [input.connectionId, sha256(activity.id), activity.activityType, activity.symbol,
             activity.quantity, activity.price, activity.date, activity.orderId === null ? null : sha256(activity.orderId),
             input.observedAt, sha256(canonicalJson({
               type: activity.activityType, symbol: activity.symbol, quantity: activity.quantity,
-              price: activity.price, date: activity.date,
-            }))],
+              price: activity.price, date: activity.date,netAmount:activity.netAmount??null,perShareAmount:activity.perShareAmount??null,
+            })),activity.netAmount??null,activity.perShareAmount??null],
         );
       }
       for (const order of input.matchedOrders) await this.recordMatchedOrder(client, input, order);

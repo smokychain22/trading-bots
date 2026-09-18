@@ -12,7 +12,7 @@ export interface FillLifecycleContext {
   readonly chainId:string; readonly decisionId:string|null; readonly optionLegId:string|null;
   readonly optionContractId:string|null; readonly stockLotId:string|null;
   readonly multiplier:number|null; readonly entryCreditDebit:number|null; readonly economicBasisPerShare:number|null;
-  readonly nextState:'RECOVERY_WAIT'|'REDEPLOY'|'CLOSED'|null;
+  readonly nextState:'RECOVERY_WAIT'|'REDEPLOY'|'CLOSED'|'ROLL_DECISION'|null;
   readonly fills:readonly ConfirmedFillFact[];
 }
 
@@ -62,7 +62,7 @@ export function routeConfirmedFillLifecycle(input:FillLifecycleContext):RoutedFi
     return confirmed({...common,eventKind:'COVERED_CALL_OPEN',optionLegId:input.optionLegId,optionContractId:input.optionContractId,
       quantity:filled,entryPricePerShare:price,entryCreditDebit:price*input.multiplier*filled});
   }
-  if(input.action==='CLOSE_CSP'||input.action==='CLOSE_CC'){
+  if(input.action==='CLOSE_CSP'||input.action==='CLOSE_CC'||input.action==='ROLL_CSP_CLOSE'||input.action==='ROLL_CC_CLOSE'){
     if(input.optionLegId===null||input.entryCreditDebit===null||input.multiplier===null||input.nextState===null) return missing();
     return confirmed({...common,eventKind:'OPTION_CLOSE',optionLegId:input.optionLegId,closePricePerShare:price,
       realizedOptionPnl:input.entryCreditDebit-price*input.multiplier*filled,nextState:input.nextState});
