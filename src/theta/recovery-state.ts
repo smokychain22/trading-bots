@@ -1,4 +1,5 @@
 import type { ManagementInputState } from './management-input-state.js';
+import { computeEffectiveStockBasis, type WholeChainComponents } from './whole-chain-economics.js';
 
 export const recoveryStateVersion = 'theta-recovery-state-v1' as const;
 
@@ -56,26 +57,47 @@ function daysBetween(fromIso: string | null, toIso: string): number | null {
  * caller-supplied (and caller-justified, per the standing no-invented-
  * threshold rule) -- omitted, capital-days and opportunity cost stay
  * honestly UNKNOWN rather than defaulting to a fabricated rate.
+ *
+ * `wholeChainComponents` is the ONE canonical basis input -- when
+ * supplied and complete, `effectiveBasisPerShare` comes from
+ * `computeEffectiveStockBasis` (whole-chain-economics.ts), the SAME
+ * formula whole-chain accounting itself uses, so recovery/SELL_STOCK/
+ * SELL_CC economics can never silently disagree with whole-chain P&L
+ * about what the basis is. `ManagementInputState` does not currently
+ * carry the roll-history fields that formula needs
+ * (initialPutPremium/rollCredits/rollCloseCosts), so most callers today
+ * will omit this and fall back to the broker-recorded
+ * `economics.stockBasisPerShare` -- that fallback is reported honestly
+ * via `dataCompleteness`, never silently presented as the canonical
+ * figure.
  */
 export function buildRecoveryState(
   state: ManagementInputState, assignedAtObservedAt: string | null = null, annualOpportunityCostRate: number | null = null,
+  wholeChainComponents: WholeChainComponents | null = null,
 ): RecoveryState {
   const { stockBasisPerShare, stockMarkPerShare, openStockShares } = state.economics;
-  const distanceToBasisFraction = finite(stockMarkPerShare) && finite(stockBasisPerShare) && stockBasisPerShare !== 0
-    ? (stockMarkPerShare - stockBasisPerShare) / stockBasisPerShare : null;
+  const canonicalBasis = wholeChainComponents === null ? null : computeEffectiveStockBasis(wholeChainComponents);
+  const effectiveBasisPerShare = canonicalBasis?.complete === true ? canonicalBasis.effectiveStockBasisPerShare : stockBasisPerShare;
+  const distanceToBasisFraction = finite(stockMarkPerShare) && finite(effectiveBasisPerShare) && effectiveBasisPerShare !== 0
+    ? (stockMarkPerShare - effectiveBasisPerShare) / effectiveBasisPerShare : null;
   const drawdownFraction = distanceToBasisFraction !== null && distanceToBasisFraction < 0 ? distanceToBasisFraction : null;
   const capitalDaysSoFar = daysBetween(assignedAtObservedAt, state.observedAt);
-  const capitalLocked = finite(stockBasisPerShare) && openStockShares > 0 ? stockBasisPerShare * openStockShares : null;
+  const capitalLocked = finite(effectiveBasisPerShare) && openStockShares > 0 ? effectiveBasisPerShare * openStockShares : null;
   const capitalOpportunityCostDollars = capitalLocked !== null && capitalDaysSoFar !== null && annualOpportunityCostRate !== null
     ? capitalLocked * annualOpportunityCostRate * (capitalDaysSoFar / 365) : null;
 
   const requiresCallerInput: string[] = [];
   if (assignedAtObservedAt === null) requiresCallerInput.push('assignedAtObservedAt (for capitalDaysSoFar)');
   if (annualOpportunityCostRate === null) requiresCallerInput.push('annualOpportunityCostRate (for capitalOpportunityCostDollars)');
+  if (wholeChainComponents === null) {
+    requiresCallerInput.push('wholeChainComponents (for the ONE canonical effective basis -- currently falling back to broker-recorded stockBasisPerShare)');
+  } else if (canonicalBasis?.complete === false) {
+    requiresCallerInput.push(`wholeChainComponents (incomplete -- missing: ${canonicalBasis.missingComponents.join(', ')}; falling back to broker-recorded stockBasisPerShare)`);
+  }
 
   return {
     contractVersion: recoveryStateVersion,
-    effectiveBasisPerShare: stockBasisPerShare, currentStockPrice: stockMarkPerShare,
+    effectiveBasisPerShare, currentStockPrice: stockMarkPerShare,
     distanceToBasisFraction, drawdownFraction,
     realizedVolatility: null, impliedVolatility: state.market.iv,
     eventRiskPresent: state.context.eventState !== null,

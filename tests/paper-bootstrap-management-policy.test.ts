@@ -240,8 +240,17 @@ test('uncertainty on CLOSE_FULL reflects the count of uninterpreted context sign
   assert.equal(closeValue?.uncertainty, 2);
 });
 
-test('RECOVERY_WAIT with a covered call candidate at or above cost basis sells the call', () => {
+test('with no sellCcPremiumUtilityWeight supplied, SELL_CC stays neutral (tied with RECOVERY_WAIT) even with a valid, positive-premium candidate -- no permanent law favors it', () => {
   const input = state('RECOVERY_WAIT');
+  const cc = rollCandidate({ optionType: 'CALL', strike: 200, bid: 1, ask: 1.2 });
+  const evidence = evaluatePaperBootstrapManagementPolicy({ ...input, ccCandidate: cc });
+  assert.equal(evidence?.selectedAction, 'RECOVERY_WAIT');
+  const sellCcValue = evidence?.actionValues.find((value) => value.action === 'SELL_CC');
+  assert.equal(sellCcValue?.utility, 0);
+});
+
+test('RECOVERY_WAIT with a covered call candidate at or above cost basis sells the call once a justified premium-utility weight is supplied', () => {
+  const input = { ...state('RECOVERY_WAIT'), sellCcPremiumUtilityWeight: 0.01 };
   const cc = rollCandidate({ optionType: 'CALL', strike: 200, bid: 1, ask: 1.2 });
   const evidence = evaluatePaperBootstrapManagementPolicy({ ...input, ccCandidate: cc });
   assert.equal(evidence?.selectedAction, 'SELL_CC');
@@ -260,7 +269,7 @@ test('RECOVERY_WAIT rejects a covered call candidate priced below the known cost
 });
 
 test('RECOVERY_WAIT with multiple CC candidates picks the highest-premium SELECTABLE one, skipping below-basis alternatives', () => {
-  const input = state('RECOVERY_WAIT');
+  const input = { ...state('RECOVERY_WAIT'), sellCcPremiumUtilityWeight: 0.01 };
   const withCandidates = {
     ...input,
     ccCandidates: [
@@ -442,8 +451,108 @@ test('CLOSE_FULL does NOT surface assignment-utility facts when the short put is
   assert.ok(!closeValue?.reasons.includes('ASSIGNMENT_RELEVANT_ITM_SHORT_PUT'));
 });
 
+test('with a tight spread, the executable close-cost estimate and the analytical mark are nearly identical', () => {
+  const input = state('CSP_OPEN', { bid: 1, ask: 1.02 }); // 2-cent spread
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  const closeValue = evidence?.actionValues.find((value) => value.action === 'CLOSE_FULL');
+  const askSide = closeValue?.reasons.find((reason) => reason.startsWith('CLOSE_COST_ASK_SIDE_'));
+  const midSide = closeValue?.reasons.find((reason) => reason.startsWith('CLOSE_COST_MID_REFERENCE_ANALYTICAL_ONLY_'));
+  assert.equal(askSide, 'CLOSE_COST_ASK_SIDE_102.00');
+  assert.equal(midSide, 'CLOSE_COST_MID_REFERENCE_ANALYTICAL_ONLY_101.00');
+});
+
+test('widening the ask alone worsens the executable close-cost estimate but does NOT manufacture a false analytical loss signal', () => {
+  // Same bid (100), same entry credit (200) in both cases -- only the ask
+  // widens. The analytical mark (bid+ask)/2 barely moves, so the
+  // analytical loss-magnitude reason must not fire in either case here
+  // (mark stays well under the entry credit), while the executable
+  // close-cost estimate visibly worsens with the wider ask.
+  const tight = evaluatePaperBootstrapManagementPolicy(state('CSP_OPEN', { bid: 1, ask: 1.02 }));
+  const wide = evaluatePaperBootstrapManagementPolicy(state('CSP_OPEN', { bid: 1, ask: 3 }));
+  const tightClose = tight?.actionValues.find((value) => value.action === 'CLOSE_FULL');
+  const wideClose = wide?.actionValues.find((value) => value.action === 'CLOSE_FULL');
+  const tightAsk = Number(tightClose?.reasons.find((reason) => reason.startsWith('CLOSE_COST_ASK_SIDE_'))?.replace('CLOSE_COST_ASK_SIDE_', ''));
+  const wideAsk = Number(wideClose?.reasons.find((reason) => reason.startsWith('CLOSE_COST_ASK_SIDE_'))?.replace('CLOSE_COST_ASK_SIDE_', ''));
+  assert.ok(wideAsk > tightAsk, 'the executable close-cost estimate must worsen as the ask widens');
+  // Neither carries a false analytical loss claim -- the analytical mark
+  // ((1+1.02)/2=1.01 vs (1+3)/2=2.0, both * 100 = 101 and 200) stays at or
+  // below the entry credit (200) in both cases, so ANALYTICAL_MARK_EXCEEDS
+  // never fires from the ask move alone.
+  assert.ok(!tightClose?.reasons.some((reason) => reason.startsWith('ANALYTICAL_MARK_EXCEEDS_ENTRY_CREDIT_FRACTION')));
+  assert.ok(!wideClose?.reasons.some((reason) => reason.startsWith('ANALYTICAL_MARK_EXCEEDS_ENTRY_CREDIT_FRACTION')));
+});
+
+test('a real analytical loss signal fires from the ANALYTICAL mark, and is present regardless of how wide the spread is around that same mark', () => {
+  // bid=3.9, ask=4.1 -> mid=4.0*100=400, well above the 200 entry credit
+  // -> ANALYTICAL_MARK_EXCEEDS fires. A much wider spread with the SAME
+  // midpoint (bid=2, ask=6 -> mid=4.0 still) must fire the identical
+  // analytical signal -- the executable close-cost estimate differs
+  // sharply between the two, but the analytical claim does not.
+  const narrowAroundSameMid = evaluatePaperBootstrapManagementPolicy(state('CSP_OPEN', { bid: 3.9, ask: 4.1 }));
+  const wideAroundSameMid = evaluatePaperBootstrapManagementPolicy(state('CSP_OPEN', { bid: 2, ask: 6 }));
+  const narrowClose = narrowAroundSameMid?.actionValues.find((value) => value.action === 'CLOSE_FULL');
+  const wideClose = wideAroundSameMid?.actionValues.find((value) => value.action === 'CLOSE_FULL');
+  assert.ok(narrowClose?.reasons.some((reason) => reason.startsWith('ANALYTICAL_MARK_EXCEEDS_ENTRY_CREDIT_FRACTION_2.00')));
+  assert.ok(wideClose?.reasons.some((reason) => reason.startsWith('ANALYTICAL_MARK_EXCEEDS_ENTRY_CREDIT_FRACTION_2.00')));
+});
+
+test('a crossed quote makes both the executable close-cost estimate and the analytical mark UNKNOWN, never a nonsensical negative number', () => {
+  const evidence = evaluatePaperBootstrapManagementPolicy(state('CSP_OPEN', { bid: 5, ask: 1 }));
+  const closeValue = evidence?.actionValues.find((value) => value.action === 'CLOSE_FULL');
+  assert.equal(closeValue?.executionCostRisk, null);
+  assert.equal(closeValue?.utility, null);
+});
+
+test('SELL_STOCK and SELL_CC both consume the ONE canonical effective basis when wholeChainComponents is supplied, never the raw broker-recorded basis', () => {
+  // Raw stock_basis_per_share (195) differs from what the canonical
+  // whole-chain formula actually computes here: a large initial put
+  // premium (1000) lowers the true effective basis to 195 - 1000/100 = 185.
+  const chainComponents = {
+    initialPutPremium: 1000, rollCredits: 0, rollCloseCosts: 0, assignmentStrike: 195, stockSharesAssigned: 100,
+    dividends: 0, coveredCallPremium: null, coveredCallCloseCosts: null, stockSaleOrCallAwayProceeds: null,
+    fees: 0, slippage: 0, currentStockMarkPerShare: 190, openStockShares: 100,
+  };
+  const input = { ...state('RECOVERY_WAIT'), wholeChainComponents: chainComponents };
+
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  const sellStockValue = evidence?.actionValues.find((value) => value.action === 'SELL_STOCK');
+  // Using the canonical basis (185), mark(190) is ABOVE basis -- a known
+  // gain of (190-185)*100=500, not the loss (190-195)*100=-500 the raw
+  // broker basis would have produced.
+  assert.ok(sellStockValue?.reasons.includes('KNOWN_STOCK_PNL_IF_SOLD_500.00'));
+
+  // A covered-call candidate at strike 190 is ABOVE the canonical basis
+  // (185) and therefore selectable -- it would have been REJECTED as
+  // below-basis under the raw broker basis (195).
+  const withCcCandidate = { ...input, ccCandidate: rollCandidate({ optionType: 'CALL', strike: 190, bid: 1, ask: 1.2 }) };
+  const withCcEvidence = evaluatePaperBootstrapManagementPolicy(withCcCandidate);
+  const sellCcValue = withCcEvidence?.actionValues.find((value) => value.action === 'SELL_CC');
+  assert.ok(sellCcValue?.reasons.includes('STRIKE_AT_OR_ABOVE_COST_BASIS'));
+  assert.ok(!sellCcValue?.reasons.includes('CC_STRIKE_BELOW_KNOWN_COST_BASIS_REJECTED'));
+});
+
 test('the provider defaults to no candidates and stays passive', async () => {
   const provider = new PaperBootstrapManagementPolicyProvider();
   const evidence = await provider.evaluate(state('CSP_OPEN'));
   assert.equal(evidence?.selectedAction, 'HOLD');
+});
+
+test('DETERMINISM: the exact same immutable state evaluated twice produces the exact same action valuations and the exact same selected action', () => {
+  const input = {
+    ...state('CSP_OPEN'), rollCandidate: rollCandidate(), thesisFailureUtilityBias: 0.4,
+    rollIncrementalCapitalDayWeight: 0.002,
+  };
+  const first = evaluatePaperBootstrapManagementPolicy(input);
+  const second = evaluatePaperBootstrapManagementPolicy(input);
+  assert.deepEqual(first, second);
+  assert.equal(first?.selectedAction, second?.selectedAction);
+});
+
+test('DETERMINISM: this holds across every lifecycle branch this policy covers, not just CSP_OPEN', () => {
+  for (const lifecycle of ['CSP_OPEN', 'RECOVERY_WAIT', 'CC_OPEN']) {
+    const input = state(lifecycle);
+    const first = evaluatePaperBootstrapManagementPolicy(input);
+    const second = evaluatePaperBootstrapManagementPolicy(input);
+    assert.deepEqual(first, second, `lifecycle ${lifecycle} must be deterministic`);
+  }
 });

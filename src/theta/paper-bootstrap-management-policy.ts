@@ -10,6 +10,7 @@ import { evaluateRollCandidates, type RollCandidateEconomics } from './roll-incr
 import { assessThesisInvalidation, type ThesisInvalidationAssessment } from './thesis-invalidation.js';
 import { buildRecoveryState, type RecoveryState } from './recovery-state.js';
 import { evaluateAssignmentUtility } from './assignment-utility.js';
+import type { WholeChainComponents } from './whole-chain-economics.js';
 import {
   bestCoveredCallCandidate, evaluateCoveredCallCandidates, type CoveredCallCandidate, type CoveredCallUtilityWeights,
 } from './covered-call-lattice.js';
@@ -146,6 +147,30 @@ export interface PaperBootstrapPolicyInput extends ManagementInputState {
    * explicit, versioned, default-neutral mechanisms, never a hidden bias.
    */
   readonly sellStockOpportunityCostUtilityWeight?: number;
+  /**
+   * Optional, caller-supplied full chain-history components (initial put
+   * premium, roll credits/close costs, fees, slippage) feeding the ONE
+   * canonical `computeEffectiveStockBasis` (whole-chain-economics.ts).
+   * `ManagementInputState` does not itself carry per-chain roll history,
+   * so this must come from the caller when available. Omitted, or
+   * incomplete, RecoveryState honestly falls back to the broker-recorded
+   * `economics.stockBasisPerShare` rather than fabricating a canonical
+   * figure it cannot actually compute -- see `buildRecoveryState`'s doc
+   * comment in recovery-state.ts.
+   */
+  readonly wholeChainComponents?: WholeChainComponents | null;
+  /**
+   * Required, caller-justified weight converting the KNOWN, bid-side
+   * SELL_CC premium into utility. Defaults to 0 (fully neutral -- SELL_CC
+   * ties with RECOVERY_WAIT/HOLD's baseline of 0) when omitted. This
+   * replaces a previous flat, unconditional positive constant that made
+   * any candidate with a positive premium automatically outrank
+   * RECOVERY_WAIT/SELL_STOCK regardless of the premium's actual size --
+   * exactly the hidden permanent preference the recovery-frontier
+   * architecture must not contain (no action may have a structural law
+   * favoring it over another).
+   */
+  readonly sellCcPremiumUtilityWeight?: number;
 }
 
 function finite(value: number | null): value is number {
@@ -153,14 +178,39 @@ function finite(value: number | null): value is number {
 }
 
 /**
- * Conservative, executable cost to close the OPEN short option leg right
- * now, in dollars (not per-share) -- the ASK side, never the midpoint. A
- * midpoint is not a guaranteed fill; buying back a short option is a
- * debit, and the conservative (worst-realistic-case) reference for a
- * debit is the higher of the two sides, not the average. Returns null
- * (never zero) when the quote is missing or crossed.
+ * THREE conceptually distinct quantities exist for the same open option
+ * leg, and this module keeps them structurally separate rather than
+ * letting one silently alias another (a confirmed integration blocker):
+ *
+ *   1. EstimatedExecutableCloseCost (this function) -- the conservative,
+ *      ASK-side, PRE-FILL cost to buy back the short leg RIGHT NOW. Feeds
+ *      ONLY execution/timing decisions (is it cheap enough to act NOW):
+ *      CLOSE_FULL/CLOSE_CC's near-exhausted trigger, ROLL/ROLL_CC's
+ *      old-leg close cost in forwardContinuationCashFlow. Never used to
+ *      classify P&L or loss state.
+ *   2. AnalyticalOptionMark (`analyticalOptionMarkDollars`) -- the
+ *      neutral valuation reference used for P&L/loss-state classification,
+ *      remaining-value analytics, and (later) MFE/MAE path features. No
+ *      better analytical source exists in this codebase yet than the
+ *      midpoint, so this currently computes the same number as
+ *      `midReferenceDollars` -- but the TWO call sites (P&L classification
+ *      vs. "here is mid for comparison" reason codes) must reference the
+ *      semantically-correct function, not merely the same number by
+ *      coincidence, so a future real analytical-mark source (broker-
+ *      reported mark, a calibrated model) can replace this one function
+ *      without touching every consumer.
+ *   3. ActualCloseFill -- broker-reconciled realized truth. This bootstrap
+ *      policy has no fill data at all (it runs pre-order); this concept
+ *      exists only as a documented boundary so nothing here is ever
+ *      mistaken for it. Whole-chain accounting (whole-chain-economics.ts)
+ *      is the only place a real fill/realized value belongs once one
+ *      exists -- it is a SEPARATE field from `deterministicNetCredit`
+ *      (this module's pre-fill estimate), never the same field reused.
+ *
+ * `estimatedExecutableCloseCostDollars` returns null (never zero) when
+ * the quote is missing or crossed.
  */
-function currentOptionMarkDollars(state: ManagementInputState): number | null {
+function estimatedExecutableCloseCostDollars(state: ManagementInputState): number | null {
   const { optionBid, optionAsk } = state.market;
   const { multiplier, contracts } = state.contract;
   if (!finite(optionBid) || !finite(optionAsk) || optionBid < 0 || optionAsk < optionBid
@@ -168,11 +218,14 @@ function currentOptionMarkDollars(state: ManagementInputState): number | null {
   return optionAsk * multiplier * contracts;
 }
 
-/** The midpoint close cost -- an ANALYTICAL/research reference only,
- * never fed into any action's utility or execution economics. Exists so
- * a reviewer can see the gap between "what mid suggests" and the
- * conservative ask-side reference this policy actually uses. */
-function currentOptionMidDollars(state: ManagementInputState): number | null {
+/** The neutral analytical valuation reference for P&L/loss-state
+ * classification and remaining-value analytics -- see the doc comment on
+ * `estimatedExecutableCloseCostDollars` for why this is a semantically
+ * DIFFERENT function from that one, even though both currently compute
+ * from the same quote (no better analytical mark source exists yet). A
+ * widening ask does not, by itself, worsen this value the way it worsens
+ * the executable close-cost estimate. */
+function analyticalOptionMarkDollars(state: ManagementInputState): number | null {
   const { optionBid, optionAsk } = state.market;
   const { multiplier, contracts } = state.contract;
   if (!finite(optionBid) || !finite(optionAsk) || optionBid < 0 || optionAsk < optionBid
@@ -180,13 +233,39 @@ function currentOptionMidDollars(state: ManagementInputState): number | null {
   return ((optionBid + optionAsk) / 2) * multiplier * contracts;
 }
 
-/** Remaining extrinsic (time) value as a fraction of the ORIGINAL entry
- * credit -- purely descriptive, never a fixed percentage rule. Returns
- * null when either quantity is unknown. */
-function remainingValueFraction(state: ManagementInputState, currentMark: number | null): number | null {
+/** Identical formula to `analyticalOptionMarkDollars` -- kept as a
+ * separately-named export used specifically for side-by-side "here is
+ * what mid suggests" reason codes next to the executable close-cost
+ * estimate, so a reviewer can see the gap explicitly. Never fed into any
+ * action's utility. */
+function midReferenceDollars(state: ManagementInputState): number | null {
+  return analyticalOptionMarkDollars(state);
+}
+
+/**
+ * The EXECUTION-timing fraction: estimated executable close cost divided
+ * by original entry credit. This answers "is it now cheap to ACT," not
+ * "what is the analytical P&L state" -- feeds ONLY the near-exhausted
+ * CLOSE trigger. Purely descriptive, never a fixed percentage rule.
+ */
+function executableRemainingValueFraction(state: ManagementInputState, executableCloseCost: number | null): number | null {
   const entry = state.economics.entryCreditDebit;
-  if (!finite(entry) || entry === 0 || currentMark === null) return null;
-  return currentMark / Math.abs(entry);
+  if (!finite(entry) || entry === 0 || executableCloseCost === null) return null;
+  return executableCloseCost / Math.abs(entry);
+}
+
+/**
+ * The ANALYTICAL fraction: the neutral analytical mark divided by
+ * original entry credit. This is the one that legitimately answers
+ * "what does the position's current value suggest about P&L" -- it must
+ * NOT worsen merely because the ask side widened (a pure execution-cost
+ * artifact), since that would falsely manufacture a loss signal that
+ * never actually happened analytically.
+ */
+function analyticalRemainingValueFraction(state: ManagementInputState, analyticalMark: number | null): number | null {
+  const entry = state.economics.entryCreditDebit;
+  if (!finite(entry) || entry === 0 || analyticalMark === null) return null;
+  return analyticalMark / Math.abs(entry);
 }
 
 function daysToExpiration(state: ManagementInputState): number | null {
@@ -383,9 +462,8 @@ function valueForRollFromCandidates(
  * premium/call-away-price/below-basis facts remain fully known and usable
  * for selection.
  */
-function valueForSellCcFromCandidates(state: PaperBootstrapPolicyInput): ManagementPolicyActionValue {
+function valueForSellCcFromCandidates(state: PaperBootstrapPolicyInput, basis: number | null): ManagementPolicyActionValue {
   const base = { action: 'SELL_CC' as const };
-  const basis = state.economics.stockBasisPerShare;
   const candidates = state.ccCandidates ?? [];
   if (!finite(basis) || candidates.length === 0) {
     return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_IDENTIFIED_CC_CANDIDATE'] };
@@ -420,11 +498,17 @@ function valueForSellCcFromCandidates(state: PaperBootstrapPolicyInput): Managem
       multiplier: best.candidate.multiplier, quantity: best.candidate.quantity,
     },
   };
+  // No permanent "SELL_CC beats RECOVERY_WAIT" law: utility scales with
+  // the ACTUAL known premium via a required, caller-justified weight
+  // (default 0/neutral, matching every other weight in this file) --
+  // never a flat constant that would make any positive premium
+  // automatically win regardless of size or genuine attractiveness.
+  const ccWeight = state.sellCcPremiumUtilityWeight ?? 0;
   return {
     ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: null,
     executionCostRisk: premiumDollars * 0.01, opportunityCost: null, uncertainty: null,
-    utility: 0.5, executionEvidence,
-    reasons: [`BEST_OF_${candidates.length}_CC_CANDIDATES_BY_UTILITY`, ...best.reasons],
+    utility: ccWeight * premiumDollars, executionEvidence,
+    reasons: [`BEST_OF_${candidates.length}_CC_CANDIDATES_BY_UTILITY`, `SELL_CC_UTILITY_WEIGHT_${ccWeight}`, ...best.reasons],
   };
 }
 
@@ -438,8 +522,8 @@ function valueForSellCcFromCandidates(state: PaperBootstrapPolicyInput): Managem
  */
 function valueFor(
   action: ManagementFrontierAction, state: PaperBootstrapPolicyInput, currentMark: number | null, midMark: number | null,
-  remainingFraction: number | null, dte: number | null, capital: number | null, thesis: ThesisInvalidationAssessment,
-  recoveryState: RecoveryState,
+  executableFraction: number | null, analyticalFraction: number | null, dte: number | null, capital: number | null,
+  thesis: ThesisInvalidationAssessment, recoveryState: RecoveryState,
 ): ManagementPolicyActionValue {
   const base = { action };
   switch (action) {
@@ -479,15 +563,21 @@ function valueFor(
       // DESCRIPTIVE observation about a KNOWN remaining-value fraction, not
       // a fixed universal profit-target percentage (the threshold itself
       // must be supplied by the caller, never invented here).
-      const nearExhausted = remainingFraction !== null && remainingFraction <= 0.10 && dte <= 5;
-      // Informational only -- surfaces the KNOWN current mark-to-market
-      // magnitude relative to entry credit. The dollar loss magnitude
-      // itself NEVER decides this action; only `adjustment.closeBias`
-      // (driven purely by the SEPARATE thesis classification) can shift
-      // this utility, and it defaults to 0 (inert) unless the caller
-      // supplies a justified bias.
-      const lossMagnitudeReason = remainingFraction !== null && remainingFraction > 1
-        ? [`KNOWN_MARK_EXCEEDS_ENTRY_CREDIT_FRACTION_${remainingFraction.toFixed(2)}`] : [];
+      // EXECUTION-timing trigger: is it now cheap to ACT, using the
+      // conservative executable close-cost estimate. This never uses the
+      // analytical fraction -- a wide spread making execution expensive
+      // is a real execution-cost fact, distinct from analytical P&L.
+      const nearExhausted = executableFraction !== null && executableFraction <= 0.10 && dte <= 5;
+      // Informational only -- surfaces the ANALYTICAL loss-magnitude
+      // signal (neutral mark vs. entry credit), never the execution-cost
+      // fraction, so a widening ask alone can never manufacture a false
+      // analytical loss claim. The dollar loss magnitude itself NEVER
+      // decides this action; only `adjustment.closeBias` (driven purely
+      // by the SEPARATE thesis classification) can shift this utility,
+      // and it defaults to 0 (inert) unless the caller supplies a
+      // justified bias.
+      const lossMagnitudeReason = analyticalFraction !== null && analyticalFraction > 1
+        ? [`ANALYTICAL_MARK_EXCEEDS_ENTRY_CREDIT_FRACTION_${analyticalFraction.toFixed(2)}`] : [];
       const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
       // When CLOSE_FULL is being weighed on a short put that is genuinely
       // ITM (assignment-relevant), surface assignment-utility.ts's own
@@ -521,8 +611,8 @@ function valueFor(
         executionEvidence: null,
         reasons: [
           ...(nearExhausted
-            ? [`REMAINING_VALUE_FRACTION_${remainingFraction?.toFixed(2)}`, `DTE_${dte}`, 'CLOSE_FREES_CAPITAL_FOR_NEAR_EXHAUSTED_POSITION']
-            : ['REMAINING_VALUE_NOT_KNOWN_EXHAUSTED', ...lossMagnitudeReason]),
+            ? [`EXECUTABLE_REMAINING_VALUE_FRACTION_${executableFraction?.toFixed(2)}`, `DTE_${dte}`, 'CLOSE_FREES_CAPITAL_FOR_NEAR_EXHAUSTED_POSITION']
+            : ['EXECUTABLE_REMAINING_VALUE_NOT_KNOWN_EXHAUSTED', ...lossMagnitudeReason]),
           `CLOSE_COST_ASK_SIDE_${currentMark.toFixed(2)}`, `CLOSE_COST_MID_REFERENCE_ANALYTICAL_ONLY_${midMark === null ? 'UNKNOWN' : midMark.toFixed(2)}`,
           ...assignmentReasons, ...adjustment.reasons,
         ],
@@ -545,7 +635,11 @@ function valueFor(
     case 'ACCEPT_ASSIGNMENT':
       return { ...base, ...UNKNOWN_VALUE, utility: 0, reasons: ['DEFERRED_TO_STRUCTURAL_EXPIRATION_HANDLING'] };
     case 'SELL_STOCK': {
-      const basis = state.economics.stockBasisPerShare, mark = state.economics.stockMarkPerShare;
+      // The ONE canonical effective basis (RecoveryState.effectiveBasisPerShare,
+      // itself sourced from computeEffectiveStockBasis when full chain
+      // history is supplied) -- never a second, independently-derived
+      // basis figure for this action.
+      const basis = recoveryState.effectiveBasisPerShare, mark = state.economics.stockMarkPerShare;
       if (!finite(basis) || !finite(mark) || capital === null) return { ...base, ...UNKNOWN_VALUE };
       const knownStockPnl = (mark - basis) * state.economics.openStockShares;
       const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
@@ -580,9 +674,10 @@ function valueFor(
     }
     case 'SELL_CC': {
       if (state.ccCandidates !== undefined && state.ccCandidates.length > 0) {
-        return valueForSellCcFromCandidates(state);
+        return valueForSellCcFromCandidates(state, recoveryState.effectiveBasisPerShare);
       }
-      const candidate = state.ccCandidate, basis = state.economics.stockBasisPerShare;
+      // Same ONE canonical basis as SELL_STOCK -- never a second formula.
+      const candidate = state.ccCandidate, basis = recoveryState.effectiveBasisPerShare;
       if (!candidate || !finite(candidate.bid) || !finite(candidate.ask) || !finite(basis)) {
         return { ...base, ...UNKNOWN_VALUE, reasons: ['NO_IDENTIFIED_CC_CANDIDATE'] };
       }
@@ -613,12 +708,14 @@ function valueFor(
           multiplier: candidate.multiplier, quantity: candidate.quantity,
         },
       };
+      // Same no-permanent-law rule as the multi-candidate path above.
+      const ccWeight = state.sellCcPremiumUtilityWeight ?? 0;
       return {
         ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: null,
         executionCostRisk: premiumDollars * 0.01, opportunityCost: null, uncertainty: null,
-        utility: 0.5, executionEvidence,
+        utility: ccWeight * premiumDollars, executionEvidence,
         reasons: [`BID_SIDE_EXECUTABLE_REFERENCE_${premiumDollars.toFixed(2)}`, `MID_REFERENCE_ANALYTICAL_ONLY_${midDollars.toFixed(2)}`,
-          'STRIKE_AT_OR_ABOVE_COST_BASIS', `HORIZON_ANCHOR_${horizon.horizonAnchor ?? 'UNKNOWN'}`],
+          'STRIKE_AT_OR_ABOVE_COST_BASIS', `HORIZON_ANCHOR_${horizon.horizonAnchor ?? 'UNKNOWN'}`, `SELL_CC_UTILITY_WEIGHT_${ccWeight}`],
       };
     }
     case 'REDEPLOY':
@@ -649,19 +746,26 @@ export function evaluatePaperBootstrapManagementPolicy(
   const actionSet = frontier.actions.map((action) => action.action);
   if (actionSet.length === 0) return null;
 
-  const currentMark = currentOptionMarkDollars(state);
-  const midMark = currentOptionMidDollars(state);
-  const remainingFraction = remainingValueFraction(state, currentMark);
+  const currentMark = estimatedExecutableCloseCostDollars(state);
+  const midMark = midReferenceDollars(state);
+  const analyticalMark = analyticalOptionMarkDollars(state);
+  // Two structurally distinct fractions -- see executableRemainingValueFraction/
+  // analyticalRemainingValueFraction's own doc comments. A widening ask
+  // must never manufacture a false analytical loss signal.
+  const executableFraction = executableRemainingValueFraction(state, currentMark);
+  const analyticalFraction = analyticalRemainingValueFraction(state, analyticalMark);
   const dte = daysToExpiration(state);
   const capital = capitalCommitted(state);
   // Computed once per state, shared by every action -- the SAME thesis
   // read is never re-derived per action, so a HOLD/CLOSE/ROLL comparison
   // can never see a different thesis picture than another.
   const thesis = assessThesisInvalidation(state);
-  const recoveryState = buildRecoveryState(state, state.assignedAtObservedAt ?? null, state.annualOpportunityCostRate ?? null);
+  const recoveryState = buildRecoveryState(
+    state, state.assignedAtObservedAt ?? null, state.annualOpportunityCostRate ?? null, state.wholeChainComponents ?? null,
+  );
 
   const actionValues = actionSet.map((action) =>
-    valueFor(action, state, currentMark, midMark, remainingFraction, dte, capital, thesis, recoveryState));
+    valueFor(action, state, currentMark, midMark, executableFraction, analyticalFraction, dte, capital, thesis, recoveryState));
   const known = actionValues.filter((value) => value.utility !== null);
   if (known.length === 0) return null;
 
