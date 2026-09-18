@@ -63,6 +63,9 @@ test('local worker operation accepts the bounded runtime, evidence, and owner au
     'x-theta-operation': 'master-paper-authorize',
   } }), 'MASTER_PAPER_AUTHORIZE');
   assert.equal(parseLocalWorkerOperation({ headers: {
+    'x-theta-operation': 'first-paper-canary-activate',
+  } }), 'FIRST_PAPER_CANARY_ACTIVATE');
+  assert.equal(parseLocalWorkerOperation({ headers: {
     'x-theta-operation': 'database-target-preflight',
   } }), 'DATABASE_TARGET_PREFLIGHT');
   assert.equal(parseLocalWorkerOperation({ headers: {

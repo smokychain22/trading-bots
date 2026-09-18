@@ -39,8 +39,10 @@ import {
   matchesLocalForensicConfirmation,
 } from '../database/local-forensic-recovery.js';
 import {
-  masterPaperAuthorizationConfirmation, PostgresPaperExecutionAuthorizationStore,
+  firstPaperCanaryActivationConfirmation, masterPaperAuthorizationConfirmation,
+  PostgresPaperExecutionAuthorizationStore,
 } from '../execution/paper-execution-authorization.js';
+import { PostgresBrokerReconciliationStore, runReadOnlyBrokerReconciliation } from '../execution/broker-reconciliation-worker.js';
 import { fetchMarketClock, fetchOptionContracts, fetchOptionSnapshots } from './alpaca-provider.js';
 import { executionOptionQuoteContractVersion, type ExecutionOptionQuote } from '../execution/execution-option-quote.js';
 import { persistQuoteProviderQualification, qualifyQuoteProvider } from '../execution/quote-provider-qualification.js';
@@ -58,7 +60,7 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'RUNTIME_CORE_CYCLE' | 'RUNTIME_BROKER_CYCLE' | 'RUNTIME_LIFECYCLE_CYCLE' | 'RUNTIME_MANAGEMENT_CYCLE' | 'RUNTIME_OBSERVATION_CYCLE' | 'RUNTIME_EVIDENCE_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'MASTER_PAPER_AUTHORIZE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'RUNTIME_CORE_CYCLE' | 'RUNTIME_BROKER_CYCLE' | 'RUNTIME_LIFECYCLE_CYCLE' | 'RUNTIME_MANAGEMENT_CYCLE' | 'RUNTIME_OBSERVATION_CYCLE' | 'RUNTIME_EVIDENCE_CYCLE' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'MASTER_PAPER_AUTHORIZE' | 'FIRST_PAPER_CANARY_ACTIVATE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
@@ -75,6 +77,7 @@ export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'header
   if (value === 'optionomics-quote-qualification') return 'OPTIONOMICS_QUOTE_QUALIFICATION';
   if (value === 'optionomics-mcp-qualification') return 'OPTIONOMICS_MCP_QUALIFICATION';
   if (value === 'master-paper-authorize') return 'MASTER_PAPER_AUTHORIZE';
+  if (value === 'first-paper-canary-activate') return 'FIRST_PAPER_CANARY_ACTIVATE';
   if (value === 'database-source-preflight') return 'DATABASE_SOURCE_PREFLIGHT';
   if (value === 'database-target-preflight') return 'DATABASE_TARGET_PREFLIGHT';
   if (value === 'database-target-migrate') return 'DATABASE_TARGET_MIGRATE';
@@ -161,6 +164,46 @@ export default async function autonomousRuntimeHandler(
     send(response,200,{accountRole:'MASTER_THETA_PAPER',environment:'PAPER',
       masterManagementAuthorized:control.masterExecutionEnabled,newRiskPaused:control.pauseNewOrders,
       followerExecution:'LOCKED',liveMoneyAuthorized:false,executionGate:'LOCKED',ordersSubmitted:0});
+    return;
+  }
+  if (operation === 'FIRST_PAPER_CANARY_ACTIVATE') {
+    if (localIdentity.kind !== 'VALID') {
+      send(response, 400, { error: 'local_worker_identity_required', executionGate: 'LOCKED' });
+      return;
+    }
+    if (request.headers['x-theta-confirmation'] !== firstPaperCanaryActivationConfirmation) {
+      send(response, 403, { error: 'first_paper_canary_activation_confirmation_required', executionGate: 'LOCKED' });
+      return;
+    }
+    if (!environment.DATABASE_URL) {
+      send(response, 503, { error: 'database_not_configured', executionGate: 'LOCKED' });
+      return;
+    }
+    runtimePool ??= new Pool({ connectionString: environment.DATABASE_URL, max: 2, connectionTimeoutMillis: 8_000 });
+    const cycleStore=new PostgresRuntimeCycleStore(runtimePool);
+    const master=await cycleStore.resolveMasterContext(environment);
+    const at=new Date().toISOString();
+    const reconciliation=await runReadOnlyBrokerReconciliation({broker:master.broker,
+      store:new PostgresBrokerReconciliationStore(runtimePool),connectionId:master.connectionId,
+      expectedProviderAccountRef:master.providerAccountRef,correlationId:`first-canary-activation:${at}`,
+      now:()=>at});
+    const receipt=await new PostgresPaperExecutionAuthorizationStore(runtimePool).activateFirstPaperCanary({
+      confirmation:firstPaperCanaryActivationConfirmation,activatedAt:at,
+      sourceRef:'OWNER_DIRECTIVE_X3_FIRST_PAPER_CANARY',evidence:{
+        brokerAccountStatus:reconciliation.accountStatus,brokerPositionCount:reconciliation.positionCount,
+        brokerOpenOrderCount:reconciliation.openOrderCount,brokerLocalOnlyIntentCount:reconciliation.localOnlyIntentCount,
+        marketOpen:reconciliation.marketOpen,calendarSessionConfirmed:reconciliation.calendarSessionConfirmed,
+        optionsCapabilityVerified:master.optionsCapabilityVerified,
+        environmentMasterEnabled:environment.MASTER_PAPER_EXECUTION_ENABLED,
+        environmentPauseNewOrders:environment.PAPER_PAUSE_NEW_ORDERS,
+        environmentFollowerEnabled:environment.FOLLOWER_PAPER_EXECUTION_ENABLED,
+        runtimeMode:environment.THETA_RUNTIME_MODE,
+      },
+    });
+    send(response,receipt.ready?200:409,{...receipt,broker:{accountStatus:reconciliation.accountStatus,
+      positionCount:reconciliation.positionCount,openOrderCount:reconciliation.openOrderCount,
+      marketOpen:reconciliation.marketOpen,calendarSessionConfirmed:reconciliation.calendarSessionConfirmed,
+      dataQuality:reconciliation.dataQuality},executionGate:receipt.activated?'ACTIVE':'LOCKED',ordersSubmitted:0});
     return;
   }
   if (operation === 'DATABASE_TARGET_PREFLIGHT') {

@@ -525,6 +525,11 @@ export async function runAutonomousRuntimeCycle(
             if(result.execution.submittedNow)masterPaperOrdersSubmitted+=1;
             if(disposition==='TERMINAL')await planStore.terminal(plan.actionPlanId,result.execution.orderIntentId,at);
             else await planStore.submitted(plan.actionPlanId,result.execution.orderIntentId,at);
+            if(result.execution.submittedNow&&plan.decisionAuthority==='NEW_RISK'){
+              const persistedLock=await new PostgresPaperExecutionAuthorizationStore(pool)
+                .lockNewRiskAfterFirstCanary(at);
+              if(!persistedLock)return degraded('FIRST_CANARY_RUNTIME_LOCKED_PERSISTED_CONTROL_PENDING',retryAt);
+            }
             return succeeded();
           }
           await planStore.wait(plan.actionPlanId,result.blockers,retryAt,at);
