@@ -103,6 +103,30 @@ function rankedCounts(values: Readonly<Record<string, number>>): readonly { reas
     .sort((left, right) => right.count - left.count || left.reason.localeCompare(right.reason));
 }
 
+export interface NumericDistribution {
+  readonly known: number;
+  readonly unknown: number;
+  readonly minimum: number | null;
+  readonly median: number | null;
+  readonly maximum: number | null;
+}
+
+export function summarizeKnownNumbers(values: readonly unknown[]): NumericDistribution {
+  const known = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+    .toSorted((left, right) => left - right);
+  const midpoint = Math.floor(known.length / 2);
+  const median = known.length === 0 ? null : known.length % 2 === 1
+    ? known[midpoint] as number
+    : ((known[midpoint - 1] as number) + (known[midpoint] as number)) / 2;
+  return {
+    known: known.length,
+    unknown: values.length - known.length,
+    minimum: known[0] ?? null,
+    median,
+    maximum: known.at(-1) ?? null,
+  };
+}
+
 export function classifyZeroTradeEvidence(input: {
   readonly cycleCount: number;
   readonly actionReadyCycles: number;
@@ -360,6 +384,21 @@ export async function readZeroTradeDiagnostic(
         const key=candidate.dte===null?'UNKNOWN':String(candidate.dte);counts[key]=(counts[key]??0)+1;return counts;
       },{})).map(([dte,count])=>({dte,count})).sort((left,right)=>left.dte.localeCompare(right.dte,undefined,{numeric:true})),
     };
+    const quoteUsableCandidates = targetCandidates.filter((candidate) => !candidateHas(candidate, /QUOTE|BBO|STALE|BID|ASK/));
+    const quoteUsableEconomics = {
+      population: quoteUsableCandidates.length,
+      dte: summarizeKnownNumbers(quoteUsableCandidates.map((candidate) => candidate.dte)),
+      absoluteDelta: summarizeKnownNumbers(quoteUsableCandidates.map((candidate) => candidate.delta === null ? null : Math.abs(Number(candidate.delta)))),
+      premiumPerShare: summarizeKnownNumbers(quoteUsableCandidates.map((candidate) => candidate.economics_json.premiumPerShare)),
+      spreadPct: summarizeKnownNumbers(quoteUsableCandidates.map((candidate) => candidate.spread_pct === null ? null : Number(candidate.spread_pct))),
+      collateral: summarizeKnownNumbers(quoteUsableCandidates.map((candidate) => candidate.economics_json.collateral)),
+      breakEven: summarizeKnownNumbers(quoteUsableCandidates.map((candidate) => candidate.economics_json.breakEven)),
+      openInterest: summarizeKnownNumbers(quoteUsableCandidates.map((candidate) => candidate.liquidity_json.openInterest)),
+      optionVolume: summarizeKnownNumbers(quoteUsableCandidates.map((candidate) => candidate.liquidity_json.volume)),
+      expectedAfterCostEv: summarizeKnownNumbers(quoteUsableCandidates.map((candidate) => candidate.economics_json.expectedAfterCostEv)),
+      iv: summarizeKnownNumbers(quoteUsableCandidates.map(() => null)),
+      ivPersistenceStatus: 'NOT_PERSISTED_IN_CANONICAL_CANDIDATE_EVIDENCE',
+    };
 
     return {
       contractVersion: zeroTradeDiagnosticVersion,
@@ -379,6 +418,7 @@ export async function readZeroTradeDiagnostic(
         opportunityCycles: targetOpportunityCycles,
         diagnosticCycles: targetCycles,
         totals: targetTotals,
+        quoteUsableEconomics,
         branchSummary: [...new Set(targetBranches.map((row) => row.branch))].sort().map((branch) => {
           const rows = targetBranches.filter((row) => row.branch === branch);
           return { branch,status:rows[0]?.status ?? 'UNKNOWN',observedCycles:new Set(rows.map((row) => row.scan_id)).size,
