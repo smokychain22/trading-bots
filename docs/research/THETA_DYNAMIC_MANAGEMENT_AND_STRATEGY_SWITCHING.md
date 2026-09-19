@@ -459,3 +459,187 @@ UNDERLYING_ONLY_STRATEGY_DRIFT = NONE FOUND
   not, per the GAPS entries above.
 ```
 
+## M. Cold-start bootstrap trader-DNA records (P5F, gap-driven)
+
+Not a generic "successful options traders" sweep -- these two records target the EXACT
+gap Codex's `THETA_OWNERSHIP_AEGIS_BOOTSTRAP_AUDIT_2026-09-19.md` (commit `c3f3579`,
+already canonical) confirmed with real Production evidence:
+`COLD_START_BOOTSTRAP_DEADLOCK` -- RecoveryQuality requires prior recovery duration, and
+the master account has zero prior THETA Paper chains, so the first Paper trade requires
+evidence that can only be generated after prior trades. Both records below are read-only
+research; neither proposes a runtime change, and neither is activated by anything in this
+document -- that remains a versioned policy decision for the owner/Codex, exactly as the
+audit itself states.
+
+### DNA-COLD-01: CBOE S&P 500 PutWrite Index (PUT) -- unconditional systematic sizing, no per-name ownership prior
+
+```
+SOURCE_ID = DNA-COLD-01
+SOURCE = Cboe Global Indices, "Cboe PutWrite Indices Methodology"; corroborated by
+  Wikipedia's CBOE S&P 500 PutWrite Index summary and PM Research's "The Cash-secured
+  PutWrite Strategy and Performance of Related Benchmark Indexes"
+SOURCE_TYPE = Exchange-published index methodology (top of the directive's source
+  hierarchy) + peer-reviewed journal (Journal of Alternative Investments / PM Research)
+EVIDENCE_LEVEL = HIGH for the mechanism description (exchange's own rulebook); the PDF
+  methodology document itself could not be parsed by this session's tooling (binary
+  fetch failure), so the mechanism below is sourced from the search-engine summary and
+  secondary descriptions of it, not a direct PDF read -- flagged honestly, not hidden.
+
+VERIFIED_FACT = The PUT index sells one-month, at-the-money SPX puts on a fixed monthly
+  roll schedule (3rd Friday), sized so that the T-bill collateral held can finance the
+  MAXIMUM POSSIBLE LOSS from final cash settlement of the puts sold that month -- i.e.
+  the index's "how many puts to sell" rule is a pure collateral-capacity constraint, with
+  NO per-name ownership, liquidity, recovery-history, or event-context screen of any kind.
+SOURCE_CLAIM = The index has published daily history back to 1986 and is treated as the
+  standard institutional benchmark for the cash-secured put strategy.
+INTERPRETATION = This is the single cleanest evidence available that a legitimate,
+  long-running, institutionally-benchmarked systematic put-selling PROGRAM does not
+  require an ownership-willingness/recovery-history prior to determine HOW MANY puts to
+  sell -- because SPX is cash-settled (never assigned into single-name stock), the
+  concept of "recovery quality" or "ownership willingness" is structurally inapplicable
+  to it. This is a real, important disanalogy, not evidence that THETA's own ownership
+  gate is wrong: THETA trades single-name CSPs that DO physically settle into owned
+  stock, so an ownership/assignment-willingness check is solving a real problem the PUT
+  index never faces. The gap this DOES illuminate is narrower and correct: the index
+  shows that SIZING (how much collateral to commit) can be a pure capacity constraint
+  independent of any recovery-history prior, even though ownership-WILLINGNESS
+  (would-I-want-this-stock) genuinely cannot be benchmarked this way for single names.
+ECONOMIC_MECHANISM = Collateral-capacity-bounded position count, decoupled from any
+  per-position recovery/ownership judgment.
+APPLICABLE_STATE = A cold-start (zero prior chains) SIZING decision for a bounded,
+  already-ownership-screened candidate -- i.e. this evidence bears on "how much," never
+  on "should I own this name," which THETA's ownership_v0 model already correctly keeps
+  separate.
+NON_APPLICABLE_STATE = Cannot be used to justify skipping OR relaxing the
+  ownership-willingness screen itself; the index's cash-settlement structure makes that
+  screen moot for it in a way that does not transfer to single-name Wheel.
+DATA_REQUIRED = None beyond what THETA already has (collateral/buying-power figures);
+  this record requires no new data ingestion.
+POSITION_SIZE_LOGIC = Collateral-capacity constraint only, exactly as
+  `account-exposure.ts`'s `cspCollateralRequired` already models per-position collateral
+  -- the gap is not in THETA's collateral math, it is in gating QUANTITY on an
+  ownership-recovery composite score that has no analog in this benchmark.
+MANAGEMENT = Fixed monthly roll on a schedule, not a discretionary early-management rule
+  -- out of scope for THETA's own roll-utility research (H-R-03 et al.), noted only for
+  completeness.
+FAILURE_MODE = None documented in the available secondary sources for the index itself
+  (it is a passive benchmark, not a live risk-managed program); its own literature
+  concedes cash-secured put writing underperforms during sharp, sustained equity
+  drawdowns, consistent with THETA's own standing "delta is not probability of profit"
+  discipline.
+THETA_COMPONENT = `ownership-contract.ts`'s `RecoveryQuality` component specifically
+  (the one component the bootstrap audit identifies as the deadlock's proximate cause);
+  `evidence-completeness-diagnostic.ts` (this wave's P5A) already exposes
+  `ownershipNotEvaluatedCount`/per-component completeness as the measurable surface any
+  future cold-start policy would need to move.
+TESTABLE_HYPOTHESIS = "A bounded, bounded-loss, ownership-quality-still-required Paper
+  entry tier can use a collateral-capacity sizing rule (independent of RecoveryQuality)
+  for candidates where LiquidityQuality/StructuralQuality/TailQuality/EventAdjustment are
+  all KNOWN and favorable, without requiring prior recovery history, while
+  RecoveryQuality itself remains reported as UNKNOWN (never defaulted to a fabricated
+  neutral value)."
+EXPERIMENT_PLAN = Would require a versioned cold-start ownership-composition CONTRACT
+  change (e.g. a documented `RecoveryQuality: UNKNOWN -> treated as NOT_YET_APPLICABLE
+  rather than veto, for the first N chains only, capped by a bounded Paper-only
+  exploratory tier`) -- this is exactly the kind of policy decision the bootstrap audit
+  says requires an explicit versioned contract, not something this research record
+  activates on its own.
+VALIDATION_REQUIREMENT = Any such contract change must be proposed by Codex (owner of
+  `ownership-contract.ts`/the Python `ownership_v0` model) and requires the standing
+  ablation protocol (BASELINE = current AND-gate composition vs. BASELINE + bounded
+  cold-start treatment, all else held constant) before promotion beyond Paper.
+STATUS = REFERENCE
+  (a real, sourced disanalogy worth Codex's attention alongside the bootstrap audit --
+  not ADOPT/ADAPT, since it does not hand over a ready-to-implement formula, and the
+  audit itself already correctly declines to activate any fix without a versioned policy)
+```
+
+### DNA-COLD-02: Kelly / VIX-regime position sizing for systematic put-writing (arXiv 2508.16598)
+
+```
+SOURCE_ID = DNA-COLD-02
+SOURCE = "Sizing the Risk: Kelly, VIX, and Hybrid Approaches in Put-Writing" (arXiv
+  2508.16598, posted August 2026, analyzes data through 2024)
+SOURCE_TYPE = Preprint (arXiv) -- not yet peer-reviewed at time of this record; treated
+  per the directive's hierarchy as lower-confidence than the Cboe methodology above, and
+  explicitly flagged as such.
+EVIDENCE_LEVEL = LOW-MEDIUM. This session's WebFetch could only retrieve the abstract,
+  not the full paper body -- the specific Kelly/VIX formulas, exact backtest statistics,
+  and any cold-start-specific guidance are NOT verified here and must not be treated as
+  confirmed until the full paper is read. This is stated explicitly rather than
+  interpolated from the abstract's plain-language summary.
+
+VERIFIED_FACT (from the abstract only) = The paper evaluates three position-sizing
+  approaches for systematic S&P 500 put-writing -- Kelly criterion, VIX-based volatility
+  regime scaling, and a hybrid of the two -- and reports the hybrid method "consistently
+  balances return generation with robust drawdown control," with ultra-short-dated,
+  far-out-of-the-money options showing superior risk-adjusted returns under low-volatility
+  regimes such as 2024.
+SOURCE_CLAIM = Regime-conditioned (VIX-based) sizing outperforms a fixed-fraction
+  approach for this strategy family.
+INTERPRETATION = This is directionally consistent with (but does not prove) an
+  alternative cold-start treatment: size a new program's exposure from an EXTERNAL,
+  market-observable regime signal (e.g. VIX level) rather than from the program's OWN
+  trade history, which is exactly what a genuinely cold-start-safe sizing rule would need
+  -- the account has zero prior chains, but the MARKET has a continuously observable
+  volatility regime. This does not resolve THETA's specific `RecoveryQuality` deadlock
+  (that component is about assignment-recovery duration, not volatility regime), but it
+  is the closest sourced evidence this pass found for "a legitimate systematic
+  put-writing sizing rule need not depend on the strategy's own realized track record."
+ECONOMIC_MECHANISM = Regime-conditioned (not history-conditioned) capital allocation.
+APPLICABLE_STATE = Future sizing-policy research only, IF a cold-start contract revision
+  is ever pursued -- not applicable to THETA's current fixed structural sizing, and not
+  a request to adopt Kelly sizing now (directive section 43 forbids adopting famous
+  numbers/formulas as Production truth without the ablation protocol).
+NON_APPLICABLE_STATE = Cannot be cited as proof of any specific numeric sizing formula
+  until the full paper is read and independently reproduced -- EVIDENCE_LEVEL is
+  explicitly LOW-MEDIUM for exactly this reason.
+DATA_REQUIRED = VIX level (or an equivalent volatility-regime proxy) at decision time --
+  THETA's existing `volatility-acceleration.ts`/`volatility-risk-premium.ts` research
+  modules already carry realized/implied vol context that could feed a future regime
+  classifier; no new provider would be required to test the concept in research only.
+POSITION_SIZE_LOGIC = Not extracted (abstract only) -- would require the full paper
+  before any formula could be honestly recorded.
+MANAGEMENT = Not extracted (abstract only).
+FAILURE_MODE = Not extracted (abstract only); Kelly-family sizing is well known in the
+  broader literature to be sensitive to misestimated edge/variance inputs, which the
+  directive's "no thresholds from tiny sample" and "no calibration without data" rules
+  already guard against for THETA generally.
+THETA_COMPONENT = None wired -- pure future-research reference.
+TESTABLE_HYPOTHESIS = "A volatility-regime-conditioned sizing multiplier, applied only to
+  a bounded cold-start Paper tier, produces less erratic capital-days utilization than a
+  fixed-fraction or all-or-nothing (current UNKNOWN-blocks-everything) sizing rule."
+EXPERIMENT_PLAN = Read the full paper before any further action; if it holds up, define
+  a versioned research experiment through the canonical experiment registry (never a new
+  parallel one) comparing current sizing against a VIX-regime-scaled variant on
+  synthetic/replay data only, with an explicit note that synthetic data may validate
+  math/types but never establish profitability (directive section 51).
+VALIDATION_REQUIREMENT = Full paper read + independent formula verification before
+  ADOPT/ADAPT; currently REFERENCE-only due to LOW-MEDIUM evidence level.
+STATUS = REFERENCE
+```
+
+Sources for this section:
+- [Cboe PutWrite Indices Methodology](https://cdn.cboe.com/api/global/us_indices/governance/Cboe_PutWrite_Indices_Methodology.pdf)
+- [CBOE S&P 500 PutWrite Index - Wikipedia](https://en.wikipedia.org/wiki/CBOE_S&P_500_PutWrite_Index)
+- [The Cash-secured PutWrite Strategy and Performance of Related Benchmark Indexes](https://www.pm-research.com/content/iijaltinv/11/4/43)
+- [Sizing the Risk: Kelly, VIX, and Hybrid Approaches in Put-Writing (arXiv 2508.16598)](https://arxiv.org/pdf/2508.16598)
+
+### M receipt
+
+```
+TRADER_DNA_GAPS_TARGETED = COLD_START_BOOTSTRAP_DEADLOCK (Codex audit c3f3579), ownership
+  willingness vs. sizing decoupling
+TRADER_DNA_RECORDS_ADDED = 2 (DNA-COLD-01, DNA-COLD-02)
+TRADER_SOURCES_REVIEWED = 4 (Cboe methodology, Wikipedia summary, PM Research journal
+  citation, arXiv preprint abstract)
+METHODS_ADOPTED = 0
+METHODS_ADAPTED = 0
+METHODS_REFERENCED = 2 (both records above)
+METHODS_REJECTED = 0
+NO_RUNTIME_CHANGE = YES -- both records are REFERENCE-status research only; no
+  ownership-contract.ts, aegis-contract.ts, or sizing code was touched by this section.
+NO_FABRICATED_FORMULA = YES -- DNA-COLD-02 explicitly declines to record a specific
+  sizing formula because the full paper was not accessible this pass.
+```
+
