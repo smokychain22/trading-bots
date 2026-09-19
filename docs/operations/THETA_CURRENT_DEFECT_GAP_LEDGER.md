@@ -1,7 +1,7 @@
 # THETA current defect and gap ledger
 
 Ledger version: `theta-current-defect-gap-ledger-v1`
-Baseline canonical main: `1b304c1aa3cac7225ed9e890c7979ace6fe8f104`
+Baseline canonical main: `4abeb11b170fa8ab4a849314e0c9f76ecb6ebcba`
 Scope: the twenty findings A through T in the consolidated defect-closure directive.
 Rule: a closed item may reopen only when new runtime evidence contradicts this receipt, a regression occurs, or a dependency changes.
 
@@ -52,3 +52,14 @@ This ledger separates deterministic production defects from strategy-quality hyp
 - `FOLLOWER_EXECUTION = LOCKED`.
 - `LIVE_MONEY_AUTHORIZED = NO`.
 - The first natural Paper canary remains THETA-selected and automatically relocks new risk after submission.
+
+## R6 evidence integration addendum
+
+The bounded R6 integration receipt is recorded in `docs/operations/THETA_R6_EVIDENCE_INTEGRATION_RECEIPT.md`.
+
+- Claude outcome-label commit `4944df64df2d9f027334d4fc97b2804aeb587b39` was reviewed, repaired, and integrated.
+- Claude VRP and underlying Pareto commit `7d5b26417cb7aff73f62f8c2a7124816b3c7885e` was integrated as research-only evidence.
+- Claude realized-volatility and HAR-RV commit `f4f1aedaeeee5255b0fe77b7843a1a90a2e2b6ef` was integrated as a PIT-safe research baseline.
+- Claude HAR-RV bridge commit `8b1d4a1f220e1c52e969f730187688d40566cdda` was reviewed, bounded to the controlled research bridge, and repaired to reject invalid variance input before invocation.
+- No new live threshold, strategy selection rule, order path, migration, provider, or broker authority was introduced.
+- Existing R6 export, automatic handoff, outcome resolution, contract evidence, walk-forward, calibration, and promotion gates were retained as the single canonical implementations.

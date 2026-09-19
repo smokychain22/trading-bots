@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import sys
-from math import sqrt
+from math import isfinite, sqrt
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -49,10 +49,10 @@ def _series(value: Any) -> List[Optional[float]]:
     for item in value:
         if item is None:
             parsed.append(None)
-        elif isinstance(item, (int, float)) and not isinstance(item, bool):
+        elif isinstance(item, (int, float)) and not isinstance(item, bool) and isfinite(float(item)) and item >= 0:
             parsed.append(float(item))
         else:
-            raise ValueError("realizedVarianceSeries entries must be numbers or null")
+            raise ValueError("realizedVarianceSeries entries must be finite non-negative numbers or null")
     return parsed
 
 

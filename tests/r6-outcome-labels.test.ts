@@ -73,16 +73,24 @@ test('maxDrawdownLabel is UNKNOWN for an empty curve, never a fabricated zero dr
   assert.equal(maxDrawdownLabel([]).state, 'UNKNOWN');
 });
 
-test('maxDrawdownLabel computes the correct worst peak-to-trough decline regardless of input order', () => {
+test('maxDrawdownLabel computes the correct worst peak-to-trough decline for chronological input', () => {
   const curve = [
     { at: '2026-09-01T00:00:00.000Z', equity: 100 },
-    { at: '2026-09-03T00:00:00.000Z', equity: 60 },
     { at: '2026-09-02T00:00:00.000Z', equity: 120 },
+    { at: '2026-09-03T00:00:00.000Z', equity: 60 },
     { at: '2026-09-04T00:00:00.000Z', equity: 90 },
   ];
   const label = maxDrawdownLabel(curve);
   assert.equal(label.state, 'KNOWN');
   assert.equal(label.value, -60); // peak 120 on day 2, trough 60 on day 3
+});
+
+test('maxDrawdownLabel rejects unordered observations instead of silently changing their chronology', () => {
+  const curve = [
+    { at: '2026-09-02T00:00:00.000Z', equity: 120 },
+    { at: '2026-09-01T00:00:00.000Z', equity: 100 },
+  ];
+  assert.equal(maxDrawdownLabel(curve).state, 'UNKNOWN');
 });
 
 test('maxDrawdownLabel is UNKNOWN when any equity point is unknown, never silently skipped', () => {
@@ -118,6 +126,12 @@ test('resolvedPositiveLabel is strictly secondary (a boolean derived from resolv
 test('fillRateLabel is UNKNOWN when requested quantity is zero, never a fabricated ratio', () => {
   assert.equal(fillRateLabel({ requestedQuantity: 0, filledQuantity: 0 }).state, 'UNKNOWN');
   assert.equal(fillRateLabel({ requestedQuantity: 4, filledQuantity: 2 }).value, 0.5);
+});
+
+test('fillRateLabel rejects impossible negative and overfilled quantities', () => {
+  assert.equal(fillRateLabel({ requestedQuantity: 4, filledQuantity: -1 }).state, 'UNKNOWN');
+  assert.equal(fillRateLabel({ requestedQuantity: 4, filledQuantity: 5 }).state, 'UNKNOWN');
+  assert.equal(fillRateLabel({ requestedQuantity: -4, filledQuantity: 0 }).state, 'UNKNOWN');
 });
 
 test('timeToFillLabel rejects a fill timestamp before submission as UNKNOWN', () => {
