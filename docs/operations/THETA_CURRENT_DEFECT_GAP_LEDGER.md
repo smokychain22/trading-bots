@@ -29,13 +29,14 @@ This ledger separates deterministic production defects from strategy-quality hyp
 | THETA-R | PAPER_RUNTIME | Historical HTTP 503 | NO current recurrence | P5_SUPERSEDED | The transient incident already received safe operation/timing attribution and has not recurred as a persistent defect. | NO_ACTION | Reopen only on a new captured occurrence. | NO | CLOSED_NO_ACTION |
 | THETA-S | CODEX_RUNTIME | Windows resident worker | YES operationally | P2_PRODUCTION_OBSERVABILITY_DEFECT | Scheduled start, restart, mutex, SHA pinning and reconciliation-first recovery exist. Sleep, shutdown, internet loss and Windows maintenance can still stop a local host. | OBSERVABILITY_ONLY | Worker status exposes task state, last cycle, SHA, evidence hashes and runtime mode. Always-on hosting remains a later operations decision and cannot alter economics. | NO | DEFERRED |
 | THETA-T | OPERATOR_UI | Browser automation rule | NO trading authority | P6_NOT_A_BUG | Playwright is the browser verification tool. Reticle is prohibited. | NO_ACTION | Backend truth remains API/SQL/broker sourced. Browser automation cannot bypass authentication or become trading authority. | NO | CLOSED_NO_ACTION |
+| THETA-Q2 | CODEX_RUNTIME | Production database invariant validation | YES operationally | P2_PRODUCTION_OBSERVABILITY_DEFECT | Post-deploy validation rejected the authorized active-canary state because invariant 008 still required `pause_new_orders=true` unconditionally. This contradicted the later immutable authorization model. | IMMEDIATE_PRODUCTION_FIX | The invariant now accepts either fail-closed management-only state or an active master state backed by a valid immutable PAPER authorization event. Migrations 059-061 reassert restart recovery, PAPER-only execution-account storage, and restored control-state normalization. Production validation passes with zero invalid indexes and zero unvalidated constraints. | YES | FIXED |
 
 ## Current closure counts
 
-- `TOTAL_ISSUES_REVIEWED = 20`
+- `TOTAL_ISSUES_REVIEWED = 21`
 - `P0_FIXED = 0`
 - `P1_FIXED = 1`
-- `P2_FIXED = 0`
+- `P2_FIXED = 1`
 - `P3_SHADOW_TESTING = 10`
 - `P4_RESEARCH_ONLY = 3`
 - `P5_SUPERSEDED = 2`
