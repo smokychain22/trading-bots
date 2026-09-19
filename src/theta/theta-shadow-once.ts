@@ -64,8 +64,12 @@ export function defaultShadowCycleConfig(
 ): ThetaShadowCycleConfig {
   const now = new Date().toISOString();
   const historyStart = new Date(Date.now() - 120 * 86_400_000).toISOString();
-  const optionExpirationGte = new Date(Date.now() + 25 * 86_400_000).toISOString().slice(0, 10);
-  const optionExpirationLte = new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10);
+  // The canonical THETA_CONVENTIONAL gate remains 25-60 DTE. Fetch a
+  // narrow five-day observation band on either side so research can measure
+  // DTE-edge missed opportunities without granting those contracts broker
+  // authority or silently widening the strategy.
+  const optionExpirationGte = new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10);
+  const optionExpirationLte = new Date(Date.now() + 65 * 86_400_000).toISOString().slice(0, 10);
 
   return {
     alpaca, optionomics, bridge, universeCandidates,

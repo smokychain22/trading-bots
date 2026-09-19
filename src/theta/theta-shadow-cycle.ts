@@ -5,6 +5,7 @@ import {
   fetchPositions, fetchStockBars, type AlpacaCalendarSession, type AlpacaMarketClock, type AlpacaOpenOrderSnapshot, type AlpacaPositionSnapshot,
   type AlpacaProviderConfig, type MasterAccountSnapshot,
 } from './alpaca-provider.js';
+import type { HistoricalBar } from './underlying-history.js';
 import { mergeOptionChain, type AlpacaOptionContractListing, type AlpacaOptionSnapshot, type OptionomicsChainEntry } from './option-chain-ingestion.js';
 import { computeCurrentDrawdown, computeGapFrequency, computeMaxAdverseGap, computeRealizedVolatility, computeReturn, computeTrendSlope } from './underlying-features.js';
 import { evaluateUniverse, rankEligibleUnderlyings, type RankedUnderlying, type UnderlyingCandidateInput, type UniverseFunnelReport, type UniversePolicy } from './universe-policy.js';
@@ -23,6 +24,11 @@ import { buildOptionomicsFeatureSnapshot } from './optionomics-feature-engine.js
 import { deriveAccountExposure, mergeDerivedExposureIntoAegisInputs, type DerivedAccountExposure } from './account-exposure.js';
 import { deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProviderState, deriveStressGapDetected } from './aegis-derivation.js';
 import { buildCanonicalStrategyFrontier, type CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
+import { canonicalThetaStrategySources } from './strategy-package.js';
+import {
+  buildStrategyQualityShadowDiagnostic,
+  type StrategyQualityShadowDiagnostic,
+} from '../research/strategy-quality-shadow-diagnostics.js';
 
 // R1: runThetaShadowCycle -- the reusable, server-side, non-executing shadow
 // decision cycle. This is the "success condition" deliverable: a single
@@ -117,6 +123,7 @@ export interface ThetaShadowCycleResult {
   readonly snapshotValidForNewRisk: boolean | null;
   readonly orchestration: NewRiskOrchestrationResult | null;
   readonly strategyFrontier: CanonicalStrategyFrontier | null;
+  readonly strategyQualityDiagnostics: StrategyQualityShadowDiagnostic | null;
   readonly provenance: ShadowCycleProvenance;
   readonly provenanceDetail: readonly string[];
   readonly blockers: readonly string[];
@@ -495,7 +502,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: null, underlyingRanking: ranked,
       optionChainComplete: null, optionContractsComplete: null, snapshotContentHash: null, fusionSnapshot: null, snapshotValidForNewRisk: null,
-      orchestration: null, strategyFrontier: null,
+      orchestration: null, strategyFrontier: null, strategyQualityDiagnostics: null,
       provenance: noUnderlyingProvenance, provenanceDetail: ['no eligible underlying survived UniversePolicy this cycle', ...noUnderlyingDetail],
       blockers: ['NO_ELIGIBLE_UNDERLYING'],
     };
@@ -592,6 +599,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   }
 
   let historyOrigin: ProvenanceOrigin = 'NOT_ATTEMPTED';
+  let historyBars: readonly HistoricalBar[] = [];
   let receivedAt = decisionTime;
   let ret1d: number | null = null;
   let rv20: number | null = null;
@@ -606,6 +614,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       receivedAt,
     );
     const bars = barsResult.bars.filter((b) => b.symbol === underlying);
+    historyBars = bars;
     if (barsResult.complete && bars.length > 0) {
       historyOrigin = 'REAL_PROVIDER';
       ret1d = computeReturn(bars, receivedAt, 1);
@@ -904,6 +913,26 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     // into every strategy candidate record.
     optionomicsContext: optionomicsDerivedContext,
   });
+  const conventionalSource = canonicalThetaStrategySources.find((source) => source.branch === 'THETA_CONVENTIONAL');
+  if (conventionalSource === undefined) throw new Error('THETA_CONVENTIONAL_SOURCE_MISSING');
+  const strategyDecisionFor = (
+    routing: NewRiskOrchestrationResult['routing'],
+    aegis: NewRiskOrchestrationResult['aegis'],
+  ): Pick<ThetaShadowCycleResult, 'strategyFrontier' | 'strategyQualityDiagnostics'> => {
+    const strategyFrontier = strategyFrontierFor(routing, aegis);
+    return {
+      strategyFrontier,
+      strategyQualityDiagnostics: buildStrategyQualityShadowDiagnostic({
+        contracts: mergedContractsForSnapshot,
+        frontier: strategyFrontier,
+        optionomicsContext: optionomicsDerivedContext,
+        historicalBars: historyBars,
+        asOf: decisionTime,
+        conventionalDteMin: conventionalSource.lattice.dteMin,
+        conventionalDteMax: conventionalSource.lattice.dteMax,
+      }),
+    };
+  };
 
   if (candidates.length === 0) {
     const receipt = assembleNoCandidateDecision({
@@ -920,7 +949,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
       snapshotValidForNewRisk: fusionSnapshot.validForNewRisk,
       orchestration: { receipt, ownership: null, regime: null, routing: null, thetaQ: null, candidateEconomics: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [] },
-      strategyFrontier: strategyFrontierFor(null, null),
+      ...strategyDecisionFor(null, null),
       provenance, provenanceDetail: detail,
       blockers: [...blockers, 'NO_CANDIDATES_AVAILABLE'],
     };
@@ -937,7 +966,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
       optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
-      snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration, strategyFrontier: strategyFrontierFor(null, null),
+      snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration, ...strategyDecisionFor(null, null),
       provenance, provenanceDetail: detail, blockers,
     };
   };
@@ -990,7 +1019,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
       snapshotValidForNewRisk: fusionSnapshot.validForNewRisk,
       orchestration: { receipt, ownership: null, regime: null, routing: null, thetaQ: null, candidateEconomics: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: [] },
-      strategyFrontier: strategyFrontierFor(null, null),
+      ...strategyDecisionFor(null, null),
       provenance, provenanceDetail: detail, blockers,
     };
   }
@@ -1062,7 +1091,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
     optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
     snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration,
-    strategyFrontier: strategyFrontierFor(orchestration.routing, orchestration.aegis),
+    ...strategyDecisionFor(orchestration.routing, orchestration.aegis),
     provenance, provenanceDetail: detail, blockers,
   };
 }

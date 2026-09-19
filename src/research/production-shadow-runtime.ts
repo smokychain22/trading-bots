@@ -14,6 +14,7 @@ import { PostgresShadowVirtualTrader, type ShadowIntentCreationReport } from './
 import { assembleMasterPaperEvidencePlan } from '../execution/master-paper-plan-assembly.js';
 import { PostgresMasterPaperActionPlanStore } from '../execution/postgres-master-paper-action-plan-store.js';
 import { deriveAntiParalysisFindings, PostgresRuntimeBehaviorDiagnosticStore, type RuntimeBehaviorDiagnostic } from '../theta/runtime-behavior-diagnostic.js';
+import { buildUniverseBreadthShadowPlan } from './strategy-quality-shadow-diagnostics.js';
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
@@ -127,10 +128,20 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   executionAccountId?:string|null;now:()=>string}):Promise<ProductionShadowScanReport>{
   if(input.environment.THETA_RUNTIME_MODE!=='MASTER_THETA_PAPER') throw new Error('MASTER_THETA_PAPER_RUNTIME_REQUIRED');
   const discovery=await discoverRealUniverse(input.alpaca,{discoveryVersion:'theta-shadow-universe-v1',maxCandidateAssets:100,
-    allowedExchanges:['NYSE','NASDAQ','ARCA','BATS'],barsLookbackDays:30,barsBatchSize:100,maxOptionabilityChecks:2,minCurrentPrice:5},input.now);
+    allowedExchanges:['NYSE','NASDAQ','ARCA','BATS'],barsLookbackDays:30,barsBatchSize:100,maxOptionabilityChecks:10,minCurrentPrice:5},input.now);
+  // Discovery already preserves the existing average-dollar-volume rank.
+  // Never alphabetize here because the first two entries are the unchanged
+  // champion set and retain broker authority.
+  const rankedSymbols=discovery.candidates.map((candidate)=>candidate.symbol);
+  const scanOrdinal=Math.max(0,Math.floor(Date.parse(input.now())/60_000));
+  const universeBreadthChallenger=buildUniverseBreadthShadowPlan(rankedSymbols,scanOrdinal);
+  const scanSymbols=new Set([...universeBreadthChallenger.championSymbols,
+    ...universeBreadthChallenger.challengerSymbols.map((candidate)=>candidate.symbol)]);
+  const scanUnderlyings=discovery.candidates.filter((candidate)=>scanSymbols.has(candidate.symbol));
+  const brokerAuthoritySymbols=new Set(universeBreadthChallenger.championSymbols);
   const optionomics=optionomicsConfigFromEnvironment(input.environment);
   const scan=await runCrossSymbolShadowScan({universeVersion:'theta-shadow-universe-v1',latticeVersion:'lattice-v1-shadow-once',
-    strategyVersion:'theta-shadow-once-v1',eligibleUnderlyings:discovery.candidates,maxUnderlyings:2,
+    strategyVersion:'theta-shadow-once-v1',eligibleUnderlyings:scanUnderlyings,maxUnderlyings:Math.max(1,scanUnderlyings.length),
     branches:['THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_RECOVERY','THETA_CC','THETA_DEFINED_RISK']},async(underlying)=>{
       const config=defaultShadowCycleConfig(input.alpaca,optionomics,bridge(input.environment),[underlying],discovery.candidatesOrigin);
       return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',aegisInputs:{
@@ -153,6 +164,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     const saved=await cycleStore.persist(runtimeContext,member.cycle);
     persisted.set(member.symbol,{fusionSnapshotId:saved.fusionSnapshotId,candidateSetId:saved.candidateSetId,decisionId:saved.decisionId});
     if(input.environment.MASTER_PAPER_EXECUTION_ENABLED&&!input.environment.PAPER_PAUSE_NEW_ORDERS
+      &&brokerAuthoritySymbols.has(member.symbol)
       &&member.cycle.strategyFrontier!==null&&saved.decisionId!==null){
       const selected=await input.pool.query(`SELECT d.selected_candidate_id::text AS candidate_id,
         c.option_contract_id::text,oc.underlying_id::text,cv.assumptions_json
@@ -197,6 +209,8 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         if(await new PostgresMasterPaperActionPlanStore(input.pool).enqueue(assembled.plan,planNow,
           {botInstanceId:runtimeContext.botInstanceId,underlyingId:assembled.plan.underlyingId}))actionPlansReady++;
       }else if(assembled.state==='BLOCKED')actionPlansBlocked.push(...assembled.blockers.map((blocker)=>`${member.symbol}:${blocker}`));
+    }else if(!brokerAuthoritySymbols.has(member.symbol)&&member.cycle.strategyFrontier?.selectedCandidateId!==null){
+      actionPlansBlocked.push(`${member.symbol}:UNIVERSE_BREADTH_CHALLENGER_NO_BROKER_AUTHORITY`);
     }
     if(saved.candidateSetId===null) continue;
     const candidates=await input.pool.query(`SELECT c.candidate_id,oc.contract_symbol FROM trade.candidate c
@@ -284,6 +298,9 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     hardGateCounts,finalAction:actionPlansReady>0?'ACTION_READY':scan.globalWaitEarned?'WAIT':'SYSTEM_HOLD',
     waitReasons:actionPlansReady>0?[]:[...new Set([...scan.globalWaitReasons,...actionPlansBlocked])].toSorted(),
     bestRejectedCandidates,antiParalysisFindings,
+    universeBreadthChallenger,
+    strategyQualityChallengers:scan.results.flatMap((member)=>member.cycle?.strategyQualityDiagnostics
+      ?[member.cycle.strategyQualityDiagnostics]:[]),
     providerBlockers:[...new Set([...scan.missingScope,...scan.results.flatMap((member)=>member.errorCode?[member.errorCode]:[])])].toSorted(),
     actionPlansReady,actionPlanBlockers:[...new Set(actionPlansBlocked)].toSorted(),
   });

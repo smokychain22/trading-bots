@@ -73,6 +73,19 @@ test('Paper evidence tier reaches coordinator while empirical EV stays explicitl
   assert.equal(result.execution?.brokerOrder?.status,'accepted');
 });
 
+test('bootstrap management can open a fully covered call in bounded Paper evidence without claiming empirical EV',async()=>{
+  const callQuote={...quote,contractId:'AAPL261016C00200000',providerContractId:'AAPL261016C00200000'};
+  const {broker,handoff}=setup(callQuote);
+  const result=await handoff.execute(plan({decisionAuthority:'MANAGEMENT',
+    managementInputSnapshotId:'88888888-8888-4888-8888-888888888888',
+    managementActionFrontierId:'99999999-9999-4999-8999-999999999999',
+    strategyVersion:'theta-recovery-v1',action:'OPEN_CC',optionType:'CALL',symbol:'AAPL261016C00200000',
+    confirmedCoveredShares:100,executionTier:'PAPER_EVIDENCE',expectedAfterCostEv:null,empiricalEconomicsReady:false}),now,true);
+  assert.equal(result.state,'EXECUTED');
+  assert.equal(result.execution?.submittedNow,true);
+  assert.equal(broker.submitCalls,1);
+});
+
 test('Paper evidence cap can only reduce canonical quantity and quantity zero never submits',async()=>{
   assert.deepEqual(applyPaperEvidenceRiskCap(3,1),{canonicalQuantity:3,paperEvidenceQuantity:1,paperEvidenceRiskCap:1,
     paperEvidenceCapReason:'PAPER_EVIDENCE_RISK_CAP'});

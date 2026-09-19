@@ -247,8 +247,15 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
     if (opensRisk.has(leg.action) && !['ALLOW_FULL', 'ALLOW_REDUCED'].includes(input.aegisState ?? '')) {
       blockers.push(`AEGIS_NOT_APPROVED_FOR_NEW_RISK:${leg.action}`);
     }
-    if (opensRisk.has(leg.action) && (!leg.empiricalEconomicsReady || leg.expectedAfterCostEv === null || leg.expectedAfterCostEv <= 0)) {
-      blockers.push(`EMPIRICAL_ACTION_EV_UNKNOWN:${leg.action}`);
+    // Bootstrap management must be able to manage the first bounded Paper
+    // episode. A structurally positive, policy-selected roll-open or covered
+    // call remains PAPER_EVIDENCE when empirical EV is unknown. The promoted
+    // tier is reserved for evidence that genuinely carries a positive,
+    // empirical after-cost EV. Both tiers still pass AEGIS, quote, coverage,
+    // quantity, idempotency, and broker reconciliation gates downstream.
+    if (opensRisk.has(leg.action) && leg.empiricalEconomicsReady
+      && (leg.expectedAfterCostEv === null || leg.expectedAfterCostEv <= 0)) {
+      blockers.push(`EMPIRICAL_ACTION_EV_INVALID:${leg.action}`);
     }
   }
   if (required.length === 2) {
@@ -293,7 +300,8 @@ export function assembleManagementPaperPlans(input: ManagementPaperPlanAssemblyI
       symbol: leg.symbol,
       quantity: sizing.paperEvidenceQuantity,
       ...sizing,
-      executionTier: opensRisk.has(leg.action) ? 'EMPIRICALLY_PROMOTED_PAPER' : 'PAPER_EVIDENCE',
+      executionTier: opensRisk.has(leg.action) && leg.empiricalEconomicsReady
+        ? 'EMPIRICALLY_PROMOTED_PAPER' : 'PAPER_EVIDENCE',
       multiplier: leg.multiplier,
       ...(leg.confirmedCoveredShares === undefined ? {} : { confirmedCoveredShares: leg.confirmedCoveredShares }),
       action: leg.action,
