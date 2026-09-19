@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {canonicalFullChainScenario,p2gScenarioFamilies,simulateLifecycle} from '../src/theta/p2g-lifecycle-simulator.js';
+import {canonicalClosedMarketLifecycleScenarios,canonicalFullChainScenario,p2gScenarioFamilies,simulateLifecycle} from '../src/theta/p2g-lifecycle-simulator.js';
 
 test('full synthetic wheel chain preserves the old roll loss and closes with honest economics',()=>{
   const first=simulateLifecycle(canonicalFullChainScenario()),second=simulateLifecycle(canonicalFullChainScenario());
@@ -30,4 +30,15 @@ test('synthetic lifecycle rejects time travel and invalid numeric evidence',()=>
   const first=base.events.at(0),second=base.events.at(1);assert.ok(first);assert.ok(second);
   assert.throws(()=>simulateLifecycle({...base,events:[second,first]}),/SIMULATION_TIME_ORDER_INVALID/);
   assert.throws(()=>simulateLifecycle({...base,events:[{...first,collateral:Number.NaN}]}),/SIMULATION_NUMERIC_INPUT_INVALID/);
+});
+
+test('closed-market lifecycle library covers close, expiry, assignment, stock sale, CC close, CC roll, and call-away',()=>{
+  const receipts=canonicalClosedMarketLifecycleScenarios().map(simulateLifecycle);
+  assert.equal(new Set(receipts.map((receipt)=>receipt.contentHash)).size,receipts.length);
+  const actions=new Set(receipts.flatMap((receipt)=>receipt.events.map((event)=>event.action)));
+  for(const action of ['CLOSE_CSP','EXPIRE_CSP','ASSIGN','RECOVERY_WAIT','SELL_STOCK','OPEN_CC','CLOSE_CC','EXPIRE_CC','ROLL_CLOSE_CC','ROLL_OPEN_CC','CALL_AWAY']) {
+    assert.ok(actions.has(action as never),`missing ${action}`);
+  }
+  assert.ok(receipts.every((receipt)=>receipt.executionAuthorized===false&&receipt.realPaperEvidence===false&&receipt.policyLearningEligible===false));
+  assert.equal(receipts.find((receipt)=>receipt.scenarioId==='ASSIGN_THEN_SELL_STOCK')?.wholeChainNetPnl,-3);
 });

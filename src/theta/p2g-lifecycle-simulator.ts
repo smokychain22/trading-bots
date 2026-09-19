@@ -81,3 +81,46 @@ export function canonicalFullChainScenario():SyntheticLifecycleScenario {
     e('2026-02-20T20:00:00Z','CALL_AWAY',9400,400,9000,'CLOSED',{additionalOptionRealizedPnl:180,fees:1}),
   ]};
 }
+
+/**
+ * Closed-market deterministic lifecycle fixtures. They exercise economic
+ * paths only and can never authorize execution or impersonate broker facts.
+ * Low-level partial-fill, timeout, cancel/replace, and restart races remain in
+ * the broker coordinator replay suite where those semantics actually live.
+ */
+export function canonicalClosedMarketLifecycleScenarios():readonly SyntheticLifecycleScenario[] {
+  const e=(at:string,action:SyntheticLifecycleAction,cashFlow:number,realizedPnl:number|null,collateral:number,stateAfter:string,
+    evidence:Readonly<Record<string,unknown>>={}):Omit<SyntheticLifecycleEvent,'eventId'>=>({at,action,cashFlow,realizedPnl,collateral,stateAfter,evidence});
+  return [
+    {scenarioId:'CSP_CLOSE_WINNER',openedAt:'2026-01-02T15:00:00Z',closedAt:'2026-01-10T15:00:00Z',events:[
+      e('2026-01-02T15:00:00Z','OPEN_CSP',300,null,10000,'CSP_OPEN',{fees:1}),
+      e('2026-01-10T15:00:00Z','CLOSE_CSP',-100,200,10000,'CLOSED',{fees:1}),
+    ]},
+    {scenarioId:'CSP_EXPIRE_WORTHLESS',openedAt:'2026-01-02T15:00:00Z',closedAt:'2026-01-24T21:00:00Z',events:[
+      e('2026-01-02T15:00:00Z','OPEN_CSP',250,null,9000,'CSP_OPEN',{fees:1}),
+      e('2026-01-24T21:00:00Z','EXPIRE_CSP',0,250,9000,'CLOSED',{brokerEvidence:'OPEXP',fees:0}),
+    ]},
+    {scenarioId:'ASSIGN_THEN_SELL_STOCK',openedAt:'2026-01-02T15:00:00Z',closedAt:'2026-02-03T15:00:00Z',events:[
+      e('2026-01-02T15:00:00Z','OPEN_CSP',300,null,10000,'CSP_OPEN',{fees:1}),
+      e('2026-01-24T21:00:00Z','ASSIGN',-10000,300,10000,'ASSIGNED',{shares:100,fees:1}),
+      e('2026-01-27T15:00:00Z','RECOVERY_WAIT',0,null,9700,'RECOVERY_WAIT',{stockMark:97}),
+      e('2026-02-03T15:00:00Z','SELL_STOCK',9700,-300,9700,'CLOSED',{fees:1}),
+    ]},
+    {scenarioId:'ASSIGN_CC_EXPIRES_STOCK_REMAINS',openedAt:'2026-01-02T15:00:00Z',closedAt:'2026-02-20T21:00:00Z',events:[
+      e('2026-01-02T15:00:00Z','OPEN_CSP',300,null,10000,'CSP_OPEN',{fees:1}),
+      e('2026-01-24T21:00:00Z','ASSIGN',-10000,300,10000,'ASSIGNED',{shares:100,fees:1}),
+      e('2026-01-27T15:00:00Z','OPEN_CC',150,null,9800,'CC_OPEN',{coveredShares:100,fees:1}),
+      e('2026-02-20T21:00:00Z','EXPIRE_CC',0,150,9800,'RECOVERY_WAIT',{brokerEvidence:'OPEXP',fees:0}),
+    ]},
+    {scenarioId:'ASSIGN_CC_CLOSE_AND_ROLL_CALL_AWAY',openedAt:'2026-01-02T15:00:00Z',closedAt:'2026-03-20T21:00:00Z',events:[
+      e('2026-01-02T15:00:00Z','OPEN_CSP',300,null,10000,'CSP_OPEN',{fees:1}),
+      e('2026-01-24T21:00:00Z','ASSIGN',-10000,300,10000,'ASSIGNED',{shares:100,fees:1}),
+      e('2026-01-27T15:00:00Z','OPEN_CC',150,null,9800,'CC_OPEN',{coveredShares:100,fees:1}),
+      e('2026-02-12T15:00:00Z','CLOSE_CC',-210,-60,9800,'RECOVERY_WAIT',{fees:1}),
+      e('2026-02-13T15:00:00Z','OPEN_CC',170,null,9800,'CC_OPEN',{coveredShares:100,fees:1}),
+      e('2026-02-27T15:00:00Z','ROLL_CLOSE_CC',-240,-70,9800,'CC_ROLL',{oldLossImmutable:true,fees:1}),
+      e('2026-02-27T15:01:00Z','ROLL_OPEN_CC',260,null,9800,'CC_OPEN',{coveredShares:100,fees:1}),
+      e('2026-03-20T21:00:00Z','CALL_AWAY',10300,300,9800,'CLOSED',{additionalOptionRealizedPnl:260,fees:1}),
+    ]},
+  ];
+}
