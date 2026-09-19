@@ -27,7 +27,7 @@ AEGIS does not consume the ownership score directly. Unknown ownership makes the
 
 ## Ownership input inventory
 
-The JSON boundary contains 26 inputs. Only 13 numeric inputs participate in the five current component scores. The other numeric inputs are accepted and preserved by the boundary but are not used by `ownership_v0.evaluate()`.
+The JSON boundary contains 27 input members: 26 nullable evidence fields plus the separate `thesisInvalidated` boolean. Only 13 numeric evidence fields participate in the five current component scores. The other numeric inputs are accepted and preserved by the boundary but are not used by `ownership_v0.evaluate()`.
 
 | Field | Current runtime value | Used by v0? | Classification | Expected producer | Safety role |
 |---|---:|---:|---|---|---|
