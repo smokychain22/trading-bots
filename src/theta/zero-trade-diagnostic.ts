@@ -64,6 +64,14 @@ interface CandidateRow {
   readonly sizing_reasons_json: readonly unknown[];
 }
 
+interface RuntimeCycleRow {
+  readonly correlation_id: string;
+  readonly invoked_at: string | Date;
+  readonly completed_at: string | Date | null;
+  readonly status: string;
+  readonly result_json: JsonRecord;
+}
+
 export type ZeroTradeClassification =
   | 'HEALTHY_SELECTIVITY'
   | 'INSUFFICIENT_EVIDENCE'
@@ -129,7 +137,7 @@ export async function readZeroTradeDiagnostic(
   const client = await pool.connect();
   try {
     await client.query('BEGIN TRANSACTION READ ONLY');
-    const [diagnostics, branches, candidates, execution] = await Promise.all([
+    const [diagnostics, branches, candidates, execution, runtimeCycles] = await Promise.all([
       client.query<DiagnosticRow>(
         `SELECT d.scan_id,d.observed_at,d.wait_classification,d.global_wait_earned,
                 d.candidate_count,d.feasible_candidate_count,d.selected_candidate_count,
@@ -173,6 +181,17 @@ export async function readZeroTradeDiagnostic(
           (SELECT count(*)::int FROM trade.broker_order WHERE created_at >= $1 AND created_at < $2) broker_orders,
           (SELECT count(*)::int FROM trade.fill WHERE created_at >= $1 AND created_at < $2) fills`,
         [window.startUtc, window.endUtc],
+      ),
+      client.query<RuntimeCycleRow>(
+        `SELECT correlation_id,invoked_at,completed_at,status,result_json
+           FROM ops.runtime_worker_cycle
+          WHERE invoked_at >= $1::timestamptz AND invoked_at < $2::timestamptz
+            AND result_json #>> '{reconciliation,marketOpen}' = 'true'
+            AND EXISTS (
+              SELECT 1 FROM jsonb_array_elements(COALESCE(result_json->'jobResults','[]'::jsonb)) job
+               WHERE job->>'jobType'='OPPORTUNITY_SCAN'
+            )
+          ORDER BY invoked_at,correlation_id`, [window.startUtc, window.endUtc],
       ),
     ]);
     await client.query('COMMIT');
@@ -263,6 +282,27 @@ export async function readZeroTradeDiagnostic(
       candidateCount:totals.candidates,feasibleCandidateCount:totals.feasible,providerBlockedCycles,
       dataWaitCycles,quoteWaitCycles,quantityZeroCount:totals.quantityZero,aegisVetoCount:totals.aegisVeto,
       paralysisCycles,healthyWaitCycles });
+    const opportunityCycles = runtimeCycles.rows.map((cycle) => {
+      const result = record(cycle.result_json);
+      const jobs = Array.isArray(result.jobResults) ? result.jobResults.map(record) : [];
+      const opportunity = jobs.find((job) => job.jobType === 'OPPORTUNITY_SCAN');
+      const invokedAt = new Date(cycle.invoked_at).toISOString();
+      const completedAt = cycle.completed_at === null ? null : new Date(cycle.completed_at).toISOString();
+      const relatedScans = cycleRows.filter((scan) => {
+        const observed = Date.parse(scan.observedAt);
+        return observed >= Date.parse(invokedAt) && (completedAt === null || observed <= Date.parse(completedAt));
+      });
+      return {
+        correlationId: cycle.correlation_id,
+        invokedAt,
+        completedAt,
+        status: cycle.status,
+        opportunityStatus: typeof opportunity?.status === 'string' ? opportunity.status : 'UNKNOWN',
+        opportunityOutcome: typeof opportunity?.outcome === 'string' ? opportunity.outcome : 'UNKNOWN',
+        opportunityErrorCode: typeof opportunity?.errorCode === 'string' ? opportunity.errorCode : null,
+        scanIds: relatedScans.map((scan) => scan.scanId),
+      };
+    });
 
     return {
       contractVersion: zeroTradeDiagnosticVersion,
@@ -272,6 +312,8 @@ export async function readZeroTradeDiagnostic(
       classification,
       cycleCount: cycleRows.length,
       cycles: cycleRows,
+      openOpportunityCycleCount: opportunityCycles.length,
+      openOpportunityCycles: opportunityCycles,
       totals,
       branchSummary,
       rejectionDistribution: {
