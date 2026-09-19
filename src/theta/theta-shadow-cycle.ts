@@ -7,7 +7,8 @@ import {
 } from './alpaca-provider.js';
 import type { HistoricalBar } from './underlying-history.js';
 import { mergeOptionChain, type AlpacaOptionContractListing, type AlpacaOptionSnapshot, type OptionomicsChainEntry } from './option-chain-ingestion.js';
-import { computeCurrentDrawdown, computeGapFrequency, computeMaxAdverseGap, computeRealizedVolatility, computeReturn, computeTrendSlope } from './underlying-features.js';
+import { computeAverageVolume, computeCurrentDrawdown, computeDownsideSemivariance, computeGapFrequency, computeMaxAdverseGap,
+  computeMovingAverageRelative, computeRealizedVolatility, computeReturn, computeTrendSlope } from './underlying-features.js';
 import { evaluateUniverse, rankEligibleUnderlyings, type RankedUnderlying, type UnderlyingCandidateInput, type UniverseFunnelReport, type UniversePolicy } from './universe-policy.js';
 import { runNewRiskOrchestration, type NewRiskOrchestrationRequest, type NewRiskOrchestrationResult, type RawCandidateInput } from './new-risk-orchestrator.js';
 import { assembleNoCandidateDecision, assembleRuntimePreconditionHold } from './decision-assembly.js';
@@ -29,6 +30,8 @@ import {
   buildStrategyQualityShadowDiagnostic,
   type StrategyQualityShadowDiagnostic,
 } from '../research/strategy-quality-shadow-diagnostics.js';
+import type { PaperEntryBootstrapAssessment } from './paper-entry-bootstrap.js';
+import type { RecoveryHistoryEvidence } from './recovery-history-loader.js';
 
 // R1: runThetaShadowCycle -- the reusable, server-side, non-executing shadow
 // decision cycle. This is the "success condition" deliverable: a single
@@ -105,6 +108,8 @@ export interface ThetaShadowCycleConfig {
   readonly modelVersions: Readonly<Record<string, string>>;
   readonly requiredModelVersions: Readonly<Record<string, string>>;
   readonly now: () => string;
+  readonly paperEntryBootstrap?: PaperEntryBootstrapAssessment;
+  readonly recoveryHistory?: RecoveryHistoryEvidence;
 }
 
 export type ShadowCycleProvenance = 'FULL_REAL' | 'HYBRID' | 'SYNTHETIC';
@@ -602,7 +607,17 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let historyBars: readonly HistoricalBar[] = [];
   let receivedAt = decisionTime;
   let ret1d: number | null = null;
+  let ret5d: number | null = null;
+  let ret20d: number | null = null;
+  let ret60d: number | null = null;
+  let stockAvgVolume: number | null = null;
+  let ma20Rel: number | null = null;
+  let ma50Rel: number | null = null;
+  let ma200Rel: number | null = null;
+  let rv10: number | null = null;
   let rv20: number | null = null;
+  let rv60: number | null = null;
+  let downsideSemivariance: number | null = null;
   let drawdown: number | null = null;
   let maSlope: number | null = null;
   let gapFrequency: number | null = null;
@@ -618,7 +633,17 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     if (barsResult.complete && bars.length > 0) {
       historyOrigin = 'REAL_PROVIDER';
       ret1d = computeReturn(bars, receivedAt, 1);
+      ret5d = computeReturn(bars, receivedAt, 5);
+      ret20d = computeReturn(bars, receivedAt, 20);
+      ret60d = computeReturn(bars, receivedAt, 60);
+      stockAvgVolume = computeAverageVolume(bars, receivedAt, 20);
+      ma20Rel = computeMovingAverageRelative(bars, receivedAt, 20);
+      ma50Rel = computeMovingAverageRelative(bars, receivedAt, 50);
+      ma200Rel = computeMovingAverageRelative(bars, receivedAt, 200);
+      rv10 = computeRealizedVolatility(bars, receivedAt, 10);
       rv20 = computeRealizedVolatility(bars, receivedAt, 20);
+      rv60 = computeRealizedVolatility(bars, receivedAt, 60);
+      downsideSemivariance = computeDownsideSemivariance(bars, receivedAt, 60);
       drawdown = computeCurrentDrawdown(bars, receivedAt, 60);
       maSlope = computeTrendSlope(bars, receivedAt, 20);
       gapFrequency = computeGapFrequency(bars, receivedAt, 60, 0.02);
@@ -814,9 +839,14 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
         blockers.push(`CANDIDATE_BID_UNKNOWN:${contract.optionSymbol}`);
         continue;
       }
+      const availableOptionBuyingPower = account?.optionsBuyingPower ?? account?.buyingPower ?? null;
+      const collateralPerContract = contract.strike * contract.multiplier;
+      const brokerAllowedQty = availableOptionBuyingPower !== null && availableOptionBuyingPower >= 0
+        && collateralPerContract > 0 ? Math.floor(availableOptionBuyingPower / collateralPerContract) : 0;
       candidates.push({
         candidateId: contract.optionSymbol, contract, entryPremiumPerShare: contract.bid,
-        severeDrawdownProbability: null, ivRank: null, brokerAllowedQty: 5, contractIsStandard: true,
+        severeDrawdownProbability: null, ivRank: null, brokerAllowedQty,
+        contractIsStandard: contract.multiplier === 100 && contract.occSymbol !== null,
         hasAlternateContract: mergedContracts.length > 1, hasAlternateExpiry: false, hasAlternateStructure: false,
         ivCompensationSufficient: null, quoteSize: contract.bidSize, preSlippageExpectedUtility: null,
       });
@@ -874,7 +904,9 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     calendar, calendarOrigin: calendarEvidence.origin, calendarQuality: calendarEvidence.quality,
     derivedExposure,
     mergedContracts: [...mergedContractsForSnapshot],
-    ownershipFeatures: { ret1d, rv20, drawdown, maSlope, gapFrequency, maxAdverseGap } as unknown as JsonValue,
+    ownershipFeatures: { stockAvgVolume,ret1d,ret5d,ret20d,ret60d,ma20Rel,ma50Rel,ma200Rel,
+      rv10,rv20,rv60,downsideSemivariance,drawdown,maSlope,gapFrequency,maxAdverseGap,
+      recoveryHistory:config.recoveryHistory??null } as unknown as JsonValue,
     regimeFeatures: { maSlope, rv20, maxAdverseGap, drawdown } as unknown as JsonValue,
     policyVersion: config.policyVersion, modelVersions: config.modelVersions,
   });
@@ -1063,10 +1095,12 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     policyVersion: config.policyVersion, modelVersions: config.modelVersions, requiredModelVersions: config.requiredModelVersions,
     ownershipPolicy: config.ownershipPolicy,
     ownershipInputs: {
-      stockAvgVolume: null, optionOpenInterest: null, optionVolume: null, spreadPct: null,
-      ret1d, ret5d: null, ret20d: null, ret60d: null, ma20Rel: null, ma50Rel: null, ma200Rel: null,
-      maSlope, relativeStrength: null, rv10: null, rv20, rv60: null, drawdown, maxAdverseGap,
-      gapFrequency, downsideSemivariance: null, historicalRecoveryMedianDays: null, historicalRecoveryP95Days: null,
+      stockAvgVolume, optionOpenInterest: null, optionVolume: null, spreadPct: null,
+      ret1d, ret5d, ret20d, ret60d, ma20Rel, ma50Rel, ma200Rel,
+      maSlope, relativeStrength: null, rv10, rv20, rv60, drawdown, maxAdverseGap,
+      gapFrequency, downsideSemivariance,
+      historicalRecoveryMedianDays: config.recoveryHistory?.historicalRecoveryMedianDays??null,
+      historicalRecoveryP95Days: config.recoveryHistory?.historicalRecoveryP95Days??null,
       severeDrawdownEpisodeCount: null, earningsDistanceDays: null, exDividendDistanceDays: null, knownEventDistanceDays: null,
     },
     regimePolicy: config.regimePolicy,
@@ -1085,6 +1119,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       brokerAllowedQty: 10,
     },
     executionQualityPolicy: config.executionQualityPolicy,
+    paperEntryBootstrap: config.paperEntryBootstrap,
   });
 
   return {

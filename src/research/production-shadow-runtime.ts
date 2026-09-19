@@ -15,6 +15,9 @@ import { assembleMasterPaperEvidencePlan } from '../execution/master-paper-plan-
 import { PostgresMasterPaperActionPlanStore } from '../execution/postgres-master-paper-action-plan-store.js';
 import { deriveAntiParalysisFindings, PostgresRuntimeBehaviorDiagnosticStore, type RuntimeBehaviorDiagnostic } from '../theta/runtime-behavior-diagnostic.js';
 import { buildUniverseBreadthShadowPlan } from './strategy-quality-shadow-diagnostics.js';
+import type { BrokerReconciliationResult } from '../execution/broker-reconciliation-worker.js';
+import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment } from '../theta/paper-entry-bootstrap.js';
+import { loadRecoveryHistory } from '../theta/recovery-history-loader.js';
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
@@ -125,8 +128,19 @@ const bridge=(environment:Environment):PythonBridgeConfig=>({
 });
 
 export async function runProductionShadowEvidenceScan(input:{environment:Environment;pool:Pool;alpaca:AlpacaProviderConfig;
-  executionAccountId?:string|null;now:()=>string}):Promise<ProductionShadowScanReport>{
+  executionAccountId?:string|null;reconciliation:BrokerReconciliationResult;now:()=>string}):Promise<ProductionShadowScanReport>{
   if(input.environment.THETA_RUNTIME_MODE!=='MASTER_THETA_PAPER') throw new Error('MASTER_THETA_PAPER_RUNTIME_REQUIRED');
+  const paperEntryBootstrap=assessPaperEntryBootstrap({
+    enabled:true,runtimeMode:input.environment.THETA_RUNTIME_MODE,
+    brokerEnvironment:classifyAlpacaBrokerEnvironment(input.alpaca.tradingApiBase),
+    accountStatus:input.reconciliation.accountStatus,reconciliationQuality:input.reconciliation.dataQuality,
+    localOnlyIntentCount:input.reconciliation.localOnlyIntentCount,
+    externalOrUnknownOrderCount:input.reconciliation.externalOrUnknownCount,
+    marketOpen:input.reconciliation.marketOpen,
+    calendarSessionConfirmed:input.reconciliation.calendarSessionConfirmed,
+    followerExecutionEnabled:input.environment.FOLLOWER_PAPER_EXECUTION_ENABLED,
+    liveMoneyAuthorized:false,
+  });
   const discovery=await discoverRealUniverse(input.alpaca,{discoveryVersion:'theta-shadow-universe-v1',maxCandidateAssets:100,
     allowedExchanges:['NYSE','NASDAQ','ARCA','BATS'],barsLookbackDays:30,barsBatchSize:100,maxOptionabilityChecks:10,minCurrentPrice:5},input.now);
   // Discovery already preserves the existing average-dollar-volume rank.
@@ -144,7 +158,8 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     strategyVersion:'theta-shadow-once-v1',eligibleUnderlyings:scanUnderlyings,maxUnderlyings:Math.max(1,scanUnderlyings.length),
     branches:['THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_RECOVERY','THETA_CC','THETA_DEFINED_RISK']},async(underlying)=>{
       const config=defaultShadowCycleConfig(input.alpaca,optionomics,bridge(input.environment),[underlying],discovery.candidatesOrigin);
-      return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',aegisInputs:{
+      const recoveryHistory=await loadRecoveryHistory(input.pool,underlying.symbol,input.now());
+      return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',paperEntryBootstrap,recoveryHistory,aegisInputs:{
         tickerConcentrationPct:null,sectorConcentrationPct:null,correlationClusterExposurePct:null,
         portfolioCapitalAtRiskPct:null,inventoryCapacityUsedPct:null,assignmentCapacityUsedPct:null,
         recoveryCapacityUsedPct:null,liquidityAcceptable:null,executionQualityAcceptable:null,providerState:null,

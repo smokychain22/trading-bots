@@ -482,7 +482,8 @@ export async function runAutonomousRuntimeCycle(
         if(session==='MARKET_CLOSED')return skipped('MARKET_CLOSED_NO_WAIT_RECHECK');
         if(session!=='RUN')return degraded('OPTION_MARKET_SESSION_UNCONFIRMED',retryAt);
         const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,
-          executionAccountId:master.executionAccountId,now:()=>new Date().toISOString()});
+          executionAccountId:master.executionAccountId,reconciliation:reconciliation as BrokerReconciliationResult,
+          now:()=>new Date().toISOString()});
         if(scan.completeness!=='COMPLETE')return degraded(`WAIT_RECHECK_SCAN_${scan.completeness}`,retryAt);
         await cycleStore.markNearMissesTriggered(pending,new Date().toISOString(),scan.scanId);
         opportunityScanCompleted=true;
@@ -496,7 +497,8 @@ export async function runAutonomousRuntimeCycle(
           return degraded('OPTION_MARKET_SESSION_UNCONFIRMED', retryAt);
         }
         const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,
-          executionAccountId:master.executionAccountId,now:()=>new Date().toISOString()});
+          executionAccountId:master.executionAccountId,reconciliation:reconciliation as BrokerReconciliationResult,
+          now:()=>new Date().toISOString()});
         return scan.completeness==='COMPLETE' ? succeeded() : degraded(`SHADOW_SCAN_${scan.completeness}`,retryAt);
       }
       if(jobType==='PAPER_EXECUTION_HANDOFF'){

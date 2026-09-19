@@ -133,3 +133,77 @@ No runtime fix is activated because the repository has no approved cold-start en
 - Worker restarted: NO
 - Follower execution: LOCKED
 - Live money authorized: NO
+
+## Remediation implementation, 2026-09-20
+
+The cold-start policy decision is now explicit in code as
+`PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED`, policy version
+`theta-paper-entry-bootstrap-v1`. It is limited to the dedicated
+`MASTER_THETA_PAPER` runtime and requires a PAPER broker, ACTIVE account,
+GOOD reconciliation, no local-only or external/unknown order drift, a
+confirmed open market session, follower execution disabled, and live money
+disabled. Passing this policy does not create an ownership score, expected
+value, execution authorization, or broker action.
+
+THETA-Q now keeps `ownershipScore = null` while allowing hard-cap quantity
+calculation only when that versioned bootstrap assessment is eligible. A
+known ownership result below the existing floor still produces quantity
+zero. All existing contract, liquidity, event, quote-age, broker quantity,
+AEGIS, sizing, execution-quality, canary, and relock gates remain in force.
+
+Point-in-time bar mapping now supplies stock average volume, returns over
+1/5/20/60 bars, moving-average-relative features over 20/50/200 bars,
+realized volatility over 10/20/60 bars, downside semivariance, drawdown,
+trend slope, gap frequency, and maximum adverse gap. Relative strength
+remains UNKNOWN because no benchmark series is loaded. Missing history
+remains UNKNOWN.
+
+A PIT-safe recovery loader now reads only resolved whole-chain recovery
+labels whose `label_available_at` is no later than the decision cutoff. It
+returns median and P95 recovery days, or null values with an observed zero
+episode count when no history exists. No synthetic recovery prior is used.
+
+The candidate broker quantity is no longer the hard-coded value 5. It is
+derived per contract from real options buying power, or buying power when
+the options-specific field is absent, divided by verified contract
+collateral. Standard-contract eligibility now requires exact OCC identity
+and multiplier 100. Quantity zero remains valid.
+
+### Updated root-cause matrix
+
+| Root cause | Status | Evidence |
+|---|---|---|
+| COLD_START_BOOTSTRAP_DEADLOCK | FIXED IN CODE | Explicit uncalibrated Paper-only eligibility, ownership score remains null |
+| OPTIONAL_EVIDENCE_ACCIDENTALLY_HARD_GATED | FIXED FOR PAPER BOOTSTRAP | Missing research ownership evidence no longer alone forces THETA-Q quantity zero in the bounded tier |
+| OPTION_CHAIN_MAPPING_MISSING | PARTIAL | Exact contract spread/OI/volume already gate THETA-Q. They are not copied into one underlying-level ownership value because that would lose contract identity |
+| BAR_FEATURE_MAPPING_MISSING | FIXED | PIT-safe 1/5/20/60 return, 10/20/60 RV, MA-relative, volume, and downside-semivariance mapping added |
+| EVENT_ASSEMBLY_MISSING | REMAINS, EXTERNAL/SEMANTIC BLOCKER | Empty or unverified provider responses are not treated as verified no-event state |
+| RECOVERY_HISTORY_LOADER_MISSING | FIXED | PIT query over resolved whole-chain labels, null on empty history |
+| AEGIS_INPUT_INCOMPLETE | REMAINS | sector, correlation cluster, inventory capacity, assignment capacity, recovery capacity, IV shock, and spread-widening families remain UNKNOWN in Production |
+| IV_PERSISTENCE_MISSING | NO CURRENT DEFECT | IV and its provenance are already retained in normalized contracts, FusionSnapshot, and persisted candidate metrics |
+
+### September 18 aggregate offline replay
+
+The preserved open-session diagnostic contains aggregate counts rather than
+all per-candidate ownership and AEGIS input rows. The deterministic replay
+therefore reports `PRESERVED_AGGREGATE_DIAGNOSTIC` and names this limitation.
+It performs no provider, database, or broker call.
+
+- total candidates: 2,875
+- quote usable: 489
+- bootstrap eligible: 489
+- explicit ownership rejects among quote-usable candidates: 0
+- reached AEGIS: 489
+- AEGIS ALLOW_FULL: 0
+- AEGIS ALLOW_REDUCED: 0
+- AEGIS HOLD_ONLY: 489
+- AEGIS block: 0
+- quantity positive: 0
+- action-plan eligible: 0
+- broker submissions: 0
+
+This proves the ownership circularity is removed for the preserved sample,
+and also proves the independent AEGIS safety-input blocker remains. The
+running worker was not restarted or cut over. Runtime activation would be
+unsafe until those AEGIS families have real, versioned producers or an
+explicit safety classification approved in a later bounded correction.

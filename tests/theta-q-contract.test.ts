@@ -23,6 +23,7 @@ function responseFixture() {
         ev_net_unknown_reason: 'No calibrated entry-outcome model is available.',
       },
       ownershipScore: 0.72,
+      eligibilityBasis: 'EMPIRICAL_OWNERSHIP',
       reasons: [{ code: 'OWNERSHIP_ACCEPTABLE', polarity: 1, detail: 'synthetic fixture' }],
     }],
     wait: { candidateId: 'WAIT', actionFeasible: true, quantity: 0 },

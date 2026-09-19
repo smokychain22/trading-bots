@@ -105,6 +105,8 @@ def _baseline_input(data: dict[str, Any]) -> CspCandidateInputs:
         iv_rank=_required(data, "ivRank"),
         broker_allowed_qty=_required(data, "brokerAllowedQty"),
         contract_is_standard=_required(data, "contractIsStandard"),
+        paper_bootstrap_eligible=bool(data.get("paperBootstrapEligible", False)),
+        paper_bootstrap_policy_version=data.get("paperBootstrapPolicyVersion"),
     )
 
 
@@ -176,6 +178,7 @@ def evaluate_request(request: dict[str, Any]) -> dict[str, Any]:
                 "quantity": 0,
                 "economics": None,
                 "ownershipScore": None,
+                "eligibilityBasis": "INELIGIBLE",
                 "reasons": [asdict(reason) for reason in lattice_match.reasons],
             }
         else:
@@ -188,6 +191,7 @@ def evaluate_request(request: dict[str, Any]) -> dict[str, Any]:
                 "quantity": evaluation.quantity,
                 "economics": asdict(evaluation.economics) if evaluation.economics else None,
                 "ownershipScore": evaluation.ownership_score,
+                "eligibilityBasis": evaluation.eligibility_basis,
                 "reasons": [asdict(reason) for reason in evaluation.reasons],
             }
             if result["actionFeasible"]:

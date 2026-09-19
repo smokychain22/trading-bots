@@ -24,10 +24,14 @@ const candidateSchema = z.object({
   quantity: z.number().int().nonnegative(),
   economics: economicsSchema.nullable(),
   ownershipScore: z.number().min(0).max(1).nullable(),
+  eligibilityBasis: z.enum(['EMPIRICAL_OWNERSHIP', 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED', 'INELIGIBLE']),
   reasons: z.array(reasonSchema),
 }).superRefine((candidate, context) => {
   if (!candidate.actionFeasible && candidate.quantity !== 0) {
     context.addIssue({ code: 'custom', message: 'infeasible candidate quantity must be zero' });
+  }
+  if (candidate.eligibilityBasis === 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED' && candidate.ownershipScore !== null) {
+    context.addIssue({ code: 'custom', message: 'Paper bootstrap must not manufacture an ownership score' });
   }
 });
 

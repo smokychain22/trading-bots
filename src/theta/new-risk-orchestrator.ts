@@ -13,6 +13,7 @@ import { assembleNewRiskDecision, type CandidateFrontierResult, type NewRiskDeci
 import type { NormalizedOptionContract } from './option-contract.js';
 import { ShadowOpportunityBookBuilder, type ShadowOpportunityEntry } from './shadow-opportunity-book.js';
 import { classifyObservation, type DataQualityState, type FreshnessPolicy } from './data-freshness.js';
+import type { PaperEntryBootstrapAssessment } from './paper-entry-bootstrap.js';
 
 // R1: the real end-to-end new-risk orchestrator. Sequences every stage in
 // the canonical pipeline --
@@ -157,6 +158,7 @@ export interface NewRiskOrchestrationRequest {
   readonly sizingPolicy: Record<string, unknown>;
   readonly sizingAccount: { equity: number | null; cash: number | null; buyingPower: number | null; brokerAllowedQty: number };
   readonly executionQualityPolicy: Record<string, unknown>;
+  readonly paperEntryBootstrap?: PaperEntryBootstrapAssessment;
 }
 
 export interface NewRiskOrchestrationResult {
@@ -516,6 +518,9 @@ export async function runNewRiskOrchestration(
         entryPremiumPerShare: c.entryPremiumPerShare, ownershipAcceptability: ownershipResult.data.ownability,
         severeDrawdownProbability: c.severeDrawdownProbability, ivRank: c.ivRank, brokerAllowedQty: c.brokerAllowedQty,
         contractIsStandard: c.contractIsStandard,
+        paperBootstrapEligible: request.paperEntryBootstrap?.state === 'ELIGIBLE_UNCALIBRATED',
+        paperBootstrapPolicyVersion: request.paperEntryBootstrap?.state === 'ELIGIBLE_UNCALIBRATED'
+          ? request.paperEntryBootstrap.policyVersion : null,
       })),
     },
     (payload) => parseThetaQResponse(payload, request.fusionSnapshotHash),
