@@ -9,7 +9,7 @@ This ledger separates engineering completion from empirical proof. A completed c
 | R3 account isolation | COMPLETE | INSUFFICIENT_FOLLOWER_EVIDENCE | READY | NONE | Master/follower role isolation and encrypted credentials |
 | R4 follower copy | COMPLETE_LOCKED | INSUFFICIENT_FOLLOWER_EVIDENCE | READY | ACTIVATION_NOT_AUTHORIZED | Master-fill-first follower plans and reconciliation |
 | R5 customer and operator product | COMPLETE_FOR_CURRENT_OPS | NOT_APPLICABLE | READY | NONE | Standalone product and version-safe operations controls |
-| R6 evidence and validation | COMPLETE_FOR_COLLECTION | INSUFFICIENT_EVIDENCE | OPTIONOMICS_INTELLIGENCE_READY | NONE | PIT ledger, shadow candidates, labels, deterministic dataset v6 |
+| R6 evidence and validation | COMPLETE_FOR_COLLECTION_AND_ANALYSIS | INSUFFICIENT_EVIDENCE | OPTIONOMICS_INTELLIGENCE_READY | NONE | PIT ledger, shadow candidates, labels, deterministic dataset v6, paired ablation, DSR and PBO utilities |
 | R7 autonomous Paper engineering | COMPLETE_FOR_BOUNDED_CANARY | INSUFFICIENT_EVIDENCE | OPTIONOMICS_AUTH_PASS; ALPACA_PAPER_INDICATIVE_QUALIFIED | MASTER_PAPER_AUTHORIZATION_PERSISTED | Provider qualification, management-first runtime, five-branch evidence, bounded bootstrap management policy |
 | R8 Paper validation | CANARY_GATE_BUILT | NOT_STARTED | PAPER_INDICATIVE_REFERENCE_QUALIFIED | NEW_ENTRIES_PAUSED | Machine-checkable readiness contract, single-canary hard cap, zero broker submissions |
 | R9 graduation | NOT_STARTED | NOT_STARTED | NOT_APPLICABLE | LIVE_FORBIDDEN | No live authority |

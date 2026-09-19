@@ -938,3 +938,11 @@ Follower copy work begins only from a broker-confirmed master fill or lifecycle 
 Production runtime and migration tooling must select `AIVEN_DATABASE_URL` when `DATABASE_RUNTIME_AUTHORITY=AIVEN`. A generic `DATABASE_URL` cannot override or silently redirect that choice. Neon archive access uses `NEON_ARCHIVE_DATABASE_URL`, with a compatibility fallback only for a verified `*.neon.tech` generic URL.
 
 Deterministic research exports are mirrored into immutable content-addressed local bundles after secret-shape validation. These bundles support recovery and research, remain outside Git, and have no order, lifecycle, or transactional authority. Failure is noncritical and is surfaced in worker status.
+
+## 2026-09-19: repaired selection-bias and paired-ablation utilities are canonical research tools
+
+Claude commits `b277ca0` and `424a54b` originally carried real defects identified during Codex review. The variance-versus-standard-deviation bug in DSR and the unpaired ablation statistic were repaired in `531ae8b`. Only those corrected modules and their tests were ported. Older parallel walk-forward, execution-simulation, drawdown, and correlation files were not imported because canonical main now has newer contracts.
+
+The port was further aligned to `experiment_registry.py`'s ten canonical feature families and made fail-closed for non-finite inputs, ragged PBO matrices, invalid economic-materiality policy, and invalid independent-N policy. These utilities calculate research evidence only. They don't promote a model, alter a strategy, authorize an order, or change the running Paper champion.
+
+Claude commit `a8143cc` was reviewed and rejected. Summing per-share premium across a variable number of contracts does not create a comparable expiration value. The expiration comparator uses raw long-option theta with the wrong direction for a short-premium strategy, and the put strike comparator treats a higher break-even as better when a lower break-even provides more downside cushion. Existing canonical option-chain evidence remains the source of research facts until a corrected comparator uses common units and branch-aware economics.
