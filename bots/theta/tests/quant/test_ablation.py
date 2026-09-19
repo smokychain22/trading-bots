@@ -20,21 +20,19 @@ from research.ablation import (  # noqa: E402
 
 class FeatureFamilyStatusTests(unittest.TestCase):
     def test_every_requested_feature_family_has_an_explicit_status(self):
-        required_families = [
-            FeatureFamily.OWNERSHIP, FeatureFamily.EVENT, FeatureFamily.MACRO, FeatureFamily.IV,
-            FeatureFamily.IV_RV, FeatureFamily.SKEW, FeatureFamily.TERM_STRUCTURE, FeatureFamily.GEX,
-            FeatureFamily.FLOW, FeatureFamily.TECHNICAL, FeatureFamily.TRADER_DNA, FeatureFamily.EXECUTION,
-        ]
+        required_families = list(FeatureFamily)
         for family in required_families:
             self.assertIn(family, CURRENT_FEATURE_FAMILY_STATUS)
 
-    def test_gex_and_flow_are_honestly_not_implemented_never_assumed_available(self):
-        self.assertEqual(CURRENT_FEATURE_FAMILY_STATUS[FeatureFamily.GEX], FeatureFamilyStatus.NOT_IMPLEMENTED)
-        self.assertEqual(CURRENT_FEATURE_FAMILY_STATUS[FeatureFamily.FLOW], FeatureFamilyStatus.NOT_IMPLEMENTED)
+    def test_feature_taxonomy_matches_the_canonical_experiment_registry(self):
+        from research.experiment_registry import FEATURE_ABLATION_FAMILIES
 
-    def test_ownership_and_execution_are_available_matching_real_wired_models(self):
+        self.assertEqual(tuple(family.value for family in FeatureFamily), FEATURE_ABLATION_FAMILIES)
+
+    def test_wired_families_are_available_but_expert_prior_remains_untested(self):
         self.assertEqual(CURRENT_FEATURE_FAMILY_STATUS[FeatureFamily.OWNERSHIP], FeatureFamilyStatus.AVAILABLE)
         self.assertEqual(CURRENT_FEATURE_FAMILY_STATUS[FeatureFamily.EXECUTION], FeatureFamilyStatus.AVAILABLE)
+        self.assertEqual(CURRENT_FEATURE_FAMILY_STATUS[FeatureFamily.EXPERT_PRIOR], FeatureFamilyStatus.NOT_TESTED)
 
 
 class WelchMeanDifferenceTests(unittest.TestCase):

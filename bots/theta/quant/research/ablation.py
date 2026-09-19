@@ -26,18 +26,23 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 
 class FeatureFamily(str, Enum):
-    OWNERSHIP = "OWNERSHIP"
-    EVENT = "EVENT"
-    MACRO = "MACRO"
-    IV = "IV"
-    IV_RV = "IV_RV"
-    SKEW = "SKEW"
-    TERM_STRUCTURE = "TERM_STRUCTURE"
-    GEX = "GEX"
+    """Mirrors experiment_registry.FEATURE_ABLATION_FAMILIES exactly.
+
+    The earlier branch carried a second, incompatible feature taxonomy.
+    Keeping one canonical family list prevents an ablation result from being
+    registered under a name the empirical pipeline cannot reproduce.
+    """
+
+    UNDERLYING = "UNDERLYING"
+    VOLATILITY = "VOLATILITY"
+    CONTRACT = "CONTRACT"
     FLOW = "FLOW"
-    TECHNICAL = "TECHNICAL"
-    TRADER_DNA = "TRADER_DNA"
+    EVENT = "EVENT"
+    OWNERSHIP = "OWNERSHIP"
+    PORTFOLIO = "PORTFOLIO"
     EXECUTION = "EXECUTION"
+    REGIME = "REGIME"
+    EXPERT_PRIOR = "EXPERT_PRIOR"
 
 
 class FeatureFamilyStatus(str, Enum):
@@ -51,18 +56,16 @@ class FeatureFamilyStatus(str, Enum):
 # codebase, not asserted from memory. Updated only when the underlying
 # implementation status genuinely changes.
 CURRENT_FEATURE_FAMILY_STATUS: Dict[FeatureFamily, FeatureFamilyStatus] = {
-    FeatureFamily.OWNERSHIP: FeatureFamilyStatus.AVAILABLE,  # ownership_v0.py, real and tested
-    FeatureFamily.EVENT: FeatureFamilyStatus.AVAILABLE,  # event-state.ts, real corporate-actions wiring (earnings distance itself remains UNKNOWN, per event-state.ts's own honest gap)
-    FeatureFamily.MACRO: FeatureFamilyStatus.NOT_IMPLEMENTED,  # FRED_API_KEY is Codex-configured in production, but no Claude-owned quant feature contract consumes it yet
-    FeatureFamily.IV: FeatureFamilyStatus.AVAILABLE,  # Optionomics-sourced, real
-    FeatureFamily.IV_RV: FeatureFamilyStatus.NOT_TESTED,  # computable from existing RV + Optionomics IV, never run through an ablation
-    FeatureFamily.SKEW: FeatureFamilyStatus.NOT_IMPLEMENTED,
-    FeatureFamily.TERM_STRUCTURE: FeatureFamilyStatus.NOT_TESTED,  # only the narrow Cboe VIX/VIX9D ratio exists, research-only
-    FeatureFamily.GEX: FeatureFamilyStatus.NOT_IMPLEMENTED,  # formula cataloged (THETA_FORMULA_CATALOG.md), zero THETA code
-    FeatureFamily.FLOW: FeatureFamilyStatus.NOT_IMPLEMENTED,
-    FeatureFamily.TECHNICAL: FeatureFamilyStatus.AVAILABLE,  # underlying-features.ts, real and tested
-    FeatureFamily.TRADER_DNA: FeatureFamilyStatus.NOT_TESTED,  # hypotheses.json exists, never run through this ablation engine
-    FeatureFamily.EXECUTION: FeatureFamilyStatus.AVAILABLE,  # execution_quality.py, real and tested
+    FeatureFamily.UNDERLYING: FeatureFamilyStatus.AVAILABLE,
+    FeatureFamily.VOLATILITY: FeatureFamilyStatus.AVAILABLE,
+    FeatureFamily.CONTRACT: FeatureFamilyStatus.AVAILABLE,
+    FeatureFamily.FLOW: FeatureFamilyStatus.AVAILABLE,
+    FeatureFamily.EVENT: FeatureFamilyStatus.AVAILABLE,
+    FeatureFamily.OWNERSHIP: FeatureFamilyStatus.AVAILABLE,
+    FeatureFamily.PORTFOLIO: FeatureFamilyStatus.AVAILABLE,
+    FeatureFamily.EXECUTION: FeatureFamilyStatus.AVAILABLE,
+    FeatureFamily.REGIME: FeatureFamilyStatus.AVAILABLE,
+    FeatureFamily.EXPERT_PRIOR: FeatureFamilyStatus.NOT_TESTED,
 }
 
 
