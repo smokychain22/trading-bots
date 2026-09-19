@@ -60,5 +60,6 @@ The bounded R6 integration receipt is recorded in `docs/operations/THETA_R6_EVID
 - Claude outcome-label commit `4944df64df2d9f027334d4fc97b2804aeb587b39` was reviewed, repaired, and integrated.
 - Claude VRP and underlying Pareto commit `7d5b26417cb7aff73f62f8c2a7124816b3c7885e` was integrated as research-only evidence.
 - Claude realized-volatility and HAR-RV commit `f4f1aedaeeee5255b0fe77b7843a1a90a2e2b6ef` was integrated as a PIT-safe research baseline.
+- Claude HAR-RV bridge commit `8b1d4a1f220e1c52e969f730187688d40566cdda` was reviewed, bounded to the controlled research bridge, and repaired to reject invalid variance input before invocation.
 - No new live threshold, strategy selection rule, order path, migration, provider, or broker authority was introduced.
 - Existing R6 export, automatic handoff, outcome resolution, contract evidence, walk-forward, calibration, and promotion gates were retained as the single canonical implementations.

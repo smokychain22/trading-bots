@@ -84,3 +84,17 @@ test('an unallowlisted model family degrades to DEGRADED_RESEARCH_FEATURE via BR
   });
   assert.equal(result.harRv.failureCode, 'BRIDGE_UNKNOWN_MODEL_FAMILY');
 });
+
+test('invalid variance input is rejected before bridge invocation and degrades safely', async () => {
+  const config: PythonBridgeConfig = {
+    pythonExecutablePath: pythonExecutablePath ?? 'python', scriptAllowlist: new Map(),
+    timeoutMs: 5_000, maxOutputBytes: 1_000_000,
+  };
+  const result = await buildHarRvShadowComparison({
+    bridgeConfig: config, snapshotId: 'snap-1', timestamp: '2026-09-19T00:00:00.000Z', asOf: '2026-09-19T00:00:00.000Z',
+    realizedVarianceSeries: [0.0001, -0.0002], acceleration: acceleration(),
+  });
+  assert.equal(result.harRv.state, 'DEGRADED_RESEARCH_FEATURE');
+  assert.equal(result.harRv.failureCode, 'REQUEST_SCHEMA_VALIDATION_FAILED');
+  assert.equal(result.brokerAuthority, false);
+});

@@ -87,6 +87,10 @@ class TestHarRvContract(unittest.TestCase):
     def test_invalid_series_entry_raises_rather_than_silently_coercing(self):
         with self.assertRaises(ValueError):
             evaluate_request(_request([0.0001, "not-a-number", 0.0002]))
+        with self.assertRaises(ValueError):
+            evaluate_request(_request([0.0001, -0.0002, 0.0002]))
+        with self.assertRaises(ValueError):
+            evaluate_request(_request([0.0001, float("inf"), 0.0002]))
 
     def test_nonpositive_window_configuration_rejected(self):
         with self.assertRaises(ValueError):

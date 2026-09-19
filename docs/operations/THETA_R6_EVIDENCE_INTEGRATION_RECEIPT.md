@@ -14,6 +14,8 @@ This receipt covers the bounded closed-market research and evidence integration 
 - Preserved the canonical accounting boundary. The label engine reads whole-chain economics and managed-episode path features. It does not recompute broker accounting, subtract execution cost twice, or claim broker authority.
 - Integrated research-only volatility-risk-premium arithmetic and Pareto underlying diagnostics from Claude commit `7d5b26417cb7aff73f62f8c2a7124816b3c7885e`.
 - Integrated point-in-time realized-volatility baselines and a transparent HAR-RV research implementation from Claude commit `f4f1aedaeeee5255b0fe77b7843a1a90a2e2b6ef`.
+- Integrated Claude commit `8b1d4a1f220e1c52e969f730187688d40566cdda`, which exposes the existing HAR-RV implementation through the controlled Python bridge and compares it with the simple RV baselines.
+- Repaired the bridge boundary so malformed, negative, or non-finite variance observations fail before subprocess invocation and degrade to explicit research unavailability.
 
 ## Deliberate non-duplication
 
@@ -47,9 +49,9 @@ VRP, Pareto underlying selection, realized-volatility estimators, and HAR-RV are
 ## Verification
 
 - Focused TypeScript research tests: `37 passed`.
-- HAR-RV and realized-volatility tests: `23 passed`.
-- Full Node suite: `1191 passed`, `11 skipped`, `0 failed`.
-- Full Python suite: `500 passed`, `0 failed`.
+- HAR-RV and realized-volatility focused tests: `43 passed` across TypeScript and Python.
+- Full Node suite: `1202 passed`, `11 skipped`, `0 failed`.
+- Full Python suite: `509 passed`, `0 failed`.
 - ESLint: `PASS`.
 - TypeScript check: `PASS`.
 - Production build: `PASS`.
@@ -93,4 +95,3 @@ VRP, Pareto underlying selection, realized-volatility estimators, and HAR-RV are
 - `R6_PROMOTION_GATE = ALREADY_COMPLETE_BUILDABLE`.
 - `R6_EMPIRICAL_CONCLUSIONS = BLOCKED_ON_REAL_EVIDENCE`.
 - `READY_FOR_FIRST_PAPER_ORDER = UNCHANGED`.
-

@@ -1,10 +1,11 @@
 import { invokeAndValidate, type PythonBridgeConfig } from '../theta/python-bridge.js';
-import { harRvContractVersion, parseHarRvResponse, type HarRvResponse } from '../theta/har-rv-contract.js';
+import { harRvContractVersion, harRvRequestSchema, parseHarRvResponse, type HarRvResponse } from '../theta/har-rv-contract.js';
 import type { VolatilityAccelerationEvidence } from './volatility-acceleration.js';
 
 export const harRvShadowVersion = 'theta-har-rv-shadow-v1' as const;
 
 export type HarRvShadowFailureCode =
+  | 'REQUEST_SCHEMA_VALIDATION_FAILED'
   | 'BRIDGE_TIMEOUT' | 'BRIDGE_PROCESS_ERROR' | 'BRIDGE_NON_ZERO_EXIT' | 'BRIDGE_OUTPUT_TOO_LARGE'
   | 'BRIDGE_EMPTY_OUTPUT' | 'BRIDGE_MALFORMED_JSON' | 'BRIDGE_SCHEMA_VALIDATION_FAILED'
   | 'BRIDGE_VERSION_MISMATCH' | 'BRIDGE_SNAPSHOT_MISMATCH' | 'BRIDGE_UNKNOWN_MODEL_FAMILY' | 'PYTHON_UNAVAILABLE';
@@ -78,21 +79,30 @@ export async function buildHarRvShadowComparison(input: {
   readonly monthlyWindow?: number;
   readonly minimumTrainingObservations?: number;
 }): Promise<HarRvShadowComparison> {
-  const request = {
+  const requestResult = harRvRequestSchema.safeParse({
     contractVersion: harRvContractVersion, snapshotId: input.snapshotId, timestamp: input.timestamp, asOf: input.asOf,
     realizedVarianceSeries: [...input.realizedVarianceSeries],
     weeklyWindow: input.weeklyWindow, monthlyWindow: input.monthlyWindow,
     minimumTrainingObservations: input.minimumTrainingObservations,
-  };
-  const result = await invokeAndValidate<HarRvResponse>(
-    input.bridgeConfig, 'harRv', request, parseHarRvResponse,
-  );
-
+  });
   const rv5 = input.acceleration.rv5, rv21 = input.acceleration.rv21, rv63 = input.acceleration.rv63;
   const base = {
     contractVersion: harRvShadowVersion, asOf: input.asOf,
     naivePersistenceRealizedVolatility: rv5, rv5, rv21, rv63, brokerAuthority: false as const,
   };
+  if (!requestResult.success) {
+    return {
+      ...base,
+      harRv: {
+        state: 'DEGRADED_RESEARCH_FEATURE', forecastRealizedVolatility: null, modelVersion: null,
+        trainingObservationCount: null, failureCode: 'REQUEST_SCHEMA_VALIDATION_FAILED',
+        reason: 'HAR-RV request failed schema validation.',
+      },
+    };
+  }
+  const result = await invokeAndValidate<HarRvResponse>(
+    input.bridgeConfig, 'harRv', requestResult.data, parseHarRvResponse,
+  );
 
   if (!result.ok) {
     return {
