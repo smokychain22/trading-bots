@@ -127,13 +127,19 @@ export function mfeMaeLabels(features: ManagedEpisodePathFeatures): { readonly m
 export function maxDrawdownLabel(equityCurve: readonly { readonly at: string; readonly equity: number | null }[]): R6Label<number> {
   const definition = 'Worst peak-to-trough decline (dollars, non-positive) over a caller-supplied chronological equity curve; UNKNOWN if the curve is empty or any point is unknown/unordered.';
   if (equityCurve.length === 0) return unknown('USD', definition);
-  const ordered = equityCurve.slice().sort((left, right) => Date.parse(left.at) - Date.parse(right.at));
-  const first = ordered[0];
-  if (first === undefined || !finite(first.equity) || ordered.some((point) => !finite(point.equity) || !Number.isFinite(Date.parse(point.at)))) {
+  const first = equityCurve[0];
+  if (first === undefined || !finite(first.equity) || equityCurve.some((point) => !finite(point.equity) || !Number.isFinite(Date.parse(point.at)))) {
     return unknown('USD', definition);
   }
+  for (let index = 1; index < equityCurve.length; index += 1) {
+    const previous = equityCurve[index - 1];
+    const current = equityCurve[index];
+    if (previous === undefined || current === undefined || Date.parse(current.at) < Date.parse(previous.at)) {
+      return unknown('USD', definition);
+    }
+  }
   let peak = first.equity as number, worst = 0;
-  for (const point of ordered) {
+  for (const point of equityCurve) {
     const equity = point.equity as number;
     peak = Math.max(peak, equity);
     worst = Math.min(worst, equity - peak);
@@ -189,8 +195,11 @@ export function executionSlippageLabel(tcaExecutionShortfall: number | null): R6
 }
 
 export function fillRateLabel(input: { readonly requestedQuantity: number | null; readonly filledQuantity: number | null }): R6Label<number> {
-  const definition = 'filledQuantity / requestedQuantity, in [0,1]; UNKNOWN when requestedQuantity is 0 or either input is unknown.';
-  if (!finite(input.requestedQuantity) || !finite(input.filledQuantity) || input.requestedQuantity === 0) return unknown('FRACTION', definition);
+  const definition = 'filledQuantity / requestedQuantity, in [0,1]; UNKNOWN when quantities are missing, requested quantity is not positive, filled quantity is negative, or filled quantity exceeds requested quantity.';
+  if (!finite(input.requestedQuantity) || !finite(input.filledQuantity)
+    || input.requestedQuantity <= 0 || input.filledQuantity < 0 || input.filledQuantity > input.requestedQuantity) {
+    return unknown('FRACTION', definition);
+  }
   return known(input.filledQuantity / input.requestedQuantity, 'FRACTION', definition);
 }
 
