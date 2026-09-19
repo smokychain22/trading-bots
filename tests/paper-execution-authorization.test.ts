@@ -48,7 +48,7 @@ const activation=()=>({activatedAt:'2026-09-18T15:00:00.000Z',runtime:{brokerAcc
   optionsCapabilityVerified:true,environmentMasterEnabled:true,environmentPauseNewOrders:false,
   environmentFollowerEnabled:false,runtimeMode:'MASTER_THETA_PAPER'},database:{managementAuthorized:true,
   followerExecutionEnabled:false,priorBrokerOrderCount:0,activeIntentCount:0,masterCount:1,masterSelfCopyCount:0,
-  quoteReady:true,latestCompleteScanAt:'2026-09-18T14:55:00.000Z',migrationHead:'060_execution_account_paper_only_invariant'}});
+  quoteReady:true,latestCompleteScanAt:'2026-09-18T14:55:00.000Z',migrationHead:'061_paper_execution_control_normalization'}});
 
 test('first canary activation requires every Paper-only operational gate',()=>{
   assert.deepEqual(firstPaperCanaryActivationBlockers(activation()),[]);
@@ -68,5 +68,5 @@ test('first canary activation cannot bypass the environment pause or schema head
   const valid=activation();
   const blockers=firstPaperCanaryActivationBlockers({...valid,
     runtime:{...valid.runtime,environmentPauseNewOrders:true},database:{...valid.database,migrationHead:'057_other'}});
-  assert.deepEqual(blockers,['ENVIRONMENT_NEW_ENTRY_PAUSE_ACTIVE','PRODUCTION_SCHEMA_HEAD_NOT_060']);
+  assert.deepEqual(blockers,['ENVIRONMENT_NEW_ENTRY_PAUSE_ACTIVE','PRODUCTION_SCHEMA_HEAD_NOT_061']);
 });
