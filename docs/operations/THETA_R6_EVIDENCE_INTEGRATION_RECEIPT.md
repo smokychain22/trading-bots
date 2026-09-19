@@ -21,6 +21,7 @@ This receipt covers the bounded closed-market research and evidence integration 
 - Added combinatorially symmetric cross-validation PBO with rectangular, finite-matrix validation and symmetric tie ranks.
 - Added paired baseline-versus-treatment ablation statistics, confidence-interval classification, caller-supplied economic materiality and independent-N policies, and explicit inconclusive states.
 - Repaired the older branch taxonomy so ablations use the canonical ten feature families from `experiment_registry.py`. No second feature taxonomy remains.
+- Reviewed Claude commit `a8143cc` and rejected it from canonical main. Its expiration aggregate sums per-share premiums across a changing contract count, its short-option theta comparison uses the long-option sign, and its put break-even comparison favors the higher rather than lower break-even. Canonical option-chain evidence already preserves the underlying raw facts without those unsafe rankings.
 
 ## Deliberate non-duplication
 

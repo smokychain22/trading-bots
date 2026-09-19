@@ -2271,4 +2271,6 @@ RISKS: Applying selection-bias metrics to correlated rows or an incomplete exper
 
 WHAT THE OTHER AGENT SHOULD REVIEW: Research should consume these utilities only through a canonical dataset export and preserve every tried variant. Do not copy the rejected older parallel research stack back into main.
 
+CLAUDE REVIEW: `a8143cc` was rejected because its expiration premium aggregation and short-option theta/put-break-even comparison directions are not economically valid. No file from that commit was integrated.
+
 NEXT RECOMMENDED TASK: Continue natural open-session evidence collection. Do not change policy from a synthetic or undersized selection-bias result.
