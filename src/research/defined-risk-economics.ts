@@ -1,3 +1,5 @@
+import { parseOccOptionSymbol } from '../theta/account-exposure.js';
+
 export const definedRiskEconomicsVersion = 'theta-defined-risk-economics-v1' as const;
 
 /**
@@ -30,7 +32,8 @@ export interface DefinedRiskStructureInput {
   readonly snapshotId: string | null;
   readonly candidateId: string | null;
   readonly optionType: DefinedRiskOptionType;
-  readonly expiration: string;
+  readonly shortExpiration: string;
+  readonly longExpiration: string;
   readonly shortOptionSymbol: string;
   readonly longOptionSymbol: string;
   readonly shortStrike: number;
@@ -58,6 +61,7 @@ export interface DefinedRiskStructureInput {
 }
 
 export type DefinedRiskStructureValidity = 'VALID' | 'INVALID';
+export type DefinedRiskEconomicsState = 'KNOWN' | 'UNKNOWN' | 'INVALID';
 
 export interface DefinedRiskEconomics {
   readonly contractVersion: typeof definedRiskEconomicsVersion;
@@ -65,15 +69,24 @@ export interface DefinedRiskEconomics {
   readonly snapshotId: string | null;
   readonly candidateId: string | null;
   readonly optionType: DefinedRiskOptionType;
+  readonly shortOptionSymbol: string;
+  readonly longOptionSymbol: string;
+  readonly shortExpiration: string;
+  readonly longExpiration: string;
+  readonly multiplier: number | null;
+  readonly quantity: number | null;
   readonly structureValidity: DefinedRiskStructureValidity;
   /** Named reasons for invalidity -- never a single boolean with no
    * explanation. Non-empty only when `structureValidity === 'INVALID'`. */
   readonly invalidReasons: readonly string[];
+  readonly economicsState: DefinedRiskEconomicsState;
+  readonly unknownReasons: readonly string[];
   readonly widthPerShare: number | null;
   /** Bid-side-short-minus-ask-side-long, the conservative executable
    * reference already used everywhere else in this codebase for a net
    * credit -- never the midpoint. */
   readonly netCreditPerShare: number | null;
+  readonly creditPriceBasis: 'NATURAL_CONSERVATIVE' | null;
   readonly netCreditPerContract: number | null;
   readonly positionNetCredit: number | null;
   readonly maxProfitPerContract: number | null;
@@ -81,13 +94,14 @@ export interface DefinedRiskEconomics {
   readonly positionMaxProfit: number | null;
   readonly positionMaxLoss: number | null;
   readonly breakEven: number | null;
-  /** Standard regulatory approximation for a credit spread's capital
-   * requirement: width * multiplier. This module does not claim to know
-   * the caller's actual broker margin requirement, which may differ. */
+  /** Structural maximum capital at risk: maximum loss per contract. This
+   * module does not claim to know the broker's actual buying-power effect,
+   * which must remain separately sourced from broker truth. */
   readonly capitalRequiredPerContract: number | null;
   readonly positionCapitalRequired: number | null;
-  /** In [0,1] when both are known and maxLossPerContract > 0; `null`
-   * otherwise -- never a fabricated ratio. */
+  /** Non-negative reward-to-risk ratio when both values are known and
+   * maxLossPerContract > 0. It may exceed 1, so no false [0,1] bound is
+   * claimed. `null` otherwise. */
   readonly creditToMaxLossRatio: number | null;
   readonly creditToWidthRatio: number | null;
   /** Signed distance (dollars) from the current underlying price to
@@ -112,24 +126,64 @@ function finite(value: number | null): value is number {
   return value !== null && Number.isFinite(value);
 }
 
+const missing = (value: string): boolean => value.trim().length === 0;
+const optionalNonFinite = (value: number | null): boolean => value !== null && !Number.isFinite(value);
+
 /**
  * Computes descriptive economics for one recorded/hypothetical two-leg
  * defined-risk structure. Fails closed (reports `INVALID` with named
  * reasons, never a fabricated number) on: non-finite required inputs,
- * mismatched short/long multipliers, non-positive width, strikes on the
- * wrong side for the stated option type, or a net credit that would make
- * `maxLossPerContract` negative (an impossible payoff, not merely an
- * unattractive one).
+ * mismatched short/long multipliers or expirations, non-positive width,
+ * strikes on the wrong side for the stated option type, invalid quotes,
+ * or a non-positive/impossible credit payoff.
  */
 export function computeDefinedRiskEconomics(input: DefinedRiskStructureInput): DefinedRiskEconomics {
   const reasons: string[] = [];
+  const unknownReasons: string[] = [];
   const requiredFinite: readonly [string, number][] = [
     ['shortStrike', input.shortStrike], ['longStrike', input.longStrike],
     ['shortMultiplier', input.shortMultiplier], ['longMultiplier', input.longMultiplier], ['quantity', input.quantity],
   ];
   for (const [name, value] of requiredFinite) if (!Number.isFinite(value)) reasons.push(`${name.toUpperCase()}_NON_FINITE`);
+  if (missing(input.underlying)) reasons.push('UNDERLYING_IDENTITY_MISSING');
+  if (missing(input.shortOptionSymbol)) reasons.push('SHORT_CONTRACT_IDENTITY_MISSING');
+  if (missing(input.longOptionSymbol)) reasons.push('LONG_CONTRACT_IDENTITY_MISSING');
+  if (!missing(input.shortOptionSymbol) && input.shortOptionSymbol === input.longOptionSymbol) reasons.push('DUPLICATE_CONTRACT_IDENTITY');
+  const shortContract = missing(input.shortOptionSymbol) ? null : parseOccOptionSymbol(input.shortOptionSymbol);
+  const longContract = missing(input.longOptionSymbol) ? null : parseOccOptionSymbol(input.longOptionSymbol);
+  if (!missing(input.shortOptionSymbol) && shortContract === null) reasons.push('SHORT_CONTRACT_IDENTITY_INVALID');
+  if (!missing(input.longOptionSymbol) && longContract === null) reasons.push('LONG_CONTRACT_IDENTITY_INVALID');
+  if (missing(input.shortExpiration) || missing(input.longExpiration)) reasons.push('EXPIRATION_IDENTITY_MISSING');
+  else if (input.shortExpiration !== input.longExpiration) reasons.push('MISMATCHED_EXPIRATION');
+  if (!['PUT', 'CALL'].includes(input.optionType)) reasons.push('OPTION_TYPE_INVALID');
+  if (shortContract !== null) {
+    if (shortContract.underlying !== input.underlying) reasons.push('SHORT_CONTRACT_UNDERLYING_MISMATCH');
+    if (shortContract.expiration !== input.shortExpiration) reasons.push('SHORT_CONTRACT_EXPIRATION_MISMATCH');
+    if (shortContract.optionType !== input.optionType) reasons.push('SHORT_CONTRACT_OPTION_TYPE_MISMATCH');
+    if (Math.abs(shortContract.strike - input.shortStrike) > 1e-9) reasons.push('SHORT_CONTRACT_STRIKE_MISMATCH');
+  }
+  if (longContract !== null) {
+    if (longContract.underlying !== input.underlying) reasons.push('LONG_CONTRACT_UNDERLYING_MISMATCH');
+    if (longContract.expiration !== input.longExpiration) reasons.push('LONG_CONTRACT_EXPIRATION_MISMATCH');
+    if (longContract.optionType !== input.optionType) reasons.push('LONG_CONTRACT_OPTION_TYPE_MISMATCH');
+    if (Math.abs(longContract.strike - input.longStrike) > 1e-9) reasons.push('LONG_CONTRACT_STRIKE_MISMATCH');
+  }
   if (input.shortMultiplier !== input.longMultiplier) reasons.push('MISMATCHED_MULTIPLIER');
+  if (!Number.isInteger(input.shortMultiplier) || input.shortMultiplier <= 0
+    || !Number.isInteger(input.longMultiplier) || input.longMultiplier <= 0) reasons.push('MULTIPLIER_NOT_POSITIVE_INTEGER');
   if (!Number.isInteger(input.quantity) || input.quantity <= 0) reasons.push('QUANTITY_NOT_POSITIVE_INTEGER');
+  for (const [name, value] of [
+    ['SHORT_BID', input.shortBid], ['SHORT_ASK', input.shortAsk], ['LONG_BID', input.longBid], ['LONG_ASK', input.longAsk],
+    ['UNDERLYING_PRICE', input.underlyingPrice], ['EXPECTED_MOVE', input.expectedMoveDollars],
+    ['SHORT_DELTA', input.shortDelta], ['LONG_DELTA', input.longDelta],
+    ['SHORT_IV', input.shortImpliedVolatility], ['LONG_IV', input.longImpliedVolatility],
+  ] as const) if (optionalNonFinite(value)) reasons.push(`${name}_NON_FINITE`);
+  if (finite(input.underlyingPrice) && input.underlyingPrice <= 0) reasons.push('UNDERLYING_PRICE_NOT_POSITIVE');
+  if (finite(input.expectedMoveDollars) && input.expectedMoveDollars < 0) reasons.push('EXPECTED_MOVE_NEGATIVE');
+  if (finite(input.shortImpliedVolatility) && input.shortImpliedVolatility < 0) reasons.push('SHORT_IV_NEGATIVE');
+  if (finite(input.longImpliedVolatility) && input.longImpliedVolatility < 0) reasons.push('LONG_IV_NEGATIVE');
+  if (finite(input.shortDelta) && Math.abs(input.shortDelta) > 1) reasons.push('SHORT_DELTA_OUT_OF_RANGE');
+  if (finite(input.longDelta) && Math.abs(input.longDelta) > 1) reasons.push('LONG_DELTA_OUT_OF_RANGE');
 
   // For a PUT credit spread, width = shortStrike - longStrike is positive
   // if and only if the short strike is genuinely above the long strike
@@ -144,27 +198,43 @@ export function computeDefinedRiskEconomics(input: DefinedRiskStructureInput): D
     reasons.push(`WIDTH_NOT_POSITIVE_OR_STRIKES_MISORDERED_FOR_${input.optionType}_CREDIT_SPREAD`);
   }
 
-  const hasQuote = finite(input.shortBid) && finite(input.shortAsk) && finite(input.longBid) && finite(input.longAsk)
-    && input.shortBid >= 0 && input.shortAsk >= input.shortBid && input.longBid >= 0 && input.longAsk >= input.longBid;
+  const quoteFields = [input.shortBid, input.shortAsk, input.longBid, input.longAsk];
+  const hasAllQuoteFields = quoteFields.every(finite);
+  if (!hasAllQuoteFields && !quoteFields.some(optionalNonFinite)) unknownReasons.push('TWO_LEG_QUOTE_INCOMPLETE');
+  if (hasAllQuoteFields && ((input.shortBid as number) < 0 || (input.shortAsk as number) < 0
+    || (input.longBid as number) < 0 || (input.longAsk as number) < 0)) reasons.push('NEGATIVE_OPTION_QUOTE');
+  if (hasAllQuoteFields && (input.shortAsk as number) < (input.shortBid as number)) reasons.push('SHORT_QUOTE_CROSSED');
+  if (hasAllQuoteFields && (input.longAsk as number) < (input.longBid as number)) reasons.push('LONG_QUOTE_CROSSED');
+  const hasQuote = hasAllQuoteFields && !reasons.some((reason) => ['NEGATIVE_OPTION_QUOTE', 'SHORT_QUOTE_CROSSED', 'LONG_QUOTE_CROSSED'].includes(reason));
   const netCreditPerShare = hasQuote ? (input.shortBid as number) - (input.longAsk as number) : null;
+  if (netCreditPerShare !== null && netCreditPerShare <= 0) reasons.push('NON_POSITIVE_NET_CREDIT');
+  if (Number.isFinite(width) && netCreditPerShare !== null && netCreditPerShare >= width) {
+    reasons.push('NET_CREDIT_NOT_LESS_THAN_WIDTH');
+  }
 
   const multiplier = input.shortMultiplier;
   const widthPerShare = reasons.length === 0 ? width : null;
   const maxLossPerContractRaw = widthPerShare !== null && netCreditPerShare !== null
     ? (widthPerShare - netCreditPerShare) * multiplier : null;
-  if (maxLossPerContractRaw !== null && maxLossPerContractRaw < 0) reasons.push('NET_CREDIT_EXCEEDS_WIDTH_IMPOSSIBLE_MAX_LOSS');
+  if (maxLossPerContractRaw !== null && maxLossPerContractRaw <= 0) reasons.push('MAX_LOSS_NOT_POSITIVE');
 
   const structureValidity: DefinedRiskStructureValidity = reasons.length === 0 ? 'VALID' : 'INVALID';
   if (structureValidity === 'INVALID') {
     return {
       contractVersion: definedRiskEconomicsVersion, underlying: input.underlying, snapshotId: input.snapshotId,
-      candidateId: input.candidateId, optionType: input.optionType, structureValidity, invalidReasons: [...new Set(reasons)].sort(),
-      widthPerShare: null, netCreditPerShare: null, netCreditPerContract: null, positionNetCredit: null,
+      candidateId: input.candidateId, optionType: input.optionType, shortOptionSymbol: input.shortOptionSymbol,
+      longOptionSymbol: input.longOptionSymbol, shortExpiration: input.shortExpiration, longExpiration: input.longExpiration,
+      multiplier: null, quantity: Number.isInteger(input.quantity) && input.quantity > 0 ? input.quantity : null,
+      structureValidity, invalidReasons: [...new Set(reasons)].sort(),
+      economicsState: 'INVALID', unknownReasons: [...new Set(unknownReasons)].sort(),
+      widthPerShare: null, netCreditPerShare: null, creditPriceBasis: null, netCreditPerContract: null, positionNetCredit: null,
       maxProfitPerContract: null, maxLossPerContract: null, positionMaxProfit: null, positionMaxLoss: null, breakEven: null,
       capitalRequiredPerContract: null, positionCapitalRequired: null, creditToMaxLossRatio: null, creditToWidthRatio: null,
-      distanceFromSpotToBreakEvenDollars: null, expectedMoveDollars: input.expectedMoveDollars,
-      shortImpliedVolatility: input.shortImpliedVolatility,
-      longImpliedVolatility: input.longImpliedVolatility, shortMinusLongImpliedVolatility: null,
+      distanceFromSpotToBreakEvenDollars: null,
+      expectedMoveDollars: finite(input.expectedMoveDollars) && input.expectedMoveDollars >= 0 ? input.expectedMoveDollars : null,
+      shortImpliedVolatility: finite(input.shortImpliedVolatility) && input.shortImpliedVolatility >= 0 ? input.shortImpliedVolatility : null,
+      longImpliedVolatility: finite(input.longImpliedVolatility) && input.longImpliedVolatility >= 0 ? input.longImpliedVolatility : null,
+      shortMinusLongImpliedVolatility: null,
       eventContextKnown: input.eventContextKnown, liquidityEvidenceKnown: input.liquidityEvidenceKnown, brokerAuthority: false,
     };
   }
@@ -172,7 +242,7 @@ export function computeDefinedRiskEconomics(input: DefinedRiskStructureInput): D
   const netCreditPerContract = netCreditPerShare !== null ? netCreditPerShare * multiplier : null;
   const maxProfitPerContract = netCreditPerContract;
   const maxLossPerContract = maxLossPerContractRaw;
-  const capitalRequiredPerContract = (widthPerShare as number) * multiplier;
+  const capitalRequiredPerContract = maxLossPerContract;
   const breakEven = netCreditPerShare !== null
     ? input.optionType === 'PUT' ? input.shortStrike - netCreditPerShare : input.shortStrike + netCreditPerShare
     : null;
@@ -180,11 +250,16 @@ export function computeDefinedRiskEconomics(input: DefinedRiskStructureInput): D
 
   return {
     contractVersion: definedRiskEconomicsVersion, underlying: input.underlying, snapshotId: input.snapshotId,
-    candidateId: input.candidateId, optionType: input.optionType, structureValidity, invalidReasons: [],
-    widthPerShare, netCreditPerShare, netCreditPerContract, positionNetCredit: netCreditPerContract !== null ? netCreditPerContract * input.quantity : null,
+    candidateId: input.candidateId, optionType: input.optionType, shortOptionSymbol: input.shortOptionSymbol,
+    longOptionSymbol: input.longOptionSymbol, shortExpiration: input.shortExpiration, longExpiration: input.longExpiration,
+    multiplier, quantity: input.quantity, structureValidity, invalidReasons: [],
+    economicsState: netCreditPerShare === null ? 'UNKNOWN' : 'KNOWN', unknownReasons: [...new Set(unknownReasons)].sort(),
+    widthPerShare, netCreditPerShare, creditPriceBasis: netCreditPerShare === null ? null : 'NATURAL_CONSERVATIVE',
+    netCreditPerContract, positionNetCredit: netCreditPerContract !== null ? netCreditPerContract * input.quantity : null,
     maxProfitPerContract, maxLossPerContract, positionMaxProfit: maxProfitPerContract !== null ? maxProfitPerContract * input.quantity : null,
     positionMaxLoss: maxLossPerContract !== null ? maxLossPerContract * input.quantity : null, breakEven,
-    capitalRequiredPerContract, positionCapitalRequired: capitalRequiredPerContract * input.quantity,
+    capitalRequiredPerContract,
+    positionCapitalRequired: capitalRequiredPerContract === null ? null : capitalRequiredPerContract * input.quantity,
     creditToMaxLossRatio: maxLossPerContract !== null && maxLossPerContract > 0 && netCreditPerContract !== null
       ? netCreditPerContract / maxLossPerContract : null,
     creditToWidthRatio: netCreditPerShare !== null && widthPerShare !== null && widthPerShare > 0 ? netCreditPerShare / widthPerShare : null,
@@ -208,13 +283,29 @@ export interface DefinedRiskDimensionalDifference {
   readonly difference: number;
 }
 
+export interface DefinedRiskStructureComparison {
+  readonly comparisonState: 'COMPARABLE' | 'NOT_COMPARABLE';
+  readonly reasons: readonly string[];
+  readonly differences: readonly DefinedRiskDimensionalDifference[];
+  readonly brokerAuthority: false;
+}
+
 /**
  * Reports the exact numeric difference on each comparable dimension
  * between two VALID structures -- never a "winner," never an aggregate
  * score, never a recommendation. A dimension unknown on either side is
  * skipped, never assumed equal.
  */
-export function compareDefinedRiskStructures(a: DefinedRiskEconomics, b: DefinedRiskEconomics): readonly DefinedRiskDimensionalDifference[] {
+export function compareDefinedRiskStructures(a: DefinedRiskEconomics, b: DefinedRiskEconomics): DefinedRiskStructureComparison {
+  const reasons: string[] = [];
+  if (a.structureValidity !== 'VALID' || b.structureValidity !== 'VALID') reasons.push('INVALID_STRUCTURE');
+  if (a.underlying !== b.underlying) reasons.push('MISMATCHED_UNDERLYING');
+  if (a.optionType !== b.optionType) reasons.push('MISMATCHED_OPTION_TYPE');
+  if (a.shortExpiration !== b.shortExpiration || a.longExpiration !== b.longExpiration) reasons.push('MISMATCHED_EXPIRATION');
+  if (a.multiplier !== b.multiplier) reasons.push('MISMATCHED_MULTIPLIER');
+  if (reasons.length > 0) {
+    return { comparisonState: 'NOT_COMPARABLE', reasons: [...new Set(reasons)].sort(), differences: [], brokerAuthority: false };
+  }
   const dims: readonly [DefinedRiskDimensionalDifference['dimension'], number | null, number | null][] = [
     ['netCreditPerContract', a.netCreditPerContract, b.netCreditPerContract],
     ['maxLossPerContract', a.maxLossPerContract, b.maxLossPerContract],
@@ -227,5 +318,5 @@ export function compareDefinedRiskStructures(a: DefinedRiskEconomics, b: Defined
     if (!finite(aValue) || !finite(bValue)) continue;
     differences.push({ dimension, aValue, bValue, difference: aValue - bValue });
   }
-  return differences;
+  return { comparisonState: 'COMPARABLE', reasons: [], differences, brokerAuthority: false };
 }
