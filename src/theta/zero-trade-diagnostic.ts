@@ -329,12 +329,22 @@ export async function readZeroTradeDiagnostic(
       strings(candidate.unknown_evidence_json).some((reason) => pattern.test(reason.toUpperCase()))
       || strings(candidate.hard_blockers_json).some((reason) => pattern.test(reason.toUpperCase()));
     const targetTotals = {
+      uniqueUnderlyings: [...new Set(targetCandidates.map((candidate) => candidate.underlying))].sort(),
+      symbolEvaluations: targetCycles.reduce((sum, cycle) => sum + cycle.symbolsAttempted, 0),
       candidates: targetCandidates.length,
       hardRejected: targetCandidates.filter((candidate) => strings(candidate.hard_blockers_json).length > 0).length,
       structurallyFeasible: targetCandidates.filter((candidate) => candidate.structurally_feasible).length,
       riskFeasible: targetCandidates.filter((candidate) => candidate.risk_feasible).length,
       quoteRejected: targetCandidates.filter((candidate) => candidateHas(candidate, /QUOTE|BBO|STALE|BID|ASK/)).length,
       liquidityRejected: targetCandidates.filter((candidate) => candidateHas(candidate, /SPREAD|LIQUIDITY|OPEN_INTEREST|VOLUME|ZERO_BID/)).length,
+      quoteUsable: targetCandidates.filter((candidate) => !candidateHas(candidate, /QUOTE|BBO|STALE|BID|ASK/)).length,
+      liquidityUsable: targetCandidates.filter((candidate) => !candidateHas(candidate, /SPREAD|LIQUIDITY|OPEN_INTEREST|VOLUME|ZERO_BID/)).length,
+      economicEvidenceKnown: targetCandidates.filter((candidate) =>
+        typeof candidate.economics_json.expectedAfterCostEv === 'number'
+        && Number.isFinite(candidate.economics_json.expectedAfterCostEv)).length,
+      positiveExpectedAfterCostEv: targetCandidates.filter((candidate) =>
+        typeof candidate.economics_json.expectedAfterCostEv === 'number'
+        && candidate.economics_json.expectedAfterCostEv > 0).length,
       unknownData: targetCandidates.filter((candidate) => strings(candidate.unknown_evidence_json).length > 0).length,
       aegisUnknown: targetCandidates.filter((candidate) => candidateHas(candidate, /AEGIS_STATE_UNKNOWN/)).length,
       aegisVetoed: targetCandidates.filter((candidate) => candidateHas(candidate, /AEGIS_(HOLD_ONLY|HARD_VETO|EMERGENCY_EXIT_ONLY)/)).length,
@@ -344,6 +354,11 @@ export async function readZeroTradeDiagnostic(
       nearMisses: targetCycles.reduce((sum, cycle) => sum + cycle.nearMissCount, 0),
       waits: targetCycles.filter((cycle) => cycle.finalAction === 'WAIT').length,
       opens: targetCycles.filter((cycle) => cycle.finalAction === 'ACTION_READY').length,
+      explicitWaits: targetCycles.filter((cycle) => cycle.finalAction === 'WAIT').length,
+      finalActionUnavailable: targetCycles.filter((cycle) => cycle.finalAction === 'UNKNOWN').length,
+      dteDistribution: Object.entries(targetCandidates.reduce<Record<string,number>>((counts,candidate)=>{
+        const key=candidate.dte===null?'UNKNOWN':String(candidate.dte);counts[key]=(counts[key]??0)+1;return counts;
+      },{})).map(([dte,count])=>({dte,count})).sort((left,right)=>left.dte.localeCompare(right.dte,{numeric:true})),
     };
 
     return {
