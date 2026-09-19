@@ -237,6 +237,9 @@ export async function readZeroTradeDiagnostic(
         antiParalysisFindings: strings(diagnostic.antiParalysisFindings),
         bestRejectedCandidates: Array.isArray(diagnostic.bestRejectedCandidates)
           ? diagnostic.bestRejectedCandidates.slice(0, 5) : [],
+        strategyQualityChallengers: Array.isArray(diagnostic.strategyQualityChallengers)
+          ? diagnostic.strategyQualityChallengers : [],
+        universeBreadthChallenger: record(diagnostic.universeBreadthChallenger),
       };
     });
     const branchSummary = [...new Set(branches.rows.map((row) => row.branch))].sort().map((branch) => {
@@ -303,6 +306,41 @@ export async function readZeroTradeDiagnostic(
         scanIds: relatedScans.map((scan) => scan.scanId),
       };
     });
+    const targetOpportunityCycles = opportunityCycles.slice(-13);
+    const targetScanIds = new Set(targetOpportunityCycles.flatMap((cycle) => cycle.scanIds));
+    const targetCycles = cycleRows.filter((cycle) => targetScanIds.has(cycle.scanId));
+    const targetCandidates = candidates.rows.filter((candidate) => targetScanIds.has(candidate.scan_id));
+    const targetBranches = branches.rows.filter((branch) => targetScanIds.has(branch.scan_id));
+    const targetHardGates: Record<string, number> = {};
+    const targetUnknownEvidence: Record<string, number> = {};
+    const targetSizingReasons: Record<string, number> = {};
+    const targetRouteReasons: Record<string, number> = {};
+    for (const candidate of targetCandidates) {
+      increment(targetHardGates, strings(candidate.hard_blockers_json));
+      increment(targetUnknownEvidence, strings(candidate.unknown_evidence_json));
+      increment(targetSizingReasons, strings(candidate.sizing_reasons_json));
+    }
+    for (const branch of targetBranches) increment(targetRouteReasons, strings(branch.route_reasons_json));
+    const candidateHas = (candidate: CandidateRow, pattern: RegExp): boolean =>
+      strings(candidate.unknown_evidence_json).some((reason) => pattern.test(reason))
+      || strings(candidate.hard_blockers_json).some((reason) => pattern.test(reason));
+    const targetTotals = {
+      candidates: targetCandidates.length,
+      hardRejected: targetCandidates.filter((candidate) => strings(candidate.hard_blockers_json).length > 0).length,
+      structurallyFeasible: targetCandidates.filter((candidate) => candidate.structurally_feasible).length,
+      riskFeasible: targetCandidates.filter((candidate) => candidate.risk_feasible).length,
+      quoteRejected: targetCandidates.filter((candidate) => candidateHas(candidate, /QUOTE|BBO|STALE|BID|ASK/)).length,
+      liquidityRejected: targetCandidates.filter((candidate) => candidateHas(candidate, /SPREAD|LIQUIDITY|OPEN_INTEREST|VOLUME|ZERO_BID/)).length,
+      unknownData: targetCandidates.filter((candidate) => strings(candidate.unknown_evidence_json).length > 0).length,
+      aegisUnknown: targetCandidates.filter((candidate) => candidateHas(candidate, /AEGIS_STATE_UNKNOWN/)).length,
+      aegisVetoed: targetCandidates.filter((candidate) => candidateHas(candidate, /AEGIS_(HOLD_ONLY|HARD_VETO|EMERGENCY_EXIT_ONLY)/)).length,
+      quantityZero: targetCandidates.filter((candidate) => candidate.quantity === 0).length,
+      quantityPositive: targetCandidates.filter((candidate) => candidate.quantity > 0).length,
+      selected: targetCandidates.filter((candidate) => candidate.selected).length,
+      nearMisses: targetCycles.reduce((sum, cycle) => sum + cycle.nearMissCount, 0),
+      waits: targetCycles.filter((cycle) => cycle.finalAction === 'WAIT').length,
+      opens: targetCycles.filter((cycle) => cycle.finalAction === 'ACTION_READY').length,
+    };
 
     return {
       contractVersion: zeroTradeDiagnosticVersion,
@@ -314,6 +352,31 @@ export async function readZeroTradeDiagnostic(
       cycles: cycleRows,
       openOpportunityCycleCount: opportunityCycles.length,
       openOpportunityCycles: opportunityCycles,
+      targetOpenSessionSample: {
+        selectionRule: 'LAST_13_OPEN_OPPORTUNITY_CYCLES_IN_WINDOW',
+        cycleCount: targetOpportunityCycles.length,
+        successfulCycles: targetOpportunityCycles.filter((cycle) => cycle.status === 'SUCCEEDED').length,
+        degradedCycles: targetOpportunityCycles.filter((cycle) => cycle.status === 'DEGRADED').length,
+        opportunityCycles: targetOpportunityCycles,
+        diagnosticCycles: targetCycles,
+        totals: targetTotals,
+        branchSummary: [...new Set(targetBranches.map((row) => row.branch))].sort().map((branch) => {
+          const rows = targetBranches.filter((row) => row.branch === branch);
+          return { branch,status:rows[0]?.status ?? 'UNKNOWN',observedCycles:new Set(rows.map((row) => row.scan_id)).size,
+            applicableCycles:new Set(rows.filter((row) => row.applicable).map((row) => row.scan_id)).size,
+            evaluatedCycles:new Set(rows.filter((row) => row.evaluated).map((row) => row.scan_id)).size,
+            candidateCount:rows.reduce((sum,row)=>sum+row.candidate_count,0),
+            dataInsufficient:rows.reduce((sum,row)=>sum+row.data_insufficient,0) };
+        }),
+        rejectionDistribution: { hardGates:rankedCounts(targetHardGates),unknownEvidence:rankedCounts(targetUnknownEvidence),
+          sizingReasons:rankedCounts(targetSizingReasons),routeReasons:rankedCounts(targetRouteReasons) },
+        bestRejectedCandidates: targetCandidates.filter((row) => !row.selected)
+          .sort((left,right)=>(left.rank_at_decision??Number.MAX_SAFE_INTEGER)-(right.rank_at_decision??Number.MAX_SAFE_INTEGER))
+          .slice(0,10).map((row)=>({candidateRef:row.candidate_ref,branch:row.branch,underlying:row.underlying,
+            rankAtDecision:row.rank_at_decision,dte:row.dte,delta:row.delta===null?null:Number(row.delta),
+            spreadPct:row.spread_pct===null?null:Number(row.spread_pct),hardBlockers:strings(row.hard_blockers_json),
+            unknownEvidence:strings(row.unknown_evidence_json),quantity:row.quantity,bindingConstraint:row.binding_constraint})),
+      },
       totals,
       branchSummary,
       rejectionDistribution: {
