@@ -2274,3 +2274,22 @@ WHAT THE OTHER AGENT SHOULD REVIEW: Research should consume these utilities only
 CLAUDE REVIEW: `a8143cc` was rejected because its expiration premium aggregation and short-option theta/put-break-even comparison directions are not economically valid. No file from that commit was integrated.
 
 NEXT RECOMMENDED TASK: Continue natural open-session evidence collection. Do not change policy from a synthetic or undersized selection-bias result.
+# 2026-09-19 master completion build wave
+
+OWNER: Codex production integration
+
+TASK: Close remaining branch-research, management-counterfactual, and always-on packaging gaps without changing the running Paper champion.
+
+FILES CHANGED: Typed environment and worker health identity, worker compose example, branch readiness and management counterfactual research modules, option-chain evidence integration, deployment-readiness tooling, tests, and operational documentation.
+
+WHAT WAS IMPLEMENTED: Hold-Strike and Defined-Risk evidence completeness is now explicit and persisted inside the existing chain evidence JSON. Management counterfactuals fail closed on future leakage, absent broker truth, absent replay model, `NO_FILL`, and unresolved evidence. Container deployments receive an honest host identity and a deterministic safety/readiness receipt. The owner observation heartbeat was removed while the THETA worker remained running.
+
+TESTS RUN: Focused Node tests, full Node and Python suites, TypeScript, ESLint, build, security scan, CI, and PostgreSQL verification where available.
+
+KNOWN LIMITATIONS: Real Paper outcomes do not yet exist. Docker Desktop's engine was unavailable, so the worker image could not be built locally. No external always-on host was deployed.
+
+RISKS: Research readiness must never be interpreted as promotion. A future external-worker cutover must stop the old owner, acquire the single-owner lease, reconcile first, and verify the execution gate.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Consume the new paired counterfactual contract only after causal labels and defensible fill replay exist. Do not relax branch completeness from synthetic fixtures.
+
+NEXT RECOMMENDED TASK: Let the current Paper champion accumulate natural evidence. Deploy an external worker only during a separately controlled infrastructure window with Docker and an approved host available.

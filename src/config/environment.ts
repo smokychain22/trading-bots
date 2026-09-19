@@ -61,6 +61,7 @@ const environmentSchema = z.object({
   PAPER_EVIDENCE_RISK_CAP: z.coerce.number().int().nonnegative().default(1),
   THETA_AUTONOMOUS_WORKER_ENABLED: safeFlag,
   THETA_RUNTIME_MODE: z.enum(['MASTER_THETA_PAPER', 'THETA_SHADOW_ONLY']).default('MASTER_THETA_PAPER'),
+  THETA_WORKER_HOST_TYPE: z.enum(['WINDOWS_AUTOSTART', 'CONTAINER']).default('WINDOWS_AUTOSTART'),
   THETA_WORKER_PORT: z.coerce.number().int().min(1).max(65_535).default(3001),
   THETA_WORKER_INTERVAL_MS: z.coerce.number().int().min(10_000).max(900_000).default(60_000),
   THETA_WORKER_HEARTBEAT_MS: z.coerce.number().int().min(5_000).max(60_000).default(15_000),

@@ -110,6 +110,10 @@ test('compares CSP, defined risk, and WAIT from one immutable snapshot while kee
   assert.equal(spread?.snapshotId,SNAPSHOT);
   assert.ok(result.structureComparisons.some((row)=>row.structure==='WAIT'));
   assert.ok(result.structureComparisons.every((row)=>row.executionAuthorized===false&&row.afterCostValue===null));
+  const readiness=result.branchResearchReadiness.find((row)=>row.branch==='THETA_DEFINED_RISK');
+  assert.equal(readiness?.status,'BLOCKED_MISSING_EVIDENCE');
+  assert.ok(readiness?.missingEvidence.includes('spreadPermission'));
+  assert.equal(readiness?.executionAuthorized,false);
 });
 
 test('preserves covered-call whole-chain loss and recovery alternatives rather than chasing cheap premium',()=>{

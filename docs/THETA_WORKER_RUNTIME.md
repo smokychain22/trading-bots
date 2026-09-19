@@ -34,6 +34,8 @@ secret. `.dockerignore` excludes local environments, Vercel state, tests, report
 and Git history. `docker-compose.worker.example.yml` shows a generic deployment with
 a read-only filesystem, dropped Linux capabilities, a small `/tmp` tmpfs, and
 restart-on-failure behavior. Its `.env.worker` file is deliberately absent and ignored.
+The compose package sets `THETA_WORKER_HOST_TYPE=CONTAINER`, so health and lease
+receipts distinguish an external container from the current Windows-autostart owner.
 
 ## Runtime behavior
 
@@ -65,7 +67,15 @@ docker compose -f docker-compose.worker.example.yml up -d --build
 ```
 
 This command is documentation only during the current phase. Docker Desktop was not
-running during initial verification, so an image build remains an explicit gap.
+running during the latest verification, so an image build remains an explicit gap.
+The package can be checked without secrets or deployment authority using:
+
+```text
+npm run worker:deployment-readiness
+```
+
+The receipt remains blocked until the Docker engine is available. A passing receipt
+still does not authorize deployment or mutation-owner cutover.
 
 ## Research evidence export
 

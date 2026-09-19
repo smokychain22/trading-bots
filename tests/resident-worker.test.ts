@@ -70,6 +70,15 @@ test('worker health is sanitized and records degraded cycle state', async () => 
   assert.equal(JSON.stringify(worker.snapshot()).includes('pass'), false);
 });
 
+test('container deployment reports an external container identity without changing execution authority', () => {
+  const source=Object.fromEntries(Object.entries(lockedEnvironment()).map(([key,value])=>[key,String(value)]));
+  const environment=loadEnvironment({...source,THETA_WORKER_HOST_TYPE:'CONTAINER'});
+  const snapshot=new ResidentThetaWorker(environment,fakePool(),async()=>report(),logger).snapshot();
+  assert.equal(snapshot.hostState,'EXTERNAL_CONTAINER_PRIMARY');
+  assert.equal(snapshot.alwaysOnWorker,'CONTAINER_RESTART_POLICY');
+  assert.equal(snapshot.executionGate,'LOCKED');
+});
+
 class CaptureRuntimeStore implements WorkerRuntimeStore {
   registrations:WorkerRegistration[]=[]; gaps:Array<{start:string;end:string}>=[]; states:WorkerRuntimeState[]=[];
   constructor(private readonly lease:'ACQUIRED'|'TAKEN_OVER'|'HELD_BY_OTHER'='ACQUIRED',private readonly previous:string|null=null){}

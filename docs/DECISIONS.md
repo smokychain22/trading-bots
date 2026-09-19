@@ -946,3 +946,11 @@ Claude commits `b277ca0` and `424a54b` originally carried real defects identifie
 The port was further aligned to `experiment_registry.py`'s ten canonical feature families and made fail-closed for non-finite inputs, ragged PBO matrices, invalid economic-materiality policy, and invalid independent-N policy. These utilities calculate research evidence only. They don't promote a model, alter a strategy, authorize an order, or change the running Paper champion.
 
 Claude commit `a8143cc` was reviewed and rejected. Summing per-share premium across a variable number of contracts does not create a comparable expiration value. The expiration comparator uses raw long-option theta with the wrong direction for a short-premium strategy, and the put strike comparator treats a higher break-even as better when a lower break-even provides more downside cushion. Existing canonical option-chain evidence remains the source of research facts until a corrected comparator uses common units and branch-aware economics.
+# 2026-09-19: Complete research branch receipts and honest container identity
+
+- The owner-facing open-session observation heartbeat was deleted. THETA keeps its own worker, scheduler, reconciliation, persistence, and market-calendar handling.
+- Hold-Strike and Defined-Risk now produce machine-checkable research-completeness receipts inside existing option-chain evidence. The receipts remain non-authoritative and cannot promote or execute either branch.
+- Management counterfactual analysis requires a broker-actual selected path, a versioned replay method for every resolved alternative, label availability after the decision, and explicit `NO_FILL`/unresolved states.
+- Container workers report `EXTERNAL_CONTAINER_PRIMARY` and `CONTAINER_RESTART_POLICY`; Windows workers retain the existing identity by default.
+- The external always-on deployment package is buildable but the current machine's Docker engine is unavailable. No external host or second mutation owner was created.
+- Claude commit `321b29b` was reviewed and not ported because it creates a parallel Hold-Strike applicability evaluator beside the existing Python baseline and canonical frontier. Its useful completeness concerns are covered by the integrated readiness receipt without adding a second decision authority.

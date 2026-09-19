@@ -1,8 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import type { JsonValue } from '../market/fusion-snapshot.js';
+import { assessBranchResearchReadiness, type BranchResearchReadiness } from '../research/branch-research-readiness.js';
 import type { CanonicalFrontierCandidate, CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
 import type { NormalizedOptionContract } from './option-contract.js';
+import { canonicalThetaStrategySources } from './strategy-package.js';
 
 export const optionsChainDecisionVersion = 'theta-options-chain-decision-v1' as const;
 export const optionsChainCounterfactualVersion = 'theta-options-chain-counterfactual-label-v1' as const;
@@ -148,6 +150,7 @@ export interface OptionsChainDecisionEvidence {
   readonly expirationFrontier:readonly ExpirationResearchFrontier[];
   readonly strikeDeltaFrontiers:readonly StrikeDeltaFrontier[];
   readonly structureComparisons:readonly StructureResearchComparison[];
+  readonly branchResearchReadiness:readonly BranchResearchReadiness[];
   readonly optionomicsAttachments:readonly ChainScopedAttachment[];
   readonly contractSelectionReceipt:{
     readonly selectedContractId:string|null;
@@ -405,6 +408,29 @@ export function buildOptionsChainDecisionEvidence(input:{
   structureComparisons.push({structure:'WAIT',candidateId:`WAIT:${input.snapshotContentHash}`,branch:'WAIT',legIds:[],snapshotId:input.snapshotContentHash,
     afterCostValue:null,tailRisk:0,capitalRequired:0,capitalDays:0,liquidity:null,assignmentExposure:0,executionComplexity:0,portfolioImpact:null,
     knownStructuralEconomics:null,paretoRank:null,selected:input.frontier.primaryAction==='GLOBAL_WAIT',hardBlockers:[],unknownEvidence:['OPPORTUNITY_COST_UNKNOWN'],executionAuthorized:false});
+  const branchResearchReadiness=(['THETA_HOLD_STRIKE','THETA_DEFINED_RISK'] as const).map((branchName)=>{
+    const branch=input.frontier.branches.find((item)=>item.branch===branchName);
+    const candidates=branch?.candidates??[];
+    const candidateContracts=candidates.flatMap((candidate)=>candidate.legs.map((candidateLeg)=>
+      input.contracts.find((contract)=>contract.optionSymbol===candidateLeg.optionSymbol)??null));
+    const presentContracts=candidateContracts.filter((contract):contract is NormalizedOptionContract=>contract!==null);
+    const source=canonicalThetaStrategySources.find((item)=>item.branch===branchName);
+    const knownWhen=(condition:boolean):'KNOWN'|'UNKNOWN'=>condition?'KNOWN':'UNKNOWN';
+    return assessBranchResearchReadiness({branch:branchName,evaluatedCandidateCount:candidates.length,
+      exactContractIdentity:knownWhen(candidateContracts.length>0&&candidateContracts.every((contract)=>contract!==null&&contract.occSymbol!==null)),
+      pointInTimeQuote:knownWhen(presentContracts.length>0&&presentContracts.every((contract)=>contract.bid!==null&&contract.ask!==null&&contract.quoteTimestamp!==null)),
+      dteLattice:knownWhen(candidates.length>0&&candidates.every((candidate)=>candidate.dte!==null)),
+      strikeLattice:knownWhen(candidates.length>0&&candidates.every((candidate)=>candidate.legs.every((candidateLeg)=>Number.isFinite(candidateLeg.strike)))),
+      liquidity:knownWhen(candidates.length>0&&candidates.every((candidate)=>candidate.spreadPct!==null&&candidate.liquidity.openInterest!==null&&candidate.liquidity.volume!==null)),
+      greeks:knownWhen(presentContracts.length>0&&presentContracts.every((contract)=>contract.delta!==null&&contract.gamma!==null&&contract.theta!==null&&contract.vega!==null)),
+      volatilityContext:knownWhen(presentContracts.length>0&&presentContracts.every((contract)=>contract.iv!==null)),
+      eventContext:knownWhen(candidates.length>0&&candidates.every((candidate)=>candidate.softEvidence.some((item)=>item.startsWith('EVENT_STATE:')))),
+      ownershipContext:'UNKNOWN',assignmentCapacity:knownWhen(candidates.length>0&&candidates.every((candidate)=>candidate.assignmentCapacityQty!==null)),
+      spreadPermission:'UNKNOWN',boundedRiskEconomics:knownWhen(branchName==='THETA_DEFINED_RISK'&&candidates.length>0&&candidates.every((candidate)=>candidate.economics.maxLoss!==null&&candidate.economics.maxProfit!==null&&candidate.economics.breakEven!==null)),
+      managementFrontier:knownWhen((source?.allowedActions.length??0)>0),outcomeLabelContract:'KNOWN',
+      strategyVersion:source?.strategyVersion??input.frontier.strategyVersion,featureVersion:source?.featureSetVersion??'UNKNOWN',
+      riskVersion:source?.riskLimitVersion??'UNKNOWN',executionVersion:source?.executionModelVersion??'UNKNOWN'});
+  });
   const strikeDeltaFrontiers=[...new Set(contracts.map((contract)=>`${contract.expiration}:${contract.optionType}`))].sort().map((key):StrikeDeltaFrontier=>{
     const [expiration,optionType]=key.split(':') as [string,'CALL'|'PUT'];
     const group=contracts.filter((contract)=>contract.expiration===expiration&&contract.optionType===optionType);
@@ -432,7 +458,7 @@ export function buildOptionsChainDecisionEvidence(input:{
   const unsigned={contractVersion:optionsChainDecisionVersion,fusionSnapshotId:input.fusionSnapshotId,snapshotContentHash:input.snapshotContentHash,
     observedAt:input.observedAt,underlying:input.underlying,spot,underlyingTimestamp:input.contracts.find((contract)=>contract.underlyingTimestamp!==null)?.underlyingTimestamp??null,
     liquidityPolicy:input.liquidityPolicy,contracts,expirationFrontier:expirationFrontiers(contracts,input.frontier,attachments),strikeDeltaFrontiers,
-    structureComparisons,optionomicsAttachments:attachments,contractSelectionReceipt:receipt,
+    structureComparisons,branchResearchReadiness,optionomicsAttachments:attachments,contractSelectionReceipt:receipt,
     counterfactualLabelContract:{contractVersion:optionsChainCounterfactualVersion,featureCutoff:input.observedAt,subjects},
     empiricalEconomicsReady:false as const,executionAuthorized:false as const};
   return {...unsigned,contentHash:digest(unsigned)};
@@ -447,7 +473,8 @@ export async function persistOptionsChainDecisionEvidence(client:PoolClient,evid
     VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,false,false,$14)
     ON CONFLICT(fusion_snapshot_id) DO NOTHING`,[randomUUID(),evidence.fusionSnapshotId,evidence.observedAt,evidence.underlying,
     evidence.contractVersion,evidence.liquidityPolicy.policyVersion,JSON.stringify({snapshotContentHash:evidence.snapshotContentHash,spot:evidence.spot,
-      underlyingTimestamp:evidence.underlyingTimestamp,contracts:evidence.contracts,liquidityPolicy:evidence.liquidityPolicy}),
+      underlyingTimestamp:evidence.underlyingTimestamp,contracts:evidence.contracts,liquidityPolicy:evidence.liquidityPolicy,
+      branchResearchReadiness:evidence.branchResearchReadiness}),
     JSON.stringify(evidence.expirationFrontier),JSON.stringify(evidence.strikeDeltaFrontiers),JSON.stringify(evidence.structureComparisons),
     JSON.stringify(evidence.optionomicsAttachments),JSON.stringify(evidence.contractSelectionReceipt),JSON.stringify(evidence.counterfactualLabelContract),evidence.contentHash]);
 }

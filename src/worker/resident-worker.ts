@@ -10,7 +10,12 @@ import { assertAutonomousWorkerConfiguration } from '../config/environment.js';
 import { runAutonomousRuntimeCycle, type AutonomousRuntimeReport } from '../theta/autonomous-runtime.js';
 import type { WorkerRuntimeState, WorkerRuntimeStore } from './postgres-worker-runtime-store.js';
 
-export const localWorkerHostState = 'LOCAL_WINDOWS_PRIMARY' as const;
+export const workerHostStates = ['LOCAL_WINDOWS_PRIMARY', 'EXTERNAL_CONTAINER_PRIMARY'] as const;
+export type WorkerHostState = typeof workerHostStates[number];
+export const localWorkerHostState: WorkerHostState = 'LOCAL_WINDOWS_PRIMARY';
+
+export const workerHostState = (environment: Environment): WorkerHostState =>
+  environment.THETA_WORKER_HOST_TYPE === 'CONTAINER' ? 'EXTERNAL_CONTAINER_PRIMARY' : localWorkerHostState;
 
 export interface WorkerCycleRunner {
   (environment: Environment, pool: Pool, now: Date): Promise<AutonomousRuntimeReport>;
@@ -26,8 +31,8 @@ export interface WorkerHealth {
   readonly lastCycleStatus: AutonomousRuntimeReport['status'] | null;
   readonly consecutiveFailures: number;
   readonly executionGate: 'LOCKED'|'EXTERNAL_QUOTE_BLOCKER'|'ACTIVE';
-  readonly alwaysOnWorker: 'WINDOWS_AUTOSTART';
-  readonly hostState: typeof localWorkerHostState;
+  readonly alwaysOnWorker: 'WINDOWS_AUTOSTART' | 'CONTAINER_RESTART_POLICY';
+  readonly hostState: WorkerHostState;
   readonly runtimeState: WorkerRuntimeState;
   readonly workerId: string;
   readonly hostId: string;
@@ -98,7 +103,9 @@ export class ResidentThetaWorker {
       status: 'STARTING', runningCycle: false, pythonReady: false,
       databaseConfigured: Boolean(environment.DATABASE_URL), lastCycleStartedAt: null,
       lastCycleCompletedAt: null, lastCycleStatus: null, consecutiveFailures: 0,
-      executionGate: configuredExecutionGate(environment), alwaysOnWorker: 'WINDOWS_AUTOSTART', hostState: localWorkerHostState,
+      executionGate: configuredExecutionGate(environment),
+      alwaysOnWorker: environment.THETA_WORKER_HOST_TYPE === 'CONTAINER' ? 'CONTAINER_RESTART_POLICY' : 'WINDOWS_AUTOSTART',
+      hostState: workerHostState(environment),
       runtimeState:'MASTER_PAPER_STARTING',workerId:this.workerId,hostId:this.hostId,buildSha:this.buildSha,
       leaseOwned:false,currentDelayMs:environment.THETA_WORKER_INTERVAL_MS,lastResumeGap:null,
     };

@@ -8,6 +8,7 @@ services:
     environment:
       NODE_ENV: production
       THETA_AUTONOMOUS_WORKER_ENABLED: "true"
+      THETA_WORKER_HOST_TYPE: "CONTAINER"
       THETA_WORKER_PORT: "3001"
       THETA_PYTHON_EXECUTABLE: /usr/bin/python3
       MASTER_PAPER_EXECUTION_ENABLED: "false"
