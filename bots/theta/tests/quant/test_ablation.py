@@ -73,6 +73,11 @@ class PairedMeanDifferenceTests(unittest.TestCase):
         self.assertIsNone(delta)
         self.assertIsNone(se)
 
+    def test_non_finite_pairs_fail_closed(self):
+        delta, se = paired_mean_difference([1.0, float("nan")], [2.0, 3.0])
+        self.assertIsNone(delta)
+        self.assertIsNone(se)
+
     def test_paired_standard_error_is_smaller_than_unpaired_when_episodes_share_common_noise(self):
         # Same underlying per-episode noise present in BOTH arms (a
         # shared confound across baseline and treatment for each
@@ -143,6 +148,18 @@ class ClassifyAblationResultTests(unittest.TestCase):
             ev_delta=10.0, standard_error=0.0, meaningful_effect_size=10.0, min_independent_n=30, independent_chain_n=100,
         )
         self.assertEqual(result, AblationResult.INCONCLUSIVE)
+
+    def test_invalid_policy_or_non_finite_statistics_are_inconclusive(self):
+        invalid_policy, _ = classify_ablation_result(
+            ev_delta=1.0, standard_error=1.0, meaningful_effect_size=-1.0,
+            min_independent_n=30, independent_chain_n=100,
+        )
+        non_finite, _ = classify_ablation_result(
+            ev_delta=float("nan"), standard_error=1.0, meaningful_effect_size=1.0,
+            min_independent_n=30, independent_chain_n=100,
+        )
+        self.assertEqual(invalid_policy, AblationResult.INCONCLUSIVE)
+        self.assertEqual(non_finite, AblationResult.INCONCLUSIVE)
 
 
 if __name__ == "__main__":

@@ -127,6 +127,25 @@ def deflated_sharpe_ratio(inputs: DsrInputs) -> DsrResult:
     """
     reasons: List[str] = []
 
+    numeric_inputs = {
+        "observed_sharpe": inputs.observed_sharpe,
+        "skewness": inputs.skewness,
+        "kurtosis": inputs.kurtosis,
+    }
+    for name, value in numeric_inputs.items():
+        if not math.isfinite(value):
+            reasons.append(f"{name} must be finite")
+    if inputs.variance_of_trial_sharpes is not None and not math.isfinite(inputs.variance_of_trial_sharpes):
+        reasons.append("variance_of_trial_sharpes must be finite when supplied")
+    if inputs.variance_of_trial_sharpes is not None and inputs.variance_of_trial_sharpes < 0:
+        reasons.append("variance_of_trial_sharpes must be >= 0")
+    if inputs.kurtosis < 1:
+        reasons.append("kurtosis must use a valid Pearson convention value >= 1")
+    if reasons:
+        return DsrResult(observed_sharpe=inputs.observed_sharpe,
+                         expected_max_sharpe_under_multiple_testing=None,
+                         deflated_sharpe_ratio=None, reasons=reasons)
+
     if inputs.n_observations < 2:
         reasons.append("n_observations < 2 -- insufficient sample to estimate a standard error at all")
         return DsrResult(observed_sharpe=inputs.observed_sharpe, expected_max_sharpe_under_multiple_testing=None, deflated_sharpe_ratio=None, reasons=reasons)
@@ -200,6 +219,19 @@ def probability_of_backtest_overfitting(
     reasons: List[str] = []
     n_candidates = len(performance_matrix)
     n_partitions = len(performance_matrix[0]) if n_candidates > 0 else 0
+
+    if min_candidates < 2 or min_partitions < 2:
+        reasons.append("minimum candidate and partition requirements must both be >= 2")
+        return PboResult(n_candidates=n_candidates, n_partitions=n_partitions,
+                         probability_of_overfitting=None, logit_values=[], reasons=reasons)
+    if any(len(row) != n_partitions for row in performance_matrix):
+        reasons.append("performance_matrix must be rectangular")
+        return PboResult(n_candidates=n_candidates, n_partitions=n_partitions,
+                         probability_of_overfitting=None, logit_values=[], reasons=reasons)
+    if any(not math.isfinite(value) for row in performance_matrix for value in row):
+        reasons.append("performance_matrix must contain only finite observations")
+        return PboResult(n_candidates=n_candidates, n_partitions=n_partitions,
+                         probability_of_overfitting=None, logit_values=[], reasons=reasons)
 
     if n_candidates < min_candidates:
         reasons.append(f"only {n_candidates} candidate(s), fewer than the required minimum {min_candidates}")

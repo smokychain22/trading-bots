@@ -143,12 +143,23 @@ def classify_ablation_result(
     """
     reasons: List[str] = []
 
+    if min_independent_n < 1 or independent_chain_n < 0:
+        reasons.append("independent sample requirements must be non-negative and min_independent_n must be >= 1")
+        return AblationResult.INCONCLUSIVE, reasons
+    if not math.isfinite(meaningful_effect_size) or meaningful_effect_size < 0:
+        reasons.append("meaningful_effect_size must be finite and >= 0")
+        return AblationResult.INCONCLUSIVE, reasons
+
     if independent_chain_n < min_independent_n:
         reasons.append(f"independent_chain_n={independent_chain_n} below the required minimum {min_independent_n} -- insufficient evidence either way")
         return AblationResult.INCONCLUSIVE, reasons
 
     if ev_delta is None or standard_error is None:
         reasons.append("ev_delta or standard_error is unknown -- cannot classify")
+        return AblationResult.INCONCLUSIVE, reasons
+
+    if not math.isfinite(ev_delta) or not math.isfinite(standard_error):
+        reasons.append("ev_delta and standard_error must be finite")
         return AblationResult.INCONCLUSIVE, reasons
 
     if standard_error <= 0:
@@ -207,6 +218,10 @@ def paired_mean_difference(
         return None, None
     n = len(baseline_observations)
     if n < 2:
+        return None, None
+    if any(not math.isfinite(value) for value in baseline_observations) or any(
+        not math.isfinite(value) for value in treatment_observations
+    ):
         return None, None
 
     differences = [t - b for b, t in zip(baseline_observations, treatment_observations)]

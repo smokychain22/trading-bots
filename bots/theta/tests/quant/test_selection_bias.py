@@ -77,6 +77,18 @@ class DsrTests(unittest.TestCase):
         result = deflated_sharpe_ratio(_dsr_inputs(n_trials=50, variance_of_trial_sharpes=None))
         self.assertIsNone(result.deflated_sharpe_ratio)
 
+    def test_non_finite_or_invalid_distribution_inputs_fail_closed(self):
+        for overrides in (
+            {"observed_sharpe": float("nan")},
+            {"skewness": float("inf")},
+            {"kurtosis": 0.5},
+            {"n_trials": 3, "variance_of_trial_sharpes": float("nan")},
+            {"n_trials": 3, "variance_of_trial_sharpes": -1.0},
+        ):
+            with self.subTest(overrides=overrides):
+                result = deflated_sharpe_ratio(_dsr_inputs(**overrides))
+                self.assertIsNone(result.deflated_sharpe_ratio)
+
 
 class PboTests(unittest.TestCase):
     def test_a_stable_genuinely_superior_candidate_has_low_pbo(self):
@@ -155,6 +167,12 @@ class PboTests(unittest.TestCase):
         self.assertEqual(len(result.logit_values), 2)
         for logit in result.logit_values:
             self.assertAlmostEqual(logit, 0.0)  # relative_rank=0.5 exactly for both symmetric splits
+
+    def test_ragged_or_non_finite_performance_matrix_is_unknown(self):
+        ragged = probability_of_backtest_overfitting([[1.0, 2.0], [3.0]])
+        non_finite = probability_of_backtest_overfitting([[1.0, float("nan")], [2.0, 3.0]])
+        self.assertIsNone(ragged.probability_of_overfitting)
+        self.assertIsNone(non_finite.probability_of_overfitting)
 
 
 class DsrNumericalFixtureTests(unittest.TestCase):
