@@ -51,9 +51,12 @@ interface CandidateRow {
   readonly underlying: string;
   readonly rank_at_decision: number | null;
   readonly selected: boolean;
+  readonly legs_json: readonly unknown[];
   readonly dte: number | null;
   readonly delta: string | number | null;
   readonly spread_pct: string | number | null;
+  readonly liquidity_json: JsonRecord;
+  readonly economics_json: JsonRecord;
   readonly hard_blockers_json: readonly unknown[];
   readonly soft_evidence_json: readonly unknown[];
   readonly unknown_evidence_json: readonly unknown[];
@@ -162,7 +165,8 @@ export async function readZeroTradeDiagnostic(
       ),
       client.query<CandidateRow>(
         `SELECT m.scan_id,c.candidate_ref,c.branch::text,c.action,c.underlying,c.rank_at_decision,
-                c.selected,c.dte,c.delta,c.spread_pct,c.hard_blockers_json,c.soft_evidence_json,
+                c.selected,c.legs_json,c.dte,c.delta,c.spread_pct,c.liquidity_json,c.economics_json,
+                c.hard_blockers_json,c.soft_evidence_json,
                 c.unknown_evidence_json,c.structurally_feasible,c.risk_feasible,c.quantity,
                 c.binding_constraint,c.sizing_reasons_json
            FROM research.theta_shadow_scan_member m
@@ -322,8 +326,8 @@ export async function readZeroTradeDiagnostic(
     }
     for (const branch of targetBranches) increment(targetRouteReasons, strings(branch.route_reasons_json));
     const candidateHas = (candidate: CandidateRow, pattern: RegExp): boolean =>
-      strings(candidate.unknown_evidence_json).some((reason) => pattern.test(reason))
-      || strings(candidate.hard_blockers_json).some((reason) => pattern.test(reason));
+      strings(candidate.unknown_evidence_json).some((reason) => pattern.test(reason.toUpperCase()))
+      || strings(candidate.hard_blockers_json).some((reason) => pattern.test(reason.toUpperCase()));
     const targetTotals = {
       candidates: targetCandidates.length,
       hardRejected: targetCandidates.filter((candidate) => strings(candidate.hard_blockers_json).length > 0).length,
@@ -374,7 +378,8 @@ export async function readZeroTradeDiagnostic(
           .sort((left,right)=>(left.rank_at_decision??Number.MAX_SAFE_INTEGER)-(right.rank_at_decision??Number.MAX_SAFE_INTEGER))
           .slice(0,10).map((row)=>({candidateRef:row.candidate_ref,branch:row.branch,underlying:row.underlying,
             rankAtDecision:row.rank_at_decision,dte:row.dte,delta:row.delta===null?null:Number(row.delta),
-            spreadPct:row.spread_pct===null?null:Number(row.spread_pct),hardBlockers:strings(row.hard_blockers_json),
+            spreadPct:row.spread_pct===null?null:Number(row.spread_pct),legs:row.legs_json,
+            liquidity:row.liquidity_json,economics:row.economics_json,hardBlockers:strings(row.hard_blockers_json),
             unknownEvidence:strings(row.unknown_evidence_json),quantity:row.quantity,bindingConstraint:row.binding_constraint})),
       },
       totals,
