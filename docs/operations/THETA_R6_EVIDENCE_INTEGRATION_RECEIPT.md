@@ -1,6 +1,6 @@
 # THETA R6 evidence integration receipt
 
-Receipt version: `theta-r6-evidence-integration-v1`
+Receipt version: `theta-r6-evidence-integration-v2`
 
 Baseline canonical main: `4abeb11b170fa8ab4a849314e0c9f76ecb6ebcba`
 
@@ -16,6 +16,11 @@ This receipt covers the bounded closed-market research and evidence integration 
 - Integrated point-in-time realized-volatility baselines and a transparent HAR-RV research implementation from Claude commit `f4f1aedaeeee5255b0fe77b7843a1a90a2e2b6ef`.
 - Integrated Claude commit `8b1d4a1f220e1c52e969f730187688d40566cdda`, which exposes the existing HAR-RV implementation through the controlled Python bridge and compares it with the simple RV baselines.
 - Repaired the bridge boundary so malformed, negative, or non-finite variance observations fail before subprocess invocation and degrade to explicit research unavailability.
+- Selectively integrated Claude commits `b277ca0`, `424a54b`, and the relevant repaired files from `531ae8b`.
+- Added a real Deflated Sharpe Ratio implementation with Pearson-kurtosis semantics, multiple-trial deflation, and explicit `UNKNOWN` results for insufficient or invalid evidence.
+- Added combinatorially symmetric cross-validation PBO with rectangular, finite-matrix validation and symmetric tie ranks.
+- Added paired baseline-versus-treatment ablation statistics, confidence-interval classification, caller-supplied economic materiality and independent-N policies, and explicit inconclusive states.
+- Repaired the older branch taxonomy so ablations use the canonical ten feature families from `experiment_registry.py`. No second feature taxonomy remains.
 
 ## Deliberate non-duplication
 
@@ -28,7 +33,7 @@ The current canonical repository already provides:
 - a Python loader that enforces schema identity, chronological ordering, point-in-time provenance, causal label availability, exact-contract identity, and the feature-label firewall;
 - automatic export and research handoff after eligible worker scans;
 - WAIT, strategy, contract, action-regret, management, and whole-chain outcome subjects;
-- chronological grouped walk-forward planning, embargo support, untouched OOS planning, calibration primitives, DSR/PBO evidence fields, and explicit human promotion approval;
+- chronological grouped walk-forward planning, embargo support, untouched OOS planning, calibration primitives, tested DSR/PBO math, paired ablation statistics, and explicit human promotion approval;
 - option-chain expiration, strike, delta, structure, Optionomics attachment, and counterfactual evidence.
 
 Adding parallel versions would create a second research truth. The new modules stay behind the existing research contracts.
@@ -51,11 +56,12 @@ VRP, Pareto underlying selection, realized-volatility estimators, and HAR-RV are
 - Focused TypeScript research tests: `37 passed`.
 - HAR-RV and realized-volatility focused tests: `43 passed` across TypeScript and Python.
 - Full Node suite: `1202 passed`, `11 skipped`, `0 failed`.
-- Full Python suite: `509 passed`, `0 failed`.
+- Focused DSR/PBO and paired-ablation tests: `39 passed`, `0 failed`.
+- Full Python suite: `545 passed`, `0 failed`.
 - ESLint: `PASS`.
 - TypeScript check: `PASS`.
 - Production build: `PASS`.
-- Security scan: `889 paths`, `0 findings`.
+- Security scan: `900 paths`, `0 findings`.
 - Diff whitespace check: `PASS`.
 - Browser tests: `PLAYWRIGHT_NOT_REQUIRED`, no browser surface changed.
 - PostgreSQL migration: `NO_NEW_MIGRATION`.
@@ -92,6 +98,9 @@ VRP, Pareto underlying selection, realized-volatility estimators, and HAR-RV are
 - `R6_RV_BASELINES = COMPLETE_RESEARCH_ONLY`.
 - `R6_HAR_RV_BASELINE = COMPLETE_RESEARCH_ONLY`.
 - `R6_WALK_FORWARD_AND_CALIBRATION = ALREADY_COMPLETE_BUILDABLE`.
+- `R6_PAIRED_ABLATION = COMPLETE_BUILDABLE_BLOCKED_ON_SAMPLE`.
+- `R6_DSR = COMPLETE_BUILDABLE_BLOCKED_ON_SAMPLE`.
+- `R6_PBO = COMPLETE_BUILDABLE_BLOCKED_ON_SAMPLE`.
 - `R6_PROMOTION_GATE = ALREADY_COMPLETE_BUILDABLE`.
 - `R6_EMPIRICAL_CONCLUSIONS = BLOCKED_ON_REAL_EVIDENCE`.
 - `READY_FOR_FIRST_PAPER_ORDER = UNCHANGED`.

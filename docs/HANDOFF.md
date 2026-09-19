@@ -2252,3 +2252,23 @@ KNOWN LIMITATIONS: Local bundles depend on a completed deterministic research ex
 RISKS: A future operator could misconfigure `DATABASE_RUNTIME_AUTHORITY`; validation fails closed when Aiven is selected without its explicit URL.
 WHAT THE OTHER AGENT SHOULD REVIEW: Correct whole-chain cash-flow identity, assigned-stock acquisition cost, executable covered-call economics, assignment/recovery frontier and true CC Pareto behavior on `claude/theta-management-intelligence`.
 NEXT RECOMMENDED TASK: Integrate only a new frozen Claude commit that passes those economic gates, then run the full one-brain dependency and canary readiness audit.
+
+OWNER: Codex
+
+TASK: Close the buildable R6 selection-bias and paired-ablation gap without touching the running Paper champion.
+
+FILES CHANGED: `bots/theta/quant/research/selection_bias.py`, `bots/theta/quant/research/ablation.py`, focused Python tests, R6 receipt, phase ledger, and decision record.
+
+WHAT WAS IMPLEMENTED: Corrected DSR, CSCV PBO, paired ablation statistics, canonical feature-family alignment, and fail-closed validation for invalid or non-finite evidence. No strategy, runtime, broker, database, or deployment contract changed.
+
+TESTS RUN: Full Python suite, full Node suite, TypeScript check, ESLint, production build, security scan, and diff check.
+
+TEST RESULTS: Python 545 passed. Node 1202 passed and 11 skipped. TypeScript, ESLint, build, and security passed with zero findings.
+
+KNOWN LIMITATIONS: No independent resolved Paper sample exists for a DSR, PBO, or ablation conclusion. Results remain unavailable until the canonical readiness and OOS gates pass.
+
+RISKS: Applying selection-bias metrics to correlated rows or an incomplete experiment registry would be misleading. The existing dependence grouping and immutable experiment registry remain mandatory.
+
+WHAT THE OTHER AGENT SHOULD REVIEW: Research should consume these utilities only through a canonical dataset export and preserve every tried variant. Do not copy the rejected older parallel research stack back into main.
+
+NEXT RECOMMENDED TASK: Continue natural open-session evidence collection. Do not change policy from a synthetic or undersized selection-bias result.
