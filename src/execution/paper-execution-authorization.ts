@@ -66,7 +66,7 @@ export function firstPaperCanaryActivationBlockers(input:{readonly activatedAt:s
   if(!database.quoteReady)blockers.push('EXECUTION_QUOTE_AUTHORITY_NOT_READY');
   if(database.latestCompleteScanAt===null||Date.parse(input.activatedAt)-Date.parse(database.latestCompleteScanAt)>15*60_000)
     blockers.push('RECENT_COMPLETE_STRATEGY_SCAN_MISSING');
-  if(database.migrationHead!=='058_terminal_partial_close_accounting')blockers.push('PRODUCTION_SCHEMA_HEAD_NOT_058');
+  if(database.migrationHead!=='059_paper_restart_recovery_invariant')blockers.push('PRODUCTION_SCHEMA_HEAD_NOT_059');
   return [...new Set(blockers)];
 }
 
