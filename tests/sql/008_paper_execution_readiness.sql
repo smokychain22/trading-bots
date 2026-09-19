@@ -8,8 +8,12 @@ BEGIN
   SELECT pause_new_orders, master_execution_enabled, follower_execution_enabled, authorization_event_id
     INTO pause_state, master_state, follower_state, authorization_id
   FROM ops.paper_execution_control WHERE singleton;
-  IF pause_state IS DISTINCT FROM true OR follower_state IS DISTINCT FROM false OR
-     (master_state IS DISTINCT FROM false AND (master_state IS DISTINCT FROM true OR authorization_id IS NULL)) THEN
+  -- Locked state must pause new entries. An authorized master canary may
+  -- intentionally clear the pause, provided immutable authorization lineage
+  -- is present and followers remain disabled.
+  IF follower_state IS DISTINCT FROM false OR
+     (master_state IS DISTINCT FROM true AND pause_state IS DISTINCT FROM true) OR
+     (master_state IS TRUE AND authorization_id IS NULL) THEN
     RAISE EXCEPTION 'paper execution controls did not fail closed';
   END IF;
   IF master_state AND NOT EXISTS(

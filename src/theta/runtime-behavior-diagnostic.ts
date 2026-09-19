@@ -2,8 +2,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { canonicalJson } from '../research/point-in-time-evidence.js';
 import type { ScanCompleteness } from '../research/shadow-evidence-runtime.js';
+import type { StrategyQualityShadowDiagnostic } from '../research/strategy-quality-shadow-diagnostics.js';
+import type { UniverseBreadthShadowPlan } from '../research/strategy-quality-shadow-diagnostics.js';
 
-export const runtimeBehaviorDiagnosticVersion = 'theta-runtime-behavior-diagnostic-v2' as const;
+export const runtimeBehaviorDiagnosticVersion = 'theta-runtime-behavior-diagnostic-v3' as const;
 
 export interface RuntimeStrategyDiagnostic {
   readonly branch: string;
@@ -78,6 +80,8 @@ export interface RuntimeBehaviorDiagnosticInput {
   readonly providerBlockers: readonly string[];
   readonly actionPlansReady: number;
   readonly actionPlanBlockers: readonly string[];
+  readonly strategyQualityChallengers?: readonly StrategyQualityShadowDiagnostic[];
+  readonly universeBreadthChallenger?: UniverseBreadthShadowPlan;
 }
 
 export interface RuntimeBehaviorDiagnostic extends RuntimeBehaviorDiagnosticInput {

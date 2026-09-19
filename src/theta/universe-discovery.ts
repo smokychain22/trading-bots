@@ -158,18 +158,25 @@ export async function discoverRealUniverse(
   const optionExpirationGte = new Date(Date.now() + 1 * 86_400_000).toISOString().slice(0, 10);
   const optionExpirationLte = new Date(Date.now() + 400 * 86_400_000).toISOString().slice(0, 10);
 
-  const optionabilityResults = await Promise.all(shortlistForOptionabilityCheck.map(async (symbol) => {
-    try {
-      const result = await fetchOptionContracts(alpaca, {
-        underlyingSymbol: symbol, expirationDateGte: optionExpirationGte, expirationDateLte: optionExpirationLte,
-        optionType: 'put', limit: 1, maxPages: 1,
-      });
-      return { symbol, optionable: result.items.length > 0 };
-    } catch (error) {
-      blockers.push(`UNIVERSE_OPTIONABILITY_CHECK_FAILED:${symbol}:${error instanceof Error ? error.message : 'unknown'}`);
-      return { symbol, optionable: false }; // NOT confirmed optionable -- excluded, never guessed in
-    }
-  }));
+  // Keep provider fan-out bounded even when research observes a wider
+  // universe. Two concurrent existence checks preserve the previous live
+  // call pressure while allowing a 5/10-symbol challenger to accumulate
+  // over multiple cycles.
+  const optionabilityResults: Array<{symbol:string;optionable:boolean}>=[];
+  for(const batch of chunk(shortlistForOptionabilityCheck,2)){
+    optionabilityResults.push(...await Promise.all(batch.map(async (symbol) => {
+      try {
+        const result = await fetchOptionContracts(alpaca, {
+          underlyingSymbol: symbol, expirationDateGte: optionExpirationGte, expirationDateLte: optionExpirationLte,
+          optionType: 'put', limit: 1, maxPages: 1,
+        });
+        return { symbol, optionable: result.items.length > 0 };
+      } catch (error) {
+        blockers.push(`UNIVERSE_OPTIONABILITY_CHECK_FAILED:${symbol}:${error instanceof Error ? error.message : 'unknown'}`);
+        return { symbol, optionable: false }; // NOT confirmed optionable -- excluded, never guessed in
+      }
+    })));
+  }
 
   const candidates: UnderlyingCandidateInput[] = [];
   for (const { symbol, optionable } of optionabilityResults) {

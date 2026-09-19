@@ -182,6 +182,27 @@ test('covered-call compiler enforces broker-confirmed share coverage',()=>{
   assert.deepEqual(compiled.blockers,['COVERED_CALL_COVERAGE_NOT_CONFIRMED']);
 });
 
+test('bootstrap covered-call management reaches a capped PAPER_EVIDENCE plan without claiming empirical EV',()=>{
+  const recovery=lifecycleState('RECOVERY_WAIT','PUT',100);
+  const frontier=frontierFor(recovery,'SELL_CC',{closeEconomicBoundary:null,openEconomicBoundary:1,
+    stockEconomicBoundary:null,economicsRemainPositive:true,expectedAfterCostEv:null,empiricalEconomicsReady:false,
+    targetContract:{symbol:'AAPL261016C00200000',optionContractId:ids.target,optionType:'CALL',multiplier:100,quantity:1}});
+  const compiled=compileManagementExecutionLegDirectives(recovery,frontier);
+  assert.equal(compiled.state,'READY');
+  if(compiled.state!=='READY')return;
+  const assembled=assembleManagementPaperPlans({state:recovery,frontier,managementActionFrontierId:ids.frontier,
+    executionAccountId:ids.account,strategyVersion:'theta-recovery-v1',accountStatus:'ACTIVE',optionsCapabilityVerified:true,
+    aegisState:'ALLOW_FULL',killSwitchActive:false,paperEvidenceRiskCap:1,executionLegs:compiled.legs,now,
+    decisionExpiresAt:'2026-09-15T14:00:45.000Z'});
+  assert.equal(assembled.state,'READY');
+  if(assembled.state!=='READY')return;
+  assert.equal(assembled.plans[0]?.action,'OPEN_CC');
+  assert.equal(assembled.plans[0]?.executionTier,'PAPER_EVIDENCE');
+  assert.equal(assembled.plans[0]?.empiricalEconomicsReady,false);
+  assert.equal(assembled.plans[0]?.expectedAfterCostEv,null);
+  assert.equal(assembled.plans[0]?.quantity,1);
+});
+
 test('covered-call close is compiled as BUY_TO_CLOSE against the exact current call',()=>{
   const covered=lifecycleState('CC_OPEN','CALL',200);
   const frontier=frontierFor(covered,'CLOSE_CC',{closeEconomicBoundary:1.25,openEconomicBoundary:null,
