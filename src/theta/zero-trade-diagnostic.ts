@@ -358,7 +358,7 @@ export async function readZeroTradeDiagnostic(
       finalActionUnavailable: targetCycles.filter((cycle) => cycle.finalAction === 'UNKNOWN').length,
       dteDistribution: Object.entries(targetCandidates.reduce<Record<string,number>>((counts,candidate)=>{
         const key=candidate.dte===null?'UNKNOWN':String(candidate.dte);counts[key]=(counts[key]??0)+1;return counts;
-      },{})).map(([dte,count])=>({dte,count})).sort((left,right)=>left.dte.localeCompare(right.dte,{numeric:true})),
+      },{})).map(([dte,count])=>({dte,count})).sort((left,right)=>left.dte.localeCompare(right.dte,undefined,{numeric:true})),
     };
 
     return {
