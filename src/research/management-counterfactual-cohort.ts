@@ -15,10 +15,9 @@ export const managementCounterfactualCohortVersion = 'theta-management-counterfa
  * an explicit, caller-justified sample-sufficiency label.
  *
  * Per the standing "20 management decisions from one chain are not 20
- * independent trades" rule, every report tracks `independentChainCount`
- * (distinct `chainId` values) SEPARATELY from `decisionCount` (raw row
- * count) -- a caller must look at the independent count, never the raw
- * count, when judging whether a cohort result is meaningful.
+ * independent trades" rule, every report separates raw decision count,
+ * distinct chain count, and independently justified research-unit count.
+ * Distinct chains alone never become independent N.
  *
  * Grouping (by strategy/underlying/DTE/regime/etc.) is the CALLER's
  * responsibility -- this module accepts one already-filtered cohort at a
@@ -27,25 +26,47 @@ export const managementCounterfactualCohortVersion = 'theta-management-counterfa
  */
 export interface ManagementCounterfactualCohortObservation {
   readonly analysis: ManagementCounterfactualAnalysis;
+  /**
+   * A versioned research grouping established outside this module. A chain ID
+   * alone is not proof of statistical independence, so null keeps independent
+   * N unknown. Repeated decisions from the same proven unit must reuse the
+   * same identifier.
+   */
+  readonly independentUnitId: string | null;
 }
 
-export type SampleSizeState = 'SUFFICIENT' | 'INSUFFICIENT' | 'NONE';
+export type SampleSizeState = 'SUFFICIENT' | 'INSUFFICIENT' | 'NOT_ASSESSED' | 'NONE';
+export type CohortDataQualityState = 'COMPLETE' | 'PARTIAL' | 'NO_ECONOMIC_METRICS';
 
 export interface ActionPairCohortStatistic {
   readonly selectedAction: string;
   readonly alternativeAction: string;
   /** Count of individual decisions where this pair was `COMPARABLE`. */
   readonly comparableDecisionCount: number;
-  /** Distinct `chainId` values among the comparable decisions above --
-   * the number that actually matters for sample-sufficiency judgment. */
-  readonly independentChainCount: number;
+  /** Distinct chains are reported separately and never called independent N. */
+  readonly distinctChainCount: number;
+  /** Null unless every comparable observation carries a proven unit ID. */
+  readonly independentN: number | null;
   readonly meanNetPnlDifference: number | null;
   readonly medianNetPnlDifference: number | null;
+  readonly netPnlStandardDeviation: number | null;
   readonly meanReturnPerCapitalDayDifference: number | null;
+  readonly returnPerCapitalDayStandardDeviation: number | null;
   readonly meanMaxAdverseExcursionDifference: number | null;
+  readonly maxAdverseExcursionStandardDeviation: number | null;
   readonly meanExecutionCostDifference: number | null;
-  /** `SUFFICIENT` only when `independentChainCount >= minimumIndependentSample`
-   * (a required, caller-justified input -- never invented internally).
+  readonly executionCostStandardDeviation: number | null;
+  readonly knownMetricCounts: Readonly<{
+    netPnl: number;
+    returnPerCapitalDay: number;
+    maxAdverseExcursion: number;
+    executionCost: number;
+  }>;
+  readonly dataQualityState: CohortDataQualityState;
+  readonly uncertaintyState: 'DESCRIPTIVE_ONLY';
+  /** `SUFFICIENT` only when proven `independentN >= minimumIndependentSample`
+   * and at least one economic metric is known. Distinct chains alone never
+   * establish independence.
    * `NONE` when there are zero comparable observations at all. This field
    * is the ONLY sample-size judgment this module makes; it is not, and
    * must never be read as, a promotion or applicability verdict. */
@@ -56,7 +77,8 @@ export interface ManagementCounterfactualCohortReport {
   readonly contractVersion: typeof managementCounterfactualCohortVersion;
   readonly cohortKey: Readonly<Record<string, string>> | null;
   readonly decisionCount: number;
-  readonly independentChainCount: number;
+  readonly distinctChainCount: number;
+  readonly independentN: number | null;
   readonly minimumIndependentSample: number;
   readonly actionPairs: readonly ActionPairCohortStatistic[];
   readonly brokerAuthority: false;
@@ -70,6 +92,12 @@ function median(values: readonly number[]): number | null {
   const sorted = values.slice().sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1 ? (sorted[middle] as number) : ((sorted[middle - 1] as number) + (sorted[middle] as number)) / 2;
+}
+function sampleStandardDeviation(values: readonly number[]): number | null {
+  if (values.length < 2) return null;
+  const average = mean(values) as number;
+  const variance = values.reduce((sum, value) => sum + ((value - average) ** 2), 0) / (values.length - 1);
+  return Math.sqrt(variance);
 }
 function knownValues(values: readonly (number | null)[]): readonly number[] {
   return values.filter((value): value is number => value !== null && Number.isFinite(value));
@@ -89,9 +117,23 @@ export function buildManagementCounterfactualCohortReport(
   if (!Number.isInteger(minimumIndependentSample) || minimumIndependentSample <= 0) {
     throw new Error('MANAGEMENT_COUNTERFACTUAL_COHORT_MINIMUM_SAMPLE_INVALID');
   }
-  const independentChainCount = new Set(observations.map((observation) => observation.analysis.chainId)).size;
+  const decisionIds = new Set<string>();
+  for (const observation of observations) {
+    if (decisionIds.has(observation.analysis.decisionId)) {
+      throw new Error(`MANAGEMENT_COUNTERFACTUAL_COHORT_DUPLICATE_DECISION:${observation.analysis.decisionId}`);
+    }
+    decisionIds.add(observation.analysis.decisionId);
+    if (observation.independentUnitId !== null && !observation.independentUnitId.trim()) {
+      throw new Error('MANAGEMENT_COUNTERFACTUAL_COHORT_INDEPENDENT_UNIT_INVALID');
+    }
+  }
+  const distinctChainCount = new Set(observations.map((observation) => observation.analysis.chainId)).size;
+  const reportIndependenceKnown = observations.every((observation) => observation.independentUnitId !== null);
+  const independentN = reportIndependenceKnown
+    ? new Set(observations.map((observation) => observation.independentUnitId as string)).size : null;
 
   const rowsByPair = new Map<string, { selectedAction: string; alternativeAction: string; chainIds: Set<string>;
+    independentUnitIds: Set<string>; independenceKnown: boolean; comparisonCount: number;
     netPnl: number[]; returnPerCapitalDay: number[]; maxAdverseExcursion: number[]; executionCost: number[] }>();
   for (const observation of observations) {
     for (const comparison of observation.analysis.comparisons) {
@@ -99,9 +141,13 @@ export function buildManagementCounterfactualCohortReport(
       const key = `${comparison.selectedAction}|${comparison.alternativeAction}`;
       const row = rowsByPair.get(key) ?? {
         selectedAction: comparison.selectedAction, alternativeAction: comparison.alternativeAction,
-        chainIds: new Set<string>(), netPnl: [], returnPerCapitalDay: [], maxAdverseExcursion: [], executionCost: [],
+        chainIds: new Set<string>(), independentUnitIds: new Set<string>(), independenceKnown: true,
+        comparisonCount: 0, netPnl: [], returnPerCapitalDay: [], maxAdverseExcursion: [], executionCost: [],
       };
+      row.comparisonCount += 1;
       row.chainIds.add(observation.analysis.chainId);
+      if (observation.independentUnitId === null) row.independenceKnown = false;
+      else row.independentUnitIds.add(observation.independentUnitId);
       if (comparison.netPnlDifference !== null && Number.isFinite(comparison.netPnlDifference)) row.netPnl.push(comparison.netPnlDifference);
       if (comparison.returnPerCapitalDayDifference !== null && Number.isFinite(comparison.returnPerCapitalDayDifference)) {
         row.returnPerCapitalDay.push(comparison.returnPerCapitalDayDifference);
@@ -119,26 +165,37 @@ export function buildManagementCounterfactualCohortReport(
   const actionPairs: ActionPairCohortStatistic[] = [...rowsByPair.values()]
     .sort((left, right) => `${left.selectedAction}|${left.alternativeAction}`.localeCompare(`${right.selectedAction}|${right.alternativeAction}`))
     .map((row) => {
-      const pairIndependentChainCount = row.chainIds.size;
+      const metricCounts = {
+        netPnl: row.netPnl.length, returnPerCapitalDay: row.returnPerCapitalDay.length,
+        maxAdverseExcursion: row.maxAdverseExcursion.length, executionCost: row.executionCost.length,
+      };
+      const totalKnownMetrics = Object.values(metricCounts).reduce((sum, count) => sum + count, 0);
+      const dataQualityState: CohortDataQualityState = totalKnownMetrics === 0 ? 'NO_ECONOMIC_METRICS'
+        : Object.values(metricCounts).every((count) => count === row.comparisonCount) ? 'COMPLETE' : 'PARTIAL';
+      const pairIndependentN = row.independenceKnown ? row.independentUnitIds.size : null;
       return {
         selectedAction: row.selectedAction, alternativeAction: row.alternativeAction,
-        comparableDecisionCount: row.netPnl.length > 0 || row.returnPerCapitalDay.length > 0
-          || row.maxAdverseExcursion.length > 0 || row.executionCost.length > 0
-          ? Math.max(row.netPnl.length, row.returnPerCapitalDay.length, row.maxAdverseExcursion.length, row.executionCost.length)
-          : 0,
-        independentChainCount: pairIndependentChainCount,
+        comparableDecisionCount: row.comparisonCount,
+        distinctChainCount: row.chainIds.size,
+        independentN: pairIndependentN,
         meanNetPnlDifference: mean(knownValues(row.netPnl)),
         medianNetPnlDifference: median(knownValues(row.netPnl)),
+        netPnlStandardDeviation: sampleStandardDeviation(row.netPnl),
         meanReturnPerCapitalDayDifference: mean(knownValues(row.returnPerCapitalDay)),
+        returnPerCapitalDayStandardDeviation: sampleStandardDeviation(row.returnPerCapitalDay),
         meanMaxAdverseExcursionDifference: mean(knownValues(row.maxAdverseExcursion)),
+        maxAdverseExcursionStandardDeviation: sampleStandardDeviation(row.maxAdverseExcursion),
         meanExecutionCostDifference: mean(knownValues(row.executionCost)),
-        sampleSizeState: pairIndependentChainCount === 0 ? 'NONE'
-          : pairIndependentChainCount >= minimumIndependentSample ? 'SUFFICIENT' : 'INSUFFICIENT',
+        executionCostStandardDeviation: sampleStandardDeviation(row.executionCost),
+        knownMetricCounts: metricCounts, dataQualityState, uncertaintyState: 'DESCRIPTIVE_ONLY',
+        sampleSizeState: row.comparisonCount === 0 ? 'NONE'
+          : pairIndependentN === null || totalKnownMetrics === 0 ? 'NOT_ASSESSED'
+            : pairIndependentN >= minimumIndependentSample ? 'SUFFICIENT' : 'INSUFFICIENT',
       } satisfies ActionPairCohortStatistic;
     });
 
   return {
     contractVersion: managementCounterfactualCohortVersion, cohortKey, decisionCount: observations.length,
-    independentChainCount, minimumIndependentSample, actionPairs, brokerAuthority: false,
+    distinctChainCount, independentN, minimumIndependentSample, actionPairs, brokerAuthority: false,
   };
 }
