@@ -47,6 +47,12 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /FAILED_NONCRITICAL/);
   assert.match(source, /Invoke-RestMethod[^\r\n]+-TimeoutSec 180/);
   assert.match(source, /Invoke-RestMethod[^\r\n]+-TimeoutSec 290/);
+  assert.match(source, /failedOperation=\$currentOperation/);
+  assert.match(source, /operationStartedAt=\$operationStartedAt\.ToString\('o'\)/);
+  assert.match(source, /elapsedMilliseconds=/);
+  assert.match(source, /RUNTIME_EVIDENCE_CYCLE/);
+  assert.match(source, /OPTIONOMICS_QUOTE_QUALIFICATION/);
+  assert.doesNotMatch(source, /ErrorDetails\.Message|Response\.Content/);
   assert.doesNotMatch(source, /\/v2\/orders/i);
   assert.doesNotMatch(source, /APCA-API-KEY-ID|APCA-API-SECRET-KEY/);
   assert.doesNotMatch(source, /\$report\.(providerAccountRefHash|positions|rawPayload)/);

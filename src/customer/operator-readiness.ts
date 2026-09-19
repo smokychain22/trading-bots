@@ -219,7 +219,15 @@ export async function readOutcomeResearchVisibility(databaseUrl?:string):Promise
 }
 
 export interface RuntimeBehaviorEvidence {
+  readonly scan_id:string|null;
+  readonly decision_ids:readonly string[];
   readonly observed_at:string|null;
+  readonly session:string;
+  readonly universe_size:number|null;
+  readonly strategies_considered:number|null;
+  readonly strategies_applicable:number|null;
+  readonly strategies_rejected:number|null;
+  readonly strategy_diagnostics:readonly unknown[];
   readonly wait_classification:string;
   readonly overtrading_state:string;
   readonly consecutive_wait_cycles:number|null;
@@ -234,28 +242,48 @@ export interface RuntimeBehaviorEvidence {
   readonly aegis_veto_count:number|null;
   readonly near_miss_count:number|null;
   readonly action_plans_ready:number|null;
+  readonly soft_economic_rejection_count:number|null;
+  readonly data_unknown_rejection_count:number|null;
+  readonly quote_rejection_count:number|null;
+  readonly liquidity_rejection_count:number|null;
+  readonly final_action:string;
+  readonly wait_reasons:readonly string[];
+  readonly best_rejected_candidates:readonly unknown[];
+  readonly anti_paralysis_findings:readonly string[];
   readonly threshold_policy_state:string;
 }
 
 export async function readLatestRuntimeBehavior(databaseUrl?:string):Promise<RuntimeBehaviorEvidence>{
-  const empty:RuntimeBehaviorEvidence={observed_at:null,wait_classification:'UNKNOWN',overtrading_state:'UNKNOWN',
+  const empty:RuntimeBehaviorEvidence={scan_id:null,decision_ids:[],observed_at:null,session:'UNKNOWN',universe_size:null,
+    strategies_considered:null,strategies_applicable:null,strategies_rejected:null,strategy_diagnostics:[],
+    wait_classification:'UNKNOWN',overtrading_state:'UNKNOWN',
     consecutive_wait_cycles:null,seconds_since_last_broker_action:null,candidate_count:null,feasible_candidate_count:null,
     selected_candidate_count:null,hard_rejected_count:null,soft_ranked_count:null,data_insufficient_count:null,
-    quantity_zero_count:null,aegis_veto_count:null,near_miss_count:null,action_plans_ready:null,threshold_policy_state:'UNKNOWN'};
+    quantity_zero_count:null,aegis_veto_count:null,near_miss_count:null,action_plans_ready:null,
+    soft_economic_rejection_count:null,data_unknown_rejection_count:null,quote_rejection_count:null,
+    liquidity_rejection_count:null,final_action:'UNKNOWN',wait_reasons:[],best_rejected_candidates:[],anti_paralysis_findings:[],
+    threshold_policy_state:'UNKNOWN'};
   if(!databaseUrl)return empty;
   const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000});
   try{
     const relation=await pool.query(`SELECT to_regclass('research.theta_runtime_behavior_diagnostic') IS NOT NULL AS ready`);
     if(relation.rows[0]?.ready!==true)return empty;
-    const result=await pool.query(`SELECT observed_at,wait_classification,overtrading_state,consecutive_wait_cycles,
+    const result=await pool.query(`SELECT scan_id,observed_at,wait_classification,overtrading_state,consecutive_wait_cycles,
       seconds_since_last_broker_action,candidate_count,feasible_candidate_count,selected_candidate_count,
       hard_rejected_count,soft_ranked_count,data_insufficient_count,quantity_zero_count,aegis_veto_count,
-      near_miss_count,action_plans_ready,threshold_policy_state
+      near_miss_count,action_plans_ready,threshold_policy_state,diagnostic_json
       FROM research.theta_runtime_behavior_diagnostic ORDER BY observed_at DESC,created_at DESC LIMIT 1`);
     const row=result.rows[0];
     if(!row)return empty;
     const number=(value:unknown):number|null=>value==null?null:Number(value);
-    return {observed_at:row.observed_at instanceof Date?row.observed_at.toISOString():String(row.observed_at),
+    const diagnostic=row.diagnostic_json!==null&&typeof row.diagnostic_json==='object'?row.diagnostic_json as Record<string,unknown>:{};
+    const strings=(value:unknown):readonly string[]=>Array.isArray(value)?value.filter((item):item is string=>typeof item==='string'):[];
+    const array=(value:unknown):readonly unknown[]=>Array.isArray(value)?value:[];
+    return {scan_id:String(row.scan_id),decision_ids:strings(diagnostic.decisionIds),
+      observed_at:row.observed_at instanceof Date?row.observed_at.toISOString():String(row.observed_at),
+      session:typeof diagnostic.session==='string'?diagnostic.session:'UNKNOWN',universe_size:number(diagnostic.universeSize),
+      strategies_considered:number(diagnostic.strategiesConsidered),strategies_applicable:number(diagnostic.strategiesApplicable),
+      strategies_rejected:number(diagnostic.strategiesRejected),strategy_diagnostics:array(diagnostic.strategyDiagnostics),
       wait_classification:String(row.wait_classification),overtrading_state:String(row.overtrading_state),
       consecutive_wait_cycles:number(row.consecutive_wait_cycles),seconds_since_last_broker_action:number(row.seconds_since_last_broker_action),
       candidate_count:number(row.candidate_count),feasible_candidate_count:number(row.feasible_candidate_count),
@@ -263,6 +291,11 @@ export async function readLatestRuntimeBehavior(databaseUrl?:string):Promise<Run
       soft_ranked_count:number(row.soft_ranked_count),data_insufficient_count:number(row.data_insufficient_count),
       quantity_zero_count:number(row.quantity_zero_count),aegis_veto_count:number(row.aegis_veto_count),
       near_miss_count:number(row.near_miss_count),action_plans_ready:number(row.action_plans_ready),
+      soft_economic_rejection_count:number(diagnostic.softEconomicRejectionCount),
+      data_unknown_rejection_count:number(diagnostic.dataUnknownRejectionCount),
+      quote_rejection_count:number(diagnostic.quoteRejectionCount),liquidity_rejection_count:number(diagnostic.liquidityRejectionCount),
+      final_action:typeof diagnostic.finalAction==='string'?diagnostic.finalAction:'UNKNOWN',wait_reasons:strings(diagnostic.waitReasons),
+      best_rejected_candidates:array(diagnostic.bestRejectedCandidates),anti_paralysis_findings:strings(diagnostic.antiParalysisFindings),
       threshold_policy_state:String(row.threshold_policy_state)};
   }catch{return empty;}finally{await pool.end();}
 }

@@ -1,13 +1,37 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { classifyRuntimeBehavior, type RuntimeBehaviorDiagnosticInput } from '../src/theta/runtime-behavior-diagnostic.js';
+import { classifyRuntimeBehavior, deriveAntiParalysisFindings, type RuntimeBehaviorDiagnosticInput } from '../src/theta/runtime-behavior-diagnostic.js';
 
 const input = (overrides: Partial<RuntimeBehaviorDiagnosticInput> = {}): RuntimeBehaviorDiagnosticInput => ({
-  scanId:'11111111-1111-4111-8111-111111111111',observedAt:'2026-09-14T14:00:00.000Z',
+  scanId:'11111111-1111-4111-8111-111111111111',decisionIds:[],observedAt:'2026-09-14T14:00:00.000Z',
+  session:'OPEN',universeSize:2,strategiesConsidered:10,strategiesApplicable:2,strategiesRejected:8,strategyDiagnostics:[],
   completeness:'COMPLETE',globalWaitEarned:true,globalWaitReasons:['ALL_APPLICABLE_BRANCHES_EXHAUSTED'],
   candidateCount:10,feasibleCandidateCount:0,selectedCandidateCount:0,hardRejectedCount:5,softRankedCount:5,
   dataInsufficientCount:0,quantityZeroCount:0,aegisVetoCount:0,nearMissCount:1,providerBlockers:[],
+  softEconomicRejectionCount:5,dataUnknownRejectionCount:0,quoteRejectionCount:0,liquidityRejectionCount:0,
+  hardGateCounts:{},finalAction:'WAIT',waitReasons:['ALL_APPLICABLE_BRANCHES_EXHAUSTED'],bestRejectedCandidates:[],
+  antiParalysisFindings:[],
   actionPlansReady:0,actionPlanBlockers:[],...overrides,
+});
+
+test('observational anti-paralysis findings surface possible paralysis without creating an action',()=>{
+  const result=classifyRuntimeBehavior(input({antiParalysisFindings:['DOMINANT_HARD_GATE_OBSERVED:LEGACY_DTE_GATE']}));
+  assert.equal(result.waitClassification,'POSSIBLE_LOGIC_PARALYSIS');
+  assert.equal(result.overtradingState,'NO_NEW_ACTION');
+  assert.ok(result.reasonCodes.includes('DOMINANT_HARD_GATE_OBSERVED:LEGACY_DTE_GATE'));
+});
+
+test('dominant-gate detection counts candidates once and does not call a currently inapplicable strategy unreachable',()=>{
+  const findings=deriveAntiParalysisFindings({candidateHardBlockers:[['LEGACY_GATE','LEGACY_GATE'],['LEGACY_GATE'],['LEGACY_GATE']],
+    strategyReachability:[{branch:'THETA_CC',status:'SHADOW',consideredCount:2,applicableCount:0,
+      reachabilityState:'NOT_APPLICABLE_CURRENT_SCAN'}]});
+  assert.deepEqual(findings,['DOMINANT_HARD_GATE_OBSERVED:LEGACY_GATE']);
+});
+
+test('an applicable shadow strategy blocked before evaluation is exposed as structurally unreachable',()=>{
+  const findings=deriveAntiParalysisFindings({candidateHardBlockers:[],strategyReachability:[{branch:'THETA_CONVENTIONAL',
+    status:'SHADOW',consideredCount:2,applicableCount:2,reachabilityState:'BLOCKED_WHEN_APPLICABLE'}]});
+  assert.deepEqual(findings,['SHADOW_STRATEGY_UNREACHABLE:THETA_CONVENTIONAL']);
 });
 
 test('a complete, fully searched WAIT is classified as healthy without inventing a frequency threshold',()=>{
