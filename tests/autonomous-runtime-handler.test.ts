@@ -45,6 +45,9 @@ test('local worker operation accepts the bounded runtime, evidence, and owner au
   assert.equal(parseLocalWorkerOperation({ headers: { 'x-theta-operation': 'runtime-observation-cycle' } }), 'RUNTIME_OBSERVATION_CYCLE');
   assert.equal(parseLocalWorkerOperation({ headers: { 'x-theta-operation': 'runtime-evidence-cycle' } }), 'RUNTIME_EVIDENCE_CYCLE');
   assert.equal(parseLocalWorkerOperation({ headers: {
+    'x-theta-operation': 'runtime-zero-trade-diagnostic',
+  } }), 'RUNTIME_ZERO_TRADE_DIAGNOSTIC');
+  assert.equal(parseLocalWorkerOperation({ headers: {
     'x-theta-operation': 'provider-evidence-readiness',
   } }), 'PROVIDER_EVIDENCE_READINESS');
   assert.equal(parseLocalWorkerOperation({ headers: {
