@@ -5,6 +5,7 @@ import type { ThetaShadowCycleResult } from './theta-shadow-cycle.js';
 import type { ThetaQResponse } from './theta-q-contract.js';
 import { strategyFamilyForCanonicalBranch, type CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
 import { buildStrategyDecisionEnvelope } from './strategy-decision-envelope.js';
+import { resolveCanonicalDecisionAuthority } from './canonical-decision-authority.js';
 import { validateGlobalWaitEvidence, type GlobalWaitEvidence } from './decision-evidence.js';
 import {
   deriveOptionomicsTemporalFeatures,
@@ -110,7 +111,7 @@ function persistenceCandidates(cycle:ThetaShadowCycleResult):readonly Persistabl
     const maxProfit=candidate.economics.maxProfit;
     evaluated.push({candidateId:optionSymbol,rank:candidate.paretoRank??index+1,
       actionFeasible:complete&&candidate.structurallyFeasible&&candidate.riskFeasible,
-      quantity:complete?candidate.sizing.quantity:0,ownershipScore,reasons,
+      quantity:complete?candidate.sizing.quantity:0,ownershipScore,eligibilityBasis:complete?'EMPIRICAL_OWNERSHIP':'INELIGIBLE',reasons,
       economics:collateral===null||maxProfit===null?null:{max_profit:maxProfit,
         break_even_price:candidate.economics.breakEven??candidate.legs[0]?.strike??0,
         secured_collateral_per_contract:collateral,
@@ -389,17 +390,22 @@ export class PostgresThetaCycleStore {
     const receipt = cycle.orchestration?.receipt;
     if (receipt === null || receipt === undefined) return null;
     const authority = cycle.strategyFrontier;
-    const selectedCandidateRef = authority?.selectedCandidateId ?? receipt.selectedCandidateId;
+    // The legacy/new-risk receipt is subordinate evidence only. It can
+    // describe its local recommendation, but it cannot select a persisted
+    // candidate, quantity, or broker-facing action. A missing canonical
+    // frontier therefore fails closed instead of reviving a second selector.
+    const resolvedAuthority = resolveCanonicalDecisionAuthority(authority, receipt);
+    const selectedCandidateRef = resolvedAuthority.selectedCandidateRef;
     const selectedCandidateId = selectedCandidateRef === null ? null : candidateIds.get(selectedCandidateRef) ?? null;
     const selectedBranchStatus = authority?.branches.find((branch) => branch.branch === authority.selectedBranch)?.status ?? null;
     if (selectedCandidateRef !== null && selectedCandidateId === null && (authority === null || selectedBranchStatus === 'SHADOW')) {
       throw new Error(`SELECTED_CANDIDATE_NOT_PERSISTED:${selectedCandidateRef}`);
     }
-    const decisionAuthorityVersion = authority?.decisionAuthorityVersion ?? 'legacy-theta-q-decision-authority-v1';
-    const actionCode = authority?.primaryAction ?? receipt.winningAction;
-    const quantity = authority?.selectedQuantity ?? receipt.quantity;
-    const strategyBranch = authority?.selectedBranch ?? (authority === null ? 'THETA_CONVENTIONAL' : null);
-    const explanation = authority === null ? receipt.plainEnglishExplanation
+    const decisionAuthorityVersion = resolvedAuthority.decisionAuthorityVersion;
+    const actionCode = resolvedAuthority.actionCode;
+    const quantity = resolvedAuthority.quantity;
+    const strategyBranch = resolvedAuthority.strategyBranch;
+    const explanation = authority === null ? 'Canonical strategy authority was unavailable. The subordinate new-risk receipt was retained as evidence but could not select an action.'
       : authority.primaryAction === 'GLOBAL_WAIT'
         ? 'All applicable canonical branches were evaluated and no risk-feasible, positive-quantity structural action remained.'
         : authority.primaryAction === 'MANAGEMENT_AUTHORITY'
@@ -407,13 +413,12 @@ export class PostgresThetaCycleStore {
           : authority.selectedCandidateId === null
             ? 'The canonical strategy authority held because no complete structural selection was available.'
             : `${authority.selectedCandidateId} was selected by the versioned cross-branch structural/Pareto authority. Empirical utility remains unknown.`;
-    const reasonCodes = authority === null ? receipt.reasonCodes
-      : authority.globalWaitEarned ? authority.globalWaitReasons
-        : authority.primaryAction === 'MANAGEMENT_AUTHORITY' ? ['MANAGEMENT_FIRST']
-          : authority.selectedCandidateId === null ? ['CANONICAL_STRUCTURAL_SELECTION_UNAVAILABLE'] : ['CANONICAL_STRUCTURAL_SELECTION'];
+    const reasonCodes = resolvedAuthority.reasonCodes;
     const decisionId = deterministicRuntimeUuid(`decision:${fusionSnapshotId}:${receipt.underlying}:${decisionAuthorityVersion}`);
     const receiptPayload = authority === null
-      ? buildStrategyDecisionEnvelope({ strategyVersionId, strategyBranch: 'THETA_CONVENTIONAL', receipt })
+      ? { contractVersion: decisionAuthorityVersion, authority: null, subordinateNewRiskEvidence:
+          buildStrategyDecisionEnvelope({ strategyVersionId, strategyBranch: 'THETA_CONVENTIONAL', receipt }),
+          executionAuthorized: false }
       : { contractVersion: decisionAuthorityVersion, authority, legacyThetaQReceipt: receipt,
           empiricalUtilityState: authority.empiricalUtilityState, executionAuthorized: false };
     const inserted = await client.query(

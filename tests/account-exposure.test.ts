@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { deriveAccountExposure, mergeDerivedExposureIntoAegisInputs, parseOccOptionSymbol } from '../src/theta/account-exposure.js';
+import {
+  deriveAccountExposure,
+  deriveCandidateCapacityAssessment,
+  deriveCandidateInclusiveAegisInputs,
+  mergeDerivedExposureIntoAegisInputs,
+  parseOccOptionSymbol,
+} from '../src/theta/account-exposure.js';
 import type { AlpacaOpenOrderSnapshot, AlpacaPositionSnapshot, MasterAccountSnapshot } from '../src/theta/alpaca-provider.js';
 
 const NOW = '2026-09-10T15:00:00.000Z';
@@ -166,4 +172,59 @@ test('a derived ratio that is itself UNKNOWN (null) never overwrites the caller-
   assert.equal(exposure.tickerConcentrationPct, null);
   const merged = mergeDerivedExposureIntoAegisInputs({ tickerConcentrationPct: 0.05 }, exposure, true);
   assert.equal(merged.tickerConcentrationPct, 0.05);
+});
+
+test('first CSP risk includes the proposed trade and resolves single-risk-group capacity from real broker equity', () => {
+  const exposure = deriveAccountExposure(account({ equity: 100_000 }), [], []);
+  const result = deriveCandidateInclusiveAegisInputs(exposure, [], {
+    underlying: 'SPY', securedCollateralPerContract: 10_000, quantity: 1,
+  });
+  assert.equal(result.evidenceState, 'KNOWN_DERIVED_FROM_REAL');
+  assert.equal(result.tickerConcentrationPct, 0.1);
+  assert.equal(result.sectorConcentrationPct, 0.1);
+  assert.equal(result.correlationClusterExposurePct, 0.1);
+  assert.equal(result.portfolioCapitalAtRiskPct, 0.1);
+  assert.equal(result.assignmentCapacityUsedPct, 0.1);
+  assert.equal(result.inventoryCapacityUsedPct, 0);
+  assert.equal(result.recoveryCapacityUsedPct, 0);
+});
+
+test('candidate capacity permits quantity one while preventing quantity two from crossing the AEGIS hard boundary', () => {
+  const exposure = deriveAccountExposure(account({ equity: 100_000 }), [], []);
+  const result = deriveCandidateCapacityAssessment(
+    exposure,
+    [],
+    { underlying: 'SPY', securedCollateralPerContract: 10_000 },
+    2,
+    {
+      maxTickerConcentrationPct: 0.1, maxSectorConcentrationPct: 0.1, maxCorrelationClusterPct: 0.1,
+      maxPortfolioCapitalAtRiskPct: 0.1, maxInventoryCapacityPct: 0.5,
+      maxAssignmentCapacityPct: 0.1, maxRecoveryCapacityPct: 0.5,
+    },
+  );
+  assert.equal(result.quantityCap, 1);
+  assert.ok(result.bindingConstraints.includes('ASSIGNMENT_CAPACITY'));
+  assert.equal(result.inputsAtQuantityCap.assignmentCapacityUsedPct, 0.1);
+});
+
+test('pending order intent ambiguity preserves candidate-inclusive capacity as UNKNOWN', () => {
+  const exposure = deriveAccountExposure(account({ equity: 100_000 }), [], [openOrder()]);
+  const result = deriveCandidateInclusiveAegisInputs(exposure, [openOrder()], {
+    underlying: 'SPY', securedCollateralPerContract: 10_000, quantity: 1,
+  });
+  assert.equal(result.evidenceState, 'UNKNOWN_INSUFFICIENT_ACCOUNT_STATE');
+  assert.equal(result.assignmentCapacityUsedPct, null);
+  assert.ok(result.unknownReasons.includes('PENDING_ORDER_INTENT_NOT_CLASSIFIED'));
+});
+
+test('multi-underlying sector and correlation remain UNKNOWN without a real classification or PIT cluster', () => {
+  const exposure = deriveAccountExposure(account({ equity: 100_000 }), [
+    position({ symbol: 'AAPL', assetClass: 'us_equity', marketValue: 10_000 }),
+  ], []);
+  const result = deriveCandidateInclusiveAegisInputs(exposure, [], {
+    underlying: 'SPY', securedCollateralPerContract: 10_000, quantity: 1,
+  });
+  assert.equal(result.sectorConcentrationPct, null);
+  assert.equal(result.correlationClusterExposurePct, null);
+  assert.ok(result.unknownReasons.includes('SECTOR_CLASSIFICATION_REQUIRED_FOR_MULTI_UNDERLYING_PORTFOLIO'));
 });

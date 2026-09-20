@@ -19,6 +19,9 @@ import { barsAsOf, type HistoricalBar } from './underlying-history.js';
 const closesAsOf = (bars: readonly HistoricalBar[], asOf: string): readonly number[] =>
   [...barsAsOf(bars, asOf)].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map((b) => b.close);
 
+const sortedBarsAsOf = (bars: readonly HistoricalBar[], asOf: string): readonly HistoricalBar[] =>
+  [...barsAsOf(bars, asOf)].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
 /** Simple close-to-close return over `lookbackBars` bars ending at asOf. */
 export function computeReturn(bars: readonly HistoricalBar[], asOf: string, lookbackBars: number): number | null {
   const closes = closesAsOf(bars, asOf);
@@ -63,6 +66,42 @@ export function computeDownsideVolatility(bars: readonly HistoricalBar[], asOf: 
   if (downsideReturns.length === 0) return 0; // genuinely zero downside moves observed -- a real zero, not UNKNOWN
   const meanSquare = downsideReturns.reduce((sum, r) => sum + r * r, 0) / downsideReturns.length;
   return Math.sqrt(meanSquare) * Math.sqrt(252);
+}
+
+/** Mean squared negative daily log return. This is semivariance, not annualized volatility. */
+export function computeDownsideSemivariance(bars: readonly HistoricalBar[], asOf: string, windowBars: number): number | null {
+  const closes = closesAsOf(bars, asOf);
+  if (closes.length <= windowBars) return null;
+  const windowCloses = closes.slice(closes.length - windowBars - 1);
+  const downsideReturns: number[] = [];
+  for (let i = 1; i < windowCloses.length; i += 1) {
+    const prev = windowCloses[i - 1];
+    const curr = windowCloses[i];
+    if (prev === undefined || curr === undefined || prev <= 0 || curr <= 0) return null;
+    const value = Math.log(curr / prev);
+    if (value < 0) downsideReturns.push(value);
+  }
+  return downsideReturns.length === 0 ? 0
+    : downsideReturns.reduce((sum, value) => sum + value * value, 0) / downsideReturns.length;
+}
+
+/** Trailing mean share volume. Empty history stays UNKNOWN, while observed zero volume remains zero. */
+export function computeAverageVolume(bars: readonly HistoricalBar[], asOf: string, windowBars: number): number | null {
+  const values = sortedBarsAsOf(bars, asOf);
+  if (values.length < windowBars || windowBars <= 0) return null;
+  const windowed = values.slice(values.length - windowBars);
+  if (windowed.some((item) => !Number.isFinite(item.volume) || item.volume < 0)) return null;
+  return windowed.reduce((sum, item) => sum + item.volume, 0) / windowed.length;
+}
+
+/** Latest close relative to its trailing simple moving average. */
+export function computeMovingAverageRelative(bars: readonly HistoricalBar[], asOf: string, windowBars: number): number | null {
+  const closes = closesAsOf(bars, asOf);
+  if (closes.length < windowBars || windowBars <= 0) return null;
+  const windowed = closes.slice(closes.length - windowBars);
+  const latest = windowed.at(-1);
+  const average = windowed.reduce((sum, value) => sum + value, 0) / windowed.length;
+  return latest === undefined || average <= 0 ? null : (latest - average) / average;
 }
 
 /** Current drawdown from the running peak within the trailing window, as a <= 0 fraction. */

@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   computeCurrentDrawdown,
+  computeAverageVolume,
+  computeDownsideSemivariance,
   computeDownsideVolatility,
   computeGapFrequency,
   computeMaxAdverseGap,
+  computeMovingAverageRelative,
   computeRealizedVolatility,
   computeReturn,
   computeTrendSlope,
@@ -65,6 +68,20 @@ test('computeDownsideVolatility returns 0 (a real zero) when every move is non-n
   assert.equal(result, 0);
 });
 
+test('downside semivariance is PIT-safe and distinguishes known zero from unknown', () => {
+  const bars = makeBars();
+  const value = computeDownsideSemivariance(bars, day(70), 60);
+  assert.ok(value !== null && value > 0);
+  assert.equal(computeDownsideSemivariance(bars.slice(0, 5), day(5), 20), null);
+});
+
+test('average volume and moving-average-relative use only the requested trailing window', () => {
+  const bars = makeBars();
+  assert.equal(computeAverageVolume(bars, day(70), 20), 1000);
+  const maRelative = computeMovingAverageRelative(bars, day(70), 20);
+  assert.ok(maRelative !== null && maRelative > 0);
+});
+
 test('computeCurrentDrawdown reflects the drop after the gap day and is negative', () => {
   const bars = makeBars();
   const result = computeCurrentDrawdown(bars, day(70), 60);
@@ -99,6 +116,9 @@ test('NO FUTURE LEAKAGE: every feature computed as of day 40 is IDENTICAL whethe
   assert.equal(computeReturn(fullBars, asOf, 5), computeReturn(truncatedBars, asOf, 5));
   assert.equal(computeRealizedVolatility(fullBars, asOf, 20), computeRealizedVolatility(truncatedBars, asOf, 20));
   assert.equal(computeDownsideVolatility(fullBars, asOf, 20), computeDownsideVolatility(truncatedBars, asOf, 20));
+  assert.equal(computeDownsideSemivariance(fullBars, asOf, 20), computeDownsideSemivariance(truncatedBars, asOf, 20));
+  assert.equal(computeAverageVolume(fullBars, asOf, 20), computeAverageVolume(truncatedBars, asOf, 20));
+  assert.equal(computeMovingAverageRelative(fullBars, asOf, 20), computeMovingAverageRelative(truncatedBars, asOf, 20));
   assert.equal(computeCurrentDrawdown(fullBars, asOf, 20), computeCurrentDrawdown(truncatedBars, asOf, 20));
   assert.equal(computeTrendSlope(fullBars, asOf, 20), computeTrendSlope(truncatedBars, asOf, 20));
   assert.equal(computeGapFrequency(fullBars, asOf, 20, 0.02), computeGapFrequency(truncatedBars, asOf, 20, 0.02));

@@ -68,6 +68,14 @@ class CspCandidateInputs:
     broker_allowed_qty: int
     contract_is_standard: bool
 
+    # Explicit cold-start authority for the dedicated master Paper account.
+    # This is eligibility, not a score or an empirical profitability claim.
+    # The caller may set it only after the versioned broker/risk bootstrap
+    # contract has passed. All mechanical, liquidity, event, broker, AEGIS,
+    # and downstream sizing gates remain independent and fail closed.
+    paper_bootstrap_eligible: bool = False
+    paper_bootstrap_policy_version: Optional[str] = None
+
 
 @dataclass(frozen=True)
 class CostAssumptions:
@@ -128,6 +136,7 @@ class CandidateEvaluation:
     economics: Optional[CandidateEconomics]
     ownership_score: Optional[float]
     quantity: int
+    eligibility_basis: str
 
 
 # ---------------------------------------------------------------------------
@@ -290,13 +299,18 @@ class BaselinePolicy:
 
     # -- sizing -------------------------------------------------------------
 
-    def _quantity(self, c: CspCandidateInputs, ownership_score: Optional[float]) -> int:
+    def _quantity(
+        self,
+        c: CspCandidateInputs,
+        ownership_score: Optional[float],
+        paper_bootstrap_eligible: bool = False,
+    ) -> int:
         """TRD section 18.1 size-by-confidence structure, without a
         calibrated utility (none exists at this baseline stage) -- so this
         baseline can only size by the hard caps, never by a confidence
         multiplier it doesn't actually have evidence for. Quantity 0 is a
         legitimate, expected result, never floored to 1 (SIZE-001)."""
-        if ownership_score is None:
+        if ownership_score is None and not paper_bootstrap_eligible:
             return 0
         qty_base = min(
             self.sizing_policy.risk_budget_qty_cap,
@@ -318,6 +332,7 @@ class BaselinePolicy:
                 economics=None,
                 ownership_score=None,
                 quantity=0,
+                eligibility_basis="INELIGIBLE",
             )
 
         ownership_score, ownership_reasons = self._ownership_evaluation(c)
@@ -327,10 +342,24 @@ class BaselinePolicy:
         below_floor = any(r.code == "OWNERSHIP_BELOW_FLOOR" for r in ownership_reasons)
         unknown_ownership = ownership_score is None
 
-        if unknown_ownership or below_floor:
+        bootstrap_eligible = (
+            unknown_ownership
+            and not below_floor
+            and c.paper_bootstrap_eligible
+            and c.paper_bootstrap_policy_version is not None
+        )
+        if bootstrap_eligible:
+            reasons.append(ReasonCode(
+                "PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED",
+                0,
+                "Paper-only cold-start eligibility passed under policy "
+                f"{c.paper_bootstrap_policy_version}; ownership_score remains UNKNOWN.",
+            ))
+
+        if below_floor or (unknown_ownership and not bootstrap_eligible):
             qty = 0
         else:
-            qty = self._quantity(c, ownership_score)
+            qty = self._quantity(c, ownership_score, bootstrap_eligible)
 
         return CandidateEvaluation(
             underlying_symbol=c.underlying_symbol,
@@ -339,6 +368,12 @@ class BaselinePolicy:
             economics=economics,
             ownership_score=ownership_score,
             quantity=qty,
+            eligibility_basis=(
+                "PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED"
+                if bootstrap_eligible
+                else "EMPIRICAL_OWNERSHIP" if ownership_score is not None and not below_floor
+                else "INELIGIBLE"
+            ),
         )
 
 

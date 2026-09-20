@@ -15,7 +15,7 @@ export interface MasterPaperPlanAssemblyInput {
   readonly accountStatus: string | null;
   readonly optionsApprovedLevel: number | null;
   readonly optionsTradingLevel: number | null;
-  readonly aegisState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO' | 'DEFINED_RISK_ONLY' | null;
+  readonly aegisState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO' | 'DEFINED_RISK_ONLY' | 'EMERGENCY_EXIT_ONLY' | null;
   readonly openPositionSymbols: readonly string[];
   readonly openOrderSymbols: readonly string[];
   readonly paperEvidenceRiskCap: number;
@@ -81,6 +81,7 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
   if (sizing.paperEvidenceQuantity === 0) blockers.push('PAPER_EVIDENCE_QUANTITY_ZERO');
   if (input.aegisState === null) blockers.push('AEGIS_SELECTION_LINEAGE_MISSING');
   else if (!['ALLOW_FULL', 'ALLOW_REDUCED'].includes(input.aegisState)) blockers.push('AEGIS_NOT_APPROVED');
+  if (selected !== undefined && input.aegisState !== selected.aegisState) blockers.push('AEGIS_SELECTION_LINEAGE_MISMATCH');
 
   if (blockers.length > 0 || selected === undefined || selectedLeg === undefined
     || input.executionAccountId === null || input.persistedCandidateId === null

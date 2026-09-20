@@ -22,7 +22,7 @@ const frontier=():CanonicalStrategyFrontier=>({
       spreadPct:0.0392,liquidity:{volume:100,openInterest:1000},economics:{premiumPerShare:1.25,grossPremium:125,
         collateral:15000,maxProfit:125,maxLoss:null,breakEven:148.75,downsideCushion:0.07,retainedUpside:null,
         callAwayProceeds:null,wholeChainPnlAtCallAway:null,capitalDayYield:0.00026,expectedAfterCostEv:null},
-      assignmentCapacityQty:3,hardBlockers:[],softEvidence:[],unknownEvidence:['EMPIRICAL_EV_UNKNOWN'],
+      assignmentCapacityQty:3,aegisState:'ALLOW_FULL',hardBlockers:[],softEvidence:[],unknownEvidence:['EMPIRICAL_EV_UNKNOWN'],
       structurallyFeasible:true,riskFeasible:true,sizing:{quantity:3,bindingConstraint:'COLLATERAL_CAP',reasons:[]},
       paretoRank:1,dominatedBy:[],executionAuthorized:false}]}],
   branchesConsidered:['THETA_CONVENTIONAL'],branchesEvaluated:['THETA_CONVENTIONAL'],selectedBranch:'THETA_CONVENTIONAL',
@@ -68,6 +68,12 @@ test('missing risk, costs, persistence, or conflict blocks plan assembly',()=>{
     assert.equal(result.state,'BLOCKED');
     assert.equal(result.plan,null);
   }
+});
+
+test('a plan cannot use an AEGIS state from a different candidate',()=>{
+  const result=assembleMasterPaperEvidencePlan(input({aegisState:'ALLOW_REDUCED'}));
+  assert.equal(result.state,'BLOCKED');
+  assert.ok(result.blockers.includes('AEGIS_SELECTION_LINEAGE_MISMATCH'));
 });
 
 test('contract multiplier is used when converting modeled cost to per-share boundary',()=>{

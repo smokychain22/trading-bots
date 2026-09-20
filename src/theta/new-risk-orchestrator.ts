@@ -13,6 +13,7 @@ import { assembleNewRiskDecision, type CandidateFrontierResult, type NewRiskDeci
 import type { NormalizedOptionContract } from './option-contract.js';
 import { ShadowOpportunityBookBuilder, type ShadowOpportunityEntry } from './shadow-opportunity-book.js';
 import { classifyObservation, type DataQualityState, type FreshnessPolicy } from './data-freshness.js';
+import type { PaperEntryBootstrapAssessment } from './paper-entry-bootstrap.js';
 
 // R1: the real end-to-end new-risk orchestrator. Sequences every stage in
 // the canonical pipeline --
@@ -73,6 +74,10 @@ export interface RawCandidateInput {
   readonly ivCompensationSufficient: boolean | null;
   readonly quoteSize: number | null;
   readonly preSlippageExpectedUtility: number | null;
+  /** Candidate-inclusive, point-in-time AEGIS overrides derived from real
+   * broker state. Missing fields deliberately fall back to the cycle-level
+   * input and remain UNKNOWN there when no real producer exists. */
+  readonly aegisInputOverrides?: Readonly<Record<string, unknown>>;
 }
 
 // Structured provider capability/observation state (replaces the former
@@ -155,8 +160,16 @@ export interface NewRiskOrchestrationRequest {
   readonly candidates: readonly RawCandidateInput[];
 
   readonly sizingPolicy: Record<string, unknown>;
-  readonly sizingAccount: { equity: number | null; cash: number | null; buyingPower: number | null; brokerAllowedQty: number };
+  readonly sizingAccount: {
+    readonly equity: number | null;
+    readonly cash: number | null;
+    readonly buyingPower: number | null;
+    /** Compatibility-only test/replay field. Runtime sizing always consumes
+     * the selected candidate's broker-derived cap. */
+    readonly brokerAllowedQty?: number;
+  };
   readonly executionQualityPolicy: Record<string, unknown>;
+  readonly paperEntryBootstrap?: PaperEntryBootstrapAssessment;
 }
 
 export interface NewRiskOrchestrationResult {
@@ -166,6 +179,7 @@ export interface NewRiskOrchestrationResult {
   readonly routing: StrategyRoutingResponse | null;
   readonly thetaQ: ThetaQResponse | null;
   readonly aegis: AegisAssessmentResponse | null;
+  readonly aegisByCandidateId?: Readonly<Record<string, AegisAssessmentResponse>>;
   readonly paretoSurvivorIds: readonly string[] | null;
   readonly opportunityBook: OpportunityFrontierResponse | null;
   readonly shadowOpportunities: readonly ShadowOpportunityEntry[];
@@ -516,6 +530,9 @@ export async function runNewRiskOrchestration(
         entryPremiumPerShare: c.entryPremiumPerShare, ownershipAcceptability: ownershipResult.data.ownability,
         severeDrawdownProbability: c.severeDrawdownProbability, ivRank: c.ivRank, brokerAllowedQty: c.brokerAllowedQty,
         contractIsStandard: c.contractIsStandard,
+        paperBootstrapEligible: request.paperEntryBootstrap?.state === 'ELIGIBLE_UNCALIBRATED',
+        paperBootstrapPolicyVersion: request.paperEntryBootstrap?.state === 'ELIGIBLE_UNCALIBRATED'
+          ? request.paperEntryBootstrap.policyVersion : null,
       })),
     },
     (payload) => parseThetaQResponse(payload, request.fusionSnapshotHash),
@@ -584,16 +601,30 @@ export async function runNewRiskOrchestration(
   if (!paretoResult.ok) return systemHoldResult(request, 'PARETO_FRONTIER', paretoResult.detail, { ...partialAfterRouting, thetaQ: thetaQResult.data });
   const survivorIds = new Set(survivingCandidateIds(paretoResult.data));
 
-  const aegisResult = await invokeAndValidate(
-    bridge, 'aegis',
-    { contractVersion: 'theta-aegis-runtime-v1', decisionId: `${request.snapshotId}:${request.underlying}`, snapshotId: request.snapshotId, timestamp: request.timestamp, policy: request.aegisPolicy, inputs: request.aegisInputs },
-    (payload) => parseAegisAssessmentResponse(payload),
-  );
-  if (!aegisResult.ok) {
-    return systemHoldResult(request, 'AEGIS', aegisResult.detail, { ...partialAfterRouting, thetaQ: thetaQResult.data, paretoSurvivorIds: [...survivorIds] });
-  }
-
   const survivors = feasibleForFrontier.filter((c) => survivorIds.has(c.candidateId));
+  const aegisByCandidateId = new Map<string, AegisAssessmentResponse>();
+  for (const candidate of survivors) {
+    const candidateAegis = await invokeAndValidate(
+      bridge, 'aegis',
+      {
+        contractVersion: 'theta-aegis-runtime-v1',
+        decisionId: `${request.snapshotId}:${candidate.candidateId}`,
+        snapshotId: request.snapshotId,
+        timestamp: request.timestamp,
+        policy: request.aegisPolicy,
+        inputs: { ...request.aegisInputs, ...candidate.aegisInputOverrides },
+      },
+      (payload) => parseAegisAssessmentResponse(payload),
+    );
+    if (!candidateAegis.ok) {
+      return systemHoldResult(request, 'AEGIS', candidateAegis.detail, {
+        ...partialAfterRouting, thetaQ: thetaQResult.data, paretoSurvivorIds: [...survivorIds],
+      });
+    }
+    aegisByCandidateId.set(candidate.candidateId, candidateAegis.data);
+  }
+  const representativeAegis = survivors.length === 0 ? null
+    : aegisByCandidateId.get(survivors[0]?.candidateId ?? '') ?? null;
   for (const c of feasibleForFrontier) {
     if (!survivorIds.has(c.candidateId)) {
       immediateResults.push({
@@ -627,8 +658,8 @@ export async function runNewRiskOrchestration(
               ? null
               : regimeResult.data.stressState !== 'CRISIS' && regimeResult.data.volatilityState !== 'SHOCK',
           modelUncertainty: null,
-          aegisPermitsFull: aegisResult.data.newRiskState === 'ALLOW_FULL',
-          aegisPermitsReduced: aegisResult.data.newRiskState === 'ALLOW_FULL' || aegisResult.data.newRiskState === 'ALLOW_REDUCED',
+          aegisPermitsFull: aegisByCandidateId.get(c.candidateId)?.newRiskState === 'ALLOW_FULL',
+          aegisPermitsReduced: ['ALLOW_FULL', 'ALLOW_REDUCED'].includes(aegisByCandidateId.get(c.candidateId)?.newRiskState ?? ''),
           hasAlternateContract: c.hasAlternateContract,
           hasAlternateExpiry: c.hasAlternateExpiry,
           hasAlternateStructure: c.hasAlternateStructure,
@@ -639,7 +670,7 @@ export async function runNewRiskOrchestration(
   );
   if (!opportunityResult.ok) {
     return systemHoldResult(request, 'OPPORTUNITY_FRONTIER', opportunityResult.detail, {
-      ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds],
+      ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: representativeAegis, paretoSurvivorIds: [...survivorIds],
     });
   }
 
@@ -650,7 +681,14 @@ export async function runNewRiskOrchestration(
   for (const candidate of survivors) {
     const econ = economicsByCandidateId.get(candidate.candidateId) as Omit<CandidateEconomics, 'candidateId'>;
     const entry = entryByCandidateId.get(candidate.candidateId);
+    const candidateAegis = aegisByCandidateId.get(candidate.candidateId);
     if (entry === undefined) continue; // never happens -- every survivor was sent to opportunityFrontier
+    if (candidateAegis === undefined) {
+      return systemHoldResult(request, 'AEGIS', `Candidate-specific AEGIS result missing for ${candidate.candidateId}.`, {
+        ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: representativeAegis,
+        paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
+      });
+    }
 
     const isOpen = OPEN_DISPOSITIONS.has(entry.disposition);
     if (!isOpen) {
@@ -676,20 +714,20 @@ export async function runNewRiskOrchestration(
         inputs: {
           equity: request.sizingAccount.equity, cash: request.sizingAccount.cash, buyingPower: request.sizingAccount.buyingPower,
           requiredCollateralPerContract: requiredCollateralPerContract(candidate.contract),
-          brokerAllowedQty: request.sizingAccount.brokerAllowedQty, riskState: aegisResult.data.newRiskState,
+          brokerAllowedQty: candidate.brokerAllowedQty, riskState: candidateAegis.newRiskState,
         },
       },
       (payload) => parseSizingResultResponse(payload),
     );
     if (!sizingResult.ok) {
       return systemHoldResult(request, 'SIZING', sizingResult.detail, {
-        ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
+        ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: candidateAegis, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
       });
     }
 
     if (candidate.contract.bid === null) {
       return systemHoldResult(request, 'EXECUTION_QUALITY', 'OPEN candidate has no executable Alpaca bid.', {
-        ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: aegisResult.data,
+        ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: candidateAegis,
         paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
       });
     }
@@ -714,7 +752,7 @@ export async function runNewRiskOrchestration(
     );
     if (!executionQualityResult.ok) {
       return systemHoldResult(request, 'EXECUTION_QUALITY', executionQualityResult.detail, {
-        ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
+        ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: candidateAegis, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
       });
     }
 
@@ -723,7 +761,7 @@ export async function runNewRiskOrchestration(
       disposition: entry.disposition as CandidateFrontierResult['disposition'],
       waitReason: entry.waitReason, rejectionReason: entry.rejectionCategory,
       evNet: econ.evNet, returnPerCapitalDay: econ.returnPerCapitalDay,
-      aegis: aegisResult.data, sizing: sizingResult.data, executionQuality: executionQualityResult.data,
+      aegis: candidateAegis, sizing: sizingResult.data, executionQuality: executionQualityResult.data,
     });
 
     const executionAcceptable = executionQualityResult.data.acceptable;
@@ -731,7 +769,7 @@ export async function runNewRiskOrchestration(
       sizingResult.data.quantity === 0 ? 'Q_ZERO' : executionAcceptable === false ? 'EXECUTION_REJECTED' : 'ACCEPTED';
     recordShadow(candidate, {
       outcome, evNet: econ.evNet, returnPerCapitalDay: econ.returnPerCapitalDay, capitalRequired: econ.capitalRequirement,
-      aegisState: aegisResult.data.newRiskState, recommendedQuantity: sizingResult.data.quantity,
+      aegisState: candidateAegis.newRiskState, recommendedQuantity: sizingResult.data.quantity,
       executionQualityAcceptable: executionAcceptable, reasons: [...sizingResult.data.reasons, ...executionQualityResult.data.reasons],
     });
   }
@@ -745,7 +783,9 @@ export async function runNewRiskOrchestration(
 
   return {
     receipt, ownership: ownershipResult.data, regime: regimeResult.data, routing: routerResult.data,
-    thetaQ: thetaQResult.data, aegis: aegisResult.data, paretoSurvivorIds: [...survivorIds],
+    thetaQ: thetaQResult.data, aegis: representativeAegis,
+    aegisByCandidateId: Object.fromEntries([...aegisByCandidateId.entries()].sort(([a], [b]) => a.localeCompare(b))),
+    paretoSurvivorIds: [...survivorIds],
     opportunityBook: opportunityResult.data, shadowOpportunities: book.all(),
     candidateEconomics: feasibleForFrontier.map((c) => ({
       candidateId: c.candidateId, ...(economicsByCandidateId.get(c.candidateId) as Omit<CandidateEconomics, 'candidateId'>),

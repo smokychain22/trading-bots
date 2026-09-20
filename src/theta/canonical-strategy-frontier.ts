@@ -50,6 +50,7 @@ export interface CanonicalFrontierCandidate {
   readonly liquidity: { readonly volume: number | null; readonly openInterest: number | null };
   readonly economics: CanonicalFrontierEconomics;
   readonly assignmentCapacityQty: number | null;
+  readonly aegisState: CanonicalStrategyFrontierInput['aegisNewRiskState'];
   readonly hardBlockers: readonly string[];
   readonly softEvidence: readonly string[];
   readonly unknownEvidence: readonly string[];
@@ -128,8 +129,10 @@ export interface CanonicalStrategyFrontierInput {
   readonly assignmentCapacityQty: number | null;
   readonly buyingPower?: number | null;
   readonly brokerAllowedQty?: number;
+  readonly brokerAllowedQtyByCandidateId?: Readonly<Record<string, number>>;
   readonly sizingPolicy?: Readonly<Record<string, unknown>>;
   readonly aegisNewRiskState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO' | 'DEFINED_RISK_ONLY' | 'EMERGENCY_EXIT_ONLY' | null;
+  readonly aegisNewRiskStateByCandidateId?: Readonly<Record<string, CanonicalStrategyFrontierInput['aegisNewRiskState']>>;
   readonly eventState: string | null;
   readonly unmanagedBrokerPositionCount: number;
   readonly unevaluatedUnderlyingCount: number;
@@ -168,6 +171,8 @@ function structuralSizing(
   collateral: number | null,
   actionCapacityQty: number | null,
   input: CanonicalStrategyFrontierInput,
+  candidateId: string,
+  candidateAegisState: CanonicalStrategyFrontierInput['aegisNewRiskState'],
 ): CanonicalFrontierCandidate['sizing'] {
   if (action === 'RECOVERY_WAIT') return { quantity: 0, bindingConstraint: 'WAIT_ACTION', reasons: ['NO_ORDER_REQUIRED'] };
   if (action === 'SELL_STOCK') {
@@ -180,8 +185,10 @@ function structuralSizing(
     ['RISK_BUDGET', policy?.riskBudgetQtyCap], ['COLLATERAL_CAP', policy?.collateralQtyCap],
     ['CONCENTRATION_CAP', policy?.concentrationQtyCap], ['ASSIGNMENT_CAPACITY_CAP', policy?.assignmentCapacityQtyCap],
     ['TAIL_RISK_CAP', policy?.tailRiskQtyCap], ['CORRELATION_CAP', policy?.correlationQtyCap],
-    ['LIQUIDITY_CAP', policy?.liquidityQtyCap], ['BROKER_ALLOWED', input.brokerAllowedQty],
+    ['LIQUIDITY_CAP', policy?.liquidityQtyCap],
   ];
+  const brokerAllowedQty = input.brokerAllowedQtyByCandidateId?.[candidateId] ?? input.brokerAllowedQty;
+  if (brokerAllowedQty !== undefined) namedCaps.push(['BROKER_ALLOWED', brokerAllowedQty]);
   const parsed: Array<[string, number | null]> = namedCaps.map(([name, value]) => [name, nonnegativeInteger(value)]);
   if (parsed.some(([, value]) => value === null)) {
     return { quantity: 0, bindingConstraint: 'SIZING_POLICY_INCOMPLETE', reasons: ['REQUIRED_SIZING_CAP_UNKNOWN'] };
@@ -203,15 +210,19 @@ function structuralSizing(
   }
   const reducedMultiplier = typeof policy?.reducedStateMultiplier === 'number' && Number.isFinite(policy.reducedStateMultiplier)
     ? Math.max(0, Math.min(1, policy.reducedStateMultiplier)) : null;
-  if (input.aegisNewRiskState === null || ['HOLD_ONLY', 'HARD_VETO', 'EMERGENCY_EXIT_ONLY'].includes(input.aegisNewRiskState)) {
-    return { quantity: 0, bindingConstraint: input.aegisNewRiskState === null ? 'AEGIS_UNKNOWN' : `AEGIS_${input.aegisNewRiskState}`, reasons: ['AEGIS_DOES_NOT_PERMIT_NEW_RISK'] };
+  if (candidateAegisState === null || ['HOLD_ONLY', 'HARD_VETO', 'EMERGENCY_EXIT_ONLY'].includes(candidateAegisState)) {
+    return { quantity: 0, bindingConstraint: candidateAegisState === null ? 'AEGIS_UNKNOWN' : `AEGIS_${candidateAegisState}`, reasons: ['AEGIS_DOES_NOT_PERMIT_NEW_RISK'] };
   }
-  if (input.aegisNewRiskState === 'ALLOW_REDUCED') {
+  if (candidateAegisState === 'ALLOW_REDUCED') {
     if (reducedMultiplier === null) return { quantity: 0, bindingConstraint: 'REDUCED_MULTIPLIER_UNKNOWN', reasons: ['REDUCED_MULTIPLIER_UNKNOWN'] };
     quantity = Math.floor(quantity * reducedMultiplier);
     bindingConstraint = 'AEGIS_ALLOW_REDUCED';
   }
   return { quantity, bindingConstraint, reasons: quantity === 0 ? ['QUANTITY_ZERO_VALID'] : ['STRUCTURAL_SIZING_COMPUTED'] };
+}
+
+function aegisStateFor(input: CanonicalStrategyFrontierInput, candidateId: string): CanonicalStrategyFrontierInput['aegisNewRiskState'] {
+  return input.aegisNewRiskStateByCandidateId?.[candidateId] ?? input.aegisNewRiskState;
 }
 
 function leg(contract: NormalizedOptionContract, positionIntent: CanonicalFrontierLeg['positionIntent']): CanonicalFrontierLeg {
@@ -222,7 +233,7 @@ function leg(contract: NormalizedOptionContract, positionIntent: CanonicalFronti
   };
 }
 
-function commonEvidence(contract: NormalizedOptionContract, input: CanonicalStrategyFrontierInput): {
+function commonEvidence(contract: NormalizedOptionContract, input: CanonicalStrategyFrontierInput, candidateId: string): {
   hardBlockers: string[]; softEvidence: string[]; unknownEvidence: string[];
 } {
   const hardBlockers: string[] = [];
@@ -234,8 +245,9 @@ function commonEvidence(contract: NormalizedOptionContract, input: CanonicalStra
   // comparison, but it can never authorize a broker order. The execution
   // handoff must obtain and qualify a new current quote independently.
   if (!contract.executable) unknownEvidence.push(`EXECUTION_QUOTE_REQUIRED:${contract.nonExecutableReason ?? 'UNKNOWN'}`);
-  if (input.aegisNewRiskState === null) unknownEvidence.push('AEGIS_STATE_UNKNOWN');
-  else if (['HOLD_ONLY', 'HARD_VETO', 'EMERGENCY_EXIT_ONLY'].includes(input.aegisNewRiskState)) hardBlockers.push(`AEGIS_${input.aegisNewRiskState}`);
+  const candidateAegisState = aegisStateFor(input, candidateId);
+  if (candidateAegisState === null) unknownEvidence.push('AEGIS_STATE_UNKNOWN');
+  else if (['HOLD_ONLY', 'HARD_VETO', 'EMERGENCY_EXIT_ONLY'].includes(candidateAegisState)) hardBlockers.push(`AEGIS_${candidateAegisState}`);
   if (input.eventState === null) unknownEvidence.push('EVENT_STATE_UNKNOWN');
   else softEvidence.push(`EVENT_STATE:${input.eventState}`);
   if (contract.iv === null) unknownEvidence.push('IV_UNKNOWN');
@@ -247,8 +259,10 @@ function commonEvidence(contract: NormalizedOptionContract, input: CanonicalStra
 
 function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE', contract: NormalizedOptionContract,
   input: CanonicalStrategyFrontierInput): CanonicalFrontierCandidate {
-  const evidence = commonEvidence(contract, input);
-  if (input.aegisNewRiskState === 'DEFINED_RISK_ONLY') evidence.hardBlockers.push('AEGIS_DEFINED_RISK_ONLY');
+  const candidateId = `${branch}:${contract.optionSymbol}`;
+  const candidateAegisState = aegisStateFor(input, candidateId);
+  const evidence = commonEvidence(contract, input, candidateId);
+  if (candidateAegisState === 'DEFINED_RISK_ONLY') evidence.hardBlockers.push('AEGIS_DEFINED_RISK_ONLY');
   const premium = finite(contract.bid) ? contract.bid : null;
   const collateral = contract.strike * contract.multiplier;
   const assignmentCapacityQty = input.assignmentCapacityQty ??
@@ -258,7 +272,7 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
   const cushion = finite(contract.underlyingReferencePrice) && finite(contract.breakEven) && contract.underlyingReferencePrice > 0
     ? (contract.underlyingReferencePrice - contract.breakEven) / contract.underlyingReferencePrice : null;
   return {
-    candidateId: `${branch}:${contract.optionSymbol}`, branch, action: 'OPEN_CSP', underlying: contract.underlying,
+    candidateId, branch, action: 'OPEN_CSP', underlying: contract.underlying,
     legs: [leg(contract, 'SELL_TO_OPEN')], dte: contract.dte, delta: contract.delta, moneyness: contract.moneyness,
     spreadPct: contract.spreadPct, liquidity: { volume: contract.volume, openInterest: contract.openInterest },
     economics: {
@@ -268,17 +282,19 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
       wholeChainPnlAtCallAway: null, capitalDayYield: premium === null || contract.dte <= 0 ? null : premium * contract.multiplier / (collateral * contract.dte),
       expectedAfterCostEv: null,
     },
-    assignmentCapacityQty, ...evidence,
+    assignmentCapacityQty, aegisState: candidateAegisState, ...evidence,
     structurallyFeasible: evidence.hardBlockers.length === 0, riskFeasible: evidence.hardBlockers.length === 0,
-    sizing: structuralSizing('OPEN_CSP', collateral, assignmentCapacityQty, input),
+    sizing: structuralSizing('OPEN_CSP', collateral, assignmentCapacityQty, input, candidateId, candidateAegisState),
     paretoRank: null, dominatedBy: [], executionAuthorized: false,
   };
 }
 
 function definedRiskCandidate(shortPut: NormalizedOptionContract, longPut: NormalizedOptionContract,
   input: CanonicalStrategyFrontierInput): CanonicalFrontierCandidate {
-  const shortEvidence = commonEvidence(shortPut, input);
-  const longEvidence = commonEvidence(longPut, input);
+  const candidateId = `THETA_DEFINED_RISK:${shortPut.optionSymbol}:${longPut.optionSymbol}`;
+  const candidateAegisState = aegisStateFor(input, candidateId);
+  const shortEvidence = commonEvidence(shortPut, input, candidateId);
+  const longEvidence = commonEvidence(longPut, input, candidateId);
   const hardBlockers = [...shortEvidence.hardBlockers, ...longEvidence.hardBlockers];
   const width = shortPut.strike - longPut.strike;
   const netCredit = finite(shortPut.bid) && finite(longPut.ask) ? shortPut.bid - longPut.ask : null;
@@ -291,7 +307,7 @@ function definedRiskCandidate(shortPut: NormalizedOptionContract, longPut: Norma
   const maxProfit = netCredit === null ? null : netCredit * multiplier;
   const maxLoss = netCredit === null ? null : (width - netCredit) * multiplier;
   return {
-    candidateId: `THETA_DEFINED_RISK:${shortPut.optionSymbol}:${longPut.optionSymbol}`,
+    candidateId,
     branch: 'THETA_DEFINED_RISK', action: 'OPEN_DEFINED_RISK', underlying: shortPut.underlying,
     legs: [leg(shortPut, 'SELL_TO_OPEN'), leg(longPut, 'BUY_TO_OPEN')], dte: shortPut.dte,
     delta: shortPut.delta, moneyness: shortPut.moneyness,
@@ -307,11 +323,11 @@ function definedRiskCandidate(shortPut: NormalizedOptionContract, longPut: Norma
       capitalDayYield: maxProfit === null || maxLoss === null || maxLoss <= 0 || shortPut.dte <= 0 ? null : maxProfit / (maxLoss * shortPut.dte),
       expectedAfterCostEv: null,
     },
-    assignmentCapacityQty: null, hardBlockers: [...new Set(hardBlockers)],
+    assignmentCapacityQty: null, aegisState: candidateAegisState, hardBlockers: [...new Set(hardBlockers)],
     softEvidence: [...new Set([...shortEvidence.softEvidence, ...longEvidence.softEvidence])],
     unknownEvidence: [...new Set([...shortEvidence.unknownEvidence, ...longEvidence.unknownEvidence])],
     structurallyFeasible: hardBlockers.length === 0, riskFeasible: hardBlockers.length === 0,
-    sizing: structuralSizing('OPEN_DEFINED_RISK', maxLoss, null, input),
+    sizing: structuralSizing('OPEN_DEFINED_RISK', maxLoss, null, input, candidateId, candidateAegisState),
     paretoRank: null, dominatedBy: [], executionAuthorized: false,
   };
 }
@@ -334,17 +350,20 @@ function stockActionCandidate(action: 'RECOVERY_WAIT' | 'SELL_STOCK', input: Can
       downsideCushion: null, retainedUpside: null, callAwayProceeds: null, wholeChainPnlAtCallAway: null,
       capitalDayYield: null, expectedAfterCostEv: null,
     },
-    assignmentCapacityQty: stock.shares, hardBlockers, softEvidence: [`OWNERSHIP_STATE:STOCK_HELD`, `ACTION:${action}`], unknownEvidence,
+    assignmentCapacityQty: stock.shares, aegisState: input.aegisNewRiskState,
+    hardBlockers, softEvidence: [`OWNERSHIP_STATE:STOCK_HELD`, `ACTION:${action}`], unknownEvidence,
     structurallyFeasible: hardBlockers.length === 0, riskFeasible: hardBlockers.length === 0,
-    sizing: structuralSizing(action, null, stock.shares, input),
+    sizing: structuralSizing(action, null, stock.shares, input, `THETA_RECOVERY:${stock.underlying}:${action}`, input.aegisNewRiskState),
     paretoRank: null, dominatedBy: [], executionAuthorized: false,
   };
 }
 
 function coveredCallCandidate(contract: NormalizedOptionContract, input: CanonicalStrategyFrontierInput): CanonicalFrontierCandidate {
   const stock = input.stock as NonNullable<CanonicalStrategyFrontierInput['stock']>;
-  const evidence = commonEvidence(contract, input);
-  if (input.aegisNewRiskState === 'DEFINED_RISK_ONLY') evidence.hardBlockers.push('AEGIS_DEFINED_RISK_ONLY');
+  const candidateId = `THETA_CC:${contract.optionSymbol}`;
+  const candidateAegisState = aegisStateFor(input, candidateId);
+  const evidence = commonEvidence(contract, input, candidateId);
+  if (candidateAegisState === 'DEFINED_RISK_ONLY') evidence.hardBlockers.push('AEGIS_DEFINED_RISK_ONLY');
   const coveredQty = Math.floor(stock.shares / contract.multiplier);
   if (coveredQty <= 0) evidence.hardBlockers.push('INSUFFICIENT_COVERED_SHARES');
   const premium = finite(contract.bid) ? contract.bid : null;
@@ -353,7 +372,7 @@ function coveredCallCandidate(contract: NormalizedOptionContract, input: Canonic
   const chainPnlAtCallAway = stock.wholeChainEconomicBasisPerShare === null ? null
     : (contract.strike - stock.wholeChainEconomicBasisPerShare + (premium ?? 0)) * contract.multiplier;
   return {
-    candidateId: `THETA_CC:${contract.optionSymbol}`, branch: 'THETA_CC', action: 'SELL_CC', underlying: contract.underlying,
+    candidateId, branch: 'THETA_CC', action: 'SELL_CC', underlying: contract.underlying,
     legs: [leg(contract, 'SELL_TO_OPEN')], dte: contract.dte, delta: contract.delta, moneyness: contract.moneyness,
     spreadPct: contract.spreadPct, liquidity: { volume: contract.volume, openInterest: contract.openInterest },
     economics: {
@@ -362,9 +381,9 @@ function coveredCallCandidate(contract: NormalizedOptionContract, input: Canonic
       retainedUpside, callAwayProceeds, wholeChainPnlAtCallAway: chainPnlAtCallAway,
       capitalDayYield: null, expectedAfterCostEv: null,
     },
-    assignmentCapacityQty: coveredQty, ...evidence,
+    assignmentCapacityQty: coveredQty, aegisState: candidateAegisState, ...evidence,
     structurallyFeasible: evidence.hardBlockers.length === 0, riskFeasible: evidence.hardBlockers.length === 0,
-    sizing: structuralSizing('SELL_CC', 0, coveredQty, input),
+    sizing: structuralSizing('SELL_CC', 0, coveredQty, input, candidateId, candidateAegisState),
     paretoRank: null, dominatedBy: [], executionAuthorized: false,
   };
 }

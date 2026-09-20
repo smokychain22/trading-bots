@@ -170,6 +170,40 @@ class OwnershipScoringTests(unittest.TestCase):
         self.assertIsNone(result.ownership_score)
         self.assertIn("SEVERE_DRAWDOWN_PROB_UNKNOWN", [r.code for r in result.reasons])
 
+    def test_paper_bootstrap_can_size_without_manufacturing_ownership_score(self):
+        result = self.policy.evaluate(_clean_candidate(
+            ownership_acceptability=None,
+            p_severe_drawdown=None,
+            paper_bootstrap_eligible=True,
+            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v1",
+        ))
+        self.assertFalse(result.hard_veto)
+        self.assertIsNone(result.ownership_score)
+        self.assertEqual(result.quantity, 3)
+        self.assertEqual(result.eligibility_basis, "PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED")
+        self.assertIn("PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED", [r.code for r in result.reasons])
+
+    def test_paper_bootstrap_does_not_override_known_bad_ownership(self):
+        result = self.policy.evaluate(_clean_candidate(
+            ownership_acceptability=0.2,
+            p_severe_drawdown=0.1,
+            paper_bootstrap_eligible=True,
+            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v1",
+        ))
+        self.assertEqual(result.quantity, 0)
+        self.assertEqual(result.eligibility_basis, "INELIGIBLE")
+        self.assertIn("OWNERSHIP_BELOW_FLOOR", [r.code for r in result.reasons])
+
+    def test_paper_bootstrap_requires_a_versioned_policy(self):
+        result = self.policy.evaluate(_clean_candidate(
+            ownership_acceptability=None,
+            p_severe_drawdown=None,
+            paper_bootstrap_eligible=True,
+            paper_bootstrap_policy_version=None,
+        ))
+        self.assertEqual(result.quantity, 0)
+        self.assertEqual(result.eligibility_basis, "INELIGIBLE")
+
     def test_below_floor_ownership_zeroes_quantity_but_is_not_a_hard_veto(self):
         result = self.policy.evaluate(
             _clean_candidate(ownership_acceptability=0.2, p_severe_drawdown=0.1)
