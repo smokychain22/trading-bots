@@ -149,6 +149,38 @@ itMockedProviderRealCodePath('a real THETA-Q lattice candidate flows end to end 
   assert.equal(result.candidateEconomics?.[0]?.candidateId, 'C1');
 });
 
+itMockedProviderRealCodePath('AEGIS evaluates candidate-inclusive overrides rather than only the pre-trade portfolio', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    candidates: [candidate('C1', {
+      aegisInputOverrides: {
+        tickerConcentrationPct: 0.9,
+        sectorConcentrationPct: 0.9,
+        correlationClusterExposurePct: 0.9,
+        portfolioCapitalAtRiskPct: 0.9,
+        inventoryCapacityUsedPct: 0,
+        assignmentCapacityUsedPct: 0.9,
+        recoveryCapacityUsedPct: 0,
+      },
+    })],
+  }));
+  assert.equal(result.aegisByCandidateId?.C1?.newRiskState, 'HARD_VETO');
+  assert.equal(result.aegis?.newRiskState, 'HARD_VETO');
+});
+
+itMockedProviderRealCodePath('candidate-specific UNKNOWN risk evidence overrides permissive pre-trade inputs and holds', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    candidates: [candidate('C1', {
+      aegisInputOverrides: {
+        sectorConcentrationPct: null,
+        correlationClusterExposurePct: null,
+        assignmentCapacityUsedPct: null,
+      },
+    })],
+  }));
+  assert.equal(result.aegisByCandidateId?.C1?.newRiskState, 'HOLD_ONLY');
+  assert.ok(result.aegisByCandidateId?.C1?.reasons.some((reason) => reason.code === 'SECTOR_UNKNOWN'));
+});
+
 itMockedProviderRealCodePath('versioned Paper bootstrap breaks the ownership cold start without manufacturing a score', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     ownershipInputs: {

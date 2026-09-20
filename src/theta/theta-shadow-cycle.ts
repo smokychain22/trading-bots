@@ -22,7 +22,13 @@ import {
   type NormalizedOptionomicsFlowWindow, type OptionomicsContextFamily, type OptionomicsProviderConfig,
 } from './optionomics-provider.js';
 import { buildOptionomicsFeatureSnapshot } from './optionomics-feature-engine.js';
-import { deriveAccountExposure, mergeDerivedExposureIntoAegisInputs, type DerivedAccountExposure } from './account-exposure.js';
+import {
+  deriveAccountExposure,
+  deriveCandidateCapacityAssessment,
+  mergeDerivedExposureIntoAegisInputs,
+  type CandidateCapacityPolicy,
+  type DerivedAccountExposure,
+} from './account-exposure.js';
 import { deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProviderState, deriveStressGapDetected } from './aegis-derivation.js';
 import { buildCanonicalStrategyFrontier, type CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
 import { canonicalThetaStrategySources } from './strategy-package.js';
@@ -931,13 +937,24 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const strategyFrontierFor = (
     routing: NewRiskOrchestrationResult['routing'],
     aegis: NewRiskOrchestrationResult['aegis'],
+    aegisByCandidateId?: NewRiskOrchestrationResult['aegisByCandidateId'],
+    candidatesWithCapacity: readonly RawCandidateInput[] = candidates,
   ): CanonicalStrategyFrontier => buildCanonicalStrategyFrontier({
     snapshotId: fusionSnapshot.contentHash, timestamp: decisionTime, strategyVersion: config.policyVersion,
     contracts: mergedContractsForSnapshot, routing, stock: stockState, assignmentCapacityQty: null,
     buyingPower: account?.optionsBuyingPower ?? account?.buyingPower ?? null,
-    brokerAllowedQty: 10,
     sizingPolicy: config.sizingPolicy,
+    brokerAllowedQtyByCandidateId: Object.fromEntries(candidatesWithCapacity.flatMap((candidate) => [
+      [`THETA_CONVENTIONAL:${candidate.contract.optionSymbol}`, candidate.brokerAllowedQty],
+      [`THETA_HOLD_STRIKE:${candidate.contract.optionSymbol}`, candidate.brokerAllowedQty],
+    ])),
     aegisNewRiskState: aegis?.newRiskState ?? null, eventState: eventContextPopulated ? 'OBSERVED' : null,
+    aegisNewRiskStateByCandidateId: aegisByCandidateId === undefined ? undefined : Object.fromEntries(
+      Object.entries(aegisByCandidateId).flatMap(([optionSymbol, assessment]) => [
+        [`THETA_CONVENTIONAL:${optionSymbol}`, assessment.newRiskState],
+        [`THETA_HOLD_STRIKE:${optionSymbol}`, assessment.newRiskState],
+      ]),
+    ),
     unmanagedBrokerPositionCount: positions.filter((position) => position.assetClass === 'us_option').length,
     unevaluatedUnderlyingCount: Math.max(0, ranked.length - 1),
     // The frontier stores normalized/derived feature state only. Immutable
@@ -950,8 +967,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const strategyDecisionFor = (
     routing: NewRiskOrchestrationResult['routing'],
     aegis: NewRiskOrchestrationResult['aegis'],
+    aegisByCandidateId?: NewRiskOrchestrationResult['aegisByCandidateId'],
+    candidatesWithCapacity: readonly RawCandidateInput[] = candidates,
   ): Pick<ThetaShadowCycleResult, 'strategyFrontier' | 'strategyQualityDiagnostics'> => {
-    const strategyFrontier = strategyFrontierFor(routing, aegis);
+    const strategyFrontier = strategyFrontierFor(routing, aegis, aegisByCandidateId, candidatesWithCapacity);
     return {
       strategyFrontier,
       strategyQualityDiagnostics: buildStrategyQualityShadowDiagnostic({
@@ -1079,6 +1098,47 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     stressGapDetected: deriveStressGapDetected(ret1d, config.stressGapThresholdAbsReturn),
   };
 
+  const candidateCapacityPolicyKeys: ReadonlyArray<keyof CandidateCapacityPolicy> = [
+    'maxTickerConcentrationPct', 'maxSectorConcentrationPct', 'maxCorrelationClusterPct',
+    'maxPortfolioCapitalAtRiskPct', 'maxInventoryCapacityPct', 'maxAssignmentCapacityPct',
+    'maxRecoveryCapacityPct',
+  ];
+  const capacityPolicyComplete = candidateCapacityPolicyKeys.every((key) =>
+    typeof config.aegisPolicy[key] === 'number' && Number.isFinite(config.aegisPolicy[key]) && (config.aegisPolicy[key] as number) > 0);
+  const candidateCapacityPolicy = capacityPolicyComplete
+    ? Object.fromEntries(candidateCapacityPolicyKeys.map((key) => [key, config.aegisPolicy[key]])) as unknown as CandidateCapacityPolicy
+    : null;
+  const runtimeCandidates: RawCandidateInput[] = candidates.map((candidate) => {
+    if (!exposureDerivationTrustworthy || candidateCapacityPolicy === null) return candidate;
+    const capacity = deriveCandidateCapacityAssessment(
+      derivedExposure,
+      openOrders,
+      {
+        underlying: candidate.contract.underlying,
+        securedCollateralPerContract: candidate.contract.strike * candidate.contract.multiplier,
+      },
+      candidate.brokerAllowedQty,
+      candidateCapacityPolicy,
+    );
+    const derived = capacity.inputsAtQuantityCap;
+    // Preserve nulls. They are canonical UNKNOWN inputs and must override
+    // any pre-trade/global value so candidate-specific AEGIS fails closed.
+    const candidateOverrides = Object.fromEntries([
+      ['tickerConcentrationPct', derived.tickerConcentrationPct],
+      ['sectorConcentrationPct', derived.sectorConcentrationPct],
+      ['correlationClusterExposurePct', derived.correlationClusterExposurePct],
+      ['portfolioCapitalAtRiskPct', derived.portfolioCapitalAtRiskPct],
+      ['inventoryCapacityUsedPct', derived.inventoryCapacityUsedPct],
+      ['assignmentCapacityUsedPct', derived.assignmentCapacityUsedPct],
+      ['recoveryCapacityUsedPct', derived.recoveryCapacityUsedPct],
+    ]);
+    return {
+      ...candidate,
+      brokerAllowedQty: Math.min(candidate.brokerAllowedQty, capacity.quantityCap),
+      aegisInputOverrides: candidateOverrides,
+    };
+  });
+
   const orchestration = await runNewRiskOrchestration(config.bridge, {
     snapshotId: fusionSnapshot.contentHash, fusionSnapshotHash: fusionSnapshot.contentHash, timestamp: decisionTime, underlying,
     earningsDistanceDays: null, // EventState is not real yet -- UNKNOWN, never fabricated as "no earnings nearby"
@@ -1112,11 +1172,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     latticeConfig: config.latticeConfig, thetaQSizingPolicy: config.thetaQSizingPolicy, costAssumptions: config.costAssumptions,
     aegisPolicy: config.aegisPolicy, aegisInputs: effectiveAegisInputs,
     opportunityFrontierPolicy: config.opportunityFrontierPolicy, maxAcceptableSpreadPct: config.maxAcceptableSpreadPct,
-    candidates,
+    candidates: runtimeCandidates,
     sizingPolicy: config.sizingPolicy,
     sizingAccount: {
       equity: account?.equity ?? null, cash: account?.cash ?? null, buyingPower: account?.optionsBuyingPower ?? account?.buyingPower ?? null,
-      brokerAllowedQty: 10,
     },
     executionQualityPolicy: config.executionQualityPolicy,
     paperEntryBootstrap: config.paperEntryBootstrap,
@@ -1126,7 +1185,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
     optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
     snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration,
-    ...strategyDecisionFor(orchestration.routing, orchestration.aegis),
+    ...strategyDecisionFor(orchestration.routing, orchestration.aegis, orchestration.aegisByCandidateId, runtimeCandidates),
     provenance, provenanceDetail: detail, blockers,
   };
 }

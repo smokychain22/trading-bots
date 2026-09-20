@@ -143,3 +143,30 @@ test('quantity zero is authoritative GLOBAL_WAIT after complete evaluation, neve
   assert.equal(result.globalWaitEarned, true);
   assert.equal(result.nearMissCandidateId, 'THETA_CONVENTIONAL:AAPL261016P00190000');
 });
+
+test('candidate-specific AEGIS veto cannot be bypassed by a globally permissive state', () => {
+  const first = contract();
+  const second = contract({ optionSymbol: 'AAPL261016P00185000', occSymbol: 'AAPL261016P00185000', strike: 185,
+    bid: 1.4, ask: 1.5, delta: -0.16 });
+  const result = buildCanonicalStrategyFrontier({ ...base, contracts: [first, second], routing: routing(['THETA_Q']),
+    aegisNewRiskStateByCandidateId: {
+      'THETA_CONVENTIONAL:AAPL261016P00190000': 'HARD_VETO',
+      'THETA_CONVENTIONAL:AAPL261016P00185000': 'ALLOW_FULL',
+    } });
+  const conventional = result.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
+  assert.equal(conventional?.candidates.find((candidate) => candidate.candidateId.endsWith('190000'))?.riskFeasible, false);
+  assert.equal(result.selectedCandidateId, 'THETA_CONVENTIONAL:AAPL261016P00185000');
+});
+
+test('candidate-specific real broker capacity is preserved by canonical sizing', () => {
+  const result = buildCanonicalStrategyFrontier({
+    ...base,
+    contracts: [contract()],
+    routing: routing(['THETA_Q']),
+    brokerAllowedQty: undefined,
+    brokerAllowedQtyByCandidateId: { 'THETA_CONVENTIONAL:AAPL261016P00190000': 1 },
+  });
+  assert.equal(result.selectedQuantity, 1);
+  const selected = result.branches[0]?.candidates[0];
+  assert.equal(selected?.sizing.bindingConstraint, 'BROKER_ALLOWED');
+});

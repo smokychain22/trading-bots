@@ -206,6 +206,8 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       const sessionClose=typeof marketSession.nextClose==='string'&&Number.isFinite(Date.parse(marketSession.nextClose))
         ? new Date(marketSession.nextClose).toISOString():null;
       const decisionExpiresAt=sessionClose!==null&&Date.parse(sessionClose)<Date.parse(boundedExpiry)?sessionClose:boundedExpiry;
+      const selectedFrontierCandidate=member.cycle.strategyFrontier.branches.flatMap((branch)=>branch.candidates)
+        .find((candidate)=>candidate.candidateId===member.cycle?.strategyFrontier?.selectedCandidateId);
       const assembled=assembleMasterPaperEvidencePlan({frontier:member.cycle.strategyFrontier,
         executionAccountId:input.executionAccountId??null,decisionId:saved.decisionId,
         persistedCandidateId:row?.candidate_id==null?null:String(row.candidate_id),
@@ -213,7 +215,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         underlyingId:row?.underlying_id==null?null:String(row.underlying_id),
         accountStatus:typeof account.accountStatus==='string'?account.accountStatus:null,
         optionsApprovedLevel:n(account.optionsApprovedLevel),optionsTradingLevel:n(account.optionsTradingLevel),
-        aegisState:member.cycle.orchestration?.aegis?.newRiskState??null,
+        aegisState:selectedFrontierCandidate?.aegisState??null,
         openPositionSymbols:positions.flatMap((value)=>value!==null&&typeof value==='object'&&!Array.isArray(value)
           &&typeof (value as Record<string,unknown>).symbol==='string'?[String((value as Record<string,unknown>).symbol)]:[]),
         openOrderSymbols:orders.flatMap((value)=>value!==null&&typeof value==='object'&&!Array.isArray(value)

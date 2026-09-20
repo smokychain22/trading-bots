@@ -83,7 +83,45 @@ export interface DerivedAccountExposure {
   readonly portfolioCapitalAtRiskPct: number | null; // (cspCollateralRequired + stockInventoryValue) / equity
   readonly tickerConcentrationPct: number | null; // largest single-underlying exposure (stock value + CSP collateral) / equity
   readonly largestConcentrationUnderlying: string | null;
+  readonly exposureByUnderlying: Readonly<Record<string, number>>;
+  readonly riskyUnderlyings: readonly string[];
   readonly unparsedOptionSymbols: readonly string[]; // option positions whose symbol did not match the documented OCC format -- never silently dropped from view
+}
+
+export interface CandidateExposureFootprint {
+  readonly underlying: string;
+  readonly securedCollateralPerContract: number;
+  readonly quantity: number;
+}
+
+export interface CandidateInclusiveAegisInputs {
+  readonly tickerConcentrationPct: number | null;
+  readonly sectorConcentrationPct: number | null;
+  readonly correlationClusterExposurePct: number | null;
+  readonly portfolioCapitalAtRiskPct: number | null;
+  readonly inventoryCapacityUsedPct: number | null;
+  readonly assignmentCapacityUsedPct: number | null;
+  readonly recoveryCapacityUsedPct: number | null;
+  readonly evidenceState: 'KNOWN_DERIVED_FROM_REAL' | 'UNKNOWN_INSUFFICIENT_ACCOUNT_STATE';
+  readonly derivationVersion: 'theta-candidate-inclusive-capacity-v1';
+  readonly unknownReasons: readonly string[];
+}
+
+export interface CandidateCapacityPolicy {
+  readonly maxTickerConcentrationPct: number;
+  readonly maxSectorConcentrationPct: number;
+  readonly maxCorrelationClusterPct: number;
+  readonly maxPortfolioCapitalAtRiskPct: number;
+  readonly maxInventoryCapacityPct: number;
+  readonly maxAssignmentCapacityPct: number;
+  readonly maxRecoveryCapacityPct: number;
+}
+
+export interface CandidateCapacityAssessment {
+  readonly quantityCap: number;
+  readonly inputsAtQuantityCap: CandidateInclusiveAegisInputs;
+  readonly bindingConstraints: readonly string[];
+  readonly assessmentVersion: 'theta-candidate-capacity-cap-v1';
 }
 
 // Runtime management contracts consume this assessment, but account-exposure
@@ -179,11 +217,13 @@ export function deriveAccountExposure(
 
   let largestConcentrationUnderlying: string | null = null;
   let tickerConcentrationPct: number | null = null;
+  const exposureByUnderlying = new Map<string, number>();
   if (equity !== null && equity > 0 && cspCollateralRequired !== null && stockInventoryValue !== null) {
     const underlyings = new Set<string>([...stockValueByUnderlying.keys(), ...collateralByUnderlying.keys()]);
     let largestExposure = -Infinity;
     for (const underlying of underlyings) {
       const exposure = (stockValueByUnderlying.get(underlying) ?? 0) + (collateralByUnderlying.get(underlying) ?? 0);
+      exposureByUnderlying.set(underlying, exposure);
       if (exposure > largestExposure) {
         largestExposure = exposure;
         largestConcentrationUnderlying = underlying;
@@ -198,7 +238,114 @@ export function deriveAccountExposure(
     shortPutCount, shortCallCount, longPutCount, longCallCount,
     openOrderCount: openOrders.length,
     portfolioCapitalAtRiskPct, tickerConcentrationPct, largestConcentrationUnderlying,
+    exposureByUnderlying: Object.fromEntries([...exposureByUnderlying.entries()].sort(([a], [b]) => a.localeCompare(b))),
+    riskyUnderlyings: [...exposureByUnderlying.keys()].sort(),
     unparsedOptionSymbols,
+  };
+}
+
+/**
+ * Produces the risk-capacity fields that are mathematically supported by a
+ * complete broker account/positions/orders snapshot plus one proposed CSP.
+ * The denominator is broker equity for all capacity ratios. Pending orders
+ * make the result UNKNOWN because Alpaca's read model here does not prove
+ * opening versus closing intent. Sector/correlation are known only for the
+ * single-risky-underlying special case, where every possible taxonomy or
+ * correlation partition necessarily contains the same sole exposure.
+ */
+export function deriveCandidateInclusiveAegisInputs(
+  exposure: DerivedAccountExposure,
+  openOrders: readonly AlpacaOpenOrderSnapshot[],
+  candidate: CandidateExposureFootprint,
+): CandidateInclusiveAegisInputs {
+  const unknownReasons: string[] = [];
+  const equity = exposure.equity;
+  const candidateCapital = candidate.securedCollateralPerContract * candidate.quantity;
+  const baseKnown = equity !== null && equity > 0 && exposure.cspCollateralRequired !== null
+    && exposure.stockInventoryValue !== null && Number.isFinite(candidateCapital) && candidateCapital >= 0
+    && exposure.unparsedOptionSymbols.length === 0;
+  if (!baseKnown) unknownReasons.push('ACCOUNT_OR_CURRENT_EXPOSURE_INCOMPLETE');
+  if (openOrders.length > 0) unknownReasons.push('PENDING_ORDER_INTENT_NOT_CLASSIFIED');
+  if (!baseKnown || openOrders.length > 0) {
+    return {
+      tickerConcentrationPct: null, sectorConcentrationPct: null, correlationClusterExposurePct: null,
+      portfolioCapitalAtRiskPct: null, inventoryCapacityUsedPct: null, assignmentCapacityUsedPct: null,
+      recoveryCapacityUsedPct: null, evidenceState: 'UNKNOWN_INSUFFICIENT_ACCOUNT_STATE',
+      derivationVersion: 'theta-candidate-inclusive-capacity-v1', unknownReasons,
+    };
+  }
+  const denominator = equity as number;
+  const currentUnderlyingExposure = exposure.exposureByUnderlying[candidate.underlying] ?? 0;
+  const proposedUnderlyingExposure = currentUnderlyingExposure + candidateCapital;
+  const postTradeCapitalAtRisk = (exposure.cspCollateralRequired as number)
+    + (exposure.stockInventoryValue as number) + candidateCapital;
+  const postTradeUnderlyings = new Set([...exposure.riskyUnderlyings, candidate.underlying]);
+  const soleRiskGroup = postTradeUnderlyings.size === 1 ? proposedUnderlyingExposure / denominator : null;
+  if (soleRiskGroup === null) {
+    unknownReasons.push('SECTOR_CLASSIFICATION_REQUIRED_FOR_MULTI_UNDERLYING_PORTFOLIO');
+    unknownReasons.push('CORRELATION_CLUSTER_REQUIRED_FOR_MULTI_UNDERLYING_PORTFOLIO');
+  }
+  return {
+    tickerConcentrationPct: Math.max(
+      proposedUnderlyingExposure,
+      ...Object.entries(exposure.exposureByUnderlying)
+        .filter(([underlying]) => underlying !== candidate.underlying)
+        .map(([, value]) => value),
+    ) / denominator,
+    sectorConcentrationPct: soleRiskGroup,
+    correlationClusterExposurePct: soleRiskGroup,
+    portfolioCapitalAtRiskPct: postTradeCapitalAtRisk / denominator,
+    inventoryCapacityUsedPct: (exposure.stockInventoryValue as number) / denominator,
+    assignmentCapacityUsedPct: ((exposure.cspCollateralRequired as number) + candidateCapital) / denominator,
+    recoveryCapacityUsedPct: (exposure.stockInventoryValue as number) / denominator,
+    evidenceState: unknownReasons.length === 0 ? 'KNOWN_DERIVED_FROM_REAL' : 'UNKNOWN_INSUFFICIENT_ACCOUNT_STATE',
+    derivationVersion: 'theta-candidate-inclusive-capacity-v1', unknownReasons,
+  };
+}
+
+export function deriveCandidateCapacityAssessment(
+  exposure: DerivedAccountExposure,
+  openOrders: readonly AlpacaOpenOrderSnapshot[],
+  candidate: Omit<CandidateExposureFootprint, 'quantity'>,
+  brokerAllowedQty: number,
+  policy: CandidateCapacityPolicy,
+): CandidateCapacityAssessment {
+  const maximum = Number.isInteger(brokerAllowedQty) && brokerAllowedQty > 0 ? brokerAllowedQty : 0;
+  const checks: ReadonlyArray<[keyof CandidateInclusiveAegisInputs, keyof CandidateCapacityPolicy, string]> = [
+    ['tickerConcentrationPct', 'maxTickerConcentrationPct', 'TICKER_CONCENTRATION'],
+    ['sectorConcentrationPct', 'maxSectorConcentrationPct', 'SECTOR_CONCENTRATION'],
+    ['correlationClusterExposurePct', 'maxCorrelationClusterPct', 'CORRELATION_CLUSTER'],
+    ['portfolioCapitalAtRiskPct', 'maxPortfolioCapitalAtRiskPct', 'PORTFOLIO_CAPITAL_AT_RISK'],
+    ['inventoryCapacityUsedPct', 'maxInventoryCapacityPct', 'INVENTORY_CAPACITY'],
+    ['assignmentCapacityUsedPct', 'maxAssignmentCapacityPct', 'ASSIGNMENT_CAPACITY'],
+    ['recoveryCapacityUsedPct', 'maxRecoveryCapacityPct', 'RECOVERY_CAPACITY'],
+  ];
+  let bindingConstraints: string[] = maximum === 0 ? ['BROKER_ALLOWED_ZERO'] : [];
+  for (let quantity = maximum; quantity >= 1; quantity -= 1) {
+    const inputs = deriveCandidateInclusiveAegisInputs(exposure, openOrders, { ...candidate, quantity });
+    const exceeded = checks.flatMap(([inputKey, policyKey, reason]) => {
+      const value = inputs[inputKey];
+      const cap = policy[policyKey];
+      // Match AEGIS's hard-veto boundary. Values at the soft cap remain
+      // eligible for AEGIS to return ALLOW_REDUCED and let canonical sizing
+      // perform the reduction instead of duplicating that policy here.
+      return typeof value === 'number' && Number.isFinite(value) && value >= cap * 1.5 ? [reason] : [];
+    });
+    if (exceeded.length === 0) {
+      return {
+        quantityCap: quantity,
+        inputsAtQuantityCap: inputs,
+        bindingConstraints: quantity < maximum ? bindingConstraints : ['BROKER_OR_BUYING_POWER'],
+        assessmentVersion: 'theta-candidate-capacity-cap-v1',
+      };
+    }
+    bindingConstraints = [...new Set([...bindingConstraints, ...exceeded])];
+  }
+  return {
+    quantityCap: 0,
+    inputsAtQuantityCap: deriveCandidateInclusiveAegisInputs(exposure, openOrders, { ...candidate, quantity: 1 }),
+    bindingConstraints,
+    assessmentVersion: 'theta-candidate-capacity-cap-v1',
   };
 }
 
