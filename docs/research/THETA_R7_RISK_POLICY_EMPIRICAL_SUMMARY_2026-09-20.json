@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "theta-r7-risk-policy-summary-v1",
+  "generatedAt": "2026-09-20T12:45:27.511Z",
+  "sourceReceiptHash": "633e9a649bae02b1e46118ca5d47a6c3909fb99e30c6cafccc101d0fd9bf0cc3",
+  "severeDrawdown": {
+    "finding": "NO_POLICY_EMPIRICALLY_SUPPORTED",
+    "activationState": "PENDING_RESEARCH_REVIEW",
+    "barRows": 36893,
+    "symbols": 24,
+    "temporalYears": 8,
+    "barsComplete": true,
+    "primaryGrid": [
+      { "id": "A_30D_10PCT", "resolvedN": 36388, "censoredN": 504, "effectiveN": 1791, "effectivePositiveGroups": 604, "breachRate": 0.15691986369132682 },
+      { "id": "B_45D_15PCT", "resolvedN": 36124, "censoredN": 768, "effectiveN": 1194, "effectivePositiveGroups": 308, "breachRate": 0.10682648654634039 },
+      { "id": "C_60D_20PCT", "resolvedN": 35860, "censoredN": 1032, "effectiveN": 907, "effectivePositiveGroups": 173, "breachRate": 0.07730061349693251 }
+    ],
+    "modelTrained": false,
+    "policyActivated": false
+  },
+  "correlation": {
+    "finding": "NO_CORRELATION_THRESHOLD_PROMOTED",
+    "activationState": "PENDING_RESEARCH_REVIEW",
+    "monthlySnapshots": 76,
+    "lookbacks": [20, 60, 120],
+    "clusterThresholdDistinctFromExposureCap": true
+  },
+  "sector": {
+    "finding": "SECTOR_SOURCE_NOT_PRESENT_IN_CANONICAL_PROVIDER_EVIDENCE",
+    "activationState": "NOT_READY"
+  },
+  "iv": {
+    "finding": "INSUFFICIENT_TEMPORAL_BASELINE",
+    "rows": 4147,
+    "distinctMonths": 1,
+    "observedStart": "2026-09-16T15:32:50.000Z",
+    "observedEnd": "2026-09-18T16:30:55.000Z",
+    "activationState": "PENDING_RESEARCH_REVIEW"
+  },
+  "spread": {
+    "finding": "INSUFFICIENT_TEMPORAL_BASELINE",
+    "rows": 4729,
+    "distinctMonths": 1,
+    "observedStart": "2026-09-16T15:32:50.000Z",
+    "observedEnd": "2026-09-18T16:30:55.000Z",
+    "activationState": "PENDING_RESEARCH_REVIEW"
+  },
+  "events": {
+    "finding": "INSUFFICIENT_PIT_EVENT_HISTORY",
+    "candidateRows": 4729,
+    "validKnownAt": 0,
+    "activationState": "PENDING_RESEARCH_REVIEW"
+  },
+  "coherence": {
+    "finding": "NO_JOINT_POLICY_PROMOTED",
+    "reason": "DEPENDENCE_REQUIRES_PIT_ALIGNED_MULTI_FAMILY_HISTORY"
+  },
+  "execution": {
+    "workerRestartRequired": false,
+    "masterPaperOrdersSubmitted": 0,
+    "followerPaperOrdersSubmitted": 0,
+    "liveOrdersSubmitted": 0
+  }
+}
