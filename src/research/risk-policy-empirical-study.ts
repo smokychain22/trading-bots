@@ -207,7 +207,7 @@ async function databaseEvidence(pool: Pool) {
           const value = finiteNumber(row[key]); return value === null ? [] : [value];
         })) }];
     }));
-  const eventRows = await pool.query(`SELECT decision_time,underlying,event_json
+  const eventRows = await pool.query(`SELECT decision_time,contract_json->>'underlying' AS underlying,event_json
     FROM trade.candidate_point_in_time_evidence ORDER BY decision_time,candidate_id`);
   let eventObjects = 0, knownAtPresent = 0, pitSafeKnownAt = 0, knownAfterDecision = 0;
   const eventTypes = new Set<string>();
