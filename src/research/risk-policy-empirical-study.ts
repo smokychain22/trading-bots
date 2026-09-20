@@ -95,6 +95,11 @@ function sha256(value: unknown): string {
   return createHash('sha256').update(canonicalJson(value)).digest('hex');
 }
 
+export function riskPolicyStudyHash(value: Readonly<Record<string, unknown>>): string {
+  const identity = Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'generatedAt'));
+  return sha256(identity);
+}
+
 function sampleStandardDeviation(values: readonly number[]): number | null {
   if (values.length < 2) return null;
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
@@ -306,5 +311,5 @@ export async function runRiskPolicyEmpiricalStudy(input: RiskPolicyEmpiricalStud
     safety: { policyActivated: false, modelTrained: false, workerRestartRequired: false,
       masterPaperOrdersSubmitted: 0, followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0 },
   };
-  return { ...unsigned, studyHash: sha256(unsigned) };
+  return { ...unsigned, studyHash: riskPolicyStudyHash(unsigned) };
 }

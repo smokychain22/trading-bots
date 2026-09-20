@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildSevereDrawdownStudy } from '../src/research/risk-policy-empirical-study.js';
+import { buildSevereDrawdownStudy, riskPolicyStudyHash } from '../src/research/risk-policy-empirical-study.js';
 import type { HistoricalBar } from '../src/theta/underlying-history.js';
 
 function bar(symbol: string, day: number, close: number): HistoricalBar {
@@ -42,4 +42,12 @@ test('family cohorts preserve their explicit research classification', () => {
   const cell = cells.find((item) => item.id === 'A_30D_10PCT');
   assert.ok('BROAD_ETF' in (cell?.byFamily ?? {}));
   assert.ok('LOWER_VOL_SINGLE' in (cell?.byFamily ?? {}));
+});
+
+test('study identity excludes export time but changes when evidence changes', () => {
+  const first = riskPolicyStudyHash({ generatedAt: '2026-09-20T00:00:00.000Z', rows: 10, source: 'ALPACA' });
+  const second = riskPolicyStudyHash({ generatedAt: '2026-09-21T00:00:00.000Z', rows: 10, source: 'ALPACA' });
+  const changed = riskPolicyStudyHash({ generatedAt: '2026-09-21T00:00:00.000Z', rows: 11, source: 'ALPACA' });
+  assert.equal(first, second);
+  assert.notEqual(first, changed);
 });

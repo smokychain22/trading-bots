@@ -500,7 +500,7 @@ export default async function autonomousRuntimeHandler(
       const master = await cycleStore.resolveMasterContext(environment);
       const generatedAt = new Date().toISOString();
       const report = await runRiskPolicyEmpiricalStudy({ pool: runtimePool, alpaca: master.alpaca,
-        start: '2016-01-01T00:00:00.000Z', end: generatedAt, generatedAt });
+        start: '2016-01-01T00:00:00.000Z', end: '2026-09-19T23:59:59.999Z', generatedAt });
       send(response, 200, report);
       return;
     }
