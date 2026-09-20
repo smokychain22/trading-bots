@@ -2,7 +2,7 @@
 
 Date: 2026-09-20<br>
 Study version: `theta-risk-policy-empirical-study-v1`<br>
-Immutable receipt hash: `633e9a649bae02b1e46118ca5d47a6c3909fb99e30c6cafccc101d0fd9bf0cc3`<br>
+Immutable receipt hash: `cd048b4097b485bf3a64fd1ac75dec892513dcd4f420dd36d7258f053bc51eab`<br>
 Finding: `NO_POLICY_EMPIRICALLY_SUPPORTED`<br>
 Activation state: `PENDING_RESEARCH_REVIEW`
 
@@ -68,6 +68,14 @@ The bar sample is large enough to reject a universal fixed threshold, but it is 
 - research review and out-of-sample policy validation remain pending
 
 No pending production policy artifact was created. No severe-drawdown model was trained, registered, or promoted.
+
+Patch receipt:
+
+- `DEAD_TERNARY_FIXED = YES`
+- `FULL_SENSITIVITY_GRID_PUBLISHED = YES`
+- `SEVERE_DRAWDOWN_CONCLUSION_AFTER_RERUN = NO_POLICY_EMPIRICALLY_SUPPORTED`
+- `DATASET_HASH = cd048b4097b485bf3a64fd1ac75dec892513dcd4f420dd36d7258f053bc51eab`
+- `NO_POLICY_ACTIVATED = YES`
 
 ## Reproduction
 

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "theta-r7-risk-policy-summary-v2",
-  "generatedAt": "2026-09-20T12:45:27.511Z",
-  "sourceReceiptHash": "633e9a649bae02b1e46118ca5d47a6c3909fb99e30c6cafccc101d0fd9bf0cc3",
+  "generatedAt": "2026-09-20T19:24:33.193Z",
+  "sourceReceiptHash": "cd048b4097b485bf3a64fd1ac75dec892513dcd4f420dd36d7258f053bc51eab",
   "severeDrawdown": {
     "finding": "NO_POLICY_EMPIRICALLY_SUPPORTED",
     "empiricalAdequacy": true,
