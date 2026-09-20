@@ -60,6 +60,9 @@ try {
     "056_paper_runtime_gate_semantics",
     "057_broker_cash_activity_evidence",
     "058_terminal_partial_close_accounting",
+    "059_paper_restart_recovery_invariant",
+    "060_execution_account_paper_only_invariant",
+    "061_paper_execution_control_normalization",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -441,6 +444,19 @@ try {
       AND table_name='option_partial_close_realization' AND constraint_type='UNIQUE') AS replay_guard`);
   if(!terminalPartialClose.rows[0]?.immutable||!terminalPartialClose.rows[0]?.replay_guard)
     throw new Error('TERMINAL_PARTIAL_CLOSE_PROTECTION_MISSING');
+  const latestPaperProtections = await client.query(`SELECT
+    EXISTS(SELECT 1 FROM pg_indexes WHERE schemaname='trade' AND tablename='order_intent'
+      AND indexname='ix_order_intent_restart_recovery') AS restart_recovery_index,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='trade.execution_account'::regclass
+      AND conname='execution_account_paper_only_check' AND convalidated) AS paper_only_execution_account,
+    EXISTS(SELECT 1 FROM core.schema_migration
+      WHERE version='061_paper_execution_control_normalization') AS control_normalization_applied`);
+  if(!latestPaperProtections.rows[0]?.restart_recovery_index)
+    throw new Error('PAPER_RESTART_RECOVERY_INDEX_MISSING');
+  if(!latestPaperProtections.rows[0]?.paper_only_execution_account)
+    throw new Error('EXECUTION_ACCOUNT_PAPER_ONLY_PROTECTION_MISSING');
+  if(!latestPaperProtections.rows[0]?.control_normalization_applied)
+    throw new Error('PAPER_EXECUTION_CONTROL_NORMALIZATION_MISSING');
   const gate = executionControl.rows[0];
   const locked=gate?.pause_new_orders===true&&gate?.master_execution_enabled===false&&gate?.follower_execution_enabled===false;
   const ownerAuthorized=gate?.master_execution_enabled===true&&gate?.follower_execution_enabled===false
@@ -497,6 +513,9 @@ try {
     p2fProviderActivationReadiness:"ENFORCED",
     p2gSimulationPreviewIsolation:"ENFORCED",
     terminalPartialCloseAccounting:"ENFORCED",
+    paperRestartRecovery:"ENFORCED",
+    executionAccountPaperOnly:"ENFORCED",
+    paperExecutionControlNormalization:"ENFORCED",
     activeFollowers: activeFollowers.rows[0]?.count ?? 0,
     activeMasters: activeMasters.rows[0]?.count ?? 0,
     activeEncryptedCredentials: activeCredentials.rows[0]?.count ?? 0,

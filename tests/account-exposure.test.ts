@@ -26,7 +26,7 @@ const position = (overrides: Partial<AlpacaPositionSnapshot> = {}): AlpacaPositi
 
 const openOrder = (overrides: Partial<AlpacaOpenOrderSnapshot> = {}): AlpacaOpenOrderSnapshot => ({
   orderId: 'order-1', clientOrderId: null, symbol: 'SPY', side: 'sell', quantity: 1, status: 'new',
-  submittedAt: NOW, receivedAt: NOW,
+  positionIntent: null, limitPrice: null, submittedAt: NOW, receivedAt: NOW,
   ...overrides,
 });
 
@@ -215,6 +215,45 @@ test('pending order intent ambiguity preserves candidate-inclusive capacity as U
   assert.equal(result.evidenceState, 'UNKNOWN_INSUFFICIENT_ACCOUNT_STATE');
   assert.equal(result.assignmentCapacityUsedPct, null);
   assert.ok(result.unknownReasons.includes('PENDING_ORDER_INTENT_NOT_CLASSIFIED'));
+});
+
+test('documented sell-to-open position intent turns a pending CSP into real reserved assignment exposure', () => {
+  const pending = openOrder({
+    symbol: 'SPY261009P00500000', side: 'sell', positionIntent: 'sell_to_open', quantity: 1, limitPrice: 2,
+  });
+  const exposure = deriveAccountExposure(account({ equity: 100_000 }), [], [pending]);
+  assert.equal(exposure.pendingOpeningCapitalAtRisk, 50_000);
+  assert.equal(exposure.pendingAssignmentCollateral, 50_000);
+  assert.deepEqual(exposure.unclassifiedOpenOrderIds, []);
+  const result = deriveCandidateInclusiveAegisInputs(exposure, [pending], {
+    underlying: 'SPY', securedCollateralPerContract: 10_000, quantity: 1,
+  });
+  assert.equal(result.evidenceState, 'KNOWN_DERIVED_FROM_REAL');
+  assert.equal(result.assignmentCapacityUsedPct, 0.6);
+  assert.equal(result.portfolioCapitalAtRiskPct, 0.6);
+});
+
+test('documented closing intent is risk reducing and does not block a new capacity calculation', () => {
+  const closing = openOrder({
+    symbol: 'SPY261009P00500000', side: 'buy', positionIntent: 'buy_to_close', quantity: 1, limitPrice: 2,
+  });
+  const exposure = deriveAccountExposure(account({ equity: 100_000 }), [], [closing]);
+  assert.equal(exposure.pendingOpeningCapitalAtRisk, 0);
+  assert.deepEqual(exposure.unclassifiedOpenOrderIds, []);
+  const result = deriveCandidateInclusiveAegisInputs(exposure, [closing], {
+    underlying: 'SPY', securedCollateralPerContract: 10_000, quantity: 1,
+  });
+  assert.equal(result.evidenceState, 'KNOWN_DERIVED_FROM_REAL');
+  assert.equal(result.assignmentCapacityUsedPct, 0.1);
+});
+
+test('pending short-call coverage remains UNKNOWN instead of assuming shares exist', () => {
+  const uncoveredOrUnknown = openOrder({
+    symbol: 'SPY261009C00500000', side: 'sell', positionIntent: 'sell_to_open', quantity: 1, limitPrice: 2,
+  });
+  const exposure = deriveAccountExposure(account({ equity: 100_000 }), [], [uncoveredOrUnknown]);
+  assert.equal(exposure.pendingOpeningCapitalAtRisk, null);
+  assert.deepEqual(exposure.unclassifiedOpenOrderIds, ['order-1']);
 });
 
 test('multi-underlying sector and correlation remain UNKNOWN without a real classification or PIT cluster', () => {

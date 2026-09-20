@@ -78,6 +78,10 @@ export interface DerivedAccountExposure {
   readonly longPutCount: number;
   readonly longCallCount: number;
   readonly openOrderCount: number;
+  readonly pendingOpeningCapitalAtRisk: number | null;
+  readonly pendingAssignmentCollateral: number | null;
+  readonly pendingExposureByUnderlying: Readonly<Record<string, number>>;
+  readonly unclassifiedOpenOrderIds: readonly string[];
   // Real, derived ratios -- null (UNKNOWN) whenever a required input is
   // itself null, never coerced to 0.
   readonly portfolioCapitalAtRiskPct: number | null; // (cspCollateralRequired + stockInventoryValue) / equity
@@ -210,19 +214,66 @@ export function deriveAccountExposure(
   // complete figure -- a partial sum would silently understate real risk.
   if (unparsedOptionSymbols.length > 0) cspCollateralRequired = null;
 
+  let pendingOpeningCapitalAtRisk: number | null = 0;
+  let pendingAssignmentCollateral: number | null = 0;
+  const pendingExposureByUnderlying = new Map<string, number>();
+  const unclassifiedOpenOrderIds: string[] = [];
+  for (const order of openOrders) {
+    if (order.positionIntent === 'buy_to_close' || order.positionIntent === 'sell_to_close') continue;
+    if (order.positionIntent === null || order.symbol === null || order.quantity === null || order.quantity <= 0) {
+      unclassifiedOpenOrderIds.push(order.orderId);
+      continue;
+    }
+    const parsed = parseOccOptionSymbol(order.symbol);
+    if (order.positionIntent === 'sell_to_open') {
+      if (parsed === null || parsed.optionType !== 'PUT') {
+        // A short call may be covered or uncovered. The order response alone
+        // does not prove share coverage, so it cannot be assigned zero risk.
+        unclassifiedOpenOrderIds.push(order.orderId);
+        continue;
+      }
+      const collateral = parsed.strike * requiredMultiplier(multiplier) * order.quantity;
+      pendingOpeningCapitalAtRisk += collateral;
+      pendingAssignmentCollateral += collateral;
+      pendingExposureByUnderlying.set(parsed.underlying,
+        (pendingExposureByUnderlying.get(parsed.underlying) ?? 0) + collateral);
+      continue;
+    }
+    if (order.positionIntent === 'buy_to_open') {
+      if (order.limitPrice === null || order.limitPrice < 0) {
+        unclassifiedOpenOrderIds.push(order.orderId);
+        continue;
+      }
+      const capital = order.limitPrice * order.quantity * (parsed === null ? 1 : requiredMultiplier(multiplier));
+      const underlying = parsed?.underlying ?? order.symbol;
+      pendingOpeningCapitalAtRisk += capital;
+      pendingExposureByUnderlying.set(underlying,
+        (pendingExposureByUnderlying.get(underlying) ?? 0) + capital);
+    }
+  }
+  if (unclassifiedOpenOrderIds.length > 0) {
+    pendingOpeningCapitalAtRisk = null;
+    pendingAssignmentCollateral = null;
+  }
+
   const portfolioCapitalAtRiskPct =
     equity !== null && equity > 0 && cspCollateralRequired !== null && stockInventoryValue !== null
-      ? (cspCollateralRequired + stockInventoryValue) / equity
+      && pendingOpeningCapitalAtRisk !== null
+      ? (cspCollateralRequired + stockInventoryValue + pendingOpeningCapitalAtRisk) / equity
       : null;
 
   let largestConcentrationUnderlying: string | null = null;
   let tickerConcentrationPct: number | null = null;
   const exposureByUnderlying = new Map<string, number>();
-  if (equity !== null && equity > 0 && cspCollateralRequired !== null && stockInventoryValue !== null) {
-    const underlyings = new Set<string>([...stockValueByUnderlying.keys(), ...collateralByUnderlying.keys()]);
+  if (equity !== null && equity > 0 && cspCollateralRequired !== null && stockInventoryValue !== null
+    && pendingOpeningCapitalAtRisk !== null) {
+    const underlyings = new Set<string>([
+      ...stockValueByUnderlying.keys(), ...collateralByUnderlying.keys(), ...pendingExposureByUnderlying.keys(),
+    ]);
     let largestExposure = -Infinity;
     for (const underlying of underlyings) {
-      const exposure = (stockValueByUnderlying.get(underlying) ?? 0) + (collateralByUnderlying.get(underlying) ?? 0);
+      const exposure = (stockValueByUnderlying.get(underlying) ?? 0) + (collateralByUnderlying.get(underlying) ?? 0)
+        + (pendingExposureByUnderlying.get(underlying) ?? 0);
       exposureByUnderlying.set(underlying, exposure);
       if (exposure > largestExposure) {
         largestExposure = exposure;
@@ -237,6 +288,9 @@ export function deriveAccountExposure(
     cspCollateralRequired, stockInventoryValue,
     shortPutCount, shortCallCount, longPutCount, longCallCount,
     openOrderCount: openOrders.length,
+    pendingOpeningCapitalAtRisk, pendingAssignmentCollateral,
+    pendingExposureByUnderlying: Object.fromEntries([...pendingExposureByUnderlying.entries()].sort(([a], [b]) => a.localeCompare(b))),
+    unclassifiedOpenOrderIds,
     portfolioCapitalAtRiskPct, tickerConcentrationPct, largestConcentrationUnderlying,
     exposureByUnderlying: Object.fromEntries([...exposureByUnderlying.entries()].sort(([a], [b]) => a.localeCompare(b))),
     riskyUnderlyings: [...exposureByUnderlying.keys()].sort(),
@@ -263,10 +317,12 @@ export function deriveCandidateInclusiveAegisInputs(
   const candidateCapital = candidate.securedCollateralPerContract * candidate.quantity;
   const baseKnown = equity !== null && equity > 0 && exposure.cspCollateralRequired !== null
     && exposure.stockInventoryValue !== null && Number.isFinite(candidateCapital) && candidateCapital >= 0
-    && exposure.unparsedOptionSymbols.length === 0;
+    && exposure.pendingOpeningCapitalAtRisk !== null && exposure.pendingAssignmentCollateral !== null
+    && exposure.unparsedOptionSymbols.length === 0 && exposure.unclassifiedOpenOrderIds.length === 0;
   if (!baseKnown) unknownReasons.push('ACCOUNT_OR_CURRENT_EXPOSURE_INCOMPLETE');
-  if (openOrders.length > 0) unknownReasons.push('PENDING_ORDER_INTENT_NOT_CLASSIFIED');
-  if (!baseKnown || openOrders.length > 0) {
+  if (openOrders.length !== exposure.openOrderCount) unknownReasons.push('PENDING_ORDER_SNAPSHOT_MISMATCH');
+  if (exposure.unclassifiedOpenOrderIds.length > 0) unknownReasons.push('PENDING_ORDER_INTENT_NOT_CLASSIFIED');
+  if (!baseKnown || openOrders.length !== exposure.openOrderCount) {
     return {
       tickerConcentrationPct: null, sectorConcentrationPct: null, correlationClusterExposurePct: null,
       portfolioCapitalAtRiskPct: null, inventoryCapacityUsedPct: null, assignmentCapacityUsedPct: null,
@@ -278,7 +334,7 @@ export function deriveCandidateInclusiveAegisInputs(
   const currentUnderlyingExposure = exposure.exposureByUnderlying[candidate.underlying] ?? 0;
   const proposedUnderlyingExposure = currentUnderlyingExposure + candidateCapital;
   const postTradeCapitalAtRisk = (exposure.cspCollateralRequired as number)
-    + (exposure.stockInventoryValue as number) + candidateCapital;
+    + (exposure.stockInventoryValue as number) + (exposure.pendingOpeningCapitalAtRisk as number) + candidateCapital;
   const postTradeUnderlyings = new Set([...exposure.riskyUnderlyings, candidate.underlying]);
   const soleRiskGroup = postTradeUnderlyings.size === 1 ? proposedUnderlyingExposure / denominator : null;
   if (soleRiskGroup === null) {
@@ -296,7 +352,8 @@ export function deriveCandidateInclusiveAegisInputs(
     correlationClusterExposurePct: soleRiskGroup,
     portfolioCapitalAtRiskPct: postTradeCapitalAtRisk / denominator,
     inventoryCapacityUsedPct: (exposure.stockInventoryValue as number) / denominator,
-    assignmentCapacityUsedPct: ((exposure.cspCollateralRequired as number) + candidateCapital) / denominator,
+    assignmentCapacityUsedPct: ((exposure.cspCollateralRequired as number)
+      + (exposure.pendingAssignmentCollateral as number) + candidateCapital) / denominator,
     recoveryCapacityUsedPct: (exposure.stockInventoryValue as number) / denominator,
     evidenceState: unknownReasons.length === 0 ? 'KNOWN_DERIVED_FROM_REAL' : 'UNKNOWN_INSUFFICIENT_ACCOUNT_STATE',
     derivationVersion: 'theta-candidate-inclusive-capacity-v1', unknownReasons,

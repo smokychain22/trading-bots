@@ -11,8 +11,9 @@ import {
 } from '../providers/readiness.js';
 import { persistProviderCapabilities } from '../providers/capability-registry.js';
 import { customerStore } from '../customer/customer-store.js';
+import { PostgresOperatorControlStore } from '../customer/operator-control.js';
 import { verifyStoredMasterPaperConnection } from '../customer/master-paper-runtime.js';
-import { PostgresRuntimeCycleStore, runAutonomousRuntimeCycle } from './autonomous-runtime.js';
+import { classifyRuntimeExecutionGate, PostgresRuntimeCycleStore, runAutonomousRuntimeCycle } from './autonomous-runtime.js';
 import { PostgresWorkerRuntimeStore } from '../worker/postgres-worker-runtime-store.js';
 import { runOptionomicsQuoteQualification, sanitizeQualificationReport } from './optionomics-quote-qualification-runtime.js';
 import { qualifyOptionomicsProductionSurfaces } from '../providers/optionomics-mcp-qualification.js';
@@ -40,7 +41,7 @@ import {
 } from '../database/local-forensic-recovery.js';
 import {
   firstPaperCanaryActivationConfirmation, masterPaperAuthorizationConfirmation,
-  PostgresPaperExecutionAuthorizationStore,
+  PostgresPaperExecutionAuthorizationStore, resolveEffectivePaperExecutionControl,
 } from '../execution/paper-execution-authorization.js';
 import { PostgresBrokerReconciliationStore, runReadOnlyBrokerReconciliation } from '../execution/broker-reconciliation-worker.js';
 import { fetchMarketClock, fetchOptionContracts, fetchOptionSnapshots } from './alpaca-provider.js';
@@ -577,10 +578,40 @@ export default async function autonomousRuntimeHandler(
         return;
       }
       const cycleStore = new PostgresRuntimeCycleStore(runtimePool);
-      const [masterContext, masterReadiness] = await Promise.all([
-        cycleStore.resolveMasterContext(environment),
-        verifyStoredMasterPaperConnection(environment, customerStore(environment.DATABASE_URL)),
-      ]);
+      const operatorStore = new PostgresOperatorControlStore(environment.DATABASE_URL);
+      let operatorControl;
+      let masterContext;
+      let masterReadiness;
+      let persistedExecutionControl;
+      let executionQuoteAuthorityReady;
+      let firstCanarySubmissionAvailable;
+      try {
+        [masterContext, masterReadiness, operatorControl, persistedExecutionControl,
+          executionQuoteAuthorityReady, firstCanarySubmissionAvailable] = await Promise.all([
+          cycleStore.resolveMasterContext(environment),
+          verifyStoredMasterPaperConnection(environment, customerStore(environment.DATABASE_URL)),
+          operatorStore.current(environment.PAPER_PAUSE_NEW_ORDERS),
+          new PostgresPaperExecutionAuthorizationStore(runtimePool).current(),
+          cycleStore.executionQuoteAuthorityReady(),
+          cycleStore.firstCanarySubmissionAvailable(),
+        ]);
+      } finally {
+        await operatorStore.close();
+      }
+      const effectiveExecutionControl = resolveEffectivePaperExecutionControl({
+        environmentMasterEnabled: environment.MASTER_PAPER_EXECUTION_ENABLED,
+        environmentFollowerEnabled: environment.FOLLOWER_PAPER_EXECUTION_ENABLED,
+        environmentPauseNewOrders: environment.PAPER_PAUSE_NEW_ORDERS,
+        persisted: persistedExecutionControl,
+        operatorNewEntriesPaused: operatorControl.newEntriesPaused,
+        operatorEmergencyExecutionLock: operatorControl.emergencyExecutionLock,
+      });
+      const executionGate = classifyRuntimeExecutionGate({
+        executionQuoteAuthorityReady,
+        newRiskSubmissionEnabled: effectiveExecutionControl.newRiskSubmissionEnabled,
+        managementPolicyProviderReady: true,
+        firstCanarySubmissionAvailable,
+      });
       const [alpaca, optionomicsCurrent, optionomicsEvidence] = await Promise.all([
         checkAlpacaEvidenceCapabilities(masterContext.alpaca),
         checkOptionomics(environment),
@@ -595,7 +626,10 @@ export default async function autonomousRuntimeHandler(
           (SELECT count(fill_id)::int FROM trade.fill) AS broker_fills`),
       ]);
       send(response, 200, {
-        generatedAt: new Date().toISOString(), trading: 'PAPER_QUOTE_BLOCKED', executionGate: 'EXTERNAL_QUOTE_BLOCKER',
+        generatedAt: new Date().toISOString(),
+        trading: executionGate === 'ACTIVE' ? 'MASTER_PAPER_ACTIVE'
+          : executionGate === 'LOCKED' ? 'MASTER_PAPER_NEW_RISK_LOCKED' : 'MASTER_PAPER_QUOTE_BLOCKED',
+        executionGate,
         master: {
           accountRole: masterReadiness.accountRole, brokerHost: masterReadiness.brokerHost,
           brokerIdentityVerified: masterReadiness.brokerIdentityVerified,
