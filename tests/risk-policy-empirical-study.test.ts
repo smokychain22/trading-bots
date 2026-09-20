@@ -14,6 +14,7 @@ test('severe drawdown cells use future lows only after the entry timestamp', () 
   const cells = buildSevereDrawdownStudy(bars, [{ symbol: 'TEST', family: 'HIGHER_VOL_SINGLE' }]);
   const cell = cells.find((item) => item.id === 'A_30D_10PCT');
   assert.equal(cell?.breachedN, 1);
+  assert.equal(cell?.effectivePositiveGroups, 1);
   assert.ok(Math.abs((cell?.maeDistribution.min ?? 0) - (-0.11)) < 1e-12);
 });
 

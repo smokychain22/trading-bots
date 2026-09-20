@@ -161,6 +161,7 @@ function summarizeCell(cell: DrawdownPolicyCell, observations: readonly Drawdown
     censoredN: applicable.filter((item) => item.censored).length,
     unknownN: applicable.filter((item) => item.mae === null).length,
     effectiveN: new Set(resolved.map((item) => item.dependenceGroup)).size,
+    effectivePositiveGroups: new Set(breached.map((item) => item.dependenceGroup)).size,
     breachedN: breached.length, breachRate: resolved.length === 0 ? null : breached.length / resolved.length,
     maeDistribution: distribution(resolved.map((item) => item.mae as number)),
     volatilityScaledMaeDistribution: distribution(volatilityScaled), byFamily, byYear,
@@ -275,6 +276,7 @@ export async function runRiskPolicyEmpiricalStudy(input: RiskPolicyEmpiricalStud
   });
   const database = await databaseEvidence(input.pool);
   const resolvedSymbols = new Set(historical.bars.map((bar) => bar.symbol));
+  const orderedBarTimes = historical.bars.map((bar) => bar.timestamp).sort((a, b) => Date.parse(a) - Date.parse(b));
   const primary = cells.filter((cell) => cell.primary);
   const temporalYears = new Set(historical.bars.map((bar) => bar.timestamp.slice(0, 4))).size;
   const empiricalAdequacy = historical.complete && resolvedSymbols.size === universe.length && temporalYears >= 8
@@ -289,7 +291,8 @@ export async function runRiskPolicyEmpiricalStudy(input: RiskPolicyEmpiricalStud
     universe: { version: 'theta-risk-research-universe-v1', members: universe,
       survivorBias: 'CURRENT_CURATED_LIQUID_OPTIONABLE_REFERENCE_UNIVERSE_NOT_POINT_IN_TIME_MEMBERSHIP' },
     bars: { complete: historical.complete, rows: historical.bars.length,
-      symbols: resolvedSymbols.size, missingSymbols: symbols.filter((symbol) => !resolvedSymbols.has(symbol)), temporalYears },
+      symbols: resolvedSymbols.size, missingSymbols: symbols.filter((symbol) => !resolvedSymbols.has(symbol)), temporalYears,
+      observedWindow: orderedBarTimes.length === 0 ? null : { start: orderedBarTimes[0], end: orderedBarTimes.at(-1) } },
     severeDrawdown: { finding: severeDrawdownFinding, empiricalAdequacy,
       activationState: 'PENDING_RESEARCH_REVIEW', cells },
     correlation: { finding: 'NO_CORRELATION_THRESHOLD_PROMOTED', activationState: 'PENDING_RESEARCH_REVIEW', lookbacks: correlation,
