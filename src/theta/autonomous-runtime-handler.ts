@@ -13,7 +13,7 @@ import { persistProviderCapabilities } from '../providers/capability-registry.js
 import { customerStore } from '../customer/customer-store.js';
 import { PostgresOperatorControlStore } from '../customer/operator-control.js';
 import { verifyStoredMasterPaperConnection } from '../customer/master-paper-runtime.js';
-import { classifyRuntimeExecutionGate, PostgresRuntimeCycleStore, runAutonomousRuntimeCycle } from './autonomous-runtime.js';
+import { classifyRuntimeExecutionGate, PostgresRuntimeCycleStore, runAutonomousRuntimeCycle, safeRuntimeFailure } from './autonomous-runtime.js';
 import { PostgresWorkerRuntimeStore } from '../worker/postgres-worker-runtime-store.js';
 import { runOptionomicsQuoteQualification, sanitizeQualificationReport } from './optionomics-quote-qualification-runtime.js';
 import { qualifyOptionomicsProductionSurfaces } from '../providers/optionomics-mcp-qualification.js';
@@ -701,8 +701,8 @@ export default async function autonomousRuntimeHandler(
     if(localWorkerId!==null)await workerStore.cycleCompleted(localWorkerId,report,new Date().toISOString());
     send(response, report.status === 'FAILED' || report.status === 'QUARANTINED' ? 503 : report.status === 'DEGRADED' ? 207 : 200, report);
   } catch (error) {
-    const code = error instanceof Error && /^[A-Z0-9_:-]+$/.test(error.message)
-      ? error.message : 'AUTONOMOUS_RUNTIME_FAILED';
+    const failure = safeRuntimeFailure(error);
+    const code = failure.code;
     if (localWorkerId !== null && operation === 'RUNTIME_CYCLE') {
       await workerStore.stop(localWorkerId, new Date().toISOString(), 'ERROR', code).catch(() => undefined);
     }
