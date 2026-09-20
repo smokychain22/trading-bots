@@ -1,18 +1,541 @@
 {
-  "schemaVersion": "theta-r7-risk-policy-summary-v1",
+  "schemaVersion": "theta-r7-risk-policy-summary-v2",
   "generatedAt": "2026-09-20T12:45:27.511Z",
   "sourceReceiptHash": "633e9a649bae02b1e46118ca5d47a6c3909fb99e30c6cafccc101d0fd9bf0cc3",
   "severeDrawdown": {
     "finding": "NO_POLICY_EMPIRICALLY_SUPPORTED",
+    "empiricalAdequacy": true,
     "activationState": "PENDING_RESEARCH_REVIEW",
     "barRows": 36893,
     "symbols": 24,
     "temporalYears": 8,
     "barsComplete": true,
-    "primaryGrid": [
-      { "id": "A_30D_10PCT", "resolvedN": 36388, "censoredN": 504, "effectiveN": 1791, "effectivePositiveGroups": 604, "breachRate": 0.15691986369132682 },
-      { "id": "B_45D_15PCT", "resolvedN": 36124, "censoredN": 768, "effectiveN": 1194, "effectivePositiveGroups": 308, "breachRate": 0.10682648654634039 },
-      { "id": "C_60D_20PCT", "resolvedN": 35860, "censoredN": 1032, "effectiveN": 907, "effectivePositiveGroups": 173, "breachRate": 0.07730061349693251 }
+    "sensitivityGrid": [
+      {
+        "id": "A_30D_10PCT",
+        "primary": true,
+        "horizonCalendarDays": 30,
+        "thresholdFraction": 0.1,
+        "resolvedN": 36388,
+        "effectiveN": 1791,
+        "effectivePositiveGroups": 604,
+        "breaches": 5710,
+        "breachRate": 0.15691986369132682,
+        "censorRate": 0.01366112812728702,
+        "familyBreakdown": {
+          "BROAD_ETF": {
+            "resolved": 6096,
+            "breached": 415,
+            "breachRate": 0.0680774278215223,
+            "effectiveGroups": 300
+          },
+          "HIGHER_VOL_SINGLE": {
+            "resolved": 5916,
+            "breached": 2706,
+            "breachRate": 0.45740365111561865,
+            "effectiveGroups": 291
+          },
+          "LOWER_VOL_SINGLE": {
+            "resolved": 12184,
+            "breached": 1670,
+            "breachRate": 0.1370650032829941,
+            "effectiveGroups": 600
+          },
+          "SECTOR_ETF": {
+            "resolved": 12192,
+            "breached": 919,
+            "breachRate": 0.07537729658792651,
+            "effectiveGroups": 600
+          }
+        },
+        "timeBreakdown": {
+          "2020": {
+            "resolved": 2553,
+            "breached": 231,
+            "breachRate": 0.09048178613396005
+          },
+          "2021": {
+            "resolved": 5974,
+            "breached": 567,
+            "breachRate": 0.09491128222296619
+          },
+          "2022": {
+            "resolved": 6021,
+            "breached": 2039,
+            "breachRate": 0.3386480651054642
+          },
+          "2023": {
+            "resolved": 6000,
+            "breached": 560,
+            "breachRate": 0.09333333333333334
+          },
+          "2024": {
+            "resolved": 6048,
+            "breached": 698,
+            "breachRate": 0.11541005291005291
+          },
+          "2025": {
+            "resolved": 6000,
+            "breached": 1054,
+            "breachRate": 0.17566666666666667
+          },
+          "2026": {
+            "resolved": 3792,
+            "breached": 561,
+            "breachRate": 0.14794303797468356
+          }
+        }
+      },
+      {
+        "id": "B_45D_15PCT",
+        "primary": true,
+        "horizonCalendarDays": 45,
+        "thresholdFraction": 0.15,
+        "resolvedN": 36124,
+        "effectiveN": 1194,
+        "effectivePositiveGroups": 308,
+        "breaches": 3859,
+        "breachRate": 0.10682648654634039,
+        "censorRate": 0.020816957146342123,
+        "familyBreakdown": {
+          "BROAD_ETF": {
+            "resolved": 6052,
+            "breached": 185,
+            "breachRate": 0.030568407138136154,
+            "effectiveGroups": 200
+          },
+          "HIGHER_VOL_SINGLE": {
+            "resolved": 5872,
+            "breached": 2183,
+            "breachRate": 0.37176430517711173,
+            "effectiveGroups": 194
+          },
+          "LOWER_VOL_SINGLE": {
+            "resolved": 12096,
+            "breached": 968,
+            "breachRate": 0.08002645502645503,
+            "effectiveGroups": 400
+          },
+          "SECTOR_ETF": {
+            "resolved": 12104,
+            "breached": 523,
+            "breachRate": 0.0432088565763384,
+            "effectiveGroups": 400
+          }
+        },
+        "timeBreakdown": {
+          "2020": {
+            "resolved": 2553,
+            "breached": 82,
+            "breachRate": 0.03211907559733647
+          },
+          "2021": {
+            "resolved": 5974,
+            "breached": 393,
+            "breachRate": 0.06578506863073318
+          },
+          "2022": {
+            "resolved": 6021,
+            "breached": 1375,
+            "breachRate": 0.22836738083374855
+          },
+          "2023": {
+            "resolved": 6000,
+            "breached": 297,
+            "breachRate": 0.0495
+          },
+          "2024": {
+            "resolved": 6048,
+            "breached": 493,
+            "breachRate": 0.08151455026455026
+          },
+          "2025": {
+            "resolved": 6000,
+            "breached": 915,
+            "breachRate": 0.1525
+          },
+          "2026": {
+            "resolved": 3528,
+            "breached": 304,
+            "breachRate": 0.08616780045351474
+          }
+        }
+      },
+      {
+        "id": "C_60D_20PCT",
+        "primary": true,
+        "horizonCalendarDays": 60,
+        "thresholdFraction": 0.2,
+        "resolvedN": 35860,
+        "effectiveN": 907,
+        "effectivePositiveGroups": 173,
+        "breaches": 2772,
+        "breachRate": 0.07730061349693251,
+        "censorRate": 0.02797278616539723,
+        "familyBreakdown": {
+          "BROAD_ETF": {
+            "resolved": 6008,
+            "breached": 70,
+            "breachRate": 0.011651131824234355,
+            "effectiveGroups": 152
+          },
+          "HIGHER_VOL_SINGLE": {
+            "resolved": 5828,
+            "breached": 1781,
+            "breachRate": 0.3055936856554564,
+            "effectiveGroups": 147
+          },
+          "LOWER_VOL_SINGLE": {
+            "resolved": 12008,
+            "breached": 580,
+            "breachRate": 0.04830113257828115,
+            "effectiveGroups": 304
+          },
+          "SECTOR_ETF": {
+            "resolved": 12016,
+            "breached": 341,
+            "breachRate": 0.02837882822902796,
+            "effectiveGroups": 304
+          }
+        },
+        "timeBreakdown": {
+          "2020": {
+            "resolved": 2553,
+            "breached": 43,
+            "breachRate": 0.016842929886408148
+          },
+          "2021": {
+            "resolved": 5974,
+            "breached": 289,
+            "breachRate": 0.048376297288249076
+          },
+          "2022": {
+            "resolved": 6021,
+            "breached": 1021,
+            "breachRate": 0.16957316060455074
+          },
+          "2023": {
+            "resolved": 6000,
+            "breached": 187,
+            "breachRate": 0.031166666666666665
+          },
+          "2024": {
+            "resolved": 6048,
+            "breached": 332,
+            "breachRate": 0.05489417989417989
+          },
+          "2025": {
+            "resolved": 6000,
+            "breached": 732,
+            "breachRate": 0.122
+          },
+          "2026": {
+            "resolved": 3264,
+            "breached": 168,
+            "breachRate": 0.051470588235294115
+          }
+        }
+      },
+      {
+        "id": "S_30D_15PCT",
+        "primary": false,
+        "horizonCalendarDays": 30,
+        "thresholdFraction": 0.15,
+        "resolvedN": 36388,
+        "effectiveN": 1791,
+        "effectivePositiveGroups": 322,
+        "breaches": 2618,
+        "breachRate": 0.07194679564691657,
+        "censorRate": 0.01366112812728702,
+        "familyBreakdown": {
+          "BROAD_ETF": {
+            "resolved": 6096,
+            "breached": 60,
+            "breachRate": 0.00984251968503937,
+            "effectiveGroups": 300
+          },
+          "HIGHER_VOL_SINGLE": {
+            "resolved": 5916,
+            "breached": 1712,
+            "breachRate": 0.2893847194050034,
+            "effectiveGroups": 291
+          },
+          "LOWER_VOL_SINGLE": {
+            "resolved": 12184,
+            "breached": 575,
+            "breachRate": 0.047193040052527904,
+            "effectiveGroups": 600
+          },
+          "SECTOR_ETF": {
+            "resolved": 12192,
+            "breached": 271,
+            "breachRate": 0.022227690288713912,
+            "effectiveGroups": 600
+          }
+        },
+        "timeBreakdown": {
+          "2020": {
+            "resolved": 2553,
+            "breached": 69,
+            "breachRate": 0.02702702702702703
+          },
+          "2021": {
+            "resolved": 5974,
+            "breached": 249,
+            "breachRate": 0.04168061600267827
+          },
+          "2022": {
+            "resolved": 6021,
+            "breached": 923,
+            "breachRate": 0.15329679455239995
+          },
+          "2023": {
+            "resolved": 6000,
+            "breached": 211,
+            "breachRate": 0.035166666666666666
+          },
+          "2024": {
+            "resolved": 6048,
+            "breached": 359,
+            "breachRate": 0.05935846560846561
+          },
+          "2025": {
+            "resolved": 6000,
+            "breached": 596,
+            "breachRate": 0.09933333333333333
+          },
+          "2026": {
+            "resolved": 3792,
+            "breached": 211,
+            "breachRate": 0.055643459915611815
+          }
+        }
+      },
+      {
+        "id": "S_45D_10PCT",
+        "primary": false,
+        "horizonCalendarDays": 45,
+        "thresholdFraction": 0.1,
+        "resolvedN": 36124,
+        "effectiveN": 1194,
+        "effectivePositiveGroups": 541,
+        "breaches": 7583,
+        "breachRate": 0.20991584542132655,
+        "censorRate": 0.020816957146342123,
+        "familyBreakdown": {
+          "BROAD_ETF": {
+            "resolved": 6052,
+            "breached": 653,
+            "breachRate": 0.10789821546596166,
+            "effectiveGroups": 200
+          },
+          "HIGHER_VOL_SINGLE": {
+            "resolved": 5872,
+            "breached": 3188,
+            "breachRate": 0.5429155313351499,
+            "effectiveGroups": 194
+          },
+          "LOWER_VOL_SINGLE": {
+            "resolved": 12096,
+            "breached": 2335,
+            "breachRate": 0.19303902116402116,
+            "effectiveGroups": 400
+          },
+          "SECTOR_ETF": {
+            "resolved": 12104,
+            "breached": 1407,
+            "breachRate": 0.11624256444150693,
+            "effectiveGroups": 400
+          }
+        },
+        "timeBreakdown": {
+          "2020": {
+            "resolved": 2553,
+            "breached": 272,
+            "breachRate": 0.10654132393262829
+          },
+          "2021": {
+            "resolved": 5974,
+            "breached": 847,
+            "breachRate": 0.14178105122196183
+          },
+          "2022": {
+            "resolved": 6021,
+            "breached": 2582,
+            "breachRate": 0.42883241986381
+          },
+          "2023": {
+            "resolved": 6000,
+            "breached": 787,
+            "breachRate": 0.13116666666666665
+          },
+          "2024": {
+            "resolved": 6048,
+            "breached": 931,
+            "breachRate": 0.15393518518518517
+          },
+          "2025": {
+            "resolved": 6000,
+            "breached": 1415,
+            "breachRate": 0.23583333333333334
+          },
+          "2026": {
+            "resolved": 3528,
+            "breached": 749,
+            "breachRate": 0.2123015873015873
+          }
+        }
+      },
+      {
+        "id": "S_45D_20PCT",
+        "primary": false,
+        "horizonCalendarDays": 45,
+        "thresholdFraction": 0.2,
+        "resolvedN": 36124,
+        "effectiveN": 1194,
+        "effectivePositiveGroups": 172,
+        "breaches": 2107,
+        "breachRate": 0.05832687410032111,
+        "censorRate": 0.020816957146342123,
+        "familyBreakdown": {
+          "BROAD_ETF": {
+            "resolved": 6052,
+            "breached": 25,
+            "breachRate": 0.004130865829477859,
+            "effectiveGroups": 200
+          },
+          "HIGHER_VOL_SINGLE": {
+            "resolved": 5872,
+            "breached": 1471,
+            "breachRate": 0.2505108991825613,
+            "effectiveGroups": 194
+          },
+          "LOWER_VOL_SINGLE": {
+            "resolved": 12096,
+            "breached": 392,
+            "breachRate": 0.032407407407407406,
+            "effectiveGroups": 400
+          },
+          "SECTOR_ETF": {
+            "resolved": 12104,
+            "breached": 219,
+            "breachRate": 0.01809319233311302,
+            "effectiveGroups": 400
+          }
+        },
+        "timeBreakdown": {
+          "2020": {
+            "resolved": 2553,
+            "breached": 32,
+            "breachRate": 0.01253427340383862
+          },
+          "2021": {
+            "resolved": 5974,
+            "breached": 206,
+            "breachRate": 0.034482758620689655
+          },
+          "2022": {
+            "resolved": 6021,
+            "breached": 817,
+            "breachRate": 0.13569174555721641
+          },
+          "2023": {
+            "resolved": 6000,
+            "breached": 152,
+            "breachRate": 0.025333333333333333
+          },
+          "2024": {
+            "resolved": 6048,
+            "breached": 240,
+            "breachRate": 0.03968253968253968
+          },
+          "2025": {
+            "resolved": 6000,
+            "breached": 521,
+            "breachRate": 0.08683333333333333
+          },
+          "2026": {
+            "resolved": 3528,
+            "breached": 139,
+            "breachRate": 0.03939909297052154
+          }
+        }
+      },
+      {
+        "id": "S_60D_15PCT",
+        "primary": false,
+        "horizonCalendarDays": 60,
+        "thresholdFraction": 0.15,
+        "resolvedN": 35860,
+        "effectiveN": 907,
+        "effectivePositiveGroups": 288,
+        "breaches": 4773,
+        "breachRate": 0.133100948131623,
+        "censorRate": 0.02797278616539723,
+        "familyBreakdown": {
+          "BROAD_ETF": {
+            "resolved": 6008,
+            "breached": 289,
+            "breachRate": 0.048102529960053264,
+            "effectiveGroups": 152
+          },
+          "HIGHER_VOL_SINGLE": {
+            "resolved": 5828,
+            "breached": 2473,
+            "breachRate": 0.4243308167467399,
+            "effectiveGroups": 147
+          },
+          "LOWER_VOL_SINGLE": {
+            "resolved": 12008,
+            "breached": 1273,
+            "breachRate": 0.1060126582278481,
+            "effectiveGroups": 304
+          },
+          "SECTOR_ETF": {
+            "resolved": 12016,
+            "breached": 738,
+            "breachRate": 0.06141810918774967,
+            "effectiveGroups": 304
+          }
+        },
+        "timeBreakdown": {
+          "2020": {
+            "resolved": 2553,
+            "breached": 93,
+            "breachRate": 0.036427732079905996
+          },
+          "2021": {
+            "resolved": 5974,
+            "breached": 495,
+            "breachRate": 0.08285905590893873
+          },
+          "2022": {
+            "resolved": 6021,
+            "breached": 1705,
+            "breachRate": 0.2831755522338482
+          },
+          "2023": {
+            "resolved": 6000,
+            "breached": 365,
+            "breachRate": 0.060833333333333336
+          },
+          "2024": {
+            "resolved": 6048,
+            "breached": 599,
+            "breachRate": 0.09904100529100529
+          },
+          "2025": {
+            "resolved": 6000,
+            "breached": 1134,
+            "breachRate": 0.189
+          },
+          "2026": {
+            "resolved": 3264,
+            "breached": 382,
+            "breachRate": 0.1170343137254902
+          }
+        }
+      }
     ],
     "modelTrained": false,
     "policyActivated": false
@@ -21,7 +544,11 @@
     "finding": "NO_CORRELATION_THRESHOLD_PROMOTED",
     "activationState": "PENDING_RESEARCH_REVIEW",
     "monthlySnapshots": 76,
-    "lookbacks": [20, 60, 120],
+    "lookbacks": [
+      20,
+      60,
+      120
+    ],
     "clusterThresholdDistinctFromExposureCap": true
   },
   "sector": {
@@ -32,21 +559,26 @@
     "finding": "INSUFFICIENT_TEMPORAL_BASELINE",
     "rows": 4147,
     "distinctMonths": 1,
-    "observedStart": "2026-09-16T15:32:50.000Z",
-    "observedEnd": "2026-09-18T16:30:55.000Z",
+    "observedWindow": {
+      "start": "2026-09-16T15:32:50.392Z",
+      "end": "2026-09-18T16:30:55.592Z"
+    },
     "activationState": "PENDING_RESEARCH_REVIEW"
   },
   "spread": {
     "finding": "INSUFFICIENT_TEMPORAL_BASELINE",
     "rows": 4729,
     "distinctMonths": 1,
-    "observedStart": "2026-09-16T15:32:50.000Z",
-    "observedEnd": "2026-09-18T16:30:55.000Z",
+    "observedWindow": {
+      "start": "2026-09-16T15:32:50.392Z",
+      "end": "2026-09-18T16:30:55.592Z"
+    },
     "activationState": "PENDING_RESEARCH_REVIEW"
   },
   "events": {
     "finding": "INSUFFICIENT_PIT_EVENT_HISTORY",
     "candidateRows": 4729,
+    "eventObjects": 4729,
     "validKnownAt": 0,
     "activationState": "PENDING_RESEARCH_REVIEW"
   },
@@ -55,6 +587,8 @@
     "reason": "DEPENDENCE_REQUIRES_PIT_ALIGNED_MULTI_FAMILY_HISTORY"
   },
   "execution": {
+    "policyActivated": false,
+    "modelTrained": false,
     "workerRestartRequired": false,
     "masterPaperOrdersSubmitted": 0,
     "followerPaperOrdersSubmitted": 0,

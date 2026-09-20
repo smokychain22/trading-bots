@@ -3,6 +3,7 @@ import type { JsonValue } from '../market/fusion-snapshot.js';
 import type { NormalizedOptionContract } from './option-contract.js';
 import type { StrategyFamily, StrategyRoutingResponse } from './strategy-router-contract.js';
 import { canonicalThetaStrategySources, type ThetaStrategyBranch } from './strategy-package.js';
+import { buildAdaptiveShadowDecisionReceipt, type AdaptiveShadowDecisionReceipt } from './adaptive-decision-brain.js';
 
 export const canonicalStrategyFrontierVersion = 'theta-canonical-strategy-frontier-v1' as const;
 export const canonicalDecisionAuthorityVersion = 'theta-canonical-decision-authority-v1' as const;
@@ -116,6 +117,7 @@ export interface CanonicalStrategyFrontier {
   readonly empiricalEconomicsReady: false;
   readonly executionAuthorized: false;
   readonly optionomicsContext: JsonValue;
+  readonly adaptiveShadowDecision?: AdaptiveShadowDecisionReceipt;
   readonly contentHash: string;
 }
 
@@ -526,5 +528,15 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
           ...(universeIncomplete ? [`UNDERLYINGS_NOT_EVALUATED:${input.unevaluatedUnderlyingCount}`] : [])],
     empiricalEconomicsReady: false as const, executionAuthorized: false as const, optionomicsContext: input.optionomicsContext,
   };
-  return { ...partial, contentHash: digest(partial) };
+  const adaptiveShadowDecision = buildAdaptiveShadowDecisionReceipt({
+    frontier: partial,
+    currentDecision: {
+      selectedCandidateRef: partial.selectedCandidateId,
+      actionCode: partial.primaryAction,
+      quantity: partial.selectedQuantity,
+      strategyBranch: partial.selectedBranch,
+    },
+  });
+  const complete = { ...partial, adaptiveShadowDecision };
+  return { ...complete, contentHash: digest(complete) };
 }
