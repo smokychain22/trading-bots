@@ -63,6 +63,7 @@ try {
     "059_paper_restart_recovery_invariant",
     "060_execution_account_paper_only_invariant",
     "061_paper_execution_control_normalization",
+    "062_policy_neutral_risk_evidence",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -147,6 +148,8 @@ try {
   for (const [schema, table] of required) {
     if (!found.has(`${schema}.${table}`)) throw new Error(`TABLE_MISSING:${schema}.${table}`);
   }
+  const riskHistory = await client.query("SELECT to_regclass('research.option_contract_risk_history')::text AS name");
+  if (!riskHistory.rows[0]?.name) throw new Error("RELATION_MISSING:research.option_contract_risk_history");
   const columns = await client.query(
     "SELECT column_name FROM information_schema.columns WHERE table_schema='copy' AND table_name='follower_account'",
   );

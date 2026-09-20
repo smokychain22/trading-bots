@@ -114,6 +114,11 @@ export async function validateDatabaseTarget(
       (SELECT count(*)::integer FROM trade.broker_order) AS broker_orders,
       (SELECT count(*)::integer FROM trade.fill) AS fills,
       (SELECT count(*)::integer FROM trade.broker_activity_fact) AS broker_activity_facts,
+      (SELECT count(*)::integer FROM trade.candidate_point_in_time_evidence
+        WHERE jsonb_typeof(volatility_json->'iv')='number') AS candidate_iv_observations,
+      (SELECT count(*)::integer FROM market.execution_quote_observation
+        WHERE observation_role='DECISION' AND bid IS NOT NULL AND ask IS NOT NULL) AS decision_two_sided_quote_observations,
+      (SELECT count(*)::integer FROM research.option_contract_risk_history) AS option_contract_risk_history_rows,
       (SELECT count(*)::integer FROM legacy_neon.import_batch) AS legacy_import_batches,
       (SELECT count(*)::integer FROM legacy_neon.artifact_record) AS legacy_artifact_records,
       (SELECT count(*)::integer FROM legacy_neon.promotion_batch) AS legacy_promotion_batches,

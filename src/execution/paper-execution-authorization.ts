@@ -42,6 +42,7 @@ export interface FirstPaperCanaryDatabaseEvidence {
   readonly quoteReady:boolean;
   readonly latestCompleteScanAt:string|null;
   readonly migrationHead:string|null;
+  readonly requiredSchemaBaselinePresent:boolean;
 }
 
 export function firstPaperCanaryActivationBlockers(input:{readonly activatedAt:string;
@@ -66,7 +67,7 @@ export function firstPaperCanaryActivationBlockers(input:{readonly activatedAt:s
   if(!database.quoteReady)blockers.push('EXECUTION_QUOTE_AUTHORITY_NOT_READY');
   if(database.latestCompleteScanAt===null||Date.parse(input.activatedAt)-Date.parse(database.latestCompleteScanAt)>15*60_000)
     blockers.push('RECENT_COMPLETE_STRATEGY_SCAN_MISSING');
-  if(database.migrationHead!=='061_paper_execution_control_normalization')blockers.push('PRODUCTION_SCHEMA_HEAD_NOT_061');
+  if(!database.requiredSchemaBaselinePresent)blockers.push('PRODUCTION_SCHEMA_BASELINE_061_MISSING');
   return [...new Set(blockers)];
 }
 
@@ -169,6 +170,8 @@ export class PostgresPaperExecutionAuthorizationStore{
           AND participation='COPY_NEW_AND_MANAGE') AS master_self_copy_count,
         (SELECT max(finished_at)::text FROM research.theta_shadow_scan_run WHERE completeness_state='COMPLETE') AS latest_complete_scan_at,
         (SELECT version FROM core.schema_migration ORDER BY applied_at DESC,version DESC LIMIT 1) AS migration_head,
+        EXISTS(SELECT 1 FROM core.schema_migration
+          WHERE version='061_paper_execution_control_normalization') AS required_schema_baseline_present,
         (EXISTS(SELECT 1 FROM core.provider_capability pc JOIN core.provider_connection cn
           ON cn.provider_connection_id=pc.provider_connection_id WHERE cn.provider_code='ALPACA'
           AND pc.capability_code IN ('OPTIONS_MARKET_DATA_OPRA','OPTIONS_MARKET_DATA_INDICATIVE','CURRENT_OPTION_SNAPSHOTS_INDICATIVE')
@@ -189,7 +192,7 @@ export class PostgresPaperExecutionAuthorizationStore{
         followerExecutionEnabled:row.follower_execution_enabled===true,priorBrokerOrderCount,
         activeIntentCount:Number(row.active_intent_count??0),masterCount:Number(row.master_count??0),
         masterSelfCopyCount:Number(row.master_self_copy_count??0),quoteReady:row.quote_ready===true,
-        latestCompleteScanAt,migrationHead,
+        latestCompleteScanAt,migrationHead,requiredSchemaBaselinePresent:row.required_schema_baseline_present===true,
       }});
       const common={accountRole:'MASTER_THETA_PAPER' as const,brokerHost:'https://paper-api.alpaca.markets' as const,
         paperOnly:true as const,followerExecutionLocked:true as const,liveMoneyAuthorized:false as const,

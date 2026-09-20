@@ -48,10 +48,17 @@ const activation=()=>({activatedAt:'2026-09-18T15:00:00.000Z',runtime:{brokerAcc
   optionsCapabilityVerified:true,environmentMasterEnabled:true,environmentPauseNewOrders:false,
   environmentFollowerEnabled:false,runtimeMode:'MASTER_THETA_PAPER'},database:{managementAuthorized:true,
   followerExecutionEnabled:false,priorBrokerOrderCount:0,activeIntentCount:0,masterCount:1,masterSelfCopyCount:0,
-  quoteReady:true,latestCompleteScanAt:'2026-09-18T14:55:00.000Z',migrationHead:'061_paper_execution_control_normalization'}});
+  quoteReady:true,latestCompleteScanAt:'2026-09-18T14:55:00.000Z',migrationHead:'061_paper_execution_control_normalization',
+  requiredSchemaBaselinePresent:true}});
 
 test('first canary activation requires every Paper-only operational gate',()=>{
   assert.deepEqual(firstPaperCanaryActivationBlockers(activation()),[]);
+});
+
+test('an additive migration head remains valid when the required schema baseline exists',()=>{
+  const valid=activation();
+  assert.deepEqual(firstPaperCanaryActivationBlockers({...valid,database:{...valid.database,
+    migrationHead:'062_policy_neutral_risk_evidence',requiredSchemaBaselinePresent:true}}),[]);
 });
 
 test('first canary activation rejects follower/live-adjacent state, stale evidence, and any prior order',()=>{
@@ -64,9 +71,9 @@ test('first canary activation rejects follower/live-adjacent state, stale eviden
     'FIRST_CANARY_ALREADY_USED','MASTER_SELF_COPY_INVARIANT_FAILED','RECENT_COMPLETE_STRATEGY_SCAN_MISSING']);
 });
 
-test('first canary activation cannot bypass the environment pause or schema head',()=>{
+test('first canary activation cannot bypass the environment pause or required schema baseline',()=>{
   const valid=activation();
   const blockers=firstPaperCanaryActivationBlockers({...valid,
-    runtime:{...valid.runtime,environmentPauseNewOrders:true},database:{...valid.database,migrationHead:'057_other'}});
-  assert.deepEqual(blockers,['ENVIRONMENT_NEW_ENTRY_PAUSE_ACTIVE','PRODUCTION_SCHEMA_HEAD_NOT_061']);
+    runtime:{...valid.runtime,environmentPauseNewOrders:true},database:{...valid.database,migrationHead:'062_policy_neutral_risk_evidence',requiredSchemaBaselinePresent:false}});
+  assert.deepEqual(blockers,['ENVIRONMENT_NEW_ENTRY_PAUSE_ACTIVE','PRODUCTION_SCHEMA_BASELINE_061_MISSING']);
 });
