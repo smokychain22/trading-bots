@@ -48,6 +48,7 @@ import { fetchMarketClock, fetchOptionContracts, fetchOptionSnapshots } from './
 import { executionOptionQuoteContractVersion, type ExecutionOptionQuote } from '../execution/execution-option-quote.js';
 import { persistQuoteProviderQualification, qualifyQuoteProvider } from '../execution/quote-provider-qualification.js';
 import { readZeroTradeDiagnostic } from './zero-trade-diagnostic.js';
+import { runRiskPolicyEmpiricalStudy } from '../research/risk-policy-empirical-study.js';
 
 let runtimePool: Pool | null = null;
 
@@ -62,7 +63,7 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'RUNTIME_CORE_CYCLE' | 'RUNTIME_BROKER_CYCLE' | 'RUNTIME_LIFECYCLE_CYCLE' | 'RUNTIME_MANAGEMENT_CYCLE' | 'RUNTIME_OBSERVATION_CYCLE' | 'RUNTIME_EVIDENCE_CYCLE' | 'RUNTIME_ZERO_TRADE_DIAGNOSTIC' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'MASTER_PAPER_AUTHORIZE' | 'FIRST_PAPER_CANARY_ACTIVATE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'RUNTIME_CORE_CYCLE' | 'RUNTIME_BROKER_CYCLE' | 'RUNTIME_LIFECYCLE_CYCLE' | 'RUNTIME_MANAGEMENT_CYCLE' | 'RUNTIME_OBSERVATION_CYCLE' | 'RUNTIME_EVIDENCE_CYCLE' | 'RUNTIME_ZERO_TRADE_DIAGNOSTIC' | 'RISK_POLICY_EMPIRICAL_STUDY' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'MASTER_PAPER_AUTHORIZE' | 'FIRST_PAPER_CANARY_ACTIVATE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
@@ -74,6 +75,7 @@ export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'header
   if (value === 'runtime-observation-cycle') return 'RUNTIME_OBSERVATION_CYCLE';
   if (value === 'runtime-evidence-cycle') return 'RUNTIME_EVIDENCE_CYCLE';
   if (value === 'runtime-zero-trade-diagnostic') return 'RUNTIME_ZERO_TRADE_DIAGNOSTIC';
+  if (value === 'risk-policy-empirical-study') return 'RISK_POLICY_EMPIRICAL_STUDY';
   if (value === 'provider-evidence-readiness') return 'PROVIDER_EVIDENCE_READINESS';
   if (value === 'alpaca-indicative-quote-qualification') return 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION';
   if (value === 'optionomics-provider-qualification') return 'OPTIONOMICS_PROVIDER_QUALIFICATION';
@@ -486,6 +488,19 @@ export default async function autonomousRuntimeHandler(
       const report = await readZeroTradeDiagnostic(runtimePool, {
         startUtc: '2026-09-18T00:00:00.000Z', endUtc: '2026-09-19T00:00:00.000Z',
       });
+      send(response, 200, report);
+      return;
+    }
+    if (operation === 'RISK_POLICY_EMPIRICAL_STUDY') {
+      if (localIdentity.kind !== 'VALID') {
+        send(response, 400, { error: 'local_worker_identity_required', executionGate: 'LOCKED' });
+        return;
+      }
+      const cycleStore = new PostgresRuntimeCycleStore(runtimePool);
+      const master = await cycleStore.resolveMasterContext(environment);
+      const generatedAt = new Date().toISOString();
+      const report = await runRiskPolicyEmpiricalStudy({ pool: runtimePool, alpaca: master.alpaca,
+        start: '2016-01-01T00:00:00.000Z', end: generatedAt, generatedAt });
       send(response, 200, report);
       return;
     }
