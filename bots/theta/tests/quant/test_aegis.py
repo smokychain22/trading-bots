@@ -132,6 +132,12 @@ class ExecutionQualityFamilyTests(unittest.TestCase):
 
 
 class StressTests(unittest.TestCase):
+    def test_unknown_spread_widening_holds_liquidity_family(self):
+        assessment = assess_aegis(_policy(), _clean_inputs(stress_spread_widening_detected=None))
+        liquidity = next(item for item in assessment.families if item.family.value == "LIQUIDITY")
+        self.assertEqual(liquidity.state, RiskState.HOLD_ONLY)
+        self.assertEqual(liquidity.reasons[0].code, "SPREAD_WIDENING_UNKNOWN")
+
     def test_unknown_stress_input_holds_new_risk(self):
         assessment = assess_aegis(_policy(), _clean_inputs(stress_iv_shock_detected=None))
         self.assertEqual(assessment.new_risk_state, RiskState.HOLD_ONLY)

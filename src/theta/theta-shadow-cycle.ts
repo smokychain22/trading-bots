@@ -761,12 +761,16 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let quotesEvidence = notAttemptedEvidence();
   const candidates: RawCandidateInput[] = [];
   let mergedContractsForSnapshot: ReturnType<typeof mergeOptionChain> = [];
-  const hasCoveredStock = positions.some((position) => position.symbol === underlying
-    && position.assetClass === 'us_equity' && (position.quantity ?? 0) > 0);
-  // A covered-call frontier cannot be evaluated from a put-only chain. Calls
-  // are fetched only when broker-confirmed stock exists, which avoids spending
-  // provider budget on an inapplicable management branch.
-  const optionTypes: readonly ('put' | 'call')[] = hasCoveredStock ? ['put', 'call'] : ['put'];
+  const underlyingStockPosition = positions.find((position) => position.symbol === underlying
+    && position.assetClass === 'us_equity') ?? null;
+  const hasPotentialCoveredStock = underlyingStockPosition !== null
+    && (underlyingStockPosition.quantity === null || underlyingStockPosition.quantity > 0);
+  if (underlyingStockPosition?.quantity === null) blockers.push(`STOCK_QUANTITY_UNKNOWN:${underlying}`);
+  // A covered-call frontier cannot be evaluated from a put-only chain. A real
+  // stock row with UNKNOWN quantity still causes calls to be fetched so the
+  // management branch and its missing quantity remain visible. The frontier
+  // blocks sizing until covered shares are proven.
+  const optionTypes: readonly ('put' | 'call')[] = hasPotentialCoveredStock ? ['put', 'call'] : ['put'];
   const contractItems: AlpacaOptionContractListing[] = [];
   const snapshotsBySymbol = new Map<string, AlpacaOptionSnapshot>();
   const contractEvidenceByType: ProviderEvidence[] = [];
@@ -920,11 +924,12 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     policyVersion: config.policyVersion, modelVersions: config.modelVersions,
   });
   const fusionSnapshot = buildFusionSnapshot(snapshotInput);
-  const stockPosition = positions.find((position) => position.symbol === underlying
-    && position.assetClass === 'us_equity' && (position.quantity ?? 0) > 0) ?? null;
+  const stockPosition = underlyingStockPosition !== null
+    && (underlyingStockPosition.quantity === null || underlyingStockPosition.quantity > 0)
+    ? underlyingStockPosition : null;
   const stockState = stockPosition === null ? null : {
     underlying,
-    shares: stockPosition.quantity as number,
+    shares: stockPosition.quantity,
     currentPrice: stockPosition.marketValue !== null && stockPosition.quantity !== null && stockPosition.quantity > 0
       ? stockPosition.marketValue / stockPosition.quantity : null,
     brokerCostBasisPerShare: stockPosition.avgEntryPrice,

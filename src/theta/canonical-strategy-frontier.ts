@@ -127,7 +127,7 @@ export interface CanonicalStrategyFrontierInput {
   readonly routing: StrategyRoutingResponse | null;
   readonly stock: {
     readonly underlying: string;
-    readonly shares: number;
+    readonly shares: number | null;
     readonly currentPrice: number | null;
     readonly brokerCostBasisPerShare: number | null;
     readonly wholeChainEconomicBasisPerShare: number | null;
@@ -342,7 +342,9 @@ function definedRiskCandidate(shortPut: NormalizedOptionContract, longPut: Norma
 
 function stockActionCandidate(action: 'RECOVERY_WAIT' | 'SELL_STOCK', input: CanonicalStrategyFrontierInput): CanonicalFrontierCandidate {
   const stock = input.stock as NonNullable<CanonicalStrategyFrontierInput['stock']>;
-  const hardBlockers: string[] = stock.shares <= 0 ? ['NO_CONFIRMED_STOCK_INVENTORY'] : [];
+  const hardBlockers: string[] = stock.shares === null
+    ? ['STOCK_QUANTITY_UNKNOWN']
+    : stock.shares <= 0 ? ['NO_CONFIRMED_STOCK_INVENTORY'] : [];
   const unknownEvidence: string[] = [];
   if (stock.currentPrice === null) unknownEvidence.push('STOCK_MARK_UNKNOWN');
   if (stock.brokerCostBasisPerShare === null) unknownEvidence.push('BROKER_COST_BASIS_UNKNOWN');
@@ -372,13 +374,14 @@ function coveredCallCandidate(contract: NormalizedOptionContract, input: Canonic
   const candidateAegisState = aegisStateFor(input, candidateId);
   const evidence = commonEvidence(contract, input, candidateId);
   if (candidateAegisState === 'DEFINED_RISK_ONLY') evidence.hardBlockers.push('AEGIS_DEFINED_RISK_ONLY');
-  const coveredQty = Math.floor(stock.shares / contract.multiplier);
-  if (coveredQty <= 0) evidence.hardBlockers.push('INSUFFICIENT_COVERED_SHARES');
+  const coveredQty = stock.shares === null ? null : Math.floor(stock.shares / contract.multiplier);
+  if (coveredQty === null) evidence.hardBlockers.push('STOCK_QUANTITY_UNKNOWN');
+  else if (coveredQty <= 0) evidence.hardBlockers.push('INSUFFICIENT_COVERED_SHARES');
   const premium = finite(contract.bid) ? contract.bid : null;
   const retainedUpside = stock.currentPrice === null ? null : (contract.strike - stock.currentPrice) * contract.multiplier;
   const callAwayProceeds = contract.strike * contract.multiplier;
-  const chainPnlAtCallAway = stock.wholeChainEconomicBasisPerShare === null ? null
-    : (contract.strike - stock.wholeChainEconomicBasisPerShare + (premium ?? 0)) * contract.multiplier;
+  const chainPnlAtCallAway = stock.wholeChainEconomicBasisPerShare === null || premium === null ? null
+    : (contract.strike - stock.wholeChainEconomicBasisPerShare + premium) * contract.multiplier;
   return {
     candidateId, branch: 'THETA_CC', action: 'SELL_CC', underlying: contract.underlying,
     legs: [leg(contract, 'SELL_TO_OPEN')], dte: contract.dte, delta: contract.delta, moneyness: contract.moneyness,
@@ -434,7 +437,8 @@ function buildBranch(branch: ThetaStrategyBranch, input: CanonicalStrategyFronti
   const source = sourceByBranch.get(branch);
   if (source === undefined) throw new Error(`CANONICAL_STRATEGY_SOURCE_MISSING:${branch}`);
   const route = input.routing?.results.find((result) => result.strategyFamily === familyByBranch[branch]) ?? null;
-  const stockApplicable = (branch === 'THETA_RECOVERY' || branch === 'THETA_CC') && input.stock !== null && input.stock.shares > 0;
+  const stockApplicable = (branch === 'THETA_RECOVERY' || branch === 'THETA_CC') && input.stock !== null
+    && (input.stock.shares === null || input.stock.shares > 0);
   const applicable = stockApplicable || route?.eligible === true;
   const routeReasons = route?.reasons.map((reason) => reason.code) ?? (input.routing === null ? ['ROUTER_RESULT_UNKNOWN'] : ['ROUTER_FAMILY_MISSING']);
   if (!applicable) return {

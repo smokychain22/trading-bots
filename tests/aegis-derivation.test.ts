@@ -65,8 +65,8 @@ test('deriveExecutionQualityAcceptable distinguishes an observed failure from mi
   assert.equal(deriveExecutionQualityAcceptable([]), null);
 });
 
-test('deriveStressGapDetected fires only when a real ret1d exceeds the threshold -- never true from a null (insufficient-history) input', () => {
-  assert.equal(deriveStressGapDetected(null, 0.05), false);
+test('deriveStressGapDetected preserves UNKNOWN when return history is unavailable', () => {
+  assert.equal(deriveStressGapDetected(null, 0.05), null);
   assert.equal(deriveStressGapDetected(0.02, 0.05), false);
   assert.equal(deriveStressGapDetected(-0.08, 0.05), true);
   assert.equal(deriveStressGapDetected(0.08, 0.05), true);

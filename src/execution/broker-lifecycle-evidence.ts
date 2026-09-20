@@ -24,8 +24,10 @@ export interface BrokerConfirmedLifecycleResult {
   readonly reasonCode: string;
 }
 
-const quantity = (positions: readonly PositionEvidence[], symbol: string): number =>
-  positions.find((position) => position.symbol === symbol)?.quantity ?? 0;
+const quantity = (positions: readonly PositionEvidence[], symbol: string): number | null => {
+  const position = positions.find((item) => item.symbol === symbol);
+  return position === undefined ? 0 : position.quantity;
+};
 
 const matchingActivity = (input: ManagedOptionLifecycleInput, types: readonly string[]): BrokerActivity | undefined =>
   input.activities.find((activity) => types.includes(activity.activityType) && activity.symbol === input.optionSymbol);
@@ -56,6 +58,9 @@ export function reconcileManagedOptionLifecycle(input: ManagedOptionLifecycleInp
   const expectedShares = input.contracts * input.multiplier;
   const previousOption = quantity(input.previousPositions, input.optionSymbol);
   const currentOption = quantity(input.currentPositions, input.optionSymbol);
+  if (previousOption === null || currentOption === null) {
+    return { state: 'UNKNOWN', brokerActivityId: null, transitionPath: [], reasonCode: 'OPTION_QUANTITY_UNKNOWN' };
+  }
   if (previousOption >= 0 || currentOption !== 0) {
     return { state: 'UNKNOWN', brokerActivityId: null, transitionPath: [], reasonCode: 'OPTION_TERMINAL_STATE_NOT_CONFIRMED' };
   }
@@ -65,7 +70,11 @@ export function reconcileManagedOptionLifecycle(input: ManagedOptionLifecycleInp
     if (input.legKind === 'SHORT_PUT') {
       return confirmed(input, expiration, ['EXPIRE_OTM', 'REDEPLOY'], 'BROKER_CONFIRMED_SHORT_PUT_EXPIRY');
     }
-    const sharesStillOwned = quantity(input.currentPositions, input.underlyingSymbol) >= expectedShares;
+    const currentShares = quantity(input.currentPositions, input.underlyingSymbol);
+    if (currentShares === null) {
+      return { state: 'UNKNOWN', brokerActivityId: expiration.id, transitionPath: [], reasonCode: 'STOCK_QUANTITY_UNKNOWN' };
+    }
+    const sharesStillOwned = currentShares >= expectedShares;
     if (!sharesStillOwned) {
       return { state: 'UNKNOWN', brokerActivityId: expiration.id, transitionPath: [], reasonCode: 'CC_EXPIRY_STOCK_COVERAGE_NOT_CONFIRMED' };
     }
@@ -78,6 +87,9 @@ export function reconcileManagedOptionLifecycle(input: ManagedOptionLifecycleInp
   }
   const priorShares = quantity(input.previousPositions, input.underlyingSymbol);
   const currentShares = quantity(input.currentPositions, input.underlyingSymbol);
+  if (priorShares === null || currentShares === null) {
+    return { state: 'UNKNOWN', brokerActivityId: assignment.id, transitionPath: [], reasonCode: 'STOCK_QUANTITY_UNKNOWN' };
+  }
   if (input.legKind === 'SHORT_PUT') {
     if (currentShares - priorShares < expectedShares) {
       return { state: 'UNKNOWN', brokerActivityId: assignment.id, transitionPath: [], reasonCode: 'ASSIGNED_STOCK_POSITION_NOT_CONFIRMED' };
