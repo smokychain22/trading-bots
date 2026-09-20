@@ -17,6 +17,13 @@ $stateRoot = Join-Path $repositoryPath '.theta-local-worker'
 New-Item -ItemType Directory -Force -Path $stateRoot | Out-Null
 if (!(Test-Path -LiteralPath (Join-Path $stateRoot 'worker.token'))) { throw 'THETA_LOCAL_WORKER_TOKEN_NOT_PROVISIONED' }
 if (!(Test-Path -LiteralPath (Join-Path $stateRoot 'production.env'))) { throw 'THETA_PRODUCTION_ENV_NOT_PROVISIONED' }
+$runtimeFile = Join-Path $stateRoot 'runtime.json'
+$existingRuntime = if (Test-Path -LiteralPath $runtimeFile) {
+  Get-Content -Raw -LiteralPath $runtimeFile | ConvertFrom-Json
+} else { $null }
+$workerId = if ($null -ne $existingRuntime -and [string]$existingRuntime.workerId -match '^[A-Za-z0-9_.:-]{8,160}$') {
+  [string]$existingRuntime.workerId
+} else { 'local-'+[guid]::NewGuid().ToString() }
 $releaseRoot = Join-Path $stateRoot 'releases'
 New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
 $releasePath = Join-Path $releaseRoot $buildSha
@@ -61,9 +68,9 @@ if ($null -ne $currentTask -and $currentTask.State -eq 'Running') {
   Remove-Item -LiteralPath $currentStopFile -Force -ErrorAction SilentlyContinue
 }
 @{ repositoryPath=$repositoryPath;releasePath=$releasePath;buildSha=$buildSha;installedAt=(Get-Date).ToUniversalTime().ToString('o');
-  mode='MASTER_THETA_PAPER';projectName=$project.projectName;workerId=('local-'+[guid]::NewGuid().ToString());
+  mode='MASTER_THETA_PAPER';projectName=$project.projectName;workerId=$workerId;
   endpoint='https://trading-bots-one.vercel.app/api/theta-runtime' } |
-  ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stateRoot 'runtime.json') -Encoding utf8
+  ConvertTo-Json | Set-Content -LiteralPath $runtimeFile -Encoding utf8
 
 $workerScript = Join-Path $PSScriptRoot 'theta-local-worker.ps1'
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$workerScript`" -ControlRoot `"$repositoryPath`""

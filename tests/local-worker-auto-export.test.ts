@@ -74,6 +74,8 @@ test('Windows installer does not silently queue evidence capture on laptop batte
   assert.match(source,/New-Item -ItemType File -Force -Path \$currentStopFile/);
   assert.match(source,/Stop-ScheduledTask -TaskName \$TaskName/);
   assert.match(source,/Remove-Item -LiteralPath \$currentStopFile/);
+  assert.match(source,/\$existingRuntime\.workerId/);
+  assert.match(source,/workerId=\$workerId/);
 });
 
 test('Windows worker status never reports stale ONLINE health as current when the supervisor is not running',async()=>{
