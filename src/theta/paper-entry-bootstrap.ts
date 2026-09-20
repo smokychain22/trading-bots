@@ -1,4 +1,9 @@
-export const paperEntryBootstrapPolicyVersion = 'theta-paper-entry-bootstrap-v1' as const;
+import type { OwnershipEvaluationResponse } from './ownership-contract.js';
+
+export const paperEntryBootstrapPolicyVersion = 'theta-paper-entry-bootstrap-v2' as const;
+
+export const paperBootstrapAllowedUnknownComponent = 'RecoveryQuality' as const;
+export const paperBootstrapAllowedUnknownReason = 'RECOVERY_HISTORY_UNKNOWN' as const;
 
 export type PaperEntryBootstrapState =
   | 'DISABLED'
@@ -25,6 +30,14 @@ export interface PaperEntryBootstrapAssessment {
   readonly eligibilityTier: 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED' | null;
   readonly hardBlockers: readonly string[];
   readonly executionAuthorized: false;
+}
+
+export interface PaperBootstrapOwnershipEvidenceAssessment {
+  readonly eligible: boolean;
+  readonly policyVersion: typeof paperEntryBootstrapPolicyVersion;
+  readonly allowedUnknownComponents: readonly string[];
+  readonly reasonCodes: readonly string[];
+  readonly blockers: readonly string[];
 }
 
 export function classifyAlpacaBrokerEnvironment(baseUrl:string):PaperEntryBootstrapInput['brokerEnvironment']{
@@ -64,5 +77,41 @@ export function assessPaperEntryBootstrap(input: PaperEntryBootstrapInput): Pape
   } : {
     state: 'ELIGIBLE_UNCALIBRATED', policyVersion: paperEntryBootstrapPolicyVersion,
     eligibilityTier: 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED', hardBlockers: [], executionAuthorized: false,
+  };
+}
+
+/**
+ * Narrows the Paper cold-start exception to one explicit missing empirical
+ * input. Recovery history may be absent before THETA has resolved episodes.
+ * Missing liquidity, structure, tail, event, thesis, or candidate drawdown
+ * evidence never inherits that exception.
+ */
+export function assessPaperBootstrapOwnershipEvidence(
+  bootstrap: PaperEntryBootstrapAssessment | undefined,
+  ownership: OwnershipEvaluationResponse,
+  severeDrawdownProbability: number | null,
+): PaperBootstrapOwnershipEvidenceAssessment {
+  const blockers: string[] = [];
+  if (bootstrap?.state !== 'ELIGIBLE_UNCALIBRATED') blockers.push('PAPER_ENTRY_BOOTSTRAP_NOT_ELIGIBLE');
+  if (bootstrap?.policyVersion !== paperEntryBootstrapPolicyVersion) blockers.push('PAPER_ENTRY_BOOTSTRAP_POLICY_MISMATCH');
+  if (ownership.thesisInvalidated) blockers.push('OWNERSHIP_THESIS_INVALIDATED');
+  if (severeDrawdownProbability === null || !Number.isFinite(severeDrawdownProbability)
+    || severeDrawdownProbability < 0 || severeDrawdownProbability > 1) {
+    blockers.push('SEVERE_DRAWDOWN_PROBABILITY_UNKNOWN_OR_INVALID');
+  }
+  const unknown = ownership.components.filter((component) => component.value === null);
+  const allowedUnknown = unknown.length === 1 && unknown[0]?.name === paperBootstrapAllowedUnknownComponent;
+  if (!allowedUnknown) blockers.push('BOOTSTRAP_UNKNOWN_COMPONENT_SET_NOT_ALLOWED');
+  const unknownReasons = [...new Set(unknown.flatMap((component) => component.reasons.map((reason) => reason.code)))].toSorted();
+  if (unknownReasons.length !== 1 || unknownReasons[0] !== paperBootstrapAllowedUnknownReason) {
+    blockers.push('BOOTSTRAP_UNKNOWN_REASON_SET_NOT_ALLOWED');
+  }
+  return {
+    eligible: blockers.length === 0,
+    policyVersion: paperEntryBootstrapPolicyVersion,
+    allowedUnknownComponents: allowedUnknown ? [paperBootstrapAllowedUnknownComponent] : [],
+    reasonCodes: allowedUnknown && unknownReasons[0] === paperBootstrapAllowedUnknownReason
+      ? [paperBootstrapAllowedUnknownReason] : [],
+    blockers,
   };
 }

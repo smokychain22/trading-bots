@@ -1,12 +1,12 @@
-param([string]$RepositoryPath = '')
+param([string]$ControlRoot = '')
 $ErrorActionPreference = 'Stop'
 
-if ([string]::IsNullOrWhiteSpace($RepositoryPath)) {
-  $RepositoryPath = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+if ([string]::IsNullOrWhiteSpace($ControlRoot)) {
+  $ControlRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 } else {
-  $RepositoryPath = (Resolve-Path -LiteralPath $RepositoryPath).Path
+  $ControlRoot = (Resolve-Path -LiteralPath $ControlRoot).Path
 }
-$stateRoot = Join-Path $RepositoryPath '.theta-local-worker'
+$stateRoot = Join-Path $ControlRoot '.theta-local-worker'
 $runtimeFile = Join-Path $stateRoot 'runtime.json'
 $tokenFile = Join-Path $stateRoot 'worker.token'
 $statusFile = Join-Path $stateRoot 'status.json'
@@ -20,13 +20,21 @@ if (!(Test-Path -LiteralPath $runtimeFile)) { throw 'THETA_LOCAL_WORKER_NOT_INST
 if (!(Test-Path -LiteralPath $tokenFile)) { throw 'THETA_LOCAL_WORKER_TOKEN_NOT_PROVISIONED' }
 if (!(Test-Path -LiteralPath $productionEnvFile)) { throw 'THETA_PRODUCTION_ENV_NOT_PROVISIONED' }
 $runtime = Get-Content -Raw -LiteralPath $runtimeFile | ConvertFrom-Json
+$RepositoryPath = (Resolve-Path -LiteralPath ([string]$runtime.releasePath)).Path
 $token = (Get-Content -Raw -LiteralPath $tokenFile).Trim()
-if ($runtime.repositoryPath -ne $RepositoryPath) { throw 'THETA_RUNTIME_PATH_MISMATCH' }
+if ($runtime.repositoryPath -ne $ControlRoot) { throw 'THETA_RUNTIME_CONTROL_PATH_MISMATCH' }
+if ($runtime.releasePath -ne $RepositoryPath) { throw 'THETA_RUNTIME_RELEASE_PATH_MISMATCH' }
 if ($token.Length -lt 32) { throw 'THETA_LOCAL_WORKER_TOKEN_INVALID' }
 
 Set-Location -LiteralPath $RepositoryPath
 $currentSha = (& git rev-parse HEAD).Trim()
-if ($LASTEXITCODE -ne 0 -or $currentSha -ne $runtime.buildSha) { throw 'THETA_RUNTIME_SHA_MISMATCH' }
+if ($LASTEXITCODE -ne 0 -or $currentSha -ne $runtime.buildSha) {
+  @{state='BLOCKED';observedAt=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
+    workspaceSha=$currentSha;mode='MASTER_THETA_PAPER';executionGate='LOCKED';
+    failureCode='THETA_RUNTIME_SHA_MISMATCH'} | ConvertTo-Json |
+    Set-Content -LiteralPath $statusFile -Encoding utf8
+  throw 'THETA_RUNTIME_SHA_MISMATCH'
+}
 if ((& git status --porcelain --untracked-files=no).Count -gt 0) { throw 'THETA_RUNTIME_TRACKED_FILES_DIRTY' }
 if (Test-Path -LiteralPath $stopFile) { Remove-Item -LiteralPath $stopFile -Force }
 
@@ -202,7 +210,7 @@ try {
       $localEvidenceHash = $null
       if ((Test-Path -LiteralPath $latestDataset) -and (Test-Path -LiteralPath $latestManifest)) {
         try {
-          $localEvidenceOutput = & node tools/write-local-durable-evidence.mjs research_exports/latest .theta-local-worker/evidence
+          $localEvidenceOutput = & node tools/write-local-durable-evidence.mjs research_exports/latest (Join-Path $stateRoot 'evidence')
           if ($LASTEXITCODE -eq 0) {
             $localEvidenceResult = $localEvidenceOutput | ConvertFrom-Json
             $localEvidenceState = [string]$localEvidenceResult.state
@@ -222,7 +230,7 @@ try {
           researchExport=$researchExport;scopes=@{BROKER=$brokerReport;LIFECYCLE=$lifecycleReport;
             MANAGEMENT=$managementReport;OBSERVATION=$observationReport;EVIDENCE=$report} } |
           ConvertTo-Json -Depth 12 -Compress
-        $receiptOutput = $receiptInput | & node tools/write-local-runtime-receipt.mjs
+        $receiptOutput = $receiptInput | & node tools/write-local-runtime-receipt.mjs (Join-Path $stateRoot 'receipts')
         if ($LASTEXITCODE -eq 0) {
           $receiptResult = $receiptOutput | ConvertFrom-Json
           $localReceiptState = [string]$receiptResult.state

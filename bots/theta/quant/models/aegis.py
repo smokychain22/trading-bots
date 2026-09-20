@@ -67,6 +67,7 @@ class RiskFamilyAssessment:
 @dataclass(frozen=True)
 class AegisPolicy:
     policy_version: str
+    hard_cap_multiplier: float
     max_ticker_concentration_pct: float
     max_sector_concentration_pct: float
     max_correlation_cluster_pct: float
@@ -106,7 +107,7 @@ def _worse(a: RiskState, b: RiskState) -> RiskState:
 
 
 def _threshold_assessment(
-    family: RiskFamily, value: Optional[float], soft_cap: float, hard_cap_multiplier: float = 1.5
+    family: RiskFamily, value: Optional[float], soft_cap: float, hard_cap_multiplier: float
 ) -> RiskFamilyAssessment:
     if value is None:
         return RiskFamilyAssessment(family, RiskState.HOLD_ONLY, [ReasonCode(f"{family.value}_UNKNOWN", -1, "Input is UNKNOWN, not assumed acceptable.")])
@@ -164,13 +165,13 @@ def _system(inputs: AegisInputs) -> RiskFamilyAssessment:
 def assess_aegis(policy: AegisPolicy, inputs: AegisInputs) -> AegisAssessment:
     families = [
         _per_trade(inputs),
-        _threshold_assessment(RiskFamily.UNDERLYING, inputs.ticker_concentration_pct, policy.max_ticker_concentration_pct),
-        _threshold_assessment(RiskFamily.SECTOR, inputs.sector_concentration_pct, policy.max_sector_concentration_pct),
-        _threshold_assessment(RiskFamily.CORRELATION, inputs.correlation_cluster_exposure_pct, policy.max_correlation_cluster_pct),
-        _threshold_assessment(RiskFamily.PORTFOLIO, inputs.portfolio_capital_at_risk_pct, policy.max_portfolio_capital_at_risk_pct),
-        _threshold_assessment(RiskFamily.INVENTORY, inputs.inventory_capacity_used_pct, policy.max_inventory_capacity_pct),
-        _threshold_assessment(RiskFamily.ASSIGNMENT, inputs.assignment_capacity_used_pct, policy.max_assignment_capacity_pct),
-        _threshold_assessment(RiskFamily.RECOVERY, inputs.recovery_capacity_used_pct, policy.max_recovery_capacity_pct),
+        _threshold_assessment(RiskFamily.UNDERLYING, inputs.ticker_concentration_pct, policy.max_ticker_concentration_pct, policy.hard_cap_multiplier),
+        _threshold_assessment(RiskFamily.SECTOR, inputs.sector_concentration_pct, policy.max_sector_concentration_pct, policy.hard_cap_multiplier),
+        _threshold_assessment(RiskFamily.CORRELATION, inputs.correlation_cluster_exposure_pct, policy.max_correlation_cluster_pct, policy.hard_cap_multiplier),
+        _threshold_assessment(RiskFamily.PORTFOLIO, inputs.portfolio_capital_at_risk_pct, policy.max_portfolio_capital_at_risk_pct, policy.hard_cap_multiplier),
+        _threshold_assessment(RiskFamily.INVENTORY, inputs.inventory_capacity_used_pct, policy.max_inventory_capacity_pct, policy.hard_cap_multiplier),
+        _threshold_assessment(RiskFamily.ASSIGNMENT, inputs.assignment_capacity_used_pct, policy.max_assignment_capacity_pct, policy.hard_cap_multiplier),
+        _threshold_assessment(RiskFamily.RECOVERY, inputs.recovery_capacity_used_pct, policy.max_recovery_capacity_pct, policy.hard_cap_multiplier),
         _liquidity(inputs),
         _execution(inputs),
         _provider(policy, inputs),

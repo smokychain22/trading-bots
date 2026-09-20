@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment, paperEntryBootstrapPolicyVersion } from '../src/theta/paper-entry-bootstrap.js';
+import { parseOwnershipEvaluationResponse } from '../src/theta/ownership-contract.js';
+import { assessPaperBootstrapOwnershipEvidence, assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment, paperEntryBootstrapPolicyVersion } from '../src/theta/paper-entry-bootstrap.js';
 
 const eligibleInput = () => ({
   enabled: true,
@@ -55,4 +56,30 @@ test('broker environment classification requires the exact secure Alpaca Paper r
   assert.equal(classifyAlpacaBrokerEnvironment('https://api.alpaca.markets'),'LIVE');
   assert.equal(classifyAlpacaBrokerEnvironment('https://paper-api.alpaca.markets/v2'),'UNKNOWN');
   assert.equal(classifyAlpacaBrokerEnvironment('not-a-url'),'UNKNOWN');
+});
+
+const ownership = (unknownComponent: 'RecoveryQuality' | 'TailQuality' | null, thesisInvalidated = false) =>
+  parseOwnershipEvaluationResponse({
+    contractVersion: 'theta-ownership-runtime-v1', snapshotId: 'snapshot', underlyingSymbol: 'SYN',
+    timestamp: '2026-09-20T10:00:00.000Z', policyVersion: 'ownership-v1',
+    ownability: unknownComponent === null ? 0.7 : null, thesisInvalidated,
+    components: ['LiquidityQuality', 'StructuralQuality', 'RecoveryQuality', 'TailQuality', 'EventAdjustment'].map((name) => ({
+      name, value: name === unknownComponent ? null : 0.9, status: 'TEST',
+      reasons: name === unknownComponent ? [{
+        code: name === 'RecoveryQuality' ? 'RECOVERY_HISTORY_UNKNOWN' : 'TAIL_UNKNOWN', polarity: -1, detail: 'test unknown',
+      }] : [{ code: `${name.toUpperCase()}_KNOWN`, polarity: 1, detail: 'test known' }],
+    })), reasons: thesisInvalidated ? [{ code: 'THESIS_INVALIDATED', polarity: -1, detail: 'invalidated' }] : [],
+  });
+
+test('component bootstrap permits only missing recovery history with known severe drawdown evidence', () => {
+  const result = assessPaperBootstrapOwnershipEvidence(assessPaperEntryBootstrap(eligibleInput()), ownership('RecoveryQuality'), 0.08);
+  assert.equal(result.eligible, true);
+  assert.deepEqual(result.allowedUnknownComponents, ['RecoveryQuality']);
+  assert.deepEqual(result.reasonCodes, ['RECOVERY_HISTORY_UNKNOWN']);
+});
+
+test('component bootstrap rejects unrelated UNKNOWN, missing drawdown probability, and thesis invalidation', () => {
+  assert.equal(assessPaperBootstrapOwnershipEvidence(assessPaperEntryBootstrap(eligibleInput()), ownership('TailQuality'), 0.08).eligible, false);
+  assert.equal(assessPaperBootstrapOwnershipEvidence(assessPaperEntryBootstrap(eligibleInput()), ownership('RecoveryQuality'), null).eligible, false);
+  assert.equal(assessPaperBootstrapOwnershipEvidence(assessPaperEntryBootstrap(eligibleInput()), ownership('RecoveryQuality', true), 0.08).eligible, false);
 });

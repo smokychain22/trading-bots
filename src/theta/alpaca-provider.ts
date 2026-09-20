@@ -149,7 +149,9 @@ export interface AlpacaOpenOrderSnapshot {
   readonly clientOrderId: string | null;
   readonly symbol: string | null;
   readonly side: string | null;
+  readonly positionIntent: 'buy_to_open' | 'buy_to_close' | 'sell_to_open' | 'sell_to_close' | null;
   readonly quantity: number | null;
+  readonly limitPrice: number | null;
   readonly status: string | null;
   readonly submittedAt: string | null;
   readonly receivedAt: string;
@@ -166,7 +168,13 @@ export async function fetchOpenOrders(config: AlpacaProviderConfig, receivedAt: 
     clientOrderId: asStringOrNull(raw.client_order_id),
     symbol: asStringOrNull(raw.symbol),
     side: asStringOrNull(raw.side),
+    positionIntent: (() => {
+      const value = asStringOrNull(raw.position_intent);
+      return value === 'buy_to_open' || value === 'buy_to_close' || value === 'sell_to_open' || value === 'sell_to_close'
+        ? value : null;
+    })(),
     quantity: asNumberOrNull(raw.qty),
+    limitPrice: asNumberOrNull(raw.limit_price),
     status: asStringOrNull(raw.status),
     submittedAt: asStringOrNull(raw.submitted_at),
     receivedAt,

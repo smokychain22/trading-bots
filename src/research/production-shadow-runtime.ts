@@ -141,6 +141,15 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     followerExecutionEnabled:input.environment.FOLLOWER_PAPER_EXECUTION_ENABLED,
     liveMoneyAuthorized:false,
   });
+  const runtimeContext=await loadPersistenceContext(input.pool,input.alpaca,input.now());
+  const recoveryRows=await input.pool.query(`SELECT DISTINCT u.symbol
+    FROM trade.economic_chain ec
+    JOIN trade.stock_lot sl ON sl.chain_id=ec.chain_id AND sl.disposed_at IS NULL
+    JOIN market.underlying u ON u.underlying_id=sl.underlying_id
+    WHERE ec.bot_instance_id=$1 AND ec.closed_at IS NULL
+      AND ec.lifecycle_state IN ('ASSIGNED','STOCK_HELD','RECOVERY_WAIT','CC_PROPOSED','CC_OPEN','CLOSE_CC')
+    ORDER BY u.symbol`,[runtimeContext.botInstanceId]);
+  const recoveryInventoryUnderlyings=recoveryRows.rows.map((row)=>String((row as Record<string,unknown>).symbol));
   const discovery=await discoverRealUniverse(input.alpaca,{discoveryVersion:'theta-shadow-universe-v1',maxCandidateAssets:100,
     allowedExchanges:['NYSE','NASDAQ','ARCA','BATS'],barsLookbackDays:30,barsBatchSize:100,maxOptionabilityChecks:10,minCurrentPrice:5},input.now);
   // Discovery already preserves the existing average-dollar-volume rank.
@@ -159,14 +168,13 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     branches:['THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_RECOVERY','THETA_CC','THETA_DEFINED_RISK']},async(underlying)=>{
       const config=defaultShadowCycleConfig(input.alpaca,optionomics,bridge(input.environment),[underlying],discovery.candidatesOrigin);
       const recoveryHistory=await loadRecoveryHistory(input.pool,underlying.symbol,input.now());
-      return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',paperEntryBootstrap,recoveryHistory,aegisInputs:{
+      return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',paperEntryBootstrap,recoveryHistory,recoveryInventoryUnderlyings,aegisInputs:{
         tickerConcentrationPct:null,sectorConcentrationPct:null,correlationClusterExposurePct:null,
         portfolioCapitalAtRiskPct:null,inventoryCapacityUsedPct:null,assignmentCapacityUsedPct:null,
         recoveryCapacityUsedPct:null,liquidityAcceptable:null,executionQualityAcceptable:null,providerState:null,
         stressGapDetected:false,stressIvShockDetected:null,stressSpreadWideningDetected:null,
       }});
     },input.now);
-  const runtimeContext=await loadPersistenceContext(input.pool,input.alpaca,scan.startedAt);
   const cycleStore=new PostgresThetaCycleStore(input.pool),persisted=new Map<string,{
     fusionSnapshotId:string|null;candidateSetId:string|null;decisionId:string|null;
   }>();

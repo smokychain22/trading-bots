@@ -28,6 +28,7 @@ export interface BrokerOrderSnapshot {
   readonly filledQty: number;
   readonly filledAvgPrice: number | null;
   readonly side: 'buy' | 'sell';
+  readonly positionIntent?: 'buy_to_open' | 'buy_to_close' | 'sell_to_open' | 'sell_to_close' | null;
   readonly status: string;
   readonly limitPrice: number | null;
   readonly submittedAt: string | null;
@@ -84,6 +85,7 @@ const rawOrderSchema = z.object({
   filled_qty: z.union([z.string(), z.number()]).default('0'),
   filled_avg_price: z.union([z.string(), z.number()]).nullable().optional(),
   side: z.enum(['buy', 'sell']),
+  position_intent: z.enum(['buy_to_open', 'buy_to_close', 'sell_to_open', 'sell_to_close']).nullable().optional(),
   status: z.string().min(1),
   limit_price: z.union([z.string(), z.number()]).nullable().optional(),
   submitted_at: z.string().nullable().optional(),
@@ -110,6 +112,7 @@ export const parseBrokerOrder = (raw: unknown): BrokerOrderSnapshot => {
     filledQty: finiteNumber(order.filled_qty),
     filledAvgPrice: nullableNumber(order.filled_avg_price),
     side: order.side,
+    positionIntent: order.position_intent ?? null,
     status: order.status,
     limitPrice: nullableNumber(order.limit_price),
     submittedAt: order.submitted_at ?? null,

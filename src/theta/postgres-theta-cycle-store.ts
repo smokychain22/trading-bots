@@ -112,6 +112,7 @@ function persistenceCandidates(cycle:ThetaShadowCycleResult):readonly Persistabl
     evaluated.push({candidateId:optionSymbol,rank:candidate.paretoRank??index+1,
       actionFeasible:complete&&candidate.structurallyFeasible&&candidate.riskFeasible,
       quantity:complete?candidate.sizing.quantity:0,ownershipScore,eligibilityBasis:complete?'EMPIRICAL_OWNERSHIP':'INELIGIBLE',reasons,
+      paperBootstrapPolicyVersion:null,paperBootstrapAllowedUnknownComponents:[],paperBootstrapReasonCodes:[],
       economics:collateral===null||maxProfit===null?null:{max_profit:maxProfit,
         break_even_price:candidate.economics.breakEven??candidate.legs[0]?.strike??0,
         secured_collateral_per_contract:collateral,

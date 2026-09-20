@@ -105,7 +105,7 @@ const baseRequest = (overrides: Partial<NewRiskOrchestrationRequest> = {}): NewR
   },
   costAssumptions: { commissionPerContract: 0.65, feesPerContract: 0.05, estimatedSlippagePerContract: 1.0, costModelVersion: 'cost-v1' },
   aegisPolicy: {
-    policyVersion: 'aegis-v1', maxTickerConcentrationPct: 0.15, maxSectorConcentrationPct: 0.3, maxCorrelationClusterPct: 0.3,
+    policyVersion: 'aegis-v1', hardCapMultiplier: 1.5, maxTickerConcentrationPct: 0.15, maxSectorConcentrationPct: 0.3, maxCorrelationClusterPct: 0.3,
     maxPortfolioCapitalAtRiskPct: 0.5, maxInventoryCapacityPct: 0.5, maxAssignmentCapacityPct: 0.5,
     maxRecoveryCapacityPct: 0.3, providerRequiredStates: ['OK'],
   },
@@ -189,7 +189,7 @@ itMockedProviderRealCodePath('versioned Paper bootstrap breaks the ownership col
       historicalRecoveryP95Days: null,
       severeDrawdownEpisodeCount: null,
     },
-    candidates: [candidate('C1', { severeDrawdownProbability: null })],
+    candidates: [candidate('C1', { severeDrawdownProbability: 0.05 })],
     paperEntryBootstrap: assessPaperEntryBootstrap({
       enabled:true,runtimeMode:'MASTER_THETA_PAPER',brokerEnvironment:'PAPER',accountStatus:'ACTIVE',
       reconciliationQuality:'GOOD',localOnlyIntentCount:0,externalOrUnknownOrderCount:0,
@@ -202,6 +202,30 @@ itMockedProviderRealCodePath('versioned Paper bootstrap breaks the ownership col
   assert.ok((evaluated?.quantity ?? 0) > 0);
   assert.ok(evaluated?.reasons.some((reason) => reason.code === 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED'));
   assert.equal(result.receipt.executionAuthorized, false);
+});
+
+itMockedProviderRealCodePath('Paper bootstrap cannot turn unrelated or candidate-tail UNKNOWN evidence into quantity', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    ownershipInputs: {
+      ...baseRequest().ownershipInputs,
+      historicalRecoveryMedianDays: null,
+      historicalRecoveryP95Days: null,
+      severeDrawdownEpisodeCount: null,
+      earningsDistanceDays: null,
+      exDividendDistanceDays: null,
+      knownEventDistanceDays: null,
+    },
+    candidates: [candidate('C1', { severeDrawdownProbability: null })],
+    paperEntryBootstrap: assessPaperEntryBootstrap({
+      enabled:true,runtimeMode:'MASTER_THETA_PAPER',brokerEnvironment:'PAPER',accountStatus:'ACTIVE',
+      reconciliationQuality:'GOOD',localOnlyIntentCount:0,externalOrUnknownOrderCount:0,
+      marketOpen:true,calendarSessionConfirmed:true,followerExecutionEnabled:false,liveMoneyAuthorized:false,
+    }),
+  }));
+  const evaluated = result.thetaQ?.candidates[0];
+  assert.equal(evaluated?.ownershipScore, null);
+  assert.equal(evaluated?.eligibilityBasis, 'INELIGIBLE');
+  assert.equal(evaluated?.quantity, 0);
 });
 
 itMockedProviderRealCodePath('candidateEconomics is null when the pipeline fails closed before any candidate economics are computed', async () => {

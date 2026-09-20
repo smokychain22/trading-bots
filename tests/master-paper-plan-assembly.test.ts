@@ -24,7 +24,9 @@ const frontier=():CanonicalStrategyFrontier=>({
         callAwayProceeds:null,wholeChainPnlAtCallAway:null,capitalDayYield:0.00026,expectedAfterCostEv:null},
       assignmentCapacityQty:3,aegisState:'ALLOW_FULL',hardBlockers:[],softEvidence:[],unknownEvidence:['EMPIRICAL_EV_UNKNOWN'],
       structurallyFeasible:true,riskFeasible:true,sizing:{quantity:3,bindingConstraint:'COLLATERAL_CAP',reasons:[]},
-      paretoRank:1,dominatedBy:[],executionAuthorized:false}]}],
+      paretoRank:1,dominatedBy:[],executionAuthorized:false,
+      entryEligibility:{basis:'EMPIRICAL_OWNERSHIP',paperBootstrapPolicyVersion:null,
+        paperBootstrapAllowedUnknownComponents:[],paperBootstrapReasonCodes:[]}}]}],
   branchesConsidered:['THETA_CONVENTIONAL'],branchesEvaluated:['THETA_CONVENTIONAL'],selectedBranch:'THETA_CONVENTIONAL',
   selectedCandidateId:'THETA_CONVENTIONAL:AAPL261016P00150000',primaryAction:'OPEN_CSP',selectedQuantity:3,
   empiricalUtilityState:'UNKNOWN_NOT_YET_CALIBRATED',secondBestCandidateId:null,nearMissCandidateId:null,bestRejectedCandidateId:null,
@@ -74,6 +76,25 @@ test('a plan cannot use an AEGIS state from a different candidate',()=>{
   const result=assembleMasterPaperEvidencePlan(input({aegisState:'ALLOW_REDUCED'}));
   assert.equal(result.state,'BLOCKED');
   assert.ok(result.blockers.includes('AEGIS_SELECTION_LINEAGE_MISMATCH'));
+});
+
+test('plan assembly rejects missing, ineligible, or malformed bootstrap entry lineage',()=>{
+  const baseFrontier=frontier();
+  const branch=baseFrontier.branches[0];
+  const candidate=branch?.candidates[0];
+  assert.ok(branch&&candidate);
+  const withEligibility=(entryEligibility:typeof candidate.entryEligibility)=>({
+    ...baseFrontier,branches:[{...branch,candidates:[{...candidate,entryEligibility}]}],
+  });
+  for(const [entryEligibility,expected] of [
+    [undefined,'ENTRY_ELIGIBILITY_LINEAGE_MISSING'],
+    [{basis:'INELIGIBLE' as const,paperBootstrapPolicyVersion:null,paperBootstrapAllowedUnknownComponents:[],paperBootstrapReasonCodes:[]},'ENTRY_ELIGIBILITY_FAILED'],
+    [{basis:'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED' as const,paperBootstrapPolicyVersion:'theta-paper-entry-bootstrap-v1',paperBootstrapAllowedUnknownComponents:['RecoveryQuality'],paperBootstrapReasonCodes:['RECOVERY_HISTORY_UNKNOWN']},'PAPER_BOOTSTRAP_ELIGIBILITY_LINEAGE_INVALID'],
+  ] as const){
+    const result=assembleMasterPaperEvidencePlan(input({frontier:withEligibility(entryEligibility)}));
+    assert.equal(result.state,'BLOCKED');
+    assert.ok(result.blockers.includes(expected));
+  }
 });
 
 test('contract multiplier is used when converting modeled cost to per-share boundary',()=>{

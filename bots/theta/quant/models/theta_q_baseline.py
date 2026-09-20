@@ -75,6 +75,8 @@ class CspCandidateInputs:
     # and downstream sizing gates remain independent and fail closed.
     paper_bootstrap_eligible: bool = False
     paper_bootstrap_policy_version: Optional[str] = None
+    paper_bootstrap_allowed_unknown_components: Tuple[str, ...] = ()
+    paper_bootstrap_reason_codes: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -342,11 +344,18 @@ class BaselinePolicy:
         below_floor = any(r.code == "OWNERSHIP_BELOW_FLOOR" for r in ownership_reasons)
         unknown_ownership = ownership_score is None
 
+        bootstrap_evidence_valid = (
+            c.paper_bootstrap_allowed_unknown_components == ("RecoveryQuality",)
+            and c.paper_bootstrap_reason_codes == ("RECOVERY_HISTORY_UNKNOWN",)
+            and c.p_severe_drawdown is not None
+            and 0.0 <= c.p_severe_drawdown <= 1.0
+        )
         bootstrap_eligible = (
             unknown_ownership
             and not below_floor
             and c.paper_bootstrap_eligible
             and c.paper_bootstrap_policy_version is not None
+            and bootstrap_evidence_valid
         )
         if bootstrap_eligible:
             reasons.append(ReasonCode(

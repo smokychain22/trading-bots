@@ -67,6 +67,31 @@ test('Windows installer does not silently queue evidence capture on laptop batte
   assert.match(source,/-StartWhenAvailable/);
   assert.match(source,/-MultipleInstances IgnoreNew/);
   assert.match(source,/THETA_PRODUCTION_ENV_NOT_PROVISIONED/);
+  assert.match(source,/git worktree add --detach/);
+  assert.match(source,/releasePath=\$releasePath/);
+  assert.match(source,/-ControlRoot/);
+  assert.match(source,/\$currentTask = Get-ScheduledTask -TaskName \$TaskName/);
+  assert.match(source,/New-Item -ItemType File -Force -Path \$currentStopFile/);
+  assert.match(source,/Stop-ScheduledTask -TaskName \$TaskName/);
+  assert.match(source,/Remove-Item -LiteralPath \$currentStopFile/);
+  assert.match(source,/\$existingRuntime\.workerId/);
+  assert.match(source,/workerId=\$workerId/);
+});
+
+test('Windows worker status never reports stale ONLINE health as current when the supervisor is not running',async()=>{
+  const statusSource=await readFile('tools/windows/status-theta-local-worker.ps1','utf8');
+  assert.match(statusSource,/taskRunning/);
+  assert.match(statusSource,/BLOCKED_RUNTIME_SHA_MISMATCH/);
+  assert.match(statusSource,/runtimeShaAligned/);
+  assert.match(statusSource,/healthShaAligned/);
+  assert.match(statusSource,/STARTING_NEW_RELEASE/);
+  assert.match(statusSource,/releaseSha/);
+  assert.match(statusSource,/executionGate=if\(\$taskRunning-and\$healthShaAligned\)/);
+  const workerSource=await readFile('tools/windows/theta-local-worker.ps1','utf8');
+  assert.match(workerSource,/failureCode='THETA_RUNTIME_SHA_MISMATCH'/);
+  assert.match(workerSource,/executionGate='LOCKED'/);
+  assert.match(workerSource,/runtime\.releasePath/);
+  assert.match(workerSource,/THETA_RUNTIME_RELEASE_PATH_MISMATCH/);
 });
 
 test('candidate scan timestamp advances only for a real complete or partial evidence scan',()=>{

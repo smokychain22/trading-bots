@@ -173,9 +173,11 @@ class OwnershipScoringTests(unittest.TestCase):
     def test_paper_bootstrap_can_size_without_manufacturing_ownership_score(self):
         result = self.policy.evaluate(_clean_candidate(
             ownership_acceptability=None,
-            p_severe_drawdown=None,
+            p_severe_drawdown=0.1,
             paper_bootstrap_eligible=True,
-            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v1",
+            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v2",
+            paper_bootstrap_allowed_unknown_components=("RecoveryQuality",),
+            paper_bootstrap_reason_codes=("RECOVERY_HISTORY_UNKNOWN",),
         ))
         self.assertFalse(result.hard_veto)
         self.assertIsNone(result.ownership_score)
@@ -188,7 +190,9 @@ class OwnershipScoringTests(unittest.TestCase):
             ownership_acceptability=0.2,
             p_severe_drawdown=0.1,
             paper_bootstrap_eligible=True,
-            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v1",
+            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v2",
+            paper_bootstrap_allowed_unknown_components=("RecoveryQuality",),
+            paper_bootstrap_reason_codes=("RECOVERY_HISTORY_UNKNOWN",),
         ))
         self.assertEqual(result.quantity, 0)
         self.assertEqual(result.eligibility_basis, "INELIGIBLE")
@@ -197,12 +201,41 @@ class OwnershipScoringTests(unittest.TestCase):
     def test_paper_bootstrap_requires_a_versioned_policy(self):
         result = self.policy.evaluate(_clean_candidate(
             ownership_acceptability=None,
-            p_severe_drawdown=None,
+            p_severe_drawdown=0.1,
             paper_bootstrap_eligible=True,
             paper_bootstrap_policy_version=None,
+            paper_bootstrap_allowed_unknown_components=("RecoveryQuality",),
+            paper_bootstrap_reason_codes=("RECOVERY_HISTORY_UNKNOWN",),
         ))
         self.assertEqual(result.quantity, 0)
         self.assertEqual(result.eligibility_basis, "INELIGIBLE")
+
+    def test_paper_bootstrap_rejects_untyped_or_non_recovery_unknown_evidence(self):
+        missing_lineage = self.policy.evaluate(_clean_candidate(
+            ownership_acceptability=None,
+            p_severe_drawdown=0.1,
+            paper_bootstrap_eligible=True,
+            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v2",
+        ))
+        wrong_component = self.policy.evaluate(_clean_candidate(
+            ownership_acceptability=None,
+            p_severe_drawdown=0.1,
+            paper_bootstrap_eligible=True,
+            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v2",
+            paper_bootstrap_allowed_unknown_components=("TailQuality",),
+            paper_bootstrap_reason_codes=("TAIL_UNKNOWN",),
+        ))
+        missing_tail = self.policy.evaluate(_clean_candidate(
+            ownership_acceptability=None,
+            p_severe_drawdown=None,
+            paper_bootstrap_eligible=True,
+            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v2",
+            paper_bootstrap_allowed_unknown_components=("RecoveryQuality",),
+            paper_bootstrap_reason_codes=("RECOVERY_HISTORY_UNKNOWN",),
+        ))
+        self.assertEqual(missing_lineage.quantity, 0)
+        self.assertEqual(wrong_component.quantity, 0)
+        self.assertEqual(missing_tail.quantity, 0)
 
     def test_below_floor_ownership_zeroes_quantity_but_is_not_a_hard_veto(self):
         result = self.policy.evaluate(

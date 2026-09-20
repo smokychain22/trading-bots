@@ -133,11 +133,14 @@ test('fetchOpenOrders requests status=open and parses real-shaped orders', async
   let requestedUrl = '';
   const fetchImpl = (async (input: RequestInfo | URL) => {
     requestedUrl = input instanceof URL ? input.toString() : String(input);
-    return jsonResponse(200, [{ id: 'order-1', client_order_id: 'client-1', symbol: 'SPY', side: 'sell', qty: '1', status: 'new', submitted_at: NOW }]);
+    return jsonResponse(200, [{ id: 'order-1', client_order_id: 'client-1', symbol: 'SPY261009P00500000', side: 'sell',
+      position_intent: 'sell_to_open', qty: '1', limit_price: '2.50', status: 'new', submitted_at: NOW }]);
   }) as typeof fetch;
   const result = await fetchOpenOrders(baseConfig(fetchImpl), NOW);
   assert.ok(requestedUrl.includes('status=open'));
   assert.equal(result[0]?.orderId, 'order-1');
+  assert.equal(result[0]?.positionIntent, 'sell_to_open');
+  assert.equal(result[0]?.limitPrice, 2.5);
 });
 
 test('fetchMarketClock parses timestamp/isOpen', async () => {

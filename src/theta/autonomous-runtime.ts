@@ -49,6 +49,17 @@ export const masterPaperRuntimeMode = 'MASTER_THETA_PAPER' as const;
 export const executionQuoteBlocker = 'EXTERNAL_QUOTE_BLOCKER' as const;
 const PAPER_HOST = 'https://paper-api.alpaca.markets' as const;
 
+export function classifyRuntimeExecutionGate(input: {
+  readonly executionQuoteAuthorityReady: boolean;
+  readonly newRiskSubmissionEnabled: boolean;
+  readonly managementPolicyProviderReady: boolean;
+  readonly firstCanarySubmissionAvailable: boolean;
+}): typeof executionQuoteBlocker | 'LOCKED' | 'ACTIVE' {
+  if (!input.executionQuoteAuthorityReady) return executionQuoteBlocker;
+  return input.newRiskSubmissionEnabled && input.managementPolicyProviderReady
+    && input.firstCanarySubmissionAvailable ? 'ACTIVE' : 'LOCKED';
+}
+
 export interface AutonomousRuntimeReport {
   readonly correlationId: string;
   readonly status: 'DUPLICATE' | 'SUCCEEDED' | 'DEGRADED' | 'FAILED' | 'QUARANTINED';
@@ -344,10 +355,13 @@ export async function runAutonomousRuntimeCycle(
   const [executionQuoteAuthorityReady,firstCanarySubmissionAvailable]=await Promise.all([
     runtimeStore.executionQuoteAuthorityReady(),runtimeStore.firstCanarySubmissionAvailable(),
   ]);
-  const newRiskRuntimeEnabled=executionControl.newRiskSubmissionEnabled
-    &&managementPolicyEvidenceProvider!==undefined&&executionQuoteAuthorityReady&&firstCanarySubmissionAvailable;
-  const runtimeExecutionGate = !executionQuoteAuthorityReady ? executionQuoteBlocker
-    : newRiskRuntimeEnabled ? 'ACTIVE' as const : 'LOCKED' as const;
+  const runtimeExecutionGate = classifyRuntimeExecutionGate({
+    executionQuoteAuthorityReady,
+    newRiskSubmissionEnabled: executionControl.newRiskSubmissionEnabled,
+    managementPolicyProviderReady: managementPolicyEvidenceProvider !== undefined,
+    firstCanarySubmissionAvailable,
+  });
+  const newRiskRuntimeEnabled = runtimeExecutionGate === 'ACTIVE';
   const bucket = minuteBucket(now);
   const scope=dependencies.scope??'FULL';
   const allowedJobTypes=new Set(jobTypesForScope(scope));

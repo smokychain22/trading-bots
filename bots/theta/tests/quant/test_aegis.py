@@ -20,6 +20,7 @@ from models.aegis import (  # noqa: E402
 def _policy(**overrides) -> AegisPolicy:
     defaults = dict(
         policy_version="TEST-AEGIS-1",
+        hard_cap_multiplier=1.5,
         max_ticker_concentration_pct=0.20,
         max_sector_concentration_pct=0.35,
         max_correlation_cluster_pct=0.40,
@@ -71,6 +72,13 @@ class HardVetoTests(unittest.TestCase):
     def test_severely_exceeded_portfolio_risk_is_hard_veto(self):
         assessment = assess_aegis(_policy(), _clean_inputs(portfolio_capital_at_risk_pct=0.95))
         self.assertEqual(assessment.new_risk_state, RiskState.HARD_VETO)
+
+    def test_versioned_hard_cap_multiplier_controls_the_boundary(self):
+        assessment = assess_aegis(
+            _policy(hard_cap_multiplier=2.0),
+            _clean_inputs(portfolio_capital_at_risk_pct=0.95),
+        )
+        self.assertEqual(assessment.new_risk_state, RiskState.ALLOW_REDUCED)
 
 
 class ExitSupremacyTests(unittest.TestCase):

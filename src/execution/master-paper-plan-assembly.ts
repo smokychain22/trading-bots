@@ -2,6 +2,7 @@ import type { CanonicalStrategyFrontier } from '../theta/canonical-strategy-fron
 import { deterministicRuntimeUuid } from '../theta/postgres-theta-cycle-store.js';
 import { applyPaperEvidenceRiskCap } from './execution-authorization-tier.js';
 import { masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
+import { paperBootstrapAllowedUnknownComponent, paperBootstrapAllowedUnknownReason, paperEntryBootstrapPolicyVersion } from '../theta/paper-entry-bootstrap.js';
 
 export const masterPaperPlanAssemblyVersion = 'theta-master-paper-plan-assembly-v1' as const;
 
@@ -82,6 +83,18 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
   if (input.aegisState === null) blockers.push('AEGIS_SELECTION_LINEAGE_MISSING');
   else if (!['ALLOW_FULL', 'ALLOW_REDUCED'].includes(input.aegisState)) blockers.push('AEGIS_NOT_APPROVED');
   if (selected !== undefined && input.aegisState !== selected.aegisState) blockers.push('AEGIS_SELECTION_LINEAGE_MISMATCH');
+  const entryEligibility = selected?.entryEligibility;
+  if (entryEligibility === undefined) blockers.push('ENTRY_ELIGIBILITY_LINEAGE_MISSING');
+  else if (entryEligibility.basis === 'INELIGIBLE') blockers.push('ENTRY_ELIGIBILITY_FAILED');
+  else if (entryEligibility.basis === 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED') {
+    if (entryEligibility.paperBootstrapPolicyVersion !== paperEntryBootstrapPolicyVersion
+      || entryEligibility.paperBootstrapAllowedUnknownComponents.length !== 1
+      || entryEligibility.paperBootstrapAllowedUnknownComponents[0] !== paperBootstrapAllowedUnknownComponent
+      || entryEligibility.paperBootstrapReasonCodes.length !== 1
+      || entryEligibility.paperBootstrapReasonCodes[0] !== paperBootstrapAllowedUnknownReason) {
+      blockers.push('PAPER_BOOTSTRAP_ELIGIBILITY_LINEAGE_INVALID');
+    }
+  }
 
   if (blockers.length > 0 || selected === undefined || selectedLeg === undefined
     || input.executionAccountId === null || input.persistedCandidateId === null
