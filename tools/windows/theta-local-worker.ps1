@@ -26,7 +26,13 @@ if ($token.Length -lt 32) { throw 'THETA_LOCAL_WORKER_TOKEN_INVALID' }
 
 Set-Location -LiteralPath $RepositoryPath
 $currentSha = (& git rev-parse HEAD).Trim()
-if ($LASTEXITCODE -ne 0 -or $currentSha -ne $runtime.buildSha) { throw 'THETA_RUNTIME_SHA_MISMATCH' }
+if ($LASTEXITCODE -ne 0 -or $currentSha -ne $runtime.buildSha) {
+  @{state='BLOCKED';observedAt=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
+    workspaceSha=$currentSha;mode='MASTER_THETA_PAPER';executionGate='LOCKED';
+    failureCode='THETA_RUNTIME_SHA_MISMATCH'} | ConvertTo-Json |
+    Set-Content -LiteralPath $statusFile -Encoding utf8
+  throw 'THETA_RUNTIME_SHA_MISMATCH'
+}
 if ((& git status --porcelain --untracked-files=no).Count -gt 0) { throw 'THETA_RUNTIME_TRACKED_FILES_DIRTY' }
 if (Test-Path -LiteralPath $stopFile) { Remove-Item -LiteralPath $stopFile -Force }
 
