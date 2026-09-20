@@ -1,7 +1,7 @@
 {
   "schemaVersion": "theta-r7-risk-policy-summary-v1",
-  "generatedAt": "2026-09-20T12:30:56.000Z",
-  "sourceReceiptHash": "d9936a7cdf8328da2818fb7d24f279be6c224261de201829f139d264055c9d7c",
+  "generatedAt": "2026-09-20T12:45:27.511Z",
+  "sourceReceiptHash": "633e9a649bae02b1e46118ca5d47a6c3909fb99e30c6cafccc101d0fd9bf0cc3",
   "severeDrawdown": {
     "finding": "NO_POLICY_EMPIRICALLY_SUPPORTED",
     "activationState": "PENDING_RESEARCH_REVIEW",
@@ -10,9 +10,9 @@
     "temporalYears": 8,
     "barsComplete": true,
     "primaryGrid": [
-      { "id": "A_30D_10PCT", "resolvedN": 36388, "censoredN": 504, "effectiveN": 1791, "breachRate": 0.15691986369132682 },
-      { "id": "B_45D_15PCT", "resolvedN": 36124, "censoredN": 768, "effectiveN": 1194, "breachRate": 0.10682648654634039 },
-      { "id": "C_60D_20PCT", "resolvedN": 35860, "censoredN": 1032, "effectiveN": 907, "breachRate": 0.07730061349693251 }
+      { "id": "A_30D_10PCT", "resolvedN": 36388, "censoredN": 504, "effectiveN": 1791, "effectivePositiveGroups": 604, "breachRate": 0.15691986369132682 },
+      { "id": "B_45D_15PCT", "resolvedN": 36124, "censoredN": 768, "effectiveN": 1194, "effectivePositiveGroups": 308, "breachRate": 0.10682648654634039 },
+      { "id": "C_60D_20PCT", "resolvedN": 35860, "censoredN": 1032, "effectiveN": 907, "effectivePositiveGroups": 173, "breachRate": 0.07730061349693251 }
     ],
     "modelTrained": false,
     "policyActivated": false

@@ -2,13 +2,13 @@
 
 Date: 2026-09-20  
 Study version: `theta-risk-policy-empirical-study-v1`  
-Immutable receipt hash: `d9936a7cdf8328da2818fb7d24f279be6c224261de201829f139d264055c9d7c`  
+Immutable receipt hash: `633e9a649bae02b1e46118ca5d47a6c3909fb99e30c6cafccc101d0fd9bf0cc3`  
 Finding: `NO_POLICY_EMPIRICALLY_SUPPORTED`  
 Activation state: `PENDING_RESEARCH_REVIEW`
 
 ## Data contract
 
-The study used 36,893 real Alpaca IEX daily stock bars for 24 explicitly classified research symbols. The requested source window was 2016-01-01 through 2026-09-20. Actual resolved observations span eight calendar years. Bars were requested with `adjustment=split`, consistent with the canonical bar-adjustment policy, so stock splits and reverse splits cannot silently appear as economic drawdowns.
+The study used 36,893 real Alpaca IEX daily stock bars for 24 explicitly classified research symbols. The requested source window was 2016-01-01 through 2026-09-19. The returned bar window is 2018-11-01 through 2026-09-18 and spans eight calendar years. Bars were requested with `adjustment=split`, consistent with the canonical bar-adjustment policy, so stock splits and reverse splits cannot silently appear as economic drawdowns.
 
 Each entry observation uses its split-adjusted close. Maximum adverse excursion uses only later daily lows inside the specified calendar horizon. Observations whose full horizon was unavailable are right-censored and never counted as survived or breached. Effective N uses fixed, horizon-length time blocks per underlying so daily overlapping windows do not masquerade as independent samples.
 
@@ -16,11 +16,11 @@ The universe contains broad ETFs, sector ETFs, lower-volatility single stocks, a
 
 ## Primary grid
 
-| Policy | Resolved N | Censored N | Effective N | Breaches | Breach rate | Median MAE | 5th percentile MAE |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| A, 30 days / 10% | 36,388 | 504 | 1,791 | 5,710 | 15.69% | -3.64% | -17.77% |
-| B, 45 days / 15% | 36,124 | 768 | 1,194 | 3,859 | 10.68% | -4.44% | -21.35% |
-| C, 60 days / 20% | 35,860 | 1,032 | 907 | 2,772 | 7.73% | -5.08% | -24.29% |
+| Policy | Resolved N | Censored N | Effective N | Effective positive groups | Breaches | Breach rate | Median MAE | 5th percentile MAE |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| A, 30 days / 10% | 36,388 | 504 | 1,791 | 604 | 5,710 | 15.69% | -3.64% | -17.77% |
+| B, 45 days / 15% | 36,124 | 768 | 1,194 | 308 | 3,859 | 10.68% | -4.44% | -21.35% |
+| C, 60 days / 20% | 35,860 | 1,032 | 907 | 173 | 2,772 | 7.73% | -5.08% | -24.29% |
 
 Continuous MAE distributions were computed before threshold labels. The sensitivity grid also evaluated 30/15, 45/10, 45/20, and 60/15. Those cells remain research diagnostics and are not activated policies.
 
