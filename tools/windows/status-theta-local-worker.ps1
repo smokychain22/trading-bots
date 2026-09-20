@@ -11,8 +11,10 @@ $workspaceSha=(& git -C $repositoryPath rev-parse HEAD 2>$null).Trim()
 $releasePath=if($null-ne$runtime-and$null-ne$runtime.releasePath){[string]$runtime.releasePath}else{$null}
 $releaseSha=if($null-ne$releasePath-and(Test-Path -LiteralPath $releasePath)){(& git -C $releasePath rev-parse HEAD 2>$null).Trim()}else{$null}
 $runtimeShaAligned=$null-ne$runtime-and$releaseSha-eq[string]$runtime.buildSha
+$healthShaAligned=$null-ne$health-and$null-ne$runtime-and[string]$health.buildSha-eq[string]$runtime.buildSha
 $taskRunning=$null-ne$task-and[string]$task.State-eq'Running'
-$effectiveState=if($taskRunning){if($null-ne$health){[string]$health.state}else{'STARTING'}}
+$effectiveState=if($taskRunning){if(-not$runtimeShaAligned){'BLOCKED_RUNTIME_SHA_MISMATCH'}
+  elseif(-not$healthShaAligned){'STARTING_NEW_RELEASE'}else{[string]$health.state}}
   elseif($null-ne$runtime-and-not$runtimeShaAligned){'BLOCKED_RUNTIME_SHA_MISMATCH'}
   elseif($null-ne$task){'NOT_RUNNING'}else{'NOT_INSTALLED'}
 $settings=if($null-ne$task){$task.Settings}else{$null}
@@ -27,4 +29,5 @@ Write-Output (@{installed=$null-ne$task;taskState=if($null-ne$task){[string]$tas
   multipleInstances=if($null-ne$settings){[string]$settings.MultipleInstances}else{'UNKNOWN'};
   reportedHealth=$health;effectiveState=$effectiveState;runtimeSha=if($null-ne$runtime){[string]$runtime.buildSha}else{$null};
   workspaceSha=$workspaceSha;releasePath=$releasePath;releaseSha=$releaseSha;runtimeShaAligned=$runtimeShaAligned;
-  executionGate=if($taskRunning-and$null-ne$health){[string]$health.executionGate}else{'LOCKED'}} | ConvertTo-Json -Depth 6 -Compress)
+  healthShaAligned=$healthShaAligned;
+  executionGate=if($taskRunning-and$healthShaAligned){[string]$health.executionGate}else{'LOCKED'}} | ConvertTo-Json -Depth 6 -Compress)

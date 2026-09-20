@@ -77,8 +77,10 @@ test('Windows worker status never reports stale ONLINE health as current when th
   assert.match(statusSource,/taskRunning/);
   assert.match(statusSource,/BLOCKED_RUNTIME_SHA_MISMATCH/);
   assert.match(statusSource,/runtimeShaAligned/);
+  assert.match(statusSource,/healthShaAligned/);
+  assert.match(statusSource,/STARTING_NEW_RELEASE/);
   assert.match(statusSource,/releaseSha/);
-  assert.match(statusSource,/executionGate=if\(\$taskRunning/);
+  assert.match(statusSource,/executionGate=if\(\$taskRunning-and\$healthShaAligned\)/);
   const workerSource=await readFile('tools/windows/theta-local-worker.ps1','utf8');
   assert.match(workerSource,/failureCode='THETA_RUNTIME_SHA_MISMATCH'/);
   assert.match(workerSource,/executionGate='LOCKED'/);
