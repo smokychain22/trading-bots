@@ -72,3 +72,10 @@ test('provisional assignment upgrades in place when delayed OPASN arrives', () =
   const registry = new AssignmentRegistry(); registry.upsert(provisional); registry.upsert(confirmed);
   assert.equal(registry.size, 1);
 });
+
+test('unknown stock quantity cannot create a provisional assignment', () => {
+  const input = { executionAccountId: 'account-1', chainId: 'chain-1', optionSymbol: 'AAPL261016P00150000', underlyingSymbol: 'AAPL', contracts: 1, multiplier: 100, occurrenceDate: '2026-10-16' };
+  const previous = [{ symbol: input.optionSymbol, quantity: -1 }, { symbol: 'AAPL', quantity: 0 }];
+  const current = [{ symbol: 'AAPL', quantity: null }];
+  assert.equal(detectAssignment(input, previous, current, []), null);
+});

@@ -3,7 +3,7 @@ import type { BrokerActivity } from './broker.js';
 
 export interface PositionEvidence {
   readonly symbol: string;
-  readonly quantity: number;
+  readonly quantity: number | null;
 }
 export interface AssignmentCandidate {
   readonly executionAccountId: string;
@@ -27,12 +27,15 @@ const assignmentKey = (input: AssignmentCandidate): string => createHash('sha256
   .digest('hex');
 
 export function detectAssignment(input: AssignmentCandidate, previous: readonly PositionEvidence[], current: readonly PositionEvidence[], activities: readonly BrokerActivity[]): ReconciledAssignment | null {
-  const optionWasShort = (previous.find((position) => position.symbol === input.optionSymbol)?.quantity ?? 0) < 0;
+  const previousOption = previous.find((position) => position.symbol === input.optionSymbol);
+  const optionWasShort = previousOption !== undefined && previousOption.quantity !== null && previousOption.quantity < 0;
   const optionNowAbsent = !current.some((position) => position.symbol === input.optionSymbol && position.quantity !== 0);
   const expectedShares = input.contracts * input.multiplier;
-  const priorShares = previous.find((position) => position.symbol === input.underlyingSymbol)?.quantity ?? 0;
-  const currentShares = current.find((position) => position.symbol === input.underlyingSymbol)?.quantity ?? 0;
-  const stockAppeared = currentShares - priorShares >= expectedShares;
+  const priorPosition = previous.find((position) => position.symbol === input.underlyingSymbol);
+  const currentPosition = current.find((position) => position.symbol === input.underlyingSymbol);
+  const priorShares = priorPosition === undefined ? 0 : priorPosition.quantity;
+  const currentShares = currentPosition === undefined ? 0 : currentPosition.quantity;
+  const stockAppeared = priorShares !== null && currentShares !== null && currentShares - priorShares >= expectedShares;
   const activity = activities.find((item) => item.activityType === 'OPASN' && item.symbol === input.optionSymbol);
   if (activity !== undefined) {
     return { reconciliationKey: assignmentKey(input), state: 'CONFIRMED', stockQuantity: expectedShares, providerActivityId: activity.id };

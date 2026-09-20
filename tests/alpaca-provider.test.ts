@@ -124,6 +124,14 @@ test('fetchPositions parses a real-shaped positions array', async () => {
   assert.equal(result[0]?.quantity, 100);
 });
 
+test('fetchPositions preserves a malformed quantity as UNKNOWN instead of zero', async () => {
+  const fetchImpl = (async () => jsonResponse(200, [
+    { symbol: 'AAPL', asset_class: 'us_equity', qty: 'not-a-number', side: 'long' },
+  ])) as typeof fetch;
+  const result = await fetchPositions(baseConfig(fetchImpl), NOW);
+  assert.equal(result[0]?.quantity, null);
+});
+
 test('fetchPositions rejects a non-array response as MALFORMED_RESPONSE', async () => {
   const fetchImpl = (async () => jsonResponse(200, { not: 'an array' })) as typeof fetch;
   await assert.rejects(() => fetchPositions(baseConfig(fetchImpl), NOW));

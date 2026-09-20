@@ -170,3 +170,29 @@ test('candidate-specific real broker capacity is preserved by canonical sizing',
   const selected = result.branches[0]?.candidates[0];
   assert.equal(selected?.sizing.bindingConstraint, 'BROKER_ALLOWED');
 });
+
+test('covered-call call-away PnL remains unknown when premium is unknown', () => {
+  const call = contract({ optionType: 'CALL', optionSymbol: 'AAPL261016C00210000', occSymbol: 'AAPL261016C00210000',
+    strike: 210, bid: null, ask: 1.25, delta: 0.25 });
+  const result = buildCanonicalStrategyFrontier({
+    ...base, contracts: [call], routing: routing([]),
+    stock: { underlying: 'AAPL', shares: 100, currentPrice: 200, brokerCostBasisPerShare: 205, wholeChainEconomicBasisPerShare: 202 },
+  });
+  const candidate = result.branches.find((branch) => branch.branch === 'THETA_CC')?.candidates[0];
+  assert.equal(candidate?.economics.wholeChainPnlAtCallAway, null);
+});
+
+test('unknown stock quantity keeps recovery and covered-call branches visible but blocked', () => {
+  const call = contract({ optionType: 'CALL', optionSymbol: 'AAPL261016C00210000', occSymbol: 'AAPL261016C00210000',
+    strike: 210, delta: 0.25 });
+  const result = buildCanonicalStrategyFrontier({
+    ...base, contracts: [call], routing: routing([]),
+    stock: { underlying: 'AAPL', shares: null, currentPrice: 200, brokerCostBasisPerShare: 205, wholeChainEconomicBasisPerShare: 202 },
+  });
+  for (const branchName of ['THETA_RECOVERY', 'THETA_CC'] as const) {
+    const branch = result.branches.find((item) => item.branch === branchName);
+    assert.equal(branch?.applicable, true);
+    assert.ok(branch?.candidates.some((candidate) => candidate.hardBlockers.includes('STOCK_QUANTITY_UNKNOWN')));
+    assert.equal(branch?.candidates.some((candidate) => candidate.executionAuthorized), false);
+  }
+});

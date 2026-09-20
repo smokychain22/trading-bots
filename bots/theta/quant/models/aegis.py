@@ -127,6 +127,8 @@ def _per_trade(inputs: AegisInputs) -> RiskFamilyAssessment:
 
 
 def _liquidity(inputs: AegisInputs) -> RiskFamilyAssessment:
+    if inputs.stress_spread_widening_detected is None:
+        return RiskFamilyAssessment(RiskFamily.LIQUIDITY, RiskState.HOLD_ONLY, [ReasonCode("SPREAD_WIDENING_UNKNOWN", -1, "Book-level spread-widening stress is UNKNOWN.")])
     if inputs.stress_spread_widening_detected:
         return RiskFamilyAssessment(RiskFamily.LIQUIDITY, RiskState.ALLOW_REDUCED, [ReasonCode("SPREAD_WIDENING_DETECTED", -1, "Book-level spread widening stress detected.")])
     return RiskFamilyAssessment(RiskFamily.LIQUIDITY, RiskState.ALLOW_FULL, [ReasonCode("LIQUIDITY_OK", 1, "No book-level spread-widening stress detected.")])

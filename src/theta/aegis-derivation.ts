@@ -79,14 +79,12 @@ export function deriveExecutionQualityAcceptable(candidateContracts: readonly No
 }
 
 /**
- * Derives stressGapDetected -- a REQUIRED (non-nullable) boolean in
- * aegis.py -- from the already-computed most-recent 1-day return. A
- * genuine, real adverse move today that exceeds the policy threshold
- * counts as a detected gap; a null ret1d (insufficient history) honestly
- * reports false ("not detected by this rule"), never true, since there is
- * no evidence to detect anything from.
+ * Derives stressGapDetected from the already-computed most-recent 1-day
+ * return. A genuine move whose magnitude exceeds the versioned policy
+ * threshold is detected. Missing history remains UNKNOWN so AEGIS can fail
+ * closed. Absence of evidence must never be rewritten as evidence of no gap.
  */
-export function deriveStressGapDetected(ret1d: number | null, thresholdAbsReturn: number): boolean {
-  if (ret1d === null) return false;
+export function deriveStressGapDetected(ret1d: number | null, thresholdAbsReturn: number): boolean | null {
+  if (ret1d === null) return null;
   return Math.abs(ret1d) >= thresholdAbsReturn;
 }

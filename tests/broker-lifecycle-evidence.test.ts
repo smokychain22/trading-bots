@@ -63,3 +63,12 @@ test('unknown multiplier is non-reconcilable and never defaults to 100', () => {
   assert.equal(result.state, 'INVALID');
   assert.equal(result.reasonCode, 'CONTRACT_ECONOMICS_INVALID');
 });
+
+test('unknown broker stock quantity never becomes zero during assignment classification', () => {
+  const input = base();
+  const result = reconcileManagedOptionLifecycle({
+    ...input, currentPositions: [{ symbol: 'AAPL', quantity: null }], activities: [activity('OPASN')],
+  });
+  assert.equal(result.state, 'UNKNOWN');
+  assert.equal(result.reasonCode, 'STOCK_QUANTITY_UNKNOWN');
+});
