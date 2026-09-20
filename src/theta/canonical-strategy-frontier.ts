@@ -64,6 +64,12 @@ export interface CanonicalFrontierCandidate {
   readonly paretoRank: number | null;
   readonly dominatedBy: readonly string[];
   readonly executionAuthorized: false;
+  readonly entryEligibility?: {
+    readonly basis: 'EMPIRICAL_OWNERSHIP' | 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED' | 'INELIGIBLE';
+    readonly paperBootstrapPolicyVersion: string | null;
+    readonly paperBootstrapAllowedUnknownComponents: readonly string[];
+    readonly paperBootstrapReasonCodes: readonly string[];
+  };
 }
 
 export interface CanonicalBranchFrontier {
@@ -137,6 +143,7 @@ export interface CanonicalStrategyFrontierInput {
   readonly unmanagedBrokerPositionCount: number;
   readonly unevaluatedUnderlyingCount: number;
   readonly optionomicsContext: JsonValue;
+  readonly entryEligibilityByOptionSymbol?: Readonly<Record<string, NonNullable<CanonicalFrontierCandidate['entryEligibility']>>>;
 }
 
 const branchOrder: readonly ThetaStrategyBranch[] = [
@@ -286,6 +293,7 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
     structurallyFeasible: evidence.hardBlockers.length === 0, riskFeasible: evidence.hardBlockers.length === 0,
     sizing: structuralSizing('OPEN_CSP', collateral, assignmentCapacityQty, input, candidateId, candidateAegisState),
     paretoRank: null, dominatedBy: [], executionAuthorized: false,
+    entryEligibility: input.entryEligibilityByOptionSymbol?.[contract.optionSymbol],
   };
 }
 

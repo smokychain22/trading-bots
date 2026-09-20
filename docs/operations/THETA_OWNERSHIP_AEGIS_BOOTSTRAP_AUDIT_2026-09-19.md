@@ -138,15 +138,22 @@ No runtime fix is activated because the repository has no approved cold-start en
 
 The cold-start policy decision is now explicit in code as
 `PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED`, policy version
-`theta-paper-entry-bootstrap-v1`. It is limited to the dedicated
+`theta-paper-entry-bootstrap-v2`. It is limited to the dedicated
 `MASTER_THETA_PAPER` runtime and requires a PAPER broker, ACTIVE account,
 GOOD reconciliation, no local-only or external/unknown order drift, a
 confirmed open market session, follower execution disabled, and live money
-disabled. Passing this policy does not create an ownership score, expected
+disabled. Version 2 also requires typed ownership evidence. The only
+permitted UNKNOWN component is `RecoveryQuality`, the only permitted
+reason is `RECOVERY_HISTORY_UNKNOWN`, severe-drawdown probability must be
+known and valid, every other ownership component must be known, and the
+ownership thesis must remain valid. Passing this policy does not create an ownership score, expected
 value, execution authorization, or broker action.
 
 THETA-Q now keeps `ownershipScore = null` while allowing hard-cap quantity
-calculation only when that versioned bootstrap assessment is eligible. A
+calculation only when that versioned component assessment is eligible. The
+typed lineage is carried through the Python result, canonical candidate,
+and final Paper plan assembly. Missing or malformed lineage blocks the
+action plan. A
 known ownership result below the existing floor still produces quantity
 zero. All existing contract, liquidity, event, quote-age, broker quantity,
 AEGIS, sizing, execution-quality, canary, and relock gates remain in force.
@@ -174,12 +181,12 @@ and multiplier 100. Quantity zero remains valid.
 | Root cause | Status | Evidence |
 |---|---|---|
 | COLD_START_BOOTSTRAP_DEADLOCK | FIXED IN CODE | Explicit uncalibrated Paper-only eligibility, ownership score remains null |
-| OPTIONAL_EVIDENCE_ACCIDENTALLY_HARD_GATED | FIXED FOR PAPER BOOTSTRAP | Missing research ownership evidence no longer alone forces THETA-Q quantity zero in the bounded tier |
+| OPTIONAL_EVIDENCE_ACCIDENTALLY_HARD_GATED | NARROWLY FIXED FOR RECOVERY COLD START | Only missing recovery history can use the bounded bootstrap. Other missing evidence remains blocking |
 | OPTION_CHAIN_MAPPING_MISSING | PARTIAL | Exact contract spread/OI/volume already gate THETA-Q. They are not copied into one underlying-level ownership value because that would lose contract identity |
 | BAR_FEATURE_MAPPING_MISSING | FIXED | PIT-safe 1/5/20/60 return, 10/20/60 RV, MA-relative, volume, and downside-semivariance mapping added |
 | EVENT_ASSEMBLY_MISSING | REMAINS, EXTERNAL/SEMANTIC BLOCKER | Empty or unverified provider responses are not treated as verified no-event state |
 | RECOVERY_HISTORY_LOADER_MISSING | FIXED | PIT query over resolved whole-chain labels, null on empty history |
-| AEGIS_INPUT_INCOMPLETE | REMAINS | sector, correlation cluster, inventory capacity, assignment capacity, recovery capacity, IV shock, and spread-widening families remain UNKNOWN in Production |
+| AEGIS_INPUT_INCOMPLETE | PARTIAL | Broker-derived inventory and assignment capacity are wired. Recovery capacity now uses only unresolved lifecycle-linked stock inventory. Sector, multi-underlying correlation, IV shock, and spread-widening remain UNKNOWN until real producers exist |
 | IV_PERSISTENCE_MISSING | NO CURRENT DEFECT | IV and its provenance are already retained in normalized contracts, FusionSnapshot, and persisted candidate metrics |
 
 ### September 18 aggregate offline replay

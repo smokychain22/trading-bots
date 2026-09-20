@@ -73,6 +73,7 @@ export interface DerivedAccountExposure {
   // present as if it were the whole truth.
   readonly cspCollateralRequired: number | null;
   readonly stockInventoryValue: number | null; // sum of marketValue across us_equity positions; null if any is UNKNOWN
+  readonly stockValueByUnderlying: Readonly<Record<string, number>>;
   readonly shortPutCount: number;
   readonly shortCallCount: number;
   readonly longPutCount: number;
@@ -112,6 +113,7 @@ export interface CandidateInclusiveAegisInputs {
 }
 
 export interface CandidateCapacityPolicy {
+  readonly hardCapMultiplier: number;
   readonly maxTickerConcentrationPct: number;
   readonly maxSectorConcentrationPct: number;
   readonly maxCorrelationClusterPct: number;
@@ -286,6 +288,7 @@ export function deriveAccountExposure(
   return {
     equity, cash, buyingPower, optionsBuyingPower,
     cspCollateralRequired, stockInventoryValue,
+    stockValueByUnderlying: Object.fromEntries([...stockValueByUnderlying.entries()].sort(([a], [b]) => a.localeCompare(b))),
     shortPutCount, shortCallCount, longPutCount, longCallCount,
     openOrderCount: openOrders.length,
     pendingOpeningCapitalAtRisk, pendingAssignmentCollateral,
@@ -296,6 +299,27 @@ export function deriveAccountExposure(
     riskyUnderlyings: [...exposureByUnderlying.keys()].sort(),
     unparsedOptionSymbols,
   };
+}
+
+/**
+ * Recovery capacity is the broker-marked value of inventory tied to an
+ * unresolved assignment/recovery lifecycle, not all stock in the account.
+ * The caller supplies lifecycle authority from the durable chain ledger.
+ */
+export function deriveRecoveryInventoryValue(
+  exposure: DerivedAccountExposure,
+  recoveryUnderlyings: readonly string[] | undefined,
+): number | null {
+  if (recoveryUnderlyings === undefined || exposure.stockInventoryValue === null) return null;
+  const unique = [...new Set(recoveryUnderlyings)];
+  if (unique.length === 0) return 0;
+  let value = 0;
+  for (const underlying of unique) {
+    const stockValue = exposure.stockValueByUnderlying[underlying];
+    if (stockValue === undefined || !Number.isFinite(stockValue)) return null;
+    value += stockValue;
+  }
+  return value;
 }
 
 /**
@@ -311,6 +335,7 @@ export function deriveCandidateInclusiveAegisInputs(
   exposure: DerivedAccountExposure,
   openOrders: readonly AlpacaOpenOrderSnapshot[],
   candidate: CandidateExposureFootprint,
+  recoveryInventoryValue: number | null = null,
 ): CandidateInclusiveAegisInputs {
   const unknownReasons: string[] = [];
   const equity = exposure.equity;
@@ -318,6 +343,7 @@ export function deriveCandidateInclusiveAegisInputs(
   const baseKnown = equity !== null && equity > 0 && exposure.cspCollateralRequired !== null
     && exposure.stockInventoryValue !== null && Number.isFinite(candidateCapital) && candidateCapital >= 0
     && exposure.pendingOpeningCapitalAtRisk !== null && exposure.pendingAssignmentCollateral !== null
+    && recoveryInventoryValue !== null && Number.isFinite(recoveryInventoryValue) && recoveryInventoryValue >= 0
     && exposure.unparsedOptionSymbols.length === 0 && exposure.unclassifiedOpenOrderIds.length === 0;
   if (!baseKnown) unknownReasons.push('ACCOUNT_OR_CURRENT_EXPOSURE_INCOMPLETE');
   if (openOrders.length !== exposure.openOrderCount) unknownReasons.push('PENDING_ORDER_SNAPSHOT_MISMATCH');
@@ -354,7 +380,7 @@ export function deriveCandidateInclusiveAegisInputs(
     inventoryCapacityUsedPct: (exposure.stockInventoryValue as number) / denominator,
     assignmentCapacityUsedPct: ((exposure.cspCollateralRequired as number)
       + (exposure.pendingAssignmentCollateral as number) + candidateCapital) / denominator,
-    recoveryCapacityUsedPct: (exposure.stockInventoryValue as number) / denominator,
+    recoveryCapacityUsedPct: (recoveryInventoryValue as number) / denominator,
     evidenceState: unknownReasons.length === 0 ? 'KNOWN_DERIVED_FROM_REAL' : 'UNKNOWN_INSUFFICIENT_ACCOUNT_STATE',
     derivationVersion: 'theta-candidate-inclusive-capacity-v1', unknownReasons,
   };
@@ -366,6 +392,7 @@ export function deriveCandidateCapacityAssessment(
   candidate: Omit<CandidateExposureFootprint, 'quantity'>,
   brokerAllowedQty: number,
   policy: CandidateCapacityPolicy,
+  recoveryInventoryValue: number | null = null,
 ): CandidateCapacityAssessment {
   const maximum = Number.isInteger(brokerAllowedQty) && brokerAllowedQty > 0 ? brokerAllowedQty : 0;
   const checks: ReadonlyArray<[keyof CandidateInclusiveAegisInputs, keyof CandidateCapacityPolicy, string]> = [
@@ -379,14 +406,14 @@ export function deriveCandidateCapacityAssessment(
   ];
   let bindingConstraints: string[] = maximum === 0 ? ['BROKER_ALLOWED_ZERO'] : [];
   for (let quantity = maximum; quantity >= 1; quantity -= 1) {
-    const inputs = deriveCandidateInclusiveAegisInputs(exposure, openOrders, { ...candidate, quantity });
+    const inputs = deriveCandidateInclusiveAegisInputs(exposure, openOrders, { ...candidate, quantity }, recoveryInventoryValue);
     const exceeded = checks.flatMap(([inputKey, policyKey, reason]) => {
       const value = inputs[inputKey];
       const cap = policy[policyKey];
       // Match AEGIS's hard-veto boundary. Values at the soft cap remain
       // eligible for AEGIS to return ALLOW_REDUCED and let canonical sizing
       // perform the reduction instead of duplicating that policy here.
-      return typeof value === 'number' && Number.isFinite(value) && value >= cap * 1.5 ? [reason] : [];
+      return typeof value === 'number' && Number.isFinite(value) && value >= cap * policy.hardCapMultiplier ? [reason] : [];
     });
     if (exceeded.length === 0) {
       return {
@@ -400,7 +427,7 @@ export function deriveCandidateCapacityAssessment(
   }
   return {
     quantityCap: 0,
-    inputsAtQuantityCap: deriveCandidateInclusiveAegisInputs(exposure, openOrders, { ...candidate, quantity: 1 }),
+    inputsAtQuantityCap: deriveCandidateInclusiveAegisInputs(exposure, openOrders, { ...candidate, quantity: 1 }, recoveryInventoryValue),
     bindingConstraints,
     assessmentVersion: 'theta-candidate-capacity-cap-v1',
   };

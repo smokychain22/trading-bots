@@ -13,7 +13,7 @@ import { assembleNewRiskDecision, type CandidateFrontierResult, type NewRiskDeci
 import type { NormalizedOptionContract } from './option-contract.js';
 import { ShadowOpportunityBookBuilder, type ShadowOpportunityEntry } from './shadow-opportunity-book.js';
 import { classifyObservation, type DataQualityState, type FreshnessPolicy } from './data-freshness.js';
-import type { PaperEntryBootstrapAssessment } from './paper-entry-bootstrap.js';
+import { assessPaperBootstrapOwnershipEvidence, type PaperEntryBootstrapAssessment } from './paper-entry-bootstrap.js';
 
 // R1: the real end-to-end new-risk orchestrator. Sequences every stage in
 // the canonical pipeline --
@@ -522,7 +522,11 @@ export async function runNewRiskOrchestration(
     {
       contractVersion: 'theta-q-runtime-v1', operation: 'evaluateCspCandidates', fusionSnapshotHash: request.fusionSnapshotHash,
       latticeConfig: request.latticeConfig, sizingPolicy: request.thetaQSizingPolicy, costAssumptions: request.costAssumptions,
-      candidates: freshnessEligible.map((c) => ({
+      candidates: freshnessEligible.map((c) => {
+        const bootstrapEvidence = assessPaperBootstrapOwnershipEvidence(
+          request.paperEntryBootstrap, ownershipResult.data, c.severeDrawdownProbability,
+        );
+        return ({
         candidateId: c.candidateId, underlyingSymbol: c.contract.underlying, dte: c.contract.dte, strike: c.contract.strike,
         putDeltaMagnitude: Math.abs(c.contract.delta as number), spreadPct: c.contract.spreadPct,
         quoteAgeSeconds: c.contract.dataAgeSeconds, openInterest: c.contract.openInterest, volume: c.contract.volume,
@@ -530,10 +534,11 @@ export async function runNewRiskOrchestration(
         entryPremiumPerShare: c.entryPremiumPerShare, ownershipAcceptability: ownershipResult.data.ownability,
         severeDrawdownProbability: c.severeDrawdownProbability, ivRank: c.ivRank, brokerAllowedQty: c.brokerAllowedQty,
         contractIsStandard: c.contractIsStandard,
-        paperBootstrapEligible: request.paperEntryBootstrap?.state === 'ELIGIBLE_UNCALIBRATED',
-        paperBootstrapPolicyVersion: request.paperEntryBootstrap?.state === 'ELIGIBLE_UNCALIBRATED'
-          ? request.paperEntryBootstrap.policyVersion : null,
-      })),
+        paperBootstrapEligible: bootstrapEvidence.eligible,
+        paperBootstrapPolicyVersion: bootstrapEvidence.eligible ? bootstrapEvidence.policyVersion : null,
+        paperBootstrapAllowedUnknownComponents: bootstrapEvidence.allowedUnknownComponents,
+        paperBootstrapReasonCodes: bootstrapEvidence.reasonCodes,
+      }); }),
     },
     (payload) => parseThetaQResponse(payload, request.fusionSnapshotHash),
   );

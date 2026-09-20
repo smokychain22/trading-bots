@@ -13,12 +13,24 @@ if (!(Test-Path -LiteralPath $projectFile)) { throw 'VERCEL_PROJECT_LINK_REQUIRE
 $project = Get-Content -Raw -LiteralPath $projectFile | ConvertFrom-Json
 if ($project.projectName -ne 'trading-bots') { throw 'WRONG_VERCEL_PROJECT_LINK' }
 
-& npm run build
-if ($LASTEXITCODE -ne 0) { throw 'THETA_BUILD_FAILED' }
 $stateRoot = Join-Path $repositoryPath '.theta-local-worker'
 New-Item -ItemType Directory -Force -Path $stateRoot | Out-Null
 if (!(Test-Path -LiteralPath (Join-Path $stateRoot 'worker.token'))) { throw 'THETA_LOCAL_WORKER_TOKEN_NOT_PROVISIONED' }
 if (!(Test-Path -LiteralPath (Join-Path $stateRoot 'production.env'))) { throw 'THETA_PRODUCTION_ENV_NOT_PROVISIONED' }
+$releaseRoot = Join-Path $stateRoot 'releases'
+New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
+$releasePath = Join-Path $releaseRoot $buildSha
+if (!(Test-Path -LiteralPath $releasePath)) {
+  & git worktree add --detach $releasePath $buildSha
+  if ($LASTEXITCODE -ne 0) { throw 'THETA_RELEASE_WORKTREE_CREATE_FAILED' }
+  & npm --prefix $releasePath ci --ignore-scripts
+  if ($LASTEXITCODE -ne 0) { throw 'THETA_RELEASE_DEPENDENCY_INSTALL_FAILED' }
+}
+$releaseSha = (& git -C $releasePath rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $releaseSha -ne $buildSha) { throw 'THETA_RELEASE_SHA_MISMATCH' }
+if ((& git -C $releasePath status --porcelain --untracked-files=no).Count -gt 0) { throw 'THETA_RELEASE_TRACKED_FILES_DIRTY' }
+& npm --prefix $releasePath run build
+if ($LASTEXITCODE -ne 0) { throw 'THETA_RELEASE_BUILD_FAILED' }
 $legacyTaskName = 'THETA Local Shadow Worker'
 if ($TaskName -ne $legacyTaskName -and (Get-ScheduledTask -TaskName $legacyTaskName -ErrorAction SilentlyContinue)) {
   $legacyStopFile = Join-Path $stateRoot 'stop.request'
@@ -33,13 +45,13 @@ if ($TaskName -ne $legacyTaskName -and (Get-ScheduledTask -TaskName $legacyTaskN
   Unregister-ScheduledTask -TaskName $legacyTaskName -Confirm:$false
   Remove-Item -LiteralPath $legacyStopFile -Force -ErrorAction SilentlyContinue
 }
-@{ repositoryPath=$repositoryPath;buildSha=$buildSha;installedAt=(Get-Date).ToUniversalTime().ToString('o');
+@{ repositoryPath=$repositoryPath;releasePath=$releasePath;buildSha=$buildSha;installedAt=(Get-Date).ToUniversalTime().ToString('o');
   mode='MASTER_THETA_PAPER';projectName=$project.projectName;workerId=('local-'+[guid]::NewGuid().ToString());
   endpoint='https://trading-bots-one.vercel.app/api/theta-runtime' } |
   ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stateRoot 'runtime.json') -Encoding utf8
 
 $workerScript = Join-Path $PSScriptRoot 'theta-local-worker.ps1'
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$workerScript`""
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$workerScript`" -ControlRoot `"$repositoryPath`""
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
   -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries `
@@ -50,5 +62,6 @@ Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Se
   -Description "Pinned THETA master Alpaca Paper worker at $buildSha. Reconciliation first. New risk locked until runtime gates pass." -Force | Out-Null
 Start-ScheduledTask -TaskName $TaskName
 Write-Output (@{installed=$true;task=$TaskName;buildSha=$buildSha;mode='MASTER_THETA_PAPER';
+  releasePath=$releasePath;
   trigger='AT_LOGON_START_WHEN_AVAILABLE';wakeToRun=$true;restartOnFailure=$true;
   executionGate='LOCKED'} | ConvertTo-Json -Compress)

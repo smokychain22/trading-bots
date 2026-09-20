@@ -31,8 +31,12 @@ def _required(data: dict[str, Any], name: str) -> Any:
 
 
 def _policy(data: dict[str, Any]) -> AegisPolicy:
+    hard_cap_multiplier = _required(data, "hardCapMultiplier")
+    if not isinstance(hard_cap_multiplier, (int, float)) or hard_cap_multiplier <= 1:
+        raise ValueError("hardCapMultiplier must be a number greater than 1")
     return AegisPolicy(
         policy_version=_required(data, "policyVersion"),
+        hard_cap_multiplier=hard_cap_multiplier,
         max_ticker_concentration_pct=_required(data, "maxTickerConcentrationPct"),
         max_sector_concentration_pct=_required(data, "maxSectorConcentrationPct"),
         max_correlation_cluster_pct=_required(data, "maxCorrelationClusterPct"),

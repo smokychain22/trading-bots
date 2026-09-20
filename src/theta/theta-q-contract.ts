@@ -25,6 +25,9 @@ const candidateSchema = z.object({
   economics: economicsSchema.nullable(),
   ownershipScore: z.number().min(0).max(1).nullable(),
   eligibilityBasis: z.enum(['EMPIRICAL_OWNERSHIP', 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED', 'INELIGIBLE']),
+  paperBootstrapPolicyVersion: z.string().min(1).nullable(),
+  paperBootstrapAllowedUnknownComponents: z.array(z.string().min(1)),
+  paperBootstrapReasonCodes: z.array(z.string().min(1)),
   reasons: z.array(reasonSchema),
 }).superRefine((candidate, context) => {
   if (!candidate.actionFeasible && candidate.quantity !== 0) {
@@ -32,6 +35,17 @@ const candidateSchema = z.object({
   }
   if (candidate.eligibilityBasis === 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED' && candidate.ownershipScore !== null) {
     context.addIssue({ code: 'custom', message: 'Paper bootstrap must not manufacture an ownership score' });
+  }
+  if (candidate.eligibilityBasis === 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED') {
+    if (candidate.paperBootstrapPolicyVersion === null
+      || candidate.paperBootstrapAllowedUnknownComponents.length === 0
+      || candidate.paperBootstrapReasonCodes.length === 0) {
+      context.addIssue({ code: 'custom', message: 'Paper bootstrap candidates must carry typed eligibility lineage' });
+    }
+  } else if (candidate.paperBootstrapPolicyVersion !== null
+    || candidate.paperBootstrapAllowedUnknownComponents.length > 0
+    || candidate.paperBootstrapReasonCodes.length > 0) {
+    context.addIssue({ code: 'custom', message: 'Non-bootstrap candidates cannot carry Paper bootstrap lineage' });
   }
 });
 

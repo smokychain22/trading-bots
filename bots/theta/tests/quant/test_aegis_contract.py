@@ -33,7 +33,8 @@ def _request(**overrides):
         "policy": {
             "policyVersion": "aegis-v1-test", "maxTickerConcentrationPct": 0.15, "maxSectorConcentrationPct": 0.3,
             "maxCorrelationClusterPct": 0.3, "maxPortfolioCapitalAtRiskPct": 0.5, "maxInventoryCapacityPct": 0.5,
-            "maxAssignmentCapacityPct": 0.5, "maxRecoveryCapacityPct": 0.3, "providerRequiredStates": ["OK"],
+            "maxAssignmentCapacityPct": 0.5, "maxRecoveryCapacityPct": 0.3, "hardCapMultiplier": 1.5,
+            "providerRequiredStates": ["OK"],
         },
         "inputs": _inputs(),
     }

@@ -107,6 +107,8 @@ def _baseline_input(data: dict[str, Any]) -> CspCandidateInputs:
         contract_is_standard=_required(data, "contractIsStandard"),
         paper_bootstrap_eligible=bool(data.get("paperBootstrapEligible", False)),
         paper_bootstrap_policy_version=data.get("paperBootstrapPolicyVersion"),
+        paper_bootstrap_allowed_unknown_components=tuple(data.get("paperBootstrapAllowedUnknownComponents", [])),
+        paper_bootstrap_reason_codes=tuple(data.get("paperBootstrapReasonCodes", [])),
     )
 
 
@@ -179,6 +181,9 @@ def evaluate_request(request: dict[str, Any]) -> dict[str, Any]:
                 "economics": None,
                 "ownershipScore": None,
                 "eligibilityBasis": "INELIGIBLE",
+                "paperBootstrapPolicyVersion": None,
+                "paperBootstrapAllowedUnknownComponents": [],
+                "paperBootstrapReasonCodes": [],
                 "reasons": [asdict(reason) for reason in lattice_match.reasons],
             }
         else:
@@ -192,6 +197,18 @@ def evaluate_request(request: dict[str, Any]) -> dict[str, Any]:
                 "economics": asdict(evaluation.economics) if evaluation.economics else None,
                 "ownershipScore": evaluation.ownership_score,
                 "eligibilityBasis": evaluation.eligibility_basis,
+                "paperBootstrapPolicyVersion": (
+                    baseline_input.paper_bootstrap_policy_version
+                    if evaluation.eligibility_basis == "PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED" else None
+                ),
+                "paperBootstrapAllowedUnknownComponents": (
+                    list(baseline_input.paper_bootstrap_allowed_unknown_components)
+                    if evaluation.eligibility_basis == "PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED" else []
+                ),
+                "paperBootstrapReasonCodes": (
+                    list(baseline_input.paper_bootstrap_reason_codes)
+                    if evaluation.eligibility_basis == "PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED" else []
+                ),
                 "reasons": [asdict(reason) for reason in evaluation.reasons],
             }
             if result["actionFeasible"]:
