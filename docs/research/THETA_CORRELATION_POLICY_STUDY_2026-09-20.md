@@ -1,7 +1,7 @@
 # THETA Correlation Policy Study
 
-Date: 2026-09-20  
-Finding: `NO_CORRELATION_THRESHOLD_PROMOTED`  
+Date: 2026-09-20<br>
+Finding: `NO_CORRELATION_THRESHOLD_PROMOTED`<br>
 Activation state: `PENDING_RESEARCH_REVIEW`
 
 ## Evidence
@@ -37,4 +37,3 @@ A future sector policy requires a versioned source, effective dates, point-in-ti
 ## Decision
 
 Correlation evidence generation is operational and reproducible. Production cluster and exposure thresholds remain unset. No AEGIS threshold changed.
-

@@ -1,7 +1,7 @@
 # THETA IV Shock Policy Study
 
-Date: 2026-09-20  
-Finding: `INSUFFICIENT_TEMPORAL_BASELINE`  
+Date: 2026-09-20<br>
+Finding: `INSUFFICIENT_TEMPORAL_BASELINE`<br>
 Activation state: `PENDING_RESEARCH_REVIEW`
 
 ## Real evidence inspected
@@ -33,4 +33,3 @@ The next valid study requires:
 - after-cost outcome and tail-risk evaluation
 
 Until those conditions exist, IV remains observed context. It does not become an automatic trade or risk command.
-

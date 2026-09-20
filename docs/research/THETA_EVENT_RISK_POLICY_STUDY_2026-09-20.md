@@ -1,7 +1,7 @@
 # THETA Event Risk Policy Study
 
-Date: 2026-09-20  
-Finding: `INSUFFICIENT_PIT_EVENT_HISTORY`  
+Date: 2026-09-20<br>
+Finding: `INSUFFICIENT_PIT_EVENT_HISTORY`<br>
 Activation state: `PENDING_RESEARCH_REVIEW`
 
 ## Point-in-time audit
@@ -34,4 +34,3 @@ Each family needs its own known-time semantics. Scheduled time, publication time
 ## Decision
 
 No event blackout, penalty, or size-reduction threshold is promoted. Missing event evidence remains `UNKNOWN`, never `PASS`. Event policy research can resume after real `knownAt` coverage spans enough independent events and outcomes.
-

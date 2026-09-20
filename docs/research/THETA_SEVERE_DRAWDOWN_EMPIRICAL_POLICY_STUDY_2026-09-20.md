@@ -1,9 +1,9 @@
 # THETA Severe Drawdown Empirical Policy Study
 
-Date: 2026-09-20  
-Study version: `theta-risk-policy-empirical-study-v1`  
-Immutable receipt hash: `633e9a649bae02b1e46118ca5d47a6c3909fb99e30c6cafccc101d0fd9bf0cc3`  
-Finding: `NO_POLICY_EMPIRICALLY_SUPPORTED`  
+Date: 2026-09-20<br>
+Study version: `theta-risk-policy-empirical-study-v1`<br>
+Immutable receipt hash: `633e9a649bae02b1e46118ca5d47a6c3909fb99e30c6cafccc101d0fd9bf0cc3`<br>
+Finding: `NO_POLICY_EMPIRICALLY_SUPPORTED`<br>
 Activation state: `PENDING_RESEARCH_REVIEW`
 
 ## Data contract

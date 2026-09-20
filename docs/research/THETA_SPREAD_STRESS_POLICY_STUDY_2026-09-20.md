@@ -1,7 +1,7 @@
 # THETA Spread Stress Policy Study
 
-Date: 2026-09-20  
-Finding: `INSUFFICIENT_TEMPORAL_BASELINE`  
+Date: 2026-09-20<br>
+Finding: `INSUFFICIENT_TEMPORAL_BASELINE`<br>
 Activation state: `PENDING_RESEARCH_REVIEW`
 
 ## Real evidence inspected
@@ -27,4 +27,3 @@ The wide upper tail confirms that contract comparability matters. A 200 percent 
 No static spread threshold was selected. The current evidence supports the existing behavior of evaluating current executable BBO per contract and failing closed on stale, crossed, missing, or economically unusable quotes.
 
 A production spread-stress policy requires independent sessions, cohort-normalized baselines, quote-size and price-level conditioning, and measured effects on fill probability, slippage, cancellation, and after-cost outcomes.
-
