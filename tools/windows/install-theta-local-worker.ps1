@@ -45,6 +45,21 @@ if ($TaskName -ne $legacyTaskName -and (Get-ScheduledTask -TaskName $legacyTaskN
   Unregister-ScheduledTask -TaskName $legacyTaskName -Confirm:$false
   Remove-Item -LiteralPath $legacyStopFile -Force -ErrorAction SilentlyContinue
 }
+$currentTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+if ($null -ne $currentTask -and $currentTask.State -eq 'Running') {
+  $currentStopFile = Join-Path $stateRoot 'stop.request'
+  New-Item -ItemType File -Force -Path $currentStopFile | Out-Null
+  for ($attempt = 0; $attempt -lt 30; $attempt++) {
+    $currentTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($null -eq $currentTask -or $currentTask.State -ne 'Running') { break }
+    Start-Sleep -Seconds 1
+  }
+  $currentTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+  if ($null -ne $currentTask -and $currentTask.State -eq 'Running') {
+    Stop-ScheduledTask -TaskName $TaskName
+  }
+  Remove-Item -LiteralPath $currentStopFile -Force -ErrorAction SilentlyContinue
+}
 @{ repositoryPath=$repositoryPath;releasePath=$releasePath;buildSha=$buildSha;installedAt=(Get-Date).ToUniversalTime().ToString('o');
   mode='MASTER_THETA_PAPER';projectName=$project.projectName;workerId=('local-'+[guid]::NewGuid().ToString());
   endpoint='https://trading-bots-one.vercel.app/api/theta-runtime' } |
