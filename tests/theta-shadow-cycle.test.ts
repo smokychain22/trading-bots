@@ -133,6 +133,8 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   assert.equal(result.optionContractsComplete, true);
   assert.ok(result.orchestration !== null);
   assert.ok(result.orchestration?.thetaQ !== null || result.orchestration?.receipt.winningAction === 'PASS');
+  assert.equal(result.orchestration?.regime?.eventState, null);
+  assert.ok(result.orchestration?.regime?.reasons.some((reason) => reason.code === 'EVENT_FLAG_UNKNOWN'));
   // Optionomics and event-state are never real in this cycle implementation
   // yet -- provenance can never be FULL_REAL, only HYBRID at best.
   assert.notEqual(result.provenance, 'FULL_REAL');
