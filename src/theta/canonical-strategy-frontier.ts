@@ -231,7 +231,11 @@ function structuralSizing(
 }
 
 function aegisStateFor(input: CanonicalStrategyFrontierInput, candidateId: string): CanonicalStrategyFrontierInput['aegisNewRiskState'] {
-  return input.aegisNewRiskStateByCandidateId?.[candidateId] ?? input.aegisNewRiskState;
+  if (input.aegisNewRiskStateByCandidateId !== undefined &&
+    Object.hasOwn(input.aegisNewRiskStateByCandidateId, candidateId)) {
+    return input.aegisNewRiskStateByCandidateId[candidateId] ?? null;
+  }
+  return input.aegisNewRiskState;
 }
 
 function leg(contract: NormalizedOptionContract, positionIntent: CanonicalFrontierLeg['positionIntent']): CanonicalFrontierLeg {
@@ -519,8 +523,13 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
     ?? rejected[0] ?? null;
   const managementIncomplete = input.unmanagedBrokerPositionCount > 0;
   const universeIncomplete = input.unevaluatedUnderlyingCount > 0;
+  const sizingEvidenceUnknown = globallyRanked.filter((candidate) => candidate.riskFeasible &&
+    candidate.sizing.quantity === 0 && ['AEGIS_UNKNOWN', 'SIZING_POLICY_INCOMPLETE',
+      'COLLATERAL_INPUT_UNKNOWN', 'REDUCED_MULTIPLIER_UNKNOWN', 'UNKNOWN_STOCK_CAPACITY',
+      'COVERED_SHARES_UNKNOWN']
+      .includes(candidate.sizing.bindingConstraint));
   const globalWaitEarned = !managementAuthorityRequired && applicable.length > 0 && blockedApplicable.length === 0
-    && !managementIncomplete && !universeIncomplete && structuralSelection === null;
+    && !managementIncomplete && !universeIncomplete && sizingEvidenceUnknown.length === 0 && structuralSelection === null;
   const partial = {
     contractVersion: canonicalStrategyFrontierVersion, snapshotId: input.snapshotId, timestamp: input.timestamp,
     strategyVersion: input.strategyVersion, decisionAuthorityVersion: canonicalDecisionAuthorityVersion,
@@ -538,7 +547,9 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
       : [...blockedApplicable.map((branch) => `BRANCH_NOT_FULLY_EVALUATED:${branch.branch}`),
           ...(managementAuthorityRequired ? ['EXISTING_POSITION_DELEGATED_TO_MANAGEMENT_AUTHORITY'] : []),
           ...(managementIncomplete ? ['OPEN_POSITION_MANAGEMENT_NOT_ATTACHED'] : []),
-          ...(universeIncomplete ? [`UNDERLYINGS_NOT_EVALUATED:${input.unevaluatedUnderlyingCount}`] : [])],
+          ...(universeIncomplete ? [`UNDERLYINGS_NOT_EVALUATED:${input.unevaluatedUnderlyingCount}`] : []),
+          ...[...new Set(sizingEvidenceUnknown.map((candidate) => candidate.sizing.bindingConstraint))]
+            .map((constraint) => `CANDIDATE_SIZING_EVIDENCE_UNKNOWN:${constraint}`)],
     empiricalEconomicsReady: false as const, executionAuthorized: false as const, optionomicsContext: input.optionomicsContext,
   };
   const adaptiveShadowDecision = buildAdaptiveShadowDecisionReceipt({
