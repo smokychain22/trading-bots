@@ -118,6 +118,12 @@ class ThetaHStricterBarTests(unittest.TestCase):
         by_family = {r.strategy_family: r for r in results}
         self.assertFalse(by_family[StrategyFamily.THETA_H].eligible)
 
+    def test_unknown_event_does_not_become_no_event_for_theta_h(self):
+        results = route_strategies(_policy(), _portfolio(), _market(event_near=None))
+        by_family = {r.strategy_family: r for r in results}
+        self.assertFalse(by_family[StrategyFamily.THETA_H].eligible)
+        self.assertTrue(by_family[StrategyFamily.THETA_Q].eligible)
+
 
 class ThetaDGateTests(unittest.TestCase):
     def test_theta_d_ineligible_when_gate_not_satisfied(self):

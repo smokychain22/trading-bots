@@ -55,8 +55,8 @@ export interface UnderlyingCandidateInput {
   // Stage E: event/corporate-action awareness -- unsupportedCorporateAction
   // is a hard gate (the contract genuinely cannot be safely evaluated);
   // eventNear alone is soft (deferred, not rejected).
-  readonly unsupportedCorporateActionPending: boolean;
-  readonly eventNear: boolean;
+  readonly unsupportedCorporateActionPending: boolean | null; // null = coverage/absence unverified
+  readonly eventNear: boolean | null; // null = event search did not establish proximity or absence
 }
 
 export interface UnderlyingDecision {
@@ -68,6 +68,25 @@ export interface UnderlyingDecision {
 }
 
 const reason = (code: string, polarity: -1 | 0 | 1, detail: string): ReasonCode => ({ code, polarity, detail });
+
+export function assessUniverseEventEvidence(input: Pick<UnderlyingCandidateInput, 'unsupportedCorporateActionPending' | 'eventNear'>): {
+  readonly state: UnderlyingDecisionState;
+  readonly reason: ReasonCode;
+} {
+  if (input.unsupportedCorporateActionPending === true) return {
+    state: 'REJECTED', reason: reason('UNSUPPORTED_CORPORATE_ACTION', -1, 'An unsupported corporate action is pending -- this contract cannot be safely evaluated.'),
+  };
+  if (input.unsupportedCorporateActionPending !== false) return {
+    state: 'DEFERRED', reason: reason('CORPORATE_ACTION_COVERAGE_UNKNOWN', -1, 'Pending unsupported corporate actions cannot be ruled out from verified event coverage.'),
+  };
+  if (input.eventNear === true) return {
+    state: 'DEFERRED', reason: reason('EVENT_PROXIMITY', 0, 'A known event is near -- deferred, not rejected; may become eligible after the event.'),
+  };
+  if (input.eventNear !== false) return {
+    state: 'DEFERRED', reason: reason('EVENT_PROXIMITY_UNKNOWN', -1, 'Event proximity and verified absence are both unavailable for this decision.'),
+  };
+  return { state: 'ELIGIBLE', reason: reason('ALL_STAGES_CLEARED', 1, 'Passed every universe stage.') };
+}
 
 /**
  * Evaluates one underlying through every stage in order, stopping at the
@@ -129,14 +148,8 @@ export function evaluateUnderlying(policy: UniversePolicy, input: UnderlyingCand
 
   // Stage E: event/corporate-action. Only an UNSUPPORTED corporate action is
   // a hard gate; general event proximity alone is soft.
-  if (input.unsupportedCorporateActionPending) {
-    return { ...base, state: 'REJECTED', terminalStage: 'EVENT_AWARENESS', reasons: [reason('UNSUPPORTED_CORPORATE_ACTION', -1, 'An unsupported corporate action is pending -- this contract cannot be safely evaluated.')] };
-  }
-  if (input.eventNear) {
-    return { ...base, state: 'DEFERRED', terminalStage: 'EVENT_AWARENESS', reasons: [reason('EVENT_PROXIMITY', 0, 'A known event is near -- deferred, not rejected; may become eligible after the event.')] };
-  }
-
-  return { ...base, state: 'ELIGIBLE', terminalStage: 'EVENT_AWARENESS', reasons: [reason('ALL_STAGES_CLEARED', 1, 'Passed every universe stage.')] };
+  const event = assessUniverseEventEvidence(input);
+  return { ...base, state: event.state, terminalStage: 'EVENT_AWARENESS', reasons: [event.reason] };
 }
 
 export interface UniverseFunnelReport {

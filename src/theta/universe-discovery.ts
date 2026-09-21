@@ -33,12 +33,9 @@ import type { UnderlyingCandidateInput } from './universe-policy.js';
 // accountCollateralFeasible are reported UNKNOWN (null) here -- this
 // module has no ownership model or account-state access, by design (that
 // evaluation belongs to ownership-contract.py / account-exposure.ts, which
-// run downstream). unsupportedCorporateActionPending and eventNear are
-// reported false -- ABSENCE OF CONFIRMED EVIDENCE, not proof of absence --
-// because no real corporate-action/event-state source is wired into this
-// cheap discovery stage yet (real event-state assembly is a separate,
-// still-UNKNOWN-by-default concern elsewhere in the cycle). This is a
-// known limitation, not a claim of certainty.
+// run downstream). Corporate-action and event absence are not established by
+// assets, bars, or option-contract existence. Both flags are UNKNOWN (null)
+// here until a prospective, coverage-qualified event producer is wired.
 
 export interface UniverseDiscoveryConfig {
   readonly discoveryVersion: string;
@@ -188,8 +185,8 @@ export async function discoverRealUniverse(
       avgDollarVolume: price.avgDollarVolume, currentPrice: price.currentPrice, hasUsableOptionChain: true,
       accountCollateralFeasible: null, // UNKNOWN here -- account-state evaluation happens downstream
       ownershipAcceptable: null, // UNKNOWN here -- ownership model evaluation happens downstream
-      unsupportedCorporateActionPending: false, // absence of confirmed evidence, not proof of absence -- see module docstring
-      eventNear: false, // same caveat
+      unsupportedCorporateActionPending: null,
+      eventNear: null,
     });
   }
 

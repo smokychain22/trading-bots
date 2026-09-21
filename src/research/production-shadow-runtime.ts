@@ -3,6 +3,7 @@ import type { Pool } from 'pg';
 import type { Environment } from '../config/environment.js';
 import { AlpacaProviderError, fetchOptionSnapshots, type AlpacaProviderConfig } from '../theta/alpaca-provider.js';
 import { discoverRealUniverse } from '../theta/universe-discovery.js';
+import { assessUniverseEventEvidence } from '../theta/universe-policy.js';
 import { defaultShadowCycleConfig, optionomicsConfigFromEnvironment } from '../theta/theta-shadow-once.js';
 import { runThetaShadowCycle } from '../theta/theta-shadow-cycle.js';
 import type { PythonBridgeConfig } from '../theta/python-bridge.js';
@@ -161,6 +162,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const scanSymbols=new Set([...universeBreadthChallenger.championSymbols,
     ...universeBreadthChallenger.challengerSymbols.map((candidate)=>candidate.symbol)]);
   const scanUnderlyings=discovery.candidates.filter((candidate)=>scanSymbols.has(candidate.symbol));
+  const discoveredBySymbol=new Map(discovery.candidates.map((candidate)=>[candidate.symbol,candidate]));
   const brokerAuthoritySymbols=new Set(universeBreadthChallenger.championSymbols);
   const optionomics=optionomicsConfigFromEnvironment(input.environment);
   const scan=await runCrossSymbolShadowScan({universeVersion:'theta-shadow-universe-v1',latticeVersion:'lattice-v1-shadow-once',
@@ -184,10 +186,12 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const evidenceStore=new PostgresShadowEvidenceRuntimeStore(input.pool);
   for(const member of scan.results){
     if(member.cycle?.fusionSnapshot===null||member.cycle===null) continue;
+    const discovered=discoveredBySymbol.get(member.symbol);
+    const eventGate=discovered===undefined?null:assessUniverseEventEvidence(discovered);
     const saved=await cycleStore.persist(runtimeContext,member.cycle);
     persisted.set(member.symbol,{fusionSnapshotId:saved.fusionSnapshotId,candidateSetId:saved.candidateSetId,decisionId:saved.decisionId});
     if(input.environment.MASTER_PAPER_EXECUTION_ENABLED&&!input.environment.PAPER_PAUSE_NEW_ORDERS
-      &&brokerAuthoritySymbols.has(member.symbol)
+      &&brokerAuthoritySymbols.has(member.symbol)&&eventGate?.state==='ELIGIBLE'
       &&member.cycle.strategyFrontier!==null&&saved.decisionId!==null){
       const selected=await input.pool.query(`SELECT d.selected_candidate_id::text AS candidate_id,
         c.option_contract_id::text,oc.underlying_id::text,cv.assumptions_json
@@ -234,6 +238,9 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         if(await new PostgresMasterPaperActionPlanStore(input.pool).enqueue(assembled.plan,planNow,
           {botInstanceId:runtimeContext.botInstanceId,underlyingId:assembled.plan.underlyingId}))actionPlansReady++;
       }else if(assembled.state==='BLOCKED')actionPlansBlocked.push(...assembled.blockers.map((blocker)=>`${member.symbol}:${blocker}`));
+    }else if(brokerAuthoritySymbols.has(member.symbol)&&member.cycle.strategyFrontier?.selectedCandidateId!==null
+      &&eventGate?.state!=='ELIGIBLE'){
+      actionPlansBlocked.push(`${member.symbol}:${eventGate?.reason.code??'UNIVERSE_EVENT_EVIDENCE_MISSING'}`);
     }else if(!brokerAuthoritySymbols.has(member.symbol)&&member.cycle.strategyFrontier?.selectedCandidateId!==null){
       actionPlansBlocked.push(`${member.symbol}:UNIVERSE_BREADTH_CHALLENGER_NO_BROKER_AUTHORITY`);
     }

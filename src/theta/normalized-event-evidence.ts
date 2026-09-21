@@ -33,6 +33,9 @@ export function normalizeEventEvidence(raw: RawEventEvidence, decisionAsOf: stri
   if (validInstant(raw.knownAt) && validInstant(decisionAsOf) && Date.parse(raw.knownAt) > Date.parse(decisionAsOf)) {
     reasons.push('NOT_KNOWN_AT_DECISION');
   }
+  if (validInstant(raw.observedAt) && validInstant(decisionAsOf) && Date.parse(raw.observedAt) > Date.parse(decisionAsOf)) {
+    reasons.push('NOT_OBSERVED_AT_DECISION');
+  }
   if (raw.eventTime !== null && !validInstant(raw.eventTime)) reasons.push('INVALID_EVENT_TIME');
   return {
     ...raw,

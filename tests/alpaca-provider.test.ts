@@ -256,6 +256,18 @@ test('fetchOptionSnapshots marks complete=false when maxPages is hit with more r
   assert.equal(result.snapshots.size, 1);
 });
 
+test('fetchOptionContracts rejects a missing strike instead of fabricating a zero-priced contract', async () => {
+  const fetchImpl = (async () => jsonResponse(200, {
+    option_contracts: [{ symbol: 'SPY261009P00500000', expiration_date: '2026-10-09' }],
+    next_page_token: null,
+  })) as typeof fetch;
+  await assert.rejects(
+    fetchOptionContracts(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01',
+      expirationDateLte: '2026-11-01', optionType: 'put', limit: 10, maxPages: 5 }),
+    (error: unknown) => error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE',
+  );
+});
+
 test('fetchLatestStockQuote uses the market-data host, explicit feed, and preserves two-sided timestamped evidence', async () => {
   let requested = '';
   const fetchImpl = (async (request: string | URL | Request) => {
