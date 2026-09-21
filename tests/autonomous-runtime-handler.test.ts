@@ -84,6 +84,9 @@ test('local worker operation accepts the bounded runtime, evidence, and owner au
     'x-theta-operation': 'database-target-validate',
   } }), 'DATABASE_TARGET_VALIDATE');
   assert.equal(parseLocalWorkerOperation({ headers: {
+    'x-theta-operation': 'database-event-revision-inspect',
+  } }), 'DATABASE_EVENT_REVISION_INSPECT');
+  assert.equal(parseLocalWorkerOperation({ headers: {
     'x-theta-operation': 'database-legacy-import',
   } }), 'DATABASE_LEGACY_IMPORT');
   assert.equal(parseLocalWorkerOperation({ headers: {

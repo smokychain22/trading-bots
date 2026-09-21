@@ -27,6 +27,7 @@ import {
 } from '../database/target-preflight.js';
 import { matchesAivenBootstrapConfirmation, migrateDatabaseTarget } from '../database/target-migration.js';
 import { validateDatabaseTarget } from '../database/target-validation.js';
+import { inspectOptionomicsEventRevisions } from '../database/optionomics-event-inspection.js';
 import { applyLegacyImportRequest } from '../database/legacy-import.js';
 import { bootstrapAivenMasterPaperAccount, matchesMasterRecoveryConfirmation } from '../database/master-paper-bootstrap.js';
 import { inventoryLegacyRecovery } from '../database/legacy-recovery-inventory.js';
@@ -63,7 +64,7 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'RUNTIME_CORE_CYCLE' | 'RUNTIME_BROKER_CYCLE' | 'RUNTIME_LIFECYCLE_CYCLE' | 'RUNTIME_MANAGEMENT_CYCLE' | 'RUNTIME_OBSERVATION_CYCLE' | 'RUNTIME_EVIDENCE_CYCLE' | 'RUNTIME_ZERO_TRADE_DIAGNOSTIC' | 'RISK_POLICY_EMPIRICAL_STUDY' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'MASTER_PAPER_AUTHORIZE' | 'FIRST_PAPER_CANARY_ACTIVATE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'RUNTIME_CORE_CYCLE' | 'RUNTIME_BROKER_CYCLE' | 'RUNTIME_LIFECYCLE_CYCLE' | 'RUNTIME_MANAGEMENT_CYCLE' | 'RUNTIME_OBSERVATION_CYCLE' | 'RUNTIME_EVIDENCE_CYCLE' | 'RUNTIME_ZERO_TRADE_DIAGNOSTIC' | 'RISK_POLICY_EMPIRICAL_STUDY' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'MASTER_PAPER_AUTHORIZE' | 'FIRST_PAPER_CANARY_ACTIVATE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_EVENT_REVISION_INSPECT' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
@@ -87,6 +88,7 @@ export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'header
   if (value === 'database-target-preflight') return 'DATABASE_TARGET_PREFLIGHT';
   if (value === 'database-target-migrate') return 'DATABASE_TARGET_MIGRATE';
   if (value === 'database-target-validate') return 'DATABASE_TARGET_VALIDATE';
+  if (value === 'database-event-revision-inspect') return 'DATABASE_EVENT_REVISION_INSPECT';
   if (value === 'database-legacy-import') return 'DATABASE_LEGACY_IMPORT';
   if (value === 'database-legacy-inventory') return 'DATABASE_LEGACY_INVENTORY';
   if (value === 'database-legacy-promote') return 'DATABASE_LEGACY_PROMOTE';
@@ -286,6 +288,25 @@ export default async function autonomousRuntimeHandler(
         error: 'AIVEN_DATABASE_VALIDATION_FAILED', ...failure, target: 'AIVEN_POSTGRESQL', cutoverAuthorized: false,
         executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0,
       });
+    }
+    return;
+  }
+  if (operation === 'DATABASE_EVENT_REVISION_INSPECT') {
+    if (localIdentity.kind !== 'VALID') {
+      send(response, 400, { error: 'local_worker_identity_required' });
+      return;
+    }
+    if (!environment.AIVEN_DATABASE_URL) {
+      send(response, 503, { error: 'aiven_database_not_configured' });
+      return;
+    }
+    try {
+      const receipt = await inspectOptionomicsEventRevisions(environment.AIVEN_DATABASE_URL);
+      send(response, 200, { receipt, readOnly: true, orderSubmission: 'DISABLED' });
+    } catch (error) {
+      send(response, 503, { error: 'EVENT_REVISION_INSPECTION_FAILED',
+        errorClass: error instanceof Error ? error.name : 'UNKNOWN', readOnly: true,
+        orderSubmission: 'DISABLED' });
     }
     return;
   }
