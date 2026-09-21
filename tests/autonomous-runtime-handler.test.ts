@@ -87,6 +87,12 @@ test('local worker operation accepts the bounded runtime, evidence, and owner au
     'x-theta-operation': 'database-event-revision-inspect',
   } }), 'DATABASE_EVENT_REVISION_INSPECT');
   assert.equal(parseLocalWorkerOperation({ headers: {
+    'x-theta-operation': 'alpaca-corporate-action-capture',
+  } }), 'ALPACA_CORPORATE_ACTION_CAPTURE');
+  assert.equal(parseLocalWorkerOperation({ headers: {
+    'x-theta-operation': 'canonical-event-export',
+  } }), 'CANONICAL_EVENT_EXPORT');
+  assert.equal(parseLocalWorkerOperation({ headers: {
     'x-theta-operation': 'database-legacy-import',
   } }), 'DATABASE_LEGACY_IMPORT');
   assert.equal(parseLocalWorkerOperation({ headers: {

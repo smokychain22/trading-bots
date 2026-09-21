@@ -21,12 +21,10 @@ import type { NormalizedOptionContract } from './option-contract.js';
 //     underlyings, but requires fetching bars for every distinct held
 //     underlying (not just the candidate's), which this pass does not
 //     yet do -- remains exactly what the caller supplies.
-//   - stressIvShockDetected / stressSpreadWideningDetected: aegis.py
-//     requires these as concrete (non-nullable) booleans, and no real IV-
-//     history or spread-history baseline exists yet to detect a genuine
-//     shock/widening against -- they stay caller-supplied `false`
-//     (meaning "not detected by any implemented rule", never "confirmed
-//     absent"), per aegis.py's own detector-flag semantics.
+//   - stressIvShockDetected / stressSpreadWideningDetected: no verified IV-
+//     history or spread-history baseline is wired yet. Python AEGIS accepts
+//     UNKNOWN here and holds new risk. Production callers supply null,
+//     never an unevidenced false.
 
 /**
  * Derives AEGIS's `providerState` string (or null/UNKNOWN) from the

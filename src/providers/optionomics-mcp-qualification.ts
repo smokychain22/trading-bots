@@ -314,6 +314,9 @@ const documentedRestCapabilityProbes = Object.freeze([
   { operationAlias: 'levels.flow', path: '/api/v1/levels?symbol=SPY' },
   { operationAlias: 'levels.dark_pool', path: '/api/v1/dark_pool_levels?symbol=SPY' },
   { operationAlias: 'events.list', path: '/api/v1/events?symbol=SPY&per_page=5' },
+  // A successful empty response is not company-calendar completeness. This
+  // probe establishes the authenticated behavior of the documented kind.
+  { operationAlias: 'events.company_catalyst', path: '/api/v1/events?symbol=SPY&kind=company_catalyst&per_page=100' },
   { operationAlias: 'events.historical', path: '/api/v1/events?from=2026-09-18&to=2026-09-18&per_page=5' },
   { operationAlias: 'news.symbol', path: '/api/v1/stocks/SPY/news?per_page=5' },
   { operationAlias: 'disclosures.symbol', path: '/api/v1/stocks/SPY/disclosure_trades?per_page=5' },

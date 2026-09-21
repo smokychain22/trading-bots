@@ -82,7 +82,7 @@ test('MCP base64 bearer authenticates, discovers actual tools and returns field 
   assert.equal(report.mcp.headerPairStatus, 401);
   assert.equal(report.mcp.base64BearerStatus, 200);
   assert.equal(report.mcp.toolCount, 4);
-  assert.equal(report.rest.capabilities.length, 18);
+  assert.equal(report.rest.capabilities.length, 19);
   assert.equal(report.rest.capabilities.every((entry) => entry.operationAlias.length > 0 && !entry.path.includes('?')), true);
   const dated = report.rest.capabilities.find((entry) => entry.operationAlias === 'stocks.options.historical');
   assert.equal(dated?.requestedDate, '2026-09-18');
