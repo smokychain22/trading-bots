@@ -93,6 +93,14 @@ export async function discoverRealUniverse(
   now: () => string,
 ): Promise<UniverseDiscoveryResult> {
   const blockers: string[] = [];
+  const receivedAt = now();
+  const decisionMillis = Date.parse(receivedAt);
+  if (!Number.isFinite(decisionMillis)) return {
+    candidates: [], candidatesOrigin: 'REAL_PROVIDER_ERROR',
+    funnel: { assetsDiscovered: 0, assetsTruncatedByBound: false, assetsAfterExchangeFilter: 0,
+      assetsWithUsableBars: 0, optionabilityChecksAttempted: 0, optionableConfirmed: 0, candidatesProduced: 0 },
+    blockers: ['UNIVERSE_DECISION_CLOCK_INVALID'],
+  };
 
   let assetsDiscovered = 0;
   let assetsTruncatedByBound = false;
@@ -115,9 +123,8 @@ export async function discoverRealUniverse(
   }
   const assetsAfterExchangeFilter = filteredSymbols.length;
 
-  const receivedAt = now();
   const barsEnd = receivedAt;
-  const barsStart = new Date(new Date(receivedAt).getTime() - config.barsLookbackDays * 86_400_000).toISOString();
+  const barsStart = new Date(decisionMillis - config.barsLookbackDays * 86_400_000).toISOString();
   const priceBySymbol = new Map<string, { avgDollarVolume: number; currentPrice: number }>();
 
   for (const batch of chunk(filteredSymbols, config.barsBatchSize)) {
@@ -152,8 +159,8 @@ export async function discoverRealUniverse(
     .slice(0, config.maxOptionabilityChecks)
     .map(([symbol]) => symbol);
 
-  const optionExpirationGte = new Date(Date.now() + 1 * 86_400_000).toISOString().slice(0, 10);
-  const optionExpirationLte = new Date(Date.now() + 400 * 86_400_000).toISOString().slice(0, 10);
+  const optionExpirationGte = new Date(decisionMillis + 1 * 86_400_000).toISOString().slice(0, 10);
+  const optionExpirationLte = new Date(decisionMillis + 400 * 86_400_000).toISOString().slice(0, 10);
 
   // Keep provider fan-out bounded even when research observes a wider
   // universe. Two concurrent existence checks preserve the previous live

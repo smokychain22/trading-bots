@@ -49,7 +49,10 @@ export function reconcileEventEvidence(events: readonly NormalizedEventEvidence[
   const groups = new Map<string, NormalizedEventEvidence[]>();
   for (const event of events) groups.set(event.identityKey, [...(groups.get(event.identityKey) ?? []), event]);
   return [...groups.values()].flatMap((group) => {
-    const signatures = new Set(group.map((item) => `${item.underlying}|${item.eventType}|${item.eventTime ?? 'UNKNOWN'}`));
+    // A provider may revise an event while retaining its ID. Even when the
+    // headline identity and scheduled time are unchanged, a changed payload
+    // must remain visible for review rather than being silently discarded.
+    const signatures = new Set(group.map((item) => `${item.underlying}|${item.eventType}|${item.eventTime ?? 'UNKNOWN'}|${item.payloadHash}|${item.applicable}`));
     if (signatures.size <= 1) return [group[0] as NormalizedEventEvidence];
     return group.map((item) => ({
       ...item,
