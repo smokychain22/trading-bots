@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Evidence } from '../theta/first-paper-order-readiness.js';
 
-export const firstCanaryAcceptanceVersion = 'theta-first-canary-acceptance-v1' as const;
+export const firstCanaryAcceptanceVersion = 'theta-first-canary-acceptance-v2' as const;
 
 export type CanaryBrokerState = 'ACKNOWLEDGED' | 'WORKING' | 'PARTIAL' | 'FILLED' | 'REJECTED' | 'CANCELED' | 'EXPIRED';
 
@@ -117,11 +117,14 @@ export function buildFirstCanaryAcceptanceReceipt(input: FirstCanaryAcceptanceIn
     requireTrue(input.evidence.lifecycleApplied, 'LIFECYCLE_APPLIED', blockers);
   } else if (state === 'REJECTED') {
     if (filledQuantity !== 0) blockers.push('REJECTED_ORDER_HAS_FILL');
+    blockers.push('BROKER_ORDER_REJECTED');
+  } else if (state === 'CANCELED' || state === 'EXPIRED') {
+    blockers.push(`BROKER_ORDER_${state}`);
   } else if (state !== null) {
     pending.push(`BROKER_ORDER_${state}`);
   }
 
-  const terminal = state === 'FILLED' || state === 'REJECTED';
+  const terminal = state === 'FILLED';
   const status: FirstCanaryAcceptanceReceipt['status'] = blockers.length > 0 ? 'FAILED' : terminal ? 'ACCEPTED' : 'IN_PROGRESS';
   const unsigned = { ...input, receiptVersion: firstCanaryAcceptanceVersion, status, blockers, pending };
   return { ...unsigned, contentHash: createHash('sha256').update(canonical(unsigned)).digest('hex') };

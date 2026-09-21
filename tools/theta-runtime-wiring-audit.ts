@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 type Classification = 'CANONICAL_LIVE_AUTHORITY' | 'CANONICAL_LIVE_SUPPORT' | 'PAPER_ONLY_AUTHORITY'
   | 'PAPER_ONLY_SUPPORT' | 'SHADOW_EVIDENCE' | 'RESEARCH_ONLY' | 'DORMANT';
@@ -64,34 +65,53 @@ function sourceFiles(root: string): string[] {
   for (const entry of readdirSync(root)) {
     const absolute = path.join(root, entry);
     const relative = path.relative(process.cwd(), absolute).replaceAll('\\', '/');
-    if (['node_modules', 'dist', '.git', 'tests', 'tools'].some((part) => relative.split('/').includes(part))) continue;
+    if (['node_modules', 'dist', '.git', '__pycache__', '.venv'].some((part) => relative.split('/').includes(part))) continue;
     if (statSync(absolute).isDirectory()) result.push(...sourceFiles(absolute));
     else if (/\.(ts|py|tsx)$/.test(entry)) result.push(relative);
   }
   return result;
 }
 
-const files = sourceFiles(process.cwd());
+// Generated releases, local evidence, dependency caches and downloaded worktrees are
+// deliberately outside this static source inventory. A text mention is not a call path.
+const files = ['src', 'bots', 'api']
+  .filter((directory) => existsSync(path.join(process.cwd(), directory)))
+  .flatMap((directory) => sourceFiles(path.join(process.cwd(), directory)));
 const contents = new Map(files.map((file) => [file, readFileSync(file, 'utf8')]));
+const testFiles = existsSync(path.join(process.cwd(), 'tests'))
+  ? sourceFiles(path.join(process.cwd(), 'tests')) : [];
+const testContents = new Map(testFiles.map((file) => [file, readFileSync(file, 'utf8')]));
+const sourceRevision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 const rows = specs.map((spec) => {
   const definedIn = spec.definitions.filter((file) => existsSync(path.join(process.cwd(), file)));
   const importTokens = definedIn.map((file) => path.basename(file).replace(/\.(ts|py|tsx)$/, '').replaceAll('_', '-'));
-  const outputConsumedBy = files.filter((file) => !definedIn.includes(file)
+  const textualReferences = files.filter((file) => !definedIn.includes(file)
     && importTokens.some((token) => (contents.get(file) ?? '').replaceAll('_', '-').includes(token)));
-  return { component: spec.component, classification: definedIn.length === 0 ? 'DORMANT' as const : spec.classification,
-    definedIn, outputConsumedBy, canAffectSelectedCandidate: spec.effects.includes('SELECTED_CANDIDATE'),
-    canAffectQuantity: spec.effects.includes('QUANTITY'), canAffectAegis: spec.effects.includes('AEGIS'),
-    canAffectBrokerOrder: spec.effects.includes('BROKER_ORDER'), decisionAuthority: spec.decisionAuthority === true,
-    brokerAuthority: spec.brokerAuthority === true };
+  const testReferences = testFiles.filter((file) => importTokens.some((token) =>
+    (testContents.get(file) ?? '').replaceAll('_', '-').includes(token)));
+  return { component: spec.component, version: { sourceRevision, contractVersion: null },
+    declaredClassification: definedIn.length === 0 ? 'DORMANT' as const : spec.classification,
+    definedIn, textualReferences, testReferences, referenceEvidence: 'TEXT_MATCH_ONLY' as const,
+    runtimeImported: 'UNVERIFIED_STATIC_SCAN' as const,
+    runtimeReachability: 'UNVERIFIED_STATIC_SCAN' as const,
+    providerDependency: 'NOT_TRACED_BY_STATIC_SCAN' as const,
+    databaseDependency: 'NOT_TRACED_BY_STATIC_SCAN' as const,
+    currentEvidenceStatus: 'SOURCE_PRESENT_NOT_RUNTIME_PROOF' as const,
+    knownBlockers: ['DYNAMIC_IMPORT_AND_DECISION_TRACE_REQUIRED'],
+    declaredCanAffectSelectedCandidate: spec.effects.includes('SELECTED_CANDIDATE'),
+    declaredCanAffectQuantity: spec.effects.includes('QUANTITY'), declaredCanAffectAegis: spec.effects.includes('AEGIS'),
+    declaredCanAffectBrokerOrder: spec.effects.includes('BROKER_ORDER'),
+    declaredDecisionAuthority: spec.decisionAuthority === true,
+    declaredBrokerAuthority: spec.brokerAuthority === true };
 });
-const decisionAuthorities = rows.filter((row) => row.decisionAuthority);
-const brokerAuthorities = rows.filter((row) => row.brokerAuthority);
+const decisionAuthorities = rows.filter((row) => row.declaredDecisionAuthority);
+const brokerAuthorities = rows.filter((row) => row.declaredBrokerAuthority);
 if (decisionAuthorities.length !== 1 || decisionAuthorities[0]?.definedIn.length === 0) {
   throw new Error(`Expected exactly one defined canonical decision authority, found ${decisionAuthorities.length}`);
 }
 if (brokerAuthorities.length !== 1 || brokerAuthorities[0]?.definedIn.length === 0) {
   throw new Error(`Expected exactly one defined broker mutation authority, found ${brokerAuthorities.length}`);
 }
-process.stdout.write(`${JSON.stringify({ schemaVersion: 'theta-runtime-reachability-v2', generatedAt: new Date().toISOString(),
+process.stdout.write(`${JSON.stringify({ schemaVersion: 'theta-runtime-static-inventory-v3', generatedAt: new Date().toISOString(), sourceRevision,
   canonicalDecisionAuthority: decisionAuthorities[0]?.component,
   canonicalBrokerMutationAuthority: brokerAuthorities[0]?.component, components: rows }, null, 2)}\n`);

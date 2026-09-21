@@ -209,7 +209,12 @@ export function rankEligibleUnderlyings(
   const eligible = decisions.filter((d) => d.state === 'ELIGIBLE');
   const withValue = eligible.map((d) => {
     const input = inputsBySymbol.get(d.symbol);
-    const value = input?.avgDollarVolume ?? 0; // ELIGIBLE guarantees avgDollarVolume was known and non-null at evaluation time
+    // ELIGIBLE is valid only against the exact input snapshot that produced it.
+    // A missing map entry is an invariant breach, not a real zero-liquidity observation.
+    const value = input?.avgDollarVolume;
+    if (value === null || value === undefined || !Number.isFinite(value) || value < 0) {
+      throw new Error('ELIGIBLE_UNDERLYING_LIQUIDITY_EVIDENCE_MISSING');
+    }
     return { symbol: d.symbol, value };
   });
   withValue.sort((a, b) => b.value - a.value);
