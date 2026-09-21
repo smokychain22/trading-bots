@@ -326,6 +326,11 @@ itMockedProviderRealCodePath('confirmed Optionomics context families are fetched
   assert.equal(Array.isArray(providerContext.observations), true);
   assert.equal(JSON.stringify(providerContext).includes('rawPayload'), false);
   assert.ok(result.fusionSnapshot?.snapshot.eventState !== null);
+  const eventState = result.fusionSnapshot?.snapshot.eventState as Record<string, unknown>;
+  const macroFedCoverage = eventState.macroFedCoverage as Record<string, unknown>;
+  assert.equal(macroFedCoverage.state, 'COMPLETE');
+  assert.equal(macroFedCoverage.negativeQualified, false);
+  assert.equal(macroFedCoverage.providerEventCount, 3);
   assert.equal(result.fusionSnapshot?.snapshot.unknownFeatures.some((item) => item.feature === 'eventState'), false);
 });
 

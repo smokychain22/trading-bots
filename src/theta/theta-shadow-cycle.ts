@@ -220,6 +220,7 @@ function assembleFusionSnapshotInput(params: {
   readonly optionomicsEntries: readonly NormalizedOptionomicsEntry[];
   readonly optionomicsFlowWindows: readonly NormalizedOptionomicsFlowWindow[];
   readonly optionomicsContextObservations: readonly NormalizedOptionomicsContextObservation[];
+  readonly macroEventCoverage: Awaited<ReturnType<typeof fetchOptionomicsMacroEventCoverage>> | null;
   readonly optionomicsContextOrigin: ProvenanceOrigin;
   readonly optionomicsContextQuality: DataQualityState;
   readonly optionomicsFlowOrigin: ProvenanceOrigin;
@@ -345,9 +346,16 @@ function assembleFusionSnapshotInput(params: {
     portfolioExposure: params.derivedExposure as unknown as JsonValue, // real, pure arithmetic over account/positions/orders -- see account-exposure.ts
     alpacaQuoteState: null,
     optionomicsFeatureState: optionomicsAttempted ? optionomicsJson : null, // honestly absent when not configured, never fabricated
-    eventState: eventContextObservations.length > 0
+    eventState: eventContextObservations.length > 0 || params.macroEventCoverage !== null
       ? ({ provider: 'OPTIONOMICS', observations: eventContextObservations,
           populated: eventContextPopulated,
+          macroFedCoverage: params.macroEventCoverage === null ? null : {
+            state: params.macroEventCoverage.state, reason: params.macroEventCoverage.reason,
+            from: params.macroEventCoverage.from, to: params.macroEventCoverage.to,
+            families: params.macroEventCoverage.families,
+            providerEventCount: params.macroEventCoverage.providerEventCount,
+            negativeQualified: params.macroEventCoverage.negativeQualified,
+          },
           earningsDistanceDays: null, exDividendState: null,
           missingSemantics: ['UPCOMING_EARNINGS_DISTANCE_NOT_PROVEN_FROM_FILINGS', 'EX_DIVIDEND_STATE_UNAVAILABLE'] } as unknown as JsonValue)
       : null,
@@ -690,6 +698,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let optionomicsChain: NormalizedOptionomicsChain | null = null;
   let optionomicsFlowWindows: readonly NormalizedOptionomicsFlowWindow[] = [];
   let optionomicsContextObservations: readonly NormalizedOptionomicsContextObservation[] = [];
+  let macroEventCoverage: Awaited<ReturnType<typeof fetchOptionomicsMacroEventCoverage>> | null = null;
   let optionomicsEvidence = notAttemptedEvidence();
   let optionomicsFlowEvidence = notAttemptedEvidence();
   let optionomicsContextEvidence = notAttemptedEvidence();
@@ -739,7 +748,6 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       const eventTo = new Date(decisionTime);
       eventTo.setUTCDate(eventTo.getUTCDate() + (config.optionomicsContextPolicy?.eventLookaheadDays ?? 0));
       const contextOutcomes: Awaited<ReturnType<typeof fetchOptionomicsContextObservation>>[] = [];
-      let macroEventCoverage: Awaited<ReturnType<typeof fetchOptionomicsMacroEventCoverage>> | null = null;
       // Sequential calls respect the provider's shared account allowance.
       // Each GET still has its own bounded 429 policy in the adapter.
       for (const family of contextFamilies) {
@@ -938,7 +946,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     quotesOrigin: quotesEvidence.origin, quotesQuality: quotesEvidence.quality,
     optionomicsOrigin: optionomicsEvidence.origin, optionomicsQuality: optionomicsEvidence.quality, optionomicsChain, optionomicsEntries,
     optionomicsFlowWindows, optionomicsFlowOrigin: optionomicsFlowEvidence.origin, optionomicsFlowQuality: optionomicsFlowEvidence.quality,
-    optionomicsContextObservations, optionomicsContextOrigin: optionomicsContextEvidence.origin,
+    optionomicsContextObservations, macroEventCoverage, optionomicsContextOrigin: optionomicsContextEvidence.origin,
     optionomicsContextQuality: optionomicsContextEvidence.quality,
     positions, positionsOrigin: positionsEvidence.origin, positionsQuality: positionsEvidence.quality,
     openOrders, openOrdersOrigin: openOrdersEvidence.origin, openOrdersQuality: openOrdersEvidence.quality,
