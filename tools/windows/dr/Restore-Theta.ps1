@@ -55,7 +55,8 @@ if ($manifest.formatVersion -eq 2) {
     $rowcountParity = 'FAIL'
   }
   $sourceDigests = Get-Content -Raw -LiteralPath (Join-Path $backup 'critical-data-digests.json') | ConvertFrom-Json
-  $restoredDigests = Get-ThetaCriticalDigest $target $restoreStructure
+  $digestMethod = if ($manifest.criticalDigestMethod) { [string]$manifest.criticalDigestMethod } else { 'SORTED_ROW_MD5_V1' }
+  $restoredDigests = Get-ThetaCriticalDigest $target $restoreStructure -Method $digestMethod
   $criticalDataVerification = 'PASS'
   if (@($sourceDigests.PSObject.Properties).Count -ne $restoredDigests.Count) { $criticalDataVerification = 'FAIL' }
   foreach ($item in $sourceDigests.PSObject.Properties) {

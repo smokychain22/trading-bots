@@ -168,7 +168,11 @@ FROM pg_sequences WHERE schemaname NOT LIKE 'pg_%' AND schemaname<>'information_
 }
 
 function Get-ThetaCriticalDigest {
-  param([Parameter(Mandatory)][object]$Connection, [Parameter(Mandatory)][object]$Structure)
+  param(
+    [Parameter(Mandatory)][object]$Connection,
+    [Parameter(Mandatory)][object]$Structure,
+    [ValidateSet('SORTED_ROW_MD5_V1','ORDER_INDEPENDENT_DUAL_SUM_V1')][string]$Method = 'ORDER_INDEPENDENT_DUAL_SUM_V1'
+  )
   $names = @(
     'core.schema_migration','iam.customer_identity','copy.alpaca_oauth_token',
     'trade.order_intent','trade.broker_order','trade.fill','trade.broker_activity_fact',
@@ -182,8 +186,14 @@ function Get-ThetaCriticalDigest {
     if (-not $present.Contains($name)) { continue }
     $parts = $name -split '\.', 2
     $qualified = '"' + $parts[0].Replace('"','""') + '"."' + $parts[1].Replace('"','""') + '"'
-    # Only a digest leaves PostgreSQL. No credential, account row, or PII is logged.
-    $digestSql = "SELECT md5(coalesce(string_agg(row_hash,'' ORDER BY row_hash),'')) FROM (SELECT md5(to_jsonb(t)::text) AS row_hash FROM $qualified t) hashes"
+    # Only a digest leaves PostgreSQL. The production form avoids a temporary sort file,
+    # which can fail when Aiven is near its storage limit. Numeric sums are exact and
+    # order-independent; the archive SHA-256 remains the complete byte-integrity proof.
+    $digestSql = if ($Method -eq 'SORTED_ROW_MD5_V1') {
+      "SELECT md5(coalesce(string_agg(row_hash,'' ORDER BY row_hash),'')) FROM (SELECT md5(to_jsonb(t)::text) AS row_hash FROM $qualified t) hashes"
+    } else {
+      "SELECT md5(count(*)::text || ':' || coalesce(sum((('x'||substr(row_hash,1,16))::bit(64)::bigint)::numeric)::text,'0') || ':' || coalesce(sum((('x'||substr(row_hash,17,16))::bit(64)::bigint)::numeric)::text,'0')) FROM (SELECT md5(to_jsonb(t)::text) AS row_hash FROM $qualified t) hashes"
+    }
     $digests[$name] = Invoke-ThetaSql -Connection $Connection -Sql $digestSql
     if ($digests[$name] -notmatch '^[0-9a-f]{32}$') { throw "CRITICAL_DIGEST_INVALID:$name" }
   }
