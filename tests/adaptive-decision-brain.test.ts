@@ -39,12 +39,23 @@ const currentDecision = () => ({
 test('adaptive shadow is a comparison receipt with no broker mutation authority', () => {
   const receipt = buildAdaptiveShadowDecisionReceipt({ frontier: frontier(), currentDecision: currentDecision() });
   assert.equal(receipt.currentPolicyDecision.action, 'OPEN_CSP');
-  assert.equal(receipt.adaptiveShadowDecision.action, 'WAIT');
-  assert.equal(receipt.adaptiveShadowDecision.quantity, 0);
+  assert.equal(receipt.adaptiveShadowDecision.action, 'NO_COMPARISON');
+  assert.equal(receipt.adaptiveShadowDecision.quantity, null);
   assert.equal(receipt.executionAuthorized, false);
   assert.equal(receipt.brokerMutationAllowed, false);
-  assert.equal(receipt.comparison, 'DIFFERS_RESEARCH_ONLY');
+  assert.equal(receipt.comparison, 'NO_COMPARISON');
   assert.deepEqual(receipt.lineage, sovereignDecisionPath);
+});
+
+test('a current-policy WAIT is not presented as adaptive agreement without an adaptive policy', () => {
+  const receipt = buildAdaptiveShadowDecisionReceipt({
+    frontier: frontier(),
+    currentDecision: { actionCode: 'GLOBAL_WAIT', selectedCandidateRef: null, quantity: 0, strategyBranch: null },
+  });
+  assert.equal(receipt.currentPolicyDecision.action, 'GLOBAL_WAIT');
+  assert.equal(receipt.adaptiveShadowDecision.action, 'NO_COMPARISON');
+  assert.equal(receipt.comparison, 'NO_COMPARISON');
+  assert.ok(receipt.adaptiveShadowDecision.reasonCodes.includes('EMPIRICAL_UTILITY_NOT_PROMOTED'));
 });
 
 test('strategy registry has five products and THETA_R remains a management route', () => {
@@ -92,5 +103,5 @@ test('overtrading metrics preserve denominator definitions and do not invent thr
   assert.equal(diagnostic.capitalUtilization, 0.25);
   assert.equal(diagnostic.turnover, 0.05);
   assert.equal(diagnostic.policyState, 'OBSERVATIONAL_NO_EMPIRICAL_THRESHOLDS');
-  assert.equal(fixedVsAdaptiveExperiments.length, 7);
+  assert.equal(fixedVsAdaptiveExperiments.length, 8);
 });

@@ -3,7 +3,7 @@ import type { CanonicalStrategyFrontier } from './canonical-strategy-frontier.js
 import type { CanonicalFrontierAction } from './canonical-strategy-frontier.js';
 import { canonicalThetaStrategySources, type ThetaStrategyBranch } from './strategy-package.js';
 
-export const adaptiveDecisionBrainVersion = 'theta-adaptive-decision-brain-shadow-v1' as const;
+export const adaptiveDecisionBrainVersion = 'theta-adaptive-decision-brain-shadow-v2' as const;
 
 export type EvidenceValueState = 'KNOWN' | 'UNKNOWN' | 'NOT_APPLICABLE' | 'INVALID';
 export type EvidencePolicyRole =
@@ -226,6 +226,7 @@ export const fixedVsAdaptiveExperiments = [
   'CONVENTIONAL_ONLY_VS_STRATEGY_FRONTIER',
   'STATIC_ROLL_VS_UTILITY_ROLL',
   'IMMEDIATE_CC_VS_RECOVERY_FRONTIER',
+  'CURRENT_UNDERLYING_CAP_VS_WIDER_UNIVERSE',
 ] as const;
 
 export interface AdaptiveShadowDecisionReceipt {
@@ -239,14 +240,14 @@ export interface AdaptiveShadowDecisionReceipt {
     readonly strategy: ThetaStrategyBranch | null;
   };
   readonly adaptiveShadowDecision: {
-    readonly action: 'WAIT';
+    readonly action: 'NO_COMPARISON';
     readonly candidateId: null;
-    readonly quantity: 0;
+    readonly quantity: null;
     readonly strategy: null;
     readonly reasonCodes: readonly string[];
   };
   readonly lineage: readonly string[];
-  readonly comparison: 'MATCH' | 'DIFFERS_RESEARCH_ONLY';
+  readonly comparison: 'NO_COMPARISON';
   readonly executionAuthorized: false;
   readonly brokerMutationAllowed: false;
   readonly contentHash: string;
@@ -280,18 +281,17 @@ export function buildAdaptiveShadowDecisionReceipt(input: {
       strategy: input.currentDecision.strategyBranch,
     },
     adaptiveShadowDecision: {
-      action: 'WAIT' as const,
+      action: 'NO_COMPARISON' as const,
       candidateId: null,
-      quantity: 0 as const,
+      quantity: null,
       strategy: null,
       reasonCodes: [
         'ADAPTIVE_POLICY_RESEARCH_ONLY', 'EMPIRICAL_UTILITY_NOT_PROMOTED',
-        'NO_BROKER_AUTHORITY', 'WAIT_RETAINS_CAPITAL',
+        'NO_BROKER_AUTHORITY', 'NO_ADAPTIVE_ACTION_INFERRED',
       ],
     },
     lineage: sovereignDecisionPath,
-    comparison: input.currentDecision.actionCode === 'GLOBAL_WAIT' || input.currentDecision.actionCode === 'SYSTEM_HOLD'
-      ? 'MATCH' as const : 'DIFFERS_RESEARCH_ONLY' as const,
+    comparison: 'NO_COMPARISON' as const,
     executionAuthorized: false as const,
     brokerMutationAllowed: false as const,
   };

@@ -133,3 +133,12 @@ test('rankEligibleUnderlyings carries an explicit, transparent reason for each r
   assert.equal(ranked[0]?.rankingFeature, 'avgDollarVolume');
   assert.ok(ranked[0]?.reason.length > 0);
 });
+
+test('eligible ranking fails closed when its point-in-time liquidity input is missing', () => {
+  const inputs = [clean({ symbol: 'A' })];
+  const { decisions } = evaluateUniverse(policy, inputs);
+  assert.throws(() => rankEligibleUnderlyings(decisions, new Map()),
+    /ELIGIBLE_UNDERLYING_LIQUIDITY_EVIDENCE_MISSING/);
+  assert.throws(() => rankEligibleUnderlyings(decisions, new Map([['A', clean({ symbol: 'A', avgDollarVolume: null })]])),
+    /ELIGIBLE_UNDERLYING_LIQUIDITY_EVIDENCE_MISSING/);
+});

@@ -30,12 +30,22 @@ test('an acknowledged working canary remains in progress rather than being calle
   assert.deepEqual(receipt.pending,['BROKER_ORDER_WORKING']);
 });
 
-test('a clean broker rejection can accept the operational path without fabricating TCA or lifecycle',()=>{
+test('a broker rejection is recorded without claiming canary acceptance or fill economics',()=>{
   const base=input();
   const receipt=buildFirstCanaryAcceptanceReceipt({...base,broker:{...base.broker,orderState:good('REJECTED'),filledQuantity:good(0)},
     evidence:{...base.evidence,tcaPersisted:good(false),lifecycleApplied:good(false)}});
-  assert.equal(receipt.status,'ACCEPTED');
-  assert.deepEqual(receipt.blockers,[]);
+  assert.equal(receipt.status,'FAILED');
+  assert.deepEqual(receipt.blockers,['BROKER_ORDER_REJECTED']);
+});
+
+test('a canceled or expired unfilled order cannot remain pending forever or count as accepted',()=>{
+  const base=input();
+  for (const state of ['CANCELED','EXPIRED'] as const) {
+    const receipt=buildFirstCanaryAcceptanceReceipt({...base,broker:{...base.broker,orderState:good(state),filledQuantity:good(0)},
+      evidence:{...base.evidence,tcaPersisted:good(false),lifecycleApplied:good(false)}});
+    assert.equal(receipt.status,'FAILED');
+    assert.ok(receipt.blockers.includes(`BROKER_ORDER_${state}`));
+  }
 });
 
 test('identity mismatch, duplicate exposure, follower mutation, or missing relock fails acceptance',()=>{
