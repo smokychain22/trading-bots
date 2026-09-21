@@ -20,7 +20,8 @@ function envelope(contractVersion: string, rows: readonly unknown[]) {
   return {
     exportContractVersion: contractVersion, generatedAt: '2026-09-21T00:00:00Z', sanitized: true,
     sourceDescription: 'fixture', provider: 'OPTIONOMICS', sourceWindowStart: '2026-01-01T00:00:00Z',
-    sourceWindowEnd: '2026-09-21T00:00:00Z', symbolCount: 1, canonicalSourceSha: CANONICAL_SHA,
+    sourceWindowEnd: '2026-09-21T00:00:00Z', scope: 'SYMBOL_SCOPED', symbolCount: 1,
+    canonicalSourceSha: CANONICAL_SHA, evidenceIds: rows.map((_, i) => `evidence-${i}`),
     contentHash: computeExportContentHash(rows), rowCount: rows.length, rows,
   };
 }

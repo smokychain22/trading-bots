@@ -10,7 +10,8 @@ function exportEnvelope(rows: readonly unknown[]): Record<string, unknown> {
     exportContractVersion: EVENT_PIT_EXPORT_CONTRACT_VERSION, generatedAt: '2026-09-21T00:00:00Z',
     sanitized: true, sourceDescription: 'test fixture', provider: 'OPTIONOMICS',
     sourceWindowStart: '2026-01-01T00:00:00Z', sourceWindowEnd: '2026-09-21T00:00:00Z',
-    symbolCount: 2, canonicalSourceSha: CANONICAL_SHA, contentHash: computeExportContentHash(rows),
+    scope: 'SYMBOL_SCOPED', symbolCount: 2, canonicalSourceSha: CANONICAL_SHA,
+    evidenceIds: rows.map((_, i) => `evidence-${i}`), contentHash: computeExportContentHash(rows),
     rowCount: rows.length, rows,
   };
 }
