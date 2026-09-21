@@ -1,0 +1,143 @@
+# THETA pre-VPS unknown ledger
+
+Status: **Slice 1 of the pre-VPS zero-avoidable-unknown directive.** This is a
+first, grounded pass built from direct source reads plus a targeted fork audit
+of `src/theta/` and `src/execution/` (Production-critical paths), plus the
+real `docs/operations/THETA_R7_LIVE_SESSION_FORENSIC_2026-09-21.md` forensic
+(an actual live-session read against real Aiven/Alpaca evidence, not a
+simulation). It is **not** an exhaustive whole-repo audit — the parent
+directive's 25 sections cannot be completed honestly in one pass without
+producing shallow, unverified output, which the directive itself explicitly
+warns against. See `THETA_PRE_VPS_AUDIT_SCOPE_AND_PLAN.md` for what remains
+and why it is deferred.
+
+Every entry below is grounded in an actual file read (cited by path/line) or
+the real forensic document — never inferred from a function name alone.
+
+## Legend
+
+`AVOIDABLE` = could THETA realistically know this at decision time with a real
+producer that does not currently exist or is not currently wired, vs.
+`LEGITIMATE` = a real, structural, or provider-bounded unknown that should
+remain UNKNOWN.
+
+## Confirmed AVOIDABLE unknowns (real producer missing or not wired)
+
+### 1. `rollCandidate` / `ccCandidate` are always `null` in Production management evaluation
+
+- **FIELD**: `PaperBootstrapCandidateSource.candidatesFor()` result (`src/theta/paper-bootstrap-management-policy.ts:1127-1136`)
+- **STAGE**: Management brain -- roll/CC candidate evaluation for an open CSP/CC chain
+- **CURRENT_VALUE_STATE**: Always `{ rollCandidate: null, ccCandidate: null }` in every real Production call
+- **WHY_UNKNOWN**: The real call site, `autonomous-runtime.ts:353`, invokes `createPaperBootstrapManagementPolicyProvider()` with **zero arguments** (confirmed again this pass: `grep -n "createPaperBootstrapManagementPolicyProvider" src/theta/autonomous-runtime.ts` -> line 41 import, line 353 call, no argument supplied), so the constructor's default `candidates = noCandidates` (line 1146/1155) is what actually runs. `noCandidates` (line 1134) is a stub that always resolves both fields to `null`.
+- **PRODUCER_EXPECTED**: A real `PaperBootstrapCandidateSource` implementation that enumerates real roll/CC candidates from the live contract lattice for the chain's underlying.
+- **PRODUCER_ACTUAL**: None wired. A real, tested DISCOVERY module already exists in this research branch (`src/research/paper-bootstrap-candidate-source.ts::enumerateCandidates`/`buildPaperBootstrapCandidateSet`, built in an earlier pass of this engagement) but has never been adopted as the real `PaperBootstrapCandidateSource` implementation feeding `autonomous-runtime.ts`.
+- **PROVIDER**: Alpaca (contract lattice), Optionomics (context only)
+- **PERSISTENCE_PATH**: N/A -- this is a live per-cycle lookup, not a persisted table
+- **CONSUMER**: `evaluatePaperBootstrapManagementPolicy` -- the real, sophisticated, already-tested roll/CC valuation machinery (`evaluateRollCandidates`, `RollIncrementalUtility`, `valueForRollFromCandidates`, `valueForRollCcFromCandidates`, `valueForSellCcFromCandidates`) that is structurally unreachable today because it never receives a non-null candidate.
+- **SAFETY_AUTHORITY**: Management policy (not AEGIS) -- this degrades the specific action (ROLL/SELL_CC) to UNKNOWN/unavailable, not a hard safety block
+- **FIRST_PAPER_REQUIRED**: YES for any chain that reaches an open-position management decision (roll or CC), which is most of the bot's real lifetime value proposition (the Wheel is a management-heavy strategy, not just an entry strategy)
+- **VPS_REQUIRED**: YES
+- **AVOIDABLE_OR_LEGITIMATE**: **AVOIDABLE** -- confirmed real machinery exists on both sides of the gap (a real valuator, a real discovery module); only the wiring between them is missing
+- **REMEDIATION**: Wire a real `PaperBootstrapCandidateSource` implementation (adapting `src/research/paper-bootstrap-candidate-source.ts` or an equivalent Codex-owned implementation) into the call at `autonomous-runtime.ts:353`
+- **OWNER**: Codex (Production wiring; `src/theta/` and `src/execution/` are Codex-owned)
+- **VERIFICATION_TEST**: A new Codex-side test asserting `createPaperBootstrapManagementPolicyProvider()`'s real call site in `autonomous-runtime.ts` is invoked with a non-default candidate source, plus an integration test proving a real open CSP chain with a real roll candidate in the lattice produces a non-null `rollCandidate` through the full path
+
+### 2. `stressIvShockDetected` / `stressSpreadWideningDetected` have zero real producer anywhere in the repo
+
+- **FIELD**: `aegisInputs.stressIvShockDetected`, `aegisInputs.stressSpreadWideningDetected`
+- **STAGE**: AEGIS SYSTEM-family risk gate
+- **CURRENT_VALUE_STATE**: Always `null` in the real Production path (`src/theta/account-exposure.ts`'s `deriveCandidateInclusiveAegisInputs`, confirmed via `aegis-derivation.ts:24-27`'s own doc comment: "Production callers supply null, never an unevidenced false"). Note: `theta-shadow-once.ts:104` hardcodes both to `false`, but that file is an explicit dev-only manual-input CLI entrypoint gated behind `--allow-manual-inputs` and is never the real autonomous runtime path -- classified `NOT_APPLICABLE_DEFAULT`, not a Production defect.
+- **WHY_UNKNOWN**: No IV-shock or spread-widening history baseline has ever been built.
+- **PRODUCER_EXPECTED**: A real detector comparing current IV/spread against a rolling historical baseline.
+- **PRODUCER_ACTUAL**: None. Confirmed via `grep -rln "stressIvShockDetected" src/theta/ src/execution/` -> only the two files above reference the field at all.
+- **PROVIDER**: Optionomics (`iv_term_structure`, `option_metrics` for IV history), Alpaca (option BBO polling for spread history)
+- **PERSISTENCE_PATH**: Not yet designed
+- **CONSUMER**: `bots/theta/quant/models/aegis.py`'s SYSTEM family, which requires 3 non-`None` stress signals to evaluate; only `stressGapDetected` is real today, so this family can structurally never reach a real evaluated state
+- **SAFETY_AUTHORITY**: AEGIS (hard safety)
+- **FIRST_PAPER_REQUIRED**: Governance-dependent -- see `docs/research/THETA_AEGIS_FIRST_PAPER_POLICY_GAP.md` (built in an earlier pass of this engagement): no committed artifact establishes whether the SYSTEM family's permanent non-evaluation is acceptable for first Paper or must block it. This is a genuine open governance question, not resolved by this ledger.
+- **VPS_REQUIRED**: Same governance dependency
+- **AVOIDABLE_OR_LEGITIMATE**: **AVOIDABLE** in principle (real data sources exist to build a producer) but **currently honestly represented** -- this is a `PRODUCER_MISSING` classification, not an `IMPLEMENTATION_DEFECT`, because the field is correctly `null`, never false-defaulted
+- **REMEDIATION**: Build the two real detectors, OR make an explicit, documented governance decision that SYSTEM-family non-evaluation is acceptable for first Paper (a 2-of-3-signal or 1-of-1-real-signal threshold, chosen deliberately, not by omission)
+- **OWNER**: Codex (AEGIS/Production risk policy) for the governance decision; either agent for the underlying detector build (research prototype could be Claude's, Production integration is Codex's)
+- **VERIFICATION_TEST**: A test proving the SYSTEM family reaches a real evaluated (non-perpetually-unresolved) state once 2-of-3 (or whatever threshold is governed) signals are real
+
+### 3. Multi-position sector/correlation concentration has no real producer beyond the single-underlying case
+
+- **FIELD**: `aegisInputs.sectorConcentrationPct`, `aegisInputs.correlationClusterExposurePct`
+- **STAGE**: AEGIS SECTOR/CORRELATION-family risk gate
+- **CURRENT_VALUE_STATE**: Real only when exactly one underlying is held (`account-exposure.ts`'s `soleRiskGroup` proxy); `null`/unproduced for 2+ concurrent positions
+- **WHY_UNKNOWN**: No real multi-position sector classification or correlation-cluster computation has been built and wired into the AEGIS input derivation path
+- **PRODUCER_EXPECTED**: A real sector/correlation exposure computation across all currently-held positions
+- **PRODUCER_ACTUAL**: Only the 1-underlying special case
+- **PROVIDER**: Optionomics (sector/correlation context), Alpaca (real position list)
+- **CONSUMER**: AEGIS SECTOR/CORRELATION families
+- **SAFETY_AUTHORITY**: AEGIS (hard safety)
+- **FIRST_PAPER_REQUIRED**: Only materially matters once THETA holds 2+ concurrent positions -- for a single-symbol Paper bootstrap start, this may be acceptable, but must be explicitly governed, not silently assumed
+- **AVOIDABLE_OR_LEGITIMATE**: **AVOIDABLE** -- this session's Slice D correlation-research prep (20/60/120-session cohort tooling, explicitly deferred in the prior Slice C/D directive) is the natural research precursor to a real multi-position producer
+- **REMEDIATION**: Build real multi-position sector classification + correlation cluster computation
+- **OWNER**: Codex (Production AEGIS integration); Claude (research precursor -- correlation cohort tooling, not yet built this session)
+- **VERIFICATION_TEST**: A test with 2+ simulated held positions in different/same sectors proving a real, non-proxy `sectorConcentrationPct`/`correlationClusterExposurePct`
+
+### 4. `CONTRACT_NOT_EXECUTABLE` is the single dominant real-session rejection reason -- root cause not yet independently verified against the live Alpaca API
+
+- **FIELD**: `NormalizedOptionContract.executable` / `nonExecutableReason` (`src/theta/option-chain-ingestion.ts:147-160`)
+- **STAGE**: Entry brain -- contract ingestion, immediately before candidate lattice construction
+- **CURRENT_VALUE_STATE**: Per the real 2026-09-21 forensic (`docs/operations/THETA_R7_LIVE_SESSION_FORENSIC_2026-09-21.md`), `CONTRACT_NOT_EXECUTABLE` was the rejection reason for **3,299 of 3,876** persisted candidate rows in a single real session window -- by far the largest single rejection category (next largest: `DELTA_OUTSIDE_ALL_BANDS` at 416)
+- **WHY_UNKNOWN**: Traced to `option-chain-ingestion.ts:154`: `if (contract.multiplier === null) { ...executable: false... }`. `contract.multiplier` originates at `alpaca-provider.ts:337`: `multiplier: asNumberOrNull(c.size)`, reading the real Alpaca `/v2/options/contracts` response field `size`.
+- **PRODUCER_EXPECTED**: A real, correctly-mapped per-contract multiplier from Alpaca's option-contracts endpoint (nearly always `100` for standard US equity options).
+- **PRODUCER_ACTUAL**: `asNumberOrNull(c.size)` -- **not independently verified this pass** against a live Alpaca response, because this research environment has no connected Alpaca MCP/API access (only Optionomics is connected here; Alpaca execution/data access is Codex's domain). Two competing explanations are both plausible from the code alone and are NOT distinguished by this ledger:
+  1. **PROVIDER_MAPPING_DEFECT**: Alpaca reliably returns `size` for essentially every listed contract, and the mapping/field name is subtly wrong (e.g. a different real field name, a nested location, or a type Alpaca returns that `asNumberOrNull` does not parse), causing a large fraction of genuinely executable contracts to be wrongly marked non-executable.
+  2. **PROVIDER_INCAPABLE / real session correlation**: The 3,299 count reflects the SAME real session in which Aiven write availability failed and the worker reported repeated `HTTP_503`/`RUNTIME_BROKER_CYCLE` errors (per the same forensic) -- it is possible a large share of `size`-null contracts correlates with degraded/incomplete Alpaca responses during that specific window, not a permanent mapping defect.
+- **PROVIDER**: Alpaca
+- **CONSUMER**: `new-risk-orchestrator.ts:405-430` -- excludes every non-executable contract from the candidate lattice entirely, before AEGIS or economics are ever computed
+- **SAFETY_AUTHORITY**: Not a safety gate -- a data-completeness gate (correctly conservative: never fabricates a `100`-share assumption for capital/premium math)
+- **FIRST_PAPER_REQUIRED**: YES -- this is the single largest observed real-session bottleneck between "3,876 real candidates evaluated" and "0 candidates selected with positive quantity"
+- **VPS_REQUIRED**: YES
+- **AVOIDABLE_OR_LEGITIMATE**: **UNDETERMINED -- HIGHEST-PRIORITY OPEN QUESTION IN THIS LEDGER.** Do not report this as closed either way without a real, live Alpaca `/v2/options/contracts` response sample examined directly.
+- **REMEDIATION**: Codex (with real Alpaca sandbox/data access) must pull a live sample of `/v2/options/contracts` responses and confirm: (a) is `size` actually present and correctly typed for the vast majority of real, liquid contracts; (b) does the 3,299 figure correlate with the same window's Aiven/broker degradation, or does it reproduce on a healthy session too. If (a) reveals a mapping defect, fix `alpaca-provider.ts:337`'s field read. If it is provider/session-transient, reclassify as `PROVIDER_TEMPORARY_ERROR`/`STALE_DATA` for that window, not a standing defect.
+- **OWNER**: Codex (has real Alpaca credentials and Aiven forensic context this research branch does not)
+- **VERIFICATION_TEST**: A real (non-mocked, sandbox-safe, read-only) Alpaca contract-fetch test asserting the real `size`/multiplier field is present and correctly parsed for a known-liquid, known-good contract, run on a healthy (non-degraded) session
+
+## Confirmed LEGITIMATE unknowns (correctly represented, not a defect)
+
+These are cited as positive reference patterns -- the discipline they show is
+what the rest of the codebase should be checked against, per directive item 5
+(hard-required vs. optional evidence).
+
+- **`sizingEvidenceUnknown` / `globalWaitEarned` gating** (`canonical-strategy-frontier.ts:525-532`, and the real fix in commit `bf6d80e` "distinguish unknown sizing from earned global wait", confirmed present on current `main`): a risk-feasible candidate with zero quantity **solely because a required sizing input (e.g. AEGIS) is unknown** is now classified `SYSTEM_HOLD` with an explicit `CANDIDATE_SIZING_EVIDENCE_UNKNOWN` reason, distinct from a genuinely earned `GLOBAL_WAIT`. This is the correct governing pattern: an incomplete evaluation must never look like an economic WAIT decision. **Confirmed on `main` but per the same forensic doc, not yet active in the currently pinned/deployed worker release** -- a real, already-fixed-but-not-yet-deployed gap, tracked as a Codex deployment item, not a code defect.
+- **`whole-chain-component-evidence.ts` UNKNOWN stock-share fields**: `status !== 'UNKNOWN' && (value ?? 0) > 0` -- status is checked BEFORE the value is ever used in a comparison. Real, wired, correctly governed.
+- **`management-input-state.ts` fee UNKNOWN handling**: an explicit `unknown_fill_fees` boolean flag is checked first; `fees` only defaults to a real known `0` when fees are genuinely known-zero, never as a coercion of missing data.
+- **`empiricalUtilityState: 'UNKNOWN_NOT_YET_CALIBRATED'`** (`canonical-strategy-frontier.ts:542`): honestly hardcoded as not-yet-calibrated since no calibration has ever been attempted in-repo -- correctly `EMPIRICAL_UNPROVEN`, not a wiring defect, and correctly never faked as a real calibrated figure.
+- **No `||` (falsy-coercing) false-safe defaults, and no silent `catch -> []/false/0` patterns found** anywhere sampled in `src/theta/` or `src/execution/` this pass (see the companion false-safe scan section below) -- every default observed used `??` (null/undefined-only coalescing) and every sampled `catch` block either re-threw, rolled back and re-threw, or produced a typed failure classification.
+
+## Companion: static false-safe / false-risk scan (directive item 13, Production paths)
+
+Scope this pass: `src/theta/**/*.ts`, `src/execution/**/*.ts` (Codex-owned,
+Production-critical). `src/research/` and the Python quant layer were **not**
+scanned this pass -- deferred.
+
+**Result: no `UNSAFE_FALSE_SAFE`, `UNSAFE_TRUE_SAFE`, `UNSAFE_ZERO_SAFE`, or
+`PROVIDER_ERROR_MASKING` instances were found in the sampled surface.** This
+is a genuinely positive finding, not a clean bill of health for the whole
+repository -- it covers `??`/`||`/`catch` patterns across roughly 200 files in
+the two scanned directories, not an exhaustive line-by-line review.
+
+Representative `LEGITIMATE_DEFAULT` findings (full detail in the fork
+transcript, summarized here):
+
+| File:Line | Pattern | Classification | Why |
+| --- | --- | --- | --- |
+| `canonical-strategy-frontier.ts:541` | `structuralSelection?.sizing.quantity ?? 0` | LEGITIMATE_DEFAULT | `0` means "no candidate structurally selected" -- matches the standing "quantity zero is a valid outcome" rule, not an unknown-evidence coercion |
+| `cross-symbol-economic-frontier.ts:157-158` | `paretoEntry?.survivesFrontier ?? false` | LEGITIMATE_DEFAULT (borderline) | `paretoEntry` should always exist for every candidate; a fail-closed default if it were ever absent. Flagged to Codex as worth a defensive assertion/log, not a defect. |
+| `management-input-state.ts:185` | `unknown_fill_fees === true ? null : numeric(row.fees) ?? 0` | LEGITIMATE_DEFAULT | UNKNOWN checked first and preserved separately; `0` only used for genuinely known-zero fees |
+| `paper-bootstrap-management-policy.ts:797` | `nearExhaustedExecutableFractionThreshold ?? 0.10` | LEGITIMATE_DEFAULT | Versioned, documented, caller-overridable policy default (already hardened in an earlier pass of this engagement) |
+
+## Counts
+
+- **AVOIDABLE_UNKNOWN_COUNT**: 3 confirmed this pass (items 1-3 above), plus **1 undetermined high-priority item (item 4)** that could be either avoidable (mapping defect) or legitimate (provider/session-transient) -- resolving item 4 is the single highest-leverage next step, since it is correlated with the largest real observed rejection count in the only real live-session forensic available.
+- **LEGITIMATE_UNKNOWN_COUNT**: 4 confirmed well-governed patterns cited above (not exhaustive -- a full-repo pass would find more)
+- **NOT_APPLICABLE_COUNT**: 1 (`theta-shadow-once.ts`'s dev-only hardcoded AEGIS fixture, explicitly gated and never the real runtime path)
+- **PROVIDER_LIMITED_COUNT**: 0 confirmed this pass (item 4 may resolve to this category, or may not -- undetermined)
+
+This ledger will be extended, not restarted, as further slices of the pre-VPS
+audit are completed.
