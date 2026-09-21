@@ -595,6 +595,8 @@ export interface OptionomicsContextQuery {
   readonly to?: string;
   readonly sessionDate?: string;
   readonly perPage?: number;
+  readonly page?: number;
+  readonly kinds?: readonly ('macro' | 'fed' | 'filing')[];
 }
 
 type OptionomicsHeatmapMetric = 'gamma_exposure' | 'vanna_exposure' | 'charm_exposure';
@@ -603,7 +605,7 @@ interface ContextContract {
   readonly family: OptionomicsContextFamily;
   readonly operationAlias: string;
   readonly path: (symbol: string) => string;
-  readonly allowedQueryParameters: readonly ('from' | 'to' | 'date' | 'per_page')[];
+  readonly allowedQueryParameters: readonly ('from' | 'to' | 'date' | 'per_page' | 'page' | 'kinds')[];
   readonly fixedQueryParameters?: Readonly<Record<string, string>>;
   readonly normalize: (body: unknown, symbol: string) => Readonly<Record<string, unknown>> | null;
 }
@@ -778,7 +780,7 @@ const contextContracts: Readonly<Record<OptionomicsContextFamily, ContextContrac
   VANNA_EXPOSURE_HEATMAP: { family: 'VANNA_EXPOSURE_HEATMAP', operationAlias: 'optionomics.get_vanna_exposure_heatmap', path: (symbol) => `/api/v1/stocks/${encodeURIComponent(symbol)}/heatmap`, allowedQueryParameters: ['date'], fixedQueryParameters: { metric: 'vanna_exposure' }, normalize: (body) => normalizeHeatmap(body, 'vanna_exposure') },
   CHARM_EXPOSURE_HEATMAP: { family: 'CHARM_EXPOSURE_HEATMAP', operationAlias: 'optionomics.get_charm_exposure_heatmap', path: (symbol) => `/api/v1/stocks/${encodeURIComponent(symbol)}/heatmap`, allowedQueryParameters: ['date'], fixedQueryParameters: { metric: 'charm_exposure' }, normalize: (body) => normalizeHeatmap(body, 'charm_exposure') },
   FLOW_AGGREGATES: { family: 'FLOW_AGGREGATES', operationAlias: 'optionomics.get_flow_aggregates', path: () => '/api/v1/flow/aggregates', allowedQueryParameters: ['date'], normalize: normalizeFlowAggregates },
-  EVENTS: { family: 'EVENTS', operationAlias: 'optionomics.list_events', path: () => '/api/v1/events', allowedQueryParameters: ['from', 'to', 'per_page'], normalize: (body, symbol) => normalizeEventRows(body, symbol, ['events']) },
+  EVENTS: { family: 'EVENTS', operationAlias: 'optionomics.list_events', path: () => '/api/v1/events', allowedQueryParameters: ['from', 'to', 'per_page', 'page', 'kinds'], normalize: (body, symbol) => normalizeEventRows(body, symbol, ['events']) },
   EARNINGS_FILINGS: { family: 'EARNINGS_FILINGS', operationAlias: 'optionomics.get_earnings_filings', path: (symbol) => `/api/v1/stocks/${encodeURIComponent(symbol)}/earning_filings`, allowedQueryParameters: [], normalize: (body, symbol) => normalizeEventRows(body, symbol, ['earning_filings', 'filings', 'earnings']) },
   SYMBOL_NEWS: { family: 'SYMBOL_NEWS', operationAlias: 'optionomics.get_symbol_news', path: (symbol) => `/api/v1/stocks/${encodeURIComponent(symbol)}/news`, allowedQueryParameters: [], normalize: (body, symbol) => normalizeEventRows(body, symbol, ['news', 'articles']) },
 };
@@ -808,6 +810,9 @@ export async function fetchOptionomicsContextObservation(
   if ([query.from, query.to, query.sessionDate].some((value) => value !== undefined && !validSessionDate(value))) return invalidQuery(now);
   if (query.from !== undefined && query.to !== undefined && query.from > query.to) return invalidQuery(now);
   if (query.perPage !== undefined && (!Number.isInteger(query.perPage) || query.perPage < 1 || query.perPage > 200)) return invalidQuery(now);
+  if (query.page !== undefined && (!Number.isInteger(query.page) || query.page < 1 || query.page > 40)) return invalidQuery(now);
+  if (query.kinds !== undefined && (family !== 'EVENTS' || query.kinds.length === 0
+    || query.kinds.some((kind) => !['macro', 'fed', 'filing'].includes(kind)))) return invalidQuery(now);
   const contract = contextContracts[family];
   const url = new URL(contract.path(underlyingSymbol), config.apiBase);
   for (const [key, value] of Object.entries(contract.fixedQueryParameters ?? {})) url.searchParams.set(key, value);
@@ -815,6 +820,8 @@ export async function fetchOptionomicsContextObservation(
   if (query.to !== undefined && contract.allowedQueryParameters.includes('to')) url.searchParams.set('to', query.to);
   if (query.sessionDate !== undefined && contract.allowedQueryParameters.includes('date')) url.searchParams.set('date', query.sessionDate);
   if (query.perPage !== undefined && contract.allowedQueryParameters.includes('per_page')) url.searchParams.set('per_page', String(query.perPage));
+  if (query.page !== undefined && contract.allowedQueryParameters.includes('page')) url.searchParams.set('page', String(query.page));
+  if (query.kinds !== undefined && contract.allowedQueryParameters.includes('kinds')) url.searchParams.set('kinds', [...new Set(query.kinds)].join(','));
   try {
     const outcome = await requestOptionomicsJsonBounded(config, url);
     const normalized = contract.normalize(outcome.body, underlyingSymbol);
@@ -865,6 +872,84 @@ export async function fetchOptionomicsContextObservation(
     };
     return { kind: 'REQUEST_ERROR', errorClass: 'NETWORK_FAILURE', httpStatus: null, retrievedAt: now(), detail: 'Unknown error.', retryAfterSeconds: null, attemptCount: 1 };
   }
+}
+
+export interface OptionomicsMacroEventCoverage {
+  readonly state: 'COMPLETE' | 'INCOMPLETE';
+  readonly reason: string | null;
+  readonly families: readonly ['macro', 'fed'];
+  readonly from: string;
+  readonly to: string;
+  readonly observations: readonly NormalizedOptionomicsContextObservation[];
+  readonly providerEventCount: number;
+  readonly negativeQualified: boolean;
+}
+
+/** A complete empty macro/Fed window is a bounded negative. It says nothing about earnings. */
+export async function fetchOptionomicsMacroEventCoverage(
+  config: OptionomicsProviderConfig,
+  underlyingSymbol: string,
+  from: string,
+  to: string,
+  maxRequests = 6,
+): Promise<OptionomicsMacroEventCoverage> {
+  const observations: NormalizedOptionomicsContextObservation[] = [];
+  const incomplete = (reason: string, count: number): OptionomicsMacroEventCoverage => ({
+    state: 'INCOMPLETE', reason, families: ['macro', 'fed'], from, to,
+    observations, providerEventCount: count, negativeQualified: false,
+  });
+  if (!validSessionDate(from) || !validSessionDate(to) || from > to
+    || !Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 40) return incomplete('INVALID_BOUNDED_REQUEST', 0);
+  const startMs = Date.parse(`${from}T00:00:00Z`);
+  const endMs = Date.parse(`${to}T00:00:00Z`);
+  const dayMs = 86_400_000;
+  if (endMs - startMs > 61 * dayMs) return incomplete('WINDOW_EXCEEDS_GOVERNED_BOUND', 0);
+  let requests = 0;
+  let eventCount = 0;
+  for (let chunkStart = startMs; chunkStart <= endMs; chunkStart += 30 * dayMs) {
+    const chunkEnd = Math.min(endMs, chunkStart + 29 * dayMs);
+    const requestedFrom = new Date(chunkStart).toISOString().slice(0, 10);
+    const requestedTo = new Date(chunkEnd).toISOString().slice(0, 10);
+    let page = 1;
+    let expectedTotal: number | null = null;
+    let chunkCount = 0;
+    for (;;) {
+      if (requests >= maxRequests) return incomplete('REQUEST_BUDGET_EXHAUSTED', eventCount);
+      requests += 1;
+      const result = await fetchOptionomicsContextObservation(config, 'EVENTS', underlyingSymbol, {
+        from: requestedFrom, to: requestedTo, kinds: ['macro', 'fed'], page, perPage: 100,
+      });
+      if (result.kind !== 'VALUE_PRESENT') return incomplete(`PROVIDER_${result.kind}`, eventCount);
+      const observation = result.value;
+      const payload = objectOrNull(observation.rawPayload);
+      const meta = objectOrNull(payload?.meta);
+      const pagination = objectOrNull(payload?.pagination);
+      const kinds = Array.isArray(meta?.kinds) ? meta.kinds : null;
+      const returnedEvents = Array.isArray(payload?.events) ? payload.events : null;
+      const currentPage = pagination?.current_page;
+      const totalPages = pagination?.total_pages;
+      const totalCount = pagination?.total_count;
+      if (payload?.from !== requestedFrom || payload.to !== requestedTo
+        || kinds === null || kinds.length !== 2 || !kinds.includes('macro') || !kinds.includes('fed')
+        || returnedEvents === null || currentPage !== page
+        || typeof totalPages !== 'number' || !Number.isInteger(totalPages) || totalPages < 0 || totalPages > 40
+        || typeof totalCount !== 'number' || !Number.isInteger(totalCount) || totalCount < 0
+        || (expectedTotal !== null && expectedTotal !== totalCount)) {
+        return incomplete('PROVIDER_COVERAGE_MISMATCH', eventCount);
+      }
+      observations.push(observation);
+      chunkCount += returnedEvents.length;
+      eventCount += returnedEvents.length;
+      expectedTotal = totalCount;
+      if (page >= Math.max(1, totalPages)) {
+        if (chunkCount !== totalCount) return incomplete('PROVIDER_PAGINATION_COUNT_MISMATCH', eventCount);
+        break;
+      }
+      page += 1;
+    }
+  }
+  return { state: 'COMPLETE', reason: null, families: ['macro', 'fed'], from, to,
+    observations, providerEventCount: eventCount, negativeQualified: eventCount === 0 };
 }
 
 // ---------------------------------------------------------------------------

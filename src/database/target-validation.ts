@@ -114,6 +114,10 @@ export async function validateDatabaseTarget(
       (SELECT count(*)::integer FROM trade.broker_order) AS broker_orders,
       (SELECT count(*)::integer FROM trade.fill) AS fills,
       (SELECT count(*)::integer FROM trade.broker_activity_fact) AS broker_activity_facts,
+      (SELECT count(*)::integer FROM market.optionomics_raw_observation) AS optionomics_raw_observations,
+      (SELECT count(*)::integer FROM market.optionomics_event_first_observation) AS optionomics_event_revisions,
+      (SELECT count(*)::integer FROM research.optionomics_capability_qualification_receipt)
+        AS optionomics_capability_receipts,
       (SELECT count(*)::integer FROM trade.candidate_point_in_time_evidence
         WHERE jsonb_typeof(volatility_json->'iv')='number') AS candidate_iv_observations,
       (SELECT count(*)::integer FROM market.execution_quote_observation

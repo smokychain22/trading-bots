@@ -158,6 +158,18 @@ test('candidate-specific AEGIS veto cannot be bypassed by a globally permissive 
   assert.equal(result.selectedCandidateId, 'THETA_CONVENTIONAL:AAPL261016P00185000');
 });
 
+test('missing downside cushion cannot give a premium-rich CSP false Pareto dominance', () => {
+  const unknownDownside = contract({ optionSymbol: 'AAPL261016P00190000', occSymbol: 'AAPL261016P00190000',
+    bid: 4, ask: 4.1, underlyingBid: null, underlyingAsk: null, underlyingLast: null });
+  const knownDownside = contract({ optionSymbol: 'AAPL261016P00185000', occSymbol: 'AAPL261016P00185000',
+    strike: 185, bid: 1.5, ask: 1.6 });
+  const result = buildCanonicalStrategyFrontier({ ...base,
+    contracts: [unknownDownside, knownDownside], routing: routing(['THETA_Q']) });
+  const candidates = result.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL')?.candidates ?? [];
+  assert.equal(candidates.length, 2);
+  assert.equal(candidates.find((candidate) => candidate.candidateId.endsWith('185000'))?.dominatedBy.length, 0);
+});
+
 test('candidate-specific real broker capacity is preserved by canonical sizing', () => {
   const result = buildCanonicalStrategyFrontier({
     ...base,

@@ -403,22 +403,35 @@ function coveredCallCandidate(contract: NormalizedOptionContract, input: Canonic
 
 type Objective = { readonly value: number | null; readonly direction: 'MAX' | 'MIN' };
 function objectives(candidate: CanonicalFrontierCandidate): readonly Objective[] {
-  return [
+  if (candidate.action === 'OPEN_CSP') return [
     { value: candidate.economics.grossPremium, direction: 'MAX' },
     { value: candidate.economics.collateral, direction: 'MIN' },
     { value: candidate.spreadPct, direction: 'MIN' },
     { value: candidate.economics.downsideCushion, direction: 'MAX' },
+  ];
+  if (candidate.action === 'OPEN_DEFINED_RISK') return [
+    { value: candidate.economics.maxProfit, direction: 'MAX' },
+    { value: candidate.economics.maxLoss, direction: 'MIN' },
+    { value: candidate.spreadPct, direction: 'MIN' },
+  ];
+  if (candidate.action === 'SELL_CC') return [
+    { value: candidate.economics.grossPremium, direction: 'MAX' },
+    { value: candidate.spreadPct, direction: 'MIN' },
     { value: candidate.economics.retainedUpside, direction: 'MAX' },
   ];
+  return [];
 }
 
 function dominates(left: CanonicalFrontierCandidate, right: CanonicalFrontierCandidate): boolean {
+  if (left.branch !== right.branch || left.action !== right.action) return false;
   const rightObjectives = objectives(right);
-  const pairs = objectives(left).flatMap((item, index) => {
+  const leftObjectives = objectives(left);
+  if (leftObjectives.length === 0 || leftObjectives.length !== rightObjectives.length) return false;
+  const pairs = leftObjectives.flatMap((item, index) => {
     const other = rightObjectives[index];
     return other === undefined || !finite(item.value) || !finite(other.value) ? [] : [[item, other] as const];
   });
-  if (pairs.length === 0) return false;
+  if (pairs.length !== leftObjectives.length) return false;
   const noWorse = pairs.every(([a, b]) => a.direction === 'MAX' ? (a.value as number) >= (b.value as number) : (a.value as number) <= (b.value as number));
   const better = pairs.some(([a, b]) => a.direction === 'MAX' ? (a.value as number) > (b.value as number) : (a.value as number) < (b.value as number));
   return noWorse && better;

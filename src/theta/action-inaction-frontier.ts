@@ -22,8 +22,11 @@ const dimensions=(value:ActionEconomics):readonly (number|null)[]=>[
   value.opportunityCost===null?null:-value.opportunityCost];
 export function paretoDominates(a:ActionEconomics,b:ActionEconomics):boolean{
   if(a.feasible!==true||b.feasible!==true)return false;
-  const pairs=dimensions(a).map((value,index)=>[value,dimensions(b)[index]] as const).filter(([x,y])=>x!==null&&y!==null);
-  return pairs.length>=2&&pairs.every(([x,y])=>(x as number)>=(y as number))&&pairs.some(([x,y])=>(x as number)>(y as number));
+  const pairs=dimensions(a).map((value,index)=>[value,dimensions(b)[index]] as const);
+  // Missing adverse objectives cannot make either action look dominant.
+  return pairs.every(([x,y])=>x!==null&&y!==null)
+    &&pairs.every(([x,y])=>(x as number)>=(y as number))
+    &&pairs.some(([x,y])=>(x as number)>(y as number));
 }
 export function buildActionInactionFrontier(input:{subjectId:string;observedAt:string;actions:readonly ActionEconomics[]}):ActionInactionFrontier{
   const actions=input.actions.map((action)=>({...action,dominatedBy:input.actions.filter((other)=>other.action!==action.action&&paretoDominates(other,action)).map((other)=>other.action).sort()}));

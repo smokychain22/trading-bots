@@ -17,7 +17,7 @@ import type { PythonBridgeConfig } from './python-bridge.js';
 import { buildFusionSnapshot, hashJson, type FusionSnapshot, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
 import type { DataQualityState } from './data-freshness.js';
 import {
-  fetchOptionomicsContextObservation, fetchOptionomicsNetFlowWindow, fetchOptionomicsOptionChain, matchOptionomicsContractIdentity,
+  fetchOptionomicsContextObservation, fetchOptionomicsMacroEventCoverage, fetchOptionomicsNetFlowWindow, fetchOptionomicsOptionChain, matchOptionomicsContractIdentity,
   type AlpacaContractIdentity, type NormalizedOptionomicsChain, type NormalizedOptionomicsContextObservation, type NormalizedOptionomicsEntry,
   type NormalizedOptionomicsFlowWindow, type OptionomicsContextFamily, type OptionomicsProviderConfig,
 } from './optionomics-provider.js';
@@ -177,10 +177,20 @@ function dueOptionomicsContextFamilies(config: ThetaShadowCycleConfig, decisionT
   if (policy === undefined || policy.maxRequestsPerCycle <= 0) return [];
   const minute = Math.floor(Date.parse(decisionTime) / 60_000);
   if (!Number.isFinite(minute)) return [];
-  return [...new Set(policy.families)].filter((family) => {
+  const due = [...new Set(policy.families)].filter((family) => {
     const cadence = policy.cadenceMinutesByFamily?.[family] ?? 1;
     return Number.isInteger(cadence) && cadence > 0 && minute % cadence === 0;
-  }).slice(0, Math.max(0, Math.floor(policy.maxRequestsPerCycle)));
+  });
+  // A bounded event search can require four pages/requests, so count that
+  // reservation against the shared provider budget before choosing families.
+  due.sort((a, b) => Number(b === 'EVENTS') - Number(a === 'EVENTS'));
+  let remaining = Math.floor(policy.maxRequestsPerCycle);
+  return due.filter((family) => {
+    const cost = family === 'EVENTS' ? 4 : 1;
+    if (cost > remaining) return false;
+    remaining -= cost;
+    return true;
+  });
 }
 
 /**
@@ -210,6 +220,7 @@ function assembleFusionSnapshotInput(params: {
   readonly optionomicsEntries: readonly NormalizedOptionomicsEntry[];
   readonly optionomicsFlowWindows: readonly NormalizedOptionomicsFlowWindow[];
   readonly optionomicsContextObservations: readonly NormalizedOptionomicsContextObservation[];
+  readonly macroEventCoverage: Awaited<ReturnType<typeof fetchOptionomicsMacroEventCoverage>> | null;
   readonly optionomicsContextOrigin: ProvenanceOrigin;
   readonly optionomicsContextQuality: DataQualityState;
   readonly optionomicsFlowOrigin: ProvenanceOrigin;
@@ -335,9 +346,16 @@ function assembleFusionSnapshotInput(params: {
     portfolioExposure: params.derivedExposure as unknown as JsonValue, // real, pure arithmetic over account/positions/orders -- see account-exposure.ts
     alpacaQuoteState: null,
     optionomicsFeatureState: optionomicsAttempted ? optionomicsJson : null, // honestly absent when not configured, never fabricated
-    eventState: eventContextObservations.length > 0
+    eventState: eventContextObservations.length > 0 || params.macroEventCoverage !== null
       ? ({ provider: 'OPTIONOMICS', observations: eventContextObservations,
           populated: eventContextPopulated,
+          macroFedCoverage: params.macroEventCoverage === null ? null : {
+            state: params.macroEventCoverage.state, reason: params.macroEventCoverage.reason,
+            from: params.macroEventCoverage.from, to: params.macroEventCoverage.to,
+            families: params.macroEventCoverage.families,
+            providerEventCount: params.macroEventCoverage.providerEventCount,
+            negativeQualified: params.macroEventCoverage.negativeQualified,
+          },
           earningsDistanceDays: null, exDividendState: null,
           missingSemantics: ['UPCOMING_EARNINGS_DISTANCE_NOT_PROVEN_FROM_FILINGS', 'EX_DIVIDEND_STATE_UNAVAILABLE'] } as unknown as JsonValue)
       : null,
@@ -680,6 +698,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let optionomicsChain: NormalizedOptionomicsChain | null = null;
   let optionomicsFlowWindows: readonly NormalizedOptionomicsFlowWindow[] = [];
   let optionomicsContextObservations: readonly NormalizedOptionomicsContextObservation[] = [];
+  let macroEventCoverage: Awaited<ReturnType<typeof fetchOptionomicsMacroEventCoverage>> | null = null;
   let optionomicsEvidence = notAttemptedEvidence();
   let optionomicsFlowEvidence = notAttemptedEvidence();
   let optionomicsContextEvidence = notAttemptedEvidence();
@@ -728,16 +747,22 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     if (contextFamilies.length > 0) {
       const eventTo = new Date(decisionTime);
       eventTo.setUTCDate(eventTo.getUTCDate() + (config.optionomicsContextPolicy?.eventLookaheadDays ?? 0));
-      const contextOutcomes = [];
+      const contextOutcomes: Awaited<ReturnType<typeof fetchOptionomicsContextObservation>>[] = [];
       // Sequential calls respect the provider's shared account allowance.
       // Each GET still has its own bounded 429 policy in the adapter.
       for (const family of contextFamilies) {
-        const eventQuery = family === 'EVENTS'
-          ? { from: decisionTime.slice(0, 10), to: eventTo.toISOString().slice(0, 10), perPage: 100 }
-          : {};
-        contextOutcomes.push(await fetchOptionomicsContextObservation(config.optionomics, family, underlying, eventQuery));
+        if (family === 'EVENTS') {
+          macroEventCoverage = await fetchOptionomicsMacroEventCoverage(config.optionomics, underlying,
+            decisionTime.slice(0, 10), eventTo.toISOString().slice(0, 10), 4);
+        } else {
+          contextOutcomes.push(await fetchOptionomicsContextObservation(config.optionomics, family, underlying));
+        }
       }
-      optionomicsContextObservations = contextOutcomes.flatMap((outcome) => outcome.kind === 'VALUE_PRESENT' ? [outcome.value] : []);
+      optionomicsContextObservations = [
+        ...contextOutcomes.flatMap((outcome) => outcome.kind === 'VALUE_PRESENT' ? [outcome.value] : []),
+        ...(macroEventCoverage?.observations ?? []),
+      ];
+      if (macroEventCoverage?.state === 'INCOMPLETE') blockers.push(`OPTIONOMICS_MACRO_EVENT_COVERAGE_INCOMPLETE:${macroEventCoverage.reason}`);
       const contextError = contextOutcomes.find((outcome) => outcome.kind === 'REQUEST_ERROR');
       const contextUnknown = contextOutcomes.find((outcome) => outcome.kind === 'VALUE_UNKNOWN_AFTER_SUCCESS');
       if (contextError?.kind === 'REQUEST_ERROR') {
@@ -748,7 +773,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
         optionomicsContextEvidence = { origin: 'REAL_PROVIDER_ERROR', quality };
         blockers.push(`OPTIONOMICS_CONTEXT_FETCH_FAILED:${contextError.errorClass}:${contextError.detail}`);
       } else if (contextUnknown?.kind === 'VALUE_UNKNOWN_AFTER_SUCCESS'
-        || optionomicsContextObservations.length !== contextFamilies.length
+        || macroEventCoverage?.state === 'INCOMPLETE'
+        || contextOutcomes.filter((outcome) => outcome.kind === 'VALUE_PRESENT').length !== contextFamilies.length - (macroEventCoverage === null ? 0 : 1)
         || optionomicsContextObservations.every((observation) => !observation.populated)) {
         optionomicsContextEvidence = { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
         if (contextUnknown?.kind === 'VALUE_UNKNOWN_AFTER_SUCCESS') blockers.push(`OPTIONOMICS_CONTEXT_RESPONSE_UNRECOGNIZED:${contextUnknown.detail}`);
@@ -920,7 +946,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     quotesOrigin: quotesEvidence.origin, quotesQuality: quotesEvidence.quality,
     optionomicsOrigin: optionomicsEvidence.origin, optionomicsQuality: optionomicsEvidence.quality, optionomicsChain, optionomicsEntries,
     optionomicsFlowWindows, optionomicsFlowOrigin: optionomicsFlowEvidence.origin, optionomicsFlowQuality: optionomicsFlowEvidence.quality,
-    optionomicsContextObservations, optionomicsContextOrigin: optionomicsContextEvidence.origin,
+    optionomicsContextObservations, macroEventCoverage, optionomicsContextOrigin: optionomicsContextEvidence.origin,
     optionomicsContextQuality: optionomicsContextEvidence.quality,
     positions, positionsOrigin: positionsEvidence.origin, positionsQuality: positionsEvidence.quality,
     openOrders, openOrdersOrigin: openOrdersEvidence.origin, openOrdersQuality: openOrdersEvidence.quality,
