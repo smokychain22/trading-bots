@@ -84,7 +84,7 @@ function Get-ThetaNativePgTool {
 
 function Invoke-ThetaPg {
   param([ValidateSet('pg_dump','pg_restore','psql')][string]$Tool, [object]$Connection, [string[]]$Arguments)
-  $keys = @('PGHOST','PGPORT','PGUSER','PGPASSWORD','PGDATABASE','PGSSLMODE','PGCONNECT_TIMEOUT','PGAPPNAME','WSLENV')
+  $keys = @('PGHOST','PGPORT','PGUSER','PGPASSWORD','PGDATABASE','PGSSLMODE','PGCONNECT_TIMEOUT','PGAPPNAME','PGTZ','WSLENV')
   $previous = @{}
   foreach ($key in $keys) { $previous[$key] = [Environment]::GetEnvironmentVariable($key) }
   try {
@@ -92,6 +92,9 @@ function Invoke-ThetaPg {
     $env:PGPORT = $Connection.Port; $env:PGUSER = $Connection.User
     $env:PGPASSWORD = $Connection.Password; $env:PGDATABASE = $Connection.Database; $env:PGSSLMODE = $Connection.SslMode
     $env:PGCONNECT_TIMEOUT = '15'; $env:PGAPPNAME = 'theta-disaster-recovery'
+    # JSON row digests must use the same timestamp representation on Aiven and
+    # on a restore target whose default PostgreSQL timezone may differ.
+    $env:PGTZ = 'UTC'
     if ($Connection.Host -eq 'wsl-socket') {
       $env:WSLENV = (($previous['WSLENV'] | ForEach-Object { if ($_) { $_ + ':' } else { '' } }) + (($keys | Where-Object { $_ -ne 'WSLENV' } | ForEach-Object { $_ + '/u' }) -join ':'))
       $result = & wsl.exe -d Ubuntu --exec "/usr/lib/postgresql/18/bin/$Tool" @Arguments 2>&1
