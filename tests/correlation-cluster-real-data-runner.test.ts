@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   CORRELATION_CLUSTER_EXPORT_CONTRACT_VERSION, runCorrelationClusterRealDataStudy,
 } from '../src/research/correlation-cluster-real-data-runner.js';
+import { computeExportContentHash } from '../src/research/real-data-export-contract.js';
 import type { CorrelationEvidence, PairwiseCorrelationEvidence } from '../src/theta/correlation-evidence.js';
 
 const pair = (left: string, right: string, correlation: number): PairwiseCorrelationEvidence => ({
@@ -16,6 +17,16 @@ const snapshot = (asOf: string, lookbackBars: number): CorrelationEvidence => ({
 });
 
 const CONFIG = { clusterThreshold: 0.5, configVersion: 'v1' };
+const CANONICAL_SHA = 'c'.repeat(40);
+
+function exportEnvelope(rows: readonly CorrelationEvidence[]): Record<string, unknown> {
+  return {
+    exportContractVersion: CORRELATION_CLUSTER_EXPORT_CONTRACT_VERSION, generatedAt: '2026-09-21T00:00:00Z',
+    sanitized: true, sourceDescription: 'fixture', provider: 'ALPACA', sourceWindowStart: '2026-01-01T00:00:00Z',
+    sourceWindowEnd: '2026-09-21T00:00:00Z', symbolCount: 3, canonicalSourceSha: CANONICAL_SHA,
+    contentHash: computeExportContentHash(rows), rowCount: rows.length, rows,
+  };
+}
 
 test('runCorrelationClusterRealDataStudy reports AWAITING_REAL_EXPORT with no export', () => {
   const result = runCorrelationClusterRealDataStudy(20, null, CONFIG);
@@ -24,29 +35,27 @@ test('runCorrelationClusterRealDataStudy reports AWAITING_REAL_EXPORT with no ex
 });
 
 test('runCorrelationClusterRealDataStudy rejects a snapshot whose lookbackBars does not match the requested lookback', () => {
-  const result = runCorrelationClusterRealDataStudy(20, {
-    exportContractVersion: CORRELATION_CLUSTER_EXPORT_CONTRACT_VERSION, generatedAt: '2026-09-21T00:00:00Z',
-    sanitized: true, sourceDescription: 'fixture', rowCount: 1, rows: [snapshot('2026-09-01', 60)],
-  }, CONFIG);
+  const rows = [snapshot('2026-09-01', 60)];
+  const result = runCorrelationClusterRealDataStudy(20, exportEnvelope(rows), CONFIG);
   assert.equal(result.status, 'EXPORT_CONTRACT_INVALID');
   assert.equal(result.reason, 'EXPORT_CONTAINS_A_SNAPSHOT_WITH_MISMATCHED_LOOKBACK');
 });
 
 test('runCorrelationClusterRealDataStudy rejects an empty snapshot list', () => {
-  const result = runCorrelationClusterRealDataStudy(20, {
-    exportContractVersion: CORRELATION_CLUSTER_EXPORT_CONTRACT_VERSION, generatedAt: '2026-09-21T00:00:00Z',
-    sanitized: true, sourceDescription: 'fixture', rowCount: 0, rows: [],
-  }, CONFIG);
+  const result = runCorrelationClusterRealDataStudy(20, exportEnvelope([]), CONFIG);
   assert.equal(result.status, 'EXPORT_CONTRACT_INVALID');
   assert.equal(result.reason, 'EXPORT_CONTAINS_NO_SNAPSHOTS');
 });
 
+test('runCorrelationClusterRealDataStudy rejects an export whose contentHash does not match its rows', () => {
+  const rows = [snapshot('2026-08-01', 20)];
+  const result = runCorrelationClusterRealDataStudy(20, { ...exportEnvelope(rows), contentHash: '0'.repeat(64) }, CONFIG);
+  assert.equal(result.status, 'EXPORT_CONTENT_HASH_MISMATCH');
+});
+
 test('runCorrelationClusterRealDataStudy runs clustering and stability on a valid multi-snapshot export', () => {
   const rows = [snapshot('2026-08-01', 20), snapshot('2026-09-01', 20)];
-  const result = runCorrelationClusterRealDataStudy(20, {
-    exportContractVersion: CORRELATION_CLUSTER_EXPORT_CONTRACT_VERSION, generatedAt: '2026-09-21T00:00:00Z',
-    sanitized: true, sourceDescription: 'fixture', rowCount: rows.length, rows,
-  }, CONFIG);
+  const result = runCorrelationClusterRealDataStudy(20, exportEnvelope(rows), CONFIG);
   assert.equal(result.status, 'COMPLETED');
   assert.equal(result.evidenceLineage, 'REAL_EXPORT');
   assert.equal(result.snapshotCount, 2);

@@ -24,7 +24,7 @@ export const EVENT_PIT_EXPORT_CONTRACT_VERSION = 'theta-event-pit-export-v1' as 
 export type EventPitExportRow = EventPitRecord;
 
 export interface EventPitRealDataStudyResult {
-  readonly status: 'AWAITING_REAL_EXPORT' | 'EXPORT_CONTRACT_INVALID' | 'EXPORT_ROW_COUNT_MISMATCH' | 'COMPLETED';
+  readonly status: 'AWAITING_REAL_EXPORT' | 'EXPORT_CONTRACT_INVALID' | 'EXPORT_ROW_COUNT_MISMATCH' | 'EXPORT_CONTENT_HASH_MISMATCH' | 'COMPLETED';
   readonly reason: string | null;
   readonly evidenceLineage: EvidenceLineage | null;
   readonly sourceDescription: string | null;

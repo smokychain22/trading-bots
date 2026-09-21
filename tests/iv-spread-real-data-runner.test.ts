@@ -4,6 +4,7 @@ import {
   IV_OBSERVATION_EXPORT_CONTRACT_VERSION, OPTIONOMICS_CAPABILITY_EXPORT_CONTRACT_VERSION,
   OPTIONOMICS_QUOTE_OBSERVATION_EXPORT_CONTRACT_VERSION, runIvRealDataStudy, runSpreadRealDataStudy,
 } from '../src/research/iv-spread-real-data-runner.js';
+import { computeExportContentHash } from '../src/research/real-data-export-contract.js';
 import type { OptionomicsCapabilityObservation } from '../src/theta/optionomics-capability-contract.js';
 
 const safeCapability = (overrides: Partial<OptionomicsCapabilityObservation> = {}): OptionomicsCapabilityObservation => ({
@@ -13,10 +14,19 @@ const safeCapability = (overrides: Partial<OptionomicsCapabilityObservation> = {
   runtimeClass: 'RESEARCH', ...overrides,
 });
 
-const capabilityExport = (observations: readonly OptionomicsCapabilityObservation[]) => ({
-  exportContractVersion: OPTIONOMICS_CAPABILITY_EXPORT_CONTRACT_VERSION, generatedAt: '2026-09-21T00:00:00Z',
-  sanitized: true, sourceDescription: 'fixture', rowCount: observations.length, rows: observations,
-});
+const CANONICAL_SHA = 'd'.repeat(40);
+
+function envelope(contractVersion: string, rows: readonly unknown[]) {
+  return {
+    exportContractVersion: contractVersion, generatedAt: '2026-09-21T00:00:00Z', sanitized: true,
+    sourceDescription: 'fixture', provider: 'OPTIONOMICS', sourceWindowStart: '2026-01-01T00:00:00Z',
+    sourceWindowEnd: '2026-09-21T00:00:00Z', symbolCount: 1, canonicalSourceSha: CANONICAL_SHA,
+    contentHash: computeExportContentHash(rows), rowCount: rows.length, rows,
+  };
+}
+
+const capabilityExport = (observations: readonly OptionomicsCapabilityObservation[]) =>
+  envelope(OPTIONOMICS_CAPABILITY_EXPORT_CONTRACT_VERSION, observations);
 
 const alwaysVerified = () => true;
 const FAR_FUTURE_CUTOFF = '2030-01-01T00:00:00Z';
@@ -43,15 +53,22 @@ test('runIvRealDataStudy reports AWAITING_DATA_EXPORT once capability is safe bu
   assert.equal(result.status, 'AWAITING_DATA_EXPORT');
 });
 
+test('runIvRealDataStudy rejects a data export whose contentHash does not match its rows', () => {
+  const ivRows = [{
+    observationTimestamp: '2026-01-01T15:00:00Z', sessionDate: '2026-01-01T00:00:00Z', underlying: 'AAPL',
+    contractId: 'AAPL-c0', expiration: '2026-10-16', dte: 30, delta: 0.3, iv: 0.2,
+  }];
+  const dataExport = { ...envelope(IV_OBSERVATION_EXPORT_CONTRACT_VERSION, ivRows), contentHash: '0'.repeat(64) };
+  const result = runIvRealDataStudy(capabilityExport([safeCapability()]), dataExport, () => 'cohort', alwaysVerified, FAR_FUTURE_CUTOFF);
+  assert.equal(result.status, 'EXPORT_CONTENT_HASH_MISMATCH');
+});
+
 test('runIvRealDataStudy runs coverage + per-cohort shock research on a valid pair of exports', () => {
   const ivRows = Array.from({ length: 25 }, (_, i) => ({
     observationTimestamp: `2026-01-${String(i + 1).padStart(2, '0')}T15:00:00Z`, sessionDate: `2026-01-${String(i + 1).padStart(2, '0')}T00:00:00Z`,
     underlying: 'AAPL', contractId: `AAPL-c${i}`, expiration: '2026-10-16', dte: 30, delta: 0.3, iv: 0.2 + i * 0.001,
   }));
-  const dataExport = {
-    exportContractVersion: IV_OBSERVATION_EXPORT_CONTRACT_VERSION, generatedAt: '2026-09-21T00:00:00Z',
-    sanitized: true, sourceDescription: 'fixture', rowCount: ivRows.length, rows: ivRows,
-  };
+  const dataExport = envelope(IV_OBSERVATION_EXPORT_CONTRACT_VERSION, ivRows);
   const result = runIvRealDataStudy(capabilityExport([safeCapability()]), dataExport, () => 'AAPL|30DTE', alwaysVerified, FAR_FUTURE_CUTOFF);
   assert.equal(result.status, 'COMPLETED');
   assert.equal(result.evidenceLineage, 'REAL_EXPORT');
@@ -71,10 +88,7 @@ test('runSpreadRealDataStudy runs coverage + stress research on a valid pair of 
     observationTimestamp: `2026-01-${String(i + 1).padStart(2, '0')}T15:00:00Z`, sessionDate: `2026-01-${String(i + 1).padStart(2, '0')}T00:00:00Z`,
     underlying: 'AAPL', contractId: `AAPL-c${i}`, bid: 1.0, ask: 1.1, isStale: false,
   }));
-  const dataExport = {
-    exportContractVersion: OPTIONOMICS_QUOTE_OBSERVATION_EXPORT_CONTRACT_VERSION, generatedAt: '2026-09-21T00:00:00Z',
-    sanitized: true, sourceDescription: 'fixture', rowCount: quoteRows.length, rows: quoteRows,
-  };
+  const dataExport = envelope(OPTIONOMICS_QUOTE_OBSERVATION_EXPORT_CONTRACT_VERSION, quoteRows);
   const result = runSpreadRealDataStudy(capabilityExport([safeCapability()]), dataExport, () => 'AAPL', alwaysVerified, FAR_FUTURE_CUTOFF);
   assert.equal(result.status, 'COMPLETED');
   assert.equal(result.evidenceLineage, 'REAL_EXPORT');
