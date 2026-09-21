@@ -36,6 +36,16 @@ test('Pareto frontier keeps unknown economics out of forced rankings',()=>{
   assert.deepEqual(result.paretoActions,['CLOSE_FULL','HOLD']);
 });
 
+test('research action cannot dominate when an adverse objective is unknown',()=>{
+  const result=buildActionInactionFrontier({subjectId:'unknown-tail',observedAt:'2026-09-15T14:00:00Z',actions:[
+    {action:'HOLD',feasible:true,infeasibleReason:null,afterCostEv:10,tailBurden:null,capitalDays:1,
+      executionCost:0,assignmentBurden:0,opportunityCost:0,empiricalState:'UNKNOWN'},
+    {action:'CLOSE_FULL',feasible:true,infeasibleReason:null,afterCostEv:5,tailBurden:2,capitalDays:2,
+      executionCost:1,assignmentBurden:1,opportunityCost:1,empiricalState:'KNOWN'}]});
+  assert.deepEqual(result.paretoActions,['CLOSE_FULL','HOLD']);
+  assert.deepEqual(result.actions[1]?.dominatedBy,[]);
+});
+
 test('WAIT diagnostics distinguish false rejects, correct rejects, and unresolved evidence',()=>{
   const result=calculateInactionDiagnostics([{action:'WAIT',selected:false,resolvedOutcome:'POSITIVE'},
     {action:'WAIT',selected:false,resolvedOutcome:'NEGATIVE'},{action:'HOLD',selected:true,resolvedOutcome:'UNRESOLVED'}]);

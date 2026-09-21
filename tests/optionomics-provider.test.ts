@@ -505,6 +505,53 @@ test('event pagination exposes incomplete coverage without claiming a negative',
   assert.equal(outcome.value.informationState, 'EMPTY_RESULT_COVERAGE_UNVERIFIED');
 });
 
+test('bounded macro/Fed coverage follows every chunk and page before qualifying absence', async () => {
+  const { fetchOptionomicsMacroEventCoverage } = await import('../src/theta/optionomics-provider.js');
+  const requests: string[] = [];
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    requests.push(url.search);
+    const from = url.searchParams.get('from');
+    const to = url.searchParams.get('to');
+    const page = Number(url.searchParams.get('page'));
+    assert.equal(url.searchParams.get('kinds'), 'macro,fed');
+    const first = from === '2026-09-01';
+    const events = first ? [{ id: `real-page-${page}`, kind: 'macro', date: '2026-09-10' }] : [];
+    return jsonResponse(200, { from, to, events, meta: { kinds: ['macro', 'fed'] },
+      pagination: { current_page: page, total_pages: first ? 2 : 1, total_count: first ? 2 : 0 } });
+  }) as typeof fetch;
+  const result = await fetchOptionomicsMacroEventCoverage(baseConfig(fetchImpl), 'SPY', '2026-09-01', '2026-10-01');
+  assert.equal(result.state, 'COMPLETE');
+  assert.equal(result.providerEventCount, 2);
+  assert.equal(result.negativeQualified, false);
+  assert.equal(result.observations.length, 3);
+  assert.equal(requests.length, 3);
+  assert.equal(requests[2]?.includes('from=2026-10-01'), true);
+});
+
+test('event negative coverage requires exact served window, kinds and complete pagination', async () => {
+  const { fetchOptionomicsMacroEventCoverage } = await import('../src/theta/optionomics-provider.js');
+  const successful = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    return jsonResponse(200, { from: url.searchParams.get('from'), to: url.searchParams.get('to'),
+      events: [], meta: { kinds: ['macro', 'fed'] },
+      pagination: { current_page: 1, total_pages: 1, total_count: 0 } });
+  }) as typeof fetch;
+  const complete = await fetchOptionomicsMacroEventCoverage(baseConfig(successful), 'SPY', '2026-09-21', '2026-09-25');
+  assert.equal(complete.state, 'COMPLETE');
+  assert.equal(complete.negativeQualified, true);
+  const truncated = (async () => jsonResponse(200, { from: '2026-09-21', to: '2026-09-22',
+    events: [], meta: { kinds: ['macro', 'fed'] },
+    pagination: { current_page: 1, total_pages: 1, total_count: 0 } })) as typeof fetch;
+  const incomplete = await fetchOptionomicsMacroEventCoverage(baseConfig(truncated), 'SPY', '2026-09-21', '2026-09-25');
+  assert.equal(incomplete.state, 'INCOMPLETE');
+  assert.equal(incomplete.reason, 'PROVIDER_VALUE_UNKNOWN_AFTER_SUCCESS');
+  assert.equal(incomplete.negativeQualified, false);
+  const unserved = await fetchOptionomicsMacroEventCoverage(baseConfig(successful), 'SPY', '2026-09-21', '2026-10-21', 1);
+  assert.equal(unserved.reason, 'REQUEST_BUDGET_EXHAUSTED');
+  assert.equal(unserved.negativeQualified, false);
+});
+
 test('provider-reported zero flow totals remain populated known observations', async () => {
   const fetchImpl = (async () => jsonResponse(200, {
     bullish_flow: [], bearish_flow: [], top_calls: [], top_puts: [], total_premium: 0, trade_count: 0,

@@ -300,6 +300,8 @@ itMockedProviderRealCodePath('confirmed Optionomics context families are fetched
     else if (url.pathname === '/api/v1/flow/aggregates') body = { bullish_flow: [{ symbol: 'SPY', premium: 0 }], bearish_flow: [], top_calls: [], top_puts: [], total_premium: 0, trade_count: 0 };
     else if (url.pathname === '/api/v1/events') body = {
       from: url.searchParams.get('from'), to: url.searchParams.get('to'),
+      meta: { kinds: ['macro', 'fed'] },
+      pagination: { current_page: 1, total_pages: 1, total_count: 1 },
       events: [{ ticker: 'SPY', known_at: '2026-09-09T12:00:00Z', scheduled_at: '2026-09-20T14:00:00Z' }],
     };
     else if (url.pathname.endsWith('/earning_filings')) body = { earning_filings: [] };
@@ -311,14 +313,14 @@ itMockedProviderRealCodePath('confirmed Optionomics context families are fetched
     optionomics: { apiBase: 'https://optionomics.ai', email: 'test-synthetic@example.com', apiToken: 'TEST-SYNTHETIC-TOKEN', fetchImpl: optionomicsFetch, now: () => NOW },
     optionomicsContextPolicy: {
       policyVersion: 'context-test-v1', families: ['METRICS', 'EXPOSURE_HEATMAP', 'FLOW_AGGREGATES', 'EVENTS', 'EARNINGS_FILINGS', 'SYMBOL_NEWS'],
-      maxRequestsPerCycle: 6, eventLookaheadDays: 60,
+      maxRequestsPerCycle: 9, eventLookaheadDays: 60,
     },
   }));
   assert.ok(result.provenanceDetail.includes('optionomicsContext=REAL_PROVIDER'));
   assert.ok(result.provenanceDetail.includes('eventState=REAL_PROVIDER'));
   const state = result.fusionSnapshot?.snapshot.optionomicsFeatureState as Record<string, unknown>;
   assert.equal(Array.isArray(state.rawObservations), true);
-  assert.equal((state.rawObservations as readonly unknown[]).length, 7);
+  assert.equal((state.rawObservations as readonly unknown[]).length, 9);
   const features = state.features as Record<string, unknown>;
   const providerContext = features.providerContext as Record<string, unknown>;
   assert.equal(Array.isArray(providerContext.observations), true);
