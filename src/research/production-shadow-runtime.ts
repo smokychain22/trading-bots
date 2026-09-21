@@ -19,6 +19,7 @@ import { buildUniverseBreadthShadowPlan } from './strategy-quality-shadow-diagno
 import type { BrokerReconciliationResult } from '../execution/broker-reconciliation-worker.js';
 import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment } from '../theta/paper-entry-bootstrap.js';
 import { loadRecoveryHistory } from '../theta/recovery-history-loader.js';
+import { persistAlpacaCorporateActionRead, readAlpacaCorporateActions } from '../theta/alpaca-corporate-action-evidence.js';
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
@@ -161,7 +162,30 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const universeBreadthChallenger=buildUniverseBreadthShadowPlan(rankedSymbols,scanOrdinal);
   const scanSymbols=new Set([...universeBreadthChallenger.championSymbols,
     ...universeBreadthChallenger.challengerSymbols.map((candidate)=>candidate.symbol)]);
-  const scanUnderlyings=discovery.candidates.filter((candidate)=>scanSymbols.has(candidate.symbol));
+  const scanUnderlyingsRaw=discovery.candidates.filter((candidate)=>scanSymbols.has(candidate.symbol));
+  const corporateActionBlockers:string[]=[];
+  let pendingUnsupportedSymbols=new Set<string>();
+  const corporateActionSymbols=[...new Set([...scanUnderlyingsRaw.map((candidate)=>candidate.symbol),...recoveryInventoryUnderlyings])].sort().slice(0,20);
+  if(corporateActionSymbols.length>0){
+    try{
+      const observedAt=input.now();
+      const start=observedAt.slice(0,10);
+      const end=new Date(Date.parse(`${start}T00:00:00Z`)+45*86_400_000).toISOString().slice(0,10);
+      const read=await readAlpacaCorporateActions({config:input.alpaca,
+        symbols:corporateActionSymbols,start,end,observedAt});
+      await persistAlpacaCorporateActionRead(input.pool,read);
+      if(!read.paginationComplete)corporateActionBlockers.push('ALPACA_CORPORATE_ACTION_PAGINATION_INCOMPLETE');
+      pendingUnsupportedSymbols=new Set(read.observations.filter((row)=>row.pendingUnsupported).map((row)=>row.symbol));
+    }catch{
+      corporateActionBlockers.push('ALPACA_CORPORATE_ACTION_READ_OR_PERSISTENCE_FAILED');
+    }
+  }
+  const scanUnderlyings=scanUnderlyingsRaw.map((candidate)=>({
+    ...candidate,
+    // Positive evidence can stop new risk. Alpaca expressly does not
+    // guarantee publication timing, so no empty result becomes `false`.
+    unsupportedCorporateActionPending:pendingUnsupportedSymbols.has(candidate.symbol)?true:null,
+  }));
   const discoveredBySymbol=new Map(discovery.candidates.map((candidate)=>[candidate.symbol,candidate]));
   const brokerAuthoritySymbols=new Set(universeBreadthChallenger.championSymbols);
   const optionomics=optionomicsConfigFromEnvironment(input.environment);
@@ -182,7 +206,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   }>();
   let observationsScheduled=0;
   let actionPlansReady=0;
-  const actionPlansBlocked:string[]=[];
+  const actionPlansBlocked:string[]=[...corporateActionBlockers];
   const evidenceStore=new PostgresShadowEvidenceRuntimeStore(input.pool);
   for(const member of scan.results){
     if(member.cycle?.fusionSnapshot===null||member.cycle===null) continue;

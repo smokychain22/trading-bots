@@ -27,6 +27,9 @@ import {
 } from '../database/target-preflight.js';
 import { matchesAivenBootstrapConfirmation, migrateDatabaseTarget } from '../database/target-migration.js';
 import { validateDatabaseTarget } from '../database/target-validation.js';
+import { inspectOptionomicsEventRevisions } from '../database/optionomics-event-inspection.js';
+import { persistAlpacaCorporateActionRead, readAlpacaCorporateActions } from './alpaca-corporate-action-evidence.js';
+import { buildCanonicalEventExport } from '../research/canonical-event-export.js';
 import { applyLegacyImportRequest } from '../database/legacy-import.js';
 import { bootstrapAivenMasterPaperAccount, matchesMasterRecoveryConfirmation } from '../database/master-paper-bootstrap.js';
 import { inventoryLegacyRecovery } from '../database/legacy-recovery-inventory.js';
@@ -63,7 +66,7 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'RUNTIME_CORE_CYCLE' | 'RUNTIME_BROKER_CYCLE' | 'RUNTIME_LIFECYCLE_CYCLE' | 'RUNTIME_MANAGEMENT_CYCLE' | 'RUNTIME_OBSERVATION_CYCLE' | 'RUNTIME_EVIDENCE_CYCLE' | 'RUNTIME_ZERO_TRADE_DIAGNOSTIC' | 'RISK_POLICY_EMPIRICAL_STUDY' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'MASTER_PAPER_AUTHORIZE' | 'FIRST_PAPER_CANARY_ACTIVATE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'RUNTIME_CORE_CYCLE' | 'RUNTIME_BROKER_CYCLE' | 'RUNTIME_LIFECYCLE_CYCLE' | 'RUNTIME_MANAGEMENT_CYCLE' | 'RUNTIME_OBSERVATION_CYCLE' | 'RUNTIME_EVIDENCE_CYCLE' | 'RUNTIME_ZERO_TRADE_DIAGNOSTIC' | 'RISK_POLICY_EMPIRICAL_STUDY' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'ALPACA_CORPORATE_ACTION_CAPTURE' | 'CANONICAL_EVENT_EXPORT' | 'MASTER_PAPER_AUTHORIZE' | 'FIRST_PAPER_CANARY_ACTIVATE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_EVENT_REVISION_INSPECT' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
@@ -81,12 +84,15 @@ export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'header
   if (value === 'optionomics-provider-qualification') return 'OPTIONOMICS_PROVIDER_QUALIFICATION';
   if (value === 'optionomics-quote-qualification') return 'OPTIONOMICS_QUOTE_QUALIFICATION';
   if (value === 'optionomics-mcp-qualification') return 'OPTIONOMICS_MCP_QUALIFICATION';
+  if (value === 'alpaca-corporate-action-capture') return 'ALPACA_CORPORATE_ACTION_CAPTURE';
+  if (value === 'canonical-event-export') return 'CANONICAL_EVENT_EXPORT';
   if (value === 'master-paper-authorize') return 'MASTER_PAPER_AUTHORIZE';
   if (value === 'first-paper-canary-activate') return 'FIRST_PAPER_CANARY_ACTIVATE';
   if (value === 'database-source-preflight') return 'DATABASE_SOURCE_PREFLIGHT';
   if (value === 'database-target-preflight') return 'DATABASE_TARGET_PREFLIGHT';
   if (value === 'database-target-migrate') return 'DATABASE_TARGET_MIGRATE';
   if (value === 'database-target-validate') return 'DATABASE_TARGET_VALIDATE';
+  if (value === 'database-event-revision-inspect') return 'DATABASE_EVENT_REVISION_INSPECT';
   if (value === 'database-legacy-import') return 'DATABASE_LEGACY_IMPORT';
   if (value === 'database-legacy-inventory') return 'DATABASE_LEGACY_INVENTORY';
   if (value === 'database-legacy-promote') return 'DATABASE_LEGACY_PROMOTE';
@@ -287,6 +293,87 @@ export default async function autonomousRuntimeHandler(
         executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0,
       });
     }
+    return;
+  }
+  if (operation === 'DATABASE_EVENT_REVISION_INSPECT') {
+    if (localIdentity.kind !== 'VALID') {
+      send(response, 400, { error: 'local_worker_identity_required' });
+      return;
+    }
+    if (!environment.AIVEN_DATABASE_URL) {
+      send(response, 503, { error: 'aiven_database_not_configured' });
+      return;
+    }
+    try {
+      const receipt = await inspectOptionomicsEventRevisions(environment.AIVEN_DATABASE_URL);
+      send(response, 200, { receipt, readOnly: true, orderSubmission: 'DISABLED' });
+    } catch (error) {
+      send(response, 503, { error: 'EVENT_REVISION_INSPECTION_FAILED',
+        errorClass: error instanceof Error ? error.name : 'UNKNOWN', readOnly: true,
+        orderSubmission: 'DISABLED' });
+    }
+    return;
+  }
+  if (operation === 'CANONICAL_EVENT_EXPORT') {
+    if (localIdentity.kind !== 'VALID') {
+      send(response, 400, { error: 'local_worker_identity_required' });
+      return;
+    }
+    if (!environment.AIVEN_DATABASE_URL) {
+      send(response, 503, { error: 'aiven_database_not_configured' });
+      return;
+    }
+    try {
+      const inspection = await inspectOptionomicsEventRevisions(environment.AIVEN_DATABASE_URL);
+      if (inspection.state !== 'COMPLETE') throw new Error('EVENT_INSPECTION_INCOMPLETE');
+      const artifact = buildCanonicalEventExport({ rows: inspection.rows, generatedAt: new Date().toISOString(),
+        release: { canonicalSourceSha: process.env.VERCEL_GIT_COMMIT_SHA ?? '',
+          deploymentUrl: process.env.VERCEL_URL ?? '', deploymentEnvironment: 'production',
+          source: 'VERCEL_BUILD_METADATA' } });
+      send(response, 200, { artifact, readOnly: true, orderSubmission: 'DISABLED' });
+    } catch (error) {
+      send(response, 503, { error: 'CANONICAL_EVENT_EXPORT_FAILED',
+        errorClass: error instanceof Error ? error.name : 'UNKNOWN', orderSubmission: 'DISABLED' });
+    }
+    return;
+  }
+  if (operation === 'ALPACA_CORPORATE_ACTION_CAPTURE') {
+    if (localIdentity.kind !== 'VALID') {
+      send(response, 400, { error: 'local_worker_identity_required' });
+      return;
+    }
+    if (!environment.AIVEN_DATABASE_URL) {
+      send(response, 503, { error: 'aiven_database_not_configured' });
+      return;
+    }
+    const pool = new Pool({ connectionString: environment.AIVEN_DATABASE_URL, max: 1, connectionTimeoutMillis: 8_000 });
+    try {
+      const symbolsResult = await pool.query<{ symbol: string }>(`SELECT DISTINCT u.symbol
+        FROM trade.candidate c JOIN market.underlying u ON u.underlying_id=c.underlying_id
+        JOIN trade.candidate_set cs ON cs.candidate_set_id=c.candidate_set_id
+        JOIN trade.fusion_snapshot fs ON fs.fusion_snapshot_id=cs.fusion_snapshot_id
+        WHERE fs.decision_time>=now()-interval '3 days' AND u.symbol ~ '^[A-Z.]{1,12}$'
+        ORDER BY u.symbol LIMIT 20`);
+      const symbols = symbolsResult.rows.map((row) => row.symbol);
+      if (symbols.length === 0) {
+        send(response, 200, { state: 'NO_GOVERNED_CANDIDATE_SYMBOLS', orderSubmission: 'DISABLED' });
+        return;
+      }
+      const master = await new PostgresRuntimeCycleStore(pool).resolveMasterContext(environment);
+      const observedAt = new Date().toISOString();
+      const start = observedAt.slice(0, 10);
+      const end = new Date(Date.parse(`${start}T00:00:00Z`) + 45 * 86_400_000).toISOString().slice(0, 10);
+      const read = await readAlpacaCorporateActions({ config: master.alpaca, symbols, start, end, observedAt });
+      const persisted = await persistAlpacaCorporateActionRead(pool, read);
+      send(response, 200, { state: 'PERSISTED', provider: 'ALPACA', symbols, start, end,
+        pagesRead: read.pagesRead, paginationComplete: read.paginationComplete,
+        negativeCoverageQualified: false, observationCount: persisted.observationCount,
+        newRows: persisted.newRows, pendingUnsupportedCount: read.observations.filter((row) => row.pendingUnsupported).length,
+        orderSubmission: 'DISABLED' });
+    } catch (error) {
+      send(response, 503, { error: 'ALPACA_CORPORATE_ACTION_CAPTURE_FAILED',
+        errorClass: error instanceof Error ? error.name : 'UNKNOWN', orderSubmission: 'DISABLED' });
+    } finally { await pool.end(); }
     return;
   }
   if (operation === 'DATABASE_LEGACY_IMPORT') {
