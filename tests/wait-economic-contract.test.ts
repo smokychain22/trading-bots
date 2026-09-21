@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compareCrossStrategy, validateDeterministicEconomicsForAction, ENTRY_CORE_RISK_V1, type ComparisonContext } from '../src/research/cross-strategy-common-horizon-contract.js';
+import { compareCrossStrategy, validateDeterministicEconomicsForAction, unknownDatum, ENTRY_CORE_RISK_V1, type ComparisonContext } from '../src/research/cross-strategy-common-horizon-contract.js';
 import {
   emptyWaitRegretMetrics, validateWaitEconomicEvidence, waitAsComparisonCandidate,
   type WaitEconomicEvidence,
@@ -97,8 +97,9 @@ test('REPAIR: CSP + Defined Risk + WAIT can be structurally compared together wi
       bidAskSpread: 0.05, estimatedEntryExecutionCost: 5, capitalRequirement: 19000,
     },
     empirical: {
-      expectedAfterCostWholeChainPnl: null, probabilityProfitable: null, probabilityAssignment: null,
-      expectedAssignmentBurden: null, expectedRecoveryDuration: null, expectedCapitalDays: null,
+      expectedAfterCostWholeChainPnl: null, probabilityProfitable: null,
+      probabilityAssignment: unknownDatum('NOT_YET_MODELED'), expectedAssignmentBurden: unknownDatum('NOT_YET_MODELED'),
+      expectedRecoveryDuration: unknownDatum('NOT_YET_MODELED'), expectedCapitalDays: null,
       expectedShortfall: null, cvar: null, maxDrawdown: null, concentrationImpact: null,
       expectedTca: null, calibratedUncertainty: null,
     },

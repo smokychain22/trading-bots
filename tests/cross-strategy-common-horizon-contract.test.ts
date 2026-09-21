@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   cashSecuredPutMaxLossAtZero, capitalBurdenView, compareCrossStrategy, executionBurdenView, riskBurdenView,
   sameComparisonContext, uncertaintyView, validateDeterministicEconomicsForAction, validateComparisonProfile,
-  canonicalTailRiskMetric, ENTRY_CORE_RISK_V1, ENTRY_WHOLE_CHAIN_V1,
+  canonicalTailRiskMetric, knownDatum, unknownDatum, ENTRY_CORE_RISK_V1, ENTRY_WHOLE_CHAIN_V1,
   type CandidateComparisonInput, type ComparisonContext, type DeterministicEntryEconomics, type EmpiricalForwardEconomics,
   type ComparisonProfile,
 } from '../src/research/cross-strategy-common-horizon-contract.js';
@@ -15,8 +15,9 @@ const CONTEXT: ComparisonContext = {
 };
 
 const NULL_EMPIRICAL: EmpiricalForwardEconomics = {
-  expectedAfterCostWholeChainPnl: null, probabilityProfitable: null, probabilityAssignment: null,
-  expectedAssignmentBurden: null, expectedRecoveryDuration: null, expectedCapitalDays: null,
+  expectedAfterCostWholeChainPnl: null, probabilityProfitable: null,
+  probabilityAssignment: unknownDatum('NOT_YET_MODELED'), expectedAssignmentBurden: unknownDatum('NOT_YET_MODELED'),
+  expectedRecoveryDuration: unknownDatum('NOT_YET_MODELED'), expectedCapitalDays: null,
   expectedShortfall: null, cvar: null, maxDrawdown: null, concentrationImpact: null,
   expectedTca: null, calibratedUncertainty: null,
 };
@@ -55,8 +56,8 @@ const fullRisk = (pnl: number, es: number, capitalDays: number, uncertainty: num
 
 const wholeChainFull = (pnl: number, es: number, capitalDays: number, uncertainty: number, assignmentProb: number, assignmentBurden: number, recoveryDuration: number, tca: number): Partial<EmpiricalForwardEconomics> => ({
   ...fullRisk(pnl, es, capitalDays, uncertainty),
-  probabilityAssignment: assignmentProb, expectedAssignmentBurden: assignmentBurden,
-  expectedRecoveryDuration: recoveryDuration, expectedTca: tca,
+  probabilityAssignment: knownDatum(assignmentProb), expectedAssignmentBurden: knownDatum(assignmentBurden),
+  expectedRecoveryDuration: knownDatum(recoveryDuration), expectedTca: tca,
 });
 
 test('cashSecuredPutMaxLossAtZero computes a real finite figure for a CSP -- severe but finite, never null when inputs are known', () => {
@@ -110,6 +111,33 @@ test('GOVERNANCE: validateComparisonProfile rejects a profile whose paretoDimens
     profileVersion: 'bad', requiredDimensions: ['expectedAfterCostWholeChainPnl'],
     optionalDimensions: [], paretoDimensions: ['expectedShortfall'],
   };
+  assert.equal(validateComparisonProfile(invalid), false);
+});
+
+test('A10: validateComparisonProfile rejects an empty profileVersion', () => {
+  const invalid: ComparisonProfile = { profileVersion: '', requiredDimensions: ['expectedAfterCostWholeChainPnl'], optionalDimensions: [], paretoDimensions: [] };
+  assert.equal(validateComparisonProfile(invalid), false);
+});
+
+test('A10: validateComparisonProfile rejects duplicate entries within requiredDimensions or optionalDimensions', () => {
+  const dupRequired: ComparisonProfile = { profileVersion: 'v', requiredDimensions: ['expectedAfterCostWholeChainPnl', 'expectedAfterCostWholeChainPnl'], optionalDimensions: [], paretoDimensions: [] };
+  assert.equal(validateComparisonProfile(dupRequired), false);
+  const dupOptional: ComparisonProfile = { profileVersion: 'v', requiredDimensions: [], optionalDimensions: ['maxDrawdown', 'maxDrawdown'], paretoDimensions: [] };
+  assert.equal(validateComparisonProfile(dupOptional), false);
+});
+
+test('A10: validateComparisonProfile rejects a dimension appearing in BOTH requiredDimensions and optionalDimensions', () => {
+  const overlap: ComparisonProfile = { profileVersion: 'v', requiredDimensions: ['maxDrawdown'], optionalDimensions: ['maxDrawdown'], paretoDimensions: [] };
+  assert.equal(validateComparisonProfile(overlap), false);
+});
+
+test('A10: validateComparisonProfile rejects a Pareto dimension with no registered direction (e.g. probabilityAssignment)', () => {
+  const invalid: ComparisonProfile = { profileVersion: 'v', requiredDimensions: ['probabilityAssignment'], optionalDimensions: [], paretoDimensions: ['probabilityAssignment'] };
+  assert.equal(validateComparisonProfile(invalid), false);
+});
+
+test('A10: validateComparisonProfile rejects the canonical tail metric being listed as cvar rather than expectedShortfall', () => {
+  const invalid: ComparisonProfile = { profileVersion: 'v', requiredDimensions: ['expectedAfterCostWholeChainPnl', 'cvar'], optionalDimensions: [], paretoDimensions: ['cvar'] };
   assert.equal(validateComparisonProfile(invalid), false);
 });
 
@@ -213,7 +241,7 @@ test('GOVERNANCE: ENTRY_WHOLE_CHAIN_V1 reaches FULL_RESEARCH_COMPARABLE once ass
 });
 
 test('riskBurdenView/capitalBurdenView/executionBurdenView/uncertaintyView project the SAME underlying fields, never a duplicated independent value', () => {
-  const candidate = definedRisk({ maxLoss: 380, downsideCushion: 0.07 }, { probabilityAssignment: 0.2, expectedShortfall: -300 });
+  const candidate = definedRisk({ maxLoss: 380, downsideCushion: 0.07 }, { probabilityAssignment: knownDatum(0.2), expectedShortfall: -300 });
   const risk = riskBurdenView(candidate);
   const capital = capitalBurdenView(candidate);
   const execution = executionBurdenView(candidate);

@@ -50,9 +50,49 @@
  *  - `validateDeterministicEconomicsForAction` replaces a single
  *    one-size-fits-all validator, since WAIT genuinely has no option
  *    DTE/strikes and must not be forced to fabricate one.
+ *
+ * v4 hardening, per direct user review of v3's own gaps:
+ *  - `probabilityAssignment`/`expectedAssignmentBurden`/
+ *    `expectedRecoveryDuration` were plain `number | null`, so `null`
+ *    conflated two genuinely different facts: "not yet known" (a bare
+ *    CSP's assignment probability that hasn't been modeled yet) and
+ *    "this dimension does not apply to this candidate's structure" (a
+ *    WAIT candidate, or a defined-risk lifecycle state where the
+ *    question is structurally moot). These 3 lifecycle-specific fields
+ *    now carry an `EmpiricalDatum<number>` (`KNOWN`/`UNKNOWN`/
+ *    `NOT_APPLICABLE`, each with a required reason for the latter two)
+ *    instead of a bare nullable number -- see `EmpiricalDatum`.
+ *  - `validateComparisonProfile` now checks profile well-formedness
+ *    beyond the pareto-subset-of-required rule: nonempty version, no
+ *    duplicate dimensions within or across required/optional, every
+ *    Pareto dimension has a registered direction, and the canonical
+ *    tail metric (`expectedShortfall`) is never silently substituted by
+ *    listing `cvar` in its place.
  */
 
-export const crossStrategyCommonHorizonContractVersion = 'theta-cross-strategy-common-horizon-v3' as const;
+export const crossStrategyCommonHorizonContractVersion = 'theta-cross-strategy-common-horizon-v4' as const;
+
+/**
+ * Distinguishes three genuinely different evidence states for a
+ * lifecycle-specific dimension -- a bare `null` cannot represent all
+ * three without conflating them:
+ *  - `KNOWN`: a real, dated value exists.
+ *  - `UNKNOWN`: the dimension applies to this candidate, but no
+ *    evidence has been gathered/modeled for it yet (a real evidence
+ *    gap -- `reason` names why, e.g. `'NOT_YET_MODELED'`).
+ *  - `NOT_APPLICABLE`: the dimension does not apply to this candidate's
+ *    structure at all (e.g. WAIT has no assignment concept) -- this is
+ *    a real, resolved fact, never a data gap.
+ */
+export type EmpiricalDatum<T> =
+  | { readonly status: 'KNOWN'; readonly value: T }
+  | { readonly status: 'UNKNOWN'; readonly reason: string }
+  | { readonly status: 'NOT_APPLICABLE'; readonly reason: string };
+
+export function knownDatum<T>(value: T): EmpiricalDatum<T> { return { status: 'KNOWN', value }; }
+export function unknownDatum<T>(reason: string): EmpiricalDatum<T> { return { status: 'UNKNOWN', reason }; }
+export function notApplicableDatum<T>(reason: string): EmpiricalDatum<T> { return { status: 'NOT_APPLICABLE', reason }; }
+export function datumValueOrNull<T>(datum: EmpiricalDatum<T>): T | null { return datum.status === 'KNOWN' ? datum.value : null; }
 
 export type ComparisonBasis = 'PER_CONTRACT' | 'PER_POSITION' | 'PER_DOLLAR_CAPITAL' | 'PER_ACCOUNT';
 
@@ -149,9 +189,13 @@ export interface DeterministicEntryEconomics {
 export interface EmpiricalForwardEconomics {
   readonly expectedAfterCostWholeChainPnl: number | null;
   readonly probabilityProfitable: number | null;
-  readonly probabilityAssignment: number | null;
-  readonly expectedAssignmentBurden: number | null;
-  readonly expectedRecoveryDuration: number | null;
+  /** `EmpiricalDatum`, not a bare nullable number -- see the v4 doc
+   * comment above. `NOT_APPLICABLE` for e.g. WAIT (no position exists to
+   * be assigned); `UNKNOWN` for a real candidate whose assignment
+   * probability has not yet been modeled. */
+  readonly probabilityAssignment: EmpiricalDatum<number>;
+  readonly expectedAssignmentBurden: EmpiricalDatum<number>;
+  readonly expectedRecoveryDuration: EmpiricalDatum<number>;
   readonly expectedCapitalDays: number | null;
   readonly expectedShortfall: number | null;
   readonly cvar: number | null;
@@ -181,7 +225,7 @@ export interface RiskBurdenView {
   readonly candidateId: string;
   readonly maxLoss: number | null;
   readonly downsideCushion: number | null;
-  readonly probabilityAssignment: number | null;
+  readonly probabilityAssignment: EmpiricalDatum<number>;
   readonly expectedShortfall: number | null;
   readonly cvar: number | null;
   readonly maxDrawdown: number | null;
@@ -202,7 +246,7 @@ export interface CapitalBurdenView {
   readonly buyingPowerImpact: number | null;
   readonly capitalRequirement: number | null;
   readonly expectedCapitalDays: number | null;
-  readonly expectedRecoveryDuration: number | null;
+  readonly expectedRecoveryDuration: EmpiricalDatum<number>;
 }
 export function capitalBurdenView(input: CandidateComparisonInput): CapitalBurdenView {
   return {
@@ -257,8 +301,28 @@ export interface ComparisonProfile {
   readonly paretoDimensions: readonly EmpiricalDimensionKey[];
 }
 
+function hasDuplicates(values: readonly string[]): boolean {
+  return new Set(values).size !== values.length;
+}
+
+/**
+ * A9/A10 hardening: beyond "Pareto dimensions are a subset of required
+ * dimensions," a well-formed profile also needs a nonempty version, no
+ * duplicate entries within or across `requiredDimensions`/
+ * `optionalDimensions`, a registered Pareto direction for every Pareto
+ * dimension, and must never list `cvar` where the canonical tail metric
+ * (`expectedShortfall`) belongs -- a profile author swapping the two
+ * would silently reintroduce the v2 `es ?? cvar` conflation this
+ * contract was hardened against.
+ */
 export function validateComparisonProfile(profile: ComparisonProfile): boolean {
-  return profile.paretoDimensions.every((d) => profile.requiredDimensions.includes(d));
+  if (profile.profileVersion.trim().length === 0) return false;
+  if (hasDuplicates(profile.requiredDimensions) || hasDuplicates(profile.optionalDimensions)) return false;
+  if (profile.requiredDimensions.some((d) => profile.optionalDimensions.includes(d))) return false;
+  if (!profile.paretoDimensions.every((d) => profile.requiredDimensions.includes(d))) return false;
+  if (!profile.paretoDimensions.every((d) => DIMENSION_DIRECTION[d] !== undefined)) return false;
+  if (profile.paretoDimensions.includes('cvar')) return false;
+  return true;
 }
 
 /**
@@ -345,9 +409,19 @@ export function validateDeterministicEconomicsForAction(action: string, d: Deter
   return hasCoreFields; // OPEN_CSP and other single-leg option-entry actions
 }
 
+/** True for a plain known number, or a datum whose status is `KNOWN`
+ * or `NOT_APPLICABLE` -- both are real, resolved facts. `UNKNOWN`
+ * (a real evidence gap) and bare `null` are the only "not satisfied"
+ * states. */
+function isDimensionSatisfied(value: number | EmpiricalDatum<number> | null): boolean {
+  if (value === null) return false;
+  if (typeof value === 'object') return value.status !== 'UNKNOWN';
+  return true;
+}
+
 function hasAnyEmpiricalField(e: EmpiricalForwardEconomics): boolean {
   const keys = Object.keys(e) as EmpiricalDimensionKey[];
-  return keys.some((k) => e[k] !== null);
+  return keys.some((k) => isDimensionSatisfied(e[k]));
 }
 
 /** Every dimension the Pareto set is EVER allowed to use must have a
@@ -369,9 +443,9 @@ function evaluateProfileReadiness(
 ): { readiness: 'PROFILE_COMPARABLE' | 'PROFILE_NOT_READY'; missingRequiredDimensions: readonly EmpiricalDimensionKey[]; availableOptionalDimensions: readonly EmpiricalDimensionKey[] } {
   const missing = new Set<EmpiricalDimensionKey>();
   for (const dim of profile.requiredDimensions) {
-    if (candidates.some((c) => c.empirical[dim] === null)) missing.add(dim);
+    if (candidates.some((c) => !isDimensionSatisfied(c.empirical[dim]))) missing.add(dim);
   }
-  const availableOptionalDimensions = profile.optionalDimensions.filter((dim) => candidates.every((c) => c.empirical[dim] !== null));
+  const availableOptionalDimensions = profile.optionalDimensions.filter((dim) => candidates.every((c) => isDimensionSatisfied(c.empirical[dim])));
   return {
     readiness: missing.size === 0 ? 'PROFILE_COMPARABLE' : 'PROFILE_NOT_READY',
     missingRequiredDimensions: [...missing], availableOptionalDimensions,

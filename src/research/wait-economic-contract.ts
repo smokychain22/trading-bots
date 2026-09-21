@@ -1,5 +1,12 @@
 /**
- * R8 WAIT-as-real-alternative research contract, v2 (hardened).
+ * R8 WAIT-as-real-alternative research contract, v3 (hardened).
+ *
+ * v3: `probabilityAssignment`/`expectedAssignmentBurden`/
+ * `expectedRecoveryDuration` are now `notApplicableDatum(...)`, not
+ * `null` -- WAIT genuinely has no position for assignment/recovery to
+ * apply to (a real, resolved fact), which is a different claim than "not
+ * yet known." Matches `cross-strategy-common-horizon-contract.ts` v4's
+ * `EmpiricalDatum` hardening.
  * Research-only, `brokerAuthority: false`. WAIT is currently represented
  * in Production only as "no candidate passed" -- this module gives it
  * the same evidence shape a real candidate has, so it can eventually
@@ -33,9 +40,9 @@
  * ESTIMATE with explicit provenance, NEVER conflated with real broker
  * P&L.
  */
-import type { CandidateComparisonInput, ComparisonContext } from './cross-strategy-common-horizon-contract.js';
+import { notApplicableDatum, type CandidateComparisonInput, type ComparisonContext } from './cross-strategy-common-horizon-contract.js';
 
-export const waitEconomicContractVersion = 'theta-wait-economic-contract-v2' as const;
+export const waitEconomicContractVersion = 'theta-wait-economic-contract-v3' as const;
 
 export type CounterfactualProvenance = 'OBSERVED' | 'ESTIMABLE' | 'NOT_IDENTIFIABLE';
 
@@ -149,8 +156,11 @@ export function waitAsComparisonCandidate(evidence: WaitEconomicEvidence, contex
       width: null, bidAskSpread: null, estimatedEntryExecutionCost: 0, capitalRequirement: 0,
     },
     empirical: {
-      expectedAfterCostWholeChainPnl: null, probabilityProfitable: null, probabilityAssignment: null,
-      expectedAssignmentBurden: null, expectedRecoveryDuration: null, expectedCapitalDays: null,
+      expectedAfterCostWholeChainPnl: null, probabilityProfitable: null,
+      probabilityAssignment: notApplicableDatum('WAIT_HAS_NO_POSITION_ASSIGNMENT_CONCEPT'),
+      expectedAssignmentBurden: notApplicableDatum('WAIT_HAS_NO_POSITION_ASSIGNMENT_CONCEPT'),
+      expectedRecoveryDuration: notApplicableDatum('WAIT_HAS_NO_POSITION_RECOVERY_CONCEPT'),
+      expectedCapitalDays: null,
       expectedShortfall: null, cvar: null, maxDrawdown: null, concentrationImpact: null,
       expectedTca: null, calibratedUncertainty: null,
     },
