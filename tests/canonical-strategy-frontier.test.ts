@@ -144,6 +144,28 @@ test('quantity zero is authoritative GLOBAL_WAIT after complete evaluation, neve
   assert.equal(result.nearMissCandidateId, 'THETA_CONVENTIONAL:AAPL261016P00190000');
 });
 
+test('unknown AEGIS or sizing evidence is SYSTEM_HOLD, not an earned economic GLOBAL_WAIT', () => {
+  for (const scenario of [
+    { aegisNewRiskState: null, sizingPolicy: base.sizingPolicy, expected: 'AEGIS_UNKNOWN' },
+    { aegisNewRiskState: 'ALLOW_FULL' as const, sizingPolicy: { ...base.sizingPolicy, tailRiskQtyCap: null }, expected: 'SIZING_POLICY_INCOMPLETE' },
+  ]) {
+    const result = buildCanonicalStrategyFrontier({ ...base, ...scenario, contracts: [contract()], routing: routing(['THETA_Q']) });
+    assert.equal(result.primaryAction, 'SYSTEM_HOLD');
+    assert.equal(result.globalWaitEarned, false);
+    assert.equal(result.selectedQuantity, 0);
+    assert.ok(result.globalWaitReasons.includes(`CANDIDATE_SIZING_EVIDENCE_UNKNOWN:${scenario.expected}`));
+  }
+});
+
+test('a candidate-specific unknown AEGIS state never falls back to a permissive global state', () => {
+  const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
+    aegisNewRiskStateByCandidateId: { 'THETA_CONVENTIONAL:AAPL261016P00190000': null } });
+  const candidate = result.branches[0]?.candidates[0];
+  assert.equal(candidate?.aegisState, null);
+  assert.equal(candidate?.sizing.quantity, 0);
+  assert.equal(result.primaryAction, 'SYSTEM_HOLD');
+});
+
 test('candidate-specific AEGIS veto cannot be bypassed by a globally permissive state', () => {
   const first = contract();
   const second = contract({ optionSymbol: 'AAPL261016P00185000', occSymbol: 'AAPL261016P00185000', strike: 185,
