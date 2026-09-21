@@ -77,7 +77,7 @@ test('historical chain fetch uses only documented point-in-time filters', async 
   let requested: URL | null = null;
   const fetchImpl = (async (input) => {
     requested = new URL(String(input));
-    return jsonResponse(200, []);
+    return jsonResponse(200, { date: '2025-04-21', options: [] });
   }) as typeof fetch;
   const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY', { sessionDate: '2025-04-21' });
   assert.equal(outcome.kind, 'VALUE_PRESENT');
@@ -386,8 +386,59 @@ test('metrics normalizer preserves zero, UNKNOWN, INVALID and provider units hon
   assert.equal(outcome.value.rateLimit.remaining, '99');
 });
 
+test('documented empty metrics is no chain, not a numeric zero or populated envelope', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { date: '2026-09-10', metrics: [] })) as typeof fetch;
+  const outcome = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'METRICS', 'SPY');
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  assert.equal(outcome.value.informationState, 'EMPTY_SESSION_NO_CHAIN');
+  assert.equal(outcome.value.populated, false);
+  assert.equal(outcome.value.normalized.totalGex, undefined);
+});
+
+test('GEX zero sentinel and documented legacy-null metric stay unknown for different reasons', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { date: '2026-09-10', metrics: { total_gex: '0', vrp_20: null, iv_rank: '42.5' } })) as typeof fetch;
+  const outcome = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'METRICS', 'SPY');
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  const fields = outcome.value.normalized as Record<string, { state: string; value: number | null; reason: string | null }>;
+  assert.equal(fields.totalGex?.reason, 'PROVIDER_ZERO_CAN_MEAN_NOT_COMPUTED');
+  assert.equal(fields.volatilityRiskPremium20d?.reason, 'DOCUMENTED_LEGACY_NULL');
+  assert.equal(fields.ivRank?.value, 42.5);
+});
+
+test('historical date fallback is rejected, and invalid dates are rejected before HTTP', async () => {
+  let requests = 0;
+  const fetchImpl = (async () => { requests += 1; return jsonResponse(200, { date: '2025-04-18', options: [] }); }) as typeof fetch;
+  const invalid = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY', { sessionDate: '2025-02-30' });
+  assert.equal(invalid.kind, 'REQUEST_ERROR');
+  assert.equal(requests, 0);
+  const fallback = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY', { sessionDate: '2025-04-21' });
+  assert.equal(fallback.kind, 'VALUE_UNKNOWN_AFTER_SUCCESS');
+  assert.equal(requests, 1);
+});
+
+test('dated metrics and heatmap responses must serve the requested session', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { date: '2026-09-18', metrics: { iv_rank: 20 },
+    metric: 'gamma_exposure', cells: [] })) as typeof fetch;
+  const metrics = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'METRICS', 'SPY', { sessionDate: '2026-09-17' });
+  const heatmap = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'EXPOSURE_HEATMAP', 'SPY', { sessionDate: '2026-09-17' });
+  assert.equal(metrics.kind, 'VALUE_UNKNOWN_AFTER_SUCCESS');
+  assert.equal(heatmap.kind, 'VALUE_UNKNOWN_AFTER_SUCCESS');
+});
+
+test('option numeric strings parse strictly and deprecated per-day IV is ignored', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { options: [{ iv_per_trading_day: '0.0125', iv_per_day: '999', bid: 'invalid', ask: '1.25' }] })) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY');
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  assert.equal(outcome.value.entries[0]?.ivPerTradingDay, 0.0125);
+  assert.equal(outcome.value.entries[0]?.bid, null);
+  assert.equal(outcome.value.entries[0]?.ask, 1.25);
+});
+
 test('event normalizer retains known-at and filters explicit other-symbol rows', async () => {
-  const fetchImpl = (async () => jsonResponse(200, { events: [
+  const fetchImpl = (async () => jsonResponse(200, { from: '2026-09-10', to: '2026-10-10', events: [
     { ticker: 'SPY', known_at: '2026-09-09T12:00:00Z', scheduled_at: '2026-09-15T14:00:00Z', type: 'MACRO' },
     { ticker: 'AAPL', known_at: '2026-09-09T12:00:00Z', scheduled_at: '2026-09-16T14:00:00Z' },
     { region: 'US', known_at: '2026-09-08T12:00:00Z', date: '2026-09-17' },
@@ -438,6 +489,20 @@ test('empty event arrays prove reachability but do not fabricate populated event
   assert.equal(outcome.kind, 'VALUE_PRESENT');
   if (outcome.kind !== 'VALUE_PRESENT') return;
   assert.equal(outcome.value.populated, false);
+  assert.equal(outcome.value.informationState, 'EMPTY_RESULT_COVERAGE_UNVERIFIED');
+  assert.equal(outcome.value.paginationComplete, null);
+});
+
+test('event pagination exposes incomplete coverage without claiming a negative', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { from: '2026-09-21', to: '2026-09-30', events: [],
+    pagination: { page: 1, total_pages: 2 } })) as typeof fetch;
+  const outcome = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'EVENTS', 'SPY', {
+    from: '2026-09-21', to: '2026-09-30', perPage: 100,
+  });
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  assert.equal(outcome.value.paginationComplete, false);
+  assert.equal(outcome.value.informationState, 'EMPTY_RESULT_COVERAGE_UNVERIFIED');
 });
 
 test('provider-reported zero flow totals remain populated known observations', async () => {
@@ -455,7 +520,7 @@ test('context adapters send only query parameters confirmed for that operation',
   let requestUrl = '';
   const fetchImpl = (async (input) => {
     requestUrl = String(input);
-    return jsonResponse(200, { bullish_flow: [], bearish_flow: [], top_calls: [], top_puts: [], total_premium: 0, trade_count: 0 });
+    return jsonResponse(200, { date: '2026-09-14', bullish_flow: [], bearish_flow: [], top_calls: [], top_puts: [], total_premium: 0, trade_count: 0 });
   }) as typeof fetch;
   const outcome = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'FLOW_AGGREGATES', 'SPY', {
     from: '2026-09-01', to: '2026-09-14', sessionDate: '2026-09-14', perPage: 100,

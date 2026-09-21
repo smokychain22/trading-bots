@@ -67,6 +67,7 @@ const authHeaders = (config: OptionomicsProviderConfig): HeadersInit => ({
 // ---------------------------------------------------------------------------
 
 export type OptionomicsErrorClass =
+  | 'INVALID_REQUEST' // rejected locally before a provider request
   | 'AUTHENTICATION_FAILED' // 401
   | 'SUBSCRIPTION_REQUIRED' // 402
   | 'NOT_ENTITLED' // 403
@@ -223,6 +224,7 @@ export interface NormalizedOptionomicsEntry {
   readonly impliedVolatility: number | null; // null if absent or out of the conservative decimal validation band
   readonly impliedVolatilityUnits: OptionomicsIvUnits;
   readonly impliedVolatilityRaw: number | null; // preserved for audit even when rejected as invalid/out-of-band
+  readonly ivPerTradingDay: number | null; // current provider field; deprecated iv_per_day is intentionally ignored
   readonly delta: number | null;
   readonly gamma: number | null;
   readonly theta: number | null;
@@ -312,6 +314,17 @@ function applyDocumentedChainQuery(url: URL, query: OptionomicsChainQuery): void
   if (query.sessionDate !== undefined) url.searchParams.set('date', query.sessionDate);
 }
 
+function validSessionDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function invalidQuery(now: () => string): OptionomicsFetchOutcome<never> {
+  return { kind: 'REQUEST_ERROR', errorClass: 'INVALID_REQUEST', httpStatus: null, retrievedAt: now(),
+    detail: 'Invalid documented Optionomics query parameters.', retryAfterSeconds: null, attemptCount: 0 };
+}
+
 function chainEnvelopeSessionDate(body: unknown): string | null {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) return null;
   const date = (body as Record<string, unknown>).date;
@@ -377,6 +390,7 @@ function normalizeOneEntry(raw: Record<string, unknown>, retrievedAt: string): N
     impliedVolatility: iv.value,
     impliedVolatilityUnits: iv.units,
     impliedVolatilityRaw: iv.rawValue,
+    ivPerTradingDay: presentNumberOrNull(raw, ['iv_per_trading_day']),
     delta: presentNumberOrNull(raw, ['delta']),
     gamma: presentNumberOrNull(raw, ['gamma']),
     theta: presentNumberOrNull(raw, ['theta']),
@@ -415,6 +429,7 @@ export async function fetchOptionomicsOptionChain(
   query: OptionomicsChainQuery = {},
 ): Promise<OptionomicsFetchOutcome<NormalizedOptionomicsChain>> {
   const now = config.now ?? defaultNow;
+  if (query.sessionDate !== undefined && !validSessionDate(query.sessionDate)) return invalidQuery(now);
   const url = new URL(`/api/v1/stocks/${encodeURIComponent(underlyingSymbol)}/options`, config.apiBase);
   applyDocumentedChainQuery(url, query);
   try {
@@ -427,6 +442,10 @@ export async function fetchOptionomicsOptionChain(
       credentialIdentityRefHash: createHash('sha256').update(config.email.trim().toLowerCase()).digest('hex'),
       sessionDate: chainEnvelopeSessionDate(body),
     };
+    if (query.sessionDate !== undefined && provenance.sessionDate !== query.sessionDate) {
+      return { kind: 'VALUE_UNKNOWN_AFTER_SUCCESS', httpStatus, retrievedAt,
+        detail: `${url.pathname} did not return the exact requested session date.` };
+    }
     if (!Array.isArray(body)) {
       // Some documented option-data APIs wrap the array in an envelope
       // object (e.g. { options: [...] }) -- tolerate that one documented
@@ -565,6 +584,8 @@ export interface NormalizedOptionomicsContextObservation {
   readonly rawPayload: unknown;
   readonly normalized: Readonly<Record<string, unknown>>;
   readonly populated: boolean;
+  readonly informationState: 'POPULATED' | 'EMPTY_SESSION_NO_CHAIN' | 'EMPTY_RESULT_COVERAGE_UNVERIFIED';
+  readonly paginationComplete: boolean | null;
   readonly evidenceClass: 'RESEARCH_AND_STRATEGY_CONTEXT';
   readonly executableTruth: false;
 }
@@ -618,10 +639,26 @@ function arrayFromEnvelope(body: unknown, keys: readonly string[]): readonly unk
 function normalizeMetrics(body: unknown): Readonly<Record<string, unknown>> | null {
   const envelope = objectOrNull(body);
   if (envelope === null) return null;
-  const metrics = objectOrNull(envelope.metrics) ?? envelope;
+  if (Array.isArray(envelope.metrics)) {
+    return envelope.metrics.length === 0 ? { metricsState: 'EMPTY_SESSION_NO_CHAIN' } : null;
+  }
+  const metrics = objectOrNull(envelope.metrics) ?? (Object.hasOwn(envelope, 'metrics') ? null : envelope);
+  if (metrics === null) return null;
+  const legacyNullFields = new Set(['vrp_20', 'price_vs_expected_move', 'max_pain_accuracy',
+    'breakout_probability', 'iv_vs_historical', 'historical_move_accuracy', 'unusual_oi_change',
+    'iv_momentum', 'retail_trade_confidence_score', 'delta_hedged_carry', 'strangle_edge_1m']);
+  const metricValue = (key: string): OptionomicsProviderValue<number> => {
+    if (legacyNullFields.has(key) && (metrics[key] === null || metrics[key] === undefined)) {
+      return { state: 'UNKNOWN', value: null, reason: 'DOCUMENTED_LEGACY_NULL', units: 'PROVIDER_REPORTED_UNVERIFIED' };
+    }
+    if (key === 'total_gex' && asFiniteNumberOrNull(metrics[key]) === 0) {
+      return { state: 'UNKNOWN', value: null, reason: 'PROVIDER_ZERO_CAN_MEAN_NOT_COMPUTED', units: 'PROVIDER_REPORTED_UNVERIFIED' };
+    }
+    return providerKnown(metrics[key]);
+  };
   const providerNumericFields = Object.fromEntries(Object.entries(metrics)
     .filter(([, value]) => value === null || asFiniteNumberOrNull(value) !== null)
-    .map(([key, value]) => [key, providerKnown(value)]));
+    .map(([key]) => [key, metricValue(key)]));
   return {
     atmIv: firstPresentValue(metrics, ['atm_iv']),
     ivRank: firstPresentValue(metrics, ['iv_rank']),
@@ -633,14 +670,14 @@ function normalizeMetrics(body: unknown): Readonly<Record<string, unknown>> | nu
     realizedVolatility60d: firstPresentValue(metrics, ['rv60']),
     ivMinusRealizedVolatility20d: firstPresentValue(metrics, ['iv_minus_rv20']),
     impliedVolatilityPremium20d: firstPresentValue(metrics, ['iv_premium20']),
-    volatilityRiskPremium20d: firstPresentValue(metrics, ['vrp_20']),
+    volatilityRiskPremium20d: metricValue('vrp_20'),
     impliedVolatilitySkewZScore: firstPresentValue(metrics, ['iv_skew_z_score']),
     riskReversal25: firstPresentValue(metrics, ['rr25']),
     termSlope: firstPresentValue(metrics, ['vol_term_structure_slope']),
     expectedMoveLower: firstPresentValue(metrics, ['expected_move_lower']),
     expectedMoveUpper: firstPresentValue(metrics, ['expected_move_upper']),
     expectedMovePercent: firstPresentValue(metrics, ['expected_move_pct']),
-    totalGex: firstPresentValue(metrics, ['total_gex']),
+    totalGex: metricValue('total_gex'),
     callGammaExposure: firstPresentValue(metrics, ['call_gamma_exposure']),
     putGammaExposure: firstPresentValue(metrics, ['put_gamma_exposure']),
     callDeltaExposure: firstPresentValue(metrics, ['call_delta_exposure']),
@@ -714,13 +751,15 @@ function normalizeEventRows(body: unknown, symbol: string, keys: readonly string
       const row = objectOrNull(item);
       if (row === null) return { providerRecord: item };
       return {
+      providerId: asStringOrNull(row.id),
+      eventDate: asStringOrNull(row.date),
       knownAt: asStringOrNull(row.known_at ?? row.knownAt),
-      scheduledAt: asStringOrNull(row.scheduled_at ?? row.scheduledAt ?? row.date),
+      scheduledAt: asStringOrNull(row.scheduled_at ?? row.scheduledAt),
       publishedAt: asStringOrNull(row.published_at ?? row.publishedAt),
       analyzedAt: asStringOrNull(row.analyzed_at ?? row.analyzedAt),
       ticker: asStringOrNull(row.ticker ?? row.symbol ?? row.underlying),
       tickers: Array.isArray(row.tickers) ? row.tickers : null,
-      type: asStringOrNull(row.type ?? row.event_type ?? row.topic),
+      type: asStringOrNull(row.kind ?? row.type ?? row.event_type ?? row.topic),
       status: asStringOrNull(row.status),
       importance: row.importance ?? null,
       sentiment: row.sentiment ?? null,
@@ -766,6 +805,9 @@ export async function fetchOptionomicsContextObservation(
   query: OptionomicsContextQuery = {},
 ): Promise<OptionomicsFetchOutcome<NormalizedOptionomicsContextObservation>> {
   const now = config.now ?? defaultNow;
+  if ([query.from, query.to, query.sessionDate].some((value) => value !== undefined && !validSessionDate(value))) return invalidQuery(now);
+  if (query.from !== undefined && query.to !== undefined && query.from > query.to) return invalidQuery(now);
+  if (query.perPage !== undefined && (!Number.isInteger(query.perPage) || query.perPage < 1 || query.perPage > 200)) return invalidQuery(now);
   const contract = contextContracts[family];
   const url = new URL(contract.path(underlyingSymbol), config.apiBase);
   for (const [key, value] of Object.entries(contract.fixedQueryParameters ?? {})) url.searchParams.set(key, value);
@@ -781,11 +823,26 @@ export async function fetchOptionomicsContextObservation(
       detail: `${url.pathname} returned a 2xx body that did not match its confirmed response family.`,
     };
     const envelope = objectOrNull(outcome.body);
+    if (query.sessionDate !== undefined && contract.allowedQueryParameters.includes('date') && envelope?.date !== query.sessionDate) return {
+      kind: 'VALUE_UNKNOWN_AFTER_SUCCESS', httpStatus: outcome.httpStatus, retrievedAt: outcome.retrievedAt,
+      detail: `${url.pathname} did not return the exact requested session date.`,
+    };
+    if (family === 'EVENTS' && ((query.from !== undefined && envelope?.from !== query.from)
+      || (query.to !== undefined && envelope?.to !== query.to))) return {
+      kind: 'VALUE_UNKNOWN_AFTER_SUCCESS', httpStatus: outcome.httpStatus, retrievedAt: outcome.retrievedAt,
+      detail: `${url.pathname} did not echo the exact requested event window.`,
+    };
     const providerTimestampRaw = asStringOrNull(envelope?.as_of ?? envelope?.timestamp ?? envelope?.updated_at);
     const providerTimestamp = providerTimestampRaw !== null && Number.isFinite(Date.parse(providerTimestampRaw))
       ? new Date(providerTimestampRaw).toISOString() : null;
     const sessionDate = asStringOrNull(envelope?.date);
     const populated = normalizedContextIsPopulated(family, normalized);
+    const pagination = objectOrNull(envelope?.pagination);
+    const currentPage = asFiniteNumberOrNull(pagination?.page ?? pagination?.current_page);
+    const totalPages = asFiniteNumberOrNull(pagination?.total_pages ?? pagination?.pages);
+    const paginationComplete = currentPage !== null && totalPages !== null ? currentPage >= totalPages : null;
+    const informationState = populated ? 'POPULATED' : normalized.metricsState === 'EMPTY_SESSION_NO_CHAIN'
+      ? 'EMPTY_SESSION_NO_CHAIN' : 'EMPTY_RESULT_COVERAGE_UNVERIFIED';
     return {
       kind: 'VALUE_PRESENT', httpStatus: outcome.httpStatus, retrievedAt: outcome.retrievedAt,
       value: {
@@ -797,7 +854,8 @@ export async function fetchOptionomicsContextObservation(
         documentationReference: 'https://optionomics.ai/docs/api', contractVersion: 'optionomics-public-api-2026-09-14',
         credentialIdentityRefHash: createHash('sha256').update(config.email.trim().toLowerCase()).digest('hex'),
         responseHash: hashRawPayload(outcome.body), rawPayload: sanitizeProviderPayload(outcome.body, config), normalized,
-        populated, evidenceClass: 'RESEARCH_AND_STRATEGY_CONTEXT', executableTruth: false,
+        populated, informationState, paginationComplete,
+        evidenceClass: 'RESEARCH_AND_STRATEGY_CONTEXT', executableTruth: false,
       },
     };
   } catch (error) {

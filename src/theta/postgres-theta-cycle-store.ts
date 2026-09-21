@@ -12,6 +12,7 @@ import {
   type OptionomicsFeatureSnapshotReference,
 } from './optionomics-temporal-features.js';
 import { normalizedOptionContractSchema } from './option-contract.js';
+import { optionomicsEventRevisions } from './optionomics-event-observation.js';
 import {
   buildOptionsChainDecisionEvidence,
   optionomicsChainAttachmentsFromFeatureState,
@@ -583,10 +584,12 @@ export class PostgresThetaCycleStore {
     const rawObservations = Array.isArray(state.rawObservations)
       ? state.rawObservations.map((value) => jsonObject(value))
       : [jsonObject(state.rawObservation)].filter((value) => Object.keys(value).length > 0);
-    if (rawObservations.length === 0 || Object.keys(features).length === 0) return;
-    const underlying = typeof features.underlying === 'string' ? features.underlying : null;
+    if (rawObservations.length === 0) return;
+    const underlyingState = jsonObject(snapshot.underlyingState);
+    const underlying = typeof features.underlying === 'string' ? features.underlying
+      : typeof underlyingState.symbol === 'string' ? underlyingState.symbol : null;
     const schemaVersion = typeof features.schemaVersion === 'string' ? features.schemaVersion : null;
-    if (underlying === null || schemaVersion === null) {
+    if (underlying === null || (Object.keys(features).length > 0 && schemaVersion === null)) {
       throw new Error('OPTIONOMICS_LAYERED_EVIDENCE_METADATA_INVALID');
     }
     const provenanceRows = (Array.isArray(snapshot.sourceProvenance) ? snapshot.sourceProvenance : []).map((item) => jsonObject(item));
@@ -621,8 +624,27 @@ export class PostgresThetaCycleStore {
           typeof raw.credentialIdentityRefHash === 'string' ? raw.credentialIdentityRefHash : null,
           typeof raw.sessionDate === 'string' ? raw.sessionDate : null],
       );
+      if (operationAlias === 'optionomics.list_events') {
+        for (const event of optionomicsEventRevisions(raw.payload, retrievedAt)) {
+          await client.query(
+            `INSERT INTO market.optionomics_event_first_observation(
+              observation_id,source_raw_observation_id,provider_event_id,payload_hash,event_kind,ticker,
+              event_date,scheduled_at,provider_known_at,first_observed_at,pit_timing_state,provider_payload_json)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
+             ON CONFLICT(provider_event_id,payload_hash) DO NOTHING`,
+            [deterministicRuntimeUuid(`optionomics-event:${event.providerEventId}:${event.payloadHash}`),
+              observationId, event.providerEventId, event.payloadHash, event.eventKind, event.ticker,
+              event.eventDate, event.scheduledAt, event.providerKnownAt, event.firstObservedAt,
+              event.pitTimingState, JSON.stringify(event.providerPayload)],
+          );
+        }
+      }
       observationIds.push({ id: observationId, operationAlias, retrievedAt, quality: temporal.quality });
     }
+    // Raw provider evidence is independently valuable. Empty sessions or a
+    // failed feature derivation must not erase the immutable provider response.
+    if (Object.keys(features).length === 0) return;
+    if (schemaVersion === null) throw new Error('OPTIONOMICS_LAYERED_EVIDENCE_METADATA_INVALID');
     const primary = observationIds.find((row) => row.operationAlias === 'optionomics.get_option_chain') ?? observationIds[0];
     if (primary === undefined) return;
     const featureHash = createHash('sha256').update(JSON.stringify(features)).digest('hex');

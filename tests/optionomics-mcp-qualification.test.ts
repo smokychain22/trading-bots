@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import type { Pool } from 'pg';
 import type { Environment } from '../src/config/environment.js';
-import { inspectOptionomicsSecretShape, qualifyOptionomicsProductionSurfaces } from '../src/providers/optionomics-mcp-qualification.js';
+import { inspectOptionomicsSecretShape, persistOptionomicsCapabilityQualification, qualifyOptionomicsProductionSurfaces } from '../src/providers/optionomics-mcp-qualification.js';
 
 const environment: Environment = {
   NODE_ENV: 'test', PORT: 3000,
@@ -81,8 +82,12 @@ test('MCP base64 bearer authenticates, discovers actual tools and returns field 
   assert.equal(report.mcp.headerPairStatus, 401);
   assert.equal(report.mcp.base64BearerStatus, 200);
   assert.equal(report.mcp.toolCount, 4);
-  assert.equal(report.rest.capabilities.length, 14);
+  assert.equal(report.rest.capabilities.length, 18);
   assert.equal(report.rest.capabilities.every((entry) => entry.operationAlias.length > 0 && !entry.path.includes('?')), true);
+  const dated = report.rest.capabilities.find((entry) => entry.operationAlias === 'stocks.options.historical');
+  assert.equal(dated?.requestedDate, '2026-09-18');
+  assert.equal(dated?.exactRequestedDateServed, false);
+  assert.equal(dated?.fieldTypes.error, 'string');
   assert.equal(report.mcp.evidence.filter((entry) => entry.matchedTool !== null).every((entry) => entry.status === 'CALLED'), true);
   assert.equal(report.mcp.evidence[0]?.fieldTypes['records[].bid'], 'number');
   const serialized = JSON.stringify(report);
@@ -106,6 +111,45 @@ test('REST and MCP rejection stays NONE and never fabricates a tool catalog', as
   assert.equal(report.rest.capabilities.every((entry) => entry.status === 401), true);
   assert.equal(report.mcp.tools.length, 0);
   assert.equal(report.orderSubmission, 'DISABLED');
+});
+
+test('REST qualification distinguishes empty metrics, null quote, empty levels and wrong historical date', async () => {
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/mcp') return json(401, { error: 'unauthorized' });
+    if (url.pathname.endsWith('/quote')) return json(200, { date: '2026-09-18', quote: null });
+    if (url.pathname.endsWith('/metrics')) return json(200, { date: '2026-09-18', metrics: [] });
+    if (url.pathname === '/api/v1/levels' || url.pathname === '/api/v1/dark_pool_levels') return json(200, { levels: [] });
+    if (url.pathname.endsWith('/options')) return json(200, { date: '2026-09-17', options: [] });
+    return json(200, {});
+  }) as typeof fetch;
+  const report = await qualifyOptionomicsProductionSurfaces(environment, fetchImpl);
+  const byAlias = (alias: string) => report.rest.capabilities.find((probe) => probe.operationAlias === alias);
+  assert.equal(byAlias('stocks.quote')?.dataState, 'NULL_QUOTE');
+  assert.equal(byAlias('stocks.metrics')?.dataState, 'EMPTY_METRICS_NO_CHAIN');
+  assert.equal(byAlias('levels.dark_pool')?.dataState, 'EMPTY_LEVELS');
+  assert.equal(byAlias('stocks.options.historical')?.exactRequestedDateServed, false);
+  assert.equal(byAlias('stocks.options.historical')?.fieldTypes['options'], 'array');
+});
+
+test('capability persistence writes a sanitized immutable receipt and refuses leaked secrets', async () => {
+  const writes: readonly unknown[][] = [];
+  const pool = { query: async (_sql: string, parameters: readonly unknown[]) => {
+    (writes as unknown[][]).push([...parameters]);
+    return { rowCount: 1 };
+  } } as unknown as Pool;
+  const report = {
+    generatedAt: '2026-09-21T12:00:00Z', rest: { capabilities: [{ operationAlias: 'stocks.metrics',
+      status: 200, fieldTypes: { 'metrics.iv_rank': 'number' } }] },
+  } as unknown as Parameters<typeof persistOptionomicsCapabilityQualification>[1];
+  const hash = await persistOptionomicsCapabilityQualification(pool, report, ['test-secret']);
+  assert.match(hash, /^[0-9a-f]{64}$/);
+  assert.equal(writes.length, 1);
+  assert.equal(JSON.stringify(writes).includes('test-secret'), false);
+  await assert.rejects(() => persistOptionomicsCapabilityQualification(pool,
+    { ...report, leak: 'test-secret' } as unknown as typeof report, ['test-secret']),
+  /OPTIONOMICS_CAPABILITY_REPORT_NOT_SANITIZED/);
+  assert.equal(writes.length, 1);
 });
 
 test('stateless MCP tools/list authenticates when initialize is unsupported', async () => {

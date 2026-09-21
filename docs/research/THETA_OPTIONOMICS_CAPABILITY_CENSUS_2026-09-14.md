@@ -1,5 +1,17 @@
 # THETA Optionomics capability census
 
+## 2026-09-21 qualification and semantic correction
+
+An authenticated Production worker qualification used the existing secure Vega credential without exposing it. REST and MCP authentication passed. Fourteen sampled REST GET operations returned HTTP 200: stock quote, options, metrics, gamma/Vanna/Charm heatmaps, flow aggregates/net, flow/dark-pool levels, events, symbol news, disclosure trades and earnings filings. MCP was authenticated and fourteen corresponding read-only tools were callable. This is real account reachability and top-level schema evidence. The probe did not retain nested types, units, earliest/latest history or per-field provider timestamps, so those remain unqualified and no empirical or Paper authority is inferred.
+
+The adapter now distinguishes `metrics=[]` as `EMPTY_SESSION_NO_CHAIN`, an empty event result as `EMPTY_RESULT_COVERAGE_UNVERIFIED`, and a GEX zero sentinel as `PROVIDER_ZERO_CAN_MEAN_NOT_COMPUTED`. The permanently null legacy metric `vrp_20` is tagged `DOCUMENTED_LEGACY_NULL`, not provider downtime. Historical dates are validated before HTTP and the returned session must match exactly. Requested heatmap metrics must match the returned metric. String numerics are parsed strictly. `iv_per_trading_day` is retained, while deprecated `iv_per_day` is ignored. Optionomics session bid/ask remains research evidence and never executable BBO.
+
+Migration 063 and the cycle writer add immutable per-event first-observation records. Provider `known_at` and THETA first observation are separate clocks, and revisions sharing an event ID remain distinct by canonical payload hash. Rows missing valid provider-known timing remain PIT-unknown. Repeated identical polling is idempotent. This is a source change pending migration/deployment verification, not a statement that Production already has the new table.
+
+The next authenticated qualification request now includes historical options and metrics for the explicit 2026-09-18 session, a dated price-history request and a bounded historical event window. Its sanitized receipt contains nested field *types*, requested and served dates, exact-session agreement, and distinct `EMPTY_METRICS_NO_CHAIN`, `NULL_QUOTE`, `EMPTY_LEVELS`, `EMPTY_EVENTS_UNQUALIFIED` and `HTTP_ERROR` states. Migration 063 includes an immutable Aiven receipt table. These four added probes and their new receipt have unit coverage but have not yet run on the Production account, so there are no claimed real history bounds or export rows from this change.
+
+The old statement below that every provider numeric zero stays economically known must be read with this documented GEX exception. Other numeric zero values retain their ordinary provider-reported meaning unless a documented sentinel applies. Empty events, even with a successful request, do not establish negative event or earnings coverage without a complete family/window/pagination policy. Corporate actions remain Alpaca-owned.
+
 Status date: 2026-09-14. Documentation contract: [Optionomics public API reference](https://optionomics.ai/docs/api). Authentication contract: `X-USER-EMAIL` plus `X-USER-TOKEN`. Header values are never persisted or logged.
 
 ## Contract discovery result

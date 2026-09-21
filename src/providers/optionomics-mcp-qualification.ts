@@ -1,3 +1,5 @@
+import { createHash, randomUUID } from 'node:crypto';
+import type { Pool } from 'pg';
 import type { Environment } from '../config/environment.js';
 import {
   classifyOptionomicsTool,
@@ -49,6 +51,11 @@ export interface SanitizedRestCapabilityProbe extends SanitizedHttpProbe {
   readonly operationAlias: string;
   readonly path: string;
   readonly topLevelKind: 'OBJECT' | 'ARRAY' | 'SCALAR' | 'EMPTY';
+  readonly fieldTypes: Readonly<Record<string, string>>;
+  readonly requestedDate: string | null;
+  readonly servedDate: string | null;
+  readonly exactRequestedDateServed: boolean | null;
+  readonly dataState: 'POPULATED' | 'EMPTY_METRICS_NO_CHAIN' | 'NULL_QUOTE' | 'EMPTY_LEVELS' | 'EMPTY_EVENTS_UNQUALIFIED' | 'EMPTY_OTHER' | 'HTTP_ERROR';
 }
 
 export interface McpToolSummary {
@@ -98,6 +105,26 @@ export interface OptionomicsMcpQualificationReport {
   readonly publicApiContractHash: string;
   readonly authenticatedSurface: 'REST' | 'MCP' | 'BOTH' | 'NONE';
   readonly orderSubmission: 'DISABLED';
+}
+
+/** Stores only the already-sanitized schema/entitlement receipt, never provider payloads or credentials. */
+export async function persistOptionomicsCapabilityQualification(
+  pool: Pool,
+  report: OptionomicsMcpQualificationReport,
+  sensitiveValues: readonly string[],
+): Promise<string> {
+  const serialized = JSON.stringify(report);
+  if (sensitiveValues.some((value) => value.length > 0 && serialized.includes(value))) {
+    throw new Error('OPTIONOMICS_CAPABILITY_REPORT_NOT_SANITIZED');
+  }
+  const hash = createHash('sha256').update(serialized).digest('hex');
+  await pool.query(
+    `INSERT INTO research.optionomics_capability_qualification_receipt(
+       qualification_id,generated_at,report_json,report_hash)
+     VALUES($1,$2,$3::jsonb,$4) ON CONFLICT(report_hash) DO NOTHING`,
+    [randomUUID(), report.generatedAt, serialized, hash],
+  );
+  return hash;
 }
 
 interface McpExchange {
@@ -267,7 +294,10 @@ const httpProbe = async (
 const documentedRestCapabilityProbes = Object.freeze([
   { operationAlias: 'stocks.quote', path: '/api/v1/stocks/SPY/quote' },
   { operationAlias: 'stocks.options', path: '/api/v1/stocks/SPY/options' },
+  { operationAlias: 'stocks.options.historical', path: '/api/v1/stocks/SPY/options?date=2026-09-18' },
   { operationAlias: 'stocks.metrics', path: '/api/v1/stocks/SPY/metrics' },
+  { operationAlias: 'stocks.metrics.historical', path: '/api/v1/stocks/SPY/metrics?date=2026-09-18' },
+  { operationAlias: 'stocks.price_history', path: '/api/v1/stocks/SPY/price_history?date=2026-09-18' },
   { operationAlias: 'stocks.heatmap.gamma', path: '/api/v1/stocks/SPY/heatmap?metric=gamma_exposure' },
   { operationAlias: 'stocks.heatmap.vanna', path: '/api/v1/stocks/SPY/heatmap?metric=vanna_exposure' },
   { operationAlias: 'stocks.heatmap.charm', path: '/api/v1/stocks/SPY/heatmap?metric=charm_exposure' },
@@ -276,6 +306,7 @@ const documentedRestCapabilityProbes = Object.freeze([
   { operationAlias: 'levels.flow', path: '/api/v1/levels?symbol=SPY' },
   { operationAlias: 'levels.dark_pool', path: '/api/v1/dark_pool_levels?symbol=SPY' },
   { operationAlias: 'events.list', path: '/api/v1/events?symbol=SPY&per_page=5' },
+  { operationAlias: 'events.historical', path: '/api/v1/events?from=2026-09-18&to=2026-09-18&per_page=5' },
   { operationAlias: 'news.symbol', path: '/api/v1/stocks/SPY/news?per_page=5' },
   { operationAlias: 'disclosures.symbol', path: '/api/v1/stocks/SPY/disclosure_trades?per_page=5' },
   { operationAlias: 'earnings.list', path: '/api/v1/stocks/SPY/earning_filings' },
@@ -292,6 +323,16 @@ const restCapabilityProbe = async (
     const body: unknown = contentType?.includes('application/json') ? await response.json().catch(() => null) : await response.text().catch(() => '');
     const bodyRecord = asRecord(body);
     const topLevelKind = body === null || body === '' ? 'EMPTY' : Array.isArray(body) ? 'ARRAY' : bodyRecord !== null ? 'OBJECT' : 'SCALAR';
+    const requestUrl = new URL(contract.path, 'https://optionomics.ai');
+    const requestedDate = requestUrl.searchParams.get('date');
+    const servedDate = typeof bodyRecord?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(bodyRecord.date)
+      ? bodyRecord.date : null;
+    const dataState = response.status < 200 || response.status >= 300 ? 'HTTP_ERROR'
+      : Array.isArray(bodyRecord?.metrics) && bodyRecord.metrics.length === 0 ? 'EMPTY_METRICS_NO_CHAIN'
+      : bodyRecord !== null && Object.hasOwn(bodyRecord, 'quote') && bodyRecord.quote === null ? 'NULL_QUOTE'
+      : contract.operationAlias.includes('levels') && Array.isArray(bodyRecord?.levels) && bodyRecord.levels.length === 0 ? 'EMPTY_LEVELS'
+      : contract.operationAlias.startsWith('events.') && Array.isArray(bodyRecord?.events) && bodyRecord.events.length === 0 ? 'EMPTY_EVENTS_UNQUALIFIED'
+      : body === null || body === '' ? 'EMPTY_OTHER' : 'POPULATED';
     return {
       operationAlias: contract.operationAlias,
       path: contract.path.split('?')[0] ?? contract.path,
@@ -306,6 +347,9 @@ const restCapabilityProbe = async (
       serverDatePresent: response.headers.has('date'),
       responseFieldNames: bodyRecord === null ? [] : Object.keys(bodyRecord).filter(safeFieldName).sort().slice(0, 80),
       topLevelKind,
+      fieldTypes: flattenFieldTypes(body), requestedDate, servedDate,
+      exactRequestedDateServed: requestedDate === null ? null : requestedDate === servedDate,
+      dataState,
     };
   } catch {
     return {
@@ -313,6 +357,9 @@ const restCapabilityProbe = async (
       status: null, contentType: null, errorFieldPresent: false, rateLimitHeadersPresent: false,
       retryAfterPresent: false, wwwAuthenticatePresent: false, wwwAuthenticateScheme: null,
       requestIdHeader: null, serverDatePresent: false, responseFieldNames: [], topLevelKind: 'EMPTY',
+      fieldTypes: {}, requestedDate: new URL(contract.path, 'https://optionomics.ai').searchParams.get('date'),
+      servedDate: null, exactRequestedDateServed: null,
+      dataState: 'HTTP_ERROR',
     };
   }
 };

@@ -298,7 +298,10 @@ itMockedProviderRealCodePath('confirmed Optionomics context families are fetched
     else if (url.pathname.endsWith('/heatmap')) body = { metric: url.searchParams.get('metric'), strikes: [500], expirations: ['2026-10-09'], cells: [[0]] };
     else if (url.pathname === '/api/v1/flow/net') body = { net_calls: [{ timestamp: NOW, value: 5 }], net_puts: [{ timestamp: NOW, value: -2 }] };
     else if (url.pathname === '/api/v1/flow/aggregates') body = { bullish_flow: [{ symbol: 'SPY', premium: 0 }], bearish_flow: [], top_calls: [], top_puts: [], total_premium: 0, trade_count: 0 };
-    else if (url.pathname === '/api/v1/events') body = { events: [{ ticker: 'SPY', known_at: '2026-09-09T12:00:00Z', scheduled_at: '2026-09-20T14:00:00Z' }] };
+    else if (url.pathname === '/api/v1/events') body = {
+      from: url.searchParams.get('from'), to: url.searchParams.get('to'),
+      events: [{ ticker: 'SPY', known_at: '2026-09-09T12:00:00Z', scheduled_at: '2026-09-20T14:00:00Z' }],
+    };
     else if (url.pathname.endsWith('/earning_filings')) body = { earning_filings: [] };
     else if (url.pathname.endsWith('/news')) body = { news: [{ ticker: 'SPY', published_at: '2026-09-09T10:00:00Z', topic: 'market' }] };
     else throw new Error(`unmocked Optionomics context URL: ${url}`);

@@ -16,7 +16,7 @@ import { verifyStoredMasterPaperConnection } from '../customer/master-paper-runt
 import { classifyRuntimeExecutionGate, PostgresRuntimeCycleStore, runAutonomousRuntimeCycle, safeRuntimeFailure } from './autonomous-runtime.js';
 import { PostgresWorkerRuntimeStore } from '../worker/postgres-worker-runtime-store.js';
 import { runOptionomicsQuoteQualification, sanitizeQualificationReport } from './optionomics-quote-qualification-runtime.js';
-import { qualifyOptionomicsProductionSurfaces } from '../providers/optionomics-mcp-qualification.js';
+import { persistOptionomicsCapabilityQualification, qualifyOptionomicsProductionSurfaces } from '../providers/optionomics-mcp-qualification.js';
 import { qualifyOptionomicsProvider, persistOptionomicsQualification } from '../providers/optionomics-qualification.js';
 import { optionomicsConfigFromEnvironment } from './theta-shadow-once.js';
 import {
@@ -575,7 +575,10 @@ export default async function autonomousRuntimeHandler(
         return;
       }
       const report = await qualifyOptionomicsProductionSurfaces(environment);
-      send(response, 200, { ...report, executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0 });
+      const qualificationHash = await persistOptionomicsCapabilityQualification(runtimePool, report,
+        [environment.OPTIONOMICS_EMAIL ?? '', environment.OPTIONOMICS_API_KEY ?? '']);
+      send(response, 200, { ...report, qualificationHash, persisted: true,
+        executionGate: 'EXTERNAL_QUOTE_BLOCKER', ordersSubmitted: 0 });
       return;
     }
     if (operation === 'OPTIONOMICS_QUOTE_QUALIFICATION') {
