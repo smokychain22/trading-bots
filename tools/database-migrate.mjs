@@ -3,7 +3,10 @@ import { resolve } from "node:path";
 import pg from "pg";
 import { resolveDatabaseConnection } from "./database-connection.mjs";
 
-const { connectionString } = resolveDatabaseConnection(process.env, "migration");
+const { connectionString, authority } = resolveDatabaseConnection(process.env, "migration");
+if (authority === "AIVEN" && process.env.THETA_MIGRATION_CHECKPOINT_ACTIVE !== "VERIFIED_LOCAL_BACKUP") {
+  throw new Error("AIVEN_PRODUCTION_MIGRATION_REQUIRES_VERIFIED_LOCAL_BACKUP_WORKFLOW");
+}
 
 const directory = resolve("migrations");
 const files = (await readdir(directory))

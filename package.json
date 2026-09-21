@@ -28,6 +28,7 @@
     "theta:audit:wiring": "tsx tools/theta-runtime-wiring-audit.ts",
     "theta:audit:unknowns": "tsx tools/theta-pre-vps-unknown-audit.ts",
     "db:migrate": "node tools/database-migrate.mjs",
+    "db:migrate:production:checkpoint": "pwsh -NoProfile -File tools/windows/dr/Invoke-ThetaProductionMigration.ps1",
     "db:verify": "node tools/database-verify.mjs",
     "db:aiven:preflight": "node tools/database-target-preflight.mjs",
     "db:aiven:import-legacy": "node tools/import-legacy-research-export.mjs",
