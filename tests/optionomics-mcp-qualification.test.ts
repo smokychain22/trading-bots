@@ -132,6 +132,31 @@ test('REST qualification distinguishes empty metrics, null quote, empty levels a
   assert.equal(byAlias('stocks.options.historical')?.fieldTypes['options'], 'array');
 });
 
+test('qualification verifies heatmap metric, event window and price-history session separately', async () => {
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/mcp') return json(401, { error: 'unauthorized' });
+    if (url.pathname.endsWith('/heatmap')) return json(200, { metric: 'gamma_exposure', date: '2026-09-18', cells: [] });
+    if (url.pathname.endsWith('/price_history')) return json(200, { candles: [
+      { date: '2026-09-17', close: 500 }, { date: '2026-09-18', close: 501 },
+    ] });
+    if (url.pathname.endsWith('/events')) return json(200, {
+      from: '2026-09-18', to: '2026-09-18', events: [],
+      pagination: { current_page: 1, total_pages: 2 },
+    });
+    return json(200, {});
+  }) as typeof fetch;
+  const report = await qualifyOptionomicsProductionSurfaces(environment, fetchImpl);
+  const byAlias = (alias: string) => report.rest.capabilities.find((probe) => probe.operationAlias === alias);
+  assert.equal(byAlias('stocks.price_history')?.requestedSessionInSeries, true);
+  assert.equal(byAlias('stocks.price_history')?.exactRequestedDateServed, null);
+  assert.equal(byAlias('stocks.heatmap.gamma')?.metricMatchesRequest, true);
+  assert.equal(byAlias('stocks.heatmap.vanna')?.metricMatchesRequest, false);
+  assert.equal(byAlias('events.historical')?.windowEchoMatches, true);
+  assert.equal(byAlias('events.historical')?.paginationComplete, false);
+  assert.equal(byAlias('events.historical')?.dataState, 'EMPTY_EVENTS_UNQUALIFIED');
+});
+
 test('capability persistence writes a sanitized immutable receipt and refuses leaked secrets', async () => {
   const writes: readonly unknown[][] = [];
   const pool = { query: async (_sql: string, parameters: readonly unknown[]) => {

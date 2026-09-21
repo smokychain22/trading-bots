@@ -55,6 +55,14 @@ export interface SanitizedRestCapabilityProbe extends SanitizedHttpProbe {
   readonly requestedDate: string | null;
   readonly servedDate: string | null;
   readonly exactRequestedDateServed: boolean | null;
+  readonly requestedSessionInSeries: boolean | null;
+  readonly requestedWindow: { readonly from: string; readonly to: string } | null;
+  readonly servedWindow: { readonly from: string; readonly to: string } | null;
+  readonly windowEchoMatches: boolean | null;
+  readonly requestedMetric: string | null;
+  readonly returnedMetric: string | null;
+  readonly metricMatchesRequest: boolean | null;
+  readonly paginationComplete: boolean | null;
   readonly dataState: 'POPULATED' | 'EMPTY_METRICS_NO_CHAIN' | 'NULL_QUOTE' | 'EMPTY_LEVELS' | 'EMPTY_EVENTS_UNQUALIFIED' | 'EMPTY_OTHER' | 'HTTP_ERROR';
 }
 
@@ -325,6 +333,20 @@ const restCapabilityProbe = async (
     const topLevelKind = body === null || body === '' ? 'EMPTY' : Array.isArray(body) ? 'ARRAY' : bodyRecord !== null ? 'OBJECT' : 'SCALAR';
     const requestUrl = new URL(contract.path, 'https://optionomics.ai');
     const requestedDate = requestUrl.searchParams.get('date');
+    const requestedFrom = requestUrl.searchParams.get('from');
+    const requestedTo = requestUrl.searchParams.get('to');
+    const requestedWindow = requestedFrom !== null && requestedTo !== null
+      ? { from: requestedFrom, to: requestedTo } : null;
+    const servedWindow = typeof bodyRecord?.from === 'string' && typeof bodyRecord.to === 'string'
+      ? { from: bodyRecord.from, to: bodyRecord.to } : null;
+    const requestedMetric = requestUrl.searchParams.get('metric');
+    const returnedMetric = typeof bodyRecord?.metric === 'string' ? bodyRecord.metric : null;
+    const pagination = asRecord(bodyRecord?.pagination);
+    const currentPage = pagination?.current_page;
+    const totalPages = pagination?.total_pages;
+    const paginationComplete = typeof currentPage === 'number' && Number.isInteger(currentPage)
+      && typeof totalPages === 'number' && Number.isInteger(totalPages)
+      ? currentPage >= totalPages : null;
     const servedDate = typeof bodyRecord?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(bodyRecord.date)
       ? bodyRecord.date : null;
     const dataState = response.status < 200 || response.status >= 300 ? 'HTTP_ERROR'
@@ -348,7 +370,17 @@ const restCapabilityProbe = async (
       responseFieldNames: bodyRecord === null ? [] : Object.keys(bodyRecord).filter(safeFieldName).sort().slice(0, 80),
       topLevelKind,
       fieldTypes: flattenFieldTypes(body), requestedDate, servedDate,
-      exactRequestedDateServed: requestedDate === null ? null : requestedDate === servedDate,
+      exactRequestedDateServed: requestedDate === null || contract.operationAlias === 'stocks.price_history'
+        ? null : requestedDate === servedDate,
+      requestedSessionInSeries: requestedDate === null || contract.operationAlias !== 'stocks.price_history'
+        ? null : Array.isArray(bodyRecord?.candles)
+          ? bodyRecord.candles.some((entry) => asRecord(entry)?.date === requestedDate) : null,
+      requestedWindow, servedWindow,
+      windowEchoMatches: requestedWindow === null ? null
+        : servedWindow !== null && requestedWindow.from === servedWindow.from && requestedWindow.to === servedWindow.to,
+      requestedMetric, returnedMetric,
+      metricMatchesRequest: requestedMetric === null ? null : requestedMetric === returnedMetric,
+      paginationComplete,
       dataState,
     };
   } catch {
@@ -359,6 +391,8 @@ const restCapabilityProbe = async (
       requestIdHeader: null, serverDatePresent: false, responseFieldNames: [], topLevelKind: 'EMPTY',
       fieldTypes: {}, requestedDate: new URL(contract.path, 'https://optionomics.ai').searchParams.get('date'),
       servedDate: null, exactRequestedDateServed: null,
+      requestedSessionInSeries: null, requestedWindow: null, servedWindow: null, windowEchoMatches: null,
+      requestedMetric: null, returnedMetric: null, metricMatchesRequest: null, paginationComplete: null,
       dataState: 'HTTP_ERROR',
     };
   }
