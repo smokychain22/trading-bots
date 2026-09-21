@@ -15,6 +15,12 @@ $logPath = Join-Path $root ('logs\backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss'
 function Log([string]$Message) { [IO.File]::AppendAllText($logPath, "$(Get-Date -Format o) $Message`n") }
 $stage = $null
 try {
+  if (-not $TestMode) {
+    $battery = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($battery -and $battery.BatteryStatus -eq 1 -and $battery.EstimatedChargeRemaining -lt 40) {
+      throw 'BACKUP_BATTERY_BELOW_40_PERCENT_AND_DISCHARGING'
+    }
+  }
   $url = if ($TestMode) { [Environment]::GetEnvironmentVariable($SourceUrlEnvironmentVariable) } else { Get-ThetaSourceUrl $root }
   if (-not $url) { throw 'BACKUP_SOURCE_URL_UNAVAILABLE' }
   $source = ConvertTo-ThetaPgConnection $url
@@ -38,8 +44,8 @@ try {
   [void](New-Item -ItemType Directory -Path $stage)
   Log "START backupId=$backupId source=AIVEN_OR_TEST sourceBytes=$sourceSize"
   $archive = Join-Path $stage 'database.backup'; $schema = Join-Path $stage 'schema.sql'
-  Invoke-ThetaPg pg_dump $source @('--format=custom','--file',(ConvertTo-ThetaWslPath $archive),'--dbname',$source.Database) | Out-Null
-  Invoke-ThetaPg pg_dump $source @('--schema-only','--file',(ConvertTo-ThetaWslPath $schema),'--dbname',$source.Database) | Out-Null
+  Invoke-ThetaPg pg_dump $source @('--format=custom','--file',(Get-ThetaPgFilePath $archive $source),'--dbname',$source.Database) | Out-Null
+  Invoke-ThetaPg pg_dump $source @('--schema-only','--file',(Get-ThetaPgFilePath $schema $source),'--dbname',$source.Database) | Out-Null
   Log 'DUMP_COMPLETE'
   $inventorySql = @'
 SELECT jsonb_build_object(
@@ -100,7 +106,7 @@ SELECT jsonb_build_object(
     "$(Get-ThetaSha256 $file.FullName)  $relative"
   }
   [IO.File]::WriteAllLines((Join-Path $stage 'SHA256SUMS.txt'), $checksums, [Text.UTF8Encoding]::new($false))
-  $receiptRaw = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Verify-ThetaBackup.ps1') -BackupDirectory $stage -WriteReceipt
+  $receiptRaw = & (Join-Path $PSHOME 'pwsh.exe') -NoProfile -File (Join-Path $PSScriptRoot 'Verify-ThetaBackup.ps1') -BackupDirectory $stage -WriteReceipt
   if ($LASTEXITCODE -ne 0) { throw 'BACKUP_VERIFICATION_FAILED' }
   $receipt = $receiptRaw | ConvertFrom-Json
   if ($receipt.state -ne 'VERIFIED') { throw 'BACKUP_VERIFICATION_FAILED' }
@@ -117,7 +123,7 @@ SELECT jsonb_build_object(
     if ($existing.Count -eq 0) {
       $archiveCopy = Join-Path (Join-Path $root $bucket) "$period-$backupId"
       Copy-Item -LiteralPath $final -Destination $archiveCopy -Recurse
-      & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Verify-ThetaBackup.ps1') -BackupDirectory $archiveCopy | Out-Null
+      & (Join-Path $PSHOME 'pwsh.exe') -NoProfile -File (Join-Path $PSScriptRoot 'Verify-ThetaBackup.ps1') -BackupDirectory $archiveCopy | Out-Null
       if ($LASTEXITCODE -ne 0) { throw "BACKUP_PERIODIC_COPY_VERIFICATION_FAILED:$bucket" }
     }
   }

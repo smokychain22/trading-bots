@@ -69,6 +69,19 @@ function ConvertTo-ThetaWslPath {
   return '/mnt/' + $Matches[1].ToLowerInvariant() + '/' + ($Matches[2] -replace '\\', '/')
 }
 
+function Get-ThetaPgFilePath {
+  param([string]$WindowsPath, [object]$Connection)
+  if ($Connection -and $Connection.Host -eq 'wsl-socket') { return ConvertTo-ThetaWslPath $WindowsPath }
+  return [IO.Path]::GetFullPath($WindowsPath)
+}
+
+function Get-ThetaNativePgTool {
+  param([ValidateSet('pg_dump','pg_restore','psql')][string]$Tool)
+  $path = Join-Path 'C:\Tools\PostgreSQL\18.6\pgsql\bin' ($Tool + '.exe')
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'POSTGRES_18_WINDOWS_CLIENT_TOOLS_REQUIRED' }
+  return $path
+}
+
 function Invoke-ThetaPg {
   param([ValidateSet('pg_dump','pg_restore','psql')][string]$Tool, [object]$Connection, [string[]]$Arguments)
   $keys = @('PGHOST','PGPORT','PGUSER','PGPASSWORD','PGDATABASE','PGSSLMODE','PGCONNECT_TIMEOUT','PGAPPNAME','WSLENV')
@@ -79,8 +92,12 @@ function Invoke-ThetaPg {
     $env:PGPORT = $Connection.Port; $env:PGUSER = $Connection.User
     $env:PGPASSWORD = $Connection.Password; $env:PGDATABASE = $Connection.Database; $env:PGSSLMODE = $Connection.SslMode
     $env:PGCONNECT_TIMEOUT = '15'; $env:PGAPPNAME = 'theta-disaster-recovery'
-    $env:WSLENV = (($previous['WSLENV'] | ForEach-Object { if ($_) { $_ + ':' } else { '' } }) + (($keys | Where-Object { $_ -ne 'WSLENV' } | ForEach-Object { $_ + '/u' }) -join ':'))
-    $result = & wsl.exe -d Ubuntu --exec "/usr/lib/postgresql/18/bin/$Tool" @Arguments 2>&1
+    if ($Connection.Host -eq 'wsl-socket') {
+      $env:WSLENV = (($previous['WSLENV'] | ForEach-Object { if ($_) { $_ + ':' } else { '' } }) + (($keys | Where-Object { $_ -ne 'WSLENV' } | ForEach-Object { $_ + '/u' }) -join ':'))
+      $result = & wsl.exe -d Ubuntu --exec "/usr/lib/postgresql/18/bin/$Tool" @Arguments 2>&1
+    } else {
+      $result = & (Get-ThetaNativePgTool $Tool) @Arguments 2>&1
+    }
     if ($LASTEXITCODE -ne 0) { throw "POSTGRES_TOOL_FAILED:$Tool exit=$LASTEXITCODE" }
     return $result
   } finally {

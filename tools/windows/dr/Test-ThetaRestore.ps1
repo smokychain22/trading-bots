@@ -13,7 +13,7 @@ if ($user -notmatch '^[a-z_][a-z0-9_-]*$') { throw 'LOCAL_TEST_USER_INVALID' }
 $env:THETA_RESTORE_TARGET_URL = "postgresql://${user}:unused@wsl-socket:5433/${dbName}?sslmode=disable"
 try {
   $assetTarget = Join-Path (Join-Path $root 'restore-tests') ($dbName + '-assets')
-  $raw = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Restore-Theta.ps1') -BackupDirectory $BackupDirectory -BackupRoot $root -AllowLocalTest -ExternalAssetsTarget $assetTarget
+  $raw = & (Join-Path $PSHOME 'pwsh.exe') -NoProfile -File (Join-Path $PSScriptRoot 'Restore-Theta.ps1') -BackupDirectory $BackupDirectory -BackupRoot $root -AllowLocalTest -ExternalAssetsTarget $assetTarget
   if ($LASTEXITCODE -ne 0) { throw 'LOCAL_TEST_RESTORE_FAILED' }
   $receipt = $raw | ConvertFrom-Json
   if ($receipt.state -ne 'RESTORED_VERIFIED' -or $receipt.tableCount -lt 1) { throw 'LOCAL_TEST_RESTORE_NOT_VERIFIED' }

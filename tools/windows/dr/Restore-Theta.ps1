@@ -9,7 +9,7 @@ param(
 )
 . (Join-Path $PSScriptRoot 'ThetaBackup.Common.ps1')
 $backup = [IO.Path]::GetFullPath($BackupDirectory)
-$verifyRaw = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Verify-ThetaBackup.ps1') -BackupDirectory $backup
+$verifyRaw = & (Join-Path $PSHOME 'pwsh.exe') -NoProfile -File (Join-Path $PSScriptRoot 'Verify-ThetaBackup.ps1') -BackupDirectory $backup
 if ($LASTEXITCODE -ne 0) { throw 'RESTORE_BACKUP_VERIFICATION_FAILED' }
 $verified = $verifyRaw | ConvertFrom-Json
 $manifest = Get-Content -Raw -LiteralPath (Join-Path $backup 'backup-manifest.json') | ConvertFrom-Json
@@ -23,8 +23,8 @@ $serverVersion = Invoke-ThetaSql $target 'SHOW server_version_num'
 if ($serverVersion -notmatch '^\d+$' -or [int]$serverVersion -lt [int]$manifest.sourcePostgresVersion) { throw 'RESTORE_TARGET_POSTGRES_VERSION_TOO_OLD' }
 $existing = [int](Invoke-ThetaSql $target "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%' AND c.relkind IN ('r','p','v','m','S','f')")
 if ($existing -ne 0) { throw "RESTORE_TARGET_NOT_EMPTY:objects=$existing" }
-$archiveWsl = ConvertTo-ThetaWslPath (Join-Path $backup 'database.backup')
-Invoke-ThetaPg pg_restore $target @('--exit-on-error','--single-transaction','--no-owner','--no-acl','--dbname',$target.Database,$archiveWsl) | Out-Null
+$archivePath = Get-ThetaPgFilePath (Join-Path $backup 'database.backup') $target
+Invoke-ThetaPg pg_restore $target @('--exit-on-error','--single-transaction','--no-owner','--no-acl','--dbname',$target.Database,$archivePath) | Out-Null
 $restored = Invoke-ThetaSql $target "SELECT jsonb_build_object('schemaCount',(SELECT count(*) FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname<>'information_schema'),'tableCount',(SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p') AND n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema'),'viewCount',(SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('v','m') AND n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema'),'functionCount',(SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema'),'triggerCount',(SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE NOT t.tgisinternal AND n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema'),'indexCount',(SELECT count(*) FROM pg_indexes WHERE schemaname NOT LIKE 'pg_%' AND schemaname<>'information_schema'),'sequenceCount',(SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='S' AND n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema'),'migrationHead',(SELECT max(version) FROM core.schema_migration),'customerIdentities',(SELECT count(*) FROM iam.customer_identity),'encryptedBrokerCredentials',(SELECT count(*) FROM copy.alpaca_oauth_token),'legacyArtifacts',(SELECT count(*) FROM legacy_neon.artifact_record))::text" | ConvertFrom-Json
 if ($restored.tableCount -ne $manifest.inventory.tableCount -or $restored.schemaCount -ne $manifest.inventory.schemaCount -or $restored.migrationHead -ne $manifest.inventory.migrationHead) { throw 'RESTORE_SCHEMA_OR_MIGRATION_MISMATCH' }
 foreach ($field in @('viewCount','functionCount','triggerCount','indexCount','sequenceCount')) {

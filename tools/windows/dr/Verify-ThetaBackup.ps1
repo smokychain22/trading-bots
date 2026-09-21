@@ -34,8 +34,7 @@ $heads = & git -C $repoRoot bundle list-heads $bundlePath 2>&1
 if ($LASTEXITCODE -ne 0 -or -not (($heads | Out-String).Contains([string]$manifest.sourceGitSha))) { throw 'BACKUP_SOURCE_BUNDLE_SHA_MISMATCH' }
 & git -C $repoRoot bundle verify $bundlePath 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'BACKUP_SOURCE_BUNDLE_INVALID' }
-$archiveWsl = ConvertTo-ThetaWslPath $archivePath
-$toc = & wsl.exe -d Ubuntu --exec /usr/lib/postgresql/18/bin/pg_restore --list $archiveWsl 2>&1
+$toc = & (Get-ThetaNativePgTool pg_restore) --list $archivePath 2>&1
 if ($LASTEXITCODE -ne 0 -or @($toc).Count -lt 10) { throw 'BACKUP_CUSTOM_ARCHIVE_UNREADABLE' }
 $receipt = [ordered]@{
   state = 'VERIFIED'; verifiedAt = (Get-Date).ToUniversalTime().ToString('o');
