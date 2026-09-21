@@ -85,8 +85,8 @@ class RegimeInputs:
     rv20: Optional[float]
     max_adverse_gap: Optional[float]
     earnings_distance_days: Optional[int]
-    corporate_action_pending: bool
-    macro_risk_flag: bool
+    corporate_action_pending: Optional[bool]
+    macro_risk_flag: Optional[bool]
     spread_pct: Optional[float]
     portfolio_or_market_drawdown: Optional[float]  # negative-or-zero fraction
 
@@ -140,6 +140,8 @@ def _event_state(inputs: RegimeInputs, policy: RegimePolicyV0) -> tuple:
         return EventState.EARNINGS_NEAR, ReasonCode(
             "EVENT_EARNINGS_NEAR", -1, f"earnings_distance_days={inputs.earnings_distance_days}"
         )
+    if inputs.corporate_action_pending is None or inputs.macro_risk_flag is None:
+        return None, ReasonCode("EVENT_FLAG_UNKNOWN", -1, "Corporate-action or macro-risk status is UNKNOWN.")
     if inputs.earnings_distance_days is None:
         return None, ReasonCode("EVENT_UNKNOWN", -1, "earnings_distance_days is UNKNOWN and no other event flag is set.")
     return EventState.NONE, ReasonCode("EVENT_NONE", 1, "No known event within the near-term window.")

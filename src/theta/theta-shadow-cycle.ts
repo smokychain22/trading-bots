@@ -1184,8 +1184,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     },
     regimePolicy: config.regimePolicy,
     regimeInputs: {
-      maSlope, rv20, maxAdverseGap, earningsDistanceDays: null, corporateActionPending: false,
-      macroRiskFlag: false, spreadPct: null, portfolioOrMarketDrawdown: drawdown,
+      maSlope, rv20, maxAdverseGap, earningsDistanceDays: null, corporateActionPending: null,
+      macroRiskFlag: null, spreadPct: null, portfolioOrMarketDrawdown: drawdown,
     },
     routerPolicy: config.routerPolicy, routerPortfolio: config.routerPortfolio,
     latticeConfig: config.latticeConfig, thetaQSizingPolicy: config.thetaQSizingPolicy, costAssumptions: config.costAssumptions,

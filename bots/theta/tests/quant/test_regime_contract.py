@@ -51,6 +51,20 @@ class RegimeContractTests(unittest.TestCase):
         self.assertIsNone(response["volatilityState"])
         self.assertEqual(response["confidence"], 0.8)
 
+    def test_unverified_event_flags_do_not_become_no_event(self):
+        request = _request()
+        request["inputs"] = _inputs(corporateActionPending=None, macroRiskFlag=None)
+        response = evaluate_request(request)
+        self.assertIsNone(response["eventState"])
+        self.assertEqual(response["confidence"], 0.8)
+        self.assertEqual(response["reasons"][2]["code"], "EVENT_FLAG_UNKNOWN")
+
+    def test_confirmed_event_takes_priority_over_other_unknown_flags(self):
+        request = _request()
+        request["inputs"] = _inputs(corporateActionPending=True, macroRiskFlag=None)
+        response = evaluate_request(request)
+        self.assertEqual(response["eventState"], "CORPORATE_ACTION")
+
     def test_axes_are_never_collapsed_into_one_score(self):
         response = evaluate_request(_request())
         for key in ("trendState", "volatilityState", "eventState", "liquidityState", "stressState"):

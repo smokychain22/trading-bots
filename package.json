@@ -26,6 +26,7 @@
     "provider:readiness": "tsx src/providers/provider-readiness.ts",
     "theta:shadow:once": "tsx src/theta/theta-shadow-once.ts",
     "theta:audit:wiring": "tsx tools/theta-runtime-wiring-audit.ts",
+    "theta:audit:unknowns": "tsx tools/theta-pre-vps-unknown-audit.ts",
     "db:migrate": "node tools/database-migrate.mjs",
     "db:verify": "node tools/database-verify.mjs",
     "db:aiven:preflight": "node tools/database-target-preflight.mjs",
