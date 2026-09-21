@@ -132,6 +132,8 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   assert.equal(result.optionChainComplete, true);
   assert.equal(result.optionContractsComplete, true);
   assert.ok(result.orchestration !== null);
+  assert.deepEqual(result.fusionSnapshot?.snapshot.underlyingState.eventEvidence,
+    { unsupportedCorporateActionPending: false, eventNear: false });
   assert.ok(result.orchestration?.thetaQ !== null || result.orchestration?.receipt.winningAction === 'PASS');
   assert.equal(result.orchestration?.regime?.eventState, null);
   assert.ok(result.orchestration?.regime?.reasons.some((reason) => reason.code === 'EVENT_FLAG_UNKNOWN'));

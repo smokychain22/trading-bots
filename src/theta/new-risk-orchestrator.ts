@@ -350,7 +350,7 @@ export async function runNewRiskOrchestration(
       market: {
         ownershipAcceptable: ownershipResult.data.ownability,
         liquidityAcceptable: regimeResult.data.liquidityState === null ? null : regimeResult.data.liquidityState === 'NORMAL',
-        eventNear: regimeResult.data.eventState !== null && regimeResult.data.eventState !== 'NONE',
+        eventNear: regimeResult.data.eventState === null ? null : regimeResult.data.eventState !== 'NONE',
         criticalDataValid: true,
       },
     },

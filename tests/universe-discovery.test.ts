@@ -56,6 +56,8 @@ test('a real (mocked) end-to-end discovery: assets -> bars -> optionability conf
   assert.equal(result.candidates.length, 1);
   assert.equal(result.candidates[0]?.symbol, 'SPY');
   assert.equal(result.candidates[0]?.avgDollarVolume, 500 * 1_000_000);
+  assert.equal(result.candidates[0]?.unsupportedCorporateActionPending, null);
+  assert.equal(result.candidates[0]?.eventNear, null);
   assert.equal(result.candidatesOrigin, 'REAL_PROVIDER');
   assert.equal(result.blockers.length, 0);
 });

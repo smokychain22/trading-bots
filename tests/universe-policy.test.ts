@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { evaluateUnderlying, evaluateUniverse, rankEligibleUnderlyings, type UnderlyingCandidateInput, type UniversePolicy } from '../src/theta/universe-policy.js';
+import { assessUniverseEventEvidence, evaluateUnderlying, evaluateUniverse, rankEligibleUnderlyings, type UnderlyingCandidateInput, type UniversePolicy } from '../src/theta/universe-policy.js';
 
 const policy: UniversePolicy = { policyVersion: 'universe-v1', minAvgDollarVolume: 10_000_000, minCurrentPrice: 5 };
 
@@ -132,6 +132,30 @@ test('rankEligibleUnderlyings carries an explicit, transparent reason for each r
   const ranked = rankEligibleUnderlyings(decisions, inputsBySymbol);
   assert.equal(ranked[0]?.rankingFeature, 'avgDollarVolume');
   assert.ok(ranked[0]?.reason.length > 0);
+});
+
+test('unknown corporate-action coverage defers, never becomes a verified false', () => {
+  const result = evaluateUnderlying(policy, clean({ unsupportedCorporateActionPending: null, eventNear: false }));
+  assert.equal(result.state, 'DEFERRED');
+  assert.equal(result.terminalStage, 'EVENT_AWARENESS');
+  assert.equal(result.reasons[0]?.code, 'CORPORATE_ACTION_COVERAGE_UNKNOWN');
+});
+
+test('unknown event proximity defers even with verified no unsupported corporate action', () => {
+  const result = evaluateUnderlying(policy, clean({ unsupportedCorporateActionPending: false, eventNear: null }));
+  assert.equal(result.state, 'DEFERRED');
+  assert.equal(result.reasons[0]?.code, 'EVENT_PROXIMITY_UNKNOWN');
+});
+
+test('Paper event gate permits only known-false corporate action and event proximity', () => {
+  assert.equal(assessUniverseEventEvidence(clean()).state, 'ELIGIBLE');
+  assert.equal(assessUniverseEventEvidence(clean({ unsupportedCorporateActionPending: true })).state, 'REJECTED');
+  assert.equal(assessUniverseEventEvidence(clean({ unsupportedCorporateActionPending: null })).state, 'DEFERRED');
+  assert.equal(assessUniverseEventEvidence(clean({ eventNear: true })).state, 'DEFERRED');
+  assert.equal(assessUniverseEventEvidence(clean({ eventNear: null })).state, 'DEFERRED');
+  // Malformed/unvalidated runtime input cannot fall through as known false.
+  assert.equal(assessUniverseEventEvidence({ unsupportedCorporateActionPending: undefined, eventNear: false } as unknown as UnderlyingCandidateInput).state, 'DEFERRED');
+  assert.equal(assessUniverseEventEvidence({ unsupportedCorporateActionPending: false, eventNear: undefined } as unknown as UnderlyingCandidateInput).state, 'DEFERRED');
 });
 
 test('eligible ranking fails closed when its point-in-time liquidity input is missing', () => {

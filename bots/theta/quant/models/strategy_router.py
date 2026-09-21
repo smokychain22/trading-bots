@@ -109,7 +109,7 @@ class MarketContext:
 
     ownership_acceptable: Optional[float]
     liquidity_acceptable: Optional[bool]
-    event_near: bool
+    event_near: Optional[bool]
     critical_data_valid: bool  # quotes/contracts/timestamps/broker/portfolio/positions all sane
 
 
@@ -230,7 +230,7 @@ def route_strategies(
         # THETA-H is a challenger with a STRICTER ownership bar (per its own
         # "only in validated cohorts" requirement) -- never inherits
         # THETA-Q's floor automatically.
-        if market.ownership_acceptable is not None and not market.event_near:
+        if market.ownership_acceptable is not None and market.event_near is False:
             if market.ownership_acceptable >= policy.theta_h_min_ownership_acceptability:
                 results.append(_eligible(StrategyFamily.THETA_H, EligibilityState.ELIGIBLE_CHALLENGER,
                                           "VALIDATED_COHORT_BAR_MET", "Stricter THETA-H ownership bar met, no near-term event.", policy))

@@ -9,7 +9,7 @@ import type { HistoricalBar } from './underlying-history.js';
 import { mergeOptionChain, type AlpacaOptionContractListing, type AlpacaOptionSnapshot, type OptionomicsChainEntry } from './option-chain-ingestion.js';
 import { computeAverageVolume, computeCurrentDrawdown, computeDownsideSemivariance, computeGapFrequency, computeMaxAdverseGap,
   computeMovingAverageRelative, computeRealizedVolatility, computeReturn, computeTrendSlope } from './underlying-features.js';
-import { evaluateUniverse, rankEligibleUnderlyings, type RankedUnderlying, type UnderlyingCandidateInput, type UniverseFunnelReport, type UniversePolicy } from './universe-policy.js';
+import { evaluateUniverse, rankEligibleUnderlyings, type RankedUnderlying, type UnderlyingCandidateInput, type UnderlyingDecision, type UniverseFunnelReport, type UniversePolicy } from './universe-policy.js';
 import { runNewRiskOrchestration, type NewRiskOrchestrationRequest, type NewRiskOrchestrationResult, type RawCandidateInput } from './new-risk-orchestrator.js';
 import { assembleNoCandidateDecision, assembleRuntimePreconditionHold } from './decision-assembly.js';
 import { checkTemporalConsistency, DEFAULT_TEMPORAL_CONSISTENCY_POLICIES } from './temporal-consistency.js';
@@ -195,6 +195,8 @@ function dueOptionomicsContextFamilies(config: ThetaShadowCycleConfig, decisionT
 function assembleFusionSnapshotInput(params: {
   readonly now: string;
   readonly underlying: string;
+  readonly universeEventEvidence: Pick<UnderlyingCandidateInput, 'unsupportedCorporateActionPending' | 'eventNear'> | null;
+  readonly universeDecision: UnderlyingDecision | null;
   readonly account: MasterAccountSnapshot | null;
   readonly accountOrigin: ProvenanceOrigin;
   readonly accountQuality: DataQualityState;
@@ -325,7 +327,8 @@ function assembleFusionSnapshotInput(params: {
     marketSession: params.clock !== null
       ? ({ isOpen: params.clock.isOpen, nextOpen: params.clock.nextOpen, nextClose: params.clock.nextClose, asOf: params.clock.timestamp, calendar: params.calendar } as unknown as JsonValue)
       : null, // honestly absent when the clock fetch never returned a usable value -- never fabricated as "regular session"
-    underlyingState: { symbol: params.underlying },
+    underlyingState: { symbol: params.underlying, eventEvidence: params.universeEventEvidence,
+      universeDecision: params.universeDecision },
     contractCandidates: params.mergedContracts,
     accountState: accountJson,
     positionState: { positions: positionsJson, openOrders: openOrdersJson },
@@ -904,6 +907,14 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   // deterministic snapshot identity. NEVER a placeholder hash.
   const snapshotInput = assembleFusionSnapshotInput({
     now: decisionTime, underlying, account,
+    universeEventEvidence: (() => {
+      const input = inputsBySymbol.get(underlying);
+      return input === undefined ? null : {
+        unsupportedCorporateActionPending: input.unsupportedCorporateActionPending,
+        eventNear: input.eventNear,
+      };
+    })(),
+    universeDecision: decisions.find((decision) => decision.symbol === underlying) ?? null,
     accountOrigin: accountEvidence.origin, accountQuality: accountEvidence.quality,
     contractsOrigin: contractsEvidence.origin, contractsQuality: contractsEvidence.quality,
     quotesOrigin: quotesEvidence.origin, quotesQuality: quotesEvidence.quality,

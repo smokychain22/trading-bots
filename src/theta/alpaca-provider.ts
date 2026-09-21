@@ -323,10 +323,16 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
     url.search = new URLSearchParams(query).toString();
     const body = await requestJson(fetchImpl, url, authHeaders(config)) as { option_contracts?: Array<Record<string, unknown>>; next_page_token?: string | null };
     for (const c of body.option_contracts ?? []) {
+      const symbol = asStringOrNull(c.symbol);
+      const strikePrice = asNumberOrNull(c.strike_price);
+      const expirationDate = asStringOrNull(c.expiration_date);
+      if (!symbol || strikePrice === null || strikePrice <= 0 || !expirationDate || !/^\d{4}-\d{2}-\d{2}$/.test(expirationDate)) {
+        throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned an invalid contract identity.');
+      }
       items.push({
-        symbol: asStringOrNull(c.symbol) ?? '',
-        strikePrice: asNumberOrNull(c.strike_price) ?? 0,
-        expirationDate: asStringOrNull(c.expiration_date) ?? '',
+        symbol,
+        strikePrice,
+        expirationDate,
         optionType: params.optionType === 'put' ? 'PUT' : 'CALL',
         multiplier: asNumberOrNull(c.size),
       });

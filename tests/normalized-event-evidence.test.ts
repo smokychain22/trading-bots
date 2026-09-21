@@ -20,6 +20,12 @@ test('future-known event is invalid instead of leaking into a decision', () => {
   assert.ok(event.reasons.includes('NOT_KNOWN_AT_DECISION'));
 });
 
+test('provider publication before the decision does not backdate THETA observation', () => {
+  const event = normalizeEventEvidence(raw, '2025-01-15T12:00:30Z');
+  assert.equal(event.verificationState, 'INVALID');
+  assert.ok(event.reasons.includes('NOT_OBSERVED_AT_DECISION'));
+});
+
 test('duplicate identity with conflicting event time is retained and flagged', () => {
   const first = normalizeEventEvidence(raw, '2025-01-16T00:00:00Z');
   const second = normalizeEventEvidence({ ...raw, eventTime: '2025-02-02T21:00:00Z', payloadHash: 'b'.repeat(64) }, '2025-01-16T00:00:00Z');
