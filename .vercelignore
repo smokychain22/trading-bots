@@ -1,0 +1,14 @@
+.git
+.github
+.theta-local-worker
+.venv
+.pytest_cache
+.env*
+node_modules
+dist
+research_exports
+research_outputs
+playwright-report
+test-results
+tmp
+.reticle
