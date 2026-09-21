@@ -33,3 +33,17 @@ test('duplicate identity with conflicting event time is retained and flagged', (
   assert.equal(result.length, 2);
   assert.ok(result.every((item) => item.verificationState === 'CONFLICT'));
 });
+
+test('same event ID and date with a changed payload is not silently collapsed', () => {
+  const first = normalizeEventEvidence(raw, '2025-01-16T00:00:00Z');
+  const revised = normalizeEventEvidence({ ...raw, payloadHash: 'b'.repeat(64) }, '2025-01-16T00:00:00Z');
+  const result = reconcileEventEvidence([first, revised]);
+  assert.equal(result.length, 2);
+  assert.ok(result.every((item) => item.verificationState === 'CONFLICT'));
+  assert.ok(result.every((item) => item.reasons.includes('CONFLICTING_PROVIDER_EVENT')));
+});
+
+test('identical repeated event evidence remains a single observation', () => {
+  const first = normalizeEventEvidence(raw, '2025-01-16T00:00:00Z');
+  assert.deepEqual(reconcileEventEvidence([first, first]), [first]);
+});

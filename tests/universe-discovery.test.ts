@@ -140,3 +140,34 @@ test('the universe-asset bound is honestly reported when truncated', async () =>
   assert.equal(result.funnel.assetsTruncatedByBound, true);
   assert.equal(result.funnel.assetsDiscovered, 3);
 });
+
+test('option-contract discovery derives its search window from the injected decision clock', async () => {
+  let searchWindow: { from: string | null; to: string | null } | null = null;
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    const url = new URL(input instanceof URL ? input.toString() : String(input));
+    if (url.pathname === '/v2/assets') return jsonResponse(200, [
+      { symbol: 'SPY', exchange: 'ARCA', class: 'us_equity', tradable: true, status: 'active' },
+    ]);
+    if (url.pathname === '/v2/stocks/bars') return jsonResponse(200, { bars: { SPY: [bar('SPY', 500, 1_000_000)] }, next_page_token: null });
+    if (url.pathname === '/v2/options/contracts') {
+      searchWindow = { from: url.searchParams.get('expiration_date_gte'), to: url.searchParams.get('expiration_date_lte') };
+      return jsonResponse(200, { option_contracts: [], next_page_token: null });
+    }
+    throw new Error('unexpected provider request');
+  }) as typeof fetch;
+  const alpaca: AlpacaProviderConfig = { tradingApiBase: 'https://paper-api.alpaca.markets',
+    marketDataApiBase: 'https://data.alpaca.markets', apiKey: 'SYNTHETIC', apiSecret: 'SYNTHETIC', fetchImpl };
+  await discoverRealUniverse(alpaca, baseDiscoveryConfig(), () => NOW);
+  assert.deepEqual(searchWindow, { from: '2026-09-11', to: '2027-10-15' });
+});
+
+test('invalid injected decision clock fails closed before provider requests', async () => {
+  let requests = 0;
+  const fetchImpl = (async () => { requests += 1; return jsonResponse(200, []); }) as typeof fetch;
+  const alpaca: AlpacaProviderConfig = { tradingApiBase: 'https://paper-api.alpaca.markets',
+    marketDataApiBase: 'https://data.alpaca.markets', apiKey: 'SYNTHETIC', apiSecret: 'SYNTHETIC', fetchImpl };
+  const result = await discoverRealUniverse(alpaca, baseDiscoveryConfig(), () => 'invalid-clock');
+  assert.equal(requests, 0);
+  assert.equal(result.candidates.length, 0);
+  assert.deepEqual(result.blockers, ['UNIVERSE_DECISION_CLOCK_INVALID']);
+});
