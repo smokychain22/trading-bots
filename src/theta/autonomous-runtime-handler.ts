@@ -244,6 +244,11 @@ export default async function autonomousRuntimeHandler(
     return;
   }
   if (operation === 'DATABASE_TARGET_MIGRATE') {
+    if (environment.DATABASE_RUNTIME_AUTHORITY === 'AIVEN') {
+      send(response, 403, { error: 'production_migrations_require_verified_local_backup_workflow',
+        executionGate: 'LOCKED', ordersSubmitted: 0 });
+      return;
+    }
     if (localIdentity.kind !== 'VALID') {
       send(response, 400, { error: 'local_worker_identity_required', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
       return;

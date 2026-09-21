@@ -17,9 +17,14 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'LOCAL_TEST_RESTORE_FAILED' }
   $receipt = $raw | ConvertFrom-Json
   if ($receipt.state -ne 'RESTORED_VERIFIED' -or $receipt.tableCount -lt 1) { throw 'LOCAL_TEST_RESTORE_NOT_VERIFIED' }
-  @{state='REAL_LOCAL_RESTORE_VERIFIED'; testDatabase=$dbName; backupId=$receipt.backupId;
+  @{state='REAL_LOCAL_RESTORE_VERIFIED'; testedAt=(Get-Date).ToUniversalTime().ToString('o');
+    testDatabase=$dbName; backupId=$receipt.backupId;
     schemaCount=$receipt.schemaCount; tableCount=$receipt.tableCount; migrationHead=$receipt.migrationHead;
     customerIdentities=$receipt.customerIdentities; encryptedBrokerCredentials=$receipt.encryptedBrokerCredentials;
     legacyArtifacts=$receipt.legacyArtifacts; externalAssets=$receipt.externalAssets;
+    sourceStructureFingerprint=$receipt.sourceStructureFingerprint; restoredStructureFingerprint=$receipt.restoredStructureFingerprint;
+    structureParity=$receipt.structureParity; dataRowcountParity=$receipt.dataRowcountParity;
+    criticalDataVerification=$receipt.criticalDataVerification;
+    restoredCriticalRowCounts=$receipt.criticalRowCountsVerified;
     brokerMutations=0; productionDatabaseMutations=0} | ConvertTo-Json -Compress
 } finally { Remove-Item Env:THETA_RESTORE_TARGET_URL -ErrorAction SilentlyContinue }

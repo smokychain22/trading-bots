@@ -121,3 +121,71 @@ function Get-ThetaSha256 {
   param([string]$Path)
   return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
+
+function Get-ThetaStringSha256 {
+  param([Parameter(Mandatory)][string]$Value)
+  return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
+    [Text.Encoding]::UTF8.GetBytes($Value))).ToLowerInvariant()
+}
+
+function Get-ThetaStructure {
+  param([Parameter(Mandatory)][object]$Connection)
+  $sql = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'ThetaStructure.sql')
+  $raw = Invoke-ThetaSql -Connection $Connection -Sql $sql
+  if (-not $raw -or ($raw | ConvertFrom-Json).formatVersion -ne 1) { throw 'DATABASE_STRUCTURE_INVALID' }
+  return $raw
+}
+
+function Get-ThetaGlobalState {
+  param([Parameter(Mandatory)][object]$Connection)
+  $sql = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'ThetaGlobalState.sql')
+  $raw = Invoke-ThetaSql -Connection $Connection -Sql $sql
+  if (-not $raw -or ($raw | ConvertFrom-Json).formatVersion -ne 1) { throw 'DATABASE_GLOBAL_STATE_INVALID' }
+  return $raw
+}
+
+function Get-ThetaTableCounts {
+  param([Parameter(Mandatory)][object]$Connection, [Parameter(Mandatory)][object]$Structure)
+  $counts = [ordered]@{}
+  $relations = @($Structure.tables) + @($Structure.views | Where-Object kind -eq 'm')
+  foreach ($table in $relations) {
+    $parts = [string]$table.name -split '\.', 2
+    if ($parts.Count -ne 2) { throw 'DATABASE_TABLE_NAME_INVALID' }
+    $qualified = '"' + $parts[0].Replace('"','""') + '"."' + $parts[1].Replace('"','""') + '"'
+    $counts[[string]$table.name] = [long](Invoke-ThetaSql -Connection $Connection -Sql "SELECT count(*) FROM $qualified")
+  }
+  return $counts
+}
+
+function Get-ThetaSequenceState {
+  param([Parameter(Mandatory)][object]$Connection)
+  $sql = @'
+SELECT coalesce(jsonb_agg(jsonb_build_object('name',schemaname||'.'||sequencename,
+  'lastValue',last_value) ORDER BY schemaname,sequencename),'[]'::jsonb)::text
+FROM pg_sequences WHERE schemaname NOT LIKE 'pg_%' AND schemaname<>'information_schema'
+'@
+  return Invoke-ThetaSql -Connection $Connection -Sql $sql
+}
+
+function Get-ThetaCriticalDigest {
+  param([Parameter(Mandatory)][object]$Connection, [Parameter(Mandatory)][object]$Structure)
+  $names = @(
+    'core.schema_migration','iam.customer_identity','copy.alpaca_oauth_token',
+    'trade.order_intent','trade.broker_order','trade.fill','trade.broker_activity_fact',
+    'trade.decision','trade.fusion_snapshot','trade.candidate_point_in_time_evidence',
+    'market.optionomics_raw_observation','legacy_neon.import_batch','legacy_neon.artifact_record'
+  )
+  $present = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+  foreach ($table in $Structure.tables) { [void]$present.Add([string]$table.name) }
+  $digests = [ordered]@{}
+  foreach ($name in $names) {
+    if (-not $present.Contains($name)) { continue }
+    $parts = $name -split '\.', 2
+    $qualified = '"' + $parts[0].Replace('"','""') + '"."' + $parts[1].Replace('"','""') + '"'
+    # Only a digest leaves PostgreSQL. No credential, account row, or PII is logged.
+    $digestSql = "SELECT md5(coalesce(string_agg(row_hash,'' ORDER BY row_hash),'')) FROM (SELECT md5(to_jsonb(t)::text) AS row_hash FROM $qualified t) hashes"
+    $digests[$name] = Invoke-ThetaSql -Connection $Connection -Sql $digestSql
+    if ($digests[$name] -notmatch '^[0-9a-f]{32}$') { throw "CRITICAL_DIGEST_INVALID:$name" }
+  }
+  return $digests
+}

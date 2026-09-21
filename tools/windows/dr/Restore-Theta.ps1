@@ -26,6 +26,44 @@ if ($existing -ne 0) { throw "RESTORE_TARGET_NOT_EMPTY:objects=$existing" }
 $archivePath = Get-ThetaPgFilePath (Join-Path $backup 'database.backup') $target
 Invoke-ThetaPg pg_restore $target @('--exit-on-error','--single-transaction','--no-owner','--no-acl','--dbname',$target.Database,$archivePath) | Out-Null
 $restored = Invoke-ThetaSql $target "SELECT jsonb_build_object('schemaCount',(SELECT count(*) FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname<>'information_schema'),'tableCount',(SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p') AND n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema'),'viewCount',(SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('v','m') AND n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema'),'functionCount',(SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema'),'triggerCount',(SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE NOT t.tgisinternal AND n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema'),'indexCount',(SELECT count(*) FROM pg_indexes WHERE schemaname NOT LIKE 'pg_%' AND schemaname<>'information_schema'),'sequenceCount',(SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='S' AND n.nspname NOT LIKE 'pg_%' AND n.nspname<>'information_schema'),'migrationHead',(SELECT max(version) FROM core.schema_migration),'customerIdentities',(SELECT count(*) FROM iam.customer_identity),'encryptedBrokerCredentials',(SELECT count(*) FROM copy.alpaca_oauth_token),'legacyArtifacts',(SELECT count(*) FROM legacy_neon.artifact_record))::text" | ConvertFrom-Json
+$structureParity = 'NOT_AVAILABLE_LEGACY_FORMAT'
+$rowcountParity = 'NOT_AVAILABLE_LEGACY_FORMAT'
+$criticalDataVerification = 'NOT_AVAILABLE_LEGACY_FORMAT'
+$sourceStructureSha = $null
+$restoreStructureSha = $null
+$sourceTableCounts = $null
+$restoredTableCounts = $null
+if ($manifest.formatVersion -eq 2) {
+  $sourceStructureRaw = (Get-Content -Raw -LiteralPath (Join-Path $backup 'database-structure.json')).Trim()
+  $sourceStructureSha = Get-ThetaStringSha256 $sourceStructureRaw
+  $restoreStructureRaw = Get-ThetaStructure $target
+  $restoreStructureSha = Get-ThetaStringSha256 $restoreStructureRaw
+  $structureParity = if ($sourceStructureSha -eq $restoreStructureSha) { 'PASS' } else { 'FAIL' }
+  $restoreStructure = $restoreStructureRaw | ConvertFrom-Json
+  $sourceTableCounts = Get-Content -Raw -LiteralPath (Join-Path $backup 'all-table-row-counts.json') | ConvertFrom-Json
+  $restoredTableCounts = Get-ThetaTableCounts $target $restoreStructure
+  $rowcountParity = 'PASS'
+  if (@($sourceTableCounts.PSObject.Properties).Count -ne $restoredTableCounts.Count) { $rowcountParity = 'FAIL' }
+  foreach ($item in $sourceTableCounts.PSObject.Properties) {
+    if (-not $restoredTableCounts.Contains($item.Name) -or [long]$restoredTableCounts[$item.Name] -ne [long]$item.Value) {
+      $rowcountParity = 'FAIL'; break
+    }
+  }
+  $sourceSequenceRaw = (Get-Content -Raw -LiteralPath (Join-Path $backup 'sequence-state.json')).Trim()
+  $restoredSequenceRaw = Get-ThetaSequenceState $target
+  if ((Get-ThetaStringSha256 $sourceSequenceRaw) -ne (Get-ThetaStringSha256 $restoredSequenceRaw)) {
+    $rowcountParity = 'FAIL'
+  }
+  $sourceDigests = Get-Content -Raw -LiteralPath (Join-Path $backup 'critical-data-digests.json') | ConvertFrom-Json
+  $restoredDigests = Get-ThetaCriticalDigest $target $restoreStructure
+  $criticalDataVerification = 'PASS'
+  if (@($sourceDigests.PSObject.Properties).Count -ne $restoredDigests.Count) { $criticalDataVerification = 'FAIL' }
+  foreach ($item in $sourceDigests.PSObject.Properties) {
+    if (-not $restoredDigests.Contains($item.Name) -or $restoredDigests[$item.Name] -ne $item.Value) {
+      $criticalDataVerification = 'FAIL'; break
+    }
+  }
+}
 if ($restored.tableCount -ne $manifest.inventory.tableCount -or $restored.schemaCount -ne $manifest.inventory.schemaCount -or $restored.migrationHead -ne $manifest.inventory.migrationHead) { throw 'RESTORE_SCHEMA_OR_MIGRATION_MISMATCH' }
 foreach ($field in @('viewCount','functionCount','triggerCount','indexCount','sequenceCount')) {
   if ($null -ne $manifest.inventory.$field -and $restored.$field -ne $manifest.inventory.$field) { throw "RESTORE_OBJECT_COUNT_MISMATCH:$field" }
@@ -60,7 +98,9 @@ if ($ExternalAssetsTarget) {
   } else { $assetsState = 'NO_EXTERNAL_ASSETS_IN_BACKUP' }
 }
 $receipt = [ordered]@{
-  state='RESTORED_VERIFIED'; restoredAt=(Get-Date).ToUniversalTime().ToString('o'); backupId=$manifest.backupId;
+  state=$(if ($structureParity -eq 'FAIL' -or $rowcountParity -eq 'FAIL' -or $criticalDataVerification -eq 'FAIL')
+    {'RESTORE_PARITY_FAILED'}else{'RESTORED_VERIFIED'});
+  restoredAt=(Get-Date).ToUniversalTime().ToString('o'); backupId=$manifest.backupId;
   archiveSha256=$verified.archiveSha256; sourceAuthority=$manifest.sourceAuthority;
   targetHostSha256=$targetHostHash; targetDatabase=$target.Database; targetPostgresVersion=$serverVersion;
   schemaCount=$restored.schemaCount; tableCount=$restored.tableCount; viewCount=$restored.viewCount;
@@ -69,6 +109,9 @@ $receipt = [ordered]@{
   migrationHead=$restored.migrationHead;
   customerIdentities=$restored.customerIdentities; encryptedBrokerCredentials=$restored.encryptedBrokerCredentials;
   legacyArtifacts=$restored.legacyArtifacts; criticalRowCountsVerified=$criticalCountsVerified;
+  sourceStructureFingerprint=$sourceStructureSha; restoredStructureFingerprint=$restoreStructureSha;
+  structureParity=$structureParity; dataRowcountParity=$rowcountParity; criticalDataVerification=$criticalDataVerification;
+  sourceCriticalRowCounts=$manifest.criticalRowCounts; restoredAllTableRowCounts=$restoredTableCounts;
   externalAssets=$assetsState; externalAssetFileCount=$assetFileCount;
   secretsRestored=$false; applicationRedeployed=$false; brokerReconciled=$false
 }
@@ -76,4 +119,5 @@ $root = Get-ThetaBackupRoot $BackupRoot
 $receiptDir = Join-Path $root 'restore-tests'
 [void](New-Item -ItemType Directory -Path $receiptDir -Force)
 Write-ThetaJson (Join-Path $receiptDir ('restore-' + $manifest.backupId + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.json')) $receipt
+if ($receipt.state -ne 'RESTORED_VERIFIED') { throw "RESTORE_PARITY_FAILED:structure=$structureParity rowcounts=$rowcountParity critical=$criticalDataVerification" }
 $receipt | ConvertTo-Json -Depth 8 -Compress
