@@ -43,7 +43,14 @@ class RunCohortQuantileRealDataStudyTest(unittest.TestCase):
             for i in range(MIN_PRIOR_ROWS_FOR_COHORT_QUANTILE + 10)
         ]
         # Ensure distinct decision dates across the whole set to allow prior-history accumulation.
-        rows = [{**row, "decisionDate": f"2026-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}"} for i, row in enumerate(rows)]
+        # labelAvailableAt == decisionDate here (matures same day) since this test targets plain
+        # chronological accumulation, not the embargo mechanism (covered separately in
+        # test_severe_drawdown_cohort_quantile_baseline.py).
+        rows = [
+            {**row, "decisionDate": f"2026-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}",
+             "labelAvailableAt": f"2026-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}"}
+            for i, row in enumerate(rows)
+        ]
         export = {
             "exportContractVersion": CONTINUOUS_TARGET_EXPORT_CONTRACT_VERSION, "sanitized": True,
             "sourceDescription": "fixture", "rowCount": len(rows), "rows": rows,
@@ -62,7 +69,8 @@ class RunLogisticBaselineRealDataStudyTest(unittest.TestCase):
 
     def test_reports_temporal_history_insufficient_below_the_minimum_row_count(self):
         rows = [
-            {"decisionDate": f"2026-01-{i + 1:02d}", "features": [float(i)], "label": i % 2}
+            {"decisionDate": f"2026-01-{i + 1:02d}T00:00:00Z", "labelAvailableAt": f"2026-01-{i + 1:02d}T00:00:00Z",
+             "features": [float(i)], "label": i % 2}
             for i in range(MIN_ROWS_FOR_LOGISTIC_BASELINE - 1)
         ]
         export = {
@@ -78,7 +86,8 @@ class RunLogisticBaselineRealDataStudyTest(unittest.TestCase):
         for i in range(MIN_ROWS_FOR_LOGISTIC_BASELINE + 20):
             x = (i - 30) / 30.0
             label = 1 if x > 0 else 0
-            rows.append({"decisionDate": f"2026-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}", "features": [x], "label": label})
+            decision_date = f"2026-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}T00:00:00Z"
+            rows.append({"decisionDate": decision_date, "labelAvailableAt": decision_date, "features": [x], "label": label})
         export = {
             "exportContractVersion": BINARY_LABEL_EXPORT_CONTRACT_VERSION, "sanitized": True,
             "sourceDescription": "fixture", "rowCount": len(rows), "rows": rows,

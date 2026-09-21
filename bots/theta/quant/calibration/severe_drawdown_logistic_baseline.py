@@ -159,20 +159,71 @@ def evaluate_calibration(
                               expected_calibration_error=ece, reliability_bins=tuple(bins))
 
 
+@dataclass(frozen=True)
+class DatedLogisticRow:
+    decision_date_iso: str
+    # The date this row's own binary label actually matured/became known
+    # (mirrors severe_drawdown_dataset.py's label_available_at). A row
+    # whose label never matured (still censored) must not be passed here
+    # at all -- LogisticTrainingRow.label is documented as "never a
+    # censored row," so the caller is responsible for excluding those
+    # before construction, same as the binary dataset's own contract.
+    label_available_at_iso: str
+    row: LogisticTrainingRow
+
+
 def chronological_train_test_split(
-    rows: Sequence[Tuple[str, LogisticTrainingRow]], test_fraction: float = 0.3,
+    rows: Sequence[DatedLogisticRow], test_fraction: float = 0.3,
 ) -> Tuple[Tuple[LogisticTrainingRow, ...], Tuple[LogisticTrainingRow, ...]]:
-    """Splits `(decision_date_iso, row)` pairs chronologically -- the
-    earliest `1 - test_fraction` rows become TRAIN, the remaining latest
-    rows become the untouched OOS TEST set. Never a random/shuffled split,
-    which would leak future information into training for this kind of
-    time-ordered financial data.
+    """Purged, embargoed, chronological split -- repair for a defect
+    Codex's A-D acceptance review found (docs/research/
+    THETA_CLAUDE_A_D_ACCEPTANCE_2026-09-21.md, item B): "Add purging/
+    embargo where label horizons overlap. Use grouped/chronological
+    splits so correlated observations from the same underlying/time
+    regime do not leak between train and test."
+
+    The split point is chosen on `decision_date_iso` ordering as before
+    (the earliest `1 - test_fraction` rows are provisionally TRAIN, the
+    remaining latest rows are TEST). Two additional PURGE steps then run:
+
+    1. Any provisional TRAIN row whose `label_available_at_iso` is AT OR
+       AFTER the first TEST row's `decision_date_iso` is dropped from
+       TRAIN entirely. Its label only became fully known at or after the
+       test period began, so training on it would leak test-period
+       information backward into the model, even though its own decision
+       predates the split.
+    2. Any row (train OR test) whose `label_available_at_iso` fails to
+       parse is dropped from both sets -- an unverifiable maturity date is
+       never treated as "must be fine."
+
+    Never a random/shuffled split, which would leak future information
+    into training for this kind of time-ordered, horizon-based label.
     """
     if not (0.0 < test_fraction < 1.0):
         raise ValueError("SEVERE_DRAWDOWN_LOGISTIC_TEST_FRACTION_MUST_BE_IN_OPEN_UNIT_INTERVAL")
-    ordered = sorted(rows, key=lambda item: item[0])
+    parseable = [item for item in rows if _iso_parseable(item.label_available_at_iso)]
+    ordered = sorted(parseable, key=lambda item: item.decision_date_iso)
     split_index = max(1, int(round(len(ordered) * (1 - test_fraction))))
     split_index = min(split_index, len(ordered) - 1) if len(ordered) > 1 else len(ordered)
-    train = tuple(row for _, row in ordered[:split_index])
-    test = tuple(row for _, row in ordered[split_index:])
-    return train, test
+    provisional_train = ordered[:split_index]
+    test_rows = ordered[split_index:]
+
+    if len(test_rows) == 0:
+        return tuple(item.row for item in provisional_train), ()
+    test_period_start = _parse_iso(test_rows[0].decision_date_iso)
+    purged_train = [item for item in provisional_train if _parse_iso(item.label_available_at_iso) < test_period_start]
+
+    return tuple(item.row for item in purged_train), tuple(item.row for item in test_rows)
+
+
+def _parse_iso(value: str):
+    from datetime import datetime
+    return datetime.fromisoformat(value.replace('Z', '+00:00'))
+
+
+def _iso_parseable(value: str) -> bool:
+    try:
+        _parse_iso(value)
+        return True
+    except (TypeError, ValueError):
+        return False

@@ -28,6 +28,46 @@ export interface ConnectedCluster {
   readonly edgeCount: number;
 }
 
+export interface CorrelationCoverageSummary {
+  readonly totalPairs: number;
+  /** Pairs with a real, computed correlation value -- may still be BELOW
+   * clusterThreshold (a genuine economic fact: these two names are known
+   * NOT to move together), which is a completely different situation from
+   * unknownPairCount below. */
+  readonly knownPairCount: number;
+  /** Pairs where correlation-evidence.ts could not compute a value at all
+   * (insufficient overlapping returns, etc.) -- a DATA GAP, never treated
+   * as "not correlated." */
+  readonly unknownPairCount: number;
+  readonly knownAtOrAboveThresholdCount: number;
+  readonly knownBelowThresholdCount: number;
+}
+
+/**
+ * Repair for a defect Codex's A-D acceptance review found
+ * (docs/research/THETA_CLAUDE_A_D_ACCEPTANCE_2026-09-21.md, item C):
+ * `buildCorrelationClusters` correctly never treats an UNKNOWN pair as an
+ * edge, but it also never SURFACED the distinction between "no edge
+ * because correlation is known and low" (a real fact) and "no edge
+ * because correlation could not be computed" (a data gap) -- both looked
+ * identical from the cluster output alone. This function makes that
+ * distinction explicit and inspectable.
+ */
+export function summarizeCorrelationCoverage(
+  evidence: CorrelationEvidence, config: ClusterThresholdConfig,
+): CorrelationCoverageSummary {
+  if (!Number.isFinite(config.clusterThreshold) || config.clusterThreshold < -1 || config.clusterThreshold > 1) {
+    throw new Error('CORRELATION_CLUSTER_THRESHOLD_INVALID');
+  }
+  const known = evidence.pairs.filter((pair) => pair.state === 'KNOWN' && pair.correlation !== null);
+  const unknownPairCount = evidence.pairs.length - known.length;
+  const knownAtOrAboveThresholdCount = known.filter((pair) => (pair.correlation as number) >= config.clusterThreshold).length;
+  return {
+    totalPairs: evidence.pairs.length, knownPairCount: known.length, unknownPairCount,
+    knownAtOrAboveThresholdCount, knownBelowThresholdCount: known.length - knownAtOrAboveThresholdCount,
+  };
+}
+
 /**
  * Threshold-graph connected-components clustering: two symbols are edge-
  * connected iff their KNOWN pairwise correlation meets clusterThreshold.
@@ -98,7 +138,18 @@ export interface ClusterExposureResult {
 export function computeClusterExposure(
   clusters: readonly ConnectedCluster[], positions: readonly ClusterExposureInput[], accountEquity: number | null,
 ): readonly ClusterExposureResult[] {
-  const capitalBySymbol = new Map(positions.map((position) => [position.symbol, position.capitalAtRisk]));
+  // Repair for a defect Codex's A-D acceptance review found
+  // (docs/research/THETA_CLAUDE_A_D_ACCEPTANCE_2026-09-21.md, item C):
+  // `new Map(positions.map(...))` silently REPLACES an earlier same-symbol
+  // position with a later one instead of aggregating them -- a real
+  // account can carry multiple distinct option positions on the same
+  // underlying (e.g. a CSP and a covered call, or two different
+  // expirations), and their capital-at-risk must be SUMMED, never
+  // overwritten.
+  const capitalBySymbol = new Map<string, number>();
+  for (const position of positions) {
+    capitalBySymbol.set(position.symbol, (capitalBySymbol.get(position.symbol) ?? 0) + position.capitalAtRisk);
+  }
   return clusters.map((cluster) => {
     const capitalAtRisk = cluster.members.reduce((sum, member) => sum + (capitalBySymbol.get(member) ?? 0), 0);
     return {

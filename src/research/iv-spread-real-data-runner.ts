@@ -10,24 +10,29 @@
  * EXPORT CONTRACT for Codex: two separate RealDataExportEnvelope exports:
  *  - a CAPABILITY export (rows: OptionomicsCapabilityObservation[]),
  *    checked with assessHistoricalIvBackfillFeasibility before anything
- *    else runs;
+ *    else runs. The export itself carries only the raw provider-observed
+ *    capability -- `verifyHistoricalRetrievability` below is a SEPARATE,
+ *    explicit caller-supplied judgment about which of those observations
+ *    were actually independently confirmed retrievable (never inferred
+ *    from the export alone; see historical-iv-spread-feasibility.ts's
+ *    `HistoricalCapabilityAttestation` doc comment for why).
  *  - a DATA export (rows: HistoricalIvObservationRow[] for the IV study,
- *    or HistoricalBboObservationRow[] for the spread study).
+ *    or OptionomicsHistoricalQuoteObservationRow[] for the spread study
+ *    -- session-recorded RESEARCH quotes, never broker-executable BBO).
  */
 import type { OptionomicsCapabilityObservation } from '../theta/optionomics-capability-contract.js';
 import {
   assessHistoricalIvBackfillFeasibility, buildIvEffectiveCoverageReport, buildSpreadEffectiveCoverageReport,
   computeIvShockResearch, computeSpreadStressResearch,
-  type HistoricalBboObservationRow, type HistoricalIvObservationRow,
-  type IvEffectiveCoverageReport, type IvShockResearchResult,
-  type SpreadEffectiveCoverageReport, type SpreadStressResearchResult,
+  type HistoricalIvObservationRow, type IvEffectiveCoverageReport, type IvShockResearchResult,
+  type OptionomicsHistoricalQuoteObservationRow, type SpreadEffectiveCoverageReport, type SpreadStressResearchResult,
 } from './historical-iv-spread-feasibility.js';
 import { loadRealDataExport, type EvidenceLineage } from './real-data-export-contract.js';
 
-export const ivSpreadRealDataRunnerVersion = 'theta-iv-spread-real-data-runner-v1' as const;
+export const ivSpreadRealDataRunnerVersion = 'theta-iv-spread-real-data-runner-v2' as const;
 export const OPTIONOMICS_CAPABILITY_EXPORT_CONTRACT_VERSION = 'theta-optionomics-capability-export-v1' as const;
 export const IV_OBSERVATION_EXPORT_CONTRACT_VERSION = 'theta-historical-iv-export-v1' as const;
-export const BBO_OBSERVATION_EXPORT_CONTRACT_VERSION = 'theta-historical-bbo-export-v1' as const;
+export const OPTIONOMICS_QUOTE_OBSERVATION_EXPORT_CONTRACT_VERSION = 'theta-optionomics-historical-quote-export-v1' as const;
 
 export type IvRealDataStudyStatus =
   | 'AWAITING_CAPABILITY_EXPORT' | 'AWAITING_DATA_EXPORT' | 'EXPORT_CONTRACT_INVALID'
@@ -52,6 +57,8 @@ export interface IvRealDataStudyResult {
 
 export function runIvRealDataStudy(
   rawCapabilityExport: unknown, rawIvExport: unknown, cohortAssignment: (row: HistoricalIvObservationRow) => string,
+  verifyHistoricalRetrievability: (observation: OptionomicsCapabilityObservation) => boolean,
+  completedSessionsOnlyThrough: string,
 ): IvRealDataStudyResult {
   const capabilityLoaded = loadRealDataExport<OptionomicsCapabilityObservation>(
     rawCapabilityExport, OPTIONOMICS_CAPABILITY_EXPORT_CONTRACT_VERSION);
@@ -61,7 +68,10 @@ export function runIvRealDataStudy(
       reason: capabilityLoaded.reason, evidenceLineage: null, coverage: null, shockByCohort: null,
     };
   }
-  const feasibility = assessHistoricalIvBackfillFeasibility(capabilityLoaded.envelope.rows);
+  const attestations = capabilityLoaded.envelope.rows.map((observation) => ({
+    observation, verifiedHistoricalRetrievability: verifyHistoricalRetrievability(observation),
+  }));
+  const feasibility = assessHistoricalIvBackfillFeasibility(attestations);
   if (feasibility.feasibility !== 'HISTORICAL_IV_BACKFILL_SAFE') {
     return {
       status: 'BACKFILL_NOT_SAFE', reason: feasibility.reasons.join(','), evidenceLineage: 'REAL_EXPORT',
@@ -85,7 +95,8 @@ export function runIvRealDataStudy(
     list.push({ sessionDate: row.sessionDate, iv: row.iv });
     byCohort.set(cohort, list);
   }
-  const shockByCohort = [...byCohort.entries()].map(([cohort, sessions]) => computeIvShockResearch(cohort, sessions));
+  const shockByCohort = [...byCohort.entries()].map(([cohort, sessions]) =>
+    computeIvShockResearch(cohort, sessions, completedSessionsOnlyThrough));
   return { status: 'COMPLETED', reason: null, evidenceLineage: 'REAL_EXPORT', coverage, shockByCohort };
 }
 
@@ -98,7 +109,9 @@ export interface SpreadRealDataStudyResult {
 }
 
 export function runSpreadRealDataStudy(
-  rawCapabilityExport: unknown, rawBboExport: unknown, cohortAssignment: (row: HistoricalBboObservationRow) => string,
+  rawCapabilityExport: unknown, rawQuoteExport: unknown, cohortAssignment: (row: OptionomicsHistoricalQuoteObservationRow) => string,
+  verifyHistoricalRetrievability: (observation: OptionomicsCapabilityObservation) => boolean,
+  completedSessionsOnlyThrough: string,
 ): SpreadRealDataStudyResult {
   const capabilityLoaded = loadRealDataExport<OptionomicsCapabilityObservation>(
     rawCapabilityExport, OPTIONOMICS_CAPABILITY_EXPORT_CONTRACT_VERSION);
@@ -108,7 +121,10 @@ export function runSpreadRealDataStudy(
       reason: capabilityLoaded.reason, evidenceLineage: null, coverage: null, stressByCohort: null,
     };
   }
-  const feasibility = assessHistoricalIvBackfillFeasibility(capabilityLoaded.envelope.rows);
+  const attestations = capabilityLoaded.envelope.rows.map((observation) => ({
+    observation, verifiedHistoricalRetrievability: verifyHistoricalRetrievability(observation),
+  }));
+  const feasibility = assessHistoricalIvBackfillFeasibility(attestations);
   if (feasibility.feasibility !== 'HISTORICAL_IV_BACKFILL_SAFE') {
     return {
       status: 'BACKFILL_NOT_SAFE', reason: feasibility.reasons.join(','), evidenceLineage: 'REAL_EXPORT',
@@ -116,7 +132,8 @@ export function runSpreadRealDataStudy(
     };
   }
 
-  const dataLoaded = loadRealDataExport<HistoricalBboObservationRow>(rawBboExport, BBO_OBSERVATION_EXPORT_CONTRACT_VERSION);
+  const dataLoaded = loadRealDataExport<OptionomicsHistoricalQuoteObservationRow>(
+    rawQuoteExport, OPTIONOMICS_QUOTE_OBSERVATION_EXPORT_CONTRACT_VERSION);
   if (dataLoaded.status !== 'LOADED' || dataLoaded.envelope === null) {
     return {
       status: mapLoadStatus(dataLoaded.status, 'AWAITING_DATA_EXPORT'),
@@ -125,13 +142,14 @@ export function runSpreadRealDataStudy(
   }
   const rows = dataLoaded.envelope.rows;
   const coverage = buildSpreadEffectiveCoverageReport(rows);
-  const byCohort = new Map<string, HistoricalBboObservationRow[]>();
+  const byCohort = new Map<string, OptionomicsHistoricalQuoteObservationRow[]>();
   for (const row of rows) {
     const cohort = cohortAssignment(row);
     const list = byCohort.get(cohort) ?? [];
     list.push(row);
     byCohort.set(cohort, list);
   }
-  const stressByCohort = [...byCohort.entries()].map(([cohort, cohortRows]) => computeSpreadStressResearch(cohort, cohortRows));
+  const stressByCohort = [...byCohort.entries()].map(([cohort, cohortRows]) =>
+    computeSpreadStressResearch(cohort, cohortRows, completedSessionsOnlyThrough));
   return { status: 'COMPLETED', reason: null, evidenceLineage: 'REAL_EXPORT', coverage, stressByCohort };
 }

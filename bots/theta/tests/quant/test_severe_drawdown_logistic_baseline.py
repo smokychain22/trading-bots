@@ -8,6 +8,7 @@ _QUANT_DIR = Path(__file__).resolve().parents[2] / "quant"
 sys.path.insert(0, str(_QUANT_DIR))
 
 from calibration.severe_drawdown_logistic_baseline import (  # noqa: E402
+    DatedLogisticRow,
     LogisticTrainingRow,
     chronological_train_test_split,
     evaluate_calibration,
@@ -82,8 +83,13 @@ class SevereDrawdownLogisticBaselineTest(unittest.TestCase):
         self.assertIsNone(empty_bin.empirical_rate)
 
     def test_chronological_split_never_shuffles_and_keeps_the_latest_rows_as_the_untouched_test_set(self):
+        # Every row's own label matures the SAME day it is decided, so no purge triggers here --
+        # this test isolates plain chronological ordering behavior.
         dated_rows = [
-            (f"2026-01-{i:02d}", LogisticTrainingRow(features=(float(i),), label=i % 2))
+            DatedLogisticRow(
+                decision_date_iso=f"2026-01-{i:02d}T00:00:00Z", label_available_at_iso=f"2026-01-{i:02d}T00:00:00Z",
+                row=LogisticTrainingRow(features=(float(i),), label=i % 2),
+            )
             for i in range(1, 21)
         ]
         train, test = chronological_train_test_split(dated_rows, test_fraction=0.3)
@@ -92,11 +98,51 @@ class SevereDrawdownLogisticBaselineTest(unittest.TestCase):
         self.assertEqual(train_features | test_features, set(range(1, 21)))
         self.assertTrue(max(train_features) < min(test_features))
 
+    def test_REPAIR_chronological_split_purges_a_train_row_whose_label_only_matured_at_or_after_the_test_period_starts(self):
+        # A provisionally-TRAIN row (decided 2026-01-05) whose long horizon means its label
+        # didn't mature until 2026-02-01 -- well inside/after the test period -- must be purged
+        # from TRAIN, since training on it would leak test-period information backward.
+        rows = [
+            DatedLogisticRow(
+                decision_date_iso="2026-01-05T00:00:00Z", label_available_at_iso="2026-02-01T00:00:00Z",
+                row=LogisticTrainingRow(features=(999.0,), label=1),
+            ),
+        ]
+        # 20 ordinary same-day-matured rows spanning the rest of January to establish a real split.
+        rows += [
+            DatedLogisticRow(
+                decision_date_iso=f"2026-01-{i:02d}T00:00:00Z", label_available_at_iso=f"2026-01-{i:02d}T00:00:00Z",
+                row=LogisticTrainingRow(features=(float(i),), label=i % 2),
+            )
+            for i in range(1, 21)
+        ]
+        train, _test = chronological_train_test_split(rows, test_fraction=0.3)
+        train_feature_values = {row.features[0] for row in train}
+        self.assertNotIn(999.0, train_feature_values)
+
+    def test_chronological_split_drops_rows_with_an_unparseable_label_available_at(self):
+        rows = [
+            DatedLogisticRow(decision_date_iso="2026-01-01T00:00:00Z", label_available_at_iso="not-a-date",
+                              row=LogisticTrainingRow(features=(1.0,), label=1)),
+        ]
+        rows += [
+            DatedLogisticRow(
+                decision_date_iso=f"2026-01-{i:02d}T00:00:00Z", label_available_at_iso=f"2026-01-{i:02d}T00:00:00Z",
+                row=LogisticTrainingRow(features=(float(i),), label=i % 2),
+            )
+            for i in range(2, 21)
+        ]
+        train, test = chronological_train_test_split(rows, test_fraction=0.3)
+        all_features = {row.features[0] for row in train} | {row.features[0] for row in test}
+        self.assertNotIn(1.0, all_features)
+
     def test_chronological_split_rejects_an_out_of_range_test_fraction(self):
+        single = [DatedLogisticRow(decision_date_iso="2026-01-01T00:00:00Z", label_available_at_iso="2026-01-01T00:00:00Z",
+                                    row=LogisticTrainingRow(features=(1.0,), label=1))]
         with self.assertRaises(ValueError):
-            chronological_train_test_split([("2026-01-01", LogisticTrainingRow(features=(1.0,), label=1))], test_fraction=0.0)
+            chronological_train_test_split(single, test_fraction=0.0)
         with self.assertRaises(ValueError):
-            chronological_train_test_split([("2026-01-01", LogisticTrainingRow(features=(1.0,), label=1))], test_fraction=1.0)
+            chronological_train_test_split(single, test_fraction=1.0)
 
 
 if __name__ == "__main__":

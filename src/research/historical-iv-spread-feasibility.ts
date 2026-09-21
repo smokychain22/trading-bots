@@ -10,8 +10,14 @@ import type { OptionomicsCapabilityObservation } from '../theta/optionomics-capa
  * historical rows exist. It never fabricates capability evidence that was
  * not actually observed, and it never approximates a real historical
  * bid/ask from an OHLC bar.
+ *
+ * All historical bid/ask here is Optionomics SESSION-RECORDED RESEARCH
+ * data (confirmed against `optionomics-quote-proof.ts`'s canonical
+ * `quoteSemantics: 'SESSION_RECORDED_RESEARCH'`), never broker-executable
+ * BBO -- see `OptionomicsHistoricalQuoteObservationRow` below, named
+ * deliberately to avoid the word "BBO."
  */
-export const historicalIvSpreadFeasibilityVersion = 'theta-historical-iv-spread-feasibility-v1' as const;
+export const historicalIvSpreadFeasibilityVersion = 'theta-historical-iv-spread-feasibility-v2' as const;
 
 export type HistoricalBackfillFeasibility =
   | 'HISTORICAL_IV_BACKFILL_SAFE' | 'HISTORICAL_IV_BACKFILL_NOT_SAFE' | 'CAPABILITY_EVIDENCE_INSUFFICIENT';
@@ -24,37 +30,66 @@ export interface BackfillFeasibilityAssessment {
 const REQUIRED_IDENTITY_KEYS = ['underlying', 'expiration', 'strike', 'right'] as const;
 
 /**
- * A PIT-valid backfill requires: (a) a proven SUPPORTED historical-data
- * capability (HISTORICAL_CHAINS or HISTORICAL_METRICS), (b) a real
- * observation timestamp field distinct from "now," and (c) full contract
- * identity (underlying/expiration/strike/right) in the schema -- without
- * all three, a backfill cannot be trusted not to silently replay
- * present-day data under a historical label. Absence of proof is treated
- * as absence of safety, never as an assumed pass.
+ * Pairs a raw capability observation with an explicit, caller-supplied
+ * attestation that ITS OWN historical claim was independently verified --
+ * e.g. by actually requesting an old date through this exact operation and
+ * confirming the served session/date matched, not merely inferred from a
+ * `historical: true` flag or a plausible-looking schema/field name.
+ * Defaults to `false` wherever not explicitly set `true`. Mirrors the
+ * `providerTimestampIndependentlyVerified` repair pattern in
+ * event-pit-toolkit.ts (Codex's A-D acceptance review flagged the same
+ * class of defect in both modules: a provider's self-description is not
+ * proof of historical retrievability).
+ */
+export interface HistoricalCapabilityAttestation {
+  readonly observation: OptionomicsCapabilityObservation;
+  readonly verifiedHistoricalRetrievability: boolean;
+}
+
+/**
+ * A PIT-valid backfill requires ONE SINGLE observation that simultaneously
+ * proves: (a) a SUPPORTED historical-data capability (HISTORICAL_CHAINS or
+ * HISTORICAL_METRICS), (b) a real observation timestamp field, (c) full
+ * contract identity (underlying/expiration/strike/right) in its schema,
+ * AND (d) independently verified historical retrievability. Repair for a
+ * defect Codex's A-D acceptance review found (docs/research/
+ * THETA_CLAUDE_A_D_ACCEPTANCE_2026-09-21.md, item D): the prior version
+ * used two SEPARATE `.some()` checks over the same observation array,
+ * which could combine timestamp evidence from one inadequate observation
+ * with identity evidence from a DIFFERENT inadequate observation and
+ * wrongly conclude both properties held together, when no single real
+ * endpoint response actually proved that. Absence of proof is treated as
+ * absence of safety, never as an assumed pass.
  */
 export function assessHistoricalIvBackfillFeasibility(
-  observations: readonly OptionomicsCapabilityObservation[],
+  attestations: readonly HistoricalCapabilityAttestation[],
 ): BackfillFeasibilityAssessment {
-  if (observations.length === 0) {
+  if (attestations.length === 0) {
     return { feasibility: 'CAPABILITY_EVIDENCE_INSUFFICIENT', reasons: ['NO_CAPABILITY_OBSERVATIONS_RECORDED'] };
   }
-  const historicalCapable = observations.filter((observation) =>
+  const historicallyCapable = attestations.filter(({ observation }) =>
     (observation.family === 'HISTORICAL_CHAINS' || observation.family === 'HISTORICAL_METRICS')
     && observation.availability === 'SUPPORTED' && observation.historical === true
     && observation.httpStatus !== null && observation.httpStatus >= 200 && observation.httpStatus < 300);
 
-  if (historicalCapable.length === 0) {
+  if (historicallyCapable.length === 0) {
     return { feasibility: 'HISTORICAL_IV_BACKFILL_NOT_SAFE', reasons: ['NO_SUPPORTED_HISTORICAL_CAPABILITY_OBSERVED'] };
   }
-  const reasons: string[] = [];
-  const hasTimestampField = historicalCapable.some((observation) => observation.timestampField !== null);
-  if (!hasTimestampField) reasons.push('NO_OBSERVATION_TIMESTAMP_FIELD_IN_SCHEMA');
-  const hasFullIdentity = historicalCapable.some((observation) =>
-    REQUIRED_IDENTITY_KEYS.every((key) => observation.schemaKeys.includes(key)));
-  if (!hasFullIdentity) reasons.push('CONTRACT_IDENTITY_SCHEMA_INCOMPLETE');
 
-  if (reasons.length > 0) return { feasibility: 'HISTORICAL_IV_BACKFILL_NOT_SAFE', reasons };
-  return { feasibility: 'HISTORICAL_IV_BACKFILL_SAFE', reasons: ['SUPPORTED_HISTORICAL_CAPABILITY_WITH_TIMESTAMP_AND_FULL_IDENTITY'] };
+  const fullyProven = historicallyCapable.find(({ observation, verifiedHistoricalRetrievability }) =>
+    observation.timestampField !== null
+    && REQUIRED_IDENTITY_KEYS.every((key) => observation.schemaKeys.includes(key))
+    && verifiedHistoricalRetrievability === true);
+
+  if (fullyProven !== undefined) {
+    return { feasibility: 'HISTORICAL_IV_BACKFILL_SAFE', reasons: ['SINGLE_OBSERVATION_PROVES_TIMESTAMP_IDENTITY_AND_VERIFIED_RETRIEVABILITY_TOGETHER'] };
+  }
+  const reasons: string[] = [];
+  if (!historicallyCapable.some(({ observation }) => observation.timestampField !== null)) reasons.push('NO_OBSERVATION_TIMESTAMP_FIELD_IN_SCHEMA');
+  if (!historicallyCapable.some(({ observation }) => REQUIRED_IDENTITY_KEYS.every((key) => observation.schemaKeys.includes(key)))) reasons.push('CONTRACT_IDENTITY_SCHEMA_INCOMPLETE');
+  if (!historicallyCapable.some((a) => a.verifiedHistoricalRetrievability === true)) reasons.push('HISTORICAL_RETRIEVABILITY_NOT_INDEPENDENTLY_VERIFIED');
+  if (reasons.length === 0) reasons.push('NO_SINGLE_OBSERVATION_PROVES_ALL_REQUIREMENTS_TOGETHER');
+  return { feasibility: 'HISTORICAL_IV_BACKFILL_NOT_SAFE', reasons };
 }
 
 export interface HistoricalIvObservationRow {
@@ -154,6 +189,33 @@ function medianAbsoluteDeviation(values: readonly number[], centerMedian: number
   return median(values.map((value) => Math.abs(value - centerMedian)));
 }
 
+function validSessionDate(value: string): boolean {
+  return Number.isFinite(Date.parse(value));
+}
+
+/**
+ * Sorts sessions chronologically by `sessionDate` (repair: the prior
+ * version trusted caller-supplied array order, so an out-of-order input
+ * silently corrupted every "prior window" computation -- Codex's A-D
+ * acceptance review named this "enforce cutoff/observation ordering").
+ * Drops any row with an unparseable sessionDate entirely (never included
+ * in either the chronology or the snapshot count) and any row whose
+ * sessionDate is NOT strictly before `completedSessionsOnlyThrough` --
+ * the repair for "separate same-day/current-session rows from completed
+ * historical sessions": a same-day or future-dated row cannot be treated
+ * as a completed historical observation.
+ */
+function sortAndFilterToCompletedSessions<T extends { readonly sessionDate: string }>(
+  sessions: readonly T[], completedSessionsOnlyThrough: string,
+): readonly T[] {
+  if (!validSessionDate(completedSessionsOnlyThrough)) throw new Error('COMPLETED_SESSIONS_ONLY_THROUGH_INVALID');
+  const cutoffMillis = Date.parse(completedSessionsOnlyThrough);
+  return sessions
+    .filter((session) => validSessionDate(session.sessionDate) && Date.parse(session.sessionDate) < cutoffMillis)
+    .slice()
+    .sort((left, right) => Date.parse(left.sessionDate) - Date.parse(right.sessionDate));
+}
+
 /**
  * IV shock research for one already-filtered cohort (a single underlying /
  * DTE bin / delta region, chosen by the caller), computed strictly PIT-safe:
@@ -162,11 +224,18 @@ function medianAbsoluteDeviation(values: readonly number[], centerMedian: number
  * session. Requires at least MIN_SNAPSHOTS_FOR_IV_SHOCK_RESEARCH prior
  * sessions before reporting a stat for a given day; earlier days report
  * null rather than a statistic computed on too few points.
+ *
+ * `completedSessionsOnlyThrough` (an ISO date/instant) is required: any
+ * session on or after it -- same-day/current or future -- is excluded
+ * before computation, per the repair described on
+ * `sortAndFilterToCompletedSessions` above.
  */
 export function computeIvShockResearch(
   cohortKey: string, sessions: readonly { readonly sessionDate: string; readonly iv: number | null }[],
+  completedSessionsOnlyThrough: string,
 ): IvShockResearchResult {
-  const known = sessions.filter((session) => session.iv !== null) as readonly { readonly sessionDate: string; readonly iv: number }[];
+  const ordered = sortAndFilterToCompletedSessions(sessions, completedSessionsOnlyThrough);
+  const known = ordered.filter((session) => session.iv !== null) as readonly { readonly sessionDate: string; readonly iv: number }[];
   if (known.length < MIN_SNAPSHOTS_FOR_IV_SHOCK_RESEARCH) {
     return { status: 'TEMPORAL_HISTORY_INSUFFICIENT', cohortKey, snapshotCount: known.length, observations: [] };
   }
@@ -190,7 +259,20 @@ export function computeIvShockResearch(
   return { status: 'COMPUTED', cohortKey, snapshotCount: known.length, observations };
 }
 
-export interface HistoricalBboObservationRow {
+/**
+ * Optionomics session-recorded RESEARCH quote observation. Deliberately
+ * NOT named "BBO" -- Optionomics documents its option-chain quotes as
+ * SESSION_RECORDED_RESEARCH data (see `optionomics-quote-proof.ts`'s
+ * `quoteSemantics` field), not a broker-executable best-bid/best-offer
+ * feed. Repair for a defect Codex's A-D acceptance review implicitly
+ * required (directive: "Do not label Optionomics historical bid/ask as
+ * broker-executable BBO"): the prior version of this type was named
+ * `HistoricalBboObservationRow`, which reads as broker BBO. A study that
+ * needs genuine broker-executable historical BBO must await a canonical
+ * Alpaca/Codex export -- this type and the functions built on it can
+ * never satisfy that need, regardless of field similarity.
+ */
+export interface OptionomicsHistoricalQuoteObservationRow {
   readonly observationTimestamp: string;
   readonly sessionDate: string;
   readonly underlying: string;
@@ -200,18 +282,18 @@ export interface HistoricalBboObservationRow {
   readonly isStale: boolean;
 }
 
-export type BboRowValidityReason = 'VALID' | 'BID_NON_POSITIVE' | 'ASK_LESS_THAN_BID' | 'STALE' | 'MISSING';
+export type QuoteRowValidityReason = 'VALID' | 'BID_NON_POSITIVE' | 'ASK_LESS_THAN_BID' | 'STALE' | 'MISSING';
 
 export interface SpreadEffectiveCoverageReport {
   readonly rawRowCount: number;
   readonly validRowCount: number;
-  readonly invalidRowCounts: Readonly<Record<Exclude<BboRowValidityReason, 'VALID'>, number>>;
+  readonly invalidRowCounts: Readonly<Record<Exclude<QuoteRowValidityReason, 'VALID'>, number>>;
   readonly distinctSessionDates: number;
   readonly distinctContracts: number;
   readonly effectiveIndependentSnapshots: number;
 }
 
-function classifyBboRow(row: HistoricalBboObservationRow): BboRowValidityReason {
+function classifyQuoteRow(row: OptionomicsHistoricalQuoteObservationRow): QuoteRowValidityReason {
   if (row.bid === null || row.ask === null) return 'MISSING';
   if (row.isStale) return 'STALE';
   if (!(row.bid > 0)) return 'BID_NON_POSITIVE';
@@ -220,14 +302,14 @@ function classifyBboRow(row: HistoricalBboObservationRow): BboRowValidityReason 
 }
 
 /**
- * Coverage report over TRUE historical bid/ask rows only -- callers must
- * never pass an OHLC-bar-derived approximation into this function, since
- * this module has no way to detect that at the type level and treating a
- * bar midpoint as a historical quote would be exactly the fabrication the
- * directive prohibits.
+ * Coverage report over TRUE Optionomics session-recorded quote rows only
+ * -- callers must never pass an OHLC-bar-derived approximation into this
+ * function, since this module has no way to detect that at the type
+ * level and treating a bar midpoint as a historical quote would be
+ * exactly the fabrication the directive prohibits.
  */
-export function buildSpreadEffectiveCoverageReport(rows: readonly HistoricalBboObservationRow[]): SpreadEffectiveCoverageReport {
-  const classifications = rows.map((row) => classifyBboRow(row));
+export function buildSpreadEffectiveCoverageReport(rows: readonly OptionomicsHistoricalQuoteObservationRow[]): SpreadEffectiveCoverageReport {
+  const classifications = rows.map((row) => classifyQuoteRow(row));
   const validRows = rows.filter((_, index) => classifications[index] === 'VALID');
   const invalidRowCounts = { BID_NON_POSITIVE: 0, ASK_LESS_THAN_BID: 0, STALE: 0, MISSING: 0 };
   for (const classification of classifications) {
@@ -260,16 +342,22 @@ export interface SpreadStressResearchResult {
 }
 
 /**
- * spreadPct = (ask - bid) / midpoint, guarded against a near-zero midpoint
- * denominator (reported null, never Infinity/NaN). Only VALID rows
- * (bid > 0, ask >= bid, not stale) are given a defined spreadPct; an
- * invalid row's spreadPct stays null (UNKNOWN), never coerced to zero.
+ * spreadPct = (ask - bid) / midpoint over Optionomics session-recorded
+ * research quotes (never broker-executable BBO -- see
+ * `OptionomicsHistoricalQuoteObservationRow`), guarded against a
+ * near-zero midpoint denominator (reported null, never Infinity/NaN).
+ * Only VALID rows (bid > 0, ask >= bid, not stale) are given a defined
+ * spreadPct; an invalid row's spreadPct stays null (UNKNOWN), never
+ * coerced to zero. `completedSessionsOnlyThrough` is required and applies
+ * the same chronological-ordering and same-day/current-session exclusion
+ * repair as `computeIvShockResearch`.
  */
 export function computeSpreadStressResearch(
-  cohortKey: string, rows: readonly HistoricalBboObservationRow[],
+  cohortKey: string, rows: readonly OptionomicsHistoricalQuoteObservationRow[], completedSessionsOnlyThrough: string,
 ): SpreadStressResearchResult {
-  const withSpread = rows.map((row) => {
-    const valid = classifyBboRow(row) === 'VALID';
+  const ordered = sortAndFilterToCompletedSessions(rows, completedSessionsOnlyThrough);
+  const withSpread = ordered.map((row) => {
+    const valid = classifyQuoteRow(row) === 'VALID';
     if (!valid || row.bid === null || row.ask === null) return { sessionDate: row.sessionDate, spreadPct: null as number | null };
     const midpoint = (row.bid + row.ask) / 2;
     if (!(midpoint > 1e-9)) return { sessionDate: row.sessionDate, spreadPct: null as number | null };

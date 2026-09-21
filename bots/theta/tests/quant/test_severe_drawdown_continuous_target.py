@@ -53,6 +53,7 @@ class SevereDrawdownContinuousTargetTest(unittest.TestCase):
         self.assertEqual(row.time_to_mae_days, 2)
         self.assertFalse(row.censored)
         self.assertIsNone(row.exclusion_reason)
+        self.assertEqual(row.label_available_at, row.horizon_end)  # matured, non-censored row
 
     def test_volatility_and_expected_move_normalization_uses_only_prior_pit_inputs(self):
         episode = ContinuousTargetEpisode(
@@ -96,6 +97,27 @@ class SevereDrawdownContinuousTargetTest(unittest.TestCase):
         row = rows[0]
         self.assertTrue(row.censored)
         self.assertAlmostEqual(row.forward_mae, -0.05)  # only the pre-cutoff point is visible
+        self.assertIsNone(row.label_available_at)  # censored -- outcome never matured, never usable as ground truth
+
+    def test_REPAIR_decision_dates_own_adjusted_close_is_excluded_from_the_forward_looking_price_path(self):
+        # Repair for Codex A-D item B: "Do not use same-day adjusted close
+        # for an intraday decision if that close occurred after decision
+        # time." A price observation dated EXACTLY decision_date must never
+        # be read into the forward-looking window, regardless of how
+        # adverse it looks.
+        episode = ContinuousTargetEpisode(
+            episode_id="e1", underlying="AAPL", decision_date=date(2026, 1, 1), entry_price=100.0,
+            feature_snapshot=_snapshot(date(2026, 1, 1)), prior_realized_volatility=0.02, prior_expected_move=0.05,
+        )
+        observations = [
+            _obs("AAPL", date(2026, 1, 1), 1.0),  # same-day close -- a huge apparent drawdown that must be ignored
+            _obs("AAPL", date(2026, 1, 2), 99.0),  # the real first forward-looking point: -1%
+        ]
+        rows = materialize_continuous_target_dataset(
+            [episode], observations, [], horizon_days=10, dataset_cutoff=date(2026, 1, 15), dataset_version="v1",
+        )
+        row = rows[0]
+        self.assertAlmostEqual(row.forward_mae, -0.01)  # NOT -0.99 from the same-day point
 
     def test_ambiguous_corporate_action_excludes_the_row_and_reuses_the_binary_datasets_own_ambiguity_rule(self):
         episode = ContinuousTargetEpisode(
@@ -113,6 +135,7 @@ class SevereDrawdownContinuousTargetTest(unittest.TestCase):
         row = rows[0]
         self.assertEqual(row.exclusion_reason, "CORPORATE_ACTION_AMBIGUOUS")
         self.assertIsNone(row.forward_mae)
+        self.assertIsNone(row.label_available_at)
 
     def test_missing_price_path_excludes_the_row_rather_than_silently_defaulting_to_zero_drawdown(self):
         episode = ContinuousTargetEpisode(

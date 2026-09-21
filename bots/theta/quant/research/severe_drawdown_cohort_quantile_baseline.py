@@ -7,18 +7,26 @@ quantile-regression or GBM challenger, since neither has been justified by
 any empirical result yet (no real historical dataset exists in this
 session; see the module docstring in `severe_drawdown_continuous_target.py`).
 
-Chronological, walk-forward evaluation only: a row's cohort quantile is
-computed from ONLY rows whose `decision_date` is strictly before that row's
-own `decision_date` (never using same-day or future rows, and never a
-single in-sample fit reused for all rows -- that would leak future
-distribution shape into an "evaluation").
+Chronological, walk-forward, EMBARGOED evaluation: a row's cohort quantile
+is computed from ONLY other rows whose OUTCOME had actually MATURED --
+`label_available_at <= this row's decision_date` -- by that decision date.
+This is a repair for a defect Codex's A-D acceptance review found
+(docs/research/THETA_CLAUDE_A_D_ACCEPTANCE_2026-09-21.md, item B):
+"Decision-date ordering is not enough when prior labels have not matured."
+The PRIOR version of this module folded a row into history as soon as its
+own decision_date had passed, regardless of whether its forward-looking
+horizon had actually finished -- which could use a still-unrealized
+outcome as if it were already known. `label_available_at` mirrors the
+naming convention Codex's own canonical `severe_drawdown_dataset.py` uses
+(`MaterializedSevereDrawdownRow.label_available_at`) for exactly this
+concept, so the two modules describe outcome maturity the same way.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 MIN_PRIOR_ROWS_FOR_COHORT_QUANTILE = 20
 
@@ -28,6 +36,12 @@ class CohortQuantileInputRow:
     episode_id: str
     cohort_key: str
     decision_date: date
+    # The date this row's own forward_mae outcome actually became fully
+    # known/matured (mirrors severe_drawdown_dataset.py's
+    # label_available_at). None if the outcome never matured within the
+    # dataset (still censored) -- such a row is NEVER folded into any
+    # other row's history and is itself always INSUFFICIENT_PRIOR_HISTORY.
+    label_available_at: Optional[date]
     forward_mae: Optional[float]  # None (censored/excluded) rows are never used to fit a quantile
 
 
@@ -57,59 +71,66 @@ def _quantile(sorted_values: Sequence[float], q: float) -> float:
 def evaluate_cohort_quantile_baseline(
     rows: Sequence[CohortQuantileInputRow],
 ) -> Tuple[CohortQuantileEvaluation, ...]:
-    """Walk-forward: sorts all rows chronologically, then for each row
-    computes p10/p25/p50 of `forward_mae` using only STRICTLY PRIOR rows
-    sharing the same `cohort_key`. Rows with `forward_mae is None` (censored
-    or excluded episodes) are never used as either a predictor input or an
-    evaluation target.
+    """Embargoed walk-forward: for each row R, only OTHER rows in the same
+    cohort whose `label_available_at` is not None and is STRICTLY BEFORE
+    `R.decision_date` are eligible as history -- i.e. their outcome had
+    genuinely matured (the full forward-looking horizon had elapsed and
+    produced a final, non-censored forward_mae) by the time R's own
+    decision was made. Strict inequality (never `<=`) means a row whose
+    label matured on the SAME date as R's decision is not treated as known
+    "in time" -- the safer, more conservative reading of "matured before
+    this decision." A row
+    with `label_available_at is None` (never matured / still censored as
+    of the dataset horizon) never contributes to any other row's history,
+    and is itself always reported INSUFFICIENT_PRIOR_HISTORY regardless of
+    how many mature neighbors exist, since a censored outcome is not a
+    quantity that can be "predicted" -- it's simply unresolved.
+
+    A row NEVER counts itself as its own history. Uses a full-pool filter
+    per evaluated row (not an incremental fold) since embargo eligibility
+    depends on `label_available_at`, not `decision_date` ordering alone --
+    a later-decided row can mature EARLIER than an earlier-decided row
+    with a longer horizon, so no single chronological fold order is valid
+    for every cohort simultaneously.
     """
     ordered = sorted(rows, key=lambda row: (row.decision_date, row.episode_id))
-    history_by_cohort: Dict[str, List[float]] = {}
     results: List[CohortQuantileEvaluation] = []
 
-    # Process one decision_date at a time: every row sharing today's date is
-    # evaluated against history frozen as of the END of the PRIOR date, and
-    # none of today's own rows are folded into history until every row for
-    # today has been evaluated. This is what makes "prior" mean strictly
-    # earlier dates, not merely earlier in an arbitrary same-day ordering.
-    index = 0
-    while index < len(ordered):
-        current_date = ordered[index].decision_date
-        todays_rows = []
-        while index < len(ordered) and ordered[index].decision_date == current_date:
-            todays_rows.append(ordered[index])
-            index += 1
+    for row in ordered:
+        eligible_history = sorted(
+            other.forward_mae for other in ordered
+            if other.episode_id != row.episode_id
+            and other.cohort_key == row.cohort_key
+            and other.label_available_at is not None
+            and other.forward_mae is not None
+            and other.label_available_at < row.decision_date
+        )
+        prior_n = len(eligible_history)
 
-        for row in todays_rows:
-            prior_values = sorted(history_by_cohort.get(row.cohort_key, []))
-            prior_n = len(prior_values)
-            if row.forward_mae is None:
-                results.append(CohortQuantileEvaluation(
-                    episode_id=row.episode_id, cohort_key=row.cohort_key, decision_date=row.decision_date,
-                    prior_n=prior_n, status="INSUFFICIENT_PRIOR_HISTORY", predicted_p10=None,
-                    predicted_p25=None, predicted_p50=None, actual_forward_mae=None,
-                ))
-            elif prior_n < MIN_PRIOR_ROWS_FOR_COHORT_QUANTILE:
-                results.append(CohortQuantileEvaluation(
-                    episode_id=row.episode_id, cohort_key=row.cohort_key, decision_date=row.decision_date,
-                    prior_n=prior_n, status="INSUFFICIENT_PRIOR_HISTORY", predicted_p10=None,
-                    predicted_p25=None, predicted_p50=None, actual_forward_mae=row.forward_mae,
-                ))
-            else:
-                results.append(CohortQuantileEvaluation(
-                    episode_id=row.episode_id, cohort_key=row.cohort_key, decision_date=row.decision_date,
-                    prior_n=prior_n, status="EVALUATED",
-                    predicted_p10=_quantile(prior_values, 0.10),
-                    predicted_p25=_quantile(prior_values, 0.25),
-                    predicted_p50=_quantile(prior_values, 0.50),
-                    actual_forward_mae=row.forward_mae,
-                ))
-
-        # Only NOW, after every row dated `current_date` has been evaluated
-        # against yesterday-or-earlier history, fold today's known values in.
-        for row in todays_rows:
-            if row.forward_mae is not None:
-                history_by_cohort.setdefault(row.cohort_key, []).append(row.forward_mae)
+        if row.forward_mae is None or row.label_available_at is None:
+            # This row's own outcome never matured (censored/excluded) --
+            # it cannot be evaluated as a realized outcome, regardless of
+            # how much eligible history exists for other rows.
+            results.append(CohortQuantileEvaluation(
+                episode_id=row.episode_id, cohort_key=row.cohort_key, decision_date=row.decision_date,
+                prior_n=prior_n, status="INSUFFICIENT_PRIOR_HISTORY", predicted_p10=None,
+                predicted_p25=None, predicted_p50=None, actual_forward_mae=None,
+            ))
+        elif prior_n < MIN_PRIOR_ROWS_FOR_COHORT_QUANTILE:
+            results.append(CohortQuantileEvaluation(
+                episode_id=row.episode_id, cohort_key=row.cohort_key, decision_date=row.decision_date,
+                prior_n=prior_n, status="INSUFFICIENT_PRIOR_HISTORY", predicted_p10=None,
+                predicted_p25=None, predicted_p50=None, actual_forward_mae=row.forward_mae,
+            ))
+        else:
+            results.append(CohortQuantileEvaluation(
+                episode_id=row.episode_id, cohort_key=row.cohort_key, decision_date=row.decision_date,
+                prior_n=prior_n, status="EVALUATED",
+                predicted_p10=_quantile(eligible_history, 0.10),
+                predicted_p25=_quantile(eligible_history, 0.25),
+                predicted_p50=_quantile(eligible_history, 0.50),
+                actual_forward_mae=row.forward_mae,
+            ))
 
     return tuple(results)
 

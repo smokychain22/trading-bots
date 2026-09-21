@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  buildClusterStabilityReport, buildCorrelationClusters, computeClusterExposure,
+  buildClusterStabilityReport, buildCorrelationClusters, computeClusterExposure, summarizeCorrelationCoverage,
 } from '../src/research/correlation-cluster-research.js';
 import type { CorrelationEvidence, PairwiseCorrelationEvidence } from '../src/theta/correlation-evidence.js';
 
@@ -51,6 +51,18 @@ test('computeClusterExposure sums capital-at-risk across cluster members and div
   assert.equal(results[1].clusterExposureFraction, 0.02);
 });
 
+test('computeClusterExposure AGGREGATES multiple positions on the same symbol rather than overwriting -- repair for the Codex-found Map(new Map(...)) defect', () => {
+  const clusters = [{ members: ['A'], edgeCount: 0 }];
+  // Two distinct positions on the SAME underlying (e.g. a CSP and a covered call
+  // on A) must both count toward A's capital-at-risk, never just the last one seen.
+  const positions = [
+    { symbol: 'A', capitalAtRisk: 1000 },
+    { symbol: 'A', capitalAtRisk: 500 },
+  ];
+  const results = computeClusterExposure(clusters, positions, 10000);
+  assert.equal(results[0].capitalAtRisk, 1500);
+});
+
 test('computeClusterExposure reports null fraction (never zero) when equity is unknown or non-positive', () => {
   const clusters = [{ members: ['A'], edgeCount: 0 }];
   const positions = [{ symbol: 'A', capitalAtRisk: 100 }];
@@ -71,4 +83,23 @@ test('buildClusterStabilityReport reports zero turnover when cluster membership 
   const snapshot = { asOf: '2026-08-01', clusters: [{ members: ['A', 'B'], edgeCount: 1 }] };
   const report = buildClusterStabilityReport([snapshot, snapshot]);
   assert.equal(report[1].membershipTurnover, 0);
+});
+
+test('summarizeCorrelationCoverage distinguishes a MISSING pair (data gap) from a KNOWN pair below threshold (real fact) -- repair for the Codex-found conflation defect', () => {
+  const ev = evidence(['A', 'B', 'C', 'D'], [
+    pair('A', 'B', 0.05), // known, near-zero -- a real economic fact
+    pair('A', 'C', 0.8), // known, above threshold
+    pair('A', 'D', 0.9, 'UNKNOWN'), // data gap -- correlation was never actually computed
+  ]);
+  const coverage = summarizeCorrelationCoverage(ev, { clusterThreshold: 0.7, configVersion: 'v1' });
+  assert.equal(coverage.totalPairs, 3);
+  assert.equal(coverage.knownPairCount, 2);
+  assert.equal(coverage.unknownPairCount, 1);
+  assert.equal(coverage.knownAtOrAboveThresholdCount, 1);
+  assert.equal(coverage.knownBelowThresholdCount, 1);
+});
+
+test('summarizeCorrelationCoverage rejects an invalid threshold rather than defaulting', () => {
+  const ev = evidence(['A', 'B'], [pair('A', 'B', 0.5)]);
+  assert.throws(() => summarizeCorrelationCoverage(ev, { clusterThreshold: 2, configVersion: 'v1' }), /CORRELATION_CLUSTER_THRESHOLD_INVALID/);
 });

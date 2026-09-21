@@ -53,8 +53,23 @@ class ContinuousTargetRow:
     dependence_group: str
     censored: bool
     exclusion_reason: Optional[str]
+    # The date this row's forward_mae actually became fully known/matured
+    # -- None whenever the row is censored or excluded (repair for a
+    # defect Codex's A-D acceptance review found, item B: "a training
+    # observation is usable only if its outcome/label had fully matured").
+    # Mirrors severe_drawdown_dataset.py's MaterializedSevereDrawdownRow.
+    # label_available_at naming exactly, so both target families describe
+    # outcome maturity the same way. A DOWNSTREAM consumer (the cohort-
+    # quantile baseline, the logistic baseline) must treat a row with
+    # label_available_at=None as unresolved and never fold it into any
+    # other row's training history, regardless of what forward_mae reads.
+    label_available_at: Optional[date]
     # Raw forward maximum adverse excursion, as a negative-or-zero fraction
-    # of entry_price (0.0 = no adverse move observed at all).
+    # of entry_price (0.0 = no adverse move observed at all). For a
+    # CENSORED row this is still reported (the partial worst-drawdown
+    # observed so far) for descriptive/survival-analysis purposes, but its
+    # label_available_at is None -- it must never be treated as a matured
+    # ground-truth outcome by a consumer.
     forward_mae: Optional[float]
     # Bars/days from decision_date to the worst point observed. 0 if the
     # worst point IS the decision date itself (no adverse move yet).
@@ -107,18 +122,26 @@ def materialize_continuous_target_dataset(
                 episode_id=episode.episode_id, underlying=episode.underlying,
                 decision_date=episode.decision_date, horizon_end=horizon_end,
                 dependence_group=groups[episode.episode_id], censored=False,
-                exclusion_reason="CORPORATE_ACTION_AMBIGUOUS", forward_mae=None,
+                exclusion_reason="CORPORATE_ACTION_AMBIGUOUS", label_available_at=None, forward_mae=None,
                 time_to_mae_days=None, volatility_normalized_mae=None, expected_move_normalized_mae=None,
             ))
             continue
 
+        # Repair for a defect Codex's A-D acceptance review found (item B):
+        # "Do not use same-day adjusted close for an intraday decision if
+        # that close occurred after decision time." A decision can be made
+        # intraday, well before that same day's own closing price is
+        # known -- including decision_date's own adjusted close in the
+        # forward-looking price path would let same-day noise (which the
+        # decision-maker could not have observed) masquerade as forward
+        # risk. The window starts STRICTLY AFTER decision_date.
         prices = sorted(
             (
                 item for item in observations
                 if item.underlying == episode.underlying
                 and item.adjustment in {"SPLIT_ADJUSTED", "ALL_ADJUSTED"}
                 and item.adjusted_close > 0
-                and episode.decision_date <= item.as_of <= min(horizon_end, dataset_cutoff)
+                and episode.decision_date < item.as_of <= min(horizon_end, dataset_cutoff)
             ),
             key=lambda item: item.as_of,
         )
@@ -127,7 +150,7 @@ def materialize_continuous_target_dataset(
                 episode_id=episode.episode_id, underlying=episode.underlying,
                 decision_date=episode.decision_date, horizon_end=horizon_end,
                 dependence_group=groups[episode.episode_id], censored=False,
-                exclusion_reason="ADJUSTED_PRICE_PATH_UNAVAILABLE", forward_mae=None,
+                exclusion_reason="ADJUSTED_PRICE_PATH_UNAVAILABLE", label_available_at=None, forward_mae=None,
                 time_to_mae_days=None, volatility_normalized_mae=None, expected_move_normalized_mae=None,
             ))
             continue
@@ -158,7 +181,8 @@ def materialize_continuous_target_dataset(
             episode_id=episode.episode_id, underlying=episode.underlying,
             decision_date=episode.decision_date, horizon_end=horizon_end,
             dependence_group=groups[episode.episode_id], censored=censored,
-            exclusion_reason=None, forward_mae=worst_drawdown, time_to_mae_days=time_to_mae,
+            exclusion_reason=None, label_available_at=None if censored else horizon_end,
+            forward_mae=worst_drawdown, time_to_mae_days=time_to_mae,
             volatility_normalized_mae=volatility_normalized_mae,
             expected_move_normalized_mae=expected_move_normalized_mae,
         ))

@@ -20,6 +20,7 @@ from datetime import date
 from typing import Any, List, Mapping, Optional, Tuple
 
 from calibration.severe_drawdown_logistic_baseline import (
+    DatedLogisticRow,
     LogisticTrainingRow,
     chronological_train_test_split,
     evaluate_calibration,
@@ -84,7 +85,13 @@ def run_cohort_quantile_real_data_study(export: Optional[Mapping[str, Any]]) -> 
     input_rows = [
         CohortQuantileInputRow(
             episode_id=row["episodeId"], cohort_key=row["cohortKey"],
-            decision_date=date.fromisoformat(row["decisionDate"]), forward_mae=row.get("forwardMae"),
+            decision_date=date.fromisoformat(row["decisionDate"]),
+            # A censored/excluded export row must carry labelAvailableAt=null -- this runner
+            # trusts that field as-is (never derives maturity itself) and passes forwardMae
+            # through unchanged; the cohort-quantile module's own embargo logic is what refuses
+            # to fold an unmatured row into any other row's history.
+            label_available_at=date.fromisoformat(row["labelAvailableAt"]) if row.get("labelAvailableAt") else None,
+            forward_mae=row.get("forwardMae"),
         )
         for row in rows
     ]
@@ -129,9 +136,15 @@ def run_logistic_baseline_real_data_study(
             evidence_lineage="REAL_EXPORT", train_n=None, test_n=None,
             oos_brier_score=None, oos_log_loss=None, oos_expected_calibration_error=None,
         )
-    dated_rows: List[Tuple[str, LogisticTrainingRow]] = [
-        (row["decisionDate"], LogisticTrainingRow(features=tuple(row["features"]), label=int(row["label"])))
-        for row in rows
+    # A row whose label never matured (no labelAvailableAt) is excluded here, before it ever
+    # reaches chronological_train_test_split -- LogisticTrainingRow.label is documented as
+    # "never a censored row," matching severe_drawdown_dataset.py's own binary contract.
+    dated_rows: List[DatedLogisticRow] = [
+        DatedLogisticRow(
+            decision_date_iso=row["decisionDate"], label_available_at_iso=row["labelAvailableAt"],
+            row=LogisticTrainingRow(features=tuple(row["features"]), label=int(row["label"])),
+        )
+        for row in rows if row.get("labelAvailableAt")
     ]
     train, test = chronological_train_test_split(dated_rows, test_fraction=test_fraction)
     fit = fit_logistic_regression(list(train), l2_penalty=l2_penalty)
