@@ -40,6 +40,22 @@ export function realDeltaBucketsFor(branch: string): readonly number[] {
 export type OutcomeProvenance = 'OBSERVED' | 'NOT_YET_AVAILABLE';
 
 /**
+ * v2 hardening: the prior nearest-bucket logic would silently assign a
+ * genuinely far-out-of-range delta (e.g. 0.85, when the widest configured
+ * bucket is 0.40) to that nearest bucket anyway -- misleadingly
+ * implying it belongs there. Four honest states replace that single
+ * silent assignment:
+ *  - `IN_BUCKET`: within `maxAssignmentDistance` of its nearest bucket.
+ *  - `OUTSIDE_CONFIGURED_RANGE`: a real, known delta exists, but it is
+ *    farther from every configured bucket than `maxAssignmentDistance`
+ *    allows -- never silently forced into the nearest one anyway.
+ *  - `UNKNOWN_DELTA`: the candidate's own delta is `null`.
+ *  - `NO_BUCKET_CONFIGURATION`: the branch has no buckets configured at
+ *    all (every branch except `THETA_CONVENTIONAL` today).
+ */
+export type DeltaAssignmentStatus = 'IN_BUCKET' | 'OUTSIDE_CONFIGURED_RANGE' | 'UNKNOWN_DELTA' | 'NO_BUCKET_CONFIGURATION';
+
+/**
  * One real candidate's full delta-cohort evidence row. `delta` is
  * `null` when genuinely UNKNOWN (never fabricated as 0 or a bucket
  * center). `laterWholeChainOutcome` starts `null`/`NOT_YET_AVAILABLE`
@@ -63,10 +79,15 @@ export interface DeltaCohortCandidate {
 
 export interface DeltaBucketAssignment {
   readonly candidateId: string;
-  /** `null` when `delta` is UNKNOWN or no buckets are configured for
-   * this branch -- never a fabricated nearest-bucket guess. */
+  /** The candidate's own real observed delta, preserved unchanged --
+   * never overwritten or discarded, even when the assignment status is
+   * `OUTSIDE_CONFIGURED_RANGE` or `UNKNOWN_DELTA`. */
+  readonly observedDelta: number | null;
+  /** `null` whenever `status !== 'IN_BUCKET'` -- an out-of-range or
+   * unknown delta is NEVER force-assigned to the nearest bucket anyway. */
   readonly bucketCenter: number | null;
   readonly distanceFromCenter: number | null;
+  readonly status: DeltaAssignmentStatus;
 }
 
 /**
@@ -74,20 +95,33 @@ export interface DeltaBucketAssignment {
  * MAGNITUDE (a short put's delta is negative; the buckets are defined as
  * positive magnitudes, matching the registry's own `min(0).max(1)`
  * schema constraint) -- never a signed-value comparison that would
- * silently mismatch puts against the bucket list.
+ * silently mismatch puts against the bucket list. `maxAssignmentDistance`
+ * is REQUIRED and caller-supplied -- this module never invents a
+ * tolerance; a candidate farther than this from every configured bucket
+ * is `OUTSIDE_CONFIGURED_RANGE`, never silently forced into the nearest
+ * one regardless of how far away it actually is.
  */
-export function assignToBucket(candidate: DeltaCohortCandidate, buckets: readonly number[]): DeltaBucketAssignment {
-  if (candidate.delta === null || buckets.length === 0) {
-    return { candidateId: candidate.candidateId, bucketCenter: null, distanceFromCenter: null };
+export function assignToBucket(
+  candidate: DeltaCohortCandidate, buckets: readonly number[], maxAssignmentDistance: number,
+): DeltaBucketAssignment {
+  const observedDelta = candidate.delta;
+  if (buckets.length === 0) {
+    return { candidateId: candidate.candidateId, observedDelta, bucketCenter: null, distanceFromCenter: null, status: 'NO_BUCKET_CONFIGURATION' };
   }
-  const magnitude = Math.abs(candidate.delta);
-  let bucketCenter = buckets[0] as number;
-  let distanceFromCenter = Math.abs(magnitude - bucketCenter);
+  if (observedDelta === null) {
+    return { candidateId: candidate.candidateId, observedDelta, bucketCenter: null, distanceFromCenter: null, status: 'UNKNOWN_DELTA' };
+  }
+  const magnitude = Math.abs(observedDelta);
+  let nearestBucket = buckets[0] as number;
+  let distanceFromCenter = Math.abs(magnitude - nearestBucket);
   for (const bucket of buckets.slice(1)) {
     const distance = Math.abs(magnitude - bucket);
-    if (distance < distanceFromCenter) { bucketCenter = bucket; distanceFromCenter = distance; }
+    if (distance < distanceFromCenter) { nearestBucket = bucket; distanceFromCenter = distance; }
   }
-  return { candidateId: candidate.candidateId, bucketCenter, distanceFromCenter };
+  if (distanceFromCenter > maxAssignmentDistance) {
+    return { candidateId: candidate.candidateId, observedDelta, bucketCenter: null, distanceFromCenter, status: 'OUTSIDE_CONFIGURED_RANGE' };
+  }
+  return { candidateId: candidate.candidateId, observedDelta, bucketCenter: nearestBucket, distanceFromCenter, status: 'IN_BUCKET' };
 }
 
 export interface CohortKey {
@@ -118,27 +152,33 @@ function average(values: readonly number[]): number | null {
 /**
  * Groups candidates by (bucketCenter, regimeCohort) and reports purely
  * DESCRIPTIVE statistics per cohort -- no ranking, no "best bucket"
- * conclusion, no selection recommendation. Candidates whose delta is
- * UNKNOWN (and therefore have no `bucketCenter`) are excluded from every
- * cohort and reported separately via `unassignedCount`, never silently
- * dropped without being counted anywhere.
+ * conclusion, no selection recommendation. Only `IN_BUCKET` candidates
+ * enter a cohort; `OUTSIDE_CONFIGURED_RANGE`/`UNKNOWN_DELTA`/
+ * `NO_BUCKET_CONFIGURATION` candidates are counted separately by status,
+ * never silently dropped without being counted anywhere and never
+ * force-assigned to a nearest cohort they do not actually belong to.
  */
 export interface CohortAnalysisResult {
   readonly cohorts: readonly CohortDescriptiveSummary[];
-  readonly unassignedCount: number;
+  readonly unassignedCountByStatus: Readonly<Record<Exclude<DeltaAssignmentStatus, 'IN_BUCKET'>, number>>;
 }
 
 export function buildCohortAnalysis(
-  candidates: readonly DeltaCohortCandidate[], buckets: readonly number[],
+  candidates: readonly DeltaCohortCandidate[], buckets: readonly number[], maxAssignmentDistance: number,
 ): CohortAnalysisResult {
   const assignments = new Map<string, DeltaBucketAssignment>();
-  for (const candidate of candidates) assignments.set(candidate.candidateId, assignToBucket(candidate, buckets));
+  for (const candidate of candidates) assignments.set(candidate.candidateId, assignToBucket(candidate, buckets, maxAssignmentDistance));
 
   const groups = new Map<string, DeltaCohortCandidate[]>();
-  let unassignedCount = 0;
+  const unassignedCountByStatus: Record<Exclude<DeltaAssignmentStatus, 'IN_BUCKET'>, number> = {
+    OUTSIDE_CONFIGURED_RANGE: 0, UNKNOWN_DELTA: 0, NO_BUCKET_CONFIGURATION: 0,
+  };
   for (const candidate of candidates) {
     const assignment = assignments.get(candidate.candidateId);
-    if (assignment?.bucketCenter === null || assignment === undefined) { unassignedCount += 1; continue; }
+    if (assignment === undefined || assignment.status !== 'IN_BUCKET' || assignment.bucketCenter === null) {
+      if (assignment !== undefined && assignment.status !== 'IN_BUCKET') unassignedCountByStatus[assignment.status] += 1;
+      continue;
+    }
     const key = `${assignment.bucketCenter}|${candidate.regimeCohort ?? 'UNKNOWN'}`;
     const group = groups.get(key) ?? [];
     group.push(candidate);
@@ -160,5 +200,5 @@ export function buildCohortAnalysis(
     };
   }).sort((a, b) => a.bucketCenter - b.bucketCenter || (a.regimeCohort ?? '').localeCompare(b.regimeCohort ?? ''));
 
-  return { cohorts, unassignedCount };
+  return { cohorts, unassignedCountByStatus };
 }
