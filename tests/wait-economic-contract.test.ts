@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compareCrossStrategy, validateDeterministicEconomicsForAction, type ComparisonContext } from '../src/research/cross-strategy-common-horizon-contract.js';
+import { compareCrossStrategy, validateDeterministicEconomicsForAction, ENTRY_CORE_RISK_V1, type ComparisonContext } from '../src/research/cross-strategy-common-horizon-contract.js';
 import {
   emptyWaitRegretMetrics, validateWaitEconomicEvidence, waitAsComparisonCandidate,
   type WaitEconomicEvidence,
@@ -108,7 +108,7 @@ test('REPAIR: CSP + Defined Risk + WAIT can be structurally compared together wi
     deterministic: { ...csp.deterministic, action: 'OPEN_DEFINED_RISK', strategy: 'THETA_DEFINED_RISK', structureClass: 'STRUCTURALLY_DEFINED_RISK_SPREAD' as const, width: 5, maxLoss: 380, collateral: 500, capitalRequirement: 500 },
   };
   const wait = waitAsComparisonCandidate(evidence(), CONTEXT);
-  const result = compareCrossStrategy([csp, definedRisk, wait]);
+  const result = compareCrossStrategy([csp, definedRisk, wait], ENTRY_CORE_RISK_V1);
   // Not NOT_COMPARABLE -- structural validation passes for all three, including WAIT.
   assert.notEqual(result.state, 'NOT_COMPARABLE');
   assert.deepEqual(result.candidateIds.sort(), ['THETA_CONVENTIONAL:AAPL-put', 'THETA_DEFINED_RISK:AAPL-spread', 'WAIT:d1'].sort());

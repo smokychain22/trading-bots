@@ -1,5 +1,5 @@
 /**
- * R8 common-horizon cross-strategy comparison contract, v2 (hardened).
+ * R8 common-horizon cross-strategy comparison contract, v3 (hardened).
  * Research-only, `brokerAuthority: false`. Answers a real gap confirmed
  * by direct source reading: `dominates()` in `canonical-strategy-
  * frontier.ts` (Codex-owned, read-only here) never compares candidates
@@ -7,41 +7,52 @@
  * `candidateId.localeCompare`. This module does NOT replace or call into
  * that Production comparator.
  *
- * v2 hardening, per direct user review of v1's own claims:
- *  - v1's `COMPARABLE` state let a single known EV number stand in for
- *    "final risk-adjusted economic winner." v2 replaces it with a
- *    5-state maturity ladder (`STRUCTURAL_ONLY` -> `EV_COMPARABLE_ONLY`
- *    -> `RISK_ADJUSTED_NOT_READY` -> `FULL_RESEARCH_COMPARABLE`, plus
- *    `NOT_COMPARABLE`) and NEVER manufactures a single "winner" even at
- *    the most mature state -- it exposes `highestExpectedPnlCandidateId`
- *    (an EV-only observation, explicitly not a final verdict) and
- *    `nonDominatedCandidateIds` (a real Pareto set across EV/ES-or-CVaR/
- *    capitalDays/uncertainty, computed only once every candidate's risk
- *    data is complete) separately, so neither can be mistaken for the
- *    other.
- *  - Adds real common-horizon IDENTITY (`decisionTimestamp`,
+ * v3 hardening, per direct user governance review of v2's own claims:
+ *  - v2's `FULL_RESEARCH_COMPARABLE` state required exactly 4 hardcoded
+ *    fields (EV, ES-or-CVaR, capitalDays, uncertainty), which silently
+ *    implied those 4 are the WHOLE of "full" economic knowledge -- the
+ *    contract also carries `probabilityAssignment`,
+ *    `expectedAssignmentBurden`, `expectedRecoveryDuration`,
+ *    `maxDrawdown`, `concentrationImpact`, `expectedTca`, which a
+ *    specific comparison (e.g. CSP vs. a defined-risk spread, where
+ *    assignment/recovery mechanics genuinely differ) may need to be
+ *    "full" for THAT comparison. v3 replaces the hardcoded gate with a
+ *    versioned `ComparisonProfile` the CALLER supplies -- never a
+ *    silent default that could hide which dimensions were actually
+ *    required for a given research question.
+ *  - v2 silently treated `expectedShortfall ?? cvar` as interchangeable
+ *    tail-risk figures. v3 declares ONE canonical tail-risk metric
+ *    (`expectedShortfall`, per `canonicalTailRiskMetric`) for every
+ *    profile/Pareto computation in this module; `cvar` remains a
+ *    distinct field for provenance/observability only and is NEVER
+ *    coalesced with `expectedShortfall` anywhere in this module, unless
+ *    and until a committed metric catalog explicitly proves the two
+ *    fields share the same definition for a given data source.
+ *
+ * v2 hardening (retained), per the prior review:
+ *  - Replaced a single `COMPARABLE` state with a maturity ladder so an
+ *    EV-only estimate can never masquerade as full risk-adjusted
+ *    superiority -- `highestExpectedPnlCandidateId` (EV-only, explicitly
+ *    non-final) and `nonDominatedCandidateIds` (a real Pareto set) are
+ *    exposed separately, never collapsed into a single "winner".
+ *  - Real common-horizon IDENTITY (`decisionTimestamp`,
  *    `comparisonHorizonStart`, `comparisonHorizonEnd`,
- *    `horizonDefinitionVersion`) -- candidates whose horizon identity
- *    differs are `NOT_COMPARABLE`, never silently compared as if the
- *    module's NAME alone made them comparable.
- *  - Adds explicit unit/basis (`basis`, `quantity`, `currency`) --
- *    candidates on different bases (e.g. per-contract vs. per-position)
- *    or currencies are `NOT_COMPARABLE`, never silently compared as
- *    though the numbers were the same unit.
- *  - Adds `structureClass` distinguishing `CASH_SECURED_SINGLE_LEG`
- *    (a bare CSP -- severe but FINITE downside, since the underlying
- *    floor is zero) from `STRUCTURALLY_DEFINED_RISK_SPREAD` (a real
- *    defined-risk structure) from `MARGIN_UNDEFINED_OR_UNBOUNDED_STRUCTURE`,
- *    plus `cashSecuredPutMaxLossAtZero` -- a real, computable maximum
- *    theoretical loss for a CSP, never conflated with "acceptable
- *    real-world tail risk," which stays a separate, empirical question.
- *  - Replaces the single `hasCompleteDeterministicEconomics` check with
- *    `validateDeterministicEconomicsForAction`, since WAIT genuinely has
- *    no option DTE/strikes and must not be forced to fabricate one just
- *    to pass validation.
+ *    `horizonDefinitionVersion`) plus explicit unit/basis (`basis`,
+ *    `quantity`, `currency`) -- a mismatch on any of these is
+ *    `NOT_COMPARABLE`, never silently compared as the same unit.
+ *  - `structureClass` distinguishes `CASH_SECURED_SINGLE_LEG` (a bare
+ *    CSP -- severe but FINITE downside, floor at underlying = 0) from
+ *    `STRUCTURALLY_DEFINED_RISK_SPREAD` from
+ *    `MARGIN_UNDEFINED_OR_UNBOUNDED_STRUCTURE`, plus
+ *    `cashSecuredPutMaxLossAtZero` -- a real, computable maximum
+ *    theoretical loss, never conflated with "acceptable real-world tail
+ *    risk," which stays a separate, empirical question.
+ *  - `validateDeterministicEconomicsForAction` replaces a single
+ *    one-size-fits-all validator, since WAIT genuinely has no option
+ *    DTE/strikes and must not be forced to fabricate one.
  */
 
-export const crossStrategyCommonHorizonContractVersion = 'theta-cross-strategy-common-horizon-v2' as const;
+export const crossStrategyCommonHorizonContractVersion = 'theta-cross-strategy-common-horizon-v3' as const;
 
 export type ComparisonBasis = 'PER_CONTRACT' | 'PER_POSITION' | 'PER_DOLLAR_CAPITAL' | 'PER_ACCOUNT';
 
@@ -92,11 +103,10 @@ export function cashSecuredPutMaxLossAtZero(
 
 /**
  * Every field here is a KNOWN fact at decision time or an honestly-null
- * UNKNOWN -- never a forecast, never fabricated. `maxLoss` is now
- * ALLOWED to be populated for a `CASH_SECURED_SINGLE_LEG` structure
- * (via `cashSecuredPutMaxLossAtZero` or an equivalent real computation
- * the caller supplies) -- it is no longer forced `null` merely because
- * the structure is single-leg. It remains `null` for a genuinely
+ * UNKNOWN -- never a forecast, never fabricated. `maxLoss` is ALLOWED to
+ * be populated for a `CASH_SECURED_SINGLE_LEG` structure (via
+ * `cashSecuredPutMaxLossAtZero` or an equivalent real computation the
+ * caller supplies). It remains `null` for a genuinely
  * `MARGIN_UNDEFINED_OR_UNBOUNDED_STRUCTURE` structure, since no finite
  * figure exists to report there.
  */
@@ -126,9 +136,15 @@ export interface DeterministicEntryEconomics {
 
 /**
  * Every field defaults to `null` (UNKNOWN) and MUST remain `null` until
- * real, dated evidence populates it. `maxDrawdown`/`concentrationImpact`
- * added in v2 -- both directive-requested empirical dimensions this v1
- * contract omitted.
+ * real, dated evidence populates it. `expectedShortfall` is the ONE
+ * canonical tail-risk figure this module compares/ranks on (see
+ * `canonicalTailRiskMetric`). `cvar` is retained purely for provenance/
+ * observability -- e.g. a canonical export may carry a CVaR figure from
+ * an upstream model -- and MUST NEVER be coalesced with
+ * `expectedShortfall` (`expectedShortfall ?? cvar`) anywhere in this
+ * module or a consumer of it, unless a committed metric catalog entry
+ * explicitly proves the two are the same definition for that data
+ * source.
  */
 export interface EmpiricalForwardEconomics {
   readonly expectedAfterCostWholeChainPnl: number | null;
@@ -144,6 +160,14 @@ export interface EmpiricalForwardEconomics {
   readonly expectedTca: number | null;
   readonly calibratedUncertainty: number | null;
 }
+
+export type EmpiricalDimensionKey = keyof EmpiricalForwardEconomics;
+
+export type TailRiskMetric = 'EXPECTED_SHORTFALL';
+/** The ONE canonical tail-risk convention every `ComparisonProfile` and
+ * Pareto computation in this module uses. `cvar` is a separate,
+ * non-canonical field -- see the doc comment on `EmpiricalForwardEconomics`. */
+export const canonicalTailRiskMetric: TailRiskMetric = 'EXPECTED_SHORTFALL';
 
 export interface CandidateComparisonInput {
   readonly candidateId: string;
@@ -216,27 +240,92 @@ export function uncertaintyView(input: CandidateComparisonInput): UncertaintyVie
   };
 }
 
+/**
+ * A versioned declaration of which `EmpiricalForwardEconomics`
+ * dimensions a SPECIFIC research comparison actually needs, so
+ * `FULL_RESEARCH_COMPARABLE`/`PROFILE_COMPARABLE` never silently implies
+ * universally complete economic knowledge -- it means "complete for
+ * THIS named, versioned profile." `paretoDimensions` MUST be a subset of
+ * `requiredDimensions` (enforced by `validateComparisonProfile`): the
+ * Pareto set is never computed over a dimension whose completeness was
+ * never actually required.
+ */
+export interface ComparisonProfile {
+  readonly profileVersion: string;
+  readonly requiredDimensions: readonly EmpiricalDimensionKey[];
+  readonly optionalDimensions: readonly EmpiricalDimensionKey[];
+  readonly paretoDimensions: readonly EmpiricalDimensionKey[];
+}
+
+export function validateComparisonProfile(profile: ComparisonProfile): boolean {
+  return profile.paretoDimensions.every((d) => profile.requiredDimensions.includes(d));
+}
+
+/**
+ * The core risk-adjusted profile: EV, the one canonical tail-risk
+ * figure, capital-days burden, and calibrated uncertainty. Suitable for
+ * a same-structure-family comparison where assignment/recovery
+ * mechanics are not expected to differ materially between candidates.
+ */
+export const ENTRY_CORE_RISK_V1: ComparisonProfile = {
+  profileVersion: 'theta-comparison-profile-entry-core-risk-v1',
+  requiredDimensions: ['expectedAfterCostWholeChainPnl', 'expectedShortfall', 'expectedCapitalDays', 'calibratedUncertainty'],
+  optionalDimensions: [
+    'probabilityProfitable', 'maxDrawdown', 'concentrationImpact',
+    'probabilityAssignment', 'expectedAssignmentBurden', 'expectedRecoveryDuration', 'expectedTca',
+  ],
+  paretoDimensions: ['expectedAfterCostWholeChainPnl', 'expectedShortfall', 'expectedCapitalDays', 'calibratedUncertainty'],
+};
+
+/**
+ * The whole-chain profile: everything `ENTRY_CORE_RISK_V1` requires,
+ * PLUS assignment probability/burden, recovery duration, and execution
+ * cost -- dimensions that a cross-STRUCTURE comparison (e.g. a bare CSP
+ * vs. a defined-risk spread, whose assignment/recovery mechanics
+ * genuinely differ) needs known before it can honestly claim to be
+ * "full" for that comparison. `probabilityAssignment` and
+ * `expectedAssignmentBurden` are required EVIDENCE here, not Pareto
+ * dimensions -- this module makes no claim that lower assignment
+ * probability is "better" (assignment is a modeled lifecycle
+ * transition, not automatic failure), so they are deliberately excluded
+ * from `paretoDimensions`.
+ */
+export const ENTRY_WHOLE_CHAIN_V1: ComparisonProfile = {
+  profileVersion: 'theta-comparison-profile-entry-whole-chain-v1',
+  requiredDimensions: [
+    'expectedAfterCostWholeChainPnl', 'expectedShortfall', 'expectedCapitalDays', 'calibratedUncertainty',
+    'probabilityAssignment', 'expectedAssignmentBurden', 'expectedRecoveryDuration', 'expectedTca',
+  ],
+  optionalDimensions: ['probabilityProfitable', 'maxDrawdown', 'concentrationImpact'],
+  paretoDimensions: ['expectedAfterCostWholeChainPnl', 'expectedShortfall', 'expectedCapitalDays', 'calibratedUncertainty', 'expectedTca'],
+};
+
 export type ComparisonState =
-  | 'NOT_COMPARABLE' | 'STRUCTURAL_ONLY' | 'EV_COMPARABLE_ONLY' | 'RISK_ADJUSTED_NOT_READY' | 'FULL_RESEARCH_COMPARABLE';
+  | 'NOT_COMPARABLE' | 'STRUCTURAL_ONLY' | 'EV_COMPARABLE_ONLY' | 'PROFILE_NOT_READY' | 'FULL_RESEARCH_COMPARABLE';
+
+export type ProfileReadiness = 'NOT_EVALUATED' | 'PROFILE_COMPARABLE' | 'PROFILE_NOT_READY';
 
 export interface CrossStrategyComparisonResult {
   readonly state: ComparisonState;
   readonly reason: string;
   readonly candidateIds: readonly string[];
+  readonly profileVersion: string;
+  readonly profileReadiness: ProfileReadiness;
   /** The candidate with the highest `expectedAfterCostWholeChainPnl`
    * among those with a KNOWN EV -- an EV-ONLY observation, populated
    * whenever `state` is `EV_COMPARABLE_ONLY` or more mature. NEVER a
    * final risk-adjusted verdict; callers must not treat this as "the
    * winner." */
   readonly highestExpectedPnlCandidateId: string | null;
-  /** Candidates not dominated by any other candidate across EV (max),
-   * ES-or-CVaR (max, i.e. least negative), capitalDays (min), and
-   * calibratedUncertainty (min) -- computed ONLY at
-   * `FULL_RESEARCH_COMPARABLE` (every candidate's risk data complete).
-   * Multiple non-dominated candidates, or all of them, is a real,
-   * honest research finding, never collapsed into one winner. */
+  /** Candidates not dominated by any other candidate across the
+   * SUPPLIED profile's `paretoDimensions` -- computed ONLY at
+   * `FULL_RESEARCH_COMPARABLE` (every candidate satisfies every
+   * `requiredDimensions` entry of the supplied profile). Multiple
+   * non-dominated candidates, or all of them, is a real, honest research
+   * finding, never collapsed into one winner. */
   readonly nonDominatedCandidateIds: readonly string[];
-  readonly missingComparisonDimensions: readonly string[];
+  readonly missingRequiredDimensions: readonly EmpiricalDimensionKey[];
+  readonly availableOptionalDimensions: readonly EmpiricalDimensionKey[];
 }
 
 /**
@@ -256,45 +345,54 @@ export function validateDeterministicEconomicsForAction(action: string, d: Deter
   return hasCoreFields; // OPEN_CSP and other single-leg option-entry actions
 }
 
-const RISK_FIELD_NAMES = ['expectedShortfall', 'cvar', 'expectedCapitalDays', 'calibratedUncertainty'] as const;
-
 function hasAnyEmpiricalField(e: EmpiricalForwardEconomics): boolean {
-  return e.expectedAfterCostWholeChainPnl !== null || RISK_FIELD_NAMES.some((f) => e[f] !== null)
-    || e.probabilityProfitable !== null || e.probabilityAssignment !== null || e.expectedAssignmentBurden !== null
-    || e.expectedRecoveryDuration !== null || e.maxDrawdown !== null || e.concentrationImpact !== null || e.expectedTca !== null;
+  const keys = Object.keys(e) as EmpiricalDimensionKey[];
+  return keys.some((k) => e[k] !== null);
 }
 
-function hasFullRiskAdjustedEconomics(e: EmpiricalForwardEconomics): boolean {
-  const hasEsOrCvar = e.expectedShortfall !== null || e.cvar !== null;
-  return e.expectedAfterCostWholeChainPnl !== null && hasEsOrCvar
-    && e.expectedCapitalDays !== null && e.calibratedUncertainty !== null;
+/** Every dimension the Pareto set is EVER allowed to use must have a
+ * known, defensible direction here. A profile whose `paretoDimensions`
+ * names a field without a registered direction fails loudly (see
+ * `paretoVectorForProfile`) rather than silently guessing a direction --
+ * e.g. this module deliberately registers no direction for
+ * `probabilityAssignment`, since assignment is not automatic failure. */
+const DIMENSION_DIRECTION: Partial<Record<EmpiricalDimensionKey, 'HIGHER_IS_BETTER' | 'LOWER_IS_BETTER'>> = {
+  expectedAfterCostWholeChainPnl: 'HIGHER_IS_BETTER',
+  expectedShortfall: 'HIGHER_IS_BETTER', // less-negative shortfall is better
+  expectedCapitalDays: 'LOWER_IS_BETTER',
+  calibratedUncertainty: 'LOWER_IS_BETTER',
+  expectedTca: 'LOWER_IS_BETTER',
+};
+
+function evaluateProfileReadiness(
+  candidates: readonly CandidateComparisonInput[], profile: ComparisonProfile,
+): { readiness: 'PROFILE_COMPARABLE' | 'PROFILE_NOT_READY'; missingRequiredDimensions: readonly EmpiricalDimensionKey[]; availableOptionalDimensions: readonly EmpiricalDimensionKey[] } {
+  const missing = new Set<EmpiricalDimensionKey>();
+  for (const dim of profile.requiredDimensions) {
+    if (candidates.some((c) => c.empirical[dim] === null)) missing.add(dim);
+  }
+  const availableOptionalDimensions = profile.optionalDimensions.filter((dim) => candidates.every((c) => c.empirical[dim] !== null));
+  return {
+    readiness: missing.size === 0 ? 'PROFILE_COMPARABLE' : 'PROFILE_NOT_READY',
+    missingRequiredDimensions: [...missing], availableOptionalDimensions,
+  };
 }
 
-function missingRiskDimensions(e: EmpiricalForwardEconomics): readonly string[] {
-  const missing: string[] = [];
-  if (e.expectedAfterCostWholeChainPnl === null) missing.push('expectedAfterCostWholeChainPnl');
-  if (e.expectedShortfall === null && e.cvar === null) missing.push('expectedShortfall_or_cvar');
-  if (e.expectedCapitalDays === null) missing.push('expectedCapitalDays');
-  if (e.calibratedUncertainty === null) missing.push('calibratedUncertainty');
-  return missing;
-}
-
-/** Higher-is-better direction for every dimension the Pareto set uses:
- * EV higher is better; ES/CVaR less-negative (higher) is better;
- * capitalDays LOWER is better (negated here); uncertainty LOWER is
- * better (negated here) -- so every value below is oriented "higher = better"
- * before comparison. */
-function paretoVector(e: EmpiricalForwardEconomics): readonly number[] {
-  const esOrCvar = (e.expectedShortfall ?? e.cvar) as number;
-  return [e.expectedAfterCostWholeChainPnl as number, esOrCvar, -(e.expectedCapitalDays as number), -(e.calibratedUncertainty as number)];
+function paretoVectorForProfile(e: EmpiricalForwardEconomics, dims: readonly EmpiricalDimensionKey[]): readonly number[] {
+  return dims.map((dim) => {
+    const direction = DIMENSION_DIRECTION[dim];
+    if (direction === undefined) throw new Error(`COMPARISON_PROFILE_DIMENSION_DIRECTION_UNDEFINED:${dim}`);
+    const value = e[dim] as number; // caller (compareCrossStrategy) only invokes this once every required dim is confirmed non-null
+    return direction === 'HIGHER_IS_BETTER' ? value : -value;
+  });
 }
 
 function dominatesAllDimensions(a: readonly number[], b: readonly number[]): boolean {
   return a.every((value, i) => value >= (b[i] as number)) && a.some((value, i) => value > (b[i] as number));
 }
 
-function computeNonDominated(candidates: readonly CandidateComparisonInput[]): readonly string[] {
-  const vectors = candidates.map((c) => ({ id: c.candidateId, vector: paretoVector(c.empirical) }));
+function computeNonDominated(candidates: readonly CandidateComparisonInput[], paretoDimensions: readonly EmpiricalDimensionKey[]): readonly string[] {
+  const vectors = candidates.map((c) => ({ id: c.candidateId, vector: paretoVectorForProfile(c.empirical, paretoDimensions) }));
   return vectors.filter((candidate) => !vectors.some((other) => other.id !== candidate.id && dominatesAllDimensions(other.vector, candidate.vector)))
     .map((c) => c.id);
 }
@@ -302,11 +400,24 @@ function computeNonDominated(candidates: readonly CandidateComparisonInput[]): r
 /**
  * Compares 0..N candidates that MUST share the same `ComparisonContext`
  * (horizon identity, basis, currency) -- a mismatch is `NOT_COMPARABLE`
- * before anything else is even inspected, per the v2 hardening.
+ * before anything else is even inspected. `profile` is REQUIRED and
+ * caller-supplied -- this module never defaults to one profile silently,
+ * since which dimensions are "required for full comparability" is
+ * itself a research decision the caller must make explicitly (see
+ * `ENTRY_CORE_RISK_V1`/`ENTRY_WHOLE_CHAIN_V1`).
  */
-export function compareCrossStrategy(candidates: readonly CandidateComparisonInput[]): CrossStrategyComparisonResult {
+export function compareCrossStrategy(
+  candidates: readonly CandidateComparisonInput[], profile: ComparisonProfile,
+): CrossStrategyComparisonResult {
+  if (!validateComparisonProfile(profile)) {
+    throw new Error(`COMPARISON_PROFILE_INVALID_PARETO_DIMENSIONS_NOT_SUBSET_OF_REQUIRED:${profile.profileVersion}`);
+  }
   const candidateIds = candidates.map((c) => c.candidateId);
-  const empty = { highestExpectedPnlCandidateId: null, nonDominatedCandidateIds: [], missingComparisonDimensions: [] };
+  const empty = {
+    profileVersion: profile.profileVersion, profileReadiness: 'NOT_EVALUATED' as const,
+    highestExpectedPnlCandidateId: null, nonDominatedCandidateIds: [] as const,
+    missingRequiredDimensions: [] as const, availableOptionalDimensions: [] as const,
+  };
 
   if (candidates.length === 0) {
     return { state: 'NOT_COMPARABLE', reason: 'NO_CANDIDATES', candidateIds, ...empty };
@@ -331,18 +442,27 @@ export function compareCrossStrategy(candidates: readonly CandidateComparisonInp
     : evCandidates.reduce((best, c) => (c.empirical.expectedAfterCostWholeChainPnl as number) > (best.empirical.expectedAfterCostWholeChainPnl as number) ? c : best).candidateId;
 
   if (!allHaveEv) {
-    const missing = [...new Set(candidates.flatMap((c) => missingRiskDimensions(c.empirical)))];
-    return { state: 'EV_COMPARABLE_ONLY', reason: 'MISSING_EMPIRICAL_ECONOMICS', candidateIds, highestExpectedPnlCandidateId, nonDominatedCandidateIds: [], missingComparisonDimensions: missing };
+    const { missingRequiredDimensions, availableOptionalDimensions } = evaluateProfileReadiness(candidates, profile);
+    return {
+      state: 'EV_COMPARABLE_ONLY', reason: 'MISSING_EMPIRICAL_ECONOMICS', candidateIds,
+      profileVersion: profile.profileVersion, profileReadiness: 'PROFILE_NOT_READY',
+      highestExpectedPnlCandidateId, nonDominatedCandidateIds: [], missingRequiredDimensions, availableOptionalDimensions,
+    };
   }
 
-  const allHaveFullRisk = candidates.every((c) => hasFullRiskAdjustedEconomics(c.empirical));
-  if (!allHaveFullRisk) {
-    const missing = [...new Set(candidates.flatMap((c) => missingRiskDimensions(c.empirical)))];
-    return { state: 'RISK_ADJUSTED_NOT_READY', reason: 'PARTIAL_RISK_ECONOMICS', candidateIds, highestExpectedPnlCandidateId, nonDominatedCandidateIds: [], missingComparisonDimensions: missing };
+  const { readiness, missingRequiredDimensions, availableOptionalDimensions } = evaluateProfileReadiness(candidates, profile);
+  if (readiness === 'PROFILE_NOT_READY') {
+    return {
+      state: 'PROFILE_NOT_READY', reason: 'PROFILE_REQUIRED_DIMENSIONS_INCOMPLETE', candidateIds,
+      profileVersion: profile.profileVersion, profileReadiness: readiness,
+      highestExpectedPnlCandidateId, nonDominatedCandidateIds: [], missingRequiredDimensions, availableOptionalDimensions,
+    };
   }
 
   return {
-    state: 'FULL_RESEARCH_COMPARABLE', reason: 'FULL_EMPIRICAL_ECONOMICS_AVAILABLE', candidateIds,
-    highestExpectedPnlCandidateId, nonDominatedCandidateIds: computeNonDominated(candidates), missingComparisonDimensions: [],
+    state: 'FULL_RESEARCH_COMPARABLE', reason: 'PROFILE_REQUIRED_DIMENSIONS_SATISFIED', candidateIds,
+    profileVersion: profile.profileVersion, profileReadiness: readiness,
+    highestExpectedPnlCandidateId, nonDominatedCandidateIds: computeNonDominated(candidates, profile.paretoDimensions),
+    missingRequiredDimensions: [], availableOptionalDimensions,
   };
 }
