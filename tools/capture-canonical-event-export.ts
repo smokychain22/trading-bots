@@ -27,10 +27,13 @@ if (artifact.canonicalSourceSha !== mainSha || artifact.releaseEvidence.canonica
   throw new Error('CANONICAL_EVENT_EXPORT_MAIN_SHA_MISMATCH');
 const outputDir = resolve(root, 'research_exports', 'canonical-events');
 await mkdir(outputDir, { recursive: true });
-const outputPath = resolve(outputDir, `${artifact.contentHash}.json`);
-await writeFile(outputPath, `${JSON.stringify(artifact, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' }).catch((error: unknown) => {
-  if (error !== null && typeof error === 'object' && 'code' in error && error.code === 'EEXIST') return;
-  throw error;
+const outputPath = resolve(outputDir, `${artifact.contentHash}-${artifact.canonicalSourceSha}.json`);
+await writeFile(outputPath, `${JSON.stringify(artifact, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' }).catch(async (error: unknown) => {
+  if (error === null || typeof error !== 'object' || !('code' in error) || error.code !== 'EEXIST') throw error;
+  const existing = JSON.parse(await readFile(outputPath, 'utf8')) as CanonicalEventExport;
+  if (existing.contentHash !== artifact.contentHash || existing.canonicalSourceSha !== artifact.canonicalSourceSha
+    || existing.releaseEvidence.deploymentUrl !== artifact.releaseEvidence.deploymentUrl
+    || canonicalExportHash(existing.rows) !== artifact.contentHash) throw new Error('CANONICAL_EVENT_EXPORT_EXISTING_FILE_MISMATCH');
 });
 process.stdout.write(`${JSON.stringify({ state: 'CAPTURED', path: outputPath, rowCount: artifact.rowCount,
   scope: artifact.scope, symbolCount: artifact.symbolCount, contentHash: artifact.contentHash,
