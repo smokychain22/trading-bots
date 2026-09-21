@@ -123,6 +123,28 @@ const EXPORT_SCOPES: readonly ExportScope[] = ['SYMBOL_SCOPED', 'MARKET_WIDE', '
  * this function rather than silently relying on JSON.stringify's
  * platform-default number formatting.
  */
+/**
+ * Names the exact serialization semantics `canonicalize`/
+ * `computeExportContentHash` implement, versioned independently of
+ * `realDataExportContractVersion` -- the envelope SHAPE (which fields
+ * exist) and the HASH ALGORITHM (how rows are serialized before
+ * hashing) are two different things that can each change on their own
+ * schedule. A producer (Codex's `canonical-event-export.ts` included)
+ * implementing an equivalent algorithm should reference this constant
+ * in its own comments so a future change to either side is a deliberate,
+ * documented decision rather than a silent drift. Empirically verified
+ * this session: Codex's independently-written `canonical()` +
+ * `canonicalExportHash()` produce byte-identical sha256 digests to this
+ * implementation across representative row shapes (flat objects,
+ * reversed key order, nested objects, arrays, realistic event rows).
+ * THETA CANONICAL JSON v1 (this algorithm) is JCS/RFC-8785-STYLE --
+ * recursive lexicographic object-key sorting, preserved array order --
+ * but is explicitly NOT full RFC 8785 compliance: it does not implement
+ * RFC 8785's exact numeric-string serialization rules. Never describe
+ * this as "RFC 8785 compliant."
+ */
+export const canonicalSerializationVersion = 'theta-canonical-json-v1' as const;
+
 export function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (value !== null && typeof value === 'object') {

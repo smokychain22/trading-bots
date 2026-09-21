@@ -46,7 +46,16 @@ export interface FiveFieldEventTiming {
 
 export interface EventPitRecord extends FiveFieldEventTiming {
   readonly identityKey: string;
-  readonly underlying: string;
+  /**
+   * `null` for a genuine MARKET_WIDE event (e.g. a Fed rate decision or a
+   * GDP release) that names no single symbol -- never a placeholder or a
+   * fabricated sentinel ticker. Repair found while reconciling this
+   * module against Codex's real `canonical-event-export.ts` producer:
+   * that producer's real rows legitimately carry `ticker: null` for
+   * market-wide events, which the original non-nullable `string` type
+   * here could not represent at all.
+   */
+  readonly underlying: string | null;
   readonly eventType: string;
   /**
    * Required, explicit caller attestation that `providerKnownAt` was
