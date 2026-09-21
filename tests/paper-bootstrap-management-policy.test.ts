@@ -44,6 +44,48 @@ test('CSP_OPEN near expiration with near-exhausted remaining value closes determ
   assert.equal(frontier.decisionState, 'ACTION_SELECTED');
 });
 
+// PRODUCTION_FIX_CANDIDATE coverage: the nearExhausted trigger's 0.10/5-DTE
+// thresholds were previously bare literals; this proves a caller can now
+// change the behavior via nearExhaustedExecutableFractionThreshold/
+// nearExhaustedDteThreshold WITHOUT changing source, per the directive's
+// explicit requirement, while the unchanged 0.10/5 defaults still produce
+// the exact prior behavior for any caller that does not opt in.
+test('nearExhausted DTE threshold is genuinely caller-overridable, not a hardcoded literal', () => {
+  // Six days out -- outside the DEFAULT 5-day window, so the execution-timing
+  // trigger does NOT fire by default even though the remaining value is tiny.
+  const sixDaysOut = state('CSP_OPEN', { bid: 0.01, ask: 0.02 }, '2026-10-10T14:00:00.000Z');
+  const defaultEvidence = evaluatePaperBootstrapManagementPolicy(sixDaysOut);
+  assert.equal(defaultEvidence?.selectedAction, 'HOLD');
+
+  // The SAME state, only widening the DTE threshold via the new caller-supplied
+  // field -- no source change -- now brings day-6 within the widened window.
+  const widened = { ...sixDaysOut, nearExhaustedDteThreshold: 10 };
+  const widenedEvidence = evaluatePaperBootstrapManagementPolicy(widened);
+  assert.equal(widenedEvidence?.selectedAction, 'CLOSE_FULL');
+});
+
+test('nearExhausted executable-fraction threshold is genuinely caller-overridable, not a hardcoded literal', () => {
+  // bid/ask of 1/1.1 against a 2.00 entry credit is nowhere near the DEFAULT
+  // 10% remaining-value threshold, so the trigger does not fire by default
+  // even at 3 DTE (well inside the default DTE window).
+  const withinDte = state('CSP_OPEN', {}, '2026-10-13T14:00:00.000Z');
+  const defaultEvidence = evaluatePaperBootstrapManagementPolicy(withinDte);
+  assert.notEqual(defaultEvidence?.selectedAction, 'CLOSE_FULL');
+
+  // The SAME state, only loosening the fraction threshold via the new
+  // caller-supplied field, now brings this position's remaining fraction
+  // within the widened window.
+  const widened = { ...withinDte, nearExhaustedExecutableFractionThreshold: 0.99 };
+  const widenedEvidence = evaluatePaperBootstrapManagementPolicy(widened);
+  assert.equal(widenedEvidence?.selectedAction, 'CLOSE_FULL');
+});
+
+test('nearExhausted thresholds default to the unchanged 0.10/5-DTE bootstrap baseline when omitted -- identical behavior to before this patch', () => {
+  const input = state('CSP_OPEN', { bid: 0.01, ask: 0.02 }, '2026-10-13T14:00:00.000Z');
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  assert.equal(evidence?.selectedAction, 'CLOSE_FULL'); // identical to the pre-patch test above
+});
+
 test('CSP_OPEN with a complete, positive-net-credit roll candidate rolls without any empirical EV model', () => {
   const input = state('CSP_OPEN', {}, '2026-09-12T14:00:00.000Z');
   const withCandidate = { ...input, rollCandidate: rollCandidate() };

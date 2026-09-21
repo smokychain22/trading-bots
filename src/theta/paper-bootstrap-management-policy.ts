@@ -194,6 +194,25 @@ export interface PaperBootstrapPolicyInput extends ManagementInputState {
    * exactly the "neither decides alone" requirement.
    */
   readonly rollCcAdditionalUpsideDollarWeight?: number;
+  /**
+   * PRODUCTION_FIX_CANDIDATE (research-branch proposal, not yet reviewed
+   * by Codex): the remaining-executable-value fraction below which
+   * CLOSE_FULL/CLOSE_CC's `nearExhausted` execution-timing trigger fires.
+   * Defaults to `0.10` (10%) when omitted -- an unchanged BOOTSTRAP
+   * BASELINE, never claimed empirically optimal, now made explicit
+   * caller-supplied provenance matching every other threshold in this
+   * file (`rollIncrementalCapitalDayWeight`, `thesisFailureUtilityBias`,
+   * etc.) instead of being a bare literal inside the function body. See
+   * `nearExhaustedDteThreshold` below for the paired DTE condition.
+   */
+  readonly nearExhaustedExecutableFractionThreshold?: number;
+  /**
+   * PRODUCTION_FIX_CANDIDATE: the days-to-expiration ceiling paired with
+   * `nearExhaustedExecutableFractionThreshold` above. Defaults to `5`
+   * when omitted -- same unchanged bootstrap baseline, now caller-
+   * overridable rather than hardcoded.
+   */
+  readonly nearExhaustedDteThreshold?: number;
 }
 
 function finite(value: number | null): value is number {
@@ -769,7 +788,15 @@ function valueFor(
       // conservative executable close-cost estimate. This never uses the
       // analytical fraction -- a wide spread making execution expensive
       // is a real execution-cost fact, distinct from analytical P&L.
-      const nearExhausted = executableFraction !== null && executableFraction <= 0.10 && dte <= 5;
+      // PRODUCTION_FIX_CANDIDATE: these two thresholds were previously bare
+      // literals (0.10/5) contradicting this very comment's own claim that
+      // "the threshold itself must be supplied by the caller, never
+      // invented here." Now genuinely caller-overridable, matching every
+      // other threshold in this file; the unchanged 0.10/5 values remain
+      // the default BOOTSTRAP BASELINE, never claimed empirically optimal.
+      const nearExhaustedFraction = state.nearExhaustedExecutableFractionThreshold ?? 0.10;
+      const nearExhaustedDte = state.nearExhaustedDteThreshold ?? 5;
+      const nearExhausted = executableFraction !== null && executableFraction <= nearExhaustedFraction && dte <= nearExhaustedDte;
       // Informational only -- surfaces the ANALYTICAL loss-magnitude
       // signal (neutral mark vs. entry credit), never the execution-cost
       // fraction, so a widening ask alone can never manufacture a false
