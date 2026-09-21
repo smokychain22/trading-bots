@@ -27,6 +27,13 @@ foreach ($line in $lines) {
 }
 if (-not $seen.Contains('database.backup') -or -not $seen.Contains('schema.sql') -or -not $seen.Contains('backup-manifest.json')) { throw 'BACKUP_CORE_CHECKSUM_MISSING' }
 if ((Get-Item -LiteralPath $archivePath).Length -lt 1024 -or (Get-Item -LiteralPath $schemaPath).Length -lt 100) { throw 'BACKUP_CORE_FILE_TOO_SMALL' }
+$bundlePath = Join-Path $backup 'source-code.bundle'
+if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf) -or -not $seen.Contains('source-code.bundle')) { throw 'BACKUP_SOURCE_BUNDLE_MISSING' }
+$repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
+$heads = & git -C $repoRoot bundle list-heads $bundlePath 2>&1
+if ($LASTEXITCODE -ne 0 -or -not (($heads | Out-String).Contains([string]$manifest.sourceGitSha))) { throw 'BACKUP_SOURCE_BUNDLE_SHA_MISMATCH' }
+& git -C $repoRoot bundle verify $bundlePath 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'BACKUP_SOURCE_BUNDLE_INVALID' }
 $archiveWsl = ConvertTo-ThetaWslPath $archivePath
 $toc = & wsl.exe -d Ubuntu --exec /usr/lib/postgresql/18/bin/pg_restore --list $archiveWsl 2>&1
 if ($LASTEXITCODE -ne 0 -or @($toc).Count -lt 10) { throw 'BACKUP_CUSTOM_ARCHIVE_UNREADABLE' }

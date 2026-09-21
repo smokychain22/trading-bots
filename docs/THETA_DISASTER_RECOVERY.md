@@ -1,6 +1,8 @@
 # THETA disaster recovery
 
-Status: implemented and locally restore-tested on 2026-09-21. Production database writes, worker configuration, and trading authorization were not changed by the backup or restore tests.
+Status: implemented and locally restore-tested on 2026-09-21. Production database writes, worker configuration, and trading authorization were not changed by the backup or restore tests. The scheduled task uses a stable, separately installed PowerShell 7.6 user installation, not the Codex application cache.
+
+The first full production backup and isolated restore succeeded. The final verified archive is `C:\ProjectBackups\trading-bots\daily\2026-09-21_154335-62393488`, with custom archive SHA-256 `1a7537f26d95c5c0908bb871a78f9ab0f195c4011d9a2cf17fbd08c3beef89bc`. Its source Git SHA is `344bbf77169b25072df45b7cae7f0e42181ba43b`. A fresh PostgreSQL 18 local database restored 12 schemas, 153 base/partitioned tables, five views, 46 functions, 112 user triggers, 395 indexes, 17 sequences, two extensions, and migration `064_alpaca_corporate_action_observation`. It also restored two customer identities, two encrypted broker credentials, 25,126 legacy artifacts, and verified 1,244 copied external-asset files byte-for-byte. The different earlier trigger/sequence counts came from `information_schema` versus `pg_catalog` counting conventions. Both source and target in the restore test use the same `pg_catalog` definitions.
 
 ## Audit and authority
 
@@ -16,6 +18,8 @@ Status: implemented and locally restore-tested on 2026-09-21. Production databas
 Each verified run is published at `daily/<UTC timestamp>-<suffix>/` and contains `database.backup` (`pg_dump -Fc`), `schema.sql`, `database-inventory.json`, `extensions.json`, critical-table JSON, allowlisted external assets, `source-code.bundle`, `backup-manifest.json`, `SHA256SUMS.txt`, and `verification.json`. `latest/current.json` points to a verified daily run. Staging folders are never treated as valid backups and are removed on failure. A new failed run never rewrites a previous verified archive.
 
 After each successful run, one independently copied and checksum-verified archive is kept per ISO week and month. Retention keeps seven daily, four weekly, and three monthly directory copies. Pruning runs only after a newly verified daily backup exists. It never targets the backup root or a computed path outside the selected bucket. The schedule is 02:15 local time, with `StartWhenAvailable` and no overlapping instances. The task runs under the current logged-in Windows user so user-bound DPAPI can decrypt the source URI and WSL can access the PostgreSQL 18 tools. A sleeping, powered-off, logged-out, or disconnected laptop cannot guarantee a daily run. Monitor the task and logs.
+
+The task `THETA-Aiven-Verified-Backup` was registered on 2026-09-21 and Windows reported its next run as 2026-09-22 02:15 Asia/Karachi. That future scheduled run has not yet occurred, so the scheduled trigger itself remains to be observed. Manual execution of the same backup script succeeded twice against Aiven.
 
 ## First backup and verification
 

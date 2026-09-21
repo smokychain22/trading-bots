@@ -8,7 +8,11 @@ if ($RunAt -notmatch '^([01]\d|2[0-3]):[0-5]\d$') { throw 'TASK_TIME_INVALID' }
 $taskName = 'THETA-Aiven-Verified-Backup'
 $script = Join-Path $PSScriptRoot 'Backup-Theta.ps1'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
-$action = New-ScheduledTaskAction -Execute (Get-Command pwsh).Source -Argument "-NoProfile -File `"$script`" -BackupRoot `"$root`"" -WorkingDirectory $repoRoot
+$stablePwsh = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\pwsh.exe'
+if (-not (Test-Path -LiteralPath $stablePwsh)) { throw 'STABLE_POWERSHELL_7_INSTALLATION_REQUIRED' }
+$version = (& $stablePwsh -NoProfile -Command '$PSVersionTable.PSVersion.Major' | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or $version -notmatch '^\d+$' -or [int]$version -lt 7) { throw 'STABLE_POWERSHELL_7_INSTALLATION_REQUIRED' }
+$action = New-ScheduledTaskAction -Execute $stablePwsh -Argument "-NoProfile -File `"$script`" -BackupRoot `"$root`"" -WorkingDirectory $repoRoot
 $trigger = New-ScheduledTaskTrigger -Daily -At ([datetime]::ParseExact($RunAt,'HH:mm',[Globalization.CultureInfo]::InvariantCulture))
 $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 4) -MultipleInstances IgnoreNew
