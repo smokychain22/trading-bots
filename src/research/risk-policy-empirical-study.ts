@@ -184,6 +184,38 @@ export function buildSevereDrawdownStudy(
   return severeDrawdownPolicyGrid.map((cell) => summarizeCell(cell, observations));
 }
 
+export type SevereDrawdownFinding =
+  | 'NO_POLICY_EMPIRICALLY_SUPPORTED'
+  | 'EMPIRICAL_STUDY_INSUFFICIENT';
+
+/**
+ * Data adequacy controls whether the study may make a policy-review finding.
+ * An adequate sample can still reject every candidate policy. An inadequate
+ * sample cannot claim that a policy was supported or rejected empirically.
+ */
+export function classifySevereDrawdownFinding(empiricalAdequacy: boolean): SevereDrawdownFinding {
+  return empiricalAdequacy ? 'NO_POLICY_EMPIRICALLY_SUPPORTED' : 'EMPIRICAL_STUDY_INSUFFICIENT';
+}
+
+export function publishSevereDrawdownSensitivityGrid(
+  cells: ReturnType<typeof buildSevereDrawdownStudy>,
+) {
+  return cells.map((cell) => ({
+    id: cell.id,
+    primary: cell.primary,
+    horizonCalendarDays: cell.horizonCalendarDays,
+    thresholdFraction: cell.thresholdFraction,
+    resolvedN: cell.resolvedN,
+    effectiveN: cell.effectiveN,
+    effectivePositiveGroups: cell.effectivePositiveGroups,
+    breaches: cell.breachedN,
+    breachRate: cell.breachRate,
+    censorRate: cell.rawN === 0 ? null : cell.censoredN / cell.rawN,
+    familyBreakdown: cell.byFamily,
+    timeBreakdown: cell.byYear,
+  }));
+}
+
 function finiteNumber(value: unknown): number | null {
   const number = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
   return Number.isFinite(number) ? number : null;
@@ -286,8 +318,8 @@ export async function runRiskPolicyEmpiricalStudy(input: RiskPolicyEmpiricalStud
   const temporalYears = new Set(historical.bars.map((bar) => bar.timestamp.slice(0, 4))).size;
   const empiricalAdequacy = historical.complete && resolvedSymbols.size === universe.length && temporalYears >= 8
     && primary.every((cell) => cell.effectiveN >= 500 && cell.censoredN > 0);
-  const severeDrawdownFinding = empiricalAdequacy
-    ? 'NO_POLICY_EMPIRICALLY_SUPPORTED' as const : 'NO_POLICY_EMPIRICALLY_SUPPORTED' as const;
+  const severeDrawdownFinding = classifySevereDrawdownFinding(empiricalAdequacy);
+  const sensitivityGrid = publishSevereDrawdownSensitivityGrid(cells);
   const unsigned = {
     version: riskPolicyStudyVersion, generatedAt: input.generatedAt,
     sourceWindow: { start: input.start, end: input.end },
@@ -299,7 +331,7 @@ export async function runRiskPolicyEmpiricalStudy(input: RiskPolicyEmpiricalStud
       symbols: resolvedSymbols.size, missingSymbols: symbols.filter((symbol) => !resolvedSymbols.has(symbol)), temporalYears,
       observedWindow: orderedBarTimes.length === 0 ? null : { start: orderedBarTimes[0], end: orderedBarTimes.at(-1) } },
     severeDrawdown: { finding: severeDrawdownFinding, empiricalAdequacy,
-      activationState: 'PENDING_RESEARCH_REVIEW', cells },
+      activationState: 'PENDING_RESEARCH_REVIEW', cells, sensitivityGrid },
     correlation: { finding: 'NO_CORRELATION_THRESHOLD_PROMOTED', activationState: 'PENDING_RESEARCH_REVIEW', lookbacks: correlation,
       clusterThresholdDistinctFromExposureCap: true },
     sector: { finding: 'SECTOR_SOURCE_NOT_PRESENT_IN_CANONICAL_PROVIDER_EVIDENCE', activationState: 'NOT_READY',

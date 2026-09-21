@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildSevereDrawdownStudy, riskPolicyStudyHash } from '../src/research/risk-policy-empirical-study.js';
+import { buildSevereDrawdownStudy, classifySevereDrawdownFinding,
+  publishSevereDrawdownSensitivityGrid, riskPolicyStudyHash } from '../src/research/risk-policy-empirical-study.js';
 import type { HistoricalBar } from '../src/theta/underlying-history.js';
 
 function bar(symbol: string, day: number, close: number): HistoricalBar {
@@ -50,4 +51,27 @@ test('study identity excludes export time but changes when evidence changes', ()
   const changed = riskPolicyStudyHash({ generatedAt: '2026-09-21T00:00:00.000Z', rows: 11, source: 'ALPACA' });
   assert.equal(first, second);
   assert.notEqual(first, changed);
+});
+
+test('empirical adequacy changes the severe drawdown finding without promoting a policy', () => {
+  assert.equal(classifySevereDrawdownFinding(true), 'NO_POLICY_EMPIRICALLY_SUPPORTED');
+  assert.equal(classifySevereDrawdownFinding(false), 'EMPIRICAL_STUDY_INSUFFICIENT');
+});
+
+test('the publication contract exposes all seven sensitivity cells and every review field', () => {
+  const bars = Array.from({ length: 100 }, (_, index) => bar('TEST', index + 1, 100 - index * 0.05));
+  const cells = buildSevereDrawdownStudy(bars, [{ symbol: 'TEST', family: 'LOWER_VOL_SINGLE' }]);
+  const published = publishSevereDrawdownSensitivityGrid(cells);
+  assert.equal(published.length, 7);
+  for (const cell of published) {
+    assert.ok(cell.horizonCalendarDays > 0);
+    assert.ok(cell.thresholdFraction > 0);
+    assert.ok(cell.resolvedN >= 0);
+    assert.ok(cell.effectiveN >= 0);
+    assert.ok(cell.effectivePositiveGroups >= 0);
+    assert.ok(cell.breaches >= 0);
+    assert.ok(cell.censorRate === null || (cell.censorRate >= 0 && cell.censorRate <= 1));
+    assert.ok(Object.keys(cell.familyBreakdown).length > 0);
+    assert.ok(typeof cell.timeBreakdown === 'object');
+  }
 });
