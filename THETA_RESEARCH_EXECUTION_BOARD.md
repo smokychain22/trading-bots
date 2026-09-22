@@ -5,8 +5,9 @@ and are not re-read/re-audited unless main changes a dependency, a test
 regression occurs, or new empirical evidence contradicts them. Statuses:
 OPEN / BUILDING / TESTING / DONE / BLOCKED_EXTERNAL / SUPERSEDED.
 
-Updated 2026-09-22 after commit `db3143d` (branch
-`claude/theta-management-challenger`, pushed to origin).
+Updated 2026-09-22 after commit `7e37843` (branch
+`claude/theta-management-challenger`, pushed to origin, main verified
+unchanged at `133227c` before this checkpoint).
 
 ## Carried over from before Wave 6 (already DONE -- do not redo)
 
