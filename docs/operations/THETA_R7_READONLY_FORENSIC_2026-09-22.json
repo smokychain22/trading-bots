@@ -46,7 +46,23 @@
     "policy": "BLOCK_NEW_PAPER_RISK_UNTIL_NARROW_EVIDENCE_BACKED_CLASSIFICATION"
   },
   "providerQualification": {
-    "alpacaLocalEnv": "REDACTED_PLACEHOLDERS_NOT_AUTHENTICATED_LOCALLY",
+    "alpacaLocalEnv": "NON_PLACEHOLDER_VALUES_LOADED_PAPER_HOST_AND_ALL_EXECUTION_LOCKS_VERIFIED_AUTH_REJECTED",
+    "alpacaReadOnlyProbe": {
+      "observedAt": "2026-09-22T14:20:19Z",
+      "operations": ["account", "positions", "open_orders", "market_clock", "market_calendar", "tradable_assets"],
+      "result": "HTTP_401_INVALID_AUTH_ALL_OPERATIONS",
+      "loaderFilePrecedenceVerified": true,
+      "credentialValuesRecorded": false,
+      "paperOrderMutations": 0
+    },
+    "alpacaUniverseFunnel": {
+      "observedAt": "2026-09-22T14:21:06Z",
+      "firstStage": "SOURCE_ASSETS",
+      "firstStageState": "INVALID_AUTH",
+      "downstreamStagesReached": false,
+      "candidateCount": 0,
+      "interpretation": "AUTHENTICATION_FAILURE_NOT_A_MARKET_EMPTY_RESULT"
+    },
     "optionomicsMetrics": "AUTHENTICATED_HTTP_200",
     "optionomicsEarningsDistance": "POSITIVE_DISTANCE_ONLY_NO_NEGATIVE_ASSURANCE",
     "optionomicsCompanyCalendar": "PUBLIC_REST_COMPLETENESS_NOT_ESTABLISHED"
@@ -54,14 +70,14 @@
   "blockers": [
     { "name": "AIVEN_WRITABILITY", "state": "CLOSED", "reason": "direct read-only setting off and rollback-safe application writes passed" },
     { "name": "BROKER_HISTORICAL_FACT_POLICY", "state": "ACTIVE_BLOCKER", "reason": "11 unmatched facts are retained; settlement and pending obligations are not fully proven" },
-    { "name": "BOUNDED_UNIVERSE_EMPTY_STAGE", "state": "RUNTIME_PROOF_PENDING", "reason": "old worker lacks current stage funnel; Alpaca local credential placeholders prevent an independent authenticated probe" },
+    { "name": "BOUNDED_UNIVERSE_EMPTY_STAGE", "state": "RUNTIME_PROOF_PENDING", "reason": "independent Paper read stopped at source assets with HTTP 401; the old worker lacks current stage funnel" },
     { "name": "FINALIST_BBO_BEFORE_AEGIS", "state": "ACTIVE_BLOCKER", "reason": "fresh finalist refresh is not yet implemented upstream of AEGIS" },
     { "name": "AEGIS_IV_SHOCK", "state": "ACTIVE_BLOCKER", "reason": "no qualified mature current-plus-baseline detector wired to Production" },
     { "name": "AEGIS_SPREAD_WIDENING", "state": "ACTIVE_BLOCKER", "reason": "no qualified cohort-aware mature baseline detector wired to Production" },
     { "name": "PROSPECTIVE_EARNINGS_NEGATIVE_COVERAGE", "state": "PROVIDER_LIMITED", "reason": "metrics has positive distance; public events company_catalyst kind is reserved" },
     { "name": "CORPORATE_ACTION_NEGATIVE_COVERAGE", "state": "PROVIDER_LIMITED", "reason": "complete forward absence is not established" },
     { "name": "MANAGEMENT_CANDIDATE_SOURCE", "state": "RUNTIME_PROOF_PENDING", "reason": "source and CI pass; no real persisted management frontier row observed" },
-    { "name": "REAL_PROVIDER_NO_SUBMIT", "state": "ACTIVE_BLOCKER", "reason": "independent local Alpaca authentication not available in this checkout" },
+    { "name": "REAL_PROVIDER_NO_SUBMIT", "state": "ACTIVE_BLOCKER", "reason": "the local Alpaca Paper key pair was loaded but broker rejected all read-only operations with HTTP 401" },
     { "name": "CURRENT_LOCKED_WORKER_CUTOVER", "state": "RUNTIME_PROOF_PENDING", "reason": "worker remains intentionally on tested older release with new risk locked" },
     { "name": "EMPIRICAL_PROFITABILITY", "state": "R8_ONLY", "reason": "real independent whole-chain Paper outcomes are insufficient" }
   ],

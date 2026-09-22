@@ -60,6 +60,15 @@ test('a real (mocked) end-to-end discovery: assets -> bars -> optionability conf
   assert.equal(result.candidates[0]?.eventNear, null);
   assert.equal(result.candidatesOrigin, 'REAL_PROVIDER');
   assert.equal(result.blockers.length, 0);
+  assert.deepEqual(result.funnel.stageDiagnostics?.map((stage) => ({ stage: stage.stage,
+    inputCount: stage.inputCount, outputCount: stage.outputCount, rejectedCount: stage.rejectedCount,
+    providerState: stage.providerState })), [
+    { stage: 'SOURCE_ASSETS', inputCount: 3, outputCount: 3, rejectedCount: 0, providerState: 'READY' },
+    { stage: 'EXCHANGE_FILTER', inputCount: 3, outputCount: 3, rejectedCount: 0, providerState: 'READY' },
+    { stage: 'STOCK_BARS', inputCount: 3, outputCount: 2, rejectedCount: 1, providerState: 'READY' },
+    { stage: 'OPTIONABILITY', inputCount: 2, outputCount: 1, rejectedCount: 1, providerState: 'READY' },
+  ]);
+  assert.ok(result.funnel.stageDiagnostics?.every((stage) => stage.durationMs >= 0));
 });
 
 test('a symbol confirmed to have zero real option contracts is excluded, never guessed optionable', async () => {
@@ -74,6 +83,7 @@ test('a symbol confirmed to have zero real option contracts is excluded, never g
   const result = await discoverRealUniverse(alpaca, baseDiscoveryConfig(), () => NOW);
   assert.equal(result.candidates.length, 0);
   assert.equal(result.funnel.optionableConfirmed, 0);
+  assert.equal(result.funnel.stageDiagnostics?.at(-1)?.providerState, 'VALID_EMPTY');
 });
 
 test('an exchange prefilter genuinely excludes non-matching exchanges before any bars call', async () => {
@@ -104,6 +114,7 @@ test('an assets-fetch failure is recorded honestly and returns an empty (never f
   assert.equal(result.candidates.length, 0);
   assert.equal(result.candidatesOrigin, 'REAL_PROVIDER_ERROR');
   assert.ok(result.blockers.some((b) => b.startsWith('UNIVERSE_ASSETS_FETCH_FAILED')));
+  assert.equal(result.funnel.stageDiagnostics?.[0]?.providerState, 'PROVIDER_ERROR');
 });
 
 test('a failed bars batch loses only that batch, never the whole discovery run', async () => {
@@ -126,6 +137,37 @@ test('a failed bars batch loses only that batch, never the whole discovery run',
   assert.equal(result.candidates.length, 1);
   assert.equal(result.candidates[0]?.symbol, 'B');
   assert.ok(result.blockers.some((b) => b.startsWith('UNIVERSE_BARS_BATCH_FAILED')));
+  const barsStage = result.funnel.stageDiagnostics?.find((stage) => stage.stage === 'STOCK_BARS');
+  assert.equal(barsStage?.providerState, 'PARTIAL');
+  assert.equal(barsStage?.reasonCounts.BARS_BATCH_FAILED, 1);
+});
+
+test('an assets authentication failure remains distinct from an empty universe or transient provider error', async () => {
+  const fetchImpl = (async () => new Response('', { status: 401 })) as typeof fetch;
+  const alpaca: AlpacaProviderConfig = { tradingApiBase: 'https://paper-api.alpaca.markets',
+    marketDataApiBase: 'https://data.alpaca.markets', apiKey: 'SYNTHETIC', apiSecret: 'SYNTHETIC', fetchImpl };
+  const result = await discoverRealUniverse(alpaca, baseDiscoveryConfig(), () => NOW);
+  assert.equal(result.candidatesOrigin, 'REAL_PROVIDER_ERROR');
+  assert.equal(result.funnel.stageDiagnostics?.[0]?.providerState, 'INVALID_AUTH');
+  assert.deepEqual(result.funnel.stageDiagnostics?.[0]?.reasonCounts, { ASSET_INVALID_AUTH: 1 });
+});
+
+test('all bars batches failing is provider error, not a valid empty universe', async () => {
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/assets')) return jsonResponse(200, [
+      { symbol: 'SPY', exchange: 'ARCA', class: 'us_equity', tradable: true, status: 'active' },
+    ]);
+    return new Response('', { status: 503 });
+  }) as typeof fetch;
+  const alpaca: AlpacaProviderConfig = { tradingApiBase: 'https://paper-api.alpaca.markets',
+    marketDataApiBase: 'https://data.alpaca.markets', apiKey: 'K', apiSecret: 'S', fetchImpl };
+  const result = await discoverRealUniverse(alpaca, baseDiscoveryConfig(), () => NOW);
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.candidatesOrigin, 'REAL_PROVIDER_ERROR');
+  assert.equal(result.funnel.stageDiagnostics?.find((stage) => stage.stage === 'STOCK_BARS')?.providerState, 'PROVIDER_ERROR');
+  assert.equal(result.funnel.stageDiagnostics?.at(-1)?.providerState, 'PARTIAL');
+  assert.ok(result.blockers.some((blocker) => blocker.startsWith('UNIVERSE_BARS_BATCH_FAILED')));
 });
 
 test('the universe-asset bound is honestly reported when truncated', async () => {
