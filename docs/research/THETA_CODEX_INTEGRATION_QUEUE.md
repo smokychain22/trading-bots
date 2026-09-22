@@ -121,6 +121,23 @@ row against the new SHA before treating any of them as still open.
 - **Runtime proof requirement**: a real session where a calibration/latency/refresh change measurably changes the `CONTRACT_NOT_EXECUTABLE` rejection rate without degrading fill safety.
 - **State**: OPEN, HIGH priority.
 
+## Q-9: Wire real management-candidate discovery into the policy-evidence provider (the last mile of the P0-1 gap)
+
+- **Priority**: HIGH -- closes both `ROLL_CC_CANDIDATE_SOURCE` and (transitively) `ROLL_CC_CANDIDATE_VALUATION` in the capability registry
+- **Claude source commit**: this wave's Batch 2 (`THETA_QUANTIFIED_UNKNOWN_AUDIT.md`)
+- **Source artifact**: `docs/research/THETA_QUANTIFIED_UNKNOWN_AUDIT.md`
+- **Production subsystem**: `src/theta/autonomous-runtime.ts`
+- **Exact source insertion point**: `autonomous-runtime.ts:353-354` -- `const managementPolicyEvidenceProvider = dependencies.managementPolicyEvidenceProvider ?? createPaperBootstrapManagementPolicyProvider();` still calls the factory with zero arguments.
+- **Current defect**: main's recent work (`98b7204`/`bc85ba8`/`bbdfd54`/`1ca3e27`) built and wired `ProductionPaperManagementCandidateSource` (`autonomous-runtime.ts:429`) into the candidate-discovery/persistence path (`managementStore.assembleAndPersistOpenChains()`), but did NOT wire that same discovery into `managementPolicyEvidenceProvider`, which is the SEPARATE thing that feeds `buildRuntimeManagementFrontiers()` -- the function that actually produces the ROLL/SELL_CC action frontier. Real candidate data now exists and is persisted; the specific remaining gap is narrower than before.
+- **Accepted architectural constraint**: `createPaperBootstrapManagementPolicyProvider(candidates: PaperBootstrapCandidateSource = noCandidates)` already accepts a real candidate source as its one argument (`paper-bootstrap-management-policy.ts:1162-1165`) -- no interface change needed, only a real argument at the call site.
+- **Expected change**: pass a real `PaperBootstrapCandidateSource` (built from `ProductionPaperManagementCandidateSource`'s discovery result, or the same discovery re-run/reused) into `createPaperBootstrapManagementPolicyProvider(...)` instead of calling it with zero arguments.
+- **Producer**: `ProductionPaperManagementCandidateSource` (already real).
+- **Consumer**: `buildRuntimeManagementFrontiers()` via `managementPolicyEvidenceProvider`.
+- **Persistence requirement**: none new -- discovery is already persisted.
+- **Test requirement**: a test proving `managementPolicyEvidenceProvider` receives non-empty real candidates when the discovery source has real candidates, and that `evaluateRollCandidates`/`valueForRollFromCandidates` etc. (already real, tested machinery per the registry) become reachable.
+- **Runtime proof requirement**: a real cycle where a real open chain produces a non-empty ROLL/SELL_CC action frontier (still `brokerAuthority`-gated, no live-money authority implied).
+- **State**: OPEN, HIGH priority, NEW this pass.
+
 ---
 
 ## Closed this engagement (for Codex's awareness, not action)
