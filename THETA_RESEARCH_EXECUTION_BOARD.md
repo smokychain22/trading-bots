@@ -5,9 +5,8 @@ and are not re-read/re-audited unless main changes a dependency, a test
 regression occurs, or new empirical evidence contradicts them. Statuses:
 OPEN / BUILDING / TESTING / DONE / BLOCKED_EXTERNAL / SUPERSEDED.
 
-Updated 2026-09-22 after commit `ff16fe2` (branch
-`claude/theta-management-challenger`, pushed to origin; main verified
-unchanged at `7f42355` before this checkpoint).
+Updated 2026-09-22 after commit `fec4644` + Wave 7 Batches 1-2 (branch
+`claude/theta-management-challenger`; main merged to `b9cd49a`).
 
 ## Carried over from before Wave 6 (already DONE -- do not redo)
 
@@ -34,8 +33,8 @@ unchanged at `7f42355` before this checkpoint).
 | 4 | Quantified unknown audit coverage | OPEN | not started this pass |
 | 5 | Loss-cause integration contract | DONE | `loss-cause-integration-contract.ts` + `THETA_LOSS_CAUSE_CODEX_WIRING.md`: Codex wiring instructions added -- READY for 5 causes with real evidence sources, BLOCKED_EXTERNAL (MISSING_PRODUCER) for IV_EXPANSION/OWNERSHIP_DETERIORATION until their own upstream producers exist |
 | 6 | `assignmentCapacity` field resolution | DONE + CODEX_CLOSED | main `b9cd49a` built a real broker-backed producer (independent of the exact patch proposed, stronger -- adds explicit evidence state). No further action. |
-| 7 | Correlation tooling completion | OPEN | not started this pass |
-| 8 | Severe-downside tooling review/close | OPEN | not started this pass |
+| 7 | Correlation tooling completion | DONE | pre-existing from earlier waves; confirmed DONE per Wave 7 directive's own closed-work list, not re-touched |
+| 8 | Severe-downside tooling review/close | DONE | pre-existing from earlier waves; confirmed DONE per Wave 7 directive's own closed-work list, not re-touched |
 | 9 | Optionomics unresolved questions | OPEN | not started this pass |
 | 10 | Six export consumers + shared validation lib | OPEN | not started this pass |
 | 11 | Management outcome dataset (real code) | OPEN | not started this pass |
@@ -45,6 +44,25 @@ unchanged at `7f42355` before this checkpoint).
 | 15 | Brain matrix expansion beyond 19 rows | OPEN | not started this pass |
 | 16 | Final brain readiness report | OPEN | not started this pass |
 | 17 | Codex harvest check (main-change-gated) | DONE this pass | checked at start (merge to `2a50ad6`); recheck before final receipt of the full wave |
+
+## Wave 7 items (2026-09-22)
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| W7-1 | `THETA_CODEX_INTEGRATION_QUEUE.md` | DONE | 7 open rows (Q-1..Q-7), consolidates prior handoffs; closed items removed not marked; Q-7 (Python contracts) resolved to NO_WIRE_NEEDED via W7-2 |
+| W7-2 | Python runtime contract disposition | DONE | `THETA_PYTHON_RUNTIME_CONTRACT_DISPOSITION_RESEARCH.md`: assignment_contract.py=SUPERSEDED_BY_TS_AUTHORITY, covered_call/management/recovery_contract.py=QUARANTINED (traced to same already-rejected Pipeline B TS cluster), har_rv_contract.py=RESEARCH_ONLY (self-declared, confirmed). No Codex wire recommended for any of the 5. |
+| W7-3 | Quantified unknown audit | OPEN | not started this pass |
+| W7-4 | Managed-episode outcome distribution contract | OPEN | not started this pass |
+| W7-5 | Entry/why-now research framework | OPEN | not started this pass |
+| W7-6 | Profit-taking experiment system | OPEN | not started this pass |
+| W7-7 | Optionomics RV5/10/30/60 + expected move + GEX PIT | OPEN | not started this pass |
+| W7-8 | Expert/trader prior registry | OPEN | not started this pass |
+| W7-9 | Six remaining export consumers | OPEN | not started this pass |
+| W7-10 | Management outcome dataset (real code) | OPEN | not started this pass |
+| W7-11 | WAIT/opportunity regret dataset | OPEN | not started this pass |
+| W7-12 | R8 governance reconciliation | OPEN | not started this pass |
+| W7-13 | Brain matrix expansion to 27-domain universe | OPEN | not started this pass |
+| W7-14 | Final brain readiness report | OPEN | not started this pass |
 
 ## Rule for future passes
 
