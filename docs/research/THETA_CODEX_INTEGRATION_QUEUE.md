@@ -10,6 +10,12 @@ record stays in its own source doc (e.g.
 `THETA_ASSIGNMENT_CAPACITY_RESOLUTION.md`'s "CLOSED" banner); this file
 only ever lists what is still open.
 
+**Verified-against-main stamp**: every row below was checked against real
+main `52e6ea5` (merged into this branch as of this update) -- so a stale
+handoff cannot be accidentally re-implemented against an already-closed
+gap. If a future pass finds main has moved past this SHA, re-verify each
+row against the new SHA before treating any of them as still open.
+
 ---
 
 ## Q-1: Loss-cause evidence -- consumer wiring
@@ -102,6 +108,15 @@ only ever lists what is still open.
 
 ## Closed this engagement (for Codex's awareness, not action)
 
-- Assignment-capacity producer -- **Codex already closed this independently** (main `b9cd49a`), stronger than proposed. See `THETA_ASSIGNMENT_CAPACITY_RESOLUTION.md`.
+- Assignment-capacity producer -- **Codex closed this independently and then marked it formally closed** across 3 more real commits this pass (`e64d554` "Verify already-secured put capacity for assignment management", `6a359a0` "Mark assignment capacity engineering defect closed", `52e6ea5` "Record verified R7 assignment and Aiven recovery checkpoint" -- see the new `docs/operations/THETA_R7_ASSIGNMENT_AND_DR_RECEIPT_2026-09-22.md`). Confirmed via merge + full suite (1812 pass). No open row for this in the queue above, and none should be re-added unless a NEW regression is found.
 - AEGIS baseline-maturity contract -- Codex reviewed and hardened it (`BASELINE_INVALID` state added), harvested into main.
 - H/D generator contract-identity and quote-sync defects Codex found in review -- fixed by Claude, verified, no further action.
+
+## Verification note (this update)
+
+Re-checked Q-1, Q-4, Q-5, Q-6 against the 3 new main commits above (all
+touch `management-action-frontier.ts` / `management-input-state.ts` /
+`secured-contract-capacity.ts`, all assignment-capacity-scoped): none of
+the 3 commits reference loss-cause evidence, entry-IV persistence,
+`expertPriorState`, or the AEGIS stress producers. **All 4 rows remain
+genuinely open** -- not stale, not accidentally closed by this merge.
