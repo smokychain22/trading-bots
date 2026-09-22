@@ -1,5 +1,21 @@
 # THETA canonical frontier / H-D shadow generator reconciliation
 
+> **UPDATE (2026-09-22, main `c009b7a`)**: Codex closed the chain-fetch
+> question this doc left open below. `docs/operations/THETA_IMPLEMENTATION_BOARD.md`
+> now states: "Source now requests a separate Alpaca 2-19 DTE research
+> window, retains router-inapplicable counterfactuals, and passes
+> mocked-provider tests." This resolves `RUNTIME_REACHABLE` for
+> THETA_HOLD_STRIKE's 2-5 DTE lattice (fully inside 2-19) at the
+> **source/fixture-test evidence level** -- Codex's own board explicitly
+> distinguishes that from authenticated-provider/production observation,
+> which remains open ("Observe authenticated open-session rows and
+> confirm persisted H/D contracts and quotes"). THETA_DEFINED_RISK's 7-60
+> DTE lattice is only PARTIALLY covered by the 2-19 window (7-19 of 7-60) --
+> still open beyond that sub-range. Do not re-investigate the chain-fetch
+> mechanism itself; the remaining gap is authenticated/production
+> observation, which is Codex's runtime-proof work, not a research
+> question.
+
 Wave 6 correction. Source: `docs/operations/THETA_RESOLVED_AND_ACTIVE_WORK.md`
 (`ACTIVE_IMPLEMENTATION` item 5, merged from main `2a50ad6`), independently
 verified by reading `src/theta/canonical-strategy-frontier.ts` (lines
