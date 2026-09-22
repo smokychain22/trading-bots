@@ -28,6 +28,11 @@ export interface AlpacaOptionContractListing {
   readonly expirationDate: string; // YYYY-MM-DD
   readonly optionType: OptionType;
   readonly multiplier: number | null;
+  readonly tradable?: boolean | null;
+  readonly rootSymbol?: string | null;
+  readonly underlyingSymbol?: string | null;
+  readonly exerciseStyle?: string | null;
+  readonly deliverables?: readonly { readonly type: string; readonly symbol: string; readonly amount: number; readonly allocationPercentage: number | null }[] | null;
 }
 
 export interface AlpacaOptionSnapshot {

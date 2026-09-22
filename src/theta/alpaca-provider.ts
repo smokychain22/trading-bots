@@ -293,6 +293,7 @@ export interface FetchOptionContractsParams {
   readonly expirationDateGte: string;
   readonly expirationDateLte: string;
   readonly optionType: 'put' | 'call';
+  readonly showDeliverables?: boolean;
   readonly limit: number; // per-page limit
   readonly maxPages: number; // safety bound -- never an unbounded pagination loop
 }
@@ -323,6 +324,7 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
       expiration_date_gte: params.expirationDateGte, expiration_date_lte: params.expirationDateLte,
       limit: String(params.limit),
     };
+    if (params.showDeliverables === true) query.show_deliverables = 'true';
     if (pageToken !== null) query.page_token = pageToken;
     url.search = new URLSearchParams(query).toString();
     const body = await requestJson(fetchImpl, url, authHeaders(config));
@@ -345,12 +347,36 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
       if (!symbol || strikePrice === null || strikePrice <= 0 || !expirationDate || !/^\d{4}-\d{2}-\d{2}$/.test(expirationDate)) {
         throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned an invalid contract identity.');
       }
+      const deliverables = contract.deliverables;
+      if (params.showDeliverables === true && deliverables !== null && deliverables !== undefined
+        && !Array.isArray(deliverables)) {
+        throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned malformed deliverables.');
+      }
+      const parsedDeliverables = Array.isArray(deliverables) ? deliverables.map((value: unknown) => {
+        if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+          throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned malformed deliverables.');
+        }
+        const row = value as Record<string, unknown>;
+        const type = asStringOrNull(row.type);
+        const deliverableSymbol = asStringOrNull(row.symbol);
+        const amount = asNumberOrNull(row.amount);
+        if (type === null || deliverableSymbol === null || amount === null || amount <= 0) {
+          throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned malformed deliverables.');
+        }
+        return { type, symbol: deliverableSymbol, amount,
+          allocationPercentage: asNumberOrNull(row.allocation_percentage) };
+      }) : null;
       items.push({
         symbol,
         strikePrice,
         expirationDate,
         optionType: params.optionType === 'put' ? 'PUT' : 'CALL',
         multiplier: asNumberOrNull(contract.size),
+        tradable: typeof contract.tradable === 'boolean' ? contract.tradable : null,
+        rootSymbol: asStringOrNull(contract.root_symbol),
+        underlyingSymbol: asStringOrNull(contract.underlying_symbol),
+        exerciseStyle: asStringOrNull(contract.style),
+        deliverables: parsedDeliverables,
       });
     }
     pageToken = page.next_page_token as string | null | undefined ?? null;
@@ -368,6 +394,10 @@ export interface FetchOptionSnapshotsParams {
   readonly underlyingSymbol: string;
   readonly feed: 'opra' | 'indicative';
   readonly optionType: 'put' | 'call';
+  readonly expirationDateGte?: string;
+  readonly expirationDateLte?: string;
+  readonly strikePriceGte?: number;
+  readonly strikePriceLte?: number;
   readonly limit: number; // per-page limit -- Alpaca documents default 100, max 1000
   readonly maxPages: number; // safety bound -- never an unbounded pagination loop
 }
@@ -379,6 +409,16 @@ export interface PaginatedSnapshotsResult {
 }
 
 export async function fetchOptionSnapshots(config: AlpacaProviderConfig, params: FetchOptionSnapshotsParams): Promise<PaginatedSnapshotsResult> {
+  const validDate=(value:string|undefined):boolean=>value===undefined||(/^\d{4}-\d{2}-\d{2}$/.test(value)
+    &&Number.isFinite(Date.parse(`${value}T00:00:00.000Z`))
+    &&new Date(Date.parse(`${value}T00:00:00.000Z`)).toISOString().slice(0,10)===value);
+  if(!validDate(params.expirationDateGte)||!validDate(params.expirationDateLte)
+    ||(params.expirationDateGte!==undefined&&params.expirationDateLte!==undefined
+      &&params.expirationDateGte>params.expirationDateLte)
+    ||(params.strikePriceGte!==undefined&&(!Number.isFinite(params.strikePriceGte)||params.strikePriceGte<=0))
+    ||(params.strikePriceLte!==undefined&&(!Number.isFinite(params.strikePriceLte)||params.strikePriceLte<=0))
+    ||(params.strikePriceGte!==undefined&&params.strikePriceLte!==undefined
+      &&params.strikePriceGte>params.strikePriceLte))throw new Error('OPTION_SNAPSHOT_FILTER_INVALID');
   const fetchImpl = config.fetchImpl ?? fetch;
   const snapshots = new Map<string, AlpacaOptionSnapshot>();
   let pageToken: string | null = null;
@@ -388,6 +428,10 @@ export async function fetchOptionSnapshots(config: AlpacaProviderConfig, params:
   do {
     const url = new URL(`/v1beta1/options/snapshots/${params.underlyingSymbol}`, config.marketDataApiBase);
     const query: Record<string, string> = { feed: params.feed, type: params.optionType, limit: String(params.limit) };
+    if(params.expirationDateGte!==undefined)query.expiration_date_gte=params.expirationDateGte;
+    if(params.expirationDateLte!==undefined)query.expiration_date_lte=params.expirationDateLte;
+    if(params.strikePriceGte!==undefined)query.strike_price_gte=String(params.strikePriceGte);
+    if(params.strikePriceLte!==undefined)query.strike_price_lte=String(params.strikePriceLte);
     if (pageToken !== null) query.page_token = pageToken;
     url.search = new URLSearchParams(query).toString();
     const body = await requestJson(fetchImpl, url, authHeaders(config));

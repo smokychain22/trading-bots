@@ -5,6 +5,7 @@ import type { ManagementActionFrontier } from './management-action-frontier.js';
 import { PostgresWholeChainComponentsRepository } from './postgres-whole-chain-components-repository.js';
 import type { WholeChainComponentEvidence } from './whole-chain-component-evidence.js';
 import { securedContractCapacity } from './secured-contract-capacity.js';
+import type { ManagementCandidateDiscovery } from './management-candidate-evidence.js';
 
 export const managementInputVersion = 'theta-management-input-v4' as const;
 
@@ -39,6 +40,8 @@ export interface ManagementDecisionEvidenceBundle {
   readonly fusionSnapshotAsOf: string | null;
   readonly currentLegQuoteObservedAt: string | null;
   readonly currentLegQuoteReceivedAt: string | null;
+  readonly candidateDiscoveryObservedAt?: string | null;
+  readonly candidateLatestQuoteReceivedAt?: string | null;
   readonly timingState: 'VALID' | 'PARTIAL' | 'FUTURE_EVIDENCE';
 }
 
@@ -50,6 +53,7 @@ export interface ManagementInputState {
   readonly chainId: string;
   readonly observedAt: string;
   readonly evidenceBundle: ManagementDecisionEvidenceBundle;
+  readonly managementCandidateDiscovery?: ManagementCandidateDiscovery | null;
   readonly lifecycleState: ThetaLifecycleState;
   readonly underlying: string;
   readonly underlyingId: string;
@@ -194,7 +198,14 @@ export function assembleManagementInput(row: Row, input: {
   readonly managementInputSnapshotId: string;
   readonly reconciliationSnapshotId: string;
   readonly observedAt: string;
+  readonly managementCandidateDiscovery?: ManagementCandidateDiscovery | null;
 }): ManagementInputState {
+  const candidateDiscovery = input.managementCandidateDiscovery ?? null;
+  const candidateQuotes = candidateDiscovery === null ? [] : [
+    ...candidateDiscovery.rollCandidates,...candidateDiscovery.ccCandidates,...candidateDiscovery.rollCcCandidates,
+  ];
+  const latestCandidateQuoteReceivedAt = candidateQuotes.map((candidate)=>candidate.quoteReceivedAt ?? null)
+    .filter((value):value is string=>value!==null).sort().at(-1) ?? null;
   const snapshot = object(row.snapshot_json);
   const reconciliationDetail = object(row.reconciliation_detail);
   const marketSession = object(snapshot.marketSession);
@@ -292,7 +303,8 @@ export function assembleManagementInput(row: Row, input: {
   const evidenceTimes = [text(row.reconciliation_observed_at),text(row.account_as_of),
     text(row.account_retrieved_at),text(row.position_observed_at),text(row.broker_option_observed_at),
     text(row.fusion_decision_time),
-    text(row.quote_as_of),text(row.quote_retrieved_at)];
+    text(row.quote_as_of),text(row.quote_retrieved_at),candidateDiscovery?.observedAt ?? null,
+    ...candidateQuotes.flatMap((candidate)=>[candidate.quoteTimestamp ?? null,candidate.quoteReceivedAt ?? null])];
   const requiredEvidenceTimes = [text(row.reconciliation_observed_at),text(row.account_as_of),
     text(row.account_retrieved_at),text(row.fusion_decision_time),
     ...(hasOpenOption?[text(row.quote_as_of),text(row.quote_retrieved_at),text(row.broker_option_observed_at)]:[]),
@@ -305,6 +317,8 @@ export function assembleManagementInput(row: Row, input: {
     accountStateAsOf:text(row.account_as_of),accountReceivedAt:text(row.account_retrieved_at),
     positionStateAsOf:text(row.position_observed_at),fusionSnapshotAsOf:text(row.fusion_decision_time),
     currentLegQuoteObservedAt:text(row.quote_as_of),currentLegQuoteReceivedAt:text(row.quote_retrieved_at),
+    candidateDiscoveryObservedAt:candidateDiscovery?.observedAt ?? null,
+    candidateLatestQuoteReceivedAt:latestCandidateQuoteReceivedAt,
     timingState:futureEvidence?'FUTURE_EVIDENCE':requiredEvidenceTimes.some((value)=>value===null)?'PARTIAL':'VALID',
   };
   const unknownFields: string[] = [];
@@ -363,7 +377,7 @@ export function assembleManagementInput(row: Row, input: {
     managementInputSnapshotId: input.managementInputSnapshotId,
     reconciliationSnapshotId: input.reconciliationSnapshotId,
     fusionSnapshotId: text(row.fusion_snapshot_id), chainId: String(row.chain_id), observedAt: input.observedAt,
-    evidenceBundle,
+    evidenceBundle, managementCandidateDiscovery:candidateDiscovery,
     lifecycleState, underlying: String(row.underlying),
     underlyingId: String(row.underlying_id),
     contract: { optionLegId: text(row.option_leg_id), optionContractId: text(row.option_contract_id), symbol: contractSymbol,
@@ -406,7 +420,8 @@ export function assembleManagementInput(row: Row, input: {
 export class PostgresManagementInputStore {
   constructor(private readonly pool: Pool) {}
 
-  async assembleAndPersistOpenChains(connectionId: string, reconciliationSnapshotId: string, observedAt: string): Promise<readonly ManagementInputState[]> {
+  async assembleAndPersistOpenChains(connectionId: string, reconciliationSnapshotId: string, observedAt: string,
+    candidateDiscoveryByChain: ReadonlyMap<string,ManagementCandidateDiscovery> = new Map()): Promise<readonly ManagementInputState[]> {
     const result = await this.pool.query(`
       SELECT ec.chain_id,ec.lifecycle_state,u.underlying_id,u.symbol AS underlying,
         ol.option_leg_id,ol.remaining_quantity AS quantity,ol.entry_credit_debit,oc.option_contract_id,oc.contract_symbol,oc.option_type,
@@ -429,7 +444,13 @@ export class PostgresManagementInputStore {
         ) END AS broker_position
       FROM trade.economic_chain ec
       JOIN market.underlying u ON u.underlying_id=ec.underlying_id
-      JOIN core.bot_instance bi ON bi.bot_instance_id=ec.bot_instance_id
+      JOIN core.bot_instance bi ON bi.bot_instance_id=ec.bot_instance_id AND bi.bot_code='THETA'
+      JOIN core.trading_account ta ON ta.account_id=bi.account_id AND ta.environment='PAPER'
+      JOIN core.provider_connection pc ON pc.provider_connection_id=ta.provider_connection_id
+        AND pc.provider_code='ALPACA' AND pc.environment='PAPER'
+      JOIN copy.follower_account master ON master.follower_account_id=$1
+        AND master.account_role='MASTER_THETA_PAPER' AND master.environment='PAPER'
+        AND master.workspace_id=ta.workspace_id AND master.provider_account_ref=ta.provider_account_id
       JOIN trade.broker_reconciliation_snapshot brs
         ON brs.reconciliation_snapshot_id=$2 AND brs.connection_id=$1
       LEFT JOIN LATERAL (
@@ -484,6 +505,7 @@ export class PostgresManagementInputStore {
     if (Date.parse(decisionAsOf) < Date.parse(observedAt)) throw new Error('MANAGEMENT_DECISION_CLOCK_BEFORE_RECONCILIATION');
     const states: ManagementInputState[] = result.rows.map((row) => assembleManagementInput(row, {
       managementInputSnapshotId: randomUUID(), reconciliationSnapshotId, observedAt:decisionAsOf,
+      managementCandidateDiscovery:candidateDiscoveryByChain.get(String(row.chain_id)) ?? null,
     }));
     if (states.length === 0) return [];
     const client = await this.pool.connect();

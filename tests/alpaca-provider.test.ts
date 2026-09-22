@@ -239,6 +239,24 @@ test('fetchOptionContracts preserves a missing multiplier as UNKNOWN', async () 
   assert.equal(result.items[0]?.multiplier, null);
 });
 
+test('management contract fetch requests deliverables and preserves their exact coverage', async () => {
+  let requested = '';
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    requested = String(input);
+    return jsonResponse(200, { option_contracts: [{ symbol: 'SPY261009C00500000',
+      strike_price: '500', expiration_date: '2026-10-09', size: '100', tradable: true,
+      root_symbol: 'SPY', underlying_symbol: 'SPY', style: 'american',
+      deliverables: [{ type: 'equity', symbol: 'SPY', amount: '100', allocation_percentage: '100' }],
+    }], next_page_token: null });
+  }) as typeof fetch;
+  const result = await fetchOptionContracts(baseConfig(fetchImpl), { underlyingSymbol: 'SPY',
+    expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01', optionType: 'call',
+    showDeliverables: true, limit: 10, maxPages: 2 });
+  assert.equal(new URL(requested).searchParams.get('show_deliverables'), 'true');
+  assert.deepEqual(result.items[0]?.deliverables,
+    [{ type: 'equity', symbol: 'SPY', amount: 100, allocationPercentage: 100 }]);
+});
+
 test('a missing contract array is provider-malformed, while an explicit empty array is valid', async () => {
   const params = { underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01',
     optionType: 'put' as const, limit: 10, maxPages: 2 };
@@ -285,6 +303,23 @@ test('fetchOptionSnapshots preserves a missing Greeks object as null, never fabr
   const fetchImpl = (async () => jsonResponse(200, { snapshots: { X: { latestQuote: { bp: 1, ap: 1.1 } } }, next_page_token: null })) as typeof fetch;
   const result = await fetchOptionSnapshots(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', feed: 'indicative', optionType: 'put', limit: 10, maxPages: 5 });
   assert.equal(result.snapshots.get('X')?.greeks, null);
+});
+
+test('fetchOptionSnapshots forwards bounded management lattice filters and rejects malformed dates locally',async()=>{
+  let query:URLSearchParams|null=null;
+  const fetchImpl=(async(input:RequestInfo|URL)=>{
+    query=new URL(input instanceof URL?input.toString():String(input)).searchParams;
+    return jsonResponse(200,{snapshots:{},next_page_token:null});
+  }) as typeof fetch;
+  await fetchOptionSnapshots(baseConfig(fetchImpl),{underlyingSymbol:'AAPL',feed:'indicative',optionType:'call',
+    expirationDateGte:'2026-09-22',expirationDateLte:'2026-12-21',strikePriceGte:100,
+    strikePriceLte:300,limit:1000,maxPages:2});
+  assert.equal((query as URLSearchParams|null)?.get('expiration_date_gte'),'2026-09-22');
+  assert.equal((query as URLSearchParams|null)?.get('expiration_date_lte'),'2026-12-21');
+  assert.equal((query as URLSearchParams|null)?.get('strike_price_gte'),'100');
+  assert.equal((query as URLSearchParams|null)?.get('strike_price_lte'),'300');
+  await assert.rejects(()=>fetchOptionSnapshots(baseConfig(fetchImpl),{underlyingSymbol:'AAPL',feed:'indicative',
+    optionType:'call',expirationDateGte:'2026-02-30',limit:1000,maxPages:2}),/OPTION_SNAPSHOT_FILTER_INVALID/);
 });
 
 test('a missing snapshot map is provider-malformed, while an explicit empty map is valid', async () => {
