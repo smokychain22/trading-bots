@@ -46,6 +46,10 @@ test('causal provider, quote, risk, and empty-universe waits stay distinct',()=>
   assert.equal(classifyRuntimeBehavior(input({actionPlanBlockers:['FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_NOT_YET_QUALIFIED']})).waitClassification,'QUOTE_WAIT');
   assert.equal(classifyRuntimeBehavior(input({quantityZeroCount:2})).waitClassification,'RISK_WAIT');
   assert.equal(classifyRuntimeBehavior(input({completeness:'DATA_INSUFFICIENT',candidateCount:0})).waitClassification,'NO_OPPORTUNITY');
+  const unverifiedUniverse=classifyRuntimeBehavior(input({completeness:'DATA_INSUFFICIENT',candidateCount:0,
+    providerBlockers:['UNIVERSE_DISCOVERY_ZERO_CANDIDATES_COVERAGE_UNVERIFIED']}));
+  assert.equal(unverifiedUniverse.waitClassification,'DATA_WAIT');
+  assert.ok(unverifiedUniverse.reasonCodes.includes('UNIVERSE_DISCOVERY_ZERO_CANDIDATES_COVERAGE_UNVERIFIED'));
 });
 
 test('a feasible unselected candidate surfaces policy strictness rather than being called healthy WAIT',()=>{

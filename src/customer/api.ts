@@ -48,7 +48,7 @@ import { qualifyOptionomicsProvider,persistOptionomicsQualification } from "../p
 import { optionomicsConfigFromEnvironment } from "../theta/theta-shadow-once.js";
 import { canonicalThetaStrategyRegistry } from "../theta/strategy-package.js";
 import { buildR8Readiness } from "../theta/r8-readiness.js";
-import { buildThetaFirstPaperReadiness, type FirstPaperChecks } from "../theta/first-paper-blocker-budget.js";
+import { assessReconciliationReadiness, buildThetaFirstPaperReadiness, type FirstPaperChecks } from "../theta/first-paper-blocker-budget.js";
 
 const simulationSchema = z
   .object({
@@ -568,8 +568,10 @@ export default async function customerHandler(
         canonicalDecisionReachable:unknown('CURRENT_DECISION_PATH_NOT_PROVEN','runtime-decision'),
         paperPlanReachable:unknown('REAL_CURRENT_PAPER_PLAN_NOT_PROVEN','runtime-paper-plan'),
         managementCandidateSourceReady:unknown('MANAGEMENT_CANDIDATE_SOURCE_RUNTIME_NOT_PROVEN','runtime-management'),
-        reconciliationReady:workerCycleHealthy&&localWorker.last_reconciliation!==null
-          ? pass('runtime-worker-status') : unknown('CURRENT_RECONCILIATION_NOT_PROVEN','runtime-worker-status','EXTERNAL'),
+        reconciliationReady:assessReconciliationReadiness({workerCycleHealthy,
+          lastReconciliation:localWorker.last_reconciliation,
+          externalOrUnknownCount:runtimeEvidence.external_or_unknown_count,
+          localOnlyIntentCount:runtimeEvidence.local_only_intent_count}),
         workerReleaseReady:workerCycleHealthy&&
           localWorker.build_sha===process.env.VERCEL_GIT_COMMIT_SHA
           ? pass('runtime-worker-status-and-deployment-sha')
