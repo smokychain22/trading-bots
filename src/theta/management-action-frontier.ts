@@ -109,6 +109,10 @@ const opensNewRisk = new Set<ManagementFrontierAction>(['ROLL', 'SELL_CC', 'ROLL
 
 function evaluateAction(input: ManagementInputState, action: ManagementFrontierAction): ManagementActionEconomics {
   const blockers: string[] = [];
+  if (input.evidenceBundle.timingState === 'FUTURE_EVIDENCE'
+    && action !== 'HOLD' && action !== 'RECOVERY_WAIT' && action !== 'HOLD_CC') {
+    blockers.push('EVIDENCE_OBSERVED_AFTER_DECISION');
+  }
   if (needsExecutableOptionQuote.has(action) &&
       (input.market.optionBid === null || input.market.optionAsk === null || input.market.quoteTimestamp === null)) {
     blockers.push('EXECUTABLE_OPTION_QUOTE_UNKNOWN');
@@ -132,8 +136,10 @@ function evaluateAction(input: ManagementInputState, action: ManagementFrontierA
   if (action === 'ACCEPT_ASSIGNMENT' && optionItm === null) blockers.push('ASSIGNMENT_MONEYNESS_UNKNOWN');
   if (action === 'ACCEPT_ASSIGNMENT' && optionItm === false) blockers.push('OPTION_NOT_ITM_FOR_ASSIGNMENT');
   if (action === 'ACCEPT_ASSIGNMENT' && input.context.assignmentCapacity === null) blockers.push('ASSIGNMENT_CAPACITY_UNKNOWN');
-  if (action === 'ACCEPT_ASSIGNMENT' && typeof input.context.assignmentCapacity === 'number'
-    && input.context.assignmentCapacity <= 0) blockers.push('NO_ASSIGNMENT_CAPACITY');
+  if (action === 'ACCEPT_ASSIGNMENT' && input.context.assignmentCapacity !== null
+    && (input.contract.contracts === null || input.context.assignmentCapacity < input.contract.contracts)) {
+    blockers.push(input.contract.contracts === null ? 'ASSIGNMENT_QUANTITY_UNKNOWN' : 'NO_ASSIGNMENT_CAPACITY');
+  }
   if (action === 'REDEPLOY') blockers.push('CURRENT_EXPOSURE_NOT_RESOLVED');
   if (action === 'ALLOW_CALL_AWAY') {
     if (input.market.dte === null || input.market.dte > 0) blockers.push('NOT_AT_CALL_AWAY_WINDOW');

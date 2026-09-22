@@ -4,8 +4,37 @@ import type { ThetaLifecycleState } from './runtime-state.js';
 import type { ManagementActionFrontier } from './management-action-frontier.js';
 import { PostgresWholeChainComponentsRepository } from './postgres-whole-chain-components-repository.js';
 import type { WholeChainComponentEvidence } from './whole-chain-component-evidence.js';
+import { securedContractCapacity } from './secured-contract-capacity.js';
 
-export const managementInputVersion = 'theta-management-input-v3' as const;
+export const managementInputVersion = 'theta-management-input-v4' as const;
+
+export interface ManagementAssignmentCapacityEvidence {
+  readonly state: 'KNOWN' | 'UNKNOWN' | 'NOT_APPLICABLE';
+  readonly unit: 'WHOLE_CONTRACTS';
+  readonly source: 'ALPACA_ACCOUNT_SNAPSHOT_AND_OPEN_PUT' | null;
+  readonly accountSnapshotId: string | null;
+  readonly accountObservedAt: string | null;
+  readonly derivedAt: string;
+  readonly availableCapitalSource: 'OPTIONS_BUYING_POWER' | 'BUYING_POWER' | null;
+  readonly availableCapital: number | null;
+  readonly strike: number | null;
+  readonly multiplier: number | null;
+  readonly collateralPerContract: number | null;
+  readonly derivationVersion: 'theta-secured-contract-capacity-v1';
+  readonly reason: string | null;
+}
+
+export interface ManagementDecisionEvidenceBundle {
+  readonly decisionAsOf: string;
+  readonly reconciliationObservedAt: string | null;
+  readonly accountStateAsOf: string | null;
+  readonly accountReceivedAt: string | null;
+  readonly positionStateAsOf: string | null;
+  readonly fusionSnapshotAsOf: string | null;
+  readonly currentLegQuoteObservedAt: string | null;
+  readonly currentLegQuoteReceivedAt: string | null;
+  readonly timingState: 'VALID' | 'PARTIAL' | 'FUTURE_EVIDENCE';
+}
 
 export interface ManagementInputState {
   readonly contractVersion: typeof managementInputVersion;
@@ -14,6 +43,7 @@ export interface ManagementInputState {
   readonly fusionSnapshotId: string | null;
   readonly chainId: string;
   readonly observedAt: string;
+  readonly evidenceBundle: ManagementDecisionEvidenceBundle;
   readonly lifecycleState: ThetaLifecycleState;
   readonly underlying: string;
   readonly underlyingId: string;
@@ -70,7 +100,8 @@ export interface ManagementInputState {
     readonly eventState: unknown | null;
     readonly dividendExDateState: unknown | null;
     readonly ownershipQuality: unknown | null;
-    readonly assignmentCapacity: unknown | null;
+    readonly assignmentCapacity: number | null;
+    readonly assignmentCapacityEvidence: ManagementAssignmentCapacityEvidence;
     readonly recoveryState: unknown | null;
     readonly concentration: unknown | null;
     readonly sectorCorrelation: unknown | null;
@@ -193,6 +224,48 @@ export function assembleManagementInput(row: Row, input: {
   const expiration = text(row.expiration_date)?.slice(0, 10) ?? null;
   const spot = stockMark ?? numeric(snapshot.underlyingState && object(snapshot.underlyingState).last);
   const strike = numeric(row.strike);
+  const lifecycleState = String(row.lifecycle_state) as ThetaLifecycleState;
+  const assignmentApplicable = lifecycleState === 'CSP_OPEN' && hasOpenOption && text(row.option_type) === 'PUT';
+  const accountAgeForCapacity = row.account_as_of == null ? NaN
+    : Date.parse(input.observedAt) - Date.parse(String(row.account_as_of));
+  const accountFreshForCapacity = Number.isFinite(accountAgeForCapacity)
+    && accountAgeForCapacity >= 0 && accountAgeForCapacity <= 180_000;
+  const optionsBuyingPower = numeric(row.options_buying_power);
+  const buyingPower = numeric(row.buying_power);
+  const availableCapitalSource = optionsBuyingPower !== null ? 'OPTIONS_BUYING_POWER'
+    : buyingPower !== null ? 'BUYING_POWER' : null;
+  const availableCapital = optionsBuyingPower ?? buyingPower;
+  const collateralPerContract = strike !== null && multiplier !== null ? strike * multiplier : null;
+  const assignmentCapacity = assignmentApplicable && accountFreshForCapacity && collateralPerContract !== null
+    ? securedContractCapacity(availableCapital, collateralPerContract) : null;
+  const assignmentCapacityEvidence: ManagementAssignmentCapacityEvidence = {
+    state: !assignmentApplicable ? 'NOT_APPLICABLE' : assignmentCapacity === null ? 'UNKNOWN' : 'KNOWN',
+    unit: 'WHOLE_CONTRACTS', source: assignmentApplicable && assignmentCapacity !== null
+      ? 'ALPACA_ACCOUNT_SNAPSHOT_AND_OPEN_PUT' : null,
+    accountSnapshotId: text(row.account_snapshot_id), accountObservedAt: text(row.account_as_of),
+    derivedAt: input.observedAt, availableCapitalSource,
+    availableCapital, strike, multiplier, collateralPerContract,
+    derivationVersion: 'theta-secured-contract-capacity-v1',
+    reason: !assignmentApplicable ? 'NO_OPEN_SHORT_PUT' : !accountFreshForCapacity ? 'ACCOUNT_EVIDENCE_STALE_OR_MISSING'
+      : assignmentCapacity === null ? 'ACCOUNT_OR_CONTRACT_EVIDENCE_INVALID' : null,
+  };
+  const evidenceTimes = [text(row.reconciliation_observed_at),text(row.account_as_of),
+    text(row.account_retrieved_at),text(row.position_observed_at),text(row.fusion_decision_time),
+    text(row.quote_as_of),text(row.quote_retrieved_at)];
+  const requiredEvidenceTimes = [text(row.reconciliation_observed_at),text(row.account_as_of),
+    text(row.account_retrieved_at),text(row.fusion_decision_time),
+    ...(hasOpenOption?[text(row.quote_as_of),text(row.quote_retrieved_at)]:[]),
+    ...(stockShares>0?[text(row.position_observed_at)]:[])];
+  const decisionMs = Date.parse(input.observedAt);
+  const futureEvidence = !Number.isFinite(decisionMs) || evidenceTimes.some((value) => value !== null
+    && (!Number.isFinite(Date.parse(value)) || Date.parse(value) > decisionMs));
+  const evidenceBundle: ManagementDecisionEvidenceBundle = {
+    decisionAsOf: input.observedAt, reconciliationObservedAt:text(row.reconciliation_observed_at),
+    accountStateAsOf:text(row.account_as_of),accountReceivedAt:text(row.account_retrieved_at),
+    positionStateAsOf:text(row.position_observed_at),fusionSnapshotAsOf:text(row.fusion_decision_time),
+    currentLegQuoteObservedAt:text(row.quote_as_of),currentLegQuoteReceivedAt:text(row.quote_retrieved_at),
+    timingState:futureEvidence?'FUTURE_EVIDENCE':requiredEvidenceTimes.some((value)=>value===null)?'PARTIAL':'VALID',
+  };
   const unknownFields: string[] = [];
   const required = (name: string, value: unknown): void => { if (value === null || value === undefined) unknownFields.push(name); };
   if (hasOpenOption) {
@@ -214,7 +287,7 @@ export function assembleManagementInput(row: Row, input: {
   const eventState=object(snapshot.eventState);
   required('context.dividendExDateState', eventState.exDividendState ?? eventState.exDividendDate ?? null);
   required('context.ownershipQuality', snapshot.expertPriorState ?? null);
-  required('context.assignmentCapacity', riskState.assignmentCapacity ?? null);
+  if (assignmentApplicable) required('context.assignmentCapacity', assignmentCapacity);
   required('context.concentration', object(snapshot.portfolioExposure).concentration ?? null);
   required('context.sectorCorrelation', object(snapshot.portfolioExposure).sectorCorrelation ?? null);
   required('context.aegisState', riskState.newRiskState ?? riskState.state ?? null);
@@ -239,13 +312,15 @@ export function assembleManagementInput(row: Row, input: {
   }
   if (contracts !== null && contracts < 0) hardBlockers.push('INVALID_CONTRACT');
   if (row.lifecycle_state == null) hardBlockers.push('LIFECYCLE_TRUTH_BROKEN');
+  if (evidenceBundle.timingState === 'FUTURE_EVIDENCE') hardBlockers.push('EVIDENCE_OBSERVED_AFTER_DECISION');
 
   const unsigned = {
     contractVersion: managementInputVersion,
     managementInputSnapshotId: input.managementInputSnapshotId,
     reconciliationSnapshotId: input.reconciliationSnapshotId,
     fusionSnapshotId: text(row.fusion_snapshot_id), chainId: String(row.chain_id), observedAt: input.observedAt,
-    lifecycleState: String(row.lifecycle_state) as ThetaLifecycleState, underlying: String(row.underlying),
+    evidenceBundle,
+    lifecycleState, underlying: String(row.underlying),
     underlyingId: String(row.underlying_id),
     contract: { optionLegId: text(row.option_leg_id), optionContractId: text(row.option_contract_id), symbol: contractSymbol,
       optionType: text(row.option_type) as 'PUT' | 'CALL' | null, strike, expiration, multiplier, contracts },
@@ -267,7 +342,7 @@ export function assembleManagementInput(row: Row, input: {
     context: { eventState: snapshot.eventState ?? null,
       dividendExDateState: eventState.exDividendState ?? eventState.exDividendDate ?? null,
       ownershipQuality: snapshot.expertPriorState ?? null,
-      assignmentCapacity: riskState.assignmentCapacity ?? null,
+      assignmentCapacity, assignmentCapacityEvidence,
       recoveryState: snapshot.recoveryState ?? null,
       concentration: object(snapshot.portfolioExposure).concentration ?? null,
       sectorCorrelation: object(snapshot.portfolioExposure).sectorCorrelation ?? null,
@@ -292,11 +367,14 @@ export class PostgresManagementInputStore {
       SELECT ec.chain_id,ec.lifecycle_state,u.underlying_id,u.symbol AS underlying,
         ol.option_leg_id,ol.remaining_quantity AS quantity,ol.entry_credit_debit,oc.option_contract_id,oc.contract_symbol,oc.option_type,
         oc.strike,oc.expiration_date,oc.multiplier,
-        oq.bid,oq.ask,oq.as_of AS quote_as_of,oq.feed,oq.quality AS quote_quality,
+        oq.bid,oq.ask,oq.as_of AS quote_as_of,oq.retrieved_at AS quote_retrieved_at,oq.feed,oq.quality AS quote_quality,
         totals.realized_option_pnl,stocks.open_stock_shares,stocks.stock_basis_per_share,
         totals.realized_stock_pnl,totals.dividends,totals.fees,totals.unknown_fill_fees,
-        a.buying_power,a.options_buying_power,a.as_of AS account_as_of,fs.fusion_snapshot_id,fs.snapshot_json,
+        a.account_snapshot_id,a.buying_power,a.options_buying_power,a.as_of AS account_as_of,
+        a.retrieved_at AS account_retrieved_at,fs.fusion_snapshot_id,fs.snapshot_json,
+        fs.decision_time AS fusion_decision_time,brs.observed_at AS reconciliation_observed_at,
         brs.provider_timestamp AS clock_timestamp,brs.detail_json AS reconciliation_detail,
+        bp.observed_at AS position_observed_at,
         CASE WHEN bp.symbol IS NULL THEN NULL ELSE jsonb_build_object(
           'averageEntryPrice',bp.average_entry_price,'currentPrice',bp.current_price,
           'marketValue',bp.market_value,'costBasis',bp.cost_basis,'unrealizedPnl',bp.unrealized_pnl
@@ -341,8 +419,13 @@ export class PostgresManagementInputStore {
       ) fs ON true
       LEFT JOIN trade.broker_position_snapshot bp ON bp.reconciliation_snapshot_id=$2 AND bp.symbol=u.symbol
       WHERE ec.closed_at IS NULL ORDER BY ec.opened_at,ec.chain_id`, [connectionId, reconciliationSnapshotId]);
+    // The query may fetch an observation received after broker reconciliation.
+    // Freeze the decision only after its evidence has been read, never at the
+    // earlier reconciliation timestamp.
+    const decisionAsOf = new Date().toISOString();
+    if (Date.parse(decisionAsOf) < Date.parse(observedAt)) throw new Error('MANAGEMENT_DECISION_CLOCK_BEFORE_RECONCILIATION');
     const states: ManagementInputState[] = result.rows.map((row) => assembleManagementInput(row, {
-      managementInputSnapshotId: randomUUID(), reconciliationSnapshotId, observedAt,
+      managementInputSnapshotId: randomUUID(), reconciliationSnapshotId, observedAt:decisionAsOf,
     }));
     if (states.length === 0) return [];
     const client = await this.pool.connect();
