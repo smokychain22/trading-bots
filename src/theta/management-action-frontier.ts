@@ -136,6 +136,9 @@ function evaluateAction(input: ManagementInputState, action: ManagementFrontierA
   if (action === 'ACCEPT_ASSIGNMENT' && optionItm === null) blockers.push('ASSIGNMENT_MONEYNESS_UNKNOWN');
   if (action === 'ACCEPT_ASSIGNMENT' && optionItm === false) blockers.push('OPTION_NOT_ITM_FOR_ASSIGNMENT');
   if (action === 'ACCEPT_ASSIGNMENT' && input.context.assignmentCapacity === null) blockers.push('ASSIGNMENT_CAPACITY_UNKNOWN');
+  if (action === 'ACCEPT_ASSIGNMENT' && input.hardBlockers.includes('BROKER_SHORT_PUT_POSITION_UNCONFIRMED')) {
+    blockers.push('BROKER_SHORT_PUT_POSITION_UNCONFIRMED');
+  }
   if (action === 'ACCEPT_ASSIGNMENT' && input.context.assignmentCapacity !== null
     && (input.contract.contracts === null || input.context.assignmentCapacity < input.contract.contracts)) {
     blockers.push(input.contract.contracts === null ? 'ASSIGNMENT_QUANTITY_UNKNOWN' : 'NO_ASSIGNMENT_CAPACITY');
@@ -155,8 +158,13 @@ function evaluateAction(input: ManagementInputState, action: ManagementFrontierA
   }
 
   const noOrderAction = action === 'HOLD' || action === 'RECOVERY_WAIT' || action === 'HOLD_CC';
+  const definitiveBlockers = new Set([
+    'OPTION_NOT_ITM_FOR_ASSIGNMENT','OPTION_NOT_OTM_AT_EXPIRATION','OPTION_NOT_ITM_FOR_CALL_AWAY',
+    'NO_ASSIGNMENT_CAPACITY','BROKER_SHORT_PUT_POSITION_UNCONFIRMED','EVIDENCE_OBSERVED_AFTER_DECISION',
+  ]);
   const feasibility = blockers.length === 0 ? 'FEASIBLE'
-    : blockers.some((blocker) => blocker.endsWith('_UNKNOWN') || blocker === 'EMPIRICAL_ACTION_EV_UNKNOWN') ? 'UNKNOWN' : 'INFEASIBLE';
+    : blockers.some((blocker) => definitiveBlockers.has(blocker)) ? 'INFEASIBLE'
+      : blockers.some((blocker) => blocker.endsWith('_UNKNOWN')) ? 'UNKNOWN' : 'INFEASIBLE';
   // A pre-trade mark is not a confirmed liquidation result. Broker fills and
   // final costs belong to the economic ledger, not this prospective frontier.
   const certainEconomicPnl = null;

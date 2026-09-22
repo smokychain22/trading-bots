@@ -96,16 +96,19 @@ test('management content hash is deterministic and excludes its random persisten
 test('open put assignment capacity comes from fresh broker buying power, not the unpopulated fusion risk state', () => {
   const at = '2026-10-16T20:01:00.000Z';
   const row = { ...base, expiration_date:'2026-10-16', quote_as_of:at, account_as_of:at,
-    account_snapshot_id:'501', options_buying_power:'40000',
+    account_snapshot_id:'501', options_buying_power:'0',reconciliation_quality:'GOOD',
+    broker_option_symbol:'AAPL261016P00200000',broker_option_quantity:'1',broker_option_side:'short',broker_option_asset_class:'us_option',
+    broker_option_observed_at:at,ledger_option_contract_quantity:'1',
     snapshot_json:{underlyingState:{last:190},marketSession:{isOpen:false},riskState:null} };
   const input = assembleManagementInput(row, {managementInputSnapshotId:'capacity-positive',
     reconciliationSnapshotId:'recon',observedAt:at});
-  assert.equal(input.context.assignmentCapacity,2);
+  assert.equal(input.context.assignmentCapacity,1);
   assert.equal(input.context.assignmentCapacityEvidence.unit,'WHOLE_CONTRACTS');
   assert.equal(input.context.assignmentCapacityEvidence.accountSnapshotId,'501');
   assert.equal(input.context.assignmentCapacityEvidence.accountObservedAt,at);
   assert.equal(input.context.assignmentCapacityEvidence.collateralPerContract,20_000);
-  assert.equal(input.context.assignmentCapacityEvidence.source,'ALPACA_ACCOUNT_SNAPSHOT_AND_OPEN_PUT');
+  assert.equal(input.context.assignmentCapacityEvidence.source,'ALPACA_ACCOUNT_AND_OPTION_POSITION_RECONCILIATION');
+  assert.equal(input.context.assignmentCapacityEvidence.reservedCollateral,20_000);
   assert.ok(!input.unknownFields.includes('context.assignmentCapacity'));
   const action = buildManagementActionFrontier(input).actions.find((candidate)=>candidate.action==='ACCEPT_ASSIGNMENT');
   assert.equal(action?.feasibility,'FEASIBLE');
@@ -115,14 +118,18 @@ test('open put assignment capacity comes from fresh broker buying power, not the
 test('known insufficient assignment lots block, while unavailable or stale broker evidence stays UNKNOWN', () => {
   const at = '2026-10-16T20:01:00.000Z';
   const row = { ...base, expiration_date:'2026-10-16', quote_as_of:at, account_as_of:at,
+    reconciliation_quality:'GOOD',broker_option_quantity:'1',broker_option_side:'short',
+    broker_option_symbol:'AAPL261016P00200000',broker_option_asset_class:'us_option',broker_option_observed_at:at,
+    ledger_option_contract_quantity:'1',
     snapshot_json:{underlyingState:{last:190},marketSession:{isOpen:false},riskState:null} };
   const assemble = (overrides:Record<string,unknown>) => assembleManagementInput({...row,...overrides},
     {managementInputSnapshotId:'capacity-test',reconciliationSnapshotId:'recon',observedAt:at});
-  const zero = assemble({options_buying_power:'0'});
+  const zero = assemble({options_buying_power:'0',broker_option_quantity:'0'});
   assert.equal(zero.context.assignmentCapacity,0);
   assert.equal(zero.context.assignmentCapacityEvidence.state,'KNOWN');
   assert.ok(buildManagementActionFrontier(zero).actions.find((action)=>action.action==='ACCEPT_ASSIGNMENT')
     ?.blockers.includes('NO_ASSIGNMENT_CAPACITY'));
+  assert.ok(zero.hardBlockers.includes('BROKER_SHORT_PUT_POSITION_UNCONFIRMED'));
   const unknown = assemble({options_buying_power:null,buying_power:null});
   assert.equal(unknown.context.assignmentCapacity,null);
   assert.equal(unknown.context.assignmentCapacityEvidence.state,'UNKNOWN');
@@ -131,6 +138,12 @@ test('known insufficient assignment lots block, while unavailable or stale broke
   const stale = assemble({account_as_of:'2026-10-16T19:00:00.000Z'});
   assert.equal(stale.context.assignmentCapacityEvidence.reason,'ACCOUNT_EVIDENCE_STALE_OR_MISSING');
   assert.equal(stale.context.assignmentCapacity,null);
+  const invalidBroker = assemble({broker_option_side:null,options_buying_power:'0'});
+  assert.equal(invalidBroker.context.assignmentCapacityEvidence.state,'UNKNOWN');
+  assert.equal(invalidBroker.context.assignmentCapacityEvidence.reason,'BROKER_OPTION_POSITION_EVIDENCE_INVALID');
+  const sharedContractDrift = assemble({ledger_option_contract_quantity:'2',broker_option_quantity:'1',options_buying_power:'0'});
+  assert.equal(sharedContractDrift.context.assignmentCapacity,0);
+  assert.ok(sharedContractDrift.hardBlockers.includes('BROKER_SHORT_PUT_POSITION_UNCONFIRMED'));
   const noPut = assemble({lifecycle_state:'RECOVERY_WAIT',contract_symbol:null,quantity:null});
   assert.equal(noPut.context.assignmentCapacityEvidence.state,'NOT_APPLICABLE');
   assert.ok(!noPut.unknownFields.includes('context.assignmentCapacity'));
