@@ -32,25 +32,34 @@ feed directly into most of the remaining sections:
 - `THETA_CODEX_PRE_VPS_INTEGRATION_BACKLOG.md` -- 2 P0 items, 3 P1 items, with exact file:line, required fix, and required tests.
 - Grounded every finding in either a direct source read this pass or the real `docs/operations/THETA_R7_LIVE_SESSION_FORENSIC_2026-09-21.md` live-session forensic (a genuine Aiven/Alpaca-derived document, not a simulation) -- notably, that forensic already answers a large share of directive items 21/22/24's spirit (what does "ready" actually mean, does THETA reach a real decision end to end) more authoritatively than a fresh code-only trace could, since it reflects an actual attempted live cycle.
 
-## Explicitly deferred (not started this pass)
+## Completed in the master continuation pass (Slices 2-13)
 
-Given the volume, grouping by the directive's own slice boundaries:
+Following the "continue through 2-14, stop only for a real access/provider/
+tool boundary" instruction, this pass additionally completed:
 
-- **Capability registry + provider capability matrix** (items 1, 3): requires a full inventory across ~20+ capability domains with real producer/consumer verification for each -- a multi-session effort on its own.
-- **Required-vs-optional evidence matrix** (item 5): requires tracing every entry/management feature's actual runtime gating behavior, not just AEGIS.
-- **Strategy-router truth audit** (item 6): requires a full `strategy-timing-router.ts` trace (not yet read this pass) to give a defensible `STRATEGY_SWITCHING_ECONOMIC` vs. `STRUCTURAL_ONLY` verdict -- flagged as the natural next step in the authority map.
-- **Full entry/management E2E graphs** (items 7, 8): the R7 forensic gives strong real evidence for large parts of the entry graph, but a formal arrow-by-arrow `REAL/WIRED/REACHABLE/PERSISTED/TESTED` table was not built this pass.
-- **Profit/loss/assignment/recovery/CC/call-away completeness audits** (items 9-11): not started.
-- **Optionomics field re-qualification, canonical export consumers, correlation/severe-downside tooling, metric catalog, data-sufficiency, model governance, brain capability matrix, acceptance contract** (items 14-21): not started this pass; several of these were already scoped/deferred in the prior Slice C/D directive and remain open.
+- **Slice 2**: `THETA_PRE_VPS_CAPABILITY_REGISTRY.md` + `src/research/pre-vps-capability-registry.ts` (24 grounded entries, 7 tests, all passing).
+- **Slice 3**: Expanded `THETA_PRE_VPS_UNKNOWN_LEDGER.md` beyond the 4-entry seed -- new findings in `src/providers/`, `src/customer/`, `src/database/`, and a refined AEGIS SYSTEM-family severity finding (forces continuous `HOLD_ONLY`, not merely "unevaluated").
+- **Slice 4**: `THETA_STRATEGY_ROUTER_TRUTH_MATRIX.md` -- corrected a false assumption (`strategy-timing-router.ts` is NOT the real router; it's a diagnostic path), traced the real Python-bridge router, and found the live orchestrator only ever checks `THETA_Q` eligibility.
+- **Slice 5**: `THETA_ENTRY_END_TO_END_GRAPH.md` -- arrow-by-arrow trace from worker cycle to broker mutation, cross-referenced against the real R7 forensic.
+- **Slice 6**: `THETA_MANAGEMENT_END_TO_END_GRAPH.md` -- refined the known P0 gap: BOTH the array-based and singular roll/CC candidate mechanisms are unpopulated, blocking ROLL, ROLL_CC, **and** SELL_CC (not just ROLL as previously documented).
+- **Slice 7**: `THETA_PROFIT_LOSS_ROLL_BRAIN_AUDIT.md` -- confirmed no universal P&L%-based stop-loss exists; confirmed real roll-immutability honoring; flagged `thesis-invalidation.ts` internals as an open follow-up.
+- **Slice 8**: `THETA_ASSIGNMENT_RECOVERY_CC_CALLAWAY_AUDIT.md` -- confirmed THETA does NOT blindly sell a CC on assignment (a real basis-floor safety rule already exists, just unreachable).
+- **Slice 9**: `THETA_PROVIDER_CAPABILITY_MATRIX.md` -- real Alpaca source-read coverage plus **real Optionomics MCP calls this session**; corrected a prior claim about order-submission code existing nowhere (it exists, in `src/execution/broker.ts`, correctly gated).
+- **Slice 10**: `THETA_OPTIONOMICS_FIELD_QUALIFICATION_2026-09-22.md` -- real qualification of 13 fields via real MCP calls across real sessions/symbols; confirmed Vanna/Charm genuinely absent from the provider; confirmed the `call_wall`/`put_wall` quarantine stands.
+- **Slice 11**: `THETA_CODEX_CANONICAL_EXPORT_REQUESTS.md`.
+- **Slice 12**: `THETA_R8_METRIC_CATALOG.md`, `THETA_R8_DATA_SUFFICIENCY.md`, `THETA_R8_MODEL_GOVERNANCE.md`, `THETA_BRAIN_CAPABILITY_MATRIX.md`.
+- **Slice 13**: `THETA_PRE_VPS_ACCEPTANCE.md`.
+- **Slice 14**: `THETA_CODEX_PRE_VPS_INTEGRATION_BACKLOG.md` rebuilt.
+- **Special investigation**: `THETA_CONTRACT_NOT_EXECUTABLE_INVESTIGATION.md` -- found the real executability gate has 10 independent conditions (not just multiplier); found the granular per-candidate rejection reason is already persisted, so Codex can resolve this WITHOUT a fresh live Alpaca pull as the first step.
 
-## Recommended next slice
+## Real access boundaries hit this pass (per the directive's own stop condition)
 
-Given P0-2 (the `CONTRACT_NOT_EXECUTABLE` root cause) is the single highest-leverage
-open item -- it directly explains the gap between "thousands of real
-candidates evaluated" and "zero trades" in the only real session evidence
-available -- the recommended next action is for **Codex** (who has real Alpaca
-access this research branch does not) to resolve P0-2 before further research
-slices are prioritized. In parallel, the next Claude-owned research slice
-should be the `strategy-timing-router.ts` trace (closes the open question in
-`THETA_CANONICAL_AUTHORITY_MAP.md`) and/or the entry E2E graph, since both are
-now scoped precisely rather than attempted broadly.
+- **No live Alpaca API/MCP access** in this research environment -- `CONTRACT_NOT_EXECUTABLE`'s live-verification step and several `NOT_INDEPENDENTLY_VERIFIED` provider-matrix rows are genuinely blocked here; Codex has the access this branch lacks.
+- **No Aiven/Production database read access** -- `WIDER_UNIVERSE_REAL_ROWS`, `BROKER_RECONCILIATION_HEALTHY` internals, and `DATABASE_WRITABLE` could not be independently re-verified.
+- An org-level usage/rate limit was hit once mid-pass (a duplicate research fork failed with HTTP 429); it did not block completion since the fork's useful output had already landed before the limit hit, and the limit reset before the remainder of this pass.
+
+## Still explicitly deferred
+
+- **Required-vs-optional evidence matrix** (directive item 5) as its own dedicated document -- partially covered by the brain capability matrix and per-action audits, but not built as a standalone HARD_REQUIRED_SAFETY/REQUIRED_WHEN_APPLICABLE/ECONOMIC_RANKING_FEATURE/OPTIONAL_RESEARCH_MODIFIER/EMPIRICAL_FEATURE matrix.
+- Correlation (20/60/120-session) and severe-downside (continuous/vol-normalized MAE) research tooling -- still not built; remains real, scoped future work (see the Codex export-requests doc's priority ordering, which gates on other P0/P1 items anyway).
+- `bots/theta/quant/models/strategy_router.py` internals, `thesis-invalidation.ts` internals, and real population verification of `input.context.assignmentCapacity` -- all flagged as concrete, scoped follow-ups in the rebuilt Codex backlog, not silently dropped.
