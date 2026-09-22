@@ -166,6 +166,14 @@ export class PostgresThetaCycleStore {
     if (fusion.contentHash !== cycle.snapshotContentHash) throw new Error('FUSION_SNAPSHOT_HASH_MISMATCH');
     if (!verifyFusionSnapshot(fusion.snapshot as JsonValue, fusion.contentHash)) throw new Error('FUSION_SNAPSHOT_CONTENT_INVALID');
     const fusionSnapshotId = deterministicRuntimeUuid(`fusion:${context.botInstanceId}:${fusion.contentHash}`);
+    const persistenceStartedAt = Date.now();
+    const tracePersistence = (stage: string): void => {
+      if (process.env.VERCEL_ENV !== 'production') return;
+      console.info(JSON.stringify({ event: 'THETA_PERSIST_STAGE_V1', stage,
+        elapsedMs: Date.now() - persistenceStartedAt,
+        contracts: Array.isArray(fusion.snapshot.contractCandidates) ? fusion.snapshot.contractCandidates.length : 0,
+        rssMb: Math.round(process.memoryUsage().rss / 1_048_576) }));
+    };
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -186,9 +194,11 @@ export class PostgresThetaCycleStore {
       );
 
       await this.persistOptionomicsEvidence(client, fusionSnapshotId, fusion.snapshot);
+      tracePersistence('OPTIONOMICS_COMPLETE');
       const strategyFrontierId = await this.persistCanonicalStrategyFrontier(client, fusionSnapshotId, cycle);
       if (strategyFrontierId !== null) {
         await this.persistRelationalCanonicalStrategyEvidence(client, strategyFrontierId, fusionSnapshotId, cycle);
+        tracePersistence('CANONICAL_FRONTIER_COMPLETE');
         const contracts = normalizedOptionContractSchema.array().parse(fusion.snapshot.contractCandidates);
         const optionomicsState = objectField(fusion.snapshot, 'optionomicsFeatureState');
         const optionomicsObject = jsonObject(optionomicsState);
@@ -216,14 +226,18 @@ export class PostgresThetaCycleStore {
           optionomicsAttachments: optionomicsChainAttachmentsFromFeatureState(normalizedFeatures),
         });
         await persistOptionsChainDecisionEvidence(client, chainDecision);
+        tracePersistence('CHAIN_RESEARCH_COMPLETE');
       }
 
       const candidates = await this.persistCandidates(client, fusionSnapshotId, cycle);
+      tracePersistence('CANDIDATES_COMPLETE');
       const strategyRouteId = await this.persistRoute(client, fusionSnapshotId, cycle);
       const decisionId = await this.persistDecision(client, fusionSnapshotId, cycle, candidates.candidateSetId, candidates.candidateIds,
         context.strategyVersionId);
+      tracePersistence('DECISION_COMPLETE');
       await this.persistPointInTimeEvidence(client,context,cycle,fusionSnapshotId,candidates.candidateSetId,
         candidates.candidateIds,decisionId);
+      tracePersistence('PIT_EVIDENCE_COMPLETE');
       let shadowOpportunityCount = 0;
       for (const entry of cycle.orchestration?.shadowOpportunities ?? []) {
         const result = await client.query(
@@ -244,6 +258,7 @@ export class PostgresThetaCycleStore {
         shadowOpportunityCount += result.rowCount ?? 0;
       }
       await client.query('COMMIT');
+      tracePersistence('COMMITTED');
       return { fusionSnapshotId, candidateSetId: candidates.candidateSetId, candidateCount: candidates.candidateIds.size,
         decisionId, strategyRouteId, strategyFrontierId, shadowOpportunityCount };
     } catch (error) {
