@@ -570,7 +570,7 @@ export interface OptionomicsProviderValue<T> {
   readonly state: OptionomicsValueState;
   readonly value: T | null;
   readonly reason: string | null;
-  readonly units: 'PROVIDER_REPORTED_UNVERIFIED' | 'COUNT' | 'TIMESTAMP' | 'TEXT';
+  readonly units: 'PROVIDER_REPORTED_UNVERIFIED' | 'COUNT' | 'TRADING_SESSIONS' | 'TIMESTAMP' | 'TEXT';
 }
 
 export interface NormalizedOptionomicsContextObservation {
@@ -669,6 +669,15 @@ function normalizeMetrics(body: unknown): Readonly<Record<string, unknown>> | nu
   const providerNumericFields = Object.fromEntries(Object.entries(metrics)
     .filter(([, value]) => value === null || asFiniteNumberOrNull(value) !== null)
     .map(([key]) => [key, metricValue(key)]));
+  const expectedMoves = objectOrNull(metrics.expected_moves);
+  const reportedEarningsDistance = expectedMoves === null
+    ? { state: metrics.expected_moves === undefined || metrics.expected_moves === null ? 'UNKNOWN' : 'INVALID',
+      value: null, reason: 'EXPECTED_MOVES_OBJECT_UNAVAILABLE', units: 'TRADING_SESSIONS' }
+    : providerKnown(expectedMoves.earnings_in_sessions);
+  const earningsInSessions = reportedEarningsDistance.state === 'KNOWN'
+    && (!Number.isSafeInteger(reportedEarningsDistance.value) || (reportedEarningsDistance.value as number) < 0)
+    ? { state: 'INVALID', value: null, reason: 'EARNINGS_DISTANCE_NOT_NONNEGATIVE_INTEGER', units: 'TRADING_SESSIONS' }
+    : { ...reportedEarningsDistance, units: 'TRADING_SESSIONS' };
   return {
     atmIv: firstPresentValue(metrics, ['atm_iv']),
     ivRank: firstPresentValue(metrics, ['iv_rank']),
@@ -687,6 +696,10 @@ function normalizeMetrics(body: unknown): Readonly<Record<string, unknown>> | nu
     expectedMoveLower: firstPresentValue(metrics, ['expected_move_lower']),
     expectedMoveUpper: firstPresentValue(metrics, ['expected_move_upper']),
     expectedMovePercent: firstPresentValue(metrics, ['expected_move_pct']),
+    // A positive distance is provider-reported context, not proof that its
+    // future earnings calendar is complete. Null never means event-free.
+    earningsInSessions,
+    earningsCoverageAuthority: 'POSITIVE_DISTANCE_ONLY_NO_NEGATIVE_ASSURANCE',
     totalGex: metricValue('total_gex'),
     callGammaExposure: firstPresentValue(metrics, ['call_gamma_exposure']),
     putGammaExposure: firstPresentValue(metrics, ['put_gamma_exposure']),
