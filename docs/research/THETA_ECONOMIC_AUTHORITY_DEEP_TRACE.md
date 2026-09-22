@@ -1,5 +1,13 @@
 # THETA economic authority deep trace
 
+> **CORRECTION (Wave 6, 2026-09-22)**: any claim in this document that no
+> code path constructs a multi-leg Defined-Risk spread or distinct
+> short-DTE Hold-Strike candidate is incomplete/withdrawn --
+> `canonical-strategy-frontier.ts` contains real construction logic for
+> both branches. See `THETA_CANONICAL_FRONTIER_HD_RECONCILIATION.md`. The
+> single-decision-authority finding (only `thetaQEligible` drives real
+> control flow in `new-risk-orchestrator.ts`) is unaffected.
+
 Status: Wave 5 item 9. Grounded in a complete direct read of
 `bots/theta/quant/models/opportunity_frontier.py` (277 lines, read in full)
 and targeted call-graph tracing of `management_action_value.py`,

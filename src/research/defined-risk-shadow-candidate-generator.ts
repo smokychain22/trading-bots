@@ -3,9 +3,29 @@
  * `brokerAuthority: false`. Enumerates real put-credit-spread candidates
  * from a real option chain's short/long leg quotes, constrained to
  * THETA_DEFINED_RISK's real registry lattice (7-60 DTE, per
- * `strategy-package.ts`). This is the real producer the entry E2E graph
- * and strategy router deep trace both confirmed does not exist in
- * Production -- building it here is research/shadow-only.
+ * `strategy-package.ts`).
+ *
+ * **CORRECTION (Wave 6, per Codex's own review of this module --
+ * `docs/operations/THETA_RESOLVED_AND_ACTIVE_WORK.md`)**: `canonical-strategy-frontier.ts`
+ * was found to already contain real, structurally complete Defined-Risk
+ * (and Hold-Strike) candidate-construction logic (`definedRiskCandidate`/
+ * `singleLegPutCandidate`, filtered by each branch's own real registry
+ * DTE lattice against the SAME fetched `input.contracts`) -- this
+ * module's earlier doc comment claiming "no code path anywhere in the
+ * live pipeline constructs a multi-leg Defined-Risk spread candidate"
+ * was **incomplete**: that construction logic exists; what remains
+ * genuinely unresolved is whether the real upstream chain fetch
+ * (`theta-shadow-cycle.ts`'s `config.optionExpirationDateGte/Lte`) is
+ * configured wide enough to ever supply it real 7-60-DTE-lattice
+ * contracts distinct from THETA_Q's own window -- not independently
+ * verified either way. Per Codex's explicit instruction, this module is
+ * a **research prototype to reconcile with that existing frontier, not
+ * a competing/duplicate Production decision authority** -- see
+ * `THETA_CANONICAL_FRONTIER_HD_RECONCILIATION.md` for the full
+ * correction. Codex also identified a real defect this pass fixes: this
+ * generator previously accepted a structurally valid but stale/
+ * desynchronized quote pair without giving the caller a way to reject
+ * it (`requireSynchronizedFreshQuotes` below).
  *
  * Deliberately REUSES, never reimplements, the already-hardened spread
  * economics from `defined-risk-vs-csp-paired-study.ts`
@@ -41,11 +61,22 @@ export interface DefinedRiskChainInput {
   /** Required policy bounds on spread width -- this module never invents a plausible width range. */
   readonly minWidth: number;
   readonly maxWidth: number;
+  /**
+   * Required, caller-supplied. When `true`, a structurally valid pair
+   * whose leg quotes are not `BOTH_FRESH_AND_SYNCHRONIZED` (per
+   * `buildSpreadExecutionBurdenEvidence`'s `quoteState`) is REJECTED
+   * (`QUOTE_NOT_SYNCHRONIZED_FRESH`), never silently accepted. When
+   * `false`, a stale/desynchronized pair may still be accepted, but its
+   * real `quoteState` is always preserved on the accepted candidate so a
+   * downstream consumer can check it -- this module never hides that
+   * evidence either way. No default -- the caller must decide.
+   */
+  readonly requireSynchronizedFreshQuotes: boolean;
   readonly sourceEvidenceIds: readonly string[];
 }
 
 export type DefinedRiskGeneratorRejectionReason =
-  | 'DTE_OUTSIDE_LATTICE' | 'SAME_STRIKE_LEG_PAIR' | 'WIDTH_OUTSIDE_POLICY_RANGE'
+  | 'DTE_OUTSIDE_LATTICE' | 'SAME_STRIKE_LEG_PAIR' | 'WIDTH_OUTSIDE_POLICY_RANGE' | 'QUOTE_NOT_SYNCHRONIZED_FRESH'
   | PutCreditSpreadStructuralClassification;
 
 export interface DefinedRiskAcceptedCandidate {
@@ -141,6 +172,14 @@ export function generateDefinedRiskCandidates(input: DefinedRiskChainInput): Def
         short.contractId, short.quote, long.contractId, long.quote,
         input.decisionTimestamp, input.maxSyncAgeMs, input.maxQuoteAgeMs,
       );
+
+      if (input.requireSynchronizedFreshQuotes && burden.quoteState !== 'BOTH_FRESH_AND_SYNCHRONIZED') {
+        rejectedCandidates.push({
+          shortContractId: short.contractId, longContractId: long.contractId, reason: 'QUOTE_NOT_SYNCHRONIZED_FRESH',
+          detail: `quoteState=${burden.quoteState}, but policy requires BOTH_FRESH_AND_SYNCHRONIZED.`,
+        });
+        continue;
+      }
 
       acceptedCandidates.push({
         candidateId: `DEFINED_RISK:${short.contractId}/${long.contractId}`,

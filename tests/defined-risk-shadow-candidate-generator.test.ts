@@ -20,7 +20,7 @@ function chainInput(overrides: Partial<DefinedRiskChainInput> = {}): DefinedRisk
     shortLegCandidates: [leg({ contractId: 'short-190', strike: 190 })],
     longLegCandidates: [leg({ contractId: 'long-185', strike: 185, quote: { bid: 0.5, ask: 0.6, quoteTimestamp: '2026-09-22T13:59:30Z', multiplier: 100 } })],
     quantity: 1, maxSyncAgeMs: 1000, maxQuoteAgeMs: 60000, minDte: 7, maxDte: 60, minWidth: 1, maxWidth: 20,
-    sourceEvidenceIds: ['ev-1'], ...overrides,
+    requireSynchronizedFreshQuotes: false, sourceEvidenceIds: ['ev-1'], ...overrides,
   };
 }
 
@@ -75,6 +75,21 @@ test('ADVERSARIAL: a stale second leg still builds the candidate but preserves D
   }));
   assert.equal(result.acceptedCandidates.length, 1);
   assert.equal(result.acceptedCandidates[0]?.quoteSynchronizationStatus, 'DESYNCHRONIZED');
+});
+
+test('REPAIR (Wave 6, per Codex review): with requireSynchronizedFreshQuotes=true, a stale/desynchronized pair is REJECTED, not silently accepted', () => {
+  const result = generateDefinedRiskCandidates(chainInput({
+    requireSynchronizedFreshQuotes: true,
+    longLegCandidates: [leg({ contractId: 'long-185', strike: 185, quote: { bid: 0.5, ask: 0.6, quoteTimestamp: '2026-09-22T14:10:00Z', multiplier: 100 } })],
+  }));
+  assert.equal(result.acceptedCandidates.length, 0);
+  assert.equal(result.rejectedCandidates[0]?.reason, 'QUOTE_NOT_SYNCHRONIZED_FRESH');
+});
+
+test('REPAIR (Wave 6): with requireSynchronizedFreshQuotes=true, a genuinely fresh/synchronized pair is still accepted normally', () => {
+  const result = generateDefinedRiskCandidates(chainInput({ requireSynchronizedFreshQuotes: true }));
+  assert.equal(result.acceptedCandidates.length, 1);
+  assert.equal(result.acceptedCandidates[0]?.quoteState, 'BOTH_FRESH_AND_SYNCHRONIZED');
 });
 
 test('enumerates all valid pairs across multiple short/long candidates in one real chain, preserving evidence lineage on every accepted candidate', () => {

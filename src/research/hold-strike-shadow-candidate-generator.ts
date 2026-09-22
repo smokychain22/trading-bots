@@ -2,11 +2,20 @@
  * Hold-Strike shadow candidate generator (Wave 5 item 6). Research-only,
  * `brokerAuthority: false`. Enumerates real, single-leg cash-secured-put
  * candidates from a real option chain, constrained to THETA_HOLD_STRIKE's
- * real registry lattice (2-5 DTE, per `strategy-package.ts`). This is the
- * real producer the entry E2E graph and strategy router deep trace both
- * confirmed does not exist in Production -- building it here is
- * research/shadow-only; it confers no Paper or broker authority and is
- * never wired into `autonomous-runtime.ts`.
+ * real registry lattice (2-5 DTE, per `strategy-package.ts`).
+ *
+ * **CORRECTION (Wave 6, per Codex's own review of this module --
+ * `docs/operations/THETA_RESOLVED_AND_ACTIVE_WORK.md`)**: `canonical-strategy-frontier.ts`
+ * was found to already contain a real Hold-Strike candidate builder
+ * (`singleLegPutCandidate('THETA_HOLD_STRIKE', ...)`, filtered by the real
+ * registry DTE lattice against the SAME fetched `input.contracts`) -- this
+ * module's earlier doc comment claiming no such code path exists was
+ * **incomplete**. See `THETA_CANONICAL_FRONTIER_HD_RECONCILIATION.md` for
+ * the full correction. Per Codex's explicit instruction, this module is a
+ * **research prototype to reconcile with that existing frontier, not a
+ * competing/duplicate Production decision authority**. Codex also
+ * identified a real defect this pass fixes: incomplete contract-identity
+ * validation (duplicate/empty `contractId` was never checked).
  *
  * Reuses `cashSecuredPutMaxLossAtZero` from the already-hardened
  * `cross-strategy-common-horizon-contract.ts` rather than recomputing the
@@ -47,6 +56,7 @@ export interface HoldStrikeGeneratorInput {
 
 export type HoldStrikeRejectionReason =
   | 'OWNERSHIP_INELIGIBLE' | 'OWNERSHIP_UNKNOWN' | 'EVENT_NEAR' | 'EVENT_STATE_UNKNOWN'
+  | 'EMPTY_CONTRACT_ID' | 'DUPLICATE_CONTRACT_ID'
   | 'DTE_OUTSIDE_LATTICE' | 'MISSING_EXECUTABLE_QUOTE' | 'QUOTE_STALE' | 'QUOTE_INVALID'
   | 'MISSING_MULTIPLIER' | 'NON_POSITIVE_MULTIPLIER' | 'MISSING_DELTA' | 'NON_POSITIVE_STRIKE';
 
@@ -123,7 +133,20 @@ export function generateHoldStrikeCandidates(input: HoldStrikeGeneratorInput): H
   const acceptedCandidates: HoldStrikeAcceptedCandidate[] = [];
   const rejectedCandidates: HoldStrikeRejectedCandidate[] = [];
 
+  // Contract identity validation: an empty contractId can never be traced
+  // back to a real contract; a duplicate contractId within the same real
+  // chain snapshot means the caller supplied inconsistent/ambiguous
+  // identity for two different quote rows -- reject BOTH occurrences,
+  // never silently pick one.
+  const contractIdCounts = new Map<string, number>();
+  for (const c of input.contracts) contractIdCounts.set(c.contractId, (contractIdCounts.get(c.contractId) ?? 0) + 1);
+
   for (const c of input.contracts) {
+    if (c.contractId.trim().length === 0) { rejectedCandidates.push(reject(c.contractId, 'EMPTY_CONTRACT_ID', 'contractId is empty or whitespace-only.')); continue; }
+    if ((contractIdCounts.get(c.contractId) ?? 0) > 1) {
+      rejectedCandidates.push(reject(c.contractId, 'DUPLICATE_CONTRACT_ID', `contractId "${c.contractId}" appears ${contractIdCounts.get(c.contractId)} times in this chain snapshot -- ambiguous identity, both/all occurrences rejected.`));
+      continue;
+    }
     if (!finite(c.strike) || c.strike <= 0) { rejectedCandidates.push(reject(c.contractId, 'NON_POSITIVE_STRIKE', `strike=${c.strike}`)); continue; }
     if (c.dte < input.minDte || c.dte > input.maxDte) {
       rejectedCandidates.push(reject(c.contractId, 'DTE_OUTSIDE_LATTICE', `dte=${c.dte} outside [${input.minDte},${input.maxDte}]`));

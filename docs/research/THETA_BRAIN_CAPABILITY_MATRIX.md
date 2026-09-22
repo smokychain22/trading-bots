@@ -1,5 +1,12 @@
 # THETA brain capability matrix
 
+> **CORRECTION (Wave 6, 2026-09-22)**: any Hold-Strike/Defined-Risk row
+> below marked as having no candidate-construction code path is
+> incomplete/withdrawn -- `canonical-strategy-frontier.ts` contains real
+> construction logic for both. `RUNTIME_REACHABLE` for either branch
+> remains unproven (upstream chain-fetch window not verified). See
+> `THETA_CANONICAL_FRONTIER_HD_RECONCILIATION.md`.
+
 Status: Slice 12/20 of the pre-VPS master continuation directive. This is the
 authoritative defense against "a function exists, therefore the bot has
 intelligence." Every row is grounded in this engagement's direct source

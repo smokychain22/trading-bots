@@ -1,5 +1,13 @@
 # THETA Codex pre-VPS integration backlog (rebuilt, Slice 14)
 
+> **CORRECTION (Wave 6, 2026-09-22)**: the P1-4 finding that "no real
+> entry-candidate generation exists for THETA_HOLD_STRIKE or
+> THETA_DEFINED_RISK" is incomplete/withdrawn -- construction logic exists
+> in `canonical-strategy-frontier.ts`. Real runtime reachability (does the
+> upstream chain fetch's configured window ever supply it out-of-Q-range
+> contracts) remains unverified. See
+> `THETA_CANONICAL_FRONTIER_HD_RECONCILIATION.md`.
+
 Status: Rebuilt after Slice 1 + the full Slice 2-13 pass of the pre-VPS
 master continuation directive. Supersedes the Slice-1-only version of this
 document (kept in git history, not deleted). Every item is real,

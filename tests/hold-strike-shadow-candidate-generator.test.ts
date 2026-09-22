@@ -87,3 +87,30 @@ test('a mixed real chain produces both accepted and rejected candidates in the s
   assert.equal(result.acceptedCandidates[0]?.contractId, 'good');
   assert.equal(result.rejectedCandidates[0]?.contractId, 'bad-dte');
 });
+
+test('REPAIR (Wave 6, per Codex review): rejects an empty/whitespace-only contractId, never traced back to a real contract', () => {
+  const result = generateHoldStrikeCandidates(input({ contracts: [contract({ contractId: '   ' })] }));
+  assert.equal(result.acceptedCandidates.length, 0);
+  assert.equal(result.rejectedCandidates[0]?.reason, 'EMPTY_CONTRACT_ID');
+});
+
+test('REPAIR (Wave 6, per Codex review): a duplicate contractId within one chain snapshot rejects BOTH occurrences, never silently picks one', () => {
+  const result = generateHoldStrikeCandidates(input({
+    contracts: [contract({ contractId: 'dup', strike: 190 }), contract({ contractId: 'dup', strike: 195 })],
+  }));
+  assert.equal(result.acceptedCandidates.length, 0);
+  assert.equal(result.rejectedCandidates.length, 2);
+  assert.ok(result.rejectedCandidates.every((r) => r.reason === 'DUPLICATE_CONTRACT_ID'));
+});
+
+test('REPAIR (Wave 6): a duplicate contractId does not suppress unrelated, uniquely-identified contracts in the same call', () => {
+  const result = generateHoldStrikeCandidates(input({
+    contracts: [
+      contract({ contractId: 'dup', strike: 190 }), contract({ contractId: 'dup', strike: 195 }),
+      contract({ contractId: 'unique-good', strike: 200 }),
+    ],
+  }));
+  assert.equal(result.acceptedCandidates.length, 1);
+  assert.equal(result.acceptedCandidates[0]?.contractId, 'unique-good');
+  assert.equal(result.rejectedCandidates.filter((r) => r.reason === 'DUPLICATE_CONTRACT_ID').length, 2);
+});

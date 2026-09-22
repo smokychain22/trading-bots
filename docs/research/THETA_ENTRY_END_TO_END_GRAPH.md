@@ -1,5 +1,11 @@
 # THETA entry end-to-end graph
 
+> **CORRECTION (Wave 6, 2026-09-22)**: any claim in this document that no
+> code path constructs a multi-leg Defined-Risk spread or distinct
+> short-DTE Hold-Strike candidate is incomplete/withdrawn --
+> `canonical-strategy-frontier.ts` contains real construction logic for
+> both branches. See `THETA_CANONICAL_FRONTIER_HD_RECONCILIATION.md`.
+
 Status: Slice 5 of the pre-VPS master continuation directive. Grounded in a
 dedicated research fork's direct reads of `new-risk-orchestrator.ts`,
 `theta-shadow-cycle.ts`, `option-chain-ingestion.ts`, `alpaca-provider.ts`,

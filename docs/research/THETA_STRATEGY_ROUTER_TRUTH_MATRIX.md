@@ -1,5 +1,13 @@
 # THETA strategy router truth matrix
 
+> **CORRECTION (Wave 6, 2026-09-22)**: this document's claim that no code
+> path constructs a multi-leg Defined-Risk spread or a distinct short-DTE
+> Hold-Strike lattice was incomplete. `canonical-strategy-frontier.ts`
+> contains real construction logic for both. See
+> `THETA_CANONICAL_FRONTIER_HD_RECONCILIATION.md` for the full correction.
+> The narrower finding below -- that only `thetaQEligible` drives real
+> control flow, and H/D runtime reachability is unproven -- still stands.
+
 Status: Slice 4 of the pre-VPS master continuation directive. Grounded in
 direct source reads (this pass, via a dedicated research fork) of
 `strategy-timing-router.ts`, `new-risk-orchestrator.ts`,
