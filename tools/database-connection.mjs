@@ -1,5 +1,15 @@
 const nonempty = (value) => typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
 
+export function normalizeAivenConnectionString(value) {
+  const url = new URL(value);
+  if (url.hostname.endsWith('.aivencloud.com')
+    && url.searchParams.get('sslmode') === 'require'
+    && !url.searchParams.has('uselibpqcompat')) {
+    url.searchParams.set('uselibpqcompat', 'true');
+  }
+  return url.toString();
+}
+
 export function resolveDatabaseConnection(environment, purpose = 'runtime') {
   const authority = nonempty(environment.DATABASE_RUNTIME_AUTHORITY) ?? 'NEON';
   if (!['AIVEN', 'NEON'].includes(authority)) throw new Error('DATABASE_RUNTIME_AUTHORITY_INVALID');
@@ -13,7 +23,7 @@ export function resolveDatabaseConnection(environment, purpose = 'runtime') {
   if (authority === 'AIVEN') {
     const aiven = nonempty(environment.AIVEN_DATABASE_URL);
     if (!aiven) throw new Error('AIVEN_DATABASE_NOT_CONFIGURED');
-    return { authority, connectionString: aiven, sourceVariable: 'AIVEN_DATABASE_URL' };
+    return { authority, connectionString: normalizeAivenConnectionString(aiven), sourceVariable: 'AIVEN_DATABASE_URL' };
   }
 
   const candidates = purpose === 'migration'

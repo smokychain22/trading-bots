@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveDatabaseConnection } from '../tools/database-connection.mjs';
+import { normalizeAivenConnectionString, resolveDatabaseConnection } from '../tools/database-connection.mjs';
+
+test('migration resolver preserves encrypted Aiven libpq require semantics', () => {
+  const normalized = normalizeAivenConnectionString(
+    'postgres://user:fake-secret@service.aivencloud.com:25934/defaultdb?sslmode=require',
+  );
+  const parsed = new URL(normalized);
+  assert.equal(parsed.searchParams.get('sslmode'), 'require');
+  assert.equal(parsed.searchParams.get('uselibpqcompat'), 'true');
+});
 
 test('Aiven authority cannot be shadowed by a stale generic database URL', () => {
   const resolved = resolveDatabaseConnection({
