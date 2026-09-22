@@ -104,22 +104,16 @@ row against the new SHA before treating any of them as still open.
 - **Disposition**: `assignment_contract.py` -> `SUPERSEDED_BY_TS_AUTHORITY` (Codex's `b9cd49a` already built a simpler, real TS-native alternative). `covered_call_contract.py`, `management_contract.py`, `recovery_contract.py` -> `QUARANTINED` (all three trace to the same already-rejected "Pipeline B" TS orchestrator cluster, only reachable via `autonomous-runtime-handler.ts`, itself not on the real worker entry's path -- confirms, does not contradict, the existing quarantine). `har_rv_contract.py` -> `RESEARCH_ONLY` (self-declared in its own docstring, confirmed).
 - **State**: CLOSED -- no Codex action required. One open question recorded for whoever eventually builds a real management-candidate source: whether the pure models (`covered_call_ranker`, `management_action_value`, `recovery_decision`) are reusable computation independent of their current quarantined orchestrator wrappers. Not actioned by this pass.
 
-## Q-8: `CONFIGURE_AND_CALIBRATE_EXECUTION_GATE` -- quote-freshness threshold is hardcoded, calibration/latency/refresh unproven
+## Q-8: `CALIBRATE_EXECUTION_GATE` -- config wired, calibration/latency/refresh still open
 
-- **Priority**: HIGH -- dominant real rejection cause in the one full live session this engagement has forensic data for (3,299/3,876 candidates, 0 positive selections). **Correction (2026-09-22, per owner review)**: this is NOT a request to demote quote freshness or spread width to soft ranking -- minimum executable market quality is a legitimate `HARD_EXECUTION_REQUIREMENT`, and this gate is correctly hard. The ask is narrower: configure and calibrate it.
-- **Claude source commit**: this wave's Batch 3 (`THETA_HARD_VS_SOFT_DECISION_AUDIT.md`), corrected this pass
-- **Source artifact**: `docs/research/THETA_HARD_VS_SOFT_DECISION_AUDIT.md`
-- **Production subsystem**: `src/theta/theta-shadow-cycle.ts:938`, consumed by `new-risk-orchestrator.ts:413-432`
-- **Exact source insertion point**: `theta-shadow-cycle.ts:938` -- `maxQuoteAgeSecondsForExecutable: 30` is a bare literal; `maxSpreadPctForExecutable: config.maxAcceptableSpreadPct` is already real config.
-- **Current defect**: the quote-age threshold cannot be tuned without a code change, and this pass found no evidence 30s was empirically derived. Three distinct open research questions, not one: (1) is 30s calibrated; (2) does THETA's own ingestion pipeline latency contribute to staleness (a latency defect, not a calibration question, if so); (3) does any stale-but-promising candidate get a second, fresher-quote look before being permanently discarded -- this pass found no refresh/retry step in the executable/non-executable partition.
-- **Accepted architectural constraint**: the gate itself stays hard. Do not soften it. This is a calibration/latency/refresh investigation, not an architecture change.
-- **Expected change**: (1) move `maxQuoteAgeSecondsForExecutable` into real config, matching the spread-width field's existing pattern; (2) instrument whether ingestion latency is a real contributor to observed staleness; (3) evaluate whether a bounded refresh step for a structurally-promising-but-stale candidate is worth adding; (4) use the historical false-reject tooling (this wave's Batch 4) to test calibration empirically before any live threshold change.
-- **Producer**: `theta-shadow-cycle.ts`'s config assembly.
+- **Priority**: MEDIUM (downgraded from HIGH this pass -- the configurability half is closed)
+- **Claude source commit**: this wave's Batch 3 (`THETA_HARD_VS_SOFT_DECISION_AUDIT.md`)
+- **PARTIALLY CLOSED (2026-09-22, verified against main `26af86f` "Version candidate quote age and retain safe runtime error headers")**: `theta-shadow-cycle.ts:206-215`'s real `candidateQuoteAgeSeconds(config, asOf)` now reads a versioned `candidateQuoteAgePolicy` (`policyVersion`/`effectiveAt`/`maxAgeSeconds`), validated (throws `CANDIDATE_QUOTE_AGE_POLICY_INVALID` on a malformed policy or a policy not yet effective at `asOf`) -- the "bare hardcoded literal" defect this queue row originally described is closed. Default remains 30s per Codex's own board notes; no threshold was loosened.
+- **Still open** (unchanged from the original finding): (1) whether 30s is empirically calibrated -- now testable via a real policy-version change once R8 tooling has data; (2) whether THETA's own ingestion pipeline latency contributes to observed staleness (still no stage-level provider-receive vs. THETA-processing timestamps found this pass); (3) whether a stale-but-promising candidate gets a second, fresher-quote look before being discarded -- still no refresh/retry step found in the executable/non-executable partition (`new-risk-orchestrator.ts:413-432`), though a separate, narrower exact-contract pre-submit refresh now exists at the execution layer (`alpaca-execution-quote-source.ts`, main `1bcf854`) -- distinct from a candidate-funnel refresh, not yet confirmed to resolve this.
+- **Expected change**: (1) instrument ingestion-latency stage timestamps; (2) research/decide whether a bounded shortlist refresh upstream of AEGIS is worth adding (this wave's item 17D -- full-chain refresh vs. bounded shortlist tradeoff, no empirical shortlist size to be invented without evidence); (3) use the historical false-reject tooling (already built) to test calibration once Q-10 data lands.
+- **Producer**: `theta-shadow-cycle.ts`'s `candidateQuoteAgeSeconds` (real, done).
 - **Consumer**: `new-risk-orchestrator.ts`'s executable/non-executable partition.
-- **Persistence requirement**: none new -- the resulting `executable` boolean is already persisted per-candidate.
-- **Test requirement**: a test proving the threshold is read from config, not hardcoded; once R8 tooling exists, a real before/after comparison.
-- **Runtime proof requirement**: a real session where a calibration/latency/refresh change measurably changes the `CONTRACT_NOT_EXECUTABLE` rejection rate without degrading fill safety.
-- **State**: OPEN, HIGH priority.
+- **State**: OPEN, MEDIUM priority (narrower scope than before).
 
 ## Q-9: RETRACTED -- was a false positive, corrected on direct re-read
 
@@ -160,13 +154,14 @@ corrected to `REAL` in the capability registry.
 - **Claude source commit**: this wave's Batch 3-4 (`historical-false-reject-analyzer.ts`, `THETA_HISTORICAL_FALSE_REJECT_REPLAY.md`)
 - **Source artifact**: `src/research/historical-false-reject-analyzer.ts` (real, tested, 7 tests passing), `docs/research/THETA_HISTORICAL_FALSE_REJECT_REPLAY.md`
 - **Current defect**: not a defect -- this research branch (a git worktree with no configured database connection) cannot reach the real Aiven-persisted candidate/quote/AEGIS rows for Sep 16/18/21 needed to run the analyzer for real.
-- **Expected change**: either (a) grant this research environment read-only access to the relevant persisted evidence tables, or (b) Codex exports the Sep-16/Sep-18/Sep-21 `contractCandidates`/quote/AEGIS-assessment rows to a file this branch can read.
+- **Expected change**: either (a) grant this research environment read-only access to the relevant persisted evidence tables, or (b) Codex exports the Sep-16/Sep-18/Sep-21 `contractCandidates`/quote/AEGIS-assessment rows to a file this branch can read. `src/research/historical-replay-import.ts` (built this pass) now defines the exact real, tested import contract Codex should target -- every required field named, `ABSENT_IN_HISTORICAL_SCHEMA` for anything the historical schema never captured.
+- **RECHECKED (2026-09-22, against main `26af86f`)**: Aiven writes are now restored (per `THETA_IMPLEMENTATION_BOARD.md`), but this pass found no NEW export/replay tool on main since the last check -- `tools/theta-research-export.ts`/`PostgresDatasetExporter` is a real, pre-existing exporter, but it requires the same live DB connection this research worktree still does not have configured; it is not a sanitized point-in-time historical replay export and was not built for this purpose. **Q-10 remains open**, not resolved by Aiven's write restoration alone (write access ≠ this research environment's read access).
 - **Producer**: the already-persisted real evidence from those 3 sessions (exists today, per the Sep-21 forensic doc already cited repeatedly).
-- **Consumer**: `historical-false-reject-analyzer.ts`'s `assessFalseReject`/`aggregateFalseRejectDay`.
+- **Consumer**: `historical-false-reject-analyzer.ts`'s `assessFalseReject`/`aggregateFalseRejectDay`, fed via `historical-replay-import.ts`'s validator.
 - **Persistence requirement**: none new -- read-only.
-- **Test requirement**: N/A (analyzer already has 7 passing tests against synthetic fixtures).
+- **Test requirement**: N/A (analyzer + importer already have 14 passing tests against synthetic fixtures).
 - **Runtime proof requirement**: N/A -- this is offline research analysis, not a runtime change.
-- **State**: OPEN, MEDIUM priority, NEW this pass.
+- **State**: OPEN, MEDIUM priority.
 
 ---
 
