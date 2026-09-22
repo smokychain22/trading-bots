@@ -14,6 +14,32 @@ export type FirstPaperCheckName = typeof firstPaperCheckNames[number];
 export type FirstPaperChecks = Readonly<Record<FirstPaperCheckName, FirstPaperCheck>>;
 export type FirstPaperStatus = 'READY' | 'BLOCKED_EXTERNAL' | 'BLOCKED_IMPLEMENTATION' | 'BLOCKED_PROVIDER' | 'BLOCKED_POLICY';
 
+export function assessReconciliationReadiness(input: {
+  readonly workerCycleHealthy: boolean;
+  readonly lastReconciliation: string | null;
+  readonly externalOrUnknownCount: number | null;
+  readonly localOnlyIntentCount: number | null;
+}): FirstPaperCheck {
+  const source = 'latest-broker-reconciliation-snapshot';
+  if (!input.workerCycleHealthy || input.lastReconciliation === null) return {
+    state: 'UNKNOWN', source, blocker: 'CURRENT_RECONCILIATION_NOT_PROVEN', blockerClass: 'EXTERNAL',
+  };
+  if (input.externalOrUnknownCount === null || input.localOnlyIntentCount === null) return {
+    state: 'UNKNOWN', source, blocker: 'RECONCILIATION_COUNTS_UNKNOWN', blockerClass: 'EXTERNAL',
+  };
+  if (!Number.isSafeInteger(input.externalOrUnknownCount) || input.externalOrUnknownCount < 0
+    || !Number.isSafeInteger(input.localOnlyIntentCount) || input.localOnlyIntentCount < 0) return {
+    state: 'UNKNOWN', source, blocker: 'RECONCILIATION_COUNTS_INVALID', blockerClass: 'EXTERNAL',
+  };
+  if (input.externalOrUnknownCount > 0) return {
+    state: 'FAIL', source, blocker: 'EXTERNAL_OR_UNKNOWN_BROKER_FACTS_PRESENT', blockerClass: 'POLICY',
+  };
+  if (input.localOnlyIntentCount > 0) return {
+    state: 'FAIL', source, blocker: 'LOCAL_ONLY_ORDER_INTENTS_PRESENT', blockerClass: 'EXTERNAL',
+  };
+  return { state: 'PASS', source };
+}
+
 export interface ThetaFirstPaperReadiness {
   readonly version: 'theta-first-paper-blocker-budget-v1';
   readonly authority: 'READ_ONLY_OPERATOR_DIAGNOSTIC';

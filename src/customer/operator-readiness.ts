@@ -123,6 +123,8 @@ export interface MasterRuntimeEvidence {
   readonly candidates_evaluated: number|null;
   readonly open_positions: number|null;
   readonly pending_orders: number|null;
+  readonly external_or_unknown_count: number|null;
+  readonly local_only_intent_count: number|null;
   readonly broker_orders: number|null;
   readonly broker_fills: number|null;
   readonly open_chains: number|null;
@@ -133,7 +135,8 @@ export interface MasterRuntimeEvidence {
 
 export async function readMasterRuntimeEvidence(databaseUrl?:string):Promise<MasterRuntimeEvidence>{
   const empty:MasterRuntimeEvidence={last_decision:null,last_decision_at:null,strategy_branch:null,last_snapshot:null,
-    candidates_evaluated:null,open_positions:null,pending_orders:null,broker_orders:null,broker_fills:null,open_chains:null,
+    candidates_evaluated:null,open_positions:null,pending_orders:null,external_or_unknown_count:null,
+    local_only_intent_count:null,broker_orders:null,broker_fills:null,open_chains:null,
     option_realized_pnl:null,stock_realized_pnl:null,whole_chain_pnl:null};
   if(!databaseUrl)return empty;
   const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000});
@@ -144,7 +147,8 @@ export async function readMasterRuntimeEvidence(databaseUrl?:string):Promise<Mas
       ), latest_set AS (
         SELECT candidate_count FROM trade.candidate_set ORDER BY generated_at DESC LIMIT 1
       ), latest_reconciliation AS (
-        SELECT position_count,open_order_count FROM trade.broker_reconciliation_snapshot ORDER BY observed_at DESC LIMIT 1
+        SELECT position_count,open_order_count,external_or_unknown_count,detail_json
+        FROM trade.broker_reconciliation_snapshot ORDER BY observed_at DESC LIMIT 1
       ), economics AS (
         SELECT
           (SELECT sum(realized_pnl) FROM trade.option_leg WHERE realized_pnl IS NOT NULL) AS option_realized,
@@ -158,6 +162,8 @@ export async function readMasterRuntimeEvidence(databaseUrl?:string):Promise<Mas
         (SELECT candidate_count FROM latest_set) AS candidates_evaluated,
         (SELECT position_count FROM latest_reconciliation) AS open_positions,
         (SELECT open_order_count FROM latest_reconciliation) AS pending_orders,
+        (SELECT external_or_unknown_count FROM latest_reconciliation) AS external_or_unknown_count,
+        (SELECT detail_json->>'localOnlyIntentCount' FROM latest_reconciliation) AS local_only_intent_count,
         (SELECT count(*)::int FROM trade.broker_order) AS broker_orders,
         (SELECT count(*)::int FROM trade.fill) AS broker_fills,
         (SELECT count(*)::int FROM trade.economic_chain WHERE closed_at IS NULL) AS open_chains,
@@ -172,6 +178,7 @@ export async function readMasterRuntimeEvidence(databaseUrl?:string):Promise<Mas
     return {last_decision:row.last_decision==null?null:String(row.last_decision),last_decision_at:iso(row.last_decision_at),
       strategy_branch:row.strategy_branch==null?null:String(row.strategy_branch),last_snapshot:row.last_snapshot==null?null:String(row.last_snapshot),
       candidates_evaluated:number(row.candidates_evaluated),open_positions:number(row.open_positions),pending_orders:number(row.pending_orders),
+      external_or_unknown_count:number(row.external_or_unknown_count),local_only_intent_count:number(row.local_only_intent_count),
       broker_orders:Number(row.broker_orders??0),broker_fills:Number(row.broker_fills??0),open_chains:openChains,
       option_realized_pnl:optionPnl,stock_realized_pnl:stockPnl,
       whole_chain_pnl:hasResolvedEconomics&&openChains===0?(optionPnl??0)+(stockPnl??0)-(fees??0):null};
