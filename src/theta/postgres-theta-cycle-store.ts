@@ -238,25 +238,42 @@ export class PostgresThetaCycleStore {
       await this.persistPointInTimeEvidence(client,context,cycle,fusionSnapshotId,candidates.candidateSetId,
         candidates.candidateIds,decisionId);
       tracePersistence('PIT_EVIDENCE_COMPLETE');
-      let shadowOpportunityCount = 0;
-      for (const entry of cycle.orchestration?.shadowOpportunities ?? []) {
-        const result = await client.query(
-          `INSERT INTO trade.shadow_opportunity(
-            opportunity_id,fusion_snapshot_id,observed_at,underlying,contract_symbol,strategy_branch,
-            ev_net,tail_adjusted_ev,return_per_capital_day,capital_required,uncertainty,ownership_snapshot_id,
-            regime_snapshot_ref,aegis_state,recommended_quantity,execution_quality_acceptable,outcome,wait_reason,
-            rejection_category,reasons_json,policy_version,model_versions_json,eventual_outcome_known,eventual_realized_pnl)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
-           ON CONFLICT(opportunity_id) DO NOTHING RETURNING opportunity_id`,
-          [entry.opportunityId, fusionSnapshotId, entry.timestamp, entry.underlying, entry.contractSymbol,
-            entry.strategyBranch, entry.evNet, entry.tailAdjustedEv, entry.returnPerCapitalDay, entry.capitalRequired,
-            entry.uncertainty, entry.ownershipSnapshotId, entry.regimeSnapshotId, entry.aegisState,
-            entry.recommendedQuantity, entry.executionQualityAcceptable, entry.outcome, entry.waitReason,
-            entry.rejectionCategory, JSON.stringify(entry.reasons), entry.policyVersion,
-            JSON.stringify(entry.modelVersions), entry.eventualOutcomeKnown, entry.eventualRealizedPnl],
-        );
-        shadowOpportunityCount += result.rowCount ?? 0;
-      }
+      const shadowOpportunities = cycle.orchestration?.shadowOpportunities ?? [];
+      // One parameterized statement retains the existing transaction and
+      // idempotency semantics without one network round trip per contract.
+      const shadowResult = shadowOpportunities.length === 0 ? null : await client.query(
+        `INSERT INTO trade.shadow_opportunity(
+          opportunity_id,fusion_snapshot_id,observed_at,underlying,contract_symbol,strategy_branch,
+          ev_net,tail_adjusted_ev,return_per_capital_day,capital_required,uncertainty,ownership_snapshot_id,
+          regime_snapshot_ref,aegis_state,recommended_quantity,execution_quality_acceptable,outcome,wait_reason,
+          rejection_category,reasons_json,policy_version,model_versions_json,eventual_outcome_known,eventual_realized_pnl)
+         SELECT x.opportunity_id,$2::uuid,x.observed_at,x.underlying,x.contract_symbol,x.strategy_branch,
+          x.ev_net,x.tail_adjusted_ev,x.return_per_capital_day,x.capital_required,x.uncertainty,x.ownership_snapshot_id,
+          x.regime_snapshot_ref,x.aegis_state::core.aegis_action,x.recommended_quantity,x.execution_quality_acceptable,
+          x.outcome,x.wait_reason,x.rejection_category,x.reasons_json,x.policy_version,x.model_versions_json,
+          x.eventual_outcome_known,x.eventual_realized_pnl
+         FROM jsonb_to_recordset($1::jsonb) AS x(opportunity_id text,observed_at timestamptz,
+          underlying text,contract_symbol text,strategy_branch text,ev_net numeric,tail_adjusted_ev numeric,
+          return_per_capital_day numeric,capital_required numeric,uncertainty numeric,ownership_snapshot_id text,
+          regime_snapshot_ref text,aegis_state text,recommended_quantity integer,execution_quality_acceptable boolean,
+          outcome text,wait_reason text,rejection_category text,reasons_json jsonb,policy_version text,
+          model_versions_json jsonb,eventual_outcome_known boolean,eventual_realized_pnl numeric)
+         ON CONFLICT(opportunity_id) DO NOTHING RETURNING opportunity_id`,
+        [JSON.stringify(shadowOpportunities.map((entry) => ({
+          opportunity_id:entry.opportunityId,observed_at:entry.timestamp,underlying:entry.underlying,
+          contract_symbol:entry.contractSymbol,strategy_branch:entry.strategyBranch,ev_net:entry.evNet,
+          tail_adjusted_ev:entry.tailAdjustedEv,return_per_capital_day:entry.returnPerCapitalDay,
+          capital_required:entry.capitalRequired,uncertainty:entry.uncertainty,
+          ownership_snapshot_id:entry.ownershipSnapshotId,regime_snapshot_ref:entry.regimeSnapshotId,
+          aegis_state:entry.aegisState,recommended_quantity:entry.recommendedQuantity,
+          execution_quality_acceptable:entry.executionQualityAcceptable,outcome:entry.outcome,
+          wait_reason:entry.waitReason,rejection_category:entry.rejectionCategory,reasons_json:entry.reasons,
+          policy_version:entry.policyVersion,model_versions_json:entry.modelVersions,
+          eventual_outcome_known:entry.eventualOutcomeKnown,eventual_realized_pnl:entry.eventualRealizedPnl,
+        }))),fusionSnapshotId],
+      );
+      const shadowOpportunityCount = shadowResult?.rowCount ?? 0;
+      tracePersistence('SHADOW_OPPORTUNITIES_COMPLETE');
       await client.query('COMMIT');
       tracePersistence('COMMITTED');
       return { fusionSnapshotId, candidateSetId: candidates.candidateSetId, candidateCount: candidates.candidateIds.size,

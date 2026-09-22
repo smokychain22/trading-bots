@@ -121,7 +121,12 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
           timestamp: now, underlying: 'SPY', contractSymbol: null, strategyBranch: 'THETA_Q', evNet: null, tailAdjustedEv: null,
           returnPerCapitalDay: null, capitalRequired: null, uncertainty: null, ownershipSnapshotId: null, regimeSnapshotId: null,
           aegisState: null, recommendedQuantity: null, executionQualityAcceptable: null, outcome: 'PASS', waitReason: null,
-          rejectionCategory: 'NO_ELIGIBLE_CANDIDATE', reasons: [], policyVersion: 'test-policy', modelVersions: {}, eventualOutcomeKnown: false, eventualRealizedPnl: null }],
+          rejectionCategory: 'NO_ELIGIBLE_CANDIDATE', reasons: [], policyVersion: 'test-policy', modelVersions: {}, eventualOutcomeKnown: false, eventualRealizedPnl: null },
+        { contractVersion: 'theta-shadow-opportunity-book-v1', opportunityId: `opp-${randomUUID()}`, snapshotId: fusion.contentHash,
+          timestamp: now, underlying: 'SPY', contractSymbol: 'SPY261009P00500000', strategyBranch: 'THETA_Q', evNet: null, tailAdjustedEv: null,
+          returnPerCapitalDay: null, capitalRequired: null, uncertainty: null, ownershipSnapshotId: null, regimeSnapshotId: null,
+          aegisState: null, recommendedQuantity: null, executionQualityAcceptable: null, outcome: 'PASS', waitReason: null,
+          rejectionCategory: 'EDGE_UNKNOWN', reasons: [{ code: 'EDGE_UNKNOWN' }], policyVersion: 'test-policy', modelVersions: {}, eventualOutcomeKnown: false, eventualRealizedPnl: null }],
       },
     } as unknown as ThetaShadowCycleResult;
     const store = new PostgresThetaCycleStore(pool);
@@ -131,6 +136,8 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
     const first = await store.persist(context, cycle);
     const second = await store.persist(context, cycle);
     assert.equal(first.fusionSnapshotId, second.fusionSnapshotId);
+    assert.equal(first.shadowOpportunityCount, 2);
+    assert.equal(second.shadowOpportunityCount, 0);
     const resolver=new PostgresOutcomeResolver(pool);
     const materialized=await resolver.materializeEligibleSubjects();
     const replayed=await resolver.materializeEligibleSubjects();
@@ -152,7 +159,7 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
         JOIN trade.canonical_strategy_branch_evidence b USING(branch_evidence_id) WHERE b.fusion_snapshot_id=$2)::int AS canonical_candidates`,
       [botId, first.fusionSnapshotId]);
     assert.deepEqual(counts.rows[0], { snapshots: 1, candidate_sets: 1, candidates: 1, candidate_reasons: 1, linked_quotes: 1, decisions: 1,
-      routes: 1, opportunities: 1, canonical_branches: 5, canonical_candidates: 3 });
+      routes: 1, opportunities: 2, canonical_branches: 5, canonical_candidates: 3 });
     const researchEvidence = await pool.query(`SELECT c.branch::text,c.candidate_ref,c.hard_blockers_json
       FROM trade.canonical_strategy_candidate_evidence c
       JOIN trade.canonical_strategy_branch_evidence b USING(branch_evidence_id)
