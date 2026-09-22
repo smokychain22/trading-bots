@@ -31,6 +31,8 @@ function Invoke-VerifiedDumpWithRetry([string[]]$Arguments, [string]$OutputPath,
   }
 }
 $stage = $null
+$backupId = $null
+$dumpComplete = $false
 try {
   if (-not $TestMode) {
     $battery = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -68,6 +70,7 @@ try {
   Invoke-VerifiedDumpWithRetry -Arguments @('--format=custom','--file',(Get-ThetaPgFilePath $archive $source),'--dbname',$source.Database) -OutputPath $archive -Label 'CUSTOM_DUMP'
   Invoke-VerifiedDumpWithRetry -Arguments @('--schema-only','--file',(Get-ThetaPgFilePath $schema $source),'--dbname',$source.Database) -OutputPath $schema -Label 'SCHEMA_DUMP'
   Log 'DUMP_COMPLETE'
+  $dumpComplete = $true
   $inventorySql = @'
 SELECT jsonb_build_object(
   'databaseSizeBytes',pg_database_size(current_database()),
@@ -226,8 +229,15 @@ SELECT jsonb_build_object(
   if ($stage -and (Test-Path -LiteralPath $stage)) {
     $allowed = Join-Path $root 'daily\.staging-'
     if (-not $stage.StartsWith($allowed, [StringComparison]::OrdinalIgnoreCase)) { throw 'FAILED_STAGE_PATH_UNSAFE' }
-    Remove-Item -LiteralPath $stage -Recurse -Force
-    Log 'FAILED_STAGING_FILES_REMOVED'
+    if ($dumpComplete -and $backupId) {
+      $preserved = Join-Path $root ('restore-tests\incomplete-' + $backupId)
+      if (Test-Path -LiteralPath $preserved) { throw 'INCOMPLETE_BACKUP_PRESERVATION_TARGET_EXISTS' }
+      Move-Item -LiteralPath $stage -Destination $preserved
+      Log "COMPLETED_DUMP_PRESERVED_AFTER_LATER_FAILURE path=$preserved"
+    } else {
+      Remove-Item -LiteralPath $stage -Recurse -Force
+      Log 'FAILED_STAGING_FILES_REMOVED'
+    }
   }
   throw
 }

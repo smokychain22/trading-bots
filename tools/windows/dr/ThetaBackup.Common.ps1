@@ -119,8 +119,18 @@ function Invoke-ThetaPg {
 
 function Invoke-ThetaSql {
   param([object]$Connection, [string]$Sql)
-  $result = Invoke-ThetaPg -Tool psql -Connection $Connection -Arguments @('--no-psqlrc','--no-align','--tuples-only','--set','ON_ERROR_STOP=1','--command',$Sql)
-  return (($result | Out-String).Trim())
+  $safeRead = $Sql.TrimStart() -match '^(?i:SELECT|SHOW)\b'
+  $attempts = if ($safeRead) { 3 } else { 1 }
+  $delays = @(0, 2, 10)
+  for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+    if ($delays[$attempt - 1] -gt 0) { Start-Sleep -Seconds $delays[$attempt - 1] }
+    try {
+      $result = Invoke-ThetaPg -Tool psql -Connection $Connection -Arguments @('--no-psqlrc','--no-align','--tuples-only','--set','ON_ERROR_STOP=1','--command',$Sql)
+      return (($result | Out-String).Trim())
+    } catch {
+      if ($attempt -eq $attempts) { throw }
+    }
+  }
 }
 
 function Write-ThetaJson {
