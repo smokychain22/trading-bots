@@ -1,0 +1,77 @@
+# THETA required-vs-optional evidence matrix -- THE anti-paralysis contract
+
+Status: Wave 4 item 6. This has been deferred across three prior passes of
+this engagement's pre-VPS audit; it is completed in full this wave.
+
+## Purpose
+
+The single largest historical risk this whole audit exists to prevent is an
+accidental AND-gate: every decision input treated as equally mandatory,
+so one missing optional signal silently produces `WAIT`/`SYSTEM_HOLD`/
+`quantity=0` forever. This matrix assigns exactly one authority class to
+every decision-relevant field this engagement has found real evidence for,
+so a future reviewer can answer "should this field blocking be a surprise?"
+by looking it up, not by re-deriving it from source.
+
+## Authority classes
+
+- **HARD_REQUIRED_SAFETY**: UNKNOWN here MUST restrict/block (fail-closed). Loosening this without new evidence is a safety regression.
+- **REQUIRED_WHEN_APPLICABLE**: required only in the lifecycle/structure states where it actually applies; `NOT_APPLICABLE` outside those states is correct and must never be treated as `UNKNOWN`.
+- **ECONOMIC_RANKING_FEATURE**: used to RANK/compare candidates once a candidate is already otherwise eligible; its absence should degrade ranking quality, never block a structurally sound, safety-clear candidate outright.
+- **OPTIONAL_RESEARCH_MODIFIER**: a real signal that may refine a decision but must NEVER by itself force `WAIT`/`HOLD` if genuinely unavailable -- this is exactly the class this matrix exists to protect from accidentally escalating to `HARD_REQUIRED_SAFETY`.
+- **EMPIRICAL_FEATURE**: belongs to a not-yet-trained/not-yet-validated model; by definition currently contributes nothing to real decisions and must never gate one.
+
+## Matrix
+
+| Field | Authority class | Applicability | Current producer | Current consumer | Persistence | If UNKNOWN today | Should UNKNOWN block? | First-Paper role | R8 role | Provider limitation |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Market clock | HARD_REQUIRED_SAFETY | Every cycle | `fetchMarketClock` (real) | Worker cycle gate | Not verified | N/A -- always real when reachable | Yes | Required | N/A | None found |
+| Account / buying power | HARD_REQUIRED_SAFETY | Every cycle | `fetchMasterAccountSnapshot` (real) | Sizing, AEGIS | Not verified | N/A | Yes | Required | N/A | None found |
+| Positions | HARD_REQUIRED_SAFETY | Every cycle | `fetchPositions` (real) | `account-exposure.ts` | Not verified | N/A | Yes | Required | N/A | None found |
+| Ownership acceptability | REQUIRED_WHEN_APPLICABLE | Fresh-entry states only (`CASH_AVAILABLE`) | `ownership_v0.py` (real, continuous `[0,1]` score) | `strategy_router.py`'s THETA_Q/THETA_H eligibility | Not verified | THETA_Q stays `ELIGIBLE_REDUCED` (research-enumeration only, real downstream gates still bind, per `strategy_router.py`'s own design) | For THETA_Q: no, correctly degrades to reduced eligibility, never full block. For THETA_H: yes (requires a KNOWN score) | Required (THETA_Q path) | Required | None found |
+| `eventNear` | HARD_REQUIRED_SAFETY (for entry gating) | Every fresh-entry candidate | Regime/event evidence pipeline; a real bug was JUST FIXED this wave (`fix(theta): preserve unknown event evidence through opportunity frontier`, `main@8ae3eb6`): a `None` regime event state was previously mapped to `eventNear=true`, which "preserved WAIT but incorrectly recorded a known imminent event" -- now correctly carries `null` into Python, returning `WAIT_EVENT` with `EVENT_EVIDENCE_UNKNOWN`/`EVENT_PROXIMITY_UNKNOWN` | AEGIS/router eligibility | Not verified | Now correctly distinguishes "no event" from "unknown event state," per Codex's own fix | Yes when genuinely unknown | Required | Required | None found |
+| `earningsDistanceDays` | REQUIRED_WHEN_APPLICABLE | Entry + management decisions near a real earnings date | Not independently traced this wave | Event evidence pipeline | Not verified | Per Codex's closure receipt: "prospective earnings negative coverage... remain governed/qualified separately. None is silently changed to false" | Governed, not resolved | Required (governed) | Required | Not independently investigated this wave |
+| `prospectiveKnownAt` | REQUIRED_WHEN_APPLICABLE | Any field with a PIT-availability timestamp requirement | Not independently traced this wave | PIT-safety checks across research contracts | N/A | Per Codex's closure receipt: remains governed/qualified separately | Governed, not resolved | Required (governed) | Required (every R8 contract's core discipline) | Not independently investigated this wave |
+| Corporate actions | HARD_REQUIRED_SAFETY (fail-closed universe policy) | Every candidate underlying | `alpaca-corporate-action-evidence.ts` (real, persisted) | Universe event-policy gate | Real | N/A | Yes | Required | Required | None found |
+| Dividends | REQUIRED_WHEN_APPLICABLE | CC/call-away decisions on owned stock | Real field referenced in whole-chain P&L and CC decision logic (`state.economics.dividends`); not independently traced to its own producer this wave | CC/call-away economics | Not verified | Not independently investigated this wave | Likely yes for CC economic correctness | Not first-Paper-blocking for THETA_CONVENTIONAL (no stock yet) | Required for CC/Recovery | Not investigated |
+| Ticker concentration | HARD_REQUIRED_SAFETY | Every candidate | `account-exposure.ts::deriveCandidateInclusiveAegisInputs` (real, computed) | AEGIS UNDERLYING family | N/A (live derivation) | Honestly `null` when upstream account state incomplete (`UNKNOWN_INSUFFICIENT_ACCOUNT_STATE`) | Yes (AEGIS threshold family: `null` -> `HOLD_ONLY`) | Required | N/A | None found |
+| Sector concentration | HARD_REQUIRED_SAFETY | Every candidate, but REAL producer only for the single-underlying case | `soleRiskGroup` proxy (real for 1 position; `null` for 2+) | AEGIS SECTOR family | N/A | `null` for 2+ concurrent positions -- **P1 gap** | Yes | Only matters once 2+ positions held | Required (correlation cohort research is the precursor, not yet built) | Real multi-position producer missing |
+| Correlation cluster exposure | HARD_REQUIRED_SAFETY | Same as sector | Same `soleRiskGroup` proxy | AEGIS CORRELATION family | N/A | Same gap | Yes | Only matters once 2+ positions held | Required | Same gap |
+| Portfolio capital at risk | HARD_REQUIRED_SAFETY | Every candidate | `account-exposure.ts` (real, computed from real collateral/equity) | AEGIS PORTFOLIO family | N/A | Honestly `null` when incomplete | Yes | Required | N/A | None found |
+| Assignment capacity | HARD_REQUIRED_SAFETY | Every candidate | `assignmentCapacityUsedPct` (real, computed) -- see `THETA_ASSIGNMENT_CAPACITY_TRACE.md` | AEGIS ASSIGNMENT family | N/A | Honestly `null` when incomplete | Yes | Required | N/A | None found. A SEPARATE opaque `ManagementInputState.context.assignmentCapacity` field exists with an unconfirmed producer -- do not confuse the two |
+| Recovery capacity | HARD_REQUIRED_SAFETY | STOCK_HELD/RECOVERY lifecycle only | `recoveryCapacityUsedPct` (real, computed) | AEGIS RECOVERY family | N/A | Honestly `null` when incomplete | Yes | Only matters post-assignment | N/A | None found |
+| Liquidity acceptable | HARD_REQUIRED_SAFETY | Every candidate | Not independently traced to its final producer this wave (feeds `_per_trade()`) | AEGIS PER_TRADE family | N/A | `null` -> `HOLD_ONLY` (confirmed in `aegis.py`) | Yes | Required | N/A | Not investigated |
+| Execution quality acceptable | HARD_REQUIRED_SAFETY | Every candidate | Not independently traced this wave | AEGIS EXECUTION family | N/A | `null` -> `HOLD_ONLY` (confirmed in `aegis.py`) | Yes | Required | N/A | Not investigated |
+| `stressGapDetected` | HARD_REQUIRED_SAFETY (as part of SYSTEM family) | Every candidate reaching AEGIS | Real one-day-return derivation when history exists, per Codex's closure receipt | AEGIS SYSTEM family | N/A | Real when history exists | Yes | Required | N/A | Real, functioning |
+| `stressIvShockDetected` | HARD_REQUIRED_SAFETY (as currently wired) -- **the P0-0 blocker** | Every candidate reaching AEGIS | **None** | AEGIS SYSTEM family | N/A | Always `null` -- forces `HOLD_ONLY` | Yes, currently | **THE open P0 decision** -- see `THETA_AEGIS_FIRST_PAPER_POLICY_OPTIONS_V2.md` for real alternatives | Required for a mature detector | No qualified baseline yet -- see `THETA_AEGIS_STRESS_BASELINE_MATURITY.md` |
+| `stressSpreadWideningDetected` | HARD_REQUIRED_SAFETY (as currently wired) -- **the other half of P0-0** | Every candidate reaching AEGIS (feeds BOTH SYSTEM and LIQUIDITY) | **None** | AEGIS SYSTEM + LIQUIDITY families | N/A | Always `null` -- forces `HOLD_ONLY` in two families independently | Yes, currently | **THE open P0 decision** | Required for a mature detector | No qualified baseline yet -- real BBO history exists but insufficiency unproven, see baseline maturity doc |
+| IV (atm/30/60/90) | ECONOMIC_RANKING_FEATURE | Candidate ranking/economics | Real, Optionomics (`atm_iv`/`iv30` QUALIFIED this engagement; `iv60`/`iv90` PARTIAL_COVERAGE) | Deterministic economics, candidate frontier | Not verified | Real per-symbol availability varies | No -- should degrade ranking richness, not block | Not first-Paper-blocking | Used in candidate ranking | None for `atm_iv`/`iv30`/`rv20`; `iv60`/`iv90` genuinely partial-coverage per-symbol |
+| IV rank / percentile | ECONOMIC_RANKING_FEATURE | Same | Real, Optionomics (QUALIFIED) | Same | Not verified | Real | No | Not first-Paper-blocking | Used in ranking | None found |
+| RV (5/10/20/30/60) | ECONOMIC_RANKING_FEATURE | Same | `rv20` real/native; `rv5`/`rv10`/`rv30`/`rv60` PROVIDER_LIMITED (unverified substitute methodology) | Same | Not verified | `rv20` real; others uncertain | No | Not first-Paper-blocking | Needs methodology verification before R8 use of the non-`rv20` windows | `rv5`/`rv10`/`rv30`/`rv60` not natively served under those names |
+| VRP (IV minus RV20) | ECONOMIC_RANKING_FEATURE | Same | Real (`realized_vs_implied.spread`, arithmetic-verified) | Same | Not verified | Real | No | Not first-Paper-blocking | Used in ranking | None found |
+| Skew | ECONOMIC_RANKING_FEATURE | Same | Real, Optionomics (4 distinct sub-fields, ambiguous which one "skew" means -- a consumer must name it explicitly) | Same | Not verified | Real | No | Not first-Paper-blocking | Needs an explicit sub-field choice before R8 use | Ambiguous sub-field selection, not a provider gap |
+| Term structure | ECONOMIC_RANKING_FEATURE | Same | Real, Optionomics (QUALIFIED; `state` correctly reflects real coverage gaps) | Same | Not verified | PARTIAL_COVERAGE per symbol/session | No | Not first-Paper-blocking | Used in ranking | Real coverage gaps exist, correctly reported |
+| Expected move | ECONOMIC_RANKING_FEATURE / OPTIONAL_RESEARCH_MODIFIER | Same | `NOT_OBSERVED` provider-native; a `DERIVED_EXPECTED_MOVE_V1` would need to be built and explicitly labeled derived, never relabeled provider-native | Same | N/A | Not available | No | Not first-Paper-blocking | Deferred -- needs the derivation work named in Wave 4 item 18 | Provider-native field not found this engagement; needs one more targeted search before concluding absence |
+| GEX | ECONOMIC_RANKING_FEATURE / OPTIONAL_RESEARCH_MODIFIER | Same | Real, Optionomics (`gamma_exposure`) but PIT status (historical-safe vs. current-recomputed) UNRESOLVED | Same | Not verified | Real but PIT-uncertain | No | Not first-Paper-blocking | **Must not be used in historical backtests until PIT status is resolved** | Real endpoint exists; PIT question open (Wave 4 item 18) |
+| Vanna | OPTIONAL_RESEARCH_MODIFIER | Same | **Confirmed absent from Optionomics** (checked `option_metrics`, `gamma_exposure`, `options_chain` this engagement) | N/A | N/A | Absent | **NO -- must never block Conventional first Paper** | Not applicable until a real source exists | Not applicable | PROVIDER_LIMITED, confirmed |
+| Charm | OPTIONAL_RESEARCH_MODIFIER | Same | **Confirmed absent from Optionomics** | N/A | N/A | Absent | **NO -- must never block Conventional first Paper** | Not applicable | Not applicable | PROVIDER_LIMITED, confirmed |
+| Net call/put flow | ECONOMIC_RANKING_FEATURE | Same | Real, Optionomics (`net_flow`, confirmed working) | Not yet wired into candidate economics this engagement has traced | Not verified | Real | No | Not first-Paper-blocking | Available for R8 use | None found |
+| `call_wall`/`put_wall` | OPTIONAL_RESEARCH_MODIFIER | Same | Real values returned, but QUARANTINED (no independent corroboration method found across 3 real symbols/sessions this engagement checked) | N/A (quarantined, not consumed) | N/A | Quarantined, not `UNKNOWN` | No -- quarantine means "not used," never "blocks a decision" | Not applicable while quarantined | Not applicable while quarantined | Quarantine stands, per standing engagement policy |
+| DTE / strike / delta | HARD_REQUIRED_SAFETY (structural) for candidate validity; ECONOMIC_RANKING_FEATURE for which specific values to prefer | Every candidate | Real (`theta_q_lattice.py`) | Candidate frontier | Not verified | Structural fields either known or the candidate is excluded (never fabricated) | Yes for candidate validity; no for preference ranking beyond that | Required | Required | None found |
+| Open interest / volume | HARD_REQUIRED_SAFETY (floor check) | Every candidate | Real (per the R7 forensic's `OPEN_INTEREST_BELOW_FLOOR`/`VOLUME_BELOW_FLOOR` rejection categories) | Candidate frontier | Not verified | Real, used as a hard floor | Yes | Required | N/A | None found |
+| Quote freshness / spread | HARD_REQUIRED_SAFETY (executability gate) | Every candidate | Real (`option-contract.ts`'s 10-condition gate, root cause resolved Wave 4) | `new-risk-orchestrator.ts` | Real, persisted | Real, confirmed dominant real-session rejection cause | Yes | Required | N/A | Policy calibration open (see item 4 ledger entry) |
+| Cross-strategy empirical utility | EMPIRICAL_FEATURE | N/A -- no model exists | None -- honestly `UNKNOWN_NOT_YET_CALIBRATED` | `canonical-strategy-frontier.ts` (hardcoded honest placeholder) | N/A | Always unproven | **NO -- by definition, must never block** | Not applicable | The entire point of the R8 track, not yet reached | N/A -- no data yet |
+| Continuation EV | EMPIRICAL_FEATURE | N/A -- no model exists | None (governance spec only, `continuation-value-interface.ts`) | N/A | N/A | Always unproven | **NO** | Not applicable | Governed, not built | N/A |
+| Severe-downside model | EMPIRICAL_FEATURE | N/A -- not built | None | N/A | N/A | Always unproven | **NO** | Not applicable | Deferred (Wave 4 item 17) | N/A |
+| Correlation model | EMPIRICAL_FEATURE | N/A -- not built | None | N/A | N/A | Always unproven | **NO** | Not applicable | Deferred (Wave 4 item 16) | N/A |
+
+## The core anti-paralysis rule this matrix enforces
+
+Every row classified `OPTIONAL_RESEARCH_MODIFIER` or `EMPIRICAL_FEATURE`
+must have "Should UNKNOWN block?" = **NO** in this table. If any future code
+change makes one of those rows block a decision, that is a real, reportable
+regression against this contract -- exactly the "optional research feature
+accidentally blocking Paper" failure mode this whole matrix exists to catch.
+Currently, Vanna, Charm, `call_wall`/`put_wall`, cross-strategy empirical
+utility, continuation EV, and the severe-downside/correlation models are all
+confirmed correctly non-blocking today.
