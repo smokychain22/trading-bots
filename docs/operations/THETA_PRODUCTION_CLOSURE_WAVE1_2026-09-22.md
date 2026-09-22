@@ -69,6 +69,13 @@ proxies, not general multi-position sector or correlation producers.
 No `UNKNOWN -> false` conversion was made. The exact required/optional
 policy requires a governed decision and real producer evidence.
 
+The opportunity frontier previously mapped a null regime event state to
+`eventNear=true`. That preserved WAIT but incorrectly recorded a known
+imminent event. The canonical JSON boundary now carries null into Python,
+which returns `WAIT_EVENT` with `EVENT_EVIDENCE_UNKNOWN` and
+`EVENT_PROXIMITY_UNKNOWN`. This is an information-state repair only. It
+does not permit a new Paper order or change event coverage policy.
+
 The Aiven source currently contains **zero** rows in
 `market.option_quote_snapshot`. Candidate PIT evidence contains 3,876 rows
 across 1,696 distinct contracts on September 21, 4,590 rows across 607

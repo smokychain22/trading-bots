@@ -94,7 +94,7 @@ class CandidateSnapshot:
     ownership_acceptable: Optional[bool]
     liquidity_acceptable: Optional[bool]
     iv_compensation_sufficient: Optional[bool]
-    event_near: bool
+    event_near: Optional[bool]
     regime_acceptable: Optional[bool]
     model_uncertainty: Optional[float]  # in [0, 1], None if unmodeled
     aegis_permits_full: bool
@@ -144,6 +144,9 @@ def _classify(policy: OpportunityFrontierPolicy, c: CandidateSnapshot) -> Candid
 
     # Transient/monitorable conditions -> WAIT with a specific sub-reason,
     # each of which the caller's scheduler can attach a recheck trigger to.
+    if c.event_near is None:
+        reasons.append(ReasonCode("EVENT_PROXIMITY_UNKNOWN", -1, "Event proximity and qualified absence are both UNKNOWN."))
+        return CandidateDecision(c.candidate_id, CandidateDisposition.WAIT, WaitReason.WAIT_EVENT, "EVENT_EVIDENCE_UNKNOWN", reasons)
     if c.event_near:
         reasons.append(ReasonCode("EVENT_PROXIMITY", -1, "A known event is imminent."))
         return CandidateDecision(c.candidate_id, CandidateDisposition.WAIT, WaitReason.WAIT_EVENT, "EVENT", reasons)
