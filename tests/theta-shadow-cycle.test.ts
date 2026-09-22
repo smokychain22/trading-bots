@@ -6,6 +6,7 @@ import { candidateQuoteAgeSeconds, classifyShadowCycleProvenance, conventionalFr
 import type { AlpacaProviderConfig } from '../src/theta/alpaca-provider.js';
 import type { PythonBridgeConfig } from '../src/theta/python-bridge.js';
 import type { UnderlyingCandidateInput } from '../src/theta/universe-policy.js';
+import type { AegisIvStressAssessment } from '../src/theta/aegis-iv-stress.js';
 
 // Proves runThetaShadowCycle -- the real end-to-end composition of
 // UniversePolicy -> Alpaca provider (mocked fetch, obviously-synthetic
@@ -43,6 +44,24 @@ const jsonResponse = (status: number, body: unknown): Response =>
 
 const NOW = '2026-09-10T15:00:00.000Z';
 let requestedUrls: string[] = [];
+
+const IV_STRESS_EVIDENCE: AegisIvStressAssessment = {
+  contractVersion: 'theta-aegis-iv-stress-detector-v1', underlying: 'SPY', decisionAsOf: NOW,
+  currentObservationId: '00000000-0000-4000-8000-000000000001', baselineObservationIds: [],
+  policyVersion: 'aegis-iv-shock-paper-bootstrap-v1',
+  policyAuthority: 'PAPER_BOOTSTRAP_BASELINE_NOT_EMPIRICALLY_OPTIMAL',
+  maturity: {
+    contractVersion: 'theta-aegis-stress-baseline-maturity-v1', signal: 'IV_SHOCK', asOf: NOW,
+    evidence: { rawN: 20, sessionN: 20, distinctUnderlyingN: 1, effectiveN: null },
+    firstObservationAvailableAt: NOW, lastObservationAvailableAt: NOW, temporalSpanDays: 0,
+    source: 'OPTIONOMICS_ATM_IV_EXACT_SESSION', sourceVersion: 'theta-optionomics-atm-iv-session-v1',
+    state: 'DETECTOR_READY', reason: 'test evidence',
+  },
+  currentIv: 0.2, baselineMedianIv: 0.19, baselineMadIv: 0.01,
+  absoluteIncrease: 0.01, relativeIncrease: 0.0526, robustZ: 0.6745,
+  stressIvShockDetected: false, evidenceAuthority: 'OPTIONOMICS_SESSION_RESEARCH',
+  contentHash: 'a'.repeat(64),
+};
 
 test('candidate quote age has an independently versioned, effective, fail-closed policy', () => {
   const policy = { candidateQuoteAgePolicy: { policyVersion: 'candidate-age-v1', effectiveAt: NOW, maxAgeSeconds: 30 } };
@@ -138,6 +157,7 @@ const baseConfig = (overrides: Partial<ThetaShadowCycleConfig> = {}): ThetaShado
   costAssumptions: { commissionPerContract: 0.65, feesPerContract: 0.05, estimatedSlippagePerContract: 1.0, costModelVersion: 'cost-v1' },
   aegisPolicy: { policyVersion: 'aegis-v1', hardCapMultiplier: 1.5, maxTickerConcentrationPct: 0.15, maxSectorConcentrationPct: 0.3, maxCorrelationClusterPct: 0.3, maxPortfolioCapitalAtRiskPct: 0.5, maxInventoryCapacityPct: 0.5, maxAssignmentCapacityPct: 0.5, maxRecoveryCapacityPct: 0.3, providerRequiredStates: ['OK'] },
   aegisInputs: { tickerConcentrationPct: 0.05, sectorConcentrationPct: 0.1, correlationClusterExposurePct: 0.1, portfolioCapitalAtRiskPct: 0.2, inventoryCapacityUsedPct: 0.1, assignmentCapacityUsedPct: 0.1, recoveryCapacityUsedPct: 0, liquidityAcceptable: true, executionQualityAcceptable: true, providerState: 'OK', stressGapDetected: false, stressIvShockDetected: false, stressSpreadWideningDetected: false },
+  aegisIvStressEvidence: IV_STRESS_EVIDENCE,
   aegisInputsOrigin: 'CALLER_MANUAL',
   opportunityFrontierPolicy: { policyVersion: 'opp-frontier-v1', reducedSizeUncertaintyThreshold: 0.5 },
   maxAcceptableSpreadPct: 1.0,
@@ -166,6 +186,7 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   assert.ok(result.orchestration !== null);
   assert.deepEqual(result.fusionSnapshot?.snapshot.underlyingState.eventEvidence,
     { unsupportedCorporateActionPending: false, eventNear: false });
+  assert.deepEqual(result.fusionSnapshot?.snapshot.riskState, { ivStress: IV_STRESS_EVIDENCE });
   assert.ok(result.orchestration?.thetaQ !== null || result.orchestration?.receipt.winningAction === 'PASS');
   assert.equal(result.orchestration?.regime?.eventState, null);
   assert.ok(result.orchestration?.regime?.reasons.some((reason) => reason.code === 'EVENT_FLAG_UNKNOWN'));
