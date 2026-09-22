@@ -22,6 +22,7 @@ import { loadRecoveryHistory } from '../theta/recovery-history-loader.js';
 import { persistAlpacaCorporateActionRead, readAlpacaCorporateActions } from '../theta/alpaca-corporate-action-evidence.js';
 import type { CanonicalBranchFrontier, CanonicalFrontierCandidate } from '../theta/canonical-strategy-frontier.js';
 import { probeAlpacaProcessEnvironmentAuth } from '../providers/readiness.js';
+import { refreshAegisIvStress } from '../theta/aegis-iv-stress.js';
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
@@ -191,7 +192,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const scanSymbols=new Set([...universeBreadthChallenger.championSymbols,
     ...universeBreadthChallenger.challengerSymbols.map((candidate)=>candidate.symbol)]);
   const scanUnderlyingsRaw=discovery.candidates.filter((candidate)=>scanSymbols.has(candidate.symbol));
-  const corporateActionBlockers:string[]=[];
+  const runtimeSafetyBlockers:string[]=[];
   let pendingUnsupportedSymbols=new Set<string>();
   const corporateActionSymbols=[...new Set([...scanUnderlyingsRaw.map((candidate)=>candidate.symbol),...recoveryInventoryUnderlyings])].sort().slice(0,20);
   if(corporateActionSymbols.length>0){
@@ -202,10 +203,10 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       const read=await readAlpacaCorporateActions({config:input.alpaca,
         symbols:corporateActionSymbols,start,end,observedAt});
       await persistAlpacaCorporateActionRead(input.pool,read);
-      if(!read.paginationComplete)corporateActionBlockers.push('ALPACA_CORPORATE_ACTION_PAGINATION_INCOMPLETE');
+      if(!read.paginationComplete)runtimeSafetyBlockers.push('ALPACA_CORPORATE_ACTION_PAGINATION_INCOMPLETE');
       pendingUnsupportedSymbols=new Set(read.observations.filter((row)=>row.pendingUnsupported).map((row)=>row.symbol));
     }catch{
-      corporateActionBlockers.push('ALPACA_CORPORATE_ACTION_READ_OR_PERSISTENCE_FAILED');
+      runtimeSafetyBlockers.push('ALPACA_CORPORATE_ACTION_READ_OR_PERSISTENCE_FAILED');
     }
   }
   const scanUnderlyings=scanUnderlyingsRaw.map((candidate)=>({
@@ -217,16 +218,22 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const discoveredBySymbol=new Map(discovery.candidates.map((candidate)=>[candidate.symbol,candidate]));
   const brokerAuthoritySymbols=new Set(universeBreadthChallenger.championSymbols);
   const optionomics=optionomicsConfigFromEnvironment(input.environment);
+  const ivStressRefresh=optionomics===null
+    ? {state:'OBSERVATION_UNKNOWN' as const,assessment:null,reason:'OPTIONOMICS_NOT_CONFIGURED'}
+    : await refreshAegisIvStress({pool:input.pool,optionomics,underlying:'SPY',decisionAsOf:input.now()});
+  if(ivStressRefresh.state!=='READY')runtimeSafetyBlockers.push(`AEGIS_IV_STRESS_${ivStressRefresh.state}`);
   const scan=await runCrossSymbolShadowScan({universeVersion:'theta-shadow-universe-v1',latticeVersion:'lattice-v1-shadow-once',
     strategyVersion:'theta-shadow-once-v1',eligibleUnderlyings:scanUnderlyings,maxUnderlyings:Math.max(1,scanUnderlyings.length),
     branches:['THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_RECOVERY','THETA_CC','THETA_DEFINED_RISK']},async(underlying)=>{
       const config=defaultShadowCycleConfig(input.alpaca,optionomics,bridge(input.environment),[underlying],discovery.candidatesOrigin);
       const recoveryHistory=await loadRecoveryHistory(input.pool,underlying.symbol,input.now());
-      return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',paperEntryBootstrap,recoveryHistory,recoveryInventoryUnderlyings,aegisInputs:{
+      return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',paperEntryBootstrap,recoveryHistory,recoveryInventoryUnderlyings,
+        aegisIvStressEvidence:ivStressRefresh.assessment,aegisInputs:{
         tickerConcentrationPct:null,sectorConcentrationPct:null,correlationClusterExposurePct:null,
         portfolioCapitalAtRiskPct:null,inventoryCapacityUsedPct:null,assignmentCapacityUsedPct:null,
         recoveryCapacityUsedPct:null,liquidityAcceptable:null,executionQualityAcceptable:null,providerState:null,
-        stressGapDetected:false,stressIvShockDetected:null,stressSpreadWideningDetected:null,
+        stressGapDetected:false,stressIvShockDetected:ivStressRefresh.assessment?.stressIvShockDetected??null,
+        stressSpreadWideningDetected:null,
       }});
     },input.now);
   const cycleStore=new PostgresThetaCycleStore(input.pool),persisted=new Map<string,{
@@ -234,7 +241,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   }>();
   let observationsScheduled=0;
   let actionPlansReady=0;
-  const actionPlansBlocked:string[]=[...corporateActionBlockers];
+  const actionPlansBlocked:string[]=[...runtimeSafetyBlockers];
   const evidenceStore=new PostgresShadowEvidenceRuntimeStore(input.pool);
   for(const member of scan.results){
     if(member.cycle?.fusionSnapshot===null||member.cycle===null) continue;

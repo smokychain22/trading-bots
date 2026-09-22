@@ -115,6 +115,8 @@ try {
     ["market", "optionomics_raw_observation"],
     ["market", "optionomics_feature_snapshot"],
     ["market", "optionomics_feature_observation_link"],
+    ["market", "optionomics_iv_session_observation"],
+    ["risk", "aegis_iv_stress_assessment"],
     ["research", "optionomics_quote_qualification_run"],
     ["trade", "canonical_strategy_frontier"],
     ["trade", "master_paper_action_plan"], ["trade", "master_paper_action_plan_event"],
@@ -218,6 +220,13 @@ try {
   if(!optionomicsEvidence.rows[0]?.immutable_raw||!optionomicsEvidence.rows[0]?.immutable_features||
     !optionomicsEvidence.rows[0]?.immutable_qualification||!optionomicsEvidence.rows[0]?.immutable_context_lineage)
     throw new Error('OPTIONOMICS_LAYERED_EVIDENCE_PROTECTION_MISSING');
+  const ivStressEvidence=await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='market'
+      AND event_object_table='optionomics_iv_session_observation' AND trigger_name='reject_immutable_mutation') AS immutable_iv,
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='risk'
+      AND event_object_table='aegis_iv_stress_assessment' AND trigger_name='reject_immutable_mutation') AS immutable_assessment`);
+  if(!ivStressEvidence.rows[0]?.immutable_iv||!ivStressEvidence.rows[0]?.immutable_assessment)
+    throw new Error('AEGIS_IV_STRESS_EVIDENCE_PROTECTION_MISSING');
   const optionomicsTemporalEvidence=await client.query(`SELECT
     EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='research'
       AND event_object_table='optionomics_temporal_feature_observation' AND trigger_name='reject_immutable_mutation') AS immutable_temporal,

@@ -15,6 +15,7 @@ import { assembleNoCandidateDecision, assembleRuntimePreconditionHold } from './
 import { checkTemporalConsistency, DEFAULT_TEMPORAL_CONSISTENCY_POLICIES } from './temporal-consistency.js';
 import type { PythonBridgeConfig } from './python-bridge.js';
 import { buildFusionSnapshot, hashJson, type FusionSnapshot, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
+import type { AegisIvStressAssessment } from './aegis-iv-stress.js';
 import type { DataQualityState } from './data-freshness.js';
 import {
   fetchOptionomicsContextObservation, fetchOptionomicsMacroEventCoverage, fetchOptionomicsNetFlowWindow, fetchOptionomicsOptionChain, matchOptionomicsContractIdentity,
@@ -128,6 +129,7 @@ export interface ThetaShadowCycleConfig {
   readonly costAssumptions: Record<string, unknown>;
   readonly aegisPolicy: Record<string, unknown>;
   readonly aegisInputs: Record<string, unknown>; // portfolio/account risk-family inputs not yet derivable from MasterAccountSnapshot alone
+  readonly aegisIvStressEvidence?: AegisIvStressAssessment | null;
   readonly aegisInputsOrigin: ProvenanceOrigin; // honest declaration -- today this is always CALLER_MANUAL since real position/order-derived exposure isn't wired yet
   readonly opportunityFrontierPolicy: { policyVersion: string; reducedSizeUncertaintyThreshold: number };
   readonly maxAcceptableSpreadPct: number;
@@ -285,6 +287,7 @@ function assembleFusionSnapshotInput(params: {
   readonly regimeFeatures: JsonValue;
   readonly policyVersion: string;
   readonly modelVersions: Readonly<Record<string, string>>;
+  readonly aegisIvStressEvidence: AegisIvStressAssessment | null;
 }): FusionSnapshotInput {
   const accountJson: JsonValue = params.account === null ? { fetched: false } : { ...params.account };
   const contractsJson: JsonValue = params.mergedContracts as unknown as JsonValue;
@@ -403,7 +406,7 @@ function assembleFusionSnapshotInput(params: {
       : null,
     regimeState: params.regimeFeatures,
     expertPriorState: null,
-    riskState: null,
+    riskState: { ivStress: params.aegisIvStressEvidence } as unknown as JsonValue,
     strategyRouterState: null, // the router runs downstream of this snapshot in the current architecture
     versions: {
       strategyVersion: params.policyVersion, featureVersion: params.policyVersion, riskLimitVersion: params.policyVersion,
@@ -1077,6 +1080,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     regimeFeatures: { maSlope, rv20, maxAdverseGap, drawdown } as unknown as JsonValue,
     policyVersion: config.policyVersion,
     modelVersions: { ...config.modelVersions, candidateQuoteAgePolicy: config.candidateQuoteAgePolicy.policyVersion },
+    aegisIvStressEvidence: config.aegisIvStressEvidence ?? null,
   });
   const fusionSnapshot = buildFusionSnapshot(snapshotInput);
   const stockPosition = underlyingStockPosition !== null

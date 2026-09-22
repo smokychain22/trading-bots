@@ -116,6 +116,8 @@ export async function validateDatabaseTarget(
       (SELECT count(*)::integer FROM trade.broker_activity_fact) AS broker_activity_facts,
       (SELECT count(*)::integer FROM market.optionomics_raw_observation) AS optionomics_raw_observations,
       (SELECT count(*)::integer FROM market.optionomics_event_first_observation) AS optionomics_event_revisions,
+      (SELECT count(*)::integer FROM market.optionomics_iv_session_observation) AS optionomics_iv_session_observations,
+      (SELECT count(*)::integer FROM risk.aegis_iv_stress_assessment) AS aegis_iv_stress_assessments,
       (SELECT count(*)::integer FROM research.optionomics_capability_qualification_receipt)
         AS optionomics_capability_receipts,
       (SELECT count(*)::integer FROM trade.candidate_point_in_time_evidence
