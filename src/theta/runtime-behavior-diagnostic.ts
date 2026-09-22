@@ -4,8 +4,9 @@ import { canonicalJson } from '../research/point-in-time-evidence.js';
 import type { ScanCompleteness } from '../research/shadow-evidence-runtime.js';
 import type { StrategyQualityShadowDiagnostic } from '../research/strategy-quality-shadow-diagnostics.js';
 import type { UniverseBreadthShadowPlan } from '../research/strategy-quality-shadow-diagnostics.js';
+import type { UniverseDiscoveryFunnel } from './universe-discovery.js';
 
-export const runtimeBehaviorDiagnosticVersion = 'theta-runtime-behavior-diagnostic-v3' as const;
+export const runtimeBehaviorDiagnosticVersion = 'theta-runtime-behavior-diagnostic-v4' as const;
 
 export interface RuntimeStrategyDiagnostic {
   readonly branch: string;
@@ -82,6 +83,7 @@ export interface RuntimeBehaviorDiagnosticInput {
   readonly actionPlanBlockers: readonly string[];
   readonly strategyQualityChallengers?: readonly StrategyQualityShadowDiagnostic[];
   readonly universeBreadthChallenger?: UniverseBreadthShadowPlan;
+  readonly universeDiscoveryFunnel?: UniverseDiscoveryFunnel;
 }
 
 export interface RuntimeBehaviorDiagnostic extends RuntimeBehaviorDiagnosticInput {
@@ -131,8 +133,8 @@ export function classifyRuntimeBehavior(input: RuntimeBehaviorDiagnosticInput): 
     : input.actionPlansReady === 1 ? 'SINGLE_BOUNDED_ACTION' : 'MULTIPLE_ACTION_PLANS_SAME_SCAN';
   let waitClassification: WaitClassification;
   if (input.actionPlansReady > 0) waitClassification = 'ACTION_READY';
+  else if (input.providerBlockers.length > 0 || (input.completeness !== 'COMPLETE' && input.completeness !== 'DATA_INSUFFICIENT')) waitClassification = 'DATA_WAIT';
   else if (input.completeness === 'DATA_INSUFFICIENT' || input.candidateCount === 0) waitClassification = 'NO_OPPORTUNITY';
-  else if (input.completeness !== 'COMPLETE' || input.providerBlockers.length > 0) waitClassification = 'DATA_WAIT';
   else if (blockers.some(quoteBlocker)) waitClassification = 'QUOTE_WAIT';
   else if (input.aegisVetoCount > 0 || input.quantityZeroCount > 0 || blockers.some(riskBlocker)) waitClassification = 'RISK_WAIT';
   else if (input.antiParalysisFindings.length > 0) waitClassification = 'POSSIBLE_LOGIC_PARALYSIS';

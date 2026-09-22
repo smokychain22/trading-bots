@@ -2,7 +2,7 @@ import path from 'node:path';
 import type { Pool } from 'pg';
 import type { Environment } from '../config/environment.js';
 import { AlpacaProviderError, fetchOptionSnapshots, type AlpacaProviderConfig } from '../theta/alpaca-provider.js';
-import { discoverRealUniverse } from '../theta/universe-discovery.js';
+import { discoverRealUniverse, type UniverseDiscoveryResult } from '../theta/universe-discovery.js';
 import { assessUniverseEventEvidence } from '../theta/universe-policy.js';
 import { defaultShadowCycleConfig, optionomicsConfigFromEnvironment } from '../theta/theta-shadow-once.js';
 import { runThetaShadowCycle } from '../theta/theta-shadow-cycle.js';
@@ -45,6 +45,11 @@ const blockerCount=(values:readonly string[]):Readonly<Record<string,number>>=>v
 },{});
 const isQuoteEvidence=(value:string):boolean=>/QUOTE|BBO|EXECUTABLE|PRICE/.test(value);
 const isLiquidityEvidence=(value:string):boolean=>/LIQUID|SPREAD|OPEN_INTEREST|VOLUME/.test(value);
+export function universeDiscoveryDiagnosticBlockers(discovery: UniverseDiscoveryResult): readonly string[] {
+  const knownCodes = discovery.blockers.map((blocker) => blocker.split(':', 1)[0] ?? 'UNIVERSE_DISCOVERY_ERROR');
+  if (discovery.candidates.length === 0) knownCodes.push('UNIVERSE_DISCOVERY_ZERO_CANDIDATES_COVERAGE_UNVERIFIED');
+  return [...new Set(knownCodes)].toSorted();
+}
 export function paperEntryCandidateCohort(branches:readonly CanonicalBranchFrontier[]):{
   readonly branches:readonly CanonicalBranchFrontier[];
   readonly candidates:readonly CanonicalFrontierCandidate[];
@@ -163,6 +168,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const recoveryInventoryUnderlyings=recoveryRows.rows.map((row)=>String((row as Record<string,unknown>).symbol));
   const discovery=await discoverRealUniverse(input.alpaca,{discoveryVersion:'theta-shadow-universe-v1',maxCandidateAssets:100,
     allowedExchanges:['NYSE','NASDAQ','ARCA','BATS'],barsLookbackDays:30,barsBatchSize:100,maxOptionabilityChecks:10,minCurrentPrice:5},input.now);
+  const discoveryBlockers=universeDiscoveryDiagnosticBlockers(discovery);
   // Discovery already preserves the existing average-dollar-volume rank.
   // Never alphabetize here because the first two entries are the unchanged
   // champion set and retain broker authority.
@@ -325,7 +331,9 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       :(session as Record<string,unknown>).isOpen===false?'CLOSED' as const:'UNCONFIRMED' as const];
   });
   const distinctSessions=[...new Set(sessionStates)];
-  const session=distinctSessions.length===1?distinctSessions[0]??'UNKNOWN':distinctSessions.length>1?'MIXED' as const:'UNKNOWN' as const;
+  const session=distinctSessions.length===1?distinctSessions[0]??'UNKNOWN':distinctSessions.length>1?'MIXED' as const
+    :input.reconciliation.marketOpen===true&&input.reconciliation.calendarSessionConfirmed===true?'OPEN' as const
+      :input.reconciliation.marketOpen===false?'CLOSED' as const:'UNKNOWN' as const;
   const antiParalysisFindings=deriveAntiParalysisFindings({
     candidateHardBlockers:entryCandidates.map((candidate)=>candidate.hardBlockers),strategyReachability:strategyDiagnostics,
   });
@@ -342,7 +350,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     observedAt:scan.finishedAt,session,universeSize:scan.boundary.eligibleSymbols.length,
     strategiesConsidered:branchFrontiers.length,strategiesApplicable:branchFrontiers.filter((branch)=>branch.applicable).length,
     strategiesRejected:branchFrontiers.filter((branch)=>!branch.applicable||branch.evaluationState==='BLOCKED_MISSING_INPUT').length,
-    strategyDiagnostics,completeness:scan.completeness,
+    strategyDiagnostics,completeness:discovery.candidates.length===0?'DATA_INSUFFICIENT':scan.completeness,
     globalWaitEarned:scan.globalWaitEarned,globalWaitReasons:scan.globalWaitReasons,
     // Decision-level counts share the Paper-authorized branch population.
     // Strategy-level counts above still include every research alternative.
@@ -364,16 +372,18 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     liquidityRejectionCount:rejectedCandidates.filter((candidate)=>[...candidate.hardBlockers,...candidate.unknownEvidence]
       .some(isLiquidityEvidence)).length,
     hardGateCounts,finalAction:actionPlansReady>0?'ACTION_READY':scan.globalWaitEarned?'WAIT':'SYSTEM_HOLD',
-    waitReasons:actionPlansReady>0?[]:[...new Set([...scan.globalWaitReasons,...actionPlansBlocked])].toSorted(),
+    waitReasons:actionPlansReady>0?[]:[...new Set([...scan.globalWaitReasons,...actionPlansBlocked,...discoveryBlockers])].toSorted(),
     bestRejectedCandidates,antiParalysisFindings,
     universeBreadthChallenger,
+    universeDiscoveryFunnel:discovery.funnel,
     strategyQualityChallengers:scan.results.flatMap((member)=>member.cycle?.strategyQualityDiagnostics
       ?[member.cycle.strategyQualityDiagnostics]:[]),
-    providerBlockers:[...new Set([...scan.missingScope,...scan.results.flatMap((member)=>member.errorCode?[member.errorCode]:[])])].toSorted(),
+    providerBlockers:[...new Set([...discoveryBlockers,...scan.missingScope,...scan.results.flatMap((member)=>member.errorCode?[member.errorCode]:[])])].toSorted(),
     actionPlansReady,actionPlanBlockers:[...new Set(actionPlansBlocked)].toSorted(),
   });
   const virtualOpening=await new PostgresShadowVirtualTrader(input.pool).createOpeningIntent(scan.scanId,scan.finishedAt);
-  return {scanId:scan.scanId,completeness:scan.completeness,candidateCount:scan.candidateCount,
+  return {scanId:scan.scanId,completeness:discovery.candidates.length===0?'DATA_INSUFFICIENT':scan.completeness,
+    candidateCount:scan.candidateCount,
     researchMissingScope:scan.researchMissingScope,
     symbolsAttempted:scan.symbolsAttempted,symbolsCompleted:scan.symbolsCompleted,observationsScheduled,
     actionPlansReady,actionPlansBlocked:[...new Set(actionPlansBlocked)].toSorted(),virtualOpening,behaviorDiagnostic};
