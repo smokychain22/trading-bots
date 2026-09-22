@@ -4,6 +4,7 @@ import type { NormalizedOptionContract } from './option-contract.js';
 import type { StrategyFamily, StrategyRoutingResponse } from './strategy-router-contract.js';
 import { canonicalThetaStrategySources, type ThetaStrategyBranch } from './strategy-package.js';
 import { buildAdaptiveShadowDecisionReceipt, type AdaptiveShadowDecisionReceipt } from './adaptive-decision-brain.js';
+import { securedContractCapacity } from './secured-contract-capacity.js';
 
 export const canonicalStrategyFrontierVersion = 'theta-canonical-strategy-frontier-v1' as const;
 export const canonicalDecisionAuthorityVersion = 'theta-canonical-decision-authority-v1' as const;
@@ -278,8 +279,7 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
   if (candidateAegisState === 'DEFINED_RISK_ONLY') evidence.hardBlockers.push('AEGIS_DEFINED_RISK_ONLY');
   const premium = finite(contract.bid) ? contract.bid : null;
   const collateral = contract.strike * contract.multiplier;
-  const assignmentCapacityQty = input.assignmentCapacityQty ??
-    (finite(input.buyingPower ?? null) && collateral > 0 ? Math.floor((input.buyingPower as number) / collateral) : null);
+  const assignmentCapacityQty = input.assignmentCapacityQty ?? securedContractCapacity(input.buyingPower ?? null, collateral);
   if (assignmentCapacityQty === null) evidence.unknownEvidence.push('ASSIGNMENT_CAPACITY_UNKNOWN');
   else if (assignmentCapacityQty <= 0) evidence.hardBlockers.push('NO_ASSIGNMENT_CAPACITY');
   const cushion = finite(contract.underlyingReferencePrice) && finite(contract.breakEven) && contract.underlyingReferencePrice > 0

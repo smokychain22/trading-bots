@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { assembleManagementInput, diffManagementInputs } from '../src/theta/management-input-state.js';
+import { buildManagementActionFrontier } from '../src/theta/management-action-frontier.js';
 
 const base = {
   chain_id: 'chain-1', lifecycle_state: 'CSP_OPEN', underlying_id:'underlying-1', underlying: 'AAPL',
@@ -90,4 +91,64 @@ test('management content hash is deterministic and excludes its random persisten
     managementInputSnapshotId:'two',reconciliationSnapshotId:'recon',observedAt:'2026-09-12T14:00:00.000Z',
   });
   assert.equal(first.contentHash,second.contentHash);
+});
+
+test('open put assignment capacity comes from fresh broker buying power, not the unpopulated fusion risk state', () => {
+  const at = '2026-10-16T20:01:00.000Z';
+  const row = { ...base, expiration_date:'2026-10-16', quote_as_of:at, account_as_of:at,
+    account_snapshot_id:'501', options_buying_power:'40000',
+    snapshot_json:{underlyingState:{last:190},marketSession:{isOpen:false},riskState:null} };
+  const input = assembleManagementInput(row, {managementInputSnapshotId:'capacity-positive',
+    reconciliationSnapshotId:'recon',observedAt:at});
+  assert.equal(input.context.assignmentCapacity,2);
+  assert.equal(input.context.assignmentCapacityEvidence.unit,'WHOLE_CONTRACTS');
+  assert.equal(input.context.assignmentCapacityEvidence.accountSnapshotId,'501');
+  assert.equal(input.context.assignmentCapacityEvidence.accountObservedAt,at);
+  assert.equal(input.context.assignmentCapacityEvidence.collateralPerContract,20_000);
+  assert.equal(input.context.assignmentCapacityEvidence.source,'ALPACA_ACCOUNT_SNAPSHOT_AND_OPEN_PUT');
+  assert.ok(!input.unknownFields.includes('context.assignmentCapacity'));
+  const action = buildManagementActionFrontier(input).actions.find((candidate)=>candidate.action==='ACCEPT_ASSIGNMENT');
+  assert.equal(action?.feasibility,'FEASIBLE');
+  assert.ok(!action?.blockers.includes('ASSIGNMENT_CAPACITY_UNKNOWN'));
+});
+
+test('known insufficient assignment lots block, while unavailable or stale broker evidence stays UNKNOWN', () => {
+  const at = '2026-10-16T20:01:00.000Z';
+  const row = { ...base, expiration_date:'2026-10-16', quote_as_of:at, account_as_of:at,
+    snapshot_json:{underlyingState:{last:190},marketSession:{isOpen:false},riskState:null} };
+  const assemble = (overrides:Record<string,unknown>) => assembleManagementInput({...row,...overrides},
+    {managementInputSnapshotId:'capacity-test',reconciliationSnapshotId:'recon',observedAt:at});
+  const zero = assemble({options_buying_power:'0'});
+  assert.equal(zero.context.assignmentCapacity,0);
+  assert.equal(zero.context.assignmentCapacityEvidence.state,'KNOWN');
+  assert.ok(buildManagementActionFrontier(zero).actions.find((action)=>action.action==='ACCEPT_ASSIGNMENT')
+    ?.blockers.includes('NO_ASSIGNMENT_CAPACITY'));
+  const unknown = assemble({options_buying_power:null,buying_power:null});
+  assert.equal(unknown.context.assignmentCapacity,null);
+  assert.equal(unknown.context.assignmentCapacityEvidence.state,'UNKNOWN');
+  assert.ok(buildManagementActionFrontier(unknown).actions.find((action)=>action.action==='ACCEPT_ASSIGNMENT')
+    ?.blockers.includes('ASSIGNMENT_CAPACITY_UNKNOWN'));
+  const stale = assemble({account_as_of:'2026-10-16T19:00:00.000Z'});
+  assert.equal(stale.context.assignmentCapacityEvidence.reason,'ACCOUNT_EVIDENCE_STALE_OR_MISSING');
+  assert.equal(stale.context.assignmentCapacity,null);
+  const noPut = assemble({lifecycle_state:'RECOVERY_WAIT',contract_symbol:null,quantity:null});
+  assert.equal(noPut.context.assignmentCapacityEvidence.state,'NOT_APPLICABLE');
+  assert.ok(!noPut.unknownFields.includes('context.assignmentCapacity'));
+});
+
+test('later-received broker quote cannot authorize an earlier management decision',()=>{
+  const at='2026-10-16T20:01:00.000Z';
+  const later='2026-10-16T20:01:01.000Z';
+  const input=assembleManagementInput({...base,expiration_date:'2026-10-16',quote_as_of:at,
+    quote_retrieved_at:later,account_as_of:at,
+    snapshot_json:{underlyingState:{last:190},marketSession:{isOpen:false},riskState:null}},
+  {managementInputSnapshotId:'pit-future',reconciliationSnapshotId:'recon',observedAt:at});
+  assert.equal(input.evidenceBundle.decisionAsOf,at);
+  assert.equal(input.evidenceBundle.currentLegQuoteReceivedAt,later);
+  assert.equal(input.evidenceBundle.timingState,'FUTURE_EVIDENCE');
+  assert.ok(input.hardBlockers.includes('EVIDENCE_OBSERVED_AFTER_DECISION'));
+  const frontier=buildManagementActionFrontier(input);
+  assert.ok(frontier.actions.find((action)=>action.action==='ACCEPT_ASSIGNMENT')
+    ?.blockers.includes('EVIDENCE_OBSERVED_AFTER_DECISION'));
+  assert.equal(frontier.selectedAction,'HOLD');
 });
