@@ -1,4 +1,4 @@
-import { fetchOptionContracts, fetchStockBars, fetchTradableAssets, type AlpacaProviderConfig } from './alpaca-provider.js';
+import { AlpacaProviderError, fetchOptionContracts, fetchStockBars, fetchTradableAssets, type AlpacaProviderConfig } from './alpaca-provider.js';
 import type { HistoricalBar } from './underlying-history.js';
 import type { UnderlyingCandidateInput } from './universe-policy.js';
 
@@ -55,6 +55,18 @@ export interface UniverseDiscoveryFunnel {
   readonly optionabilityChecksAttempted: number;
   readonly optionableConfirmed: number;
   readonly candidatesProduced: number;
+  /** Observation only. These stages do not change eligibility or broker authority. */
+  readonly stageDiagnostics?: readonly UniverseDiscoveryStageDiagnostic[];
+}
+
+export interface UniverseDiscoveryStageDiagnostic {
+  readonly stage: 'SOURCE_ASSETS' | 'EXCHANGE_FILTER' | 'STOCK_BARS' | 'OPTIONABILITY';
+  readonly inputCount: number;
+  readonly outputCount: number;
+  readonly rejectedCount: number;
+  readonly durationMs: number;
+  readonly providerState: 'READY' | 'VALID_EMPTY' | 'PARTIAL' | 'INVALID_AUTH' | 'PROVIDER_ERROR' | 'PROVIDER_LIMITED' | 'SCHEMA_INVALID';
+  readonly reasonCounts: Readonly<Record<string, number>>;
 }
 
 export interface UniverseDiscoveryResult {
@@ -78,6 +90,13 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
   return chunks;
+}
+
+function providerFailureState(error: unknown): UniverseDiscoveryStageDiagnostic['providerState'] {
+  return error instanceof AlpacaProviderError && error.errorClass === 'INVALID_AUTH' ? 'INVALID_AUTH'
+    : error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE' ? 'SCHEMA_INVALID'
+    : error instanceof AlpacaProviderError && error.errorClass === 'NOT_ENTITLED' ? 'PROVIDER_LIMITED'
+      : 'PROVIDER_ERROR';
 }
 
 /**
@@ -105,27 +124,49 @@ export async function discoverRealUniverse(
   let assetsDiscovered = 0;
   let assetsTruncatedByBound = false;
   let filteredSymbols: string[] = [];
+  let exchangeFilterDurationMs = 0;
+  const stageDiagnostics: UniverseDiscoveryStageDiagnostic[] = [];
+  const assetsStarted = performance.now();
   try {
     const assetsResult = await fetchTradableAssets(alpaca, config.maxCandidateAssets);
     assetsDiscovered = assetsResult.assets.length;
     assetsTruncatedByBound = !assetsResult.complete;
+    const filterStarted = performance.now();
     filteredSymbols = assetsResult.assets
       .filter((a) => config.allowedExchanges === null || (a.exchange !== null && config.allowedExchanges.includes(a.exchange)))
       .map((a) => a.symbol)
       .filter((symbol) => symbol.length > 0);
+    exchangeFilterDurationMs = Math.max(0, Math.round(performance.now() - filterStarted));
   } catch (error) {
     blockers.push(`UNIVERSE_ASSETS_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
+    stageDiagnostics.push({ stage: 'SOURCE_ASSETS', inputCount: 0, outputCount: 0, rejectedCount: 0,
+      durationMs: Math.max(0, Math.round(performance.now() - assetsStarted)),
+      providerState: providerFailureState(error), reasonCounts: {
+        [error instanceof AlpacaProviderError ? `ASSET_${error.errorClass}` : 'ASSET_PROVIDER_ERROR']: 1,
+      } });
     return {
       candidates: [], candidatesOrigin: 'REAL_PROVIDER_ERROR',
-      funnel: { assetsDiscovered: 0, assetsTruncatedByBound: false, assetsAfterExchangeFilter: 0, assetsWithUsableBars: 0, optionabilityChecksAttempted: 0, optionableConfirmed: 0, candidatesProduced: 0 },
+      funnel: { assetsDiscovered: 0, assetsTruncatedByBound: false, assetsAfterExchangeFilter: 0, assetsWithUsableBars: 0, optionabilityChecksAttempted: 0, optionableConfirmed: 0, candidatesProduced: 0, stageDiagnostics },
       blockers,
     };
   }
   const assetsAfterExchangeFilter = filteredSymbols.length;
+  stageDiagnostics.push({ stage: 'SOURCE_ASSETS', inputCount: assetsDiscovered, outputCount: assetsDiscovered,
+    rejectedCount: 0, durationMs: Math.max(0, Math.round(performance.now() - assetsStarted)),
+    providerState: assetsTruncatedByBound ? 'PARTIAL' : assetsDiscovered === 0 ? 'VALID_EMPTY' : 'READY',
+    reasonCounts: assetsTruncatedByBound ? { CLIENT_ASSET_BOUND_REACHED: 1 } : {} });
+  stageDiagnostics.push({ stage: 'EXCHANGE_FILTER', inputCount: assetsDiscovered, outputCount: assetsAfterExchangeFilter,
+    rejectedCount: assetsDiscovered - assetsAfterExchangeFilter, durationMs: exchangeFilterDurationMs,
+    providerState: assetsAfterExchangeFilter === 0 ? 'VALID_EMPTY' : 'READY',
+    reasonCounts: assetsDiscovered === assetsAfterExchangeFilter ? {} : { EXCHANGE_NOT_ALLOWED_OR_UNKNOWN: assetsDiscovered - assetsAfterExchangeFilter } });
 
   const barsEnd = receivedAt;
   const barsStart = new Date(decisionMillis - config.barsLookbackDays * 86_400_000).toISOString();
   const priceBySymbol = new Map<string, { avgDollarVolume: number; currentPrice: number }>();
+  const barsStarted = performance.now();
+  let failedBarsBatches = 0;
+  let incompleteBarsBatches = 0;
+  const totalBarsBatches = Math.ceil(filteredSymbols.length / config.barsBatchSize);
 
   for (const batch of chunk(filteredSymbols, config.barsBatchSize)) {
     try {
@@ -134,6 +175,7 @@ export async function discoverRealUniverse(
         { symbols: batch, timeframe: '1Day', start: barsStart, end: barsEnd, feed: 'iex', maxPages: 5, adjustment: 'split' },
         receivedAt,
       );
+      if (!barsResult.complete) incompleteBarsBatches += 1;
       const barsBySymbol = new Map<string, HistoricalBar[]>();
       for (const bar of barsResult.bars) {
         const list = barsBySymbol.get(bar.symbol) ?? [];
@@ -147,12 +189,22 @@ export async function discoverRealUniverse(
         }
       }
     } catch (error) {
+      failedBarsBatches += 1;
       blockers.push(`UNIVERSE_BARS_BATCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
       // A failed batch loses only that batch's symbols -- never the whole
       // discovery run; other batches' real data is still usable.
     }
   }
   const assetsWithUsableBars = priceBySymbol.size;
+  stageDiagnostics.push({ stage: 'STOCK_BARS', inputCount: assetsAfterExchangeFilter, outputCount: assetsWithUsableBars,
+    rejectedCount: assetsAfterExchangeFilter - assetsWithUsableBars,
+    durationMs: Math.max(0, Math.round(performance.now() - barsStarted)),
+    providerState: totalBarsBatches > 0 && failedBarsBatches === totalBarsBatches ? 'PROVIDER_ERROR'
+      : failedBarsBatches > 0 || incompleteBarsBatches > 0 ? 'PARTIAL'
+      : assetsWithUsableBars === 0 ? 'VALID_EMPTY' : 'READY',
+    reasonCounts: { ...(failedBarsBatches > 0 ? { BARS_BATCH_FAILED: failedBarsBatches } : {}),
+      ...(incompleteBarsBatches > 0 ? { BARS_PAGINATION_INCOMPLETE: incompleteBarsBatches } : {}),
+      ...(assetsAfterExchangeFilter > assetsWithUsableBars ? { NO_USABLE_BARS_OR_PRICE_BELOW_FLOOR: assetsAfterExchangeFilter - assetsWithUsableBars } : {}) } });
 
   const shortlistForOptionabilityCheck = [...priceBySymbol.entries()]
     .sort((a, b) => b[1].avgDollarVolume - a[1].avgDollarVolume)
@@ -167,6 +219,8 @@ export async function discoverRealUniverse(
   // call pressure while allowing a 5/10-symbol challenger to accumulate
   // over multiple cycles.
   const optionabilityResults: Array<{symbol:string;optionable:boolean}>=[];
+  const optionabilityStarted = performance.now();
+  let optionabilityErrors = 0;
   for(const batch of chunk(shortlistForOptionabilityCheck,2)){
     optionabilityResults.push(...await Promise.all(batch.map(async (symbol) => {
       try {
@@ -176,6 +230,7 @@ export async function discoverRealUniverse(
         });
         return { symbol, optionable: result.items.length > 0 };
       } catch (error) {
+        optionabilityErrors += 1;
         blockers.push(`UNIVERSE_OPTIONABILITY_CHECK_FAILED:${symbol}:${error instanceof Error ? error.message : 'unknown'}`);
         return { symbol, optionable: false }; // NOT confirmed optionable -- excluded, never guessed in
       }
@@ -198,14 +253,28 @@ export async function discoverRealUniverse(
   }
 
   const optionableConfirmed = optionabilityResults.filter((r) => r.optionable).length;
+  stageDiagnostics.push({ stage: 'OPTIONABILITY', inputCount: shortlistForOptionabilityCheck.length,
+    outputCount: optionableConfirmed, rejectedCount: shortlistForOptionabilityCheck.length - optionableConfirmed,
+    durationMs: Math.max(0, Math.round(performance.now() - optionabilityStarted)),
+    providerState: optionabilityErrors > 0 ? optionabilityErrors === shortlistForOptionabilityCheck.length ? 'PROVIDER_ERROR' : 'PARTIAL'
+      : shortlistForOptionabilityCheck.length === 0 && (failedBarsBatches > 0 || incompleteBarsBatches > 0) ? 'PARTIAL'
+        : optionableConfirmed === 0 ? 'VALID_EMPTY' : 'READY',
+    reasonCounts: { ...(optionabilityErrors > 0 ? { CONTRACT_CHECK_FAILED: optionabilityErrors } : {}),
+      ...(shortlistForOptionabilityCheck.length === 0 && (failedBarsBatches > 0 || incompleteBarsBatches > 0)
+        ? { UPSTREAM_BARS_COVERAGE_INCOMPLETE: 1 } : {}),
+      ...(shortlistForOptionabilityCheck.length - optionableConfirmed - optionabilityErrors > 0
+        ? { NO_LISTED_PUT_FOUND: shortlistForOptionabilityCheck.length - optionableConfirmed - optionabilityErrors } : {}) } });
 
   return {
     candidates,
-    candidatesOrigin: candidates.length > 0 ? 'REAL_PROVIDER' : 'REAL_PROVIDER_UNKNOWN',
+    candidatesOrigin: candidates.length > 0 ? 'REAL_PROVIDER'
+      : (totalBarsBatches > 0 && failedBarsBatches === totalBarsBatches)
+        || (shortlistForOptionabilityCheck.length > 0 && optionabilityErrors === shortlistForOptionabilityCheck.length)
+        ? 'REAL_PROVIDER_ERROR' : 'REAL_PROVIDER_UNKNOWN',
     funnel: {
       assetsDiscovered, assetsTruncatedByBound, assetsAfterExchangeFilter, assetsWithUsableBars,
       optionabilityChecksAttempted: shortlistForOptionabilityCheck.length, optionableConfirmed,
-      candidatesProduced: candidates.length,
+      candidatesProduced: candidates.length, stageDiagnostics,
     },
     blockers,
   };
