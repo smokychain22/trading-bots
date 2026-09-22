@@ -77,7 +77,9 @@ export function parseAlpacaBarsPage(raw: RawAlpacaBarsPage, feed: string | null,
       if (volume === null || volume < 0) throw new Error('ALPACA_BARS_MALFORMED_VOLUME');
       if (bar.n != null && (tradeCount === null || !Number.isSafeInteger(tradeCount) || tradeCount < 0))
         throw new Error('ALPACA_BARS_MALFORMED_TRADE_COUNT');
-      if (bar.vw != null && (vwap === null || vwap <= 0)) throw new Error('ALPACA_BARS_MALFORMED_VWAP');
+      if (bar.vw != null && vwap === null) throw new Error('ALPACA_BARS_MALFORMED_VWAP_NON_NUMERIC');
+      if (vwap === 0) throw new Error('ALPACA_BARS_MALFORMED_VWAP_ZERO');
+      if (vwap !== null && vwap < 0) throw new Error('ALPACA_BARS_MALFORMED_VWAP_NEGATIVE');
       bars.push({
         symbol,
         timestamp: bar.t,

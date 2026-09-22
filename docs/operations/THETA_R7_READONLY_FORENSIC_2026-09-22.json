@@ -87,7 +87,7 @@
       "evidence": "Vercel Production outbound GET traces and persisted Aiven broker reconciliation"
     },
     "vercelUniverseFunnel": {
-      "observedAt": "2026-09-22T14:42:27Z",
+      "observedAt": "2026-09-22T14:51:07Z",
       "sourceAssets": 100,
       "sourceAssetsTruncatedByBound": true,
       "afterExchangeFilter": 100,
@@ -97,8 +97,8 @@
       "candidateCount": 0,
       "firstFailedStage": "STOCK_BARS",
       "stockBarsFailureClass": "SCHEMA_INVALID",
-      "stockBarsParserDetail": "PENDING_NEXT_NATURAL_SCAN_AFTER_SAFE_DIAGNOSTIC_RELEASE",
-      "conclusion": "MALFORMED_STOCK_BARS_RESPONSE_NOT_MARKET_EMPTY"
+      "stockBarsParserDetail": "MALFORMED_VWAP_SUBTYPE_PENDING_NEXT_NATURAL_SCAN",
+      "conclusion": "MALFORMED_OPTIONAL_VWAP_FIELD_NOT_MARKET_EMPTY"
     },
     "optionomicsMetrics": "AUTHENTICATED_HTTP_200",
     "optionomicsHistoricalAtmIv": {
@@ -114,7 +114,7 @@
   "blockers": [
     { "name": "AIVEN_WRITABILITY", "state": "CLOSED", "reason": "direct read-only setting off and rollback-safe application writes passed" },
     { "name": "BROKER_HISTORICAL_FACT_POLICY", "state": "ACTIVE_BLOCKER", "reason": "11 unmatched facts are retained; settlement and pending obligations are not fully proven" },
-    { "name": "BOUNDED_UNIVERSE_EMPTY_STAGE", "state": "ACTIVE_IMPLEMENTATION_DIAGNOSTIC", "reason": "Vercel Production authenticated assets reached 100, but the stock-bars batch failed SCHEMA_INVALID; next natural scan must capture the exact sanitized parser category" },
+    { "name": "BOUNDED_UNIVERSE_EMPTY_STAGE", "state": "ACTIVE_IMPLEMENTATION_DIAGNOSTIC", "reason": "Vercel Production authenticated assets reached 100, but the stock-bars batch failed on optional VWAP validation; next natural scan must distinguish zero, negative, or nonnumeric VWAP before parser semantics change" },
     { "name": "FINALIST_BBO_BEFORE_AEGIS", "state": "ACTIVE_BLOCKER", "reason": "fresh finalist refresh is not yet implemented upstream of AEGIS" },
     { "name": "AEGIS_IV_SHOCK", "state": "ACTIVE_BLOCKER", "reason": "no qualified mature current-plus-baseline detector wired to Production" },
     { "name": "AEGIS_SPREAD_WIDENING", "state": "ACTIVE_BLOCKER", "reason": "no qualified cohort-aware mature baseline detector wired to Production" },
