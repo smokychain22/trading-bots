@@ -1,5 +1,23 @@
 # THETA quantified unknown audit (Wave 9 Batch 2)
 
+> **CORRECTION (Wave 10, 2026-09-22)**: the "real finding" below about
+> `ROLL_CC_CANDIDATE_SOURCE` being `DATA_EXISTS_BUT_NOT_WIRED` was a
+> false positive, found on direct re-read of
+> `PaperBootstrapManagementPolicyProvider.evaluate()`
+> (`paper-bootstrap-management-policy.ts:1136-1159`). It reads
+> `state.managementCandidateDiscovery` -- populated by the real
+> `ProductionPaperManagementCandidateSource` -- independently of the
+> constructor's `noCandidates` default, which only governs the SINGULAR
+> `rollCandidate`/`ccCandidate` fallback. The P0-1 management-candidate
+> gap is **fully closed**, not partially. See
+> `THETA_CODEX_INTEGRATION_QUEUE.md`'s retracted Q-9 for the full
+> correction and `THETA_AVOIDABLE_UNKNOWN_RECLASSIFICATION.md` for the
+> corrected, more precise taxonomy this finding prompted (mixing real
+> blockers, optional research, intentional quarantine, and normal
+> pipeline behavior into one "avoidable unknown" count was itself
+> imprecise -- corrected there, not rewritten here to preserve the
+> original audit's real, still-valid parts).
+
 ## Methodology -- reuses the existing denominator, builds nothing new
 
 Per this wave's explicit instruction, this audit does **not** build a
@@ -46,6 +64,14 @@ empirically validated against a live cycle).
 
 ## Category counts (real, from the committed script, 40-row denominator)
 
+> Re-run after the Wave 10 Q-9 correction: `DATA_EXISTS_BUT_NOT_WIRED`
+> dropped to 4 (was 5), `IMPLEMENTATION_DEFECT` dropped to 1 (was 2),
+> `EMPIRICALLY_UNPROVEN` rose to 9 (was 7) -- both `ROLL_CC_*` rows moved
+> there as `REAL` (mechanically correct, not yet empirically validated).
+> Raw counts below are the original, pre-correction numbers kept for
+> historical record; see the reclassification doc for the corrected,
+> decision-relevant taxonomy.
+
 ```
 DATA_EXISTS_AND_WIRED          = 1
 DATA_EXISTS_BUT_NOT_CONSUMED   = 3
@@ -83,6 +109,17 @@ narrowing, not attempted here to avoid unnecessary churn on a stable,
 tested file).
 
 ## The 10 avoidable unknowns, named (the owner's actual question)
+
+> **See `THETA_AVOIDABLE_UNKNOWN_RECLASSIFICATION.md` for the corrected
+> version of this section.** The count of 10 below mixed a genuine
+> first-Paper safety gap, optional unused ranking intelligence, shadow/R8
+> scope items, an intentionally quarantined architecture, and one item
+> that was never actually unknown -- corrected there into a taxonomy that
+> actually answers what can stop first Paper (answer: 1 item,
+> `AEGIS_SYSTEM_LIQUIDITY_STRESS`, already Q-6). The item-by-item list
+> below is kept for its real per-item detail/evidence, which is still
+> accurate; only the single combined "avoidable=10" framing was
+> imprecise.
 
 Per-capability detail (id | classification | why), from the real registry:
 

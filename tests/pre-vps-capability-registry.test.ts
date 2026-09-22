@@ -38,11 +38,18 @@ test('capabilitiesByMaturity filters correctly and QUARANTINED capabilities are 
   assert.ok(productionRequired.every((c) => c.maturity === 'PRODUCTION_REQUIRED'));
 });
 
-test('capabilitiesByBlocker surfaces every entry with a real, non-null blocker -- confirms the known P0 roll/CC gap is represented', () => {
+test('capabilitiesByBlocker surfaces every entry with a real, non-null blocker -- confirms the genuine AEGIS stress-producer gap is represented', () => {
+  // ROLL_CC_CANDIDATE_SOURCE/VALUATION were corrected in Wave 9 -- an
+  // earlier finding that the roll/CC candidate array path was blocked by
+  // createPaperBootstrapManagementPolicyProvider()'s zero-arg default was
+  // a false positive (PaperBootstrapManagementPolicyProvider.evaluate()
+  // reads state.managementCandidateDiscovery independently of that
+  // default). AEGIS_SYSTEM_LIQUIDITY_STRESS remains a genuine, unresolved
+  // gap and is used here instead.
   const blocked = capabilitiesByBlocker(capabilityRegistry);
-  const rollCcSource = blocked.find((c) => c.capabilityId === 'ROLL_CC_CANDIDATE_SOURCE');
-  assert.ok(rollCcSource !== undefined);
-  assert.ok(rollCcSource?.blocker !== null);
+  const aegisStress = blocked.find((c) => c.capabilityId === 'AEGIS_SYSTEM_LIQUIDITY_STRESS');
+  assert.ok(aegisStress !== undefined);
+  assert.ok(aegisStress?.blocker !== null);
 });
 
 test('the quarantined management architecture is represented with runtimeReachable=false and currentState=QUARANTINED_NO_CALLERS', () => {

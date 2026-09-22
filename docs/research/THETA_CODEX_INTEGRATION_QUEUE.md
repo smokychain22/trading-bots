@@ -121,22 +121,38 @@ row against the new SHA before treating any of them as still open.
 - **Runtime proof requirement**: a real session where a calibration/latency/refresh change measurably changes the `CONTRACT_NOT_EXECUTABLE` rejection rate without degrading fill safety.
 - **State**: OPEN, HIGH priority.
 
-## Q-9: Wire real management-candidate discovery into the policy-evidence provider (the last mile of the P0-1 gap)
+## Q-9: RETRACTED -- was a false positive, corrected on direct re-read
 
-- **Priority**: HIGH -- closes both `ROLL_CC_CANDIDATE_SOURCE` and (transitively) `ROLL_CC_CANDIDATE_VALUATION` in the capability registry
-- **Claude source commit**: this wave's Batch 2 (`THETA_QUANTIFIED_UNKNOWN_AUDIT.md`)
-- **Source artifact**: `docs/research/THETA_QUANTIFIED_UNKNOWN_AUDIT.md`
-- **Production subsystem**: `src/theta/autonomous-runtime.ts`
-- **Exact source insertion point**: `autonomous-runtime.ts:353-354` -- `const managementPolicyEvidenceProvider = dependencies.managementPolicyEvidenceProvider ?? createPaperBootstrapManagementPolicyProvider();` still calls the factory with zero arguments.
-- **Current defect**: main's recent work (`98b7204`/`bc85ba8`/`bbdfd54`/`1ca3e27`) built and wired `ProductionPaperManagementCandidateSource` (`autonomous-runtime.ts:429`) into the candidate-discovery/persistence path (`managementStore.assembleAndPersistOpenChains()`), but did NOT wire that same discovery into `managementPolicyEvidenceProvider`, which is the SEPARATE thing that feeds `buildRuntimeManagementFrontiers()` -- the function that actually produces the ROLL/SELL_CC action frontier. Real candidate data now exists and is persisted; the specific remaining gap is narrower than before.
-- **Accepted architectural constraint**: `createPaperBootstrapManagementPolicyProvider(candidates: PaperBootstrapCandidateSource = noCandidates)` already accepts a real candidate source as its one argument (`paper-bootstrap-management-policy.ts:1162-1165`) -- no interface change needed, only a real argument at the call site.
-- **Expected change**: pass a real `PaperBootstrapCandidateSource` (built from `ProductionPaperManagementCandidateSource`'s discovery result, or the same discovery re-run/reused) into `createPaperBootstrapManagementPolicyProvider(...)` instead of calling it with zero arguments.
-- **Producer**: `ProductionPaperManagementCandidateSource` (already real).
-- **Consumer**: `buildRuntimeManagementFrontiers()` via `managementPolicyEvidenceProvider`.
-- **Persistence requirement**: none new -- discovery is already persisted.
-- **Test requirement**: a test proving `managementPolicyEvidenceProvider` receives non-empty real candidates when the discovery source has real candidates, and that `evaluateRollCandidates`/`valueForRollFromCandidates` etc. (already real, tested machinery per the registry) become reachable.
-- **Runtime proof requirement**: a real cycle where a real open chain produces a non-empty ROLL/SELL_CC action frontier (still `brokerAuthority`-gated, no live-money authority implied).
-- **State**: OPEN, HIGH priority, NEW this pass.
+The original Q-9 ("wire real management-candidate discovery into the
+policy-evidence provider") claimed `createPaperBootstrapManagementPolicyProvider()`
+being called with zero arguments at `autonomous-runtime.ts:353-354` blocks
+the real roll/CC candidate arrays from reaching valuation. **This was
+wrong**, found on direct re-read of
+`PaperBootstrapManagementPolicyProvider.evaluate()`
+(`paper-bootstrap-management-policy.ts:1136-1159`):
+
+```ts
+const discovered = discovery?.state === 'READY' && state.evidenceBundle.timingState !== 'FUTURE_EVIDENCE'
+  && targetQuotesTimely ? discovery : null;
+return evaluatePaperBootstrapManagementPolicy({ ...state, rollCandidate, ccCandidate,
+  rollCandidates: discovered?.rollCandidates ?? rollCandidates,
+  ccCandidates: discovered?.ccCandidates ?? ccCandidates,
+  rollCcCandidates: discovered?.rollCcCandidates ?? rollCcCandidates });
+```
+
+`discovery` comes from `state.managementCandidateDiscovery`, populated by
+the real `ProductionPaperManagementCandidateSource` via
+`assembleAndPersistOpenChains()` -- a path entirely independent of the
+constructor's `noCandidates` default. That default only governs the
+SINGULAR `rollCandidate`/`ccCandidate` fallback fields, used only when
+the array is empty/undefined or discovery isn't `READY`/PIT-timely.
+Confirmed further: `valueForRollFromCandidates`/`valueForRollCcFromCandidates`/
+`valueForSellCcFromCandidates` are each called in preference to the
+single-candidate fallback exactly when `state.rollCandidates`/
+`rollCcCandidates`/`ccCandidates` is non-empty
+(`paper-bootstrap-management-policy.ts:828-834, 951`). **No Codex action
+required.** `ROLL_CC_CANDIDATE_SOURCE` and `ROLL_CC_CANDIDATE_VALUATION`
+corrected to `REAL` in the capability registry.
 
 ---
 
@@ -152,11 +168,14 @@ row against the new SHA before treating any of them as still open.
   where `createPaperBootstrapManagementPolicyProvider()` was called with
   zero args and both singular/array roll/CC candidate fields were
   unpopulated. Verified via merge + full suite (1822 pass, 13 skipped --
-  2 new DB-env-gated tests) + tsc/lint/security-scan clean. Not
-  independently re-audited in depth this pass beyond the standard merge
-  verification -- flagged for a future pass's deeper review if the
-  engagement wants to confirm the real candidate economics match this
-  engagement's own prior findings, but no open queue action right now.
+  2 new DB-env-gated tests) + tsc/lint/security-scan clean. **Wave 9
+  correction**: this engagement's own Wave 9 Batch 2 audit initially
+  claimed this closure was only partial (real discovery/persistence
+  landed, but the array-based candidates supposedly still couldn't reach
+  valuation) -- a direct re-read of
+  `PaperBootstrapManagementPolicyProvider.evaluate()` found that claim
+  was a false positive (see the retracted Q-9 above). The P0-1 gap is
+  now confirmed **fully closed**, not partially.
 
 - Assignment-capacity producer -- **Codex closed this independently and then marked it formally closed** across 3 more real commits this pass (`e64d554` "Verify already-secured put capacity for assignment management", `6a359a0` "Mark assignment capacity engineering defect closed", `52e6ea5` "Record verified R7 assignment and Aiven recovery checkpoint" -- see the new `docs/operations/THETA_R7_ASSIGNMENT_AND_DR_RECEIPT_2026-09-22.md`). Confirmed via merge + full suite (1812 pass). No open row for this in the queue above, and none should be re-added unless a NEW regression is found.
 - AEGIS baseline-maturity contract -- Codex reviewed and hardened it (`BASELINE_INVALID` state added), harvested into main.
