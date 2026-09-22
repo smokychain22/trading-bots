@@ -31,7 +31,7 @@ Updated 2026-09-22 after commit `db3143d` (branch
 | 2 | `THETA_METHOD_USAGE_CENSUS.md` completion | OPEN | not started this pass |
 | 3 | Capability registry coverage percent | OPEN | not started this pass |
 | 4 | Quantified unknown audit coverage | OPEN | not started this pass |
-| 5 | Loss-cause integration contract | OPEN | not started this pass |
+| 5 | Loss-cause integration contract | DONE | `loss-cause-integration-contract.ts`: typed per-cause evidence (source/severity/persistence/confidence/thesisImpact/actionInfluence/hardSafetyOverride) for all 8 causes; exit-supremacy fold; 10 tests incl. same-P&L-different-cause-different-frontier core claim |
 | 6 | `assignmentCapacity` field resolution | DONE | `THETA_ASSIGNMENT_CAPACITY_RESOLUTION.md`: 3 distinct fields traced; concepts 1-2 KEEP_SEPARATE_WITH_NAMES (both real); concept 3 (`ManagementInputState.context.assignmentCapacity`) is BUILD_PRODUCER -- `riskState: null` hardcoded in theta-shadow-cycle.ts blocks ACCEPT_ASSIGNMENT on every real cycle; exact patch handed to Codex |
 | 7 | Correlation tooling completion | OPEN | not started this pass |
 | 8 | Severe-downside tooling review/close | OPEN | not started this pass |
