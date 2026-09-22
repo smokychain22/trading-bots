@@ -84,7 +84,8 @@ function Get-ThetaNativePgTool {
 
 function Invoke-ThetaPg {
   param([ValidateSet('pg_dump','pg_restore','psql')][string]$Tool, [object]$Connection, [string[]]$Arguments)
-  $keys = @('PGHOST','PGPORT','PGUSER','PGPASSWORD','PGDATABASE','PGSSLMODE','PGCONNECT_TIMEOUT','PGAPPNAME','PGTZ','WSLENV')
+  $keys = @('PGHOST','PGPORT','PGUSER','PGPASSWORD','PGDATABASE','PGSSLMODE','PGCONNECT_TIMEOUT','PGAPPNAME','PGTZ',
+    'PGKEEPALIVES','PGKEEPALIVESIDLE','PGKEEPALIVESINTERVAL','PGKEEPALIVESCOUNT','PGTCPUSER_TIMEOUT','WSLENV')
   $previous = @{}
   foreach ($key in $keys) { $previous[$key] = [Environment]::GetEnvironmentVariable($key) }
   try {
@@ -92,6 +93,8 @@ function Invoke-ThetaPg {
     $env:PGPORT = $Connection.Port; $env:PGUSER = $Connection.User
     $env:PGPASSWORD = $Connection.Password; $env:PGDATABASE = $Connection.Database; $env:PGSSLMODE = $Connection.SslMode
     $env:PGCONNECT_TIMEOUT = '15'; $env:PGAPPNAME = 'theta-disaster-recovery'
+    $env:PGKEEPALIVES = '1'; $env:PGKEEPALIVESIDLE = '30'; $env:PGKEEPALIVESINTERVAL = '10'
+    $env:PGKEEPALIVESCOUNT = '6'; $env:PGTCPUSER_TIMEOUT = '120000'
     # JSON row digests must use the same timestamp representation on Aiven and
     # on a restore target whose default PostgreSQL timezone may differ.
     $env:PGTZ = 'UTC'

@@ -14,6 +14,22 @@ if (-not $TestMode -and $SkipExternalAssets) { throw 'PRODUCTION_BACKUP_CANNOT_S
 Initialize-ThetaBackupRoot $root
 $logPath = Join-Path $root ('logs\backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
 function Log([string]$Message) { [IO.File]::AppendAllText($logPath, "$(Get-Date -Format o) $Message`n") }
+function Invoke-VerifiedDumpWithRetry([string[]]$Arguments, [string]$OutputPath, [string]$Label) {
+  $delays = @(0, 5, 20)
+  for ($attempt = 1; $attempt -le $delays.Count; $attempt++) {
+    if ($delays[$attempt - 1] -gt 0) { Start-Sleep -Seconds $delays[$attempt - 1] }
+    Remove-Item -LiteralPath $OutputPath -Force -ErrorAction SilentlyContinue
+    try {
+      Invoke-ThetaPg pg_dump $source $Arguments | Out-Null
+      Log "$Label`_COMPLETE attempt=$attempt"
+      return
+    } catch {
+      $diagnostic = $_.Exception.Message -replace '[\r\n]+',' '
+      Log "$Label`_ATTEMPT_FAILED attempt=$attempt diagnostic=$diagnostic"
+      if ($attempt -eq $delays.Count) { throw }
+    }
+  }
+}
 $stage = $null
 try {
   if (-not $TestMode) {
@@ -49,8 +65,8 @@ try {
   [void](New-Item -ItemType Directory -Path $stage)
   Log "START backupId=$backupId source=AIVEN_OR_TEST sourceBytes=$sourceSize"
   $archive = Join-Path $stage 'database.backup'; $schema = Join-Path $stage 'schema.sql'
-  Invoke-ThetaPg pg_dump $source @('--format=custom','--file',(Get-ThetaPgFilePath $archive $source),'--dbname',$source.Database) | Out-Null
-  Invoke-ThetaPg pg_dump $source @('--schema-only','--file',(Get-ThetaPgFilePath $schema $source),'--dbname',$source.Database) | Out-Null
+  Invoke-VerifiedDumpWithRetry -Arguments @('--format=custom','--file',(Get-ThetaPgFilePath $archive $source),'--dbname',$source.Database) -OutputPath $archive -Label 'CUSTOM_DUMP'
+  Invoke-VerifiedDumpWithRetry -Arguments @('--schema-only','--file',(Get-ThetaPgFilePath $schema $source),'--dbname',$source.Database) -OutputPath $schema -Label 'SCHEMA_DUMP'
   Log 'DUMP_COMPLETE'
   $inventorySql = @'
 SELECT jsonb_build_object(
