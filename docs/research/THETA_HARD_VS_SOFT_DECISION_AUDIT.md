@@ -7,13 +7,64 @@ find every place where a feature declared or intended as `SOFT_RANKING`
 is actually implemented as a hard reject, using real source evidence, not
 speculation.
 
+## Correction (2026-09-22, per owner review)
+
+The original version of this section recommended treating quote
+freshness and spread width as if their hard-blocking behavior were
+itself the defect. That was imprecise and is corrected here: **minimum
+executable market quality is legitimately allowed to be a
+`HARD_EXECUTION_REQUIREMENT`.** Pricing a real order against a quote that
+is genuinely stale, or a spread that is genuinely too wide to fill
+safely, is not false paralysis -- it is the gate working as intended. The
+distinction that matters is:
+
+- **`softFeatureFamilies` in `strategy-package.ts` labels these as
+  `LIQUIDITY`/`EXECUTION_QUALITY` in the sense of "economics/ranking
+  inputs for the candidate that survives"** -- i.e., once a contract is
+  known executable, how liquid/tight it is can inform ranking or sizing.
+- **That label does NOT mean "must never hard-block."** A separate,
+  legitimate concept -- minimum executable market quality -- is
+  correctly allowed to gate entry entirely. Conflating "feature family is
+  soft for ranking economics" with "therefore this must never be a hard
+  gate" was this audit's own error in its first version.
+
+The real, still-open research questions are narrower and more useful than
+"should this be soft":
+
+1. **Is the 30-second threshold calibrated**, or just a plausible-sounding
+   default? (Unchanged from the original finding -- still unproven either
+   way.)
+2. **Does the pipeline itself create staleness** -- i.e., is some of the
+   3,299/3,876 rejection rate caused by how long THETA's own ingestion
+   pipeline takes to fetch/process a quote before evaluating it, rather
+   than genuine real-market quote staleness? If so, that is a latency
+   defect, not a threshold-calibration question, and has a different fix
+   (faster pipeline, not a looser gate).
+3. **Does a finalist-refresh step recover real opportunities** -- i.e.,
+   if a contract is rejected as stale, does anything re-fetch a fresh
+   quote for a promising-but-stale candidate before finally discarding
+   it, or is the first stale observation final? This pass found no
+   evidence of a refresh/retry step in `new-risk-orchestrator.ts`'s
+   executable/non-executable partition (`theta-shadow-cycle.ts:938` ->
+   `new-risk-orchestrator.ts:413-432`) -- a candidate is evaluated once,
+   against one quote snapshot, and permanently discarded if stale. This
+   is the most concrete of the three questions and the one most likely to
+   be real false paralysis if the answer is "no refresh exists."
+
+**Q-8 in the Codex integration queue is corrected accordingly** (see
+below): it now asks Codex to `CONFIGURE_AND_CALIBRATE_EXECUTION_GATE`,
+not to demote quote freshness to a soft ranking feature.
+
 ## Headline finding, stated first because it is the most consequential
 
 **Quote freshness and bid/ask spread width -- nominally `LIQUIDITY` /
 `EXECUTION_QUALITY`, both listed as `softFeatureFamilies` in
-`strategy-package.ts` -- are in fact the dominant real-world HARD reject
-gate in the live pipeline today**, and one of the two thresholds is a
-hardcoded constant, not even a tunable config value.
+`strategy-package.ts` for ranking purposes -- are legitimately allowed to
+also be a `HARD_EXECUTION_REQUIREMENT` for entry, and correctly are one in
+the live pipeline today.** The real, still-open question is whether the
+specific threshold (30s, hardcoded) is calibrated, whether the pipeline's
+own latency contributes to staleness, and whether a stale-but-promising
+candidate ever gets a second, fresher look before being discarded.
 
 **Exact code**: `src/theta/theta-shadow-cycle.ts:938` --
 ```ts
@@ -67,8 +118,8 @@ waves):
 
 | Feature | Current producer | Declared role | Actual runtime effect | Should it block? | Recommendation |
 |---|---|---|---|---|---|
-| Quote freshness (30s) | `theta-shadow-cycle.ts` (hardcoded) | `EXECUTION_QUALITY` (soft, per `strategy-package.ts`) | **HARD** -- unconditional pre-AEGIS exclusion, dominant real rejection cause (3,299/3,876) | Some staleness threshold should block (a genuinely stale quote is unsafe to price against) -- but 30s specifically is unvalidated | Make configurable; R8-test the threshold (Batch 4 tooling below) |
-| Bid/ask spread width | `theta-shadow-cycle.ts` (`config.maxAcceptableSpreadPct`) | `LIQUIDITY`/`EXECUTION_QUALITY` (soft) | **HARD** -- same unconditional gate as above | Same as above -- some spread cap is real execution-quality safety, but current threshold's calibration is unproven | Already configurable; still needs R8 validation, not a code fix |
+| Quote freshness (30s) | `theta-shadow-cycle.ts` (hardcoded) | `EXECUTION_QUALITY` for ranking (soft); `HARD_EXECUTION_REQUIREMENT` for entry (legitimate, separate concept) | **HARD**, correctly -- unconditional pre-AEGIS exclusion, dominant real rejection cause (3,299/3,876) | **Yes, it should block** -- pricing against a stale quote is a real execution-safety concern, not false paralysis. Open question is calibration/pipeline-latency/refresh, not whether to block at all. | Make the threshold configurable; investigate pipeline-induced staleness and whether a refresh/retry step exists (none found this pass); R8-test calibration (Batch 4 tooling below) |
+| Bid/ask spread width | `theta-shadow-cycle.ts` (`config.maxAcceptableSpreadPct`) | `LIQUIDITY`/`EXECUTION_QUALITY` for ranking (soft); `HARD_EXECUTION_REQUIREMENT` for entry (legitimate) | **HARD**, correctly -- same unconditional gate as above | **Yes, it should block** -- same reasoning as quote freshness | Already configurable; still needs R8 validation of the specific threshold, not a code fix |
 | AEGIS family (`HOLD_ONLY`/`HARD_VETO`/`EMERGENCY_EXIT_ONLY`) | `aegis.py` via `aegis_contract.py` | Hard (per this engagement's own prior finding) | **HARD**, correctly so -- `canonical-strategy-frontier.ts:264` | Yes -- this is genuine safety, not false paralysis | No change; this is the gate working as intended |
 | Assignment capacity (qty) | `canonical-strategy-frontier.ts:281-284` (real fallback derivation) | Hard when known-negative, soft/unknown otherwise | **HARD** only when `assignmentCapacityQty <= 0` (a real, known zero); **soft** (`unknownEvidence`, non-blocking) when unknown | Correct as-is -- blocking on a real known-zero is not false paralysis; not blocking on unknown avoids it | No change |
 | Event state (`NEAR`/`CLEAR`/`UNKNOWN`) | `canonical-strategy-frontier.ts:265-266` | `EVENT_CONTEXT` (soft) | **Soft**, correctly -- pushed to `softEvidence`, never `hardBlockers`, in the real Production diagnostic path | Consistent with its declared role | No change in `canonical-strategy-frontier.ts` -- **but** note this engagement's own Hold-Strike/Defined-Risk *research* shadow generators (`hold-strike-shadow-candidate-generator.ts`) DO hard-reject on `EVENT_NEAR`/`EVENT_STATE_UNKNOWN`. That is a deliberate, disclosed research-generator design choice (documented in that file), not a Production defect -- flagged here only so the distinction is not lost. |
@@ -80,14 +131,15 @@ waves):
 | RV, VRP, skew, term, GEX, flow, trend | not referenced in `canonical-strategy-frontier.ts` | soft, per `softFeatureFamilies` | **`CAN_REPRESENT` only** -- these are declared as soft feature families the branch registry knows about, but this pass found no code in the real entry-candidate path that reads them as either a gate or a ranking input. `optionomics-feature-engine.ts` computes some of them (real data exists), but this audit found no consumer wiring them into `canonical-strategy-frontier.ts` or `opportunity_frontier.py`'s real ranking. | They should be `SOFT_RANKING` inputs once wired -- today they are neither blocking nor ranking, they are simply unused | **This is a second, distinct false-paralysis-adjacent finding**: real data may exist (Optionomics) that is not wired into ranking at all -- not a hard-block false paralysis, but an unused-intelligence gap in the same family the owner is worried about. Needs its own trace (Batch 2, quantified unknown audit, `DATA_EXISTS_BUT_NOT_WIRED` category) to confirm scope precisely -- not fully re-derived here to avoid duplicating that batch's work. |
 | Concentration | `management-input-state.ts` (`context.concentration`, required field) | portfolio-level, presumably soft-to-medium | Required at management-input-assembly time (`unknownFields.push` if missing) -- a missing value makes the WHOLE management input state report gaps, but this pass did not trace whether a specific downstream consumer hard-blocks on it vs. only reports it as an unknown field | Unclear from this pass alone | Not fully resolved -- flagged for a future pass, not guessed at |
 
-## Summary: soft-declared features currently acting as hard gates
+## Summary: minimum executable market quality vs. unused ranking intelligence
 
-**Confirmed** (real code evidence, not speculation): quote freshness
-(30s) and bid/ask spread width, both declared `LIQUIDITY`/
-`EXECUTION_QUALITY` (soft families) in `strategy-package.ts`, function as
-an unconditional, pre-economics, pre-AEGIS binary exclusion in the real
-live pipeline -- and are the dominant real rejection cause in the one
-real session this engagement has full forensic data for.
+**Quote freshness and spread width correctly hard-block** -- this is not
+the false-paralysis category this audit was built to find. The real
+open items are calibration (is 30s right), pipeline latency (does
+THETA's own processing time contribute to staleness), and refresh (does
+a stale-but-promising candidate ever get a second look). All three are
+real research questions, tracked as Q-8, none of them "should this
+block."
 
 **Not confirmed as over-blocking, but flagged as unused rather than
 ranked**: RV, VRP, skew, term, GEX, flow, trend -- declared soft, real
