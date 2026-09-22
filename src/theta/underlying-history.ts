@@ -68,14 +68,16 @@ export function parseAlpacaBarsPage(raw: RawAlpacaBarsPage, feed: string | null,
       const open = finite(bar.o), high = finite(bar.h), low = finite(bar.l), close = finite(bar.c);
       const volume = finite(bar.v), tradeCount = bar.n == null ? null : finite(bar.n);
       const vwap = bar.vw == null ? null : finite(bar.vw);
-      if (typeof bar.t !== 'string' || !Number.isFinite(Date.parse(bar.t))
-        || open === null || high === null || low === null || close === null || volume === null
-        || open <= 0 || high <= 0 || low <= 0 || close <= 0 || volume < 0
-        || high < low || open > high || open < low || close > high || close < low
-        || (bar.n != null && (tradeCount === null || !Number.isSafeInteger(tradeCount) || tradeCount < 0))
-        || (bar.vw != null && (vwap === null || vwap <= 0))) {
-        throw new Error('ALPACA_BARS_MALFORMED_ROW');
-      }
+      if (typeof bar.t !== 'string' || !Number.isFinite(Date.parse(bar.t)))
+        throw new Error('ALPACA_BARS_MALFORMED_TIMESTAMP');
+      if (open === null || high === null || low === null || close === null
+        || open <= 0 || high <= 0 || low <= 0 || close <= 0
+        || high < low || open > high || open < low || close > high || close < low)
+        throw new Error('ALPACA_BARS_MALFORMED_OHLC');
+      if (volume === null || volume < 0) throw new Error('ALPACA_BARS_MALFORMED_VOLUME');
+      if (bar.n != null && (tradeCount === null || !Number.isSafeInteger(tradeCount) || tradeCount < 0))
+        throw new Error('ALPACA_BARS_MALFORMED_TRADE_COUNT');
+      if (bar.vw != null && (vwap === null || vwap <= 0)) throw new Error('ALPACA_BARS_MALFORMED_VWAP');
       bars.push({
         symbol,
         timestamp: bar.t,

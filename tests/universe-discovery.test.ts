@@ -192,6 +192,23 @@ test('a rejected bars request remains INVALID_REQUEST rather than market emptine
   assert.equal(barsStage?.reasonCounts.BARS_UNOBSERVED_PROVIDER_FAILURE, 1);
 });
 
+test('malformed stock bars retain a safe parser category without provider payloads', async () => {
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/assets')) return jsonResponse(200, [
+      { symbol: 'SPY', exchange: 'ARCA', class: 'us_equity', tradable: true, status: 'active' },
+    ]);
+    return jsonResponse(200, { bars: { SPY: [{ t: NOW, o: false, h: 2, l: 1, c: 1.5, v: 1 }] }, next_page_token: null });
+  }) as typeof fetch;
+  const alpaca: AlpacaProviderConfig = { tradingApiBase: 'https://paper-api.alpaca.markets',
+    marketDataApiBase: 'https://data.alpaca.markets', apiKey: 'SYNTHETIC', apiSecret: 'SYNTHETIC', fetchImpl };
+  const result = await discoverRealUniverse(alpaca, baseDiscoveryConfig(), () => NOW);
+  const barsStage = result.funnel.stageDiagnostics?.find((stage) => stage.stage === 'STOCK_BARS');
+  assert.equal(barsStage?.providerState, 'SCHEMA_INVALID');
+  assert.equal(barsStage?.reasonCounts.BARS_MALFORMED_OHLC, 1);
+  assert.equal(barsStage?.reasonCounts.BARS_UNOBSERVED_PROVIDER_FAILURE, 1);
+});
+
 test('the universe-asset bound is honestly reported when truncated', async () => {
   const fetchImpl = (async (input: RequestInfo | URL) => {
     const url = input instanceof URL ? input.toString() : String(input);

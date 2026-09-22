@@ -32,11 +32,13 @@ export type AlpacaErrorClass = 'INVALID_REQUEST' | 'INVALID_AUTH' | 'NOT_ENTITLE
 export class AlpacaProviderError extends Error {
   readonly errorClass: AlpacaErrorClass;
   readonly httpStatus: number | null;
-  constructor(errorClass: AlpacaErrorClass, httpStatus: number | null, message: string) {
+  readonly safeDetailCode: string | null;
+  constructor(errorClass: AlpacaErrorClass, httpStatus: number | null, message: string, safeDetailCode: string | null = null) {
     super(message); // message never includes header/credential content -- see call sites below
     this.name = 'AlpacaProviderError';
     this.errorClass = errorClass;
     this.httpStatus = httpStatus;
+    this.safeDetailCode = safeDetailCode;
   }
 }
 
@@ -555,8 +557,11 @@ export async function fetchStockBars(config: AlpacaProviderConfig, params: Fetch
     let parsed: ReturnType<typeof parseAlpacaBarsPage>;
     try {
       parsed = parseAlpacaBarsPage(raw, params.feed, receivedAt);
-    } catch {
-      throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/stocks/bars returned invalid bar evidence.');
+    } catch (error) {
+      const safeDetailCode = error instanceof Error && /^ALPACA_BARS_MALFORMED_[A-Z_]+$/.test(error.message)
+        ? error.message : null;
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', 200,
+        '/v2/stocks/bars returned invalid bar evidence.', safeDetailCode);
     }
     const { bars, nextPageToken } = parsed;
     allBars.push(...bars);

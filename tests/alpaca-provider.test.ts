@@ -423,7 +423,8 @@ test('fetchStockBars classifies a malformed bar as a provider response error', a
   await assert.rejects(() => fetchStockBars(baseConfig(fetchImpl), {
     symbols: ['SPY'], timeframe: '1Day', start: '2026-09-01T00:00:00Z', end: NOW,
     feed: 'iex', maxPages: 2, adjustment: 'raw',
-  }, NOW), (error: unknown) => error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+  }, NOW), (error: unknown) => error instanceof AlpacaProviderError
+    && error.errorClass === 'MALFORMED_RESPONSE' && error.safeDetailCode === 'ALPACA_BARS_MALFORMED_OHLC');
 });
 
 test('fetchStockBars request includes the explicit adjustment parameter -- never silently mixed', async () => {

@@ -44,6 +44,13 @@ test('malformed historical bar evidence fails the entire page instead of fabrica
   assert.equal(parseAlpacaBarsPage(valid, 'iex', NOW).bars[0]?.volume, 0);
 });
 
+test('malformed bar diagnostics distinguish fields without carrying provider values', () => {
+  const badTimestamp = { bars: { SPY: [{ t: 'bad-date', o: 1, h: 2, l: 0.5, c: 1.5, v: 1 }] }, next_page_token: null };
+  const badVwap = { bars: { SPY: [{ t: NOW, o: 1, h: 2, l: 0.5, c: 1.5, v: 1, vw: 0 }] }, next_page_token: null };
+  assert.throws(() => parseAlpacaBarsPage(badTimestamp, 'iex', NOW), /ALPACA_BARS_MALFORMED_TIMESTAMP/);
+  assert.throws(() => parseAlpacaBarsPage(badVwap, 'iex', NOW), /ALPACA_BARS_MALFORMED_VWAP/);
+});
+
 test('fetchAllHistoricalBars follows next_page_token to completion, never truncating early', async () => {
   const pages: RawAlpacaBarsPage[] = [
     { bars: { SPY: [rawBar('2026-09-01T00:00:00Z', 500)] }, next_page_token: 'p2' },

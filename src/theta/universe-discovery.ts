@@ -203,7 +203,8 @@ export async function discoverRealUniverse(
     } catch (error) {
       failedBarsBatches += 1;
       failedBarSymbolCount += batch.length;
-      const reason = error instanceof AlpacaProviderError ? `BARS_${error.errorClass}` : 'BARS_PROVIDER_ERROR';
+      const reason = error instanceof AlpacaProviderError
+        ? `BARS_${error.safeDetailCode?.replace(/^ALPACA_BARS_/, '') ?? error.errorClass}` : 'BARS_PROVIDER_ERROR';
       barsFailureReasons[reason] = (barsFailureReasons[reason] ?? 0) + 1;
       barsFailureStates.push(providerFailureState(error));
       blockers.push(`UNIVERSE_BARS_BATCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
