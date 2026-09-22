@@ -205,6 +205,7 @@ $updates = [ordered]@{
   OPTIONOMICS_EMAIL = $optionomicsEmail
   OPTIONOMICS_API_KEY = $bundle['optionomics_api_key'][0]
   AIVEN_DATABASE_URL = $bundle['aiven database url'][0]
+  DATABASE_RUNTIME_AUTHORITY = 'AIVEN'
   MASTER_PAPER_EXECUTION_ENABLED = 'false'
   FOLLOWER_PAPER_EXECUTION_ENABLED = 'false'
   PAPER_PAUSE_NEW_ORDERS = 'true'

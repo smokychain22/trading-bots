@@ -1,7 +1,13 @@
 import pg from "pg";
 import { resolveDatabaseConnection } from "./database-connection.mjs";
 
-const { connectionString } = resolveDatabaseConnection(process.env, "migration");
+const environmentFileArgument = process.argv.find((argument) => argument.startsWith('--environment-file='));
+let environment = process.env;
+if (environmentFileArgument) {
+  const { loadEnvironmentFile } = await import('../src/config/environment.ts');
+  environment = loadEnvironmentFile(environmentFileArgument.slice('--environment-file='.length));
+}
+const { connectionString } = resolveDatabaseConnection(environment, "migration");
 
 const client = new pg.Client({ connectionString });
 await client.connect();

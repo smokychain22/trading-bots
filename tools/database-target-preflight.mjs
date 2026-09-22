@@ -1,6 +1,12 @@
 import pg from "pg";
 
-const connectionString = process.env.AIVEN_DATABASE_URL;
+const environmentFileArgument = process.argv.find((argument) => argument.startsWith('--environment-file='));
+let connectionString = process.env.AIVEN_DATABASE_URL;
+if (environmentFileArgument) {
+  const { loadEnvironmentFile } = await import('../src/config/environment.ts');
+  const environment = loadEnvironmentFile(environmentFileArgument.slice('--environment-file='.length));
+  connectionString = environment.AIVEN_DATABASE_URL;
+}
 if (!connectionString) throw new Error("AIVEN_DATABASE_URL_NOT_CONFIGURED");
 
 const client = new pg.Client({
@@ -13,6 +19,8 @@ await client.connect();
 try {
   const result = await client.query(`SELECT
     current_setting('server_version') AS version,
+    current_setting('default_transaction_read_only') AS default_transaction_read_only,
+    current_setting('transaction_read_only') AS transaction_read_only,
     current_setting('max_connections')::integer AS max_connections,
     COALESCE((SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()), false) AS ssl,
     (SELECT count(*)::integer FROM information_schema.schemata
@@ -30,6 +38,8 @@ try {
     connectivity: "PASS",
     ssl: row.ssl === true ? "PASS" : "FAIL",
     postgresVersion: row.version,
+    defaultTransactionReadOnly: row.default_transaction_read_only,
+    transactionReadOnly: row.transaction_read_only,
     maxConnections: row.max_connections,
     activeConnectionsAtProbe: row.active_connections,
     existingSchemaCount: row.schema_count,
