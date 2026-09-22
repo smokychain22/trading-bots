@@ -6,6 +6,8 @@ export type DatabaseReadiness = {
   readonly connection_type: "TRANSACTION_POOLED_RUNTIME";
   readonly migration_connection_type: "DIRECT_OR_SESSION_POOLED";
   readonly latest_migration: string | null;
+  /** Read-only observation. "off" alone does not prove an INSERT can commit. */
+  readonly default_transaction_read_only: "on" | "off" | null;
   readonly required_migration: "061_paper_execution_control_normalization";
   readonly customer_iam: boolean;
   readonly token_vault: boolean;
@@ -33,6 +35,7 @@ export async function checkDatabaseReadiness(
       ...base,
       state: "MISSING",
       latest_migration: null,
+      default_transaction_read_only: null,
       customer_iam: false,
       token_vault: false,
       paper_execution_schema: false,
@@ -50,6 +53,7 @@ export async function checkDatabaseReadiness(
   });
   try {
     const objects = await pool.query(`SELECT
+      current_setting('default_transaction_read_only') AS default_transaction_read_only,
       to_regclass('core.schema_migration') IS NOT NULL AS migration_table,
       to_regclass('iam.customer_identity') IS NOT NULL AS customer_iam,
       to_regclass('copy.alpaca_oauth_token') IS NOT NULL AS token_vault,
@@ -70,6 +74,7 @@ export async function checkDatabaseReadiness(
         ...base,
         state: "MIGRATION_REQUIRED",
         latest_migration: null,
+        default_transaction_read_only: objectRow.default_transaction_read_only === 'on' ? 'on' : objectRow.default_transaction_read_only === 'off' ? 'off' : null,
         customer_iam: objectRow.customer_iam === true,
         token_vault: objectRow.token_vault === true,
         paper_execution_schema: objectRow.paper_execution_schema === true,
@@ -100,6 +105,7 @@ export async function checkDatabaseReadiness(
           ? "CONNECTED"
           : "MIGRATION_REQUIRED",
       latest_migration: latest,
+      default_transaction_read_only: objectRow.default_transaction_read_only === 'on' ? 'on' : objectRow.default_transaction_read_only === 'off' ? 'off' : null,
       customer_iam: objectRow.customer_iam === true,
       token_vault: objectRow.token_vault === true,
       paper_execution_schema: objectRow.paper_execution_schema === true,
@@ -115,6 +121,7 @@ export async function checkDatabaseReadiness(
       ...base,
       state: "DEGRADED",
       latest_migration: null,
+      default_transaction_read_only: null,
       customer_iam: false,
       token_vault: false,
       paper_execution_schema: false,

@@ -251,6 +251,7 @@ itMockedProviderRealCodePath('a non-executable contract (e.g. unverified multipl
   assert.equal(result.candidateEconomics, null); // no economics ever computed for it
   const entry = result.shadowOpportunities.find((e) => e.contractSymbol === 'C1');
   assert.equal(entry?.rejectionCategory, 'CONTRACT_NOT_EXECUTABLE');
+  assert.ok(entry?.reasons.some((reason)=>reason.code==='MULTIPLIER_UNVERIFIED'));
 });
 
 itMockedProviderRealCodePath('a delta-UNKNOWN contract is excluded from the lattice call and recorded as PASS/UNKNOWN_DELTA', async () => {
