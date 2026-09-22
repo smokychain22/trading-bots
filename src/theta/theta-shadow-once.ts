@@ -70,6 +70,10 @@ export function defaultShadowCycleConfig(
   // authority or silently widening the strategy.
   const optionExpirationGte = new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10);
   const optionExpirationLte = new Date(Date.now() + 65 * 86_400_000).toISOString().slice(0, 10);
+  // Separate 2-19 DTE research window makes Hold-Strike and the near-term
+  // Defined Risk cohort observable without widening Conventional entry.
+  const shadowResearchExpirationGte = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+  const shadowResearchExpirationLte = new Date(Date.now() + 19 * 86_400_000).toISOString().slice(0, 10);
 
   return {
     alpaca, optionomics, bridge, universeCandidates,
@@ -91,7 +95,9 @@ export function defaultShadowCycleConfig(
     },
     universeCandidatesOrigin,
     universePolicy: { policyVersion: 'universe-v1-shadow-once', minAvgDollarVolume: 10_000_000, minCurrentPrice: 5 },
-    optionExpirationDateGte: optionExpirationGte, optionExpirationDateLte: optionExpirationLte, optionType: 'put', maxOptionPages: 10,
+    optionExpirationDateGte: optionExpirationGte, optionExpirationDateLte: optionExpirationLte,
+    shadowResearchExpirationDateGte: shadowResearchExpirationGte, shadowResearchExpirationDateLte: shadowResearchExpirationLte,
+    optionType: 'put', maxOptionPages: 10,
     historyStart, historyEnd: now, historyMaxPages: 5,
     ownershipPolicy: { policyVersion: 'ownership-v1-shadow-once', minStockAvgVolume: 1_000_000, minOptionOpenInterest: 1, minOptionVolume: 1, maxSpreadPct: 0.5, rvNormalizationCeiling: 0.6, downsideSemivarNormalizationCeiling: 0.3, gapFrequencyNormalizationCeiling: 0.5, eventDecayWindowDays: 10 },
     regimePolicy: { policyVersion: 'regime-v1-shadow-once', bullMaSlopeFloor: 0.001, bearMaSlopeCeiling: -0.001, rvLowCeiling: 0.1, rvHighFloor: 0.25, rvShockFloor: 0.4, maxAdverseGapShockThreshold: 0.08, liquidityThinSpreadPctFloor: 0.03, liquidityDislocatedSpreadPctFloor: 0.08, correctionDrawdownCeiling: -0.1, crisisDrawdownCeiling: -0.2 },

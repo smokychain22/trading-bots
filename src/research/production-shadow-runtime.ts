@@ -20,9 +20,11 @@ import type { BrokerReconciliationResult } from '../execution/broker-reconciliat
 import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment } from '../theta/paper-entry-bootstrap.js';
 import { loadRecoveryHistory } from '../theta/recovery-history-loader.js';
 import { persistAlpacaCorporateActionRead, readAlpacaCorporateActions } from '../theta/alpaca-corporate-action-evidence.js';
+import type { CanonicalBranchFrontier, CanonicalFrontierCandidate } from '../theta/canonical-strategy-frontier.js';
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
+  readonly researchMissingScope:readonly string[];
   readonly symbolsAttempted:number; readonly symbolsCompleted:number; readonly observationsScheduled:number;
   readonly actionPlansReady:number; readonly actionPlansBlocked:readonly string[];
   readonly virtualOpening:ShadowIntentCreationReport;
@@ -43,6 +45,13 @@ const blockerCount=(values:readonly string[]):Readonly<Record<string,number>>=>v
 },{});
 const isQuoteEvidence=(value:string):boolean=>/QUOTE|BBO|EXECUTABLE|PRICE/.test(value);
 const isLiquidityEvidence=(value:string):boolean=>/LIQUID|SPREAD|OPEN_INTEREST|VOLUME/.test(value);
+export function paperEntryCandidateCohort(branches:readonly CanonicalBranchFrontier[]):{
+  readonly branches:readonly CanonicalBranchFrontier[];
+  readonly candidates:readonly CanonicalFrontierCandidate[];
+}{
+  const entryBranches=branches.filter((branch)=>branch.branch==='THETA_CONVENTIONAL'&&branch.applicable);
+  return {branches:entryBranches,candidates:entryBranches.flatMap((branch)=>branch.candidates)};
+}
 export function missingObservationReason(contractFound:boolean,enumerationComplete=true,sessionConfirmedEnded=false):ObservationMissReason {
   if(contractFound)return 'INVALID_QUOTE';
   if(!enumerationComplete)return 'PROVIDER_UNAVAILABLE';
@@ -284,10 +293,14 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   await evidenceStore.saveScan(scan,persisted);
   const strategyFrontiers=scan.results.flatMap((member)=>member.cycle?.strategyFrontier?[member.cycle.strategyFrontier]:[]);
   const branchFrontiers=strategyFrontiers.flatMap((frontier)=>frontier.branches);
-  const allCandidates=branchFrontiers.flatMap((branch)=>branch.candidates);
+  // The full branch population remains in strategyDiagnostics and persisted
+  // canonical evidence. Entry WAIT/strictness classification is scoped to
+  // the sole Paper-authorized Conventional branch. Research counterfactuals
+  // must not look like missed executable opportunities or new hard gates.
+  const {branches:entryBranches,candidates:entryCandidates}=paperEntryCandidateCohort(branchFrontiers);
   const selectedCandidateIds=new Set(strategyFrontiers.flatMap((frontier)=>frontier.selectedCandidateId?[frontier.selectedCandidateId]:[]));
-  const rejectedCandidates=allCandidates.filter((candidate)=>!selectedCandidateIds.has(candidate.candidateId));
-  const hardGateCounts=blockerCount(allCandidates.flatMap((candidate)=>[...new Set(candidate.hardBlockers)]));
+  const rejectedCandidates=entryCandidates.filter((candidate)=>!selectedCandidateIds.has(candidate.candidateId));
+  const hardGateCounts=blockerCount(entryCandidates.flatMap((candidate)=>[...new Set(candidate.hardBlockers)]));
   const strategyDiagnostics=[...new Set(branchFrontiers.map((branch)=>branch.branch))].toSorted().map((branchName)=>{
     const rows=branchFrontiers.filter((branch)=>branch.branch===branchName);
     const candidates=rows.flatMap((branch)=>branch.candidates);
@@ -314,14 +327,14 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const distinctSessions=[...new Set(sessionStates)];
   const session=distinctSessions.length===1?distinctSessions[0]??'UNKNOWN':distinctSessions.length>1?'MIXED' as const:'UNKNOWN' as const;
   const antiParalysisFindings=deriveAntiParalysisFindings({
-    candidateHardBlockers:allCandidates.map((candidate)=>candidate.hardBlockers),strategyReachability:strategyDiagnostics,
+    candidateHardBlockers:entryCandidates.map((candidate)=>candidate.hardBlockers),strategyReachability:strategyDiagnostics,
   });
   const bestRejectedCandidates=scan.results.flatMap((member)=>{
     const frontier=member.cycle?.strategyFrontier;
-    if(frontier===null||frontier===undefined||frontier.bestRejectedCandidateId===null)return [];
-    const candidate=frontier.branches.flatMap((branch)=>branch.candidates)
-      .find((item)=>item.candidateId===frontier.bestRejectedCandidateId);
-    return candidate===undefined?[]:[{symbol:member.symbol,branch:candidate.branch,candidateId:candidate.candidateId,
+    if(frontier===null||frontier===undefined)return [];
+    const entryBranch=frontier.branches.find((branch)=>branch.branch==='THETA_CONVENTIONAL');
+    const candidate=entryBranch?.candidates.find((item)=>item.candidateId===entryBranch.bestRejectedCandidateId)??null;
+    return candidate===null?[]:[{symbol:member.symbol,branch:candidate.branch,candidateId:candidate.candidateId,
       hardBlockers:candidate.hardBlockers,unknownEvidence:candidate.unknownEvidence}];
   });
   const behaviorDiagnostic=await new PostgresRuntimeBehaviorDiagnosticStore(input.pool).persist({
@@ -331,17 +344,16 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     strategiesRejected:branchFrontiers.filter((branch)=>!branch.applicable||branch.evaluationState==='BLOCKED_MISSING_INPUT').length,
     strategyDiagnostics,completeness:scan.completeness,
     globalWaitEarned:scan.globalWaitEarned,globalWaitReasons:scan.globalWaitReasons,
-    // All diagnostic cohort counts must share the canonical strategy-frontier
-    // population. The legacy scan count comes from thetaQ and can be zero while
-    // the canonical frontier still contains structural candidates.
-    candidateCount:allCandidates.length,
-    feasibleCandidateCount:allCandidates.filter((candidate)=>candidate.structurallyFeasible&&candidate.riskFeasible
+    // Decision-level counts share the Paper-authorized branch population.
+    // Strategy-level counts above still include every research alternative.
+    candidateCount:entryCandidates.length,
+    feasibleCandidateCount:entryCandidates.filter((candidate)=>candidate.structurallyFeasible&&candidate.riskFeasible
       &&candidate.hardBlockers.length===0).length,
     selectedCandidateCount:strategyFrontiers.filter((frontier)=>frontier.selectedCandidateId!==null).length,
-    hardRejectedCount:branchFrontiers.reduce((total,branch)=>total+branch.mechanicallyRejected+branch.hardVetoed,0),
-    softRankedCount:branchFrontiers.reduce((total,branch)=>total+branch.softRanked,0),
-    dataInsufficientCount:branchFrontiers.reduce((total,branch)=>total+branch.dataInsufficient,0),
-    quantityZeroCount:allCandidates.filter((candidate)=>candidate.sizing.quantity===0).length,
+    hardRejectedCount:entryBranches.reduce((total,branch)=>total+branch.mechanicallyRejected+branch.hardVetoed,0),
+    softRankedCount:entryBranches.reduce((total,branch)=>total+branch.softRanked,0),
+    dataInsufficientCount:entryBranches.reduce((total,branch)=>total+branch.dataInsufficient,0),
+    quantityZeroCount:entryCandidates.filter((candidate)=>candidate.sizing.quantity===0).length,
     aegisVetoCount:scan.results.filter((member)=>member.cycle?.orchestration?.aegis?.newRiskState==='HARD_VETO').length,
     nearMissCount:strategyFrontiers.filter((frontier)=>frontier.nearMissCandidateId!==null).length,
     softEconomicRejectionCount:rejectedCandidates.filter((candidate)=>candidate.riskFeasible
@@ -362,6 +374,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   });
   const virtualOpening=await new PostgresShadowVirtualTrader(input.pool).createOpeningIntent(scan.scanId,scan.finishedAt);
   return {scanId:scan.scanId,completeness:scan.completeness,candidateCount:scan.candidateCount,
+    researchMissingScope:scan.researchMissingScope,
     symbolsAttempted:scan.symbolsAttempted,symbolsCompleted:scan.symbolsCompleted,observationsScheduled,
     actionPlansReady,actionPlansBlocked:[...new Set(actionPlansBlocked)].toSorted(),virtualOpening,behaviorDiagnostic};
 }

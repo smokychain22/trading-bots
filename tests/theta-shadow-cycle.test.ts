@@ -79,12 +79,22 @@ const mockAlpacaFetch = (options: { hasContracts: boolean; hasBars: boolean }) =
   }
   if (url.includes('/v2/options/contracts')) {
     if (!options.hasContracts) return jsonResponse(200, { option_contracts: [], next_page_token: null });
+    if (url.includes('expiration_date_gte=2026-09-12')) return jsonResponse(200, { option_contracts: [
+      { symbol: 'SPY260914P00500000', strike_price: '500', expiration_date: '2026-09-14', size: '100' },
+      { symbol: 'SPY260921P00500000', strike_price: '500', expiration_date: '2026-09-21', size: '100' },
+      { symbol: 'SPY260921P00490000', strike_price: '490', expiration_date: '2026-09-21', size: '100' },
+    ], next_page_token: null });
     return jsonResponse(200, { option_contracts: [{ symbol: 'SPY261009P00500000', strike_price: '500', expiration_date: '2026-10-09', size: '100' }], next_page_token: null });
   }
   if (url.includes('/v1beta1/options/snapshots')) {
     if (!options.hasContracts) return jsonResponse(200, { snapshots: {}, next_page_token: null });
     return jsonResponse(200, {
-      snapshots: { SPY261009P00500000: { latestQuote: { bp: 0.13, ap: 0.14, bs: 900, as: 900, t: NOW }, greeks: { delta: -0.003, gamma: 0.0001, theta: -0.02, vega: 0.02, rho: -0.002 }, impliedVolatility: 0.5 } },
+      snapshots: {
+        SPY261009P00500000: { latestQuote: { bp: 0.13, ap: 0.14, bs: 900, as: 900, t: NOW }, greeks: { delta: -0.003, gamma: 0.0001, theta: -0.02, vega: 0.02, rho: -0.002 }, impliedVolatility: 0.5 },
+        SPY260914P00500000: { latestQuote: { bp: 1.3, ap: 1.4, bs: 100, as: 100, t: NOW }, greeks: { delta: -0.45, gamma: 0.02, theta: -0.1, vega: 0.1, rho: -0.01 }, impliedVolatility: 0.5 },
+        SPY260921P00500000: { latestQuote: { bp: 2.3, ap: 2.4, bs: 100, as: 100, t: NOW }, greeks: { delta: -0.4, gamma: 0.02, theta: -0.1, vega: 0.1, rho: -0.01 }, impliedVolatility: 0.5 },
+        SPY260921P00490000: { latestQuote: { bp: 0.3, ap: 0.4, bs: 100, as: 100, t: NOW }, greeks: { delta: -0.2, gamma: 0.01, theta: -0.05, vega: 0.08, rho: -0.01 }, impliedVolatility: 0.5 },
+      },
       next_page_token: null,
     });
   }
@@ -151,6 +161,60 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   // yet -- provenance can never be FULL_REAL, only HYBRID at best.
   assert.notEqual(result.provenance, 'FULL_REAL');
   assert.equal(result.provenance, 'HYBRID');
+});
+
+itMockedProviderRealCodePath('shadow research window supplies short-DTE contracts without widening Conventional Paper selection', async () => {
+  requestedUrls = [];
+  const result = await runThetaShadowCycle(baseConfig({
+    evaluationMode: 'SHADOW_EVIDENCE',
+    shadowResearchExpirationDateGte: '2026-09-12',
+    shadowResearchExpirationDateLte: '2026-09-29',
+  }));
+  assert.equal(result.optionContractsComplete, true);
+  assert.ok(requestedUrls.some((url) => url.includes('expiration_date_gte=2026-09-12')));
+  const contracts = result.fusionSnapshot?.snapshot.contractCandidates ?? [];
+  assert.ok(contracts.some((contract) => contract.optionSymbol === 'SPY260914P00500000'));
+  assert.ok(contracts.some((contract) => contract.optionSymbol === 'SPY260921P00500000'));
+  const frontier = result.strategyFrontier;
+  assert.ok(frontier !== null);
+  assert.ok(frontier.branches.some((branch) => branch.branch === 'THETA_HOLD_STRIKE'
+    && branch.candidates.some((candidate) => candidate.legs.some((leg) => leg.optionSymbol === 'SPY260914P00500000'))),
+  JSON.stringify(frontier.branches.find((branch) => branch.branch === 'THETA_HOLD_STRIKE')));
+  assert.ok(frontier.branches.some((branch) => branch.branch === 'THETA_DEFINED_RISK'
+    && branch.candidates.some((candidate) => candidate.legs.some((leg) => leg.optionSymbol === 'SPY260921P00500000'))));
+  assert.ok(frontier.selectedBranch === null || frontier.selectedBranch === 'THETA_CONVENTIONAL');
+  assert.equal(frontier.executionAuthorized, false);
+});
+
+itMockedProviderRealCodePath('shadow contract outage remains visible without downgrading primary Conventional contract evidence', async () => {
+  const normalFetch = mockAlpacaFetch({ hasContracts: true, hasBars: true });
+  const alpaca = alpacaConfig({ hasContracts: true, hasBars: true });
+  const result = await runThetaShadowCycle(baseConfig({
+    alpaca: { ...alpaca, fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof URL ? input.toString() : String(input);
+      if (url.includes('/v2/options/contracts') && url.includes('expiration_date_gte=2026-09-12')) {
+        return jsonResponse(503, { message: 'temporary research-window outage' });
+      }
+      return normalFetch(input, init);
+    }) as typeof fetch },
+    evaluationMode: 'SHADOW_EVIDENCE',
+    shadowResearchExpirationDateGte: '2026-09-12',
+    shadowResearchExpirationDateLte: '2026-09-29',
+  }));
+  assert.equal(result.optionContractsComplete, true);
+  assert.ok(result.blockers.some((blocker) => blocker.startsWith('OPTION_CONTRACTS_FETCH_FAILED:SHADOW_RESEARCH:PUT:')));
+  assert.ok(result.fusionSnapshot?.snapshot.contractCandidates.some((candidate) => candidate.optionSymbol === 'SPY261009P00500000'));
+});
+
+test('invalid or partial research date range fails before contacting a provider', async () => {
+  requestedUrls = [];
+  await assert.rejects(runThetaShadowCycle(baseConfig({ evaluationMode: 'SHADOW_EVIDENCE',
+    shadowResearchExpirationDateGte: '2026-09-31', shadowResearchExpirationDateLte: '2026-10-01',
+  })), /SHADOW_RESEARCH_CONTRACT_DATE_RANGE_INVALID/);
+  await assert.rejects(runThetaShadowCycle(baseConfig({ evaluationMode: 'SHADOW_EVIDENCE',
+    shadowResearchExpirationDateGte: '2026-09-12',
+  })), /SHADOW_RESEARCH_CONTRACT_DATE_RANGE_INVALID/);
+  assert.deepEqual(requestedUrls, []);
 });
 
 itMockedProviderRealCodePath('decision time is finalized after collected quote timestamps', async () => {

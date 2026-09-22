@@ -5,7 +5,7 @@ import type { UnderlyingCandidateInput } from '../theta/universe-policy.js';
 import { canonicalJson } from './point-in-time-evidence.js';
 
 export const shadowRuntimeMode = 'THETA_SHADOW_ONLY' as const;
-export const shadowScanContractVersion = 'theta-cross-symbol-shadow-scan-v1' as const;
+export const shadowScanContractVersion = 'theta-cross-symbol-shadow-scan-v2' as const;
 export const executionObservationHorizonVersion = 'theta-execution-observation-horizons-v1' as const;
 
 export type ScanCompleteness = 'COMPLETE' | 'PARTIAL' | 'INTERRUPTED' | 'PROVIDER_LIMITED' | 'DATA_INSUFFICIENT';
@@ -42,6 +42,7 @@ export interface CrossSymbolShadowScanResult {
   readonly boundary: Omit<ShadowScanBoundary, 'eligibleUnderlyings'> & { readonly eligibleSymbols: readonly string[] };
   readonly completeness: ScanCompleteness;
   readonly missingScope: readonly string[];
+  readonly researchMissingScope: readonly string[];
   readonly symbolsAttempted: number;
   readonly symbolsCompleted: number;
   readonly candidateCount: number;
@@ -65,6 +66,7 @@ export async function runCrossSymbolShadowScan(
   const ordered = [...boundary.eligibleUnderlyings].sort((a, b) => a.symbol.localeCompare(b.symbol));
   const scope = ordered.slice(0, boundary.maxUnderlyings);
   const missingScope: string[] = [];
+  const researchMissingScope: string[] = [];
   if (scope.length < ordered.length) missingScope.push('UNDERLYING_BOUND_REACHED');
   // The Production evidence endpoint has a bounded serverless request window.
   // Each symbol is independent until the cross-symbol frontier is assembled,
@@ -85,6 +87,12 @@ export async function runCrossSymbolShadowScan(
       continue;
     }
     if (result.cycle?.optionContractsComplete !== true) missingScope.push(`${result.symbol}:CONTRACT_ENUMERATION_INCOMPLETE`);
+    for (const blocker of result.cycle?.blockers ?? []) {
+      if (blocker.startsWith('OPTION_CONTRACTS_FETCH_FAILED:SHADOW_RESEARCH:')
+        || blocker.startsWith('OPTION_CONTRACTS_INCOMPLETE:SHADOW_RESEARCH:')) {
+        researchMissingScope.push(`${result.symbol}:${blocker}`);
+      }
+    }
     if (result.cycle?.optionChainComplete !== true) missingScope.push(`${result.symbol}:QUOTE_ENUMERATION_INCOMPLETE`);
     if (result.cycle?.orchestration === null) missingScope.push(`${result.symbol}:STRATEGY_EVALUATION_INCOMPLETE`);
   }
@@ -114,7 +122,8 @@ export async function runCrossSymbolShadowScan(
       strategyVersion: boundary.strategyVersion, branches: [...boundary.branches], maxUnderlyings: boundary.maxUnderlyings,
       eligibleSymbols: ordered.map((item) => item.symbol),
     },
-    completeness, missingScope: [...new Set(missingScope)].sort(), symbolsAttempted: scope.length,
+    completeness, missingScope: [...new Set(missingScope)].sort(),
+    researchMissingScope: [...new Set(researchMissingScope)].sort(), symbolsAttempted: scope.length,
     symbolsCompleted: results.filter((result) => result.status === 'COMPLETED').length,
     candidateCount, globalWaitEarned, globalWaitReasons, results,
   };
@@ -178,7 +187,8 @@ export class PostgresShadowEvidenceRuntimeStore {
         JSON.stringify(scan.boundary.branches), JSON.stringify(scan.boundary.eligibleSymbols), scan.boundary.maxUnderlyings,
         scan.symbolsAttempted, scan.symbolsCompleted, scan.candidateCount, scan.completeness,
         JSON.stringify(scan.missingScope), scan.globalWaitEarned,
-        JSON.stringify({ earned:scan.globalWaitEarned, reasons:scan.globalWaitReasons }), hash]);
+        JSON.stringify({ earned:scan.globalWaitEarned, reasons:scan.globalWaitReasons,
+          researchMissingScope:scan.researchMissingScope }), hash]);
       for (const member of scan.results) {
         const refs = persisted.get(member.symbol);
         await client.query(`INSERT INTO research.theta_shadow_scan_member(scan_id,symbol,ordinal,status,error_code,

@@ -75,6 +75,15 @@ test('partial contract pagination and interrupted symbols remain explicit',async
   assert.equal(interrupted.results[1]?.errorCode,'PROVIDER_RATE_LIMITED');
 });
 
+test('research-window outage is retained separately from primary entry completeness',async()=>{
+  const result=await runCrossSymbolShadowScan(boundary([underlying('AAPL')]),async()=>({
+    ...cycle('AAPL'),blockers:['OPTION_CONTRACTS_FETCH_FAILED:SHADOW_RESEARCH:PUT:503'],
+  }),()=> '2026-09-14T14:30:00Z');
+  assert.equal(result.completeness,'COMPLETE');
+  assert.deepEqual(result.missingScope,[]);
+  assert.deepEqual(result.researchMissingScope,['AAPL:OPTION_CONTRACTS_FETCH_FAILED:SHADOW_RESEARCH:PUT:503']);
+});
+
 test('shadow-only broker object has no submit, replace, cancel, exercise, or DNE function',()=>{
   const mutable={environment:'PAPER',accountKind:'MASTER_API_KEY',getAccount:async()=>({}),getPositions:async()=>[],
     getOrders:async()=>[],getOrderByClientOrderId:async()=>null,getOrder:async()=>null,getActivities:async()=>[],
