@@ -134,6 +134,13 @@ export interface ThetaShadowCycleConfig {
   readonly stressGapThresholdAbsReturn: number; // versioned research placeholder -- see aegis-derivation.ts's deriveStressGapDetected
   readonly sizingPolicy: Record<string, unknown>;
   readonly executionQualityPolicy: Record<string, unknown>;
+  /** Candidate-stage Alpaca BBO age. This is independent of the later
+   * execution-quality and pre-submit quote qualifications. */
+  readonly candidateQuoteAgePolicy: {
+    readonly policyVersion: string;
+    readonly effectiveAt: string;
+    readonly maxAgeSeconds: number;
+  };
   readonly optionQuoteFreshnessPolicy: NewRiskOrchestrationRequest['optionQuoteFreshnessPolicy'];
   readonly policyVersion: string;
   readonly modelVersions: Readonly<Record<string, string>>;
@@ -194,6 +201,17 @@ function aggregateProviderQuality(states: readonly DataQualityState[]): DataQual
     if (states.includes(state)) return state;
   }
   return 'GOOD';
+}
+
+export function candidateQuoteAgeSeconds(config: Pick<ThetaShadowCycleConfig, 'candidateQuoteAgePolicy'>, asOf: string): number {
+  const { policyVersion, effectiveAt, maxAgeSeconds } = config.candidateQuoteAgePolicy;
+  const effectiveMs = Date.parse(effectiveAt);
+  const asOfMs = Date.parse(asOf);
+  if (policyVersion.trim() === '' || !Number.isFinite(effectiveMs) || !Number.isFinite(asOfMs)
+    || effectiveMs > asOfMs || !Number.isFinite(maxAgeSeconds) || maxAgeSeconds <= 0) {
+    throw new Error('CANDIDATE_QUOTE_AGE_POLICY_INVALID');
+  }
+  return maxAgeSeconds;
 }
 
 function dueOptionomicsContextFamilies(config: ThetaShadowCycleConfig, decisionTime: string): readonly OptionomicsContextFamily[] {
@@ -935,7 +953,9 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     const mergedContracts = mergeOptionChain({
       underlying, asOfDate: decisionTime.slice(0, 10), contracts: contractItems,
       snapshotsBySymbol, optionomicsBySymbol, requestedFeed: 'INDICATIVE',
-      defaultMultiplierForUnknownContracts: 100, receivedAt, maxQuoteAgeSecondsForExecutable: 30, maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
+      defaultMultiplierForUnknownContracts: 100, receivedAt,
+      maxQuoteAgeSecondsForExecutable: candidateQuoteAgeSeconds(config, decisionTime),
+      maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
     });
     mergedContractsForSnapshot = mergedContracts;
 
@@ -1022,7 +1042,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       rv10,rv20,rv60,downsideSemivariance,drawdown,maSlope,gapFrequency,maxAdverseGap,
       recoveryHistory:config.recoveryHistory??null } as unknown as JsonValue,
     regimeFeatures: { maSlope, rv20, maxAdverseGap, drawdown } as unknown as JsonValue,
-    policyVersion: config.policyVersion, modelVersions: config.modelVersions,
+    policyVersion: config.policyVersion,
+    modelVersions: { ...config.modelVersions, candidateQuoteAgePolicy: config.candidateQuoteAgePolicy.policyVersion },
   });
   const fusionSnapshot = buildFusionSnapshot(snapshotInput);
   const stockPosition = underlyingStockPosition !== null

@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseLocalWorkerIdentity, parseLocalWorkerOperation } from '../src/theta/autonomous-runtime-handler.js';
+import { parseLocalWorkerIdentity, parseLocalWorkerOperation, safeRuntimeErrorHeader } from '../src/theta/autonomous-runtime-handler.js';
+
+test('runtime failure header accepts only bounded sanitized error codes', () => {
+  assert.equal(safeRuntimeErrorHeader('POSTGRES_53100'), 'POSTGRES_53100');
+  assert.equal(safeRuntimeErrorHeader('ALPACA_ACCOUNT_TIMEOUT_HTTP_503'), 'ALPACA_ACCOUNT_TIMEOUT_HTTP_503');
+  assert.equal(safeRuntimeErrorHeader('authorization: Bearer secret'), null);
+  assert.equal(safeRuntimeErrorHeader('https://example.invalid/private'), null);
+  assert.equal(safeRuntimeErrorHeader('a'.repeat(96)), null);
+});
 
 test('local worker identity is absent when no identity headers are supplied', () => {
   assert.deepEqual(parseLocalWorkerIdentity({ headers: {} }), { kind: 'ABSENT' });
