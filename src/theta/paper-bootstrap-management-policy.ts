@@ -194,6 +194,23 @@ export interface PaperBootstrapPolicyInput extends ManagementInputState {
    * exactly the "neither decides alone" requirement.
    */
   readonly rollCcAdditionalUpsideDollarWeight?: number;
+  /** Versioned Paper-bootstrap baseline, not an empirically learned exit rule. */
+  readonly nearExhaustedExecutableFractionThreshold?: number;
+  /** Days-to-expiration ceiling paired with the executable fraction. */
+  readonly nearExhaustedDteThreshold?: number;
+}
+
+export const paperBootstrapNearExhaustedBaseline = {
+  executableFraction: 0.10,
+  dte: 5,
+  provenance: 'PAPER_BOOTSTRAP_BASELINE_NOT_EMPIRICALLY_OPTIMAL',
+} as const;
+
+function nearExhaustedParameters(state: PaperBootstrapPolicyInput): { fraction: number; dte: number } | null {
+  const fraction = state.nearExhaustedExecutableFractionThreshold ?? paperBootstrapNearExhaustedBaseline.executableFraction;
+  const dte = state.nearExhaustedDteThreshold ?? paperBootstrapNearExhaustedBaseline.dte;
+  if (!Number.isFinite(fraction) || fraction < 0 || fraction > 1 || !Number.isInteger(dte) || dte < 0) return null;
+  return { fraction, dte };
 }
 
 function finite(value: number | null): value is number {
@@ -769,7 +786,9 @@ function valueFor(
       // conservative executable close-cost estimate. This never uses the
       // analytical fraction -- a wide spread making execution expensive
       // is a real execution-cost fact, distinct from analytical P&L.
-      const nearExhausted = executableFraction !== null && executableFraction <= 0.10 && dte <= 5;
+      const parameters = nearExhaustedParameters(state);
+      const nearExhausted = parameters !== null && executableFraction !== null
+        && executableFraction <= parameters.fraction && dte <= parameters.dte;
       // Informational only -- surfaces the ANALYTICAL loss-magnitude
       // signal (neutral mark vs. entry credit), never the execution-cost
       // fraction, so a widening ask alone can never manufacture a false
@@ -1037,6 +1056,8 @@ function valueFor(
 export function evaluatePaperBootstrapManagementPolicy(
   state: PaperBootstrapPolicyInput,
 ): ManagementPolicyEvidence | null {
+  const bootstrapParameters = nearExhaustedParameters(state);
+  if (bootstrapParameters === null) return null;
   // Defer entirely to the frontier's own structural expiration mechanism
   // at the exact broker-truth cutoff -- see atStructuralExpirationCutoff's
   // doc comment for why this must be an explicit null, not a competing
@@ -1085,7 +1106,13 @@ export function evaluatePaperBootstrapManagementPolicy(
     contractVersion: managementPolicyEvidenceVersion, inputContentHash: state.contentHash, decidedAt: state.observedAt,
     policyVersion: paperBootstrapManagementPolicyVersion, comparisonComplete: true,
     selectedAction: selected.action, actionValues,
-    reasonCodes: ['BOOTSTRAP_DETERMINISTIC_NO_EMPIRICAL_CLAIM', ...selected.reasons],
+    reasonCodes: [
+      'BOOTSTRAP_DETERMINISTIC_NO_EMPIRICAL_CLAIM',
+      paperBootstrapNearExhaustedBaseline.provenance,
+      `NEAR_EXHAUSTED_EXECUTABLE_FRACTION_THRESHOLD_${bootstrapParameters.fraction.toFixed(4)}`,
+      `NEAR_EXHAUSTED_DTE_THRESHOLD_${bootstrapParameters.dte}`,
+      ...selected.reasons,
+    ],
   };
   return unsigned;
 }

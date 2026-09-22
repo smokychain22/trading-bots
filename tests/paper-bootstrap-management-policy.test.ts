@@ -44,6 +44,29 @@ test('CSP_OPEN near expiration with near-exhausted remaining value closes determ
   assert.equal(frontier.decisionState, 'ACTION_SELECTED');
 });
 
+test('Paper-bootstrap timing thresholds preserve defaults and record provenance', () => {
+  const input = state('CSP_OPEN', { bid: 0.01, ask: 0.02 }, '2026-10-13T14:00:00.000Z');
+  const evidence = evaluatePaperBootstrapManagementPolicy(input);
+  assert.equal(evidence?.selectedAction, 'CLOSE_FULL');
+  assert.ok(evidence?.reasonCodes.includes('PAPER_BOOTSTRAP_BASELINE_NOT_EMPIRICALLY_OPTIMAL'));
+  assert.ok(evidence?.reasonCodes.includes('NEAR_EXHAUSTED_EXECUTABLE_FRACTION_THRESHOLD_0.1000'));
+  assert.ok(evidence?.reasonCodes.includes('NEAR_EXHAUSTED_DTE_THRESHOLD_5'));
+});
+
+test('Paper-bootstrap timing thresholds may be overridden without changing the default', () => {
+  const input = state('CSP_OPEN', { bid: 0.01, ask: 0.02 }, '2026-10-10T14:00:00.000Z');
+  assert.equal(evaluatePaperBootstrapManagementPolicy(input)?.selectedAction, 'HOLD');
+  const evidence = evaluatePaperBootstrapManagementPolicy({ ...input, nearExhaustedDteThreshold: 10 });
+  assert.equal(evidence?.selectedAction, 'CLOSE_FULL');
+  assert.ok(evidence?.reasonCodes.includes('NEAR_EXHAUSTED_DTE_THRESHOLD_10'));
+});
+
+test('invalid Paper-bootstrap threshold fails closed', () => {
+  const input = state('CSP_OPEN');
+  assert.equal(evaluatePaperBootstrapManagementPolicy({ ...input, nearExhaustedExecutableFractionThreshold: 1.5 }), null);
+  assert.equal(evaluatePaperBootstrapManagementPolicy({ ...input, nearExhaustedDteThreshold: Number.NaN }), null);
+});
+
 test('CSP_OPEN with a complete, positive-net-credit roll candidate rolls without any empirical EV model', () => {
   const input = state('CSP_OPEN', {}, '2026-09-12T14:00:00.000Z');
   const withCandidate = { ...input, rollCandidate: rollCandidate() };
