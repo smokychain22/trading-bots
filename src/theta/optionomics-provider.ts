@@ -454,16 +454,24 @@ export async function fetchOptionomicsOptionChain(
       if (!Array.isArray(wrapped)) {
         return { kind: 'VALUE_UNKNOWN_AFTER_SUCCESS', httpStatus, retrievedAt, detail: `${url.pathname} returned a 2xx body that was not an array (and had no recognizable 'options' array envelope).` };
       }
+      if (wrapped.some((entry) => entry === null || typeof entry !== 'object' || Array.isArray(entry))) {
+        return { kind: 'VALUE_UNKNOWN_AFTER_SUCCESS', httpStatus, retrievedAt,
+          detail: `${url.pathname} returned an options array with malformed rows; completeness cannot be asserted.` };
+      }
       return {
         kind: 'VALUE_PRESENT',
-        value: { ...provenance, responseHash: hashRawPayload(body), rawPayload: sanitizeProviderPayload(body, config), entries: wrapped.filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object').map((e) => normalizeOneEntry(e, retrievedAt)), pagesFetched: 1, complete: true },
+        value: { ...provenance, responseHash: hashRawPayload(body), rawPayload: sanitizeProviderPayload(body, config), entries: (wrapped as Record<string, unknown>[]).map((e) => normalizeOneEntry(e, retrievedAt)), pagesFetched: 1, complete: true },
         httpStatus,
         retrievedAt,
       };
     }
+    if (body.some((entry) => entry === null || typeof entry !== 'object' || Array.isArray(entry))) {
+      return { kind: 'VALUE_UNKNOWN_AFTER_SUCCESS', httpStatus, retrievedAt,
+        detail: `${url.pathname} returned an options array with malformed rows; completeness cannot be asserted.` };
+    }
     return {
       kind: 'VALUE_PRESENT',
-      value: { ...provenance, responseHash: hashRawPayload(body), rawPayload: sanitizeProviderPayload(body, config), entries: body.filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object').map((e) => normalizeOneEntry(e, retrievedAt)), pagesFetched: 1, complete: true },
+      value: { ...provenance, responseHash: hashRawPayload(body), rawPayload: sanitizeProviderPayload(body, config), entries: (body as Record<string, unknown>[]).map((e) => normalizeOneEntry(e, retrievedAt)), pagesFetched: 1, complete: true },
       httpStatus,
       retrievedAt,
     };
