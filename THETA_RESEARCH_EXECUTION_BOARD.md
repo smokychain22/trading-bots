@@ -5,8 +5,8 @@ and are not re-read/re-audited unless main changes a dependency, a test
 regression occurs, or new empirical evidence contradicts them. Statuses:
 OPEN / BUILDING / TESTING / DONE / BLOCKED_EXTERNAL / SUPERSEDED.
 
-Updated 2026-09-22 after commit `f346cc4` (branch
-`claude/theta-management-challenger`).
+Updated 2026-09-22 after commit `db3143d` (branch
+`claude/theta-management-challenger`, pushed to origin).
 
 ## Carried over from before Wave 6 (already DONE -- do not redo)
 
@@ -27,12 +27,12 @@ Updated 2026-09-22 after commit `f346cc4` (branch
 |---|---|---|---|
 | 0 | Anti-loop execution board | DONE | this file |
 | -- | H/D generator correction (Codex review response) | DONE | commit `f346cc4`: contract-identity gate (H), `requireSynchronizedFreshQuotes` gate (D), 5 new tests, reconciliation doc, 5 downstream docs corrected |
-| 1 | `shadow-strategy-orchestrator.ts` | OPEN | not started this pass |
+| 1 | `shadow-strategy-orchestrator.ts` | DONE | commit `db3143d`: 6-family dispatcher, Q reference-only, H/D real generation, A/C/R lifecycle handoff, 10 tests |
 | 2 | `THETA_METHOD_USAGE_CENSUS.md` completion | OPEN | not started this pass |
 | 3 | Capability registry coverage percent | OPEN | not started this pass |
 | 4 | Quantified unknown audit coverage | OPEN | not started this pass |
 | 5 | Loss-cause integration contract | OPEN | not started this pass |
-| 6 | `assignmentCapacity` field resolution | OPEN | not started this pass |
+| 6 | `assignmentCapacity` field resolution | DONE | `THETA_ASSIGNMENT_CAPACITY_RESOLUTION.md`: 3 distinct fields traced; concepts 1-2 KEEP_SEPARATE_WITH_NAMES (both real); concept 3 (`ManagementInputState.context.assignmentCapacity`) is BUILD_PRODUCER -- `riskState: null` hardcoded in theta-shadow-cycle.ts blocks ACCEPT_ASSIGNMENT on every real cycle; exact patch handed to Codex |
 | 7 | Correlation tooling completion | OPEN | not started this pass |
 | 8 | Severe-downside tooling review/close | OPEN | not started this pass |
 | 9 | Optionomics unresolved questions | OPEN | not started this pass |
