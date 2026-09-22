@@ -126,6 +126,8 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
       (SELECT count(*) FROM trade.candidate_set WHERE fusion_snapshot_id=$2)::int AS candidate_sets,
       (SELECT count(*) FROM trade.candidate c JOIN trade.candidate_set cs USING(candidate_set_id) WHERE cs.fusion_snapshot_id=$2)::int AS candidates,
       (SELECT count(*) FROM trade.candidate_reason cr JOIN trade.candidate c USING(candidate_id) JOIN trade.candidate_set cs USING(candidate_set_id) WHERE cs.fusion_snapshot_id=$2)::int AS candidate_reasons,
+      (SELECT count(*) FROM market.option_quote_snapshot q JOIN trade.candidate c ON c.option_quote_snapshot_id=q.snapshot_id
+        JOIN trade.candidate_set cs USING(candidate_set_id) WHERE cs.fusion_snapshot_id=$2)::int AS linked_quotes,
       (SELECT count(*) FROM trade.decision WHERE fusion_snapshot_id=$2)::int AS decisions,
       (SELECT count(*) FROM trade.strategy_route WHERE fusion_snapshot_id=$2)::int AS routes,
       (SELECT count(*) FROM trade.shadow_opportunity WHERE fusion_snapshot_id=$2)::int AS opportunities,
@@ -133,7 +135,17 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
       (SELECT count(*) FROM trade.canonical_strategy_candidate_evidence c
         JOIN trade.canonical_strategy_branch_evidence b USING(branch_evidence_id) WHERE b.fusion_snapshot_id=$2)::int AS canonical_candidates`,
       [botId, first.fusionSnapshotId]);
-    assert.deepEqual(counts.rows[0], { snapshots: 1, candidate_sets: 1, candidates: 1, candidate_reasons: 1, decisions: 1,
+    assert.deepEqual(counts.rows[0], { snapshots: 1, candidate_sets: 1, candidates: 1, candidate_reasons: 1, linked_quotes: 1, decisions: 1,
       routes: 1, opportunities: 1, canonical_branches: 5, canonical_candidates: 1 });
+    const quotes = await pool.query(`SELECT q.as_of::text,q.retrieved_at::text,q.feed,q.quality::text,q.bid::text,q.ask::text
+      FROM market.option_quote_snapshot q JOIN trade.candidate c ON c.option_quote_snapshot_id=q.snapshot_id
+      JOIN trade.candidate_set cs USING(candidate_set_id) WHERE cs.fusion_snapshot_id=$1`, [first.fusionSnapshotId]);
+    assert.equal(quotes.rows.length, 1, 'replaying a cycle must not duplicate the same broker quote');
+    assert.equal(new Date(quotes.rows[0].as_of).toISOString(), now);
+    assert.equal(new Date(quotes.rows[0].retrieved_at).toISOString(), now);
+    assert.equal(quotes.rows[0].feed, 'OPRA');
+    assert.equal(quotes.rows[0].quality, 'GOOD');
+    assert.equal(Number(quotes.rows[0].bid), 2.5);
+    assert.equal(Number(quotes.rows[0].ask), 2.6);
   } finally { await pool.end(); }
 });
