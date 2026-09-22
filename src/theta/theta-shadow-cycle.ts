@@ -40,6 +40,26 @@ import {
 import type { PaperEntryBootstrapAssessment } from './paper-entry-bootstrap.js';
 import type { RecoveryHistoryEvidence } from './recovery-history-loader.js';
 
+/** Never relabel a Conventional assessment as Hold-Strike risk evidence. */
+export function conventionalFrontierRiskLookups(
+  candidates: readonly { readonly optionSymbol: string; readonly brokerAllowedQty: number }[],
+  aegisByOptionSymbol?: Readonly<Record<string, { readonly newRiskState: NonNullable<NewRiskOrchestrationResult['aegis']>['newRiskState'] }>>,
+): {
+  readonly brokerAllowedQtyByCandidateId: Readonly<Record<string, number>>;
+  readonly aegisNewRiskStateByCandidateId: Readonly<Record<string, NonNullable<NewRiskOrchestrationResult['aegis']>['newRiskState']>> | undefined;
+} {
+  return {
+    brokerAllowedQtyByCandidateId: Object.fromEntries(candidates.map((candidate) => [
+      `THETA_CONVENTIONAL:${candidate.optionSymbol}`, candidate.brokerAllowedQty,
+    ])),
+    aegisNewRiskStateByCandidateId: aegisByOptionSymbol === undefined ? undefined : Object.fromEntries(
+      Object.entries(aegisByOptionSymbol).map(([optionSymbol, assessment]) => [
+        `THETA_CONVENTIONAL:${optionSymbol}`, assessment.newRiskState,
+      ]),
+    ),
+  };
+}
+
 // R1: runThetaShadowCycle -- the reusable, server-side, non-executing shadow
 // decision cycle. This is the "success condition" deliverable: a single
 // function composing every real piece built so far (Alpaca provider adapter,
@@ -985,22 +1005,18 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     aegisByCandidateId?: NewRiskOrchestrationResult['aegisByCandidateId'],
     candidatesWithCapacity: readonly RawCandidateInput[] = candidates,
     thetaQ: NewRiskOrchestrationResult['thetaQ'] = null,
-  ): CanonicalStrategyFrontier => buildCanonicalStrategyFrontier({
+  ): CanonicalStrategyFrontier => {
+    const conventionalRisk = conventionalFrontierRiskLookups(candidatesWithCapacity.map((candidate) => ({
+      optionSymbol: candidate.contract.optionSymbol, brokerAllowedQty: candidate.brokerAllowedQty,
+    })), aegisByCandidateId);
+    return buildCanonicalStrategyFrontier({
     snapshotId: fusionSnapshot.contentHash, timestamp: decisionTime, strategyVersion: config.policyVersion,
     contracts: mergedContractsForSnapshot, routing, stock: stockState, assignmentCapacityQty: null,
     buyingPower: account?.optionsBuyingPower ?? account?.buyingPower ?? null,
     sizingPolicy: config.sizingPolicy,
-    brokerAllowedQtyByCandidateId: Object.fromEntries(candidatesWithCapacity.flatMap((candidate) => [
-      [`THETA_CONVENTIONAL:${candidate.contract.optionSymbol}`, candidate.brokerAllowedQty],
-      [`THETA_HOLD_STRIKE:${candidate.contract.optionSymbol}`, candidate.brokerAllowedQty],
-    ])),
+    brokerAllowedQtyByCandidateId: conventionalRisk.brokerAllowedQtyByCandidateId,
     aegisNewRiskState: aegis?.newRiskState ?? null, eventState: eventContextPopulated ? 'OBSERVED' : null,
-    aegisNewRiskStateByCandidateId: aegisByCandidateId === undefined ? undefined : Object.fromEntries(
-      Object.entries(aegisByCandidateId).flatMap(([optionSymbol, assessment]) => [
-        [`THETA_CONVENTIONAL:${optionSymbol}`, assessment.newRiskState],
-        [`THETA_HOLD_STRIKE:${optionSymbol}`, assessment.newRiskState],
-      ]),
-    ),
+    aegisNewRiskStateByCandidateId: conventionalRisk.aegisNewRiskStateByCandidateId,
     unmanagedBrokerPositionCount: positions.filter((position) => position.assetClass === 'us_option').length,
     unevaluatedUnderlyingCount: Math.max(0, ranked.length - 1),
     // The frontier stores normalized/derived feature state only. Immutable
@@ -1013,7 +1029,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       paperBootstrapAllowedUnknownComponents: candidate.paperBootstrapAllowedUnknownComponents,
       paperBootstrapReasonCodes: candidate.paperBootstrapReasonCodes,
     }])),
-  });
+    });
+  };
   const conventionalSource = canonicalThetaStrategySources.find((source) => source.branch === 'THETA_CONVENTIONAL');
   if (conventionalSource === undefined) throw new Error('THETA_CONVENTIONAL_SOURCE_MISSING');
   const strategyDecisionFor = (
