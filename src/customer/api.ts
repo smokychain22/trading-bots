@@ -48,6 +48,7 @@ import { qualifyOptionomicsProvider,persistOptionomicsQualification } from "../p
 import { optionomicsConfigFromEnvironment } from "../theta/theta-shadow-once.js";
 import { canonicalThetaStrategyRegistry } from "../theta/strategy-package.js";
 import { buildR8Readiness } from "../theta/r8-readiness.js";
+import { buildThetaFirstPaperReadiness, type FirstPaperChecks } from "../theta/first-paper-blocker-budget.js";
 
 const simulationSchema = z
   .object({
@@ -541,11 +542,42 @@ export default async function customerHandler(
         status:strategy.status,promotion_status:strategy.promotionStatus,execution_enabled:strategy.executionEnabled,
         configuration_hash:strategy.configurationHash,
       }));
-      const firstPaperOperationalBlockers=[
-        ...(p2fStatus.optionomics.secret_state==='AUTH_VALID'?[]:['OPTIONOMICS_AUTH_INVALID']),
-        ...(localWorker.execution_gate==='ACTIVE'?[]:['EXECUTION_PRICE_NOT_QUALIFIED']),
-        ...(p2gStatus.dry_run.state==='DRY_RUN_READY'?[]:['NO_CURRENT_CANDIDATE_PREVIEW']),
-      ];
+      const unknown = (blocker:string, source:string, blockerClass:'EXTERNAL'|'IMPLEMENTATION'|'PROVIDER'|'POLICY'='IMPLEMENTATION') =>
+        ({state:'UNKNOWN' as const,blocker,source,blockerClass});
+      const pass = (source:string) => ({state:'PASS' as const,source});
+      const fail = (blocker:string,source:string,blockerClass:'EXTERNAL'|'IMPLEMENTATION'|'PROVIDER'|'POLICY') =>
+        ({state:'FAIL' as const,blocker,source,blockerClass});
+      const workerCycleHealthy=localWorker.online&&[
+        'MASTER_PAPER_ACTIVE','MASTER_PAPER_MARKET_CLOSED','MASTER_PAPER_QUOTE_BLOCKED',
+      ].includes(localWorker.state);
+      const firstPaperChecks:FirstPaperChecks={
+        databaseWritable:database.default_transaction_read_only==='on'
+          ? fail('DATABASE_DEFAULT_READ_ONLY_ON','database-readiness','EXTERNAL')
+          : database.state==='DEGRADED'||database.state==='MISSING'
+          ? fail('DATABASE_UNAVAILABLE','database-readiness','EXTERNAL')
+          : unknown('DATABASE_WRITE_TRANSACTION_NOT_PROVEN','database-readiness','EXTERNAL'),
+        brokerHealthy:workerCycleHealthy&&localWorker.alpaca_health==='GOOD'
+          ? pass('runtime-worker-status') : unknown('BROKER_CURRENT_HEALTH_NOT_PROVEN','runtime-worker-status','PROVIDER'),
+        providerHealthy:p2fStatus.optionomics.secret_state==='AUTH_VALID'&&localWorker.optionomics_health==='GOOD'
+          ? pass('provider-qualification-and-worker')
+          : unknown('PROVIDER_CURRENT_HEALTH_NOT_PROVEN','provider-qualification-and-worker','PROVIDER'),
+        eventEvidenceReady:unknown('COMPLETE_ENTRY_EVENT_COVERAGE_NOT_PROVEN','event-evidence','PROVIDER'),
+        quotePipelineReady:unknown('FINALIST_AND_PRE_SUBMIT_REFRESH_NOT_PROVEN','runtime-quote-pipeline'),
+        aegisReady:unknown('CURRENT_AEGIS_INPUT_COMPLETENESS_NOT_PROVEN','runtime-aegis'),
+        positiveSizingReachable:unknown('REAL_POSITIVE_SIZING_NOT_PROVEN','runtime-sizing'),
+        canonicalDecisionReachable:unknown('CURRENT_DECISION_PATH_NOT_PROVEN','runtime-decision'),
+        paperPlanReachable:unknown('REAL_CURRENT_PAPER_PLAN_NOT_PROVEN','runtime-paper-plan'),
+        managementCandidateSourceReady:unknown('MANAGEMENT_CANDIDATE_SOURCE_RUNTIME_NOT_PROVEN','runtime-management'),
+        reconciliationReady:workerCycleHealthy&&localWorker.last_reconciliation!==null
+          ? pass('runtime-worker-status') : unknown('CURRENT_RECONCILIATION_NOT_PROVEN','runtime-worker-status','EXTERNAL'),
+        workerReleaseReady:workerCycleHealthy&&
+          localWorker.build_sha===process.env.VERCEL_GIT_COMMIT_SHA
+          ? pass('runtime-worker-status-and-deployment-sha')
+          : unknown('CURRENT_WORKER_RELEASE_NOT_PROVEN','runtime-worker-status-and-deployment-sha','EXTERNAL'),
+      };
+      const firstPaperReadiness=buildThetaFirstPaperReadiness({observedAt:new Date().toISOString(),
+        checks:firstPaperChecks,avoidableUnknownCount:null,implementationBlockerCount:null});
+      const firstPaperOperationalBlockers=firstPaperReadiness.blockers.map((blocker)=>blocker.code);
       const r8Readiness=buildR8Readiness({r7EngineeringComplete:true,brokerTruthReady:localWorker.alpaca_health==='GOOD',
         sessionStateReady:localWorker.market_session!=='UNKNOWN',
         positionLifecycleReady:database.state==='CONNECTED',strategyRouterReady:true,actionFrontierReady:true,
@@ -569,11 +601,11 @@ export default async function customerHandler(
           provider_runtime: "UNKNOWN",
           systems: {
             theta_runtime: localWorker.online ? localWorker.state : "MASTER_PAPER_OFFLINE",
-            quant_models: "HEALTHY",
-            python_bridge: "HEALTHY",
-            strategy_router: "HEALTHY",
-            management_assembly: "HEALTHY",
-            decision_assembly: "HEALTHY",
+            quant_models: "NOT_RUNTIME_VERIFIED",
+            python_bridge: "NOT_RUNTIME_VERIFIED",
+            strategy_router: "NOT_RUNTIME_VERIFIED",
+            management_assembly: "NOT_RUNTIME_VERIFIED",
+            decision_assembly: "NOT_RUNTIME_VERIFIED",
             alpaca_master_paper: masterConnectionMetadata().connection_state,
             market_data: "UNKNOWN",
             option_data: "UNKNOWN",
@@ -619,8 +651,9 @@ export default async function customerHandler(
           p2g_evidence: p2gStatus,
           strategy_registry: strategyRegistry,
           r8_readiness: r8Readiness,
+          theta_first_paper_readiness: firstPaperReadiness,
           first_paper_operational_readiness: {
-            status: firstPaperOperationalBlockers.length===0 ? "READY" : "BLOCKED",
+            status: firstPaperReadiness.status==='READY' ? "READY" : "BLOCKED",
             blockers: firstPaperOperationalBlockers,
           },
           empirical_policy_readiness: {

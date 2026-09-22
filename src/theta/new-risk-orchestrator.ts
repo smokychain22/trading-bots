@@ -11,6 +11,7 @@ import { parseSizingResultResponse } from './sizing-contract.js';
 import { parseExecutionQualityResponse } from './execution-quality-contract.js';
 import { assembleNewRiskDecision, type CandidateFrontierResult, type NewRiskDecisionReceipt } from './decision-assembly.js';
 import type { NormalizedOptionContract } from './option-contract.js';
+import { optionExecutabilityCauses } from './option-executability-diagnostics.js';
 import { ShadowOpportunityBookBuilder, type ShadowOpportunityEntry } from './shadow-opportunity-book.js';
 import { classifyObservation, type DataQualityState, type FreshnessPolicy } from './data-freshness.js';
 import { assessPaperBootstrapOwnershipEvidence, type PaperEntryBootstrapAssessment } from './paper-entry-bootstrap.js';
@@ -418,12 +419,13 @@ export async function runNewRiskOrchestration(
     [[], []],
   );
   const nonExecutableResults: CandidateFrontierResult[] = nonExecutable.map((c) => {
+    const detail = c.contract.nonExecutableReason ?? 'Contract marked non-executable by the ingestion layer.';
     recordShadow(c, {
       outcome: 'PASS', rejectionCategory: 'CONTRACT_NOT_EXECUTABLE',
-      reasons: [{
-        code: 'CONTRACT_NOT_EXECUTABLE', polarity: -1,
-        detail: c.contract.nonExecutableReason ?? 'Contract marked non-executable by the ingestion layer.',
-      }],
+      reasons: [
+        { code: 'CONTRACT_NOT_EXECUTABLE', polarity: -1, detail },
+        ...optionExecutabilityCauses(c.contract).map((code) => ({ code, polarity: -1 as const, detail })),
+      ],
     });
     return {
       candidateId: c.candidateId, contract: c.contract, disposition: 'PASS', waitReason: null,

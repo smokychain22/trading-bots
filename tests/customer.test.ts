@@ -238,6 +238,9 @@ test("operator access needs a strong key, same origin and signed expiring sessio
   assert.equal(statusPayload.data.execution_control.follower_paper_execution, "LOCKED");
   assert.equal(statusPayload.data.execution_control.pause_new_orders, true);
   assert.equal(statusPayload.data.execution_control.live_host_allowed, false);
+  assert.equal(statusPayload.data.theta_first_paper_readiness.version, 'theta-first-paper-blocker-budget-v1');
+  assert.notEqual(statusPayload.data.theta_first_paper_readiness.status, 'READY');
+  assert.equal(statusPayload.data.first_paper_operational_readiness.status, 'BLOCKED');
 });
 
 test("paper-copy readiness is follower-specific and fails closed without persistence", () => {
