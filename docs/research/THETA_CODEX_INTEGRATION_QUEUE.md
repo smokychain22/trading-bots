@@ -154,6 +154,20 @@ single-candidate fallback exactly when `state.rollCandidates`/
 required.** `ROLL_CC_CANDIDATE_SOURCE` and `ROLL_CC_CANDIDATE_VALUATION`
 corrected to `REAL` in the capability registry.
 
+## Q-10: Data access for historical false-reject replay (Sep 16/18/21)
+
+- **Priority**: MEDIUM -- unblocks real measurement of the false-paralysis question this whole engagement centers on, but is a research request, not a Production defect
+- **Claude source commit**: this wave's Batch 3-4 (`historical-false-reject-analyzer.ts`, `THETA_HISTORICAL_FALSE_REJECT_REPLAY.md`)
+- **Source artifact**: `src/research/historical-false-reject-analyzer.ts` (real, tested, 7 tests passing), `docs/research/THETA_HISTORICAL_FALSE_REJECT_REPLAY.md`
+- **Current defect**: not a defect -- this research branch (a git worktree with no configured database connection) cannot reach the real Aiven-persisted candidate/quote/AEGIS rows for Sep 16/18/21 needed to run the analyzer for real.
+- **Expected change**: either (a) grant this research environment read-only access to the relevant persisted evidence tables, or (b) Codex exports the Sep-16/Sep-18/Sep-21 `contractCandidates`/quote/AEGIS-assessment rows to a file this branch can read.
+- **Producer**: the already-persisted real evidence from those 3 sessions (exists today, per the Sep-21 forensic doc already cited repeatedly).
+- **Consumer**: `historical-false-reject-analyzer.ts`'s `assessFalseReject`/`aggregateFalseRejectDay`.
+- **Persistence requirement**: none new -- read-only.
+- **Test requirement**: N/A (analyzer already has 7 passing tests against synthetic fixtures).
+- **Runtime proof requirement**: N/A -- this is offline research analysis, not a runtime change.
+- **State**: OPEN, MEDIUM priority, NEW this pass.
+
 ---
 
 ## Closed this engagement (for Codex's awareness, not action)
