@@ -209,6 +209,28 @@ test('malformed stock bars retain a safe parser category without provider payloa
   assert.equal(barsStage?.reasonCounts.BARS_UNOBSERVED_PROVIDER_FAILURE, 1);
 });
 
+test('provider-zero optional VWAP is visible but does not erase a valid underlying bar', async () => {
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/assets')) return jsonResponse(200, [
+      { symbol: 'SPY', exchange: 'ARCA', class: 'us_equity', tradable: true, status: 'active' },
+    ]);
+    if (url.includes('/v2/stocks/bars')) return jsonResponse(200, {
+      bars: { SPY: [{ t: NOW, o: 500, h: 502, l: 499, c: 501, v: 1_000_000, vw: 0 }] }, next_page_token: null,
+    });
+    if (url.includes('/v2/options/contracts')) return jsonResponse(200, { option_contracts: [], next_page_token: null });
+    throw new Error('unmocked provider operation');
+  }) as typeof fetch;
+  const alpaca: AlpacaProviderConfig = { tradingApiBase: 'https://paper-api.alpaca.markets',
+    marketDataApiBase: 'https://data.alpaca.markets', apiKey: 'SYNTHETIC', apiSecret: 'SYNTHETIC', fetchImpl };
+  const result = await discoverRealUniverse(alpaca, baseDiscoveryConfig(), () => NOW);
+  const barsStage = result.funnel.stageDiagnostics?.find((stage) => stage.stage === 'STOCK_BARS');
+  assert.equal(barsStage?.outputCount, 1);
+  assert.equal(barsStage?.providerState, 'READY');
+  assert.equal(barsStage?.reasonCounts.OPTIONAL_VWAP_PROVIDER_ZERO_UNAVAILABLE, 1);
+  assert.equal(result.funnel.optionabilityChecksAttempted, 1);
+});
+
 test('the universe-asset bound is honestly reported when truncated', async () => {
   const fetchImpl = (async (input: RequestInfo | URL) => {
     const url = input instanceof URL ? input.toString() : String(input);

@@ -525,6 +525,7 @@ export interface FetchStockBarsParams extends FetchHistoricalBarsParams {
 export interface StockBarsResult {
   readonly bars: readonly HistoricalBar[];
   readonly complete: boolean; // false iff maxPages was hit with more pages remaining
+  readonly providerZeroVwapCount: number; // optional VWAP unavailable, required OHLCV still validated
 }
 
 export async function fetchStockBars(config: AlpacaProviderConfig, params: FetchStockBarsParams, receivedAt: string): Promise<StockBarsResult> {
@@ -548,6 +549,7 @@ export async function fetchStockBars(config: AlpacaProviderConfig, params: Fetch
   // page-size limit applies to total data points (not per symbol) and a
   // multi-symbol request's first page may contain only one symbol.
   const allBars: HistoricalBar[] = [];
+  let providerZeroVwapCount = 0;
   let pageToken: string | null = null;
   let pages = 0;
   let complete = true;
@@ -565,6 +567,7 @@ export async function fetchStockBars(config: AlpacaProviderConfig, params: Fetch
     }
     const { bars, nextPageToken } = parsed;
     allBars.push(...bars);
+    providerZeroVwapCount += parsed.providerZeroVwapCount;
     pageToken = nextPageToken;
     pages += 1;
     if (pages >= params.maxPages && pageToken !== null) {
@@ -573,5 +576,5 @@ export async function fetchStockBars(config: AlpacaProviderConfig, params: Fetch
     }
   } while (pageToken !== null);
 
-  return { bars: allBars, complete };
+  return { bars: allBars, complete, providerZeroVwapCount };
 }

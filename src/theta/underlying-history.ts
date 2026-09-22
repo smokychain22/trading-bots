@@ -16,6 +16,7 @@ export interface HistoricalBar {
   readonly volume: number;
   readonly tradeCount: number | null;
   readonly vwap: number | null;
+  readonly vwapSourceState?: 'KNOWN' | 'MISSING' | 'PROVIDER_ZERO_UNAVAILABLE';
   readonly provider: 'ALPACA';
   readonly feed: string | null;
   readonly receivedAt: string;
@@ -46,6 +47,7 @@ export interface RawAlpacaBarsPage {
 export function parseAlpacaBarsPage(raw: RawAlpacaBarsPage, feed: string | null, receivedAt: string): {
   readonly bars: readonly HistoricalBar[];
   readonly nextPageToken: string | null;
+  readonly providerZeroVwapCount: number;
 } {
   const page = raw as unknown as Record<string, unknown>;
   if (page === null || typeof page !== 'object' || Array.isArray(page)
@@ -60,6 +62,7 @@ export function parseAlpacaBarsPage(raw: RawAlpacaBarsPage, feed: string | null,
     return Number.isFinite(parsed) ? parsed : null;
   };
   const bars: HistoricalBar[] = [];
+  let providerZeroVwapCount = 0;
   for (const [symbol, rawBars] of Object.entries(page.bars)) {
     if (!symbol || !Array.isArray(rawBars)) throw new Error('ALPACA_BARS_MALFORMED_SYMBOL_ROWS');
     for (const entry of rawBars) {
@@ -67,7 +70,7 @@ export function parseAlpacaBarsPage(raw: RawAlpacaBarsPage, feed: string | null,
       const bar = entry as Record<string, unknown>;
       const open = finite(bar.o), high = finite(bar.h), low = finite(bar.l), close = finite(bar.c);
       const volume = finite(bar.v), tradeCount = bar.n == null ? null : finite(bar.n);
-      const vwap = bar.vw == null ? null : finite(bar.vw);
+      const parsedVwap = bar.vw == null ? null : finite(bar.vw);
       if (typeof bar.t !== 'string' || !Number.isFinite(Date.parse(bar.t)))
         throw new Error('ALPACA_BARS_MALFORMED_TIMESTAMP');
       if (open === null || high === null || low === null || close === null
@@ -77,20 +80,22 @@ export function parseAlpacaBarsPage(raw: RawAlpacaBarsPage, feed: string | null,
       if (volume === null || volume < 0) throw new Error('ALPACA_BARS_MALFORMED_VOLUME');
       if (bar.n != null && (tradeCount === null || !Number.isSafeInteger(tradeCount) || tradeCount < 0))
         throw new Error('ALPACA_BARS_MALFORMED_TRADE_COUNT');
-      if (bar.vw != null && vwap === null) throw new Error('ALPACA_BARS_MALFORMED_VWAP_NON_NUMERIC');
-      if (vwap === 0) throw new Error('ALPACA_BARS_MALFORMED_VWAP_ZERO');
-      if (vwap !== null && vwap < 0) throw new Error('ALPACA_BARS_MALFORMED_VWAP_NEGATIVE');
+      if (bar.vw != null && parsedVwap === null) throw new Error('ALPACA_BARS_MALFORMED_VWAP_NON_NUMERIC');
+      if (parsedVwap !== null && parsedVwap < 0) throw new Error('ALPACA_BARS_MALFORMED_VWAP_NEGATIVE');
+      if (parsedVwap === 0) providerZeroVwapCount += 1;
+      const vwap = parsedVwap === 0 ? null : parsedVwap;
       bars.push({
         symbol,
         timestamp: bar.t,
         open, high, low, close, volume, tradeCount, vwap,
+        vwapSourceState: bar.vw == null ? 'MISSING' : parsedVwap === 0 ? 'PROVIDER_ZERO_UNAVAILABLE' : 'KNOWN',
         provider: 'ALPACA',
         feed,
         receivedAt,
       });
     }
   }
-  return { bars, nextPageToken: page.next_page_token as string | null | undefined ?? null };
+  return { bars, nextPageToken: page.next_page_token as string | null | undefined ?? null, providerZeroVwapCount };
 }
 
 export interface FetchHistoricalBarsParams {

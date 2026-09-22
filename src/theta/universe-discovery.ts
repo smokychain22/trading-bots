@@ -171,6 +171,7 @@ export async function discoverRealUniverse(
   let noBarSymbolCount = 0;
   let paginationUnobservedSymbolCount = 0;
   let priceBelowFloorCount = 0;
+  let providerZeroVwapCount = 0;
   const barsFailureReasons: Record<string, number> = {};
   const barsFailureStates: UniverseDiscoveryStageDiagnostic['providerState'][] = [];
   const totalBarsBatches = Math.ceil(filteredSymbols.length / config.barsBatchSize);
@@ -183,6 +184,7 @@ export async function discoverRealUniverse(
         receivedAt,
       );
       if (!barsResult.complete) incompleteBarsBatches += 1;
+      providerZeroVwapCount += barsResult.providerZeroVwapCount;
       const barsBySymbol = new Map<string, HistoricalBar[]>();
       for (const bar of barsResult.bars) {
         const list = barsBySymbol.get(bar.symbol) ?? [];
@@ -225,7 +227,8 @@ export async function discoverRealUniverse(
       ...(incompleteBarsBatches > 0 ? { BARS_PAGINATION_INCOMPLETE: incompleteBarsBatches } : {}),
       ...(paginationUnobservedSymbolCount > 0 ? { BARS_UNOBSERVED_PAGINATION_INCOMPLETE: paginationUnobservedSymbolCount } : {}),
       ...(noBarSymbolCount > 0 ? { NO_BARS_RETURNED: noBarSymbolCount } : {}),
-      ...(priceBelowFloorCount > 0 ? { PRICE_BELOW_FLOOR: priceBelowFloorCount } : {}) } });
+      ...(priceBelowFloorCount > 0 ? { PRICE_BELOW_FLOOR: priceBelowFloorCount } : {}),
+      ...(providerZeroVwapCount > 0 ? { OPTIONAL_VWAP_PROVIDER_ZERO_UNAVAILABLE: providerZeroVwapCount } : {}) } });
 
   const shortlistForOptionabilityCheck = [...priceBySymbol.entries()]
     .sort((a, b) => b[1].avgDollarVolume - a[1].avgDollarVolume)

@@ -48,7 +48,11 @@ test('malformed bar diagnostics distinguish fields without carrying provider val
   const badTimestamp = { bars: { SPY: [{ t: 'bad-date', o: 1, h: 2, l: 0.5, c: 1.5, v: 1 }] }, next_page_token: null };
   const badVwap = { bars: { SPY: [{ t: NOW, o: 1, h: 2, l: 0.5, c: 1.5, v: 1, vw: 0 }] }, next_page_token: null };
   assert.throws(() => parseAlpacaBarsPage(badTimestamp, 'iex', NOW), /ALPACA_BARS_MALFORMED_TIMESTAMP/);
-  assert.throws(() => parseAlpacaBarsPage(badVwap, 'iex', NOW), /ALPACA_BARS_MALFORMED_VWAP_ZERO/);
+  const zeroVwap = parseAlpacaBarsPage(badVwap, 'iex', NOW);
+  assert.equal(zeroVwap.providerZeroVwapCount, 1);
+  assert.equal(zeroVwap.bars[0]?.vwap, null);
+  assert.equal(zeroVwap.bars[0]?.vwapSourceState, 'PROVIDER_ZERO_UNAVAILABLE');
+  assert.equal(zeroVwap.bars[0]?.close, 1.5);
   const badVwapType = { bars: { SPY: [{ t: NOW, o: 1, h: 2, l: 0.5, c: 1.5, v: 1, vw: 'not-a-number' }] }, next_page_token: null };
   assert.throws(() => parseAlpacaBarsPage(badVwapType as unknown as RawAlpacaBarsPage, 'iex', NOW), /ALPACA_BARS_MALFORMED_VWAP_NON_NUMERIC/);
 });

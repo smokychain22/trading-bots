@@ -427,6 +427,21 @@ test('fetchStockBars classifies a malformed bar as a provider response error', a
     && error.errorClass === 'MALFORMED_RESPONSE' && error.safeDetailCode === 'ALPACA_BARS_MALFORMED_OHLC');
 });
 
+test('fetchStockBars keeps valid OHLCV when provider optional VWAP is zero and reports its loss', async () => {
+  const fetchImpl = (async () => jsonResponse(200, {
+    bars: { SPY: [{ t: NOW, o: 100, h: 102, l: 99, c: 101, v: 500, vw: 0 }] }, next_page_token: null,
+  })) as typeof fetch;
+  const result = await fetchStockBars(baseConfig(fetchImpl), {
+    symbols: ['SPY'], timeframe: '1Day', start: '2026-09-01T00:00:00Z', end: NOW,
+    feed: 'iex', maxPages: 2, adjustment: 'raw',
+  }, NOW);
+  assert.equal(result.complete, true);
+  assert.equal(result.bars[0]?.close, 101);
+  assert.equal(result.bars[0]?.vwap, null);
+  assert.equal(result.bars[0]?.vwapSourceState, 'PROVIDER_ZERO_UNAVAILABLE');
+  assert.equal(result.providerZeroVwapCount, 1);
+});
+
 test('fetchStockBars request includes the explicit adjustment parameter -- never silently mixed', async () => {
   let requestedUrl = '';
   const fetchImpl = (async (input: RequestInfo | URL) => {
