@@ -33,7 +33,7 @@ unchanged at `7f42355` before this checkpoint).
 | 3 | Capability registry coverage percent | DONE | `THETA_CAPABILITY_COVERAGE_DENOMINATOR.md`: reconciled provider-scoped vs system-scoped registries (no 3rd created); found 7 real gaps against the directive's 27-domain universe (STRATEGY_ROUTING, EXECUTION_QUALITY, ASSIGNMENT_CAPACITY, RECOVERY_LIFECYCLE, COPY_ENGINE, VOLATILITY_SURFACE, EMPIRICAL_LEARNING_GOVERNANCE), added as real source-grounded rows to `pre-vps-capability-registry.ts` (33->40 rows); 100% of 27-domain universe now has >=1 row; existing 7 registry tests still pass unmodified |
 | 4 | Quantified unknown audit coverage | OPEN | not started this pass |
 | 5 | Loss-cause integration contract | DONE | `loss-cause-integration-contract.ts` + `THETA_LOSS_CAUSE_CODEX_WIRING.md`: Codex wiring instructions added -- READY for 5 causes with real evidence sources, BLOCKED_EXTERNAL (MISSING_PRODUCER) for IV_EXPANSION/OWNERSHIP_DETERIORATION until their own upstream producers exist |
-| 6 | `assignmentCapacity` field resolution | DONE | `THETA_ASSIGNMENT_CAPACITY_RESOLUTION.md`: 3 distinct fields traced; concept 3 is BUILD_PRODUCER; doc now also has unit/freshness/tests/expected-transition-change sections -- Codex handoff status READY |
+| 6 | `assignmentCapacity` field resolution | DONE + CODEX_CLOSED | main `b9cd49a` built a real broker-backed producer (independent of the exact patch proposed, stronger -- adds explicit evidence state). No further action. |
 | 7 | Correlation tooling completion | OPEN | not started this pass |
 | 8 | Severe-downside tooling review/close | OPEN | not started this pass |
 | 9 | Optionomics unresolved questions | OPEN | not started this pass |

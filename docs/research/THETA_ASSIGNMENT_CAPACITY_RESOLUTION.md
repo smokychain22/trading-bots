@@ -1,5 +1,20 @@
 # THETA assignment-capacity semantic resolution (Wave 6 Batch J)
 
+> **CLOSED (2026-09-22, main `b9cd49a` "Wire broker-backed management
+> assignment capacity and PIT timing")**: Codex built a real producer for
+> concept 3 below. Not via the exact patch this doc proposed (`riskState`
+> in `theta-shadow-cycle.ts` is still `null` -- unchanged) -- Codex instead
+> computed `assignmentCapacity`/`assignmentCapacityEvidence` directly in
+> `management-input-state.ts` (real, broker-backed:
+> `assignmentApplicable && accountFreshForCapacity && collateralPerContract`),
+> with an explicit `ManagementAssignmentCapacityEvidence` state machine
+> (`NOT_APPLICABLE`/`UNKNOWN`/`KNOWN`) rather than a bare `number | null`.
+> This is a stronger fix than proposed (adds explicit evidence state, PIT
+> freshness gating via `accountFreshForCapacity`) and independently solves
+> the same real gap this doc identified. Verified via `git merge` + full
+> test suite (1812 pass) + `tests/management-input-state.test.ts` (61 new
+> lines of coverage from Codex). **No further action needed on this item.**
+
 Traced every construction site of every field with "assignmentCapacity" in
 its name across `src/theta/`, `src/research/`, `src/customer/`, and
 `bots/theta/quant/`. There are **three distinct real concepts**, not one
