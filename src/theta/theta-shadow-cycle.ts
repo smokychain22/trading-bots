@@ -551,6 +551,13 @@ function validContractDateRange(gte: string, lte: string): boolean {
   return validDate(gte) && validDate(lte) && gte <= lte;
 }
 
+function traceShadowStage(symbol: string, stage: string, detail: Readonly<Record<string, string | number | boolean>>): void {
+  if (process.env.VERCEL_ENV !== 'production') return;
+  // Counts and timings only. Never log provider payloads, URLs or credentials.
+  console.info(JSON.stringify({ event: 'THETA_SHADOW_STAGE_V1', symbol, stage, ...detail,
+    rssMb: Math.round(process.memoryUsage().rss / 1_048_576) }));
+}
+
 export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promise<ThetaShadowCycleResult> {
   if (!validContractDateRange(config.optionExpirationDateGte, config.optionExpirationDateLte)) {
     throw new Error('PRIMARY_CONTRACT_DATE_RANGE_INVALID');
@@ -881,6 +888,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
         : []),
     ];
     for (const window of contractWindows) {
+      const contractFetchStartedAt = Date.now();
       try {
         const result = await fetchOptionContracts(config.alpaca, {
           underlyingSymbol: underlying, expirationDateGte: window.gte,
@@ -900,14 +908,21 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
             : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' });
         }
         if (!result.complete) blockers.push(`OPTION_CONTRACTS_INCOMPLETE:${window.name}:${optionType.toUpperCase()}`);
+        traceShadowStage(underlying, 'CONTRACTS_COMPLETE', { optionType, window: window.name,
+          elapsedMs: Date.now() - contractFetchStartedAt, count: result.items.length,
+          pagesFetched: result.pagesFetched, complete: result.complete });
       } catch (error) {
         if (window.name === 'PRIMARY') {
           contractEvidenceByType.push(failedProviderEvidence(error));
           optionContractsComplete = false;
         }
         blockers.push(`OPTION_CONTRACTS_FETCH_FAILED:${window.name}:${optionType.toUpperCase()}:${error instanceof Error ? error.message : 'unknown'}`);
+        traceShadowStage(underlying, 'CONTRACTS_FAILED', { optionType, window: window.name,
+          elapsedMs: Date.now() - contractFetchStartedAt });
       }
     }
+    const snapshotFetchStartedAt = Date.now();
+    traceShadowStage(underlying, 'SNAPSHOTS_STARTED', { optionType, contractsEnumerated: contractItems.length });
     try {
       const result = await fetchOptionSnapshots(config.alpaca, {
         // The provider adapter documents a 1,000-observation page maximum.
@@ -922,10 +937,15 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       quoteEvidenceByType.push(result.complete
         ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
         : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' });
+      traceShadowStage(underlying, 'SNAPSHOTS_COMPLETE', { optionType,
+        elapsedMs: Date.now() - snapshotFetchStartedAt, count: result.snapshots.size,
+        pagesFetched: result.pagesFetched, complete: result.complete });
     } catch (error) {
       quoteEvidenceByType.push(failedProviderEvidence(error));
       optionChainComplete = false;
       blockers.push(`OPTION_SNAPSHOTS_FETCH_FAILED:${optionType.toUpperCase()}:${error instanceof Error ? error.message : 'unknown'}`);
+      traceShadowStage(underlying, 'SNAPSHOTS_FAILED', { optionType,
+        elapsedMs: Date.now() - snapshotFetchStartedAt });
     }
   }
   const evidenceFor = (evidence: readonly ProviderEvidence[]): ProviderEvidence => ({
@@ -969,6 +989,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
     });
     mergedContractsForSnapshot = mergedContracts;
+    traceShadowStage(underlying, 'CONTRACTS_MERGED', { count: mergedContracts.length,
+      snapshots: snapshotsBySymbol.size });
 
     for (const contract of mergedContracts) {
       if (contract.bid === null) {
@@ -1288,6 +1310,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     };
   });
 
+  const orchestrationStartedAt = Date.now();
+  traceShadowStage(underlying, 'ORCHESTRATION_STARTED', { candidates: runtimeCandidates.length });
   const orchestration = await runNewRiskOrchestration(config.bridge, {
     snapshotId: fusionSnapshot.contentHash, fusionSnapshotHash: fusionSnapshot.contentHash, timestamp: decisionTime, underlying,
     earningsDistanceDays: null, // EventState is not real yet -- UNKNOWN, never fabricated as "no earnings nearby"
@@ -1329,6 +1353,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     executionQualityPolicy: config.executionQualityPolicy,
     paperEntryBootstrap: config.paperEntryBootstrap,
   });
+  traceShadowStage(underlying, 'ORCHESTRATION_COMPLETE', { elapsedMs: Date.now() - orchestrationStartedAt,
+    candidates: runtimeCandidates.length });
 
   return {
     runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
