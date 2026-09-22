@@ -5,9 +5,9 @@ and are not re-read/re-audited unless main changes a dependency, a test
 regression occurs, or new empirical evidence contradicts them. Statuses:
 OPEN / BUILDING / TESTING / DONE / BLOCKED_EXTERNAL / SUPERSEDED.
 
-Updated 2026-09-22 after commit `7e37843` (branch
-`claude/theta-management-challenger`, pushed to origin, main verified
-unchanged at `133227c` before this checkpoint).
+Updated 2026-09-22 after commit `23890ef` (branch
+`claude/theta-management-challenger`, pushed to origin; main merged to
+`c009b7a` -- see H/D reconciliation update note).
 
 ## Carried over from before Wave 6 (already DONE -- do not redo)
 
@@ -32,8 +32,8 @@ unchanged at `133227c` before this checkpoint).
 | 2 | `THETA_METHOD_USAGE_CENSUS.md` completion | OPEN | not started this pass |
 | 3 | Capability registry coverage percent | OPEN | not started this pass |
 | 4 | Quantified unknown audit coverage | OPEN | not started this pass |
-| 5 | Loss-cause integration contract | DONE | `loss-cause-integration-contract.ts`: typed per-cause evidence (source/severity/persistence/confidence/thesisImpact/actionInfluence/hardSafetyOverride) for all 8 causes; exit-supremacy fold; 10 tests incl. same-P&L-different-cause-different-frontier core claim |
-| 6 | `assignmentCapacity` field resolution | DONE | `THETA_ASSIGNMENT_CAPACITY_RESOLUTION.md`: 3 distinct fields traced; concepts 1-2 KEEP_SEPARATE_WITH_NAMES (both real); concept 3 (`ManagementInputState.context.assignmentCapacity`) is BUILD_PRODUCER -- `riskState: null` hardcoded in theta-shadow-cycle.ts blocks ACCEPT_ASSIGNMENT on every real cycle; exact patch handed to Codex |
+| 5 | Loss-cause integration contract | DONE | `loss-cause-integration-contract.ts` + `THETA_LOSS_CAUSE_CODEX_WIRING.md`: Codex wiring instructions added -- READY for 5 causes with real evidence sources, BLOCKED_EXTERNAL (MISSING_PRODUCER) for IV_EXPANSION/OWNERSHIP_DETERIORATION until their own upstream producers exist |
+| 6 | `assignmentCapacity` field resolution | DONE | `THETA_ASSIGNMENT_CAPACITY_RESOLUTION.md`: 3 distinct fields traced; concept 3 is BUILD_PRODUCER; doc now also has unit/freshness/tests/expected-transition-change sections -- Codex handoff status READY |
 | 7 | Correlation tooling completion | OPEN | not started this pass |
 | 8 | Severe-downside tooling review/close | OPEN | not started this pass |
 | 9 | Optionomics unresolved questions | OPEN | not started this pass |

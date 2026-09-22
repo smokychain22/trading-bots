@@ -87,6 +87,15 @@ write access to confirm without touching `bots/theta/app`-owned code.
 Codex's (engineering) ownership per `docs/OWNERSHIP.md`; this document is
 the handoff, not the patch.
 
+## Codex handoff checklist (readiness fields)
+
+- **Unit**: whole contracts (integer count, same unit as `assignmentCapacityQty`), not a percentage -- `management-action-frontier.ts:135-136` already type-checks it as `number` and compares `<= 0`, consistent with an integer quantity.
+- **Freshness**: must be computed from the SAME cycle's `buyingPower`/position snapshot already in scope when `riskState` is assembled -- never carried over from a prior cycle. No separate staleness field is needed beyond the existing snapshot's own `asOf`/`retrievedAt` provenance, since this value is derived synchronously within one cycle, not fetched from an external provider.
+- **Tests Codex should add** (in `tests/theta-shadow-cycle.test.ts` or `tests/theta-cycle-store.test.ts`, whichever owns `riskState` assembly coverage): (1) a cycle with `stockShares > 0` and known buying power/strike/multiplier produces a real positive `riskState.assignmentCapacity`; (2) a cycle with `stockShares > 0` but missing buying power produces `{ assignmentCapacity: null }`, distinct from (3) a cycle with `stockShares === 0` producing `riskState: null` entirely (no assigned position -- not applicable, not unknown); (4) an end-to-end test through `management-input-state.ts` -> `management-action-frontier.ts` confirming `ACCEPT_ASSIGNMENT` is no longer unconditionally blocked by `ASSIGNMENT_CAPACITY_UNKNOWN` once a real value is present.
+- **Expected management-transition change**: today, every real `STOCK_HELD` cycle that reaches `management-action-frontier.ts` has `ACCEPT_ASSIGNMENT` in `blockers` via `ASSIGNMENT_CAPACITY_UNKNOWN`, regardless of true capacity. After this fix, `ACCEPT_ASSIGNMENT` becomes reachable (present in `feasibleActions`, not `blockers`) whenever real buying power supports at least one more assigned lot -- this is expected to change management-frontier OUTPUT composition on real `STOCK_HELD` cycles, not just add an unused field, so it should be verified against a real Paper cycle after merge, not just the unit tests above.
+
+**Codex handoff status: READY.** No further research-side investigation remains open on this item.
+
 ## Why not CONSOLIDATE
 
 The three fields differ in unit (percentage vs. quantity vs. quantity),
