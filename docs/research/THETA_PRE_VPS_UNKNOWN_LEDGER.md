@@ -54,13 +54,19 @@ remain UNKNOWN.
 - **FIRST_PAPER_REQUIRED**: YES for any chain that reaches an open-position management decision (roll or CC), which is most of the bot's real lifetime value proposition (the Wheel is a management-heavy strategy, not just an entry strategy)
 - **VPS_REQUIRED**: YES
 - **AVOIDABLE_OR_LEGITIMATE**: **AVOIDABLE** -- confirmed real machinery exists on both sides of the gap (a real valuator, a real discovery module); only the wiring between them is missing
-- **REMEDIATION**: Wire a real `PaperBootstrapCandidateSource` implementation (adapting `src/research/paper-bootstrap-candidate-source.ts` or an equivalent Codex-owned implementation) into the call at `autonomous-runtime.ts:353`
+- **REMEDIATION**: Wire a real `PaperBootstrapCandidateSource` implementation into the call at `autonomous-runtime.ts:353`. **Corrected this wave**: Codex's own review (item 10 below) classified `src/research/paper-bootstrap-candidate-source.ts` as `RESEARCH_ONLY`, not directly Production-adoptable ("its fresh CC path derives identity/multiplier from the first observation and it does not fetch or persist actual broker candidate sets. It cannot be a Production source as written.") -- a real implementation needs a genuine broker-read, completeness, and persistence path, which this prototype does not have; treat it as a reference for the enumeration concept only, not a drop-in fix.
 - **OWNER**: Codex (Production wiring; `src/theta/` and `src/execution/` are Codex-owned)
 - **VERIFICATION_TEST**: A new Codex-side test asserting `createPaperBootstrapManagementPolicyProvider()`'s real call site in `autonomous-runtime.ts` is invoked with a non-default candidate source, plus an integration test proving a real open CSP chain with a real roll candidate in the lattice produces a non-null `rollCandidate` through the full path
 
 ### 2. `stressIvShockDetected` / `stressSpreadWideningDetected` have zero real producer anywhere in the repo -- **PROMOTED TO P0: this alone unconditionally blocks all new-risk actions today**
 
-**Verified line-by-line this pass, `bots/theta/quant/models/aegis.py`**: `_liquidity()` returns `HOLD_ONLY` whenever `stress_spread_widening_detected is None`; `_system()` returns `HOLD_ONLY` whenever ANY of its 3 stress inputs is `None`. Since both fields are confirmed always `None` in Production, BOTH the LIQUIDITY and SYSTEM families are always `HOLD_ONLY`. `assess_aegis()` takes the worst state across every family (`_worse()`, strictest wins), so `new_risk_state` is **provably always `HOLD_ONLY` or worse in Production today**, and `_NEW_RISK_ACTIONS_BY_STATE[HOLD_ONLY] = frozenset()` -- an empty set. **AEGIS unconditionally permits zero new-risk-opening actions (OPEN_CSP/SELL_CC/ROLL/OPEN_DEFINED_RISK_SPREAD) today, regardless of every other family's real state, independent of the `CONTRACT_NOT_EXECUTABLE` gap.** This is now the single most severe finding in this entire ledger -- even a perfectly executable, perfectly-sized, perfectly-routed candidate would still be refused by AEGIS. Exit supremacy (CLOSE/CANCEL/RECONCILE/etc.) is unaffected and remains real.
+**Verified line-by-line, `bots/theta/quant/models/aegis.py`**: `_liquidity()` returns `HOLD_ONLY` whenever `stress_spread_widening_detected is None`; `_system()` returns `HOLD_ONLY` whenever ANY of its 3 stress inputs is `None`. Since both fields are confirmed always `None` in Production, BOTH the LIQUIDITY and SYSTEM families would be `HOLD_ONLY` **if and when a candidate actually reaches AEGIS evaluation**. `assess_aegis()` takes the worst state across every family (`_worse()`, strictest wins), so `new_risk_state` would be `HOLD_ONLY` or worse for any candidate that reaches this stage, and `_NEW_RISK_ACTIONS_BY_STATE[HOLD_ONLY] = frozenset()` -- an empty set.
+
+**PRECISE WORDING, CORRECTED THIS WAVE per Codex's own real evidence receipt (`docs/operations/THETA_PRODUCTION_CLOSURE_WAVE1_2026-09-22.md`)**: Do NOT say "all 3,876 candidates were rejected by AEGIS" or "every persisted real evaluation returned HOLD_ONLY." The real persisted evidence shows **all 3,876 point-in-time candidate rows have `aegis_json.state = null`** -- meaning **no candidate AEGIS assessment was persisted in that funnel at all**. Per Codex: "That does **not** prove that every row failed AEGIS." The correct framing is:
+
+> **`CURRENT_PRODUCTION_INPUT_CONTRACT_DETERMINISTICALLY_BLOCKS_NEW_RISK IF/WHEN AEGIS IS EVALUATED WITH THESE CURRENT NULL SUPPLIERS.`**
+
+The real September 21 session shows `AEGIS_NOT_EVALUATED`/`NOT_PERSISTED` for those 3,876 rows (they were rejected upstream -- overwhelmingly by `CONTRACT_NOT_EXECUTABLE`, per item 4 -- before ever reaching AEGIS), not `AEGIS evaluated and returned HOLD_ONLY`. **The code-path-block claim itself remains fully confirmed and unweakened** -- it is a deterministic, provable consequence of the current input contract, verified by direct code reading, independent of whether any real session has yet exercised that code path end to end. Both facts are true simultaneously and must be stated together, consistently, in every document: (1) the code WOULD deterministically block, and (2) no real persisted evidence yet shows it actually doing so, because candidates have not been surviving long enough to reach it. Exit supremacy (CLOSE/CANCEL/RECONCILE/etc.) is unaffected and remains real. **AEGIS missing stress producers remain `P0_FIRST_PAPER_BLOCKER`** -- even after candidates survive the upstream filters (once `CONTRACT_NOT_EXECUTABLE` policy is addressed), the present supplier contract would fail closed.
 
 - **FIELD**: `aegisInputs.stressIvShockDetected`, `aegisInputs.stressSpreadWideningDetected`
 - **STAGE**: AEGIS SYSTEM-family risk gate
@@ -96,34 +102,78 @@ remain UNKNOWN.
 - **OWNER**: Codex (Production AEGIS integration); Claude (research precursor -- correlation cohort tooling, not yet built this session)
 - **VERIFICATION_TEST**: A test with 2+ simulated held positions in different/same sectors proving a real, non-proxy `sectorConcentrationPct`/`correlationClusterExposurePct`
 
-### 4. `CONTRACT_NOT_EXECUTABLE` is the single dominant real-session rejection reason -- root cause not yet independently verified against the live Alpaca API
+### 4. `CONTRACT_NOT_EXECUTABLE` -- ROOT CAUSE RESOLVED this wave (Wave 4); policy calibration remains open
 
-- **FIELD**: `NormalizedOptionContract.executable` / `nonExecutableReason` (`src/theta/option-chain-ingestion.ts:147-160`)
+- **FIELD**: `NormalizedOptionContract.executable` / `nonExecutableReason` (`src/theta/option-contract.ts:210-224`, `option-chain-ingestion.ts:147-160`)
 - **STAGE**: Entry brain -- contract ingestion, immediately before candidate lattice construction
-- **CURRENT_VALUE_STATE**: Per the real 2026-09-21 forensic (`docs/operations/THETA_R7_LIVE_SESSION_FORENSIC_2026-09-21.md`), `CONTRACT_NOT_EXECUTABLE` was the rejection reason for **3,299 of 3,876** persisted candidate rows in a single real session window -- by far the largest single rejection category (next largest: `DELTA_OUTSIDE_ALL_BANDS` at 416)
-- **WHY_UNKNOWN**: Traced to `option-chain-ingestion.ts:154`: `if (contract.multiplier === null) { ...executable: false... }`. `contract.multiplier` originates at `alpaca-provider.ts:337`: `multiplier: asNumberOrNull(c.size)`, reading the real Alpaca `/v2/options/contracts` response field `size`.
-- **PRODUCER_EXPECTED**: A real, correctly-mapped per-contract multiplier from Alpaca's option-contracts endpoint (nearly always `100` for standard US equity options).
-- **PRODUCER_ACTUAL**: `asNumberOrNull(c.size)` -- **not independently verified this pass** against a live Alpaca response, because this research environment has no connected Alpaca MCP/API access (only Optionomics is connected here; Alpaca execution/data access is Codex's domain). Two competing explanations are both plausible from the code alone and are NOT distinguished by this ledger:
-  1. **PROVIDER_MAPPING_DEFECT**: Alpaca reliably returns `size` for essentially every listed contract, and the mapping/field name is subtly wrong (e.g. a different real field name, a nested location, or a type Alpaca returns that `asNumberOrNull` does not parse), causing a large fraction of genuinely executable contracts to be wrongly marked non-executable.
-  2. **PROVIDER_INCAPABLE / real session correlation**: The 3,299 count reflects the SAME real session in which Aiven write availability failed and the worker reported repeated `HTTP_503`/`RUNTIME_BROKER_CYCLE` errors (per the same forensic) -- it is possible a large share of `size`-null contracts correlates with degraded/incomplete Alpaca responses during that specific window, not a permanent mapping defect.
+- **CURRENT_VALUE_STATE**: **RESOLVED.** Per Codex's own real evidence receipt (`docs/operations/THETA_PRODUCTION_CLOSURE_WAVE1_2026-09-22.md`, a read-only Aiven query against the real persisted `trade.shadow_opportunity`/`trade.candidate_point_in_time_evidence` tables): of 3,299 `CONTRACT_NOT_EXECUTABLE` rows, 2,014 were `quote stale; spread too wide`, 787 were `spread too wide`, and 498 were `quote stale` -- summing exactly to 3,299. **The multiplier-only hypothesis is REJECTED**, confirmed independently by Codex: a sampled persisted contract has multiplier 100, an `INDICATIVE` bid/ask, and a real provider quote timestamp.
+- **WHY_UNKNOWN**: No longer unknown at the cause level -- quote staleness (>30s) and excessive relative spread are the real dominant causes, not a multiplier mapping defect. See `THETA_CONTRACT_NOT_EXECUTABLE_INVESTIGATION.md` for the full resolution.
+- **REMAINING OPEN QUESTION -- `POLICY_CORRECTNESS_NOT_YET_PROVEN`**: whether the 30-second quote-age threshold and the current versioned maximum-spread policy are correctly CALIBRATED for real Paper operation. Codex's own position: "These observations do not justify relaxing either gate" -- a statement that the rejection rate alone isn't grounds to loosen the gates, not a statement the current calibration is proven optimal. This is a real, separate, still-open policy question, distinct from the now-resolved root-cause question.
 - **PROVIDER**: Alpaca
 - **CONSUMER**: `new-risk-orchestrator.ts:405-430` -- excludes every non-executable contract from the candidate lattice entirely, before AEGIS or economics are ever computed
-- **SAFETY_AUTHORITY**: Not a safety gate -- a data-completeness gate (correctly conservative: never fabricates a `100`-share assumption for capital/premium math)
-- **FIRST_PAPER_REQUIRED**: YES -- this is the single largest observed real-session bottleneck between "3,876 real candidates evaluated" and "0 candidates selected with positive quantity"
+- **SAFETY_AUTHORITY**: Not a safety gate -- a data-completeness/execution-quality gate (correctly conservative)
+- **FIRST_PAPER_REQUIRED**: YES -- this is the single largest observed real-session bottleneck between "3,876 real candidates evaluated" and "0 candidates selected with positive quantity" -- now precisely explained, not merely observed
 - **VPS_REQUIRED**: YES
-- **AVOIDABLE_OR_LEGITIMATE**: **UNDETERMINED -- HIGHEST-PRIORITY OPEN QUESTION IN THIS LEDGER.** Do not report this as closed either way without a real, live Alpaca `/v2/options/contracts` response sample examined directly.
-- **REMEDIATION**: See `THETA_CONTRACT_NOT_EXECUTABLE_INVESTIGATION.md` for the full, refined analysis. Key update: the real executability gate has **10 independent conditions** (not just the multiplier check), and the single most likely dominant cause is contracts that were simply never quoted at all in a wide-lattice scan (4 of the 10 conditions fail simultaneously for an unquoted contract) -- not a multiplier mapping defect specifically. Critically, **Codex does not need a fresh live Alpaca pull to resolve this first**: the granular per-candidate rejection reason (`reasons[].detail`) is already preserved in the persisted shadow evidence for the 2026-09-21 session (`new-risk-orchestrator.ts:709`) -- a `GROUP BY` on that existing data, once Aiven writes are readable again, answers this without any new provider call.
-- **OWNER**: Codex (has real Alpaca credentials, Aiven forensic context, and the persisted shadow-evidence rows this research branch does not)
-- **VERIFICATION_TEST**: See the dedicated investigation doc's two-step verification request (persisted-data breakdown first, live Alpaca sample second)
+- **AVOIDABLE_OR_LEGITIMATE**: **Root cause is LEGITIMATE** (a real, correctly-functioning data-quality gate doing exactly what it's designed to do -- confirmed by Codex's own real-data breakdown). Whether the CALIBRATION is avoidably too strict remains a separate, open, unresolved policy question for Codex/owner (`POLICY_CORRECTNESS_NOT_YET_PROVEN`), not resolvable by this research branch and not the same question as root cause.
+- **REMEDIATION**: Root cause needs no further remediation (resolved). Policy calibration: a deliberate, documented Codex/owner decision on quote-age/spread thresholds, informed by real observed rejection rates -- not a code fix.
+- **OWNER**: Codex (owns the AEGIS/quote-quality policy decision)
+- **VERIFICATION_TEST**: N/A for root cause (resolved via real persisted-data query, no new test needed). A future test could assert the quote-age/spread thresholds match whatever calibration Codex/owner ultimately decides.
 
 ### 5. AEGIS SYSTEM-family AND LIQUIDITY-family gap is worse than "never reaches a state" -- it forces `new_risk_state` to `HOLD_ONLY` (or worse) EVERY CYCLE, unconditionally, blocking ALL new-risk actions
 
 - **FIELD**: `_system()` (`bots/theta/quant/models/aegis.py:155-166`) AND `_liquidity()` (`:129-135`) -- **two separate families, both driven by the same missing `stressSpreadWideningDetected` producer**, confirmed via a direct line-by-line read this pass (not merely a fork summary)
 - **STAGE**: AEGIS final assessment (`assess_aegis()`'s `_worse()` worst-family-wins fold)
-- **CURRENT_VALUE_STATE**: `_liquidity()`: `stress_spread_widening_detected is None` -> `HOLD_ONLY`, unconditionally (confirmed always the case in Production). `_system()`: ANY of its 3 stress inputs being `None` -> `HOLD_ONLY` (2 of 3 are always `None` in Production). Since `assess_aegis()` takes the STRICTEST state across every family, **`new_risk_state` is provably `HOLD_ONLY` or worse on every real Production AEGIS evaluation today**, and `_NEW_RISK_ACTIONS_BY_STATE[HOLD_ONLY] = frozenset()` -- confirmed by direct read of the exact dict literal. This is not "this family is unevaluated" -- it is "new-risk-opening is unconditionally impossible," independent of every other family's real state, independent of `CONTRACT_NOT_EXECUTABLE`. Exit supremacy (CLOSE/CANCEL/RECONCILE) is real and unaffected.
+- **CURRENT_VALUE_STATE**: `_liquidity()`: `stress_spread_widening_detected is None` -> `HOLD_ONLY` (confirmed always the case in Production, IF/WHEN a candidate reaches AEGIS). `_system()`: ANY of its 3 stress inputs being `None` -> `HOLD_ONLY` (2 of 3 are always `None` in Production). Since `assess_aegis()` takes the STRICTEST state across every family, **`new_risk_state` would be `HOLD_ONLY` or worse for any candidate reaching AEGIS evaluation with the current supplier contract**, and `_NEW_RISK_ACTIONS_BY_STATE[HOLD_ONLY] = frozenset()` -- confirmed by direct read of the exact dict literal. **Precise wording per item 2 above (corrected this wave)**: this is a deterministic code-path fact, not a claim that any real persisted session shows candidates actually reaching AEGIS and being blocked there -- the real September 21 evidence shows `AEGIS_NOT_EVALUATED` for all 3,876 rows (rejected upstream, overwhelmingly by `CONTRACT_NOT_EXECUTABLE`), not "AEGIS evaluated and returned HOLD_ONLY." This is not "this family is unevaluated" in the softer sense -- it is "new-risk-opening would be unconditionally impossible the moment a candidate reaches this stage," independent of every other family's real state, independent of `CONTRACT_NOT_EXECUTABLE`. Exit supremacy (CLOSE/CANCEL/RECONCILE) is real and unaffected.
 - **WHY_UNKNOWN**: Same root cause as item 2 -- no producer for `stressIvShockDetected`/`stressSpreadWideningDetected`.
 - **AVOIDABLE_OR_LEGITIMATE**: Same as item 2 (AVOIDABLE in principle, currently honestly represented -- `null`, never false-defaulted) -- this refines the SEVERITY of item 2's consequence from "one restrictive family" to "the entire new-risk decision, unconditionally," it is not a new separate defect.
 - **OWNER**: Codex
+
+### 8. Quote-history coverage confirmed real but NOT yet sufficient to prove a qualified rolling spread baseline -- confirmed by Codex this wave
+
+Per `docs/operations/THETA_PRODUCTION_CLOSURE_WAVE1_2026-09-22.md`: Aiven's
+`market.option_quote_snapshot` table has **zero rows**. Real candidate
+point-in-time evidence DOES exist: 3,876 rows / 1,696 distinct contracts
+(2026-09-21), 4,590 rows / 607 distinct contracts (2026-09-18), 139 rows / 59
+distinct contracts (2026-09-16). Codex's own conclusion: "Those records are
+useful historical observations, but they do not yet prove an adequate
+per-contract rolling spread baseline or a qualified IV-shock baseline. A
+detector must check observation counts and temporal alignment before it can
+produce either boolean. This is why a simple `null -> false` mapping would
+be false safety." **AVOIDABLE_OR_LEGITIMATE**: the underlying data exists
+(AVOIDABLE in principle -- a real baseline COULD be built from this), but no
+qualified baseline exists yet (currently LEGITIMATE to remain UNKNOWN until
+one is built and proven sufficient). See
+`THETA_AEGIS_STRESS_BASELINE_MATURITY.md` (new this wave) for the sufficiency
+framework this requires.
+
+### 9. `deltaResearchBuckets` confirmed dead configuration -- independently corroborated by Codex this wave
+
+Codex's own receipt: "`deltaResearchBuckets` has no Production consumer, so
+it is dead configuration for now. Its intended research-cohort use cannot be
+described as live delta adaptation." This independently corroborates this
+engagement's own earlier exhaustive-grep finding from a prior pass.
+**Classification**: `NOT_APPLICABLE` for Production purposes today (real,
+intentional research-cohort design, simply unconsumed) -- not an
+`IMPLEMENTATION_DEFECT`.
+
+### 10. `THETA_PAPER_BOOTSTRAP_CANDIDATE_SOURCE_INTEGRATION_NOTE.md`'s Pipeline-B suggestion formally REJECTED by Codex this wave
+
+Codex's own file review classifies this research branch's earlier
+integration-note suggestion as `REJECT`: "Its suggestion to consider wiring
+Pipeline B conflicts with the canonical dependency proof and
+one-management-authority rule. The prototype's useful enumeration concept
+can be reused without adopting that suggestion." This is a real, positive
+confirmation that the engagement's own "never create a second competing
+decision authority" discipline is being actively enforced by Codex's review
+process, not merely a standing rule this research branch follows
+unilaterally. Additionally, Codex classified this engagement's own
+`paper-bootstrap-candidate-source.ts` prototype as `RESEARCH_ONLY`, not
+directly Production-adoptable as written: "its fresh CC path derives
+identity/multiplier from the first observation and it does not fetch or
+persist actual broker candidate sets. It cannot be a Production source as
+written." Any future remediation recommendation for the roll/CC
+candidate-source gap (item 1) must account for this -- the prototype is a
+useful reference/enumeration-concept, not a drop-in fix.
 
 ### 6. `src/providers/capability-registry.ts` already exists as a real module -- relevant prior art, not yet cross-referenced
 

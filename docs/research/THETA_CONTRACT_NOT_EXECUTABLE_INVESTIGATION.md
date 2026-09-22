@@ -1,9 +1,50 @@
 # THETA `CONTRACT_NOT_EXECUTABLE` special investigation
 
-Status: Directive-mandated special investigation, this pass. Grounded in an
-exhaustive read of `option-contract.ts`, `option-chain-ingestion.ts`,
-`alpaca-provider.ts`, `new-risk-orchestrator.ts`, and a repo-wide search for
-any real captured Alpaca payload.
+Status: Directive-mandated special investigation. Grounded in an exhaustive
+read of `option-contract.ts`, `option-chain-ingestion.ts`,
+`alpaca-provider.ts`, `new-risk-orchestrator.ts`, a repo-wide search for any
+real captured Alpaca payload, and -- **as of Wave 4** --
+`docs/operations/THETA_PRODUCTION_CLOSURE_WAVE1_2026-09-22.md` (Codex's own
+real evidence receipt, produced via a read-only Aiven query,
+`tools/windows/dr/Inspect-ThetaCandidateFunnel.ps1`, against the real
+`trade.shadow_opportunity`/`trade.candidate_point_in_time_evidence` tables --
+no synthetic candidate, broker mutation, or write query was used). **This
+resolves the root cause this pass previously left open.**
+
+## RESOLVED this pass: the real breakdown, from Codex's own persisted-data query
+
+| Cause | Rows |
+| --- | ---: |
+| `quote stale; spread too wide` | 2,014 |
+| `spread too wide` | 787 |
+| `quote stale` | 498 |
+| **Total `CONTRACT_NOT_EXECUTABLE`** | **3,299** |
+
+This sums exactly to 3,299. **The multiplier-only hypothesis is REJECTED**,
+confirmed independently by Codex: "A sample persisted contract has
+multiplier 100, an `INDICATIVE` bid/ask, and a provider quote timestamp."
+The real dominant causes are quote staleness (>30s age) and excessive
+relative spread -- exactly the two conditions this investigation's own
+10-condition gate table already named as plausible, now confirmed as the
+real dominant ones by direct evidence rather than hypothesis.
+
+## New classification: OBSERVED_REJECTION_CAUSE_KNOWN vs. POLICY_CORRECTNESS_NOT_YET_PROVEN
+
+Per this wave's directive, these are two SEPARATE questions and must not be
+conflated:
+
+- **OBSERVED_REJECTION_CAUSE_KNOWN = YES, RESOLVED.** We now know exactly
+  what rejected the 3,299 candidates: staleness and spread-width, not a
+  multiplier mapping defect.
+- **POLICY_CORRECTNESS_NOT_YET_PROVEN = still open.** Codex's own receipt:
+  "The contract-level gate enforces 30-second age and a versioned maximum
+  spread. These observations do not justify relaxing either gate." Whether
+  the 30-second quote-age policy, the maximum relative-spread policy, the
+  `INDICATIVE`-vs-`OPRA` feed behavior, scan timing, or candidate breadth are
+  properly CALIBRATED for real Paper operation remains an open, separate,
+  unresolved question -- do not report this root cause as "completely
+  solved" until that second question is answered. This is Codex's own
+  explicit position, not merely a suggestion added by this research branch.
 
 ## The real gate has 9 independent conditions, not just "multiplier missing"
 
@@ -82,21 +123,22 @@ Everything else in this investigation (parser logic, the full 10-condition
 gate, the persisted-reason-preservation fact) required no live access and was
 completed via direct source reads.
 
-## Exact Codex verification request
+## Exact Codex verification request (step 1 RESOLVED this wave; step 2 remains open)
 
-1. **First, no new Alpaca call needed**: for the 2026-09-21 session (or any
-   session once Aiven writes are readable again), run a breakdown of
-   persisted `CONTRACT_NOT_EXECUTABLE` shadow rows grouped by their
-   `reasons[].detail` string. This alone will show whether "quote
-   unavailable"/"quote age unknown" (unquoted contracts) or "multiplier
-   unverified" or something else entirely (stale quote, crossed BBO, spread
-   too wide) actually dominates the 3,299 count.
-2. **Separately**, pull one live `/v2/options/contracts` page during a
-   healthy (non-degraded) session and confirm `size` presence/type for a
-   known-liquid ATM contract vs. a far-OTM/far-dated one, to settle whether
-   "multiplier unverified" is a meaningful fraction at all, independent of
-   step 1's finding.
+1. ~~Run a breakdown of persisted `CONTRACT_NOT_EXECUTABLE` shadow rows
+   grouped by their `reasons[].detail` string.~~ **DONE by Codex this wave**
+   -- see the resolved breakdown above.
+2. **Still open, still requires real policy judgment, not a code investigation**:
+   is 30-second quote-age and the current versioned maximum-spread policy
+   correctly calibrated for real Paper operation, given that 2,014+787+498
+   real candidates were excluded by exactly these two conditions in one
+   session? Codex's own receipt takes no position beyond "these observations
+   do not justify relaxing either gate" -- that is a statement that the
+   observed rejection rate alone isn't sufficient grounds to loosen the
+   gates, not a statement that the current calibration is proven correct.
+   This remains `POLICY_CORRECTNESS_NOT_YET_PROVEN` and is a Codex/owner
+   policy decision, not something this research branch can resolve or
+   should recommend a specific number for.
 
-Do not close this out as resolved until step 1's real breakdown is examined
--- a plausible-sounding theory (multiplier mapping) must not be promoted to
-a confirmed root cause without it.
+Root cause: **RESOLVED**. Policy calibration: **OPEN**. Do not conflate the
+two when reporting this item's status.
