@@ -163,6 +163,17 @@ corrected to `REAL` in the capability registry.
 - **Runtime proof requirement**: N/A -- this is offline research analysis, not a runtime change.
 - **State**: OPEN, MEDIUM priority.
 
+## Q-11: Possible residual `DATA_INSUFFICIENT`/`NO_OPPORTUNITY` naming conflation in `runtime-behavior-diagnostic.ts`
+
+- **Priority**: LOW -- an observation for Codex to confirm or dismiss, not a confirmed defect
+- **Claude source commit**: this wave (universe discovery funnel research)
+- **Production subsystem**: `src/theta/runtime-behavior-diagnostic.ts:137`
+- **Exact source insertion point**: `else if (input.completeness === 'DATA_INSUFFICIENT' || input.candidateCount === 0) waitClassification = 'NO_OPPORTUNITY';`
+- **Current defect (unconfirmed)**: main `49c912a` correctly fixed `production-shadow-runtime.ts` to set `completeness: 'DATA_INSUFFICIENT'` (not `'COMPLETE'`) when `discovery.candidates.length === 0` -- the real fix this wave describes. But this SEPARATE diagnostic file's `waitClassification` logic still folds `completeness === 'DATA_INSUFFICIENT'` into the SAME `'NO_OPPORTUNITY'` label as a genuinely complete, healthy zero-candidate scan. If `'NO_OPPORTUNITY'` is read downstream (by an operator or a future R8 consumer) as "the system worked and found nothing," an empty-universe scan could still present that way at this layer, even though the underlying `completeness` field is now honestly `DATA_INSUFFICIENT`.
+- **Accepted architectural constraint**: this may be intentional -- `WaitClassification` could be a coarser, operator-facing bucket where the finer `completeness` distinction is preserved elsewhere (e.g. in the same diagnostic's `reasonCodes` or the underlying scan record) and this is not a real gap. This pass did not trace far enough to confirm either way -- flagged as a question, not asserted as a defect.
+- **Expected change**: Codex confirms whether `WaitClassification: 'NO_OPPORTUNITY'` is ever presented without the underlying `completeness: 'DATA_INSUFFICIENT'` distinction still being visible/queryable nearby. If it is genuinely lost at this layer, consider a distinct `DATA_INSUFFICIENT_NO_OPPORTUNITY` (or similar) classification rather than folding it into `NO_OPPORTUNITY`.
+- **State**: OPEN, LOW priority, observational.
+
 ---
 
 ## Closed this engagement (for Codex's awareness, not action)
