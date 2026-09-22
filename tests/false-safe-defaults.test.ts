@@ -15,6 +15,7 @@ test('universe discovery never labels unverified event coverage as known false',
 test('unknown regime event state is not coerced to no-event for the strategy router', async () => {
   const code = await source('src/theta/new-risk-orchestrator.ts');
   assert.doesNotMatch(code, /eventNear:\s*regimeResult\.data\.eventState\s*!==\s*null\s*&&/);
+  assert.doesNotMatch(code, /eventNear:\s*regimeResult\.data\.eventState\s*===\s*null\s*\?\s*true/);
 });
 
 test('Alpaca contract identity is not filled with empty symbol, zero strike, or empty expiry', async () => {

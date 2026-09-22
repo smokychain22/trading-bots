@@ -194,25 +194,23 @@ export interface PaperBootstrapPolicyInput extends ManagementInputState {
    * exactly the "neither decides alone" requirement.
    */
   readonly rollCcAdditionalUpsideDollarWeight?: number;
-  /**
-   * PRODUCTION_FIX_CANDIDATE (research-branch proposal, not yet reviewed
-   * by Codex): the remaining-executable-value fraction below which
-   * CLOSE_FULL/CLOSE_CC's `nearExhausted` execution-timing trigger fires.
-   * Defaults to `0.10` (10%) when omitted -- an unchanged BOOTSTRAP
-   * BASELINE, never claimed empirically optimal, now made explicit
-   * caller-supplied provenance matching every other threshold in this
-   * file (`rollIncrementalCapitalDayWeight`, `thesisFailureUtilityBias`,
-   * etc.) instead of being a bare literal inside the function body. See
-   * `nearExhaustedDteThreshold` below for the paired DTE condition.
-   */
+  /** Versioned Paper-bootstrap baseline, not an empirically learned exit rule. */
   readonly nearExhaustedExecutableFractionThreshold?: number;
-  /**
-   * PRODUCTION_FIX_CANDIDATE: the days-to-expiration ceiling paired with
-   * `nearExhaustedExecutableFractionThreshold` above. Defaults to `5`
-   * when omitted -- same unchanged bootstrap baseline, now caller-
-   * overridable rather than hardcoded.
-   */
+  /** Days-to-expiration ceiling paired with the executable fraction. */
   readonly nearExhaustedDteThreshold?: number;
+}
+
+export const paperBootstrapNearExhaustedBaseline = {
+  executableFraction: 0.10,
+  dte: 5,
+  provenance: 'PAPER_BOOTSTRAP_BASELINE_NOT_EMPIRICALLY_OPTIMAL',
+} as const;
+
+function nearExhaustedParameters(state: PaperBootstrapPolicyInput): { fraction: number; dte: number } | null {
+  const fraction = state.nearExhaustedExecutableFractionThreshold ?? paperBootstrapNearExhaustedBaseline.executableFraction;
+  const dte = state.nearExhaustedDteThreshold ?? paperBootstrapNearExhaustedBaseline.dte;
+  if (!Number.isFinite(fraction) || fraction < 0 || fraction > 1 || !Number.isInteger(dte) || dte < 0) return null;
+  return { fraction, dte };
 }
 
 function finite(value: number | null): value is number {
@@ -788,15 +786,9 @@ function valueFor(
       // conservative executable close-cost estimate. This never uses the
       // analytical fraction -- a wide spread making execution expensive
       // is a real execution-cost fact, distinct from analytical P&L.
-      // PRODUCTION_FIX_CANDIDATE: these two thresholds were previously bare
-      // literals (0.10/5) contradicting this very comment's own claim that
-      // "the threshold itself must be supplied by the caller, never
-      // invented here." Now genuinely caller-overridable, matching every
-      // other threshold in this file; the unchanged 0.10/5 values remain
-      // the default BOOTSTRAP BASELINE, never claimed empirically optimal.
-      const nearExhaustedFraction = state.nearExhaustedExecutableFractionThreshold ?? 0.10;
-      const nearExhaustedDte = state.nearExhaustedDteThreshold ?? 5;
-      const nearExhausted = executableFraction !== null && executableFraction <= nearExhaustedFraction && dte <= nearExhaustedDte;
+      const parameters = nearExhaustedParameters(state);
+      const nearExhausted = parameters !== null && executableFraction !== null
+        && executableFraction <= parameters.fraction && dte <= parameters.dte;
       // Informational only -- surfaces the ANALYTICAL loss-magnitude
       // signal (neutral mark vs. entry credit), never the execution-cost
       // fraction, so a widening ask alone can never manufacture a false
@@ -1064,6 +1056,8 @@ function valueFor(
 export function evaluatePaperBootstrapManagementPolicy(
   state: PaperBootstrapPolicyInput,
 ): ManagementPolicyEvidence | null {
+  const bootstrapParameters = nearExhaustedParameters(state);
+  if (bootstrapParameters === null) return null;
   // Defer entirely to the frontier's own structural expiration mechanism
   // at the exact broker-truth cutoff -- see atStructuralExpirationCutoff's
   // doc comment for why this must be an explicit null, not a competing
@@ -1112,7 +1106,13 @@ export function evaluatePaperBootstrapManagementPolicy(
     contractVersion: managementPolicyEvidenceVersion, inputContentHash: state.contentHash, decidedAt: state.observedAt,
     policyVersion: paperBootstrapManagementPolicyVersion, comparisonComplete: true,
     selectedAction: selected.action, actionValues,
-    reasonCodes: ['BOOTSTRAP_DETERMINISTIC_NO_EMPIRICAL_CLAIM', ...selected.reasons],
+    reasonCodes: [
+      'BOOTSTRAP_DETERMINISTIC_NO_EMPIRICAL_CLAIM',
+      paperBootstrapNearExhaustedBaseline.provenance,
+      `NEAR_EXHAUSTED_EXECUTABLE_FRACTION_THRESHOLD_${bootstrapParameters.fraction.toFixed(4)}`,
+      `NEAR_EXHAUSTED_DTE_THRESHOLD_${bootstrapParameters.dte}`,
+      ...selected.reasons,
+    ],
   };
   return unsigned;
 }

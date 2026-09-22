@@ -68,6 +68,14 @@ class OpportunityFrontierContractTests(unittest.TestCase):
         self.assertEqual(entry["disposition"], "WAIT")
         self.assertEqual(entry["waitReason"], "WAIT_EVENT")
 
+    def test_unknown_event_evidence_keeps_distinct_reason_across_json_contract(self):
+        response = evaluate_request(_request([_candidate("event-unknown", eventNear=None)]))
+        entry = response["entries"][0]
+        self.assertEqual(entry["disposition"], "WAIT")
+        self.assertEqual(entry["waitReason"], "WAIT_EVENT")
+        self.assertEqual(entry["rejectionCategory"], "EVENT_EVIDENCE_UNKNOWN")
+        self.assertIn("EVENT_PROXIMITY_UNKNOWN", [reason["code"] for reason in entry["reasons"]])
+
     def test_duplicate_candidate_ids_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "candidateId values must be unique"):
             evaluate_request(_request([_candidate("dup"), _candidate("dup")]))

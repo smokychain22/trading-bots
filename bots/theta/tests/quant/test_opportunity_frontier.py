@@ -70,6 +70,14 @@ class WaitVsPassDistinctionTests(unittest.TestCase):
         self.assertEqual(decision.disposition, CandidateDisposition.WAIT)
         self.assertEqual(decision.wait_reason, WaitReason.WAIT_EVENT)
 
+    def test_unknown_event_coverage_waits_without_claiming_an_imminent_event(self):
+        decision = build_opportunity_book(_policy(), [_candidate(event_near=None)]).entries[0].decision
+        self.assertEqual(decision.disposition, CandidateDisposition.WAIT)
+        self.assertEqual(decision.wait_reason, WaitReason.WAIT_EVENT)
+        self.assertEqual(decision.rejection_category, "EVENT_EVIDENCE_UNKNOWN")
+        self.assertIn("EVENT_PROXIMITY_UNKNOWN", [reason.code for reason in decision.reasons])
+        self.assertNotIn("EVENT_PROXIMITY", [reason.code for reason in decision.reasons])
+
     def test_liquidity_unacceptable_is_wait_liquidity(self):
         decision = build_opportunity_book(_policy(), [_candidate(liquidity_acceptable=False)]).entries[0].decision
         self.assertEqual(decision.wait_reason, WaitReason.WAIT_LIQUIDITY)

@@ -657,7 +657,9 @@ export async function runNewRiskOrchestration(
           ownershipAcceptable: ownershipResult.data.ownability === null ? null : ownershipResult.data.ownability >= request.routerPolicy.thetaQMinOwnershipAcceptability,
           liquidityAcceptable: c.contract.spreadPct === null ? null : c.contract.spreadPct <= request.maxAcceptableSpreadPct,
           ivCompensationSufficient: c.ivCompensationSufficient,
-          eventNear: regimeResult.data.eventState === null ? true : regimeResult.data.eventState !== 'NONE',
+          // Preserve an unverified event state as UNKNOWN. The frontier
+          // still waits, but its receipt must not claim a known imminent event.
+          eventNear: regimeResult.data.eventState === null ? null : regimeResult.data.eventState !== 'NONE',
           regimeAcceptable:
             regimeResult.data.stressState === null || regimeResult.data.volatilityState === null
               ? null
