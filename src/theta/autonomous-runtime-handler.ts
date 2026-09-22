@@ -125,6 +125,10 @@ function send(response: ServerResponse, status: number, body: unknown): void {
   response.end(JSON.stringify(body));
 }
 
+export function safeRuntimeErrorHeader(code: string): string | null {
+  return /^(?:POSTGRES|ALPACA|OPTIONOMICS|RUNTIME|THETA)_[A-Z0-9_]{2,87}$/.test(code) ? code : null;
+}
+
 export default async function autonomousRuntimeHandler(
   request: IncomingMessage,
   response: ServerResponse,
@@ -801,6 +805,8 @@ export default async function autonomousRuntimeHandler(
     if (localWorkerId !== null && operation === 'RUNTIME_CYCLE') {
       await workerStore.stop(localWorkerId, new Date().toISOString(), 'ERROR', code).catch(() => undefined);
     }
+    const safeCode = safeRuntimeErrorHeader(code);
+    if (safeCode !== null) response.setHeader('X-Theta-Safe-Error-Code', safeCode);
     send(response, 503, {
       error: code, executionGate: 'LOCKED', masterPaperOrdersSubmitted: 0,
       followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,

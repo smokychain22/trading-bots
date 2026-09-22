@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { classifyShadowCycleProvenance, conventionalFrontierRiskLookups, runThetaShadowCycle, type ThetaShadowCycleConfig } from '../src/theta/theta-shadow-cycle.js';
+import { candidateQuoteAgeSeconds, classifyShadowCycleProvenance, conventionalFrontierRiskLookups, runThetaShadowCycle, type ThetaShadowCycleConfig } from '../src/theta/theta-shadow-cycle.js';
 import type { AlpacaProviderConfig } from '../src/theta/alpaca-provider.js';
 import type { PythonBridgeConfig } from '../src/theta/python-bridge.js';
 import type { UnderlyingCandidateInput } from '../src/theta/universe-policy.js';
@@ -43,6 +43,14 @@ const jsonResponse = (status: number, body: unknown): Response =>
 
 const NOW = '2026-09-10T15:00:00.000Z';
 let requestedUrls: string[] = [];
+
+test('candidate quote age has an independently versioned, effective, fail-closed policy', () => {
+  const policy = { candidateQuoteAgePolicy: { policyVersion: 'candidate-age-v1', effectiveAt: NOW, maxAgeSeconds: 30 } };
+  assert.equal(candidateQuoteAgeSeconds(policy, NOW), 30);
+  assert.equal(candidateQuoteAgeSeconds({ candidateQuoteAgePolicy: { ...policy.candidateQuoteAgePolicy, maxAgeSeconds: 12 } }, NOW), 12);
+  assert.throws(() => candidateQuoteAgeSeconds({ candidateQuoteAgePolicy: { ...policy.candidateQuoteAgePolicy, effectiveAt: '2026-09-11T00:00:00Z' } }, NOW), /CANDIDATE_QUOTE_AGE_POLICY_INVALID/);
+  assert.throws(() => candidateQuoteAgeSeconds({ candidateQuoteAgePolicy: { ...policy.candidateQuoteAgePolicy, maxAgeSeconds: 0 } }, NOW), /CANDIDATE_QUOTE_AGE_POLICY_INVALID/);
+});
 
 test('Conventional risk evidence cannot be relabelled as Hold-Strike evidence', () => {
   const lookup = conventionalFrontierRiskLookups(
@@ -137,6 +145,7 @@ const baseConfig = (overrides: Partial<ThetaShadowCycleConfig> = {}): ThetaShado
   sizingPolicy: { policyVersion: 'sizing-v2', riskBudgetQtyCap: 4, collateralQtyCap: 3, concentrationQtyCap: 5, assignmentCapacityQtyCap: 6,
     tailRiskQtyCap: 6, correlationQtyCap: 6, liquidityQtyCap: 6, reducedStateMultiplier: 0.5 },
   executionQualityPolicy: { policyVersion: 'execq-v1', maxAcceptableSpreadPct: 1.0, minQuoteSizeForFullConfidence: 1, maxQuoteAgeSeconds: 999_999, minAfterCostUtilityToCross: -999_999 },
+  candidateQuoteAgePolicy: { policyVersion: 'candidate-age-v1-test', effectiveAt: NOW, maxAgeSeconds: 30 },
   optionQuoteFreshnessPolicy: { policyVersion: 'freshness-v1', goodMaxAgeSeconds: 999_999, staleMinAgeSeconds: 999_999_999 },
   policyVersion: 'shadow-cycle-test-v1', modelVersions: {}, requiredModelVersions: {},
   now: () => NOW,
@@ -161,6 +170,33 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   // yet -- provenance can never be FULL_REAL, only HYBRID at best.
   assert.notEqual(result.provenance, 'FULL_REAL');
   assert.equal(result.provenance, 'HYBRID');
+});
+
+itMockedProviderRealCodePath('candidate quote-age policy reaches contract executability without changing later gates', async () => {
+  const normalFetch = mockAlpacaFetch({ hasContracts: true, hasBars: true });
+  const staleAt = new Date(Date.parse(NOW) - 40_000).toISOString();
+  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    const response = await normalFetch(input, init);
+    if (!url.includes('/v1beta1/options/snapshots')) return response;
+    const body = await response.json() as { snapshots: Record<string, { latestQuote: { t: string } }> };
+    for (const snapshot of Object.values(body.snapshots)) snapshot.latestQuote.t = staleAt;
+    return jsonResponse(200, body);
+  }) as typeof fetch;
+  const alpaca = { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl };
+  const policy = { policyVersion: 'candidate-age-test-v1', effectiveAt: NOW, maxAgeSeconds: 30 };
+  const strict = await runThetaShadowCycle(baseConfig({ alpaca, candidateQuoteAgePolicy: policy }));
+  const relaxed = await runThetaShadowCycle(baseConfig({ alpaca,
+    candidateQuoteAgePolicy: { ...policy, policyVersion: 'candidate-age-test-v2', maxAgeSeconds: 60 } }));
+  const contractFor = (result: Awaited<ReturnType<typeof runThetaShadowCycle>>) =>
+    result.fusionSnapshot?.snapshot.contractCandidates.find((candidate) => candidate.optionSymbol === 'SPY261009P00500000');
+  assert.equal(contractFor(strict)?.executable, false);
+  assert.match(String(contractFor(strict)?.nonExecutableReason), /quote stale/);
+  assert.equal(contractFor(relaxed)?.executable, true);
+  const strictVersions = strict.fusionSnapshot?.snapshot.versions as { modelVersions: Record<string, string> };
+  const relaxedVersions = relaxed.fusionSnapshot?.snapshot.versions as { modelVersions: Record<string, string> };
+  assert.equal(strictVersions.modelVersions.candidateQuoteAgePolicy, 'candidate-age-test-v1');
+  assert.equal(relaxedVersions.modelVersions.candidateQuoteAgePolicy, 'candidate-age-test-v2');
 });
 
 itMockedProviderRealCodePath('shadow research window supplies short-DTE contracts without widening Conventional Paper selection', async () => {
