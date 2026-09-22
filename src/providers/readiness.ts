@@ -650,7 +650,7 @@ export async function probeAlpacaProcessEnvironmentAuth(
           'APCA-API-SECRET-KEY': environment.ALPACA_SECRET_KEY as string },
         signal: AbortSignal.timeout(10_000),
       });
-      await response.body?.cancel();
+      try { await response.body?.cancel(); } catch { /* Status remains authoritative even if body disposal fails. */ }
       return { path: safePath, httpStatus: response.status,
         requestIdPresent: response.headers.has('x-request-id'), errorCategory: null };
     } catch (error) {
