@@ -111,3 +111,21 @@ test('no universal threshold invented -- policy minimums are always taken from t
   );
   assert.equal(result.state, 'BASELINE_SUFFICIENT'); // same raw evidence that was BASELINE_ACCUMULATING under POLICY is sufficient under a real, different, explicit policy
 });
+
+test('future-available historical evidence cannot make the detector ready', () => {
+  const result = assessBaselineMaturity(
+    'IV_SHOCK', ASOF, 'optionomics', 'v1',
+    evidence({ rawN: 500, sessionN: 10, distinctUnderlyingN: 20 }),
+    '2026-08-01T00:00:00Z', '2026-09-23T00:00:00Z', POLICY, freshObservation(), false,
+  );
+  assert.equal(result.state, 'BASELINE_INVALID');
+});
+
+test('malformed counts and policy cannot make the detector ready', () => {
+  const result = assessBaselineMaturity(
+    'SPREAD_WIDENING', ASOF, 'alpaca-bbo', 'v1',
+    evidence({ rawN: 500, sessionN: -1, distinctUnderlyingN: 20 }),
+    '2026-08-01T00:00:00Z', '2026-09-20T00:00:00Z', POLICY, freshObservation(), false,
+  );
+  assert.equal(result.state, 'BASELINE_INVALID');
+});

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { classifyShadowCycleProvenance, runThetaShadowCycle, type ThetaShadowCycleConfig } from '../src/theta/theta-shadow-cycle.js';
+import { classifyShadowCycleProvenance, conventionalFrontierRiskLookups, runThetaShadowCycle, type ThetaShadowCycleConfig } from '../src/theta/theta-shadow-cycle.js';
 import type { AlpacaProviderConfig } from '../src/theta/alpaca-provider.js';
 import type { PythonBridgeConfig } from '../src/theta/python-bridge.js';
 import type { UnderlyingCandidateInput } from '../src/theta/universe-policy.js';
@@ -43,6 +43,16 @@ const jsonResponse = (status: number, body: unknown): Response =>
 
 const NOW = '2026-09-10T15:00:00.000Z';
 let requestedUrls: string[] = [];
+
+test('Conventional risk evidence cannot be relabelled as Hold-Strike evidence', () => {
+  const lookup = conventionalFrontierRiskLookups(
+    [{ optionSymbol: 'SPY261009P00500000', brokerAllowedQty: 2 }],
+    { SPY261009P00500000: { newRiskState: 'ALLOW_FULL' } },
+  );
+  assert.deepEqual(lookup.brokerAllowedQtyByCandidateId, { 'THETA_CONVENTIONAL:SPY261009P00500000': 2 });
+  assert.deepEqual(lookup.aegisNewRiskStateByCandidateId, { 'THETA_CONVENTIONAL:SPY261009P00500000': 'ALLOW_FULL' });
+  assert.equal(Object.keys(lookup.brokerAllowedQtyByCandidateId).some((id) => id.startsWith('THETA_HOLD_STRIKE:')), false);
+});
 
 const mockAlpacaFetch = (options: { hasContracts: boolean; hasBars: boolean }) => (async (input: RequestInfo | URL) => {
   const url = input instanceof URL ? input.toString() : String(input);

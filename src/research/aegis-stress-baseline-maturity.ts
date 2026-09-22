@@ -20,7 +20,7 @@
 export const aegisStressBaselineMaturityVersion = 'theta-aegis-stress-baseline-maturity-v1' as const;
 
 export type StressBaselineState =
-  | 'BASELINE_NOT_STARTED' | 'BASELINE_ACCUMULATING' | 'BASELINE_SUFFICIENT'
+  | 'BASELINE_NOT_STARTED' | 'BASELINE_ACCUMULATING' | 'BASELINE_SUFFICIENT' | 'BASELINE_INVALID'
   | 'CURRENT_OBSERVATION_STALE' | 'CURRENT_OBSERVATION_INVALID'
   | 'DETECTOR_READY' | 'DETECTOR_PROVIDER_LIMITED';
 
@@ -109,6 +109,25 @@ export function assessBaselineMaturity(
     contractVersion: aegisStressBaselineMaturityVersion, signal, asOf, evidence,
     firstObservationAvailableAt, lastObservationAvailableAt, temporalSpanDays, source, sourceVersion,
   };
+
+  const asOfMs = Date.parse(asOf);
+  const firstMs = firstObservationAvailableAt === null ? null : Date.parse(firstObservationAvailableAt);
+  const lastMs = lastObservationAvailableAt === null ? null : Date.parse(lastObservationAvailableAt);
+  const counts = [evidence.rawN, evidence.sessionN, evidence.distinctUnderlyingN, evidence.effectiveN]
+    .filter((value): value is number => value !== null);
+  const minimums = [policy.minimumRawN, policy.minimumSessionN, policy.minimumDistinctUnderlyingN];
+  if (!Number.isFinite(asOfMs) || counts.some((value) => !Number.isSafeInteger(value) || value < 0)
+    || minimums.some((value) => !Number.isSafeInteger(value) || value < 0)
+    || !Number.isFinite(policy.minimumTemporalSpanDays) || policy.minimumTemporalSpanDays < 0
+    || !Number.isFinite(policy.maxCurrentObservationAgeSeconds) || policy.maxCurrentObservationAgeSeconds < 0
+    || policy.policyVersion.trim() === '' || source.trim() === '' || sourceVersion.trim() === ''
+    || (firstMs !== null && !Number.isFinite(firstMs)) || (lastMs !== null && !Number.isFinite(lastMs))
+    || (firstMs !== null && lastMs !== null && firstMs > lastMs)
+    || (firstMs !== null && firstMs > asOfMs) || (lastMs !== null && lastMs > asOfMs)
+    || evidence.sessionN > evidence.rawN || evidence.distinctUnderlyingN > evidence.rawN
+    || (evidence.effectiveN !== null && evidence.effectiveN > evidence.rawN)) {
+    return { ...base, state: 'BASELINE_INVALID', reason: 'Baseline counts, policy, or point-in-time timestamps are invalid.' };
+  }
 
   if (providerLimited) {
     return { ...base, state: 'DETECTOR_PROVIDER_LIMITED', reason: 'Provider cannot supply this signal; not a data-volume problem.' };
