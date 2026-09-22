@@ -11,7 +11,7 @@ export const managementInputVersion = 'theta-management-input-v4' as const;
 export interface ManagementAssignmentCapacityEvidence {
   readonly state: 'KNOWN' | 'UNKNOWN' | 'NOT_APPLICABLE';
   readonly unit: 'WHOLE_CONTRACTS';
-  readonly source: 'ALPACA_ACCOUNT_SNAPSHOT_AND_OPEN_PUT' | null;
+  readonly source: 'ALPACA_ACCOUNT_AND_OPTION_POSITION_RECONCILIATION' | null;
   readonly accountSnapshotId: string | null;
   readonly accountObservedAt: string | null;
   readonly derivedAt: string;
@@ -20,7 +20,13 @@ export interface ManagementAssignmentCapacityEvidence {
   readonly strike: number | null;
   readonly multiplier: number | null;
   readonly collateralPerContract: number | null;
-  readonly derivationVersion: 'theta-secured-contract-capacity-v1';
+  readonly reconciliationQuality: string | null;
+  readonly brokerOptionSymbol: string | null;
+  readonly brokerOptionPositionObservedAt: string | null;
+  readonly ledgerOpenLotsForContract: number | null;
+  readonly brokerConfirmedShortPutLots: number | null;
+  readonly reservedCollateral: number | null;
+  readonly derivationVersion: 'theta-secured-contract-capacity-v2';
   readonly reason: string | null;
 }
 
@@ -235,26 +241,61 @@ export function assembleManagementInput(row: Row, input: {
   const availableCapitalSource = optionsBuyingPower !== null ? 'OPTIONS_BUYING_POWER'
     : buyingPower !== null ? 'BUYING_POWER' : null;
   const availableCapital = optionsBuyingPower ?? buyingPower;
-  const collateralPerContract = strike !== null && multiplier !== null ? strike * multiplier : null;
+  const rawCollateral = strike !== null && multiplier !== null ? strike * multiplier : null;
+  const collateralPerContract = rawCollateral !== null && Number.isFinite(rawCollateral) && rawCollateral > 0
+    ? rawCollateral : null;
+  const reconciliationQuality = text(row.reconciliation_quality);
+  const brokerOptionSymbol = text(row.broker_option_symbol);
+  const brokerOptionQuantity = numeric(row.broker_option_quantity);
+  const ledgerOpenLotsForContract = numeric(row.ledger_option_contract_quantity);
+  const brokerEvidenceInvalid = brokerOptionSymbol !== null && (
+    brokerOptionQuantity === null || !Number.isSafeInteger(brokerOptionQuantity)
+    || text(row.broker_option_side) === null || text(row.broker_option_asset_class) === null
+    || text(row.broker_option_observed_at) === null);
+  const brokerShortPutConfirmed = text(row.broker_option_side)?.toLowerCase() === 'short'
+    && text(row.broker_option_asset_class)?.toLowerCase() === 'us_option'
+    && brokerOptionQuantity !== null && Number.isSafeInteger(brokerOptionQuantity)
+    && contracts !== null && Number.isSafeInteger(contracts) && contracts > 0
+    && ledgerOpenLotsForContract !== null && Number.isSafeInteger(ledgerOpenLotsForContract)
+    && ledgerOpenLotsForContract >= contracts
+    && Math.abs(brokerOptionQuantity) >= ledgerOpenLotsForContract;
+  const brokerConfirmedShortPutLots = reconciliationQuality !== 'GOOD' || brokerEvidenceInvalid
+    || ledgerOpenLotsForContract === null || !Number.isSafeInteger(ledgerOpenLotsForContract) ? null
+    : brokerShortPutConfirmed && contracts !== null ? contracts : 0;
+  const reservedCollateral = brokerConfirmedShortPutLots !== null && collateralPerContract !== null
+    ? brokerConfirmedShortPutLots * collateralPerContract : null;
   const assignmentCapacity = assignmentApplicable && accountFreshForCapacity && collateralPerContract !== null
-    ? securedContractCapacity(availableCapital, collateralPerContract) : null;
+    && brokerConfirmedShortPutLots !== null
+    ? securedContractCapacity(availableCapital, collateralPerContract, brokerConfirmedShortPutLots) : null;
+  let assignmentCapacityReason: string | null = null;
+  if (!assignmentApplicable) assignmentCapacityReason = 'NO_OPEN_SHORT_PUT';
+  else if (!accountFreshForCapacity) assignmentCapacityReason = 'ACCOUNT_EVIDENCE_STALE_OR_MISSING';
+  else if (reconciliationQuality !== 'GOOD') assignmentCapacityReason = 'RECONCILIATION_EVIDENCE_UNAVAILABLE';
+  else if (brokerEvidenceInvalid) assignmentCapacityReason = 'BROKER_OPTION_POSITION_EVIDENCE_INVALID';
+  else if (ledgerOpenLotsForContract === null || !Number.isSafeInteger(ledgerOpenLotsForContract)) {
+    assignmentCapacityReason = 'OPEN_CONTRACT_AGGREGATE_UNAVAILABLE';
+  } else if (assignmentCapacity === null) assignmentCapacityReason = 'ACCOUNT_OR_CONTRACT_EVIDENCE_INVALID';
+  else if (!brokerShortPutConfirmed) assignmentCapacityReason = 'BROKER_SHORT_PUT_NOT_CONFIRMED';
   const assignmentCapacityEvidence: ManagementAssignmentCapacityEvidence = {
     state: !assignmentApplicable ? 'NOT_APPLICABLE' : assignmentCapacity === null ? 'UNKNOWN' : 'KNOWN',
     unit: 'WHOLE_CONTRACTS', source: assignmentApplicable && assignmentCapacity !== null
-      ? 'ALPACA_ACCOUNT_SNAPSHOT_AND_OPEN_PUT' : null,
+      ? 'ALPACA_ACCOUNT_AND_OPTION_POSITION_RECONCILIATION' : null,
     accountSnapshotId: text(row.account_snapshot_id), accountObservedAt: text(row.account_as_of),
     derivedAt: input.observedAt, availableCapitalSource,
     availableCapital, strike, multiplier, collateralPerContract,
-    derivationVersion: 'theta-secured-contract-capacity-v1',
-    reason: !assignmentApplicable ? 'NO_OPEN_SHORT_PUT' : !accountFreshForCapacity ? 'ACCOUNT_EVIDENCE_STALE_OR_MISSING'
-      : assignmentCapacity === null ? 'ACCOUNT_OR_CONTRACT_EVIDENCE_INVALID' : null,
+    reconciliationQuality, brokerOptionSymbol, brokerOptionPositionObservedAt: text(row.broker_option_observed_at),
+    ledgerOpenLotsForContract,
+    brokerConfirmedShortPutLots, reservedCollateral,
+    derivationVersion: 'theta-secured-contract-capacity-v2',
+    reason: assignmentCapacityReason,
   };
   const evidenceTimes = [text(row.reconciliation_observed_at),text(row.account_as_of),
-    text(row.account_retrieved_at),text(row.position_observed_at),text(row.fusion_decision_time),
+    text(row.account_retrieved_at),text(row.position_observed_at),text(row.broker_option_observed_at),
+    text(row.fusion_decision_time),
     text(row.quote_as_of),text(row.quote_retrieved_at)];
   const requiredEvidenceTimes = [text(row.reconciliation_observed_at),text(row.account_as_of),
     text(row.account_retrieved_at),text(row.fusion_decision_time),
-    ...(hasOpenOption?[text(row.quote_as_of),text(row.quote_retrieved_at)]:[]),
+    ...(hasOpenOption?[text(row.quote_as_of),text(row.quote_retrieved_at),text(row.broker_option_observed_at)]:[]),
     ...(stockShares>0?[text(row.position_observed_at)]:[])];
   const decisionMs = Date.parse(input.observedAt);
   const futureEvidence = !Number.isFinite(decisionMs) || evidenceTimes.some((value) => value !== null
@@ -312,6 +353,9 @@ export function assembleManagementInput(row: Row, input: {
   }
   if (contracts !== null && contracts < 0) hardBlockers.push('INVALID_CONTRACT');
   if (row.lifecycle_state == null) hardBlockers.push('LIFECYCLE_TRUTH_BROKEN');
+  if (assignmentApplicable && reconciliationQuality === 'GOOD' && !brokerShortPutConfirmed) {
+    hardBlockers.push('BROKER_SHORT_PUT_POSITION_UNCONFIRMED');
+  }
   if (evidenceBundle.timingState === 'FUTURE_EVIDENCE') hardBlockers.push('EVIDENCE_OBSERVED_AFTER_DECISION');
 
   const unsigned = {
@@ -373,8 +417,12 @@ export class PostgresManagementInputStore {
         a.account_snapshot_id,a.buying_power,a.options_buying_power,a.as_of AS account_as_of,
         a.retrieved_at AS account_retrieved_at,fs.fusion_snapshot_id,fs.snapshot_json,
         fs.decision_time AS fusion_decision_time,brs.observed_at AS reconciliation_observed_at,
+        brs.data_quality AS reconciliation_quality,
         brs.provider_timestamp AS clock_timestamp,brs.detail_json AS reconciliation_detail,
         bp.observed_at AS position_observed_at,
+        bop.symbol AS broker_option_symbol,bop.quantity AS broker_option_quantity,bop.side AS broker_option_side,
+        bop.asset_class AS broker_option_asset_class,bop.observed_at AS broker_option_observed_at,
+        contract_lots.total_remaining AS ledger_option_contract_quantity,
         CASE WHEN bp.symbol IS NULL THEN NULL ELSE jsonb_build_object(
           'averageEntryPrice',bp.average_entry_price,'currentPrice',bp.current_price,
           'marketValue',bp.market_value,'costBasis',bp.cost_basis,'unrealizedPnl',bp.unrealized_pnl
@@ -391,6 +439,15 @@ export class PostgresManagementInputStore {
         ORDER BY l.opened_at DESC LIMIT 1
       ) ol ON true
       LEFT JOIN market.option_contract oc ON oc.option_contract_id=ol.option_contract_id
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(sum(other_leg.quantity-COALESCE((SELECT sum(p.closed_quantity)
+          FROM trade.option_partial_close_realization p WHERE p.option_leg_id=other_leg.option_leg_id),0)),0) AS total_remaining
+        FROM trade.option_leg other_leg
+        JOIN trade.economic_chain other_chain ON other_chain.chain_id=other_leg.chain_id
+        JOIN core.bot_instance other_bot ON other_bot.bot_instance_id=other_chain.bot_instance_id
+        WHERE other_leg.option_contract_id=oc.option_contract_id AND other_leg.closed_at IS NULL
+          AND other_leg.side='SHORT' AND other_chain.closed_at IS NULL AND other_bot.account_id=bi.account_id
+      ) contract_lots ON true
       LEFT JOIN LATERAL (
         SELECT q.* FROM market.option_quote_snapshot q WHERE q.option_contract_id=oc.option_contract_id
         ORDER BY q.as_of DESC,q.retrieved_at DESC,q.snapshot_id DESC LIMIT 1
@@ -418,6 +475,7 @@ export class PostgresManagementInputStore {
         SELECT f.* FROM trade.fusion_snapshot f WHERE f.bot_instance_id=bi.bot_instance_id ORDER BY f.decision_time DESC LIMIT 1
       ) fs ON true
       LEFT JOIN trade.broker_position_snapshot bp ON bp.reconciliation_snapshot_id=$2 AND bp.symbol=u.symbol
+      LEFT JOIN trade.broker_position_snapshot bop ON bop.reconciliation_snapshot_id=$2 AND bop.symbol=oc.contract_symbol
       WHERE ec.closed_at IS NULL ORDER BY ec.opened_at,ec.chain_id`, [connectionId, reconciliationSnapshotId]);
     // The query may fetch an observation received after broker reconciliation.
     // Freeze the decision only after its evidence has been read, never at the
