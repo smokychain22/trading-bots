@@ -1,10 +1,24 @@
 // Read-only credential-source diagnostic. Run from an explicitly selected
 // environment. Never print a credential, account payload, request header or ID.
+// Passing an explicit dotenv path uses THETA's canonical loader, whose file
+// values intentionally override stale ambient PowerShell variables.
+const environmentFileArgument = process.argv.find((argument) => argument.startsWith('--environment-file='));
+if (environmentFileArgument) {
+  const { loadEnvironmentFile } = await import('../src/config/environment.ts');
+  const filePath = environmentFileArgument.slice('--environment-file='.length);
+  const environment = loadEnvironmentFile(filePath);
+  for (const name of ['ALPACA_API_KEY', 'ALPACA_SECRET_KEY', 'ALPACA_BASE_URL']) {
+    if (environment[name] !== undefined) process.env[name] = String(environment[name]);
+  }
+}
 const variables = ['ALPACA_API_KEY', 'ALPACA_SECRET_KEY', 'ALPACA_BASE_URL'];
 const usable = Object.fromEntries(variables.map((name) => [name,
   typeof process.env[name] === 'string' && process.env[name].length > 0
     && process.env[name] !== '[SENSITIVE]']));
-console.info(JSON.stringify({ source: 'EXPLICIT_PROCESS_ENV', credentialPresence: usable }));
+console.info(JSON.stringify({
+  source: environmentFileArgument ? 'EXPLICIT_THETA_ENVIRONMENT_FILE' : 'EXPLICIT_PROCESS_ENV',
+  credentialPresence: usable,
+}));
 if (Object.values(usable).some((value) => !value)) process.exit(2);
 
 let base;
