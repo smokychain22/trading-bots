@@ -17,22 +17,22 @@ export type FirstPaperStatus = 'READY' | 'BLOCKED_EXTERNAL' | 'BLOCKED_IMPLEMENT
 export function assessReconciliationReadiness(input: {
   readonly workerCycleHealthy: boolean;
   readonly lastReconciliation: string | null;
-  readonly externalOrUnknownCount: number | null;
+  readonly entryBlockingFactCount: number | null;
   readonly localOnlyIntentCount: number | null;
 }): FirstPaperCheck {
   const source = 'latest-broker-reconciliation-snapshot';
   if (!input.workerCycleHealthy || input.lastReconciliation === null) return {
     state: 'UNKNOWN', source, blocker: 'CURRENT_RECONCILIATION_NOT_PROVEN', blockerClass: 'EXTERNAL',
   };
-  if (input.externalOrUnknownCount === null || input.localOnlyIntentCount === null) return {
+  if (input.entryBlockingFactCount === null || input.localOnlyIntentCount === null) return {
     state: 'UNKNOWN', source, blocker: 'RECONCILIATION_COUNTS_UNKNOWN', blockerClass: 'EXTERNAL',
   };
-  if (!Number.isSafeInteger(input.externalOrUnknownCount) || input.externalOrUnknownCount < 0
+  if (!Number.isSafeInteger(input.entryBlockingFactCount) || input.entryBlockingFactCount < 0
     || !Number.isSafeInteger(input.localOnlyIntentCount) || input.localOnlyIntentCount < 0) return {
     state: 'UNKNOWN', source, blocker: 'RECONCILIATION_COUNTS_INVALID', blockerClass: 'EXTERNAL',
   };
-  if (input.externalOrUnknownCount > 0) return {
-    state: 'FAIL', source, blocker: 'EXTERNAL_OR_UNKNOWN_BROKER_FACTS_PRESENT', blockerClass: 'POLICY',
+  if (input.entryBlockingFactCount > 0) return {
+    state: 'FAIL', source, blocker: 'CURRENT_OR_UNKNOWN_BROKER_IMPACT_PRESENT', blockerClass: 'POLICY',
   };
   if (input.localOnlyIntentCount > 0) return {
     state: 'FAIL', source, blocker: 'LOCAL_ONLY_ORDER_INTENTS_PRESENT', blockerClass: 'EXTERNAL',

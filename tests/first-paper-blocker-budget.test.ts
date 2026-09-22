@@ -2,15 +2,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { assessReconciliationReadiness, buildThetaFirstPaperReadiness, firstPaperCheckNames, type FirstPaperChecks } from '../src/theta/first-paper-blocker-budget.js';
 
-test('broker connectivity cannot hide unresolved historical or local-only facts', () => {
+test('broker connectivity cannot hide current-impact or local-only facts', () => {
   const base={workerCycleHealthy:true,lastReconciliation:'2026-09-22T13:46:00Z',
-    externalOrUnknownCount:0,localOnlyIntentCount:0};
+    entryBlockingFactCount:0,localOnlyIntentCount:0};
   assert.equal(assessReconciliationReadiness(base).state,'PASS');
-  assert.deepEqual(assessReconciliationReadiness({...base,externalOrUnknownCount:11}),{
+  assert.deepEqual(assessReconciliationReadiness({...base,entryBlockingFactCount:1}),{
     state:'FAIL',source:'latest-broker-reconciliation-snapshot',
-    blocker:'EXTERNAL_OR_UNKNOWN_BROKER_FACTS_PRESENT',blockerClass:'POLICY'});
+    blocker:'CURRENT_OR_UNKNOWN_BROKER_IMPACT_PRESENT',blockerClass:'POLICY'});
   assert.equal(assessReconciliationReadiness({...base,localOnlyIntentCount:1}).state,'FAIL');
-  assert.equal(assessReconciliationReadiness({...base,externalOrUnknownCount:null}).state,'UNKNOWN');
+  assert.equal(assessReconciliationReadiness({...base,entryBlockingFactCount:null}).state,'UNKNOWN');
 });
 
 const allPass = (): FirstPaperChecks => Object.fromEntries(firstPaperCheckNames.map((field) =>

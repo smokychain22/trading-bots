@@ -66,6 +66,9 @@ test('read-only reconciliation persists matched and EXTERNAL_OR_UNKNOWN facts wi
   });
   assert.equal(result.matchedOrderCount, 1);
   assert.equal(result.externalOrUnknownCount, 3);
+  assert.equal(result.entryBlockingFactCount, 3);
+  assert.equal(result.brokerFactImpactSummary.currentEconomicExposureCount, 2);
+  assert.equal(result.brokerFactImpactSummary.unknownCurrentImpactCount, 1);
   assert.equal(result.localOnlyIntentCount, 1);
   assert.equal(result.marketOpen, true);
   assert.equal(result.calendarSessionConfirmed, true);
@@ -80,6 +83,70 @@ test('read-only reconciliation persists matched and EXTERNAL_OR_UNKNOWN facts wi
   assert.equal(unmatchedActivity?.detail.date, '2026-09-11');
   assert.equal(unmatchedActivity?.detail.linkedOrderRefHash, null);
   assert.equal(JSON.stringify(store.persisted).includes('paper-account-owner'), false);
+});
+
+test('settled historical orders, fills, fees, and journals remain raw facts but do not block entry', async () => {
+  const orders = [
+    order({ id: 'historical-order-1', clientOrderId: 'historical-client-1', status: 'filled', filledQty: 1 }),
+    order({ id: 'historical-order-2', clientOrderId: 'historical-client-2', status: 'filled', filledQty: 1 }),
+  ];
+  const activities: BrokerActivity[] = [
+    ...Array.from({ length: 5 }, (_, index) => ({
+      id: `fill-${index}`, activityType: 'FILL', symbol: 'AAPL261016P00200000', quantity: 1,
+      price: 1.25, date: `2026-09-${16 + index}T14:31:00Z`,
+      orderId: index % 2 === 0 ? 'historical-order-1' : 'historical-order-2',
+    })),
+    ...Array.from({ length: 3 }, (_, index) => ({
+      id: `fee-${index}`, activityType: 'FEE', symbol: null, quantity: null,
+      price: null, netAmount: -0.01, date: `2026-09-${16 + index}`, orderId: null,
+    })),
+    { id: 'journal-1', activityType: 'JNLC', symbol: null, quantity: null,
+      price: null, netAmount: 10, date: '2026-09-18', orderId: null },
+  ];
+  let mutationCalls = 0;
+  const value: PaperBrokerAdapter = {
+    accountKind: 'MASTER_API_KEY', environment: 'PAPER',
+    getAccount: async () => ({ id: 'paper-account-owner', status: 'ACTIVE' }),
+    getPositions: async () => [], getOrders: async () => orders,
+    getOrderByClientOrderId: async () => null, getOrder: async () => null,
+    getActivities: async () => activities,
+    getClock: async () => ({ timestamp: '2026-09-22T14:32:00Z', isOpen: true,
+      nextOpen: '2026-09-23T13:30:00Z', nextClose: '2026-09-22T20:00:00Z' }),
+    getCalendar: async () => [{ date: '2026-09-22', open: '09:30', close: '16:00' }],
+    submitOrder: async () => { mutationCalls += 1; throw new Error('must not submit'); },
+    replaceOrder: async () => { mutationCalls += 1; throw new Error('must not replace'); },
+    cancelOrder: async () => { mutationCalls += 1; throw new Error('must not cancel'); },
+  };
+  const store = new CaptureStore();
+  store.matchOrders = async (_hash, receivedOrders) => ({
+    matched: [], unmatched: [...receivedOrders], missingLocalIntentIds: [],
+  });
+  const result = await runReadOnlyBrokerReconciliation({ broker: value, store,
+    connectionId: 'connection-1', expectedProviderAccountRef: 'paper-account-owner',
+    correlationId: 'historical-facts', now: () => '2026-09-22T14:32:00.000Z' });
+  assert.equal(result.externalOrUnknownCount, 11);
+  assert.equal(result.entryBlockingFactCount, 0);
+  assert.equal(result.brokerFactImpactSummary.historicalAccountingOnlyCount, 11);
+  assert.equal(store.persisted?.unmatchedFacts.length, 11);
+  assert.equal(store.persisted?.factImpactSummary.results.length, 11);
+  assert.equal(mutationCalls, 0);
+});
+
+test('an activity with no settlement semantics remains UNKNOWN and blocks entry', async () => {
+  const adapter = broker();
+  const withoutExposure = { ...adapter.value,
+    getPositions: async () => [],
+    getOrders: async () => [],
+    getActivities: async () => [{ id: 'unknown-activity', activityType: 'MYSTERY', symbol: null,
+      quantity: null, price: null, date: '2026-09-22', orderId: null }],
+  };
+  const result = await runReadOnlyBrokerReconciliation({ broker: withoutExposure,
+    store: new CaptureStore(), connectionId: 'connection-1',
+    expectedProviderAccountRef: 'paper-account-owner', correlationId: 'unknown-impact',
+    now: () => '2026-09-22T14:32:00.000Z' });
+  assert.equal(result.externalOrUnknownCount, 1);
+  assert.equal(result.entryBlockingFactCount, 1);
+  assert.equal(result.brokerFactImpactSummary.unknownCurrentImpactCount, 1);
 });
 
 test('missing market-session capabilities remain UNKNOWN rather than silently healthy', async () => {

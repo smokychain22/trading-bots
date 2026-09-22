@@ -570,7 +570,9 @@ export default async function customerHandler(
         managementCandidateSourceReady:unknown('MANAGEMENT_CANDIDATE_SOURCE_RUNTIME_NOT_PROVEN','runtime-management'),
         reconciliationReady:assessReconciliationReadiness({workerCycleHealthy,
           lastReconciliation:localWorker.last_reconciliation,
-          externalOrUnknownCount:runtimeEvidence.external_or_unknown_count,
+          // Old snapshots without a classified impact summary stay blocked by
+          // the raw count. New snapshots use the narrower current-impact count.
+          entryBlockingFactCount:runtimeEvidence.entry_blocking_fact_count ?? runtimeEvidence.external_or_unknown_count,
           localOnlyIntentCount:runtimeEvidence.local_only_intent_count}),
         workerReleaseReady:workerCycleHealthy&&
           localWorker.build_sha===process.env.VERCEL_GIT_COMMIT_SHA

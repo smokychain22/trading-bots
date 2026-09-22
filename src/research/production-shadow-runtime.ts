@@ -160,7 +160,11 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     brokerEnvironment:classifyAlpacaBrokerEnvironment(input.alpaca.tradingApiBase),
     accountStatus:input.reconciliation.accountStatus,reconciliationQuality:input.reconciliation.dataQuality,
     localOnlyIntentCount:input.reconciliation.localOnlyIntentCount,
-    externalOrUnknownOrderCount:input.reconciliation.externalOrUnknownCount,
+    // Preserve every raw broker fact for audit, while only current exposure,
+    // current reconciliation defects, and unknown-current-impact facts block
+    // new entry. Settled historical fills/fees/journals do not create false
+    // paralysis.
+    externalOrUnknownOrderCount:input.reconciliation.entryBlockingFactCount,
     marketOpen:input.reconciliation.marketOpen,
     calendarSessionConfirmed:input.reconciliation.calendarSessionConfirmed,
     followerExecutionEnabled:input.environment.FOLLOWER_PAPER_EXECUTION_ENABLED,

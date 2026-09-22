@@ -17,7 +17,10 @@ const scope = (correlationId: string) => ({
   jobResults: [{ jobType: 'POSITION_RECONCILIATION', outcome: 'RAN', status: 'SUCCEEDED', errorCode: 'must-not-survive' }],
   reconciliation: {
     accountStatus: 'ACTIVE', positionCount: 0, openOrderCount: 0, activityCount: 0,
-    matchedOrderCount: 0, externalOrUnknownCount: 0, localOnlyIntentCount: 0,
+    matchedOrderCount: 0, externalOrUnknownCount: 0, entryBlockingFactCount: 0,
+    brokerFactImpactSummary:{version:'theta-broker-fact-impact-v1',totalFacts:0,entryBlockingFactCount:0,
+      currentEconomicExposureCount:0,currentReconciliationDefectCount:0,historicalReconciledCount:0,
+      historicalAccountingOnlyCount:0,unknownCurrentImpactCount:0},localOnlyIntentCount: 0,
     marketOpen: false, calendarSessionConfirmed: true, dataQuality: 'GOOD', observedAt: '2026-09-17T20:16:00.000Z',
     providerAccountRefHash: 'must-not-survive', positions: [{ symbol: 'SECRET' }],
   },

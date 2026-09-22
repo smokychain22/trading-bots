@@ -5,6 +5,11 @@ import type { BrokerActivity, BrokerCalendarSession, BrokerMarketClock, BrokerOr
 import type { ReadOnlyPaperBroker } from './read-only-paper-broker.js';
 import { isValidOrderIntentTransition, type OrderIntentState } from '../theta/order-intent-state.js';
 import { brokerOrderIntentState } from './broker-order-state.js';
+import {
+  classifyBrokerFactBatch,
+  type BrokerFactBatchSummary,
+  type BrokerFactEvidence,
+} from './broker-fact-impact.js';
 
 const accountSchema = z.object({ id: z.string().min(1), status: z.string().nullable().optional() }).passthrough();
 const positionSchema = z.object({
@@ -71,6 +76,7 @@ export interface BrokerReconciliationSnapshotInput {
   readonly matchedOrders: readonly ReconciledBrokerOrder[];
   readonly missingLocalIntentIds: readonly string[];
   readonly unmatchedFacts: readonly UnmatchedBrokerFact[];
+  readonly factImpactSummary: BrokerFactBatchSummary;
   readonly observedAt: string;
   readonly payloadHash: string;
 }
@@ -93,6 +99,9 @@ export interface BrokerReconciliationResult {
   readonly activityCount: number;
   readonly matchedOrderCount: number;
   readonly externalOrUnknownCount: number;
+  /** Facts with current exposure, a current reconciliation defect, or unknown current impact. */
+  readonly entryBlockingFactCount: number;
+  readonly brokerFactImpactSummary: Omit<BrokerFactBatchSummary, 'results'>;
   readonly localOnlyIntentCount: number;
   readonly marketOpen: boolean | null;
   readonly calendarSessionConfirmed: boolean;
@@ -145,6 +154,80 @@ function marketDateAt(iso: string): string {
   }).format(new Date(iso));
 }
 
+const terminalOrderStatuses = new Set(['filled', 'canceled', 'expired', 'rejected', 'replaced']);
+const activeOrderStatuses = new Set([
+  'new', 'partially_filled', 'pending_new', 'accepted', 'accepted_for_bidding',
+  'pending_cancel', 'pending_replace', 'done_for_day', 'stopped', 'suspended', 'calculated',
+]);
+const settledActivityTypes = new Set(['FILL', 'FEE', 'JNLC', 'DIV']);
+const isTerminalOrderStatus = (status: string): boolean => terminalOrderStatuses.has(status.toLowerCase());
+
+const activityTypeForImpact = (value: string): BrokerFactEvidence['activityType'] => {
+  const normalized = value.toUpperCase();
+  return normalized === 'FILL' || normalized === 'FEE' || normalized === 'JNLC' || normalized === 'DIV'
+    ? normalized : 'OTHER';
+};
+
+function buildBrokerFactImpactEvidence(input: {
+  readonly unmatchedOrders: readonly BrokerOrderSnapshot[];
+  readonly positions: readonly BrokerPositionEvidence[];
+  readonly unmatchedActivities: readonly BrokerActivity[];
+  readonly allOrders: readonly BrokerOrderSnapshot[];
+  readonly observedAt: string;
+}): readonly BrokerFactEvidence[] {
+  const currentPositionSymbols = new Set(input.positions.map((position) => position.symbol));
+  const ordersById = new Map(input.allOrders.map((order) => [order.id, order] as const));
+  const evidence: BrokerFactEvidence[] = [];
+
+  for (const order of input.unmatchedOrders) {
+    const status = order.status.toLowerCase();
+    const active = activeOrderStatuses.has(status);
+    const terminal = terminalOrderStatuses.has(status);
+    evidence.push({
+      factId: sha256(order.id), brokerObjectType: 'ORDER', activityType: null,
+      eventTimestamp: order.submittedAt, firstSeenTimestamp: input.observedAt,
+      linkedLocalOrderId: null, linkedLocalChainId: null,
+      currentBrokerOrderExists: active ? true : terminal ? false : null,
+      currentPositionExists: currentPositionSymbols.has(order.symbol),
+      currentUnsettledObligationExists: active ? true : terminal ? false : null,
+      cashEffect: null,
+      reconciliationStatus: terminal ? 'RECONCILED' : active ? 'UNRECONCILED' : 'UNKNOWN',
+    });
+  }
+
+  for (const position of input.positions) {
+    evidence.push({
+      factId: sha256(`${position.symbol}:${position.side ?? ''}:${position.quantity ?? 'UNKNOWN'}`),
+      brokerObjectType: 'POSITION', activityType: null, eventTimestamp: input.observedAt,
+      firstSeenTimestamp: input.observedAt, linkedLocalOrderId: null, linkedLocalChainId: null,
+      currentBrokerOrderExists: false, currentPositionExists: true,
+      currentUnsettledObligationExists: false, cashEffect: position.marketValue,
+      reconciliationStatus: 'UNRECONCILED',
+    });
+  }
+
+  for (const activity of input.unmatchedActivities) {
+    const relatedOrder = activity.orderId === null ? null : ordersById.get(activity.orderId) ?? null;
+    const relatedStatus = relatedOrder?.status.toLowerCase() ?? null;
+    const activeOrder = relatedStatus === null ? false : activeOrderStatuses.has(relatedStatus);
+    const terminalOrder = relatedStatus === null ? false : terminalOrderStatuses.has(relatedStatus);
+    const settledActivity = settledActivityTypes.has(activity.activityType.toUpperCase());
+    const currentPosition = activity.symbol === null ? false : currentPositionSymbols.has(activity.symbol);
+    const settlementKnown = terminalOrder || (activity.orderId === null && settledActivity);
+    evidence.push({
+      factId: sha256(activity.id), brokerObjectType: 'ACTIVITY',
+      activityType: activityTypeForImpact(activity.activityType), eventTimestamp: activity.date,
+      firstSeenTimestamp: input.observedAt, linkedLocalOrderId: null, linkedLocalChainId: null,
+      currentBrokerOrderExists: activeOrder ? true : settlementKnown ? false : null,
+      currentPositionExists: currentPosition,
+      currentUnsettledObligationExists: activeOrder ? true : settlementKnown ? false : null,
+      cashEffect: activity.netAmount ?? null,
+      reconciliationStatus: settlementKnown ? 'RECONCILED' : activeOrder ? 'UNRECONCILED' : 'UNKNOWN',
+    });
+  }
+  return evidence;
+}
+
 /**
  * Executes a complete read-only broker reconciliation. It never calls a
  * mutation method and fails closed if the encrypted credential resolves to a
@@ -177,6 +260,8 @@ export async function runReadOnlyBrokerReconciliation(input: {
   const providerAccountRefHash = sha256(account.id);
   const matches = await input.store.matchOrders(providerAccountRefHash, orders);
   const knownOrderIds = new Set(matches.matched.map((order) => order.providerOrderId));
+  const unmatchedActivities = sortedActivities
+    .filter((activity) => activity.orderId === null || !knownOrderIds.has(activity.orderId));
 
   const unmatchedFacts: UnmatchedBrokerFact[] = [
     ...matches.unmatched.map(orderFact),
@@ -191,8 +276,11 @@ export async function runReadOnlyBrokerReconciliation(input: {
         unrealizedPnl: position.unrealizedPnl,
       },
     })),
-    ...sortedActivities.filter((activity) => activity.orderId === null || !knownOrderIds.has(activity.orderId)).map(activityFact),
+    ...unmatchedActivities.map(activityFact),
   ];
+  const factImpactSummary = classifyBrokerFactBatch(buildBrokerFactImpactEvidence({
+    unmatchedOrders: matches.unmatched, positions, unmatchedActivities, allOrders: orders, observedAt,
+  }));
   const payloadHash = sha256(canonicalJson({
     account: { status: account.status ?? null }, positions, orders: orders.map((order) => ({
       idHash: sha256(order.id), clientOrderIdHash: sha256(order.clientOrderId), status: order.status,
@@ -205,9 +293,9 @@ export async function runReadOnlyBrokerReconciliation(input: {
     snapshotId, connectionId: input.connectionId, correlationId: input.correlationId,
     providerAccountRefHash, accountStatus: account.status ?? null,
     marketClock, calendarSessions,
-    positionCount: positions.length, openOrderCount: orders.filter((order) => !['filled', 'canceled', 'expired', 'rejected'].includes(order.status)).length,
+    positionCount: positions.length, openOrderCount: orders.filter((order) => !isTerminalOrderStatus(order.status)).length,
     activityCount: sortedActivities.length, positions, activities: sortedActivities, matchedOrders: matches.matched,
-    missingLocalIntentIds: matches.missingLocalIntentIds, unmatchedFacts, observedAt, payloadHash,
+    missingLocalIntentIds: matches.missingLocalIntentIds, unmatchedFacts, factImpactSummary, observedAt, payloadHash,
   });
   const calendarSessionConfirmed = calendarSessions?.some((session) =>
     session.date === marketDate && session.open !== null && session.close !== null) ?? false;
@@ -216,9 +304,19 @@ export async function runReadOnlyBrokerReconciliation(input: {
   return {
     snapshotId, correlationId: input.correlationId, accountStatus: account.status ?? null,
     positionCount: positions.length,
-    openOrderCount: orders.filter((order) => !['filled', 'canceled', 'expired', 'rejected'].includes(order.status)).length,
+    openOrderCount: orders.filter((order) => !isTerminalOrderStatus(order.status)).length,
     activityCount: sortedActivities.length, matchedOrderCount: matches.matched.length,
     externalOrUnknownCount: unmatchedFacts.length, localOnlyIntentCount: matches.missingLocalIntentIds.length,
+    entryBlockingFactCount: factImpactSummary.entryBlockingFactCount,
+    brokerFactImpactSummary: {
+      version: factImpactSummary.version, totalFacts: factImpactSummary.totalFacts,
+      entryBlockingFactCount: factImpactSummary.entryBlockingFactCount,
+      currentEconomicExposureCount: factImpactSummary.currentEconomicExposureCount,
+      currentReconciliationDefectCount: factImpactSummary.currentReconciliationDefectCount,
+      historicalReconciledCount: factImpactSummary.historicalReconciledCount,
+      historicalAccountingOnlyCount: factImpactSummary.historicalAccountingOnlyCount,
+      unknownCurrentImpactCount: factImpactSummary.unknownCurrentImpactCount,
+    },
     marketOpen: marketClock?.isOpen ?? null, calendarSessionConfirmed, dataQuality, observedAt,
   };
 }
@@ -280,6 +378,7 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
           input.payloadHash,
           JSON.stringify({
             localOnlyIntentCount: input.missingLocalIntentIds.length,
+            brokerFactImpactSummary: input.factImpactSummary,
             marketOpen: input.marketClock?.isOpen ?? null,
             nextOpen: input.marketClock?.nextOpen ?? null,
             nextClose: input.marketClock?.nextClose ?? null,

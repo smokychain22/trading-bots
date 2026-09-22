@@ -124,6 +124,7 @@ export interface MasterRuntimeEvidence {
   readonly open_positions: number|null;
   readonly pending_orders: number|null;
   readonly external_or_unknown_count: number|null;
+  readonly entry_blocking_fact_count: number|null;
   readonly local_only_intent_count: number|null;
   readonly broker_orders: number|null;
   readonly broker_fills: number|null;
@@ -136,6 +137,7 @@ export interface MasterRuntimeEvidence {
 export async function readMasterRuntimeEvidence(databaseUrl?:string):Promise<MasterRuntimeEvidence>{
   const empty:MasterRuntimeEvidence={last_decision:null,last_decision_at:null,strategy_branch:null,last_snapshot:null,
     candidates_evaluated:null,open_positions:null,pending_orders:null,external_or_unknown_count:null,
+    entry_blocking_fact_count:null,
     local_only_intent_count:null,broker_orders:null,broker_fills:null,open_chains:null,
     option_realized_pnl:null,stock_realized_pnl:null,whole_chain_pnl:null};
   if(!databaseUrl)return empty;
@@ -163,6 +165,10 @@ export async function readMasterRuntimeEvidence(databaseUrl?:string):Promise<Mas
         (SELECT position_count FROM latest_reconciliation) AS open_positions,
         (SELECT open_order_count FROM latest_reconciliation) AS pending_orders,
         (SELECT external_or_unknown_count FROM latest_reconciliation) AS external_or_unknown_count,
+        (SELECT CASE
+          WHEN detail_json #>> '{brokerFactImpactSummary,entryBlockingFactCount}' ~ '^[0-9]+$'
+          THEN (detail_json #>> '{brokerFactImpactSummary,entryBlockingFactCount}')::int
+          ELSE NULL END FROM latest_reconciliation) AS entry_blocking_fact_count,
         (SELECT detail_json->>'localOnlyIntentCount' FROM latest_reconciliation) AS local_only_intent_count,
         (SELECT count(*)::int FROM trade.broker_order) AS broker_orders,
         (SELECT count(*)::int FROM trade.fill) AS broker_fills,
@@ -178,7 +184,9 @@ export async function readMasterRuntimeEvidence(databaseUrl?:string):Promise<Mas
     return {last_decision:row.last_decision==null?null:String(row.last_decision),last_decision_at:iso(row.last_decision_at),
       strategy_branch:row.strategy_branch==null?null:String(row.strategy_branch),last_snapshot:row.last_snapshot==null?null:String(row.last_snapshot),
       candidates_evaluated:number(row.candidates_evaluated),open_positions:number(row.open_positions),pending_orders:number(row.pending_orders),
-      external_or_unknown_count:number(row.external_or_unknown_count),local_only_intent_count:number(row.local_only_intent_count),
+      external_or_unknown_count:number(row.external_or_unknown_count),
+      entry_blocking_fact_count:number(row.entry_blocking_fact_count),
+      local_only_intent_count:number(row.local_only_intent_count),
       broker_orders:Number(row.broker_orders??0),broker_fills:Number(row.broker_fills??0),open_chains:openChains,
       option_realized_pnl:optionPnl,stock_realized_pnl:stockPnl,
       whole_chain_pnl:hasResolvedEconomics&&openChains===0?(optionPnl??0)+(stockPnl??0)-(fees??0):null};
