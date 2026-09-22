@@ -623,6 +623,43 @@ export const optionomicsProbeUrl = (operationAlias: string, documentedPath: stri
   return url;
 };
 
+/** A bounded, read-only auth differential for the exact process environment.
+ * It does not use the encrypted master credential or return any response body.
+ */
+export async function probeAlpacaProcessEnvironmentAuth(
+  environment: Environment,
+  fetchImpl: typeof fetch = fetch,
+): Promise<readonly { readonly path: string; readonly httpStatus: number | null;
+  readonly requestIdPresent: boolean; readonly errorCategory: 'CONFIG_UNAVAILABLE' | 'PAPER_HOST_INVALID' | 'TIMEOUT' | 'NETWORK_ERROR' | null }[]> {
+  const paths = ['/v2/account', '/v2/clock', '/v2/positions', '/v2/orders?status=all&limit=1',
+    '/v2/assets?status=active&asset_class=us_equity&limit=1'] as const;
+  const unavailable = !environment.ALPACA_API_KEY || !environment.ALPACA_SECRET_KEY || !environment.ALPACA_BASE_URL
+    || [environment.ALPACA_API_KEY, environment.ALPACA_SECRET_KEY, environment.ALPACA_BASE_URL].includes('[SENSITIVE]');
+  if (unavailable) return paths.map((path) => ({ path: path.split('?')[0] as string,
+    httpStatus: null, requestIdPresent: false, errorCategory: 'CONFIG_UNAVAILABLE' as const }));
+  let baseUrl: URL;
+  try { baseUrl = assertPaperAlpacaUrl(environment.ALPACA_BASE_URL as string); }
+  catch { return paths.map((path) => ({ path: path.split('?')[0] as string,
+    httpStatus: null, requestIdPresent: false, errorCategory: 'PAPER_HOST_INVALID' as const })); }
+  return Promise.all(paths.map(async (path) => {
+    const safePath = path.split('?')[0] as string;
+    try {
+      const response = await fetchImpl(new URL(path, baseUrl), {
+        method: 'GET',
+        headers: { 'APCA-API-KEY-ID': environment.ALPACA_API_KEY as string,
+          'APCA-API-SECRET-KEY': environment.ALPACA_SECRET_KEY as string },
+        signal: AbortSignal.timeout(10_000),
+      });
+      await response.body?.cancel();
+      return { path: safePath, httpStatus: response.status,
+        requestIdPresent: response.headers.has('x-request-id'), errorCategory: null };
+    } catch (error) {
+      return { path: safePath, httpStatus: null, requestIdPresent: false,
+        errorCategory: error instanceof Error && error.name === 'TimeoutError' ? 'TIMEOUT' as const : 'NETWORK_ERROR' as const };
+    }
+  }));
+}
+
 const responseShape = (value: unknown): {
   readonly keyCount: number;
   readonly sampledFieldNames: string;

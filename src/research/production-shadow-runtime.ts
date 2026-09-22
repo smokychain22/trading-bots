@@ -21,6 +21,7 @@ import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment } from '../t
 import { loadRecoveryHistory } from '../theta/recovery-history-loader.js';
 import { persistAlpacaCorporateActionRead, readAlpacaCorporateActions } from '../theta/alpaca-corporate-action-evidence.js';
 import type { CanonicalBranchFrontier, CanonicalFrontierCandidate } from '../theta/canonical-strategy-frontier.js';
+import { probeAlpacaProcessEnvironmentAuth } from '../providers/readiness.js';
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
@@ -146,6 +147,14 @@ const bridge=(environment:Environment):PythonBridgeConfig=>({
 export async function runProductionShadowEvidenceScan(input:{environment:Environment;pool:Pool;alpaca:AlpacaProviderConfig;
   executionAccountId?:string|null;reconciliation:BrokerReconciliationResult;now:()=>string}):Promise<ProductionShadowScanReport>{
   if(input.environment.THETA_RUNTIME_MODE!=='MASTER_THETA_PAPER') throw new Error('MASTER_THETA_PAPER_RUNTIME_REQUIRED');
+  if(process.env.VERCEL_ENV==='production'){
+    // This is deliberately independent of the encrypted master credential.
+    // A local dotenv success or broker reconciliation cannot prove that the
+    // Vercel Production ALPACA_* pair authenticates.
+    const checks=await probeAlpacaProcessEnvironmentAuth(input.environment);
+    console.info(JSON.stringify({event:'THETA_ALPACA_ENV_AUTH_V1',source:'VERCEL_PRODUCTION_PROCESS_ENV',
+      brokerHost:'paper-api.alpaca.markets',checks}));
+  }
   const paperEntryBootstrap=assessPaperEntryBootstrap({
     enabled:true,runtimeMode:input.environment.THETA_RUNTIME_MODE,
     brokerEnvironment:classifyAlpacaBrokerEnvironment(input.alpaca.tradingApiBase),
