@@ -69,6 +69,16 @@ proxies, not general multi-position sector or correlation producers.
 No `UNKNOWN -> false` conversion was made. The exact required/optional
 policy requires a governed decision and real producer evidence.
 
+The Aiven source currently contains **zero** rows in
+`market.option_quote_snapshot`. Candidate PIT evidence contains 3,876 rows
+across 1,696 distinct contracts on September 21, 4,590 rows across 607
+contracts on September 18, and 139 rows across 59 contracts on September 16.
+Those records are useful historical observations, but they do not yet prove
+an adequate per-contract rolling spread baseline or a qualified IV-shock
+baseline. A detector must check observation counts and temporal alignment
+before it can produce either boolean. This is why a simple `null -> false`
+mapping would be false safety.
+
 ## Remaining closure gates
 
 * Infrastructure: Aiven still reports `default_transaction_read_only=on`
