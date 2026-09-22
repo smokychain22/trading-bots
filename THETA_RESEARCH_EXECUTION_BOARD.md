@@ -64,6 +64,26 @@ Updated 2026-09-22 after commit `fec4644` + Wave 7 Batches 1-2 (branch
 | W7-13 | Brain matrix expansion to 27-domain universe | OPEN | not started this pass |
 | W7-14 | Final brain readiness report | OPEN | not started this pass |
 
+## Wave 8 items (2026-09-22) -- "find false paralysis" wave
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| W8-1 | Codex queue update after main merge | DONE | verified all 4 open rows still genuinely open against main `52e6ea5`; SHA-stamped |
+| W8-2 | Quantified unknown audit (DATA_EXISTS_BUT_NOT_WIRED category) | OPEN | not started this pass |
+| W8-3 | `THETA_HARD_VS_SOFT_DECISION_AUDIT.md` | DONE | headline finding: quote-freshness (30s hardcoded) + spread-width, declared soft `EXECUTION_QUALITY`/`LIQUIDITY`, are the dominant real hard-reject cause (3,299/3,876 candidates, real R7 forensic evidence); RV/VRP/skew/term/GEX/flow/trend confirmed CAN_REPRESENT-only, not wired as gate or ranker anywhere in the real entry path; Q-8 added to Codex queue, HIGH priority |
+| W8-4 | Historical false-reject analysis tooling | OPEN | not started this pass |
+| W8-5 | Managed-episode outcome contract (tested code) | OPEN | not started this pass |
+| W8-6 | Entry/why-now model framework | OPEN | not started this pass |
+| W8-7 | Profit-taking experiment contracts | OPEN | not started this pass |
+| W8-8 | Loss/recovery/CC downstream research | OPEN | not started this pass |
+| W8-9 | Optionomics RV5/10/30/60 + expected move + GEX PIT | OPEN | not started this pass |
+| W8-10 | Expert/trader prior registry | OPEN | not started this pass |
+| W8-11 | Six remaining export consumers | OPEN | not started this pass |
+| W8-12 | Management outcome dataset | OPEN | not started this pass |
+| W8-13 | WAIT regret dataset | OPEN | not started this pass |
+| W8-14 | Brain matrix (reachability columns) | OPEN | not started this pass |
+| W8-15 | Final brain readiness (cause-separated NO/PARTIAL) | OPEN | not started this pass |
+
 ## Rule for future passes
 
 Before touching any item above, check this table first. An item marked

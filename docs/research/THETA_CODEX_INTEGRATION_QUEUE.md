@@ -104,6 +104,23 @@ row against the new SHA before treating any of them as still open.
 - **Disposition**: `assignment_contract.py` -> `SUPERSEDED_BY_TS_AUTHORITY` (Codex's `b9cd49a` already built a simpler, real TS-native alternative). `covered_call_contract.py`, `management_contract.py`, `recovery_contract.py` -> `QUARANTINED` (all three trace to the same already-rejected "Pipeline B" TS orchestrator cluster, only reachable via `autonomous-runtime-handler.ts`, itself not on the real worker entry's path -- confirms, does not contradict, the existing quarantine). `har_rv_contract.py` -> `RESEARCH_ONLY` (self-declared in its own docstring, confirmed).
 - **State**: CLOSED -- no Codex action required. One open question recorded for whoever eventually builds a real management-candidate source: whether the pure models (`covered_call_ranker`, `management_action_value`, `recovery_decision`) are reusable computation independent of their current quarantined orchestrator wrappers. Not actioned by this pass.
 
+## Q-8: Quote-freshness threshold (30s) is a hardcoded literal, not config -- highest-priority false-paralysis finding
+
+- **Priority**: HIGH -- this is the single largest real rejection cause in the one full live session this engagement has forensic data for (3,299/3,876 candidates, 0 positive selections)
+- **Claude source commit**: this wave's Batch 3 (`THETA_HARD_VS_SOFT_DECISION_AUDIT.md`)
+- **Source artifact**: `docs/research/THETA_HARD_VS_SOFT_DECISION_AUDIT.md`
+- **Production subsystem**: `src/theta/theta-shadow-cycle.ts:938`, consumed by `new-risk-orchestrator.ts:413-432`
+- **Exact source insertion point**: `theta-shadow-cycle.ts:938` -- `maxQuoteAgeSecondsForExecutable: 30` is a bare literal; `maxSpreadPctForExecutable: config.maxAcceptableSpreadPct` is already real config.
+- **Current defect**: the quote-age threshold cannot be tuned without a code change, and this pass found no evidence 30s was empirically derived (vs. a plausible-sounding default). Declared a soft `EXECUTION_QUALITY`/`LIQUIDITY` family in `strategy-package.ts`, but implemented as an unconditional hard exclusion applied before AEGIS/sizing/economics ever run.
+- **Accepted architectural constraint**: SOME quote-freshness gate is genuine safety (pricing against a truly stale quote is unsafe) -- this is not a request to remove the gate, only to make it tunable and empirically validated.
+- **Expected change**: (1) move `maxQuoteAgeSecondsForExecutable` into real config, matching the spread-width field's existing pattern; (2) build the historical false-reject tooling (this wave's Batch 4) to test whether 30s is too strict, correctly calibrated, or too loose, before any live threshold change.
+- **Producer**: `theta-shadow-cycle.ts`'s config assembly.
+- **Consumer**: `new-risk-orchestrator.ts`'s executable/non-executable partition.
+- **Persistence requirement**: none new -- the resulting `executable` boolean is already persisted per-candidate.
+- **Test requirement**: a test proving the threshold is read from config, not hardcoded; once R8 tooling exists, a real before/after comparison.
+- **Runtime proof requirement**: a real session where the threshold change measurably changes the `CONTRACT_NOT_EXECUTABLE` rejection rate without degrading fill safety.
+- **State**: OPEN, HIGH priority, NEW this pass.
+
 ---
 
 ## Closed this engagement (for Codex's awareness, not action)
