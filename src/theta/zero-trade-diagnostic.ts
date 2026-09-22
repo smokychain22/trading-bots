@@ -75,6 +75,24 @@ interface RuntimeCycleRow {
   readonly result_json: JsonRecord;
 }
 
+interface EvidenceCycleRow {
+  readonly correlation_id: string;
+  readonly invoked_at: string | Date;
+  readonly completed_at: string | Date | null;
+  readonly status: string;
+  readonly error_code: string | null;
+}
+
+export function classifyEvidenceCycleInterruption(
+  cycle: Pick<EvidenceCycleRow, 'status' | 'invoked_at'>,
+  observedAt: string,
+): 'FAILED' | 'TIMED_OUT_WITHOUT_RECEIPT' | null {
+  if (cycle.status === 'FAILED' || cycle.status === 'QUARANTINED') return 'FAILED';
+  if (cycle.status !== 'RUNNING') return null;
+  const elapsed = Date.parse(observedAt) - new Date(cycle.invoked_at).getTime();
+  return Number.isFinite(elapsed) && elapsed > 330_000 ? 'TIMED_OUT_WITHOUT_RECEIPT' : null;
+}
+
 export type ZeroTradeClassification =
   | 'HEALTHY_SELECTIVITY'
   | 'INSUFFICIENT_EVIDENCE'
@@ -164,7 +182,7 @@ export async function readZeroTradeDiagnostic(
   const client = await pool.connect();
   try {
     await client.query('BEGIN TRANSACTION READ ONLY');
-    const [diagnostics, branches, candidates, execution, runtimeCycles] = await Promise.all([
+    const [diagnostics, branches, candidates, execution, runtimeCycles, evidenceCycles] = await Promise.all([
       client.query<DiagnosticRow>(
         `SELECT d.scan_id,d.observed_at,d.wait_classification,d.global_wait_earned,
                 d.candidate_count,d.feasible_candidate_count,d.selected_candidate_count,
@@ -219,6 +237,14 @@ export async function readZeroTradeDiagnostic(
               SELECT 1 FROM jsonb_array_elements(COALESCE(result_json->'jobResults','[]'::jsonb)) job
                WHERE job->>'jobType'='OPPORTUNITY_SCAN'
             )
+          ORDER BY invoked_at,correlation_id`, [window.startUtc, window.endUtc],
+      ),
+      client.query<EvidenceCycleRow>(
+        `SELECT correlation_id,invoked_at,completed_at,status,error_code
+           FROM ops.runtime_worker_cycle
+          WHERE invoked_at >= $1::timestamptz AND invoked_at < $2::timestamptz
+            AND correlation_id LIKE 'theta-runtime:%:evidence'
+            AND status IN ('RUNNING','FAILED','QUARANTINED')
           ORDER BY invoked_at,correlation_id`, [window.startUtc, window.endUtc],
       ),
     ]);
@@ -334,6 +360,19 @@ export async function readZeroTradeDiagnostic(
         scanIds: relatedScans.map((scan) => scan.scanId),
       };
     });
+    const diagnosticAsOf = new Date().toISOString();
+    const interruptedEvidenceCycles = evidenceCycles.rows.flatMap((cycle) => {
+      const interruption = classifyEvidenceCycleInterruption(cycle, diagnosticAsOf);
+      if (interruption === null) return [];
+      return [{
+        correlationId: cycle.correlation_id,
+        invokedAt: new Date(cycle.invoked_at).toISOString(),
+        completedAt: cycle.completed_at === null ? null : new Date(cycle.completed_at).toISOString(),
+        interruption,
+        errorCode: typeof cycle.error_code === 'string' && /^[A-Z0-9_:-]{1,100}$/.test(cycle.error_code)
+          ? cycle.error_code : null,
+      }];
+    });
     const targetOpportunityCycles = opportunityCycles.slice(-13);
     const targetScanIds = new Set(targetOpportunityCycles.flatMap((cycle) => cycle.scanIds));
     const targetCycles = cycleRows.filter((cycle) => targetScanIds.has(cycle.scanId));
@@ -410,6 +449,8 @@ export async function readZeroTradeDiagnostic(
       cycles: cycleRows,
       openOpportunityCycleCount: opportunityCycles.length,
       openOpportunityCycles: opportunityCycles,
+      interruptedEvidenceCycleCount: interruptedEvidenceCycles.length,
+      interruptedEvidenceCycles,
       targetOpenSessionSample: {
         selectionRule: 'LAST_13_OPEN_OPPORTUNITY_CYCLES_IN_WINDOW',
         cycleCount: targetOpportunityCycles.length,

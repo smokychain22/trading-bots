@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { classifyZeroTradeEvidence, summarizeKnownNumbers } from '../src/theta/zero-trade-diagnostic.js';
+import { classifyEvidenceCycleInterruption, classifyZeroTradeEvidence, summarizeKnownNumbers } from '../src/theta/zero-trade-diagnostic.js';
 
 const baseline = {
   cycleCount: 13, actionReadyCycles: 0, actionPlansReady: 0, orderIntentCount: 0,
@@ -36,4 +36,12 @@ test('numeric diagnostic distributions preserve unknown values and use a determi
 test('zero-trade evidence reports healthy selectivity and insufficient evidence without inventing a defect', () => {
   assert.equal(classifyZeroTradeEvidence(baseline), 'HEALTHY_SELECTIVITY');
   assert.equal(classifyZeroTradeEvidence({ ...baseline, cycleCount:0, candidateCount:0, healthyWaitCycles:0 }), 'INSUFFICIENT_EVIDENCE');
+});
+
+test('interrupted evidence cycles stay distinct from completed trade decisions', () => {
+  const invoked_at = '2026-09-22T16:25:00.000Z';
+  assert.equal(classifyEvidenceCycleInterruption({ status:'FAILED',invoked_at }, '2026-09-22T16:26:00.000Z'), 'FAILED');
+  assert.equal(classifyEvidenceCycleInterruption({ status:'RUNNING',invoked_at }, '2026-09-22T16:30:29.000Z'), null);
+  assert.equal(classifyEvidenceCycleInterruption({ status:'RUNNING',invoked_at }, '2026-09-22T16:30:31.000Z'), 'TIMED_OUT_WITHOUT_RECEIPT');
+  assert.equal(classifyEvidenceCycleInterruption({ status:'SUCCEEDED',invoked_at }, '2026-09-22T16:40:00.000Z'), null);
 });
