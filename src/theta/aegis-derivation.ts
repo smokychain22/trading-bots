@@ -21,10 +21,11 @@ import type { NormalizedOptionContract } from './option-contract.js';
 //     underlyings, but requires fetching bars for every distinct held
 //     underlying (not just the candidate's), which this pass does not
 //     yet do -- remains exactly what the caller supplies.
-//   - stressIvShockDetected / stressSpreadWideningDetected: no verified IV-
-//     history or spread-history baseline is wired yet. Python AEGIS accepts
-//     UNKNOWN here and holds new risk. Production callers supply null,
-//     never an unevidenced false.
+//   - stressIvShockDetected is produced separately by aegis-iv-stress.ts
+//     from exact-session Optionomics ATM-IV observations and an explicit
+//     maturity policy. stressSpreadWideningDetected still has no verified
+//     spread-history producer. Python AEGIS accepts UNKNOWN here and holds
+//     new risk. Missing evidence remains null, never an unevidenced false.
 
 /**
  * Derives AEGIS's `providerState` string (or null/UNKNOWN) from the
