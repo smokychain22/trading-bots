@@ -862,6 +862,15 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const snapshotsBySymbol = new Map<string, AlpacaOptionSnapshot>();
   const contractEvidenceByType: ProviderEvidence[] = [];
   const quoteEvidenceByType: ProviderEvidence[] = [];
+  // Snapshot discovery must cover the same expirations as contract discovery.
+  // An unbounded underlying snapshot request can page through unrelated
+  // expirations before reaching the contracts this cycle can actually use.
+  const snapshotExpirationGte = config.evaluationMode === 'SHADOW_EVIDENCE' && researchGte !== undefined
+    ? (researchGte < config.optionExpirationDateGte ? researchGte : config.optionExpirationDateGte)
+    : config.optionExpirationDateGte;
+  const snapshotExpirationLte = config.evaluationMode === 'SHADOW_EVIDENCE' && researchLte !== undefined
+    ? (researchLte > config.optionExpirationDateLte ? researchLte : config.optionExpirationDateLte)
+    : config.optionExpirationDateLte;
   for (const optionType of optionTypes) {
     const contractWindows = [
       { name: 'PRIMARY', gte: config.optionExpirationDateGte, lte: config.optionExpirationDateLte },
@@ -904,7 +913,9 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
         // The provider adapter documents a 1,000-observation page maximum.
         // Use it to reduce serial page latency and the risk of excluding the
         // newly enumerated research expirations under the bounded page cap.
-        underlyingSymbol: underlying, feed: 'indicative', optionType, limit: 1_000, maxPages: config.maxOptionPages,
+        underlyingSymbol: underlying, feed: 'indicative', optionType,
+        expirationDateGte: snapshotExpirationGte, expirationDateLte: snapshotExpirationLte,
+        limit: 1_000, maxPages: config.maxOptionPages,
       });
       for (const [symbol, snapshot] of result.snapshots) snapshotsBySymbol.set(symbol, snapshot);
       optionChainComplete = optionChainComplete !== false && result.complete;

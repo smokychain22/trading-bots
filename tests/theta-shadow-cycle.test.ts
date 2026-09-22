@@ -157,6 +157,9 @@ const itMockedProviderRealCodePath = pythonExecutablePath === undefined ? test.s
 itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data reaches a decision receipt via the real Python pipeline', async () => {
   requestedUrls = [];
   const result = await runThetaShadowCycle(baseConfig());
+  assert.ok(requestedUrls.some((url) => url.includes('/v1beta1/options/snapshots/SPY')
+    && url.includes('expiration_date_gte=2026-10-01')
+    && url.includes('expiration_date_lte=2026-11-01')));
   assert.equal(result.selectedUnderlying, 'SPY');
   assert.equal(result.optionChainComplete, true);
   assert.equal(result.optionContractsComplete, true);
@@ -208,6 +211,9 @@ itMockedProviderRealCodePath('shadow research window supplies short-DTE contract
   }));
   assert.equal(result.optionContractsComplete, true);
   assert.ok(requestedUrls.some((url) => url.includes('expiration_date_gte=2026-09-12')));
+  assert.ok(requestedUrls.some((url) => url.includes('/v1beta1/options/snapshots/SPY')
+    && url.includes('expiration_date_gte=2026-09-12')
+    && url.includes('expiration_date_lte=2026-11-01')));
   const contracts = result.fusionSnapshot?.snapshot.contractCandidates ?? [];
   assert.ok(contracts.some((contract) => contract.optionSymbol === 'SPY260914P00500000'));
   assert.ok(contracts.some((contract) => contract.optionSymbol === 'SPY260921P00500000'));
