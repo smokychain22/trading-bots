@@ -101,7 +101,13 @@ function Invoke-ThetaPg {
     } else {
       $result = & (Get-ThetaNativePgTool $Tool) @Arguments 2>&1
     }
-    if ($LASTEXITCODE -ne 0) { throw "POSTGRES_TOOL_FAILED:$Tool exit=$LASTEXITCODE" }
+    if ($LASTEXITCODE -ne 0) {
+      $diagnostic = (($result | Select-Object -Last 20 | Out-String).Trim())
+      if ($Connection.Password) { $diagnostic = $diagnostic.Replace([string]$Connection.Password, '[REDACTED]') }
+      $diagnostic = $diagnostic -replace '(?i)(password\s*[=:]\s*)\S+', '$1[REDACTED]'
+      if ($diagnostic.Length -gt 2000) { $diagnostic = $diagnostic.Substring($diagnostic.Length - 2000) }
+      throw "POSTGRES_TOOL_FAILED:$Tool exit=$LASTEXITCODE diagnostic=$diagnostic"
+    }
     return $result
   } finally {
     foreach ($key in $keys) { [Environment]::SetEnvironmentVariable($key, $previous[$key]) }
