@@ -123,14 +123,19 @@ function safePosition(raw: unknown): BrokerPositionEvidence {
 function orderFact(order: BrokerOrderSnapshot): UnmatchedBrokerFact {
   return {
     factType: 'ORDER', providerFactRefHash: sha256(order.id), symbol: order.symbol,
-    detail: { status: order.status, side: order.side, quantity: order.qty, filledQuantity: order.filledQty },
+    detail: { status: order.status, side: order.side, positionIntent: order.positionIntent ?? null,
+      quantity: order.qty, filledQuantity: order.filledQty, filledAveragePrice: order.filledAvgPrice,
+      submittedAt: order.submittedAt, replacesOrder: order.replaces !== null,
+      replacedByOrder: order.replacedBy !== null },
   };
 }
 
 function activityFact(activity: BrokerActivity): UnmatchedBrokerFact {
   return {
     factType: 'ACTIVITY', providerFactRefHash: sha256(activity.id), symbol: activity.symbol,
-    detail: { activityType: activity.activityType, quantity: activity.quantity, date: activity.date },
+    detail: { activityType: activity.activityType, quantity: activity.quantity, price: activity.price,
+      netAmount: activity.netAmount ?? null, perShareAmount: activity.perShareAmount ?? null,
+      date: activity.date, linkedOrderRefHash: activity.orderId === null ? null : sha256(activity.orderId) },
   };
 }
 
@@ -281,6 +286,13 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
             calendarSessions: input.calendarSessions?.map((session)=>({date:session.date,open:session.open,close:session.close})) ?? null,
             calendarSessionConfirmed: input.calendarSessions?.some((session) =>
               session.open !== null && session.close !== null) ?? false,
+            // A reconciliation snapshot is immutable per cycle. Keep the
+            // current broker fact shape here because the distinct-fact table
+            // intentionally does not overwrite its first observation.
+            unmatchedFactObservations: input.unmatchedFacts.map((fact)=>({
+              factType:fact.factType,providerFactRefHash:fact.providerFactRefHash,
+              symbol:fact.symbol,detail:fact.detail,
+            })),
           })],
       );
       for (const fact of input.unmatchedFacts) {

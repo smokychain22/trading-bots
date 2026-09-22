@@ -73,6 +73,12 @@ test('read-only reconciliation persists matched and EXTERNAL_OR_UNKNOWN facts wi
   assert.equal(adapter.mutationCalls(), 0);
   assert.equal(store.persisted?.unmatchedFacts.every((fact) => fact.providerFactRefHash.length === 64), true);
   assert.equal(store.persisted?.unmatchedFacts.some((fact) => fact.factType === 'POSITION'), true);
+  const unmatchedOrder = store.persisted?.unmatchedFacts.find((fact) => fact.factType === 'ORDER');
+  assert.equal(unmatchedOrder?.detail.submittedAt, '2026-09-11T14:30:00Z');
+  assert.equal(unmatchedOrder?.detail.filledAveragePrice, null);
+  const unmatchedActivity = store.persisted?.unmatchedFacts.find((fact) => fact.factType === 'ACTIVITY');
+  assert.equal(unmatchedActivity?.detail.date, '2026-09-11');
+  assert.equal(unmatchedActivity?.detail.linkedOrderRefHash, null);
   assert.equal(JSON.stringify(store.persisted).includes('paper-account-owner'), false);
 });
 
