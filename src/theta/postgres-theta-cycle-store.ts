@@ -11,7 +11,7 @@ import {
   deriveOptionomicsTemporalFeatures,
   type OptionomicsFeatureSnapshotReference,
 } from './optionomics-temporal-features.js';
-import { normalizedOptionContractSchema } from './option-contract.js';
+import { normalizedOptionContractSchema, type NormalizedOptionContract } from './option-contract.js';
 import { optionomicsEventRevisions } from './optionomics-event-observation.js';
 import {
   buildOptionsChainDecisionEvidence,
@@ -61,6 +61,35 @@ function objectField(snapshot: Readonly<Record<string, JsonValue>>, key: string)
 }
 
 type PersistableCandidate = ThetaQResponse['candidates'][number];
+export interface AlpacaQuoteSnapshotRow {
+  readonly contractSymbol: string;
+  readonly bid: number | null;
+  readonly ask: number | null;
+  readonly bidSize: number | null;
+  readonly askSize: number | null;
+  readonly lastPrice: number | null;
+  readonly asOf: string;
+  readonly retrievedAt: string;
+  readonly feed: 'OPRA' | 'INDICATIVE';
+  readonly quality: 'GOOD' | 'DEGRADED' | 'STALE' | 'UNKNOWN' | 'INVALID';
+}
+
+// A receipt timestamp is not a provider quote timestamp. Contracts without
+// actual Alpaca quote time remain in the decision evidence, not this ledger.
+export function alpacaQuoteSnapshotRow(contract: NormalizedOptionContract): AlpacaQuoteSnapshotRow | null {
+  if (contract.source !== 'ALPACA' || contract.feed === null || contract.quoteTimestamp === null
+    || contract.dataQuality === 'NOT_ENTITLED' || (contract.bid === null && contract.ask === null)) return null;
+  const asOf = Date.parse(contract.quoteTimestamp);
+  const retrievedAt = Date.parse(contract.receivedAt);
+  if (!Number.isFinite(asOf) || !Number.isFinite(retrievedAt) || asOf > retrievedAt) return null;
+  return {
+    contractSymbol: contract.occSymbol ?? contract.optionSymbol,
+    bid: contract.bid, ask: contract.ask, bidSize: contract.bidSize, askSize: contract.askSize,
+    lastPrice: contract.lastTradePrice, asOf: contract.quoteTimestamp, retrievedAt: contract.receivedAt,
+    feed: contract.feed, quality: contract.dataQuality,
+  };
+}
+
 export interface RelationalCanonicalBranchEvidence {
   readonly branch: CanonicalStrategyFrontier['branches'][number];
   readonly selectedCandidateRef: string | null;
@@ -322,6 +351,57 @@ export class PostgresThetaCycleStore {
         [prepared.map((row) => row.contractSymbol)],
       );
     const contractsBySymbol = new Map(persistedContracts.rows.map((row) => [row.contract_symbol, row]));
+    const quoteRows = prepared.flatMap((row) => {
+      const quote = alpacaQuoteSnapshotRow(normalizedOptionContractSchema.parse(row.contract));
+      const stored = contractsBySymbol.get(row.contractSymbol);
+      return quote === null || stored === undefined ? [] : [{
+        option_contract_id: stored.option_contract_id, contract_symbol: row.contractSymbol,
+        bid: quote.bid, ask: quote.ask, bid_size: quote.bidSize, ask_size: quote.askSize,
+        last_price: quote.lastPrice, as_of: quote.asOf, retrieved_at: quote.retrievedAt,
+        feed: quote.feed, quality: quote.quality,
+      }];
+    });
+    const quoteIdsBySymbol = new Map<string, number>();
+    if (quoteRows.length > 0) {
+      // Serialize the existence check across concurrent/replayed cycles. The
+      // quote ledger is append-only, including same-timestamp revisions.
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['theta-option-quote-snapshot']);
+      const quoteInput = JSON.stringify(quoteRows);
+      await client.query(
+        `INSERT INTO market.option_quote_snapshot(option_contract_id,bid,ask,bid_size,ask_size,last_price,
+           as_of,retrieved_at,feed,quality)
+         SELECT DISTINCT x.option_contract_id::uuid,x.bid,x.ask,x.bid_size,x.ask_size,x.last_price,
+           x.as_of::timestamptz,x.retrieved_at::timestamptz,x.feed,x.quality::core.data_quality
+         FROM jsonb_to_recordset($1::jsonb) AS x(option_contract_id text,contract_symbol text,bid numeric,
+           ask numeric,bid_size numeric,ask_size numeric,last_price numeric,as_of text,retrieved_at text,
+           feed text,quality text)
+         WHERE NOT EXISTS (
+           SELECT 1 FROM market.option_quote_snapshot q
+           WHERE q.option_contract_id=x.option_contract_id::uuid AND q.as_of=x.as_of::timestamptz
+             AND q.feed=x.feed AND q.quality=x.quality::core.data_quality
+             AND q.bid IS NOT DISTINCT FROM x.bid AND q.ask IS NOT DISTINCT FROM x.ask
+             AND q.bid_size IS NOT DISTINCT FROM x.bid_size AND q.ask_size IS NOT DISTINCT FROM x.ask_size
+             AND q.last_price IS NOT DISTINCT FROM x.last_price)`,
+        [quoteInput],
+      );
+      const persistedQuotes = await client.query<{ contract_symbol: string; snapshot_id: string }>(
+        `SELECT DISTINCT ON (x.contract_symbol) x.contract_symbol,q.snapshot_id::text
+         FROM jsonb_to_recordset($1::jsonb) AS x(option_contract_id text,contract_symbol text,bid numeric,
+           ask numeric,bid_size numeric,ask_size numeric,last_price numeric,as_of text,retrieved_at text,
+           feed text,quality text)
+         JOIN market.option_quote_snapshot q ON q.option_contract_id=x.option_contract_id::uuid
+           AND q.as_of=x.as_of::timestamptz AND q.feed=x.feed AND q.quality=x.quality::core.data_quality
+           AND q.bid IS NOT DISTINCT FROM x.bid AND q.ask IS NOT DISTINCT FROM x.ask
+           AND q.bid_size IS NOT DISTINCT FROM x.bid_size AND q.ask_size IS NOT DISTINCT FROM x.ask_size
+           AND q.last_price IS NOT DISTINCT FROM x.last_price
+         ORDER BY x.contract_symbol,q.retrieved_at DESC,q.snapshot_id DESC`,
+        [quoteInput],
+      );
+      for (const row of persistedQuotes.rows) quoteIdsBySymbol.set(row.contract_symbol, Number(row.snapshot_id));
+      if (quoteIdsBySymbol.size !== new Set(quoteRows.map((row) => row.contract_symbol)).size) {
+        throw new Error('ALPACA_QUOTE_SNAPSHOT_PERSISTENCE_INCOMPLETE');
+      }
+    }
     const candidateRows = prepared.map((row) => {
       const underlyingId = underlyingIds.get(row.underlying);
       if (underlyingId === undefined) throw new Error(`UNDERLYING_PERSISTENCE_FAILED:${row.underlying}`);
@@ -333,7 +413,8 @@ export class PostgresThetaCycleStore {
       }
       const alternative = receipt.alternatives.find((item) => item.candidateId === row.evaluatedCandidate.candidateId) ?? null;
       return { candidate_id:row.candidateId,candidate_set_id:candidateSetId,underlying_id:underlyingId,
-        option_contract_id:stored.option_contract_id,rank:row.evaluatedCandidate.rank,
+        option_contract_id:stored.option_contract_id,option_quote_snapshot_id:quoteIdsBySymbol.get(row.contractSymbol) ?? null,
+        rank:row.evaluatedCandidate.rank,
         action_feasible:row.evaluatedCandidate.actionFeasible,ev_net:row.evaluatedCandidate.economics?.ev_net ?? null,
         ownership_score:row.evaluatedCandidate.ownershipScore,
         capital_required:row.evaluatedCandidate.economics?.secured_collateral_per_contract ?? null,
@@ -341,12 +422,12 @@ export class PostgresThetaCycleStore {
         reasons:row.evaluatedCandidate.reasons };
     });
     const inserted = candidateRows.length === 0 ? { rows: [] } : await client.query<{ candidate_id: string }>(
-        `INSERT INTO trade.candidate(candidate_id,candidate_set_id,underlying_id,option_contract_id,structure_code,rank,action_feasible,
+        `INSERT INTO trade.candidate(candidate_id,candidate_set_id,underlying_id,option_contract_id,option_quote_snapshot_id,structure_code,rank,action_feasible,
            ev_net,ownership_score,capital_required,metrics_json)
-         SELECT x.candidate_id::uuid,x.candidate_set_id::uuid,x.underlying_id::uuid,x.option_contract_id::uuid,'CSP',
+         SELECT x.candidate_id::uuid,x.candidate_set_id::uuid,x.underlying_id::uuid,x.option_contract_id::uuid,x.option_quote_snapshot_id,'CSP',
            x.rank,x.action_feasible,x.ev_net,x.ownership_score,x.capital_required,x.metrics_json
          FROM jsonb_to_recordset($1::jsonb) AS x(candidate_id text,candidate_set_id text,underlying_id text,
-           option_contract_id text,rank integer,action_feasible boolean,ev_net numeric,ownership_score numeric,
+           option_contract_id text,option_quote_snapshot_id bigint,rank integer,action_feasible boolean,ev_net numeric,ownership_score numeric,
            capital_required numeric,metrics_json jsonb)
          ON CONFLICT(candidate_id) DO NOTHING RETURNING candidate_id`,
         [JSON.stringify(candidateRows)],

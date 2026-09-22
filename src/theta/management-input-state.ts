@@ -315,7 +315,7 @@ export class PostgresManagementInputStore {
       LEFT JOIN market.option_contract oc ON oc.option_contract_id=ol.option_contract_id
       LEFT JOIN LATERAL (
         SELECT q.* FROM market.option_quote_snapshot q WHERE q.option_contract_id=oc.option_contract_id
-        ORDER BY q.as_of DESC LIMIT 1
+        ORDER BY q.as_of DESC,q.retrieved_at DESC,q.snapshot_id DESC LIMIT 1
       ) oq ON true
       LEFT JOIN LATERAL (
         SELECT COALESCE(sum(l.realized_pnl),0)+COALESCE((SELECT sum(p.realized_pnl_before_fees)
