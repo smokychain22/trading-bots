@@ -371,6 +371,16 @@ test('fetchStockBars marks the dataset INCOMPLETE (never silently complete) when
   assert.equal(result.bars.length, 2); // bars from both attempted pages are preserved, never discarded
 });
 
+test('fetchStockBars classifies a malformed bar as a provider response error', async () => {
+  const fetchImpl = (async () => jsonResponse(200, {
+    bars: { SPY: [{ t: NOW, o: false, h: 2, l: 0.5, c: 1.5, v: 100 }] }, next_page_token: null,
+  })) as typeof fetch;
+  await assert.rejects(() => fetchStockBars(baseConfig(fetchImpl), {
+    symbols: ['SPY'], timeframe: '1Day', start: '2026-09-01T00:00:00Z', end: NOW,
+    feed: 'iex', maxPages: 2, adjustment: 'raw',
+  }, NOW), (error: unknown) => error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+});
+
 test('fetchStockBars request includes the explicit adjustment parameter -- never silently mixed', async () => {
   let requestedUrl = '';
   const fetchImpl = (async (input: RequestInfo | URL) => {

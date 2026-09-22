@@ -508,7 +508,13 @@ export async function fetchStockBars(config: AlpacaProviderConfig, params: Fetch
 
   do {
     const raw = await fetchPage(pageToken);
-    const { bars, nextPageToken } = parseAlpacaBarsPage(raw, params.feed, receivedAt);
+    let parsed: ReturnType<typeof parseAlpacaBarsPage>;
+    try {
+      parsed = parseAlpacaBarsPage(raw, params.feed, receivedAt);
+    } catch {
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/stocks/bars returned invalid bar evidence.');
+    }
+    const { bars, nextPageToken } = parsed;
     allBars.push(...bars);
     pageToken = nextPageToken;
     pages += 1;
