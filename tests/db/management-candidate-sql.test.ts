@@ -48,7 +48,9 @@ test('management candidate producer batches a real-shaped broker lattice into im
     const fetchImpl=(async(input:RequestInfo|URL)=>{
       const path=new URL(input instanceof URL?input.toString():String(input)).pathname;
       if(path==='/v2/options/contracts')return Response.json({option_contracts:[{symbol,strike_price:'195',
-        expiration_date:expiration,size:'100',tradable:true}],next_page_token:null});
+        expiration_date:expiration,size:'100',tradable:true,root_symbol:underlying,
+        underlying_symbol:underlying,style:'american',deliverables:[{type:'equity',symbol:underlying,
+          amount:'100',allocation_percentage:'100'}]}],next_page_token:null});
       if(path===`/v1beta1/options/snapshots/${underlying}`)return Response.json({snapshots:{
         [symbol]:{latestQuote:{bp:'1.5',ap:'1.6',bs:'8',as:'9',t:quoteTimestamp}},
       },next_page_token:null});
