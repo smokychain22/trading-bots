@@ -5,8 +5,14 @@ and are not re-read/re-audited unless main changes a dependency, a test
 regression occurs, or new empirical evidence contradicts them. Statuses:
 OPEN / BUILDING / TESTING / DONE / BLOCKED_EXTERNAL / SUPERSEDED.
 
-Updated 2026-09-22 after commit `fec4644` + Wave 7 Batches 1-2 (branch
-`claude/theta-management-challenger`; main merged to `b9cd49a`).
+Updated 2026-09-22 after commit `2b36102` (branch
+`claude/theta-management-challenger`, pushed to origin; main merged to
+`b710e2e`, which independently converged on the same "avoidable unknown /
+implementation blocker" readiness composite this branch's own
+reclassification research arrived at -- see
+`src/theta/first-paper-blocker-budget.ts` and
+`src/theta/option-executability-diagnostics.ts`, real, Codex's own work,
+not touched this pass).
 
 ## Carried over from before Wave 6 (already DONE -- do not redo)
 
