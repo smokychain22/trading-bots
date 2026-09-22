@@ -18,6 +18,15 @@ conditions**, not just the multiplier check this ledger's first pass
 suspected -- read that document for the full picture; the summary here is
 kept brief and now points to it as the authoritative source.
 
+**Item 2/5 below has been re-verified this pass via a direct, line-by-line
+read of `bots/theta/quant/models/aegis.py` (not a fork summary) and is now
+the single most severe finding in this entire ledger**: AEGIS unconditionally
+returns `HOLD_ONLY` (permitting zero new-risk-opening actions) on every real
+Production evaluation today, entirely independent of the
+`CONTRACT_NOT_EXECUTABLE` gap. This is promoted to `P0_FIRST_PAPER_BLOCKER`
+throughout every downstream document (acceptance contract, Codex backlog,
+capability registry, brain capability matrix).
+
 Every entry below is grounded in an actual file read (cited by path/line) or
 the real forensic document — never inferred from a function name alone.
 
@@ -49,7 +58,9 @@ remain UNKNOWN.
 - **OWNER**: Codex (Production wiring; `src/theta/` and `src/execution/` are Codex-owned)
 - **VERIFICATION_TEST**: A new Codex-side test asserting `createPaperBootstrapManagementPolicyProvider()`'s real call site in `autonomous-runtime.ts` is invoked with a non-default candidate source, plus an integration test proving a real open CSP chain with a real roll candidate in the lattice produces a non-null `rollCandidate` through the full path
 
-### 2. `stressIvShockDetected` / `stressSpreadWideningDetected` have zero real producer anywhere in the repo
+### 2. `stressIvShockDetected` / `stressSpreadWideningDetected` have zero real producer anywhere in the repo -- **PROMOTED TO P0: this alone unconditionally blocks all new-risk actions today**
+
+**Verified line-by-line this pass, `bots/theta/quant/models/aegis.py`**: `_liquidity()` returns `HOLD_ONLY` whenever `stress_spread_widening_detected is None`; `_system()` returns `HOLD_ONLY` whenever ANY of its 3 stress inputs is `None`. Since both fields are confirmed always `None` in Production, BOTH the LIQUIDITY and SYSTEM families are always `HOLD_ONLY`. `assess_aegis()` takes the worst state across every family (`_worse()`, strictest wins), so `new_risk_state` is **provably always `HOLD_ONLY` or worse in Production today**, and `_NEW_RISK_ACTIONS_BY_STATE[HOLD_ONLY] = frozenset()` -- an empty set. **AEGIS unconditionally permits zero new-risk-opening actions (OPEN_CSP/SELL_CC/ROLL/OPEN_DEFINED_RISK_SPREAD) today, regardless of every other family's real state, independent of the `CONTRACT_NOT_EXECUTABLE` gap.** This is now the single most severe finding in this entire ledger -- even a perfectly executable, perfectly-sized, perfectly-routed candidate would still be refused by AEGIS. Exit supremacy (CLOSE/CANCEL/RECONCILE/etc.) is unaffected and remains real.
 
 - **FIELD**: `aegisInputs.stressIvShockDetected`, `aegisInputs.stressSpreadWideningDetected`
 - **STAGE**: AEGIS SYSTEM-family risk gate
@@ -61,7 +72,7 @@ remain UNKNOWN.
 - **PERSISTENCE_PATH**: Not yet designed
 - **CONSUMER**: `bots/theta/quant/models/aegis.py`'s SYSTEM family, which requires 3 non-`None` stress signals to evaluate; only `stressGapDetected` is real today, so this family can structurally never reach a real evaluated state
 - **SAFETY_AUTHORITY**: AEGIS (hard safety)
-- **FIRST_PAPER_REQUIRED**: Governance-dependent -- see `docs/research/THETA_AEGIS_FIRST_PAPER_POLICY_GAP.md` (built in an earlier pass of this engagement): no committed artifact establishes whether the SYSTEM family's permanent non-evaluation is acceptable for first Paper or must block it. This is a genuine open governance question, not resolved by this ledger.
+- **FIRST_PAPER_REQUIRED**: **YES, confirmed no longer merely governance-dependent** -- this pass's direct code trace proves the gap is not "the SYSTEM family stays unevaluated" (a softer framing) but "AEGIS unconditionally returns `HOLD_ONLY` for new risk, every cycle, with zero exceptions, until real producers exist." `docs/research/THETA_AEGIS_FIRST_PAPER_POLICY_GAP.md` (built in an earlier pass) still correctly frames the SECOND, narrower question of whether the SYSTEM family should require exactly 3 real signals or could operate safely at 2-of-3 as governed policy -- but that framing is no longer sufficient on its own, because the LIQUIDITY family (a SEPARATE family, not the SYSTEM family) is ALSO always `HOLD_ONLY` from the same missing `stressSpreadWideningDetected` producer, and worst-family-wins means either family alone is already fully blocking.
 - **VPS_REQUIRED**: Same governance dependency
 - **AVOIDABLE_OR_LEGITIMATE**: **AVOIDABLE** in principle (real data sources exist to build a producer) but **currently honestly represented** -- this is a `PRODUCER_MISSING` classification, not an `IMPLEMENTATION_DEFECT`, because the field is correctly `null`, never false-defaulted
 - **REMEDIATION**: Build the two real detectors, OR make an explicit, documented governance decision that SYSTEM-family non-evaluation is acceptable for first Paper (a 2-of-3-signal or 1-of-1-real-signal threshold, chosen deliberately, not by omission)
@@ -105,13 +116,13 @@ remain UNKNOWN.
 - **OWNER**: Codex (has real Alpaca credentials, Aiven forensic context, and the persisted shadow-evidence rows this research branch does not)
 - **VERIFICATION_TEST**: See the dedicated investigation doc's two-step verification request (persisted-data breakdown first, live Alpaca sample second)
 
-### 5. AEGIS SYSTEM-family gap is worse than "never reaches a state" -- it forces a permanent `HOLD_ONLY` output every cycle
+### 5. AEGIS SYSTEM-family AND LIQUIDITY-family gap is worse than "never reaches a state" -- it forces `new_risk_state` to `HOLD_ONLY` (or worse) EVERY CYCLE, unconditionally, blocking ALL new-risk actions
 
-- **FIELD**: `_system()` family evaluation (`bots/theta/quant/models/aegis.py:157-158`)
-- **STAGE**: AEGIS final assessment (`_worse()` worst-family-wins design)
-- **CURRENT_VALUE_STATE**: Confirmed via a Slice 3 fork read: **any one of the 3 SYSTEM stress signals being `None` forces `HOLD_ONLY`** -- not merely "this family is unevaluated," but a continuous, permanent `HOLD_ONLY` contribution to the overall worst-family-wins AEGIS output, every single cycle, for as long as 2 of the 3 signals remain unproduced (see item 2 above).
-- **WHY_UNKNOWN**: Same root cause as item 2 -- no producer for 2 of the 3 SYSTEM signals.
-- **AVOIDABLE_OR_LEGITIMATE**: Same as item 2 (AVOIDABLE in principle, currently honestly represented) -- this refines the SEVERITY of item 2's consequence, it is not a new separate defect.
+- **FIELD**: `_system()` (`bots/theta/quant/models/aegis.py:155-166`) AND `_liquidity()` (`:129-135`) -- **two separate families, both driven by the same missing `stressSpreadWideningDetected` producer**, confirmed via a direct line-by-line read this pass (not merely a fork summary)
+- **STAGE**: AEGIS final assessment (`assess_aegis()`'s `_worse()` worst-family-wins fold)
+- **CURRENT_VALUE_STATE**: `_liquidity()`: `stress_spread_widening_detected is None` -> `HOLD_ONLY`, unconditionally (confirmed always the case in Production). `_system()`: ANY of its 3 stress inputs being `None` -> `HOLD_ONLY` (2 of 3 are always `None` in Production). Since `assess_aegis()` takes the STRICTEST state across every family, **`new_risk_state` is provably `HOLD_ONLY` or worse on every real Production AEGIS evaluation today**, and `_NEW_RISK_ACTIONS_BY_STATE[HOLD_ONLY] = frozenset()` -- confirmed by direct read of the exact dict literal. This is not "this family is unevaluated" -- it is "new-risk-opening is unconditionally impossible," independent of every other family's real state, independent of `CONTRACT_NOT_EXECUTABLE`. Exit supremacy (CLOSE/CANCEL/RECONCILE) is real and unaffected.
+- **WHY_UNKNOWN**: Same root cause as item 2 -- no producer for `stressIvShockDetected`/`stressSpreadWideningDetected`.
+- **AVOIDABLE_OR_LEGITIMATE**: Same as item 2 (AVOIDABLE in principle, currently honestly represented -- `null`, never false-defaulted) -- this refines the SEVERITY of item 2's consequence from "one restrictive family" to "the entire new-risk decision, unconditionally," it is not a new separate defect.
 - **OWNER**: Codex
 
 ### 6. `src/providers/capability-registry.ts` already exists as a real module -- relevant prior art, not yet cross-referenced

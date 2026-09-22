@@ -56,7 +56,7 @@ sourceFiles per entry). Key entries, summarized:
 | DELTA_STRIKE_DTE_LATTICE | NOT_INDEPENDENTLY_VERIFIED | Python lattice confirmed to exist, not re-read this pass |
 | CORPORATE_ACTION_EVIDENCE | REAL | none |
 | AEGIS_SECTOR_CORRELATION | PARTIAL | real only for the single-underlying-held case |
-| AEGIS_SYSTEM_STRESS | STUB_DEFAULT | confirmed by this pass's fork: any of 3 stress signals `None` forces a permanent `HOLD_ONLY` output every cycle (refines the prior "never reaches a state" framing to "reaches a state, and that state is always the most restrictive one") |
+| AEGIS_SYSTEM_LIQUIDITY_STRESS | STUB_DEFAULT | **P0 (promoted, verified this pass by direct line-by-line `aegis.py` read):** any of 3 SYSTEM stress signals `None` -> `HOLD_ONLY`; `stressSpreadWideningDetected is None` ALSO independently forces the separate LIQUIDITY family to `HOLD_ONLY`. Worst-family-wins means `new_risk_state` is `HOLD_ONLY` or worse on every real Production AEGIS evaluation today -- zero new-risk-opening actions are ever permitted, unconditionally, independent of `CONTRACT_NOT_EXECUTABLE` |
 | CROSS_STRATEGY_ECONOMIC_COMPARISON | PARTIAL | currently latent (only one branch's candidates ever coexist today), see the strategy router truth matrix |
 | AEGIS_EVALUATION | PARTIAL | only reached after upstream Pareto survivors exist |
 | SIZING_UNKNOWN_VS_EARNED_WAIT | REAL | fixed on `main`, not yet confirmed deployed to the pinned worker |

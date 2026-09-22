@@ -10,6 +10,18 @@ throughout. Codex decides integration; this is a handoff, not a change.
 
 ## P0_FIRST_PAPER_BLOCKER
 
+### P0-0: AEGIS unconditionally returns HOLD_ONLY for ALL new-risk actions today -- PROMOTED from P1, this is now the single most severe P0 in this backlog
+
+- **Defect ID**: P0-0
+- **Source**: `bots/theta/quant/models/aegis.py:129-135` (`_liquidity()`), `:155-166` (`_system()`), `:172-193` (`assess_aegis()`'s worst-family-wins fold), `:203-209` (`_NEW_RISK_ACTIONS_BY_STATE`); `src/theta/account-exposure.ts` (real Production supplier of the two always-null inputs)
+- **Current behavior**: Verified via a direct, line-by-line Python read this pass (not a fork summary): `_liquidity()` returns `HOLD_ONLY` whenever `stress_spread_widening_detected is None`; `_system()` returns `HOLD_ONLY` whenever ANY of its 3 stress inputs is `None`. Both `stress_iv_shock_detected` and `stress_spread_widening_detected` are confirmed always `None` in the real Production path. `assess_aegis()` folds every family through `_worse()` (strictest state wins), so `new_risk_state` is **provably `HOLD_ONLY` or worse on every real evaluation today**. `_NEW_RISK_ACTIONS_BY_STATE[RiskState.HOLD_ONLY] = frozenset()` -- confirmed by direct read of the literal dict: an empty set. **This means AEGIS permits ZERO new-risk-opening actions (OPEN_CSP, SELL_CC, ROLL, OPEN_DEFINED_RISK_SPREAD) unconditionally, on every cycle, regardless of every other family's real state, and entirely independent of P0-2 (`CONTRACT_NOT_EXECUTABLE`).** Even if P0-1 and P0-2 are both fixed, THETA would still open zero new positions until this closes. Exit supremacy (CLOSE/CANCEL/RECONCILE/BUY_TO_CLOSE/REDUCE_POSITION/SAFETY_EXIT) is real and completely unaffected by this gap.
+- **Expected behavior**: Real IV-shock and spread-widening detectors feeding `stress_iv_shock_detected`/`stress_spread_widening_detected`, OR an explicit, committed governance decision (not a silent omission) on an acceptable interim policy for first Paper.
+- **Producer/consumer**: Producer missing entirely for both fields; consumer (`_liquidity()`/`_system()`/`assess_aegis()`) is real, correct, and fail-closed by design -- this is not a masking defect, it is an honestly-represented missing-producer gap with an unusually severe blast radius.
+- **Minimal fix**: Build the two real detectors (Optionomics IV history for IV-shock; Alpaca BBO history for spread-widening); OR Codex commits an explicit different first-Paper applicability policy (per this directive's own instruction: "unless Codex commits a different first-Paper applicability policy").
+- **Tests required**: A test proving `assess_aegis()` reaches a real, non-permanently-`HOLD_ONLY` state once the governed inputs are real; a regression test asserting exit-supremacy actions remain unaffected throughout.
+- **Acceptance proof**: `THETA_PRE_VPS_ACCEPTANCE.md`'s `AEGIS_NO_AVOIDABLE_UNKNOWN` gate reads MET.
+- **Priority**: P0 -- do not leave this at P1; it mathematically forces `HOLD_ONLY` for all new risk, unconditionally, today.
+
 ### P0-1: Roll/CC candidate source is never wired -- blocks ROLL, ROLL_CC, AND SELL_CC (sharper than previously documented)
 
 - **Defect ID**: P0-1
@@ -35,13 +47,10 @@ throughout. Codex decides integration; this is a handoff, not a change.
 
 ## P1_PRE_VPS_BLOCKER
 
-### P1-1: AEGIS SYSTEM-family stress signals -- refined this pass: forces a permanent `HOLD_ONLY`, not merely "unevaluated"
-
-- **Source**: `bots/theta/quant/models/aegis.py:157-158` (`_worse()` worst-family-wins design), `src/theta/account-exposure.ts`, `src/theta/aegis-derivation.ts:24-27`
-- **Current behavior**: Confirmed this pass: any one of the 3 SYSTEM stress signals being `None` forces `HOLD_ONLY` for the WHOLE AEGIS assessment every cycle -- a continuous, permanent restrictive contribution, not just an unevaluated family.
-- **Minimal fix**: Build real IV-shock (Optionomics) and spread-widening (Alpaca BBO history) detectors; OR make an explicit, committed governance decision on an acceptable interim threshold.
-- **Tests required**: A test proving the SYSTEM family reaches a real evaluated state once the governed threshold is real.
-- **Priority**: P1.
+(AEGIS SYSTEM/LIQUIDITY stress signals were previously listed here as P1-1 --
+**promoted to P0-0 above** this pass, since they mathematically force
+`HOLD_ONLY` for all new risk unconditionally, not merely leave one family
+unevaluated. Do not re-list it here at P1.)
 
 ### P1-2: Multi-position sector/correlation concentration -- unchanged
 
@@ -65,13 +74,27 @@ throughout. Codex decides integration; this is a handoff, not a change.
 
 ## P2_R8_REQUIRED
 
-- Strategy router internals: `bots/theta/quant/models/strategy_router.py` was never opened this pass -- whether the Python router itself internally evaluates all 5 families (and the TS caller simply discards the rest) or is itself THETA_Q-centric remains unconfirmed.
-- `thesis-invalidation.ts` internals: whether `assessThesisInvalidation` truly distinguishes all 8 directive-required loss-deterioration causes, or collapses some together, remains unconfirmed.
-- `input.context.assignmentCapacity` real population: whether the real Production runtime ever supplies a live number here, vs. it always being UNKNOWN, remains unconfirmed.
+**Resolved this pass (Wave 3), no longer open**: strategy router internals
+(`THETA_STRATEGY_ROUTER_DEEP_TRACE.md` -- the Python router IS multi-family
+capable, TS control flow only acts on THETA_Q); `thesis-invalidation.ts`
+internals (`THETA_LOSS_CAUSE_RESOLUTION_MATRIX.md` -- 4 of 8 directive-named
+causes drive the real classification, with exact per-cause evidence); the
+AEGIS-consumed `assignmentCapacityUsedPct` real population
+(`THETA_ASSIGNMENT_CAPACITY_TRACE.md` -- confirmed real and computed; a
+SEPARATE opaque `ManagementInputState.context.assignmentCapacity` field's
+producer remains unconfirmed, see below).
+
+**Still open**:
+- `IV_EXPANSION`/`LIQUIDITY_DETERIORATION`/`EXECUTION_DETERIORATION` loss causes are computed as real `LossStateVector` data but not yet read by `assessThesisInvalidation`'s classification logic at all -- a real, scoped wiring gap (not a producer-missing gap), see `THETA_LOSS_CAUSE_RESOLUTION_MATRIX.md`.
+- The `riskState` object supplying `ManagementInputState.context.assignmentCapacity` (the opaque passthrough field, distinct from the real `assignmentCapacityUsedPct`) was not located this pass.
+- `policy.theta_d_gate_satisfied`'s real supplied value at the Python bridge invocation site was not traced.
+- Whether `opportunity_frontier.py`/`management_action_value.py` ever perform a cross-branch economic comparison (the router itself explicitly does not) was not independently verified.
 - Optionomics `expected_move` field: `NOT_OBSERVED` this pass; needs a targeted follow-up search under alternate field names before concluding it's absent.
 - `rv5`/`rv10`/`rv30`/`rv60` methodology verification against `price_history`'s substitute figure.
-- Canonical exports for IV/spread, universe breadth, correlation, severe downside, management outcomes, cross-strategy outcomes -- see `THETA_CODEX_CANONICAL_EXPORT_REQUESTS.md` for exact specifications and priority ordering.
-- `src/providers/capability-registry.ts` (discovered to exist this pass, not yet read) should be reconciled with this engagement's own `src/research/pre-vps-capability-registry.ts` rather than maintaining two independent inventories long-term.
+- Canonical exports for IV/spread, universe breadth, correlation, severe downside, management outcomes, cross-strategy outcomes -- see `THETA_CODEX_CANONICAL_EXPORT_REQUESTS.md` for exact specifications and priority ordering. Consumer implementations for these remain unbuilt (Wave 3 directive items 12-13 not completed this pass -- see the scope/plan doc).
+- `src/providers/capability-registry.ts` (discovered to exist in an earlier pass, still not read) should be reconciled with this engagement's own `src/research/pre-vps-capability-registry.ts` rather than maintaining two independent inventories long-term.
+- Correlation (20/60/120-session) and severe-downside (continuous/vol-normalized MAE) research tooling remain unbuilt (Wave 3 directive items 11-12).
+- A standalone required-vs-optional evidence matrix, a full method/config usage census, and full capability-registry/unknown-ledger exhaustiveness (Wave 3 directive items 2-5) remain unbuilt at full scope -- see `THETA_PRE_VPS_AUDIT_SCOPE_AND_PLAN.md` for the honest reasoning on why a genuinely exhaustive pass was not attempted in one turn.
 
 ## P3_FUTURE_ENHANCEMENT
 
@@ -85,8 +108,8 @@ throughout. Codex decides integration; this is a handoff, not a change.
 | --- | --- |
 | Roll/CC candidate source missing in canonical Production path | OPEN -- P0-1 |
 | `CONTRACT_NOT_EXECUTABLE` dominant real-session rejection | OPEN -- P0-2, refined this pass to a 10-condition gate |
-| `stressIvShockDetected` producer | OPEN -- P1-1 |
-| `stressSpreadWideningDetected` producer | OPEN -- P1-1 |
+| `stressIvShockDetected` producer | OPEN -- **P0-0, promoted this pass**: confirmed to unconditionally force `new_risk_state = HOLD_ONLY` |
+| `stressSpreadWideningDetected` producer | OPEN -- **P0-0, promoted this pass**: same, and independently forces the LIQUIDITY family to `HOLD_ONLY` on its own |
 | Multi-position sector concentration | OPEN -- P1-2 |
 | Multi-position correlation concentration | OPEN -- P1-2 |
 | Cross-branch Production economics / alphabetical tie | OPEN -- P1-3, confirmed currently latent |

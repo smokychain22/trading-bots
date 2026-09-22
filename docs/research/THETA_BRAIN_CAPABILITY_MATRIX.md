@@ -16,8 +16,8 @@ evidence that grounds it.
 | DTE selection | YES | YES (`theta_q_lattice.py`, `build_candidate_grid`) | Not independently verified | YES | YES | YES | NO | NO | none confirmed |
 | Strike selection | YES | YES (same lattice module) | Not independently verified | YES | YES | YES | NO | NO | none confirmed |
 | Delta | YES | YES (`_delta_band_for`, real Alpaca Greeks) | Not independently verified | YES | YES | YES | NO | NO | none confirmed |
-| SIZE | YES | YES (Python sizing bridge) | Not independently verified | YES | CONDITIONAL (gated behind AEGIS/Pareto survival) | YES | NO | NO | Only reached after upstream survival; `sizingEvidenceUnknown` gating correctly prevents a false-safe WAIT |
-| OPEN (entry decision) | YES | YES (canonical frontier, within-THETA_Q) | Not independently verified | YES | YES | YES (THETA_CONVENTIONAL) | NO (`empiricalUtilityState: UNKNOWN_NOT_YET_CALIBRATED`) | NO | Cross-branch economic comparison does not exist (only one branch's candidates ever coexist today) |
+| SIZE | YES | YES (Python sizing bridge) | Not independently verified | YES | **NO -- AEGIS unconditionally returns HOLD_ONLY (verified line-by-line, `aegis.py`), so sizing for a new-risk action is never actually invoked with a permissive state today** | YES | NO | NO | AEGIS SYSTEM+LIQUIDITY stress gap (P0-0) blocks this regardless of sizing's own correctness |
+| OPEN (entry decision) | YES | YES (canonical frontier, within-THETA_Q) | Not independently verified | YES | **NO -- same AEGIS block.** The frontier can rank candidates, but `is_action_permitted(HOLD_ONLY, 'OPEN_CSP')` is provably `False` on every real cycle today | YES (THETA_CONVENTIONAL) | NO (`empiricalUtilityState: UNKNOWN_NOT_YET_CALIBRATED`) | NO | **PROMOTED THIS PASS**: AEGIS SYSTEM+LIQUIDITY stress gap (P0-0) -- see `THETA_PRE_VPS_UNKNOWN_LEDGER.md` items 2/5. Previously this row read YES for RUNTIME_REACHABLE based on the frontier/router path alone; a direct read of `aegis.py` shows the downstream AEGIS gate makes the actual OPEN action unconditionally unreachable today, independent of the cross-branch comparison gap already noted |
 | WAIT | YES | YES (`globalWaitEarned`/`sizingEvidenceUnknown` gating, fixed on `main` per `bf6d80e`) | Not independently verified | YES | YES on `main`; NOT YET CONFIRMED deployed to the pinned worker | YES | NO | NO | Fix exists but deployment status to the running worker is unconfirmed |
 | HOLD | YES | YES (`paper-bootstrap-management-policy.ts:681-724`) | Not independently verified | YES | YES | YES | NO | NO | none confirmed |
 | CLOSE (CLOSE_FULL) | YES | YES | Not independently verified | YES | YES | YES | NO | NO | none confirmed |
@@ -33,18 +33,31 @@ evidence that grounds it.
 
 ## Summary verdict
 
-A bot cannot be called intelligent because a method exists. By this matrix's
-own evidence: THETA's **entry side for a single branch (THETA_CONVENTIONAL)**
-is genuinely `YES_REAL_AND_REACHABLE` end to end, structurally (not yet
-empirically -- no calibration has ever been attempted, honestly represented
-as such). THETA's **management side is split**: HOLD/CLOSE/ASSIGNMENT/
+A bot cannot be called intelligent because a method exists. **This section was
+revised this pass following a direct, line-by-line read of
+`bots/theta/quant/models/aegis.py`, which overturns the entry-side verdict
+this matrix previously reported.** THETA's entry-side machinery for a single
+branch (THETA_CONVENTIONAL) -- universe, ranking, router, lattice, delta,
+frontier, sizing -- is genuinely real and structurally sound end to end
+(structurally, not empirically -- no calibration has ever been attempted,
+honestly represented as such). **But the OPEN and SIZE rows above are NOT
+`RUNTIME_REACHABLE` today**, because AEGIS unconditionally returns
+`HOLD_ONLY` for every new-risk-opening action on every real cycle -- a
+mathematical consequence of two permanently-`None` stress inputs feeding TWO
+separate risk families (SYSTEM and LIQUIDITY), confirmed by direct reading
+of `_liquidity()`, `_system()`, `assess_aegis()`'s worst-family-wins fold,
+and the literal `_NEW_RISK_ACTIONS_BY_STATE[HOLD_ONLY] = frozenset()` dict.
+This is now the single most severe finding of the whole pre-VPS audit,
+independent of and more fundamental than the previously-known
+`CONTRACT_NOT_EXECUTABLE` gap: even a perfectly executable, perfectly-ranked
+candidate would still be refused.
+
+THETA's **management side is separately split**: HOLD/CLOSE/ASSIGNMENT/
 RECOVERY/SELL_STOCK/CALL_AWAY are real and reachable; **ROLL, ROLL_CC, and
 SELL_CC are NOT** -- despite having real, tested, economically-correct
 valuation logic (including a real safety rule against selling a covered call
 below cost basis) -- because their shared candidate-source producer does not
-exist in Production. This single gap is responsible for 3 of the 19 rows in
-this matrix reading `NO` for `RUNTIME_REACHABLE`, and it is the highest-
-priority item in every backlog this pre-VPS audit has produced.
+exist in Production. This remains a second, independent P0 gap.
 
 No row in this matrix claims `EMPIRICALLY_LEARNED = YES` or
 `OOS_VALIDATED = YES` anywhere -- consistent with the standing rule that no
