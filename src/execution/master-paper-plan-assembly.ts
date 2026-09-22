@@ -57,6 +57,7 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
   if (selected === undefined) blockers.push('CANONICAL_SELECTED_CANDIDATE_NOT_FOUND');
   if (frontier.primaryAction !== 'OPEN_CSP') blockers.push(`ACTION_NOT_YET_CONNECTED:${frontier.primaryAction}`);
   if (selected?.action !== 'OPEN_CSP') blockers.push('SELECTED_ACTION_NOT_OPEN_CSP');
+  if (selected?.branch !== 'THETA_CONVENTIONAL') blockers.push('BRANCH_NOT_AUTHORIZED_FOR_MASTER_PAPER_ENTRY');
   if (selectedBranch?.status !== 'SHADOW') blockers.push('STRATEGY_BRANCH_NOT_PAPER_EVIDENCE_ELIGIBLE');
   if (selected?.legs.length !== 1) blockers.push('SINGLE_LEG_CSP_REQUIRED');
   const selectedLeg = selected?.legs[0];

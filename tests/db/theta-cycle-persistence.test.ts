@@ -49,9 +49,25 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
       greeksTimestamp: now, greeksSource: 'ALPACA', feed: 'OPRA', dataQuality: 'GOOD',
       maxQuoteAgeSecondsForExecutable: 60, maxSpreadPctForExecutable: 0.1,
     }, now);
+    const researchContract = (optionSymbol: string, strike: number, expiration: string, bid: number) =>
+      normalizeOptionContract({
+        source: 'ALPACA', underlying: 'SPY', optionSymbol, occSymbol: optionSymbol,
+        optionType: 'PUT', strike, expiration, asOfDate: '2026-09-11', multiplier: 100,
+        underlyingBid: 500, underlyingAsk: 500.02, underlyingLast: 500.01, underlyingTimestamp: now,
+        bid, ask: bid + 0.1, bidSize: 20, askSize: 20, lastTradePrice: bid, lastTradeSize: 1,
+        quoteTimestamp: now, tradeTimestamp: now, volume: 100, volumeSource: 'ALPACA', openInterest: 1000,
+        openInterestSource: 'ALPACA', iv: 0.2, delta: -0.2, gamma: 0.01, theta: -0.03, vega: 0.1,
+        rho: -0.02, greeksTimestamp: now, greeksSource: 'ALPACA', feed: 'INDICATIVE', dataQuality: 'GOOD',
+        maxQuoteAgeSecondsForExecutable: 60, maxSpreadPctForExecutable: 0.1,
+      }, now);
+    const researchContracts = [
+      researchContract('SPY260914P00500000', 500, '2026-09-14', 1.2),
+      researchContract('SPY260921P00500000', 500, '2026-09-21', 2.2),
+      researchContract('SPY260921P00490000', 490, '2026-09-21', 0.3),
+    ];
     const snapshotInput: FusionSnapshotInput = {
       botId: 'THETA', decisionTimeUtc: now, triggerType: 'TEST', marketSession: { isOpen: false }, underlyingState: { symbol: 'SPY' },
-      contractCandidates: [contract], accountState: { status: 'ACTIVE' }, positionState: { positions: [], orders: [] }, portfolioExposure: {},
+      contractCandidates: [contract, ...researchContracts], accountState: { status: 'ACTIVE' }, positionState: { positions: [], orders: [] }, portfolioExposure: {},
       alpacaQuoteState: null, optionomicsFeatureState: null, eventState: null, regimeState: null, expertPriorState: null,
       riskState: null, strategyRouterState: null,
       versions: { strategyVersion: 'test', featureVersion: 'test', riskLimitVersion: 'test', executionVersion: 'test', costModelVersion: 'test', dataVersion: 'test', modelVersions: {} },
@@ -70,7 +86,7 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
       results: families.map((strategyFamily) => ({ strategyFamily, eligible: strategyFamily === 'THETA_Q', eligibilityState: 'PASS' as const, reasons: [], policyVersion: 'router-v1' })),
     } satisfies StrategyRoutingResponse;
     const strategyFrontier = buildCanonicalStrategyFrontier({
-      snapshotId: fusion.contentHash, timestamp: now, strategyVersion: 'test-strategy-package', contracts: [contract], routing,
+      snapshotId: fusion.contentHash, timestamp: now, strategyVersion: 'test-strategy-package', contracts: [contract, ...researchContracts], routing,
       stock: null, assignmentCapacityQty: 1, buyingPower: 100_000, brokerAllowedQty: 1,
       sizingPolicy: { riskBudgetQtyCap: 0, collateralQtyCap: 1, concentrationQtyCap: 1,
         assignmentCapacityQtyCap: 1, tailRiskQtyCap: 1, correlationQtyCap: 1, liquidityQtyCap: 1,
@@ -136,7 +152,16 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
         JOIN trade.canonical_strategy_branch_evidence b USING(branch_evidence_id) WHERE b.fusion_snapshot_id=$2)::int AS canonical_candidates`,
       [botId, first.fusionSnapshotId]);
     assert.deepEqual(counts.rows[0], { snapshots: 1, candidate_sets: 1, candidates: 1, candidate_reasons: 1, linked_quotes: 1, decisions: 1,
-      routes: 1, opportunities: 1, canonical_branches: 5, canonical_candidates: 1 });
+      routes: 1, opportunities: 1, canonical_branches: 5, canonical_candidates: 3 });
+    const researchEvidence = await pool.query(`SELECT c.branch::text,c.candidate_ref,c.hard_blockers_json
+      FROM trade.canonical_strategy_candidate_evidence c
+      JOIN trade.canonical_strategy_branch_evidence b USING(branch_evidence_id)
+      WHERE b.fusion_snapshot_id=$1 AND c.branch IN ('THETA_HOLD_STRIKE','THETA_DEFINED_RISK')
+      ORDER BY c.branch,c.candidate_ref`, [first.fusionSnapshotId]);
+    assert.equal(researchEvidence.rows.length, 2);
+    for (const row of researchEvidence.rows) {
+      assert.ok((row.hard_blockers_json as string[]).includes('ROUTER_NOT_APPLICABLE'));
+    }
     const quotes = await pool.query(`SELECT q.as_of::text,q.retrieved_at::text,q.feed,q.quality::text,q.bid::text,q.ask::text
       FROM market.option_quote_snapshot q JOIN trade.candidate c ON c.option_quote_snapshot_id=q.snapshot_id
       JOIN trade.candidate_set cs USING(candidate_set_id) WHERE cs.fusion_snapshot_id=$1`, [first.fusionSnapshotId]);

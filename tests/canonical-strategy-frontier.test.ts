@@ -3,6 +3,7 @@ import test from 'node:test';
 import { buildCanonicalStrategyFrontier } from '../src/theta/canonical-strategy-frontier.js';
 import { normalizeOptionContract, type NormalizedOptionContract } from '../src/theta/option-contract.js';
 import { parseStrategyRoutingResponse, type StrategyFamily } from '../src/theta/strategy-router-contract.js';
+import { paperEntryCandidateCohort } from '../src/research/production-shadow-runtime.js';
 
 const NOW = '2026-09-14T15:00:00.000Z';
 
@@ -70,6 +71,7 @@ test('hold-strike evaluates 2-5 DTE near-expiry contracts without treating missi
   assert.equal(hold?.candidateCount, 1);
   assert.equal(hold?.candidates[0]?.riskFeasible, true);
   assert.ok(hold?.candidates[0]?.unknownEvidence.includes('DELTA_UNKNOWN'));
+  assert.equal(result.selectedBranch, null, 'research-only Hold-Strike cannot become the Paper selection');
 });
 
 test('defined-risk frontier prices both legs with the broker multiplier and keeps the branch research-only', () => {
@@ -82,6 +84,34 @@ test('defined-risk frontier prices both legs with the broker multiplier and keep
   assert.equal(spread?.economics.maxProfit, 190);
   assert.equal(spread?.economics.maxLoss, 310);
   assert.equal(spread?.executionAuthorized, false);
+  assert.equal(result.selectedBranch, null, 'research-only Defined Risk cannot become the Paper selection');
+});
+
+test('inapplicable research branches keep contract counterfactuals with router veto intact', () => {
+  const shortDte = contract({ optionSymbol: 'AAPL260918P00200000', occSymbol: 'AAPL260918P00200000',
+    strike: 200, expiration: '2026-09-18' });
+  const result = buildCanonicalStrategyFrontier({ ...base, contracts: [shortDte], routing: routing([]) });
+  const hold = result.branches.find((branch) => branch.branch === 'THETA_HOLD_STRIKE');
+  assert.equal(hold?.applicable, false);
+  assert.equal(hold?.evaluationState, 'NOT_APPLICABLE');
+  assert.equal(hold?.candidateCount, 1);
+  assert.equal(hold?.candidates[0]?.riskFeasible, false);
+  assert.ok(hold?.candidates[0]?.hardBlockers.includes('ROUTER_NOT_APPLICABLE'));
+  assert.equal(hold?.candidates[0]?.sizing.quantity, 0);
+  assert.equal(result.selectedCandidateId, null);
+});
+
+test('Paper WAIT diagnostics exclude shadow and research counterfactuals while branch evidence retains them', () => {
+  const conventional = contract();
+  const hold = contract({ optionSymbol: 'AAPL260918P00195000', occSymbol: 'AAPL260918P00195000',
+    strike: 195, expiration: '2026-09-18' });
+  const frontier = buildCanonicalStrategyFrontier({ ...base, contracts: [conventional, hold],
+    routing: routing(['THETA_Q', 'THETA_H']) });
+  const cohort = paperEntryCandidateCohort(frontier.branches);
+  assert.deepEqual(cohort.branches.map((branch) => branch.branch), ['THETA_CONVENTIONAL']);
+  assert.deepEqual(cohort.candidates.map((candidate) => candidate.candidateId),
+    ['THETA_CONVENTIONAL:AAPL261016P00190000']);
+  assert.equal(frontier.branches.find((branch) => branch.branch === 'THETA_HOLD_STRIKE')?.candidateCount, 1);
 });
 
 test('recovery and covered-call frontiers require confirmed stock and preserve whole-chain call-away economics', () => {
@@ -120,15 +150,16 @@ test('research quote limitations stay separate from strategy feasibility and nev
   assert.equal(result.executionAuthorized,false);
 });
 
-test('canonical authority compares independently eligible branches and does not leave THETA_Q authoritative', () => {
+test('research branches remain visible but cannot win the bounded Conventional Paper selection', () => {
   const conventional = contract();
   const hold = contract({ optionSymbol: 'AAPL260918P00195000', occSymbol: 'AAPL260918P00195000',
     strike: 195, expiration: '2026-09-18', bid: 1.1, ask: 1.15, delta: null });
   const result = buildCanonicalStrategyFrontier({ ...base, contracts: [conventional, hold], routing: routing(['THETA_Q', 'THETA_H']) });
   assert.deepEqual(result.branchesConsidered, ['THETA_CONVENTIONAL', 'THETA_HOLD_STRIKE']);
-  assert.ok(result.selectedBranch === 'THETA_CONVENTIONAL' || result.selectedBranch === 'THETA_HOLD_STRIKE');
+  assert.equal(result.selectedBranch, 'THETA_CONVENTIONAL');
   assert.notEqual(result.selectedCandidateId, null);
-  assert.notEqual(result.secondBestCandidateId, null);
+  assert.equal(result.secondBestCandidateId, null);
+  assert.ok(result.branches.find((branch) => branch.branch === 'THETA_HOLD_STRIKE')?.candidateCount === 1);
   assert.equal(result.executionAuthorized, false);
 });
 

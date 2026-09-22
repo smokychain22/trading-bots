@@ -460,7 +460,8 @@ function buildBranch(branch: ThetaStrategyBranch, input: CanonicalStrategyFronti
     && (input.stock.shares === null || input.stock.shares > 0);
   const applicable = stockApplicable || route?.eligible === true;
   const routeReasons = route?.reasons.map((reason) => reason.code) ?? (input.routing === null ? ['ROUTER_RESULT_UNKNOWN'] : ['ROUTER_FAMILY_MISSING']);
-  if (!applicable) return {
+  const enumerateInapplicableResearch = branch === 'THETA_HOLD_STRIKE' || branch === 'THETA_DEFINED_RISK';
+  if (!applicable && !enumerateInapplicableResearch) return {
     branch, strategyVersion: source.strategyVersion, status: source.status as 'RESEARCH_ONLY' | 'SHADOW', applicable: false,
     evaluated: true, routeReasons, evaluationState: 'NOT_APPLICABLE', candidateCount: 0, mechanicallyRejected: 0, enumerationTruncated: false,
     hardVetoed: 0, softRanked: 0, dataInsufficient: 0, candidates: [], bestCandidateId: null,
@@ -492,13 +493,20 @@ function buildBranch(branch: ThetaStrategyBranch, input: CanonicalStrategyFronti
     raw = input.contracts.filter((contract) => contract.optionType === 'CALL' && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax)
       .map((contract) => coveredCallCandidate(contract, input));
   }
-  const candidates = rankCandidates(raw);
+  // Counterfactual research records retain the contract and economics even
+  // when the router says this branch is not applicable. The router verdict
+  // remains a hard blocker, so such rows cannot become Paper actions.
+  const candidates = rankCandidates(applicable ? raw : raw.map((candidate) => ({
+    ...candidate, hardBlockers: [...candidate.hardBlockers, 'ROUTER_NOT_APPLICABLE'],
+    riskFeasible: false, executionAuthorized: false,
+    sizing: { quantity: 0, bindingConstraint: 'ROUTER_NOT_APPLICABLE', reasons: [...candidate.sizing.reasons, 'ROUTER_NOT_APPLICABLE'] },
+  })));
   const feasible = candidates.filter((candidate) => candidate.riskFeasible);
   const rejected = candidates.filter((candidate) => !candidate.riskFeasible);
   return {
-    branch, strategyVersion: source.strategyVersion, status: source.status as 'RESEARCH_ONLY' | 'SHADOW', applicable: true,
+    branch, strategyVersion: source.strategyVersion, status: source.status as 'RESEARCH_ONLY' | 'SHADOW', applicable,
     evaluated: true, routeReasons: [...routeReasons, ...(enumerationTruncated ? ['DEFINED_RISK_ENUMERATION_BOUND_REACHED'] : [])],
-    evaluationState: candidates.length === 0 || enumerationTruncated ? 'BLOCKED_MISSING_INPUT' : 'EVALUATED',
+    evaluationState: !applicable ? 'NOT_APPLICABLE' : candidates.length === 0 || enumerationTruncated ? 'BLOCKED_MISSING_INPUT' : 'EVALUATED',
     candidateCount: candidates.length, mechanicallyRejected: 0, enumerationTruncated, hardVetoed: rejected.length,
     softRanked: feasible.length, dataInsufficient: candidates.filter((candidate) => candidate.unknownEvidence.length > 0).length,
     candidates, bestCandidateId: feasible[0]?.candidateId ?? null, secondBestCandidateId: feasible[1]?.candidateId ?? null,
@@ -514,8 +522,10 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
   const feasible = globallyRanked.filter((candidate) => candidate.riskFeasible);
   const blockedApplicable = applicable.filter((branch) => branch.evaluationState === 'BLOCKED_MISSING_INPUT');
   const managementAuthorityRequired = applicable.some((branch) => branch.branch === 'THETA_RECOVERY' || branch.branch === 'THETA_CC');
+  // Research-only and shadow branches may have structurally positive size.
+  // They are never eligible for the Paper-facing frontier selection.
   const sizedNewRisk = feasible.filter((candidate) =>
-    (candidate.action === 'OPEN_CSP' || candidate.action === 'OPEN_DEFINED_RISK') && candidate.sizing.quantity > 0);
+    candidate.branch === 'THETA_CONVENTIONAL' && candidate.action === 'OPEN_CSP' && candidate.sizing.quantity > 0);
   const structuralSelection = managementAuthorityRequired ? null : sizedNewRisk[0] ?? null;
   const secondBest = managementAuthorityRequired ? null : sizedNewRisk[1] ?? null;
   const rejected = globallyRanked.filter((candidate) => !candidate.riskFeasible);

@@ -110,6 +110,10 @@ export interface ThetaShadowCycleConfig {
   readonly evaluationMode?: 'STANDARD' | 'SHADOW_EVIDENCE';
   readonly optionExpirationDateGte: string;
   readonly optionExpirationDateLte: string;
+  // Additional contract coverage for research branches only. It never
+  // changes the Conventional lattice or grants a branch Paper authority.
+  readonly shadowResearchExpirationDateGte?: string;
+  readonly shadowResearchExpirationDateLte?: string;
   readonly optionType: 'put';
   readonly maxOptionPages: number;
   readonly historyStart: string;
@@ -522,7 +526,23 @@ export function classifyShadowCycleProvenance(dimensions: Readonly<Record<string
   return { provenance: 'HYBRID', detail };
 }
 
+function validContractDateRange(gte: string, lte: string): boolean {
+  const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(Date.parse(`${value}T00:00:00Z`))
+    && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  return validDate(gte) && validDate(lte) && gte <= lte;
+}
+
 export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promise<ThetaShadowCycleResult> {
+  if (!validContractDateRange(config.optionExpirationDateGte, config.optionExpirationDateLte)) {
+    throw new Error('PRIMARY_CONTRACT_DATE_RANGE_INVALID');
+  }
+  const researchGte = config.shadowResearchExpirationDateGte;
+  const researchLte = config.shadowResearchExpirationDateLte;
+  if ((researchGte === undefined) !== (researchLte === undefined)
+    || (researchGte !== undefined && researchLte !== undefined && !validContractDateRange(researchGte, researchLte))) {
+    throw new Error('SHADOW_RESEARCH_CONTRACT_DATE_RANGE_INVALID');
+  }
   const runId = randomUUID();
   const startedAt = config.now();
   // The cycle start bounds the provider requests. The immutable decision
@@ -825,24 +845,48 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const contractEvidenceByType: ProviderEvidence[] = [];
   const quoteEvidenceByType: ProviderEvidence[] = [];
   for (const optionType of optionTypes) {
-    try {
-      const result = await fetchOptionContracts(config.alpaca, {
-        underlyingSymbol: underlying, expirationDateGte: config.optionExpirationDateGte,
-        expirationDateLte: config.optionExpirationDateLte, optionType, limit: 100, maxPages: config.maxOptionPages,
-      });
-      contractItems.push(...result.items);
-      optionContractsComplete = optionContractsComplete !== false && result.complete;
-      contractEvidenceByType.push(result.complete
-        ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
-        : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' });
-    } catch (error) {
-      contractEvidenceByType.push(failedProviderEvidence(error));
-      optionContractsComplete = false;
-      blockers.push(`OPTION_CONTRACTS_FETCH_FAILED:${optionType.toUpperCase()}:${error instanceof Error ? error.message : 'unknown'}`);
+    const contractWindows = [
+      { name: 'PRIMARY', gte: config.optionExpirationDateGte, lte: config.optionExpirationDateLte },
+      ...(config.evaluationMode === 'SHADOW_EVIDENCE'
+        && config.shadowResearchExpirationDateGte !== undefined
+        && config.shadowResearchExpirationDateLte !== undefined
+        ? [{ name: 'SHADOW_RESEARCH', gte: config.shadowResearchExpirationDateGte, lte: config.shadowResearchExpirationDateLte }]
+        : []),
+    ];
+    for (const window of contractWindows) {
+      try {
+        const result = await fetchOptionContracts(config.alpaca, {
+          underlyingSymbol: underlying, expirationDateGte: window.gte,
+          expirationDateLte: window.lte, optionType, limit: 100, maxPages: config.maxOptionPages,
+        });
+        const seen = new Set(contractItems.map((item) => item.symbol));
+        for (const item of result.items) if (!seen.has(item.symbol)) {
+          contractItems.push(item);
+          seen.add(item.symbol);
+        }
+        // Primary contracts qualify the Paper-facing Conventional route.
+        // A failed or partial research-only fetch cannot downgrade them.
+        if (window.name === 'PRIMARY') {
+          optionContractsComplete = optionContractsComplete !== false && result.complete;
+          contractEvidenceByType.push(result.complete
+            ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
+            : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' });
+        }
+        if (!result.complete) blockers.push(`OPTION_CONTRACTS_INCOMPLETE:${window.name}:${optionType.toUpperCase()}`);
+      } catch (error) {
+        if (window.name === 'PRIMARY') {
+          contractEvidenceByType.push(failedProviderEvidence(error));
+          optionContractsComplete = false;
+        }
+        blockers.push(`OPTION_CONTRACTS_FETCH_FAILED:${window.name}:${optionType.toUpperCase()}:${error instanceof Error ? error.message : 'unknown'}`);
+      }
     }
     try {
       const result = await fetchOptionSnapshots(config.alpaca, {
-        underlyingSymbol: underlying, feed: 'indicative', optionType, limit: 100, maxPages: config.maxOptionPages,
+        // The provider adapter documents a 1,000-observation page maximum.
+        // Use it to reduce serial page latency and the risk of excluding the
+        // newly enumerated research expirations under the bounded page cap.
+        underlyingSymbol: underlying, feed: 'indicative', optionType, limit: 1_000, maxPages: config.maxOptionPages,
       });
       for (const [symbol, snapshot] of result.snapshots) snapshotsBySymbol.set(symbol, snapshot);
       optionChainComplete = optionChainComplete !== false && result.complete;
