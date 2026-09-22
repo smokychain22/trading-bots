@@ -27,7 +27,7 @@ const authHeaders = (config: AlpacaProviderConfig): HeadersInit => ({
   'APCA-API-SECRET-KEY': config.apiSecret,
 });
 
-export type AlpacaErrorClass = 'INVALID_REQUEST' | 'INVALID_AUTH' | 'NOT_ENTITLED' | 'RATE_LIMITED' | 'SERVER_ERROR' | 'NETWORK_ERROR' | 'MALFORMED_RESPONSE';
+export type AlpacaErrorClass = 'INVALID_REQUEST' | 'INVALID_AUTH' | 'NOT_ENTITLED' | 'RATE_LIMITED' | 'SERVER_ERROR' | 'NETWORK_ERROR' | 'PROVIDER_TIMEOUT' | 'MALFORMED_RESPONSE';
 
 export class AlpacaProviderError extends Error {
   readonly errorClass: AlpacaErrorClass;
@@ -50,19 +50,27 @@ const classifyErrorStatus = (status: number): AlpacaErrorClass => {
 };
 
 async function requestJson(fetchImpl: typeof fetch, url: URL, headers: HeadersInit): Promise<unknown> {
-  let response: Response;
+  // Read-only market/broker calls must finish inside the bounded serverless
+  // evidence cycle. A stalled read is provider uncertainty, never empty data.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
-    response = await fetchImpl(url, { headers });
+    const response = await fetchImpl(url, { headers, signal: controller.signal });
+    if (!response.ok) {
+      throw new AlpacaProviderError(classifyErrorStatus(response.status), response.status, `${url.pathname} returned HTTP ${response.status}.`);
+    }
+    try {
+      return await response.json();
+    } catch {
+      if (controller.signal.aborted) throw new AlpacaProviderError('PROVIDER_TIMEOUT', null, `${url.pathname} read timed out.`);
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', response.status, `${url.pathname} returned a non-JSON body.`);
+    }
   } catch (error) {
+    if (error instanceof AlpacaProviderError) throw error;
+    if (controller.signal.aborted) throw new AlpacaProviderError('PROVIDER_TIMEOUT', null, `${url.pathname} read timed out.`);
     throw new AlpacaProviderError('NETWORK_ERROR', null, `Network error reaching ${url.host}${url.pathname} -- ${error instanceof Error ? error.name : 'unknown'}.`);
-  }
-  if (!response.ok) {
-    throw new AlpacaProviderError(classifyErrorStatus(response.status), response.status, `${url.pathname} returned HTTP ${response.status}.`);
-  }
-  try {
-    return await response.json();
-  } catch {
-    throw new AlpacaProviderError('MALFORMED_RESPONSE', response.status, `${url.pathname} returned a non-JSON body.`);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

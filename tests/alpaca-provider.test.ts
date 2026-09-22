@@ -124,6 +124,17 @@ test('fetchPositions parses a real-shaped positions array', async () => {
   assert.equal(result[0]?.quantity, 100);
 });
 
+test('Alpaca reads are abortable and release their deadline after a successful response', async () => {
+  let suppliedSignal: AbortSignal | null = null;
+  const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    suppliedSignal = init?.signal as AbortSignal | null;
+    return jsonResponse(200, { status: 'ACTIVE' });
+  }) as typeof fetch;
+  await fetchMasterAccountSnapshot(baseConfig(fetchImpl), NOW);
+  assert.ok(suppliedSignal instanceof AbortSignal);
+  assert.equal(suppliedSignal.aborted, false);
+});
+
 test('a rejected client request is distinct from an Alpaca server failure', async () => {
   const rejected = (async () => new Response('', { status: 400 })) as typeof fetch;
   await assert.rejects(() => fetchMasterAccountSnapshot(baseConfig(rejected), NOW), (error: unknown) => {

@@ -100,6 +100,20 @@
       "stockBarsParserDetail": "PROVIDER_ZERO_OPTIONAL_VWAP",
       "conclusion": "REQUIRED_OHLCV_NOT_IMPLICATED_BY_SAFE_PARSER_CATEGORY_OPTIONAL_VWAP_ZERO_MUST_BE_UNKNOWN"
     },
+    "vercelPostVwapScan": {
+      "startedAt": "2026-09-22T15:07:26Z",
+      "responseStatus": 504,
+      "functionTimeoutSeconds": 300,
+      "outboundReadCounts": { "stockBars": 6, "optionContracts": 29, "optionSnapshots": 4, "optionomics": 24, "otherAlpaca": 25 },
+      "interpretation": "STOCK_BARS_AND_OPTIONABILITY_REACHED_BUT_FULL_SCAN_NOT_PERSISTED",
+      "completeScanProven": false
+    },
+    "runtime503": {
+      "observedAt": "2026-09-22T15:02:29Z",
+      "persistedErrorCode": "POSTGRES_57P03",
+      "laterShortRuntimeJobsSucceeded": true,
+      "interpretation": "TRANSIENT_DATABASE_CONNECTION_AVAILABILITY_NOT_EMPTY_MARKET"
+    },
     "optionomicsMetrics": "AUTHENTICATED_HTTP_200",
     "optionomicsHistoricalAtmIv": {
       "symbol": "SPY",
@@ -114,7 +128,7 @@
   "blockers": [
     { "name": "AIVEN_WRITABILITY", "state": "CLOSED", "reason": "direct read-only setting off and rollback-safe application writes passed" },
     { "name": "BROKER_HISTORICAL_FACT_POLICY", "state": "ACTIVE_BLOCKER", "reason": "11 unmatched facts are retained; settlement and pending obligations are not fully proven" },
-    { "name": "BOUNDED_UNIVERSE_EMPTY_STAGE", "state": "ACTIVE_RUNTIME_PROOF_PENDING", "reason": "Vercel Production authenticated assets reached 100, but stock-bars ingestion rejected provider-zero optional VWAP. Narrow code fix retains only strictly valid OHLCV and marks VWAP unavailable with an observed count. Next natural scan must prove bars, optionability and candidate assembly." },
+    { "name": "BOUNDED_UNIVERSE_EMPTY_STAGE", "state": "ACTIVE_RUNTIME_PROOF_PENDING", "reason": "The post-fix scan reached stock bars and option contracts, but the 300-second Vercel function timeout prevented final diagnostic persistence. Alpaca read timeout is being bounded independently; complete scan still unproven." },
     { "name": "FINALIST_BBO_BEFORE_AEGIS", "state": "ACTIVE_BLOCKER", "reason": "fresh finalist refresh is not yet implemented upstream of AEGIS" },
     { "name": "AEGIS_IV_SHOCK", "state": "ACTIVE_BLOCKER", "reason": "no qualified mature current-plus-baseline detector wired to Production" },
     { "name": "AEGIS_SPREAD_WIDENING", "state": "ACTIVE_BLOCKER", "reason": "no qualified cohort-aware mature baseline detector wired to Production" },
