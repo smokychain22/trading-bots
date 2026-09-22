@@ -139,7 +139,9 @@ test('a failed bars batch loses only that batch, never the whole discovery run',
   assert.ok(result.blockers.some((b) => b.startsWith('UNIVERSE_BARS_BATCH_FAILED')));
   const barsStage = result.funnel.stageDiagnostics?.find((stage) => stage.stage === 'STOCK_BARS');
   assert.equal(barsStage?.providerState, 'PARTIAL');
-  assert.equal(barsStage?.reasonCounts.BARS_BATCH_FAILED, 1);
+  assert.equal(barsStage?.reasonCounts.BARS_SERVER_ERROR, 1);
+  assert.equal(barsStage?.reasonCounts.BARS_UNOBSERVED_PROVIDER_FAILURE, 1);
+  assert.equal(barsStage?.reasonCounts.NO_BARS_RETURNED, undefined);
 });
 
 test('an assets authentication failure remains distinct from an empty universe or transient provider error', async () => {
@@ -166,8 +168,28 @@ test('all bars batches failing is provider error, not a valid empty universe', a
   assert.equal(result.candidates.length, 0);
   assert.equal(result.candidatesOrigin, 'REAL_PROVIDER_ERROR');
   assert.equal(result.funnel.stageDiagnostics?.find((stage) => stage.stage === 'STOCK_BARS')?.providerState, 'PROVIDER_ERROR');
+  assert.equal(result.funnel.stageDiagnostics?.find((stage) => stage.stage === 'STOCK_BARS')?.reasonCounts.BARS_SERVER_ERROR, 1);
+  assert.equal(result.funnel.stageDiagnostics?.find((stage) => stage.stage === 'STOCK_BARS')?.reasonCounts.BARS_UNOBSERVED_PROVIDER_FAILURE, 1);
   assert.equal(result.funnel.stageDiagnostics?.at(-1)?.providerState, 'PARTIAL');
   assert.ok(result.blockers.some((blocker) => blocker.startsWith('UNIVERSE_BARS_BATCH_FAILED')));
+});
+
+test('a rejected bars request remains INVALID_REQUEST rather than market emptiness', async () => {
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/assets')) return jsonResponse(200, [
+      { symbol: 'SPY', exchange: 'ARCA', class: 'us_equity', tradable: true, status: 'active' },
+    ]);
+    return new Response('', { status: 400 });
+  }) as typeof fetch;
+  const alpaca: AlpacaProviderConfig = { tradingApiBase: 'https://paper-api.alpaca.markets',
+    marketDataApiBase: 'https://data.alpaca.markets', apiKey: 'SYNTHETIC', apiSecret: 'SYNTHETIC', fetchImpl };
+  const result = await discoverRealUniverse(alpaca, baseDiscoveryConfig(), () => NOW);
+  assert.equal(result.candidatesOrigin, 'REAL_PROVIDER_ERROR');
+  const barsStage = result.funnel.stageDiagnostics?.find((stage) => stage.stage === 'STOCK_BARS');
+  assert.equal(barsStage?.providerState, 'INVALID_REQUEST');
+  assert.equal(barsStage?.reasonCounts.BARS_INVALID_REQUEST, 1);
+  assert.equal(barsStage?.reasonCounts.BARS_UNOBSERVED_PROVIDER_FAILURE, 1);
 });
 
 test('the universe-asset bound is honestly reported when truncated', async () => {

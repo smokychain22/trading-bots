@@ -27,7 +27,7 @@ const authHeaders = (config: AlpacaProviderConfig): HeadersInit => ({
   'APCA-API-SECRET-KEY': config.apiSecret,
 });
 
-export type AlpacaErrorClass = 'INVALID_AUTH' | 'NOT_ENTITLED' | 'RATE_LIMITED' | 'SERVER_ERROR' | 'NETWORK_ERROR' | 'MALFORMED_RESPONSE';
+export type AlpacaErrorClass = 'INVALID_REQUEST' | 'INVALID_AUTH' | 'NOT_ENTITLED' | 'RATE_LIMITED' | 'SERVER_ERROR' | 'NETWORK_ERROR' | 'MALFORMED_RESPONSE';
 
 export class AlpacaProviderError extends Error {
   readonly errorClass: AlpacaErrorClass;
@@ -44,7 +44,7 @@ const classifyErrorStatus = (status: number): AlpacaErrorClass => {
   if (status === 401 || status === 403) return status === 403 ? 'NOT_ENTITLED' : 'INVALID_AUTH';
   if (status === 429) return 'RATE_LIMITED';
   if (status >= 500) return 'SERVER_ERROR';
-  return 'SERVER_ERROR';
+  return 'INVALID_REQUEST';
 };
 
 async function requestJson(fetchImpl: typeof fetch, url: URL, headers: HeadersInit): Promise<unknown> {

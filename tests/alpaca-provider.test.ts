@@ -124,6 +124,16 @@ test('fetchPositions parses a real-shaped positions array', async () => {
   assert.equal(result[0]?.quantity, 100);
 });
 
+test('a rejected client request is distinct from an Alpaca server failure', async () => {
+  const rejected = (async () => new Response('', { status: 400 })) as typeof fetch;
+  await assert.rejects(() => fetchMasterAccountSnapshot(baseConfig(rejected), NOW), (error: unknown) => {
+    assert.ok(error instanceof AlpacaProviderError);
+    assert.equal(error.errorClass, 'INVALID_REQUEST');
+    assert.equal(error.httpStatus, 400);
+    return true;
+  });
+});
+
 test('malformed broker numerics never become economic zero across account, contract, and quote boundaries', async () => {
   const accountFetch = (async () => jsonResponse(200, {
     status: 'ACTIVE', equity: ' ', cash: false, buying_power: '', options_buying_power: '12x',

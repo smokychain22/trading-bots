@@ -65,7 +65,7 @@ export interface UniverseDiscoveryStageDiagnostic {
   readonly outputCount: number;
   readonly rejectedCount: number;
   readonly durationMs: number;
-  readonly providerState: 'READY' | 'VALID_EMPTY' | 'PARTIAL' | 'INVALID_AUTH' | 'PROVIDER_ERROR' | 'PROVIDER_LIMITED' | 'SCHEMA_INVALID';
+  readonly providerState: 'READY' | 'VALID_EMPTY' | 'PARTIAL' | 'INVALID_REQUEST' | 'INVALID_AUTH' | 'PROVIDER_ERROR' | 'PROVIDER_LIMITED' | 'SCHEMA_INVALID';
   readonly reasonCounts: Readonly<Record<string, number>>;
 }
 
@@ -94,6 +94,7 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
 
 function providerFailureState(error: unknown): UniverseDiscoveryStageDiagnostic['providerState'] {
   return error instanceof AlpacaProviderError && error.errorClass === 'INVALID_AUTH' ? 'INVALID_AUTH'
+    : error instanceof AlpacaProviderError && error.errorClass === 'INVALID_REQUEST' ? 'INVALID_REQUEST'
     : error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE' ? 'SCHEMA_INVALID'
     : error instanceof AlpacaProviderError && error.errorClass === 'NOT_ENTITLED' ? 'PROVIDER_LIMITED'
       : 'PROVIDER_ERROR';
@@ -166,6 +167,12 @@ export async function discoverRealUniverse(
   const barsStarted = performance.now();
   let failedBarsBatches = 0;
   let incompleteBarsBatches = 0;
+  let failedBarSymbolCount = 0;
+  let noBarSymbolCount = 0;
+  let paginationUnobservedSymbolCount = 0;
+  let priceBelowFloorCount = 0;
+  const barsFailureReasons: Record<string, number> = {};
+  const barsFailureStates: UniverseDiscoveryStageDiagnostic['providerState'][] = [];
   const totalBarsBatches = Math.ceil(filteredSymbols.length / config.barsBatchSize);
 
   for (const batch of chunk(filteredSymbols, config.barsBatchSize)) {
@@ -182,14 +189,23 @@ export async function discoverRealUniverse(
         list.push(bar);
         barsBySymbol.set(bar.symbol, list);
       }
+      const symbolsWithoutBars = batch.filter((symbol) => !barsBySymbol.has(symbol)).length;
+      if (barsResult.complete) noBarSymbolCount += symbolsWithoutBars;
+      else paginationUnobservedSymbolCount += symbolsWithoutBars;
       for (const [symbol, bars] of barsBySymbol) {
         const { avgDollarVolume, currentPrice } = averageDollarVolumeAndCurrentPrice(bars);
         if (avgDollarVolume !== null && currentPrice !== null && currentPrice >= config.minCurrentPrice) {
           priceBySymbol.set(symbol, { avgDollarVolume, currentPrice });
+        } else if (batch.includes(symbol)) {
+          priceBelowFloorCount += 1;
         }
       }
     } catch (error) {
       failedBarsBatches += 1;
+      failedBarSymbolCount += batch.length;
+      const reason = error instanceof AlpacaProviderError ? `BARS_${error.errorClass}` : 'BARS_PROVIDER_ERROR';
+      barsFailureReasons[reason] = (barsFailureReasons[reason] ?? 0) + 1;
+      barsFailureStates.push(providerFailureState(error));
       blockers.push(`UNIVERSE_BARS_BATCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
       // A failed batch loses only that batch's symbols -- never the whole
       // discovery run; other batches' real data is still usable.
@@ -199,12 +215,16 @@ export async function discoverRealUniverse(
   stageDiagnostics.push({ stage: 'STOCK_BARS', inputCount: assetsAfterExchangeFilter, outputCount: assetsWithUsableBars,
     rejectedCount: assetsAfterExchangeFilter - assetsWithUsableBars,
     durationMs: Math.max(0, Math.round(performance.now() - barsStarted)),
-    providerState: totalBarsBatches > 0 && failedBarsBatches === totalBarsBatches ? 'PROVIDER_ERROR'
+    providerState: totalBarsBatches > 0 && failedBarsBatches === totalBarsBatches
+      ? barsFailureStates.every((state) => state === barsFailureStates[0]) ? barsFailureStates[0] as UniverseDiscoveryStageDiagnostic['providerState'] : 'PROVIDER_ERROR'
       : failedBarsBatches > 0 || incompleteBarsBatches > 0 ? 'PARTIAL'
       : assetsWithUsableBars === 0 ? 'VALID_EMPTY' : 'READY',
-    reasonCounts: { ...(failedBarsBatches > 0 ? { BARS_BATCH_FAILED: failedBarsBatches } : {}),
+    reasonCounts: { ...barsFailureReasons,
+      ...(failedBarSymbolCount > 0 ? { BARS_UNOBSERVED_PROVIDER_FAILURE: failedBarSymbolCount } : {}),
       ...(incompleteBarsBatches > 0 ? { BARS_PAGINATION_INCOMPLETE: incompleteBarsBatches } : {}),
-      ...(assetsAfterExchangeFilter > assetsWithUsableBars ? { NO_USABLE_BARS_OR_PRICE_BELOW_FLOOR: assetsAfterExchangeFilter - assetsWithUsableBars } : {}) } });
+      ...(paginationUnobservedSymbolCount > 0 ? { BARS_UNOBSERVED_PAGINATION_INCOMPLETE: paginationUnobservedSymbolCount } : {}),
+      ...(noBarSymbolCount > 0 ? { NO_BARS_RETURNED: noBarSymbolCount } : {}),
+      ...(priceBelowFloorCount > 0 ? { PRICE_BELOW_FLOOR: priceBelowFloorCount } : {}) } });
 
   const shortlistForOptionabilityCheck = [...priceBySymbol.entries()]
     .sort((a, b) => b[1].avgDollarVolume - a[1].avgDollarVolume)
@@ -221,6 +241,8 @@ export async function discoverRealUniverse(
   const optionabilityResults: Array<{symbol:string;optionable:boolean}>=[];
   const optionabilityStarted = performance.now();
   let optionabilityErrors = 0;
+  const optionabilityFailureReasons: Record<string, number> = {};
+  const optionabilityFailureStates: UniverseDiscoveryStageDiagnostic['providerState'][] = [];
   for(const batch of chunk(shortlistForOptionabilityCheck,2)){
     optionabilityResults.push(...await Promise.all(batch.map(async (symbol) => {
       try {
@@ -231,6 +253,9 @@ export async function discoverRealUniverse(
         return { symbol, optionable: result.items.length > 0 };
       } catch (error) {
         optionabilityErrors += 1;
+        const reason = error instanceof AlpacaProviderError ? `CONTRACT_${error.errorClass}` : 'CONTRACT_PROVIDER_ERROR';
+        optionabilityFailureReasons[reason] = (optionabilityFailureReasons[reason] ?? 0) + 1;
+        optionabilityFailureStates.push(providerFailureState(error));
         blockers.push(`UNIVERSE_OPTIONABILITY_CHECK_FAILED:${symbol}:${error instanceof Error ? error.message : 'unknown'}`);
         return { symbol, optionable: false }; // NOT confirmed optionable -- excluded, never guessed in
       }
@@ -256,10 +281,13 @@ export async function discoverRealUniverse(
   stageDiagnostics.push({ stage: 'OPTIONABILITY', inputCount: shortlistForOptionabilityCheck.length,
     outputCount: optionableConfirmed, rejectedCount: shortlistForOptionabilityCheck.length - optionableConfirmed,
     durationMs: Math.max(0, Math.round(performance.now() - optionabilityStarted)),
-    providerState: optionabilityErrors > 0 ? optionabilityErrors === shortlistForOptionabilityCheck.length ? 'PROVIDER_ERROR' : 'PARTIAL'
+    providerState: optionabilityErrors > 0 ? optionabilityErrors === shortlistForOptionabilityCheck.length
+      ? optionabilityFailureStates.every((state) => state === optionabilityFailureStates[0])
+        ? optionabilityFailureStates[0] as UniverseDiscoveryStageDiagnostic['providerState'] : 'PROVIDER_ERROR'
+      : 'PARTIAL'
       : shortlistForOptionabilityCheck.length === 0 && (failedBarsBatches > 0 || incompleteBarsBatches > 0) ? 'PARTIAL'
         : optionableConfirmed === 0 ? 'VALID_EMPTY' : 'READY',
-    reasonCounts: { ...(optionabilityErrors > 0 ? { CONTRACT_CHECK_FAILED: optionabilityErrors } : {}),
+    reasonCounts: { ...optionabilityFailureReasons,
       ...(shortlistForOptionabilityCheck.length === 0 && (failedBarsBatches > 0 || incompleteBarsBatches > 0)
         ? { UPSTREAM_BARS_COVERAGE_INCOMPLETE: 1 } : {}),
       ...(shortlistForOptionabilityCheck.length - optionableConfirmed - optionabilityErrors > 0
