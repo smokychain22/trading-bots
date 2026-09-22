@@ -1,15 +1,22 @@
 # THETA pre-VPS unknown ledger
 
-Status: **Slice 1 of the pre-VPS zero-avoidable-unknown directive.** This is a
-first, grounded pass built from direct source reads plus a targeted fork audit
-of `src/theta/` and `src/execution/` (Production-critical paths), plus the
-real `docs/operations/THETA_R7_LIVE_SESSION_FORENSIC_2026-09-21.md` forensic
-(an actual live-session read against real Aiven/Alpaca evidence, not a
-simulation). It is **not** an exhaustive whole-repo audit — the parent
-directive's 25 sections cannot be completed honestly in one pass without
-producing shallow, unverified output, which the directive itself explicitly
-warns against. See `THETA_PRE_VPS_AUDIT_SCOPE_AND_PLAN.md` for what remains
-and why it is deferred.
+Status: **Slice 1 (seed) + Slice 3 (expansion) of the pre-VPS zero-avoidable-
+unknown directive.** Built from direct source reads plus two rounds of
+targeted fork audits -- Slice 1 covered `src/theta/` and `src/execution/`;
+Slice 3 extended to `src/providers/`, `src/worker/`, `src/market/`, `src/ops/`,
+`src/database/`, `src/customer/`, and the Python quant layer
+(`bots/theta/quant/models/*.py`) -- plus the real
+`docs/operations/THETA_R7_LIVE_SESSION_FORENSIC_2026-09-21.md` forensic (an
+actual live-session read against real Aiven/Alpaca evidence, not a
+simulation). It is **still not** an exhaustive whole-repo audit -- see
+`THETA_PRE_VPS_AUDIT_SCOPE_AND_PLAN.md` for what remains.
+
+**Item 4 below (`CONTRACT_NOT_EXECUTABLE`) has its own dedicated, much deeper
+investigation**: `THETA_CONTRACT_NOT_EXECUTABLE_INVESTIGATION.md`. That
+investigation found the real executability gate has **10 independent
+conditions**, not just the multiplier check this ledger's first pass
+suspected -- read that document for the full picture; the summary here is
+kept brief and now points to it as the authoritative source.
 
 Every entry below is grounded in an actual file read (cited by path/line) or
 the real forensic document — never inferred from a function name alone.
@@ -94,9 +101,26 @@ remain UNKNOWN.
 - **FIRST_PAPER_REQUIRED**: YES -- this is the single largest observed real-session bottleneck between "3,876 real candidates evaluated" and "0 candidates selected with positive quantity"
 - **VPS_REQUIRED**: YES
 - **AVOIDABLE_OR_LEGITIMATE**: **UNDETERMINED -- HIGHEST-PRIORITY OPEN QUESTION IN THIS LEDGER.** Do not report this as closed either way without a real, live Alpaca `/v2/options/contracts` response sample examined directly.
-- **REMEDIATION**: Codex (with real Alpaca sandbox/data access) must pull a live sample of `/v2/options/contracts` responses and confirm: (a) is `size` actually present and correctly typed for the vast majority of real, liquid contracts; (b) does the 3,299 figure correlate with the same window's Aiven/broker degradation, or does it reproduce on a healthy session too. If (a) reveals a mapping defect, fix `alpaca-provider.ts:337`'s field read. If it is provider/session-transient, reclassify as `PROVIDER_TEMPORARY_ERROR`/`STALE_DATA` for that window, not a standing defect.
-- **OWNER**: Codex (has real Alpaca credentials and Aiven forensic context this research branch does not)
-- **VERIFICATION_TEST**: A real (non-mocked, sandbox-safe, read-only) Alpaca contract-fetch test asserting the real `size`/multiplier field is present and correctly parsed for a known-liquid, known-good contract, run on a healthy (non-degraded) session
+- **REMEDIATION**: See `THETA_CONTRACT_NOT_EXECUTABLE_INVESTIGATION.md` for the full, refined analysis. Key update: the real executability gate has **10 independent conditions** (not just the multiplier check), and the single most likely dominant cause is contracts that were simply never quoted at all in a wide-lattice scan (4 of the 10 conditions fail simultaneously for an unquoted contract) -- not a multiplier mapping defect specifically. Critically, **Codex does not need a fresh live Alpaca pull to resolve this first**: the granular per-candidate rejection reason (`reasons[].detail`) is already preserved in the persisted shadow evidence for the 2026-09-21 session (`new-risk-orchestrator.ts:709`) -- a `GROUP BY` on that existing data, once Aiven writes are readable again, answers this without any new provider call.
+- **OWNER**: Codex (has real Alpaca credentials, Aiven forensic context, and the persisted shadow-evidence rows this research branch does not)
+- **VERIFICATION_TEST**: See the dedicated investigation doc's two-step verification request (persisted-data breakdown first, live Alpaca sample second)
+
+### 5. AEGIS SYSTEM-family gap is worse than "never reaches a state" -- it forces a permanent `HOLD_ONLY` output every cycle
+
+- **FIELD**: `_system()` family evaluation (`bots/theta/quant/models/aegis.py:157-158`)
+- **STAGE**: AEGIS final assessment (`_worse()` worst-family-wins design)
+- **CURRENT_VALUE_STATE**: Confirmed via a Slice 3 fork read: **any one of the 3 SYSTEM stress signals being `None` forces `HOLD_ONLY`** -- not merely "this family is unevaluated," but a continuous, permanent `HOLD_ONLY` contribution to the overall worst-family-wins AEGIS output, every single cycle, for as long as 2 of the 3 signals remain unproduced (see item 2 above).
+- **WHY_UNKNOWN**: Same root cause as item 2 -- no producer for 2 of the 3 SYSTEM signals.
+- **AVOIDABLE_OR_LEGITIMATE**: Same as item 2 (AVOIDABLE in principle, currently honestly represented) -- this refines the SEVERITY of item 2's consequence, it is not a new separate defect.
+- **OWNER**: Codex
+
+### 6. `src/providers/capability-registry.ts` already exists as a real module -- relevant prior art, not yet cross-referenced
+
+A Slice 3 fork confirmed this file exists in the real codebase (`src/providers/capability-registry.ts`) and was not previously known to this engagement. It was **not read in depth this pass** -- flagged as directly relevant prior art for this engagement's own `src/research/pre-vps-capability-registry.ts` (Slice 2) and worth reconciling in a future pass rather than maintaining two independent capability inventories long-term.
+
+### 7. `src/customer/`/`src/database/` spot-check: no new avoidable defects found, but not exhaustively read
+
+A Slice 3 fork spot-checked (not exhaustively line-by-line) `src/customer/alpaca-paper-verification.ts`, `src/customer/paper-copy.ts`, `src/customer/customer-store.ts`, and `src/database/legacy-*.ts`. Every `??`/fallback pattern found there was `LEGITIMATE_DEFAULT` (fail-closed-toward-not-eligible on unknown account approval level; `null` correctly preserved distinct from `false` for follower-record-absent cases; row-count `?? 0` idioms in migration/forensic tooling). **No new avoidable defects found in this surface**, but `src/customer/copy-engine-contract.ts`, `src/customer/operator-readiness.ts`, and the full `src/worker/resident-worker.ts` were NOT read in detail this pass -- flagged as remaining scope, not cleared.
 
 ## Confirmed LEGITIMATE unknowns (correctly represented, not a defect)
 
@@ -132,12 +156,15 @@ transcript, summarized here):
 | `management-input-state.ts:185` | `unknown_fill_fees === true ? null : numeric(row.fees) ?? 0` | LEGITIMATE_DEFAULT | UNKNOWN checked first and preserved separately; `0` only used for genuinely known-zero fees |
 | `paper-bootstrap-management-policy.ts:797` | `nearExhaustedExecutableFractionThreshold ?? 0.10` | LEGITIMATE_DEFAULT | Versioned, documented, caller-overridable policy default (already hardened in an earlier pass of this engagement) |
 
-## Counts
+## Counts (Slice 1 + Slice 3 combined)
 
-- **AVOIDABLE_UNKNOWN_COUNT**: 3 confirmed this pass (items 1-3 above), plus **1 undetermined high-priority item (item 4)** that could be either avoidable (mapping defect) or legitimate (provider/session-transient) -- resolving item 4 is the single highest-leverage next step, since it is correlated with the largest real observed rejection count in the only real live-session forensic available.
-- **LEGITIMATE_UNKNOWN_COUNT**: 4 confirmed well-governed patterns cited above (not exhaustive -- a full-repo pass would find more)
-- **NOT_APPLICABLE_COUNT**: 1 (`theta-shadow-once.ts`'s dev-only hardcoded AEGIS fixture, explicitly gated and never the real runtime path)
+- **AVOIDABLE_UNKNOWN_COUNT**: 4 confirmed (items 1, 2/5 combined as one root cause, 3, 6/7 surfaced no new defects so don't add to this count), plus **1 undetermined high-priority item (item 4)** that could be either avoidable (mapping defect) or legitimate (provider/session-transient) -- resolving item 4 is the single highest-leverage next step.
+- **LEGITIMATE_UNKNOWN_COUNT**: 4 confirmed well-governed patterns cited above, plus the `src/customer/`/`src/database/` spot-check findings (item 7) -- not exhaustive.
+- **NOT_APPLICABLE_COUNT**: 1 (`theta-shadow-once.ts`'s dev-only hardcoded AEGIS fixture)
 - **PROVIDER_LIMITED_COUNT**: 0 confirmed this pass (item 4 may resolve to this category, or may not -- undetermined)
+- **TOTAL_DECISION_CRITICAL_UNKNOWN_STATES entered this pass**: 7 (items 1-7)
 
 This ledger will be extended, not restarted, as further slices of the pre-VPS
-audit are completed.
+audit are completed. Full whole-repo exhaustiveness (every file in every
+directory, line-by-line) has still not been attempted and should not be
+assumed from this document's coverage.
