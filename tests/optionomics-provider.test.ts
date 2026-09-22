@@ -505,6 +505,34 @@ test('event pagination exposes incomplete coverage without claiming a negative',
   assert.equal(outcome.value.informationState, 'EMPTY_RESULT_COVERAGE_UNVERIFIED');
 });
 
+test('earnings distance is typed positive context and never negative event assurance', async () => {
+  for (const [reported, state, value] of [
+    [28, 'KNOWN', 28], [0, 'KNOWN', 0], [null, 'UNKNOWN', null],
+    ['bad', 'INVALID', null], [-1, 'INVALID', null], [2.5, 'INVALID', null],
+  ] as const) {
+    const fetchImpl = (async () => jsonResponse(200, {
+      date: '2026-09-22', metrics: { expected_moves: { earnings_in_sessions: reported } },
+    })) as typeof fetch;
+    const outcome = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'METRICS', 'AAPL');
+    assert.equal(outcome.kind, 'VALUE_PRESENT');
+    if (outcome.kind !== 'VALUE_PRESENT') continue;
+    const normalized = outcome.value.normalized as Record<string, unknown>;
+    assert.deepEqual(normalized.earningsInSessions, { state, value,
+      reason: state === 'KNOWN' ? null : state === 'UNKNOWN' ? 'PROVIDER_VALUE_MISSING_OR_NULL'
+        : reported === -1 || reported === 2.5 ? 'EARNINGS_DISTANCE_NOT_NONNEGATIVE_INTEGER'
+          : 'PROVIDER_VALUE_NOT_FINITE_NUMBER', units: 'TRADING_SESSIONS' });
+    assert.equal(normalized.earningsCoverageAuthority, 'POSITIVE_DISTANCE_ONLY_NO_NEGATIVE_ASSURANCE');
+  }
+  const missingFetch = (async () => jsonResponse(200, { date: '2026-09-22', metrics: { atm_iv: 0.2 } })) as typeof fetch;
+  const missing = await fetchOptionomicsContextObservation(baseConfig(missingFetch), 'METRICS', 'AAPL');
+  assert.equal(missing.kind, 'VALUE_PRESENT');
+  if (missing.kind === 'VALUE_PRESENT') {
+    const normalized = missing.value.normalized as Record<string, { state: string; reason: string | null }>;
+    assert.equal(normalized.earningsInSessions?.state, 'UNKNOWN');
+    assert.equal(normalized.earningsInSessions?.reason, 'EXPECTED_MOVES_OBJECT_UNAVAILABLE');
+  }
+});
+
 test('malformed rows cannot silently disappear from a supposedly complete options chain', async () => {
   for (const body of [[{ symbol: 'X' }, null], { date: '2026-09-10', options: [{ symbol: 'X' }, false] }]) {
     const fetchImpl = (async () => jsonResponse(200, body)) as typeof fetch;
