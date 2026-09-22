@@ -1,58 +1,84 @@
 /**
- * Universe discovery funnel diagnostic (Wave 15 section 12). Research-
- * only, `brokerAuthority: false`. Answers "which stage eliminated the
- * universe" precisely, rather than guessing from a zero-candidate count
- * alone -- per this wave's explicit instruction not to guess the failing
- * stage. Real evidence this module builds on: main's own recent fix
- * (`production-shadow-runtime.ts`, commit `49c912a`) already correctly
- * sets `completeness: 'DATA_INSUFFICIENT'` when `discovery.candidates.length===0`,
- * closing the "zero-candidate scan silently reads as COMPLETE" defect at
- * that field. This module adds the missing PER-STAGE breakdown so a real
- * zero-candidate scan can be attributed to an exact stage, not just
- * flagged in aggregate.
+ * Universe discovery funnel diagnostic (Wave 15 section 12, realigned
+ * Wave 18 section 1). Research-only, `brokerAuthority: false`.
+ *
+ * **Realignment note**: the original version of this module used a
+ * speculative 11-stage list built before real Production evidence
+ * existed. Main `61f2108` ("Diagnose bounded universe stages and
+ * distinguish Alpaca auth failures") shipped the real diagnostic type,
+ * `UniverseDiscoveryStageDiagnostic` (`src/theta/universe-discovery.ts`).
+ * This module now imports that REAL type directly rather than
+ * duplicating it, so it can never drift out of sync with Production
+ * again -- if Codex adds/renames/removes a stage, this file's import
+ * will fail to compile against the new union, forcing an explicit fix
+ * here rather than silently analyzing a stale stage list.
  */
+import type { UniverseDiscoveryStageDiagnostic } from '../theta/universe-discovery.js';
 
-export const universeDiscoveryFunnelVersion = 'theta-universe-discovery-funnel-v1' as const;
+export const universeDiscoveryFunnelVersion = 'theta-universe-discovery-funnel-v2' as const;
 
-export const universeDiscoveryStages = [
-  'SOURCE_ASSETS', 'ACTIVE_TRADEABLE', 'BOUNDED_COHORT', 'UNDERLYING_QUOTES', 'STOCK_BARS',
-  'LIQUIDITY', 'OPTIONABILITY', 'OPTION_CONTRACTS', 'DTE_WINDOW', 'OPTION_QUOTES', 'CANDIDATE_ASSEMBLY',
-] as const;
-export type UniverseDiscoveryStage = typeof universeDiscoveryStages[number];
+export type ProductionUniverseStage = UniverseDiscoveryStageDiagnostic['stage'];
+export type ProductionProviderState = UniverseDiscoveryStageDiagnostic['providerState'];
 
-export type StageEvidenceState = 'VALID_EMPTY' | 'PROVIDER_ERROR' | 'PROVIDER_LIMITED' | 'DATA_INSUFFICIENT' | 'STALE' | 'SCHEMA_ERROR';
+/** The real pipeline order, per `universe-discovery.ts`'s own doc
+ * comments (Stage 0 fetchTradableAssets -> exchange filter -> Stage 1
+ * stock bars -> Stage 2 optionability). This is the one place a stage
+ * ordering assumption lives -- if Production's real order ever changes,
+ * this constant (and only this constant) needs updating, not the
+ * analysis logic below. `satisfies readonly ProductionUniverseStage[]`
+ * makes the compiler reject this constant if it ever omits or misspells
+ * a real stage name. */
+export const productionUniverseStageOrder = [
+  'SOURCE_ASSETS', 'EXCHANGE_FILTER', 'STOCK_BARS', 'OPTIONABILITY',
+] as const satisfies readonly ProductionUniverseStage[];
 
-export interface StageRecord {
+/** A real per-cycle wrapper around Production's own diagnostic record --
+ * `UniverseDiscoveryStageDiagnostic` itself has no `cycleId` (it is
+ * already scoped to one cycle's `funnel.stageDiagnostics` array); this
+ * research module adds `cycleId` only to group records across MULTIPLE
+ * real cycles for the rate/latency aggregation below. */
+export interface CycleScopedStageDiagnostic extends UniverseDiscoveryStageDiagnostic {
   readonly cycleId: string;
-  readonly stage: UniverseDiscoveryStage;
-  readonly inputCount: number;
-  readonly outputCount: number;
-  readonly rejectedCount: number;
-  readonly providerState: 'OK' | 'DEGRADED' | 'ERROR' | 'UNKNOWN';
-  readonly evidenceState: StageEvidenceState;
-  readonly durationMs: number | null;
-  readonly reasonCounts: Readonly<Record<string, number>>;
 }
+
+/** States that mean "the provider itself could not be trusted at this
+ * stage" -- distinct from a genuine `VALID_EMPTY`/`READY` zero-output
+ * result. Grouping these here, once, avoids re-deriving the distinction
+ * ad hoc at each call site. */
+const PROVIDER_FAILURE_STATES: ReadonlySet<ProductionProviderState> = new Set([
+  'INVALID_AUTH', 'PROVIDER_ERROR', 'PROVIDER_LIMITED', 'SCHEMA_INVALID',
+]);
 
 export interface UniverseFunnelResult {
   readonly cycleId: string;
-  readonly stages: readonly StageRecord[];
-  /** The first stage (in defined pipeline order) whose outputCount is
-   * zero -- the real, precise answer to "where did the universe become
-   * empty," never guessed from the final candidate count alone. `null`
-   * when every stage produced output (a healthy funnel) or the stage
-   * records don't cover the whole pipeline (reported separately). */
-  readonly firstEmptyStage: UniverseDiscoveryStage | null;
+  readonly stages: readonly CycleScopedStageDiagnostic[];
+  /** The first real stage (in `productionUniverseStageOrder`) whose
+   * `outputCount` is zero -- never guessed from the final candidate
+   * count alone. `null` when every stage produced output, OR when stage
+   * coverage is incomplete (reported separately via
+   * `pipelineCoverageComplete`/`missingStages` -- never silently guessed
+   * in that case either). */
+  readonly firstEmptyStage: ProductionUniverseStage | null;
+  /** True only when the first empty stage's `providerState` is itself a
+   * provider-failure state -- distinguishes "the universe is genuinely
+   * empty under a healthy provider" (real economic signal, still not
+   * proof of "no opportunity" on its own -- see `README` note below)
+   * from "the provider itself failed and we cannot trust the zero." */
+  readonly firstEmptyStageIsProviderFailure: boolean;
   readonly pipelineCoverageComplete: boolean;
-  readonly missingStages: readonly UniverseDiscoveryStage[];
+  readonly missingStages: readonly ProductionUniverseStage[];
 }
 
-/** Validates and orders a real batch of per-cycle stage records, then
- * finds the first (in real pipeline order, not array order) stage whose
- * outputCount is zero. Never infers a failing stage when stage records
- * are missing -- reports pipelineCoverageComplete=false and lists exactly
- * which stages have no record, instead of guessing. */
-export function analyzeUniverseFunnel(cycleId: string, records: readonly StageRecord[]): UniverseFunnelResult {
+/**
+ * Analyzes a real batch of Production stage diagnostics for one cycle.
+ * A zero-output `SOURCE_ASSETS` stage is reported as `firstEmptyStage:
+ * 'SOURCE_ASSETS'` -- this module never converts that into an "economic
+ * no opportunity" claim; that interpretation belongs to a downstream
+ * consumer that also knows the real completeness/DATA_INSUFFICIENT
+ * semantics `production-shadow-runtime.ts` already enforces (main
+ * `49c912a`), not to this stage-level diagnostic alone.
+ */
+export function analyzeUniverseFunnel(cycleId: string, records: readonly CycleScopedStageDiagnostic[]): UniverseFunnelResult {
   const mismatched = records.filter((r) => r.cycleId !== cycleId);
   if (mismatched.length > 0) throw new Error(`UNIVERSE_FUNNEL_CYCLE_ID_MISMATCH:${mismatched[0]?.stage}`);
   for (const r of records) {
@@ -63,30 +89,31 @@ export function analyzeUniverseFunnel(cycleId: string, records: readonly StageRe
   }
 
   const byStage = new Map(records.map((r) => [r.stage, r]));
-  const orderedStages = universeDiscoveryStages.filter((s) => byStage.has(s));
-  const missingStages = universeDiscoveryStages.filter((s) => !byStage.has(s));
+  const orderedStages = productionUniverseStageOrder.filter((s) => byStage.has(s));
+  const missingStages = productionUniverseStageOrder.filter((s) => !byStage.has(s));
   const pipelineCoverageComplete = missingStages.length === 0;
 
-  let firstEmptyStage: UniverseDiscoveryStage | null = null;
+  let firstEmptyStage: ProductionUniverseStage | null = null;
   if (pipelineCoverageComplete) {
-    for (const stage of universeDiscoveryStages) {
-      const record = byStage.get(stage) as StageRecord;
+    for (const stage of productionUniverseStageOrder) {
+      const record = byStage.get(stage) as CycleScopedStageDiagnostic;
       if (record.outputCount === 0) { firstEmptyStage = stage; break; }
     }
   }
+  const firstEmptyStageIsProviderFailure = firstEmptyStage !== null
+    && PROVIDER_FAILURE_STATES.has((byStage.get(firstEmptyStage) as CycleScopedStageDiagnostic).providerState);
 
   return {
-    cycleId, stages: orderedStages.map((s) => byStage.get(s) as StageRecord),
-    firstEmptyStage, pipelineCoverageComplete, missingStages,
+    cycleId, stages: orderedStages.map((s) => byStage.get(s) as CycleScopedStageDiagnostic),
+    firstEmptyStage, firstEmptyStageIsProviderFailure, pipelineCoverageComplete, missingStages,
   };
 }
 
 export interface StageRateSummary {
-  readonly stage: UniverseDiscoveryStage;
+  readonly stage: ProductionUniverseStage;
   readonly cyclesObserved: number;
-  readonly emptyUniverseRate: number;
+  readonly emptyOutputRate: number;
   readonly providerFailureRate: number;
-  readonly dataInsufficientRate: number;
   readonly medianStageLatencyMs: number | null;
   readonly p90StageLatencyMs: number | null;
 }
@@ -96,18 +123,21 @@ function percentile(sorted: readonly number[], p: number): number {
   return sorted[index] as number;
 }
 
-/** Aggregates real per-cycle stage records into per-stage rate metrics
+/** Aggregates real per-cycle stage diagnostics into per-stage rates
  * across a real batch of cycles -- pure counting/percentiles, no
- * estimation. */
-export function summarizeStageRates(allCycleRecords: readonly StageRecord[]): readonly StageRateSummary[] {
-  return universeDiscoveryStages.map((stage) => {
+ * estimation. `providerFailureRate` and `emptyOutputRate` are reported
+ * SEPARATELY, never combined -- a stage can be empty under a healthy
+ * provider (a real signal) or empty because the provider failed (a
+ * completely different signal), and conflating them was exactly this
+ * module's original defect. */
+export function summarizeStageRates(allCycleRecords: readonly CycleScopedStageDiagnostic[]): readonly StageRateSummary[] {
+  return productionUniverseStageOrder.map((stage) => {
     const records = allCycleRecords.filter((r) => r.stage === stage);
-    const durations = records.map((r) => r.durationMs).filter((d): d is number => d !== null).toSorted((a, b) => a - b);
+    const durations = records.map((r) => r.durationMs).toSorted((a, b) => a - b);
     return {
       stage, cyclesObserved: records.length,
-      emptyUniverseRate: records.length === 0 ? 0 : records.filter((r) => r.outputCount === 0).length / records.length,
-      providerFailureRate: records.length === 0 ? 0 : records.filter((r) => r.evidenceState === 'PROVIDER_ERROR').length / records.length,
-      dataInsufficientRate: records.length === 0 ? 0 : records.filter((r) => r.evidenceState === 'DATA_INSUFFICIENT').length / records.length,
+      emptyOutputRate: records.length === 0 ? 0 : records.filter((r) => r.outputCount === 0).length / records.length,
+      providerFailureRate: records.length === 0 ? 0 : records.filter((r) => PROVIDER_FAILURE_STATES.has(r.providerState)).length / records.length,
       medianStageLatencyMs: durations.length === 0 ? null : percentile(durations, 0.5),
       p90StageLatencyMs: durations.length === 0 ? null : percentile(durations, 0.9),
     };
