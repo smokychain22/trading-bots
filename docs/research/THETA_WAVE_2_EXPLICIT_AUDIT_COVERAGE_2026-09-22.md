@@ -74,9 +74,12 @@ move/RV methodology assessment, and explicit audit coverage."
 These remain open exactly as documented in their originating slice; Wave 2
 did not attempt to close them and does not claim to:
 
-1. `CONTRACT_MULTIPLIER_MAPPING` root cause (Slice 1-14) -- still the
-   single highest-priority open registry blocker; requires live Alpaca
-   access this branch lacks.
+1. `CONTRACT_MULTIPLIER_MAPPING` still needs direct live Alpaca metadata
+   verification, but it is no longer a plausible explanation for the
+   persisted September 21 `CONTRACT_NOT_EXECUTABLE` cohort. Codex's
+   read-only 3,299-row Aiven breakdown found only quote staleness and/or
+   spread-width reasons. Those execution-quality causes are now the
+   observed first-Paper contract bottleneck; no quote gate was relaxed.
 2. `ROLL_CC_CANDIDATE_SOURCE` P0 (Slices 1-14) -- still structurally
    unreachable; Codex-owned fix.
 3. D1 (`stressIvShockDetected`/`stressSpreadWideningDetected` policy

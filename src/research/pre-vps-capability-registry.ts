@@ -146,7 +146,7 @@ export const capabilityRegistry: readonly CapabilityRecord[] = [
     producer: 'fetchOptionSnapshots', dataSource: 'Alpaca option snapshots', persistence: 'Not independently verified this pass',
     consumer: 'Deterministic economics, executability gate', runtimeReachable: true, authority: 'alpaca-provider.ts',
     mechanicallyTested: false, providerTested: false, noSubmitTested: false, empiricallyValidated: false,
-    currentState: 'REAL', blocker: null, owner: 'CODEX', sourceFiles: ['src/theta/alpaca-provider.ts:365'],
+    currentState: 'REAL', blocker: 'Persisted September 21 evidence: 3,299 of 3,876 candidates were non-executable, with 2,014 stale+wide, 787 wide-only, and 498 stale-only quote reasons. This does not justify weakening the freshness or spread gate.', owner: 'CODEX', sourceFiles: ['src/theta/alpaca-provider.ts:365'],
   },
   {
     capabilityId: 'CONTRACT_MULTIPLIER_MAPPING', purpose: 'Correctly read a real per-contract share multiplier',
@@ -155,7 +155,7 @@ export const capabilityRegistry: readonly CapabilityRecord[] = [
     consumer: 'option-chain-ingestion.ts executability gate (forces executable=false when null)', runtimeReachable: true,
     authority: 'alpaca-provider.ts:337', mechanicallyTested: false, providerTested: false, noSubmitTested: false, empiricallyValidated: false,
     currentState: 'NOT_INDEPENDENTLY_VERIFIED',
-    blocker: 'HIGHEST-PRIORITY OPEN QUESTION -- 3,299/3,876 real-session candidates rejected as CONTRACT_NOT_EXECUTABLE; root cause (mapping defect vs. session-transient provider degradation) requires a live Alpaca sample this research environment cannot pull',
+    blocker: 'Direct live Alpaca multiplier metadata still needs verification. The persisted 3,299 CONTRACT_NOT_EXECUTABLE details identify stale and/or wide quotes, not multiplier failure; do not attribute that cohort to this mapping without new evidence.',
     owner: 'CODEX', sourceFiles: ['src/theta/alpaca-provider.ts:337', 'src/theta/option-chain-ingestion.ts:147-160'],
   },
   {

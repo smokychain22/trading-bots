@@ -75,7 +75,7 @@ pass.
 | Domain | Treatment | Finding |
 |---|---|---|
 | Corporate actions | FULL | Already correctly registered as `CORPORATE_ACTION_EVIDENCE`. Producer/consumer claims in the existing entry (`alpaca-corporate-action-evidence.ts`) reconfirmed accurate this pass; no correction needed. |
-| AEGIS stress (`stressIvShockDetected`/`stressSpreadWideningDetected`) | FULL | Already registered as `AEGIS_SYSTEM_STRESS`. Reconfirmed this pass via direct grep of both exact field names: they appear only in `src/theta/aegis-derivation.ts:24-27` (doc comment declaring them structurally UNKNOWN/never-defaulted) and in six consumer/test files (`tests/theta-shadow-cycle.test.ts`, `tests/oi-volume-hard-gate-breakdown.test.ts`, `tests/new-risk-orchestrator.test.ts`, `tests/cross-symbol-economic-frontier.test.ts`, `src/theta/theta-shadow-once.ts`, `src/research/production-shadow-runtime.ts`, `src/research/evidence-completeness-diagnostic.ts`, `bots/theta/tests/quant/test_aegis_contract.py`, `bots/theta/quant/runtime/aegis_contract.py`). **No change from the existing registry entry**: `currentState: STUB_DEFAULT`, zero real producer confirmed to still exist anywhere in the repo. This finding is reported only, per instructions not to duplicate the separate P0 reclassification workstream already in flight on this exact pair of fields. |
+| AEGIS stress (`stressIvShockDetected`/`stressSpreadWideningDetected`) | FULL | The rebased registry calls this `AEGIS_SYSTEM_LIQUIDITY_STRESS`. Direct source review finds no real producer for either field. The Aiven September 21 cohort did not reach a persisted AEGIS evaluation, so its 3,876 rows cannot be counted as observed AEGIS rejections. The producer gap is structural and separately P0. |
 | Events (general) | FULL | Added as `EVENT_RISK_STATE` (see above). Distinct from `CORPORATE_ACTION_EVIDENCE` -- the former is a generic tri-state helper any caller can apply a penalty through, the latter is the specific Alpaca corporate-action data producer. |
 | Ownership | FULL | Added as `OWNERSHIP_CONTRACT` (see above). |
 | Concentration / correlation | FULL | `AEGIS_SECTOR_CORRELATION` (existing, unchanged) covers the production single-position sector proxy. `CORRELATION_EVIDENCE` (new) covers the separate, research-only, Alpaca-bar-based pairwise correlation module. These are two different capabilities with two different producers and must be tracked as such; the existing entry's blocker text ("no multi-position sector/correlation producer exists") is still accurate -- `CORRELATION_EVIDENCE` does not close it. |
@@ -131,13 +131,13 @@ page + snapshot for SPY, one real Optionomics `/api/v1/stocks/{symbol}/options` 
 and runs them through the real AEGIS orchestrator (`new-risk-orchestrator.ts` / `bots/theta/quant/models/aegis.py`).
 It is real-data proof for: `BROKER_ACCOUNT`-adjacent contract discovery, `OPTION_CONTRACT_DISCOVERY`,
 `EXECUTABLE_BBO`, and `AEGIS_EVALUATION`. It does **not** touch event risk, ownership, correlation, HAR-RV, or
-`AEGIS_SYSTEM_STRESS` -- none of those five capabilities (four new, one pre-existing) have a real-data proof
+`AEGIS_SYSTEM_LIQUIDITY_STRESS` -- none of those five capabilities (four new, one pre-existing) have a real-data proof
 script anywhere in `tools/`.
 
 | Domain | Real-data end-to-end evidence exists? | Currently required for THETA lifecycle? | Evidence cited |
 |---|---|---|---|
 | Corporate actions | Yes (persistence confirmed via commit history cited in existing registry entry) | Yes (`preVpsRequired: true`) | Existing `CORPORATE_ACTION_EVIDENCE` entry |
-| AEGIS stress (IV-shock/spread-widening) | **No** -- zero real producer found | Yes per `AEGIS_SYSTEM_STRESS`'s `preVpsRequired: true`, but structurally cannot be evidenced because nothing produces it | None; `aegis-derivation.ts:24-27` documents the gap rather than closing it |
+| AEGIS stress (IV-shock/spread-widening) | **No** -- zero real producer found | Yes per `AEGIS_SYSTEM_LIQUIDITY_STRESS`'s `preVpsRequired: true`, but structurally cannot be evidenced because nothing produces it | None; `aegis-derivation.ts:24-27` documents the gap rather than closing it |
 | Event risk (tri-state helper) | No dedicated real-data proof; consumers are real but this pass could not confirm they ever pass a non-UNKNOWN value | Yes (real Production consumers) | None found |
 | Ownership | No dedicated real-data proof script found; wiring is real and tested at the unit level (`tests/ownership-contract.test.ts` etc.) | Yes (real Production consumers, TRD CAND-003) | Unit tests only, not an end-to-end real-data run |
 | Concentration / correlation (production sector proxy) | Partial -- real for exactly one held underlying per existing `AEGIS_SECTOR_CORRELATION` entry | Yes | Existing registry entry |
@@ -191,11 +191,10 @@ match the existing invariants by inspection, but inspection is not execution).
 **KEY FINDING:** The dispatch named the wrong file (`src/providers/capability-registry.ts`); the real capability
 registry is `src/research/pre-vps-capability-registry.ts`. Five real, Production-or-research capabilities
 (`EVENT_RISK_STATE`, `OWNERSHIP_CONTRACT`, `CORRELATION_EVIDENCE`, `HAR_RV_CONTRACT`,
-`OPTIONOMICS_FEATURE_ENGINE`) were missing from it and are now added with full provenance. `AEGIS_SYSTEM_STRESS`
+`OPTIONOMICS_FEATURE_ENGINE`) were missing from it and are now added with full provenance. `AEGIS_SYSTEM_LIQUIDITY_STRESS`
 (`stressIvShockDetected`/`stressSpreadWideningDetected`) was reconfirmed unchanged: still `STUB_DEFAULT`, still
 zero real producer, consistent with the separate P0 reclassification already in flight on that pair of fields.
-**VERIFICATION GAP:** Test suite could not be executed in this sandbox (no `node_modules`, `npx` denied) --
-Codex/CI must run `npm test` to confirm the additions are mechanically valid.
+**VERIFICATION:** The initial Claude sandbox could not run npm. Codex subsequently installed workspace dependencies and ran the new correlation test (3/3), TypeScript check, lint, and security scan successfully. Full branch CI remains a separate check.
 **NEXT RECOMMENDED TASK:** (1) Run `npm test` and report actual pass/fail. (2) A dedicated "liquidity as a
 standalone capability" slice -- this pass could not cleanly separate it from `EXECUTABLE_BBO` and
 `OPTIONOMICS_FEATURE_ENGINE` without risking a guessed producer/consumer pairing. (3) Codex confirmation of
