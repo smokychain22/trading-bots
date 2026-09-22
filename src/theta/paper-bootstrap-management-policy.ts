@@ -1,4 +1,6 @@
 import type { ManagementInputState } from './management-input-state.js';
+import { managementCandidateMaxQuoteAgeMs, type ManagementCandidate,
+  type ManagementCandidateDiscovery } from './management-candidate-evidence.js';
 import type { ManagementPolicyEvidenceProvider } from './autonomous-runtime.js';
 import {
   buildManagementActionFrontier, managementPolicyEvidenceVersion,
@@ -11,7 +13,6 @@ import { assessThesisInvalidation, type ThesisInvalidationAssessment } from './t
 import { buildRecoveryState, type BasisSource, type RecoveryState } from './recovery-state.js';
 import { evaluateAssignmentUtility } from './assignment-utility.js';
 import { computeWholeChainPnl, type WholeChainComponents } from './whole-chain-economics.js';
-import { type EventRiskState } from './event-risk-state.js';
 import {
   BOOTSTRAP_NEUTRAL_CC_WEIGHT_PROVENANCE, bestCoveredCallCandidate, evaluateCoveredCallCandidates,
   type CoveredCallCandidate, type CoveredCallUtilityWeights,
@@ -72,23 +73,7 @@ export const paperBootstrapManagementPolicyVersion = 'theta-paper-bootstrap-mana
  * contract `buildRuntimeManagementFrontiers` already documents.
  */
 
-export interface RollCandidate {
-  readonly optionContractId: string;
-  readonly symbol: string;
-  readonly optionType: 'PUT' | 'CALL';
-  readonly strike: number;
-  readonly expiration: string;
-  readonly multiplier: number;
-  readonly quantity: number;
-  readonly bid: number | null;
-  readonly ask: number | null;
-  /** Only meaningful for `ccCandidates` (covered-call targets) -- ignored
-   * for ROLL. Defaults to `UNKNOWN` (never `ABSENT_VERIFIED`) when omitted
-   * -- an omitted risk flag means nobody checked, which must never be
-   * silently read as "verified safe." */
-  readonly dividendExDateRisk?: EventRiskState;
-  readonly eventRisk?: EventRiskState;
-}
+export type RollCandidate = ManagementCandidate;
 
 export interface PaperBootstrapPolicyInput extends ManagementInputState {
   readonly rollCandidate?: RollCandidate | null;
@@ -1128,6 +1113,9 @@ export interface PaperBootstrapCandidateSource {
   candidatesFor(chainId: string): Promise<{
     readonly rollCandidate: RollCandidate | null;
     readonly ccCandidate: RollCandidate | null;
+    readonly rollCandidates?: readonly RollCandidate[];
+    readonly ccCandidates?: readonly RollCandidate[];
+    readonly rollCcCandidates?: readonly RollCandidate[];
   }>;
 }
 
@@ -1146,8 +1134,28 @@ export class PaperBootstrapManagementPolicyProvider implements ManagementPolicyE
   constructor(private readonly candidates: PaperBootstrapCandidateSource = noCandidates) {}
 
   async evaluate(state: ManagementInputState): Promise<ManagementPolicyEvidence | null> {
-    const { rollCandidate, ccCandidate } = await this.candidates.candidatesFor(state.chainId);
-    return evaluatePaperBootstrapManagementPolicy({ ...state, rollCandidate, ccCandidate });
+    const { rollCandidate, ccCandidate, rollCandidates, ccCandidates, rollCcCandidates } =
+      await this.candidates.candidatesFor(state.chainId);
+    const discovery: ManagementCandidateDiscovery | null = state.managementCandidateDiscovery ?? null;
+    // An incomplete, failed, or stale provider read is never a valid empty
+    // lattice. A target quote observed after the immutable decision time is
+    // not eligible even if the current-leg quote itself was timely.
+    const decisionMs=Date.parse(state.observedAt);
+    const targets=discovery===null?[]:[...discovery.rollCandidates,...discovery.ccCandidates,...discovery.rollCcCandidates];
+    const targetQuotesTimely=Number.isFinite(decisionMs)&&targets.every((candidate)=>{
+      const quoted=candidate.quoteTimestamp===undefined?NaN:Date.parse(candidate.quoteTimestamp);
+      const received=candidate.quoteReceivedAt===undefined?NaN:Date.parse(candidate.quoteReceivedAt);
+      return candidate.quoteSnapshotId!==undefined&&Number.isSafeInteger(candidate.quoteSnapshotId)
+        &&candidate.quoteFeed==='PAPER_INDICATIVE_REFERENCE'
+        &&Number.isFinite(quoted)&&Number.isFinite(received)
+        &&quoted<=received&&received<=decisionMs&&decisionMs-quoted<=managementCandidateMaxQuoteAgeMs;
+    });
+    const discovered = discovery?.state === 'READY' && state.evidenceBundle.timingState!=='FUTURE_EVIDENCE'
+      &&targetQuotesTimely ? discovery : null;
+    return evaluatePaperBootstrapManagementPolicy({ ...state, rollCandidate, ccCandidate,
+      rollCandidates: discovered?.rollCandidates ?? rollCandidates,
+      ccCandidates: discovered?.ccCandidates ?? ccCandidates,
+      rollCcCandidates: discovered?.rollCcCandidates ?? rollCcCandidates });
   }
 }
 

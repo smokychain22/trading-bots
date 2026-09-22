@@ -41,6 +41,22 @@ test('missing quote and multiplier stay unknown and create mechanical blockers',
   assert.ok(state.unknownFields.includes('context.dividendExDateState'));
 });
 
+test('a management candidate received after the decision time cannot enter an earlier frozen input',()=>{
+  const candidate={optionContractId:'target-1',symbol:'AAPL261023P00195000',optionType:'PUT' as const,
+    strike:195,expiration:'2026-10-23',multiplier:100,quantity:1,bid:1.5,ask:1.6,
+    quoteSnapshotId:7,quoteTimestamp:'2026-09-12T14:00:00.000Z',
+    quoteReceivedAt:'2026-09-12T14:00:01.000Z',quoteFeed:'PAPER_INDICATIVE_REFERENCE' as const};
+  const state=assembleManagementInput(base,{managementInputSnapshotId:'candidate-timing',
+    reconciliationSnapshotId:'recon-1',observedAt:'2026-09-12T14:00:00.000Z',
+    managementCandidateDiscovery:{contractVersion:'theta-management-candidate-discovery-v1',state:'READY',
+      provider:'ALPACA',quoteSemantics:'PAPER_INDICATIVE_REFERENCE',observedAt:'2026-09-12T14:00:01.000Z',
+      contractsComplete:true,quotesComplete:true,rollCandidates:[candidate],ccCandidates:[],rollCcCandidates:[],
+      rejections:[],reason:null}});
+  assert.equal(state.evidenceBundle.timingState,'FUTURE_EVIDENCE');
+  assert.ok(state.hardBlockers.includes('EVIDENCE_OBSERVED_AFTER_DECISION'));
+  assert.equal(state.managementCandidateDiscovery?.rollCandidates.length,1);
+});
+
 test('unknown broker fill fees keep whole-chain economics unknown',()=>{
   const state=assembleManagementInput({...base,unknown_fill_fees:true},{managementInputSnapshotId:'input-fees',
     reconciliationSnapshotId:'recon-1',observedAt:'2026-09-12T14:00:00.000Z'});

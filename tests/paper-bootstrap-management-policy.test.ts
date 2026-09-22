@@ -628,6 +628,25 @@ test('the provider wires an injected candidate source into evaluate()', async ()
   assert.equal(evidence?.selectedAction, 'ROLL');
 });
 
+test('the canonical provider consumes persisted plural discovery only when target quote lineage is timely',async()=>{
+  const input=state('CSP_OPEN');
+  const candidate={...rollCandidate(),quoteSnapshotId:42,quoteTimestamp:input.observedAt,
+    quoteReceivedAt:input.observedAt,quoteFeed:'PAPER_INDICATIVE_REFERENCE' as const};
+  const discovery={contractVersion:'theta-management-candidate-discovery-v1' as const,
+    state:'READY' as const,provider:'ALPACA' as const,quoteSemantics:'PAPER_INDICATIVE_REFERENCE' as const,
+    observedAt:input.observedAt,contractsComplete:true,quotesComplete:true,
+    rollCandidates:[candidate],ccCandidates:[],rollCcCandidates:[],rejections:[],reason:null};
+  const provider=new PaperBootstrapManagementPolicyProvider();
+  const selected=await provider.evaluate({...input,managementCandidateDiscovery:discovery});
+  assert.equal(selected?.selectedAction,'ROLL');
+  const stale=await provider.evaluate({...input,managementCandidateDiscovery:{...discovery,
+    rollCandidates:[{...candidate,quoteTimestamp:'2026-09-12T13:59:20.000Z'}]}});
+  assert.equal(stale?.selectedAction,'HOLD');
+  const failed=await provider.evaluate({...input,managementCandidateDiscovery:{...discovery,
+    state:'PROVIDER_ERROR',rollCandidates:[]}});
+  assert.equal(failed?.selectedAction,'HOLD');
+});
+
 test('at the exact structural expiration cutoff (dte=0, session closed), the bootstrap policy defers entirely so broker-truth ACCEPT_ASSIGNMENT wins -- never loses a tiebreak to HOLD', () => {
   // ITM short put at the exact cutoff: spot(190) < strike(200).
   const input = state('CSP_OPEN', { snapshot_json: { underlyingState: { last: 190 }, marketSession: { isOpen: false },

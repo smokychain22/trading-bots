@@ -39,6 +39,7 @@ import {
   PostgresPaperExecutionAuthorizationStore, resolveEffectivePaperExecutionControl,
 } from '../execution/paper-execution-authorization.js';
 import { createPaperBootstrapManagementPolicyProvider } from './paper-bootstrap-management-policy.js';
+import { ProductionPaperManagementCandidateSource } from './production-paper-management-candidate-source.js';
 import type { SchedulerCheckpointRecord } from './persistence-repositories.js';
 import { PostgresExecutionEvidenceStore } from '../execution/postgres-execution-evidence-store.js';
 import { persistConfirmedFillTca } from '../execution/confirmed-fill-tca.js';
@@ -422,8 +423,13 @@ export async function runAutonomousRuntimeCycle(
       if (jobType === 'POSITION_MANAGEMENT_SCAN') {
         if (reconciliation === null) return degraded('BROKER_RECONCILIATION_REQUIRED', retryAt);
         const managementStore = new PostgresManagementInputStore(pool);
+        // Candidate BBO must be observed and persisted before the immutable
+        // management input freezes its decision timestamp. The candidate
+        // producer enumerates only; this remains the one policy authority.
+        const candidateDiscovery = await new ProductionPaperManagementCandidateSource(pool,master.alpaca)
+          .discover(master.connectionId,reconciliation.snapshotId);
         const states = await managementStore.assembleAndPersistOpenChains(
-          master.connectionId, reconciliation.snapshotId, reconciliation.observedAt,
+          master.connectionId, reconciliation.snapshotId, reconciliation.observedAt,candidateDiscovery,
         );
         if (states.length === 0) return skipped('NO_OPEN_THETA_CHAINS');
         // Persist research-only profit-preservation and strategy-switching
