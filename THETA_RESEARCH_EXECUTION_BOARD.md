@@ -68,7 +68,7 @@ Updated 2026-09-22 after commit `fec4644` + Wave 7 Batches 1-2 (branch
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| W8-1 | Codex queue update after main merge | DONE | verified all 4 open rows still genuinely open against main `52e6ea5`; SHA-stamped |
+| W8-1 | Codex queue update after main merge | DONE | verified all 4 open rows still genuinely open against main `52e6ea5`; SHA-stamped; then main advanced again to `1ca3e27` closing the long-tracked P0-1 management-candidate-source gap (`production-paper-management-candidate-source.ts`, wired into `paper-bootstrap-management-policy.ts`) -- merged, verified (1822 pass), recorded in queue's closed section |
 | W8-2 | Quantified unknown audit (DATA_EXISTS_BUT_NOT_WIRED category) | OPEN | not started this pass |
 | W8-3 | `THETA_HARD_VS_SOFT_DECISION_AUDIT.md` | DONE | headline finding: quote-freshness (30s hardcoded) + spread-width, declared soft `EXECUTION_QUALITY`/`LIQUIDITY`, are the dominant real hard-reject cause (3,299/3,876 candidates, real R7 forensic evidence); RV/VRP/skew/term/GEX/flow/trend confirmed CAN_REPRESENT-only, not wired as gate or ranker anywhere in the real entry path; Q-8 added to Codex queue, HIGH priority |
 | W8-4 | Historical false-reject analysis tooling | OPEN | not started this pass |

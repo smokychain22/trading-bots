@@ -125,6 +125,22 @@ row against the new SHA before treating any of them as still open.
 
 ## Closed this engagement (for Codex's awareness, not action)
 
+- **Management candidate source (the P0-1 gap this engagement has
+  tracked since early waves)** -- main `98b7204`/`bc85ba8`/`bbdfd54`/
+  `1ca3e27` ("Wire broker-qualified management candidates before decision
+  freeze" + CI proof + fixture alignment + persisted executability
+  evidence, all merged this pass) built `src/theta/production-paper-
+  management-candidate-source.ts` and wired it into
+  `paper-bootstrap-management-policy.ts`, closing the long-standing gap
+  where `createPaperBootstrapManagementPolicyProvider()` was called with
+  zero args and both singular/array roll/CC candidate fields were
+  unpopulated. Verified via merge + full suite (1822 pass, 13 skipped --
+  2 new DB-env-gated tests) + tsc/lint/security-scan clean. Not
+  independently re-audited in depth this pass beyond the standard merge
+  verification -- flagged for a future pass's deeper review if the
+  engagement wants to confirm the real candidate economics match this
+  engagement's own prior findings, but no open queue action right now.
+
 - Assignment-capacity producer -- **Codex closed this independently and then marked it formally closed** across 3 more real commits this pass (`e64d554` "Verify already-secured put capacity for assignment management", `6a359a0` "Mark assignment capacity engineering defect closed", `52e6ea5` "Record verified R7 assignment and Aiven recovery checkpoint" -- see the new `docs/operations/THETA_R7_ASSIGNMENT_AND_DR_RECEIPT_2026-09-22.md`). Confirmed via merge + full suite (1812 pass). No open row for this in the queue above, and none should be re-added unless a NEW regression is found.
 - AEGIS baseline-maturity contract -- Codex reviewed and hardened it (`BASELINE_INVALID` state added), harvested into main.
 - H/D generator contract-identity and quote-sync defects Codex found in review -- fixed by Claude, verified, no further action.
