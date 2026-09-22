@@ -54,13 +54,18 @@ branches.
 
 ## Verdicts
 
-- **STRATEGY_ROUTER_REAL = PARTIAL.** A real router exists (Python bridge,
-  `strategyRouter` operation) and is really invoked, but the calling TS code
-  only ever consumes its `THETA_Q` eligibility signal. Whether the Python
-  router itself internally evaluates all 5 families and the TS caller simply
-  discards the rest, or the router itself is also THETA_Q-only, was **not
-  verified this pass** (would require opening
-  `bots/theta/quant/models/strategy_router.py`) -- flagged as a follow-up.
+- **STRATEGY_ROUTER_REAL = PARTIAL -- now fully resolved, see `THETA_STRATEGY_ROUTER_DEEP_TRACE.md`.**
+  A real router exists (Python bridge, `strategyRouter` operation) and is
+  really invoked. A full read of `strategy_router.py` (259 lines) confirms the
+  router itself genuinely evaluates ALL 6 families every cycle (THETA_Q,
+  THETA_H, THETA_D can all be simultaneously eligible; THETA_R/THETA_A/THETA_C
+  are lifecycle-gated) and its full result IS persisted in the shadow
+  evidence record (`routing: routerResult.data`, `new-risk-orchestrator.ts:790`).
+  The gap is entirely downstream: the TS control flow only ACTS on
+  `THETA_Q` eligibility (`:363`), and no candidate-generation code exists for
+  THETA_H/THETA_D regardless of what the router says. "Router capable of
+  representing a branch" and "runtime actually executing that branch" are
+  now cleanly distinguished, per the deep trace.
 - **STRATEGY_SWITCHING_STRUCTURAL = YES, confirmed.** The registry
   (`strategy-package.ts`'s `allowedActions`/`lattice`) genuinely differs per
   branch, and `dominates()` does structurally separate branches when

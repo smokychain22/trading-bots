@@ -52,6 +52,44 @@ tool boundary" instruction, this pass additionally completed:
 - **Slice 14**: `THETA_CODEX_PRE_VPS_INTEGRATION_BACKLOG.md` rebuilt.
 - **Special investigation**: `THETA_CONTRACT_NOT_EXECUTABLE_INVESTIGATION.md` -- found the real executability gate has 10 independent conditions (not just multiplier); found the granular per-candidate rejection reason is already persisted, so Codex can resolve this WITHOUT a fresh live Alpaca pull as the first step.
 
+## Wave 3 ("Master Research Completion Wave 3") pass -- what was completed and why the rest was not
+
+Wave 3 asked for 20 further sections, several individually large enough to be
+their own multi-day undertaking (a full method/config usage census across
+the whole repo; expanding the capability registry from 24 to genuinely
+exhaustive coverage; a genuinely exhaustive unknown ledger with a stated
+`PRODUCTION_FILES_SCANNED`/`COVERAGE_PERCENT`; real correlation and
+severe-downside research tooling built from scratch; finished, tested
+canonical export consumers for 6 different domains). Attempting all 20 in
+one pass at the same fabrication-risk standard this whole audit has held to
+would mean either superficial coverage presented as complete, or genuinely
+new code/tooling built without the review depth the rest of this engagement
+applies. Neither is acceptable.
+
+This pass instead prioritized the items that were (a) most concrete and
+directly actionable via source reads rather than large tooling builds, and
+(b) most likely to change the audit's own conclusions if wrong -- and one of
+them did:
+
+- **Reconciled DB status against current `main`** (item 1): `DATABASE_PORTABLE_BACKUP_VERIFIED`, `DATABASE_TEST_RESTORE_VERIFIED`, `STRUCTURE_PARITY`, and `DATA_PARITY` now read PASS with exact evidence from `main@0aa1aef`. `DATABASE_WRITABLE` correctly remains NOT YET PASS -- restore passing is never treated as proof Aiven is writable, per the directive's own instruction.
+- **AEGIS SYSTEM/LIQUIDITY gap promoted to P0-0** (item 6) -- and, critically, **corrected and sharpened via a direct line-by-line read of `bots/theta/quant/models/aegis.py`** rather than accepted from the directive's own framing or a prior fork summary. The real finding is more severe than "SYSTEM family forces HOLD_ONLY": `_liquidity()` ALSO independently forces `HOLD_ONLY` from the same missing `stressSpreadWideningDetected` input, and worst-family-wins means `new_risk_state` is provably `HOLD_ONLY` or worse on every real Production AEGIS evaluation today, permitting ZERO new-risk-opening actions unconditionally -- independent of `CONTRACT_NOT_EXECUTABLE`. This is now the single most severe finding of the entire pre-VPS audit and has been propagated into every downstream document (acceptance contract, Codex backlog, capability registry, brain capability matrix).
+- **Strategy router deep trace** (item 7): a complete, full read of `strategy_router.py` (259 lines) resolved a question the prior pass left open -- the Python router genuinely evaluates all 6 families every cycle and can represent multiple simultaneously-eligible entry branches (THETA_Q/THETA_H/THETA_D); the gap is entirely downstream, in what the TypeScript control flow chooses to act on.
+- **Loss cause resolution matrix** (item 9) and **assignment capacity trace** (item 10): both fully resolved via complete direct reads of the relevant files (`thesis-invalidation.ts`, `loss-state-vector.ts`, `account-exposure.ts`), each under 170 lines and read in full rather than sampled.
+
+## Wave 3 items NOT attempted this pass (explicitly deferred, not silently dropped)
+
+- Full capability registry expansion beyond 24 entries to genuinely exhaustive coverage (item 2), and reconciliation with `src/providers/capability-registry.ts` (discovered but not yet read).
+- A full method/config usage census (item 3).
+- Genuine unknown-ledger exhaustiveness with a stated file-coverage percentage (item 4).
+- A standalone required-vs-optional evidence matrix document (item 5).
+- Pre-VPS strategy maturity target definition with precise Hold-Strike/Defined-Risk shadow candidate-generation integration steps (item 8) -- partially answered by the strategy router deep trace and the entry E2E graph's existing findings, but not written as its own dedicated deliverable.
+- Correlation research tooling (item 11) and severe-downside tooling (item 12) -- both real, non-trivial builds, not attempted.
+- Finished, tested canonical export consumers for the 6 pending domains (item 13) -- the request document exists; the consumers themselves do not.
+- Optionomics RV-horizon/expected-move-derivation/GEX-PIT-status deep investigation (item 14) -- would require additional real MCP calls beyond this pass's scope.
+- Vanna/Charm/GEX/flow authority audit as its own document (item 15) -- substantially answered already in the provider capability matrix and Optionomics field qualification docs from the prior pass.
+- Full brain-capability-matrix expansion to every listed decision stage (item 16) -- the existing 19-row matrix was corrected for AEGIS this pass but not expanded to the directive's larger row list.
+- `THETA_PRE_VPS_BRAIN_READINESS_REPORT.md` (item 17) -- not written as a separate document; its core questions are already answered across the existing acceptance contract, brain capability matrix, and this scope doc.
+
 ## Real access boundaries hit this pass (per the directive's own stop condition)
 
 - **No live Alpaca API/MCP access** in this research environment -- `CONTRACT_NOT_EXECUTABLE`'s live-verification step and several `NOT_INDEPENDENTLY_VERIFIED` provider-matrix rows are genuinely blocked here; Codex has the access this branch lacks.
