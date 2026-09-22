@@ -47,26 +47,46 @@ export function parseAlpacaBarsPage(raw: RawAlpacaBarsPage, feed: string | null,
   readonly bars: readonly HistoricalBar[];
   readonly nextPageToken: string | null;
 } {
+  const page = raw as unknown as Record<string, unknown>;
+  if (page === null || typeof page !== 'object' || Array.isArray(page)
+    || page.bars === null || typeof page.bars !== 'object' || Array.isArray(page.bars)
+    || (page.next_page_token !== null && page.next_page_token !== undefined && typeof page.next_page_token !== 'string')) {
+    throw new Error('ALPACA_BARS_MALFORMED_PAGE');
+  }
+  const finite = (value: unknown): number | null => {
+    if (typeof value !== 'number' && typeof value !== 'string') return null;
+    if (typeof value === 'string' && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value.trim())) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
   const bars: HistoricalBar[] = [];
-  for (const [symbol, rawBars] of Object.entries(raw.bars)) {
-    for (const bar of rawBars) {
+  for (const [symbol, rawBars] of Object.entries(page.bars)) {
+    if (!symbol || !Array.isArray(rawBars)) throw new Error('ALPACA_BARS_MALFORMED_SYMBOL_ROWS');
+    for (const entry of rawBars) {
+      if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('ALPACA_BARS_MALFORMED_ROW');
+      const bar = entry as Record<string, unknown>;
+      const open = finite(bar.o), high = finite(bar.h), low = finite(bar.l), close = finite(bar.c);
+      const volume = finite(bar.v), tradeCount = bar.n == null ? null : finite(bar.n);
+      const vwap = bar.vw == null ? null : finite(bar.vw);
+      if (typeof bar.t !== 'string' || !Number.isFinite(Date.parse(bar.t))
+        || open === null || high === null || low === null || close === null || volume === null
+        || open <= 0 || high <= 0 || low <= 0 || close <= 0 || volume < 0
+        || high < low || open > high || open < low || close > high || close < low
+        || (bar.n != null && (tradeCount === null || !Number.isSafeInteger(tradeCount) || tradeCount < 0))
+        || (bar.vw != null && (vwap === null || vwap <= 0))) {
+        throw new Error('ALPACA_BARS_MALFORMED_ROW');
+      }
       bars.push({
         symbol,
         timestamp: bar.t,
-        open: bar.o,
-        high: bar.h,
-        low: bar.l,
-        close: bar.c,
-        volume: bar.v,
-        tradeCount: bar.n ?? null,
-        vwap: bar.vw ?? null,
+        open, high, low, close, volume, tradeCount, vwap,
         provider: 'ALPACA',
         feed,
         receivedAt,
       });
     }
   }
-  return { bars, nextPageToken: raw.next_page_token };
+  return { bars, nextPageToken: page.next_page_token as string | null | undefined ?? null };
 }
 
 export interface FetchHistoricalBarsParams {

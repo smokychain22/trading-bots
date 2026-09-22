@@ -83,7 +83,11 @@ export interface MasterAccountSnapshot {
 }
 
 const asNumberOrNull = (value: unknown): number | null => {
-  if (value === null || value === undefined) return null;
+  // Broker numeric fields can be JSON numbers or decimal strings. Number('')
+  // and Number(false) both produce zero, which would turn malformed provider
+  // evidence into a purported economic fact. Preserve those as UNKNOWN.
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value.trim())) return null;
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
 };
@@ -321,11 +325,23 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
     };
     if (pageToken !== null) query.page_token = pageToken;
     url.search = new URLSearchParams(query).toString();
-    const body = await requestJson(fetchImpl, url, authHeaders(config)) as { option_contracts?: Array<Record<string, unknown>>; next_page_token?: string | null };
-    for (const c of body.option_contracts ?? []) {
-      const symbol = asStringOrNull(c.symbol);
-      const strikePrice = asNumberOrNull(c.strike_price);
-      const expirationDate = asStringOrNull(c.expiration_date);
+    const body = await requestJson(fetchImpl, url, authHeaders(config));
+    if (body === null || typeof body !== 'object' || Array.isArray(body)
+      || !Array.isArray((body as Record<string, unknown>).option_contracts)) {
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts omitted its contract array.');
+    }
+    const page = body as Record<string, unknown>;
+    if (page.next_page_token !== undefined && page.next_page_token !== null && typeof page.next_page_token !== 'string') {
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned an invalid page token.');
+    }
+    for (const c of page.option_contracts as unknown[]) {
+      if (c === null || typeof c !== 'object' || Array.isArray(c)) {
+        throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned an invalid contract row.');
+      }
+      const contract = c as Record<string, unknown>;
+      const symbol = asStringOrNull(contract.symbol);
+      const strikePrice = asNumberOrNull(contract.strike_price);
+      const expirationDate = asStringOrNull(contract.expiration_date);
       if (!symbol || strikePrice === null || strikePrice <= 0 || !expirationDate || !/^\d{4}-\d{2}-\d{2}$/.test(expirationDate)) {
         throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned an invalid contract identity.');
       }
@@ -334,10 +350,10 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
         strikePrice,
         expirationDate,
         optionType: params.optionType === 'put' ? 'PUT' : 'CALL',
-        multiplier: asNumberOrNull(c.size),
+        multiplier: asNumberOrNull(contract.size),
       });
     }
-    pageToken = body.next_page_token ?? null;
+    pageToken = page.next_page_token as string | null | undefined ?? null;
     pages += 1;
     if (pages >= params.maxPages && pageToken !== null) {
       complete = false;
@@ -374,11 +390,24 @@ export async function fetchOptionSnapshots(config: AlpacaProviderConfig, params:
     const query: Record<string, string> = { feed: params.feed, type: params.optionType, limit: String(params.limit) };
     if (pageToken !== null) query.page_token = pageToken;
     url.search = new URLSearchParams(query).toString();
-    const body = await requestJson(fetchImpl, url, authHeaders(config)) as { snapshots?: Record<string, Record<string, unknown>>; next_page_token?: string | null };
-    for (const [symbol, raw] of Object.entries(body.snapshots ?? {})) {
-      snapshots.set(symbol, parseOneSnapshot(raw));
+    const body = await requestJson(fetchImpl, url, authHeaders(config));
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v1beta1/options/snapshots returned an invalid page.');
     }
-    pageToken = body.next_page_token ?? null;
+    const page = body as Record<string, unknown>;
+    if (page.snapshots === null || typeof page.snapshots !== 'object' || Array.isArray(page.snapshots)) {
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v1beta1/options/snapshots omitted its snapshot map.');
+    }
+    if (page.next_page_token !== undefined && page.next_page_token !== null && typeof page.next_page_token !== 'string') {
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v1beta1/options/snapshots returned an invalid page token.');
+    }
+    for (const [symbol, raw] of Object.entries(page.snapshots)) {
+      if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+        throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v1beta1/options/snapshots returned an invalid snapshot row.');
+      }
+      snapshots.set(symbol, parseOneSnapshot(raw as Record<string, unknown>));
+    }
+    pageToken = page.next_page_token as string | null | undefined ?? null;
     pages += 1;
     if (pages >= params.maxPages && pageToken !== null) {
       complete = false;
@@ -479,7 +508,13 @@ export async function fetchStockBars(config: AlpacaProviderConfig, params: Fetch
 
   do {
     const raw = await fetchPage(pageToken);
-    const { bars, nextPageToken } = parseAlpacaBarsPage(raw, params.feed, receivedAt);
+    let parsed: ReturnType<typeof parseAlpacaBarsPage>;
+    try {
+      parsed = parseAlpacaBarsPage(raw, params.feed, receivedAt);
+    } catch {
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/stocks/bars returned invalid bar evidence.');
+    }
+    const { bars, nextPageToken } = parsed;
     allBars.push(...bars);
     pageToken = nextPageToken;
     pages += 1;

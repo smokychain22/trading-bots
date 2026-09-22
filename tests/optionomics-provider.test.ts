@@ -505,6 +505,14 @@ test('event pagination exposes incomplete coverage without claiming a negative',
   assert.equal(outcome.value.informationState, 'EMPTY_RESULT_COVERAGE_UNVERIFIED');
 });
 
+test('malformed rows cannot silently disappear from a supposedly complete options chain', async () => {
+  for (const body of [[{ symbol: 'X' }, null], { date: '2026-09-10', options: [{ symbol: 'X' }, false] }]) {
+    const fetchImpl = (async () => jsonResponse(200, body)) as typeof fetch;
+    const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY');
+    assert.equal(outcome.kind, 'VALUE_UNKNOWN_AFTER_SUCCESS');
+  }
+});
+
 test('bounded macro/Fed coverage follows every chunk and page before qualifying absence', async () => {
   const { fetchOptionomicsMacroEventCoverage } = await import('../src/theta/optionomics-provider.js');
   const requests: string[] = [];

@@ -124,6 +124,47 @@ test('fetchPositions parses a real-shaped positions array', async () => {
   assert.equal(result[0]?.quantity, 100);
 });
 
+test('malformed broker numerics never become economic zero across account, contract, and quote boundaries', async () => {
+  const accountFetch = (async () => jsonResponse(200, {
+    status: 'ACTIVE', equity: ' ', cash: false, buying_power: '', options_buying_power: '12x',
+    options_approved_level: '2',
+  })) as typeof fetch;
+  const account = await fetchMasterAccountSnapshot(baseConfig(accountFetch), NOW);
+  assert.equal(account.equity, null);
+  assert.equal(account.cash, null);
+  assert.equal(account.buyingPower, null);
+  assert.equal(account.optionsBuyingPower, null);
+  assert.equal(account.optionsApprovedLevel, 2);
+
+  const contractsFetch = (async () => jsonResponse(200, {
+    option_contracts: [{ symbol: 'SPY261009P00500000', strike_price: '500', expiration_date: '2026-10-09', size: ' ' }],
+    next_page_token: null,
+  })) as typeof fetch;
+  const contracts = await fetchOptionContracts(baseConfig(contractsFetch), {
+    underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01',
+    optionType: 'put', limit: 10, maxPages: 2,
+  });
+  assert.equal(contracts.items[0]?.multiplier, null);
+
+  const quotesFetch = (async () => jsonResponse(200, {
+    snapshots: { SPY261009P00500000: {
+      latestQuote: { bp: '', ap: '1.25', bs: false, as: '10', t: NOW },
+      greeks: { delta: 'not-a-number' }, impliedVolatility: ' ', dailyBar: { v: '' },
+    } }, next_page_token: null,
+  })) as typeof fetch;
+  const quotes = await fetchOptionSnapshots(baseConfig(quotesFetch), {
+    underlyingSymbol: 'SPY', feed: 'indicative', optionType: 'put', limit: 10, maxPages: 2,
+  });
+  const quote = quotes.snapshots.get('SPY261009P00500000');
+  assert.equal(quote?.bid, null);
+  assert.equal(quote?.ask, 1.25);
+  assert.equal(quote?.bidSize, null);
+  assert.equal(quote?.askSize, 10);
+  assert.equal(quote?.greeks?.delta, null);
+  assert.equal(quote?.impliedVolatility, null);
+  assert.equal(quote?.dailyVolume, null);
+});
+
 test('fetchPositions preserves a malformed quantity as UNKNOWN instead of zero', async () => {
   const fetchImpl = (async () => jsonResponse(200, [
     { symbol: 'AAPL', asset_class: 'us_equity', qty: 'not-a-number', side: 'long' },
@@ -198,6 +239,16 @@ test('fetchOptionContracts preserves a missing multiplier as UNKNOWN', async () 
   assert.equal(result.items[0]?.multiplier, null);
 });
 
+test('a missing contract array is provider-malformed, while an explicit empty array is valid', async () => {
+  const params = { underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01',
+    optionType: 'put' as const, limit: 10, maxPages: 2 };
+  const missing = (async () => jsonResponse(200, { next_page_token: null })) as typeof fetch;
+  await assert.rejects(() => fetchOptionContracts(baseConfig(missing), params), (error: unknown) =>
+    error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+  const empty = (async () => jsonResponse(200, { option_contracts: [], next_page_token: null })) as typeof fetch;
+  assert.deepEqual((await fetchOptionContracts(baseConfig(empty), params)).items, []);
+});
+
 test('fetchOptionContracts marks complete=false (never silently complete) when maxPages is hit with more remaining, but preserves items already fetched', async () => {
   const fetchImpl = (async () => jsonResponse(200, { option_contracts: [{ symbol: 'X', strike_price: '1', expiration_date: '2026-10-09' }], next_page_token: 'always-more' })) as typeof fetch;
   const result = await fetchOptionContracts(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01', optionType: 'put', limit: 1, maxPages: 2 });
@@ -234,6 +285,16 @@ test('fetchOptionSnapshots preserves a missing Greeks object as null, never fabr
   const fetchImpl = (async () => jsonResponse(200, { snapshots: { X: { latestQuote: { bp: 1, ap: 1.1 } } }, next_page_token: null })) as typeof fetch;
   const result = await fetchOptionSnapshots(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', feed: 'indicative', optionType: 'put', limit: 10, maxPages: 5 });
   assert.equal(result.snapshots.get('X')?.greeks, null);
+});
+
+test('a missing snapshot map is provider-malformed, while an explicit empty map is valid', async () => {
+  const params = { underlyingSymbol: 'SPY', feed: 'indicative' as const,
+    optionType: 'put' as const, limit: 10, maxPages: 2 };
+  const missing = (async () => jsonResponse(200, { next_page_token: null })) as typeof fetch;
+  await assert.rejects(() => fetchOptionSnapshots(baseConfig(missing), params), (error: unknown) =>
+    error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+  const empty = (async () => jsonResponse(200, { snapshots: {}, next_page_token: null })) as typeof fetch;
+  assert.equal((await fetchOptionSnapshots(baseConfig(empty), params)).snapshots.size, 0);
 });
 
 test('fetchOptionSnapshots: the best contract residing on a LATER page is still discovered -- page 1 alone would miss it', async () => {
@@ -308,6 +369,16 @@ test('fetchStockBars marks the dataset INCOMPLETE (never silently complete) when
   );
   assert.equal(result.complete, false);
   assert.equal(result.bars.length, 2); // bars from both attempted pages are preserved, never discarded
+});
+
+test('fetchStockBars classifies a malformed bar as a provider response error', async () => {
+  const fetchImpl = (async () => jsonResponse(200, {
+    bars: { SPY: [{ t: NOW, o: false, h: 2, l: 0.5, c: 1.5, v: 100 }] }, next_page_token: null,
+  })) as typeof fetch;
+  await assert.rejects(() => fetchStockBars(baseConfig(fetchImpl), {
+    symbols: ['SPY'], timeframe: '1Day', start: '2026-09-01T00:00:00Z', end: NOW,
+    feed: 'iex', maxPages: 2, adjustment: 'raw',
+  }, NOW), (error: unknown) => error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
 });
 
 test('fetchStockBars request includes the explicit adjustment parameter -- never silently mixed', async () => {

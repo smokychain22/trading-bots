@@ -31,6 +31,19 @@ test('missing optional fields (trade count, vwap) become null, never zero', () =
   assert.equal(bars[0]?.vwap, null);
 });
 
+test('malformed historical bar evidence fails the entire page instead of fabricating a return', () => {
+  for (const page of [
+    { bars: { SPY: [{ t: NOW, o: '', h: 2, l: 0.5, c: 1.5, v: 100 }] }, next_page_token: null },
+    { bars: { SPY: [{ t: NOW, o: 1, h: 2, l: 0.5, c: 1.5, v: false }] }, next_page_token: null },
+    { bars: { SPY: [{ t: NOW, o: 1, h: 2, l: 0.5, c: 3, v: 100 }] }, next_page_token: null },
+    { next_page_token: null },
+  ]) {
+    assert.throws(() => parseAlpacaBarsPage(page as unknown as RawAlpacaBarsPage, 'iex', NOW), /ALPACA_BARS_MALFORMED/);
+  }
+  const valid: RawAlpacaBarsPage = { bars: { SPY: [{ t: NOW, o: 1, h: 2, l: 0.5, c: 1.5, v: 0 }] }, next_page_token: null };
+  assert.equal(parseAlpacaBarsPage(valid, 'iex', NOW).bars[0]?.volume, 0);
+});
+
 test('fetchAllHistoricalBars follows next_page_token to completion, never truncating early', async () => {
   const pages: RawAlpacaBarsPage[] = [
     { bars: { SPY: [rawBar('2026-09-01T00:00:00Z', 500)] }, next_page_token: 'p2' },
