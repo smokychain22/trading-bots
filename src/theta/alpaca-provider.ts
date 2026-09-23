@@ -107,6 +107,11 @@ const nonEmptyString = (value: unknown): string | null => {
   const parsed = asStringOrNull(value)?.trim() ?? '';
   return parsed.length > 0 ? parsed : null;
 };
+const validDateOnly = (value: string | null | undefined): value is string => {
+  if (value === null || value === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = Date.parse(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === value;
+};
 const providerRow = (value: unknown, operation: string): Record<string, unknown> => {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new AlpacaProviderError('MALFORMED_RESPONSE', null, `${operation} returned a malformed row.`);
@@ -265,9 +270,7 @@ export async function fetchMarketCalendar(config: AlpacaProviderConfig, start: s
   return body.map((value) => {
     const raw = providerRow(value, '/v2/calendar');
     const date = nonEmptyString(raw.date);
-    const dateMs = date === null ? NaN : Date.parse(`${date}T00:00:00.000Z`);
-    if (date === null || !/^\d{4}-\d{2}-\d{2}$/.test(date)
-      || !Number.isFinite(dateMs) || new Date(dateMs).toISOString().slice(0, 10) !== date) {
+    if (!validDateOnly(date)) {
       throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/calendar returned a row without a valid session date.');
     }
     return {
@@ -408,7 +411,7 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
       const symbol = asStringOrNull(contract.symbol);
       const strikePrice = asNumberOrNull(contract.strike_price);
       const expirationDate = asStringOrNull(contract.expiration_date);
-      if (!symbol || strikePrice === null || strikePrice <= 0 || !expirationDate || !/^\d{4}-\d{2}-\d{2}$/.test(expirationDate)) {
+      if (!symbol || strikePrice === null || strikePrice <= 0 || !validDateOnly(expirationDate)) {
         throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned an invalid contract identity.');
       }
       const deliverables = contract.deliverables;
@@ -473,10 +476,8 @@ export interface PaginatedSnapshotsResult {
 }
 
 export async function fetchOptionSnapshots(config: AlpacaProviderConfig, params: FetchOptionSnapshotsParams): Promise<PaginatedSnapshotsResult> {
-  const validDate=(value:string|undefined):boolean=>value===undefined||(/^\d{4}-\d{2}-\d{2}$/.test(value)
-    &&Number.isFinite(Date.parse(`${value}T00:00:00.000Z`))
-    &&new Date(Date.parse(`${value}T00:00:00.000Z`)).toISOString().slice(0,10)===value);
-  if(!validDate(params.expirationDateGte)||!validDate(params.expirationDateLte)
+  if(!(params.expirationDateGte === undefined || validDateOnly(params.expirationDateGte))
+    || !(params.expirationDateLte === undefined || validDateOnly(params.expirationDateLte))
     ||(params.expirationDateGte!==undefined&&params.expirationDateLte!==undefined
       &&params.expirationDateGte>params.expirationDateLte)
     ||(params.strikePriceGte!==undefined&&(!Number.isFinite(params.strikePriceGte)||params.strikePriceGte<=0))

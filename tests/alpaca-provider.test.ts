@@ -538,6 +538,18 @@ test('fetchTradableAssets truncates deterministically and reports complete=false
   assert.equal(result.complete, false);
 });
 
+test('fetchOptionContracts rejects an impossible expiration date instead of accepting a shaped string', async () => {
+  const fetchImpl = (async () => jsonResponse(200, {
+    option_contracts: [{ symbol: 'SPY260230P00500000', strike_price: '500', expiration_date: '2026-02-30' }],
+    next_page_token: null,
+  })) as typeof fetch;
+  await assert.rejects(
+    fetchOptionContracts(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', expirationDateGte: '2026-02-01',
+      expirationDateLte: '2026-03-31', optionType: 'put', limit: 10, maxPages: 5 }),
+    (error: unknown) => error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE',
+  );
+});
+
 test('fetchMarketCalendar rejects malformed rows instead of creating an empty session identity', async () => {
   for (const row of [null, {}, { date: '' }, { date: '2026-02-30' }]) {
     const fetchImpl = (async () => jsonResponse(200, [row])) as typeof fetch;
