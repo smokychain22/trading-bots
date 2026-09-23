@@ -100,21 +100,22 @@ const providerInstantSchema = z.string().refine(validProviderInstant);
 const providerDateOrInstantSchema = z.string().refine((value) => validDateOnly(value) || validProviderInstant(value));
 const providerDateSchema = z.string().refine(validDateOnly);
 const marketTimeSchema = z.string().refine(validMarketTime);
+const providerIdentitySchema = z.string().refine((value) => value.trim().length > 0);
 
 const rawOrderSchema = z.object({
-  id: z.string().min(1),
-  client_order_id: z.string().min(1),
-  symbol: z.string().min(1),
+  id: providerIdentitySchema,
+  client_order_id: providerIdentitySchema,
+  symbol: providerIdentitySchema,
   qty: strictNumericProviderField,
   filled_qty: strictNumericProviderField,
   filled_avg_price: strictNumericProviderField.nullable().optional(),
   side: z.enum(['buy', 'sell']),
   position_intent: z.enum(['buy_to_open', 'buy_to_close', 'sell_to_open', 'sell_to_close']).nullable().optional(),
-  status: z.string().min(1),
+  status: providerIdentitySchema,
   limit_price: strictNumericProviderField.nullable().optional(),
   submitted_at: providerInstantSchema.nullable().optional(),
-  replaced_by: z.string().nullable().optional(),
-  replaces: z.string().nullable().optional(),
+  replaced_by: providerIdentitySchema.nullable().optional(),
+  replaces: providerIdentitySchema.nullable().optional(),
 }).passthrough();
 
 const finiteNumber = (value: string | number): number => {
@@ -156,14 +157,14 @@ export const parseBrokerOrder = (raw: unknown): BrokerOrderSnapshot => {
 const activitySchema = z.object({
   net_amount: z.union([z.string().trim().min(1),z.number()]).nullable().optional(),
   per_share_amount: z.union([z.string().trim().min(1),z.number()]).nullable().optional(),
-  id: z.string().min(1),
-  activity_type: z.string().min(1),
-  symbol: z.string().nullable().optional(),
+  id: providerIdentitySchema,
+  activity_type: providerIdentitySchema,
+  symbol: providerIdentitySchema.nullable().optional(),
   qty: strictNumericProviderField.nullable().optional(),
   price: strictNumericProviderField.nullable().optional(),
   date: providerDateOrInstantSchema.nullable().optional(),
   transaction_time: providerInstantSchema.nullable().optional(),
-  order_id: z.string().nullable().optional(),
+  order_id: providerIdentitySchema.nullable().optional(),
 }).passthrough();
 
 export const parseBrokerActivity = (raw: unknown): BrokerActivity => {

@@ -12,13 +12,14 @@ import {
   type BrokerFactEvidence,
 } from './broker-fact-impact.js';
 
-const accountSchema = z.object({ id: z.string().min(1), status: z.string().nullable().optional() }).passthrough();
+const providerIdentitySchema = z.string().refine((value) => value.trim().length > 0);
+const accountSchema = z.object({ id: providerIdentitySchema, status: z.string().nullable().optional() }).passthrough();
 const strictNumericBrokerField = z.union([
   z.number().finite(),
   z.string().regex(/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/),
 ]);
 const positionSchema = z.object({
-  symbol: z.string().min(1), qty: strictNumericBrokerField.nullable().optional(),
+  symbol: providerIdentitySchema, qty: strictNumericBrokerField.nullable().optional(),
   side: z.string().nullable().optional(), asset_class: z.string().nullable().optional(),
   avg_entry_price: strictNumericBrokerField.nullable().optional(),
   current_price: strictNumericBrokerField.nullable().optional(),

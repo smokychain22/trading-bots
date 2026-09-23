@@ -103,6 +103,9 @@ test('broker order snapshots preserve real zero fills and reject missing or malf
   assert.throws(() => parseBrokerOrder(rawOrder({ filled_avg_price: '0' })), /filled average price/);
   assert.throws(() => parseBrokerOrder(rawOrder({ limit_price: '0' })), /limit price/);
   assert.throws(() => parseBrokerOrder(rawOrder({ submitted_at: 'not-a-time' })));
+  for (const field of ['id', 'client_order_id', 'symbol', 'status'] as const) {
+    assert.throws(() => parseBrokerOrder(rawOrder({ [field]: '   ' })));
+  }
 });
 
 test('broker activities reject blank numeric evidence instead of coercing it to zero', () => {
@@ -118,6 +121,8 @@ test('broker activities reject blank numeric evidence instead of coercing it to 
   }
   assert.throws(() => parseBrokerActivity({ ...activity, transaction_time: 'not-a-time' }));
   assert.throws(() => parseBrokerActivity({ ...activity, date: '2026-02-30' }));
+  assert.throws(() => parseBrokerActivity({ ...activity, id: '   ' }));
+  assert.throws(() => parseBrokerActivity({ ...activity, symbol: '   ' }));
 });
 
 test('broker clock and calendar reject malformed time evidence before reconciliation', async () => {

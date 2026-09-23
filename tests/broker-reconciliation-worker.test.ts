@@ -191,6 +191,21 @@ test('an explicit broker position zero stays a known zero rather than UNKNOWN', 
   assert.equal(store.persisted?.positions[0]?.marketValue, 0);
 });
 
+test('blank account and position identities fail reconciliation before persistence', async () => {
+  const blankAccount = broker();
+  blankAccount.value.getAccount = async () => ({ id: '   ', status: 'ACTIVE' });
+  await assert.rejects(runReadOnlyBrokerReconciliation({ broker: blankAccount.value,
+    store: new CaptureStore(), connectionId: 'connection-1', expectedProviderAccountRef: 'paper-account-owner',
+    correlationId: 'blank-account', now: () => '2026-09-11T14:32:00.000Z' }));
+  const blankPosition = broker();
+  blankPosition.value.getPositions = async () => [{ symbol: '   ', qty: '1' }];
+  const store = new CaptureStore();
+  await assert.rejects(runReadOnlyBrokerReconciliation({ broker: blankPosition.value,
+    store, connectionId: 'connection-1', expectedProviderAccountRef: 'paper-account-owner',
+    correlationId: 'blank-position', now: () => '2026-09-11T14:32:00.000Z' }));
+  assert.equal(store.persisted, null);
+});
+
 test('broker state uses fill quantities and preserves partial-fill truth on cancel', () => {
   assert.equal(brokerOrderIntentState(order({ status: 'new', filledQty: 0 })), 'ACKNOWLEDGED');
   assert.equal(brokerOrderIntentState(order({ status: 'new', filledQty: 1 })), 'FILLED');
