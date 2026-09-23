@@ -298,6 +298,8 @@ export async function refreshAegisIvStress(input: {
   readonly optionomics: OptionomicsProviderConfig;
   readonly underlying?: string;
   readonly decisionAsOf: string;
+  /** For live reads, freeze decision time after the provider response is observed. */
+  readonly freezeDecisionAsOf?: () => string;
   readonly policy?: AegisIvStressPolicy;
 }): Promise<AegisIvStressRefreshResult> {
   const underlying = (input.underlying ?? 'SPY').toUpperCase();
@@ -318,9 +320,13 @@ export async function refreshAegisIvStress(input: {
   const store = new PostgresAegisIvStressStore(input.pool);
   try {
     await store.persistObservation(normalized.observation);
-    const history = await store.listObservations(underlying, input.decisionAsOf);
+    const decisionAsOf = input.freezeDecisionAsOf?.() ?? input.decisionAsOf;
+    if (!validIso(decisionAsOf) || Date.parse(normalized.observation.thetaFirstObservedAt) > Date.parse(decisionAsOf)) {
+      return { state: 'INVALID', assessment: null, reason: 'CURRENT_EVIDENCE_AFTER_DECISION' };
+    }
+    const history = await store.listObservations(underlying, decisionAsOf);
     const assessment = assessAegisIvStress({ current: normalized.observation, history,
-      decisionAsOf: input.decisionAsOf, policy: input.policy ?? paperBootstrapAegisIvStressPolicy });
+      decisionAsOf, policy: input.policy ?? paperBootstrapAegisIvStressPolicy });
     await store.persistAssessment(assessment);
     return assessment.maturity.state === 'DETECTOR_READY'
       ? { state: 'READY', assessment, reason: 'REAL_OPTIONOMICS_IV_BASELINE_AND_CURRENT_SESSION_READY' }

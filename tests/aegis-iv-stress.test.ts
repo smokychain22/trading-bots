@@ -116,3 +116,28 @@ test('missing persistence schema becomes an explicit AEGIS blocker without throw
     state: 'PERSISTENCE_ERROR', assessment: null, reason: 'AEGIS_IV_PERSISTENCE_42P01',
   });
 });
+
+test('live IV read freezes decision time after provider observation, while historical time stays fail-closed', async () => {
+  const queries: {sql:string; params:readonly unknown[]|undefined}[] = [];
+  const pool = { query: async (sql:string, params?:readonly unknown[]) => {
+    queries.push({sql,params});
+    return {rows:[]};
+  } } as unknown as Pool;
+  const optionomics = {
+    apiBase:'https://optionomics.ai', email:'owner@example.test', apiToken:'secret-not-returned',
+    fetchImpl: async () => new Response(JSON.stringify({date:'2026-09-22',symbol:'SPY',metrics:{atm_iv:0.2}}),
+      {status:200,headers:{'content-type':'application/json'}}),
+    now:()=>'2026-09-23T00:00:01.000Z', maxRetryAttempts:1,
+  };
+  const historical = await refreshAegisIvStress({pool,optionomics,
+    decisionAsOf:'2026-09-23T00:00:00.000Z'});
+  assert.equal(historical.state,'INVALID');
+  assert.equal(historical.reason,'CURRENT_EVIDENCE_AFTER_DECISION');
+  const live = await refreshAegisIvStress({pool,optionomics,
+    decisionAsOf:'2026-09-23T00:00:00.000Z',freezeDecisionAsOf:()=>'2026-09-23T00:00:02.000Z'});
+  assert.equal(live.state,'BASELINE_IMMATURE');
+  assert.equal(live.assessment?.decisionAsOf,'2026-09-23T00:00:02.000Z');
+  const reads=queries.filter((query)=>query.sql.includes('FROM market.optionomics_iv_session_observation'));
+  assert.equal(reads.length,1);
+  assert.deepEqual(reads[0]?.params,['SPY','2026-09-23T00:00:02.000Z']);
+});

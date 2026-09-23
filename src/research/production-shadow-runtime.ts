@@ -22,9 +22,10 @@ import { loadRecoveryHistory } from '../theta/recovery-history-loader.js';
 import { persistAlpacaCorporateActionRead, readAlpacaCorporateActions } from '../theta/alpaca-corporate-action-evidence.js';
 import type { CanonicalBranchFrontier, CanonicalFrontierCandidate } from '../theta/canonical-strategy-frontier.js';
 import { probeAlpacaProcessEnvironmentAuth } from '../providers/readiness.js';
-import { refreshAegisIvStress } from '../theta/aegis-iv-stress.js';
+import { refreshAegisIvStress, type AegisIvStressRefreshResult } from '../theta/aegis-iv-stress.js';
 import { assessAegisSpreadStressForContracts } from '../theta/aegis-spread-stress.js';
 import { paperBootstrapStressApplicability } from './aegis-stress-baseline-maturity.js';
+import type { OptionomicsProviderConfig } from '../theta/optionomics-provider.js';
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
@@ -60,6 +61,25 @@ export function paperEntryCandidateCohort(branches:readonly CanonicalBranchFront
 }{
   const entryBranches=branches.filter((branch)=>branch.branch==='THETA_CONVENTIONAL'&&branch.applicable);
   return {branches:entryBranches,candidates:entryBranches.flatMap((branch)=>branch.candidates)};
+}
+export function ivStressEvidenceForUnderlying(underlying:string, result:AegisIvStressRefreshResult):AegisIvStressRefreshResult {
+  if(result.assessment!==null && result.assessment.underlying!==underlying.toUpperCase()) {
+    return {state:'INVALID',assessment:null,reason:'AEGIS_IV_STRESS_UNDERLYING_MISMATCH'};
+  }
+  return result;
+}
+export async function refreshScanIvStress(input:{readonly pool:Pool;readonly optionomics:OptionomicsProviderConfig|null;
+  readonly underlying:string;readonly now:()=>string},
+  refresh:typeof refreshAegisIvStress=refreshAegisIvStress):Promise<AegisIvStressRefreshResult>{
+  if(input.optionomics===null)return {state:'OBSERVATION_UNKNOWN',assessment:null,reason:'OPTIONOMICS_NOT_CONFIGURED'};
+  return ivStressEvidenceForUnderlying(input.underlying,await refresh({pool:input.pool,optionomics:input.optionomics,
+    underlying:input.underlying,decisionAsOf:input.now(),freezeDecisionAsOf:input.now}));
+}
+export function ivStressPaperBlockers(states:ReadonlyMap<string,AegisIvStressRefreshResult['state']>,
+  brokerAuthoritySymbols:ReadonlySet<string>):readonly string[]{
+  return [...states].sort(([left],[right])=>left.localeCompare(right))
+    .flatMap(([symbol,state])=>state!=='READY'&&brokerAuthoritySymbols.has(symbol)
+      ? [`${symbol}:AEGIS_IV_STRESS_${state}`]:[]);
 }
 export function missingObservationReason(contractFound:boolean,enumerationComplete=true,sessionConfirmedEnded=false):ObservationMissReason {
   if(contractFound)return 'INVALID_QUOTE';
@@ -230,13 +250,13 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const discoveredBySymbol=new Map(scanUnderlyings.map((candidate)=>[candidate.symbol,candidate]));
   const brokerAuthoritySymbols=new Set(universeBreadthChallenger.championSymbols);
   const optionomics=optionomicsConfigFromEnvironment(input.environment);
-  const ivStressRefresh=optionomics===null
-    ? {state:'OBSERVATION_UNKNOWN' as const,assessment:null,reason:'OPTIONOMICS_NOT_CONFIGURED'}
-    : await refreshAegisIvStress({pool:input.pool,optionomics,underlying:'SPY',decisionAsOf:input.now()});
-  if(ivStressRefresh.state!=='READY')runtimeSafetyBlockers.push(`AEGIS_IV_STRESS_${ivStressRefresh.state}`);
+  const ivStressStateBySymbol=new Map<string,AegisIvStressRefreshResult['state']>();
   const scan=await runCrossSymbolShadowScan({universeVersion:'theta-shadow-universe-v1',latticeVersion:'lattice-v1-shadow-once',
     strategyVersion:'theta-shadow-once-v1',eligibleUnderlyings:scanUnderlyings,maxUnderlyings:Math.max(1,scanUnderlyings.length),
     branches:['THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_RECOVERY','THETA_CC','THETA_DEFINED_RISK']},async(underlying)=>{
+      const ivStressRefresh=await refreshScanIvStress({pool:input.pool,optionomics,
+        underlying:underlying.symbol,now:input.now});
+      ivStressStateBySymbol.set(underlying.symbol,ivStressRefresh.state);
       const config=defaultShadowCycleConfig(input.alpaca,optionomics,bridge(input.environment),[underlying],discovery.candidatesOrigin);
       const recoveryHistory=await loadRecoveryHistory(input.pool,underlying.symbol,input.now());
       return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',paperEntryBootstrap,recoveryHistory,recoveryInventoryUnderlyings,
@@ -253,6 +273,9 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         stressSpreadWideningDetected:null,
       }});
     },input.now);
+  // Research-only breadth challengers retain their own evidence state, but
+  // must not become a blocker for the Paper-authorized champion cohort.
+  runtimeSafetyBlockers.push(...ivStressPaperBlockers(ivStressStateBySymbol,brokerAuthoritySymbols));
   const cycleStore=new PostgresThetaCycleStore(input.pool),persisted=new Map<string,{
     fusionSnapshotId:string|null;candidateSetId:string|null;decisionId:string|null;
   }>();
