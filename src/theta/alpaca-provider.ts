@@ -103,6 +103,16 @@ const asNumberOrNull = (value: unknown): number | null => {
 };
 const asBooleanOrNull = (value: unknown): boolean | null => (typeof value === 'boolean' ? value : null);
 const asStringOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+const nonEmptyString = (value: unknown): string | null => {
+  const parsed = asStringOrNull(value)?.trim() ?? '';
+  return parsed.length > 0 ? parsed : null;
+};
+const providerRow = (value: unknown, operation: string): Record<string, unknown> => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new AlpacaProviderError('MALFORMED_RESPONSE', null, `${operation} returned a malformed row.`);
+  }
+  return value as Record<string, unknown>;
+};
 
 export async function fetchMasterAccountSnapshot(config: AlpacaProviderConfig, receivedAt: string): Promise<MasterAccountSnapshot> {
   const fetchImpl = config.fetchImpl ?? fetch;
@@ -142,16 +152,21 @@ export async function fetchPositions(config: AlpacaProviderConfig, receivedAt: s
   const fetchImpl = config.fetchImpl ?? fetch;
   const body = await requestJson(fetchImpl, new URL('/v2/positions', config.tradingApiBase), authHeaders(config));
   if (!Array.isArray(body)) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/positions did not return an array.');
-  return body.map((raw: Record<string, unknown>) => ({
-    symbol: asStringOrNull(raw.symbol) ?? '',
-    assetClass: asStringOrNull(raw.asset_class),
-    quantity: asNumberOrNull(raw.qty),
-    side: asStringOrNull(raw.side),
-    avgEntryPrice: asNumberOrNull(raw.avg_entry_price),
-    marketValue: asNumberOrNull(raw.market_value),
-    unrealizedPl: asNumberOrNull(raw.unrealized_pl),
-    receivedAt,
-  }));
+  return body.map((value) => {
+    const raw = providerRow(value, '/v2/positions');
+    const symbol = nonEmptyString(raw.symbol);
+    if (symbol === null) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/positions returned a row without identity.');
+    return {
+      symbol,
+      assetClass: asStringOrNull(raw.asset_class),
+      quantity: asNumberOrNull(raw.qty),
+      side: asStringOrNull(raw.side),
+      avgEntryPrice: asNumberOrNull(raw.avg_entry_price),
+      marketValue: asNumberOrNull(raw.market_value),
+      unrealizedPl: asNumberOrNull(raw.unrealized_pl),
+      receivedAt,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -177,22 +192,28 @@ export async function fetchOpenOrders(config: AlpacaProviderConfig, receivedAt: 
   url.search = new URLSearchParams({ status: 'open' }).toString();
   const body = await requestJson(fetchImpl, url, authHeaders(config));
   if (!Array.isArray(body)) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/orders did not return an array.');
-  return body.map((raw: Record<string, unknown>) => ({
-    orderId: asStringOrNull(raw.id) ?? '',
-    clientOrderId: asStringOrNull(raw.client_order_id),
-    symbol: asStringOrNull(raw.symbol),
-    side: asStringOrNull(raw.side),
-    positionIntent: (() => {
-      const value = asStringOrNull(raw.position_intent);
-      return value === 'buy_to_open' || value === 'buy_to_close' || value === 'sell_to_open' || value === 'sell_to_close'
-        ? value : null;
-    })(),
-    quantity: asNumberOrNull(raw.qty),
-    limitPrice: asNumberOrNull(raw.limit_price),
-    status: asStringOrNull(raw.status),
-    submittedAt: asStringOrNull(raw.submitted_at),
-    receivedAt,
-  }));
+  return body.map((value) => {
+    const raw = providerRow(value, '/v2/orders');
+    const orderId = nonEmptyString(raw.id);
+    if (orderId === null) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/orders returned a row without identity.');
+    return {
+      orderId,
+      clientOrderId: nonEmptyString(raw.client_order_id),
+      symbol: nonEmptyString(raw.symbol),
+      side: nonEmptyString(raw.side),
+      positionIntent: (() => {
+        const positionIntent = nonEmptyString(raw.position_intent);
+        return positionIntent === 'buy_to_open' || positionIntent === 'buy_to_close'
+          || positionIntent === 'sell_to_open' || positionIntent === 'sell_to_close'
+          ? positionIntent : null;
+      })(),
+      quantity: asNumberOrNull(raw.qty),
+      limitPrice: asNumberOrNull(raw.limit_price),
+      status: nonEmptyString(raw.status),
+      submittedAt: nonEmptyString(raw.submitted_at),
+      receivedAt,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

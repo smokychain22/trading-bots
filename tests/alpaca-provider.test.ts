@@ -199,6 +199,14 @@ test('fetchPositions rejects a non-array response as MALFORMED_RESPONSE', async 
   await assert.rejects(() => fetchPositions(baseConfig(fetchImpl), NOW));
 });
 
+test('fetchPositions rejects rows without a usable provider identity', async () => {
+  for (const row of [null, {}, { symbol: '' }, { symbol: '   ' }]) {
+    const fetchImpl = (async () => jsonResponse(200, [row])) as typeof fetch;
+    await assert.rejects(() => fetchPositions(baseConfig(fetchImpl), NOW), (error: unknown) =>
+      error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+  }
+});
+
 test('fetchOpenOrders requests status=open and parses real-shaped orders', async () => {
   let requestedUrl = '';
   const fetchImpl = (async (input: RequestInfo | URL) => {
@@ -211,6 +219,14 @@ test('fetchOpenOrders requests status=open and parses real-shaped orders', async
   assert.equal(result[0]?.orderId, 'order-1');
   assert.equal(result[0]?.positionIntent, 'sell_to_open');
   assert.equal(result[0]?.limitPrice, 2.5);
+});
+
+test('fetchOpenOrders rejects rows without a usable provider order identity', async () => {
+  for (const row of [null, {}, { id: '' }, { id: '   ' }]) {
+    const fetchImpl = (async () => jsonResponse(200, [row])) as typeof fetch;
+    await assert.rejects(() => fetchOpenOrders(baseConfig(fetchImpl), NOW), (error: unknown) =>
+      error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+  }
 });
 
 test('fetchMarketClock parses timestamp/isOpen', async () => {
