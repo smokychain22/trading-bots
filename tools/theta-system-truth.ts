@@ -24,20 +24,16 @@ const receipt = {
   currentSourceSha: head,
   sourceVerificationState,
   sourceFilesChanged,
-  workerMatchesCurrentSource: canonicalSystemTruthRegister.observedWorkerSha === head,
-  currentWorkerProofEligible: sourceVerificationState === 'SOURCE_BASELINE_UNCHANGED'
-    && canonicalSystemTruthRegister.observedWorkerSha === head,
+  runtimeTruthSource: 'theta:truth-runtime',
 };
 console.log(JSON.stringify(process.argv.includes('--full') ? receipt : {
   schemaVersion: receipt.schemaVersion,
   auditCoverage: receipt.auditCoverage,
   sourceBaselineSha: receipt.sourceBaselineSha,
   currentSourceSha: receipt.currentSourceSha,
-  observedWorkerSha: receipt.observedWorkerSha,
   sourceVerificationState: receipt.sourceVerificationState,
   sourceFilesChanged: receipt.sourceFilesChanged,
-  workerMatchesCurrentSource: receipt.workerMatchesCurrentSource,
-  currentWorkerProofEligible: receipt.currentWorkerProofEligible,
+  runtimeTruthSource: receipt.runtimeTruthSource,
   layerCount: receipt.brainLayers.length,
   capabilityCount: receipt.capabilities.length,
   hardBlockers: receipt.capabilities.filter((item) => item.disposition === 'TRUE_HARD_BLOCKER')

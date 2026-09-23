@@ -5,7 +5,8 @@
  */
 export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v1' as const;
 export const truthSourceBaselineSha = '8319726a730a6457f5ed9be7b2989edbdbd6acef';
-export const truthObservedWorkerSha = '853beb4fde989c2f6deb83ad9cb13a9a3e87e76a';
+// A worker SHA is operational state. Read it from the current worker lease,
+// never from this source-controlled architectural inventory.
 export const truthLastVerifiedAt = '2026-09-23';
 
 export type TruthProof = 'YES' | 'NO' | 'UNVERIFIED' | 'NOT_APPLICABLE';
@@ -59,7 +60,7 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
   capability({ capabilityId: 'ALPACA_BROKER_STATE', layerIds: [0, 1, 15], sourceImplemented: 'YES', testsPassed: 'YES',
     providerAuthenticated: 'YES', realDataObserved: 'YES', persisted: 'YES', runtimeReachable: 'YES',
     paperAuthorized: 'PAPER_ONLY_LOCKED', sourceFiles: ['src/theta/alpaca-provider.ts', 'src/execution/broker-reconciliation-worker.ts'],
-    currentBlocker: 'Current-source broker reconciliation has not been observed on the pinned worker.',
+    currentBlocker: 'Current-release broker reconciliation needs a fresh runtime observation.',
     safeCurrentBehavior: 'Read and reconcile broker truth; do not unlock new risk.',
     closureTest: 'Locked current-release cycles show authenticated account, positions, orders and zero blocking reconciliation facts.',
     disposition: 'BUILT_AWAITING_RUNTIME_PROOF' }),
@@ -102,9 +103,9 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
   capability({ capabilityId: 'AEGIS_STRESS_AND_PORTFOLIO', layerIds: [8, 9], sourceImplemented: 'YES', testsPassed: 'YES',
     providerAuthenticated: 'YES', realDataObserved: 'YES', persisted: 'UNVERIFIED', runtimeReachable: 'YES',
     paperAuthorized: 'PAPER_ONLY_LOCKED', sourceFiles: ['src/theta/aegis-iv-stress.ts', 'src/theta/aegis-spread-stress.ts', 'bots/theta/quant/models/aegis.py'],
-    currentBlocker: 'Production migration 065, IV-session backfill, comparable spread maturity and locked runtime proof remain.',
+    currentBlocker: 'Schema-064 Alpaca IV cohort and spread baselines need real session maturity and locked runtime proof. Migration 065 is deferred.',
     safeCurrentBehavior: 'AEGIS fails closed on missing required evidence; current quote safety is never waived by cold start.',
-    closureTest: 'Verified migration, persisted real assessments and a locked no-submit cycle with full per-family reasons.',
+    closureTest: 'Persisted real schema-064 assessments and a locked no-submit cycle with full per-family reasons.',
     disposition: 'TRUE_HARD_BLOCKER',
     supersededClaims: ['THETA_BRAIN_CAPABILITY_MATRIX: both stress producers permanently null'] }),
   capability({ capabilityId: 'COMPANY_EVENT_AND_CORPORATE_ACTION', layerIds: [7, 9], sourceImplemented: 'YES', testsPassed: 'YES',
@@ -139,7 +140,7 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
   capability({ capabilityId: 'BROKER_EXECUTION_AND_RECONCILIATION', layerIds: [14, 15], sourceImplemented: 'YES', testsPassed: 'YES',
     providerAuthenticated: 'YES', runtimeReachable: 'YES', paperAuthorized: 'PAPER_ONLY_LOCKED',
     sourceFiles: ['src/execution/broker.ts', 'src/execution/paper-order-coordinator.ts', 'src/execution/broker-reconciliation-worker.ts'],
-    currentBlocker: 'Current diagnostic wave prohibits order submission and the current worker is pinned/locked.',
+    currentBlocker: 'Current diagnostic wave prohibits order submission; current worker state must be read at runtime.',
     safeCurrentBehavior: 'Read-only broker checks and reconciliation only; zero order mutation in this wave.',
     closureTest: 'Separate authorized Paper canary, broker acknowledgement, fills, idempotency and reconciliation.',
     disposition: 'BUILT_AWAITING_RUNTIME_PROOF' }),
@@ -167,7 +168,7 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
   capability({ capabilityId: 'FIRST_PAPER_READINESS', layerIds: [12, 20], sourceImplemented: 'YES', testsPassed: 'YES',
     persisted: 'NO', runtimeReachable: 'YES', paperAuthorized: 'NOT_APPLICABLE',
     sourceFiles: ['src/theta/first-paper-blocker-budget.ts', 'src/execution/master-paper-plan-assembly.ts', 'src/customer/api.ts'],
-    currentBlocker: 'Audit coverage is PARTIAL and the pinned worker has no current-source no-submit proof.',
+    currentBlocker: 'Audit coverage is PARTIAL and a complete current-release natural no-submit proof is still required.',
     safeCurrentBehavior: 'The operator readiness receipt names audit and safety blockers; it cannot emit READY from zero avoidable count alone.',
     closureTest: 'Complete the UNKNOWN sweep, clear all independent release checks and observe the current locked release before any Paper unlock.',
     disposition: 'TRUE_HARD_BLOCKER' }),
@@ -185,7 +186,6 @@ export const canonicalSystemTruthRegister = {
   schemaVersion: canonicalSystemTruthVersion,
   auditCoverage: 'PARTIAL' as const,
   sourceBaselineSha: truthSourceBaselineSha,
-  observedWorkerSha: truthObservedWorkerSha,
   lastVerifiedAt: truthLastVerifiedAt,
   brokerMutationsAuthorized: false,
   followerExecutionAuthorized: false,

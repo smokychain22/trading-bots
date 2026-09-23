@@ -46,6 +46,11 @@ const alpaca = {
 };
 const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 2,
   connectionTimeoutMillis: 10_000, application_name: 'theta-no-submit-probe' });
+let poolConnectionFailed = false;
+// pg emits idle-client disconnects on the Pool itself. Without a listener,
+// a transient Aiven disconnect crashes this read-only diagnostic outside the
+// fail-closed receipt path.
+pool.on('error', () => { poolConnectionFailed = true; });
 
 try {
   const migrations = await pool.query(`SELECT version FROM core.schema_migration
@@ -87,7 +92,8 @@ try {
       const scan = await runProductionShadowEvidenceScan({ environment, pool, alpaca,
         reconciliation, executionAccountId: null, now: () => new Date().toISOString() });
       if (scan.actionPlansReady !== 0) throw new Error('NO_SUBMIT_PROBE_ACTION_PLAN_UNEXPECTED');
-      console.info(JSON.stringify({ state: 'CURRENT_SOURCE_NO_SUBMIT_SCAN_COMPLETED', schema, sourceSha,
+      console.info(JSON.stringify({ state: poolConnectionFailed ? 'DATABASE_CONNECTION_LOST_NO_SUBMIT'
+        : 'CURRENT_SOURCE_NO_SUBMIT_SCAN_COMPLETED', schema, sourceSha,
         completeness: scan.completeness, symbolsAttempted: scan.symbolsAttempted,
         symbolsCompleted: scan.symbolsCompleted, candidateCount: scan.candidateCount,
         observationsScheduled: scan.observationsScheduled,
@@ -95,7 +101,7 @@ try {
         finalAction: scan.behaviorDiagnostic.finalAction,
         brokerMutations: 0, orderSubmissions: 0,
         masterExecution: 'LOCKED', followerExecution: 'LOCKED', liveMoney: 'NOT_AUTHORIZED' }));
-      process.exitCode = scan.completeness === 'COMPLETE' ? 0 : 1;
+      process.exitCode = !poolConnectionFailed && scan.completeness === 'COMPLETE' ? 0 : 1;
     }
   }
 } catch (error) {
@@ -105,5 +111,5 @@ try {
     brokerMutations: 0, orderSubmissions: 0 }));
   process.exitCode = 1;
 } finally {
-  await pool.end();
+  await pool.end().catch(() => { process.exitCode = 1; });
 }

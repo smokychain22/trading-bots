@@ -28,6 +28,8 @@
     "theta:audit:wiring": "tsx tools/theta-runtime-wiring-audit.ts",
     "theta:audit:unknowns": "tsx tools/theta-pre-vps-unknown-audit.ts",
     "theta:truth": "tsx tools/theta-system-truth.ts",
+    "theta:truth-runtime": "tsx tools/theta-runtime-truth.ts --environment-file=.env.local",
+    "theta:aegis:baseline-progress": "tsx tools/theta-aegis-baseline-progress.ts --environment-file=.env.local",
     "theta:aegis:iv-backfill": "node --import tsx tools/backfill-aegis-iv-stress.ts --environment-file=.env.local",
     "db:migrate": "node tools/database-migrate.mjs",
     "db:migrate:production:checkpoint": "pwsh -NoProfile -File tools/windows/dr/Invoke-ThetaProductionMigration.ps1",

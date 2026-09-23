@@ -1,0 +1,36 @@
+/** Runtime observations are separate from the source-controlled capability review. */
+export interface RuntimeTruthInputs {
+  readonly sourceSha: string;
+  readonly sourceDirty: boolean;
+  readonly workerSha: string | null;
+  readonly activeWorkerLeases: number | null;
+  readonly workerHeartbeat: string | null;
+  readonly workerMode: string | null;
+  readonly executionGate: string | null;
+  readonly migrationHead: string | null;
+  readonly requiredMigrationPresent: boolean | null;
+  readonly observedAt: string;
+}
+
+export type RuntimeMismatch =
+  | 'SOURCE_SHA_NE_WORKER_SHA' | 'MULTIPLE_ACTIVE_WORKERS' | 'WORKER_STALE'
+  | 'WORKER_MODE_UNEXPECTED' | 'EXECUTION_GATE_NOT_LOCKED'
+  | 'MIGRATION_MISMATCH' | 'RUNTIME_EVIDENCE_UNAVAILABLE' | 'UNRELEASED_SOURCE_CHANGES';
+
+export function deriveRuntimeMismatches(input: RuntimeTruthInputs): RuntimeMismatch[] {
+  const mismatches: RuntimeMismatch[] = [];
+  if (input.sourceDirty) mismatches.push('UNRELEASED_SOURCE_CHANGES');
+  if (input.activeWorkerLeases === null || input.workerSha === null || input.workerHeartbeat === null
+    || input.workerMode === null || input.executionGate === null || input.requiredMigrationPresent === null) {
+    mismatches.push('RUNTIME_EVIDENCE_UNAVAILABLE');
+  }
+  if (input.workerSha !== null && input.workerSha !== input.sourceSha) mismatches.push('SOURCE_SHA_NE_WORKER_SHA');
+  if (input.activeWorkerLeases !== null && input.activeWorkerLeases > 1) mismatches.push('MULTIPLE_ACTIVE_WORKERS');
+  if (input.activeWorkerLeases === 0 || (input.workerHeartbeat !== null
+    && Date.parse(input.observedAt) - Date.parse(input.workerHeartbeat) > 45_000)) mismatches.push('WORKER_STALE');
+  if (input.workerMode !== null && input.workerMode !== 'MASTER_THETA_PAPER') mismatches.push('WORKER_MODE_UNEXPECTED');
+  if (input.executionGate !== null && input.executionGate !== 'LOCKED') mismatches.push('EXECUTION_GATE_NOT_LOCKED');
+  if (input.requiredMigrationPresent === false || (input.migrationHead !== null
+    && input.migrationHead < '064_alpaca_corporate_action_observation')) mismatches.push('MIGRATION_MISMATCH');
+  return mismatches;
+}

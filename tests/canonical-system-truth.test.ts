@@ -9,7 +9,7 @@ test('canonical truth register covers each brain layer with named source and hon
   assert.equal(canonicalBrainLayers.length, 21);
   assert.equal(canonicalSystemTruthRegister.brainLayers.length, 21);
   assert.equal(canonicalSystemTruthRegister.auditCoverage, 'PARTIAL');
-  assert.notEqual(canonicalSystemTruthRegister.observedWorkerSha, canonicalSystemTruthRegister.sourceBaselineSha);
+  assert.equal('observedWorkerSha' in canonicalSystemTruthRegister, false);
   assert.equal(canonicalSystemTruthRegister.brokerMutationsAuthorized, false);
   assert.equal(canonicalSystemTruthRegister.followerExecutionAuthorized, false);
   assert.equal(canonicalSystemTruthRegister.liveMoneyAuthorized, false);
