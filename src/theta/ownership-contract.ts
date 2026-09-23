@@ -32,12 +32,23 @@ export const ownershipEvaluationResponseSchema = z.object({
   thesisInvalidated: z.boolean(),
   reasons: z.array(reasonSchema),
 }).superRefine((response, context) => {
+  const expectedNames = ['LiquidityQuality', 'StructuralQuality', 'RecoveryQuality', 'TailQuality', 'EventAdjustment'];
+  if (new Set(response.components.map((component) => component.name)).size !== expectedNames.length ||
+    expectedNames.some((name) => !response.components.some((component) => component.name === name))) {
+    context.addIssue({ code: 'custom', message: 'ownership must contain each component exactly once' });
+  }
   const anyComponentUnknown = response.components.some((component) => component.value === null);
   if (anyComponentUnknown && response.ownability !== null) {
     context.addIssue({ code: 'custom', message: 'ownability must be UNKNOWN (null) when any component is UNKNOWN' });
   }
   if (!anyComponentUnknown && response.ownability === null) {
     context.addIssue({ code: 'custom', message: 'ownability must be computable when every component is known' });
+  }
+  if (!anyComponentUnknown && response.ownability !== null) {
+    const product = response.components.reduce((value, component) => value * (component.value as number), 1);
+    if (Math.abs(response.ownability - product) > 1e-9) {
+      context.addIssue({ code: 'custom', message: 'ownability must equal the reported component product' });
+    }
   }
 });
 

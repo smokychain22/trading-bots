@@ -73,10 +73,34 @@ test('refresh receipt preserves stage timing and rejects future-observed evidenc
   });
   assert.equal(receipt.refreshedCount, 1);
   assert.equal(receipt.failedCount, 0);
+  assert.equal(receipt.latency.candidateToDecisionMs, 10_000);
+  assert.equal(receipt.latency.refreshRoundTripMsP50, 1_000);
+  assert.equal(receipt.latency.initialQuoteAgeAtCandidateSecondsP50, 10);
+  assert.equal(receipt.latency.refreshedQuoteAgeAtDecisionSecondsP50, 6);
+  assert.equal(receipt.latency.refreshedQuoteTimestampUnavailableCount, 0);
+  const futureProviderQuote = buildFinalistQuoteRefreshReceipt({
+    policy, candidateBuiltAt: observation.initialReceivedAt,
+    finalistChosenAt: observation.refreshRequestedAt,
+    decisionAsOf: NOW, initialCandidateCount: 10,
+    observations: [{ ...observation, refreshedProviderTimestamp: '2026-09-23T15:00:02.000Z' }],
+  });
+  assert.equal(futureProviderQuote.latency.refreshedQuoteAgeAtDecisionSecondsP50, null);
+  assert.equal(futureProviderQuote.latency.refreshedQuoteTimestampUnavailableCount, 1);
   assert.throws(() => buildFinalistQuoteRefreshReceipt({
     policy, candidateBuiltAt: observation.initialReceivedAt,
     finalistChosenAt: observation.refreshRequestedAt,
     decisionAsOf: NOW, initialCandidateCount: 10,
     observations: [{ ...observation, refreshReceivedAt: '2026-09-23T15:00:01.000Z' }],
   }), /FINALIST_QUOTE_REFRESH_FUTURE_EVIDENCE/);
+  assert.throws(() => buildFinalistQuoteRefreshReceipt({
+    policy, candidateBuiltAt: observation.initialReceivedAt,
+    finalistChosenAt: observation.refreshRequestedAt,
+    decisionAsOf: NOW, initialCandidateCount: 10,
+    observations: [{ ...observation, refreshRequestedAt: '2026-09-23T14:59:57.000Z' }],
+  }), /FINALIST_QUOTE_REFRESH_FUTURE_EVIDENCE/);
+  assert.throws(() => buildFinalistQuoteRefreshReceipt({
+    policy, candidateBuiltAt: observation.initialReceivedAt,
+    finalistChosenAt: '2026-09-23T14:59:49.000Z',
+    decisionAsOf: NOW, initialCandidateCount: 10, observations: [observation],
+  }), /FINALIST_QUOTE_REFRESH_TIMING_INVALID/);
 });

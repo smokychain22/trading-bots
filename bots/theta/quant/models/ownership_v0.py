@@ -36,7 +36,8 @@ constructor argument on :class:`OwnershipPolicyV0` -- nothing here defaults
 silently.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
+from math import isfinite
 from typing import List, Optional, Tuple
 
 from models.common import ReasonCode
@@ -147,6 +148,59 @@ class OwnershipEvaluation:
 
 def _clip01(x: float) -> float:
     return max(0.0, min(1.0, x))
+
+
+def _validate_numeric_evidence(inputs: OwnershipInputs, policy: OwnershipPolicyV0) -> None:
+    """Reject malformed known values before they can become a favorable score.
+
+    None remains an explicit UNKNOWN. In particular, NaN can otherwise evade
+    comparisons and the liquidity floor, while zero normalization ceilings can
+    raise during scoring. Both are invalid evidence, not economic observations.
+    """
+    if not isinstance(inputs.thesis_invalidated, bool):
+        raise ValueError("thesis_invalidated must be boolean")
+    if not isinstance(policy.policy_version, str) or not policy.policy_version:
+        raise ValueError("policy_version must be a nonempty string")
+    for owner, values in (("input", inputs), ("policy", policy)):
+        for field in fields(values):
+            if field.name in ("thesis_invalidated", "policy_version"):
+                continue
+            value = getattr(values, field.name)
+            if value is None and owner == "input":
+                continue
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or (isinstance(value, int) and abs(value) > 2**53 - 1)
+                    or not isfinite(value)):
+                raise ValueError(f"{owner}.{field.name} must be a finite number or explicit UNKNOWN")
+
+    nonnegative_inputs = (
+        "stock_avg_volume", "option_open_interest", "option_volume", "spread_pct",
+        "rv10", "rv20", "rv60", "max_adverse_gap", "gap_frequency",
+        "downside_semivariance", "historical_recovery_median_days",
+        "historical_recovery_p95_days", "severe_drawdown_episode_count",
+        "earnings_distance_days", "ex_dividend_distance_days", "known_event_distance_days",
+    )
+    for name in nonnegative_inputs:
+        value = getattr(inputs, name)
+        if value is not None and value < 0:
+            raise ValueError(f"input.{name} must be nonnegative")
+    if inputs.drawdown is not None and inputs.drawdown > 0:
+        raise ValueError("input.drawdown must be zero or negative")
+    for name in ("option_open_interest", "option_volume", "severe_drawdown_episode_count",
+                 "earnings_distance_days", "ex_dividend_distance_days", "known_event_distance_days"):
+        value = getattr(inputs, name)
+        if value is not None and (not isinstance(value, int) or isinstance(value, bool)):
+            raise ValueError(f"input.{name} must be an integer")
+    for name in ("min_stock_avg_volume", "min_option_open_interest", "min_option_volume", "max_spread_pct"):
+        if getattr(policy, name) < 0:
+            raise ValueError(f"policy.{name} must be nonnegative")
+    for name in ("rv_normalization_ceiling", "downside_semivar_normalization_ceiling",
+                 "gap_frequency_normalization_ceiling", "event_decay_window_days"):
+        if getattr(policy, name) <= 0:
+            raise ValueError(f"policy.{name} must be positive")
+    for name in ("min_option_open_interest", "min_option_volume", "event_decay_window_days"):
+        if not isinstance(getattr(policy, name), int):
+            raise ValueError(f"policy.{name} must be an integer")
 
 
 def _liquidity_quality(inputs: OwnershipInputs, policy: OwnershipPolicyV0) -> ComponentScore:
@@ -266,6 +320,7 @@ def evaluate(inputs: OwnershipInputs, policy: OwnershipPolicyV0) -> OwnershipEva
     """Computes Ownability and its component breakdown. Returns
     ``ownability=None`` (UNKNOWN) if any component is UNKNOWN -- never
     substitutes a neutral/default value for a missing component."""
+    _validate_numeric_evidence(inputs, policy)
     components = [
         _liquidity_quality(inputs, policy),
         _structural_quality(inputs),

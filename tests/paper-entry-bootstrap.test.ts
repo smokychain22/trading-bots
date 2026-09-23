@@ -62,7 +62,7 @@ const ownership = (unknownComponent: 'RecoveryQuality' | 'TailQuality' | null, t
   parseOwnershipEvaluationResponse({
     contractVersion: 'theta-ownership-runtime-v1', snapshotId: 'snapshot', underlyingSymbol: 'SYN',
     timestamp: '2026-09-20T10:00:00.000Z', policyVersion: 'ownership-v1',
-    ownability: unknownComponent === null ? 0.7 : null, thesisInvalidated,
+    ownability: unknownComponent === null ? 0.9 ** 5 : null, thesisInvalidated,
     components: ['LiquidityQuality', 'StructuralQuality', 'RecoveryQuality', 'TailQuality', 'EventAdjustment'].map((name) => ({
       name, value: name === unknownComponent ? null : 0.9, status: 'TEST',
       reasons: name === unknownComponent ? [{
