@@ -59,6 +59,7 @@ let latestCandidateCycle: string | null = null;
 let latestManagementCycle: string | null = null;
 let lastOrderSubmissionObserved: string | null = null;
 let latestFailedRuntimeCycle: { at: string | null; code: string | null } | null = null;
+let recentFunnel: readonly Record<string, unknown>[] | null = null;
 const iso = (value: unknown): string | null => value instanceof Date ? value.toISOString()
   : typeof value === 'string' ? value : null;
 
@@ -113,6 +114,38 @@ if (pool) {
       latestFailedRuntimeCycle = { at: iso(failed.rows[0].invoked_at),
         code: typeof rawCode === 'string' && /^[A-Z0-9_]{3,140}$/.test(rawCode) ? rawCode : null };
     }
+    const funnel = await pool.query(`SELECT observed_at,wait_classification,candidate_count,
+      feasible_candidate_count,selected_candidate_count,hard_rejected_count,
+      data_insufficient_count,quantity_zero_count,aegis_veto_count,near_miss_count,
+      action_plans_ready,reason_codes_json,diagnostic_json FROM research.theta_runtime_behavior_diagnostic
+      ORDER BY observed_at DESC LIMIT 5`);
+    const safeCodes = (value: unknown): readonly string[] => Array.isArray(value)
+      ? value.filter((code): code is string => typeof code === 'string'
+        && /^[A-Z0-9_.:-]{1,140}$/.test(code)).slice(0, 30) : [];
+    recentFunnel = funnel.rows.map((item) => ({ observedAt: iso(item.observed_at),
+      waitClassification: item.wait_classification, candidateCount: item.candidate_count,
+      feasibleCandidateCount: item.feasible_candidate_count,
+      selectedCandidateCount: item.selected_candidate_count,
+      hardRejectedCount: item.hard_rejected_count,
+      dataInsufficientCount: item.data_insufficient_count,
+      quantityZeroCount: item.quantity_zero_count, aegisVetoCount: item.aegis_veto_count,
+      nearMissCount: item.near_miss_count, actionPlansReady: item.action_plans_ready,
+      reasonCodes: safeCodes(item.reason_codes_json),
+      strategyReachability: Array.isArray(item.diagnostic_json?.strategyDiagnostics)
+        ? item.diagnostic_json.strategyDiagnostics.slice(0, 8).map((strategy: Record<string, unknown>) => ({
+          branch: typeof strategy.branch === 'string' && /^[A-Z_]{1,40}$/.test(strategy.branch)
+            ? strategy.branch : 'UNKNOWN',
+          consideredCount: strategy.consideredCount, applicableCount: strategy.applicableCount,
+          candidateCount: strategy.candidateCount, reachabilityState: strategy.reachabilityState,
+        })) : [],
+      bestRejected: Array.isArray(item.diagnostic_json?.bestRejectedCandidates)
+        ? item.diagnostic_json.bestRejectedCandidates.slice(0, 3).map((candidate: Record<string, unknown>) => ({
+          symbol: typeof candidate.symbol === 'string' && /^[A-Z.]{1,12}$/.test(candidate.symbol)
+            ? candidate.symbol : 'UNKNOWN',
+          branch: candidate.branch, hardBlockers: safeCodes(candidate.hardBlockers),
+          unknownEvidence: safeCodes(candidate.unknownEvidence),
+        })) : [],
+    }));
   } catch { databaseConnectionFailed = true; }
   finally { await pool.end().catch(() => { databaseConnectionFailed = true; }); }
 }
@@ -148,6 +181,7 @@ const receipt = {
   latestReconciliationState: latestReconciliation, latestEvidenceCycle, latestCandidateCycle,
   latestAegisCycle: 'NOT_QUERIED', latestManagementCycle, lastOrderSubmissionObserved,
   latestFailedRuntimeCycle,
+  recentFunnel,
   unknownAuditState: canonicalSystemTruthRegister.auditCoverage,
   mismatches: [...new Set(mismatches)],
 };
