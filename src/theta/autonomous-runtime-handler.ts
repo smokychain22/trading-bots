@@ -53,6 +53,7 @@ import { persistQuoteProviderQualification, qualifyQuoteProvider } from '../exec
 import { readZeroTradeDiagnostic } from './zero-trade-diagnostic.js';
 import { runRiskPolicyEmpiricalStudy } from '../research/risk-policy-empirical-study.js';
 import { createRuntimePostgresPool } from './runtime-postgres-pool.js';
+import { runtimeRequestLeaseExpiresAt } from './runtime-request-lease.js';
 
 let runtimePool: Pool | null = null;
 
@@ -788,7 +789,7 @@ export default async function autonomousRuntimeHandler(
         hostId: identity.hostId,
         buildSha: identity.buildSha,
         startedAt:at.toISOString(),strategyVersions:['theta-shadow-once-v1']});
-      const lease=await workerStore.acquireLease(identity.workerId,at.toISOString(),new Date(at.getTime()+150_000).toISOString());
+      const lease=await workerStore.acquireLease(identity.workerId,at.toISOString(),runtimeRequestLeaseExpiresAt(at));
       if(lease==='HELD_BY_OTHER'){send(response,409,{error:'primary_master_paper_worker_lease_held',executionGate:'LOCKED'});return;}
       if(previous!==null&&at.getTime()-Date.parse(previous)>120_000)
         await workerStore.recordResumeGap(identity.workerId,previous,at.toISOString());
