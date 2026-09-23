@@ -83,6 +83,7 @@ export function ivStressPaperBlockers(states:ReadonlyMap<string,AegisIvStressRef
 }
 export function ivStressPaperPlanPersistenceReady(result:AegisIvStressRefreshResult|undefined):boolean{
   if(result?.assessment===null||result===undefined)return false;
+  if(result.assessment.sessionState!=='CURRENT_SESSION')return false;
   if(result.state==='READY')return result.assessment.maturity.state==='DETECTOR_READY';
   // A real, persisted current observation and assessment may invoke the
   // versioned Paper baseline cold-start policy. Provider and persistence

@@ -7,7 +7,7 @@ import {
 } from '../research/aegis-stress-baseline-maturity.js';
 import type { NormalizedOptionContract } from './option-contract.js';
 
-export const aegisSpreadStressDetectorVersion = 'theta-aegis-spread-stress-detector-v1' as const;
+export const aegisSpreadStressDetectorVersion = 'theta-aegis-spread-stress-detector-v2' as const;
 
 export type SpreadDteBucket = 'DTE_INVALID' | 'DTE_1_7' | 'DTE_8_21' | 'DTE_22_45' | 'DTE_46_90' | 'DTE_91_PLUS';
 export type SpreadMoneynessBucket = 'ATM_0_3PCT' | 'NEAR_3_10PCT' | 'FAR_OVER_10PCT';
@@ -19,6 +19,7 @@ export interface AegisSpreadStressPolicy {
   readonly maximumBaselineObservations: number;
   readonly minimumRelativeIncrease: number;
   readonly minimumRobustZ: number;
+  readonly zeroMadFallback: 'RELATIVE_INCREASE_ONLY' | 'UNAVAILABLE';
   readonly maturity: BaselineSufficiencyPolicy;
 }
 
@@ -48,10 +49,17 @@ export interface AegisSpreadStressAssessment {
   readonly currentRelativeSpread: number | null;
   readonly currentQuoteProviderAt: string | null;
   readonly currentQuoteReceivedAt: string;
+  readonly currentFeed: 'OPRA' | 'INDICATIVE' | null;
+  readonly baselineFeed: 'OPRA' | 'INDICATIVE' | null;
+  readonly feedAuthorityState: 'MATCHED_OPRA' | 'MATCHED_INDICATIVE' | 'NO_MATCHING_FEED_HISTORY' | 'CURRENT_FEED_UNKNOWN';
+  readonly rejectedOtherFeedN: number;
+  readonly contractsPerSession: Readonly<Record<string, number>>;
   readonly baselineMedianRelativeSpread: number | null;
   readonly baselineMadRelativeSpread: number | null;
   readonly relativeIncrease: number | null;
   readonly robustZ: number | null;
+  readonly dispersionState: 'MAD_POSITIVE' | 'MAD_ZERO' | 'MAD_UNAVAILABLE';
+  readonly robustZApplicability: 'APPLICABLE' | 'ZERO_MAD_RELATIVE_FALLBACK' | 'UNAVAILABLE';
   readonly baselineEvidenceIds: readonly string[];
   readonly maturity: BaselineMaturityAssessment;
   readonly stressSpreadWideningDetected: boolean | null;
@@ -64,12 +72,13 @@ export interface AegisSpreadStressAssessment {
 export type AegisSpreadStressAssessmentMap = Readonly<Record<string, AegisSpreadStressAssessment>>;
 
 export const paperBootstrapAegisSpreadStressPolicy: AegisSpreadStressPolicy = Object.freeze({
-  policyVersion: 'aegis-spread-widening-paper-bootstrap-v1',
+  policyVersion: 'aegis-spread-widening-paper-bootstrap-v2',
   authority: 'PAPER_BOOTSTRAP_BASELINE_NOT_EMPIRICALLY_OPTIMAL',
   lookbackDays: 120,
   maximumBaselineObservations: 500,
   minimumRelativeIncrease: 0.5,
   minimumRobustZ: 3,
+  zeroMadFallback: 'RELATIVE_INCREASE_ONLY',
   maturity: {
     policyVersion: 'aegis-spread-baseline-paper-bootstrap-v1',
     minimumRawN: 20,
@@ -119,20 +128,24 @@ export function assessAegisSpreadStress(input: {
     || input.policy.maximumBaselineObservations < 1 || !Number.isSafeInteger(input.policy.lookbackDays)
     || input.policy.lookbackDays < 1 || !Number.isFinite(input.policy.minimumRelativeIncrease)
     || input.policy.minimumRelativeIncrease < 0 || !Number.isFinite(input.policy.minimumRobustZ)
-    || input.policy.minimumRobustZ < 0) throw new Error('AEGIS_SPREAD_STRESS_POLICY_INVALID');
+    || input.policy.minimumRobustZ < 0 || !['RELATIVE_INCREASE_ONLY', 'UNAVAILABLE'].includes(input.policy.zeroMadFallback))
+    throw new Error('AEGIS_SPREAD_STRESS_POLICY_INVALID');
   if (Date.parse(input.current.receivedAt) > Date.parse(input.decisionAsOf)) {
     throw new Error('AEGIS_SPREAD_STRESS_CURRENT_EVIDENCE_FROM_FUTURE');
   }
   const dteBucket = spreadDteBucket(input.current.dte);
   const moneynessBucket = spreadMoneynessBucket(input.current.moneyness);
   const currentSessionDate = input.current.quoteTimestamp?.slice(0, 10) ?? input.decisionAsOf.slice(0, 10);
-  const eligible = moneynessBucket === null ? [] : input.history.filter((row) =>
+  const sameCohort = moneynessBucket === null ? [] : input.history.filter((row) =>
     row.underlying === input.current.underlying && row.optionType === input.current.optionType
     && spreadDteBucket(row.dte) === dteBucket && spreadMoneynessBucket(row.moneyness) === moneynessBucket
+    && row.source === 'ALPACA' && row.dataQuality === 'GOOD'
     && row.relativeSpread >= 0 && Number.isFinite(row.relativeSpread)
     && row.providerTimestamp.slice(0, 10) < currentSessionDate
     && Date.parse(row.providerTimestamp) <= Date.parse(input.decisionAsOf)
-    && Date.parse(row.ingestionTimestamp) <= Date.parse(input.decisionAsOf))
+    && Date.parse(row.ingestionTimestamp) <= Date.parse(input.decisionAsOf));
+  const matchingFeed = sameCohort.filter((row) => row.feed === input.current.feed);
+  const eligible = matchingFeed
     .sort((a, b) => b.providerTimestamp.localeCompare(a.providerTimestamp) || b.evidenceId.localeCompare(a.evidenceId))
     .slice(0, input.policy.maximumBaselineObservations)
     .sort((a, b) => a.providerTimestamp.localeCompare(b.providerTimestamp) || a.evidenceId.localeCompare(b.evidenceId));
@@ -142,6 +155,14 @@ export function assessAegisSpreadStress(input: {
     : median(values.map((value) => Math.abs(value - baselineMedianRelativeSpread)));
   const sessions = new Set(eligible.map((row) => row.providerTimestamp.slice(0, 10)));
   const independent = new Set(eligible.map((row) => `${row.contractSymbol}:${row.providerTimestamp.slice(0, 10)}`));
+  const contractsPerSession = Object.fromEntries([...sessions].sort().map((session) => [session,
+    new Set(eligible.filter((row) => row.providerTimestamp.slice(0, 10) === session)
+      .map((row) => row.contractSymbol)).size]));
+  const currentFeed = input.current.feed;
+  const baselineFeed = eligible.length > 0 ? currentFeed : null;
+  const feedAuthorityState = currentFeed === null ? 'CURRENT_FEED_UNKNOWN' as const
+    : eligible.length === 0 ? 'NO_MATCHING_FEED_HISTORY' as const
+    : currentFeed === 'OPRA' ? 'MATCHED_OPRA' as const : 'MATCHED_INDICATIVE' as const;
   const ingestionTimes = eligible.map((row) => row.ingestionTimestamp).toSorted();
   const currentValid = input.current.source === 'ALPACA' && input.current.dataQuality === 'GOOD'
     && input.current.feed !== null && input.current.quoteTimestamp !== null
@@ -166,16 +187,25 @@ export function assessAegisSpreadStress(input: {
   const robustZ = currentRelativeSpread === null || baselineMedianRelativeSpread === null
     || baselineMadRelativeSpread === null || baselineMadRelativeSpread === 0 ? null
     : (currentRelativeSpread - baselineMedianRelativeSpread) / (1.4826 * baselineMadRelativeSpread);
+  const dispersionState = baselineMadRelativeSpread === null ? 'MAD_UNAVAILABLE' as const
+    : baselineMadRelativeSpread === 0 ? 'MAD_ZERO' as const : 'MAD_POSITIVE' as const;
+  const robustZApplicability = dispersionState === 'MAD_POSITIVE' ? 'APPLICABLE' as const
+    : dispersionState === 'MAD_ZERO' && input.policy.zeroMadFallback === 'RELATIVE_INCREASE_ONLY'
+      ? 'ZERO_MAD_RELATIVE_FALLBACK' as const : 'UNAVAILABLE' as const;
   const stressSpreadWideningDetected = maturity.state !== 'DETECTOR_READY' || relativeIncrease === null
+    || robustZApplicability === 'UNAVAILABLE'
     ? null
     : relativeIncrease >= input.policy.minimumRelativeIncrease
-      && (robustZ === null || robustZ >= input.policy.minimumRobustZ);
+      && (robustZApplicability === 'ZERO_MAD_RELATIVE_FALLBACK' || (robustZ !== null && robustZ >= input.policy.minimumRobustZ));
   const withoutHash = {
     contractVersion: aegisSpreadStressDetectorVersion, underlying: input.current.underlying,
     optionSymbol: input.current.optionSymbol, decisionAsOf: input.decisionAsOf, dteBucket, moneynessBucket,
     currentRelativeSpread, currentQuoteProviderAt: input.current.quoteTimestamp,
-    currentQuoteReceivedAt: input.current.receivedAt, baselineMedianRelativeSpread, baselineMadRelativeSpread,
-    relativeIncrease, robustZ, baselineEvidenceIds: eligible.map((row) => row.evidenceId), maturity,
+    currentQuoteReceivedAt: input.current.receivedAt, currentFeed, baselineFeed, feedAuthorityState,
+    rejectedOtherFeedN: sameCohort.length - matchingFeed.length, contractsPerSession,
+    baselineMedianRelativeSpread, baselineMadRelativeSpread,
+    relativeIncrease, robustZ, dispersionState, robustZApplicability,
+    baselineEvidenceIds: eligible.map((row) => row.evidenceId), maturity,
     stressSpreadWideningDetected, policyVersion: input.policy.policyVersion,
     policyAuthority: input.policy.authority, evidenceAuthority: 'ALPACA_EXECUTABLE_MARKET',
   } as const;

@@ -181,6 +181,16 @@ itMockedProviderRealCodePath('candidate-specific UNKNOWN risk evidence overrides
   assert.ok(result.aegisByCandidateId?.C1?.reasons.some((reason) => reason.code === 'SECTOR_UNKNOWN'));
 });
 
+itMockedProviderRealCodePath('one good quote cannot authorize a different candidate with failed market quality', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    candidates: [candidate('C1', {
+      aegisInputOverrides: { liquidityAcceptable: false, executionQualityAcceptable: false },
+    })],
+  }));
+  assert.equal(result.aegisByCandidateId?.C1?.newRiskState, 'HARD_VETO');
+  assert.ok(result.aegisByCandidateId?.C1?.reasons.some((reason) => reason.code === 'PER_TRADE_LIQUIDITY_FAILED'));
+});
+
 itMockedProviderRealCodePath('candidate spread detector evidence replaces the global UNKNOWN without weakening other AEGIS inputs', async () => {
   const request = baseRequest();
   const result = await runNewRiskOrchestration(bridge(), baseRequest({

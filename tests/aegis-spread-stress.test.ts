@@ -9,12 +9,13 @@ import {
 import { normalizeOptionContract, type NormalizedOptionContract } from '../src/theta/option-contract.js';
 
 const policy: AegisSpreadStressPolicy = {
-  policyVersion: 'aegis-spread-widening-paper-bootstrap-v1',
+  policyVersion: 'aegis-spread-widening-paper-bootstrap-v2',
   authority: 'PAPER_BOOTSTRAP_BASELINE_NOT_EMPIRICALLY_OPTIMAL',
   lookbackDays: 120,
   maximumBaselineObservations: 500,
   minimumRelativeIncrease: 0.5,
   minimumRobustZ: 3,
+  zeroMadFallback: 'RELATIVE_INCREASE_ONLY',
   maturity: {
     policyVersion: 'aegis-spread-baseline-paper-bootstrap-v1', minimumRawN: 20, minimumSessionN: 5,
     minimumDistinctUnderlyingN: 1, minimumTemporalSpanDays: 4, maxCurrentObservationAgeSeconds: 30,
@@ -59,6 +60,10 @@ test('mature same-cohort Alpaca history produces a real spread-widening boolean'
   assert.equal(assessment.maturity.evidence.sessionN, 5);
   assert.equal(assessment.stressSpreadWideningDetected, true);
   assert.equal(assessment.evidenceAuthority, 'ALPACA_EXECUTABLE_MARKET');
+  assert.equal(assessment.feedAuthorityState, 'MATCHED_INDICATIVE');
+  assert.equal(assessment.currentFeed, 'INDICATIVE');
+  assert.equal(assessment.baselineFeed, 'INDICATIVE');
+  assert.equal(assessment.maturity.effectiveNPolicyState, 'EFFECTIVE_N_NOT_GOVERNING_POLICY');
 });
 
 test('immature or wrong-cohort history remains null rather than false', () => {
@@ -103,4 +108,39 @@ test('contract assessor loads persisted history once per underlying and option t
     decisionAsOf: '2026-09-22T14:00:00.000Z', policy });
   assert.equal(calls, 1);
   assert.equal(Object.keys(assessments).length, 2);
+});
+
+test('indicative and OPRA histories never contaminate one another', () => {
+  const indicative = history();
+  const opra = history().map((row, index) => ({ ...row, evidenceId: `opra-${index}`,
+    feed: 'OPRA' as const, relativeSpread: 0.9 }));
+  const indicativeAssessment = assessAegisSpreadStress({ current: current(),
+    history: [...indicative.slice(0, 5), ...opra], decisionAsOf: '2026-09-22T14:00:00.000Z', policy });
+  assert.equal(indicativeAssessment.maturity.evidence.rawN, 5);
+  assert.equal(indicativeAssessment.rejectedOtherFeedN, 20);
+  assert.equal(indicativeAssessment.feedAuthorityState, 'MATCHED_INDICATIVE');
+  assert.equal(indicativeAssessment.maturity.state, 'BASELINE_ACCUMULATING');
+  const opraAssessment = assessAegisSpreadStress({ current: current(0.85, 1.15, { feed: 'OPRA' }),
+    history: [...indicative, ...opra.slice(0, 6)], decisionAsOf: '2026-09-22T14:00:00.000Z', policy });
+  assert.equal(opraAssessment.maturity.evidence.rawN, 6);
+  assert.equal(opraAssessment.rejectedOtherFeedN, 20);
+  assert.equal(opraAssessment.feedAuthorityState, 'MATCHED_OPRA');
+  const noMatch = assessAegisSpreadStress({ current: current(), history: opra,
+    decisionAsOf: '2026-09-22T14:00:00.000Z', policy });
+  assert.equal(noMatch.maturity.state, 'BASELINE_NOT_STARTED');
+  assert.equal(noMatch.feedAuthorityState, 'NO_MATCHING_FEED_HISTORY');
+  assert.equal(noMatch.stressSpreadWideningDetected, null);
+});
+
+test('zero-MAD fallback is explicit and can be disabled without changing thresholds', () => {
+  const flat = history(0.1).map((row) => ({ ...row, relativeSpread: 0.1 }));
+  const fallback = assessAegisSpreadStress({ current: current(), history: flat,
+    decisionAsOf: '2026-09-22T14:00:00.000Z', policy });
+  assert.equal(fallback.maturity.state, 'DETECTOR_READY');
+  assert.equal(fallback.dispersionState, 'MAD_ZERO');
+  assert.equal(fallback.robustZApplicability, 'ZERO_MAD_RELATIVE_FALLBACK');
+  assert.equal(fallback.stressSpreadWideningDetected, true);
+  const disabled = assessAegisSpreadStress({ current: current(), history: flat,
+    decisionAsOf: '2026-09-22T14:00:00.000Z', policy: { ...policy, zeroMadFallback: 'UNAVAILABLE' } });
+  assert.equal(disabled.stressSpreadWideningDetected, null);
 });

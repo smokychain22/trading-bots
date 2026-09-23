@@ -11,12 +11,13 @@ import {
 import type { NormalizedOptionomicsContextObservation } from '../src/theta/optionomics-provider.js';
 
 const policy: AegisIvStressPolicy = {
-  policyVersion: 'aegis-iv-shock-paper-bootstrap-v1',
+  policyVersion: 'aegis-iv-shock-paper-bootstrap-v2',
   authority: 'PAPER_BOOTSTRAP_BASELINE_NOT_EMPIRICALLY_OPTIMAL',
   maximumBaselineSessions: 30,
   minimumAbsoluteIncrease: 0.03,
   minimumRelativeIncrease: 0.25,
   minimumRobustZ: 3,
+  zeroMadFallback: 'ABSOLUTE_AND_RELATIVE',
   maturity: {
     policyVersion: 'aegis-iv-baseline-paper-bootstrap-v1', minimumRawN: 20, minimumSessionN: 20,
     minimumDistinctUnderlyingN: 1, minimumTemporalSpanDays: 0, maxCurrentObservationAgeSeconds: 86_400,
@@ -52,6 +53,7 @@ function observation(index: number, iv: number): OptionomicsIvSessionObservation
 
 function currentObservation(iv: number): OptionomicsIvSessionObservation {
   const result = normalizeOptionomicsAtmIvObservation(context({
+    sessionDate: '2026-09-22', requestParameters: { date: '2026-09-22' },
     normalized: { atmIv: { state: 'KNOWN', value: iv, reason: null, units: 'PROVIDER_REPORTED_UNVERIFIED' } },
   }));
   assert.equal(result.state, 'KNOWN');
@@ -79,6 +81,17 @@ test('20-session real baseline can produce a no-shock boolean under explicit boo
   const assessment = assessAegisIvStress({ current, history, decisionAsOf: '2026-09-22T14:05:00.000Z', policy });
   assert.equal(assessment.maturity.state, 'DETECTOR_READY');
   assert.equal(assessment.stressIvShockDetected, false);
+  assert.equal(assessment.sessionState, 'CURRENT_SESSION');
+});
+
+test('fresh retrieval of a prior served session cannot assert no IV shock', () => {
+  const history = Array.from({ length: 20 }, (_, index) => observation(index, 0.2));
+  const current = { ...currentObservation(0.21), sessionDate: '2026-09-21',
+    requestParameters: { date: '2026-09-21' } };
+  const assessment = assessAegisIvStress({ current, history, decisionAsOf: '2026-09-22T14:05:00.000Z', policy });
+  assert.equal(assessment.maturity.state, 'DETECTOR_READY');
+  assert.equal(assessment.sessionState, 'LATEST_COMPLETED_SESSION');
+  assert.equal(assessment.stressIvShockDetected, null);
 });
 
 test('large real increase produces shock and immature history remains null, never false', () => {
@@ -115,6 +128,18 @@ test('missing persistence schema becomes an explicit AEGIS blocker without throw
   assert.deepEqual(result, {
     state: 'PERSISTENCE_ERROR', assessment: null, reason: 'AEGIS_IV_PERSISTENCE_42P01',
   });
+});
+
+test('zero-MAD IV baseline records its governed fallback instead of silently passing robust z', () => {
+  const history = Array.from({ length: 20 }, (_, index) => observation(index, 0.2));
+  const current = currentObservation(0.35);
+  const fallback = assessAegisIvStress({ current, history, decisionAsOf: '2026-09-22T14:05:00.000Z', policy });
+  assert.equal(fallback.dispersionState, 'MAD_ZERO');
+  assert.equal(fallback.robustZApplicability, 'ZERO_MAD_ABSOLUTE_RELATIVE_FALLBACK');
+  assert.equal(fallback.stressIvShockDetected, true);
+  const disabled = assessAegisIvStress({ current, history, decisionAsOf: '2026-09-22T14:05:00.000Z',
+    policy: { ...policy, zeroMadFallback: 'UNAVAILABLE' } });
+  assert.equal(disabled.stressIvShockDetected, null);
 });
 
 test('live IV read freezes decision time after provider observation, while historical time stays fail-closed', async () => {

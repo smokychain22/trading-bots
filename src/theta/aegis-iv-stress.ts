@@ -13,7 +13,10 @@ import {
 } from './optionomics-provider.js';
 
 export const optionomicsIvSessionObservationVersion = 'theta-optionomics-atm-iv-session-v1' as const;
-export const aegisIvStressDetectorVersion = 'theta-aegis-iv-stress-detector-v1' as const;
+export const aegisIvStressDetectorVersion = 'theta-aegis-iv-stress-detector-v2' as const;
+
+export type AegisIvSessionState = 'CURRENT_SESSION' | 'LATEST_COMPLETED_SESSION'
+  | 'PRIOR_SESSION_EXPECTED_BY_PROVIDER' | 'SESSION_STALE' | 'SESSION_UNKNOWN' | 'SESSION_MISMATCH';
 
 export interface OptionomicsIvSessionObservation {
   readonly observationId: string;
@@ -46,6 +49,7 @@ export interface AegisIvStressPolicy {
   readonly minimumAbsoluteIncrease: number;
   readonly minimumRelativeIncrease: number;
   readonly minimumRobustZ: number;
+  readonly zeroMadFallback: 'ABSOLUTE_AND_RELATIVE' | 'UNAVAILABLE';
   readonly maturity: BaselineSufficiencyPolicy;
 }
 
@@ -53,6 +57,11 @@ export interface AegisIvStressAssessment {
   readonly contractVersion: typeof aegisIvStressDetectorVersion;
   readonly underlying: string;
   readonly decisionAsOf: string;
+  readonly decisionSession: string;
+  readonly requestedSession: string | null;
+  readonly servedSession: string;
+  readonly providerTimestamp: string | null;
+  readonly sessionState: AegisIvSessionState;
   readonly currentObservationId: string;
   readonly baselineObservationIds: readonly string[];
   readonly policyVersion: string;
@@ -64,24 +73,27 @@ export interface AegisIvStressAssessment {
   readonly absoluteIncrease: number | null;
   readonly relativeIncrease: number | null;
   readonly robustZ: number | null;
+  readonly dispersionState: 'MAD_POSITIVE' | 'MAD_ZERO' | 'MAD_UNAVAILABLE';
+  readonly robustZApplicability: 'APPLICABLE' | 'ZERO_MAD_ABSOLUTE_RELATIVE_FALLBACK' | 'UNAVAILABLE';
   readonly stressIvShockDetected: boolean | null;
   readonly evidenceAuthority: 'OPTIONOMICS_SESSION_RESEARCH';
   readonly contentHash: string;
 }
 
 export interface AegisIvStressRefreshResult {
-  readonly state: 'READY' | 'BASELINE_IMMATURE' | 'PROVIDER_ERROR' | 'PERSISTENCE_ERROR' | 'OBSERVATION_UNKNOWN' | 'INVALID';
+  readonly state: 'READY' | 'BASELINE_IMMATURE' | 'SESSION_STALE' | 'PROVIDER_ERROR' | 'PERSISTENCE_ERROR' | 'OBSERVATION_UNKNOWN' | 'INVALID';
   readonly assessment: AegisIvStressAssessment | null;
   readonly reason: string;
 }
 
 export const paperBootstrapAegisIvStressPolicy: AegisIvStressPolicy = Object.freeze({
-  policyVersion: 'aegis-iv-shock-paper-bootstrap-v1',
+  policyVersion: 'aegis-iv-shock-paper-bootstrap-v2',
   authority: 'PAPER_BOOTSTRAP_BASELINE_NOT_EMPIRICALLY_OPTIMAL',
   maximumBaselineSessions: 40,
   minimumAbsoluteIncrease: 0.03,
   minimumRelativeIncrease: 0.25,
   minimumRobustZ: 3,
+  zeroMadFallback: 'ABSOLUTE_AND_RELATIVE',
   maturity: {
     policyVersion: 'aegis-iv-baseline-paper-bootstrap-v1',
     minimumRawN: 20,
@@ -112,6 +124,32 @@ function validIso(value: string): boolean {
 function validDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value)
     && new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
+}
+
+function newYorkSession(instant: string): string | null {
+  if (!validIso(instant)) return null;
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York',
+    year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(instant));
+  const value = (type: string) => parts.find((part) => part.type === type)?.value;
+  const session = `${value('year')}-${value('month')}-${value('day')}`;
+  return validDate(session) ? session : null;
+}
+
+export function classifyAegisIvSession(current: OptionomicsIvSessionObservation, decisionAsOf: string): AegisIvSessionState {
+  const decisionSession = newYorkSession(decisionAsOf);
+  if (decisionSession === null || !validDate(current.sessionDate)) return 'SESSION_UNKNOWN';
+  const requestedSession = current.requestParameters.date ?? null;
+  if (requestedSession !== null && requestedSession !== current.sessionDate) return 'SESSION_MISMATCH';
+  if (current.sessionDate > decisionSession) return 'SESSION_MISMATCH';
+  if (current.sessionDate === decisionSession) return 'CURRENT_SESSION';
+  // METRICS has no authenticated publication-lag contract. A prior served
+  // session cannot become current merely because HTTP retrieval was fresh.
+  const ageDays = (Date.parse(`${decisionSession}T00:00:00.000Z`)
+    - Date.parse(`${current.sessionDate}T00:00:00.000Z`)) / 86_400_000;
+  // A weekend or holiday may put the most recently completed session more
+  // than one calendar day back. Without an authenticated prior-session
+  // calendar/publication contract we cannot call that economically stale.
+  return ageDays === 1 ? 'LATEST_COMPLETED_SESSION' : 'SESSION_UNKNOWN';
 }
 
 function valueRecord(value: unknown): Readonly<Record<string, unknown>> | null {
@@ -193,12 +231,16 @@ export function assessAegisIvStress(input: {
     || !Number.isSafeInteger(input.policy.maximumBaselineSessions) || input.policy.maximumBaselineSessions < 1
     || !Number.isFinite(input.policy.minimumAbsoluteIncrease) || input.policy.minimumAbsoluteIncrease < 0
     || !Number.isFinite(input.policy.minimumRelativeIncrease) || input.policy.minimumRelativeIncrease < 0
-    || !Number.isFinite(input.policy.minimumRobustZ) || input.policy.minimumRobustZ < 0) {
+    || !Number.isFinite(input.policy.minimumRobustZ) || input.policy.minimumRobustZ < 0
+    || !['ABSOLUTE_AND_RELATIVE', 'UNAVAILABLE'].includes(input.policy.zeroMadFallback)) {
     throw new Error('AEGIS_IV_STRESS_POLICY_INVALID');
   }
   if (Date.parse(input.current.thetaFirstObservedAt) > Date.parse(input.decisionAsOf)) {
     throw new Error('AEGIS_IV_STRESS_CURRENT_EVIDENCE_FROM_FUTURE');
   }
+  const decisionSession = newYorkSession(input.decisionAsOf);
+  if (decisionSession === null) throw new Error('AEGIS_IV_DECISION_SESSION_UNKNOWN');
+  const sessionState = classifyAegisIvSession(input.current, input.decisionAsOf);
   const eligible = input.history.filter((row) => row.underlying === input.current.underlying
       && row.sessionDate < input.current.sessionDate
       && Date.parse(row.thetaFirstObservedAt) <= Date.parse(input.decisionAsOf))
@@ -221,19 +263,28 @@ export function assessAegisIvStress(input: {
   const relativeIncrease = baselineMedianIv === null || baselineMedianIv === 0 ? null : absoluteIncrease as number / baselineMedianIv;
   const robustZ = baselineMadIv === null || baselineMadIv === 0 || absoluteIncrease === null
     ? null : absoluteIncrease / (1.4826 * baselineMadIv);
-  const stressIvShockDetected = maturity.state !== 'DETECTOR_READY' || absoluteIncrease === null || relativeIncrease === null
+  const dispersionState = baselineMadIv === null ? 'MAD_UNAVAILABLE' as const
+    : baselineMadIv === 0 ? 'MAD_ZERO' as const : 'MAD_POSITIVE' as const;
+  const robustZApplicability = dispersionState === 'MAD_POSITIVE' ? 'APPLICABLE' as const
+    : dispersionState === 'MAD_ZERO' && input.policy.zeroMadFallback === 'ABSOLUTE_AND_RELATIVE'
+      ? 'ZERO_MAD_ABSOLUTE_RELATIVE_FALLBACK' as const : 'UNAVAILABLE' as const;
+  const stressIvShockDetected = sessionState !== 'CURRENT_SESSION' || maturity.state !== 'DETECTOR_READY' || absoluteIncrease === null || relativeIncrease === null
+    || robustZApplicability === 'UNAVAILABLE'
     ? null
     : absoluteIncrease >= input.policy.minimumAbsoluteIncrease
       && relativeIncrease >= input.policy.minimumRelativeIncrease
-      && (robustZ === null || robustZ >= input.policy.minimumRobustZ);
+      && (robustZApplicability === 'ZERO_MAD_ABSOLUTE_RELATIVE_FALLBACK'
+        || (robustZ !== null && robustZ >= input.policy.minimumRobustZ));
   const withoutHash = {
     contractVersion: aegisIvStressDetectorVersion,
     underlying: input.current.underlying, decisionAsOf: input.decisionAsOf,
+    decisionSession, requestedSession: input.current.requestParameters.date ?? null,
+    servedSession: input.current.sessionDate, providerTimestamp: input.current.providerTimestamp, sessionState,
     currentObservationId: input.current.observationId,
     baselineObservationIds: baseline.map((row) => row.observationId),
     policyVersion: input.policy.policyVersion, policyAuthority: input.policy.authority,
     maturity, currentIv: input.current.atmIv, baselineMedianIv, baselineMadIv,
-    absoluteIncrease, relativeIncrease, robustZ, stressIvShockDetected,
+    absoluteIncrease, relativeIncrease, robustZ, dispersionState, robustZApplicability, stressIvShockDetected,
     evidenceAuthority: 'OPTIONOMICS_SESSION_RESEARCH',
   } as const;
   return { ...withoutHash, contentHash: assessmentHash(withoutHash) };
@@ -328,6 +379,9 @@ export async function refreshAegisIvStress(input: {
     const assessment = assessAegisIvStress({ current: normalized.observation, history,
       decisionAsOf, policy: input.policy ?? paperBootstrapAegisIvStressPolicy });
     await store.persistAssessment(assessment);
+    if (assessment.sessionState !== 'CURRENT_SESSION') return {
+      state: 'SESSION_STALE', assessment, reason: `OPTIONOMICS_IV_${assessment.sessionState}`,
+    };
     return assessment.maturity.state === 'DETECTOR_READY'
       ? { state: 'READY', assessment, reason: 'REAL_OPTIONOMICS_IV_BASELINE_AND_CURRENT_SESSION_READY' }
       : { state: 'BASELINE_IMMATURE', assessment, reason: assessment.maturity.reason };

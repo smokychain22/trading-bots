@@ -1,6 +1,7 @@
 #Requires -Version 7
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$script:ThetaBackupSnapshotId = $null
 
 function Get-ThetaBackupRoot {
   param([string]$ConfiguredRoot)
@@ -119,18 +120,74 @@ function Invoke-ThetaPg {
 
 function Invoke-ThetaSql {
   param([object]$Connection, [string]$Sql)
+  if ($script:ThetaBackupSnapshotId) {
+    if ($script:ThetaBackupSnapshotId -notmatch '^[0-9A-Fa-f-]+$' -or $Sql.TrimStart() -notmatch '^(?i:SELECT|SHOW)\b') {
+      throw 'BACKUP_SNAPSHOT_QUERY_INVALID'
+    }
+    $Sql = "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT '$script:ThetaBackupSnapshotId'; $Sql; COMMIT;"
+  }
   $safeRead = $Sql.TrimStart() -match '^(?i:SELECT|SHOW)\b'
   $attempts = if ($safeRead) { 3 } else { 1 }
   $delays = @(0, 2, 10)
   for ($attempt = 1; $attempt -le $attempts; $attempt++) {
     if ($delays[$attempt - 1] -gt 0) { Start-Sleep -Seconds $delays[$attempt - 1] }
     try {
-      $result = Invoke-ThetaPg -Tool psql -Connection $Connection -Arguments @('--no-psqlrc','--no-align','--tuples-only','--set','ON_ERROR_STOP=1','--command',$Sql)
+      $result = Invoke-ThetaPg -Tool psql -Connection $Connection -Arguments @('--no-psqlrc','--quiet','--no-align','--tuples-only','--set','ON_ERROR_STOP=1','--command',$Sql)
       return (($result | Out-String).Trim())
     } catch {
       if ($attempt -eq $attempts) { throw }
     }
   }
+}
+
+function Start-ThetaExportedSnapshot {
+  param([Parameter(Mandatory)][object]$Connection)
+  if ($Connection.Host -eq 'wsl-socket') { throw 'EXPORTED_SNAPSHOT_NATIVE_CONNECTION_REQUIRED' }
+  $startInfo = [Diagnostics.ProcessStartInfo]::new()
+  $startInfo.FileName = Get-ThetaNativePgTool psql
+  foreach ($argument in @('--no-psqlrc','--quiet','--no-align','--tuples-only','--set','ON_ERROR_STOP=1','--dbname',$Connection.Database)) {
+    [void]$startInfo.ArgumentList.Add($argument)
+  }
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardInput = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  foreach ($entry in @{
+    PGHOST=$Connection.Host; PGPORT=$Connection.Port; PGUSER=$Connection.User; PGPASSWORD=$Connection.Password
+    PGDATABASE=$Connection.Database; PGSSLMODE=$Connection.SslMode; PGCONNECT_TIMEOUT='15'; PGTZ='UTC'
+    PGAPPNAME='theta-disaster-recovery-snapshot'
+  }.GetEnumerator()) { $startInfo.Environment[$entry.Key] = [string]$entry.Value }
+  $process = [Diagnostics.Process]::Start($startInfo)
+  if ($null -eq $process) { throw 'BACKUP_SNAPSHOT_KEEPER_START_FAILED' }
+  try {
+    $process.StandardInput.WriteLine('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;')
+    $process.StandardInput.WriteLine("SELECT 'THETA_SNAPSHOT:' || pg_export_snapshot();")
+    $process.StandardInput.Flush()
+    $lineTask = $process.StandardOutput.ReadLineAsync()
+    if (-not $lineTask.Wait(30000)) { throw 'BACKUP_SNAPSHOT_KEEPER_TIMEOUT' }
+    $line = $lineTask.Result
+    if ($line -notmatch '^THETA_SNAPSHOT:([0-9A-Fa-f-]+)$') { throw 'BACKUP_SNAPSHOT_ID_INVALID' }
+    return [pscustomobject]@{ Process=$process; SnapshotId=$Matches[1] }
+  } catch {
+    if (-not $process.HasExited) { $process.Kill() }
+    $process.Dispose()
+    throw
+  }
+}
+
+function Stop-ThetaExportedSnapshot {
+  param([object]$Keeper)
+  if ($null -eq $Keeper) { return }
+  $process = $Keeper.Process
+  try {
+    if (-not $process.HasExited) {
+      $process.StandardInput.WriteLine('ROLLBACK;')
+      $process.StandardInput.WriteLine('\q')
+      $process.StandardInput.Flush()
+      if (-not $process.WaitForExit(10000)) { $process.Kill() }
+    }
+  } finally { $process.Dispose() }
 }
 
 function Write-ThetaJson {

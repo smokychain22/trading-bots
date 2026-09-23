@@ -56,6 +56,9 @@ export interface BaselineSufficiencyPolicy {
   readonly minimumRawN: number;
   readonly minimumSessionN: number;
   readonly minimumDistinctUnderlyingN: number;
+  /** Optional because the bootstrap policy predates an effective-N gate.
+   * When absent, effective N is observed but never claimed as a policy test. */
+  readonly minimumEffectiveN?: number;
   /** Calendar days the evidence must span, minimum. */
   readonly minimumTemporalSpanDays: number;
   /** Max age, in seconds, for the CURRENT observation feeding a live
@@ -77,6 +80,7 @@ export interface BaselineMaturityAssessment {
   readonly firstObservationAvailableAt: string | null;
   readonly lastObservationAvailableAt: string | null;
   readonly temporalSpanDays: number | null;
+  readonly effectiveNPolicyState: 'EFFECTIVE_N_NOT_GOVERNING_POLICY' | 'EFFECTIVE_N_REQUIRED' | 'EFFECTIVE_N_SUFFICIENT' | 'EFFECTIVE_N_INSUFFICIENT';
   readonly source: string;
   readonly sourceVersion: string;
   readonly state: StressBaselineState;
@@ -125,6 +129,10 @@ export function assessBaselineMaturity(
   const base = {
     contractVersion: aegisStressBaselineMaturityVersion, signal, asOf, evidence,
     firstObservationAvailableAt, lastObservationAvailableAt, temporalSpanDays, source, sourceVersion,
+    effectiveNPolicyState: policy.minimumEffectiveN === undefined ? 'EFFECTIVE_N_NOT_GOVERNING_POLICY' as const
+      : evidence.effectiveN === null ? 'EFFECTIVE_N_REQUIRED' as const
+      : evidence.effectiveN < policy.minimumEffectiveN ? 'EFFECTIVE_N_INSUFFICIENT' as const
+      : 'EFFECTIVE_N_SUFFICIENT' as const,
   };
 
   const asOfMs = Date.parse(asOf);
@@ -135,6 +143,7 @@ export function assessBaselineMaturity(
   const minimums = [policy.minimumRawN, policy.minimumSessionN, policy.minimumDistinctUnderlyingN];
   if (!Number.isFinite(asOfMs) || counts.some((value) => !Number.isSafeInteger(value) || value < 0)
     || minimums.some((value) => !Number.isSafeInteger(value) || value < 0)
+    || (policy.minimumEffectiveN !== undefined && (!Number.isSafeInteger(policy.minimumEffectiveN) || policy.minimumEffectiveN < 0))
     || !Number.isFinite(policy.minimumTemporalSpanDays) || policy.minimumTemporalSpanDays < 0
     || !Number.isFinite(policy.maxCurrentObservationAgeSeconds) || policy.maxCurrentObservationAgeSeconds < 0
     || policy.policyVersion.trim() === '' || source.trim() === '' || sourceVersion.trim() === ''
@@ -170,6 +179,8 @@ export function assessBaselineMaturity(
   if (evidence.rawN < policy.minimumRawN) insufficient.push(`rawN(${evidence.rawN})<min(${policy.minimumRawN})`);
   if (evidence.sessionN < policy.minimumSessionN) insufficient.push(`sessionN(${evidence.sessionN})<min(${policy.minimumSessionN})`);
   if (evidence.distinctUnderlyingN < policy.minimumDistinctUnderlyingN) insufficient.push(`distinctUnderlyingN(${evidence.distinctUnderlyingN})<min(${policy.minimumDistinctUnderlyingN})`);
+  if (policy.minimumEffectiveN !== undefined && (evidence.effectiveN === null || evidence.effectiveN < policy.minimumEffectiveN))
+    insufficient.push(`effectiveN(${evidence.effectiveN})<min(${policy.minimumEffectiveN})`);
   if (temporalSpanDays === null || temporalSpanDays < policy.minimumTemporalSpanDays) insufficient.push(`temporalSpanDays(${temporalSpanDays})<min(${policy.minimumTemporalSpanDays})`);
   if (insufficient.length > 0) {
     return { ...base, state: 'BASELINE_ACCUMULATING', reason: `Below policy minimums: ${insufficient.join(', ')}.` };

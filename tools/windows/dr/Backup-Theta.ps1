@@ -33,6 +33,7 @@ function Invoke-VerifiedDumpWithRetry([string[]]$Arguments, [string]$OutputPath,
 $stage = $null
 $backupId = $null
 $dumpComplete = $false
+$snapshotKeeper = $null
 try {
   if (-not $TestMode) {
     $battery = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -67,8 +68,11 @@ try {
   [void](New-Item -ItemType Directory -Path $stage)
   Log "START backupId=$backupId source=AIVEN_OR_TEST sourceBytes=$sourceSize"
   $archive = Join-Path $stage 'database.backup'; $schema = Join-Path $stage 'schema.sql'
-  Invoke-VerifiedDumpWithRetry -Arguments @('--format=custom','--file',(Get-ThetaPgFilePath $archive $source),'--dbname',$source.Database) -OutputPath $archive -Label 'CUSTOM_DUMP'
-  Invoke-VerifiedDumpWithRetry -Arguments @('--schema-only','--file',(Get-ThetaPgFilePath $schema $source),'--dbname',$source.Database) -OutputPath $schema -Label 'SCHEMA_DUMP'
+  $snapshotKeeper = Start-ThetaExportedSnapshot $source
+  $script:ThetaBackupSnapshotId = $snapshotKeeper.SnapshotId
+  Log 'CONSISTENT_SOURCE_SNAPSHOT_ACQUIRED'
+  Invoke-VerifiedDumpWithRetry -Arguments @('--format=custom','--snapshot',$script:ThetaBackupSnapshotId,'--file',(Get-ThetaPgFilePath $archive $source),'--dbname',$source.Database) -OutputPath $archive -Label 'CUSTOM_DUMP'
+  Invoke-VerifiedDumpWithRetry -Arguments @('--schema-only','--snapshot',$script:ThetaBackupSnapshotId,'--file',(Get-ThetaPgFilePath $schema $source),'--dbname',$source.Database) -OutputPath $schema -Label 'SCHEMA_DUMP'
   Log 'DUMP_COMPLETE'
   $dumpComplete = $true
   $inventorySql = @'
@@ -112,6 +116,10 @@ SELECT jsonb_build_object(
     $rows = Invoke-ThetaSql $source "SELECT coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb)::text FROM $table t"
     [IO.File]::WriteAllText((Join-Path $critical ($table.Replace('.','-') + '.json')), ($rows + "`n"), [Text.UTF8Encoding]::new($false))
   }
+  $script:ThetaBackupSnapshotId = $null
+  Stop-ThetaExportedSnapshot $snapshotKeeper
+  $snapshotKeeper = $null
+  Log 'CONSISTENT_SOURCE_SNAPSHOT_RELEASED'
   $assets = @()
   if (-not $SkipExternalAssets) {
     foreach ($item in @(@('research_exports','research_exports'),@('research_outputs','research_outputs'),@('.theta-local-worker/evidence','worker-evidence'),@('.theta-local-worker/receipts','worker-receipts'))) {
@@ -240,4 +248,7 @@ SELECT jsonb_build_object(
     }
   }
   throw
+} finally {
+  $script:ThetaBackupSnapshotId = $null
+  Stop-ThetaExportedSnapshot $snapshotKeeper
 }

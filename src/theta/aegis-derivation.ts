@@ -1,5 +1,6 @@
 import type { DataQualityState } from './data-freshness.js';
 import type { NormalizedOptionContract } from './option-contract.js';
+import type { HistoricalBar } from './underlying-history.js';
 
 // R1 Phase 2 item E: further real AEGIS-input derivations, ADDITIVE to the
 // existing tickerConcentrationPct/portfolioCapitalAtRiskPct merge in
@@ -79,6 +80,26 @@ export function deriveExecutionQualityAcceptable(candidateContracts: readonly No
   return everyFailureObserved ? false : null;
 }
 
+/** AEGIS's PER_TRADE and EXECUTION inputs must describe the exact option
+ * under assessment. A cycle-level "one quote was good" result is never
+ * evidence that a different candidate has an executable market. */
+export function deriveCandidateMarketQuality(contract: NormalizedOptionContract, maxAcceptableSpreadPct: number): {
+  readonly liquidityAcceptable: boolean | null;
+  readonly executionQualityAcceptable: boolean | null;
+} {
+  if (!Number.isFinite(maxAcceptableSpreadPct) || maxAcceptableSpreadPct < 0)
+    throw new Error('AEGIS_CANDIDATE_SPREAD_POLICY_INVALID');
+  const spreadKnown = contract.spreadPct !== null && Number.isFinite(contract.spreadPct)
+    && contract.spreadPct >= 0;
+  const liquidityAcceptable = spreadKnown ? (contract.spreadPct as number) <= maxAcceptableSpreadPct : null;
+  const quoteKnown = contract.bid !== null && contract.ask !== null && contract.quoteTimestamp !== null
+    && contract.feed !== null && contract.source === 'ALPACA' && contract.dataQuality !== 'UNKNOWN';
+  const executionQualityAcceptable = contract.executable && contract.dataQuality === 'GOOD'
+    && quoteKnown && liquidityAcceptable === true ? true
+    : quoteKnown ? false : null;
+  return { liquidityAcceptable, executionQualityAcceptable };
+}
+
 /**
  * Derives stressGapDetected from the already-computed most-recent 1-day
  * return. A genuine move whose magnitude exceeds the versioned policy
@@ -86,6 +107,73 @@ export function deriveExecutionQualityAcceptable(candidateContracts: readonly No
  * closed. Absence of evidence must never be rewritten as evidence of no gap.
  */
 export function deriveStressGapDetected(ret1d: number | null, thresholdAbsReturn: number): boolean | null {
-  if (ret1d === null) return null;
+  if (ret1d === null || !Number.isFinite(ret1d) || !Number.isFinite(thresholdAbsReturn)
+    || thresholdAbsReturn <= 0) return null;
   return Math.abs(ret1d) >= thresholdAbsReturn;
+}
+
+export interface AegisGapStressPolicy {
+  readonly policyVersion: string;
+  readonly authority: 'PAPER_BOOTSTRAP_NOT_EMPIRICALLY_OPTIMAL';
+  readonly absoluteReturnThreshold: number;
+  readonly returnHorizon: 'CURRENT_SESSION_OPEN_VS_PREVIOUS_COMPLETED_CLOSE';
+  readonly barSource: 'ALPACA_1DAY_SPLIT_ADJUSTED_IEX';
+  readonly barUnit: 'DECIMAL_RETURN';
+  readonly requiredCompletedSessions: 1;
+  readonly maxPreviousBarAgeDays: number;
+  readonly sessionCalendarAuthority: 'ALPACA_CLOCK_AND_CURRENT_CALENDAR';
+}
+
+export interface AegisGapStressAssessment {
+  readonly state: 'READY' | 'UNKNOWN';
+  readonly reason: string;
+  readonly policyVersion: string;
+  readonly currentSession: string;
+  readonly previousSession: string | null;
+  readonly gapReturn: number | null;
+  readonly stressGapDetected: boolean | null;
+}
+
+/** Uses today's observed open, never today's incomplete daily close. The
+ * previous close must come from an earlier daily bar. If Alpaca has not yet
+ * published today's bar, the hard-risk input remains unknown. */
+export function assessAegisGapStress(input: {
+  readonly bars: readonly HistoricalBar[];
+  readonly decisionAsOf: string;
+  readonly currentSession: string;
+  readonly currentSessionConfirmed: boolean;
+  readonly policy: AegisGapStressPolicy;
+}): AegisGapStressAssessment {
+  const { policy, currentSession } = input;
+  if (!policy.policyVersion || policy.authority !== 'PAPER_BOOTSTRAP_NOT_EMPIRICALLY_OPTIMAL'
+    || policy.returnHorizon !== 'CURRENT_SESSION_OPEN_VS_PREVIOUS_COMPLETED_CLOSE'
+    || policy.barSource !== 'ALPACA_1DAY_SPLIT_ADJUSTED_IEX' || policy.barUnit !== 'DECIMAL_RETURN'
+    || policy.requiredCompletedSessions !== 1
+    || !Number.isFinite(policy.absoluteReturnThreshold) || policy.absoluteReturnThreshold <= 0
+    || !Number.isSafeInteger(policy.maxPreviousBarAgeDays) || policy.maxPreviousBarAgeDays < 1)
+    throw new Error('AEGIS_GAP_POLICY_INVALID');
+  const unknown = (reason: string, previousSession: string | null = null): AegisGapStressAssessment => ({
+    state: 'UNKNOWN', reason, policyVersion: policy.policyVersion, currentSession,
+    previousSession, gapReturn: null, stressGapDetected: null,
+  });
+  const decisionMs = Date.parse(input.decisionAsOf);
+  if (!Number.isFinite(decisionMs) || !/^\d{4}-\d{2}-\d{2}$/.test(currentSession)
+    || !input.currentSessionConfirmed) return unknown('CURRENT_SESSION_UNCONFIRMED');
+  const eligible = input.bars.filter((bar) => bar.provider === 'ALPACA' && bar.feed === 'iex'
+    && Number.isFinite(Date.parse(bar.timestamp)) && Date.parse(bar.timestamp) <= decisionMs
+    && Number.isFinite(Date.parse(bar.receivedAt)) && Date.parse(bar.receivedAt) <= decisionMs)
+    .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+  const today = eligible.find((bar) => bar.timestamp.slice(0, 10) === currentSession);
+  if (today === undefined || !Number.isFinite(today.open) || today.open <= 0) return unknown('CURRENT_SESSION_OPEN_UNAVAILABLE');
+  const previous = eligible.find((bar) => bar.timestamp.slice(0, 10) < currentSession);
+  if (previous === undefined || !Number.isFinite(previous.close) || previous.close <= 0)
+    return unknown('PREVIOUS_COMPLETED_CLOSE_UNAVAILABLE');
+  const previousSession = previous.timestamp.slice(0, 10);
+  const ageDays = (Date.parse(`${currentSession}T00:00:00.000Z`)
+    - Date.parse(`${previousSession}T00:00:00.000Z`)) / 86_400_000;
+  if (ageDays <= 0 || ageDays > policy.maxPreviousBarAgeDays) return unknown('PREVIOUS_COMPLETED_CLOSE_STALE', previousSession);
+  const gapReturn = (today.open - previous.close) / previous.close;
+  return { state: 'READY', reason: 'CURRENT_OPEN_AND_PREVIOUS_CLOSE_OBSERVED',
+    policyVersion: policy.policyVersion, currentSession, previousSession,
+    gapReturn, stressGapDetected: Math.abs(gapReturn) >= policy.absoluteReturnThreshold };
 }

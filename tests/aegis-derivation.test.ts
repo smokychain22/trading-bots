@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProviderState, deriveStressGapDetected } from '../src/theta/aegis-derivation.js';
+import { assessAegisGapStress, deriveCandidateMarketQuality, deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProviderState, deriveStressGapDetected } from '../src/theta/aegis-derivation.js';
 import { normalizeOptionContract, type NormalizedOptionContract } from '../src/theta/option-contract.js';
+import type { HistoricalBar } from '../src/theta/underlying-history.js';
 
 const NOW = '2026-09-10T15:00:00.000Z';
 
@@ -65,9 +66,48 @@ test('deriveExecutionQualityAcceptable distinguishes an observed failure from mi
   assert.equal(deriveExecutionQualityAcceptable([]), null);
 });
 
+test('candidate A cannot lend good execution evidence to wide or unknown candidate B', () => {
+  const good = contract({ bid: 4.5, ask: 4.55 });
+  const wide = contract({ bid: 3, ask: 5 });
+  const missing = contract({ bid: null, ask: null });
+  assert.equal(deriveExecutionQualityAcceptable([good, wide]), true);
+  assert.deepEqual(deriveCandidateMarketQuality(good, 0.15), {
+    liquidityAcceptable: true, executionQualityAcceptable: true,
+  });
+  assert.deepEqual(deriveCandidateMarketQuality(wide, 0.15), {
+    liquidityAcceptable: false, executionQualityAcceptable: false,
+  });
+  assert.deepEqual(deriveCandidateMarketQuality(missing, 0.15), {
+    liquidityAcceptable: null, executionQualityAcceptable: null,
+  });
+});
+
 test('deriveStressGapDetected preserves UNKNOWN when return history is unavailable', () => {
   assert.equal(deriveStressGapDetected(null, 0.05), null);
   assert.equal(deriveStressGapDetected(0.02, 0.05), false);
   assert.equal(deriveStressGapDetected(-0.08, 0.05), true);
   assert.equal(deriveStressGapDetected(0.08, 0.05), true);
+});
+
+test('gap stress uses the observed current open and a prior completed close, never a partial current close', () => {
+  const bar = (timestamp: string, open: number, close: number): HistoricalBar => ({
+    symbol: 'SPY', timestamp, open, high: Math.max(open, close), low: Math.min(open, close), close,
+    volume: 1000, tradeCount: null, vwap: null, provider: 'ALPACA', feed: 'iex', receivedAt: NOW,
+  });
+  const policy = { policyVersion: 'aegis-gap-paper-bootstrap-v1',
+    authority: 'PAPER_BOOTSTRAP_NOT_EMPIRICALLY_OPTIMAL', absoluteReturnThreshold: 0.05,
+    returnHorizon: 'CURRENT_SESSION_OPEN_VS_PREVIOUS_COMPLETED_CLOSE',
+    barSource: 'ALPACA_1DAY_SPLIT_ADJUSTED_IEX', barUnit: 'DECIMAL_RETURN', requiredCompletedSessions: 1,
+    maxPreviousBarAgeDays: 5, sessionCalendarAuthority: 'ALPACA_CLOCK_AND_CURRENT_CALENDAR' } as const;
+  const previous = bar('2026-09-09T04:00:00.000Z', 101, 100);
+  const today = bar('2026-09-10T04:00:00.000Z', 106, 90);
+  const input = { bars: [previous, today], decisionAsOf: NOW, currentSession: '2026-09-10',
+    currentSessionConfirmed: true, policy };
+  const ready = assessAegisGapStress(input);
+  assert.equal(ready.stressGapDetected, true);
+  assert.equal(ready.gapReturn, 0.06);
+  assert.equal(assessAegisGapStress({ ...input, bars: [previous] }).stressGapDetected, null);
+  assert.equal(assessAegisGapStress({ ...input, currentSessionConfirmed: false }).stressGapDetected, null);
+  assert.equal(assessAegisGapStress({ ...input,
+    bars: [previous, { ...today, timestamp: '2026-09-10T16:00:00.000Z' }] }).stressGapDetected, null);
 });

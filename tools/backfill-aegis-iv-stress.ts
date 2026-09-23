@@ -80,6 +80,7 @@ try {
     provider: 'OPTIONOMICS', authority: assessment.evidenceAuthority, underlying,
     sessionsRequested: sessions.length, observationsKnown: known, observationsUnknown: unknown,
     observationsInvalid: invalid, requestErrors, currentSession: current.sessionDate,
+    decisionSession: assessment.decisionSession, sessionState: assessment.sessionState,
     openSessionExcluded: openSessionDate,
     currentProviderTimestampPresent: current.providerTimestamp !== null,
     firstObservedAt: current.thetaFirstObservedAt,

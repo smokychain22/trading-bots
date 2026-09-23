@@ -95,6 +95,12 @@ test('Paper-plan assembly requires persisted IV assessment or a governed accumul
   assert.equal(ivStressPaperPlanPersistenceReady({state:'BASELINE_IMMATURE',assessment,reason:'NOT_STARTED'}),false);
   assert.equal(ivStressPaperPlanPersistenceReady({state:'BASELINE_IMMATURE',
     assessment:{...assessment,maturity:{...assessment.maturity,state:'BASELINE_ACCUMULATING'}},reason:'ACCUMULATING'}),true);
+  assert.equal(ivStressPaperPlanPersistenceReady({state:'SESSION_STALE',
+    assessment:{...assessment,sessionState:'LATEST_COMPLETED_SESSION',maturity:{...assessment.maturity,state:'BASELINE_ACCUMULATING'}},
+    reason:'PRIOR_SESSION'}),false);
+  assert.equal(ivStressPaperPlanPersistenceReady({state:'READY',
+    assessment:{...assessment,sessionState:'LATEST_COMPLETED_SESSION',maturity:{...assessment.maturity,state:'DETECTOR_READY'}},
+    reason:'INCORRECT_READY'}),false);
   assert.equal(ivStressPaperPlanPersistenceReady({state:'READY',
     assessment:{...assessment,maturity:{...assessment.maturity,state:'DETECTOR_READY'}},reason:'READY'}),true);
 });

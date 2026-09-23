@@ -88,6 +88,19 @@ test('DETECTOR_READY when baseline sufficient AND current observation fresh/vali
     '2026-08-01T00:00:00Z', '2026-09-20T00:00:00Z', POLICY, freshObservation(), false,
   );
   assert.equal(result.state, 'DETECTOR_READY');
+  assert.equal(result.effectiveNPolicyState, 'EFFECTIVE_N_NOT_GOVERNING_POLICY');
+});
+
+test('effective N is enforced only when an explicit policy minimum exists', () => {
+  const baseline = evidence({ rawN: 500, sessionN: 10, distinctUnderlyingN: 20, effectiveN: 8 });
+  const insufficient = assessBaselineMaturity('SPREAD_WIDENING', ASOF, 'alpaca-bbo', 'v1', baseline,
+    '2026-08-01T00:00:00Z', '2026-09-20T00:00:00Z', { ...POLICY, minimumEffectiveN: 10 }, freshObservation(), false);
+  assert.equal(insufficient.state, 'BASELINE_ACCUMULATING');
+  assert.equal(insufficient.effectiveNPolicyState, 'EFFECTIVE_N_INSUFFICIENT');
+  const ungoverned = assessBaselineMaturity('SPREAD_WIDENING', ASOF, 'alpaca-bbo', 'v1', baseline,
+    '2026-08-01T00:00:00Z', '2026-09-20T00:00:00Z', POLICY, freshObservation(), false);
+  assert.equal(ungoverned.state, 'DETECTOR_READY');
+  assert.equal(ungoverned.effectiveNPolicyState, 'EFFECTIVE_N_NOT_GOVERNING_POLICY');
 });
 
 test('CURRENT_OBSERVATION_STALE when the live observation is older than the policy max age', () => {

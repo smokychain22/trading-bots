@@ -33,7 +33,7 @@ import {
   type DerivedAccountExposure,
   deriveRecoveryInventoryValue,
 } from './account-exposure.js';
-import { deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProviderState, deriveStressGapDetected } from './aegis-derivation.js';
+import { assessAegisGapStress, deriveCandidateMarketQuality, deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProviderState } from './aegis-derivation.js';
 import { buildCanonicalStrategyFrontier, type CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
 import { canonicalThetaStrategySources } from './strategy-package.js';
 import {
@@ -153,7 +153,7 @@ export interface ThetaShadowCycleConfig {
   readonly aegisInputsOrigin: ProvenanceOrigin; // honest declaration -- today this is always CALLER_MANUAL since real position/order-derived exposure isn't wired yet
   readonly opportunityFrontierPolicy: { policyVersion: string; reducedSizeUncertaintyThreshold: number };
   readonly maxAcceptableSpreadPct: number;
-  readonly stressGapThresholdAbsReturn: number; // versioned research placeholder -- see aegis-derivation.ts's deriveStressGapDetected
+  readonly stressGapThresholdAbsReturn: number; // existing Paper bootstrap threshold, not empirically optimal
   readonly sizingPolicy: Record<string, unknown>;
   readonly executionQualityPolicy: Record<string, unknown>;
   /** Candidate-stage Alpaca BBO age. This is independent of the later
@@ -1536,12 +1536,25 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const derivedProviderState = deriveProviderState([accountEvidence.quality, contractsEvidence.quality, quotesEvidence.quality]);
   const derivedLiquidityAcceptable = deriveLiquidityAcceptable(mergedContractsForSnapshot, config.maxAcceptableSpreadPct);
   const derivedExecutionQualityAcceptable = deriveExecutionQualityAcceptable(mergedContractsForSnapshot);
+  const gapAssessment = assessAegisGapStress({
+    bars: historyBars, decisionAsOf: decisionTime, currentSession: marketDate,
+    currentSessionConfirmed: clockEvidence.quality === 'GOOD' && clock?.isOpen === true
+      && currentCalendarSession?.open != null && currentCalendarSession.close != null,
+    policy: {
+      policyVersion: 'aegis-gap-paper-bootstrap-v1', authority: 'PAPER_BOOTSTRAP_NOT_EMPIRICALLY_OPTIMAL',
+      absoluteReturnThreshold: config.stressGapThresholdAbsReturn,
+      returnHorizon: 'CURRENT_SESSION_OPEN_VS_PREVIOUS_COMPLETED_CLOSE',
+      barSource: 'ALPACA_1DAY_SPLIT_ADJUSTED_IEX', barUnit: 'DECIMAL_RETURN',
+      requiredCompletedSessions: 1, maxPreviousBarAgeDays: 5,
+      sessionCalendarAuthority: 'ALPACA_CLOCK_AND_CURRENT_CALENDAR',
+    },
+  });
   effectiveAegisInputs = {
     ...effectiveAegisInputs,
     ...(derivedProviderState !== null ? { providerState: derivedProviderState } : {}),
     ...(derivedLiquidityAcceptable !== null ? { liquidityAcceptable: derivedLiquidityAcceptable } : {}),
     ...(derivedExecutionQualityAcceptable !== null ? { executionQualityAcceptable: derivedExecutionQualityAcceptable } : {}),
-    stressGapDetected: deriveStressGapDetected(ret1d, config.stressGapThresholdAbsReturn),
+    stressGapDetected: gapAssessment.stressGapDetected,
   };
 
   const candidateCapacityPolicyKeys: ReadonlyArray<keyof CandidateCapacityPolicy> = [
@@ -1558,7 +1571,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     : null;
   const runtimeCandidates: RawCandidateInput[] = candidates.map((candidate) => {
     const spreadAssessment = aegisSpreadStressEvidence[candidate.contract.optionSymbol];
+    const candidateMarketQuality = deriveCandidateMarketQuality(candidate.contract, config.maxAcceptableSpreadPct);
     const candidateOverrides: Record<string, unknown> = {
+      liquidityAcceptable: candidateMarketQuality.liquidityAcceptable,
+      executionQualityAcceptable: candidateMarketQuality.executionQualityAcceptable,
       stressSpreadWideningDetected: spreadAssessment?.stressSpreadWideningDetected ?? null,
       stressSpreadWideningApplicability: paperBootstrapStressApplicability(spreadAssessment?.maturity.state ?? null),
     };

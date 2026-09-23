@@ -50,7 +50,7 @@ let requestedUrls: string[] = [];
 const IV_STRESS_EVIDENCE: AegisIvStressAssessment = {
   contractVersion: 'theta-aegis-iv-stress-detector-v1', underlying: 'SPY', decisionAsOf: NOW,
   currentObservationId: '00000000-0000-4000-8000-000000000001', baselineObservationIds: [],
-  policyVersion: 'aegis-iv-shock-paper-bootstrap-v1',
+  policyVersion: 'aegis-iv-shock-paper-bootstrap-v2',
   policyAuthority: 'PAPER_BOOTSTRAP_BASELINE_NOT_EMPIRICALLY_OPTIMAL',
   maturity: {
     contractVersion: 'theta-aegis-stress-baseline-maturity-v1', signal: 'IV_SHOCK', asOf: NOW,
@@ -216,21 +216,26 @@ itMockedProviderRealCodePath('per-contract spread stress evidence reaches AEGIS 
     aegisInputs: { ...baseConfig().aegisInputs, stressSpreadWideningDetected: null },
     aegisSpreadStressAssessor: async ({ contracts, decisionAsOf }) => Object.fromEntries(contracts.map((contract) => {
       const assessment: AegisSpreadStressAssessment = {
-        contractVersion: 'theta-aegis-spread-stress-detector-v1', underlying: contract.underlying,
+        contractVersion: 'theta-aegis-spread-stress-detector-v2', underlying: contract.underlying,
         optionSymbol: contract.optionSymbol, decisionAsOf, dteBucket: 'DTE_22_45', moneynessBucket: 'ATM_0_3PCT',
         currentRelativeSpread: contract.spreadPct, currentQuoteProviderAt: contract.quoteTimestamp,
-        currentQuoteReceivedAt: contract.receivedAt, baselineMedianRelativeSpread: 0.08,
+        currentQuoteReceivedAt: contract.receivedAt, currentFeed: 'INDICATIVE', baselineFeed: 'INDICATIVE',
+        feedAuthorityState: 'MATCHED_INDICATIVE', rejectedOtherFeedN: 0,
+        contractsPerSession: { '2026-09-01': 1, '2026-09-02': 1 },
+        baselineMedianRelativeSpread: 0.08,
         baselineMadRelativeSpread: 0.01, relativeIncrease: -0.05, robustZ: -0.4,
+        dispersionState: 'MAD_POSITIVE', robustZApplicability: 'APPLICABLE',
         baselineEvidenceIds: ['candidate-1:quote-1', 'candidate-2:quote-2'],
         maturity: {
           contractVersion: 'theta-aegis-stress-baseline-maturity-v1', signal: 'SPREAD_WIDENING', asOf: decisionAsOf,
           evidence: { rawN: 20, sessionN: 5, distinctUnderlyingN: 1, effectiveN: 20 },
           firstObservationAvailableAt: '2026-09-01T14:00:01.000Z',
           lastObservationAvailableAt: '2026-09-05T14:00:01.000Z', temporalSpanDays: 4,
-          source: 'ALPACA_PERSISTED_EXECUTABLE_BBO', sourceVersion: 'theta-aegis-spread-stress-detector-v1',
+          effectiveNPolicyState: 'EFFECTIVE_N_NOT_GOVERNING_POLICY',
+          source: 'ALPACA_PERSISTED_EXECUTABLE_BBO', sourceVersion: 'theta-aegis-spread-stress-detector-v2',
           state: 'DETECTOR_READY', reason: 'test evidence',
         },
-        stressSpreadWideningDetected: false, policyVersion: 'aegis-spread-widening-paper-bootstrap-v1',
+        stressSpreadWideningDetected: false, policyVersion: 'aegis-spread-widening-paper-bootstrap-v2',
         policyAuthority: 'PAPER_BOOTSTRAP_BASELINE_NOT_EMPIRICALLY_OPTIMAL',
         evidenceAuthority: 'ALPACA_EXECUTABLE_MARKET', contentHash: 'b'.repeat(64),
       };
