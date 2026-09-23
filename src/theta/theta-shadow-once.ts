@@ -112,7 +112,7 @@ export function defaultShadowCycleConfig(
     aegisInputsOrigin: 'CALLER_MANUAL', // honest: tickerConcentrationPct/portfolioCapitalAtRiskPct/providerState/liquidityAcceptable/executionQualityAcceptable/stressGapDetected are now real-derived when trustworthy (see account-exposure.ts and aegis-derivation.ts) -- sector/correlation/IV-shock/spread-widening remain exactly what this fixture supplies, since no real source exists for those yet
     opportunityFrontierPolicy: { policyVersion: 'opp-frontier-v1-shadow-once', reducedSizeUncertaintyThreshold: 0.5 },
     maxAcceptableSpreadPct: 0.15,
-    stressGapThresholdAbsReturn: 0.05, // research placeholder -- see aegis-derivation.ts's deriveStressGapDetected
+    stressGapThresholdAbsReturn: 0.05, // versioned Paper bootstrap gap policy, not an empirically optimal threshold
     sizingPolicy: { policyVersion: 'sizing-v2-shadow-once', riskBudgetQtyCap: 4, collateralQtyCap: 3, concentrationQtyCap: 5,
       assignmentCapacityQtyCap: 6, tailRiskQtyCap: 3, correlationQtyCap: 3, liquidityQtyCap: 3, reducedStateMultiplier: 0.5 },
     executionQualityPolicy: { policyVersion: 'execq-v1-shadow-once', maxAcceptableSpreadPct: 0.15, minQuoteSizeForFullConfidence: 20, maxQuoteAgeSeconds: 30, minAfterCostUtilityToCross: 0 },

@@ -100,12 +100,9 @@ export function deriveCandidateMarketQuality(contract: NormalizedOptionContract,
   return { liquidityAcceptable, executionQualityAcceptable };
 }
 
-/**
- * Derives stressGapDetected from the already-computed most-recent 1-day
- * return. A genuine move whose magnitude exceeds the versioned policy
- * threshold is detected. Missing history remains UNKNOWN so AEGIS can fail
- * closed. Absence of evidence must never be rewritten as evidence of no gap.
- */
+/** Legacy pure return classifier for research callers. The live AEGIS path
+ * uses assessAegisGapStress below, with current-open and completed-close
+ * evidence, rather than treating an unfinished daily close as a gap. */
 export function deriveStressGapDetected(ret1d: number | null, thresholdAbsReturn: number): boolean | null {
   if (ret1d === null || !Number.isFinite(ret1d) || !Number.isFinite(thresholdAbsReturn)
     || thresholdAbsReturn <= 0) return null;

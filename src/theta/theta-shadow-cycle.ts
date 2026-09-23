@@ -1313,6 +1313,20 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     aegisInputs: config.aegisInputsOrigin,
   });
 
+  const gapAssessment = assessAegisGapStress({
+    bars: historyBars, decisionAsOf: decisionTime, currentSession: marketDate,
+    currentSessionConfirmed: clockEvidence.quality === 'GOOD' && clock?.isOpen === true
+      && calendar.some((session) => session.date === marketDate && session.open != null && session.close != null),
+    policy: {
+      policyVersion: 'aegis-gap-paper-bootstrap-v1', authority: 'PAPER_BOOTSTRAP_NOT_EMPIRICALLY_OPTIMAL',
+      absoluteReturnThreshold: config.stressGapThresholdAbsReturn,
+      returnHorizon: 'CURRENT_SESSION_OPEN_VS_PREVIOUS_COMPLETED_CLOSE',
+      barSource: 'ALPACA_1DAY_SPLIT_ADJUSTED_IEX', barUnit: 'DECIMAL_RETURN',
+      requiredCompletedSessions: 1, maxPreviousBarAgeDays: 5,
+      sessionCalendarAuthority: 'ALPACA_CLOCK_AND_CURRENT_CALENDAR',
+    },
+  });
+
   // Canonical FusionSnapshot -- ALWAYS built, even on a no-candidates path,
   // so every returned run (successful or not) carries a genuine,
   // deterministic snapshot identity. NEVER a placeholder hash.
@@ -1343,7 +1357,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     ownershipFeatures: { stockAvgVolume,ret1d,ret5d,ret20d,ret60d,ma20Rel,ma50Rel,ma200Rel,
       rv10,rv20,rv60,downsideSemivariance,drawdown,maSlope,gapFrequency,maxAdverseGap,
       recoveryHistory:config.recoveryHistory??null } as unknown as JsonValue,
-    regimeFeatures: { maSlope, rv20, maxAdverseGap, drawdown } as unknown as JsonValue,
+    regimeFeatures: { maSlope, rv20, maxAdverseGap, drawdown,
+      aegisGapStressAssessment: gapAssessment } as unknown as JsonValue,
     policyVersion: config.policyVersion,
     modelVersions: {
       ...config.modelVersions,
@@ -1536,19 +1551,6 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const derivedProviderState = deriveProviderState([accountEvidence.quality, contractsEvidence.quality, quotesEvidence.quality]);
   const derivedLiquidityAcceptable = deriveLiquidityAcceptable(mergedContractsForSnapshot, config.maxAcceptableSpreadPct);
   const derivedExecutionQualityAcceptable = deriveExecutionQualityAcceptable(mergedContractsForSnapshot);
-  const gapAssessment = assessAegisGapStress({
-    bars: historyBars, decisionAsOf: decisionTime, currentSession: marketDate,
-    currentSessionConfirmed: clockEvidence.quality === 'GOOD' && clock?.isOpen === true
-      && currentCalendarSession?.open != null && currentCalendarSession.close != null,
-    policy: {
-      policyVersion: 'aegis-gap-paper-bootstrap-v1', authority: 'PAPER_BOOTSTRAP_NOT_EMPIRICALLY_OPTIMAL',
-      absoluteReturnThreshold: config.stressGapThresholdAbsReturn,
-      returnHorizon: 'CURRENT_SESSION_OPEN_VS_PREVIOUS_COMPLETED_CLOSE',
-      barSource: 'ALPACA_1DAY_SPLIT_ADJUSTED_IEX', barUnit: 'DECIMAL_RETURN',
-      requiredCompletedSessions: 1, maxPreviousBarAgeDays: 5,
-      sessionCalendarAuthority: 'ALPACA_CLOCK_AND_CURRENT_CALENDAR',
-    },
-  });
   effectiveAegisInputs = {
     ...effectiveAegisInputs,
     ...(derivedProviderState !== null ? { providerState: derivedProviderState } : {}),

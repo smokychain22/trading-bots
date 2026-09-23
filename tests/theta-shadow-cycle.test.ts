@@ -200,6 +200,12 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   assert.deepEqual(result.fusionSnapshot?.snapshot.riskState, { ivStress: IV_STRESS_EVIDENCE,
     stressColdStartPolicy: paperBootstrapStressColdStartPolicy,
     spreadStress: { assessmentsByContract: {}, baselinesByCohort: {} } });
+  const regimeState = result.fusionSnapshot?.snapshot.regimeState as Record<string, unknown>;
+  const gapReceipt = regimeState.aegisGapStressAssessment as Record<string, unknown>;
+  assert.equal(gapReceipt.policyVersion, 'aegis-gap-paper-bootstrap-v1');
+  assert.equal(gapReceipt.currentSession, '2026-09-10');
+  assert.equal(gapReceipt.state, 'READY');
+  assert.equal(gapReceipt.stressGapDetected, false);
   assert.ok(result.orchestration?.thetaQ !== null || result.orchestration?.receipt.winningAction === 'PASS');
   const portfolio = result.fusionSnapshot?.snapshot.portfolioExposure as Record<string, unknown>;
   assert.equal((portfolio.correlationObservation as Record<string, unknown>).state, 'NOT_APPLICABLE');
