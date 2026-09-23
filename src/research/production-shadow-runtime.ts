@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import type { Environment } from '../config/environment.js';
 import { AlpacaProviderError, fetchOptionSnapshots, type AlpacaProviderConfig } from '../theta/alpaca-provider.js';
 import { discoverRealUniverse, type UniverseDiscoveryResult } from '../theta/universe-discovery.js';
-import { assessUniverseEventEvidence } from '../theta/universe-policy.js';
+import { assessUniverseEventEvidence, type UnderlyingCandidateInput } from '../theta/universe-policy.js';
 import { defaultShadowCycleConfig, optionomicsConfigFromEnvironment } from '../theta/theta-shadow-once.js';
 import { runThetaShadowCycle } from '../theta/theta-shadow-cycle.js';
 import type { PythonBridgeConfig } from '../theta/python-bridge.js';
@@ -65,6 +65,18 @@ export function missingObservationReason(contractFound:boolean,enumerationComple
   if(contractFound)return 'INVALID_QUOTE';
   if(!enumerationComplete)return 'PROVIDER_UNAVAILABLE';
   return sessionConfirmedEnded?'SESSION_ENDED':'INVALID_CONTRACT';
+}
+
+export function applyPendingUnsupportedCorporateActions(
+  candidates: readonly UnderlyingCandidateInput[],
+  pendingUnsupportedSymbols: ReadonlySet<string>,
+): readonly UnderlyingCandidateInput[] {
+  return candidates.map((candidate) => ({
+    ...candidate,
+    // Positive evidence can stop new risk. Alpaca expressly does not
+    // guarantee publication timing, so an empty result remains UNKNOWN.
+    unsupportedCorporateActionPending: pendingUnsupportedSymbols.has(candidate.symbol) ? true : null,
+  }));
 }
 
 export async function processDueExecutionObservations(input:{pool:Pool;alpaca:AlpacaProviderConfig;now:()=>string}):Promise<ObservationProcessingReport>{
@@ -211,13 +223,11 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       runtimeSafetyBlockers.push('ALPACA_CORPORATE_ACTION_READ_OR_PERSISTENCE_FAILED');
     }
   }
-  const scanUnderlyings=scanUnderlyingsRaw.map((candidate)=>({
-    ...candidate,
-    // Positive evidence can stop new risk. Alpaca expressly does not
-    // guarantee publication timing, so no empty result becomes `false`.
-    unsupportedCorporateActionPending:pendingUnsupportedSymbols.has(candidate.symbol)?true:null,
-  }));
-  const discoveredBySymbol=new Map(discovery.candidates.map((candidate)=>[candidate.symbol,candidate]));
+  const scanUnderlyings=applyPendingUnsupportedCorporateActions(scanUnderlyingsRaw,pendingUnsupportedSymbols);
+  // The Paper handoff must read the same safety-enriched candidate that the
+  // scan evaluated. Indexing the original discovery rows here would discard
+  // a positive corporate-action observation before the final entry gate.
+  const discoveredBySymbol=new Map(scanUnderlyings.map((candidate)=>[candidate.symbol,candidate]));
   const brokerAuthoritySymbols=new Set(universeBreadthChallenger.championSymbols);
   const optionomics=optionomicsConfigFromEnvironment(input.environment);
   const ivStressRefresh=optionomics===null
