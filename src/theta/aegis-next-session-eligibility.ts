@@ -43,8 +43,14 @@ export function assessNextSessionHistoryEligibility(input: {
     .sort((a, b) => b.providerTimestamp.localeCompare(a.providerTimestamp) || b.evidenceId.localeCompare(a.evidenceId))
     .slice(0, paperBootstrapAegisSpreadStressPolicy.maximumBaselineObservations);
   const spreadSessions = [...new Set(spread.map((row) => row.providerTimestamp.slice(0, 10)))].sort();
-  const spreadSpanDays = spreadSessions.length < 2 ? 0
+  const providerSessionSpanDays = spreadSessions.length < 2 ? 0
     : (Date.parse(`${spreadSessions.at(-1)}T00:00:00Z`) - Date.parse(`${spreadSessions[0]}T00:00:00Z`)) / 86_400_000;
+  // The live spread detector governs maturity using ingestion timestamps,
+  // not the provider session dates. A late backfill cannot masquerade as a
+  // four-day collection history.
+  const ingestionTimes = spread.map((row) => row.ingestionTimestamp).sort();
+  const spreadSpanDays = ingestionTimes.length < 2 ? 0
+    : (Date.parse(ingestionTimes.at(-1) as string) - Date.parse(ingestionTimes[0] as string)) / 86_400_000;
   const ivMissing = [
     ivRawN < paperBootstrapAlpacaContractIvPolicy.maturity.minimumRawN ? 'MINIMUM_RAW_OBSERVATIONS' : null,
     ivSessionN < paperBootstrapAlpacaContractIvPolicy.maturity.minimumSessionN ? 'MINIMUM_DISTINCT_SESSIONS' : null,
@@ -60,11 +66,12 @@ export function assessNextSessionHistoryEligibility(input: {
     currentQuoteObserved: false as const, stressAssessmentAvailable: false as const,
     iv: { rawN: ivRawN, sessionN: ivSessionN, minimumRawN: paperBootstrapAlpacaContractIvPolicy.maturity.minimumRawN,
       minimumSessionN: paperBootstrapAlpacaContractIvPolicy.maturity.minimumSessionN,
-      historySufficient: ivMissing.length === 0, missing: ivMissing },
-    spread: { rawN: spread.length, sessionN: spreadSessions.length, temporalSpanDays: spreadSpanDays,
+      minimumEvidenceThresholdsMet: ivMissing.length === 0, missing: ivMissing },
+    spread: { rawN: spread.length, sessionN: spreadSessions.length,
+      providerSessionSpanDays, ingestionTemporalSpanDays: spreadSpanDays,
       minimumRawN: paperBootstrapAegisSpreadStressPolicy.maturity.minimumRawN,
       minimumSessionN: paperBootstrapAegisSpreadStressPolicy.maturity.minimumSessionN,
       minimumTemporalSpanDays: paperBootstrapAegisSpreadStressPolicy.maturity.minimumTemporalSpanDays,
-      historySufficient: spreadMissing.length === 0, missing: spreadMissing },
+      minimumEvidenceThresholdsMet: spreadMissing.length === 0, missing: spreadMissing },
   };
 }

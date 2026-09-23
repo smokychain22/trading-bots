@@ -41,3 +41,16 @@ test('invalid requested sessions fail locally rather than falling back to anothe
   assert.throws(() => assessNextSessionHistoryEligibility({ nextSession: '2026-02-30', cohort,
     ivHistory: [], spreadHistory: [] }), /NEXT_SESSION_INVALID/);
 });
+
+test('late backfilled provider sessions cannot create a mature ingestion span', () => {
+  const sessions = ['2026-09-17', '2026-09-18', '2026-09-21', '2026-09-22', '2026-09-23'];
+  const result = assessNextSessionHistoryEligibility({ nextSession: '2026-09-24', cohort,
+    ivHistory: [], spreadHistory: sessions.flatMap((session) => Array.from({ length: 4 }, (_, index) => ({
+      ...spreadRow(session), evidenceId: `${session}:${index}`,
+      ingestionTimestamp: `2026-09-23T14:00:0${index}.000Z`,
+    }))) });
+  assert.equal(result.spread.sessionN, 5);
+  assert.equal(result.spread.providerSessionSpanDays, 6);
+  assert.ok(result.spread.ingestionTemporalSpanDays < 1);
+  assert.deepEqual(result.spread.missing, ['MINIMUM_TEMPORAL_SPAN']);
+});
