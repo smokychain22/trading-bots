@@ -177,7 +177,13 @@ async function main(): Promise<number> {
 
   const optionomics = optionomicsConfigFromEnvironment(environment);
   const config = defaultShadowCycleConfig(alpaca, optionomics, bridge, universeCandidates, discovery.candidatesOrigin);
-  const result = await runThetaShadowCycle(config);
+  // This command is a broker-mutation-free evidence probe. Discovery cannot
+  // know account capacity, ownership suitability, or event coverage before
+  // the cycle fetches those providers. Use the existing evidence-enrichment
+  // stage so those honest UNKNOWNs do not circularly prevent the reads that
+  // can resolve them. SHADOW_EVIDENCE never grants Paper authority. Final
+  // entry authorization remains fail-closed in the canonical runtime.
+  const result = await runThetaShadowCycle({ ...config, evaluationMode: 'SHADOW_EVIDENCE' });
 
   console.info(JSON.stringify({
     runId: result.runId,
@@ -199,7 +205,7 @@ async function main(): Promise<number> {
     provenance: result.provenance,
     provenanceDetail: result.provenanceDetail,
     blockers: result.blockers,
-    persistenceStatus: 'NOT_PERSISTED -- R1G (PostgreSQL) not yet built this engagement',
+    persistenceStatus: 'NOT_PERSISTED -- local no-submit evidence probe',
   }, null, 2));
 
   return result.blockers.length > 0 ? 1 : 0;

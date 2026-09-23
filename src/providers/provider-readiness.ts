@@ -1,5 +1,6 @@
 import { assertProviderConfiguration, loadEnvironment, loadEnvironmentFile } from '../config/environment.js';
 import { checkAlpaca, checkOptionomics, configurationFailureResult, type CheckResult } from './readiness.js';
+import { providerReadinessHasBlockingFailure } from './provider-readiness-policy.js';
 
 const useProcessEnvironment = process.argv.includes('--process-env');
 const environment = useProcessEnvironment ? loadEnvironment() : loadEnvironmentFile('.env.local');
@@ -23,6 +24,6 @@ for (const result of results) {
   console.info(JSON.stringify(result));
 }
 
-if (results.some((result) => result.state !== 'GOOD')) {
+if (providerReadinessHasBlockingFailure(results)) {
   process.exitCode = 1;
 }
