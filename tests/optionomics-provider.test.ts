@@ -533,6 +533,14 @@ test('earnings distance is typed positive context and never negative event assur
   }
 });
 
+test('metrics response for a different underlying cannot become requested-symbol IV evidence', async () => {
+  const fetchImpl = (async () => jsonResponse(200, {
+    date:'2026-09-22',symbol:'MSFT',metrics:{atm_iv:0.25},
+  })) as typeof fetch;
+  const outcome=await fetchOptionomicsContextObservation(baseConfig(fetchImpl),'METRICS','SPY');
+  assert.equal(outcome.kind,'VALUE_UNKNOWN_AFTER_SUCCESS');
+});
+
 test('malformed rows cannot silently disappear from a supposedly complete options chain', async () => {
   for (const body of [[{ symbol: 'X' }, null], { date: '2026-09-10', options: [{ symbol: 'X' }, false] }]) {
     const fetchImpl = (async () => jsonResponse(200, body)) as typeof fetch;

@@ -851,6 +851,13 @@ export async function fetchOptionomicsContextObservation(
       detail: `${url.pathname} returned a 2xx body that did not match its confirmed response family.`,
     };
     const envelope = objectOrNull(outcome.body);
+    const servedSymbol = family === 'METRICS'
+      ? asStringOrNull(envelope?.symbol ?? envelope?.ticker ?? envelope?.underlying)
+      : null;
+    if (servedSymbol !== null && servedSymbol.toUpperCase() !== underlyingSymbol.toUpperCase()) return {
+      kind: 'VALUE_UNKNOWN_AFTER_SUCCESS', httpStatus: outcome.httpStatus, retrievedAt: outcome.retrievedAt,
+      detail: `${url.pathname} did not return the requested underlying.`,
+    };
     if (query.sessionDate !== undefined && contract.allowedQueryParameters.includes('date') && envelope?.date !== query.sessionDate) return {
       kind: 'VALUE_UNKNOWN_AFTER_SUCCESS', httpStatus: outcome.httpStatus, retrievedAt: outcome.retrievedAt,
       detail: `${url.pathname} did not return the exact requested session date.`,
