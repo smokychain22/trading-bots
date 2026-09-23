@@ -318,10 +318,62 @@ export function parseAlpacaContractIvHistoryRow(raw: Record<string, unknown>): A
     decisionTime: raw.decision_time };
 }
 
+/** Diagnostic classification only. The strict parser above remains the sole
+ * source of qualified observations; a reason never upgrades a rejected row. */
+export function alpacaContractIvHistoryRejectionReason(raw: Record<string, unknown>): string | null {
+  if (parseAlpacaContractIvHistoryRow(raw) !== null) return null;
+  const contract = record(raw.contract_json), market = record(raw.market_json), volatility = record(raw.volatility_json);
+  if (contract === null || market === null || volatility === null) return 'EVIDENCE_OBJECT_MISSING';
+  if (volatility.ivSource !== 'ALPACA') return 'IV_SOURCE_NOT_PROVEN_ALPACA';
+  if (volatility.ivEvidenceAuthority !== 'ALPACA_OPTION_SNAPSHOT_CONTRACT_IV') return 'IV_AUTHORITY_UNVERIFIED';
+  if (volatility.ivFeed !== 'OPRA' && volatility.ivFeed !== 'INDICATIVE') return 'IV_FEED_UNVERIFIED';
+  if (market.feed !== volatility.ivFeed || market.dataQuality !== 'GOOD') return 'FEED_OR_MARKET_QUALITY_UNQUALIFIED';
+  if (market.quoteSource !== 'ALPACA' || typeof market.quoteTimestamp !== 'string'
+    || typeof market.quoteReceivedAt !== 'string') return 'EXACT_BBO_LINEAGE_INCOMPLETE';
+  if (market.underlyingQuoteSource !== 'ALPACA_IEX'
+    || typeof market.underlyingQuoteTimestamp !== 'string'
+    || typeof market.underlyingQuoteReceivedAt !== 'string'
+    || typeof market.underlyingReferencePrice !== 'number') return 'UNDERLYING_REFERENCE_LINEAGE_INCOMPLETE';
+  if (typeof volatility.iv !== 'number' || !Number.isFinite(volatility.iv)
+    || volatility.iv < 0 || volatility.iv > 5) return 'IV_VALUE_INVALID';
+  if (typeof contract.underlying !== 'string' || typeof contract.contractSymbol !== 'string'
+    || (contract.optionType !== 'PUT' && contract.optionType !== 'CALL')
+    || typeof contract.dte !== 'number' || typeof contract.moneyness !== 'number'
+    || typeof contract.strike !== 'number' || typeof contract.expiration !== 'string')
+    return 'CONTRACT_COHORT_METADATA_INCOMPLETE';
+  if (typeof raw.decision_time !== 'string' || typeof raw.candidate_id !== 'string'
+    || typeof raw.content_hash !== 'string' || typeof volatility.ivAvailableAt !== 'string')
+    return 'PERSISTED_EVIDENCE_LINEAGE_INCOMPLETE';
+  const parsed = parseOccOptionSymbol(contract.contractSymbol);
+  if (parsed === null || parsed.underlying !== contract.underlying || parsed.optionType !== contract.optionType
+    || parsed.strike !== contract.strike || parsed.expiration !== contract.expiration)
+    return 'EXACT_CONTRACT_IDENTITY_INVALID';
+  if (!validIso(market.quoteTimestamp) || !validIso(market.quoteReceivedAt)
+    || !validIso(market.underlyingQuoteTimestamp) || !validIso(market.underlyingQuoteReceivedAt)
+    || !validIso(volatility.ivAvailableAt) || !validIso(raw.decision_time)) return 'PIT_TIMESTAMP_INVALID';
+  if (market.quoteReceivedAt !== volatility.ivAvailableAt
+    || Date.parse(market.underlyingQuoteTimestamp) > Date.parse(market.underlyingQuoteReceivedAt)
+    || Date.parse(market.underlyingQuoteReceivedAt) > Date.parse(raw.decision_time)
+    || Date.parse(market.quoteTimestamp) > Date.parse(volatility.ivAvailableAt)
+    || Date.parse(volatility.ivAvailableAt) > Date.parse(raw.decision_time))
+    return 'PIT_TIMESTAMP_ORDER_INVALID';
+  if (market.underlyingReferencePrice <= 0
+    || Math.abs((market.underlyingReferencePrice - contract.strike) / contract.strike - contract.moneyness) > 1e-9)
+    return 'MONEYNESS_REFERENCE_INCONSISTENT';
+  if ((Date.parse(raw.decision_time) - Date.parse(market.underlyingQuoteTimestamp)) / 1000
+    > paperBootstrapAlpacaContractIvPolicy.maturity.maxCurrentObservationAgeSeconds)
+    return 'UNDERLYING_REFERENCE_STALE_AT_CAPTURE';
+  if ((Date.parse(market.quoteReceivedAt) - Date.parse(market.quoteTimestamp)) / 1000
+    > paperBootstrapAlpacaContractIvPolicy.maturity.maxCurrentObservationAgeSeconds)
+    return 'EXACT_BBO_STALE_AT_CAPTURE';
+  return 'UNCLASSIFIED_PARSER_REJECTION';
+}
+
 export async function loadAlpacaContractIvHistory(input: {
   readonly pool: Pool; readonly underlying: string; readonly decisionAsOf: string; readonly lookbackDays: number;
 }): Promise<{ readonly observations: readonly AlpacaContractIvHistoryRow[]; readonly sourceUnprovenN: number;
-  readonly scannedN: number; readonly rejectedLineageN: number }> {
+  readonly scannedN: number; readonly rejectedLineageN: number;
+  readonly rejectionReasons: Readonly<Record<string, number>> }> {
   // Bounded recent-row read on the existing schema-064 immutable PIT table.
   // Legacy IV without explicit Alpaca lineage is counted, never upgraded by inference.
   const result = await input.pool.query(`SELECT candidate_id::text,decision_time,content_hash,
@@ -347,15 +399,20 @@ export async function loadAlpacaContractIvHistory(input: {
   [input.decisionAsOf, input.lookbackDays, input.underlying.toUpperCase()]);
   const observations: AlpacaContractIvHistoryRow[] = [];
   let sourceUnprovenN = 0;
+  const rejectionReasons: Record<string, number> = {};
   for (const raw of result.rows as Record<string, unknown>[]) {
     const row = { ...raw, decision_time: new Date(raw.decision_time as string).toISOString() };
     const parsed = parseAlpacaContractIvHistoryRow(row);
     if (parsed !== null) observations.push(parsed);
-    else if (typeof record(raw.volatility_json)?.iv === 'number'
-      && record(raw.volatility_json)?.ivSource !== 'ALPACA') sourceUnprovenN++;
+    else {
+      const reason = alpacaContractIvHistoryRejectionReason(row) ?? 'UNCLASSIFIED_PARSER_REJECTION';
+      rejectionReasons[reason] = (rejectionReasons[reason] ?? 0) + 1;
+      if (typeof record(raw.volatility_json)?.iv === 'number'
+        && record(raw.volatility_json)?.ivSource !== 'ALPACA') sourceUnprovenN++;
+    }
   }
   return { observations, sourceUnprovenN, scannedN: result.rows.length,
-    rejectedLineageN: result.rows.length - observations.length };
+    rejectedLineageN: result.rows.length - observations.length, rejectionReasons };
 }
 
 export async function assessAlpacaContractIvStressForContracts(input: {

@@ -70,7 +70,8 @@ try {
     observations.push({ ...assessNextSessionHistoryEligibility({ nextSession, cohort,
       ivHistory: iv.observations, spreadHistory: spread }),
     ivSourceRead: { scannedN: iv.scannedN, rejectedLineageN: iv.rejectedLineageN,
-      sourceUnprovenN: iv.sourceUnprovenN, queryLimitReached: iv.scannedN === 5000 },
+      legacyNumericNonAlpacaIvN: iv.sourceUnprovenN, rejectionReasons: iv.rejectionReasons,
+      queryLimitReached: iv.scannedN === 5000 },
     spreadSourceRead: { scannedN: spread.length, queryLimitReached: spread.length === 5000 } });
   }
   process.stdout.write(`${JSON.stringify({ contractVersion: 'theta-aegis-next-session-eligibility-read-v1',

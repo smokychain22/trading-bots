@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assessAlpacaContractIvStress, compareIvStressSignals, parseAlpacaContractIvHistoryRow,
+import { assessAlpacaContractIvStress, alpacaContractIvHistoryRejectionReason,
+  compareIvStressSignals, parseAlpacaContractIvHistoryRow,
   paperBootstrapAlpacaContractIvPolicy, verifyPersistedAlpacaContractIvAssessment,
   type AlpacaContractIvHistoryRow } from '../src/theta/aegis-alpaca-iv-stress.js';
 import { normalizeOptionContract, type NormalizedOptionContract } from '../src/theta/option-contract.js';
@@ -117,10 +118,18 @@ test('legacy IV without explicit Alpaca source is excluded, never inferred from 
       underlyingQuoteReceivedAt: '2026-09-01T14:00:01.000Z', underlyingReferencePrice: 549.64 },
     volatility_json: { iv: 0.2 } };
   assert.equal(parseAlpacaContractIvHistoryRow(raw), null);
-  assert.equal(parseAlpacaContractIvHistoryRow({ ...raw, volatility_json: {
+  assert.equal(alpacaContractIvHistoryRejectionReason(raw), 'IV_SOURCE_NOT_PROVEN_ALPACA');
+  const qualified = { ...raw, volatility_json: {
     iv: 0.2, ivSource: 'ALPACA', ivEvidenceAuthority: 'ALPACA_OPTION_SNAPSHOT_CONTRACT_IV',
     ivFeed: 'INDICATIVE', ivAvailableAt: '2026-09-01T14:00:00.000Z', ivProviderTimestamp: null,
-  } })?.iv, 0.2);
+  } };
+  assert.equal(parseAlpacaContractIvHistoryRow(qualified)?.iv, 0.2);
+  assert.equal(alpacaContractIvHistoryRejectionReason(qualified), null);
+  assert.equal(alpacaContractIvHistoryRejectionReason({ ...qualified,
+    market_json: { ...qualified.market_json, underlyingQuoteSource: null } }),
+  'UNDERLYING_REFERENCE_LINEAGE_INCOMPLETE');
+  assert.equal(alpacaContractIvHistoryRejectionReason({ ...qualified,
+    decision_time: '2026-09-01T14:01:00.000Z' }), 'UNDERLYING_REFERENCE_STALE_AT_CAPTURE');
 });
 test('Paper authority requires the committed exact-contract assessment and intact hash', async () => {
   const assessment = assess();
