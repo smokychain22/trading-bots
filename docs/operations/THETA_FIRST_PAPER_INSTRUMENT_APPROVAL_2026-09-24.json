@@ -1,0 +1,30 @@
+{
+  "contractVersion": "theta-paper-instrument-classification-approval-v1",
+  "policyVersion": "theta-paper-instrument-classification-v1",
+  "approvalAuthority": "OWNER_EXPLICIT_CHAT_APPROVAL",
+  "approvedAt": "2026-09-23T19:54:51.183Z",
+  "symbol": "SPY",
+  "instrumentClass": "NON_COMPANY_FUND",
+  "paperBootstrapApproved": true,
+  "source": {
+    "name": "State Street Global Advisors",
+    "url": "https://www.ssga.com/us/en/individual/etfs/state-street-spdr-sp-500-etf-trust-spy",
+    "evidenceHash": "53cdbf688962ece5d59a3e56166dc51a2efc4f7b7ec2e44a457fa862c2b20f39"
+  },
+  "manifestEntry": {
+    "symbol": "SPY",
+    "instrumentClass": "NON_COMPANY_FUND",
+    "paperBootstrapApproved": true,
+    "authorityRef": "official-issuer:state-street:spy:53cdbf688962ece5d59a3e56166dc51a2efc4f7b7ec2e44a457fa862c2b20f39",
+    "effectiveAt": "2026-09-23T19:27:56.058Z",
+    "reviewedAt": "2026-09-23T19:54:51.183Z"
+  },
+  "scope": {
+    "alpacaPaperBootstrapOnly": true,
+    "orderSubmissionAuthorized": false,
+    "followersAuthorized": false,
+    "liveMoneyAuthorized": false,
+    "additionalInstrumentsAuthorized": false,
+    "riskPolicyChangeAuthorized": false
+  }
+}

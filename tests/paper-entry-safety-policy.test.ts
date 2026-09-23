@@ -5,7 +5,8 @@ import type { CorporateActionRead } from '../src/theta/alpaca-corporate-action-e
 import type { OptionomicsEarningsEvidence } from '../src/theta/earnings-event-evidence.js';
 import type { MacroRiskEvidence } from '../src/theta/macro-event-policy.js';
 import { applyCompanyEventPaperPolicy, applyCorporateActionPaperPolicy, buildPaperEntrySafetyPolicyReceipt,
-  classifyPaperInstrument, tradingSessionsThroughExpiration } from '../src/theta/paper-entry-safety-policy.js';
+  classifyPaperInstrument, paperInstrumentClassificationManifest,
+  tradingSessionsThroughExpiration } from '../src/theta/paper-entry-safety-policy.js';
 
 const now='2026-09-23T14:00:00.000Z';
 const earnings=(state:OptionomicsEarningsEvidence['state']='KNOWN_POSITIVE_DISTANCE',distance:number|null=8):OptionomicsEarningsEvidence=>({
@@ -67,6 +68,25 @@ test('explicit fund classification makes company earnings not applicable while r
   const blocked=applyCompanyEventPaperPolicy({decisionAsOf:now,expiration:'2026-09-29',calendar,instrument,
     earnings:unknownEarnings,macro:macro('KNOWN_TRUE')});
   assert.equal(blocked.state,'MACRO_EVENT_BLOCK');
+});
+
+test('the canonical manifest approves only SPY and still preserves macro blocking',()=>{
+  assert.deepEqual(paperInstrumentClassificationManifest.entries.map((entry)=>entry.symbol),['SPY']);
+  const manifestDecision='2026-09-24T14:00:00.000Z';
+  const unknownEarnings=earnings('UNKNOWN',null);
+  const instrument=classifyPaperInstrument({symbol:'SPY',decisionAsOf:manifestDecision,earnings:unknownEarnings});
+  assert.equal(instrument.state,'NON_COMPANY_FUND');
+  assert.equal(instrument.paperBootstrapApproved,true);
+  assert.equal(instrument.authority,'VERSIONED_MANIFEST');
+  const clear=applyCompanyEventPaperPolicy({decisionAsOf:manifestDecision,expiration:'2026-09-29',calendar,instrument,
+    earnings:unknownEarnings,macro:macro()});
+  assert.equal(clear.state,'FUND_NOT_APPLICABLE_CLEAR');assert.equal(clear.action,'CLEAR');
+  const nearMacro=applyCompanyEventPaperPolicy({decisionAsOf:manifestDecision,expiration:'2026-09-29',calendar,instrument,
+    earnings:unknownEarnings,macro:macro('KNOWN_TRUE')});
+  assert.equal(nearMacro.state,'MACRO_EVENT_BLOCK');assert.equal(nearMacro.action,'BLOCK');
+  const unknownMacro=applyCompanyEventPaperPolicy({decisionAsOf:manifestDecision,expiration:'2026-09-29',calendar,instrument,
+    earnings:unknownEarnings,macro:macro('UNKNOWN')});
+  assert.equal(unknownMacro.state,'MACRO_COVERAGE_UNKNOWN_BLOCK');assert.equal(unknownMacro.action,'BLOCK');
 });
 
 const corporateInput=()=>({symbol:'AAPL',decisionAsOf:now,read,providerError:false,currentPositiveRelevant:false,

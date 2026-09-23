@@ -105,15 +105,15 @@
       "stage": "PAPER_ENTRY_SAFETY_POLICY",
       "source": "src/theta/paper-entry-safety-policy.ts",
       "category": "POLICY_MISSING",
-      "reason": "The versioned Production classification manifest machinery exists, but its approved first-Paper entries are intentionally empty. Research ETF labels and model knowledge were not promoted. Positive earnings can prove company applicability but cannot grant fallback approval.",
+      "reason": "The owner explicitly approved exactly SPY as NON_COMPANY_FUND for bounded Alpaca Paper bootstrap under theta-paper-instrument-classification-v1 using the immutable official-issuer evidence hash 53cdbf688962ece5d59a3e56166dc51a2efc4f7b7ec2e44a457fa862c2b20f39. No other symbol, follower execution, live money, or order submission was authorized.",
       "safetyCritical": true,
       "paperEntryRequired": true,
       "provider": null,
-      "producer": "paperInstrumentClassificationManifest or an authoritative provider classification",
+      "producer": "paperInstrumentClassificationManifest exact SPY owner-approved entry",
       "persistence": "Source-controlled manifest version and Paper entry safety receipt",
       "consumer": "CompanyEventPaperPolicy and CorporateActionPaperPolicy",
-      "remediation": "Approve explicit symbol classifications with authority reference, effective time and Paper-bootstrap permission, or integrate a qualified Production instrument-type source.",
-      "currentStatus": "OPEN"
+      "remediation": "Closed for the single approved SPY bootstrap scope. Any additional symbol requires a separate authoritative record and explicit owner approval.",
+      "currentStatus": "RESOLVED"
     },
     {
       "field": "management.empiricalContinuationValue",

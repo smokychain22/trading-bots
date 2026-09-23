@@ -21,13 +21,19 @@ export interface PaperInstrumentManifestEntry {
   readonly reviewedAt: string;
 }
 
-/**
- * Intentionally empty until an authoritative classification is approved.
- * Research ETF labels and model knowledge never populate Production policy.
- */
+/** Owner-approved, source-controlled Paper-bootstrap classifications only.
+ * Research labels, ticker inference, and model knowledge never populate this
+ * manifest. Approval is scoped to Alpaca Paper and does not grant execution. */
 export const paperInstrumentClassificationManifest = {
   version: instrumentClassificationPolicyVersion,
-  entries: [] as readonly PaperInstrumentManifestEntry[],
+  entries: [{
+    symbol: 'SPY',
+    instrumentClass: 'NON_COMPANY_FUND',
+    paperBootstrapApproved: true,
+    authorityRef: 'official-issuer:state-street:spy:53cdbf688962ece5d59a3e56166dc51a2efc4f7b7ec2e44a457fa862c2b20f39',
+    effectiveAt: '2026-09-23T19:27:56.058Z',
+    reviewedAt: '2026-09-23T19:54:51.183Z',
+  }] as readonly PaperInstrumentManifestEntry[],
 } as const;
 
 export interface InstrumentClassificationEvidence {
