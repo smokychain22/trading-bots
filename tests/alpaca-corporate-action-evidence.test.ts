@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readAlpacaCorporateActions } from '../src/theta/alpaca-corporate-action-evidence.js';
+import { loadPersistedPendingCorporateActionSymbols, readAlpacaCorporateActions } from '../src/theta/alpaca-corporate-action-evidence.js';
 import type { AlpacaProviderConfig } from '../src/theta/alpaca-provider.js';
+import type { Pool } from 'pg';
 
 const observedAt = '2026-09-21T14:00:00.000Z';
 function config(fetchImpl: typeof fetch): AlpacaProviderConfig {
@@ -46,4 +47,30 @@ test('host, symbol, and date mismatches cannot become evidence', async () => {
     symbols: ['SPY'], start: '2026-02-30', end: '2026-10-21', observedAt }), /WINDOW_INVALID/);
   await assert.rejects(readAlpacaCorporateActions({ config: config(async () => json({ corporate_actions: { cash_dividends: [{ symbol: 'TSLA' }] }, next_page_token: null })),
     symbols: ['SPY'], start: '2026-09-21', end: '2026-10-21', observedAt }), /SYMBOL_MISMATCH/);
+});
+
+test('a sparse later response cannot erase a persisted positive action in the decision window', async () => {
+  const pool = { query: async (sql: string, params: unknown[]) => {
+    assert.match(sql, /pending_unsupported = true/);
+    assert.match(sql, /first_observed_at <= \$4::timestamptz/);
+    assert.match(sql, /process_date BETWEEN/);
+    assert.match(sql, /ex_date BETWEEN/);
+    assert.deepEqual(params, [['AAPL'], '2026-09-21', '2026-10-21', '2026-09-23T14:00:00.000Z']);
+    return { rows: [{ symbol: 'AAPL' }] };
+  } } as unknown as Pick<Pool, 'query'>;
+  const result = await loadPersistedPendingCorporateActionSymbols(pool, {
+    symbols: ['AAPL', 'AAPL'], start: '2026-09-21', end: '2026-10-21',
+    decisionAsOf: '2026-09-23T14:00:00.000Z',
+  });
+  assert.deepEqual([...result], ['AAPL']);
+});
+
+test('persisted positive lookup fails closed on bad input, corrupt row, or storage error', async () => {
+  const input = { symbols: ['AAPL'], start: '2026-09-21', end: '2026-10-21',
+    decisionAsOf: '2026-09-23T14:00:00.000Z' };
+  const invalid = { query: async () => ({ rows: [{ symbol: 'MSFT' }] }) } as unknown as Pick<Pool, 'query'>;
+  await assert.rejects(loadPersistedPendingCorporateActionSymbols(invalid, input), /PERSISTED_ROW_INVALID/);
+  const broken = { query: async () => { throw new Error('storage unavailable'); } } as unknown as Pick<Pool, 'query'>;
+  await assert.rejects(loadPersistedPendingCorporateActionSymbols(broken, input), /storage unavailable/);
+  await assert.rejects(loadPersistedPendingCorporateActionSymbols(invalid, { ...input, start: '2026-02-30' }), /LOOKUP_INVALID/);
 });

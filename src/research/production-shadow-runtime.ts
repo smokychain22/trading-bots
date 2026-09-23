@@ -19,7 +19,7 @@ import { buildUniverseBreadthShadowPlan } from './strategy-quality-shadow-diagno
 import type { BrokerReconciliationResult } from '../execution/broker-reconciliation-worker.js';
 import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment } from '../theta/paper-entry-bootstrap.js';
 import { loadRecoveryHistory } from '../theta/recovery-history-loader.js';
-import { persistAlpacaCorporateActionRead, readAlpacaCorporateActions } from '../theta/alpaca-corporate-action-evidence.js';
+import { loadPersistedPendingCorporateActionSymbols, persistAlpacaCorporateActionRead, readAlpacaCorporateActions } from '../theta/alpaca-corporate-action-evidence.js';
 import type { CanonicalBranchFrontier, CanonicalFrontierCandidate } from '../theta/canonical-strategy-frontier.js';
 import { probeAlpacaProcessEnvironmentAuth } from '../providers/readiness.js';
 import { refreshAegisIvStress, type AegisIvStressRefreshResult } from '../theta/aegis-iv-stress.js';
@@ -237,6 +237,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const scanUnderlyingsRaw=discovery.candidates.filter((candidate)=>scanSymbols.has(candidate.symbol));
   const runtimeSafetyBlockers:string[]=[];
   let pendingUnsupportedSymbols=new Set<string>();
+  let corporateActionReadSucceeded=false;
   const corporateActionSymbols=[...new Set([...scanUnderlyingsRaw.map((candidate)=>candidate.symbol),...recoveryInventoryUnderlyings])].sort().slice(0,20);
   if(corporateActionSymbols.length>0){
     try{
@@ -247,7 +248,12 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         symbols:corporateActionSymbols,start,end,observedAt});
       await persistAlpacaCorporateActionRead(input.pool,read);
       if(!read.paginationComplete)runtimeSafetyBlockers.push('ALPACA_CORPORATE_ACTION_PAGINATION_INCOMPLETE');
-      pendingUnsupportedSymbols=new Set(read.observations.filter((row)=>row.pendingUnsupported).map((row)=>row.symbol));
+      const persistedPending=await loadPersistedPendingCorporateActionSymbols(input.pool,{
+        symbols:corporateActionSymbols,start,end,decisionAsOf:input.now(),
+      });
+      pendingUnsupportedSymbols=new Set([...read.observations.filter((row)=>row.pendingUnsupported).map((row)=>row.symbol),
+        ...persistedPending]);
+      corporateActionReadSucceeded=read.paginationComplete;
     }catch{
       runtimeSafetyBlockers.push('ALPACA_CORPORATE_ACTION_READ_OR_PERSISTENCE_FAILED');
     }
@@ -299,6 +305,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     const saved=await cycleStore.persist(runtimeContext,member.cycle);
     persisted.set(member.symbol,{fusionSnapshotId:saved.fusionSnapshotId,candidateSetId:saved.candidateSetId,decisionId:saved.decisionId});
     if(input.environment.MASTER_PAPER_EXECUTION_ENABLED&&!input.environment.PAPER_PAUSE_NEW_ORDERS
+      &&corporateActionReadSucceeded
       &&brokerAuthoritySymbols.has(member.symbol)&&eventGate?.state==='ELIGIBLE'
       &&ivStressPaperPlanPersistenceReady(ivStressResultBySymbol.get(member.symbol))
       &&member.cycle.strategyFrontier!==null&&saved.decisionId!==null){

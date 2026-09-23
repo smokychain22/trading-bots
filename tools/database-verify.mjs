@@ -70,11 +70,14 @@ try {
     "060_execution_account_paper_only_invariant",
     "061_paper_execution_control_normalization",
     "062_policy_neutral_risk_evidence",
+    "063_optionomics_event_first_observation",
+    "064_alpaca_corporate_action_observation",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
     if (!actual.includes(version)) throw new Error(`MIGRATION_MISSING:${version}`);
   }
+  const migration065Applied = actual.includes("065_aegis_iv_stress_evidence");
   const required = [
     ["iam", "customer_identity"], ["iam", "customer_session"],
     ["copy", "alpaca_oauth_token"], ["copy", "follower_account"],
@@ -115,8 +118,9 @@ try {
     ["market", "optionomics_raw_observation"],
     ["market", "optionomics_feature_snapshot"],
     ["market", "optionomics_feature_observation_link"],
-    ["market", "optionomics_iv_session_observation"],
-    ["risk", "aegis_iv_stress_assessment"],
+    ["market", "optionomics_event_first_observation"],
+    ["market", "alpaca_corporate_action_query"],
+    ["market", "alpaca_corporate_action_first_observation"],
     ["research", "optionomics_quote_qualification_run"],
     ["trade", "canonical_strategy_frontier"],
     ["trade", "master_paper_action_plan"], ["trade", "master_paper_action_plan_event"],
@@ -148,6 +152,10 @@ try {
     ["legacy_neon", "research_export_variant"],
     ["legacy_neon", "missing_record_forensic_search"],
   ];
+  if (migration065Applied) required.push(
+    ["market", "optionomics_iv_session_observation"],
+    ["risk", "aegis_iv_stress_assessment"],
+  );
   const tables = await client.query(
     "SELECT table_schema, table_name FROM information_schema.tables WHERE (table_schema, table_name) IN (SELECT * FROM unnest($1::text[], $2::text[]))",
     [required.map(([schema]) => schema), required.map(([, table]) => table)],
@@ -156,6 +164,15 @@ try {
   for (const [schema, table] of required) {
     if (!found.has(`${schema}.${table}`)) throw new Error(`TABLE_MISSING:${schema}.${table}`);
   }
+  const eventActionLineage = await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='market'
+      AND event_object_table='optionomics_event_first_observation' AND trigger_name='reject_immutable_mutation') AS immutable_events,
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='market'
+      AND event_object_table='alpaca_corporate_action_query' AND trigger_name='reject_immutable_mutation') AS immutable_queries,
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='market'
+      AND event_object_table='alpaca_corporate_action_first_observation' AND trigger_name='reject_immutable_mutation') AS immutable_actions`);
+  if (!eventActionLineage.rows[0]?.immutable_events || !eventActionLineage.rows[0]?.immutable_queries
+    || !eventActionLineage.rows[0]?.immutable_actions) throw new Error('EVENT_CORPORATE_ACTION_LINEAGE_PROTECTION_MISSING');
   const riskHistory = await client.query("SELECT to_regclass('research.option_contract_risk_history')::text AS name");
   if (!riskHistory.rows[0]?.name) throw new Error("RELATION_MISSING:research.option_contract_risk_history");
   const columns = await client.query(
@@ -225,8 +242,18 @@ try {
       AND event_object_table='optionomics_iv_session_observation' AND trigger_name='reject_immutable_mutation') AS immutable_iv,
     EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='risk'
       AND event_object_table='aegis_iv_stress_assessment' AND trigger_name='reject_immutable_mutation') AS immutable_assessment`);
-  if(!ivStressEvidence.rows[0]?.immutable_iv||!ivStressEvidence.rows[0]?.immutable_assessment)
-    throw new Error('AEGIS_IV_STRESS_EVIDENCE_PROTECTION_MISSING');
+  if (migration065Applied) {
+    if(!ivStressEvidence.rows[0]?.immutable_iv||!ivStressEvidence.rows[0]?.immutable_assessment)
+      throw new Error('AEGIS_IV_STRESS_EVIDENCE_PROTECTION_MISSING');
+  } else {
+    const partial065 = await client.query(`SELECT
+      to_regclass('market.optionomics_iv_session_observation') IS NOT NULL AS iv_table,
+      to_regclass('risk.aegis_iv_stress_assessment') IS NOT NULL AS assessment_table`);
+    if (partial065.rows[0]?.iv_table || partial065.rows[0]?.assessment_table
+      || ivStressEvidence.rows[0]?.immutable_iv || ivStressEvidence.rows[0]?.immutable_assessment) {
+      throw new Error('AEGIS_IV_STRESS_PARTIALLY_APPLIED_WITHOUT_MIGRATION');
+    }
+  }
   const optionomicsTemporalEvidence=await client.query(`SELECT
     EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='research'
       AND event_object_table='optionomics_temporal_feature_observation' AND trigger_name='reject_immutable_mutation') AS immutable_temporal,
@@ -499,6 +526,8 @@ try {
   process.stdout.write(JSON.stringify({
     state: "CONNECTED",
     migrations: expected.length,
+    migrationHead: migration065Applied ? "065_aegis_iv_stress_evidence" : "064_alpaca_corporate_action_observation",
+    aegisIvPersistence: migration065Applied ? "ENFORCED" : "DEFERRED_FAIL_CLOSED",
     requiredTables: required.length,
     privateBetaColumns: 9,
     accountRoles: Object.fromEntries(roles.rows.map((row) => [row.account_role, row.count])),

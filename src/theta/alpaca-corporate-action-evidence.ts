@@ -159,3 +159,39 @@ export async function persistAlpacaCorporateActionRead(pool: Pool, read: Corpora
     throw error;
   } finally { client.release(); }
 }
+
+/**
+ * A later sparse provider response cannot erase an earlier positive pending
+ * observation. This reads only already-persisted positive evidence in the
+ * current bounded decision window. It does not establish negative coverage,
+ * and a database failure must propagate to the Paper safety gate.
+ */
+export async function loadPersistedPendingCorporateActionSymbols(pool: Pick<Pool, 'query'>, input: {
+  readonly symbols: readonly string[];
+  readonly start: string;
+  readonly end: string;
+  readonly decisionAsOf: string;
+}): Promise<ReadonlySet<string>> {
+  const symbols = [...new Set(input.symbols)].sort();
+  const start = date(input.start);
+  const end = date(input.end);
+  const decisionMs = Date.parse(input.decisionAsOf);
+  if (symbols.length === 0 || symbols.length > 20 || symbols.some((symbol) => !/^[A-Z.]{1,12}$/.test(symbol))
+    || start === null || end === null || start > end || !Number.isFinite(decisionMs)) {
+    throw new Error('CORPORATE_ACTION_PERSISTED_LOOKUP_INVALID');
+  }
+  const result = await pool.query(`SELECT DISTINCT symbol
+    FROM market.alpaca_corporate_action_first_observation
+    WHERE symbol = ANY($1::text[]) AND pending_unsupported = true
+      AND first_observed_at <= $4::timestamptz
+      AND ((process_date BETWEEN $2::date AND $3::date)
+        OR (ex_date BETWEEN $2::date AND $3::date))`,
+  [symbols, start, end, input.decisionAsOf]);
+  const found = new Set<string>();
+  for (const row of result.rows) {
+    const symbol = (row as Record<string, unknown>).symbol;
+    if (typeof symbol !== 'string' || !symbols.includes(symbol)) throw new Error('CORPORATE_ACTION_PERSISTED_ROW_INVALID');
+    found.add(symbol);
+  }
+  return found;
+}

@@ -53,6 +53,7 @@ import {
 } from './finalist-quote-refresh.js';
 import { deriveOptionomicsEarningsEvidence, type OptionomicsEarningsEvidence } from './earnings-event-evidence.js';
 import { deriveMacroRiskEvidence, type MacroRiskEvidence } from './macro-event-policy.js';
+import { assessPortfolioCorrelation, type PortfolioCorrelationObservation } from './portfolio-correlation-evidence.js';
 
 /** Never relabel a Conventional assessment as Hold-Strike risk evidence. */
 export function conventionalFrontierRiskLookups(
@@ -304,6 +305,7 @@ function assembleFusionSnapshotInput(params: {
   readonly calendarOrigin: ProvenanceOrigin;
   readonly calendarQuality: DataQualityState;
   readonly derivedExposure: DerivedAccountExposure;
+  readonly portfolioCorrelation: PortfolioCorrelationObservation | null;
   readonly mergedContracts: FusionSnapshotInput['contractCandidates'];
   readonly ownershipFeatures: JsonValue;
   readonly regimeFeatures: JsonValue;
@@ -427,7 +429,8 @@ function assembleFusionSnapshotInput(params: {
     contractCandidates: params.mergedContracts,
     accountState: accountJson,
     positionState: { positions: positionsJson, openOrders: openOrdersJson },
-    portfolioExposure: params.derivedExposure as unknown as JsonValue, // real, pure arithmetic over account/positions/orders -- see account-exposure.ts
+    portfolioExposure: { ...params.derivedExposure,
+      correlationObservation: params.portfolioCorrelation } as unknown as JsonValue,
     alpacaQuoteState: params.finalistQuoteRefresh,
     optionomicsFeatureState: optionomicsAttempted ? optionomicsJson : null, // honestly absent when not configured, never fabricated
     eventState: eventContextObservations.length > 0 || params.macroEventCoverage !== null
@@ -1235,6 +1238,54 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const recoveryInventoryValue = deriveRecoveryInventoryValue(derivedExposure, config.recoveryInventoryUnderlyings);
   const exposureDerivationTrustworthy = accountEvidence.quality === 'GOOD' && positionsEvidence.quality === 'GOOD' && openOrdersEvidence.quality === 'GOOD';
 
+  // Observe portfolio correlation from broker-owned exposure and completed
+  // Alpaca daily bars. This is stored for research and risk diagnostics only.
+  // Bars fetched after cycle-start decisionTime are never promoted backward
+  // into AEGIS or sizing; usableForDecision records that PIT boundary.
+  let portfolioCorrelation: PortfolioCorrelationObservation | null = null;
+  if (exposureDerivationTrustworthy) {
+    const heldSymbols = Object.entries(derivedExposure.exposureByUnderlying)
+      .filter(([, value]) => value > 0).map(([symbol]) => symbol);
+    if (heldSymbols.length <= 20) {
+      const otherSymbols = heldSymbols.filter((symbol) => symbol !== underlying);
+      let otherBars: readonly HistoricalBar[] = [];
+      let correlationProviderState: 'COMPLETE' | 'INCOMPLETE' | 'ERROR' = historyOrigin === 'REAL_PROVIDER'
+        ? 'COMPLETE' : 'INCOMPLETE';
+      if (otherSymbols.length > 0 && correlationProviderState === 'COMPLETE') {
+        try {
+          const fetched = await fetchStockBars(config.alpaca, {
+            symbols: otherSymbols, timeframe: '1Day', start: config.historyStart,
+            end: config.historyEnd, feed: 'iex', maxPages: config.historyMaxPages, adjustment: 'split',
+          }, config.now());
+          otherBars = fetched.bars;
+          if (!fetched.complete) correlationProviderState = 'INCOMPLETE';
+        } catch {
+          correlationProviderState = 'ERROR';
+          blockers.push('PORTFOLIO_CORRELATION_BARS_PROVIDER_ERROR');
+        }
+      }
+      const observedAt = config.now();
+      try {
+        portfolioCorrelation = assessPortfolioCorrelation({
+          candidateUnderlying: underlying,
+          currentExposureByUnderlying: derivedExposure.exposureByUnderlying,
+          // The source adapter stamps request time. Use the later completion
+          // time here so the observation can never masquerade as earlier PIT.
+          bars: [...historyBars, ...otherBars].map((bar) => ({ ...bar, receivedAt: observedAt })),
+          providerState: correlationProviderState, decisionAsOf: decisionTime,
+          evaluatedAt: observedAt, lookbackSessions: 60,
+          minimumOverlappingReturns: 20, maxBarAgeCalendarDays: 5,
+        });
+      } catch {
+        blockers.push('PORTFOLIO_CORRELATION_OBSERVATION_INVALID');
+      }
+    } else {
+      blockers.push('PORTFOLIO_CORRELATION_SYMBOL_BOUND_EXCEEDED');
+    }
+  } else {
+    blockers.push('PORTFOLIO_CORRELATION_ACCOUNT_STATE_UNKNOWN');
+  }
+
   const eventContextObservations = optionomicsContextObservations.filter((observation) =>
     observation.family === 'EVENTS' || observation.family === 'EARNINGS_FILINGS' || observation.family === 'SYMBOL_NEWS');
   const eventContextPopulated = eventContextObservations.some((observation) => observation.populated);
@@ -1287,6 +1338,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     clock, clockOrigin: clockEvidence.origin, clockQuality: clockEvidence.quality,
     calendar, calendarOrigin: calendarEvidence.origin, calendarQuality: calendarEvidence.quality,
     derivedExposure,
+    portfolioCorrelation,
     mergedContracts: [...mergedContractsForSnapshot],
     ownershipFeatures: { stockAvgVolume,ret1d,ret5d,ret20d,ret60d,ma20Rel,ma50Rel,ma200Rel,
       rv10,rv20,rv60,downsideSemivariance,drawdown,maSlope,gapFrequency,maxAdverseGap,

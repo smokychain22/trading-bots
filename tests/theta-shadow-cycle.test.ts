@@ -201,6 +201,8 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
     stressColdStartPolicy: paperBootstrapStressColdStartPolicy,
     spreadStress: { assessmentsByContract: {}, baselinesByCohort: {} } });
   assert.ok(result.orchestration?.thetaQ !== null || result.orchestration?.receipt.winningAction === 'PASS');
+  const portfolio = result.fusionSnapshot?.snapshot.portfolioExposure as Record<string, unknown>;
+  assert.equal((portfolio.correlationObservation as Record<string, unknown>).state, 'NOT_APPLICABLE');
   assert.equal(result.orchestration?.regime?.eventState, null);
   assert.ok(result.orchestration?.regime?.reasons.some((reason) => reason.code === 'EVENT_FLAG_UNKNOWN'));
   // Optionomics and event-state are never real in this cycle implementation
@@ -571,6 +573,45 @@ itMockedProviderRealCodePath('a real (mocked) stock position is fetched and fold
   assert.ok(result.provenanceDetail.some((d) => d === 'positions=REAL_PROVIDER'));
   assert.ok(!result.blockers.some((b) => b.startsWith('POSITIONS_FETCH_FAILED')));
   assert.ok(result.orchestration !== null);
+  const portfolio = result.fusionSnapshot?.snapshot.portfolioExposure as Record<string, unknown>;
+  const correlation = portfolio.correlationObservation as Record<string, unknown>;
+  assert.equal(correlation.state, 'KNOWN');
+  assert.equal(correlation.reason, 'SAME_UNDERLYING_IDENTITY');
+  assert.equal(correlation.usableForDecision, true);
+});
+
+itMockedProviderRealCodePath('held-symbol bars reach persisted portfolio correlation without gaining AEGIS authority', async () => {
+  const baseFetch = mockAlpacaFetch({ hasContracts: true, hasBars: true });
+  const heldBarRequests: string[] = [];
+  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/v2/positions') return jsonResponse(200, [
+      { symbol: 'QQQ', asset_class: 'us_equity', qty: '10', side: 'long',
+        avg_entry_price: '200', market_value: '2000', unrealized_pl: '0' },
+    ]);
+    if (url.pathname === '/v2/stocks/bars') {
+      const symbol = url.searchParams.get('symbols');
+      if (symbol === 'SPY' || symbol === 'QQQ') {
+        if (symbol === 'QQQ') heldBarRequests.push(url.toString());
+        const bars = Array.from({ length: 65 }, (_, index) => {
+          const close = (symbol === 'SPY' ? 500 : 200) + index * 0.25 + (index % 3) * 0.1;
+          return { t: new Date(Date.parse(NOW) - (66 - index) * 86_400_000).toISOString(),
+            o: close, h: close, l: close, c: close, v: 1_000_000 };
+        });
+        return jsonResponse(200, { bars: { [symbol]: bars }, next_page_token: null });
+      }
+    }
+    return baseFetch(input, init);
+  }) as typeof fetch;
+  const result = await runThetaShadowCycle(baseConfig({ alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl } }));
+  const portfolio = result.fusionSnapshot?.snapshot.portfolioExposure as Record<string, unknown>;
+  const correlation = portfolio.correlationObservation as Record<string, unknown>;
+  assert.equal(correlation.state, 'KNOWN');
+  assert.equal(correlation.authority, 'ALPACA_MARKET_OBSERVATION_NO_BROKER_AUTHORITY');
+  assert.equal((correlation.pairs as unknown[]).length, 1);
+  assert.equal(typeof correlation.sourceBarHash, 'string');
+  assert.equal(JSON.stringify(result.fusionSnapshot?.snapshot.riskState).includes('correlationObservation'), false);
+  assert.equal(heldBarRequests.length, 1);
 });
 
 itMockedProviderRealCodePath('a confirmed-closed market becomes a real precondition SYSTEM_HOLD (MARKET_CLOSED) -- never a strategy WAIT/PASS, never a provider-quality hold', async () => {
