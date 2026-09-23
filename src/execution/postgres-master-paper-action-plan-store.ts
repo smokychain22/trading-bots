@@ -3,6 +3,7 @@ import type { Pool,PoolClient } from 'pg';
 import { canonicalJson } from '../research/point-in-time-evidence.js';
 import { managementOrderActions, type ManagementDecisionDraft } from './management-paper-plan-assembly.js';
 import { masterPaperActionPlanSchema, type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
+import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 
 export type MasterPaperActionPlanState='READY'|'CLAIMED'|'WAITING_GATE'|'SUBMITTED'|'TERMINAL'|'QUARANTINED';
 
@@ -16,9 +17,7 @@ export class PostgresMasterPaperActionPlanStore {
   }):Promise<boolean>{
     const plan=masterPaperActionPlanSchema.parse(raw) as ApprovedMasterPaperActionPlan;
     const contentHash=hash(plan);
-    const client=await this.pool.connect();
-    try{
-      await client.query('BEGIN');
+    return withRuntimePostgresTransaction(this.pool,async(client)=>{
       const evidence=await client.query(`SELECT d.decision_id,d.decision_kind,d.selected_candidate_id::text AS candidate_id,
         d.runtime_selected_candidate_ref,d.quantity::numeric AS quantity,d.aegis_action::text AS aegis_action,
         d.receipt_json->>'aegisInputOrigin' AS aegis_input_origin,
@@ -42,9 +41,8 @@ export class PostgresMasterPaperActionPlanStore {
       }
       const inserted=await this.insertPlan(client,plan,contentHash,createdAt);
       if(inserted)await this.event(plan.actionPlanId,'READY',createdAt,null,client);
-      await client.query('COMMIT');
       return inserted;
-    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+    },{verifyCommitted:async(pool)=>this.verifyPlanGroup(pool,[{plan,contentHash}])});
   }
 
   /** Persist a selected management decision and all execution legs atomically.
@@ -69,9 +67,7 @@ export class PostgresMasterPaperActionPlanStore {
       }
     }
     if(decision.quantity!==first.canonicalQuantity)throw new Error('MANAGEMENT_DECISION_QUANTITY_MISMATCH');
-    const client=await this.pool.connect();
-    try{
-      await client.query('BEGIN');
+    return withRuntimePostgresTransaction(this.pool,async(client)=>{
       const authority=await client.query(`SELECT maf.management_action_frontier_id,maf.selected_action,maf.decision_state,
         maf.policy_version,maf.policy_evidence_hash,
         mis.management_input_snapshot_id,mis.fusion_snapshot_id,mis.chain_id,mis.input_json,
@@ -130,9 +126,30 @@ export class PostgresMasterPaperActionPlanStore {
         const created=await this.insertPlan(client,plan,hash(plan),createdAt);
         if(created){await this.event(plan.actionPlanId,'READY',createdAt,null,client);inserted+=1;}
       }
-      await client.query('COMMIT');
       return inserted;
-    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+    },{verifyCommitted:async(pool)=>{
+      const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT d.action_code,
+        d.runtime_selected_candidate_ref,d.policy_version,d.receipt_json,
+        p.action_plan_id,p.content_hash,p.leg_sequence,p.depends_on_action_plan_id
+        FROM trade.decision d LEFT JOIN trade.master_paper_action_plan p ON p.decision_id=d.decision_id
+        WHERE d.decision_id=$1 ORDER BY p.leg_sequence`,[decision.decisionId]));
+      if(receipt.value.rows.length!==plans.length) return false;
+      const expected=new Map(plans.map((plan)=>[plan.legSequence,{plan,contentHash:hash(plan)}]));
+      for(const raw of receipt.value.rows){
+        const row=raw as Record<string,unknown>;
+        const item=expected.get(Number(row.leg_sequence));
+        if(item===undefined)throw new Error('MANAGEMENT_PLAN_COMMIT_RECONCILIATION_CONFLICT');
+        const persistedReceipt=row.receipt_json as Record<string,unknown>|null;
+        if(row.action_code!==decision.actionCode||row.runtime_selected_candidate_ref!==decision.authorityRef
+          ||row.policy_version!==decision.managementPolicyVersion
+          ||persistedReceipt?.managementPolicyEvidenceHash!==decision.managementPolicyEvidenceHash
+          ||String(row.action_plan_id)!==item.plan.actionPlanId||String(row.content_hash)!==item.contentHash
+          ||Number(row.leg_sequence)!==item.plan.legSequence
+          ||String(row.depends_on_action_plan_id??'')!==String(item.plan.dependsOnActionPlanId??''))
+          throw new Error('MANAGEMENT_PLAN_COMMIT_RECONCILIATION_CONFLICT');
+      }
+      return true;
+    }});
   }
 
   private async insertPlan(client:PoolClient,plan:ApprovedMasterPaperActionPlan,contentHash:string,createdAt:string):Promise<boolean>{
@@ -158,9 +175,7 @@ export class PostgresMasterPaperActionPlanStore {
 
   async claimNext(executionAccountId:string,workerId:string,now:string,
     options:{readonly allowNewRisk:boolean}={allowNewRisk:true}):Promise<ApprovedMasterPaperActionPlan|null>{
-    const client=await this.pool.connect();
-    try{
-      await client.query('BEGIN');
+    const claimed=await withRuntimePostgresTransaction(this.pool,async(client)=>{
       const expired=await client.query(`UPDATE trade.master_paper_action_plan SET status='QUARANTINED',
         last_blockers_json='["DECISION_EXPIRED"]'::jsonb,claimed_by=NULL,claimed_at=NULL,claim_expires_at=NULL,updated_at=$2
         WHERE execution_account_id=$1 AND status IN ('READY','WAITING_GATE','CLAIMED')
@@ -181,7 +196,7 @@ export class PostgresMasterPaperActionPlanStore {
         ORDER BY p.created_at,p.action_group_id,p.leg_sequence,p.action_plan_id
         FOR UPDATE OF p SKIP LOCKED LIMIT 1`,[executionAccountId,now,'theta-master-paper-action-plan-v3',options.allowNewRisk]);
       const row=result.rows[0] as {action_plan_id:string;plan_json:unknown}|undefined;
-      if(row===undefined){await client.query('COMMIT');return null;}
+      if(row===undefined)return {plan:null,actionPlanId:null,claimExpiresAt:null};
       const claimExpiresAt=new Date(Date.parse(now)+120_000).toISOString();
       const updated=await client.query(`UPDATE trade.master_paper_action_plan SET status='CLAIMED',claimed_by=$2,claimed_at=$3,
         claim_expires_at=$4,updated_at=$3 WHERE action_plan_id=$1 AND
@@ -190,9 +205,22 @@ export class PostgresMasterPaperActionPlanStore {
       if(updated.rowCount!==1)throw new Error('ACTION_PLAN_CLAIM_RACE');
       await client.query(`INSERT INTO trade.master_paper_action_plan_event(action_plan_event_id,action_plan_id,state,event_time,detail_json)
         VALUES($1,$2,'CLAIMED',$3,$4::jsonb)`,[randomUUID(),row.action_plan_id,now,JSON.stringify({workerId})]);
-      await client.query('COMMIT');
-      return masterPaperActionPlanSchema.parse(row.plan_json) as ApprovedMasterPaperActionPlan;
-    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+      return {plan:masterPaperActionPlanSchema.parse(row.plan_json) as ApprovedMasterPaperActionPlan,
+        actionPlanId:row.action_plan_id,claimExpiresAt};
+    },{verifyCommitted:async(pool,outcome)=>{
+      if(outcome.actionPlanId===null)return true;
+      const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT status,claimed_by,
+        claimed_at::text,claim_expires_at::text FROM trade.master_paper_action_plan WHERE action_plan_id=$1`,
+      [outcome.actionPlanId]));
+      const row=receipt.value.rows[0] as Record<string,unknown>|undefined;
+      if(row===undefined)return false;
+      if(row.status==='CLAIMED'&&row.claimed_by===workerId
+        &&Date.parse(String(row.claimed_at))===Date.parse(now)
+        &&Date.parse(String(row.claim_expires_at))===Date.parse(outcome.claimExpiresAt??''))return true;
+      if(row.status==='READY'||row.status==='WAITING_GATE')return false;
+      throw new Error('ACTION_PLAN_CLAIM_COMMIT_RECONCILIATION_CONFLICT');
+    }});
+    return claimed.plan;
   }
 
   async wait(actionPlanId:string,blockers:readonly string[],retryAt:string,at:string):Promise<void>{
@@ -213,9 +241,7 @@ export class PostgresMasterPaperActionPlanStore {
 
   private async transition(actionPlanId:string,state:MasterPaperActionPlanState,at:string,blockers:readonly string[],notBefore:string|null,
     extra:Record<string,unknown>={}):Promise<void>{
-    const client=await this.pool.connect();
-    try{
-      await client.query('BEGIN');
+    await withRuntimePostgresTransaction(this.pool,async(client)=>{
       const result=await client.query(`UPDATE trade.master_paper_action_plan SET status=$2,last_blockers_json=$3::jsonb,
         not_before=COALESCE($4::timestamptz,not_before),claimed_by=NULL,claimed_at=NULL,claim_expires_at=NULL,updated_at=$5,
         execution_order_intent_id=COALESCE($6::uuid,execution_order_intent_id)
@@ -223,8 +249,41 @@ export class PostgresMasterPaperActionPlanStore {
       [actionPlanId,state,JSON.stringify(blockers),notBefore,at,typeof extra.orderIntentId==='string'?extra.orderIntentId:null]);
       if(result.rowCount!==1)throw new Error('ACTION_PLAN_TRANSITION_RACE');
       await this.event(actionPlanId,state,at,{blockers,...extra},client);
-      await client.query('COMMIT');
-    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+    },{verifyCommitted:async(pool)=>{
+      const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT status,last_blockers_json,
+        not_before::text,execution_order_intent_id::text FROM trade.master_paper_action_plan WHERE action_plan_id=$1`,
+      [actionPlanId]));
+      const row=receipt.value.rows[0] as Record<string,unknown>|undefined;
+      if(row===undefined)return false;
+      if(row.status!==state){
+        if(row.status==='CLAIMED')return false;
+        throw new Error('ACTION_PLAN_TRANSITION_COMMIT_RECONCILIATION_CONFLICT');
+      }
+      const persistedBlockers=Array.isArray(row.last_blockers_json)?row.last_blockers_json.map(String):[];
+      if(canonicalJson(persistedBlockers)!==canonicalJson([...blockers])
+        ||(typeof extra.orderIntentId==='string'&&String(row.execution_order_intent_id)!==extra.orderIntentId))
+        throw new Error('ACTION_PLAN_TRANSITION_COMMIT_RECONCILIATION_CONFLICT');
+      return true;
+    }});
+  }
+
+  private async verifyPlanGroup(pool:Pool,expected:readonly {readonly plan:ApprovedMasterPaperActionPlan;
+    readonly contentHash:string}[]):Promise<boolean>{
+    const first=expected[0];
+    if(first===undefined)return false;
+    const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT action_plan_id,decision_id,
+      action_group_id,leg_sequence,content_hash FROM trade.master_paper_action_plan
+      WHERE decision_id=$1 AND action_group_id=$2 ORDER BY leg_sequence`,
+    [first.plan.decisionId,first.plan.actionGroupId]));
+    if(receipt.value.rows.length===0)return false;
+    if(receipt.value.rows.length!==expected.length)throw new Error('ACTION_PLAN_COMMIT_RECONCILIATION_CONFLICT');
+    for(const item of expected){
+      const row=receipt.value.rows.find((value)=>Number(value.leg_sequence)===item.plan.legSequence) as Record<string,unknown>|undefined;
+      if(row===undefined||String(row.action_plan_id)!==item.plan.actionPlanId
+        ||String(row.decision_id)!==item.plan.decisionId||String(row.action_group_id)!==item.plan.actionGroupId
+        ||String(row.content_hash)!==item.contentHash)throw new Error('ACTION_PLAN_COMMIT_RECONCILIATION_CONFLICT');
+    }
+    return true;
   }
 
   private async event(actionPlanId:string,state:MasterPaperActionPlanState,at:string,detail:Record<string,unknown>|null,db:Pool|PoolClient=this.pool):Promise<void>{

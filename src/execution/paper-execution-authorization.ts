@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
+import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 
 export const masterPaperAuthorizationConfirmation = 'AUTHORIZE_MASTER_THETA_PAPER_MANAGEMENT_ONLY' as const;
 export const firstPaperCanaryActivationConfirmation = 'ACTIVATE_ONE_MASTER_THETA_PAPER_CANARY' as const;
@@ -127,9 +128,7 @@ export class PostgresPaperExecutionAuthorizationStore{
     const directiveHash=createHash('sha256').update(JSON.stringify({accountRole:'MASTER_THETA_PAPER',environment:'PAPER',
       masterSubmissionAuthorized:true,followerSubmissionAuthorized:false,liveMoneyAuthorized:false,
       sourceRef:input.sourceRef})).digest('hex');
-    const client=await this.pool.connect();
-    try{
-      await client.query('BEGIN');
+    return withRuntimePostgresTransaction(this.pool,async(client)=>{
       await client.query(`SELECT pg_advisory_xact_lock(hashtext('theta-master-paper-authorization'))`);
       const existing=await client.query(`SELECT authorization_event_id FROM ops.paper_execution_authorization_event
         WHERE directive_hash=$1`,[directiveHash]);
@@ -143,9 +142,19 @@ export class PostgresPaperExecutionAuthorizationStore{
       await client.query(`UPDATE ops.paper_execution_control SET pause_new_orders=true,
         master_execution_enabled=true,follower_execution_enabled=false,authorization_event_id=$1,
         changed_by='OWNER_DIRECTIVE_PAPER_ONLY',changed_at=$2 WHERE singleton=true`,[eventId,input.authorizedAt]);
-      await client.query('COMMIT');
-      return await this.current();
-    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+      return {pauseNewOrders:true,masterExecutionEnabled:true,followerExecutionEnabled:false,
+        authorizationEventId:eventId};
+    },{verifyCommitted:async(pool,outcome)=>{
+      const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT pause_new_orders,
+        master_execution_enabled,follower_execution_enabled,authorization_event_id::text
+        FROM ops.paper_execution_control WHERE singleton=true`));
+      const row=receipt.value.rows[0] as Record<string,unknown>|undefined;
+      if(row===undefined)return false;
+      if(row.pause_new_orders!==true||row.master_execution_enabled!==true||row.follower_execution_enabled!==false
+        ||row.authorization_event_id!==outcome.authorizationEventId)
+        throw new Error('PAPER_MANAGEMENT_AUTHORIZATION_COMMIT_RECONCILIATION_CONFLICT');
+      return true;
+    }});
   }
 
   /** Activates only the single bounded master Paper canary lane. The caller
@@ -155,9 +164,7 @@ export class PostgresPaperExecutionAuthorizationStore{
     evidence:FirstPaperCanaryActivationEvidence}):Promise<FirstPaperCanaryActivationReceipt>{
     if(input.confirmation!==firstPaperCanaryActivationConfirmation)
       throw new Error('FIRST_PAPER_CANARY_ACTIVATION_CONFIRMATION_REQUIRED');
-    const client=await this.pool.connect();
-    try{
-      await client.query('BEGIN');
+    return withRuntimePostgresTransaction(this.pool,async(client)=>{
       await client.query(`SELECT pg_advisory_xact_lock(hashtext('theta-master-paper-authorization'))`);
       const state=await client.query(`SELECT
         pec.pause_new_orders,pec.master_execution_enabled,pec.follower_execution_enabled,pec.authorization_event_id,
@@ -197,7 +204,7 @@ export class PostgresPaperExecutionAuthorizationStore{
       const common={accountRole:'MASTER_THETA_PAPER' as const,brokerHost:'https://paper-api.alpaca.markets' as const,
         paperOnly:true as const,followerExecutionLocked:true as const,liveMoneyAuthorized:false as const,
         priorBrokerOrderCount,latestCompleteScanAt,migrationHead};
-      if(blockers.length>0){await client.query('ROLLBACK');return {ready:false,activated:false,blockers:[...new Set(blockers)],...common};}
+      if(blockers.length>0)return {ready:false,activated:false,blockers:[...new Set(blockers)],...common};
       const directiveHash=createHash('sha256').update(JSON.stringify({accountRole:'MASTER_THETA_PAPER',environment:'PAPER',
         scope:'ONE_FIRST_CANARY_THEN_AUTOMATIC_NEW_RISK_LOCK',sourceRef:input.sourceRef})).digest('hex');
       const existing=await client.query(`SELECT authorization_event_id FROM ops.paper_execution_authorization_event
@@ -213,9 +220,19 @@ export class PostgresPaperExecutionAuthorizationStore{
       await client.query(`UPDATE ops.paper_execution_control SET pause_new_orders=false,master_execution_enabled=true,
         follower_execution_enabled=false,authorization_event_id=$1,changed_by='OWNER_DIRECTIVE_FIRST_PAPER_CANARY',changed_at=$2
         WHERE singleton=true`,[eventId,input.activatedAt]);
-      await client.query('COMMIT');
       return {ready:true,activated:true,blockers:[],...common};
-    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+    },{verifyCommitted:async(pool,outcome)=>{
+      if(!outcome.activated)return true;
+      const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT pause_new_orders,
+        master_execution_enabled,follower_execution_enabled,authorization_event_id::text
+        FROM ops.paper_execution_control WHERE singleton=true`));
+      const row=receipt.value.rows[0] as Record<string,unknown>|undefined;
+      if(row===undefined)return false;
+      if(row.pause_new_orders!==false||row.master_execution_enabled!==true||row.follower_execution_enabled!==false
+        ||typeof row.authorization_event_id!=='string')
+        throw new Error('FIRST_CANARY_AUTHORIZATION_COMMIT_RECONCILIATION_CONFLICT');
+      return true;
+    }});
   }
 
   /** Persists the one-canary new-risk lock after the broker order has been

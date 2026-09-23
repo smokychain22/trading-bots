@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { assertValidOrderIntentTransition, type OrderIntentState } from '../theta/order-intent-state.js';
 import type { NormalizedTradeUpdate } from './trade-updates.js';
+import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 
 export interface PersistedTradeUpdateResult {
   readonly matched: boolean;
@@ -11,9 +12,7 @@ export class PostgresTradeUpdateStore {
   constructor(private readonly pool: Pool) {}
 
   async apply(update: NormalizedTradeUpdate): Promise<PersistedTradeUpdateResult> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
+    return withRuntimePostgresTransaction(this.pool,async(client)=>{
       const match = await client.query(
         `SELECT b.broker_order_id, b.order_intent_id, i.status
          FROM trade.broker_order b
@@ -25,7 +24,6 @@ export class PostgresTradeUpdateStore {
       );
       const row = match.rows[0] as { broker_order_id: string; order_intent_id: string; status: OrderIntentState } | undefined;
       if (row === undefined) {
-        await client.query('ROLLBACK');
         return { matched: false, duplicate: false, fillInserted: false };
       }
       const event = await client.query(
@@ -37,7 +35,6 @@ export class PostgresTradeUpdateStore {
         [row.broker_order_id, update.eventId, update.event, update.eventTime, update.fillQuantity, update.fillPrice, update.payloadHash],
       );
       if (event.rowCount === 0) {
-        await client.query('ROLLBACK');
         return { matched: true, duplicate: true, fillInserted: false };
       }
       await client.query(
@@ -60,13 +57,25 @@ export class PostgresTradeUpdateStore {
         );
         fillInserted = fill.rowCount === 1;
       }
-      await client.query('COMMIT');
       return { matched: true, duplicate: false, fillInserted };
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    },{verifyCommitted:async(pool,outcome)=>{
+      if(!outcome.matched)return true;
+      const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT boe.payload_hash,
+        i.status, EXISTS(SELECT 1 FROM trade.fill f WHERE f.broker_order_id=b.broker_order_id
+          AND f.provider_fill_id=$3) AS fill_exists
+        FROM trade.broker_order b JOIN trade.order_intent i ON i.order_intent_id=b.order_intent_id
+        LEFT JOIN trade.broker_order_event boe ON boe.broker_order_id=b.broker_order_id AND boe.provider_event_id=$2
+        WHERE b.provider_order_id=$1 OR i.client_order_id=$4
+        ORDER BY (b.provider_order_id=$1) DESC,b.created_at DESC LIMIT 1`,
+      [update.providerOrderId,update.eventId,update.providerFillId,update.clientOrderId]));
+      const row=receipt.value.rows[0] as Record<string,unknown>|undefined;
+      if(row===undefined||row.payload_hash===null)return false;
+      if(row.payload_hash!==update.payloadHash
+        ||(update.orderState!==null&&row.status!==update.orderState)
+        ||(update.providerFillId!==null&&update.fillQuantity!==null&&update.fillQuantity>0
+          &&update.fillPrice!==null&&row.fill_exists!==true))
+        throw new Error('TRADE_UPDATE_COMMIT_RECONCILIATION_CONFLICT');
+      return true;
+    }});
   }
 }

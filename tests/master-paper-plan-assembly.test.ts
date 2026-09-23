@@ -115,7 +115,7 @@ test('the new-risk persistence boundary rejects a decision without real AEGIS in
       account_kind:'MASTER_API_KEY',account_ready:true,
     }]};
     return {rows:[],rowCount:0};
-  },release:()=>undefined};
+  },release:()=>undefined,on:()=>undefined,removeListener:()=>undefined};
   const store=new PostgresMasterPaperActionPlanStore({connect:async()=>client} as never);
   await assert.rejects(store.enqueue(result.plan,input().now),/ACTION_PLAN_AEGIS_REAL_INPUT_LINEAGE_MISSING/);
   assert.deepEqual(queries[0],'BEGIN');

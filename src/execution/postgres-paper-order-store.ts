@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { OrderIntentState } from '../theta/order-intent-state.js';
 import { assertValidOrderIntentTransition } from '../theta/order-intent-state.js';
 import type { ExecutionAttemptRecord, PaperOrderStore, PersistedPaperOrderIntent } from './paper-order-coordinator.js';
+import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 
 const toIso = (value: unknown): string => value instanceof Date ? value.toISOString() : String(value);
 
@@ -38,7 +39,7 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
       || evidence.quoteFeed===null || !['SIP','IEX'].includes(evidence.quoteFeed))) {
       throw new Error('STOCK_ORDER_EXECUTION_EVIDENCE_INVALID');
     }
-    await this.pool.query(
+    await withRuntimePostgresTransaction(this.pool,(client)=>client.query(
       `INSERT INTO trade.order_intent
         (order_intent_id, execution_account_id, decision_id, client_order_id, status,
          instrument_type, broker_symbol, side, quantity, limit_price, time_in_force,
@@ -56,7 +57,18 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
         intent.authorizationEvidence.executionTier,intent.authorizationEvidence.canonicalQuantity,
         intent.authorizationEvidence.paperEvidenceQuantity,intent.authorizationEvidence.empiricalEconomicsReady,
         intent.authorizationEvidence.expectedAfterCostEv],
-    );
+    ).then(()=>undefined),{verifyCommitted:async(pool)=>{
+      const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT client_order_id,status,
+        decision_id::text,quantity::numeric,quote_content_hash FROM trade.order_intent WHERE order_intent_id=$1`,
+      [intent.orderIntentId]));
+      const row=receipt.value.rows[0] as Record<string,unknown>|undefined;
+      if(row===undefined)return false;
+      if(row.client_order_id!==intent.request.client_order_id||row.status!==intent.status
+        ||String(row.decision_id)!==intent.decisionId||Number(row.quantity)!==intent.request.qty
+        ||row.quote_content_hash!==intent.executionEvidence.quoteContentHash)
+        throw new Error('ORDER_INTENT_COMMIT_RECONCILIATION_CONFLICT');
+      return true;
+    }});
   }
 
   async getIntent(orderIntentId: string): Promise<PersistedPaperOrderIntent | null> {
@@ -117,9 +129,7 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
 
   async transitionIntent(orderIntentId: string, from: OrderIntentState, to: OrderIntentState, providerOrderId: string | null = null): Promise<void> {
     assertValidOrderIntentTransition(from, to);
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
+    await withRuntimePostgresTransaction(this.pool,async(client)=>{
       const update = await client.query(
         `UPDATE trade.order_intent SET status = $3, updated_at = now()
          WHERE order_intent_id = $1 AND status = $2 RETURNING order_intent_id`,
@@ -135,32 +145,56 @@ export class PostgresPaperOrderStore implements PaperOrderStore {
           [orderIntentId, providerOrderId, to],
         );
       }
-      await client.query('COMMIT');
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    },{verifyCommitted:async(pool)=>{
+      const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT i.status,
+        EXISTS(SELECT 1 FROM trade.broker_order b WHERE b.order_intent_id=i.order_intent_id
+          AND b.provider_order_id=$2 AND b.broker_status=$3) AS broker_state_matches
+        FROM trade.order_intent i WHERE i.order_intent_id=$1`,[orderIntentId,providerOrderId,to]));
+      const row=receipt.value.rows[0] as Record<string,unknown>|undefined;
+      if(row===undefined)return false;
+      if(row.status===to&&(providerOrderId===null||row.broker_state_matches===true))return true;
+      if(row.status===from)return false;
+      throw new Error('ORDER_INTENT_TRANSITION_COMMIT_RECONCILIATION_CONFLICT');
+    }});
   }
 
   async recordAttempt(attempt: ExecutionAttemptRecord): Promise<void> {
-    await this.pool.query(
+    await withRuntimePostgresTransaction(this.pool,(client)=>client.query(
       `INSERT INTO trade.execution_attempt
         (order_intent_id, attempt_no, requested_at, request_payload_hash, response_status, timeout_flag, reconcile_before_retry)
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [attempt.orderIntentId, attempt.attemptNo, attempt.requestedAt, attempt.requestPayloadHash,
         attempt.responseStatus, attempt.timeoutFlag, attempt.reconcileBeforeRetry],
-    );
+    ).then(()=>undefined),{verifyCommitted:async(pool)=>{
+      const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT request_payload_hash,
+        response_status,timeout_flag,reconcile_before_retry FROM trade.execution_attempt
+        WHERE order_intent_id=$1 AND attempt_no=$2`,[attempt.orderIntentId,attempt.attemptNo]));
+      const row=receipt.value.rows[0] as Record<string,unknown>|undefined;
+      if(row===undefined)return false;
+      if(row.request_payload_hash!==attempt.requestPayloadHash||row.response_status!==attempt.responseStatus
+        ||row.timeout_flag!==attempt.timeoutFlag||row.reconcile_before_retry!==attempt.reconcileBeforeRetry)
+        throw new Error('EXECUTION_ATTEMPT_COMMIT_RECONCILIATION_CONFLICT');
+      return true;
+    }});
   }
 
   async updateAttempt(orderIntentId: string, attemptNo: number, result: Pick<ExecutionAttemptRecord, 'responseStatus' | 'timeoutFlag' | 'reconcileBeforeRetry'>): Promise<void> {
-    const update = await this.pool.query(
+    const update = await withRuntimePostgresTransaction(this.pool,(client)=>client.query(
       `UPDATE trade.execution_attempt
        SET response_at = now(), response_status = $3, timeout_flag = $4, reconcile_before_retry = $5
        WHERE order_intent_id = $1 AND attempt_no = $2`,
       [orderIntentId, attemptNo, result.responseStatus, result.timeoutFlag, result.reconcileBeforeRetry],
-    );
+    ),{verifyCommitted:async(pool)=>{
+      const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT response_status,timeout_flag,
+        reconcile_before_retry FROM trade.execution_attempt WHERE order_intent_id=$1 AND attempt_no=$2`,
+      [orderIntentId,attemptNo]));
+      const row=receipt.value.rows[0] as Record<string,unknown>|undefined;
+      if(row===undefined)return false;
+      if(row.response_status!==result.responseStatus||row.timeout_flag!==result.timeoutFlag
+        ||row.reconcile_before_retry!==result.reconcileBeforeRetry)
+        throw new Error('EXECUTION_ATTEMPT_UPDATE_COMMIT_RECONCILIATION_CONFLICT');
+      return true;
+    }});
     if (update.rowCount !== 1) throw new Error('Execution attempt not found.');
   }
 

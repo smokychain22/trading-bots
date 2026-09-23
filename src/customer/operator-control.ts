@@ -1,5 +1,6 @@
 import { createHash,randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
+import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 
 export type OperatorControlCommand='PAUSE_NEW_ENTRIES'|'RESUME_NEW_ENTRIES'|'EMERGENCY_EXECUTION_LOCK'|'CLEAR_EMERGENCY_LOCK';
 export interface OperatorControlState {readonly newEntriesPaused:boolean;readonly emergencyExecutionLock:boolean;
@@ -35,10 +36,9 @@ export class PostgresOperatorControlStore{
     if(!/^[A-Za-z0-9._:-]{12,128}$/.test(input.idempotencyKey))throw new Error('IDEMPOTENCY_KEY_INVALID');
     if(!Number.isInteger(input.observedStateVersion)||input.observedStateVersion<0)throw new Error('OBSERVED_STATE_VERSION_INVALID');
     if(input.command==='CLEAR_EMERGENCY_LOCK'&&(input.reason??'').trim().length<12)throw new Error('EMERGENCY_CLEAR_REASON_REQUIRED');
-    const client=await this.pool.connect();
-    try{await client.query('BEGIN');await client.query(`SELECT pg_advisory_xact_lock(hashtext('theta-operator-control'))`);
+    return withRuntimePostgresTransaction(this.pool,async(client)=>{await client.query(`SELECT pg_advisory_xact_lock(hashtext('theta-operator-control'))`);
     const replay=await client.query(`SELECT resulting_state_json FROM ops.theta_operator_control_event WHERE idempotency_key=$1`,[input.idempotencyKey]);
-    if(replay.rowCount===1){await client.query('COMMIT');return replay.rows[0]?.resulting_state_json as OperatorControlState;}
+    if(replay.rowCount===1)return replay.rows[0]?.resulting_state_json as OperatorControlState;
     const currentResult=await client.query(`SELECT resulting_state_json,requested_at,state_version FROM ops.theta_operator_control_event
       ORDER BY state_version DESC,created_at DESC LIMIT 1`);
     const raw=currentResult.rows[0]?.resulting_state_json as Partial<OperatorControlState>|undefined;
@@ -61,11 +61,21 @@ export class PostgresOperatorControlStore{
       input.observedStateVersion,resulting.stateVersion,input.reason,randomUUID()]);
     if(result.rowCount===0){
       const existing=await client.query(`SELECT resulting_state_json FROM ops.theta_operator_control_event WHERE idempotency_key=$1`,[input.idempotencyKey]);
-      await client.query('COMMIT');
       return existing.rows[0]?.resulting_state_json as OperatorControlState;
     }
-    await client.query('COMMIT');
     return result.rows[0]?.resulting_state_json as OperatorControlState;
-    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+    },{verifyCommitted:async(pool,outcome)=>{
+      const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT resulting_state_json,
+        state_version FROM ops.theta_operator_control_event WHERE idempotency_key=$1`,[input.idempotencyKey]));
+      const row=receipt.value.rows[0] as Record<string,unknown>|undefined;
+      if(row===undefined)return false;
+      const state=row.resulting_state_json as Partial<OperatorControlState>|null;
+      if(state===null||Number(row.state_version)!==outcome.stateVersion
+        ||state.newEntriesPaused!==outcome.newEntriesPaused
+        ||state.emergencyExecutionLock!==outcome.emergencyExecutionLock
+        ||state.brokerSubmissionBlocked!==outcome.brokerSubmissionBlocked)
+        throw new Error('OPERATOR_CONTROL_COMMIT_RECONCILIATION_CONFLICT');
+      return true;
+    }});
   }
 }

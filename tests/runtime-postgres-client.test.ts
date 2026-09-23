@@ -96,6 +96,20 @@ test('a rejected COMMIT discards the transaction client even when SQLSTATE is pe
   assert.deepEqual(client.releases, [true]);
 });
 
+test('commit reconciliation propagates a deterministic conflict and supports void outcomes', async () => {
+  const conflict = new FakeClient('COMMIT', { code: '08006' });
+  await assert.rejects(withRuntimePostgresTransaction(poolOf(conflict), async (checkedOut) => {
+    await checkedOut.query('INSERT evidence');
+  }, { verifyCommitted: async () => { throw new Error('DETERMINISTIC_RECONCILIATION_CONFLICT'); } }),
+  /DETERMINISTIC_RECONCILIATION_CONFLICT/);
+
+  const confirmed = new FakeClient('COMMIT', { code: '08006' });
+  await withRuntimePostgresTransaction(poolOf(confirmed), async (checkedOut) => {
+    await checkedOut.query('INSERT evidence');
+  }, { verifyCommitted: async () => true });
+  assert.deepEqual(confirmed.releases, [true]);
+});
+
 test('a 57P03 failure is not represented as WAIT or a fabricated AEGIS veto', () => {
   assert.deepEqual(safeRuntimeFailure({ code:'57P03',message:'private URL' }), {
     code:'POSTGRES_57P03',detail:'PostgreSQL connection or service became unavailable; the decision cycle failed closed.',

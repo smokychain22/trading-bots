@@ -24,7 +24,8 @@ test('stock orders omit option intent without converting NULL to a string', () =
 
 test('stock persistence records STOCK and decoding omits position_intent', async () => {
   let stored: readonly unknown[] = [];
-  const pool = { query: async (sql: string, values: readonly unknown[]) => {
+  const query=async (sql: string, values: readonly unknown[] = []) => {
+    if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK')return {rows:[],rowCount:0};
     if (sql.includes('INSERT INTO')) { stored = values; return { rows: [] }; }
     return { rows: [{
       order_intent_id: stored[0], execution_account_id: stored[1], decision_id: stored[2],
@@ -37,7 +38,8 @@ test('stock persistence records STOCK and decoding omits position_intent', async
       execution_tier:stored[24],canonical_quantity:stored[25],paper_evidence_quantity:stored[26],
       empirical_economics_ready:stored[27],expected_after_cost_ev:stored[28],
     }] };
-  } } as unknown as Pool;
+  };
+  const pool = { query,connect:async()=>({query,release:()=>undefined,on:()=>undefined,removeListener:()=>undefined}) } as unknown as Pool;
   const store = new PostgresPaperOrderStore(pool);
   const intent: PersistedPaperOrderIntent = {
     orderIntentId: 'intent', executionAccountId: 'account', decisionId: 'decision',

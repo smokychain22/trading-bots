@@ -31,12 +31,14 @@ export async function withRuntimePostgresTransaction<T>(pool: Pool, operation: (
   options: { readonly beginSql?: 'BEGIN' | 'BEGIN TRANSACTION READ ONLY' | 'BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY';
     readonly verifyCommitted?: (pool: Pool, outcome: T) => Promise<boolean> } = {}): Promise<T> {
   let outcome: T | undefined;
+  let operationCompleted = false;
   let commitStarted = false;
   try {
     return await withRuntimePostgresClient(pool, async (client, discard) => {
       await client.query(options.beginSql ?? 'BEGIN');
       try {
         outcome = await operation(client);
+        operationCompleted = true;
         commitStarted = true;
         await client.query('COMMIT');
         return outcome;
@@ -51,8 +53,12 @@ export async function withRuntimePostgresTransaction<T>(pool: Pool, operation: (
     });
   } catch (error) {
     if (commitStarted && classifyPostgresRuntimeError(error).retryableRead) {
-      if (options.verifyCommitted !== undefined && outcome !== undefined) {
-        try { if (await options.verifyCommitted(pool, outcome)) return outcome; } catch { /* Unknown stays unknown. */ }
+      if (options.verifyCommitted !== undefined && operationCompleted) {
+        try { if (await options.verifyCommitted(pool, outcome as T)) return outcome as T; }
+        catch (verificationError) {
+          if (!classifyPostgresRuntimeError(verificationError).retryableRead) throw verificationError;
+          // A transient verification failure cannot resolve the write outcome.
+        }
       }
       throw new PostgresCommitOutcomeUnknownError();
     }
@@ -69,7 +75,8 @@ export interface PostgresReadRetryReceipt<T> {
 
 /** Only call for read-only operations. Every attempt checks out a fresh client. */
 export async function withRuntimePostgresReadRetry<T>(pool: Pool, operation: (client: PoolClient) => Promise<T>,
-  options: { readonly maximumAttempts?: number; readonly delayMs?: (attempt: number) => number } = {}): Promise<PostgresReadRetryReceipt<T>> {
+  options: { readonly maximumAttempts?: number; readonly delayMs?: (attempt: number) => number;
+    readonly random?: () => number } = {}): Promise<PostgresReadRetryReceipt<T>> {
   const maximumAttempts = Math.max(1, Math.min(3, options.maximumAttempts ?? 3));
   let firstFailureAt: string | null = null;
   for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
@@ -79,7 +86,9 @@ export async function withRuntimePostgresReadRetry<T>(pool: Pool, operation: (cl
     } catch (error) {
       if (!classifyPostgresRuntimeError(error).retryableRead || attempt === maximumAttempts) throw error;
       firstFailureAt ??= new Date().toISOString();
-      const delay = Math.max(0, Math.min(3_500, options.delayMs?.(attempt) ?? 250 * attempt));
+      const jitter=Math.max(0,Math.min(1,(options.random??Math.random)()));
+      const defaultDelay=attempt===1?500+Math.floor(jitter*500):1_500+Math.floor(jitter*1_000);
+      const delay = Math.max(0, Math.min(3_500, options.delayMs?.(attempt) ?? defaultDelay));
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
