@@ -151,49 +151,51 @@ function Get-ThetaStringSha256 {
 }
 
 function Get-ThetaStructure {
-  param([Parameter(Mandatory)][object]$Connection)
+  param([Parameter(Mandatory)][object]$Connection, [scriptblock]$Query)
   $sql = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'ThetaStructure.sql')
-  $raw = Invoke-ThetaSql -Connection $Connection -Sql $sql
+  $raw = if ($Query) { & $Query $Connection $sql } else { Invoke-ThetaSql -Connection $Connection -Sql $sql }
   if (-not $raw -or ($raw | ConvertFrom-Json).formatVersion -ne 1) { throw 'DATABASE_STRUCTURE_INVALID' }
   return $raw
 }
 
 function Get-ThetaGlobalState {
-  param([Parameter(Mandatory)][object]$Connection)
+  param([Parameter(Mandatory)][object]$Connection, [scriptblock]$Query)
   $sql = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'ThetaGlobalState.sql')
-  $raw = Invoke-ThetaSql -Connection $Connection -Sql $sql
+  $raw = if ($Query) { & $Query $Connection $sql } else { Invoke-ThetaSql -Connection $Connection -Sql $sql }
   if (-not $raw -or ($raw | ConvertFrom-Json).formatVersion -ne 1) { throw 'DATABASE_GLOBAL_STATE_INVALID' }
   return $raw
 }
 
 function Get-ThetaTableCounts {
-  param([Parameter(Mandatory)][object]$Connection, [Parameter(Mandatory)][object]$Structure)
+  param([Parameter(Mandatory)][object]$Connection, [Parameter(Mandatory)][object]$Structure, [scriptblock]$Query)
   $counts = [ordered]@{}
   $relations = @($Structure.tables) + @($Structure.views | Where-Object kind -eq 'm')
   foreach ($table in $relations) {
     $parts = [string]$table.name -split '\.', 2
     if ($parts.Count -ne 2) { throw 'DATABASE_TABLE_NAME_INVALID' }
     $qualified = '"' + $parts[0].Replace('"','""') + '"."' + $parts[1].Replace('"','""') + '"'
-    $counts[[string]$table.name] = [long](Invoke-ThetaSql -Connection $Connection -Sql "SELECT count(*) FROM $qualified")
+    $value = if ($Query) { & $Query $Connection "SELECT count(*) FROM $qualified" } else { Invoke-ThetaSql -Connection $Connection -Sql "SELECT count(*) FROM $qualified" }
+    $counts[[string]$table.name] = [long]$value
   }
   return $counts
 }
 
 function Get-ThetaSequenceState {
-  param([Parameter(Mandatory)][object]$Connection)
+  param([Parameter(Mandatory)][object]$Connection, [scriptblock]$Query)
   $sql = @'
 SELECT coalesce(jsonb_agg(jsonb_build_object('name',schemaname||'.'||sequencename,
   'lastValue',last_value) ORDER BY schemaname,sequencename),'[]'::jsonb)::text
 FROM pg_sequences WHERE schemaname NOT LIKE 'pg_%' AND schemaname<>'information_schema'
 '@
-  return Invoke-ThetaSql -Connection $Connection -Sql $sql
+  return $(if ($Query) { & $Query $Connection $sql } else { Invoke-ThetaSql -Connection $Connection -Sql $sql })
 }
 
 function Get-ThetaCriticalDigest {
   param(
     [Parameter(Mandatory)][object]$Connection,
     [Parameter(Mandatory)][object]$Structure,
-    [ValidateSet('SORTED_ROW_MD5_V1','ORDER_INDEPENDENT_DUAL_SUM_V1')][string]$Method = 'ORDER_INDEPENDENT_DUAL_SUM_V1'
+    [ValidateSet('SORTED_ROW_MD5_V1','ORDER_INDEPENDENT_DUAL_SUM_V1')][string]$Method = 'ORDER_INDEPENDENT_DUAL_SUM_V1',
+    [scriptblock]$Query
   )
   $names = @(
     'core.schema_migration','iam.customer_identity','copy.alpaca_oauth_token',
@@ -216,7 +218,7 @@ function Get-ThetaCriticalDigest {
     } else {
       "SELECT md5(count(*)::text || ':' || coalesce(sum((('x'||substr(row_hash,1,16))::bit(64)::bigint)::numeric)::text,'0') || ':' || coalesce(sum((('x'||substr(row_hash,17,16))::bit(64)::bigint)::numeric)::text,'0')) FROM (SELECT md5(to_jsonb(t)::text) AS row_hash FROM $qualified t) hashes"
     }
-    $digests[$name] = Invoke-ThetaSql -Connection $Connection -Sql $digestSql
+    $digests[$name] = if ($Query) { & $Query $Connection $digestSql } else { Invoke-ThetaSql -Connection $Connection -Sql $digestSql }
     if ($digests[$name] -notmatch '^[0-9a-f]{32}$') { throw "CRITICAL_DIGEST_INVALID:$name" }
   }
   return $digests
