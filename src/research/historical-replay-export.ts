@@ -163,7 +163,11 @@ export async function buildHistoricalReplayExport(input: {
   const client = await input.pool.connect();
   try {
     await client.query('BEGIN TRANSACTION READ ONLY');
-    const databaseRows = (await Promise.all(sessions.map((date) => readSessionRows(client, date)))).flat();
+    const databaseRows: HistoricalReplayDatabaseRow[] = [];
+    // One transaction owns one pg client. Keep its queries sequential so the
+    // export is deterministic and remains compatible with pg's single-query
+    // client contract.
+    for (const date of sessions) databaseRows.push(...await readSessionRows(client, date));
     await client.query('COMMIT');
     const rows = databaseRows.map(historicalReplayRowFromDatabase);
     const imported = importHistoricalReplayBatch(`${sessions[0]}..${sessions.at(-1)}`, rows);
