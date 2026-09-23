@@ -580,7 +580,8 @@ export default async function customerHandler(
           : unknown('CURRENT_WORKER_RELEASE_NOT_PROVEN','runtime-worker-status-and-deployment-sha','EXTERNAL'),
       };
       const firstPaperReadiness=buildThetaFirstPaperReadiness({observedAt:new Date().toISOString(),
-        checks:firstPaperChecks,avoidableUnknownCount:null,implementationBlockerCount:null});
+        checks:firstPaperChecks,unknownAuditCoverage:'PARTIAL',avoidableUnknownCount:null,
+        implementationBlockerCount:null,unresolvedSafetyCriticalCount:null,unresolvedPaperEntryCount:null});
       const firstPaperOperationalBlockers=firstPaperReadiness.blockers.map((blocker)=>blocker.code);
       const r8Readiness=buildR8Readiness({r7EngineeringComplete:true,brokerTruthReady:localWorker.alpaca_health==='GOOD',
         sessionStateReady:localWorker.market_session!=='UNKNOWN',

@@ -13,6 +13,8 @@ export const firstPaperCheckNames = [
 export type FirstPaperCheckName = typeof firstPaperCheckNames[number];
 export type FirstPaperChecks = Readonly<Record<FirstPaperCheckName, FirstPaperCheck>>;
 export type FirstPaperStatus = 'READY' | 'BLOCKED_EXTERNAL' | 'BLOCKED_IMPLEMENTATION' | 'BLOCKED_PROVIDER' | 'BLOCKED_POLICY';
+export type FirstPaperBlockerField = FirstPaperCheckName | 'unknownAuditCoverage' | 'avoidableUnknownCount'
+  | 'implementationBlockerCount' | 'unresolvedSafetyCriticalCount' | 'unresolvedPaperEntryCount';
 
 export function assessReconciliationReadiness(input: {
   readonly workerCycleHealthy: boolean;
@@ -46,42 +48,69 @@ export interface ThetaFirstPaperReadiness {
   readonly observedAt: string;
   readonly status: FirstPaperStatus;
   readonly checks: FirstPaperChecks;
+  readonly unknownAuditCoverage: 'PARTIAL' | 'COMPLETE';
   /** Null means the corresponding audit has not covered the entire required path. */
   readonly avoidableUnknownCount: number | null;
   readonly implementationBlockerCount: number | null;
-  readonly blockers: readonly { field: FirstPaperCheckName; code: string; class: FirstPaperBlockerClass; evidenceState: 'FAIL' | 'UNKNOWN' }[];
+  readonly unresolvedSafetyCriticalCount: number | null;
+  readonly unresolvedPaperEntryCount: number | null;
+  readonly blockers: readonly { field: FirstPaperBlockerField; code: string; class: FirstPaperBlockerClass; evidenceState: 'FAIL' | 'UNKNOWN' }[];
 }
 
 export function buildThetaFirstPaperReadiness(input: {
   readonly observedAt: string;
   readonly checks: FirstPaperChecks;
+  readonly unknownAuditCoverage: 'PARTIAL' | 'COMPLETE';
   readonly avoidableUnknownCount: number | null;
   readonly implementationBlockerCount: number | null;
+  readonly unresolvedSafetyCriticalCount: number | null;
+  readonly unresolvedPaperEntryCount: number | null;
 }): ThetaFirstPaperReadiness {
   if (!Number.isFinite(Date.parse(input.observedAt))) throw new Error('INVALID_READINESS_OBSERVED_AT');
   for (const [name, count] of [
     ['avoidableUnknownCount', input.avoidableUnknownCount],
     ['implementationBlockerCount', input.implementationBlockerCount],
+    ['unresolvedSafetyCriticalCount', input.unresolvedSafetyCriticalCount],
+    ['unresolvedPaperEntryCount', input.unresolvedPaperEntryCount],
   ] as const) {
     if (count !== null && (!Number.isInteger(count) || count < 0)) throw new Error(`INVALID_${name}`);
   }
-  const blockers = firstPaperCheckNames.flatMap((field) => {
+  const checkBlockers = firstPaperCheckNames.flatMap((field) => {
     const check = input.checks[field];
     if (check.state === 'PASS') return [];
     if (!check.blocker.trim() || !check.source.trim()) throw new Error(`INCOMPLETE_READINESS_CHECK_${field}`);
     return [{ field, code: check.blocker, class: check.blockerClass, evidenceState: check.state }] as const;
   });
+  const auditBlockers: ThetaFirstPaperReadiness['blockers'][number][] = [];
+  if (input.unknownAuditCoverage !== 'COMPLETE') auditBlockers.push({
+    field: 'unknownAuditCoverage', code: 'UNKNOWN_AUDIT_PARTIAL', class: 'IMPLEMENTATION', evidenceState: 'UNKNOWN',
+  });
+  for (const [field, count, blockerClass] of [
+    ['avoidableUnknownCount', input.avoidableUnknownCount, 'IMPLEMENTATION'],
+    ['implementationBlockerCount', input.implementationBlockerCount, 'IMPLEMENTATION'],
+    ['unresolvedSafetyCriticalCount', input.unresolvedSafetyCriticalCount, 'POLICY'],
+    ['unresolvedPaperEntryCount', input.unresolvedPaperEntryCount, 'POLICY'],
+  ] as const) {
+    if (count === null || count > 0) auditBlockers.push({
+      field, code: count === null ? `${field.toUpperCase()}_NOT_AUDITED` : `${field.toUpperCase()}_OPEN`,
+      class: blockerClass, evidenceState: count === null ? 'UNKNOWN' : 'FAIL',
+    });
+  }
+  const blockers = [...checkBlockers, ...auditBlockers];
   const classes = new Set(blockers.map((blocker) => blocker.class));
-  const status: FirstPaperStatus = blockers.length === 0 && input.avoidableUnknownCount === 0 && input.implementationBlockerCount === 0
+  const status: FirstPaperStatus = blockers.length === 0
     ? 'READY'
     : classes.has('EXTERNAL') ? 'BLOCKED_EXTERNAL'
-      : classes.has('IMPLEMENTATION') || input.implementationBlockerCount !== 0 || input.avoidableUnknownCount !== 0
+      : classes.has('IMPLEMENTATION')
         ? 'BLOCKED_IMPLEMENTATION'
         : classes.has('PROVIDER') ? 'BLOCKED_PROVIDER' : 'BLOCKED_POLICY';
   return {
     version: 'theta-first-paper-blocker-budget-v1', authority: 'READ_ONLY_OPERATOR_DIAGNOSTIC',
-    observedAt: input.observedAt,
-    status, checks: input.checks, avoidableUnknownCount: input.avoidableUnknownCount,
-    implementationBlockerCount: input.implementationBlockerCount, blockers,
+    observedAt: input.observedAt, status, checks: input.checks,
+    unknownAuditCoverage: input.unknownAuditCoverage,
+    avoidableUnknownCount: input.avoidableUnknownCount,
+    implementationBlockerCount: input.implementationBlockerCount,
+    unresolvedSafetyCriticalCount: input.unresolvedSafetyCriticalCount,
+    unresolvedPaperEntryCount: input.unresolvedPaperEntryCount, blockers,
   };
 }

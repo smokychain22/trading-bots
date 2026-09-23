@@ -164,6 +164,13 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
     safeCurrentBehavior: 'Readiness remains false, including when the avoidable-only count happens to be zero.',
     closureTest: 'Complete decision-critical coverage and resolve or explicitly govern each open safety/Paper-entry field.',
     disposition: 'TRUE_HARD_BLOCKER' }),
+  capability({ capabilityId: 'FIRST_PAPER_READINESS', layerIds: [12, 20], sourceImplemented: 'YES', testsPassed: 'YES',
+    persisted: 'NO', runtimeReachable: 'YES', paperAuthorized: 'NOT_APPLICABLE',
+    sourceFiles: ['src/theta/first-paper-blocker-budget.ts', 'src/customer/api.ts'],
+    currentBlocker: 'Audit coverage is PARTIAL and the pinned worker has no current-source no-submit proof.',
+    safeCurrentBehavior: 'The operator readiness receipt names audit and safety blockers; it cannot emit READY from zero avoidable count alone.',
+    closureTest: 'Complete the UNKNOWN sweep, clear all independent release checks and observe the current locked release before any Paper unlock.',
+    disposition: 'TRUE_HARD_BLOCKER' }),
 ];
 
 export const canonicalBrainLayers = [
