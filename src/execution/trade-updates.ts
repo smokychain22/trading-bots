@@ -2,6 +2,11 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { OrderIntentState } from '../theta/order-intent-state.js';
 
+const strictNumericProviderField = z.union([
+  z.number().finite(),
+  z.string().regex(/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/),
+]);
+
 const updateSchema = z.object({
   stream: z.literal('trade_updates'),
   data: z.object({
@@ -10,14 +15,14 @@ const updateSchema = z.object({
     execution_id: z.string().min(1).optional(),
     timestamp: z.string().min(1).optional(),
     at: z.string().min(1).optional(),
-    qty: z.union([z.string(), z.number()]).optional(),
-    price: z.union([z.string(), z.number()]).optional(),
+    qty: strictNumericProviderField.optional(),
+    price: strictNumericProviderField.optional(),
     order: z.object({
       id: z.string().min(1),
       client_order_id: z.string().min(1),
       status: z.string().min(1),
-      filled_qty: z.union([z.string(), z.number()]).default('0'),
-      filled_avg_price: z.union([z.string(), z.number()]).nullable().optional(),
+      filled_qty: strictNumericProviderField,
+      filled_avg_price: strictNumericProviderField.nullable().optional(),
     }).passthrough(),
   }).passthrough(),
 }).passthrough();
@@ -54,6 +59,10 @@ export function parseTradeUpdate(raw: unknown): NormalizedTradeUpdate {
   const canonical = JSON.stringify(raw);
   const payloadHash = createHash('sha256').update(canonical).digest('hex');
   const eventId = data.event_id ?? data.execution_id ?? createHash('sha256').update(`${data.order.id}:${data.event}:${data.timestamp ?? data.at ?? ''}:${payloadHash}`).digest('hex');
+  const cumulativeFilledQuantity = numeric(data.order.filled_qty);
+  if (cumulativeFilledQuantity === null || cumulativeFilledQuantity < 0) {
+    throw new Error('Trade update contained an invalid cumulative filled quantity.');
+  }
   return {
     eventId,
     event: data.event,
@@ -63,7 +72,7 @@ export function parseTradeUpdate(raw: unknown): NormalizedTradeUpdate {
     eventTime: data.timestamp ?? data.at ?? null,
     fillQuantity: numeric(data.qty),
     fillPrice: numeric(data.price),
-    cumulativeFilledQuantity: numeric(data.order.filled_qty) ?? 0,
+    cumulativeFilledQuantity,
     orderState: statusMap[data.event] ?? statusMap[data.order.status] ?? null,
     payloadHash,
   };

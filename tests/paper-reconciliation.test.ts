@@ -73,6 +73,17 @@ test('provisional assignment upgrades in place when delayed OPASN arrives', () =
   assert.equal(registry.size, 1);
 });
 
+test('trade_updates never convert absent or malformed cumulative fill evidence to zero', () => {
+  const baseOrder = { id: 'broker-1', client_order_id: 'theta-1', status: 'accepted' };
+  assert.throws(() => parseTradeUpdate(update({ order: baseOrder })), /filled_qty/);
+  for (const filled_qty of ['', ' ', 'not-a-number', Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(() => parseTradeUpdate(update({ order: { ...baseOrder, filled_qty } })));
+  }
+  assert.throws(() => parseTradeUpdate(update({ order: { ...baseOrder, filled_qty: '-1' } })),
+    /invalid cumulative filled quantity/);
+  assert.equal(parseTradeUpdate(update({ order: { ...baseOrder, filled_qty: '0' } })).cumulativeFilledQuantity, 0);
+});
+
 test('unknown stock quantity cannot create a provisional assignment', () => {
   const input = { executionAccountId: 'account-1', chainId: 'chain-1', optionSymbol: 'AAPL261016P00150000', underlyingSymbol: 'AAPL', contracts: 1, multiplier: 100, occurrenceDate: '2026-10-16' };
   const previous = [{ symbol: input.optionSymbol, quantity: -1 }, { symbol: 'AAPL', quantity: 0 }];
