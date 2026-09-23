@@ -1,5 +1,10 @@
 # THETA strategy router truth matrix
 
+Historical research audit. Current source/release truth is in
+`src/theta/canonical-system-truth.ts` (`npm run theta:truth`). Treat the
+router and H/D claims below as hypotheses from the earlier source baseline
+until a current locked-worker cycle proves shadow candidate reachability.
+
 > **CORRECTION (Wave 6, 2026-09-22)**: this document's claim that no code
 > path constructs a multi-leg Defined-Risk spread or a distinct short-DTE
 > Hold-Strike lattice was incomplete. `canonical-strategy-frontier.ts`

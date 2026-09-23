@@ -1,5 +1,12 @@
 # THETA brain capability matrix
 
+Historical research audit. Current source/release truth is in
+`src/theta/canonical-system-truth.ts` (`npm run theta:truth`). Several claims
+below about missing H/D construction, management candidate sources and
+permanently null AEGIS stress inputs are superseded by current source. None
+of those source fixes proves that the pinned worker runs them. Do not use this
+matrix as a Paper-readiness gate.
+
 > **CORRECTION (Wave 6, 2026-09-22)**: any Hold-Strike/Defined-Risk row
 > below marked as having no candidate-construction code path is
 > incomplete/withdrawn -- `canonical-strategy-frontier.ts` contains real

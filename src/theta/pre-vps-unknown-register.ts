@@ -39,6 +39,8 @@ const avoidableCategories = new Set<UnknownCategory>([
 export function assessUnknownRegister(register: UnknownRegister): {
   readonly avoidableUnknownCount: number;
   readonly openUnknownCount: number;
+  readonly unresolvedSafetyCriticalCount: number;
+  readonly unresolvedPaperEntryCount: number;
   readonly auditCoverage: UnknownRegister['auditCoverage'];
   readonly preVpsReady: boolean;
 } {
@@ -56,10 +58,15 @@ export function assessUnknownRegister(register: UnknownRegister): {
   }
   const open = register.entries.filter((entry) => entry.currentStatus !== 'RESOLVED');
   const avoidableUnknownCount = open.filter((entry) => avoidableCategories.has(entry.category)).length;
+  const unresolvedSafetyCriticalCount = open.filter((entry) => entry.safetyCritical).length;
+  const unresolvedPaperEntryCount = open.filter((entry) => entry.paperEntryRequired).length;
   return {
     avoidableUnknownCount,
     openUnknownCount: open.length,
+    unresolvedSafetyCriticalCount,
+    unresolvedPaperEntryCount,
     auditCoverage: register.auditCoverage,
-    preVpsReady: register.auditCoverage === 'COMPLETE' && avoidableUnknownCount === 0,
+    preVpsReady: register.auditCoverage === 'COMPLETE' && avoidableUnknownCount === 0
+      && unresolvedSafetyCriticalCount === 0 && unresolvedPaperEntryCount === 0,
   };
 }

@@ -1,5 +1,11 @@
 # THETA implementation board
 
+Current machine-readable source/release inventory: run `npm run theta:truth` or import
+`src/theta/canonical-system-truth.ts`. This board records the history of fixes.
+An older row or research matrix cannot establish current-worker or Paper-order
+readiness. The truth register remains `PARTIAL` until its source, runtime and
+empirical proof fields have been independently closed.
+
 Started from canonical source `133227cf7c08aca174ed761d162159fea4cd3130` on 2026-09-22. The table includes this implementation wave's source changes, and is not a claim that the running worker has been upgraded. Evidence levels must be kept separate: source, fixture test, authenticated provider, persisted production observation, running worker, broker result, and empirical outcome.
 
 ## Non-negotiable operating state

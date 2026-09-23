@@ -1,5 +1,5 @@
 /**
- * THETA pre-VPS capability registry (directive Slice 2). Research-only,
+ * Historical THETA pre-VPS capability registry (directive Slice 2). Research-only,
  * `brokerAuthority: false`. A machine-readable inventory of THETA's major
  * capabilities, cross-referenced against real source files -- every
  * `sourceFiles` entry names a file this engagement has directly read and
@@ -8,7 +8,9 @@
  * producer -> consumer -> runtime path exist" answerable by inspection
  * rather than by trusting a function's name.
  *
- * Grounding discipline: an entry's `currentState` reflects only what has
+ * For current source/release claims use src/theta/canonical-system-truth.ts.
+ * Some entries below predate current H/D, AEGIS, and management-source fixes.
+ * Grounding discipline: an entry's `currentState` reflects only what had
  * been directly verified in this engagement (via source reads, real
  * Optionomics MCP calls, or the real 2026-09-21 live-session forensic).
  * Where a capability was not independently re-verified this pass, its
