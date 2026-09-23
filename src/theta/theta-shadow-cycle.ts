@@ -51,6 +51,7 @@ import {
   type FinalistQuoteRefreshPolicy,
   type FinalistQuoteRefreshReceipt,
 } from './finalist-quote-refresh.js';
+import { deriveOptionomicsEarningsEvidence, type OptionomicsEarningsEvidence } from './earnings-event-evidence.js';
 
 /** Never relabel a Conventional assessment as Hold-Strike risk evidence. */
 export function conventionalFrontierRiskLookups(
@@ -310,6 +311,7 @@ function assembleFusionSnapshotInput(params: {
   readonly aegisIvStressEvidence: AegisIvStressAssessment | null;
   readonly aegisSpreadStressEvidence: AegisSpreadStressAssessmentMap;
   readonly finalistQuoteRefresh: FinalistQuoteRefreshReceipt | null;
+  readonly earningsEvidence: OptionomicsEarningsEvidence;
 }): FusionSnapshotInput {
   const accountJson: JsonValue = params.account === null ? { fetched: false } : { ...params.account };
   const contractsJson: JsonValue = params.mergedContracts as unknown as JsonValue;
@@ -436,8 +438,10 @@ function assembleFusionSnapshotInput(params: {
             providerEventCount: params.macroEventCoverage.providerEventCount,
             negativeQualified: params.macroEventCoverage.negativeQualified,
           },
+          earningsDistance: params.earningsEvidence,
           earningsDistanceDays: null, exDividendState: null,
-          missingSemantics: ['UPCOMING_EARNINGS_DISTANCE_NOT_PROVEN_FROM_FILINGS', 'EX_DIVIDEND_STATE_UNAVAILABLE'] } as unknown as JsonValue)
+          missingSemantics: ['EARNINGS_CALENDAR_DAY_DISTANCE_NOT_PROVEN',
+            'EARNINGS_NEGATIVE_ASSURANCE_UNAVAILABLE', 'EX_DIVIDEND_STATE_UNAVAILABLE'] } as unknown as JsonValue)
       : null,
     regimeState: params.regimeFeatures,
     expertPriorState: null,
@@ -1235,6 +1239,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     ? 'REAL_PROVIDER'
     : eventContextObservations.length > 0 ? 'REAL_PROVIDER_UNKNOWN' : 'NOT_ATTEMPTED';
   const eventContextQuality: DataQualityState = eventContextPopulated ? 'GOOD' : 'UNKNOWN';
+  const earningsEvidence = deriveOptionomicsEarningsEvidence(optionomicsContextObservations);
 
   const { provenance, detail } = classifyShadowCycleProvenance({
     universeCandidates: config.universeCandidatesOrigin,
@@ -1292,6 +1297,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     aegisIvStressEvidence: config.aegisIvStressEvidence ?? null,
     aegisSpreadStressEvidence,
     finalistQuoteRefresh,
+    earningsEvidence,
   });
   const fusionSnapshot = buildFusionSnapshot(snapshotInput);
   const stockPosition = underlyingStockPosition !== null
