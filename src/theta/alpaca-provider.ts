@@ -258,13 +258,21 @@ export async function fetchMarketCalendar(config: AlpacaProviderConfig, start: s
   url.search = new URLSearchParams({ start, end }).toString();
   const body = await requestJson(fetchImpl, url, authHeaders(config));
   if (!Array.isArray(body)) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/calendar did not return an array.');
-  return body.map((raw: Record<string, unknown>) => ({
-    date: asStringOrNull(raw.date) ?? '',
-    open: asStringOrNull(raw.open),
-    close: asStringOrNull(raw.close),
-    sessionOpen: asStringOrNull(raw.session_open),
-    sessionClose: asStringOrNull(raw.session_close),
-  }));
+  return body.map((value) => {
+    const raw = providerRow(value, '/v2/calendar');
+    const date = nonEmptyString(raw.date);
+    if (date === null || !/^\d{4}-\d{2}-\d{2}$/.test(date)
+      || new Date(`${date}T00:00:00.000Z`).toISOString().slice(0, 10) !== date) {
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/calendar returned a row without a valid session date.');
+    }
+    return {
+      date,
+      open: nonEmptyString(raw.open),
+      close: nonEmptyString(raw.close),
+      sessionOpen: nonEmptyString(raw.session_open),
+      sessionClose: nonEmptyString(raw.session_close),
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -304,21 +312,27 @@ export async function fetchTradableAssets(
   url.search = new URLSearchParams({ status: 'active', asset_class: 'us_equity' }).toString();
   const body = await requestJson(fetchImpl, url, authHeaders(config));
   if (!Array.isArray(body)) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/assets did not return an array.');
-  const tradableOnly = body.filter((raw: Record<string, unknown>) => raw.tradable === true);
+  const rows = body.map((value) => providerRow(value, '/v2/assets'));
+  const tradableOnly = rows.filter((raw) => raw.tradable === true);
+  for (const raw of tradableOnly) {
+    if (nonEmptyString(raw.symbol) === null) {
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/assets returned a tradable row without identity.');
+    }
+  }
   const complete = tradableOnly.length <= maxAssets;
   const required = new Set(requiredSymbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean));
   const bounded = tradableOnly.slice(0, maxAssets);
-  const boundedSymbols = new Set(bounded.map((raw: Record<string, unknown>) => asStringOrNull(raw.symbol)?.toUpperCase()));
+  const boundedSymbols = new Set(bounded.map((raw) => nonEmptyString(raw.symbol)?.toUpperCase()));
   for (const raw of tradableOnly) {
-    const symbol = asStringOrNull(raw.symbol)?.toUpperCase();
+    const symbol = nonEmptyString(raw.symbol)?.toUpperCase();
     if (symbol !== undefined && required.has(symbol) && !boundedSymbols.has(symbol)) {
       bounded.push(raw);
       boundedSymbols.add(symbol);
     }
   }
   return {
-    assets: bounded.map((raw: Record<string, unknown>) => ({
-      symbol: asStringOrNull(raw.symbol) ?? '',
+    assets: bounded.map((raw) => ({
+      symbol: nonEmptyString(raw.symbol) as string,
       exchange: asStringOrNull(raw.exchange),
       assetClass: asStringOrNull(raw.class),
       tradable: raw.tradable === true,

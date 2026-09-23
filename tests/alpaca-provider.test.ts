@@ -511,6 +511,14 @@ test('fetchTradableAssets truncates deterministically and reports complete=false
   assert.equal(result.complete, false);
 });
 
+test('fetchMarketCalendar rejects malformed rows instead of creating an empty session identity', async () => {
+  for (const row of [null, {}, { date: '' }, { date: '2026-02-30' }]) {
+    const fetchImpl = (async () => jsonResponse(200, [row])) as typeof fetch;
+    await assert.rejects(() => fetchMarketCalendar(baseConfig(fetchImpl), '2026-09-10', '2026-09-10'),
+      (error: unknown) => error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+  }
+});
+
 test('fetchTradableAssets retains an explicitly required tradable symbol beyond the client bound', async () => {
   const fetchImpl = (async () => jsonResponse(200, [
     ...Array.from({ length: 5 }, (_, i) => ({ symbol: `SYM${i}`, exchange: 'NASDAQ', class: 'us_equity', tradable: true, status: 'active' })),
@@ -524,4 +532,12 @@ test('fetchTradableAssets retains an explicitly required tradable symbol beyond 
 test('fetchTradableAssets rejects a non-array body', async () => {
   const fetchImpl = (async () => jsonResponse(200, {})) as typeof fetch;
   await assert.rejects(() => fetchTradableAssets(baseConfig(fetchImpl), 10), AlpacaProviderError);
+});
+
+test('fetchTradableAssets rejects anonymous tradable rows instead of consuming a universe slot', async () => {
+  for (const row of [null, { tradable: true }, { symbol: '', tradable: true }, { symbol: '   ', tradable: true }]) {
+    const fetchImpl = (async () => jsonResponse(200, [row])) as typeof fetch;
+    await assert.rejects(() => fetchTradableAssets(baseConfig(fetchImpl), 10),
+      (error: unknown) => error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+  }
 });
