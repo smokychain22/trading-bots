@@ -43,6 +43,14 @@ import {
 import type { PaperEntryBootstrapAssessment } from './paper-entry-bootstrap.js';
 import type { RecoveryHistoryEvidence } from './recovery-history-loader.js';
 import { paperBootstrapStressApplicability, paperBootstrapStressColdStartPolicy } from '../research/aegis-stress-baseline-maturity.js';
+import {
+  buildFinalistQuoteRefreshReceipt,
+  finalistQuoteRefreshMaxAgeSeconds,
+  selectFinalistContractsForRefresh,
+  type FinalistQuoteRefreshObservation,
+  type FinalistQuoteRefreshPolicy,
+  type FinalistQuoteRefreshReceipt,
+} from './finalist-quote-refresh.js';
 
 /** Never relabel a Conventional assessment as Hold-Strike risk evidence. */
 export function conventionalFrontierRiskLookups(
@@ -152,6 +160,9 @@ export interface ThetaShadowCycleConfig {
     readonly effectiveAt: string;
     readonly maxAgeSeconds: number;
   };
+  /** Bounded exact-contract quote refresh performed after structural
+   * candidate construction and before FusionSnapshot/AEGIS. */
+  readonly finalistQuoteRefreshPolicy: FinalistQuoteRefreshPolicy;
   readonly optionQuoteFreshnessPolicy: NewRiskOrchestrationRequest['optionQuoteFreshnessPolicy'];
   readonly policyVersion: string;
   readonly modelVersions: Readonly<Record<string, string>>;
@@ -298,6 +309,7 @@ function assembleFusionSnapshotInput(params: {
   readonly modelVersions: Readonly<Record<string, string>>;
   readonly aegisIvStressEvidence: AegisIvStressAssessment | null;
   readonly aegisSpreadStressEvidence: AegisSpreadStressAssessmentMap;
+  readonly finalistQuoteRefresh: FinalistQuoteRefreshReceipt | null;
 }): FusionSnapshotInput {
   const accountJson: JsonValue = params.account === null ? { fetched: false } : { ...params.account };
   const contractsJson: JsonValue = params.mergedContracts as unknown as JsonValue;
@@ -412,7 +424,7 @@ function assembleFusionSnapshotInput(params: {
     accountState: accountJson,
     positionState: { positions: positionsJson, openOrders: openOrdersJson },
     portfolioExposure: params.derivedExposure as unknown as JsonValue, // real, pure arithmetic over account/positions/orders -- see account-exposure.ts
-    alpacaQuoteState: null,
+    alpacaQuoteState: params.finalistQuoteRefresh,
     optionomicsFeatureState: optionomicsAttempted ? optionomicsJson : null, // honestly absent when not configured, never fabricated
     eventState: eventContextObservations.length > 0 || params.macroEventCoverage !== null
       ? ({ provider: 'OPTIONOMICS', observations: eventContextObservations,
@@ -884,6 +896,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const candidates: RawCandidateInput[] = [];
   let mergedContractsForSnapshot: ReturnType<typeof mergeOptionChain> = [];
   let aegisSpreadStressEvidence: AegisSpreadStressAssessmentMap = {};
+  let finalistQuoteRefresh: FinalistQuoteRefreshReceipt | null = null;
   const underlyingStockPosition = positions.find((position) => position.symbol === underlying
     && position.assetClass === 'us_equity') ?? null;
   const hasPotentialCoveredStock = underlyingStockPosition !== null
@@ -985,11 +998,18 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   contractsEvidence = evidenceFor(contractEvidenceByType);
   quotesEvidence = evidenceFor(quoteEvidenceByType);
 
-  // This is the actual point-in-time feature cutoff. All observations above
-  // were requested no later than this instant. Keep startedAt separately for
-  // cycle duration and operational audit evidence.
-  decisionTime = config.now();
-  receivedAt = decisionTime;
+  // Build the preliminary structural lattice from the broad chain, then
+  // refresh only a bounded finalist set by exact contract before freezing
+  // the decision evidence. Candidate, finalist and pre-submit quote-age
+  // policies are independent and versioned. No threshold is relaxed here.
+  const candidateBuiltAt = config.now();
+  decisionTime = candidateBuiltAt;
+  receivedAt = candidateBuiltAt;
+  const candidateMaxQuoteAgeSeconds = candidateQuoteAgeSeconds(config, candidateBuiltAt);
+  const finalistMaxQuoteAgeSeconds = finalistQuoteRefreshMaxAgeSeconds(
+    config.finalistQuoteRefreshPolicy,
+    candidateBuiltAt,
+  );
 
   if (contractItems.length > 0 && snapshotsBySymbol.size > 0) {
 
@@ -1010,18 +1030,167 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       });
     }
 
-    const mergedContracts = mergeOptionChain({
+    const initialMergedContracts = mergeOptionChain({
+      underlying, asOfDate: candidateBuiltAt.slice(0, 10), contracts: contractItems,
+      snapshotsBySymbol, optionomicsBySymbol, requestedFeed: 'INDICATIVE',
+      defaultMultiplierForUnknownContracts: 100, receivedAt: candidateBuiltAt,
+      maxQuoteAgeSecondsForExecutable: candidateMaxQuoteAgeSeconds,
+      maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
+    });
+    traceShadowStage(underlying, 'CONTRACTS_MERGED', { count: initialMergedContracts.length,
+      snapshots: snapshotsBySymbol.size });
+
+    const finalistChosenAt = config.now();
+    const finalists = selectFinalistContractsForRefresh({
+      contracts: initialMergedContracts,
+      latticeConfig: config.latticeConfig,
+      policy: config.finalistQuoteRefreshPolicy,
+      asOf: finalistChosenAt,
+    });
+    const finalistSymbols = new Set(finalists.map((contract) => contract.optionSymbol));
+    const refreshObservations: FinalistQuoteRefreshObservation[] = [];
+    const refreshFailedSymbols = new Set<string>();
+    const listingBySymbol = new Map(contractItems.map((contract) => [contract.symbol, contract]));
+
+    for (const finalist of finalists) {
+      const listing = listingBySymbol.get(finalist.optionSymbol);
+      const refreshRequestedAt = config.now();
+      let refreshReceivedAt = refreshRequestedAt;
+      if (listing === undefined) {
+        refreshFailedSymbols.add(finalist.optionSymbol);
+        refreshObservations.push({
+          optionSymbol: finalist.optionSymbol,
+          initialProviderTimestamp: finalist.quoteTimestamp,
+          initialReceivedAt: finalist.receivedAt,
+          refreshRequestedAt,
+          refreshReceivedAt,
+          refreshedProviderTimestamp: null,
+          state: 'MISSING_EXACT_CONTRACT',
+          sanitizedErrorCode: 'CONTRACT_LISTING_MISSING',
+        });
+        continue;
+      }
+      try {
+        const exact = await fetchOptionSnapshots(config.alpaca, {
+          underlyingSymbol: underlying,
+          feed: 'indicative',
+          optionType: listing.optionType.toLowerCase() as 'put' | 'call',
+          expirationDateGte: listing.expirationDate,
+          expirationDateLte: listing.expirationDate,
+          strikePriceGte: listing.strikePrice,
+          strikePriceLte: listing.strikePrice,
+          limit: 1_000,
+          maxPages: Math.min(config.maxOptionPages, 10),
+        });
+        refreshReceivedAt = config.now();
+        const refreshed = exact.snapshots.get(finalist.optionSymbol);
+        if (!exact.complete) {
+          refreshFailedSymbols.add(finalist.optionSymbol);
+          refreshObservations.push({
+            optionSymbol: finalist.optionSymbol,
+            initialProviderTimestamp: finalist.quoteTimestamp,
+            initialReceivedAt: finalist.receivedAt,
+            refreshRequestedAt,
+            refreshReceivedAt,
+            refreshedProviderTimestamp: refreshed?.quoteTimestamp ?? null,
+            state: 'INCOMPLETE_PAGINATION',
+            sanitizedErrorCode: 'FINALIST_REFRESH_INCOMPLETE',
+          });
+        } else if (refreshed === undefined) {
+          refreshFailedSymbols.add(finalist.optionSymbol);
+          refreshObservations.push({
+            optionSymbol: finalist.optionSymbol,
+            initialProviderTimestamp: finalist.quoteTimestamp,
+            initialReceivedAt: finalist.receivedAt,
+            refreshRequestedAt,
+            refreshReceivedAt,
+            refreshedProviderTimestamp: null,
+            state: 'MISSING_EXACT_CONTRACT',
+            sanitizedErrorCode: 'FINALIST_EXACT_CONTRACT_MISSING',
+          });
+        } else {
+          snapshotsBySymbol.set(finalist.optionSymbol, refreshed);
+          refreshObservations.push({
+            optionSymbol: finalist.optionSymbol,
+            initialProviderTimestamp: finalist.quoteTimestamp,
+            initialReceivedAt: finalist.receivedAt,
+            refreshRequestedAt,
+            refreshReceivedAt,
+            refreshedProviderTimestamp: refreshed.quoteTimestamp,
+            state: 'REFRESHED',
+            sanitizedErrorCode: null,
+          });
+        }
+      } catch (error) {
+        refreshReceivedAt = config.now();
+        refreshFailedSymbols.add(finalist.optionSymbol);
+        refreshObservations.push({
+          optionSymbol: finalist.optionSymbol,
+          initialProviderTimestamp: finalist.quoteTimestamp,
+          initialReceivedAt: finalist.receivedAt,
+          refreshRequestedAt,
+          refreshReceivedAt,
+          refreshedProviderTimestamp: null,
+          state: 'PROVIDER_ERROR',
+          sanitizedErrorCode: error instanceof AlpacaProviderError
+            ? `ALPACA_${error.errorClass}` : 'ALPACA_UNEXPECTED_PROVIDER_ERROR',
+        });
+      }
+    }
+
+    // This is the actual PIT decision cutoff. Every exact finalist refresh
+    // above was observed no later than this instant.
+    decisionTime = config.now();
+    receivedAt = decisionTime;
+    const candidateAgeContracts = mergeOptionChain({
       underlying, asOfDate: decisionTime.slice(0, 10), contracts: contractItems,
       snapshotsBySymbol, optionomicsBySymbol, requestedFeed: 'INDICATIVE',
       defaultMultiplierForUnknownContracts: 100, receivedAt,
-      maxQuoteAgeSecondsForExecutable: candidateQuoteAgeSeconds(config, decisionTime),
+      maxQuoteAgeSecondsForExecutable: candidateMaxQuoteAgeSeconds,
       maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
     });
+    const finalistAgeContracts = mergeOptionChain({
+      underlying, asOfDate: decisionTime.slice(0, 10), contracts: contractItems,
+      snapshotsBySymbol, optionomicsBySymbol, requestedFeed: 'INDICATIVE',
+      defaultMultiplierForUnknownContracts: 100, receivedAt,
+      maxQuoteAgeSecondsForExecutable: finalistMaxQuoteAgeSeconds,
+      maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
+    });
+    const finalistAgeBySymbol = new Map(finalistAgeContracts.map((contract) => [contract.optionSymbol, contract]));
+    const mergedContracts = candidateAgeContracts.map((contract) => {
+      if (!finalistSymbols.has(contract.optionSymbol)) return contract;
+      const refreshed = finalistAgeBySymbol.get(contract.optionSymbol) ?? contract;
+      if (!refreshFailedSymbols.has(contract.optionSymbol)) return refreshed;
+      return {
+        ...refreshed,
+        executable: false,
+        nonExecutableReason: refreshed.nonExecutableReason === null
+          ? 'finalist refresh failed'
+          : `${refreshed.nonExecutableReason}; finalist refresh failed`,
+      };
+    });
     mergedContractsForSnapshot = mergedContracts;
-    traceShadowStage(underlying, 'CONTRACTS_MERGED', { count: mergedContracts.length,
-      snapshots: snapshotsBySymbol.size });
+    finalistQuoteRefresh = buildFinalistQuoteRefreshReceipt({
+      policy: config.finalistQuoteRefreshPolicy,
+      candidateBuiltAt,
+      finalistChosenAt,
+      decisionAsOf: decisionTime,
+      initialCandidateCount: initialMergedContracts.filter((contract) => contract.bid !== null).length,
+      observations: refreshObservations,
+    });
+    for (const observation of refreshObservations) {
+      if (observation.state !== 'REFRESHED') {
+        blockers.push(`FINALIST_QUOTE_REFRESH_${observation.state}:${observation.optionSymbol}:${observation.sanitizedErrorCode ?? 'UNKNOWN'}`);
+      }
+    }
+    traceShadowStage(underlying, 'FINALIST_QUOTES_REFRESHED', {
+      selected: finalistQuoteRefresh.selectedCount,
+      refreshed: finalistQuoteRefresh.refreshedCount,
+      failed: finalistQuoteRefresh.failedCount,
+    });
 
     for (const contract of mergedContracts) {
+      if (!finalistSymbols.has(contract.optionSymbol)) continue;
       if (contract.bid === null) {
         blockers.push(`CANDIDATE_BID_UNKNOWN:${contract.optionSymbol}`);
         continue;
@@ -1115,9 +1284,14 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       recoveryHistory:config.recoveryHistory??null } as unknown as JsonValue,
     regimeFeatures: { maSlope, rv20, maxAdverseGap, drawdown } as unknown as JsonValue,
     policyVersion: config.policyVersion,
-    modelVersions: { ...config.modelVersions, candidateQuoteAgePolicy: config.candidateQuoteAgePolicy.policyVersion },
+    modelVersions: {
+      ...config.modelVersions,
+      candidateQuoteAgePolicy: config.candidateQuoteAgePolicy.policyVersion,
+      finalistQuoteRefreshPolicy: config.finalistQuoteRefreshPolicy.policyVersion,
+    },
     aegisIvStressEvidence: config.aegisIvStressEvidence ?? null,
     aegisSpreadStressEvidence,
+    finalistQuoteRefresh,
   });
   const fusionSnapshot = buildFusionSnapshot(snapshotInput);
   const stockPosition = underlyingStockPosition !== null

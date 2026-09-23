@@ -168,6 +168,7 @@ const baseConfig = (overrides: Partial<ThetaShadowCycleConfig> = {}): ThetaShado
     tailRiskQtyCap: 6, correlationQtyCap: 6, liquidityQtyCap: 6, reducedStateMultiplier: 0.5 },
   executionQualityPolicy: { policyVersion: 'execq-v1', maxAcceptableSpreadPct: 1.0, minQuoteSizeForFullConfidence: 1, maxQuoteAgeSeconds: 999_999, minAfterCostUtilityToCross: -999_999 },
   candidateQuoteAgePolicy: { policyVersion: 'candidate-age-v1-test', effectiveAt: NOW, maxAgeSeconds: 30 },
+  finalistQuoteRefreshPolicy: { policyVersion: 'finalist-refresh-v1-test', effectiveAt: NOW, maxFinalists: 5, maxAgeSeconds: 30 },
   optionQuoteFreshnessPolicy: { policyVersion: 'freshness-v1', goodMaxAgeSeconds: 999_999, staleMinAgeSeconds: 999_999_999 },
   policyVersion: 'shadow-cycle-test-v1', modelVersions: {}, requiredModelVersions: {},
   now: () => NOW,
@@ -182,10 +183,18 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   assert.ok(requestedUrls.some((url) => url.includes('/v1beta1/options/snapshots/SPY')
     && url.includes('expiration_date_gte=2026-10-01')
     && url.includes('expiration_date_lte=2026-11-01')));
+  assert.ok(requestedUrls.some((url) => url.includes('/v1beta1/options/snapshots/SPY')
+    && url.includes('expiration_date_gte=2026-10-09')
+    && url.includes('expiration_date_lte=2026-10-09')
+    && url.includes('strike_price_gte=500')
+    && url.includes('strike_price_lte=500')));
   assert.equal(result.selectedUnderlying, 'SPY');
   assert.equal(result.optionChainComplete, true);
   assert.equal(result.optionContractsComplete, true);
   assert.ok(result.orchestration !== null);
+  const refresh = result.fusionSnapshot?.snapshot.alpacaQuoteState as Record<string, unknown>;
+  assert.equal(refresh.contractVersion, 'theta-finalist-quote-refresh-v1');
+  assert.equal(refresh.refreshedCount, 1);
   assert.deepEqual(result.fusionSnapshot?.snapshot.underlyingState.eventEvidence,
     { unsupportedCorporateActionPending: false, eventNear: false });
   assert.deepEqual(result.fusionSnapshot?.snapshot.riskState, { ivStress: IV_STRESS_EVIDENCE,
@@ -236,7 +245,7 @@ itMockedProviderRealCodePath('per-contract spread stress evidence reaches AEGIS 
     ['candidate-1:quote-1', 'candidate-2:quote-2']);
 });
 
-itMockedProviderRealCodePath('candidate quote-age policy reaches contract executability without changing later gates', async () => {
+itMockedProviderRealCodePath('candidate and finalist quote-age policies remain independent stages', async () => {
   const normalFetch = mockAlpacaFetch({ hasContracts: true, hasBars: true });
   const staleAt = new Date(Date.parse(NOW) - 40_000).toISOString();
   const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -252,15 +261,23 @@ itMockedProviderRealCodePath('candidate quote-age policy reaches contract execut
   const strict = await runThetaShadowCycle(baseConfig({ alpaca, candidateQuoteAgePolicy: policy }));
   const relaxed = await runThetaShadowCycle(baseConfig({ alpaca,
     candidateQuoteAgePolicy: { ...policy, policyVersion: 'candidate-age-test-v2', maxAgeSeconds: 60 } }));
+  const relaxedBoth = await runThetaShadowCycle(baseConfig({ alpaca,
+    candidateQuoteAgePolicy: { ...policy, policyVersion: 'candidate-age-test-v2', maxAgeSeconds: 60 },
+    finalistQuoteRefreshPolicy: { policyVersion: 'finalist-age-test-v2', effectiveAt: NOW, maxFinalists: 5, maxAgeSeconds: 60 } }));
   const contractFor = (result: Awaited<ReturnType<typeof runThetaShadowCycle>>) =>
     result.fusionSnapshot?.snapshot.contractCandidates.find((candidate) => candidate.optionSymbol === 'SPY261009P00500000');
   assert.equal(contractFor(strict)?.executable, false);
   assert.match(String(contractFor(strict)?.nonExecutableReason), /quote stale/);
-  assert.equal(contractFor(relaxed)?.executable, true);
+  assert.equal(contractFor(relaxed)?.executable, false);
+  assert.match(String(contractFor(relaxed)?.nonExecutableReason), /quote stale/);
+  assert.equal(contractFor(relaxedBoth)?.executable, true);
   const strictVersions = strict.fusionSnapshot?.snapshot.versions as { modelVersions: Record<string, string> };
   const relaxedVersions = relaxed.fusionSnapshot?.snapshot.versions as { modelVersions: Record<string, string> };
   assert.equal(strictVersions.modelVersions.candidateQuoteAgePolicy, 'candidate-age-test-v1');
   assert.equal(relaxedVersions.modelVersions.candidateQuoteAgePolicy, 'candidate-age-test-v2');
+  assert.equal(relaxedVersions.modelVersions.finalistQuoteRefreshPolicy, 'finalist-refresh-v1-test');
+  const relaxedBothVersions = relaxedBoth.fusionSnapshot?.snapshot.versions as { modelVersions: Record<string, string> };
+  assert.equal(relaxedBothVersions.modelVersions.finalistQuoteRefreshPolicy, 'finalist-age-test-v2');
 });
 
 itMockedProviderRealCodePath('shadow research window supplies short-DTE contracts without widening Conventional Paper selection', async () => {

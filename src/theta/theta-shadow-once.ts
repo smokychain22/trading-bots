@@ -116,6 +116,7 @@ export function defaultShadowCycleConfig(
       assignmentCapacityQtyCap: 6, tailRiskQtyCap: 3, correlationQtyCap: 3, liquidityQtyCap: 3, reducedStateMultiplier: 0.5 },
     executionQualityPolicy: { policyVersion: 'execq-v1-shadow-once', maxAcceptableSpreadPct: 0.15, minQuoteSizeForFullConfidence: 20, maxQuoteAgeSeconds: 30, minAfterCostUtilityToCross: 0 },
     candidateQuoteAgePolicy: { policyVersion: 'candidate-quote-age-v1-paper-bootstrap', effectiveAt: now, maxAgeSeconds: 30 },
+    finalistQuoteRefreshPolicy: { policyVersion: 'finalist-quote-refresh-v1-paper-bootstrap', effectiveAt: now, maxFinalists: 5, maxAgeSeconds: 30 },
     optionQuoteFreshnessPolicy: { policyVersion: 'freshness-v1-shadow-once', goodMaxAgeSeconds: 10, staleMinAgeSeconds: 60 },
     policyVersion: 'theta-shadow-once-v1', modelVersions: {}, requiredModelVersions: {},
     now: () => new Date().toISOString(),
