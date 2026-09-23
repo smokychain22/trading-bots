@@ -4,10 +4,10 @@
  * when they contain superseded statements.
  */
 export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v1' as const;
-export const truthSourceBaselineSha = '8319726a730a6457f5ed9be7b2989edbdbd6acef';
+export const truthSourceBaselineSha = 'a5f57fc4adf88436d2fc568511705c191da56663';
 // A worker SHA is operational state. Read it from the current worker lease,
 // never from this source-controlled architectural inventory.
-export const truthLastVerifiedAt = '2026-09-23';
+export const truthLastVerifiedAt = '2026-09-24';
 
 export type TruthProof = 'YES' | 'NO' | 'UNVERIFIED' | 'NOT_APPLICABLE';
 export type TruthDisposition =
@@ -74,10 +74,11 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
   capability({ capabilityId: 'UNIVERSE_AND_UNDERLYING', layerIds: [1, 2, 3], sourceImplemented: 'YES', testsPassed: 'YES',
     providerAuthenticated: 'YES', realDataObserved: 'YES', persisted: 'YES', runtimeReachable: 'YES',
     paperAuthorized: 'PAPER_ONLY_LOCKED', sourceFiles: ['src/theta/universe-discovery.ts', 'src/theta/universe-policy.ts', 'src/research/production-shadow-runtime.ts'],
-    currentBlocker: 'Current finalist/evidence funnel and multi-objective ranking are not empirically validated.',
-    safeCurrentBehavior: 'Keep bootstrap eligibility, explicit rejection reasons and zero quantity when evidence is incomplete.',
-    closureTest: 'Natural locked scan records all universe stages and exact exclusion reasons on current source.',
-    disposition: 'BUILT_AWAITING_RUNTIME_PROOF' }),
+    currentBlocker: 'The owner-approved SPY cohort is now retained across client bounds, but the running worker predates this source change.',
+    safeCurrentBehavior: 'Only provider-confirmed, manifest-approved symbols receive bounded Paper authority. Other scanned symbols remain research-only.',
+    closureTest: 'A locked current-release open-session scan includes SPY, persists its universe stages and records exact exclusion reasons.',
+    disposition: 'BUILT_AWAITING_RUNTIME_PROOF',
+    supersededClaims: ['Approved SPY could rely on incidental top-two liquidity rank to reach the Paper-authority cohort'] }),
   capability({ capabilityId: 'STRATEGY_ROUTER_Q', layerIds: [2, 3, 11], sourceImplemented: 'YES', testsPassed: 'YES',
     realDataObserved: 'YES', persisted: 'YES', runtimeReachable: 'YES', paperAuthorized: 'PAPER_ONLY_LOCKED',
     sourceFiles: ['src/theta/canonical-strategy-frontier.ts', 'bots/theta/quant/models/strategy_router.py'],
@@ -111,10 +112,11 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
   capability({ capabilityId: 'COMPANY_EVENT_AND_CORPORATE_ACTION', layerIds: [7, 9], sourceImplemented: 'YES', testsPassed: 'YES',
     providerAuthenticated: 'YES', realDataObserved: 'YES', persisted: 'YES', runtimeReachable: 'YES',
     paperAuthorized: 'PAPER_ONLY_LOCKED', sourceFiles: ['src/theta/earnings-event-evidence.ts', 'src/theta/alpaca-corporate-action-evidence.ts'],
-    currentBlocker: 'Typed company and corporate-action policies are wired, but the approved first-Paper instrument manifest has no entries.',
-    safeCurrentBehavior: 'Positive PIT evidence is honored, absent rows stay unqualified, and the bounded fallback cannot clear an unapproved instrument.',
-    closureTest: 'Approve an authoritative instrument classification entry, then observe a locked runtime policy receipt.',
-    disposition: 'BUILT_AWAITING_RUNTIME_PROOF' }),
+    currentBlocker: 'SPY is approved as the sole bounded bootstrap instrument. Current-release locked runtime policy evidence remains forward-session dependent.',
+    safeCurrentBehavior: 'Positive PIT evidence is honored, absent rows stay unqualified, and the bounded fallback cannot clear any instrument other than approved SPY.',
+    closureTest: 'Observe SPY company-event and corporate-action policy receipts in a locked current-release open-session cycle.',
+    disposition: 'BUILT_AWAITING_RUNTIME_PROOF',
+    supersededClaims: ['The approved first-Paper instrument manifest has no entries'] }),
   capability({ capabilityId: 'SIZING_AND_ACTION', layerIds: [10, 12], sourceImplemented: 'YES', testsPassed: 'YES',
     realDataObserved: 'YES', persisted: 'YES', runtimeReachable: 'YES', paperAuthorized: 'PAPER_ONLY_LOCKED',
     sourceFiles: ['bots/theta/quant/models/sizing.py', 'src/theta/canonical-decision-authority.ts'],
@@ -161,14 +163,15 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
   capability({ capabilityId: 'UNKNOWN_READINESS_GOVERNANCE', layerIds: [0, 20], sourceImplemented: 'YES', testsPassed: 'YES',
     persisted: 'YES', runtimeReachable: 'NO', paperAuthorized: 'NOT_APPLICABLE',
     sourceFiles: ['src/theta/pre-vps-unknown-register.ts', 'docs/operations/THETA_UNKNOWN_REGISTER_PRE_VPS.json'],
-    currentBlocker: 'The denominator is complete. One explicit owner/provider policy decision remains for approved instrument classification.',
-    safeCurrentBehavior: 'Provider limitations are governed without false values, and the unapproved manifest blocks new risk.',
-    closureTest: 'Resolve the open classification approval and observe the typed policy on the locked worker.',
-    disposition: 'BUILT_AWAITING_RUNTIME_PROOF' }),
+    currentBlocker: 'The denominator is complete with zero avoidable UNKNOWNs. SPY policy and stress evidence still need current-release locked runtime observation.',
+    safeCurrentBehavior: 'Provider limitations remain explicit, SPY is the only approved bootstrap instrument, and missing runtime evidence blocks new risk.',
+    closureTest: 'Observe the typed SPY safety and AEGIS receipts on the locked current release.',
+    disposition: 'BUILT_AWAITING_RUNTIME_PROOF',
+    supersededClaims: ['An explicit owner decision remains for approved instrument classification'] }),
   capability({ capabilityId: 'FIRST_PAPER_READINESS', layerIds: [12, 20], sourceImplemented: 'YES', testsPassed: 'YES',
     persisted: 'NO', runtimeReachable: 'YES', paperAuthorized: 'NOT_APPLICABLE',
     sourceFiles: ['src/theta/first-paper-blocker-budget.ts', 'src/execution/master-paper-plan-assembly.ts', 'src/customer/api.ts'],
-    currentBlocker: 'Audit coverage is complete. Instrument approval and a complete current-release natural no-submit proof remain required.',
+    currentBlocker: 'Audit coverage and SPY approval are complete. A current-release natural open-session no-submit proof remains required.',
     safeCurrentBehavior: 'The operator readiness receipt names audit and safety blockers; it cannot emit READY from zero avoidable count alone.',
     closureTest: 'Complete the UNKNOWN sweep, clear all independent release checks and observe the current locked release before any Paper unlock.',
     disposition: 'TRUE_HARD_BLOCKER' }),
