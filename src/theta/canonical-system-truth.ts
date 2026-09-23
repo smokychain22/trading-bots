@@ -4,7 +4,7 @@
  * when they contain superseded statements.
  */
 export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v1' as const;
-export const truthSourceBaselineSha = '8077cb1a3a8dcd40303ceb541c4cc9206517550d';
+export const truthSourceBaselineSha = '518006f4c74f18bf0ec6f8cc3410ce0e557ad78d';
 export const truthObservedWorkerSha = '853beb4fde989c2f6deb83ad9cb13a9a3e87e76a';
 export const truthLastVerifiedAt = '2026-09-23';
 
