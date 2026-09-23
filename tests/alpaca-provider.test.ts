@@ -353,6 +353,22 @@ test('fetchOptionSnapshots preserves a missing Greeks object as null, never fabr
   assert.equal(result.snapshots.get('X')?.greeks, null);
 });
 
+test('fetchOptionSnapshots rejects malformed optional nested objects instead of fabricating an empty snapshot', async () => {
+  const params = { underlyingSymbol: 'SPY', feed: 'indicative' as const,
+    optionType: 'put' as const, limit: 10, maxPages: 2 };
+  for (const snapshot of [
+    { latestQuote: 'malformed' },
+    { latestQuote: null, greeks: [] },
+    { latestQuote: null, dailyBar: 7 },
+  ]) {
+    const fetchImpl = (async () => jsonResponse(200, {
+      snapshots: { SPY261009P00500000: snapshot }, next_page_token: null,
+    })) as typeof fetch;
+    await assert.rejects(() => fetchOptionSnapshots(baseConfig(fetchImpl), params),
+      (error: unknown) => error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+  }
+});
+
 test('fetchOptionSnapshots forwards bounded management lattice filters and rejects malformed dates locally',async()=>{
   let query:URLSearchParams|null=null;
   const fetchImpl=(async(input:RequestInfo|URL)=>{

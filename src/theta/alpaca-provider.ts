@@ -113,6 +113,10 @@ const providerRow = (value: unknown, operation: string): Record<string, unknown>
   }
   return value as Record<string, unknown>;
 };
+const optionalProviderRow = (value: unknown, operation: string): Record<string, unknown> | null => {
+  if (value === null || value === undefined) return null;
+  return providerRow(value, operation);
+};
 
 export async function fetchMasterAccountSnapshot(config: AlpacaProviderConfig, receivedAt: string): Promise<MasterAccountSnapshot> {
   const fetchImpl = config.fetchImpl ?? fetch;
@@ -523,16 +527,16 @@ export async function fetchOptionSnapshots(config: AlpacaProviderConfig, params:
 }
 
 function parseOneSnapshot(raw: Record<string, unknown>): AlpacaOptionSnapshot {
-  const quote = raw.latestQuote as Record<string, unknown> | undefined;
-  const greeksRaw = raw.greeks as Record<string, unknown> | undefined;
-  const dailyBar = raw.dailyBar as Record<string, unknown> | undefined;
+  const quote = optionalProviderRow(raw.latestQuote, '/v1beta1/options/snapshots.latestQuote');
+  const greeksRaw = optionalProviderRow(raw.greeks, '/v1beta1/options/snapshots.greeks');
+  const dailyBar = optionalProviderRow(raw.dailyBar, '/v1beta1/options/snapshots.dailyBar');
   return {
     bid: asNumberOrNull(quote?.bp),
     ask: asNumberOrNull(quote?.ap),
     bidSize: asNumberOrNull(quote?.bs),
     askSize: asNumberOrNull(quote?.as),
     quoteTimestamp: asStringOrNull(quote?.t),
-    greeks: greeksRaw !== undefined
+    greeks: greeksRaw !== null
       ? { delta: asNumberOrNull(greeksRaw.delta), gamma: asNumberOrNull(greeksRaw.gamma), theta: asNumberOrNull(greeksRaw.theta), vega: asNumberOrNull(greeksRaw.vega), rho: asNumberOrNull(greeksRaw.rho) }
       : null,
     impliedVolatility: asNumberOrNull(raw.impliedVolatility),
