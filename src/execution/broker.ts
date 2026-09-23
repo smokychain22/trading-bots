@@ -252,22 +252,32 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
     }
   }
 
+  private parseProviderPayload<T>(operation: string, parser: () => T, mutation = false): T {
+    try {
+      return parser();
+    } catch (error) {
+      if (error instanceof AlpacaPaperBrokerError) throw error;
+      throw new AlpacaPaperBrokerError(mutation ? 'AMBIGUOUS_NETWORK' : 'MALFORMED_RESPONSE', 200,
+        `Alpaca PAPER ${operation} returned a malformed success payload.`);
+    }
+  }
+
   getAccount(): Promise<unknown> { return this.request('/v2/account'); }
   async getPositions(): Promise<readonly unknown[]> {
     const body = await this.request('/v2/positions');
-    return z.array(z.unknown()).parse(body);
+    return this.parseProviderPayload('/v2/positions', () => z.array(z.unknown()).parse(body));
   }
   async getOrders(status: 'open' | 'closed' | 'all' = 'open'): Promise<readonly BrokerOrderSnapshot[]> {
     const body = await this.request(`/v2/orders?status=${status}&nested=true&limit=500`);
-    return z.array(z.unknown()).parse(body).map(parseBrokerOrder);
+    return this.parseProviderPayload('/v2/orders', () => z.array(z.unknown()).parse(body).map(parseBrokerOrder));
   }
   async getOrderByClientOrderId(clientOrderId: string): Promise<BrokerOrderSnapshot | null> {
     const body = await this.request(`/v2/orders:by_client_order_id?client_order_id=${encodeURIComponent(clientOrderId)}`, {}, true);
-    return body === null ? null : parseBrokerOrder(body);
+    return body === null ? null : this.parseProviderPayload('/v2/orders:by_client_order_id', () => parseBrokerOrder(body));
   }
   async getOrder(providerOrderId: string): Promise<BrokerOrderSnapshot | null> {
     const body = await this.request(`/v2/orders/${encodeURIComponent(providerOrderId)}`, {}, true);
-    return body === null ? null : parseBrokerOrder(body);
+    return body === null ? null : this.parseProviderPayload('/v2/orders/{id}', () => parseBrokerOrder(body));
   }
   async getActivities(activityTypes?: readonly string[]): Promise<readonly BrokerActivity[]> {
     const activities: BrokerActivity[] = [];
@@ -276,8 +286,9 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
       const query = new URLSearchParams({ direction: 'asc', page_size: '100' });
       if (activityTypes !== undefined && activityTypes.length > 0) query.set('activity_types', activityTypes.join(','));
       if (pageToken !== null) query.set('page_token', pageToken);
-      const body = z.array(z.unknown()).parse(await this.request(`/v2/account/activities?${query.toString()}`));
-      const parsed = body.map(parseBrokerActivity);
+      const payload = await this.request(`/v2/account/activities?${query.toString()}`);
+      const parsed = this.parseProviderPayload('/v2/account/activities', () =>
+        z.array(z.unknown()).parse(payload).map(parseBrokerActivity));
       activities.push(...parsed);
       if (parsed.length < 100) return activities;
       pageToken = parsed.at(-1)?.id ?? null;
@@ -286,10 +297,11 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
     throw new AlpacaPaperBrokerError('MALFORMED_RESPONSE', null, 'Alpaca activity pagination exceeded the bounded reconciliation window.');
   }
   async getClock(): Promise<BrokerMarketClock> {
-    const body = z.object({
+    const payload = await this.request('/v2/clock');
+    const body = this.parseProviderPayload('/v2/clock', () => z.object({
       timestamp: providerInstantSchema.nullable().optional(), is_open: z.boolean().nullable().optional(),
       next_open: providerInstantSchema.nullable().optional(), next_close: providerInstantSchema.nullable().optional(),
-    }).passthrough().parse(await this.request('/v2/clock'));
+    }).passthrough().parse(payload));
     return {
       timestamp: body.timestamp ?? null, isOpen: body.is_open ?? null,
       nextOpen: body.next_open ?? null, nextClose: body.next_close ?? null,
@@ -297,18 +309,21 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
   }
   async getCalendar(start: string, end: string): Promise<readonly BrokerCalendarSession[]> {
     const query = new URLSearchParams({ start, end });
-    const body = z.array(z.object({
+    const payload = await this.request(`/v2/calendar?${query.toString()}`);
+    const body = this.parseProviderPayload('/v2/calendar', () => z.array(z.object({
       date: providerDateSchema, open: marketTimeSchema.nullable().optional(), close: marketTimeSchema.nullable().optional(),
-    }).passthrough()).parse(await this.request(`/v2/calendar?${query.toString()}`));
+    }).passthrough()).parse(payload));
     return body.map((session) => ({ date: session.date, open: session.open ?? null, close: session.close ?? null }));
   }
   async submitOrder(order: BrokerOrderRequest, authorization: BrokerMutationAuthorization): Promise<BrokerOrderSnapshot> {
     assertBrokerMutationAuthorized(authorization, order.client_order_id, order.qty, 'SUBMIT');
-    return parseBrokerOrder(await this.request('/v2/orders', { method: 'POST', body: JSON.stringify(order) }));
+    const payload = await this.request('/v2/orders', { method: 'POST', body: JSON.stringify(order) });
+    return this.parseProviderPayload('/v2/orders', () => parseBrokerOrder(payload), true);
   }
   async replaceOrder(providerOrderId: string, replacement: Pick<BrokerOrderRequest, 'qty' | 'limit_price' | 'time_in_force' | 'client_order_id'>, authorization: BrokerMutationAuthorization): Promise<BrokerOrderSnapshot> {
     assertBrokerMutationAuthorized(authorization, replacement.client_order_id, replacement.qty, 'REPLACE');
-    return parseBrokerOrder(await this.request(`/v2/orders/${encodeURIComponent(providerOrderId)}`, { method: 'PATCH', body: JSON.stringify(replacement) }));
+    const payload = await this.request(`/v2/orders/${encodeURIComponent(providerOrderId)}`, { method: 'PATCH', body: JSON.stringify(replacement) });
+    return this.parseProviderPayload('/v2/orders/{id}', () => parseBrokerOrder(payload), true);
   }
   async cancelOrder(providerOrderId: string, authorization: BrokerMutationAuthorization): Promise<void> {
     assertBrokerMutationAuthorized(authorization, undefined, undefined, 'CANCEL');

@@ -131,7 +131,8 @@ test('broker clock and calendar reject malformed time evidence before reconcilia
     authentication: { kind: 'MASTER_API_KEY', apiKey: 'synthetic', apiSecret: 'synthetic' },
     fetchImpl: async () => new Response(JSON.stringify(body), { status: 200 }),
   });
-  await assert.rejects(config({ timestamp: 'not-a-time', is_open: true }).getClock());
+  await assert.rejects(config({ timestamp: 'not-a-time', is_open: true }).getClock(), (error: unknown) =>
+    error instanceof AlpacaPaperBrokerError && error.category === 'MALFORMED_RESPONSE');
   await assert.rejects(config([{ date: '2026-02-30', open: '09:30', close: '16:00' }])
     .getCalendar('2026-02-01', '2026-03-01'));
   await assert.rejects(config([{ date: '2026-09-11', open: '25:00', close: '16:00' }])
@@ -142,7 +143,8 @@ test('broker clock and calendar reject malformed time evidence before reconcilia
 });
 
 test('a mutation 5xx or malformed success body is ambiguous and must reconcile before retry', async () => {
-  for (const response of [new Response('{}', { status: 503 }), new Response('not-json', { status: 200 })]) {
+  for (const response of [new Response('{}', { status: 503 }), new Response('not-json', { status: 200 }),
+    new Response('{}', { status: 200 })]) {
     const adapter = new AlpacaPaperBrokerAdapter({ baseUrl: 'https://paper-api.alpaca.markets',
       authentication: { kind: 'MASTER_API_KEY', apiKey: 'synthetic', apiSecret: 'synthetic' },
       fetchImpl: async () => response.clone() });
