@@ -320,7 +320,8 @@ export function parseAlpacaContractIvHistoryRow(raw: Record<string, unknown>): A
 
 export async function loadAlpacaContractIvHistory(input: {
   readonly pool: Pool; readonly underlying: string; readonly decisionAsOf: string; readonly lookbackDays: number;
-}): Promise<{ readonly observations: readonly AlpacaContractIvHistoryRow[]; readonly sourceUnprovenN: number }> {
+}): Promise<{ readonly observations: readonly AlpacaContractIvHistoryRow[]; readonly sourceUnprovenN: number;
+  readonly scannedN: number; readonly rejectedLineageN: number }> {
   // Bounded recent-row read on the existing schema-064 immutable PIT table.
   // Legacy IV without explicit Alpaca lineage is counted, never upgraded by inference.
   const result = await input.pool.query(`SELECT candidate_id::text,decision_time,content_hash,
@@ -353,7 +354,8 @@ export async function loadAlpacaContractIvHistory(input: {
     else if (typeof record(raw.volatility_json)?.iv === 'number'
       && record(raw.volatility_json)?.ivSource !== 'ALPACA') sourceUnprovenN++;
   }
-  return { observations, sourceUnprovenN };
+  return { observations, sourceUnprovenN, scannedN: result.rows.length,
+    rejectedLineageN: result.rows.length - observations.length };
 }
 
 export async function assessAlpacaContractIvStressForContracts(input: {

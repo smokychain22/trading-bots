@@ -52,6 +52,7 @@ import { executionOptionQuoteContractVersion, type ExecutionOptionQuote } from '
 import { persistQuoteProviderQualification, qualifyQuoteProvider } from '../execution/quote-provider-qualification.js';
 import { readZeroTradeDiagnostic } from './zero-trade-diagnostic.js';
 import { runRiskPolicyEmpiricalStudy } from '../research/risk-policy-empirical-study.js';
+import { createRuntimePostgresPool } from './runtime-postgres-pool.js';
 
 let runtimePool: Pool | null = null;
 
@@ -171,7 +172,7 @@ export default async function autonomousRuntimeHandler(
       send(response, 503, { error: 'database_not_configured', executionGate: 'EXTERNAL_QUOTE_BLOCKER' });
       return;
     }
-    runtimePool ??= new Pool({ connectionString: environment.DATABASE_URL, max: 2, connectionTimeoutMillis: 8_000 });
+    runtimePool ??= createRuntimePostgresPool(environment.DATABASE_URL);
     const control=await new PostgresPaperExecutionAuthorizationStore(runtimePool).authorizeManagementOnly({
       confirmation:masterPaperAuthorizationConfirmation,authorizedAt:new Date().toISOString(),
       sourceRef:'OWNER_DIRECTIVE_2026_09_17_MASTER_THETA_PAPER',
@@ -194,7 +195,7 @@ export default async function autonomousRuntimeHandler(
       send(response, 503, { error: 'database_not_configured', executionGate: 'LOCKED' });
       return;
     }
-    runtimePool ??= new Pool({ connectionString: environment.DATABASE_URL, max: 2, connectionTimeoutMillis: 8_000 });
+    runtimePool ??= createRuntimePostgresPool(environment.DATABASE_URL);
     const cycleStore=new PostgresRuntimeCycleStore(runtimePool);
     const master=await cycleStore.resolveMasterContext(environment);
     const at=new Date().toISOString();
@@ -566,7 +567,7 @@ export default async function autonomousRuntimeHandler(
     send(response, 503, { error: 'database_not_configured', orderSubmission: 'EXTERNAL_QUOTE_BLOCKER' });
     return;
   }
-  runtimePool ??= new Pool({ connectionString: environment.DATABASE_URL, max: 2, connectionTimeoutMillis: 8_000 });
+  runtimePool ??= createRuntimePostgresPool(environment.DATABASE_URL);
   const localWorkerId = localIdentity.kind === 'VALID' ? localIdentity.identity.workerId : null;
   const workerStore=new PostgresWorkerRuntimeStore(runtimePool);
   if(request.method==='DELETE'){
