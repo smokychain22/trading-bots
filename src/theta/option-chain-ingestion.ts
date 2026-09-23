@@ -73,6 +73,9 @@ export interface MergeOptionChainInput {
   readonly requestedFeed: 'OPRA' | 'INDICATIVE';
   readonly defaultMultiplierForUnknownContracts: number;
   readonly receivedAt: string;
+  readonly receivedAtBySymbol?: ReadonlyMap<string, string>;
+  /** Research moneyness reference only. Never an executable option price. */
+  readonly underlyingQuote?: Readonly<{ bid: number; ask: number; timestamp: string; receivedAt: string }>;
   readonly maxQuoteAgeSecondsForExecutable: number;
   readonly maxSpreadPctForExecutable: number;
 }
@@ -92,6 +95,7 @@ const finiteOrNull = (value: number | null | undefined): number | null =>
  */
 export function mergeOptionChain(input: MergeOptionChainInput): readonly NormalizedOptionContract[] {
   return input.contracts.map((contract) => {
+    const observedAt = input.receivedAtBySymbol?.get(contract.symbol) ?? input.receivedAt;
     const snapshot = input.snapshotsBySymbol.get(contract.symbol) ?? null;
     const optionomics = input.optionomicsBySymbol.get(contract.symbol) ?? null;
 
@@ -131,21 +135,25 @@ export function mergeOptionChain(input: MergeOptionChainInput): readonly Normali
         expiration: contract.expirationDate,
         asOfDate: input.asOfDate,
         multiplier: contract.multiplier ?? input.defaultMultiplierForUnknownContracts,
-        underlyingBid: null, underlyingAsk: null, underlyingLast: null, underlyingTimestamp: null,
+        underlyingBid: input.underlyingQuote?.bid ?? null,
+        underlyingAsk: input.underlyingQuote?.ask ?? null,
+        underlyingLast: null, underlyingTimestamp: input.underlyingQuote?.timestamp ?? null,
+        underlyingQuoteReceivedAt: input.underlyingQuote?.receivedAt ?? null,
+        underlyingQuoteSource: input.underlyingQuote === undefined ? null : 'ALPACA_IEX',
         bid: snapshot?.bid ?? null, ask: snapshot?.ask ?? null, bidSize: snapshot?.bidSize ?? null, askSize: snapshot?.askSize ?? null,
         lastTradePrice: null, lastTradeSize: null,
         quoteTimestamp: snapshot?.quoteTimestamp ?? null, tradeTimestamp: null,
         volume, volumeSource,
         openInterest, openInterestSource,
         iv, delta: greek('delta'), gamma: greek('gamma'), theta: greek('theta'), vega: greek('vega'), rho: greek('rho'),
-        greeksTimestamp: greeksSource !== null ? input.receivedAt : null,
+        greeksTimestamp: greeksSource !== null ? observedAt : null,
         greeksSource,
         feed: input.requestedFeed,
         dataQuality: snapshot !== null ? 'GOOD' : 'UNKNOWN',
         maxQuoteAgeSecondsForExecutable: input.maxQuoteAgeSecondsForExecutable,
         maxSpreadPctForExecutable: input.maxSpreadPctForExecutable,
       },
-      input.receivedAt,
+      observedAt,
     );
 
     // Production-economics safety: `defaultMultiplierForUnknownContracts`

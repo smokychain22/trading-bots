@@ -8,6 +8,7 @@ import type { PythonBridgeConfig } from '../src/theta/python-bridge.js';
 import type { UnderlyingCandidateInput } from '../src/theta/universe-policy.js';
 import type { AegisIvStressAssessment } from '../src/theta/aegis-iv-stress.js';
 import type { AegisSpreadStressAssessment } from '../src/theta/aegis-spread-stress.js';
+import { assessAlpacaContractIvStress, paperBootstrapAlpacaContractIvPolicy } from '../src/theta/aegis-alpaca-iv-stress.js';
 import { paperBootstrapStressColdStartPolicy } from '../src/research/aegis-stress-baseline-maturity.js';
 
 // Proves runThetaShadowCycle -- the real end-to-end composition of
@@ -104,6 +105,9 @@ const mockAlpacaFetch = (options: { hasContracts: boolean; hasBars: boolean }) =
   }
   if (url.includes('/v2/calendar')) {
     return jsonResponse(200, [{ date: NOW.slice(0, 10), open: '09:30', close: '16:00' }]);
+  }
+  if (url.includes('/v2/stocks/SPY/quotes/latest')) {
+    return jsonResponse(200, { quote: { bp: 550, ap: 550.02, bs: 100, as: 100, t: NOW } });
   }
   if (url.includes('/v2/stocks/bars')) {
     if (!options.hasBars) return jsonResponse(200, { bars: {}, next_page_token: null });
@@ -202,6 +206,8 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   assert.deepEqual(result.fusionSnapshot?.snapshot.underlyingState.eventEvidence,
     { unsupportedCorporateActionPending: false, eventNear: false });
   assert.deepEqual(result.fusionSnapshot?.snapshot.riskState, { ivStress: IV_STRESS_EVIDENCE,
+    alpacaContractIvStress: { methodology: 'ALPACA_CONTRACT_IV_COHORT_SHOCK', assessmentsByContract: {} },
+    ivStressShadowComparison: {},
     stressColdStartPolicy: paperBootstrapStressColdStartPolicy,
     spreadStress: { assessmentsByContract: {}, baselinesByCohort: {} } });
   const regimeState = result.fusionSnapshot?.snapshot.regimeState as Record<string, unknown>;
@@ -593,6 +599,30 @@ itMockedProviderRealCodePath('a real (mocked) stock position is fetched and fold
   assert.equal(correlation.state, 'KNOWN');
   assert.equal(correlation.reason, 'SAME_UNDERLYING_IDENTITY');
   assert.equal(correlation.usableForDecision, true);
+});
+
+itMockedProviderRealCodePath('refreshed Alpaca contract IV reaches the FusionSnapshot with candidate-specific lineage', async () => {
+  const result = await runThetaShadowCycle(baseConfig({
+    aegisInputs: { ...baseConfig().aegisInputs, stressIvShockDetected: null },
+    aegisAlpacaIvStressAssessor: async ({ contracts, decisionAsOf }) => Object.fromEntries(
+      contracts.map((contract) => [contract.optionSymbol, assessAlpacaContractIvStress({
+        current: contract, decisionAsOf, policy: paperBootstrapAlpacaContractIvPolicy,
+        history: [{ evidenceId: 'prior-real-shaped-observation', sourceHash: 'a'.repeat(64),
+          underlying: contract.underlying, optionType: contract.optionType, optionSymbol: contract.optionSymbol,
+          dte: contract.dte, moneyness: contract.moneyness, iv: 0.3, feed: 'INDICATIVE',
+          quoteTimestamp: '2026-09-01T14:59:55.000Z', ivAvailableAt: '2026-09-01T15:00:00.000Z',
+          decisionTime: '2026-09-01T15:00:03.000Z' }],
+      })])),
+  }));
+  const riskState = result.fusionSnapshot?.snapshot.riskState as Record<string, unknown>;
+  const family = riskState.alpacaContractIvStress as { assessmentsByContract: Record<string, Record<string, unknown>> };
+  const assessment = family.assessmentsByContract.SPY261009P00500000;
+  assert.equal(assessment?.evidenceAuthority, 'ALPACA_OPTION_SNAPSHOT_CONTRACT_IV');
+  assert.equal(assessment?.currentTimingAuthority, 'ALPACA_SNAPSHOT_IV_AVAILABLE_AT_RECEIPT');
+  assert.equal((assessment?.maturity as Record<string, unknown>)?.state, 'BASELINE_ACCUMULATING',
+    JSON.stringify({ dteBucket: assessment?.dteBucket, moneynessBucket: assessment?.moneynessBucket,
+      currentState: assessment?.currentState, currentFeed: assessment?.currentFeed }));
+  assert.match(String(assessment?.contentHash), /^[a-f0-9]{64}$/);
 });
 
 itMockedProviderRealCodePath('held-symbol bars reach persisted portfolio correlation without gaining AEGIS authority', async () => {

@@ -201,6 +201,20 @@ itMockedProviderRealCodePath('candidate spread detector evidence replaces the gl
     .some((reason) => reason.code === 'SYSTEM_STRESS_STATE_UNKNOWN'), false);
 });
 
+itMockedProviderRealCodePath('candidate-specific Alpaca IV shock cannot inherit a different finalist’s no-shock state', async () => {
+  const request = baseRequest();
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    aegisInputs: { ...request.aegisInputs, stressIvShockDetected: null },
+    candidates: [
+      candidate('C1', { aegisInputOverrides: { stressIvShockDetected: false } }),
+      candidate('C2', { aegisInputOverrides: { stressIvShockDetected: true } }),
+    ],
+  }));
+  assert.equal(result.aegisByCandidateId?.C1?.reasons.some((reason) => reason.code === 'SYSTEM_STRESS_STATE_UNKNOWN'), false);
+  assert.notEqual(result.aegisByCandidateId?.C2?.newRiskState, 'ALLOW_FULL');
+  assert.ok(result.aegisByCandidateId?.C2?.reasons.some((reason) => reason.code === 'SINGLE_STRESS_DETECTED'));
+});
+
 itMockedProviderRealCodePath('explicit Paper cold-start applicability ignores an immature detector without fabricating false', async () => {
   const request = baseRequest();
   const result = await runNewRiskOrchestration(bridge(), baseRequest({

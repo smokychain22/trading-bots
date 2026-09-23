@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   AlpacaProviderError,
   fetchMarketCalendar, fetchMarketClock, fetchMasterAccountSnapshot, fetchOpenOrders, fetchOptionContracts, fetchOptionSnapshots,
-  fetchPositions, fetchStockBars, type AlpacaCalendarSession, type AlpacaMarketClock, type AlpacaOpenOrderSnapshot, type AlpacaPositionSnapshot,
+  fetchPositions, fetchStockBars, fetchLatestStockQuote, type AlpacaCalendarSession, type AlpacaMarketClock, type AlpacaOpenOrderSnapshot, type AlpacaPositionSnapshot,
   type AlpacaProviderConfig, type MasterAccountSnapshot,
 } from './alpaca-provider.js';
 import type { HistoricalBar } from './underlying-history.js';
@@ -16,6 +16,7 @@ import { checkTemporalConsistency, DEFAULT_TEMPORAL_CONSISTENCY_POLICIES } from 
 import type { PythonBridgeConfig } from './python-bridge.js';
 import { buildFusionSnapshot, hashJson, type FusionSnapshot, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
 import type { AegisIvStressAssessment } from './aegis-iv-stress.js';
+import { compareIvStressSignals, type AlpacaContractIvAssessmentMap } from './aegis-alpaca-iv-stress.js';
 import type { AegisSpreadStressAssessmentMap } from './aegis-spread-stress.js';
 import type { NormalizedOptionContract } from './option-contract.js';
 import type { DataQualityState } from './data-freshness.js';
@@ -146,11 +147,15 @@ export interface ThetaShadowCycleConfig {
   readonly aegisPolicy: Record<string, unknown>;
   readonly aegisInputs: Record<string, unknown>; // portfolio/account risk-family inputs not yet derivable from MasterAccountSnapshot alone
   readonly aegisIvStressEvidence?: AegisIvStressAssessment | null;
+  readonly aegisAlpacaIvStressAssessor?: (input: {
+    readonly contracts: readonly NormalizedOptionContract[];
+    readonly decisionAsOf: string;
+  }) => Promise<AlpacaContractIvAssessmentMap>;
   readonly aegisSpreadStressAssessor?: (input: {
     readonly contracts: readonly NormalizedOptionContract[];
     readonly decisionAsOf: string;
   }) => Promise<AegisSpreadStressAssessmentMap>;
-  readonly aegisInputsOrigin: ProvenanceOrigin; // honest declaration -- today this is always CALLER_MANUAL since real position/order-derived exposure isn't wired yet
+  readonly aegisInputsOrigin: ProvenanceOrigin; // Production passes real-derived observations or explicit UNKNOWN
   readonly opportunityFrontierPolicy: { policyVersion: string; reducedSizeUncertaintyThreshold: number };
   readonly maxAcceptableSpreadPct: number;
   readonly stressGapThresholdAbsReturn: number; // existing Paper bootstrap threshold, not empirically optimal
@@ -312,6 +317,7 @@ function assembleFusionSnapshotInput(params: {
   readonly policyVersion: string;
   readonly modelVersions: Readonly<Record<string, string>>;
   readonly aegisIvStressEvidence: AegisIvStressAssessment | null;
+  readonly aegisAlpacaIvStressEvidence: AlpacaContractIvAssessmentMap;
   readonly aegisSpreadStressEvidence: AegisSpreadStressAssessmentMap;
   readonly finalistQuoteRefresh: FinalistQuoteRefreshReceipt | null;
   readonly earningsEvidence: OptionomicsEarningsEvidence;
@@ -452,6 +458,10 @@ function assembleFusionSnapshotInput(params: {
     regimeState: params.regimeFeatures,
     expertPriorState: null,
     riskState: { ivStress: params.aegisIvStressEvidence,
+      alpacaContractIvStress: { methodology: 'ALPACA_CONTRACT_IV_COHORT_SHOCK',
+        assessmentsByContract: params.aegisAlpacaIvStressEvidence },
+      ivStressShadowComparison: compareIvStressSignals({ alpacaByContract: params.aegisAlpacaIvStressEvidence,
+        optionomics: params.aegisIvStressEvidence }),
       stressColdStartPolicy: paperBootstrapStressColdStartPolicy,
       spreadStress: { assessmentsByContract: spreadStressByContract, baselinesByCohort: spreadStressBaselines } } as unknown as JsonValue,
     strategyRouterState: null, // the router runs downstream of this snapshot in the current architecture
@@ -906,6 +916,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const candidates: RawCandidateInput[] = [];
   let mergedContractsForSnapshot: ReturnType<typeof mergeOptionChain> = [];
   let aegisSpreadStressEvidence: AegisSpreadStressAssessmentMap = {};
+  let aegisAlpacaIvStressEvidence: AlpacaContractIvAssessmentMap = {};
   let finalistQuoteRefresh: FinalistQuoteRefreshReceipt | null = null;
   const underlyingStockPosition = positions.find((position) => position.symbol === underlying
     && position.assetClass === 'us_equity') ?? null;
@@ -919,6 +930,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const optionTypes: readonly ('put' | 'call')[] = hasPotentialCoveredStock ? ['put', 'call'] : ['put'];
   const contractItems: AlpacaOptionContractListing[] = [];
   const snapshotsBySymbol = new Map<string, AlpacaOptionSnapshot>();
+  const snapshotReceivedAtBySymbol = new Map<string, string>();
   const contractEvidenceByType: ProviderEvidence[] = [];
   const quoteEvidenceByType: ProviderEvidence[] = [];
   // Snapshot discovery must cover the same expirations as contract discovery.
@@ -984,7 +996,11 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
         expirationDateGte: snapshotExpirationGte, expirationDateLte: snapshotExpirationLte,
         limit: 1_000, maxPages: config.maxOptionPages,
       });
-      for (const [symbol, snapshot] of result.snapshots) snapshotsBySymbol.set(symbol, snapshot);
+      const snapshotReceivedAt = config.now();
+      for (const [symbol, snapshot] of result.snapshots) {
+        snapshotsBySymbol.set(symbol, snapshot);
+        snapshotReceivedAtBySymbol.set(symbol, snapshotReceivedAt);
+      }
       optionChainComplete = optionChainComplete !== false && result.complete;
       quoteEvidenceByType.push(result.complete
         ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
@@ -1044,6 +1060,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       underlying, asOfDate: candidateBuiltAt.slice(0, 10), contracts: contractItems,
       snapshotsBySymbol, optionomicsBySymbol, requestedFeed: 'INDICATIVE',
       defaultMultiplierForUnknownContracts: 100, receivedAt: candidateBuiltAt,
+      receivedAtBySymbol: snapshotReceivedAtBySymbol,
       maxQuoteAgeSecondsForExecutable: candidateMaxQuoteAgeSeconds,
       maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
     });
@@ -1148,21 +1165,46 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       }
     }
 
-    // This is the actual PIT decision cutoff. Every exact finalist refresh
-    // above was observed no later than this instant.
+    // The IEX stock quote is only the moneyness/cohort reference. It never
+    // substitutes for the option BBO. Missing/stale stock evidence leaves
+    // moneyness UNKNOWN and the IV cohort detector fail-closed.
+    let underlyingQuote: { bid: number; ask: number; timestamp: string; receivedAt: string } | undefined;
+    try {
+      const quote = await fetchLatestStockQuote(config.alpaca, underlying, 'iex');
+      const quoteReceivedAt = config.now();
+      const quoteMs = quote.timestamp === null ? Number.NaN : Date.parse(quote.timestamp);
+      const receivedMs = Date.parse(quoteReceivedAt);
+      if (quote.bid !== null && quote.ask !== null && quote.bid > 0 && quote.ask >= quote.bid
+        && Number.isFinite(quoteMs) && quoteMs <= receivedMs
+        && (receivedMs - quoteMs) / 1000 <= finalistMaxQuoteAgeSeconds) {
+        underlyingQuote = { bid: quote.bid, ask: quote.ask, timestamp: quote.timestamp as string,
+          receivedAt: quoteReceivedAt };
+      } else blockers.push('ALPACA_UNDERLYING_IEX_QUOTE_UNQUALIFIED');
+    } catch {
+      blockers.push('ALPACA_UNDERLYING_IEX_QUOTE_PROVIDER_ERROR');
+    }
+    // This is the actual PIT decision cutoff. Every exact finalist and
+    // underlying quote refresh above was observed no later than this instant.
     decisionTime = config.now();
     receivedAt = decisionTime;
+    const finalistReceivedAtBySymbol = new Map(snapshotReceivedAtBySymbol);
+    for (const [symbol, observedAt] of refreshObservations
+      .filter((observation) => observation.state === 'REFRESHED')
+      .map((observation) => [observation.optionSymbol, observation.refreshReceivedAt] as const))
+      finalistReceivedAtBySymbol.set(symbol, observedAt);
     const candidateAgeContracts = mergeOptionChain({
       underlying, asOfDate: decisionTime.slice(0, 10), contracts: contractItems,
       snapshotsBySymbol, optionomicsBySymbol, requestedFeed: 'INDICATIVE',
-      defaultMultiplierForUnknownContracts: 100, receivedAt,
+      defaultMultiplierForUnknownContracts: 100, receivedAt, receivedAtBySymbol: finalistReceivedAtBySymbol,
+      underlyingQuote,
       maxQuoteAgeSecondsForExecutable: candidateMaxQuoteAgeSeconds,
       maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
     });
     const finalistAgeContracts = mergeOptionChain({
       underlying, asOfDate: decisionTime.slice(0, 10), contracts: contractItems,
       snapshotsBySymbol, optionomicsBySymbol, requestedFeed: 'INDICATIVE',
-      defaultMultiplierForUnknownContracts: 100, receivedAt,
+      defaultMultiplierForUnknownContracts: 100, receivedAt, receivedAtBySymbol: finalistReceivedAtBySymbol,
+      underlyingQuote,
       maxQuoteAgeSecondsForExecutable: finalistMaxQuoteAgeSeconds,
       maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
     });
@@ -1282,6 +1324,15 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     } else {
       blockers.push('PORTFOLIO_CORRELATION_SYMBOL_BOUND_EXCEEDED');
     }
+    if (config.aegisAlpacaIvStressAssessor !== undefined) {
+      try {
+        aegisAlpacaIvStressEvidence = await config.aegisAlpacaIvStressAssessor({
+          contracts: candidates.map((candidate) => candidate.contract), decisionAsOf: decisionTime,
+        });
+      } catch (error) {
+        blockers.push(`AEGIS_ALPACA_IV_STRESS_PROVIDER_ERROR:${error instanceof Error ? error.message : 'unknown'}`);
+      }
+    }
   } else {
     blockers.push('PORTFOLIO_CORRELATION_ACCOUNT_STATE_UNKNOWN');
   }
@@ -1366,6 +1417,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       finalistQuoteRefreshPolicy: config.finalistQuoteRefreshPolicy.policyVersion,
     },
     aegisIvStressEvidence: config.aegisIvStressEvidence ?? null,
+    aegisAlpacaIvStressEvidence,
     aegisSpreadStressEvidence,
     finalistQuoteRefresh,
     earningsEvidence,
@@ -1573,12 +1625,18 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     : null;
   const runtimeCandidates: RawCandidateInput[] = candidates.map((candidate) => {
     const spreadAssessment = aegisSpreadStressEvidence[candidate.contract.optionSymbol];
+    const alpacaIvAssessment = aegisAlpacaIvStressEvidence[candidate.contract.optionSymbol];
     const candidateMarketQuality = deriveCandidateMarketQuality(candidate.contract, config.maxAcceptableSpreadPct);
     const candidateOverrides: Record<string, unknown> = {
       liquidityAcceptable: candidateMarketQuality.liquidityAcceptable,
       executionQualityAcceptable: candidateMarketQuality.executionQualityAcceptable,
       stressSpreadWideningDetected: spreadAssessment?.stressSpreadWideningDetected ?? null,
       stressSpreadWideningApplicability: paperBootstrapStressApplicability(spreadAssessment?.maturity.state ?? null),
+      ...(config.aegisAlpacaIvStressAssessor === undefined ? {} : {
+        stressIvShockDetected: alpacaIvAssessment?.stressIvShockDetected ?? null,
+        stressIvShockApplicability: alpacaIvAssessment?.currentState === 'QUALIFIED'
+          ? paperBootstrapStressApplicability(alpacaIvAssessment.maturity.state) : 'REQUIRED',
+      }),
     };
     if (!exposureDerivationTrustworthy || candidateCapacityPolicy === null) return {
       ...candidate,

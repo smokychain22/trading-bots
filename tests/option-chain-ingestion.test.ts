@@ -135,6 +135,22 @@ test('a contract with a real, contract-derived multiplier is unaffected by the u
   assert.equal(contract?.nonExecutableReason, null);
 });
 
+test('an exact finalist snapshot retains its actual per-contract receipt time, not the later decision freeze', () => {
+  const receipt = '2026-09-10T14:59:58.000Z';
+  const [contract] = mergeOptionChain(baseInput({
+    receivedAtBySymbol: new Map([['SPY261009P00500000', receipt]]),
+    snapshotsBySymbol: new Map([['SPY261009P00500000', {
+      bid: 1, ask: 1.05, bidSize: 10, askSize: 10,
+      quoteTimestamp: '2026-09-10T14:59:55.000Z',
+      greeks: { delta: -0.2, gamma: 0.01, theta: -0.03, vega: 0.1, rho: 0 },
+      impliedVolatility: 0.25, dailyVolume: 20,
+    }]]),
+  }));
+  assert.equal(contract?.receivedAt, receipt);
+  assert.equal(contract?.greeksTimestamp, receipt);
+  assert.equal(contract?.quoteTimestamp, '2026-09-10T14:59:55.000Z');
+});
+
 test('an invalid IV is isolated to its own contract instead of aborting the chain batch', () => {
   const symbols = ['SPY261009P00500000', 'SPY261009P00495000'] as const;
   const contracts = mergeOptionChain(baseInput({

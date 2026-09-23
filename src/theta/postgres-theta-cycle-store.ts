@@ -917,11 +917,25 @@ export class PostgresThetaCycleStore {
       const selected=receipt?.selectedCandidateId===candidate.candidateId;
       const alternative=receipt?.alternatives.find((item) => item.candidateId===candidate.candidateId) ?? null;
       const market={stockPrice:contract.underlyingLast,bid:contract.bid,ask:contract.ask,bidSize:contract.bidSize,
-        askSize:contract.askSize,quoteTimestamp:contract.quoteTimestamp,quoteAgeSeconds:contract.quoteAgeSeconds,feed:contract.feed};
+        askSize:contract.askSize,quoteTimestamp:contract.quoteTimestamp,quoteReceivedAt:contract.receivedAt,
+        quoteSource:contract.source,quoteAgeSeconds:contract.quoteAgeSeconds,feed:contract.feed,
+        underlyingQuoteSource:contract.underlyingQuoteSource,
+        underlyingQuoteTimestamp:contract.underlyingTimestamp,
+        underlyingQuoteReceivedAt:contract.underlyingQuoteReceivedAt,
+        underlyingReferencePrice:contract.underlyingReferencePrice};
       const evidencePayload={candidateId:persistedId,decisionId,fusionSnapshotId,decisionTime:String(snapshot.decisionTimeUtc),
         branch:'THETA_CONVENTIONAL',rank:candidate.rank,selected,contract:{underlying:contract.underlying,
           contractSymbol:contract.occSymbol,optionType:contract.optionType,strike:contract.strike,expiration:contract.expiration,
           dte:contract.dte,moneyness:contract.moneyness,multiplier:contract.multiplier},market:{...market,dataQuality:contract.dataQuality},volatility:{iv:contract.iv,
+          ivSource:contract.iv===null?'UNAVAILABLE':contract.greeksSource??'UNAVAILABLE',
+          ivAvailableAt:contract.iv===null?null:contract.greeksTimestamp,
+          // Alpaca's IV-specific market timestamp is not supplied by the
+          // snapshot adapter. The Greek timestamp is THETA receipt time.
+          ivProviderTimestamp:null,
+          ivFeed:contract.iv!==null&&contract.greeksSource==='ALPACA'?contract.feed:null,
+          ivEvidenceAuthority:contract.iv!==null&&contract.greeksSource==='ALPACA'
+            ?'ALPACA_OPTION_SNAPSHOT_CONTRACT_IV':contract.iv!==null&&contract.greeksSource==='OPTIONOMICS'
+              ?'OPTIONOMICS_SESSION_RESEARCH':'UNAVAILABLE',
           providerMetrics:optionomicsProviderContext.metrics ?? null,
           skew:optionomicsFeatures.skew ?? null,termStructure:optionomicsFeatures.termStructure ?? null,
           surface:optionomicsFeatures.volatilitySurface ?? null,contractVolatility:optionomicsContract.volatility ?? null,

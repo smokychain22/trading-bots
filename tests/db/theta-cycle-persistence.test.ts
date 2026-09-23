@@ -43,6 +43,7 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
       source: 'ALPACA', underlying: 'SPY', optionSymbol: 'SPY261009P00500000', occSymbol: 'SPY261009P00500000',
       optionType: 'PUT', strike: 500, expiration: '2026-10-09', asOfDate: '2026-09-11', multiplier: 100,
       underlyingBid: 500, underlyingAsk: 500.02, underlyingLast: 500.01, underlyingTimestamp: now,
+      underlyingQuoteReceivedAt: now, underlyingQuoteSource: 'ALPACA_IEX',
       bid: 2.5, ask: 2.6, bidSize: 20, askSize: 20, lastTradePrice: 2.5, lastTradeSize: 1,
       quoteTimestamp: now, tradeTimestamp: now, volume: 100, volumeSource: 'ALPACA', openInterest: 1000,
       openInterestSource: 'ALPACA', iv: 0.2, delta: -0.2, gamma: 0.01, theta: -0.03, vega: 0.1, rho: -0.02,
@@ -179,5 +180,14 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
     assert.equal(quotes.rows[0].quality, 'GOOD');
     assert.equal(Number(quotes.rows[0].bid), 2.5);
     assert.equal(Number(quotes.rows[0].ask), 2.6);
+    const ivLineage = await pool.query(`SELECT volatility_json,market_json
+      FROM trade.candidate_point_in_time_evidence WHERE fusion_snapshot_id=$1`, [first.fusionSnapshotId]);
+    assert.ok(ivLineage.rows.length > 0);
+    const proven = ivLineage.rows.find((row) => row.volatility_json?.ivSource === 'ALPACA');
+    assert.ok(proven, 'new IV evidence must retain its actual Alpaca source');
+    assert.equal(proven.volatility_json.ivEvidenceAuthority, 'ALPACA_OPTION_SNAPSHOT_CONTRACT_IV');
+    assert.equal(proven.volatility_json.ivProviderTimestamp, null);
+    assert.equal(proven.market_json.underlyingQuoteSource, 'ALPACA_IEX');
+    assert.equal(proven.market_json.underlyingQuoteReceivedAt, now);
   } finally { await pool.end(); }
 });

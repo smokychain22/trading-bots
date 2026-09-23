@@ -24,6 +24,8 @@ import type { CanonicalBranchFrontier, CanonicalFrontierCandidate } from '../the
 import { probeAlpacaProcessEnvironmentAuth } from '../providers/readiness.js';
 import { refreshAegisIvStress, type AegisIvStressRefreshResult } from '../theta/aegis-iv-stress.js';
 import { assessAegisSpreadStressForContracts } from '../theta/aegis-spread-stress.js';
+import { assessAlpacaContractIvStressForContracts,
+  verifyPersistedAlpacaContractIvAssessment } from '../theta/aegis-alpaca-iv-stress.js';
 import { paperBootstrapStressApplicability } from './aegis-stress-baseline-maturity.js';
 import type { OptionomicsProviderConfig } from '../theta/optionomics-provider.js';
 
@@ -272,32 +274,40 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const discoveredBySymbol=new Map(scanUnderlyings.map((candidate)=>[candidate.symbol,candidate]));
   const brokerAuthoritySymbols=new Set(universeBreadthChallenger.championSymbols);
   const optionomics=optionomicsConfigFromEnvironment(input.environment);
-  const ivStressResultBySymbol=new Map<string,AegisIvStressRefreshResult>();
+  // The Optionomics ATM-IV detector is secondary research on schema 064.
+  // Do not make an authenticated provider call that can only end in 42P01.
+  const optionomicsIvSchemaReady=await input.pool.query(`SELECT to_regclass('risk.aegis_iv_stress_assessment') IS NOT NULL AS ready`)
+    .then((result)=>result.rows[0]?.ready===true).catch(()=>false);
   const scan=await runCrossSymbolShadowScan({universeVersion:'theta-shadow-universe-v1',latticeVersion:'lattice-v1-shadow-once',
     strategyVersion:'theta-shadow-once-v1',eligibleUnderlyings:scanUnderlyings,maxUnderlyings:Math.max(1,scanUnderlyings.length),
     branches:['THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_RECOVERY','THETA_CC','THETA_DEFINED_RISK']},async(underlying)=>{
-      const ivStressRefresh=await refreshScanIvStress({pool:input.pool,optionomics,
-        underlying:underlying.symbol,now:input.now});
-      ivStressResultBySymbol.set(underlying.symbol,ivStressRefresh);
+      const ivStressRefresh=optionomicsIvSchemaReady
+        ? await refreshScanIvStress({pool:input.pool,optionomics,underlying:underlying.symbol,now:input.now})
+        : {state:'PERSISTENCE_ERROR' as const,assessment:null,reason:'OPTIONOMICS_IV_SCHEMA_065_UNAVAILABLE'};
       const config=defaultShadowCycleConfig(input.alpaca,optionomics,bridge(input.environment),[underlying],discovery.candidatesOrigin);
       const recoveryHistory=await loadRecoveryHistory(input.pool,underlying.symbol,input.now());
       return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',paperEntryBootstrap,recoveryHistory,recoveryInventoryUnderlyings,
+        aegisInputsOrigin:'DERIVED_FROM_REAL',
         aegisIvStressEvidence:ivStressRefresh.assessment,
         aegisSpreadStressAssessor:({contracts,decisionAsOf})=>assessAegisSpreadStressForContracts({
+          pool:input.pool,contracts,decisionAsOf,
+        }),
+        aegisAlpacaIvStressAssessor:({contracts,decisionAsOf})=>assessAlpacaContractIvStressForContracts({
           pool:input.pool,contracts,decisionAsOf,
         }),
         aegisInputs:{
         tickerConcentrationPct:null,sectorConcentrationPct:null,correlationClusterExposurePct:null,
         portfolioCapitalAtRiskPct:null,inventoryCapacityUsedPct:null,assignmentCapacityUsedPct:null,
         recoveryCapacityUsedPct:null,liquidityAcceptable:null,executionQualityAcceptable:null,providerState:null,
-        stressGapDetected:false,stressIvShockDetected:ivStressRefresh.assessment?.stressIvShockDetected??null,
-        stressIvShockApplicability:ivStressApplicability(ivStressRefresh),
+        stressGapDetected:null,stressIvShockDetected:null,
+        stressIvShockApplicability:'REQUIRED',
         stressSpreadWideningDetected:null,
       }});
     },input.now);
   // Research-only breadth challengers retain their own evidence state, but
   // must not become a blocker for the Paper-authorized champion cohort.
-  runtimeSafetyBlockers.push(...ivStressPaperBlockers(ivStressResultBySymbol,brokerAuthoritySymbols));
+  // Optionomics remains in the immutable research snapshot but cannot grant
+  // or veto Paper authority while its as-of and schema-065 contract is open.
   const cycleStore=new PostgresThetaCycleStore(input.pool),persisted=new Map<string,{
     fusionSnapshotId:string|null;candidateSetId:string|null;decisionId:string|null;
   }>();
@@ -311,10 +321,18 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     const eventGate=discovered===undefined?null:assessUniverseEventEvidence(discovered);
     const saved=await cycleStore.persist(runtimeContext,member.cycle);
     persisted.set(member.symbol,{fusionSnapshotId:saved.fusionSnapshotId,candidateSetId:saved.candidateSetId,decisionId:saved.decisionId});
+    const selectedOptionSymbol=member.cycle.strategyFrontier?.selectedCandidateId??null;
+    const alpacaIvVerification=brokerAuthoritySymbols.has(member.symbol)&&selectedOptionSymbol!==null
+      &&saved.fusionSnapshotId!==null
+      ? await verifyPersistedAlpacaContractIvAssessment({pool:input.pool,
+        fusionSnapshotId:saved.fusionSnapshotId,optionSymbol:selectedOptionSymbol,
+        underlying:member.symbol,decisionAsOf:String(member.cycle.fusionSnapshot.snapshot.decisionTimeUtc)})
+        .catch(()=>({ready:false,reason:'PERSISTED_ALPACA_IV_READ_FAILED',assessment:null}))
+      : null;
     if(input.environment.MASTER_PAPER_EXECUTION_ENABLED&&!input.environment.PAPER_PAUSE_NEW_ORDERS
       &&corporateActionReadSucceeded
       &&brokerAuthoritySymbols.has(member.symbol)&&eventGate?.state==='ELIGIBLE'
-      &&ivStressPaperPlanPersistenceReady(ivStressResultBySymbol.get(member.symbol))
+      &&alpacaIvVerification?.ready===true
       &&member.cycle.strategyFrontier!==null&&saved.decisionId!==null){
       const selected=await input.pool.query(`SELECT d.selected_candidate_id::text AS candidate_id,
         c.option_contract_id::text,oc.underlying_id::text,cv.assumptions_json
@@ -364,8 +382,8 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       }else if(assembled.state==='BLOCKED')actionPlansBlocked.push(...assembled.blockers.map((blocker)=>`${member.symbol}:${blocker}`));
     }else if(brokerAuthoritySymbols.has(member.symbol)&&eventGate?.state==='ELIGIBLE'
       &&member.cycle.strategyFrontier?.selectedCandidateId!==null
-      &&!ivStressPaperPlanPersistenceReady(ivStressResultBySymbol.get(member.symbol))){
-      actionPlansBlocked.push(`${member.symbol}:AEGIS_IV_STRESS_${ivStressResultBySymbol.get(member.symbol)?.state??'MISSING'}`);
+      &&alpacaIvVerification?.ready!==true){
+      actionPlansBlocked.push(`${member.symbol}:AEGIS_ALPACA_IV_${alpacaIvVerification?.reason??'MISSING'}`);
     }else if(brokerAuthoritySymbols.has(member.symbol)&&member.cycle.strategyFrontier?.selectedCandidateId!==null
       &&eventGate?.state!=='ELIGIBLE'){
       actionPlansBlocked.push(`${member.symbol}:${eventGate?.reason.code??'UNIVERSE_EVENT_EVIDENCE_MISSING'}`);
