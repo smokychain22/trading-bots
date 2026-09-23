@@ -52,6 +52,7 @@ import {
   type FinalistQuoteRefreshReceipt,
 } from './finalist-quote-refresh.js';
 import { deriveOptionomicsEarningsEvidence, type OptionomicsEarningsEvidence } from './earnings-event-evidence.js';
+import { deriveMacroRiskEvidence, type MacroRiskEvidence } from './macro-event-policy.js';
 
 /** Never relabel a Conventional assessment as Hold-Strike risk evidence. */
 export function conventionalFrontierRiskLookups(
@@ -312,6 +313,7 @@ function assembleFusionSnapshotInput(params: {
   readonly aegisSpreadStressEvidence: AegisSpreadStressAssessmentMap;
   readonly finalistQuoteRefresh: FinalistQuoteRefreshReceipt | null;
   readonly earningsEvidence: OptionomicsEarningsEvidence;
+  readonly macroRiskEvidence: MacroRiskEvidence;
 }): FusionSnapshotInput {
   const accountJson: JsonValue = params.account === null ? { fetched: false } : { ...params.account };
   const contractsJson: JsonValue = params.mergedContracts as unknown as JsonValue;
@@ -438,6 +440,7 @@ function assembleFusionSnapshotInput(params: {
             providerEventCount: params.macroEventCoverage.providerEventCount,
             negativeQualified: params.macroEventCoverage.negativeQualified,
           },
+          macroRisk: params.macroRiskEvidence,
           earningsDistance: params.earningsEvidence,
           earningsDistanceDays: null, exDividendState: null,
           missingSemantics: ['EARNINGS_CALENDAR_DAY_DISTANCE_NOT_PROVEN',
@@ -1240,6 +1243,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     : eventContextObservations.length > 0 ? 'REAL_PROVIDER_UNKNOWN' : 'NOT_ATTEMPTED';
   const eventContextQuality: DataQualityState = eventContextPopulated ? 'GOOD' : 'UNKNOWN';
   const earningsEvidence = deriveOptionomicsEarningsEvidence(optionomicsContextObservations);
+  const macroRiskEvidence = deriveMacroRiskEvidence({ coverage: macroEventCoverage, decisionAsOf: decisionTime });
 
   const { provenance, detail } = classifyShadowCycleProvenance({
     universeCandidates: config.universeCandidatesOrigin,
@@ -1298,6 +1302,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     aegisSpreadStressEvidence,
     finalistQuoteRefresh,
     earningsEvidence,
+    macroRiskEvidence,
   });
   const fusionSnapshot = buildFusionSnapshot(snapshotInput);
   const stockPosition = underlyingStockPosition !== null
@@ -1568,7 +1573,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     regimePolicy: config.regimePolicy,
     regimeInputs: {
       maSlope, rv20, maxAdverseGap, earningsDistanceDays: null, corporateActionPending: null,
-      macroRiskFlag: null, spreadPct: null, portfolioOrMarketDrawdown: drawdown,
+      macroRiskFlag: macroRiskEvidence.macroRiskFlag, spreadPct: null, portfolioOrMarketDrawdown: drawdown,
     },
     routerPolicy: config.routerPolicy, routerPortfolio: config.routerPortfolio,
     latticeConfig: config.latticeConfig, thetaQSizingPolicy: config.thetaQSizingPolicy, costAssumptions: config.costAssumptions,

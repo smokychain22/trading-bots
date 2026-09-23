@@ -87,16 +87,16 @@
       "strategy": "THETA_ALL",
       "stage": "REGIME",
       "source": "src/theta/theta-shadow-cycle.ts",
-      "category": "POLICY_MISSING",
-      "reason": "The shadow cycle sends null instead of false. A bounded macro/Fed event coverage record is now available in source, but no versioned policy defines which events and horizons constitute macro risk or whether it is required for Paper entry. The pinned worker has not been cut over.",
+      "category": "LEGITIMATE_RUNTIME_UNKNOWN",
+      "reason": "A versioned Paper-bootstrap macro policy now maps only complete bounded Optionomics macro/Fed coverage. A timestamp-valid scheduled macro/Fed event inside the three-calendar-day bootstrap horizon maps to true. Complete coverage with no event inside the horizon maps to false. Incomplete, malformed, future-known or schedule-time-missing evidence remains UNKNOWN. The policy is explicitly not empirically optimal and is independent of company/earnings coverage.",
       "safetyCritical": true,
       "paperEntryRequired": false,
       "provider": null,
-      "producer": null,
-      "persistence": "Regime input request",
+      "producer": "deriveMacroRiskEvidence over fetchOptionomicsMacroEventCoverage",
+      "persistence": "FusionSnapshot eventState.macroRisk plus regime input request",
       "consumer": "bots/theta/quant/models/regime_v0.py",
-      "remediation": "Define a versioned macro-event source and explicit verified-absence contract before resolving this flag.",
-      "currentStatus": "OPEN"
+      "remediation": "Observe complete and incomplete authenticated coverage on the locked current release. Later R8 evidence may challenge the three-day bootstrap horizon without rewriting its historical provenance.",
+      "currentStatus": "RESOLVED"
     },
     {
       "field": "management.empiricalContinuationValue",
