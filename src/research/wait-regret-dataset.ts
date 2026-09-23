@@ -72,20 +72,23 @@ export function buildWaitRegretRow(input: Omit<WaitRegretRow, 'contractVersion' 
 
 export interface WaitRegretMetrics {
   readonly totalRows: number;
-  readonly falseRejectRate: number;
-  readonly falseAcceptRate: number;
-  readonly gateRegretRate: number;
-  readonly decisionRegretRate: number;
-  readonly opportunityConversionRate: number;
-  readonly implementationFalseRejectRate: number;
-  readonly providerFailureRejectRate: number;
-  readonly economicWaitRate: number;
-  readonly safetyRejectRate: number;
-  readonly dataInsufficientRate: number;
+  readonly softIdentifiableRows: number;
+  readonly observedParallelRows: number;
+  readonly falseRejectRate: number | null;
+  readonly falseAcceptRate: null;
+  readonly gateRegretRate: number | null;
+  readonly decisionRegretRate: number | null;
+  readonly opportunityConversionRate: null;
+  readonly rejectedCandidatePresenceRate: number | null;
+  readonly implementationFalseRejectRate: number | null;
+  readonly providerFailureRejectRate: number | null;
+  readonly economicWaitRate: number | null;
+  readonly safetyRejectRate: number | null;
+  readonly dataInsufficientRate: number | null;
 }
 
-function rate(rows: readonly WaitRegretRow[], predicate: (row: WaitRegretRow) => boolean): number {
-  if (rows.length === 0) return 0;
+function rate(rows: readonly WaitRegretRow[], predicate: (row: WaitRegretRow) => boolean): number | null {
+  if (rows.length === 0) return null;
   return rows.filter(predicate).length / rows.length;
 }
 
@@ -98,18 +101,26 @@ function rate(rows: readonly WaitRegretRow[], predicate: (row: WaitRegretRow) =>
  * what its (irrelevant, uncomputed) future outcome would have been.
  */
 export function computeWaitRegretMetrics(rows: readonly WaitRegretRow[]): WaitRegretMetrics {
-  const softIdentifiable = rows.filter((r) => r.hardVsSoft === 'SOFT' && r.counterfactualIdentifiability !== 'NOT_IDENTIFIABLE' && r.futureOutcome !== null);
-  const falseReject = softIdentifiable.filter((r) => (r.futureOutcome?.wholeChainNetPnlIfTaken ?? 0) > 0
-    && (r.exactReason === 'IMPLEMENTATION_FALSE_REJECT' || r.exactReason === 'ECONOMIC_WAIT'));
+  const softIdentifiable = rows.filter((r) => r.hardVsSoft === 'SOFT'
+    && r.counterfactualIdentifiability !== 'NOT_IDENTIFIABLE'
+    && typeof r.futureOutcome?.wholeChainNetPnlIfTaken === 'number');
+  const observedParallel = softIdentifiable.filter((r) => r.counterfactualIdentifiability === 'OBSERVED_PARALLEL');
+  const positiveOutcome = (row: WaitRegretRow): boolean => {
+    const value = row.futureOutcome?.wholeChainNetPnlIfTaken;
+    return typeof value === 'number' && value > 0;
+  };
 
   return {
     totalRows: rows.length,
-    falseRejectRate: softIdentifiable.length === 0 ? 0 : falseReject.length / softIdentifiable.length,
-    falseAcceptRate: 0, // requires real accepted-then-lost evidence, not modeled by this WAIT-only dataset -- always 0 here by construction, not estimated
-    gateRegretRate: rate(rows, (r) => r.hardVsSoft === 'SOFT' && (r.futureOutcome?.wholeChainNetPnlIfTaken ?? -1) > 0),
-    decisionRegretRate: rate(rows, (r) => r.hardVsSoft === 'SOFT' && r.counterfactualIdentifiability === 'OBSERVED_PARALLEL'
-      && (r.futureOutcome?.wholeChainNetPnlIfTaken ?? -1) > 0),
-    opportunityConversionRate: rate(rows, (r) => r.bestRejectedCandidate !== null),
+    softIdentifiableRows: softIdentifiable.length,
+    observedParallelRows: observedParallel.length,
+    falseRejectRate: rate(softIdentifiable, (r) => positiveOutcome(r)
+      && (r.exactReason === 'IMPLEMENTATION_FALSE_REJECT' || r.exactReason === 'ECONOMIC_WAIT')),
+    falseAcceptRate: null, // WAIT-only evidence has no accepted-then-lost denominator.
+    gateRegretRate: rate(softIdentifiable, positiveOutcome),
+    decisionRegretRate: rate(observedParallel, positiveOutcome),
+    opportunityConversionRate: null, // Candidate presence does not establish an actual conversion.
+    rejectedCandidatePresenceRate: rate(rows, (r) => r.bestRejectedCandidate !== null),
     implementationFalseRejectRate: rate(rows, (r) => r.exactReason === 'IMPLEMENTATION_FALSE_REJECT'),
     providerFailureRejectRate: rate(rows, (r) => r.exactReason === 'PROVIDER_FAILURE_REJECT' || r.exactReason === 'DATA_STALE_REJECT'),
     economicWaitRate: rate(rows, (r) => r.exactReason === 'ECONOMIC_WAIT'),

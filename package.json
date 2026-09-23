@@ -50,6 +50,8 @@
     "theta:research-export": "node --env-file=.env.local --import tsx tools/theta-research-export.ts",
     "theta:research-export:events": "tsx tools/capture-canonical-event-export.ts",
     "theta:research-export:historical-replay": "node --import tsx tools/export-historical-replay.ts --environment-file=.env.local",
+    "theta:research-analyze:historical-replay": "node --import tsx tools/summarize-historical-replay.ts",
+    "theta:performance:current": "node --import tsx tools/theta-current-performance-receipt.ts --environment-file=.env.local",
     "theta:evidence:durable": "node tools/write-local-durable-evidence.mjs research_exports/latest .theta-local-worker/evidence",
     "theta:first-order-preflight": "node --import tsx tools/theta-first-order-preflight.ts",
     "optionomics:quote-qualification": "node --env-file=.env.local --import tsx tools/optionomics-quote-qualification.ts",

@@ -53,6 +53,15 @@ export interface CurrentReEvaluationEvidence {
   readonly persistedAegisState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO' | 'DEFINED_RISK_ONLY' | null;
   readonly persistedSizingQty: number | null;
   readonly currentPolicyVersion: string;
+  /** Explicit historical release comparison. Re-evaluation alone cannot attribute a change. */
+  readonly changeAttribution?: {
+    readonly cause: 'CODE_FIX' | 'POLICY_CHANGE';
+    readonly oldSourceSha: string;
+    readonly newSourceSha: string;
+    readonly oldPolicyVersion: string;
+    readonly newPolicyVersion: string;
+    readonly evidenceId: string;
+  };
 }
 
 export interface FalseRejectAssessment {
@@ -73,6 +82,7 @@ export interface FalseRejectAssessment {
 
   readonly changedBecauseOfCodeFix: boolean;
   readonly changedBecauseOfPolicy: boolean;
+  readonly fullyReevaluatedAndEligible: boolean;
   readonly unchangedHardSafety: boolean;
   readonly insufficientHistoricalEvidence: boolean;
 
@@ -92,6 +102,21 @@ const HARD_SAFETY_CAUSES: ReadonlySet<OptionExecutabilityCause> = new Set([
 export function assessFalseReject(
   record: HistoricalCandidateRecord, evidence: CurrentReEvaluationEvidence,
 ): FalseRejectAssessment {
+  const attribution = evidence.changeAttribution;
+  if (attribution !== undefined) {
+    if (!/^[0-9a-f]{40}$/.test(attribution.oldSourceSha)
+      || !/^[0-9a-f]{40}$/.test(attribution.newSourceSha)
+      || attribution.evidenceId.trim() === ''
+      || attribution.newPolicyVersion !== evidence.currentPolicyVersion
+      || (attribution.cause === 'CODE_FIX'
+        && (attribution.oldSourceSha === attribution.newSourceSha
+          || attribution.oldPolicyVersion !== attribution.newPolicyVersion))
+      || (attribution.cause === 'POLICY_CHANGE'
+        && (attribution.oldSourceSha !== attribution.newSourceSha
+          || attribution.oldPolicyVersion === attribution.newPolicyVersion))) {
+      throw new Error('FALSE_REJECT_CHANGE_ATTRIBUTION_INVALID');
+    }
+  }
   const currentExecutionCauses = evidence.reDerivedContract === null
     ? [] : optionExecutabilityCauses(evidence.reDerivedContract);
   const currentExecutionState: ReRunState = evidence.reDerivedContract === null
@@ -99,9 +124,11 @@ export function assessFalseReject(
     : evidence.reDerivedContract.executable ? 'PASS' : 'STILL_REJECTED';
 
   const structuralInputsKnown = evidence.deltaWithinCurrentBands !== null
-    || evidence.openInterestAboveCurrentFloor !== null || evidence.volumeAboveCurrentFloor !== null;
-  const structuralPass = evidence.deltaWithinCurrentBands !== false
-    && evidence.openInterestAboveCurrentFloor !== false && evidence.volumeAboveCurrentFloor !== false;
+    && evidence.openInterestAboveCurrentFloor !== null && evidence.volumeAboveCurrentFloor !== null
+    && evidence.ownershipKnownAtAsOf !== null;
+  const structuralPass = evidence.deltaWithinCurrentBands === true
+    && evidence.openInterestAboveCurrentFloor === true && evidence.volumeAboveCurrentFloor === true
+    && evidence.ownershipKnownAtAsOf === true;
   const currentStructuralState: ReRunState = !structuralInputsKnown ? 'NOT_RE_EVALUATED' : structuralPass ? 'PASS' : 'STILL_REJECTED';
 
   const currentEventState: ReRunState = evidence.eventStateKnownAtAsOf === null ? 'NOT_RE_EVALUATED'
@@ -114,35 +141,15 @@ export function assessFalseReject(
     : evidence.persistedSizingQty > 0 ? 'PASS' : 'STILL_REJECTED';
 
   const reEvaluated = [currentStructuralState, currentExecutionState, currentEventState, currentAegisState, currentSizingState];
-  const anyReEvaluated = reEvaluated.some((s) => s !== 'NOT_RE_EVALUATED');
   const allNowPass = reEvaluated.every((s) => s === 'PASS');
   const anyStillHardSafetyRejected = currentExecutionCauses.some((c) => HARD_SAFETY_CAUSES.has(c))
     || currentAegisState === 'STILL_REJECTED';
 
-  const insufficientHistoricalEvidence = !anyReEvaluated;
+  const insufficientHistoricalEvidence = reEvaluated.some((s) => s === 'NOT_RE_EVALUATED');
   const unchangedHardSafety = anyStillHardSafetyRejected;
-  // A code fix can only be claimed when this pass actually re-evaluated
-  // the SAME candidate against real current-code logic and it now
-  // passes where it did not before -- never inferred from the old
-  // disposition string alone.
-  // record.oldDisposition/oldReasons are not used as a gate here: this
-  // analyzer is documented to run only on candidates that were REJECTED
-  // historically (that is the entire premise of a false-reject analysis)
-  // -- the real system's own disposition vocabulary is inconsistent
-  // about which literal string means "rejected" (e.g.
-  // new-risk-orchestrator.ts's outcome:'PASS' actually means "passed
-  // OVER", i.e. rejected), so this module deliberately does not pattern-
-  // match on that string. It only asks: does every dimension this pass
-  // could re-evaluate now genuinely pass, with no hard-safety cause
-  // still present?
-  const changedBecauseOfCodeFix = anyReEvaluated && allNowPass && !anyStillHardSafetyRejected;
-  // This module does not itself distinguish a code fix from a policy
-  // (threshold/config) change -- that requires knowing whether the
-  // underlying LOGIC changed vs. only a CONFIG VALUE changed, which is
-  // outside what re-derived evidence alone can prove. Both are folded
-  // into changedBecauseOfCodeFix here; a future pass with real commit-
-  // level provenance could split them further.
-  const changedBecauseOfPolicy = false;
+  const fullyReevaluatedAndEligible = allNowPass && !anyStillHardSafetyRejected;
+  const changedBecauseOfCodeFix = fullyReevaluatedAndEligible && attribution?.cause === 'CODE_FIX';
+  const changedBecauseOfPolicy = fullyReevaluatedAndEligible && attribution?.cause === 'POLICY_CHANGE';
 
   const identifiability: CounterfactualIdentifiability = insufficientHistoricalEvidence ? 'NOT_IDENTIFIABLE'
     : evidence.reDerivedContract !== null && evidence.persistedAegisState !== null && evidence.persistedSizingQty !== null
@@ -153,7 +160,8 @@ export function assessFalseReject(
     asOf: record.asOf, oldDisposition: record.oldDisposition, oldReasons: record.oldReasons,
     currentStructuralState, currentExecutionState, currentExecutionCauses, currentEventState, currentAegisState, currentSizingState,
     currentEconomicState: 'NOT_EVALUATED_THIS_PASS',
-    changedBecauseOfCodeFix, changedBecauseOfPolicy, unchangedHardSafety, insufficientHistoricalEvidence,
+    changedBecauseOfCodeFix, changedBecauseOfPolicy, fullyReevaluatedAndEligible,
+    unchangedHardSafety, insufficientHistoricalEvidence,
     counterfactualIdentifiability: identifiability, brokerAuthority: false,
   };
 }
@@ -169,6 +177,7 @@ export interface FalseRejectDayAggregate {
   readonly implementationCausedReject: number;
   readonly insufficientEvidence: number;
   readonly newlyEligibleUnderCurrentCode: number;
+  readonly eligibleButCauseUnattributed: number;
 }
 
 /** Aggregates a real batch of assessments for one historical session --
@@ -183,6 +192,8 @@ export function aggregateFalseRejectDay(asOfDate: string, assessments: readonly 
     sizingRejected: assessments.filter((a) => a.currentSizingState === 'STILL_REJECTED').length,
     implementationCausedReject: assessments.filter((a) => a.changedBecauseOfCodeFix).length,
     insufficientEvidence: assessments.filter((a) => a.insufficientHistoricalEvidence).length,
-    newlyEligibleUnderCurrentCode: assessments.filter((a) => a.changedBecauseOfCodeFix && !a.unchangedHardSafety).length,
+    newlyEligibleUnderCurrentCode: assessments.filter((a) => a.fullyReevaluatedAndEligible).length,
+    eligibleButCauseUnattributed: assessments.filter((a) => a.fullyReevaluatedAndEligible
+      && !a.changedBecauseOfCodeFix && !a.changedBecauseOfPolicy).length,
   };
 }

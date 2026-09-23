@@ -40,7 +40,7 @@ test('stale quote in the re-derived contract keeps STILL_REJECTED and unchangedH
   assert.equal(result.changedBecauseOfCodeFix, false);
 });
 
-test('CORE CLAIM: a candidate that now fully passes re-evaluation across every real dimension is changedBecauseOfCodeFix=true', () => {
+test('a fully re-evaluated candidate needs explicit release provenance before attributing a code fix', () => {
   const evidence: CurrentReEvaluationEvidence = {
     reDerivedContract: {
       executable: true, nonExecutableReason: null, bid: 1.5, ask: 1.55,
@@ -51,9 +51,33 @@ test('CORE CLAIM: a candidate that now fully passes re-evaluation across every r
     persistedAegisState: 'ALLOW_FULL', persistedSizingQty: 1, currentPolicyVersion: 'v2',
   };
   const result = assessFalseReject(RECORD, evidence);
-  assert.equal(result.changedBecauseOfCodeFix, true);
+  assert.equal(result.fullyReevaluatedAndEligible, true);
+  assert.equal(result.changedBecauseOfCodeFix, false);
   assert.equal(result.unchangedHardSafety, false);
   assert.equal(result.counterfactualIdentifiability, 'OBSERVED');
+});
+
+test('a code-fix attribution requires a source change and identical policy version', () => {
+  const evidence: CurrentReEvaluationEvidence = {
+    ...noEvidence(),
+    reDerivedContract: {
+      executable: true, nonExecutableReason: null, bid: 1.5, ask: 1.55,
+      quoteTimestamp: '2026-09-21T13:59:50Z', source: 'ALPACA', feed: 'OPRA', dataQuality: 'GOOD',
+    },
+    deltaWithinCurrentBands: true, openInterestAboveCurrentFloor: true, volumeAboveCurrentFloor: true,
+    ownershipKnownAtAsOf: true, eventStateKnownAtAsOf: 'CLEAR',
+    persistedAegisState: 'ALLOW_FULL', persistedSizingQty: 1,
+    changeAttribution: {
+      cause: 'CODE_FIX', oldSourceSha: 'a'.repeat(40), newSourceSha: 'b'.repeat(40),
+      oldPolicyVersion: 'v1', newPolicyVersion: 'v1', evidenceId: 'release-diff-1',
+    },
+  };
+  assert.equal(assessFalseReject(RECORD, evidence).changedBecauseOfCodeFix, true);
+  const attribution = evidence.changeAttribution;
+  assert.ok(attribution);
+  assert.throws(() => assessFalseReject(RECORD, {
+    ...evidence, changeAttribution: { ...attribution, oldPolicyVersion: 'v0' },
+  }), /FALSE_REJECT_CHANGE_ATTRIBUTION_INVALID/);
 });
 
 test('ADVERSARIAL: an AEGIS HOLD_ONLY state alone keeps the candidate rejected even if execution/structural pass', () => {
@@ -88,7 +112,7 @@ test('ADVERSARIAL: this module never estimates a fill -- no field in the output 
   assert.equal(result.currentEconomicState, 'NOT_EVALUATED_THIS_PASS');
 });
 
-test('partial real evidence (some dimensions known, some not) yields ESTIMABLE, not OBSERVED', () => {
+test('partial real evidence cannot establish candidate eligibility', () => {
   const evidence: CurrentReEvaluationEvidence = {
     ...noEvidence(),
     reDerivedContract: {
@@ -98,7 +122,8 @@ test('partial real evidence (some dimensions known, some not) yields ESTIMABLE, 
     deltaWithinCurrentBands: true,
   };
   const result = assessFalseReject(RECORD, evidence);
-  assert.equal(result.counterfactualIdentifiability, 'ESTIMABLE');
+  assert.equal(result.counterfactualIdentifiability, 'NOT_IDENTIFIABLE');
+  assert.equal(result.changedBecauseOfCodeFix, false);
 });
 
 test('aggregateFalseRejectDay counts real per-dimension rejections without estimating anything', () => {
@@ -112,4 +137,6 @@ test('aggregateFalseRejectDay counts real per-dimension rejections without estim
   assert.equal(aggregate.candidatesTotal, 2);
   assert.equal(aggregate.insufficientEvidence, 1);
   assert.equal(aggregate.newlyEligibleUnderCurrentCode, 1);
+  assert.equal(aggregate.eligibleButCauseUnattributed, 1);
+  assert.equal(aggregate.implementationCausedReject, 0);
 });

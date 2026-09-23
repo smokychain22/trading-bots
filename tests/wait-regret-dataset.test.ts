@@ -42,9 +42,9 @@ test('CORE CLAIM: a genuine HARD_SAFETY_REJECT never contributes to safetyReject
   }));
   const metrics = computeWaitRegretMetrics([hardRow]);
   assert.equal(metrics.safetyRejectRate, 1);
-  // Even though futureOutcome shows a big favorable move, gate/decision regret must be 0 -- HARD rows are excluded by construction.
-  assert.equal(metrics.gateRegretRate, 0);
-  assert.equal(metrics.decisionRegretRate, 0);
+  // The hard row supplies no eligible regret denominator.
+  assert.equal(metrics.gateRegretRate, null);
+  assert.equal(metrics.decisionRegretRate, null);
 });
 
 test('a SOFT, identifiable, favorable-outcome row DOES contribute to gateRegretRate', () => {
@@ -64,15 +64,18 @@ test('rates are reported separately, never combined into one score', () => {
   assert.ok(!('overallRegret' in metrics));
 });
 
-test('falseAcceptRate is always 0 by construction, never estimated from WAIT-only data', () => {
+test('falseAcceptRate and conversion remain unavailable in a WAIT-only dataset', () => {
   const metrics = computeWaitRegretMetrics([buildWaitRegretRow(baseInput())]);
-  assert.equal(metrics.falseAcceptRate, 0);
+  assert.equal(metrics.falseAcceptRate, null);
+  assert.equal(metrics.opportunityConversionRate, null);
+  assert.equal(metrics.rejectedCandidatePresenceRate, 0);
 });
 
-test('empty batch produces all-zero rates, never NaN', () => {
+test('empty batch leaves rates unavailable', () => {
   const metrics = computeWaitRegretMetrics([]);
   assert.equal(metrics.totalRows, 0);
-  assert.equal(Number.isNaN(metrics.gateRegretRate), false);
+  assert.equal(metrics.gateRegretRate, null);
+  assert.equal(metrics.safetyRejectRate, null);
 });
 
 test('NOT_IDENTIFIABLE rows are excluded from soft-identifiable regret calculations', () => {
@@ -82,5 +85,17 @@ test('NOT_IDENTIFIABLE rows are excluded from soft-identifiable regret calculati
     counterfactualIdentifiability: 'NOT_IDENTIFIABLE',
   }));
   const metrics = computeWaitRegretMetrics([row]);
-  assert.equal(metrics.falseRejectRate, 0);
+  assert.equal(metrics.falseRejectRate, null);
+  assert.equal(metrics.softIdentifiableRows, 0);
+});
+
+test('a labeled row without a numeric whole-chain counterfactual does not create a regret denominator', () => {
+  const row = buildWaitRegretRow(baseInput({
+    labelAvailableAt: DECISION_AT,
+    futureOutcome: { wholeChainNetPnlIfTaken: null, observedAt: DECISION_AT },
+    counterfactualIdentifiability: 'ESTIMABLE',
+  }));
+  const metrics = computeWaitRegretMetrics([row]);
+  assert.equal(metrics.softIdentifiableRows, 0);
+  assert.equal(metrics.falseRejectRate, null);
 });
