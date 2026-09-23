@@ -174,12 +174,13 @@ if (pool) {
       FROM market.optionomics_event_first_observation`, [observedAt]);
     eventRevisionEvidence = { ...events.rows[0],
       qualification: 'POSITIVE_REVISIONS_ONLY_NOT_COMPLETE_FUTURE_EVENT_COVERAGE' };
-    const corporate = await pool.query(`SELECT observed_at,start_date,end_date,pages_read,
+    const corporate = await pool.query(`SELECT observed_at,start_date::text AS start_date,
+      end_date::text AS end_date,pages_read,
       pagination_complete,negative_coverage_qualified,observation_count
       FROM market.alpaca_corporate_action_query ORDER BY observed_at DESC LIMIT 1`);
     if (corporate.rows[0]) corporateActionEvidence = {
-      observedAt: iso(corporate.rows[0].observed_at), start: iso(corporate.rows[0].start_date)?.slice(0, 10) ?? null,
-      end: iso(corporate.rows[0].end_date)?.slice(0, 10) ?? null, pagesRead: corporate.rows[0].pages_read,
+      observedAt: iso(corporate.rows[0].observed_at), start: corporate.rows[0].start_date,
+      end: corporate.rows[0].end_date, pagesRead: corporate.rows[0].pages_read,
       paginationComplete: corporate.rows[0].pagination_complete,
       negativeCoverageQualified: corporate.rows[0].negative_coverage_qualified,
       observationCount: corporate.rows[0].observation_count,
