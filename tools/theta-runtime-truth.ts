@@ -60,6 +60,7 @@ let latestManagementCycle: string | null = null;
 let lastOrderSubmissionObserved: string | null = null;
 let latestFailedRuntimeCycle: { at: string | null; code: string | null } | null = null;
 let recentFunnel: readonly Record<string, unknown>[] | null = null;
+let currentUtcDaySeed: Record<string, unknown> | null = null;
 const iso = (value: unknown): string | null => value instanceof Date ? value.toISOString()
   : typeof value === 'string' ? value : null;
 
@@ -146,6 +147,24 @@ if (pool) {
           unknownEvidence: safeCodes(candidate.unknownEvidence),
         })) : [],
     }));
+    const utcDay = observedAt.slice(0, 10);
+    const seed = await pool.query(`SELECT count(*)::int AS total_rows,
+      count(DISTINCT contract_json->>'contractSymbol')::int AS distinct_contracts,
+      count(*) FILTER (WHERE volatility_json->>'ivSource'='ALPACA'
+        AND volatility_json->>'ivEvidenceAuthority'='ALPACA_OPTION_SNAPSHOT_CONTRACT_IV'
+        AND jsonb_typeof(volatility_json->'iv')='number')::int AS alpaca_iv_lineage_rows,
+      count(*) FILTER (WHERE jsonb_typeof(volatility_json->'iv')='number'
+        AND volatility_json->>'ivSource' IS DISTINCT FROM 'ALPACA')::int AS iv_other_source_rows,
+      count(*) FILTER (WHERE market_json->>'quoteSource'='ALPACA'
+        AND jsonb_typeof(market_json->'bid')='number'
+        AND jsonb_typeof(market_json->'ask')='number'
+        AND market_json->>'quoteTimestamp' IS NOT NULL)::int AS bbo_lineage_rows,
+      count(*) FILTER (WHERE market_json->>'underlyingQuoteSource'='ALPACA_IEX'
+        AND jsonb_typeof(market_json->'underlyingReferencePrice')='number'
+        AND jsonb_typeof(contract_json->'moneyness')='number')::int AS moneyness_lineage_rows
+      FROM trade.candidate_point_in_time_evidence WHERE decision_time >= $1::timestamptz`,
+    [`${utcDay}T00:00:00.000Z`]);
+    currentUtcDaySeed = { utcDay, ...seed.rows[0], qualification: 'LINEAGE_FIELDS_ONLY_NOT_FULL_DETECTOR_QUALIFICATION' };
   } catch { databaseConnectionFailed = true; }
   finally { await pool.end().catch(() => { databaseConnectionFailed = true; }); }
 }
@@ -182,6 +201,7 @@ const receipt = {
   latestAegisCycle: 'NOT_QUERIED', latestManagementCycle, lastOrderSubmissionObserved,
   latestFailedRuntimeCycle,
   recentFunnel,
+  currentUtcDaySeed,
   unknownAuditState: canonicalSystemTruthRegister.auditCoverage,
   mismatches: [...new Set(mismatches)],
 };
