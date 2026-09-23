@@ -77,17 +77,22 @@ export interface PaperBrokerAdapter {
   cancelOrder(providerOrderId: string, authorization: BrokerMutationAuthorization): Promise<void>;
 }
 
+const strictNumericProviderField = z.union([
+  z.number().finite(),
+  z.string().regex(/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/),
+]);
+
 const rawOrderSchema = z.object({
   id: z.string().min(1),
   client_order_id: z.string().min(1),
   symbol: z.string().min(1),
-  qty: z.union([z.string(), z.number()]),
-  filled_qty: z.union([z.string(), z.number()]).default('0'),
-  filled_avg_price: z.union([z.string(), z.number()]).nullable().optional(),
+  qty: strictNumericProviderField,
+  filled_qty: strictNumericProviderField,
+  filled_avg_price: strictNumericProviderField.nullable().optional(),
   side: z.enum(['buy', 'sell']),
   position_intent: z.enum(['buy_to_open', 'buy_to_close', 'sell_to_open', 'sell_to_close']).nullable().optional(),
   status: z.string().min(1),
-  limit_price: z.union([z.string(), z.number()]).nullable().optional(),
+  limit_price: strictNumericProviderField.nullable().optional(),
   submitted_at: z.string().nullable().optional(),
   replaced_by: z.string().nullable().optional(),
   replaces: z.string().nullable().optional(),
@@ -104,17 +109,25 @@ const nullableNumber = (value: string | number | null | undefined): number | nul
 
 export const parseBrokerOrder = (raw: unknown): BrokerOrderSnapshot => {
   const order = rawOrderSchema.parse(raw);
+  const qty = finiteNumber(order.qty);
+  const filledQty = finiteNumber(order.filled_qty);
+  const filledAvgPrice = nullableNumber(order.filled_avg_price);
+  const limitPrice = nullableNumber(order.limit_price);
+  if (qty <= 0) throw new Error('Alpaca returned an invalid order quantity.');
+  if (filledQty < 0 || filledQty > qty) throw new Error('Alpaca returned an invalid filled order quantity.');
+  if (filledAvgPrice !== null && filledAvgPrice <= 0) throw new Error('Alpaca returned an invalid filled average price.');
+  if (limitPrice !== null && limitPrice <= 0) throw new Error('Alpaca returned an invalid limit price.');
   return {
     id: order.id,
     clientOrderId: order.client_order_id,
     symbol: order.symbol,
-    qty: finiteNumber(order.qty),
-    filledQty: finiteNumber(order.filled_qty),
-    filledAvgPrice: nullableNumber(order.filled_avg_price),
+    qty,
+    filledQty,
+    filledAvgPrice,
     side: order.side,
     positionIntent: order.position_intent ?? null,
     status: order.status,
-    limitPrice: nullableNumber(order.limit_price),
+    limitPrice,
     submittedAt: order.submitted_at ?? null,
     replacedBy: order.replaced_by ?? null,
     replaces: order.replaces ?? null,
@@ -127,8 +140,8 @@ const activitySchema = z.object({
   id: z.string().min(1),
   activity_type: z.string().min(1),
   symbol: z.string().nullable().optional(),
-  qty: z.union([z.string(), z.number()]).nullable().optional(),
-  price: z.union([z.string(), z.number()]).nullable().optional(),
+  qty: strictNumericProviderField.nullable().optional(),
+  price: strictNumericProviderField.nullable().optional(),
   date: z.string().nullable().optional(),
   transaction_time: z.string().nullable().optional(),
   order_id: z.string().nullable().optional(),

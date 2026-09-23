@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AlpacaPaperBrokerAdapter, AlpacaPaperBrokerError } from '../src/execution/broker.js';
+import { AlpacaPaperBrokerAdapter, AlpacaPaperBrokerError, parseBrokerActivity, parseBrokerOrder } from '../src/execution/broker.js';
 import { assertRollPair, buildAlpacaLimitOrder, type ThetaOrderInstruction } from '../src/execution/order-construction.js';
 import { authorizeBrokerMutation } from '../src/execution/execution-control.js';
 
@@ -87,6 +87,34 @@ test('submit, replace, cancel, retrieve, and activities use documented paths wit
   assert.equal(calls[0]?.url, 'https://paper-api.alpaca.markets/v2/orders');
   assert.equal(calls[1]?.url, 'https://paper-api.alpaca.markets/v2/orders/broker-1');
   assert.equal(calls[0]?.body && (calls[0]?.body as Record<string, unknown>).type, 'limit');
+});
+
+test('broker order snapshots preserve real zero fills and reject missing or malformed numeric evidence', () => {
+  assert.equal(parseBrokerOrder(rawOrder()).filledQty, 0);
+  const missingFilled = rawOrder();
+  delete (missingFilled as Record<string, unknown>).filled_qty;
+  assert.throws(() => parseBrokerOrder(missingFilled));
+  for (const filled_qty of ['', ' ', 'not-a-number', 'NaN', 'Infinity', '-1', '2']) {
+    assert.throws(() => parseBrokerOrder(rawOrder({ filled_qty })));
+  }
+  for (const qty of ['', ' ', 'not-a-number', 'NaN', 'Infinity', '0', '-1']) {
+    assert.throws(() => parseBrokerOrder(rawOrder({ qty })));
+  }
+  assert.throws(() => parseBrokerOrder(rawOrder({ filled_avg_price: '0' })), /filled average price/);
+  assert.throws(() => parseBrokerOrder(rawOrder({ limit_price: '0' })), /limit price/);
+});
+
+test('broker activities reject blank numeric evidence instead of coercing it to zero', () => {
+  const activity = { id: 'activity-1', activity_type: 'FILL', symbol: 'AAPL', qty: '1', price: '2.50' };
+  assert.deepEqual(
+    { quantity: parseBrokerActivity(activity).quantity, price: parseBrokerActivity(activity).price },
+    { quantity: 1, price: 2.5 },
+  );
+  for (const field of ['qty', 'price'] as const) {
+    assert.throws(() => parseBrokerActivity({ ...activity, [field]: '' }));
+    assert.throws(() => parseBrokerActivity({ ...activity, [field]: ' ' }));
+    assert.throws(() => parseBrokerActivity({ ...activity, [field]: 'not-a-number' }));
+  }
 });
 
 test('a mutation 5xx or malformed success body is ambiguous and must reconcile before retry', async () => {
