@@ -4,6 +4,7 @@ import { applyPaperEvidenceRiskCap } from './execution-authorization-tier.js';
 import { masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
 import { paperBootstrapAllowedUnknownComponent, paperBootstrapAllowedUnknownReason, paperEntryBootstrapPolicyVersion } from '../theta/paper-entry-bootstrap.js';
 import { verifyPaperEntrySafetyPolicyReceipt, type PaperEntrySafetyPolicyReceipt } from '../theta/paper-entry-safety-policy.js';
+import { verifyAegisAssessmentIdentity, type AegisAssessmentIdentity } from '../theta/aegis-assessment-identity.js';
 
 export const masterPaperPlanAssemblyVersion = 'theta-master-paper-plan-assembly-v1' as const;
 
@@ -19,6 +20,7 @@ export interface MasterPaperPlanAssemblyInput {
   readonly optionsTradingLevel: number | null;
   readonly aegisState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO' | 'DEFINED_RISK_ONLY' | 'EMERGENCY_EXIT_ONLY' | null;
   readonly aegisInputOrigin: 'DERIVED_FROM_REAL' | 'CALLER_MANUAL' | 'SYNTHETIC_FIXTURE' | 'UNKNOWN' | null;
+  readonly aegisAssessmentIdentity: AegisAssessmentIdentity | null;
   readonly entrySafetyPolicy: PaperEntrySafetyPolicyReceipt;
   readonly openPositionSymbols: readonly string[];
   readonly openOrderSymbols: readonly string[];
@@ -94,6 +96,16 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
   else if (!['ALLOW_FULL', 'ALLOW_REDUCED'].includes(input.aegisState)) blockers.push('AEGIS_NOT_APPROVED');
   if (input.aegisInputOrigin !== 'DERIVED_FROM_REAL') blockers.push('AEGIS_REAL_INPUT_LINEAGE_MISSING');
   if (selected !== undefined && input.aegisState !== selected.aegisState) blockers.push('AEGIS_SELECTION_LINEAGE_MISMATCH');
+  const aegisIdentity = verifyAegisAssessmentIdentity(input.aegisAssessmentIdentity);
+  if (aegisIdentity === null || selected === undefined || selectedLeg === undefined
+    || aegisIdentity.runtimeCandidateRef !== selected.candidateId
+    || aegisIdentity.persistedCandidateId !== input.persistedCandidateId
+    || aegisIdentity.underlying !== selected.underlying
+    || aegisIdentity.optionSymbol !== selectedLeg.optionSymbol
+    || aegisIdentity.newRiskState !== input.aegisState
+    || Date.parse(aegisIdentity.decisionAsOf) !== Date.parse(frontier.timestamp)) {
+    blockers.push('AEGIS_ASSESSMENT_LINEAGE_INVALID');
+  }
   const entryEligibility = selected?.entryEligibility;
   if (entryEligibility === undefined) blockers.push('ENTRY_ELIGIBILITY_LINEAGE_MISSING');
   else if (entryEligibility.basis === 'INELIGIBLE') blockers.push('ENTRY_ELIGIBILITY_FAILED');
@@ -159,6 +171,7 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
       optionsCapabilityVerified: true,
       noEquivalentExposureConflict: true,
       aegisState: input.aegisState as 'ALLOW_FULL' | 'ALLOW_REDUCED',
+      aegisAssessmentIdentity: aegisIdentity as AegisAssessmentIdentity,
       killSwitchActive: false,
       decisionExpiresAt: input.decisionExpiresAt,
       pricingPolicy: adaptivePricingPolicy,

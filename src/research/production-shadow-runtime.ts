@@ -34,6 +34,7 @@ import { applyCompanyEventPaperPolicy, applyCorporateActionPaperPolicy, buildPap
 import type { OptionomicsEarningsEvidence } from '../theta/earnings-event-evidence.js';
 import type { MacroRiskEvidence } from '../theta/macro-event-policy.js';
 import type { AlpacaCalendarSession } from '../theta/alpaca-provider.js';
+import { verifyAegisAssessmentIdentity } from '../theta/aegis-assessment-identity.js';
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
@@ -403,7 +404,8 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       &&alpacaIvVerification?.ready===true
       &&member.cycle.strategyFrontier!==null&&saved.decisionId!==null){
       const selected=await input.pool.query(`SELECT d.selected_candidate_id::text AS candidate_id,
-        c.option_contract_id::text,oc.underlying_id::text,cv.assumptions_json
+        c.option_contract_id::text,oc.underlying_id::text,cv.assumptions_json,
+        d.receipt_json->'aegisAssessmentIdentity' AS aegis_assessment_identity
         FROM trade.decision d
         LEFT JOIN trade.candidate c ON c.candidate_id=d.selected_candidate_id
         LEFT JOIN market.option_contract oc ON oc.option_contract_id=c.option_contract_id
@@ -420,6 +422,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       const orders=Array.isArray(positionState.openOrders)?positionState.openOrders:[];
       const assumptions=row?.assumptions_json!==null&&typeof row?.assumptions_json==='object'
         ? row.assumptions_json as Record<string,unknown>:{};
+      const aegisAssessmentIdentity=verifyAegisAssessmentIdentity(row?.aegis_assessment_identity);
       const marketSession=snapshot.marketSession!==null&&typeof snapshot.marketSession==='object'&&!Array.isArray(snapshot.marketSession)
         ? snapshot.marketSession as Record<string,unknown>:{};
       const planNow=input.now();
@@ -436,6 +439,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         optionsApprovedLevel:n(account.optionsApprovedLevel),optionsTradingLevel:n(account.optionsTradingLevel),
         aegisState:selectedFrontierCandidate?.aegisState??null,
         aegisInputOrigin:member.cycle.provenanceDetail.includes('aegisInputs=DERIVED_FROM_REAL')?'DERIVED_FROM_REAL':null,
+        aegisAssessmentIdentity,
         entrySafetyPolicy,
         openPositionSymbols:positions.flatMap((value)=>value!==null&&typeof value==='object'&&!Array.isArray(value)
           &&typeof (value as Record<string,unknown>).symbol==='string'?[String((value as Record<string,unknown>).symbol)]:[]),

@@ -2,12 +2,34 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Pool,PoolClient } from 'pg';
 import { canonicalJson } from '../research/point-in-time-evidence.js';
 import { managementOrderActions, type ManagementDecisionDraft } from './management-paper-plan-assembly.js';
-import { masterPaperActionPlanSchema, type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
+import { masterPaperActionPlanSchema, masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
 import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
+import { verifyAegisAssessmentIdentity } from '../theta/aegis-assessment-identity.js';
 
 export type MasterPaperActionPlanState='READY'|'CLAIMED'|'WAITING_GATE'|'SUBMITTED'|'TERMINAL'|'QUARANTINED';
 
 const hash=(value:unknown)=>createHash('sha256').update(canonicalJson(value)).digest('hex');
+
+function assertNewRiskAegisLineage(row:Record<string,unknown>,plan:ApprovedMasterPaperActionPlan):void{
+  const planIdentity=verifyAegisAssessmentIdentity(plan.aegisAssessmentIdentity);
+  const persistedIdentity=verifyAegisAssessmentIdentity(row.aegis_assessment_identity);
+  if(planIdentity===null||persistedIdentity===null
+    ||canonicalJson(planIdentity)!==canonicalJson(persistedIdentity)
+    ||planIdentity.fusionSnapshotId!==String(row.fusion_snapshot_id)
+    ||planIdentity.fusionSnapshotHash!==String(row.fusion_snapshot_hash)
+    ||Date.parse(planIdentity.decisionAsOf)!==Date.parse(String(row.decision_time))
+    ||Date.parse(planIdentity.decisionAsOf)!==Date.parse(String(row.decision_decided_at))
+    ||planIdentity.runtimeCandidateRef!==String(row.runtime_selected_candidate_ref)
+    ||plan.decisionId!==String(row.decision_id)
+    ||planIdentity.persistedCandidateId!==String(row.candidate_id)
+    ||planIdentity.underlying!==String(row.underlying_symbol)
+    ||planIdentity.optionSymbol!==String(row.contract_symbol)
+    ||planIdentity.assessmentCandidateId!==String(row.contract_symbol)
+    ||planIdentity.newRiskState!==String(row.aegis_action)
+    ||plan.optionContractId!==String(row.option_contract_id)){
+    throw new Error('ACTION_PLAN_AEGIS_ASSESSMENT_LINEAGE_INVALID');
+  }
+}
 
 export class PostgresMasterPaperActionPlanStore {
   constructor(private readonly pool:Pool){}
@@ -20,9 +42,18 @@ export class PostgresMasterPaperActionPlanStore {
     return withRuntimePostgresTransaction(this.pool,async(client)=>{
       const evidence=await client.query(`SELECT d.decision_id,d.decision_kind,d.selected_candidate_id::text AS candidate_id,
         d.runtime_selected_candidate_ref,d.quantity::numeric AS quantity,d.aegis_action::text AS aegis_action,
+        d.decided_at::text AS decision_decided_at,
         d.receipt_json->>'aegisInputOrigin' AS aegis_input_origin,
+        d.receipt_json->'aegisAssessmentIdentity' AS aegis_assessment_identity,
+        fs.fusion_snapshot_id::text,fs.content_hash AS fusion_snapshot_hash,fs.decision_time::text,
+        c.option_contract_id::text,oc.contract_symbol,u.symbol AS underlying_symbol,
         ea.account_kind::text AS account_kind,ea.account_ready
-        FROM trade.decision d JOIN trade.execution_account ea ON ea.execution_account_id=$2
+        FROM trade.decision d
+        JOIN trade.fusion_snapshot fs ON fs.fusion_snapshot_id=d.fusion_snapshot_id
+        JOIN trade.candidate c ON c.candidate_id=d.selected_candidate_id
+        JOIN market.option_contract oc ON oc.option_contract_id=c.option_contract_id
+        JOIN market.underlying u ON u.underlying_id=oc.underlying_id
+        JOIN trade.execution_account ea ON ea.execution_account_id=$2
         WHERE d.decision_id=$1 FOR SHARE OF d,ea`,[plan.decisionId,plan.executionAccountId]);
       const row=evidence.rows[0] as Record<string,unknown>|undefined;
       if(row===undefined)throw new Error('ACTION_PLAN_DECISION_OR_ACCOUNT_NOT_FOUND');
@@ -33,6 +64,7 @@ export class PostgresMasterPaperActionPlanStore {
       if(Number(row.quantity)!==plan.canonicalQuantity)throw new Error('ACTION_PLAN_CANONICAL_QUANTITY_MISMATCH');
       if(String(row.aegis_action)!==plan.aegisState)throw new Error('ACTION_PLAN_AEGIS_MISMATCH');
       if(row.aegis_input_origin!=='DERIVED_FROM_REAL')throw new Error('ACTION_PLAN_AEGIS_REAL_INPUT_LINEAGE_MISSING');
+      assertNewRiskAegisLineage(row,plan);
       if(chain!==undefined){
         if(chain.underlyingId!==plan.underlyingId)throw new Error('ACTION_PLAN_CHAIN_UNDERLYING_MISMATCH');
         await client.query(`INSERT INTO trade.economic_chain(chain_id,bot_instance_id,underlying_id,lifecycle_state,opened_at)
@@ -185,7 +217,18 @@ export class PostgresMasterPaperActionPlanStore {
         action_plan_event_id,action_plan_id,state,event_time,detail_json)
         SELECT gen_random_uuid(),action_plan_id,'QUARANTINED',$2,'{"blockers":["DECISION_EXPIRED"]}'::jsonb
         FROM unnest($1::uuid[]) AS expired_id(action_plan_id)`,[expired.rows.map((row)=>String(row.action_plan_id)),now]);
-      const result=await client.query(`SELECT p.action_plan_id,p.plan_json FROM trade.master_paper_action_plan p
+      const result=await client.query(`SELECT p.action_plan_id,p.plan_json,
+        d.decision_id::text,d.decision_kind,d.selected_candidate_id::text AS candidate_id,d.aegis_action::text AS aegis_action,
+        d.runtime_selected_candidate_ref,d.decided_at::text AS decision_decided_at,
+        d.receipt_json->'aegisAssessmentIdentity' AS aegis_assessment_identity,
+        fs.fusion_snapshot_id::text,fs.content_hash AS fusion_snapshot_hash,fs.decision_time::text,
+        c.option_contract_id::text,oc.contract_symbol,u.symbol AS underlying_symbol
+        FROM trade.master_paper_action_plan p
+        JOIN trade.decision d ON d.decision_id=p.decision_id
+        JOIN trade.fusion_snapshot fs ON fs.fusion_snapshot_id=d.fusion_snapshot_id
+        LEFT JOIN trade.candidate c ON c.candidate_id=d.selected_candidate_id
+        LEFT JOIN market.option_contract oc ON oc.option_contract_id=c.option_contract_id
+        LEFT JOIN market.underlying u ON u.underlying_id=oc.underlying_id
         WHERE p.execution_account_id=$1 AND p.not_before<=$2 AND p.plan_version=$3 AND
           ($4::boolean OR p.authority_kind='MANAGEMENT') AND
           (p.status IN ('READY','WAITING_GATE') OR (p.status='CLAIMED' AND p.claim_expires_at<=$2))
@@ -194,9 +237,11 @@ export class PostgresMasterPaperActionPlanStore {
             JOIN trade.order_intent oi ON oi.order_intent_id=parent.execution_order_intent_id
             WHERE parent.action_plan_id=p.depends_on_action_plan_id AND oi.status='FILLED'))
         ORDER BY p.created_at,p.action_group_id,p.leg_sequence,p.action_plan_id
-        FOR UPDATE OF p SKIP LOCKED LIMIT 1`,[executionAccountId,now,'theta-master-paper-action-plan-v3',options.allowNewRisk]);
-      const row=result.rows[0] as {action_plan_id:string;plan_json:unknown}|undefined;
+        FOR UPDATE OF p SKIP LOCKED LIMIT 1`,[executionAccountId,now,masterPaperActionPlanVersion,options.allowNewRisk]);
+      const row=result.rows[0] as Record<string,unknown>|undefined;
       if(row===undefined)return {plan:null,actionPlanId:null,claimExpiresAt:null};
+      const plan=masterPaperActionPlanSchema.parse(row.plan_json) as ApprovedMasterPaperActionPlan;
+      if(plan.decisionAuthority==='NEW_RISK')assertNewRiskAegisLineage(row,plan);
       const claimExpiresAt=new Date(Date.parse(now)+120_000).toISOString();
       const updated=await client.query(`UPDATE trade.master_paper_action_plan SET status='CLAIMED',claimed_by=$2,claimed_at=$3,
         claim_expires_at=$4,updated_at=$3 WHERE action_plan_id=$1 AND
@@ -205,8 +250,7 @@ export class PostgresMasterPaperActionPlanStore {
       if(updated.rowCount!==1)throw new Error('ACTION_PLAN_CLAIM_RACE');
       await client.query(`INSERT INTO trade.master_paper_action_plan_event(action_plan_event_id,action_plan_id,state,event_time,detail_json)
         VALUES($1,$2,'CLAIMED',$3,$4::jsonb)`,[randomUUID(),row.action_plan_id,now,JSON.stringify({workerId})]);
-      return {plan:masterPaperActionPlanSchema.parse(row.plan_json) as ApprovedMasterPaperActionPlan,
-        actionPlanId:row.action_plan_id,claimExpiresAt};
+      return {plan,actionPlanId:String(row.action_plan_id),claimExpiresAt};
     },{verifyCommitted:async(pool,outcome)=>{
       if(outcome.actionPlanId===null)return true;
       const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT status,claimed_by,

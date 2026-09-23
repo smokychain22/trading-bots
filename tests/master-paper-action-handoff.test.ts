@@ -9,6 +9,7 @@ import { MasterPaperExecutionOrchestrator } from '../src/execution/master-paper-
 import { InMemoryPaperOrderStore, PaperOrderCoordinator } from '../src/execution/paper-order-coordinator.js';
 import { applyPaperEvidenceRiskCap } from '../src/execution/execution-authorization-tier.js';
 import { buildPaperEntrySafetyPolicyReceipt } from '../src/theta/paper-entry-safety-policy.js';
+import { testAegisAssessmentIdentity } from './fixtures/aegis-assessment-identity.js';
 
 const now='2026-09-14T14:00:00.000Z';
 const entrySafetyPolicy=buildPaperEntrySafetyPolicyReceipt({decisionAsOf:now,
@@ -40,6 +41,7 @@ const plan=(overrides:Partial<ApprovedMasterPaperActionPlan>={}):ApprovedMasterP
   multiplier:100,action:'OPEN_CSP',economicBoundary:1.2,economicsRemainPositive:true,expectedAfterCostEv:15,
   empiricalEconomicsReady:true,selectedByCanonicalAuthority:true,hardValidityPassed:true,accountVerified:true,
   optionsCapabilityVerified:true,noEquivalentExposureConflict:true,aegisState:'ALLOW_FULL',killSwitchActive:false,
+  aegisAssessmentIdentity:testAegisAssessmentIdentity(),
   decisionExpiresAt:'2026-09-14T14:01:00.000Z',pricingPolicy:{waitIntervalMs:1000,maxAttempts:2,
     concessionFractions:[0,0.5],tickSize:0.01},pricingAttempt:0,previousLimit:null,entrySafetyPolicy,...overrides});
 
@@ -106,6 +108,15 @@ test('new-risk handoff blocks a missing or uncleared entry safety policy',async(
   assert.equal(blockedResult.state,'BLOCKED');assert.equal(blocked.broker.submitCalls,0);
 });
 
+test('new-risk handoff rejects a tampered AEGIS assessment identity before broker mutation',async()=>{
+  const {broker,handoff}=setup();
+  const identity=testAegisAssessmentIdentity();
+  const result=await handoff.execute(plan({aegisAssessmentIdentity:{...identity,identityHash:'0'.repeat(64)}}),now,true);
+  assert.equal(result.state,'BLOCKED');
+  assert.ok(result.blockers.includes('AEGIS_ASSESSMENT_LINEAGE_INVALID'));
+  assert.equal(broker.submitCalls,0);
+});
+
 test('qualified Optionomics two-sided semantics can reach command assembly without claiming OPRA',async()=>{
   const optionomics={...quote,provider:'OPTIONOMICS',sourceSemantics:'TRUSTED_TWO_SIDED_ORDER_PRICING'} as const;
   const {broker,handoff}=setup(optionomics);const result=await handoff.execute(plan(),now,true);
@@ -162,7 +173,9 @@ test('live tiers and stale or wrong contract evidence never reach broker submiss
 test('a risk-reducing stock exit reaches the coordinator through a qualified Alpaca IEX quote',async()=>{
   const stockQuote={...quote,contractId:'AAPL',providerContractId:'AAPL',sourceSemantics:'TRUSTED_TWO_SIDED_ORDER_PRICING',
     provenance:{...quote.provenance,feed:'iex'}} as const;
-  const {broker,handoff}=setup(stockQuote);const result=await handoff.execute(plan({action:'SELL_STOCK',symbol:'AAPL',
+  const {broker,handoff}=setup(stockQuote);const result=await handoff.execute(plan({decisionAuthority:'MANAGEMENT',
+    managementInputSnapshotId:'88888888-8888-4888-8888-888888888888',
+    managementActionFrontierId:'99999999-9999-4999-8999-999999999999',action:'SELL_STOCK',symbol:'AAPL',
     optionContractId:null,optionType:null,multiplier:1,expectedAfterCostEv:null,empiricalEconomicsReady:false,aegisState:'HOLD_ONLY'}),now,true);
   assert.equal(result.state,'EXECUTED');assert.equal(broker.submitCalls,1);
 });

@@ -6,8 +6,9 @@ import { MasterPaperExecutionOrchestrator, type MasterPaperExecutionResult } fro
 import { thetaActionOpensNewRisk, type ThetaOrderAction } from './order-construction.js';
 import { executionAuthorizationTiers, type ExecutionAuthorizationTier, type PaperEvidenceSizing } from './execution-authorization-tier.js';
 import { paperEntrySafetyPolicyReceiptSchema, verifyPaperEntrySafetyPolicyReceipt, type PaperEntrySafetyPolicyReceipt } from '../theta/paper-entry-safety-policy.js';
+import { aegisAssessmentIdentitySchema, verifyAegisAssessmentIdentity, type AegisAssessmentIdentity } from '../theta/aegis-assessment-identity.js';
 
-export const masterPaperActionPlanVersion = 'theta-master-paper-action-plan-v3' as const;
+export const masterPaperActionPlanVersion = 'theta-master-paper-action-plan-v4' as const;
 
 export type MasterPaperDecisionAuthority = 'NEW_RISK' | 'MANAGEMENT';
 
@@ -49,6 +50,7 @@ export interface ApprovedMasterPaperActionPlan {
   readonly optionsCapabilityVerified: boolean;
   readonly noEquivalentExposureConflict: boolean;
   readonly aegisState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO';
+  readonly aegisAssessmentIdentity?: AegisAssessmentIdentity;
   readonly killSwitchActive: boolean;
   readonly decisionExpiresAt: string;
   readonly pricingPolicy: AdaptiveLimitPolicy;
@@ -74,6 +76,7 @@ export const masterPaperActionPlanSchema = z.object({
   empiricalEconomicsReady:z.boolean(),selectedByCanonicalAuthority:z.boolean(),hardValidityPassed:z.boolean(),
   accountVerified:z.boolean(),optionsCapabilityVerified:z.boolean(),noEquivalentExposureConflict:z.boolean(),
   aegisState:z.enum(['ALLOW_FULL','ALLOW_REDUCED','HOLD_ONLY','HARD_VETO']),killSwitchActive:z.boolean(),
+  aegisAssessmentIdentity:aegisAssessmentIdentitySchema.optional(),
   decisionExpiresAt:z.string().datetime({offset:true}),pricingPolicy:z.object({waitIntervalMs:z.number().nonnegative(),
     maxAttempts:z.number().int().positive(),concessionFractions:z.array(z.number().min(0).max(1)),tickSize:z.number().positive()}),
   pricingAttempt:z.number().int().nonnegative(),previousLimit:z.number().positive().finite().nullable(),
@@ -84,6 +87,8 @@ export const masterPaperActionPlanSchema = z.object({
   if(plan.paperEvidenceQuantity>plan.paperEvidenceRiskCap)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_RISK_CAP_EXCEEDED'});
   if(plan.decisionAuthority==='NEW_RISK'&&(plan.managementInputSnapshotId!==null||plan.managementActionFrontierId!==null))
     context.addIssue({code:'custom',message:'NEW_RISK_PLAN_MAY_NOT_REFERENCE_MANAGEMENT_AUTHORITY'});
+  if(plan.decisionAuthority==='NEW_RISK'&&plan.aegisAssessmentIdentity===undefined)
+    context.addIssue({code:'custom',message:'NEW_RISK_PLAN_REQUIRES_AEGIS_ASSESSMENT_IDENTITY'});
   if(plan.decisionAuthority==='NEW_RISK'&&(plan.actionGroupId!==plan.actionPlanId||plan.legSequence!==1||plan.dependsOnActionPlanId!==null))
     context.addIssue({code:'custom',message:'NEW_RISK_PLAN_MUST_BE_SINGLE_LEG'});
   if(plan.decisionAuthority==='MANAGEMENT'&&(plan.managementInputSnapshotId===null||plan.managementActionFrontierId===null))
@@ -178,6 +183,12 @@ export class MasterPaperActionHandoff {
       (!plan.empiricalEconomicsReady||plan.expectedAfterCostEv===null||plan.expectedAfterCostEv<=0))
       blockers.push('POSITIVE_AFTER_COST_EV_NOT_EMPIRICALLY_READY');
     if(opensNewRisk&&!['ALLOW_FULL','ALLOW_REDUCED'].includes(plan.aegisState))blockers.push('AEGIS_NOT_APPROVED');
+    if(plan.decisionAuthority==='NEW_RISK'){
+      const identity=verifyAegisAssessmentIdentity(plan.aegisAssessmentIdentity);
+      if(identity===null||identity.persistedCandidateId!==plan.candidateId||identity.underlying!==plan.underlying
+        ||identity.optionSymbol!==plan.symbol||identity.newRiskState!==plan.aegisState)
+        blockers.push('AEGIS_ASSESSMENT_LINEAGE_INVALID');
+    }
     const entrySafetyPolicy=plan.decisionAuthority==='NEW_RISK'?verifyPaperEntrySafetyPolicyReceipt(plan.entrySafetyPolicy):null;
     if(plan.decisionAuthority==='NEW_RISK'&&entrySafetyPolicy?.action!=='CLEAR')blockers.push('ENTRY_SAFETY_POLICY_NOT_CLEARED');
     const maximumQuoteAgeMs=preSubmitMaximumQuoteAgeMs({policy:this.quoteAgePolicy,now,

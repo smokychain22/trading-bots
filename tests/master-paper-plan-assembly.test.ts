@@ -4,6 +4,7 @@ import type { CanonicalStrategyFrontier } from '../src/theta/canonical-strategy-
 import { assembleMasterPaperEvidencePlan, type MasterPaperPlanAssemblyInput } from '../src/execution/master-paper-plan-assembly.js';
 import { PostgresMasterPaperActionPlanStore } from '../src/execution/postgres-master-paper-action-plan-store.js';
 import { buildPaperEntrySafetyPolicyReceipt } from '../src/theta/paper-entry-safety-policy.js';
+import { testAegisAssessmentIdentity } from './fixtures/aegis-assessment-identity.js';
 
 const decisionId='10000000-0000-4000-8000-000000000001';
 const executionAccountId='10000000-0000-4000-8000-000000000002';
@@ -50,6 +51,10 @@ const input=(overrides:Partial<MasterPaperPlanAssemblyInput>={}):MasterPaperPlan
   frontier:frontier(),executionAccountId,decisionId,persistedCandidateId,optionContractId,underlyingId,
   accountStatus:'ACTIVE',optionsApprovedLevel:3,optionsTradingLevel:3,aegisState:'ALLOW_FULL',
   aegisInputOrigin:'DERIVED_FROM_REAL',
+  aegisAssessmentIdentity:testAegisAssessmentIdentity({
+    fusionSnapshotId:'90000000-0000-4000-8000-000000000001',
+    persistedCandidateId,
+  }),
   entrySafetyPolicy,
   openPositionSymbols:[],openOrderSymbols:[],paperEvidenceRiskCap:1,modeledRoundTripCostPerContract:1.70,
   now:'2026-09-14T14:00:01.000Z',decisionExpiresAt:'2026-09-14T14:00:46.000Z',...overrides,
@@ -106,6 +111,15 @@ test('a plan cannot use an AEGIS state from a different candidate',()=>{
   const result=assembleMasterPaperEvidencePlan(input({aegisState:'ALLOW_REDUCED'}));
   assert.equal(result.state,'BLOCKED');
   assert.ok(result.blockers.includes('AEGIS_SELECTION_LINEAGE_MISMATCH'));
+});
+
+test('plan assembly rejects AEGIS evidence whose immutable identity was changed',()=>{
+  const identity=testAegisAssessmentIdentity({persistedCandidateId});
+  const result=assembleMasterPaperEvidencePlan(input({
+    aegisAssessmentIdentity:{...identity,assessmentHash:'0'.repeat(64)},
+  }));
+  assert.equal(result.state,'BLOCKED');
+  assert.ok(result.blockers.includes('AEGIS_ASSESSMENT_LINEAGE_INVALID'));
 });
 
 test('a manual or missing AEGIS input origin cannot assemble a new-risk Paper plan',()=>{

@@ -146,6 +146,7 @@ export interface CanonicalStrategyFrontierInput {
   readonly sizingPolicy?: Readonly<Record<string, unknown>>;
   readonly aegisNewRiskState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO' | 'DEFINED_RISK_ONLY' | 'EMERGENCY_EXIT_ONLY' | null;
   readonly aegisNewRiskStateByCandidateId?: Readonly<Record<string, CanonicalStrategyFrontierInput['aegisNewRiskState']>>;
+  readonly aegisBindingReasonsByCandidateId?: Readonly<Record<string, readonly string[]>>;
   readonly eventState: string | null;
   readonly unmanagedBrokerPositionCount: number;
   readonly unevaluatedUnderlyingCount: number;
@@ -225,7 +226,10 @@ function structuralSizing(
   const reducedMultiplier = typeof policy?.reducedStateMultiplier === 'number' && Number.isFinite(policy.reducedStateMultiplier)
     ? Math.max(0, Math.min(1, policy.reducedStateMultiplier)) : null;
   if (candidateAegisState === null || ['HOLD_ONLY', 'HARD_VETO', 'EMERGENCY_EXIT_ONLY'].includes(candidateAegisState)) {
-    return { quantity: 0, bindingConstraint: candidateAegisState === null ? 'AEGIS_UNKNOWN' : `AEGIS_${candidateAegisState}`, reasons: ['AEGIS_DOES_NOT_PERMIT_NEW_RISK'] };
+    const exactReasons=input.aegisBindingReasonsByCandidateId?.[candidateId]?.filter((reason)=>reason.trim().length>0)??[];
+    return { quantity: 0,
+      bindingConstraint: exactReasons[0] ?? (candidateAegisState === null ? 'AEGIS_UNKNOWN' : `AEGIS_${candidateAegisState}`),
+      reasons: exactReasons.length>0?exactReasons:['AEGIS_DOES_NOT_PERMIT_NEW_RISK'] };
   }
   if (candidateAegisState === 'ALLOW_REDUCED') {
     if (reducedMultiplier === null) return { quantity: 0, bindingConstraint: 'REDUCED_MULTIPLIER_UNKNOWN', reasons: ['REDUCED_MULTIPLIER_UNKNOWN'] };

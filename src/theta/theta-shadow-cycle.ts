@@ -16,8 +16,9 @@ import { checkTemporalConsistency, DEFAULT_TEMPORAL_CONSISTENCY_POLICIES } from 
 import type { PythonBridgeConfig } from './python-bridge.js';
 import { buildFusionSnapshot, hashJson, type FusionSnapshot, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
 import type { AegisIvStressAssessment } from './aegis-iv-stress.js';
-import { compareIvStressSignals, type AlpacaContractIvAssessmentMap } from './aegis-alpaca-iv-stress.js';
-import type { AegisSpreadStressAssessmentMap } from './aegis-spread-stress.js';
+import { compareIvStressSignals, type AlpacaContractIvAssessment,
+  type AlpacaContractIvAssessmentMap } from './aegis-alpaca-iv-stress.js';
+import type { AegisSpreadStressAssessment, AegisSpreadStressAssessmentMap } from './aegis-spread-stress.js';
 import type { NormalizedOptionContract } from './option-contract.js';
 import type { DataQualityState } from './data-freshness.js';
 import {
@@ -59,10 +60,15 @@ import { assessPortfolioCorrelation, type PortfolioCorrelationObservation } from
 /** Never relabel a Conventional assessment as Hold-Strike risk evidence. */
 export function conventionalFrontierRiskLookups(
   candidates: readonly { readonly optionSymbol: string; readonly brokerAllowedQty: number }[],
-  aegisByOptionSymbol?: Readonly<Record<string, { readonly newRiskState: NonNullable<NewRiskOrchestrationResult['aegis']>['newRiskState'] }>>,
+  aegisByOptionSymbol?: Readonly<Record<string, {
+    readonly newRiskState: NonNullable<NewRiskOrchestrationResult['aegis']>['newRiskState'];
+    readonly families?: readonly { readonly family: string; readonly state: string;
+      readonly reasons: readonly { readonly code: string }[] }[];
+  }>>,
 ): {
   readonly brokerAllowedQtyByCandidateId: Readonly<Record<string, number>>;
   readonly aegisNewRiskStateByCandidateId: Readonly<Record<string, NonNullable<NewRiskOrchestrationResult['aegis']>['newRiskState']>> | undefined;
+  readonly aegisBindingReasonsByCandidateId: Readonly<Record<string, readonly string[]>> | undefined;
 } {
   return {
     brokerAllowedQtyByCandidateId: Object.fromEntries(candidates.map((candidate) => [
@@ -73,6 +79,33 @@ export function conventionalFrontierRiskLookups(
         `THETA_CONVENTIONAL:${optionSymbol}`, assessment.newRiskState,
       ]),
     ),
+    aegisBindingReasonsByCandidateId: aegisByOptionSymbol === undefined ? undefined : Object.fromEntries(
+      Object.entries(aegisByOptionSymbol).map(([optionSymbol, assessment]) => [
+        `THETA_CONVENTIONAL:${optionSymbol}`,
+        (assessment.families ?? []).flatMap((family) => ['ALLOW_FULL','ALLOW_REDUCED'].includes(family.state)
+          ? [] : family.reasons.map((reason) => `${family.family}:${reason.code}`)),
+      ]),
+    ),
+  };
+}
+
+/** The single Production mapping from persisted detector results into the
+ * candidate-specific Python AEGIS contract. An accumulating baseline stays
+ * null and gains only the explicit Paper cold-start applicability marker.
+ * Invalid or stale current evidence remains REQUIRED. */
+export function candidateStressAegisOverrides(input: {
+  readonly spread: AegisSpreadStressAssessment | undefined;
+  readonly alpacaIv: AlpacaContractIvAssessment | undefined;
+  readonly alpacaIvProducerConfigured: boolean;
+}): Readonly<Record<string, unknown>> {
+  return {
+    stressSpreadWideningDetected: input.spread?.stressSpreadWideningDetected ?? null,
+    stressSpreadWideningApplicability: paperBootstrapStressApplicability(input.spread?.maturity.state ?? null),
+    ...(input.alpacaIvProducerConfigured ? {
+      stressIvShockDetected: input.alpacaIv?.stressIvShockDetected ?? null,
+      stressIvShockApplicability: input.alpacaIv?.currentState === 'QUALIFIED'
+        ? paperBootstrapStressApplicability(input.alpacaIv.maturity.state) : 'REQUIRED',
+    } : {}),
   };
 }
 
@@ -1464,6 +1497,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     brokerAllowedQtyByCandidateId: conventionalRisk.brokerAllowedQtyByCandidateId,
     aegisNewRiskState: aegis?.newRiskState ?? null, eventState: eventContextPopulated ? 'OBSERVED' : null,
     aegisNewRiskStateByCandidateId: conventionalRisk.aegisNewRiskStateByCandidateId,
+    aegisBindingReasonsByCandidateId: conventionalRisk.aegisBindingReasonsByCandidateId,
     unmanagedBrokerPositionCount: positions.filter((position) => position.assetClass === 'us_option').length,
     unevaluatedUnderlyingCount: Math.max(0, ranked.length - 1),
     // The frontier stores normalized/derived feature state only. Immutable
@@ -1634,13 +1668,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     const candidateOverrides: Record<string, unknown> = {
       liquidityAcceptable: candidateMarketQuality.liquidityAcceptable,
       executionQualityAcceptable: candidateMarketQuality.executionQualityAcceptable,
-      stressSpreadWideningDetected: spreadAssessment?.stressSpreadWideningDetected ?? null,
-      stressSpreadWideningApplicability: paperBootstrapStressApplicability(spreadAssessment?.maturity.state ?? null),
-      ...(config.aegisAlpacaIvStressAssessor === undefined ? {} : {
-        stressIvShockDetected: alpacaIvAssessment?.stressIvShockDetected ?? null,
-        stressIvShockApplicability: alpacaIvAssessment?.currentState === 'QUALIFIED'
-          ? paperBootstrapStressApplicability(alpacaIvAssessment.maturity.state) : 'REQUIRED',
-      }),
+      ...candidateStressAegisOverrides({spread:spreadAssessment,alpacaIv:alpacaIvAssessment,
+        alpacaIvProducerConfigured:config.aegisAlpacaIvStressAssessor!==undefined}),
     };
     if (!exposureDerivationTrustworthy || candidateCapacityPolicy === null) return {
       ...candidate,

@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { candidateQuoteAgeSeconds, classifyShadowCycleProvenance, conventionalFrontierRiskLookups, runThetaShadowCycle, type ThetaShadowCycleConfig } from '../src/theta/theta-shadow-cycle.js';
+import { candidateQuoteAgeSeconds, candidateStressAegisOverrides, classifyShadowCycleProvenance,
+  conventionalFrontierRiskLookups, runThetaShadowCycle, type ThetaShadowCycleConfig } from '../src/theta/theta-shadow-cycle.js';
 import type { AlpacaProviderConfig } from '../src/theta/alpaca-provider.js';
 import type { PythonBridgeConfig } from '../src/theta/python-bridge.js';
 import type { UnderlyingCandidateInput } from '../src/theta/universe-policy.js';
 import type { AegisIvStressAssessment } from '../src/theta/aegis-iv-stress.js';
-import type { AegisSpreadStressAssessment } from '../src/theta/aegis-spread-stress.js';
+import { assessAegisSpreadStress, paperBootstrapAegisSpreadStressPolicy,
+  type AegisSpreadStressAssessment } from '../src/theta/aegis-spread-stress.js';
 import { assessAlpacaContractIvStress, paperBootstrapAlpacaContractIvPolicy } from '../src/theta/aegis-alpaca-iv-stress.js';
 import { paperBootstrapStressColdStartPolicy } from '../src/research/aegis-stress-baseline-maturity.js';
 
@@ -85,7 +87,20 @@ test('Conventional risk evidence cannot be relabelled as Hold-Strike evidence', 
   );
   assert.deepEqual(lookup.brokerAllowedQtyByCandidateId, { 'THETA_CONVENTIONAL:SPY261009P00500000': 2 });
   assert.deepEqual(lookup.aegisNewRiskStateByCandidateId, { 'THETA_CONVENTIONAL:SPY261009P00500000': 'ALLOW_FULL' });
+  assert.deepEqual(lookup.aegisBindingReasonsByCandidateId, { 'THETA_CONVENTIONAL:SPY261009P00500000': [] });
   assert.equal(Object.keys(lookup.brokerAllowedQtyByCandidateId).some((id) => id.startsWith('THETA_HOLD_STRIKE:')), false);
+});
+
+test('Conventional AEGIS lookup preserves exact blocking family codes', () => {
+  const lookup=conventionalFrontierRiskLookups(
+    [{optionSymbol:'SPY261009P00500000',brokerAllowedQty:2}],
+    {SPY261009P00500000:{newRiskState:'HOLD_ONLY',families:[
+      {family:'SYSTEM',state:'HOLD_ONLY',reasons:[{code:'IV_BASELINE_ACCUMULATING'}]},
+      {family:'LIQUIDITY',state:'ALLOW_FULL',reasons:[]},
+    ]}},
+  );
+  assert.deepEqual(lookup.aegisBindingReasonsByCandidateId,
+    {'THETA_CONVENTIONAL:SPY261009P00500000':['SYSTEM:IV_BASELINE_ACCUMULATING']});
 });
 
 const mockAlpacaFetch = (options: { hasContracts: boolean; hasBars: boolean }) => (async (input: RequestInfo | URL) => {
@@ -601,8 +616,23 @@ itMockedProviderRealCodePath('a real (mocked) stock position is fetched and fold
   assert.equal(correlation.usableForDecision, true);
 });
 
+const candidateDeltaFetch = (): typeof fetch => {
+  const base = mockAlpacaFetch({ hasContracts: true, hasBars: true });
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const response = await base(input, init);
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (!url.includes('/v1beta1/options/snapshots')) return response;
+    const body = await response.json() as { snapshots: Record<string, { greeks?: { delta?: number } }> };
+    for (const snapshot of Object.values(body.snapshots)) {
+      if (snapshot.greeks !== undefined) snapshot.greeks.delta = -0.2;
+    }
+    return jsonResponse(200, body);
+  }) as typeof fetch;
+};
+
 itMockedProviderRealCodePath('refreshed Alpaca contract IV reaches the FusionSnapshot with candidate-specific lineage', async () => {
   const result = await runThetaShadowCycle(baseConfig({
+    alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: candidateDeltaFetch() },
     aegisInputs: { ...baseConfig().aegisInputs, stressIvShockDetected: null },
     aegisAlpacaIvStressAssessor: async ({ contracts, decisionAsOf }) => Object.fromEntries(
       contracts.map((contract) => [contract.optionSymbol, assessAlpacaContractIvStress({
@@ -623,6 +653,68 @@ itMockedProviderRealCodePath('refreshed Alpaca contract IV reaches the FusionSna
     JSON.stringify({ dteBucket: assessment?.dteBucket, moneynessBucket: assessment?.moneynessBucket,
       currentState: assessment?.currentState, currentFeed: assessment?.currentFeed }));
   assert.match(String(assessment?.contentHash), /^[a-f0-9]{64}$/);
+});
+
+itMockedProviderRealCodePath('real Alpaca contract-IV accumulating baseline reaches AEGIS as governed cold-start N/A without becoming false', async () => {
+  let captured: ReturnType<typeof assessAlpacaContractIvStress> | undefined;
+  const result = await runThetaShadowCycle(baseConfig({
+    aegisInputs: { ...baseConfig().aegisInputs, stressIvShockDetected: null },
+    aegisAlpacaIvStressAssessor: async ({ contracts, decisionAsOf }) => Object.fromEntries(
+      contracts.map((contract) => {
+        const assessment=assessAlpacaContractIvStress({
+        current: contract, decisionAsOf, policy: paperBootstrapAlpacaContractIvPolicy,
+        history: [{ evidenceId: 'persisted-prior-session-iv', sourceHash: 'c'.repeat(64),
+          underlying: contract.underlying, optionType: contract.optionType, optionSymbol: contract.optionSymbol,
+          dte: contract.dte, moneyness: contract.moneyness, iv: Math.max(0.01, (contract.iv ?? 0.2) - 0.01),
+          feed: contract.feed === 'OPRA' ? 'OPRA' : 'INDICATIVE', quoteTimestamp: '2026-09-09T14:59:55.000Z',
+          ivAvailableAt: '2026-09-09T15:00:00.000Z', decisionTime: '2026-09-09T15:00:03.000Z' }],
+        });
+        if(contract.optionSymbol==='SPY261009P00500000')captured=assessment;
+        return [contract.optionSymbol,assessment];
+      })),
+  }));
+  const riskState = result.fusionSnapshot?.snapshot.riskState as Record<string, unknown>;
+  const family = riskState.alpacaContractIvStress as { assessmentsByContract: Record<string, Record<string, unknown>> };
+  const persisted = family.assessmentsByContract.SPY261009P00500000;
+  assert.equal((persisted?.maturity as Record<string, unknown>)?.state, 'BASELINE_ACCUMULATING');
+  assert.equal(persisted?.stressIvShockDetected, null);
+  assert.ok(captured!==undefined);
+  assert.deepEqual(candidateStressAegisOverrides({spread:undefined,alpacaIv:captured,
+    alpacaIvProducerConfigured:true}),{
+    stressSpreadWideningDetected:null,stressSpreadWideningApplicability:'REQUIRED',
+    stressIvShockDetected:null,stressIvShockApplicability:'PAPER_COLD_START_NOT_APPLICABLE',
+  });
+});
+
+itMockedProviderRealCodePath('real Alpaca spread accumulating baseline is cold-start N/A only while the current BBO remains valid', async () => {
+  let captured: AegisSpreadStressAssessment | undefined;
+  const result = await runThetaShadowCycle(baseConfig({
+    alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl: candidateDeltaFetch() },
+    aegisInputs: { ...baseConfig().aegisInputs, stressSpreadWideningDetected: null },
+    aegisSpreadStressAssessor: async ({ contracts, decisionAsOf }) => Object.fromEntries(contracts.map((contract) => {
+      const assessment=assessAegisSpreadStress({ current: contract, decisionAsOf, policy: paperBootstrapAegisSpreadStressPolicy,
+        history: [{ evidenceId: 'persisted-prior-session-spread', underlying: contract.underlying,
+          optionType: contract.optionType, contractSymbol: contract.optionSymbol, dte: contract.dte,
+          moneyness: contract.moneyness, relativeSpread: contract.spreadPct ?? 0.05,
+          providerTimestamp: '2026-09-09T14:59:55.000Z', ingestionTimestamp: '2026-09-09T15:00:00.000Z',
+          decisionTime: '2026-09-09T15:00:03.000Z', source: 'ALPACA',
+          feed: contract.feed === 'OPRA' ? 'OPRA' : 'INDICATIVE', dataQuality: 'GOOD' }],
+      });
+      if(contract.optionSymbol==='SPY261009P00500000')captured=assessment;
+      return [contract.optionSymbol,assessment];
+    })),
+  }));
+  const riskState = result.fusionSnapshot?.snapshot.riskState as Record<string, unknown>;
+  const family = riskState.spreadStress as { assessmentsByContract: Record<string, Record<string, unknown>> };
+  const persisted = family.assessmentsByContract.SPY261009P00500000;
+  assert.equal((persisted?.maturity as Record<string, unknown>)?.state, 'BASELINE_ACCUMULATING');
+  assert.equal(persisted?.stressSpreadWideningDetected, null);
+  assert.notEqual(persisted?.currentRelativeSpread, null);
+  assert.ok(captured!==undefined);
+  assert.deepEqual(candidateStressAegisOverrides({spread:captured,alpacaIv:undefined,
+    alpacaIvProducerConfigured:false}),{
+    stressSpreadWideningDetected:null,stressSpreadWideningApplicability:'PAPER_COLD_START_NOT_APPLICABLE',
+  });
 });
 
 itMockedProviderRealCodePath('held-symbol bars reach persisted portfolio correlation without gaining AEGIS authority', async () => {

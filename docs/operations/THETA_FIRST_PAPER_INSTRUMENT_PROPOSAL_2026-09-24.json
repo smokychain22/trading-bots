@@ -1,0 +1,48 @@
+{
+  "contractVersion": "theta-paper-instrument-classification-proposal-v1",
+  "policyVersion": "theta-paper-instrument-classification-v1",
+  "proposalState": "AWAITING_EXPLICIT_OWNER_APPROVAL",
+  "symbol": "SPY",
+  "canonicalProductName": "State Street® SPDR® S&P 500® ETF Trust",
+  "instrumentClass": "NON_COMPANY_FUND",
+  "paperBootstrapApproved": false,
+  "source": {
+    "name": "State Street Global Advisors",
+    "url": "https://www.ssga.com/us/en/individual/etfs/state-street-spdr-sp-500-etf-trust-spy",
+    "observedAt": "2026-09-23T19:27:56.058Z",
+    "evidenceHash": "53cdbf688962ece5d59a3e56166dc51a2efc4f7b7ec2e44a457fa862c2b20f39",
+    "evidenceHashAlgorithm": "SHA-256_CANONICAL_JSON",
+    "evidenceHashBasis": {
+      "canonicalProductName": "State Street® SPDR® S&P 500® ETF Trust",
+      "instrumentClass": "NON_COMPANY_FUND",
+      "optionsAvailable": true,
+      "productType": "EXCHANGE_TRADED_FUND",
+      "sourceName": "State Street Global Advisors",
+      "sourceUrl": "https://www.ssga.com/us/en/individual/etfs/state-street-spdr-sp-500-etf-trust-spy",
+      "symbol": "SPY"
+    }
+  },
+  "classificationRationale": "The official issuer identifies SPY as the State Street SPDR S&P 500 ETF Trust, describes it as an exchange traded fund that tracks the S&P 500 Index, and states that options are available. This supports NON_COMPANY_FUND classification. It does not predict returns or authorize trading.",
+  "selectionRationale": [
+    "Official issuer classification is direct and unambiguous.",
+    "The issuer reports options available.",
+    "SPY is already present in THETA's governed test and runtime universe paths.",
+    "The proposal narrows the bounded first-Paper scope to one instrument."
+  ],
+  "conflictingEvidence": [],
+  "proposedManifestEntry": {
+    "symbol": "SPY",
+    "instrumentClass": "NON_COMPANY_FUND",
+    "paperBootstrapApproved": false,
+    "authorityRef": "official-issuer:state-street:spy:53cdbf688962ece5d59a3e56166dc51a2efc4f7b7ec2e44a457fa862c2b20f39",
+    "effectiveAt": "2026-09-23T19:27:56.058Z",
+    "reviewedAt": null
+  },
+  "scopeLimits": {
+    "alpacaPaperOnly": true,
+    "singleInstrumentOnly": true,
+    "followersAuthorized": false,
+    "liveMoneyAuthorized": false,
+    "returnPrediction": false
+  }
+}

@@ -226,6 +226,17 @@ test('a candidate-specific unknown AEGIS state never falls back to a permissive 
   assert.equal(result.primaryAction, 'SYSTEM_HOLD');
 });
 
+test('AEGIS zero sizing preserves the exact binding family and reason', () => {
+  const candidateId='THETA_CONVENTIONAL:AAPL261016P00190000';
+  const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
+    aegisNewRiskStateByCandidateId: { [candidateId]: 'HOLD_ONLY' },
+    aegisBindingReasonsByCandidateId: { [candidateId]: ['SYSTEM:IV_BASELINE_ACCUMULATING'] } });
+  const candidate=result.branches[0]?.candidates[0];
+  assert.equal(candidate?.sizing.quantity,0);
+  assert.equal(candidate?.sizing.bindingConstraint,'SYSTEM:IV_BASELINE_ACCUMULATING');
+  assert.deepEqual(candidate?.sizing.reasons,['SYSTEM:IV_BASELINE_ACCUMULATING']);
+});
+
 test('candidate-specific AEGIS veto cannot be bypassed by a globally permissive state', () => {
   const first = contract();
   const second = contract({ optionSymbol: 'AAPL261016P00185000', occSymbol: 'AAPL261016P00185000', strike: 185,

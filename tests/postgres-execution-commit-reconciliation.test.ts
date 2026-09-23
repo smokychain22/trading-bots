@@ -3,11 +3,12 @@ import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import type { Pool,PoolClient } from 'pg';
 import { PostgresMasterPaperActionPlanStore } from '../src/execution/postgres-master-paper-action-plan-store.js';
-import type { ApprovedMasterPaperActionPlan } from '../src/execution/master-paper-action-handoff.js';
+import { masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from '../src/execution/master-paper-action-handoff.js';
 import { PostgresCommitOutcomeUnknownError } from '../src/theta/postgres-runtime-error.js';
 import { PostgresPaperOrderStore } from '../src/execution/postgres-paper-order-store.js';
 import { PostgresTradeUpdateStore } from '../src/execution/postgres-trade-update-store.js';
 import type { ManagementDecisionDraft } from '../src/execution/management-paper-plan-assembly.js';
+import { testAegisAssessmentIdentity } from './fixtures/aegis-assessment-identity.js';
 
 class ScriptedClient extends EventEmitter{
   released:boolean[]=[];
@@ -21,25 +22,33 @@ const poolOf=(...clients:ScriptedClient[]):Pool=>{
   return {connect:async()=>clients[cursor++] as unknown as PoolClient} as Pool;
 };
 
+const persistedCandidateId='10000000-0000-4000-8000-000000000008';
+const aegisAssessmentIdentity=testAegisAssessmentIdentity({persistedCandidateId});
 const plan:ApprovedMasterPaperActionPlan={
-  contractVersion:'theta-master-paper-action-plan-v3',actionPlanId:'10000000-0000-4000-8000-000000000001',
+  contractVersion:masterPaperActionPlanVersion,actionPlanId:'10000000-0000-4000-8000-000000000001',
   decisionAuthority:'NEW_RISK',managementInputSnapshotId:null,managementActionFrontierId:null,
   actionGroupId:'10000000-0000-4000-8000-000000000001',legSequence:1,dependsOnActionPlanId:null,
   executionAccountId:'10000000-0000-4000-8000-000000000002',decisionId:'10000000-0000-4000-8000-000000000003',
-  candidateId:'candidate-1',strategyVersion:'strategy-v1',chainId:'10000000-0000-4000-8000-000000000004',
+  candidateId:persistedCandidateId,strategyVersion:'strategy-v1',chainId:'10000000-0000-4000-8000-000000000004',
   optionContractId:'10000000-0000-4000-8000-000000000005',underlyingId:'10000000-0000-4000-8000-000000000006',
   underlying:'AAPL',optionType:'PUT',symbol:'AAPL261016P00150000',quantity:1,canonicalQuantity:1,
   paperEvidenceQuantity:1,paperEvidenceRiskCap:1,paperEvidenceCapReason:'CANONICAL_QUANTITY_LOWER',
   executionTier:'PAPER_EVIDENCE',multiplier:100,action:'OPEN_CSP',economicBoundary:0.03,economicsRemainPositive:true,
   expectedAfterCostEv:null,empiricalEconomicsReady:false,selectedByCanonicalAuthority:true,hardValidityPassed:true,
   accountVerified:true,optionsCapabilityVerified:true,noEquivalentExposureConflict:true,aegisState:'ALLOW_FULL',
+  aegisAssessmentIdentity,
   killSwitchActive:false,decisionExpiresAt:'2026-09-23T16:00:00.000Z',
   pricingPolicy:{waitIntervalMs:5000,maxAttempts:3,concessionFractions:[0,0.5,1],tickSize:0.01},
   pricingAttempt:0,previousLimit:null,
 };
 
-const decisionRow={decision_kind:'NEW_RISK',candidate_id:plan.candidateId,quantity:1,aegis_action:'ALLOW_FULL',
-  aegis_input_origin:'DERIVED_FROM_REAL',account_kind:'MASTER_API_KEY',account_ready:true};
+const decisionRow={decision_id:plan.decisionId,decision_kind:'NEW_RISK',candidate_id:plan.candidateId,quantity:1,aegis_action:'ALLOW_FULL',
+  runtime_selected_candidate_ref:aegisAssessmentIdentity.runtimeCandidateRef,
+  decision_decided_at:aegisAssessmentIdentity.decisionAsOf,
+  aegis_input_origin:'DERIVED_FROM_REAL',aegis_assessment_identity:aegisAssessmentIdentity,
+  fusion_snapshot_id:aegisAssessmentIdentity.fusionSnapshotId,fusion_snapshot_hash:aegisAssessmentIdentity.fusionSnapshotHash,
+  decision_time:aegisAssessmentIdentity.decisionAsOf,option_contract_id:plan.optionContractId,
+  contract_symbol:plan.symbol,underlying_symbol:plan.underlying,account_kind:'MASTER_API_KEY',account_ready:true};
 
 function enqueueClients(mode:'MATCH'|'ABSENT'|'CONFLICT'):[ScriptedClient,ScriptedClient]{
   let contentHash='';
@@ -69,6 +78,19 @@ test('action-plan enqueue keeps absent and conflicting ambiguous commits distinc
   const conflict=enqueueClients('CONFLICT');
   await assert.rejects(new PostgresMasterPaperActionPlanStore(poolOf(...conflict)).enqueue(plan,'2026-09-23T15:00:00.000Z'),
     /ACTION_PLAN_COMMIT_RECONCILIATION_CONFLICT/);
+});
+
+test('action-plan enqueue rechecks persisted AEGIS assessment identity before writing',async()=>{
+  let insertAttempted=false;
+  const transaction=new ScriptedClient(async(sql)=>{
+    if(sql.includes('FROM trade.decision d'))return {rows:[{...decisionRow,
+      runtime_selected_candidate_ref:'THETA_CONVENTIONAL:OTHER_CONTRACT'}],rowCount:1};
+    if(sql.includes('INSERT INTO trade.master_paper_action_plan('))insertAttempted=true;
+    return {rows:[],rowCount:0};
+  });
+  await assert.rejects(new PostgresMasterPaperActionPlanStore(poolOf(transaction)).enqueue(plan,
+    '2026-09-23T15:00:00.000Z'),/ACTION_PLAN_AEGIS_ASSESSMENT_LINEAGE_INVALID/);
+  assert.equal(insertAttempted,false);
 });
 
 test('atomic management publication reconciles the decision and complete plan group after lost COMMIT',async()=>{
@@ -120,7 +142,7 @@ test('claimNext reconciles the exact worker and claim window after a lost COMMIT
   const now='2026-09-23T15:01:00.000Z';
   const expires='2026-09-23T15:03:00.000Z';
   const transaction=new ScriptedClient(async(sql)=>{
-    if(sql.includes('SELECT p.action_plan_id,p.plan_json'))return {rows:[{action_plan_id:plan.actionPlanId,plan_json:plan}],rowCount:1};
+    if(sql.includes('SELECT p.action_plan_id,p.plan_json'))return {rows:[{action_plan_id:plan.actionPlanId,plan_json:plan,...decisionRow}],rowCount:1};
     if(sql.includes("SET status='CLAIMED'"))return {rows:[{action_plan_id:plan.actionPlanId}],rowCount:1};
     if(sql==='COMMIT')throw {code:'08006'};
     return {rows:[],rowCount:0};

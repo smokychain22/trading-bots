@@ -14,6 +14,7 @@ import {
 } from './optionomics-temporal-features.js';
 import { normalizedOptionContractSchema, type NormalizedOptionContract } from './option-contract.js';
 import { optionomicsEventRevisions } from './optionomics-event-observation.js';
+import { buildAegisAssessmentIdentity } from './aegis-assessment-identity.js';
 import {
   buildOptionsChainDecisionEvidence,
   optionomicsChainAttachmentsFromFeatureState,
@@ -541,6 +542,31 @@ export class PostgresThetaCycleStore {
             : `${authority.selectedCandidateId} was selected by the versioned cross-branch structural/Pareto authority. Empirical utility remains unknown.`;
     const reasonCodes = resolvedAuthority.reasonCodes;
     const decisionId = deterministicRuntimeUuid(`decision:${fusionSnapshotId}:${receipt.underlying}:${decisionAuthorityVersion}`);
+    const selectedFrontierCandidate = selectedCandidateRef === null ? undefined : authority?.branches
+      .flatMap((branch) => branch.candidates).find((candidate) => candidate.candidateId === selectedCandidateRef);
+    const selectedOptionSymbol=selectedFrontierCandidate?.legs[0]?.optionSymbol;
+    const selectedAssessment = selectedOptionSymbol === undefined ? undefined
+      : cycle.orchestration?.aegisByCandidateId?.[selectedOptionSymbol];
+    const versions = cycle.fusionSnapshot?.snapshot.versions;
+    const modelVersions = versions !== null && typeof versions === 'object' && !Array.isArray(versions)
+      && versions.modelVersions !== null && typeof versions.modelVersions === 'object' && !Array.isArray(versions.modelVersions)
+      ? Object.fromEntries(Object.entries(versions.modelVersions).filter((entry): entry is [string,string] => typeof entry[1] === 'string'))
+      : {};
+    const aegisAssessmentIdentity = selectedCandidateId !== null && selectedCandidateRef !== null
+      && selectedFrontierCandidate !== undefined && selectedOptionSymbol !== undefined
+      && selectedAssessment !== undefined && cycle.fusionSnapshot !== null
+      ? buildAegisAssessmentIdentity({
+          fusionSnapshotId, fusionSnapshotHash: cycle.fusionSnapshot.contentHash,
+          runtimeCandidateRef: selectedCandidateRef, assessmentCandidateId:selectedOptionSymbol,
+          persistedCandidateId: selectedCandidateId,
+          underlying: selectedFrontierCandidate.underlying,
+          optionSymbol: selectedOptionSymbol,
+          decisionAsOf: authority?.timestamp ?? receipt.timestamp,
+          detectorVersions: modelVersions, assessment: selectedAssessment,
+        })
+      : null;
+    const decisionAegisAction = aegisAssessmentIdentity?.newRiskState
+      ?? cycle.orchestration?.aegis?.newRiskState ?? null;
     const receiptPayload = authority === null
       ? { contractVersion: decisionAuthorityVersion, authority: null,
           aegisInputOrigin: cycle.provenanceDetail.includes('aegisInputs=DERIVED_FROM_REAL') ? 'DERIVED_FROM_REAL' : null,
@@ -549,6 +575,7 @@ export class PostgresThetaCycleStore {
           executionAuthorized: false }
       : { contractVersion: decisionAuthorityVersion, authority, legacyThetaQReceipt: receipt,
           aegisInputOrigin: cycle.provenanceDetail.includes('aegisInputs=DERIVED_FROM_REAL') ? 'DERIVED_FROM_REAL' : null,
+          aegisAssessmentIdentity,
           empiricalUtilityState: authority.empiricalUtilityState, executionAuthorized: false };
     const inserted = await client.query(
       `INSERT INTO trade.decision(decision_id,fusion_snapshot_id,candidate_set_id,selected_candidate_id,decision_kind,action_code,quantity,
@@ -558,7 +585,7 @@ export class PostgresThetaCycleStore {
        ON CONFLICT(decision_id) DO NOTHING RETURNING decision_id`,
       [decisionId, fusionSnapshotId, candidateSetId, selectedCandidateId,
         authority?.primaryAction === 'MANAGEMENT_AUTHORITY' ? 'MANAGEMENT_DELEGATION' : 'NEW_RISK',
-        actionCode, quantity, cycle.orchestration?.aegis?.newRiskState ?? null, strategyBranch,
+        actionCode, quantity, decisionAegisAction, strategyBranch,
         authority?.timestamp ?? receipt.timestamp, explanation,
         createHash('sha256').update(explanation).digest('hex'), selectedCandidateRef,
         authority?.strategyVersion ?? receipt.policyVersion, JSON.stringify(receipt.modelVersions), receipt.failClosedReason,
