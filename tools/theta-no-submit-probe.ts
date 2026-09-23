@@ -16,6 +16,17 @@ if (!/^[0-9a-f]{40}$/.test(sourceSha)
   || execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim()) {
   throw new Error('NO_SUBMIT_PROBE_IMMUTABLE_SOURCE_REQUIRED');
 }
+// Aiven may terminate a checked-out pg Client while another runtime module
+// owns it. Node treats an unhandled Client error as fatal even though the
+// Pool's idle-client listener exists. This diagnostic must fail closed with a
+// sanitized receipt, never crash with a raw connection stack or retry a scan.
+process.once('uncaughtException', (error: unknown) => {
+  const errorCategory = error instanceof Error && error.message === 'Connection terminated unexpectedly'
+    ? 'DATABASE_CLIENT_TERMINATED' : 'UNCLASSIFIED_UNCAUGHT_FAILURE';
+  console.info(JSON.stringify({ state: 'FAILED_CLOSED', errorCategory,
+    sourceSha, brokerMutations: 0, orderSubmissions: 0 }));
+  process.exit(1);
+});
 const loadedEnvironment = loadEnvironmentFile(environmentFile);
 // The schema's cross-platform default is python3. On this Windows host that
 // command is a Microsoft Store alias, while python is the installed runtime.
