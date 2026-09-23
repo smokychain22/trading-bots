@@ -6,6 +6,7 @@ import type { OptionomicsProviderConfig } from './optionomics-provider.js';
 import type { PythonBridgeConfig } from './python-bridge.js';
 import { discoverRealUniverse, type UniverseDiscoveryConfig } from './universe-discovery.js';
 import type { UnderlyingCandidateInput } from './universe-policy.js';
+import { buildFirstPaperRuntimeTelemetry } from './first-paper-runtime-telemetry.js';
 
 // Safe one-shot entrypoint for runThetaShadowCycle(). Designed to be run
 // later by Codex in a protected environment holding the real Vercel
@@ -185,6 +186,10 @@ async function main(): Promise<number> {
   // can resolve them. SHADOW_EVIDENCE never grants Paper authority. Final
   // entry authorization remains fail-closed in the canonical runtime.
   const result = await runThetaShadowCycle({ ...config, evaluationMode: 'SHADOW_EVIDENCE' });
+  const firstPaperTelemetry = buildFirstPaperRuntimeTelemetry({
+    frontier: result.strategyFrontier,
+    alpacaQuoteState: result.fusionSnapshot?.snapshot.alpacaQuoteState,
+  });
 
   console.info(JSON.stringify({
     runId: result.runId,
@@ -203,6 +208,7 @@ async function main(): Promise<number> {
       ? 'Canonical multi-branch structural authority selected the recorded candidate. Empirical utility is not calibrated.'
       : result.orchestration?.receipt.plainEnglishExplanation ?? null,
     quantity: result.strategyFrontier?.selectedQuantity ?? result.orchestration?.receipt.quantity ?? null,
+    firstPaperTelemetry,
     provenance: result.provenance,
     provenanceDetail: result.provenanceDetail,
     blockers: result.blockers,
