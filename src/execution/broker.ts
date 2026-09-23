@@ -81,6 +81,25 @@ const strictNumericProviderField = z.union([
   z.number().finite(),
   z.string().regex(/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/),
 ]);
+const validDateOnly = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = Date.parse(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === value;
+};
+const validProviderInstant = (value: string): boolean => /^\d{4}-\d{2}-\d{2}T/.test(value)
+  && Number.isFinite(Date.parse(value));
+const validMarketTime = (value: string): boolean => {
+  const match = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  if (match === null) return false;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const second = match[3] === undefined ? 0 : Number(match[3]);
+  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59 && second >= 0 && second <= 59;
+};
+const providerInstantSchema = z.string().refine(validProviderInstant);
+const providerDateOrInstantSchema = z.string().refine((value) => validDateOnly(value) || validProviderInstant(value));
+const providerDateSchema = z.string().refine(validDateOnly);
+const marketTimeSchema = z.string().refine(validMarketTime);
 
 const rawOrderSchema = z.object({
   id: z.string().min(1),
@@ -93,7 +112,7 @@ const rawOrderSchema = z.object({
   position_intent: z.enum(['buy_to_open', 'buy_to_close', 'sell_to_open', 'sell_to_close']).nullable().optional(),
   status: z.string().min(1),
   limit_price: strictNumericProviderField.nullable().optional(),
-  submitted_at: z.string().nullable().optional(),
+  submitted_at: providerInstantSchema.nullable().optional(),
   replaced_by: z.string().nullable().optional(),
   replaces: z.string().nullable().optional(),
 }).passthrough();
@@ -142,8 +161,8 @@ const activitySchema = z.object({
   symbol: z.string().nullable().optional(),
   qty: strictNumericProviderField.nullable().optional(),
   price: strictNumericProviderField.nullable().optional(),
-  date: z.string().nullable().optional(),
-  transaction_time: z.string().nullable().optional(),
+  date: providerDateOrInstantSchema.nullable().optional(),
+  transaction_time: providerInstantSchema.nullable().optional(),
   order_id: z.string().nullable().optional(),
 }).passthrough();
 
@@ -267,8 +286,8 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
   }
   async getClock(): Promise<BrokerMarketClock> {
     const body = z.object({
-      timestamp: z.string().nullable().optional(), is_open: z.boolean().nullable().optional(),
-      next_open: z.string().nullable().optional(), next_close: z.string().nullable().optional(),
+      timestamp: providerInstantSchema.nullable().optional(), is_open: z.boolean().nullable().optional(),
+      next_open: providerInstantSchema.nullable().optional(), next_close: providerInstantSchema.nullable().optional(),
     }).passthrough().parse(await this.request('/v2/clock'));
     return {
       timestamp: body.timestamp ?? null, isOpen: body.is_open ?? null,
@@ -278,7 +297,7 @@ export class AlpacaPaperBrokerAdapter implements PaperBrokerAdapter {
   async getCalendar(start: string, end: string): Promise<readonly BrokerCalendarSession[]> {
     const query = new URLSearchParams({ start, end });
     const body = z.array(z.object({
-      date: z.string().min(1), open: z.string().nullable().optional(), close: z.string().nullable().optional(),
+      date: providerDateSchema, open: marketTimeSchema.nullable().optional(), close: marketTimeSchema.nullable().optional(),
     }).passthrough()).parse(await this.request(`/v2/calendar?${query.toString()}`));
     return body.map((session) => ({ date: session.date, open: session.open ?? null, close: session.close ?? null }));
   }

@@ -102,6 +102,7 @@ test('broker order snapshots preserve real zero fills and reject missing or malf
   }
   assert.throws(() => parseBrokerOrder(rawOrder({ filled_avg_price: '0' })), /filled average price/);
   assert.throws(() => parseBrokerOrder(rawOrder({ limit_price: '0' })), /limit price/);
+  assert.throws(() => parseBrokerOrder(rawOrder({ submitted_at: 'not-a-time' })));
 });
 
 test('broker activities reject blank numeric evidence instead of coercing it to zero', () => {
@@ -115,6 +116,24 @@ test('broker activities reject blank numeric evidence instead of coercing it to 
     assert.throws(() => parseBrokerActivity({ ...activity, [field]: ' ' }));
     assert.throws(() => parseBrokerActivity({ ...activity, [field]: 'not-a-number' }));
   }
+  assert.throws(() => parseBrokerActivity({ ...activity, transaction_time: 'not-a-time' }));
+  assert.throws(() => parseBrokerActivity({ ...activity, date: '2026-02-30' }));
+});
+
+test('broker clock and calendar reject malformed time evidence before reconciliation', async () => {
+  const config = (body: unknown) => new AlpacaPaperBrokerAdapter({
+    baseUrl: 'https://paper-api.alpaca.markets',
+    authentication: { kind: 'MASTER_API_KEY', apiKey: 'synthetic', apiSecret: 'synthetic' },
+    fetchImpl: async () => new Response(JSON.stringify(body), { status: 200 }),
+  });
+  await assert.rejects(config({ timestamp: 'not-a-time', is_open: true }).getClock());
+  await assert.rejects(config([{ date: '2026-02-30', open: '09:30', close: '16:00' }])
+    .getCalendar('2026-02-01', '2026-03-01'));
+  await assert.rejects(config([{ date: '2026-09-11', open: '25:00', close: '16:00' }])
+    .getCalendar('2026-09-11', '2026-09-11'));
+  const valid = config({ timestamp: '2026-09-11T14:30:00.123456789Z', is_open: true,
+    next_open: '2026-09-12T13:30:00Z', next_close: '2026-09-11T20:00:00Z' });
+  assert.equal((await valid.getClock()).isOpen, true);
 });
 
 test('a mutation 5xx or malformed success body is ambiguous and must reconcile before retry', async () => {
