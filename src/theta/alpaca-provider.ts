@@ -273,7 +273,11 @@ export interface FetchTradableAssetsResult {
   readonly complete: boolean;
 }
 
-export async function fetchTradableAssets(config: AlpacaProviderConfig, maxAssets: number): Promise<FetchTradableAssetsResult> {
+export async function fetchTradableAssets(
+  config: AlpacaProviderConfig,
+  maxAssets: number,
+  requiredSymbols: readonly string[] = [],
+): Promise<FetchTradableAssetsResult> {
   const fetchImpl = config.fetchImpl ?? fetch;
   const url = new URL('/v2/assets', config.tradingApiBase);
   url.search = new URLSearchParams({ status: 'active', asset_class: 'us_equity' }).toString();
@@ -281,8 +285,18 @@ export async function fetchTradableAssets(config: AlpacaProviderConfig, maxAsset
   if (!Array.isArray(body)) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/assets did not return an array.');
   const tradableOnly = body.filter((raw: Record<string, unknown>) => raw.tradable === true);
   const complete = tradableOnly.length <= maxAssets;
+  const required = new Set(requiredSymbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean));
+  const bounded = tradableOnly.slice(0, maxAssets);
+  const boundedSymbols = new Set(bounded.map((raw: Record<string, unknown>) => asStringOrNull(raw.symbol)?.toUpperCase()));
+  for (const raw of tradableOnly) {
+    const symbol = asStringOrNull(raw.symbol)?.toUpperCase();
+    if (symbol !== undefined && required.has(symbol) && !boundedSymbols.has(symbol)) {
+      bounded.push(raw);
+      boundedSymbols.add(symbol);
+    }
+  }
   return {
-    assets: tradableOnly.slice(0, maxAssets).map((raw: Record<string, unknown>) => ({
+    assets: bounded.map((raw: Record<string, unknown>) => ({
       symbol: asStringOrNull(raw.symbol) ?? '',
       exchange: asStringOrNull(raw.exchange),
       assetClass: asStringOrNull(raw.class),

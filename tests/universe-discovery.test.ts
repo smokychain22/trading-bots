@@ -244,6 +244,38 @@ test('the universe-asset bound is honestly reported when truncated', async () =>
   assert.equal(result.funnel.assetsDiscovered, 3);
 });
 
+test('required Paper bootstrap symbol survives both asset and optionability client bounds', async () => {
+  const optionabilityChecks: string[] = [];
+  const assets = [
+    { symbol: 'AAA', exchange: 'NASDAQ', class: 'us_equity', tradable: true, status: 'active' },
+    { symbol: 'BBB', exchange: 'NASDAQ', class: 'us_equity', tradable: true, status: 'active' },
+    { symbol: 'CCC', exchange: 'NASDAQ', class: 'us_equity', tradable: true, status: 'active' },
+    { symbol: 'SPY', exchange: 'ARCA', class: 'us_equity', tradable: true, status: 'active' },
+  ];
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    const url = new URL(input instanceof URL ? input.toString() : String(input));
+    if (url.pathname === '/v2/assets') return jsonResponse(200, assets);
+    if (url.pathname === '/v2/stocks/bars') return jsonResponse(200, { bars: {
+      AAA: [bar('AAA', 100, 5_000_000)], BBB: [bar('BBB', 100, 4_000_000)],
+      SPY: [bar('SPY', 500, 1_000_000)],
+    }, next_page_token: null });
+    if (url.pathname === '/v2/options/contracts') {
+      const symbol = url.searchParams.get('underlying_symbols') ?? '';
+      optionabilityChecks.push(symbol);
+      return jsonResponse(200, { option_contracts: [{ symbol: `${symbol}261009P00100000`, strike_price: '100', expiration_date: '2026-10-09' }], next_page_token: null });
+    }
+    throw new Error('unexpected provider request');
+  }) as typeof fetch;
+  const alpaca: AlpacaProviderConfig = { tradingApiBase: 'https://paper-api.alpaca.markets',
+    marketDataApiBase: 'https://data.alpaca.markets', apiKey: 'K', apiSecret: 'S', fetchImpl };
+  const result = await discoverRealUniverse(alpaca, baseDiscoveryConfig({
+    maxCandidateAssets: 2, maxOptionabilityChecks: 1, requiredSymbols: ['SPY'],
+  }), () => NOW);
+  assert.equal(result.funnel.assetsTruncatedByBound, true);
+  assert.deepEqual(optionabilityChecks, ['AAA', 'SPY']);
+  assert.deepEqual(result.candidates.map((candidate) => candidate.symbol), ['AAA', 'SPY']);
+});
+
 test('option-contract discovery derives its search window from the injected decision clock', async () => {
   let searchWindow: { from: string | null; to: string | null } | null = null;
   const fetchImpl = (async (input: RequestInfo | URL) => {

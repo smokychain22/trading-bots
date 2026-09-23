@@ -495,6 +495,16 @@ test('fetchTradableAssets truncates deterministically and reports complete=false
   assert.equal(result.complete, false);
 });
 
+test('fetchTradableAssets retains an explicitly required tradable symbol beyond the client bound', async () => {
+  const fetchImpl = (async () => jsonResponse(200, [
+    ...Array.from({ length: 5 }, (_, i) => ({ symbol: `SYM${i}`, exchange: 'NASDAQ', class: 'us_equity', tradable: true, status: 'active' })),
+    { symbol: 'SPY', exchange: 'ARCA', class: 'us_equity', tradable: true, status: 'active' },
+  ])) as typeof fetch;
+  const result = await fetchTradableAssets(baseConfig(fetchImpl), 3, ['spy']);
+  assert.equal(result.complete, false);
+  assert.deepEqual(result.assets.map((asset) => asset.symbol), ['SYM0', 'SYM1', 'SYM2', 'SPY']);
+});
+
 test('fetchTradableAssets rejects a non-array body', async () => {
   const fetchImpl = (async () => jsonResponse(200, {})) as typeof fetch;
   await assert.rejects(() => fetchTradableAssets(baseConfig(fetchImpl), 10), AlpacaProviderError);

@@ -30,7 +30,7 @@ import { assessAlpacaContractIvStressForContracts,
 import { paperBootstrapStressApplicability } from './aegis-stress-baseline-maturity.js';
 import type { OptionomicsProviderConfig } from '../theta/optionomics-provider.js';
 import { applyCompanyEventPaperPolicy, applyCorporateActionPaperPolicy, buildPaperEntrySafetyPolicyReceipt,
-  classifyPaperInstrument } from '../theta/paper-entry-safety-policy.js';
+  classifyPaperInstrument, paperInstrumentClassificationManifest } from '../theta/paper-entry-safety-policy.js';
 import type { OptionomicsEarningsEvidence } from '../theta/earnings-event-evidence.js';
 import type { MacroRiskEvidence } from '../theta/macro-event-policy.js';
 import type { AlpacaCalendarSession } from '../theta/alpaca-provider.js';
@@ -70,6 +70,19 @@ export function paperEntryCandidateCohort(branches:readonly CanonicalBranchFront
 }{
   const entryBranches=branches.filter((branch)=>branch.branch==='THETA_CONVENTIONAL'&&branch.applicable);
   return {branches:entryBranches,candidates:entryBranches.flatMap((branch)=>branch.candidates)};
+}
+
+/** Paper authority is bounded by the source-controlled owner-approved
+ * manifest and the provider-confirmed universe. Liquidity rank alone can
+ * never grant authority, and an approved symbol that is absent from the
+ * provider universe is never invented. */
+export function paperBootstrapAuthoritySymbols(
+  discoveredSymbols: readonly string[],
+): readonly string[] {
+  const discovered = new Set(discoveredSymbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean));
+  return paperInstrumentClassificationManifest.entries
+    .filter((entry) => entry.paperBootstrapApproved && discovered.has(entry.symbol))
+    .map((entry) => entry.symbol);
 }
 export function ivStressEvidenceForUnderlying(underlying:string, result:AegisIvStressRefreshResult):AegisIvStressRefreshResult {
   if(result.assessment!==null && result.assessment.underlying!==underlying.toUpperCase()) {
@@ -254,8 +267,11 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       AND ec.lifecycle_state IN ('ASSIGNED','STOCK_HELD','RECOVERY_WAIT','CC_PROPOSED','CC_OPEN','CLOSE_CC')
     ORDER BY u.symbol`,[runtimeContext.botInstanceId]);
   const recoveryInventoryUnderlyings=recoveryRows.rows.map((row)=>String((row as Record<string,unknown>).symbol));
+  const approvedBootstrapSymbols=paperInstrumentClassificationManifest.entries
+    .filter((entry)=>entry.paperBootstrapApproved).map((entry)=>entry.symbol);
   const discovery=await discoverRealUniverse(input.alpaca,{discoveryVersion:'theta-shadow-universe-v1',maxCandidateAssets:100,
-    allowedExchanges:['NYSE','NASDAQ','ARCA','BATS'],barsLookbackDays:30,barsBatchSize:100,maxOptionabilityChecks:10,minCurrentPrice:5},input.now);
+    allowedExchanges:['NYSE','NASDAQ','ARCA','BATS'],barsLookbackDays:30,barsBatchSize:100,maxOptionabilityChecks:10,
+    minCurrentPrice:5,requiredSymbols:approvedBootstrapSymbols},input.now);
   const discoveryBlockers=universeDiscoveryDiagnosticBlockers(discovery);
   // Discovery already preserves the existing average-dollar-volume rank.
   // Never alphabetize here because the first two entries are the unchanged
@@ -263,8 +279,9 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const rankedSymbols=discovery.candidates.map((candidate)=>candidate.symbol);
   const scanOrdinal=Math.max(0,Math.floor(Date.parse(input.now())/60_000));
   const universeBreadthChallenger=buildUniverseBreadthShadowPlan(rankedSymbols,scanOrdinal);
+  const discoveredApprovedSymbols=paperBootstrapAuthoritySymbols(rankedSymbols);
   const scanSymbols=new Set([...universeBreadthChallenger.championSymbols,
-    ...universeBreadthChallenger.challengerSymbols.map((candidate)=>candidate.symbol)]);
+    ...universeBreadthChallenger.challengerSymbols.map((candidate)=>candidate.symbol),...discoveredApprovedSymbols]);
   const scanUnderlyingsRaw=discovery.candidates.filter((candidate)=>scanSymbols.has(candidate.symbol));
   const runtimeSafetyBlockers:string[]=[];
   let pendingUnsupportedSymbols=new Set<string>();
@@ -296,7 +313,11 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     }
   }
   const scanUnderlyings=applyPendingUnsupportedCorporateActions(scanUnderlyingsRaw,pendingUnsupportedSymbols);
-  const brokerAuthoritySymbols=new Set(universeBreadthChallenger.championSymbols);
+  // Bounded first-Paper authority is the owner-approved manifest intersected
+  // with the real provider-discovered universe. The top-liquidity champion
+  // set remains useful research evidence but cannot make an unapproved
+  // instrument Paper-authorized or starve the approved SPY cohort.
+  const brokerAuthoritySymbols=new Set(discoveredApprovedSymbols);
   const optionomics=optionomicsConfigFromEnvironment(input.environment);
   // The Optionomics ATM-IV detector is secondary research on schema 064.
   // Do not make an authenticated provider call that can only end in 42P01.

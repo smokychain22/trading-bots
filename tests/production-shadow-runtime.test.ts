@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AlpacaProviderError } from '../src/theta/alpaca-provider.js';
-import { applyPendingUnsupportedCorporateActions, classifyObservationFailure, ivStressApplicability, ivStressEvidenceForUnderlying, ivStressPaperBlockers, ivStressPaperPlanPersistenceReady, paperEntryEventEvidenceBlockers, refreshScanIvStress, missingObservationReason,
+import { applyPendingUnsupportedCorporateActions, classifyObservationFailure, ivStressApplicability, ivStressEvidenceForUnderlying, ivStressPaperBlockers, ivStressPaperPlanPersistenceReady, paperBootstrapAuthoritySymbols, paperEntryEventEvidenceBlockers, refreshScanIvStress, missingObservationReason,
   universeDiscoveryDiagnosticBlockers } from '../src/research/production-shadow-runtime.js';
 import { assessAegisIvStress, normalizeOptionomicsAtmIvObservation,
   paperBootstrapAegisIvStressPolicy } from '../src/theta/aegis-iv-stress.js';
@@ -92,6 +92,11 @@ test('research breadth IV uncertainty does not block Paper-authorized symbols',(
   ] as const);
   assert.deepEqual(ivStressPaperBlockers(states,new Set(['SPY','QQQ'])),
     ['QQQ:AEGIS_IV_STRESS_BASELINE_IMMATURE','SPY:AEGIS_IV_STRESS_READY']);
+});
+
+test('Paper authority is limited to approved symbols that the provider actually discovered',()=>{
+  assert.deepEqual(paperBootstrapAuthoritySymbols(['SQQQ','SPY','QQQ']),['SPY']);
+  assert.deepEqual(paperBootstrapAuthoritySymbols(['SQQQ','QQQ']),[]);
 });
 
 test('Paper-plan assembly requires persisted IV assessment or a governed accumulating baseline',()=>{

@@ -45,6 +45,10 @@ export interface UniverseDiscoveryConfig {
   readonly barsBatchSize: number; // symbols per Stage 1 bars request
   readonly maxOptionabilityChecks: number; // how many top-liquidity symbols get a real Stage 2 confirmation
   readonly minCurrentPrice: number; // structurally required for meaningful CSP economics -- same floor UniversePolicy itself enforces
+  /** Owner/governance-approved bootstrap symbols that must survive the
+   * client-side asset and optionability bounds when the provider confirms
+   * that they are active and tradable. This grants no broker authority. */
+  readonly requiredSymbols?: readonly string[];
 }
 
 export interface UniverseDiscoveryFunnel {
@@ -129,7 +133,7 @@ export async function discoverRealUniverse(
   const stageDiagnostics: UniverseDiscoveryStageDiagnostic[] = [];
   const assetsStarted = performance.now();
   try {
-    const assetsResult = await fetchTradableAssets(alpaca, config.maxCandidateAssets);
+    const assetsResult = await fetchTradableAssets(alpaca, config.maxCandidateAssets, config.requiredSymbols);
     assetsDiscovered = assetsResult.assets.length;
     assetsTruncatedByBound = !assetsResult.complete;
     const filterStarted = performance.now();
@@ -230,10 +234,15 @@ export async function discoverRealUniverse(
       ...(priceBelowFloorCount > 0 ? { PRICE_BELOW_FLOOR: priceBelowFloorCount } : {}),
       ...(providerZeroVwapCount > 0 ? { OPTIONAL_VWAP_PROVIDER_ZERO_UNAVAILABLE: providerZeroVwapCount } : {}) } });
 
-  const shortlistForOptionabilityCheck = [...priceBySymbol.entries()]
+  const requiredSymbols = new Set((config.requiredSymbols ?? []).map((symbol) => symbol.trim().toUpperCase()).filter(Boolean));
+  const rankedOptionabilitySymbols = [...priceBySymbol.entries()]
     .sort((a, b) => b[1].avgDollarVolume - a[1].avgDollarVolume)
     .slice(0, config.maxOptionabilityChecks)
     .map(([symbol]) => symbol);
+  const shortlistForOptionabilityCheck = [...new Set([
+    ...rankedOptionabilitySymbols,
+    ...[...requiredSymbols].filter((symbol) => priceBySymbol.has(symbol)),
+  ])];
 
   const optionExpirationGte = new Date(decisionMillis + 1 * 86_400_000).toISOString().slice(0, 10);
   const optionExpirationLte = new Date(decisionMillis + 400 * 86_400_000).toISOString().slice(0, 10);
