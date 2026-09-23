@@ -199,6 +199,17 @@ test('fetchPositions rejects a non-array response as MALFORMED_RESPONSE', async 
   await assert.rejects(() => fetchPositions(baseConfig(fetchImpl), NOW));
 });
 
+test('account, clock, and latest stock quote reject malformed root objects with a provider category', async () => {
+  const malformed = (async () => jsonResponse(200, null)) as typeof fetch;
+  await assert.rejects(() => fetchMasterAccountSnapshot(baseConfig(malformed), NOW),
+    (error: unknown) => error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+  await assert.rejects(() => fetchMarketClock(baseConfig(malformed), NOW),
+    (error: unknown) => error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+  const malformedQuote = (async () => jsonResponse(200, { quote:'not-an-object' })) as typeof fetch;
+  await assert.rejects(() => fetchLatestStockQuote(baseConfig(malformedQuote), 'SPY', 'iex'),
+    (error: unknown) => error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+});
+
 test('fetchPositions rejects rows without a usable provider identity', async () => {
   for (const row of [null, {}, { symbol: '' }, { symbol: '   ' }]) {
     const fetchImpl = (async () => jsonResponse(200, [row])) as typeof fetch;

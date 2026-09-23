@@ -116,7 +116,7 @@ const providerRow = (value: unknown, operation: string): Record<string, unknown>
 
 export async function fetchMasterAccountSnapshot(config: AlpacaProviderConfig, receivedAt: string): Promise<MasterAccountSnapshot> {
   const fetchImpl = config.fetchImpl ?? fetch;
-  const body = await requestJson(fetchImpl, new URL('/v2/account', config.tradingApiBase), authHeaders(config)) as Record<string, unknown>;
+  const body = providerRow(await requestJson(fetchImpl, new URL('/v2/account', config.tradingApiBase), authHeaders(config)), '/v2/account');
   const accountId = asStringOrNull(body.id);
   return {
     accountStatus: asStringOrNull(body.status),
@@ -230,7 +230,7 @@ export interface AlpacaMarketClock {
 
 export async function fetchMarketClock(config: AlpacaProviderConfig, receivedAt: string): Promise<AlpacaMarketClock> {
   const fetchImpl = config.fetchImpl ?? fetch;
-  const body = await requestJson(fetchImpl, new URL('/v2/clock', config.tradingApiBase), authHeaders(config)) as Record<string, unknown>;
+  const body = providerRow(await requestJson(fetchImpl, new URL('/v2/clock', config.tradingApiBase), authHeaders(config)), '/v2/clock');
   return {
     timestamp: asStringOrNull(body.timestamp),
     isOpen: asBooleanOrNull(body.is_open),
@@ -557,11 +557,11 @@ export async function fetchLatestStockQuote(
   const fetchImpl = config.fetchImpl ?? fetch;
   const url = new URL(`/v2/stocks/${encodeURIComponent(symbol)}/quotes/latest`, config.marketDataApiBase);
   url.search = new URLSearchParams({ feed }).toString();
-  const body = await requestJson(fetchImpl, url, authHeaders(config)) as { quote?: Record<string, unknown> };
-  const quote = body.quote;
-  if (quote === undefined) {
+  const body = providerRow(await requestJson(fetchImpl, url, authHeaders(config)), '/v2/stocks/{symbol}/quotes/latest');
+  if (body.quote === undefined) {
     throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/stocks/{symbol}/quotes/latest did not return a quote.');
   }
+  const quote = providerRow(body.quote, '/v2/stocks/{symbol}/quotes/latest');
   return {
     bid: asNumberOrNull(quote.bp), ask: asNumberOrNull(quote.ap),
     bidSize: asNumberOrNull(quote.bs), askSize: asNumberOrNull(quote.as),
