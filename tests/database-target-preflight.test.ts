@@ -1,27 +1,17 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import { classifyDatabaseTargetError, describeDatabaseEndpoint } from '../src/database/target-preflight.js';
 
-test('database target failure classification returns only bounded non-secret metadata', () => {
-  assert.deepEqual(classifyDatabaseTargetError({ code: '28P01', message: 'secret text' }), {
-    failureCode: '28P01', failureClass: 'AUTHENTICATION',
+test('database preflight reports a bounded connection error without emitting host or URL', () => {
+  const connection = 'postgresql://' + 'x:x@127.0.0.1:1/x';
+  const result = spawnSync(process.execPath, ['tools/database-target-preflight.mjs'], {
+    encoding: 'utf8', timeout: 12_000,
+    env: { AIVEN_DATABASE_URL: connection },
   });
-  assert.deepEqual(classifyDatabaseTargetError({ code: 'SELF_SIGNED_CERT_IN_CHAIN' }), {
-    failureCode: 'SELF_SIGNED_CERT_IN_CHAIN', failureClass: 'TLS_CERTIFICATE',
-  });
-  assert.deepEqual(classifyDatabaseTargetError(new Error('connect timeout to a private host')), {
-    failureCode: 'UNKNOWN', failureClass: 'TIMEOUT',
-  });
-  assert.deepEqual(classifyDatabaseTargetError({ code: '53000', message: 'quota details' }), {
-    failureCode: '53000', failureClass: 'RESOURCE_QUOTA',
-  });
-});
-
-test('database endpoint diagnostics expose routing metadata but no credentials', () => {
-  assert.deepEqual(describeDatabaseEndpoint('postgres://user:secret@db.example.test:5432/theta?sslmode=require'), {
-    protocol: 'postgres:', hostname: 'db.example.test', port: '5432', databaseNamePresent: true, sslRequired: true,
-  });
-  assert.deepEqual(describeDatabaseEndpoint('not a url'), {
-    protocol: null, hostname: null, port: null, databaseNamePresent: false, sslRequired: false,
-  });
+  assert.equal(result.status, 1);
+  assert.deepEqual(JSON.parse(result.stderr.trim()), { connectivity: 'FAIL', errorCode: 'ECONNREFUSED' });
+  assert.equal(result.stdout, '');
+  assert.ok(!result.stderr.includes('127.0.0.1'));
+  assert.ok(!result.stderr.includes('x:x@'));
+  assert.ok(!result.stderr.includes('at GetAddrInfoReqWrap'));
 });

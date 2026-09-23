@@ -9,14 +9,14 @@ if (environmentFileArgument) {
 }
 if (!connectionString) throw new Error("AIVEN_DATABASE_URL_NOT_CONFIGURED");
 
-const client = new pg.Client({
-  connectionString,
-  connectionTimeoutMillis: 8_000,
-  application_name: "theta-database-target-preflight",
-});
-
-await client.connect();
+let client;
 try {
+  client = new pg.Client({
+    connectionString,
+    connectionTimeoutMillis: 8_000,
+    application_name: "theta-database-target-preflight",
+  });
+  await client.connect();
   const result = await client.query(`SELECT
     current_setting('server_version') AS version,
     current_setting('default_transaction_read_only') AS default_transaction_read_only,
@@ -46,6 +46,13 @@ try {
     existingTableCount: row.table_count,
     transactionWriteRollback: "PASS",
   })}\n`);
+} catch (error) {
+  // Node/pg connection errors may include the database hostname or URL.
+  // The preflight receipt needs only a bounded failure category.
+  const code = typeof error?.code === 'string' && /^[A-Z0-9_]{2,40}$/.test(error.code)
+    ? error.code : 'UNCLASSIFIED_DATABASE_ERROR';
+  process.stderr.write(`${JSON.stringify({ connectivity: 'FAIL', errorCode: code })}\n`);
+  process.exitCode = 1;
 } finally {
-  await client.end();
+  if (client) await client.end().catch(() => undefined);
 }
