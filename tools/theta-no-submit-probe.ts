@@ -12,6 +12,7 @@ import { assertNoSubmitProbeGuard } from '../src/theta/no-submit-probe-guard.js'
 const environmentFile = process.argv.find((argument) => argument.startsWith('--environment-file='))
   ?.slice('--environment-file='.length) ?? '.env.local';
 const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+let probeStage = 'SOURCE_GUARD';
 if (!/^[0-9a-f]{40}$/.test(sourceSha)
   || execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim()) {
   throw new Error('NO_SUBMIT_PROBE_IMMUTABLE_SOURCE_REQUIRED');
@@ -24,7 +25,7 @@ process.once('uncaughtException', (error: unknown) => {
   const errorCategory = error instanceof Error && error.message === 'Connection terminated unexpectedly'
     ? 'DATABASE_CLIENT_TERMINATED' : 'UNCLASSIFIED_UNCAUGHT_FAILURE';
   console.info(JSON.stringify({ state: 'FAILED_CLOSED', errorCategory,
-    sourceSha, brokerMutations: 0, orderSubmissions: 0 }));
+    probeStage, sourceSha, brokerMutations: 0, orderSubmissions: 0 }));
   process.exit(1);
 });
 const loadedEnvironment = loadEnvironmentFile(environmentFile);
@@ -64,12 +65,14 @@ let poolConnectionFailed = false;
 pool.on('error', () => { poolConnectionFailed = true; });
 
 try {
+  probeStage = 'DATABASE_SCHEMA_READ';
   const migrations = await pool.query(`SELECT version FROM core.schema_migration
     WHERE version IN ('064_alpaca_corporate_action_observation','065_aegis_iv_stress_evidence')
     ORDER BY version`);
   if (!migrations.rows.some((row) => row.version === '064_alpaca_corporate_action_observation'))
     throw new Error('NO_SUBMIT_PROBE_SCHEMA_064_REQUIRED');
   const schema = migrations.rows.some((row) => row.version === '065_aegis_iv_stress_evidence') ? '065' : '064';
+  probeStage = 'BROKER_CLOCK_READ';
   const clock = await broker.getClock();
   if (clock.isOpen !== true) {
     console.info(JSON.stringify({ state: clock.isOpen === false ? 'MARKET_CLOSED_NO_SCAN' : 'SESSION_UNCONFIRMED_NO_SCAN',
@@ -78,11 +81,14 @@ try {
       brokerMutations: 0, orderSubmissions: 0 }));
     process.exitCode = 0;
   } else {
+    probeStage = 'BROKER_ACCOUNT_READ';
     const account = z.object({ id: z.string().min(1) }).passthrough().parse(await broker.getAccount());
+    probeStage = 'MASTER_ACCOUNT_LOOKUP';
     const master = await pool.query(`SELECT follower_account_id FROM copy.follower_account
       WHERE provider_account_ref=$1 AND account_role='MASTER_THETA_PAPER'
         AND environment='PAPER' AND connection_status='CONNECTED' AND disconnected_at IS NULL`, [account.id]);
     if (master.rowCount !== 1) throw new Error('NO_SUBMIT_PROBE_MASTER_CONNECTION_INVALID');
+    probeStage = 'BROKER_RECONCILIATION';
     const reconciliation = await runReadOnlyBrokerReconciliation({
       broker, store: new PostgresBrokerReconciliationStore(pool),
       connectionId: String(master.rows[0].follower_account_id),
@@ -100,6 +106,7 @@ try {
         brokerMutations: 0, orderSubmissions: 0 }));
       process.exitCode = 1;
     } else {
+      probeStage = 'SHADOW_EVIDENCE_SCAN';
       const scan = await runProductionShadowEvidenceScan({ environment, pool, alpaca,
         reconciliation, executionAccountId: null, now: () => new Date().toISOString() });
       if (scan.actionPlansReady !== 0) throw new Error('NO_SUBMIT_PROBE_ACTION_PLAN_UNEXPECTED');
@@ -118,7 +125,7 @@ try {
 } catch (error) {
   const message = error instanceof Error ? error.message : '';
   const category = /^[A-Z0-9_]{3,100}$/.test(message) ? message : 'UNCLASSIFIED_NO_SUBMIT_FAILURE';
-  console.info(JSON.stringify({ state: 'FAILED_CLOSED', errorCategory: category, sourceSha,
+  console.info(JSON.stringify({ state: 'FAILED_CLOSED', errorCategory: category, probeStage, sourceSha,
     brokerMutations: 0, orderSubmissions: 0 }));
   process.exitCode = 1;
 } finally {
