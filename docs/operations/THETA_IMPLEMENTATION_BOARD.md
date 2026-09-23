@@ -1,7 +1,8 @@
 # THETA implementation board
 
-Current machine-readable source/release inventory: run `npm run theta:truth` or import
-`src/theta/canonical-system-truth.ts`. This board records the history of fixes.
+Source capability inventory: run `npm run theta:truth` or import
+`src/theta/canonical-system-truth.ts`. Current worker, database, broker and
+funnel observations come from `npm run theta:truth-runtime`. This board records the history of fixes.
 An older row or research matrix cannot establish current-worker or Paper-order
 readiness. The truth register remains `PARTIAL` until its source, runtime and
 empirical proof fields have been independently closed.
@@ -12,11 +13,29 @@ Started from canonical source `133227cf7c08aca174ed761d162159fea4cd3130` on 2026
 
 - Master Alpaca Paper only. No live-money authority and no follower submission.
 - No forced order, no relaxation of AEGIS, event, corporate-action, quote, sizing, or broker-reconciliation gates to increase trade count.
-- The existing worker was observed on 2026-09-22 at `853beb4fde989c2f6deb83ad9cb13a9a3e87e76a`, `MASTER_THETA_PAPER`, `ONLINE`, and new-risk `LOCKED` after Aiven resumed writes. It was not restarted or upgraded. Read this state afresh before any release decision.
+- The worker was observed on 2026-09-23 at `c40f85ba740b1e918824d1454f783b7bd275bffd`, `MASTER_THETA_PAPER`, new-risk `LOCKED`, with one active lease. Later source-only diagnostic commits are not running on that worker. Read this state afresh before any release decision.
 - The owner reports Aiven Developer-1, 8 GB, during an accidental temporary upgrade and rebalancing. No further plan change, downgrade, evidence deletion, or provider migration is authorized. Aiven's write tests below passed through the existing connection, but this alone does not authorize a worker cutover.
 - Research branches can collect candidates, but only the bounded Conventional route may enter the master Paper entry assembler. Research outputs cannot self-promote.
 
 ## Active vertical slices
+
+September 23 open-session closure receipt: A locked natural no-submit scan on
+`47ccac7f22fa46fd69dfcadb67e81514d1b2f4c2` completed three symbols with
+zero ready Paper plans and zero broker mutations. Four completed open-session
+diagnostics on the running `c40f85b` worker reported 1,092 Conventional
+candidates in total, all quantity zero with
+`CANDIDATE_SIZING_EVIDENCE_UNKNOWN:AEGIS_UNKNOWN`. This is a concrete risk
+evidence block, not an empty universe or a profitability result. At the UTC
+day seed check, 1,333 candidate PIT rows included 703 Alpaca-IV-lineage rows
+and 1,333 Alpaca-BBO-lineage rows. These are lineage counts, not fully
+qualified detector baselines. The latest sampled IV cohorts had zero prior
+sessions; spread cohorts were mixed and sometimes current-observation stale;
+the gap assessment was ready. `theta:aegis:baseline-progress` reports this
+without trading authority. Database migration head is 064 with read-only
+setting off. Intermittent PostgreSQL disconnect/57P03 remains observable.
+The UNKNOWN audit remains PARTIAL. Prospective company-event and
+corporate-action negative assurance are still unresolved. Do not unlock
+new risk or cut over the worker based on the completed no-submit scan alone.
 
 | Slice | Current evidence | Next closure proof |
 | --- | --- | --- |

@@ -527,7 +527,11 @@ try {
     state: "CONNECTED",
     migrations: expected.length,
     migrationHead: migration065Applied ? "065_aegis_iv_stress_evidence" : "064_alpaca_corporate_action_observation",
-    aegisIvPersistence: migration065Applied ? "ENFORCED" : "DEFERRED_FAIL_CLOSED",
+    // Canonical Paper IV cohort assessments live in schema-064 FusionSnapshot
+    // JSON with separate source-proven PIT candidate rows. Migration 065 is a
+    // distinct Optionomics research assessment, never the Paper IV prerequisite.
+    aegisIvPersistence: "ALPACA_064_FUSION_SNAPSHOT_AVAILABLE",
+    optionomicsIvResearchPersistence: migration065Applied ? "ENFORCED" : "DEFERRED_NOT_PAPER_REQUIRED",
     requiredTables: required.length,
     privateBetaColumns: 9,
     accountRoles: Object.fromEntries(roles.rows.map((row) => [row.account_role, row.count])),
