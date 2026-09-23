@@ -4,6 +4,8 @@ import { buildCanonicalStrategyFrontier } from '../src/theta/canonical-strategy-
 import { normalizeOptionContract, type NormalizedOptionContract } from '../src/theta/option-contract.js';
 import { parseStrategyRoutingResponse, type StrategyFamily } from '../src/theta/strategy-router-contract.js';
 import { paperEntryCandidateCohort } from '../src/research/production-shadow-runtime.js';
+import { projectPersistableThetaCandidates } from '../src/theta/postgres-theta-cycle-store.js';
+import type { ThetaShadowCycleResult } from '../src/theta/theta-shadow-cycle.js';
 
 const NOW = '2026-09-14T15:00:00.000Z';
 
@@ -43,6 +45,33 @@ const base = {
   eventState: null, unmanagedBrokerPositionCount: 0, unevaluatedUnderlyingCount: 0,
   optionomicsContext: { state: 'UNKNOWN' } as const,
 };
+
+test('candidate persistence leaves incomplete economics unknown instead of inventing breakeven or zero yield', () => {
+  const frontier = buildCanonicalStrategyFrontier({ ...base, eventState: 'CLEAR',
+    contracts: [contract()], routing: routing(['THETA_Q']) });
+  const conventional = frontier.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
+  assert.ok(conventional);
+  const candidate = conventional.candidates[0];
+  assert.ok(candidate);
+  const project = (breakEven: number | null, collateral: number | null) => projectPersistableThetaCandidates({
+    strategyFrontier: { ...frontier, branches: frontier.branches.map((branch) => branch.branch === 'THETA_CONVENTIONAL'
+      ? { ...branch, candidates: [{ ...candidate, economics: { ...candidate.economics, breakEven, collateral } }] }
+      : branch) },
+    orchestration: { thetaQ: { candidates: [] }, ownership: { ownability: 0.8 } },
+  } as unknown as ThetaShadowCycleResult)[0];
+  const known = project(188, 19_000);
+  assert.equal(known?.economics?.break_even_price, 188);
+  assert.equal(known?.economics?.credit_collateral_ratio, 200 / 19_000);
+  const missingBreakeven = project(null, 19_000);
+  assert.equal(missingBreakeven?.economics, null);
+  assert.equal(missingBreakeven?.actionFeasible, false);
+  assert.equal(missingBreakeven?.quantity, 0);
+  assert.ok(missingBreakeven?.reasons.some((reason) => reason.code === 'CANDIDATE_ECONOMICS_INCOMPLETE'));
+  const zeroCollateral = project(188, 0);
+  assert.equal(zeroCollateral?.economics, null);
+  assert.equal(zeroCollateral?.actionFeasible, false);
+  assert.ok(zeroCollateral?.reasons.some((reason) => reason.code === 'CANDIDATE_ECONOMICS_INCOMPLETE'));
+});
 
 test('evaluates all five canonical branches exactly once and soft UNKNOWN evidence does not veto a valid CSP', () => {
   const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']) });

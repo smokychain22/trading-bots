@@ -121,7 +121,7 @@ export function projectCanonicalStrategyEvidence(
   });
 }
 
-function persistenceCandidates(cycle:ThetaShadowCycleResult):readonly PersistableCandidate[]{
+export function projectPersistableThetaCandidates(cycle:ThetaShadowCycleResult):readonly PersistableCandidate[]{
   const evaluated=[...(cycle.orchestration?.thetaQ?.candidates??[])];
   const known=new Set(evaluated.map((candidate)=>candidate.candidateId));
   const ownershipScore=cycle.orchestration?.ownership?.ownability??null;
@@ -129,24 +129,30 @@ function persistenceCandidates(cycle:ThetaShadowCycleResult):readonly Persistabl
   for(const [index,candidate] of canonical.entries()){
     const optionSymbol=candidate.legs.length===1?candidate.legs[0]?.optionSymbol:undefined;
     if(optionSymbol===undefined||known.has(optionSymbol))continue;
+    const collateral=candidate.economics.collateral;
+    const maxProfit=candidate.economics.maxProfit;
+    const breakEven=candidate.economics.breakEven;
+    const economicsComplete=collateral!==null&&Number.isFinite(collateral)&&collateral>0
+      &&maxProfit!==null&&Number.isFinite(maxProfit)&&maxProfit>=0
+      &&breakEven!==null&&Number.isFinite(breakEven)&&breakEven>=0;
     const reasons=[
       ...candidate.hardBlockers.map((code)=>({code,polarity:-1 as const,detail:'Canonical structural hard blocker.'})),
       ...(ownershipScore===null?[{code:'OWNERSHIP_ACCEPTABILITY_UNKNOWN',polarity:0 as const,
         detail:'Ownership acceptability is UNKNOWN.'}]:[]),
       ...candidate.unknownEvidence.map((code)=>({code,polarity:0 as const,detail:'Canonical point-in-time evidence is UNKNOWN.'})),
+      ...(!economicsComplete?[{code:'CANDIDATE_ECONOMICS_INCOMPLETE',polarity:0 as const,
+        detail:'Breakeven, maximum profit, or positive collateral is unavailable.'}]:[]),
       ...candidate.softEvidence.map((code)=>({code,polarity:0 as const,detail:'Canonical soft evidence recorded without directional assumption.'})),
     ];
-    const complete=ownershipScore!==null&&candidate.hardBlockers.length===0&&candidate.unknownEvidence.length===0;
-    const collateral=candidate.economics.collateral;
-    const maxProfit=candidate.economics.maxProfit;
+    const complete=ownershipScore!==null&&candidate.hardBlockers.length===0&&candidate.unknownEvidence.length===0&&economicsComplete;
     evaluated.push({candidateId:optionSymbol,rank:candidate.paretoRank??index+1,
       actionFeasible:complete&&candidate.structurallyFeasible&&candidate.riskFeasible,
       quantity:complete?candidate.sizing.quantity:0,ownershipScore,eligibilityBasis:complete?'EMPIRICAL_OWNERSHIP':'INELIGIBLE',reasons,
       paperBootstrapPolicyVersion:null,paperBootstrapAllowedUnknownComponents:[],paperBootstrapReasonCodes:[],
-      economics:collateral===null||maxProfit===null?null:{max_profit:maxProfit,
-        break_even_price:candidate.economics.breakEven??candidate.legs[0]?.strike??0,
-        secured_collateral_per_contract:collateral,
-        credit_collateral_ratio:collateral>0?maxProfit/collateral:0,ev_net:null,
+      economics:!economicsComplete?null:{max_profit:maxProfit as number,
+        break_even_price:breakEven as number,
+        secured_collateral_per_contract:collateral as number,
+        credit_collateral_ratio:(maxProfit as number)/(collateral as number),ev_net:null,
         ev_net_unknown_reason:'EV_MODEL_NOT_EMPIRICALLY_READY'}});
     known.add(optionSymbol);
   }
@@ -292,7 +298,7 @@ export class PostgresThetaCycleStore {
     const receipt = cycle.orchestration?.receipt;
     if (receipt === null || receipt === undefined) return { candidateSetId: null, candidateIds: new Map() };
 
-    const evaluated = persistenceCandidates(cycle);
+    const evaluated = projectPersistableThetaCandidates(cycle);
     const setPayload = JSON.stringify(evaluated);
     const setHash = createHash('sha256').update(setPayload).digest('hex');
     const candidateSetId = deterministicRuntimeUuid(`candidate-set:${fusionSnapshotId}:THETA_CONVENTIONAL:${setHash}`);
@@ -837,7 +843,7 @@ export class PostgresThetaCycleStore {
     if (candidateSetId===null || cycle.fusionSnapshot===null) return;
     const snapshot=cycle.fusionSnapshot.snapshot;
     const contracts=(Array.isArray(snapshot.contractCandidates) ? snapshot.contractCandidates : []).map((item) => jsonObject(item));
-    const evaluated=persistenceCandidates(cycle);
+    const evaluated=projectPersistableThetaCandidates(cycle);
     const receipt=cycle.orchestration?.receipt;
     const ranked=evaluated.toSorted((a,b) => (a.rank ?? Number.MAX_SAFE_INTEGER)-(b.rank ?? Number.MAX_SAFE_INTEGER));
     const feasible=ranked.filter((candidate) => candidate.actionFeasible);
