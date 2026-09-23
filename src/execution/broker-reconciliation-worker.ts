@@ -13,14 +13,18 @@ import {
 } from './broker-fact-impact.js';
 
 const accountSchema = z.object({ id: z.string().min(1), status: z.string().nullable().optional() }).passthrough();
+const strictNumericBrokerField = z.union([
+  z.number().finite(),
+  z.string().regex(/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/),
+]);
 const positionSchema = z.object({
-  symbol: z.string().min(1), qty: z.union([z.string(), z.number()]).nullable().optional(),
+  symbol: z.string().min(1), qty: strictNumericBrokerField.nullable().optional(),
   side: z.string().nullable().optional(), asset_class: z.string().nullable().optional(),
-  avg_entry_price: z.union([z.string(), z.number()]).nullable().optional(),
-  current_price: z.union([z.string(), z.number()]).nullable().optional(),
-  market_value: z.union([z.string(), z.number()]).nullable().optional(),
-  cost_basis: z.union([z.string(), z.number()]).nullable().optional(),
-  unrealized_pl: z.union([z.string(), z.number()]).nullable().optional(),
+  avg_entry_price: strictNumericBrokerField.nullable().optional(),
+  current_price: strictNumericBrokerField.nullable().optional(),
+  market_value: strictNumericBrokerField.nullable().optional(),
+  cost_basis: strictNumericBrokerField.nullable().optional(),
+  unrealized_pl: strictNumericBrokerField.nullable().optional(),
 }).passthrough();
 
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');

@@ -162,6 +162,35 @@ test('missing market-session capabilities remain UNKNOWN rather than silently he
   assert.equal(result.dataQuality, 'UNKNOWN');
 });
 
+test('malformed broker position numerics fail reconciliation instead of becoming economic zero', async () => {
+  for (const malformed of ['', ' ', 'not-a-number', Number.NaN, Number.POSITIVE_INFINITY]) {
+    const adapter = broker();
+    const withMalformedPosition = { ...adapter.value,
+      getPositions: async () => [{ symbol: 'MSFT', qty: malformed, side: 'long', asset_class: 'us_equity' }],
+    };
+    const store = new CaptureStore();
+    await assert.rejects(runReadOnlyBrokerReconciliation({ broker: withMalformedPosition,
+      store, connectionId: 'connection-1', expectedProviderAccountRef: 'paper-account-owner',
+      correlationId: 'malformed-position', now: () => '2026-09-11T14:32:00.000Z' }));
+    assert.equal(store.persisted, null);
+    assert.equal(adapter.mutationCalls(), 0);
+  }
+});
+
+test('an explicit broker position zero stays a known zero rather than UNKNOWN', async () => {
+  const adapter = broker();
+  const withZeroPosition = { ...adapter.value,
+    getPositions: async () => [{ symbol: 'MSFT', qty: '0', side: 'long', asset_class: 'us_equity',
+      market_value: '0', cost_basis: '0', unrealized_pl: '0' }],
+  };
+  const store = new CaptureStore();
+  await runReadOnlyBrokerReconciliation({ broker: withZeroPosition, store,
+    connectionId: 'connection-1', expectedProviderAccountRef: 'paper-account-owner',
+    correlationId: 'known-zero-position', now: () => '2026-09-11T14:32:00.000Z' });
+  assert.equal(store.persisted?.positions[0]?.quantity, 0);
+  assert.equal(store.persisted?.positions[0]?.marketValue, 0);
+});
+
 test('broker state uses fill quantities and preserves partial-fill truth on cancel', () => {
   assert.equal(brokerOrderIntentState(order({ status: 'new', filledQty: 0 })), 'ACKNOWLEDGED');
   assert.equal(brokerOrderIntentState(order({ status: 'new', filledQty: 1 })), 'FILLED');
