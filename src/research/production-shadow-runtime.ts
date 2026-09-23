@@ -91,6 +91,10 @@ export function ivStressPaperPlanPersistenceReady(result:AegisIvStressRefreshRes
   return result.state==='BASELINE_IMMATURE'
     &&paperBootstrapStressApplicability(result.assessment.maturity.state)==='PAPER_COLD_START_NOT_APPLICABLE';
 }
+export function ivStressApplicability(result:AegisIvStressRefreshResult):'REQUIRED'|'PAPER_COLD_START_NOT_APPLICABLE'{
+  return result.state==='BASELINE_IMMATURE' && result.assessment?.sessionState==='CURRENT_SESSION'
+    ? paperBootstrapStressApplicability(result.assessment.maturity.state) : 'REQUIRED';
+}
 export function missingObservationReason(contractFound:boolean,enumerationComplete=true,sessionConfirmedEnded=false):ObservationMissReason {
   if(contractFound)return 'INVALID_QUOTE';
   if(!enumerationComplete)return 'PROVIDER_UNAVAILABLE';
@@ -285,7 +289,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         portfolioCapitalAtRiskPct:null,inventoryCapacityUsedPct:null,assignmentCapacityUsedPct:null,
         recoveryCapacityUsedPct:null,liquidityAcceptable:null,executionQualityAcceptable:null,providerState:null,
         stressGapDetected:false,stressIvShockDetected:ivStressRefresh.assessment?.stressIvShockDetected??null,
-        stressIvShockApplicability:paperBootstrapStressApplicability(ivStressRefresh.assessment?.maturity.state??null),
+        stressIvShockApplicability:ivStressApplicability(ivStressRefresh),
         stressSpreadWideningDetected:null,
       }});
     },input.now);

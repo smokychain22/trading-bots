@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AlpacaProviderError } from '../src/theta/alpaca-provider.js';
-import { applyPendingUnsupportedCorporateActions, classifyObservationFailure, ivStressEvidenceForUnderlying, ivStressPaperBlockers, ivStressPaperPlanPersistenceReady, refreshScanIvStress, missingObservationReason,
+import { applyPendingUnsupportedCorporateActions, classifyObservationFailure, ivStressApplicability, ivStressEvidenceForUnderlying, ivStressPaperBlockers, ivStressPaperPlanPersistenceReady, refreshScanIvStress, missingObservationReason,
   universeDiscoveryDiagnosticBlockers } from '../src/research/production-shadow-runtime.js';
 import { assessAegisIvStress, normalizeOptionomicsAtmIvObservation,
   paperBootstrapAegisIvStressPolicy } from '../src/theta/aegis-iv-stress.js';
@@ -101,6 +101,12 @@ test('Paper-plan assembly requires persisted IV assessment or a governed accumul
   assert.equal(ivStressPaperPlanPersistenceReady({state:'READY',
     assessment:{...assessment,sessionState:'LATEST_COMPLETED_SESSION',maturity:{...assessment.maturity,state:'DETECTOR_READY'}},
     reason:'INCORRECT_READY'}),false);
+  assert.equal(ivStressApplicability({state:'BASELINE_IMMATURE',
+    assessment:{...assessment,maturity:{...assessment.maturity,state:'BASELINE_ACCUMULATING'}},reason:'ACCUMULATING'}),
+    'PAPER_COLD_START_NOT_APPLICABLE');
+  assert.equal(ivStressApplicability({state:'SESSION_STALE',
+    assessment:{...assessment,sessionState:'LATEST_COMPLETED_SESSION',maturity:{...assessment.maturity,state:'BASELINE_ACCUMULATING'}},
+    reason:'PRIOR_SESSION'}),'REQUIRED');
   assert.equal(ivStressPaperPlanPersistenceReady({state:'READY',
     assessment:{...assessment,maturity:{...assessment.maturity,state:'DETECTOR_READY'}},reason:'READY'}),true);
 });
