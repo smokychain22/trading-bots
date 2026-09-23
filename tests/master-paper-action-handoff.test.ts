@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { BrokerOrderRequest, BrokerOrderSnapshot, PaperBrokerAdapter } from '../src/execution/broker.js';
 import { executionOptionQuoteContractVersion, type ExecutionOptionQuote } from '../src/execution/execution-option-quote.js';
-import { MasterPaperActionHandoff, classifyMasterPaperActionExecution, masterPaperActionPlanSchema, masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan,
+import { MasterPaperActionHandoff, classifyMasterPaperActionExecution, masterPaperActionPlanSchema, masterPaperActionPlanVersion,
+  preSubmitMaximumQuoteAgeMs, type ApprovedMasterPaperActionPlan,
   type ExecutionOptionQuoteSource } from '../src/execution/master-paper-action-handoff.js';
 import { MasterPaperExecutionOrchestrator } from '../src/execution/master-paper-execution-orchestrator.js';
 import { InMemoryPaperOrderStore, PaperOrderCoordinator } from '../src/execution/paper-order-coordinator.js';
@@ -47,6 +48,29 @@ const setup=(value:ExecutionOptionQuote|null=quote)=>{const broker=new Broker();
 test('approved canonical action reaches the existing Paper coordinator exactly once',async()=>{
   const {broker,handoff}=setup();const result=await handoff.execute(plan(),now,true);
   assert.equal(result.state,'EXECUTED');assert.equal(result.execution?.submittedNow,true);assert.equal(broker.submitCalls,1);
+});
+
+test('pre-submit freshness is independently versioned and bounded by the decision window',()=>{
+  const policy={policyVersion:'pre-submit-test-v1',effectiveAt:'2026-09-01T00:00:00.000Z',maximumAgeMs:10_000};
+  assert.equal(preSubmitMaximumQuoteAgeMs({policy,now,decisionExpiresAt:'2026-09-14T14:01:00.000Z'}),10_000);
+  assert.equal(preSubmitMaximumQuoteAgeMs({policy,now,decisionExpiresAt:'2026-09-14T14:00:05.000Z'}),5_000);
+  assert.equal(preSubmitMaximumQuoteAgeMs({policy:{...policy,effectiveAt:'2026-09-15T00:00:00.000Z'},now,
+    decisionExpiresAt:'2026-09-14T14:01:00.000Z'}),null);
+});
+
+test('pre-submit policy rejects a quote that the longer action-plan window would otherwise accept',async()=>{
+  const broker=new Broker();
+  const coordinator=new PaperOrderCoordinator(broker,new InMemoryPaperOrderStore(),
+    {masterEnabled:true,followerEnabled:false,pauseNewOrders:false});
+  const handoff=new MasterPaperActionHandoff(
+    new QuoteSource({...quote,providerTimestamp:'2026-09-14T13:59:40.000Z'}),
+    new MasterPaperExecutionOrchestrator(coordinator),
+    {policyVersion:'pre-submit-test-v1',effectiveAt:'2026-09-01T00:00:00.000Z',maximumAgeMs:10_000},
+  );
+  const result=await handoff.execute(plan(),now,true);
+  assert.equal(result.state,'QUOTE_REJECTED');
+  assert.ok(result.blockers.includes('QUOTE_STALE'));
+  assert.equal(broker.submitCalls,0);
 });
 
 test('missing quote, hard veto, and unpromoted economics in promoted tier produce zero broker mutation',async()=>{

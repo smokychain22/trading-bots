@@ -28,7 +28,9 @@ import { AlpacaExecutionQuoteSource } from '../execution/alpaca-execution-quote-
 import { PostgresPaperOrderStore } from '../execution/postgres-paper-order-store.js';
 import { PaperOrderCoordinator } from '../execution/paper-order-coordinator.js';
 import { MasterPaperExecutionOrchestrator } from '../execution/master-paper-execution-orchestrator.js';
-import { MasterPaperActionHandoff, classifyMasterPaperActionExecution } from '../execution/master-paper-action-handoff.js';
+import {
+  MasterPaperActionHandoff, classifyMasterPaperActionExecution, paperBootstrapPreSubmitQuoteAgePolicy,
+} from '../execution/master-paper-action-handoff.js';
 import { assembleManagementPaperPlans, compileManagementExecutionLegDirectives } from '../execution/management-paper-plan-assembly.js';
 import { AlpacaProviderError } from './alpaca-provider.js';
 import { OptionomicsProviderError } from './optionomics-provider.js';
@@ -534,7 +536,8 @@ export async function runAutonomousRuntimeCycle(
         const coordinator=new PaperOrderCoordinator(master.executionBroker,new PostgresPaperOrderStore(pool,master.executionAccountId),{
           masterEnabled:masterExecutionEnabled,followerEnabled:false,pauseNewOrders});
         const handoff=new MasterPaperActionHandoff(new AlpacaExecutionQuoteSource(master.alpaca),
-          new MasterPaperExecutionOrchestrator(coordinator,new PostgresExecutionEvidenceStore(pool)));
+          new MasterPaperExecutionOrchestrator(coordinator,new PostgresExecutionEvidenceStore(pool)),
+          paperBootstrapPreSubmitQuoteAgePolicy);
         try{
           const at=new Date().toISOString();
           const result=await handoff.execute(plan,at,true);

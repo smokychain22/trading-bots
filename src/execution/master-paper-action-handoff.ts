@@ -97,6 +97,35 @@ export interface ExecutionOptionQuoteSource {
   getCurrentQuote(plan: ApprovedMasterPaperActionPlan, now: string): Promise<ExecutionOptionQuote | null>;
 }
 
+export interface PreSubmitQuoteAgePolicy {
+  readonly policyVersion: string;
+  readonly effectiveAt: string;
+  readonly maximumAgeMs: number;
+}
+
+// This preserves the former 45-second upper bound created by the action-plan
+// expiry window. It only separates pre-submit freshness from candidate-stage
+// freshness so each stage can be measured and governed independently.
+export const paperBootstrapPreSubmitQuoteAgePolicy: PreSubmitQuoteAgePolicy = {
+  policyVersion: 'pre-submit-quote-age-v1-paper-bootstrap',
+  effectiveAt: '2026-09-01T00:00:00.000Z',
+  maximumAgeMs: 45_000,
+};
+
+export function preSubmitMaximumQuoteAgeMs(input: {
+  readonly policy: PreSubmitQuoteAgePolicy;
+  readonly now: string;
+  readonly decisionExpiresAt: string;
+}): number | null {
+  const now = Date.parse(input.now);
+  const effectiveAt = Date.parse(input.policy.effectiveAt);
+  const expiresAt = Date.parse(input.decisionExpiresAt);
+  if (!input.policy.policyVersion.trim() || !Number.isFinite(now) || !Number.isFinite(effectiveAt)
+    || !Number.isFinite(expiresAt) || effectiveAt > now || expiresAt <= now
+    || !Number.isFinite(input.policy.maximumAgeMs) || input.policy.maximumAgeMs <= 0) return null;
+  return Math.min(input.policy.maximumAgeMs, expiresAt - now);
+}
+
 export interface MasterPaperActionHandoffResult {
   readonly actionPlanId: string;
   readonly state: 'BLOCKED' | 'NO_QUOTE' | 'QUOTE_REJECTED' | 'PRICE_REJECTED' | 'EXECUTED';
@@ -125,6 +154,7 @@ export class MasterPaperActionHandoff {
   constructor(
     private readonly quoteSource: ExecutionOptionQuoteSource,
     private readonly execution: MasterPaperExecutionOrchestrator,
+    private readonly quoteAgePolicy: PreSubmitQuoteAgePolicy = paperBootstrapPreSubmitQuoteAgePolicy,
   ) {}
 
   async execute(raw: ApprovedMasterPaperActionPlan, now: string, marketOpen: boolean): Promise<MasterPaperActionHandoffResult> {
@@ -145,12 +175,15 @@ export class MasterPaperActionHandoff {
       (!plan.empiricalEconomicsReady||plan.expectedAfterCostEv===null||plan.expectedAfterCostEv<=0))
       blockers.push('POSITIVE_AFTER_COST_EV_NOT_EMPIRICALLY_READY');
     if(opensNewRisk&&!['ALLOW_FULL','ALLOW_REDUCED'].includes(plan.aegisState))blockers.push('AEGIS_NOT_APPROVED');
+    const maximumQuoteAgeMs=preSubmitMaximumQuoteAgeMs({policy:this.quoteAgePolicy,now,
+      decisionExpiresAt:plan.decisionExpiresAt});
+    if(maximumQuoteAgeMs===null)blockers.push('PRE_SUBMIT_QUOTE_AGE_POLICY_INVALID');
     if(blockers.length>0)return {actionPlanId:plan.actionPlanId,state:'BLOCKED',blockers,execution:null};
 
     const quote=await this.quoteSource.getCurrentQuote(plan,now);
     if(quote===null)return {actionPlanId:plan.actionPlanId,state:'NO_QUOTE',blockers:['FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_NOT_YET_QUALIFIED'],execution:null};
     const qualification=qualifyExecutionOptionQuote({quote,expectedContractId:plan.symbol,nowUtc:now,
-      maximumAgeMs:Math.max(0,Date.parse(plan.decisionExpiresAt)-Date.parse(now)),marketOpen,usage:'MASTER_PAPER'});
+      maximumAgeMs:maximumQuoteAgeMs as number,marketOpen,usage:'MASTER_PAPER'});
     if(!qualification.qualified)return {actionPlanId:plan.actionPlanId,state:'QUOTE_REJECTED',blockers:qualification.blockers,execution:null};
     const pricing=decideAdaptiveLimit({side:sideFor(plan.action),quote,attempt:plan.pricingAttempt,
       previousLimit:plan.previousLimit,economicBoundary:plan.economicBoundary,
@@ -171,14 +204,15 @@ export class MasterPaperActionHandoff {
       limitPrice:pricing.limitPrice,pricingPolicyVersion:pricing.policyVersion,
       quote:{source:quote.provider as 'ALPACA'|'OPTIONOMICS',feed:plan.action==='SELL_STOCK'?'IEX':alpaca?'OPRA':alpacaIndicative?'INDICATIVE':'TRUSTED_TWO_SIDED',
         semantics:quote.sourceSemantics as 'CONSOLIDATED_NBBO'|'TRUSTED_TWO_SIDED_ORDER_PRICING'|'PAPER_INDICATIVE_REFERENCE',bid:quote.bid,ask:quote.ask,
-        observedAt:quote.providerTimestamp as string,maximumAgeSeconds:Math.max(0.001,(Date.parse(plan.decisionExpiresAt)-Date.parse(now))/1000)},
+        observedAt:quote.providerTimestamp as string,maximumAgeSeconds:(maximumQuoteAgeMs as number)/1000},
       accountVerified:plan.accountVerified,optionsCapabilityVerified:plan.optionsCapabilityVerified,aegisState:plan.aegisState,
       executionTier:plan.executionTier,canonicalQuantity:plan.canonicalQuantity,paperEvidenceQuantity:plan.paperEvidenceQuantity,
       empiricalEconomicsReady:plan.empiricalEconomicsReady,expectedAfterCostEv:plan.expectedAfterCostEv,
       now,decisionExpiresAt:plan.decisionExpiresAt,attempt:plan.pricingAttempt+1});
     return {actionPlanId:plan.actionPlanId,state:'EXECUTED',blockers:[],execution:await this.execution.execute(command,{
       eventType:'INITIAL_LIMIT',eventTime:now,quote,quoteAgeMs:quote.providerTimestamp===null?null:Date.parse(now)-Date.parse(quote.providerTimestamp),
-      pricing,fillPrice:null,filledQuantity:null,attemptNo:plan.pricingAttempt+1,reasonCode:'ORDER_HANDOFF_REFERENCE',
+      pricing,fillPrice:null,filledQuantity:null,attemptNo:plan.pricingAttempt+1,
+      reasonCode:`ORDER_HANDOFF_REFERENCE:${this.quoteAgePolicy.policyVersion}`,
     })};
   }
 }
