@@ -4,7 +4,7 @@
  * when they contain superseded statements.
  */
 export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v1' as const;
-export const truthSourceBaselineSha = '72cabef3b59cf72647403dd5d50ac52abe1b26f4';
+export const truthSourceBaselineSha = '715c45f0ca6d1c2b2ec69df6fe2ecd32453fb408';
 // A worker SHA is operational state. Read it from the current worker lease,
 // never from this source-controlled architectural inventory.
 export const truthLastVerifiedAt = '2026-09-24';
@@ -104,7 +104,7 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
   capability({ capabilityId: 'AEGIS_STRESS_AND_PORTFOLIO', layerIds: [8, 9], sourceImplemented: 'YES', testsPassed: 'YES',
     providerAuthenticated: 'YES', realDataObserved: 'YES', persisted: 'UNVERIFIED', runtimeReachable: 'YES',
     paperAuthorized: 'PAPER_ONLY_LOCKED', sourceFiles: ['src/theta/aegis-iv-stress.ts', 'src/theta/aegis-spread-stress.ts', 'bots/theta/quant/models/aegis.py'],
-    currentBlocker: 'Schema-064 Alpaca IV cohort and spread baselines need real session maturity and locked runtime proof. Migration 065 is deferred.',
+    currentBlocker: 'The schema-064 Alpaca IV-cohort and spread baselines need independent real-session maturity, a current observation and locked-runtime proof. The optional schema-065 Optionomics detector is secondary research and is not required by the Paper path.',
     safeCurrentBehavior: 'AEGIS fails closed on missing required evidence; current quote safety is never waived by cold start.',
     closureTest: 'Persisted real schema-064 assessments and a locked no-submit cycle with full per-family reasons.',
     disposition: 'TRUE_HARD_BLOCKER',
