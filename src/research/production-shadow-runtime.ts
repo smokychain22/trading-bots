@@ -75,11 +75,20 @@ export async function refreshScanIvStress(input:{readonly pool:Pool;readonly opt
   return ivStressEvidenceForUnderlying(input.underlying,await refresh({pool:input.pool,optionomics:input.optionomics,
     underlying:input.underlying,decisionAsOf:input.now(),freezeDecisionAsOf:input.now}));
 }
-export function ivStressPaperBlockers(states:ReadonlyMap<string,AegisIvStressRefreshResult['state']>,
+export function ivStressPaperBlockers(states:ReadonlyMap<string,AegisIvStressRefreshResult>,
   brokerAuthoritySymbols:ReadonlySet<string>):readonly string[]{
   return [...states].sort(([left],[right])=>left.localeCompare(right))
-    .flatMap(([symbol,state])=>state!=='READY'&&brokerAuthoritySymbols.has(symbol)
-      ? [`${symbol}:AEGIS_IV_STRESS_${state}`]:[]);
+    .flatMap(([symbol,result])=>!ivStressPaperPlanPersistenceReady(result)&&brokerAuthoritySymbols.has(symbol)
+      ? [`${symbol}:AEGIS_IV_STRESS_${result.state}`]:[]);
+}
+export function ivStressPaperPlanPersistenceReady(result:AegisIvStressRefreshResult|undefined):boolean{
+  if(result?.assessment===null||result===undefined)return false;
+  if(result.state==='READY')return result.assessment.maturity.state==='DETECTOR_READY';
+  // A real, persisted current observation and assessment may invoke the
+  // versioned Paper baseline cold-start policy. Provider and persistence
+  // failures never qualify for that exception.
+  return result.state==='BASELINE_IMMATURE'
+    &&paperBootstrapStressApplicability(result.assessment.maturity.state)==='PAPER_COLD_START_NOT_APPLICABLE';
 }
 export function missingObservationReason(contractFound:boolean,enumerationComplete=true,sessionConfirmedEnded=false):ObservationMissReason {
   if(contractFound)return 'INVALID_QUOTE';
@@ -250,13 +259,13 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const discoveredBySymbol=new Map(scanUnderlyings.map((candidate)=>[candidate.symbol,candidate]));
   const brokerAuthoritySymbols=new Set(universeBreadthChallenger.championSymbols);
   const optionomics=optionomicsConfigFromEnvironment(input.environment);
-  const ivStressStateBySymbol=new Map<string,AegisIvStressRefreshResult['state']>();
+  const ivStressResultBySymbol=new Map<string,AegisIvStressRefreshResult>();
   const scan=await runCrossSymbolShadowScan({universeVersion:'theta-shadow-universe-v1',latticeVersion:'lattice-v1-shadow-once',
     strategyVersion:'theta-shadow-once-v1',eligibleUnderlyings:scanUnderlyings,maxUnderlyings:Math.max(1,scanUnderlyings.length),
     branches:['THETA_CONVENTIONAL','THETA_HOLD_STRIKE','THETA_RECOVERY','THETA_CC','THETA_DEFINED_RISK']},async(underlying)=>{
       const ivStressRefresh=await refreshScanIvStress({pool:input.pool,optionomics,
         underlying:underlying.symbol,now:input.now});
-      ivStressStateBySymbol.set(underlying.symbol,ivStressRefresh.state);
+      ivStressResultBySymbol.set(underlying.symbol,ivStressRefresh);
       const config=defaultShadowCycleConfig(input.alpaca,optionomics,bridge(input.environment),[underlying],discovery.candidatesOrigin);
       const recoveryHistory=await loadRecoveryHistory(input.pool,underlying.symbol,input.now());
       return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',paperEntryBootstrap,recoveryHistory,recoveryInventoryUnderlyings,
@@ -275,7 +284,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     },input.now);
   // Research-only breadth challengers retain their own evidence state, but
   // must not become a blocker for the Paper-authorized champion cohort.
-  runtimeSafetyBlockers.push(...ivStressPaperBlockers(ivStressStateBySymbol,brokerAuthoritySymbols));
+  runtimeSafetyBlockers.push(...ivStressPaperBlockers(ivStressResultBySymbol,brokerAuthoritySymbols));
   const cycleStore=new PostgresThetaCycleStore(input.pool),persisted=new Map<string,{
     fusionSnapshotId:string|null;candidateSetId:string|null;decisionId:string|null;
   }>();
@@ -291,6 +300,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     persisted.set(member.symbol,{fusionSnapshotId:saved.fusionSnapshotId,candidateSetId:saved.candidateSetId,decisionId:saved.decisionId});
     if(input.environment.MASTER_PAPER_EXECUTION_ENABLED&&!input.environment.PAPER_PAUSE_NEW_ORDERS
       &&brokerAuthoritySymbols.has(member.symbol)&&eventGate?.state==='ELIGIBLE'
+      &&ivStressPaperPlanPersistenceReady(ivStressResultBySymbol.get(member.symbol))
       &&member.cycle.strategyFrontier!==null&&saved.decisionId!==null){
       const selected=await input.pool.query(`SELECT d.selected_candidate_id::text AS candidate_id,
         c.option_contract_id::text,oc.underlying_id::text,cv.assumptions_json
@@ -338,6 +348,10 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         if(await new PostgresMasterPaperActionPlanStore(input.pool).enqueue(assembled.plan,planNow,
           {botInstanceId:runtimeContext.botInstanceId,underlyingId:assembled.plan.underlyingId}))actionPlansReady++;
       }else if(assembled.state==='BLOCKED')actionPlansBlocked.push(...assembled.blockers.map((blocker)=>`${member.symbol}:${blocker}`));
+    }else if(brokerAuthoritySymbols.has(member.symbol)&&eventGate?.state==='ELIGIBLE'
+      &&member.cycle.strategyFrontier?.selectedCandidateId!==null
+      &&!ivStressPaperPlanPersistenceReady(ivStressResultBySymbol.get(member.symbol))){
+      actionPlansBlocked.push(`${member.symbol}:AEGIS_IV_STRESS_${ivStressResultBySymbol.get(member.symbol)?.state??'MISSING'}`);
     }else if(brokerAuthoritySymbols.has(member.symbol)&&member.cycle.strategyFrontier?.selectedCandidateId!==null
       &&eventGate?.state!=='ELIGIBLE'){
       actionPlansBlocked.push(`${member.symbol}:${eventGate?.reason.code??'UNIVERSE_EVENT_EVIDENCE_MISSING'}`);

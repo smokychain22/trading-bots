@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AlpacaProviderError } from '../src/theta/alpaca-provider.js';
-import { applyPendingUnsupportedCorporateActions, classifyObservationFailure, ivStressEvidenceForUnderlying, ivStressPaperBlockers, refreshScanIvStress, missingObservationReason,
+import { applyPendingUnsupportedCorporateActions, classifyObservationFailure, ivStressEvidenceForUnderlying, ivStressPaperBlockers, ivStressPaperPlanPersistenceReady, refreshScanIvStress, missingObservationReason,
   universeDiscoveryDiagnosticBlockers } from '../src/research/production-shadow-runtime.js';
 import { assessAegisIvStress, normalizeOptionomicsAtmIvObservation,
   paperBootstrapAegisIvStressPolicy } from '../src/theta/aegis-iv-stress.js';
@@ -70,7 +70,31 @@ test('multi-symbol scan requests IV stress per underlying and freezes after each
 });
 
 test('research breadth IV uncertainty does not block Paper-authorized symbols',()=>{
-  const states=new Map([['SPY','READY'],['MSFT','PROVIDER_ERROR'],['QQQ','BASELINE_IMMATURE']] as const);
+  const states=new Map([
+    ['SPY',{state:'READY',assessment:null,reason:'NO_ASSESSMENT'}],
+    ['MSFT',{state:'PROVIDER_ERROR',assessment:null,reason:'HTTP_503'}],
+    ['QQQ',{state:'BASELINE_IMMATURE',assessment:null,reason:'NO_BASELINE'}],
+  ] as const);
   assert.deepEqual(ivStressPaperBlockers(states,new Set(['SPY','QQQ'])),
-    ['QQQ:AEGIS_IV_STRESS_BASELINE_IMMATURE']);
+    ['QQQ:AEGIS_IV_STRESS_BASELINE_IMMATURE','SPY:AEGIS_IV_STRESS_READY']);
+});
+
+test('Paper-plan assembly requires persisted IV assessment or a governed accumulating baseline',()=>{
+  const context={family:'METRICS',operationAlias:'optionomics.get_symbol_metrics',underlying:'SPY',
+    requestedAt:'2026-09-22T14:00:00.000Z',retrievedAt:'2026-09-22T14:00:01.000Z',
+    providerTimestamp:null,sessionDate:'2026-09-22',requestParameters:{date:'2026-09-22'},
+    responseHash:'a'.repeat(64),normalized:{atmIv:{state:'KNOWN',value:0.2,units:'PROVIDER_REPORTED_UNVERIFIED'}},
+  } as unknown as NormalizedOptionomicsContextObservation;
+  const normalized=normalizeOptionomicsAtmIvObservation(context);
+  assert.equal(normalized.state,'KNOWN');
+  const assessment=assessAegisIvStress({current:normalized.observation,history:[],
+    decisionAsOf:'2026-09-22T14:00:02.000Z',policy:paperBootstrapAegisIvStressPolicy});
+  assert.equal(ivStressPaperPlanPersistenceReady(undefined),false);
+  assert.equal(ivStressPaperPlanPersistenceReady({state:'PERSISTENCE_ERROR',assessment:null,reason:'42P01'}),false);
+  assert.equal(ivStressPaperPlanPersistenceReady({state:'PROVIDER_ERROR',assessment:null,reason:'HTTP_503'}),false);
+  assert.equal(ivStressPaperPlanPersistenceReady({state:'BASELINE_IMMATURE',assessment,reason:'NOT_STARTED'}),false);
+  assert.equal(ivStressPaperPlanPersistenceReady({state:'BASELINE_IMMATURE',
+    assessment:{...assessment,maturity:{...assessment.maturity,state:'BASELINE_ACCUMULATING'}},reason:'ACCUMULATING'}),true);
+  assert.equal(ivStressPaperPlanPersistenceReady({state:'READY',
+    assessment:{...assessment,maturity:{...assessment.maturity,state:'DETECTOR_READY'}},reason:'READY'}),true);
 });
