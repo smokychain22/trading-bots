@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AlpacaProviderError } from '../src/theta/alpaca-provider.js';
-import { applyPendingUnsupportedCorporateActions, classifyObservationFailure, ivStressApplicability, ivStressEvidenceForUnderlying, ivStressPaperBlockers, ivStressPaperPlanPersistenceReady, refreshScanIvStress, missingObservationReason,
+import { applyPendingUnsupportedCorporateActions, classifyObservationFailure, ivStressApplicability, ivStressEvidenceForUnderlying, ivStressPaperBlockers, ivStressPaperPlanPersistenceReady, paperEntryEventEvidenceBlockers, refreshScanIvStress, missingObservationReason,
   universeDiscoveryDiagnosticBlockers } from '../src/research/production-shadow-runtime.js';
 import { assessAegisIvStress, normalizeOptionomicsAtmIvObservation,
   paperBootstrapAegisIvStressPolicy } from '../src/theta/aegis-iv-stress.js';
@@ -32,6 +32,21 @@ test('positive corporate-action evidence reaches the final Paper cohort while em
   const empty = applyPendingUnsupportedCorporateActions([candidate], new Set());
   assert.equal(positive[0]?.unsupportedCorporateActionPending, true);
   assert.equal(empty[0]?.unsupportedCorporateActionPending, null);
+});
+
+test('Paper diagnostics expose corporate-action and event gaps independently', () => {
+  assert.deepEqual(paperEntryEventEvidenceBlockers('SPY', null), [
+    'SPY:CORPORATE_ACTION_COVERAGE_UNKNOWN', 'SPY:EVENT_PROXIMITY_UNKNOWN',
+  ]);
+  assert.deepEqual(paperEntryEventEvidenceBlockers('SPY', {
+    unsupportedCorporateActionPending: true, eventNear: null,
+  }), ['SPY:UNSUPPORTED_CORPORATE_ACTION', 'SPY:EVENT_PROXIMITY_UNKNOWN']);
+  assert.deepEqual(paperEntryEventEvidenceBlockers('SPY', {
+    unsupportedCorporateActionPending: false, eventNear: true,
+  }), ['SPY:EVENT_PROXIMITY']);
+  assert.deepEqual(paperEntryEventEvidenceBlockers('SPY', {
+    unsupportedCorporateActionPending: false, eventNear: false,
+  }), []);
 });
 
 test('IV stress evidence for one underlying cannot become another underlying’s AEGIS input', () => {

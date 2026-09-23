@@ -117,6 +117,21 @@ export function applyPendingUnsupportedCorporateActions(
   }));
 }
 
+/** Report independent Paper-entry evidence gaps without changing the entry gate. */
+export function paperEntryEventEvidenceBlockers(
+  symbol: string,
+  evidence: Pick<UnderlyingCandidateInput, 'unsupportedCorporateActionPending' | 'eventNear'> | null,
+): readonly string[] {
+  const corporateAction = evidence?.unsupportedCorporateActionPending;
+  const eventNear = evidence?.eventNear;
+  return [
+    ...(corporateAction === true ? [`${symbol}:UNSUPPORTED_CORPORATE_ACTION`]
+      : corporateAction === false ? [] : [`${symbol}:CORPORATE_ACTION_COVERAGE_UNKNOWN`]),
+    ...(eventNear === true ? [`${symbol}:EVENT_PROXIMITY`]
+      : eventNear === false ? [] : [`${symbol}:EVENT_PROXIMITY_UNKNOWN`]),
+  ];
+}
+
 export async function processDueExecutionObservations(input:{pool:Pool;alpaca:AlpacaProviderConfig;now:()=>string}):Promise<ObservationProcessingReport>{
   const observedAt=input.now();
   const jobs=await input.pool.query(`SELECT j.observation_job_id,j.candidate_id,j.contract_symbol,j.horizon_code,j.target_at,u.symbol AS underlying,
@@ -319,6 +334,9 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     if(member.cycle?.fusionSnapshot===null||member.cycle===null) continue;
     const discovered=discoveredBySymbol.get(member.symbol);
     const eventGate=discovered===undefined?null:assessUniverseEventEvidence(discovered);
+    if (brokerAuthoritySymbols.has(member.symbol)) {
+      actionPlansBlocked.push(...paperEntryEventEvidenceBlockers(member.symbol, discovered??null));
+    }
     const saved=await cycleStore.persist(runtimeContext,member.cycle);
     persisted.set(member.symbol,{fusionSnapshotId:saved.fusionSnapshotId,candidateSetId:saved.candidateSetId,decisionId:saved.decisionId});
     const selectedOptionSymbol=member.cycle.strategyFrontier?.selectedCandidateId??null;
