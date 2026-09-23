@@ -62,6 +62,24 @@ jobs:
             playwright-report/
           retention-days: 14
       - run: python -m unittest discover -s bots/theta/tests/quant -p 'test_*.py'
+      - name: Prove locked worker fails closed on schema 064
+        env:
+          THETA_SCHEMA064_TEST_DATABASE_URL: postgresql://trading_bots:ci-only-password@127.0.0.1:5432/theta_schema064_ci
+        run: |
+          createdb -h 127.0.0.1 -U trading_bots theta_schema064_ci
+          for migration in migrations/*.sql; do
+            number=${migration##*/}
+            number=${number%%_*}
+            if ((10#$number > 64)); then break; fi
+            psql -h 127.0.0.1 -U trading_bots -d theta_schema064_ci -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
+          done
+          for invariant in tests/sql/*.sql; do
+            number=${invariant##*/}
+            number=${number%%_*}
+            if ((10#$number > 64)); then break; fi
+            psql -h 127.0.0.1 -U trading_bots -d theta_schema064_ci -v ON_ERROR_STOP=1 -f "$invariant" >/dev/null
+          done
+          npx tsx --test tests/db/schema-064-locked-worker.integration.test.ts
       - name: Apply migrations and test schema invariants
         run: |
           for migration in migrations/*.sql; do
