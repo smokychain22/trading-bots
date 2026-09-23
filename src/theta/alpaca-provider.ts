@@ -261,8 +261,9 @@ export async function fetchMarketCalendar(config: AlpacaProviderConfig, start: s
   return body.map((value) => {
     const raw = providerRow(value, '/v2/calendar');
     const date = nonEmptyString(raw.date);
+    const dateMs = date === null ? NaN : Date.parse(`${date}T00:00:00.000Z`);
     if (date === null || !/^\d{4}-\d{2}-\d{2}$/.test(date)
-      || new Date(`${date}T00:00:00.000Z`).toISOString().slice(0, 10) !== date) {
+      || !Number.isFinite(dateMs) || new Date(dateMs).toISOString().slice(0, 10) !== date) {
       throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/calendar returned a row without a valid session date.');
     }
     return {

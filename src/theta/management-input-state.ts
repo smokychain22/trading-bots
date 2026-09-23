@@ -142,6 +142,20 @@ const text = (value: unknown): string | null => value == null ? null : String(va
 const object = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
+function managementCalendarSessions(value: unknown): readonly { readonly date: string; readonly open: string | null; readonly close: string | null }[] | null {
+  if (!Array.isArray(value)) return null;
+  const sessions: { date: string; open: string | null; close: string | null }[] = [];
+  for (const item of value) {
+    const row = object(item);
+    const sessionDate = text(row.date);
+    const dateMs = sessionDate === null ? NaN : Date.parse(`${sessionDate}T00:00:00.000Z`);
+    if (sessionDate === null || !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)
+      || !Number.isFinite(dateMs) || new Date(dateMs).toISOString().slice(0, 10) !== sessionDate) return null;
+    sessions.push({ date: sessionDate, open: text(row.open), close: text(row.close) });
+  }
+  return sessions;
+}
+
 function daysToExpiration(expiration: string | null, observedAt: string): number | null {
   if (expiration === null) return null;
   const start = Date.parse(observedAt);
@@ -212,6 +226,7 @@ export function assembleManagementInput(row: Row, input: {
   const marketSession = object(snapshot.marketSession);
   const reconciledMarketOpen = typeof reconciliationDetail.marketOpen==='boolean' ? reconciliationDetail.marketOpen
     : typeof marketSession.isOpen==='boolean' ? marketSession.isOpen : null;
+  const reconciledCalendarSessions = managementCalendarSessions(reconciliationDetail.calendarSessions);
   const riskState = object(snapshot.riskState);
   const snapshotContracts = Array.isArray(snapshot.contractCandidates) ? snapshot.contractCandidates : [];
   const position = object(row.broker_position);
@@ -353,6 +368,9 @@ export function assembleManagementInput(row: Row, input: {
   required('context.strategyVersions', snapshot.versions ?? null);
   required('economics.fees', fees);
   if (row.fusion_snapshot_id == null) unknownFields.push('fusionSnapshotId');
+  if (Array.isArray(reconciliationDetail.calendarSessions) && reconciledCalendarSessions === null) {
+    unknownFields.push('market.calendarSessions');
+  }
 
   const hardBlockers: string[] = [];
   if (hasOpenOption && multiplier === null) hardBlockers.push('MULTIPLIER_UNKNOWN');
@@ -390,8 +408,7 @@ export function assembleManagementInput(row: Row, input: {
       quoteFeed: text(row.feed), quoteQuality: text(row.quote_quality), dte: daysToExpiration(expiration, input.observedAt),
       marketOpen: reconciledMarketOpen,
       clockTimestamp:text(row.clock_timestamp),nextOpen:text(reconciliationDetail.nextOpen),nextClose:text(reconciliationDetail.nextClose),
-      calendarSessions:Array.isArray(reconciliationDetail.calendarSessions)
-        ? reconciliationDetail.calendarSessions.map((item)=>{const value=object(item);return {date:String(value.date??''),open:text(value.open),close:text(value.close)};}) : null,
+      calendarSessions:reconciledCalendarSessions,
       moneyness: spot !== null && strike !== null && spot > 0 ? strike / spot : null,
       delta: numeric(snapshotContract.delta), gamma: numeric(snapshotContract.gamma), theta: numeric(snapshotContract.theta),
       vega: numeric(snapshotContract.vega), iv: numeric(snapshotContract.iv),

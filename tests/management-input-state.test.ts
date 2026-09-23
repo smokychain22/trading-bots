@@ -76,6 +76,24 @@ test('stale account state and malformed numeric values fail closed',()=>{
   assert.ok(state.hardBlockers.includes('EXECUTABLE_QUOTE_UNAVAILABLE'));
 });
 
+test('malformed reconciliation calendar evidence remains unknown instead of gaining an empty date', () => {
+  const malformed = assembleManagementInput({ ...base,
+    reconciliation_detail:{ marketOpen:false, calendarSessions:[{ date:'', open:'09:30', close:'16:00' }] } }, {
+    managementInputSnapshotId:'input-calendar-invalid', reconciliationSnapshotId:'recon-1',
+    observedAt:'2026-09-12T14:00:00.000Z',
+  });
+  assert.equal(malformed.market.calendarSessions, null);
+  assert.ok(malformed.unknownFields.includes('market.calendarSessions'));
+
+  const valid = assembleManagementInput({ ...base,
+    reconciliation_detail:{ marketOpen:false, calendarSessions:[{ date:'2026-09-12', open:'09:30', close:'16:00' }] } }, {
+    managementInputSnapshotId:'input-calendar-valid', reconciliationSnapshotId:'recon-1',
+    observedAt:'2026-09-12T14:00:00.000Z',
+  });
+  assert.deepEqual(valid.market.calendarSessions, [{ date:'2026-09-12', open:'09:30', close:'16:00' }]);
+  assert.ok(!valid.unknownFields.includes('market.calendarSessions'));
+});
+
 test('real broker stock marks expose assigned inventory losses', () => {
   const state = assembleManagementInput({ ...base, contract_symbol: null, option_leg_id: null, quantity: null,
     entry_credit_debit: null, bid: null, ask: null, quote_as_of: null, lifecycle_state: 'RECOVERY_WAIT',
