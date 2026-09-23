@@ -61,6 +61,8 @@ let lastOrderSubmissionObserved: string | null = null;
 let latestFailedRuntimeCycle: { at: string | null; code: string | null } | null = null;
 let recentFunnel: readonly Record<string, unknown>[] | null = null;
 let currentUtcDaySeed: Record<string, unknown> | null = null;
+let eventRevisionEvidence: Record<string, unknown> | null = null;
+let corporateActionEvidence: Record<string, unknown> | null = null;
 const iso = (value: unknown): string | null => value instanceof Date ? value.toISOString()
   : typeof value === 'string' ? value : null;
 
@@ -165,6 +167,24 @@ if (pool) {
       FROM trade.candidate_point_in_time_evidence WHERE decision_time >= $1::timestamptz`,
     [`${utcDay}T00:00:00.000Z`]);
     currentUtcDaySeed = { utcDay, ...seed.rows[0], qualification: 'LINEAGE_FIELDS_ONLY_NOT_FULL_DETECTOR_QUALIFICATION' };
+    const events = await pool.query(`SELECT count(*)::int AS revision_rows,
+      count(*) FILTER (WHERE scheduled_at > $1::timestamptz)::int AS future_scheduled_rows,
+      count(*) FILTER (WHERE scheduled_at > $1::timestamptz
+        AND pit_timing_state='TIMING_VALID')::int AS future_timing_valid_rows
+      FROM market.optionomics_event_first_observation`, [observedAt]);
+    eventRevisionEvidence = { ...events.rows[0],
+      qualification: 'POSITIVE_REVISIONS_ONLY_NOT_COMPLETE_FUTURE_EVENT_COVERAGE' };
+    const corporate = await pool.query(`SELECT observed_at,start_date,end_date,pages_read,
+      pagination_complete,negative_coverage_qualified,observation_count
+      FROM market.alpaca_corporate_action_query ORDER BY observed_at DESC LIMIT 1`);
+    if (corporate.rows[0]) corporateActionEvidence = {
+      observedAt: iso(corporate.rows[0].observed_at), start: iso(corporate.rows[0].start_date)?.slice(0, 10) ?? null,
+      end: iso(corporate.rows[0].end_date)?.slice(0, 10) ?? null, pagesRead: corporate.rows[0].pages_read,
+      paginationComplete: corporate.rows[0].pagination_complete,
+      negativeCoverageQualified: corporate.rows[0].negative_coverage_qualified,
+      observationCount: corporate.rows[0].observation_count,
+      qualification: 'QUERY_RECEIPT_ONLY_NOT_NEGATIVE_ASSURANCE',
+    };
   } catch { databaseConnectionFailed = true; }
   finally { await pool.end().catch(() => { databaseConnectionFailed = true; }); }
 }
@@ -202,6 +222,8 @@ const receipt = {
   latestFailedRuntimeCycle,
   recentFunnel,
   currentUtcDaySeed,
+  eventRevisionEvidence,
+  corporateActionEvidence,
   unknownAuditState: canonicalSystemTruthRegister.auditCoverage,
   mismatches: [...new Set(mismatches)],
 };
