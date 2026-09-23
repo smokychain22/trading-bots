@@ -21,6 +21,12 @@ export interface FirstPaperRuntimeTelemetry {
     readonly candidateBuiltAt: string | null;
     readonly finalistChosenAt: string | null;
     readonly decisionAsOf: string | null;
+    readonly candidateToDecisionMs: number | null;
+    readonly refreshRoundTripMsP50: number | null;
+    readonly refreshRoundTripMsP95: number | null;
+    readonly refreshedQuoteAgeAtDecisionSecondsP50: number | null;
+    readonly refreshedQuoteAgeAtDecisionSecondsP95: number | null;
+    readonly refreshedQuoteTimestampUnavailableCount: number | null;
   };
   readonly brokerAuthority: false;
 }
@@ -42,6 +48,10 @@ function nonnegativeIntegerOrNull(value: JsonValue | undefined): number | null {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
+function nonnegativeNumberOrNull(value: JsonValue | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 export function buildFirstPaperRuntimeTelemetry(input: {
   readonly frontier: CanonicalStrategyFrontier | null;
   readonly alpacaQuoteState: JsonValue | undefined;
@@ -56,6 +66,7 @@ export function buildFirstPaperRuntimeTelemetry(input: {
   const refresh = object(input.alpacaQuoteState);
   const refreshObserved = refresh !== null
     && refresh.contractVersion === 'theta-finalist-quote-refresh-v1';
+  const latency = refresh === null ? null : object(refresh.latency);
   return {
     version: firstPaperRuntimeTelemetryVersion,
     candidateCount: candidates.length,
@@ -74,10 +85,19 @@ export function buildFirstPaperRuntimeTelemetry(input: {
       candidateBuiltAt: stringOrNull(refresh.candidateBuiltAt),
       finalistChosenAt: stringOrNull(refresh.finalistChosenAt),
       decisionAsOf: stringOrNull(refresh.decisionAsOf),
+      candidateToDecisionMs: nonnegativeNumberOrNull(latency?.candidateToDecisionMs),
+      refreshRoundTripMsP50: nonnegativeNumberOrNull(latency?.refreshRoundTripMsP50),
+      refreshRoundTripMsP95: nonnegativeNumberOrNull(latency?.refreshRoundTripMsP95),
+      refreshedQuoteAgeAtDecisionSecondsP50: nonnegativeNumberOrNull(latency?.refreshedQuoteAgeAtDecisionSecondsP50),
+      refreshedQuoteAgeAtDecisionSecondsP95: nonnegativeNumberOrNull(latency?.refreshedQuoteAgeAtDecisionSecondsP95),
+      refreshedQuoteTimestampUnavailableCount: nonnegativeIntegerOrNull(latency?.refreshedQuoteTimestampUnavailableCount),
     } : {
       state: 'NOT_OBSERVED', policyVersion: null, initialCandidateCount: null,
       selectedCount: null, refreshedCount: null, failedCount: null,
       candidateBuiltAt: null, finalistChosenAt: null, decisionAsOf: null,
+      candidateToDecisionMs: null, refreshRoundTripMsP50: null, refreshRoundTripMsP95: null,
+      refreshedQuoteAgeAtDecisionSecondsP50: null, refreshedQuoteAgeAtDecisionSecondsP95: null,
+      refreshedQuoteTimestampUnavailableCount: null,
     },
     brokerAuthority: false,
   };

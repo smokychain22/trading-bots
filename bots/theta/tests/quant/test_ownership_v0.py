@@ -5,6 +5,7 @@ Run with (from the repo root):
 """
 
 import sys
+import math
 import unittest
 from pathlib import Path
 
@@ -183,6 +184,26 @@ class FullEvaluationTests(unittest.TestCase):
         result = evaluate(_clean_inputs(), _policy())
         self.assertGreaterEqual(result.ownability, 0.0)
         self.assertLessEqual(result.ownability, 1.0)
+
+    def test_nonfinite_and_out_of_domain_evidence_fails_closed(self):
+        for overrides in (
+            {"stock_avg_volume": math.nan}, {"spread_pct": math.inf},
+            {"downside_semivariance": -0.01}, {"earnings_distance_days": -1},
+            {"drawdown": 0.01}, {"option_volume": True},
+        ):
+            with self.subTest(overrides=overrides), self.assertRaises(ValueError):
+                evaluate(_clean_inputs(**overrides), _policy())
+        with self.assertRaises(ValueError):
+            evaluate(_clean_inputs(), _policy(gap_frequency_normalization_ceiling=0))
+
+    def test_worse_liquidity_tail_and_event_evidence_cannot_improve_score(self):
+        clean = evaluate(_clean_inputs(), _policy()).ownability
+        wider = evaluate(_clean_inputs(spread_pct=0.5), _policy()).ownability
+        worse_tail = evaluate(_clean_inputs(downside_semivariance=0.03), _policy()).ownability
+        nearer_event = evaluate(_clean_inputs(earnings_distance_days=2), _policy()).ownability
+        self.assertLessEqual(wider, clean)
+        self.assertLessEqual(worse_tail, clean)
+        self.assertLessEqual(nearer_event, clean)
 
 
 if __name__ == "__main__":

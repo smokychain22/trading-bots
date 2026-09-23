@@ -12,7 +12,7 @@ const basePayload = (overrides: Record<string, unknown> = {}) => ({
   underlyingSymbol: 'AAPL',
   timestamp: new Date().toISOString(),
   policyVersion: 'v1',
-  ownability: 0.72,
+  ownability: 1.0 * 0.8 * 0.7 * 0.6 * 1.0,
   components: [
     component('LiquidityQuality', 1.0),
     component('StructuralQuality', 0.8),
@@ -52,4 +52,17 @@ test('ownability=null with all components known is also rejected -- it must be c
 test('exactly five components are required -- the ownership formula is never partially reported', () => {
   const payload = basePayload({ components: [component('LiquidityQuality', 1.0)] });
   assert.throws(() => parseOwnershipEvaluationResponse(payload));
+});
+
+test('duplicate component names cannot replace a missing ownership component', () => {
+  const payload = basePayload({ components: [
+    component('LiquidityQuality', 1), component('StructuralQuality', 0.8),
+    component('RecoveryQuality', 0.7), component('TailQuality', 0.6),
+    component('TailQuality', 1),
+  ] });
+  assert.throws(() => parseOwnershipEvaluationResponse(payload));
+});
+
+test('reported ownability cannot disagree with the component product', () => {
+  assert.throws(() => parseOwnershipEvaluationResponse(basePayload({ ownability: 0.9 })));
 });

@@ -19,6 +19,9 @@ test('runtime telemetry reports sizing constraints and observed finalist refresh
       initialCandidateCount: 20, selectedCount: 5, refreshedCount: 4, failedCount: 1,
       candidateBuiltAt: '2026-09-23T14:00:00Z', finalistChosenAt: '2026-09-23T14:00:01Z',
       decisionAsOf: '2026-09-23T14:00:02Z', observations: [], maxFinalists: 5,
+      latency: { candidateToDecisionMs: 2_000, refreshRoundTripMsP50: 125,
+        refreshRoundTripMsP95: 200, refreshedQuoteAgeAtDecisionSecondsP50: 3,
+        refreshedQuoteAgeAtDecisionSecondsP95: 7, refreshedQuoteTimestampUnavailableCount: 1 },
     },
   });
   assert.equal(telemetry.candidateCount, 2);
@@ -28,6 +31,8 @@ test('runtime telemetry reports sizing constraints and observed finalist refresh
   assert.deepEqual(telemetry.aegisStateCounts, { ALLOW_FULL: 1, HOLD_ONLY: 1 });
   assert.equal(telemetry.finalistRefresh.state, 'OBSERVED');
   assert.equal(telemetry.finalistRefresh.refreshedCount, 4);
+  assert.equal(telemetry.finalistRefresh.refreshRoundTripMsP95, 200);
+  assert.equal(telemetry.finalistRefresh.refreshedQuoteTimestampUnavailableCount, 1);
   assert.equal(telemetry.brokerAuthority, false);
 });
 

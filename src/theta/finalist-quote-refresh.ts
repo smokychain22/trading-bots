@@ -38,6 +38,16 @@ export interface FinalistQuoteRefreshReceipt {
   readonly refreshedCount: number;
   readonly failedCount: number;
   readonly observations: readonly FinalistQuoteRefreshObservation[];
+  readonly latency: {
+    readonly candidateToDecisionMs: number;
+    readonly refreshRoundTripMsP50: number | null;
+    readonly refreshRoundTripMsP95: number | null;
+    readonly initialQuoteAgeAtCandidateSecondsP50: number | null;
+    readonly initialQuoteAgeAtCandidateSecondsP95: number | null;
+    readonly refreshedQuoteAgeAtDecisionSecondsP50: number | null;
+    readonly refreshedQuoteAgeAtDecisionSecondsP95: number | null;
+    readonly refreshedQuoteTimestampUnavailableCount: number;
+  };
 }
 
 interface ParsedLattice {
@@ -75,6 +85,19 @@ export function finalistQuoteRefreshMaxAgeSeconds(
 
 function finiteOrInfinity(value: number | null): number {
   return value !== null && Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
+}
+
+function nonnegativeDuration(later: string, earlier: string | null, divisor: number): number | null {
+  if (earlier === null) return null;
+  const difference = Date.parse(later) - Date.parse(earlier);
+  return Number.isFinite(difference) && difference >= 0 ? difference / divisor : null;
+}
+
+/** Nearest-rank percentile over actually observed, valid timing evidence. */
+function percentile(values: readonly number[], fraction: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.ceil(fraction * sorted.length) - 1] ?? null;
 }
 
 /**
@@ -139,14 +162,31 @@ export function buildFinalistQuoteRefreshReceipt(input: {
     throw new Error('FINALIST_QUOTE_REFRESH_TIMING_INVALID');
   }
   const decisionAt = Date.parse(input.decisionAsOf);
+  const candidateAt = Date.parse(input.candidateBuiltAt);
+  const finalistAt = Date.parse(input.finalistChosenAt);
+  if (candidateAt > finalistAt || finalistAt > decisionAt
+    || !Number.isSafeInteger(input.initialCandidateCount) || input.initialCandidateCount < 0
+    || input.observations.length > input.policy.maxFinalists
+    || input.observations.length > input.initialCandidateCount
+    || new Set(input.observations.map((observation) => observation.optionSymbol)).size !== input.observations.length) {
+    throw new Error('FINALIST_QUOTE_REFRESH_TIMING_INVALID');
+  }
   for (const observation of input.observations) {
     const times = [observation.initialReceivedAt, observation.refreshRequestedAt, observation.refreshReceivedAt]
       .map((value) => Date.parse(value));
-    if (times.some((value) => !Number.isFinite(value) || value > decisionAt)) {
+    if (times.some((value) => !Number.isFinite(value) || value > decisionAt)
+      || (times[0] as number) > candidateAt || (times[1] as number) < finalistAt
+      || (times[2] as number) < (times[1] as number)) {
       throw new Error('FINALIST_QUOTE_REFRESH_FUTURE_EVIDENCE');
     }
   }
   const refreshedCount = input.observations.filter((item) => item.state === 'REFRESHED').length;
+  const refreshRoundTrips = input.observations.map((item) =>
+    nonnegativeDuration(item.refreshReceivedAt, item.refreshRequestedAt, 1)).filter((value): value is number => value !== null);
+  const initialQuoteAges = input.observations.map((item) =>
+    nonnegativeDuration(input.candidateBuiltAt, item.initialProviderTimestamp, 1_000)).filter((value): value is number => value !== null);
+  const refreshedQuoteAges = input.observations.filter((item) => item.state === 'REFRESHED').map((item) =>
+    nonnegativeDuration(input.decisionAsOf, item.refreshedProviderTimestamp, 1_000)).filter((value): value is number => value !== null);
   return {
     contractVersion: finalistQuoteRefreshContractVersion,
     policyVersion: input.policy.policyVersion,
@@ -159,5 +199,15 @@ export function buildFinalistQuoteRefreshReceipt(input: {
     refreshedCount,
     failedCount: input.observations.length - refreshedCount,
     observations: [...input.observations].sort((a, b) => a.optionSymbol.localeCompare(b.optionSymbol)),
+    latency: {
+      candidateToDecisionMs: decisionAt - candidateAt,
+      refreshRoundTripMsP50: percentile(refreshRoundTrips, 0.5),
+      refreshRoundTripMsP95: percentile(refreshRoundTrips, 0.95),
+      initialQuoteAgeAtCandidateSecondsP50: percentile(initialQuoteAges, 0.5),
+      initialQuoteAgeAtCandidateSecondsP95: percentile(initialQuoteAges, 0.95),
+      refreshedQuoteAgeAtDecisionSecondsP50: percentile(refreshedQuoteAges, 0.5),
+      refreshedQuoteAgeAtDecisionSecondsP95: percentile(refreshedQuoteAges, 0.95),
+      refreshedQuoteTimestampUnavailableCount: refreshedCount - refreshedQuoteAges.length,
+    },
   };
 }
