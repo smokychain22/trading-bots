@@ -174,6 +174,18 @@ if (pool) {
       FROM market.optionomics_event_first_observation`, [observedAt]);
     eventRevisionEvidence = { ...events.rows[0],
       qualification: 'POSITIVE_REVISIONS_ONLY_NOT_COMPLETE_FUTURE_EVENT_COVERAGE' };
+    const eventRows = await pool.query(`SELECT event_kind,ticker,event_date::text AS event_date,
+      scheduled_at,provider_known_at,first_observed_at,pit_timing_state
+      FROM market.optionomics_event_first_observation
+      WHERE scheduled_at > $1::timestamptz
+      ORDER BY scheduled_at,first_observed_at LIMIT 20`, [observedAt]);
+    eventRevisionEvidence.futureRowsSample = eventRows.rows.map((row) => ({
+      kind: typeof row.event_kind === 'string' ? row.event_kind.slice(0, 80) : null,
+      ticker: typeof row.ticker === 'string' && /^[A-Z.]{1,12}$/.test(row.ticker) ? row.ticker : null,
+      eventDate: row.event_date, scheduledAt: iso(row.scheduled_at),
+      providerKnownAt: iso(row.provider_known_at), firstObservedAt: iso(row.first_observed_at),
+      pitTimingState: row.pit_timing_state,
+    }));
     const corporate = await pool.query(`SELECT observed_at,start_date::text AS start_date,
       end_date::text AS end_date,pages_read,
       pagination_complete,negative_coverage_qualified,observation_count
