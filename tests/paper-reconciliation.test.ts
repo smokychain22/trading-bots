@@ -84,6 +84,31 @@ test('trade_updates never convert absent or malformed cumulative fill evidence t
   assert.equal(parseTradeUpdate(update({ order: { ...baseOrder, filled_qty: '0' } })).cumulativeFilledQuantity, 0);
 });
 
+test('trade update fallback identity is canonical across JSON key order', () => {
+  const first = update({ event_id: undefined, execution_id: undefined });
+  const data = first.data;
+  const reordered = {
+    data: {
+      order: {
+        filled_avg_price: data.order.filled_avg_price,
+        filled_qty: data.order.filled_qty,
+        status: data.order.status,
+        client_order_id: data.order.client_order_id,
+        id: data.order.id,
+      },
+      price: data.price,
+      qty: data.qty,
+      timestamp: data.timestamp,
+      event: data.event,
+    },
+    stream: first.stream,
+  };
+  const left = parseTradeUpdate(first);
+  const right = parseTradeUpdate(reordered);
+  assert.equal(left.payloadHash, right.payloadHash);
+  assert.equal(left.eventId, right.eventId);
+});
+
 test('unknown stock quantity cannot create a provisional assignment', () => {
   const input = { executionAccountId: 'account-1', chainId: 'chain-1', optionSymbol: 'AAPL261016P00150000', underlyingSymbol: 'AAPL', contracts: 1, multiplier: 100, occurrenceDate: '2026-10-16' };
   const previous = [{ symbol: input.optionSymbol, quantity: -1 }, { symbol: 'AAPL', quantity: 0 }];

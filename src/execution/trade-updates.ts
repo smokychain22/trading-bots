@@ -53,10 +53,19 @@ const statusMap: Readonly<Record<string, OrderIntentState>> = {
   canceled: 'CANCELED', expired: 'EXPIRED', rejected: 'REJECTED', replaced: 'CANCELED', pending_cancel: 'CANCEL_REQUESTED',
 };
 
+const canonicalize = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value !== null && typeof value === 'object') return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => [key, canonicalize(item)]),
+  );
+  return value;
+};
+
 export function parseTradeUpdate(raw: unknown): NormalizedTradeUpdate {
   const parsed = updateSchema.parse(raw);
   const data = parsed.data;
-  const canonical = JSON.stringify(raw);
+  const canonical = JSON.stringify(canonicalize(raw));
   const payloadHash = createHash('sha256').update(canonical).digest('hex');
   const eventId = data.event_id ?? data.execution_id ?? createHash('sha256').update(`${data.order.id}:${data.event}:${data.timestamp ?? data.at ?? ''}:${payloadHash}`).digest('hex');
   const cumulativeFilledQuantity = numeric(data.order.filled_qty);
