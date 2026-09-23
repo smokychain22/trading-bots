@@ -36,6 +36,7 @@ const frontier=():CanonicalStrategyFrontier=>({
 const input=(overrides:Partial<MasterPaperPlanAssemblyInput>={}):MasterPaperPlanAssemblyInput=>({
   frontier:frontier(),executionAccountId,decisionId,persistedCandidateId,optionContractId,underlyingId,
   accountStatus:'ACTIVE',optionsApprovedLevel:3,optionsTradingLevel:3,aegisState:'ALLOW_FULL',
+  entryEventEvidence:{unsupportedCorporateActionPending:false,eventNear:false},
   openPositionSymbols:[],openOrderSymbols:[],paperEvidenceRiskCap:1,modeledRoundTripCostPerContract:1.70,
   now:'2026-09-14T14:00:01.000Z',decisionExpiresAt:'2026-09-14T14:00:46.000Z',...overrides,
 });
@@ -69,6 +70,19 @@ test('missing risk, costs, persistence, or conflict blocks plan assembly',()=>{
     const result=assembleMasterPaperEvidencePlan(input(overrides));
     assert.equal(result.state,'BLOCKED');
     assert.equal(result.plan,null);
+  }
+});
+
+test('plan assembly independently blocks unknown and positive event or corporate-action evidence',()=>{
+  for(const [entryEventEvidence,code] of [
+    [{unsupportedCorporateActionPending:null,eventNear:false},'ENTRY_EVENT_EVIDENCE_CORPORATE_ACTION_COVERAGE_UNKNOWN'],
+    [{unsupportedCorporateActionPending:true,eventNear:false},'ENTRY_EVENT_EVIDENCE_UNSUPPORTED_CORPORATE_ACTION'],
+    [{unsupportedCorporateActionPending:false,eventNear:null},'ENTRY_EVENT_EVIDENCE_EVENT_PROXIMITY_UNKNOWN'],
+    [{unsupportedCorporateActionPending:false,eventNear:true},'ENTRY_EVENT_EVIDENCE_EVENT_PROXIMITY'],
+  ] as const){
+    const result=assembleMasterPaperEvidencePlan(input({entryEventEvidence}));
+    assert.equal(result.state,'BLOCKED');
+    assert.ok(result.blockers.includes(code));
   }
 });
 

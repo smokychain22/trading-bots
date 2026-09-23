@@ -3,6 +3,7 @@ import { deterministicRuntimeUuid } from '../theta/postgres-theta-cycle-store.js
 import { applyPaperEvidenceRiskCap } from './execution-authorization-tier.js';
 import { masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
 import { paperBootstrapAllowedUnknownComponent, paperBootstrapAllowedUnknownReason, paperEntryBootstrapPolicyVersion } from '../theta/paper-entry-bootstrap.js';
+import { assessUniverseEventEvidence, type UnderlyingCandidateInput } from '../theta/universe-policy.js';
 
 export const masterPaperPlanAssemblyVersion = 'theta-master-paper-plan-assembly-v1' as const;
 
@@ -17,6 +18,7 @@ export interface MasterPaperPlanAssemblyInput {
   readonly optionsApprovedLevel: number | null;
   readonly optionsTradingLevel: number | null;
   readonly aegisState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO' | 'DEFINED_RISK_ONLY' | 'EMERGENCY_EXIT_ONLY' | null;
+  readonly entryEventEvidence: Pick<UnderlyingCandidateInput, 'unsupportedCorporateActionPending' | 'eventNear'>;
   readonly openPositionSymbols: readonly string[];
   readonly openOrderSymbols: readonly string[];
   readonly paperEvidenceRiskCap: number;
@@ -54,6 +56,8 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
     .find((candidate) => candidate.candidateId === frontier.selectedCandidateId);
   const selectedBranch = selected === undefined ? undefined : frontier.branches.find((branch) => branch.branch === selected.branch);
   const blockers: string[] = [];
+  const eventGate = assessUniverseEventEvidence(input.entryEventEvidence);
+  if (eventGate.state !== 'ELIGIBLE') blockers.push(`ENTRY_EVENT_EVIDENCE_${eventGate.reason.code}`);
   if (selected === undefined) blockers.push('CANONICAL_SELECTED_CANDIDATE_NOT_FOUND');
   if (frontier.primaryAction !== 'OPEN_CSP') blockers.push(`ACTION_NOT_YET_CONNECTED:${frontier.primaryAction}`);
   if (selected?.action !== 'OPEN_CSP') blockers.push('SELECTED_ACTION_NOT_OPEN_CSP');
