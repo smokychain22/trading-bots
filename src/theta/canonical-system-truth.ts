@@ -4,7 +4,7 @@
  * when they contain superseded statements.
  */
 export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v1' as const;
-export const truthSourceBaselineSha = 'a5f57fc4adf88436d2fc568511705c191da56663';
+export const truthSourceBaselineSha = 'b7270e888980493a2a5feb1c8d24b84049f8b012';
 // A worker SHA is operational state. Read it from the current worker lease,
 // never from this source-controlled architectural inventory.
 export const truthLastVerifiedAt = '2026-09-24';
@@ -66,8 +66,8 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
     disposition: 'BUILT_AWAITING_RUNTIME_PROOF' }),
   capability({ capabilityId: 'OPTIONOMICS_RESEARCH_DATA', layerIds: [0, 5, 7], sourceImplemented: 'YES', testsPassed: 'YES',
     providerAuthenticated: 'YES', realDataObserved: 'YES', persisted: 'YES', runtimeReachable: 'YES',
-    paperAuthorized: 'NOT_APPLICABLE', sourceFiles: ['src/theta/optionomics-provider.ts', 'src/theta/optionomics-feature-engine.ts', 'src/theta/optionomics-event-observation.ts'],
-    currentBlocker: 'Historical/session analytics are not executable BBO and prospective company coverage remains unproved.',
+    paperAuthorized: 'NOT_APPLICABLE', sourceFiles: ['src/providers/optionomics-qualification.ts', 'src/theta/optionomics-provider.ts', 'src/theta/optionomics-feature-engine.ts', 'src/theta/optionomics-event-observation.ts'],
+    currentBlocker: 'Authenticated families are qualified separately. Historical/session analytics are not executable BBO, event pagination must complete before negative assurance, and prospective company coverage remains unproved.',
     safeCurrentBehavior: 'Use qualified PIT research features; never substitute Optionomics session quotes for Alpaca execution prices.',
     closureTest: 'Observe normalized feature and event lineage in locked current-release cycles, with served-session checks.',
     disposition: 'BUILT_AWAITING_RUNTIME_PROOF' }),
