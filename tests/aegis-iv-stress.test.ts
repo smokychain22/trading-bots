@@ -70,6 +70,8 @@ test('strict metrics normalization preserves exact session, first observation, a
 
 test('requested/served mismatch and malformed IV never become a known observation', () => {
   assert.equal(normalizeOptionomicsAtmIvObservation(context({ sessionDate: '2026-09-20' })).state, 'INVALID');
+  assert.deepEqual(normalizeOptionomicsAtmIvObservation(context({ sessionDate: '2026-99-99' })),
+    { state: 'UNKNOWN', reason: 'SERVED_SESSION_DATE_UNAVAILABLE' });
   assert.equal(normalizeOptionomicsAtmIvObservation(context({
     normalized: { atmIv: { state: 'KNOWN', value: 'bad', reason: null, units: 'PROVIDER_REPORTED_UNVERIFIED' } },
   })).state, 'INVALID');
