@@ -4,7 +4,7 @@
  * when they contain superseded statements.
  */
 export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v1' as const;
-export const truthSourceBaselineSha = '9010bd44abbca3b41a38f1ea50df88e35e7a5050';
+export const truthSourceBaselineSha = 'cc8ee701b54a10535a5ac1d1a3347f5517e60538';
 export const truthObservedWorkerSha = '853beb4fde989c2f6deb83ad9cb13a9a3e87e76a';
 export const truthLastVerifiedAt = '2026-09-23';
 
@@ -65,14 +65,14 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
     disposition: 'BUILT_AWAITING_RUNTIME_PROOF' }),
   capability({ capabilityId: 'OPTIONOMICS_RESEARCH_DATA', layerIds: [0, 5, 7], sourceImplemented: 'YES', testsPassed: 'YES',
     providerAuthenticated: 'YES', realDataObserved: 'YES', persisted: 'YES', runtimeReachable: 'YES',
-    paperAuthorized: 'NOT_APPLICABLE', sourceFiles: ['src/theta/optionomics-feature-engine.ts', 'src/theta/optionomics-event-observation.ts'],
+    paperAuthorized: 'NOT_APPLICABLE', sourceFiles: ['src/theta/optionomics-provider.ts', 'src/theta/optionomics-feature-engine.ts', 'src/theta/optionomics-event-observation.ts'],
     currentBlocker: 'Historical/session analytics are not executable BBO and prospective company coverage remains unproved.',
     safeCurrentBehavior: 'Use qualified PIT research features; never substitute Optionomics session quotes for Alpaca execution prices.',
     closureTest: 'Observe normalized feature and event lineage in locked current-release cycles, with served-session checks.',
     disposition: 'BUILT_AWAITING_RUNTIME_PROOF' }),
   capability({ capabilityId: 'UNIVERSE_AND_UNDERLYING', layerIds: [1, 2, 3], sourceImplemented: 'YES', testsPassed: 'YES',
     providerAuthenticated: 'YES', realDataObserved: 'YES', persisted: 'YES', runtimeReachable: 'YES',
-    paperAuthorized: 'PAPER_ONLY_LOCKED', sourceFiles: ['src/theta/universe-discovery.ts', 'src/theta/universe-policy.ts'],
+    paperAuthorized: 'PAPER_ONLY_LOCKED', sourceFiles: ['src/theta/universe-discovery.ts', 'src/theta/universe-policy.ts', 'src/research/production-shadow-runtime.ts'],
     currentBlocker: 'Current finalist/evidence funnel and multi-objective ranking are not empirically validated.',
     safeCurrentBehavior: 'Keep bootstrap eligibility, explicit rejection reasons and zero quantity when evidence is incomplete.',
     closureTest: 'Natural locked scan records all universe stages and exact exclusion reasons on current source.',
