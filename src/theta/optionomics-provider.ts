@@ -592,7 +592,8 @@ export interface NormalizedOptionomicsContextObservation {
   readonly rawPayload: unknown;
   readonly normalized: Readonly<Record<string, unknown>>;
   readonly populated: boolean;
-  readonly informationState: 'POPULATED' | 'EMPTY_SESSION_NO_CHAIN' | 'EMPTY_RESULT_COVERAGE_UNVERIFIED';
+  readonly informationState: 'POPULATED' | 'EMPTY_SESSION_NO_CHAIN'
+    | 'EMPTY_RESULT_COVERAGE_COMPLETE' | 'EMPTY_RESULT_COVERAGE_UNVERIFIED';
   readonly paginationComplete: boolean | null;
   readonly evidenceClass: 'RESEARCH_AND_STRATEGY_CONTEXT';
   readonly executableTruth: false;
@@ -873,11 +874,14 @@ export async function fetchOptionomicsContextObservation(
     const sessionDate = asStringOrNull(envelope?.date);
     const populated = normalizedContextIsPopulated(family, normalized);
     const pagination = objectOrNull(envelope?.pagination);
-    const currentPage = asFiniteNumberOrNull(pagination?.page ?? pagination?.current_page);
-    const totalPages = asFiniteNumberOrNull(pagination?.total_pages ?? pagination?.pages);
+    const currentPage = asFiniteNumberOrNull(pagination?.page ?? pagination?.current_page
+      ?? envelope?.page ?? envelope?.current_page);
+    const totalPages = asFiniteNumberOrNull(pagination?.total_pages ?? pagination?.pages
+      ?? envelope?.total_pages ?? envelope?.pages);
     const paginationComplete = currentPage !== null && totalPages !== null ? currentPage >= totalPages : null;
     const informationState = populated ? 'POPULATED' : normalized.metricsState === 'EMPTY_SESSION_NO_CHAIN'
-      ? 'EMPTY_SESSION_NO_CHAIN' : 'EMPTY_RESULT_COVERAGE_UNVERIFIED';
+      ? 'EMPTY_SESSION_NO_CHAIN' : paginationComplete === true
+        ? 'EMPTY_RESULT_COVERAGE_COMPLETE' : 'EMPTY_RESULT_COVERAGE_UNVERIFIED';
     return {
       kind: 'VALUE_PRESENT', httpStatus: outcome.httpStatus, retrievedAt: outcome.retrievedAt,
       value: {

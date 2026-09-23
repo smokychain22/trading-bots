@@ -18,8 +18,41 @@ test('authenticated Optionomics evidence stays family-scoped and non-executable'
   const fetchImpl=(async()=>new Response(JSON.stringify([{symbol:'SPY261016P00500000',underlying:'SPY',expiration:'2026-10-16',option_type:'PUT',strike:500,as_of:'2026-09-15T15:00:00Z'}]),{status:200,headers:{'content-type':'application/json'}})) as typeof fetch;
   const receipt=await qualifyOptionomicsProvider({mode:'REAL_AUTHENTICATED',at:'2026-09-15T15:00:01Z',symbol:'SPY',
     config:{apiBase:'https://optionomics.ai',email:'synthetic@example.com',apiToken:'SYNTHETIC-NOT-SECRET',fetchImpl,now:()=> '2026-09-15T15:00:01Z'}});
-  assert.equal(receipt.secretState,'AUTH_VALID');assert.equal(receipt.realPayloadCount,1);
+  assert.equal(receipt.secretState,'AUTH_VALID');assert.equal(receipt.realPayloadCount,2);
   assert.equal(receipt.families.find((family)=>family.family==='CHAIN')?.executionQuoteQualified,false);
+});
+test('authenticated qualification probes every documented family instead of emitting stale not-probed blockers',async()=>{
+  const fetchImpl=(async(input:RequestInfo|URL)=>{
+    const url=new URL(String(input));const date=url.searchParams.get('date')??'2026-09-15';
+    if(url.pathname.endsWith('/options'))return new Response(JSON.stringify({date,options:[{
+      symbol:'SPY261016P00500000',underlying:'SPY',expiration:'2026-10-16',option_type:'PUT',strike:'500',
+      delta_exposure:'12',implied_volatility:'0.2',as_of:`${date}T20:00:00Z`,
+    }]}),{status:200,headers:{'content-type':'application/json'}});
+    if(url.pathname==='/api/v1/flow/net')return new Response(JSON.stringify({net_calls:[],net_puts:[]}),
+      {status:200,headers:{'content-type':'application/json'}});
+    if(url.pathname.endsWith('/metrics'))return new Response(JSON.stringify({date,symbol:'SPY',metrics:{
+      atm_iv:'0.2',gamma_flip_strike:'500',put_wall:'490',call_wall:'510',unusual_oi_change:null,
+    }}),{status:200,headers:{'content-type':'application/json'}});
+    if(url.pathname.endsWith('/heatmap'))return new Response(JSON.stringify({date,symbol:'SPY',
+      metric:url.searchParams.get('metric'),cells:[{strike:500,value:1}]}),
+    {status:200,headers:{'content-type':'application/json'}});
+    if(url.pathname==='/api/v1/flow/aggregates')return new Response(JSON.stringify({
+      bullish_flow:[],bearish_flow:[],top_calls:[],top_puts:[],total_premium:'100',trade_count:'1',date,
+    }),{status:200,headers:{'content-type':'application/json'}});
+    if(url.pathname==='/api/v1/events')return new Response(JSON.stringify({
+      from:url.searchParams.get('from'),to:url.searchParams.get('to'),events:[],
+      pagination:{current_page:1,total_pages:1},
+    }),{status:200,headers:{'content-type':'application/json'}});
+    return new Response('{}',{status:404,headers:{'content-type':'application/json'}});
+  }) as typeof fetch;
+  const receipt=await qualifyOptionomicsProvider({mode:'REAL_AUTHENTICATED',at:'2026-09-15T15:00:01Z',symbol:'SPY',
+    config:{apiBase:'https://optionomics.ai',email:'synthetic@example.com',apiToken:'SYNTHETIC-NOT-SECRET',fetchImpl,
+      now:()=> '2026-09-15T15:00:01Z'}});
+  assert.equal(receipt.families.length,optionomicsFamilyContracts.length);
+  assert.equal(receipt.families.some((family)=>family.blockers.includes('CAPABILITY_NOT_PROBED')),false);
+  assert.equal(receipt.families.every((family)=>family.payloadCaptured),true);
+  assert.equal(receipt.families.find((family)=>family.family==='UOA')?.state,'PARTIAL');
+  assert.equal(receipt.families.every((family)=>family.executionQuoteQualified===false),true);
 });
 
 const quote=(provider:string,bid:number,ask:number,semantics:ExecutionOptionQuote['sourceSemantics']='TRUSTED_TWO_SIDED_ORDER_PRICING'):ExecutionOptionQuote=>({

@@ -67,6 +67,7 @@ let latestReconciliation: { at: string | null; dataQuality: string | null;
   positions: number | null; openOrders: number | null; blockingFacts: number | null } | null = null;
 let latestEvidenceCycle: string | null = null;
 let latestCandidateCycle: string | null = null;
+let latestAegisCycle: string | null = null;
 let latestManagementCycle: string | null = null;
 let lastOrderSubmissionObserved: string | null = null;
 let latestFailedRuntimeCycle: { at: string | null; code: string | null } | null = null;
@@ -120,10 +121,12 @@ if (pool) {
     const cycles = await pool.query(`SELECT
       (SELECT max(decision_time) FROM trade.fusion_snapshot) AS evidence,
       (SELECT max(generated_at) FROM trade.candidate_set) AS candidate,
+      (SELECT max(decided_at) FROM trade.decision WHERE aegis_action IS NOT NULL) AS aegis,
       (SELECT max(decided_at) FROM trade.management_decision) AS management,
       (SELECT max(submitted_at) FROM trade.broker_order) AS submitted`);
     latestEvidenceCycle = iso(cycles.rows[0]?.evidence);
     latestCandidateCycle = iso(cycles.rows[0]?.candidate);
+    latestAegisCycle = iso(cycles.rows[0]?.aegis);
     latestManagementCycle = iso(cycles.rows[0]?.management);
     lastOrderSubmissionObserved = iso(cycles.rows[0]?.submitted);
     databaseEvidenceStage = 'LATEST_FAILED_RUNTIME_CYCLE';
@@ -282,7 +285,9 @@ const receipt = {
   alpacaAuth: broker.auth, optionomicsAuth: 'NOT_PROBED_IN_THIS_RECEIPT',
   workerProviderHealth, broker,
   latestReconciliationState: latestReconciliation, latestEvidenceCycle, latestCandidateCycle,
-  latestAegisCycle: 'NOT_QUERIED', latestManagementCycle, lastOrderSubmissionObserved,
+  latestAegisCycle,
+  latestAegisCycleSemantics: 'LATEST_PERSISTED_DECISION_WITH_AEGIS_ACTION',
+  latestManagementCycle, lastOrderSubmissionObserved,
   latestFailedRuntimeCycle,
   recentFunnel,
   currentUtcDaySeed,

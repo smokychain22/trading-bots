@@ -505,6 +505,18 @@ test('event pagination exposes incomplete coverage without claiming a negative',
   assert.equal(outcome.value.informationState, 'EMPTY_RESULT_COVERAGE_UNVERIFIED');
 });
 
+test('top-level event pagination can prove a complete empty provider page', async () => {
+  const fetchImpl = (async () => jsonResponse(200, { from: '2026-09-21', to: '2026-09-30',
+    events: [], current_page: 1, total_pages: 1 })) as typeof fetch;
+  const outcome = await fetchOptionomicsContextObservation(baseConfig(fetchImpl), 'EVENTS', 'SPY', {
+    from: '2026-09-21', to: '2026-09-30', perPage: 100,
+  });
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  assert.equal(outcome.value.paginationComplete, true);
+  assert.equal(outcome.value.informationState, 'EMPTY_RESULT_COVERAGE_COMPLETE');
+});
+
 test('earnings distance is typed positive context and never negative event assurance', async () => {
   for (const [reported, state, value] of [
     [28, 'KNOWN', 28], [0, 'KNOWN', 0], [null, 'UNKNOWN', null],
