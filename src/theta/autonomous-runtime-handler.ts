@@ -54,6 +54,7 @@ import { readZeroTradeDiagnostic } from './zero-trade-diagnostic.js';
 import { runRiskPolicyEmpiricalStudy } from '../research/risk-policy-empirical-study.js';
 import { createRuntimePostgresPool } from './runtime-postgres-pool.js';
 import { runtimeRequestLeaseExpiresAt } from './runtime-request-lease.js';
+import { classifyPostgresRuntimeError } from './postgres-runtime-error.js';
 
 let runtimePool: Pool | null = null;
 
@@ -68,12 +69,13 @@ export type LocalWorkerIdentityResult =
   | { readonly kind: 'INVALID' }
   | { readonly kind: 'VALID'; readonly identity: LocalWorkerIdentity };
 
-export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'RUNTIME_CORE_CYCLE' | 'RUNTIME_BROKER_CYCLE' | 'RUNTIME_LIFECYCLE_CYCLE' | 'RUNTIME_MANAGEMENT_CYCLE' | 'RUNTIME_OBSERVATION_CYCLE' | 'RUNTIME_EVIDENCE_CYCLE' | 'RUNTIME_ZERO_TRADE_DIAGNOSTIC' | 'RISK_POLICY_EMPIRICAL_STUDY' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'ALPACA_CORPORATE_ACTION_CAPTURE' | 'CANONICAL_EVENT_EXPORT' | 'MASTER_PAPER_AUTHORIZE' | 'FIRST_PAPER_CANARY_ACTIVATE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_EVENT_REVISION_INSPECT' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
+export type LocalWorkerOperation = 'RUNTIME_CYCLE' | 'RUNTIME_DB_PROBE' | 'RUNTIME_CORE_CYCLE' | 'RUNTIME_BROKER_CYCLE' | 'RUNTIME_LIFECYCLE_CYCLE' | 'RUNTIME_MANAGEMENT_CYCLE' | 'RUNTIME_OBSERVATION_CYCLE' | 'RUNTIME_EVIDENCE_CYCLE' | 'RUNTIME_ZERO_TRADE_DIAGNOSTIC' | 'RISK_POLICY_EMPIRICAL_STUDY' | 'PROVIDER_EVIDENCE_READINESS' | 'ALPACA_INDICATIVE_QUOTE_QUALIFICATION' | 'OPTIONOMICS_PROVIDER_QUALIFICATION' | 'OPTIONOMICS_QUOTE_QUALIFICATION' | 'OPTIONOMICS_MCP_QUALIFICATION' | 'ALPACA_CORPORATE_ACTION_CAPTURE' | 'CANONICAL_EVENT_EXPORT' | 'MASTER_PAPER_AUTHORIZE' | 'FIRST_PAPER_CANARY_ACTIVATE' | 'DATABASE_SOURCE_PREFLIGHT' | 'DATABASE_TARGET_PREFLIGHT' | 'DATABASE_TARGET_MIGRATE' | 'DATABASE_TARGET_VALIDATE' | 'DATABASE_EVENT_REVISION_INSPECT' | 'DATABASE_LEGACY_IMPORT' | 'DATABASE_LEGACY_INVENTORY' | 'DATABASE_LEGACY_PROMOTE' | 'DATABASE_LEGACY_RECONSTRUCTION_IMPORT' | 'DATABASE_LOCAL_FORENSIC_IMPORT' | 'DATABASE_TARGET_BOOTSTRAP_MASTER' | 'INVALID';
 
 export function parseLocalWorkerOperation(request: Pick<IncomingMessage, 'headers'>): LocalWorkerOperation {
   const value = request.headers['x-theta-operation'];
   if (value === undefined) return 'RUNTIME_CYCLE';
   if (value === 'runtime-core-cycle') return 'RUNTIME_CORE_CYCLE';
+  if (value === 'runtime-db-probe') return 'RUNTIME_DB_PROBE';
   if (value === 'runtime-broker-cycle') return 'RUNTIME_BROKER_CYCLE';
   if (value === 'runtime-lifecycle-cycle') return 'RUNTIME_LIFECYCLE_CYCLE';
   if (value === 'runtime-management-cycle') return 'RUNTIME_MANAGEMENT_CYCLE';
@@ -578,6 +580,33 @@ export default async function autonomousRuntimeHandler(
     return;
   }
   try {
+    if (operation === 'RUNTIME_DB_PROBE') {
+      if (localIdentity.kind !== 'VALID') {
+        send(response, 400, { error: 'local_worker_identity_required', executionGate: 'LOCKED' });
+        return;
+      }
+      // A successful SELECT alone cannot reauthorise the worker. Reconfirm
+      // the single master lease without broker or market-data calls.
+      await runtimePool.query('SELECT 1');
+      const at = new Date();
+      const identity = localIdentity.identity;
+      const activeOwner = await workerStore.activeLeaseOwner(at.toISOString());
+      if (activeOwner !== null && activeOwner !== identity.workerId) {
+        send(response, 409, { error: 'primary_master_paper_worker_lease_held', executionGate: 'LOCKED' });
+        return;
+      }
+      await workerStore.register({ workerId: identity.workerId, hostId: identity.hostId,
+        buildSha: identity.buildSha, startedAt: at.toISOString(), strategyVersions: ['theta-shadow-once-v1'] });
+      const expiry = runtimeRequestLeaseExpiresAt(at);
+      if (await workerStore.acquireLease(identity.workerId, at.toISOString(), expiry) === 'HELD_BY_OTHER'
+        || !await workerStore.heartbeat(identity.workerId, at.toISOString(), expiry, 'MASTER_PAPER_NEW_RISK_LOCKED')) {
+        send(response, 409, { error: 'primary_master_paper_worker_lease_unconfirmed', executionGate: 'LOCKED' });
+        return;
+      }
+      send(response, 200, { database: 'REACHABLE', lease: 'OWNED', executionGate: 'LOCKED',
+        brokerMutations: 0, ordersSubmitted: 0 });
+      return;
+    }
     if (operation === 'RUNTIME_ZERO_TRADE_DIAGNOSTIC') {
       if (localIdentity.kind !== 'VALID') {
         send(response, 400, { error: 'local_worker_identity_required', executionGate: 'LOCKED' });
@@ -800,11 +829,20 @@ export default async function autonomousRuntimeHandler(
         :operation==='RUNTIME_OBSERVATION_CYCLE'?'OBSERVATION':operation==='RUNTIME_EVIDENCE_CYCLE'?'EVIDENCE':'FULL';
     const report = await runAutonomousRuntimeCycle(environment, runtimePool, new Date(),{scope});
     if(localWorkerId!==null)await workerStore.cycleCompleted(localWorkerId,report,new Date().toISOString());
+    if(report.status==='FAILED'||report.status==='QUARANTINED'){
+      const databaseCode=report.jobResults.map((job)=>job.errorCode)
+        .find((code)=>typeof code==='string'&&/^POSTGRES_(?:57P03|57P01|08[0-9A-Z]{3}|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|CONNECTION_TERMINATED|CHECKED_OUT_CLIENT_LOST|COMMIT_OUTCOME_UNKNOWN)$/.test(code));
+      if(typeof databaseCode==='string'){
+        const safeCode=safeRuntimeErrorHeader(databaseCode);
+        if(safeCode!==null)response.setHeader('X-Theta-Safe-Error-Code',safeCode);
+      }
+    }
     send(response, report.status === 'FAILED' || report.status === 'QUARANTINED' ? 503 : report.status === 'DEGRADED' ? 207 : 200, report);
   } catch (error) {
     const failure = safeRuntimeFailure(error);
     const code = failure.code;
-    if (localWorkerId !== null && operation === 'RUNTIME_CYCLE') {
+    if (localWorkerId !== null && operation === 'RUNTIME_CYCLE'
+      && !classifyPostgresRuntimeError(error).retryableRead) {
       await workerStore.stop(localWorkerId, new Date().toISOString(), 'ERROR', code).catch(() => undefined);
     }
     const safeCode = safeRuntimeErrorHeader(code);

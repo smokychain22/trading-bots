@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
+import { withRuntimePostgresTransaction } from './runtime-postgres-client.js';
 import { assertValidLifecycleTransition, type ThetaLifecycleState } from './runtime-state.js';
 
 type BaseApplication = {
@@ -115,9 +116,7 @@ export class PostgresLifecycleApplicationStore {
     if (!/^[0-9a-f]{64}$/.test(application.evidenceKey) || !validHash(application.providerActivityRefHash)) {
       throw new Error('LIFECYCLE_EVIDENCE_HASH_INVALID');
     }
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
+    return withRuntimePostgresTransaction(this.pool, async (client) => {
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [application.evidenceKey]);
       const existing = await client.query(
         `SELECT lifecycle_application_id,chain_id,event_kind,transition_path_json
@@ -128,7 +127,6 @@ export class PostgresLifecycleApplicationStore {
           throw new Error('LIFECYCLE_IDEMPOTENCY_CONFLICT');
         }
         const path = existing.rows[0].transition_path_json as ThetaLifecycleState[];
-        await client.query('COMMIT');
         return { applicationId:String(existing.rows[0].lifecycle_application_id),duplicate:true,
           chainId:application.chainId,eventKind:application.eventKind,transitionPath:path,finalState:path.at(-1) ?? 'WAIT' };
       }
@@ -151,13 +149,13 @@ export class PostgresLifecycleApplicationStore {
           application.providerActivityRefHash,JSON.stringify(path),application.occurredAt,resultHash,
           JSON.stringify({ decisionId:application.decisionId })],
       );
-      await client.query('COMMIT');
       return { applicationId,duplicate:false,chainId:application.chainId,eventKind:application.eventKind,
         transitionPath:path,finalState:current };
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally { client.release(); }
+    }, { verifyCommitted: async (pool, outcome) => {
+      const found = await pool.query(`SELECT lifecycle_application_id,result_hash FROM trade.lifecycle_application
+        WHERE evidence_key=$1`,[application.evidenceKey]);
+      return found.rowCount===1 && String(found.rows[0]?.lifecycle_application_id)===outcome.applicationId;
+    } });
   }
 
   private async mutateEconomicState(client: PoolClient, application: LifecycleApplication,

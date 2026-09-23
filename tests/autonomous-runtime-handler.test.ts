@@ -47,6 +47,7 @@ test('local worker identity accepts a complete sanitized identity', () => {
 test('local worker operation accepts the bounded runtime, evidence, and owner authorization selectors', () => {
   assert.equal(parseLocalWorkerOperation({ headers: {} }), 'RUNTIME_CYCLE');
   assert.equal(parseLocalWorkerOperation({ headers: { 'x-theta-operation': 'runtime-core-cycle' } }), 'RUNTIME_CORE_CYCLE');
+  assert.equal(parseLocalWorkerOperation({ headers: { 'x-theta-operation': 'runtime-db-probe' } }), 'RUNTIME_DB_PROBE');
   assert.equal(parseLocalWorkerOperation({ headers: { 'x-theta-operation': 'runtime-broker-cycle' } }), 'RUNTIME_BROKER_CYCLE');
   assert.equal(parseLocalWorkerOperation({ headers: { 'x-theta-operation': 'runtime-lifecycle-cycle' } }), 'RUNTIME_LIFECYCLE_CYCLE');
   assert.equal(parseLocalWorkerOperation({ headers: { 'x-theta-operation': 'runtime-management-cycle' } }), 'RUNTIME_MANAGEMENT_CYCLE');

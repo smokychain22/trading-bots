@@ -21,6 +21,7 @@ export class PostgresMasterPaperActionPlanStore {
       await client.query('BEGIN');
       const evidence=await client.query(`SELECT d.decision_id,d.decision_kind,d.selected_candidate_id::text AS candidate_id,
         d.runtime_selected_candidate_ref,d.quantity::numeric AS quantity,d.aegis_action::text AS aegis_action,
+        d.receipt_json->>'aegisInputOrigin' AS aegis_input_origin,
         ea.account_kind::text AS account_kind,ea.account_ready
         FROM trade.decision d JOIN trade.execution_account ea ON ea.execution_account_id=$2
         WHERE d.decision_id=$1 FOR SHARE OF d,ea`,[plan.decisionId,plan.executionAccountId]);
@@ -32,6 +33,7 @@ export class PostgresMasterPaperActionPlanStore {
         throw new Error('ACTION_PLAN_SELECTED_CANDIDATE_MISMATCH');
       if(Number(row.quantity)!==plan.canonicalQuantity)throw new Error('ACTION_PLAN_CANONICAL_QUANTITY_MISMATCH');
       if(String(row.aegis_action)!==plan.aegisState)throw new Error('ACTION_PLAN_AEGIS_MISMATCH');
+      if(row.aegis_input_origin!=='DERIVED_FROM_REAL')throw new Error('ACTION_PLAN_AEGIS_REAL_INPUT_LINEAGE_MISSING');
       if(chain!==undefined){
         if(chain.underlyingId!==plan.underlyingId)throw new Error('ACTION_PLAN_CHAIN_UNDERLYING_MISMATCH');
         await client.query(`INSERT INTO trade.economic_chain(chain_id,bot_instance_id,underlying_id,lifecycle_state,opened_at)

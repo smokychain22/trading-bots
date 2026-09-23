@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { verifyFusionSnapshot, type JsonValue } from '../market/fusion-snapshot.js';
 import type { ThetaShadowCycleResult } from './theta-shadow-cycle.js';
+import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from './runtime-postgres-client.js';
 import type { ThetaQResponse } from './theta-q-contract.js';
 import { strategyFamilyForCanonicalBranch, type CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
 import { buildStrategyDecisionEnvelope } from './strategy-decision-envelope.js';
@@ -180,9 +181,7 @@ export class PostgresThetaCycleStore {
         contracts: Array.isArray(fusion.snapshot.contractCandidates) ? fusion.snapshot.contractCandidates.length : 0,
         rssMb: Math.round(process.memoryUsage().rss / 1_048_576) }));
     };
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
+    return withRuntimePostgresTransaction(this.pool, async (client) => {
       await client.query(
         `INSERT INTO trade.fusion_snapshot(
           fusion_snapshot_id,bot_instance_id,decision_time,trigger_type,universe_version_id,
@@ -280,14 +279,20 @@ export class PostgresThetaCycleStore {
       );
       const shadowOpportunityCount = shadowResult?.rowCount ?? 0;
       tracePersistence('SHADOW_OPPORTUNITIES_COMPLETE');
-      await client.query('COMMIT');
-      tracePersistence('COMMITTED');
       return { fusionSnapshotId, candidateSetId: candidates.candidateSetId, candidateCount: candidates.candidateIds.size,
         decisionId, strategyRouteId, strategyFrontierId, shadowOpportunityCount };
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally { client.release(); }
+    }, { verifyCommitted: async (pool, outcome) => {
+      if (outcome.decisionId === null) return false;
+      const receipt = await withRuntimePostgresReadRetry(pool, (client) => client.query(
+        `SELECT fs.content_hash, d.decision_id FROM trade.fusion_snapshot fs
+         LEFT JOIN trade.decision d ON d.fusion_snapshot_id=fs.fusion_snapshot_id
+         WHERE fs.fusion_snapshot_id=$1 AND fs.bot_instance_id=$2 AND fs.content_hash=$3`,
+        [fusionSnapshotId,context.botInstanceId,fusion.contentHash],
+      ));
+      // A fusion row alone could predate this interrupted attempt. The
+      // deterministic decision proves this complete atomic write committed.
+      return receipt.value.rows.some((row) => String(row.decision_id)===outcome.decisionId);
+    } }).then((value) => { tracePersistence('COMMITTED'); return value; });
   }
 
   private async persistCandidates(
@@ -537,10 +542,13 @@ export class PostgresThetaCycleStore {
     const reasonCodes = resolvedAuthority.reasonCodes;
     const decisionId = deterministicRuntimeUuid(`decision:${fusionSnapshotId}:${receipt.underlying}:${decisionAuthorityVersion}`);
     const receiptPayload = authority === null
-      ? { contractVersion: decisionAuthorityVersion, authority: null, subordinateNewRiskEvidence:
+      ? { contractVersion: decisionAuthorityVersion, authority: null,
+          aegisInputOrigin: cycle.provenanceDetail.includes('aegisInputs=DERIVED_FROM_REAL') ? 'DERIVED_FROM_REAL' : null,
+          subordinateNewRiskEvidence:
           buildStrategyDecisionEnvelope({ strategyVersionId, strategyBranch: 'THETA_CONVENTIONAL', receipt }),
           executionAuthorized: false }
       : { contractVersion: decisionAuthorityVersion, authority, legacyThetaQReceipt: receipt,
+          aegisInputOrigin: cycle.provenanceDetail.includes('aegisInputs=DERIVED_FROM_REAL') ? 'DERIVED_FROM_REAL' : null,
           empiricalUtilityState: authority.empiricalUtilityState, executionAuthorized: false };
     const inserted = await client.query(
       `INSERT INTO trade.decision(decision_id,fusion_snapshot_id,candidate_set_id,selected_candidate_id,decision_kind,action_code,quantity,

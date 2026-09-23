@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { classifyPostgresRuntimeError } from './postgres-runtime-error.js';
 
 /** An idle connection can disappear during an Aiven rebalance. pg removes the
  * failed client, but an unhandled pool error would terminate the runtime. */
@@ -7,9 +8,9 @@ export function createRuntimePostgresPool(connectionString: string,
   const pool = new Pool({ connectionString, max: 2, connectionTimeoutMillis: 8_000,
     idleTimeoutMillis: 10_000, maxLifetimeSeconds: 60 });
   pool.on('error', (error: Error & { code?: unknown }) => {
-    const code = typeof error.code === 'string' && /^[0-9A-Z]{5}$/.test(error.code)
-      ? `POSTGRES_${error.code}` : 'POSTGRES_IDLE_CONNECTION_ERROR';
-    report(code);
+    const classification = classifyPostgresRuntimeError(error);
+    report(classification.safeCode === 'POSTGRES_UNKNOWN_ERROR'
+      ? 'POSTGRES_IDLE_CONNECTION_ERROR' : classification.safeCode);
   });
   return pool;
 }

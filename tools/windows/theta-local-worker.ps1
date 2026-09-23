@@ -44,9 +44,36 @@ try {
   $owned = $mutex.WaitOne(0)
   if (!$owned) { exit 23 }
   $delaySeconds = 5
+  $databaseRecoveryMode = $false
+  $databaseRecoverySuccesses = 0
   while (!(Test-Path -LiteralPath $stopFile)) {
     $headers = @{ Authorization = "Bearer $token"; 'X-Theta-Worker-Id'=$runtime.workerId;
       'X-Theta-Host-Id'=$env:COMPUTERNAME; 'X-Theta-Build-Sha'=$runtime.buildSha }
+    if ($databaseRecoveryMode) {
+      # Probe only PostgreSQL and the existing primary lease. A transient DB
+      # failure must not immediately restart the full provider/market scan.
+      try {
+        $probeHeaders = $headers.Clone()
+        $probeHeaders['X-Theta-Operation'] = 'runtime-db-probe'
+        $probe = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $probeHeaders -TimeoutSec 20
+        if ($probe.database -ne 'REACHABLE' -or $probe.lease -ne 'OWNED' -or
+          $probe.executionGate -ne 'LOCKED') { throw 'THETA_DATABASE_RECOVERY_PROBE_INVALID' }
+        $databaseRecoverySuccesses++
+        $delaySeconds = 5
+        if ($databaseRecoverySuccesses -ge 2) {
+          $databaseRecoveryMode = $false
+          $databaseRecoverySuccesses = 0
+        }
+      } catch {
+        $databaseRecoverySuccesses = 0
+        $delaySeconds = [Math]::Min(300, $delaySeconds * 2)
+      }
+      for ($elapsed = 0; $elapsed -lt $delaySeconds; $elapsed++) {
+        if (Test-Path -LiteralPath $stopFile) { break }
+        Start-Sleep -Seconds 1
+      }
+      continue
+    }
     $workerExit = 0
     $currentOperation = 'LOOP_START'
     $operationStartedAt = [DateTimeOffset]::UtcNow
@@ -266,6 +293,10 @@ try {
         failedOperation=$currentOperation;operationStartedAt=$operationStartedAt.ToString('o');
         elapsedMilliseconds=[Math]::Max(0,[Math]::Round(($failedAt - $operationStartedAt).TotalMilliseconds))} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
+      if ($serverErrorCode -cmatch '^POSTGRES_(57P03|57P01|08[0-9A-Z]{3}|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|CONNECTION_TERMINATED|CHECKED_OUT_CLIENT_LOST|COMMIT_OUTCOME_UNKNOWN)$') {
+        $databaseRecoveryMode = $true
+        $databaseRecoverySuccesses = 0
+      }
     }
     if (Test-Path -LiteralPath $stopFile) { break }
     $waitSeconds = if ($workerExit -eq 0) { 60 } else { $delaySeconds }

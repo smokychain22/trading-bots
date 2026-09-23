@@ -387,6 +387,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         accountStatus:typeof account.accountStatus==='string'?account.accountStatus:null,
         optionsApprovedLevel:n(account.optionsApprovedLevel),optionsTradingLevel:n(account.optionsTradingLevel),
         aegisState:selectedFrontierCandidate?.aegisState??null,
+        aegisInputOrigin:member.cycle.provenanceDetail.includes('aegisInputs=DERIVED_FROM_REAL')?'DERIVED_FROM_REAL':null,
         entryEventEvidence:discovered??{unsupportedCorporateActionPending:null,eventNear:null},
         openPositionSymbols:positions.flatMap((value)=>value!==null&&typeof value==='object'&&!Array.isArray(value)
           &&typeof (value as Record<string,unknown>).symbol==='string'?[String((value as Record<string,unknown>).symbol)]:[]),

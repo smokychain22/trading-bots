@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
+import { withRuntimePostgresTransaction } from './runtime-postgres-client.js';
 import type { AlpacaProviderConfig } from './alpaca-provider.js';
 
 export const corporateActionEvidenceVersion = 'alpaca-corporate-action-observation-v1' as const;
@@ -130,10 +131,8 @@ export async function readAlpacaCorporateActions(input: {
 
 /** Immutable positive rows and a query receipt. Empty results are retained, never converted to verified absence. */
 export async function persistAlpacaCorporateActionRead(pool: Pool, read: CorporateActionRead): Promise<{ readonly observationCount: number; readonly newRows: number }> {
-  const client = await pool.connect();
   let newRows = 0;
-  try {
-    await client.query('BEGIN');
+  return withRuntimePostgresTransaction(pool, async (client) => {
     const queryId = randomUUID();
     await client.query(`INSERT INTO market.alpaca_corporate_action_query(
       query_id,observed_at,symbols_json,start_date,end_date,pages_read,pagination_complete,
@@ -152,12 +151,8 @@ export async function persistAlpacaCorporateActionRead(pool: Pool, read: Corpora
         row.pendingUnsupported, JSON.stringify(row.rawPayload)]);
       newRows += inserted.rowCount ?? 0;
     }
-    await client.query('COMMIT');
     return { observationCount: read.observations.length, newRows };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally { client.release(); }
+  });
 }
 
 /**

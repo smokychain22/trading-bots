@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import { withRuntimePostgresTransaction } from './runtime-postgres-client.js';
 import {
   componentsFromEvidence,
   knownField,
@@ -63,18 +64,10 @@ export class PostgresWholeChainComponentsRepository {
   async load(chainId: string, asOfInput: string, context: WholeChainLoadContext): Promise<WholeChainComponentEvidence> {
     const asOf = checkedAsOf(asOfInput);
     if (!chainId.trim() || !context.connectionId.trim()) throw new Error('WHOLE_CHAIN_IDENTITY_REQUIRED');
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    return withRuntimePostgresTransaction(this.pool, async (client) => {
       const evidence = await this.loadInTransaction(client, chainId, asOf, context);
-      await client.query('COMMIT');
       return evidence;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    }, { beginSql: 'BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY' });
   }
 
   private async loadInTransaction(client: PoolClient, chainId: string, asOf: string,

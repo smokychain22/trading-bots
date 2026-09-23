@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
+import { withRuntimePostgresTransaction } from './runtime-postgres-client.js';
 import { canonicalJson } from '../research/point-in-time-evidence.js';
 import type { ScanCompleteness } from '../research/shadow-evidence-runtime.js';
 import type { StrategyQualityShadowDiagnostic } from '../research/strategy-quality-shadow-diagnostics.js';
@@ -161,15 +162,12 @@ export class PostgresRuntimeBehaviorDiagnosticStore {
   constructor(private readonly pool: Pool) {}
 
   async persist(input: RuntimeBehaviorDiagnosticInput): Promise<RuntimeBehaviorDiagnostic> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
+    return withRuntimePostgresTransaction(this.pool, async (client) => {
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['THETA_RUNTIME_BEHAVIOR_DIAGNOSTIC']);
       const existing = await client.query(
         `SELECT diagnostic_json FROM research.theta_runtime_behavior_diagnostic WHERE scan_id=$1`, [input.scanId],
       );
       if (existing.rowCount === 1) {
-        await client.query('COMMIT');
         return existing.rows[0]?.diagnostic_json as RuntimeBehaviorDiagnostic;
       }
       const previous = await client.query<PreviousDiagnostic>(
@@ -223,13 +221,7 @@ export class PostgresRuntimeBehaviorDiagnosticStore {
           JSON.stringify(input.providerBlockers),JSON.stringify(input.actionPlanBlockers),
           JSON.stringify(diagnostic.reasonCodes),diagnostic.thresholdPolicyState,JSON.stringify(diagnostic),contentHash],
       );
-      await client.query('COMMIT');
       return diagnostic;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    });
   }
 }

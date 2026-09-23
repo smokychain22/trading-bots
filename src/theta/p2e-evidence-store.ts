@@ -1,5 +1,6 @@
 import { createHash,randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
+import { withRuntimePostgresTransaction } from './runtime-postgres-client.js';
 import type { ManagementInputState } from './management-input-state.js';
 import type { ManagementActionFrontier,ManagementActionEconomics } from './management-action-frontier.js';
 import { buildPositionPathCheckpoint,classifyPathCheckpoint,type PositionPathCheckpoint } from './position-path-state.js';
@@ -55,9 +56,7 @@ export class PostgresP2EEvidenceStore{
       const timing=routeStrategyTiming({observedAt:state.observedAt,sessionStates:session.states,optionTime,
         lifecycleState:state.lifecycleState,requiredUnknowns:state.unknownFields,eventStateKnown:state.context.eventState!==null,
         quoteFresh:state.hardBlockers.includes('BROKER_DATA_STALE')?false:state.market.quoteTimestamp===null?null:true});
-      const client=await this.pool.connect();
-      try{
-        await client.query('BEGIN');
+      await withRuntimePostgresTransaction(this.pool,async(client)=>{
         await client.query(`INSERT INTO research.theta_position_path_checkpoint(position_path_checkpoint_id,chain_id,
           management_input_snapshot_id,observed_at,path_classification,checkpoint_json,content_hash,evidence_kind,checkpoint_reason)
           VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9) ON CONFLICT(content_hash) DO NOTHING`,[randomUUID(),state.chainId,
@@ -72,8 +71,7 @@ export class PostgresP2EEvidenceStore{
           management_input_snapshot_id,chain_id,observed_at,session_state,option_time_json,timing_router_json,content_hash)
           VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8) ON CONFLICT(content_hash) DO NOTHING`,[randomUUID(),
           state.managementInputSnapshotId,state.chainId,state.observedAt,session.primary,JSON.stringify(optionTime),JSON.stringify(timing),hash(timePayload)]);
-        await client.query('COMMIT');
-      }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+      });
     }
   }
 }

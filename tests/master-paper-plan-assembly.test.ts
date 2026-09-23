@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { CanonicalStrategyFrontier } from '../src/theta/canonical-strategy-frontier.js';
 import { assembleMasterPaperEvidencePlan, type MasterPaperPlanAssemblyInput } from '../src/execution/master-paper-plan-assembly.js';
+import { PostgresMasterPaperActionPlanStore } from '../src/execution/postgres-master-paper-action-plan-store.js';
 
 const decisionId='10000000-0000-4000-8000-000000000001';
 const executionAccountId='10000000-0000-4000-8000-000000000002';
@@ -36,6 +37,7 @@ const frontier=():CanonicalStrategyFrontier=>({
 const input=(overrides:Partial<MasterPaperPlanAssemblyInput>={}):MasterPaperPlanAssemblyInput=>({
   frontier:frontier(),executionAccountId,decisionId,persistedCandidateId,optionContractId,underlyingId,
   accountStatus:'ACTIVE',optionsApprovedLevel:3,optionsTradingLevel:3,aegisState:'ALLOW_FULL',
+  aegisInputOrigin:'DERIVED_FROM_REAL',
   entryEventEvidence:{unsupportedCorporateActionPending:false,eventNear:false},
   openPositionSymbols:[],openOrderSymbols:[],paperEvidenceRiskCap:1,modeledRoundTripCostPerContract:1.70,
   now:'2026-09-14T14:00:01.000Z',decisionExpiresAt:'2026-09-14T14:00:46.000Z',...overrides,
@@ -90,6 +92,35 @@ test('a plan cannot use an AEGIS state from a different candidate',()=>{
   const result=assembleMasterPaperEvidencePlan(input({aegisState:'ALLOW_REDUCED'}));
   assert.equal(result.state,'BLOCKED');
   assert.ok(result.blockers.includes('AEGIS_SELECTION_LINEAGE_MISMATCH'));
+});
+
+test('a manual or missing AEGIS input origin cannot assemble a new-risk Paper plan',()=>{
+  for(const aegisInputOrigin of ['CALLER_MANUAL','SYNTHETIC_FIXTURE',null] as const){
+    const result=assembleMasterPaperEvidencePlan(input({aegisInputOrigin}));
+    assert.equal(result.state,'BLOCKED');
+    assert.ok(result.blockers.includes('AEGIS_REAL_INPUT_LINEAGE_MISSING'));
+  }
+});
+
+test('the new-risk persistence boundary rejects a decision without real AEGIS input lineage',async()=>{
+  const result=assembleMasterPaperEvidencePlan(input());
+  assert.equal(result.state,'READY');
+  if(result.state!=='READY')return;
+  const queries:string[]=[];
+  const client={query:async(sql:string)=>{
+    queries.push(sql);
+    if(sql.includes('FROM trade.decision d'))return {rows:[{
+      decision_id:decisionId,decision_kind:'NEW_RISK',candidate_id:persistedCandidateId,
+      quantity:3,aegis_action:'ALLOW_FULL',aegis_input_origin:null,
+      account_kind:'MASTER_API_KEY',account_ready:true,
+    }]};
+    return {rows:[],rowCount:0};
+  },release:()=>undefined};
+  const store=new PostgresMasterPaperActionPlanStore({connect:async()=>client} as never);
+  await assert.rejects(store.enqueue(result.plan,input().now),/ACTION_PLAN_AEGIS_REAL_INPUT_LINEAGE_MISSING/);
+  assert.deepEqual(queries[0],'BEGIN');
+  assert.equal(queries.at(-1),'ROLLBACK');
+  assert.equal(queries.some((sql)=>sql.includes('INSERT INTO trade.master_paper_action_plan')),false);
 });
 
 test('plan assembly rejects missing, ineligible, or malformed bootstrap entry lineage',()=>{

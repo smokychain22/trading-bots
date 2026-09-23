@@ -111,7 +111,7 @@ const mockAlpacaFetch = (options: { hasContracts: boolean; hasBars: boolean }) =
   }
   if (url.includes('/v2/stocks/bars')) {
     if (!options.hasBars) return jsonResponse(200, { bars: {}, next_page_token: null });
-    const bars = Array.from({ length: 65 }, (_, i) => ({ t: new Date(Date.now() - (65 - i) * 86_400_000).toISOString(), o: 500 + i * 0.1, h: 501 + i * 0.1, l: 499 + i * 0.1, c: 500.1 + i * 0.1, v: 1_000_000 }));
+    const bars = Array.from({ length: 65 }, (_, i) => ({ t: new Date(Date.parse(NOW) - (64 - i) * 86_400_000).toISOString(), o: 500 + i * 0.1, h: 501 + i * 0.1, l: 499 + i * 0.1, c: 500.1 + i * 0.1, v: 1_000_000 }));
     return jsonResponse(200, { bars: { SPY: bars }, next_page_token: null });
   }
   if (url.includes('/v2/options/contracts')) {

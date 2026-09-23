@@ -18,6 +18,7 @@ export interface MasterPaperPlanAssemblyInput {
   readonly optionsApprovedLevel: number | null;
   readonly optionsTradingLevel: number | null;
   readonly aegisState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO' | 'DEFINED_RISK_ONLY' | 'EMERGENCY_EXIT_ONLY' | null;
+  readonly aegisInputOrigin: 'DERIVED_FROM_REAL' | 'CALLER_MANUAL' | 'SYNTHETIC_FIXTURE' | 'UNKNOWN' | null;
   readonly entryEventEvidence: Pick<UnderlyingCandidateInput, 'unsupportedCorporateActionPending' | 'eventNear'>;
   readonly openPositionSymbols: readonly string[];
   readonly openOrderSymbols: readonly string[];
@@ -87,6 +88,7 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
   if (sizing.paperEvidenceQuantity === 0) blockers.push('PAPER_EVIDENCE_QUANTITY_ZERO');
   if (input.aegisState === null) blockers.push('AEGIS_SELECTION_LINEAGE_MISSING');
   else if (!['ALLOW_FULL', 'ALLOW_REDUCED'].includes(input.aegisState)) blockers.push('AEGIS_NOT_APPROVED');
+  if (input.aegisInputOrigin !== 'DERIVED_FROM_REAL') blockers.push('AEGIS_REAL_INPUT_LINEAGE_MISSING');
   if (selected !== undefined && input.aegisState !== selected.aegisState) blockers.push('AEGIS_SELECTION_LINEAGE_MISMATCH');
   const entryEligibility = selected?.entryEligibility;
   if (entryEligibility === undefined) blockers.push('ENTRY_ELIGIBILITY_LINEAGE_MISSING');

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
+import { withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 import type { ThetaShadowCycleResult } from '../theta/theta-shadow-cycle.js';
 import type { UnderlyingCandidateInput } from '../theta/universe-policy.js';
 import { canonicalJson } from './point-in-time-evidence.js';
@@ -174,9 +175,7 @@ export class PostgresShadowEvidenceRuntimeStore {
   async saveScan(scan: CrossSymbolShadowScanResult, persisted: ReadonlyMap<string, { fusionSnapshotId: string | null; candidateSetId: string | null }>): Promise<void> {
     const payload = { ...scan, results: scan.results.map((item) => ({ symbol: item.symbol, ordinal: item.ordinal, status: item.status, errorCode: item.errorCode })) };
     const hash = createHash('sha256').update(canonicalJson(payload)).digest('hex');
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
+    await withRuntimePostgresTransaction(this.pool, async (client) => {
       await client.query(`INSERT INTO research.theta_shadow_scan_run(scan_id,mode,contract_version,started_at,finished_at,
         universe_version,lattice_version,strategy_version,branches_json,eligible_symbols_json,max_underlyings,
         symbols_attempted,symbols_completed,candidate_count,completeness_state,missing_scope_json,global_wait_earned,
@@ -198,8 +197,7 @@ export class PostgresShadowEvidenceRuntimeStore {
           refs?.candidateSetId ?? null, member.cycle?.orchestration?.thetaQ?.candidates.length ?? 0,
           member.cycle?.optionContractsComplete ?? null, member.cycle?.optionChainComplete ?? null]);
       }
-      await client.query('COMMIT');
-    } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+    });
   }
 
   async scheduleObservations(rows: readonly ScheduledObservation[]): Promise<number> {

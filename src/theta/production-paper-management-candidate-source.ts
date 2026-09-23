@@ -4,6 +4,7 @@ import type { AlpacaOptionContractListing, AlpacaOptionSnapshot } from './option
 import { managementCandidateMaxQuoteAgeMs, type ManagementCandidate, type ManagementCandidateDiscovery,
   type ManagementCandidateRejection } from './management-candidate-evidence.js';
 import { deterministicRuntimeUuid } from './postgres-theta-cycle-store.js';
+import { withRuntimePostgresTransaction } from './runtime-postgres-client.js';
 
 const contractVersion = 'theta-management-candidate-discovery-v1' as const;
 // A bounded Paper search universe, not a claim that longer-dated rolls are bad.
@@ -237,9 +238,7 @@ export class ProductionPaperManagementCandidateSource {
     quotes:readonly QualifiedManagementQuote[],quantity:number|null,
     currentSnapshot:AlpacaOptionSnapshot|null,receivedAt:string):Promise<readonly ManagementCandidate[]>{
     if(quotes.length===0&&currentSnapshot===null)return [];
-    const client=await this.pool.connect();
-    try{
-      await client.query('BEGIN');
+    return withRuntimePostgresTransaction(this.pool,async(client)=>{
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',['theta-option-quote-snapshot']);
       const contractRows=quotes.map(({contract})=>({
         id:deterministicRuntimeUuid(`option-contract:${contract.symbol}`),symbol:contract.symbol,
@@ -327,9 +326,7 @@ export class ProductionPaperManagementCandidateSource {
           quoteFeed:'PAPER_INDICATIVE_REFERENCE',bidSize:snapshot.bidSize,askSize:snapshot.askSize,
           delta:snapshot.greeks?.delta ?? null};
       });
-      await client.query('COMMIT');
       return candidates;
-    }catch(error){await client.query('ROLLBACK');throw error;
-    }finally{client.release();}
+    });
   }
 }

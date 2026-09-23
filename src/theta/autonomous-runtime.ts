@@ -45,6 +45,7 @@ import { ProductionPaperManagementCandidateSource } from './production-paper-man
 import type { SchedulerCheckpointRecord } from './persistence-repositories.js';
 import { PostgresExecutionEvidenceStore } from '../execution/postgres-execution-evidence-store.js';
 import { persistConfirmedFillTca } from '../execution/confirmed-fill-tca.js';
+import { classifyPostgresRuntimeError } from './postgres-runtime-error.js';
 
 export const autonomousRuntimeVersion = 'theta-autonomous-runtime-v1' as const;
 export const autonomousPolicyVersion = 'theta-scheduler-policy-v1' as const;
@@ -119,6 +120,11 @@ export function safeRuntimeFailure(error: unknown): { code: string; detail: stri
     return { code:`OPTIONOMICS_PROVIDER_${error.errorClass}_${status}`,
       detail:`Optionomics operation failed with ${error.errorClass} and ${status}.` };
   }
+  const databaseFailure = classifyPostgresRuntimeError(error);
+  if (databaseFailure.retryableRead || databaseFailure.safeCode === 'POSTGRES_COMMIT_OUTCOME_UNKNOWN') {
+    return { code: databaseFailure.safeCode,
+      detail: 'PostgreSQL connection or service became unavailable; the decision cycle failed closed.' };
+  }
   if (error !== null && typeof error === 'object') {
     const record=error as {code?:unknown;constraint?:unknown};
     if(typeof record.code==='string'&&/^[0-9A-Z]{5}$/.test(record.code)){
@@ -136,6 +142,16 @@ export class PostgresRuntimeCycleStore {
   constructor(private readonly pool: Pool) {}
 
   async begin(correlationId: string, workerInstance: string, at: string): Promise<boolean> {
+    // The platform request is bounded at five minutes. A row older than the
+    // six-minute request lease plus margin cannot still represent a live run.
+    // This runs only after DB recovery; no interrupted cycle becomes WAIT.
+    await this.pool.query(
+      `WITH stale AS (SELECT worker_cycle_id FROM ops.runtime_worker_cycle
+         WHERE status='RUNNING' AND invoked_at < $1::timestamptz - interval '7 minutes'
+         ORDER BY invoked_at LIMIT 32 FOR UPDATE SKIP LOCKED)
+       UPDATE ops.runtime_worker_cycle c SET status='FAILED',completed_at=$1,heartbeat_at=$1,
+         error_code='INTERRUPTED_STALE_LEASE',error_detail='INTERRUPTED_STALE_LEASE'
+       FROM stale WHERE c.worker_cycle_id=stale.worker_cycle_id`, [at]);
     const result = await this.pool.query(
       `INSERT INTO ops.runtime_worker_cycle(
         correlation_id,worker_role,worker_instance,runtime_version,policy_version,invoked_at,heartbeat_at,status)
@@ -618,7 +634,11 @@ export async function runAutonomousRuntimeCycle(
       executionGate:runtimeExecutionGate,
       masterPaperOrdersSubmitted: 0, followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0,
     };
-    await cycleStore.finish(correlationId, report, new Date().toISOString());
+    // If Aiven is still unavailable, retain the original failure for the HTTP
+    // 503. The next healthy begin() marks the stranded RUNNING row as failed.
+    await cycleStore.finish(correlationId, report, new Date().toISOString()).catch((finishError: unknown) => {
+      if (!classifyPostgresRuntimeError(finishError).retryableRead) throw finishError;
+    });
     return report;
   }
 }

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
+import { withRuntimePostgresTransaction } from './runtime-postgres-client.js';
 import type { ThetaLifecycleState } from './runtime-state.js';
 import type { ManagementActionFrontier } from './management-action-frontier.js';
 import { PostgresWholeChainComponentsRepository } from './postgres-whole-chain-components-repository.js';
@@ -508,9 +509,7 @@ export class PostgresManagementInputStore {
       managementCandidateDiscovery:candidateDiscoveryByChain.get(String(row.chain_id)) ?? null,
     }));
     if (states.length === 0) return [];
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
+    await withRuntimePostgresTransaction(this.pool, async (client) => {
       for (let index = 0; index < states.length; index += 1) {
         let state = states[index];
         if (state === undefined) throw new Error('MANAGEMENT_INPUT_INDEX_INVALID');
@@ -537,20 +536,14 @@ export class PostgresManagementInputStore {
           JSON.stringify(state),JSON.stringify(state.unknownFields),JSON.stringify(changes),state.contentHash],
         );
       }
-      await client.query('COMMIT');
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally { client.release(); }
+    });
     return states;
   }
 
   async persistFrontiers(states: readonly ManagementInputState[], frontiers: readonly ManagementActionFrontier[]): Promise<readonly PersistedManagementFrontier[]> {
     if (states.length !== frontiers.length) throw new Error('MANAGEMENT_FRONTIER_INPUT_COUNT_MISMATCH');
-    const client = await this.pool.connect();
     const persisted: PersistedManagementFrontier[] = [];
-    try {
-      await client.query('BEGIN');
+    await withRuntimePostgresTransaction(this.pool, async (client) => {
       for (let index = 0; index < states.length; index += 1) {
         const state = states[index];
         const frontier = frontiers[index];
@@ -578,11 +571,7 @@ export class PostgresManagementInputStore {
         if(id===undefined)throw new Error('MANAGEMENT_FRONTIER_PERSISTENCE_FAILED');
         persisted.push({managementActionFrontierId:id,managementInputSnapshotId:state.managementInputSnapshotId,frontier});
       }
-      await client.query('COMMIT');
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally { client.release(); }
+    });
     return persisted;
   }
 

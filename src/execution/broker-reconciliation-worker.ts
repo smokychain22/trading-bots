@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
+import { withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 import { z } from 'zod';
 import type { BrokerActivity, BrokerCalendarSession, BrokerMarketClock, BrokerOrderSnapshot } from './broker.js';
 import type { ReadOnlyPaperBroker } from './read-only-paper-broker.js';
@@ -361,9 +362,7 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
   }
 
   async persist(input: BrokerReconciliationSnapshotInput): Promise<void> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
+    await withRuntimePostgresTransaction(this.pool, async (client) => {
       await client.query(
         `INSERT INTO trade.broker_reconciliation_snapshot(
           reconciliation_snapshot_id,connection_id,correlation_id,environment,broker_host,account_status,
@@ -443,11 +442,7 @@ export class PostgresBrokerReconciliationStore implements BrokerReconciliationSt
           [orderIntentId, input.observedAt, JSON.stringify({ reconciliationSnapshotId: input.snapshotId })],
         );
       }
-      await client.query('COMMIT');
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally { client.release(); }
+    });
   }
 
   private async recordBrokerFill(client:PoolClient,input:BrokerReconciliationSnapshotInput,activity:BrokerActivity):Promise<void> {
