@@ -8,7 +8,7 @@ import {
 test('canonical truth register covers each brain layer with named source and honest release separation', () => {
   assert.equal(canonicalBrainLayers.length, 21);
   assert.equal(canonicalSystemTruthRegister.brainLayers.length, 21);
-  assert.equal(canonicalSystemTruthRegister.auditCoverage, 'PARTIAL');
+  assert.equal(canonicalSystemTruthRegister.auditCoverage, 'COMPLETE');
   assert.equal('observedWorkerSha' in canonicalSystemTruthRegister, false);
   assert.equal(canonicalSystemTruthRegister.brokerMutationsAuthorized, false);
   assert.equal(canonicalSystemTruthRegister.followerExecutionAuthorized, false);

@@ -5,6 +5,7 @@ import { assembleMasterPaperExecutionCommand } from './master-paper-command-asse
 import { MasterPaperExecutionOrchestrator, type MasterPaperExecutionResult } from './master-paper-execution-orchestrator.js';
 import { thetaActionOpensNewRisk, type ThetaOrderAction } from './order-construction.js';
 import { executionAuthorizationTiers, type ExecutionAuthorizationTier, type PaperEvidenceSizing } from './execution-authorization-tier.js';
+import { paperEntrySafetyPolicyReceiptSchema, verifyPaperEntrySafetyPolicyReceipt, type PaperEntrySafetyPolicyReceipt } from '../theta/paper-entry-safety-policy.js';
 
 export const masterPaperActionPlanVersion = 'theta-master-paper-action-plan-v3' as const;
 
@@ -53,6 +54,7 @@ export interface ApprovedMasterPaperActionPlan {
   readonly pricingPolicy: AdaptiveLimitPolicy;
   readonly pricingAttempt: number;
   readonly previousLimit: number | null;
+  readonly entrySafetyPolicy?: PaperEntrySafetyPolicyReceipt;
 }
 
 export const masterPaperActionPlanSchema = z.object({
@@ -75,6 +77,7 @@ export const masterPaperActionPlanSchema = z.object({
   decisionExpiresAt:z.string().datetime({offset:true}),pricingPolicy:z.object({waitIntervalMs:z.number().nonnegative(),
     maxAttempts:z.number().int().positive(),concessionFractions:z.array(z.number().min(0).max(1)),tickSize:z.number().positive()}),
   pricingAttempt:z.number().int().nonnegative(),previousLimit:z.number().positive().finite().nullable(),
+  entrySafetyPolicy:paperEntrySafetyPolicyReceiptSchema.optional(),
 }).strict().superRefine((plan,context)=>{
   if(plan.quantity!==plan.paperEvidenceQuantity)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_QUANTITY_MISMATCH'});
   if(plan.paperEvidenceQuantity>plan.canonicalQuantity)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_QUANTITY_MAY_NOT_INCREASE'});
@@ -175,6 +178,8 @@ export class MasterPaperActionHandoff {
       (!plan.empiricalEconomicsReady||plan.expectedAfterCostEv===null||plan.expectedAfterCostEv<=0))
       blockers.push('POSITIVE_AFTER_COST_EV_NOT_EMPIRICALLY_READY');
     if(opensNewRisk&&!['ALLOW_FULL','ALLOW_REDUCED'].includes(plan.aegisState))blockers.push('AEGIS_NOT_APPROVED');
+    const entrySafetyPolicy=plan.decisionAuthority==='NEW_RISK'?verifyPaperEntrySafetyPolicyReceipt(plan.entrySafetyPolicy):null;
+    if(plan.decisionAuthority==='NEW_RISK'&&entrySafetyPolicy?.action!=='CLEAR')blockers.push('ENTRY_SAFETY_POLICY_NOT_CLEARED');
     const maximumQuoteAgeMs=preSubmitMaximumQuoteAgeMs({policy:this.quoteAgePolicy,now,
       decisionExpiresAt:plan.decisionExpiresAt});
     if(maximumQuoteAgeMs===null)blockers.push('PRE_SUBMIT_QUOTE_AGE_POLICY_INVALID');

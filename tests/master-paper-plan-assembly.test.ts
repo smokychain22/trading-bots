@@ -3,12 +3,24 @@ import test from 'node:test';
 import type { CanonicalStrategyFrontier } from '../src/theta/canonical-strategy-frontier.js';
 import { assembleMasterPaperEvidencePlan, type MasterPaperPlanAssemblyInput } from '../src/execution/master-paper-plan-assembly.js';
 import { PostgresMasterPaperActionPlanStore } from '../src/execution/postgres-master-paper-action-plan-store.js';
+import { buildPaperEntrySafetyPolicyReceipt } from '../src/theta/paper-entry-safety-policy.js';
 
 const decisionId='10000000-0000-4000-8000-000000000001';
 const executionAccountId='10000000-0000-4000-8000-000000000002';
 const persistedCandidateId='10000000-0000-4000-8000-000000000003';
 const optionContractId='10000000-0000-4000-8000-000000000004';
 const underlyingId='10000000-0000-4000-8000-000000000005';
+const entrySafetyPolicy=buildPaperEntrySafetyPolicyReceipt({decisionAsOf:'2026-09-14T14:00:01.000Z',
+  companyEvent:{policyVersion:'theta-company-event-paper-policy-v1',authority:'PAPER_BOOTSTRAP_NOT_COMPLETE_COMPANY_COVERAGE',
+    action:'CLEAR',state:'KNOWN_AFTER_EXPIRY_CLEAR',decisionAsOf:'2026-09-14T14:00:01.000Z',validThrough:'2026-10-31',
+    instrument:{policyVersion:'theta-paper-instrument-classification-v1',symbol:'AAPL',state:'OPERATING_COMPANY',
+      paperBootstrapApproved:true,authority:'VERSIONED_MANIFEST',evidenceIds:['manifest-aapl'],observedAt:'2026-09-01T00:00:00.000Z',reason:'TEST'},
+    earningsDistanceTradingSessions:40,sessionsThroughExpiration:24,macroState:'KNOWN_FALSE',evidenceIds:['event-1'],reason:'TEST'},
+  corporateAction:{policyVersion:'theta-corporate-action-paper-policy-v1',authority:'PAPER_BOOTSTRAP_NOT_COMPLETE_NEGATIVE_ASSURANCE',
+    action:'CLEAR',state:'PAPER_BOOTSTRAP_LIMITED',decisionAsOf:'2026-09-14T14:00:01.000Z',queryObservedAt:'2026-09-14T14:00:00.000Z',
+    queryWindow:{start:'2026-09-14',end:'2026-10-29'},paginationComplete:true,negativeCoverageQualified:false,
+    positiveRelevance:'EXPIRED_NOT_RELEVANT',missingPrerequisites:[],evidenceIds:[],reason:'TEST'},
+});
 
 const frontier=():CanonicalStrategyFrontier=>({
   contractVersion:'theta-canonical-strategy-frontier-v1',snapshotId:'snapshot',timestamp:'2026-09-14T14:00:00.000Z',
@@ -38,7 +50,7 @@ const input=(overrides:Partial<MasterPaperPlanAssemblyInput>={}):MasterPaperPlan
   frontier:frontier(),executionAccountId,decisionId,persistedCandidateId,optionContractId,underlyingId,
   accountStatus:'ACTIVE',optionsApprovedLevel:3,optionsTradingLevel:3,aegisState:'ALLOW_FULL',
   aegisInputOrigin:'DERIVED_FROM_REAL',
-  entryEventEvidence:{unsupportedCorporateActionPending:false,eventNear:false},
+  entrySafetyPolicy,
   openPositionSymbols:[],openOrderSymbols:[],paperEvidenceRiskCap:1,modeledRoundTripCostPerContract:1.70,
   now:'2026-09-14T14:00:01.000Z',decisionExpiresAt:'2026-09-14T14:00:46.000Z',...overrides,
 });
@@ -75,14 +87,16 @@ test('missing risk, costs, persistence, or conflict blocks plan assembly',()=>{
   }
 });
 
-test('plan assembly independently blocks unknown and positive event or corporate-action evidence',()=>{
-  for(const [entryEventEvidence,code] of [
-    [{unsupportedCorporateActionPending:null,eventNear:false},'ENTRY_EVENT_EVIDENCE_CORPORATE_ACTION_COVERAGE_UNKNOWN'],
-    [{unsupportedCorporateActionPending:true,eventNear:false},'ENTRY_EVENT_EVIDENCE_UNSUPPORTED_CORPORATE_ACTION'],
-    [{unsupportedCorporateActionPending:false,eventNear:null},'ENTRY_EVENT_EVIDENCE_EVENT_PROXIMITY_UNKNOWN'],
-    [{unsupportedCorporateActionPending:false,eventNear:true},'ENTRY_EVENT_EVIDENCE_EVENT_PROXIMITY'],
+test('plan assembly independently blocks company-event and corporate-action policy failures',()=>{
+  for(const [entrySafetyPolicyOverride,code] of [
+    [buildPaperEntrySafetyPolicyReceipt({decisionAsOf:entrySafetyPolicy.decisionAsOf,
+      companyEvent:{...entrySafetyPolicy.companyEvent,action:'BLOCK' as const,state:'COVERAGE_UNKNOWN_BLOCK' as const},
+      corporateAction:entrySafetyPolicy.corporateAction}),'COMPANY_EVENT_POLICY_COVERAGE_UNKNOWN_BLOCK'],
+    [buildPaperEntrySafetyPolicyReceipt({decisionAsOf:entrySafetyPolicy.decisionAsOf,
+      companyEvent:entrySafetyPolicy.companyEvent,
+      corporateAction:{...entrySafetyPolicy.corporateAction,action:'BLOCK' as const,state:'KNOWN_RELEVANT_ACTION_BLOCK' as const}}),'CORPORATE_ACTION_POLICY_KNOWN_RELEVANT_ACTION_BLOCK'],
   ] as const){
-    const result=assembleMasterPaperEvidencePlan(input({entryEventEvidence}));
+    const result=assembleMasterPaperEvidencePlan(input({entrySafetyPolicy:entrySafetyPolicyOverride}));
     assert.equal(result.state,'BLOCKED');
     assert.ok(result.blockers.includes(code));
   }

@@ -38,6 +38,9 @@ export const normalizedOptionContractSchema = z.object({
   expiration: z.string().date(),
   dte: z.number().int(),
   multiplier: z.number().finite().positive(),
+  contractTradable: z.boolean().nullable().optional(),
+  exerciseStyle: z.string().min(1).nullable().optional(),
+  deliverableClassification: z.enum(['STANDARD_EQUITY', 'ADJUSTED', 'UNKNOWN']).optional(),
 
   // Underlying reference state
   underlyingBid: nullableFiniteNumber,
@@ -151,6 +154,9 @@ export interface RawOptionQuoteInput {
   readonly expiration: string; // YYYY-MM-DD
   readonly asOfDate: string; // YYYY-MM-DD, for DTE computation
   readonly multiplier: number;
+  readonly contractTradable?: boolean | null;
+  readonly exerciseStyle?: string | null;
+  readonly deliverableClassification?: 'STANDARD_EQUITY' | 'ADJUSTED' | 'UNKNOWN';
   readonly underlyingBid: number | null;
   readonly underlyingAsk: number | null;
   readonly underlyingLast: number | null;
@@ -239,6 +245,9 @@ export function normalizeOptionContract(raw: RawOptionQuoteInput, receivedAt: st
     expiration: raw.expiration,
     dte,
     multiplier: raw.multiplier,
+    contractTradable: raw.contractTradable ?? null,
+    exerciseStyle: raw.exerciseStyle ?? null,
+    deliverableClassification: raw.deliverableClassification ?? 'UNKNOWN',
     underlyingBid: raw.underlyingBid,
     underlyingAsk: raw.underlyingAsk,
     underlyingLast: raw.underlyingLast,

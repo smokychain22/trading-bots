@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import type { Environment } from '../config/environment.js';
 import { AlpacaProviderError, fetchOptionSnapshots, type AlpacaProviderConfig } from '../theta/alpaca-provider.js';
 import { discoverRealUniverse, type UniverseDiscoveryResult } from '../theta/universe-discovery.js';
-import { assessUniverseEventEvidence, type UnderlyingCandidateInput } from '../theta/universe-policy.js';
+import type { UnderlyingCandidateInput } from '../theta/universe-policy.js';
 import { defaultShadowCycleConfig, optionomicsConfigFromEnvironment } from '../theta/theta-shadow-once.js';
 import { runThetaShadowCycle } from '../theta/theta-shadow-cycle.js';
 import type { PythonBridgeConfig } from '../theta/python-bridge.js';
@@ -19,7 +19,8 @@ import { buildUniverseBreadthShadowPlan } from './strategy-quality-shadow-diagno
 import type { BrokerReconciliationResult } from '../execution/broker-reconciliation-worker.js';
 import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment } from '../theta/paper-entry-bootstrap.js';
 import { loadRecoveryHistory } from '../theta/recovery-history-loader.js';
-import { loadPersistedPendingCorporateActionSymbols, persistAlpacaCorporateActionRead, readAlpacaCorporateActions } from '../theta/alpaca-corporate-action-evidence.js';
+import { loadPersistedPendingCorporateActionSymbols, persistAlpacaCorporateActionRead, readAlpacaCorporateActions,
+  type CorporateActionRead } from '../theta/alpaca-corporate-action-evidence.js';
 import type { CanonicalBranchFrontier, CanonicalFrontierCandidate } from '../theta/canonical-strategy-frontier.js';
 import { probeAlpacaProcessEnvironmentAuth } from '../providers/readiness.js';
 import { refreshAegisIvStress, type AegisIvStressRefreshResult } from '../theta/aegis-iv-stress.js';
@@ -28,6 +29,11 @@ import { assessAlpacaContractIvStressForContracts,
   verifyPersistedAlpacaContractIvAssessment } from '../theta/aegis-alpaca-iv-stress.js';
 import { paperBootstrapStressApplicability } from './aegis-stress-baseline-maturity.js';
 import type { OptionomicsProviderConfig } from '../theta/optionomics-provider.js';
+import { applyCompanyEventPaperPolicy, applyCorporateActionPaperPolicy, buildPaperEntrySafetyPolicyReceipt,
+  classifyPaperInstrument } from '../theta/paper-entry-safety-policy.js';
+import type { OptionomicsEarningsEvidence } from '../theta/earnings-event-evidence.js';
+import type { MacroRiskEvidence } from '../theta/macro-event-policy.js';
+import type { AlpacaCalendarSession } from '../theta/alpaca-provider.js';
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
@@ -261,7 +267,10 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const scanUnderlyingsRaw=discovery.candidates.filter((candidate)=>scanSymbols.has(candidate.symbol));
   const runtimeSafetyBlockers:string[]=[];
   let pendingUnsupportedSymbols=new Set<string>();
+  let currentPendingUnsupportedSymbols=new Set<string>();
   let corporateActionReadSucceeded=false;
+  let corporateActionRead:CorporateActionRead|null=null;
+  let corporateActionProviderError=false;
   const corporateActionSymbols=[...new Set([...scanUnderlyingsRaw.map((candidate)=>candidate.symbol),...recoveryInventoryUnderlyings])].sort().slice(0,20);
   if(corporateActionSymbols.length>0){
     try{
@@ -270,23 +279,22 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       const end=new Date(Date.parse(`${start}T00:00:00Z`)+45*86_400_000).toISOString().slice(0,10);
       const read=await readAlpacaCorporateActions({config:input.alpaca,
         symbols:corporateActionSymbols,start,end,observedAt});
+      corporateActionRead=read;
       await persistAlpacaCorporateActionRead(input.pool,read);
       if(!read.paginationComplete)runtimeSafetyBlockers.push('ALPACA_CORPORATE_ACTION_PAGINATION_INCOMPLETE');
       const persistedPending=await loadPersistedPendingCorporateActionSymbols(input.pool,{
         symbols:corporateActionSymbols,start,end,decisionAsOf:input.now(),
       });
-      pendingUnsupportedSymbols=new Set([...read.observations.filter((row)=>row.pendingUnsupported).map((row)=>row.symbol),
+      currentPendingUnsupportedSymbols=new Set(read.observations.filter((row)=>row.pendingUnsupported).map((row)=>row.symbol));
+      pendingUnsupportedSymbols=new Set([...currentPendingUnsupportedSymbols,
         ...persistedPending]);
       corporateActionReadSucceeded=read.paginationComplete;
     }catch{
+      corporateActionProviderError=true;
       runtimeSafetyBlockers.push('ALPACA_CORPORATE_ACTION_READ_OR_PERSISTENCE_FAILED');
     }
   }
   const scanUnderlyings=applyPendingUnsupportedCorporateActions(scanUnderlyingsRaw,pendingUnsupportedSymbols);
-  // The Paper handoff must read the same safety-enriched candidate that the
-  // scan evaluated. Indexing the original discovery rows here would discard
-  // a positive corporate-action observation before the final entry gate.
-  const discoveredBySymbol=new Map(scanUnderlyings.map((candidate)=>[candidate.symbol,candidate]));
   const brokerAuthoritySymbols=new Set(universeBreadthChallenger.championSymbols);
   const optionomics=optionomicsConfigFromEnvironment(input.environment);
   // The Optionomics ATM-IV detector is secondary research on schema 064.
@@ -332,14 +340,56 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const evidenceStore=new PostgresShadowEvidenceRuntimeStore(input.pool);
   for(const member of scan.results){
     if(member.cycle?.fusionSnapshot===null||member.cycle===null) continue;
-    const discovered=discoveredBySymbol.get(member.symbol);
-    const eventGate=discovered===undefined?null:assessUniverseEventEvidence(discovered);
-    if (brokerAuthoritySymbols.has(member.symbol)) {
-      actionPlansBlocked.push(...paperEntryEventEvidenceBlockers(member.symbol, discovered??null));
-    }
     const saved=await cycleStore.persist(runtimeContext,member.cycle);
     persisted.set(member.symbol,{fusionSnapshotId:saved.fusionSnapshotId,candidateSetId:saved.candidateSetId,decisionId:saved.decisionId});
     const selectedOptionSymbol=member.cycle.strategyFrontier?.selectedCandidateId??null;
+    const selectedFrontierCandidate=member.cycle.strategyFrontier?.branches.flatMap((branch)=>branch.candidates)
+      .find((candidate)=>candidate.candidateId===member.cycle?.strategyFrontier?.selectedCandidateId);
+    const selectedLeg=selectedFrontierCandidate?.legs[0];
+    const eventState=member.cycle.fusionSnapshot.snapshot.eventState;
+    const eventObject=eventState!==null&&typeof eventState==='object'&&!Array.isArray(eventState)
+      ? eventState as Record<string,unknown>:{};
+    const earnings=eventObject.earningsDistance as OptionomicsEarningsEvidence|undefined;
+    const macro=eventObject.macroRisk as MacroRiskEvidence|undefined;
+    const marketSessionObject=member.cycle.fusionSnapshot.snapshot.marketSession;
+    const marketSessionForPolicy=marketSessionObject!==null&&typeof marketSessionObject==='object'&&!Array.isArray(marketSessionObject)
+      ? marketSessionObject as Record<string,unknown>:{};
+    const calendar=Array.isArray(marketSessionForPolicy.calendar)
+      ? marketSessionForPolicy.calendar as unknown as readonly AlpacaCalendarSession[]:[];
+    const planDecisionAsOf=String(member.cycle.fusionSnapshot.snapshot.decisionTimeUtc);
+    const instrument=earnings===undefined?null:classifyPaperInstrument({symbol:member.symbol,
+      decisionAsOf:planDecisionAsOf,earnings});
+    const companyEvent=instrument===null||earnings===undefined||macro===undefined||selectedLeg===undefined?null
+      :applyCompanyEventPaperPolicy({decisionAsOf:planDecisionAsOf,expiration:selectedLeg.expiration,
+        calendar,instrument,earnings,macro});
+    const snapshotPositionState=member.cycle.fusionSnapshot.snapshot.positionState;
+    const snapshotPositions=snapshotPositionState!==null&&typeof snapshotPositionState==='object'&&!Array.isArray(snapshotPositionState)
+      &&Array.isArray((snapshotPositionState as Record<string,unknown>).positions)
+      ? (snapshotPositionState as Record<string,unknown>).positions as unknown[]:[];
+    const oneRiskyUnderlying=snapshotPositions.every((value)=>value!==null&&typeof value==='object'&&!Array.isArray(value)
+      &&String((value as Record<string,unknown>).symbol??'')===member.symbol);
+    const corporateAction=selectedLeg===undefined||instrument===null?null:applyCorporateActionPaperPolicy({
+      symbol:member.symbol,decisionAsOf:planDecisionAsOf,read:corporateActionRead,
+      providerError:corporateActionProviderError,currentPositiveRelevant:currentPendingUnsupportedSymbols.has(member.symbol),
+      persistedPositiveRelevance:pendingUnsupportedSymbols.has(member.symbol)?'PENDING_RELEVANT':'EXPIRED_NOT_RELEVANT',
+      standardOptionContract:selectedLeg.occSymbol===selectedLeg.optionSymbol&&selectedLeg.contractTradable===true,
+      ordinaryDeliverable:selectedLeg.deliverableClassification==='STANDARD_EQUITY',
+      verifiedMultiplier:selectedLeg.multiplier===100,approvedFirstPaperInstrument:instrument.paperBootstrapApproved,
+      oneRiskyUnderlyingPolicy:oneRiskyUnderlying,reconciliationGood:input.reconciliation.dataQuality==='GOOD'
+        &&input.reconciliation.entryBlockingFactCount===0,
+      aegisGood:['ALLOW_FULL','ALLOW_REDUCED'].includes(selectedFrontierCandidate?.aegisState??''),
+      freshQuote:selectedLeg.bid!==null&&selectedLeg.ask!==null&&selectedLeg.quoteTimestamp!==null
+        &&!selectedFrontierCandidate?.unknownEvidence.some((reason)=>reason.startsWith('EXECUTION_QUOTE_REQUIRED')),
+    });
+    const entrySafetyPolicy=companyEvent===null||corporateAction===null?null
+      :buildPaperEntrySafetyPolicyReceipt({decisionAsOf:planDecisionAsOf,companyEvent,corporateAction});
+    if(brokerAuthoritySymbols.has(member.symbol)&&selectedFrontierCandidate!==undefined){
+      if(entrySafetyPolicy===null)actionPlansBlocked.push(`${member.symbol}:ENTRY_SAFETY_POLICY_EVIDENCE_MISSING`);
+      else if(entrySafetyPolicy.action==='BLOCK'){
+        if(entrySafetyPolicy.companyEvent.action==='BLOCK')actionPlansBlocked.push(`${member.symbol}:COMPANY_EVENT_POLICY_${entrySafetyPolicy.companyEvent.state}`);
+        if(entrySafetyPolicy.corporateAction.action==='BLOCK')actionPlansBlocked.push(`${member.symbol}:CORPORATE_ACTION_POLICY_${entrySafetyPolicy.corporateAction.state}`);
+      }
+    }
     const alpacaIvVerification=brokerAuthoritySymbols.has(member.symbol)&&selectedOptionSymbol!==null
       &&saved.fusionSnapshotId!==null
       ? await verifyPersistedAlpacaContractIvAssessment({pool:input.pool,
@@ -348,8 +398,8 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         .catch(()=>({ready:false,reason:'PERSISTED_ALPACA_IV_READ_FAILED',assessment:null}))
       : null;
     if(input.environment.MASTER_PAPER_EXECUTION_ENABLED&&!input.environment.PAPER_PAUSE_NEW_ORDERS
-      &&corporateActionReadSucceeded
-      &&brokerAuthoritySymbols.has(member.symbol)&&eventGate?.state==='ELIGIBLE'
+      &&corporateActionReadSucceeded&&entrySafetyPolicy?.action==='CLEAR'
+      &&brokerAuthoritySymbols.has(member.symbol)
       &&alpacaIvVerification?.ready===true
       &&member.cycle.strategyFrontier!==null&&saved.decisionId!==null){
       const selected=await input.pool.query(`SELECT d.selected_candidate_id::text AS candidate_id,
@@ -377,8 +427,6 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       const sessionClose=typeof marketSession.nextClose==='string'&&Number.isFinite(Date.parse(marketSession.nextClose))
         ? new Date(marketSession.nextClose).toISOString():null;
       const decisionExpiresAt=sessionClose!==null&&Date.parse(sessionClose)<Date.parse(boundedExpiry)?sessionClose:boundedExpiry;
-      const selectedFrontierCandidate=member.cycle.strategyFrontier.branches.flatMap((branch)=>branch.candidates)
-        .find((candidate)=>candidate.candidateId===member.cycle?.strategyFrontier?.selectedCandidateId);
       const assembled=assembleMasterPaperEvidencePlan({frontier:member.cycle.strategyFrontier,
         executionAccountId:input.executionAccountId??null,decisionId:saved.decisionId,
         persistedCandidateId:row?.candidate_id==null?null:String(row.candidate_id),
@@ -388,7 +436,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         optionsApprovedLevel:n(account.optionsApprovedLevel),optionsTradingLevel:n(account.optionsTradingLevel),
         aegisState:selectedFrontierCandidate?.aegisState??null,
         aegisInputOrigin:member.cycle.provenanceDetail.includes('aegisInputs=DERIVED_FROM_REAL')?'DERIVED_FROM_REAL':null,
-        entryEventEvidence:discovered??{unsupportedCorporateActionPending:null,eventNear:null},
+        entrySafetyPolicy,
         openPositionSymbols:positions.flatMap((value)=>value!==null&&typeof value==='object'&&!Array.isArray(value)
           &&typeof (value as Record<string,unknown>).symbol==='string'?[String((value as Record<string,unknown>).symbol)]:[]),
         openOrderSymbols:orders.flatMap((value)=>value!==null&&typeof value==='object'&&!Array.isArray(value)
@@ -399,13 +447,13 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         if(await new PostgresMasterPaperActionPlanStore(input.pool).enqueue(assembled.plan,planNow,
           {botInstanceId:runtimeContext.botInstanceId,underlyingId:assembled.plan.underlyingId}))actionPlansReady++;
       }else if(assembled.state==='BLOCKED')actionPlansBlocked.push(...assembled.blockers.map((blocker)=>`${member.symbol}:${blocker}`));
-    }else if(brokerAuthoritySymbols.has(member.symbol)&&eventGate?.state==='ELIGIBLE'
+    }else if(brokerAuthoritySymbols.has(member.symbol)&&entrySafetyPolicy?.action==='CLEAR'
       &&member.cycle.strategyFrontier?.selectedCandidateId!==null
       &&alpacaIvVerification?.ready!==true){
       actionPlansBlocked.push(`${member.symbol}:AEGIS_ALPACA_IV_${alpacaIvVerification?.reason??'MISSING'}`);
     }else if(brokerAuthoritySymbols.has(member.symbol)&&member.cycle.strategyFrontier?.selectedCandidateId!==null
-      &&eventGate?.state!=='ELIGIBLE'){
-      actionPlansBlocked.push(`${member.symbol}:${eventGate?.reason.code??'UNIVERSE_EVENT_EVIDENCE_MISSING'}`);
+      &&entrySafetyPolicy?.action!=='CLEAR'){
+      actionPlansBlocked.push(`${member.symbol}:ENTRY_SAFETY_POLICY_NOT_CLEARED`);
     }else if(!brokerAuthoritySymbols.has(member.symbol)&&member.cycle.strategyFrontier?.selectedCandidateId!==null){
       actionPlansBlocked.push(`${member.symbol}:UNIVERSE_BREADTH_CHALLENGER_NO_BROKER_AUTHORITY`);
     }

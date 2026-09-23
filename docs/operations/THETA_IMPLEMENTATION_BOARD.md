@@ -4,8 +4,8 @@ Source capability inventory: run `npm run theta:truth` or import
 `src/theta/canonical-system-truth.ts`. Current worker, database, broker and
 funnel observations come from `npm run theta:truth-runtime`. This board records the history of fixes.
 An older row or research matrix cannot establish current-worker or Paper-order
-readiness. The truth register remains `PARTIAL` until its source, runtime and
-empirical proof fields have been independently closed.
+readiness. The decision-critical UNKNOWN denominator is now `COMPLETE`, while
+runtime, policy approval and empirical proof remain separate readiness checks.
 
 Started from canonical source `133227cf7c08aca174ed761d162159fea4cd3130` on 2026-09-22. The table includes this implementation wave's source changes, and is not a claim that the running worker has been upgraded. Evidence levels must be kept separate: source, fixture test, authenticated provider, persisted production observation, running worker, broker result, and empirical outcome.
 
@@ -13,7 +13,7 @@ Started from canonical source `133227cf7c08aca174ed761d162159fea4cd3130` on 2026
 
 - Master Alpaca Paper only. No live-money authority and no follower submission.
 - No forced order, no relaxation of AEGIS, event, corporate-action, quote, sizing, or broker-reconciliation gates to increase trade count.
-- The worker was observed on 2026-09-23 at `c40f85ba740b1e918824d1454f783b7bd275bffd`, `MASTER_THETA_PAPER`, new-risk `LOCKED`, with one active lease. Later source-only diagnostic commits are not running on that worker. Read this state afresh before any release decision.
+- The worker was observed on 2026-09-23 at `4ff999b13bfd9ba1caeca80d875690b3388f42d7`, `MASTER_THETA_PAPER`, new-risk `LOCKED`, with one active local supervisor and the current database lease. Read this state afresh before any later release decision.
 - The owner reports Aiven Developer-1, 8 GB, during an accidental temporary upgrade and rebalancing. No further plan change, downgrade, evidence deletion, or provider migration is authorized. Aiven's write tests below passed through the existing connection, but this alone does not authorize a worker cutover.
 - Research branches can collect candidates, but only the bounded Conventional route may enter the master Paper entry assembler. Research outputs cannot self-promote.
 
@@ -33,8 +33,10 @@ sessions; spread cohorts were mixed and sometimes current-observation stale;
 the gap assessment was ready. `theta:aegis:baseline-progress` reports this
 without trading authority. Database migration head is 064 with read-only
 setting off. Intermittent PostgreSQL disconnect/57P03 remains observable.
-The UNKNOWN audit remains PARTIAL. Prospective company-event and
-corporate-action negative assurance are still unresolved. Do not unlock
+The UNKNOWN audit denominator is COMPLETE. Typed company-event and
+corporate-action policies now govern provider limitations without turning
+absence into false. The approved instrument-classification manifest remains
+empty, so this release still blocks new risk. Do not unlock
 new risk or cut over the worker based on the completed no-submit scan alone.
 
 | Slice | Current evidence | Next closure proof |
@@ -125,6 +127,14 @@ new risk or cut over the worker based on the completed no-submit scan alone.
 - The nine remaining raw P0 transaction methods were converted to `withRuntimePostgresTransaction`: new-risk plan enqueue, atomic management-plan publication, action-plan claim, action-plan transition, order-intent transition, trade-update/fill application, management-only Paper authorization, first-canary authorization and operator-control application. Order-intent insertion and execution-attempt writes also gained deterministic ambiguous-commit verification. No broker POST is retried by this database layer.
 - Fresh-connection reconciliation verifies action-plan identity and content hash, complete management decision/plan groups, worker claim window, transition target and order-intent link, deterministic order intent and provider order, provider event/fill identity, Paper authorization state and operator idempotency key. Absent state remains `POSTGRES_COMMIT_OUTCOME_UNKNOWN`; conflicting state raises a named reconciliation conflict. Failure-injection tests cover lost COMMIT responses, absent and conflicting action-plan state, complete management groups, claims, submitted plans, broker-order transitions and fills.
 - A bounded preflight after these source edits reported PostgreSQL 18.6, SSL enabled, both read-only settings off, rollback-safe write PASS and 16 of 20 connections at that instant. A later lightweight diagnostic reported four connections, one active lease, approximately 2.04 GB database size and multiple completed broker/lifecycle/management/observation/evidence cycles on the still-pinned `c40f85b` worker. This is a stable cutover window, not proof that intermittent Aiven failures are permanently gone.
+
+### Current locked release and governed entry-safety closure
+
+- Canonical main `4ff999b13bfd9ba1caeca80d875690b3388f42d7` passed the full local release suite and GitHub CI run 35898049592. The Windows worker was safely cut from `c40f85b` to the same immutable SHA with new risk locked, follower execution locked and live money disabled. Exactly one local supervisor remained. The current worker acquired the lease and completed natural broker, lifecycle, management, observation and evidence cycles. No order was submitted.
+- `CompanyEventPaperPolicy` now keeps operating-company earnings, qualified non-company funds and macro/Fed coverage separate. Optionomics `earnings_in_sessions` remains `TRADING_SESSIONS`. The policy counts Alpaca exchange sessions through the selected expiration and never derives calendar days. Unknown instrument class, incomplete session coverage, company coverage uncertainty and invalid PIT evidence block explicitly.
+- `CorporateActionPaperPolicy` now distinguishes relevant positives, adjusted contracts, provider errors, incomplete pagination, unknown negative assurance, qualified clearance and the bounded Paper-only fallback. The fallback requires a tradable exact OCC contract, ordinary equity deliverable, multiplier 100, approved instrument, one-risky-underlying scope, good reconciliation, approved AEGIS and a fresh quote. Empty provider results never become qualified absence.
+- New contract discovery requests Alpaca deliverables, and the normalized contract/frontier preserves `STANDARD_EQUITY`, `ADJUSTED` or `UNKNOWN`, plus tradability and exercise style. The content-addressed safety receipt is required independently by new-risk plan assembly and again at final handoff. Management plans are not forced through the new-entry policy.
+- The decision-critical evidence denominator is a machine-checked 43-field registry. The legacy nullable event/corporate fields are resolved through governed typed policies, and the unsupported calendar-day earnings field is retired. The current UNKNOWN audit is `COMPLETE` with one avoidable Paper-entry blocker: the Production instrument-classification manifest has no approved entries. It was intentionally not populated from research ETF labels, ticker knowledge or inferred provider absence.
 
 ## Release sequence
 

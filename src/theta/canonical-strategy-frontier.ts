@@ -19,6 +19,10 @@ export interface CanonicalFrontierLeg {
   readonly strike: number;
   readonly expiration: string;
   readonly multiplier: number;
+  readonly occSymbol?: string | null;
+  readonly contractTradable?: boolean | null;
+  readonly exerciseStyle?: string | null;
+  readonly deliverableClassification?: 'STANDARD_EQUITY' | 'ADJUSTED' | 'UNKNOWN';
   readonly bid: number | null;
   readonly ask: number | null;
   readonly quoteTimestamp: string | null;
@@ -243,6 +247,9 @@ function leg(contract: NormalizedOptionContract, positionIntent: CanonicalFronti
   return {
     positionIntent, optionSymbol: contract.optionSymbol, optionType: contract.optionType,
     strike: contract.strike, expiration: contract.expiration, multiplier: contract.multiplier,
+    occSymbol: contract.occSymbol, contractTradable: contract.contractTradable ?? null,
+    exerciseStyle: contract.exerciseStyle ?? null,
+    deliverableClassification: contract.deliverableClassification ?? 'UNKNOWN',
     bid: contract.bid, ask: contract.ask, quoteTimestamp: contract.quoteTimestamp,
   };
 }

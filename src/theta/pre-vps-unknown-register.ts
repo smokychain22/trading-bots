@@ -28,6 +28,7 @@ export interface UnknownRegisterEntry {
 export interface UnknownRegister {
   readonly schemaVersion: 'theta-pre-vps-unknown-register-v1';
   readonly auditCoverage: 'PARTIAL' | 'COMPLETE';
+  readonly denominatorContract?: string;
   readonly entries: readonly UnknownRegisterEntry[];
 }
 

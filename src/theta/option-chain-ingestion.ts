@@ -123,6 +123,15 @@ export function mergeOptionChain(input: MergeOptionChainInput): readonly Normali
     // Optionomics whenever it supplies one, else UNKNOWN -- never zero.
     const openInterestSource: 'ALPACA' | 'OPTIONOMICS' | null = optionomics !== null && optionomics.openInterest !== null ? 'OPTIONOMICS' : null;
     const openInterest = openInterestSource === 'OPTIONOMICS' ? (optionomics?.openInterest ?? null) : null;
+    const deliverableClassification = contract.deliverables === null || contract.deliverables === undefined
+      ? 'UNKNOWN' as const
+      : contract.deliverables.length === 1
+        && contract.deliverables[0]?.type.toLowerCase() === 'equity'
+        && contract.deliverables[0].symbol === input.underlying
+        && contract.multiplier !== null
+        && contract.deliverables[0].amount === contract.multiplier
+        && contract.deliverables[0].allocationPercentage === 100
+        ? 'STANDARD_EQUITY' as const : 'ADJUSTED' as const;
 
     const normalized = normalizeOptionContract(
       {
@@ -135,6 +144,9 @@ export function mergeOptionChain(input: MergeOptionChainInput): readonly Normali
         expiration: contract.expirationDate,
         asOfDate: input.asOfDate,
         multiplier: contract.multiplier ?? input.defaultMultiplierForUnknownContracts,
+        contractTradable: contract.tradable ?? null,
+        exerciseStyle: contract.exerciseStyle ?? null,
+        deliverableClassification,
         underlyingBid: input.underlyingQuote?.bid ?? null,
         underlyingAsk: input.underlyingQuote?.ask ?? null,
         underlyingLast: null, underlyingTimestamp: input.underlyingQuote?.timestamp ?? null,

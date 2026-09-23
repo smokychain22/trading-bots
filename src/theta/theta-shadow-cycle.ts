@@ -745,6 +745,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     : decisionTime.slice(0, 10);
   const calendarEndDate = new Date(`${marketDate}T00:00:00.000Z`);
   calendarEndDate.setUTCDate(calendarEndDate.getUTCDate() + 7);
+  const configuredExpirationEnd = Date.parse(`${config.optionExpirationDateLte}T00:00:00.000Z`);
+  if (Number.isFinite(configuredExpirationEnd) && configuredExpirationEnd > calendarEndDate.getTime()) {
+    calendarEndDate.setTime(configuredExpirationEnd);
+  }
   let calendar: readonly AlpacaCalendarSession[] = [];
   let calendarEvidence = notAttemptedEvidence();
   try {
@@ -956,7 +960,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       try {
         const result = await fetchOptionContracts(config.alpaca, {
           underlyingSymbol: underlying, expirationDateGte: window.gte,
-          expirationDateLte: window.lte, optionType, limit: 100, maxPages: config.maxOptionPages,
+          expirationDateLte: window.lte, optionType, showDeliverables: true, limit: 100, maxPages: config.maxOptionPages,
         });
         const seen = new Set(contractItems.map((item) => item.symbol));
         for (const item of result.items) if (!seen.has(item.symbol)) {

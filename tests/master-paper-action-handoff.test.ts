@@ -8,8 +8,20 @@ import { MasterPaperActionHandoff, classifyMasterPaperActionExecution, masterPap
 import { MasterPaperExecutionOrchestrator } from '../src/execution/master-paper-execution-orchestrator.js';
 import { InMemoryPaperOrderStore, PaperOrderCoordinator } from '../src/execution/paper-order-coordinator.js';
 import { applyPaperEvidenceRiskCap } from '../src/execution/execution-authorization-tier.js';
+import { buildPaperEntrySafetyPolicyReceipt } from '../src/theta/paper-entry-safety-policy.js';
 
 const now='2026-09-14T14:00:00.000Z';
+const entrySafetyPolicy=buildPaperEntrySafetyPolicyReceipt({decisionAsOf:now,
+  companyEvent:{policyVersion:'theta-company-event-paper-policy-v1',authority:'PAPER_BOOTSTRAP_NOT_COMPLETE_COMPANY_COVERAGE',
+    action:'CLEAR',state:'KNOWN_AFTER_EXPIRY_CLEAR',decisionAsOf:now,validThrough:'2026-10-31',
+    instrument:{policyVersion:'theta-paper-instrument-classification-v1',symbol:'AAPL',state:'OPERATING_COMPANY',paperBootstrapApproved:true,
+      authority:'VERSIONED_MANIFEST',evidenceIds:['manifest-aapl'],observedAt:'2026-09-01T00:00:00.000Z',reason:'TEST'},
+    earningsDistanceTradingSessions:40,sessionsThroughExpiration:24,macroState:'KNOWN_FALSE',evidenceIds:['event-1'],reason:'TEST'},
+  corporateAction:{policyVersion:'theta-corporate-action-paper-policy-v1',authority:'PAPER_BOOTSTRAP_NOT_COMPLETE_NEGATIVE_ASSURANCE',
+    action:'CLEAR',state:'PAPER_BOOTSTRAP_LIMITED',decisionAsOf:now,queryObservedAt:now,
+    queryWindow:{start:'2026-09-14',end:'2026-10-29'},paginationComplete:true,negativeCoverageQualified:false,
+    positiveRelevance:'EXPIRED_NOT_RELEVANT',missingPrerequisites:[],evidenceIds:[],reason:'TEST'},
+});
 const quote:ExecutionOptionQuote={contractVersion:executionOptionQuoteContractVersion,contractId:'AAPL261016P00150000',
   providerContractId:'AAPL261016P00150000',bid:1.2,ask:1.3,bidSize:10,askSize:12,providerTimestamp:now,
   receivedAtUtc:now,receivedAtMonotonic:1,sequence:1,provider:'ALPACA',sourceSemantics:'CONSOLIDATED_NBBO',
@@ -29,7 +41,7 @@ const plan=(overrides:Partial<ApprovedMasterPaperActionPlan>={}):ApprovedMasterP
   empiricalEconomicsReady:true,selectedByCanonicalAuthority:true,hardValidityPassed:true,accountVerified:true,
   optionsCapabilityVerified:true,noEquivalentExposureConflict:true,aegisState:'ALLOW_FULL',killSwitchActive:false,
   decisionExpiresAt:'2026-09-14T14:01:00.000Z',pricingPolicy:{waitIntervalMs:1000,maxAttempts:2,
-    concessionFractions:[0,0.5],tickSize:0.01},pricingAttempt:0,previousLimit:null,...overrides});
+    concessionFractions:[0,0.5],tickSize:0.01},pricingAttempt:0,previousLimit:null,entrySafetyPolicy,...overrides});
 
 class QuoteSource implements ExecutionOptionQuoteSource{constructor(private readonly value:ExecutionOptionQuote|null){}
   async getCurrentQuote(){return this.value;}}
@@ -81,6 +93,17 @@ test('missing quote, hard veto, and unpromoted economics in promoted tier produc
   const unknown=setup();const blocked=await unknown.handoff.execute(plan({expectedAfterCostEv:null,empiricalEconomicsReady:false}),now,true);
   assert.equal(blocked.state,'BLOCKED');assert.ok(blocked.blockers.includes('POSITIVE_AFTER_COST_EV_NOT_EMPIRICALLY_READY'));
   assert.equal(unknown.broker.submitCalls,0);
+});
+
+test('new-risk handoff blocks a missing or uncleared entry safety policy',async()=>{
+  const missing=setup();const missingResult=await missing.handoff.execute(plan({entrySafetyPolicy:undefined}),now,true);
+  assert.equal(missingResult.state,'BLOCKED');assert.ok(missingResult.blockers.includes('ENTRY_SAFETY_POLICY_NOT_CLEARED'));
+  assert.equal(missing.broker.submitCalls,0);
+  const blocked=setup();const blockedPolicy=buildPaperEntrySafetyPolicyReceipt({decisionAsOf:entrySafetyPolicy.decisionAsOf,
+    companyEvent:{...entrySafetyPolicy.companyEvent,action:'BLOCK',state:'COVERAGE_UNKNOWN_BLOCK'},
+    corporateAction:entrySafetyPolicy.corporateAction});
+  const blockedResult=await blocked.handoff.execute(plan({entrySafetyPolicy:blockedPolicy}),now,true);
+  assert.equal(blockedResult.state,'BLOCKED');assert.equal(blocked.broker.submitCalls,0);
 });
 
 test('qualified Optionomics two-sided semantics can reach command assembly without claiming OPRA',async()=>{

@@ -1,6 +1,7 @@
 {
   "schemaVersion": "theta-pre-vps-unknown-register-v1",
-  "auditCoverage": "PARTIAL",
+  "auditCoverage": "COMPLETE",
+  "denominatorContract": "theta-decision-critical-evidence-registry-v1",
   "entries": [
     {
       "field": "universe.unsupportedCorporateActionPending",
@@ -8,15 +9,15 @@
       "stage": "UNIVERSE_DISCOVERY_AND_PAPER_HANDOFF",
       "source": "src/theta/universe-discovery.ts, src/research/production-shadow-runtime.ts",
       "category": "PROVIDER_NOT_CAPABLE",
-      "reason": "The former false default is removed. Production now performs a bounded, paginated Alpaca corporate-action read, persists the query receipt and immutable positive observations, and maps a pending unsupported action to true. Alpaca explicitly warns that action creation can lag announcements, so an empty response cannot prove no action is pending.",
+      "reason": "The nullable boolean is retired as Paper authority. CorporateActionPaperPolicy now distinguishes positive relevant actions, adjusted contracts, provider errors, incomplete queries, unknown negative assurance, qualified clearance and a tightly bounded Paper-only fallback. Empty Alpaca responses remain unqualified.",
       "safetyCritical": true,
       "paperEntryRequired": true,
       "provider": "ALPACA",
       "producer": "readAlpacaCorporateActions maps positive pending unsupported actions; negative coverage is explicitly unqualified",
       "persistence": "market.alpaca_corporate_action_query and market.alpaca_corporate_action_first_observation; FusionSnapshot preserves true or UNKNOWN",
-      "consumer": "evaluateUnderlying and production Paper action-plan handoff",
-      "remediation": "Obtain a provider contract or governed independent source that can prove bounded negative coverage. Keep empty Alpaca results UNKNOWN until then.",
-      "currentStatus": "OPEN"
+      "consumer": "CorporateActionPaperPolicy, Paper plan assembly and final handoff receipt",
+      "remediation": "Runtime must produce a typed policy receipt. Complete negative assurance remains provider-limited and is never fabricated.",
+      "currentStatus": "RESOLVED"
     },
     {
       "field": "universe.eventNear",
@@ -24,15 +25,15 @@
       "stage": "UNIVERSE_DISCOVERY_AND_PAPER_HANDOFF",
       "source": "src/theta/universe-discovery.ts, src/theta/optionomics-provider.ts",
       "category": "PROVIDER_NOT_CAPABLE",
-      "reason": "The former false default is removed. Source now performs bounded, paginated macro/Fed coverage and preserves the result in FusionSnapshot. Authenticated Optionomics qualification did not establish complete prospective company/earnings coverage, so company-event absence cannot be mapped to false. The pinned worker has not been cut over.",
+      "reason": "The generic nullable eventNear boolean is retired as Paper authority. CompanyEventPaperPolicy separately evaluates qualified macro/Fed coverage, instrument class and Optionomics earnings distance in trading sessions. Missing company coverage blocks rather than becoming false.",
       "safetyCritical": true,
       "paperEntryRequired": true,
       "provider": "OPTIONOMICS",
       "producer": "Optionomics EVENTS and EARNINGS_FILINGS observations",
       "persistence": "FusionSnapshot underlyingState.eventEvidence preserves UNKNOWN and eventState retains provider rows",
-      "consumer": "evaluateUnderlying and production Paper action-plan handoff",
-      "remediation": "Keep macro/Fed coverage separate. Obtain complete prospective company-event coverage or a governed provider-limited Paper policy before a coverage-qualified false can exist.",
-      "currentStatus": "OPEN"
+      "consumer": "CompanyEventPaperPolicy, Paper plan assembly and final handoff receipt",
+      "remediation": "Runtime must produce a typed CLEAR or BLOCK policy receipt. Provider-limited company coverage remains visible in the receipt.",
+      "currentStatus": "RESOLVED"
     },
     {
       "field": "event.prospectiveKnownAt",
@@ -56,15 +57,15 @@
       "stage": "NEW_RISK_ORCHESTRATION",
       "source": "src/theta/optionomics-provider.ts normalizeEventRows, src/theta/theta-shadow-cycle.ts",
       "category": "PROVIDER_NOT_CAPABLE",
-      "reason": "Authenticated Optionomics metrics now retain earnings_in_sessions in canonical event evidence with exact TRADING_SESSIONS units, source response hash, provider/session time and THETA observation time. It remains positive-distance-only context with no negative assurance. THETA does not relabel this as earningsDistanceDays because the provider surface has not established an exact calendar-day interpretation or complete prospective calendar.",
+      "reason": "The unsupported calendar-day field is retired from Paper authority. CompanyEventPaperPolicy consumes the separately typed earningsDistanceTradingSessions field and an Alpaca exchange-session calendar through the selected contract expiration. No calendar-day conversion occurs.",
       "safetyCritical": true,
       "paperEntryRequired": true,
       "provider": "OPTIONOMICS",
       "producer": "normalizeEventRows",
       "persistence": "FusionSnapshot eventState.earningsDistance carries typed trading-session distance and lineage; calendar-day distance remains null",
-      "consumer": "runNewRiskOrchestration",
-      "remediation": "Obtain a complete prospective earnings calendar with exact scheduled date semantics, or add a separately governed trading-session policy. Preserve UNKNOWN for calendar-day distance and all unqualified negative coverage.",
-      "currentStatus": "OPEN"
+      "consumer": "No Paper consumer; the typed trading-session policy is authoritative",
+      "remediation": "Keep this field retired. Never map earnings_in_sessions to calendar days.",
+      "currentStatus": "RESOLVED"
     },
     {
       "field": "regime.corporateActionPending",
@@ -72,15 +73,15 @@
       "stage": "REGIME",
       "source": "src/theta/theta-shadow-cycle.ts",
       "category": "PROVIDER_NOT_CAPABLE",
-      "reason": "The Production corporate-action producer maps and persists positive pending unsupported actions. The regime input remains null when Alpaca returns no row because Alpaca does not provide timely bounded negative assurance.",
+      "reason": "The regime research field remains provider-limited, while Paper entry now uses the separate typed CorporateActionPaperPolicy. A missing regime value cannot silently veto or clear entry outside that policy.",
       "safetyCritical": true,
       "paperEntryRequired": false,
       "provider": "ALPACA",
       "producer": "readAlpacaCorporateActions positive observations",
       "persistence": "market.alpaca_corporate_action_query and market.alpaca_corporate_action_first_observation; regime retains UNKNOWN on unqualified absence",
-      "consumer": "bots/theta/quant/models/regime_v0.py",
-      "remediation": "Qualify a complete, time-bounded negative-assurance source before emitting a verified false.",
-      "currentStatus": "OPEN"
+      "consumer": "bots/theta/quant/models/regime_v0.py as non-authoritative context; CorporateActionPaperPolicy for entry",
+      "remediation": "Keep the research field UNKNOWN until a complete source exists. Never use it as the Paper clearance boolean.",
+      "currentStatus": "RESOLVED"
     },
     {
       "field": "regime.macroRiskFlag",
@@ -97,6 +98,22 @@
       "consumer": "bots/theta/quant/models/regime_v0.py",
       "remediation": "Observe complete and incomplete authenticated coverage on the locked current release. Later R8 evidence may challenge the three-day bootstrap horizon without rewriting its historical provenance.",
       "currentStatus": "RESOLVED"
+    },
+    {
+      "field": "policy.paperInstrumentClassificationApproval",
+      "strategy": "THETA_CONVENTIONAL",
+      "stage": "PAPER_ENTRY_SAFETY_POLICY",
+      "source": "src/theta/paper-entry-safety-policy.ts",
+      "category": "POLICY_MISSING",
+      "reason": "The versioned Production classification manifest machinery exists, but its approved first-Paper entries are intentionally empty. Research ETF labels and model knowledge were not promoted. Positive earnings can prove company applicability but cannot grant fallback approval.",
+      "safetyCritical": true,
+      "paperEntryRequired": true,
+      "provider": null,
+      "producer": "paperInstrumentClassificationManifest or an authoritative provider classification",
+      "persistence": "Source-controlled manifest version and Paper entry safety receipt",
+      "consumer": "CompanyEventPaperPolicy and CorporateActionPaperPolicy",
+      "remediation": "Approve explicit symbol classifications with authority reference, effective time and Paper-bootstrap permission, or integrate a qualified Production instrument-type source.",
+      "currentStatus": "OPEN"
     },
     {
       "field": "management.empiricalContinuationValue",
