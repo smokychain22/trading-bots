@@ -180,7 +180,8 @@ if (pool) {
       WHERE scheduled_at > $1::timestamptz
       ORDER BY scheduled_at,first_observed_at LIMIT 20`, [observedAt]);
     eventRevisionEvidence.futureRowsSample = eventRows.rows.map((row) => ({
-      kind: typeof row.event_kind === 'string' ? row.event_kind.slice(0, 80) : null,
+      kind: typeof row.event_kind === 'string' && /^[a-zA-Z_]{1,80}$/.test(row.event_kind)
+        ? row.event_kind : 'UNCLASSIFIED',
       ticker: typeof row.ticker === 'string' && /^[A-Z.]{1,12}$/.test(row.ticker) ? row.ticker : null,
       eventDate: row.event_date, scheduledAt: iso(row.scheduled_at),
       providerKnownAt: iso(row.provider_known_at), firstObservedAt: iso(row.first_observed_at),
