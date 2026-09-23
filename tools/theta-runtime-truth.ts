@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { Pool } from 'pg';
 import { loadEnvironmentFile } from '../src/config/environment.js';
-import { deriveRuntimeMismatches } from '../src/theta/runtime-system-truth.js';
+import { deriveDatabaseRuntimeMismatches,
+  deriveRuntimeMismatches } from '../src/theta/runtime-system-truth.js';
 import { canonicalSystemTruthRegister } from '../src/theta/canonical-system-truth.js';
 
 const observedAt = new Date().toISOString();
@@ -38,7 +39,17 @@ const pool = environment.DATABASE_URL ? new Pool({ connectionString: environment
   max: 1, connectionTimeoutMillis: 5_000, options: '-c statement_timeout=5000',
   application_name: 'theta-runtime-truth-read-only' }) : null;
 let databaseConnectionFailed = false;
-pool?.on('error', () => { databaseConnectionFailed = true; });
+let databaseEvidenceComplete = false;
+let databaseEvidenceStage = 'DATABASE_CONNECTION';
+let databaseEvidenceError: { stage: string; code: string } | null = null;
+pool?.on('error', (error: NodeJS.ErrnoException) => {
+  if (!databaseReachable) databaseConnectionFailed = true;
+  databaseEvidenceError = {
+    stage: databaseEvidenceStage,
+    code: typeof error.code === 'string' && /^[A-Z0-9_]{2,40}$/.test(error.code)
+      ? error.code : 'POSTGRES_POOL_ERROR',
+  };
+});
 let databaseReachable = false;
 let databaseReadOnlyState: string | null = null;
 let migrationHead: string | null = null;
@@ -68,6 +79,7 @@ const iso = (value: unknown): string | null => value instanceof Date ? value.toI
 
 if (pool) {
   try {
+    databaseEvidenceStage = 'DATABASE_CORE_STATE';
     const state = await pool.query(`SELECT current_setting('default_transaction_read_only') AS read_only,
       (SELECT version FROM core.schema_migration ORDER BY version DESC LIMIT 1) AS migration_head,
       EXISTS(SELECT 1 FROM core.schema_migration WHERE version='064_alpaca_corporate_action_observation') AS schema_064`);
@@ -75,8 +87,10 @@ if (pool) {
     databaseReadOnlyState = String(state.rows[0]?.read_only ?? 'UNKNOWN');
     migrationHead = state.rows[0]?.migration_head == null ? null : String(state.rows[0].migration_head);
     requiredMigrationPresent = state.rows[0]?.schema_064 === true;
+    databaseEvidenceStage = 'ACTIVE_WORKER_LEASES';
     const leases = await pool.query(`SELECT count(*)::int AS active_count FROM ops.runtime_worker_lease WHERE expires_at>now()`);
     activeWorkerLeases = Number(leases.rows[0]?.active_count ?? 0);
+    databaseEvidenceStage = 'WORKER_STATUS';
     const worker = await pool.query(`SELECT s.worker_id,s.build_sha,s.runtime_mode,s.execution_gate,s.state,
       s.last_heartbeat,s.alpaca_health,s.optionomics_health,s.database_health,l.expires_at
       FROM ops.runtime_worker_status s LEFT JOIN ops.runtime_worker_lease l
@@ -93,6 +107,7 @@ if (pool) {
       workerProviderHealth = { alpaca: String(row.alpaca_health),
         optionomics: String(row.optionomics_health), database: String(row.database_health) };
     }
+    databaseEvidenceStage = 'BROKER_RECONCILIATION';
     const rec = await pool.query(`SELECT observed_at,data_quality,position_count,open_order_count,
       detail_json #>> '{brokerFactImpactSummary,entryBlockingFactCount}' AS blocking_facts
       FROM trade.broker_reconciliation_snapshot ORDER BY observed_at DESC LIMIT 1`);
@@ -101,6 +116,7 @@ if (pool) {
       openOrders: rec.rows[0].open_order_count,
       blockingFacts: /^\d+$/.test(String(rec.rows[0].blocking_facts ?? ''))
         ? Number(rec.rows[0].blocking_facts) : null };
+    databaseEvidenceStage = 'LATEST_CYCLES';
     const cycles = await pool.query(`SELECT
       (SELECT max(decision_time) FROM trade.fusion_snapshot) AS evidence,
       (SELECT max(generated_at) FROM trade.candidate_set) AS candidate,
@@ -110,6 +126,7 @@ if (pool) {
     latestCandidateCycle = iso(cycles.rows[0]?.candidate);
     latestManagementCycle = iso(cycles.rows[0]?.management);
     lastOrderSubmissionObserved = iso(cycles.rows[0]?.submitted);
+    databaseEvidenceStage = 'LATEST_FAILED_RUNTIME_CYCLE';
     const failed = await pool.query(`SELECT invoked_at,error_code FROM ops.runtime_worker_cycle
       WHERE status IN ('FAILED','DEGRADED') ORDER BY invoked_at DESC LIMIT 1`);
     if (failed.rows[0]) {
@@ -117,6 +134,7 @@ if (pool) {
       latestFailedRuntimeCycle = { at: iso(failed.rows[0].invoked_at),
         code: typeof rawCode === 'string' && /^[A-Z0-9_]{3,140}$/.test(rawCode) ? rawCode : null };
     }
+    databaseEvidenceStage = 'RECENT_FUNNEL';
     const funnel = await pool.query(`SELECT observed_at,wait_classification,candidate_count,
       feasible_candidate_count,selected_candidate_count,hard_rejected_count,
       data_insufficient_count,quantity_zero_count,aegis_veto_count,near_miss_count,
@@ -149,8 +167,15 @@ if (pool) {
           unknownEvidence: safeCodes(candidate.unknownEvidence),
         })) : [],
     }));
+    databaseEvidenceStage = 'CURRENT_UTC_DAY_SEED';
     const utcDay = observedAt.slice(0, 10);
-    const seed = await pool.query(`SELECT count(*)::int AS total_rows,
+    const seed = await pool.query(`WITH bounded_recent AS (
+      SELECT candidate_id,contract_json,volatility_json,market_json
+      FROM trade.candidate_point_in_time_evidence
+      WHERE decision_time >= $1::timestamptz
+      ORDER BY decision_time DESC,candidate_id DESC
+      LIMIT 5000
+    ) SELECT count(*)::int AS sampled_rows,
       count(DISTINCT contract_json->>'contractSymbol')::int AS distinct_contracts,
       count(*) FILTER (WHERE volatility_json->>'ivSource'='ALPACA'
         AND volatility_json->>'ivEvidenceAuthority'='ALPACA_OPTION_SNAPSHOT_CONTRACT_IV'
@@ -164,9 +189,11 @@ if (pool) {
       count(*) FILTER (WHERE market_json->>'underlyingQuoteSource'='ALPACA_IEX'
         AND jsonb_typeof(market_json->'underlyingReferencePrice')='number'
         AND jsonb_typeof(contract_json->'moneyness')='number')::int AS moneyness_lineage_rows
-      FROM trade.candidate_point_in_time_evidence WHERE decision_time >= $1::timestamptz`,
+      FROM bounded_recent`,
     [`${utcDay}T00:00:00.000Z`]);
-    currentUtcDaySeed = { utcDay, ...seed.rows[0], qualification: 'LINEAGE_FIELDS_ONLY_NOT_FULL_DETECTOR_QUALIFICATION' };
+    currentUtcDaySeed = { utcDay, sampleLimit: 5000, ...seed.rows[0],
+      qualification: 'BOUNDED_RECENT_SAMPLE_LINEAGE_FIELDS_ONLY_NOT_TOTALS_OR_FULL_DETECTOR_QUALIFICATION' };
+    databaseEvidenceStage = 'EVENT_REVISION_SUMMARY';
     const events = await pool.query(`SELECT count(*)::int AS revision_rows,
       count(*) FILTER (WHERE scheduled_at > $1::timestamptz)::int AS future_scheduled_rows,
       count(*) FILTER (WHERE scheduled_at > $1::timestamptz
@@ -174,6 +201,7 @@ if (pool) {
       FROM market.optionomics_event_first_observation`, [observedAt]);
     eventRevisionEvidence = { ...events.rows[0],
       qualification: 'POSITIVE_REVISIONS_ONLY_NOT_COMPLETE_FUTURE_EVENT_COVERAGE' };
+    databaseEvidenceStage = 'EVENT_REVISION_SAMPLE';
     const eventRows = await pool.query(`SELECT event_kind,ticker,event_date::text AS event_date,
       scheduled_at,provider_known_at,first_observed_at,pit_timing_state
       FROM market.optionomics_event_first_observation
@@ -187,6 +215,7 @@ if (pool) {
       providerKnownAt: iso(row.provider_known_at), firstObservedAt: iso(row.first_observed_at),
       pitTimingState: row.pit_timing_state,
     }));
+    databaseEvidenceStage = 'CORPORATE_ACTION_QUERY_RECEIPT';
     const corporate = await pool.query(`SELECT observed_at,start_date::text AS start_date,
       end_date::text AS end_date,pages_read,
       pagination_complete,negative_coverage_qualified,observation_count
@@ -199,8 +228,25 @@ if (pool) {
       observationCount: corporate.rows[0].observation_count,
       qualification: 'QUERY_RECEIPT_ONLY_NOT_NEGATIVE_ASSURANCE',
     };
-  } catch { databaseConnectionFailed = true; }
-  finally { await pool.end().catch(() => { databaseConnectionFailed = true; }); }
+    databaseEvidenceComplete = true;
+    databaseEvidenceStage = 'COMPLETE';
+  } catch (error) {
+    if (!databaseReachable) databaseConnectionFailed = true;
+    const code = error instanceof Error && 'code' in error
+      && typeof (error as NodeJS.ErrnoException).code === 'string'
+      && /^[A-Z0-9_]{2,40}$/.test((error as NodeJS.ErrnoException).code!)
+      ? (error as NodeJS.ErrnoException).code! : 'POSTGRES_QUERY_ERROR';
+    databaseEvidenceError = { stage: databaseEvidenceStage, code };
+  }
+  finally {
+    await pool.end().catch((error: NodeJS.ErrnoException) => {
+      databaseEvidenceError ??= {
+        stage: 'POOL_CLOSE',
+        code: typeof error.code === 'string' && /^[A-Z0-9_]{2,40}$/.test(error.code)
+          ? error.code : 'POSTGRES_POOL_CLOSE_ERROR',
+      };
+    });
+  }
 }
 
 if (paperBrokerConfigured) {
@@ -219,7 +265,10 @@ if (paperBrokerConfigured) {
 
 const mismatches = deriveRuntimeMismatches({ sourceSha, sourceDirty, workerSha, activeWorkerLeases,
   workerHeartbeat, workerMode, executionGate, migrationHead, requiredMigrationPresent, observedAt });
-if (databaseConnectionFailed) mismatches.push('RUNTIME_EVIDENCE_UNAVAILABLE');
+mismatches.push(...deriveDatabaseRuntimeMismatches({
+  databaseReachable: databaseReachable && !databaseConnectionFailed,
+  databaseEvidenceComplete,
+}));
 const receipt = {
   schemaVersion: 'theta-runtime-system-truth-v1', observedAt, sourceSha, sourceDirty,
   workerSha, workerLeaseId, workerLeaseState, activeWorkerLeases, workerHeartbeat,
@@ -228,7 +277,8 @@ const receipt = {
   liveMoney: 'NOT_AUTHORIZED', masterPaperExecutionLocalConfig: environment.MASTER_PAPER_EXECUTION_ENABLED,
   paperPauseNewOrdersLocalConfig: environment.PAPER_PAUSE_NEW_ORDERS,
   databaseMigrationHead: migrationHead, databaseSchema064Present: requiredMigrationPresent,
-  databaseReadOnlyState, databaseReachable: databaseReachable && !databaseConnectionFailed,
+  databaseReadOnlyState, databaseReachable, databaseEvidenceComplete,
+  databaseEvidenceError,
   alpacaAuth: broker.auth, optionomicsAuth: 'NOT_PROBED_IN_THIS_RECEIPT',
   workerProviderHealth, broker,
   latestReconciliationState: latestReconciliation, latestEvidenceCycle, latestCandidateCycle,

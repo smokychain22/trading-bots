@@ -13,9 +13,16 @@ Started from canonical source `133227cf7c08aca174ed761d162159fea4cd3130` on 2026
 
 - Master Alpaca Paper only. No live-money authority and no follower submission.
 - No forced order, no relaxation of AEGIS, event, corporate-action, quote, sizing, or broker-reconciliation gates to increase trade count.
-- The worker was observed on 2026-09-23 at `4ff999b13bfd9ba1caeca80d875690b3388f42d7`, `MASTER_THETA_PAPER`, new-risk `LOCKED`, with one active local supervisor and the current database lease. Read this state afresh before any later release decision.
+- The worker was observed on 2026-09-24 at `c2ee951050075ffa63b34593494978cc59ad4625`, `MASTER_THETA_PAPER`, new-risk `LOCKED`, with one active database lease. Alpaca Paper authentication passed, reconciliation was `GOOD`, and both positions and open orders were zero. Read this state afresh before any later release decision.
 - The owner reports Aiven Developer-1, 8 GB, during an accidental temporary upgrade and rebalancing. No further plan change, downgrade, evidence deletion, or provider migration is authorized. Aiven's write tests below passed through the existing connection, but this alone does not authorize a worker cutover.
 - Research branches can collect candidates, but only the bounded Conventional route may enter the master Paper entry assembler. Research outputs cannot self-promote.
+
+## September 24 closure update
+
+- `a5f57fc4adf88436d2fc568511705c191da56663` closes an approved-instrument reachability defect. The universe provider formerly truncated Alpaca's provider-ordered tradable assets before liquidity ranking, then bounded optionability again. Paper authority was assigned to the top two discovered symbols instead of the approved manifest intersection. The sole approved bootstrap instrument, SPY, could therefore be absent from both the scan and Paper authority while hundreds of candidates for unapproved symbols were evaluated. The provider now retains manifest-required symbols only when Alpaca confirms them tradable, carries them through the bounded optionability stage, and assigns Paper authority only to provider-discovered, owner-approved symbols. It does not invent an absent asset, relax eligibility, or authorize another instrument. Focused tests and the full 2,144-test suite passed.
+- `79209ca7bc1156843534ab95ed17fdc4ff1c0d76` refreshes canonical source truth after the reachability repair. The UNKNOWN audit is `COMPLETE` with zero avoidable UNKNOWNs. SPY is approved, but first-Paper readiness remains blocked by genuine AEGIS session maturity and natural open-session proof on a current locked release.
+- Runtime truth formerly reported `databaseReachable=false` when its core Aiven query succeeded but a later optional evidence aggregate timed out. The diagnostic now separates connectivity from evidence completeness, reports the sanitized failing stage and SQLSTATE, and uses a 5,000-row recent sample for the expensive PIT-lineage summary. The first corrected run exposed `CURRENT_UTC_DAY_SEED / 57014` as partial evidence while keeping reachability true. The bounded query then completed. The final receipt reported database reachable, read-only `off`, schema 064, evidence complete, Alpaca authentication PASS, one active worker lease, good reconciliation, zero positions, zero open orders, and no submitted order timestamp.
+- The current worker remains intentionally pinned to `c2ee951050075ffa63b34593494978cc59ad4625`. The source changes above have not been cut over. A closed-session no-submit probe returned `MARKET_CLOSED_NO_SCAN`, zero broker mutations and zero submissions. No release or safety threshold changed.
 
 ## Active vertical slices
 
@@ -35,8 +42,9 @@ without trading authority. Database migration head is 064 with read-only
 setting off. Intermittent PostgreSQL disconnect/57P03 remains observable.
 The UNKNOWN audit denominator is COMPLETE. Typed company-event and
 corporate-action policies now govern provider limitations without turning
-absence into false. The approved instrument-classification manifest remains
-empty, so this release still blocks new risk. Do not unlock
+absence into false. SPY is the sole approved bootstrap instrument, and the
+new source guarantees its provider-confirmed scan reachability. AEGIS baseline
+maturity and current-release open-session proof still block new risk. Do not unlock
 new risk or cut over the worker based on the completed no-submit scan alone.
 
 | Slice | Current evidence | Next closure proof |

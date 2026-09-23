@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { deriveRuntimeMismatches, type RuntimeTruthInputs } from '../src/theta/runtime-system-truth.js';
+import { deriveDatabaseRuntimeMismatches, deriveRuntimeMismatches,
+  type RuntimeTruthInputs } from '../src/theta/runtime-system-truth.js';
 
 const healthy: RuntimeTruthInputs = {
   sourceSha: 'a'.repeat(40), sourceDirty: false, workerSha: 'a'.repeat(40), activeWorkerLeases: 1,
@@ -31,4 +32,16 @@ test('missing runtime observations never look healthy', () => {
 
 test('unreleased local source changes do not inherit worker proof', () => {
   assert.deepEqual(deriveRuntimeMismatches({ ...healthy, sourceDirty: true }), ['UNRELEASED_SOURCE_CHANGES']);
+});
+
+test('database reachability remains distinct from optional runtime evidence completeness', () => {
+  assert.deepEqual(deriveDatabaseRuntimeMismatches({
+    databaseReachable: true, databaseEvidenceComplete: false,
+  }), ['RUNTIME_EVIDENCE_PARTIAL']);
+  assert.deepEqual(deriveDatabaseRuntimeMismatches({
+    databaseReachable: false, databaseEvidenceComplete: false,
+  }), ['RUNTIME_EVIDENCE_UNAVAILABLE']);
+  assert.deepEqual(deriveDatabaseRuntimeMismatches({
+    databaseReachable: true, databaseEvidenceComplete: true,
+  }), []);
 });

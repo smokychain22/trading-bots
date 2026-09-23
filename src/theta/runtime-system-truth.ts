@@ -15,7 +15,16 @@ export interface RuntimeTruthInputs {
 export type RuntimeMismatch =
   | 'SOURCE_SHA_NE_WORKER_SHA' | 'MULTIPLE_ACTIVE_WORKERS' | 'WORKER_STALE'
   | 'WORKER_MODE_UNEXPECTED' | 'EXECUTION_GATE_NOT_LOCKED'
-  | 'MIGRATION_MISMATCH' | 'RUNTIME_EVIDENCE_UNAVAILABLE' | 'UNRELEASED_SOURCE_CHANGES';
+  | 'MIGRATION_MISMATCH' | 'RUNTIME_EVIDENCE_UNAVAILABLE' | 'RUNTIME_EVIDENCE_PARTIAL'
+  | 'UNRELEASED_SOURCE_CHANGES';
+
+export function deriveDatabaseRuntimeMismatches(input: {
+  readonly databaseReachable: boolean;
+  readonly databaseEvidenceComplete: boolean;
+}): RuntimeMismatch[] {
+  if (!input.databaseReachable) return ['RUNTIME_EVIDENCE_UNAVAILABLE'];
+  return input.databaseEvidenceComplete ? [] : ['RUNTIME_EVIDENCE_PARTIAL'];
+}
 
 export function deriveRuntimeMismatches(input: RuntimeTruthInputs): RuntimeMismatch[] {
   const mismatches: RuntimeMismatch[] = [];
