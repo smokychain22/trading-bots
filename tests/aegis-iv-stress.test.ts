@@ -11,7 +11,7 @@ import {
 import type { NormalizedOptionomicsContextObservation } from '../src/theta/optionomics-provider.js';
 
 const policy: AegisIvStressPolicy = {
-  policyVersion: 'aegis-iv-shock-paper-bootstrap-v2',
+  policyVersion: 'aegis-iv-shock-paper-bootstrap-v3',
   authority: 'PAPER_BOOTSTRAP_BASELINE_NOT_EMPIRICALLY_OPTIMAL',
   maximumBaselineSessions: 30,
   minimumAbsoluteIncrease: 0.03,
@@ -54,6 +54,7 @@ function observation(index: number, iv: number): OptionomicsIvSessionObservation
 function currentObservation(iv: number): OptionomicsIvSessionObservation {
   const result = normalizeOptionomicsAtmIvObservation(context({
     sessionDate: '2026-09-22', requestParameters: { date: '2026-09-22' },
+    providerTimestamp: '2026-09-22T14:00:00.000Z',
     normalized: { atmIv: { state: 'KNOWN', value: iv, reason: null, units: 'PROVIDER_REPORTED_UNVERIFIED' } },
   }));
   assert.equal(result.state, 'KNOWN');
@@ -84,6 +85,16 @@ test('20-session real baseline can produce a no-shock boolean under explicit boo
   assert.equal(assessment.maturity.state, 'DETECTOR_READY');
   assert.equal(assessment.stressIvShockDetected, false);
   assert.equal(assessment.sessionState, 'CURRENT_SESSION');
+  assert.equal(assessment.currentTimingState, 'PROVIDER_ASOF_CURRENT_SESSION');
+});
+
+test('a served current session without provider as-of cannot certify IV stress absence', () => {
+  const history = Array.from({ length: 20 }, (_, index) => observation(index, 0.2));
+  const current = { ...currentObservation(0.21), providerTimestamp: null };
+  const assessment = assessAegisIvStress({ current, history, decisionAsOf: '2026-09-22T14:05:00.000Z', policy });
+  assert.equal(assessment.sessionState, 'CURRENT_SESSION');
+  assert.equal(assessment.currentTimingState, 'PROVIDER_ASOF_UNAVAILABLE');
+  assert.equal(assessment.stressIvShockDetected, null);
 });
 
 test('fresh retrieval of a prior served session cannot assert no IV shock', () => {
@@ -162,7 +173,8 @@ test('live IV read freezes decision time after provider observation, while histo
   assert.equal(historical.reason,'CURRENT_EVIDENCE_AFTER_DECISION');
   const live = await refreshAegisIvStress({pool,optionomics,
     decisionAsOf:'2026-09-23T00:00:00.000Z',freezeDecisionAsOf:()=>'2026-09-23T00:00:02.000Z'});
-  assert.equal(live.state,'BASELINE_IMMATURE');
+  assert.equal(live.state,'OBSERVATION_UNKNOWN');
+  assert.equal(live.reason,'OPTIONOMICS_IV_PROVIDER_ASOF_UNAVAILABLE');
   assert.equal(live.assessment?.decisionAsOf,'2026-09-23T00:00:02.000Z');
   const reads=queries.filter((query)=>query.sql.includes('FROM market.optionomics_iv_session_observation'));
   assert.equal(reads.length,1);

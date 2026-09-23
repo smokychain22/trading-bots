@@ -48,19 +48,23 @@ const NOW = '2026-09-10T15:00:00.000Z';
 let requestedUrls: string[] = [];
 
 const IV_STRESS_EVIDENCE: AegisIvStressAssessment = {
-  contractVersion: 'theta-aegis-iv-stress-detector-v1', underlying: 'SPY', decisionAsOf: NOW,
+  contractVersion: 'theta-aegis-iv-stress-detector-v3', underlying: 'SPY', decisionAsOf: NOW,
+  decisionSession: '2026-09-10', requestedSession: '2026-09-10', servedSession: '2026-09-10',
+  providerTimestamp: NOW, sessionState: 'CURRENT_SESSION', currentTimingState: 'PROVIDER_ASOF_CURRENT_SESSION',
   currentObservationId: '00000000-0000-4000-8000-000000000001', baselineObservationIds: [],
-  policyVersion: 'aegis-iv-shock-paper-bootstrap-v2',
+  policyVersion: 'aegis-iv-shock-paper-bootstrap-v3',
   policyAuthority: 'PAPER_BOOTSTRAP_BASELINE_NOT_EMPIRICALLY_OPTIMAL',
   maturity: {
     contractVersion: 'theta-aegis-stress-baseline-maturity-v1', signal: 'IV_SHOCK', asOf: NOW,
     evidence: { rawN: 20, sessionN: 20, distinctUnderlyingN: 1, effectiveN: null },
     firstObservationAvailableAt: NOW, lastObservationAvailableAt: NOW, temporalSpanDays: 0,
+    effectiveNPolicyState: 'EFFECTIVE_N_NOT_GOVERNING_POLICY',
     source: 'OPTIONOMICS_ATM_IV_EXACT_SESSION', sourceVersion: 'theta-optionomics-atm-iv-session-v1',
     state: 'DETECTOR_READY', reason: 'test evidence',
   },
   currentIv: 0.2, baselineMedianIv: 0.19, baselineMadIv: 0.01,
   absoluteIncrease: 0.01, relativeIncrease: 0.0526, robustZ: 0.6745,
+  dispersionState: 'MAD_POSITIVE', robustZApplicability: 'APPLICABLE',
   stressIvShockDetected: false, evidenceAuthority: 'OPTIONOMICS_SESSION_RESEARCH',
   contentHash: 'a'.repeat(64),
 };

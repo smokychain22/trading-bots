@@ -16,7 +16,11 @@ $logPath = Join-Path $root ('logs\backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss'
 function Log([string]$Message) { [IO.File]::AppendAllText($logPath, "$(Get-Date -Format o) $Message`n") }
 function Invoke-VerifiedDumpWithRetry([string[]]$Arguments, [string]$OutputPath, [string]$Label) {
   $delays = @(0, 5, 20)
-  for ($attempt = 1; $attempt -le $delays.Count; $attempt++) {
+  # An exported snapshot belongs to one keeper transaction. Once a dump
+  # fails, never spend more time retrying against a snapshot that may have
+  # disappeared with a provider connection reset.
+  $maximumAttempts = if ($script:ThetaBackupSnapshotId) { 1 } else { $delays.Count }
+  for ($attempt = 1; $attempt -le $maximumAttempts; $attempt++) {
     if ($delays[$attempt - 1] -gt 0) { Start-Sleep -Seconds $delays[$attempt - 1] }
     Remove-Item -LiteralPath $OutputPath -Force -ErrorAction SilentlyContinue
     try {
@@ -26,7 +30,7 @@ function Invoke-VerifiedDumpWithRetry([string[]]$Arguments, [string]$OutputPath,
     } catch {
       $diagnostic = $_.Exception.Message -replace '[\r\n]+',' '
       Log "$Label`_ATTEMPT_FAILED attempt=$attempt diagnostic=$diagnostic"
-      if ($attempt -eq $delays.Count) { throw }
+      if ($attempt -eq $maximumAttempts) { throw }
     }
   }
 }

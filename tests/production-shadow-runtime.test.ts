@@ -37,7 +37,7 @@ test('positive corporate-action evidence reaches the final Paper cohort while em
 test('IV stress evidence for one underlying cannot become another underlying’s AEGIS input', () => {
   const context={family:'METRICS',operationAlias:'optionomics.get_symbol_metrics',underlying:'SPY',
     requestedAt:'2026-09-22T14:00:00.000Z',retrievedAt:'2026-09-22T14:00:01.000Z',
-    providerTimestamp:null,sessionDate:'2026-09-22',requestParameters:{date:'2026-09-22'},
+    providerTimestamp:'2026-09-22T14:00:00.000Z',sessionDate:'2026-09-22',requestParameters:{date:'2026-09-22'},
     responseHash:'a'.repeat(64),normalized:{atmIv:{state:'KNOWN',value:0.2,units:'PROVIDER_REPORTED_UNVERIFIED'}},
   } as unknown as NormalizedOptionomicsContextObservation;
   const normalized=normalizeOptionomicsAtmIvObservation(context);
@@ -82,7 +82,7 @@ test('research breadth IV uncertainty does not block Paper-authorized symbols',(
 test('Paper-plan assembly requires persisted IV assessment or a governed accumulating baseline',()=>{
   const context={family:'METRICS',operationAlias:'optionomics.get_symbol_metrics',underlying:'SPY',
     requestedAt:'2026-09-22T14:00:00.000Z',retrievedAt:'2026-09-22T14:00:01.000Z',
-    providerTimestamp:null,sessionDate:'2026-09-22',requestParameters:{date:'2026-09-22'},
+    providerTimestamp:'2026-09-22T14:00:00.000Z',sessionDate:'2026-09-22',requestParameters:{date:'2026-09-22'},
     responseHash:'a'.repeat(64),normalized:{atmIv:{state:'KNOWN',value:0.2,units:'PROVIDER_REPORTED_UNVERIFIED'}},
   } as unknown as NormalizedOptionomicsContextObservation;
   const normalized=normalizeOptionomicsAtmIvObservation(context);
@@ -101,12 +101,18 @@ test('Paper-plan assembly requires persisted IV assessment or a governed accumul
   assert.equal(ivStressPaperPlanPersistenceReady({state:'READY',
     assessment:{...assessment,sessionState:'LATEST_COMPLETED_SESSION',maturity:{...assessment.maturity,state:'DETECTOR_READY'}},
     reason:'INCORRECT_READY'}),false);
+  assert.equal(ivStressPaperPlanPersistenceReady({state:'BASELINE_IMMATURE',
+    assessment:{...assessment,currentTimingState:'PROVIDER_ASOF_UNAVAILABLE',maturity:{...assessment.maturity,state:'BASELINE_ACCUMULATING'}},
+    reason:'NO_PROVIDER_TIME'}),false);
   assert.equal(ivStressApplicability({state:'BASELINE_IMMATURE',
     assessment:{...assessment,maturity:{...assessment.maturity,state:'BASELINE_ACCUMULATING'}},reason:'ACCUMULATING'}),
     'PAPER_COLD_START_NOT_APPLICABLE');
   assert.equal(ivStressApplicability({state:'SESSION_STALE',
     assessment:{...assessment,sessionState:'LATEST_COMPLETED_SESSION',maturity:{...assessment.maturity,state:'BASELINE_ACCUMULATING'}},
     reason:'PRIOR_SESSION'}),'REQUIRED');
+  assert.equal(ivStressApplicability({state:'BASELINE_IMMATURE',
+    assessment:{...assessment,currentTimingState:'PROVIDER_ASOF_UNAVAILABLE',maturity:{...assessment.maturity,state:'BASELINE_ACCUMULATING'}},
+    reason:'NO_PROVIDER_TIME'}),'REQUIRED');
   assert.equal(ivStressPaperPlanPersistenceReady({state:'READY',
     assessment:{...assessment,maturity:{...assessment.maturity,state:'DETECTOR_READY'}},reason:'READY'}),true);
 });

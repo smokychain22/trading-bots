@@ -13,10 +13,12 @@ import {
 } from './optionomics-provider.js';
 
 export const optionomicsIvSessionObservationVersion = 'theta-optionomics-atm-iv-session-v1' as const;
-export const aegisIvStressDetectorVersion = 'theta-aegis-iv-stress-detector-v2' as const;
+export const aegisIvStressDetectorVersion = 'theta-aegis-iv-stress-detector-v3' as const;
 
 export type AegisIvSessionState = 'CURRENT_SESSION' | 'LATEST_COMPLETED_SESSION'
   | 'PRIOR_SESSION_EXPECTED_BY_PROVIDER' | 'SESSION_STALE' | 'SESSION_UNKNOWN' | 'SESSION_MISMATCH';
+export type AegisIvTimingState = 'PROVIDER_ASOF_CURRENT_SESSION' | 'PROVIDER_ASOF_UNAVAILABLE'
+  | 'PROVIDER_ASOF_SESSION_MISMATCH' | 'PROVIDER_ASOF_AFTER_DECISION';
 
 export interface OptionomicsIvSessionObservation {
   readonly observationId: string;
@@ -62,6 +64,7 @@ export interface AegisIvStressAssessment {
   readonly servedSession: string;
   readonly providerTimestamp: string | null;
   readonly sessionState: AegisIvSessionState;
+  readonly currentTimingState: AegisIvTimingState;
   readonly currentObservationId: string;
   readonly baselineObservationIds: readonly string[];
   readonly policyVersion: string;
@@ -87,7 +90,7 @@ export interface AegisIvStressRefreshResult {
 }
 
 export const paperBootstrapAegisIvStressPolicy: AegisIvStressPolicy = Object.freeze({
-  policyVersion: 'aegis-iv-shock-paper-bootstrap-v2',
+  policyVersion: 'aegis-iv-shock-paper-bootstrap-v3',
   authority: 'PAPER_BOOTSTRAP_BASELINE_NOT_EMPIRICALLY_OPTIMAL',
   maximumBaselineSessions: 40,
   minimumAbsoluteIncrease: 0.03,
@@ -151,6 +154,13 @@ export function classifyAegisIvSession(current: OptionomicsIvSessionObservation,
   // than one calendar day back. Without an authenticated prior-session
   // calendar/publication contract we cannot call that economically stale.
   return ageDays === 1 ? 'LATEST_COMPLETED_SESSION' : 'SESSION_UNKNOWN';
+}
+
+function classifyIvTiming(current: OptionomicsIvSessionObservation, decisionAsOf: string): AegisIvTimingState {
+  if (current.providerTimestamp === null) return 'PROVIDER_ASOF_UNAVAILABLE';
+  if (Date.parse(current.providerTimestamp) > Date.parse(decisionAsOf)) return 'PROVIDER_ASOF_AFTER_DECISION';
+  return newYorkSession(current.providerTimestamp) === current.sessionDate
+    ? 'PROVIDER_ASOF_CURRENT_SESSION' : 'PROVIDER_ASOF_SESSION_MISMATCH';
 }
 
 function valueRecord(value: unknown): Readonly<Record<string, unknown>> | null {
@@ -242,6 +252,7 @@ export function assessAegisIvStress(input: {
   const decisionSession = newYorkSession(input.decisionAsOf);
   if (decisionSession === null) throw new Error('AEGIS_IV_DECISION_SESSION_UNKNOWN');
   const sessionState = classifyAegisIvSession(input.current, input.decisionAsOf);
+  const currentTimingState = classifyIvTiming(input.current, input.decisionAsOf);
   const eligible = input.history.filter((row) => row.underlying === input.current.underlying
       && row.sessionDate < input.current.sessionDate
       && Date.parse(row.thetaFirstObservedAt) <= Date.parse(input.decisionAsOf))
@@ -269,7 +280,9 @@ export function assessAegisIvStress(input: {
   const robustZApplicability = dispersionState === 'MAD_POSITIVE' ? 'APPLICABLE' as const
     : dispersionState === 'MAD_ZERO' && input.policy.zeroMadFallback === 'ABSOLUTE_AND_RELATIVE'
       ? 'ZERO_MAD_ABSOLUTE_RELATIVE_FALLBACK' as const : 'UNAVAILABLE' as const;
-  const stressIvShockDetected = sessionState !== 'CURRENT_SESSION' || maturity.state !== 'DETECTOR_READY' || absoluteIncrease === null || relativeIncrease === null
+  const stressIvShockDetected = sessionState !== 'CURRENT_SESSION'
+    || currentTimingState !== 'PROVIDER_ASOF_CURRENT_SESSION'
+    || maturity.state !== 'DETECTOR_READY' || absoluteIncrease === null || relativeIncrease === null
     || robustZApplicability === 'UNAVAILABLE'
     ? null
     : absoluteIncrease >= input.policy.minimumAbsoluteIncrease
@@ -280,7 +293,8 @@ export function assessAegisIvStress(input: {
     contractVersion: aegisIvStressDetectorVersion,
     underlying: input.current.underlying, decisionAsOf: input.decisionAsOf,
     decisionSession, requestedSession: input.current.requestParameters.date ?? null,
-    servedSession: input.current.sessionDate, providerTimestamp: input.current.providerTimestamp, sessionState,
+    servedSession: input.current.sessionDate, providerTimestamp: input.current.providerTimestamp,
+    sessionState, currentTimingState,
     currentObservationId: input.current.observationId,
     baselineObservationIds: baseline.map((row) => row.observationId),
     policyVersion: input.policy.policyVersion, policyAuthority: input.policy.authority,
@@ -382,6 +396,9 @@ export async function refreshAegisIvStress(input: {
     await store.persistAssessment(assessment);
     if (assessment.sessionState !== 'CURRENT_SESSION') return {
       state: 'SESSION_STALE', assessment, reason: `OPTIONOMICS_IV_${assessment.sessionState}`,
+    };
+    if (assessment.currentTimingState !== 'PROVIDER_ASOF_CURRENT_SESSION') return {
+      state: 'OBSERVATION_UNKNOWN', assessment, reason: `OPTIONOMICS_IV_${assessment.currentTimingState}`,
     };
     return assessment.maturity.state === 'DETECTOR_READY'
       ? { state: 'READY', assessment, reason: 'REAL_OPTIONOMICS_IV_BASELINE_AND_CURRENT_SESSION_READY' }

@@ -83,7 +83,8 @@ export function ivStressPaperBlockers(states:ReadonlyMap<string,AegisIvStressRef
 }
 export function ivStressPaperPlanPersistenceReady(result:AegisIvStressRefreshResult|undefined):boolean{
   if(result?.assessment===null||result===undefined)return false;
-  if(result.assessment.sessionState!=='CURRENT_SESSION')return false;
+  if(result.assessment.sessionState!=='CURRENT_SESSION'
+    ||result.assessment.currentTimingState!=='PROVIDER_ASOF_CURRENT_SESSION')return false;
   if(result.state==='READY')return result.assessment.maturity.state==='DETECTOR_READY';
   // A real, persisted current observation and assessment may invoke the
   // versioned Paper baseline cold-start policy. Provider and persistence
@@ -93,6 +94,7 @@ export function ivStressPaperPlanPersistenceReady(result:AegisIvStressRefreshRes
 }
 export function ivStressApplicability(result:AegisIvStressRefreshResult):'REQUIRED'|'PAPER_COLD_START_NOT_APPLICABLE'{
   return result.state==='BASELINE_IMMATURE' && result.assessment?.sessionState==='CURRENT_SESSION'
+    && result.assessment.currentTimingState==='PROVIDER_ASOF_CURRENT_SESSION'
     ? paperBootstrapStressApplicability(result.assessment.maturity.state) : 'REQUIRED';
 }
 export function missingObservationReason(contractFound:boolean,enumerationComplete=true,sessionConfirmedEnded=false):ObservationMissReason {
