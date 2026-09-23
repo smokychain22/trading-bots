@@ -4,7 +4,7 @@
  * when they contain superseded statements.
  */
 export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v1' as const;
-export const truthSourceBaselineSha = 'cc8ee701b54a10535a5ac1d1a3347f5517e60538';
+export const truthSourceBaselineSha = '8319726a730a6457f5ed9be7b2989edbdbd6acef';
 export const truthObservedWorkerSha = '853beb4fde989c2f6deb83ad9cb13a9a3e87e76a';
 export const truthLastVerifiedAt = '2026-09-23';
 
@@ -166,7 +166,7 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
     disposition: 'TRUE_HARD_BLOCKER' }),
   capability({ capabilityId: 'FIRST_PAPER_READINESS', layerIds: [12, 20], sourceImplemented: 'YES', testsPassed: 'YES',
     persisted: 'NO', runtimeReachable: 'YES', paperAuthorized: 'NOT_APPLICABLE',
-    sourceFiles: ['src/theta/first-paper-blocker-budget.ts', 'src/customer/api.ts'],
+    sourceFiles: ['src/theta/first-paper-blocker-budget.ts', 'src/execution/master-paper-plan-assembly.ts', 'src/customer/api.ts'],
     currentBlocker: 'Audit coverage is PARTIAL and the pinned worker has no current-source no-submit proof.',
     safeCurrentBehavior: 'The operator readiness receipt names audit and safety blockers; it cannot emit READY from zero avoidable count alone.',
     closureTest: 'Complete the UNKNOWN sweep, clear all independent release checks and observe the current locked release before any Paper unlock.',
