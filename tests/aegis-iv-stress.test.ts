@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import type { Pool } from 'pg';
 import {
   assessAegisIvStress,
   normalizeOptionomicsAtmIvObservation,
+  refreshAegisIvStress,
   type AegisIvStressPolicy,
   type OptionomicsIvSessionObservation,
 } from '../src/theta/aegis-iv-stress.js';
@@ -94,4 +96,23 @@ test('future-observed evidence is rejected', () => {
   const current = { ...currentObservation(0.2), thetaFirstObservedAt: '2026-09-23T00:00:00.000Z' };
   assert.throws(() => assessAegisIvStress({ current, history: [], decisionAsOf: '2026-09-22T14:05:00.000Z', policy }),
     /CURRENT_EVIDENCE_FROM_FUTURE/);
+});
+
+test('missing persistence schema becomes an explicit AEGIS blocker without throwing out the scan', async () => {
+  const schemaMissing = Object.assign(new Error('not exposed'), { code: '42P01' });
+  const pool = { query: async () => { throw schemaMissing; } } as unknown as Pool;
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    date: '2026-09-22', symbol: 'SPY', metrics: { atm_iv: 0.2 },
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+  const result = await refreshAegisIvStress({
+    pool,
+    optionomics: {
+      apiBase: 'https://optionomics.ai', email: 'owner@example.test', apiToken: 'secret-not-returned',
+      fetchImpl, now: () => '2026-09-23T00:00:00.000Z', maxRetryAttempts: 1,
+    },
+    decisionAsOf: '2026-09-23T00:00:01.000Z',
+  });
+  assert.deepEqual(result, {
+    state: 'PERSISTENCE_ERROR', assessment: null, reason: 'AEGIS_IV_PERSISTENCE_42P01',
+  });
 });

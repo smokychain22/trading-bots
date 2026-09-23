@@ -45,7 +45,7 @@
     "paper:verify-master": "tsx tools/verify-stored-master-paper.ts",
     "r6:readiness": "node --env-file=.env.local --import tsx tools/r6-readiness.ts",
     "p2d:resolve": "node --env-file=.env.local --import tsx tools/p2d-outcome-resolve.ts",
-    "shadow:readiness": "node --env-file=.env.local --import tsx tools/shadow-runtime-readiness.ts",
+    "shadow:readiness": "node --import tsx tools/shadow-runtime-readiness.ts --environment-file=.env.local",
     "shadow:ensure-context": "node --env-file=.env.local --import tsx tools/ensure-master-shadow-context.ts",
     "theta:research-export": "node --env-file=.env.local --import tsx tools/theta-research-export.ts",
     "theta:research-export:events": "tsx tools/capture-canonical-event-export.ts",

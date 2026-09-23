@@ -70,7 +70,7 @@ export interface AegisIvStressAssessment {
 }
 
 export interface AegisIvStressRefreshResult {
-  readonly state: 'READY' | 'BASELINE_IMMATURE' | 'PROVIDER_ERROR' | 'OBSERVATION_UNKNOWN' | 'INVALID';
+  readonly state: 'READY' | 'BASELINE_IMMATURE' | 'PROVIDER_ERROR' | 'PERSISTENCE_ERROR' | 'OBSERVATION_UNKNOWN' | 'INVALID';
   readonly assessment: AegisIvStressAssessment | null;
   readonly reason: string;
 }
@@ -316,12 +316,23 @@ export async function refreshAegisIvStress(input: {
     reason: normalized.reason,
   };
   const store = new PostgresAegisIvStressStore(input.pool);
-  await store.persistObservation(normalized.observation);
-  const history = await store.listObservations(underlying, input.decisionAsOf);
-  const assessment = assessAegisIvStress({ current: normalized.observation, history,
-    decisionAsOf: input.decisionAsOf, policy: input.policy ?? paperBootstrapAegisIvStressPolicy });
-  await store.persistAssessment(assessment);
-  return assessment.maturity.state === 'DETECTOR_READY'
-    ? { state: 'READY', assessment, reason: 'REAL_OPTIONOMICS_IV_BASELINE_AND_CURRENT_SESSION_READY' }
-    : { state: 'BASELINE_IMMATURE', assessment, reason: assessment.maturity.reason };
+  try {
+    await store.persistObservation(normalized.observation);
+    const history = await store.listObservations(underlying, input.decisionAsOf);
+    const assessment = assessAegisIvStress({ current: normalized.observation, history,
+      decisionAsOf: input.decisionAsOf, policy: input.policy ?? paperBootstrapAegisIvStressPolicy });
+    await store.persistAssessment(assessment);
+    return assessment.maturity.state === 'DETECTOR_READY'
+      ? { state: 'READY', assessment, reason: 'REAL_OPTIONOMICS_IV_BASELINE_AND_CURRENT_SESSION_READY' }
+      : { state: 'BASELINE_IMMATURE', assessment, reason: assessment.maturity.reason };
+  } catch (error) {
+    // Provider evidence and persistence are separate capabilities. A missing
+    // migration, read-only database, or failed write blocks this AEGIS
+    // producer without aborting broker reconciliation or the evidence scan.
+    // Keep the public reason sanitized.
+    const code = typeof error === 'object' && error !== null && 'code' in error
+      && typeof error.code === 'string' && /^[A-Z0-9]{5}$/.test(error.code)
+      ? error.code : 'UNCLASSIFIED';
+    return { state: 'PERSISTENCE_ERROR', assessment: null, reason: `AEGIS_IV_PERSISTENCE_${code}` };
+  }
 }
