@@ -181,6 +181,29 @@ itMockedProviderRealCodePath('candidate-specific UNKNOWN risk evidence overrides
   assert.ok(result.aegisByCandidateId?.C1?.reasons.some((reason) => reason.code === 'SECTOR_UNKNOWN'));
 });
 
+itMockedProviderRealCodePath('candidate spread detector evidence replaces the global UNKNOWN without weakening other AEGIS inputs', async () => {
+  const request = baseRequest();
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    aegisInputs: { ...request.aegisInputs, stressSpreadWideningDetected: null },
+    candidates: [candidate('C1', { aegisInputOverrides: { stressSpreadWideningDetected: false } })],
+  }));
+  assert.equal(result.aegisByCandidateId?.C1?.reasons
+    .some((reason) => reason.code === 'SYSTEM_STRESS_STATE_UNKNOWN'), false);
+});
+
+itMockedProviderRealCodePath('explicit Paper cold-start applicability ignores an immature detector without fabricating false', async () => {
+  const request = baseRequest();
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    aegisInputs: { ...request.aegisInputs, stressSpreadWideningDetected: null },
+    candidates: [candidate('C1', { aegisInputOverrides: {
+      stressSpreadWideningDetected: null,
+      stressSpreadWideningApplicability: 'PAPER_COLD_START_NOT_APPLICABLE',
+    } })],
+  }));
+  assert.equal(result.aegisByCandidateId?.C1?.reasons
+    .some((reason) => reason.code === 'SYSTEM_STRESS_STATE_UNKNOWN' || reason.code === 'SPREAD_WIDENING_UNKNOWN'), false);
+});
+
 itMockedProviderRealCodePath('versioned Paper bootstrap breaks the ownership cold start without manufacturing a score', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     ownershipInputs: {

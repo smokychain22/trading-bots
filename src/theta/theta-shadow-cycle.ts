@@ -16,6 +16,8 @@ import { checkTemporalConsistency, DEFAULT_TEMPORAL_CONSISTENCY_POLICIES } from 
 import type { PythonBridgeConfig } from './python-bridge.js';
 import { buildFusionSnapshot, hashJson, type FusionSnapshot, type FusionSnapshotInput, type JsonValue } from '../market/fusion-snapshot.js';
 import type { AegisIvStressAssessment } from './aegis-iv-stress.js';
+import type { AegisSpreadStressAssessmentMap } from './aegis-spread-stress.js';
+import type { NormalizedOptionContract } from './option-contract.js';
 import type { DataQualityState } from './data-freshness.js';
 import {
   fetchOptionomicsContextObservation, fetchOptionomicsMacroEventCoverage, fetchOptionomicsNetFlowWindow, fetchOptionomicsOptionChain, matchOptionomicsContractIdentity,
@@ -40,6 +42,7 @@ import {
 } from '../research/strategy-quality-shadow-diagnostics.js';
 import type { PaperEntryBootstrapAssessment } from './paper-entry-bootstrap.js';
 import type { RecoveryHistoryEvidence } from './recovery-history-loader.js';
+import { paperBootstrapStressApplicability, paperBootstrapStressColdStartPolicy } from '../research/aegis-stress-baseline-maturity.js';
 
 /** Never relabel a Conventional assessment as Hold-Strike risk evidence. */
 export function conventionalFrontierRiskLookups(
@@ -80,8 +83,10 @@ export function conventionalFrontierRiskLookups(
 //     When config.optionomics is null (no credentials configured), it is
 //     honestly NOT_ATTEMPTED -- never a fixture standing in for a real call.
 //   - Positions and open orders are fetched inside every cycle. The
-//     account ratios derivable from them feed AEGIS, while sector,
-//     correlation, recovery, and stress families remain incomplete.
+//     account ratios derivable from them feed AEGIS. IV shock is supplied
+//     from the Production Optionomics baseline and spread widening is
+//     assessed per contract from persisted Alpaca BBO history. Sector and
+//     multi-position correlation can still remain incomplete.
 //   - Event state is always UNKNOWN (no event-state assembly exists yet).
 //   - Underlying selection ranks eligible underlyings transparently (see
 //     universe-policy.ts's rankEligibleUnderlyings) rather than picking
@@ -130,6 +135,10 @@ export interface ThetaShadowCycleConfig {
   readonly aegisPolicy: Record<string, unknown>;
   readonly aegisInputs: Record<string, unknown>; // portfolio/account risk-family inputs not yet derivable from MasterAccountSnapshot alone
   readonly aegisIvStressEvidence?: AegisIvStressAssessment | null;
+  readonly aegisSpreadStressAssessor?: (input: {
+    readonly contracts: readonly NormalizedOptionContract[];
+    readonly decisionAsOf: string;
+  }) => Promise<AegisSpreadStressAssessmentMap>;
   readonly aegisInputsOrigin: ProvenanceOrigin; // honest declaration -- today this is always CALLER_MANUAL since real position/order-derived exposure isn't wired yet
   readonly opportunityFrontierPolicy: { policyVersion: string; reducedSizeUncertaintyThreshold: number };
   readonly maxAcceptableSpreadPct: number;
@@ -288,6 +297,7 @@ function assembleFusionSnapshotInput(params: {
   readonly policyVersion: string;
   readonly modelVersions: Readonly<Record<string, string>>;
   readonly aegisIvStressEvidence: AegisIvStressAssessment | null;
+  readonly aegisSpreadStressEvidence: AegisSpreadStressAssessmentMap;
 }): FusionSnapshotInput {
   const accountJson: JsonValue = params.account === null ? { fetched: false } : { ...params.account };
   const contractsJson: JsonValue = params.mergedContracts as unknown as JsonValue;
@@ -304,6 +314,19 @@ function assembleFusionSnapshotInput(params: {
   const optionomicsProviderTimestamp = params.optionomicsChain?.entries.map((entry) => entry.asOf)
     .filter((value): value is string => value !== null && Number.isFinite(Date.parse(value)) && Date.parse(value) <= Date.parse(params.now))
     .toSorted((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
+  const spreadStressBaselines: Record<string, JsonValue> = {};
+  const spreadStressByContract: Record<string, JsonValue> = {};
+  for (const [optionSymbol, assessment] of Object.entries(params.aegisSpreadStressEvidence)) {
+    const cohortKey = [assessment.underlying, assessment.dteBucket, assessment.moneynessBucket ?? 'UNKNOWN'].join(':');
+    if (spreadStressBaselines[cohortKey] === undefined) spreadStressBaselines[cohortKey] = {
+      baselineEvidenceIds: assessment.baselineEvidenceIds,
+      baselineEvidenceHash: hashJson(assessment.baselineEvidenceIds as unknown as JsonValue),
+      evidenceCount: assessment.baselineEvidenceIds.length,
+    } as unknown as JsonValue;
+    const compact = { ...assessment } as Record<string, unknown>;
+    delete compact.baselineEvidenceIds;
+    spreadStressByContract[optionSymbol] = { ...compact, baselineCohortKey: cohortKey } as unknown as JsonValue;
+  }
   const optionomicsJson: JsonValue = optionomicsAttempted
     ? ({
         rawObservation: params.optionomicsChain === null ? null : {
@@ -406,7 +429,9 @@ function assembleFusionSnapshotInput(params: {
       : null,
     regimeState: params.regimeFeatures,
     expertPriorState: null,
-    riskState: { ivStress: params.aegisIvStressEvidence } as unknown as JsonValue,
+    riskState: { ivStress: params.aegisIvStressEvidence,
+      stressColdStartPolicy: paperBootstrapStressColdStartPolicy,
+      spreadStress: { assessmentsByContract: spreadStressByContract, baselinesByCohort: spreadStressBaselines } } as unknown as JsonValue,
     strategyRouterState: null, // the router runs downstream of this snapshot in the current architecture
     versions: {
       strategyVersion: params.policyVersion, featureVersion: params.policyVersion, riskLimitVersion: params.policyVersion,
@@ -858,6 +883,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let quotesEvidence = notAttemptedEvidence();
   const candidates: RawCandidateInput[] = [];
   let mergedContractsForSnapshot: ReturnType<typeof mergeOptionChain> = [];
+  let aegisSpreadStressEvidence: AegisSpreadStressAssessmentMap = {};
   const underlyingStockPosition = positions.find((position) => position.symbol === underlying
     && position.assetClass === 'us_equity') ?? null;
   const hasPotentialCoveredStock = underlyingStockPosition !== null
@@ -1012,6 +1038,16 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
         ivCompensationSufficient: null, quoteSize: contract.bidSize, preSlippageExpectedUtility: null,
       });
     }
+    if (config.aegisSpreadStressAssessor !== undefined) {
+      try {
+        aegisSpreadStressEvidence = await config.aegisSpreadStressAssessor({
+          contracts: candidates.map((candidate) => candidate.contract),
+          decisionAsOf: decisionTime,
+        });
+      } catch (error) {
+        blockers.push(`AEGIS_SPREAD_STRESS_PROVIDER_ERROR:${error instanceof Error ? error.message : 'unknown'}`);
+      }
+    }
   }
 
   // Real account exposure -- pure arithmetic over the account/positions/
@@ -1081,6 +1117,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     policyVersion: config.policyVersion,
     modelVersions: { ...config.modelVersions, candidateQuoteAgePolicy: config.candidateQuoteAgePolicy.policyVersion },
     aegisIvStressEvidence: config.aegisIvStressEvidence ?? null,
+    aegisSpreadStressEvidence,
   });
   const fusionSnapshot = buildFusionSnapshot(snapshotInput);
   const stockPosition = underlyingStockPosition !== null
@@ -1256,9 +1293,9 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   // Additional real AEGIS-input derivations (item E) -- each independently
   // null/UNKNOWN (never overwriting the caller's value with a guess) when
   // its own required evidence is missing. See aegis-derivation.ts's own
-  // docstring for exactly which fields remain caller-supplied and why
-  // (sector concentration, correlation clusters, IV-shock/spread-widening
-  // detection all lack a real data source this pass).
+  // docstring for exactly which fields remain caller-supplied. The
+  // Production runtime injects the separate IV and per-contract spread
+  // detector evidence without converting immature baselines to false.
   const derivedProviderState = deriveProviderState([accountEvidence.quality, contractsEvidence.quality, quotesEvidence.quality]);
   const derivedLiquidityAcceptable = deriveLiquidityAcceptable(mergedContractsForSnapshot, config.maxAcceptableSpreadPct);
   const derivedExecutionQualityAcceptable = deriveExecutionQualityAcceptable(mergedContractsForSnapshot);
@@ -1283,7 +1320,15 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     ? Object.fromEntries(candidateCapacityPolicyKeys.map((key) => [key, config.aegisPolicy[key]])) as unknown as CandidateCapacityPolicy
     : null;
   const runtimeCandidates: RawCandidateInput[] = candidates.map((candidate) => {
-    if (!exposureDerivationTrustworthy || candidateCapacityPolicy === null) return candidate;
+    const spreadAssessment = aegisSpreadStressEvidence[candidate.contract.optionSymbol];
+    const candidateOverrides: Record<string, unknown> = {
+      stressSpreadWideningDetected: spreadAssessment?.stressSpreadWideningDetected ?? null,
+      stressSpreadWideningApplicability: paperBootstrapStressApplicability(spreadAssessment?.maturity.state ?? null),
+    };
+    if (!exposureDerivationTrustworthy || candidateCapacityPolicy === null) return {
+      ...candidate,
+      aegisInputOverrides: candidateOverrides,
+    };
     const capacity = deriveCandidateCapacityAssessment(
       derivedExposure,
       openOrders,
@@ -1298,7 +1343,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     const derived = capacity.inputsAtQuantityCap;
     // Preserve nulls. They are canonical UNKNOWN inputs and must override
     // any pre-trade/global value so candidate-specific AEGIS fails closed.
-    const candidateOverrides = Object.fromEntries([
+    Object.assign(candidateOverrides, Object.fromEntries([
       ['tickerConcentrationPct', derived.tickerConcentrationPct],
       ['sectorConcentrationPct', derived.sectorConcentrationPct],
       ['correlationClusterExposurePct', derived.correlationClusterExposurePct],
@@ -1306,7 +1351,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       ['inventoryCapacityUsedPct', derived.inventoryCapacityUsedPct],
       ['assignmentCapacityUsedPct', derived.assignmentCapacityUsedPct],
       ['recoveryCapacityUsedPct', derived.recoveryCapacityUsedPct],
-    ]);
+    ]));
     return {
       ...candidate,
       brokerAllowedQty: Math.min(candidate.brokerAllowedQty, capacity.quantityCap),

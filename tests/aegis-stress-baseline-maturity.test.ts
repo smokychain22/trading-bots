@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  assessBaselineMaturity, type BaselineEvidenceCounts, type BaselineSufficiencyPolicy, type CurrentObservationEvidence,
+  assessBaselineMaturity, paperBootstrapStressApplicability,
+  type BaselineEvidenceCounts, type BaselineSufficiencyPolicy, type CurrentObservationEvidence,
 } from '../src/research/aegis-stress-baseline-maturity.js';
 
 const POLICY: BaselineSufficiencyPolicy = {
@@ -18,6 +19,14 @@ function evidence(overrides: Partial<BaselineEvidenceCounts> = {}): BaselineEvid
 test('BASELINE_NOT_STARTED when rawN is zero', () => {
   const result = assessBaselineMaturity('IV_SHOCK', ASOF, 'optionomics', 'v1', evidence(), null, null, POLICY, null, false);
   assert.equal(result.state, 'BASELINE_NOT_STARTED');
+});
+
+test('Paper cold-start policy applies only to a real accumulating baseline', () => {
+  assert.equal(paperBootstrapStressApplicability('BASELINE_ACCUMULATING'), 'PAPER_COLD_START_NOT_APPLICABLE');
+  assert.equal(paperBootstrapStressApplicability('BASELINE_NOT_STARTED'), 'REQUIRED');
+  assert.equal(paperBootstrapStressApplicability('CURRENT_OBSERVATION_STALE'), 'REQUIRED');
+  assert.equal(paperBootstrapStressApplicability('DETECTOR_PROVIDER_LIMITED'), 'REQUIRED');
+  assert.equal(paperBootstrapStressApplicability(null), 'REQUIRED');
 });
 
 test('BASELINE_ACCUMULATING when below any single policy minimum -- never silently treated as sufficient', () => {
@@ -38,6 +47,25 @@ test('ADVERSARIAL: BASELINE_ACCUMULATING even with sufficient rawN if temporal s
   );
   assert.equal(result.state, 'BASELINE_ACCUMULATING');
   assert.ok(result.reason.includes('sessionN') || result.reason.includes('temporalSpanDays'));
+});
+
+test('cold-start baseline cannot hide a stale or invalid current observation', () => {
+  const accumulatingEvidence = evidence({ rawN: 50, sessionN: 4, distinctUnderlyingN: 2 });
+  const stale = assessBaselineMaturity(
+    'SPREAD_WIDENING', ASOF, 'alpaca-bbo', 'v1', accumulatingEvidence,
+    '2026-09-01T00:00:00Z', '2026-09-20T00:00:00Z', POLICY,
+    { observedAt: '2026-09-22T13:00:00Z', valid: true, invalidReason: null }, false,
+  );
+  assert.equal(stale.state, 'CURRENT_OBSERVATION_STALE');
+  assert.equal(paperBootstrapStressApplicability(stale.state), 'REQUIRED');
+
+  const invalid = assessBaselineMaturity(
+    'SPREAD_WIDENING', ASOF, 'alpaca-bbo', 'v1', accumulatingEvidence,
+    '2026-09-01T00:00:00Z', '2026-09-20T00:00:00Z', POLICY,
+    { observedAt: ASOF, valid: false, invalidReason: 'INVALID_CURRENT_BBO' }, false,
+  );
+  assert.equal(invalid.state, 'CURRENT_OBSERVATION_INVALID');
+  assert.equal(paperBootstrapStressApplicability(invalid.state), 'REQUIRED');
 });
 
 test('BASELINE_SUFFICIENT when every minimum is met and no current observation is supplied', () => {

@@ -143,6 +143,27 @@ class StressTests(unittest.TestCase):
         self.assertEqual(assessment.new_risk_state, RiskState.HOLD_ONLY)
         self.assertTrue(any(reason.code == "SYSTEM_STRESS_STATE_UNKNOWN" for reason in assessment.reasons))
 
+    def test_versioned_paper_cold_start_excludes_only_the_immature_historical_detector(self):
+        assessment = assess_aegis(_policy(), _clean_inputs(
+            stress_spread_widening_detected=None,
+            stress_spread_widening_applicability="PAPER_COLD_START_NOT_APPLICABLE",
+        ))
+        self.assertEqual(assessment.new_risk_state, RiskState.ALLOW_FULL)
+        liquidity = next(item for item in assessment.families if item.family.value == "LIQUIDITY")
+        self.assertEqual(liquidity.reasons[0].code, "SPREAD_BASELINE_COLD_START_NOT_APPLICABLE")
+
+    def test_paper_cold_start_never_bypasses_current_quote_safety(self):
+        assessment = assess_aegis(_policy(), _clean_inputs(
+            liquidity_acceptable=False,
+            stress_spread_widening_detected=None,
+            stress_spread_widening_applicability="PAPER_COLD_START_NOT_APPLICABLE",
+        ))
+        self.assertEqual(assessment.new_risk_state, RiskState.HARD_VETO)
+
+    def test_invalid_applicability_is_rejected(self):
+        with self.assertRaises(ValueError):
+            assess_aegis(_policy(), _clean_inputs(stress_iv_shock_applicability="IGNORE_UNKNOWN"))
+
     def test_single_stress_signal_reduces_new_risk(self):
         assessment = assess_aegis(_policy(), _clean_inputs(stress_gap_detected=True))
         self.assertEqual(assessment.new_risk_state, RiskState.ALLOW_REDUCED)

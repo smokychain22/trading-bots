@@ -24,6 +24,23 @@ export type StressBaselineState =
   | 'CURRENT_OBSERVATION_STALE' | 'CURRENT_OBSERVATION_INVALID'
   | 'DETECTOR_READY' | 'DETECTOR_PROVIDER_LIMITED';
 
+export const paperBootstrapStressColdStartPolicy = Object.freeze({
+  policyVersion: 'aegis-stress-paper-cold-start-v1',
+  authority: 'PAPER_BOOTSTRAP_NOT_EMPIRICALLY_OPTIMAL',
+  effectiveAt: '2026-09-23T00:00:00.000Z',
+  reviewCondition: 'Review after each detector has at least 20 observations across 5 independent sessions.',
+} as const);
+
+export type StressDetectorApplicability = 'REQUIRED' | 'PAPER_COLD_START_NOT_APPLICABLE';
+
+/** Only a real, partially collected historical baseline gets the bounded
+ * Paper cold-start exception. Missing providers, stale current evidence,
+ * invalid inputs, and an entirely unstarted producer stay REQUIRED and
+ * therefore fail closed. No UNKNOWN boolean is converted to false. */
+export function paperBootstrapStressApplicability(state: StressBaselineState | null): StressDetectorApplicability {
+  return state === 'BASELINE_ACCUMULATING' ? 'PAPER_COLD_START_NOT_APPLICABLE' : 'REQUIRED';
+}
+
 export interface BaselineEvidenceCounts {
   readonly rawN: number;
   readonly sessionN: number;
@@ -86,14 +103,14 @@ function daysBetween(fromIso: string | null, toIso: string | null): number | nul
  *     does not infer it from absence of evidence, since absence of
  *     evidence here could also mean "not yet queried").
  *  2. `BASELINE_NOT_STARTED` -- zero raw observations.
- *  3. `BASELINE_ACCUMULATING` -- some evidence, but below `policy`'s
- *     minimums on ANY dimension (raw N, session N, distinct underlyings,
- *     temporal span).
- *  4. `BASELINE_SUFFICIENT` but `CURRENT_OBSERVATION_INVALID` -- baseline
- *     is real, but the live observation this cycle failed validity.
- *  5. `BASELINE_SUFFICIENT` but `CURRENT_OBSERVATION_STALE` -- baseline is
- *     real, but the live observation is older than
+ *  3. `CURRENT_OBSERVATION_INVALID` -- some baseline evidence exists, but
+ *     the live observation this cycle failed validity.
+ *  4. `CURRENT_OBSERVATION_STALE` -- some baseline evidence exists, but
+ *     the live observation is older than
  *     `maxCurrentObservationAgeSeconds`.
+ *  5. `BASELINE_ACCUMULATING` -- the current observation is valid and
+ *     fresh, but historical evidence is below `policy`'s minimums on ANY
+ *     dimension (raw N, session N, distinct underlyings, temporal span).
  *  6. `DETECTOR_READY` -- baseline sufficient AND current observation
  *     fresh and valid. This is the ONLY state in which this module
  *     considers the detector trustworthy enough to produce a real boolean.
@@ -135,6 +152,20 @@ export function assessBaselineMaturity(
   if (evidence.rawN === 0) {
     return { ...base, state: 'BASELINE_NOT_STARTED', reason: 'Zero raw observations collected.' };
   }
+
+  // A cold-start exception applies only to historical baseline maturity.
+  // It must never conceal a stale or invalid current observation. Check the
+  // live input before returning BASELINE_ACCUMULATING so callers cannot turn
+  // bad current evidence into PAPER_COLD_START_NOT_APPLICABLE.
+  if (currentObservation !== null && !currentObservation.valid) {
+    return { ...base, state: 'CURRENT_OBSERVATION_INVALID', reason: currentObservation.invalidReason ?? 'Current observation marked invalid.' };
+  }
+  if (currentObservation !== null) {
+    const ageSeconds = (Date.parse(asOf) - Date.parse(currentObservation.observedAt)) / 1000;
+    if (!Number.isFinite(ageSeconds) || ageSeconds < 0 || ageSeconds > policy.maxCurrentObservationAgeSeconds) {
+      return { ...base, state: 'CURRENT_OBSERVATION_STALE', reason: `Current observation age ${ageSeconds}s exceeds policy max ${policy.maxCurrentObservationAgeSeconds}s (or is invalid/future).` };
+    }
+  }
   const insufficient: string[] = [];
   if (evidence.rawN < policy.minimumRawN) insufficient.push(`rawN(${evidence.rawN})<min(${policy.minimumRawN})`);
   if (evidence.sessionN < policy.minimumSessionN) insufficient.push(`sessionN(${evidence.sessionN})<min(${policy.minimumSessionN})`);
@@ -146,13 +177,6 @@ export function assessBaselineMaturity(
 
   if (currentObservation === null) {
     return { ...base, state: 'BASELINE_SUFFICIENT', reason: 'Baseline meets every policy minimum; no current observation supplied this cycle.' };
-  }
-  if (!currentObservation.valid) {
-    return { ...base, state: 'CURRENT_OBSERVATION_INVALID', reason: currentObservation.invalidReason ?? 'Current observation marked invalid.' };
-  }
-  const ageSeconds = (Date.parse(asOf) - Date.parse(currentObservation.observedAt)) / 1000;
-  if (!Number.isFinite(ageSeconds) || ageSeconds < 0 || ageSeconds > policy.maxCurrentObservationAgeSeconds) {
-    return { ...base, state: 'CURRENT_OBSERVATION_STALE', reason: `Current observation age ${ageSeconds}s exceeds policy max ${policy.maxCurrentObservationAgeSeconds}s (or is invalid/future).` };
   }
 
   return { ...base, state: 'DETECTOR_READY', reason: 'Baseline sufficient and current observation fresh/valid -- a trustworthy boolean may be produced.' };

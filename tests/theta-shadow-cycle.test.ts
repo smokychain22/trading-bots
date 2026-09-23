@@ -7,6 +7,8 @@ import type { AlpacaProviderConfig } from '../src/theta/alpaca-provider.js';
 import type { PythonBridgeConfig } from '../src/theta/python-bridge.js';
 import type { UnderlyingCandidateInput } from '../src/theta/universe-policy.js';
 import type { AegisIvStressAssessment } from '../src/theta/aegis-iv-stress.js';
+import type { AegisSpreadStressAssessment } from '../src/theta/aegis-spread-stress.js';
+import { paperBootstrapStressColdStartPolicy } from '../src/research/aegis-stress-baseline-maturity.js';
 
 // Proves runThetaShadowCycle -- the real end-to-end composition of
 // UniversePolicy -> Alpaca provider (mocked fetch, obviously-synthetic
@@ -186,7 +188,9 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   assert.ok(result.orchestration !== null);
   assert.deepEqual(result.fusionSnapshot?.snapshot.underlyingState.eventEvidence,
     { unsupportedCorporateActionPending: false, eventNear: false });
-  assert.deepEqual(result.fusionSnapshot?.snapshot.riskState, { ivStress: IV_STRESS_EVIDENCE });
+  assert.deepEqual(result.fusionSnapshot?.snapshot.riskState, { ivStress: IV_STRESS_EVIDENCE,
+    stressColdStartPolicy: paperBootstrapStressColdStartPolicy,
+    spreadStress: { assessmentsByContract: {}, baselinesByCohort: {} } });
   assert.ok(result.orchestration?.thetaQ !== null || result.orchestration?.receipt.winningAction === 'PASS');
   assert.equal(result.orchestration?.regime?.eventState, null);
   assert.ok(result.orchestration?.regime?.reasons.some((reason) => reason.code === 'EVENT_FLAG_UNKNOWN'));
@@ -194,6 +198,42 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   // yet -- provenance can never be FULL_REAL, only HYBRID at best.
   assert.notEqual(result.provenance, 'FULL_REAL');
   assert.equal(result.provenance, 'HYBRID');
+});
+
+itMockedProviderRealCodePath('per-contract spread stress evidence reaches AEGIS and compact immutable snapshot lineage', async () => {
+  const result = await runThetaShadowCycle(baseConfig({
+    aegisInputs: { ...baseConfig().aegisInputs, stressSpreadWideningDetected: null },
+    aegisSpreadStressAssessor: async ({ contracts, decisionAsOf }) => Object.fromEntries(contracts.map((contract) => {
+      const assessment: AegisSpreadStressAssessment = {
+        contractVersion: 'theta-aegis-spread-stress-detector-v1', underlying: contract.underlying,
+        optionSymbol: contract.optionSymbol, decisionAsOf, dteBucket: 'DTE_22_45', moneynessBucket: 'ATM_0_3PCT',
+        currentRelativeSpread: contract.spreadPct, currentQuoteProviderAt: contract.quoteTimestamp,
+        currentQuoteReceivedAt: contract.receivedAt, baselineMedianRelativeSpread: 0.08,
+        baselineMadRelativeSpread: 0.01, relativeIncrease: -0.05, robustZ: -0.4,
+        baselineEvidenceIds: ['candidate-1:quote-1', 'candidate-2:quote-2'],
+        maturity: {
+          contractVersion: 'theta-aegis-stress-baseline-maturity-v1', signal: 'SPREAD_WIDENING', asOf: decisionAsOf,
+          evidence: { rawN: 20, sessionN: 5, distinctUnderlyingN: 1, effectiveN: 20 },
+          firstObservationAvailableAt: '2026-09-01T14:00:01.000Z',
+          lastObservationAvailableAt: '2026-09-05T14:00:01.000Z', temporalSpanDays: 4,
+          source: 'ALPACA_PERSISTED_EXECUTABLE_BBO', sourceVersion: 'theta-aegis-spread-stress-detector-v1',
+          state: 'DETECTOR_READY', reason: 'test evidence',
+        },
+        stressSpreadWideningDetected: false, policyVersion: 'aegis-spread-widening-paper-bootstrap-v1',
+        policyAuthority: 'PAPER_BOOTSTRAP_BASELINE_NOT_EMPIRICALLY_OPTIMAL',
+        evidenceAuthority: 'ALPACA_EXECUTABLE_MARKET', contentHash: 'b'.repeat(64),
+      };
+      return [contract.optionSymbol, assessment];
+    })),
+  }));
+  const riskState = result.fusionSnapshot?.snapshot.riskState as Record<string, unknown>;
+  const spread = riskState.spreadStress as { assessmentsByContract: Record<string, Record<string, unknown>>;
+    baselinesByCohort: Record<string, { baselineEvidenceIds: readonly string[] }> };
+  const compact = spread.assessmentsByContract.SPY261009P00500000;
+  assert.equal(compact?.stressSpreadWideningDetected, false);
+  assert.equal('baselineEvidenceIds' in (compact ?? {}), false);
+  assert.deepEqual(spread.baselinesByCohort['SPY:DTE_22_45:ATM_0_3PCT']?.baselineEvidenceIds,
+    ['candidate-1:quote-1', 'candidate-2:quote-2']);
 });
 
 itMockedProviderRealCodePath('candidate quote-age policy reaches contract executability without changing later gates', async () => {

@@ -11,8 +11,11 @@ restrictive new-risk state must never block a legitimate risk-reducing
 action -- this resolves the correction-audit gap recorded in
 docs/quant/PHASE2_4_CORRECTION_AUDIT.md finding 6.
 
-Every UNKNOWN input maps to a RESTRICTIVE state, never a permissive one
-(fail-closed) -- this module never assumes a missing risk input is fine.
+Every applicable UNKNOWN input maps to a RESTRICTIVE state, never a permissive
+one. The only exception is an explicit, versioned Paper cold-start
+applicability state for an already-running historical detector whose baseline
+is still accumulating. That state does not convert UNKNOWN to ``False`` and
+does not bypass current quote or per-trade liquidity checks.
 No martingale/loss-doubling logic exists anywhere in this module; that
 guard lives in sizing.py, which is downstream of (and cannot override) the
 risk states computed here.
@@ -93,6 +96,8 @@ class AegisInputs:
     stress_gap_detected: Optional[bool]
     stress_iv_shock_detected: Optional[bool]
     stress_spread_widening_detected: Optional[bool]
+    stress_iv_shock_applicability: str = "REQUIRED"
+    stress_spread_widening_applicability: str = "REQUIRED"
 
 
 @dataclass(frozen=True)
@@ -127,6 +132,11 @@ def _per_trade(inputs: AegisInputs) -> RiskFamilyAssessment:
 
 
 def _liquidity(inputs: AegisInputs) -> RiskFamilyAssessment:
+    if inputs.stress_spread_widening_applicability == "PAPER_COLD_START_NOT_APPLICABLE":
+        return RiskFamilyAssessment(RiskFamily.LIQUIDITY, RiskState.ALLOW_FULL, [ReasonCode(
+            "SPREAD_BASELINE_COLD_START_NOT_APPLICABLE", 0,
+            "Historical spread-stress baseline is accumulating under the versioned Paper cold-start policy; current liquidity remains governed by PER_TRADE.",
+        )])
     if inputs.stress_spread_widening_detected is None:
         return RiskFamilyAssessment(RiskFamily.LIQUIDITY, RiskState.HOLD_ONLY, [ReasonCode("SPREAD_WIDENING_UNKNOWN", -1, "Book-level spread-widening stress is UNKNOWN.")])
     if inputs.stress_spread_widening_detected:
@@ -153,9 +163,13 @@ def _provider(policy: AegisPolicy, inputs: AegisInputs) -> RiskFamilyAssessment:
 
 
 def _system(inputs: AegisInputs) -> RiskFamilyAssessment:
-    stress_states = [inputs.stress_gap_detected, inputs.stress_iv_shock_detected, inputs.stress_spread_widening_detected]
+    stress_states = [inputs.stress_gap_detected]
+    if inputs.stress_iv_shock_applicability != "PAPER_COLD_START_NOT_APPLICABLE":
+        stress_states.append(inputs.stress_iv_shock_detected)
+    if inputs.stress_spread_widening_applicability != "PAPER_COLD_START_NOT_APPLICABLE":
+        stress_states.append(inputs.stress_spread_widening_detected)
     if any(state is None for state in stress_states):
-        return RiskFamilyAssessment(RiskFamily.SYSTEM, RiskState.HOLD_ONLY, [ReasonCode("SYSTEM_STRESS_STATE_UNKNOWN", -1, "One or more system stress inputs are UNKNOWN.")])
+        return RiskFamilyAssessment(RiskFamily.SYSTEM, RiskState.HOLD_ONLY, [ReasonCode("SYSTEM_STRESS_STATE_UNKNOWN", -1, "One or more applicable system stress inputs are UNKNOWN.")])
     stress_count = sum(bool(state) for state in stress_states)
     if stress_count >= 2:
         return RiskFamilyAssessment(RiskFamily.SYSTEM, RiskState.HOLD_ONLY, [ReasonCode("COMPOUND_STRESS_DETECTED", -1, f"{stress_count} simultaneous stress signals detected.")])
@@ -165,6 +179,9 @@ def _system(inputs: AegisInputs) -> RiskFamilyAssessment:
 
 
 def assess_aegis(policy: AegisPolicy, inputs: AegisInputs) -> AegisAssessment:
+    allowed_applicability = {"REQUIRED", "PAPER_COLD_START_NOT_APPLICABLE"}
+    if inputs.stress_iv_shock_applicability not in allowed_applicability or inputs.stress_spread_widening_applicability not in allowed_applicability:
+        raise ValueError("stress applicability must be REQUIRED or PAPER_COLD_START_NOT_APPLICABLE")
     families = [
         _per_trade(inputs),
         _threshold_assessment(RiskFamily.UNDERLYING, inputs.ticker_concentration_pct, policy.max_ticker_concentration_pct, policy.hard_cap_multiplier),

@@ -49,6 +49,11 @@ def _policy(data: dict[str, Any]) -> AegisPolicy:
 
 
 def _inputs(data: dict[str, Any]) -> AegisInputs:
+    iv_applicability = data.get("stressIvShockApplicability", "REQUIRED")
+    spread_applicability = data.get("stressSpreadWideningApplicability", "REQUIRED")
+    allowed_applicability = {"REQUIRED", "PAPER_COLD_START_NOT_APPLICABLE"}
+    if iv_applicability not in allowed_applicability or spread_applicability not in allowed_applicability:
+        raise ValueError("stress applicability must be REQUIRED or PAPER_COLD_START_NOT_APPLICABLE")
     return AegisInputs(
         ticker_concentration_pct=_required(data, "tickerConcentrationPct"),
         sector_concentration_pct=_required(data, "sectorConcentrationPct"),
@@ -63,6 +68,8 @@ def _inputs(data: dict[str, Any]) -> AegisInputs:
         stress_gap_detected=_required(data, "stressGapDetected"),
         stress_iv_shock_detected=_required(data, "stressIvShockDetected"),
         stress_spread_widening_detected=_required(data, "stressSpreadWideningDetected"),
+        stress_iv_shock_applicability=iv_applicability,
+        stress_spread_widening_applicability=spread_applicability,
     )
 
 

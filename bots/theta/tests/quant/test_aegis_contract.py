@@ -66,6 +66,17 @@ class AegisContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             evaluate_request(_request(contractVersion="wrong"))
 
+    def test_optional_cold_start_applicability_is_explicit_and_validated(self):
+        request = _request()
+        request["inputs"] = _inputs(
+            stressSpreadWideningDetected=None,
+            stressSpreadWideningApplicability="PAPER_COLD_START_NOT_APPLICABLE",
+        )
+        self.assertEqual(evaluate_request(request)["newRiskState"], "ALLOW_FULL")
+        request["inputs"]["stressSpreadWideningApplicability"] = "IGNORE_UNKNOWN"
+        with self.assertRaises(ValueError):
+            evaluate_request(request)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,9 +23,11 @@ import type { NormalizedOptionContract } from './option-contract.js';
 //     yet do -- remains exactly what the caller supplies.
 //   - stressIvShockDetected is produced separately by aegis-iv-stress.ts
 //     from exact-session Optionomics ATM-IV observations and an explicit
-//     maturity policy. stressSpreadWideningDetected still has no verified
-//     spread-history producer. Python AEGIS accepts UNKNOWN here and holds
-//     new risk. Missing evidence remains null, never an unevidenced false.
+//     maturity policy. stressSpreadWideningDetected is produced per contract
+//     by aegis-spread-stress.ts from persisted Alpaca BBO cohorts. Missing,
+//     stale, invalid, or immature evidence remains null, never an
+//     unevidenced false. Only the explicit versioned Paper cold-start policy
+//     can classify an accumulating historical detector as not applicable.
 
 /**
  * Derives AEGIS's `providerState` string (or null/UNKNOWN) from the

@@ -23,6 +23,8 @@ import { persistAlpacaCorporateActionRead, readAlpacaCorporateActions } from '..
 import type { CanonicalBranchFrontier, CanonicalFrontierCandidate } from '../theta/canonical-strategy-frontier.js';
 import { probeAlpacaProcessEnvironmentAuth } from '../providers/readiness.js';
 import { refreshAegisIvStress } from '../theta/aegis-iv-stress.js';
+import { assessAegisSpreadStressForContracts } from '../theta/aegis-spread-stress.js';
+import { paperBootstrapStressApplicability } from './aegis-stress-baseline-maturity.js';
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
@@ -228,11 +230,16 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       const config=defaultShadowCycleConfig(input.alpaca,optionomics,bridge(input.environment),[underlying],discovery.candidatesOrigin);
       const recoveryHistory=await loadRecoveryHistory(input.pool,underlying.symbol,input.now());
       return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',paperEntryBootstrap,recoveryHistory,recoveryInventoryUnderlyings,
-        aegisIvStressEvidence:ivStressRefresh.assessment,aegisInputs:{
+        aegisIvStressEvidence:ivStressRefresh.assessment,
+        aegisSpreadStressAssessor:({contracts,decisionAsOf})=>assessAegisSpreadStressForContracts({
+          pool:input.pool,contracts,decisionAsOf,
+        }),
+        aegisInputs:{
         tickerConcentrationPct:null,sectorConcentrationPct:null,correlationClusterExposurePct:null,
         portfolioCapitalAtRiskPct:null,inventoryCapacityUsedPct:null,assignmentCapacityUsedPct:null,
         recoveryCapacityUsedPct:null,liquidityAcceptable:null,executionQualityAcceptable:null,providerState:null,
         stressGapDetected:false,stressIvShockDetected:ivStressRefresh.assessment?.stressIvShockDetected??null,
+        stressIvShockApplicability:paperBootstrapStressApplicability(ivStressRefresh.assessment?.maturity.state??null),
         stressSpreadWideningDetected:null,
       }});
     },input.now);
