@@ -546,7 +546,10 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
   const evaluated = applicable.filter((branch) => branch.evaluated && branch.evaluationState !== 'BLOCKED_MISSING_INPUT');
   const globallyRanked = rankCandidates(branches.flatMap((branch) => branch.candidates));
   const feasible = globallyRanked.filter((candidate) => candidate.riskFeasible);
-  const blockedApplicable = applicable.filter((branch) => branch.evaluationState === 'BLOCKED_MISSING_INPUT');
+  // Shadow/research incompleteness stays visible in its branch receipt. It
+  // cannot veto or relabel the bounded Conventional Paper decision.
+  const blockedApplicable = applicable.filter((branch) => branch.branch === 'THETA_CONVENTIONAL'
+    && branch.evaluationState === 'BLOCKED_MISSING_INPUT');
   const managementAuthorityRequired = applicable.some((branch) => branch.branch === 'THETA_RECOVERY' || branch.branch === 'THETA_CC');
   // Research-only and shadow branches may have structurally positive size.
   // They are never eligible for the Paper-facing frontier selection.
@@ -571,12 +574,14 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
   const selectedQuantity = structuralSelection === null ? 0 : decision === undefined
     ? structuralSelection.sizing.quantity : Math.min(structuralSelection.sizing.quantity, decision.quantity);
   const secondBest = managementAuthorityRequired || decision !== undefined ? null : sizedNewRisk[1] ?? null;
-  const rejected = globallyRanked.filter((candidate) => !candidate.riskFeasible);
-  const nearMiss = globallyRanked.find((candidate) => candidate.riskFeasible && candidate.sizing.quantity === 0)
+  const paperCandidates = globallyRanked.filter((candidate) => candidate.branch === 'THETA_CONVENTIONAL');
+  const rejected = paperCandidates.filter((candidate) => !candidate.riskFeasible);
+  const nearMiss = paperCandidates.find((candidate) => candidate.riskFeasible && candidate.sizing.quantity === 0)
     ?? rejected[0] ?? null;
   const managementIncomplete = input.unmanagedBrokerPositionCount > 0;
   const universeIncomplete = input.unevaluatedUnderlyingCount > 0;
-  const sizingEvidenceUnknown = globallyRanked.filter((candidate) => candidate.riskFeasible &&
+  const sizingEvidenceUnknown = globallyRanked.filter((candidate) => candidate.branch === 'THETA_CONVENTIONAL'
+    && candidate.riskFeasible &&
     candidate.sizing.quantity === 0 && ['AEGIS_UNKNOWN', 'SIZING_POLICY_INCOMPLETE',
       'COLLATERAL_INPUT_UNKNOWN', 'REDUCED_MULTIPLIER_UNKNOWN', 'UNKNOWN_STOCK_CAPACITY',
       'COVERED_SHARES_UNKNOWN']

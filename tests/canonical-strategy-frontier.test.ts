@@ -141,6 +141,10 @@ test('Paper WAIT diagnostics exclude shadow and research counterfactuals while b
   assert.deepEqual(cohort.candidates.map((candidate) => candidate.candidateId),
     ['THETA_CONVENTIONAL:AAPL261016P00190000']);
   assert.equal(frontier.branches.find((branch) => branch.branch === 'THETA_HOLD_STRIKE')?.candidateCount, 1);
+  const onlyShadow = buildCanonicalStrategyFrontier({ ...base, contracts: [hold], routing: routing(['THETA_H']) });
+  assert.equal(onlyShadow.branches.find((branch) => branch.branch === 'THETA_HOLD_STRIKE')?.candidateCount, 1);
+  assert.equal(onlyShadow.nearMissCandidateId, null);
+  assert.equal(onlyShadow.bestRejectedCandidateId, null);
 });
 
 test('recovery and covered-call frontiers require confirmed stock and preserve whole-chain call-away economics', () => {
@@ -296,6 +300,17 @@ test('an economic Q WAIT cannot be promoted to an OPEN by the structural frontie
   assert.equal(result.primaryAction, 'GLOBAL_WAIT');
   assert.equal(result.selectedCandidateId, null);
   assert.equal(result.selectedQuantity, 0);
+  assert.ok(result.globalWaitReasons.includes('THETA_Q_ECONOMIC_WAIT'));
+});
+
+test('missing research-only H candidates do not turn a complete Q WAIT into SYSTEM_HOLD', () => {
+  const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()],
+    routing: routing(['THETA_Q', 'THETA_H']), thetaQActionFeasibleByOptionSymbol: { [contract().optionSymbol]: true },
+    thetaQDecision: { snapshotId: base.snapshotId, timestamp: NOW, underlying: 'AAPL', winningAction: 'WAIT',
+      selectedCandidateId: null, quantity: 0 } });
+  assert.equal(result.branches.find((branch) => branch.branch === 'THETA_HOLD_STRIKE')?.evaluationState,
+    'BLOCKED_MISSING_INPUT');
+  assert.equal(result.primaryAction, 'GLOBAL_WAIT');
   assert.ok(result.globalWaitReasons.includes('THETA_Q_ECONOMIC_WAIT'));
 });
 
