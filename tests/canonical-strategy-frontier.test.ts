@@ -167,7 +167,7 @@ test('GLOBAL_WAIT is earned only after every applicable branch is evaluated and 
   const invalidIdentity = contract({ occSymbol: null });
   const exhausted = buildCanonicalStrategyFrontier({ ...base, contracts: [invalidIdentity], routing: routing(['THETA_Q']) });
   assert.equal(exhausted.globalWaitEarned, true);
-  assert.deepEqual(exhausted.globalWaitReasons, ['ALL_APPLICABLE_BRANCHES_EVALUATED', 'NO_RISK_FEASIBLE_ACTION']);
+  assert.deepEqual(exhausted.globalWaitReasons, ['PAPER_AUTHORIZED_BRANCH_EVALUATED', 'NO_RISK_FEASIBLE_ACTION']);
 
   const incomplete = buildCanonicalStrategyFrontier({ ...base, contracts: [], routing: routing(['THETA_Q']) });
   assert.equal(incomplete.globalWaitEarned, false);
@@ -322,6 +322,7 @@ test('missing research-only H candidates do not turn a complete Q WAIT into SYST
   assert.equal(result.branches.find((branch) => branch.branch === 'THETA_HOLD_STRIKE')?.evaluationState,
     'BLOCKED_MISSING_INPUT');
   assert.equal(result.primaryAction, 'GLOBAL_WAIT');
+  assert.ok(result.globalWaitReasons.includes('PAPER_AUTHORIZED_BRANCH_EVALUATED'));
   assert.ok(result.globalWaitReasons.includes('THETA_Q_ECONOMIC_WAIT'));
 });
 

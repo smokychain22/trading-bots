@@ -602,7 +602,7 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
     secondBestCandidateId: secondBest?.candidateId ?? null,
     nearMissCandidateId: nearMiss?.candidateId ?? null,
     bestRejectedCandidateId: rejected[0]?.candidateId ?? null,
-    globalWaitEarned, globalWaitReasons: globalWaitEarned ? ['ALL_APPLICABLE_BRANCHES_EVALUATED',
+    globalWaitEarned, globalWaitReasons: globalWaitEarned ? ['PAPER_AUTHORIZED_BRANCH_EVALUATED',
       decision !== undefined ? `THETA_Q_ECONOMIC_${decision.winningAction}` : 'NO_RISK_FEASIBLE_ACTION']
       : [...blockedApplicable.map((branch) => `BRANCH_NOT_FULLY_EVALUATED:${branch.branch}`),
           ...(decision !== undefined && !decisionSnapshotValid ? ['THETA_Q_DECISION_SNAPSHOT_MISMATCH'] : []),
