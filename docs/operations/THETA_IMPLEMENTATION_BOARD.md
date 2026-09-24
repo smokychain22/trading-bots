@@ -1,5 +1,19 @@
 # THETA implementation board
 
+## V10 integration in progress, 2026-09-24
+
+- Replaced the adaptive receipt's unconditional `NO_COMPARISON` with an actual
+  same-expiration structural Q/H/D comparison. It persists inside the existing
+  canonical frontier and cannot select a broker action. Incomplete evidence and
+  cross-horizon economics remain explicit. PostgreSQL round-trip and exact-release
+  runtime proof are separate acceptance gates.
+- Added an executable offline dispatcher for all 17 profit-taking challengers,
+  dated forecast and quote validation, conservative explicit fill costs, censoring,
+  immutable-manifest checks and deterministic output. This closes the registry-only
+  execution gap for that dispatcher, not empirical management-policy validation.
+- Full R8B-F execution integration remains OPEN pending current-source tracing.
+  No claim of zero remaining code-solvable V10 work is made by these changes.
+
 Source capability inventory: run `npm run theta:truth` or import
 `src/theta/canonical-system-truth.ts`. Current worker, database, broker and
 funnel observations come from `npm run theta:truth-runtime`. This board records the history of fixes.

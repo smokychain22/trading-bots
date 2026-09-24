@@ -415,8 +415,9 @@ export function validateDeterministicEconomicsForAction(action: string, d: Deter
  * states. */
 function isDimensionSatisfied(value: number | EmpiricalDatum<number> | null): boolean {
   if (value === null) return false;
-  if (typeof value === 'object') return value.status !== 'UNKNOWN';
-  return true;
+  if (typeof value === 'object') return value.status === 'NOT_APPLICABLE'
+    ? value.reason.trim().length > 0 : value.status === 'KNOWN' && Number.isFinite(value.value);
+  return Number.isFinite(value);
 }
 
 function hasAnyEmpiricalField(e: EmpiricalForwardEconomics): boolean {
@@ -495,6 +496,19 @@ export function compareCrossStrategy(
 
   if (candidates.length === 0) {
     return { state: 'NOT_COMPARABLE', reason: 'NO_CANDIDATES', candidateIds, ...empty };
+  }
+  if (new Set(candidateIds).size !== candidateIds.length || candidates.some((c) => !c.candidateId.trim()
+    || !Number.isFinite(c.quantity) || (c.deterministic.action === 'WAIT' ? c.quantity !== 0 : c.quantity <= 0))) {
+    return { state: 'NOT_COMPARABLE', reason: 'INVALID_CANDIDATE_IDENTITY_OR_QUANTITY', candidateIds, ...empty };
+  }
+  const positionedCandidates = candidates.filter((c) => c.deterministic.action !== 'WAIT');
+  if (positionedCandidates.some((c) => c.quantity !== positionedCandidates[0]?.quantity)) {
+    return { state: 'NOT_COMPARABLE', reason: 'COMPARISON_QUANTITY_MISMATCH', candidateIds, ...empty };
+  }
+  if (candidates.some((c) => Object.values(c.deterministic).some((v) => typeof v === 'number' && !Number.isFinite(v))
+    || Object.values(c.empirical).some((v) => typeof v === 'number' && !Number.isFinite(v)
+      || v !== null && typeof v === 'object' && v.status === 'KNOWN' && !Number.isFinite(v.value)))) {
+    return { state: 'NOT_COMPARABLE', reason: 'NON_FINITE_ECONOMICS', candidateIds, ...empty };
   }
   const firstContext = candidates[0]?.context as ComparisonContext;
   if (!candidates.every((c) => sameComparisonContext(c.context, firstContext))) {

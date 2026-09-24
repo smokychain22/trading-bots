@@ -5,6 +5,7 @@ import { adaptiveBrainLayerOwnership, adaptiveStrategyRegistry, buildAdaptiveSha
   fixedVsAdaptiveExperiments, sovereignDecisionPath, thetaRManagementRoute, validateKernelEvidence,
 } from '../src/theta/adaptive-decision-brain.js';
 import type { CanonicalStrategyFrontier } from '../src/theta/canonical-strategy-frontier.js';
+const required = <T>(value: T | null | undefined): T => { assert.ok(value !== null && value !== undefined); return value; };
 
 const frontier = (): CanonicalStrategyFrontier => ({
   contractVersion: 'theta-canonical-strategy-frontier-v1', snapshotId: 'snapshot-1',
@@ -35,6 +36,60 @@ const frontier = (): CanonicalStrategyFrontier => ({
 const currentDecision = () => ({
   selectedCandidateRef: 'c1', actionCode: 'OPEN_CSP', quantity: 1, strategyBranch: 'THETA_CONVENTIONAL',
 } as const);
+
+function comparableFrontier(): CanonicalStrategyFrontier {
+  const f = frontier();
+  const c = required(required(f.branches[0]).candidates[0]);
+  const legs = [{ positionIntent: 'SELL_TO_OPEN' as const, optionSymbol: 'SPY261021P00100000',
+    occSymbol: 'SPY261021P00100000', optionType: 'PUT' as const, strike: 100, expiration: '2026-10-21',
+    multiplier: 100, contractTradable: true, deliverableClassification: 'STANDARD_EQUITY' as const,
+    bid: 1, ask: 1.05, quoteTimestamp: f.timestamp }];
+  return { ...f, branches: [{ ...required(f.branches[0]), candidates: [
+    { ...c, legs }, { ...c, candidateId: 'c2', legs: [{ ...required(legs[0]), optionSymbol: 'SPY261021P00099000',
+      occSymbol: 'SPY261021P00099000', strike: 99 }] },
+  ] }] };
+}
+
+test('real frontier alternatives enter the structural comparator without changing Q or inventing EV', () => {
+  const f = comparableFrontier();
+  const before = JSON.stringify(f);
+  const result = buildAdaptiveShadowDecisionReceipt({ frontier: f, currentDecision: currentDecision() });
+  assert.equal(JSON.stringify(f), before);
+  assert.equal(result.comparison, 'STRUCTURAL_COMPARISON');
+  assert.equal(required(result.shadowComparison.cohorts[0]).comparison.state, 'STRUCTURAL_ONLY');
+  assert.equal(required(required(result.shadowComparison.cohorts[0]).candidates[0]).deterministic.maxLoss, 9900);
+  assert.equal(required(required(result.shadowComparison.cohorts[0]).candidates[0]).empirical.expectedAfterCostWholeChainPnl, null);
+  assert.equal(result.currentPolicyDecision.candidateId, 'c1');
+  assert.equal(result.adaptiveShadowDecision.candidateId, null);
+  assert.equal(result.adaptiveShadowDecision.quantity, null);
+  assert.equal(result.shadowComparison.brokerAuthority, false);
+  const reversed = { ...f, branches: [{ ...required(f.branches[0]), candidates: [...required(f.branches[0]).candidates].reverse() }] };
+  assert.equal(buildAdaptiveShadowDecisionReceipt({ frontier: reversed, currentDecision: currentDecision() }).contentHash, result.contentHash);
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), result);
+});
+
+test('future quotes, invalid identity and incomplete enumeration remain visible', () => {
+  const f = comparableFrontier();
+  const bad = { ...f, branches: [{ ...required(f.branches[0]), enumerationTruncated: true,
+    candidates: required(f.branches[0]).candidates.map((c) => ({ ...c, legs: c.legs.map((l) => ({ ...l,
+      quoteTimestamp: '2026-09-22T14:00:00Z', contractTradable: null })) })) }] };
+  const result = buildAdaptiveShadowDecisionReceipt({ frontier: bad, currentDecision: currentDecision() });
+  assert.equal(result.comparison, 'NO_COMPARISON');
+  assert.equal(result.shadowComparison.enumerationComplete, false);
+  assert.equal(result.shadowComparison.excluded.length, 2);
+  assert.ok(required(result.shadowComparison.excluded[0]).reasons.includes('QUOTE_TIME_INVALID_OR_FUTURE'));
+});
+
+test('different expirations are never treated as a common payoff horizon', () => {
+  const f = comparableFrontier();
+  const mixed = { ...f, branches: [{ ...required(f.branches[0]), candidates: required(f.branches[0]).candidates.map((c, i) =>
+    ({ ...c, legs: c.legs.map((l) => ({ ...l, expiration: i === 0 ? '2026-10-21' : '2026-09-25',
+      optionSymbol: i === 0 ? l.optionSymbol : l.optionSymbol.replace('261021', '260925'),
+      occSymbol: i === 0 ? l.occSymbol : l.occSymbol.replace('261021', '260925') })) })) }] };
+  const result = buildAdaptiveShadowDecisionReceipt({ frontier: mixed, currentDecision: currentDecision() });
+  assert.equal(result.comparison, 'NO_COMPARISON');
+  assert.equal(result.shadowComparison.cohorts.length, 2);
+});
 
 test('adaptive shadow is a comparison receipt with no broker mutation authority', () => {
   const receipt = buildAdaptiveShadowDecisionReceipt({ frontier: frontier(), currentDecision: currentDecision() });

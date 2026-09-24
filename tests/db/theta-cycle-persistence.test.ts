@@ -42,6 +42,7 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
     const contract = normalizeOptionContract({
       source: 'ALPACA', underlying: 'SPY', optionSymbol: 'SPY261009P00500000', occSymbol: 'SPY261009P00500000',
       optionType: 'PUT', strike: 500, expiration: '2026-10-09', asOfDate: '2026-09-11', multiplier: 100,
+      contractTradable: true, exerciseStyle: 'AMERICAN', deliverableClassification: 'STANDARD_EQUITY',
       underlyingBid: 500, underlyingAsk: 500.02, underlyingLast: 500.01, underlyingTimestamp: now,
       underlyingQuoteReceivedAt: now, underlyingQuoteSource: 'ALPACA_IEX',
       bid: 2.5, ask: 2.6, bidSize: 20, askSize: 20, lastTradePrice: 2.5, lastTradeSize: 1,
@@ -54,6 +55,7 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
       normalizeOptionContract({
         source: 'ALPACA', underlying: 'SPY', optionSymbol, occSymbol: optionSymbol,
         optionType: 'PUT', strike, expiration, asOfDate: '2026-09-11', multiplier: 100,
+        contractTradable: true, exerciseStyle: 'AMERICAN', deliverableClassification: 'STANDARD_EQUITY',
         underlyingBid: 500, underlyingAsk: 500.02, underlyingLast: 500.01, underlyingTimestamp: now,
         bid, ask: bid + 0.1, bidSize: 20, askSize: 20, lastTradePrice: bid, lastTradeSize: 1,
         quoteTimestamp: now, tradeTimestamp: now, volume: 100, volumeSource: 'ALPACA', openInterest: 1000,
@@ -139,6 +141,17 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
     assert.equal(first.fusionSnapshotId, second.fusionSnapshotId);
     assert.equal(first.shadowOpportunityCount, 2);
     assert.equal(second.shadowOpportunityCount, 0);
+    const storedFrontier = await pool.query(`SELECT frontier_json FROM trade.canonical_strategy_frontier WHERE fusion_snapshot_id=$1`,
+      [first.fusionSnapshotId]);
+    assert.equal(storedFrontier.rows.length, 1);
+    const shadow = storedFrontier.rows[0].frontier_json.adaptiveShadowDecision;
+    assert.equal(shadow.contractVersion, 'theta-adaptive-decision-brain-shadow-v3');
+    assert.equal(shadow.shadowComparison.version, 'theta-canonical-shadow-comparison-v1');
+    assert.equal(shadow.shadowComparison.brokerAuthority, false);
+    assert.equal(shadow.adaptiveShadowDecision.candidateId, null);
+    assert.equal(shadow.shadowComparison.profitabilityWinner, null);
+    assert.ok(shadow.shadowComparison.cohorts.length > 0, 'persisted structural economics must be reloadable');
+    assert.ok(shadow.contentHash.length === 64);
     const resolver=new PostgresOutcomeResolver(pool);
     const materialized=await resolver.materializeEligibleSubjects();
     const replayed=await resolver.materializeEligibleSubjects();

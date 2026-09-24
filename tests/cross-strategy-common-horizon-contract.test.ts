@@ -60,6 +60,14 @@ const wholeChainFull = (pnl: number, es: number, capitalDays: number, uncertaint
   expectedRecoveryDuration: knownDatum(recoveryDuration), expectedTca: tca,
 });
 
+test('common horizon never silently mixes quantities, duplicate identities or nonfinite evidence', () => {
+  assert.equal(compareCrossStrategy([csp(), { ...definedRisk(), quantity: 2 }], ENTRY_WHOLE_CHAIN_V1).reason,
+    'COMPARISON_QUANTITY_MISMATCH');
+  assert.equal(compareCrossStrategy([csp(), csp()], ENTRY_WHOLE_CHAIN_V1).reason, 'INVALID_CANDIDATE_IDENTITY_OR_QUANTITY');
+  assert.equal(compareCrossStrategy([csp({}, { expectedAfterCostWholeChainPnl: NaN }), definedRisk()], ENTRY_WHOLE_CHAIN_V1).reason,
+    'NON_FINITE_ECONOMICS');
+});
+
 test('cashSecuredPutMaxLossAtZero computes a real finite figure for a CSP -- severe but finite, never null when inputs are known', () => {
   const maxLoss = cashSecuredPutMaxLossAtZero(190, 2.0, 100, 1);
   assert.equal(maxLoss, (190 - 2.0) * 100 * 1);

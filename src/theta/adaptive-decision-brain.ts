@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto';
 import type { CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
 import type { CanonicalFrontierAction } from './canonical-strategy-frontier.js';
 import { canonicalThetaStrategySources, type ThetaStrategyBranch } from './strategy-package.js';
+import { buildCanonicalShadowComparison } from './canonical-shadow-comparison.js';
 
-export const adaptiveDecisionBrainVersion = 'theta-adaptive-decision-brain-shadow-v2' as const;
+export const adaptiveDecisionBrainVersion = 'theta-adaptive-decision-brain-shadow-v3' as const;
 
 export type EvidenceValueState = 'KNOWN' | 'UNKNOWN' | 'NOT_APPLICABLE' | 'INVALID';
 export type EvidencePolicyRole =
@@ -240,14 +241,15 @@ export interface AdaptiveShadowDecisionReceipt {
     readonly strategy: ThetaStrategyBranch | null;
   };
   readonly adaptiveShadowDecision: {
-    readonly action: 'NO_COMPARISON';
+    readonly action: 'NO_COMPARISON' | 'STRUCTURAL_COMPARISON';
     readonly candidateId: null;
     readonly quantity: null;
     readonly strategy: null;
     readonly reasonCodes: readonly string[];
   };
   readonly lineage: readonly string[];
-  readonly comparison: 'NO_COMPARISON';
+  readonly comparison: 'NO_COMPARISON' | 'STRUCTURAL_COMPARISON';
+  readonly shadowComparison: ReturnType<typeof buildCanonicalShadowComparison>;
   readonly executionAuthorized: false;
   readonly brokerMutationAllowed: false;
   readonly contentHash: string;
@@ -262,7 +264,7 @@ function canonicalJson(value: unknown): string {
 }
 
 export function buildAdaptiveShadowDecisionReceipt(input: {
-  frontier: Pick<CanonicalStrategyFrontier, 'snapshotId' | 'timestamp'>;
+  frontier: Pick<CanonicalStrategyFrontier, 'snapshotId' | 'timestamp' | 'branches'>;
   currentDecision: {
     readonly actionCode: AdaptiveShadowDecisionReceipt['currentPolicyDecision']['action'];
     readonly selectedCandidateRef: string | null;
@@ -270,6 +272,7 @@ export function buildAdaptiveShadowDecisionReceipt(input: {
     readonly strategyBranch: ThetaStrategyBranch | null;
   };
 }): AdaptiveShadowDecisionReceipt {
+  const shadowComparison = buildCanonicalShadowComparison(input.frontier);
   const payload = {
     contractVersion: adaptiveDecisionBrainVersion,
     snapshotId: input.frontier.snapshotId,
@@ -281,7 +284,7 @@ export function buildAdaptiveShadowDecisionReceipt(input: {
       strategy: input.currentDecision.strategyBranch,
     },
     adaptiveShadowDecision: {
-      action: 'NO_COMPARISON' as const,
+      action: shadowComparison.state,
       candidateId: null,
       quantity: null,
       strategy: null,
@@ -291,7 +294,8 @@ export function buildAdaptiveShadowDecisionReceipt(input: {
       ],
     },
     lineage: sovereignDecisionPath,
-    comparison: 'NO_COMPARISON' as const,
+    comparison: shadowComparison.state,
+    shadowComparison,
     executionAuthorized: false as const,
     brokerMutationAllowed: false as const,
   };
