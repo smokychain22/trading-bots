@@ -241,3 +241,9 @@ No item is complete merely because its type, config, fixture, or UI label exists
 - OBSERVED 2026-09-24T14:13Z: Aiven readable/read-only off, one active locked worker,
   GOOD reconciliation, zero positions/open orders, and fresh 14:10 evidence.
   Exact-source alignment and a complete current-release SPY proof are still owed.
+- CLOSED_SOURCE_DEFECT: observed locked cutover exposed a supervisor mutex race.
+  A non-owner exit previously ran lease-release/OFFLINE cleanup. Cleanup and stop-
+  flag removal now require ownership. The installer waits boundedly for the old
+  supervisor's mutex release before changing runtime identity. Real Windows AST
+  execution tests prove a non-owner performs no lease/status mutation and the
+  owner still cleans up. This fixes ownership, not PostgreSQL availability.

@@ -36,13 +36,14 @@ if ($LASTEXITCODE -ne 0 -or $currentSha -ne $runtime.buildSha) {
   throw 'THETA_RUNTIME_SHA_MISMATCH'
 }
 if ((& git status --porcelain --untracked-files=no).Count -gt 0) { throw 'THETA_RUNTIME_TRACKED_FILES_DIRTY' }
-if (Test-Path -LiteralPath $stopFile) { Remove-Item -LiteralPath $stopFile -Force }
 
 $mutex = [Threading.Mutex]::new($false, 'Local\THETA_MASTER_PAPER_SUPERVISOR')
 $owned = $false
 try {
-  $owned = $mutex.WaitOne(0)
+  try { $owned = $mutex.WaitOne(0) }
+  catch [Threading.AbandonedMutexException] { $owned = $true }
   if (!$owned) { exit 23 }
+  if (Test-Path -LiteralPath $stopFile) { Remove-Item -LiteralPath $stopFile -Force }
   $delaySeconds = 5
   $databaseRecoveryMode = $false
   $databaseRecoverySuccesses = 0
@@ -307,16 +308,21 @@ try {
     if ($workerExit -ne 0) { $delaySeconds = [Math]::Min(300, $delaySeconds * 2) }
   }
 } finally {
-  try {
-    if ($token.Length -ge 32) {
-      $headers = @{ Authorization="Bearer $token"; 'X-Theta-Worker-Id'=$runtime.workerId;
-        'X-Theta-Host-Id'=$env:COMPUTERNAME; 'X-Theta-Build-Sha'=$runtime.buildSha }
-      Invoke-RestMethod -Method Delete -Uri $runtime.endpoint -Headers $headers -TimeoutSec 15 | Out-Null
-    }
-  } catch {}
-  @{state='OFFLINE';lastShutdown=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
-    mode='MASTER_THETA_PAPER';executionGate='LOCKED'} | ConvertTo-Json |
-    Set-Content -LiteralPath $statusFile -Encoding utf8
-  if ($owned) { $mutex.ReleaseMutex() }
+  # A contender that never owned the supervisor cannot release its lease or
+  # overwrite its status. This also covers exit 23 during a cutover race.
+  if ($owned) {
+    try {
+      if ($token.Length -ge 32) {
+        $headers = @{ Authorization="Bearer $token"; 'X-Theta-Worker-Id'=$runtime.workerId;
+          'X-Theta-Host-Id'=$env:COMPUTERNAME; 'X-Theta-Build-Sha'=$runtime.buildSha }
+        Invoke-RestMethod -Method Delete -Uri $runtime.endpoint -Headers $headers -TimeoutSec 15 | Out-Null
+      }
+    } catch {}
+    try {
+      @{state='OFFLINE';lastShutdown=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
+        mode='MASTER_THETA_PAPER';executionGate='LOCKED'} | ConvertTo-Json |
+        Set-Content -LiteralPath $statusFile -Encoding utf8
+    } finally { $mutex.ReleaseMutex() }
+  }
   $mutex.Dispose()
 }

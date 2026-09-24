@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { execFileSync } from 'node:child_process';
 import type { AutonomousRuntimeReport } from '../src/theta/autonomous-runtime.js';
 import { completedCandidateEvidenceScan } from '../src/worker/postgres-worker-runtime-store.js';
 
@@ -78,6 +79,39 @@ test('Windows installer does not silently queue evidence capture on laptop batte
   assert.match(source,/Remove-Item -LiteralPath \$currentStopFile/);
   assert.match(source,/\$existingRuntime\.workerId/);
   assert.match(source,/workerId=\$workerId/);
+  assert.match(source,/THETA_CUTOVER_OLD_SUPERVISOR_NOT_RELEASED/);
+  assert.match(source,/\$cutoverMutex\.WaitOne\(20000\)/);
+  assert.ok(source.indexOf('$cutoverMutex.WaitOne') < source.indexOf('@{ repositoryPath='));
+});
+
+test('non-owner supervisor cleanup cannot delete the active lease or overwrite health', { skip: process.platform !== 'win32' }, () => {
+  const output = execFileSync('powershell.exe', ['-NoProfile', '-Command', `
+    $ErrorActionPreference = 'Stop'
+    $source = Get-Content -Raw -LiteralPath tools/windows/theta-local-worker.ps1
+    $tokens = $null; $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$parseErrors)
+    if ($parseErrors.Count -gt 0) { throw 'PARSE_ERRORS' }
+    $finally = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.TryStatementAst] -and
+      $null -ne $node.Finally -and $node.Finally.Extent.Text.Contains('$mutex.Dispose()') }, $true)[0].Finally.Extent.Text
+    $body = [scriptblock]::Create($finally.Substring(1, $finally.Length - 2))
+    $script:counts = @{ deletes=0; writes=0; releases=0; disposes=0 }
+    function Invoke-RestMethod { $script:counts.deletes++ }
+    function Set-Content { $script:counts.writes++ }
+    $mutex = New-Object PSObject
+    $mutex | Add-Member ScriptMethod ReleaseMutex { $script:counts.releases++ }
+    $mutex | Add-Member ScriptMethod Dispose { $script:counts.disposes++ }
+    $token = 'test-only-nonsecret-placeholder-value'
+    $runtime = @{workerId='test';buildSha='test';endpoint='https://invalid.test'}
+    $statusFile = 'mocked-never-written'
+    $owned = $false
+    . $body
+    if ($counts.deletes -ne 0 -or $counts.writes -ne 0 -or $counts.releases -ne 0 -or $counts.disposes -ne 1) { throw 'NON_OWNER_MUTATED' }
+    $owned = $true
+    . $body
+    if ($counts.deletes -ne 1 -or $counts.writes -ne 1 -or $counts.releases -ne 1 -or $counts.disposes -ne 2) { throw 'OWNER_CLEANUP_INCOMPLETE' }
+    'PASS'
+  `], { encoding: 'utf8' });
+  assert.equal(output.trim(), 'PASS');
 });
 
 test('Windows worker status never reports stale ONLINE health as current when the supervisor is not running',async()=>{

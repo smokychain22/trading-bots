@@ -67,6 +67,18 @@ if ($null -ne $currentTask -and $currentTask.State -eq 'Running') {
   }
   Remove-Item -LiteralPath $currentStopFile -Force -ErrorAction SilentlyContinue
 }
+# Task Scheduler can report a stopped task before its supervisor finishes
+# cleanup. Do not replace runtime identity or start its successor in that gap.
+$cutoverMutex = [Threading.Mutex]::new($false, 'Local\THETA_MASTER_PAPER_SUPERVISOR')
+$cutoverOwned = $false
+try {
+  try { $cutoverOwned = $cutoverMutex.WaitOne(20000) }
+  catch [Threading.AbandonedMutexException] { $cutoverOwned = $true }
+  if (!$cutoverOwned) { throw 'THETA_CUTOVER_OLD_SUPERVISOR_NOT_RELEASED' }
+} finally {
+  if ($cutoverOwned) { $cutoverMutex.ReleaseMutex() }
+  $cutoverMutex.Dispose()
+}
 @{ repositoryPath=$repositoryPath;releasePath=$releasePath;buildSha=$buildSha;installedAt=(Get-Date).ToUniversalTime().ToString('o');
   mode='MASTER_THETA_PAPER';projectName=$project.projectName;workerId=$workerId;
   endpoint='https://trading-bots-one.vercel.app/api/theta-runtime' } |
