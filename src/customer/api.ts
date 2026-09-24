@@ -49,6 +49,7 @@ import { optionomicsConfigFromEnvironment } from "../theta/theta-shadow-once.js"
 import { canonicalThetaStrategyRegistry } from "../theta/strategy-package.js";
 import { buildR8Readiness } from "../theta/r8-readiness.js";
 import { assessReconciliationReadiness, buildThetaFirstPaperReadiness, type FirstPaperChecks } from "../theta/first-paper-blocker-budget.js";
+import { canonicalPreVpsUnknownAuditSummary } from "../theta/pre-vps-unknown-register.js";
 
 const simulationSchema = z
   .object({
@@ -580,8 +581,12 @@ export default async function customerHandler(
           : unknown('CURRENT_WORKER_RELEASE_NOT_PROVEN','runtime-worker-status-and-deployment-sha','EXTERNAL'),
       };
       const firstPaperReadiness=buildThetaFirstPaperReadiness({observedAt:new Date().toISOString(),
-        checks:firstPaperChecks,unknownAuditCoverage:'PARTIAL',avoidableUnknownCount:null,
-        implementationBlockerCount:null,unresolvedSafetyCriticalCount:null,unresolvedPaperEntryCount:null});
+        checks:firstPaperChecks,
+        unknownAuditCoverage:canonicalPreVpsUnknownAuditSummary.auditCoverage,
+        avoidableUnknownCount:canonicalPreVpsUnknownAuditSummary.avoidableUnknownCount,
+        implementationBlockerCount:canonicalPreVpsUnknownAuditSummary.implementationBlockerCount,
+        unresolvedSafetyCriticalCount:canonicalPreVpsUnknownAuditSummary.unresolvedSafetyCriticalCount,
+        unresolvedPaperEntryCount:canonicalPreVpsUnknownAuditSummary.unresolvedPaperEntryCount});
       const firstPaperOperationalBlockers=firstPaperReadiness.blockers.map((blocker)=>blocker.code);
       const r8Readiness=buildR8Readiness({r7EngineeringComplete:true,brokerTruthReady:localWorker.alpaca_health==='GOOD',
         sessionStateReady:localWorker.market_session!=='UNKNOWN',

@@ -37,6 +37,23 @@ const avoidableCategories = new Set<UnknownCategory>([
   'CONSUMER_WIRING_DEFECT', 'POLICY_MISSING',
 ]);
 
+/**
+ * Source-controlled result of the exhaustive decision-critical audit.
+ *
+ * The audit command compares this snapshot with the canonical JSON register and
+ * fails CI if either side changes without the other. Runtime/operator surfaces
+ * may use these static audit facts, but must still prove dynamic provider,
+ * broker, database, quote, AEGIS and worker checks independently.
+ */
+export const canonicalPreVpsUnknownAuditSummary = Object.freeze({
+  auditCoverage: 'COMPLETE' as const,
+  avoidableUnknownCount: 0,
+  implementationBlockerCount: 0,
+  unresolvedSafetyCriticalCount: 0,
+  unresolvedPaperEntryCount: 0,
+  denominatorContract: 'theta-decision-critical-evidence-registry-v1' as const,
+});
+
 export function assessUnknownRegister(register: UnknownRegister): {
   readonly avoidableUnknownCount: number;
   readonly openUnknownCount: number;

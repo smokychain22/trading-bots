@@ -239,6 +239,13 @@ test("operator access needs a strong key, same origin and signed expiring sessio
   assert.equal(statusPayload.data.execution_control.pause_new_orders, true);
   assert.equal(statusPayload.data.execution_control.live_host_allowed, false);
   assert.equal(statusPayload.data.theta_first_paper_readiness.version, 'theta-first-paper-blocker-budget-v1');
+  assert.equal(statusPayload.data.theta_first_paper_readiness.unknownAuditCoverage, 'COMPLETE');
+  assert.equal(statusPayload.data.theta_first_paper_readiness.avoidableUnknownCount, 0);
+  assert.equal(statusPayload.data.theta_first_paper_readiness.implementationBlockerCount, 0);
+  assert.equal(statusPayload.data.theta_first_paper_readiness.unresolvedSafetyCriticalCount, 0);
+  assert.equal(statusPayload.data.theta_first_paper_readiness.unresolvedPaperEntryCount, 0);
+  assert.equal(statusPayload.data.theta_first_paper_readiness.checks.quotePipelineReady.state, 'UNKNOWN');
+  assert.equal(statusPayload.data.theta_first_paper_readiness.checks.aegisReady.state, 'UNKNOWN');
   assert.notEqual(statusPayload.data.theta_first_paper_readiness.status, 'READY');
   assert.equal(statusPayload.data.first_paper_operational_readiness.status, 'BLOCKED');
 });
