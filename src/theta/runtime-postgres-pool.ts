@@ -12,5 +12,18 @@ export function createRuntimePostgresPool(connectionString: string,
     report(classification.safeCode === 'POSTGRES_UNKNOWN_ERROR'
       ? 'POSTGRES_IDLE_CONNECTION_ERROR' : classification.safeCode);
   });
+  // Pool-level `error` covers only idle clients. Aiven can terminate a client
+  // while it is checked out by pool.query or a runtime store. Without an
+  // explicit client listener, EventEmitter escalates that provider failure to
+  // uncaughtException before the awaited operation can reject and enter the
+  // database-independent fallback. This listener only reports a safe code.
+  // The query/wrapper still owns rejection and broken-client disposal.
+  pool.on('connect', (client) => {
+    client.on('error', (error: Error & { code?: unknown }) => {
+      const classification = classifyPostgresRuntimeError(error);
+      report(classification.safeCode === 'POSTGRES_UNKNOWN_ERROR'
+        ? 'POSTGRES_CHECKED_OUT_CONNECTION_ERROR' : classification.safeCode);
+    });
+  });
   return pool;
 }

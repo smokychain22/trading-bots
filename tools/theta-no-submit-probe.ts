@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { hostname } from 'node:os';
-import { Pool } from 'pg';
 import { z } from 'zod';
 import { loadEnvironmentFile } from '../src/config/environment.js';
 import { AlpacaPaperBrokerAdapter } from '../src/execution/broker.js';
@@ -13,6 +12,7 @@ import { assertNoSubmitProbeGuard, classifyNoSubmitProbeError,
 import { LocalEvidenceSpool } from '../src/theta/local-evidence-spool.js';
 import { PostgresLocalEvidenceBackfillTarget } from '../src/theta/postgres-local-evidence-backfill.js';
 import { classifyPostgresRuntimeError } from '../src/theta/postgres-runtime-error.js';
+import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
 import { runDatabaseIndependentShadowObservation } from '../src/theta/database-independent-shadow-observation.js';
 import { buildLocalAegisRiskHistory, type LocalAegisRiskObservation } from '../src/theta/local-aegis-risk-history.js';
 import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment,
@@ -79,16 +79,10 @@ const alpaca = {
     return fetch(input, init);
   },
 };
-const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 2,
-  connectionTimeoutMillis: 10_000, application_name: 'theta-no-submit-probe' });
 let poolConnectionFailed = false;
+const pool = createRuntimePostgresPool(environment.DATABASE_URL,()=>{poolConnectionFailed=true;});
 let paperEntryBootstrap:PaperEntryBootstrapAssessment|undefined;
 let recoveryInventoryUnderlyingsForFallback:readonly string[]|undefined;
-// pg emits idle-client disconnects on the Pool itself. Without a listener,
-// a transient Aiven disconnect crashes this read-only diagnostic outside the
-// fail-closed receipt path.
-pool.on('error', () => { poolConnectionFailed = true; });
-
 try {
   probeStage = 'BROKER_CLOCK_READ';
   const clock = await broker.getClock();

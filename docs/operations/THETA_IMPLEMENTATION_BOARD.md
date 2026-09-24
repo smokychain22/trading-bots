@@ -371,3 +371,9 @@ No item is complete merely because its type, config, fixture, or UI label exists
   never becomes false merely because PostgreSQL is unavailable. Current SPY
   observations with an unqualified IEX moneyness reference remain explicitly
   rejected and therefore cannot mature either detector.
+- CLOSED_SOURCE_DEFECT: the read-only no-submit probe used a pool listener that
+  covered idle PostgreSQL disconnects only. A provider termination on a checked-
+  out client could therefore reach the process emergency handler before the
+  local observation fallback ran. The shared runtime pool now handles and
+  sanitizes both idle and checked-out client errors. Awaited query failure still
+  owns retry/fallback behavior and broken-client disposal.
