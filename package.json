@@ -32,6 +32,8 @@
     "theta:truth-runtime": "tsx tools/theta-runtime-truth.ts --environment-file=.env.local",
     "theta:storage:audit": "node --import tsx tools/theta-storage-audit.ts --environment-file=.env.local",
     "theta:storage:dependencies": "node --import tsx tools/theta-postgres-dependency-audit.ts",
+    "theta:storage:archive-frontiers": "node --import tsx tools/archive-canonical-strategy-frontiers.ts",
+    "theta:storage:compact-research": "python tools/compact-local-research-spool.py",
     "theta:aegis:baseline-progress": "tsx tools/theta-aegis-baseline-progress.ts --environment-file=.env.local",
     "theta:aegis:next-session-eligibility": "tsx tools/theta-aegis-next-session-eligibility.ts --environment-file=.env.local",
     "theta:aegis:iv-backfill": "node --import tsx tools/backfill-aegis-iv-stress.ts --environment-file=.env.local",

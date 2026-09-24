@@ -1555,6 +1555,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     snapshotId: fusionSnapshot.contentHash, timestamp: decisionTime, strategyVersion: config.policyVersion,
     contracts: mergedContractsForSnapshot, routing, stock: stockState, assignmentCapacityQty: null,
     buyingPower: account?.optionsBuyingPower ?? account?.buyingPower ?? null,
+    optionsApprovedLevel: account?.optionsApprovedLevel ?? null,
+    optionsTradingLevel: account?.optionsTradingLevel ?? null,
     sizingPolicy: config.sizingPolicy,
     brokerAllowedQtyByCandidateId: conventionalRisk.brokerAllowedQtyByCandidateId,
     aegisNewRiskState: aegis?.newRiskState ?? null, eventState: eventContextPopulated ? 'OBSERVED' : null,

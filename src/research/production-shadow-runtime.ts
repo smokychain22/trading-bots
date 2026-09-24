@@ -377,7 +377,12 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   // must not become a blocker for the Paper-authorized champion cohort.
   // Optionomics remains in the immutable research snapshot but cannot grant
   // or veto Paper authority while its as-of and schema-065 contract is open.
-  const cycleStore=new PostgresThetaCycleStore(input.pool),persisted=new Map<string,{
+  const cycleStore=new PostgresThetaCycleStore(input.pool,{
+    // The immutable canonical frontier retains every candidate in PostgreSQL.
+    // Avoid a second high-volume relational copy. The Windows worker exports
+    // this frontier to its durable SQLite WAL after the server cycle returns.
+    persistRelationalCandidateEvidence:false,
+  }),persisted=new Map<string,{
     fusionSnapshotId:string|null;candidateSetId:string|null;decisionId:string|null;
   }>();
   let observationsScheduled=0;

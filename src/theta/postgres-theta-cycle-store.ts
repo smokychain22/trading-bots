@@ -46,6 +46,11 @@ export interface PersistedThetaCycle {
   readonly strategyRouteId: string | null;
   readonly strategyFrontierId: string | null;
   readonly shadowOpportunityCount: number;
+  readonly candidateResearchStorage: 'POSTGRES_RELATIONAL' | 'CANONICAL_FRONTIER_PRIMARY_LOCAL_ARCHIVE_PENDING';
+}
+
+export interface PostgresThetaCycleStoreOptions {
+  readonly persistRelationalCandidateEvidence?: boolean;
 }
 
 export function deterministicRuntimeUuid(value: string): string {
@@ -167,7 +172,7 @@ function jsonObject(value: JsonValue | undefined): Record<string, JsonValue> {
 }
 
 export class PostgresThetaCycleStore {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: Pool, private readonly options: PostgresThetaCycleStoreOptions = {}) {}
 
   async persist(context: ThetaCyclePersistenceContext, cycle: ThetaShadowCycleResult): Promise<PersistedThetaCycle> {
     if (cycle.fusionSnapshot === null) throw new Error('FUSION_SNAPSHOT_NOT_AVAILABLE');
@@ -175,6 +180,9 @@ export class PostgresThetaCycleStore {
     if (fusion.contentHash !== cycle.snapshotContentHash) throw new Error('FUSION_SNAPSHOT_HASH_MISMATCH');
     if (!verifyFusionSnapshot(fusion.snapshot as JsonValue, fusion.contentHash)) throw new Error('FUSION_SNAPSHOT_CONTENT_INVALID');
     const fusionSnapshotId = deterministicRuntimeUuid(`fusion:${context.botInstanceId}:${fusion.contentHash}`);
+    const persistRelationalCandidateEvidence = this.options.persistRelationalCandidateEvidence !== false;
+    const candidateResearchStorage: PersistedThetaCycle['candidateResearchStorage'] =
+      persistRelationalCandidateEvidence ? 'POSTGRES_RELATIONAL' : 'CANONICAL_FRONTIER_PRIMARY_LOCAL_ARCHIVE_PENDING';
     const persistenceStartedAt = Date.now();
     const tracePersistence = (stage: string): void => {
       if (process.env.VERCEL_ENV !== 'production') return;
@@ -204,7 +212,8 @@ export class PostgresThetaCycleStore {
       tracePersistence('OPTIONOMICS_COMPLETE');
       const strategyFrontierId = await this.persistCanonicalStrategyFrontier(client, fusionSnapshotId, cycle);
       if (strategyFrontierId !== null) {
-        await this.persistRelationalCanonicalStrategyEvidence(client, strategyFrontierId, fusionSnapshotId, cycle);
+        await this.persistRelationalCanonicalStrategyEvidence(client, strategyFrontierId, fusionSnapshotId, cycle,
+          persistRelationalCandidateEvidence);
         tracePersistence('CANONICAL_FRONTIER_COMPLETE');
         const contracts = normalizedOptionContractSchema.array().parse(fusion.snapshot.contractCandidates);
         const optionomicsState = objectField(fusion.snapshot, 'optionomicsFeatureState');
@@ -282,7 +291,7 @@ export class PostgresThetaCycleStore {
       const shadowOpportunityCount = shadowResult?.rowCount ?? 0;
       tracePersistence('SHADOW_OPPORTUNITIES_COMPLETE');
       return { fusionSnapshotId, candidateSetId: candidates.candidateSetId, candidateCount: candidates.candidateIds.size,
-        decisionId, strategyRouteId, strategyFrontierId, shadowOpportunityCount };
+        decisionId, strategyRouteId, strategyFrontierId, shadowOpportunityCount, candidateResearchStorage };
     }, { verifyCommitted: async (pool, outcome) => {
       if (outcome.decisionId === null) return false;
       const receipt = await withRuntimePostgresReadRetry(pool, (client) => client.query(
@@ -632,6 +641,7 @@ export class PostgresThetaCycleStore {
     frontierId: string,
     fusionSnapshotId: string,
     cycle: ThetaShadowCycleResult,
+    persistCandidateRows: boolean,
   ): Promise<void> {
     const frontier = cycle.strategyFrontier;
     if (frontier === null) return;
@@ -694,7 +704,7 @@ export class PostgresThetaCycleStore {
           contentHash:candidateHash,
         };
       });
-      if (candidateRows.length > 0) {
+      if (persistCandidateRows && candidateRows.length > 0) {
         await client.query(
           `INSERT INTO trade.canonical_strategy_candidate_evidence(
             candidate_evidence_id,branch_evidence_id,frontier_id,candidate_ref,branch,action,underlying,

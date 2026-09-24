@@ -2,7 +2,7 @@ import { entryModelFamilies } from '../research/theta-entry-model-readiness.js';
 import { canonicalV7ProfitTakingPolicies } from '../research/profit-taking-experiment.js';
 import { canonicalThetaStrategySources, thetaFeatureFamily, thetaHardRule, thetaStrategyAction } from './strategy-package.js';
 
-export const profitabilityBrainRealityVersion = 'theta-profitability-brain-reality-v3' as const;
+export const profitabilityBrainRealityVersion = 'theta-profitability-brain-reality-v4' as const;
 
 export type RealityLevel = 'L0_ABSENT' | 'L1_TYPED_CONTRACT' | 'L2_SOURCE_IMPLEMENTED'
   | 'L3_DETERMINISTIC_TESTED' | 'L4_CANONICAL_INTEGRATED' | 'L5_PERSISTED'
@@ -32,6 +32,20 @@ export interface ProfitabilityBrainMethod {
   readonly sourceEvidence: readonly string[];
   readonly baseEvidence: CapabilityRealityEvidence;
   readonly empiricalBlocker: string | null;
+}
+
+export interface FiveStrategyRealityRow {
+  readonly branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE' | 'THETA_DEFINED_RISK' | 'THETA_RECOVERY' | 'THETA_CC';
+  readonly role: 'NEW_RISK' | 'INVENTORY_LIFECYCLE';
+  readonly authority: BrainMethodAuthority;
+  readonly candidateProducer: string;
+  readonly canonicalConsumer: string;
+  readonly persistence: string;
+  readonly lockedPlan: string;
+  readonly management: string;
+  readonly outcomeLinkage: string;
+  readonly level: RealityLevel;
+  readonly currentLimitation: string;
 }
 
 const evidence = (level: 0 | 1 | 2 | 3 | 4 | 5 | 6): CapabilityRealityEvidence => ({
@@ -67,6 +81,13 @@ export const profitabilityBrainMethodRegistry: readonly ProfitabilityBrainMethod
     ['bots/theta/quant/models/theta_h_baseline.py', 'src/research/shadow-strategy-orchestrator.ts']),
   method('DEFINED_RISK_CANDIDATE_ENUMERATION', 'CANDIDATE_ENUMERATION', 'RESEARCH_ONLY', 6,
     ['src/theta/canonical-strategy-frontier.ts', 'src/research/shadow-strategy-orchestrator.ts']),
+  method('DEFINED_RISK_LOCKED_MULTI_LEG_PLAN', 'EXECUTION', 'RESEARCH_ONLY', 6,
+    ['src/research/defined-risk-locked-plan.ts', 'src/theta/canonical-strategy-frontier.ts',
+      'src/theta/postgres-theta-cycle-store.ts'],
+    'The exact two-leg plan is persisted and runtime-reachable but remains structurally non-submittable. Alpaca Level 3 MLeg capability is classified, while a THETA mutation adapter is intentionally absent.'),
+  method('DEFINED_RISK_MANAGEMENT_REPLAY', 'MANAGEMENT', 'RESEARCH_ONLY', 3,
+    ['src/research/defined-risk-management-replay.ts', 'src/research/profit-taking-replay.ts'],
+    'All 17 challenger policies run on conservative two-leg close quotes. Real spread episodes and strategy-specific policy promotion remain absent.'),
   method('RECOVERY_CANDIDATE_ENUMERATION', 'CANDIDATE_ENUMERATION', 'PRODUCTION_LOCKED', 6,
     ['src/theta/canonical-strategy-frontier.ts', 'src/theta/production-paper-management-candidate-source.ts']),
   method('COVERED_CALL_CANDIDATE_ENUMERATION', 'CANDIDATE_ENUMERATION', 'PRODUCTION_LOCKED', 6,
@@ -133,6 +154,65 @@ export const profitabilityBrainMethodRegistry: readonly ProfitabilityBrainMethod
     'The thesis is explanatory lineage. Empirical profitability remains unproven.'),
 ];
 
+/**
+ * One source-level row for each product strategy. This is intentionally a
+ * reality map, not an authorization list. L7 and above require runtime or
+ * empirical evidence and are never inferred from source files.
+ */
+export const fiveStrategyRealityMatrix: readonly FiveStrategyRealityRow[] = [
+  {
+    branch: 'THETA_CONVENTIONAL', role: 'NEW_RISK', authority: 'PRODUCTION_LOCKED',
+    candidateProducer: 'theta_q_lattice.py + canonical-strategy-frontier.ts',
+    canonicalConsumer: 'canonical-decision-authority.ts',
+    persistence: 'canonical frontier, relational candidate evidence, decision receipt',
+    lockedPlan: 'master-paper-plan-assembly.ts, single-leg OPEN_CSP only',
+    management: 'PaperBootstrapManagementPolicyProvider via canonical management frontier',
+    outcomeLinkage: 'whole-chain ledger and outcome resolver', level: 'L6_RUNTIME_REACHABLE',
+    currentLimitation: 'Current-worker open-session proof and resolved empirical profitability remain required.',
+  },
+  {
+    branch: 'THETA_HOLD_STRIKE', role: 'NEW_RISK', authority: 'RESEARCH_ONLY',
+    candidateProducer: '2-5 DTE canonical frontier plus hold-strike shadow generator',
+    canonicalConsumer: 'shadow common-horizon comparator only',
+    persistence: 'canonical frontier and relational candidate evidence',
+    lockedPlan: 'No broker-authorized plan. Candidate receipt remains shadow-only.',
+    management: 'Replay challengers only, no promoted strategy-specific management policy',
+    outcomeLinkage: 'research outcome subject and whole-chain dataset when future labels resolve',
+    level: 'L6_RUNTIME_REACHABLE',
+    currentLimitation: 'Independent real-session outcomes and OOS promotion evidence are absent.',
+  },
+  {
+    branch: 'THETA_DEFINED_RISK', role: 'NEW_RISK', authority: 'RESEARCH_ONLY',
+    candidateProducer: 'same-expiry put-pair enumeration with real two-leg BBO and bounded economics',
+    canonicalConsumer: 'shadow common-horizon comparator only',
+    persistence: 'canonical frontier includes one bounded locked-plan receipt plus relational leg/economics evidence',
+    lockedPlan: 'defined-risk-locked-plan.ts, exact two-leg, brokerAuthority=false, submissionAllowed=false',
+    management: 'All 17 profit challengers run on two-leg close economics. Expiry, pin, and short-assignment states are typed.',
+    outcomeLinkage: 'defined-risk paired-study and whole-chain research datasets', level: 'L6_RUNTIME_REACHABLE',
+    currentLimitation: 'The runtime mutation adapter is intentionally absent. Live two-leg episode proof, empirically governed loss actions, and promotion are unresolved.',
+  },
+  {
+    branch: 'THETA_RECOVERY', role: 'INVENTORY_LIFECYCLE', authority: 'PRODUCTION_LOCKED',
+    candidateProducer: 'broker-confirmed stock state plus ProductionPaperManagementCandidateSource',
+    canonicalConsumer: 'PaperBootstrapManagementPolicyProvider and management-action-frontier',
+    persistence: 'management snapshots, candidates, decisions, plans, and whole-chain ledger',
+    lockedPlan: 'SELL_STOCK or SELL_CC management plan only when broker-confirmed inventory makes it applicable',
+    management: 'RECOVERY_WAIT versus SELL_STOCK versus SELL_CC',
+    outcomeLinkage: 'whole-chain realized and unresolved lifecycle accounting', level: 'L6_RUNTIME_REACHABLE',
+    currentLimitation: 'No current inventory exists, so current-worker lifecycle proof is forward-state dependent.',
+  },
+  {
+    branch: 'THETA_CC', role: 'INVENTORY_LIFECYCLE', authority: 'PRODUCTION_LOCKED',
+    candidateProducer: 'broker-confirmed covered shares plus ProductionPaperManagementCandidateSource',
+    canonicalConsumer: 'PaperBootstrapManagementPolicyProvider and management-action-frontier',
+    persistence: 'management snapshots, candidates, grouped plans, and whole-chain ledger',
+    lockedPlan: 'OPEN_CC, CLOSE_CC, ROLL_CC, or call-away lifecycle receipt when applicable',
+    management: 'HOLD_CC versus CLOSE_CC versus ROLL_CC versus ALLOW_CALL_AWAY',
+    outcomeLinkage: 'whole-chain covered-call and call-away accounting', level: 'L6_RUNTIME_REACHABLE',
+    currentLimitation: 'No current covered inventory exists, so current-worker lifecycle proof is forward-state dependent.',
+  },
+] as const;
+
 const levelOrder: readonly RealityLevel[] = [
   'L0_ABSENT', 'L1_TYPED_CONTRACT', 'L2_SOURCE_IMPLEMENTED', 'L3_DETERMINISTIC_TESTED',
   'L4_CANONICAL_INTEGRATED', 'L5_PERSISTED', 'L6_RUNTIME_REACHABLE',
@@ -163,6 +243,7 @@ export interface ProfitabilityBrainRealityReceipt {
   readonly methods: readonly (ProfitabilityBrainMethod & { readonly evidence: CapabilityRealityEvidence; readonly level: RealityLevel })[];
   readonly levelCounts: Readonly<Record<RealityLevel, number>>;
   readonly brokerAuthorizedMethodCount: number;
+  readonly fiveStrategyRealityMatrix: readonly FiveStrategyRealityRow[];
 }
 
 export function buildProfitabilityBrainRealityReceipt(input: {
@@ -203,5 +284,6 @@ export function buildProfitabilityBrainRealityReceipt(input: {
     methods,
     levelCounts,
     brokerAuthorizedMethodCount: methods.filter((item) => item.level === 'L9_BROKER_AUTHORIZED').length,
+    fiveStrategyRealityMatrix,
   };
 }

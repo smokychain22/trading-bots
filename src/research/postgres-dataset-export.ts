@@ -66,7 +66,11 @@ export class PostgresDatasetExporter {
           WHERE branch_evidence.frontier_id=canonical_strategy_frontier.frontier_id),'[]'::jsonb) AS "branchEvidence",
         COALESCE((SELECT jsonb_agg(to_jsonb(candidate_evidence)-'created_at' ORDER BY candidate_evidence.branch,candidate_evidence.candidate_ref)
           FROM trade.canonical_strategy_candidate_evidence candidate_evidence
-          WHERE candidate_evidence.frontier_id=canonical_strategy_frontier.frontier_id),'[]'::jsonb) AS "candidateEvidence"
+          WHERE candidate_evidence.frontier_id=canonical_strategy_frontier.frontier_id),
+          (SELECT jsonb_agg(candidate ORDER BY candidate->>'branch',candidate->>'candidateId')
+             FROM jsonb_array_elements(COALESCE(frontier_json->'branches','[]'::jsonb)) branch,
+                  LATERAL jsonb_array_elements(COALESCE(branch->'candidates','[]'::jsonb)) candidate),
+          '[]'::jsonb) AS "candidateEvidence"
         FROM trade.canonical_strategy_frontier
         WHERE observed_at >= $1 AND observed_at < $2 ORDER BY observed_at,frontier_id`,parameters),
       this.pool.query(`SELECT chain_decision_evidence_id AS "chainDecisionEvidenceId",

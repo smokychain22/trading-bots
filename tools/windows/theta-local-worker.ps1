@@ -294,6 +294,53 @@ try {
           $storageAuditState = 'CAPTURED'
         } else { $storageAuditState = 'FAILED_NONCRITICAL' }
       }
+      # PostgreSQL retains the canonical frontier and transactional audit.
+      # The Windows owner projects high-volume per-candidate research history
+      # into a local SQLite WAL, then compacts verified batches to ZSTD Parquet.
+      # Both steps are closed-session and non-critical so research work cannot
+      # consume resources needed by the trading worker.
+      $localResearchArchiveState = if ($report.reconciliation.marketOpen -eq $true) {
+        'DEFERRED_MARKET_CRITICAL'
+      } else { 'NOT_ATTEMPTED' }
+      $localResearchArchiveRows = 0
+      $localResearchParquetState = if ($report.reconciliation.marketOpen -eq $true) {
+        'DEFERRED_MARKET_CRITICAL'
+      } else { 'NOT_ATTEMPTED' }
+      if ($report.reconciliation.marketOpen -ne $true) {
+        $researchSpoolPath = Join-Path $stateRoot 'research-spool\theta-research.sqlite'
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+          $archiveOutput = & node --import tsx tools/archive-canonical-strategy-frontiers.ts `
+            "--environment-file=$productionEnvFile" "--sqlite=$researchSpoolPath" `
+            "--since=$($runtime.installedAt)" "--source-sha=$($runtime.buildSha)" --limit=10000
+          $archiveExit = $LASTEXITCODE
+          if ($archiveExit -eq 0) {
+            $archiveResult = $archiveOutput | ConvertFrom-Json
+            $localResearchArchiveState = [string]$archiveResult.state
+            $localResearchArchiveRows = [int]$archiveResult.researchRowCount
+          } else { $localResearchArchiveState = 'FAILED_NONCRITICAL' }
+          $compactorPython = Join-Path $RepositoryPath '.venv\Scripts\python.exe'
+          if (!(Test-Path -LiteralPath $compactorPython)) { $compactorPython = 'python' }
+          & $compactorPython -c 'import duckdb' *> $null
+          if ($LASTEXITCODE -ne 0 -and $compactorPython -ne 'python') {
+            $compactorPython = 'python'
+            & $compactorPython -c 'import duckdb' *> $null
+          }
+          if ($LASTEXITCODE -eq 0) {
+            $parquetOutput = & $compactorPython tools/compact-local-research-spool.py `
+              "--sqlite=$researchSpoolPath" "--destination=C:\ProjectBackups\trading-bots\research-archives" --limit=1000
+            $parquetExit = $LASTEXITCODE
+            if ($parquetExit -eq 0) {
+              $parquetResult = $parquetOutput | ConvertFrom-Json
+              $localResearchParquetState = [string]$parquetResult.state
+            } else { $localResearchParquetState = 'FAILED_NONCRITICAL' }
+          } else { $localResearchParquetState = 'DEPENDENCY_UNAVAILABLE_NONCRITICAL' }
+        } catch {
+          if ($localResearchArchiveState -eq 'NOT_ATTEMPTED') { $localResearchArchiveState = 'FAILED_NONCRITICAL' }
+          if ($localResearchParquetState -eq 'NOT_ATTEMPTED') { $localResearchParquetState = 'FAILED_NONCRITICAL' }
+        } finally { $ErrorActionPreference = $previousErrorActionPreference }
+      }
       # Keep a sanitized, append-only local recovery mirror of operational
       # receipts. Aiven remains runtime authority. The writer accepts only a
       # fixed safe schema and cannot persist credentials, account identifiers,
@@ -316,6 +363,8 @@ try {
       @{state='ONLINE';lastCycle=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
         mode='MASTER_THETA_PAPER';executionGate=[string]$report.executionGate;researchExport=$researchExport;
         storageAuditState=$storageAuditState;
+        localResearchArchiveState=$localResearchArchiveState;localResearchArchiveRows=$localResearchArchiveRows;
+        localResearchParquetState=$localResearchParquetState;
         localReceiptState=$localReceiptState;localReceiptHash=$localReceiptHash;
         localEvidenceState=$localEvidenceState;localEvidenceHash=$localEvidenceHash} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8

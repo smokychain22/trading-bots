@@ -29,6 +29,19 @@ test('router applicability and adaptive economic switching remain separate capab
     'L1_TYPED_CONTRACT');
 });
 
+test('V12 matrix covers each real strategy once and keeps D locked and non-authoritative', () => {
+  const receipt = buildProfitabilityBrainRealityReceipt();
+  assert.deepEqual(receipt.fiveStrategyRealityMatrix.map((row) => row.branch).toSorted(), [
+    'THETA_CC', 'THETA_CONVENTIONAL', 'THETA_DEFINED_RISK', 'THETA_HOLD_STRIKE', 'THETA_RECOVERY',
+  ]);
+  const definedRisk = receipt.fiveStrategyRealityMatrix.find((row) => row.branch === 'THETA_DEFINED_RISK');
+  assert.equal(definedRisk?.authority, 'RESEARCH_ONLY');
+  assert.match(definedRisk?.lockedPlan ?? '', /brokerAuthority=false/);
+  assert.match(definedRisk?.lockedPlan ?? '', /submissionAllowed=false/);
+  assert.equal(receipt.methods.find((item) => item.methodId === 'DEFINED_RISK_LOCKED_MULTI_LEG_PLAN')?.level,
+    'L6_RUNTIME_REACHABLE');
+});
+
 test('runtime, empirical, and broker proof advance only sequentially', () => {
   const methodId = 'STRATEGY_APPLICABILITY_ROUTER';
   assert.equal(buildProfitabilityBrainRealityReceipt({ currentWorkerRealData: [methodId] })

@@ -26,6 +26,7 @@ export interface StorageAuthorityEntry {
   readonly researchAuthority: boolean;
   readonly runtimeState:
     | 'ACTIVE'
+    | 'ACTIVE_LOCAL_FRONTIER_ARCHIVE'
     | 'PARTIAL_ARCHIVE_PROVEN_POSTGRES_WRITE_CUTOVER_PENDING';
   readonly rationale: string;
 }
@@ -65,6 +66,13 @@ export const storageAuthorityRegistry: readonly StorageAuthorityEntry[] = [
     tradingAuthority: false, researchAuthority: true,
     runtimeState: 'PARTIAL_ARCHIVE_PROVEN_POSTGRES_WRITE_CUTOVER_PENDING',
     rationale: 'Large analytical history belongs in compressed, portable, queryable archives rather than the trading database.',
+  },
+  {
+    family: 'CANONICAL_STRATEGY_CANDIDATE_RESEARCH_HISTORY', canonicalHome: 'PARQUET_DUCKDB',
+    temporaryHome: 'SQLITE_WAL', archiveHome: 'PARQUET_DUCKDB', retentionClass: 'ARCHIVE_AFTER_VERIFICATION',
+    tradingAuthority: false, researchAuthority: true,
+    runtimeState: 'ACTIVE_LOCAL_FRONTIER_ARCHIVE',
+    rationale: 'The canonical frontier stays in PostgreSQL while its high-volume candidate projection is verified locally and compacted to Parquet.',
   },
   {
     family: 'REBUILDABLE_PROVIDER_AND_FEATURE_CACHES', canonicalHome: 'MEMORY',
@@ -138,10 +146,12 @@ export function classifyPostgresRelation(schema: string, relation: string): {
 }
 
 export function authorityForClassification(classification: RelationClassification): StorageAuthorityEntry | null {
-  if (classification === 'CANONICAL_TRADING_STATE') return storageAuthorityRegistry[0] ?? null;
-  if (classification === 'CANONICAL_AUDIT') return storageAuthorityRegistry[2] ?? null;
-  if (classification === 'SHORT_RETENTION_OBSERVATION') return storageAuthorityRegistry[3] ?? null;
-  if (classification === 'RESEARCH_HISTORY') return storageAuthorityRegistry[4] ?? null;
-  if (classification === 'DERIVABLE_CACHE') return storageAuthorityRegistry[5] ?? null;
+  const family = classification === 'CANONICAL_TRADING_STATE' ? 'BROKER_ACCOUNT_ORDER_POSITION_AND_FILL_STATE'
+    : classification === 'CANONICAL_AUDIT' ? 'DECISION_AND_MUTATION_AUDIT_RECEIPTS'
+      : classification === 'SHORT_RETENTION_OBSERVATION' ? 'HIGH_FREQUENCY_MARKET_AND_RISK_OBSERVATIONS'
+        : classification === 'RESEARCH_HISTORY' ? 'RESEARCH_DATASETS_MODELS_AND_COUNTERFACTUALS'
+          : classification === 'DERIVABLE_CACHE' ? 'REBUILDABLE_PROVIDER_AND_FEATURE_CACHES'
+            : null;
+  if (family !== null) return storageAuthorityRegistry.find((entry) => entry.family === family) ?? null;
   return null;
 }

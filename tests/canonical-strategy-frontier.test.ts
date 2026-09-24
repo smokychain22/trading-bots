@@ -113,7 +113,20 @@ test('defined-risk frontier prices both legs with the broker multiplier and keep
   assert.equal(spread?.economics.maxProfit, 190);
   assert.equal(spread?.economics.maxLoss, 310);
   assert.equal(spread?.executionAuthorized, false);
+  assert.equal(result.definedRiskLockedPlan.plan?.brokerMultiLegSupport, 'UNKNOWN');
   assert.equal(result.selectedBranch, null, 'research-only Defined Risk cannot become the Paper selection');
+});
+
+test('defined-risk plan records Level 3 MLeg support while remaining locked and non-submittable', () => {
+  const shortPut = contract({ optionSymbol: 'AAPL261016P00195000', occSymbol: 'AAPL261016P00195000',
+    strike: 195, bid: 3, ask: 3.1 });
+  const longPut = contract({ optionSymbol: 'AAPL261016P00190000', occSymbol: 'AAPL261016P00190000',
+    strike: 190, bid: 1, ask: 1.1 });
+  const result = buildCanonicalStrategyFrontier({ ...base, contracts: [shortPut, longPut], routing: routing(['THETA_D']),
+    optionsApprovedLevel: 3, optionsTradingLevel: 3 });
+  assert.equal(result.definedRiskLockedPlan.plan?.brokerMultiLegSupport, 'ATOMIC_MULTI_LEG_SUPPORTED');
+  assert.equal(result.definedRiskLockedPlan.plan?.runtimeMutationAdapter, 'NOT_IMPLEMENTED_RESEARCH_ONLY');
+  assert.equal(result.definedRiskLockedPlan.plan?.submissionAllowed, false);
 });
 
 test('inapplicable research branches keep contract counterfactuals with router veto intact', () => {

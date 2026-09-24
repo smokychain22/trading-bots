@@ -41,6 +41,13 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /last-storage-audit-date/);
   assert.match(source, /theta-storage-audit\.ts/);
   assert.match(source, /storageAuditState.*DEFERRED_MARKET_CRITICAL/);
+  assert.match(source, /archive-canonical-strategy-frontiers\.ts/);
+  assert.match(source, /compact-local-research-spool\.py/);
+  assert.match(source, /localResearchArchiveState/);
+  assert.match(source, /localResearchParquetState/);
+  assert.match(source, /research-archives/);
+  assert.match(source, /import duckdb/);
+  assert.match(source, /DEPENDENCY_UNAVAILABLE_NONCRITICAL/);
   assert.match(source, /NO_SPLIT_DESCRIPTIVE_ONLY/);
   assert.match(source, /runtime-broker-cycle/);
   assert.match(source, /runtime-lifecycle-cycle/);

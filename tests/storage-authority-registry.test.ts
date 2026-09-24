@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { classifyPostgresRelation, storageAuthorityRegistry } from '../src/storage/storage-authority-registry.js';
+import { authorityForClassification, classifyPostgresRelation, storageAuthorityRegistry } from '../src/storage/storage-authority-registry.js';
 import { evaluateRetentionDisposition } from '../src/storage/retention-policy.js';
 
 test('storage authority keeps transactional state in PostgreSQL and research history in Parquet', () => {
   assert.equal(storageAuthorityRegistry.find((entry) => entry.family === 'STRATEGY_LIFECYCLE_AND_WHOLE_CHAIN_LEDGER')?.canonicalHome, 'POSTGRESQL');
   assert.equal(storageAuthorityRegistry.find((entry) => entry.family === 'RESEARCH_DATASETS_MODELS_AND_COUNTERFACTUALS')?.canonicalHome, 'PARQUET_DUCKDB');
+  assert.equal(storageAuthorityRegistry.find((entry) => entry.family === 'CANONICAL_STRATEGY_CANDIDATE_RESEARCH_HISTORY')?.runtimeState,
+    'ACTIVE_LOCAL_FRONTIER_ARCHIVE');
   assert.equal(classifyPostgresRelation('broker', 'orders').classification, 'CANONICAL_TRADING_STATE');
   assert.equal(classifyPostgresRelation('research', 'option_contract_risk_history').classification, 'RESEARCH_HISTORY');
   assert.equal(classifyPostgresRelation('market', 'option_quote_observation').classification, 'SHORT_RETENTION_OBSERVATION');
@@ -15,6 +17,7 @@ test('storage authority keeps transactional state in PostgreSQL and research his
   assert.equal(classifyPostgresRelation('core', 'provider_capability').classification, 'CANONICAL_TRADING_STATE');
   assert.equal(classifyPostgresRelation('copy', 'follower_account').classification, 'CANONICAL_TRADING_STATE');
   assert.equal(classifyPostgresRelation('unknown', 'mystery').classification, 'UNKNOWN_REQUIRES_REVIEW');
+  assert.equal(authorityForClassification('DERIVABLE_CACHE')?.family, 'REBUILDABLE_PROVIDER_AND_FEATURE_CACHES');
 });
 
 test('archive retention never permits cleanup without full parity evidence', () => {

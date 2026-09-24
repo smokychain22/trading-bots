@@ -6,6 +6,9 @@ import { canonicalThetaStrategySources, type ThetaStrategyBranch } from './strat
 import { buildAdaptiveShadowDecisionReceipt, type AdaptiveShadowDecisionReceipt } from './adaptive-decision-brain.js';
 import { securedContractCapacity } from './secured-contract-capacity.js';
 import type { NewRiskDecisionReceipt } from './decision-assembly.js';
+import {
+  buildDefinedRiskLockedPlan, classifyAlpacaMultiLegSupport, type DefinedRiskLockedPlanResult,
+} from '../research/defined-risk-locked-plan.js';
 
 export const canonicalStrategyFrontierVersion = 'theta-canonical-strategy-frontier-v1' as const;
 export const canonicalDecisionAuthorityVersion = 'theta-canonical-decision-authority-v1' as const;
@@ -124,6 +127,9 @@ export interface CanonicalStrategyFrontier {
   readonly executionAuthorized: false;
   readonly optionomicsContext: JsonValue;
   readonly adaptiveShadowDecision?: AdaptiveShadowDecisionReceipt;
+  /** One bounded D finalist receipt. It is research-only and structurally
+   * impossible to submit through the single-leg Master Paper handoff. */
+  readonly definedRiskLockedPlan: DefinedRiskLockedPlanResult;
   readonly contentHash: string;
 }
 
@@ -156,6 +162,8 @@ export interface CanonicalStrategyFrontierInput {
   readonly thetaQActionFeasibleByOptionSymbol?: Readonly<Record<string, boolean>>;
   readonly thetaQDecision?: Pick<NewRiskDecisionReceipt,
     'snapshotId' | 'timestamp' | 'underlying' | 'winningAction' | 'selectedCandidateId' | 'quantity'>;
+  readonly optionsApprovedLevel?: number | null;
+  readonly optionsTradingLevel?: number | null;
 }
 
 const branchOrder: readonly ThetaStrategyBranch[] = [
@@ -181,6 +189,15 @@ const stable = (value: unknown): string => {
   return JSON.stringify(value);
 };
 const digest = (value: unknown): string => createHash('sha256').update(stable(value)).digest('hex');
+
+export function canonicalStrategyFrontierContentHash(
+  frontier: Omit<CanonicalStrategyFrontier, 'contentHash'>,
+): string {
+  // Hash the exact JSON-compatible shape that PostgreSQL JSONB retains.
+  // Earlier v1 receipts hashed in-memory `undefined` properties that JSONB
+  // later omitted, which made historical hashes non-reproducible after load.
+  return digest(JSON.parse(JSON.stringify(frontier)) as unknown);
+}
 
 const nonnegativeInteger = (value: unknown): number | null =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
@@ -627,6 +644,25 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
       strategyBranch: partial.selectedBranch,
     },
   });
-  const complete = { ...partial, adaptiveShadowDecision };
-  return { ...complete, contentHash: digest(complete) };
+  const definedRiskBranch = branches.find((branch) => branch.branch === 'THETA_DEFINED_RISK');
+  const definedRiskFinalist = definedRiskBranch?.candidates.find((candidate) =>
+    candidate.candidateId === definedRiskBranch.bestCandidateId)
+    ?? definedRiskBranch?.candidates[0]
+    ?? null;
+  const definedRiskLockedPlan: DefinedRiskLockedPlanResult = definedRiskFinalist === null
+    ? { state: 'BLOCKED_INVALID_FINALIST', plan: null, reasons: ['NO_DEFINED_RISK_FINALIST'] }
+    : buildDefinedRiskLockedPlan({
+      candidate: definedRiskFinalist,
+      snapshotId: input.snapshotId,
+      decisionCycleId: input.snapshotId,
+      decisionAsOf: input.timestamp,
+      strategyVersion: definedRiskBranch?.strategyVersion ?? 'UNKNOWN',
+      sourceEvidenceIds: [`fusion-snapshot:${input.snapshotId}`, `candidate:${definedRiskFinalist.candidateId}`],
+      brokerMultiLegSupport: classifyAlpacaMultiLegSupport({
+        optionsApprovedLevel: input.optionsApprovedLevel ?? null,
+        optionsTradingLevel: input.optionsTradingLevel ?? null,
+      }),
+    });
+  const complete = { ...partial, adaptiveShadowDecision, definedRiskLockedPlan };
+  return { ...complete, contentHash: canonicalStrategyFrontierContentHash(complete) };
 }

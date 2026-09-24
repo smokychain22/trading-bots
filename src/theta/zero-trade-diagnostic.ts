@@ -206,17 +206,42 @@ export async function readZeroTradeDiagnostic(
           ORDER BY m.scan_id,b.branch`, [window.startUtc, window.endUtc],
       ),
       client.query<CandidateRow>(
-        `SELECT m.scan_id,c.candidate_ref,c.branch::text,c.action,c.underlying,c.rank_at_decision,
-                c.selected,c.legs_json,c.dte,c.delta,c.spread_pct,c.liquidity_json,c.economics_json,
-                c.hard_blockers_json,c.soft_evidence_json,
-                c.unknown_evidence_json,c.structurally_feasible,c.risk_feasible,c.quantity,
-                c.binding_constraint,c.sizing_reasons_json
-           FROM research.theta_shadow_scan_member m
-           JOIN research.theta_shadow_scan_run s USING(scan_id)
-           JOIN trade.canonical_strategy_branch_evidence b ON b.fusion_snapshot_id=m.fusion_snapshot_id
-           JOIN trade.canonical_strategy_candidate_evidence c ON c.branch_evidence_id=b.branch_evidence_id
-          WHERE s.finished_at >= $1::timestamptz AND s.finished_at < $2::timestamptz
-          ORDER BY m.scan_id,c.rank_at_decision NULLS LAST,c.candidate_ref`, [window.startUtc, window.endUtc],
+        `SELECT * FROM (
+          SELECT m.scan_id,c.candidate_ref,c.branch::text,c.action,c.underlying,c.rank_at_decision,
+                 c.selected,c.legs_json,c.dte,c.delta,c.spread_pct,c.liquidity_json,c.economics_json,
+                 c.hard_blockers_json,c.soft_evidence_json,
+                 c.unknown_evidence_json,c.structurally_feasible,c.risk_feasible,c.quantity,
+                 c.binding_constraint,c.sizing_reasons_json
+            FROM research.theta_shadow_scan_member m
+            JOIN research.theta_shadow_scan_run s USING(scan_id)
+            JOIN trade.canonical_strategy_branch_evidence b ON b.fusion_snapshot_id=m.fusion_snapshot_id
+            JOIN trade.canonical_strategy_candidate_evidence c ON c.branch_evidence_id=b.branch_evidence_id
+           WHERE s.finished_at >= $1::timestamptz AND s.finished_at < $2::timestamptz
+          UNION ALL
+          SELECT m.scan_id,candidate->>'candidateId' AS candidate_ref,candidate->>'branch' AS branch,
+                 candidate->>'action' AS action,candidate->>'underlying' AS underlying,
+                 (candidate->>'paretoRank')::int AS rank_at_decision,
+                 COALESCE(frontier.frontier_json->>'selectedCandidateId'=candidate->>'candidateId',false) AS selected,
+                 candidate->'legs' AS legs_json,(candidate->>'dte')::int AS dte,
+                 candidate->>'delta' AS delta,candidate->>'spreadPct' AS spread_pct,
+                 candidate->'liquidity' AS liquidity_json,candidate->'economics' AS economics_json,
+                 candidate->'hardBlockers' AS hard_blockers_json,candidate->'softEvidence' AS soft_evidence_json,
+                 candidate->'unknownEvidence' AS unknown_evidence_json,
+                 (candidate->>'structurallyFeasible')::boolean AS structurally_feasible,
+                 (candidate->>'riskFeasible')::boolean AS risk_feasible,
+                 (candidate->'sizing'->>'quantity')::int AS quantity,
+                 candidate->'sizing'->>'bindingConstraint' AS binding_constraint,
+                 candidate->'sizing'->'reasons' AS sizing_reasons_json
+            FROM research.theta_shadow_scan_member m
+            JOIN research.theta_shadow_scan_run s USING(scan_id)
+            JOIN trade.canonical_strategy_frontier frontier ON frontier.fusion_snapshot_id=m.fusion_snapshot_id
+            CROSS JOIN LATERAL jsonb_array_elements(COALESCE(frontier.frontier_json->'branches','[]'::jsonb)) branch
+            CROSS JOIN LATERAL jsonb_array_elements(COALESCE(branch->'candidates','[]'::jsonb)) candidate
+           WHERE s.finished_at >= $1::timestamptz AND s.finished_at < $2::timestamptz
+             AND NOT EXISTS (SELECT 1 FROM trade.canonical_strategy_candidate_evidence relational
+                              WHERE relational.frontier_id=frontier.frontier_id)
+        ) candidate_rows
+        ORDER BY scan_id,rank_at_decision NULLS LAST,candidate_ref`, [window.startUtc, window.endUtc],
       ),
       client.query<{
         action_plans: number; order_intents: number; broker_orders: number; fills: number;

@@ -22,6 +22,7 @@ test('Production exporter emits the stable camel-case research wire contract', a
   assert.match(sql, /decision_authority_version AS "decisionAuthorityVersion"/);
   assert.match(sql, /canonical_strategy_branch_evidence branch_evidence/);
   assert.match(sql, /canonical_strategy_candidate_evidence candidate_evidence/);
+  assert.match(sql, /jsonb_array_elements\(COALESCE\(frontier_json->'branches'/);
   assert.match(sql, /so\.outcome AS "decisionDisposition"/);
   assert.match(sql, /theta_shadow_management_policy_evidence shadow_policy/);
   assert.match(sql, /theta_option_chain_decision_evidence/);

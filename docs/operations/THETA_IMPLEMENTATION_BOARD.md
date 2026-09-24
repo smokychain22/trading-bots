@@ -1,5 +1,47 @@
 # THETA implementation board
 
+## V12 five-strategy and research-storage closure, 2026-09-25
+
+- CODE_COMPLETE/VERIFIED_SOURCE: D now produces an exact, bounded, two-leg
+  locked plan from the canonical finalist. It retains both OCC identities,
+  sides, strikes, expiry, multiplier, two-sided Alpaca BBO timing, quantity,
+  net credit, max profit, max loss, breakeven, capital and evidence lineage.
+  The plan is `brokerAuthority=false`, `submissionAllowed=false`, and cannot be
+  passed to the existing single-leg Paper action schema.
+- VERIFIED_PROVIDER: the authenticated Alpaca Paper account reports options
+  approval/trading level 3. Official Alpaca semantics classify that account as
+  supporting atomic `mleg` orders, but THETA has no multi-leg mutation adapter
+  and D remains research-only. This is capability truth, not execution
+  permission.
+- CODE_COMPLETE/VERIFIED_SOURCE: D management replay evaluates all 17 existing
+  profit-taking challengers with conservative two-leg close economics, explicit
+  fees/slippage, and censoring for stale, malformed or unqualified leg evidence.
+  Expiration states include retained premium, short-leg assignment with long
+  protection, defined max-loss region, pin risk and unknown input.
+- CODE_COMPLETE/VERIFIED_SOURCE: Production keeps the canonical frontier and
+  decision audit in PostgreSQL, but stops writing the duplicate per-candidate
+  relational projection. Dataset export and zero-trade diagnostics fall back to
+  the canonical frontier JSON without duplicating rows.
+- VERIFIED_REAL_ARCHIVE: a bounded read-only Aiven export projected one real
+  canonical frontier into 1,096 research rows in an immutable SQLite WAL. A
+  real ZSTD Parquet compaction passed payload hashes, row counts and DuckDB
+  read-back. The archive receipt distinguishes persistence-stable hashes from
+  legacy embedded hashes and reports partial coverage if its 10,000-frontier
+  safety bound is reached.
+- CODE_COMPLETE/VERIFIED_SOURCE: the Windows worker performs frontier archive
+  and Parquet compaction only while the market is closed. Both are noncritical
+  and cannot interrupt reconciliation or trading safety. Production Vercel does
+  not write ephemeral SQLite.
+- GOVERNED_DEFERRED: migration 065 remains optional Optionomics IV research
+  persistence. Migration 066 remains an outage-outbox canonical backfill. Both
+  are excluded from this release because schema 064 is sufficient for the
+  current locked Paper path and neither is required for the storage cutover.
+- SAFETY_UNCHANGED: Q remains the only Paper-facing new-risk branch, and it is
+  locked. H and D remain research-only. A and C remain lifecycle-only and need
+  broker-confirmed inventory. No rows were deleted, no retention cleanup was
+  authorized, and profitability remains empirically unproven.
+- Full receipt: `docs/operations/THETA_V12_FIVE_STRATEGY_AND_STORAGE_RECEIPT_2026-09-25.md`.
+
 ## Storage authority and Aiven growth closure, 2026-09-25
 
 - VERIFIED_READ_ONLY: Aiven measured 3,812,898,495 bytes across 153 relations at
