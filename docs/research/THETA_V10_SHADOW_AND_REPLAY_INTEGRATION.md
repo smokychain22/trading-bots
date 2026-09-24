@@ -186,4 +186,28 @@ new family does not infer chains from symbols, timestamps or repeated scans.
 The deterministic tests and disposable PostgreSQL export exercise prove code
 integration. Real newly filled/resolved chain evidence remains absent, so no L7
 or empirical model readiness is claimed. Full feature qualification, training,
-model-registry and replay-to-treatment generation remain open engineering.
+model-registry and replay-to-treatment generation remained open at that slice.
+
+## Sixth source slice: dataset-bound entry baseline execution
+
+The canonical pipeline now accepts `--entry-training-policy` and
+`--entry-baseline-policy`. Both are explicit frozen research specifications.
+The CLI verifies `--source-code-commit` exists on the fetched canonical line.
+The entry join requires a selected Conventional CSP candidate, its explicit
+ledger-chain link, an actual persisted Alpaca decision quote, correct PIT timing
+and a v2 closed-ledger after-cost label. Unknown, censored, revised, late or stale
+evidence is excluded with reasons, never filled with zero or a negative label.
+
+Qualified rows enter the existing dependency-grouped purged walk-forward engine.
+Only training rows determine scaling and the logistic fit. Validation rows fit
+calibrators and forward rows produce metrics. Final OOS remains reserved. The
+runner persists reproducible per-run model identities, coefficients, scaling,
+calibration and evaluation receipts alongside the dataset and policy hashes.
+The target is explicitly whole-chain after-cost positive, not generic POP or EV.
+The operation is retrospective research replay, not a claim that these models
+were deployed or predicted historical trades in real time.
+
+These are L5 integrated offline components, verified with synthetic fixtures.
+No new real resolved episodes exist in this pass, so no empirical or Production
+promotion follows. Richer qualified feature vocabularies, automatic challenger
+treatment generation and global champion/challenger governance remain open.

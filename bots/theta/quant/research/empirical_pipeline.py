@@ -348,6 +348,8 @@ def run_theta_empirical_pipeline(
     walk_forward_plan_valid: Optional[bool] = None,
     final_oos_untouched: Optional[bool] = None,
     controlled_experiment_input: Optional[Dict[str, Any]] = None,
+    entry_training_policy: Optional[Dict[str, Any]] = None,
+    entry_baseline_policy: Optional[Dict[str, Any]] = None,
 ) -> PipelineResult:
     """One call does everything. Behavior by readiness (never bypassed):
 
@@ -445,6 +447,20 @@ def run_theta_empirical_pipeline(
     manifest['experiment_config_hash'] = sha256_hex(canonical_json({k: v for k, v in manifest.items() if k != 'experiment_config_hash'}))
     from research.whole_chain_dataset import build_whole_chain_dataset
     whole_chain_dataset = build_whole_chain_dataset(export)
+    entry_training_dataset = None
+    if entry_training_policy is not None:
+        from research.entry_episode_training import build_entry_episode_training_dataset
+        entry_training_dataset = build_entry_episode_training_dataset(export, entry_training_policy)
+    entry_baseline = None
+    if entry_baseline_policy is not None:
+        if entry_training_dataset is None:
+            raise ValueError('ENTRY_BASELINE_REQUIRES_DATASET_BOUND_FEATURE_POLICY')
+        from research.entry_baseline_experiment import execute_entry_baseline
+        entry_baseline = execute_entry_baseline(entry_training_dataset, entry_baseline_policy, run_timestamp)
+    manifest['entry_feature_join'] = entry_training_dataset['state'] if entry_training_dataset else 'FEATURE_POLICY_NOT_SUPPLIED'
+    manifest['entry_baseline_execution'] = entry_baseline['state'] if entry_baseline else 'BASELINE_POLICY_NOT_SUPPLIED'
+    manifest['entry_baseline_authority'] = 'EXPLORATORY_RESEARCH_NO_PROMOTION'
+    manifest['experiment_config_hash'] = sha256_hex(canonical_json({k: v for k, v in manifest.items() if k != 'experiment_config_hash'}))
 
     controlled = None
     if controlled_experiment_input is not None:
@@ -464,6 +480,8 @@ def run_theta_empirical_pipeline(
                 "manifest": manifest,
                 "data_quality": quality,
                 "whole_chain_episode_dataset": whole_chain_dataset,
+                "entry_episode_training_dataset": entry_training_dataset,
+                "entry_baseline_experiment": entry_baseline,
                 "readiness": {
                     "readiness_state": readiness.value,
                     "sufficiency": sufficiency,
@@ -544,6 +562,8 @@ def _build_arg_parser():
     parser.add_argument("--split-definition", required=True)
     parser.add_argument("--source-code-commit", default=None)
     parser.add_argument("--controlled-pairs", default=None, help="immutable paired replay/outcome input for registered R8B/C analysis")
+    parser.add_argument("--entry-training-policy", default=None, help="frozen feature/timing policy for explicit CSP entry-label joins")
+    parser.add_argument("--entry-baseline-policy", default=None, help="frozen purged-split and optimizer policy for research-only entry fit")
     parser.add_argument("--run-timestamp", default="")
     for flag in _SUFFICIENCY_FLAGS:
         # Caller-supplied and caller-justified: omitting them leaves
@@ -569,6 +589,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     2 when the dataset is structurally invalid or absent, 1 on a usage
     error. Prints the readiness state and artifact path, nothing else."""
     args = _build_arg_parser().parse_args(argv)
+
+    if args.entry_training_policy or args.entry_baseline_policy:
+        # Bind new research artifacts to a real commit on the fetched main line.
+        import subprocess
+        sha = args.source_code_commit
+        if not isinstance(sha, str) or len(sha) != 40 or any(c not in '0123456789abcdef' for c in sha):
+            raise ValueError('ENTRY_RESEARCH_CANONICAL_SOURCE_SHA_REQUIRED')
+        subprocess.run(['git', 'merge-base', '--is-ancestor', sha, 'origin/main'], check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     export_path = Path(args.export)
     if not export_path.is_file():
@@ -596,6 +625,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         source_code_commit=args.source_code_commit,
         run_timestamp=args.run_timestamp,
         controlled_experiment_input=json.loads(Path(args.controlled_pairs).read_text(encoding='utf-8')) if args.controlled_pairs else None,
+        entry_training_policy=json.loads(Path(args.entry_training_policy).read_text(encoding='utf-8')) if args.entry_training_policy else None,
+        entry_baseline_policy=json.loads(Path(args.entry_baseline_policy).read_text(encoding='utf-8')) if args.entry_baseline_policy else None,
     )
 
     print(f"status={result.status}")

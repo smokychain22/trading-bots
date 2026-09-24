@@ -279,3 +279,17 @@ No item is complete merely because its type, config, fixture, or UI label exists
 - OBSERVED 2026-09-24T14:40Z: locked 38fef55 worker's evidence cycle again returned
   HTTP_503 / POSTGRES_ECONNRESET after 102763ms. Preserve the worker and defer
   another cutover until exact CI and a safe database window. Broker mutations=0.
+- WIRED/TESTED: canonical empirical pipeline now materializes selected CSP entry
+  features joined to explicit ledger-chain outcomes and persisted Alpaca decision
+  BBO. Late/stale BBO, absent linkage, unresolved/revised/legacy labels, nonfinite
+  values and retrospectively created feature policy remain excluded.
+- WIRED/TESTED: a frozen research baseline policy executes dependency-grouped,
+  label-purged chronological splits, train-only scaling and logistic fitting,
+  validation-only calibration, forward evaluation and content-addressed per-run
+  model registry receipts. Final OOS remains untouched. CLI verifies source SHA
+  ancestry. This is selected-entry exploratory research, not market-wide POP,
+  expected-value authority, empirical qualification or automatic promotion.
+- STILL OPEN_ENGINEERING: rich qualified feature joins, automatic treatment
+  replay generation, cross-strategy outcome dispatch and champion/challenger
+  governance remain. Do not mislabel the bounded baseline as completion of all
+  R8E/F model types or all V10 requirements.
