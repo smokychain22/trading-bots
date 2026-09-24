@@ -7,7 +7,7 @@ import { AlpacaPaperBrokerAdapter } from '../src/execution/broker.js';
 import { asReadOnlyPaperBroker, assertShadowBrokerHasNoMutationSurface } from '../src/execution/read-only-paper-broker.js';
 import { PostgresBrokerReconciliationStore, runReadOnlyBrokerReconciliation } from '../src/execution/broker-reconciliation-worker.js';
 import { runProductionShadowEvidenceScan } from '../src/research/production-shadow-runtime.js';
-import { assertNoSubmitProbeGuard } from '../src/theta/no-submit-probe-guard.js';
+import { assertNoSubmitProbeGuard, classifyNoSubmitProbeError } from '../src/theta/no-submit-probe-guard.js';
 
 const environmentFile = process.argv.find((argument) => argument.startsWith('--environment-file='))
   ?.slice('--environment-file='.length) ?? '.env.local';
@@ -123,8 +123,7 @@ try {
     }
   }
 } catch (error) {
-  const message = error instanceof Error ? error.message : '';
-  const category = /^[A-Z0-9_]{3,100}$/.test(message) ? message : 'UNCLASSIFIED_NO_SUBMIT_FAILURE';
+  const category = classifyNoSubmitProbeError(error);
   console.info(JSON.stringify({ state: 'FAILED_CLOSED', errorCategory: category, probeStage, sourceSha,
     brokerMutations: 0, orderSubmissions: 0 }));
   process.exitCode = 1;

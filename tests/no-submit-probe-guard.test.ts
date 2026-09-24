@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assertNoSubmitProbeGuard } from '../src/theta/no-submit-probe-guard.js';
+import { assertNoSubmitProbeGuard, classifyNoSubmitProbeError } from '../src/theta/no-submit-probe-guard.js';
 import type { Environment } from '../src/config/environment.js';
 
 const locked = {
@@ -21,4 +21,17 @@ test('the no-submit probe accepts only a locked Paper/Aiven target', () => {
   ]) assert.throws(() => assertNoSubmitProbeGuard({ ...locked, ...override } as typeof locked), /EXECUTION_LOCKS_REQUIRED/);
   assert.throws(() => assertNoSubmitProbeGuard({ ...locked, ALPACA_BASE_URL: 'https://api.alpaca.markets' }), /PAPER_BROKER_REQUIRED/);
   assert.throws(() => assertNoSubmitProbeGuard({ ...locked, DATABASE_URL: 'postgres://neon.example.test/defaultdb' }), /AIVEN_DATABASE_REQUIRED/);
+});
+
+test('the no-submit probe preserves precise safe database failure categories', () => {
+  assert.equal(classifyNoSubmitProbeError(Object.assign(new Error('private host'), { code: 'EAI_AGAIN' })),
+    'DATABASE_DNS_EAI_AGAIN');
+  assert.equal(classifyNoSubmitProbeError(Object.assign(new Error('private host'), { code: '57P03' })),
+    'POSTGRES_57P03');
+  assert.equal(classifyNoSubmitProbeError(new Error('connection terminated unexpectedly; secret=hidden')),
+    'POSTGRES_CONNECTION_TERMINATED');
+  assert.equal(classifyNoSubmitProbeError(new Error('NO_SUBMIT_PROBE_SCHEMA_064_REQUIRED')),
+    'NO_SUBMIT_PROBE_SCHEMA_064_REQUIRED');
+  assert.equal(classifyNoSubmitProbeError(new Error('private unexpected failure')),
+    'UNCLASSIFIED_NO_SUBMIT_FAILURE');
 });

@@ -1,4 +1,18 @@
 import type { Environment } from '../config/environment.js';
+import { classifyDatabaseTargetError } from '../database/target-preflight.js';
+import { classifyPostgresRuntimeError } from './postgres-runtime-error.js';
+
+/** Convert provider/database failures into bounded receipt codes without exposing messages or URLs. */
+export function classifyNoSubmitProbeError(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  if (/^[A-Z0-9_]{3,100}$/.test(message)) return message;
+  const postgres = classifyPostgresRuntimeError(error);
+  if (postgres.safeCode !== 'POSTGRES_UNKNOWN_ERROR') return postgres.safeCode;
+  const database = classifyDatabaseTargetError(error);
+  if (database.failureCode !== 'UNKNOWN')
+    return `DATABASE_${database.failureClass}_${database.failureCode}`;
+  return 'UNCLASSIFIED_NO_SUBMIT_FAILURE';
+}
 
 /** A source-level lock independent of persisted authorization or operator UI. */
 export function assertNoSubmitProbeGuard(environment: Pick<Environment,
