@@ -51,6 +51,24 @@ derivable without evidence, and none remains unclassified.
 
 WAL statistics, where available, are cluster-cumulative and cannot be attributed honestly to this database. The audit labels that limitation instead of treating cluster WAL bytes as THETA database bytes. PostgreSQL tuple counters returned zero for the large relations. They therefore do not establish an append rate. A direct timestamp-window count was added for the high-volume decision families, with a rolling-hour window and the latest observed New York session window. The session window is explicitly labelled as a calendar/session observation and is not presented as exchange-calendar validation.
 
+At the final audit, `pg_stat_wal` reported 237,994,936 bytes, 32,918
+records and 32,705 full-page images since its `2026-09-24T20:00:41.704Z`
+cluster reset. These values are service-cluster activity, not a THETA database
+size component. Aiven did not expose database-specific WAL/service overhead or
+provider free-space bytes through PostgreSQL, so both remain explicitly
+provider-limited. The database activity view reported 87 commits, zero
+rollbacks, zero temporary files/bytes and zero deadlocks in its current stats
+window.
+
+The relation statistics reported 26 estimated dead tuples across all measured
+relations: 12 in `ops.scheduler_checkpoint`, seven in
+`ops.runtime_worker_status`, five in `ops.runtime_worker_lease`, and one each
+in `ops.runtime_worker_cycle` and `copy.alpaca_oauth_token`. The large append
+relations reported zero dead tuples in this stats window. Exact table/index
+ratios and per-relation vacuum/analyze timestamps are retained in the audit
+JSON. The short/reset-sensitive statistics window and planner estimates are
+not sufficient to claim physical bloat or authorize VACUUM/REINDEX work.
+
 The database changed during bounded audits despite zero trades:
 
 | Observation | Database bytes |
