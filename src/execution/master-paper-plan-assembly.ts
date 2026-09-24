@@ -2,7 +2,7 @@ import type { CanonicalStrategyFrontier } from '../theta/canonical-strategy-fron
 import { deterministicRuntimeUuid } from '../theta/postgres-theta-cycle-store.js';
 import { applyPaperEvidenceRiskCap } from './execution-authorization-tier.js';
 import { masterPaperActionPlanVersion, type ApprovedMasterPaperActionPlan } from './master-paper-action-handoff.js';
-import { paperBootstrapAllowedUnknownComponent, paperBootstrapAllowedUnknownReason, paperEntryBootstrapPolicyVersion } from '../theta/paper-entry-bootstrap.js';
+import { paperBootstrapAllowedUnknownComponents, paperBootstrapAllowedUnknownReasons, paperEntryBootstrapPolicyVersion } from '../theta/paper-entry-bootstrap.js';
 import { verifyPaperEntrySafetyPolicyReceipt, type PaperEntrySafetyPolicyReceipt } from '../theta/paper-entry-safety-policy.js';
 import { verifyAegisAssessmentIdentity, type AegisAssessmentIdentity } from '../theta/aegis-assessment-identity.js';
 
@@ -110,11 +110,13 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
   if (entryEligibility === undefined) blockers.push('ENTRY_ELIGIBILITY_LINEAGE_MISSING');
   else if (entryEligibility.basis === 'INELIGIBLE') blockers.push('ENTRY_ELIGIBILITY_FAILED');
   else if (entryEligibility.basis === 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED') {
+    const components = [...entryEligibility.paperBootstrapAllowedUnknownComponents].toSorted();
+    const reasons = [...entryEligibility.paperBootstrapReasonCodes].toSorted();
+    const allowedComponents = new Set<string>(paperBootstrapAllowedUnknownComponents);
+    const allowedReasons = new Set<string>(paperBootstrapAllowedUnknownReasons);
     if (entryEligibility.paperBootstrapPolicyVersion !== paperEntryBootstrapPolicyVersion
-      || entryEligibility.paperBootstrapAllowedUnknownComponents.length !== 1
-      || entryEligibility.paperBootstrapAllowedUnknownComponents[0] !== paperBootstrapAllowedUnknownComponent
-      || entryEligibility.paperBootstrapReasonCodes.length !== 1
-      || entryEligibility.paperBootstrapReasonCodes[0] !== paperBootstrapAllowedUnknownReason) {
+      || components.length === 0 || components.some((component) => !allowedComponents.has(component))
+      || reasons.length === 0 || reasons.some((reason) => !allowedReasons.has(reason))) {
       blockers.push('PAPER_BOOTSTRAP_ELIGIBILITY_LINEAGE_INVALID');
     }
   }

@@ -251,7 +251,7 @@ itMockedProviderRealCodePath('versioned Paper bootstrap breaks the ownership col
   assert.equal(result.receipt.executionAuthorized, false);
 });
 
-itMockedProviderRealCodePath('Paper bootstrap cannot turn unrelated or candidate-tail UNKNOWN evidence into quantity', async () => {
+itMockedProviderRealCodePath('Paper bootstrap cannot turn an unrelated TailQuality UNKNOWN into quantity', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     ownershipInputs: {
       ...baseRequest().ownershipInputs,
@@ -261,6 +261,7 @@ itMockedProviderRealCodePath('Paper bootstrap cannot turn unrelated or candidate
       earningsDistanceDays: null,
       exDividendDistanceDays: null,
       knownEventDistanceDays: null,
+      downsideSemivariance: null,
     },
     candidates: [candidate('C1', { severeDrawdownProbability: null })],
     paperEntryBootstrap: assessPaperEntryBootstrap({
@@ -273,6 +274,58 @@ itMockedProviderRealCodePath('Paper bootstrap cannot turn unrelated or candidate
   assert.equal(evaluated?.ownershipScore, null);
   assert.equal(evaluated?.eligibilityBasis, 'INELIGIBLE');
   assert.equal(evaluated?.quantity, 0);
+});
+
+itMockedProviderRealCodePath('Paper bootstrap preserves the unpromoted severe-drawdown model as typed lineage, not a fake probability', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    ownershipInputs: {
+      ...baseRequest().ownershipInputs,
+      historicalRecoveryMedianDays: null,
+      historicalRecoveryP95Days: null,
+      severeDrawdownEpisodeCount: null,
+      earningsDistanceDays: null,
+      exDividendDistanceDays: null,
+      knownEventDistanceDays: null,
+    },
+    candidates: [candidate('C1', { severeDrawdownProbability: null, paperEventNear:false })],
+    paperEntryBootstrap: assessPaperEntryBootstrap({
+      enabled:true,runtimeMode:'MASTER_THETA_PAPER',brokerEnvironment:'PAPER',accountStatus:'ACTIVE',
+      reconciliationQuality:'GOOD',localOnlyIntentCount:0,externalOrUnknownOrderCount:0,
+      marketOpen:true,calendarSessionConfirmed:true,followerExecutionEnabled:false,liveMoneyAuthorized:false,
+    }),
+  }));
+  const evaluated = result.thetaQ?.candidates[0];
+  assert.equal(evaluated?.eligibilityBasis, 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED');
+  assert.equal(evaluated?.ownershipScore, null);
+  assert.ok(evaluated?.paperBootstrapReasonCodes.includes('SEVERE_DRAWDOWN_MODEL_NOT_PROMOTED'));
+  assert.ok((evaluated?.quantity ?? 0) > 0);
+  assert.equal(result.receipt.executionAuthorized, false);
+});
+
+itMockedProviderRealCodePath('candidate-specific cleared event policy prevents an older UNKNOWN regime event from causing false WAIT', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    ownershipInputs: {
+      ...baseRequest().ownershipInputs,
+      historicalRecoveryMedianDays: null,
+      historicalRecoveryP95Days: null,
+      severeDrawdownEpisodeCount: null,
+      earningsDistanceDays: null,
+      exDividendDistanceDays: null,
+      knownEventDistanceDays: null,
+    },
+    regimeInputs: {...baseRequest().regimeInputs,earningsDistanceDays:null,corporateActionPending:null,macroRiskFlag:null},
+    candidates: [candidate('C1', { severeDrawdownProbability: null, paperEventNear:false })],
+    paperEntryBootstrap: assessPaperEntryBootstrap({
+      enabled:true,runtimeMode:'MASTER_THETA_PAPER',brokerEnvironment:'PAPER',accountStatus:'ACTIVE',
+      reconciliationQuality:'GOOD',localOnlyIntentCount:0,externalOrUnknownOrderCount:0,
+      marketOpen:true,calendarSessionConfirmed:true,followerExecutionEnabled:false,liveMoneyAuthorized:false,
+    }),
+  }));
+  assert.equal(result.regime?.eventState,null);
+  assert.equal(result.opportunityBook?.entries[0]?.disposition,'OPEN_FULL');
+  assert.equal(result.receipt.selectedCandidateId,'C1');
+  assert.ok(result.receipt.reasonCodes.includes('PAPER_BOOTSTRAP_CANDIDATE_SELECTED'));
+  assert.equal(result.receipt.executionAuthorized,false);
 });
 
 itMockedProviderRealCodePath('candidateEconomics is null when the pipeline fails closed before any candidate economics are computed', async () => {

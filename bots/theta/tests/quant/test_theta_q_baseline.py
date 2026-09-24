@@ -175,7 +175,7 @@ class OwnershipScoringTests(unittest.TestCase):
             ownership_acceptability=None,
             p_severe_drawdown=0.1,
             paper_bootstrap_eligible=True,
-            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v2",
+            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v3",
             paper_bootstrap_allowed_unknown_components=("RecoveryQuality",),
             paper_bootstrap_reason_codes=("RECOVERY_HISTORY_UNKNOWN",),
         ))
@@ -190,7 +190,7 @@ class OwnershipScoringTests(unittest.TestCase):
             ownership_acceptability=0.2,
             p_severe_drawdown=0.1,
             paper_bootstrap_eligible=True,
-            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v2",
+            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v3",
             paper_bootstrap_allowed_unknown_components=("RecoveryQuality",),
             paper_bootstrap_reason_codes=("RECOVERY_HISTORY_UNKNOWN",),
         ))
@@ -215,13 +215,13 @@ class OwnershipScoringTests(unittest.TestCase):
             ownership_acceptability=None,
             p_severe_drawdown=0.1,
             paper_bootstrap_eligible=True,
-            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v2",
+            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v3",
         ))
         wrong_component = self.policy.evaluate(_clean_candidate(
             ownership_acceptability=None,
             p_severe_drawdown=0.1,
             paper_bootstrap_eligible=True,
-            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v2",
+            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v3",
             paper_bootstrap_allowed_unknown_components=("TailQuality",),
             paper_bootstrap_reason_codes=("TAIL_UNKNOWN",),
         ))
@@ -229,7 +229,7 @@ class OwnershipScoringTests(unittest.TestCase):
             ownership_acceptability=None,
             p_severe_drawdown=None,
             paper_bootstrap_eligible=True,
-            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v2",
+            paper_bootstrap_policy_version="theta-paper-entry-bootstrap-v3",
             paper_bootstrap_allowed_unknown_components=("RecoveryQuality",),
             paper_bootstrap_reason_codes=("RECOVERY_HISTORY_UNKNOWN",),
         ))

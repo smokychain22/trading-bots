@@ -55,6 +55,8 @@ import {
 } from './finalist-quote-refresh.js';
 import { deriveOptionomicsEarningsEvidence, type OptionomicsEarningsEvidence } from './earnings-event-evidence.js';
 import { deriveMacroRiskEvidence, type MacroRiskEvidence } from './macro-event-policy.js';
+import { applyCompanyEventPaperPolicy, classifyPaperInstrument,
+  type CompanyEventPaperPolicyDecision } from './paper-entry-safety-policy.js';
 import { assessPortfolioCorrelation, type PortfolioCorrelationObservation } from './portfolio-correlation-evidence.js';
 
 /** Never relabel a Conventional assessment as Hold-Strike risk evidence. */
@@ -1383,6 +1385,11 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const eventContextQuality: DataQualityState = eventContextPopulated ? 'GOOD' : 'UNKNOWN';
   const earningsEvidence = deriveOptionomicsEarningsEvidence(optionomicsContextObservations);
   const macroRiskEvidence = deriveMacroRiskEvidence({ coverage: macroEventCoverage, decisionAsOf: decisionTime });
+  const instrumentClassification = classifyPaperInstrument({ symbol: underlying, decisionAsOf: decisionTime,
+    earnings: earningsEvidence });
+  const companyEventByOptionSymbol = Object.fromEntries(candidates.map((candidate) => [candidate.contract.optionSymbol,
+    applyCompanyEventPaperPolicy({ decisionAsOf: decisionTime, expiration: candidate.contract.expiration,
+      calendar, instrument: instrumentClassification, earnings: earningsEvidence, macro: macroRiskEvidence })]));
 
   const { provenance, detail } = classifyShadowCycleProvenance({
     universeCandidates: config.universeCandidatesOrigin,
@@ -1445,7 +1452,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     ownershipFeatures: { stockAvgVolume,ret1d,ret5d,ret20d,ret60d,ma20Rel,ma50Rel,ma200Rel,
       rv10,rv20,rv60,downsideSemivariance,drawdown,maSlope,gapFrequency,maxAdverseGap,
       recoveryHistory:config.recoveryHistory??null } as unknown as JsonValue,
-    regimeFeatures: { maSlope, rv20, maxAdverseGap, drawdown,
+    regimeFeatures: { maSlope, rv20, maxAdverseGap, drawdown, companyEventByOptionSymbol,
       aegisGapStressAssessment: gapAssessment } as unknown as JsonValue,
     policyVersion: config.policyVersion,
     modelVersions: {
@@ -1676,8 +1683,25 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       ...candidateStressAegisOverrides({spread:spreadAssessment,alpacaIv:alpacaIvAssessment,
         alpacaIvProducerConfigured:config.aegisAlpacaIvStressAssessor!==undefined}),
     };
+    const companyEvent = companyEventByOptionSymbol[candidate.contract.optionSymbol] as CompanyEventPaperPolicyDecision;
+    const paperEventNear = companyEvent.action === 'CLEAR' ? false
+      : ['KNOWN_NEAR_EARNINGS_BLOCK','MACRO_EVENT_BLOCK'].includes(companyEvent.state) ? true : null;
+    const entryEvidence = {
+      ownershipInputOverrides: {
+        optionOpenInterest: candidate.contract.openInterest,
+        optionVolume: candidate.contract.volume,
+        spreadPct: candidate.contract.spreadPct,
+        // SPY is compared with itself in the bounded one-underlying Paper
+        // bootstrap. A zero relative return is an identity, not a provider
+        // fallback or a claim about broader-market strength.
+        relativeStrength: instrumentClassification.state === 'NON_COMPANY_FUND'
+          && instrumentClassification.paperBootstrapApproved ? 0 : null,
+      },
+      paperEventNear,
+    };
     if (!exposureDerivationTrustworthy || candidateCapacityPolicy === null) return {
       ...candidate,
+      ...entryEvidence,
       aegisInputOverrides: candidateOverrides,
     };
     const capacity = deriveCandidateCapacityAssessment(
@@ -1705,6 +1729,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     ]));
     return {
       ...candidate,
+      ...entryEvidence,
       brokerAllowedQty: Math.min(candidate.brokerAllowedQty, capacity.quantityCap),
       aegisInputOverrides: candidateOverrides,
     };
@@ -1714,7 +1739,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   traceShadowStage(underlying, 'ORCHESTRATION_STARTED', { candidates: runtimeCandidates.length });
   const orchestration = await runNewRiskOrchestration(config.bridge, {
     snapshotId: fusionSnapshot.contentHash, fusionSnapshotHash: fusionSnapshot.contentHash, timestamp: decisionTime, underlying,
-    earningsDistanceDays: null, // EventState is not real yet -- UNKNOWN, never fabricated as "no earnings nearby"
+    earningsDistanceDays: earningsEvidence.distanceTradingSessions,
     optionQuoteFreshnessPolicy: config.optionQuoteFreshnessPolicy,
     providerCapabilities: {
       ALPACA_ACCOUNT: accountEvidence.quality,

@@ -1,6 +1,13 @@
 import { createHash } from 'node:crypto';
 
 export const optionomicsCapabilityContractVersion='theta-optionomics-capability-v1' as const;
+function canonicalJson(value:unknown):string{
+  if(Array.isArray(value))return `[${value.map(canonicalJson).join(',')}]`;
+  if(value!==null&&typeof value==='object')return `{${Object.entries(value as Record<string,unknown>)
+    .sort(([left],[right])=>left.localeCompare(right))
+    .map(([key,item])=>`${JSON.stringify(key)}:${canonicalJson(item)}`).join(',')}}`;
+  return JSON.stringify(value);
+}
 export type OptionomicsAuthState='PASS'|'401_UNAUTHORIZED'|'EMAIL_NOT_VERIFIED'|'KEY_REVOKED'|
   'WRONG_AUTH_SCHEME'|'PLAN_RESTRICTION'|'UNKNOWN';
 export type OptionomicsCapabilityFamily='CHAIN'|'CONTRACT'|'QUOTE_LIKE'|'GREEKS'|'VOLATILITY'|
@@ -52,7 +59,7 @@ export function buildRawOptionomicsEnvelope(input:Omit<OptionomicsRawObservation
     requestParameters:Object.fromEntries(Object.entries(input.requestParameters).filter(([key])=>!sensitive.test(key))),
     requestedAt:input.requestedAt,receivedAt:input.receivedAt,providerTimestamp:input.providerTimestamp,
     sessionDate:input.sessionDate,httpStatus:input.httpStatus,rateLimit:input.rateLimit,
-    payloadHash:createHash('sha256').update(JSON.stringify(sanitized)).digest('hex'),schemaVersion:input.schemaVersion,
+    payloadHash:createHash('sha256').update(canonicalJson(sanitized)).digest('hex'),schemaVersion:input.schemaVersion,
     credentialIdentityRefHash:input.credentialIdentityRefHash,rawPayloadReference:input.rawPayloadReference};
 }
 

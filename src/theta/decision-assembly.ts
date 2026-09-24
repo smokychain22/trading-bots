@@ -49,6 +49,8 @@ export interface CandidateFrontierResult {
   readonly rejectionReason: string | null;
   readonly evNet: number | null;
   readonly returnPerCapitalDay: number | null;
+  /** Explicit Paper-only structural eligibility. This never supplies EV. */
+  readonly paperBootstrapEligible?: boolean;
   // Present only for candidates the frontier marked OPEN_* -- WAIT/PASS
   // candidates are never risk-scored further.
   readonly aegis: AegisAssessmentResponse | null;
@@ -79,6 +81,7 @@ export interface NewRiskAlternative {
   readonly quantity: number | null;
   readonly executionRecommendedAction: string | null;
   readonly rejectionReason: string | null;
+  readonly paperBootstrapEligible: boolean;
 }
 
 export interface NewRiskDecisionReceipt {
@@ -110,6 +113,7 @@ const alternativeFrom = (c: CandidateFrontierResult): NewRiskAlternative => ({
   quantity: c.sizing?.quantity ?? null,
   executionRecommendedAction: c.executionQuality?.recommendedAction ?? null,
   rejectionReason: c.rejectionReason,
+  paperBootstrapEligible: c.paperBootstrapEligible === true,
 });
 
 const systemHold = (
@@ -262,10 +266,8 @@ export function assembleNewRiskDecision(input: NewRiskDecisionInput): NewRiskDec
     (c) =>
       (c.disposition === 'OPEN_FULL' || c.disposition === 'OPEN_REDUCED' || c.disposition === 'OPEN_ALTERNATE_CONTRACT' || c.disposition === 'OPEN_ALTERNATE_EXPIRY' || c.disposition === 'OPEN_ALTERNATE_STRUCTURE') &&
       c.contract.executable &&
-      c.evNet !== null &&
-      c.evNet > 0 &&
-      c.returnPerCapitalDay !== null &&
-      c.returnPerCapitalDay > 0 &&
+      ((c.evNet !== null && c.evNet > 0 && c.returnPerCapitalDay !== null && c.returnPerCapitalDay > 0)
+        || c.paperBootstrapEligible === true) &&
       c.aegis !== null &&
       c.aegis.newRiskState !== 'HOLD_ONLY' &&
       c.aegis.newRiskState !== 'HARD_VETO' &&
@@ -302,12 +304,10 @@ export function assembleNewRiskDecision(input: NewRiskDecisionInput): NewRiskDec
   }
 
   openCandidates.sort((a, b) => {
-    // The filter above proves both values are known. Keep the comparison
-    // explicit so UNKNOWN can never acquire the economic meaning of zero.
-    if (a.returnPerCapitalDay === null || b.returnPerCapitalDay === null) {
-      throw new Error('OPEN_CANDIDATE_ECONOMICS_UNKNOWN');
-    }
-    return b.returnPerCapitalDay - a.returnPerCapitalDay;
+    if (a.returnPerCapitalDay !== null && b.returnPerCapitalDay !== null) return b.returnPerCapitalDay - a.returnPerCapitalDay;
+    if (a.returnPerCapitalDay !== null) return -1;
+    if (b.returnPerCapitalDay !== null) return 1;
+    return a.candidateId.localeCompare(b.candidateId);
   });
   const winner = openCandidates[0];
   if (winner === undefined || winner.sizing === null) {
@@ -327,8 +327,11 @@ export function assembleNewRiskDecision(input: NewRiskDecisionInput): NewRiskDec
     ownershipSnapshotId: input.snapshotId,
     regimeSnapshotId: input.snapshotId,
     executionAuthorized: false,
-    reasonCodes: ['CANDIDATE_SELECTED'],
-    plainEnglishExplanation: `${winner.candidateId} was selected: positive economics, risk-permitted, and executable.`,
+    reasonCodes: winner.paperBootstrapEligible === true
+      ? ['PAPER_BOOTSTRAP_CANDIDATE_SELECTED', 'EMPIRICAL_EV_UNAVAILABLE'] : ['CANDIDATE_SELECTED'],
+    plainEnglishExplanation: winner.paperBootstrapEligible === true
+      ? `${winner.candidateId} passed the bounded Paper bootstrap, risk, sizing, and execution gates. Empirical EV remains unavailable and no execution is authorized.`
+      : `${winner.candidateId} was selected: positive economics, risk-permitted, and executable.`,
     failClosedReason: null,
     policyVersion: input.policyVersion,
     modelVersions: input.modelVersions,

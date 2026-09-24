@@ -98,3 +98,14 @@ test('stages not naturally reached stay unknown and real AEGIS or sizing blocker
   assert.equal(blockedChecks.quotePipelineReady.state,'UNKNOWN');
   assert.equal(blockedChecks.paperPlanReachable.state,'UNKNOWN');
 });
+
+test('missing sizing telemetry stays UNKNOWN rather than becoming an observed zero',()=>{
+  const checks=assessRuntimeFirstPaperReadiness({
+    evidence:runtimeEvidence({selectedQuantity:0,runtimeTelemetry:null,preSubmit:null}),
+    approvedSymbol:'SPY',currentOpenPositions:0,reconciliationReady:true,
+  });
+  assert.deepEqual(checks.positiveSizingReachable,{
+    state:'UNKNOWN',source:'latest-runtime-first-paper-evidence',
+    blocker:'RUNTIME_SIZING_TELEMETRY_NOT_OBSERVED',blockerClass:'EXTERNAL',
+  });
+});

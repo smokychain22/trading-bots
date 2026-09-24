@@ -27,3 +27,12 @@ test('raw observation metadata hashes a redacted payload and never carries crede
     rawPayloadReference:null,rawPayload:{token:'secret',bid:1}});
   assert.deepEqual(result.requestParameters,{symbol:'SPY'});assert.match(result.payloadHash,/^[0-9a-f]{64}$/);
 });
+
+test('raw observation hash is stable across equivalent object key order',()=>{
+  const common={endpoint:'/api/v1/test',requestParameters:{symbol:'SPY'},requestedAt:'2026-09-15T14:00:00Z',
+    receivedAt:'2026-09-15T14:00:01Z',providerTimestamp:null,sessionDate:null,httpStatus:200,
+    rateLimit:{remaining:'1'},schemaVersion:'observed-v1',credentialIdentityRefHash:'hash',rawPayloadReference:null};
+  const left=buildRawOptionomicsEnvelope({...common,rawPayload:{b:2,a:{y:2,x:1}}});
+  const right=buildRawOptionomicsEnvelope({...common,rawPayload:{a:{x:1,y:2},b:2}});
+  assert.equal(left.payloadHash,right.payloadHash);
+});

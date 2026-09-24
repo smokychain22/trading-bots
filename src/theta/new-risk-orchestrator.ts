@@ -75,6 +75,13 @@ export interface RawCandidateInput {
   readonly ivCompensationSufficient: boolean | null;
   readonly quoteSize: number | null;
   readonly preSlippageExpectedUtility: number | null;
+  /** Contract-specific facts used by the ownership model. The cycle-level
+   * ownership pass remains useful for routing, while entry eligibility must
+   * consume the selected contract's actual OI, volume, and spread. */
+  readonly ownershipInputOverrides?: Readonly<Record<string, unknown>>;
+  /** Candidate-specific result of the governed company/macro event policy.
+   * null is an explicit coverage failure, never an assumed clear. */
+  readonly paperEventNear?: boolean | null;
   /** Candidate-inclusive, point-in-time AEGIS overrides derived from real
    * broker state. Missing fields deliberately fall back to the cycle-level
    * input and remain UNKNOWN there when no real producer exists. */
@@ -176,6 +183,7 @@ export interface NewRiskOrchestrationRequest {
 export interface NewRiskOrchestrationResult {
   readonly receipt: NewRiskDecisionReceipt;
   readonly ownership: OwnershipEvaluationResponse | null;
+  readonly ownershipByCandidateId?: Readonly<Record<string, OwnershipEvaluationResponse>>;
   readonly regime: RegimeSnapshotResponse | null;
   readonly routing: StrategyRoutingResponse | null;
   readonly thetaQ: ThetaQResponse | null;
@@ -519,21 +527,38 @@ export async function runNewRiskOrchestration(
     return { receipt, ...partialAfterRouting, thetaQ: null, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all(), candidateEconomics: null };
   }
 
+  const ownershipByCandidateId = new Map<string, OwnershipEvaluationResponse>();
+  const bootstrapByCandidateId = new Map<string, ReturnType<typeof assessPaperBootstrapOwnershipEvidence>>();
+  for (const candidate of freshnessEligible) {
+    const candidateOwnership = await invokeAndValidate(
+      bridge, 'ownership',
+      { contractVersion: 'theta-ownership-runtime-v1', snapshotId: request.snapshotId,
+        underlyingSymbol: request.underlying, timestamp: request.timestamp, policy: request.ownershipPolicy,
+        inputs: { ...request.ownershipInputs, ...candidate.ownershipInputOverrides } },
+      (payload) => parseOwnershipEvaluationResponse(payload),
+    );
+    if (!candidateOwnership.ok) return systemHoldResult(request, 'OWNERSHIP',
+      `Candidate-specific ownership failed for ${candidate.candidateId}: ${candidateOwnership.detail}`, partialAfterRouting);
+    ownershipByCandidateId.set(candidate.candidateId, candidateOwnership.data);
+    bootstrapByCandidateId.set(candidate.candidateId, assessPaperBootstrapOwnershipEvidence(
+      request.paperEntryBootstrap, candidateOwnership.data, candidate.severeDrawdownProbability,
+    ));
+  }
+
   const thetaQResult = await invokeAndValidate(
     bridge, 'thetaQ',
     {
       contractVersion: 'theta-q-runtime-v1', operation: 'evaluateCspCandidates', fusionSnapshotHash: request.fusionSnapshotHash,
       latticeConfig: request.latticeConfig, sizingPolicy: request.thetaQSizingPolicy, costAssumptions: request.costAssumptions,
       candidates: freshnessEligible.map((c) => {
-        const bootstrapEvidence = assessPaperBootstrapOwnershipEvidence(
-          request.paperEntryBootstrap, ownershipResult.data, c.severeDrawdownProbability,
-        );
+        const candidateOwnership = ownershipByCandidateId.get(c.candidateId) as OwnershipEvaluationResponse;
+        const bootstrapEvidence = bootstrapByCandidateId.get(c.candidateId) as ReturnType<typeof assessPaperBootstrapOwnershipEvidence>;
         return ({
         candidateId: c.candidateId, underlyingSymbol: c.contract.underlying, dte: c.contract.dte, strike: c.contract.strike,
         putDeltaMagnitude: Math.abs(c.contract.delta as number), spreadPct: c.contract.spreadPct,
         quoteAgeSeconds: c.contract.dataAgeSeconds, openInterest: c.contract.openInterest, volume: c.contract.volume,
         earningsDistanceDays: request.earningsDistanceDays, multiplier: c.contract.multiplier,
-        entryPremiumPerShare: c.entryPremiumPerShare, ownershipAcceptability: ownershipResult.data.ownability,
+        entryPremiumPerShare: c.entryPremiumPerShare, ownershipAcceptability: candidateOwnership.ownability,
         severeDrawdownProbability: c.severeDrawdownProbability, ivRank: c.ivRank, brokerAllowedQty: c.brokerAllowedQty,
         contractIsStandard: c.contractIsStandard,
         paperBootstrapEligible: bootstrapEvidence.eligible,
@@ -656,12 +681,15 @@ export async function runNewRiskOrchestration(
           underlyingSymbol: c.contract.underlying,
           evNet: econ.evNet,
           returnPerCapitalDay: econ.returnPerCapitalDay,
-          ownershipAcceptable: ownershipResult.data.ownability === null ? null : ownershipResult.data.ownability >= request.routerPolicy.thetaQMinOwnershipAcceptability,
+          ownershipAcceptable: ownershipByCandidateId.get(c.candidateId)?.ownability === null ? null
+            : (ownershipByCandidateId.get(c.candidateId)?.ownability as number) >= request.routerPolicy.thetaQMinOwnershipAcceptability,
           liquidityAcceptable: c.contract.spreadPct === null ? null : c.contract.spreadPct <= request.maxAcceptableSpreadPct,
           ivCompensationSufficient: c.ivCompensationSufficient,
           // Preserve an unverified event state as UNKNOWN. The frontier
           // still waits, but its receipt must not claim a known imminent event.
-          eventNear: regimeResult.data.eventState === null ? null : regimeResult.data.eventState !== 'NONE',
+          eventNear: c.paperEventNear === undefined
+            ? (regimeResult.data.eventState === null ? null : regimeResult.data.eventState !== 'NONE')
+            : c.paperEventNear,
           regimeAcceptable:
             regimeResult.data.stressState === null || regimeResult.data.volatilityState === null
               ? null
@@ -672,6 +700,7 @@ export async function runNewRiskOrchestration(
           hasAlternateContract: c.hasAlternateContract,
           hasAlternateExpiry: c.hasAlternateExpiry,
           hasAlternateStructure: c.hasAlternateStructure,
+          paperBootstrapEligible: bootstrapByCandidateId.get(c.candidateId)?.eligible === true,
         };
       }),
     },
@@ -770,6 +799,7 @@ export async function runNewRiskOrchestration(
       disposition: entry.disposition as CandidateFrontierResult['disposition'],
       waitReason: entry.waitReason, rejectionReason: entry.rejectionCategory,
       evNet: econ.evNet, returnPerCapitalDay: econ.returnPerCapitalDay,
+      paperBootstrapEligible: bootstrapByCandidateId.get(candidate.candidateId)?.eligible === true,
       aegis: candidateAegis, sizing: sizingResult.data, executionQuality: executionQualityResult.data,
     });
 
@@ -791,7 +821,9 @@ export async function runNewRiskOrchestration(
   });
 
   return {
-    receipt, ownership: ownershipResult.data, regime: regimeResult.data, routing: routerResult.data,
+    receipt, ownership: ownershipResult.data,
+    ownershipByCandidateId: Object.fromEntries([...ownershipByCandidateId.entries()].sort(([a],[b])=>a.localeCompare(b))),
+    regime: regimeResult.data, routing: routerResult.data,
     thetaQ: thetaQResult.data, aegis: representativeAegis,
     aegisByCandidateId: Object.fromEntries([...aegisByCandidateId.entries()].sort(([a], [b]) => a.localeCompare(b))),
     paretoSurvivorIds: [...survivorIds],

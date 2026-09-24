@@ -102,6 +102,7 @@ class CandidateSnapshot:
     has_alternate_contract: bool  # a neighboring strike, same expiry, not yet evaluated
     has_alternate_expiry: bool  # a different DTE bucket, same underlying/structure intent, not yet evaluated
     has_alternate_structure: bool  # a validated defined-risk (or other) structure alternative exists
+    paper_bootstrap_eligible: bool = False
 
 
 @dataclass(frozen=True)
@@ -118,16 +119,16 @@ def _classify(policy: OpportunityFrontierPolicy, c: CandidateSnapshot) -> Candid
 
     # Unresolved required inputs -- neither a confirmed-transient WAIT nor a
     # confirmed-inferior PASS, but never actionable: UNKNOWN != acceptable.
-    if c.ownership_acceptable is None or c.ev_net is None:
+    if (c.ownership_acceptable is None or c.ev_net is None) and not c.paper_bootstrap_eligible:
         reasons.append(ReasonCode("REQUIRED_INPUT_UNKNOWN", -1, "Ownership/EV is UNKNOWN, not assumed acceptable."))
         return CandidateDecision(c.candidate_id, CandidateDisposition.PASS, None, "UNKNOWN_INPUT", reasons)
 
     # Structural disqualifiers -> PASS. Nothing here is expected to change on
     # the next equivalent scan given already-known information.
-    if not c.ownership_acceptable:
+    if c.ownership_acceptable is False:
         reasons.append(ReasonCode("OWNERSHIP_UNACCEPTABLE", -1, "Ownership screen failed -- structurally inferior, not transient."))
         return CandidateDecision(c.candidate_id, CandidateDisposition.PASS, None, "OWNERSHIP", reasons)
-    if c.ev_net <= 0:
+    if c.ev_net is not None and c.ev_net <= 0:
         reasons.append(ReasonCode("NEGATIVE_AFTER_COST_EV", -1, "After-cost EV is non-positive on this specific contract."))
         # A negative-EV contract does not mean the underlying/opportunity is
         # dead -- a neighboring strike or a different DTE bucket may still
@@ -172,7 +173,14 @@ def _classify(policy: OpportunityFrontierPolicy, c: CandidateSnapshot) -> Candid
             return CandidateDecision(c.candidate_id, CandidateDisposition.OPEN_ALTERNATE_CONTRACT, None, None, reasons)
         return CandidateDecision(c.candidate_id, CandidateDisposition.PASS, None, "AEGIS", reasons)
 
-    # Positive edge, structurally sound, risk-permitted -- uncertainty
+    if c.paper_bootstrap_eligible and c.ev_net is None:
+        reasons.append(ReasonCode(
+            "PAPER_BOOTSTRAP_EMPIRICAL_EV_UNAVAILABLE", 0,
+            "Bounded Paper bootstrap permits evidence collection without inventing EV; all event, liquidity, AEGIS, sizing, and execution gates remain binding.",
+        ))
+
+    # Positive edge or explicit bounded Paper-bootstrap eligibility,
+    # structurally sound, risk-permitted -- uncertainty
     # governs SIZE, never whether to act at all.
     if c.model_uncertainty is not None and c.model_uncertainty > policy.reduced_size_uncertainty_threshold:
         reasons.append(ReasonCode(

@@ -55,6 +55,7 @@ def _snapshot(data: dict[str, Any]) -> CandidateSnapshot:
         has_alternate_contract=_required(data, "hasAlternateContract"),
         has_alternate_expiry=_required(data, "hasAlternateExpiry"),
         has_alternate_structure=_required(data, "hasAlternateStructure"),
+        paper_bootstrap_eligible=bool(data.get("paperBootstrapEligible", False)),
     )
 
 

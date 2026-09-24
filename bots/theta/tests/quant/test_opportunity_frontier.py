@@ -95,6 +95,25 @@ class WaitVsPassDistinctionTests(unittest.TestCase):
         self.assertEqual(decision.disposition, CandidateDisposition.PASS)
         self.assertEqual(decision.rejection_category, "UNKNOWN_INPUT")
 
+    def test_bounded_paper_bootstrap_can_continue_without_inventing_ev(self):
+        decision = build_opportunity_book(_policy(), [_candidate(
+            ownership_acceptable=None, ev_net=None, return_per_capital_day=None,
+            paper_bootstrap_eligible=True,
+        )]).entries[0].decision
+        self.assertEqual(decision.disposition, CandidateDisposition.OPEN_FULL)
+        self.assertIn("PAPER_BOOTSTRAP_EMPIRICAL_EV_UNAVAILABLE", [reason.code for reason in decision.reasons])
+
+    def test_paper_bootstrap_never_bypasses_event_or_aegis(self):
+        event = build_opportunity_book(_policy(), [_candidate(
+            ownership_acceptable=None, ev_net=None, paper_bootstrap_eligible=True, event_near=None,
+        )]).entries[0].decision
+        risk = build_opportunity_book(_policy(), [_candidate(
+            ownership_acceptable=None, ev_net=None, paper_bootstrap_eligible=True,
+            aegis_permits_full=False, aegis_permits_reduced=False,
+        )]).entries[0].decision
+        self.assertEqual(event.wait_reason, WaitReason.WAIT_EVENT)
+        self.assertEqual(risk.rejection_category, "AEGIS")
+
 
 class UncertaintyDoesNotForceWaitTests(unittest.TestCase):
     def test_elevated_uncertainty_reduces_size_rather_than_rejecting(self):

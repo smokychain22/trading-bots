@@ -170,6 +170,25 @@ test('plan assembly rejects missing, ineligible, or malformed bootstrap entry li
   }
 });
 
+test('plan assembly accepts exact v3 Paper-bootstrap lineage without claiming empirical EV',()=>{
+  const baseFrontier=frontier();
+  const branch=baseFrontier.branches[0];
+  const candidate=branch?.candidates[0];
+  assert.ok(branch&&candidate);
+  const bootstrapFrontier={...baseFrontier,branches:[{...branch,candidates:[{...candidate,entryEligibility:{
+    basis:'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED' as const,
+    paperBootstrapPolicyVersion:'theta-paper-entry-bootstrap-v3',
+    paperBootstrapAllowedUnknownComponents:['EventAdjustment','RecoveryQuality'],
+    paperBootstrapReasonCodes:['EVENT_DISTANCE_UNKNOWN','RECOVERY_HISTORY_UNKNOWN','SEVERE_DRAWDOWN_MODEL_NOT_PROMOTED'],
+  }}]}]};
+  const result=assembleMasterPaperEvidencePlan(input({frontier:bootstrapFrontier}));
+  assert.equal(result.state,'READY');
+  if(result.state==='READY'){
+    assert.equal(result.plan.expectedAfterCostEv,null);
+    assert.equal(result.plan.empiricalEconomicsReady,false);
+  }
+});
+
 test('contract multiplier is used when converting modeled cost to per-share boundary',()=>{
   const changed=frontier();
   const branch=changed.branches[0];

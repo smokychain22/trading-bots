@@ -15,6 +15,7 @@ import {
 import { normalizedOptionContractSchema, type NormalizedOptionContract } from './option-contract.js';
 import { optionomicsEventRevisions } from './optionomics-event-observation.js';
 import { buildAegisAssessmentIdentity } from './aegis-assessment-identity.js';
+import { canonicalJson } from '../research/point-in-time-evidence.js';
 import {
   buildOptionsChainDecisionEvidence,
   optionomicsChainAttachmentsFromFeatureState,
@@ -658,7 +659,7 @@ export class PostgresThetaCycleStore {
         empiricalEconomicsReady: branch.empiricalEconomicsReady,
         executionAuthorized: branch.executionAuthorized,
       };
-      const branchHash = createHash('sha256').update(JSON.stringify(branchPayload)).digest('hex');
+      const branchHash = createHash('sha256').update(canonicalJson(branchPayload)).digest('hex');
       const branchEvidenceId = deterministicRuntimeUuid(`canonical-branch-evidence:${branchHash}`);
       await client.query(
         `INSERT INTO trade.canonical_strategy_branch_evidence(
@@ -677,7 +678,7 @@ export class PostgresThetaCycleStore {
       );
       const candidateRows = projection.candidates.map(({ candidate, selected }) => {
         const candidatePayload = { frontierId, branchEvidenceId, candidate, selected };
-        const candidateHash = createHash('sha256').update(JSON.stringify(candidatePayload)).digest('hex');
+        const candidateHash = createHash('sha256').update(canonicalJson(candidatePayload)).digest('hex');
         const candidateEvidenceId = deterministicRuntimeUuid(`canonical-candidate-evidence:${candidateHash}`);
         return {
           candidateEvidenceId, branchEvidenceId, frontierId, candidateRef:candidate.candidateId,
@@ -801,7 +802,7 @@ export class PostgresThetaCycleStore {
     if (schemaVersion === null) throw new Error('OPTIONOMICS_LAYERED_EVIDENCE_METADATA_INVALID');
     const primary = observationIds.find((row) => row.operationAlias === 'optionomics.get_option_chain') ?? observationIds[0];
     if (primary === undefined) return;
-    const featureHash = createHash('sha256').update(JSON.stringify(features)).digest('hex');
+    const featureHash = createHash('sha256').update(canonicalJson(features)).digest('hex');
     const featureSnapshotId = deterministicRuntimeUuid(`optionomics-features:${primary.id}:${featureHash}`);
     await client.query(
       `INSERT INTO market.optionomics_feature_snapshot(feature_snapshot_id,observation_id,fusion_snapshot_id,underlying,
@@ -852,7 +853,7 @@ export class PostgresThetaCycleStore {
       earlier, current, maximumGapSeconds: optionomicsTemporalResearchPolicy.maximumGapSeconds,
     })) {
       const persistedMethodVersion = `${feature.methodVersion}:${optionomicsTemporalResearchPolicy.policyVersion}`;
-      const contentHash = createHash('sha256').update(JSON.stringify({ feature, policy: optionomicsTemporalResearchPolicy })).digest('hex');
+      const contentHash = createHash('sha256').update(canonicalJson({ feature, policy: optionomicsTemporalResearchPolicy })).digest('hex');
       const temporalFeatureId = deterministicRuntimeUuid(`optionomics-temporal:${contentHash}`);
       await client.query(
         `INSERT INTO research.optionomics_temporal_feature_observation(
@@ -916,7 +917,7 @@ export class PostgresThetaCycleStore {
       completeness_state,missing_scope_json,content_hash) VALUES($1,$2,$3::jsonb,$4::jsonb,$5::jsonb,$6,$7,$8,$9,$10::jsonb,$11)
       ON CONFLICT(candidate_set_id) DO NOTHING`,[candidateSetId,String(snapshot.decisionTimeUtc),JSON.stringify(setPayload.universe),
       JSON.stringify(setPayload.branches),JSON.stringify(counts),best,second,bestRejected,missingScope.length===0?'COMPLETE':'PARTIAL',
-      JSON.stringify(setPayload.missingScope),createHash('sha256').update(JSON.stringify(setPayload)).digest('hex')]);
+      JSON.stringify(setPayload.missingScope),createHash('sha256').update(canonicalJson(setPayload)).digest('hex')]);
 
     const provenance=(Array.isArray(snapshot.sourceProvenance) ? snapshot.sourceProvenance : []).map((raw) => {
       const item=jsonObject(raw);
@@ -930,6 +931,8 @@ export class PostgresThetaCycleStore {
     const optionomicsState=jsonObject(snapshot.optionomicsFeatureState);
     const optionomicsFeatures=jsonObject(optionomicsState.features);
     const optionomicsProviderContext=jsonObject(optionomicsFeatures.providerContext);
+    const regimeState=jsonObject(snapshot.regimeState);
+    const companyEventByOptionSymbol=jsonObject(regimeState.companyEventByOptionSymbol);
     const optionomicsContracts=Array.isArray(optionomicsFeatures.contracts)
       ? optionomicsFeatures.contracts.map((raw) => jsonObject(raw)) : [];
     const flowWindows=(Array.isArray(optionomicsState.netFlowWindows) ? optionomicsState.netFlowWindows : []).map((raw) => {
@@ -976,15 +979,19 @@ export class PostgresThetaCycleStore {
           surface:optionomicsFeatures.volatilitySurface ?? null,contractVolatility:optionomicsContract.volatility ?? null,
           marketStructure:optionomicsContract.marketStructure ?? null,
           providerExposureHeatmap:optionomicsProviderContext.exposureHeatmap ?? null},technical:{trend:snapshot.regimeState,momentum:null,drawdown:null,realizedVolatility:null},
-        event:{state:snapshot.eventState,earningsDistance:null,exDividendState:null},
+        event:{state:snapshot.eventState,companyEvent:typeof contract.optionSymbol==='string'
+          ? companyEventByOptionSymbol[contract.optionSymbol]??null:null,
+          earningsDistance:null,exDividendState:null},
         flow:{optionomicsNetFlowWindows:flowWindows,interpretation:'UNMODELED_RESEARCH_CONTEXT',
           providerFlowAggregates:optionomicsProviderContext.flowAggregates ?? null,
           featureSchemaVersion:optionomicsFeatures.schemaVersion ?? null,unavailableFamilies:optionomicsFeatures.unavailableFamilies ?? []},
-        ownership:{state:snapshot.expertPriorState},account:snapshot.accountState,portfolio:snapshot.portfolioExposure,
+        ownership:{state:snapshot.expertPriorState,
+          candidateAssessment:cycle.orchestration?.ownershipByCandidateId?.[candidate.candidateId]??null},
+        account:snapshot.accountState,portfolio:snapshot.portfolioExposure,
         aegis:{state:cycle.orchestration?.aegis ?? null},execution:{...market,executable:contract.executable,
           // Execution quality currently decides SUBMIT/SKIP but does not price
-          // an order. Keep the limit UNKNOWN until a fresh executable OPRA BBO
-          // is passed through the versioned limit-price policy immediately
+          // an order. Keep the limit UNKNOWN until a fresh exact-contract
+          // Alpaca Paper executable BBO is passed through the versioned limit-price policy immediately
           // before submission. An action string must never masquerade as price.
           proposedLimit:null,recommendedAction:alternative?.executionRecommendedAction ?? null},knownEconomics:candidate.economics ?? {},
         unknownEconomics:candidate.economics?.ev_net===null?[candidate.economics.ev_net_unknown_reason]:[],
@@ -993,7 +1000,7 @@ export class PostgresThetaCycleStore {
           riskVersion:String(versions.riskLimitVersion ?? context.riskLimitVersionId),featureVersion:String(versions.featureVersion ?? context.featureVersionId),
           costModelVersion:String(versions.costModelVersion ?? context.costModelVersionId),regimeVersion:String(versions.regimeVersion ?? 'UNKNOWN'),
           executionModelVersion:String(versions.executionVersion ?? context.executionVersionId)}};
-      const hash=createHash('sha256').update(JSON.stringify(evidencePayload)).digest('hex');
+      const hash=createHash('sha256').update(canonicalJson(evidencePayload)).digest('hex');
       evidenceRows.push({candidate_id:persistedId,decision_id:decisionId,fusion_snapshot_id:fusionSnapshotId,
         decision_time:String(snapshot.decisionTimeUtc),branch:'THETA_CONVENTIONAL',rank_at_decision:candidate.rank,selected,
         hard_status:candidate.actionFeasible?'FEASIBLE':candidate.economics?.ev_net===null?'DATA_INSUFFICIENT':'HARD_VETO',
@@ -1012,7 +1019,7 @@ export class PostgresThetaCycleStore {
       if (contract.bid!==null || contract.ask!==null) {
         const quotePayload={candidateId:persistedId,observedAt:String(snapshot.decisionTimeUtc),providerTimestamp:contract.quoteTimestamp,
           source:contract.source,feed:contract.feed,bid:contract.bid,ask:contract.ask,bidSize:contract.bidSize,askSize:contract.askSize};
-        const quoteHash=createHash('sha256').update(JSON.stringify(quotePayload)).digest('hex');
+        const quoteHash=createHash('sha256').update(canonicalJson(quotePayload)).digest('hex');
         quoteRows.push({quote_observation_id:deterministicRuntimeUuid(`quote:${quoteHash}`),candidate_id:persistedId,
           observed_at:String(snapshot.decisionTimeUtc),provider_timestamp:contract.quoteTimestamp,source:contract.source,
           feed:contract.feed,bid:contract.bid,ask:contract.ask,bid_size:contract.bidSize,ask_size:contract.askSize,
@@ -1074,7 +1081,7 @@ export class PostgresThetaCycleStore {
         ON CONFLICT(decision_id) DO NOTHING`,[decisionId,candidateSetId,String(snapshot.decisionTimeUtc),global.reason,
         global.underlyingsEvaluated,global.contractsEvaluated,JSON.stringify(branches),bestRejected,null,
         JSON.stringify(cycle.strategyFrontier.globalWaitReasons),JSON.stringify(snapshot.unknownFeatures),JSON.stringify(global),validation.earned,
-        JSON.stringify(validation.violations),createHash('sha256').update(JSON.stringify(waitPayload)).digest('hex')]);
+        JSON.stringify(validation.violations),createHash('sha256').update(canonicalJson(waitPayload)).digest('hex')]);
     }
   }
 }

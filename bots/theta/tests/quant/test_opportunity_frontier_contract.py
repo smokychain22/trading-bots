@@ -76,6 +76,14 @@ class OpportunityFrontierContractTests(unittest.TestCase):
         self.assertEqual(entry["rejectionCategory"], "EVENT_EVIDENCE_UNKNOWN")
         self.assertIn("EVENT_PROXIMITY_UNKNOWN", [reason["code"] for reason in entry["reasons"]])
 
+    def test_paper_bootstrap_lineage_allows_unmodeled_ev_but_not_unknown_event(self):
+        clear = evaluate_request(_request([_candidate("bootstrap", evNet=None, returnPerCapitalDay=None,
+            ownershipAcceptable=None, paperBootstrapEligible=True)]))
+        blocked = evaluate_request(_request([_candidate("bootstrap-event", evNet=None, returnPerCapitalDay=None,
+            ownershipAcceptable=None, paperBootstrapEligible=True, eventNear=None)]))
+        self.assertEqual(clear["actionableCandidateIds"], ["bootstrap"])
+        self.assertEqual(blocked["entries"][0]["waitReason"], "WAIT_EVENT")
+
     def test_duplicate_candidate_ids_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "candidateId values must be unique"):
             evaluate_request(_request([_candidate("dup"), _candidate("dup")]))

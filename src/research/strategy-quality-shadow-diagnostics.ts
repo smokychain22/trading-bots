@@ -2,6 +2,7 @@ import type { JsonValue } from '../market/fusion-snapshot.js';
 import type { CanonicalFrontierCandidate, CanonicalStrategyFrontier } from '../theta/canonical-strategy-frontier.js';
 import type { NormalizedOptionContract } from '../theta/option-contract.js';
 import type { HistoricalBar } from '../theta/underlying-history.js';
+import { optionomicsFamiliesFor, type OptionomicsFeatureFamily } from '../theta/optionomics-feature-destinations.js';
 import { buildVolatilityAccelerationEvidence, type VolatilityAccelerationEvidence } from './volatility-acceleration.js';
 
 export const strategyQualityShadowDiagnosticVersion = 'theta-strategy-quality-shadow-v1' as const;
@@ -94,6 +95,9 @@ const populatedContext = (context: Readonly<Record<string, JsonValue>> | null, k
 };
 
 const featureFamilies = (optionomicsContext: JsonValue): StrategyQualityShadowDiagnostic['optionomicsFamilies'] => {
+  const allowed = new Set<OptionomicsFeatureFamily>(optionomicsFamiliesFor('THETA_CONVENTIONAL'));
+  const routed = (family:OptionomicsFeatureFamily,value:ShadowFeatureState):ShadowFeatureState =>
+    allowed.has(family) ? value : 'UNAVAILABLE';
   const context = record(optionomicsContext);
   const contracts = Array.isArray(context?.contracts) ? context.contracts.map(record).filter((value) => value !== null) : [];
   const contractState = (path: readonly string[]): ShadowFeatureState => {
@@ -109,23 +113,23 @@ const featureFamilies = (optionomicsContext: JsonValue): StrategyQualityShadowDi
   const providerContext = record(context?.providerContext);
   const metrics = record(providerContext?.metrics);
   return {
-    IV: contractState(['volatility', 'impliedVolatility']),
-    IV_RANK: stateOf(metrics?.ivRank),
-    IV_PERCENTILE: stateOf(metrics?.ivPercentile),
-    REALIZED_VOLATILITY: 'UNAVAILABLE',
-    VRP: 'UNAVAILABLE',
-    SKEW: stateOf(context?.skew),
-    TERM: stateOf(context?.termStructure),
-    SURFACE: stateOf(context?.volatilitySurface),
-    EXPECTED_MOVE: contractState(['structuralEconomics', 'expectedMoveApprox']),
-    GEX: contractState(['marketStructure', 'gammaExposure']) === 'KNOWN'
-      ? 'KNOWN' : populatedContext(providerContext, 'exposureHeatmap'),
-    VANNA: populatedContext(providerContext, 'vannaExposureHeatmap'),
-    CHARM: populatedContext(providerContext, 'charmExposureHeatmap'),
-    FLOW: Array.isArray(record(context?.flow)?.windows) && (record(context?.flow)?.windows as JsonValue[]).length > 0
-      ? 'KNOWN' : 'UNKNOWN',
-    EVENTS: [providerContext?.events, providerContext?.earningsFilings, providerContext?.symbolNews]
-      .some((value) => populatedContext({ value: value ?? null }, 'value') === 'KNOWN') ? 'KNOWN' : 'UNKNOWN',
+    IV: routed('VOLATILITY',contractState(['volatility', 'impliedVolatility'])),
+    IV_RANK: routed('VOLATILITY',stateOf(metrics?.ivRank)),
+    IV_PERCENTILE: routed('VOLATILITY',stateOf(metrics?.ivPercentile)),
+    REALIZED_VOLATILITY: routed('VOLATILITY','UNAVAILABLE'),
+    VRP: routed('VOLATILITY','UNAVAILABLE'),
+    SKEW: routed('SKEW',stateOf(context?.skew)),
+    TERM: routed('TERM',stateOf(context?.termStructure)),
+    SURFACE: routed('SURFACE',stateOf(context?.volatilitySurface)),
+    EXPECTED_MOVE: routed('EXPECTED_MOVE',contractState(['structuralEconomics', 'expectedMoveApprox'])),
+    GEX: routed('EXPOSURE',contractState(['marketStructure', 'gammaExposure']) === 'KNOWN'
+      ? 'KNOWN' : populatedContext(providerContext, 'exposureHeatmap')),
+    VANNA: routed('EXPOSURE',populatedContext(providerContext, 'vannaExposureHeatmap')),
+    CHARM: routed('EXPOSURE',populatedContext(providerContext, 'charmExposureHeatmap')),
+    FLOW: routed('FLOW',Array.isArray(record(context?.flow)?.windows)
+      && (record(context?.flow)?.windows as JsonValue[]).length > 0 ? 'KNOWN' : 'UNKNOWN'),
+    EVENTS: routed('EVENTS',[providerContext?.events, providerContext?.earningsFilings, providerContext?.symbolNews]
+      .some((value) => populatedContext({ value: value ?? null }, 'value') === 'KNOWN') ? 'KNOWN' : 'UNKNOWN'),
   };
 };
 

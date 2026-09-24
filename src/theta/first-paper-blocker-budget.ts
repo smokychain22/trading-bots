@@ -70,12 +70,17 @@ export function assessRuntimeFirstPaperReadiness(input:{
     : symbol.aegisState===null||symbol.aegisState==='UNKNOWN'
       ? unresolved('CURRENT_AEGIS_STATE_NOT_OBSERVED',source,'EXTERNAL')
       : blocked(`CURRENT_AEGIS_${symbol.aegisState}`,source,'POLICY');
-  const positiveSizingReachable=(symbol.runtimeTelemetry?.positiveSizeCandidateCount??0)>0||symbol.selectedQuantity>0
-    ? observed(`${source}:sizing`)
-    : symbol.qLatticeTotal===0
-      ? unresolved('Q_LATTICE_NOT_OBSERVED_FOR_SIZING',source,'EXTERNAL')
-      : blocked(`NO_POSITIVE_SIZE:${Object.keys(symbol.runtimeTelemetry?.bindingConstraintCounts??{}).toSorted().join(',')||'UNKNOWN_BINDING_CONSTRAINT'}`,
-        source,'POLICY');
+  let positiveSizingReachable:FirstPaperCheck;
+  if(symbol.selectedQuantity>0||((symbol.runtimeTelemetry?.positiveSizeCandidateCount??0)>0)){
+    positiveSizingReachable=observed(`${source}:sizing`);
+  }else if(symbol.qLatticeTotal===0){
+    positiveSizingReachable=unresolved('Q_LATTICE_NOT_OBSERVED_FOR_SIZING',source,'EXTERNAL');
+  }else if(symbol.runtimeTelemetry===null){
+    positiveSizingReachable=unresolved('RUNTIME_SIZING_TELEMETRY_NOT_OBSERVED',source,'EXTERNAL');
+  }else{
+    positiveSizingReachable=blocked(`NO_POSITIVE_SIZE:${Object.keys(symbol.runtimeTelemetry.bindingConstraintCounts)
+      .toSorted().join(',')||'UNKNOWN_BINDING_CONSTRAINT'}`,source,'POLICY');
+  }
   const canonicalDecisionReachable=symbol.qDecision!==null&&symbol.canonicalAction!==null
     ? observed(`${source}:canonical-decision`)
     : unresolved('CANONICAL_DECISION_NOT_OBSERVED',source,'EXTERNAL');

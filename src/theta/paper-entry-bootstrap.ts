@@ -1,9 +1,13 @@
 import type { OwnershipEvaluationResponse } from './ownership-contract.js';
 
-export const paperEntryBootstrapPolicyVersion = 'theta-paper-entry-bootstrap-v2' as const;
+export const paperEntryBootstrapPolicyVersion = 'theta-paper-entry-bootstrap-v3' as const;
 
-export const paperBootstrapAllowedUnknownComponent = 'RecoveryQuality' as const;
-export const paperBootstrapAllowedUnknownReason = 'RECOVERY_HISTORY_UNKNOWN' as const;
+export const paperBootstrapAllowedUnknownComponents = ['EventAdjustment', 'RecoveryQuality'] as const;
+export const paperBootstrapAllowedUnknownReasons = [
+  'EVENT_DISTANCE_UNKNOWN',
+  'RECOVERY_HISTORY_UNKNOWN',
+  'SEVERE_DRAWDOWN_MODEL_NOT_PROMOTED',
+] as const;
 
 export type PaperEntryBootstrapState =
   | 'DISABLED'
@@ -81,10 +85,12 @@ export function assessPaperEntryBootstrap(input: PaperEntryBootstrapInput): Pape
 }
 
 /**
- * Narrows the Paper cold-start exception to one explicit missing empirical
- * input. Recovery history may be absent before THETA has resolved episodes.
- * Missing liquidity, structure, tail, event, thesis, or candidate drawdown
- * evidence never inherits that exception.
+ * Narrows the Paper cold-start exception to explicitly named empirical
+ * inputs. Event safety is governed independently by the candidate-specific
+ * CompanyEventPaperPolicy, so an unavailable ownership-model event-decay
+ * feature cannot duplicate that hard gate. Recovery history and a fitted
+ * severe-drawdown probability remain R8 empirical inputs. No numeric value
+ * is manufactured for either one.
  */
 export function assessPaperBootstrapOwnershipEvidence(
   bootstrap: PaperEntryBootstrapAssessment | undefined,
@@ -95,23 +101,24 @@ export function assessPaperBootstrapOwnershipEvidence(
   if (bootstrap?.state !== 'ELIGIBLE_UNCALIBRATED') blockers.push('PAPER_ENTRY_BOOTSTRAP_NOT_ELIGIBLE');
   if (bootstrap?.policyVersion !== paperEntryBootstrapPolicyVersion) blockers.push('PAPER_ENTRY_BOOTSTRAP_POLICY_MISMATCH');
   if (ownership.thesisInvalidated) blockers.push('OWNERSHIP_THESIS_INVALIDATED');
-  if (severeDrawdownProbability === null || !Number.isFinite(severeDrawdownProbability)
-    || severeDrawdownProbability < 0 || severeDrawdownProbability > 1) {
-    blockers.push('SEVERE_DRAWDOWN_PROBABILITY_UNKNOWN_OR_INVALID');
-  }
+  if (severeDrawdownProbability !== null && (!Number.isFinite(severeDrawdownProbability)
+    || severeDrawdownProbability < 0 || severeDrawdownProbability > 1)) blockers.push('SEVERE_DRAWDOWN_PROBABILITY_INVALID');
   const unknown = ownership.components.filter((component) => component.value === null);
-  const allowedUnknown = unknown.length === 1 && unknown[0]?.name === paperBootstrapAllowedUnknownComponent;
-  if (!allowedUnknown) blockers.push('BOOTSTRAP_UNKNOWN_COMPONENT_SET_NOT_ALLOWED');
-  const unknownReasons = [...new Set(unknown.flatMap((component) => component.reasons.map((reason) => reason.code)))].toSorted();
-  if (unknownReasons.length !== 1 || unknownReasons[0] !== paperBootstrapAllowedUnknownReason) {
-    blockers.push('BOOTSTRAP_UNKNOWN_REASON_SET_NOT_ALLOWED');
+  const unknownComponents = [...new Set(unknown.map((component) => component.name))].toSorted();
+  const allowedComponentSet = new Set<string>(paperBootstrapAllowedUnknownComponents);
+  if (unknownComponents.length === 0 || unknownComponents.some((component) => !allowedComponentSet.has(component))) {
+    blockers.push('BOOTSTRAP_UNKNOWN_COMPONENT_SET_NOT_ALLOWED');
   }
+  const componentReasons = [...new Set(unknown.flatMap((component) => component.reasons.map((reason) => reason.code)))].toSorted();
+  const reasonCodes = [...componentReasons,
+    ...(severeDrawdownProbability === null ? ['SEVERE_DRAWDOWN_MODEL_NOT_PROMOTED'] : [])].toSorted();
+  const allowedReasonSet = new Set<string>(paperBootstrapAllowedUnknownReasons);
+  if (reasonCodes.some((reason) => !allowedReasonSet.has(reason))) blockers.push('BOOTSTRAP_UNKNOWN_REASON_SET_NOT_ALLOWED');
   return {
     eligible: blockers.length === 0,
     policyVersion: paperEntryBootstrapPolicyVersion,
-    allowedUnknownComponents: allowedUnknown ? [paperBootstrapAllowedUnknownComponent] : [],
-    reasonCodes: allowedUnknown && unknownReasons[0] === paperBootstrapAllowedUnknownReason
-      ? [paperBootstrapAllowedUnknownReason] : [],
+    allowedUnknownComponents: blockers.includes('BOOTSTRAP_UNKNOWN_COMPONENT_SET_NOT_ALLOWED') ? [] : unknownComponents,
+    reasonCodes: blockers.includes('BOOTSTRAP_UNKNOWN_REASON_SET_NOT_ALLOWED') ? [] : reasonCodes,
     blockers,
   };
 }

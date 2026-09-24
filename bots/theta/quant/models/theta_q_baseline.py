@@ -344,11 +344,25 @@ class BaselinePolicy:
         below_floor = any(r.code == "OWNERSHIP_BELOW_FLOOR" for r in ownership_reasons)
         unknown_ownership = ownership_score is None
 
+        allowed_components = frozenset(("EventAdjustment", "RecoveryQuality"))
+        allowed_reasons = frozenset((
+            "EVENT_DISTANCE_UNKNOWN",
+            "RECOVERY_HISTORY_UNKNOWN",
+            "SEVERE_DRAWDOWN_MODEL_NOT_PROMOTED",
+        ))
+        supplied_components = frozenset(c.paper_bootstrap_allowed_unknown_components)
+        supplied_reasons = frozenset(c.paper_bootstrap_reason_codes)
+        severe_drawdown_state_valid = (
+            (c.p_severe_drawdown is None and "SEVERE_DRAWDOWN_MODEL_NOT_PROMOTED" in supplied_reasons)
+            or (c.p_severe_drawdown is not None and 0.0 <= c.p_severe_drawdown <= 1.0)
+        )
         bootstrap_evidence_valid = (
-            c.paper_bootstrap_allowed_unknown_components == ("RecoveryQuality",)
-            and c.paper_bootstrap_reason_codes == ("RECOVERY_HISTORY_UNKNOWN",)
-            and c.p_severe_drawdown is not None
-            and 0.0 <= c.p_severe_drawdown <= 1.0
+            c.paper_bootstrap_policy_version == "theta-paper-entry-bootstrap-v3"
+            and len(supplied_components) > 0
+            and supplied_components.issubset(allowed_components)
+            and len(supplied_reasons) > 0
+            and supplied_reasons.issubset(allowed_reasons)
+            and severe_drawdown_state_valid
         )
         bootstrap_eligible = (
             unknown_ownership
