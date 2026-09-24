@@ -4,7 +4,7 @@
  * when they contain superseded statements.
  */
 export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v1' as const;
-export const truthSourceBaselineSha = '2b747f54c1cb22691a0642395bedce3bb89bd8a4';
+export const truthSourceBaselineSha = 'f4835928bf89b5196cd18a95cecb1531f199b945';
 // A worker SHA is operational state. Read it from the current worker lease,
 // never from this source-controlled architectural inventory.
 export const truthLastVerifiedAt = '2026-09-24';

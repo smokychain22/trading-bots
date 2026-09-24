@@ -1,6 +1,6 @@
 # THETA brain and orchestration, current-source proof
 
-Source audited through `2b747f54c1cb22691a0642395bedce3bb89bd8a4`. This is a source and locked-runtime boundary receipt, not a profitability or Paper-entry authorization. The running worker was last observed on `a96b321577996b15cfd33646890afc3230d0eb96`, `MASTER_THETA_PAPER`, new-risk `LOCKED`, with one active lease. Source and worker remain separate until a safe cutover.
+Source audited through `f4835928bf89b5196cd18a95cecb1531f199b945`. This is a source and locked-runtime boundary receipt, not a profitability or Paper-entry authorization. The running worker was last observed on `a96b321577996b15cfd33646890afc3230d0eb96`, `MASTER_THETA_PAPER`, new-risk `LOCKED`, with one active lease. Source and worker remain separate until a safe cutover.
 
 ## Actual decision graph
 
@@ -23,6 +23,7 @@ The Python router returns six eligibility records, not an economic ranking. `new
 2. A structural Pareto or lexical first candidate can no longer override the economic Q receipt. Q WAIT/PASS remains non-OPEN. An OPEN requires matching immutable decision identity and its positive quantity is capped by canonical sizing.
 3. Missing H/D research candidates and research sizing uncertainty no longer relabel a complete Q WAIT as a system fault. Branch-level missing evidence is retained. Top-level Paper near-miss and best-rejected references are scoped to Conventional candidates.
 4. The Python Q lattice may validly exclude contracts before its response, or return no lattice when all quotes fail freshness. Those contracts are recorded as lattice exclusions, and a null lattice provides no per-contract action map. The immutable Q receipt still forces WAIT or PASS, so neither false OPEN nor false missing-evidence HOLD follows from that filtered result.
+5. The earned-WAIT reason names the Paper-authorized branch rather than claiming all applicable shadow and research branches were complete.
 
 These changes have deterministic regression tests, full local Node/Python/typecheck/lint/build/security verification and CI on the exact source SHA. They do not loosen AEGIS, quote freshness, event policy, sizing, execution locks or broker controls.
 

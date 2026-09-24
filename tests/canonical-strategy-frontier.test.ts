@@ -163,7 +163,7 @@ test('recovery and covered-call frontiers require confirmed stock and preserve w
   assert.equal(result.selectedBranch, null, 'recovery and CC alternatives cannot be cross-ranked without action EV');
 });
 
-test('GLOBAL_WAIT is earned only after every applicable branch is evaluated and no risk-feasible action exists', () => {
+test('GLOBAL_WAIT is earned only after the Paper branch is evaluated and no risk-feasible action exists', () => {
   const invalidIdentity = contract({ occSymbol: null });
   const exhausted = buildCanonicalStrategyFrontier({ ...base, contracts: [invalidIdentity], routing: routing(['THETA_Q']) });
   assert.equal(exhausted.globalWaitEarned, true);
