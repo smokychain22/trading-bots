@@ -385,3 +385,15 @@ No item is complete merely because its type, config, fixture, or UI label exists
   authority. A trade never substitutes for an option quote, and a stale or
   malformed trade preserves the existing unknown state. Local AEGIS history
   accepts this typed reference lineage without weakening quote-age checks.
+- OBSERVED 2026-09-24T18:50Z: a clean immutable no-submit run on `5a9ac72`
+  completed the Aiven-outage fallback after `POSTGRES_CONNECTION_TERMINATED`.
+  SPY produced five exact-Q observations, and all five qualified for both the
+  local spread cohort and Alpaca contract-IV cohort with the new reference
+  lineage. The 15 earlier unqualified observations remain immutable and
+  rejected. This begins real forward baseline accumulation, but same-session
+  scans do not create independent sessions and current AEGIS stress remains
+  UNKNOWN until qualified prior-session evidence exists. Q produced five
+  candidates, two with positive broker quantity, and the canonical result was
+  `GLOBAL_WAIT`. UNDERLYING, SECTOR and CORRELATION remained genuine AEGIS hard
+  vetoes under the unchanged concentration policy. Orders and broker mutations
+  remained zero.
