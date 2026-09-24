@@ -14,6 +14,7 @@ import { LocalEvidenceSpool } from '../src/theta/local-evidence-spool.js';
 import { PostgresLocalEvidenceBackfillTarget } from '../src/theta/postgres-local-evidence-backfill.js';
 import { classifyPostgresRuntimeError } from '../src/theta/postgres-runtime-error.js';
 import { runDatabaseIndependentShadowObservation } from '../src/theta/database-independent-shadow-observation.js';
+import { buildLocalAegisRiskHistory, type LocalAegisRiskObservation } from '../src/theta/local-aegis-risk-history.js';
 import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment,
   type PaperEntryBootstrapAssessment } from '../src/theta/paper-entry-bootstrap.js';
 
@@ -181,8 +182,16 @@ try {
     spool?.recordDatabaseFailure(new Date().toISOString(),false);
     try{
       probeStage='DATABASE_INDEPENDENT_PROVIDER_OBSERVATION';
+      const spoolIntegrity=spool?.verify();
+      if(spoolIntegrity!==undefined&&!spoolIntegrity.valid)throw new Error('LOCAL_EVIDENCE_HASH_CHAIN_INVALID');
+      const priorRiskObservations=spool?.listByPayloadType('RISK_OBSERVATIONS_READY',5_000).flatMap((envelope)=>{
+        const payload=envelope.payload as {observations?:unknown}|null;
+        return Array.isArray(payload?.observations)?payload.observations:[];
+      })??[];
+      const localRiskHistory=buildLocalAegisRiskHistory(priorRiskObservations);
       const local=await runDatabaseIndependentShadowObservation({environment,alpaca,paperEntryBootstrap,
         recoveryInventoryUnderlyings:recoveryInventoryUnderlyingsForFallback,
+        localRiskHistory,
         now:()=>new Date().toISOString()});
       spoolEvidence('CONTRACTS_READY',{universeFunnel:local.universeFunnel,universeBlockers:local.universeBlockers,
         approvedSymbolsDiscovered:local.approvedSymbolsDiscovered,brokerMutationAllowed:false});
@@ -193,6 +202,10 @@ try {
         spoolEvidence('Q_READY',{symbol:symbol.symbol,qCandidateCount:symbol.qCandidateCount,qDecision:symbol.qDecision,
           qReasonCodes:symbol.qReasonCodes,qCandidates:symbol.qCandidates,
           frontierCandidates:symbol.frontierCandidates,blockers:symbol.blockers,brokerMutationAllowed:false});
+        spoolEvidence('RISK_OBSERVATIONS_READY',{symbol:symbol.symbol,history:symbol.riskHistory,
+          observations:symbol.riskObservations as readonly LocalAegisRiskObservation[],brokerMutationAllowed:false},
+        {ALPACA:symbol.riskObservations.map((observation)=>observation.contract.quoteTimestamp)
+          .filter((value):value is string=>value!==null).toSorted().at(-1)??null});
         spoolEvidence('AEGIS_READY',{symbol:symbol.symbol,aegisState:symbol.aegisState,
           evidenceState:symbol.state,brokerMutationAllowed:false});
         spoolEvidence('SIZING_READY',{symbol:symbol.symbol,selectedQuantity:symbol.selectedQuantity,

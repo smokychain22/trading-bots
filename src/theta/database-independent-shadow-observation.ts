@@ -8,6 +8,9 @@ import type { PaperEntryBootstrapAssessment } from './paper-entry-bootstrap.js';
 import { defaultShadowCycleConfig, optionomicsConfigFromEnvironment } from './theta-shadow-once.js';
 import { runThetaShadowCycle, type ThetaShadowCycleResult } from './theta-shadow-cycle.js';
 import { discoverRealUniverse, type UniverseDiscoveryResult } from './universe-discovery.js';
+import { createLocalAegisRiskObservation, localAegisAssessors, type LocalAegisRiskHistory,
+  type LocalAegisRiskObservation } from './local-aegis-risk-history.js';
+import { normalizedOptionContractSchema } from './option-contract.js';
 
 export const databaseIndependentShadowObservationVersion='theta-database-independent-shadow-observation-v1' as const;
 
@@ -55,6 +58,9 @@ export interface DatabaseIndependentSymbolObservation {
   readonly selectedQuantity:number;
   readonly aegisState:string|null;
   readonly blockers:readonly string[];
+  readonly riskHistory:{readonly scanned:number;readonly spreadQualified:number;readonly spreadRejected:number;
+    readonly ivQualified:number;readonly ivRejected:number};
+  readonly riskObservations:readonly LocalAegisRiskObservation[];
   readonly exactRefresh:{
     readonly state:'NOT_APPLICABLE'|'READY_READ_ONLY'|'QUOTE_MISSING'|'INCOMPLETE'|'PROVIDER_ERROR';
     readonly optionSymbol:string|null;
@@ -154,6 +160,7 @@ export async function runDatabaseIndependentShadowObservation(input:{
    * unavailable. An explicit empty array is known no recovery inventory.
    * Omission remains UNKNOWN and must not be coerced to empty. */
   readonly recoveryInventoryUnderlyings?:readonly string[];
+  readonly localRiskHistory?:LocalAegisRiskHistory;
   readonly now:()=>string;
   readonly deadlineMs?:{readonly discovery:number;readonly cycle:number;readonly exactRefresh:number};
   readonly dependencies?:Partial<Dependencies>;
@@ -175,6 +182,7 @@ export async function runDatabaseIndependentShadowObservation(input:{
   const approvedSet=new Set(approved);
   const underlyings=discovery.candidates.filter((candidate)=>approvedSet.has(candidate.symbol));
   const optionomics=optionomicsConfigFromEnvironment(input.environment);
+  const localAssessors=input.localRiskHistory===undefined?null:localAegisAssessors(input.localRiskHistory);
   const symbols:DatabaseIndependentSymbolObservation[]=[];
   for(const underlying of underlyings){
     try{
@@ -182,6 +190,8 @@ export async function runDatabaseIndependentShadowObservation(input:{
       const cycle=await bounded(dependencies.runCycle({...base,evaluationMode:'SHADOW_EVIDENCE',
         paperEntryBootstrap:input.paperEntryBootstrap,
         recoveryInventoryUnderlyings:input.recoveryInventoryUnderlyings,
+        aegisSpreadStressAssessor:localAssessors?.spread,
+        aegisAlpacaIvStressAssessor:localAssessors?.alpacaIv,
         aegisInputsOrigin:'DERIVED_FROM_REAL',aegisInputs:{tickerConcentrationPct:null,sectorConcentrationPct:null,
           correlationClusterExposurePct:null,portfolioCapitalAtRiskPct:null,inventoryCapacityUsedPct:null,
           assignmentCapacityUsedPct:null,recoveryCapacityUsedPct:null,liquidityAcceptable:null,
@@ -192,6 +202,17 @@ export async function runDatabaseIndependentShadowObservation(input:{
       const selected=frontier?.branches.flatMap((branch)=>branch.candidates)
         .find((candidate)=>candidate.candidateId===frontier.selectedCandidateId)??null;
       const q=cycle.orchestration?.thetaQ;
+      const candidateIds=new Set(q?.candidates.map((candidate)=>candidate.candidateId)??[]);
+      const rawContracts=Array.isArray(cycle.fusionSnapshot?.snapshot.contractCandidates)
+        ?cycle.fusionSnapshot.snapshot.contractCandidates:[];
+      const riskObservations=rawContracts.flatMap((value)=>{
+        const parsed=normalizedOptionContractSchema.safeParse(value);
+        if(!parsed.success||!candidateIds.has(parsed.data.optionSymbol)||cycle.snapshotContentHash===null
+          ||cycle.fusionSnapshot===null)return [];
+        return [createLocalAegisRiskObservation({snapshotId:cycle.snapshotContentHash,
+          decisionCycleId:cycle.runId,decisionTime:String(cycle.fusionSnapshot.snapshot.decisionTimeUtc),
+          contract:parsed.data})];
+      });
       symbols.push({symbol:underlying.symbol,state:'COMPLETED',failureCode:null,
         snapshotId:cycle.snapshotContentHash,decisionAsOf:cycle.fusionSnapshot===null?null
           :String(cycle.fusionSnapshot.snapshot.decisionTimeUtc),
@@ -221,12 +242,22 @@ export async function runDatabaseIndependentShadowObservation(input:{
         canonicalAction:frontier?.primaryAction??null,selectedCandidateId:frontier?.selectedCandidateId??null,
         selectedOptionSymbol:selected?.legs[0]?.optionSymbol??null,selectedQuantity:frontier?.selectedQuantity??0,
         aegisState:selected?.aegisState??cycle.orchestration?.aegis?.newRiskState??null,blockers:cycle.blockers,
+        riskHistory:{scanned:input.localRiskHistory?.scanned??0,
+          spreadQualified:input.localRiskHistory?.spread.length??0,
+          spreadRejected:input.localRiskHistory?.spreadRejected??0,
+          ivQualified:input.localRiskHistory?.alpacaIv.length??0,
+          ivRejected:input.localRiskHistory?.ivRejected??0},riskObservations,
         exactRefresh:await exactReadOnlyRefresh(input.alpaca,cycle,input.now,dependencies.refreshExact,deadlinePolicy.exactRefreshMs)});
     }catch(error){
       symbols.push({symbol:underlying.symbol,state:'FAILED',failureCode:safeCode(error),snapshotId:null,decisionAsOf:null,
         optionContractsComplete:null,optionChainComplete:null,qCandidateCount:0,qDecision:null,canonicalAction:null,
         qReasonCodes:[],qCandidates:[],frontierCandidates:[],
         selectedCandidateId:null,selectedOptionSymbol:null,selectedQuantity:0,aegisState:null,blockers:[safeCode(error)],
+        riskHistory:{scanned:input.localRiskHistory?.scanned??0,
+          spreadQualified:input.localRiskHistory?.spread.length??0,
+          spreadRejected:input.localRiskHistory?.spreadRejected??0,
+          ivQualified:input.localRiskHistory?.alpacaIv.length??0,
+          ivRejected:input.localRiskHistory?.ivRejected??0},riskObservations:[],
         exactRefresh:{state:'NOT_APPLICABLE',optionSymbol:null,providerTimestamp:null,receivedAt:null,bid:null,ask:null,
           brokerMutationSurface:false}});
     }

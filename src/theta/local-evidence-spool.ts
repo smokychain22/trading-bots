@@ -15,7 +15,7 @@ export type LocalEvidencePostgresState =
 
 export type DecisionCheckpointStage =
   | 'ACCOUNT_READY' | 'CONTRACTS_READY' | 'QUOTES_READY' | 'Q_READY'
-  | 'SHADOW_READY' | 'EVENT_READY' | 'AEGIS_READY' | 'SIZING_READY'
+  | 'SHADOW_READY' | 'EVENT_READY' | 'RISK_OBSERVATIONS_READY' | 'AEGIS_READY' | 'SIZING_READY'
   | 'DECISION_READY' | 'PLAN_READY' | 'CYCLE_FAILED';
 
 export interface LocalEvidenceEnvelopeInput {
@@ -243,6 +243,14 @@ export class LocalEvidenceSpool {
     const bounded = Math.max(1,Math.min(1_000,Math.floor(limit)));
     return (this.database.prepare(`SELECT * FROM envelope WHERE postgres_state='SPOOLED_LOCAL_PENDING_DB'
       ORDER BY created_at,envelope_id LIMIT ?`).all(bounded) as unknown as EnvelopeRow[]).map(fromRow);
+  }
+
+  listByPayloadType(payloadType: string, limit = 5_000): readonly LocalEvidenceEnvelope[] {
+    if (!SAFE_ID.test(payloadType)) throw new Error('LOCAL_EVIDENCE_PAYLOADTYPE_INVALID');
+    const bounded = Math.max(1,Math.min(10_000,Math.floor(limit)));
+    return (this.database.prepare(`SELECT * FROM envelope WHERE payload_type=? AND postgres_state!='CORRUPT'
+      ORDER BY decision_as_of DESC,envelope_id DESC LIMIT ?`).all(payloadType,bounded) as unknown as EnvelopeRow[])
+      .map(fromRow);
   }
 
   verify(): { readonly valid: boolean; readonly checked: number; readonly corruptEnvelopeIds: readonly string[] } {

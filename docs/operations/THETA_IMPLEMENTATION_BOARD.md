@@ -362,3 +362,12 @@ No item is complete merely because its type, config, fixture, or UI label exists
   structurally ineligible. Resolution requires a governed policy/account change
   or empirical promotion of a bounded-risk branch. Engineering must not relabel
   this as missing broker capacity or loosen it to manufacture activity.
+- WIRED/TESTED: database-independent observation now persists bounded exact-Q
+  Alpaca contract BBO/IV observations into the existing hash-chained local WAL
+  evidence stream. Strict lineage parsing rebuilds prior-session spread and IV
+  cohorts during an Aiven outage, rejects hash/identity/timing/source ambiguity,
+  and injects the canonical AEGIS assessors into the next read-only cycle. An
+  immature history remains BASELINE_ACCUMULATING with a null stress result. It
+  never becomes false merely because PostgreSQL is unavailable. Current SPY
+  observations with an unqualified IEX moneyness reference remain explicitly
+  rejected and therefore cannot mature either detector.

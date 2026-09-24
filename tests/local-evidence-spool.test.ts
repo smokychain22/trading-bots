@@ -84,3 +84,15 @@ test('database circuit requires two successful probes before HEALTHY',()=>{
     assert.equal(spool.circuitState().state,'HEALTHY');
   }finally{cleanup();}
 });
+
+test('spool returns bounded typed history without treating corrupt rows as evidence',()=>{
+  const {spool,cleanup}=harness();
+  try{
+    spool.append({...input(0),payloadType:'RISK_OBSERVATIONS_READY',payload:{observations:[{id:'one'}]}});
+    spool.append({...input(1),payloadType:'Q_READY'});
+    const rows=spool.listByPayloadType('RISK_OBSERVATIONS_READY');
+    assert.equal(rows.length,1);
+    assert.equal(rows[0]?.payloadType,'RISK_OBSERVATIONS_READY');
+    assert.throws(()=>spool.listByPayloadType('bad payload type'),/PAYLOADTYPE_INVALID/);
+  }finally{cleanup();}
+});
