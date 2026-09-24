@@ -1,6 +1,6 @@
 # THETA brain and orchestration, current-source proof
 
-Source audited through `adf75457d1aa34cdb4bffaeac3b1f7e905ce251e`. This is a source and locked-runtime boundary receipt, not a profitability or Paper-entry authorization. The running worker was last observed on `a96b321577996b15cfd33646890afc3230d0eb96`, `MASTER_THETA_PAPER`, new-risk `LOCKED`, with one active lease. Source and worker remain separate until a safe cutover.
+Source audited through `2b747f54c1cb22691a0642395bedce3bb89bd8a4`. This is a source and locked-runtime boundary receipt, not a profitability or Paper-entry authorization. The running worker was last observed on `a96b321577996b15cfd33646890afc3230d0eb96`, `MASTER_THETA_PAPER`, new-risk `LOCKED`, with one active lease. Source and worker remain separate until a safe cutover.
 
 ## Actual decision graph
 
