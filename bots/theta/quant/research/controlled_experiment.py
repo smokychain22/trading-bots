@@ -58,6 +58,20 @@ def execute_controlled_experiments(raw, eligible_experiment_ids=None):
         if instant(row['featureAvailableAt']) > decision:
             raise ValueError('EXPERIMENT_FUTURE_FEATURE')
         arms = [row['control'], row['treatment']]
+        if experiment_id in ('R8B-Q-VS-H', 'R8B-Q-VS-D'):
+            expected = 'THETA_HOLD_STRIKE' if experiment_id == 'R8B-Q-VS-H' else 'THETA_DEFINED_RISK'
+            if arms[0].get('strategyBranch') != 'THETA_CONVENTIONAL' or arms[1].get('strategyBranch') != expected:
+                raise ValueError('CROSS_STRATEGY_BRANCH_IDENTITY_REQUIRED')
+            # A text label saying SAME_CAPITAL is not a normalized capital
+            # amount or a policy for cash after a short-DTE branch expires.
+            for arm in arms:
+                if not arm.get('underlying') or type(arm.get('comparisonCapitalDollars')) not in (int, float) \
+                        or not isfinite(arm['comparisonCapitalDollars']) or arm['comparisonCapitalDollars'] <= 0 \
+                        or not arm.get('capitalTreatmentVersion') or not arm.get('terminalMarkPolicyVersion'):
+                    raise ValueError('CROSS_STRATEGY_CAPITAL_AND_TERMINAL_POLICY_REQUIRED')
+            if any(arms[0][key] != arms[1][key] for key in ('underlying', 'comparisonCapitalDollars',
+                    'capitalTreatmentVersion', 'terminalMarkPolicyVersion')):
+                raise ValueError('CROSS_STRATEGY_COMMON_BASIS_MISMATCH')
         for arm in arms:
             if not arm['policyVersion'] or not arm['decisionReceiptHash'] or not arm['costModelVersion']:
                 raise ValueError('EXPERIMENT_ARM_LINEAGE_REQUIRED')
@@ -119,7 +133,7 @@ def execute_controlled_experiments(raw, eligible_experiment_ids=None):
             'sourceEvidenceIds': sorted({i for r in rows for i in r['sourceEvidenceIds']}),
             'promotionState': 'RESEARCH_ONLY',
             'unprovenPromotionRequirements': ['OOS_STABILITY', 'TAIL_AND_DRAWDOWN_ACCEPTANCE', 'PAPER_STABILITY', 'OWNER_AUTHORITY']})
-    payload = {'version': 'theta-controlled-experiment-receipt-v1', 'canonicalSourceSha': raw['canonicalSourceSha'],
+    payload = {'version': 'theta-controlled-experiment-receipt-v2', 'canonicalSourceSha': raw['canonicalSourceSha'],
         'datasetHash': raw['datasetHash'], 'pairManifestHash': raw['pairManifestHash'],
         'policy': policy, 'evaluatedAt': raw['evaluatedAt'], 'evidenceClass': raw['evidenceClass'],
         'results': results, 'brokerAuthority': False, 'modelPromoted': False,

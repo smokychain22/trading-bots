@@ -293,3 +293,21 @@ No item is complete merely because its type, config, fixture, or UI label exists
   replay generation, cross-strategy outcome dispatch and champion/challenger
   governance remain. Do not mislabel the bounded baseline as completion of all
   R8E/F model types or all V10 requirements.
+- WIRED/TESTED: frozen feature-subset ablations now execute baseline and variant
+  fits on identical PIT folds, retain paired forward scores, aggregate repeated
+  scores by dependency component and persist Brier deltas. Missing fits remain
+  partial/unknown. Predictive improvement is not an economic-profit conclusion.
+- CLOSED_SOURCE_DEFECT: profit replay rejects provider timestamps after receipt
+  and arithmetic overflow rather than estimating a fill or serializing infinity
+  as null. Operator reality includes the bounded baseline/ablation at L5, not L8.
+- CLOSED_SOURCE_DEFECT: common-horizon paired Q/H and Q/D outcome analysis now
+  requires actual branch identities, a matching underlying, numeric capital
+  basis and explicit common terminal-mark/cash-treatment policies. Identical
+  strings alone cannot prove comparable economics. Automatic real paired-outcome
+  materialization remains open and no branch obtains broker authority.
+- OBSERVED 2026-09-24T15:04Z: clean 8b106bd source/worker alignment, one active
+  lease, all locks preserved, Alpaca GET checks 200 with zero positions/open
+  orders. Aiven then interrupted the no-submit probe at MASTER_ACCOUNT_LOOKUP
+  with POSTGRES_CONNECTION_TERMINATED. The new worker also recorded HTTP_503 /
+  POSTGRES_57P03 in RUNTIME_BROKER_CYCLE. No completed SPY proof or R8A session
+  credit is claimed. Broker mutations and order submissions remain zero.

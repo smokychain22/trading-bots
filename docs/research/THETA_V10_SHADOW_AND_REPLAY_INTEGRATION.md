@@ -211,3 +211,11 @@ These are L5 integrated offline components, verified with synthetic fixtures.
 No new real resolved episodes exist in this pass, so no empirical or Production
 promotion follows. Richer qualified feature vocabularies, automatic challenger
 treatment generation and global champion/challenger governance remain open.
+
+The same pipeline now accepts `--entry-ablation-policy`. It refits preregistered
+feature subsets with identical observations and purged splits, compares paired
+forward Brier loss, and groups repeated scores before reporting uncertainty.
+No new field is added to a feature vector by an ablation and no missing fit
+becomes zero improvement. This is predictive ablation, not economic strategy
+selection or proof of profitability. Shadow threshold ablation and automatic
+champion promotion are separate unfinished capabilities.

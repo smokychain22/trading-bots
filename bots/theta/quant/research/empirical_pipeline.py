@@ -350,6 +350,7 @@ def run_theta_empirical_pipeline(
     controlled_experiment_input: Optional[Dict[str, Any]] = None,
     entry_training_policy: Optional[Dict[str, Any]] = None,
     entry_baseline_policy: Optional[Dict[str, Any]] = None,
+    entry_ablation_policy: Optional[Dict[str, Any]] = None,
 ) -> PipelineResult:
     """One call does everything. Behavior by readiness (never bypassed):
 
@@ -457,6 +458,12 @@ def run_theta_empirical_pipeline(
             raise ValueError('ENTRY_BASELINE_REQUIRES_DATASET_BOUND_FEATURE_POLICY')
         from research.entry_baseline_experiment import execute_entry_baseline
         entry_baseline = execute_entry_baseline(entry_training_dataset, entry_baseline_policy, run_timestamp)
+    entry_ablation = None
+    if entry_ablation_policy is not None:
+        if entry_training_dataset is None or entry_baseline_policy is None:
+            raise ValueError('ENTRY_ABLATION_REQUIRES_DATASET_AND_BASELINE_POLICY')
+        from research.entry_feature_ablation import execute_entry_feature_ablation
+        entry_ablation = execute_entry_feature_ablation(entry_training_dataset, entry_baseline_policy, entry_ablation_policy, run_timestamp)
     manifest['entry_feature_join'] = entry_training_dataset['state'] if entry_training_dataset else 'FEATURE_POLICY_NOT_SUPPLIED'
     manifest['entry_baseline_execution'] = entry_baseline['state'] if entry_baseline else 'BASELINE_POLICY_NOT_SUPPLIED'
     manifest['entry_baseline_authority'] = 'EXPLORATORY_RESEARCH_NO_PROMOTION'
@@ -482,6 +489,7 @@ def run_theta_empirical_pipeline(
                 "whole_chain_episode_dataset": whole_chain_dataset,
                 "entry_episode_training_dataset": entry_training_dataset,
                 "entry_baseline_experiment": entry_baseline,
+                "entry_feature_ablation": entry_ablation,
                 "readiness": {
                     "readiness_state": readiness.value,
                     "sufficiency": sufficiency,
@@ -564,6 +572,7 @@ def _build_arg_parser():
     parser.add_argument("--controlled-pairs", default=None, help="immutable paired replay/outcome input for registered R8B/C analysis")
     parser.add_argument("--entry-training-policy", default=None, help="frozen feature/timing policy for explicit CSP entry-label joins")
     parser.add_argument("--entry-baseline-policy", default=None, help="frozen purged-split and optimizer policy for research-only entry fit")
+    parser.add_argument("--entry-ablation-policy", default=None, help="frozen feature-subset ablations on identical cohorts and PIT folds")
     parser.add_argument("--run-timestamp", default="")
     for flag in _SUFFICIENCY_FLAGS:
         # Caller-supplied and caller-justified: omitting them leaves
@@ -590,7 +599,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     error. Prints the readiness state and artifact path, nothing else."""
     args = _build_arg_parser().parse_args(argv)
 
-    if args.entry_training_policy or args.entry_baseline_policy:
+    if args.entry_training_policy or args.entry_baseline_policy or args.entry_ablation_policy:
         # Bind new research artifacts to a real commit on the fetched main line.
         import subprocess
         sha = args.source_code_commit
@@ -627,6 +636,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         controlled_experiment_input=json.loads(Path(args.controlled_pairs).read_text(encoding='utf-8')) if args.controlled_pairs else None,
         entry_training_policy=json.loads(Path(args.entry_training_policy).read_text(encoding='utf-8')) if args.entry_training_policy else None,
         entry_baseline_policy=json.loads(Path(args.entry_baseline_policy).read_text(encoding='utf-8')) if args.entry_baseline_policy else None,
+        entry_ablation_policy=json.loads(Path(args.entry_ablation_policy).read_text(encoding='utf-8')) if args.entry_ablation_policy else None,
     )
 
     print(f"status={result.status}")

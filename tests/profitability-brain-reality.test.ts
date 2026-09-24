@@ -23,6 +23,10 @@ test('router applicability and adaptive economic switching remain separate capab
     'L6_RUNTIME_REACHABLE');
   assert.equal(receipt.methods.find((item) => item.methodId === 'ADAPTIVE_ECONOMIC_STRATEGY_SWITCHING')?.level,
     'L1_TYPED_CONTRACT');
+  assert.equal(receipt.methods.find((item) => item.methodId === 'SELECTED_CSP_ENTRY_BASELINE_AND_ABLATION')?.level,
+    'L5_PERSISTED');
+  assert.equal(receipt.methods.find((item) => item.methodId === 'ENTRY_PROFITABILITY_MODEL')?.level,
+    'L1_TYPED_CONTRACT');
 });
 
 test('runtime, empirical, and broker proof advance only sequentially', () => {

@@ -54,6 +54,9 @@ function evaluate(policy: V7ProfitTakingPolicy, o: Observation, input: ProfitRep
     || o.quoteValidThrough === null || Date.parse(o.quoteValidThrough) < at) {
     return done('UNRESOLVED', 'EXECUTABLE_CLOSE_EVIDENCE_UNAVAILABLE');
   }
+  if (Date.parse(o.quoteAt as string) > Date.parse(o.quoteReceivedAt as string)) {
+    return done('UNRESOLVED', 'QUOTE_PROVIDER_TIME_AFTER_RECEIPT');
+  }
   if (policy.startsWith('FIXED_')) {
     const fixed = observeFixedProfitTarget({ policy: policy as Extract<V7ProfitTakingPolicy, `FIXED_${string}`>,
       openCredit: input.entryCreditDollars, executableCloseDebit: o.closeAskDollars });
@@ -126,12 +129,13 @@ export function runProfitTakingReplay(raw: unknown) {
         }
         netPnl = input.entryCreditDollars - input.entryFeesDollars - observation.closeAskDollars
           - observation.closeFeesDollars - observation.adverseSlippageDollars;
+        if (!Number.isFinite(netPnl)) throw new Error('REPLAY_AFTER_COST_PNL_NONFINITE');
         terminal = 'ESTIMATED_EXIT'; break;
       }
     }
     return { policy, terminal, decisions, estimatedAfterCostPnlDollars: netPnl, actualFill: false as const };
   });
-  const payload = { version: 'theta-profit-taking-replay-v1', sourceSha: input.sourceSha,
+  const payload = { version: 'theta-profit-taking-replay-v2', sourceSha: input.sourceSha,
     sourceManifestHash: input.sourceManifestHash, episodeId: input.episodeId, chainId: input.chainId,
     evidenceClass: input.evidenceClass, policyVersion: input.policy.version,
     inputHash: createHash('sha256').update(canonical({ ...input, observations })).digest('hex'),

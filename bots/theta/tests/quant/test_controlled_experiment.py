@@ -17,10 +17,15 @@ def fixture():
                 'units': 'USD_WHOLE_CHAIN_AFTER_COST', 'horizonStart': '2026-01-02T10:00:00Z',
                 'horizonEnd': '2026-01-03T10:00:00Z', 'horizonDefinitionVersion': 'test-day-v1',
                 'capitalBasis': 'SAME_SECURED_CAPITAL', 'netPnl': 10., 'labelAvailableAt': '2026-01-03T10:00:01Z'}
+            if identity in ('R8B-Q-VS-H', 'R8B-Q-VS-D'):
+                arm.update(strategyBranch='THETA_CONVENTIONAL', underlying='SPY', comparisonCapitalDollars=50000.,
+                    capitalTreatmentVersion='TEST_CARRY_CASH_AFTER_EARLY_EXIT', terminalMarkPolicyVersion='TEST_CLOSE_AT_COMMON_HORIZON')
             pairs.append({'experimentId': identity, 'episodeId': str(d), 'dependencyClusterId': str(d),
                 'sourceEvidenceIds': [f'test-{d}'], 'decisionAt': '2026-01-02T10:00:00Z',
                 'featureAvailableAt': '2026-01-02T09:00:00Z', 'control': arm,
                 'treatment': {**arm, 'policyVersion': 'test-treatment', 'netPnl': float(10 + d)}})
+            if identity in ('R8B-Q-VS-H', 'R8B-Q-VS-D'):
+                pairs[-1]['treatment']['strategyBranch'] = 'THETA_HOLD_STRIKE' if identity == 'R8B-Q-VS-H' else 'THETA_DEFINED_RISK'
     return {'version': 'theta-controlled-experiment-input-v1', 'evidenceClass': 'DETERMINISTIC_TEST',
         'canonicalSourceSha': 'a' * 40, 'datasetHash': 'b' * 64, 'pairManifestHash': digest(pairs),
         'pairs': pairs, 'evaluatedAt': '2026-01-04T10:00:00Z',
@@ -57,5 +62,17 @@ class ControlledExperimentsTests(unittest.TestCase):
                 (lambda v: v['pairs'][0].update(featureAvailableAt='2026-01-02T11:00:00Z'), 'FUTURE_FEATURE'),
                 (lambda v: v['policy'].update(frozenAt='2026-01-04T00:00:00Z'), 'PREREGISTERED')):
             value = fixture(); change(value); value['pairManifestHash'] = digest(value['pairs'])
+            with self.assertRaisesRegex(ValueError, message):
+                execute_controlled_experiments(value)
+
+    def test_cross_strategy_identity_capital_and_expiry_cash_policy_are_required(self):
+        for patch, message in (({'strategyBranch': 'THETA_CONVENTIONAL'}, 'BRANCH_IDENTITY'),
+                               ({'comparisonCapitalDollars': None}, 'CAPITAL_AND_TERMINAL'),
+                               ({'comparisonCapitalDollars': 25000.}, 'COMMON_BASIS'),
+                               ({'capitalTreatmentVersion': ''}, 'CAPITAL_AND_TERMINAL'),
+                               ({'underlying': 'QQQ'}, 'COMMON_BASIS')):
+            value = fixture()
+            row = next(r for r in value['pairs'] if r['experimentId'] == 'R8B-Q-VS-H')
+            row['treatment'].update(patch); value['pairManifestHash'] = digest(value['pairs'])
             with self.assertRaisesRegex(ValueError, message):
                 execute_controlled_experiments(value)

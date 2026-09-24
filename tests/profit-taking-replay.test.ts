@@ -65,3 +65,17 @@ test('malformed values and duplicate evidence are rejected, not silently convert
   const j = input(); j.observations.push(required(j.observations[0]));
   assert.throws(() => runProfitTakingReplay(j), /DUPLICATE/);
 });
+
+test('a quote received before its provider timestamp cannot create an estimated fill', () => {
+  const i = input(); required(i.observations[0]).quoteReceivedAt = '2026-09-22T13:59:58Z';
+  for (const p of runProfitTakingReplay(i).policies) {
+    assert.equal(p.terminal, 'CENSORED');
+    assert.equal(required(p.decisions[0]).reason, 'QUOTE_PROVIDER_TIME_AFTER_RECEIPT');
+  }
+});
+
+test('finite inputs overflowing net PnL fail instead of serializing as a fake null label', () => {
+  const i = input(); i.entryFeesDollars = Number.MAX_VALUE;
+  required(i.observations[0]).closeFeesDollars = Number.MAX_VALUE;
+  assert.throws(() => runProfitTakingReplay(i), /PNL_NONFINITE/);
+});

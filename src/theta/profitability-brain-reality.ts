@@ -2,7 +2,7 @@ import { entryModelFamilies } from '../research/theta-entry-model-readiness.js';
 import { canonicalV7ProfitTakingPolicies } from '../research/profit-taking-experiment.js';
 import { canonicalThetaStrategySources, thetaFeatureFamily, thetaHardRule, thetaStrategyAction } from './strategy-package.js';
 
-export const profitabilityBrainRealityVersion = 'theta-profitability-brain-reality-v2' as const;
+export const profitabilityBrainRealityVersion = 'theta-profitability-brain-reality-v3' as const;
 
 export type RealityLevel = 'L0_ABSENT' | 'L1_TYPED_CONTRACT' | 'L2_SOURCE_IMPLEMENTED'
   | 'L3_DETERMINISTIC_TESTED' | 'L4_CANONICAL_INTEGRATED' | 'L5_PERSISTED'
@@ -102,7 +102,11 @@ export const profitabilityBrainMethodRegistry: readonly ProfitabilityBrainMethod
     'Offline dispatcher executes all 17 policies. Real managed episodes and calibrated continuation forecasts remain required.'),
   method('WHOLE_CHAIN_RESEARCH_DATASET', 'LEARNING', 'RESEARCH_ONLY', 5,
     ['bots/theta/quant/research/whole_chain_dataset.py', 'bots/theta/quant/research/empirical_pipeline.py'],
-    'Explicit chain evidence is materialized and persisted. Entry-feature linkage and resolved real episodes remain required.'),
+    'Explicit CSP entry links and bounded BBO feature joins are persisted. Real resolved episodes and richer qualified features remain required.'),
+  method('SELECTED_CSP_ENTRY_BASELINE_AND_ABLATION', 'LEARNING', 'RESEARCH_ONLY', 5,
+    ['bots/theta/quant/research/entry_episode_training.py', 'bots/theta/quant/research/entry_baseline_experiment.py',
+      'bots/theta/quant/research/entry_feature_ablation.py', 'bots/theta/quant/research/empirical_pipeline.py'],
+    'Offline selected-entry fitting, calibration and paired predictive ablation are integrated. No real fitted model, OOS economic proof or promotion.'),
   method('CONTROLLED_OUTCOME_EXPERIMENT_EXECUTION', 'LEARNING', 'RESEARCH_ONLY', 5,
     ['bots/theta/quant/research/controlled_experiment.py', 'bots/theta/quant/research/empirical_pipeline.py'],
     'Paired outcome analysis is executable and persisted. Treatment replay and real paired exports are not yet automatic.'),
