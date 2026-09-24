@@ -90,8 +90,18 @@ class DependenceGroupTests(unittest.TestCase):
         self.assertEqual(effective_sample_size(keys), 1)
 
     def test_genuinely_distinct_rows_are_not_merged(self):
-        keys = [DependenceGroupKey(f"chain-{i}", None, "SPY", "2026-01-01", None) for i in range(10)]
+        keys = [DependenceGroupKey(f"chain-{i}", None, f"symbol-{i}", "2026-01-01", None) for i in range(10)]
         self.assertEqual(effective_sample_size(keys), 10)
+
+    def test_different_decisions_and_chains_do_not_split_same_session_exposure(self):
+        keys = [DependenceGroupKey(f'chain-{i}', f'decision-{i}', 'SPY', '2026-01-01', None) for i in range(1000)]
+        self.assertEqual(effective_sample_size(keys), 1)
+
+    def test_chain_dependency_is_transitive_across_sessions(self):
+        keys = [DependenceGroupKey('chain', 'a', 'SPY', '2026-01-01', None),
+                DependenceGroupKey('chain', 'b', 'SPY', '2026-01-02', None),
+                DependenceGroupKey('other', 'c', 'SPY', '2026-01-02', None)]
+        self.assertEqual(effective_sample_size(keys), 1)
 
     def test_ten_thousand_correlated_decisions_is_not_n_equals_ten_thousand(self):
         keys = [DependenceGroupKey("chain-1", "ep-1", "SPY", "2026-03-15", "cluster-A") for _ in range(1000)]

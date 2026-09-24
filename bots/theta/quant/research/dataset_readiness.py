@@ -135,9 +135,9 @@ def add_episode_to_slice(dataset_slice: BranchDatasetSlice, episode: EconomicEpi
 @dataclass(frozen=True)
 class DependenceGroupKey:
     """R6H item 14: the deterministic grouping keys effective-N/clustered-
-    bootstrap/grouped-split machinery needs. `None` fields mean that
-    dimension is genuinely unknown for this row -- never defaulted to a
-    value that would silently merge two actually-distinct groups."""
+    bootstrap/grouped-split machinery needs. `None` remains unknown.
+    Shared known dependencies merge rows conservatively; absence of evidence
+    does not prove statistical independence."""
 
     wheel_chain_id: Optional[str]
     economic_episode_id: Optional[str]
@@ -147,25 +147,53 @@ class DependenceGroupKey:
 
 
 def build_dependence_groups(keys: Sequence[DependenceGroupKey]) -> Dict[str, List[int]]:
-    """Groups row INDICES by their full dependence key tuple -- two rows
-    sharing every non-None dimension are the same dependence group; a row
-    with a genuinely different (or unknown) value on any dimension is
-    never merged into another group just because the caller wants a
-    smaller group count."""
-    groups: Dict[str, List[int]] = {}
+    """Connected components of shared chain, episode or session exposure.
+
+    A different decision ID cannot split the same underlying/session into
+    independent evidence. Counts remain a structural proxy, not calibrated N.
+    """
+    parents = list(range(len(keys)))
+    tokens_by_row = []
+    first = {}
+
+    def root(index):
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
     for index, key in enumerate(keys):
-        group_key = "|".join([
-            key.wheel_chain_id or "?", key.economic_episode_id or "?", key.underlying or "?",
-            key.session_date or "?", key.correlation_cluster or "?",
-        ])
-        groups.setdefault(group_key, []).append(index)
-    return groups
+        tokens = []
+        if key.wheel_chain_id:
+            tokens.append(('CHAIN', key.wheel_chain_id))
+        if key.economic_episode_id:
+            tokens.append(('EPISODE', key.economic_episode_id))
+        if key.underlying and key.session_date:
+            tokens.append(('SYMBOL_SESSION', key.underlying, key.session_date))
+        if key.correlation_cluster:
+            tokens.append(('CLUSTER_SESSION', key.correlation_cluster, key.session_date))
+        if not tokens:
+            tokens.append(('DEPENDENCY_UNIDENTIFIED',))
+        tokens_by_row.append(tokens)
+        for token in tokens:
+            if token in first:
+                parents[root(index)] = root(first[token])
+            else:
+                first[token] = index
+    components = {}
+    for index in range(len(keys)):
+        components.setdefault(root(index), []).append(index)
+    result = {}
+    for indices in components.values():
+        tokens = sorted({canonical_json(list(t)) for i in indices for t in tokens_by_row[i]})
+        result[sha256_hex(canonical_json(tokens))] = indices
+    return result
 
 
 def effective_sample_size(keys: Sequence[DependenceGroupKey]) -> int:
-    """The number of DISTINCT dependence groups -- never the raw row
-    count. 1000 correlated decisions sharing the same wheel_chain_id/
-    session/underlying is NOT N=1000 independent evidence."""
+    """Conservative dependency-component count, not empirical effective N.
+    Retains the old API name, but repeated scans cannot inflate the proxy.
+    """
     return len(build_dependence_groups(keys))
 
 

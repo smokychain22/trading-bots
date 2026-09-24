@@ -257,6 +257,7 @@ class PipelineResult:
     integrity_failures: List[str]
     manifest: Dict[str, Any]
     artifacts_written: List[str] = field(default_factory=list)
+    controlled_experiments: Optional[Dict[str, Any]] = None
 
 
 def _dependence_keys(export: LoadedDatasetExport) -> List[DependenceGroupKey]:
@@ -297,6 +298,7 @@ def _build_manifest(
         "experiment_id": config.experiment_id,
         "hypothesis_id": config.hypothesis_id,
         "readiness_state": readiness.value,
+        "effective_n_method": "DEPENDENCY_COMPONENT_PROXY_NOT_EMPIRICALLY_CALIBRATED",
         "source_code_commit": source_code_commit,
         "run_timestamp": run_timestamp,
     }
@@ -344,6 +346,7 @@ def run_theta_empirical_pipeline(
     run_timestamp: str = "",
     walk_forward_plan_valid: Optional[bool] = None,
     final_oos_untouched: Optional[bool] = None,
+    controlled_experiment_input: Optional[Dict[str, Any]] = None,
 ) -> PipelineResult:
     """One call does everything. Behavior by readiness (never bypassed):
 
@@ -422,6 +425,18 @@ def run_theta_empirical_pipeline(
     branch_slices: Dict[ThetaStrategyBranch, Any] = {}
 
     manifest = _build_manifest(config, export, readiness, source_code_commit, run_timestamp)
+    from research.whole_chain_dataset import build_whole_chain_dataset
+    whole_chain_dataset = build_whole_chain_dataset(export)
+
+    controlled = None
+    if controlled_experiment_input is not None:
+        from research.controlled_experiment import execute_controlled_experiments
+        if controlled_experiment_input.get('datasetHash') != export.dataset_hash \
+                or not source_code_commit or controlled_experiment_input.get('canonicalSourceSha') != source_code_commit:
+            raise ValueError('CONTROLLED_EXPERIMENT_DATASET_RELEASE_MISMATCH')
+        # These are externally materialized paired replay/outcome receipts. Do
+        # not confuse this analysis with generating a treatment decision or fit.
+        controlled = execute_controlled_experiments(controlled_experiment_input, eligible_ids)
 
     artifacts: List[str] = []
     if output_root is not None:
@@ -430,6 +445,7 @@ def run_theta_empirical_pipeline(
             {
                 "manifest": manifest,
                 "data_quality": quality,
+                "whole_chain_episode_dataset": whole_chain_dataset,
                 "readiness": {
                     "readiness_state": readiness.value,
                     "sufficiency": sufficiency,
@@ -450,7 +466,8 @@ def run_theta_empirical_pipeline(
                         for branch, s in branch_slices.items()
                     },
                 },
-                "experiments": {"eligible": eligible_ids, "refused": refused},
+                "experiments": {"eligible": eligible_ids, "refused": refused,
+                                "controlled_outcome_analysis": controlled},
                 "failures": {"integrity_failures": integrity_failures},
             },
             export.dataset_hash,
@@ -463,6 +480,7 @@ def run_theta_empirical_pipeline(
         data_quality=quality, cross_symbol=cross_symbol, sufficiency=sufficiency, effective_n=effective_n,
         eligible_experiments=eligible_ids, refused_experiments=refused,
         integrity_failures=integrity_failures, manifest=manifest, artifacts_written=artifacts,
+        controlled_experiments=controlled,
     )
 
 
@@ -507,6 +525,7 @@ def _build_arg_parser():
     parser.add_argument("--cost-model-version", required=True)
     parser.add_argument("--split-definition", required=True)
     parser.add_argument("--source-code-commit", default=None)
+    parser.add_argument("--controlled-pairs", default=None, help="immutable paired replay/outcome input for registered R8B/C analysis")
     parser.add_argument("--run-timestamp", default="")
     for flag in _SUFFICIENCY_FLAGS:
         # Caller-supplied and caller-justified: omitting them leaves
@@ -558,6 +577,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         output_root=Path(args.output),
         source_code_commit=args.source_code_commit,
         run_timestamp=args.run_timestamp,
+        controlled_experiment_input=json.loads(Path(args.controlled_pairs).read_text(encoding='utf-8')) if args.controlled_pairs else None,
     )
 
     print(f"status={result.status}")

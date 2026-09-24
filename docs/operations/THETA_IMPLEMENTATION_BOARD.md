@@ -218,3 +218,12 @@ No item is complete merely because its type, config, fixture, or UI label exists
 - OPEN_ENGINEERING: complete episode-to-replay export, governed R8B/C/D experiment
   dispatch and full dataset-to-base-model training/registry integration. Do not
   relabel these engineering tasks as merely missing future outcomes.
+- WIRED/TESTED: canonical empirical pipeline dispatches paired-outcome analysis
+  for the existing 10 entry and 14 management comparison definitions and persists
+  receipts. Readiness, PIT, common-basis and censoring gates remain active. This
+  does not yet generate each treatment's policy decisions automatically.
+- WIRED/TESTED: canonical whole-chain materializer emits explicit chain joins,
+  preserves unresolved/revised labels, and does not invent chains from scans.
+- CLOSED_SOURCE_DEFECT: dependency counting no longer splits repeated same-symbol
+  session scans merely because their decision IDs differ. Count remains a stated
+  dependency-component proxy, not empirically validated independent N.

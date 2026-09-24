@@ -111,6 +111,27 @@ def _thresholds(**overrides):
 
 
 class DatasetAbsentTests(unittest.TestCase):
+    def test_canonical_pipeline_dispatches_and_persists_controlled_outcome_analysis(self):
+        from test_controlled_experiment import fixture
+        export = _build_export()
+        paired = fixture()
+        paired['datasetHash'] = export['datasetHash']
+        with tempfile.TemporaryDirectory(prefix='theta-controlled-test-') as directory:
+            result = run_theta_empirical_pipeline(export, _config(), output_root=Path(directory),
+                source_code_commit='a' * 40, controlled_experiment_input=paired)
+            self.assertEqual(len(result.controlled_experiments['results']), 24)
+            self.assertTrue(all(r['state'] == 'NOT_RUN_READINESS' for r in result.controlled_experiments['results']))
+            artifact = next(Path(p) for p in result.artifacts_written if p.endswith('experiments.json'))
+            reloaded = json.loads(artifact.read_text(encoding='utf-8'))
+            self.assertEqual(reloaded['controlled_outcome_analysis']['contentHash'], result.controlled_experiments['contentHash'])
+            self.assertFalse(reloaded['controlled_outcome_analysis']['brokerAuthority'])
+
+    def test_controlled_analysis_cannot_bind_another_dataset(self):
+        from test_controlled_experiment import fixture
+        with self.assertRaisesRegex(ValueError, 'DATASET_RELEASE_MISMATCH'):
+            run_theta_empirical_pipeline(_build_export(), _config(), source_code_commit='a' * 40,
+                controlled_experiment_input=fixture())
+
     def test_no_export_returns_dataset_absent_and_names_the_missing_artifact(self):
         result = run_theta_empirical_pipeline(None, _config())
         self.assertEqual(result.status, "DATASET_ABSENT")

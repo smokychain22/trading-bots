@@ -101,3 +101,31 @@ could not retrieve database runtime evidence. Alpaca account, clock, positions,
 orders and calendar still returned 200, with zero positions and open orders.
 No complete current-release SPY funnel or R8A session credit is claimed. No worker
 restart, threshold change, order submission or broker mutation followed the failure.
+
+## Third source slice: executable outcome analysis and episode materialization
+
+The existing empirical pipeline now consumes `--controlled-pairs` and dispatches
+the canonical 10 R8B and 14 R8C comparison definitions to one paired-outcome
+analyzer. The canonical dataset readiness gate is retained. It requires a matching
+dataset/release, a hashed pair manifest, policy freeze before the decision, PIT
+features, common horizon/capital/cost/fill semantics and available resolved labels.
+Censored pairs and their dependency clusters remain explicit. Cluster-level paired
+means/standard errors are descriptive research, not proof of effective independent
+N or promotion. Treatment-decision generation and automatic replay-to-pair exports
+remain separate open engineering items.
+
+The same pipeline automatically emits `whole_chain_episode_dataset.json`, joining
+management, lifecycle and labels by explicit chain IDs. Candidate scans are not
+episodes. Multiple label revisions are retained with unresolved selection rather
+than picked arbitrarily. Managed-episode IDs are not assumed to be chain IDs.
+An explicit entry-candidate-to-chain join remains required before entry training.
+Bounded exported paths are not called complete lifetime paths.
+
+Dependency grouping now uses connected components of shared chain, episode,
+underlying/session and correlation-cluster/session evidence. Different decision
+IDs no longer inflate same-session N. The legacy `effective_n` field is explicitly
+documented as a dependency-component proxy, not calibrated statistical effective N.
+
+Tests exercise registry dispatch, PIT/common-basis rejection, censoring, duplicate
+protection, immutable artifact reload, chain grouping and repeated-scan suppression.
+No model, strategy or management policy receives Production authority.
