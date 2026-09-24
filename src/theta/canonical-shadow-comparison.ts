@@ -74,6 +74,10 @@ export function buildCanonicalShadowComparison(frontier: Pick<CanonicalStrategyF
     version: canonicalShadowComparisonVersion, snapshotId: frontier.snapshotId, decisionAsOf: frontier.timestamp,
     state: hasPeers ? 'STRUCTURAL_COMPARISON' as const : 'NO_COMPARISON' as const,
     basis: 'ONE_ANALYTICAL_LOT_NOT_ORDER_QUANTITY', cohorts, excluded,
+    candidateEligibility: [...candidates].sort((a, b) => a.candidateId.localeCompare(b.candidateId)).map((c) => ({
+      candidateId: c.candidateId, riskFeasible: c.riskFeasible, actualSizedQuantity: c.sizing.quantity,
+      hardBlockers: [...c.hardBlockers].sort(), unknownEvidence: [...c.unknownEvidence].sort(),
+    })),
     enumerationComplete: frontier.branches.filter((b) => b.applicable)
       .every((b) => b.evaluated && !b.enumerationTruncated),
     crossHorizonState: 'NO_COMPARISON_FORWARD_COMMON_HORIZON_EVIDENCE_REQUIRED',
@@ -87,7 +91,9 @@ function validateCandidate(c: CanonicalFrontierCandidate, decisionMs: number): s
   if (!Number.isFinite(decisionMs)) reasons.push('INVALID_DECISION_TIME');
   if (c.action !== 'OPEN_CSP' && c.action !== 'OPEN_DEFINED_RISK') reasons.push('UNSUPPORTED_ACTION');
   if (c.legs.length !== (c.action === 'OPEN_CSP' ? 1 : 2)) reasons.push('INVALID_LEG_COUNT');
-  if (!c.structurallyFeasible) reasons.push('STRUCTURALLY_INFEASIBLE');
+  // Risk/authorization blocks stay in candidateEligibility, not a reason to hide
+  // measured structure economics. Unqualified quotes cannot supply current credit.
+  reasons.push(...c.unknownEvidence.filter((r) => r.startsWith('EXECUTION_QUOTE_REQUIRED:')));
   if (c.dte === null || !Number.isFinite(c.dte) || c.dte < 0) reasons.push('DTE_UNKNOWN_OR_INVALID');
   for (const leg of c.legs) {
     const identity = leg.occSymbol ? parseOccOptionSymbol(leg.occSymbol) : null;
@@ -103,7 +109,7 @@ function validateCandidate(c: CanonicalFrontierCandidate, decisionMs: number): s
       || leg.bid <= 0 || leg.ask < leg.bid) reasons.push('INVALID_BBO');
     const quoteMs = leg.quoteTimestamp === null ? NaN : Date.parse(leg.quoteTimestamp);
     if (!Number.isFinite(quoteMs) || quoteMs > decisionMs) reasons.push('QUOTE_TIME_INVALID_OR_FUTURE');
-    // No new freshness policy: the canonical structural gate owns executable freshness.
+    // The canonical quote qualification reason above carries the existing freshness policy.
     if (!/^\d{4}-\d{2}-\d{2}$/.test(leg.expiration) || !Number.isFinite(Date.parse(leg.expiration))
       || Date.parse(`${leg.expiration}T23:59:59Z`) < decisionMs) reasons.push('INVALID_EXPIRATION');
     else if (new Date(leg.expiration).toISOString().slice(0, 10) !== leg.expiration) reasons.push('INVALID_EXPIRATION');

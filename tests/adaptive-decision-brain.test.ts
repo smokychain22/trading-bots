@@ -91,6 +91,18 @@ test('different expirations are never treated as a common payoff horizon', () =>
   assert.equal(result.shadowComparison.cohorts.length, 2);
 });
 
+test('quote qualification blocks price comparison while risk-only blocks remain observable', () => {
+  const f = comparableFrontier();
+  const blocked = { ...f, branches: [{ ...required(f.branches[0]), candidates: required(f.branches[0]).candidates.map((c) =>
+    ({ ...c, structurallyFeasible: false, riskFeasible: false, hardBlockers: ['AEGIS_HOLD_ONLY'] })) }] };
+  const compared = buildAdaptiveShadowDecisionReceipt({ frontier: blocked, currentDecision: currentDecision() });
+  assert.equal(compared.comparison, 'STRUCTURAL_COMPARISON');
+  assert.equal(required(compared.shadowComparison.candidateEligibility[0]).riskFeasible, false);
+  const stale = { ...blocked, branches: blocked.branches.map((b) => ({ ...b,
+    candidates: b.candidates.map((c) => ({ ...c, unknownEvidence: ['EXECUTION_QUOTE_REQUIRED:QUOTE_STALE'] })) })) };
+  assert.equal(buildAdaptiveShadowDecisionReceipt({ frontier: stale, currentDecision: currentDecision() }).comparison, 'NO_COMPARISON');
+});
+
 test('adaptive shadow is a comparison receipt with no broker mutation authority', () => {
   const receipt = buildAdaptiveShadowDecisionReceipt({ frontier: frontier(), currentDecision: currentDecision() });
   assert.equal(receipt.currentPolicyDecision.action, 'OPEN_CSP');
