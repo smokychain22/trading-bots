@@ -6,8 +6,56 @@ import type { ScanCompleteness } from '../research/shadow-evidence-runtime.js';
 import type { StrategyQualityShadowDiagnostic } from '../research/strategy-quality-shadow-diagnostics.js';
 import type { UniverseBreadthShadowPlan } from '../research/strategy-quality-shadow-diagnostics.js';
 import type { UniverseDiscoveryFunnel } from './universe-discovery.js';
+import type { FirstPaperRuntimeTelemetry } from './first-paper-runtime-telemetry.js';
 
-export const runtimeBehaviorDiagnosticVersion = 'theta-runtime-behavior-diagnostic-v4' as const;
+export const runtimeBehaviorDiagnosticVersion = 'theta-runtime-behavior-diagnostic-v5' as const;
+
+export interface RuntimeReadOnlyPreSubmitProof {
+  readonly symbol: string;
+  readonly planState: 'BLOCKED' | 'READY';
+  readonly planBlockers: readonly string[];
+  readonly preSubmitState: 'NOT_REACHED' | 'BLOCKED' | 'NO_QUOTE' | 'QUOTE_REJECTED' | 'PRICE_REJECTED'
+    | 'READY_TO_SUBMIT_BUT_DISABLED' | 'PROVIDER_ERROR' | 'INTERNAL_ERROR';
+  readonly preSubmitBlockers: readonly string[];
+  readonly optionSymbol: string | null;
+  readonly quoteProvider: string | null;
+  readonly quoteSemantics: string | null;
+  readonly quoteAgeMs: number | null;
+  readonly limitPrice: number | null;
+  readonly quoteAgePolicyVersion: string | null;
+  readonly brokerMutationSurface: false;
+}
+
+export interface RuntimeFirstPaperSymbolEvidence {
+  readonly symbol: string;
+  readonly cycleState: 'COMPLETED' | 'FAILED';
+  readonly cycleErrorCode: string | null;
+  readonly optionChainComplete: boolean | null;
+  readonly optionContractsComplete: boolean | null;
+  readonly qLatticeTotal: number;
+  readonly qDecision: string | null;
+  readonly qReasonCodes: readonly string[];
+  readonly selectedCandidateId: string | null;
+  readonly selectedOptionSymbol: string | null;
+  readonly canonicalAction: string | null;
+  readonly selectedQuantity: number;
+  readonly aegisState: string | null;
+  readonly entrySafetyPolicy: null | {
+    readonly action: 'BLOCK' | 'CLEAR';
+    readonly companyEventState: string;
+    readonly corporateActionState: string;
+    readonly decisionAsOf: string;
+  };
+  readonly runtimeTelemetry: FirstPaperRuntimeTelemetry | null;
+  readonly cycleBlockers: readonly string[];
+  readonly preSubmit: RuntimeReadOnlyPreSubmitProof | null;
+}
+
+export interface RuntimeFirstPaperEvidence {
+  readonly version: 'theta-first-paper-runtime-evidence-v1';
+  readonly symbols: readonly RuntimeFirstPaperSymbolEvidence[];
+  readonly brokerMutationSurface: false;
+}
 
 export interface RuntimeStrategyDiagnostic {
   readonly branch: string;
@@ -85,6 +133,7 @@ export interface RuntimeBehaviorDiagnosticInput {
   readonly strategyQualityChallengers?: readonly StrategyQualityShadowDiagnostic[];
   readonly universeBreadthChallenger?: UniverseBreadthShadowPlan;
   readonly universeDiscoveryFunnel?: UniverseDiscoveryFunnel;
+  readonly firstPaperEvidence?: RuntimeFirstPaperEvidence;
 }
 
 export interface RuntimeBehaviorDiagnostic extends RuntimeBehaviorDiagnosticInput {

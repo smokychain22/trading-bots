@@ -2,6 +2,7 @@ import type { Environment } from "../config/environment.js";
 import { missingProviderVariables } from "../config/environment.js";
 import { checkOptionomics, type CheckResult } from "../providers/readiness.js";
 import { Pool } from "pg";
+import type { RuntimeFirstPaperEvidence } from "../theta/runtime-behavior-diagnostic.js";
 
 export type OptionomicsReadiness = {
   readonly provider: "OPTIONOMICS";
@@ -266,6 +267,7 @@ export interface RuntimeBehaviorEvidence {
   readonly best_rejected_candidates:readonly unknown[];
   readonly anti_paralysis_findings:readonly string[];
   readonly threshold_policy_state:string;
+  readonly first_paper_evidence:RuntimeFirstPaperEvidence|null;
 }
 
 export async function readLatestRuntimeBehavior(databaseUrl?:string):Promise<RuntimeBehaviorEvidence>{
@@ -277,7 +279,7 @@ export async function readLatestRuntimeBehavior(databaseUrl?:string):Promise<Run
     quantity_zero_count:null,aegis_veto_count:null,near_miss_count:null,action_plans_ready:null,
     soft_economic_rejection_count:null,data_unknown_rejection_count:null,quote_rejection_count:null,
     liquidity_rejection_count:null,final_action:'UNKNOWN',wait_reasons:[],best_rejected_candidates:[],anti_paralysis_findings:[],
-    threshold_policy_state:'UNKNOWN'};
+    threshold_policy_state:'UNKNOWN',first_paper_evidence:null};
   if(!databaseUrl)return empty;
   const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000});
   try{
@@ -311,8 +313,45 @@ export async function readLatestRuntimeBehavior(databaseUrl?:string):Promise<Run
       quote_rejection_count:number(diagnostic.quoteRejectionCount),liquidity_rejection_count:number(diagnostic.liquidityRejectionCount),
       final_action:typeof diagnostic.finalAction==='string'?diagnostic.finalAction:'UNKNOWN',wait_reasons:strings(diagnostic.waitReasons),
       best_rejected_candidates:array(diagnostic.bestRejectedCandidates),anti_paralysis_findings:strings(diagnostic.antiParalysisFindings),
-      threshold_policy_state:String(row.threshold_policy_state)};
+      threshold_policy_state:String(row.threshold_policy_state),
+      first_paper_evidence:parseRuntimeFirstPaperEvidence(diagnostic.firstPaperEvidence)};
   }catch{return empty;}finally{await pool.end();}
+}
+
+function parseRuntimeFirstPaperEvidence(value:unknown):RuntimeFirstPaperEvidence|null {
+  if(value===null||typeof value!=='object'||Array.isArray(value))return null;
+  const evidence=value as Record<string,unknown>;
+  if(evidence.version!=='theta-first-paper-runtime-evidence-v1'||evidence.brokerMutationSurface!==false
+    ||!Array.isArray(evidence.symbols))return null;
+  const record=(item:unknown):item is Record<string,unknown>=>item!==null&&typeof item==='object'&&!Array.isArray(item);
+  const strings=(item:unknown):boolean=>Array.isArray(item)&&item.every((entry)=>typeof entry==='string');
+  const nullableString=(item:unknown):boolean=>item===null||typeof item==='string';
+  const nullableBoolean=(item:unknown):boolean=>item===null||typeof item==='boolean';
+  const valid=evidence.symbols.every((item)=>{
+    if(!record(item)||typeof item.symbol!=='string'||!['COMPLETED','FAILED'].includes(String(item.cycleState))
+      ||!nullableString(item.cycleErrorCode)||!nullableBoolean(item.optionChainComplete)
+      ||!nullableBoolean(item.optionContractsComplete)||!Number.isSafeInteger(item.qLatticeTotal)
+      ||!nullableString(item.qDecision)||!strings(item.qReasonCodes)||!nullableString(item.selectedCandidateId)
+      ||!nullableString(item.selectedOptionSymbol)||!nullableString(item.canonicalAction)
+      ||!Number.isSafeInteger(item.selectedQuantity)||!nullableString(item.aegisState)
+      ||!strings(item.cycleBlockers))return false;
+    if(item.entrySafetyPolicy!==null&&(!record(item.entrySafetyPolicy)
+      ||!['BLOCK','CLEAR'].includes(String(item.entrySafetyPolicy.action))
+      ||typeof item.entrySafetyPolicy.companyEventState!=='string'
+      ||typeof item.entrySafetyPolicy.corporateActionState!=='string'
+      ||typeof item.entrySafetyPolicy.decisionAsOf!=='string'))return false;
+    if(item.runtimeTelemetry!==null&&(!record(item.runtimeTelemetry)
+      ||item.runtimeTelemetry.version!=='theta-first-paper-runtime-telemetry-v1'
+      ||!Number.isSafeInteger(item.runtimeTelemetry.positiveSizeCandidateCount)
+      ||!record(item.runtimeTelemetry.bindingConstraintCounts)
+      ||!record(item.runtimeTelemetry.finalistRefresh)))return false;
+    if(item.preSubmit!==null&&(!record(item.preSubmit)||!['BLOCKED','READY'].includes(String(item.preSubmit.planState))
+      ||!strings(item.preSubmit.planBlockers)||typeof item.preSubmit.preSubmitState!=='string'
+      ||!strings(item.preSubmit.preSubmitBlockers)||item.preSubmit.brokerMutationSurface!==false))return false;
+    return true;
+  });
+  if(!valid)return null;
+  return value as RuntimeFirstPaperEvidence;
 }
 
 export interface P2FOperatorStatus {readonly optionomics:{readonly secret_state:string;readonly last_check:string|null;

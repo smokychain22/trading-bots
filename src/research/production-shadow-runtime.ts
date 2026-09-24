@@ -14,7 +14,8 @@ import { ensureMasterShadowContext } from './master-shadow-context.js';
 import { PostgresShadowVirtualTrader, type ShadowIntentCreationReport } from './postgres-shadow-virtual-trader.js';
 import { assembleMasterPaperEvidencePlan } from '../execution/master-paper-plan-assembly.js';
 import { PostgresMasterPaperActionPlanStore } from '../execution/postgres-master-paper-action-plan-store.js';
-import { deriveAntiParalysisFindings, PostgresRuntimeBehaviorDiagnosticStore, type RuntimeBehaviorDiagnostic } from '../theta/runtime-behavior-diagnostic.js';
+import { deriveAntiParalysisFindings, PostgresRuntimeBehaviorDiagnosticStore, type RuntimeBehaviorDiagnostic,
+  type RuntimeFirstPaperSymbolEvidence, type RuntimeReadOnlyPreSubmitProof } from '../theta/runtime-behavior-diagnostic.js';
 import { buildUniverseBreadthShadowPlan } from './strategy-quality-shadow-diagnostics.js';
 import type { BrokerReconciliationResult } from '../execution/broker-reconciliation-worker.js';
 import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment } from '../theta/paper-entry-bootstrap.js';
@@ -37,41 +38,11 @@ import type { AlpacaCalendarSession } from '../theta/alpaca-provider.js';
 import { verifyAegisAssessmentIdentity } from '../theta/aegis-assessment-identity.js';
 import { prepareMasterPaperAction } from '../execution/master-paper-action-handoff.js';
 import { AlpacaExecutionQuoteSource } from '../execution/alpaca-execution-quote-source.js';
-import { buildFirstPaperRuntimeTelemetry, type FirstPaperRuntimeTelemetry } from '../theta/first-paper-runtime-telemetry.js';
+import { buildFirstPaperRuntimeTelemetry } from '../theta/first-paper-runtime-telemetry.js';
 
-export interface ReadOnlyPreSubmitProof {
-  readonly symbol:string;
-  readonly planState:'BLOCKED'|'READY';
-  readonly planBlockers:readonly string[];
-  readonly preSubmitState:'NOT_REACHED'|'BLOCKED'|'NO_QUOTE'|'QUOTE_REJECTED'|'PRICE_REJECTED'|'READY_TO_SUBMIT_BUT_DISABLED'|'PROVIDER_ERROR'|'INTERNAL_ERROR';
-  readonly preSubmitBlockers:readonly string[];
-  readonly optionSymbol:string|null;
-  readonly quoteProvider:string|null;
-  readonly quoteSemantics:string|null;
-  readonly quoteAgeMs:number|null;
-  readonly limitPrice:number|null;
-  readonly quoteAgePolicyVersion:string|null;
-  readonly brokerMutationSurface:false;
-}
+export type ReadOnlyPreSubmitProof = RuntimeReadOnlyPreSubmitProof;
 
-export interface ProductionShadowSymbolDiagnostic {
-  readonly symbol:string;
-  readonly cycleState:'COMPLETED'|'FAILED';
-  readonly cycleErrorCode:string|null;
-  readonly optionChainComplete:boolean|null;
-  readonly optionContractsComplete:boolean|null;
-  readonly qLatticeTotal:number;
-  readonly qDecision:string|null;
-  readonly qReasonCodes:readonly string[];
-  readonly selectedCandidateId:string|null;
-  readonly selectedOptionSymbol:string|null;
-  readonly canonicalAction:string|null;
-  readonly selectedQuantity:number;
-  readonly aegisState:string|null;
-  readonly runtimeTelemetry:FirstPaperRuntimeTelemetry|null;
-  readonly cycleBlockers:readonly string[];
-  readonly preSubmit:ReadOnlyPreSubmitProof|null;
-}
+export type ProductionShadowSymbolDiagnostic = RuntimeFirstPaperSymbolEvidence;
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
@@ -407,6 +378,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   let actionPlansReady=0;
   const actionPlansBlocked:string[]=[...runtimeSafetyBlockers];
   const readOnlyPreSubmitProofs:ReadOnlyPreSubmitProof[]=[];
+  const entrySafetyBySymbol=new Map<string,RuntimeFirstPaperSymbolEvidence['entrySafetyPolicy']>();
   const readOnlyQuoteSource=input.readOnlyPreSubmitPreview===true?new AlpacaExecutionQuoteSource(input.alpaca):null;
   const evidenceStore=new PostgresShadowEvidenceRuntimeStore(input.pool);
   for(const member of scan.results){
@@ -454,6 +426,9 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     });
     const entrySafetyPolicy=companyEvent===null||corporateAction===null?null
       :buildPaperEntrySafetyPolicyReceipt({decisionAsOf:planDecisionAsOf,companyEvent,corporateAction});
+    entrySafetyBySymbol.set(member.symbol,entrySafetyPolicy===null?null:{action:entrySafetyPolicy.action,
+      companyEventState:entrySafetyPolicy.companyEvent.state,
+      corporateActionState:entrySafetyPolicy.corporateAction.state,decisionAsOf:entrySafetyPolicy.decisionAsOf});
     if(brokerAuthoritySymbols.has(member.symbol)&&selectedFrontierCandidate!==undefined){
       if(entrySafetyPolicy===null)actionPlansBlocked.push(`${member.symbol}:ENTRY_SAFETY_POLICY_EVIDENCE_MISSING`);
       else if(entrySafetyPolicy.action==='BLOCK'){
@@ -618,6 +593,23 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     return candidate===null?[]:[{symbol:member.symbol,branch:candidate.branch,candidateId:candidate.candidateId,
       hardBlockers:candidate.hardBlockers,unknownEvidence:candidate.unknownEvidence}];
   });
+  const symbolDiagnostics:ProductionShadowSymbolDiagnostic[]=scan.results.map((member)=>{
+    const cycle=member.cycle;
+    const frontier=cycle?.strategyFrontier??null;
+    const selected=frontier?.branches.flatMap((branch)=>branch.candidates)
+      .find((candidate)=>candidate.candidateId===frontier.selectedCandidateId)??null;
+    const quoteState=cycle?.fusionSnapshot?.snapshot.alpacaQuoteState;
+    return {symbol:member.symbol,cycleState:cycle===null?'FAILED':'COMPLETED',cycleErrorCode:member.errorCode,
+      optionChainComplete:cycle?.optionChainComplete??null,optionContractsComplete:cycle?.optionContractsComplete??null,
+      qLatticeTotal:cycle?.orchestration?.thetaQ?.candidates.length??0,
+      qDecision:cycle?.orchestration?.receipt.winningAction??null,
+      qReasonCodes:cycle?.orchestration?.receipt.reasonCodes??[],selectedCandidateId:frontier?.selectedCandidateId??null,
+      selectedOptionSymbol:selected?.legs[0]?.optionSymbol??null,canonicalAction:frontier?.primaryAction??null,
+      selectedQuantity:frontier?.selectedQuantity??0,aegisState:selected?.aegisState??cycle?.orchestration?.aegis?.newRiskState??null,
+      entrySafetyPolicy:entrySafetyBySymbol.get(member.symbol)??null,
+      runtimeTelemetry:cycle===null?null:buildFirstPaperRuntimeTelemetry({frontier,alpacaQuoteState:quoteState}),
+      cycleBlockers:cycle?.blockers??[],preSubmit:readOnlyPreSubmitProofs.find((proof)=>proof.symbol===member.symbol)??null};
+  });
   const behaviorDiagnostic=await new PostgresRuntimeBehaviorDiagnosticStore(input.pool).persist({
     scanId:scan.scanId,decisionIds:[...persisted.values()].flatMap((value)=>value.decisionId?[value.decisionId]:[]).toSorted(),
     observedAt:scan.finishedAt,session,universeSize:scan.boundary.eligibleSymbols.length,
@@ -653,24 +645,9 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       ?[member.cycle.strategyQualityDiagnostics]:[]),
     providerBlockers:[...new Set([...discoveryBlockers,...scan.missingScope,...scan.results.flatMap((member)=>member.errorCode?[member.errorCode]:[])])].toSorted(),
     actionPlansReady,actionPlanBlockers:[...new Set(actionPlansBlocked)].toSorted(),
+    firstPaperEvidence:{version:'theta-first-paper-runtime-evidence-v1',symbols:symbolDiagnostics,brokerMutationSurface:false},
   });
   const virtualOpening=await new PostgresShadowVirtualTrader(input.pool).createOpeningIntent(scan.scanId,scan.finishedAt);
-  const symbolDiagnostics:ProductionShadowSymbolDiagnostic[]=scan.results.map((member)=>{
-    const cycle=member.cycle;
-    const frontier=cycle?.strategyFrontier??null;
-    const selected=frontier?.branches.flatMap((branch)=>branch.candidates)
-      .find((candidate)=>candidate.candidateId===frontier.selectedCandidateId)??null;
-    const quoteState=cycle?.fusionSnapshot?.snapshot.alpacaQuoteState;
-    return {symbol:member.symbol,cycleState:cycle===null?'FAILED':'COMPLETED',cycleErrorCode:member.errorCode,
-      optionChainComplete:cycle?.optionChainComplete??null,optionContractsComplete:cycle?.optionContractsComplete??null,
-      qLatticeTotal:cycle?.orchestration?.thetaQ?.candidates.length??0,
-      qDecision:cycle?.orchestration?.receipt.winningAction??null,
-      qReasonCodes:cycle?.orchestration?.receipt.reasonCodes??[],selectedCandidateId:frontier?.selectedCandidateId??null,
-      selectedOptionSymbol:selected?.legs[0]?.optionSymbol??null,canonicalAction:frontier?.primaryAction??null,
-      selectedQuantity:frontier?.selectedQuantity??0,aegisState:selected?.aegisState??cycle?.orchestration?.aegis?.newRiskState??null,
-      runtimeTelemetry:cycle===null?null:buildFirstPaperRuntimeTelemetry({frontier,alpacaQuoteState:quoteState}),
-      cycleBlockers:cycle?.blockers??[],preSubmit:readOnlyPreSubmitProofs.find((proof)=>proof.symbol===member.symbol)??null};
-  });
   return {scanId:scan.scanId,completeness:discovery.candidates.length===0?'DATA_INSUFFICIENT':scan.completeness,
     candidateCount:scan.candidateCount,
     researchMissingScope:scan.researchMissingScope,

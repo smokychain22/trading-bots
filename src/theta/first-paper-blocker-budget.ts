@@ -1,4 +1,6 @@
 /** System-level operational evidence. Candidate-specific preflight remains a separate gate. */
+import type { RuntimeFirstPaperEvidence } from './runtime-behavior-diagnostic.js';
+
 export type FirstPaperBlockerClass = 'EXTERNAL' | 'IMPLEMENTATION' | 'PROVIDER' | 'POLICY';
 export type FirstPaperCheck =
   | { readonly state: 'PASS'; readonly source: string }
@@ -15,6 +17,76 @@ export type FirstPaperChecks = Readonly<Record<FirstPaperCheckName, FirstPaperCh
 export type FirstPaperStatus = 'READY' | 'BLOCKED_EXTERNAL' | 'BLOCKED_IMPLEMENTATION' | 'BLOCKED_PROVIDER' | 'BLOCKED_POLICY';
 export type FirstPaperBlockerField = FirstPaperCheckName | 'unknownAuditCoverage' | 'avoidableUnknownCount'
   | 'implementationBlockerCount' | 'unresolvedSafetyCriticalCount' | 'unresolvedPaperEntryCount';
+
+type RuntimeDerivedCheckName = 'eventEvidenceReady' | 'quotePipelineReady' | 'aegisReady'
+  | 'positiveSizingReachable' | 'canonicalDecisionReachable' | 'paperPlanReachable'
+  | 'managementCandidateSourceReady';
+
+const observed = (source:string):FirstPaperCheck => ({state:'PASS',source});
+const unresolved = (blocker:string,source:string,blockerClass:FirstPaperBlockerClass):FirstPaperCheck =>
+  ({state:'UNKNOWN',blocker,source,blockerClass});
+const blocked = (blocker:string,source:string,blockerClass:FirstPaperBlockerClass):FirstPaperCheck =>
+  ({state:'FAIL',blocker,source,blockerClass});
+
+/** Derives readiness from one immutable real-provider scan. It never turns a stage that was not reached into PASS. */
+export function assessRuntimeFirstPaperReadiness(input:{
+  readonly evidence:RuntimeFirstPaperEvidence|null;
+  readonly approvedSymbol:string;
+  readonly currentOpenPositions:number|null;
+  readonly reconciliationReady:boolean;
+}):Pick<FirstPaperChecks,RuntimeDerivedCheckName>{
+  const source='latest-runtime-first-paper-evidence';
+  const missing=unresolved('CURRENT_RELEASE_FIRST_PAPER_EVIDENCE_NOT_OBSERVED',source,'EXTERNAL');
+  const symbols=input.evidence?.symbols??[];
+  const symbol=symbols.find((item)=>item.symbol===input.approvedSymbol)??null;
+  const managementCandidateSourceReady=input.currentOpenPositions===0&&input.reconciliationReady
+    ? observed('broker-reconciliation:no-management-lifecycle-applicable')
+    : input.currentOpenPositions===null
+      ? unresolved('CURRENT_POSITION_COUNT_UNKNOWN','latest-broker-reconciliation-snapshot','EXTERNAL')
+      : unresolved('CURRENT_POSITION_MANAGEMENT_DISCOVERY_NOT_OBSERVED','runtime-management','EXTERNAL');
+  if(symbol===null)return {eventEvidenceReady:missing,quotePipelineReady:missing,aegisReady:missing,
+    positiveSizingReachable:missing,canonicalDecisionReachable:missing,paperPlanReachable:missing,
+    managementCandidateSourceReady};
+  if(symbol.cycleState==='FAILED'){
+    const failure=unresolved(symbol.cycleErrorCode??'FIRST_PAPER_SYMBOL_CYCLE_FAILED',source,'PROVIDER');
+    return {eventEvidenceReady:failure,quotePipelineReady:failure,aegisReady:failure,
+      positiveSizingReachable:failure,canonicalDecisionReachable:failure,paperPlanReachable:failure,
+      managementCandidateSourceReady};
+  }
+  const eventEvidenceReady=symbol.entrySafetyPolicy===null
+    ? unresolved('ENTRY_SAFETY_POLICY_NOT_OBSERVED',source,'PROVIDER')
+    : observed(`${source}:entry-safety-policy`);
+  const refresh=symbol.runtimeTelemetry?.finalistRefresh;
+  let quotePipelineReady:FirstPaperCheck;
+  if(refresh?.state!=='OBSERVED')quotePipelineReady=unresolved('FINALIST_REFRESH_NOT_OBSERVED',source,'EXTERNAL');
+  else if(symbol.preSubmit===null)quotePipelineReady=unresolved('PRE_SUBMIT_REFRESH_NOT_REACHED',source,'EXTERNAL');
+  else if(symbol.preSubmit.preSubmitState==='READY_TO_SUBMIT_BUT_DISABLED')quotePipelineReady=observed(`${source}:alpaca-finalist-and-pre-submit`);
+  else if(symbol.preSubmit.preSubmitState==='PROVIDER_ERROR')quotePipelineReady=blocked(
+    symbol.preSubmit.preSubmitBlockers[0]??'PRE_SUBMIT_PROVIDER_ERROR',source,'PROVIDER');
+  else quotePipelineReady=blocked(symbol.preSubmit.preSubmitBlockers[0]??symbol.preSubmit.planBlockers[0]
+    ??`PRE_SUBMIT_${symbol.preSubmit.preSubmitState}`,source,'POLICY');
+  const aegisReady=['ALLOW_FULL','ALLOW_REDUCED'].includes(symbol.aegisState??'')
+    ? observed(`${source}:aegis`)
+    : symbol.aegisState===null||symbol.aegisState==='UNKNOWN'
+      ? unresolved('CURRENT_AEGIS_STATE_NOT_OBSERVED',source,'EXTERNAL')
+      : blocked(`CURRENT_AEGIS_${symbol.aegisState}`,source,'POLICY');
+  const positiveSizingReachable=(symbol.runtimeTelemetry?.positiveSizeCandidateCount??0)>0||symbol.selectedQuantity>0
+    ? observed(`${source}:sizing`)
+    : symbol.qLatticeTotal===0
+      ? unresolved('Q_LATTICE_NOT_OBSERVED_FOR_SIZING',source,'EXTERNAL')
+      : blocked(`NO_POSITIVE_SIZE:${Object.keys(symbol.runtimeTelemetry?.bindingConstraintCounts??{}).toSorted().join(',')||'UNKNOWN_BINDING_CONSTRAINT'}`,
+        source,'POLICY');
+  const canonicalDecisionReachable=symbol.qDecision!==null&&symbol.canonicalAction!==null
+    ? observed(`${source}:canonical-decision`)
+    : unresolved('CANONICAL_DECISION_NOT_OBSERVED',source,'EXTERNAL');
+  const paperPlanReachable=symbol.preSubmit?.planState==='READY'
+    ? observed(`${source}:paper-plan`)
+    : symbol.preSubmit?.planState==='BLOCKED'
+      ? blocked(symbol.preSubmit.planBlockers[0]??'PAPER_PLAN_BLOCKED',source,'POLICY')
+      : unresolved('PAPER_PLAN_NOT_REACHED',source,'EXTERNAL');
+  return {eventEvidenceReady,quotePipelineReady,aegisReady,positiveSizingReachable,
+    canonicalDecisionReachable,paperPlanReachable,managementCandidateSourceReady};
+}
 
 export function assessReconciliationReadiness(input: {
   readonly workerCycleHealthy: boolean;

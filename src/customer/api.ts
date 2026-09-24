@@ -48,7 +48,8 @@ import { qualifyOptionomicsProvider,persistOptionomicsQualification } from "../p
 import { optionomicsConfigFromEnvironment } from "../theta/theta-shadow-once.js";
 import { canonicalThetaStrategyRegistry } from "../theta/strategy-package.js";
 import { buildR8Readiness } from "../theta/r8-readiness.js";
-import { assessReconciliationReadiness, buildThetaFirstPaperReadiness, type FirstPaperChecks } from "../theta/first-paper-blocker-budget.js";
+import { assessReconciliationReadiness, assessRuntimeFirstPaperReadiness, buildThetaFirstPaperReadiness,
+  type FirstPaperChecks } from "../theta/first-paper-blocker-budget.js";
 import { canonicalPreVpsUnknownAuditSummary } from "../theta/pre-vps-unknown-register.js";
 
 const simulationSchema = z
@@ -551,30 +552,28 @@ export default async function customerHandler(
       const workerCycleHealthy=localWorker.online&&[
         'MASTER_PAPER_ACTIVE','MASTER_PAPER_MARKET_CLOSED','MASTER_PAPER_QUOTE_BLOCKED',
       ].includes(localWorker.state);
+      const reconciliationCheck=assessReconciliationReadiness({workerCycleHealthy,
+        lastReconciliation:localWorker.last_reconciliation,
+        entryBlockingFactCount:runtimeEvidence.entry_blocking_fact_count ?? runtimeEvidence.external_or_unknown_count,
+        localOnlyIntentCount:runtimeEvidence.local_only_intent_count});
+      const runtimeFirstPaperChecks=assessRuntimeFirstPaperReadiness({evidence:runtimeBehavior.first_paper_evidence,
+        approvedSymbol:'SPY',currentOpenPositions:runtimeEvidence.open_positions,
+        reconciliationReady:reconciliationCheck.state==='PASS'});
       const firstPaperChecks:FirstPaperChecks={
         databaseWritable:database.default_transaction_read_only==='on'
           ? fail('DATABASE_DEFAULT_READ_ONLY_ON','database-readiness','EXTERNAL')
           : database.state==='DEGRADED'||database.state==='MISSING'
           ? fail('DATABASE_UNAVAILABLE','database-readiness','EXTERNAL')
-          : unknown('DATABASE_WRITE_TRANSACTION_NOT_PROVEN','database-readiness','EXTERNAL'),
+          : workerCycleHealthy&&localWorker.database_health==='GOOD'&&localWorker.last_cycle_completed!==null
+            ? pass('runtime-worker-cycle-persistence')
+            : unknown('DATABASE_WRITE_TRANSACTION_NOT_PROVEN','database-readiness','EXTERNAL'),
         brokerHealthy:workerCycleHealthy&&localWorker.alpaca_health==='GOOD'
           ? pass('runtime-worker-status') : unknown('BROKER_CURRENT_HEALTH_NOT_PROVEN','runtime-worker-status','PROVIDER'),
         providerHealthy:p2fStatus.optionomics.secret_state==='AUTH_VALID'&&localWorker.optionomics_health==='GOOD'
           ? pass('provider-qualification-and-worker')
           : unknown('PROVIDER_CURRENT_HEALTH_NOT_PROVEN','provider-qualification-and-worker','PROVIDER'),
-        eventEvidenceReady:unknown('COMPLETE_ENTRY_EVENT_COVERAGE_NOT_PROVEN','event-evidence','PROVIDER'),
-        quotePipelineReady:unknown('FINALIST_AND_PRE_SUBMIT_REFRESH_NOT_PROVEN','runtime-quote-pipeline'),
-        aegisReady:unknown('CURRENT_AEGIS_INPUT_COMPLETENESS_NOT_PROVEN','runtime-aegis'),
-        positiveSizingReachable:unknown('REAL_POSITIVE_SIZING_NOT_PROVEN','runtime-sizing'),
-        canonicalDecisionReachable:unknown('CURRENT_DECISION_PATH_NOT_PROVEN','runtime-decision'),
-        paperPlanReachable:unknown('REAL_CURRENT_PAPER_PLAN_NOT_PROVEN','runtime-paper-plan'),
-        managementCandidateSourceReady:unknown('MANAGEMENT_CANDIDATE_SOURCE_RUNTIME_NOT_PROVEN','runtime-management'),
-        reconciliationReady:assessReconciliationReadiness({workerCycleHealthy,
-          lastReconciliation:localWorker.last_reconciliation,
-          // Old snapshots without a classified impact summary stay blocked by
-          // the raw count. New snapshots use the narrower current-impact count.
-          entryBlockingFactCount:runtimeEvidence.entry_blocking_fact_count ?? runtimeEvidence.external_or_unknown_count,
-          localOnlyIntentCount:runtimeEvidence.local_only_intent_count}),
+        ...runtimeFirstPaperChecks,
+        reconciliationReady:reconciliationCheck,
         workerReleaseReady:workerCycleHealthy&&
           localWorker.build_sha===process.env.VERCEL_GIT_COMMIT_SHA
           ? pass('runtime-worker-status-and-deployment-sha')

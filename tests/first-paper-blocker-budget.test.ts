@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assessReconciliationReadiness, buildThetaFirstPaperReadiness, firstPaperCheckNames, type FirstPaperChecks } from '../src/theta/first-paper-blocker-budget.js';
+import { assessReconciliationReadiness, assessRuntimeFirstPaperReadiness, buildThetaFirstPaperReadiness,
+  firstPaperCheckNames, type FirstPaperChecks } from '../src/theta/first-paper-blocker-budget.js';
+import type { RuntimeFirstPaperEvidence } from '../src/theta/runtime-behavior-diagnostic.js';
 
 test('broker connectivity cannot hide current-impact or local-only facts', () => {
   const base={workerCycleHealthy:true,lastReconciliation:'2026-09-22T13:46:00Z',
@@ -53,4 +55,46 @@ test('non-pass checks require an explicit blocker and evidence source', () => {
     checks:{...allPass(),eventEvidenceReady:{state:'UNKNOWN',source:'',blocker:'UNKNOWN',blockerClass:'PROVIDER'}},
     unknownAuditCoverage:'PARTIAL',avoidableUnknownCount:null,implementationBlockerCount:null,
     unresolvedSafetyCriticalCount:null,unresolvedPaperEntryCount:null}),/INCOMPLETE_READINESS_CHECK_eventEvidenceReady/);
+});
+
+const runtimeEvidence=(overrides:Partial<RuntimeFirstPaperEvidence['symbols'][number]>={}):RuntimeFirstPaperEvidence=>({
+  version:'theta-first-paper-runtime-evidence-v1',brokerMutationSurface:false,symbols:[{
+    symbol:'SPY',cycleState:'COMPLETED',cycleErrorCode:null,optionChainComplete:true,optionContractsComplete:true,
+    qLatticeTotal:4,qDecision:'OPEN_FULL',qReasonCodes:[],selectedCandidateId:'candidate-1',
+    selectedOptionSymbol:'SPY260925P00600000',canonicalAction:'OPEN_FULL',selectedQuantity:1,aegisState:'ALLOW_FULL',
+    entrySafetyPolicy:{action:'CLEAR',companyEventState:'FUND_NOT_APPLICABLE_CLEAR',
+      corporateActionState:'PAPER_BOOTSTRAP_LIMITED',decisionAsOf:'2026-09-24T14:00:00.000Z'},
+    runtimeTelemetry:{version:'theta-first-paper-runtime-telemetry-v1',candidateCount:4,conventionalCandidateCount:4,
+      positiveSizeCandidateCount:1,zeroSizeCandidateCount:3,bindingConstraintCounts:{AEGIS:3},aegisStateCounts:{ALLOW_FULL:1},
+      finalistRefresh:{state:'OBSERVED',policyVersion:'quote-age-v1',initialCandidateCount:4,selectedCount:1,refreshedCount:1,
+        failedCount:0,candidateBuiltAt:'2026-09-24T14:00:00.000Z',finalistChosenAt:'2026-09-24T14:00:01.000Z',
+        decisionAsOf:'2026-09-24T14:00:02.000Z',candidateToDecisionMs:2000,refreshRoundTripMsP50:100,
+        refreshRoundTripMsP95:100,refreshedQuoteAgeAtDecisionSecondsP50:1,refreshedQuoteAgeAtDecisionSecondsP95:1,
+        refreshedQuoteTimestampUnavailableCount:0},brokerAuthority:false},cycleBlockers:[],
+    preSubmit:{symbol:'SPY',planState:'READY',planBlockers:[],preSubmitState:'READY_TO_SUBMIT_BUT_DISABLED',
+      preSubmitBlockers:[],optionSymbol:'SPY260925P00600000',quoteProvider:'ALPACA',quoteSemantics:'ALPACA_EXECUTABLE_MARKET',
+      quoteAgeMs:1000,limitPrice:1.23,quoteAgePolicyVersion:'quote-age-v1',brokerMutationSurface:false},...overrides,
+  }]});
+
+test('real current-release SPY evidence can prove every candidate-specific stage without broker mutation',()=>{
+  const checks=assessRuntimeFirstPaperReadiness({evidence:runtimeEvidence(),approvedSymbol:'SPY',
+    currentOpenPositions:0,reconciliationReady:true});
+  for(const check of Object.values(checks))assert.equal(check.state,'PASS');
+});
+
+test('stages not naturally reached stay unknown and real AEGIS or sizing blockers remain explicit',()=>{
+  const absent=assessRuntimeFirstPaperReadiness({evidence:null,approvedSymbol:'SPY',currentOpenPositions:0,reconciliationReady:true});
+  assert.equal(absent.quotePipelineReady.state,'UNKNOWN');
+  assert.equal(absent.managementCandidateSourceReady.state,'PASS');
+  const base=runtimeEvidence().symbols[0];
+  if(base===undefined||base.runtimeTelemetry===null)throw new Error('TEST_RUNTIME_EVIDENCE_MISSING');
+  const blockedEvidence=runtimeEvidence({aegisState:'HOLD_ONLY',selectedQuantity:0,
+    runtimeTelemetry:{...base.runtimeTelemetry,positiveSizeCandidateCount:0,zeroSizeCandidateCount:4,
+      bindingConstraintCounts:{AEGIS:4}},preSubmit:null});
+  const blockedChecks=assessRuntimeFirstPaperReadiness({evidence:blockedEvidence,approvedSymbol:'SPY',
+    currentOpenPositions:0,reconciliationReady:true});
+  assert.equal(blockedChecks.aegisReady.state,'FAIL');
+  assert.equal(blockedChecks.positiveSizingReachable.state,'FAIL');
+  assert.equal(blockedChecks.quotePipelineReady.state,'UNKNOWN');
+  assert.equal(blockedChecks.paperPlanReachable.state,'UNKNOWN');
 });
