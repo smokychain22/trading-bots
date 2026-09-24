@@ -197,3 +197,24 @@ new risk or cut over the worker based on the completed no-submit scan alone.
 7. Consider controlled Paper entry only after a separate readiness receipt. Follower and live-money execution remain locked.
 
 No item is complete merely because its type, config, fixture, or UI label exists. An `UNKNOWN` is closed only by a real producer plus valid authority, timing, persistence, consumer wiring and runtime evidence.
+
+## V10 September 24 second integration slice
+
+- VERIFIED: common-horizon structural shadow receipt persistence on disposable
+  PostgreSQL in exact CI 36005235693. Worker cut over locked to 36917ee, one lease
+  and GOOD broker reconciliation observed before the open-session database failure.
+- CLOSED_SOURCE_DEFECT: absent feature errors no longer mean all 20 features are
+  known. Empty ownership and null AEGIS cannot count as known diagnostics.
+- CLOSED_SOURCE_DEFECT: management cohort RPCD uses complete actual capital-days,
+  worst episode P&L is not labeled drawdown, duplicate episodes cannot inflate N.
+- CODE_COMPLETE/TESTED: PIT-purged offline calibration runner, immutable manifests,
+  validation-only fitting, forward metrics, reliability bins and reloadable output.
+  CLI integration is tested with explicitly synthetic data, not empirical proof.
+- CLOSED_SOURCE_DEFECT: nonfinite calibration/model inputs, missing coefficients,
+  string-false calibration flags and isotonic tied-score handling fail honestly.
+- EXTERNAL_BLOCKED: current-release SPY no-submit proof encountered PostgreSQL
+  connection loss. Latest local worker error identifies POSTGRES_ECONNRESET. Keep
+  it locked, do not restart for this transient provider failure.
+- OPEN_ENGINEERING: complete episode-to-replay export, governed R8B/C/D experiment
+  dispatch and full dataset-to-base-model training/registry integration. Do not
+  relabel these engineering tasks as merely missing future outcomes.

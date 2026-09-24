@@ -62,7 +62,7 @@ class SevereDrawdownModelArtifact:
 
 
 def artifact_hash(payload: Mapping[str, object]) -> str:
-    return sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 
 def build_artifact(**values: object) -> SevereDrawdownModelArtifact:
@@ -128,19 +128,22 @@ def infer_severe_drawdown(
     missing = tuple(sorted(name for name in artifact.required_features if features.get(name) is None))
     if missing:
         return SevereDrawdownInference(None, artifact.model_version, feature_version, as_of, tuple(f"MISSING_FEATURE:{name}" for name in missing), "UNKNOWN", "UNKNOWN")
+    if any(type(features[name]) not in (int, float) or not math.isfinite(features[name]) for name in artifact.required_features):
+        return SevereDrawdownInference(None, artifact.model_version, feature_version, as_of, ("INVALID_FEATURE_VALUE",), "UNKNOWN", "UNKNOWN")
     if artifact.model_family == "EMPIRICAL_FREQUENCY":
         probability = artifact.intercept
     elif artifact.model_family == "REGULARIZED_LOGISTIC":
-        if artifact.intercept is None:
+        if artifact.intercept is None or not math.isfinite(artifact.intercept) \
+                or any(name not in artifact.coefficients or not math.isfinite(artifact.coefficients[name]) for name in artifact.required_features):
             probability = None
         else:
-            score = artifact.intercept + sum(artifact.coefficients.get(name, 0.0) * float(features[name]) for name in artifact.required_features)
-            probability = 1.0 / (1.0 + math.exp(-max(-40.0, min(40.0, score))))
+            score = artifact.intercept + sum(artifact.coefficients[name] * float(features[name]) for name in artifact.required_features)
+            probability = None if not math.isfinite(score) else 1.0 / (1.0 + math.exp(-max(-40.0, min(40.0, score))))
     else:
         probability = None
     if probability is None or not 0 <= probability <= 1:
         return SevereDrawdownInference(None, artifact.model_version, feature_version, as_of, ("ARTIFACT_NOT_EXECUTABLE",), "UNKNOWN", "UNKNOWN")
-    calibrated = bool(artifact.calibration.get("validated"))
+    calibrated = artifact.calibration.get("validated") is True
     if not calibrated:
         return SevereDrawdownInference(None, artifact.model_version, feature_version, as_of, ("CALIBRATION_NOT_VALIDATED",), "UNVALIDATED", "UNKNOWN")
     return SevereDrawdownInference(probability, artifact.model_version, feature_version, as_of, (), "VALIDATED", "KNOWN")

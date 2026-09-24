@@ -72,11 +72,26 @@ test('profitFactor is real gross-win/gross-loss, and null (not Infinity) when gr
   assert.equal(cohort.avgWin, 75);
 });
 
-test('maxDrawdown reports the real worst single resolved episode PnL', () => {
+test('worst episode PnL is distinct from unavailable path drawdown', () => {
   const rows = [
     buildManagementOutcomeRow(baseInput({ episodeId: 'e1', futureWholeChainNetPnl: -300, labelAvailableAt: ASOF })),
     buildManagementOutcomeRow(baseInput({ episodeId: 'e2', futureWholeChainNetPnl: 50, labelAvailableAt: ASOF })),
   ];
   const cohort = aggregateManagementCohort('cohort', rows);
-  assert.equal(cohort.maxDrawdown, -300);
+  assert.equal(cohort.maxDrawdown, null);
+  assert.equal(cohort.worstEpisodeNetPnl, -300);
+});
+
+test('capital-day return requires complete denominators and has no phantom extra capital day', () => {
+  const a = buildManagementOutcomeRow(baseInput({ episodeId: 'a', futureWholeChainNetPnl: 100, capitalDays: 10, labelAvailableAt: ASOF }));
+  const b = buildManagementOutcomeRow(baseInput({ episodeId: 'b', futureWholeChainNetPnl: -50, capitalDays: null, labelAvailableAt: ASOF }));
+  assert.equal(aggregateManagementCohort('complete', [a]).rpcd, 10);
+  assert.equal(aggregateManagementCohort('partial', [a, b]).rpcd, null);
+  assert.equal(aggregateManagementCohort('zero', [{ ...a, capitalDays: 0 }]).rpcd, null);
+});
+
+test('repeated decisions cannot inflate episode N and nonfinite economics cannot enter a cohort', () => {
+  const row = buildManagementOutcomeRow(baseInput());
+  assert.throws(() => aggregateManagementCohort('duplicates', [row, { ...row, decisionId: 'later' }]), /DUPLICATE_EPISODE/);
+  assert.throws(() => buildManagementOutcomeRow(baseInput({ futureWholeChainNetPnl: NaN })), /NONFINITE/);
 });

@@ -45,10 +45,59 @@ An estimated close at an observed ask is not an actual broker fill.
   declare R8B through R8F complete.
 - Trained continuation models, managed episode outcomes, empirical thresholds and
   OOS profitability remain unproven. Their null values are preserved.
-- The structural bridge is L4 until PostgreSQL round-trip checks succeed. It is not
-  L7 until an aligned worker produces current real data containing the new receipt.
+- The structural bridge passed a real disposable PostgreSQL round-trip in exact
+  CI 36005235693, including nested receipt hash and authority assertions. It is
+  persisted/reloadable and wired to the runtime caller. Current-worker L7 proof
+  remains pending, not inferred from this integration test.
 - The replay dispatcher is tested source and has an offline CLI. It is not a trained
   management policy and does not imply empirical or broker authorization.
 
 `EV_MODEL_NOT_EMPIRICALLY_READY`, `PROFITABILITY=EMPIRICALLY_UNPROVEN`, and
 `70_TO_80_PERCENT_WR=RESEARCH_TARGET_NOT_PROVEN` remain unchanged.
+
+## Second source slice: diagnostic truth and offline validation
+
+The evidence-completeness diagnostic no longer considers a feature known simply
+because no UNKNOWN reason was emitted. Each of the 20 declared feature families
+requires positive identified, dated completeness evidence. Empty ownership
+components and null AEGIS results are not known. This diagnostic is research-only,
+not an additional Production gate or proof that all families have consumers.
+
+Management cohort aggregation rejects duplicate episodes and nonfinite economics.
+Terminal worst-episode P&L is now separate from unavailable marked-equity maximum
+drawdown. Return per capital-day requires complete denominators and has no extra
+synthetic capital day. Lower-tail P&L uses fractional empirical boundary mass.
+
+`research.validation_experiment` now runs a content-addressed offline workflow:
+timing manifest -> dependency-group folds -> label-window purge/time embargo ->
+training membership/PIT prediction checks -> validation-only Platt/isotonic fit ->
+forward-only metrics/reliability bins -> immutable reloadable JSON receipt.
+
+Run with `PYTHONPATH=bots/theta/quant` and
+`python -m research.validation_experiment --input <input.json> --output <new.json>`.
+The input contract and executable test example are in
+`bots/theta/tests/quant/test_validation_experiment.py`. Scores and observations have
+separate canonical hashes. The CLI checks source ancestry against origin/main and
+refuses overwrites. It does not load credentials or contact a provider. The test
+artifact is explicitly DETERMINISTIC_TEST, never REAL_PERSISTED or real performance.
+
+This is calibration/evaluation infrastructure for supplied base-model predictions,
+not completion of the full dataset-to-training/model-registry/promotion pipeline.
+Final OOS remains untouched. Model promotion and broker authority stay false.
+Nonfinite probabilities/features, missing coefficients, a string "false" calibration
+flag, nonconverged Platt fitting and isotonic tied-score ordering now fail honestly.
+
+## September 24 open-session evidence
+
+The tested release `36917eeb5ff5f1c45128ee2d467cff08fb1b9d87` replaced the starting
+worker through the documented locked installer. At 13:26 UTC one active lease,
+GOOD reconciliation, schema 064, zero positions/open orders and all locks were read.
+The worker completed a closed-session cycle and reported ONLINE.
+
+The physically read-only open-session probe failed closed at SHADOW_EVIDENCE_SCAN
+with POSTGRES_CHECKED_OUT_CLIENT_LOST. The resident worker subsequently reported
+HTTP_503 / POSTGRES_ECONNRESET in RUNTIME_EVIDENCE_CYCLE. A bounded 13:46 UTC read
+could not retrieve database runtime evidence. Alpaca account, clock, positions,
+orders and calendar still returned 200, with zero positions and open orders.
+No complete current-release SPY funnel or R8A session credit is claimed. No worker
+restart, threshold change, order submission or broker mutation followed the failure.

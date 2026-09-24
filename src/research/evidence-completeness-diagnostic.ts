@@ -35,7 +35,7 @@ import { thetaFeatureFamily } from '../theta/strategy-package.js';
  * separately as `unmappedReasonCodeCounts` rather than silently dropped
  * or force-mapped.
  */
-export const evidenceCompletenessDiagnosticVersion = 'theta-evidence-completeness-diagnostic-v1' as const;
+export const evidenceCompletenessDiagnosticVersion = 'theta-evidence-completeness-diagnostic-v2' as const;
 
 export type ThetaFeatureFamily = z.infer<typeof thetaFeatureFamily>;
 
@@ -88,6 +88,11 @@ export interface CandidateEvidenceCompletenessInput {
    * output, or the persisted `CandidatePointInTimeEvidence.unknownEconomics`). */
   readonly unknownEvidence: readonly string[];
   readonly hardBlockers: readonly string[];
+  /** Positive family-completeness assertions must reference actual evidence.
+   * Missing assertions mean unobserved, not known and not a trading veto. */
+  readonly knownFeatureEvidence?: Partial<Record<ThetaFeatureFamily, {
+    readonly evidenceId: string; readonly observedAt: string; readonly complete: true;
+  }>>;
 }
 
 export interface OwnershipComponentCompletenessEntry {
@@ -100,6 +105,7 @@ export interface FeatureFamilyCompletenessEntry {
   readonly family: ThetaFeatureFamily;
   readonly knownCount: number;
   readonly unknownCount: number;
+  readonly unobservedCount: number;
 }
 
 export interface SymbolCompletenessEntry {
@@ -136,6 +142,7 @@ export interface EvidenceCompletenessReport {
 
   readonly aegisNotEvaluatedCount: number;
   readonly aegisKnownCount: number;
+  readonly aegisUnknownCount: number;
 
   readonly quoteUsableButOwnershipUnknownCount: number;
   readonly ownershipKnownButAegisUnknownCount: number;
@@ -179,6 +186,7 @@ export function buildEvidenceCompletenessReport(
   const componentUnknown = new Map<OwnershipComponentName, number>();
   let aegisNotEvaluatedCount = 0;
   let aegisKnownCount = 0;
+  let aegisUnknownCount = 0;
   let quoteUsableButOwnershipUnknownCount = 0;
   let ownershipKnownButAegisUnknownCount = 0;
   let aegisKnownButQuantityZeroCount = 0;
@@ -186,25 +194,36 @@ export function buildEvidenceCompletenessReport(
   const unmappedReasonCodes: string[] = [];
   const familyKnown = new Map<ThetaFeatureFamily, number>();
   const familyUnknown = new Map<ThetaFeatureFamily, number>();
+  const familyUnobserved = new Map<ThetaFeatureFamily, number>();
+  const componentNames: readonly OwnershipComponentName[] = ['LiquidityQuality', 'StructuralQuality', 'RecoveryQuality', 'TailQuality', 'EventAdjustment'];
   const bySymbol = new Map<string, { candidateCount: number; ownershipUnknownCount: number; aegisUnknownCount: number }>();
   const byCycle = new Map<string, { candidateCount: number; ownershipUnknownCount: number; aegisUnknownCount: number }>();
 
   for (const candidate of candidates) {
     const ownershipEvaluated = candidate.ownershipComponents !== null;
-    const ownershipUnknown = !ownershipEvaluated || (candidate.ownershipComponents as readonly { value: number | null }[]).some((component) => component.value === null);
+    const components = candidate.ownershipComponents;
+    if (components !== null && new Set(components.map((c) => c.name)).size !== components.length) {
+      throw new Error('EVIDENCE_COMPLETENESS_DUPLICATE_OWNERSHIP_COMPONENT');
+    }
+    const ownershipUnknown = components === null || componentNames.some((name) => {
+      const value = components.find((c) => c.name === name)?.value;
+      return typeof value !== 'number' || !Number.isFinite(value);
+    });
     if (!ownershipEvaluated) ownershipNotEvaluatedCount += 1;
     else if (ownershipUnknown) ownershipUnknownCount += 1;
     else ownershipKnownCount += 1;
 
     if (ownershipEvaluated) {
-      for (const component of candidate.ownershipComponents as readonly { readonly name: OwnershipComponentName; readonly value: number | null }[]) {
-        if (component.value === null) componentUnknown.set(component.name, (componentUnknown.get(component.name) ?? 0) + 1);
-        else componentKnown.set(component.name, (componentKnown.get(component.name) ?? 0) + 1);
+      for (const name of componentNames) {
+        const value = components?.find((c) => c.name === name)?.value;
+        if (typeof value !== 'number' || !Number.isFinite(value)) componentUnknown.set(name, (componentUnknown.get(name) ?? 0) + 1);
+        else componentKnown.set(name, (componentKnown.get(name) ?? 0) + 1);
       }
     }
 
     const aegisUnknown = !candidate.aegisAssessmentPresent || candidate.aegisNewRiskState === null;
     if (!candidate.aegisAssessmentPresent) aegisNotEvaluatedCount += 1;
+    else if (aegisUnknown) aegisUnknownCount += 1;
     else aegisKnownCount += 1;
 
     const quoteUsable = quoteUsableByCandidateId[candidate.candidateId] ?? null;
@@ -224,7 +243,12 @@ export function buildEvidenceCompletenessReport(
     }
     for (const family of thetaFeatureFamily.options) {
       if (observedFamilies.has(family)) familyUnknown.set(family, (familyUnknown.get(family) ?? 0) + 1);
-      else familyKnown.set(family, (familyKnown.get(family) ?? 0) + 1);
+      else {
+        const proof = candidate.knownFeatureEvidence?.[family];
+        if (proof?.complete === true && proof.evidenceId.trim().length > 0 && Number.isFinite(Date.parse(proof.observedAt))) {
+          familyKnown.set(family, (familyKnown.get(family) ?? 0) + 1);
+        } else familyUnobserved.set(family, (familyUnobserved.get(family) ?? 0) + 1);
+      }
     }
 
     const symbolRow = bySymbol.get(candidate.underlying) ?? { candidateCount: 0, ownershipUnknownCount: 0, aegisUnknownCount: 0 };
@@ -240,19 +264,18 @@ export function buildEvidenceCompletenessReport(
     byCycle.set(candidate.snapshotId, cycleRow);
   }
 
-  const componentNames: readonly OwnershipComponentName[] = ['LiquidityQuality', 'StructuralQuality', 'RecoveryQuality', 'TailQuality', 'EventAdjustment'];
-
   return {
     contractVersion: evidenceCompletenessDiagnosticVersion, totalCandidateCount: candidates.length,
     ownershipNotEvaluatedCount, ownershipKnownCount, ownershipUnknownCount,
     ownershipComponentCompleteness: componentNames.map((component) => ({
       component, knownCount: componentKnown.get(component) ?? 0, unknownCount: componentUnknown.get(component) ?? 0,
     })),
-    aegisNotEvaluatedCount, aegisKnownCount,
+    aegisNotEvaluatedCount, aegisKnownCount, aegisUnknownCount,
     quoteUsableButOwnershipUnknownCount, ownershipKnownButAegisUnknownCount, aegisKnownButQuantityZeroCount,
     reasonCodeCounts: rankedCounts(allReasonCodes), unmappedReasonCodeCounts: rankedCounts(unmappedReasonCodes),
     featureFamilyCompleteness: thetaFeatureFamily.options.map((family) => ({
       family, knownCount: familyKnown.get(family) ?? 0, unknownCount: familyUnknown.get(family) ?? 0,
+      unobservedCount: familyUnobserved.get(family) ?? 0,
     })),
     symbolCompleteness: [...bySymbol.entries()].map(([underlying, row]) => ({ underlying, ...row })).sort((left, right) => left.underlying.localeCompare(right.underlying)),
     cycleCompleteness: [...byCycle.entries()].map(([snapshotId, row]) => ({ snapshotId, ...row })).sort((left, right) => left.snapshotId.localeCompare(right.snapshotId)),

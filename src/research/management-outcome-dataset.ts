@@ -57,6 +57,13 @@ export interface ManagementOutcomeRow {
 }
 
 export function buildManagementOutcomeRow(input: Omit<ManagementOutcomeRow, 'contractVersion'>): ManagementOutcomeRow {
+  for (const field of ['futureWholeChainNetPnl', 'fees', 'slippage', 'tca', 'capitalDays', 'mae', 'mfe', 'recoveryDuration'] as const) {
+    const value = input[field];
+    if (value !== null && !Number.isFinite(value)) throw new Error(`MGMT_OUTCOME_NONFINITE:${field}`);
+  }
+  for (const field of ['capitalDays', 'recoveryDuration'] as const) {
+    if (input[field] !== null && input[field] < 0) throw new Error(`MGMT_OUTCOME_NEGATIVE:${field}`);
+  }
   if (!Number.isFinite(Date.parse(input.decisionAsOf))) throw new Error('MGMT_OUTCOME_INVALID_DECISION_ASOF');
   if (!Number.isFinite(Date.parse(input.featureAvailableAt))) throw new Error('MGMT_OUTCOME_INVALID_FEATURE_AVAILABLE_AT');
   if (Date.parse(input.featureAvailableAt) > Date.parse(input.decisionAsOf)) throw new Error('MGMT_OUTCOME_FUTURE_FEATURE_AVAILABLE_AT');
@@ -88,6 +95,8 @@ export interface ManagementCohortAggregate {
   readonly avgLoss: number | null;
   readonly expectedShortfall: number | null;
   readonly maxDrawdown: number | null;
+  /** Terminal episode P&L is not a time-series drawdown. */
+  readonly worstEpisodeNetPnl: number | null;
   readonly rpcd: number | null;
   readonly assignmentRate: number | null;
   readonly recoveryRate: number | null;
@@ -101,11 +110,17 @@ export interface ManagementCohortAggregate {
  * censored (futureWholeChainNetPnl === null) are excluded from the
  * resolved-N denominators, never treated as a loss or a zero. */
 export function aggregateManagementCohort(cohortKey: string, rows: readonly ManagementOutcomeRow[]): ManagementCohortAggregate {
+  const episodes = new Set<string>();
+  for (const row of rows) {
+    buildManagementOutcomeRow(row);
+    if (episodes.has(row.episodeId)) throw new Error('MGMT_COHORT_DUPLICATE_EPISODE');
+    episodes.add(row.episodeId);
+  }
   const resolved = rows.filter((r) => r.futureWholeChainNetPnl !== null);
   if (resolved.length === 0) {
     return {
       cohortKey, episodeCount: rows.length, resolvedEpisodeCount: 0, winRate: null, profitFactor: null,
-      avgWin: null, avgLoss: null, expectedShortfall: null, maxDrawdown: null, rpcd: null,
+      avgWin: null, avgLoss: null, expectedShortfall: null, maxDrawdown: null, worstEpisodeNetPnl: null, rpcd: null,
       assignmentRate: null, recoveryRate: null, avgRecoveryDuration: null, callAwayRate: null,
     };
   }
@@ -116,8 +131,13 @@ export function aggregateManagementCohort(cohortKey: string, rows: readonly Mana
   const grossLoss = Math.abs(losses.reduce((a, b) => a + b, 0));
   const capitalDaysKnown = resolved.filter((r) => r.capitalDays !== null).map((r) => r.capitalDays as number);
   const sortedPnl = pnls.toSorted((a, b) => a - b);
-  const tailCount = Math.max(1, Math.floor(sortedPnl.length * 0.05));
-  const expectedShortfall = sortedPnl.slice(0, tailCount).reduce((a, b) => a + b, 0) / tailCount;
+  // Empirical lower 5% P&L-tail mean, with fractional boundary mass.
+  // This is an outcome statistic, not a fitted account risk forecast.
+  const tailMass = sortedPnl.length * 0.05;
+  const fullTail = Math.floor(tailMass);
+  const boundary = sortedPnl[fullTail];
+  const expectedShortfall = (sortedPnl.slice(0, fullTail).reduce((a, b) => a + b, 0)
+    + (boundary === undefined ? 0 : boundary * (tailMass - fullTail))) / tailMass;
   const recoveryDurations = resolved.filter((r) => r.recoveryDuration !== null).map((r) => r.recoveryDuration as number);
   const assignmentKnown = resolved.filter((r) => r.assignmentOccurred !== null);
   const callAwayKnown = resolved.filter((r) => r.callAwayOccurred !== null);
@@ -129,9 +149,11 @@ export function aggregateManagementCohort(cohortKey: string, rows: readonly Mana
     avgWin: wins.length === 0 ? null : grossWin / wins.length,
     avgLoss: losses.length === 0 ? null : -grossLoss / losses.length,
     expectedShortfall,
-    maxDrawdown: Math.min(...pnls),
-    rpcd: capitalDaysKnown.length === 0 ? null
-      : pnls.reduce((a, b) => a + b, 0) / capitalDaysKnown.reduce((a, b) => a + b, 1),
+    // Requires an ordered marked-equity path, unavailable from terminal rows.
+    maxDrawdown: null,
+    worstEpisodeNetPnl: Math.min(...pnls),
+    rpcd: capitalDaysKnown.length !== resolved.length || capitalDaysKnown.reduce((a, b) => a + b, 0) === 0 ? null
+      : pnls.reduce((a, b) => a + b, 0) / capitalDaysKnown.reduce((a, b) => a + b, 0),
     assignmentRate: assignmentKnown.length === 0 ? null : assignmentKnown.filter((r) => r.assignmentOccurred === true).length / assignmentKnown.length,
     recoveryRate: assignmentKnown.length === 0 ? null : assignmentKnown.filter((r) => r.recoveryDuration !== null).length / assignmentKnown.length,
     avgRecoveryDuration: recoveryDurations.length === 0 ? null : recoveryDurations.reduce((a, b) => a + b, 0) / recoveryDurations.length,

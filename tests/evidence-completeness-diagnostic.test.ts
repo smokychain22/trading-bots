@@ -84,7 +84,8 @@ test('reason codes are tallied verbatim, and known codes map to the canonical fe
   assert.equal(ivFamily?.knownCount, 0);
   const volFamily = report.featureFamilyCompleteness.find((row) => row.family === 'VOLUME_OPEN_INTEREST');
   assert.equal(volFamily?.unknownCount, 1);
-  assert.equal(volFamily?.knownCount, 1);
+  assert.equal(volFamily?.knownCount, 0);
+  assert.equal(volFamily?.unobservedCount, 1);
 });
 
 test('an unrecognized reason code is tracked separately as unmapped, never silently force-mapped to a family', () => {
@@ -118,6 +119,25 @@ test('a duplicate candidateId is rejected, never silently double-counted', () =>
     () => buildEvidenceCompletenessReport([candidate({ candidateId: 'dup' }), candidate({ candidateId: 'dup' })]),
     /EVIDENCE_COMPLETENESS_DUPLICATE_CANDIDATE_ID/,
   );
+});
+
+test('no unknown reason is not positive evidence for any of the 20 feature families', () => {
+  const report = buildEvidenceCompletenessReport([candidate()]);
+  assert.equal(report.featureFamilyCompleteness.length, 20);
+  for (const row of report.featureFamilyCompleteness) {
+    assert.equal(row.knownCount, 0); assert.equal(row.unobservedCount, 1);
+  }
+  const proven = buildEvidenceCompletenessReport([candidate({ knownFeatureEvidence: {
+    IV: { evidenceId: 'iv-observation', observedAt: '2026-09-24T13:30:00Z', complete: true },
+  } })]);
+  assert.equal(proven.featureFamilyCompleteness.find((r) => r.family === 'IV')?.knownCount, 1);
+});
+
+test('empty ownership and present-but-null AEGIS cannot count as known', () => {
+  const report = buildEvidenceCompletenessReport([candidate({ ownershipComponents: [], aegisNewRiskState: null })]);
+  assert.equal(report.ownershipKnownCount, 0); assert.equal(report.ownershipUnknownCount, 1);
+  assert.equal(report.aegisKnownCount, 0); assert.equal(report.aegisUnknownCount, 1);
+  assert.ok(report.ownershipComponentCompleteness.every((c) => c.unknownCount === 1));
 });
 
 test('an empty candidate batch is valid with zero counts, never a fabricated average', () => {

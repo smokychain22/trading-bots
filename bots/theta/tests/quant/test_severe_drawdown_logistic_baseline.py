@@ -27,6 +27,18 @@ def _linearly_separable_rows(n: int = 60):
 
 
 class SevereDrawdownLogisticBaselineTest(unittest.TestCase):
+    def test_nonfinite_values_are_rejected_not_clamped_into_probabilities(self):
+        for value in (float('nan'), float('inf'), float('-inf')):
+            with self.assertRaises(ValueError):
+                fit_logistic_regression([LogisticTrainingRow(features=(value,), label=1)])
+            with self.assertRaises(ValueError):
+                evaluate_calibration([value], [1])
+            fit = fit_logistic_regression(_linearly_separable_rows(), max_iterations=1)
+            with self.assertRaises(ValueError):
+                predict_probability(fit, (value,))
+        with self.assertRaises(ValueError):
+            fit_logistic_regression([LogisticTrainingRow(features=(1.,), label=2)])
+
     def test_fit_is_deterministic_across_repeated_runs_on_identical_input(self):
         rows = _linearly_separable_rows()
         fit1 = fit_logistic_regression(rows, l2_penalty=1.0, max_iterations=500)

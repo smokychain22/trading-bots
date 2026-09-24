@@ -54,8 +54,14 @@ def fit_logistic_regression(
     n_features = len(rows[0].features)
     if any(len(row.features) != n_features for row in rows):
         raise ValueError("SEVERE_DRAWDOWN_LOGISTIC_FEATURE_VECTOR_LENGTH_MISMATCH")
-    if l2_penalty < 0:
+    if not math.isfinite(l2_penalty) or l2_penalty < 0:
         raise ValueError("SEVERE_DRAWDOWN_LOGISTIC_L2_PENALTY_MUST_BE_NON_NEGATIVE")
+    if not math.isfinite(learning_rate) or learning_rate <= 0 or type(max_iterations) is not int or max_iterations <= 0 \
+            or not math.isfinite(convergence_tolerance) or convergence_tolerance <= 0:
+        raise ValueError("SEVERE_DRAWDOWN_LOGISTIC_OPTIMIZER_INVALID")
+    if n_features == 0 or any(type(row.label) is not int or row.label not in (0, 1)
+            or any(type(x) not in (int, float) or not math.isfinite(x) for x in row.features) for row in rows):
+        raise ValueError("SEVERE_DRAWDOWN_LOGISTIC_TRAINING_VALUE_INVALID")
 
     weights = [0.0] * n_features
     bias = 0.0
@@ -79,6 +85,8 @@ def fit_logistic_regression(
 
         new_weights = [w - learning_rate * g for w, g in zip(weights, grad_weights)]
         new_bias = bias - learning_rate * grad_bias
+        if not all(math.isfinite(v) for v in (*new_weights, new_bias)):
+            raise ValueError("SEVERE_DRAWDOWN_LOGISTIC_NUMERIC_OVERFLOW")
         step_size = max(abs(nw - w) for nw, w in zip(new_weights, weights)) if weights else 0.0
         step_size = max(step_size, abs(new_bias - bias))
         weights, bias = new_weights, new_bias
@@ -93,7 +101,11 @@ def fit_logistic_regression(
 def predict_probability(fit: LogisticFitResult, features: Sequence[float]) -> float:
     if len(features) != len(fit.weights):
         raise ValueError("SEVERE_DRAWDOWN_LOGISTIC_PREDICT_FEATURE_VECTOR_LENGTH_MISMATCH")
+    if not all(type(v) in (int, float) and math.isfinite(v) for v in (*features, *fit.weights, fit.bias)):
+        raise ValueError("SEVERE_DRAWDOWN_LOGISTIC_PREDICT_NONFINITE")
     z = fit.bias + sum(w * x for w, x in zip(fit.weights, features))
+    if not math.isfinite(z):
+        raise ValueError("SEVERE_DRAWDOWN_LOGISTIC_PREDICT_NONFINITE")
     return 1.0 / (1.0 + math.exp(-max(-60.0, min(60.0, z))))
 
 
@@ -129,6 +141,9 @@ def evaluate_calibration(
     n = len(predicted_probabilities)
     if n == 0:
         raise ValueError("SEVERE_DRAWDOWN_CALIBRATION_EMPTY_EVALUATION_SET")
+    if type(n_bins) is not int or n_bins <= 0 or any(type(y) is not int or y not in (0, 1) for y in actual_labels) \
+            or any(type(p) not in (int, float) or not math.isfinite(p) or not 0 <= p <= 1 for p in predicted_probabilities):
+        raise ValueError("SEVERE_DRAWDOWN_CALIBRATION_INVALID_VALUE")
 
     epsilon = 1e-12
     brier_score = sum((p - y) ** 2 for p, y in zip(predicted_probabilities, actual_labels)) / n

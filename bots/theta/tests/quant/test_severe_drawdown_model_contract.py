@@ -1,5 +1,6 @@
 import sys
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "quant"))
@@ -22,6 +23,14 @@ def artifact(state="MODEL_PAPER_RISK_ELIGIBLE"):
 
 
 class SevereDrawdownModelContractTests(unittest.TestCase):
+    def test_nonfinite_feature_missing_coefficient_and_string_false_cannot_infer(self):
+        model = artifact()
+        for features, selected in (({'rv20': float('nan')}, model), ({'rv20': .2}, replace(model, coefficients={})),
+                ({'rv20': .2}, replace(model, calibration={'validated': 'false'}))):
+            value = infer_severe_drawdown(selected, features, 'feature-v1', '2025-01-01')
+            self.assertEqual(value.state, 'UNKNOWN')
+            self.assertIsNone(value.probability)
+
     def test_inference_is_unknown_without_promoted_valid_artifact_and_features(self):
         self.assertEqual(infer_severe_drawdown(None, {"rv20": 0.2}, "feature-v1", "2025-01-01").state, "UNKNOWN")
         self.assertEqual(infer_severe_drawdown(artifact("RESEARCH_ONLY"), {"rv20": 0.2}, "feature-v1", "2025-01-01").state, "UNKNOWN")
