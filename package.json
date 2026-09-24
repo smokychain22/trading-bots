@@ -35,7 +35,7 @@
     "db:migrate": "node tools/database-migrate.mjs",
     "db:migrate:production:checkpoint": "pwsh -NoProfile -File tools/windows/dr/Invoke-ThetaProductionMigration.ps1",
     "db:verify": "node tools/database-verify.mjs",
-    "db:aiven:preflight": "node tools/database-target-preflight.mjs",
+    "db:aiven:preflight": "node tools/database-target-preflight.mjs --environment-file=.env.local",
     "db:aiven:import-legacy": "node tools/import-legacy-research-export.mjs",
     "db:neon:recover": "node tools/neon-legacy-recovery.mjs",
     "db:neon:method-sweep": "node tools/neon-legacy-method-sweep.mjs",
