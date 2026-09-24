@@ -33,6 +33,29 @@ export function classifyNoSubmitProbeError(error: unknown): string {
   return 'UNCLASSIFIED_NO_SUBMIT_FAILURE';
 }
 
+/** A bounded safe category can survive an intermediate wrapper that did not
+ * retain the original driver `code`. Keep this family aligned with the local
+ * supervisor and never retry SQL, auth, or ambiguous COMMIT failures. */
+export function isRetryableNoSubmitDatabaseFailure(error:unknown,safeCategory?:string):boolean{
+  if(classifyPostgresRuntimeError(error).retryableRead)return true;
+  const category=safeCategory??classifyNoSubmitProbeError(error);
+  return /^POSTGRES_(?:57P03|57P01|08[0-9A-Z]{3}|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|CONNECTION_TERMINATED|CHECKED_OUT_CLIENT_LOST)$/.test(category);
+}
+
+/** Bound an operational diagnostic stage. A timeout remains a typed failure.
+ * The caller must persist it and keep broker mutation disabled. */
+export async function runNoSubmitStageWithDeadline<T>(
+  operation:Promise<T>,milliseconds:number,code:string,
+):Promise<T>{
+  if(!Number.isInteger(milliseconds)||milliseconds<1||!/^[A-Z0-9_]{3,100}$/.test(code))
+    throw new Error('NO_SUBMIT_PROBE_DEADLINE_CONFIGURATION_INVALID');
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  try{return await Promise.race([operation,new Promise<T>((_resolve,reject)=>{
+    timer=setTimeout(()=>reject(new Error(code)),milliseconds);
+    timer.unref?.();
+  })]);}finally{if(timer!==undefined)clearTimeout(timer);}
+}
+
 /** A source-level lock independent of persisted authorization or operator UI. */
 export function assertNoSubmitProbeGuard(environment: Pick<Environment,
   'THETA_RUNTIME_MODE' | 'MASTER_PAPER_EXECUTION_ENABLED' | 'FOLLOWER_PAPER_EXECUTION_ENABLED'

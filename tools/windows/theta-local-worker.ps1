@@ -62,6 +62,17 @@ try {
         $databaseRecoverySuccesses++
         $delaySeconds = 5
         if ($databaseRecoverySuccesses -ge 2) {
+          # A successful two-probe recovery is the first safe point to copy the
+          # durable local observation outbox into canonical Postgres. Backfill
+          # is deliberately non-critical: an unavailable migration or a second
+          # database interruption leaves the WAL spool intact for the next pass.
+          $previousErrorActionPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          try {
+            & node --import tsx tools/theta-local-evidence-backfill.ts "--environment-file=$productionEnvFile" *> $null
+          } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+          }
           $databaseRecoveryMode = $false
           $databaseRecoverySuccesses = 0
         }
@@ -295,6 +306,18 @@ try {
         elapsedMilliseconds=[Math]::Max(0,[Math]::Round(($failedAt - $operationStartedAt).TotalMilliseconds))} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
       if ($serverErrorCode -cmatch '^POSTGRES_(57P03|57P01|08[0-9A-Z]{3}|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|CONNECTION_TERMINATED|CHECKED_OUT_CLIENT_LOST|COMMIT_OUTCOME_UNKNOWN)$') {
+        # Preserve a sanitized, physically read-only broker observation even
+        # when the canonical evidence cycle lost Postgres. The probe cannot
+        # submit orders and its local spool is never sufficient mutation proof.
+        if ($currentOperation -eq 'RUNTIME_EVIDENCE_CYCLE') {
+          $previousErrorActionPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          try {
+            & node --import tsx tools/theta-no-submit-probe.ts "--environment-file=$productionEnvFile" *> $null
+          } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+          }
+        }
         $databaseRecoveryMode = $true
         $databaseRecoverySuccesses = 0
       }

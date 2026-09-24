@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assertNoSubmitProbeGuard, classifyNoSubmitProbeError } from '../src/theta/no-submit-probe-guard.js';
+import { assertNoSubmitProbeGuard, classifyNoSubmitProbeError,
+  isRetryableNoSubmitDatabaseFailure, runNoSubmitStageWithDeadline } from '../src/theta/no-submit-probe-guard.js';
 import type { Environment } from '../src/config/environment.js';
 
 const locked = {
@@ -34,6 +35,20 @@ test('the no-submit probe preserves precise safe database failure categories', (
     'NO_SUBMIT_PROBE_SCHEMA_064_REQUIRED');
   assert.equal(classifyNoSubmitProbeError(new Error('private unexpected failure')),
     'UNCLASSIFIED_NO_SUBMIT_FAILURE');
+});
+
+test('a wrapped safe connection category still enters GET-only database fallback', () => {
+  const wrapped=new Error('connection ended unexpectedly');
+  assert.equal(isRetryableNoSubmitDatabaseFailure(wrapped,'POSTGRES_CONNECTION_TERMINATED'),true);
+  assert.equal(isRetryableNoSubmitDatabaseFailure(new Error('query failed'),'POSTGRES_42P01'),false);
+  assert.equal(isRetryableNoSubmitDatabaseFailure(new Error('commit unknown'),'POSTGRES_COMMIT_OUTCOME_UNKNOWN'),false);
+});
+
+test('a stalled no-submit stage fails with a bounded typed timeout',async()=>{
+  await assert.rejects(runNoSubmitStageWithDeadline(new Promise<never>(()=>{}),5,
+    'NO_SUBMIT_PROBE_SHADOW_SCAN_TIMEOUT'),/NO_SUBMIT_PROBE_SHADOW_SCAN_TIMEOUT/);
+  await assert.rejects(runNoSubmitStageWithDeadline(Promise.resolve('ok'),0,'BAD'),
+    /NO_SUBMIT_PROBE_DEADLINE_CONFIGURATION_INVALID/);
 });
 
 test('the no-submit probe preserves decision-stage failure families without echoing provider detail', () => {

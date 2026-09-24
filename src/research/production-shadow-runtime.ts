@@ -244,7 +244,8 @@ const bridge=(environment:Environment):PythonBridgeConfig=>({
 
 export async function runProductionShadowEvidenceScan(input:{environment:Environment;pool:Pool;alpaca:AlpacaProviderConfig;
   executionAccountId?:string|null;reconciliation:BrokerReconciliationResult;now:()=>string;
-  readOnlyPreSubmitPreview?:boolean}):Promise<ProductionShadowScanReport>{
+  readOnlyPreSubmitPreview?:boolean;
+  scanScope?:'FULL_SHADOW_BREADTH'|'APPROVED_PAPER_BOOTSTRAP_ONLY'}):Promise<ProductionShadowScanReport>{
   if(input.environment.THETA_RUNTIME_MODE!=='MASTER_THETA_PAPER') throw new Error('MASTER_THETA_PAPER_RUNTIME_REQUIRED');
   if(input.readOnlyPreSubmitPreview===true&&(input.environment.MASTER_PAPER_EXECUTION_ENABLED
     ||input.environment.FOLLOWER_PAPER_EXECUTION_ENABLED||!input.environment.PAPER_PAUSE_NEW_ORDERS))
@@ -298,8 +299,13 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const scanOrdinal=Math.max(0,Math.floor(Date.parse(input.now())/60_000));
   const universeBreadthChallenger=buildUniverseBreadthShadowPlan(rankedSymbols,scanOrdinal);
   const discoveredApprovedSymbols=paperBootstrapAuthoritySymbols(rankedSymbols);
-  const scanSymbols=new Set([...universeBreadthChallenger.championSymbols,
-    ...universeBreadthChallenger.challengerSymbols.map((candidate)=>candidate.symbol),...discoveredApprovedSymbols]);
+  // Locked no-submit proof may prioritize the owner-approved Paper cohort.
+  // Normal worker operation retains full shadow breadth by default. Research
+  // breadth must not delay or poison the bounded SPY safety proof.
+  const scanSymbols=input.scanScope==='APPROVED_PAPER_BOOTSTRAP_ONLY'
+    ?new Set(discoveredApprovedSymbols)
+    :new Set([...universeBreadthChallenger.championSymbols,
+      ...universeBreadthChallenger.challengerSymbols.map((candidate)=>candidate.symbol),...discoveredApprovedSymbols]);
   const scanUnderlyingsRaw=discovery.candidates.filter((candidate)=>scanSymbols.has(candidate.symbol));
   const runtimeSafetyBlockers:string[]=[];
   let pendingUnsupportedSymbols=new Set<string>();

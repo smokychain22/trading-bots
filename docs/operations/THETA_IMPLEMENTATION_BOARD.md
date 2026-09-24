@@ -1,5 +1,30 @@
 # THETA implementation board
 
+## Database-resilient observation closure, 2026-09-24
+
+- CODE_COMPLETE/VERIFIED_SOURCE: a durable local SQLite WAL outbox now records
+  immutable, hash-chained observation checkpoints with source SHA, decision and
+  snapshot identity, provider timestamps, payload hashes, restart-safe
+  idempotency, and secret rejection. Local-only evidence is structurally unable
+  to authorize a broker mutation.
+- CODE_COMPLETE/VERIFIED_SOURCE: the GET-only no-submit fallback can continue
+  real Alpaca/Optionomics universe discovery, the canonical Q cycle, AEGIS,
+  sizing, decision evidence, and an exact selected-contract Alpaca refresh when
+  PostgreSQL is unavailable. It reports
+  `BLOCKED_CANONICAL_POSTGRES_REQUIRED`, never `no opportunity` or an approved
+  Paper plan.
+- CODE_COMPLETE/VERIFIED_SOURCE: migration 066 adds an immutable canonical
+  archive for local envelopes. Backfill verifies the local hash chain, source
+  SHA, canonical identity, ambiguous outcomes, and is idempotent. The Windows
+  supervisor backfills only after two healthy database probes.
+- VERIFIED: database failure injection covers ACCOUNT, CONTRACTS, QUOTES, Q,
+  EVENT, AEGIS, SIZING, DECISION, and PLAN. Required computation survives and
+  mutation remains blocked. Optional H/D shadow failure does not poison Q.
+- RELEASE_PENDING: migration 066 still requires the governed pre-migration
+  verified backup, Aiven migration/invariant proof, post-migration verified
+  backup, exact CI, immutable release, and locked single-worker observation.
+  No execution permission changed.
+
 ## V10 integration in progress, 2026-09-24
 
 - Replaced the adaptive receipt's unconditional `NO_COMPARISON` with an actual

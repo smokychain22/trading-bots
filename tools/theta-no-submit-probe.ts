@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { hostname } from 'node:os';
 import { Pool } from 'pg';
 import { z } from 'zod';
 import { loadEnvironmentFile } from '../src/config/environment.js';
@@ -7,7 +8,14 @@ import { AlpacaPaperBrokerAdapter } from '../src/execution/broker.js';
 import { asReadOnlyPaperBroker, assertShadowBrokerHasNoMutationSurface } from '../src/execution/read-only-paper-broker.js';
 import { PostgresBrokerReconciliationStore, runReadOnlyBrokerReconciliation } from '../src/execution/broker-reconciliation-worker.js';
 import { runProductionShadowEvidenceScan } from '../src/research/production-shadow-runtime.js';
-import { assertNoSubmitProbeGuard, classifyNoSubmitProbeError } from '../src/theta/no-submit-probe-guard.js';
+import { assertNoSubmitProbeGuard, classifyNoSubmitProbeError,
+  isRetryableNoSubmitDatabaseFailure, runNoSubmitStageWithDeadline } from '../src/theta/no-submit-probe-guard.js';
+import { LocalEvidenceSpool } from '../src/theta/local-evidence-spool.js';
+import { PostgresLocalEvidenceBackfillTarget } from '../src/theta/postgres-local-evidence-backfill.js';
+import { classifyPostgresRuntimeError } from '../src/theta/postgres-runtime-error.js';
+import { runDatabaseIndependentShadowObservation } from '../src/theta/database-independent-shadow-observation.js';
+import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment,
+  type PaperEntryBootstrapAssessment } from '../src/theta/paper-entry-bootstrap.js';
 
 const environmentFile = process.argv.find((argument) => argument.startsWith('--environment-file='))
   ?.slice('--environment-file='.length) ?? '.env.local';
@@ -17,12 +25,26 @@ if (!/^[0-9a-f]{40}$/.test(sourceSha)
   || execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim()) {
   throw new Error('NO_SUBMIT_PROBE_IMMUTABLE_SOURCE_REQUIRED');
 }
+const probeCycleId=`no-submit-${randomUUID()}`;
+let probeSnapshotId=`probe-${randomUUID()}`;
+const probeDecisionAsOf=new Date().toISOString();
+const probeWorkerId=`no-submit:${hostname().replace(/[^A-Za-z0-9_.-]/g,'_')}`;
+let spool:LocalEvidenceSpool|null=null;
+let spoolSequence=0;
+const spoolEvidence=(payloadType:string,payload:unknown,providerObservedAt:Readonly<Record<string,string|null>>={}):void=>{
+  spool?.append({decisionCycleId:probeCycleId,snapshotId:probeSnapshotId,decisionAsOf:probeDecisionAsOf,
+    sourceSha,workerId:probeWorkerId,sequenceNumber:spoolSequence++,payloadType,payload,providerObservedAt,
+    receivedAt:new Date().toISOString(),computedAt:new Date().toISOString()});
+};
 // Aiven may terminate a checked-out pg Client while another runtime module
 // owns it. Node treats an unhandled Client error as fatal even though the
 // Pool's idle-client listener exists. This diagnostic must fail closed with a
 // sanitized receipt, never crash with a raw connection stack or retry a scan.
 process.once('uncaughtException', (error: unknown) => {
   const errorCategory = classifyNoSubmitProbeError(error);
+  try{spoolEvidence('CYCLE_FAILED',{probeStage,errorCategory,brokerMutationAllowed:false});}catch{}
+  try{spool?.recordDatabaseFailure(new Date().toISOString(),false);}catch{}
+  try{spool?.close();}catch{}
   console.info(JSON.stringify({ state: 'FAILED_CLOSED', errorCategory,
     probeStage, sourceSha, brokerMutations: 0, orderSubmissions: 0 }));
   process.exit(1);
@@ -37,6 +59,7 @@ const environment = process.platform === 'win32' && loadedEnvironment.THETA_PYTH
 assertNoSubmitProbeGuard(environment);
 if (!environment.ALPACA_API_KEY || !environment.ALPACA_SECRET_KEY || !environment.DATABASE_URL)
   throw new Error('NO_SUBMIT_PROBE_REQUIRED_CONFIGURATION_MISSING');
+spool=new LocalEvidenceSpool();
 
 const broker = asReadOnlyPaperBroker(new AlpacaPaperBrokerAdapter({
   baseUrl: environment.ALPACA_BASE_URL as string,
@@ -58,21 +81,27 @@ const alpaca = {
 const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 2,
   connectionTimeoutMillis: 10_000, application_name: 'theta-no-submit-probe' });
 let poolConnectionFailed = false;
+let paperEntryBootstrap:PaperEntryBootstrapAssessment|undefined;
+let recoveryInventoryUnderlyingsForFallback:readonly string[]|undefined;
 // pg emits idle-client disconnects on the Pool itself. Without a listener,
 // a transient Aiven disconnect crashes this read-only diagnostic outside the
 // fail-closed receipt path.
 pool.on('error', () => { poolConnectionFailed = true; });
 
 try {
+  probeStage = 'BROKER_CLOCK_READ';
+  const clock = await broker.getClock();
+  spoolEvidence('ACCOUNT_READY',{marketOpen:clock.isOpen,brokerHost:'paper-api.alpaca.markets',brokerMutationAllowed:false},
+    {ALPACA:typeof clock.timestamp==='string'?clock.timestamp:null});
   probeStage = 'DATABASE_SCHEMA_READ';
   const migrations = await pool.query(`SELECT version FROM core.schema_migration
-    WHERE version IN ('064_alpaca_corporate_action_observation','065_aegis_iv_stress_evidence')
+    WHERE version IN ('064_alpaca_corporate_action_observation','065_aegis_iv_stress_evidence','066_local_observation_evidence')
     ORDER BY version`);
+  spool.recordDatabaseProbeSuccess(new Date().toISOString());
   if (!migrations.rows.some((row) => row.version === '064_alpaca_corporate_action_observation'))
     throw new Error('NO_SUBMIT_PROBE_SCHEMA_064_REQUIRED');
   const schema = migrations.rows.some((row) => row.version === '065_aegis_iv_stress_evidence') ? '065' : '064';
-  probeStage = 'BROKER_CLOCK_READ';
-  const clock = await broker.getClock();
+  const localEvidenceBackfillReady=migrations.rows.some((row)=>row.version==='066_local_observation_evidence');
   if (clock.isOpen !== true) {
     console.info(JSON.stringify({ state: clock.isOpen === false ? 'MARKET_CLOSED_NO_SCAN' : 'SESSION_UNCONFIRMED_NO_SCAN',
       sourceSha,
@@ -94,6 +123,13 @@ try {
       expectedProviderAccountRef: account.id,
       correlationId: `no-submit:${randomUUID()}`, now: () => new Date().toISOString(),
     });
+    // A reconciled flat broker account proves there is no recovery stock.
+    // Any non-flat state still needs canonical lifecycle linkage from DB.
+    recoveryInventoryUnderlyingsForFallback=reconciliation.positionCount===0?[]:undefined;
+    probeSnapshotId=reconciliation.snapshotId;
+    spoolEvidence('ACCOUNT_READY',{reconciliationState:reconciliation.dataQuality,positions:reconciliation.positionCount,
+      openOrders:reconciliation.openOrderCount,entryBlockingFactCount:reconciliation.entryBlockingFactCount,
+      brokerMutationAllowed:false},{ALPACA:reconciliation.providerTimestamp});
     if (reconciliation.dataQuality !== 'GOOD' || reconciliation.marketOpen !== true
       || !reconciliation.calendarSessionConfirmed || reconciliation.entryBlockingFactCount > 0
       || reconciliation.localOnlyIntentCount > 0) {
@@ -105,11 +141,25 @@ try {
         brokerMutations: 0, orderSubmissions: 0 }));
       process.exitCode = 1;
     } else {
+      paperEntryBootstrap=assessPaperEntryBootstrap({enabled:true,runtimeMode:environment.THETA_RUNTIME_MODE,
+        brokerEnvironment:classifyAlpacaBrokerEnvironment(alpaca.tradingApiBase),
+        accountStatus:reconciliation.accountStatus,reconciliationQuality:reconciliation.dataQuality,
+        localOnlyIntentCount:reconciliation.localOnlyIntentCount,
+        externalOrUnknownOrderCount:reconciliation.entryBlockingFactCount,
+        marketOpen:reconciliation.marketOpen,calendarSessionConfirmed:reconciliation.calendarSessionConfirmed,
+        followerExecutionEnabled:environment.FOLLOWER_PAPER_EXECUTION_ENABLED,liveMoneyAuthorized:false});
       probeStage = 'SHADOW_EVIDENCE_SCAN';
-      const scan = await runProductionShadowEvidenceScan({ environment, pool, alpaca,
+      const scan = await runNoSubmitStageWithDeadline(runProductionShadowEvidenceScan({ environment, pool, alpaca,
         reconciliation, executionAccountId: null, now: () => new Date().toISOString(),
-        readOnlyPreSubmitPreview: true });
+        readOnlyPreSubmitPreview: true, scanScope:'APPROVED_PAPER_BOOTSTRAP_ONLY' }),240_000,
+      'NO_SUBMIT_PROBE_SHADOW_SCAN_TIMEOUT');
       if (scan.actionPlansReady !== 0) throw new Error('NO_SUBMIT_PROBE_ACTION_PLAN_UNEXPECTED');
+      spoolEvidence('PLAN_READY',{scanId:scan.scanId,completeness:scan.completeness,candidateCount:scan.candidateCount,
+        symbolsAttempted:scan.symbolsAttempted,symbolsCompleted:scan.symbolsCompleted,
+        finalAction:scan.behaviorDiagnostic.finalAction,actionPlansReady:scan.actionPlansReady,
+        actionPlanBlockers:scan.actionPlansBlocked,readOnlyPreSubmitProofs:scan.readOnlyPreSubmitProofs,
+        brokerMutationAllowed:false});
+      if(localEvidenceBackfillReady)await spool.backfill(new PostgresLocalEvidenceBackfillTarget(pool),sourceSha);
       console.info(JSON.stringify({ state: poolConnectionFailed ? 'DATABASE_CONNECTION_LOST_NO_SUBMIT'
         : 'CURRENT_SOURCE_NO_SUBMIT_SCAN_COMPLETED', schema, sourceSha,
         completeness: scan.completeness, symbolsAttempted: scan.symbolsAttempted,
@@ -126,9 +176,61 @@ try {
   }
 } catch (error) {
   const category = classifyNoSubmitProbeError(error);
-  console.info(JSON.stringify({ state: 'FAILED_CLOSED', errorCategory: category, probeStage, sourceSha,
-    brokerMutations: 0, orderSubmissions: 0 }));
-  process.exitCode = 1;
+  const databaseFailure=classifyPostgresRuntimeError(error);
+  if(databaseFailure.retryableRead||isRetryableNoSubmitDatabaseFailure(error,category)){
+    spool?.recordDatabaseFailure(new Date().toISOString(),false);
+    try{
+      probeStage='DATABASE_INDEPENDENT_PROVIDER_OBSERVATION';
+      const local=await runDatabaseIndependentShadowObservation({environment,alpaca,paperEntryBootstrap,
+        recoveryInventoryUnderlyings:recoveryInventoryUnderlyingsForFallback,
+        now:()=>new Date().toISOString()});
+      spoolEvidence('CONTRACTS_READY',{universeFunnel:local.universeFunnel,universeBlockers:local.universeBlockers,
+        approvedSymbolsDiscovered:local.approvedSymbolsDiscovered,brokerMutationAllowed:false});
+      for(const symbol of local.symbols){
+        spoolEvidence('QUOTES_READY',{symbol:symbol.symbol,optionContractsComplete:symbol.optionContractsComplete,
+          optionChainComplete:symbol.optionChainComplete,exactRefresh:symbol.exactRefresh,brokerMutationAllowed:false},
+        {ALPACA:symbol.exactRefresh.providerTimestamp});
+        spoolEvidence('Q_READY',{symbol:symbol.symbol,qCandidateCount:symbol.qCandidateCount,qDecision:symbol.qDecision,
+          qReasonCodes:symbol.qReasonCodes,qCandidates:symbol.qCandidates,
+          frontierCandidates:symbol.frontierCandidates,blockers:symbol.blockers,brokerMutationAllowed:false});
+        spoolEvidence('AEGIS_READY',{symbol:symbol.symbol,aegisState:symbol.aegisState,
+          evidenceState:symbol.state,brokerMutationAllowed:false});
+        spoolEvidence('SIZING_READY',{symbol:symbol.symbol,selectedQuantity:symbol.selectedQuantity,
+          bindingState:symbol.selectedQuantity>0?'POSITIVE_BUT_MUTATION_BLOCKED':'ZERO_OR_NO_SELECTION',brokerMutationAllowed:false});
+        spoolEvidence('DECISION_READY',{symbol:symbol.symbol,canonicalAction:symbol.canonicalAction,
+          selectedCandidateId:symbol.selectedCandidateId,selectedOptionSymbol:symbol.selectedOptionSymbol,
+          canonicalPersistence:false,brokerMutationAllowed:false});
+      }
+      spoolEvidence('PLAN_READY',{planState:'BLOCKED_CANONICAL_POSTGRES_REQUIRED',
+        brokerMutationCapability:local.brokerMutationCapability,brokerMutationAllowed:false});
+      console.info(JSON.stringify({state:'DATABASE_UNAVAILABLE_LOCAL_OBSERVATION_COMPLETED',errorCategory:category,
+        probeStage,sourceSha,approvedSymbolsDiscovered:local.approvedSymbolsDiscovered,
+        symbolStates:local.symbols.map((symbol)=>({symbol:symbol.symbol,state:symbol.state,
+          canonicalAction:symbol.canonicalAction,selectedQuantity:symbol.selectedQuantity,
+          exactRefreshState:symbol.exactRefresh.state})),brokerMutations:0,orderSubmissions:0}));
+      process.exitCode=0;
+    }catch(localError){
+      const localCategory=classifyNoSubmitProbeError(localError);
+      try{spoolEvidence('CYCLE_FAILED',{probeStage,errorCategory:localCategory,brokerMutationAllowed:false});}catch{}
+      console.info(JSON.stringify({state:'FAILED_CLOSED',errorCategory:localCategory,probeStage,sourceSha,
+        brokerMutations:0,orderSubmissions:0}));
+      process.exitCode=1;
+    }
+  }else{
+    try{spoolEvidence('CYCLE_FAILED',{probeStage,errorCategory:category,brokerMutationAllowed:false});}catch{}
+    console.info(JSON.stringify({ state: 'FAILED_CLOSED', errorCategory: category, probeStage, sourceSha,
+      brokerMutations: 0, orderSubmissions: 0 }));
+    process.exitCode = 1;
+  }
 } finally {
-  await pool.end().catch(() => { process.exitCode = 1; });
+  // A timed-out provider/database task may still own a checked-out client.
+  // Give the pool a short graceful-close window, then terminate this
+  // physically read-only diagnostic process.
+  await Promise.race([pool.end().catch(() => { process.exitCode = 1; }),
+    new Promise<void>((resolve)=>setTimeout(resolve,5_000))]);
+  spool?.close();
 }
+// This is a bounded diagnostic CLI. A timed-out provider or Python operation
+// may still own an internal handle even after its evidence deadline elapsed.
+// All synchronous evidence is durable and the pool is closed before exit.
+process.exit(process.exitCode??0);

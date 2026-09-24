@@ -56,6 +56,9 @@ export function optionomicsConfigFromEnvironment(environment: ReturnType<typeof 
 // production-optimal (same discipline as every other policy default in
 // this repo). A real deployment should supply its own versioned policy
 // records; these exist so this entrypoint is runnable at all.
+export const shadowHistoryAcquisitionPolicyVersion = 'theta-history-acquisition-v2-ma200';
+export const defaultOwnershipHistoryCalendarDays = 400;
+
 export function defaultShadowCycleConfig(
   alpaca: AlpacaProviderConfig,
   optionomics: OptionomicsProviderConfig | null,
@@ -64,7 +67,13 @@ export function defaultShadowCycleConfig(
   universeCandidatesOrigin: ProvenanceOrigin,
 ): ThetaShadowCycleConfig {
   const now = new Date().toISOString();
-  const historyStart = new Date(Date.now() - 120 * 86_400_000).toISOString();
+  // StructuralQuality requires MA200. A 120-calendar-day request can never
+  // contain 200 trading sessions, so it made the ownership assessment
+  // structurally UNKNOWN even when Alpaca history was healthy. Request a
+  // bounded 400-calendar-day window and record the acquisition policy in the
+  // model-version lineage. This changes evidence availability only, not any
+  // strategy, safety, sizing, or execution threshold.
+  const historyStart = new Date(Date.now() - defaultOwnershipHistoryCalendarDays * 86_400_000).toISOString();
   // The canonical THETA_CONVENTIONAL gate remains 25-60 DTE. Fetch a
   // narrow five-day observation band on either side so research can measure
   // DTE-edge missed opportunities without granting those contracts broker
@@ -119,7 +128,9 @@ export function defaultShadowCycleConfig(
     candidateQuoteAgePolicy: { policyVersion: 'candidate-quote-age-v1-paper-bootstrap', effectiveAt: now, maxAgeSeconds: 30 },
     finalistQuoteRefreshPolicy: { policyVersion: 'finalist-quote-refresh-v1-paper-bootstrap', effectiveAt: now, maxFinalists: 5, maxAgeSeconds: 30 },
     optionQuoteFreshnessPolicy: { policyVersion: 'freshness-v1-shadow-once', goodMaxAgeSeconds: 10, staleMinAgeSeconds: 60 },
-    policyVersion: 'theta-shadow-once-v1', modelVersions: {}, requiredModelVersions: {},
+    policyVersion: 'theta-shadow-once-v1',
+    modelVersions: { historyAcquisition: shadowHistoryAcquisitionPolicyVersion },
+    requiredModelVersions: {},
     now: () => new Date().toISOString(),
   };
 }

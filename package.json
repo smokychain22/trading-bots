@@ -58,6 +58,7 @@
     "theta:research-analyze:historical-replay": "node --import tsx tools/summarize-historical-replay.ts",
     "theta:performance:current": "node --import tsx tools/theta-current-performance-receipt.ts --environment-file=.env.local",
     "theta:evidence:durable": "node tools/write-local-durable-evidence.mjs research_exports/latest .theta-local-worker/evidence",
+    "theta:evidence:backfill": "node --import tsx tools/theta-local-evidence-backfill.ts --environment-file=.env.local",
     "theta:first-order-preflight": "node --import tsx tools/theta-first-order-preflight.ts",
     "theta:no-submit:probe": "node --import tsx tools/theta-no-submit-probe.ts --environment-file=.env.local",
     "optionomics:quote-qualification": "node --env-file=.env.local --import tsx tools/optionomics-quote-qualification.ts",

@@ -136,3 +136,13 @@ test('candidate scan timestamp advances only for a real complete or partial evid
   assert.equal(completedCandidateEvidenceScan(report('SKIPPED','MARKET_CLOSED_NO_SHADOW_EVIDENCE')),false);
   assert.equal(completedCandidateEvidenceScan(report('DEGRADED','OPTION_MARKET_SESSION_UNCONFIRMED')),false);
 });
+
+test('Windows worker spools a read-only probe during database loss and backfills only after recovery',async()=>{
+  const source=await readFile('tools/windows/theta-local-worker.ps1','utf8');
+  assert.match(source,/RUNTIME_EVIDENCE_CYCLE/);
+  assert.match(source,/theta-no-submit-probe\.ts/);
+  assert.match(source,/databaseRecoverySuccesses -ge 2/);
+  assert.match(source,/theta-local-evidence-backfill\.ts/);
+  assert.doesNotMatch(source,/MASTER_PAPER_EXECUTION_ENABLED\s*=\s*true/i);
+  assert.doesNotMatch(source,/FOLLOWER_PAPER_EXECUTION_ENABLED\s*=\s*true/i);
+});
