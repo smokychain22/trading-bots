@@ -45,6 +45,10 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /compact-local-research-spool\.py/);
   assert.match(source, /localResearchArchiveState/);
   assert.match(source, /localResearchParquetState/);
+  assert.match(source, /localResearchTransferQuotaState/);
+  assert.match(source, /localResearchArchiveNextRetryAt/);
+  assert.match(source, /archive-health\.json/);
+  assert.match(source, /--health-only/);
   assert.match(source, /research-archives/);
   assert.match(source, /import duckdb/);
   assert.match(source, /DEPENDENCY_UNAVAILABLE_NONCRITICAL/);

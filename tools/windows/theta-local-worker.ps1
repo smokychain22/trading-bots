@@ -303,22 +303,38 @@ try {
         'DEFERRED_MARKET_CRITICAL'
       } else { 'NOT_ATTEMPTED' }
       $localResearchArchiveRows = 0
+      $localResearchArchiveFailureFamily = $null
+      $localResearchTransferQuotaState = 'TRANSFER_QUOTA_OPEN'
+      $localResearchArchiveNextRetryAt = $null
+      $localResearchSpoolRows = 0
+      $localResearchPendingCompactionRows = 0
+      $localResearchParquetFiles = 0
+      $localResearchLastManifestHash = $null
+      $localResearchDuckdbVerification = 'NOT_AVAILABLE'
       $localResearchParquetState = if ($report.reconciliation.marketOpen -eq $true) {
         'DEFERRED_MARKET_CRITICAL'
       } else { 'NOT_ATTEMPTED' }
       if ($report.reconciliation.marketOpen -ne $true) {
         $researchSpoolPath = Join-Path $stateRoot 'research-spool\theta-research.sqlite'
+        $researchArchiveHealthPath = Join-Path $stateRoot 'research-spool\archive-health.json'
+        $researchParquetRoot = 'C:\ProjectBackups\trading-bots\research-archives'
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
           $archiveOutput = & node --import tsx tools/archive-canonical-strategy-frontiers.ts `
             "--environment-file=$productionEnvFile" "--sqlite=$researchSpoolPath" `
+            "--health=$researchArchiveHealthPath" "--parquet-root=$researchParquetRoot" `
             "--since=$($runtime.installedAt)" "--source-sha=$($runtime.buildSha)" --limit=10000
           $archiveExit = $LASTEXITCODE
           if ($archiveExit -eq 0) {
             $archiveResult = $archiveOutput | ConvertFrom-Json
             $localResearchArchiveState = [string]$archiveResult.state
             $localResearchArchiveRows = [int]$archiveResult.researchRowCount
+            if ($null -ne $archiveResult.health) {
+              $localResearchArchiveFailureFamily = [string]$archiveResult.health.failureFamily
+              $localResearchTransferQuotaState = [string]$archiveResult.health.transferQuotaState
+              $localResearchArchiveNextRetryAt = [string]$archiveResult.health.nextRetryAt
+            }
           } else { $localResearchArchiveState = 'FAILED_NONCRITICAL' }
           $compactorPython = Join-Path $RepositoryPath '.venv\Scripts\python.exe'
           if (!(Test-Path -LiteralPath $compactorPython)) { $compactorPython = 'python' }
@@ -329,13 +345,27 @@ try {
           }
           if ($LASTEXITCODE -eq 0) {
             $parquetOutput = & $compactorPython tools/compact-local-research-spool.py `
-              "--sqlite=$researchSpoolPath" "--destination=C:\ProjectBackups\trading-bots\research-archives" --limit=1000
+              "--sqlite=$researchSpoolPath" "--destination=$researchParquetRoot" --limit=1000
             $parquetExit = $LASTEXITCODE
             if ($parquetExit -eq 0) {
               $parquetResult = $parquetOutput | ConvertFrom-Json
               $localResearchParquetState = [string]$parquetResult.state
             } else { $localResearchParquetState = 'FAILED_NONCRITICAL' }
           } else { $localResearchParquetState = 'DEPENDENCY_UNAVAILABLE_NONCRITICAL' }
+          $healthOutput = & node --import tsx tools/archive-canonical-strategy-frontiers.ts `
+            "--sqlite=$researchSpoolPath" "--health=$researchArchiveHealthPath" `
+            "--parquet-root=$researchParquetRoot" --health-only
+          if ($LASTEXITCODE -eq 0) {
+            $healthResult = $healthOutput | ConvertFrom-Json
+            $localResearchSpoolRows = [int]$healthResult.health.spoolRows
+            $localResearchPendingCompactionRows = [int]$healthResult.health.pendingCompactionRows
+            $localResearchParquetFiles = [int]$healthResult.health.parquetFiles
+            $localResearchLastManifestHash = [string]$healthResult.health.lastManifestHash
+            $localResearchDuckdbVerification = [string]$healthResult.health.duckdbVerification
+            $localResearchArchiveFailureFamily = [string]$healthResult.health.failureFamily
+            $localResearchTransferQuotaState = [string]$healthResult.health.transferQuotaState
+            $localResearchArchiveNextRetryAt = [string]$healthResult.health.nextRetryAt
+          }
         } catch {
           if ($localResearchArchiveState -eq 'NOT_ATTEMPTED') { $localResearchArchiveState = 'FAILED_NONCRITICAL' }
           if ($localResearchParquetState -eq 'NOT_ATTEMPTED') { $localResearchParquetState = 'FAILED_NONCRITICAL' }
@@ -365,6 +395,14 @@ try {
         storageAuditState=$storageAuditState;
         localResearchArchiveState=$localResearchArchiveState;localResearchArchiveRows=$localResearchArchiveRows;
         localResearchParquetState=$localResearchParquetState;
+        localResearchArchiveFailureFamily=$localResearchArchiveFailureFamily;
+        localResearchTransferQuotaState=$localResearchTransferQuotaState;
+        localResearchArchiveNextRetryAt=$localResearchArchiveNextRetryAt;
+        localResearchSpoolRows=$localResearchSpoolRows;
+        localResearchPendingCompactionRows=$localResearchPendingCompactionRows;
+        localResearchParquetFiles=$localResearchParquetFiles;
+        localResearchLastManifestHash=$localResearchLastManifestHash;
+        localResearchDuckdbVerification=$localResearchDuckdbVerification;
         localReceiptState=$localReceiptState;localReceiptHash=$localReceiptHash;
         localEvidenceState=$localEvidenceState;localEvidenceHash=$localEvidenceHash} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8

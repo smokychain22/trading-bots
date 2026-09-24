@@ -1,6 +1,7 @@
 export type PostgresRuntimeErrorClass =
   | 'TRANSIENT_CONNECTION' | 'TRANSIENT_SERVER_UNAVAILABLE'
-  | 'TRANSACTION_ABORTED' | 'CONSTRAINT_ERROR' | 'QUERY_ERROR'
+  | 'TRANSACTION_ABORTED' | 'CONSTRAINT_ERROR' | 'QUERY_ERROR' | 'QUERY_TIMEOUT'
+  | 'RESOURCE_QUOTA' | 'READ_ONLY'
   | 'AUTH_ERROR' | 'UNKNOWN_DATABASE_ERROR';
 
 export interface PostgresRuntimeErrorClassification {
@@ -9,7 +10,7 @@ export interface PostgresRuntimeErrorClassification {
   readonly retryableRead: boolean;
 }
 
-const connectionCodes = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE']);
+const connectionCodes = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE', 'EAI_AGAIN']);
 const connectionMessages = /(?:socket hang up|connection terminated|server closed the connection unexpectedly|SSL.*EOF|connection ended unexpectedly)/i;
 
 /** Never include a provider message in a receipt: it can contain a connection URL. */
@@ -25,6 +26,15 @@ export function classifyPostgresRuntimeError(error: unknown): PostgresRuntimeErr
   };
   if (code === '57P03' || code === '57P01') return {
     errorClass: 'TRANSIENT_SERVER_UNAVAILABLE', safeCode: `POSTGRES_${code}`, retryableRead: true,
+  };
+  if (code === '57014') return {
+    errorClass: 'QUERY_TIMEOUT', safeCode: 'POSTGRES_57014', retryableRead: true,
+  };
+  if (/^53[0-9A-Z]{3}$/.test(code)) return {
+    errorClass: 'RESOURCE_QUOTA', safeCode: `POSTGRES_${code}`, retryableRead: false,
+  };
+  if (code === '25006') return {
+    errorClass: 'READ_ONLY', safeCode: 'POSTGRES_25006', retryableRead: false,
   };
   if (code.startsWith('08') && /^[0-9A-Z]{5}$/.test(code)) return {
     errorClass: 'TRANSIENT_CONNECTION', safeCode: `POSTGRES_${code}`, retryableRead: true,

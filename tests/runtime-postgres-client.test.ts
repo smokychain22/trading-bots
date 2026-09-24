@@ -26,8 +26,17 @@ const poolOf = (...clients: FakeClient[]): Pool => {
 test('Postgres classifier distinguishes temporary availability from permanent SQL and auth faults', () => {
   assert.equal(classifyPostgresRuntimeError({ code: '57P03' }).errorClass, 'TRANSIENT_SERVER_UNAVAILABLE');
   assert.equal(classifyPostgresRuntimeError({ code: '57P01' }).retryableRead, true);
+  assert.deepEqual(classifyPostgresRuntimeError({ code: '57014' }), {
+    errorClass: 'QUERY_TIMEOUT', safeCode: 'POSTGRES_57014', retryableRead: true,
+  });
+  assert.deepEqual(classifyPostgresRuntimeError({ code: '53000' }), {
+    errorClass: 'RESOURCE_QUOTA', safeCode: 'POSTGRES_53000', retryableRead: false,
+  });
+  assert.equal(classifyPostgresRuntimeError({ code: '25006' }).errorClass, 'READ_ONLY');
   assert.equal(classifyPostgresRuntimeError({ code: '08006' }).retryableRead, true);
   assert.equal(classifyPostgresRuntimeError({ code: 'ECONNRESET' }).errorClass, 'TRANSIENT_CONNECTION');
+  assert.equal(classifyPostgresRuntimeError({ code: 'EAI_AGAIN' }).safeCode, 'POSTGRES_EAI_AGAIN');
+  assert.equal(classifyPostgresRuntimeError({ code: '53300' }).errorClass, 'RESOURCE_QUOTA');
   assert.equal(classifyPostgresRuntimeError(new Error('SSL EOF; secret=never-print')).safeCode, 'POSTGRES_CONNECTION_TERMINATED');
   assert.equal(classifyPostgresRuntimeError({ code: '23505' }).retryableRead, false);
   assert.equal(classifyPostgresRuntimeError({ code: '42601' }).retryableRead, false);
@@ -56,6 +65,20 @@ test('read retry uses a new client only for a transient failure', async () => {
   await assert.rejects(withRuntimePostgresReadRetry(poolOf(invalid), (client) => client.query('SELECT 1'),
     { delayMs: () => 0 }), { code: '42601' });
   assert.deepEqual(invalid.releases, [false]);
+});
+
+test('query timeout retries reads once while transfer quota and read-only failures do not loop', async () => {
+  const timedOut = new FakeClient('SELECT bounded', { code: '57014' });
+  const recovered = new FakeClient();
+  const receipt = await withRuntimePostgresReadRetry(poolOf(timedOut, recovered),
+    (client) => client.query('SELECT bounded'), { maximumAttempts: 2, delayMs: () => 0 });
+  assert.equal(receipt.attemptCount, 2);
+  for (const code of ['53000', '25006']) {
+    const failed = new FakeClient('SELECT bulk', { code });
+    await assert.rejects(withRuntimePostgresReadRetry(poolOf(failed, new FakeClient()),
+      (client) => client.query('SELECT bulk'), { maximumAttempts: 3, delayMs: () => 0 }), { code });
+    assert.equal(failed.queries.filter((sql) => sql === 'SELECT bulk').length, 1);
+  }
 });
 
 test('transaction rolls back a pre-commit failure without retrying the write', async () => {

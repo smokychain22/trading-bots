@@ -6,6 +6,12 @@ import { classifyPostgresRuntimeError } from './postgres-runtime-error.js';
 export function classifyNoSubmitProbeError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
   if (/^[A-Z0-9_]{3,100}$/.test(message)) return message;
+  const code = error !== null && typeof error === 'object' && 'code' in error
+    ? String(error.code).toUpperCase() : '';
+  // Preserve the established target-level DNS category in operator receipts.
+  // The shared runtime classifier still treats EAI_AGAIN as a transient
+  // connection error for bounded read retry and broken-client disposal.
+  if (code === 'EAI_AGAIN') return 'DATABASE_DNS_EAI_AGAIN';
   const postgres = classifyPostgresRuntimeError(error);
   if (postgres.safeCode !== 'POSTGRES_UNKNOWN_ERROR') return postgres.safeCode;
   const database = classifyDatabaseTargetError(error);
@@ -26,8 +32,6 @@ export function classifyNoSubmitProbeError(error: unknown): string {
     return 'PAPER_PLAN_FAILURE';
   if (/ZODERROR|VALIDATION|MALFORMED RESPONSE|RESPONSE INVALID/.test(normalized))
     return 'PROVIDER_RESPONSE_VALIDATION_FAILURE';
-  const code = error !== null && typeof error === 'object' && 'code' in error
-    ? String(error.code).toUpperCase() : '';
   if (/FETCH|NETWORK|SOCKET|TIMEOUT|HTTP|ALPACA|OPTIONOMICS/.test(normalized)
     || /ECONNRESET|ECONNREFUSED|ETIMEDOUT|UND_ERR/.test(code)) return 'PROVIDER_TRANSPORT_FAILURE';
   return 'UNCLASSIFIED_NO_SUBMIT_FAILURE';
