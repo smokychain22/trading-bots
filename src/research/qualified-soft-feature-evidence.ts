@@ -12,7 +12,7 @@
  * at this stage, per this wave's explicit instruction.
  */
 
-export const qualifiedSoftFeatureEvidenceVersion = 'theta-qualified-soft-feature-evidence-v1' as const;
+export const qualifiedSoftFeatureEvidenceVersion = 'theta-qualified-soft-feature-evidence-v2' as const;
 
 export type QualifiedFeatureId = 'ATM_IV' | 'RV20' | 'VRP20';
 
@@ -36,6 +36,8 @@ export interface QualifiedSoftFeatureEvidence {
   readonly qualityState: QualityState;
   readonly decisionRole: DecisionRole;
   readonly empiricalStatus: EmpiricalStatus;
+  readonly pitEvidence: { readonly decisionAt: string; readonly providerKnownAt: string;
+    readonly thetaFirstObservedAt: string; readonly evidenceId: string; readonly payloadHash: string } | null;
 }
 
 /** Fixed, real per-feature provenance -- never invented per call site. */
@@ -53,9 +55,8 @@ const FEATURE_REGISTRY: Readonly<Record<QualifiedFeatureId, {
  * this observation) -- this function never substitutes a default. Every
  * one of the 3 currently-qualified features gets `decisionRole:
  * 'SOFT_RANKER'` and `empiricalStatus: 'EMPIRICALLY_UNPROVEN'` at
- * construction -- the caller may only escalate `empiricalStatus` to
- * `SUPPORTED_OOS`/`REJECTED` by passing real R8 evidence, never a
- * default assumption.
+ * construction. Empirical promotion belongs to a separately governed
+ * study and cannot be asserted by a caller of this feature builder.
  */
 export function buildQualifiedSoftFeatureEvidence(input: {
   readonly featureId: QualifiedFeatureId;
@@ -65,19 +66,40 @@ export function buildQualifiedSoftFeatureEvidence(input: {
   readonly requestedDate: string | null;
   readonly servedDate: string | null;
   readonly empiricalStatus?: EmpiricalStatus;
+  readonly pitEvidence?: QualifiedSoftFeatureEvidence['pitEvidence'];
 }): QualifiedSoftFeatureEvidence {
   if (!Number.isFinite(Date.parse(input.observedAt))) throw new Error('INVALID_OBSERVED_AT');
   if (input.value !== null && !Number.isFinite(input.value)) throw new Error('INVALID_FEATURE_VALUE');
+  if (input.validThrough !== null && (!Number.isFinite(Date.parse(input.validThrough))
+    || Date.parse(input.validThrough) < Date.parse(input.observedAt))) throw new Error('INVALID_VALID_THROUGH');
+  if (input.empiricalStatus !== undefined && input.empiricalStatus !== 'EMPIRICALLY_UNPROVEN') {
+    throw new Error('EMPIRICAL_PROMOTION_REQUIRES_GOVERNED_STUDY_NOT_FEATURE_BUILDER');
+  }
+  for (const date of [input.requestedDate, input.servedDate]) {
+    if (date !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date))
+      || new Date(date).toISOString().slice(0, 10) !== date)) throw new Error('INVALID_FEATURE_SESSION');
+  }
+  const pit = input.pitEvidence ?? null;
+  if (pit !== null && (!pit.evidenceId.trim() || !/^[a-f0-9]{64}$/.test(pit.payloadHash)
+    || [pit.decisionAt, pit.providerKnownAt, pit.thetaFirstObservedAt].some((at) => !Number.isFinite(Date.parse(at))))) {
+    throw new Error('INVALID_FEATURE_PIT_EVIDENCE');
+  }
+  const pitValid = pit !== null && Date.parse(pit.providerKnownAt) <= Date.parse(input.observedAt)
+    && Date.parse(pit.thetaFirstObservedAt) <= Date.parse(input.observedAt)
+    && Date.parse(input.observedAt) <= Date.parse(pit.decisionAt)
+    && input.validThrough !== null && Date.parse(pit.decisionAt) <= Date.parse(input.validThrough);
   const meta = FEATURE_REGISTRY[input.featureId];
   const requestedServedMismatch = input.requestedDate !== null && input.servedDate !== null && input.requestedDate !== input.servedDate;
   const pitState: PitState = input.value === null ? 'UNKNOWN_PIT'
     : requestedServedMismatch ? 'PIT_UNSAFE'
-      : input.requestedDate !== null && input.servedDate !== null ? 'PIT_SAFE' : 'CURRENT_ONLY';
+      : pit !== null ? pitValid ? 'PIT_SAFE' : 'PIT_UNSAFE'
+        : input.requestedDate !== null || input.servedDate !== null ? 'UNKNOWN_PIT' : 'CURRENT_ONLY';
   return {
     featureId: input.featureId, value: input.value, unit: meta.unit, provider: 'OPTIONOMICS',
     providerField: meta.providerField, observedAt: input.observedAt, validThrough: input.validThrough,
     requestedDate: input.requestedDate, servedDate: input.servedDate, methodologyVersion: meta.methodologyVersion,
     pitState, qualityState: 'PROVIDER_QUALIFIED', decisionRole: 'SOFT_RANKER',
     empiricalStatus: input.empiricalStatus ?? 'EMPIRICALLY_UNPROVEN',
+    pitEvidence: pit,
   };
 }

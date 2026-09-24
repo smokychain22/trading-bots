@@ -2,7 +2,7 @@ import { entryModelFamilies } from '../research/theta-entry-model-readiness.js';
 import { canonicalV7ProfitTakingPolicies } from '../research/profit-taking-experiment.js';
 import { canonicalThetaStrategySources, thetaFeatureFamily, thetaHardRule, thetaStrategyAction } from './strategy-package.js';
 
-export const profitabilityBrainRealityVersion = 'theta-profitability-brain-reality-v1' as const;
+export const profitabilityBrainRealityVersion = 'theta-profitability-brain-reality-v2' as const;
 
 export type RealityLevel = 'L0_ABSENT' | 'L1_TYPED_CONTRACT' | 'L2_SOURCE_IMPLEMENTED'
   | 'L3_DETERMINISTIC_TESTED' | 'L4_CANONICAL_INTEGRATED' | 'L5_PERSISTED'
@@ -74,10 +74,13 @@ export const profitabilityBrainMethodRegistry: readonly ProfitabilityBrainMethod
   method('Q_STRUCTURAL_ECONOMIC_DECISION', 'ECONOMICS', 'PRODUCTION_LOCKED', 6,
     ['bots/theta/quant/models/theta_q_baseline.py', 'src/theta/decision-assembly.ts'],
     'Expected after-cost EV remains unavailable until resolved whole-chain outcomes exist.'),
-  method('CROSS_STRATEGY_COMMON_HORIZON_COMPARATOR', 'ECONOMICS', 'SHADOW', 4,
+  method('CROSS_STRATEGY_COMMON_HORIZON_COMPARATOR', 'ECONOMICS', 'SHADOW', 6,
     ['src/research/cross-strategy-common-horizon-contract.ts', 'src/theta/canonical-shadow-comparison.ts',
       'src/theta/canonical-strategy-frontier.ts', 'src/theta/postgres-theta-cycle-store.ts'],
     'No calibrated common-horizon Q/H/D utility or sufficient independent OOS outcomes.'),
+  method('ADAPTIVE_SHADOW_STRUCTURE_COMPARISON', 'SELECTION', 'SHADOW', 6,
+    ['src/theta/adaptive-decision-brain.ts', 'src/theta/canonical-shadow-comparison.ts', 'src/theta/postgres-theta-cycle-store.ts'],
+    'Structural Pareto comparison is reachable and persistence-tested, but not a learned economic strategy switch.'),
   method('ADAPTIVE_ECONOMIC_STRATEGY_SWITCHING', 'SELECTION', 'RESEARCH_ONLY', 1,
     ['src/theta/adaptive-decision-brain.ts'],
     'Only an applicability router and a non-authoritative utility contract exist. No adaptive switching policy is implemented.'),
@@ -94,9 +97,18 @@ export const profitabilityBrainMethodRegistry: readonly ProfitabilityBrainMethod
     'Forward continuation EV, tail distribution, and opportunity-cost coefficients are empirically unproven.'),
   method('LOSS_ACTION_COMMON_HORIZON_COMPARATOR', 'MANAGEMENT', 'RESEARCH_ONLY', 3,
     ['src/research/loss-roll-experiment.ts']),
-  method('PROFIT_TAKING_CHALLENGER_GRID', 'MANAGEMENT', 'RESEARCH_ONLY', 3,
+  method('PROFIT_TAKING_CHALLENGER_GRID', 'MANAGEMENT', 'RESEARCH_ONLY', 4,
     ['src/research/profit-taking-experiment.ts', 'src/research/profit-taking-replay.ts', 'tools/theta-profit-taking-replay.ts'],
     'Offline dispatcher executes all 17 policies. Real managed episodes and calibrated continuation forecasts remain required.'),
+  method('WHOLE_CHAIN_RESEARCH_DATASET', 'LEARNING', 'RESEARCH_ONLY', 5,
+    ['bots/theta/quant/research/whole_chain_dataset.py', 'bots/theta/quant/research/empirical_pipeline.py'],
+    'Explicit chain evidence is materialized and persisted. Entry-feature linkage and resolved real episodes remain required.'),
+  method('CONTROLLED_OUTCOME_EXPERIMENT_EXECUTION', 'LEARNING', 'RESEARCH_ONLY', 5,
+    ['bots/theta/quant/research/controlled_experiment.py', 'bots/theta/quant/research/empirical_pipeline.py'],
+    'Paired outcome analysis is executable and persisted. Treatment replay and real paired exports are not yet automatic.'),
+  method('PURGED_CALIBRATION_VALIDATION_EXECUTION', 'LEARNING', 'RESEARCH_ONLY', 5,
+    ['bots/theta/quant/research/validation.py', 'bots/theta/quant/research/validation_experiment.py'],
+    'Offline calibration and forward metrics execute from identified predictions. Base-model training and dataset-bound joins remain separate.'),
   method('WHOLE_CHAIN_ACCOUNTING', 'ACCOUNTING', 'PRODUCTION_LOCKED', 6,
     ['src/theta/whole-chain-economics.ts', 'src/theta/postgres-whole-chain-components-repository.ts']),
   method('TRANSACTION_COST_ANALYSIS', 'EXECUTION', 'PRODUCTION_LOCKED', 6,

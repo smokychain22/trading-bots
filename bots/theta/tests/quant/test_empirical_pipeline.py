@@ -190,18 +190,20 @@ class DescriptiveOnlyTests(unittest.TestCase):
 
 
 class ReadinessNeverBypassedTests(unittest.TestCase):
-    def test_sufficient_thresholds_reach_model_fit_but_not_walk_forward(self):
+    def test_candidate_scan_thresholds_cannot_establish_labeled_model_fit_readiness(self):
         result = run_theta_empirical_pipeline(_build_export(), _config(), _thresholds())
-        self.assertEqual(result.readiness_state, DatasetReadinessState.MODEL_FIT_ELIGIBLE)
-        self.assertIn("ENTRY-LOGIT-01", result.eligible_experiments)
+        self.assertEqual(result.readiness_state, DatasetReadinessState.DESCRIPTIVE_AUDIT_ONLY)
+        self.assertNotIn("ENTRY-LOGIT-01", result.eligible_experiments)
+        self.assertIn('RESOLVED_FEATURE_LABEL_JOIN_REQUIRED', result.sufficiency.reasons)
         self.assertNotIn("ABLATE-VOLATILITY", result.eligible_experiments)
 
-    def test_walk_forward_flag_unlocks_ablations_only_when_plan_is_valid(self):
+    def test_unverified_walk_forward_flag_does_not_unlock_ablations(self):
         result = run_theta_empirical_pipeline(
             _build_export(), _config(), _thresholds(), walk_forward_plan_valid=True,
         )
-        self.assertEqual(result.readiness_state, DatasetReadinessState.WALK_FORWARD_ELIGIBLE)
-        self.assertIn("ABLATE-VOLATILITY", result.eligible_experiments)
+        self.assertEqual(result.readiness_state, DatasetReadinessState.DESCRIPTIVE_AUDIT_ONLY)
+        self.assertNotIn("ABLATE-VOLATILITY", result.eligible_experiments)
+        self.assertIn('WALK_FORWARD_FLAG_NOT_EVIDENCE', result.manifest['unverified_readiness_claims'])
 
     def test_insufficient_sample_cannot_reach_model_fit_however_it_is_configured(self):
         result = run_theta_empirical_pipeline(
@@ -252,6 +254,8 @@ class ContractIdentityAuditTests(unittest.TestCase):
             _config(),
         )
         self.assertTrue(any("inconsistent" in f for f in result.integrity_failures))
+        self.assertEqual(result.status, 'DATASET_PRESENT_UNUSABLE')
+        self.assertEqual(result.eligible_experiments, [])
 
 
 class ArtifactTests(unittest.TestCase):

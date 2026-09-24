@@ -31,12 +31,12 @@ test('CORE CLAIM: requested/served date mismatch is PIT_UNSAFE, mirroring the re
   assert.equal(evidence.pitState, 'PIT_UNSAFE');
 });
 
-test('matched requested/served dates are PIT_SAFE', () => {
+test('matched historical dates do not prove contemporaneous availability', () => {
   const evidence = buildQualifiedSoftFeatureEvidence({
     featureId: 'RV20', value: 0.18, observedAt: OBSERVED, validThrough: null,
     requestedDate: '2026-09-18', servedDate: '2026-09-18',
   });
-  assert.equal(evidence.pitState, 'PIT_SAFE');
+  assert.equal(evidence.pitState, 'UNKNOWN_PIT');
 });
 
 test('no requested/served date at all (current-session read) is CURRENT_ONLY, distinct from PIT_SAFE', () => {
@@ -52,14 +52,22 @@ test('ADVERSARIAL: an invalid (non-finite) feature value is rejected, never sile
   }), /INVALID_FEATURE_VALUE/);
 });
 
-test('empiricalStatus can only escalate to SUPPORTED_OOS/REJECTED via explicit caller input, never a default assumption', () => {
-  const supported = buildQualifiedSoftFeatureEvidence({
+test('the feature builder cannot promote empirical status from a caller flag', () => {
+  assert.throws(() => buildQualifiedSoftFeatureEvidence({
     featureId: 'RV20', value: 0.2, observedAt: OBSERVED, validThrough: null, requestedDate: null, servedDate: null,
     empiricalStatus: 'SUPPORTED_OOS',
-  });
-  assert.equal(supported.empiricalStatus, 'SUPPORTED_OOS');
+  }), /EMPIRICAL_PROMOTION_REQUIRES/);
   const defaulted = buildQualifiedSoftFeatureEvidence({
     featureId: 'RV20', value: 0.2, observedAt: OBSERVED, validThrough: null, requestedDate: null, servedDate: null,
   });
   assert.equal(defaulted.empiricalStatus, 'EMPIRICALLY_UNPROVEN');
+});
+
+test('PIT-safe requires identified knowledge/observation evidence available by decision time', () => {
+  const input = {featureId:'RV20' as const,value:0.2,observedAt:OBSERVED,validThrough:'2026-09-22T14:01:00Z',
+    requestedDate:'2026-09-22',servedDate:'2026-09-22',pitEvidence:{decisionAt:OBSERVED,
+      providerKnownAt:'2026-09-22T13:59:00Z',thetaFirstObservedAt:OBSERVED,evidenceId:'observation-1',payloadHash:'a'.repeat(64)}};
+  assert.equal(buildQualifiedSoftFeatureEvidence(input).pitState,'PIT_SAFE');
+  assert.equal(buildQualifiedSoftFeatureEvidence({...input,pitEvidence:{...input.pitEvidence,decisionAt:'2026-09-22T13:59:00Z'}}).pitState,'PIT_UNSAFE');
+  assert.throws(()=>buildQualifiedSoftFeatureEvidence({...input,servedDate:'2026-02-30'}),/INVALID_FEATURE_SESSION/);
 });

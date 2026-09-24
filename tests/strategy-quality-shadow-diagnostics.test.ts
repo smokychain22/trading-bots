@@ -52,6 +52,8 @@ test('DTE-edge and capital-day challengers remain observational and preserve typ
   assert.equal(diagnostic.dteEdge.observedCandidateCount,2);
   assert.equal(diagnostic.dteEdge.lowerBandCount,1);
   assert.equal(diagnostic.dteEdge.upperBandCount,1);
+  assert.equal(diagnostic.dteEdge.economicallyDominatesSelectedOnKnownObjectives, null);
+  assert.ok(['COMMON_HORIZON_REQUIRED', 'NO_SELECTED_OR_EDGE_CANDIDATE'].includes(diagnostic.dteEdge.comparisonState));
   assert.equal(diagnostic.optionomicsFamilies.IV,'KNOWN');
   assert.equal(diagnostic.optionomicsFamilies.TERM,'KNOWN');
   assert.equal(diagnostic.optionomicsFamilies.SKEW,'UNKNOWN');
@@ -59,6 +61,14 @@ test('DTE-edge and capital-day challengers remain observational and preserve typ
   assert.equal(diagnostic.optionomicsFamilies.VRP,'UNAVAILABLE');
   assert.equal(diagnostic.volatilityAcceleration.brokerAuthority,false);
   assert.equal(diagnostic.volatilityAcceleration.state,'KNOWN');
+  const rawDiagnostic = buildStrategyQualityShadowDiagnostic({ contracts: [inWindow], frontier,
+    optionomicsContext: { ...optionomicsContext, flow: { windows: [{}] }, providerContext: {
+      ...optionomicsContext.providerContext, exposureHeatmap: { error: 'unavailable' },
+      vannaExposureHeatmap: { rows: [1] }, events: { events: [] },
+    } }, historicalBars: [], asOf: NOW, conventionalDteMin: 25, conventionalDteMax: 60 });
+  for (const family of ['GEX', 'VANNA', 'EVENTS', 'FLOW'] as const) {
+    assert.equal(rawDiagnostic.optionomicsFamilies[family], 'OBSERVED_UNQUALIFIED');
+  }
 });
 
 test('capital-day challenger records a changed winner without changing the canonical frontier',()=>{

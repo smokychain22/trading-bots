@@ -129,3 +129,36 @@ documented as a dependency-component proxy, not calibrated statistical effective
 Tests exercise registry dispatch, PIT/common-basis rejection, censoring, duplicate
 protection, immutable artifact reload, chain grouping and repeated-scan suppression.
 No model, strategy or management policy receives Production authority.
+
+## Fourth source slice: feature and readiness truth
+
+Matching requested/served sessions alone no longer claims PIT safety. Identified
+provider-known and THETA-first-observed timing must fit the decision and validity
+window. Raw nonempty provider objects are OBSERVED_UNQUALIFIED, not known economic
+features. The strategy-quality diagnostic is a real shadow-cycle consumer and
+retains this distinction in persisted behavior receipts.
+
+The research feature-contribution function now checks quality, decision timing,
+expiry and PIT state before ranking. A zero-weight field alone is not a score.
+Duplicate candidates/features fail validation and tied scores share ranks rather
+than assigning different ranks from input order. This function remains an offline
+research consumer, not a live weighted ranker. Empirical status cannot be promoted
+by passing a flag to the feature builder.
+
+The DTE-edge diagnostic no longer asserts dominance across different expirations
+or returns false when comparison inputs are missing. It records an explicit
+common-horizon/missing-objective state. No freshness, spread, strategy or sizing
+threshold changed.
+
+The empirical pipeline no longer upgrades research readiness using unverified
+walk-forward/OOS flags, candidate-scan counts or session counts as regime coverage.
+The separate validation runner executes real split/calibration logic, but a
+dataset-bound feature/label join into the central pipeline remains open engineering.
+Contract-integrity failures now prevent experiment eligibility, rather than merely
+appearing in a report alongside an OK status.
+
+At 14:13 UTC the database read recovered: schema 064, read-only off, one active
+lease, GOOD reconciliation, zero positions/open orders, and a fresh persisted
+14:10 evidence cycle. The worker remained locked on 36917ee. Prior transient
+connection failures remain recorded. This read does not establish a complete
+current-release SPY funnel or R8A maturity credit.

@@ -14,11 +14,12 @@
  */
 import type { QualifiedSoftFeatureEvidence } from './qualified-soft-feature-evidence.js';
 
-export const shadowFeatureContributionVersion = 'theta-shadow-feature-contribution-v1' as const;
+export const shadowFeatureContributionVersion = 'theta-shadow-feature-contribution-v2' as const;
 
 export interface ShadowRankedCandidate {
   readonly candidateId: string;
   readonly currentProductionRank: number;
+  readonly decisionAt: string;
   readonly featureEvidence: readonly QualifiedSoftFeatureEvidence[];
 }
 
@@ -45,8 +46,20 @@ export interface ShadowFeatureContributionResult {
  */
 const BOOTSTRAP_WEIGHTS: Readonly<Record<string, number>> = { ATM_IV: 0.0, RV20: 0.0, VRP20: 1.0 };
 
-function bootstrapScore(evidence: readonly QualifiedSoftFeatureEvidence[]): number | null {
-  const knownValues = evidence.filter((e) => e.value !== null);
+function bootstrapScore(evidence: readonly QualifiedSoftFeatureEvidence[], decisionAt: string): number | null {
+  const decisionMs = Date.parse(decisionAt);
+  const featureIds = new Set<string>();
+  for (const e of evidence) {
+    if (featureIds.has(e.featureId)) throw new Error('DUPLICATE_FEATURE_EVIDENCE');
+    featureIds.add(e.featureId);
+  }
+  const knownValues = evidence.filter((e) => e.value !== null && Number.isFinite(e.value)
+    && e.qualityState === 'PROVIDER_QUALIFIED' && e.empiricalStatus !== 'REJECTED'
+    && (e.pitState === 'CURRENT_ONLY' || (e.pitState === 'PIT_SAFE'
+      && e.pitEvidence !== null && Date.parse(e.pitEvidence.decisionAt) === decisionMs))
+    && Date.parse(e.observedAt) <= decisionMs && e.validThrough !== null
+    && decisionMs <= Date.parse(e.validThrough)
+    && BOOTSTRAP_WEIGHTS[e.featureId] !== undefined && BOOTSTRAP_WEIGHTS[e.featureId] !== 0);
   if (knownValues.length === 0) return null;
   let score = 0;
   for (const e of knownValues) score += (BOOTSTRAP_WEIGHTS[e.featureId] ?? 0) * (e.value as number);
@@ -63,10 +76,22 @@ function bootstrapScore(evidence: readonly QualifiedSoftFeatureEvidence[]): numb
 export function computeShadowFeatureContribution(
   candidates: readonly ShadowRankedCandidate[],
 ): readonly ShadowFeatureContributionResult[] {
-  const withScores = candidates.map((c) => ({ ...c, score: bootstrapScore(c.featureEvidence) }));
+  const ids = new Set<string>();
+  for (const c of candidates) {
+    if (!c.candidateId.trim() || ids.has(c.candidateId)) throw new Error('INVALID_OR_DUPLICATE_CANDIDATE_ID');
+    if (!Number.isFinite(Date.parse(c.decisionAt))) throw new Error('INVALID_DECISION_AT');
+    if (!Number.isInteger(c.currentProductionRank) || c.currentProductionRank < 1) throw new Error('INVALID_PRODUCTION_RANK');
+    ids.add(c.candidateId);
+  }
+  const withScores = candidates.map((c) => ({ ...c, score: bootstrapScore(c.featureEvidence, c.decisionAt) }));
   const rankable = withScores.filter((c) => c.score !== null)
-    .toSorted((a, b) => (b.score as number) - (a.score as number));
-  const shadowRankById = new Map(rankable.map((c, index) => [c.candidateId, index + 1]));
+    .toSorted((a, b) => (b.score as number) - (a.score as number) || a.candidateId.localeCompare(b.candidateId));
+  const shadowRankById = new Map<string, number>();
+  let rank = 0;
+  rankable.forEach((c, index) => {
+    if (index === 0 || c.score !== rankable[index - 1]?.score) rank = index + 1;
+    shadowRankById.set(c.candidateId, rank);
+  });
 
   return withScores.map((c) => {
     const shadowFeatureRank = shadowRankById.get(c.candidateId) ?? null;

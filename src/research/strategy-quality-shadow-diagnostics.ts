@@ -5,9 +5,9 @@ import type { HistoricalBar } from '../theta/underlying-history.js';
 import { optionomicsFamiliesFor, type OptionomicsFeatureFamily } from '../theta/optionomics-feature-destinations.js';
 import { buildVolatilityAccelerationEvidence, type VolatilityAccelerationEvidence } from './volatility-acceleration.js';
 
-export const strategyQualityShadowDiagnosticVersion = 'theta-strategy-quality-shadow-v1' as const;
+export const strategyQualityShadowDiagnosticVersion = 'theta-strategy-quality-shadow-v2' as const;
 
-export type ShadowFeatureState = 'KNOWN' | 'UNKNOWN' | 'INVALID' | 'UNAVAILABLE';
+export type ShadowFeatureState = 'KNOWN' | 'UNKNOWN' | 'INVALID' | 'UNAVAILABLE' | 'OBSERVED_UNQUALIFIED';
 
 export interface UniverseBreadthShadowPlan {
   readonly championSymbols: readonly string[];
@@ -55,7 +55,8 @@ export interface StrategyQualityShadowDiagnostic {
     readonly lowerBandCount: number;
     readonly upperBandCount: number;
     readonly bestCapitalDayCandidateId: string | null;
-    readonly economicallyDominatesSelectedOnKnownObjectives: boolean;
+    readonly economicallyDominatesSelectedOnKnownObjectives: boolean | null;
+    readonly comparisonState: 'KNOWN_OBJECTIVES_COMPARABLE' | 'NO_SELECTED_OR_EDGE_CANDIDATE' | 'COMMON_HORIZON_REQUIRED' | 'OBJECTIVES_INCOMPLETE';
     readonly interpretation: 'ECONOMIC_ONLY_NOT_FEASIBILITY_OR_EXECUTION_AUTHORITY';
   };
   readonly capitalDayChallenger: {
@@ -83,14 +84,16 @@ const record = (value: JsonValue | undefined): Readonly<Record<string, JsonValue
 const stateOf = (value: JsonValue | undefined): ShadowFeatureState => {
   const object = value === undefined ? null : record(value);
   const state = object?.state;
+  if (state === 'KNOWN' && (object?.value === null || object?.value === undefined
+    || (typeof object.value === 'number' && !Number.isFinite(object.value)))) return 'INVALID';
   return state === 'KNOWN' || state === 'UNKNOWN' || state === 'INVALID' ? state : 'UNAVAILABLE';
 };
 
 const populatedContext = (context: Readonly<Record<string, JsonValue>> | null, key: string): ShadowFeatureState => {
   const value = context?.[key];
   if (value === null || value === undefined) return 'UNKNOWN';
-  if (Array.isArray(value)) return value.length > 0 ? 'KNOWN' : 'UNKNOWN';
-  if (typeof value === 'object') return Object.keys(value).length > 0 ? 'KNOWN' : 'UNKNOWN';
+  if (Array.isArray(value)) return value.length > 0 ? 'OBSERVED_UNQUALIFIED' : 'UNKNOWN';
+  if (typeof value === 'object') return Object.keys(value).length > 0 ? 'OBSERVED_UNQUALIFIED' : 'UNKNOWN';
   return 'INVALID';
 };
 
@@ -127,14 +130,15 @@ const featureFamilies = (optionomicsContext: JsonValue): StrategyQualityShadowDi
     VANNA: routed('EXPOSURE',populatedContext(providerContext, 'vannaExposureHeatmap')),
     CHARM: routed('EXPOSURE',populatedContext(providerContext, 'charmExposureHeatmap')),
     FLOW: routed('FLOW',Array.isArray(record(context?.flow)?.windows)
-      && (record(context?.flow)?.windows as JsonValue[]).length > 0 ? 'KNOWN' : 'UNKNOWN'),
+      && (record(context?.flow)?.windows as JsonValue[]).length > 0 ? 'OBSERVED_UNQUALIFIED' : 'UNKNOWN'),
     EVENTS: routed('EVENTS',[providerContext?.events, providerContext?.earningsFilings, providerContext?.symbolNews]
-      .some((value) => populatedContext({ value: value ?? null }, 'value') === 'KNOWN') ? 'KNOWN' : 'UNKNOWN'),
+      .some((value) => populatedContext({ value: value ?? null }, 'value') === 'OBSERVED_UNQUALIFIED') ? 'OBSERVED_UNQUALIFIED' : 'UNKNOWN'),
   };
 };
 
 type ComparableEconomics = {
   readonly candidateId: string;
+  readonly expiration: string | null;
   readonly grossPremium: number | null;
   readonly collateral: number | null;
   readonly spreadPct: number | null;
@@ -145,6 +149,8 @@ type ComparableEconomics = {
 const finite = (value: number | null): value is number => value !== null && Number.isFinite(value);
 const comparable = (candidate: CanonicalFrontierCandidate): ComparableEconomics => ({
   candidateId: candidate.candidateId,
+  expiration: candidate.legs.length > 0 && candidate.legs.every((leg) => leg.expiration === candidate.legs[0]?.expiration)
+    ? candidate.legs[0]?.expiration ?? null : null,
   grossPremium: candidate.economics.grossPremium,
   collateral: candidate.economics.collateral,
   spreadPct: candidate.spreadPct,
@@ -160,6 +166,7 @@ const edgeEconomics = (contract: NormalizedOptionContract): ComparableEconomics 
     ? (contract.underlyingReferencePrice - contract.breakEven) / contract.underlyingReferencePrice : null;
   return {
     candidateId: `DTE_EDGE:${contract.optionSymbol}`,
+    expiration: contract.expiration,
     grossPremium: premium,
     collateral,
     spreadPct: contract.spreadPct,
@@ -168,7 +175,8 @@ const edgeEconomics = (contract: NormalizedOptionContract): ComparableEconomics 
   };
 };
 
-const economicallyDominates = (left: ComparableEconomics, right: ComparableEconomics): boolean => {
+const economicallyDominates = (left: ComparableEconomics, right: ComparableEconomics): boolean | null => {
+  if (left.expiration === null || left.expiration !== right.expiration) return null;
   const pairs = [
     [left.grossPremium, right.grossPremium, 'MAX'],
     [left.collateral, right.collateral, 'MIN'],
@@ -176,7 +184,7 @@ const economicallyDominates = (left: ComparableEconomics, right: ComparableEcono
     [left.downsideCushion, right.downsideCushion, 'MAX'],
   ] as const;
   const known = pairs.filter(([a, b]) => finite(a) && finite(b));
-  if (known.length < 3) return false;
+  if (known.length !== pairs.length) return null;
   const noWorse = known.every(([a, b, direction]) => direction === 'MAX' ? (a as number) >= (b as number) : (a as number) <= (b as number));
   const better = known.some(([a, b, direction]) => direction === 'MAX' ? (a as number) > (b as number) : (a as number) < (b as number));
   return noWorse && better;
@@ -211,6 +219,10 @@ export function buildStrategyQualityShadowDiagnostic(input: {
     .toSorted((a, b) => (b.capitalDayYield as number) - (a.capitalDayYield as number))[0] ?? null;
   const candidates = input.frontier.branches.flatMap((branch) => branch.candidates);
   const current = candidates.find((candidate) => candidate.candidateId === input.frontier.selectedCandidateId) ?? null;
+  const edgeDominance = edgeBest !== null && current !== null ? economicallyDominates(edgeBest, comparable(current)) : null;
+  const comparisonState = edgeBest === null || current === null ? 'NO_SELECTED_OR_EDGE_CANDIDATE'
+    : edgeBest.expiration === null || edgeBest.expiration !== comparable(current).expiration ? 'COMMON_HORIZON_REQUIRED'
+      : edgeDominance === null ? 'OBJECTIVES_INCOMPLETE' : 'KNOWN_OBJECTIVES_COMPARABLE';
   const feasible = candidates.filter((candidate) => candidate.riskFeasible && finite(candidate.economics.capitalDayYield));
   const capitalDayBest = feasible.toSorted((a, b) =>
     (b.economics.capitalDayYield as number) - (a.economics.capitalDayYield as number)
@@ -231,8 +243,8 @@ export function buildStrategyQualityShadowDiagnostic(input: {
       lowerBandCount: edgeContracts.filter((contract) => contract.dte < input.conventionalDteMin).length,
       upperBandCount: edgeContracts.filter((contract) => contract.dte > input.conventionalDteMax).length,
       bestCapitalDayCandidateId: edgeBest?.candidateId ?? null,
-      economicallyDominatesSelectedOnKnownObjectives: edgeBest !== null && current !== null
-        ? economicallyDominates(edgeBest, comparable(current)) : false,
+      economicallyDominatesSelectedOnKnownObjectives: edgeDominance,
+      comparisonState,
       interpretation: 'ECONOMIC_ONLY_NOT_FEASIBILITY_OR_EXECUTION_AUTHORITY',
     },
     capitalDayChallenger: {

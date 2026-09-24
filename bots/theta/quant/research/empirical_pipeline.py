@@ -20,6 +20,7 @@ This module computes; it never activates anything. Codex owns Production.
 from __future__ import annotations
 
 import json
+from math import isfinite
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -59,7 +60,7 @@ from research.production_export_loader import (
 )
 from research.research_targets import target_definition_version
 
-PIPELINE_VERSION = "theta-empirical-pipeline-v1"
+PIPELINE_VERSION = "theta-empirical-pipeline-v2"
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +123,7 @@ def audit_contract_identity(candidates: List[Candidate]) -> Tuple[int, List[str]
         multiplier = _contract_field(candidate, "multiplier")
         if multiplier is None:
             unknown_multiplier += 1
-        elif not isinstance(multiplier, (int, float)) or multiplier <= 0:
+        elif type(multiplier) not in (int, float) or not isfinite(multiplier) or multiplier <= 0:
             violations.append(f"{candidate.candidate_id}: non-positive/non-numeric multiplier {multiplier!r}")
 
         symbol = _contract_field(candidate, "contractSymbol")
@@ -132,7 +133,7 @@ def audit_contract_identity(candidates: List[Candidate]) -> Tuple[int, List[str]
                 violations.append(f"{candidate.candidate_id}: contractSymbol {symbol!r} inconsistent with underlying {underlying!r}")
 
         strike = _contract_field(candidate, "strike")
-        if strike is not None and (not isinstance(strike, (int, float)) or strike <= 0):
+        if strike is not None and (type(strike) not in (int, float) or not isfinite(strike) or strike <= 0):
             violations.append(f"{candidate.candidate_id}: non-positive/non-numeric strike {strike!r}")
     return unknown_multiplier, violations
 
@@ -405,7 +406,21 @@ def run_theta_empirical_pipeline(
             regime_coverage=quality.sessions, thresholds=thresholds,
         )
 
-    readiness = classify_dataset_readiness(export, sufficiency, walk_forward_plan_valid, final_oos_untouched)
+    # Caller booleans are claims, not executed purging or holdout-use evidence.
+    # The dedicated validation_experiment runner now executes those checks.
+    # Until its observations are joined to this exact export, never promote this
+    # pipeline's readiness from a flag, candidate scan N or session-as-regime N.
+    readiness_claims = []
+    if walk_forward_plan_valid is not None:
+        readiness_claims.append('WALK_FORWARD_FLAG_NOT_EVIDENCE')
+    if final_oos_untouched is not None:
+        readiness_claims.append('OOS_UNTOUCHED_FLAG_NOT_EVIDENCE')
+    if sufficiency is not None:
+        readiness_claims.extend(['RESOLVED_FEATURE_LABEL_JOIN_REQUIRED', 'REGIME_COVERAGE_NOT_SESSION_COUNT'])
+        sufficiency = SufficiencyReport(False, [*sufficiency.reasons, *readiness_claims])
+    readiness = classify_dataset_readiness(export, sufficiency)
+    if integrity_failures:
+        readiness = DatasetReadinessState.DATASET_PRESENT_UNUSABLE
 
     eligible_defs: List[ExperimentDefinition] = experiments_eligible_at(readiness.value)
     eligible_ids = [d.experiment_id for d in eligible_defs]
@@ -425,6 +440,9 @@ def run_theta_empirical_pipeline(
     branch_slices: Dict[ThetaStrategyBranch, Any] = {}
 
     manifest = _build_manifest(config, export, readiness, source_code_commit, run_timestamp)
+    manifest['unverified_readiness_claims'] = readiness_claims
+    manifest['model_fit_route'] = 'DATASET_BOUND_FEATURE_LABEL_JOIN_REQUIRED'
+    manifest['experiment_config_hash'] = sha256_hex(canonical_json({k: v for k, v in manifest.items() if k != 'experiment_config_hash'}))
     from research.whole_chain_dataset import build_whole_chain_dataset
     whole_chain_dataset = build_whole_chain_dataset(export)
 
@@ -475,7 +493,7 @@ def run_theta_empirical_pipeline(
         )
 
     return PipelineResult(
-        pipeline_version=PIPELINE_VERSION, status="OK", readiness_state=readiness,
+        pipeline_version=PIPELINE_VERSION, status="DATASET_PRESENT_UNUSABLE" if integrity_failures else "OK", readiness_state=readiness,
         evidence_source=config.evidence_source, dataset_hash=export.dataset_hash,
         data_quality=quality, cross_symbol=cross_symbol, sufficiency=sufficiency, effective_n=effective_n,
         eligible_experiments=eligible_ids, refused_experiments=refused,

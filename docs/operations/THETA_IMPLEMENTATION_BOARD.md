@@ -227,3 +227,17 @@ No item is complete merely because its type, config, fixture, or UI label exists
 - CLOSED_SOURCE_DEFECT: dependency counting no longer splits repeated same-symbol
   session scans merely because their decision IDs differ. Count remains a stated
   dependency-component proxy, not empirically validated independent N.
+- CLOSED_SOURCE_DEFECT: historical date agreement cannot establish PIT safety
+  without observation lineage. Raw nonempty provider context is not known data.
+- CLOSED_SOURCE_DEFECT: shadow contribution excludes expired/unqualified/zero-
+  weight evidence, rejects duplicates and gives deterministic shared tie ranks.
+- CLOSED_SOURCE_DEFECT: DTE-edge dominance requires the same horizon and complete
+  objectives. Missing comparison evidence remains null with an exact reason.
+- CLOSED_SOURCE_DEFECT: caller walk-forward/OOS flags cannot upgrade central
+  pipeline readiness. Candidate scans cannot stand in for labeled training rows.
+- OPEN_ENGINEERING: central export-to-feature/label join and training integration
+  remain required. Independent calibration and paired-outcome runners are working
+  research infrastructure, not a complete autonomous empirical program.
+- OBSERVED 2026-09-24T14:13Z: Aiven readable/read-only off, one active locked worker,
+  GOOD reconciliation, zero positions/open orders, and fresh 14:10 evidence.
+  Exact-source alignment and a complete current-release SPY proof are still owed.
