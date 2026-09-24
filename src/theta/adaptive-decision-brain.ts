@@ -142,6 +142,13 @@ export interface WaitParalysisDiagnostic {
   readonly softRanked: number;
   readonly unknownSafetyBlocked: number;
   readonly unknownOptionalEvidence: number;
+  readonly unclassifiedUnknownEvidence: number;
+  readonly unknownEvidenceReasons: readonly {
+    candidateId: string;
+    reason: string;
+    role: 'REQUIRED_SAFETY' | 'OPTIONAL_CONTEXT' | 'UNCLASSIFIED';
+    recordedAsHardBlocker: boolean;
+  }[];
   readonly aegisHold: number;
   readonly quantityZero: number;
   readonly economicallyDominated: number;
@@ -154,8 +161,29 @@ export interface WaitParalysisDiagnostic {
 export function buildWaitParalysisDiagnostic(frontier: CanonicalStrategyFrontier): WaitParalysisDiagnostic {
   const candidates = frontier.branches.flatMap((branch) => branch.candidates);
   const hardSafetyRejected = candidates.filter((candidate) => candidate.hardBlockers.length > 0).length;
-  const unknownSafetyBlocked = candidates.filter((candidate) => candidate.hardBlockers.some((reason) => reason.includes('UNKNOWN'))).length;
-  const unknownOptionalEvidence = candidates.filter((candidate) => candidate.unknownEvidence.length > 0).length;
+  // Classify diagnostic evidence, never create or relax a decision gate. Some
+  // required evidence is stored in unknownEvidence until the final authority
+  // evaluates it. That storage location does not make it optional.
+  const requiredSafety = new Set(['AEGIS_STATE_UNKNOWN', 'ASSIGNMENT_CAPACITY_UNKNOWN', 'EVENT_STATE_UNKNOWN']);
+  const optionalContext = new Set(['FLOW_UNKNOWN', 'GEX_UNKNOWN']);
+  const unknownEvidenceReasons = candidates.flatMap((candidate) => {
+    const reasons = [...new Set([...candidate.unknownEvidence,
+      ...candidate.hardBlockers.filter((reason) => reason.includes('UNKNOWN'))])].sort();
+    return reasons.map((reason) => {
+      const recordedAsHardBlocker = candidate.hardBlockers.includes(reason);
+      const role = recordedAsHardBlocker || requiredSafety.has(reason) || reason.startsWith('EXECUTION_QUOTE_REQUIRED:')
+        ? 'REQUIRED_SAFETY' as const : optionalContext.has(reason) ? 'OPTIONAL_CONTEXT' as const : 'UNCLASSIFIED' as const;
+      return { candidateId: candidate.candidateId, reason, role, recordedAsHardBlocker };
+    });
+  }).sort((a, b) => a.candidateId.localeCompare(b.candidateId) || a.reason.localeCompare(b.reason));
+  const countRole = (role: 'REQUIRED_SAFETY' | 'OPTIONAL_CONTEXT' | 'UNCLASSIFIED'): number =>
+    new Set(unknownEvidenceReasons.filter((r) => r.role === role).map((r) => r.candidateId)).size;
+  // Legacy count names retained. Counts overlap when a candidate lacks both
+  // required and optional evidence. recordedAsHardBlocker preserves the actual
+  // frontier state instead of claiming every requirement already caused a veto.
+  const unknownSafetyBlocked = countRole('REQUIRED_SAFETY');
+  const unknownOptionalEvidence = countRole('OPTIONAL_CONTEXT');
+  const unclassifiedUnknownEvidence = countRole('UNCLASSIFIED');
   const aegisHold = candidates.filter((candidate) => candidate.hardBlockers.some((reason) => reason.startsWith('AEGIS_'))).length;
   const quantityZero = candidates.filter((candidate) => candidate.sizing.quantity === 0).length;
   const economicallyDominated = candidates.filter((candidate) => candidate.dominatedBy.length > 0).length;
@@ -168,6 +196,8 @@ export function buildWaitParalysisDiagnostic(frontier: CanonicalStrategyFrontier
     softRanked: frontier.branches.reduce((sum, branch) => sum + branch.softRanked, 0),
     unknownSafetyBlocked,
     unknownOptionalEvidence,
+    unclassifiedUnknownEvidence,
+    unknownEvidenceReasons,
     aegisHold,
     quantityZero,
     economicallyDominated,
@@ -178,6 +208,7 @@ export function buildWaitParalysisDiagnostic(frontier: CanonicalStrategyFrontier
       hardSafetyRejected: ratio(hardSafetyRejected),
       unknownSafetyBlocked: ratio(unknownSafetyBlocked),
       unknownOptionalEvidence: ratio(unknownOptionalEvidence),
+      unclassifiedUnknownEvidence: ratio(unclassifiedUnknownEvidence),
       aegisHold: ratio(aegisHold),
       quantityZero: ratio(quantityZero),
       economicallyDominated: ratio(economicallyDominated),

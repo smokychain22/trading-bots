@@ -6,12 +6,14 @@ import {
   standardOutcomeHorizons, type OutcomeLabelType, type OutcomeObservation, type OutcomeSubject,
 } from './resolved-outcome-engine.js';
 
-export const wholeChainOutcomeResolverVersion = 'theta-whole-chain-outcome-resolver-v1' as const;
+export const wholeChainOutcomeResolverVersion = 'theta-whole-chain-outcome-resolver-v2' as const;
 
 export interface WholeChainResolutionInput {
   readonly chainId:string; readonly closedAt:string|null; readonly allOptionLegsResolved:boolean;
   readonly allStockLotsResolved:boolean; readonly executionFeesKnown:boolean;
   readonly economicFactCount:number;
+  /** When this complete ledger evidence was actually available to this resolver. */
+  readonly evidenceAvailableAt:string;
   readonly optionRealizedPnl:number|null; readonly stockRealizedPnl:number|null;
   readonly dividends:number|null; readonly fees:number|null;
 }
@@ -21,18 +23,27 @@ export type WholeChainResolution =
 
 export function resolveWholeChainOutcome(input:WholeChainResolutionInput):WholeChainResolution {
   const reasons:string[]=[];
-  if(input.economicFactCount===0) reasons.push('NO_ECONOMIC_FACTS');
+  if(!Number.isInteger(input.economicFactCount)||input.economicFactCount<=0) reasons.push('NO_ECONOMIC_FACTS');
   if(input.closedAt===null) reasons.push('CHAIN_OPEN');
-  if(!input.allOptionLegsResolved) reasons.push('OPTION_LEGS_UNRESOLVED');
-  if(!input.allStockLotsResolved) reasons.push('STOCK_LOTS_UNRESOLVED');
-  if(!input.executionFeesKnown) reasons.push('EXECUTION_FEES_UNKNOWN');
+  const available=Date.parse(input.evidenceAvailableAt);
+  if(!Number.isFinite(available)||!/(Z|[+-]\d{2}:\d{2})$/.test(input.evidenceAvailableAt)) reasons.push('EVIDENCE_AVAILABILITY_INVALID');
+  if(input.closedAt!==null&&(!Number.isFinite(Date.parse(input.closedAt))
+    ||!/(Z|[+-]\d{2}:\d{2})$/.test(input.closedAt)||Date.parse(input.closedAt)>available)) reasons.push('CHAIN_CLOSE_TIME_INVALID');
+  if(input.allOptionLegsResolved!==true) reasons.push('OPTION_LEGS_UNRESOLVED');
+  if(input.allStockLotsResolved!==true) reasons.push('STOCK_LOTS_UNRESOLVED');
+  if(input.executionFeesKnown!==true) reasons.push('EXECUTION_FEES_UNKNOWN');
   if(input.optionRealizedPnl===null) reasons.push('OPTION_PNL_UNKNOWN');
   if(input.stockRealizedPnl===null) reasons.push('STOCK_PNL_UNKNOWN');
   if(input.dividends===null) reasons.push('DIVIDENDS_UNKNOWN');
   if(input.fees===null) reasons.push('FEES_UNKNOWN');
+  if([input.optionRealizedPnl,input.stockRealizedPnl,input.dividends,input.fees]
+    .some(value=>value!==null&&!Number.isFinite(value))) reasons.push('ECONOMICS_NONFINITE');
+  if(input.fees!==null&&input.fees<0) reasons.push('FEES_INVALID');
   if(reasons.length>0) return {state:'BLOCKED',reasons};
-  return {state:'RESOLVED',wholeChainNetPnl:(input.optionRealizedPnl as number)+(input.stockRealizedPnl as number)
-    +(input.dividends as number)-(input.fees as number),labelAvailableAt:input.closedAt as string};
+  const pnl=(input.optionRealizedPnl as number)+(input.stockRealizedPnl as number)
+    +(input.dividends as number)-(input.fees as number);
+  if(!Number.isFinite(pnl))return {state:'BLOCKED',reasons:['ECONOMICS_NONFINITE']};
+  return {state:'RESOLVED',wholeChainNetPnl:pnl,labelAvailableAt:input.evidenceAvailableAt};
 }
 
 export interface OutcomeResolutionReport {readonly inspected:number;readonly resolved:number;readonly blocked:number;}
@@ -46,7 +57,7 @@ export interface OutcomeSubjectMaterializationReport {
   readonly strategyRegret:number;readonly wait:number;readonly management:number;readonly contract:number;
 }
 export class PostgresOutcomeResolver {
-  constructor(private readonly pool:Pool){}
+  constructor(private readonly pool:Pool,private readonly now:()=>string=()=>new Date().toISOString()){}
   async resolveClosedChains(asOf:string):Promise<OutcomeResolutionReport>{
     const rows=await this.pool.query(`SELECT ec.chain_id,ec.closed_at,
       NOT EXISTS(SELECT 1 FROM trade.option_leg ol WHERE ol.chain_id=ec.chain_id AND (ol.closed_at IS NULL OR ol.realized_pnl IS NULL)) AS option_resolved,
@@ -63,12 +74,17 @@ export class PostgresOutcomeResolver {
       FROM trade.economic_chain ec WHERE ec.closed_at IS NOT NULL AND ec.closed_at <= $1
       AND NOT EXISTS(SELECT 1 FROM research.theta_outcome_label l WHERE l.subject_type='WHOLE_CHAIN' AND l.subject_id=ec.chain_id AND l.censoring_state='RESOLVED')
       ORDER BY ec.closed_at,ec.chain_id`,[asOf]);
+    // asOf selects closed chains. It cannot make present-day ledger reads
+    // available in the past. The actual post-read clock bounds label availability.
+    const evidenceAvailableAt=this.now();
     let resolved=0,blocked=0;
     for(const row of rows.rows){
-      const input:WholeChainResolutionInput={chainId:String(row.chain_id),closedAt:String(row.closed_at),
-        allOptionLegsResolved:Boolean(row.option_resolved),allStockLotsResolved:Boolean(row.stock_resolved),executionFeesKnown:Boolean(row.fees_known),
+      const input:WholeChainResolutionInput={chainId:String(row.chain_id),
+        closedAt:row.closed_at instanceof Date?row.closed_at.toISOString():row.closed_at===null?null:String(row.closed_at),
+        evidenceAvailableAt,
+        allOptionLegsResolved:row.option_resolved===true,allStockLotsResolved:row.stock_resolved===true,executionFeesKnown:row.fees_known===true,
         economicFactCount:Number(row.economic_fact_count),
-        optionRealizedPnl:Number(row.option_pnl),stockRealizedPnl:Number(row.stock_pnl),dividends:Number(row.dividends),fees:Number(row.fees)};
+        optionRealizedPnl:numeric(row.option_pnl),stockRealizedPnl:numeric(row.stock_pnl),dividends:numeric(row.dividends),fees:numeric(row.fees)};
       const outcome=resolveWholeChainOutcome(input);
       if(outcome.state==='BLOCKED'){blocked++;continue;}
       const payload={input,outcome,resolverVersion:wholeChainOutcomeResolverVersion};
@@ -76,9 +92,10 @@ export class PostgresOutcomeResolver {
       const outcomeLabelId=deterministicUuid(`whole-chain:${input.chainId}:${wholeChainOutcomeResolverVersion}`);
       const result=await this.pool.query(`INSERT INTO research.theta_outcome_label(outcome_label_id,subject_type,subject_id,
         label_available_at,label_version,censoring_state,whole_chain_net_pnl,outcomes_json,provenance_json,content_hash)
-        VALUES($1,'WHOLE_CHAIN',$2,$3,$4,'RESOLVED',$5,$6::jsonb,$7::jsonb,$8) ON CONFLICT(content_hash) DO NOTHING`,
+        VALUES($1,'WHOLE_CHAIN',$2,$3,$4,'RESOLVED',$5,$6::jsonb,$7::jsonb,$8) ON CONFLICT DO NOTHING`,
       [outcomeLabelId,input.chainId,outcome.labelAvailableAt,wholeChainOutcomeResolverVersion,outcome.wholeChainNetPnl,
-        JSON.stringify({resolution:'BROKER_CONFIRMED_CLOSED_CHAIN'}),JSON.stringify({source:'THETA_ECONOMIC_LEDGER',asOf}),contentHash]);
+        JSON.stringify({resolution:'CLOSED_LEDGER_CHAIN',closedAt:input.closedAt}),
+        JSON.stringify({source:'THETA_ECONOMIC_LEDGER',asOf,evidenceAvailableAt}),contentHash]);
       resolved+=result.rowCount??0;
     }
     return {inspected:rows.rowCount??0,resolved,blocked};
@@ -513,6 +530,7 @@ export function deterministicUuid(value:string):string{
 
 function numeric(value:unknown):number|null{
   if(value===null||value===undefined)return null;
+  if(typeof value!=='number'&&(typeof value!=='string'||!/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?$/.test(value)))return null;
   const parsed=Number(value);return Number.isFinite(parsed)?parsed:null;
 }
 

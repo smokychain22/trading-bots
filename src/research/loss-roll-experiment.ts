@@ -6,13 +6,20 @@ import type { LossCauseAssessment } from './loss-cause-integration-contract.js';
  * never selects a management action and never lets a new roll credit rewrite
  * the realized economics of the old leg.
  */
-export const lossRollExperimentVersion = 'theta-loss-roll-experiment-v1' as const;
+export const lossRollExperimentVersion = 'theta-loss-roll-experiment-v2' as const;
 
 export type LossManagementAction = 'HOLD' | 'CLOSE' | 'ROLL' | 'LET_EXPIRE' | 'ACCEPT_ASSIGNMENT';
 export type LossOutcomeState = 'OBSERVED' | 'ESTIMABLE' | 'NOT_IDENTIFIABLE';
 
 export interface RollCashflowIdentity {
-  readonly oldLegRealizedPnl: number;
+  /** All money fields are aggregate USD for the same rolled quantity. */
+  readonly pricingBasis: 'ACTUAL_FILL_CASHFLOW' | 'BENCHMARK_BEFORE_SLIPPAGE';
+  readonly oldEntryCredit: number;
+  readonly oldEntryCosts: number;
+  /** Excludes this roll's fees/slippage, which are charged exactly once below. */
+  readonly oldLegRealizedPnlBeforeRollCosts: number;
+  readonly priorChainRealizedPnl: number;
+  readonly unchangedInventoryUnrealizedPnl: number;
   readonly closeDebit: number;
   readonly newCredit: number;
   readonly netCashflow: number;
@@ -21,8 +28,25 @@ export interface RollCashflowIdentity {
   readonly additionalCapitalDays: number;
   readonly fees: number;
   readonly slippage: number;
-  /** The explicit identity that prevents a credit roll from resetting history. */
-  readonly wholeChainNetPnlImmediatelyAfterRoll: number;
+  /** Marked aggregate liability of the newly opened short leg, not zero by default. */
+  readonly newShortLiability: number | null;
+  /** Cash credit is not profit. An unavailable new-leg mark leaves P&L unknown. */
+  readonly wholeChainNetPnlImmediatelyAfterRoll: number | null;
+}
+
+type RollFacts = Omit<RollCashflowIdentity, 'oldLegRealizedPnlBeforeRollCosts'
+  | 'netCashflow' | 'wholeChainNetPnlImmediatelyAfterRoll'>;
+
+export function buildRollCashflowIdentity(facts: RollFacts): RollCashflowIdentity {
+  const oldLegRealizedPnlBeforeRollCosts = facts.oldEntryCredit - facts.closeDebit - facts.oldEntryCosts;
+  const netCashflow = facts.newCredit - facts.closeDebit - facts.fees - facts.slippage;
+  const wholeChainNetPnlImmediatelyAfterRoll = facts.newShortLiability === null ? null
+    : facts.priorChainRealizedPnl + oldLegRealizedPnlBeforeRollCosts
+      + facts.unchangedInventoryUnrealizedPnl + facts.newCredit - facts.newShortLiability
+      - facts.fees - facts.slippage;
+  const result = { ...facts, oldLegRealizedPnlBeforeRollCosts, netCashflow, wholeChainNetPnlImmediatelyAfterRoll };
+  validateRoll('ROLL', result);
+  return result;
 }
 
 export interface LossActionEconomics {
@@ -66,20 +90,38 @@ function validateRoll(action: LossManagementAction, roll: RollCashflowIdentity |
     return;
   }
   if (roll === null) throw new Error('LOSS_ROLL_DETAILS_REQUIRED');
-  for (const [name, value] of Object.entries(roll)) {
+  const { pricingBasis, newShortLiability, wholeChainNetPnlImmediatelyAfterRoll, ...numbers } = roll;
+  if (!['ACTUAL_FILL_CASHFLOW', 'BENCHMARK_BEFORE_SLIPPAGE'].includes(pricingBasis)) {
+    throw new Error('LOSS_ROLL_PRICING_BASIS_REQUIRED');
+  }
+  for (const [name, value] of Object.entries(numbers)) {
     if (!finite(value)) throw new Error(`LOSS_ROLL_NONFINITE:${name}`);
   }
-  if (roll.closeDebit < 0 || roll.newCredit < 0 || roll.newStrike <= 0 || roll.newDte < 0
+  if (roll.oldEntryCredit < 0 || roll.oldEntryCosts < 0 || roll.closeDebit < 0 || roll.newCredit < 0 || roll.newStrike <= 0 || roll.newDte < 0
     || !Number.isInteger(roll.newDte) || roll.additionalCapitalDays < 0
     || roll.fees < 0 || roll.slippage < 0) {
     throw new Error('LOSS_ROLL_INVALID_CASHFLOW_INPUT');
+  }
+  if (pricingBasis === 'ACTUAL_FILL_CASHFLOW' && roll.slippage !== 0) {
+    throw new Error('LOSS_ROLL_ACTUAL_FILLS_ALREADY_INCLUDE_SLIPPAGE');
+  }
+  if (!approximatelyEqual(roll.oldLegRealizedPnlBeforeRollCosts,
+    roll.oldEntryCredit - roll.closeDebit - roll.oldEntryCosts)) {
+    throw new Error('LOSS_ROLL_OLD_LEG_REALIZED_IDENTITY_FAILED');
   }
   const expectedNetCashflow = roll.newCredit - roll.closeDebit - roll.fees - roll.slippage;
   if (!approximatelyEqual(roll.netCashflow, expectedNetCashflow)) {
     throw new Error('LOSS_ROLL_NET_CASHFLOW_IDENTITY_FAILED');
   }
-  const expectedWholeChain = roll.oldLegRealizedPnl + roll.netCashflow;
-  if (!approximatelyEqual(roll.wholeChainNetPnlImmediatelyAfterRoll, expectedWholeChain)) {
+  if (newShortLiability === null) {
+    if (wholeChainNetPnlImmediatelyAfterRoll !== null) throw new Error('LOSS_ROLL_MARK_REQUIRED_FOR_PNL');
+    return;
+  }
+  if (!finite(newShortLiability) || newShortLiability < 0) throw new Error('LOSS_ROLL_INVALID_LIABILITY');
+  const expectedWholeChain = roll.priorChainRealizedPnl + roll.oldLegRealizedPnlBeforeRollCosts
+    + roll.unchangedInventoryUnrealizedPnl + roll.newCredit - newShortLiability - roll.fees - roll.slippage;
+  if (wholeChainNetPnlImmediatelyAfterRoll === null || !finite(wholeChainNetPnlImmediatelyAfterRoll)
+    || !approximatelyEqual(wholeChainNetPnlImmediatelyAfterRoll, expectedWholeChain)) {
     throw new Error('ROLL_CREDIT_DOES_NOT_ERASE_OLD_REALIZED_LOSS');
   }
 }

@@ -247,3 +247,22 @@ No item is complete merely because its type, config, fixture, or UI label exists
   supervisor's mutex release before changing runtime identity. Real Windows AST
   execution tests prove a non-owner performs no lease/status mutation and the
   owner still cleans up. This fixes ownership, not PostgreSQL availability.
+- OBSERVED 2026-09-24T14:27Z: source and worker aligned on 38fef55, one active
+  lease, GOOD broker reconciliation, zero positions/open orders, schema 064,
+  read-only off, master/follower locked. The subsequent physically read-only
+  current-release scan failed at SHADOW_EVIDENCE_SCAN with
+  POSTGRES_CHECKED_OUT_CLIENT_LOST. No order or broker mutation occurred. This is
+  not a completed SPY session and earns no R8A independent-session credit.
+- CLOSED_SOURCE_DEFECT: research roll identity double-counted the old close debit
+  and omitted the new short liability. V2 separates cash movement from marked
+  chain P&L, preserves prior realized loss, charges costs once, refuses a second
+  slippage charge on actual fills and leaves an absent liability mark unknown.
+  No Production ledger rows or management thresholds were changed.
+- CLOSED_SOURCE_DEFECT: WAIT diagnostics mislabeled every unknownEvidence entry
+  optional. Required quote/AEGIS/event/assignment evidence is now distinct from
+  explicitly optional context. Unclassified evidence stays unclassified and the
+  actual hard-blocker location remains visible. No new decision gate was added.
+- CLOSED_SOURCE_DEFECT: whole-chain label availability was backdated to closure.
+  V2 records actual post-read evidence availability, preserves economic close
+  time separately and rejects nonfinite/blank/malformed evidence. The existing
+  persisted labels are untouched. Concurrent duplicate inserts are idempotent.

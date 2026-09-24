@@ -161,6 +161,39 @@ test('WAIT diagnostics preserve optional unknowns without converting them into h
   assert.equal(diagnostic.ratios.unknownOptionalEvidence, 1);
 });
 
+test('WAIT diagnostics never call required quote, AEGIS, event or assignment evidence optional', () => {
+  const f = frontier();
+  const branch = required(f.branches[0]);
+  const candidate = required(branch.candidates[0]);
+  const input = { ...f, branches: [{ ...branch, candidates: [{ ...candidate,
+    unknownEvidence: ['AEGIS_STATE_UNKNOWN', 'EVENT_STATE_UNKNOWN', 'ASSIGNMENT_CAPACITY_UNKNOWN',
+      'EXECUTION_QUOTE_REQUIRED:QUOTE_STALE', 'FLOW_UNKNOWN', 'NEW_UNCLASSIFIED_FIELD_UNKNOWN'],
+  }] }] };
+  const before = JSON.stringify(input);
+  const result = buildWaitParalysisDiagnostic(input);
+  assert.equal(result.unknownSafetyBlocked, 1);
+  assert.equal(result.unknownOptionalEvidence, 1);
+  assert.equal(result.unclassifiedUnknownEvidence, 1);
+  assert.equal(result.hardSafetyRejected, 0);
+  assert.equal(result.unknownEvidenceReasons.filter((r) => r.role === 'REQUIRED_SAFETY').length, 4);
+  assert.ok(result.unknownEvidenceReasons.every((r) => !r.recordedAsHardBlocker));
+  assert.equal(JSON.stringify(input), before);
+});
+
+test('unknown hard blockers retain authority and unfamiliar fields never default to optional', () => {
+  const f = frontier();
+  const branch = required(f.branches[0]);
+  const candidate = required(branch.candidates[0]);
+  const result = buildWaitParalysisDiagnostic({ ...f, branches: [{ ...branch, candidates: [{ ...candidate,
+    hardBlockers: ['OCC_IDENTITY_UNKNOWN'], unknownEvidence: ['OCC_IDENTITY_UNKNOWN', 'IV_UNKNOWN'],
+  }] }] });
+  assert.equal(result.unknownEvidenceReasons.length, 2);
+  assert.equal(result.unknownOptionalEvidence, 0);
+  assert.equal(result.unknownSafetyBlocked, 1);
+  assert.equal(result.unclassifiedUnknownEvidence, 1);
+  assert.equal(result.unknownEvidenceReasons.find((r) => r.reason === 'OCC_IDENTITY_UNKNOWN')?.recordedAsHardBlocker, true);
+});
+
 test('overtrading metrics preserve denominator definitions and do not invent thresholds', () => {
   const diagnostic = buildOvertradingDiagnostic({ candidateCount: 20, acceptedCount: 2, cycles: 10,
     newRiskActions: 1, capitalInUse: 25_000, accountEquity: 100_000, simultaneousChains: 1,
