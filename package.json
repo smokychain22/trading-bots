@@ -28,6 +28,7 @@
     "theta:audit:wiring": "tsx tools/theta-runtime-wiring-audit.ts",
     "theta:audit:unknowns": "tsx tools/theta-pre-vps-unknown-audit.ts",
     "theta:truth": "tsx tools/theta-system-truth.ts",
+    "theta:truth:profitability-brain": "tsx tools/theta-profitability-brain-reality.ts",
     "theta:truth-runtime": "tsx tools/theta-runtime-truth.ts --environment-file=.env.local",
     "theta:aegis:baseline-progress": "tsx tools/theta-aegis-baseline-progress.ts --environment-file=.env.local",
     "theta:aegis:next-session-eligibility": "tsx tools/theta-aegis-next-session-eligibility.ts --environment-file=.env.local",

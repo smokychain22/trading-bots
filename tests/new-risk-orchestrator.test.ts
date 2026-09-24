@@ -326,6 +326,40 @@ itMockedProviderRealCodePath('candidate-specific cleared event policy prevents a
   assert.equal(result.receipt.selectedCandidateId,'C1');
   assert.ok(result.receipt.reasonCodes.includes('PAPER_BOOTSTRAP_CANDIDATE_SELECTED'));
   assert.equal(result.receipt.executionAuthorized,false);
+  assert.equal(result.receipt.entryThesisReceipt?.candidateId, 'C1');
+  assert.equal(result.receipt.entryThesisReceipt?.empiricalProfitabilityState, 'UNPROVEN');
+  assert.equal(result.receipt.entryThesisReceipt?.executionAuthorized, false);
+  assert.equal(result.receipt.entryThesisReceipt?.expectedCapitalDays.state, 'EMPIRICALLY_UNPROVEN');
+  assert.equal(result.receipt.entryThesisReceipt?.assignmentWillingness.state, 'UNKNOWN');
+  assert.match(result.receipt.entryThesisReceipt?.immutableHash ?? '', /^[a-f0-9]{64}$/);
+});
+
+itMockedProviderRealCodePath('an actionable candidate without deterministic directional-tolerance facts fails closed', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    ownershipInputs: {
+      ...baseRequest().ownershipInputs,
+      historicalRecoveryMedianDays: null,
+      historicalRecoveryP95Days: null,
+      severeDrawdownEpisodeCount: null,
+      earningsDistanceDays: null,
+      exDividendDistanceDays: null,
+      knownEventDistanceDays: null,
+    },
+    candidates: [candidate('C1', {
+      severeDrawdownProbability: null,
+      paperEventNear: false,
+      contract: contract({ underlyingReferencePrice: null, breakEven: null }),
+    })],
+    paperEntryBootstrap: assessPaperEntryBootstrap({
+      enabled:true,runtimeMode:'MASTER_THETA_PAPER',brokerEnvironment:'PAPER',accountStatus:'ACTIVE',
+      reconciliationQuality:'GOOD',localOnlyIntentCount:0,externalOrUnknownOrderCount:0,
+      marketOpen:true,calendarSessionConfirmed:true,followerExecutionEnabled:false,liveMoneyAuthorized:false,
+    }),
+  }));
+  assert.equal(result.receipt.winningAction, 'SYSTEM_HOLD');
+  assert.equal(result.receipt.quantity, 0);
+  assert.ok(result.receipt.reasonCodes.includes('ENTRY_THESIS_REQUIRED_FACTS_MISSING'));
+  assert.equal(result.receipt.entryThesisReceipt, null);
 });
 
 itMockedProviderRealCodePath('candidateEconomics is null when the pipeline fails closed before any candidate economics are computed', async () => {

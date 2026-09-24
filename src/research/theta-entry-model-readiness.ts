@@ -12,6 +12,9 @@
 export const thetaEntryModelReadinessVersion = 'theta-entry-model-readiness-v1' as const;
 
 export type EntryModelFamily = 'REGULARIZED_LOGISTIC' | 'CALIBRATED_TREE' | 'GRADIENT_BOOSTED_BASELINE' | 'QUANTILE_DOWNSIDE';
+export const entryModelFamilies: readonly EntryModelFamily[] = [
+  'REGULARIZED_LOGISTIC', 'CALIBRATED_TREE', 'GRADIENT_BOOSTED_BASELINE', 'QUANTILE_DOWNSIDE',
+];
 export type EntryModelTarget = 'P_WHOLE_CHAIN_PROFITABLE' | 'EXPECTED_WHOLE_CHAIN_NET_PNL' | 'P_ASSIGNMENT' | 'EXPECTED_CAPITAL_DAYS' | 'DOWNSIDE_P01' | 'DOWNSIDE_P05' | 'DOWNSIDE_P10' | 'DOWNSIDE_P25';
 export type ReadinessState = 'DATASET_NOT_READY' | 'INSUFFICIENT_EFFECTIVE_N' | 'TRAINING_READY' | 'TRAINED' | 'CALIBRATION_FAILED' | 'OOS_FAILED' | 'OOS_SUPPORTED';
 

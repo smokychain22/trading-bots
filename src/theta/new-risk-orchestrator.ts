@@ -15,6 +15,7 @@ import { optionExecutabilityCauses } from './option-executability-diagnostics.js
 import { ShadowOpportunityBookBuilder, type ShadowOpportunityEntry } from './shadow-opportunity-book.js';
 import { classifyObservation, type DataQualityState, type FreshnessPolicy } from './data-freshness.js';
 import { assessPaperBootstrapOwnershipEvidence, type PaperEntryBootstrapAssessment } from './paper-entry-bootstrap.js';
+import { buildEntryThesisReceipt, type ThesisClaim } from './entry-thesis-receipt.js';
 
 // R1: the real end-to-end new-risk orchestrator. Sequences every stage in
 // the canonical pipeline --
@@ -123,6 +124,98 @@ const REQUIRED_FOR_NEW_RISK: readonly ProviderCapabilityKey[] = ['ALPACA_ACCOUNT
 const HARD_VETO_CAPABILITY_STATES: ReadonlySet<DataQualityState> = new Set(['INVALID', 'NOT_ENTITLED']);
 
 type RequiredCapabilityFailure = 'NONE' | 'HARD_VETO' | 'TRANSIENT';
+
+const openAction = (action: NewRiskDecisionReceipt['winningAction']): boolean => action.startsWith('OPEN_');
+
+function claim(state: ThesisClaim['state'], statement: string, evidenceIds: readonly string[] = []): ThesisClaim {
+  return { state, statement, evidenceIds };
+}
+
+/**
+ * Attaches the immutable entry-state thesis to an actionable decision. The
+ * thesis explains only facts that were already known to the canonical
+ * decision path. It supplies no EV, probability, confidence, or broker
+ * authority. Missing deterministic break-even/reference facts fail the
+ * action closed because an OPEN without directional tolerance is not an
+ * auditable professional decision.
+ */
+function attachEntryThesis(
+  receipt: NewRiskDecisionReceipt,
+  request: NewRiskOrchestrationRequest,
+  ownership: OwnershipEvaluationResponse,
+  regime: RegimeSnapshotResponse,
+  candidates: readonly CandidateFrontierResult[],
+): NewRiskDecisionReceipt {
+  if (!openAction(receipt.winningAction) || receipt.selectedCandidateId === null) return receipt;
+  const selected = candidates.find((candidate) => candidate.candidateId === receipt.selectedCandidateId);
+  const raw = request.candidates.find((candidate) => candidate.candidateId === receipt.selectedCandidateId);
+  const referencePrice = selected?.contract.underlyingReferencePrice ?? null;
+  const breakEven = selected?.contract.breakEven ?? null;
+  if (selected === undefined || raw === undefined || breakEven === null || referencePrice === null || referencePrice <= 0) {
+    const detail = 'The selected candidate lacks a deterministic break-even or underlying reference price required by the immutable entry thesis.';
+    return {
+      ...receipt,
+      winningAction: 'SYSTEM_HOLD', selectedCandidateId: null, quantity: 0,
+      reasonCodes: [...receipt.reasonCodes, 'ENTRY_THESIS_REQUIRED_FACTS_MISSING'],
+      plainEnglishExplanation: detail, failClosedReason: detail, entryThesisReceipt: null,
+    };
+  }
+
+  const contract = selected.contract;
+  const commonEvidence = [request.snapshotId, raw.candidateId, contract.optionSymbol];
+  const quoteEvidence = contract.quoteTimestamp === null ? commonEvidence : [...commonEvidence, contract.quoteTimestamp];
+  const volatilityKnown = contract.iv !== null || raw.ivRank !== null;
+  const eventKnown = raw.paperEventNear !== null && raw.paperEventNear !== undefined;
+  const downsideCushion = (referencePrice - breakEven) / referencePrice;
+  const thesis = buildEntryThesisReceipt({
+    decisionId: receipt.decisionId,
+    snapshotId: request.snapshotId,
+    candidateId: raw.candidateId,
+    decisionAt: request.timestamp,
+    underlying: request.underlying,
+    strategy: 'THETA_CONVENTIONAL',
+    whyUnderlying: claim('KNOWN',
+      `${request.underlying} passed the canonical ownership evaluation with ownability ${ownership.ownability ?? 'UNKNOWN'} and thesisInvalidated=${ownership.thesisInvalidated}.`,
+      [request.snapshotId, ownership.snapshotId]),
+    whyStrategy: claim('KNOWN',
+      'THETA_CONVENTIONAL was the sole Paper-authorized new-risk branch. Router output established applicability, while candidate economics, AEGIS, sizing, and execution quality established selection.',
+      [request.snapshotId, raw.candidateId]),
+    whyExpiry: claim('KNOWN',
+      `The selected contract expires ${contract.expiration} with ${contract.dte} DTE and survived the configured Q lattice and frontier.`,
+      commonEvidence),
+    whyStrike: claim('KNOWN',
+      `The selected PUT strike is ${contract.strike}, delta is ${contract.delta ?? 'UNKNOWN'}, and break-even is ${breakEven}.`,
+      commonEvidence),
+    whyNow: claim('KNOWN',
+      `The current snapshot produced ${receipt.winningAction}, AEGIS ${selected.aegis?.newRiskState ?? 'UNKNOWN'}, quantity ${selected.sizing?.quantity ?? 0}, and execution recommendation ${selected.executionQuality?.recommendedAction ?? 'UNKNOWN'}.`,
+      quoteEvidence),
+    volatilityThesis: volatilityKnown
+      ? claim('KNOWN', `Observed IV is ${contract.iv ?? 'UNKNOWN'} and IV rank is ${raw.ivRank ?? 'UNKNOWN'}; these are context, not a calibrated profit forecast.`, commonEvidence)
+      : claim('UNKNOWN', 'Neither contract IV nor IV rank was observed. No volatility edge was inferred.'),
+    directionalTolerance: claim('KNOWN',
+      `Reference price is ${referencePrice}, break-even is ${breakEven}, and downside cushion is ${downsideCushion}.`,
+      quoteEvidence),
+    eventAssumptions: eventKnown
+      ? claim('KNOWN', `The governed candidate event-near state was ${String(raw.paperEventNear)}; regime event state was ${regime.eventState ?? 'UNKNOWN'}.`, [request.snapshotId])
+      : claim('UNKNOWN', `Candidate-specific event coverage was unresolved; regime event state was ${regime.eventState ?? 'UNKNOWN'}.`),
+    breakEven,
+    downsideCushion,
+    assignmentWillingness: claim('UNKNOWN',
+      'Entry sizing proves capacity for this order only. CAN_ACCEPT_ASSIGNMENT and SHOULD_ACCEPT_ASSIGNMENT remain distinct management-time decisions.'),
+    expectedManagementPath: claim('KNOWN',
+      'After a confirmed fill, the canonical frontier compares HOLD, CLOSE_FULL, ROLL, LET_EXPIRE, and ACCEPT_ASSIGNMENT. Assignment transitions to RECOVERY_WAIT, SELL_STOCK, or SELL_CC as applicable.',
+      [request.snapshotId, raw.candidateId]),
+    expectedCapitalDays: { value: null, state: 'EMPIRICALLY_UNPROVEN' },
+    invalidationConditions: [
+      'Final exact-contract BBO is stale, crossed, missing, or outside the executable spread policy.',
+      'AEGIS changes to HOLD_ONLY or HARD_VETO.',
+      'Governed event or corporate-action evidence becomes unsafe or incomplete.',
+      'Broker reconciliation, buying power, or assignment capacity no longer supports the selected quantity.',
+      'The ownership thesis becomes invalidated or whole-chain continuation economics favor another action.',
+    ],
+  });
+  return { ...receipt, entryThesisReceipt: thesis };
+}
 
 function requiredCapabilityFailureKind(capabilities: ProviderCapabilityStates): RequiredCapabilityFailure {
   let anyTransient = false;
@@ -813,12 +906,15 @@ export async function runNewRiskOrchestration(
     });
   }
 
-  const receipt = assembleNewRiskDecision({
+  const assembledReceipt = assembleNewRiskDecision({
     snapshotId: request.snapshotId, fusionSnapshotHash: request.fusionSnapshotHash, timestamp: request.timestamp,
     underlying: request.underlying, ownership: ownershipResult.data, regime: regimeResult.data,
     candidates: candidateResults, policyVersion: request.policyVersion, modelVersions: request.modelVersions,
     requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
   });
+  const receipt = attachEntryThesis(
+    assembledReceipt, request, ownershipResult.data, regimeResult.data, candidateResults,
+  );
 
   return {
     receipt, ownership: ownershipResult.data,

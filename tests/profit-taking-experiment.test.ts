@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildProfitTakingComparisonRow, allProfitTakingPolicies, type ProfitTakingDecisionState, type ProfitTakingPolicy } from '../src/research/profit-taking-experiment.js';
+import { buildProfitTakingComparisonRow, allProfitTakingPolicies, canonicalV7ProfitTakingPolicies,
+  observeFixedProfitTarget, v7ProfitTakingPolicyDefinitions,
+  type ProfitTakingDecisionState, type ProfitTakingPolicy } from '../src/research/profit-taking-experiment.js';
 
 const DECISION_AT = '2026-09-22T14:00:00Z';
 
@@ -20,7 +22,7 @@ function state(overrides: Partial<ProfitTakingDecisionState> = {}): ProfitTaking
 
 function baseRow(overrides: Partial<Parameters<typeof buildProfitTakingComparisonRow>[0]> = {}) {
   return {
-    state: state(), actualPolicy: 'TAKE_50' as ProfitTakingPolicy, challengerPolicy: 'DTE_EXIT' as ProfitTakingPolicy,
+    state: state(), actualPolicy: 'FIXED_50' as ProfitTakingPolicy, challengerPolicy: 'DTE_EXIT' as ProfitTakingPolicy,
     actualAction: 'CLOSE' as const, challengerAction: 'HOLD' as const, actualOutcomeRef: 'outcome-1',
     counterfactualOutcomeState: 'NOT_IDENTIFIABLE' as const,
     incrementalWholeChainNetPnl: null, incrementalCapitalDays: null, incrementalDownside: null, incrementalExecutionCost: null,
@@ -30,7 +32,7 @@ function baseRow(overrides: Partial<Parameters<typeof buildProfitTakingCompariso
 
 test('accepts a real, well-formed comparison row', () => {
   const row = buildProfitTakingComparisonRow(baseRow());
-  assert.equal(row.contractVersion, 'theta-profit-taking-experiment-v1');
+  assert.equal(row.contractVersion, 'theta-profit-taking-experiment-v2');
 });
 
 test('CORE CLAIM: no policy can claim KNOWN counterfactual without evidence -- NOT_IDENTIFIABLE + a real value is rejected', () => {
@@ -39,7 +41,7 @@ test('CORE CLAIM: no policy can claim KNOWN counterfactual without evidence -- N
   })), /PROFIT_TAKING_CLAIMED_VALUE_DESPITE_NOT_IDENTIFIABLE/);
 });
 
-test('CORE CLAIM: TAKE_50 has no privileged status -- identical validation applies to all 6 policies', () => {
+test('CORE CLAIM: FIXED_50 has no privileged status -- identical validation applies to every policy', () => {
   for (const policy of allProfitTakingPolicies) {
     assert.throws(() => buildProfitTakingComparisonRow(baseRow({
       actualPolicy: policy, counterfactualOutcomeState: 'NOT_IDENTIFIABLE', incrementalCapitalDays: 5,
@@ -85,6 +87,29 @@ test('no single-leg PnL field exists -- economics are represented via the whole-
   assert.ok(!('singleLegNetPnl' in row));
 });
 
-test('all 6 real policies are represented in allProfitTakingPolicies, no more no fewer', () => {
-  assert.deepEqual([...allProfitTakingPolicies].toSorted(), ['CONTINUATION_VALUE', 'DTE_EXIT', 'RESIDUAL_PREMIUM_EXIT', 'TAKE_25', 'TAKE_50', 'TAKE_75']);
+test('the canonical V7 grid contains every fixed and dynamic challenger exactly once', () => {
+  assert.deepEqual(canonicalV7ProfitTakingPolicies, [
+    'FIXED_05', 'FIXED_10', 'FIXED_15', 'FIXED_20', 'FIXED_25', 'FIXED_30',
+    'FIXED_40', 'FIXED_50', 'FIXED_60', 'FIXED_75', 'FIXED_90',
+    'TIME_EXIT', 'DTE_EXIT', 'DYNAMIC_REMAINING_EV', 'DYNAMIC_EV_PLUS_HARD_RISK',
+    'DYNAMIC_EV_PLUS_EVENT', 'DYNAMIC_EV_PLUS_CAPITAL_EFFICIENCY',
+  ]);
+  assert.equal(new Set(canonicalV7ProfitTakingPolicies).size, 17);
+  assert.equal(v7ProfitTakingPolicyDefinitions.every((item) => item.researchOnly && !item.brokerAuthority), true);
+  assert.equal(allProfitTakingPolicies.length, 22);
+});
+
+test('fixed targets are observable benchmarks and never broker authority', () => {
+  const below = observeFixedProfitTarget({ policy: 'FIXED_50', openCredit: 100, executableCloseDebit: 60 });
+  const above = observeFixedProfitTarget({ policy: 'FIXED_50', openCredit: 100, executableCloseDebit: 49 });
+  assert.equal(below.capturedFraction, 0.4);
+  assert.equal(below.benchmarkAction, 'HOLD');
+  assert.equal(above.benchmarkAction, 'CLOSE');
+  assert.equal(above.researchOnly, true);
+  assert.equal(above.brokerAuthority, false);
+});
+
+test('fixed target observation rejects invalid credits instead of coercing them to zero', () => {
+  assert.throws(() => observeFixedProfitTarget({ policy: 'FIXED_25', openCredit: 0, executableCloseDebit: 0 }),
+    /FIXED_TARGET_OPEN_CREDIT_INVALID/);
 });

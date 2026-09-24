@@ -4,6 +4,7 @@ import type { SizingResultResponse } from './sizing-contract.js';
 import type { ExecutionQualityResponse } from './execution-quality-contract.js';
 import type { OwnershipEvaluationResponse } from './ownership-contract.js';
 import type { RegimeSnapshotResponse } from './regime-contract.js';
+import type { EntryThesisReceipt } from './entry-thesis-receipt.js';
 
 // R1G decision assembly: composes ALREADY-COMPUTED Python quant outputs
 // (ownership, regime, opportunity-frontier per-candidate disposition,
@@ -102,6 +103,9 @@ export interface NewRiskDecisionReceipt {
   readonly failClosedReason: string | null;
   readonly policyVersion: string;
   readonly modelVersions: Readonly<Record<string, string>>;
+  /** Present for an actionable selected candidate. Historical WAIT/PASS/HOLD
+   * receipts legitimately have no entry thesis. */
+  readonly entryThesisReceipt?: EntryThesisReceipt | null;
 }
 
 const alternativeFrom = (c: CandidateFrontierResult): NewRiskAlternative => ({

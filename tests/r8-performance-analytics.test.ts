@@ -17,6 +17,11 @@ test('R8 performance reports complete after-cost episode economics without repla
   assert.equal(result.medianRecoveryDurationDays,12);
   assert.equal(result.maxDrawdown,-150);
   assert.equal(result.navChange,50);
+  assert.equal(result.winRate,0.5);
+  assert.equal(result.expectancy,25);
+  assert.equal(result.payoffRatio,2);
+  assert.equal(result.expectedShortfall,-50);
+  assert.equal(result.winRateInterval95?.state,'RAW_EPISODE_COUNT_ONLY');
 });
 
 test('one unknown component keeps the corresponding aggregate UNKNOWN',()=>{
@@ -49,4 +54,20 @@ test('a loss is never automatically labeled a defect or ordinary variance',()=>{
   assert.equal(classifyR8Defect({confirmedDefect:null,ordinaryMarketVarianceConfirmed:false}),null);
   assert.equal(classifyR8Defect({confirmedDefect:'EXECUTION_DEFECT',ordinaryMarketVarianceConfirmed:false}),'EXECUTION_DEFECT');
   assert.equal(classifyR8Defect({confirmedDefect:null,ordinaryMarketVarianceConfirmed:true}),'ORDINARY_MARKET_VARIANCE');
+});
+
+test('win-rate reliability uses governed effective independent N when supplied',()=>{
+  const episodes=Array.from({length:10},(_,index)=>episode({episodeId:`e${index}`,
+    wholeChainPnl:index<8?100:-50,realizedPnl:index<8?100:-50,managedEpisodePnl:index<8?100:-50,legPnl:index<8?100:-50}));
+  const result=buildR8PerformanceReceipt(episodes,[],{effectiveIndependentN:4});
+  assert.equal(result.winRate,0.8);
+  assert.equal(result.effectiveIndependentN,4);
+  assert.equal(result.winRateInterval95?.state,'EFFECTIVE_N_ADJUSTED');
+  assert.equal(result.winRateInterval95?.sampleN,4);
+  assert.ok((result.winRateInterval95?.lower??1)<0.8);
+  assert.ok((result.winRateInterval95?.upper??0)>0.8);
+});
+
+test('effective N cannot exceed resolved independent evidence',()=>{
+  assert.throws(()=>buildR8PerformanceReceipt([episode()],[],{effectiveIndependentN:2}),/R8_EFFECTIVE_N_INVALID/);
 });
