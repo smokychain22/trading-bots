@@ -18,11 +18,15 @@ const parquetRoot = value('--parquet-root=') ?? 'C:\\ProjectBackups\\trading-bot
 const sourceSha = value('--source-sha=');
 const since = value('--since=');
 const limitRaw = value('--limit=');
+const duckdbVerificationRaw = value('--duckdb-verification=');
+const duckdbVerification = duckdbVerificationRaw === 'PASS' || duckdbVerificationRaw === 'FAILED'
+  || duckdbVerificationRaw === 'NOT_AVAILABLE' ? duckdbVerificationRaw : undefined;
 const now = new Date();
 if (process.argv.includes('--health-only')) {
   const health = writeArchiveHealth({
     healthPath, spoolPath, parquetRoot, observedAt: now,
     archiveState: 'HEALTH_REFRESHED', outcome: 'UNCHANGED',
+    duckdbVerificationOverride: duckdbVerification,
   });
   process.stdout.write(`${JSON.stringify({ state: health.archiveState, researchRowCount: 0, health })}\n`);
   process.exit(0);

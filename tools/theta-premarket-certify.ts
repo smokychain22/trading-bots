@@ -49,6 +49,9 @@ checks.push(check('HISTORICAL_REGRESSIONS', historical.status === 0 ? 'PASS' : '
 const sessions = run(process.execPath, ['--import', 'tsx', 'tools/theta-premarket-session-simulator.ts']);
 checks.push(check('SESSION_SIMULATOR', sessions.status === 0 ? 'PASS' : 'FAIL',
   sessions.status === 0 ? '14_SESSION_CASES_PASS' : 'SESSION_REGRESSION'));
+const soak = run(process.execPath, ['--import', 'tsx', 'tools/theta-accelerated-session-soak.ts']);
+checks.push(check('ACCELERATED_SESSION_SOAK', soak.status === 0 ? 'PASS' : 'FAIL',
+  soak.status === 0 ? '391_CYCLES_FAULTS_CONTAINED' : 'SESSION_SOAK_REGRESSION'));
 const security = run(process.execPath, ['tools/security-scan.mjs']);
 checks.push(check('SECURITY', security.status === 0 ? 'PASS' : 'FAIL',
   security.status === 0 ? 'SCAN_PASS' : 'SECURITY_FINDING'));

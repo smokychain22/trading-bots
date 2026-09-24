@@ -471,3 +471,32 @@ No item is complete merely because its type, config, fixture, or UI label exists
   `GLOBAL_WAIT`. UNDERLYING, SECTOR and CORRELATION remained genuine AEGIS hard
   vetoes under the unchanged concentration policy. Orders and broker mutations
   remained zero.
+
+## V16 overnight certification closure, 2026-09-25
+
+- ID: V16-ARCHIVE-HEALTH. DOMAIN: storage. SOURCE: `src/storage/local-research-archive-health.ts`,
+  `tools/verify-local-research-parquet.py`, and the Windows supervisor. RUNTIME CALLER:
+  the closed-session worker. CURRENT_STATE: WIRED/VERIFIED. TARGET_STATE: CLOSED.
+  CLASSIFICATION: CODE_SOLVABLE. IMPLEMENTATION: Aiven 53000 is a typed 12-hour
+  transfer-quota circuit, storage-audit 53000/57014 failures receive bounded
+  cooldowns, and both supported Parquet manifest formats receive cached real
+  DuckDB read-back. UNIT/INTEGRATION/FAULT: PASS. STATUS: CLOSED. NEXT_RETRY_WHEN:
+  the persisted cooldown expires or archive inventory changes.
+- ID: V16-HISTORICAL-FAILURES. DOMAIN: runtime safety. SOURCE:
+  `src/operations/historical-failure-registry.ts`. RUNTIME CALLER:
+  `theta:premarket:historical-regressions`. CURRENT_STATE: 23/23 PASS.
+  TARGET_STATE: CLOSED. CLASSIFICATION: CODE_SOLVABLE. UNIT/INTEGRATION/REPLAY/FAULT:
+  PASS. STATUS: CLOSED. Historical failures F01 through F23 now map to executable
+  sanitized regression evidence with zero unclassified cases.
+- ID: V16-SESSION-SOAK. DOMAIN: liveness. SOURCE:
+  `src/operations/accelerated-session-soak.ts`. RUNTIME CALLER:
+  `theta:premarket:accelerated-soak` and premarket certification. CURRENT_STATE:
+  391 deterministic minute cycles pass across the complete 6.5-hour session with
+  typed database, provider, stale-quote, backpressure, and lease-delay injection.
+  TARGET_STATE: CLOSED_ENGINEERING. CLASSIFICATION: CODE_SOLVABLE. UNIT/FAULT/SOAK:
+  PASS. STATUS: CLOSED_ENGINEERING. Live provider/economic proof remains
+  FORWARD_DATA_REQUIRED and is not implied by this deterministic soak.
+- ID: V16-FINAL-LIVE-VALUE. DOMAIN: current market evidence. RUNTIME CALLER:
+  locked current worker. CURRENT_STATE: PENDING_OPEN. TARGET_STATE: CURRENT_RELEASE
+  SPY no-submit receipt. CLASSIFICATION: FORWARD_DATA. CODE_SOLVABLE: NO.
+  STATUS: FORWARD_DATA. NEXT_RETRY_WHEN: next supported U.S. options session.

@@ -106,10 +106,15 @@ function parquetState(root: string): Pick<LocalResearchArchiveHealth,
   if (latest === undefined) return { parquetFiles, lastManifestHash: null, duckdbVerification: 'NOT_AVAILABLE' };
   const manifestBytes = readFileSync(latest.path);
   const manifest = JSON.parse(manifestBytes.toString('utf8')) as Record<string, unknown>;
+  const explicitReadback = manifest.duckdbReadback;
   return {
     parquetFiles,
     lastManifestHash: createHash('sha256').update(manifestBytes).digest('hex'),
-    duckdbVerification: manifest.duckdbReadback === 'PASS' ? 'PASS' : 'FAILED',
+    // theta-parquet-archive-v1 performs DuckDB read-back in its Python loader
+    // but predates the explicit duckdbReadback field. Missing verification
+    // evidence is NOT_AVAILABLE, never an integrity failure.
+    duckdbVerification: explicitReadback === 'PASS' ? 'PASS'
+      : explicitReadback === undefined ? 'NOT_AVAILABLE' : 'FAILED',
   };
 }
 
@@ -129,6 +134,7 @@ export function writeArchiveHealth(input: {
   readonly outcome: 'SUCCESS' | 'QUOTA_EXHAUSTED' | 'RETRYING' | 'FAILURE' | 'UNCHANGED';
   readonly failureFamily?: ArchiveFailureFamily | null;
   readonly retryAfterHours?: number;
+  readonly duckdbVerificationOverride?: LocalResearchArchiveHealth['duckdbVerification'];
 }): LocalResearchArchiveHealth {
   const healthPath = resolve(input.healthPath);
   const prior = readPersisted(healthPath);
@@ -153,6 +159,7 @@ export function writeArchiveHealth(input: {
       : input.outcome === 'SUCCESS' ? null : prior.nextRetryAt,
     ...counts,
     ...parquet,
+    duckdbVerification: input.duckdbVerificationOverride ?? parquet.duckdbVerification,
     brokerAuthority: false,
   };
   mkdirSync(dirname(healthPath), { recursive: true });

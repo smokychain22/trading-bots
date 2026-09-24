@@ -18,6 +18,7 @@ $researchIdentityFile = Join-Path $stateRoot 'last-empirical-dataset-identity'
 $qualificationSessionFile = Join-Path $stateRoot 'last-optionomics-qualification-session'
 $alpacaQualificationSessionFile = Join-Path $stateRoot 'last-alpaca-indicative-qualification-session'
 $storageAuditDateFile = Join-Path $stateRoot 'last-storage-audit-date'
+$storageAuditFailureFile = Join-Path $stateRoot 'storage-audit-failure.json'
 if (!(Test-Path -LiteralPath $runtimeFile)) { throw 'THETA_LOCAL_WORKER_NOT_INSTALLED' }
 if (!(Test-Path -LiteralPath $tokenFile)) { throw 'THETA_LOCAL_WORKER_TOKEN_NOT_PROVISIONED' }
 if (!(Test-Path -LiteralPath $productionEnvFile)) { throw 'THETA_PRODUCTION_ENV_NOT_PROVISIONED' }
@@ -281,18 +282,44 @@ try {
       $lastStorageAuditDate = if (Test-Path -LiteralPath $storageAuditDateFile) {
         (Get-Content -Raw -LiteralPath $storageAuditDateFile).Trim()
       } else { '' }
-      if ($report.reconciliation.marketOpen -ne $true -and $lastStorageAuditDate -ne $storageAuditDate) {
+      $storageAuditRetryAllowed = $true
+      if (Test-Path -LiteralPath $storageAuditFailureFile) {
+        try {
+          $storageFailure = Get-Content -Raw -LiteralPath $storageAuditFailureFile | ConvertFrom-Json
+          $storageRetryAt = [DateTimeOffset]::Parse([string]$storageFailure.nextRetryAt)
+          if ($storageRetryAt -gt [DateTimeOffset]::UtcNow) {
+            $storageAuditRetryAllowed = $false
+            $storageAuditState = "DEFERRED_$([string]$storageFailure.errorCode)"
+          }
+        } catch { $storageAuditRetryAllowed = $true }
+      }
+      if ($report.reconciliation.marketOpen -ne $true -and $lastStorageAuditDate -ne $storageAuditDate -and $storageAuditRetryAllowed) {
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-          & node --import tsx tools/theta-storage-audit.ts "--environment-file=$productionEnvFile" `
-            "--output-root=$(Join-Path $stateRoot 'storage-audits')" *> $null
+          $storageAuditOutput = & node --import tsx tools/theta-storage-audit.ts "--environment-file=$productionEnvFile" `
+            "--output-root=$(Join-Path $stateRoot 'storage-audits')"
           $storageAuditExit = $LASTEXITCODE
         } finally { $ErrorActionPreference = $previousErrorActionPreference }
         if ($storageAuditExit -eq 0) {
           Set-Content -LiteralPath $storageAuditDateFile -Value $storageAuditDate -Encoding ascii
+          Remove-Item -LiteralPath $storageAuditFailureFile -Force -ErrorAction SilentlyContinue
           $storageAuditState = 'CAPTURED'
-        } else { $storageAuditState = 'FAILED_NONCRITICAL' }
+        } else {
+          $storageErrorCode = 'UNCLASSIFIED_STORAGE_AUDIT_FAILURE'
+          try {
+            $storageAuditResult = $storageAuditOutput | Select-Object -Last 1 | ConvertFrom-Json
+            if ([string]$storageAuditResult.errorCode -match '^[A-Z0-9_]+$') {
+              $storageErrorCode = [string]$storageAuditResult.errorCode
+            }
+          } catch { }
+          $storageCooldownHours = if ($storageErrorCode -eq '53000') { 12 } `
+            elseif ($storageErrorCode -eq '57014') { 1 } else { 0.5 }
+          @{errorCode=$storageErrorCode;observedAt=[DateTimeOffset]::UtcNow.ToString('o');
+            nextRetryAt=[DateTimeOffset]::UtcNow.AddHours($storageCooldownHours).ToString('o')} |
+            ConvertTo-Json -Compress | Set-Content -LiteralPath $storageAuditFailureFile -Encoding utf8
+          $storageAuditState = "DEFERRED_$storageErrorCode"
+        }
       }
       # PostgreSQL retains the canonical frontier and transactional audit.
       # The Windows owner projects high-volume per-candidate research history
@@ -343,7 +370,8 @@ try {
             $compactorPython = 'python'
             & $compactorPython -c 'import duckdb' *> $null
           }
-          if ($LASTEXITCODE -eq 0) {
+          $duckdbAvailable = $LASTEXITCODE -eq 0
+          if ($duckdbAvailable) {
             $parquetOutput = & $compactorPython tools/compact-local-research-spool.py `
               "--sqlite=$researchSpoolPath" "--destination=$researchParquetRoot" --limit=1000
             $parquetExit = $LASTEXITCODE
@@ -352,9 +380,19 @@ try {
               $localResearchParquetState = [string]$parquetResult.state
             } else { $localResearchParquetState = 'FAILED_NONCRITICAL' }
           } else { $localResearchParquetState = 'DEPENDENCY_UNAVAILABLE_NONCRITICAL' }
+          $parquetVerification = 'NOT_AVAILABLE'
+          if ($duckdbAvailable) {
+            $verificationOutput = & $compactorPython tools/verify-local-research-parquet.py `
+              "--root=$researchParquetRoot" `
+              "--cache=$(Join-Path $stateRoot 'research-spool\parquet-verification-cache.json')"
+            if ($LASTEXITCODE -eq 0) {
+              $verificationResult = $verificationOutput | ConvertFrom-Json
+              $parquetVerification = [string]$verificationResult.state
+            } else { $parquetVerification = 'FAILED' }
+          }
           $healthOutput = & node --import tsx tools/archive-canonical-strategy-frontiers.ts `
             "--sqlite=$researchSpoolPath" "--health=$researchArchiveHealthPath" `
-            "--parquet-root=$researchParquetRoot" --health-only
+            "--parquet-root=$researchParquetRoot" "--duckdb-verification=$parquetVerification" --health-only
           if ($LASTEXITCODE -eq 0) {
             $healthResult = $healthOutput | ConvertFrom-Json
             $localResearchSpoolRows = [int]$healthResult.health.spoolRows

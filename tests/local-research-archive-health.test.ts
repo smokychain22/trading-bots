@@ -78,3 +78,25 @@ test('successful archive clears quota cooldown and fingerprints latest verified 
   assert.equal(state.duckdbVerification, 'PASS');
   assert.equal(JSON.parse(readFileSync(paths.health, 'utf8')).brokerAuthority, false);
 });
+
+test('legacy archive without explicit readback is not falsely reported corrupt', () => {
+  const paths = fixture();
+  const directory = join(paths.parquet, 'legacy');
+  mkdirSync(directory);
+  writeFileSync(join(directory, 'evidence.parquet'), 'test-only');
+  writeFileSync(join(directory, 'manifest.json'), JSON.stringify({
+    formatVersion: 'theta-parquet-archive-v1', generatedAt: '2026-09-25T01:00:00.000Z',
+    parquetFile: 'evidence.parquet', manifestSha256: 'test-only',
+  }));
+  const unverified = writeArchiveHealth({
+    healthPath: paths.health, spoolPath: paths.sqlite, parquetRoot: paths.parquet,
+    observedAt: new Date('2026-09-25T01:00:00.000Z'), archiveState: 'HEALTH_REFRESHED', outcome: 'UNCHANGED',
+  });
+  assert.equal(unverified.duckdbVerification, 'NOT_AVAILABLE');
+  const verified = writeArchiveHealth({
+    healthPath: paths.health, spoolPath: paths.sqlite, parquetRoot: paths.parquet,
+    observedAt: new Date('2026-09-25T01:01:00.000Z'), archiveState: 'HEALTH_REFRESHED', outcome: 'UNCHANGED',
+    duckdbVerificationOverride: 'PASS',
+  });
+  assert.equal(verified.duckdbVerification, 'PASS');
+});

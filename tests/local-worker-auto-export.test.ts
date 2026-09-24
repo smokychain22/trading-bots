@@ -39,10 +39,17 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /RESEARCH_DEFERRED_MARKET_CRITICAL/);
   assert.match(source, /marketOpen -eq \$true/);
   assert.match(source, /last-storage-audit-date/);
+  assert.match(source, /storage-audit-failure\.json/);
   assert.match(source, /theta-storage-audit\.ts/);
   assert.match(source, /storageAuditState.*DEFERRED_MARKET_CRITICAL/);
+  assert.match(source, /storageAuditRetryAllowed/);
+  assert.match(source, /storageCooldownHours/);
+  assert.match(source, /storageErrorCode -eq '53000'/);
+  assert.match(source, /storageErrorCode -eq '57014'/);
   assert.match(source, /archive-canonical-strategy-frontiers\.ts/);
   assert.match(source, /compact-local-research-spool\.py/);
+  assert.match(source, /verify-local-research-parquet\.py/);
+  assert.match(source, /duckdbAvailable/);
   assert.match(source, /localResearchArchiveState/);
   assert.match(source, /localResearchParquetState/);
   assert.match(source, /localResearchTransferQuotaState/);
