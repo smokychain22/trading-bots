@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
-EXPERIMENT_REGISTRY_VERSION = "theta-experiment-registry-v1"
+EXPERIMENT_REGISTRY_VERSION = "theta-experiment-registry-v2"
 
 
 class ExperimentKind(str, Enum):
@@ -33,6 +33,7 @@ class ExperimentKind(str, Enum):
     FEATURE_ABLATION = "FEATURE_ABLATION"
     FLOW_ABLATION = "FLOW_ABLATION"
     STRICTNESS = "STRICTNESS"
+    ENTRY_POLICY = "ENTRY_POLICY"
 
 
 class MinimumReadiness(str, Enum):
@@ -47,6 +48,26 @@ class MinimumReadiness(str, Enum):
 
 
 @dataclass(frozen=True)
+class ExperimentProtocol:
+    """Frozen design facts required before any outcome inspection.
+
+    A numeric effective-N target is intentionally not invented here. The
+    target and OOS dates must be frozen in the immutable run fingerprint
+    before labels are inspected. This still makes absence explicit and
+    machine-checkable rather than silently treating raw rows as independent.
+    """
+
+    hypothesis: str
+    population: str
+    decision_time_features: Tuple[str, ...]
+    outcome_definition: str
+    cost_model: str
+    sample_threshold: str
+    oos_plan: str
+    promotion_gate: str
+
+
+@dataclass(frozen=True)
 class ExperimentDefinition:
     experiment_id: str
     kind: ExperimentKind
@@ -54,6 +75,7 @@ class ExperimentDefinition:
     description: str
     hypothesis_id: Optional[str] = None  # links to hypotheses.json where one genuinely applies
     parameters: Dict[str, object] = field(default_factory=dict)
+    protocol: Optional[ExperimentProtocol] = None
 
 
 # --- Research lattices (bins, never claims) -------------------------------
@@ -102,19 +124,19 @@ FLOW_FAILURE_CONTROLS: Tuple[str, ...] = (
     "NO_SIMPLISTIC_CALL_PUT_DIRECTION",
 )
 
-#: Extended (2026-09-15, "DYNAMIC PROFIT PRESERVATION + STRATEGY SWITCHING"
-#: directive, section 4) to cover the full requested fixed-percentage TP
-#: lattice (25/35/40/50/60/70/75/80/90) plus named short-DTE exit variants
-#: and the new profit-GIVEBACK-aware dynamic policy this directive
-#: specifically asks for (distinct from DYNAMIC_REMAINING_EV, which reacts
-#: to remaining reward alone -- DYNAMIC_PROFIT_GIVEBACK additionally reacts
-#: to how much of a PEAK unrealized profit has already been surrendered;
-#: see profit_preservation_research.py for the formal definitions).
+#: Canonical V8 management challenger set. These are research policies, not
+#: Production exit rules. Historical policy names remain separately readable
+#: so old evidence retains meaning, but they do not alter this preregistration.
 PROFIT_TAKING_POLICIES: Tuple[str, ...] = (
-    "FIXED_25", "FIXED_35", "FIXED_40", "FIXED_50", "FIXED_60", "FIXED_70", "FIXED_75", "FIXED_80", "FIXED_90",
-    "TIME_EXIT", "DTE_EXIT", "DTE_21_EXIT", "DTE_14_EXIT", "DTE_7_EXIT", "FIFTY_PERCENT_OR_DTE_21",
-    "DYNAMIC_REMAINING_EV", "DYNAMIC_EV_PLUS_HARD_RISK", "DYNAMIC_EV_PLUS_FLOW_INVALIDATION",
-    "DYNAMIC_PROFIT_GIVEBACK",
+    "FIXED_05", "FIXED_10", "FIXED_15", "FIXED_20", "FIXED_25", "FIXED_30",
+    "FIXED_40", "FIXED_50", "FIXED_60", "FIXED_75", "FIXED_90",
+    "TIME_EXIT", "DTE_EXIT", "DYNAMIC_REMAINING_EV", "DYNAMIC_EV_PLUS_HARD_RISK",
+    "DYNAMIC_EV_PLUS_EVENT", "DYNAMIC_EV_PLUS_CAPITAL_EFFICIENCY",
+)
+
+LEGACY_PROFIT_TAKING_POLICIES: Tuple[str, ...] = (
+    "FIXED_35", "FIXED_70", "FIXED_80", "DTE_21_EXIT", "DTE_14_EXIT", "DTE_7_EXIT",
+    "FIFTY_PERCENT_OR_DTE_21", "DYNAMIC_EV_PLUS_FLOW_INVALIDATION", "DYNAMIC_PROFIT_GIVEBACK",
 )
 
 LOSS_POLICIES: Tuple[str, ...] = (
@@ -124,6 +146,55 @@ LOSS_POLICIES: Tuple[str, ...] = (
 )
 
 ROLL_ALTERNATIVES: Tuple[str, ...] = ("HOLD", "CLOSE_FULL", "ROLL", "ACCEPT_ASSIGNMENT", "REDEPLOY")
+
+R8B_ENTRY_COMPARISONS: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
+    ("R8B-DTE", "fixed DTE versus adaptive DTE", ("DTE", "REGIME", "TERM_STRUCTURE", "EVENT_STATE")),
+    ("R8B-DELTA", "fixed strike/delta versus adaptive strike/delta", ("DELTA", "STRIKE", "EXPECTED_MOVE", "SKEW")),
+    ("R8B-STRICTNESS", "hard checklist versus hard safety plus soft ranking", ("HARD_SAFETY", "SOFT_FEATURE_CONTRIBUTIONS")),
+    ("R8B-VRP", "VRP context off versus on", ("ATM_IV", "RV20", "VRP20")),
+    ("R8B-VOL-ACCEL", "volatility acceleration context off versus on", ("IV_PATH", "RV_PATH", "OBSERVED_AT")),
+    ("R8B-GEX", "GEX context off versus on", ("GEX", "GEX_INFORMATION_STATE", "PROVIDER_KNOWN_AT")),
+    ("R8B-FLOW", "flow context off versus on", ("FLOW_IMBALANCE", "FLOW_PERSISTENCE", "FLOW_COMPLETENESS")),
+    ("R8B-SIZING", "fixed sizing versus state-aware sizing", ("BUYING_POWER", "COLLATERAL", "AEGIS", "CONCENTRATION")),
+    ("R8B-Q-VS-H", "Conventional baseline versus Hold-Strike shadow", ("COMMON_HORIZON_FEATURES", "BRANCH_APPLICABILITY")),
+    ("R8B-Q-VS-D", "Conventional baseline versus Defined-Risk shadow", ("COMMON_HORIZON_FEATURES", "BRANCH_APPLICABILITY")),
+)
+
+R8C_MANAGEMENT_COMPARISONS: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
+    ("R8C-FIXED-PROFIT-GRID", "fixed profit target grid", ("OPEN_CREDIT", "EXECUTABLE_CLOSE_DEBIT", "PROFIT_CAPTURE")),
+    ("R8C-TIME-EXIT", "time exit versus hold", ("ENTRY_TIME", "DECISION_TIME")),
+    ("R8C-DTE-EXIT", "DTE exit versus hold", ("DTE", "GAMMA_RISK", "EVENT_STATE")),
+    ("R8C-DYNAMIC-EV", "dynamic remaining EV versus fixed baselines", ("REMAINING_REWARD", "FORWARD_EV", "UNCERTAINTY")),
+    ("R8C-DYNAMIC-RISK", "dynamic EV plus hard risk", ("FORWARD_EV", "HARD_RISK", "EXPECTED_SHORTFALL")),
+    ("R8C-DYNAMIC-EVENT", "dynamic EV plus event", ("FORWARD_EV", "EVENT_STATE", "EVENT_VALID_THROUGH")),
+    ("R8C-DYNAMIC-CAPITAL", "dynamic EV plus capital efficiency", ("FORWARD_EV", "CAPITAL_DAYS", "REDEPLOYMENT_SET")),
+    ("R8C-MECHANICAL-ROLL", "mechanical roll versus no roll", ("ROLL_CREDIT", "NEW_CONTRACT", "CAPITAL_DAYS")),
+    ("R8C-ECONOMIC-ROLL", "economic roll versus best alternative", ("ROLL_INCREMENTAL_EV", "TAIL_RISK", "EXECUTION_COST")),
+    ("R8C-ASSIGN-CLOSE", "assignment versus close", ("ASSIGNMENT_CAPACITY", "STOCK_BASIS", "CLOSE_COST")),
+    ("R8C-ASSIGN-ROLL", "assignment versus roll", ("ASSIGNMENT_CAPACITY", "ROLL_CANDIDATES", "OWNERSHIP_STATE")),
+    ("R8C-RECOVERY", "recovery wait versus sell stock", ("STOCK_BASIS", "RECOVERY_BURDEN", "SELL_VALUE")),
+    ("R8C-CC-TIMING", "immediate covered call versus delayed covered call", ("STOCK_BASIS", "CALL_CANDIDATES", "RETAINED_UPSIDE")),
+    ("R8C-CC-ROLL-CALLAWAY", "covered-call roll versus call-away", ("WHOLE_CHAIN_BASIS", "ROLL_CC_CANDIDATES", "CALL_AWAY_VALUE")),
+)
+
+
+def _protocol(*, hypothesis: str, population: str, features: Tuple[str, ...]) -> ExperimentProtocol:
+    return ExperimentProtocol(
+        hypothesis=hypothesis,
+        population=population,
+        decision_time_features=features,
+        outcome_definition=(
+            "Whole-chain after-cost P&L, return per capital-day, payoff ratio, Expected Shortfall, "
+            "drawdown, assignment/recovery burden, and resolved/censored state."
+        ),
+        cost_model="Executable BBO-based fills with versioned fees, spread/slippage, and leg-level roll accounting.",
+        sample_threshold="FREEZE_EFFECTIVE_N_TARGET_BEFORE_OUTCOME_INSPECTION",
+        oos_plan="Chronological PIT-safe walk-forward with chain grouping, purge/embargo, and an untouched final OOS window.",
+        promotion_gate=(
+            "Positive after-cost OOS value with acceptable tail/drawdown, calibrated uncertainty, sufficient effective N, "
+            "Paper stability, and an explicit authority decision."
+        ),
+    )
 
 
 def _definitions() -> Tuple[ExperimentDefinition, ...]:
@@ -166,6 +237,30 @@ def _definitions() -> Tuple[ExperimentDefinition, ...]:
             hypothesis_id="H-R-03", parameters={"alternatives": ROLL_ALTERNATIVES},
         ),
     ]
+
+    for experiment_id, comparison, features in R8B_ENTRY_COMPARISONS:
+        definitions.append(ExperimentDefinition(
+            experiment_id, ExperimentKind.ENTRY_POLICY, MinimumReadiness.WALK_FORWARD_ELIGIBLE,
+            f"Controlled R8B comparison: {comparison}. One policy dimension changes at a time where possible.",
+            parameters={"comparison": comparison, "research_only": True, "broker_authority": False},
+            protocol=_protocol(
+                hypothesis=f"{comparison} may improve whole-chain after-cost economics without unacceptable tail cost.",
+                population="PIT-complete Conventional candidates, with H/D restricted to broker-authority-false shadow cohorts.",
+                features=features,
+            ),
+        ))
+
+    for experiment_id, comparison, features in R8C_MANAGEMENT_COMPARISONS:
+        definitions.append(ExperimentDefinition(
+            experiment_id, ExperimentKind.MANAGEMENT_POLICY, MinimumReadiness.WALK_FORWARD_ELIGIBLE,
+            f"Controlled R8C whole-chain management comparison: {comparison}.",
+            parameters={"comparison": comparison, "whole_chain_labels": True, "research_only": True, "broker_authority": False},
+            protocol=_protocol(
+                hypothesis=f"{comparison} may improve forward after-cost whole-chain economics from the same PIT state.",
+                population="Resolved or correctly censored managed episodes and assignment/recovery chains.",
+                features=features,
+            ),
+        ))
 
     for low, high in DTE_BINS:
         definitions.append(ExperimentDefinition(

@@ -15,11 +15,10 @@ value, close-vs-hold comparison, redeploy value) is returned as an explicit
 tagged `MODEL_REQUIRED` or `EMPIRICAL_REQUIRED` -- never a fabricated number,
 per this directive's own explicit instruction (section 3).
 
-None of this is a universal exit threshold. `experiment_registry.py`'s
-`PROFIT_TAKING_POLICIES` (now 19 entries, including the new
-`DYNAMIC_PROFIT_GIVEBACK` policy this module exists to support) treats every
-fixed percentage AND every dynamic policy as a competing challenger to be
-tested, never a default.
+None of this is a universal exit threshold. The V8 canonical registry keeps
+the requested 17-policy challenger set. `DYNAMIC_PROFIT_GIVEBACK` remains a
+named legacy research policy so historical evidence stays interpretable, but
+it is not silently added to the current preregistration.
 """
 
 from __future__ import annotations

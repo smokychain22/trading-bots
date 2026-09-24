@@ -1,6 +1,6 @@
 # R8 fixed-versus-adaptive preregistration
 
-Status: research protocol only. Registered against `9f03fb960c50ab21b1d6c81297d9654ec81def8d` on 2026-09-21. None of these challengers has Paper execution authority or a demonstrated edge. `NO_COMPARISON` is the correct shadow result while required empirical models are absent.
+Status: historical v1 research protocol only. Registered against `9f03fb960c50ab21b1d6c81297d9654ec81def8d` on 2026-09-21. The active machine-readable V8 preregistration is `theta-experiment-registry-v2` in `bots/theta/quant/research/experiment_registry.py`. This document remains immutable protocol history rather than current registry truth. None of these challengers has Paper execution authority or a demonstrated edge. `NO_COMPARISON` is the correct shadow result while required empirical models are absent.
 
 Every comparison uses the same point-in-time candidate set, account state, broker lifecycle, event state, and executable quote evidence. A selected action, a rejected action, and WAIT remain distinct. Hypothetical fills require a separately versioned fill model and may resolve to `NO_FILL`. Feature rows end at decision time. Labels start after it. Whole-chain episodes, including rolls, assignment, stock, and covered calls, stay in the same train or test fold.
 

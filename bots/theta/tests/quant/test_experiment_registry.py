@@ -16,8 +16,11 @@ from research.experiment_registry import (  # noqa: E402
     FEATURE_ABLATION_FAMILIES,
     FLOW_ABLATION_LADDER,
     FLOW_FAILURE_CONTROLS,
+    LEGACY_PROFIT_TAKING_POLICIES,
     LOSS_POLICIES,
     PROFIT_TAKING_POLICIES,
+    R8B_ENTRY_COMPARISONS,
+    R8C_MANAGEMENT_COMPARISONS,
     SLICE_METRICS,
     ExperimentKind,
     MinimumReadiness,
@@ -64,10 +67,37 @@ class LatticeTests(unittest.TestCase):
 
 
 class PolicyCoverageTests(unittest.TestCase):
-    def test_all_nineteen_profit_taking_policies_are_registered(self):
-        self.assertEqual(len(PROFIT_TAKING_POLICIES), 19)
+    def test_all_seventeen_v8_profit_taking_policies_are_registered(self):
+        self.assertEqual(len(PROFIT_TAKING_POLICIES), 17)
+        self.assertEqual(PROFIT_TAKING_POLICIES, (
+            "FIXED_05", "FIXED_10", "FIXED_15", "FIXED_20", "FIXED_25", "FIXED_30",
+            "FIXED_40", "FIXED_50", "FIXED_60", "FIXED_75", "FIXED_90", "TIME_EXIT", "DTE_EXIT",
+            "DYNAMIC_REMAINING_EV", "DYNAMIC_EV_PLUS_HARD_RISK", "DYNAMIC_EV_PLUS_EVENT",
+            "DYNAMIC_EV_PLUS_CAPITAL_EFFICIENCY",
+        ))
         for policy in PROFIT_TAKING_POLICIES:
             self.assertIn(f"EXIT-{policy}", EXPERIMENTS_BY_ID)
+
+    def test_legacy_profit_policies_remain_named_but_do_not_enter_the_v8_registry(self):
+        self.assertIn("DYNAMIC_PROFIT_GIVEBACK", LEGACY_PROFIT_TAKING_POLICIES)
+        for policy in LEGACY_PROFIT_TAKING_POLICIES:
+            if policy not in PROFIT_TAKING_POLICIES:
+                self.assertNotIn(f"EXIT-{policy}", EXPERIMENTS_BY_ID)
+
+    def test_all_r8b_and_r8c_comparisons_are_preregistered_with_complete_protocols(self):
+        for experiment_id, _, _ in (*R8B_ENTRY_COMPARISONS, *R8C_MANAGEMENT_COMPARISONS):
+            experiment = EXPERIMENTS_BY_ID[experiment_id]
+            self.assertIsNotNone(experiment.protocol)
+            protocol = experiment.protocol
+            self.assertTrue(protocol.hypothesis)
+            self.assertTrue(protocol.population)
+            self.assertTrue(protocol.decision_time_features)
+            self.assertTrue(protocol.outcome_definition)
+            self.assertTrue(protocol.cost_model)
+            self.assertEqual(protocol.sample_threshold, "FREEZE_EFFECTIVE_N_TARGET_BEFORE_OUTCOME_INSPECTION")
+            self.assertIn("walk-forward", protocol.oos_plan)
+            self.assertIn("authority decision", protocol.promotion_gate)
+            self.assertFalse(experiment.parameters["broker_authority"])
 
     def test_all_six_loss_policies_are_registered(self):
         self.assertEqual(len(LOSS_POLICIES), 6)

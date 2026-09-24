@@ -72,9 +72,13 @@ CLOSE_AND_REDEPLOY_VALUE      -- REDEPLOY_OPPORTUNITY_SET_REQUIRED (needs a real
 
 ## C. Winner-management challengers
 
-`experiment_registry.py`'s `PROFIT_TAKING_POLICIES` extended this pass from 8 to 19
-entries (auto-generates one `EXIT-{policy}` experiment per entry, via the existing
-`SLICE-DTE`/`SLICE-DELTA`-style pattern -- no new registration mechanism needed):
+Historical protocol note: this section records the 2026-09-15 nineteen-policy
+research lattice. The active V8 registry is `theta-experiment-registry-v2` and
+contains the canonical seventeen challengers required by V8. The names below
+remain legacy research vocabulary for interpreting old rows. They are not the
+current preregistration and have no Production authority.
+
+The historical registry extended that pass from 8 to 19 entries:
 
 ```
 FIXED_25, FIXED_35, FIXED_40, FIXED_50, FIXED_60, FIXED_70, FIXED_75, FIXED_80, FIXED_90,

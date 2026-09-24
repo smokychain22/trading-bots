@@ -11,6 +11,7 @@ const input = () => ({
   whyUnderlying: known('Ownership evidence passed.'), whyStrategy: known('Conventional was Paper-authorized.'),
   whyExpiry: known('The expiry survived the lattice.'), whyStrike: known('The strike survived the lattice.'),
   whyNow: known('Risk, size, and execution evidence passed.'), volatilityThesis: unknown('Volatility edge is unknown.'),
+  quantityReason: known('Quantity and its binding constraint were persisted.'),
   directionalTolerance: known('Break-even and cushion are deterministic.'),
   eventAssumptions: known('Bounded event coverage was clear.'), breakEven: 500, downsideCushion: 0.02,
   assignmentWillingness: unknown('Assignment is assessed at management time.'),
@@ -22,11 +23,12 @@ const input = () => ({
 test('entry thesis is immutable, hashed, non-authoritative, and empirically honest', () => {
   const first = buildEntryThesisReceipt(input());
   const second = buildEntryThesisReceipt(input());
-  assert.equal(first.contractVersion, 'theta-entry-thesis-receipt-v1');
+  assert.equal(first.contractVersion, 'theta-entry-thesis-receipt-v2');
   assert.equal(first.empiricalProfitabilityState, 'UNPROVEN');
   assert.equal(first.executionAuthorized, false);
   assert.match(first.immutableHash, /^[a-f0-9]{64}$/);
   assert.equal(first.immutableHash, second.immutableHash);
+  assert.equal(first.quantityReason.state, 'KNOWN');
 });
 
 test('known claims require evidence and unproven capital days cannot carry a number', () => {

@@ -151,8 +151,9 @@ function attachEntryThesis(
   const raw = request.candidates.find((candidate) => candidate.candidateId === receipt.selectedCandidateId);
   const referencePrice = selected?.contract.underlyingReferencePrice ?? null;
   const breakEven = selected?.contract.breakEven ?? null;
-  if (selected === undefined || raw === undefined || breakEven === null || referencePrice === null || referencePrice <= 0) {
-    const detail = 'The selected candidate lacks a deterministic break-even or underlying reference price required by the immutable entry thesis.';
+  if (selected === undefined || raw === undefined || selected.sizing === null
+    || breakEven === null || referencePrice === null || referencePrice <= 0) {
+    const detail = 'The selected candidate lacks deterministic sizing, break-even, or underlying reference evidence required by the immutable entry thesis.';
     return {
       ...receipt,
       winningAction: 'SYSTEM_HOLD', selectedCandidateId: null, quantity: 0,
@@ -189,6 +190,9 @@ function attachEntryThesis(
     whyNow: claim('KNOWN',
       `The current snapshot produced ${receipt.winningAction}, AEGIS ${selected.aegis?.newRiskState ?? 'UNKNOWN'}, quantity ${selected.sizing?.quantity ?? 0}, and execution recommendation ${selected.executionQuality?.recommendedAction ?? 'UNKNOWN'}.`,
       quoteEvidence),
+    quantityReason: claim('KNOWN',
+      `The selected quantity is ${selected.sizing.quantity}; the binding capacity is ${selected.sizing.bindingConstraint}; sizing reasons are ${selected.sizing.reasons.join(', ')}. Quantity was not forced to one.`,
+      [request.snapshotId, raw.candidateId]),
     volatilityThesis: volatilityKnown
       ? claim('KNOWN', `Observed IV is ${contract.iv ?? 'UNKNOWN'} and IV rank is ${raw.ivRank ?? 'UNKNOWN'}; these are context, not a calibrated profit forecast.`, commonEvidence)
       : claim('UNKNOWN', 'Neither contract IV nor IV rank was observed. No volatility edge was inferred.'),

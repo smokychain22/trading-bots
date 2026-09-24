@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export const entryThesisReceiptVersion = 'theta-entry-thesis-receipt-v1' as const;
+export const entryThesisReceiptVersion = 'theta-entry-thesis-receipt-v2' as const;
 export type ThesisEvidenceState = 'KNOWN' | 'UNKNOWN' | 'EMPIRICALLY_UNPROVEN' | 'NOT_APPLICABLE';
 
 export interface ThesisClaim {
@@ -22,6 +22,7 @@ export interface EntryThesisReceipt {
   readonly whyExpiry: ThesisClaim;
   readonly whyStrike: ThesisClaim;
   readonly whyNow: ThesisClaim;
+  readonly quantityReason: ThesisClaim;
   readonly volatilityThesis: ThesisClaim;
   readonly directionalTolerance: ThesisClaim;
   readonly eventAssumptions: ThesisClaim;
@@ -68,7 +69,8 @@ export function buildEntryThesisReceipt(
   }
   for (const [name, claim] of Object.entries({
     whyUnderlying: input.whyUnderlying, whyStrategy: input.whyStrategy, whyExpiry: input.whyExpiry,
-    whyStrike: input.whyStrike, whyNow: input.whyNow, volatilityThesis: input.volatilityThesis,
+    whyStrike: input.whyStrike, whyNow: input.whyNow, quantityReason: input.quantityReason,
+    volatilityThesis: input.volatilityThesis,
     directionalTolerance: input.directionalTolerance, eventAssumptions: input.eventAssumptions,
     assignmentWillingness: input.assignmentWillingness, expectedManagementPath: input.expectedManagementPath,
   })) validateClaim(name, claim);
