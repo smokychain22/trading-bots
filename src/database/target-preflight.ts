@@ -5,7 +5,13 @@ export interface DatabaseTargetPreflight {
   readonly ssl: 'PASS' | 'FAIL';
   readonly postgresVersion: string;
   readonly maxConnections: number;
-  readonly activeConnectionsAtProbe: number;
+  readonly totalConnectionsAtProbe: number;
+  readonly currentDatabaseConnectionsAtProbe: number;
+  readonly clientBackendsAtProbe: number;
+  readonly backgroundProcessesAtProbe: number;
+  readonly activeClientsAtProbe: number;
+  readonly idleClientsAtProbe: number;
+  readonly waitingClientsAtProbe: number;
   readonly existingSchemaCount: number;
   readonly existingTableCount: number;
   readonly canonicalTableCount: number;
@@ -135,7 +141,16 @@ export async function preflightDatabaseTarget(connectionString: string): Promise
       current_setting('server_version') AS version,
       current_setting('max_connections')::integer AS max_connections,
       COALESCE((SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()), false) AS ssl,
-      (SELECT count(*)::integer FROM pg_stat_activity) AS active_connections,
+      (SELECT count(*)::integer FROM pg_stat_activity) AS total_connections,
+      (SELECT count(*)::integer FROM pg_stat_activity WHERE datname=current_database()) AS current_database_connections,
+      (SELECT count(*)::integer FROM pg_stat_activity WHERE backend_type='client backend') AS client_backends,
+      (SELECT count(*)::integer FROM pg_stat_activity WHERE backend_type<>'client backend') AS background_processes,
+      (SELECT count(*)::integer FROM pg_stat_activity
+        WHERE backend_type='client backend' AND state='active') AS active_clients,
+      (SELECT count(*)::integer FROM pg_stat_activity
+        WHERE backend_type='client backend' AND state='idle') AS idle_clients,
+      (SELECT count(*)::integer FROM pg_stat_activity
+        WHERE backend_type='client backend' AND state='active' AND wait_event IS NOT NULL) AS waiting_clients,
       (SELECT count(*)::integer FROM information_schema.schemata
         WHERE schema_name NOT IN ('pg_catalog', 'information_schema')) AS schema_count,
       (SELECT count(*)::integer FROM information_schema.tables
@@ -161,7 +176,13 @@ export async function preflightDatabaseTarget(connectionString: string): Promise
       ssl: row.ssl === true ? 'PASS' : 'FAIL',
       postgresVersion: String(row.version),
       maxConnections: Number(row.max_connections),
-      activeConnectionsAtProbe: Number(row.active_connections),
+      totalConnectionsAtProbe: Number(row.total_connections),
+      currentDatabaseConnectionsAtProbe: Number(row.current_database_connections),
+      clientBackendsAtProbe: Number(row.client_backends),
+      backgroundProcessesAtProbe: Number(row.background_processes),
+      activeClientsAtProbe: Number(row.active_clients),
+      idleClientsAtProbe: Number(row.idle_clients),
+      waitingClientsAtProbe: Number(row.waiting_clients),
       existingSchemaCount: Number(row.schema_count),
       existingTableCount: Number(row.table_count),
       canonicalTableCount: Number(row.canonical_table_count),

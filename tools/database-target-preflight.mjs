@@ -27,7 +27,16 @@ try {
       WHERE schema_name NOT IN ('pg_catalog', 'information_schema')) AS schema_count,
     (SELECT count(*)::integer FROM information_schema.tables
       WHERE table_schema NOT IN ('pg_catalog', 'information_schema')) AS table_count,
-    (SELECT count(*)::integer FROM pg_stat_activity) AS active_connections`);
+    (SELECT count(*)::integer FROM pg_stat_activity) AS total_connections,
+    (SELECT count(*)::integer FROM pg_stat_activity WHERE datname=current_database()) AS current_database_connections,
+    (SELECT count(*)::integer FROM pg_stat_activity WHERE backend_type='client backend') AS client_backends,
+    (SELECT count(*)::integer FROM pg_stat_activity WHERE backend_type<>'client backend') AS background_processes,
+    (SELECT count(*)::integer FROM pg_stat_activity
+      WHERE backend_type='client backend' AND state='active') AS active_clients,
+    (SELECT count(*)::integer FROM pg_stat_activity
+      WHERE backend_type='client backend' AND state='idle') AS idle_clients,
+    (SELECT count(*)::integer FROM pg_stat_activity
+      WHERE backend_type='client backend' AND state='active' AND wait_event IS NOT NULL) AS waiting_clients`);
   await client.query("BEGIN");
   await client.query("CREATE TEMPORARY TABLE theta_aiven_write_probe(id integer PRIMARY KEY)");
   await client.query("INSERT INTO theta_aiven_write_probe(id) VALUES (1)");
@@ -41,7 +50,13 @@ try {
     defaultTransactionReadOnly: row.default_transaction_read_only,
     transactionReadOnly: row.transaction_read_only,
     maxConnections: row.max_connections,
-    activeConnectionsAtProbe: row.active_connections,
+    totalConnectionsAtProbe: row.total_connections,
+    currentDatabaseConnectionsAtProbe: row.current_database_connections,
+    clientBackendsAtProbe: row.client_backends,
+    backgroundProcessesAtProbe: row.background_processes,
+    activeClientsAtProbe: row.active_clients,
+    idleClientsAtProbe: row.idle_clients,
+    waitingClientsAtProbe: row.waiting_clients,
     existingSchemaCount: row.schema_count,
     existingTableCount: row.table_count,
     transactionWriteRollback: "PASS",
