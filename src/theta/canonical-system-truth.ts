@@ -4,7 +4,7 @@
  * when they contain superseded statements.
  */
 export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v1' as const;
-export const truthSourceBaselineSha = '22474670479f8d569f282631a9570799eed96258';
+export const truthSourceBaselineSha = '5bd1ed3d98b59ce9588ec279e3fef8cb4fea28b0';
 // A worker SHA is operational state. Read it from the current worker lease,
 // never from this source-controlled architectural inventory.
 export const truthLastVerifiedAt = '2026-09-24';
@@ -171,10 +171,11 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
     disposition: 'BUILT_AWAITING_RUNTIME_PROOF',
     supersededClaims: ['An explicit owner decision remains for approved instrument classification'] }),
   capability({ capabilityId: 'FIRST_PAPER_READINESS', layerIds: [12, 20], sourceImplemented: 'YES', testsPassed: 'YES',
-    persisted: 'NO', runtimeReachable: 'YES', paperAuthorized: 'NOT_APPLICABLE',
-    sourceFiles: ['src/theta/first-paper-blocker-budget.ts', 'src/execution/master-paper-plan-assembly.ts', 'src/customer/api.ts'],
+    persisted: 'YES', runtimeReachable: 'YES', paperAuthorized: 'NOT_APPLICABLE',
+    sourceFiles: ['src/theta/first-paper-blocker-budget.ts', 'src/theta/runtime-behavior-diagnostic.ts',
+      'src/execution/master-paper-plan-assembly.ts', 'src/theta/no-submit-probe-guard.ts', 'src/customer/api.ts'],
     currentBlocker: 'Audit coverage and SPY approval are complete. A current-release natural open-session no-submit proof remains required.',
-    safeCurrentBehavior: 'The operator readiness receipt publishes the CI-guarded complete audit counts and separately names dynamic safety blockers; it cannot emit READY from zero avoidable count alone.',
+    safeCurrentBehavior: 'The immutable runtime diagnostic now persists typed SPY event, quote-refresh, AEGIS, sizing, decision, plan and mutation-free pre-submit evidence. The operator derives each dynamic check from that evidence and leaves any stage not naturally reached UNKNOWN.',
     closureTest: 'Clear every independent runtime release check and observe a natural current-release locked no-submit session before any Paper unlock.',
     disposition: 'TRUE_HARD_BLOCKER' }),
 ];
