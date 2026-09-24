@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { deriveDatabaseRuntimeMismatches, deriveRuntimeMismatches,
+import { deriveDatabaseRuntimeMismatches, deriveRuntimeMismatches, maximumWorkerHeartbeatAgeMs,
   type RuntimeTruthInputs } from '../src/theta/runtime-system-truth.js';
 
 const healthy: RuntimeTruthInputs = {
@@ -12,6 +12,15 @@ const healthy: RuntimeTruthInputs = {
 
 test('current locked release with schema 064 has no mismatch', () => {
   assert.deepEqual(deriveRuntimeMismatches(healthy), []);
+});
+
+test('normal worker rest and bounded provider work do not create a false stale alarm', () => {
+  assert.equal(maximumWorkerHeartbeatAgeMs, 300_000);
+  assert.deepEqual(deriveRuntimeMismatches({ ...healthy,
+    workerHeartbeat: '2026-09-23T13:25:01.000Z', observedAt: '2026-09-23T13:30:00.000Z' }), []);
+  assert.deepEqual(deriveRuntimeMismatches({ ...healthy,
+    workerHeartbeat: '2026-09-23T13:24:59.000Z', observedAt: '2026-09-23T13:30:00.000Z' }), ['WORKER_STALE']);
+  assert.deepEqual(deriveRuntimeMismatches({ ...healthy, workerHeartbeat: 'INVALID' }), ['WORKER_STALE']);
 });
 
 test('independent runtime contradictions are all reported', () => {

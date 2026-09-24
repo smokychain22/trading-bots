@@ -18,6 +18,11 @@ export type RuntimeMismatch =
   | 'MIGRATION_MISMATCH' | 'RUNTIME_EVIDENCE_UNAVAILABLE' | 'RUNTIME_EVIDENCE_PARTIAL'
   | 'UNRELEASED_SOURCE_CHANGES';
 
+// The supervisor intentionally rests for 60 seconds and a bounded evidence
+// operation may run for up to 290 seconds. Treat the status as stale just
+// before the six-minute lease expires, not during normal work or rest.
+export const maximumWorkerHeartbeatAgeMs = 300_000;
+
 export function deriveDatabaseRuntimeMismatches(input: {
   readonly databaseReachable: boolean;
   readonly databaseEvidenceComplete: boolean;
@@ -35,8 +40,11 @@ export function deriveRuntimeMismatches(input: RuntimeTruthInputs): RuntimeMisma
   }
   if (input.workerSha !== null && input.workerSha !== input.sourceSha) mismatches.push('SOURCE_SHA_NE_WORKER_SHA');
   if (input.activeWorkerLeases !== null && input.activeWorkerLeases > 1) mismatches.push('MULTIPLE_ACTIVE_WORKERS');
-  if (input.activeWorkerLeases === 0 || (input.workerHeartbeat !== null
-    && Date.parse(input.observedAt) - Date.parse(input.workerHeartbeat) > 45_000)) mismatches.push('WORKER_STALE');
+  const heartbeatAgeMs = input.workerHeartbeat === null ? null
+    : Date.parse(input.observedAt) - Date.parse(input.workerHeartbeat);
+  if (input.activeWorkerLeases === 0 || (heartbeatAgeMs !== null
+    && (!Number.isFinite(heartbeatAgeMs) || heartbeatAgeMs > maximumWorkerHeartbeatAgeMs)))
+    mismatches.push('WORKER_STALE');
   if (input.workerMode !== null && input.workerMode !== 'MASTER_THETA_PAPER') mismatches.push('WORKER_MODE_UNEXPECTED');
   if (input.executionGate !== null && input.executionGate !== 'LOCKED') mismatches.push('EXECUTION_GATE_NOT_LOCKED');
   if (input.requiredMigrationPresent === false || (input.migrationHead !== null
