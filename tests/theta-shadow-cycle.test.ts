@@ -3,7 +3,8 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { candidateQuoteAgeSeconds, candidateStressAegisOverrides, classifyShadowCycleProvenance,
-  conventionalFrontierRiskLookups, runThetaShadowCycle, type ThetaShadowCycleConfig } from '../src/theta/theta-shadow-cycle.js';
+  conventionalFrontierRiskLookups, runThetaShadowCycle, separateCandidateQuantityAuthorities,
+  type ThetaShadowCycleConfig } from '../src/theta/theta-shadow-cycle.js';
 import type { AlpacaProviderConfig } from '../src/theta/alpaca-provider.js';
 import type { PythonBridgeConfig } from '../src/theta/python-bridge.js';
 import type { UnderlyingCandidateInput } from '../src/theta/universe-policy.js';
@@ -101,6 +102,18 @@ test('Conventional AEGIS lookup preserves exact blocking family codes', () => {
   );
   assert.deepEqual(lookup.aegisBindingReasonsByCandidateId,
     {'THETA_CONVENTIONAL:SPY261009P00500000':['SYSTEM:IV_BASELINE_ACCUMULATING']});
+});
+
+test('portfolio risk capacity cannot be relabelled as broker quantity zero', () => {
+  const projection=separateCandidateQuantityAuthorities(1,{
+    quantityCap:0,bindingConstraints:['TICKER_CONCENTRATION','PORTFOLIO_CAPITAL_AT_RISK'],
+  });
+  assert.equal(projection.brokerAllowedQty,1);
+  assert.equal(projection.riskCapacityQtyCap,0);
+  assert.deepEqual(projection.riskBindingConstraints,
+    ['TICKER_CONCENTRATION','PORTFOLIO_CAPITAL_AT_RISK']);
+  assert.throws(()=>separateCandidateQuantityAuthorities(-1,{quantityCap:0,bindingConstraints:[]}),
+    /BROKER_ALLOWED_QTY_INVALID/);
 });
 
 const mockAlpacaFetch = (options: { hasContracts: boolean; hasBars: boolean }) => (async (input: RequestInfo | URL) => {

@@ -91,6 +91,40 @@ export function conventionalFrontierRiskLookups(
   };
 }
 
+export interface CandidateQuantityAuthorityProjection {
+  /** Whole-contract limit reported by the broker/account buying-power path. */
+  readonly brokerAllowedQty: number;
+  /** Preliminary portfolio-risk capacity. This is AEGIS evidence, not broker truth. */
+  readonly riskCapacityQtyCap: number;
+  readonly riskBindingConstraints: readonly string[];
+}
+
+/**
+ * Keeps broker capacity and portfolio-risk capacity as separate authorities.
+ * The prior runtime used min(brokerAllowedQty, riskCapacityQtyCap) as the
+ * `brokerAllowedQty` sent to THETA-Q. That converted a concentration veto into
+ * the false reason BROKER_QTY_ZERO and prevented candidate-specific AEGIS from
+ * recording the real binding family. AEGIS consumes the projected ratios and
+ * owns the risk decision. THETA-Q receives only actual broker capacity.
+ */
+export function separateCandidateQuantityAuthorities(
+  brokerAllowedQty: number,
+  capacity: Pick<ReturnType<typeof deriveCandidateCapacityAssessment>,
+    'quantityCap' | 'bindingConstraints'>,
+): CandidateQuantityAuthorityProjection {
+  if (!Number.isInteger(brokerAllowedQty) || brokerAllowedQty < 0) {
+    throw new Error('BROKER_ALLOWED_QTY_INVALID');
+  }
+  if (!Number.isInteger(capacity.quantityCap) || capacity.quantityCap < 0) {
+    throw new Error('RISK_CAPACITY_QTY_INVALID');
+  }
+  return {
+    brokerAllowedQty,
+    riskCapacityQtyCap: capacity.quantityCap,
+    riskBindingConstraints: capacity.bindingConstraints,
+  };
+}
+
 /** The single Production mapping from persisted detector results into the
  * candidate-specific Python AEGIS contract. An accumulating baseline stays
  * null and gains only the explicit Paper cold-start applicability marker.
@@ -1715,6 +1749,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       candidateCapacityPolicy,
       recoveryInventoryValue,
     );
+    const quantityAuthorities = separateCandidateQuantityAuthorities(candidate.brokerAllowedQty, capacity);
     const derived = capacity.inputsAtQuantityCap;
     // Preserve nulls. They are canonical UNKNOWN inputs and must override
     // any pre-trade/global value so candidate-specific AEGIS fails closed.
@@ -1730,7 +1765,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     return {
       ...candidate,
       ...entryEvidence,
-      brokerAllowedQty: Math.min(candidate.brokerAllowedQty, capacity.quantityCap),
+      // Do not relabel an AEGIS concentration/capacity veto as broker zero.
+      // Candidate-inclusive ratios below carry the real risk evidence into
+      // AEGIS, which remains the sole risk authority for this stage.
+      brokerAllowedQty: quantityAuthorities.brokerAllowedQty,
       aegisInputOverrides: candidateOverrides,
     };
   });

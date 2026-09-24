@@ -336,3 +336,29 @@ No item is complete merely because its type, config, fixture, or UI label exists
   with POSTGRES_CONNECTION_TERMINATED. The new worker also recorded HTTP_503 /
   POSTGRES_57P03 in RUNTIME_BROKER_CYCLE. No completed SPY proof or R8A session
   credit is claimed. Broker mutations and order submissions remain zero.
+- WIRED/TESTED 2026-09-24 database-resilient observation: a SQLite WAL spool now
+  preserves ordered, hash-chained no-submit checkpoints when PostgreSQL loses a
+  checked-out client. Backfill is idempotent and identity checked. Local-only
+  evidence can never authorize a broker mutation. A Windows worker fallback and
+  bounded local replay completed SPY through contracts, quotes, Q, decision and
+  locked plan evidence while Aiven returned POSTGRES_CHECKED_OUT_CLIENT_LOST.
+- CLOSED_SOURCE_DEFECT: the default history acquisition window is now 400
+  calendar days, enough to evaluate the required MA200 ownership component.
+  The former 120-day request made StructuralQuality permanently UNKNOWN. A live
+  read-only SPY cycle proved the corrected ownership path can make Q quantity 1
+  under the explicit uncalibrated Paper bootstrap. No unknown was coerced clear.
+- CLOSED_SOURCE_DEFECT: candidate portfolio-risk capacity was previously folded
+  into the field named brokerAllowedQty. On the current roughly 100k Paper
+  account, a cash-secured SPY put had true broker capacity 1 but the concentration
+  hard cap reduced preliminary risk capacity to 0, producing the false reason
+  BROKER_QTY_ZERO before AEGIS ran. Broker capacity and AEGIS capacity are now
+  separate. Current read-only evidence reaches Q with quantity 1, then records
+  the real AEGIS hard-veto families: UNDERLYING, SECTOR and CORRELATION, with
+  PORTFOLIO and ASSIGNMENT reduced. SPREAD_WIDENING and SYSTEM stress remain
+  unknown in the database-independent path. No risk limit was changed.
+- POLICY_BLOCKED: with SPY as the only owner-approved Paper instrument, one
+  cash-secured put currently consumes about 72 percent of account equity. The
+  existing 15 percent ticker policy and 1.5 hard-cap multiplier make that CSP
+  structurally ineligible. Resolution requires a governed policy/account change
+  or empirical promotion of a bounded-risk branch. Engineering must not relabel
+  this as missing broker capacity or loosen it to manufacture activity.
