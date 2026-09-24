@@ -1,5 +1,13 @@
 # THETA strategy router deep trace
 
+Historical research snapshot. Current source as of September 24 constructs H/D
+candidate counterfactuals in `canonical-strategy-frontier.ts`, and the
+short-DTE research fetch runs separately from Paper authority. The claim below
+that no H/D candidate generation exists downstream is superseded. The Python
+router remains an applicability classifier, while Q is the only bounded
+Paper-entry branch. Current proof and limits are in
+`docs/operations/THETA_BRAIN_ORCHESTRATION_CURRENT_PROOF_2026-09-24.md`.
+
 Status: Directive item 7 (Wave 3). Grounded in a complete, direct read of
 `bots/theta/quant/models/strategy_router.py` (259 lines, read in full) plus
 the real TypeScript bridge caller (`new-risk-orchestrator.ts`).
