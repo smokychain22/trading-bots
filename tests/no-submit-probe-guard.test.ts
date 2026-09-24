@@ -35,3 +35,20 @@ test('the no-submit probe preserves precise safe database failure categories', (
   assert.equal(classifyNoSubmitProbeError(new Error('private unexpected failure')),
     'UNCLASSIFIED_NO_SUBMIT_FAILURE');
 });
+
+test('the no-submit probe preserves decision-stage failure families without echoing provider detail', () => {
+  const cases = [
+    [new Error('Alpaca exact-contract BBO failed; private payload'), 'QUOTE_PIPELINE_FAILURE'],
+    [new Error('earnings event coverage failed; private payload'), 'EVENT_EVIDENCE_FAILURE'],
+    [new Error('AEGIS stress detector failed; private payload'), 'AEGIS_FAILURE'],
+    [new Error('candidate sizing failed; private payload'), 'SIZING_FAILURE'],
+    [new Error('Paper plan assembly failed; private payload'), 'PAPER_PLAN_FAILURE'],
+    [Object.assign(new Error('fetch socket closed; private payload'), { code: 'UND_ERR_SOCKET' }), 'PROVIDER_TRANSPORT_FAILURE'],
+    [Object.assign(new Error('private malformed row'), { name: 'ZodError' }), 'PROVIDER_RESPONSE_VALIDATION_FAILURE'],
+  ] as const;
+  for (const [error, expected] of cases) {
+    const result = classifyNoSubmitProbeError(error);
+    assert.equal(result, expected);
+    assert.doesNotMatch(result, /private|payload/i);
+  }
+});

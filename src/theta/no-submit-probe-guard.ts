@@ -9,8 +9,27 @@ export function classifyNoSubmitProbeError(error: unknown): string {
   const postgres = classifyPostgresRuntimeError(error);
   if (postgres.safeCode !== 'POSTGRES_UNKNOWN_ERROR') return postgres.safeCode;
   const database = classifyDatabaseTargetError(error);
-  if (database.failureCode !== 'UNKNOWN')
+  if (database.failureClass !== 'UNKNOWN')
     return `DATABASE_${database.failureClass}_${database.failureCode}`;
+  // Never echo a provider payload or exception message. These families retain
+  // the failed decision stage while the probe receipt separately records its
+  // bounded probeStage.
+  const normalized = `${error instanceof Error ? error.name : ''} ${message}`.toUpperCase();
+  if (/QUOTE|\bBBO\b|OPTION SNAPSHOT|MARKET SNAPSHOT|EXECUTABLE PRICE/.test(normalized))
+    return 'QUOTE_PIPELINE_FAILURE';
+  if (/EARNINGS|CORPORATE ACTION|CORPORATE_ACTION|DIVIDEND|\bEVENT\b/.test(normalized))
+    return 'EVENT_EVIDENCE_FAILURE';
+  if (/AEGIS|STRESS BASELINE|STRESS DETECTOR/.test(normalized)) return 'AEGIS_FAILURE';
+  if (/SIZING|QUANTITY|COLLATERAL CAPACITY|ASSIGNMENT CAPACITY/.test(normalized))
+    return 'SIZING_FAILURE';
+  if (/PAPER PLAN|PAPER_PLAN|ACTION PLAN|ACTION_PLAN|PLAN ASSEMBLY/.test(normalized))
+    return 'PAPER_PLAN_FAILURE';
+  if (/ZODERROR|VALIDATION|MALFORMED RESPONSE|RESPONSE INVALID/.test(normalized))
+    return 'PROVIDER_RESPONSE_VALIDATION_FAILURE';
+  const code = error !== null && typeof error === 'object' && 'code' in error
+    ? String(error.code).toUpperCase() : '';
+  if (/FETCH|NETWORK|SOCKET|TIMEOUT|HTTP|ALPACA|OPTIONOMICS/.test(normalized)
+    || /ECONNRESET|ECONNREFUSED|ETIMEDOUT|UND_ERR/.test(code)) return 'PROVIDER_TRANSPORT_FAILURE';
   return 'UNCLASSIFIED_NO_SUBMIT_FAILURE';
 }
 
