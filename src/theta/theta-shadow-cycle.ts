@@ -1485,6 +1485,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     aegisByCandidateId?: NewRiskOrchestrationResult['aegisByCandidateId'],
     candidatesWithCapacity: readonly RawCandidateInput[] = candidates,
     thetaQ: NewRiskOrchestrationResult['thetaQ'] = null,
+    thetaQDecision?: NewRiskOrchestrationResult['receipt'],
   ): CanonicalStrategyFrontier => {
     const conventionalRisk = conventionalFrontierRiskLookups(candidatesWithCapacity.map((candidate) => ({
       optionSymbol: candidate.contract.optionSymbol, brokerAllowedQty: candidate.brokerAllowedQty,
@@ -1510,6 +1511,9 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       paperBootstrapAllowedUnknownComponents: candidate.paperBootstrapAllowedUnknownComponents,
       paperBootstrapReasonCodes: candidate.paperBootstrapReasonCodes,
     }])),
+    thetaQActionFeasibleByOptionSymbol: Object.fromEntries((thetaQ?.candidates ?? []).map((candidate) =>
+      [candidate.candidateId, candidate.actionFeasible])),
+    thetaQDecision,
     });
   };
   const conventionalSource = canonicalThetaStrategySources.find((source) => source.branch === 'THETA_CONVENTIONAL');
@@ -1520,8 +1524,9 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     aegisByCandidateId?: NewRiskOrchestrationResult['aegisByCandidateId'],
     candidatesWithCapacity: readonly RawCandidateInput[] = candidates,
     thetaQ: NewRiskOrchestrationResult['thetaQ'] = null,
+    thetaQDecision?: NewRiskOrchestrationResult['receipt'],
   ): Pick<ThetaShadowCycleResult, 'strategyFrontier' | 'strategyQualityDiagnostics'> => {
-    const strategyFrontier = strategyFrontierFor(routing, aegis, aegisByCandidateId, candidatesWithCapacity, thetaQ);
+    const strategyFrontier = strategyFrontierFor(routing, aegis, aegisByCandidateId, candidatesWithCapacity, thetaQ, thetaQDecision);
     return {
       strategyFrontier,
       strategyQualityDiagnostics: buildStrategyQualityShadowDiagnostic({
@@ -1755,7 +1760,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: underlying, underlyingRanking: ranked,
     optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
     snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration,
-    ...strategyDecisionFor(orchestration.routing, orchestration.aegis, orchestration.aegisByCandidateId, runtimeCandidates, orchestration.thetaQ),
+    ...strategyDecisionFor(orchestration.routing, orchestration.aegis, orchestration.aegisByCandidateId,
+      runtimeCandidates, orchestration.thetaQ, orchestration.receipt),
     provenance, provenanceDetail: detail, blockers,
   };
 }

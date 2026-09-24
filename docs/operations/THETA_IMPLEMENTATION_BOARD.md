@@ -162,6 +162,13 @@ new risk or cut over the worker based on the completed no-submit scan alone.
 
 ## Release sequence
 
+### September 24 canonical Q-decision integration
+
+- The locked worker was cut over from `853beb4` to verified main `a96b321577996b15cfd33646890afc3230d0eb96` after CI 35940392430 passed. It reported `MASTER_THETA_PAPER`, execution `LOCKED`, one active lease, good broker reconciliation, zero positions and zero open orders. No broker mutation or order submission was attempted. This observation is not an open-session candidate or AEGIS-allow proof.
+- Current-source tracing found a real Paper-facing selection gap: the canonical strategy frontier could choose the first structurally feasible Conventional put without binding to `NewRiskDecisionReceipt`, which had already performed the Python-backed after-cost economic and execution-quality selection. That could mislabel an economic WAIT or choose a different candidate by structural/lexical order.
+- Source now passes per-contract THETA Q action feasibility and the immutable Q decision receipt into the canonical frontier. An OPEN requires the same snapshot and decision timestamp, exact underlying and contract, positive Q quantity, structural risk feasibility and positive canonical sizing. Selected quantity is capped by both authorities. A Q WAIT/PASS stays non-OPEN; mismatched, unavailable or held decision evidence stays `SYSTEM_HOLD`. H/D remain shadow/research, and broker authority is unchanged.
+- Regression tests cover infeasible lattice candidates, missing Q evidence, economic winner identity, WAIT and mismatched evidence. Source-level verification passed 2,168 Node tests with 2,154 passing and 14 skipped, 613 Python tests, typecheck, lint, build, 23 Playwright checks and a zero-finding secret scan. Locked-runtime observation of this new source is still pending a CI-tested immutable release and safe cutover.
+
 1. Merge only tested source changes. Record branch-level provenance and CI.
 2. Recover Aiven through a supported method. Do not prune evidence to make space.
 3. Verify fresh local backup and database write health.

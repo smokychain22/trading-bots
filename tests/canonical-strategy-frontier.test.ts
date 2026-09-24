@@ -251,6 +251,71 @@ test('candidate-specific AEGIS veto cannot be bypassed by a globally permissive 
   assert.equal(result.selectedCandidateId, 'THETA_CONVENTIONAL:AAPL261016P00185000');
 });
 
+test('a Q lattice rejection cannot win Paper selection ahead of a feasible contract', () => {
+  const rejected = contract({ optionSymbol: 'AAPL261016P00185000', occSymbol: 'AAPL261016P00185000',
+    strike: 185, bid: 1.4, ask: 1.5, delta: -0.16 });
+  const feasible = contract();
+  const result = buildCanonicalStrategyFrontier({ ...base, contracts: [rejected, feasible],
+    routing: routing(['THETA_Q']), thetaQActionFeasibleByOptionSymbol: {
+      [rejected.optionSymbol]: false, [feasible.optionSymbol]: true,
+    } });
+  const conventional = result.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
+  assert.ok(conventional?.candidates.find((candidate) => candidate.legs[0]?.optionSymbol === rejected.optionSymbol)
+    ?.hardBlockers.includes('THETA_Q_ACTION_INFEASIBLE'));
+  assert.equal(result.selectedCandidateId, `THETA_CONVENTIONAL:${feasible.optionSymbol}`);
+});
+
+test('missing Q action evidence holds instead of selecting an unassessed contract', () => {
+  const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
+    thetaQActionFeasibleByOptionSymbol: {} });
+  assert.equal(result.selectedCandidateId, null);
+  assert.equal(result.primaryAction, 'SYSTEM_HOLD');
+  assert.ok(result.globalWaitReasons.includes('BRANCH_NOT_FULLY_EVALUATED:THETA_CONVENTIONAL'));
+});
+
+test('Paper-facing selection follows the economic Q winner rather than structural or lexical order', () => {
+  const first = contract({ optionSymbol: 'AAPL261016P00185000', occSymbol: 'AAPL261016P00185000',
+    strike: 185, bid: 1.4, ask: 1.5, delta: -0.16 });
+  const winner = contract();
+  const result = buildCanonicalStrategyFrontier({ ...base, contracts: [first, winner],
+    routing: routing(['THETA_Q']), thetaQActionFeasibleByOptionSymbol: {
+      [first.optionSymbol]: true, [winner.optionSymbol]: true,
+    }, thetaQDecision: { snapshotId: base.snapshotId, timestamp: NOW, underlying: 'AAPL', winningAction: 'OPEN_REDUCED',
+      selectedCandidateId: winner.optionSymbol, quantity: 1 } });
+  assert.equal(result.primaryAction, 'OPEN_CSP');
+  assert.equal(result.selectedCandidateId, `THETA_CONVENTIONAL:${winner.optionSymbol}`);
+  assert.equal(result.selectedQuantity, 1);
+  assert.equal(result.secondBestCandidateId, null);
+});
+
+test('an economic Q WAIT cannot be promoted to an OPEN by the structural frontier', () => {
+  const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()],
+    routing: routing(['THETA_Q']), thetaQActionFeasibleByOptionSymbol: { [contract().optionSymbol]: true },
+    thetaQDecision: { snapshotId: base.snapshotId, timestamp: NOW, underlying: 'AAPL', winningAction: 'WAIT',
+      selectedCandidateId: null, quantity: 0 } });
+  assert.equal(result.primaryAction, 'GLOBAL_WAIT');
+  assert.equal(result.selectedCandidateId, null);
+  assert.equal(result.selectedQuantity, 0);
+  assert.ok(result.globalWaitReasons.includes('THETA_Q_ECONOMIC_WAIT'));
+});
+
+test('a mismatched Q receipt or infeasible economic winner fails closed', () => {
+  for (const decision of [
+    { snapshotId: 'another-snapshot', timestamp: NOW, underlying: 'AAPL', winningAction: 'OPEN_FULL' as const,
+      selectedCandidateId: contract().optionSymbol, quantity: 1 },
+    { snapshotId: base.snapshotId, timestamp: '2026-09-14T15:01:00.000Z', underlying: 'AAPL',
+      winningAction: 'OPEN_FULL' as const, selectedCandidateId: contract().optionSymbol, quantity: 1 },
+    { snapshotId: base.snapshotId, timestamp: NOW, underlying: 'AAPL', winningAction: 'OPEN_FULL' as const,
+      selectedCandidateId: 'AAPL261016P00180000', quantity: 1 },
+  ]) {
+    const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
+      thetaQActionFeasibleByOptionSymbol: { [contract().optionSymbol]: true }, thetaQDecision: decision });
+    assert.equal(result.primaryAction, 'SYSTEM_HOLD');
+    assert.equal(result.selectedCandidateId, null);
+    assert.equal(result.selectedQuantity, 0);
+  }
+});
+
 test('missing downside cushion cannot give a premium-rich CSP false Pareto dominance', () => {
   const unknownDownside = contract({ optionSymbol: 'AAPL261016P00190000', occSymbol: 'AAPL261016P00190000',
     bid: 4, ask: 4.1, underlyingBid: null, underlyingAsk: null, underlyingLast: null });

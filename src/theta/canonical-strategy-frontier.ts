@@ -5,6 +5,7 @@ import type { StrategyFamily, StrategyRoutingResponse } from './strategy-router-
 import { canonicalThetaStrategySources, type ThetaStrategyBranch } from './strategy-package.js';
 import { buildAdaptiveShadowDecisionReceipt, type AdaptiveShadowDecisionReceipt } from './adaptive-decision-brain.js';
 import { securedContractCapacity } from './secured-contract-capacity.js';
+import type { NewRiskDecisionReceipt } from './decision-assembly.js';
 
 export const canonicalStrategyFrontierVersion = 'theta-canonical-strategy-frontier-v1' as const;
 export const canonicalDecisionAuthorityVersion = 'theta-canonical-decision-authority-v1' as const;
@@ -152,6 +153,9 @@ export interface CanonicalStrategyFrontierInput {
   readonly unevaluatedUnderlyingCount: number;
   readonly optionomicsContext: JsonValue;
   readonly entryEligibilityByOptionSymbol?: Readonly<Record<string, NonNullable<CanonicalFrontierCandidate['entryEligibility']>>>;
+  readonly thetaQActionFeasibleByOptionSymbol?: Readonly<Record<string, boolean>>;
+  readonly thetaQDecision?: Pick<NewRiskDecisionReceipt,
+    'snapshotId' | 'timestamp' | 'underlying' | 'winningAction' | 'selectedCandidateId' | 'quantity'>;
 }
 
 const branchOrder: readonly ThetaStrategyBranch[] = [
@@ -287,6 +291,15 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
   const candidateId = `${branch}:${contract.optionSymbol}`;
   const candidateAegisState = aegisStateFor(input, candidateId);
   const evidence = commonEvidence(contract, input, candidateId);
+  if (branch === 'THETA_CONVENTIONAL' && input.thetaQActionFeasibleByOptionSymbol !== undefined) {
+    const latticeFeasible = input.thetaQActionFeasibleByOptionSymbol[contract.optionSymbol];
+    if (latticeFeasible === undefined) {
+      evidence.hardBlockers.push('THETA_Q_ACTION_EVIDENCE_MISSING');
+      evidence.unknownEvidence.push('THETA_Q_ACTION_EVIDENCE_MISSING');
+    } else if (!latticeFeasible) {
+      evidence.hardBlockers.push('THETA_Q_ACTION_INFEASIBLE');
+    }
+  }
   if (candidateAegisState === 'DEFINED_RISK_ONLY') evidence.hardBlockers.push('AEGIS_DEFINED_RISK_ONLY');
   const premium = finite(contract.bid) ? contract.bid : null;
   const collateral = contract.strike * contract.multiplier;
@@ -517,7 +530,9 @@ function buildBranch(branch: ThetaStrategyBranch, input: CanonicalStrategyFronti
   return {
     branch, strategyVersion: source.strategyVersion, status: source.status as 'RESEARCH_ONLY' | 'SHADOW', applicable,
     evaluated: true, routeReasons: [...routeReasons, ...(enumerationTruncated ? ['DEFINED_RISK_ENUMERATION_BOUND_REACHED'] : [])],
-    evaluationState: !applicable ? 'NOT_APPLICABLE' : candidates.length === 0 || enumerationTruncated ? 'BLOCKED_MISSING_INPUT' : 'EVALUATED',
+    evaluationState: !applicable ? 'NOT_APPLICABLE' : candidates.length === 0 || enumerationTruncated
+      || candidates.some((candidate) => candidate.hardBlockers.includes('THETA_Q_ACTION_EVIDENCE_MISSING'))
+      ? 'BLOCKED_MISSING_INPUT' : 'EVALUATED',
     candidateCount: candidates.length, mechanicallyRejected: 0, enumerationTruncated, hardVetoed: rejected.length,
     softRanked: feasible.length, dataInsufficient: candidates.filter((candidate) => candidate.unknownEvidence.length > 0).length,
     candidates, bestCandidateId: feasible[0]?.candidateId ?? null, secondBestCandidateId: feasible[1]?.candidateId ?? null,
@@ -537,8 +552,25 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
   // They are never eligible for the Paper-facing frontier selection.
   const sizedNewRisk = feasible.filter((candidate) =>
     candidate.branch === 'THETA_CONVENTIONAL' && candidate.action === 'OPEN_CSP' && candidate.sizing.quantity > 0);
-  const structuralSelection = managementAuthorityRequired ? null : sizedNewRisk[0] ?? null;
-  const secondBest = managementAuthorityRequired ? null : sizedNewRisk[1] ?? null;
+  // The Python-backed Q receipt owns the economic OPEN/PASS/WAIT choice.
+  // Structural Pareto order is research evidence, never a substitute for it.
+  const decision = input.thetaQDecision;
+  const openDecision = decision !== undefined && [
+    'OPEN_FULL', 'OPEN_REDUCED', 'OPEN_ALTERNATE_CONTRACT', 'OPEN_ALTERNATE_EXPIRY', 'OPEN_ALTERNATE_STRUCTURE',
+  ].includes(decision.winningAction);
+  const decisionSnapshotValid = decision === undefined || (decision.snapshotId === input.snapshotId
+    && decision.timestamp === input.timestamp);
+  const decisionCandidate = openDecision && decisionSnapshotValid
+    ? sizedNewRisk.find((candidate) => candidate.candidateId === `THETA_CONVENTIONAL:${decision.selectedCandidateId}`
+      && candidate.underlying === decision.underlying) ?? null : null;
+  const decisionInvalid = decision !== undefined && (!decisionSnapshotValid ||
+    (openDecision && (decisionCandidate === null || !Number.isInteger(decision.quantity) || decision.quantity <= 0)) ||
+    decision.winningAction === 'SYSTEM_HOLD' || decision.winningAction === 'HARD_VETO');
+  const structuralSelection = managementAuthorityRequired ? null
+    : decision === undefined ? sizedNewRisk[0] ?? null : decisionInvalid ? null : decisionCandidate;
+  const selectedQuantity = structuralSelection === null ? 0 : decision === undefined
+    ? structuralSelection.sizing.quantity : Math.min(structuralSelection.sizing.quantity, decision.quantity);
+  const secondBest = managementAuthorityRequired || decision !== undefined ? null : sizedNewRisk[1] ?? null;
   const rejected = globallyRanked.filter((candidate) => !candidate.riskFeasible);
   const nearMiss = globallyRanked.find((candidate) => candidate.riskFeasible && candidate.sizing.quantity === 0)
     ?? rejected[0] ?? null;
@@ -550,7 +582,8 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
       'COVERED_SHARES_UNKNOWN']
       .includes(candidate.sizing.bindingConstraint));
   const globalWaitEarned = !managementAuthorityRequired && applicable.length > 0 && blockedApplicable.length === 0
-    && !managementIncomplete && !universeIncomplete && sizingEvidenceUnknown.length === 0 && structuralSelection === null;
+    && !managementIncomplete && !universeIncomplete && sizingEvidenceUnknown.length === 0
+    && !decisionInvalid && structuralSelection === null;
   const partial = {
     contractVersion: canonicalStrategyFrontierVersion, snapshotId: input.snapshotId, timestamp: input.timestamp,
     strategyVersion: input.strategyVersion, decisionAuthorityVersion: canonicalDecisionAuthorityVersion,
@@ -559,13 +592,20 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
     selectedCandidateId: structuralSelection?.candidateId ?? null,
     primaryAction: managementAuthorityRequired ? 'MANAGEMENT_AUTHORITY' as const
       : structuralSelection?.action ?? (globalWaitEarned ? 'GLOBAL_WAIT' as const : 'SYSTEM_HOLD' as const),
-    selectedQuantity: structuralSelection?.sizing.quantity ?? 0,
+    selectedQuantity,
     empiricalUtilityState: 'UNKNOWN_NOT_YET_CALIBRATED' as const,
     secondBestCandidateId: secondBest?.candidateId ?? null,
     nearMissCandidateId: nearMiss?.candidateId ?? null,
     bestRejectedCandidateId: rejected[0]?.candidateId ?? null,
-    globalWaitEarned, globalWaitReasons: globalWaitEarned ? ['ALL_APPLICABLE_BRANCHES_EVALUATED', 'NO_RISK_FEASIBLE_ACTION']
+    globalWaitEarned, globalWaitReasons: globalWaitEarned ? ['ALL_APPLICABLE_BRANCHES_EVALUATED',
+      decision !== undefined ? `THETA_Q_ECONOMIC_${decision.winningAction}` : 'NO_RISK_FEASIBLE_ACTION']
       : [...blockedApplicable.map((branch) => `BRANCH_NOT_FULLY_EVALUATED:${branch.branch}`),
+          ...(decision !== undefined && !decisionSnapshotValid ? ['THETA_Q_DECISION_SNAPSHOT_MISMATCH'] : []),
+          ...(decision !== undefined && openDecision && decisionCandidate === null ? ['THETA_Q_WINNER_NOT_STRUCTURALLY_FEASIBLE'] : []),
+          ...(decision !== undefined && openDecision && (!Number.isInteger(decision.quantity) || decision.quantity <= 0)
+            ? ['THETA_Q_WINNER_QUANTITY_INVALID'] : []),
+          ...(decision?.winningAction === 'SYSTEM_HOLD' || decision?.winningAction === 'HARD_VETO'
+            ? [`THETA_Q_DECISION_${decision.winningAction}`] : []),
           ...(managementAuthorityRequired ? ['EXISTING_POSITION_DELEGATED_TO_MANAGEMENT_AUTHORITY'] : []),
           ...(managementIncomplete ? ['OPEN_POSITION_MANAGEMENT_NOT_ATTACHED'] : []),
           ...(universeIncomplete ? [`UNDERLYINGS_NOT_EVALUATED:${input.unevaluatedUnderlyingCount}`] : []),
