@@ -22,6 +22,7 @@ The Python router returns six eligibility records, not an economic ranking. `new
 1. A Q candidate with `actionFeasible=false` or missing Q lattice evidence can no longer win the Paper-facing frontier. Missing evidence stays `SYSTEM_HOLD`.
 2. A structural Pareto or lexical first candidate can no longer override the economic Q receipt. Q WAIT/PASS remains non-OPEN. An OPEN requires matching immutable decision identity and its positive quantity is capped by canonical sizing.
 3. Missing H/D research candidates and research sizing uncertainty no longer relabel a complete Q WAIT as a system fault. Branch-level missing evidence is retained. Top-level Paper near-miss and best-rejected references are scoped to Conventional candidates.
+4. The Python Q lattice may validly exclude contracts before its response, or return no lattice when all quotes fail freshness. Those contracts are recorded as lattice exclusions, and a null lattice provides no per-contract action map. The immutable Q receipt still forces WAIT or PASS, so neither false OPEN nor false missing-evidence HOLD follows from that filtered result.
 
 These changes have deterministic regression tests, full local Node/Python/typecheck/lint/build/security verification and CI on the exact source SHA. They do not loosen AEGIS, quote freshness, event policy, sizing, execution locks or broker controls.
 

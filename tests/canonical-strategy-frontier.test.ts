@@ -269,12 +269,23 @@ test('a Q lattice rejection cannot win Paper selection ahead of a feasible contr
   assert.equal(result.selectedCandidateId, `THETA_CONVENTIONAL:${feasible.optionSymbol}`);
 });
 
-test('missing Q action evidence holds instead of selecting an unassessed contract', () => {
+test('a contract excluded from the Q lattice cannot open, but a valid Q WAIT stays WAIT', () => {
   const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
-    thetaQActionFeasibleByOptionSymbol: {} });
+    thetaQActionFeasibleByOptionSymbol: {},
+    thetaQDecision: { snapshotId: base.snapshotId, timestamp: NOW, underlying: 'AAPL', winningAction: 'WAIT',
+      selectedCandidateId: null, quantity: 0 } });
   assert.equal(result.selectedCandidateId, null);
-  assert.equal(result.primaryAction, 'SYSTEM_HOLD');
-  assert.ok(result.globalWaitReasons.includes('BRANCH_NOT_FULLY_EVALUATED:THETA_CONVENTIONAL'));
+  assert.equal(result.primaryAction, 'GLOBAL_WAIT');
+  assert.ok(result.branches[0]?.candidates[0]?.hardBlockers.includes('THETA_Q_OUTSIDE_EVALUATED_LATTICE'));
+  assert.ok(result.globalWaitReasons.includes('THETA_Q_ECONOMIC_WAIT'));
+});
+
+test('a null Q lattice after quote freshness rejection cannot become an OPEN or false missing-evidence HOLD', () => {
+  const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
+    thetaQDecision: { snapshotId: base.snapshotId, timestamp: NOW, underlying: 'AAPL', winningAction: 'WAIT',
+      selectedCandidateId: null, quantity: 0 } });
+  assert.equal(result.primaryAction, 'GLOBAL_WAIT');
+  assert.equal(result.selectedQuantity, 0);
 });
 
 test('Paper-facing selection follows the economic Q winner rather than structural or lexical order', () => {

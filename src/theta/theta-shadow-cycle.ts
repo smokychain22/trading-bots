@@ -1511,7 +1511,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       paperBootstrapAllowedUnknownComponents: candidate.paperBootstrapAllowedUnknownComponents,
       paperBootstrapReasonCodes: candidate.paperBootstrapReasonCodes,
     }])),
-    thetaQActionFeasibleByOptionSymbol: Object.fromEntries((thetaQ?.candidates ?? []).map((candidate) =>
+    thetaQActionFeasibleByOptionSymbol: thetaQ === null ? undefined : Object.fromEntries(thetaQ.candidates.map((candidate) =>
       [candidate.candidateId, candidate.actionFeasible])),
     thetaQDecision,
     });

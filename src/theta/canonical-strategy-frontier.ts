@@ -294,8 +294,9 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
   if (branch === 'THETA_CONVENTIONAL' && input.thetaQActionFeasibleByOptionSymbol !== undefined) {
     const latticeFeasible = input.thetaQActionFeasibleByOptionSymbol[contract.optionSymbol];
     if (latticeFeasible === undefined) {
-      evidence.hardBlockers.push('THETA_Q_ACTION_EVIDENCE_MISSING');
-      evidence.unknownEvidence.push('THETA_Q_ACTION_EVIDENCE_MISSING');
+      // The Q lattice evaluates a filtered subset of the broader research
+      // chain. Non-members are known exclusions, not missing provider data.
+      evidence.hardBlockers.push('THETA_Q_OUTSIDE_EVALUATED_LATTICE');
     } else if (!latticeFeasible) {
       evidence.hardBlockers.push('THETA_Q_ACTION_INFEASIBLE');
     }
@@ -531,7 +532,6 @@ function buildBranch(branch: ThetaStrategyBranch, input: CanonicalStrategyFronti
     branch, strategyVersion: source.strategyVersion, status: source.status as 'RESEARCH_ONLY' | 'SHADOW', applicable,
     evaluated: true, routeReasons: [...routeReasons, ...(enumerationTruncated ? ['DEFINED_RISK_ENUMERATION_BOUND_REACHED'] : [])],
     evaluationState: !applicable ? 'NOT_APPLICABLE' : candidates.length === 0 || enumerationTruncated
-      || candidates.some((candidate) => candidate.hardBlockers.includes('THETA_Q_ACTION_EVIDENCE_MISSING'))
       ? 'BLOCKED_MISSING_INPUT' : 'EVALUATED',
     candidateCount: candidates.length, mechanicallyRejected: 0, enumerationTruncated, hardVetoed: rejected.length,
     softRanked: feasible.length, dataInsufficient: candidates.filter((candidate) => candidate.unknownEvidence.length > 0).length,
