@@ -6,6 +6,7 @@ import {
   fetchMarketCalendar,
   fetchMarketClock,
   fetchLatestStockQuote,
+  fetchLatestStockTrade,
   fetchOpenOrders,
   fetchOptionContracts,
   fetchOptionSnapshots,
@@ -197,6 +198,19 @@ test('fetchPositions preserves a malformed quantity as UNKNOWN instead of zero',
 test('fetchPositions rejects a non-array response as MALFORMED_RESPONSE', async () => {
   const fetchImpl = (async () => jsonResponse(200, { not: 'an array' })) as typeof fetch;
   await assert.rejects(() => fetchPositions(baseConfig(fetchImpl), NOW));
+});
+
+test('fetchLatestStockTrade uses the market-data host and preserves a timestamped IEX reference', async () => {
+  let requested = '';
+  const fetchImpl = (async (request: string | URL | Request) => {
+    requested = String(request);
+    return jsonResponse(200, { trade: { p: 199.925, s: 40, t: NOW } });
+  }) as typeof fetch;
+  const result = await fetchLatestStockTrade(baseConfig(fetchImpl), 'AAPL', 'iex');
+  assert.equal(new URL(requested).host, 'data.alpaca.markets');
+  assert.equal(new URL(requested).pathname, '/v2/stocks/AAPL/trades/latest');
+  assert.equal(new URL(requested).searchParams.get('feed'), 'iex');
+  assert.deepEqual(result, { price: 199.925, size: 40, timestamp: NOW, feed: 'iex' });
 });
 
 test('account, clock, and latest stock quote reject malformed root objects with a provider category', async () => {

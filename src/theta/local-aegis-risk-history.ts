@@ -60,7 +60,7 @@ function spreadHistoryFromObservation(observation: LocalAegisRiskObservation): S
     || contract.spreadPct === null || !Number.isFinite(contract.spreadPct) || contract.spreadPct < 0
     || contract.moneyness === null || !Number.isFinite(contract.moneyness)
     || contract.underlyingReferencePrice === null || contract.underlyingReferencePrice <= 0
-    || contract.underlyingQuoteSource !== 'ALPACA_IEX'
+    || !['ALPACA_IEX','ALPACA_IEX_QUOTE','ALPACA_IEX_TRADE'].includes(contract.underlyingQuoteSource ?? '')
     || contract.underlyingTimestamp === null || !validIso(contract.underlyingTimestamp)
     || contract.underlyingQuoteReceivedAt === null || contract.underlyingQuoteReceivedAt === undefined
     || !validIso(contract.underlyingQuoteReceivedAt)

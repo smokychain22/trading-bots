@@ -135,6 +135,19 @@ test('a contract with a real, contract-derived multiplier is unaffected by the u
   assert.equal(contract?.nonExecutableReason, null);
 });
 
+test('a fresh IEX trade supplies moneyness without becoming option execution authority', () => {
+  const [contract] = mergeOptionChain(baseInput({
+    underlyingTrade:{price:510,timestamp:NOW,receivedAt:NOW},
+    snapshotsBySymbol:new Map([['SPY261009P00500000',{bid:1,ask:1.05,bidSize:10,askSize:10,
+      quoteTimestamp:NOW,greeks:null,impliedVolatility:null,dailyVolume:10}]]),
+  }));
+  assert.equal(contract?.underlyingReferencePrice,510);
+  assert.equal(contract?.moneyness,0.02);
+  assert.equal(contract?.underlyingQuoteSource,'ALPACA_IEX_TRADE');
+  assert.equal(contract?.source,'ALPACA');
+  assert.equal(contract?.bid,1);
+});
+
 test('an exact finalist snapshot retains its actual per-contract receipt time, not the later decision freeze', () => {
   const receipt = '2026-09-10T14:59:58.000Z';
   const [contract] = mergeOptionChain(baseInput({

@@ -212,9 +212,25 @@ try {
         brokerMutationCapability:local.brokerMutationCapability,brokerMutationAllowed:false});
       console.info(JSON.stringify({state:'DATABASE_UNAVAILABLE_LOCAL_OBSERVATION_COMPLETED',errorCategory:category,
         probeStage,sourceSha,approvedSymbolsDiscovered:local.approvedSymbolsDiscovered,
-        symbolStates:local.symbols.map((symbol)=>({symbol:symbol.symbol,state:symbol.state,
-          canonicalAction:symbol.canonicalAction,selectedQuantity:symbol.selectedQuantity,
-          exactRefreshState:symbol.exactRefresh.state})),brokerMutations:0,orderSubmissions:0}));
+        symbolStates:local.symbols.map((symbol)=>{
+          const conventional=symbol.frontierCandidates.filter((candidate)=>candidate.branch==='THETA_CONVENTIONAL');
+          const bindingAegisReasons=[...new Set(conventional.flatMap((candidate)=>candidate.aegisFamilies
+            .filter((family)=>family.state!=='ALLOW_FULL')
+            .flatMap((family)=>family.reasonCodes.map((reason)=>`${family.family}:${reason}`))))].toSorted();
+          return {symbol:symbol.symbol,state:symbol.state,qCandidateCount:symbol.qCandidateCount,
+            qDecision:symbol.qDecision,qReasonCodes:symbol.qReasonCodes,
+            qFeasibleCount:symbol.qCandidates.filter((candidate)=>candidate.actionFeasible).length,
+            qPositiveQuantityCount:symbol.qCandidates.filter((candidate)=>candidate.quantity>0).length,
+            canonicalAction:symbol.canonicalAction,selectedQuantity:symbol.selectedQuantity,
+            riskHistory:symbol.riskHistory,riskObservations:{total:symbol.riskObservations.length,
+              spreadQualified:symbol.riskObservations.filter((row)=>row.spreadHistoryState==='QUALIFIED').length,
+              spreadRejected:symbol.riskObservations.filter((row)=>row.spreadHistoryState==='REJECTED').length,
+              ivQualified:symbol.riskObservations.filter((row)=>row.ivHistoryState==='QUALIFIED').length,
+              ivRejected:symbol.riskObservations.filter((row)=>row.ivHistoryState==='REJECTED').length},
+            conventionalAegisStates:Object.fromEntries(Object.entries(Object.groupBy(conventional,
+              (candidate)=>candidate.aegisState??'UNKNOWN')).map(([state,rows])=>[state,rows?.length??0])),
+            bindingAegisReasons,exactRefreshState:symbol.exactRefresh.state};
+        }),brokerMutations:0,orderSubmissions:0}));
       process.exitCode=0;
     }catch(localError){
       const localCategory=classifyNoSubmitProbeError(localError);

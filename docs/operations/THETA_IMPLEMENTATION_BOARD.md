@@ -377,3 +377,11 @@ No item is complete merely because its type, config, fixture, or UI label exists
   local observation fallback ran. The shared runtime pool now handles and
   sanitizes both idle and checked-out client errors. Awaited query failure still
   owns retry/fallback behavior and broken-client disposal.
+- WIRED/TESTED: when Alpaca's IEX latest quote is stale, the shadow cycle now
+  requests the authenticated IEX latest trade and may use a fresh trade only as
+  the underlying reference needed for option moneyness and risk-cohort identity.
+  The normalized contract records `ALPACA_IEX_TRADE` explicitly. Alpaca option
+  snapshots remain the sole option bid/ask source and the final executable BBO
+  authority. A trade never substitutes for an option quote, and a stale or
+  malformed trade preserves the existing unknown state. Local AEGIS history
+  accepts this typed reference lineage without weakening quote-age checks.

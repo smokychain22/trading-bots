@@ -554,6 +554,13 @@ export interface AlpacaStockQuote {
   readonly feed: 'iex' | 'sip';
 }
 
+export interface AlpacaStockTrade {
+  readonly price: number | null;
+  readonly size: number | null;
+  readonly timestamp: string | null;
+  readonly feed: 'iex' | 'sip';
+}
+
 export async function fetchLatestStockQuote(
   config: AlpacaProviderConfig,
   symbol: string,
@@ -572,6 +579,25 @@ export async function fetchLatestStockQuote(
     bidSize: asNumberOrNull(quote.bs), askSize: asNumberOrNull(quote.as),
     timestamp: asStringOrNull(quote.t), feed,
   };
+}
+
+/** Current stock reference for research moneyness only. A trade price never
+ * substitutes for an option BBO and never authorizes an order. */
+export async function fetchLatestStockTrade(
+  config: AlpacaProviderConfig,
+  symbol: string,
+  feed: 'iex' | 'sip',
+): Promise<AlpacaStockTrade> {
+  const fetchImpl = config.fetchImpl ?? fetch;
+  const url = new URL(`/v2/stocks/${encodeURIComponent(symbol)}/trades/latest`, config.marketDataApiBase);
+  url.search = new URLSearchParams({ feed }).toString();
+  const body = providerRow(await requestJson(fetchImpl, url, authHeaders(config)), '/v2/stocks/{symbol}/trades/latest');
+  if (body.trade === undefined) {
+    throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/stocks/{symbol}/trades/latest did not return a trade.');
+  }
+  const trade = providerRow(body.trade, '/v2/stocks/{symbol}/trades/latest');
+  return { price: asNumberOrNull(trade.p), size: asNumberOrNull(trade.s),
+    timestamp: asStringOrNull(trade.t), feed };
 }
 
 // ---------------------------------------------------------------------------

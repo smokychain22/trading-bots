@@ -331,6 +331,39 @@ itMockedProviderRealCodePath('candidate and finalist quote-age policies remain i
   assert.equal(relaxedBothVersions.modelVersions.finalistQuoteRefreshPolicy, 'finalist-age-test-v2');
 });
 
+itMockedProviderRealCodePath('a fresh Alpaca IEX trade supplies moneyness when the IEX quote is stale', async () => {
+  requestedUrls = [];
+  const normalFetch = mockAlpacaFetch({ hasContracts: true, hasBars: true });
+  const staleQuoteAt = new Date(Date.parse(NOW) - 120_000).toISOString();
+  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input instanceof URL ? input.toString() : String(input);
+    if (url.includes('/v2/stocks/SPY/quotes/latest')) {
+      requestedUrls.push(url);
+      return jsonResponse(200, { quote: { bp: 550, ap: 550.02, bs: 100, as: 100, t: staleQuoteAt } });
+    }
+    if (url.includes('/v2/stocks/SPY/trades/latest')) {
+      requestedUrls.push(url);
+      return jsonResponse(200, { trade: { p: 550.01, s: 10, t: NOW } });
+    }
+    return normalFetch(input, init);
+  }) as typeof fetch;
+  const alpaca = { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl };
+  const result = await runThetaShadowCycle(baseConfig({ alpaca }));
+
+  assert.ok(requestedUrls.some((url) => url.includes('/v2/stocks/SPY/trades/latest') && url.includes('feed=iex')));
+  const contract = result.fusionSnapshot?.snapshot.contractCandidates
+    .find((candidate) => candidate.optionSymbol === 'SPY261009P00500000');
+  assert.ok(contract !== undefined);
+  assert.equal(contract.underlyingQuoteSource, 'ALPACA_IEX_TRADE');
+  assert.equal(contract.underlyingReferencePrice, 550.01);
+  assert.ok(contract.moneyness !== null);
+  assert.equal(contract.source, 'ALPACA');
+  assert.equal(contract.bid, 0.13);
+  assert.equal(contract.ask, 0.14);
+  assert.equal(contract.quoteTimestamp, NOW);
+  assert.equal(result.blockers.includes('ALPACA_UNDERLYING_IEX_REFERENCE_UNQUALIFIED'), false);
+});
+
 itMockedProviderRealCodePath('shadow research window supplies short-DTE contracts without widening Conventional Paper selection', async () => {
   requestedUrls = [];
   const result = await runThetaShadowCycle(baseConfig({

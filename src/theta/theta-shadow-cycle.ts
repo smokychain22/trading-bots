@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   AlpacaProviderError,
   fetchMarketCalendar, fetchMarketClock, fetchMasterAccountSnapshot, fetchOpenOrders, fetchOptionContracts, fetchOptionSnapshots,
-  fetchPositions, fetchStockBars, fetchLatestStockQuote, type AlpacaCalendarSession, type AlpacaMarketClock, type AlpacaOpenOrderSnapshot, type AlpacaPositionSnapshot,
+  fetchPositions, fetchStockBars, fetchLatestStockQuote, fetchLatestStockTrade, type AlpacaCalendarSession, type AlpacaMarketClock, type AlpacaOpenOrderSnapshot, type AlpacaPositionSnapshot,
   type AlpacaProviderConfig, type MasterAccountSnapshot,
 } from './alpaca-provider.js';
 import type { HistoricalBar } from './underlying-history.js';
@@ -1242,6 +1242,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     // substitutes for the option BBO. Missing/stale stock evidence leaves
     // moneyness UNKNOWN and the IV cohort detector fail-closed.
     let underlyingQuote: { bid: number; ask: number; timestamp: string; receivedAt: string } | undefined;
+    let underlyingTrade: { price: number; timestamp: string; receivedAt: string } | undefined;
+    let quoteFailure:'UNQUALIFIED'|'PROVIDER_ERROR'|null=null;
     try {
       const quote = await fetchLatestStockQuote(config.alpaca, underlying, 'iex');
       const quoteReceivedAt = config.now();
@@ -1252,9 +1254,24 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
         && (receivedMs - quoteMs) / 1000 <= finalistMaxQuoteAgeSeconds) {
         underlyingQuote = { bid: quote.bid, ask: quote.ask, timestamp: quote.timestamp as string,
           receivedAt: quoteReceivedAt };
-      } else blockers.push('ALPACA_UNDERLYING_IEX_QUOTE_UNQUALIFIED');
+      } else quoteFailure='UNQUALIFIED';
     } catch {
-      blockers.push('ALPACA_UNDERLYING_IEX_QUOTE_PROVIDER_ERROR');
+      quoteFailure='PROVIDER_ERROR';
+    }
+    if(underlyingQuote===undefined){
+      try{
+        const trade=await fetchLatestStockTrade(config.alpaca,underlying,'iex');
+        const tradeReceivedAt=config.now();
+        const tradeMs=trade.timestamp===null?Number.NaN:Date.parse(trade.timestamp);
+        const receivedMs=Date.parse(tradeReceivedAt);
+        if(trade.price!==null&&trade.price>0&&Number.isFinite(tradeMs)&&tradeMs<=receivedMs
+          &&(receivedMs-tradeMs)/1000<=finalistMaxQuoteAgeSeconds){
+          underlyingTrade={price:trade.price,timestamp:trade.timestamp as string,receivedAt:tradeReceivedAt};
+        }else blockers.push('ALPACA_UNDERLYING_IEX_REFERENCE_UNQUALIFIED');
+      }catch{
+        blockers.push(quoteFailure==='PROVIDER_ERROR'?'ALPACA_UNDERLYING_IEX_REFERENCE_PROVIDER_ERROR'
+          :'ALPACA_UNDERLYING_IEX_REFERENCE_UNQUALIFIED');
+      }
     }
     // This is the actual PIT decision cutoff. Every exact finalist and
     // underlying quote refresh above was observed no later than this instant.
@@ -1270,6 +1287,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       snapshotsBySymbol, optionomicsBySymbol, requestedFeed: 'INDICATIVE',
       defaultMultiplierForUnknownContracts: 100, receivedAt, receivedAtBySymbol: finalistReceivedAtBySymbol,
       underlyingQuote,
+      underlyingTrade,
       maxQuoteAgeSecondsForExecutable: candidateMaxQuoteAgeSeconds,
       maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
     });
@@ -1278,6 +1296,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       snapshotsBySymbol, optionomicsBySymbol, requestedFeed: 'INDICATIVE',
       defaultMultiplierForUnknownContracts: 100, receivedAt, receivedAtBySymbol: finalistReceivedAtBySymbol,
       underlyingQuote,
+      underlyingTrade,
       maxQuoteAgeSecondsForExecutable: finalistMaxQuoteAgeSeconds,
       maxSpreadPctForExecutable: config.maxAcceptableSpreadPct,
     });

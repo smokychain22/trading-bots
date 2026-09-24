@@ -51,7 +51,7 @@ export const normalizedOptionContractSchema = z.object({
   // Optional for replay compatibility with immutable pre-lineage snapshots.
   // New normalized observations always emit explicit values or null.
   underlyingQuoteReceivedAt: nullableTimestamp.optional(),
-  underlyingQuoteSource: z.literal('ALPACA_IEX').nullable().optional(),
+  underlyingQuoteSource: z.enum(['ALPACA_IEX','ALPACA_IEX_QUOTE','ALPACA_IEX_TRADE']).nullable().optional(),
 
   // Option quote
   bid: nullableFiniteNumber,
@@ -162,7 +162,7 @@ export interface RawOptionQuoteInput {
   readonly underlyingLast: number | null;
   readonly underlyingTimestamp: string | null;
   readonly underlyingQuoteReceivedAt?: string | null;
-  readonly underlyingQuoteSource?: 'ALPACA_IEX' | null;
+  readonly underlyingQuoteSource?: 'ALPACA_IEX' | 'ALPACA_IEX_QUOTE' | 'ALPACA_IEX_TRADE' | null;
   readonly bid: number | null;
   readonly ask: number | null;
   readonly bidSize: number | null;

@@ -76,6 +76,9 @@ export interface MergeOptionChainInput {
   readonly receivedAtBySymbol?: ReadonlyMap<string, string>;
   /** Research moneyness reference only. Never an executable option price. */
   readonly underlyingQuote?: Readonly<{ bid: number; ask: number; timestamp: string; receivedAt: string }>;
+  /** Fresh IEX last trade fallback for research moneyness only. It never
+   * replaces the exact option BBO used for execution qualification. */
+  readonly underlyingTrade?: Readonly<{ price: number; timestamp: string; receivedAt: string }>;
   readonly maxQuoteAgeSecondsForExecutable: number;
   readonly maxSpreadPctForExecutable: number;
 }
@@ -149,9 +152,11 @@ export function mergeOptionChain(input: MergeOptionChainInput): readonly Normali
         deliverableClassification,
         underlyingBid: input.underlyingQuote?.bid ?? null,
         underlyingAsk: input.underlyingQuote?.ask ?? null,
-        underlyingLast: null, underlyingTimestamp: input.underlyingQuote?.timestamp ?? null,
-        underlyingQuoteReceivedAt: input.underlyingQuote?.receivedAt ?? null,
-        underlyingQuoteSource: input.underlyingQuote === undefined ? null : 'ALPACA_IEX',
+        underlyingLast: input.underlyingTrade?.price ?? null,
+        underlyingTimestamp: input.underlyingQuote?.timestamp ?? input.underlyingTrade?.timestamp ?? null,
+        underlyingQuoteReceivedAt: input.underlyingQuote?.receivedAt ?? input.underlyingTrade?.receivedAt ?? null,
+        underlyingQuoteSource: input.underlyingQuote !== undefined ? 'ALPACA_IEX_QUOTE'
+          : input.underlyingTrade !== undefined ? 'ALPACA_IEX_TRADE' : null,
         bid: snapshot?.bid ?? null, ask: snapshot?.ask ?? null, bidSize: snapshot?.bidSize ?? null, askSize: snapshot?.askSize ?? null,
         lastTradePrice: null, lastTradeSize: null,
         quoteTimestamp: snapshot?.quoteTimestamp ?? null, tradeTimestamp: null,

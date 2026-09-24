@@ -63,7 +63,7 @@ export interface AlpacaContractIvAssessment {
   readonly currentUnderlyingReferencePrice: number | null;
   readonly currentUnderlyingQuoteProviderAt: string | null;
   readonly currentUnderlyingQuoteReceivedAt: string | null;
-  readonly currentUnderlyingQuoteSource: 'ALPACA_IEX' | null;
+  readonly currentUnderlyingQuoteSource: 'ALPACA_IEX' | 'ALPACA_IEX_QUOTE' | 'ALPACA_IEX_TRADE' | null;
   readonly currentTimingAuthority: 'ALPACA_SNAPSHOT_IV_AVAILABLE_AT_RECEIPT';
   readonly currentFeed: 'OPRA' | 'INDICATIVE' | null;
   readonly currentState: 'QUALIFIED' | 'INVALID_OR_STALE';
@@ -145,7 +145,7 @@ function currentReason(contract: NormalizedOptionContract, decisionAsOf: string,
     || !validIso(contract.receivedAt) || contract.greeksTimestamp !== contract.receivedAt)
     return 'IV_RECEIPT_TIMING_UNVERIFIED';
   if (contract.quoteTimestamp === null || !validIso(contract.quoteTimestamp)) return 'EXACT_BBO_TIMESTAMP_UNAVAILABLE';
-  if (contract.underlyingQuoteSource !== 'ALPACA_IEX'
+  if (!['ALPACA_IEX','ALPACA_IEX_QUOTE','ALPACA_IEX_TRADE'].includes(contract.underlyingQuoteSource ?? '')
     || contract.underlyingTimestamp === null || !validIso(contract.underlyingTimestamp)
     || typeof contract.underlyingQuoteReceivedAt !== 'string' || !validIso(contract.underlyingQuoteReceivedAt)
     || contract.underlyingReferencePrice === null || contract.underlyingReferencePrice <= 0
@@ -282,7 +282,7 @@ export function parseAlpacaContractIvHistoryRow(raw: Record<string, unknown>): A
     || (volatility.ivFeed !== 'OPRA' && volatility.ivFeed !== 'INDICATIVE')
     || market.feed !== volatility.ivFeed || market.dataQuality !== 'GOOD'
     || market.quoteSource !== 'ALPACA' || typeof market.quoteReceivedAt !== 'string'
-    || market.underlyingQuoteSource !== 'ALPACA_IEX'
+    || !['ALPACA_IEX','ALPACA_IEX_QUOTE','ALPACA_IEX_TRADE'].includes(String(market.underlyingQuoteSource ?? ''))
     || typeof market.underlyingQuoteTimestamp !== 'string'
     || typeof market.underlyingQuoteReceivedAt !== 'string'
     || typeof market.underlyingReferencePrice !== 'number'
@@ -330,7 +330,7 @@ export function alpacaContractIvHistoryRejectionReason(raw: Record<string, unkno
   if (market.feed !== volatility.ivFeed || market.dataQuality !== 'GOOD') return 'FEED_OR_MARKET_QUALITY_UNQUALIFIED';
   if (market.quoteSource !== 'ALPACA' || typeof market.quoteTimestamp !== 'string'
     || typeof market.quoteReceivedAt !== 'string') return 'EXACT_BBO_LINEAGE_INCOMPLETE';
-  if (market.underlyingQuoteSource !== 'ALPACA_IEX'
+  if (!['ALPACA_IEX','ALPACA_IEX_QUOTE','ALPACA_IEX_TRADE'].includes(String(market.underlyingQuoteSource ?? ''))
     || typeof market.underlyingQuoteTimestamp !== 'string'
     || typeof market.underlyingQuoteReceivedAt !== 'string'
     || typeof market.underlyingReferencePrice !== 'number') return 'UNDERLYING_REFERENCE_LINEAGE_INCOMPLETE';
@@ -465,7 +465,7 @@ export async function verifyPersistedAlpacaContractIvAssessment(input: {
     || !Number.isFinite(assessment.currentIv) || (assessment.currentIv as number) < 0
     || (assessment.currentIv as number) > 5
     || (assessment.currentFeed !== 'OPRA' && assessment.currentFeed !== 'INDICATIVE')
-    || assessment.currentUnderlyingQuoteSource !== 'ALPACA_IEX'
+    || !['ALPACA_IEX','ALPACA_IEX_QUOTE','ALPACA_IEX_TRADE'].includes(assessment.currentUnderlyingQuoteSource ?? '')
     || !Number.isFinite(assessment.currentUnderlyingReferencePrice)
     || (assessment.currentUnderlyingReferencePrice as number) <= 0
     || maturity === null || maturity.signal !== 'IV_SHOCK'
