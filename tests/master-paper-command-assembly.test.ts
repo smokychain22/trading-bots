@@ -45,7 +45,7 @@ test('promoted Paper requires empirical positive EV and live tiers stay impossib
 });
 
 test('indicative option data, stale quotes and out-of-BBO limits fail before persistence',()=>{
-  assert.throws(()=>assembleMasterPaperExecutionCommand({...base,quote:{...base.quote,feed:'TRUSTED_TWO_SIDED'}}),/REQUIRES_QUALIFIED_TWO_SIDED/);
+  assert.throws(()=>assembleMasterPaperExecutionCommand({...base,quote:{...base.quote,feed:'TRUSTED_TWO_SIDED'}}),/Invalid option/);
   assert.throws(()=>assembleMasterPaperExecutionCommand({...base,now:'2026-09-13T14:00:20Z'}),/QUOTE_NOT_FRESH/);
   assert.throws(()=>assembleMasterPaperExecutionCommand({...base,limitPrice:1.31}),/LIMIT_OUTSIDE_BBO/);
 });
@@ -66,8 +66,6 @@ test('stock disposal requires stock BBO lineage and no option contract',()=>{
   assert.throws(()=>assembleMasterPaperExecutionCommand({...base,action:'SELL_STOCK',symbol:'AAPL',candidateId:'assigned-stock',
     optionContractId:null,multiplier:1,limitPrice:149.95,quote:{...base.quote,feed:'OPRA',bid:149.9,ask:150}}),/STOCK_EXECUTION_LINEAGE_INVALID/);
 
-  const optionomics=assembleMasterPaperExecutionCommand({...base,quote:{...base.quote,source:'OPTIONOMICS',
-    feed:'TRUSTED_TWO_SIDED',semantics:'TRUSTED_TWO_SIDED_ORDER_PRICING'}});
-  assert.equal(optionomics.executionEvidence.quoteSource,'OPTIONOMICS');
-  assert.equal(optionomics.executionEvidence.quoteSemantics,'TRUSTED_TWO_SIDED_ORDER_PRICING');
+  assert.throws(()=>assembleMasterPaperExecutionCommand({...base,quote:{...base.quote,source:'OPTIONOMICS',
+    feed:'TRUSTED_TWO_SIDED',semantics:'TRUSTED_TWO_SIDED_ORDER_PRICING'}}),/Invalid literal value|Invalid input/);
 });

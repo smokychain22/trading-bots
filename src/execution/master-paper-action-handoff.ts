@@ -1,8 +1,9 @@
 import { z } from 'zod';
-import { decideAdaptiveLimit, type AdaptiveLimitPolicy } from './adaptive-limit-policy.js';
+import { decideAdaptiveLimit, type AdaptiveLimitDecision, type AdaptiveLimitPolicy } from './adaptive-limit-policy.js';
 import { qualifyExecutionOptionQuote, type ExecutionOptionQuote } from './execution-option-quote.js';
 import { assembleMasterPaperExecutionCommand } from './master-paper-command-assembly.js';
-import { MasterPaperExecutionOrchestrator, type MasterPaperExecutionResult } from './master-paper-execution-orchestrator.js';
+import { MasterPaperExecutionOrchestrator, type MasterPaperExecutionCommand,
+  type MasterPaperExecutionResult } from './master-paper-execution-orchestrator.js';
 import { thetaActionOpensNewRisk, type ThetaOrderAction } from './order-construction.js';
 import { executionAuthorizationTiers, type ExecutionAuthorizationTier, type PaperEvidenceSizing } from './execution-authorization-tier.js';
 import { paperEntrySafetyPolicyReceiptSchema, verifyPaperEntrySafetyPolicyReceipt, type PaperEntrySafetyPolicyReceipt } from '../theta/paper-entry-safety-policy.js';
@@ -141,6 +142,17 @@ export interface MasterPaperActionHandoffResult {
   readonly execution: MasterPaperExecutionResult | null;
 }
 
+export interface MasterPaperActionPreparationResult {
+  readonly actionPlanId: string;
+  readonly state: 'BLOCKED' | 'NO_QUOTE' | 'QUOTE_REJECTED' | 'PRICE_REJECTED' | 'READY_TO_SUBMIT';
+  readonly blockers: readonly string[];
+  readonly command: MasterPaperExecutionCommand | null;
+  readonly quote: ExecutionOptionQuote | null;
+  readonly quoteAgeMs: number | null;
+  readonly pricing: AdaptiveLimitDecision | null;
+  readonly quoteAgePolicyVersion: string;
+}
+
 export type MasterPaperActionDisposition = 'WAIT_RECONCILIATION' | 'SUBMITTED' | 'TERMINAL';
 
 export function classifyMasterPaperActionExecution(result: MasterPaperExecutionResult): MasterPaperActionDisposition {
@@ -151,6 +163,91 @@ export function classifyMasterPaperActionExecution(result: MasterPaperExecutionR
 
 const sideFor = (action: ThetaOrderAction): 'BUY' | 'SELL' =>
   ['CLOSE_CSP','ROLL_CSP_CLOSE','CLOSE_CC','ROLL_CC_CLOSE'].includes(action) ? 'BUY' : 'SELL';
+
+/**
+ * Performs the complete read-only portion of the canonical Paper handoff.
+ * It validates the immutable action plan, fetches the exact current Alpaca
+ * quote, qualifies its timing and semantics, and constructs the deterministic
+ * command. It has no coordinator or broker mutation dependency, so locked
+ * runtime diagnostics can prove the pre-submit boundary without a POST-capable
+ * object being present.
+ */
+export async function prepareMasterPaperAction(
+  raw: ApprovedMasterPaperActionPlan,
+  quoteSource: ExecutionOptionQuoteSource,
+  now: string,
+  marketOpen: boolean,
+  quoteAgePolicy: PreSubmitQuoteAgePolicy = paperBootstrapPreSubmitQuoteAgePolicy,
+): Promise<MasterPaperActionPreparationResult> {
+  const plan=masterPaperActionPlanSchema.parse(raw) as ApprovedMasterPaperActionPlan;
+  const blocked=(state:Exclude<MasterPaperActionPreparationResult['state'],'READY_TO_SUBMIT'>,
+    blockers:readonly string[],quote:ExecutionOptionQuote|null=null,quoteAgeMs:number|null=null,
+    pricing:AdaptiveLimitDecision|null=null):MasterPaperActionPreparationResult=>({
+    actionPlanId:plan.actionPlanId,state,blockers,command:null,quote,quoteAgeMs,pricing,
+    quoteAgePolicyVersion:quoteAgePolicy.policyVersion,
+  });
+  const blockers:string[]=[];
+  const opensNewRisk=thetaActionOpensNewRisk(plan.action);
+  if(plan.executionTier==='LIVE_ELIGIBLE'||plan.executionTier==='LIVE_AUTHORIZED')blockers.push('LIVE_EXECUTION_NOT_AUTHORIZED');
+  if(plan.quantity===0)blockers.push('QUANTITY_ZERO');
+  if(!plan.selectedByCanonicalAuthority)blockers.push('CANONICAL_SELECTION_REQUIRED');
+  if(!plan.hardValidityPassed)blockers.push('HARD_VALIDITY_FAILED');
+  if(!plan.accountVerified)blockers.push('MASTER_ACCOUNT_NOT_VERIFIED');
+  if(!plan.optionsCapabilityVerified&&plan.action!=='SELL_STOCK')blockers.push('OPTIONS_CAPABILITY_NOT_VERIFIED');
+  if(!plan.noEquivalentExposureConflict)blockers.push('EQUIVALENT_EXPOSURE_CONFLICT');
+  if(plan.killSwitchActive)blockers.push('KILL_SWITCH_ACTIVE');
+  if(!marketOpen)blockers.push('MARKET_CLOSED');
+  if(!plan.economicsRemainPositive)blockers.push('FORWARD_ECONOMICS_NOT_POSITIVE');
+  if(opensNewRisk&&plan.executionTier==='EMPIRICALLY_PROMOTED_PAPER'&&
+    (!plan.empiricalEconomicsReady||plan.expectedAfterCostEv===null||plan.expectedAfterCostEv<=0))
+    blockers.push('POSITIVE_AFTER_COST_EV_NOT_EMPIRICALLY_READY');
+  if(opensNewRisk&&!['ALLOW_FULL','ALLOW_REDUCED'].includes(plan.aegisState))blockers.push('AEGIS_NOT_APPROVED');
+  if(plan.decisionAuthority==='NEW_RISK'){
+    const identity=verifyAegisAssessmentIdentity(plan.aegisAssessmentIdentity);
+    if(identity===null||identity.persistedCandidateId!==plan.candidateId||identity.underlying!==plan.underlying
+      ||identity.optionSymbol!==plan.symbol||identity.newRiskState!==plan.aegisState)
+      blockers.push('AEGIS_ASSESSMENT_LINEAGE_INVALID');
+  }
+  const entrySafetyPolicy=plan.decisionAuthority==='NEW_RISK'?verifyPaperEntrySafetyPolicyReceipt(plan.entrySafetyPolicy):null;
+  if(plan.decisionAuthority==='NEW_RISK'&&entrySafetyPolicy?.action!=='CLEAR')blockers.push('ENTRY_SAFETY_POLICY_NOT_CLEARED');
+  const maximumQuoteAgeMs=preSubmitMaximumQuoteAgeMs({policy:quoteAgePolicy,now,
+    decisionExpiresAt:plan.decisionExpiresAt});
+  if(maximumQuoteAgeMs===null)blockers.push('PRE_SUBMIT_QUOTE_AGE_POLICY_INVALID');
+  if(blockers.length>0)return blocked('BLOCKED',blockers);
+
+  const quote=await quoteSource.getCurrentQuote(plan,now);
+  if(quote===null)return blocked('NO_QUOTE',['FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_NOT_YET_QUALIFIED']);
+  const qualification=qualifyExecutionOptionQuote({quote,expectedContractId:plan.symbol,nowUtc:now,
+    maximumAgeMs:maximumQuoteAgeMs as number,marketOpen,usage:'MASTER_PAPER'});
+  if(!qualification.qualified)return blocked('QUOTE_REJECTED',qualification.blockers,quote,qualification.quoteAgeMs);
+  const pricing=decideAdaptiveLimit({side:sideFor(plan.action),quote,attempt:plan.pricingAttempt,
+    previousLimit:plan.previousLimit,economicBoundary:plan.economicBoundary,
+    economicsRemainPositive:plan.economicsRemainPositive,policy:plan.pricingPolicy});
+  if((pricing.action!=='PLACE'&&pricing.action!=='REPLACE')||pricing.limitPrice===null)
+    return blocked('PRICE_REJECTED',[`ADAPTIVE_LIMIT_${pricing.reason}`],quote,qualification.quoteAgeMs,pricing);
+  // Alpaca is the sole executable quote and broker authority. Optionomics
+  // remains research/context evidence and cannot qualify an order handoff.
+  if(quote.provider!=='ALPACA')
+    return blocked('QUOTE_REJECTED',['EXECUTION_QUOTE_PROVIDER_NOT_APPROVED'],quote,qualification.quoteAgeMs,pricing);
+  const alpaca=quote.sourceSemantics==='CONSOLIDATED_NBBO';
+  const alpacaIndicative=quote.sourceSemantics==='PAPER_INDICATIVE_REFERENCE';
+  if(plan.action!=='SELL_STOCK'&&!alpaca&&!alpacaIndicative)
+    return blocked('QUOTE_REJECTED',['ORDER_PRICING_SEMANTICS_NOT_PROVEN'],quote,qualification.quoteAgeMs,pricing);
+  const command=assembleMasterPaperExecutionCommand({action:plan.action,executionAccountId:plan.executionAccountId,
+    decisionId:plan.decisionId,candidateId:plan.candidateId,strategyVersion:plan.strategyVersion,chainId:plan.chainId,
+    optionContractId:plan.optionContractId,underlyingId:plan.underlyingId,symbol:plan.symbol,quantity:plan.quantity,
+    multiplier:plan.multiplier,...(plan.confirmedCoveredShares===undefined?{}:{confirmedCoveredShares:plan.confirmedCoveredShares}),
+    limitPrice:pricing.limitPrice,pricingPolicyVersion:pricing.policyVersion,
+    quote:{source:'ALPACA',feed:plan.action==='SELL_STOCK'?'IEX':alpaca?'OPRA':'INDICATIVE',
+      semantics:quote.sourceSemantics as 'CONSOLIDATED_NBBO'|'PAPER_INDICATIVE_REFERENCE',bid:quote.bid,ask:quote.ask,
+      observedAt:quote.providerTimestamp as string,maximumAgeSeconds:(maximumQuoteAgeMs as number)/1000},
+    accountVerified:plan.accountVerified,optionsCapabilityVerified:plan.optionsCapabilityVerified,aegisState:plan.aegisState,
+    executionTier:plan.executionTier,canonicalQuantity:plan.canonicalQuantity,paperEvidenceQuantity:plan.paperEvidenceQuantity,
+    empiricalEconomicsReady:plan.empiricalEconomicsReady,expectedAfterCostEv:plan.expectedAfterCostEv,
+    now,decisionExpiresAt:plan.decisionExpiresAt,attempt:plan.pricingAttempt+1});
+  return {actionPlanId:plan.actionPlanId,state:'READY_TO_SUBMIT',blockers:[],command,quote,
+    quoteAgeMs:qualification.quoteAgeMs,pricing,quoteAgePolicyVersion:quoteAgePolicy.policyVersion};
+}
 
 /**
  * The single typed seam between a canonical approved action and the existing
@@ -167,67 +264,15 @@ export class MasterPaperActionHandoff {
 
   async execute(raw: ApprovedMasterPaperActionPlan, now: string, marketOpen: boolean): Promise<MasterPaperActionHandoffResult> {
     const plan=masterPaperActionPlanSchema.parse(raw) as ApprovedMasterPaperActionPlan;
-    const blockers:string[]=[];
-    const opensNewRisk=thetaActionOpensNewRisk(plan.action);
-    if(plan.executionTier==='LIVE_ELIGIBLE'||plan.executionTier==='LIVE_AUTHORIZED')blockers.push('LIVE_EXECUTION_NOT_AUTHORIZED');
-    if(plan.quantity===0)blockers.push('QUANTITY_ZERO');
-    if(!plan.selectedByCanonicalAuthority)blockers.push('CANONICAL_SELECTION_REQUIRED');
-    if(!plan.hardValidityPassed)blockers.push('HARD_VALIDITY_FAILED');
-    if(!plan.accountVerified)blockers.push('MASTER_ACCOUNT_NOT_VERIFIED');
-    if(!plan.optionsCapabilityVerified&&plan.action!=='SELL_STOCK')blockers.push('OPTIONS_CAPABILITY_NOT_VERIFIED');
-    if(!plan.noEquivalentExposureConflict)blockers.push('EQUIVALENT_EXPOSURE_CONFLICT');
-    if(plan.killSwitchActive)blockers.push('KILL_SWITCH_ACTIVE');
-    if(!marketOpen)blockers.push('MARKET_CLOSED');
-    if(!plan.economicsRemainPositive)blockers.push('FORWARD_ECONOMICS_NOT_POSITIVE');
-    if(opensNewRisk&&plan.executionTier==='EMPIRICALLY_PROMOTED_PAPER'&&
-      (!plan.empiricalEconomicsReady||plan.expectedAfterCostEv===null||plan.expectedAfterCostEv<=0))
-      blockers.push('POSITIVE_AFTER_COST_EV_NOT_EMPIRICALLY_READY');
-    if(opensNewRisk&&!['ALLOW_FULL','ALLOW_REDUCED'].includes(plan.aegisState))blockers.push('AEGIS_NOT_APPROVED');
-    if(plan.decisionAuthority==='NEW_RISK'){
-      const identity=verifyAegisAssessmentIdentity(plan.aegisAssessmentIdentity);
-      if(identity===null||identity.persistedCandidateId!==plan.candidateId||identity.underlying!==plan.underlying
-        ||identity.optionSymbol!==plan.symbol||identity.newRiskState!==plan.aegisState)
-        blockers.push('AEGIS_ASSESSMENT_LINEAGE_INVALID');
+    const prepared=await prepareMasterPaperAction(plan,this.quoteSource,now,marketOpen,this.quoteAgePolicy);
+    if(prepared.state!=='READY_TO_SUBMIT'){
+      return {actionPlanId:prepared.actionPlanId,state:prepared.state,blockers:prepared.blockers,execution:null};
     }
-    const entrySafetyPolicy=plan.decisionAuthority==='NEW_RISK'?verifyPaperEntrySafetyPolicyReceipt(plan.entrySafetyPolicy):null;
-    if(plan.decisionAuthority==='NEW_RISK'&&entrySafetyPolicy?.action!=='CLEAR')blockers.push('ENTRY_SAFETY_POLICY_NOT_CLEARED');
-    const maximumQuoteAgeMs=preSubmitMaximumQuoteAgeMs({policy:this.quoteAgePolicy,now,
-      decisionExpiresAt:plan.decisionExpiresAt});
-    if(maximumQuoteAgeMs===null)blockers.push('PRE_SUBMIT_QUOTE_AGE_POLICY_INVALID');
-    if(blockers.length>0)return {actionPlanId:plan.actionPlanId,state:'BLOCKED',blockers,execution:null};
-
-    const quote=await this.quoteSource.getCurrentQuote(plan,now);
-    if(quote===null)return {actionPlanId:plan.actionPlanId,state:'NO_QUOTE',blockers:['FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_NOT_YET_QUALIFIED'],execution:null};
-    const qualification=qualifyExecutionOptionQuote({quote,expectedContractId:plan.symbol,nowUtc:now,
-      maximumAgeMs:maximumQuoteAgeMs as number,marketOpen,usage:'MASTER_PAPER'});
-    if(!qualification.qualified)return {actionPlanId:plan.actionPlanId,state:'QUOTE_REJECTED',blockers:qualification.blockers,execution:null};
-    const pricing=decideAdaptiveLimit({side:sideFor(plan.action),quote,attempt:plan.pricingAttempt,
-      previousLimit:plan.previousLimit,economicBoundary:plan.economicBoundary,
-      economicsRemainPositive:plan.economicsRemainPositive,policy:plan.pricingPolicy});
-    if((pricing.action!=='PLACE'&&pricing.action!=='REPLACE')||pricing.limitPrice===null)
-      return {actionPlanId:plan.actionPlanId,state:'PRICE_REJECTED',blockers:[`ADAPTIVE_LIMIT_${pricing.reason}`],execution:null};
-    if(!['ALPACA','OPTIONOMICS'].includes(quote.provider))
-      return {actionPlanId:plan.actionPlanId,state:'QUOTE_REJECTED',blockers:['EXECUTION_QUOTE_PROVIDER_NOT_APPROVED'],execution:null};
-    const alpaca=quote.provider==='ALPACA'&&quote.sourceSemantics==='CONSOLIDATED_NBBO';
-    const alpacaIndicative=quote.provider==='ALPACA'&&quote.sourceSemantics==='PAPER_INDICATIVE_REFERENCE';
-    const optionomics=quote.provider==='OPTIONOMICS'&&quote.sourceSemantics==='TRUSTED_TWO_SIDED_ORDER_PRICING';
-    if(plan.action!=='SELL_STOCK'&&!alpaca&&!alpacaIndicative&&!optionomics)
-      return {actionPlanId:plan.actionPlanId,state:'QUOTE_REJECTED',blockers:['ORDER_PRICING_SEMANTICS_NOT_PROVEN'],execution:null};
-    const command=assembleMasterPaperExecutionCommand({action:plan.action,executionAccountId:plan.executionAccountId,
-      decisionId:plan.decisionId,candidateId:plan.candidateId,strategyVersion:plan.strategyVersion,chainId:plan.chainId,
-      optionContractId:plan.optionContractId,underlyingId:plan.underlyingId,symbol:plan.symbol,quantity:plan.quantity,
-      multiplier:plan.multiplier,...(plan.confirmedCoveredShares===undefined?{}:{confirmedCoveredShares:plan.confirmedCoveredShares}),
-      limitPrice:pricing.limitPrice,pricingPolicyVersion:pricing.policyVersion,
-      quote:{source:quote.provider as 'ALPACA'|'OPTIONOMICS',feed:plan.action==='SELL_STOCK'?'IEX':alpaca?'OPRA':alpacaIndicative?'INDICATIVE':'TRUSTED_TWO_SIDED',
-        semantics:quote.sourceSemantics as 'CONSOLIDATED_NBBO'|'TRUSTED_TWO_SIDED_ORDER_PRICING'|'PAPER_INDICATIVE_REFERENCE',bid:quote.bid,ask:quote.ask,
-        observedAt:quote.providerTimestamp as string,maximumAgeSeconds:(maximumQuoteAgeMs as number)/1000},
-      accountVerified:plan.accountVerified,optionsCapabilityVerified:plan.optionsCapabilityVerified,aegisState:plan.aegisState,
-      executionTier:plan.executionTier,canonicalQuantity:plan.canonicalQuantity,paperEvidenceQuantity:plan.paperEvidenceQuantity,
-      empiricalEconomicsReady:plan.empiricalEconomicsReady,expectedAfterCostEv:plan.expectedAfterCostEv,
-      now,decisionExpiresAt:plan.decisionExpiresAt,attempt:plan.pricingAttempt+1});
-    return {actionPlanId:plan.actionPlanId,state:'EXECUTED',blockers:[],execution:await this.execution.execute(command,{
-      eventType:'INITIAL_LIMIT',eventTime:now,quote,quoteAgeMs:quote.providerTimestamp===null?null:Date.parse(now)-Date.parse(quote.providerTimestamp),
-      pricing,fillPrice:null,filledQuantity:null,attemptNo:plan.pricingAttempt+1,
+    if(prepared.command===null||prepared.quote===null||prepared.pricing===null)
+      throw new Error('MASTER_PAPER_ACTION_PREPARATION_INVARIANT_FAILED');
+    return {actionPlanId:plan.actionPlanId,state:'EXECUTED',blockers:[],execution:await this.execution.execute(prepared.command,{
+      eventType:'INITIAL_LIMIT',eventTime:now,quote:prepared.quote,quoteAgeMs:prepared.quoteAgeMs,
+      pricing:prepared.pricing,fillPrice:null,filledQuantity:null,attemptNo:plan.pricingAttempt+1,
       reasonCode:`ORDER_HANDOFF_REFERENCE:${this.quoteAgePolicy.policyVersion}`,
     })};
   }

@@ -3,7 +3,7 @@ import test from 'node:test';
 import type { BrokerOrderRequest, BrokerOrderSnapshot, PaperBrokerAdapter } from '../src/execution/broker.js';
 import { executionOptionQuoteContractVersion, type ExecutionOptionQuote } from '../src/execution/execution-option-quote.js';
 import { MasterPaperActionHandoff, classifyMasterPaperActionExecution, masterPaperActionPlanSchema, masterPaperActionPlanVersion,
-  preSubmitMaximumQuoteAgeMs, type ApprovedMasterPaperActionPlan,
+  prepareMasterPaperAction, preSubmitMaximumQuoteAgeMs, type ApprovedMasterPaperActionPlan,
   type ExecutionOptionQuoteSource } from '../src/execution/master-paper-action-handoff.js';
 import { MasterPaperExecutionOrchestrator } from '../src/execution/master-paper-execution-orchestrator.js';
 import { InMemoryPaperOrderStore, PaperOrderCoordinator } from '../src/execution/paper-order-coordinator.js';
@@ -117,10 +117,23 @@ test('new-risk handoff rejects a tampered AEGIS assessment identity before broke
   assert.equal(broker.submitCalls,0);
 });
 
-test('qualified Optionomics two-sided semantics can reach command assembly without claiming OPRA',async()=>{
+test('Optionomics research quotes cannot become executable Paper quote authority',async()=>{
   const optionomics={...quote,provider:'OPTIONOMICS',sourceSemantics:'TRUSTED_TWO_SIDED_ORDER_PRICING'} as const;
   const {broker,handoff}=setup(optionomics);const result=await handoff.execute(plan(),now,true);
-  assert.equal(result.state,'EXECUTED');assert.equal(broker.submitCalls,1);
+  assert.equal(result.state,'QUOTE_REJECTED');
+  assert.ok(result.blockers.includes('EXECUTION_QUOTE_PROVIDER_NOT_APPROVED'));
+  assert.equal(broker.submitCalls,0);
+});
+
+test('read-only preparation proves the exact pre-submit boundary without a broker or coordinator',async()=>{
+  const result=await prepareMasterPaperAction(plan({executionTier:'PAPER_EVIDENCE',expectedAfterCostEv:null,
+    empiricalEconomicsReady:false}),new QuoteSource(quote),now,true);
+  assert.equal(result.state,'READY_TO_SUBMIT');
+  assert.equal(result.blockers.length,0);
+  assert.equal(result.command?.request.symbol,plan().symbol);
+  assert.equal(result.command?.request.limit_price,'1.30');
+  assert.equal(result.quote?.sourceSemantics,'CONSOLIDATED_NBBO');
+  assert.equal(result.quoteAgeMs,0);
 });
 
 test('Paper evidence tier reaches coordinator while empirical EV stays explicitly UNKNOWN',async()=>{

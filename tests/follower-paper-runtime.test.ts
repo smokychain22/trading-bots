@@ -39,6 +39,13 @@ test('follower action plan fails closed for stale/unproven quote, veto, expired 
   assert.throws(()=>assembleLockedFollowerPaperActionPlan({
     copyPlan:copyPlan(),workspaceId:'10000000-0000-4000-8000-000000000001',
     followerAccountId:'10000000-0000-4000-8000-000000000002',symbol:quote.contractId,
+    quote:{...quote,provider:'OPTIONOMICS',sourceSemantics:'TRUSTED_TWO_SIDED_ORDER_PRICING'},
+    proposedLimit:1.25,aegisState:'ALLOW_FULL',aegisPolicyVersion:'v1',now:'2026-09-15T14:30:00.200Z',
+    decisionExpiresAt:'2026-09-15T14:30:05.000Z',maximumQuoteAgeMs:1000,marketOpen:true,
+  }),/FOLLOWER_QUOTE_PROVIDER_NOT_APPROVED/);
+  assert.throws(()=>assembleLockedFollowerPaperActionPlan({
+    copyPlan:copyPlan(),workspaceId:'10000000-0000-4000-8000-000000000001',
+    followerAccountId:'10000000-0000-4000-8000-000000000002',symbol:quote.contractId,
     quote:{...quote,sourceSemantics:'INDICATIVE'},proposedLimit:1.25,aegisState:'ALLOW_FULL',
     aegisPolicyVersion:'v1',now:'2026-09-15T14:30:00.200Z',decisionExpiresAt:'2026-09-15T14:30:05.000Z',maximumQuoteAgeMs:1000,marketOpen:true,
   }),/QUOTE_NOT_QUALIFIED/);

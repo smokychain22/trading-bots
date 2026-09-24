@@ -52,7 +52,7 @@ const inputSchema = z.object({
   paperEvidenceQuantity:z.number().int().nonnegative(),empiricalEconomicsReady:z.boolean(),
   expectedAfterCostEv:z.number().finite().nullable(),
   limitPrice: z.number().positive().finite(), pricingPolicyVersion: z.string().min(1),
-  quote: z.object({ source: z.enum(['ALPACA','OPTIONOMICS']), feed: z.enum(['OPRA', 'INDICATIVE', 'SIP', 'IEX', 'TRUSTED_TWO_SIDED']),
+  quote: z.object({ source: z.literal('ALPACA'), feed: z.enum(['OPRA', 'INDICATIVE', 'SIP', 'IEX']),
     semantics: z.enum(['CONSOLIDATED_NBBO','TRUSTED_TWO_SIDED_ORDER_PRICING','PAPER_INDICATIVE_REFERENCE']),
     bid: z.number().nonnegative().finite(), ask: z.number().positive().finite(), observedAt: z.string().datetime({ offset: true }),
     maximumAgeSeconds: z.number().positive().finite() }).strict(),
@@ -103,9 +103,7 @@ export function assembleMasterPaperExecutionCommand(raw: MasterPaperCommandAssem
       && input.quote.semantics === 'CONSOLIDATED_NBBO';
     const alpacaIndicativePaper = input.quote.source === 'ALPACA' && input.quote.feed === 'INDICATIVE'
       && input.quote.semantics === 'PAPER_INDICATIVE_REFERENCE';
-    const trustedTwoSided = input.quote.source === 'OPTIONOMICS' && input.quote.feed === 'TRUSTED_TWO_SIDED'
-      && input.quote.semantics === 'TRUSTED_TWO_SIDED_ORDER_PRICING';
-    if (input.optionContractId === null || (!alpacaOpra && !alpacaIndicativePaper && !trustedTwoSided)) {
+    if (input.optionContractId === null || (!alpacaOpra && !alpacaIndicativePaper)) {
       throw new Error('OPTION_EXECUTION_REQUIRES_QUALIFIED_TWO_SIDED_BBO');
     }
   }

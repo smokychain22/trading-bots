@@ -15,6 +15,7 @@ export const masterShadowContextVersions = Object.freeze({
 export interface MasterShadowContext {
   readonly botInstanceId: string;
   readonly accountId: string;
+  readonly executionAccountId: string;
   readonly strategyVersionId: string;
   readonly featureVersionId: string;
   readonly riskLimitVersionId: string;
@@ -136,7 +137,8 @@ export async function ensureMasterShadowContext(pool: Pool, verifiedProviderAcco
         strategyVersionId, riskLimitVersionId, executionVersionId, costModelVersionId, featureVersionId]);
     const bot = await client.query(`SELECT bot_instance_id FROM core.bot_instance WHERE account_id=$1 AND bot_code='THETA'`, [resolvedAccountId]);
     await client.query('COMMIT');
-    return { botInstanceId:String(bot.rows[0].bot_instance_id), accountId:resolvedAccountId, strategyVersionId,
+    return { botInstanceId:String(bot.rows[0].bot_instance_id), accountId:resolvedAccountId, executionAccountId,
+      strategyVersionId,
       featureVersionId, riskLimitVersionId, executionVersionId, costModelVersionId };
   } catch (error) {
     await client.query('ROLLBACK');

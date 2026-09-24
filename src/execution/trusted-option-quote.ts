@@ -1,7 +1,7 @@
 export type TrustedOptionQuoteAuthority =
   | 'ALPACA_OPRA_CONSOLIDATED_BBO'
   | 'ALPACA_INDICATIVE_PAPER_REFERENCE'
-  | 'OPTIONOMICS_TRUSTED_TWO_SIDED_QUOTE';
+  | 'OPTIONOMICS_SESSION_RESEARCH';
 
 export type TrustedOptionQuoteProvider = 'ALPACA' | 'OPTIONOMICS';
 
@@ -46,7 +46,7 @@ const isPositiveFinite = (value: number | null): value is number =>
 export function assessTrustedOptionQuote(
   candidate: TrustedOptionQuoteCandidate,
   now: string,
-  usage: 'MASTER_PAPER' | 'LIVE' = 'LIVE',
+  usage: 'RESEARCH' | 'MASTER_PAPER' | 'LIVE' = 'LIVE',
 ): TrustedOptionQuoteAssessment {
   const blockers: string[] = [];
   const providerTime = Date.parse(candidate.providerTimestamp ?? '');
@@ -87,10 +87,8 @@ export function assessTrustedOptionQuote(
     }
   } else {
     if (candidate.provenance.feed === 'INDICATIVE') blockers.push('INDICATIVE_QUOTE_FORBIDDEN');
-    // Optionomics may qualify as trusted two-sided price evidence without
-    // claiming it is consolidated NBBO. Its authenticated developer contract
-    // and response provenance must prove the narrower claim first.
-    authority = 'OPTIONOMICS_TRUSTED_TWO_SIDED_QUOTE';
+    if(usage!=='RESEARCH')blockers.push('OPTIONOMICS_EXECUTION_AUTHORITY_FORBIDDEN');
+    authority = 'OPTIONOMICS_SESSION_RESEARCH';
   }
 
   return { ready: blockers.length === 0, authority: blockers.length === 0 ? authority : null, blockers };

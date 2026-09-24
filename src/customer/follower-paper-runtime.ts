@@ -77,10 +77,9 @@ export function assembleLockedFollowerPaperActionPlan(input:AssembleFollowerPape
     nowUtc:parsed.now,maximumAgeMs:Math.min(parsed.maximumQuoteAgeMs,decisionWindowMs),marketOpen:parsed.marketOpen,usage:'MASTER_PAPER'});
   if(!qualification.qualified||qualification.quoteAgeMs===null)
     throw new Error(`FOLLOWER_QUOTE_NOT_QUALIFIED:${qualification.blockers.join(',')}`);
-  if(!['ALPACA','OPTIONOMICS'].includes(input.quote.provider))throw new Error('FOLLOWER_QUOTE_PROVIDER_NOT_APPROVED');
+  if(input.quote.provider!=='ALPACA')throw new Error('FOLLOWER_QUOTE_PROVIDER_NOT_APPROVED');
   const approvedSemantics=input.quote.provider==='ALPACA'&&input.quote.sourceSemantics==='CONSOLIDATED_NBBO'
-    ||input.quote.provider==='ALPACA'&&input.quote.sourceSemantics==='PAPER_INDICATIVE_REFERENCE'
-    ||input.quote.provider==='OPTIONOMICS'&&input.quote.sourceSemantics==='TRUSTED_TWO_SIDED_ORDER_PRICING';
+    ||input.quote.provider==='ALPACA'&&input.quote.sourceSemantics==='PAPER_INDICATIVE_REFERENCE';
   if(action!=='SELL_STOCK'&&!approvedSemantics)throw new Error('FOLLOWER_ORDER_PRICING_SEMANTICS_NOT_PROVEN');
   if(parsed.proposedLimit<input.quote.bid||parsed.proposedLimit>input.quote.ask)
     throw new Error('FOLLOWER_LIMIT_OUTSIDE_CURRENT_BBO');

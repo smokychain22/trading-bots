@@ -16,7 +16,7 @@ test('invalid age policies fail closed and exact maximum age is allowed', () => 
     assert.equal(result.ready, false);
     assert.ok(result.blockers.includes('QUOTE_AGE_POLICY_INVALID'));
   }
-  assert.equal(assessTrustedOptionQuote(optionomicsQuote({ maximumAgeMs: 3000 }), NOW).ready, true);
+  assert.equal(assessTrustedOptionQuote(optionomicsQuote({ maximumAgeMs: 3000 }), NOW,'RESEARCH').ready, true);
 });
 
 test('provider timestamp cannot follow ingestion and identity cannot be empty', () => {
@@ -49,9 +49,12 @@ const optionomicsQuote = (overrides: Partial<TrustedOptionQuoteCandidate> = {}):
   ...overrides,
 });
 
-test('qualifies a proven fresh Optionomics two-sided quote without calling it NBBO', () => {
-  const result = assessTrustedOptionQuote(optionomicsQuote(), NOW);
-  assert.deepEqual(result, { ready: true, authority: 'OPTIONOMICS_TRUSTED_TWO_SIDED_QUOTE', blockers: [] });
+test('qualifies proven Optionomics two-sided evidence for research only, never execution', () => {
+  const research = assessTrustedOptionQuote(optionomicsQuote(), NOW,'RESEARCH');
+  assert.deepEqual(research, { ready: true, authority: 'OPTIONOMICS_SESSION_RESEARCH', blockers: [] });
+  const paper=assessTrustedOptionQuote(optionomicsQuote(),NOW,'MASTER_PAPER');
+  assert.equal(paper.ready,false);
+  assert.ok(paper.blockers.includes('OPTIONOMICS_EXECUTION_AUTHORITY_FORBIDDEN'));
 });
 
 test('does not upgrade an undocumented Optionomics chain quote', () => {

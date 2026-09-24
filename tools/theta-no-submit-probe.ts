@@ -22,8 +22,7 @@ if (!/^[0-9a-f]{40}$/.test(sourceSha)
 // Pool's idle-client listener exists. This diagnostic must fail closed with a
 // sanitized receipt, never crash with a raw connection stack or retry a scan.
 process.once('uncaughtException', (error: unknown) => {
-  const errorCategory = error instanceof Error && error.message === 'Connection terminated unexpectedly'
-    ? 'DATABASE_CLIENT_TERMINATED' : 'UNCLASSIFIED_UNCAUGHT_FAILURE';
+  const errorCategory = classifyNoSubmitProbeError(error);
   console.info(JSON.stringify({ state: 'FAILED_CLOSED', errorCategory,
     probeStage, sourceSha, brokerMutations: 0, orderSubmissions: 0 }));
   process.exit(1);
@@ -108,7 +107,8 @@ try {
     } else {
       probeStage = 'SHADOW_EVIDENCE_SCAN';
       const scan = await runProductionShadowEvidenceScan({ environment, pool, alpaca,
-        reconciliation, executionAccountId: null, now: () => new Date().toISOString() });
+        reconciliation, executionAccountId: null, now: () => new Date().toISOString(),
+        readOnlyPreSubmitPreview: true });
       if (scan.actionPlansReady !== 0) throw new Error('NO_SUBMIT_PROBE_ACTION_PLAN_UNEXPECTED');
       console.info(JSON.stringify({ state: poolConnectionFailed ? 'DATABASE_CONNECTION_LOST_NO_SUBMIT'
         : 'CURRENT_SOURCE_NO_SUBMIT_SCAN_COMPLETED', schema, sourceSha,
@@ -116,6 +116,8 @@ try {
         symbolsCompleted: scan.symbolsCompleted, candidateCount: scan.candidateCount,
         observationsScheduled: scan.observationsScheduled,
         paperActionPlansReady: scan.actionPlansReady,
+        symbolDiagnostics: scan.symbolDiagnostics,
+        readOnlyPreSubmitProofs: scan.readOnlyPreSubmitProofs,
         finalAction: scan.behaviorDiagnostic.finalAction,
         brokerMutations: 0, orderSubmissions: 0,
         masterExecution: 'LOCKED', followerExecution: 'LOCKED', liveMoney: 'NOT_AUTHORIZED' }));

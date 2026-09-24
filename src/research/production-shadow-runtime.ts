@@ -35,6 +35,43 @@ import type { OptionomicsEarningsEvidence } from '../theta/earnings-event-eviden
 import type { MacroRiskEvidence } from '../theta/macro-event-policy.js';
 import type { AlpacaCalendarSession } from '../theta/alpaca-provider.js';
 import { verifyAegisAssessmentIdentity } from '../theta/aegis-assessment-identity.js';
+import { prepareMasterPaperAction } from '../execution/master-paper-action-handoff.js';
+import { AlpacaExecutionQuoteSource } from '../execution/alpaca-execution-quote-source.js';
+import { buildFirstPaperRuntimeTelemetry, type FirstPaperRuntimeTelemetry } from '../theta/first-paper-runtime-telemetry.js';
+
+export interface ReadOnlyPreSubmitProof {
+  readonly symbol:string;
+  readonly planState:'BLOCKED'|'READY';
+  readonly planBlockers:readonly string[];
+  readonly preSubmitState:'NOT_REACHED'|'BLOCKED'|'NO_QUOTE'|'QUOTE_REJECTED'|'PRICE_REJECTED'|'READY_TO_SUBMIT_BUT_DISABLED'|'PROVIDER_ERROR'|'INTERNAL_ERROR';
+  readonly preSubmitBlockers:readonly string[];
+  readonly optionSymbol:string|null;
+  readonly quoteProvider:string|null;
+  readonly quoteSemantics:string|null;
+  readonly quoteAgeMs:number|null;
+  readonly limitPrice:number|null;
+  readonly quoteAgePolicyVersion:string|null;
+  readonly brokerMutationSurface:false;
+}
+
+export interface ProductionShadowSymbolDiagnostic {
+  readonly symbol:string;
+  readonly cycleState:'COMPLETED'|'FAILED';
+  readonly cycleErrorCode:string|null;
+  readonly optionChainComplete:boolean|null;
+  readonly optionContractsComplete:boolean|null;
+  readonly qLatticeTotal:number;
+  readonly qDecision:string|null;
+  readonly qReasonCodes:readonly string[];
+  readonly selectedCandidateId:string|null;
+  readonly selectedOptionSymbol:string|null;
+  readonly canonicalAction:string|null;
+  readonly selectedQuantity:number;
+  readonly aegisState:string|null;
+  readonly runtimeTelemetry:FirstPaperRuntimeTelemetry|null;
+  readonly cycleBlockers:readonly string[];
+  readonly preSubmit:ReadOnlyPreSubmitProof|null;
+}
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
@@ -43,6 +80,8 @@ export interface ProductionShadowScanReport {
   readonly actionPlansReady:number; readonly actionPlansBlocked:readonly string[];
   readonly virtualOpening:ShadowIntentCreationReport;
   readonly behaviorDiagnostic:RuntimeBehaviorDiagnostic;
+  readonly symbolDiagnostics:readonly ProductionShadowSymbolDiagnostic[];
+  readonly readOnlyPreSubmitProofs:readonly ReadOnlyPreSubmitProof[];
 }
 
 export interface ObservationProcessingReport {readonly due:number;readonly observed:number;readonly missed:number;
@@ -233,8 +272,12 @@ const bridge=(environment:Environment):PythonBridgeConfig=>({
 });
 
 export async function runProductionShadowEvidenceScan(input:{environment:Environment;pool:Pool;alpaca:AlpacaProviderConfig;
-  executionAccountId?:string|null;reconciliation:BrokerReconciliationResult;now:()=>string}):Promise<ProductionShadowScanReport>{
+  executionAccountId?:string|null;reconciliation:BrokerReconciliationResult;now:()=>string;
+  readOnlyPreSubmitPreview?:boolean}):Promise<ProductionShadowScanReport>{
   if(input.environment.THETA_RUNTIME_MODE!=='MASTER_THETA_PAPER') throw new Error('MASTER_THETA_PAPER_RUNTIME_REQUIRED');
+  if(input.readOnlyPreSubmitPreview===true&&(input.environment.MASTER_PAPER_EXECUTION_ENABLED
+    ||input.environment.FOLLOWER_PAPER_EXECUTION_ENABLED||!input.environment.PAPER_PAUSE_NEW_ORDERS))
+    throw new Error('READ_ONLY_PRE_SUBMIT_PREVIEW_REQUIRES_ALL_EXECUTION_LOCKS');
   if(process.env.VERCEL_ENV==='production'){
     // This is deliberately independent of the encrypted master credential.
     // A local dotenv success or broker reconciliation cannot prove that the
@@ -259,6 +302,10 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     liveMoneyAuthorized:false,
   });
   const runtimeContext=await loadPersistenceContext(input.pool,input.alpaca,input.now());
+  if(input.executionAccountId!==undefined&&input.executionAccountId!==null
+    &&input.executionAccountId!==runtimeContext.executionAccountId)
+    throw new Error('MASTER_EXECUTION_ACCOUNT_CONTEXT_MISMATCH');
+  const executionAccountId=input.executionAccountId??runtimeContext.executionAccountId;
   const recoveryRows=await input.pool.query(`SELECT DISTINCT u.symbol
     FROM trade.economic_chain ec
     JOIN trade.stock_lot sl ON sl.chain_id=ec.chain_id AND sl.disposed_at IS NULL
@@ -359,6 +406,8 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   let observationsScheduled=0;
   let actionPlansReady=0;
   const actionPlansBlocked:string[]=[...runtimeSafetyBlockers];
+  const readOnlyPreSubmitProofs:ReadOnlyPreSubmitProof[]=[];
+  const readOnlyQuoteSource=input.readOnlyPreSubmitPreview===true?new AlpacaExecutionQuoteSource(input.alpaca):null;
   const evidenceStore=new PostgresShadowEvidenceRuntimeStore(input.pool);
   for(const member of scan.results){
     if(member.cycle?.fusionSnapshot===null||member.cycle===null) continue;
@@ -419,7 +468,9 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         underlying:member.symbol,decisionAsOf:String(member.cycle.fusionSnapshot.snapshot.decisionTimeUtc)})
         .catch(()=>({ready:false,reason:'PERSISTED_ALPACA_IV_READ_FAILED',assessment:null}))
       : null;
-    if(input.environment.MASTER_PAPER_EXECUTION_ENABLED&&!input.environment.PAPER_PAUSE_NEW_ORDERS
+    const runtimePlanEnqueueEnabled=input.environment.MASTER_PAPER_EXECUTION_ENABLED&&!input.environment.PAPER_PAUSE_NEW_ORDERS;
+    const planEvidenceEnabled=runtimePlanEnqueueEnabled||input.readOnlyPreSubmitPreview===true;
+    if(planEvidenceEnabled
       &&corporateActionReadSucceeded&&entrySafetyPolicy?.action==='CLEAR'
       &&brokerAuthoritySymbols.has(member.symbol)
       &&alpacaIvVerification?.ready===true
@@ -452,7 +503,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         ? new Date(marketSession.nextClose).toISOString():null;
       const decisionExpiresAt=sessionClose!==null&&Date.parse(sessionClose)<Date.parse(boundedExpiry)?sessionClose:boundedExpiry;
       const assembled=assembleMasterPaperEvidencePlan({frontier:member.cycle.strategyFrontier,
-        executionAccountId:input.executionAccountId??null,decisionId:saved.decisionId,
+        executionAccountId,decisionId:saved.decisionId,
         persistedCandidateId:row?.candidate_id==null?null:String(row.candidate_id),
         optionContractId:row?.option_contract_id==null?null:String(row.option_contract_id),
         underlyingId:row?.underlying_id==null?null:String(row.underlying_id),
@@ -469,9 +520,32 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
         paperEvidenceRiskCap:input.environment.PAPER_EVIDENCE_RISK_CAP,
         modeledRoundTripCostPerContract:n(assumptions.totalModeledCostPerContract),now:planNow,decisionExpiresAt});
       if(assembled.state==='READY'){
-        if(await new PostgresMasterPaperActionPlanStore(input.pool).enqueue(assembled.plan,planNow,
+        if(runtimePlanEnqueueEnabled&&await new PostgresMasterPaperActionPlanStore(input.pool).enqueue(assembled.plan,planNow,
           {botInstanceId:runtimeContext.botInstanceId,underlyingId:assembled.plan.underlyingId}))actionPlansReady++;
-      }else if(assembled.state==='BLOCKED')actionPlansBlocked.push(...assembled.blockers.map((blocker)=>`${member.symbol}:${blocker}`));
+        if(readOnlyQuoteSource!==null){
+          try{
+            const prepared=await prepareMasterPaperAction(assembled.plan,readOnlyQuoteSource,planNow,true);
+            readOnlyPreSubmitProofs.push({symbol:member.symbol,planState:'READY',planBlockers:[],
+              preSubmitState:prepared.state==='READY_TO_SUBMIT'?'READY_TO_SUBMIT_BUT_DISABLED':prepared.state,
+              preSubmitBlockers:prepared.blockers,optionSymbol:assembled.plan.symbol,
+              quoteProvider:prepared.quote?.provider??null,quoteSemantics:prepared.quote?.sourceSemantics??null,
+              quoteAgeMs:prepared.quoteAgeMs,limitPrice:prepared.pricing?.limitPrice??null,
+              quoteAgePolicyVersion:prepared.quoteAgePolicyVersion,brokerMutationSurface:false});
+          }catch(error){
+            const providerError=error instanceof AlpacaProviderError;
+            const failureCode=providerError?error.errorClass:'INTERNAL_VALIDATION_ERROR';
+            readOnlyPreSubmitProofs.push({symbol:member.symbol,planState:'READY',planBlockers:[],
+              preSubmitState:providerError?'PROVIDER_ERROR':'INTERNAL_ERROR',preSubmitBlockers:[`PRE_SUBMIT_${failureCode}`],
+              optionSymbol:assembled.plan.symbol,quoteProvider:null,quoteSemantics:null,quoteAgeMs:null,
+              limitPrice:null,quoteAgePolicyVersion:null,brokerMutationSurface:false});
+          }
+        }
+      }else if(assembled.state==='BLOCKED'){
+        actionPlansBlocked.push(...assembled.blockers.map((blocker)=>`${member.symbol}:${blocker}`));
+        if(input.readOnlyPreSubmitPreview===true)readOnlyPreSubmitProofs.push({symbol:member.symbol,planState:'BLOCKED',
+          planBlockers:assembled.blockers,preSubmitState:'NOT_REACHED',preSubmitBlockers:[],optionSymbol:selectedLeg?.optionSymbol??null,
+          quoteProvider:null,quoteSemantics:null,quoteAgeMs:null,limitPrice:null,quoteAgePolicyVersion:null,brokerMutationSurface:false});
+      }
     }else if(brokerAuthoritySymbols.has(member.symbol)&&entrySafetyPolicy?.action==='CLEAR'
       &&member.cycle.strategyFrontier?.selectedCandidateId!==null
       &&alpacaIvVerification?.ready!==true){
@@ -581,11 +655,28 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     actionPlansReady,actionPlanBlockers:[...new Set(actionPlansBlocked)].toSorted(),
   });
   const virtualOpening=await new PostgresShadowVirtualTrader(input.pool).createOpeningIntent(scan.scanId,scan.finishedAt);
+  const symbolDiagnostics:ProductionShadowSymbolDiagnostic[]=scan.results.map((member)=>{
+    const cycle=member.cycle;
+    const frontier=cycle?.strategyFrontier??null;
+    const selected=frontier?.branches.flatMap((branch)=>branch.candidates)
+      .find((candidate)=>candidate.candidateId===frontier.selectedCandidateId)??null;
+    const quoteState=cycle?.fusionSnapshot?.snapshot.alpacaQuoteState;
+    return {symbol:member.symbol,cycleState:cycle===null?'FAILED':'COMPLETED',cycleErrorCode:member.errorCode,
+      optionChainComplete:cycle?.optionChainComplete??null,optionContractsComplete:cycle?.optionContractsComplete??null,
+      qLatticeTotal:cycle?.orchestration?.thetaQ?.candidates.length??0,
+      qDecision:cycle?.orchestration?.receipt.winningAction??null,
+      qReasonCodes:cycle?.orchestration?.receipt.reasonCodes??[],selectedCandidateId:frontier?.selectedCandidateId??null,
+      selectedOptionSymbol:selected?.legs[0]?.optionSymbol??null,canonicalAction:frontier?.primaryAction??null,
+      selectedQuantity:frontier?.selectedQuantity??0,aegisState:selected?.aegisState??cycle?.orchestration?.aegis?.newRiskState??null,
+      runtimeTelemetry:cycle===null?null:buildFirstPaperRuntimeTelemetry({frontier,alpacaQuoteState:quoteState}),
+      cycleBlockers:cycle?.blockers??[],preSubmit:readOnlyPreSubmitProofs.find((proof)=>proof.symbol===member.symbol)??null};
+  });
   return {scanId:scan.scanId,completeness:discovery.candidates.length===0?'DATA_INSUFFICIENT':scan.completeness,
     candidateCount:scan.candidateCount,
     researchMissingScope:scan.researchMissingScope,
     symbolsAttempted:scan.symbolsAttempted,symbolsCompleted:scan.symbolsCompleted,observationsScheduled,
-    actionPlansReady,actionPlansBlocked:[...new Set(actionPlansBlocked)].toSorted(),virtualOpening,behaviorDiagnostic};
+    actionPlansReady,actionPlansBlocked:[...new Set(actionPlansBlocked)].toSorted(),virtualOpening,behaviorDiagnostic,
+    symbolDiagnostics,readOnlyPreSubmitProofs};
 }
 
 async function loadPersistenceContext(pool:Pool,alpaca:AlpacaProviderConfig,asOf:string){
@@ -598,7 +689,8 @@ async function loadPersistenceContext(pool:Pool,alpaca:AlpacaProviderConfig,asOf
   const snapshot=await pool.query(`INSERT INTO trade.account_snapshot(account_id,equity,cash,buying_power,options_buying_power,options_level,as_of,retrieved_at)
     VALUES($1,$2,$3,$4,$5,$6,$7,$7) RETURNING account_snapshot_id`,[context.accountId,n(account.equity),n(account.cash),n(account.buying_power),
     n(account.options_buying_power),n(account.options_trading_level),asOf]);
-  return {botInstanceId:context.botInstanceId,universeVersionId:null,strategyVersionId:context.strategyVersionId,
+  return {botInstanceId:context.botInstanceId,executionAccountId:context.executionAccountId,
+    universeVersionId:null,strategyVersionId:context.strategyVersionId,
     featureVersionId:context.featureVersionId,riskLimitVersionId:context.riskLimitVersionId,
     executionVersionId:context.executionVersionId,costModelVersionId:context.costModelVersionId,
     accountSnapshotId:Number(snapshot.rows[0].account_snapshot_id)};
