@@ -1,6 +1,32 @@
 import { paperBootstrapAlpacaContractIvPolicy, type AlpacaContractIvHistoryRow } from './aegis-alpaca-iv-stress.js';
 import { paperBootstrapAegisSpreadStressPolicy, spreadDteBucket, spreadMoneynessBucket,
   type SpreadHistoryObservation } from './aegis-spread-stress.js';
+import type { AlpacaCalendarSession, AlpacaMarketClock } from './alpaca-provider.js';
+
+const timestampDate = (value: string | null): string | null => {
+  if (value === null || !Number.isFinite(Date.parse(value))) return null;
+  const match = /^(\d{4}-\d{2}-\d{2})T/.exec(value);
+  return match?.[1] ?? null;
+};
+
+/** Selects the session whose current observations can be assessed next.
+ * During an open session this is the current exchange session. While closed,
+ * Alpaca's next_open is authoritative. UTC calendar dates are not used because
+ * they can skip the same-day U.S. session before its opening bell. */
+export function selectAegisEligibilitySession(input: {
+  readonly clock: AlpacaMarketClock;
+  readonly calendar: readonly AlpacaCalendarSession[];
+}): { readonly session: string; readonly state: 'CURRENT_OPEN_SESSION' | 'NEXT_OPEN_SESSION' } {
+  const { clock } = input;
+  if (clock.isOpen === null) throw new Error('ALPACA_CLOCK_OPEN_STATE_UNKNOWN');
+  const session = clock.isOpen ? timestampDate(clock.timestamp) : timestampDate(clock.nextOpen);
+  if (session === null) throw new Error(clock.isOpen
+    ? 'ALPACA_CLOCK_TIMESTAMP_INVALID' : 'ALPACA_CLOCK_NEXT_OPEN_INVALID');
+  if (!input.calendar.some((row) => row.date === session)) {
+    throw new Error('ALPACA_CLOCK_CALENDAR_SESSION_MISMATCH');
+  }
+  return { session, state: clock.isOpen ? 'CURRENT_OPEN_SESSION' : 'NEXT_OPEN_SESSION' };
+}
 
 export interface NextSessionCohort {
   readonly underlying: string;

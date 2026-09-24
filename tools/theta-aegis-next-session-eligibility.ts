@@ -1,9 +1,10 @@
 import { Pool } from 'pg';
 import { loadEnvironmentFile } from '../src/config/environment.js';
-import { fetchMarketCalendar } from '../src/theta/alpaca-provider.js';
+import { fetchMarketCalendar, fetchMarketClock } from '../src/theta/alpaca-provider.js';
 import { summarizeAegisBaselineProgress } from '../src/theta/aegis-baseline-progress.js';
 import { loadAlpacaContractIvHistory, paperBootstrapAlpacaContractIvPolicy } from '../src/theta/aegis-alpaca-iv-stress.js';
-import { assessNextSessionHistoryEligibility, type NextSessionCohort } from '../src/theta/aegis-next-session-eligibility.js';
+import { assessNextSessionHistoryEligibility, selectAegisEligibilitySession,
+  type NextSessionCohort } from '../src/theta/aegis-next-session-eligibility.js';
 import { loadAegisSpreadHistory, paperBootstrapAegisSpreadStressPolicy } from '../src/theta/aegis-spread-stress.js';
 import { safeRuntimeFailure } from '../src/theta/autonomous-runtime.js';
 
@@ -16,19 +17,27 @@ if (environment.MASTER_PAPER_EXECUTION_ENABLED || environment.FOLLOWER_PAPER_EXE
 if (!environment.DATABASE_URL || !environment.ALPACA_API_KEY || !environment.ALPACA_SECRET_KEY
   || environment.ALPACA_BASE_URL !== 'https://paper-api.alpaca.markets')
   throw new Error('PAPER_READ_CONFIG_UNAVAILABLE');
-const today = new Date().toISOString().slice(0, 10);
-const end = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
 const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 1, connectionTimeoutMillis: 5_000,
   options: '-c statement_timeout=5000', application_name: 'theta-aegis-next-session-read-only' });
 pool.on('error', () => { process.exitCode = 1; });
 let stage = 'ALPACA_CALENDAR';
 try {
+  const receivedAt = new Date().toISOString();
+  const providerConfig = { tradingApiBase: environment.ALPACA_BASE_URL,
+    marketDataApiBase: 'https://data.alpaca.markets', apiKey: environment.ALPACA_API_KEY,
+    apiSecret: environment.ALPACA_SECRET_KEY };
+  const clock = await fetchMarketClock(providerConfig, receivedAt);
+  const exchangeDate = clock.timestamp?.slice(0, 10);
+  if (!exchangeDate || !/^\d{4}-\d{2}-\d{2}$/.test(exchangeDate)) {
+    throw new Error('ALPACA_CLOCK_EXCHANGE_DATE_INVALID');
+  }
+  const end = new Date(Date.parse(`${exchangeDate}T00:00:00.000Z`) + 14 * 86_400_000)
+    .toISOString().slice(0, 10);
   const calendar = await fetchMarketCalendar({ tradingApiBase: environment.ALPACA_BASE_URL,
     marketDataApiBase: 'https://data.alpaca.markets', apiKey: environment.ALPACA_API_KEY,
-    apiSecret: environment.ALPACA_SECRET_KEY }, today, end);
-  const nextSession = calendar.map((item) => item.date).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)
-    && date > today).sort()[0];
-  if (!nextSession) throw new Error('NEXT_ALPACA_SESSION_UNAVAILABLE');
+    apiSecret: environment.ALPACA_SECRET_KEY }, exchangeDate, end);
+  const sessionSelection = selectAegisEligibilitySession({ clock, calendar });
+  const nextSession = sessionSelection.session;
   const decisionAsOf = `${nextSession}T00:00:00.000Z`;
   stage = 'LATEST_FUSION_SNAPSHOT';
   const result = await pool.query(`SELECT latest.decision_time,
@@ -82,7 +91,8 @@ try {
   }
   process.stdout.write(`${JSON.stringify({ contractVersion: 'theta-aegis-next-session-eligibility-read-v1',
     authority: 'READ_ONLY_HISTORY_DIAGNOSTIC', source: 'ALPACA_CALENDAR_AND_PERSISTED_AIVEN_PIT',
-    nextSession, latestSnapshotDecisionAsOf: progress.decisionAsOf, cohortTotal: cohorts.size,
+    nextSession, sessionSelectionState: sessionSelection.state,
+    latestSnapshotDecisionAsOf: progress.decisionAsOf, cohortTotal: cohorts.size,
     cohortSampleTruncated: cohorts.size > selected.length, observations,
     currentQuoteObserved: false, stressAssessmentAvailable: false, brokerMutations: 0 })}\n`);
 } catch (error) {
