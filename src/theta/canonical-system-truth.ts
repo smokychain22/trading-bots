@@ -4,7 +4,7 @@
  * when they contain superseded statements.
  */
 export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v1' as const;
-export const truthSourceBaselineSha = '7fd1b41885484d333bce30dcc48f38adf64f3d82';
+export const truthSourceBaselineSha = 'adf75457d1aa34cdb4bffaeac3b1f7e905ce251e';
 // A worker SHA is operational state. Read it from the current worker lease,
 // never from this source-controlled architectural inventory.
 export const truthLastVerifiedAt = '2026-09-24';
@@ -74,16 +74,17 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
   capability({ capabilityId: 'UNIVERSE_AND_UNDERLYING', layerIds: [1, 2, 3], sourceImplemented: 'YES', testsPassed: 'YES',
     providerAuthenticated: 'YES', realDataObserved: 'YES', persisted: 'YES', runtimeReachable: 'YES',
     paperAuthorized: 'PAPER_ONLY_LOCKED', sourceFiles: ['src/theta/universe-discovery.ts', 'src/theta/universe-policy.ts', 'src/research/production-shadow-runtime.ts'],
-    currentBlocker: 'The owner-approved SPY cohort is now retained across client bounds, but the running worker predates this source change.',
+    currentBlocker: 'The locked worker has the SPY retention source, but a natural open-session scan proving SPY reaches the bounded Paper cohort remains pending.',
     safeCurrentBehavior: 'Only provider-confirmed, manifest-approved symbols receive bounded Paper authority. Other scanned symbols remain research-only.',
     closureTest: 'A locked current-release open-session scan includes SPY, persists its universe stages and records exact exclusion reasons.',
     disposition: 'BUILT_AWAITING_RUNTIME_PROOF',
     supersededClaims: ['Approved SPY could rely on incidental top-two liquidity rank to reach the Paper-authority cohort'] }),
   capability({ capabilityId: 'STRATEGY_ROUTER_Q', layerIds: [2, 3, 11], sourceImplemented: 'YES', testsPassed: 'YES',
     realDataObserved: 'YES', persisted: 'YES', runtimeReachable: 'YES', paperAuthorized: 'PAPER_ONLY_LOCKED',
-    sourceFiles: ['src/theta/canonical-strategy-frontier.ts', 'bots/theta/quant/models/strategy_router.py'],
+    sourceFiles: ['src/theta/canonical-strategy-frontier.ts', 'src/theta/theta-shadow-cycle.ts',
+      'src/theta/decision-assembly.ts', 'bots/theta/quant/models/strategy_router.py'],
     currentBlocker: 'Only Conventional can enter the bounded Paper path, which remains new-risk locked pending full evidence.',
-    safeCurrentBehavior: 'Persist Q applicability and candidates without allowing an order from an incomplete scan.',
+    safeCurrentBehavior: 'Persist Q applicability and candidates. A Paper-facing OPEN follows the exact economic Q receipt, and incomplete decision evidence holds without an order.',
     closureTest: 'Current locked cycle persists Q candidates, exact reasons and the no-submit decision path.',
     disposition: 'BUILT_AWAITING_RUNTIME_PROOF' }),
   capability({ capabilityId: 'STRATEGY_H_D_SHADOW', layerIds: [2, 3, 11], sourceImplemented: 'YES', testsPassed: 'YES',
