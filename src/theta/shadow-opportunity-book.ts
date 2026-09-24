@@ -57,6 +57,17 @@ export const shadowOpportunityEntrySchema = z.object({
 
   recommendedQuantity: z.number().int().nonnegative().nullable(),
   executionQualityAcceptable: z.boolean().nullable(),
+  strategyAccountPolicyCompatibility: z.object({
+    state: z.enum(['ACCOUNT_FEASIBLE', 'ACCOUNT_FEASIBLE_REDUCED_ONLY', 'STRATEGY_ACCOUNT_POLICY_INCOMPATIBLE',
+      'ACCOUNT_INFEASIBLE_BROKER_CAPACITY', 'UNKNOWN', 'NOT_APPLICABLE']),
+    strategy: z.enum(['THETA_CONVENTIONAL', 'THETA_DEFINED_RISK']),
+    underlying: z.string().min(1), marketApplicable: z.boolean().nullable(), accountFeasible: z.boolean().nullable(),
+    minimumExecutableQuantity: z.literal(1), minimumCapitalRequired: z.number().finite().positive().nullable(),
+    equity: z.number().finite().positive().nullable(), minimumTickerConcentrationPct: z.number().finite().nonnegative().nullable(),
+    policyLimitPct: z.number().finite().positive().nullable(), hardVetoLimitPct: z.number().finite().positive().nullable(),
+    bindingPolicies: z.array(z.string().min(1)), reasons: z.array(z.string().min(1)),
+    assessmentVersion: z.literal('theta-strategy-account-policy-compatibility-v1'),
+  }).nullable().optional(),
 
   outcome: opportunityOutcome,
   waitReason: z.enum(['WAIT_PRICE', 'WAIT_VOL', 'WAIT_LIQUIDITY', 'WAIT_EVENT', 'WAIT_REGIME']).nullable(),

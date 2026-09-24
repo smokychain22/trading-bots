@@ -13,9 +13,11 @@ $statusFile = Join-Path $stateRoot 'status.json'
 $productionEnvFile = Join-Path $stateRoot 'production.env'
 $stopFile = Join-Path $stateRoot 'stop.request'
 $exportSessionFile = Join-Path $stateRoot 'last-auto-export-session'
+$pendingExportSessionFile = Join-Path $stateRoot 'pending-auto-export-session'
 $researchIdentityFile = Join-Path $stateRoot 'last-empirical-dataset-identity'
 $qualificationSessionFile = Join-Path $stateRoot 'last-optionomics-qualification-session'
 $alpacaQualificationSessionFile = Join-Path $stateRoot 'last-alpaca-indicative-qualification-session'
+$storageAuditDateFile = Join-Path $stateRoot 'last-storage-audit-date'
 if (!(Test-Path -LiteralPath $runtimeFile)) { throw 'THETA_LOCAL_WORKER_NOT_INSTALLED' }
 if (!(Test-Path -LiteralPath $tokenFile)) { throw 'THETA_LOCAL_WORKER_TOKEN_NOT_PROVISIONED' }
 if (!(Test-Path -LiteralPath $productionEnvFile)) { throw 'THETA_PRODUCTION_ENV_NOT_PROVISIONED' }
@@ -171,6 +173,15 @@ try {
         $_.jobType -eq 'OPPORTUNITY_SCAN' -and $_.status -eq 'SUCCEEDED'
       }).Count -gt 0
       if ($completeScan -and $lastExportedSession -ne $marketSessionDate) {
+        Set-Content -LiteralPath $pendingExportSessionFile -Value $marketSessionDate -Encoding ascii
+      }
+      $pendingExportSession = if (Test-Path -LiteralPath $pendingExportSessionFile) {
+        (Get-Content -Raw -LiteralPath $pendingExportSessionFile).Trim()
+      } else { '' }
+      if ($pendingExportSession -and $lastExportedSession -ne $pendingExportSession -and
+        $report.reconciliation.marketOpen -eq $true) {
+        $researchExport = 'DEFERRED_MARKET_CRITICAL'
+      } elseif ($pendingExportSession -and $lastExportedSession -ne $pendingExportSession) {
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
@@ -178,7 +189,8 @@ try {
           $researchExit = $LASTEXITCODE
         } finally { $ErrorActionPreference = $previousErrorActionPreference }
         if ($researchExit -eq 0) {
-          Set-Content -LiteralPath $exportSessionFile -Value $marketSessionDate -Encoding ascii
+          Set-Content -LiteralPath $exportSessionFile -Value $pendingExportSession -Encoding ascii
+          Remove-Item -LiteralPath $pendingExportSessionFile -Force
           $researchExport = 'EXPORTED_FIRST_COMPLETE_SCAN'
         } else {
           $researchExport = 'BLOCKED_ON_EVIDENCE'
@@ -186,7 +198,9 @@ try {
       }
       $latestDataset = Join-Path $RepositoryPath 'research_exports\latest\dataset.json'
       $latestManifest = Join-Path $RepositoryPath 'research_exports\latest\manifest.json'
-      if ((Test-Path -LiteralPath $latestDataset) -and (Test-Path -LiteralPath $latestManifest)) {
+      if ($report.reconciliation.marketOpen -eq $true) {
+        if ($researchExport -ne 'DEFERRED_MARKET_CRITICAL') { $researchExport = 'RESEARCH_DEFERRED_MARKET_CRITICAL' }
+      } elseif ((Test-Path -LiteralPath $latestDataset) -and (Test-Path -LiteralPath $latestManifest)) {
         $manifest = Get-Content -Raw -LiteralPath $latestManifest | ConvertFrom-Json
         $datasetHash = [string]$manifest.datasetHash
         $researchIdentity = "$datasetHash`:$($runtime.buildSha)"
@@ -247,7 +261,9 @@ try {
       # reconciliation or the Aiven-backed runtime.
       $localEvidenceState = 'NO_EXPORT_AVAILABLE'
       $localEvidenceHash = $null
-      if ((Test-Path -LiteralPath $latestDataset) -and (Test-Path -LiteralPath $latestManifest)) {
+      if ($report.reconciliation.marketOpen -eq $true) {
+        $localEvidenceState = 'DEFERRED_MARKET_CRITICAL'
+      } elseif ((Test-Path -LiteralPath $latestDataset) -and (Test-Path -LiteralPath $latestManifest)) {
         try {
           $localEvidenceOutput = & node tools/write-local-durable-evidence.mjs research_exports/latest (Join-Path $stateRoot 'evidence')
           if ($LASTEXITCODE -eq 0) {
@@ -255,7 +271,28 @@ try {
             $localEvidenceState = [string]$localEvidenceResult.state
             $localEvidenceHash = [string]$localEvidenceResult.bundleHash
           } else { $localEvidenceState = 'FAILED_NONCRITICAL' }
-        } catch { $localEvidenceState = 'FAILED_NONCRITICAL' }
+      } catch { $localEvidenceState = 'FAILED_NONCRITICAL' }
+      }
+      # Storage inventory is operational evidence, but it performs catalog and
+      # bounded timestamp-window reads. Run it once per UTC day and only when
+      # the supported options session is closed.
+      $storageAuditState = if ($report.reconciliation.marketOpen -eq $true) { 'DEFERRED_MARKET_CRITICAL' } else { 'NOT_DUE' }
+      $storageAuditDate = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
+      $lastStorageAuditDate = if (Test-Path -LiteralPath $storageAuditDateFile) {
+        (Get-Content -Raw -LiteralPath $storageAuditDateFile).Trim()
+      } else { '' }
+      if ($report.reconciliation.marketOpen -ne $true -and $lastStorageAuditDate -ne $storageAuditDate) {
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+          & node --import tsx tools/theta-storage-audit.ts "--environment-file=$productionEnvFile" `
+            "--output-root=$(Join-Path $stateRoot 'storage-audits')" *> $null
+          $storageAuditExit = $LASTEXITCODE
+        } finally { $ErrorActionPreference = $previousErrorActionPreference }
+        if ($storageAuditExit -eq 0) {
+          Set-Content -LiteralPath $storageAuditDateFile -Value $storageAuditDate -Encoding ascii
+          $storageAuditState = 'CAPTURED'
+        } else { $storageAuditState = 'FAILED_NONCRITICAL' }
       }
       # Keep a sanitized, append-only local recovery mirror of operational
       # receipts. Aiven remains runtime authority. The writer accepts only a
@@ -278,6 +315,7 @@ try {
       } catch { $localReceiptState = 'FAILED' }
       @{state='ONLINE';lastCycle=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
         mode='MASTER_THETA_PAPER';executionGate=[string]$report.executionGate;researchExport=$researchExport;
+        storageAuditState=$storageAuditState;
         localReceiptState=$localReceiptState;localReceiptHash=$localReceiptHash;
         localEvidenceState=$localEvidenceState;localEvidenceHash=$localEvidenceHash} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8

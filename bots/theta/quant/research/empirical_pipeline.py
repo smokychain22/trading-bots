@@ -55,6 +55,7 @@ from research.production_export_loader import (
     DatasetLoadError,
     LoadedDatasetExport,
     canonical_json,
+    load_export_input,
     load_dataset_export,
     sha256_hex,
 )
@@ -612,7 +613,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not export_path.is_file():
         print(f"EXPORT_NOT_FOUND: {export_path}")
         return 2
-    raw_export = json.loads(export_path.read_text(encoding="utf-8"))
+    raw_export = load_export_input(export_path)
 
     config = ExperimentConfig(
         dataset_hash=str(raw_export.get("datasetHash", "")),

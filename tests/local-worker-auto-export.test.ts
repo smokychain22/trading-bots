@@ -34,6 +34,13 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /research\.empirical_pipeline/);
   assert.match(source, /EXPORTED_AND_RESEARCHED/);
   assert.match(source, /RESEARCH_CURRENT/);
+  assert.match(source, /pending-auto-export-session/);
+  assert.match(source, /DEFERRED_MARKET_CRITICAL/);
+  assert.match(source, /RESEARCH_DEFERRED_MARKET_CRITICAL/);
+  assert.match(source, /marketOpen -eq \$true/);
+  assert.match(source, /last-storage-audit-date/);
+  assert.match(source, /theta-storage-audit\.ts/);
+  assert.match(source, /storageAuditState.*DEFERRED_MARKET_CRITICAL/);
   assert.match(source, /NO_SPLIT_DESCRIPTIVE_ONLY/);
   assert.match(source, /runtime-broker-cycle/);
   assert.match(source, /runtime-lifecycle-cycle/);

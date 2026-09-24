@@ -1,5 +1,37 @@
 # THETA implementation board
 
+## Storage authority and Aiven growth closure, 2026-09-25
+
+- VERIFIED_READ_ONLY: Aiven measured 3,812,898,495 bytes across 153 relations at
+  `2026-09-24T20:01:26.599Z`. Research history accounts for 2,384.90 MiB,
+  short-retention observations 771.88 MiB, indexes 221.45 MiB and TOAST
+  2,440.46 MiB. All relations have a governed storage classification. No row
+  was deleted, vacuumed, reorganized or migrated.
+- CODE_COMPLETE/VERIFIED_SOURCE: storage authority is explicit. Transactional
+  trading state and audit receipts remain in PostgreSQL, outage envelopes use
+  the existing SQLite WAL, and high-volume research/history uses verified
+  Parquet/DuckDB archives. Existing high-volume PostgreSQL writers have not yet
+  been cut over, and the registry marks that transition pending. Retention cleanup is ineligible until archive
+  manifest, row count, digest, Parquet read-back and schema parity all pass.
+- VERIFIED_ARCHIVE: a real 115,813,769-byte sanitized research export was
+  compressed into a 3,811,257-byte Parquet archive containing 25,125 rows at
+  `C:\ProjectBackups\trading-bots\research-archives\2026-09-25_330cd39_cb9a967a`.
+  DuckDB read-back and per-payload hashes pass. The archive proves the mechanism
+  but does not yet prove table-by-table Aiven archive coverage, so it grants no
+  cleanup authority.
+- CODE_COMPLETE/VERIFIED_SOURCE: open-session Windows cycles defer large
+  research exports, empirical pipeline work and durable dataset mirroring.
+  Closed-session cycles resume pending exports. Trading, reconciliation,
+  executable BBO and safety evidence retain resource priority.
+- ACTIVE_STORAGE_BLOCKER: the bootstrap storage budget is breached for research
+  and TOAST. The total database and observation budgets are at warning. Direct
+  timestamp-window counts show 86,652 research rows for 89 completed decisions
+  in the latest observed New York session, or 973.62 research rows per decision.
+  Comparable session-bound relation sizes are still required before claiming a
+  sustained byte-growth rate. Production cleanup remains owner-authorized work
+  only after exact relation archive parity.
+- Full measured receipt: `docs/operations/THETA_STORAGE_DECOUPLING_AND_AIVEN_AUDIT_2026-09-25.md`.
+
 ## Database-resilient observation closure, 2026-09-24
 
 - CODE_COMPLETE/VERIFIED_SOURCE: a durable local SQLite WAL outbox now records

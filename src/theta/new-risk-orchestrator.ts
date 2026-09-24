@@ -16,6 +16,7 @@ import { ShadowOpportunityBookBuilder, type ShadowOpportunityEntry } from './sha
 import { classifyObservation, type DataQualityState, type FreshnessPolicy } from './data-freshness.js';
 import { assessPaperBootstrapOwnershipEvidence, type PaperEntryBootstrapAssessment } from './paper-entry-bootstrap.js';
 import { buildEntryThesisReceipt, type ThesisClaim } from './entry-thesis-receipt.js';
+import type { StrategyAccountPolicyCompatibility } from './strategy-account-policy-compatibility.js';
 
 // R1: the real end-to-end new-risk orchestrator. Sequences every stage in
 // the canonical pipeline --
@@ -87,6 +88,9 @@ export interface RawCandidateInput {
    * broker state. Missing fields deliberately fall back to the cycle-level
    * input and remain UNKNOWN there when no real producer exists. */
   readonly aegisInputOverrides?: Readonly<Record<string, unknown>>;
+  /** Separates market applicability from account/policy feasibility. This is
+   * diagnostic evidence only and never grants execution authority. */
+  readonly strategyAccountPolicyCompatibility?: StrategyAccountPolicyCompatibility;
 }
 
 // Structured provider capability/observation state (replaces the former
@@ -474,6 +478,12 @@ export async function runNewRiskOrchestration(
     candidate: RawCandidateInput | null,
     fields: Partial<Omit<ShadowOpportunityEntry, 'contractVersion' | 'opportunityId' | 'snapshotId' | 'timestamp' | 'underlying' | 'policyVersion' | 'modelVersions'>>,
   ): void => {
+    const compatibility = candidate?.strategyAccountPolicyCompatibility;
+    const compatibilityReasons = compatibility === undefined ? [] : [{
+      code: compatibility.state,
+      polarity: compatibility.accountFeasible === false ? -1 as const : 0 as const,
+      detail: `Strategy/account feasibility ${compatibility.state} under ${compatibility.assessmentVersion}; binding policies: ${compatibility.bindingPolicies.join(',') || 'none'}.`,
+    }];
     book.record({
       contractVersion: 'theta-shadow-opportunity-book-v1',
       opportunityId: randomUUID(),
@@ -485,10 +495,16 @@ export async function runNewRiskOrchestration(
       evNet: null, tailAdjustedEv: null, returnPerCapitalDay: null, capitalRequired: null, uncertainty: null,
       ownershipSnapshotId: request.snapshotId, regimeSnapshotId: request.snapshotId, aegisState: null,
       recommendedQuantity: null, executionQualityAcceptable: null,
-      waitReason: null, rejectionCategory: null, reasons: [],
+      strategyAccountPolicyCompatibility: candidate?.strategyAccountPolicyCompatibility ?? null,
+      waitReason: null, rejectionCategory: null,
       policyVersion: request.policyVersion, modelVersions: request.modelVersions,
       eventualOutcomeKnown: false, eventualRealizedPnl: null,
       ...fields,
+      // Persist the compatibility assessment through the existing durable
+      // shadow-opportunity reasons payload as well as the typed in-memory
+      // field. This avoids a schema migration while keeping the assessment
+      // visible to replay and operator diagnostics.
+      reasons: [...compatibilityReasons, ...(fields.reasons ?? [])],
     });
   };
 

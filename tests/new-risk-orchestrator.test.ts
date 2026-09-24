@@ -377,6 +377,25 @@ itMockedProviderRealCodePath('every evaluated candidate is recorded in the shado
   assert.ok(recordedIds.includes('C2'));
 });
 
+itMockedProviderRealCodePath('strategy/account compatibility is retained in replay-visible shadow evidence', async () => {
+  const result = await runNewRiskOrchestration(bridge(), baseRequest({
+    candidates: [candidate('C1', {
+      contract: contract({ optionSymbol: 'C1', executable: false, nonExecutableReason: 'test stop' }),
+      strategyAccountPolicyCompatibility: {
+        state: 'STRATEGY_ACCOUNT_POLICY_INCOMPATIBLE', strategy: 'THETA_CONVENTIONAL', underlying: 'SYN',
+        marketApplicable: true, accountFeasible: false, minimumExecutableQuantity: 1,
+        minimumCapitalRequired: 5_000, equity: 10_000, minimumTickerConcentrationPct: 0.5,
+        policyLimitPct: 0.15, hardVetoLimitPct: 0.225, bindingPolicies: ['TICKER_CONCENTRATION'],
+        reasons: ['MINIMUM_EXECUTABLE_UNIT_EXCEEDS_HARD_RISK_POLICY'],
+        assessmentVersion: 'theta-strategy-account-policy-compatibility-v1',
+      },
+    })],
+  }));
+  const entry = result.shadowOpportunities.find((candidateEntry) => candidateEntry.contractSymbol === 'C1');
+  assert.equal(entry?.strategyAccountPolicyCompatibility?.state, 'STRATEGY_ACCOUNT_POLICY_INCOMPATIBLE');
+  assert.ok(entry?.reasons.some((reason) => reason.code === 'STRATEGY_ACCOUNT_POLICY_INCOMPATIBLE'));
+});
+
 itMockedProviderRealCodePath('a non-executable contract (e.g. unverified multiplier) is excluded from the lattice call before delta is even checked, recorded as PASS/CONTRACT_NOT_EXECUTABLE', async () => {
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     candidates: [candidate('C1', { contract: contract({ optionSymbol: 'C1', executable: false, nonExecutableReason: 'multiplier unverified' }) })],

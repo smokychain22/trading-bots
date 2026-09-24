@@ -11,6 +11,7 @@ import { computeAverageVolume, computeCurrentDrawdown, computeDownsideSemivarian
   computeMovingAverageRelative, computeRealizedVolatility, computeReturn, computeTrendSlope } from './underlying-features.js';
 import { evaluateUniverse, rankEligibleUnderlyings, type RankedUnderlying, type UnderlyingCandidateInput, type UnderlyingDecision, type UniverseFunnelReport, type UniversePolicy } from './universe-policy.js';
 import { runNewRiskOrchestration, type NewRiskOrchestrationRequest, type NewRiskOrchestrationResult, type RawCandidateInput } from './new-risk-orchestrator.js';
+import { assessStrategyAccountPolicyCompatibility } from './strategy-account-policy-compatibility.js';
 import { assembleNoCandidateDecision, assembleRuntimePreconditionHold } from './decision-assembly.js';
 import { checkTemporalConsistency, DEFAULT_TEMPORAL_CONSISTENCY_POLICIES } from './temporal-consistency.js';
 import type { PythonBridgeConfig } from './python-bridge.js';
@@ -1769,6 +1770,11 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       recoveryInventoryValue,
     );
     const quantityAuthorities = separateCandidateQuantityAuthorities(candidate.brokerAllowedQty, capacity);
+    const strategyAccountPolicyCompatibility = assessStrategyAccountPolicyCompatibility({
+      strategy: 'THETA_CONVENTIONAL', underlying: candidate.contract.underlying, marketApplicable: true,
+      minimumCapitalRequired: candidate.contract.strike * candidate.contract.multiplier,
+      brokerAllowedQty: candidate.brokerAllowedQty, exposure: derivedExposure, policy: candidateCapacityPolicy,
+    });
     const derived = capacity.inputsAtQuantityCap;
     // Preserve nulls. They are canonical UNKNOWN inputs and must override
     // any pre-trade/global value so candidate-specific AEGIS fails closed.
@@ -1788,6 +1794,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       // Candidate-inclusive ratios below carry the real risk evidence into
       // AEGIS, which remains the sole risk authority for this stage.
       brokerAllowedQty: quantityAuthorities.brokerAllowedQty,
+      strategyAccountPolicyCompatibility,
       aegisInputOverrides: candidateOverrides,
     };
   });

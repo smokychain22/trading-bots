@@ -30,6 +30,8 @@
     "theta:truth": "tsx tools/theta-system-truth.ts",
     "theta:truth:profitability-brain": "tsx tools/theta-profitability-brain-reality.ts",
     "theta:truth-runtime": "tsx tools/theta-runtime-truth.ts --environment-file=.env.local",
+    "theta:storage:audit": "node --import tsx tools/theta-storage-audit.ts --environment-file=.env.local",
+    "theta:storage:dependencies": "node --import tsx tools/theta-postgres-dependency-audit.ts",
     "theta:aegis:baseline-progress": "tsx tools/theta-aegis-baseline-progress.ts --environment-file=.env.local",
     "theta:aegis:next-session-eligibility": "tsx tools/theta-aegis-next-session-eligibility.ts --environment-file=.env.local",
     "theta:aegis:iv-backfill": "node --import tsx tools/backfill-aegis-iv-stress.ts --environment-file=.env.local",

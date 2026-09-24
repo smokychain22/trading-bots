@@ -1,7 +1,9 @@
 """Tests for bots/theta/quant/research/production_export_loader.py. Synthetic fixtures only."""
 
 import copy
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -13,10 +15,12 @@ from research.production_export_loader import (  # noqa: E402
     DatasetLoadError,
     assert_no_future_labels,
     canonical_json,
+    load_export_input,
     load_dataset_export,
     labels_available_for_training,
     sha256_hex,
 )
+from research.parquet_archive import create_parquet_archive  # noqa: E402
 
 
 def _provenance():
@@ -106,6 +110,18 @@ class HappyPathTests(unittest.TestCase):
         self.assertTrue(loaded.hash_verified)
         self.assertEqual(len(loaded.candidates), 1)
         self.assertEqual(len(loaded.candidate_sets), 1)
+
+    def test_verified_parquet_archive_uses_the_same_canonical_dataset_validator(self):
+        export = _build_valid_export()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "dataset.json"
+            source.write_text(json.dumps(export), encoding="utf-8")
+            manifest = create_parquet_archive(source, root / "archive", "c" * 40)
+            restored = load_export_input(manifest)
+            loaded = load_dataset_export(restored)
+            self.assertTrue(loaded.hash_verified)
+            self.assertEqual(loaded.dataset_hash, export["datasetHash"])
 
     def test_resolved_label_is_separate_causal_and_execution_locked(self):
         export = _build_valid_export()

@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from pathlib import Path
 from decimal import Decimal
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -167,6 +168,25 @@ def sha256_hex(text: str) -> str:
     import hashlib
 
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def load_export_input(path: Path) -> Dict[str, Any]:
+    """Load either canonical JSON or a verified Parquet archive manifest.
+
+    Both paths still pass through ``load_dataset_export`` afterwards. The
+    archive is a storage transport, never a weaker validation route.
+    """
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(raw, dict) and raw.get("formatVersion") == "theta-parquet-archive-v1":
+        from research.parquet_archive import load_verified_archive
+
+        restored = load_verified_archive(path)
+        if not isinstance(restored, dict):
+            raise DatasetLoadError("ARCHIVE_DOES_NOT_CONTAIN_DATASET_EXPORT")
+        return restored
+    if not isinstance(raw, dict):
+        raise DatasetLoadError("DATASET_EXPORT_MUST_BE_OBJECT")
+    return raw
 
 
 # Union of (a) point-in-time-evidence.ts's own forbiddenFeatureKeys set and
