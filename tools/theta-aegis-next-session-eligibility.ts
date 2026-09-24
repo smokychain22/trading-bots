@@ -31,9 +31,15 @@ try {
   if (!nextSession) throw new Error('NEXT_ALPACA_SESSION_UNAVAILABLE');
   const decisionAsOf = `${nextSession}T00:00:00.000Z`;
   stage = 'LATEST_FUSION_SNAPSHOT';
-  const result = await pool.query(`SELECT decision_time,snapshot_json->'riskState' AS risk_state,
-    snapshot_json->'regimeState' AS regime_state FROM trade.fusion_snapshot
-    ORDER BY decision_time DESC LIMIT 1`);
+  const result = await pool.query(`SELECT latest.decision_time,
+    latest.snapshot_json->'riskState' AS risk_state,
+    latest.snapshot_json->'regimeState' AS regime_state
+    FROM core.bot_instance bot
+    CROSS JOIN LATERAL (
+      SELECT decision_time,snapshot_json FROM trade.fusion_snapshot
+      WHERE bot_instance_id=bot.bot_instance_id ORDER BY decision_time DESC LIMIT 1
+    ) latest
+    WHERE bot.bot_code='THETA' ORDER BY latest.decision_time DESC LIMIT 1`);
   const row = result.rows[0];
   const progress = summarizeAegisBaselineProgress({ decisionAsOf: row?.decision_time instanceof Date
     ? row.decision_time.toISOString() : null, riskState: row?.risk_state ?? null,
