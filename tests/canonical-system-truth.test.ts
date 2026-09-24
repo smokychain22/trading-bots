@@ -39,4 +39,6 @@ test('superseded research claims do not become current authority', () => {
   assert.ok(management?.supersededClaims.some((claim) => claim.includes('no roll')));
   assert.ok(aegis?.supersededClaims.some((claim) => claim.includes('permanently null')));
   assert.equal(aegis?.disposition, 'TRUE_HARD_BLOCKER');
+  const optionomics = canonicalSystemCapabilities.find((item) => item.capabilityId === 'OPTIONOMICS_RESEARCH_DATA');
+  assert.ok(optionomics?.supersededClaims.some((claim) => claim.includes('executable-price authority')));
 });

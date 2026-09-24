@@ -4,7 +4,7 @@
  * when they contain superseded statements.
  */
 export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v1' as const;
-export const truthSourceBaselineSha = 'f4835928bf89b5196cd18a95cecb1531f199b945';
+export const truthSourceBaselineSha = '22474670479f8d569f282631a9570799eed96258';
 // A worker SHA is operational state. Read it from the current worker lease,
 // never from this source-controlled architectural inventory.
 export const truthLastVerifiedAt = '2026-09-24';
@@ -70,7 +70,8 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
     currentBlocker: 'Authenticated families are qualified separately. Historical/session analytics are not executable BBO, event pagination must complete before negative assurance, and prospective company coverage remains unproved.',
     safeCurrentBehavior: 'Use qualified PIT research features; never substitute Optionomics session quotes for Alpaca execution prices.',
     closureTest: 'Observe normalized feature and event lineage in locked current-release cycles, with served-session checks.',
-    disposition: 'BUILT_AWAITING_RUNTIME_PROOF' }),
+    disposition: 'BUILT_AWAITING_RUNTIME_PROOF',
+    supersededClaims: ['Optionomics analytics or session quotes can satisfy master or follower executable-price authority'] }),
   capability({ capabilityId: 'UNIVERSE_AND_UNDERLYING', layerIds: [1, 2, 3], sourceImplemented: 'YES', testsPassed: 'YES',
     providerAuthenticated: 'YES', realDataObserved: 'YES', persisted: 'YES', runtimeReachable: 'YES',
     paperAuthorized: 'PAPER_ONLY_LOCKED', sourceFiles: ['src/theta/universe-discovery.ts', 'src/theta/universe-policy.ts', 'src/research/production-shadow-runtime.ts'],
@@ -173,8 +174,8 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
     persisted: 'NO', runtimeReachable: 'YES', paperAuthorized: 'NOT_APPLICABLE',
     sourceFiles: ['src/theta/first-paper-blocker-budget.ts', 'src/execution/master-paper-plan-assembly.ts', 'src/customer/api.ts'],
     currentBlocker: 'Audit coverage and SPY approval are complete. A current-release natural open-session no-submit proof remains required.',
-    safeCurrentBehavior: 'The operator readiness receipt names audit and safety blockers; it cannot emit READY from zero avoidable count alone.',
-    closureTest: 'Complete the UNKNOWN sweep, clear all independent release checks and observe the current locked release before any Paper unlock.',
+    safeCurrentBehavior: 'The operator readiness receipt publishes the CI-guarded complete audit counts and separately names dynamic safety blockers; it cannot emit READY from zero avoidable count alone.',
+    closureTest: 'Clear every independent runtime release check and observe a natural current-release locked no-submit session before any Paper unlock.',
     disposition: 'TRUE_HARD_BLOCKER' }),
 ];
 

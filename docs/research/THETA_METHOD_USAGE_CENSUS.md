@@ -1,5 +1,16 @@
 # THETA method/module usage census (Wave 6 Batch C / Batch 1)
 
+> **CURRENT AUTHORITY NOTE (2026-09-24):** This document preserves the
+> historical static census. Its earlier handoff claiming that unwired Python
+> assignment, covered-call, recovery and management wrappers proved a missing
+> Production management source is superseded. Production now uses the one
+> canonical TypeScript `PaperBootstrapManagementPolicyProvider` with
+> `ProductionPaperManagementCandidateSource`. The older Python Pipeline B
+> wrappers remain intentionally quarantined and do not need bridge wiring.
+> `har_rv_contract.py` remains research-only. Current authority and blockers
+> live in `src/theta/canonical-system-truth.ts`, not in the historical counts
+> below.
+
 > **UPDATE (2026-09-22): Batch marked DONE.** The file-level TS census
 > below is unchanged (still real, still correct). This update adds the
 > three missing layers the follow-up directive asked for: (1) a
