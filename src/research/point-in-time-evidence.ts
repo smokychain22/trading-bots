@@ -182,6 +182,8 @@ export interface DatasetExportRows {
   readonly policyLearningRecords:readonly unknown[];
   readonly positionPathCheckpoints:readonly unknown[]; readonly actionInactionFrontiers:readonly unknown[];
   readonly strategyTimingSnapshots:readonly unknown[];
+  /** Additive label-side lineage. Absent in legacy exports, never inferred. */
+  readonly entryChainLinks?:readonly unknown[];
 }
 export interface DatasetExportArtifact {
   readonly schemaVersion:typeof datasetExportVersion; readonly sourceWindow:{readonly start:string;readonly end:string};

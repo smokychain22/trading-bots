@@ -20,7 +20,8 @@ import json
 import math
 import re
 from decimal import Decimal
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, List, Sequence
 
 from research.dataset_contracts import (
@@ -446,6 +447,7 @@ class LoadedDatasetExport:
     action_inaction_frontiers: List[Dict[str, Any]]
     strategy_timing_snapshots: List[Dict[str, Any]]
     row_counts: Dict[str, int]
+    entry_chain_links: List[Dict[str, Any]] = field(default_factory=list)
 
 
 def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
@@ -480,6 +482,35 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
     management_snapshots = [_load_management_snapshot(r) for r in rows_raw.get("managementSnapshots", [])]
     lifecycle_outcomes = [_load_lifecycle_event(r) for r in rows_raw.get("lifecycleOutcomes", [])]
     whole_chain_outcomes = [_load_economic_episode(r) for r in rows_raw.get("wholeChainOutcomes", [])]
+    entry_chain_links = list(rows_raw.get('entryChainLinks', []))
+    candidates_by_id = {c.candidate_id: c for c in candidates}
+    link_ids = set()
+    for link in entry_chain_links:
+        required = ('optionLegId', 'chainId', 'optionContractId', 'decisionId', 'candidateId')
+        if any(not isinstance(link.get(k), str) or not link[k].strip() for k in required):
+            raise DatasetLoadError('ENTRY_CHAIN_LINK_IDENTITY_REQUIRED')
+        if link['optionLegId'] in link_ids:
+            raise DatasetLoadError('ENTRY_CHAIN_LINK_DUPLICATE')
+        link_ids.add(link['optionLegId'])
+        if link.get('authority') != 'THETA_PERSISTED_DECISION' or link.get('linkVersion') != 'EXPLICIT_CSP_ENTRY_LEDGER_JOIN_V1':
+            raise DatasetLoadError('ENTRY_CHAIN_LINK_AUTHORITY_INVALID')
+        candidate = candidates_by_id.get(link['candidateId'])
+        if candidate is None or candidate.decision_id != link['decisionId'] or candidate.branch.value != link.get('branch') \
+                or not link.get('contractSymbol') or candidate.contract.get('contractSymbol') != link['contractSymbol']:
+            raise DatasetLoadError('ENTRY_CHAIN_LINK_CANDIDATE_MISMATCH')
+        try:
+            times = {k: datetime.fromisoformat(link[k].replace('Z', '+00:00')) for k in
+                     ('decisionAt', 'legOpenedAt', 'chainOpenedAt', 'linkObservedAt')}
+            if any(t.tzinfo is None for t in times.values()):
+                raise ValueError('timezone')
+            decision = datetime.fromisoformat(candidate.decision_time.replace('Z', '+00:00'))
+            exported = datetime.fromisoformat(raw['exportedAt'].replace('Z', '+00:00'))
+            if times['decisionAt'] != decision or times['legOpenedAt'] < decision \
+                    or times['chainOpenedAt'] > times['legOpenedAt'] \
+                    or times['linkObservedAt'] < times['legOpenedAt'] or times['linkObservedAt'] > exported:
+                raise ValueError('ordering')
+        except (KeyError, TypeError, ValueError) as error:
+            raise DatasetLoadError('ENTRY_CHAIN_LINK_TIMING_INVALID') from error
     execution_evidence = [_load_execution_evidence(r) for r in rows_raw.get("executionEvidence", [])]
     outcome_subjects = list(rows_raw.get("outcomeSubjects", []))
     outcome_observations = list(rows_raw.get("outcomeObservations", []))
@@ -560,7 +591,7 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
         "candidateSets", "candidates", "shadowCandidates", "strategyFrontiers",
         "optionChainDecisions", "managementSnapshots", "lifecycleOutcomes", "wholeChainOutcomes", "executionEvidence",
         "outcomeSubjects", "outcomeObservations", "outcomeResolutionReceipts", "resolvedOutcomeLabels", "policyLearningRecords",
-        "positionPathCheckpoints", "actionInactionFrontiers", "strategyTimingSnapshots",
+        "positionPathCheckpoints", "actionInactionFrontiers", "strategyTimingSnapshots", "entryChainLinks",
     ):
         _assert_deterministic_order(rows_raw.get(row_family, []), canonical_json)
 
@@ -602,4 +633,5 @@ def load_dataset_export(raw: Dict[str, Any]) -> LoadedDatasetExport:
         position_path_checkpoints=position_path_checkpoints,action_inaction_frontiers=action_inaction_frontiers,
         strategy_timing_snapshots=strategy_timing_snapshots,
         row_counts=raw.get("rowCounts", {}),
+        entry_chain_links=entry_chain_links,
     )

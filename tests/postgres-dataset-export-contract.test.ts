@@ -33,6 +33,12 @@ test('Production exporter emits the stable camel-case research wire contract', a
   assert.equal(artifact.rowCounts.candidates, 0);
   assert.equal(artifact.rowCounts.policyLearningRecords, 0);
   assert.equal(artifact.rowCounts.positionPathCheckpoints, 0);
+  assert.equal(artifact.rowCounts.entryChainLinks, 0);
+  assert.match(sql, /EXPLICIT_CSP_ENTRY_LEDGER_JOIN_V1/);
+  assert.match(sql, /cp\.candidate_id=d\.selected_candidate_id/);
+  assert.match(sql, /cp\.decision_id=d\.decision_id/);
+  assert.match(sql, /ol\.rolled_from_option_leg_id IS NULL/);
+  assert.match(sql, /prior\.opened_at<=ol\.opened_at/);
   assert.match(sql, /theta_position_path_checkpoint/);
   assert.match(sql, /theta_policy_learning_record/);
   assert.match(artifact.datasetHash, /^[0-9a-f]{64}$/);

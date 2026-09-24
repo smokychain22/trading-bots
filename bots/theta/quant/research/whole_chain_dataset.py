@@ -25,7 +25,10 @@ def build_whole_chain_dataset(export: LoadedDatasetExport):
     def chain(identity):
         if not isinstance(identity, str) or not identity.strip():
             raise ValueError('CHAIN_DATASET_IDENTITY_REQUIRED')
-        return chains.setdefault(identity, {'management': [], 'lifecycle': [], 'labels': []})
+        return chains.setdefault(identity, {'management': [], 'lifecycle': [], 'labels': [], 'entryLinks': []})
+
+    for link in export.entry_chain_links:
+        chain(link['chainId'])['entryLinks'].append(link)
 
     unlinked_management = []
     for row in export.management_snapshots:
@@ -46,6 +49,10 @@ def build_whole_chain_dataset(export: LoadedDatasetExport):
 
     rows = []
     for identity, data in sorted(chains.items()):
+        entry_links = sorted(data['entryLinks'], key=lambda r: r['optionLegId'])
+        entry_candidates = sorted({r['candidateId'] for r in entry_links})
+        entry_state = 'EXPLICIT_ENTRY_CHAIN_JOIN_REQUIRED' if not entry_links else \
+            'AMBIGUOUS_MULTIPLE_ENTRY_CANDIDATES' if len(entry_candidates) != 1 else 'EXPLICIT_LEDGER_JOIN'
         snapshots = sorted(data['management'], key=lambda r: (_time(r.observed_at), r.management_input_snapshot_id))
         lifecycle = sorted(data['lifecycle'], key=lambda r: (_time(r.applied_at), r.lifecycle_application_id))
         labels = sorted(data['labels'], key=lambda r: (_time(r.label_available_at), r.outcome_label_id))
@@ -77,7 +84,9 @@ def build_whole_chain_dataset(export: LoadedDatasetExport):
             'managementSnapshots': [asdict(r) for r in snapshots],
             'lifecycleEvents': [asdict(r) for r in lifecycle],
             'outcomeLabels': [asdict(r) for r in labels],
-            'entryCandidateIds': None, 'entryLinkageState': 'EXPLICIT_ENTRY_CHAIN_JOIN_REQUIRED',
+            'entryCandidateIds': entry_candidates if entry_links else None,
+            'entryLinkageState': entry_state, 'entryLinks': entry_links,
+            'entryJoinAvailableAt': max((r['linkObservedAt'] for r in entry_links), key=_time) if entry_links else None,
             'trainingEligibility': 'NOT_ASSESSED', 'brokerAuthority': False})
     # Convert enums using the existing export serializer's canonical convention.
     def plain(value):
@@ -89,7 +98,7 @@ def build_whole_chain_dataset(export: LoadedDatasetExport):
             return [plain(v) for v in value]
         return value
 
-    payload = plain({'version': 'theta-whole-chain-episode-dataset-v1', 'datasetHash': export.dataset_hash,
+    payload = plain({'version': 'theta-whole-chain-episode-dataset-v2', 'datasetHash': export.dataset_hash,
         'sourceWindow': {'start': export.source_window_start, 'end': export.source_window_end},
         'rows': rows, 'rowCount': len(rows), 'unlinkedManagementIds': sorted(unlinked_management),
         'unlinkedManagedEpisodeLabelIds': sorted(unlinked_episode_labels),

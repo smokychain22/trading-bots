@@ -161,4 +161,29 @@ At 14:13 UTC the database read recovered: schema 064, read-only off, one active
 lease, GOOD reconciliation, zero positions/open orders, and a fresh persisted
 14:10 evidence cycle. The worker remained locked on 36917ee. Prior transient
 connection failures remain recorded. This read does not establish a complete
-current-release SPY funnel or R8A maturity credit.
+  current-release SPY funnel or R8A maturity credit.
+
+## Fifth source slice: accounting identity and explicit entry joins
+
+The research roll comparison is now v2. A roll's net cash movement is separate
+from its marked chain P&L. The old close debit is included in old-leg realized
+P&L once, the newly sold option carries an explicit liability, prior chain P&L
+and unchanged inventory remain visible, and actual fills cannot be charged a
+second slippage deduction. No new liability mark means unknown marked P&L.
+
+The whole-chain resolver records label availability at the actual post-query
+evidence time rather than retroactively at chain closure. The close timestamp
+remains separate. Invalid times, nonfinite money, blank values and string boolean
+substitutes cannot create labels. No existing outcome label is overwritten.
+
+The PostgreSQL export now carries optional `entryChainLinks` within the existing
+hashed manifest. This is label-side lineage, not a future feature. It joins the
+first unambiguous CSP leg to its actual decision, selected candidate and exact
+contract. Python validates and consumes it into the canonical episode dataset.
+Old exports without these links retain their explicit missing-link state. The
+new family does not infer chains from symbols, timestamps or repeated scans.
+
+The deterministic tests and disposable PostgreSQL export exercise prove code
+integration. Real newly filled/resolved chain evidence remains absent, so no L7
+or empirical model readiness is claimed. Full feature qualification, training,
+model-registry and replay-to-treatment generation remain open engineering.

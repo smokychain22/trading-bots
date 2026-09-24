@@ -266,3 +266,16 @@ No item is complete merely because its type, config, fixture, or UI label exists
   V2 records actual post-read evidence availability, preserves economic close
   time separately and rejects nonfinite/blank/malformed evidence. The existing
   persisted labels are untouched. Concurrent duplicate inserts are idempotent.
+- WIRED/TESTED: the canonical PostgreSQL exporter now includes additive
+  entryChainLinks from the first unambiguous CSP option leg to its exact decision,
+  selected candidate and contract. Roll legs, pre-existing stock and tied first
+  legs are excluded rather than assigned an invented entry. Python verifies the
+  identities and timing and the existing episode materializer consumes the join.
+  Legacy exports remain readable with explicit missing entry linkage. This closes
+  the CSP identity join, not feature qualification or model training readiness.
+- OPEN_ENGINEERING: dataset-bound feature vector selection, label/cost validation,
+  base-model training and immutable model registry integration remain. The V10
+  wave must not call all remaining limitations forward-data-only.
+- OBSERVED 2026-09-24T14:40Z: locked 38fef55 worker's evidence cycle again returned
+  HTTP_503 / POSTGRES_ECONNRESET after 102763ms. Preserve the worker and defer
+  another cutover until exact CI and a safe database window. Broker mutations=0.

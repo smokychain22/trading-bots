@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { buildFusionSnapshot, type FusionSnapshotInput } from '../../src/market/fusion-snapshot.js';
 import { PostgresThetaCycleStore } from '../../src/theta/postgres-theta-cycle-store.js';
 import { PostgresOutcomeResolver } from '../../src/research/outcome-resolver.js';
+import { PostgresDatasetExporter } from '../../src/research/postgres-dataset-export.js';
 import { normalizeOptionContract } from '../../src/theta/option-contract.js';
 import { buildCanonicalStrategyFrontier } from '../../src/theta/canonical-strategy-frontier.js';
 import type { StrategyRoutingResponse } from '../../src/theta/strategy-router-contract.js';
@@ -202,5 +203,9 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
     assert.equal(proven.volatility_json.ivProviderTimestamp, null);
     assert.equal(proven.market_json.underlyingQuoteSource, 'ALPACA_IEX');
     assert.equal(proven.market_json.underlyingQuoteReceivedAt, now);
+    const exported = await new PostgresDatasetExporter(pool).export({start:now,
+      end:'2026-09-11T15:01:00.000Z',exportedAt:new Date().toISOString(),featureSetVersion:'test-v1'});
+    assert.ok(exported.rowCounts.candidates > 0);
+    assert.equal(exported.rowCounts.entryChainLinks, 0, 'WAIT decisions and candidate scans cannot manufacture entry links');
   } finally { await pool.end(); }
 });

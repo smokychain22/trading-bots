@@ -25,7 +25,7 @@ export class PostgresDatasetExporter {
     if (Date.parse(request.end)<Date.parse(request.start)) throw new Error('DATASET_WINDOW_INVALID');
     const parameters = [request.start,request.end];
     const [sets,candidates,shadow,frontiers,optionChains,management,lifecycle,chains,quotes,outcomeSubjects,
-      outcomeObservations,outcomeReceipts,resolvedLabels,policyLearning,positionPaths,actionFrontiers,timingSnapshots] = await Promise.all([
+      outcomeObservations,outcomeReceipts,resolvedLabels,policyLearning,positionPaths,actionFrontiers,timingSnapshots,entryLinks] = await Promise.all([
       this.pool.query(`SELECT candidate_set_id AS "candidateSetId",decision_time AS "decisionTime",
         universe_evaluated_json AS "universeEvaluated",branches_considered_json AS "branchesConsidered",counts_json AS counts,
         best_candidate_id AS "bestCandidateId",second_best_candidate_id AS "secondBestCandidateId",
@@ -179,6 +179,27 @@ export class PostgresDatasetExporter {
         execution_authorized AS "executionAuthorized",content_hash AS "contentHash"
         FROM research.theta_strategy_timing_snapshot WHERE observed_at >= $1 AND observed_at < $2
         ORDER BY observed_at,strategy_timing_snapshot_id`,parameters),
+      this.pool.query(`SELECT ol.option_leg_id AS "optionLegId",ol.chain_id AS "chainId",
+        ol.option_contract_id AS "optionContractId",oc.contract_symbol AS "contractSymbol",d.decision_id AS "decisionId",
+        d.selected_candidate_id AS "candidateId",cp.branch,cp.decision_time AS "decisionAt",
+        ol.opened_at AS "legOpenedAt",ec.opened_at AS "chainOpenedAt",
+        ol.created_at AS "linkObservedAt",'THETA_PERSISTED_DECISION' AS authority,
+        'EXPLICIT_CSP_ENTRY_LEDGER_JOIN_V1' AS "linkVersion"
+        FROM trade.option_leg ol JOIN trade.economic_chain ec USING(chain_id)
+        JOIN trade.decision d ON d.decision_id=ol.decision_id
+        JOIN trade.candidate_point_in_time_evidence cp ON cp.candidate_id=d.selected_candidate_id
+          AND cp.decision_id=d.decision_id
+        JOIN trade.candidate selected ON selected.candidate_id=d.selected_candidate_id
+          AND selected.option_contract_id=ol.option_contract_id AND selected.underlying_id=ec.underlying_id
+        JOIN market.option_contract oc ON oc.option_contract_id=ol.option_contract_id AND oc.option_type='PUT'
+        WHERE cp.decision_time >= $1 AND cp.decision_time < $2
+          AND ol.created_at <= $3
+          AND d.action_code='OPEN_CSP' AND ol.side='SHORT' AND ol.rolled_from_option_leg_id IS NULL
+          AND NOT EXISTS(SELECT 1 FROM trade.option_leg prior WHERE prior.chain_id=ol.chain_id
+            AND prior.option_leg_id<>ol.option_leg_id AND prior.opened_at<=ol.opened_at)
+          AND NOT EXISTS(SELECT 1 FROM trade.stock_lot stock WHERE stock.chain_id=ol.chain_id
+            AND stock.acquired_at<=ol.opened_at)
+        ORDER BY ol.chain_id,ol.option_leg_id`,[...parameters,request.exportedAt]),
     ]);
     const versions = [...new Set(candidates.rows.flatMap((row) => {
       const lineage = row.lineage as Record<string, unknown> | undefined;
@@ -192,7 +213,7 @@ export class PostgresDatasetExporter {
         outcomeObservations:outcomeObservations.rows,outcomeResolutionReceipts:outcomeReceipts.rows,
         resolvedOutcomeLabels:resolvedLabels.rows,policyLearningRecords:policyLearning.rows,
         positionPathCheckpoints:positionPaths.rows,actionInactionFrontiers:actionFrontiers.rows,
-        strategyTimingSnapshots:timingSnapshots.rows} });
+        strategyTimingSnapshots:timingSnapshots.rows,entryChainLinks:entryLinks.rows} });
     await this.pool.query(`INSERT INTO research.theta_dataset_export(dataset_export_id,source_window_start,source_window_end,
       exported_at,schema_version,feature_set_version,strategy_versions_json,row_counts_json,dataset_hash)
       VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9) ON CONFLICT(dataset_hash) DO NOTHING`,[
