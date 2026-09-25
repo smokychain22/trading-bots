@@ -42,9 +42,12 @@ test('CORE CLAIM: a genuine HARD_SAFETY_REJECT never contributes to safetyReject
   }));
   const metrics = computeWaitRegretMetrics([hardRow]);
   assert.equal(metrics.safetyRejectRate, 1);
-  // Even though futureOutcome shows a big favorable move, gate/decision regret must be 0 -- HARD rows are excluded by construction.
-  assert.equal(metrics.gateRegretRate, 0);
-  assert.equal(metrics.decisionRegretRate, 0);
+  // With only a HARD row, there is no real SOFT-row denominator to
+  // compute gate/decision regret over -- CORRECTED (2026-09-25): this is
+  // now honestly null (not computable), never a bare 0 that would read
+  // as "measured zero regret."
+  assert.equal(metrics.gateRegretRate, null);
+  assert.equal(metrics.decisionRegretRate, null);
 });
 
 test('a SOFT, identifiable, favorable-outcome row DOES contribute to gateRegretRate', () => {
@@ -64,23 +67,26 @@ test('rates are reported separately, never combined into one score', () => {
   assert.ok(!('overallRegret' in metrics));
 });
 
-test('falseAcceptRate is always 0 by construction, never estimated from WAIT-only data', () => {
+test('CORE CLAIM (corrected 2026-09-25): falseAcceptRate is always null, never a fabricated 0 -- this WAIT-only dataset cannot model it at all', () => {
   const metrics = computeWaitRegretMetrics([buildWaitRegretRow(baseInput())]);
-  assert.equal(metrics.falseAcceptRate, 0);
+  assert.equal(metrics.falseAcceptRate, null);
 });
 
-test('empty batch produces all-zero rates, never NaN', () => {
+test('CORE CLAIM (corrected 2026-09-25): an empty batch produces null rates (not computable), never a fabricated 0, and never NaN', () => {
   const metrics = computeWaitRegretMetrics([]);
   assert.equal(metrics.totalRows, 0);
+  assert.equal(metrics.gateRegretRate, null);
+  assert.equal(metrics.safetyRejectRate, null);
+  assert.equal(metrics.economicWaitRate, null);
   assert.equal(Number.isNaN(metrics.gateRegretRate), false);
 });
 
-test('NOT_IDENTIFIABLE rows are excluded from soft-identifiable regret calculations', () => {
+test('NOT_IDENTIFIABLE rows are excluded from the soft-identifiable false-reject denominator, yielding null not 0', () => {
   const row = buildWaitRegretRow(baseInput({
     exactReason: 'IMPLEMENTATION_FALSE_REJECT', labelAvailableAt: DECISION_AT,
     futureOutcome: { wholeChainNetPnlIfTaken: 999, observedAt: DECISION_AT },
     counterfactualIdentifiability: 'NOT_IDENTIFIABLE',
   }));
   const metrics = computeWaitRegretMetrics([row]);
-  assert.equal(metrics.falseRejectRate, 0);
+  assert.equal(metrics.falseRejectRate, null);
 });

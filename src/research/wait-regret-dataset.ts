@@ -8,6 +8,18 @@
  * NEVER counted as regret merely because the underlying later moved
  * favorably -- `computeWaitRegretMetrics` structurally excludes
  * `hardVsSoft: 'HARD'` rows from every regret-rate numerator.
+ *
+ * **CORRECTED (2026-09-25)**: Codex's own independently-built WAIT
+ * research metric (`docs/operations/THETA_PERFORMANCE_AND_REPLAY_RECEIPT_2026-09-23.md`:
+ * "The WAIT dataset now returns `null` when no identifiable outcome
+ * denominator exists... does not report an accepted-trade false-accept
+ * rate from WAIT-only records") found the same class of defect this
+ * module originally had: every rate here returned a bare `0` whenever
+ * its real denominator was empty, which reads as "measured zero" rather
+ * than "not computable" -- exactly the `UNKNOWN -> 0` coercion this
+ * engagement's standing rule forbids. Every rate field is now `number |
+ * null`; `null` means the real denominator for that rate was empty, not
+ * that the rate was measured at zero.
  */
 import type { FalseInactivityCause } from './false-inactivity-taxonomy.js';
 import type { FirstPaperBlockerClass } from '../theta/first-paper-blocker-budget.js';
@@ -72,20 +84,27 @@ export function buildWaitRegretRow(input: Omit<WaitRegretRow, 'contractVersion' 
 
 export interface WaitRegretMetrics {
   readonly totalRows: number;
-  readonly falseRejectRate: number;
-  readonly falseAcceptRate: number;
-  readonly gateRegretRate: number;
-  readonly decisionRegretRate: number;
-  readonly opportunityConversionRate: number;
-  readonly implementationFalseRejectRate: number;
-  readonly providerFailureRejectRate: number;
-  readonly economicWaitRate: number;
-  readonly safetyRejectRate: number;
-  readonly dataInsufficientRate: number;
+  readonly falseRejectRate: number | null;
+  /** Requires real accepted-then-lost evidence, which this WAIT-only
+   * dataset never models (it only records candidates that were NOT
+   * taken) -- always `null`, never a fabricated `0`, matching Codex's
+   * own fix that a WAIT-only record set cannot report a false-accept
+   * rate at all. */
+  readonly falseAcceptRate: null;
+  readonly gateRegretRate: number | null;
+  readonly decisionRegretRate: number | null;
+  readonly opportunityConversionRate: number | null;
+  readonly implementationFalseRejectRate: number | null;
+  readonly providerFailureRejectRate: number | null;
+  readonly economicWaitRate: number | null;
+  readonly safetyRejectRate: number | null;
+  readonly dataInsufficientRate: number | null;
 }
 
-function rate(rows: readonly WaitRegretRow[], predicate: (row: WaitRegretRow) => boolean): number {
-  if (rows.length === 0) return 0;
+/** `null`, never `0`, when `rows` is empty -- an empty real denominator
+ * means the rate is not computable, not that it was measured at zero. */
+function rate(rows: readonly WaitRegretRow[], predicate: (row: WaitRegretRow) => boolean): number | null {
+  if (rows.length === 0) return null;
   return rows.filter(predicate).length / rows.length;
 }
 
@@ -95,20 +114,24 @@ function rate(rows: readonly WaitRegretRow[], predicate: (row: WaitRegretRow) =>
  * computed ONLY over `hardVsSoft: 'SOFT'` rows with a real, non-null
  * `futureOutcome` (OBSERVED_PARALLEL or ESTIMABLE identifiability) --
  * a HARD row can never contribute to a regret numerator, regardless of
- * what its (irrelevant, uncomputed) future outcome would have been.
+ * what its (irrelevant, uncomputed) future outcome would have been. Every
+ * rate is `null`, never a bare `0`, when its real denominator is empty.
  */
 export function computeWaitRegretMetrics(rows: readonly WaitRegretRow[]): WaitRegretMetrics {
   const softIdentifiable = rows.filter((r) => r.hardVsSoft === 'SOFT' && r.counterfactualIdentifiability !== 'NOT_IDENTIFIABLE' && r.futureOutcome !== null);
   const falseReject = softIdentifiable.filter((r) => (r.futureOutcome?.wholeChainNetPnlIfTaken ?? 0) > 0
     && (r.exactReason === 'IMPLEMENTATION_FALSE_REJECT' || r.exactReason === 'ECONOMIC_WAIT'));
+  const softRows = rows.filter((r) => r.hardVsSoft === 'SOFT');
+  const observedParallelSoft = softRows.filter((r) => r.counterfactualIdentifiability === 'OBSERVED_PARALLEL');
 
   return {
     totalRows: rows.length,
-    falseRejectRate: softIdentifiable.length === 0 ? 0 : falseReject.length / softIdentifiable.length,
-    falseAcceptRate: 0, // requires real accepted-then-lost evidence, not modeled by this WAIT-only dataset -- always 0 here by construction, not estimated
-    gateRegretRate: rate(rows, (r) => r.hardVsSoft === 'SOFT' && (r.futureOutcome?.wholeChainNetPnlIfTaken ?? -1) > 0),
-    decisionRegretRate: rate(rows, (r) => r.hardVsSoft === 'SOFT' && r.counterfactualIdentifiability === 'OBSERVED_PARALLEL'
-      && (r.futureOutcome?.wholeChainNetPnlIfTaken ?? -1) > 0),
+    falseRejectRate: softIdentifiable.length === 0 ? null : falseReject.length / softIdentifiable.length,
+    falseAcceptRate: null,
+    gateRegretRate: softRows.length === 0 ? null
+      : softRows.filter((r) => (r.futureOutcome?.wholeChainNetPnlIfTaken ?? -1) > 0).length / softRows.length,
+    decisionRegretRate: observedParallelSoft.length === 0 ? null
+      : observedParallelSoft.filter((r) => (r.futureOutcome?.wholeChainNetPnlIfTaken ?? -1) > 0).length / observedParallelSoft.length,
     opportunityConversionRate: rate(rows, (r) => r.bestRejectedCandidate !== null),
     implementationFalseRejectRate: rate(rows, (r) => r.exactReason === 'IMPLEMENTATION_FALSE_REJECT'),
     providerFailureRejectRate: rate(rows, (r) => r.exactReason === 'PROVIDER_FAILURE_REJECT' || r.exactReason === 'DATA_STALE_REJECT'),

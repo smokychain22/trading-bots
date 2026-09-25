@@ -18,6 +18,21 @@
  * original decision used (not a proxy), `ESTIMABLE` when a real but
  * imperfect proxy was used, `NOT_IDENTIFIABLE` when no real re-evaluation
  * was possible at all.
+ *
+ * **CORRECTED (2026-09-25)**: Codex independently built its own replay
+ * analyzer (`docs/operations/THETA_PERFORMANCE_AND_REPLAY_RECEIPT_2026-09-23.md`)
+ * and found, and fixed, the exact same defect this module originally
+ * had: automatically attributing `changedBecauseOfCodeFix` to any
+ * candidate that now passes re-evaluation, with no requirement that a
+ * real code or policy release actually changed between the historical
+ * decision and now. A candidate can legitimately "now pass" purely
+ * because market conditions changed (a wider spread that day, a stale
+ * quote that session), which is not evidence of a code fix. This module
+ * now requires explicit `releaseProvenance` (a real historical vs.
+ * current release SHA / policy version pair) before it will attribute
+ * `changedBecauseOfCodeFix` or `changedBecauseOfPolicy` to anything;
+ * without it, both fields are always `false`, no matter how many
+ * dimensions now pass.
  */
 import { optionExecutabilityCauses, type OptionExecutabilityCause } from '../theta/option-executability-diagnostics.js';
 import type { NormalizedOptionContract } from '../theta/option-contract.js';
@@ -53,6 +68,19 @@ export interface CurrentReEvaluationEvidence {
   readonly persistedAegisState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO' | 'DEFINED_RISK_ONLY' | null;
   readonly persistedSizingQty: number | null;
   readonly currentPolicyVersion: string;
+  /** Required to attribute a code fix or a policy change to anything.
+   * `null` means no real provenance was supplied -- `changedBecauseOfCodeFix`/
+   * `changedBecauseOfPolicy` are then always `false`, regardless of how
+   * many dimensions now pass. A real, non-null value must show the
+   * historical release/policy differs from the current one to justify
+   * either attribution -- a candidate that now passes under the SAME
+   * release/policy changed only because of a different market
+   * observation that day, not a fix. */
+  readonly releaseProvenance: {
+    readonly historicalReleaseSha: string | null;
+    readonly currentReleaseSha: string;
+    readonly historicalPolicyVersion: string | null;
+  } | null;
 }
 
 export interface FalseRejectAssessment {
@@ -121,10 +149,6 @@ export function assessFalseReject(
 
   const insufficientHistoricalEvidence = !anyReEvaluated;
   const unchangedHardSafety = anyStillHardSafetyRejected;
-  // A code fix can only be claimed when this pass actually re-evaluated
-  // the SAME candidate against real current-code logic and it now
-  // passes where it did not before -- never inferred from the old
-  // disposition string alone.
   // record.oldDisposition/oldReasons are not used as a gate here: this
   // analyzer is documented to run only on candidates that were REJECTED
   // historically (that is the entire premise of a false-reject analysis)
@@ -132,17 +156,24 @@ export function assessFalseReject(
   // about which literal string means "rejected" (e.g.
   // new-risk-orchestrator.ts's outcome:'PASS' actually means "passed
   // OVER", i.e. rejected), so this module deliberately does not pattern-
-  // match on that string. It only asks: does every dimension this pass
-  // could re-evaluate now genuinely pass, with no hard-safety cause
-  // still present?
-  const changedBecauseOfCodeFix = anyReEvaluated && allNowPass && !anyStillHardSafetyRejected;
-  // This module does not itself distinguish a code fix from a policy
-  // (threshold/config) change -- that requires knowing whether the
-  // underlying LOGIC changed vs. only a CONFIG VALUE changed, which is
-  // outside what re-derived evidence alone can prove. Both are folded
-  // into changedBecauseOfCodeFix here; a future pass with real commit-
-  // level provenance could split them further.
-  const changedBecauseOfPolicy = false;
+  // match on that string.
+  //
+  // A "now passes" re-evaluation is NEVER attributed to a code fix or a
+  // policy change without real release/policy provenance -- a candidate
+  // can legitimately now pass purely because market conditions on this
+  // re-evaluation differ from the historical session (a different quote,
+  // a different spread), which is not evidence anything in THETA
+  // changed. This is the exact defect Codex's own independently-built
+  // replay analyzer found and fixed; corrected here to match.
+  const releaseChanged = evidence.releaseProvenance !== null
+    && evidence.releaseProvenance.historicalReleaseSha !== null
+    && evidence.releaseProvenance.historicalReleaseSha !== evidence.releaseProvenance.currentReleaseSha;
+  const policyChanged = evidence.releaseProvenance !== null
+    && evidence.releaseProvenance.historicalPolicyVersion !== null
+    && evidence.releaseProvenance.historicalPolicyVersion !== evidence.currentPolicyVersion;
+  const nowPasses = anyReEvaluated && allNowPass && !anyStillHardSafetyRejected;
+  const changedBecauseOfCodeFix = nowPasses && releaseChanged;
+  const changedBecauseOfPolicy = nowPasses && !releaseChanged && policyChanged;
 
   const identifiability: CounterfactualIdentifiability = insufficientHistoricalEvidence ? 'NOT_IDENTIFIABLE'
     : evidence.reDerivedContract !== null && evidence.persistedAegisState !== null && evidence.persistedSizingQty !== null
