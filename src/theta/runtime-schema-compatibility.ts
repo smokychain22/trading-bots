@@ -17,6 +17,8 @@ export type RuntimeSchemaCompatibilityState =
   | 'MIGRATION_REQUIRED'
   | 'SCHEMA_AHEAD_UNSUPPORTED'
   | 'SCHEMA_METADATA_UNAVAILABLE'
+  | 'SOURCE_IDENTITY_UNAVAILABLE'
+  | 'WORKER_IDENTITY_UNAVAILABLE'
   | 'SOURCE_WORKER_SHA_MISMATCH';
 
 export interface RuntimeSchemaCompatibilityReceipt {
@@ -69,6 +71,14 @@ export function assessRuntimeSchemaCompatibility(input: {
   });
   const observedHead = ordered.at(-1) ?? null;
   const missingRequiredMigrations = runtimeRequiredMigrations.filter((version) => !applied.has(version));
+  if (sourceSha === null) {
+    return { ...base, state: 'SOURCE_IDENTITY_UNAVAILABLE', compatible: false,
+      observedHead, missingRequiredMigrations };
+  }
+  if (workerSha === null) {
+    return { ...base, state: 'WORKER_IDENTITY_UNAVAILABLE', compatible: false,
+      observedHead, missingRequiredMigrations };
+  }
   if (sourceSha !== null && workerSha !== null && sourceSha !== workerSha) {
     return { ...base, state: 'SOURCE_WORKER_SHA_MISMATCH', compatible: false,
       observedHead, missingRequiredMigrations };
@@ -104,4 +114,3 @@ export async function inspectRuntimeSchemaCompatibility(pool: Pool, input: {
       sourceSha: input.sourceSha, workerSha: input.workerSha });
   }
 }
-

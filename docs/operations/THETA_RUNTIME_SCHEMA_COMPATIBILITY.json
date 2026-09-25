@@ -58,6 +58,12 @@
   "safety": {
     "leaseBeforeCompatibility": false,
     "cycleBeforeCompatibility": false,
+    "sourceIdentityRequired": true,
+    "workerIdentityRequired": true,
+    "missingIdentityStates": [
+      "SOURCE_IDENTITY_UNAVAILABLE",
+      "WORKER_IDENTITY_UNAVAILABLE"
+    ],
     "brokerAuthority": false,
     "executionGate": "LOCKED"
   }

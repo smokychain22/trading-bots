@@ -51,3 +51,31 @@ test('schema ahead, source mismatch, and unreadable migration metadata fail clos
   assert.equal(receipt.compatible, false);
 });
 
+test('exact schema cannot become compatible without exact source and worker identities', () => {
+  const schema = [...runtimeRequiredMigrations];
+  const missingSource = assessRuntimeSchemaCompatibility({
+    appliedVersions: schema, sourceSha: null, workerSha: sourceSha,
+  });
+  assert.equal(missingSource.state, 'SOURCE_IDENTITY_UNAVAILABLE');
+  assert.equal(missingSource.compatible, false);
+  assert.equal(missingSource.sourceSha, null);
+
+  const malformedSource = assessRuntimeSchemaCompatibility({
+    appliedVersions: schema, sourceSha: 'not-a-release-sha', workerSha: sourceSha,
+  });
+  assert.equal(malformedSource.state, 'SOURCE_IDENTITY_UNAVAILABLE');
+  assert.equal(malformedSource.compatible, false);
+
+  const missingWorker = assessRuntimeSchemaCompatibility({
+    appliedVersions: schema, sourceSha, workerSha: null,
+  });
+  assert.equal(missingWorker.state, 'WORKER_IDENTITY_UNAVAILABLE');
+  assert.equal(missingWorker.compatible, false);
+  assert.equal(missingWorker.workerSha, null);
+
+  const shortWorker = assessRuntimeSchemaCompatibility({
+    appliedVersions: schema, sourceSha, workerSha: sourceSha.slice(0, 7),
+  });
+  assert.equal(shortWorker.state, 'WORKER_IDENTITY_UNAVAILABLE');
+  assert.equal(shortWorker.compatible, false);
+});
