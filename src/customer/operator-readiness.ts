@@ -94,7 +94,8 @@ export async function readLocalWorkerReadiness(databaseUrl?:string):Promise<Loca
     last_candidate_scan:null,market_session:'UNKNOWN',alpaca_health:'UNKNOWN',optionomics_health:'UNKNOWN',
     database_health:databaseUrl?'UNKNOWN':'NOT_CONFIGURED',execution_gate:'EXTERNAL_QUOTE_BLOCKER',failure_reason:null};
   if(!databaseUrl)return unknown;
-  const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000});
+  const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000,
+    application_name:'theta-operator-worker-readiness'});
   try{
     const exists=await pool.query(`SELECT to_regclass('ops.runtime_worker_status') IS NOT NULL AS ready`);
     if(exists.rows[0]?.ready!==true)return unknown;
@@ -142,7 +143,8 @@ export async function readMasterRuntimeEvidence(databaseUrl?:string):Promise<Mas
     local_only_intent_count:null,broker_orders:null,broker_fills:null,open_chains:null,
     option_realized_pnl:null,stock_realized_pnl:null,whole_chain_pnl:null};
   if(!databaseUrl)return empty;
-  const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000});
+  const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000,
+    application_name:'theta-operator-runtime-evidence'});
   try{
     const result=await pool.query(`WITH latest_decision AS (
         SELECT action_code,decided_at,strategy_branch,fusion_snapshot_id
@@ -205,7 +207,8 @@ export async function readOutcomeResearchVisibility(databaseUrl?:string):Promise
     whole_chains_resolved:null,management_labels:null,wait_labels:null,counterfactual_labels:null,modeled_labels:null,
     broker_actual_labels:null,policy_evaluation_readiness:'UNKNOWN'};
   if(!databaseUrl)return empty;
-  const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000});
+  const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000,
+    application_name:'theta-operator-outcome-visibility'});
   try{
     const exists=await pool.query(`SELECT to_regclass('research.theta_resolved_outcome_label') IS NOT NULL AS ready`);
     if(exists.rows[0]?.ready!==true)return empty;
@@ -281,7 +284,8 @@ export async function readLatestRuntimeBehavior(databaseUrl?:string):Promise<Run
     liquidity_rejection_count:null,final_action:'UNKNOWN',wait_reasons:[],best_rejected_candidates:[],anti_paralysis_findings:[],
     threshold_policy_state:'UNKNOWN',first_paper_evidence:null};
   if(!databaseUrl)return empty;
-  const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000});
+  const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000,
+    application_name:'theta-operator-runtime-behavior'});
   try{
     const relation=await pool.query(`SELECT to_regclass('research.theta_runtime_behavior_diagnostic') IS NOT NULL AS ready`);
     if(relation.rows[0]?.ready!==true)return empty;
@@ -361,7 +365,8 @@ export interface P2FOperatorStatus {readonly optionomics:{readonly secret_state:
 export async function readP2FOperatorStatus(databaseUrl?:string):Promise<P2FOperatorStatus>{
   const empty:P2FOperatorStatus={optionomics:{secret_state:'NOT_CONFIGURED',last_check:null,qualified_capabilities:null,
     blocked_capabilities:null,real_payload_count:null,stale_capability_count:null,latest_receipt_hash:null},alerts:[]};
-  if(!databaseUrl)return empty;const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000});
+  if(!databaseUrl)return empty;const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000,
+    application_name:'theta-operator-p2f-status'});
   try{const relation=await pool.query(`SELECT to_regclass('research.optionomics_provider_qualification_receipt') IS NOT NULL AS ready`);
     if(relation.rows[0]?.ready!==true)return empty;
     const [q,a]=await Promise.all([pool.query(`SELECT secret_state,attempted_at,real_payload_count,stale_capability_count,evidence_hash,
@@ -389,7 +394,8 @@ export async function readP2GOperatorStatus(databaseUrl?:string):Promise<P2GOper
   const empty:P2GOperatorStatus={simulation:{state:'MISSING',scenario_id:null,terminal_state:null,whole_chain_net_pnl:null,
     capital_days:null,receipt_hash:null},dry_run:{state:'MISSING',blocker_codes:[],previewed_at:null,receipt_hash:null},
     provider_families:[],hold:{state:'HOLD_UNKNOWN',observed_at:null},alert_history:[]};
-  if(!databaseUrl)return empty;const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000});
+  if(!databaseUrl)return empty;const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000,
+    application_name:'theta-operator-p2g-status'});
   try{const relation=await pool.query(`SELECT to_regclass('research.theta_synthetic_lifecycle_receipt') IS NOT NULL AS ready`);
     if(relation.rows[0]?.ready!==true)return empty;
     const [simulation,preview,families,hold,alerts]=await Promise.all([

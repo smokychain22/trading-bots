@@ -484,7 +484,8 @@ export default async function customerHandler(
       if (route === "operator/optionomics-qualification" && request.method === "POST") {
         if(!sameOrigin(request))return send(response,403,{error:{code:"ORIGIN_REJECTED"}});
         if(!environment.DATABASE_URL)return send(response,503,{error:{code:"QUALIFICATION_DATABASE_UNAVAILABLE"}});
-        const pool=new Pool({connectionString:environment.DATABASE_URL,max:1,connectionTimeoutMillis:5_000});
+        const pool=new Pool({connectionString:environment.DATABASE_URL,max:1,connectionTimeoutMillis:5_000,
+          application_name:'theta-api-optionomics-qualification'});
         try{const receipt=await qualifyOptionomicsProvider({mode:'REAL_AUTHENTICATED',at:new Date().toISOString(),symbol:'SPY',
           config:optionomicsConfigFromEnvironment(environment)});await persistOptionomicsQualification(pool,receipt);
           return send(response,receipt.secretState==='AUTH_VALID'?200:207,{api_version:'v1',data:{version:receipt.version,

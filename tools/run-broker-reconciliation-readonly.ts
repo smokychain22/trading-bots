@@ -29,7 +29,8 @@ const broker = new AlpacaPaperBrokerAdapter({
 const readOnlyBroker = asReadOnlyPaperBroker(broker);
 assertShadowBrokerHasNoMutationSurface(readOnlyBroker);
 const account = z.object({ id: z.string().min(1) }).passthrough().parse(await readOnlyBroker.getAccount());
-const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 2, connectionTimeoutMillis: 10_000 });
+const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 2, connectionTimeoutMillis: 10_000,
+  application_name: 'theta-broker-reconciliation-read-only' });
 
 try {
   const connection = await pool.query(

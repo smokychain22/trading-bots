@@ -17,7 +17,8 @@ let persistenceErrorCode: string | null = null;
 let reportHash: string | null = null;
 
 if (environment.DATABASE_URL) {
-  const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 1 });
+  const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 1,
+    application_name: 'theta-optionomics-capability-qualification' });
   try {
     reportHash = await persistOptionomicsCapabilityQualification(pool, report, [
       environment.OPTIONOMICS_EMAIL ?? '',

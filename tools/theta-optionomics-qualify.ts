@@ -13,7 +13,8 @@ const receipt=await qualifyOptionomicsProvider({mode,at:new Date().toISOString()
 let persistenceState:'NOT_REQUESTED'|'PERSISTED'|'FAILED'='NOT_REQUESTED';
 let persistenceErrorCode:string|null=null;
 if(environment?.DATABASE_URL){
-  const pool=new Pool({connectionString:environment.DATABASE_URL,max:1});
+  const pool=new Pool({connectionString:environment.DATABASE_URL,max:1,
+    application_name:'theta-optionomics-qualification'});
   try{
     await persistOptionomicsQualification(pool,receipt);
     persistenceState='PERSISTED';

@@ -4,7 +4,8 @@ import { ensureMasterShadowContext, masterShadowContextVersions } from '../src/r
 
 const environment=loadEnvironmentFile('.env.local');
 if(environment.DATABASE_URL===undefined) throw new Error('DATABASE_URL_REQUIRED');
-const pool=new Pool({connectionString:environment.DATABASE_URL,max:1,connectionTimeoutMillis:10_000});
+const pool=new Pool({connectionString:environment.DATABASE_URL,max:1,connectionTimeoutMillis:10_000,
+  application_name:'theta-ensure-master-shadow-context'});
 try{
   const master=await pool.query(`SELECT provider_account_ref FROM copy.follower_account
     WHERE account_role='MASTER_THETA_PAPER' AND environment='PAPER' AND disconnected_at IS NULL`);

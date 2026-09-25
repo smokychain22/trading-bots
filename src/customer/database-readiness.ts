@@ -50,6 +50,7 @@ export async function checkDatabaseReadiness(
     max: 1,
     connectionTimeoutMillis: 5_000,
     idleTimeoutMillis: 1_000,
+    application_name: 'theta-customer-database-readiness',
   });
   try {
     const objects = await pool.query(`SELECT

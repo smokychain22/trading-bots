@@ -28,6 +28,8 @@ Normal Windows/Vercel decision-runtime demand in one warm process is at most two
 
 CLI and recovery tools own bounded pools, generally max 1. Database migration, legacy import/promotion, forensic import, research export, history certification, IV backfill, storage audit, and readiness commands are operator jobs. They do not share the trading pool and must not overlap the market-critical worker. Migration and restore utilities remain deliberately isolated because their transaction and lifecycle requirements differ from trading runtime queries.
 
+Every source-owned `new Pool(...)` constructor under `src/` and `tools/` has a distinct `application_name`. `tests/postgres-application-identity.test.ts` scans those source trees and fails if an unnamed pool is introduced. This makes future `pg_stat_activity` ownership evidence attributable without changing connection limits or query behavior.
+
 ## Query replay classes
 
 - `SAFE_IDEMPOTENT_READ`: use `withRuntimePostgresReadRetry` when on a critical runtime boundary. Each retry checks out a fresh client.

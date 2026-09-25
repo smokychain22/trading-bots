@@ -21,7 +21,7 @@ async function main():Promise<void>{
   const connectionString=loadEnvironment().DATABASE_URL;
   if (!connectionString) throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');
   const featureSetVersion=value('--feature-set-version')??'theta-r6-feature-set-v1';
-  const pool=new Pool({connectionString,max:2});
+  const pool=new Pool({connectionString,max:2,application_name:'theta-research-export'});
   try {
   const exporter=new PostgresDatasetExporter(pool);
   const newest=args.includes('--latest')||(!args.includes('--from')&&!args.includes('--to'))

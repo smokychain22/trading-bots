@@ -29,7 +29,8 @@ export async function bootstrapAivenMasterPaperAccount(environment: Environment)
   });
   if (!verification.ready || verification.account.status !== 'ACTIVE') throw new Error('ALPACA_PAPER_ACCOUNT_NOT_READY');
 
-  const pool = new Pool({ connectionString: environment.AIVEN_DATABASE_URL, max: 2, connectionTimeoutMillis: 8_000 });
+  const pool = new Pool({ connectionString: environment.AIVEN_DATABASE_URL, max: 2, connectionTimeoutMillis: 8_000,
+    application_name: 'theta-master-paper-bootstrap' });
   try {
     const customer = await pool.query(`INSERT INTO iam.customer_identity(email_normalized,password_hash,status)
       VALUES($1,$2,'DISABLED')

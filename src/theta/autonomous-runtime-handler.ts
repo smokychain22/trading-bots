@@ -360,7 +360,8 @@ export default async function autonomousRuntimeHandler(
       send(response, 503, { error: 'aiven_database_not_configured' });
       return;
     }
-    const pool = new Pool({ connectionString: environment.AIVEN_DATABASE_URL, max: 1, connectionTimeoutMillis: 8_000 });
+    const pool = new Pool({ connectionString: environment.AIVEN_DATABASE_URL, max: 1, connectionTimeoutMillis: 8_000,
+      application_name: 'theta-corporate-action-capture' });
     try {
       const symbolsResult = await pool.query<{ symbol: string }>(`SELECT DISTINCT u.symbol
         FROM trade.candidate c JOIN market.underlying u ON u.underlying_id=c.underlying_id

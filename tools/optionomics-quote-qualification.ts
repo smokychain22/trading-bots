@@ -4,7 +4,8 @@ import { runOptionomicsQuoteQualification, sanitizeQualificationReport } from '.
 
 const environment = loadEnvironment();
 if (!environment.DATABASE_URL) throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');
-const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 1 });
+const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 1,
+  application_name: 'theta-optionomics-quote-qualification' });
 
 try {
   process.stdout.write(`${JSON.stringify(sanitizeQualificationReport(await runOptionomicsQuoteQualification(environment,pool)))}\n`);

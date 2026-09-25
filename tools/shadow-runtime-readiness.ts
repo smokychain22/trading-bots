@@ -6,7 +6,7 @@ const environmentFile=process.argv.find((value)=>value.startsWith('--environment
   ?.slice('--environment-file='.length)??'.env.local';
 const connectionString=loadEnvironmentFile(environmentFile).DATABASE_URL;
 if(!connectionString) throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');
-const pool=new Pool({connectionString,max:1});
+const pool=new Pool({connectionString,max:1,application_name:'theta-shadow-runtime-readiness'});
 try{
   const contexts=await pool.query(`SELECT bi.mode::text,count(*)::int AS count,
     count(*) FILTER(WHERE bi.strategy_version_id IS NOT NULL AND bi.feature_version_id IS NOT NULL

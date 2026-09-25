@@ -6,7 +6,7 @@ import { buildR6ReadinessReceipt } from '../src/research/r6-readiness.js';
 const connectionString=loadEnvironment().DATABASE_URL;
 if(!connectionString) throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');
 
-const pool=new Pool({connectionString,max:1});
+const pool=new Pool({connectionString,max:1,application_name:'theta-p2d-outcome-resolve'});
 try{
   const asOf=new Date().toISOString();
   const resolver=new PostgresOutcomeResolver(pool);

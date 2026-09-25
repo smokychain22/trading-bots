@@ -51,7 +51,8 @@ const sessions = calendar.map((row) => row.date).filter((date) => /^\d{4}-\d{2}-
   .sort().slice(-maxSessionsRaw);
 if (sessions.length < 21) throw new Error('INSUFFICIENT_ALPACA_TRADING_SESSIONS');
 
-const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 1 });
+const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 1,
+  application_name: 'theta-backfill-aegis-iv-stress' });
 const store = new PostgresAegisIvStressStore(pool);
 let known = 0, unknown = 0, invalid = 0, requestErrors = 0;
 try {

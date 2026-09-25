@@ -14,7 +14,8 @@ if (process.env.CONFIRM_MASTER_DESIGNATION !== 'MASTER_THETA_PAPER')
 
 const environment = loadEnvironmentFile(envFile);
 if (!environment.DATABASE_URL) throw new Error('CUSTOMER_DATABASE_NOT_CONFIGURED');
-const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 2, connectionTimeoutMillis: 8_000 });
+const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 2, connectionTimeoutMillis: 8_000,
+  application_name: 'theta-designate-master-paper' });
 
 try {
   const customerStore = new PostgresCustomerStore(pool);
