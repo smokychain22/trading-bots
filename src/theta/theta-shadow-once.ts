@@ -7,6 +7,7 @@ import type { PythonBridgeConfig } from './python-bridge.js';
 import { discoverRealUniverse, type UniverseDiscoveryConfig } from './universe-discovery.js';
 import type { UnderlyingCandidateInput } from './universe-policy.js';
 import { buildFirstPaperRuntimeTelemetry } from './first-paper-runtime-telemetry.js';
+import { paperBootstrapRuntimePolicy } from './paper-bootstrap-runtime-policy.js';
 
 // Safe one-shot entrypoint for runThetaShadowCycle(). Designed to be run
 // later by Codex in a protected environment holding the real Vercel
@@ -66,6 +67,7 @@ export function defaultShadowCycleConfig(
   universeCandidates: readonly UnderlyingCandidateInput[],
   universeCandidatesOrigin: ProvenanceOrigin,
 ): ThetaShadowCycleConfig {
+  const bootstrap = paperBootstrapRuntimePolicy;
   const now = new Date().toISOString();
   // StructuralQuality requires MA200. A 120-calendar-day request can never
   // contain 200 trading sessions, so it made the ownership assessment
@@ -113,21 +115,21 @@ export function defaultShadowCycleConfig(
     regimePolicy: { policyVersion: 'regime-v1-shadow-once', bullMaSlopeFloor: 0.001, bearMaSlopeCeiling: -0.001, rvLowCeiling: 0.1, rvHighFloor: 0.25, rvShockFloor: 0.4, maxAdverseGapShockThreshold: 0.08, liquidityThinSpreadPctFloor: 0.03, liquidityDislocatedSpreadPctFloor: 0.08, correctionDrawdownCeiling: -0.1, crisisDrawdownCeiling: -0.2 },
     routerPolicy: { policyVersion: 'router-v1-shadow-once', thetaQMinOwnershipAcceptability: 0.3, thetaHMinOwnershipAcceptability: 0.75, thetaDGateSatisfied: false },
     routerPortfolio: { lifecycleState: 'CASH_AVAILABLE', stockSharesHeld: 0, openOptionExists: false, assignmentImminent: false },
-    latticeConfig: { configVersion: 'lattice-v1-shadow-once', minDte: 25, maxDte: 60, deltaBands: [[0.0, 0.25], [0.25, 0.5]], minOpenInterest: 50, minVolume: 10, maxSpreadPct: 0.15, earningsExclusionDays: 5 },
-    thetaQSizingPolicy: { riskLimitVersion: 'risk-v1-shadow-once', maxSpreadPct: 0.15, maxQuoteAgeSeconds: 30, minOpenInterest: 50, minVolume: 10, earningsExclusionDays: 5, ownershipAcceptabilityFloor: 0.3, exceptionalUtilityThreshold: 0.9, strongUtilityThreshold: 0.7, minimumPositiveEdge: 0.05, riskBudgetQtyCap: 4, collateralQtyCap: 3, concentrationQtyCap: 2 },
+    latticeConfig: { configVersion: 'lattice-v1-shadow-once', minDte: bootstrap.conventional.minimumDte, maxDte: bootstrap.conventional.maximumDte, deltaBands: bootstrap.conventional.deltaBands.map((band) => [...band] as [number, number]), minOpenInterest: bootstrap.conventional.minimumOpenInterest, minVolume: bootstrap.conventional.minimumVolume, maxSpreadPct: bootstrap.conventional.maximumSpreadPct, earningsExclusionDays: bootstrap.conventional.earningsExclusionDays },
+    thetaQSizingPolicy: { riskLimitVersion: 'risk-v1-shadow-once', maxSpreadPct: bootstrap.conventional.maximumSpreadPct, maxQuoteAgeSeconds: bootstrap.quoteAge.candidateMaximumSeconds, minOpenInterest: bootstrap.conventional.minimumOpenInterest, minVolume: bootstrap.conventional.minimumVolume, earningsExclusionDays: bootstrap.conventional.earningsExclusionDays, ownershipAcceptabilityFloor: 0.3, exceptionalUtilityThreshold: 0.9, strongUtilityThreshold: 0.7, minimumPositiveEdge: 0.05, riskBudgetQtyCap: bootstrap.sizing.riskBudgetQuantityCap, collateralQtyCap: bootstrap.sizing.collateralQuantityCap, concentrationQtyCap: 2 },
     costAssumptions: { commissionPerContract: 0.65, feesPerContract: 0.05, estimatedSlippagePerContract: 1.0, costModelVersion: 'cost-v1-shadow-once' },
-    aegisPolicy: { policyVersion: 'aegis-v1-shadow-once', hardCapMultiplier: 1.5, maxTickerConcentrationPct: 0.15, maxSectorConcentrationPct: 0.3, maxCorrelationClusterPct: 0.3, maxPortfolioCapitalAtRiskPct: 0.5, maxInventoryCapacityPct: 0.5, maxAssignmentCapacityPct: 0.5, maxRecoveryCapacityPct: 0.3, providerRequiredStates: ['OK'] },
+    aegisPolicy: { policyVersion: 'aegis-v1-shadow-once', hardCapMultiplier: bootstrap.aegis.hardCapMultiplier, maxTickerConcentrationPct: bootstrap.aegis.maximumTickerConcentrationPct, maxSectorConcentrationPct: bootstrap.aegis.maximumSectorConcentrationPct, maxCorrelationClusterPct: bootstrap.aegis.maximumCorrelationClusterPct, maxPortfolioCapitalAtRiskPct: bootstrap.aegis.maximumPortfolioCapitalAtRiskPct, maxInventoryCapacityPct: bootstrap.aegis.maximumInventoryCapacityPct, maxAssignmentCapacityPct: bootstrap.aegis.maximumAssignmentCapacityPct, maxRecoveryCapacityPct: bootstrap.aegis.maximumRecoveryCapacityPct, providerRequiredStates: ['OK'] },
     aegisInputs: { tickerConcentrationPct: 0, sectorConcentrationPct: 0, correlationClusterExposurePct: 0, portfolioCapitalAtRiskPct: 0, inventoryCapacityUsedPct: 0, assignmentCapacityUsedPct: 0, recoveryCapacityUsedPct: 0, liquidityAcceptable: true, executionQualityAcceptable: true, providerState: 'OK', stressGapDetected: false, stressIvShockDetected: false, stressSpreadWideningDetected: false },
     aegisInputsOrigin: 'CALLER_MANUAL', // honest: tickerConcentrationPct/portfolioCapitalAtRiskPct/providerState/liquidityAcceptable/executionQualityAcceptable/stressGapDetected are now real-derived when trustworthy (see account-exposure.ts and aegis-derivation.ts) -- sector/correlation/IV-shock/spread-widening remain exactly what this fixture supplies, since no real source exists for those yet
     opportunityFrontierPolicy: { policyVersion: 'opp-frontier-v1-shadow-once', reducedSizeUncertaintyThreshold: 0.5 },
-    maxAcceptableSpreadPct: 0.15,
-    stressGapThresholdAbsReturn: 0.05, // versioned Paper bootstrap gap policy, not an empirically optimal threshold
-    sizingPolicy: { policyVersion: 'sizing-v2-shadow-once', riskBudgetQtyCap: 4, collateralQtyCap: 3, concentrationQtyCap: 5,
-      assignmentCapacityQtyCap: 6, tailRiskQtyCap: 3, correlationQtyCap: 3, liquidityQtyCap: 3, reducedStateMultiplier: 0.5 },
-    executionQualityPolicy: { policyVersion: 'execq-v1-shadow-once', maxAcceptableSpreadPct: 0.15, minQuoteSizeForFullConfidence: 20, maxQuoteAgeSeconds: 30, minAfterCostUtilityToCross: 0 },
-    candidateQuoteAgePolicy: { policyVersion: 'candidate-quote-age-v1-paper-bootstrap', effectiveAt: now, maxAgeSeconds: 30 },
-    finalistQuoteRefreshPolicy: { policyVersion: 'finalist-quote-refresh-v1-paper-bootstrap', effectiveAt: now, maxFinalists: 5, maxAgeSeconds: 30 },
-    optionQuoteFreshnessPolicy: { policyVersion: 'freshness-v1-shadow-once', goodMaxAgeSeconds: 10, staleMinAgeSeconds: 60 },
+    maxAcceptableSpreadPct: bootstrap.conventional.maximumSpreadPct,
+    stressGapThresholdAbsReturn: bootstrap.aegis.stressGapThresholdAbsoluteReturn, // versioned Paper bootstrap gap policy, not an empirically optimal threshold
+    sizingPolicy: { policyVersion: 'sizing-v2-shadow-once', riskBudgetQtyCap: bootstrap.sizing.riskBudgetQuantityCap, collateralQtyCap: bootstrap.sizing.collateralQuantityCap, concentrationQtyCap: bootstrap.sizing.concentrationQuantityCap,
+      assignmentCapacityQtyCap: bootstrap.sizing.assignmentCapacityQuantityCap, tailRiskQtyCap: bootstrap.sizing.tailRiskQuantityCap, correlationQtyCap: bootstrap.sizing.correlationQuantityCap, liquidityQtyCap: bootstrap.sizing.liquidityQuantityCap, reducedStateMultiplier: bootstrap.sizing.reducedStateMultiplier },
+    executionQualityPolicy: { policyVersion: 'execq-v1-shadow-once', maxAcceptableSpreadPct: bootstrap.conventional.maximumSpreadPct, minQuoteSizeForFullConfidence: 20, maxQuoteAgeSeconds: bootstrap.quoteAge.candidateMaximumSeconds, minAfterCostUtilityToCross: 0 },
+    candidateQuoteAgePolicy: { policyVersion: 'candidate-quote-age-v1-paper-bootstrap', effectiveAt: now, maxAgeSeconds: bootstrap.quoteAge.candidateMaximumSeconds },
+    finalistQuoteRefreshPolicy: { policyVersion: 'finalist-quote-refresh-v1-paper-bootstrap', effectiveAt: now, maxFinalists: 5, maxAgeSeconds: bootstrap.quoteAge.finalistMaximumSeconds },
+    optionQuoteFreshnessPolicy: { policyVersion: 'freshness-v1-shadow-once', goodMaxAgeSeconds: bootstrap.quoteAge.goodMaximumSeconds, staleMinAgeSeconds: bootstrap.quoteAge.staleMinimumSeconds },
     policyVersion: 'theta-shadow-once-v1',
     modelVersions: { historyAcquisition: shadowHistoryAcquisitionPolicyVersion },
     requiredModelVersions: {},

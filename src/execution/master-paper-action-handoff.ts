@@ -8,6 +8,7 @@ import { thetaActionOpensNewRisk, type ThetaOrderAction } from './order-construc
 import { executionAuthorizationTiers, type ExecutionAuthorizationTier, type PaperEvidenceSizing } from './execution-authorization-tier.js';
 import { paperEntrySafetyPolicyReceiptSchema, verifyPaperEntrySafetyPolicyReceipt, type PaperEntrySafetyPolicyReceipt } from '../theta/paper-entry-safety-policy.js';
 import { aegisAssessmentIdentitySchema, verifyAegisAssessmentIdentity, type AegisAssessmentIdentity } from '../theta/aegis-assessment-identity.js';
+import { paperBootstrapRuntimePolicy } from '../theta/paper-bootstrap-runtime-policy.js';
 
 export const masterPaperActionPlanVersion = 'theta-master-paper-action-plan-v4' as const;
 
@@ -117,8 +118,8 @@ export interface PreSubmitQuoteAgePolicy {
 // freshness so each stage can be measured and governed independently.
 export const paperBootstrapPreSubmitQuoteAgePolicy: PreSubmitQuoteAgePolicy = {
   policyVersion: 'pre-submit-quote-age-v1-paper-bootstrap',
-  effectiveAt: '2026-09-01T00:00:00.000Z',
-  maximumAgeMs: 45_000,
+  effectiveAt: paperBootstrapRuntimePolicy.effectiveAt,
+  maximumAgeMs: paperBootstrapRuntimePolicy.quoteAge.preSubmitMaximumMilliseconds,
 };
 
 export function preSubmitMaximumQuoteAgeMs(input: {

@@ -3,6 +3,8 @@ import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 import { premarketCertificationGroups, premarketCertificationVersion } from
   '../src/operations/premarket-certification-plan.js';
+import { auditPresessionConfiguration, paperBootstrapRuntimePolicy } from
+  '../src/theta/paper-bootstrap-runtime-policy.js';
 
 type CheckState = 'PASS' | 'FAIL' | 'EXTERNAL_BLOCKED' | 'FORWARD_DATA_REQUIRED';
 interface Check { readonly id: string; readonly state: CheckState; readonly detail: string }
@@ -27,6 +29,11 @@ const dirty = run('git', ['status', '--porcelain'], 30_000).stdout.trim();
 checks.push(check('SOURCE_REMOTE_SHA', sourceSha === remoteSha ? 'PASS' : 'FAIL',
   sourceSha === remoteSha ? sourceSha : 'SOURCE_REMOTE_MISMATCH'));
 checks.push(check('WORKTREE', dirty.length === 0 ? 'PASS' : 'FAIL', dirty.length === 0 ? 'CLEAN' : 'DIRTY'));
+
+const configurationAudit = auditPresessionConfiguration();
+checks.push(check('CONFIGURATION_AUTHORITY', configurationAudit.state,
+  configurationAudit.state === 'PASS' ? `${configurationAudit.entryCount}_TYPED_SETTINGS_NO_CONFLICTS`
+    : `DUPLICATES_${configurationAudit.duplicateNames.length}_INVALID_${configurationAudit.invalidEntries.length}`));
 
 const missingTests = premarketCertificationGroups.flatMap((group) => group.testFiles)
   .filter((file) => !existsSync(file));
@@ -95,6 +102,8 @@ try {
 
 const engineeringFailures = checks.filter((item) => item.state === 'FAIL');
 const externalBlocks = checks.filter((item) => item.state === 'EXTERNAL_BLOCKED');
+const stateOf = (id: string): CheckState => checks.find((item) => item.id === id)?.state ?? 'FAIL';
+const certifiedWhen = (id: string, passValue: string): string => stateOf(id) === 'PASS' ? passValue : `NOT_CERTIFIED_${stateOf(id)}`;
 const receipt = {
   contractVersion: premarketCertificationVersion,
   observedAt: new Date().toISOString(), sourceSha, remoteSha,
@@ -103,11 +112,53 @@ const receipt = {
   overall: engineeringFailures.length === 0 && externalBlocks.length === 0 ? 'PASS'
     : engineeringFailures.length > 0 ? 'FAIL' : 'EXTERNAL_BLOCKED',
   checks,
-  qPipeline: 'PASS', qCurrentCandidate: 'PENDING_OPEN',
-  dPairEngine: 'PASS', dCurrentBbo: 'PENDING_OPEN',
-  ivCollector: 'PASS', nextIvSession: 'FORWARD_DATA_REQUIRED',
-  recoveryEngine: 'PASS', realAssignedStock: 'FORWARD_DATA_REQUIRED',
-  coveredCallEngine: 'PASS', realCoveredInventory: 'FORWARD_DATA_REQUIRED',
+  configuration: {
+    state: configurationAudit.state,
+    policyVersion: paperBootstrapRuntimePolicy.policyVersion,
+    authority: paperBootstrapRuntimePolicy.authority,
+    empiricalStatus: paperBootstrapRuntimePolicy.empiricalStatus,
+    entryCount: configurationAudit.entryCount,
+    duplicateAuthorities: configurationAudit.duplicateNames,
+    invalidSettings: configurationAudit.invalidEntries,
+    invariants: configurationAudit.invariants,
+    stageSpecificQuoteAge: {
+      candidateSeconds: paperBootstrapRuntimePolicy.quoteAge.candidateMaximumSeconds,
+      finalistSeconds: paperBootstrapRuntimePolicy.quoteAge.finalistMaximumSeconds,
+      preSubmitMilliseconds: paperBootstrapRuntimePolicy.quoteAge.preSubmitMaximumMilliseconds,
+    },
+  },
+  decisionBrain: {
+    architecture: 'APPLICABILITY_TO_ENUMERATION_TO_HARD_SAFETY_TO_SOFT_EVIDENCE_TO_FORWARD_ECONOMICS_TO_TAIL_RISK_TO_EXECUTION_TO_CAPITAL_TO_COMPARISON_TO_SIZING_TO_DECISION',
+    strategyRouterAuthority: 'APPLICABILITY_ONLY',
+    economicSelectionAuthority: 'CANONICAL_STRATEGY_FRONTIER',
+    globalWaitRequirement: 'COMPLETE_FEASIBLE_SET_AND_TYPED_BINDING_REASON',
+    shadowMayOverridePaperAuthority: false,
+  },
+  strategyCertification: {
+    conventional: certifiedWhen('Q_H_D_A_C_ENGINEERING', 'ENGINEERING_CERTIFIED_PAPER_LOCKED'),
+    holdStrike: certifiedWhen('Q_H_D_A_C_ENGINEERING', 'ENGINEERING_CERTIFIED_SHADOW_ONLY'),
+    definedRisk: certifiedWhen('Q_H_D_A_C_ENGINEERING', 'ENGINEERING_CERTIFIED_SHADOW_ONLY'),
+    recovery: certifiedWhen('MANAGEMENT_LIFECYCLE_AND_ACCOUNTING', 'ENGINEERING_CERTIFIED_WHEN_LIFECYCLE_APPLICABLE'),
+    coveredCall: certifiedWhen('MANAGEMENT_LIFECYCLE_AND_ACCOUNTING', 'ENGINEERING_CERTIFIED_WHEN_LIFECYCLE_APPLICABLE'),
+  },
+  profitabilityTruth: {
+    expectedValueModel: 'EV_MODEL_NOT_EMPIRICALLY_READY',
+    profitability: 'EMPIRICALLY_UNPROVEN',
+    targetWinRate: 'RESEARCH_TARGET_NOT_PROVEN',
+    paperOutcomesRequired: true,
+  },
+  qPipeline: stateOf('Q_H_D_A_C_ENGINEERING'), qCurrentCandidate: 'PENDING_OPEN',
+  dPairEngine: stateOf('Q_H_D_A_C_ENGINEERING'), dCurrentBbo: 'PENDING_OPEN',
+  ivCollector: stateOf('AEGIS_AND_SIZING'), nextIvSession: 'FORWARD_DATA_REQUIRED',
+  recoveryEngine: stateOf('MANAGEMENT_LIFECYCLE_AND_ACCOUNTING'), realAssignedStock: 'FORWARD_DATA_REQUIRED',
+  coveredCallEngine: stateOf('MANAGEMENT_LIFECYCLE_AND_ACCOUNTING'), realCoveredInventory: 'FORWARD_DATA_REQUIRED',
+  unresolvedClassification: {
+    codeSolvable: engineeringFailures.map((item) => item.id),
+    external: externalBlocks.map((item) => item.id),
+    forwardData: ['CURRENT_SESSION_Q_H_D_MARKET_VALUES', 'MANAGED_PAPER_EPISODES', 'ASSIGNMENT_AND_COVERED_INVENTORY_OUTCOMES'],
+    empiricallyUnproven: ['ENTRY_EXPECTED_VALUE', 'MANAGEMENT_CONTINUATION_VALUE', 'CROSS_STRATEGY_UTILITY', 'SEVENTY_TO_EIGHTY_PERCENT_WIN_RATE'],
+    ownerPermissionRequired: ['R8G_FIRST_PAPER_ORDER', 'LIVE_MONEY', 'FOLLOWER_EXECUTION'],
+  },
   masterPaperExecutionEnabled: false, followerPaperExecutionEnabled: false,
   paperPauseNewOrders: true, orderSubmissions: 0, brokerMutations: 0,
 };

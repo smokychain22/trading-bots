@@ -6,8 +6,11 @@ import { expectedPremarketCertificationGroupIds, premarketCertificationGroups } 
 
 test('premarket certification covers provider, database, strategies, risk, lifecycle, and resilience', () => {
   assert.deepEqual(expectedPremarketCertificationGroupIds, [
-    'PROVIDER_CONTRACT_AND_FUZZ', 'DATABASE_CHAOS_AND_AMBIGUOUS_COMMIT', 'Q_H_D_A_C_ENGINEERING',
-    'AEGIS_AND_SIZING', 'MANAGEMENT_LIFECYCLE_AND_ACCOUNTING', 'RESTART_LEASE_AND_STORAGE',
+    'CONFIGURATION_AND_EVIDENCE_AUTHORITY', 'PROVIDER_CONTRACT_AND_FUZZ',
+    'DATABASE_CHAOS_AND_AMBIGUOUS_COMMIT', 'Q_H_D_A_C_ENGINEERING',
+    'DECISION_BRAIN_COMPARATOR_AND_WAIT', 'AEGIS_AND_SIZING',
+    'MANAGEMENT_LIFECYCLE_AND_ACCOUNTING', 'OUTCOMES_EXPERIMENTS_AND_GOVERNANCE',
+    'RESTART_LEASE_AND_STORAGE',
   ]);
   const files = premarketCertificationGroups.flatMap((group) => group.testFiles);
   assert.equal(new Set(files).size, files.length);

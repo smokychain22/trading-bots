@@ -1,4 +1,4 @@
-export const premarketCertificationVersion = 'theta-premarket-certification-v1' as const;
+export const premarketCertificationVersion = 'theta-presession-total-certification-v2' as const;
 
 export interface PremarketCertificationGroup {
   readonly id: string;
@@ -6,6 +6,11 @@ export interface PremarketCertificationGroup {
 }
 
 export const premarketCertificationGroups: readonly PremarketCertificationGroup[] = [
+  { id: 'CONFIGURATION_AND_EVIDENCE_AUTHORITY', testFiles: [
+    'tests/presession-configuration-registry.test.ts', 'tests/decision-critical-evidence-registry.test.ts',
+    'tests/runtime-policy-authority.test.ts', 'tests/false-safe-defaults.test.ts',
+    'tests/optionomics-feature-destinations.test.ts', 'tests/qualified-soft-feature-evidence.test.ts',
+  ] },
   { id: 'PROVIDER_CONTRACT_AND_FUZZ', testFiles: [
     'tests/alpaca-provider.test.ts', 'tests/optionomics-provider.test.ts', 'tests/option-contract.test.ts',
     'tests/option-chain-ingestion.test.ts', 'tests/trusted-option-quote.test.ts',
@@ -23,6 +28,11 @@ export const premarketCertificationGroups: readonly PremarketCertificationGroup[
     'tests/canonical-strategy-frontier.test.ts', 'tests/strategy-account-policy-compatibility.test.ts',
     'tests/recovery-covered-call-cohort.test.ts', 'tests/covered-call-lattice.test.ts',
   ] },
+  { id: 'DECISION_BRAIN_COMPARATOR_AND_WAIT', testFiles: [
+    'tests/strategy-router-contract.test.ts', 'tests/regime-contract.test.ts',
+    'tests/adaptive-decision-brain.test.ts', 'tests/common-horizon-economics.test.ts',
+    'tests/cross-strategy-common-horizon-contract.test.ts',
+  ] },
   { id: 'AEGIS_AND_SIZING', testFiles: [
     'tests/aegis-alpaca-iv-stress.test.ts', 'tests/aegis-iv-stress.test.ts',
     'tests/aegis-spread-stress.test.ts', 'tests/aegis-stress-baseline-maturity.test.ts',
@@ -33,6 +43,15 @@ export const premarketCertificationGroups: readonly PremarketCertificationGroup[
     'tests/management-action-frontier.test.ts', 'tests/management-invariants.test.ts',
     'tests/assignment-orchestrator.test.ts', 'tests/covered-call-orchestrator.test.ts',
     'tests/whole-chain-economics.test.ts', 'tests/p2g-lifecycle-simulator.test.ts',
+  ] },
+  { id: 'OUTCOMES_EXPERIMENTS_AND_GOVERNANCE', testFiles: [
+    'tests/profit-taking-experiment.test.ts', 'tests/profit-taking-replay.test.ts',
+    'tests/loss-roll-experiment.test.ts', 'tests/loss-state-vector.test.ts',
+    'tests/outcome-resolver.test.ts', 'tests/resolved-outcome-engine.test.ts',
+    'tests/theta-entry-outcome-dataset.test.ts', 'tests/theta-entry-model-readiness.test.ts',
+    'tests/managed-episode-outcome-distribution.test.ts', 'tests/managed-episode-path-features.test.ts',
+    'tests/whole-chain-component-evidence.test.ts', 'tests/empirical-policy-promotion.test.ts',
+    'tests/management-policy-promotion-ladder.test.ts',
   ] },
   { id: 'RESTART_LEASE_AND_STORAGE', testFiles: [
     'tests/resident-worker.test.ts', 'tests/runtime-request-lease.test.ts', 'tests/local-worker-auto-export.test.ts',
