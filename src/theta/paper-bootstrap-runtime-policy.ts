@@ -37,6 +37,7 @@ export const paperBootstrapRuntimePolicy = Object.freeze({
   }),
   aegis: Object.freeze({
     hardCapMultiplier: 1.5,
+    compoundStressHoldCount: 2,
     maximumTickerConcentrationPct: 0.15,
     maximumSectorConcentrationPct: 0.3,
     maximumCorrelationClusterPct: 0.3,
@@ -81,6 +82,7 @@ export const presessionConfigurationRegistry: readonly PresessionConfigurationEn
   entry('conventional.maximumSpreadPct', paperBootstrapRuntimePolicy.conventional.maximumSpreadPct, 'PERCENT_FRACTION', 'HARD_SAFETY', 'ExecutionQuality'),
   entry('conventional.earningsExclusionDays', paperBootstrapRuntimePolicy.conventional.earningsExclusionDays, 'DAYS', 'HARD_SAFETY', 'CompanyEventPaperPolicy'),
   entry('aegis.hardCapMultiplier', paperBootstrapRuntimePolicy.aegis.hardCapMultiplier, 'MULTIPLIER', 'HARD_SAFETY', 'Aegis'),
+  entry('aegis.compoundStressHoldCount', paperBootstrapRuntimePolicy.aegis.compoundStressHoldCount, 'COUNT', 'HARD_SAFETY', 'Aegis'),
   entry('aegis.maximumTickerConcentrationPct', paperBootstrapRuntimePolicy.aegis.maximumTickerConcentrationPct, 'PERCENT_FRACTION', 'HARD_SAFETY', 'Aegis'),
   entry('aegis.maximumSectorConcentrationPct', paperBootstrapRuntimePolicy.aegis.maximumSectorConcentrationPct, 'PERCENT_FRACTION', 'HARD_SAFETY', 'Aegis'),
   entry('aegis.maximumCorrelationClusterPct', paperBootstrapRuntimePolicy.aegis.maximumCorrelationClusterPct, 'PERCENT_FRACTION', 'HARD_SAFETY', 'Aegis'),
@@ -107,6 +109,7 @@ export const decisionCriticalConfigurationFields: readonly string[] = Object.fre
   'sizing.riskBudgetQuantityCap', 'sizing.collateralQuantityCap', 'sizing.concentrationQuantityCap',
   'sizing.assignmentCapacityQuantityCap', 'sizing.tailRiskQuantityCap', 'sizing.correlationQuantityCap',
   'sizing.liquidityQuantityCap', 'sizing.reducedStateMultiplier', 'aegis.hardCapMultiplier',
+  'aegis.compoundStressHoldCount',
   'aegis.maximumTickerConcentrationPct', 'aegis.maximumSectorConcentrationPct',
   'aegis.maximumCorrelationClusterPct', 'aegis.maximumPortfolioCapitalAtRiskPct',
   'aegis.maximumInventoryCapacityPct', 'aegis.maximumAssignmentCapacityPct',
@@ -144,6 +147,8 @@ export function auditPresessionConfiguration(): PresessionConfigurationAudit {
     freshnessBandsOrdered: paperBootstrapRuntimePolicy.quoteAge.goodMaximumSeconds < paperBootstrapRuntimePolicy.quoteAge.staleMinimumSeconds,
     spreadBounded: paperBootstrapRuntimePolicy.conventional.maximumSpreadPct > 0 && paperBootstrapRuntimePolicy.conventional.maximumSpreadPct <= 1,
     concentrationBounded: paperBootstrapRuntimePolicy.aegis.maximumTickerConcentrationPct > 0 && paperBootstrapRuntimePolicy.aegis.maximumTickerConcentrationPct <= 1,
+    compoundStressHoldCountValid: Number.isInteger(paperBootstrapRuntimePolicy.aegis.compoundStressHoldCount)
+      && paperBootstrapRuntimePolicy.aegis.compoundStressHoldCount >= 2,
     reducedSizingBounded: paperBootstrapRuntimePolicy.sizing.reducedStateMultiplier > 0 && paperBootstrapRuntimePolicy.sizing.reducedStateMultiplier <= 1,
     deltaBandsOrdered: paperBootstrapRuntimePolicy.conventional.deltaBands.every(([low, high]) => low >= 0 && high <= 1 && low < high),
   } as const;

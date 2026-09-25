@@ -105,7 +105,7 @@ const baseRequest = (overrides: Partial<NewRiskOrchestrationRequest> = {}): NewR
   },
   costAssumptions: { commissionPerContract: 0.65, feesPerContract: 0.05, estimatedSlippagePerContract: 1.0, costModelVersion: 'cost-v1' },
   aegisPolicy: {
-    policyVersion: 'aegis-v1', hardCapMultiplier: 1.5, maxTickerConcentrationPct: 0.15, maxSectorConcentrationPct: 0.3, maxCorrelationClusterPct: 0.3,
+    policyVersion: 'aegis-v1', hardCapMultiplier: 1.5, compoundStressHoldCount: 2, maxTickerConcentrationPct: 0.15, maxSectorConcentrationPct: 0.3, maxCorrelationClusterPct: 0.3,
     maxPortfolioCapitalAtRiskPct: 0.5, maxInventoryCapacityPct: 0.5, maxAssignmentCapacityPct: 0.5,
     maxRecoveryCapacityPct: 0.3, providerRequiredStates: ['OK'],
   },

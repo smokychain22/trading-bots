@@ -71,6 +71,7 @@ class RiskFamilyAssessment:
 class AegisPolicy:
     policy_version: str
     hard_cap_multiplier: float
+    compound_stress_hold_count: int
     max_ticker_concentration_pct: float
     max_sector_concentration_pct: float
     max_correlation_cluster_pct: float
@@ -162,7 +163,7 @@ def _provider(policy: AegisPolicy, inputs: AegisInputs) -> RiskFamilyAssessment:
     return RiskFamilyAssessment(RiskFamily.PROVIDER, RiskState.ALLOW_FULL, [ReasonCode("PROVIDER_OK", 1, f"provider_state={inputs.provider_state}")])
 
 
-def _system(inputs: AegisInputs) -> RiskFamilyAssessment:
+def _system(policy: AegisPolicy, inputs: AegisInputs) -> RiskFamilyAssessment:
     stress_states = [inputs.stress_gap_detected]
     if inputs.stress_iv_shock_applicability != "PAPER_COLD_START_NOT_APPLICABLE":
         stress_states.append(inputs.stress_iv_shock_detected)
@@ -171,10 +172,12 @@ def _system(inputs: AegisInputs) -> RiskFamilyAssessment:
     if any(state is None for state in stress_states):
         return RiskFamilyAssessment(RiskFamily.SYSTEM, RiskState.HOLD_ONLY, [ReasonCode("SYSTEM_STRESS_STATE_UNKNOWN", -1, "One or more applicable system stress inputs are UNKNOWN.")])
     stress_count = sum(bool(state) for state in stress_states)
-    if stress_count >= 2:
-        return RiskFamilyAssessment(RiskFamily.SYSTEM, RiskState.HOLD_ONLY, [ReasonCode("COMPOUND_STRESS_DETECTED", -1, f"{stress_count} simultaneous stress signals detected.")])
+    if stress_count >= policy.compound_stress_hold_count:
+        return RiskFamilyAssessment(RiskFamily.SYSTEM, RiskState.HOLD_ONLY, [ReasonCode("COMPOUND_STRESS_DETECTED", -1, f"{stress_count} simultaneous stress signals detected; policy threshold={policy.compound_stress_hold_count}.")])
     if stress_count == 1:
         return RiskFamilyAssessment(RiskFamily.SYSTEM, RiskState.ALLOW_REDUCED, [ReasonCode("SINGLE_STRESS_DETECTED", -1, "One stress signal detected (gap/IV shock/spread widening).")])
+    if stress_count > 1:
+        return RiskFamilyAssessment(RiskFamily.SYSTEM, RiskState.ALLOW_REDUCED, [ReasonCode("SUB_THRESHOLD_STRESS_DETECTED", -1, f"{stress_count} stress signals detected below policy threshold={policy.compound_stress_hold_count}.")])
     return RiskFamilyAssessment(RiskFamily.SYSTEM, RiskState.ALLOW_FULL, [ReasonCode("SYSTEM_OK", 1, "No stress signals detected.")])
 
 
@@ -194,7 +197,7 @@ def assess_aegis(policy: AegisPolicy, inputs: AegisInputs) -> AegisAssessment:
         _liquidity(inputs),
         _execution(inputs),
         _provider(policy, inputs),
-        _system(inputs),
+        _system(policy, inputs),
     ]
     new_risk_state = RiskState.ALLOW_FULL
     for assessment in families:

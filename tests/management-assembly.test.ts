@@ -19,7 +19,7 @@ const management = (selectedAction: ManagementDecisionResponse['selectedAction']
 });
 
 const aegis = (state: AegisAssessmentResponse['newRiskState']): AegisAssessmentResponse => ({
-  contractVersion: 'theta-aegis-runtime-v1', decisionId: 'd1', snapshotId: 's1', timestamp: NOW, policyVersion: 'v1',
+  contractVersion: 'theta-aegis-runtime-v1', decisionId: 'd1', snapshotId: 's1', timestamp: NOW, policyVersion: 'v1', compoundStressHoldCount: 2, policyConfigurationHash: 'a'.repeat(64),
   families: [{ family: 'PER_TRADE', state, reasons: [] }], newRiskState: state, reasons: [],
   permittedActions: ['CLOSE', 'CANCEL', 'BUY_TO_CLOSE', 'RECONCILE', 'REDUCE_POSITION', 'SAFETY_EXIT'],
 });

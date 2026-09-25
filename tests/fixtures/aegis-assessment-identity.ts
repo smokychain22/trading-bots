@@ -36,6 +36,8 @@ export function testAegisAssessmentIdentity(input: Partial<{
       snapshotId: fusionSnapshotHash,
       timestamp: decisionAsOf,
       policyVersion: 'aegis-policy-v1',
+      compoundStressHoldCount: 2,
+      policyConfigurationHash: 'a'.repeat(64),
       families: [{ family: 'SYSTEM', state: newRiskState, reasons: [] }],
       newRiskState,
       reasons: [],

@@ -7,8 +7,8 @@ import { thetaFeatureFamily } from '../src/theta/strategy-package.js';
 
 test('V18 configuration denominator is complete and conflict free', () => {
   const receipt = buildV18FinalAcceptanceReceipt();
-  assert.equal(receipt.CONFIG_FIELDS_TOTAL, 29);
-  assert.equal(receipt.CONFIG_FIELDS_CANONICAL, 29);
+  assert.equal(receipt.CONFIG_FIELDS_TOTAL, 30);
+  assert.equal(receipt.CONFIG_FIELDS_CANONICAL, 30);
   assert.deepEqual(receipt.UNREGISTERED_DECISION_CRITICAL_CONFIG, []);
   assert.deepEqual(receipt.DUPLICATE_CONFIG_AUTHORITIES, []);
   assert.deepEqual(receipt.CONFLICTING_CONFIG_VALUES, []);

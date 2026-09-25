@@ -21,6 +21,7 @@ def _policy(**overrides) -> AegisPolicy:
     defaults = dict(
         policy_version="TEST-AEGIS-1",
         hard_cap_multiplier=1.5,
+        compound_stress_hold_count=2,
         max_ticker_concentration_pct=0.20,
         max_sector_concentration_pct=0.35,
         max_correlation_cluster_pct=0.40,
@@ -171,6 +172,13 @@ class StressTests(unittest.TestCase):
     def test_compound_stress_holds_new_risk(self):
         assessment = assess_aegis(_policy(), _clean_inputs(stress_gap_detected=True, stress_iv_shock_detected=True))
         self.assertEqual(assessment.new_risk_state, RiskState.HOLD_ONLY)
+
+    def test_compound_stress_threshold_is_read_from_versioned_policy(self):
+        assessment = assess_aegis(
+            _policy(compound_stress_hold_count=3),
+            _clean_inputs(stress_gap_detected=True, stress_iv_shock_detected=True),
+        )
+        self.assertEqual(assessment.new_risk_state, RiskState.ALLOW_REDUCED)
 
 
 if __name__ == "__main__":

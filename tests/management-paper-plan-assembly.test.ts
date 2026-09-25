@@ -66,6 +66,14 @@ test('passive management remains a recorded no-order action',()=>{
   assert.deepEqual(result.plans,[]);
 });
 
+test('REDEPLOY is a broker-confirmed lifecycle marker and cannot open risk inside an unresolved management cycle',()=>{
+  const result=assembleManagementPaperPlans(input('REDEPLOY'));
+  assert.equal(result.state,'BLOCKED');
+  if(result.state!=='BLOCKED')return;
+  assert.deepEqual(result.blockers,['REDEPLOY_REQUIRES_RESOLVED_EXIT_AND_NEW_RISK_SELECTION']);
+  assert.deepEqual(result.plans,[]);
+});
+
 test('selected CSP close becomes one authority-linked risk-reducing plan without quantity clipping',()=>{
   const result=assembleManagementPaperPlans(input('CLOSE_FULL',{executionLegs:[{action:'CLOSE_CSP',
     symbol:'AAPL261016P00200000',optionContractId:ids.contract,optionType:'PUT',multiplier:100,canonicalQuantity:2,

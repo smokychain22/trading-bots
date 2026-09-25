@@ -1,6 +1,7 @@
 import type { NewRiskDecisionReceipt } from './decision-assembly.js';
 import type { CanonicalStrategyFrontier, CanonicalFrontierAction } from './canonical-strategy-frontier.js';
 import type { ThetaStrategyBranch } from './strategy-package.js';
+import { resolveSelectionAuthorityBoundary, type SelectionAuthorityBoundary } from './selection-authority-boundary.js';
 
 export const unavailableCanonicalDecisionAuthorityVersion = 'theta-canonical-decision-authority-unavailable-v1' as const;
 
@@ -12,6 +13,7 @@ export interface ResolvedCanonicalDecisionAuthority {
   readonly decisionAuthorityVersion: string;
   readonly reasonCodes: readonly string[];
   readonly subordinateReceipt: NewRiskDecisionReceipt;
+  readonly selectionAuthorityBoundary: SelectionAuthorityBoundary;
 }
 
 /**
@@ -24,6 +26,7 @@ export function resolveCanonicalDecisionAuthority(
   frontier: CanonicalStrategyFrontier | null | undefined,
   subordinateReceipt: NewRiskDecisionReceipt,
 ): ResolvedCanonicalDecisionAuthority {
+  const selectionAuthorityBoundary = resolveSelectionAuthorityBoundary();
   if (frontier == null) {
     return {
       selectedCandidateRef: null,
@@ -31,8 +34,9 @@ export function resolveCanonicalDecisionAuthority(
       quantity: 0,
       strategyBranch: null,
       decisionAuthorityVersion: unavailableCanonicalDecisionAuthorityVersion,
-      reasonCodes: ['CANONICAL_DECISION_AUTHORITY_UNAVAILABLE'],
+      reasonCodes: ['CANONICAL_DECISION_AUTHORITY_UNAVAILABLE', 'SELECTION_AUTHORITY_STRUCTURAL_SAFE_FALLBACK'],
       subordinateReceipt,
+      selectionAuthorityBoundary,
     };
   }
   return {
@@ -41,10 +45,11 @@ export function resolveCanonicalDecisionAuthority(
     quantity: frontier.selectedQuantity,
     strategyBranch: frontier.selectedBranch,
     decisionAuthorityVersion: frontier.decisionAuthorityVersion,
-    reasonCodes: frontier.globalWaitEarned ? frontier.globalWaitReasons
+    reasonCodes: [...(frontier.globalWaitEarned ? frontier.globalWaitReasons
       : frontier.primaryAction === 'MANAGEMENT_AUTHORITY' ? ['MANAGEMENT_FIRST']
         : frontier.selectedCandidateId === null ? ['CANONICAL_STRUCTURAL_SELECTION_UNAVAILABLE']
-          : ['CANONICAL_STRUCTURAL_SELECTION'],
+          : ['CANONICAL_STRUCTURAL_SELECTION']), 'SELECTION_AUTHORITY_STRUCTURAL_SAFE_FALLBACK'],
     subordinateReceipt,
+    selectionAuthorityBoundary,
   };
 }

@@ -19,8 +19,10 @@ test('a legacy/new-risk receipt can never select candidate, action, or quantity 
   assert.equal(resolved.actionCode, 'SYSTEM_HOLD');
   assert.equal(resolved.quantity, 0);
   assert.equal(resolved.strategyBranch, null);
-  assert.deepEqual(resolved.reasonCodes, ['CANONICAL_DECISION_AUTHORITY_UNAVAILABLE']);
+  assert.deepEqual(resolved.reasonCodes, ['CANONICAL_DECISION_AUTHORITY_UNAVAILABLE', 'SELECTION_AUTHORITY_STRUCTURAL_SAFE_FALLBACK']);
   assert.equal(resolved.subordinateReceipt.selectedCandidateId, 'LEGACY-CANDIDATE');
+  assert.equal(resolved.selectionAuthorityBoundary.activeMode, 'STRUCTURAL_SAFE_FALLBACK');
+  assert.equal(resolved.selectionAuthorityBoundary.promotedModeAvailable, false);
 });
 
 test('the canonical frontier is the only selection authority when legacy evidence disagrees', () => {
@@ -34,5 +36,5 @@ test('the canonical frontier is the only selection authority when legacy evidenc
   assert.equal(resolved.actionCode, 'OPEN_CSP');
   assert.equal(resolved.quantity, 1);
   assert.equal(resolved.strategyBranch, 'THETA_CONVENTIONAL');
-  assert.deepEqual(resolved.reasonCodes, ['CANONICAL_STRUCTURAL_SELECTION']);
+  assert.deepEqual(resolved.reasonCodes, ['CANONICAL_STRUCTURAL_SELECTION', 'SELECTION_AUTHORITY_STRUCTURAL_SAFE_FALLBACK']);
 });

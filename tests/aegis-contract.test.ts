@@ -10,6 +10,8 @@ const basePayload = (overrides: Record<string, unknown> = {}) => ({
   snapshotId: 'snapshot-1',
   timestamp: new Date().toISOString(),
   policyVersion: 'v1',
+  compoundStressHoldCount: 2,
+  policyConfigurationHash: 'a'.repeat(64),
   families: [{ family: 'PER_TRADE', state: 'ALLOW_FULL', reasons: [] }],
   newRiskState: 'ALLOW_FULL',
   reasons: [],

@@ -56,6 +56,8 @@ export const aegisAssessmentResponseSchema = z.object({
   snapshotId: z.string().min(1),
   timestamp: z.string().datetime({ offset: true }),
   policyVersion: z.string().min(1),
+  compoundStressHoldCount: z.number().int().min(2),
+  policyConfigurationHash: z.string().regex(/^[a-f0-9]{64}$/),
   families: z.array(familyAssessmentSchema).min(1),
   newRiskState: riskStateSchema,
   reasons: z.array(reasonSchema),

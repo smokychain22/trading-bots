@@ -130,7 +130,7 @@ test('a frontier with no selected underlying reports its own reason as the waitR
 
 test('AEGIS result and model versions pass through unchanged, never recomputed', () => {
   const aegis = {
-    contractVersion: 'theta-aegis-runtime-v1', decisionId: 'd1', snapshotId: 'snap-1', timestamp: NOW, policyVersion: 'v1',
+    contractVersion: 'theta-aegis-runtime-v1', decisionId: 'd1', snapshotId: 'snap-1', timestamp: NOW, policyVersion: 'v1', compoundStressHoldCount: 2, policyConfigurationHash: 'a'.repeat(64),
     families: [], newRiskState: 'ALLOW_FULL', reasons: [], permittedActions: [],
   } as unknown as NewRiskOrchestrationResult['aegis'];
   const receipt = assembleStrategyRouteReceipt(routing(), resultFor({ aegis }), null, { thetaQ: 'v3' });

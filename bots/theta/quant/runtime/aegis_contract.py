@@ -11,6 +11,7 @@ never re-derived independently, so the two languages cannot drift apart.
 from __future__ import annotations
 
 from dataclasses import asdict
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -34,9 +35,13 @@ def _policy(data: dict[str, Any]) -> AegisPolicy:
     hard_cap_multiplier = _required(data, "hardCapMultiplier")
     if not isinstance(hard_cap_multiplier, (int, float)) or hard_cap_multiplier <= 1:
         raise ValueError("hardCapMultiplier must be a number greater than 1")
+    compound_stress_hold_count = _required(data, "compoundStressHoldCount")
+    if isinstance(compound_stress_hold_count, bool) or not isinstance(compound_stress_hold_count, int) or compound_stress_hold_count < 2:
+        raise ValueError("compoundStressHoldCount must be an integer greater than or equal to 2")
     return AegisPolicy(
         policy_version=_required(data, "policyVersion"),
         hard_cap_multiplier=hard_cap_multiplier,
+        compound_stress_hold_count=compound_stress_hold_count,
         max_ticker_concentration_pct=_required(data, "maxTickerConcentrationPct"),
         max_sector_concentration_pct=_required(data, "maxSectorConcentrationPct"),
         max_correlation_cluster_pct=_required(data, "maxCorrelationClusterPct"),
@@ -80,7 +85,8 @@ def evaluate_request(request: dict[str, Any]) -> dict[str, Any]:
     decision_id = _required(request, "decisionId")
     snapshot_id = _required(request, "snapshotId")
     timestamp = _required(request, "timestamp")
-    policy = _policy(_required(request, "policy"))
+    policy_data = _required(request, "policy")
+    policy = _policy(policy_data)
     inputs = _inputs(_required(request, "inputs"))
 
     assessment = assess_aegis(policy, inputs)
@@ -93,6 +99,10 @@ def evaluate_request(request: dict[str, Any]) -> dict[str, Any]:
         "snapshotId": snapshot_id,
         "timestamp": timestamp,
         "policyVersion": policy.policy_version,
+        "compoundStressHoldCount": policy.compound_stress_hold_count,
+        "policyConfigurationHash": hashlib.sha256(
+            json.dumps(policy_data, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        ).hexdigest(),
         "families": [
             {"family": f.family.value, "state": f.state.value, "reasons": [asdict(r) for r in f.reasons]}
             for f in assessment.families

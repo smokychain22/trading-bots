@@ -34,6 +34,7 @@ def _request(**overrides):
             "policyVersion": "aegis-v1-test", "maxTickerConcentrationPct": 0.15, "maxSectorConcentrationPct": 0.3,
             "maxCorrelationClusterPct": 0.3, "maxPortfolioCapitalAtRiskPct": 0.5, "maxInventoryCapacityPct": 0.5,
             "maxAssignmentCapacityPct": 0.5, "maxRecoveryCapacityPct": 0.3, "hardCapMultiplier": 1.5,
+            "compoundStressHoldCount": 2,
             "providerRequiredStates": ["OK"],
         },
         "inputs": _inputs(),
@@ -46,6 +47,8 @@ class AegisContractTests(unittest.TestCase):
     def test_all_clear_inputs_yield_allow_full(self):
         response = evaluate_request(_request())
         self.assertEqual(response["newRiskState"], "ALLOW_FULL")
+        self.assertEqual(response["compoundStressHoldCount"], 2)
+        self.assertRegex(response["policyConfigurationHash"], r"^[a-f0-9]{64}$")
 
     def test_exit_supremacy_actions_are_always_permitted_even_under_hard_veto(self):
         request = _request()
