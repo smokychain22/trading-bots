@@ -19,6 +19,13 @@
  * utility-AT-horizon-H decomposition (`realizedCashflowsThroughH`,
  * `terminalMarkAtH`, `continuationValueBeyondH`, `costs`, `riskPenalty`,
  * `capitalBasis`), with every unavailable value staying `null`, never `0`.
+ *
+ * COMMAND 5C-7 §36 addition: `uncertainty` is the eighth explicit
+ * component the directive names alongside the seven above -- a
+ * calibrated-uncertainty figure for the utility estimate itself, kept
+ * structurally separate from `totalUtility` (it is reported alongside the
+ * total, never summed into it -- uncertainty is a property OF the
+ * estimate, not a cash-flow component of it).
  */
 import { canonicalThetaStrategySources } from '../theta/strategy-package.js';
 
@@ -54,6 +61,7 @@ export interface CommonHorizonUtility {
   readonly riskPenalty: number | null;
   readonly capitalBasis: number | null;
   readonly capitalDays: number | null;
+  readonly uncertainty: number | null;
   /** Sum of the six null-safe components, or `null` if ANY component
    * required to be non-null for a meaningful total is missing. Never
    * substitutes `0` for a missing component to force a total. */
@@ -69,6 +77,7 @@ export function buildCommonHorizonUtility(input: {
   readonly riskPenalty: number | null;
   readonly capitalBasis: number | null;
   readonly capitalDays: number | null;
+  readonly uncertainty: number | null;
 }): CommonHorizonUtility {
   const components = [
     input.realizedCashflowsThroughH, input.terminalMarkAtH, input.continuationValueBeyondH,
@@ -80,6 +89,6 @@ export function buildCommonHorizonUtility(input: {
     horizonDefinitionVersion: input.horizonDefinitionVersion,
     realizedCashflowsThroughH: input.realizedCashflowsThroughH, terminalMarkAtH: input.terminalMarkAtH,
     continuationValueBeyondH: input.continuationValueBeyondH, costs: input.costs, riskPenalty: input.riskPenalty,
-    capitalBasis: input.capitalBasis, capitalDays: input.capitalDays, totalUtility,
+    capitalBasis: input.capitalBasis, capitalDays: input.capitalDays, uncertainty: input.uncertainty, totalUtility,
   };
 }

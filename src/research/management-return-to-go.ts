@@ -67,3 +67,52 @@ export function buildManagementReturnToGoRows(input: {
     };
   });
 }
+
+/**
+ * COMMAND 5C-7 item 33-34 (management action-value pipeline, decision
+ * timing research). Extends the factual return-to-go row above with the
+ * additional fields the directive names: risk-to-go, capital-days-to-go,
+ * tail outcome, and opportunity cost. Same structural discipline as
+ * above -- only the selected alternative may carry non-null values;
+ * unchosen alternatives are forced to `NOT_IDENTIFIABLE`/null regardless
+ * of caller input.
+ */
+export interface ManagementActionValueInputs {
+  readonly riskToGo: number | null;
+  readonly capitalDaysToGo: number | null;
+  readonly tailOutcome: number | null;
+  readonly opportunityCost: number | null;
+}
+
+export interface ManagementActionValueRow extends ManagementReturnToGoRow, ManagementActionValueInputs {
+  /** Command 5C-7 §34: too-early/too-late close, winner-to-loser, loss
+   * acceleration, expiry/event/assignment proximity -- a real, closed
+   * enum, never a new Production threshold. `null` when not yet
+   * classifiable (e.g. the chain is still open). */
+  readonly timingClassification: ManagementTimingClassification | null;
+}
+
+export type ManagementTimingClassification =
+  | 'TOO_EARLY_CLOSE' | 'TOO_LATE_CLOSE' | 'WINNER_GIVEBACK' | 'WINNER_TO_LOSER'
+  | 'LOSS_ACCELERATION' | 'EXPIRY_PROXIMITY_DRIVEN' | 'EVENT_PROXIMITY_DRIVEN' | 'ASSIGNMENT_PROXIMITY_DRIVEN' | 'NOT_CLASSIFIABLE';
+
+export function buildManagementActionValueRows(input: {
+  readonly managementDecisionPointId: string;
+  readonly alternatives: readonly ManagementActionAlternative[];
+  readonly selectedActionResolvedReturnToGo: number | null;
+  readonly selectedActionResolvedAt: string | null;
+  readonly selectedActionValues: ManagementActionValueInputs;
+  readonly selectedActionTimingClassification: ManagementTimingClassification | null;
+}): readonly ManagementActionValueRow[] {
+  const baseRows = buildManagementReturnToGoRows(input);
+  const emptyValues: ManagementActionValueInputs = { riskToGo: null, capitalDaysToGo: null, tailOutcome: null, opportunityCost: null };
+  if (input.selectedActionValues.riskToGo !== null || input.selectedActionValues.capitalDaysToGo !== null
+    || input.selectedActionValues.tailOutcome !== null || input.selectedActionValues.opportunityCost !== null) {
+    if (input.selectedActionResolvedAt === null) throw new Error('MANAGEMENT_ACTION_VALUE_INPUTS_WITHOUT_RESOLVED_AT');
+  }
+  return baseRows.map((row) => ({
+    ...row,
+    ...(row.identifiabilityStatus === 'FACTUAL_OBSERVED' ? input.selectedActionValues : emptyValues),
+    timingClassification: row.identifiabilityStatus === 'FACTUAL_OBSERVED' ? input.selectedActionTimingClassification : null,
+  }));
+}

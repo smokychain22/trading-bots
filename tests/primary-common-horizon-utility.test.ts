@@ -13,6 +13,7 @@ test('unavailable utility components stay null, never coerced to zero', () => {
   const utility = buildCommonHorizonUtility({
     horizonDefinitionVersion: 'v1', realizedCashflowsThroughH: 100, terminalMarkAtH: null,
     continuationValueBeyondH: null, costs: 5, riskPenalty: null, capitalBasis: 1000, capitalDays: null,
+    uncertainty: null,
   });
   assert.equal(utility.terminalMarkAtH, null);
   assert.equal(utility.totalUtility, null); // any missing component forces the total null, never a partial sum
@@ -22,7 +23,28 @@ test('a fully-known utility computes a real total', () => {
   const utility = buildCommonHorizonUtility({
     horizonDefinitionVersion: 'v1', realizedCashflowsThroughH: 100, terminalMarkAtH: 20,
     continuationValueBeyondH: 10, costs: 5, riskPenalty: 3, capitalBasis: 1000, capitalDays: 500,
+    uncertainty: 0.2,
   });
   assert.equal(utility.totalUtility, 100 + 20 + 10 - 5 - 3);
   assert.equal(utility.horizonCalendarDays, 60);
+});
+
+test('CORE CLAIM (5C-7 §36): uncertainty is reported alongside the total, never folded into it', () => {
+  const utility = buildCommonHorizonUtility({
+    horizonDefinitionVersion: 'v1', realizedCashflowsThroughH: 100, terminalMarkAtH: 20,
+    continuationValueBeyondH: 10, costs: 5, riskPenalty: 3, capitalBasis: 1000, capitalDays: 500,
+    uncertainty: 0.35,
+  });
+  assert.equal(utility.uncertainty, 0.35);
+  assert.equal(utility.totalUtility, 100 + 20 + 10 - 5 - 3); // unchanged by uncertainty
+});
+
+test('a missing uncertainty stays null, never coerced to zero', () => {
+  const utility = buildCommonHorizonUtility({
+    horizonDefinitionVersion: 'v1', realizedCashflowsThroughH: 100, terminalMarkAtH: 20,
+    continuationValueBeyondH: 10, costs: 5, riskPenalty: 3, capitalBasis: 1000, capitalDays: 500,
+    uncertainty: null,
+  });
+  assert.equal(utility.uncertainty, null);
+  assert.equal(utility.totalUtility, 100 + 20 + 10 - 5 - 3); // total is still computable -- uncertainty missing does not block it
 });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildManagementReturnToGoRows } from '../src/research/management-return-to-go.js';
+import { buildManagementActionValueRows, buildManagementReturnToGoRows } from '../src/research/management-return-to-go.js';
 
 test('CORE CLAIM: unchosen management actions never inherit the chosen action realized return', () => {
   const rows = buildManagementReturnToGoRows({
@@ -41,4 +41,30 @@ test('ADVERSARIAL: a value without a resolved timestamp is rejected', () => {
     alternatives: [{ action: 'HOLD', wasSelected: true }],
     selectedActionResolvedReturnToGo: 10, selectedActionResolvedAt: null,
   }), /MANAGEMENT_RETURN_TO_GO_VALUE_WITHOUT_RESOLVED_AT/);
+});
+
+test('CORE CLAIM (5C-7 items 33-34): risk-to-go/capital-days-to-go/tail-outcome/opportunity-cost never leak onto an unchosen alternative', () => {
+  const rows = buildManagementActionValueRows({
+    managementDecisionPointId: 'm5',
+    alternatives: [{ action: 'ROLL', wasSelected: true }, { action: 'CLOSE_FULL', wasSelected: false }],
+    selectedActionResolvedReturnToGo: 20, selectedActionResolvedAt: '2026-09-25T00:00:00Z',
+    selectedActionValues: { riskToGo: 5, capitalDaysToGo: 10, tailOutcome: -2, opportunityCost: 1 },
+    selectedActionTimingClassification: 'WINNER_GIVEBACK',
+  });
+  const chosen = rows.find((r) => r.action === 'ROLL') as (typeof rows)[number];
+  const unchosen = rows.find((r) => r.action === 'CLOSE_FULL') as (typeof rows)[number];
+  assert.equal(chosen.riskToGo, 5);
+  assert.equal(chosen.timingClassification, 'WINNER_GIVEBACK');
+  assert.equal(unchosen.riskToGo, null);
+  assert.equal(unchosen.timingClassification, null);
+});
+
+test('values without a resolved timestamp are rejected for the extended builder too', () => {
+  assert.throws(() => buildManagementActionValueRows({
+    managementDecisionPointId: 'm6',
+    alternatives: [{ action: 'HOLD', wasSelected: true }],
+    selectedActionResolvedReturnToGo: null, selectedActionResolvedAt: null,
+    selectedActionValues: { riskToGo: 5, capitalDaysToGo: null, tailOutcome: null, opportunityCost: null },
+    selectedActionTimingClassification: null,
+  }), /MANAGEMENT_ACTION_VALUE_INPUTS_WITHOUT_RESOLVED_AT/);
 });
