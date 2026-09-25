@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { auditPresessionConfiguration, paperBootstrapRuntimePolicy,
+import { auditPresessionConfiguration, decisionCriticalConfigurationFields, paperBootstrapRuntimePolicy,
   presessionConfigurationRegistry } from '../src/theta/paper-bootstrap-runtime-policy.js';
 import { paperBootstrapPreSubmitQuoteAgePolicy } from '../src/execution/master-paper-action-handoff.js';
 import { defaultShadowCycleConfig } from '../src/theta/theta-shadow-once.js';
@@ -9,8 +9,11 @@ test('pre-session configuration registry has one valid typed authority', () => {
   const audit = auditPresessionConfiguration();
   assert.equal(audit.state, 'PASS');
   assert.equal(audit.duplicateNames.length, 0);
+  assert.equal(audit.unregisteredFields.length, 0);
   assert.equal(audit.invalidEntries.length, 0);
   assert.equal(audit.entryCount, presessionConfigurationRegistry.length);
+  assert.equal(audit.entryCount, decisionCriticalConfigurationFields.length);
+  assert.equal(audit.entryCount, 29);
   assert.ok(Object.values(audit.invariants).every(Boolean));
 });
 

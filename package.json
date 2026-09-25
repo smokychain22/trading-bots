@@ -70,6 +70,7 @@
     "theta:premarket:accelerated-soak": "node --import tsx tools/theta-accelerated-session-soak.ts",
     "theta:premarket:certify": "node --import tsx tools/theta-premarket-certify.ts",
     "theta:presession:certify": "node --import tsx tools/theta-premarket-certify.ts",
+    "theta:v18:acceptance": "node --import tsx tools/theta-v18-final-acceptance.ts",
     "optionomics:quote-qualification": "node --env-file=.env.local --import tsx tools/optionomics-quote-qualification.ts",
     "optionomics:qualify": "node --env-file=.env.local --import tsx tools/theta-optionomics-qualify.ts",
     "quote:qualify": "node --import tsx tools/theta-quote-qualify.ts",

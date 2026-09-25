@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { paperBootstrapRuntimePolicy } from './paper-bootstrap-runtime-policy.js';
 
 /** Canonical business names. The existing THETA_Q/H/A/C/D router codes map here. */
 export const thetaStrategyBranch = z.enum([
@@ -126,7 +127,9 @@ const refs = {
 export const canonicalThetaStrategySources: readonly ThetaStrategyVersionSource[] = [
   { ...refs, strategyId: 'theta-conventional', strategyVersion: '1.0.1-research', branch: 'THETA_CONVENTIONAL',
     status: 'SHADOW', executionEnabled: false,
-    lattice: { dteMin: 25, dteMax: 60, optionType: 'PUT', deltaResearchBuckets: [0.10, 0.15, 0.20, 0.25, 0.30, 0.40] },
+    lattice: { dteMin: paperBootstrapRuntimePolicy.conventional.minimumDte,
+      dteMax: paperBootstrapRuntimePolicy.conventional.maximumDte, optionType: 'PUT',
+      deltaResearchBuckets: [0.10, 0.15, 0.20, 0.25, 0.30, 0.40] },
     softFeatureFamilies: ['LIQUIDITY', 'OWNERSHIP', 'DRAWDOWN_RECOVERY', 'TREND', 'MOMENTUM', 'REALIZED_VOLATILITY', 'IV', 'SKEW', 'TERM_STRUCTURE', 'VOLATILITY_SURFACE', 'FLOW', 'UNUSUAL_ACTIVITY', 'VOLUME_OPEN_INTEREST', 'EVENT_CONTEXT', 'SECTOR', 'CORRELATION', 'PORTFOLIO_EXPOSURE', 'FUNDAMENTAL_QUALITY', 'REGIME', 'EXECUTION_QUALITY'],
     allowedActions: ['OPEN_CSP', 'HOLD', 'CLOSE_FULL', 'ROLL', 'LET_EXPIRE', 'ACCEPT_ASSIGNMENT', 'REDEPLOY', 'WAIT', 'PASS'] },
   { ...refs, strategyId: 'theta-hold-strike', strategyVersion: '1.0.0-research', branch: 'THETA_HOLD_STRIKE',

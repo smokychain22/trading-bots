@@ -119,6 +119,7 @@ const receipt = {
     authority: paperBootstrapRuntimePolicy.authority,
     empiricalStatus: paperBootstrapRuntimePolicy.empiricalStatus,
     entryCount: configurationAudit.entryCount,
+    unregisteredDecisionCriticalSettings: configurationAudit.unregisteredFields,
     duplicateAuthorities: configurationAudit.duplicateNames,
     invalidSettings: configurationAudit.invalidEntries,
     invariants: configurationAudit.invariants,
