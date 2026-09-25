@@ -51,6 +51,9 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run scan:security
+      - name: Test Windows backup read-only SQL guard
+        shell: pwsh
+        run: ./tests/windows/theta-backup-readonly-guard.test.ps1
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
       - name: Browser evidence

@@ -1,5 +1,29 @@
 # THETA implementation board
 
+## Pre-migration backup guard repair, 2026-09-25
+
+- PROVEN_INCIDENT: the bounded September 25 backup completed its custom archive
+  and schema dump, then failed before inventory capture with
+  `BACKUP_SNAPSHOT_QUERY_INVALID`. The failed generation remains quarantined
+  under `restore-tests`; neither `latest` nor the previous verified generation
+  was replaced.
+- ROOT_CAUSE: the exported-snapshot guard accepted only SQL beginning directly
+  with `SELECT` or `SHOW`. Both canonical inventory files begin with comments
+  and a read-only `WITH`, so valid inventory SQL was rejected after the
+  expensive dump had already completed.
+- CODE_COMPLETE/VERIFIED_SOURCE: the guard now strips leading SQL comments,
+  accepts read-only `SELECT`, `SHOW`, and `WITH`, and rejects mutation keywords,
+  including data-modifying CTEs. The backup preflights both production
+  inventory files before acquiring an exported snapshot or starting a dump.
+- VERIFIED_REAL_READ_ONLY: both canonical inventory queries executed through
+  one real exported Aiven snapshot and returned a 153-table structure inventory
+  plus the global-state inventory. No data mutation, backup promotion,
+  migration, or worker restart occurred.
+- REGRESSION_COVERAGE: the PowerShell test covers both production inventory
+  files, ordinary reads, comment-prefixed CTEs, mutation statements,
+  data-modifying CTEs, and stacked read-plus-mutation SQL. Exact CI runs the
+  guard test on every push.
+
 ## PostgreSQL backend-crash containment, 2026-09-25
 
 - PROVEN_INCIDENT: at `2026-09-25T14:54:45Z`, Aiven terminated a PostgreSQL

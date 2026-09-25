@@ -72,6 +72,10 @@ try {
   [void](New-Item -ItemType Directory -Path $stage)
   Log "START backupId=$backupId source=AIVEN_OR_TEST sourceBytes=$sourceSize"
   $archive = Join-Path $stage 'database.backup'; $schema = Join-Path $stage 'schema.sql'
+  foreach ($queryFile in @('ThetaStructure.sql','ThetaGlobalState.sql')) {
+    $query = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot $queryFile)
+    if (-not (Test-ThetaReadOnlySql $query)) { throw "BACKUP_READONLY_QUERY_GUARD_FAILED:$queryFile" }
+  }
   $snapshotKeeper = Start-ThetaExportedSnapshot $source
   $script:ThetaBackupSnapshotId = $snapshotKeeper.SnapshotId
   Log 'CONSISTENT_SOURCE_SNAPSHOT_ACQUIRED'

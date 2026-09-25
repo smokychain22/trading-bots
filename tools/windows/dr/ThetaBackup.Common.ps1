@@ -118,16 +118,29 @@ function Invoke-ThetaPg {
   }
 }
 
+function Test-ThetaReadOnlySql {
+  param([Parameter(Mandatory)][string]$Sql)
+  $normalized = $Sql.TrimStart([char]0xFEFF).TrimStart()
+  do {
+    $before = $normalized
+    $normalized = $normalized -replace '^(?:--[^\r\n]*(?:\r?\n|$)|/\*[\s\S]*?\*/)\s*', ''
+  } while ($normalized -ne $before)
+  if ($normalized -notmatch '^(?i:SELECT|SHOW|WITH)\b') { return $false }
+  # WITH is accepted for the fixed structure inventories, but data-modifying
+  # CTEs and every other mutation family remain forbidden.
+  return $normalized -notmatch '(?i)\b(INSERT|UPDATE|DELETE|MERGE|ALTER|DROP|TRUNCATE|CREATE|GRANT|REVOKE|CALL|DO|COPY|VACUUM|ANALYZE|REFRESH|LOCK)\b'
+}
+
 function Invoke-ThetaSql {
   param([object]$Connection, [string]$Sql)
+  $safeRead = Test-ThetaReadOnlySql $Sql
   if ($script:ThetaBackupSnapshotId) {
-    if ($script:ThetaBackupSnapshotId -notmatch '^[0-9A-Fa-f-]+$' -or $Sql.TrimStart() -notmatch '^(?i:SELECT|SHOW)\b') {
+    if ($script:ThetaBackupSnapshotId -notmatch '^[0-9A-Fa-f-]+$' -or -not $safeRead) {
       throw 'BACKUP_SNAPSHOT_QUERY_INVALID'
     }
     $Sql = "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT '$script:ThetaBackupSnapshotId'; $Sql; COMMIT;"
   }
-  $safeRead = $Sql.TrimStart() -match '^(?i:SELECT|SHOW)\b'
-  $attempts = if ($safeRead) { 3 } else { 1 }
+  $attempts = if ($safeRead -and -not $script:ThetaBackupSnapshotId) { 3 } else { 1 }
   $delays = @(0, 2, 10)
   for ($attempt = 1; $attempt -le $attempts; $attempt++) {
     if ($delays[$attempt - 1] -gt 0) { Start-Sleep -Seconds $delays[$attempt - 1] }
