@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { canonicalFrontierResearchBatch } from '../src/storage/canonical-frontier-local-archive.js';
+import { archiveCanonicalStrategyFrontiers, canonicalFrontierResearchBatch } from '../src/storage/canonical-frontier-local-archive.js';
+import type { Pool } from 'pg';
 import { LocalResearchHistorySpool } from '../src/storage/local-research-history-spool.js';
 import {
   canonicalStrategyFrontierContentHash,
@@ -70,6 +71,28 @@ test('verified canonical frontier projects into an immutable local research batc
   }
 });
 
+test('frontier projection preserves an explicitly represented empty branch', () => {
+  const value = frontier();
+  const originalBranch = value.branches[0];
+  assert.ok(originalBranch !== undefined);
+  const emptyBranch = { ...originalBranch, candidateCount: 0, softRanked: 0, candidates: [],
+    bestCandidateId: null };
+  const withoutHash = { ...value, branches: [emptyBranch], selectedBranch: null, selectedCandidateId: null,
+    primaryAction: 'GLOBAL_WAIT' as const, selectedQuantity: 0, contentHash: undefined };
+  const { contentHash: ignored, ...base } = withoutHash;
+  void ignored;
+  const emptyFrontier = { ...base, contentHash: canonicalStrategyFrontierContentHash(base) };
+  const batch = canonicalFrontierResearchBatch(emptyFrontier, {
+    frontier_id: '33333333-3333-4333-8333-333333333333',
+    fusion_snapshot_id: '44444444-4444-4444-8444-444444444444',
+    observed_at: value.timestamp,
+    content_hash: emptyFrontier.contentHash,
+  }, 'b'.repeat(40));
+  assert.equal(batch.rowCount, 1);
+  assert.equal((batch.receiptInput.payload as Array<{ recordType: string }>)[0]?.recordType,
+    'BRANCH_WITHOUT_CANDIDATES');
+});
+
 test('tampered frontier content cannot enter the local archive', () => {
   const value = frontier();
   const tampered = { ...value, selectedQuantity: 2 };
@@ -92,4 +115,41 @@ test('frontier hash is reproducible after JSON persistence removes undefined fie
     optionomicsContext: { nested: { omitted: undefined, retained: null } },
   } as Omit<CanonicalStrategyFrontier, 'contentHash'>);
   assert.equal(canonicalStrategyFrontierContentHash(persistedShape), hash);
+});
+
+test('bounded archive runs drain oldest unspooled frontiers instead of repeating the same rows', async () => {
+  const value = frontier();
+  const identities = [
+    { frontier_id: '11111111-1111-4111-8111-111111111111',
+      fusion_snapshot_id: '22222222-2222-4222-8222-222222222222', observed_at: value.timestamp,
+      content_hash: value.contentHash, created_at: '2026-09-25T14:30:01.000Z' },
+    { frontier_id: '33333333-3333-4333-8333-333333333333',
+      fusion_snapshot_id: '44444444-4444-4444-8444-444444444444', observed_at: value.timestamp,
+      content_hash: value.contentHash, created_at: '2026-09-25T14:30:02.000Z' },
+  ];
+  const pool = { query: async (sql: string, parameters: unknown[]) => {
+    if (sql.includes('f.created_at\n')) return { rows: identities };
+    const ids = parameters[0] as string[];
+    return { rows: identities.filter((row) => ids.includes(row.frontier_id)).map((row) => ({
+      ...row, frontier_json: value, evidence_archive_gzip: null,
+    })) };
+  } } as unknown as Pool;
+  const root = mkdtempSync(join(tmpdir(), 'theta-frontier-drain-'));
+  const spoolPath = join(root, 'research.sqlite');
+  try {
+    const first = await archiveCanonicalStrategyFrontiers({
+      pool, spoolPath, sourceSha: 'a'.repeat(40), since: '2026-09-25T00:00:00.000Z', limit: 1,
+    });
+    assert.equal(first.backlogStart, 2);
+    assert.equal(first.backlogEnd, 1);
+    assert.equal(first.coverageComplete, false);
+    const second = await archiveCanonicalStrategyFrontiers({
+      pool, spoolPath, sourceSha: 'a'.repeat(40), since: '2026-09-25T00:00:00.000Z', limit: 1,
+    });
+    assert.equal(second.backlogStart, 1);
+    assert.equal(second.backlogEnd, 0);
+    assert.equal(second.coverageComplete, true);
+    const spool = new LocalResearchHistorySpool(spoolPath);
+    try { assert.equal(spool.stats().totalBatchCount, 2); } finally { spool.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

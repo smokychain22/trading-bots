@@ -35,6 +35,14 @@ test('local research spool is immutable, idempotent, hash-verified, and never br
     assert.equal(first.storageState, 'PENDING_PARQUET');
     assert.equal(first.brokerAuthority, false);
     assert.equal(spool.pending().length, 1);
+    assert.deepEqual([...spool.batchIds()], ['batch-1']);
+    assert.deepEqual(spool.stats(), {
+      totalBatchCount: 1,
+      pendingParquetBatchCount: 1,
+      archivedParquetBatchCount: 0,
+      oldestPendingObservedAt: input.observedAt,
+      newestPendingObservedAt: input.observedAt,
+    });
     assert.deepEqual(spool.verify(), { valid: true, checked: 1, invalidBatchIds: [] });
     assert.throws(() => spool.append({ ...input, rowCount: 1 }), /IDENTITY_CONFLICT|ROW_COUNT_MISMATCH/);
   } finally { cleanup(); }

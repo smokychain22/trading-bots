@@ -32,6 +32,14 @@ export interface LocalResearchBatchReceipt {
   readonly brokerAuthority: false;
 }
 
+export interface LocalResearchSpoolStats {
+  readonly totalBatchCount: number;
+  readonly pendingParquetBatchCount: number;
+  readonly archivedParquetBatchCount: number;
+  readonly oldestPendingObservedAt: string | null;
+  readonly newestPendingObservedAt: string | null;
+}
+
 type BatchRow = {
   batch_id: string; family: LocalResearchFamily; source_sha: string; decision_cycle_id: string;
   snapshot_id: string; observed_at: string; row_count: number; payload_json: string; payload_hash: string;
@@ -148,6 +156,36 @@ export class LocalResearchHistorySpool {
     const bounded = Math.max(1, Math.min(10_000, Math.floor(limit)));
     return (this.database.prepare(`SELECT * FROM research_batch WHERE storage_state='PENDING_PARQUET'
       ORDER BY observed_at,batch_id LIMIT ?`).all(bounded) as unknown as BatchRow[]).map(rowReceipt);
+  }
+
+  batchIds(): ReadonlySet<string> {
+    const rows = this.database.prepare('SELECT batch_id FROM research_batch').all() as unknown as Array<{
+      batch_id: string;
+    }>;
+    return new Set(rows.map((row) => row.batch_id));
+  }
+
+  stats(): LocalResearchSpoolStats {
+    const row = this.database.prepare(`SELECT
+      count(*) AS total_batch_count,
+      sum(CASE WHEN storage_state='PENDING_PARQUET' THEN 1 ELSE 0 END) AS pending_batch_count,
+      sum(CASE WHEN storage_state='ARCHIVED_PARQUET' THEN 1 ELSE 0 END) AS archived_batch_count,
+      min(CASE WHEN storage_state='PENDING_PARQUET' THEN observed_at END) AS oldest_pending_observed_at,
+      max(CASE WHEN storage_state='PENDING_PARQUET' THEN observed_at END) AS newest_pending_observed_at
+      FROM research_batch`).get() as {
+        total_batch_count: number;
+        pending_batch_count: number | null;
+        archived_batch_count: number | null;
+        oldest_pending_observed_at: string | null;
+        newest_pending_observed_at: string | null;
+      };
+    return {
+      totalBatchCount: Number(row.total_batch_count),
+      pendingParquetBatchCount: Number(row.pending_batch_count ?? 0),
+      archivedParquetBatchCount: Number(row.archived_batch_count ?? 0),
+      oldestPendingObservedAt: row.oldest_pending_observed_at,
+      newestPendingObservedAt: row.newest_pending_observed_at,
+    };
   }
 
   verify(): { readonly valid: boolean; readonly checked: number; readonly invalidBatchIds: readonly string[] } {

@@ -559,3 +559,31 @@ No item is complete merely because its type, config, fixture, or UI label exists
   locked current worker. CURRENT_STATE: PENDING_OPEN. TARGET_STATE: CURRENT_RELEASE
   SPY no-submit receipt. CLASSIFICATION: FORWARD_DATA. CODE_SOLVABLE: NO.
   STATUS: FORWARD_DATA. NEXT_RETRY_WHEN: next supported U.S. options session.
+
+## Migration 067 archive and research-export durability closure
+
+- ID: ARCHIVE-BACKLOG-DRAIN. DOMAIN: local research archive. SOURCE:
+  `src/storage/canonical-frontier-local-archive.ts`. CURRENT_STATE:
+  CODE_COMPLETE/VERIFIED_TEST. The exporter inventories immutable canonical
+  frontier identities, excludes batches already present in SQLite, processes
+  the oldest missing batches first, and reports backlog start/end, coverage,
+  pending ages and monotonicity. A bounded run can no longer repeat the same
+  newest rows forever. Production keeps `persistRelationalCandidateEvidence=false`.
+- ID: ARCHIVE-BRANCH-PRESERVATION. DOMAIN: evidence projection. CURRENT_STATE:
+  CODE_COMPLETE/VERIFIED_TEST. Candidate records carry the full branch receipt,
+  selected state, frontier and fusion identities, and source hash verification.
+  A branch with no candidates receives an explicit `BRANCH_WITHOUT_CANDIDATES`
+  record, so projection cannot silently erase a branch.
+- ID: PARQUET-RESTART-SAFETY. DOMAIN: local research compaction. SOURCE:
+  `tools/compact-local-research-spool.py`. CURRENT_STATE:
+  CODE_COMPLETE/VERIFIED_TEST. Final archive identity is content-derived,
+  Parquet is written and DuckDB-verified in a staging directory, finalization is
+  atomic, and an existing finalized archive is hash/readback verified before
+  SQLite state is advanced. A real simulated interruption after Parquet write
+  resumes to one finalized archive with one archived batch and no duplicate.
+- ID: ARCHIVE-RUNTIME-CERTIFICATION. DOMAIN: current worker evidence.
+  CURRENT_STATE: SOURCE_FIXED_AWAITING_RUNTIME. TARGET_STATE: one migration-067
+  current-worker cycle decoded from PostgreSQL, projected to verified SQLite,
+  compacted to ZSTD Parquet, read through DuckDB, and reconciled by batch,
+  branch, candidate, selection and identity. NEXT_RETRY_WHEN: migration 067,
+  post-migration restore parity, and locked current-worker cutover all pass.
