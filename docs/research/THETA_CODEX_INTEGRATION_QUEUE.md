@@ -84,18 +84,9 @@ row against the new SHA before treating any of them as still open.
 - **Expected change**: a real ownership-quality signal, or an explicit decision that this stays `NOT_INDEPENDENTLY_VERIFIED`/`UNKNOWN` by design.
 - **State**: OPEN, not yet scoped in detail (prior-wave finding, restated here so it is not lost).
 
-## Q-6: AEGIS stress producers (`stressIvShockDetected`, `stressSpreadWideningDetected`) still null
+## Q-6: AEGIS stress producers -- CLOSED (2026-09-25, verified against main `e2d9fdc`)
 
-- **Priority**: HIGH (real AEGIS risk-family input, not a research nice-to-have)
-- **Claude source commit**: prior wave (AEGIS null-supplier diagnosis, DONE per execution board) + `5054946` (baseline-maturity contract, Codex-hardened)
-- **Source artifact**: `src/research/aegis-stress-baseline-maturity.ts`, `docs/research/THETA_AEGIS_FIRST_PAPER_POLICY_OPTIONS_V2.md`
-- **Production subsystem**: `bots/theta/quant/models/aegis.py` (`_system()`), fed via `aegis_contract.py`
-- **Exact source insertion point**: wherever `stressIvShockDetected`/`stressSpreadWideningDetected` are currently always passed as `null` into the AEGIS contract call.
-- **Current defect**: `_system()` (the SYSTEM risk family) requires 3 non-None stress signals; 2 of 3 are always `None` today (`stressGapDetected` is the only real one), so the SYSTEM family can never reach its full evaluation.
-- **Accepted architectural constraint**: per `docs/operations/THETA_RESOLVED_AND_ACTIVE_WORK.md`'s `AEGIS_NULL_SEMANTICS = UNDERSTOOD` -- null stress inputs correctly hold new risk (fail-safe), this is not a false-positive bug; it is a missing-producer gap.
-- **Expected change**: real IV-shock and spread-widening baseline detectors, using `aegis-stress-baseline-maturity.ts`'s state machine (`BASELINE_ACCUMULATING`/`BASELINE_SUFFICIENT`/`DETECTOR_READY`/`BASELINE_INVALID`) to honestly report readiness rather than silently staying null forever.
-- **Producer**: TBD (Codex's real PIT baseline work, per `docs/operations/THETA_IMPLEMENTATION_BOARD.md`'s "AEGIS stress" row).
-- **State**: OPEN, EXTERNALLY_TRACKED (already on Codex's own implementation board as active work -- listed here for completeness, not as new scope).
+Real IV-shock (`src/theta/aegis-iv-stress.ts`, migration `065_aegis_iv_stress_evidence.sql`, `bots/theta/quant/models/aegis.py` updated) and spread-stress (`src/theta/aegis-spread-stress.ts`, `aegis_contract.py` updated) producers now exist and are wired -- confirmed via a read-only fork audit of main commits `a79b482` ("wire Optionomics IV stress evidence") and `3861fc1` ("wire spread stress cold start evidence"). `aegis-stress-baseline-maturity.ts` (this branch's module, Codex-hardened in an earlier wave) remains the live maturity-state authority these producers feed through. No open action remains on this item.
 
 ## Q-7: Python runtime contract wiring (5 unwired contracts) -- RESOLVED, NO WIRE NEEDED
 
