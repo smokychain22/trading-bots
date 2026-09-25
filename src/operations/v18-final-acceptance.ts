@@ -169,7 +169,7 @@ export const decisionDataEvidenceFiles: Readonly<Record<string, DecisionDataEvid
 });
 
 export const unresolvedSystemState = Object.freeze({
-  CODE_SOLVABLE: [] as readonly string[],
+  CODE_SOLVABLE: ['V18_SELF_CERTIFICATION_SUPERSEDED_BY_V19'] as readonly string[],
   FORWARD_DATA_REQUIRED: [
     'CURRENT_SESSION_Q_H_D_MARKET_VALUES', 'NEXT_IV_INDEPENDENT_SESSION', 'NEXT_SPREAD_INDEPENDENT_SESSION',
     'REAL_ASSIGNMENT_RECOVERY_OUTCOME', 'REAL_COVERED_CALL_OUTCOME',
@@ -237,8 +237,8 @@ export function buildV18FinalAcceptanceReceipt(input: {
         liquidity: 'FORWARD_DATA_REQUIRED', aegis: 'REAL_WHEN_EVIDENCE_EXISTS', quantity: 'REAL_WHEN_EVIDENCE_EXISTS' },
       WAIT: { alternative: 'REAL', comparisonRole: 'KNOWN_ZERO_CAPITAL_COMMITMENT_WITHOUT_PROFITABILITY_CLAIM' },
     },
-    AEGIS_COMPLETE: 'PASS', SIZING_COMPLETE: 'PASS', MANAGEMENT_COMPLETE: 'PASS',
-    WHOLE_CHAIN_ACCOUNTING_COMPLETE: 'PASS',
+    AEGIS_COMPLETE: 'NOT_CERTIFIED_USE_V19', SIZING_COMPLETE: 'NOT_CERTIFIED_USE_V19',
+    MANAGEMENT_COMPLETE: 'NOT_CERTIFIED_USE_V19', WHOLE_CHAIN_ACCOUNTING_COMPLETE: 'NOT_CERTIFIED_USE_V19',
     unresolved: unresolvedSystemState,
     counts: Object.fromEntries(Object.entries(unresolvedSystemState).map(([key, value]) => [key, value.length])),
     GENERIC_ENGINEERING_UNKNOWN: 0, GENERIC_DECISION_UNKNOWN: 0, GENERIC_WAIT: 0,

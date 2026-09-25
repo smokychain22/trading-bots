@@ -38,7 +38,7 @@ export const premarketCertificationGroups: readonly PremarketCertificationGroup[
     'tests/presession-configuration-registry.test.ts', 'tests/decision-critical-evidence-registry.test.ts',
     'tests/runtime-policy-authority.test.ts', 'tests/false-safe-defaults.test.ts',
     'tests/optionomics-feature-destinations.test.ts', 'tests/qualified-soft-feature-evidence.test.ts',
-    'tests/v18-final-acceptance.test.ts',
+    'tests/v19-evidence-certification.test.ts',
   ] },
   { id: 'PROVIDER_CONTRACT_AND_FUZZ', testFiles: [
     'tests/alpaca-provider.test.ts', 'tests/optionomics-provider.test.ts', 'tests/option-contract.test.ts',

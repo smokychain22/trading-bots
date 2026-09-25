@@ -29,3 +29,10 @@ test('quantity must be a non-negative integer -- never negative, never fractiona
   assert.throws(() => parseSizingResultResponse(basePayload({ quantity: -1 })));
   assert.throws(() => parseSizingResultResponse(basePayload({ quantity: 1.5 })));
 });
+
+test('non-finite sizing values are rejected', () => {
+  for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    assert.throws(() => parseSizingResultResponse(basePayload({ quantity: value })));
+    assert.throws(() => parseSizingResultResponse(basePayload({ capitalRequired: value })));
+  }
+});

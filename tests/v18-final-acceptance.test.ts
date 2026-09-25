@@ -50,13 +50,14 @@ test('structural comparison stays separate from empirical profitability', () => 
   assert.equal(receipt.deterministicAccountAlternatives.WAIT.alternative, 'REAL');
 });
 
-test('only typed external, forward, empirical, policy, or not-applicable states remain', () => {
-  assert.deepEqual(unresolvedSystemState.CODE_SOLVABLE, []);
+test('V18 self-certification is retired in favor of executed V19 evidence', () => {
+  assert.deepEqual(unresolvedSystemState.CODE_SOLVABLE, ['V18_SELF_CERTIFICATION_SUPERSEDED_BY_V19']);
   const receipt = buildV18FinalAcceptanceReceipt();
   assert.equal(receipt.GENERIC_ENGINEERING_UNKNOWN, 0);
   assert.equal(receipt.GENERIC_DECISION_UNKNOWN, 0);
   assert.equal(receipt.GENERIC_WAIT, 0);
-  assert.equal(receipt.PRESESSION_ZERO_WEAKNESS_CERTIFICATION, 'PASS');
+  assert.equal(receipt.PRESESSION_ZERO_WEAKNESS_CERTIFICATION, 'FAIL');
+  assert.equal(receipt.AEGIS_COMPLETE, 'NOT_CERTIFIED_USE_V19');
   assert.equal(receipt.ORDER_SUBMISSIONS, 0);
   assert.equal(receipt.BROKER_MUTATIONS, 0);
 });
