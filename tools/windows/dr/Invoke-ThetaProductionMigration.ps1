@@ -6,8 +6,11 @@ $root = Get-ThetaBackupRoot $BackupRoot
 $pwsh = Join-Path $PSHOME 'pwsh.exe'
 $before = $null
 $after = $null
+$storage = $null
+$soak = $null
 $oldAuthority = $env:DATABASE_RUNTIME_AUTHORITY
 $oldAiven = $env:AIVEN_DATABASE_URL
+$oldDatabase = $env:DATABASE_URL
 $oldCheckpoint = $env:THETA_MIGRATION_CHECKPOINT_ACTIVE
 try {
   $beforeRaw = & $pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Backup-Theta.ps1') -BackupRoot $root
@@ -19,6 +22,7 @@ try {
       $proof.criticalDataVerification -ne 'PASS') { throw 'PRE_MIGRATION_RESTORE_PARITY_FAILED' }
   $env:DATABASE_RUNTIME_AUTHORITY = 'AIVEN'
   $env:AIVEN_DATABASE_URL = Get-ThetaSourceUrl $root
+  $env:DATABASE_URL = $env:AIVEN_DATABASE_URL
   $env:THETA_MIGRATION_CHECKPOINT_ACTIVE = 'VERIFIED_LOCAL_BACKUP'
   Push-Location $repoRoot
   try {
@@ -26,6 +30,21 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'PRODUCTION_MIGRATION_FAILED_PRE_BACKUP_PRESERVED' }
     & node tools/database-verify.mjs | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'POST_MIGRATION_SCHEMA_INVARIANT_FAILED_PRE_BACKUP_PRESERVED' }
+    $storageRaw = & node --import tsx tools/theta-storage-audit.ts --environment-file=.env.local
+    if ($LASTEXITCODE -ne 0) { throw 'POST_MIGRATION_STORAGE_AUDIT_FAILED_PRE_BACKUP_PRESERVED' }
+    $storage = ($storageRaw | Select-Object -Last 1) | ConvertFrom-Json
+    if ($storage.state -ne 'PASS' -or $storage.unknownClassificationCount -ne 0) {
+      throw 'POST_MIGRATION_STORAGE_AUDIT_INCOMPLETE_PRE_BACKUP_PRESERVED'
+    }
+    $soakRaw = & node --import tsx tools/theta-postgres-stability-soak.ts --environment-file=.env.local --duration-seconds=900
+    $soakExitCode = $LASTEXITCODE
+    $soakLog = Join-Path $root ('logs\database-stability-soak-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.jsonl')
+    [IO.File]::WriteAllLines($soakLog, [string[]]$soakRaw, [Text.UTF8Encoding]::new($false))
+    if ($soakExitCode -ne 0) { throw 'POST_MIGRATION_DATABASE_SOAK_FAILED_PRE_BACKUP_PRESERVED' }
+    $soak = ($soakRaw | Select-Object -Last 1) | ConvertFrom-Json
+    if ($soak.result -ne 'PASS' -or $soak.requestedDurationSeconds -lt 900) {
+      throw 'POST_MIGRATION_DATABASE_SOAK_INCOMPLETE_PRE_BACKUP_PRESERVED'
+    }
   } finally { Pop-Location }
   $afterRaw = & $pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Backup-Theta.ps1') -BackupRoot $root
   if ($LASTEXITCODE -ne 0) { throw 'POST_MIGRATION_VERIFIED_BACKUP_FAILED_PRE_BACKUP_PRESERVED' }
@@ -34,7 +53,9 @@ try {
   $receipt = [ordered]@{state='PRODUCTION_MIGRATION_VERIFIED';completedAt=(Get-Date).ToUniversalTime().ToString('o');
     preMigrationBackupId=$before.backupId;postMigrationBackupId=$after.backupId;
     preMigrationArchiveSha256=$before.archiveSha256;postMigrationArchiveSha256=$after.archiveSha256;
-    schemaInvariantVerification='PASS';preMigrationRestoreParity='PASS';postMigrationRestoreParity='PASS'}
+    schemaInvariantVerification='PASS';storageAudit='PASS';storageAuditObservedAt=$storage.observedAt;
+    databaseStabilitySoak='PASS';databaseStabilitySoakReceiptHash=$soak.receiptHash;
+    preMigrationRestoreParity='PASS';postMigrationRestoreParity='PASS'}
   Write-ThetaJson (Join-Path $root ('logs\migration-checkpoint-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.json')) $receipt
   $receipt | ConvertTo-Json -Compress
 } catch {
@@ -48,5 +69,6 @@ try {
 } finally {
   $env:DATABASE_RUNTIME_AUTHORITY = $oldAuthority
   $env:AIVEN_DATABASE_URL = $oldAiven
+  $env:DATABASE_URL = $oldDatabase
   $env:THETA_MIGRATION_CHECKPOINT_ACTIVE = $oldCheckpoint
 }
