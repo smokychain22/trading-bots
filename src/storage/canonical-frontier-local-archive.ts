@@ -4,6 +4,7 @@ import {
   type CanonicalStrategyFrontier,
 } from '../theta/canonical-strategy-frontier.js';
 import { projectCanonicalStrategyEvidence } from '../theta/postgres-theta-cycle-store.js';
+import { decodeCycleEvidenceArchive } from '../theta/postgres-cycle-evidence-storage.js';
 import { LocalResearchHistorySpool, type LocalResearchBatchReceipt } from './local-research-history-spool.js';
 
 export const canonicalFrontierLocalArchiveVersion = 'theta-canonical-frontier-local-archive-v1' as const;
@@ -14,6 +15,7 @@ interface FrontierRow {
   readonly observed_at: string | Date;
   readonly content_hash: string;
   readonly frontier_json: unknown;
+  readonly evidence_archive_gzip: Buffer | null;
 }
 
 export interface CanonicalFrontierArchiveReport {
@@ -91,10 +93,12 @@ export async function archiveCanonicalStrategyFrontiers(input: {
   const limit = input.limit ?? 10_000;
   if (!Number.isInteger(limit) || limit < 1 || limit > 10_000) throw new Error('LOCAL_ARCHIVE_LIMIT_INVALID');
   const result = await input.pool.query<FrontierRow>(
-    `SELECT frontier_id::text,fusion_snapshot_id::text,observed_at,content_hash,frontier_json
-       FROM trade.canonical_strategy_frontier
-      WHERE created_at >= $1::timestamptz
-      ORDER BY created_at DESC,frontier_id DESC
+    `SELECT f.frontier_id::text,f.fusion_snapshot_id::text,f.observed_at,f.content_hash,f.frontier_json,
+            s.evidence_archive_gzip
+       FROM trade.canonical_strategy_frontier f
+       JOIN trade.fusion_snapshot s USING(fusion_snapshot_id)
+      WHERE f.created_at >= $1::timestamptz
+      ORDER BY f.created_at DESC,f.frontier_id DESC
       LIMIT $2`,
     [since.toISOString(), limit + 1],
   );
@@ -107,7 +111,9 @@ export async function archiveCanonicalStrategyFrontiers(input: {
   const receipts: LocalResearchBatchReceipt[] = [];
   try {
     for (const row of [...rowsToArchive].reverse()) {
-      const batch = canonicalFrontierResearchBatch(row.frontier_json, row, input.sourceSha);
+      const archivedFrontier = row.evidence_archive_gzip===null ? row.frontier_json
+        : decodeCycleEvidenceArchive(row.evidence_archive_gzip).strategyFrontier;
+      const batch = canonicalFrontierResearchBatch(archivedFrontier, row, input.sourceSha);
       receipts.push(spool.append(batch.receiptInput));
       researchRowCount += batch.rowCount;
       if (batch.hashVerification === 'REPRODUCIBLE_PERSISTED_JSON') reproducibleHashCount += 1;

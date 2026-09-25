@@ -21,6 +21,12 @@ import {
   optionomicsChainAttachmentsFromFeatureState,
   persistOptionsChainDecisionEvidence,
 } from './options-chain-decision-intelligence.js';
+import {
+  postgresCycleEvidenceStorageVersion,
+  projectCanonicalFrontierForPostgres,
+  projectCycleEvidenceForPostgres,
+  projectDecisionReceiptForPostgres,
+} from './postgres-cycle-evidence-storage.js';
 
 const optionomicsTemporalResearchPolicy = {
   policyVersion: 'theta-optionomics-temporal-research-policy-v1',
@@ -167,6 +173,26 @@ export function projectPersistableThetaCandidates(cycle:ThetaShadowCycleResult):
   return evaluated;
 }
 
+export function projectOperationalThetaCandidates(cycle:ThetaShadowCycleResult):readonly PersistableCandidate[]{
+  const all=projectPersistableThetaCandidates(cycle);
+  const keep=new Set<string>();
+  const frontier=cycle.strategyFrontier;
+  if(frontier!==null&&frontier!==undefined){
+    const refs=new Set([frontier.selectedCandidateId,frontier.nearMissCandidateId,frontier.bestRejectedCandidateId,
+      ...frontier.branches.flatMap((branch)=>[branch.bestCandidateId,branch.secondBestCandidateId,branch.bestRejectedCandidateId])]
+      .filter((value):value is string=>value!==null));
+    for(const candidate of frontier.branches.flatMap((branch)=>branch.candidates)){
+      if(!refs.has(candidate.candidateId))continue;
+      for(const leg of candidate.legs)keep.add(leg.optionSymbol);
+    }
+  }
+  const receiptSelected=cycle.orchestration?.receipt.selectedCandidateId;
+  if(receiptSelected!==null&&receiptSelected!==undefined&&receiptSelected!=='WAIT')keep.add(receiptSelected);
+  for(const candidate of all.filter((value)=>value.actionFeasible).slice(0,2))keep.add(candidate.candidateId);
+  for(const candidate of all.filter((value)=>!value.actionFeasible).slice(0,2))keep.add(candidate.candidateId);
+  return all.filter((candidate)=>keep.has(candidate.candidateId)).slice(0,12);
+}
+
 function jsonObject(value: JsonValue | undefined): Record<string, JsonValue> {
   return value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
@@ -184,6 +210,11 @@ export class PostgresThetaCycleStore {
     const candidateResearchStorage: PersistedThetaCycle['candidateResearchStorage'] =
       persistRelationalCandidateEvidence ? 'POSTGRES_RELATIONAL' : 'CANONICAL_FRONTIER_PRIMARY_LOCAL_ARCHIVE_PENDING';
     const persistenceStartedAt = Date.now();
+    // Keep the complete immutable cycle as compressed source evidence. The
+    // queryable JSONB is a bounded operational projection, so a large option
+    // chain cannot force PostgreSQL to parse several duplicated multi-MiB
+    // documents inside the market-critical transaction.
+    const storage = projectCycleEvidenceForPostgres(cycle);
     const tracePersistence = (stage: string): void => {
       if (process.env.VERCEL_ENV !== 'production') return;
       console.info(JSON.stringify({ event: 'THETA_PERSIST_STAGE_V1', stage,
@@ -197,18 +228,23 @@ export class PostgresThetaCycleStore {
           fusion_snapshot_id,bot_instance_id,decision_time,trigger_type,universe_version_id,
           strategy_version_id,feature_version_id,risk_limit_version_id,execution_version_id,cost_model_version_id,
           account_snapshot_id,feature_snapshot_refs_json,portfolio_state_json,provider_provenance_json,
-          unknown_features_json,snapshot_json,content_hash)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'[]'::jsonb,$12,$13,$14,$15,$16)
+          unknown_features_json,snapshot_json,content_hash,storage_contract_version,snapshot_projection_hash,
+          evidence_archive_gzip,evidence_archive_hash,evidence_archive_uncompressed_bytes,
+          evidence_archive_compressed_bytes,full_contract_count,projected_contract_count)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'[]'::jsonb,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
          ON CONFLICT(bot_instance_id,content_hash) DO NOTHING`,
         [fusionSnapshotId, context.botInstanceId, String(fusion.snapshot.decisionTimeUtc), String(fusion.snapshot.triggerType),
           context.universeVersionId, context.strategyVersionId, context.featureVersionId, context.riskLimitVersionId,
           context.executionVersionId, context.costModelVersionId, context.accountSnapshotId,
           JSON.stringify(objectField(fusion.snapshot, 'portfolioExposure')),
           JSON.stringify(objectField(fusion.snapshot, 'sourceProvenance')),
-          JSON.stringify(objectField(fusion.snapshot, 'unknownFeatures')), JSON.stringify(fusion.snapshot), fusion.contentHash],
+          JSON.stringify(objectField(fusion.snapshot, 'unknownFeatures')), JSON.stringify(storage.snapshot), fusion.contentHash,
+          postgresCycleEvidenceStorageVersion, storage.snapshotProjectionHash, storage.archive, storage.archiveHash,
+          storage.archiveUncompressedBytes, storage.archiveCompressedBytes, storage.fullContractCount,
+          storage.projectedContractCount],
       );
 
-      await this.persistOptionomicsEvidence(client, fusionSnapshotId, fusion.snapshot);
+      await this.persistOptionomicsEvidence(client, fusionSnapshotId, fusion.snapshot, persistRelationalCandidateEvidence);
       tracePersistence('OPTIONOMICS_COMPLETE');
       const strategyFrontierId = await this.persistCanonicalStrategyFrontier(client, fusionSnapshotId, cycle);
       if (strategyFrontierId !== null) {
@@ -223,29 +259,33 @@ export class PostgresThetaCycleStore {
         const chainUnderlying = cycle.selectedUnderlying
           ?? (typeof underlyingState.symbol === 'string' ? underlyingState.symbol : null);
         if (chainUnderlying === null) throw new Error('OPTIONS_CHAIN_UNDERLYING_MISSING');
-        const chainDecision = buildOptionsChainDecisionEvidence({
-          fusionSnapshotId,
-          snapshotContentHash: fusion.contentHash,
-          observedAt: String(fusion.snapshot.decisionTimeUtc),
-          underlying: chainUnderlying,
-          contracts,
-          frontier: cycle.strategyFrontier as CanonicalStrategyFrontier,
-          liquidityPolicy: {
-            policyVersion: 'theta-option-liquidity-research-unthresholded-v1',
-            maximumQuoteAgeSeconds: null,
-            maximumRelativeSpread: null,
-            minimumOpenInterest: null,
-            minimumVolume: null,
-            minimumBidSize: null,
-            minimumAskSize: null,
-          },
-          optionomicsAttachments: optionomicsChainAttachmentsFromFeatureState(normalizedFeatures),
-        });
-        await persistOptionsChainDecisionEvidence(client, chainDecision);
-        tracePersistence('CHAIN_RESEARCH_COMPLETE');
+        if (persistRelationalCandidateEvidence) {
+          const chainDecision = buildOptionsChainDecisionEvidence({
+            fusionSnapshotId,
+            snapshotContentHash: fusion.contentHash,
+            observedAt: String(fusion.snapshot.decisionTimeUtc),
+            underlying: chainUnderlying,
+            contracts,
+            frontier: cycle.strategyFrontier as CanonicalStrategyFrontier,
+            liquidityPolicy: {
+              policyVersion: 'theta-option-liquidity-research-unthresholded-v1',
+              maximumQuoteAgeSeconds: null,
+              maximumRelativeSpread: null,
+              minimumOpenInterest: null,
+              minimumVolume: null,
+              minimumBidSize: null,
+              minimumAskSize: null,
+            },
+            optionomicsAttachments: optionomicsChainAttachmentsFromFeatureState(normalizedFeatures),
+          });
+          await persistOptionsChainDecisionEvidence(client, chainDecision);
+          tracePersistence('CHAIN_RESEARCH_COMPLETE');
+        } else {
+          tracePersistence('CHAIN_RESEARCH_DEFERRED_TO_COMPRESSED_ARCHIVE');
+        }
       }
 
-      const candidates = await this.persistCandidates(client, fusionSnapshotId, cycle);
+      const candidates = await this.persistCandidates(client, fusionSnapshotId, cycle, persistRelationalCandidateEvidence);
       tracePersistence('CANDIDATES_COMPLETE');
       const strategyRouteId = await this.persistRoute(client, fusionSnapshotId, cycle);
       const decisionId = await this.persistDecision(client, fusionSnapshotId, cycle, candidates.candidateSetId, candidates.candidateIds,
@@ -254,7 +294,10 @@ export class PostgresThetaCycleStore {
       await this.persistPointInTimeEvidence(client,context,cycle,fusionSnapshotId,candidates.candidateSetId,
         candidates.candidateIds,decisionId);
       tracePersistence('PIT_EVIDENCE_COMPLETE');
-      const shadowOpportunities = cycle.orchestration?.shadowOpportunities ?? [];
+      const allShadowOpportunities = cycle.orchestration?.shadowOpportunities ?? [];
+      const shadowOpportunities = persistRelationalCandidateEvidence ? allShadowOpportunities
+        : allShadowOpportunities.filter((entry,index,all)=>index===all.findIndex((other)=>
+          other.strategyBranch===entry.strategyBranch&&other.outcome===entry.outcome)).slice(0,12);
       // One parameterized statement retains the existing transaction and
       // idempotency semantics without one network round trip per contract.
       const shadowResult = shadowOpportunities.length === 0 ? null : await client.query(
@@ -310,19 +353,21 @@ export class PostgresThetaCycleStore {
     client: PoolClient,
     fusionSnapshotId: string,
     cycle: ThetaShadowCycleResult,
+    persistAllResearch: boolean,
   ): Promise<{ candidateSetId: string | null; candidateIds: Map<string, string> }> {
     const receipt = cycle.orchestration?.receipt;
     if (receipt === null || receipt === undefined) return { candidateSetId: null, candidateIds: new Map() };
 
-    const evaluated = projectPersistableThetaCandidates(cycle);
-    const setPayload = JSON.stringify(evaluated);
+    const allEvaluated = projectPersistableThetaCandidates(cycle);
+    const evaluated = persistAllResearch ? allEvaluated : projectOperationalThetaCandidates(cycle);
+    const setPayload = canonicalJson(allEvaluated as unknown as JsonValue);
     const setHash = createHash('sha256').update(setPayload).digest('hex');
     const candidateSetId = deterministicRuntimeUuid(`candidate-set:${fusionSnapshotId}:THETA_CONVENTIONAL:${setHash}`);
     await client.query(
       `INSERT INTO trade.candidate_set(candidate_set_id,fusion_snapshot_id,branch,candidate_count,generated_at,generator_version,set_hash)
        VALUES($1,$2,'THETA_CONVENTIONAL',$3,$4,$5,$6)
        ON CONFLICT(fusion_snapshot_id,branch,set_hash) DO NOTHING`,
-      [candidateSetId, fusionSnapshotId, evaluated.length, receipt.timestamp,
+      [candidateSetId, fusionSnapshotId, allEvaluated.length, receipt.timestamp,
         cycle.orchestration?.thetaQ?.contractVersion ?? cycle.strategyFrontier?.contractVersion ?? 'theta-runtime-no-candidate-v1', setHash],
     );
 
@@ -587,11 +632,13 @@ export class PostgresThetaCycleStore {
           aegisInputOrigin: cycle.provenanceDetail.includes('aegisInputs=DERIVED_FROM_REAL') ? 'DERIVED_FROM_REAL' : null,
           aegisAssessmentIdentity,
           empiricalUtilityState: authority.empiricalUtilityState, executionAuthorized: false };
+    const receiptStorage = projectDecisionReceiptForPostgres(receiptPayload);
     const inserted = await client.query(
       `INSERT INTO trade.decision(decision_id,fusion_snapshot_id,candidate_set_id,selected_candidate_id,decision_kind,action_code,quantity,
          aegis_action,strategy_branch,decided_at,status,explanation_text,explanation_hash,runtime_selected_candidate_ref,
-         policy_version,model_versions_json,fail_closed_reason,receipt_json,decision_authority_version)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'RECORDED',$11,$12,$13,$14,$15,$16,$17,$18)
+         policy_version,model_versions_json,fail_closed_reason,receipt_json,decision_authority_version,
+         receipt_storage_contract_version,receipt_projection_hash)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'RECORDED',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
        ON CONFLICT(decision_id) DO NOTHING RETURNING decision_id`,
       [decisionId, fusionSnapshotId, candidateSetId, selectedCandidateId,
         authority?.primaryAction === 'MANAGEMENT_AUTHORITY' ? 'MANAGEMENT_DELEGATION' : 'NEW_RISK',
@@ -599,7 +646,8 @@ export class PostgresThetaCycleStore {
         authority?.timestamp ?? receipt.timestamp, explanation,
         createHash('sha256').update(explanation).digest('hex'), selectedCandidateRef,
         authority?.strategyVersion ?? receipt.policyVersion, JSON.stringify(receipt.modelVersions), receipt.failClosedReason,
-        JSON.stringify(receiptPayload), decisionAuthorityVersion],
+        JSON.stringify(receiptStorage.projection), decisionAuthorityVersion,
+        postgresCycleEvidenceStorageVersion, receiptStorage.projectionHash],
     );
     if ((inserted.rowCount ?? 0) > 0) {
       for (const [index, reasonCode] of reasonCodes.entries()) {
@@ -620,18 +668,21 @@ export class PostgresThetaCycleStore {
     // atomic replay while all newly produced cycles still carry the field.
     if (frontier == null) return null;
     const frontierId = deterministicRuntimeUuid(`canonical-frontier:${fusionSnapshotId}:${frontier.contentHash}`);
+    const storedFrontier = projectCanonicalFrontierForPostgres(frontier);
     await client.query(
       `INSERT INTO trade.canonical_strategy_frontier(frontier_id,fusion_snapshot_id,observed_at,contract_version,
         strategy_version,branches_considered_json,branches_evaluated_json,selected_branch,selected_candidate_ref,
         best_rejected_candidate_ref,global_wait_earned,empirical_economics_ready,execution_authorized,frontier_json,content_hash,
-        decision_authority_version,primary_action,selected_quantity,empirical_utility_state)
-       VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19)
+        decision_authority_version,primary_action,selected_quantity,empirical_utility_state,
+        storage_contract_version,frontier_projection_hash)
+       VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21)
        ON CONFLICT(fusion_snapshot_id) DO NOTHING`,
       [frontierId, fusionSnapshotId, frontier.timestamp, frontier.contractVersion, frontier.strategyVersion,
         JSON.stringify(frontier.branchesConsidered), JSON.stringify(frontier.branchesEvaluated), frontier.selectedBranch,
         frontier.selectedCandidateId, frontier.bestRejectedCandidateId, frontier.globalWaitEarned,
-        frontier.empiricalEconomicsReady, frontier.executionAuthorized, JSON.stringify(frontier), frontier.contentHash,
-        frontier.decisionAuthorityVersion, frontier.primaryAction, frontier.selectedQuantity, frontier.empiricalUtilityState],
+        frontier.empiricalEconomicsReady, frontier.executionAuthorized, JSON.stringify(storedFrontier.projection), frontier.contentHash,
+        frontier.decisionAuthorityVersion, frontier.primaryAction, frontier.selectedQuantity, frontier.empiricalUtilityState,
+        postgresCycleEvidenceStorageVersion, storedFrontier.projectionHash],
     );
     return frontierId;
   }
@@ -743,6 +794,7 @@ export class PostgresThetaCycleStore {
     client: PoolClient,
     fusionSnapshotId: string,
     snapshot: Readonly<Record<string, JsonValue>>,
+    persistFullResearch = true,
   ): Promise<void> {
     const state = jsonObject(snapshot.optionomicsFeatureState);
     const features = jsonObject(state.features);
@@ -781,7 +833,8 @@ export class PostgresThetaCycleStore {
         [observationId, fusionSnapshotId, operationAlias, underlying,
           temporal.providerTimestamp, retrievedAt, temporal.asOf,
           typeof raw.contractVersion === 'string' ? raw.contractVersion : 'optionomics-public-api-unknown',
-          temporal.quality, responseHash, JSON.stringify(raw.payload ?? null),
+          temporal.quality, responseHash, JSON.stringify(persistFullResearch || operationAlias==='optionomics.list_events'
+            ? raw.payload ?? null : {storageState:'FULL_PAYLOAD_IN_COMPRESSED_CYCLE_ARCHIVE',responseHash,operationAlias}),
           typeof raw.requestedAt === 'string' ? raw.requestedAt : null,
           typeof raw.requestPath === 'string' ? raw.requestPath : null, JSON.stringify(jsonObject(raw.requestParameters)),
           typeof raw.httpStatus === 'number' ? raw.httpStatus : null, JSON.stringify(jsonObject(raw.rateLimit)),
@@ -808,7 +861,7 @@ export class PostgresThetaCycleStore {
     }
     // Raw provider evidence is independently valuable. Empty sessions or a
     // failed feature derivation must not erase the immutable provider response.
-    if (Object.keys(features).length === 0) return;
+    if (Object.keys(features).length === 0 || !persistFullResearch) return;
     if (schemaVersion === null) throw new Error('OPTIONOMICS_LAYERED_EVIDENCE_METADATA_INVALID');
     const primary = observationIds.find((row) => row.operationAlias === 'optionomics.get_option_chain') ?? observationIds[0];
     if (primary === undefined) return;

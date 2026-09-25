@@ -1,5 +1,40 @@
 # THETA implementation board
 
+## PostgreSQL backend-crash containment, 2026-09-25
+
+- PROVEN_INCIDENT: at `2026-09-25T14:54:45Z`, Aiven terminated a PostgreSQL
+  client backend with signal 9 while it was executing the
+  `trade.fusion_snapshot` insert. PostgreSQL terminated the remaining server
+  processes, performed automatic recovery, and briefly rejected new sessions
+  with `53000`. The exact SIGKILL trigger is confirmed. A provider or node
+  resource limit is likely, but the kernel-level reason is not exposed and is
+  not claimed as proven.
+- ROOT_CAUSE_BOUNDARY: the failure occurred before canonical candidate
+  enumeration completed. It is infrastructure-deferred evidence, not a Q WAIT,
+  AEGIS result, sizing result, finalist result, or strategy result. The worker
+  remains unchanged on `af3d43d`, locked and degraded. Orders and broker
+  mutations remain zero.
+- CODE_COMPLETE/VERIFIED_SOURCE: the full immutable cycle now has one gzip
+  source archive with a deterministic content hash. PostgreSQL's hot JSONB
+  stores bounded operational projections. The projection retains selected,
+  near-miss, best-rejected and open-position contracts. Production mode no
+  longer duplicates the full chain into the research chain table, full raw
+  Optionomics chain payload, full per-candidate rows, or an unbounded shadow
+  opportunity set inside the market-critical transaction.
+- CODE_COMPLETE/VERIFIED_SOURCE: the closed-session SQLite/Parquet exporter
+  reads the full frontier from the compressed source archive, verifies the
+  original frontier hash, and does not mistake the compact PostgreSQL
+  projection for complete research history.
+- SAFETY_UNCHANGED: no strategy, AEGIS, sizing, quote, event, execution, or
+  authorization policy changed. No PostgreSQL evidence was deleted. Migration
+  `067_postgres_cycle_evidence_compaction` is additive and must pass the
+  governed backup, migration, invariant, and locked-runtime sequence before a
+  cutover.
+- VERIFIED_SOURCE: 2,307 Node tests passed with 14 skipped, TypeScript, lint,
+  build, and the security scan passed. Real migration and current-release
+  runtime proof remain pending.
+- Full receipt: `docs/operations/THETA_POSTGRES_BACKEND_CRASH_CONTAINMENT_2026-09-25.md`.
+
 ## V12 five-strategy and research-storage closure, 2026-09-25
 
 - CODE_COMPLETE/VERIFIED_SOURCE: D now produces an exact, bounded, two-leg
