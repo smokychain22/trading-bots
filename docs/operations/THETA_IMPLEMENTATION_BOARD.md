@@ -1,5 +1,23 @@
 # THETA implementation board
 
+## Quoted-identifier backup guard repair, 2026-09-26
+
+- PROVEN_INCIDENT: the governed pre-migration dump completed its custom archive
+  and schema dump, then failed during all-table row counts with
+  `BACKUP_SNAPSHOT_QUERY_INVALID`. The complete dump was preserved under
+  `restore-tests/incomplete-2026-09-25_200045-d383d0e2`; neither `latest` nor
+  the previous verified generation was replaced, and no migration ran.
+- ROOT_CAUSE: the read-only guard scanned quoted identifiers as SQL keywords.
+  A generated `SELECT count(*) FROM "copy".<table>` query was therefore
+  misclassified as the mutating PostgreSQL `COPY` statement.
+- FIX: the guard now removes SQL strings, quoted identifiers, dollar-quoted
+  values, and comments before checking mutation keywords. It still requires
+  the original statement to begin with `SELECT`, `SHOW`, or `WITH` and still
+  rejects real mutations and data-modifying CTEs.
+- REGRESSION_COVERAGE: tests now include the real quoted `copy` schema shape,
+  mutation words inside literals/comments, and the existing positive and
+  adversarial mutation cases.
+
 ## Pre-migration backup guard repair, 2026-09-25
 
 - PROVEN_INCIDENT: the bounded September 25 backup completed its custom archive

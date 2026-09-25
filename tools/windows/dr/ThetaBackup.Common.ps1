@@ -127,8 +127,19 @@ function Test-ThetaReadOnlySql {
   } while ($normalized -ne $before)
   if ($normalized -notmatch '^(?i:SELECT|SHOW|WITH)\b') { return $false }
   # WITH is accepted for the fixed structure inventories, but data-modifying
-  # CTEs and every other mutation family remain forbidden.
-  return $normalized -notmatch '(?i)\b(INSERT|UPDATE|DELETE|MERGE|ALTER|DROP|TRUNCATE|CREATE|GRANT|REVOKE|CALL|DO|COPY|VACUUM|ANALYZE|REFRESH|LOCK)\b'
+  # CTEs and every other mutation family remain forbidden. Remove quoted
+  # values, quoted identifiers, and comments before scanning SQL keywords so
+  # a read such as SELECT count(*) FROM "copy"."account" is not mistaken for
+  # the COPY statement. The initial statement-family check above still runs
+  # against the original normalized SQL.
+  $keywordSurface = [regex]::Replace($normalized, "'(?:''|[^'])*'", ' ')
+  $keywordSurface = [regex]::Replace($keywordSurface, '"(?:""|[^"])*"', ' ')
+  $keywordSurface = [regex]::Replace($keywordSurface,
+    '\$(?<tag>[A-Za-z_][A-Za-z0-9_]*)\$[\s\S]*?\$\k<tag>\$', ' ')
+  $keywordSurface = [regex]::Replace($keywordSurface, '\$\$[\s\S]*?\$\$', ' ')
+  $keywordSurface = [regex]::Replace($keywordSurface, '--[^\r\n]*(?:\r?\n|$)', ' ')
+  $keywordSurface = [regex]::Replace($keywordSurface, '/\*[\s\S]*?\*/', ' ')
+  return $keywordSurface -notmatch '(?i)\b(INSERT|UPDATE|DELETE|MERGE|ALTER|DROP|TRUNCATE|CREATE|GRANT|REVOKE|CALL|DO|COPY|VACUUM|ANALYZE|REFRESH|LOCK)\b'
 }
 
 function Invoke-ThetaSql {
