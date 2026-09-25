@@ -51,6 +51,13 @@ export interface ModelRegistryRecord {
   readonly artifactHash: string;
   readonly createdAt: string;
   readonly promotionState: ModelPromotionState;
+  /** Command 5B item 20 (model development order): a challenger-tier model
+   * must reference the baseline it is being compared against -- `null`
+   * only when `isBaseline: true`. Prevents a challenger from registering
+   * at PAPER_CHALLENGER/PAPER_PROMOTED with no recorded baseline evidence
+   * to beat. */
+  readonly baselineModelId: string | null;
+  readonly isBaseline: boolean;
 }
 
 function recordIdentity(record: ModelRegistryRecord): string {
@@ -73,6 +80,10 @@ export class EmpiricalModelRegistry {
   register(record: ModelRegistryRecord): void {
     if (record.numberOfTrials < 1) throw new Error('MODEL_REGISTRY_INVALID_NUMBER_OF_TRIALS');
     if (Date.parse(record.trainingWindow.end) < Date.parse(record.trainingWindow.start)) throw new Error('MODEL_REGISTRY_INVALID_TRAINING_WINDOW');
+    if (!record.isBaseline && record.baselineModelId === null && (record.promotionState === 'PAPER_CHALLENGER' || record.promotionState === 'PAPER_PROMOTED')) {
+      throw new Error('MODEL_REGISTRY_CHALLENGER_WITHOUT_BASELINE');
+    }
+    if (record.isBaseline && record.baselineModelId !== null) throw new Error('MODEL_REGISTRY_BASELINE_CANNOT_REFERENCE_ANOTHER_BASELINE');
     const key = this.key(record.modelId, record.modelVersion);
     const existing = this.records.get(key);
     if (existing === undefined) { this.records.set(key, record); return; }

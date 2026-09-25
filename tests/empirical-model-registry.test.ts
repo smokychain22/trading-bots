@@ -12,9 +12,39 @@ function record(overrides: Partial<ModelRegistryRecord> = {}): ModelRegistryReco
     calibrationMethod: null, calibrationArtifactHash: null, costModelVersion: 'cm1', hyperparameterSearchId: null,
     numberOfTrials: 1, selectionBiasReceiptId: null,
     metrics: { brierScore: null, logLoss: null, ece: null, independentN: null },
-    artifactHash: 'a1', createdAt: '2026-06-02T00:00:00Z', promotionState: 'RESEARCH', ...overrides,
+    artifactHash: 'a1', createdAt: '2026-06-02T00:00:00Z', promotionState: 'RESEARCH',
+    baselineModelId: null, isBaseline: false, ...overrides,
   };
 }
+
+test('CORE CLAIM (Command 5B item 20): a PAPER_CHALLENGER with no baselineModelId and isBaseline=false is rejected', () => {
+  const registry = new EmpiricalModelRegistry();
+  assert.throws(
+    () => registry.register(record({ promotionState: 'PAPER_CHALLENGER' })),
+    /MODEL_REGISTRY_CHALLENGER_WITHOUT_BASELINE/,
+  );
+});
+
+test('a PAPER_CHALLENGER with a real baselineModelId registers fine', () => {
+  const registry = new EmpiricalModelRegistry();
+  registry.register(record({ modelId: 'baseline-model', isBaseline: true }));
+  registry.register(record({ modelId: 'challenger-model', promotionState: 'PAPER_CHALLENGER', baselineModelId: 'baseline-model' }));
+  assert.equal(registry.get('challenger-model', '0.1.0')?.baselineModelId, 'baseline-model');
+});
+
+test('a model marked isBaseline=true cannot also reference another baselineModelId', () => {
+  const registry = new EmpiricalModelRegistry();
+  assert.throws(
+    () => registry.register(record({ isBaseline: true, baselineModelId: 'something' })),
+    /MODEL_REGISTRY_BASELINE_CANNOT_REFERENCE_ANOTHER_BASELINE/,
+  );
+});
+
+test('RESEARCH/SHADOW states do not require a baselineModelId', () => {
+  const registry = new EmpiricalModelRegistry();
+  registry.register(record({ promotionState: 'RESEARCH' }));
+  registry.register(record({ modelId: 'm2', promotionState: 'SHADOW' }));
+});
 
 test('CORE CLAIM: consumers reference an exact (modelId, modelVersion) -- no getLatest/getCurrent method exists', () => {
   const registry = new EmpiricalModelRegistry();
