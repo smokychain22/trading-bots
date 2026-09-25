@@ -20,6 +20,9 @@ test('V19 certification is derived from executed evidence with no uncovered matr
   const receipt = buildV19EvidenceCertification(passingInput());
   assert.equal(receipt.MATRIX_CELLS_TOTAL, 105);
   assert.equal(receipt.MATRIX_CELLS_WITHOUT_EVIDENCE, 0);
+  const cells = Object.values(receipt.strategyMatrix).flatMap((row) => Object.values(row));
+  assert.ok(cells.every((cell) => cell.dimensionTestIds.length > 0));
+  assert.ok(cells.every((cell) => cell.dimensionTestIds.every((file) => cell.testIds.includes(file))));
   assert.equal(receipt.DATA_ROUTES_WITHOUT_DYNAMIC_PROOF, 0);
   assert.equal(receipt.AEGIS_UNPROVEN_SCENARIOS, 0);
   assert.equal(receipt.SIZING_UNPROVEN_SCENARIOS, 0);

@@ -84,8 +84,8 @@ export const v19ScenarioEvidence: readonly ScenarioEvidence[] = Object.freeze([
     ['CSP_ASSIGNMENT_STOCK_SELL', 'tests/p2g-lifecycle-simulator.test.ts', 'ASSIGN_THEN_SELL_STOCK'],
     ['CSP_ASSIGNMENT_CC_CLOSE', 'tests/p2g-lifecycle-simulator.test.ts', 'covers close, expiry, assignment'],
     ['CSP_ASSIGNMENT_CC_ROLL_CALL_AWAY', 'tests/p2g-lifecycle-simulator.test.ts', 'full synthetic wheel chain preserves the old roll loss'],
-    ['D_CLOSE', 'tests/defined-risk-management-replay.test.ts', 'conservative two-leg close economics'],
-    ['D_SHORT_ASSIGNMENT_LONG_PROTECTION', 'tests/defined-risk-management-replay.test.ts', 'short assignment, long protection'],
+    ['D_CLOSE', 'tests/defined-risk-management-replay.test.ts', 'defined-risk close whole-chain cash identity'],
+    ['D_SHORT_ASSIGNMENT_LONG_PROTECTION', 'tests/defined-risk-management-replay.test.ts', 'defined-risk expiration preserves short assignment loss'],
   ] satisfies readonly (readonly [string, string, string])[])
     .map(([id, file, testId]) => scenario('WHOLE_CHAIN', id, file, testId)),
 ]);
@@ -110,11 +110,35 @@ const dimensionFiles: Readonly<Record<string, readonly string[]>> = {
   REPLAY: ['src/theta/p2g-lifecycle-simulator.ts'], EMPIRICAL_DATASET: ['src/research/theta-entry-outcome-dataset.ts'],
   GOVERNANCE: ['src/theta/empirical-policy-promotion.ts'],
 };
+const dimensionTests: Readonly<Record<string, readonly string[]>> = {
+  THESIS: ['tests/strategy-package.test.ts'],
+  REGIME: ['tests/regime-contract.test.ts'],
+  CANDIDATE_GENERATOR: ['tests/canonical-strategy-frontier.test.ts'],
+  HARD_FILTERS: ['tests/canonical-strategy-frontier.test.ts'],
+  SOFT_FEATURES: ['tests/qualified-soft-feature-evidence.test.ts'],
+  ACCOUNT_FEASIBILITY: ['tests/strategy-account-policy-compatibility.test.ts'],
+  AEGIS: ['tests/aegis-contract.test.ts'],
+  SIZING: ['tests/sizing-contract.test.ts'],
+  LOCKED_PLAN: ['tests/master-paper-plan-assembly.test.ts'],
+  PROFIT_MANAGEMENT: ['tests/profit-taking-replay.test.ts'],
+  LOSS_MANAGEMENT: ['tests/loss-roll-experiment.test.ts'],
+  ROLL: ['tests/paper-bootstrap-management-policy.test.ts'],
+  EXPIRATION: ['tests/p2g-lifecycle-simulator.test.ts'],
+  ASSIGNMENT: ['tests/assignment-orchestrator.test.ts'],
+  EARLY_EXERCISE: ['tests/assignment-orchestrator.test.ts'],
+  RECOVERY: ['tests/recovery-covered-call-cohort.test.ts'],
+  WHOLE_CHAIN_ACCOUNTING: ['tests/whole-chain-economics.test.ts', 'tests/defined-risk-management-replay.test.ts'],
+  OUTCOME_RESOLVER: ['tests/outcome-resolver.test.ts'],
+  REPLAY: ['tests/p2g-lifecycle-simulator.test.ts'],
+  EMPIRICAL_DATASET: ['tests/theta-entry-outcome-dataset.test.ts'],
+  GOVERNANCE: ['tests/empirical-policy-promotion.test.ts'],
+};
 
 export const v19RequiredEvidenceFiles: readonly string[] = Object.freeze([...new Set([
   ...v19ScenarioEvidence.flatMap((item) => [item.testFile]),
   ...Object.values(strategyFiles).flat(), ...Object.values(strategyTests).flat(),
   ...Object.values(dimensionFiles).flat(),
+  ...Object.values(dimensionTests).flat(),
   ...Object.values(decisionDataEvidenceFiles).flatMap((item) => [...item.producer, ...item.normalizer, ...item.consumer]),
 ])].sort());
 
@@ -168,18 +192,19 @@ export function buildV19EvidenceCertification(input: V19ExecutionEvidence) {
   const strategyMatrix = Object.fromEntries((Object.keys(fiveStrategyEngineeringMatrix) as Strategy[]).map((strategy) => [strategy,
     Object.fromEntries(strategyEngineeringDimensions.map((dimension) => {
       const sourceFiles = [...strategyFiles[strategy], ...(dimensionFiles[dimension] ?? [])];
-      const testIds = strategyTests[strategy];
+      const dimensionTestIds = dimensionTests[dimension] ?? [];
+      const testIds = [...new Set([...strategyTests[strategy], ...dimensionTestIds])];
       const evidenceFailures = [...sourceFiles, ...testIds].filter((file) => input.fileAuditFailures.includes(file)
         || (file.startsWith('tests/') && testFailed(file)));
       const declaredState = fiveStrategyEngineeringMatrix[strategy][dimension];
       const state = evidenceFailures.length === 0 ? declaredState : 'MISSING';
       const cell = { state, evidenceType: declaredState === 'RESEARCH_ONLY' ? 'RESEARCH_TEST_EVIDENCE'
         : declaredState === 'NOT_APPLICABLE' ? 'APPLICABILITY_CONTRACT_EVIDENCE' : 'EXECUTED_TEST_AND_CALL_PATH',
-      sourceFiles, runtimeEntrypoint: strategyFiles[strategy][0], testIds,
+      sourceFiles, runtimeEntrypoint: strategyFiles[strategy][0], testIds, dimensionTestIds,
       scenarioIds: [`${strategy}_${dimension}`], consumer: strategyFiles[strategy][0],
       authority: strategy === 'Q' ? 'PAPER_LOCKED' : strategy === 'H' || strategy === 'D' ? 'SHADOW_NO_BROKER_AUTHORITY'
         : 'MANAGEMENT_LIFECYCLE_ONLY', lastVerifiedSha: input.sourceSha,
-      evidenceHash: hash({ strategy, dimension, sourceFiles, testIds, sourceSha: input.sourceSha }) };
+      evidenceHash: hash({ strategy, dimension, sourceFiles, testIds, dimensionTestIds, sourceSha: input.sourceSha }) };
       return [dimension, cell];
     }))]));
   const matrixCells = Object.values(strategyMatrix).flatMap((row) => Object.values(row));

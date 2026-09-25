@@ -60,6 +60,36 @@ export interface DefinedRiskExpirationAssessment {
   readonly brokerAuthority: false;
 }
 
+export interface DefinedRiskWholeChainAccountingInput {
+  readonly openedAt: string;
+  readonly closedAt: string;
+  readonly entryNetCreditPerShare: number;
+  readonly closeNetDebitPerShare: number | null;
+  readonly expirationSpot: number | null;
+  readonly shortStrike: number;
+  readonly longStrike: number;
+  readonly multiplier: number;
+  readonly quantity: number;
+  readonly entryFeesDollars: number;
+  readonly exitFeesDollars: number;
+  readonly adverseSlippageDollars: number;
+  readonly capitalAtRiskDollars: number;
+}
+
+export interface DefinedRiskWholeChainAccounting {
+  readonly entryPremiumDollars: number;
+  readonly closingDebitDollars: number;
+  readonly shortAssignmentLiabilityDollars: number;
+  readonly longProtectionValueDollars: number;
+  readonly feesDollars: number;
+  readonly adverseSlippageDollars: number;
+  readonly realizedPnlDollars: number;
+  readonly unrealizedPnlDollars: 0;
+  readonly capitalDays: number;
+  readonly settlement: 'CLOSED' | 'EXPIRED';
+  readonly brokerAuthority: false;
+}
+
 function finiteNonnegative(value: number | null): value is number {
   return value !== null && Number.isFinite(value) && value >= 0;
 }
@@ -143,6 +173,70 @@ export function runDefinedRiskManagementReplay(input: DefinedRiskManagementRepla
     closeSemantics: 'BUY_SHORT_AT_ASK_PLUS_SELL_LONG_AT_BID_PLUS_EXPLICIT_FEES_AND_SLIPPAGE' as const,
     replay: base,
     brokerAuthority: false as const,
+  };
+}
+
+function requireFiniteNonnegative(name: string, value: number): void {
+  if (!Number.isFinite(value) || value < 0) throw new Error(`DEFINED_RISK_${name}_INVALID`);
+}
+
+/**
+ * Computes the complete deterministic cash identity for a closed or expired
+ * bull-put spread. Assignment liability and long-put protection remain separate
+ * components, so a protective leg can never cosmetically erase the short loss.
+ */
+export function computeDefinedRiskWholeChainAccounting(
+  input: DefinedRiskWholeChainAccountingInput,
+): DefinedRiskWholeChainAccounting {
+  const openedAt = Date.parse(input.openedAt);
+  const closedAt = Date.parse(input.closedAt);
+  if (!Number.isFinite(openedAt) || !Number.isFinite(closedAt) || closedAt < openedAt) {
+    throw new Error('DEFINED_RISK_ACCOUNTING_TIMESTAMPS_INVALID');
+  }
+  requireFiniteNonnegative('ENTRY_CREDIT', input.entryNetCreditPerShare);
+  requireFiniteNonnegative('ENTRY_FEES', input.entryFeesDollars);
+  requireFiniteNonnegative('EXIT_FEES', input.exitFeesDollars);
+  requireFiniteNonnegative('SLIPPAGE', input.adverseSlippageDollars);
+  requireFiniteNonnegative('CAPITAL_AT_RISK', input.capitalAtRiskDollars);
+  if (!Number.isInteger(input.multiplier) || input.multiplier <= 0) {
+    throw new Error('DEFINED_RISK_ACCOUNTING_MULTIPLIER_INVALID');
+  }
+  if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
+    throw new Error('DEFINED_RISK_ACCOUNTING_QUANTITY_INVALID');
+  }
+  if (!Number.isFinite(input.shortStrike) || !Number.isFinite(input.longStrike)
+    || input.shortStrike <= input.longStrike) {
+    throw new Error('DEFINED_RISK_ACCOUNTING_STRIKES_INVALID');
+  }
+  const scale = input.multiplier * input.quantity;
+  const entryPremiumDollars = input.entryNetCreditPerShare * scale;
+  const feesDollars = input.entryFeesDollars + input.exitFeesDollars;
+  let closingDebitDollars = 0;
+  let shortAssignmentLiabilityDollars = 0;
+  let longProtectionValueDollars = 0;
+  let settlement: DefinedRiskWholeChainAccounting['settlement'];
+  if (input.closeNetDebitPerShare !== null) {
+    requireFiniteNonnegative('CLOSE_DEBIT', input.closeNetDebitPerShare);
+    if (input.expirationSpot !== null) throw new Error('DEFINED_RISK_ACCOUNTING_SETTLEMENT_AMBIGUOUS');
+    closingDebitDollars = input.closeNetDebitPerShare * scale;
+    settlement = 'CLOSED';
+  } else {
+    if (input.expirationSpot === null || !Number.isFinite(input.expirationSpot) || input.expirationSpot <= 0) {
+      throw new Error('DEFINED_RISK_ACCOUNTING_EXPIRATION_SPOT_INVALID');
+    }
+    shortAssignmentLiabilityDollars = Math.max(0, input.shortStrike - input.expirationSpot) * scale;
+    longProtectionValueDollars = Math.max(0, input.longStrike - input.expirationSpot) * scale;
+    settlement = 'EXPIRED';
+  }
+  const realizedPnlDollars = entryPremiumDollars - closingDebitDollars - shortAssignmentLiabilityDollars
+    + longProtectionValueDollars - feesDollars - input.adverseSlippageDollars;
+  const elapsedDays = (closedAt - openedAt) / 86_400_000;
+  return {
+    entryPremiumDollars, closingDebitDollars, shortAssignmentLiabilityDollars,
+    longProtectionValueDollars, feesDollars, adverseSlippageDollars: input.adverseSlippageDollars,
+    realizedPnlDollars, unrealizedPnlDollars: 0,
+    capitalDays: input.capitalAtRiskDollars * elapsedDays,
+    settlement, brokerAuthority: false,
   };
 }
 

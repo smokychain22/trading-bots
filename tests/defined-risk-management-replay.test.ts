@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  assessDefinedRiskExpiration, runDefinedRiskManagementReplay,
+  assessDefinedRiskExpiration, computeDefinedRiskWholeChainAccounting, runDefinedRiskManagementReplay,
   type DefinedRiskManagementReplayInput,
 } from '../src/research/defined-risk-management-replay.js';
 
@@ -74,4 +74,45 @@ test('expiration states preserve short assignment, long protection, pin risk, an
     'PIN_RISK');
   assert.equal(assessDefinedRiskExpiration({ spot: null, shortStrike: 680, longStrike: 675, pinBufferDollars: 0.25 }).state,
     'UNKNOWN');
+});
+
+test('defined-risk close whole-chain cash identity preserves premium, debit, fees, slippage, and capital-days', () => {
+  const result = computeDefinedRiskWholeChainAccounting({
+    openedAt: '2026-09-20T15:00:00.000Z', closedAt: '2026-09-25T15:00:00.000Z',
+    entryNetCreditPerShare: 2, closeNetDebitPerShare: 1, expirationSpot: null,
+    shortStrike: 680, longStrike: 675, multiplier: 100, quantity: 1,
+    entryFeesDollars: 1, exitFeesDollars: 1, adverseSlippageDollars: 2,
+    capitalAtRiskDollars: 500,
+  });
+  assert.deepEqual(result, {
+    entryPremiumDollars: 200, closingDebitDollars: 100,
+    shortAssignmentLiabilityDollars: 0, longProtectionValueDollars: 0,
+    feesDollars: 2, adverseSlippageDollars: 2, realizedPnlDollars: 96,
+    unrealizedPnlDollars: 0, capitalDays: 2500, settlement: 'CLOSED', brokerAuthority: false,
+  });
+});
+
+test('defined-risk expiration preserves short assignment loss and long protection as separate bounded cash legs', () => {
+  const result = computeDefinedRiskWholeChainAccounting({
+    openedAt: '2026-09-20T15:00:00.000Z', closedAt: '2026-09-25T15:00:00.000Z',
+    entryNetCreditPerShare: 2, closeNetDebitPerShare: null, expirationSpot: 670,
+    shortStrike: 680, longStrike: 675, multiplier: 100, quantity: 1,
+    entryFeesDollars: 1, exitFeesDollars: 1, adverseSlippageDollars: 2,
+    capitalAtRiskDollars: 500,
+  });
+  assert.equal(result.shortAssignmentLiabilityDollars, 1000);
+  assert.equal(result.longProtectionValueDollars, 500);
+  assert.equal(result.realizedPnlDollars, -304);
+  assert.equal(result.capitalDays, 2500);
+  assert.equal(result.settlement, 'EXPIRED');
+});
+
+test('defined-risk whole-chain accounting rejects ambiguous or non-finite settlement evidence', () => {
+  assert.throws(() => computeDefinedRiskWholeChainAccounting({
+    openedAt: '2026-09-20T15:00:00.000Z', closedAt: '2026-09-25T15:00:00.000Z',
+    entryNetCreditPerShare: 2, closeNetDebitPerShare: 1, expirationSpot: 670,
+    shortStrike: 680, longStrike: 675, multiplier: 100, quantity: 1,
+    entryFeesDollars: 1, exitFeesDollars: 1, adverseSlippageDollars: Number.NaN,
+    capitalAtRiskDollars: 500,
+  }), /SLIPPAGE_INVALID|SETTLEMENT_AMBIGUOUS/);
 });
