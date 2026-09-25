@@ -66,6 +66,7 @@
     "theta:first-order-preflight": "node --import tsx tools/theta-first-order-preflight.ts",
     "theta:no-submit:probe": "node --import tsx tools/theta-no-submit-probe.ts --environment-file=.env.local",
     "theta:premarket:historical-regressions": "node --import tsx tools/theta-historical-regressions.ts",
+    "theta:premarket:history-certify": "node --import tsx tools/theta-history-certify.ts --environment-file=.env.local",
     "theta:premarket:session-simulator": "node --import tsx tools/theta-premarket-session-simulator.ts",
     "theta:premarket:accelerated-soak": "node --import tsx tools/theta-accelerated-session-soak.ts",
     "theta:premarket:certify": "node --import tsx tools/theta-premarket-certify.ts",
