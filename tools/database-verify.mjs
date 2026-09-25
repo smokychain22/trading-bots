@@ -72,6 +72,9 @@ try {
     "062_policy_neutral_risk_evidence",
     "063_optionomics_event_first_observation",
     "064_alpaca_corporate_action_observation",
+    "065_aegis_iv_stress_evidence",
+    "066_local_observation_evidence",
+    "067_postgres_cycle_evidence_compaction",
   ];
   const actual = migrationRows.rows.map((row) => row.version);
   for (const version of expected) {
@@ -102,6 +105,7 @@ try {
     ["research", "theta_execution_observation_job"],
     ["ops", "runtime_worker_status"], ["ops", "runtime_worker_lease"],
     ["ops", "runtime_worker_event"],
+    ["ops", "local_observation_evidence"],
     ["copy", "follower_chain_participation"],
     ["copy", "follower_chain_participation_event"],
     ["research", "theta_shadow_virtual_account"],
@@ -254,6 +258,32 @@ try {
       throw new Error('AEGIS_IV_STRESS_PARTIALLY_APPLIED_WITHOUT_MIGRATION');
     }
   }
+  const localObservationEvidence=await client.query(`SELECT
+    EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='ops'
+      AND event_object_table='local_observation_evidence' AND trigger_name='reject_immutable_mutation') AS immutable_local,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='ops.local_observation_evidence'::regclass
+      AND contype='u' AND pg_get_constraintdef(oid) LIKE '%decision_cycle_id, sequence_number%') AS idempotent_cycle_sequence`);
+  if(!localObservationEvidence.rows[0]?.immutable_local||!localObservationEvidence.rows[0]?.idempotent_cycle_sequence)
+    throw new Error('LOCAL_OBSERVATION_EVIDENCE_PROTECTION_MISSING');
+  const compactEvidence=await client.query(`SELECT
+    (SELECT count(*)::int FROM information_schema.columns WHERE table_schema='trade' AND table_name='fusion_snapshot'
+      AND column_name IN ('storage_contract_version','snapshot_projection_hash','evidence_archive_gzip',
+        'evidence_archive_hash','evidence_archive_uncompressed_bytes','evidence_archive_compressed_bytes',
+        'full_contract_count','projected_contract_count')) AS fusion_columns,
+    (SELECT count(*)::int FROM information_schema.columns WHERE table_schema='trade'
+      AND table_name='canonical_strategy_frontier' AND column_name IN ('storage_contract_version','frontier_projection_hash')) AS frontier_columns,
+    (SELECT count(*)::int FROM information_schema.columns WHERE table_schema='trade' AND table_name='decision'
+      AND column_name IN ('receipt_storage_contract_version','receipt_projection_hash')) AS decision_columns,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='trade.fusion_snapshot'::regclass
+      AND conname='ck_fusion_snapshot_archive_hash') AS archive_hash_check,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='trade.fusion_snapshot'::regclass
+      AND conname='ck_fusion_snapshot_storage_counts') AS storage_count_check,
+    EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='trade.fusion_snapshot'::regclass
+      AND conname='ck_fusion_snapshot_archive_bytes') AS archive_byte_check`);
+  const compact=compactEvidence.rows[0];
+  if(compact?.fusion_columns!==8||compact?.frontier_columns!==2||compact?.decision_columns!==2
+    ||!compact?.archive_hash_check||!compact?.storage_count_check||!compact?.archive_byte_check)
+    throw new Error('POSTGRES_CYCLE_EVIDENCE_COMPACTION_INVARIANT_MISSING');
   const optionomicsTemporalEvidence=await client.query(`SELECT
     EXISTS(SELECT 1 FROM information_schema.triggers WHERE trigger_schema='research'
       AND event_object_table='optionomics_temporal_feature_observation' AND trigger_name='reject_immutable_mutation') AS immutable_temporal,
@@ -526,12 +556,14 @@ try {
   process.stdout.write(JSON.stringify({
     state: "CONNECTED",
     migrations: expected.length,
-    migrationHead: migration065Applied ? "065_aegis_iv_stress_evidence" : "064_alpaca_corporate_action_observation",
+    migrationHead: "067_postgres_cycle_evidence_compaction",
     // Canonical Paper IV cohort assessments live in schema-064 FusionSnapshot
     // JSON with separate source-proven PIT candidate rows. Migration 065 is a
     // distinct Optionomics research assessment, never the Paper IV prerequisite.
     aegisIvPersistence: "ALPACA_064_FUSION_SNAPSHOT_AVAILABLE",
     optionomicsIvResearchPersistence: migration065Applied ? "ENFORCED" : "DEFERRED_NOT_PAPER_REQUIRED",
+    localObservationEvidence: "ENFORCED",
+    postgresCycleEvidenceCompaction: "ENFORCED",
     requiredTables: required.length,
     privateBetaColumns: 9,
     accountRoles: Object.fromEntries(roles.rows.map((row) => [row.account_role, row.count])),
