@@ -139,20 +139,9 @@ single-candidate fallback exactly when `state.rollCandidates`/
 required.** `ROLL_CC_CANDIDATE_SOURCE` and `ROLL_CC_CANDIDATE_VALUATION`
 corrected to `REAL` in the capability registry.
 
-## Q-10: Data access for historical false-reject replay (Sep 16/18/21)
+## Q-10: Historical false-reject replay -- CLOSED (2026-09-25, verified against main `e2d9fdc`)
 
-- **Priority**: MEDIUM -- unblocks real measurement of the false-paralysis question this whole engagement centers on, but is a research request, not a Production defect
-- **Claude source commit**: this wave's Batch 3-4 (`historical-false-reject-analyzer.ts`, `THETA_HISTORICAL_FALSE_REJECT_REPLAY.md`)
-- **Source artifact**: `src/research/historical-false-reject-analyzer.ts` (real, tested, 7 tests passing), `docs/research/THETA_HISTORICAL_FALSE_REJECT_REPLAY.md`
-- **Current defect**: not a defect -- this research branch (a git worktree with no configured database connection) cannot reach the real Aiven-persisted candidate/quote/AEGIS rows for Sep 16/18/21 needed to run the analyzer for real.
-- **Expected change**: either (a) grant this research environment read-only access to the relevant persisted evidence tables, or (b) Codex exports the Sep-16/Sep-18/Sep-21 `contractCandidates`/quote/AEGIS-assessment rows to a file this branch can read. `src/research/historical-replay-import.ts` (built this pass) now defines the exact real, tested import contract Codex should target -- every required field named, `ABSENT_IN_HISTORICAL_SCHEMA` for anything the historical schema never captured.
-- **RECHECKED (2026-09-22, against main `26af86f`)**: Aiven writes are now restored (per `THETA_IMPLEMENTATION_BOARD.md`), but this pass found no NEW export/replay tool on main since the last check -- `tools/theta-research-export.ts`/`PostgresDatasetExporter` is a real, pre-existing exporter, but it requires the same live DB connection this research worktree still does not have configured; it is not a sanitized point-in-time historical replay export and was not built for this purpose. **Q-10 remains open**, not resolved by Aiven's write restoration alone (write access ≠ this research environment's read access).
-- **Producer**: the already-persisted real evidence from those 3 sessions (exists today, per the Sep-21 forensic doc already cited repeatedly).
-- **Consumer**: `historical-false-reject-analyzer.ts`'s `assessFalseReject`/`aggregateFalseRejectDay`, fed via `historical-replay-import.ts`'s validator.
-- **Persistence requirement**: none new -- read-only.
-- **Test requirement**: N/A (analyzer + importer already have 14 passing tests against synthetic fixtures).
-- **Runtime proof requirement**: N/A -- this is offline research analysis, not a runtime change.
-- **State**: OPEN, MEDIUM priority.
+Codex built its own real, read-only canonical exporter and ran the full Sep 16/18/21 replay independently (`docs/operations/THETA_PERFORMANCE_AND_REPLAY_RECEIPT_2026-09-23.md`): 8,605 real candidates, 39 symbols, 17,588 immutable evidence references, explicit `ALPACA_EXECUTABLE_MARKET`/`THETA_PERSISTED_DECISION` authorities, canonical hashing, source SHA, zero import-contract issues. Real per-session results: Sep 16 (139 candidates, 0 executable, 0 positive qty), Sep 18 (4,590 candidates, 765 executable, 0 positive qty), Sep 21 (3,876 candidates, 577 executable, 0 positive qty). Candidate-level AEGIS state was not historically captured, so `FALSE_REJECT_RATE`/`WAIT_REGRET`/profitability remain `null`, not zero, per the receipt's own explicit statement. No further data-access request needed -- this branch's `historical-false-reject-analyzer.ts`/`historical-replay-import.ts` remain useful as a reusable, tested contract for any FUTURE replay, but the original blocking question (does real Sep 16/18/21 evidence exist and is it analyzable) is answered.
 
 ## Q-11: Possible residual `DATA_INSUFFICIENT`/`NO_OPPORTUNITY` naming conflation in `runtime-behavior-diagnostic.ts`
 
