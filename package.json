@@ -72,6 +72,7 @@
     "theta:presession:certify": "node --import tsx tools/theta-premarket-certify.ts",
     "theta:v18:acceptance": "node --import tsx tools/theta-v18-final-acceptance.ts",
     "theta:v19:certify": "node --import tsx tools/theta-v19-evidence-certify.ts",
+    "theta:v20:certify": "node --import tsx tools/theta-v20-evidence-closure.ts",
     "optionomics:quote-qualification": "node --env-file=.env.local --import tsx tools/optionomics-quote-qualification.ts",
     "optionomics:qualify": "node --env-file=.env.local --import tsx tools/theta-optionomics-qualify.ts",
     "quote:qualify": "node --import tsx tools/theta-quote-qualify.ts",

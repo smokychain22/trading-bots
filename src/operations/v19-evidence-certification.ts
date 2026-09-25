@@ -81,7 +81,7 @@ export const v19ScenarioEvidence: readonly ScenarioEvidence[] = Object.freeze([
 
   ...([
     ['CSP_CLOSE', 'tests/whole-chain-economics.test.ts', 'computeWholeChainPnl sums every known leg'],
-    ['CSP_ASSIGNMENT_STOCK_SELL', 'tests/p2g-lifecycle-simulator.test.ts', 'ASSIGN_THEN_SELL_STOCK'],
+    ['CSP_ASSIGNMENT_STOCK_SELL', 'tests/p2g-lifecycle-simulator.test.ts', 'closed-market lifecycle library covers close, expiry, assignment, stock sale'],
     ['CSP_ASSIGNMENT_CC_CLOSE', 'tests/p2g-lifecycle-simulator.test.ts', 'covers close, expiry, assignment'],
     ['CSP_ASSIGNMENT_CC_ROLL_CALL_AWAY', 'tests/p2g-lifecycle-simulator.test.ts', 'full synthetic wheel chain preserves the old roll loss'],
     ['D_CLOSE', 'tests/defined-risk-management-replay.test.ts', 'defined-risk close whole-chain cash identity'],
