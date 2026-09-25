@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
-import { premarketCertificationGroups, premarketCertificationVersion } from
+import { classifyExactCi, classifyLockedWorker, premarketCertificationGroups, premarketCertificationVersion } from
   '../src/operations/premarket-certification-plan.js';
 import { auditPresessionConfiguration, paperBootstrapRuntimePolicy } from
   '../src/theta/paper-bootstrap-runtime-policy.js';
@@ -72,9 +72,9 @@ let ciDetail = 'CI_LOOKUP_UNAVAILABLE';
 let ciState: CheckState = 'EXTERNAL_BLOCKED';
 try {
   const rows = JSON.parse(ci.stdout) as Array<{ headSha?: string; status?: string; conclusion?: string; url?: string }>;
-  const exact = rows.find((row) => row.headSha === sourceSha && row.status === 'completed' && row.conclusion === 'success');
-  if (exact !== undefined) { ciState = 'PASS'; ciDetail = exact.url ?? 'EXACT_CI_PASS'; }
-  else { ciState = 'FAIL'; ciDetail = 'EXACT_CI_NOT_PASSING'; }
+  const classification = classifyExactCi(rows, sourceSha);
+  ciState = classification.state;
+  ciDetail = classification.detail;
 } catch { /* external tool or network failure stays typed */ }
 checks.push(check('EXACT_CI', ciState, ciDetail));
 
@@ -83,9 +83,8 @@ if (process.platform === 'win32') {
     'tools/windows/status-theta-local-worker.ps1'], 30_000);
   try {
     const status = JSON.parse(line(worker.stdout)) as Record<string, unknown>;
-    const aligned = status.taskState === 'Running' && status.runtimeShaAligned === true
-      && status.healthShaAligned === true && status.executionGate === 'LOCKED';
-    checks.push(check('LOCKED_WORKER', aligned ? 'PASS' : 'FAIL', aligned ? 'ONE_ALIGNED_LOCKED_WORKER' : 'WORKER_NOT_ALIGNED'));
+    const classification = classifyLockedWorker(status, sourceSha);
+    checks.push(check('LOCKED_WORKER', classification.state, classification.detail));
   } catch { checks.push(check('LOCKED_WORKER', 'FAIL', 'WORKER_STATUS_UNREADABLE')); }
 }
 
@@ -102,6 +101,7 @@ try {
 
 const engineeringFailures = checks.filter((item) => item.state === 'FAIL');
 const externalBlocks = checks.filter((item) => item.state === 'EXTERNAL_BLOCKED');
+const forwardBlocks = checks.filter((item) => item.state === 'FORWARD_DATA_REQUIRED');
 const stateOf = (id: string): CheckState => checks.find((item) => item.id === id)?.state ?? 'FAIL';
 const certifiedWhen = (id: string, passValue: string): string => stateOf(id) === 'PASS' ? passValue : `NOT_CERTIFIED_${stateOf(id)}`;
 const receipt = {
@@ -109,8 +109,9 @@ const receipt = {
   observedAt: new Date().toISOString(), sourceSha, remoteSha,
   engineeringGate: engineeringFailures.length === 0 ? 'PASS' : 'FAIL',
   liveValueGate: 'PENDING_OPEN',
-  overall: engineeringFailures.length === 0 && externalBlocks.length === 0 ? 'PASS'
-    : engineeringFailures.length > 0 ? 'FAIL' : 'EXTERNAL_BLOCKED',
+  overall: engineeringFailures.length > 0 ? 'FAIL'
+    : externalBlocks.length > 0 ? 'EXTERNAL_BLOCKED'
+      : forwardBlocks.length > 0 ? 'FORWARD_DATA_REQUIRED' : 'PASS',
   checks,
   configuration: {
     state: configurationAudit.state,

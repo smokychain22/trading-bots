@@ -5,6 +5,34 @@ export interface PremarketCertificationGroup {
   readonly testFiles: readonly string[];
 }
 
+export type PremarketCertificationState = 'PASS' | 'FAIL' | 'EXTERNAL_BLOCKED' | 'FORWARD_DATA_REQUIRED';
+export interface PremarketCertificationClassification { readonly state: PremarketCertificationState; readonly detail: string }
+
+export function classifyExactCi(rows: readonly { readonly headSha?: string; readonly status?: string;
+  readonly conclusion?: string; readonly url?: string }[], sourceSha: string): PremarketCertificationClassification {
+  const exact = rows.find((row) => row.headSha === sourceSha);
+  if (exact?.status === 'completed' && exact.conclusion === 'success') {
+    return { state: 'PASS', detail: exact.url ?? 'EXACT_CI_PASS' };
+  }
+  if (exact?.status === 'completed') {
+    return { state: 'FAIL', detail: `EXACT_CI_${(exact.conclusion ?? 'FAILED').toUpperCase()}` };
+  }
+  if (exact !== undefined) {
+    return { state: 'FORWARD_DATA_REQUIRED', detail: `EXACT_CI_${(exact.status ?? 'PENDING').toUpperCase()}` };
+  }
+  return { state: 'FORWARD_DATA_REQUIRED', detail: 'EXACT_CI_NOT_YET_OBSERVED' };
+}
+
+export function classifyLockedWorker(status: Readonly<Record<string, unknown>>,
+  sourceSha: string): PremarketCertificationClassification {
+  const safelyRunning = status.taskState === 'Running' && status.runtimeShaAligned === true
+    && status.healthShaAligned === true && status.executionGate === 'LOCKED';
+  const sourceAligned = status.runtimeSha === sourceSha && status.workspaceSha === sourceSha;
+  if (safelyRunning && sourceAligned) return { state: 'PASS', detail: 'ONE_CURRENT_SOURCE_ALIGNED_LOCKED_WORKER' };
+  if (safelyRunning) return { state: 'FORWARD_DATA_REQUIRED', detail: 'HEALTHY_LOCKED_WORKER_AWAITS_EXACT_CI_CUTOVER' };
+  return { state: 'FAIL', detail: 'WORKER_NOT_SAFELY_RUNNING' };
+}
+
 export const premarketCertificationGroups: readonly PremarketCertificationGroup[] = [
   { id: 'CONFIGURATION_AND_EVIDENCE_AUTHORITY', testFiles: [
     'tests/presession-configuration-registry.test.ts', 'tests/decision-critical-evidence-registry.test.ts',
