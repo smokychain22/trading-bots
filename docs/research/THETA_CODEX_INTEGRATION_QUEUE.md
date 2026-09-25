@@ -18,6 +18,36 @@ row against the new SHA before treating any of them as still open.
 
 ---
 
+## THETA-CONTRACT-PATH-RUNTIME-OBSERVATION-PRODUCER
+
+- **Priority**: HIGH -- blocks CONTRACT_PATH_DATASET, filter-value analysis, strategy comparison, experience memory, and the session experience report from ever consuming real (non-fixture) data.
+- **Filed**: COMMAND 5C-7 (this wave), per directive §49.
+- **Claude source artifact**: `src/research/contract-path-outcome-dataset.ts` (Command 5B) -- schema/contract already complete and tested against fixtures.
+- **Producer**: CODEX (Production runtime / observation scheduling).
+- **Consumers**: `src/research/contract-path-outcome-dataset.ts`, `src/research/filter-value-classification.ts`, `src/research/experience-memory-contract.ts`, `src/research/session-experience-report.ts`.
+- **Current state**: no runtime process observes or records a candidate/underlying's path at the checkpoints below. Research-side contracts exist and are ready to consume real rows the moment they exist -- no new research code is required on arrival.
+- **Required horizon checkpoints**: `15M | 1H | EOD | 1_TRADING_DAY | 3_TRADING_DAYS | 5_TRADING_DAYS | EXPIRATION | PRIMARY_COMMON_HORIZON` (the last one derived from `max(current new-risk strategy DTE maximums)`, currently 60 calendar days -- see `primary-common-horizon-utility.ts`).
+- **Exact required schema, per (subjectId, checkpoint) row**:
+  ```
+  {
+    subjectId: string,
+    checkpoint: 'FIFTEEN_MINUTE' | 'ONE_HOUR' | 'END_OF_DAY' | 'ONE_TRADING_DAY' | 'THREE_TRADING_DAYS'
+              | 'FIVE_TRADING_DAYS' | 'EXPIRATION' | 'PRIMARY_COMMON_HORIZON',
+    observedAt: string,
+    marketMarkPrice: number | null,
+    impliedVolatility: number | null,
+    underlyingPrice: number | null,
+    sourceSha: string,
+    workerSha: string | null,
+    provenance: 'REAL_SCHEDULED_OBSERVATION' | 'RECONSTRUCTED',
+  }
+  ```
+- **Null/UNKNOWN semantics**: a missing value must be `null` with a real reason classifiable under `src/research/unknown-value-taxonomy.ts` -- never `0`.
+- **Test required to close**: the real-data-arrival harness re-run against the FIRST real Codex-produced observation bundle, passing with zero new research code changes.
+- **Not required to close this now**: filed as a precise dependency, not an ask to build it this wave.
+
+---
+
 ## Q-1: Loss-cause evidence -- consumer wiring
 
 - **Priority**: MEDIUM
