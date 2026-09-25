@@ -38,14 +38,36 @@ export interface FillBaselineCoefficients {
   readonly optionVolume: number;
 }
 
+interface FeatureStandardization {
+  readonly mean: number;
+  readonly std: number;
+}
+
 export interface FillBaselineModel {
   readonly contractVersion: typeof executionFillBaselineVersion;
   readonly coefficients: FillBaselineCoefficients;
   readonly trainingN: number;
   readonly l2Penalty: number;
+  /** Real per-feature standardization (z-score mean/std) applied at fit
+   * time and reused identically at predict time -- without this, a
+   * raw-scale feature like underlying liquidity (order of 10^6) silently
+   * dominates a fractional feature like limitOffsetFromMid (order of
+   * 10^-2) in the gradient, saturating the sigmoid and producing a model
+   * that predicts a near-constant probability regardless of input. This
+   * is a real numerical-correctness requirement, not a stylistic choice. */
+  readonly standardization: Readonly<Record<Exclude<keyof FillFeatureVector, 'limitOffsetFromMid'>, FeatureStandardization>>;
 }
 
 function sigmoid(z: number): number { return 1 / (1 + Math.exp(-Math.max(-60, Math.min(60, z)))); }
+
+function meanAndStd(values: readonly number[]): FeatureStandardization {
+  if (values.length === 0) return { mean: 0, std: 1 };
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, v) => a + (v - mean) ** 2, 0) / values.length;
+  return { mean, std: variance > 0 ? Math.sqrt(variance) : 1 };
+}
+
+function standardize(value: number, s: FeatureStandardization): number { return (value - s.mean) / s.std; }
 
 /**
  * Baseline-0 control: base rate (fraction filled), no features at all --
@@ -69,21 +91,40 @@ export function fitFillBaseline(
   rows: readonly FillProbabilityRow[], l2Penalty = 1.0, learningRate = 0.1, iterations = 500,
 ): FillBaselineModel {
   const n = rows.length;
-  if (n === 0) {
-    return { contractVersion: executionFillBaselineVersion, coefficients: { intercept: 0, limitOffsetFromMid: 0, quoteAgeSeconds: 0, underlyingLiquidity: 0, optionOpenInterest: 0, optionVolume: 0 }, trainingN: 0, l2Penalty };
-  }
+  const zeroModel: FillBaselineModel = {
+    contractVersion: executionFillBaselineVersion,
+    coefficients: { intercept: 0, limitOffsetFromMid: 0, quoteAgeSeconds: 0, underlyingLiquidity: 0, optionOpenInterest: 0, optionVolume: 0 },
+    trainingN: 0, l2Penalty,
+    standardization: {
+      quoteAgeSeconds: { mean: 0, std: 1 }, underlyingLiquidity: { mean: 0, std: 1 },
+      optionOpenInterest: { mean: 0, std: 1 }, optionVolume: { mean: 0, std: 1 },
+    },
+  };
+  if (n === 0) return zeroModel;
+
   const means = {
     quoteAgeSeconds: average(rows.map((r) => r.quoteAgeSeconds)),
     underlyingLiquidity: average(rows.map((r) => r.underlyingLiquidity)),
     optionOpenInterest: average(rows.map((r) => r.optionOpenInterest)),
     optionVolume: average(rows.map((r) => r.optionVolume)),
   };
-  const vectors = rows.map((r) => [
+  const imputedRaw = {
+    quoteAgeSeconds: rows.map((r) => r.quoteAgeSeconds ?? means.quoteAgeSeconds ?? 0),
+    underlyingLiquidity: rows.map((r) => r.underlyingLiquidity ?? means.underlyingLiquidity ?? 0),
+    optionOpenInterest: rows.map((r) => r.optionOpenInterest ?? means.optionOpenInterest ?? 0),
+    optionVolume: rows.map((r) => r.optionVolume ?? means.optionVolume ?? 0),
+  };
+  const standardization = {
+    quoteAgeSeconds: meanAndStd(imputedRaw.quoteAgeSeconds), underlyingLiquidity: meanAndStd(imputedRaw.underlyingLiquidity),
+    optionOpenInterest: meanAndStd(imputedRaw.optionOpenInterest), optionVolume: meanAndStd(imputedRaw.optionVolume),
+  };
+
+  const vectors = rows.map((r, i) => [
     1, r.limitOffsetFromMid,
-    r.quoteAgeSeconds ?? means.quoteAgeSeconds ?? 0,
-    r.underlyingLiquidity ?? means.underlyingLiquidity ?? 0,
-    r.optionOpenInterest ?? means.optionOpenInterest ?? 0,
-    r.optionVolume ?? means.optionVolume ?? 0,
+    standardize(imputedRaw.quoteAgeSeconds[i] as number, standardization.quoteAgeSeconds),
+    standardize(imputedRaw.underlyingLiquidity[i] as number, standardization.underlyingLiquidity),
+    standardize(imputedRaw.optionOpenInterest[i] as number, standardization.optionOpenInterest),
+    standardize(imputedRaw.optionVolume[i] as number, standardization.optionVolume),
   ]);
   const labels = rows.map((r) => (r.filled ? 1 : 0));
   let weights = [0, 0, 0, 0, 0, 0];
@@ -104,7 +145,7 @@ export function fitFillBaseline(
       quoteAgeSeconds: weights[2] as number, underlyingLiquidity: weights[3] as number,
       optionOpenInterest: weights[4] as number, optionVolume: weights[5] as number,
     },
-    trainingN: n, l2Penalty,
+    trainingN: n, l2Penalty, standardization,
   };
 }
 
@@ -115,10 +156,11 @@ function average(values: readonly (number | null)[]): number | null {
 
 export function predictFillProbability(model: FillBaselineModel, features: FillFeatureVector): number {
   const c = model.coefficients;
+  const s = model.standardization;
   const z = c.intercept + c.limitOffsetFromMid * features.limitOffsetFromMid
-    + c.quoteAgeSeconds * (features.quoteAgeSeconds ?? 0)
-    + c.underlyingLiquidity * (features.underlyingLiquidity ?? 0)
-    + c.optionOpenInterest * (features.optionOpenInterest ?? 0)
-    + c.optionVolume * (features.optionVolume ?? 0);
+    + c.quoteAgeSeconds * standardize(features.quoteAgeSeconds ?? s.quoteAgeSeconds.mean, s.quoteAgeSeconds)
+    + c.underlyingLiquidity * standardize(features.underlyingLiquidity ?? s.underlyingLiquidity.mean, s.underlyingLiquidity)
+    + c.optionOpenInterest * standardize(features.optionOpenInterest ?? s.optionOpenInterest.mean, s.optionOpenInterest)
+    + c.optionVolume * standardize(features.optionVolume ?? s.optionVolume.mean, s.optionVolume);
   return sigmoid(z);
 }

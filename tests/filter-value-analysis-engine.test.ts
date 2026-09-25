@@ -56,3 +56,38 @@ test('a real, regime-stratified, sufficiently-large, meaningfully-separated samp
   assert.equal(result.verdict, 'VALUE_SUPPORTED');
   assert.equal(result.independentN, 30);
 });
+
+test('CORE CLAIM (closure item 3): the identical generic engine correctly handles LIQUIDITY -- a completely different family, same runFilterValueAnalysis path', () => {
+  const pairs = Array.from({ length: 30 }, (_, i) => pair({ pairId: `liq-${i}`, normalizedReturnWithFeature: 0.08, normalizedReturnWithoutFeature: 0.01 }));
+  const result = runFilterValueAnalysis({
+    family: 'LIQUIDITY', pairs, regimeStratified: true, purgedWalkForwardVersion: 'v1',
+    dependenceGroupingVersion: 'v1', costAware: true, evaluatedAt: '2026-09-26T00:00:00Z',
+    minimumIndependentN: 10, minimumMeaningfulEffectSize: 0.2,
+  });
+  assert.equal(result.family, 'LIQUIDITY');
+  assert.equal(result.verdict, 'VALUE_SUPPORTED');
+});
+
+test('CORE CLAIM (closure item 3): REGIME with insufficient N correctly yields INSUFFICIENT_DATA, same gate logic as every other family', () => {
+  const pairs = [pair({ pairId: 'regime-1', normalizedReturnWithFeature: 0.05, normalizedReturnWithoutFeature: 0.01 })];
+  const result = runFilterValueAnalysis({
+    family: 'REGIME', pairs, regimeStratified: true, purgedWalkForwardVersion: 'v1',
+    dependenceGroupingVersion: 'v1', costAware: true, evaluatedAt: '2026-09-26T00:00:00Z',
+    minimumIndependentN: 30, minimumMeaningfulEffectSize: 0.2,
+  });
+  assert.equal(result.family, 'REGIME');
+  assert.equal(result.verdict, 'INSUFFICIENT_DATA');
+});
+
+test('CORE CLAIM (closure item 3): PORTFOLIO_EXPOSURE with real evidence but no effect correctly yields VALUE_NOT_DEMONSTRATED', () => {
+  const pairs = Array.from({ length: 30 }, (_, i) => pair({
+    pairId: `pe-${i}`, normalizedReturnWithFeature: 0.05 + (i % 2 === 0 ? 0.01 : -0.01), normalizedReturnWithoutFeature: 0.05,
+  }));
+  const result = runFilterValueAnalysis({
+    family: 'PORTFOLIO_EXPOSURE', pairs, regimeStratified: true, purgedWalkForwardVersion: 'v1',
+    dependenceGroupingVersion: 'v1', costAware: true, evaluatedAt: '2026-09-26T00:00:00Z',
+    minimumIndependentN: 10, minimumMeaningfulEffectSize: 0.2,
+  });
+  assert.equal(result.family, 'PORTFOLIO_EXPOSURE');
+  assert.equal(result.verdict, 'VALUE_NOT_DEMONSTRATED');
+});

@@ -6,6 +6,24 @@
  * classification.ts`'s real-method gate with actually-computed evidence
  * rather than caller-asserted numbers. This module is the "engine";
  * `filter-value-classification.ts` remains the typed contract/gate.
+ *
+ * COMMAND 5C-7 closure item 3 -- explicit decision: this ONE generic,
+ * `CanonicalFeatureFamily`-parameterized engine is used for all 20
+ * canonical families, not 20 bespoke runners. Justification: every
+ * family's real analysis question is structurally identical --
+ * "does presence/level of family X shift the same normalized-return
+ * outcome, holding matched confounders constant, under a purged
+ * walk-forward split?" -- the family-specific work lives entirely in how
+ * a caller builds `MatchedAblationPair`s (which raw fields to match on,
+ * what "presence" means for that family), not in the statistical engine
+ * itself; a bespoke per-family engine would duplicate this exact math 20
+ * times for zero real gain. (`optionomics-flow-analysis-engine.ts` is a
+ * deliberate, justified EXCEPTION for FLOW specifically, because flow has
+ * genuinely bespoke semantics -- open/close ambiguity, sweep/block
+ * structure -- that a generic numeric pair can't express; see that
+ * module's own docstring.) Proven generic (not just asserted) by
+ * `tests/filter-value-analysis-engine.test.ts`'s LIQUIDITY/REGIME cases,
+ * run through the identical `runFilterValueAnalysis` path FLOW uses.
  */
 import {
   type CanonicalFeatureFamily, type FilterValueClassification, type FilterValueVerdict,
