@@ -161,5 +161,7 @@ test('a recovered cycle marks only stale RUNNING rows failed before starting a n
   assert.match(queries[0]??'',/status='FAILED'/);
   assert.match(queries[0]??'',/status='RUNNING'/);
   assert.match(queries[0]??'',/INTERRUPTED_STALE_LEASE/);
+  assert.match(queries[0]??'',/interval '7 minutes'/);
+  assert.match(queries[0]??'',/LIMIT 32 FOR UPDATE SKIP LOCKED/);
   assert.match(queries[1]??'',/ON CONFLICT\(correlation_id\) DO NOTHING/);
 });

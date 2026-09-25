@@ -6,12 +6,18 @@ import { deriveDatabaseRuntimeMismatches, deriveRuntimeMismatches, maximumWorker
 const healthy: RuntimeTruthInputs = {
   sourceSha: 'a'.repeat(40), sourceDirty: false, workerSha: 'a'.repeat(40), activeWorkerLeases: 1,
   workerHeartbeat: '2026-09-23T13:30:00.000Z', workerMode: 'MASTER_THETA_PAPER',
-  executionGate: 'LOCKED', migrationHead: '064_alpaca_corporate_action_observation',
+  executionGate: 'LOCKED', migrationHead: '067_postgres_cycle_evidence_compaction',
   requiredMigrationPresent: true, observedAt: '2026-09-23T13:30:20.000Z',
 };
 
-test('current locked release with schema 064 has no mismatch', () => {
+test('current locked release with schema 067 has no mismatch', () => {
   assert.deepEqual(deriveRuntimeMismatches(healthy), []);
+});
+
+test('schema 064 is explicitly incompatible with the current runtime', () => {
+  assert.deepEqual(deriveRuntimeMismatches({ ...healthy,
+    migrationHead: '064_alpaca_corporate_action_observation', requiredMigrationPresent: false }),
+  ['MIGRATION_MISMATCH']);
 });
 
 test('normal worker rest and bounded provider work do not create a false stale alarm', () => {

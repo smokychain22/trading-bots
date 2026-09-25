@@ -13,8 +13,22 @@ $releaseSha=if($null-ne$releasePath-and(Test-Path -LiteralPath $releasePath)){(&
 $runtimeShaAligned=$null-ne$runtime-and$releaseSha-eq[string]$runtime.buildSha
 $healthShaAligned=$null-ne$health-and$null-ne$runtime-and[string]$health.buildSha-eq[string]$runtime.buildSha
 $taskRunning=$null-ne$task-and[string]$task.State-eq'Running'
-$effectiveState=if($taskRunning){if(-not$runtimeShaAligned){'BLOCKED_RUNTIME_SHA_MISMATCH'}
-  elseif(-not$healthShaAligned){'STARTING_NEW_RELEASE'}else{[string]$health.state}}
+$supervisorProcesses=@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+  $null-ne$_.CommandLine-and$_.CommandLine-match'(?i)[\\/]theta-local-worker\.ps1(?:"|\s|$)'
+})
+$supervisorCount=$supervisorProcesses.Count
+$healthTimestamp=$null
+foreach($field in @('observedAt','lastCycle','lastFailure','lastShutdown')){
+  if($null-ne$health-and$null-ne$health.$field){$healthTimestamp=[DateTimeOffset]::Parse([string]$health.$field);break}
+}
+$healthAgeSeconds=if($null-ne$healthTimestamp){[Math]::Max(0,[Math]::Round(([DateTimeOffset]::UtcNow-$healthTimestamp).TotalSeconds))}else{$null}
+$healthFresh=$null-ne$healthAgeSeconds-and$healthAgeSeconds-le420
+$effectiveState=if($taskRunning){if($supervisorCount-eq0){'WORKER_ABSENT'}
+  elseif($supervisorCount-gt1){'DUPLICATE_SUPERVISOR'}
+  elseif(-not$runtimeShaAligned){'BLOCKED_RUNTIME_SHA_MISMATCH'}
+  elseif(-not$healthShaAligned){'STARTING_NEW_RELEASE'}
+  elseif([string]$health.state-eq'SCHEMA_INCOMPATIBLE'){'SCHEMA_INCOMPATIBLE'}
+  elseif(-not$healthFresh){'STALE_HEARTBEAT'}else{[string]$health.state}}
   elseif($null-ne$runtime-and-not$runtimeShaAligned){'BLOCKED_RUNTIME_SHA_MISMATCH'}
   elseif($null-ne$task){'NOT_RUNNING'}else{'NOT_INSTALLED'}
 $settings=if($null-ne$task){$task.Settings}else{$null}
@@ -29,5 +43,7 @@ Write-Output (@{installed=$null-ne$task;taskState=if($null-ne$task){[string]$tas
   multipleInstances=if($null-ne$settings){[string]$settings.MultipleInstances}else{'UNKNOWN'};
   reportedHealth=$health;effectiveState=$effectiveState;runtimeSha=if($null-ne$runtime){[string]$runtime.buildSha}else{$null};
   workspaceSha=$workspaceSha;releasePath=$releasePath;releaseSha=$releaseSha;runtimeShaAligned=$runtimeShaAligned;
-  healthShaAligned=$healthShaAligned;
-  executionGate=if($taskRunning-and$healthShaAligned){[string]$health.executionGate}else{'LOCKED'}} | ConvertTo-Json -Depth 6 -Compress)
+  healthShaAligned=$healthShaAligned;supervisorProcessCount=$supervisorCount;
+  supervisorProcessIds=@($supervisorProcesses|ForEach-Object{[int]$_.ProcessId});healthAgeSeconds=$healthAgeSeconds;
+  healthFresh=$healthFresh;leaseState='UNVERIFIED_BY_LOCAL_STATUS';
+  executionGate=if($taskRunning-and$healthShaAligned-and$healthFresh){[string]$health.executionGate}else{'LOCKED'}} | ConvertTo-Json -Depth 6 -Compress)

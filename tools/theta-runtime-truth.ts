@@ -5,6 +5,7 @@ import { loadEnvironmentFile } from '../src/config/environment.js';
 import { deriveDatabaseRuntimeMismatches,
   deriveRuntimeMismatches } from '../src/theta/runtime-system-truth.js';
 import { canonicalSystemTruthRegister } from '../src/theta/canonical-system-truth.js';
+import { assessRuntimeSchemaCompatibility } from '../src/theta/runtime-schema-compatibility.js';
 
 const observedAt = new Date().toISOString();
 const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
@@ -54,6 +55,7 @@ let databaseReachable = false;
 let databaseReadOnlyState: string | null = null;
 let migrationHead: string | null = null;
 let requiredMigrationPresent: boolean | null = null;
+let appliedMigrationVersions: readonly string[] | null = null;
 let activeWorkerLeases: number | null = null;
 let workerLeaseId: string | null = null;
 let workerLeaseState: string | null = null;
@@ -83,11 +85,14 @@ if (pool) {
     databaseEvidenceStage = 'DATABASE_CORE_STATE';
     const state = await pool.query(`SELECT current_setting('default_transaction_read_only') AS read_only,
       (SELECT version FROM core.schema_migration ORDER BY version DESC LIMIT 1) AS migration_head,
-      EXISTS(SELECT 1 FROM core.schema_migration WHERE version='064_alpaca_corporate_action_observation') AS schema_064`);
+      EXISTS(SELECT 1 FROM core.schema_migration WHERE version='067_postgres_cycle_evidence_compaction') AS schema_067,
+      (SELECT jsonb_agg(version ORDER BY version) FROM core.schema_migration) AS applied_versions`);
     databaseReachable = true;
     databaseReadOnlyState = String(state.rows[0]?.read_only ?? 'UNKNOWN');
     migrationHead = state.rows[0]?.migration_head == null ? null : String(state.rows[0].migration_head);
-    requiredMigrationPresent = state.rows[0]?.schema_064 === true;
+    requiredMigrationPresent = state.rows[0]?.schema_067 === true;
+    appliedMigrationVersions = Array.isArray(state.rows[0]?.applied_versions)
+      ? state.rows[0].applied_versions.map(String) : null;
     databaseEvidenceStage = 'ACTIVE_WORKER_LEASES';
     const leases = await pool.query(`SELECT count(*)::int AS active_count FROM ops.runtime_worker_lease WHERE expires_at>now()`);
     activeWorkerLeases = Number(leases.rows[0]?.active_count ?? 0);
@@ -272,6 +277,9 @@ mismatches.push(...deriveDatabaseRuntimeMismatches({
   databaseReachable: databaseReachable && !databaseConnectionFailed,
   databaseEvidenceComplete,
 }));
+const databaseSchemaCompatibility = assessRuntimeSchemaCompatibility({
+  appliedVersions: appliedMigrationVersions, sourceSha, workerSha,
+});
 const receipt = {
   schemaVersion: 'theta-runtime-system-truth-v1', observedAt, sourceSha, sourceDirty,
   workerSha, workerLeaseId, workerLeaseState, activeWorkerLeases, workerHeartbeat,
@@ -279,7 +287,8 @@ const receipt = {
   followerGate: environment.FOLLOWER_PAPER_EXECUTION_ENABLED ? 'ENABLED_LOCAL_CONFIG_UNSAFE' : 'LOCKED_LOCAL_CONFIG',
   liveMoney: 'NOT_AUTHORIZED', masterPaperExecutionLocalConfig: environment.MASTER_PAPER_EXECUTION_ENABLED,
   paperPauseNewOrdersLocalConfig: environment.PAPER_PAUSE_NEW_ORDERS,
-  databaseMigrationHead: migrationHead, databaseSchema064Present: requiredMigrationPresent,
+  databaseMigrationHead: migrationHead, databaseRequiredMigrationPresent: requiredMigrationPresent,
+  databaseSchemaCompatibility,
   databaseReadOnlyState, databaseReachable, databaseEvidenceComplete,
   databaseEvidenceError,
   alpacaAuth: broker.auth, optionomicsAuth: 'NOT_PROBED_IN_THIS_RECEIPT',

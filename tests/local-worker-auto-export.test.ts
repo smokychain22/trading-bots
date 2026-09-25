@@ -146,13 +146,23 @@ test('Windows worker status never reports stale ONLINE health as current when th
   assert.match(statusSource,/runtimeShaAligned/);
   assert.match(statusSource,/healthShaAligned/);
   assert.match(statusSource,/STARTING_NEW_RELEASE/);
+  assert.match(statusSource,/WORKER_ABSENT/);
+  assert.match(statusSource,/DUPLICATE_SUPERVISOR/);
+  assert.match(statusSource,/SCHEMA_INCOMPATIBLE/);
+  assert.match(statusSource,/STALE_HEARTBEAT/);
+  assert.match(statusSource,/supervisorProcessCount/);
+  assert.match(statusSource,/healthAgeSeconds/);
+  assert.match(statusSource,/leaseState='UNVERIFIED_BY_LOCAL_STATUS'/);
   assert.match(statusSource,/releaseSha/);
-  assert.match(statusSource,/executionGate=if\(\$taskRunning-and\$healthShaAligned\)/);
+  assert.match(statusSource,/executionGate=if\(\$taskRunning-and\$healthShaAligned-and\$healthFresh\)/);
   const workerSource=await readFile('tools/windows/theta-local-worker.ps1','utf8');
   assert.match(workerSource,/failureCode='THETA_RUNTIME_SHA_MISMATCH'/);
   assert.match(workerSource,/executionGate='LOCKED'/);
   assert.match(workerSource,/runtime\.releasePath/);
   assert.match(workerSource,/THETA_RUNTIME_RELEASE_PATH_MISMATCH/);
+  assert.match(workerSource,/serverErrorCode -eq 'RUNTIME_SCHEMA_INCOMPATIBLE'/);
+  assert.match(workerSource,/leaseAcquired=\$false/);
+  assert.match(workerSource,/cycleStarted=\$false/);
 });
 
 test('candidate scan timestamp advances only for a real complete or partial evidence scan',()=>{

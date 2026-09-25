@@ -1,4 +1,5 @@
 /** Runtime observations are separate from the source-controlled capability review. */
+import { runtimeSchemaMinimum } from './runtime-schema-compatibility.js';
 export interface RuntimeTruthInputs {
   readonly sourceSha: string;
   readonly sourceDirty: boolean;
@@ -48,6 +49,6 @@ export function deriveRuntimeMismatches(input: RuntimeTruthInputs): RuntimeMisma
   if (input.workerMode !== null && input.workerMode !== 'MASTER_THETA_PAPER') mismatches.push('WORKER_MODE_UNEXPECTED');
   if (input.executionGate !== null && input.executionGate !== 'LOCKED') mismatches.push('EXECUTION_GATE_NOT_LOCKED');
   if (input.requiredMigrationPresent === false || (input.migrationHead !== null
-    && input.migrationHead < '064_alpaca_corporate_action_observation')) mismatches.push('MIGRATION_MISMATCH');
+    && input.migrationHead < runtimeSchemaMinimum)) mismatches.push('MIGRATION_MISMATCH');
   return mismatches;
 }
