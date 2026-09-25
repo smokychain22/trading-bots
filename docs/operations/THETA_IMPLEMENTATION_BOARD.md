@@ -587,3 +587,34 @@ No item is complete merely because its type, config, fixture, or UI label exists
   compacted to ZSTD Parquet, read through DuckDB, and reconciled by batch,
   branch, candidate, selection and identity. NEXT_RETRY_WHEN: migration 067,
   post-migration restore parity, and locked current-worker cutover all pass.
+
+## Schema-067 runtime compatibility closure, 2026-09-25
+
+- ID: SCHEMA-064-WORKER-42703. DOMAIN: runtime/database compatibility. OBSERVED:
+  the locked `af3d43d` supervisor completed broker, lifecycle, management and
+  observation scopes, then the evidence persistence scope failed with SQLSTATE
+  42703 when `PostgresThetaCycleStore.persist` referenced
+  `trade.fusion_snapshot.storage_contract_version`. That column is introduced
+  by migration 067 in commit `cd2fb840a8e66b231a8ed1000e4168eaf9f980c4`.
+  CLASSIFICATION: INFRASTRUCTURE_DEFERRED, never strategy WAIT. The old worker
+  was stopped, with zero order submissions and zero broker mutations.
+- ID: RUNTIME-SCHEMA-COMPATIBILITY-V1. DOMAIN: runtime admission. SOURCE:
+  `src/theta/runtime-schema-compatibility.ts`. CURRENT_STATE:
+  CODE_COMPLETE/VERIFIED_SOURCE. Every normal runtime scope and database lease
+  probe now checks the ordered migration inventory and exact source-worker SHA
+  before worker registration, lease acquisition or cycle start. Schema below
+  067, schema above the supported maximum, missing migration metadata and a
+  source-worker release mismatch return `RUNTIME_SCHEMA_INCOMPATIBLE`, keep the
+  gate locked and carry no broker authority.
+- ID: WINDOWS-WORKER-HEALTH-TRUTH. DOMAIN: operator health. CURRENT_STATE:
+  CODE_COMPLETE/VERIFIED_SOURCE. Scheduled Task state, supervisor process count,
+  immutable release SHA, health SHA, heartbeat age and reported schema state
+  are now separate. A running wrapper with no supervisor is `WORKER_ABSENT`, a
+  duplicate is `DUPLICATE_SUPERVISOR`, stale health is `STALE_HEARTBEAT`, and
+  schema mismatch is `SCHEMA_INCOMPATIBLE`. The local status command labels the
+  database lease unverified instead of claiming lease health without a DB read.
+- ID: F24-HISTORICAL-REGRESSION. DOMAIN: regression safety. CURRENT_STATE:
+  CLOSED_SOURCE. `SCHEMA_064_WORKER_42703` is registered as F24 with executable
+  fail-closed tests. Stale RUNNING cycle recovery remains bounded to rows older
+  than seven minutes, at most 32 rows per pass with `FOR UPDATE SKIP LOCKED`,
+  and records `INTERRUPTED_STALE_LEASE` rather than WAIT.

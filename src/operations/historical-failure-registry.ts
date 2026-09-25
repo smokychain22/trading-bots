@@ -67,6 +67,8 @@ export const historicalFailureRegressions: readonly HistoricalFailureRegression[
     'POSTGRES_57014', ['tests/runtime-postgres-client.test.ts'], '57014'),
   fixture('F23_AIVEN_53000_TRANSFER_QUOTA', 'optional bulk archive retried through exhausted transfer quota',
     'TRANSFER_QUOTA_EXHAUSTED_COOLDOWN', ['tests/local-research-archive-health.test.ts'], 'quota exhaustion'),
+  fixture('F24_SCHEMA_064_WORKER_42703', 'schema-064 worker reached migration-067 persistence SQL',
+    'RUNTIME_SCHEMA_INCOMPATIBLE', ['tests/runtime-schema-compatibility.test.ts'], 'SCHEMA_064_WORKER_42703'),
 ] as const;
 
 export function validateHistoricalFailureRegistry(): readonly string[] {
@@ -78,7 +80,7 @@ export function validateHistoricalFailureRegistry(): readonly string[] {
     if (item.testFiles.length === 0) issues.push(`NO_EXECUTABLE_TEST:${item.fixtureId}`);
     if (item.inputFamilies.length === 0) issues.push(`NO_INPUT_FAMILY:${item.fixtureId}`);
   }
-  for (let index = 1; index <= 23; index += 1) {
+  for (let index = 1; index <= 24; index += 1) {
     const prefix = `F${String(index).padStart(2, '0')}_`;
     if (![...ids].some((id) => id.startsWith(prefix))) issues.push(`MISSING_FIXTURE:${prefix}`);
   }

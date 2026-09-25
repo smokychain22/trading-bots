@@ -1,0 +1,64 @@
+{
+  "contractVersion": "theta-runtime-schema-compatibility-v1",
+  "authority": "PRODUCTION_RUNTIME_FAIL_CLOSED",
+  "expectedMinimum": "067_postgres_cycle_evidence_compaction",
+  "expectedMaximum": "067_postgres_cycle_evidence_compaction",
+  "compatibleExactHeads": [
+    "067_postgres_cycle_evidence_compaction"
+  ],
+  "requiredMigrations": [
+    "020_local_worker_runtime",
+    "064_alpaca_corporate_action_observation",
+    "065_aegis_iv_stress_evidence",
+    "066_local_observation_evidence",
+    "067_postgres_cycle_evidence_compaction"
+  ],
+  "failureIncident": {
+    "id": "SCHEMA_064_WORKER_42703",
+    "sqlState": "42703",
+    "missingObject": "trade.fusion_snapshot.storage_contract_version",
+    "firstFailingCallsite": "src/theta/postgres-theta-cycle-store.ts:PostgresThetaCycleStore.persist",
+    "introducingCommit": "cd2fb840a8e66b231a8ed1000e4168eaf9f980c4",
+    "requiredMigration": "067_postgres_cycle_evidence_compaction",
+    "classification": "INFRASTRUCTURE_DEFERRED",
+    "strategyEvidence": false
+  },
+  "post064Dependencies": [
+    {
+      "migration": "065_aegis_iv_stress_evidence",
+      "objects": [
+        "market.optionomics_iv_session_observation",
+        "risk.aegis_iv_stress_assessment"
+      ]
+    },
+    {
+      "migration": "066_local_observation_evidence",
+      "objects": [
+        "ops.local_observation_evidence"
+      ]
+    },
+    {
+      "migration": "067_postgres_cycle_evidence_compaction",
+      "objects": [
+        "trade.fusion_snapshot.storage_contract_version",
+        "trade.fusion_snapshot.snapshot_projection_hash",
+        "trade.fusion_snapshot.evidence_archive_gzip",
+        "trade.fusion_snapshot.evidence_archive_hash",
+        "trade.fusion_snapshot.evidence_archive_uncompressed_bytes",
+        "trade.fusion_snapshot.evidence_archive_compressed_bytes",
+        "trade.fusion_snapshot.full_contract_count",
+        "trade.fusion_snapshot.projected_contract_count",
+        "trade.canonical_strategy_frontier.storage_contract_version",
+        "trade.canonical_strategy_frontier.frontier_projection_hash",
+        "trade.decision.receipt_storage_contract_version",
+        "trade.decision.receipt_projection_hash"
+      ]
+    }
+  ],
+  "safety": {
+    "leaseBeforeCompatibility": false,
+    "cycleBeforeCompatibility": false,
+    "brokerAuthority": false,
+    "executionGate": "LOCKED"
+  }
+}

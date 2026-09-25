@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { parseLocalWorkerIdentity, parseLocalWorkerOperation, safeRuntimeErrorHeader } from '../src/theta/autonomous-runtime-handler.js';
 
@@ -122,4 +123,20 @@ test('local worker operation accepts the bounded runtime, evidence, and owner au
   assert.equal(parseLocalWorkerOperation({ headers: {
     'x-theta-operation': 'submit-order',
   } }), 'INVALID');
+});
+
+test('runtime schema compatibility is checked before registration, lease, or cycle start', async () => {
+  const source = await readFile('src/theta/autonomous-runtime-handler.ts', 'utf8');
+  const guard = source.indexOf('const compatibility = await inspectRuntimeSchemaCompatibility');
+  const dbProbe = source.indexOf("if (operation === 'RUNTIME_DB_PROBE')", guard);
+  const registration = source.indexOf('await workerStore.register', guard);
+  const lease = source.indexOf('await workerStore.acquireLease', guard);
+  const cycle = source.indexOf('runAutonomousRuntimeCycle', guard);
+  assert.ok(guard > 0);
+  assert.ok(dbProbe > guard);
+  assert.ok(registration > guard);
+  assert.ok(lease > guard);
+  assert.ok(cycle > guard);
+  assert.match(source, /RUNTIME_SCHEMA_INCOMPATIBLE/);
+  assert.match(source, /masterPaperOrdersSubmitted: 0/);
 });

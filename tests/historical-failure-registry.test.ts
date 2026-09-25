@@ -4,8 +4,8 @@ import test from 'node:test';
 import { historicalFailureRegressions, validateHistoricalFailureRegistry } from
   '../src/operations/historical-failure-registry.js';
 
-test('historical failure registry covers F01 through F23 with executable sanitized proofs', () => {
-  assert.equal(historicalFailureRegressions.length, 23);
+test('historical failure registry covers F01 through F24 with executable sanitized proofs', () => {
+  assert.equal(historicalFailureRegressions.length, 24);
   assert.deepEqual(validateHistoricalFailureRegistry(), []);
   for (const fixture of historicalFailureRegressions) {
     assert.match(fixture.fixtureId, /^F\d{2}_[A-Z0-9_]+$/);

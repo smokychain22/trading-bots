@@ -56,6 +56,7 @@ import { createRuntimePostgresPool } from './runtime-postgres-pool.js';
 import { runtimeRequestLeaseExpiresAt } from './runtime-request-lease.js';
 import { classifyPostgresRuntimeError } from './postgres-runtime-error.js';
 import { withRuntimePostgresClient } from './runtime-postgres-client.js';
+import { inspectRuntimeSchemaCompatibility } from './runtime-schema-compatibility.js';
 
 let runtimePool: Pool | null = null;
 
@@ -582,6 +583,22 @@ export default async function autonomousRuntimeHandler(
     return;
   }
   try {
+    if (operation === 'RUNTIME_CYCLE' || operation === 'RUNTIME_DB_PROBE'
+      || operation === 'RUNTIME_CORE_CYCLE' || operation === 'RUNTIME_BROKER_CYCLE'
+      || operation === 'RUNTIME_LIFECYCLE_CYCLE' || operation === 'RUNTIME_MANAGEMENT_CYCLE'
+      || operation === 'RUNTIME_OBSERVATION_CYCLE' || operation === 'RUNTIME_EVIDENCE_CYCLE') {
+      const compatibility = await inspectRuntimeSchemaCompatibility(runtimePool, {
+        sourceSha: process.env.VERCEL_GIT_COMMIT_SHA,
+        workerSha: localIdentity.kind === 'VALID' ? localIdentity.identity.buildSha : null,
+      });
+      if (!compatibility.compatible) {
+        response.setHeader('X-Theta-Safe-Error-Code', 'RUNTIME_SCHEMA_INCOMPATIBLE');
+        send(response, 503, { error: 'RUNTIME_SCHEMA_INCOMPATIBLE', schemaCompatibility: compatibility,
+          executionGate: 'LOCKED', masterPaperOrdersSubmitted: 0,
+          followerPaperOrdersSubmitted: 0, liveOrdersSubmitted: 0 });
+        return;
+      }
+    }
     if (operation === 'RUNTIME_DB_PROBE') {
       if (localIdentity.kind !== 'VALID') {
         send(response, 400, { error: 'local_worker_identity_required', executionGate: 'LOCKED' });
