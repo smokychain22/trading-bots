@@ -29,3 +29,15 @@ test('checked-out Postgres disconnect is handled before it can become an uncaugh
     await pool.end();
   }
 });
+
+test('runtime pool has an explicit bounded connection budget and identity',async()=>{
+  const pool=createRuntimePostgresPool('postgres://user:secret@localhost:5432/test',()=>undefined,
+    {maximumConnections:2,applicationName:'theta-budget-test'});
+  try{
+    assert.equal(pool.options.max,2);
+    assert.equal(pool.options.connectionTimeoutMillis,8_000);
+    assert.equal(pool.options.idleTimeoutMillis,10_000);
+    assert.equal(pool.options.maxLifetimeSeconds,60);
+    assert.equal(pool.options.application_name,'theta-budget-test');
+  }finally{await pool.end();}
+});

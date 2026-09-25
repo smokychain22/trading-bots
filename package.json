@@ -31,6 +31,7 @@
     "theta:truth:profitability-brain": "tsx tools/theta-profitability-brain-reality.ts",
     "theta:truth-runtime": "tsx tools/theta-runtime-truth.ts --environment-file=.env.local",
     "theta:storage:audit": "node --import tsx tools/theta-storage-audit.ts --environment-file=.env.local",
+    "theta:db:stability-soak": "node --import tsx tools/theta-postgres-stability-soak.ts --environment-file=.env.local",
     "theta:storage:dependencies": "node --import tsx tools/theta-postgres-dependency-audit.ts",
     "theta:storage:archive-frontiers": "node --import tsx tools/archive-canonical-strategy-frontiers.ts",
     "theta:storage:compact-research": "python tools/compact-local-research-spool.py",

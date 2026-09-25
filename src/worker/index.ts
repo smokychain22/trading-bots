@@ -1,16 +1,19 @@
-import { Pool } from 'pg';
 import pino from 'pino';
 import { existsSync } from 'node:fs';
 import { loadEnvironment } from '../config/environment.js';
 import { ResidentThetaWorker } from './resident-worker.js';
 import { PostgresWorkerRuntimeStore } from './postgres-worker-runtime-store.js';
+import { createRuntimePostgresPool } from '../theta/runtime-postgres-pool.js';
 
 const environment = loadEnvironment();
 const logger = pino({
   level: process.env.LOG_LEVEL ?? 'info',
   redact: { paths: ['*.apiKey', '*.apiSecret', '*.secret', '*.token', '*.authorization'], censor: '[REDACTED]' },
 });
-const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 4, connectionTimeoutMillis: 8_000 });
+if(!environment.DATABASE_URL)throw new Error('DATABASE_URL_REQUIRED');
+const pool = createRuntimePostgresPool(environment.DATABASE_URL,(code)=>{
+  logger.warn({event:'runtime_database_connection_error',errorCode:code},'THETA runtime database connection degraded');
+},{maximumConnections:2,applicationName:'theta-resident-worker'});
 const worker = new ResidentThetaWorker(environment,pool,undefined,logger,undefined,
   new PostgresWorkerRuntimeStore(pool),{buildSha:environment.THETA_BUILD_SHA});
 

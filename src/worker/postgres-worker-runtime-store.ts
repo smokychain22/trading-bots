@@ -1,4 +1,5 @@
 import type { Pool } from 'pg';
+import { withRuntimePostgresReadRetry } from '../theta/runtime-postgres-client.js';
 import type { AutonomousRuntimeReport } from '../theta/autonomous-runtime.js';
 
 export const masterPaperLeaseKey = 'THETA_MASTER_PAPER_RUNTIME' as const;
@@ -70,8 +71,9 @@ export class PostgresWorkerRuntimeStore implements WorkerRuntimeStore {
   }
 
   async activeLeaseOwner(at:string):Promise<string|null>{
-    const result=await this.pool.query(`SELECT worker_id FROM ops.runtime_worker_lease
-      WHERE lease_key=$1 AND expires_at>$2::timestamptz`,[masterPaperLeaseKey,at]);
+    const {value:result}=await withRuntimePostgresReadRetry(this.pool,(client)=>client.query(
+      `SELECT worker_id FROM ops.runtime_worker_lease
+      WHERE lease_key=$1 AND expires_at>$2::timestamptz`,[masterPaperLeaseKey,at]));
     return result.rows[0]?.worker_id==null?null:String(result.rows[0].worker_id);
   }
 

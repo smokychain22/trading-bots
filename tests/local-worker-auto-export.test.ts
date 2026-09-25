@@ -166,7 +166,13 @@ test('Windows worker spools a read-only probe during database loss and backfills
   const source=await readFile('tools/windows/theta-local-worker.ps1','utf8');
   assert.match(source,/RUNTIME_EVIDENCE_CYCLE/);
   assert.match(source,/theta-no-submit-probe\.ts/);
-  assert.match(source,/databaseRecoverySuccesses -ge 2/);
+  assert.match(source,/databaseRecoverySuccesses -ge \$databaseRecoveryRequiredSuccesses/);
+  assert.match(source,/databaseRecoveryRequiredSuccesses = 4/);
+  assert.match(source,/databaseRecoveryProbeIntervalSeconds = 30/);
+  assert.match(source,/DB_CIRCUIT_OPEN/);
+  assert.match(source,/53\[0-9A-Z\]\{3\}/);
+  assert.match(source,/INFRASTRUCTURE_DEFERRED/);
+  assert.match(source,/strategyEvidenceRecorded=\$false/);
   assert.match(source,/theta-local-evidence-backfill\.ts/);
   assert.doesNotMatch(source,/MASTER_PAPER_EXECUTION_ENABLED\s*=\s*true/i);
   assert.doesNotMatch(source,/FOLLOWER_PAPER_EXECUTION_ENABLED\s*=\s*true/i);

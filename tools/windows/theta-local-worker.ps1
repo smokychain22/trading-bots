@@ -50,6 +50,10 @@ try {
   $delaySeconds = 5
   $databaseRecoveryMode = $false
   $databaseRecoverySuccesses = 0
+  $databaseConsecutiveFailures = 0
+  $databaseCircuitState = 'DB_HEALTHY'
+  $databaseRecoveryRequiredSuccesses = 4
+  $databaseRecoveryProbeIntervalSeconds = 30
   while (!(Test-Path -LiteralPath $stopFile)) {
     $headers = @{ Authorization = "Bearer $token"; 'X-Theta-Worker-Id'=$runtime.workerId;
       'X-Theta-Host-Id'=$env:COMPUTERNAME; 'X-Theta-Build-Sha'=$runtime.buildSha }
@@ -57,15 +61,21 @@ try {
       # Probe only PostgreSQL and the existing primary lease. A transient DB
       # failure must not immediately restart the full provider/market scan.
       try {
+        $databaseCircuitState = 'DB_RECOVERY_PROBING'
         $probeHeaders = $headers.Clone()
         $probeHeaders['X-Theta-Operation'] = 'runtime-db-probe'
         $probe = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $probeHeaders -TimeoutSec 20
         if ($probe.database -ne 'REACHABLE' -or $probe.lease -ne 'OWNED' -or
           $probe.executionGate -ne 'LOCKED') { throw 'THETA_DATABASE_RECOVERY_PROBE_INVALID' }
         $databaseRecoverySuccesses++
-        $delaySeconds = 5
-        if ($databaseRecoverySuccesses -ge 2) {
-          # A successful two-probe recovery is the first safe point to copy the
+        $delaySeconds = $databaseRecoveryProbeIntervalSeconds
+        @{state='INFRASTRUCTURE_DEFERRED';observedAt=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
+          mode='MASTER_THETA_PAPER';executionGate='LOCKED';databaseCircuitState=$databaseCircuitState;
+          databaseRecoverySuccesses=$databaseRecoverySuccesses;databaseRecoveryRequiredSuccesses=$databaseRecoveryRequiredSuccesses;
+          decisionAuthority='INFRASTRUCTURE_DEFERRED';carryForwardCandidateAllowed=$false} | ConvertTo-Json |
+          Set-Content -LiteralPath $statusFile -Encoding utf8
+        if ($databaseRecoverySuccesses -ge $databaseRecoveryRequiredSuccesses) {
+          # A successful four-probe recovery is the first safe point to copy the
           # durable local observation outbox into canonical Postgres. Backfill
           # is deliberately non-critical: an unavailable migration or a second
           # database interruption leaves the WAL spool intact for the next pass.
@@ -78,10 +88,22 @@ try {
           }
           $databaseRecoveryMode = $false
           $databaseRecoverySuccesses = 0
+          $databaseConsecutiveFailures = 0
+          $databaseCircuitState = 'DB_RECOVERED'
+          @{state='RECOVERED_PENDING_FRESH_CYCLE';observedAt=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
+            mode='MASTER_THETA_PAPER';executionGate='LOCKED';databaseCircuitState=$databaseCircuitState;
+            decisionAuthority='INFRASTRUCTURE_DEFERRED';carryForwardCandidateAllowed=$false} | ConvertTo-Json |
+            Set-Content -LiteralPath $statusFile -Encoding utf8
         }
       } catch {
         $databaseRecoverySuccesses = 0
+        $databaseCircuitState = 'DB_CIRCUIT_OPEN'
         $delaySeconds = [Math]::Min(300, $delaySeconds * 2)
+        @{state='INFRASTRUCTURE_DEFERRED';observedAt=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
+          mode='MASTER_THETA_PAPER';executionGate='LOCKED';databaseCircuitState=$databaseCircuitState;
+          databaseRecoverySuccesses=0;decisionAuthority='INFRASTRUCTURE_DEFERRED';
+          carryForwardCandidateAllowed=$false} | ConvertTo-Json |
+          Set-Content -LiteralPath $statusFile -Encoding utf8
       }
       for ($elapsed = 0; $elapsed -lt $delaySeconds; $elapsed++) {
         if (Test-Path -LiteralPath $stopFile) { break }
@@ -430,6 +452,7 @@ try {
       } catch { $localReceiptState = 'FAILED' }
       @{state='ONLINE';lastCycle=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
         mode='MASTER_THETA_PAPER';executionGate=[string]$report.executionGate;researchExport=$researchExport;
+        databaseCircuitState='DB_HEALTHY';decisionAuthority='AVAILABLE';carryForwardCandidateAllowed=$false;
         storageAuditState=$storageAuditState;
         localResearchArchiveState=$localResearchArchiveState;localResearchArchiveRows=$localResearchArchiveRows;
         localResearchParquetState=$localResearchParquetState;
@@ -468,7 +491,7 @@ try {
         failedOperation=$currentOperation;operationStartedAt=$operationStartedAt.ToString('o');
         elapsedMilliseconds=[Math]::Max(0,[Math]::Round(($failedAt - $operationStartedAt).TotalMilliseconds))} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
-      if ($serverErrorCode -cmatch '^POSTGRES_(57P03|57P01|08[0-9A-Z]{3}|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|CONNECTION_TERMINATED|CHECKED_OUT_CLIENT_LOST|COMMIT_OUTCOME_UNKNOWN)$') {
+      if ($serverErrorCode -cmatch '^POSTGRES_(53[0-9A-Z]{3}|57P03|57P01|08[0-9A-Z]{3}|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|CONNECTION_TERMINATED|CONNECTION_ACQUISITION_TIMEOUT|CHECKED_OUT_CLIENT_LOST|COMMIT_OUTCOME_UNKNOWN)$') {
         # Preserve a sanitized, physically read-only broker observation even
         # when the canonical evidence cycle lost Postgres. The probe cannot
         # submit orders and its local spool is never sufficient mutation proof.
@@ -483,6 +506,14 @@ try {
         }
         $databaseRecoveryMode = $true
         $databaseRecoverySuccesses = 0
+        $databaseConsecutiveFailures++
+        $databaseCircuitState = if ($databaseConsecutiveFailures -ge 2) { 'DB_CIRCUIT_OPEN' } else { 'DB_TRANSIENT_FAILURE' }
+        @{state='INFRASTRUCTURE_DEFERRED';lastFailure=$failedAt.ToString('o');buildSha=$runtime.buildSha;
+          mode='MASTER_THETA_PAPER';executionGate='LOCKED';failureCode=$failureCode;serverErrorCode=$serverErrorCode;
+          failedOperation=$currentOperation;databaseCircuitState=$databaseCircuitState;
+          databaseConsecutiveFailures=$databaseConsecutiveFailures;decisionAuthority='INFRASTRUCTURE_DEFERRED';
+          carryForwardCandidateAllowed=$false;strategyEvidenceRecorded=$false} | ConvertTo-Json |
+          Set-Content -LiteralPath $statusFile -Encoding utf8
       }
     }
     if (Test-Path -LiteralPath $stopFile) { break }

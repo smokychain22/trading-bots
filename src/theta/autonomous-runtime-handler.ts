@@ -10,7 +10,7 @@ import {
   type EvidenceCapabilityResult,
 } from '../providers/readiness.js';
 import { persistProviderCapabilities } from '../providers/capability-registry.js';
-import { customerStore } from '../customer/customer-store.js';
+import { customerStoreFromPool } from '../customer/customer-store.js';
 import { PostgresOperatorControlStore } from '../customer/operator-control.js';
 import { verifyStoredMasterPaperConnection } from '../customer/master-paper-runtime.js';
 import { classifyRuntimeExecutionGate, PostgresRuntimeCycleStore, runAutonomousRuntimeCycle, safeRuntimeFailure } from './autonomous-runtime.js';
@@ -55,6 +55,7 @@ import { runRiskPolicyEmpiricalStudy } from '../research/risk-policy-empirical-s
 import { createRuntimePostgresPool } from './runtime-postgres-pool.js';
 import { runtimeRequestLeaseExpiresAt } from './runtime-request-lease.js';
 import { classifyPostgresRuntimeError } from './postgres-runtime-error.js';
+import { withRuntimePostgresClient } from './runtime-postgres-client.js';
 
 let runtimePool: Pool | null = null;
 
@@ -587,7 +588,13 @@ export default async function autonomousRuntimeHandler(
       }
       // A successful SELECT alone cannot reauthorise the worker. Reconfirm
       // the single master lease without broker or market-data calls.
-      await runtimePool.query('SELECT 1');
+      // Each recovery proof uses a newly checked-out connection and destroys
+      // it after SELECT. Consecutive probes therefore cannot be satisfied by
+      // repeatedly reusing the client that survived the original outage.
+      await withRuntimePostgresClient(runtimePool,async(client,discard)=>{
+        await client.query('SELECT 1');
+        discard();
+      });
       const at = new Date();
       const identity = localIdentity.identity;
       const activeOwner = await workerStore.activeLeaseOwner(at.toISOString());
@@ -723,26 +730,16 @@ export default async function autonomousRuntimeHandler(
         return;
       }
       const cycleStore = new PostgresRuntimeCycleStore(runtimePool);
-      const operatorStore = new PostgresOperatorControlStore(environment.DATABASE_URL);
-      let operatorControl;
-      let masterContext;
-      let masterReadiness;
-      let persistedExecutionControl;
-      let executionQuoteAuthorityReady;
-      let firstCanarySubmissionAvailable;
-      try {
-        [masterContext, masterReadiness, operatorControl, persistedExecutionControl,
+      const operatorStore = new PostgresOperatorControlStore(runtimePool);
+      const [masterContext, masterReadiness, operatorControl, persistedExecutionControl,
           executionQuoteAuthorityReady, firstCanarySubmissionAvailable] = await Promise.all([
           cycleStore.resolveMasterContext(environment),
-          verifyStoredMasterPaperConnection(environment, customerStore(environment.DATABASE_URL)),
+          verifyStoredMasterPaperConnection(environment, customerStoreFromPool(runtimePool)),
           operatorStore.current(environment.PAPER_PAUSE_NEW_ORDERS),
           new PostgresPaperExecutionAuthorizationStore(runtimePool).current(),
           cycleStore.executionQuoteAuthorityReady(),
           cycleStore.firstCanarySubmissionAvailable(),
         ]);
-      } finally {
-        await operatorStore.close();
-      }
       const effectiveExecutionControl = resolveEffectivePaperExecutionControl({
         environmentMasterEnabled: environment.MASTER_PAPER_EXECUTION_ENABLED,
         environmentFollowerEnabled: environment.FOLLOWER_PAPER_EXECUTION_ENABLED,
@@ -831,7 +828,7 @@ export default async function autonomousRuntimeHandler(
     if(localWorkerId!==null)await workerStore.cycleCompleted(localWorkerId,report,new Date().toISOString());
     if(report.status==='FAILED'||report.status==='QUARANTINED'){
       const databaseCode=report.jobResults.map((job)=>job.errorCode)
-        .find((code)=>typeof code==='string'&&/^POSTGRES_(?:57P03|57P01|08[0-9A-Z]{3}|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|CONNECTION_TERMINATED|CHECKED_OUT_CLIENT_LOST|COMMIT_OUTCOME_UNKNOWN)$/.test(code));
+        .find((code)=>typeof code==='string'&&/^POSTGRES_(?:53[0-9A-Z]{3}|57P03|57P01|08[0-9A-Z]{3}|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|CONNECTION_TERMINATED|CONNECTION_ACQUISITION_TIMEOUT|CHECKED_OUT_CLIENT_LOST|COMMIT_OUTCOME_UNKNOWN)$/.test(code));
       if(typeof databaseCode==='string'){
         const safeCode=safeRuntimeErrorHeader(databaseCode);
         if(safeCode!==null)response.setHeader('X-Theta-Safe-Error-Code',safeCode);

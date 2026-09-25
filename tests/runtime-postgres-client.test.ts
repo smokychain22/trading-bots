@@ -38,6 +38,9 @@ test('Postgres classifier distinguishes temporary availability from permanent SQ
   assert.equal(classifyPostgresRuntimeError({ code: 'EAI_AGAIN' }).safeCode, 'POSTGRES_EAI_AGAIN');
   assert.equal(classifyPostgresRuntimeError({ code: '53300' }).errorClass, 'RESOURCE_QUOTA');
   assert.equal(classifyPostgresRuntimeError(new Error('SSL EOF; secret=never-print')).safeCode, 'POSTGRES_CONNECTION_TERMINATED');
+  assert.deepEqual(classifyPostgresRuntimeError(new Error('timeout exceeded when trying to connect')), {
+    errorClass:'TRANSIENT_CONNECTION',safeCode:'POSTGRES_CONNECTION_ACQUISITION_TIMEOUT',retryableRead:true,
+  });
   assert.equal(classifyPostgresRuntimeError({ code: '23505' }).retryableRead, false);
   assert.equal(classifyPostgresRuntimeError({ code: '42601' }).retryableRead, false);
   assert.equal(classifyPostgresRuntimeError({ code: '28P01' }).errorClass, 'AUTH_ERROR');
@@ -65,6 +68,15 @@ test('read retry uses a new client only for a transient failure', async () => {
   await assert.rejects(withRuntimePostgresReadRetry(poolOf(invalid), (client) => client.query('SELECT 1'),
     { delayMs: () => 0 }), { code: '42601' });
   assert.deepEqual(invalid.releases, [false]);
+});
+
+test('fresh connection acquisition timeout is typed and never becomes a strategy result', async()=>{
+  const pool={connect:async()=>{throw new Error('timeout exceeded when trying to connect');}} as unknown as Pool;
+  let observed:unknown;
+  try{await withRuntimePostgresClient(pool,async()=>1);}catch(error){observed=error;}
+  assert.deepEqual(classifyPostgresRuntimeError(observed),{
+    errorClass:'TRANSIENT_CONNECTION',safeCode:'POSTGRES_CONNECTION_ACQUISITION_TIMEOUT',retryableRead:true,
+  });
 });
 
 test('query timeout retries reads once while transfer quota and read-only failures do not loop', async () => {

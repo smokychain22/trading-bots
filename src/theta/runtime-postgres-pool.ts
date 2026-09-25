@@ -3,10 +3,20 @@ import { classifyPostgresRuntimeError } from './postgres-runtime-error.js';
 
 /** An idle connection can disappear during an Aiven rebalance. pg removes the
  * failed client, but an unhandled pool error would terminate the runtime. */
+export interface RuntimePostgresPoolOptions {
+  readonly maximumConnections?: number;
+  readonly applicationName?: string;
+  readonly connectionTimeoutMillis?: number;
+}
+
 export function createRuntimePostgresPool(connectionString: string,
-  report: (code: string) => void = (code) => { console.warn('THETA_RUNTIME_DATABASE_IDLE_CLIENT_ERROR', code); }): Pool {
-  const pool = new Pool({ connectionString, max: 2, connectionTimeoutMillis: 8_000,
-    idleTimeoutMillis: 10_000, maxLifetimeSeconds: 60 });
+  report: (code: string) => void = (code) => { console.warn('THETA_RUNTIME_DATABASE_IDLE_CLIENT_ERROR', code); },
+  options: RuntimePostgresPoolOptions = {}): Pool {
+  const maximumConnections=Math.max(1,Math.min(4,options.maximumConnections??2));
+  const pool = new Pool({ connectionString,
+    idleTimeoutMillis: 10_000, maxLifetimeSeconds: 60,
+    application_name:options.applicationName??'theta-runtime',
+    max:maximumConnections,connectionTimeoutMillis:options.connectionTimeoutMillis??8_000 });
   pool.on('error', (error: Error & { code?: unknown }) => {
     const classification = classifyPostgresRuntimeError(error);
     report(classification.safeCode === 'POSTGRES_UNKNOWN_ERROR'

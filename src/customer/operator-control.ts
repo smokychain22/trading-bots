@@ -1,6 +1,7 @@
 import { createHash,randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
+import { createRuntimePostgresPool } from '../theta/runtime-postgres-pool.js';
 
 export type OperatorControlCommand='PAUSE_NEW_ENTRIES'|'RESUME_NEW_ENTRIES'|'EMERGENCY_EXECUTION_LOCK'|'CLEAR_EMERGENCY_LOCK';
 export interface OperatorControlState {readonly newEntriesPaused:boolean;readonly emergencyExecutionLock:boolean;
@@ -19,11 +20,18 @@ export function applyOperatorControl(previous:OperatorControlState,command:Opera
 }
 export class PostgresOperatorControlStore{
   private readonly pool:Pool;
-  constructor(databaseUrl:string){this.pool=new Pool({connectionString:databaseUrl,max:2,connectionTimeoutMillis:5_000});}
-  async close():Promise<void>{await this.pool.end();}
+  private readonly ownsPool:boolean;
+  constructor(databaseUrlOrPool:string|Pool){
+    this.ownsPool=typeof databaseUrlOrPool==='string';
+    this.pool=typeof databaseUrlOrPool==='string'
+      ?createRuntimePostgresPool(databaseUrlOrPool,undefined,{maximumConnections:1,applicationName:'theta-operator-control'})
+      :databaseUrlOrPool;
+  }
+  async close():Promise<void>{if(this.ownsPool)await this.pool.end();}
   async current(defaultPaused:boolean):Promise<OperatorControlState>{
-    const result=await this.pool.query(`SELECT resulting_state_json,requested_at,state_version FROM ops.theta_operator_control_event
-      ORDER BY state_version DESC,created_at DESC LIMIT 1`);
+    const {value:result}=await withRuntimePostgresReadRetry(this.pool,(client)=>client.query(
+      `SELECT resulting_state_json,requested_at,state_version FROM ops.theta_operator_control_event
+      ORDER BY state_version DESC,created_at DESC LIMIT 1`));
     if(result.rowCount!==1)return base(defaultPaused);
     const raw=result.rows[0]?.resulting_state_json as Partial<OperatorControlState>|undefined;
     return {newEntriesPaused:raw?.newEntriesPaused===true,emergencyExecutionLock:raw?.emergencyExecutionLock===true,

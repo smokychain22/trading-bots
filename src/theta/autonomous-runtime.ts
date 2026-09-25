@@ -7,7 +7,7 @@ import {
   type BrokerReconciliationResult,
 } from '../execution/broker-reconciliation-worker.js';
 import { MasterEncryptedStoreBrokerCredentialProvider } from '../customer/broker-credential-provider.js';
-import { customerStore } from '../customer/customer-store.js';
+import { customerStoreFromPool } from '../customer/customer-store.js';
 import { dispatchDueJobs, type DueJob } from './scheduler-engine.js';
 import type { JobRunResult, JobType } from './scheduler.js';
 import { PostgresSchedulerCheckpointRepository } from './postgres-scheduler-checkpoint-repository.js';
@@ -177,7 +177,7 @@ export class PostgresRuntimeCycleStore {
 
   async resolveMasterContext(environment: Environment): Promise<MasterRuntimeContext> {
     const resolved = await new MasterEncryptedStoreBrokerCredentialProvider(
-      customerStore(environment.DATABASE_URL), environment,
+      customerStoreFromPool(this.pool), environment,
     ).getAuthentication();
     if (resolved === null) throw new Error('MASTER_CREDENTIAL_NOT_FOUND');
     const connection = await this.pool.query(
@@ -354,8 +354,10 @@ export async function runAutonomousRuntimeCycle(
   if (!environment.DATABASE_URL) throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');
   if (environment.FOLLOWER_PAPER_EXECUTION_ENABLED) throw new Error('FOLLOWER_PAPER_EXECUTION_NOT_AUTHORIZED');
   if (environment.THETA_RUNTIME_MODE !== masterPaperRuntimeMode) throw new Error('MASTER_THETA_PAPER_RUNTIME_REQUIRED');
-  const operatorStore=new PostgresOperatorControlStore(environment.DATABASE_URL);
-  const operatorControl=await operatorStore.current(environment.PAPER_PAUSE_NEW_ORDERS).finally(()=>operatorStore.close());
+  // The resident/serverless runtime already owns a bounded canonical pool.
+  // Sharing it avoids adding a short-lived two-client pool to every cycle.
+  const operatorStore=new PostgresOperatorControlStore(pool);
+  const operatorControl=await operatorStore.current(environment.PAPER_PAUSE_NEW_ORDERS);
   const persistedExecutionControl=await new PostgresPaperExecutionAuthorizationStore(pool).current();
   if(persistedExecutionControl.followerExecutionEnabled||environment.FOLLOWER_PAPER_EXECUTION_ENABLED)
     throw new Error('FOLLOWER_PAPER_EXECUTION_NOT_AUTHORIZED');

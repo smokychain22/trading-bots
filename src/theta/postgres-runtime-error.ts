@@ -11,6 +11,7 @@ export interface PostgresRuntimeErrorClassification {
 }
 
 const connectionCodes = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE', 'EAI_AGAIN']);
+const acquisitionTimeoutMessages = /(?:timeout exceeded when trying to connect|connection acquisition timeout|timeout acquiring (?:a )?(?:pool )?client|pool.*connection.*timeout)/i;
 const connectionMessages = /(?:socket hang up|connection terminated|server closed the connection unexpectedly|SSL.*EOF|connection ended unexpectedly)/i;
 
 /** Never include a provider message in a receipt: it can contain a connection URL. */
@@ -23,6 +24,10 @@ export function classifyPostgresRuntimeError(error: unknown): PostgresRuntimeErr
   };
   if (code === 'POSTGRES_COMMIT_OUTCOME_UNKNOWN') return {
     errorClass: 'UNKNOWN_DATABASE_ERROR', safeCode: code, retryableRead: false,
+  };
+  if (code === 'POSTGRES_CONNECTION_ACQUISITION_TIMEOUT'
+    || (typeof value.message === 'string' && acquisitionTimeoutMessages.test(value.message))) return {
+    errorClass: 'TRANSIENT_CONNECTION', safeCode: 'POSTGRES_CONNECTION_ACQUISITION_TIMEOUT', retryableRead: true,
   };
   if (code === '57P03' || code === '57P01') return {
     errorClass: 'TRANSIENT_SERVER_UNAVAILABLE', safeCode: `POSTGRES_${code}`, retryableRead: true,

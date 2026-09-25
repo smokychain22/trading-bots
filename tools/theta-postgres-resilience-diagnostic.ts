@@ -51,8 +51,9 @@ try {
     queryDurationsMs:{stats:statsDurationMs,applicationDistribution:distributionDurationMs,
       recentCycles:cyclesDurationMs,workers:workersDurationMs},
     applicationDistribution:distribution.rows,
-    thetaPoolInventory:{residentWorkerMax:4,canonicalRuntimePoolMax:2,diagnosticPoolMax:1,
-      researchExportPoolMax:2,noSubmitProbePoolMax:2},
+    thetaPoolInventory:{residentWorkerMax:2,canonicalRuntimePoolMax:2,customerControlPoolMax:2,
+      masterRoleAdministrationMax:1,diagnosticPoolMax:1,researchExportPoolMax:2,noSubmitProbePoolMax:2,
+      operatorControlAdditionalRuntimePoolMax:0},
     workerResearchScheduling:{researchExport:'SERIAL_AFTER_COMPLETE_SCAN_ONCE_PER_MARKET_SESSION',
       empiricalPipeline:'SERIAL_AFTER_NEW_CONTENT_HASH',localEvidenceBundle:'SERIAL_AFTER_RESEARCH'},
     cycles:cycles.rows,workers:workers.rows }));

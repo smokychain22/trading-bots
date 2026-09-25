@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { createRuntimePostgresPool } from "../theta/runtime-postgres-pool.js";
 import type { EncryptedSecret } from "./customer-security.js";
 import { paperCopyPolicySchema, recommendedCopyPolicy, storedCopyPolicy, type PaperCopyPolicy } from "./copy-policy.js";
 
@@ -538,6 +539,13 @@ export class PostgresCustomerStore implements CustomerStore {
 let sharedPool: Pool | null = null;
 export function customerStore(databaseUrl: string | undefined): CustomerStore & MasterCredentialStore {
   if (!databaseUrl) throw new Error("CUSTOMER_DATABASE_NOT_CONFIGURED");
-  sharedPool ??= new Pool({ connectionString: databaseUrl, max: 4, idleTimeoutMillis: 10_000 });
+  sharedPool ??= createRuntimePostgresPool(databaseUrl,undefined,
+    {maximumConnections:2,applicationName:'theta-customer-control'});
   return new PostgresCustomerStore(sharedPool);
+}
+
+/** Runtime path: reuse the canonical bounded pool instead of allocating a
+ * second credential-store pool inside the same decision process. */
+export function customerStoreFromPool(pool:Pool):CustomerStore&MasterCredentialStore{
+  return new PostgresCustomerStore(pool);
 }

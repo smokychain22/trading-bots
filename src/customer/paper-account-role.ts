@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { createRuntimePostgresPool } from '../theta/runtime-postgres-pool.js';
 import type { Environment } from '../config/environment.js';
 import { customerStore } from './customer-store.js';
 import { verifyStoredFollowerAccount } from './alpaca-oauth.js';
@@ -128,6 +129,7 @@ export async function designateAuthenticatedPaperMaster(
 let rolePool: Pool | undefined;
 export function masterRoleStore(databaseUrl: string | undefined): PostgresMasterRoleStore {
   if (!databaseUrl) throw new Error('CUSTOMER_DATABASE_NOT_CONFIGURED');
-  rolePool ??= new Pool({ connectionString: databaseUrl, max: 2, connectionTimeoutMillis: 5000 });
+  rolePool ??= createRuntimePostgresPool(databaseUrl,undefined,
+    {maximumConnections:1,applicationName:'theta-master-role',connectionTimeoutMillis:5_000});
   return new PostgresMasterRoleStore(rolePool);
 }
