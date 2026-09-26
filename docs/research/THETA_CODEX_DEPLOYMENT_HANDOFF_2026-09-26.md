@@ -134,19 +134,28 @@ npx --prefix <target-checkout> tsx tools/theta-no-submit-probe.ts   # read-only,
 - Current worker cycle reached the canonical brain: `result.strategyFrontier`
   is non-null on a real cycle, `result.canonicalFrontierInput` is present
   (the exact object the frontier ran on).
-- Method execution evidence present: `result.methodInputProvenance`
-  (`profitability-method-input-provenance.ts`) lists `executed: true` for
+- Method execution evidence present -- read from PERSISTED evidence, never
+  a transient in-memory result: for the normal Postgres path, the
+  compressed evidence archive's own `methodInputProvenance` field
+  (decode via `decodeCycleEvidenceArchive`); for the no-submit/database-
+  independent path, the local evidence spool's `METHOD_PROVENANCE_READY`
+  payload (`spool.listByPayloadType('METHOD_PROVENANCE_READY')`). Both are
+  the SAME already-computed value `runThetaShadowCycle` produced -- never
+  recomputed at either persistence point. Confirm `executed: true` for
   every method that ran this cycle.
-- Method input realness present: the same `methodInputProvenance` entries
-  carry a real `inputRealness` classification (`REAL`/`PARTIAL_REAL`/
-  `VERSIONED_POLICY`/`MANUAL`/`SYNTHETIC`/`UNKNOWN`), not absent.
+- Method input realness present: the same persisted `methodInputProvenance`
+  entries carry a real `inputRealness` classification (`REAL`/
+  `PARTIAL_REAL`/`VERSIONED_POLICY`/`MANUAL`/`SYNTHETIC`/`UNKNOWN`), not
+  absent.
 - Only fully-real methods receive L7: `filterToRealInputEvidence` gates the
   manifest's `currentWorkerRealData` -- verify a method with `inputRealness
   !== 'REAL'` never shows `level: 'L7_CURRENT_WORKER_REAL_DATA'` in the
   receipt.
 - `T0_REPLAY_BUNDLE` persisted/spooled: check the local evidence spool
   (no-submit path) for a `T0_REPLAY_BUNDLE` payload, or the Postgres
-  evidence archive's `canonicalFrontierInput` field (normal path).
+  evidence archive's `canonicalFrontierInput` field (normal path). Both
+  archives now also carry `methodInputProvenance` alongside it, so a single
+  decode/reload gives both pieces of evidence together.
 - T0 replay round-trip reproduces the canonical decision:
   `replayFromT0Bundle(bundle)` on the persisted bundle reproduces the same
   `selectedCandidateId`/`selectedBranch`/`primaryAction`/`selectedQuantity`/

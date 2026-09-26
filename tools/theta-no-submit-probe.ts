@@ -206,6 +206,13 @@ try {
               reason:failure.reason,byteSize:failure.byteSize,brokerMutationAllowed:false});
           }
         }
+        // Micro-fix (persisted method-provenance closure): the already-
+        // computed per-method input-realness evidence for this exact cycle
+        // -- never recomputed here. Durably spooled so a post-deploy
+        // verification reads real, persisted evidence, never a transient
+        // in-memory result.
+        spoolEvidence('METHOD_PROVENANCE_READY',{symbol:symbol.symbol,
+          methodInputProvenance:symbol.methodInputProvenance,brokerMutationAllowed:false});
         spoolEvidence('QUOTES_READY',{symbol:symbol.symbol,optionContractsComplete:symbol.optionContractsComplete,
           optionChainComplete:symbol.optionChainComplete,exactRefresh:symbol.exactRefresh,brokerMutationAllowed:false},
         {ALPACA:symbol.exactRefresh.providerTimestamp});

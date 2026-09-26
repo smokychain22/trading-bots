@@ -12,6 +12,7 @@ import { createLocalAegisRiskObservation, localAegisAssessors, type LocalAegisRi
   type LocalAegisRiskObservation } from './local-aegis-risk-history.js';
 import { normalizedOptionContractSchema } from './option-contract.js';
 import type { CanonicalStrategyFrontierInput } from './canonical-strategy-frontier.js';
+import type { MethodInputProvenance } from './profitability-method-input-provenance.js';
 
 export const databaseIndependentShadowObservationVersion='theta-database-independent-shadow-observation-v1' as const;
 
@@ -22,6 +23,11 @@ export interface DatabaseIndependentSymbolObservation {
   // -- never a parallel reconstruction. The caller (tools/theta-no-submit-
   // probe.ts) builds and spools a T0ReplayBundle directly from this field.
   readonly canonicalFrontierInput:CanonicalStrategyFrontierInput|null;
+  // Micro-fix (persisted method-provenance closure): the already-computed
+  // per-method input-realness evidence for this exact cycle -- never
+  // recomputed here. The caller (tools/theta-no-submit-probe.ts) spools it
+  // directly from this field.
+  readonly methodInputProvenance:readonly MethodInputProvenance[];
   readonly state:'COMPLETED'|'FAILED';
   readonly failureCode:string|null;
   readonly snapshotId:string|null;
@@ -220,7 +226,7 @@ export async function runDatabaseIndependentShadowObservation(input:{
           contract:parsed.data})];
       });
       symbols.push({symbol:underlying.symbol,state:'COMPLETED',failureCode:null,
-        canonicalFrontierInput:cycle.canonicalFrontierInput,
+        canonicalFrontierInput:cycle.canonicalFrontierInput,methodInputProvenance:cycle.methodInputProvenance,
         snapshotId:cycle.snapshotContentHash,decisionAsOf:cycle.fusionSnapshot===null?null
           :String(cycle.fusionSnapshot.snapshot.decisionTimeUtc),
         optionContractsComplete:cycle.optionContractsComplete,optionChainComplete:cycle.optionChainComplete,
@@ -256,7 +262,7 @@ export async function runDatabaseIndependentShadowObservation(input:{
           ivRejected:input.localRiskHistory?.ivRejected??0},riskObservations,
         exactRefresh:await exactReadOnlyRefresh(input.alpaca,cycle,input.now,dependencies.refreshExact,deadlinePolicy.exactRefreshMs)});
     }catch(error){
-      symbols.push({symbol:underlying.symbol,state:'FAILED',failureCode:safeCode(error),canonicalFrontierInput:null,snapshotId:null,decisionAsOf:null,
+      symbols.push({symbol:underlying.symbol,state:'FAILED',failureCode:safeCode(error),canonicalFrontierInput:null,methodInputProvenance:[],snapshotId:null,decisionAsOf:null,
         optionContractsComplete:null,optionChainComplete:null,qCandidateCount:0,qDecision:null,canonicalAction:null,
         qReasonCodes:[],qCandidates:[],frontierCandidates:[],
         selectedCandidateId:null,selectedOptionSymbol:null,selectedQuantity:0,aegisState:null,blockers:[safeCode(error)],

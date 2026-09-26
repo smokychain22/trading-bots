@@ -11,6 +11,7 @@ import {
 } from '../src/theta/postgres-cycle-evidence-storage.js';
 import { buildT0ReplayBundle, replayFromT0Bundle, t0ReplayBundleSchema } from '../src/theta/t0-replay-bundle.js';
 import type { ThetaShadowCycleResult } from '../src/theta/theta-shadow-cycle.js';
+import { classifyMethodInputProvenance, type MethodInputProvenance } from '../src/theta/profitability-method-input-provenance.js';
 
 // Phase 1 Zero-Unknown Reclosure Pass 3 continuation (item 6): this proves
 // ACTUAL writer integration, not merely buildT0ReplayBundle() called in
@@ -80,9 +81,13 @@ function realisticCycle(): ThetaShadowCycleResult {
     freshnessFlags: [], unknownFeatures: [], executableTruth: { account: 'GOOD', contract: 'GOOD', quote: 'GOOD' },
   };
   const fusionSnapshot = buildFusionSnapshot(input);
+  const methodInputProvenance: readonly MethodInputProvenance[] = classifyMethodInputProvenance({
+    executedMethodIds: ['CURRENT_DECISION_STATE', 'STRATEGY_APPLICABILITY_ROUTER'],
+    routerPortfolioOrigin: 'DERIVED_FROM_REAL', aegisInputsOrigin: 'DERIVED_FROM_REAL', marketDataOrigin: 'REAL_PROVIDER',
+  });
   return {
     fusionSnapshot, snapshotContentHash: fusionSnapshot.contentHash, strategyFrontier: null,
-    canonicalFrontierInput: realCanonicalFrontierInput,
+    canonicalFrontierInput: realCanonicalFrontierInput, methodInputProvenance,
     orchestration: { receipt: { selectedCandidateId: null }, thetaQ: null, shadowOpportunities: [] },
   } as unknown as ThetaShadowCycleResult;
 }
@@ -92,6 +97,9 @@ test('REAL_CANONICAL_BRAIN_REPLAY (writer-integrated): the real Postgres evidenc
   const projection = projectCycleEvidenceForPostgres(cycle);
   const decoded = decodeCycleEvidenceArchive(projection.archive);
   assert.ok('canonicalFrontierInput' in decoded, 'the writer must persist this field, not silently drop it');
+  assert.ok('methodInputProvenance' in decoded, 'the writer must persist methodInputProvenance, not silently drop it');
+  assert.deepEqual(decoded.methodInputProvenance, cycle.methodInputProvenance,
+    'the exact already-computed methodInputProvenance must survive the roundtrip, never recomputed');
 
   const decodedBundle = t0ReplayBundleSchema.parse(buildT0ReplayBundle(decoded.canonicalFrontierInput as CanonicalStrategyFrontierInput));
   const originalBundle = buildT0ReplayBundle(realCanonicalFrontierInput);

@@ -139,6 +139,12 @@ export function projectCycleEvidenceForPostgres(cycle: ThetaShadowCycleResult): 
     // export-schema-drift-detector.ts's REQUIRED_ARCHIVE_FIELDS, which this
     // does not remove or rename any entry of).
     canonicalFrontierInput: cycle.canonicalFrontierInput,
+    // Micro-fix (persisted method-provenance closure): the already-computed
+    // per-method input-realness evidence for this exact cycle -- never
+    // recomputed here. Persisted alongside canonicalFrontierInput so a
+    // post-deploy verification reads durable evidence, never a transient
+    // in-memory result.
+    methodInputProvenance: cycle.methodInputProvenance,
   };
   const archiveJson = canonicalJson(archiveValue as unknown as JsonValue);
   const archive = gzipSync(Buffer.from(archiveJson), { level: 9 });
