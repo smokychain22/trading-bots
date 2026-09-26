@@ -494,6 +494,21 @@ function rankCandidates(candidates: readonly CanonicalFrontierCandidate[]): read
     || a.unknownEvidence.length - b.unknownEvidence.length || a.candidateId.localeCompare(b.candidateId));
 }
 
+// Stable, deterministic, secret-safe failure identity for a branch-local
+// construction exception. Never includes wall-clock time (the canonical
+// frontier is hashed via canonicalStrategyFrontierContentHash and must be
+// deterministic for the same immutable input) and never persists the raw
+// `error.message` into canonical output (an arbitrary exception message
+// could contain a provider payload fragment, filesystem path, or other
+// diagnostic detail not vetted for a canonical decision receipt). The raw
+// message is still surfaced, out-of-band, via console.error for real
+// operational visibility -- it is simply not part of the hashed,
+// deterministic economic/decision receipt.
+function stableBranchFailureReasonCode(error: unknown): string {
+  const errorClassName = error instanceof Error ? error.constructor.name : 'UnknownThrowValue';
+  return `BRANCH_CONSTRUCTION_ERROR_TYPE:${errorClassName}`;
+}
+
 function buildBranch(
   branch: ThetaStrategyBranch, input: CanonicalStrategyFrontierInput,
   sharedRoutingResults: readonly StrategyRoutingResponse['results'][number][] | null,
@@ -514,70 +529,83 @@ function buildBranch(
     secondBestCandidateId: null, bestRejectedCandidateId: null, empiricalEconomicsReady: false, executionAuthorized: false,
   };
 
-  let raw: CanonicalFrontierCandidate[] = [];
-  let enumerationTruncated = false;
-  if (branch === 'THETA_CONVENTIONAL' || branch === 'THETA_HOLD_STRIKE') {
-    raw = input.contracts.filter((contract) => contract.optionType === 'PUT' && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax)
-      .map((contract) => singleLegPutCandidate(branch, contract, input));
-  } else if (branch === 'THETA_DEFINED_RISK') {
-    const puts = input.contracts.filter((contract) => contract.optionType === 'PUT' && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax);
-    outer: for (const shortPut of puts) for (const longPut of puts) {
-      if (shortPut.expiration === longPut.expiration && longPut.strike < shortPut.strike) {
-        if (raw.length >= maxDefinedRiskStructuresPerCycle) { enumerationTruncated = true; break outer; }
-        raw.push(definedRiskCandidate(shortPut, longPut, input));
+  // Only the branch-specific candidate-construction/ranking work below is
+  // fault-isolated. `applicable`/`route`/`routeReasons`/`source` above are
+  // already computed from the caller's pre-hoisted shared reads and are
+  // known-safe by this point -- so a failure inside this block is
+  // genuinely branch-local, and the failure receipt below can truthfully
+  // report the REAL `applicable` value already established above (e.g. a
+  // THETA_RECOVERY branch that WAS genuinely applicable because real stock
+  // exists, but whose candidate construction then failed, must not be
+  // misreported as inapplicable -- that would silently corrupt
+  // `managementAuthorityRequired` at the caller).
+  try {
+    let raw: CanonicalFrontierCandidate[] = [];
+    let enumerationTruncated = false;
+    if (branch === 'THETA_CONVENTIONAL' || branch === 'THETA_HOLD_STRIKE') {
+      raw = input.contracts.filter((contract) => contract.optionType === 'PUT' && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax)
+        .map((contract) => singleLegPutCandidate(branch, contract, input));
+    } else if (branch === 'THETA_DEFINED_RISK') {
+      const puts = input.contracts.filter((contract) => contract.optionType === 'PUT' && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax);
+      outer: for (const shortPut of puts) for (const longPut of puts) {
+        if (shortPut.expiration === longPut.expiration && longPut.strike < shortPut.strike) {
+          if (raw.length >= maxDefinedRiskStructuresPerCycle) { enumerationTruncated = true; break outer; }
+          raw.push(definedRiskCandidate(shortPut, longPut, input));
+        }
       }
+    } else if (branch === 'THETA_RECOVERY' && input.stock !== null) {
+      const ccAlternatives = input.contracts.filter((contract) => contract.optionType === 'CALL' && contract.dte >= 1 && contract.dte <= 60)
+        .map((contract) => {
+          const candidate = coveredCallCandidate(contract, input);
+          return { ...candidate, candidateId: `THETA_RECOVERY:${contract.optionSymbol}:SELL_CC`,
+            branch: 'THETA_RECOVERY' as const, action: 'SELL_CC' as const };
+        });
+      raw = [stockActionCandidate('RECOVERY_WAIT', input), stockActionCandidate('SELL_STOCK', input), ...ccAlternatives];
+    } else if (branch === 'THETA_CC' && input.stock !== null) {
+      raw = input.contracts.filter((contract) => contract.optionType === 'CALL' && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax)
+        .map((contract) => coveredCallCandidate(contract, input));
     }
-  } else if (branch === 'THETA_RECOVERY' && input.stock !== null) {
-    const ccAlternatives = input.contracts.filter((contract) => contract.optionType === 'CALL' && contract.dte >= 1 && contract.dte <= 60)
-      .map((contract) => {
-        const candidate = coveredCallCandidate(contract, input);
-        return { ...candidate, candidateId: `THETA_RECOVERY:${contract.optionSymbol}:SELL_CC`,
-          branch: 'THETA_RECOVERY' as const, action: 'SELL_CC' as const };
-      });
-    raw = [stockActionCandidate('RECOVERY_WAIT', input), stockActionCandidate('SELL_STOCK', input), ...ccAlternatives];
-  } else if (branch === 'THETA_CC' && input.stock !== null) {
-    raw = input.contracts.filter((contract) => contract.optionType === 'CALL' && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax)
-      .map((contract) => coveredCallCandidate(contract, input));
+    // Counterfactual research records retain the contract and economics even
+    // when the router says this branch is not applicable. The router verdict
+    // remains a hard blocker, so such rows cannot become Paper actions.
+    const candidates = rankCandidates(applicable ? raw : raw.map((candidate) => ({
+      ...candidate, hardBlockers: [...candidate.hardBlockers, 'ROUTER_NOT_APPLICABLE'],
+      riskFeasible: false, executionAuthorized: false,
+      sizing: { quantity: 0, bindingConstraint: 'ROUTER_NOT_APPLICABLE', reasons: [...candidate.sizing.reasons, 'ROUTER_NOT_APPLICABLE'] },
+    })));
+    const feasible = candidates.filter((candidate) => candidate.riskFeasible);
+    const rejected = candidates.filter((candidate) => !candidate.riskFeasible);
+    return {
+      branch, strategyVersion: source.strategyVersion, status: source.status as 'RESEARCH_ONLY' | 'SHADOW', applicable,
+      evaluated: true, routeReasons: [...routeReasons, ...(enumerationTruncated ? ['DEFINED_RISK_ENUMERATION_BOUND_REACHED'] : [])],
+      evaluationState: !applicable ? 'NOT_APPLICABLE' : candidates.length === 0 || enumerationTruncated
+        ? 'BLOCKED_MISSING_INPUT' : 'EVALUATED',
+      candidateCount: candidates.length, mechanicallyRejected: 0, enumerationTruncated, hardVetoed: rejected.length,
+      softRanked: feasible.length, dataInsufficient: candidates.filter((candidate) => candidate.unknownEvidence.length > 0).length,
+      candidates, bestCandidateId: feasible[0]?.candidateId ?? null, secondBestCandidateId: feasible[1]?.candidateId ?? null,
+      bestRejectedCandidateId: rejected[0]?.candidateId ?? null, empiricalEconomicsReady: false, executionAuthorized: false,
+    };
+  } catch (error) {
+    // Real operational visibility, out-of-band from the deterministic
+    // canonical receipt -- never a silent catch{}. Console output is not
+    // hashed and does not need to be deterministic across replays.
+    console.error(`[canonical-strategy-frontier] branch construction failed`, {
+      branch, message: error instanceof Error ? error.message : String(error),
+      failedAt: new Date().toISOString(),
+    });
+    return {
+      branch, strategyVersion: source.strategyVersion, status: source.status as 'RESEARCH_ONLY' | 'SHADOW',
+      // Truthful: this branch WAS applicable (or not) per the same
+      // already-computed value used by every other path above -- a failed
+      // construction attempt for a genuinely applicable branch must not be
+      // silently reported as inapplicable.
+      applicable, evaluated: true,
+      routeReasons: [...routeReasons, 'BRANCH_CONSTRUCTION_EXCEPTION', stableBranchFailureReasonCode(error)],
+      evaluationState: 'BRANCH_CONSTRUCTION_FAILED', candidateCount: 0, mechanicallyRejected: 0, enumerationTruncated: false,
+      hardVetoed: 0, softRanked: 0, dataInsufficient: 0, candidates: [], bestCandidateId: null,
+      secondBestCandidateId: null, bestRejectedCandidateId: null, empiricalEconomicsReady: false, executionAuthorized: false,
+    };
   }
-  // Counterfactual research records retain the contract and economics even
-  // when the router says this branch is not applicable. The router verdict
-  // remains a hard blocker, so such rows cannot become Paper actions.
-  const candidates = rankCandidates(applicable ? raw : raw.map((candidate) => ({
-    ...candidate, hardBlockers: [...candidate.hardBlockers, 'ROUTER_NOT_APPLICABLE'],
-    riskFeasible: false, executionAuthorized: false,
-    sizing: { quantity: 0, bindingConstraint: 'ROUTER_NOT_APPLICABLE', reasons: [...candidate.sizing.reasons, 'ROUTER_NOT_APPLICABLE'] },
-  })));
-  const feasible = candidates.filter((candidate) => candidate.riskFeasible);
-  const rejected = candidates.filter((candidate) => !candidate.riskFeasible);
-  return {
-    branch, strategyVersion: source.strategyVersion, status: source.status as 'RESEARCH_ONLY' | 'SHADOW', applicable,
-    evaluated: true, routeReasons: [...routeReasons, ...(enumerationTruncated ? ['DEFINED_RISK_ENUMERATION_BOUND_REACHED'] : [])],
-    evaluationState: !applicable ? 'NOT_APPLICABLE' : candidates.length === 0 || enumerationTruncated
-      ? 'BLOCKED_MISSING_INPUT' : 'EVALUATED',
-    candidateCount: candidates.length, mechanicallyRejected: 0, enumerationTruncated, hardVetoed: rejected.length,
-    softRanked: feasible.length, dataInsufficient: candidates.filter((candidate) => candidate.unknownEvidence.length > 0).length,
-    candidates, bestCandidateId: feasible[0]?.candidateId ?? null, secondBestCandidateId: feasible[1]?.candidateId ?? null,
-    bestRejectedCandidateId: rejected[0]?.candidateId ?? null, empiricalEconomicsReady: false, executionAuthorized: false,
-  };
-}
-
-function branchConstructionFailedFrontier(
-  branch: ThetaStrategyBranch, error: unknown,
-): CanonicalBranchFrontier {
-  const source = sourceByBranch.get(branch);
-  const message = error instanceof Error ? error.message : String(error);
-  // Real, typed failure evidence -- never a silent catch{}. The exact
-  // strategy/stage/cause/message/timestamp are all preserved in
-  // routeReasons and remain visible in the frontier receipt, per Phase 2's
-  // no-swallowed-errors requirement.
-  return {
-    branch, strategyVersion: source?.strategyVersion ?? 'UNKNOWN', status: (source?.status as 'RESEARCH_ONLY' | 'SHADOW' | undefined) ?? 'RESEARCH_ONLY',
-    applicable: false, evaluated: true,
-    routeReasons: ['BRANCH_CONSTRUCTION_EXCEPTION', `BRANCH_CONSTRUCTION_ERROR_MESSAGE:${message}`, `BRANCH_CONSTRUCTION_FAILED_AT:${new Date().toISOString()}`],
-    evaluationState: 'BRANCH_CONSTRUCTION_FAILED', candidateCount: 0, mechanicallyRejected: 0, enumerationTruncated: false,
-    hardVetoed: 0, softRanked: 0, dataInsufficient: 0, candidates: [], bestCandidateId: null,
-    secondBestCandidateId: null, bestRejectedCandidateId: null, empiricalEconomicsReady: false, executionAuthorized: false,
-  };
 }
 
 export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierInput): CanonicalStrategyFrontier {
@@ -593,25 +621,35 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
   // `managementAuthorityRequired` (below) incorrect. Read it once, outside
   // any per-branch fault boundary, same as the routing read above.
   const sharedStockShares: number | null | 'ABSENT' = input.stock === null ? 'ABSENT' : input.stock.shares;
-  const branches = branchOrder.map((branch) => {
-    try {
-      return buildBranch(branch, input, sharedRoutingResults, sharedStockShares);
-    } catch (error) {
-      // A branch-specific construction failure (this branch's own stock
-      // read, candidate enumeration, or ranking step throwing) must not
-      // prevent any other, unrelated branch's valid frontier from being
-      // produced -- THETA-CANONICAL-FRONTIER-NO-PER-BRANCH-ISOLATION.
-      return branchConstructionFailedFrontier(branch, error);
-    }
-  });
+  // Every branch-LOCAL construction failure (candidate enumeration,
+  // ranking, deeper economics) is now caught and truthfully reported
+  // inside buildBranch itself (THETA-CANONICAL-FRONTIER-NO-PER-BRANCH-
+  // ISOLATION). `CANONICAL_STRATEGY_SOURCE_MISSING` deliberately still
+  // propagates as a hard, uncaught failure here: it represents a genuine
+  // source/deployment-config integrity gap (a branch present in
+  // `branchOrder` with no matching entry in `canonicalThetaStrategySources`
+  // at all) -- a systemic misconfiguration, not a transient per-cycle
+  // branch fault, and correctly invalidates the whole frontier rather than
+  // being silently isolated away.
+  const branches = branchOrder.map((branch) => buildBranch(branch, input, sharedRoutingResults, sharedStockShares));
   const applicable = branches.filter((branch) => branch.applicable);
-  const evaluated = applicable.filter((branch) => branch.evaluated && branch.evaluationState !== 'BLOCKED_MISSING_INPUT');
+  // A branch that was applicable but whose construction failed was
+  // genuinely CONSIDERED (it remains in `applicable` above, truthfully) but
+  // was not genuinely EVALUATED -- no real candidates/economics exist for
+  // it this cycle. Treat it the same as BLOCKED_MISSING_INPUT for this
+  // purpose: visible as considered, excluded from "successfully evaluated."
+  const evaluated = applicable.filter((branch) => branch.evaluated
+    && branch.evaluationState !== 'BLOCKED_MISSING_INPUT' && branch.evaluationState !== 'BRANCH_CONSTRUCTION_FAILED');
   const globallyRanked = rankCandidates(branches.flatMap((branch) => branch.candidates));
   const feasible = globallyRanked.filter((candidate) => candidate.riskFeasible);
   // Shadow/research incompleteness stays visible in its branch receipt. It
   // cannot veto or relabel the bounded Conventional Paper decision.
+  // If Q's OWN construction failed (not merely a shadow/research branch),
+  // that must never be silently treated as "Q was fully evaluated, WAIT is
+  // earned" -- a genuine Q construction failure is exactly as blocking as
+  // BLOCKED_MISSING_INPUT for this specific safety check.
   const blockedApplicable = applicable.filter((branch) => branch.branch === 'THETA_CONVENTIONAL'
-    && branch.evaluationState === 'BLOCKED_MISSING_INPUT');
+    && (branch.evaluationState === 'BLOCKED_MISSING_INPUT' || branch.evaluationState === 'BRANCH_CONSTRUCTION_FAILED'));
   const managementAuthorityRequired = applicable.some((branch) => branch.branch === 'THETA_RECOVERY' || branch.branch === 'THETA_CC');
   // Research-only and shadow branches may have structurally positive size.
   // They are never eligible for the Paper-facing frontier selection.
