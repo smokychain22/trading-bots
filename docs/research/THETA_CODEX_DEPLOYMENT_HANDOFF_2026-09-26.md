@@ -9,11 +9,13 @@ owner) can execute the cutover with zero new instrumentation required.
 
 ## Identity
 
-- **TARGET_SHA** (this takeover branch's tip, to be deployed):
-  `0613a4e09ac81665070d893e2e76276481b7b7aa` (branch `claude/theta-unified-takeover`,
-  as of this document's own commit -- re-run `git rev-parse HEAD` on this
-  branch immediately before cutover to get the true final SHA including any
-  commits after this doc).
+- **TARGET_SHA** (this takeover branch's tip, to be deployed): re-run
+  `git rev-parse HEAD` on `claude/theta-unified-takeover` immediately
+  before cutover -- this document itself is committed after being written,
+  so any SHA written here is already one commit stale by construction
+  (item 29's explicit no-self-referential-loop guidance). As of this
+  regeneration the branch tip was `8d95f8a...` (docs commit); do not treat
+  that as final without re-checking.
 - **CURRENT_CHECKOUT_HEAD_SHA** (worker's raw git checkout, separate from
   what it executes): `47bbf9905a27a7231a5f47cab7c777c48d29b632`, branch
   `main`, clean tree, at
@@ -34,22 +36,49 @@ owner) can execute the cutover with zero new instrumentation required.
   RUNTIME_SCHEMA_INCOMPATIBLE`, `executionGate: LOCKED`, per the worker's
   own live `status.json`, last failure `2026-09-26T14:52:13Z`). This is a
   genuine, current, self-reported production state, not inferred.
-- `REQUIRED MIGRATION STATE`: none required by this pass's own changes.
-  Item 2 (source/worker SHA persistence) was resolved with **zero new
-  migrations** -- it reuses the existing `trade.decision.receipt_json`
-  jsonb column additively. No `DEPLOYMENT_MIGRATION_REQUIRED_CODEX`
-  classification is needed for anything in this pass.
-- **FILES CHANGED THIS PASS** (full diff is in git history on this branch,
-  commits `bca6e13`, `ce99a1e`, `d7001c4`, `0613a4e`, `af0e182`, and this
-  doc's own commit): `src/theta/postgres-theta-cycle-store.ts`,
+- `REQUIRED MIGRATION STATE`: none required by this entire Phase 1 Pass 3
+  effort (initial pass + continuation). Item 2 (source/worker SHA
+  persistence) was resolved with **zero new migrations** -- it reuses the
+  existing `trade.decision.receipt_json` jsonb column additively. No
+  `DEPLOYMENT_MIGRATION_REQUIRED_CODEX` classification is needed for
+  anything in this pass. The new `T0_REPLAY_BUNDLE` payload type
+  (`t0-replay-bundle.ts`) similarly reuses the existing
+  `LocalEvidenceSpool` envelope mechanism -- no schema change there either.
+- **FILES CHANGED THIS PASS** (full diff is in git history on
+  `claude/theta-unified-takeover` between `62ebd26` and the current tip;
+  run `git log --oneline 62ebd26..HEAD` for the exact commit list):
+  `src/theta/postgres-theta-cycle-store.ts`,
   `src/theta/autonomous-runtime.ts`, `src/theta/autonomous-runtime-handler.ts`,
   `src/research/production-shadow-runtime.ts`,
+  `src/theta/release-identity.ts` (new -- the one release-identity resolver),
+  `src/theta/profitability-brain-evidence-manifest.ts` (evidenceClass +
+  evidenceWorkerSha rename), `src/theta/profitability-brain-reality.ts`
+  (new orthogonal `historicalRealData` dimension),
+  `src/theta/profitability-method-input-provenance.ts` (new -- per-method
+  input realness), `src/theta/theta-shadow-cycle.ts` (additive
+  `routerPortfolioOrigin` field), `src/theta/theta-shadow-once.ts`,
+  `src/theta/t0-replay-bundle.ts` (new -- future replay bundle mechanism),
+  plus their corresponding test files (`tests/release-identity.test.ts`,
+  `tests/postgres-theta-cycle-store-release-identity-guard.test.ts`,
+  `tests/profitability-method-input-provenance.test.ts`,
+  `tests/t0-replay-bundle.test.ts`, and updates to
   `tests/db/theta-cycle-persistence.test.ts`,
-  `tests/fixtures/real-sep24-q-ready-excerpt.json`,
-  `src/theta/profitability-brain-evidence-manifest.ts`,
+  `tests/profitability-brain-evidence-manifest.test.ts`,
   `tests/theta-real-historical-episode.test.ts`,
-  `docs/research/THETA_BRAIN_AUTHORITY_V1.md`,
-  `docs/research/SOURCE_RUNTIME_TRUTH_MATRIX.md`, this file.
+  `tests/theta-shadow-once-source-identity.test.ts`), and the docs
+  (`THETA_BRAIN_AUTHORITY_V1.md`, `SOURCE_RUNTIME_TRUTH_MATRIX.md`,
+  `THETA_T0_RECONSTRUCTION_LEDGER_2026-09-26.md`, this file).
+- **NAMED NEXT STEP, not done in this pass** (item 34: Codex's job should
+  be mechanical, never inventive): wire a
+  `spoolEvidence('T0_REPLAY_BUNDLE', buildT0ReplayBundle(...))` call into
+  `tools/theta-no-submit-probe.ts`'s real per-symbol loop (where
+  `runDatabaseIndependentShadowObservation`'s real contracts/routing/AEGIS
+  state are already in scope), so future decision cycles carry a real,
+  replayable T0 bundle instead of only the coarse existing summaries. This
+  is additive and low-risk (a new payload type, no schema change) but
+  touches the live no-submit probe's Production code path, so it was left
+  named here rather than done silently alongside everything else in this
+  continuation.
 
 ## Pre-deploy validation commands (read-only, safe to run against the target checkout before cutover)
 
