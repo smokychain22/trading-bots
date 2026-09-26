@@ -1,0 +1,20 @@
+{
+  "bundleId": "cli-smoke-bundle-1",
+  "decisionAt": "2026-09-26T14:00:00Z",
+  "subjectId": "SPY-590P-20261017",
+  "wasSelected": false,
+  "wasShadowOnly": true,
+  "rows": [
+    {
+      "subjectId": "SPY-590P-20261017",
+      "checkpoint": "15M",
+      "observedAt": "2026-09-26T14:15:00Z",
+      "marketMarkPrice": 1.25,
+      "impliedVolatility": 0.18,
+      "underlyingPrice": 592.10,
+      "sourceSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "workerSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "provenance": "REAL_SCHEDULED_OBSERVATION"
+    }
+  ]
+}
