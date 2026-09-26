@@ -211,6 +211,16 @@ export interface ThetaShadowCycleConfig {
   readonly regimePolicy: Record<string, unknown>;
   readonly routerPolicy: Record<string, unknown> & { thetaQMinOwnershipAcceptability: number };
   readonly routerPortfolio: Record<string, unknown>;
+  // Phase 1 Zero-Unknown Reclosure Pass 3 continuation (items 12-14):
+  // optional and additive so every existing caller (production, tests,
+  // research tools) is unaffected by its absence. When a caller knows
+  // whether `routerPortfolio` came from a real account/position read or a
+  // hardcoded/manual value, it should say so here -- this is what lets
+  // profitability-method-input-provenance.ts classify the router's own
+  // input realness honestly, instead of guessing from the value alone
+  // (a value like "CASH_AVAILABLE" looks identical whether it's real or a
+  // hardcoded default).
+  readonly routerPortfolioOrigin?: ProvenanceOrigin;
   readonly latticeConfig: Record<string, unknown>;
   readonly thetaQSizingPolicy: Record<string, unknown>;
   readonly costAssumptions: Record<string, unknown>;

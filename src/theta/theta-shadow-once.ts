@@ -11,6 +11,7 @@ import type { UnderlyingCandidateInput } from './universe-policy.js';
 import { buildFirstPaperRuntimeTelemetry } from './first-paper-runtime-telemetry.js';
 import { paperBootstrapRuntimePolicy } from './paper-bootstrap-runtime-policy.js';
 import { deriveRealCurrentWorkerEvidence } from './profitability-brain-reality.js';
+import { classifyMethodInputProvenance } from './profitability-method-input-provenance.js';
 import {
   buildProfitabilityBrainRealityFromManifest, profitabilityBrainEvidenceManifestVersion,
   type ProfitabilityBrainEvidenceManifest, type ProfitabilityRuntimeEvidence,
@@ -153,6 +154,14 @@ export function defaultShadowCycleConfig(
     regimePolicy: { policyVersion: 'regime-v1-shadow-once', bullMaSlopeFloor: 0.001, bearMaSlopeCeiling: -0.001, rvLowCeiling: 0.1, rvHighFloor: 0.25, rvShockFloor: 0.4, maxAdverseGapShockThreshold: 0.08, liquidityThinSpreadPctFloor: 0.03, liquidityDislocatedSpreadPctFloor: 0.08, correctionDrawdownCeiling: -0.1, crisisDrawdownCeiling: -0.2 },
     routerPolicy: { policyVersion: 'router-v1-shadow-once', thetaQMinOwnershipAcceptability: 0.3, thetaHMinOwnershipAcceptability: 0.75, thetaDGateSatisfied: false },
     routerPortfolio: { lifecycleState: 'CASH_AVAILABLE', stockSharesHeld: 0, openOptionExists: false, assignmentImminent: false },
+    // Phase 1 Zero-Unknown Reclosure Pass 3 continuation (item 14): honest,
+    // not aspirational -- this entrypoint hardcodes a CASH_AVAILABLE
+    // literal above rather than reading a real account/position snapshot.
+    // The router genuinely executes on a real run, but this specific input
+    // is manual, and STRATEGY_APPLICABILITY_ROUTER's input-realness
+    // classification must reflect that rather than being inferred from the
+    // value alone.
+    routerPortfolioOrigin: 'CALLER_MANUAL',
     latticeConfig: { configVersion: 'lattice-v1-shadow-once', minDte: bootstrap.conventional.minimumDte, maxDte: bootstrap.conventional.maximumDte, deltaBands: bootstrap.conventional.deltaBands.map((band) => [...band] as [number, number]), minOpenInterest: bootstrap.conventional.minimumOpenInterest, minVolume: bootstrap.conventional.minimumVolume, maxSpreadPct: bootstrap.conventional.maximumSpreadPct, earningsExclusionDays: bootstrap.conventional.earningsExclusionDays },
     thetaQSizingPolicy: { riskLimitVersion: 'risk-v1-shadow-once', maxSpreadPct: bootstrap.conventional.maximumSpreadPct, maxQuoteAgeSeconds: bootstrap.quoteAge.candidateMaximumSeconds, minOpenInterest: bootstrap.conventional.minimumOpenInterest, minVolume: bootstrap.conventional.minimumVolume, earningsExclusionDays: bootstrap.conventional.earningsExclusionDays, ownershipAcceptabilityFloor: 0.3, exceptionalUtilityThreshold: 0.9, strongUtilityThreshold: 0.7, minimumPositiveEdge: 0.05, riskBudgetQtyCap: bootstrap.sizing.riskBudgetQuantityCap, collateralQtyCap: bootstrap.sizing.collateralQuantityCap, concentrationQtyCap: 2 },
     costAssumptions: { commissionPerContract: 0.65, feesPerContract: 0.05, estimatedSlippagePerContract: 1.0, costModelVersion: 'cost-v1-shadow-once' },
@@ -324,6 +333,17 @@ async function main(): Promise<number> {
     brainRealityLevelCounts,
     brainRealityManifestViolations,
     aegisInputsOrigin: config.aegisInputsOrigin,
+    // Phase 1 Zero-Unknown Reclosure Pass 3 continuation (items 12-16):
+    // read from this cycle's OWN real provenanceDetail rather than assumed
+    // -- optionContracts=... reflects what this specific run actually
+    // observed, never a hardcoded "REAL" claim.
+    methodInputProvenance: classifyMethodInputProvenance({
+      executedMethodIds: realEvidence,
+      routerPortfolioOrigin: config.routerPortfolioOrigin,
+      aegisInputsOrigin: config.aegisInputsOrigin,
+      marketDataOrigin: (result.provenanceDetail.find((entry) => entry.startsWith('optionContracts='))
+        ?.split('=')[1] as ProvenanceOrigin | undefined) ?? 'NOT_ATTEMPTED',
+    }),
   }, null, 2));
 
   return result.blockers.length > 0 ? 1 : 0;
