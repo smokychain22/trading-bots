@@ -44,41 +44,43 @@ owner) can execute the cutover with zero new instrumentation required.
   anything in this pass. The new `T0_REPLAY_BUNDLE` payload type
   (`t0-replay-bundle.ts`) similarly reuses the existing
   `LocalEvidenceSpool` envelope mechanism -- no schema change there either.
-- **FILES CHANGED THIS PASS** (full diff is in git history on
-  `claude/theta-unified-takeover` between `62ebd26` and the current tip;
-  run `git log --oneline 62ebd26..HEAD` for the exact commit list):
-  `src/theta/postgres-theta-cycle-store.ts`,
+- **FILES CHANGED ACROSS THIS ENTIRE PASS 3 EFFORT** (full diff is in git
+  history on `claude/theta-unified-takeover` between `62ebd26` and the
+  current tip; run `git log --oneline 62ebd26..HEAD` for the exact commit
+  list): `src/theta/postgres-theta-cycle-store.ts`,
   `src/theta/autonomous-runtime.ts`, `src/theta/autonomous-runtime-handler.ts`,
   `src/research/production-shadow-runtime.ts`,
   `src/theta/release-identity.ts` (new -- the one release-identity resolver),
   `src/theta/profitability-brain-evidence-manifest.ts` (evidenceClass +
   evidenceWorkerSha rename), `src/theta/profitability-brain-reality.ts`
-  (new orthogonal `historicalRealData` dimension),
-  `src/theta/profitability-method-input-provenance.ts` (new -- per-method
-  input realness), `src/theta/theta-shadow-cycle.ts` (additive
-  `routerPortfolioOrigin` field), `src/theta/theta-shadow-once.ts`,
-  `src/theta/t0-replay-bundle.ts` (new -- future replay bundle mechanism),
-  plus their corresponding test files (`tests/release-identity.test.ts`,
-  `tests/postgres-theta-cycle-store-release-identity-guard.test.ts`,
-  `tests/profitability-method-input-provenance.test.ts`,
-  `tests/t0-replay-bundle.test.ts`, and updates to
-  `tests/db/theta-cycle-persistence.test.ts`,
-  `tests/profitability-brain-evidence-manifest.test.ts`,
-  `tests/theta-real-historical-episode.test.ts`,
-  `tests/theta-shadow-once-source-identity.test.ts`), and the docs
+  (orthogonal `historicalRealData` dimension), `src/theta/profitability-
+  method-input-provenance.ts` (new -- per-method input realness, now wired
+  into `runThetaShadowCycle` itself, plus `filterToRealInputEvidence`, the
+  one L7 promotion authority), `src/theta/theta-shadow-cycle.ts` (additive
+  `routerPortfolioOrigin`/`canonicalFrontierInput`/`methodInputProvenance`
+  fields), `src/theta/theta-shadow-once.ts` (old broad AEGIS-only L7
+  exclusion removed), `src/theta/t0-replay-bundle.ts` (new -- T0 replay
+  mechanism, now wired into both real no-submit paths),
+  `src/theta/database-independent-shadow-observation.ts`,
+  `src/theta/postgres-cycle-evidence-storage.ts`,
+  `tools/theta-no-submit-probe.ts`, plus their corresponding test files
+  (see `git log --stat` for the full list -- over a dozen new/updated test
+  files, including `tests/t0-replay-bundle-writer-integration.test.ts`,
+  `tests/theta-no-submit-probe-t0-replay-wiring.test.ts`,
+  `tests/method-l7-realness-authority.test.ts`,
+  `tests/theta-brain-authority-doc-consistency.test.ts`), and the docs
   (`THETA_BRAIN_AUTHORITY_V1.md`, `SOURCE_RUNTIME_TRUTH_MATRIX.md`,
   `THETA_T0_RECONSTRUCTION_LEDGER_2026-09-26.md`, this file).
-- **NAMED NEXT STEP, not done in this pass** (item 34: Codex's job should
-  be mechanical, never inventive): wire a
-  `spoolEvidence('T0_REPLAY_BUNDLE', buildT0ReplayBundle(...))` call into
-  `tools/theta-no-submit-probe.ts`'s real per-symbol loop (where
-  `runDatabaseIndependentShadowObservation`'s real contracts/routing/AEGIS
-  state are already in scope), so future decision cycles carry a real,
-  replayable T0 bundle instead of only the coarse existing summaries. This
-  is additive and low-risk (a new payload type, no schema change) but
-  touches the live no-submit probe's Production code path, so it was left
-  named here rather than done silently alongside everything else in this
-  continuation.
+- **CODEX_REQUIRED_ACTIONS = deployment only, zero source work remaining.**
+  Every item this handoff previously named as a source TODO (T0 replay
+  bundle wiring, per-method provenance reaching real worker evidence, L7
+  requiring real inputs, the authority-doc contradiction) is now resolved
+  in source, on this branch, with tests. Codex's job is exactly: deploy
+  `TARGET_SHA`, materialize the pinned release, confirm schema
+  compatibility, restart, run no-submit verification, and read back the
+  receipts this source already knows how to produce. Codex must not need
+  to invent an authority map, a source-identity model, a provenance model,
+  or a replay bundle -- all four already exist in source.
 
 ## Pre-deploy validation commands (read-only, safe to run against the target checkout before cutover)
 
@@ -117,25 +119,62 @@ npx --prefix <target-checkout> tsx tools/theta-no-submit-probe.ts   # read-only,
    `FIRST_PAPER_CANARY=OWNER_GATED`) remains in force regardless of
    deployment success -- this handoff does not request or imply lifting it.
 
-## Post-deploy expected state / receipt fields
+## Post-deploy expected state / receipt fields (item 18's full checklist -- every one of these is already produced by existing source, none require new instrumentation)
 
-- `runtime-schema-compatibility` result: `{compatible: true, sourceSha:
-  TARGET_SHA, workerSha: TARGET_SHA}`.
-- Worker `status.json`: `state` no longer `SCHEMA_INCOMPATIBLE`;
-  `buildSha === TARGET_SHA`.
-- The next real decision persisted to `trade.decision.receipt_json` must
-  carry `releaseIdentity: {sourceSha: TARGET_SHA, workerSha: TARGET_SHA}`
-  (this pass's item-2 fix) -- this is the first real, current-worker
-  evidence confirming the target release actually ran, and is the specific
-  fact that will let a future pass close `THETA-BRAIN-L7-CALLER-GAP` for
-  real rather than via this checkout's own `git rev-parse HEAD`.
+- `TARGET_SOURCE_SHA == RUNNING_SOURCE_SHA`: `resolveReleaseIdentity()`
+  (`release-identity.ts`) resolves the local worker's pinned `buildSha` as
+  its real source identity (proven via the install script's own
+  `git worktree`/`THETA_RELEASE_SHA_MISMATCH` invariant) -- confirm it
+  equals `TARGET_SHA`.
+- `TARGET_SOURCE_SHA == RUNNING_WORKER_SHA`: same resolver, same check.
+- Schema compatible: `inspectRuntimeSchemaCompatibility` result
+  `{compatible: true, sourceSha: TARGET_SHA, workerSha: TARGET_SHA}`; worker
+  `status.json` `state` no longer `SCHEMA_INCOMPATIBLE`, `buildSha ===
+  TARGET_SHA`.
+- Current worker cycle reached the canonical brain: `result.strategyFrontier`
+  is non-null on a real cycle, `result.canonicalFrontierInput` is present
+  (the exact object the frontier ran on).
+- Method execution evidence present: `result.methodInputProvenance`
+  (`profitability-method-input-provenance.ts`) lists `executed: true` for
+  every method that ran this cycle.
+- Method input realness present: the same `methodInputProvenance` entries
+  carry a real `inputRealness` classification (`REAL`/`PARTIAL_REAL`/
+  `VERSIONED_POLICY`/`MANUAL`/`SYNTHETIC`/`UNKNOWN`), not absent.
+- Only fully-real methods receive L7: `filterToRealInputEvidence` gates the
+  manifest's `currentWorkerRealData` -- verify a method with `inputRealness
+  !== 'REAL'` never shows `level: 'L7_CURRENT_WORKER_REAL_DATA'` in the
+  receipt.
+- `T0_REPLAY_BUNDLE` persisted/spooled: check the local evidence spool
+  (no-submit path) for a `T0_REPLAY_BUNDLE` payload, or the Postgres
+  evidence archive's `canonicalFrontierInput` field (normal path).
+- T0 replay round-trip reproduces the canonical decision:
+  `replayFromT0Bundle(bundle)` on the persisted bundle reproduces the same
+  `selectedCandidateId`/`selectedBranch`/`primaryAction`/`selectedQuantity`/
+  `contentHash` as the original cycle (see
+  `tests/t0-replay-bundle-writer-integration.test.ts` for the exact
+  pattern).
+- Decision receipt contains `releaseIdentity`: the next real decision
+  persisted to `trade.decision.receipt_json` carries `releaseIdentity:
+  {sourceSha: TARGET_SHA, workerSha: TARGET_SHA}` -- this is the first
+  real, current-worker evidence confirming the target release actually ran,
+  and is the specific fact that lets a future pass close
+  `THETA-BRAIN-L7-CALLER-GAP` for real.
+- `orders submitted = 0`, `broker mutations = 0`: unaffected by anything in
+  this handoff; the permanent safety floor remains in force regardless of
+  deployment outcome.
+
+If ANY of the above cannot be confirmed from existing instrumentation,
+that is a genuine remaining source gap and must be fixed before declaring
+Phase 1 closed -- do not paper over a missing check.
 
 ## Pass conditions
 
-All of: schema compatibility reports `COMPATIBLE`; the worker completes at
-least one real cycle without `SCHEMA_INCOMPATIBLE`/`RUNTIME_SCHEMA_INCOMPATIBLE`;
-the persisted decision's `releaseIdentity` matches `TARGET_SHA` on both
-fields; zero broker mutations occurred outside the existing safety floor.
+All of the post-deploy checklist above holds: schema compatible; a real
+cycle reaches the canonical brain with method execution and input-realness
+evidence present; only fully-real methods reach L7; a T0 replay bundle is
+persisted and its replay reproduces the original decision; the persisted
+decision's `releaseIdentity` matches `TARGET_SHA` on both fields; zero
+broker mutations occurred outside the existing safety floor.
 
 ## Rollback conditions
 
