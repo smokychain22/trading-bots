@@ -60,6 +60,8 @@ import { deriveMacroRiskEvidence, type MacroRiskEvidence } from './macro-event-p
 import { applyCompanyEventPaperPolicy, classifyPaperInstrument,
   type CompanyEventPaperPolicyDecision } from './paper-entry-safety-policy.js';
 import { assessPortfolioCorrelation, type PortfolioCorrelationObservation } from './portfolio-correlation-evidence.js';
+import { deriveRealCurrentWorkerEvidence } from './profitability-brain-reality.js';
+import { classifyMethodInputProvenance, type MethodInputProvenance } from './profitability-method-input-provenance.js';
 
 /** Never relabel a Conventional assessment as Hold-Strike risk evidence. */
 export function conventionalFrontierRiskLookups(
@@ -285,6 +287,12 @@ export interface ThetaShadowCycleResult {
   // (t0-replay-bundle.ts) must use this field directly, never re-derive it
   // from strategyFrontier's own output.
   readonly canonicalFrontierInput: CanonicalStrategyFrontierInput | null;
+  // Phase 1 Zero-Unknown Reclosure Pass 3 source-final (items 8-10): wired
+  // at the lowest common point (runThetaShadowCycle itself), reused by
+  // every real caller (theta-shadow-once.ts, the database-independent
+  // fallback, the normal Postgres-backed production path) -- never
+  // duplicated into autonomous-runtime-handler.ts or the Windows script.
+  readonly methodInputProvenance: readonly MethodInputProvenance[];
   readonly provenance: ShadowCycleProvenance;
   readonly provenanceDetail: readonly string[];
   readonly blockers: readonly string[];
@@ -749,6 +757,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: null, underlyingRanking: ranked,
       optionChainComplete: null, optionContractsComplete: null, snapshotContentHash: null, fusionSnapshot: null, snapshotValidForNewRisk: null,
       orchestration: null, strategyFrontier: null, strategyQualityDiagnostics: null, canonicalFrontierInput: null,
+      methodInputProvenance: [],
       provenance: noUnderlyingProvenance, provenanceDetail: ['no eligible underlying survived UniversePolicy this cycle', ...noUnderlyingDetail],
       blockers: ['NO_ELIGIBLE_UNDERLYING'],
     };
@@ -1607,12 +1616,18 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     thetaQ: NewRiskOrchestrationResult['thetaQ'] = null,
     thetaQDecision?: NewRiskOrchestrationResult['receipt'],
     thetaQCandidateEvaluation?: NewRiskOrchestrationResult['thetaQCandidateEvaluation'],
-  ): Pick<ThetaShadowCycleResult, 'strategyFrontier' | 'strategyQualityDiagnostics' | 'canonicalFrontierInput'> => {
+  ): Pick<ThetaShadowCycleResult, 'strategyFrontier' | 'strategyQualityDiagnostics' | 'canonicalFrontierInput' | 'methodInputProvenance'> => {
     const { frontier: strategyFrontier, input: canonicalFrontierInput } = strategyFrontierFor(
       routing, aegis, aegisByCandidateId, candidatesWithCapacity, thetaQ, thetaQDecision, thetaQCandidateEvaluation);
+    const executedMethodIds = deriveRealCurrentWorkerEvidence({ strategyFrontier });
+    const methodInputProvenance = classifyMethodInputProvenance({
+      executedMethodIds, routerPortfolioOrigin: config.routerPortfolioOrigin,
+      aegisInputsOrigin: config.aegisInputsOrigin, marketDataOrigin: contractsEvidence.origin,
+    });
     return {
       strategyFrontier,
       canonicalFrontierInput,
+      methodInputProvenance,
       strategyQualityDiagnostics: buildStrategyQualityShadowDiagnostic({
         contracts: mergedContractsForSnapshot,
         frontier: strategyFrontier,

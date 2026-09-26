@@ -64,6 +64,30 @@ const decisiveMethodIds = [
   'AEGIS_RISK_PERMISSION', 'CONSTRAINED_QUANTITY_SIZING', 'CANONICAL_ENTRY_SELECTION',
 ] as const;
 
+/**
+ * Phase 1 Zero-Unknown Reclosure Pass 3 source-final (items 11-13): the ONE
+ * authority for whether a method's real EXECUTION also earns real-DATA
+ * (current-worker L7) credit. A methodId only survives this filter when it
+ * both executed (present in `executedMethodIds`) AND this classifier says
+ * its decisive inputs were fully REAL -- PARTIAL_REAL/MANUAL/SYNTHETIC/
+ * UNKNOWN/VERSIONED_POLICY-only never qualify. A methodId with no
+ * provenance row at all (not one of the 8 classified methods) is passed
+ * through unfiltered -- this function only NARROWS the methods it has an
+ * opinion about, it never widens or invents evidence for methods outside
+ * its own scope.
+ */
+export function filterToRealInputEvidence(
+  executedMethodIds: readonly string[],
+  provenance: readonly MethodInputProvenance[],
+): readonly string[] {
+  const byId = new Map(provenance.map((row) => [row.methodId, row]));
+  return executedMethodIds.filter((methodId) => {
+    const row = byId.get(methodId);
+    if (row === undefined) return true;
+    return row.inputRealness === 'REAL';
+  });
+}
+
 export function classifyMethodInputProvenance(input: ClassifyMethodInputProvenanceInput): readonly MethodInputProvenance[] {
   const executed = new Set(input.executedMethodIds);
   const routerRealness = originToRealness(input.routerPortfolioOrigin);

@@ -11,7 +11,7 @@ import type { UnderlyingCandidateInput } from './universe-policy.js';
 import { buildFirstPaperRuntimeTelemetry } from './first-paper-runtime-telemetry.js';
 import { paperBootstrapRuntimePolicy } from './paper-bootstrap-runtime-policy.js';
 import { deriveRealCurrentWorkerEvidence } from './profitability-brain-reality.js';
-import { classifyMethodInputProvenance } from './profitability-method-input-provenance.js';
+import { filterToRealInputEvidence } from './profitability-method-input-provenance.js';
 import {
   buildProfitabilityBrainRealityFromManifest, profitabilityBrainEvidenceManifestVersion,
   type ProfitabilityBrainEvidenceManifest, type ProfitabilityRuntimeEvidence,
@@ -265,20 +265,16 @@ async function main(): Promise<number> {
   try {
     const sourceSha = currentImmutableSourceSha();
     const derived = deriveRealCurrentWorkerEvidence({ strategyFrontier: result.strategyFrontier });
-    // Phase 1 Zero-Unknown Reclosure Pass 2 (directive items 29-33): this
-    // command's own `config.aegisInputsOrigin` is honestly `CALLER_MANUAL`
-    // (see defaultShadowCycleConfig's own comment -- sector/correlation/
-    // IV-shock/spread-widening inputs are not yet real-derived for this
-    // specific entrypoint). A method executing with partially-manual inputs
-    // is real EXECUTION but not real-DATA-complete -- AEGIS_RISK_PERMISSION
-    // must never claim L7 from a run whose own risk inputs were manual,
-    // even though the frontier genuinely evaluated. CONSTRAINED_QUANTITY_
-    // SIZING is excluded too: its structural sizing path consumes the same
-    // AEGIS state, so a manual-AEGIS run cannot honestly claim full-real
-    // sizing either.
-    const inputRealnessExclusions = config.aegisInputsOrigin === 'CALLER_MANUAL'
-      ? new Set(['AEGIS_RISK_PERMISSION', 'CONSTRAINED_QUANTITY_SIZING']) : new Set<string>();
-    realEvidence = derived.filter((methodId) => !inputRealnessExclusions.has(methodId));
+    // Phase 1 Zero-Unknown Reclosure Pass 3 source-final (items 11-13): the
+    // old broad `aegisInputsOrigin === 'CALLER_MANUAL'` exclusion (Pass 2)
+    // is REMOVED, not kept as a second, competing reality rule. The single
+    // authority is now the per-method input-provenance classifier
+    // (`result.methodInputProvenance`, computed once inside
+    // runThetaShadowCycle itself -- never recomputed here), filtered
+    // through `filterToRealInputEvidence`: a methodId only survives when it
+    // both executed AND this run's decisive inputs for it were classified
+    // REAL, never PARTIAL_REAL/MANUAL/SYNTHETIC/UNKNOWN.
+    realEvidence = filterToRealInputEvidence(derived, result.methodInputProvenance);
     const snapshotIdentity = result.snapshotContentHash ?? 'no-snapshot';
     const runtime: ProfitabilityRuntimeEvidence[] = realEvidence.map((methodId) => ({
       methodId, evidenceId: `${result.runId}:${methodId}`,
@@ -333,17 +329,10 @@ async function main(): Promise<number> {
     brainRealityLevelCounts,
     brainRealityManifestViolations,
     aegisInputsOrigin: config.aegisInputsOrigin,
-    // Phase 1 Zero-Unknown Reclosure Pass 3 continuation (items 12-16):
-    // read from this cycle's OWN real provenanceDetail rather than assumed
-    // -- optionContracts=... reflects what this specific run actually
-    // observed, never a hardcoded "REAL" claim.
-    methodInputProvenance: classifyMethodInputProvenance({
-      executedMethodIds: realEvidence,
-      routerPortfolioOrigin: config.routerPortfolioOrigin,
-      aegisInputsOrigin: config.aegisInputsOrigin,
-      marketDataOrigin: (result.provenanceDetail.find((entry) => entry.startsWith('optionContracts='))
-        ?.split('=')[1] as ProvenanceOrigin | undefined) ?? 'NOT_ATTEMPTED',
-    }),
+    // Phase 1 Zero-Unknown Reclosure Pass 3 source-final (item 9): read
+    // directly from the real cycle result -- computed once, inside
+    // runThetaShadowCycle itself, never recomputed here.
+    methodInputProvenance: result.methodInputProvenance,
   }, null, 2));
 
   return result.blockers.length > 0 ? 1 : 0;
