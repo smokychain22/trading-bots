@@ -636,3 +636,26 @@ No item is complete merely because its type, config, fixture, or UI label exists
   fail-closed tests. Stale RUNNING cycle recovery remains bounded to rows older
   than seven minutes, at most 32 rows per pass with `FOR UPDATE SKIP LOCKED`,
   and records `INTERRUPTED_STALE_LEASE` rather than WAIT.
+
+## Governed migration-checkpoint incidents, 2026-09-26
+
+- ID: PRE-BACKUP-QUOTED-COPY-GUARD. DOMAIN: disaster recovery. OBSERVED: the
+  first schema-067 checkpoint completed a 1.413 GB custom dump and schema dump,
+  then the local read-only SQL guard mistook the quoted schema identifier
+  `"copy"` for the PostgreSQL `COPY` command. No migration ran. CLASSIFICATION:
+  CODE_SOLVABLE. CURRENT_STATE: CLOSED_SOURCE at `8939372`; the guard now strips
+  quoted identifiers, values, dollar-quoted bodies and comments before keyword
+  classification while real mutation statements remain rejected.
+- ID: PRE-BACKUP-CRITICAL-DIGEST-TLS-EOF. DOMAIN: disaster recovery/provider
+  stability. OBSERVED: the second checkpoint completed the same 1.413 GB custom
+  dump, schema dump, structure/global inventories, all-table counts and sequence
+  state, then a critical-table digest query lost its TLS connection with
+  `unexpected eof while reading`. The completed dump was preserved under
+  `restore-tests/incomplete-2026-09-25_223047-98fac688`. No migration ran and
+  schema remains 064. CLASSIFICATION: CODE_SOLVABLE plus external provider
+  instability. CURRENT_STATE: SOURCE_VERIFIED_AWAITING_EXACT_CI_AND_FRESH_CHECKPOINT. The v2 digest hashes a
+  bounded integrity projection for high-volume evidence tables, including their
+  immutable payload/archive hashes, rather than rematerializing giant JSON/blob
+  columns inside constrained PostgreSQL. Read-only transient connection errors
+  can retry against the still-live exported snapshot. Exact table identity is
+  included in any digest failure.

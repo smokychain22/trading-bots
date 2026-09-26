@@ -151,7 +151,12 @@ function Invoke-ThetaSql {
     }
     $Sql = "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT '$script:ThetaBackupSnapshotId'; $Sql; COMMIT;"
   }
-  $attempts = if ($safeRead -and -not $script:ThetaBackupSnapshotId) { 3 } else { 1 }
+  # An exported snapshot remains valid for fresh read-only sessions while its
+  # keeper transaction is alive. A transient TLS/client disconnect must not
+  # discard a two-hour dump after the archive itself completed. Retry only
+  # known connection/admission failures. SQL, permission, and snapshot errors
+  # remain single-attempt failures.
+  $attempts = if ($safeRead) { 3 } else { 1 }
   $delays = @(0, 2, 10)
   for ($attempt = 1; $attempt -le $attempts; $attempt++) {
     if ($delays[$attempt - 1] -gt 0) { Start-Sleep -Seconds $delays[$attempt - 1] }
@@ -159,7 +164,9 @@ function Invoke-ThetaSql {
       $result = Invoke-ThetaPg -Tool psql -Connection $Connection -Arguments @('--no-psqlrc','--quiet','--no-align','--tuples-only','--set','ON_ERROR_STOP=1','--command',$Sql)
       return (($result | Out-String).Trim())
     } catch {
-      if ($attempt -eq $attempts) { throw }
+      $message = [string]$_.Exception.Message
+      $retryable = $message -match '(?i)(unexpected eof|connection to server was lost|server closed the connection unexpectedly|SSL SYSCALL|could not receive data|could not send data|connection timed out|timeout expired|could not connect|remaining connection slots|too many clients|POSTGRES_53000|POSTGRES_57P03)'
+      if ($attempt -eq $attempts -or -not $retryable) { throw }
     }
   }
 }
@@ -274,7 +281,8 @@ function Get-ThetaCriticalDigest {
   param(
     [Parameter(Mandatory)][object]$Connection,
     [Parameter(Mandatory)][object]$Structure,
-    [ValidateSet('SORTED_ROW_MD5_V1','ORDER_INDEPENDENT_DUAL_SUM_V1')][string]$Method = 'ORDER_INDEPENDENT_DUAL_SUM_V1'
+    [ValidateSet('SORTED_ROW_MD5_V1','ORDER_INDEPENDENT_DUAL_SUM_V1','BOUNDED_INTEGRITY_PROJECTION_V2')]
+    [string]$Method = 'BOUNDED_INTEGRITY_PROJECTION_V2'
   )
   $names = @(
     'core.schema_migration','iam.customer_identity','copy.alpaca_oauth_token',
@@ -292,12 +300,59 @@ function Get-ThetaCriticalDigest {
     # Only a digest leaves PostgreSQL. The production form avoids a temporary sort file,
     # which can fail when Aiven is near its storage limit. Numeric sums are exact and
     # order-independent; the archive SHA-256 remains the complete byte-integrity proof.
-    $digestSql = if ($Method -eq 'SORTED_ROW_MD5_V1') {
-      "SELECT md5(coalesce(string_agg(row_hash,'' ORDER BY row_hash),'')) FROM (SELECT md5(to_jsonb(t)::text) AS row_hash FROM $qualified t) hashes"
-    } else {
-      "SELECT md5(count(*)::text || ':' || coalesce(sum((('x'||substr(row_hash,1,16))::bit(64)::bigint)::numeric)::text,'0') || ':' || coalesce(sum((('x'||substr(row_hash,17,16))::bit(64)::bigint)::numeric)::text,'0')) FROM (SELECT md5(to_jsonb(t)::text) AS row_hash FROM $qualified t) hashes"
+    $rowExpression = 'to_jsonb(t)'
+    if ($Method -eq 'BOUNDED_INTEGRITY_PROJECTION_V2') {
+      $boundedColumns = switch ($name) {
+        'trade.fusion_snapshot' { @(
+          'fusion_snapshot_id','bot_instance_id','decision_time','trigger_type','universe_version_id',
+          'strategy_version_id','feature_version_id','risk_limit_version_id','execution_version_id',
+          'cost_model_version_id','account_snapshot_id','content_hash','created_at','storage_contract_version',
+          'snapshot_projection_hash','evidence_archive_hash','evidence_archive_uncompressed_bytes',
+          'evidence_archive_compressed_bytes','full_contract_count','projected_contract_count'
+        ); break }
+        'market.optionomics_raw_observation' { @(
+          'observation_id','fusion_snapshot_id','operation_alias','underlying','provider_timestamp',
+          'ingestion_timestamp','as_of','contract_version','data_quality','response_hash','created_at',
+          'requested_at','request_path','request_parameters_json','http_status','rate_limit_json',
+          'documentation_reference','credential_identity_ref_hash','session_date'
+        ); break }
+        'trade.candidate_point_in_time_evidence' { @(
+          'candidate_id','decision_id','fusion_snapshot_id','decision_time','branch','rank_at_decision',
+          'selected','hard_status','soft_status','rejection_reason','strategy_version','risk_version',
+          'feature_version','cost_model_version','regime_version','execution_model_version','content_hash','created_at'
+        ); break }
+        default { @() }
+      }
+      if ($boundedColumns.Count -gt 0) {
+        $available = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        $prefix = $name + '.'
+        foreach ($column in $Structure.columns) {
+          $fullName = [string]$column.name
+          if ($fullName.StartsWith($prefix, [StringComparison]::Ordinal)) {
+            [void]$available.Add($fullName.Substring($prefix.Length))
+          }
+        }
+        $selected = @($boundedColumns | Where-Object { $available.Contains($_) })
+        if ($selected.Count -eq 0 -or -not ($selected -contains 'content_hash' -or $selected -contains 'response_hash')) {
+          throw "CRITICAL_DIGEST_PROJECTION_INCOMPLETE:$name"
+        }
+        $arguments = @()
+        foreach ($columnName in $selected) {
+          $quoted = '"' + $columnName.Replace('"','""') + '"'
+          $literal = $columnName.Replace("'", "''")
+          $arguments += "'$literal'"
+          $arguments += "t.$quoted"
+        }
+        $rowExpression = 'jsonb_build_object(' + ($arguments -join ',') + ')'
+      }
     }
-    $digests[$name] = Invoke-ThetaSql -Connection $Connection -Sql $digestSql
+    $digestSql = if ($Method -eq 'SORTED_ROW_MD5_V1') {
+      "SELECT md5(coalesce(string_agg(row_hash,'' ORDER BY row_hash),'')) FROM (SELECT md5(($rowExpression)::text) AS row_hash FROM $qualified t) hashes"
+    } else {
+      "SELECT md5(count(*)::text || ':' || coalesce(sum((('x'||substr(row_hash,1,16))::bit(64)::bigint)::numeric)::text,'0') || ':' || coalesce(sum((('x'||substr(row_hash,17,16))::bit(64)::bigint)::numeric)::text,'0')) FROM (SELECT md5(($rowExpression)::text) AS row_hash FROM $qualified t) hashes"
+    }
+    try { $digests[$name] = Invoke-ThetaSql -Connection $Connection -Sql $digestSql }
+    catch { throw "CRITICAL_DIGEST_QUERY_FAILED:$name $($_.Exception.Message)" }
     if ($digests[$name] -notmatch '^[0-9a-f]{32}$') { throw "CRITICAL_DIGEST_INVALID:$name" }
   }
   return $digests

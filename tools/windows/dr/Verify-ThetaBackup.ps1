@@ -32,7 +32,7 @@ foreach ($file in (Get-ChildItem -LiteralPath $backup -File -Recurse)) {
 }
 if (-not $seen.Contains('database.backup') -or -not $seen.Contains('schema.sql') -or -not $seen.Contains('backup-manifest.json')) { throw 'BACKUP_CORE_CHECKSUM_MISSING' }
 if ($manifest.formatVersion -eq 2) {
-  if ($manifest.criticalDigestMethod -and $manifest.criticalDigestMethod -notin @('SORTED_ROW_MD5_V1','ORDER_INDEPENDENT_DUAL_SUM_V1')) {
+  if ($manifest.criticalDigestMethod -and $manifest.criticalDigestMethod -notin @('SORTED_ROW_MD5_V1','ORDER_INDEPENDENT_DUAL_SUM_V1','BOUNDED_INTEGRITY_PROJECTION_V2')) {
     throw 'BACKUP_CRITICAL_DIGEST_METHOD_INVALID'
   }
   foreach ($required in @('database-structure.json','global-state.json','all-table-row-counts.json',

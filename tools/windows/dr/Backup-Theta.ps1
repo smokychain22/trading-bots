@@ -166,7 +166,7 @@ SELECT jsonb_build_object(
     sourceGitSha=$gitSha; inventory=$inventory; criticalRowCounts=$criticalCounts;
     structureSha256=(Get-ThetaStringSha256 $structureRaw); allTableRowCounts=$allRowCounts;
     sequenceStateSha256=(Get-ThetaStringSha256 $sequenceState);
-    criticalDataDigests=$criticalDigests; criticalDigestMethod='ORDER_INDEPENDENT_DUAL_SUM_V1'; externalAssets=$assets;
+    criticalDataDigests=$criticalDigests; criticalDigestMethod='BOUNDED_INTEGRITY_PROJECTION_V2'; externalAssets=$assets;
     secretsIncludedSeparately=$false; restoreRequiresEnvironmentVariables=$true
   }
   Write-ThetaJson (Join-Path $stage 'backup-manifest.json') $manifest
