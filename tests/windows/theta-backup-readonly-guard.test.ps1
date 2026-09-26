@@ -56,4 +56,25 @@ foreach ($marker in $orderedMarkers) {
 }
 if ($checkpoint -notmatch '--duration-seconds=900') { throw 'MIGRATION_CHECKPOINT_SOAK_DURATION_NOT_CERTIFIED' }
 
+$lockRoot = Join-Path ([IO.Path]::GetTempPath()) ('theta-backup-lock-test-' + [guid]::NewGuid().ToString('N'))
+[void](New-Item -ItemType Directory -Path $lockRoot)
+$firstLock = $null
+$secondLock = $null
+try {
+  $firstLock = Enter-ThetaBackupProcessLock $lockRoot
+  try {
+    $secondLock = Enter-ThetaBackupProcessLock $lockRoot
+    throw 'BACKUP_LOCK_ALLOWED_CONCURRENT_OWNER'
+  } catch {
+    if ($_.Exception.Message -ne 'BACKUP_ALREADY_RUNNING') { throw }
+  }
+  Exit-ThetaBackupProcessLock $firstLock
+  $firstLock = $null
+  $secondLock = Enter-ThetaBackupProcessLock $lockRoot
+} finally {
+  Exit-ThetaBackupProcessLock $secondLock
+  Exit-ThetaBackupProcessLock $firstLock
+  Remove-Item -LiteralPath $lockRoot -Recurse -Force
+}
+
 Write-Output 'THETA_BACKUP_READONLY_GUARD_TEST=PASS'

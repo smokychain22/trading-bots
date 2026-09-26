@@ -30,6 +30,33 @@ function Initialize-ThetaBackupRoot {
   if ($LASTEXITCODE -ne 0) { throw 'BACKUP_ROOT_ACL_FAILED' }
 }
 
+function Enter-ThetaBackupProcessLock {
+  param([string]$Root)
+  $fullRoot = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+  $lockPath = Join-Path $fullRoot 'backup.lock'
+  if (-not $lockPath.StartsWith(($fullRoot + '\'), [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'BACKUP_LOCK_PATH_UNSAFE'
+  }
+  try {
+    $stream = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    $payload = [Text.Encoding]::UTF8.GetBytes((ConvertTo-Json ([ordered]@{
+      processId = $PID
+      acquiredAt = (Get-Date).ToUniversalTime().ToString('o')
+    }) -Compress))
+    $stream.SetLength(0)
+    $stream.Write($payload, 0, $payload.Length)
+    $stream.Flush($true)
+    return $stream
+  } catch [IO.IOException] {
+    throw 'BACKUP_ALREADY_RUNNING'
+  }
+}
+
+function Exit-ThetaBackupProcessLock {
+  param([IO.FileStream]$LockStream)
+  if ($null -ne $LockStream) { $LockStream.Dispose() }
+}
+
 function Get-ThetaSourceUrl {
   param([string]$Root)
   $value = [Environment]::GetEnvironmentVariable('AIVEN_DATABASE_URL')

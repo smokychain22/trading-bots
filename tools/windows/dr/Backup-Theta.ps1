@@ -12,6 +12,7 @@ if ($TestMode -and -not $root.EndsWith('\trading-bots-test', [StringComparison]:
 if (-not $TestMode -and $SourceUrlEnvironmentVariable -ne 'AIVEN_DATABASE_URL') { throw 'PRODUCTION_SOURCE_MUST_BE_AIVEN' }
 if (-not $TestMode -and $SkipExternalAssets) { throw 'PRODUCTION_BACKUP_CANNOT_SKIP_EXTERNAL_ASSETS' }
 Initialize-ThetaBackupRoot $root
+$backupProcessLock = Enter-ThetaBackupProcessLock $root
 $logPath = Join-Path $root ('logs\backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
 function Log([string]$Message) { [IO.File]::AppendAllText($logPath, "$(Get-Date -Format o) $Message`n") }
 function Invoke-VerifiedDumpWithRetry([string[]]$Arguments, [string]$OutputPath, [string]$Label) {
@@ -259,4 +260,5 @@ SELECT jsonb_build_object(
 } finally {
   $script:ThetaBackupSnapshotId = $null
   Stop-ThetaExportedSnapshot $snapshotKeeper
+  Exit-ThetaBackupProcessLock $backupProcessLock
 }
