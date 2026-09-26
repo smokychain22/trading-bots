@@ -1,6 +1,7 @@
 {
   "_provenance": {
-    "note": "REAL historical evidence, verbatim excerpt. Not a fixture-shaped synthetic object. Copied from .theta-local-worker/evidence-spool/theta-evidence.sqlite (local worker read-only inspection, Phase 2/this session), then truncated to the first 3 real candidates per real branch present that day (originally 1995 total frontierCandidates -- truncation is size-only, every kept candidate is byte-identical to the original, no value altered). No secrets/account identifiers were ever present in this schema (the local-evidence-spool writer sanitizes at write time by design).",
+    "classification": "REAL_HISTORICAL_EXCERPT",
+    "note": "Classification: REAL_HISTORICAL_EXCERPT (Phase 1 Zero-Unknown Reclosure Pass 3, item 11). Every RETAINED candidate value is byte-identical to the original real payload -- but this object itself is not the full original: it is a size-bounded excerpt, truncated to the first 3 real candidates per real branch present that day (originally 1995 total frontierCandidates). Never call this a 'byte-verbatim object' -- only the retained values are verbatim, the object is a documented excerpt. Copied from .theta-local-worker/evidence-spool/theta-evidence.sqlite (local worker read-only inspection, Phase 2/this session). No secrets/account identifiers were ever present in this schema (the local-evidence-spool writer sanitizes at write time by design).",
     "decisionCycleId": "no-submit-7981e31e-367c-49f6-99b7-f6b2de657e27",
     "decisionAsOf": "2026-09-24T17:34:59.216Z",
     "sourceSha": "7373b482ff81723d18c367ed3c9bf048b67b1db6",
