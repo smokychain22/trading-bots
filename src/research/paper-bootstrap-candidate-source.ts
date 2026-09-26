@@ -212,12 +212,18 @@ export function buildPaperBootstrapCandidateSet(input: CandidateSetInput): Candi
   // (never a fabricated contract identity), and excluded from rejection
   // by construction since no real contractId can equal a placeholder
   // that was never a real observation's id.
-  const ccResult = input.currentShortCallLeg === null && input.callObservations.length > 0
+  const firstCallObservation = input.callObservations[0];
+  const ccResult = input.currentShortCallLeg === null && firstCallObservation !== undefined
     ? enumerateCandidates(
       input.callObservations,
       {
-        contractId: '__NO_CURRENT_CC__', underlying: input.callObservations[0]?.underlying ?? '',
-        optionType: 'CALL', strike: NaN, expiration: '', multiplier: input.callObservations[0]?.multiplier ?? 100,
+        // A real first observation (checked above) makes `underlying`/
+        // `multiplier` used directly -- never a fallback default (an
+        // implicit `?? 100` multiplier would violate the
+        // never-assume-multiplier hygiene rule even though it was
+        // previously unreachable dead code given this same guarantee).
+        contractId: '__NO_CURRENT_CC__', underlying: firstCallObservation.underlying,
+        optionType: 'CALL', strike: NaN, expiration: '', multiplier: firstCallObservation.multiplier,
         quantity: input.quantity,
       },
       input.quantity, input.config,
