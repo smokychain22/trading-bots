@@ -32,9 +32,10 @@ function Initialize-ThetaBackupRoot {
 
 function Enter-ThetaBackupProcessLock {
   param([string]$Root)
-  $fullRoot = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+  $fullRoot = [IO.Path]::GetFullPath($Root).TrimEnd([char[]]@('\','/'))
   $lockPath = Join-Path $fullRoot 'backup.lock'
-  if (-not $lockPath.StartsWith(($fullRoot + '\'), [StringComparison]::OrdinalIgnoreCase)) {
+  $rootPrefix = $fullRoot + [IO.Path]::DirectorySeparatorChar
+  if (-not $lockPath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'BACKUP_LOCK_PATH_UNSAFE'
   }
   try {
