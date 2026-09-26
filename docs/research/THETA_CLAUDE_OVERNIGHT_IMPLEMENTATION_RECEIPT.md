@@ -1,4 +1,12 @@
-# THETA Claude Overnight Implementation Receipt
+# THETA Claude Overnight Implementation Receipt -- PARTIAL CHECKPOINT (superseded)
+
+**Superseded by `THETA_CLAUDE_LONG_RUN_FINAL_RECEIPT.md` / its own
+checkpoint.** This document is kept as a historical record of the state
+at the end of the first session (`b79d850`), not a final stop. The
+long-run command (`THETA_CLAUDE_LONG_RUN_IMPLEMENTATION_V2.md`) explicitly
+treats this as a PARTIAL CHECKPOINT -- work continued past this point on
+the same branch; see `docs/research/THETA_CLAUDE_OVERNIGHT_EXECUTION_LEDGER.md`
+for the current, up-to-date work-package status.
 
 Response to `THETA_CLAUDE_OVERNIGHT_EXECUTION_MASTER.md` /
 `THETA_OVERNIGHT_COORDINATION.md`. Read in full before this receipt was
