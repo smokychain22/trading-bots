@@ -19,13 +19,15 @@ export interface SeriousSubjectPolicy {
   readonly version: typeof seriousSubjectSelectionPolicyVersion;
   readonly topNByBranch: Readonly<Record<'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE' | 'THETA_DEFINED_RISK', number>>;
   readonly maximumCandidateSubjects: number;
+  readonly minimumDecisionIntervalMinutes: number;
   readonly includeWait: true;
 }
 
 export const defaultSeriousSubjectPolicy: SeriousSubjectPolicy = {
   version: seriousSubjectSelectionPolicyVersion,
   topNByBranch: { THETA_CONVENTIONAL: 5, THETA_HOLD_STRIKE: 3, THETA_DEFINED_RISK: 3 },
-  maximumCandidateSubjects: 16,
+  maximumCandidateSubjects: 12,
+  minimumDecisionIntervalMinutes: 60,
   includeWait: true,
 };
 
@@ -34,6 +36,7 @@ export interface SeriousCandidateSubject {
   readonly kind: 'CANDIDATE';
   readonly snapshotId: string;
   readonly decisionAt: string;
+  readonly decisionBucketAt: string;
   readonly candidateId: string;
   readonly branch: CanonicalFrontierCandidate['branch'];
   readonly rankAtDecision: number | null;
@@ -52,6 +55,7 @@ export interface SeriousWaitSubject {
   readonly kind: 'WAIT';
   readonly snapshotId: string;
   readonly decisionAt: string;
+  readonly decisionBucketAt: string;
   readonly candidateId: null;
   readonly branch: null;
   readonly rankAtDecision: null;
@@ -116,6 +120,12 @@ export function selectSeriousResearchSubjects(
   if (!Number.isInteger(policy.maximumCandidateSubjects) || policy.maximumCandidateSubjects < 1) {
     throw new Error('SERIOUS_SUBJECT_POLICY_BOUND_INVALID');
   }
+  if (!Number.isInteger(policy.minimumDecisionIntervalMinutes) || policy.minimumDecisionIntervalMinutes < 5
+    || policy.minimumDecisionIntervalMinutes > 390) throw new Error('SERIOUS_SUBJECT_POLICY_INTERVAL_INVALID');
+  const decisionMs = Date.parse(frontier.timestamp);
+  if (!Number.isFinite(decisionMs)) throw new Error('SERIOUS_SUBJECT_DECISION_TIME_INVALID');
+  const bucketMs = policy.minimumDecisionIntervalMinutes * 60_000;
+  const decisionBucketAt = new Date(Math.floor(decisionMs / bucketMs) * bucketMs).toISOString();
   for (const value of Object.values(policy.topNByBranch)) {
     if (!Number.isInteger(value) || value < 0) throw new Error('SERIOUS_SUBJECT_POLICY_TOP_N_INVALID');
   }
@@ -150,8 +160,8 @@ export function selectSeriousResearchSubjects(
   const subjects: SeriousResearchSubject[] = ordered.map(([candidateId, selectedReasons]) => {
     const candidate = byId.get(candidateId)!;
     return {
-      subjectId: digest(`${policy.version}:${frontier.snapshotId}:CANDIDATE:${candidateId}`),
-      kind: 'CANDIDATE', snapshotId: frontier.snapshotId, decisionAt: frontier.timestamp,
+      subjectId: digest(`${policy.version}:${decisionBucketAt}:CANDIDATE:${candidateId}`),
+      kind: 'CANDIDATE', snapshotId: frontier.snapshotId, decisionAt: frontier.timestamp, decisionBucketAt,
       candidateId, branch: candidate.branch, rankAtDecision: candidate.paretoRank,
       selected: candidateId === frontier.selectedCandidateId,
       selectionReasons: [...selectedReasons].sort((a, b) => priority[a] - priority[b] || a.localeCompare(b)),
@@ -161,8 +171,8 @@ export function selectSeriousResearchSubjects(
   });
   if (policy.includeWait && (frontier.primaryAction === 'GLOBAL_WAIT' || frontier.primaryAction === 'SYSTEM_HOLD')) {
     subjects.push({
-      subjectId: digest(`${policy.version}:${frontier.snapshotId}:WAIT:${frontier.primaryAction}`),
-      kind: 'WAIT', snapshotId: frontier.snapshotId, decisionAt: frontier.timestamp,
+      subjectId: digest(`${policy.version}:${decisionBucketAt}:WAIT:${frontier.primaryAction}`),
+      kind: 'WAIT', snapshotId: frontier.snapshotId, decisionAt: frontier.timestamp, decisionBucketAt,
       candidateId: null, branch: null, rankAtDecision: null, selected: false,
       selectionReasons: ['CANONICAL_WAIT'], primaryAction: frontier.primaryAction,
       reasons: [...frontier.globalWaitReasons], bestRejectedCandidateId: frontier.bestRejectedCandidateId,

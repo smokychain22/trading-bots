@@ -70,12 +70,12 @@ test('serious subject selection is bounded, deterministic, and includes canonica
   const first = selectSeriousResearchSubjects(frontier(), {
     version: seriousSubjectSelectionPolicyVersion,
     topNByBranch: { THETA_CONVENTIONAL: 1, THETA_HOLD_STRIKE: 1, THETA_DEFINED_RISK: 1 },
-    maximumCandidateSubjects: 3, includeWait: true,
+    maximumCandidateSubjects: 3, minimumDecisionIntervalMinutes: 60, includeWait: true,
   });
   const second = selectSeriousResearchSubjects(frontier(), {
     version: seriousSubjectSelectionPolicyVersion,
     topNByBranch: { THETA_CONVENTIONAL: 1, THETA_HOLD_STRIKE: 1, THETA_DEFINED_RISK: 1 },
-    maximumCandidateSubjects: 3, includeWait: true,
+    maximumCandidateSubjects: 3, minimumDecisionIntervalMinutes: 60, includeWait: true,
   });
   assert.deepEqual(first, second);
   assert.equal(first.rawCandidateCount, 5);
@@ -86,6 +86,18 @@ test('serious subject selection is bounded, deterministic, and includes canonica
   assert.equal(wait.brokerAuthority, false);
   assert.equal(wait.orderSubmitted, false);
   assert.equal(wait.candidateId, null);
+});
+
+test('long-lived identities are cadence-bounded while the immutable first snapshot remains explicit', () => {
+  const first = selectSeriousResearchSubjects(frontier());
+  const second = selectSeriousResearchSubjects({ ...frontier(), snapshotId: 'snapshot-2',
+    timestamp: '2026-09-25T15:59:59.000Z' });
+  const third = selectSeriousResearchSubjects({ ...frontier(), snapshotId: 'snapshot-3',
+    timestamp: '2026-09-25T16:00:00.000Z' });
+  assert.equal(first.subjects[0]?.subjectId, second.subjects[0]?.subjectId);
+  assert.notEqual(first.subjects[0]?.snapshotId, second.subjects[0]?.snapshotId);
+  assert.notEqual(second.subjects[0]?.subjectId, third.subjects[0]?.subjectId);
+  assert.equal(first.subjects[0]?.decisionBucketAt, '2026-09-25T15:00:00.000Z');
 });
 
 test('H retains H identity and D preserves both exact legs', () => {
