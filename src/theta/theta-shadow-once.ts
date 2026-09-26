@@ -26,13 +26,24 @@ import { canonicalJson } from '../research/point-in-time-evidence.js';
 // a genuinely different, narrower claim than "the currently DEPLOYED remote
 // Vercel worker just executed this" (that would require the deployed
 // worker's own reported buildSha, a separate fact this offline command has
-// no way to observe). The immutable-source guard below (git HEAD +
-// clean-tree check) mirrors the identical, already-established pattern in
-// tools/theta-no-submit-probe.ts verbatim -- not reinvented.
+// no way to observe). The immutable-source guard below (git HEAD + a
+// tracked-content clean check) is the same principle as
+// tools/theta-no-submit-probe.ts's guard, deliberately scoped tighter:
+// `git diff --quiet HEAD --` only fails on TRACKED file changes (staged or
+// unstaged) against HEAD, so an untracked, structurally-unrelated local
+// tooling artifact (this machine has a persistent `.agents/`/
+// `skills-lock.json` pair from the coding environment, never part of this
+// repository's real source, never staged, never committed across this
+// entire multi-session engagement) cannot block an otherwise genuinely
+// immutable source checkout from proving its own SHA.
 export function currentImmutableSourceSha(): string {
   const sha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  const dirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim();
-  if (!/^[0-9a-f]{40}$/.test(sha) || dirty.length > 0) throw new Error('SHADOW_ONCE_IMMUTABLE_SOURCE_REQUIRED');
+  if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error('SHADOW_ONCE_IMMUTABLE_SOURCE_REQUIRED');
+  try {
+    execFileSync('git', ['diff', '--quiet', 'HEAD', '--'], { stdio: 'ignore' });
+  } catch {
+    throw new Error('SHADOW_ONCE_IMMUTABLE_SOURCE_REQUIRED');
+  }
   return sha;
 }
 

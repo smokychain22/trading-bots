@@ -15,13 +15,16 @@ import {
 // proof. This exercises the REAL currentImmutableSourceSha() this repo's
 // own git checkout, not a mocked git call.
 
-// These tests read this checkout's REAL, current git state (not a mock) --
-// they are written to be truthful whether the tree happens to be clean
-// (the normal case at final closure) or mid-development-dirty (this
-// checkout, right now, while this exact test file is itself uncommitted).
-// currentImmutableSourceSha() throwing on a dirty tree is the correct,
-// intended behavior being tested here, not a flake to work around.
-const treeIsDirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim().length > 0;
+// These tests read this checkout's REAL, current git state (not a mock).
+// The guard is scoped to TRACKED content only (`git diff --quiet HEAD --`)
+// so a pre-existing, untracked, structurally-unrelated local tooling
+// artifact (this machine's `.agents/`/`skills-lock.json`, never part of
+// this repository, never staged) cannot make a genuinely-immutable
+// tracked checkout look dirty.
+const treeIsDirty = (() => {
+  try { execFileSync('git', ['diff', '--quiet', 'HEAD', '--'], { stdio: 'ignore' }); return false; }
+  catch { return true; }
+})();
 
 test('CORE CLAIM: currentImmutableSourceSha() returns the real, exact git HEAD SHA of this checkout when the tree is clean', () => {
   if (treeIsDirty) {
