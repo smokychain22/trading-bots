@@ -165,6 +165,16 @@ export class ResearchDurableStore {
     );
   }
 
+  /** Real read accessor -- was missing until the overnight §20
+   * reproducibility-bundle work needed to independently verify a
+   * referenced prediction receipt actually exists, not merely trust a
+   * caller's ID string. */
+  getShadowPredictionReceipt(predictionId: string): ShadowPredictionReceipt | null {
+    const row = this.database.prepare('SELECT content_json FROM shadow_prediction_receipt WHERE prediction_id=?')
+      .get(predictionId) as { content_json: string } | undefined;
+    return row === undefined ? null : (JSON.parse(row.content_json) as ShadowPredictionReceipt);
+  }
+
   saveShadowFailureReceipt(receipt: ShadowFailureReceipt): 'INSERTED' | 'ALREADY_PRESENT_IDENTICAL' {
     assertSafeId('failureId', receipt.failureId);
     const json = canonicalJson(receipt);

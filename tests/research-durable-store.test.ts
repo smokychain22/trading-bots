@@ -186,6 +186,16 @@ test('ADVERSARIAL: shadow-prediction hash corruption is caught by verify(), same
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('CORE CLAIM (overnight §20): getShadowPredictionReceipt resolves a real saved receipt and returns null for one never saved', () => {
+  const { store, cleanup } = harness();
+  try {
+    assert.equal(store.getShadowPredictionReceipt('never-saved'), null);
+    store.saveShadowPredictionReceipt(predictionReceipt());
+    const recovered = store.getShadowPredictionReceipt('p1');
+    assert.equal(recovered?.predictionId, 'p1');
+  } finally { cleanup(); }
+});
+
 test('two store instances against the same file (simulated concurrent writers) do not corrupt each other under WAL + busy_timeout', () => {
   const root = mkdtempSync(join(tmpdir(), 'theta-research-durable-'));
   const path = join(root, 'durable.sqlite');
