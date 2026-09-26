@@ -89,7 +89,7 @@ export interface CanonicalBranchFrontier {
   readonly applicable: boolean;
   readonly evaluated: boolean;
   readonly routeReasons: readonly string[];
-  readonly evaluationState: 'EVALUATED' | 'NOT_APPLICABLE' | 'BLOCKED_MISSING_INPUT';
+  readonly evaluationState: 'EVALUATED' | 'NOT_APPLICABLE' | 'BLOCKED_MISSING_INPUT' | 'BRANCH_CONSTRUCTION_FAILED';
   readonly candidateCount: number;
   readonly mechanicallyRejected: number;
   readonly enumerationTruncated: boolean;
@@ -494,14 +494,18 @@ function rankCandidates(candidates: readonly CanonicalFrontierCandidate[]): read
     || a.unknownEvidence.length - b.unknownEvidence.length || a.candidateId.localeCompare(b.candidateId));
 }
 
-function buildBranch(branch: ThetaStrategyBranch, input: CanonicalStrategyFrontierInput): CanonicalBranchFrontier {
+function buildBranch(
+  branch: ThetaStrategyBranch, input: CanonicalStrategyFrontierInput,
+  sharedRoutingResults: readonly StrategyRoutingResponse['results'][number][] | null,
+  sharedStockShares: number | null | 'ABSENT',
+): CanonicalBranchFrontier {
   const source = sourceByBranch.get(branch);
   if (source === undefined) throw new Error(`CANONICAL_STRATEGY_SOURCE_MISSING:${branch}`);
-  const route = input.routing?.results.find((result) => result.strategyFamily === familyByBranch[branch]) ?? null;
-  const stockApplicable = (branch === 'THETA_RECOVERY' || branch === 'THETA_CC') && input.stock !== null
-    && (input.stock.shares === null || input.stock.shares > 0);
+  const route = sharedRoutingResults?.find((result) => result.strategyFamily === familyByBranch[branch]) ?? null;
+  const stockApplicable = (branch === 'THETA_RECOVERY' || branch === 'THETA_CC') && sharedStockShares !== 'ABSENT'
+    && (sharedStockShares === null || sharedStockShares > 0);
   const applicable = stockApplicable || route?.eligible === true;
-  const routeReasons = route?.reasons.map((reason) => reason.code) ?? (input.routing === null ? ['ROUTER_RESULT_UNKNOWN'] : ['ROUTER_FAMILY_MISSING']);
+  const routeReasons = route?.reasons.map((reason) => reason.code) ?? (sharedRoutingResults === null ? ['ROUTER_RESULT_UNKNOWN'] : ['ROUTER_FAMILY_MISSING']);
   const enumerateInapplicableResearch = branch === 'THETA_HOLD_STRIKE' || branch === 'THETA_DEFINED_RISK';
   if (!applicable && !enumerateInapplicableResearch) return {
     branch, strategyVersion: source.strategyVersion, status: source.status as 'RESEARCH_ONLY' | 'SHADOW', applicable: false,
@@ -557,8 +561,49 @@ function buildBranch(branch: ThetaStrategyBranch, input: CanonicalStrategyFronti
   };
 }
 
+function branchConstructionFailedFrontier(
+  branch: ThetaStrategyBranch, error: unknown,
+): CanonicalBranchFrontier {
+  const source = sourceByBranch.get(branch);
+  const message = error instanceof Error ? error.message : String(error);
+  // Real, typed failure evidence -- never a silent catch{}. The exact
+  // strategy/stage/cause/message/timestamp are all preserved in
+  // routeReasons and remain visible in the frontier receipt, per Phase 2's
+  // no-swallowed-errors requirement.
+  return {
+    branch, strategyVersion: source?.strategyVersion ?? 'UNKNOWN', status: (source?.status as 'RESEARCH_ONLY' | 'SHADOW' | undefined) ?? 'RESEARCH_ONLY',
+    applicable: false, evaluated: true,
+    routeReasons: ['BRANCH_CONSTRUCTION_EXCEPTION', `BRANCH_CONSTRUCTION_ERROR_MESSAGE:${message}`, `BRANCH_CONSTRUCTION_FAILED_AT:${new Date().toISOString()}`],
+    evaluationState: 'BRANCH_CONSTRUCTION_FAILED', candidateCount: 0, mechanicallyRejected: 0, enumerationTruncated: false,
+    hardVetoed: 0, softRanked: 0, dataInsufficient: 0, candidates: [], bestCandidateId: null,
+    secondBestCandidateId: null, bestRejectedCandidateId: null, empiricalEconomicsReady: false, executionAuthorized: false,
+  };
+}
+
 export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierInput): CanonicalStrategyFrontier {
-  const branches = branchOrder.map((branch) => buildBranch(branch, input));
+  // Read the shared routing-result array exactly once, outside any
+  // per-branch fault boundary: every branch reads the identical underlying
+  // object, so a failure here is a genuinely global/shared-state fault
+  // (per Phase 2's fault-domain rule) and must remain a hard, visible
+  // failure rather than being isolated away as if it were branch-specific.
+  const sharedRoutingResults = input.routing?.results ?? null;
+  // Whether stock exists (and how many shares) is safety-relevant shared
+  // account state -- every branch that checks stock applicability reads the
+  // identical underlying field, and getting this wrong would silently make
+  // `managementAuthorityRequired` (below) incorrect. Read it once, outside
+  // any per-branch fault boundary, same as the routing read above.
+  const sharedStockShares: number | null | 'ABSENT' = input.stock === null ? 'ABSENT' : input.stock.shares;
+  const branches = branchOrder.map((branch) => {
+    try {
+      return buildBranch(branch, input, sharedRoutingResults, sharedStockShares);
+    } catch (error) {
+      // A branch-specific construction failure (this branch's own stock
+      // read, candidate enumeration, or ranking step throwing) must not
+      // prevent any other, unrelated branch's valid frontier from being
+      // produced -- THETA-CANONICAL-FRONTIER-NO-PER-BRANCH-ISOLATION.
+      return branchConstructionFailedFrontier(branch, error);
+    }
+  });
   const applicable = branches.filter((branch) => branch.applicable);
   const evaluated = applicable.filter((branch) => branch.evaluated && branch.evaluationState !== 'BLOCKED_MISSING_INPUT');
   const globallyRanked = rankCandidates(branches.flatMap((branch) => branch.candidates));
