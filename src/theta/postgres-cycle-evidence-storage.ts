@@ -130,6 +130,15 @@ export function projectCycleEvidenceForPostgres(cycle: ThetaShadowCycleResult): 
     thetaQ: cycle.orchestration?.thetaQ ?? null,
     decisionReceipt: cycle.orchestration?.receipt ?? null,
     shadowOpportunities: cycle.orchestration?.shadowOpportunities ?? [],
+    // Phase 1 Zero-Unknown Reclosure Pass 3 (T0 replay wiring, item 4): the
+    // EXACT object buildCanonicalStrategyFrontier ran on -- reuses this
+    // already-existing evidence archive rather than a new/duplicate store,
+    // since `snapshot` above already retains the same real contracts this
+    // largely overlaps with. An additive field, backward compatible with
+    // every existing reader of this contract version (see
+    // export-schema-drift-detector.ts's REQUIRED_ARCHIVE_FIELDS, which this
+    // does not remove or rename any entry of).
+    canonicalFrontierInput: cycle.canonicalFrontierInput,
   };
   const archiveJson = canonicalJson(archiveValue as unknown as JsonValue);
   const archive = gzipSync(Buffer.from(archiveJson), { level: 9 });

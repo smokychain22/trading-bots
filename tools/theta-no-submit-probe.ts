@@ -15,6 +15,7 @@ import { classifyPostgresRuntimeError } from '../src/theta/postgres-runtime-erro
 import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
 import { runDatabaseIndependentShadowObservation } from '../src/theta/database-independent-shadow-observation.js';
 import { buildLocalAegisRiskHistory, type LocalAegisRiskObservation } from '../src/theta/local-aegis-risk-history.js';
+import { buildT0ReplayBundle, classifyT0ReplayBundleBuildError } from '../src/theta/t0-replay-bundle.js';
 import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment,
   type PaperEntryBootstrapAssessment } from '../src/theta/paper-entry-bootstrap.js';
 
@@ -190,6 +191,21 @@ try {
       spoolEvidence('CONTRACTS_READY',{universeFunnel:local.universeFunnel,universeBlockers:local.universeBlockers,
         approvedSymbolsDiscovered:local.approvedSymbolsDiscovered,brokerMutationAllowed:false});
       for(const symbol of local.symbols){
+        // Phase 1 Zero-Unknown Reclosure Pass 3 (T0 replay wiring, items
+        // 1-5): built directly from the SAME object the canonical frontier
+        // actually ran on this cycle -- never a parallel reconstruction. A
+        // too-large bundle is never silently omitted: it is recorded as an
+        // explicit, deterministic evidence gap instead.
+        if(symbol.canonicalFrontierInput!==null){
+          try{
+            const bundle=buildT0ReplayBundle(symbol.canonicalFrontierInput);
+            spoolEvidence('T0_REPLAY_BUNDLE',bundle);
+          }catch(error){
+            const failure=classifyT0ReplayBundleBuildError(error);
+            spoolEvidence('T0_REPLAY_BUNDLE_UNAVAILABLE',{symbol:symbol.symbol,
+              reason:failure.reason,byteSize:failure.byteSize,brokerMutationAllowed:false});
+          }
+        }
         spoolEvidence('QUOTES_READY',{symbol:symbol.symbol,optionContractsComplete:symbol.optionContractsComplete,
           optionChainComplete:symbol.optionChainComplete,exactRefresh:symbol.exactRefresh,brokerMutationAllowed:false},
         {ALPACA:symbol.exactRefresh.providerTimestamp});

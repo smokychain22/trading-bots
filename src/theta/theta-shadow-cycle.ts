@@ -37,7 +37,8 @@ import {
   deriveRecoveryInventoryValue,
 } from './account-exposure.js';
 import { assessAegisGapStress, deriveCandidateMarketQuality, deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProviderState } from './aegis-derivation.js';
-import { buildCanonicalStrategyFrontier, type CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
+import { buildCanonicalStrategyFrontier, type CanonicalStrategyFrontier,
+  type CanonicalStrategyFrontierInput } from './canonical-strategy-frontier.js';
 import { canonicalThetaStrategySources } from './strategy-package.js';
 import {
   buildStrategyQualityShadowDiagnostic,
@@ -278,6 +279,12 @@ export interface ThetaShadowCycleResult {
   readonly orchestration: NewRiskOrchestrationResult | null;
   readonly strategyFrontier: CanonicalStrategyFrontier | null;
   readonly strategyQualityDiagnostics: StrategyQualityShadowDiagnostic | null;
+  // Phase 1 Zero-Unknown Reclosure Pass 3 (T0 replay wiring): the EXACT
+  // object passed to buildCanonicalStrategyFrontier for this cycle -- never
+  // a parallel reconstruction. Callers building a T0ReplayBundle
+  // (t0-replay-bundle.ts) must use this field directly, never re-derive it
+  // from strategyFrontier's own output.
+  readonly canonicalFrontierInput: CanonicalStrategyFrontierInput | null;
   readonly provenance: ShadowCycleProvenance;
   readonly provenanceDetail: readonly string[];
   readonly blockers: readonly string[];
@@ -741,7 +748,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     return {
       runId, startedAt, finishedAt: config.now(), universeFunnel: funnel, selectedUnderlying: null, underlyingRanking: ranked,
       optionChainComplete: null, optionContractsComplete: null, snapshotContentHash: null, fusionSnapshot: null, snapshotValidForNewRisk: null,
-      orchestration: null, strategyFrontier: null, strategyQualityDiagnostics: null,
+      orchestration: null, strategyFrontier: null, strategyQualityDiagnostics: null, canonicalFrontierInput: null,
       provenance: noUnderlyingProvenance, provenanceDetail: ['no eligible underlying survived UniversePolicy this cycle', ...noUnderlyingDetail],
       blockers: ['NO_ELIGIBLE_UNDERLYING'],
     };
@@ -1558,11 +1565,11 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     thetaQ: NewRiskOrchestrationResult['thetaQ'] = null,
     thetaQDecision?: NewRiskOrchestrationResult['receipt'],
     thetaQCandidateEvaluation?: NewRiskOrchestrationResult['thetaQCandidateEvaluation'],
-  ): CanonicalStrategyFrontier => {
+  ): { readonly frontier: CanonicalStrategyFrontier; readonly input: CanonicalStrategyFrontierInput } => {
     const conventionalRisk = conventionalFrontierRiskLookups(candidatesWithCapacity.map((candidate) => ({
       optionSymbol: candidate.contract.optionSymbol, brokerAllowedQty: candidate.brokerAllowedQty,
     })), aegisByCandidateId);
-    return buildCanonicalStrategyFrontier({
+    const frontierInput: CanonicalStrategyFrontierInput = {
     snapshotId: fusionSnapshot.contentHash, timestamp: decisionTime, strategyVersion: config.policyVersion,
     contracts: mergedContractsForSnapshot, routing, stock: stockState, assignmentCapacityQty: null,
     buyingPower: account?.optionsBuyingPower ?? account?.buyingPower ?? null,
@@ -1587,7 +1594,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     }])),
     thetaQCandidateEvaluationByOptionSymbol: thetaQCandidateEvaluation,
     thetaQDecision,
-    });
+    };
+    return { frontier: buildCanonicalStrategyFrontier(frontierInput), input: frontierInput };
   };
   const conventionalSource = canonicalThetaStrategySources.find((source) => source.branch === 'THETA_CONVENTIONAL');
   if (conventionalSource === undefined) throw new Error('THETA_CONVENTIONAL_SOURCE_MISSING');
@@ -1599,10 +1607,12 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     thetaQ: NewRiskOrchestrationResult['thetaQ'] = null,
     thetaQDecision?: NewRiskOrchestrationResult['receipt'],
     thetaQCandidateEvaluation?: NewRiskOrchestrationResult['thetaQCandidateEvaluation'],
-  ): Pick<ThetaShadowCycleResult, 'strategyFrontier' | 'strategyQualityDiagnostics'> => {
-    const strategyFrontier = strategyFrontierFor(routing, aegis, aegisByCandidateId, candidatesWithCapacity, thetaQ, thetaQDecision, thetaQCandidateEvaluation);
+  ): Pick<ThetaShadowCycleResult, 'strategyFrontier' | 'strategyQualityDiagnostics' | 'canonicalFrontierInput'> => {
+    const { frontier: strategyFrontier, input: canonicalFrontierInput } = strategyFrontierFor(
+      routing, aegis, aegisByCandidateId, candidatesWithCapacity, thetaQ, thetaQDecision, thetaQCandidateEvaluation);
     return {
       strategyFrontier,
+      canonicalFrontierInput,
       strategyQualityDiagnostics: buildStrategyQualityShadowDiagnostic({
         contracts: mergedContractsForSnapshot,
         frontier: strategyFrontier,

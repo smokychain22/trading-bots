@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { buildT0ReplayBundle, replayFromT0Bundle, t0ReplayBundlePayloadType,
+import { buildT0ReplayBundle, classifyT0ReplayBundleBuildError, replayFromT0Bundle, t0ReplayBundlePayloadType,
   type T0ReplayBundle } from '../src/theta/t0-replay-bundle.js';
 import type { CanonicalStrategyFrontierInput } from '../src/theta/canonical-strategy-frontier.js';
 import { normalizeOptionContract, type NormalizedOptionContract } from '../src/theta/option-contract.js';
@@ -95,5 +95,37 @@ test('REAL_CANONICAL_BRAIN_REPLAY: a bundle built, persisted, and reloaded throu
   } finally {
     spool.close();
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Phase 1 Zero-Unknown Reclosure Pass 3 continuation (item 5): a too-large
+// bundle must never be silently omitted -- it must be classified as an
+// explicit, deterministic evidence gap.
+test('a too-large bundle is never silently omitted: it throws a deterministic, classifiable error', () => {
+  const manyContracts = Array.from({ length: 20_000 }, (_, index) => contract({
+    optionSymbol: `AAPL261016P${String(100_000 + index).padStart(8, '0')}`,
+    occSymbol: `AAPL261016P${String(100_000 + index).padStart(8, '0')}`, strike: 100 + index,
+  }));
+  const oversizedInput: CanonicalStrategyFrontierInput = { ...realCycleInput, contracts: manyContracts };
+  assert.throws(() => buildT0ReplayBundle(oversizedInput), /T0_REPLAY_BUNDLE_TOO_LARGE:\d+/);
+  try {
+    buildT0ReplayBundle(oversizedInput);
+    assert.fail('expected buildT0ReplayBundle to throw for an oversized bundle');
+  } catch (error) {
+    const classified = classifyT0ReplayBundleBuildError(error);
+    assert.equal(classified.reason, 'TOO_LARGE');
+    assert.ok(typeof classified.byteSize === 'number' && classified.byteSize > 0);
+  }
+});
+
+test('a genuine build failure (invalid input) is classified BUILD_FAILED, distinct from TOO_LARGE', () => {
+  const invalidInput = { ...realCycleInput, aegisNewRiskState: 'NOT_A_REAL_STATE' } as unknown as CanonicalStrategyFrontierInput;
+  try {
+    buildT0ReplayBundle(invalidInput);
+    assert.fail('expected buildT0ReplayBundle to throw for an invalid aegisNewRiskState');
+  } catch (error) {
+    const classified = classifyT0ReplayBundleBuildError(error);
+    assert.equal(classified.reason, 'BUILD_FAILED');
+    assert.equal(classified.byteSize, null);
   }
 });

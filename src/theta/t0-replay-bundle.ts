@@ -64,6 +64,20 @@ export type T0ReplayBundle = z.infer<typeof t0ReplayBundleSchema>;
 // existing canonical-frontier projection guard already treats as safe).
 const maxBundleBytes = 4 * 1024 * 1024;
 
+export type T0ReplayBundleBuildFailure =
+  | { readonly reason: 'TOO_LARGE'; readonly byteSize: number }
+  | { readonly reason: 'BUILD_FAILED'; readonly byteSize: null };
+
+/** Classifies a buildT0ReplayBundle() failure into an explicit, deterministic
+ * shape -- never a silent evidence gap (item 5). Exported so both the real
+ * caller (tools/theta-no-submit-probe.ts) and its tests use the identical
+ * classification, not two copies of the same regex. */
+export function classifyT0ReplayBundleBuildError(error: unknown): T0ReplayBundleBuildFailure {
+  const message = error instanceof Error ? error.message : 'T0_REPLAY_BUNDLE_BUILD_FAILED';
+  const tooLarge = /^T0_REPLAY_BUNDLE_TOO_LARGE:(\d+)$/.exec(message);
+  return tooLarge !== null ? { reason: 'TOO_LARGE', byteSize: Number(tooLarge[1]) } : { reason: 'BUILD_FAILED', byteSize: null };
+}
+
 export function buildT0ReplayBundle(input: CanonicalStrategyFrontierInput): T0ReplayBundle {
   const bundle: T0ReplayBundle = {
     contractVersion: t0ReplayBundleContractVersion,

@@ -11,11 +11,17 @@ import { discoverRealUniverse, type UniverseDiscoveryResult } from './universe-d
 import { createLocalAegisRiskObservation, localAegisAssessors, type LocalAegisRiskHistory,
   type LocalAegisRiskObservation } from './local-aegis-risk-history.js';
 import { normalizedOptionContractSchema } from './option-contract.js';
+import type { CanonicalStrategyFrontierInput } from './canonical-strategy-frontier.js';
 
 export const databaseIndependentShadowObservationVersion='theta-database-independent-shadow-observation-v1' as const;
 
 export interface DatabaseIndependentSymbolObservation {
   readonly symbol:string;
+  // Phase 1 Zero-Unknown Reclosure Pass 3 (T0 replay wiring, item 3): the
+  // EXACT object the canonical frontier was actually built from this cycle
+  // -- never a parallel reconstruction. The caller (tools/theta-no-submit-
+  // probe.ts) builds and spools a T0ReplayBundle directly from this field.
+  readonly canonicalFrontierInput:CanonicalStrategyFrontierInput|null;
   readonly state:'COMPLETED'|'FAILED';
   readonly failureCode:string|null;
   readonly snapshotId:string|null;
@@ -214,6 +220,7 @@ export async function runDatabaseIndependentShadowObservation(input:{
           contract:parsed.data})];
       });
       symbols.push({symbol:underlying.symbol,state:'COMPLETED',failureCode:null,
+        canonicalFrontierInput:cycle.canonicalFrontierInput,
         snapshotId:cycle.snapshotContentHash,decisionAsOf:cycle.fusionSnapshot===null?null
           :String(cycle.fusionSnapshot.snapshot.decisionTimeUtc),
         optionContractsComplete:cycle.optionContractsComplete,optionChainComplete:cycle.optionChainComplete,
@@ -249,7 +256,7 @@ export async function runDatabaseIndependentShadowObservation(input:{
           ivRejected:input.localRiskHistory?.ivRejected??0},riskObservations,
         exactRefresh:await exactReadOnlyRefresh(input.alpaca,cycle,input.now,dependencies.refreshExact,deadlinePolicy.exactRefreshMs)});
     }catch(error){
-      symbols.push({symbol:underlying.symbol,state:'FAILED',failureCode:safeCode(error),snapshotId:null,decisionAsOf:null,
+      symbols.push({symbol:underlying.symbol,state:'FAILED',failureCode:safeCode(error),canonicalFrontierInput:null,snapshotId:null,decisionAsOf:null,
         optionContractsComplete:null,optionChainComplete:null,qCandidateCount:0,qDecision:null,canonicalAction:null,
         qReasonCodes:[],qCandidates:[],frontierCandidates:[],
         selectedCandidateId:null,selectedOptionSymbol:null,selectedQuantity:0,aegisState:null,blockers:[safeCode(error)],
