@@ -4,11 +4,12 @@ import { dirname, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { canonicalJson } from '../research/point-in-time-evidence.js';
 
-export const localResearchHistorySpoolVersion = 'theta-local-research-history-spool-v1' as const;
+export const localResearchHistorySpoolVersion = 'multi-bot-local-research-history-spool-v2' as const;
 
 export type LocalResearchFamily = 'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE' | 'CONTRACT_PATH_OBSERVATION';
 
 export interface LocalResearchBatchInput {
+  readonly botNamespace: string;
   readonly batchId: string;
   readonly family: LocalResearchFamily;
   readonly sourceSha: string;
@@ -20,6 +21,7 @@ export interface LocalResearchBatchInput {
 }
 
 export interface LocalResearchBatchReceipt {
+  readonly botNamespace: string;
   readonly batchId: string;
   readonly family: LocalResearchFamily;
   readonly sourceSha: string;
@@ -41,7 +43,7 @@ export interface LocalResearchSpoolStats {
 }
 
 type BatchRow = {
-  batch_id: string; family: LocalResearchFamily; source_sha: string; decision_cycle_id: string;
+  bot_namespace: string; batch_id: string; family: LocalResearchFamily; source_sha: string; decision_cycle_id: string;
   snapshot_id: string; observed_at: string; row_count: number; payload_json: string; payload_hash: string;
   storage_state: 'PENDING_PARQUET' | 'ARCHIVED_PARQUET'; archived_manifest_hash: string | null;
 };
@@ -75,7 +77,7 @@ function assertSafeResearchPayload(value: unknown, path = '$'): void {
 
 function rowReceipt(row: BatchRow): LocalResearchBatchReceipt {
   return {
-    batchId: row.batch_id, family: row.family, sourceSha: row.source_sha,
+    botNamespace: row.bot_namespace, batchId: row.batch_id, family: row.family, sourceSha: row.source_sha,
     decisionCycleId: row.decision_cycle_id, snapshotId: row.snapshot_id,
     observedAt: new Date(row.observed_at).toISOString(), rowCount: row.row_count,
     payloadHash: row.payload_hash, storageState: row.storage_state, brokerAuthority: false,
@@ -96,6 +98,7 @@ export class LocalResearchHistorySpool {
     this.database = new DatabaseSync(databasePath);
     this.database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;');
     this.database.exec(`CREATE TABLE IF NOT EXISTS research_batch(
+      bot_namespace TEXT NOT NULL,
       batch_id TEXT PRIMARY KEY,
       family TEXT NOT NULL CHECK(family IN ('CANONICAL_STRATEGY_CANDIDATE_EVIDENCE','CONTRACT_PATH_OBSERVATION')),
       source_sha TEXT NOT NULL,
@@ -114,11 +117,16 @@ export class LocalResearchHistorySpool {
     const schema = this.database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='research_batch'")
       .get() as { sql: string } | undefined;
     if (schema !== undefined && !schema.sql.includes('CONTRACT_PATH_OBSERVATION')) this.upgradeFamilyConstraint();
+    const columns = this.database.prepare("PRAGMA table_info('research_batch')").all() as unknown as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'bot_namespace')) {
+      this.database.exec("ALTER TABLE research_batch ADD COLUMN bot_namespace TEXT NOT NULL DEFAULT 'THETA'");
+    }
   }
 
   private upgradeFamilyConstraint(): void {
     this.database.exec(`BEGIN IMMEDIATE;
       CREATE TABLE research_batch_v2(
+        bot_namespace TEXT NOT NULL DEFAULT 'THETA',
         batch_id TEXT PRIMARY KEY,
         family TEXT NOT NULL CHECK(family IN ('CANONICAL_STRATEGY_CANDIDATE_EVIDENCE','CONTRACT_PATH_OBSERVATION')),
         source_sha TEXT NOT NULL,
@@ -132,7 +140,10 @@ export class LocalResearchHistorySpool {
         archived_manifest_hash TEXT,
         created_at TEXT NOT NULL,
         UNIQUE(family,decision_cycle_id,snapshot_id,payload_hash));
-      INSERT INTO research_batch_v2 SELECT * FROM research_batch;
+      INSERT INTO research_batch_v2(batch_id,family,source_sha,decision_cycle_id,snapshot_id,observed_at,row_count,
+        payload_json,payload_hash,storage_state,archived_manifest_hash,created_at)
+        SELECT batch_id,family,source_sha,decision_cycle_id,snapshot_id,observed_at,row_count,
+          payload_json,payload_hash,storage_state,archived_manifest_hash,created_at FROM research_batch;
       DROP TABLE research_batch;
       ALTER TABLE research_batch_v2 RENAME TO research_batch;
       CREATE INDEX ix_research_batch_pending ON research_batch(storage_state,observed_at,batch_id);
@@ -142,7 +153,7 @@ export class LocalResearchHistorySpool {
   close(): void { this.database.close(); }
 
   append(input: LocalResearchBatchInput): LocalResearchBatchReceipt {
-    for (const [name, value] of [['batchId', input.batchId], ['decisionCycleId', input.decisionCycleId],
+    for (const [name, value] of [['botNamespace', input.botNamespace], ['batchId', input.batchId], ['decisionCycleId', input.decisionCycleId],
       ['snapshotId', input.snapshotId]] as const) {
       if (!SAFE_ID.test(value)) throw new Error(`LOCAL_RESEARCH_${name.toUpperCase()}_INVALID`);
     }
@@ -159,19 +170,19 @@ export class LocalResearchHistorySpool {
     const existing = this.database.prepare('SELECT * FROM research_batch WHERE batch_id=?')
       .get(input.batchId) as BatchRow | undefined;
     if (existing !== undefined) {
-      if (existing.family !== input.family || existing.source_sha !== input.sourceSha
+      if (existing.bot_namespace !== input.botNamespace || existing.family !== input.family || existing.source_sha !== input.sourceSha
         || existing.decision_cycle_id !== input.decisionCycleId || existing.snapshot_id !== input.snapshotId
         || existing.observed_at !== observedAt.toISOString() || existing.row_count !== input.rowCount
         || existing.payload_hash !== payloadHash) throw new Error('LOCAL_RESEARCH_BATCH_IDENTITY_CONFLICT');
       return rowReceipt(existing);
     }
-    this.database.prepare(`INSERT INTO research_batch(batch_id,family,source_sha,decision_cycle_id,snapshot_id,
+    this.database.prepare(`INSERT INTO research_batch(bot_namespace,batch_id,family,source_sha,decision_cycle_id,snapshot_id,
       observed_at,row_count,payload_json,payload_hash,storage_state,archived_manifest_hash,created_at)
-      VALUES(?,?,?,?,?,?,?,?,?,'PENDING_PARQUET',NULL,?)`).run(input.batchId,input.family,input.sourceSha,
+      VALUES(?,?,?,?,?,?,?,?,?,?,'PENDING_PARQUET',NULL,?)`).run(input.botNamespace,input.batchId,input.family,input.sourceSha,
       input.decisionCycleId,input.snapshotId,observedAt.toISOString(),input.rowCount,payloadJson,payloadHash,
       new Date().toISOString());
     return {
-      batchId: input.batchId, family: input.family, sourceSha: input.sourceSha,
+      botNamespace: input.botNamespace, batchId: input.batchId, family: input.family, sourceSha: input.sourceSha,
       decisionCycleId: input.decisionCycleId, snapshotId: input.snapshotId,
       observedAt: observedAt.toISOString(), rowCount: input.rowCount, payloadHash,
       storageState: 'PENDING_PARQUET', brokerAuthority: false,

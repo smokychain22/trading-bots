@@ -96,6 +96,7 @@ export function canonicalFrontierResearchBatch(
   return {
     rowCount: rows.length,
     receiptInput: {
+      botNamespace: 'THETA',
       batchId: rowIdentity.frontier_id,
       family: 'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE',
       sourceSha,

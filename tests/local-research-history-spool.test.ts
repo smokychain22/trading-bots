@@ -8,7 +8,7 @@ import { LocalResearchHistorySpool } from '../src/storage/local-research-history
 
 function researchInput(overrides: Partial<Parameters<LocalResearchHistorySpool['append']>[0]> = {}) {
   return {
-    batchId: 'batch-secret-key', family: 'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE' as const,
+    botNamespace: 'THETA', batchId: 'batch-secret-key', family: 'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE' as const,
     sourceSha: 'a'.repeat(40), decisionCycleId: 'cycle-1', snapshotId: 'snapshot-1',
     observedAt: '2026-09-25T14:30:00.000Z', rowCount: 1,
     payload: [{ candidateId: 'candidate-1' }], ...overrides,
@@ -25,7 +25,7 @@ test('local research spool is immutable, idempotent, hash-verified, and never br
   const { spool, cleanup } = harness();
   try {
     const input = {
-      batchId: 'batch-1', family: 'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE' as const,
+      botNamespace: 'THETA', batchId: 'batch-1', family: 'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE' as const,
       sourceSha: 'a'.repeat(40), decisionCycleId: 'cycle-1', snapshotId: 'snapshot-1',
       observedAt: '2026-09-25T14:30:00.000Z', rowCount: 2,
       payload: [{ candidateId: 'a', executionAuthorized: false }, { candidateId: 'b', executionAuthorized: false }],
@@ -34,6 +34,7 @@ test('local research spool is immutable, idempotent, hash-verified, and never br
     const second = spool.append(input);
     assert.deepEqual(second, first);
     assert.equal(first.storageState, 'PENDING_PARQUET');
+    assert.equal(first.botNamespace, 'THETA');
     assert.equal(first.brokerAuthority, false);
     assert.equal(spool.pending().length, 1);
     assert.deepEqual([...spool.batchIds()], ['batch-1']);
@@ -52,7 +53,7 @@ test('local research spool is immutable, idempotent, hash-verified, and never br
 test('local research spool rejects payload count mismatch and invalid source lineage', () => {
   const { spool, cleanup } = harness();
   try {
-    const base = { batchId: 'batch-1', family: 'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE' as const,
+    const base = { botNamespace: 'THETA', batchId: 'batch-1', family: 'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE' as const,
       sourceSha: 'a'.repeat(40), decisionCycleId: 'cycle-1', snapshotId: 'snapshot-1',
       observedAt: '2026-09-25T14:30:00.000Z', rowCount: 1, payload: [] };
     assert.throws(() => spool.append(base), /PAYLOAD_ROW_COUNT_MISMATCH/);
@@ -81,7 +82,7 @@ test('local research spool persists contract path observations without granting 
   const { spool, cleanup } = harness();
   try {
     const receipt = spool.append({
-      batchId: 'path-observation-1', family: 'CONTRACT_PATH_OBSERVATION', sourceSha: 'b'.repeat(40),
+      botNamespace: 'THETA', batchId: 'path-observation-1', family: 'CONTRACT_PATH_OBSERVATION', sourceSha: 'b'.repeat(40),
       decisionCycleId: 'cycle-1', snapshotId: 'subject-1', observedAt: '2026-09-25T15:30:00.000Z',
       rowCount: 1, payload: [{ executionTruthClass: 'MARKET_OBSERVED', brokerFill: false,
         modeledExecutionPnl: null, brokerActualPnl: null }],
@@ -112,8 +113,9 @@ test('existing v1 SQLite spool upgrades its family constraint without losing row
   const spool = new LocalResearchHistorySpool(path);
   try {
     assert.deepEqual([...spool.batchIds()], ['old']);
+    assert.equal(spool.pending()[0]?.botNamespace, 'THETA');
     const added = spool.append({
-      batchId: 'new', family: 'CONTRACT_PATH_OBSERVATION', sourceSha: 'b'.repeat(40),
+      botNamespace: 'THETA', batchId: 'new', family: 'CONTRACT_PATH_OBSERVATION', sourceSha: 'b'.repeat(40),
       decisionCycleId: 'cycle-new', snapshotId: 'snapshot-new', observedAt: '2026-09-25T15:30:00.000Z',
       rowCount: 0, payload: [],
     });

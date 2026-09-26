@@ -26,6 +26,7 @@ export function archiveContractPathObservation(input: {
   const spool = new LocalResearchHistorySpool(input.spoolPath);
   try {
     const receipt = spool.append({
+      botNamespace: 'THETA',
       batchId: input.observation.observationId,
       family: 'CONTRACT_PATH_OBSERVATION',
       sourceSha: input.observation.sourceSha,

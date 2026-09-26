@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -17,7 +17,7 @@ testWithDuckDb('Parquet compaction resumes after interruption without duplicate 
   const spool = new LocalResearchHistorySpool(sqlite);
   try {
     spool.append({
-      batchId: 'batch-1', family: 'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE', sourceSha: 'a'.repeat(40),
+      botNamespace: 'THETA', batchId: 'batch-1', family: 'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE', sourceSha: 'a'.repeat(40),
       decisionCycleId: 'cycle-1', snapshotId: 'snapshot-1', observedAt: '2026-09-25T14:30:00.000Z',
       rowCount: 1, payload: [{ recordType: 'BRANCH_CANDIDATE', candidateId: 'candidate-1' }],
     });
@@ -47,9 +47,19 @@ testWithDuckDb('Parquet compaction resumes after interruption without duplicate 
     assert.match(row.archived_manifest_hash ?? '', /^[0-9a-f]{64}$/);
   } finally { database.close(); }
 
-  const finalized = readdirSync(destination, { withFileTypes: true })
+  const botDirectory = join(destination, 'THETA');
+  const finalized = readdirSync(botDirectory, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'));
   assert.equal(finalized.length, 1);
+  const archiveName = finalized[0]?.name;
+  assert.ok(archiveName !== undefined);
+  const manifest = JSON.parse(readFileSync(join(botDirectory, archiveName, 'manifest.json'), 'utf8')) as Record<string, unknown>;
+  assert.equal(manifest.contractVersion, 'multi-bot-local-research-parquet-manifest-v2');
+  assert.equal(manifest.botNamespace, 'THETA');
+  const verified = spawnSync('python', [resolve('tools/verify-local-research-parquet.py'),
+    '--root', destination, '--cache', join(root, 'verification-cache.json')], { encoding: 'utf8' });
+  assert.equal(verified.status, 0, verified.stderr || verified.stdout);
+  assert.equal((JSON.parse(verified.stdout) as Record<string, unknown>).state, 'PASS');
   const again = spawnSync('python', [script, '--sqlite', sqlite, '--destination', destination],
     { encoding: 'utf8' });
   assert.equal(again.status, 0, again.stderr);

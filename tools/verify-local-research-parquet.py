@@ -47,6 +47,9 @@ def verify_spool_archive(manifest_path: pathlib.Path, manifest: dict[str, Any]) 
         rows = connection.execute(
             f"SELECT batch_id,payload_hash,row_count FROM read_parquet('{escaped}') ORDER BY batch_id"
         ).fetchall()
+        bot_namespaces = connection.execute(
+            f"SELECT DISTINCT bot_namespace FROM read_parquet('{escaped}') ORDER BY bot_namespace"
+        ).fetchall() if manifest.get("contractVersion") == "multi-bot-local-research-parquet-manifest-v2" else []
     finally:
         connection.close()
     expected = sorted(
@@ -58,6 +61,12 @@ def verify_spool_archive(manifest_path: pathlib.Path, manifest: dict[str, Any]) 
         raise RuntimeError("PARQUET_ROW_COUNT_VERIFICATION_FAILED")
     if rows != expected:
         raise RuntimeError("PARQUET_BATCH_HASH_VERIFICATION_FAILED")
+    if manifest.get("contractVersion") == "multi-bot-local-research-parquet-manifest-v2":
+        bot_namespace = manifest.get("botNamespace")
+        if not isinstance(bot_namespace, str) or not bot_namespace:
+            raise RuntimeError("ARCHIVE_BOT_NAMESPACE_MISSING")
+        if bot_namespaces != [(bot_namespace,)]:
+            raise RuntimeError("ARCHIVE_BOT_NAMESPACE_MISMATCH")
 
 
 def main() -> int:
@@ -90,7 +99,10 @@ def main() -> int:
         formats.add(str(format_version))
         if format_version == "theta-parquet-archive-v1":
             verify_dataset_archive(path)
-        elif format_version == "theta-local-research-parquet-manifest-v1":
+        elif format_version in {
+            "theta-local-research-parquet-manifest-v1",
+            "multi-bot-local-research-parquet-manifest-v2",
+        }:
             verify_spool_archive(path, manifest)
         else:
             raise RuntimeError(f"ARCHIVE_FORMAT_UNSUPPORTED:{format_version}")

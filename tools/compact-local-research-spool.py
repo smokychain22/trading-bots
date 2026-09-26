@@ -30,6 +30,7 @@ def main() -> int:
     parser.add_argument("--sqlite", default=".theta-local-worker/research-spool/theta-research.sqlite")
     parser.add_argument("--destination", default=r"C:\ProjectBackups\trading-bots\research-archives")
     parser.add_argument("--limit", type=int, default=1000)
+    parser.add_argument("--bot", default="THETA")
     parser.add_argument("--simulate-interruption-after-parquet", action="store_true",
                         help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -45,14 +46,15 @@ def main() -> int:
     source = sqlite3.connect(str(sqlite_path))
     source.row_factory = sqlite3.Row
     backlog_start = source.execute(
-        "SELECT count(*) FROM research_batch WHERE storage_state='PENDING_PARQUET'"
+        "SELECT count(*) FROM research_batch WHERE storage_state='PENDING_PARQUET' AND bot_namespace=?",
+        (args.bot,),
     ).fetchone()[0]
     rows = source.execute(
-        """SELECT batch_id,family,source_sha,decision_cycle_id,snapshot_id,observed_at,
+        """SELECT bot_namespace,batch_id,family,source_sha,decision_cycle_id,snapshot_id,observed_at,
                   row_count,payload_json,payload_hash
-           FROM research_batch WHERE storage_state='PENDING_PARQUET'
+           FROM research_batch WHERE storage_state='PENDING_PARQUET' AND bot_namespace=?
            ORDER BY observed_at,batch_id LIMIT ?""",
-        (args.limit,),
+        (args.bot, args.limit),
     ).fetchall()
     if not rows:
         source.close()
@@ -76,9 +78,11 @@ def main() -> int:
     ], sort_keys=True, separators=(",", ":"))
     archive_identity_hash = sha256_bytes(identity_json.encode("utf-8"))
     archive_id = f"batch_{archive_identity_hash[:24]}_{len(rows)}b"
-    archive_dir = destination / archive_id
-    partial_dir = destination / f".{archive_id}.partial-{os.getpid()}"
+    archive_root = destination / args.bot
+    archive_dir = archive_root / archive_id
+    partial_dir = archive_root / f".{archive_id}.partial-{os.getpid()}"
     destination.mkdir(parents=True, exist_ok=True)
+    archive_root.mkdir(parents=True, exist_ok=True)
     if partial_dir.exists():
         shutil.rmtree(partial_dir)
     partial_dir.mkdir(parents=True, exist_ok=False)
@@ -87,10 +91,10 @@ def main() -> int:
 
     db = duckdb.connect(":memory:")
     db.execute("""CREATE TABLE research_batch(
-        batch_id VARCHAR, family VARCHAR, source_sha VARCHAR, decision_cycle_id VARCHAR,
+        bot_namespace VARCHAR, batch_id VARCHAR, family VARCHAR, source_sha VARCHAR, decision_cycle_id VARCHAR,
         snapshot_id VARCHAR, observed_at TIMESTAMPTZ, row_count BIGINT,
         payload_json JSON, payload_hash VARCHAR)""")
-    db.executemany("INSERT INTO research_batch VALUES (?,?,?,?,?,?,?,?,?)", [tuple(row) for row in rows])
+    db.executemany("INSERT INTO research_batch VALUES (?,?,?,?,?,?,?,?,?,?)", [tuple(row) for row in rows])
     escaped = str(parquet_path).replace("'", "''")
     db.execute(f"COPY research_batch TO '{escaped}' (FORMAT PARQUET, COMPRESSION ZSTD)")
     verified = db.execute(
@@ -113,7 +117,8 @@ def main() -> int:
 
     parquet_sha = sha256_bytes(parquet_path.read_bytes())
     manifest = {
-        "contractVersion": "theta-local-research-parquet-manifest-v1",
+        "contractVersion": "multi-bot-local-research-parquet-manifest-v2",
+        "botNamespace": args.bot,
         "archiveId": archive_id,
         "archiveIdentityHash": archive_identity_hash,
         "generatedAt": now.isoformat().replace("+00:00", "Z"),
@@ -173,7 +178,8 @@ def main() -> int:
             if changed != 1:
                 raise RuntimeError(f"SQLITE_ARCHIVE_STATE_RACE:{row['batch_id']}")
     backlog_end = source.execute(
-        "SELECT count(*) FROM research_batch WHERE storage_state='PENDING_PARQUET'"
+        "SELECT count(*) FROM research_batch WHERE storage_state='PENDING_PARQUET' AND bot_namespace=?",
+        (args.bot,),
     ).fetchone()[0]
     source.close()
     for stale_partial in destination.glob(f".{archive_id}.partial-*"):
