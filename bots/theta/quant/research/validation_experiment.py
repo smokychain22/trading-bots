@@ -28,6 +28,20 @@ def digest(value):
     return hashlib.sha256(canonical(value).encode()).hexdigest()
 
 
+def verify_source_sha(sha):
+    if len(sha) != 40 or any(c not in '0123456789abcdef' for c in sha):
+        raise ValueError('INVALID_CANONICAL_SOURCE_SHA')
+    head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+    if sha == head:
+        return 'EXACT_CHECKOUT_HEAD'
+    try:
+        subprocess.run(['git', 'merge-base', '--is-ancestor', sha, 'origin/main'], check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError as error:
+        raise ValueError('SOURCE_SHA_NOT_CHECKOUT_OR_MAIN_ANCESTOR') from error
+    return 'MAIN_ANCESTOR'
+
+
 def execute_validation_experiment(raw):
     if raw.get('version') != 'theta-validation-experiment-input-v1':
         raise ValueError('INVALID_VALIDATION_EXPERIMENT_VERSION')
@@ -104,10 +118,7 @@ def main():
     args = parser.parse_args()
     raw = json.loads(Path(args.input).read_text(encoding='utf-8'))
     sha = raw['sourceSha']
-    if len(sha) != 40 or any(c not in '0123456789abcdef' for c in sha):
-        raise ValueError('INVALID_CANONICAL_SOURCE_SHA')
-    subprocess.run(['git', 'merge-base', '--is-ancestor', sha, 'origin/main'], check=True,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    verify_source_sha(sha)
     receipt = execute_validation_experiment(raw)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -6,7 +6,7 @@ import os
 import subprocess
 import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'quant'))
-from research.validation_experiment import execute_validation_experiment, digest
+from research.validation_experiment import execute_validation_experiment, digest, verify_source_sha
 
 
 def fixture():
@@ -26,6 +26,16 @@ def fixture():
 
 
 class ValidationExecutionTests(unittest.TestCase):
+    def test_exact_checkout_head_is_valid_without_origin_main_ref(self):
+        root = Path(__file__).resolve().parents[4]
+        head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
+        prior = Path.cwd()
+        try:
+            os.chdir(root)
+            self.assertEqual(verify_source_sha(head), 'EXACT_CHECKOUT_HEAD')
+        finally:
+            os.chdir(prior)
+
     def test_real_dispatch_calibrates_validation_and_scores_forward_only(self):
         result = execute_validation_experiment(fixture())
         self.assertEqual(result['folds'][0]['state'], 'EXECUTED')
