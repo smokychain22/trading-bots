@@ -57,6 +57,7 @@ import { runtimeRequestLeaseExpiresAt } from './runtime-request-lease.js';
 import { classifyPostgresRuntimeError } from './postgres-runtime-error.js';
 import { withRuntimePostgresClient } from './runtime-postgres-client.js';
 import { inspectRuntimeSchemaCompatibility } from './runtime-schema-compatibility.js';
+import { resolveReleaseIdentity } from './release-identity.js';
 
 let runtimePool: Pool | null = null;
 
@@ -842,13 +843,18 @@ export default async function autonomousRuntimeHandler(
     const scope=operation==='RUNTIME_CORE_CYCLE'?'CORE':operation==='RUNTIME_BROKER_CYCLE'?'BROKER'
       :operation==='RUNTIME_LIFECYCLE_CYCLE'?'LIFECYCLE':operation==='RUNTIME_MANAGEMENT_CYCLE'?'MANAGEMENT'
         :operation==='RUNTIME_OBSERVATION_CYCLE'?'OBSERVATION':operation==='RUNTIME_EVIDENCE_CYCLE'?'EVIDENCE':'FULL';
-    // Phase 1 Zero-Unknown Reclosure Pass 3 (item 2): the identical identity
-    // already used above to gate this cycle's schema compatibility -- never
-    // a second computation -- is forwarded so the decision this cycle
-    // persists records the release it actually ran under.
+    // Phase 1 Zero-Unknown Reclosure Pass 3 continuation (items 2-6): a
+    // local-worker-driven cycle must not persist sourceSha=null merely
+    // because VERCEL_GIT_COMMIT_SHA is the wrong identity for that runtime
+    // kind. resolveReleaseIdentity() is the one place this is decided --
+    // never a second ad-hoc ternary -- and fails closed to UNKNOWN/
+    // SOURCE_IDENTITY_UNAVAILABLE rather than inventing a SHA.
+    const resolvedReleaseIdentity = resolveReleaseIdentity({
+      vercelGitCommitSha: process.env.VERCEL_GIT_COMMIT_SHA,
+      localWorkerBuildSha: localIdentity.kind === 'VALID' ? localIdentity.identity.buildSha : null,
+    });
     const report = await runAutonomousRuntimeCycle(environment, runtimePool, new Date(),{scope,
-      releaseIdentity:{sourceSha:process.env.VERCEL_GIT_COMMIT_SHA??null,
-        workerSha:localIdentity.kind==='VALID'?localIdentity.identity.buildSha:null}});
+      releaseIdentity:{sourceSha:resolvedReleaseIdentity.sourceSha,workerSha:resolvedReleaseIdentity.workerBuildSha}});
     if(localWorkerId!==null)await workerStore.cycleCompleted(localWorkerId,report,new Date().toISOString());
     if(report.status==='FAILED'||report.status==='QUARANTINED'){
       const databaseCode=report.jobResults.map((job)=>job.errorCode)

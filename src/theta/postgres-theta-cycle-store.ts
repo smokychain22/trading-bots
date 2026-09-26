@@ -229,6 +229,20 @@ export class PostgresThetaCycleStore {
   constructor(private readonly pool: Pool, private readonly options: PostgresThetaCycleStoreOptions = {}) {}
 
   async persist(context: ThetaCyclePersistenceContext, cycle: ThetaShadowCycleResult): Promise<PersistedThetaCycle> {
+    // Phase 1 Zero-Unknown Reclosure Pass 3 continuation (item 6): the real
+    // Production boundary, not a blanket non-optional field. Both real
+    // Production callers (autonomous-runtime-handler.ts's schema-compatibility
+    // gate, and the no-submit tools' currentImmutableSourceSha() guard)
+    // already resolve a real, non-null release identity before persistence
+    // is ever reached -- this is the fail-closed backstop for that
+    // invariant, not the primary enforcement. Scoped to VERCEL_ENV==='production'
+    // (the same guard `tracePersistence` below already uses) so research and
+    // test persistence, which never runs with that env var set, is
+    // unaffected.
+    if (process.env.VERCEL_ENV === 'production'
+      && (context.releaseIdentity?.sourceSha ?? null) === null && (context.releaseIdentity?.workerSha ?? null) === null) {
+      throw new Error('PRODUCTION_DECISION_RELEASE_IDENTITY_REQUIRED');
+    }
     if (cycle.fusionSnapshot === null) throw new Error('FUSION_SNAPSHOT_NOT_AVAILABLE');
     const fusion = cycle.fusionSnapshot;
     if (fusion.contentHash !== cycle.snapshotContentHash) throw new Error('FUSION_SNAPSHOT_HASH_MISMATCH');
