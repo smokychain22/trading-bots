@@ -83,6 +83,14 @@ test('REAL_HISTORICAL_EVIDENCE_TEST: the actual Sep24 Q_READY object (not a fixt
   assert.ok(!evidence.includes('COVERED_CALL_CANDIDATE_ENUMERATION'));
 });
 
+// Phase 1 Zero-Unknown Reclosure Pass 3 (items 18-19): `currentWorkerSha`
+// is never exploited here for a name that doesn't fit. Per the manifest's
+// own documented contract (profitability-brain-evidence-manifest.ts), this
+// field means "the worker/source SHA live AS OF `generatedAt`" -- and
+// `generatedAt` below is set to this episode's own historical
+// `decisionAsOf`, never today's clock. A live run and a historical episode
+// both satisfy the identical temporal contract; this is not a second,
+// looser meaning smuggled in under the same field name.
 test('REAL_HISTORICAL_EVIDENCE_TEST: the real historical episode, fed through the actual manifest identity mechanism with its own real recorded source SHA, genuinely reaches L7 for the methods that really ran that day', () => {
   const shape = adaptRealPayloadToFrontierShape(realPayload);
   const evidence = deriveRealCurrentWorkerEvidence(shape);

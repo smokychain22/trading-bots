@@ -34,6 +34,19 @@ export interface ProfitabilityBrokerAuthorizationEvidence {
 export interface ProfitabilityBrainEvidenceManifest {
   readonly contractVersion: typeof profitabilityBrainEvidenceManifestVersion;
   readonly canonicalSourceSha: string;
+  // Phase 1 Zero-Unknown Reclosure Pass 3 (items 18-19): despite the name,
+  // this is NOT "the worker running today" -- it is the worker/release SHA
+  // that was live AS OF this manifest's own `generatedAt` moment. For a live
+  // run, `generatedAt` is that run's own finish time, so "current" and
+  // "as-of" coincide. For a historical episode, `generatedAt` MUST be set to
+  // that episode's own historical `decisionAsOf` (never today's clock) --
+  // doing so is what makes reusing this field for a historical worker
+  // identity a legitimate, non-exploitative use of the same temporal
+  // contract, not a name-shopping shortcut. A caller that sets `generatedAt`
+  // to now while claiming a historical `currentWorkerSha` is misusing this
+  // contract; every real caller in this repo (`theta-shadow-once.ts`,
+  // `tests/theta-real-historical-episode.test.ts`) sets `generatedAt` to
+  // the same moment `currentWorkerSha` describes.
   readonly currentWorkerSha: string;
   readonly generatedAt: string;
   readonly runtime: readonly ProfitabilityRuntimeEvidence[];
