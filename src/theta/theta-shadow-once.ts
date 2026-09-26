@@ -277,7 +277,11 @@ async function main(): Promise<number> {
       observedAt: result.finishedAt, sourceSha, workerSha: sourceSha,
     }));
     const manifestBody = {
-      contractVersion: profitabilityBrainEvidenceManifestVersion, canonicalSourceSha: sourceSha, currentWorkerSha: sourceSha,
+      contractVersion: profitabilityBrainEvidenceManifestVersion,
+      // This command's own live run really does prove today's current
+      // worker/source -- CURRENT_RUNTIME, never HISTORICAL_REAL_RUNTIME.
+      evidenceClass: 'CURRENT_RUNTIME' as const,
+      canonicalSourceSha: sourceSha, evidenceWorkerSha: sourceSha,
       generatedAt: result.finishedAt, runtime, empirical: [], brokerAuthorization: [],
     };
     const manifest: ProfitabilityBrainEvidenceManifest = {

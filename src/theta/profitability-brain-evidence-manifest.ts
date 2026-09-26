@@ -31,23 +31,27 @@ export interface ProfitabilityBrokerAuthorizationEvidence {
   readonly executionAuthorized: true;
 }
 
+// Phase 1 Zero-Unknown Reclosure Pass 3 continuation (items 7-11): a
+// historical episode's real evidence must never be reinterpreted as
+// "today's current deployed worker." Rather than solve that solely with a
+// field-name JSDoc (rejected -- an ambiguous field must be fixed, not just
+// annotated), `currentWorkerSha` is renamed to the temporally neutral
+// `evidenceWorkerSha` (the worker/release SHA live as of `generatedAt`,
+// whatever moment that is), and `evidenceClass` is now a required,
+// explicit tag: `CURRENT_RUNTIME` (this evidence proves today's deployed
+// worker ran these methods on real data) or `HISTORICAL_REAL_RUNTIME`
+// (this evidence proves a real historical episode ran them, on that
+// episode's own day -- never promoted to "current"). See
+// buildProfitabilityBrainRealityFromManifest for how this tag routes into
+// two separate, orthogonal receipt dimensions (`currentWorkerRealData` vs
+// `historicalRealData`) rather than one overloaded flag.
+export type ProfitabilityEvidenceClass = 'CURRENT_RUNTIME' | 'HISTORICAL_REAL_RUNTIME';
+
 export interface ProfitabilityBrainEvidenceManifest {
   readonly contractVersion: typeof profitabilityBrainEvidenceManifestVersion;
+  readonly evidenceClass: ProfitabilityEvidenceClass;
   readonly canonicalSourceSha: string;
-  // Phase 1 Zero-Unknown Reclosure Pass 3 (items 18-19): despite the name,
-  // this is NOT "the worker running today" -- it is the worker/release SHA
-  // that was live AS OF this manifest's own `generatedAt` moment. For a live
-  // run, `generatedAt` is that run's own finish time, so "current" and
-  // "as-of" coincide. For a historical episode, `generatedAt` MUST be set to
-  // that episode's own historical `decisionAsOf` (never today's clock) --
-  // doing so is what makes reusing this field for a historical worker
-  // identity a legitimate, non-exploitative use of the same temporal
-  // contract, not a name-shopping shortcut. A caller that sets `generatedAt`
-  // to now while claiming a historical `currentWorkerSha` is misusing this
-  // contract; every real caller in this repo (`theta-shadow-once.ts`,
-  // `tests/theta-real-historical-episode.test.ts`) sets `generatedAt` to
-  // the same moment `currentWorkerSha` describes.
-  readonly currentWorkerSha: string;
+  readonly evidenceWorkerSha: string;
   readonly generatedAt: string;
   readonly runtime: readonly ProfitabilityRuntimeEvidence[];
   readonly empirical: readonly ProfitabilityEmpiricalEvidence[];
@@ -60,17 +64,20 @@ const hash = /^[a-f0-9]{64}$/;
 const knownMethods = new Set(profitabilityBrainMethodRegistry.map((item) => item.methodId));
 const unique = (values: readonly string[]): boolean => new Set(values).size === values.length;
 const manifestBody = (manifest: ProfitabilityBrainEvidenceManifest) => ({
-  contractVersion: manifest.contractVersion, canonicalSourceSha: manifest.canonicalSourceSha,
-  currentWorkerSha: manifest.currentWorkerSha, generatedAt: manifest.generatedAt,
+  contractVersion: manifest.contractVersion, evidenceClass: manifest.evidenceClass,
+  canonicalSourceSha: manifest.canonicalSourceSha,
+  evidenceWorkerSha: manifest.evidenceWorkerSha, generatedAt: manifest.generatedAt,
   runtime: manifest.runtime, empirical: manifest.empirical, brokerAuthorization: manifest.brokerAuthorization,
 });
 
 export function validateProfitabilityBrainEvidenceManifest(manifest: ProfitabilityBrainEvidenceManifest): readonly string[] {
   const violations: string[] = [];
   if (manifest.contractVersion !== profitabilityBrainEvidenceManifestVersion) violations.push('CONTRACT_VERSION_INVALID');
+  if (manifest.evidenceClass !== 'CURRENT_RUNTIME' && manifest.evidenceClass !== 'HISTORICAL_REAL_RUNTIME')
+    violations.push('EVIDENCE_CLASS_INVALID');
   if (!sha.test(manifest.canonicalSourceSha)) violations.push('CANONICAL_SOURCE_SHA_INVALID');
-  if (!sha.test(manifest.currentWorkerSha)) violations.push('CURRENT_WORKER_SHA_INVALID');
-  if (manifest.currentWorkerSha !== manifest.canonicalSourceSha) violations.push('SOURCE_WORKER_SHA_MISMATCH');
+  if (!sha.test(manifest.evidenceWorkerSha)) violations.push('EVIDENCE_WORKER_SHA_INVALID');
+  if (manifest.evidenceWorkerSha !== manifest.canonicalSourceSha) violations.push('SOURCE_WORKER_SHA_MISMATCH');
   if (!Number.isFinite(Date.parse(manifest.generatedAt))) violations.push('GENERATED_AT_INVALID');
   const expectedHash = createHash('sha256').update(canonicalJson(manifestBody(manifest))).digest('hex');
   if (!hash.test(manifest.manifestHash) || manifest.manifestHash !== expectedHash) violations.push('MANIFEST_HASH_INVALID');
@@ -83,7 +90,7 @@ export function validateProfitabilityBrainEvidenceManifest(manifest: Profitabili
     if (!knownMethods.has(item.methodId)) violations.push(`UNKNOWN_METHOD:${item.methodId}`);
     if (!hash.test(item.evidenceHash)) violations.push(`RUNTIME_HASH_INVALID:${item.methodId}`);
     if (!Number.isFinite(Date.parse(item.observedAt))) violations.push(`RUNTIME_OBSERVED_AT_INVALID:${item.methodId}`);
-    if (item.sourceSha !== manifest.canonicalSourceSha || item.workerSha !== manifest.currentWorkerSha)
+    if (item.sourceSha !== manifest.canonicalSourceSha || item.workerSha !== manifest.evidenceWorkerSha)
       violations.push(`RUNTIME_RELEASE_MISMATCH:${item.methodId}`);
   }
   for (const item of manifest.empirical) {
@@ -109,11 +116,18 @@ export function buildProfitabilityBrainRealityFromManifest(manifest: Profitabili
   if (violations.length > 0) return { receipt: buildProfitabilityBrainRealityReceipt(), manifestHash: manifest.manifestHash, violations };
   const runtimeById = new Map(manifest.runtime.map((item) => [item.evidenceId, item]));
   const empiricalById = new Map(manifest.empirical.map((item) => [item.evidenceId, item]));
-  const current = manifest.runtime.map((item) => item.methodId);
+  const methodIds = manifest.runtime.map((item) => item.methodId);
   const empirical = manifest.empirical.filter((item) => runtimeById.get(item.runtimeEvidenceId)?.methodId === item.methodId)
     .map((item) => item.methodId);
   const authorized = manifest.brokerAuthorization.filter((item) => empiricalById.get(item.empiricalEvidenceId)?.methodId === item.methodId)
     .map((item) => item.methodId);
-  return { receipt: buildProfitabilityBrainRealityReceipt({ currentWorkerRealData: current,
+  // items 8-9: the two questions ("did this run on real historical data"
+  // vs "has today's current deployed worker run this on real data") are
+  // answered by routing the SAME runtime evidence into two DIFFERENT,
+  // never-both receipt dimensions, decided solely by the manifest's own
+  // explicit evidenceClass tag -- never inferred, never both at once.
+  return { receipt: buildProfitabilityBrainRealityReceipt({
+    currentWorkerRealData: manifest.evidenceClass === 'CURRENT_RUNTIME' ? methodIds : [],
+    historicalRealData: manifest.evidenceClass === 'HISTORICAL_REAL_RUNTIME' ? methodIds : [],
     empiricallyValidated: empirical, brokerAuthorized: authorized }), manifestHash: manifest.manifestHash, violations: [] };
 }

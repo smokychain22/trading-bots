@@ -19,6 +19,16 @@ export interface CapabilityRealityEvidence {
   readonly currentWorkerRealData: boolean;
   readonly empiricallyValidated: boolean;
   readonly brokerAuthorized: boolean;
+  // Phase 1 Zero-Unknown Reclosure Pass 3 continuation (items 8-9):
+  // orthogonal to the L0-L9 ordered chain above, deliberately NOT one of
+  // the `stages` realityLevelFor() walks. Answers a different question --
+  // "has this method run on real HISTORICAL THETA data, on some past real
+  // day" -- which is neither required nor sufficient for
+  // `currentWorkerRealData` ("has TODAY's currently deployed worker run
+  // this on real data"). A historical episode can be true here while
+  // `currentWorkerRealData`/L7 stays false because the target release
+  // isn't deployed; the two must never be conflated into a single flag.
+  readonly historicalRealData: boolean;
 }
 
 export type BrainMethodAuthority = 'PRODUCTION_LOCKED' | 'SHADOW' | 'RESEARCH_ONLY';
@@ -58,6 +68,7 @@ const evidence = (level: 0 | 1 | 2 | 3 | 4 | 5 | 6): CapabilityRealityEvidence =
   currentWorkerRealData: false,
   empiricallyValidated: false,
   brokerAuthorized: false,
+  historicalRealData: false,
 });
 
 const method = (
@@ -330,10 +341,17 @@ export function buildProfitabilityBrainRealityReceipt(input: {
   readonly currentWorkerRealData?: readonly string[];
   readonly empiricallyValidated?: readonly string[];
   readonly brokerAuthorized?: readonly string[];
+  // Phase 1 Zero-Unknown Reclosure Pass 3 continuation (items 8-9): a
+  // SEPARATE list from currentWorkerRealData. A methodId here means "a real
+  // historical THETA episode ran this method on real data," never "today's
+  // deployed worker did" -- callers must never pass the same evidence to
+  // both unless they can independently justify both claims.
+  readonly historicalRealData?: readonly string[];
 } = {}): ProfitabilityBrainRealityReceipt {
   const current = new Set(input.currentWorkerRealData ?? []);
   const empirical = new Set(input.empiricallyValidated ?? []);
   const authorized = new Set(input.brokerAuthorized ?? []);
+  const historical = new Set(input.historicalRealData ?? []);
   const methods = profitabilityBrainMethodRegistry.map((item) => {
     const merged: CapabilityRealityEvidence = {
       ...item.baseEvidence,
@@ -341,6 +359,7 @@ export function buildProfitabilityBrainRealityReceipt(input: {
       empiricallyValidated: item.baseEvidence.runtimeReachable && current.has(item.methodId) && empirical.has(item.methodId),
       brokerAuthorized: item.baseEvidence.runtimeReachable && current.has(item.methodId)
         && empirical.has(item.methodId) && authorized.has(item.methodId),
+      historicalRealData: item.baseEvidence.runtimeReachable && historical.has(item.methodId),
     };
     return { ...item, evidence: merged, level: realityLevelFor(merged) };
   });

@@ -83,15 +83,16 @@ test('REAL_HISTORICAL_EVIDENCE_TEST: the actual Sep24 Q_READY object (not a fixt
   assert.ok(!evidence.includes('COVERED_CALL_CANDIDATE_ENUMERATION'));
 });
 
-// Phase 1 Zero-Unknown Reclosure Pass 3 (items 18-19): `currentWorkerSha`
-// is never exploited here for a name that doesn't fit. Per the manifest's
-// own documented contract (profitability-brain-evidence-manifest.ts), this
-// field means "the worker/source SHA live AS OF `generatedAt`" -- and
-// `generatedAt` below is set to this episode's own historical
-// `decisionAsOf`, never today's clock. A live run and a historical episode
-// both satisfy the identical temporal contract; this is not a second,
-// looser meaning smuggled in under the same field name.
-test('REAL_HISTORICAL_EVIDENCE_TEST: the real historical episode, fed through the actual manifest identity mechanism with its own real recorded source SHA, genuinely reaches L7 for the methods that really ran that day', () => {
+// Phase 1 Zero-Unknown Reclosure Pass 3 continuation (items 7-9): a
+// historical episode's real evidence is tagged `evidenceClass:
+// HISTORICAL_REAL_RUNTIME`, which routes into the receipt's SEPARATE
+// `historicalRealData` dimension -- never `currentWorkerRealData`/L7. This
+// answers "did this method run on real historical THETA data?" (yes, for
+// Sep24) while leaving "has TODAY's currently deployed worker run this on
+// real data?" correctly false/unproven (the target release is not
+// deployed -- see SOURCE_RUNTIME_TRUTH_MATRIX.md). The two questions are
+// never conflated into one flag.
+test('REAL_HISTORICAL_EVIDENCE_TEST: the real historical episode reaches historicalRealData=true for methods that really ran that day, and is NEVER promoted to L7_CURRENT_WORKER_REAL_DATA', () => {
   const shape = adaptRealPayloadToFrontierShape(realPayload);
   const evidence = deriveRealCurrentWorkerEvidence(shape);
   const historicalSha = realPayload._provenance.sourceSha;
@@ -101,12 +102,18 @@ test('REAL_HISTORICAL_EVIDENCE_TEST: the real historical episode, fed through th
     observedAt: realPayload._provenance.decisionAsOf, sourceSha: historicalSha, workerSha: historicalSha,
   }));
   const body = {
-    contractVersion: profitabilityBrainEvidenceManifestVersion, canonicalSourceSha: historicalSha, currentWorkerSha: historicalSha,
+    contractVersion: profitabilityBrainEvidenceManifestVersion, evidenceClass: 'HISTORICAL_REAL_RUNTIME' as const,
+    canonicalSourceSha: historicalSha, evidenceWorkerSha: historicalSha,
     generatedAt: realPayload._provenance.decisionAsOf, runtime, empirical: [], brokerAuthorization: [],
   };
   const manifest: ProfitabilityBrainEvidenceManifest = { ...body, manifestHash: createHash('sha256').update(canonicalJson(body)).digest('hex') };
   const result = buildProfitabilityBrainRealityFromManifest(manifest);
   assert.deepEqual(result.violations, []);
-  assert.equal(result.receipt.methods.find((m) => m.methodId === 'AEGIS_RISK_PERMISSION')?.level, 'L7_CURRENT_WORKER_REAL_DATA');
-  assert.equal(result.receipt.methods.find((m) => m.methodId === 'RECOVERY_CANDIDATE_ENUMERATION')?.level, 'L6_RUNTIME_REACHABLE', 'a method with no real evidence in this historical cycle must not be promoted');
+  const aegis = result.receipt.methods.find((m) => m.methodId === 'AEGIS_RISK_PERMISSION');
+  assert.equal(aegis?.evidence.historicalRealData, true, 'real aegisState was genuinely present in this historical episode');
+  assert.equal(aegis?.evidence.currentWorkerRealData, false, 'a historical episode must never assert proof about today\'s deployed worker');
+  assert.notEqual(aegis?.level, 'L7_CURRENT_WORKER_REAL_DATA', 'historical real data must never be promoted to current-worker L7');
+  assert.equal(aegis?.level, 'L6_RUNTIME_REACHABLE');
+  const recovery = result.receipt.methods.find((m) => m.methodId === 'RECOVERY_CANDIDATE_ENUMERATION');
+  assert.equal(recovery?.evidence.historicalRealData, false, 'a method with no real evidence in this historical cycle must not be promoted');
 });

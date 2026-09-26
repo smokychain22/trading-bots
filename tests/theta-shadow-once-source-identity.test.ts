@@ -43,7 +43,8 @@ test('a manifest built from a known, matching real source/worker SHA produces ze
   const runtime = [{ methodId: 'STRATEGY_APPLICABILITY_ROUTER', evidenceId: 'run-1',
     evidenceHash: createHash('sha256').update('test-evidence').digest('hex'),
     observedAt: new Date().toISOString(), sourceSha: sha, workerSha: sha }];
-  const body = { contractVersion: profitabilityBrainEvidenceManifestVersion, canonicalSourceSha: sha, currentWorkerSha: sha,
+  const body = { contractVersion: profitabilityBrainEvidenceManifestVersion, evidenceClass: 'CURRENT_RUNTIME' as const,
+    canonicalSourceSha: sha, evidenceWorkerSha: sha,
     generatedAt: new Date().toISOString(), runtime, empirical: [], brokerAuthorization: [] };
   const manifest: ProfitabilityBrainEvidenceManifest = { ...body, manifestHash: createHash('sha256').update(canonicalJson(body)).digest('hex') };
   const result = buildProfitabilityBrainRealityFromManifest(manifest);
@@ -52,10 +53,11 @@ test('a manifest built from a known, matching real source/worker SHA produces ze
 });
 
 test('a missing/invalid source identity (empty string, not a real SHA) is explicitly rejected, never silently accepted as complete proof', () => {
-  const body = { contractVersion: profitabilityBrainEvidenceManifestVersion, canonicalSourceSha: '', currentWorkerSha: '',
+  const body = { contractVersion: profitabilityBrainEvidenceManifestVersion, evidenceClass: 'CURRENT_RUNTIME' as const,
+    canonicalSourceSha: '', evidenceWorkerSha: '',
     generatedAt: new Date().toISOString(), runtime: [], empirical: [], brokerAuthorization: [] };
   const manifest: ProfitabilityBrainEvidenceManifest = { ...body, manifestHash: createHash('sha256').update(canonicalJson(body)).digest('hex') };
   const result = buildProfitabilityBrainRealityFromManifest(manifest);
   assert.ok(result.violations.includes('CANONICAL_SOURCE_SHA_INVALID'));
-  assert.ok(result.violations.includes('CURRENT_WORKER_SHA_INVALID'));
+  assert.ok(result.violations.includes('EVIDENCE_WORKER_SHA_INVALID'));
 });
