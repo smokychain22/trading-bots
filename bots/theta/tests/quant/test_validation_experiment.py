@@ -65,7 +65,7 @@ class ValidationExecutionTests(unittest.TestCase):
     def test_offline_cli_persists_reloadable_receipt_and_refuses_overwrite(self):
         root = Path(__file__).resolve().parents[4]
         value = fixture()
-        value['sourceSha'] = subprocess.check_output(['git', 'rev-parse', 'origin/main'], cwd=root, text=True).strip()
+        value['sourceSha'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
         environment = {**os.environ, 'PYTHONPATH': str(root / 'bots/theta/quant')}
         with tempfile.TemporaryDirectory(prefix='theta-validation-test-') as directory:
             source = Path(directory) / 'input.json'
