@@ -28,6 +28,23 @@ test('CORE CLAIM: naive call=bullish is rejected -- a call print with DOWN under
   assert.equal(deriveFlowBiasIfSupported(semantics({ underlyingDirectionAtPrint: 'DOWN' }), 'CALL'), 'UNKNOWN');
 });
 
+test('ADVERSARIAL (overnight §29): an UNKNOWN print structure (spread-leg/sweep/block ambiguity) never affects bias derivation, which depends only on open/close + direction', () => {
+  assert.equal(deriveFlowBiasIfSupported(semantics({ structure: 'UNKNOWN' }), 'CALL'), 'BULLISH_CONSISTENT');
+});
+
+test('ADVERSARIAL: FLAT underlying direction (no real move to attribute) is UNKNOWN bias, never guessed', () => {
+  assert.equal(deriveFlowBiasIfSupported(semantics({ underlyingDirectionAtPrint: 'FLAT' }), 'CALL'), 'UNKNOWN');
+});
+
+test('ADVERSARIAL: a CLOSING print (not an opening position) never yields a directional bias regardless of underlying movement', () => {
+  assert.equal(deriveFlowBiasIfSupported(semantics({ openCloseAmbiguity: 'CLOSING', underlyingDirectionAtPrint: 'UP' }), 'CALL'), 'UNKNOWN');
+});
+
+test('ADVERSARIAL: null volume/OI ratio, null dealer-exposure context, and null volatility regime never crash bias derivation -- ambiguous stays ambiguous', () => {
+  const ambiguous = semantics({ volumeToOpenInterestRatio: null, volatilityRegimeAtPrint: null, dealerExposureContext: null });
+  assert.equal(deriveFlowBiasIfSupported(ambiguous, 'CALL'), 'BULLISH_CONSISTENT'); // these fields are context, not inputs to the bias rule itself
+});
+
 test('bootstrapConfidenceInterval is deterministic given the same seed', () => {
   const values = [0.01, 0.02, -0.01, 0.03, 0.015, -0.005];
   const a = bootstrapConfidenceInterval(values, 500, 7);

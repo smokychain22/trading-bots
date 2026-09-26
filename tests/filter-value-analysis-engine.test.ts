@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { computePairedAblationStatistics, runFilterValueAnalysis, type MatchedAblationPair } from '../src/research/filter-value-analysis-engine.js';
+import { ALL_CANONICAL_FEATURE_FAMILIES, type FilterValueVerdict } from '../src/research/filter-value-classification.js';
 
 function pair(overrides: Partial<MatchedAblationPair> = {}): MatchedAblationPair {
   return {
@@ -90,4 +91,39 @@ test('CORE CLAIM (closure item 3): PORTFOLIO_EXPOSURE with real evidence but no 
   });
   assert.equal(result.family, 'PORTFOLIO_EXPOSURE');
   assert.equal(result.verdict, 'VALUE_NOT_DEMONSTRATED');
+});
+
+const VALID_VERDICTS: ReadonlySet<FilterValueVerdict> = new Set([
+  'VALUE_SUPPORTED', 'VALUE_NOT_DEMONSTRATED', 'POSSIBLY_OVERRESTRICTIVE',
+  'SAFETY_ONLY_NOT_ALPHA', 'INSUFFICIENT_DATA', 'CONFOUNDED', 'NOT_IDENTIFIABLE',
+]);
+
+test('CORE CLAIM (overnight §27): the identical generic engine handles ALL 20 canonical feature families with a consistent contract, not just the 4 spot-checked so far', () => {
+  assert.equal(ALL_CANONICAL_FEATURE_FAMILIES.length, 20);
+  for (const family of ALL_CANONICAL_FEATURE_FAMILIES) {
+    // Same fixture shape for every family -- proves the engine's contract
+    // (verdict enum validity, trial registration via dependence/purge
+    // metadata, cost-aware flag) is uniform, not a per-family special case.
+    const insufficient = runFilterValueAnalysis({
+      family, pairs: [pair({ pairId: `${family}-1` })], regimeStratified: true, purgedWalkForwardVersion: 'v1',
+      dependenceGroupingVersion: 'v1', costAware: true, evaluatedAt: '2026-09-26T00:00:00Z',
+      minimumIndependentN: 30, minimumMeaningfulEffectSize: 0.2,
+    });
+    assert.equal(insufficient.family, family);
+    assert.ok(VALID_VERDICTS.has(insufficient.verdict), `family ${family} produced an invalid verdict: ${insufficient.verdict}`);
+    assert.equal(insufficient.verdict, 'INSUFFICIENT_DATA');
+
+    const sufficientPairs = Array.from({ length: 30 }, (_, i) => pair({
+      pairId: `${family}-${i}`, normalizedReturnWithFeature: 0.05, normalizedReturnWithoutFeature: 0.02,
+    }));
+    const sufficient = runFilterValueAnalysis({
+      family, pairs: sufficientPairs, regimeStratified: true, purgedWalkForwardVersion: 'v1',
+      dependenceGroupingVersion: 'v1', costAware: true, evaluatedAt: '2026-09-26T00:00:00Z',
+      minimumIndependentN: 30, minimumMeaningfulEffectSize: 0.2,
+    });
+    assert.equal(sufficient.family, family);
+    assert.ok(VALID_VERDICTS.has(sufficient.verdict), `family ${family} produced an invalid verdict: ${sufficient.verdict}`);
+    assert.equal(sufficient.method.dependenceGroupingVersion, 'v1');
+    assert.equal(sufficient.method.costAware, true);
+  }
 });
