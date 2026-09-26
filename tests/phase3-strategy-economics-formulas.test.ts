@@ -81,19 +81,25 @@ test('CORE CLAIM (3F): defined-risk maxLoss/maxProfit/breakEven exactly match th
   assert.equal(candidate.economics.collateral, expectedMaxLoss, 'D collateral is defined as maxLoss, never undefined-risk collateral');
 });
 
-test('REAL GAP (Phase 3 finding, filed as a Codex handoff, not fixed here): Q single-leg CSP maxLoss is currently always null in canonical-strategy-frontier.ts, even though a finite formula was established (Command 3): strike*multiplier - creditReceived + costs', () => {
+test('CLOSED (Phase 3, THETA-Q-CSP-MAXLOSS-NOT-POPULATED): Q single-leg CSP maxLoss now matches the Command 3 formula (strike*multiplier - creditReceived, gross of costs) instead of always being null', () => {
   const put = normalizeOptionContract(baseRaw({ optionSymbol: 'SPY-CSP', strike: 500, bid: 5, ask: 5.2 }), RECEIVED_AT);
   const input = baseInput({ contracts: [put] });
   const frontier = buildCanonicalStrategyFrontier(input);
   const branch = must(frontier.branches.find((b) => b.branch === 'THETA_CONVENTIONAL'), 'THETA_CONVENTIONAL branch must exist');
   const candidate = must(branch.candidates.find((c) => c.action === 'OPEN_CSP'), 'a real Q CSP candidate must be constructed from this fixture');
-  // This assertion documents CURRENT real behavior, not desired behavior --
-  // it will need to flip once THETA-Q-CSP-MAXLOSS-NOT-POPULATED is closed.
-  assert.equal(candidate.economics.maxLoss, null);
-  // The formula's inputs ARE present on the candidate today, proving this
-  // is a real, closeable gap rather than a genuine data-availability UNKNOWN.
+  // Fixed in canonical-strategy-frontier.ts's singleLegPutCandidate(): the
+  // formula's inputs (strike, credit, multiplier) were always present on
+  // the candidate -- this was a real, closeable gap, not a genuine
+  // data-availability UNKNOWN, confirmed here by cross-checking collateral
+  // and premiumPerShare independently against the same fixture.
   assert.equal(candidate.economics.collateral, 500 * 100);
   assert.equal(candidate.economics.premiumPerShare, 5);
+  const expectedCreditReceived = 5 * 100;
+  const expectedMaxLoss = 500 * 100 - expectedCreditReceived;
+  assert.equal(candidate.economics.maxLoss, expectedMaxLoss);
+  const collateral = must(candidate.economics.collateral, 'collateral must be known');
+  const maxProfit = must(candidate.economics.maxProfit, 'maxProfit must be known');
+  assert.equal(candidate.economics.maxLoss, collateral - maxProfit);
 });
 
 test('capital-days is first-class on both Q and D economics (capitalDayYield present, computed from real dte)', () => {

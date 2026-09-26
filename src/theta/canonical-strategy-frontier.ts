@@ -350,7 +350,18 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
     spreadPct: contract.spreadPct, liquidity: { volume: contract.volume, openInterest: contract.openInterest },
     economics: {
       premiumPerShare: premium, grossPremium: premium === null ? null : premium * contract.multiplier,
-      collateral, maxProfit: premium === null ? null : premium * contract.multiplier, maxLoss: null,
+      // Phase 3 (THETA-Q-CSP-MAXLOSS-NOT-POPULATED, reproduced test-first):
+      // a cash-secured short put's contractual worst case (underlying -> 0)
+      // is fully determined by strike, entry credit, and multiplier -- all
+      // three are already known whenever `premium` is known (strike and
+      // multiplier are non-nullable on a NormalizedOptionContract). This
+      // was previously hardcoded null even when every input existed. Gross
+      // (before transaction cost), matching `maxProfit`'s existing gross
+      // treatment immediately above and D's identical `(width - netCredit)
+      // * multiplier` pattern below -- same convention, same sign (a
+      // positive magnitude, never a signed PnL).
+      collateral, maxProfit: premium === null ? null : premium * contract.multiplier,
+      maxLoss: premium === null ? null : (contract.strike - premium) * contract.multiplier,
       breakEven: contract.breakEven, downsideCushion: cushion, retainedUpside: null, callAwayProceeds: null,
       wholeChainPnlAtCallAway: null, capitalDayYield: premium === null || contract.dte <= 0 ? null : premium * contract.multiplier / (collateral * contract.dte),
       expectedAfterCostEv: null,
