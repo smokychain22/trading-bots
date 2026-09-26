@@ -94,9 +94,26 @@ export class ResearchDurableStore {
 
   close(): void { this.database.close(); }
 
+  /**
+   * ADVERSARIAL HARDENING (overnight wave §21): a challenger record's
+   * `baselineModelId` is checked at construction time
+   * (`empirical-model-registry.ts`) to be non-null, but that check alone
+   * cannot prove the referenced baseline actually EXISTS anywhere durable
+   * -- a caller could construct a syntactically valid challenger pointing
+   * at a baseline that was never saved. This closes that gap: persistence
+   * itself now refuses a challenger whose baseline isn't a real, already-
+   * durable record, and refuses a baseline model's OWN identity from being
+   * referenced before it exists (write order matters).
+   */
   saveModelRecord(record: ModelRegistryRecord): 'INSERTED' | 'ALREADY_PRESENT_IDENTICAL' {
     assertSafeId('modelId', record.modelId);
     assertSafeId('modelVersion', record.modelVersion);
+    if (!record.isBaseline && record.baselineModelId !== null) {
+      const baselineVersions = this.listModelVersions(record.baselineModelId);
+      if (baselineVersions.length === 0) {
+        throw new Error(`RESEARCH_DURABLE_STORE_BASELINE_NOT_FOUND:${record.baselineModelId}`);
+      }
+    }
     const json = canonicalJson(record);
     const hash = sha256(json);
     return upsertImmutable(
