@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import test from 'node:test';
 import {
   classifyAccountDrawdownRegime, type AccountDrawdownRegimeThresholdPolicy,
@@ -50,4 +52,30 @@ test('ADVERSARIAL: the classification never returns a field that could be mistak
   );
   assert.ok(!('brokerAuthority' in result) || (result as { brokerAuthority?: unknown }).brokerAuthority === undefined);
   assert.ok(!('sizingOverride' in result));
+});
+
+// Phase 4 (directive item 81): the drawdown-authority firewall. There is no
+// runtime input on canonical-strategy-frontier.ts or sizing.py for a
+// drawdown regime to influence in the first place, so the real proof this
+// pass can make is structural: no production module (outside this research
+// file and its own test) imports account-drawdown-regime-research.ts at
+// all. If a future change ever wires this in, this test fails loudly and
+// forces a deliberate, reviewed decision rather than silent authority
+// leakage.
+function listTsFiles(dir: string): string[] {
+  const entries = readdirSync(dir);
+  const files: string[] = [];
+  for (const entry of entries) {
+    const full = join(dir, entry);
+    const stats = statSync(full);
+    if (stats.isDirectory()) files.push(...listTsFiles(full));
+    else if (entry.endsWith('.ts') && !entry.endsWith('.d.ts')) files.push(full);
+  }
+  return files;
+}
+
+test('DRAWDOWN AUTHORITY FIREWALL: no production module imports account-drawdown-regime-research.ts -- research-only stays research-only', () => {
+  const productionFiles = listTsFiles(join(process.cwd(), 'src')).filter((f) => !f.includes('account-drawdown-regime-research.ts'));
+  const importers = productionFiles.filter((f) => readFileSync(f, 'utf8').includes('account-drawdown-regime-research'));
+  assert.deepEqual(importers, [], `expected zero production consumers of the research-only drawdown regime module, found: ${importers.join(', ')}`);
 });

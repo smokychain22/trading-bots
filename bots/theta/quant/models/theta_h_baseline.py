@@ -173,7 +173,11 @@ class ThetaHPolicy:
             secured_collateral_per_contract=c.strike * c.multiplier,
         )
 
-    def _quantity(self, c: ThetaHCandidateInputs, ownership_score: Optional[float]) -> int:
+    def _candidate_stage_quantity_cap(self, c: ThetaHCandidateInputs, ownership_score: Optional[float]) -> int:
+        """Phase 4 (naming ambiguity fix, directive item 3): a
+        CANDIDATE-STAGE quantity cap over a narrower cap subset, never the
+        broker-facing final quantity -- see theta_q_baseline.py's identical
+        rename for the full rationale (both baselines share this pattern)."""
         if ownership_score is None or ownership_score < self.policy.ownership_acceptability_floor:
             return 0
         qty_base = min(
@@ -217,7 +221,7 @@ class ThetaHPolicy:
                 "Assignment plausible; recovery-wait handling should be pre-planned, not decided post-hoc.",
             ))
 
-        quantity = self._quantity(c, ownership_score)
+        quantity = self._candidate_stage_quantity_cap(c, ownership_score)
 
         return ThetaHEvaluation(
             underlying_symbol=c.underlying_symbol,

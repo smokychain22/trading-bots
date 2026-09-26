@@ -69,6 +69,26 @@ class AegisContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             evaluate_request(_request(contractVersion="wrong"))
 
+    def test_malformed_hard_cap_multiplier_is_rejected_not_silently_accepted(self):
+        # Phase 4 (directive item 47): a hard_cap_multiplier <= 1 would
+        # collapse the ALLOW_REDUCED tier (HARD_VETO would fire at or below
+        # the soft cap) -- must be rejected, not silently accepted.
+        for bad_value in (0, -1.5, 1, float("nan")):
+            request = _request()
+            request["policy"]["hardCapMultiplier"] = bad_value
+            with self.assertRaises(ValueError):
+                evaluate_request(request)
+
+    def test_malformed_compound_stress_hold_count_is_rejected_not_silently_accepted(self):
+        # A count < 2 would make HOLD_ONLY fire on a single stress signal
+        # (indistinguishable from the sub-threshold ALLOW_REDUCED case), or
+        # a non-integer/boolean would be a real type-confusion risk.
+        for bad_value in (0, 1, -2, 1.5, True):
+            request = _request()
+            request["policy"]["compoundStressHoldCount"] = bad_value
+            with self.assertRaises(ValueError):
+                evaluate_request(request)
+
     def test_optional_cold_start_applicability_is_explicit_and_validated(self):
         request = _request()
         request["inputs"] = _inputs(

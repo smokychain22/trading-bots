@@ -316,7 +316,7 @@ class BaselinePolicy:
 
     # -- sizing -------------------------------------------------------------
 
-    def _quantity(
+    def _candidate_stage_quantity_cap(
         self,
         c: CspCandidateInputs,
         ownership_score: Optional[float],
@@ -326,7 +326,18 @@ class BaselinePolicy:
         calibrated utility (none exists at this baseline stage) -- so this
         baseline can only size by the hard caps, never by a confidence
         multiplier it doesn't actually have evidence for. Quantity 0 is a
-        legitimate, expected result, never floored to 1 (SIZE-001)."""
+        legitimate, expected result, never floored to 1 (SIZE-001).
+
+        Phase 4 (naming ambiguity fix, directive item 3): this is a
+        CANDIDATE-STAGE quantity cap, over a narrower 4-cap subset
+        (risk_budget/collateral/concentration/broker_allowed) -- it is
+        NEVER the broker-facing final quantity. The real, canonical, final
+        sizing authority is `sizing.py:compute_sizing()`'s 9-cap
+        `min()`, consumed downstream via `sizingResult.data.quantity` in
+        `new-risk-orchestrator.ts` (confirmed by trace: no caller anywhere
+        reads this method's result or `CandidateEvaluation.quantity` as the
+        final broker-facing size). This was previously named `_quantity()`,
+        which read as if it might be that final authority -- it never was."""
         if ownership_score is None and not paper_bootstrap_eligible:
             return 0
         qty_base = min(
@@ -397,7 +408,7 @@ class BaselinePolicy:
         if below_floor or (unknown_ownership and not bootstrap_eligible):
             qty = 0
         else:
-            qty = self._quantity(c, ownership_score, bootstrap_eligible)
+            qty = self._candidate_stage_quantity_cap(c, ownership_score, bootstrap_eligible)
 
         return CandidateEvaluation(
             underlying_symbol=c.underlying_symbol,

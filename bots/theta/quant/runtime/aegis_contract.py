@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import asdict
 import hashlib
 import json
+import math
 from pathlib import Path
 import sys
 from typing import Any
@@ -33,8 +34,15 @@ def _required(data: dict[str, Any], name: str) -> Any:
 
 def _policy(data: dict[str, Any]) -> AegisPolicy:
     hard_cap_multiplier = _required(data, "hardCapMultiplier")
-    if not isinstance(hard_cap_multiplier, (int, float)) or hard_cap_multiplier <= 1:
-        raise ValueError("hardCapMultiplier must be a number greater than 1")
+    # Phase 4 (directive item 47): `hard_cap_multiplier <= 1` alone does not
+    # reject NaN (NaN <= 1 is False in Python) -- previously only an
+    # incidental JSON-encoding side effect happened to catch it when this
+    # request round-tripped through json.dumps/loads, which is not a
+    # robust domain-level guarantee. math.isfinite rejects NaN and +-inf
+    # explicitly, on the actual validated value, not as a side effect.
+    if (not isinstance(hard_cap_multiplier, (int, float)) or isinstance(hard_cap_multiplier, bool)
+        or not math.isfinite(hard_cap_multiplier) or hard_cap_multiplier <= 1):
+        raise ValueError("hardCapMultiplier must be a finite number greater than 1")
     compound_stress_hold_count = _required(data, "compoundStressHoldCount")
     if isinstance(compound_stress_hold_count, bool) or not isinstance(compound_stress_hold_count, int) or compound_stress_hold_count < 2:
         raise ValueError("compoundStressHoldCount must be an integer greater than or equal to 2")
