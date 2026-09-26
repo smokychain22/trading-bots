@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildProfitabilityBrainRealityReceipt, profitabilityBrainMethodRegistry, realityLevelFor } from '../src/theta/profitability-brain-reality.js';
+import {
+  buildProfitabilityBrainRealityReceipt, deriveRealCurrentWorkerEvidence,
+  profitabilityBrainMethodRegistry, realityLevelFor,
+} from '../src/theta/profitability-brain-reality.js';
 
 test('V7 census counts product strategies and actions from canonical registries', () => {
   const receipt = buildProfitabilityBrainRealityReceipt();
@@ -52,6 +55,56 @@ test('runtime, empirical, and broker proof advance only sequentially', () => {
     .methods.find((item) => item.methodId === methodId)?.level, 'L9_BROKER_AUTHORIZED');
   assert.equal(buildProfitabilityBrainRealityReceipt({ brokerAuthorized: [methodId] })
     .methods.find((item) => item.methodId === methodId)?.level, 'L6_RUNTIME_REACHABLE');
+});
+
+// Phase 1 reclosure (THETA-BRAIN-L7-CALLER-GAP): deriveRealCurrentWorkerEvidence
+// is the real caller this gap was missing. This fixture's shape matches the
+// real Sep24 SQLite evidence recovered in Phase 2 (a real THETA_CONVENTIONAL
+// branch, evaluated, with real candidates carrying a real aegisState and a
+// real sizing.quantity) -- not an arbitrary synthetic shape.
+test('CORE CLAIM: a real evaluated frontier with real AEGIS/sizing evidence derives the correct methodIds, never over-claiming an unevaluated branch', () => {
+  const evidence = deriveRealCurrentWorkerEvidence({
+    strategyFrontier: {
+      selectedCandidateId: null,
+      branches: [
+        {
+          branch: 'THETA_CONVENTIONAL', evaluated: true,
+          candidates: [{ aegisState: 'HARD_VETO', sizing: { quantity: 0 } }],
+        },
+        { branch: 'THETA_HOLD_STRIKE', evaluated: false, candidates: [] },
+        { branch: 'THETA_DEFINED_RISK', evaluated: false, candidates: [] },
+        { branch: 'THETA_RECOVERY', evaluated: false, candidates: [] },
+        { branch: 'THETA_CC', evaluated: false, candidates: [] },
+      ],
+    },
+  });
+  assert.ok(evidence.includes('CURRENT_DECISION_STATE'));
+  assert.ok(evidence.includes('STRATEGY_APPLICABILITY_ROUTER'));
+  assert.ok(evidence.includes('CANONICAL_ENTRY_SELECTION'));
+  assert.ok(evidence.includes('CONVENTIONAL_CANDIDATE_ENUMERATION'));
+  assert.ok(evidence.includes('Q_STRUCTURAL_ECONOMIC_DECISION'));
+  assert.ok(evidence.includes('AEGIS_RISK_PERMISSION'));
+  assert.ok(evidence.includes('CONSTRAINED_QUANTITY_SIZING'));
+  // Never over-claims for the unevaluated branches.
+  assert.ok(!evidence.includes('RECOVERY_CANDIDATE_ENUMERATION'));
+  assert.ok(!evidence.includes('COVERED_CALL_CANDIDATE_ENUMERATION'));
+});
+
+test('a null frontier (bridge never ran / cycle failed before the brain) derives zero real evidence, never a false claim', () => {
+  const evidence = deriveRealCurrentWorkerEvidence({ strategyFrontier: null });
+  assert.deepEqual(evidence, []);
+});
+
+test('feeding real derived evidence into buildProfitabilityBrainRealityReceipt genuinely promotes those methods to L7, and only those methods', () => {
+  const evidence = deriveRealCurrentWorkerEvidence({
+    strategyFrontier: {
+      selectedCandidateId: null,
+      branches: [{ branch: 'THETA_CONVENTIONAL', evaluated: true, candidates: [{ aegisState: 'ALLOW_FULL', sizing: { quantity: 1 } }] }],
+    },
+  });
+  const receipt = buildProfitabilityBrainRealityReceipt({ currentWorkerRealData: evidence });
+  assert.equal(receipt.methods.find((m) => m.methodId === 'AEGIS_RISK_PERMISSION')?.level, 'L7_CURRENT_WORKER_REAL_DATA');
+  assert.equal(receipt.methods.find((m) => m.methodId === 'RECOVERY_CANDIDATE_ENUMERATION')?.level, 'L6_RUNTIME_REACHABLE', 'a method with no real evidence this cycle must stay at its base level, never inflated');
 });
 
 test('level calculation reports the first missing proof and never skips it', () => {

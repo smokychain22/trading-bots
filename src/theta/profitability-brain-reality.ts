@@ -246,6 +246,62 @@ export interface ProfitabilityBrainRealityReceipt {
   readonly fiveStrategyRealityMatrix: readonly FiveStrategyRealityRow[];
 }
 
+// Phase 1 reclosure (THETA-BRAIN-L7-CALLER-GAP): buildProfitabilityBrainRealityReceipt
+// has always accepted real evidence as input (currentWorkerRealData: readonly
+// string[]) -- the gap was never that this function couldn't express L7, it
+// was that no production caller ever derived and supplied that evidence
+// list. This function is that real, evidence-conservative derivation: it
+// inspects an ACTUAL ThetaShadowCycleResult-shaped object (the canonical
+// brain's own real output type, imported structurally here via a minimal
+// Pick to avoid a circular import with theta-shadow-cycle.ts) and returns
+// only methodIds it can positively justify from real, present fields --
+// never from an absence, and never a methodId whose family the frontier
+// doesn't actually show evidence for. This is deliberately conservative:
+// under-claiming (a real method that ran but isn't detected) is safe;
+// over-claiming (a methodId marked real when it didn't run) is not.
+export interface RealCycleEvidenceShape {
+  readonly strategyFrontier: {
+    readonly branches: readonly {
+      readonly branch: string;
+      readonly evaluated: boolean;
+      readonly candidates: readonly { readonly aegisState: unknown; readonly sizing: { readonly quantity: number } }[];
+    }[];
+    readonly selectedCandidateId: string | null;
+  } | null;
+}
+
+export function deriveRealCurrentWorkerEvidence(result: RealCycleEvidenceShape): readonly string[] {
+  const frontier = result.strategyFrontier;
+  if (frontier === null) return [];
+  const found = new Set<string>();
+  // The frontier itself only exists once routing/applicability and the
+  // current decision state have genuinely been evaluated for this cycle.
+  found.add('CURRENT_DECISION_STATE');
+  found.add('STRATEGY_APPLICABILITY_ROUTER');
+  // Selection authority (resolveCanonicalDecisionAuthority) always runs
+  // once a real frontier exists -- its result may be null (no candidate),
+  // which is itself real evidence the selection method executed.
+  found.add('CANONICAL_ENTRY_SELECTION');
+  for (const branch of frontier.branches) {
+    if (!branch.evaluated) continue;
+    if (branch.branch === 'THETA_CONVENTIONAL') {
+      found.add('CONVENTIONAL_CANDIDATE_ENUMERATION');
+      if (branch.candidates.length > 0) found.add('Q_STRUCTURAL_ECONOMIC_DECISION');
+    }
+    if (branch.branch === 'THETA_RECOVERY') found.add('RECOVERY_CANDIDATE_ENUMERATION');
+    if (branch.branch === 'THETA_CC') found.add('COVERED_CALL_CANDIDATE_ENUMERATION');
+    for (const candidate of branch.candidates) {
+      if (candidate.aegisState !== null && candidate.aegisState !== undefined) found.add('AEGIS_RISK_PERMISSION');
+      if (typeof candidate.sizing?.quantity === 'number') found.add('CONSTRAINED_QUANTITY_SIZING');
+    }
+  }
+  // Only ever return methodIds that are actually registered -- a defensive
+  // guard against this function's own logic ever inventing an unregistered
+  // methodId string by typo.
+  const registered = new Set(profitabilityBrainMethodRegistry.map((item) => item.methodId));
+  return [...found].filter((id) => registered.has(id)).toSorted();
+}
+
 export function buildProfitabilityBrainRealityReceipt(input: {
   readonly currentWorkerRealData?: readonly string[];
   readonly empiricallyValidated?: readonly string[];

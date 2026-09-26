@@ -8,6 +8,7 @@ import { discoverRealUniverse, type UniverseDiscoveryConfig } from './universe-d
 import type { UnderlyingCandidateInput } from './universe-policy.js';
 import { buildFirstPaperRuntimeTelemetry } from './first-paper-runtime-telemetry.js';
 import { paperBootstrapRuntimePolicy } from './paper-bootstrap-runtime-policy.js';
+import { buildProfitabilityBrainRealityReceipt, deriveRealCurrentWorkerEvidence } from './profitability-brain-reality.js';
 
 // Safe one-shot entrypoint for runThetaShadowCycle(). Designed to be run
 // later by Codex in a protected environment holding the real Vercel
@@ -203,6 +204,13 @@ async function main(): Promise<number> {
     frontier: result.strategyFrontier,
     alpacaQuoteState: result.fusionSnapshot?.snapshot.alpacaQuoteState,
   });
+  // THETA-BRAIN-L7-CALLER-GAP (Phase 1 reclosure): this is the real caller.
+  // Every genuine run of this command derives its own currentWorkerRealData
+  // evidence directly from THIS run's real strategyFrontier -- never a
+  // fixture, never a hand-typed list -- so the reality receipt below is
+  // only ever as real as this actual cycle's own output.
+  const realEvidence = deriveRealCurrentWorkerEvidence({ strategyFrontier: result.strategyFrontier });
+  const brainReality = buildProfitabilityBrainRealityReceipt({ currentWorkerRealData: realEvidence });
 
   console.info(JSON.stringify({
     runId: result.runId,
@@ -226,6 +234,8 @@ async function main(): Promise<number> {
     provenanceDetail: result.provenanceDetail,
     blockers: result.blockers,
     persistenceStatus: 'NOT_PERSISTED -- local no-submit evidence probe',
+    brainRealityEvidenceThisRun: realEvidence,
+    brainRealityLevelCounts: brainReality.levelCounts,
   }, null, 2));
 
   return result.blockers.length > 0 ? 1 : 0;
