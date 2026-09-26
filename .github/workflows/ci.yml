@@ -51,6 +51,7 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run scan:security
+      - run: npm run storage:git-policy
       - name: Test Windows backup safety and bounded digest contracts
         shell: pwsh
         run: |

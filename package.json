@@ -22,6 +22,7 @@
     "lint": "eslint src tests public/assets",
     "test:browser": "playwright test",
     "scan:security": "node tools/security-scan.mjs",
+    "storage:git-policy": "node --import tsx tools/check-git-storage-policy.ts",
     "validate:env": "tsx src/config/validate-env.ts",
     "provider:readiness": "tsx src/providers/provider-readiness.ts",
     "theta:shadow:once": "tsx src/theta/theta-shadow-once.ts",

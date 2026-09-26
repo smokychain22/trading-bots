@@ -68,6 +68,12 @@ htmlcov/
 # Databases / local infra state
 # ============================================================
 *.sqlite3
+*.sqlite
+*.duckdb
+*.parquet
+*.backup
+*.dump
+*.wal
 /pgdata/
 /redisdata/
 docker-compose.override.yml

@@ -1,4 +1,13 @@
-export type StorageHome = 'POSTGRESQL' | 'SQLITE_WAL' | 'PARQUET_DUCKDB' | 'MEMORY';
+export type StorageHome =
+  | 'POSTGRESQL'
+  | 'SQLITE_WAL'
+  | 'PARQUET_DUCKDB'
+  | 'GITHUB_REPOSITORY'
+  | 'GITHUB_RELEASE'
+  | 'GIT_LFS'
+  | 'CONTENT_ADDRESSED_ARCHIVE'
+  | 'BACKUP_STORAGE'
+  | 'MEMORY';
 
 export type RetentionClass =
   | 'PERMANENT_CANONICAL'
@@ -32,6 +41,34 @@ export interface StorageAuthorityEntry {
 }
 
 export const storageAuthorityRegistry: readonly StorageAuthorityEntry[] = [
+  {
+    family: 'SOURCE_SCHEMAS_MIGRATIONS_POLICIES_AND_REPRODUCIBILITY_METADATA', canonicalHome: 'GITHUB_REPOSITORY',
+    temporaryHome: null, archiveHome: 'GITHUB_RELEASE', retentionClass: 'PERMANENT_CANONICAL',
+    tradingAuthority: false, researchAuthority: true,
+    runtimeState: 'ACTIVE',
+    rationale: 'Private source control is the versioned authority for code, schema, policy, manifests, compact fixtures, and reproducibility metadata.',
+  },
+  {
+    family: 'SMALL_IMMUTABLE_REFERENCE_AND_RESEARCH_ARTIFACTS', canonicalHome: 'GITHUB_REPOSITORY',
+    temporaryHome: null, archiveHome: 'GITHUB_RELEASE', retentionClass: 'LONG_TERM_AUDIT',
+    tradingAuthority: false, researchAuthority: true,
+    runtimeState: 'ACTIVE',
+    rationale: 'Compact immutable artifacts that benefit from review and Git history belong in the private repository.',
+  },
+  {
+    family: 'LARGE_IMMUTABLE_VERSIONED_ARTIFACTS', canonicalHome: 'CONTENT_ADDRESSED_ARCHIVE',
+    temporaryHome: 'SQLITE_WAL', archiveHome: 'GITHUB_RELEASE', retentionClass: 'ARCHIVE_AFTER_VERIFICATION',
+    tradingAuthority: false, researchAuthority: true,
+    runtimeState: 'ACTIVE',
+    rationale: 'Large immutable artifacts use content-addressed storage, with GitHub Releases or Git LFS considered only under an explicit governed manifest.',
+  },
+  {
+    family: 'DATABASE_RECOVERY_ARTIFACTS', canonicalHome: 'BACKUP_STORAGE',
+    temporaryHome: null, archiveHome: 'CONTENT_ADDRESSED_ARCHIVE', retentionClass: 'PERMANENT_CANONICAL',
+    tradingAuthority: false, researchAuthority: false,
+    runtimeState: 'ACTIVE',
+    rationale: 'Database dumps and restore evidence belong in verified recovery storage, never ordinary Git history or hot PostgreSQL.',
+  },
   {
     family: 'BROKER_ACCOUNT_ORDER_POSITION_AND_FILL_STATE', canonicalHome: 'POSTGRESQL',
     temporaryHome: 'SQLITE_WAL', archiveHome: 'PARQUET_DUCKDB', retentionClass: 'PERMANENT_CANONICAL',
