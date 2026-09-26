@@ -206,6 +206,18 @@ corrected to `REAL` in the capability registry.
 
 ---
 
+## Q-12: `THETA-Q-CSP-MAXLOSS-NOT-POPULATED` -- Q's CSP `maxLoss` is always `null` despite a finite formula existing
+
+- **Priority**: MEDIUM -- a genuine, closeable economics gap, not a data-availability UNKNOWN
+- **Claude source**: Profitability Brain Completion Program, Phase 3 (strategy economics), this pass
+- **Production subsystem**: `src/theta/canonical-strategy-frontier.ts:335`, `singleLegPutCandidate()`
+- **Exact source**: the candidate's `economics` object hardcodes `maxLoss: null` unconditionally for every Q/H single-leg CSP candidate.
+- **Current defect**: an earlier session pass (Command 3) established the correct finite CSP max-loss formula: `strike × multiplier − entryCredit + costs` (a cash-secured put's worst case is the underlying going to 0, which is finite -- this corrected an even-earlier, wrong "theoretically unlimited" claim). The formula's own inputs are already present and populated on the exact same candidate object whose `maxLoss` is `null` -- `collateral` (`strike × multiplier`) and `premiumPerShare` (the entry credit) are both real, non-null values right next to the hardcoded `null`. Proven by a real test: `tests/phase3-strategy-economics-formulas.test.ts`, "REAL GAP (Phase 3 finding...)".
+- **Expected change**: populate `maxLoss = collateral - grossPremium` (i.e. `strike × multiplier - premiumPerShare × multiplier`) when `premiumPerShare` is known, `null` otherwise -- mirroring exactly how D's `maxLoss` is already computed a few lines below in the same file. `+costs` is not modeled anywhere else on this struct either, so parity with D's current level of cost-modeling (none) is the right bar, not a new cost model invented for this fix alone.
+- **State**: OPEN, MEDIUM priority. Not fixed by Claude -- `canonical-strategy-frontier.ts` is Codex-owned Production code.
+
+---
+
 ## Closed this engagement (for Codex's awareness, not action)
 
 - **Management candidate source (the P0-1 gap this engagement has
