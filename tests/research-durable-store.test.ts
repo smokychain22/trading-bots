@@ -6,6 +6,7 @@ import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import { ResearchDurableStore } from '../src/storage/research-durable-store.js';
 import type { ModelRegistryRecord } from '../src/research/empirical-model-registry.js';
+import { buildShadowPredictionReceipt } from '../src/research/shadow-prediction-receipt.js';
 
 function harness() {
   const root = mkdtempSync(join(tmpdir(), 'theta-research-durable-'));
@@ -131,6 +132,56 @@ test('ADVERSARIAL: an immutable-record mutation attempt (raw UPDATE bypassing th
     const result = reopened.verify();
     assert.equal(result.valid, false);
     assert.ok(result.invalidKeys.some((k) => k.includes('entry-baseline')));
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+function predictionReceipt(overrides: Parameters<typeof buildShadowPredictionReceipt>[0] extends infer T ? Partial<T> : never = {}) {
+  return buildShadowPredictionReceipt({
+    predictionId: 'p1', modelId: 'entry-baseline', modelVersion: 'v1', targetId: 'ENTRY_PROFITABILITY',
+    entityId: 'c1', decisionId: 'd1', featureSnapshotHash: 'h1', predictedAt: '2026-09-26T00:00:00Z',
+    prediction: 0.5, uncertainty: null, sourceSha: 'sha1', workerSha: null, strategyScope: 'THETA_CONVENTIONAL',
+    ...overrides,
+  });
+}
+
+test('CORE CLAIM (overnight §22): duplicate shadow-prediction ID -- identical content is idempotent, conflicting content throws', () => {
+  const { store, cleanup } = harness();
+  try {
+    assert.equal(store.saveShadowPredictionReceipt(predictionReceipt()), 'INSERTED');
+    assert.equal(store.saveShadowPredictionReceipt(predictionReceipt()), 'ALREADY_PRESENT_IDENTICAL');
+    assert.throws(
+      () => store.saveShadowPredictionReceipt(predictionReceipt({ prediction: 0.9 })),
+      /RESEARCH_DURABLE_STORE_IDENTITY_CONFLICT/,
+    );
+  } finally { cleanup(); }
+});
+
+test('the same real decision recorded under two DIFFERENT model versions persists as two distinct rows, never collapsed', () => {
+  const { store, cleanup } = harness();
+  try {
+    store.saveShadowPredictionReceipt(predictionReceipt({ predictionId: 'p1', modelVersion: 'v1' }));
+    store.saveShadowPredictionReceipt(predictionReceipt({ predictionId: 'p2', modelVersion: 'v2' }));
+    const result = store.verify();
+    assert.equal(result.valid, true);
+    assert.equal(result.checked, 2);
+  } finally { cleanup(); }
+});
+
+test('ADVERSARIAL: shadow-prediction hash corruption is caught by verify(), same as model registry rows', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-research-durable-'));
+  const path = join(root, 'durable.sqlite');
+  try {
+    const store = new ResearchDurableStore(path);
+    store.saveShadowPredictionReceipt(predictionReceipt());
+    store.close();
+    const direct = new DatabaseSync(path);
+    direct.exec("UPDATE shadow_prediction_receipt SET content_json='{\"tampered\":true}' WHERE prediction_id='p1'");
+    direct.close();
+    const reopened = new ResearchDurableStore(path);
+    const result = reopened.verify();
+    assert.equal(result.valid, false);
+    assert.ok(result.invalidKeys.some((k) => k.includes('p1')));
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

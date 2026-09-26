@@ -48,6 +48,13 @@ test('ADVERSARIAL: an outcome resolved before the prediction was made is rejecte
   }, '2026-09-26T01:00:00Z'), /JOIN_OUTCOME_RESOLVED_BEFORE_PREDICTION/);
 });
 
+test('ADVERSARIAL (overnight §22): an outcome resolved under a DIFFERENT model version is rejected, never silently joined', () => {
+  assert.throws(() => joinPredictionToOutcome(PREDICTION, {
+    entityId: 'c1', decisionId: 'd1', wholeChainId: null, targetId: 'ENTRY_PROFITABILITY',
+    modelVersionAtOutcomeTime: 'v2-DIFFERENT', featureSnapshotHash: 'h1', observedOutcome: 1, resolvedAt: '2026-09-26T00:00:00Z', isResolved: true,
+  }, '2026-09-26T01:00:00Z'), /JOIN_MODEL_VERSION_MISMATCH/);
+});
+
 test('ADVERSARIAL: the original prediction receipt is never mutated by the join', () => {
   const before = { ...PREDICTION };
   joinPredictionToOutcome(PREDICTION, {

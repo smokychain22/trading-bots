@@ -43,6 +43,11 @@ export function joinPredictionToOutcome(
   if (prediction.decisionId !== outcome.decisionId) throw new Error('JOIN_DECISION_IDENTITY_MISMATCH');
   if (prediction.targetId !== outcome.targetId) throw new Error('JOIN_TARGET_INCOMPATIBLE');
   if (prediction.featureSnapshotHash !== outcome.featureSnapshotHash) throw new Error('JOIN_FEATURE_HASH_MISMATCH');
+  // ADVERSARIAL (overnight §22): a prediction made under one model version
+  // must never be joined to an outcome resolved/labeled under a DIFFERENT
+  // model version -- that would silently attribute another model's
+  // prediction quality to this one.
+  if (prediction.modelVersion !== outcome.modelVersionAtOutcomeTime) throw new Error('JOIN_MODEL_VERSION_MISMATCH');
   if (outcome.resolvedAt !== null && Date.parse(outcome.resolvedAt) < Date.parse(prediction.predictedAt)) {
     throw new Error('JOIN_OUTCOME_RESOLVED_BEFORE_PREDICTION');
   }
