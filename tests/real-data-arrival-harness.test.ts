@@ -58,3 +58,26 @@ test('a selected/executed subject can reach FACTUAL_OBSERVED', () => {
   const result = runRealDataArrivalPipeline(selected);
   assert.equal(result.dataset?.identifiabilityStatus, 'FACTUAL_OBSERVED');
 });
+
+test('ADVERSARIAL (overnight wave, directive §15): the same horizon reported twice for one subject is rejected as a duplicate observation, never silently kept as "the last one wins"', () => {
+  const baseRow = bundle().rows[0] as ObservationBundle['rows'][number];
+  const duplicated = bundle({ rows: [baseRow, { ...baseRow, observedAt: '2026-09-26T14:16:00Z', marketMarkPrice: 1.30 }] });
+  const failures = validateBundleSchema(duplicated);
+  assert.ok(failures.some((f) => f.field === 'checkpoint' && f.reason.includes('duplicate')));
+  const result = runRealDataArrivalPipeline(duplicated);
+  assert.equal(result.schemaValid, false);
+});
+
+test('ADVERSARIAL: an unrecognized provenance enum value is rejected, never silently treated as REAL_SCHEDULED_OBSERVATION', () => {
+  const baseRow = bundle().rows[0] as ObservationBundle['rows'][number];
+  const badProvenance = bundle({ rows: [{ ...baseRow, provenance: 'BACKFILLED_GUESS' as never }] });
+  const failures = validateBundleSchema(badProvenance);
+  assert.ok(failures.some((f) => f.field === 'provenance'));
+});
+
+test('ADVERSARIAL: an empty subjectId or malformed bundle-level decisionAt is rejected at the bundle level', () => {
+  const emptySubject = bundle({ subjectId: '' });
+  assert.ok(validateBundleSchema(emptySubject).some((f) => f.field === 'bundle.subjectId'));
+  const badDecisionAt = bundle({ decisionAt: 'not-a-timestamp' });
+  assert.ok(validateBundleSchema(badDecisionAt).some((f) => f.field === 'bundle.decisionAt'));
+});

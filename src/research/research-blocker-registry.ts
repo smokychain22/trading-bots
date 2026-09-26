@@ -43,6 +43,17 @@ export const RESEARCH_BLOCKER_REGISTRY: readonly BlockerRecord[] = [
     blockerClass: 'CODE_SOLVABLE_CODEX', resolvedAt: null,
   },
   {
+    contractVersion: researchBlockerRegistryVersion, issueId: 'THETA-EXPORT-SCHEMA-COMPATIBILITY-NOT-CHECKED',
+    domain: 'INTEGRATION_READINESS', owner: 'CLAUDE',
+    currentState: 'No compile-time/runtime compatibility check existed between Codex\'s canonical cycle-evidence export contract version and this branch\'s research adapters -- a silent Codex schema change could have gone unnoticed.',
+    exactMissingInput: 'A versioned schema/drift detector plus real adapters consuming the archive\'s actual exported shape.',
+    whyRequired: 'When Codex\'s first real observation/export bundle arrives, the branch must accept it deterministically or reject it with an exact version/field error -- never guess.',
+    consumer: 'src/research/canonical-export-adapters.ts, src/research/export-schema-drift-detector.ts',
+    canBeBuiltAround: true, nextAction: 'CLOSED this wave -- see export-schema-drift-detector.ts (COMPATIBLE/BACKWARD_COMPATIBLE/MISSING_REQUIRED_FIELD/UNKNOWN_ENUM_VALUE/VERSION_AHEAD_UNSUPPORTED/VERSION_BEHIND_UNSUPPORTED) and canonical-export-adapters.ts (real decision-candidate + strategy-comparison adapters over Codex\'s decoded archive).',
+    testToClose: 'tests/export-schema-drift-detector.test.ts + tests/canonical-export-adapters.test.ts (14 tests, real, passing).',
+    blockerClass: 'CODE_SOLVABLE_CLAUDE', resolvedAt: '2026-09-26T00:00:00Z',
+  },
+  {
     contractVersion: researchBlockerRegistryVersion, issueId: 'THETA-RESEARCH-ZERO-REAL-EPISODES',
     domain: 'ALL_STRATEGY_RESEARCH_PROGRAMS', owner: 'OWNER',
     currentState: 'Zero real resolved Q/H/D/Recovery/CC/WAIT episodes exist -- every research pipeline is contract-complete and fixture-tested but has nothing real to run against.',

@@ -52,14 +52,34 @@ export interface SchemaValidationFailure {
 /** Step 1: schema validation. Returns every real, machine-readable
  * failure -- never throws on the first one, since a real arriving bundle
  * may have multiple malformed rows worth reporting together. */
+const VALID_PROVENANCE: ReadonlySet<string> = new Set(['REAL_SCHEDULED_OBSERVATION', 'RECONSTRUCTED']);
+
 export function validateBundleSchema(bundle: ObservationBundle): readonly SchemaValidationFailure[] {
   const failures: SchemaValidationFailure[] = [];
+  const seenCheckpoints = new Set<string>();
   bundle.rows.forEach((row, index) => {
     if (!VALID_CHECKPOINTS.has(row.checkpoint)) failures.push({ rowIndex: index, field: 'checkpoint', reason: `unknown checkpoint: ${row.checkpoint}` });
     if (!Number.isFinite(Date.parse(row.observedAt))) failures.push({ rowIndex: index, field: 'observedAt', reason: 'not a valid timestamp' });
     if (!SHA_PATTERN.test(row.sourceSha)) failures.push({ rowIndex: index, field: 'sourceSha', reason: 'not a 40-hex sha' });
     if (row.workerSha !== null && !SHA_PATTERN.test(row.workerSha)) failures.push({ rowIndex: index, field: 'workerSha', reason: 'not a 40-hex sha' });
+    if (!VALID_PROVENANCE.has(row.provenance)) failures.push({ rowIndex: index, field: 'provenance', reason: `unknown provenance enum: ${row.provenance}` });
+    // ADVERSARIAL (directive §15): the same horizon observed twice for the
+    // same subject is a duplicate-observation corruption, not a real second
+    // reading -- reject rather than silently keeping the last one.
+    if (seenCheckpoints.has(row.checkpoint)) {
+      failures.push({ rowIndex: index, field: 'checkpoint', reason: `duplicate observation for checkpoint ${row.checkpoint} -- a real bundle reports each horizon at most once per subject` });
+    }
+    seenCheckpoints.add(row.checkpoint);
   });
+  if (!Number.isFinite(Date.parse(bundle.decisionAt))) {
+    failures.push({ rowIndex: -1, field: 'bundle.decisionAt', reason: 'not a valid timestamp' });
+  }
+  if (bundle.subjectId.length === 0) failures.push({ rowIndex: -1, field: 'bundle.subjectId', reason: 'empty subjectId' });
+  // Every row's own subjectId (implicit via the bundle-level field here,
+  // since RawObservationBundleRow does not carry a redundant per-row
+  // subjectId) must be consistent -- this schema puts subjectId once at
+  // the bundle level precisely to make a cross-row mismatch structurally
+  // impossible rather than something to validate.
   return failures;
 }
 
