@@ -128,6 +128,17 @@ class CandidateEconomics:
     credit_collateral_ratio: float
     ev_net: Optional[float]
     ev_net_unknown_reason: Optional[str]
+    # Phase 3 Final Closure B: the versioned cost model (CostAssumptions)
+    # was already computed here but only ever embedded as a free-text
+    # fragment inside ev_net_unknown_reason -- never returned as real,
+    # structured data a consumer could actually use. These four fields are
+    # additive (every existing field above is unchanged) and never alter
+    # max_profit/break_even_price, which remain gross by design; a future
+    # EV model combines these with a real P(win), not this baseline.
+    commission_per_contract: float
+    fees_per_contract: float
+    est_slippage_per_contract: float
+    cost_model_version: str
 
 
 @dataclass(frozen=True)
@@ -297,6 +308,10 @@ class BaselinePolicy:
                 f"{self.cost_assumptions.cost_model_version}) are computed so a "
                 "future model can combine them with a real P(win)."
             ),
+            commission_per_contract=self.cost_assumptions.commission_per_contract,
+            fees_per_contract=self.cost_assumptions.fees_per_contract,
+            est_slippage_per_contract=self.cost_assumptions.est_slippage_per_contract,
+            cost_model_version=self.cost_assumptions.cost_model_version,
         )
 
     # -- sizing -------------------------------------------------------------

@@ -44,6 +44,17 @@ export interface CanonicalFrontierEconomics {
   readonly retainedUpside: number | null;
   readonly callAwayProceeds: number | null;
   readonly wholeChainPnlAtCallAway: number | null;
+  /** Phase 3 Final Closure B: two distinct, previously-conflated concepts.
+   * `grossReturnOnCollateral` = grossPremium / collateral -- dimensionless,
+   * NO time dimension (the same concept as Python's
+   * `credit_collateral_ratio` / `defined-risk-vs-csp-economics.ts`'s
+   * `creditToCollateralRatio`, reused in spirit, not re-derived
+   * differently). `capitalDayYield` = grossPremium / (collateral * dte) --
+   * a RATE per unit collateral PER DAY. Neither is Return On Capital in
+   * the account-equity sense, and neither is annualized. Both are GROSS
+   * (pre-cost); an after-cost version does not exist because no candidate
+   * has after-cost economics yet (see `expectedAfterCostEv`). */
+  readonly grossReturnOnCollateral: number | null;
   readonly capitalDayYield: number | null;
   readonly expectedAfterCostEv: null;
 }
@@ -363,7 +374,9 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
       collateral, maxProfit: premium === null ? null : premium * contract.multiplier,
       maxLoss: premium === null ? null : (contract.strike - premium) * contract.multiplier,
       breakEven: contract.breakEven, downsideCushion: cushion, retainedUpside: null, callAwayProceeds: null,
-      wholeChainPnlAtCallAway: null, capitalDayYield: premium === null || contract.dte <= 0 ? null : premium * contract.multiplier / (collateral * contract.dte),
+      wholeChainPnlAtCallAway: null,
+      grossReturnOnCollateral: premium === null || collateral <= 0 ? null : (premium * contract.multiplier) / collateral,
+      capitalDayYield: premium === null || contract.dte <= 0 ? null : premium * contract.multiplier / (collateral * contract.dte),
       expectedAfterCostEv: null,
     },
     assignmentCapacityQty, aegisState: candidateAegisState, ...evidence,
@@ -405,6 +418,7 @@ function definedRiskCandidate(shortPut: NormalizedOptionContract, longPut: Norma
       premiumPerShare: netCredit, grossPremium: maxProfit, collateral: maxLoss, maxProfit, maxLoss,
       breakEven: netCredit === null ? null : shortPut.strike - netCredit, downsideCushion: null,
       retainedUpside: null, callAwayProceeds: null, wholeChainPnlAtCallAway: null,
+      grossReturnOnCollateral: maxProfit === null || maxLoss === null || maxLoss <= 0 ? null : maxProfit / maxLoss,
       capitalDayYield: maxProfit === null || maxLoss === null || maxLoss <= 0 || shortPut.dte <= 0 ? null : maxProfit / (maxLoss * shortPut.dte),
       expectedAfterCostEv: null,
     },
@@ -435,7 +449,7 @@ function stockActionCandidate(action: 'RECOVERY_WAIT' | 'SELL_STOCK', input: Can
     economics: {
       premiumPerShare: null, grossPremium: null, collateral: null, maxProfit: null, maxLoss: null, breakEven: null,
       downsideCushion: null, retainedUpside: null, callAwayProceeds: null, wholeChainPnlAtCallAway: null,
-      capitalDayYield: null, expectedAfterCostEv: null,
+      grossReturnOnCollateral: null, capitalDayYield: null, expectedAfterCostEv: null,
     },
     assignmentCapacityQty: stock.shares, aegisState: input.aegisNewRiskState,
     hardBlockers, softEvidence: [`OWNERSHIP_STATE:STOCK_HELD`, `ACTION:${action}`], unknownEvidence,
@@ -467,7 +481,7 @@ function coveredCallCandidate(contract: NormalizedOptionContract, input: Canonic
       premiumPerShare: premium, grossPremium: premium === null ? null : premium * contract.multiplier,
       collateral: 0, maxProfit: null, maxLoss: null, breakEven: null, downsideCushion: null,
       retainedUpside, callAwayProceeds, wholeChainPnlAtCallAway: chainPnlAtCallAway,
-      capitalDayYield: null, expectedAfterCostEv: null,
+      grossReturnOnCollateral: null, capitalDayYield: null, expectedAfterCostEv: null,
     },
     assignmentCapacityQty: coveredQty, aegisState: candidateAegisState, ...evidence,
     structurallyFeasible: evidence.hardBlockers.length === 0, riskFeasible: evidence.hardBlockers.length === 0,

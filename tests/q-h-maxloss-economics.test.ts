@@ -179,6 +179,21 @@ test('PROPERTY: higher strike increases contractual max downside, all else equal
   assert.ok(higherMaxLoss > lowerMaxLoss);
 });
 
+test('CAPITAL_DAY_YIELD vs GROSS_RETURN_ON_COLLATERAL (Phase 3 Final Closure B): two distinct, never-conflated concepts -- one is a rate per day, the other is dimensionless with no time basis', () => {
+  const candidate = qCandidate();
+  const grossReturnOnCollateral = num(candidate.economics.grossReturnOnCollateral, 'grossReturnOnCollateral must be known');
+  const capitalDayYield = num(candidate.economics.capitalDayYield, 'capitalDayYield must be known');
+  const maxProfit = num(candidate.economics.maxProfit, 'maxProfit must be known');
+  const collateral = num(candidate.economics.collateral, 'collateral must be known');
+  // grossReturnOnCollateral = grossPremium / collateral, no time dimension.
+  assert.equal(grossReturnOnCollateral, maxProfit / collateral);
+  // capitalDayYield divides that same ratio further by dte -- strictly
+  // smaller whenever dte > 1, proving they are not secretly the same number.
+  assert.ok(candidate.dte !== null && candidate.dte > 1);
+  assert.ok(capitalDayYield < grossReturnOnCollateral);
+  assert.equal(capitalDayYield, grossReturnOnCollateral / (candidate.dte as number));
+});
+
 test('NUMERICAL SAFETY: no NaN or Infinity enters the canonical economics for any of the above fixtures', () => {
   for (const candidate of [qCandidate(), qCandidate({ bid: 0 }), qCandidate({ multiplier: 10, occSymbol: null }), qCandidate({ bid: null, ask: null })]) {
     assert.ok(candidate);

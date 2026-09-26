@@ -275,6 +275,28 @@ class EconomicsTests(unittest.TestCase):
         self.assertIsNotNone(result.economics.ev_net_unknown_reason)
         self.assertIn("calibrated entry-outcome", result.economics.ev_net_unknown_reason)
 
+    def test_cost_model_is_real_structured_data_not_only_a_string_fragment(self):
+        # Phase 3 Final Closure B: the versioned cost model was previously
+        # computed but only ever embedded as a free-text fragment inside
+        # ev_net_unknown_reason -- never returned as real, structured,
+        # machine-consumable data. This proves it now is, and that
+        # max_profit/break_even_price remain unchanged (gross, not netted).
+        policy = BaselinePolicy(
+            _sizing_policy(),
+            _cost_assumptions(commission_per_contract=0.70, fees_per_contract=0.10,
+                               est_slippage_per_contract=2.0, cost_model_version="TEST-COST-2"),
+        )
+        result = policy.evaluate(_clean_candidate(strike=50.0, multiplier=100.0, entry_premium_per_share=1.50))
+        econ = result.economics
+        self.assertAlmostEqual(econ.commission_per_contract, 0.70, places=10)
+        self.assertAlmostEqual(econ.fees_per_contract, 0.10, places=10)
+        self.assertAlmostEqual(econ.est_slippage_per_contract, 2.0, places=10)
+        self.assertEqual(econ.cost_model_version, "TEST-COST-2")
+        # Gross fields must remain exactly as the hand-computed formula test
+        # already proves -- cost exposure must never silently net into them.
+        self.assertAlmostEqual(econ.max_profit, 150.0, places=10)
+        self.assertAlmostEqual(econ.break_even_price, 48.5, places=10)
+
 
 class SizingTests(unittest.TestCase):
     def test_quantity_respects_the_tightest_cap(self):

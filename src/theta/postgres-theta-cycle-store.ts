@@ -167,7 +167,12 @@ export function projectPersistableThetaCandidates(cycle:ThetaShadowCycleResult):
         break_even_price:breakEven as number,
         secured_collateral_per_contract:collateral as number,
         credit_collateral_ratio:(maxProfit as number)/(collateral as number),ev_net:null,
-        ev_net_unknown_reason:'EV_MODEL_NOT_EMPIRICALLY_READY'}});
+        ev_net_unknown_reason:'EV_MODEL_NOT_EMPIRICALLY_READY',
+        // This candidate was never sent to/evaluated by the real Q bridge
+        // (it only exists in the canonical frontier) -- there is no real
+        // cost-model data to report here, so this is honestly null, never
+        // a fabricated version string or a fabricated zero cost.
+        commission_per_contract:null,fees_per_contract:null,est_slippage_per_contract:null,cost_model_version:null}});
     known.add(optionSymbol);
   }
   return evaluated;

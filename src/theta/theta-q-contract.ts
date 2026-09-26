@@ -15,6 +15,22 @@ const economicsSchema = z.object({
   credit_collateral_ratio: z.number().finite().nonnegative(),
   ev_net: z.number().finite().nullable(),
   ev_net_unknown_reason: z.string().min(1).nullable(),
+  // Phase 3 Final Closure B: the versioned cost model was already computed
+  // Python-side but was previously only embedded as a free-text fragment
+  // inside ev_net_unknown_reason -- never real, structured data a
+  // consumer could use. Additive fields; max_profit/break_even_price
+  // remain gross, unaffected. Nullable (rather than required) because at
+  // least one real TS consumer (postgres-theta-cycle-store.ts's
+  // projectPersistableThetaCandidates) constructs a synthetic economics
+  // record for a canonical candidate the live Q bridge never evaluated --
+  // that record genuinely has no cost-model data, and null is the honest
+  // representation, not a fabricated version string or a fabricated zero
+  // cost. A real Q bridge response always populates these (Python's
+  // CandidateEconomics requires them, no path omits them).
+  commission_per_contract: z.number().finite().nonnegative().nullable(),
+  fees_per_contract: z.number().finite().nonnegative().nullable(),
+  est_slippage_per_contract: z.number().finite().nonnegative().nullable(),
+  cost_model_version: z.string().min(1).nullable(),
 });
 
 const candidateSchema = z.object({
