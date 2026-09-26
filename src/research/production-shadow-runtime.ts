@@ -245,6 +245,10 @@ const bridge=(environment:Environment):PythonBridgeConfig=>({
 export async function runProductionShadowEvidenceScan(input:{environment:Environment;pool:Pool;alpaca:AlpacaProviderConfig;
   executionAccountId?:string|null;reconciliation:BrokerReconciliationResult;now:()=>string;
   readOnlyPreSubmitPreview?:boolean;
+  // Phase 1 Zero-Unknown Reclosure Pass 3 (item 2): forwarded, never
+  // recomputed, into the persistence context so trade.decision.receipt_json
+  // carries the exact release identity this cycle actually ran under.
+  releaseIdentity?:{readonly sourceSha:string|null;readonly workerSha:string|null}|null;
   scanScope?:'FULL_SHADOW_BREADTH'|'APPROVED_PAPER_BOOTSTRAP_ONLY'}):Promise<ProductionShadowScanReport>{
   if(input.environment.THETA_RUNTIME_MODE!=='MASTER_THETA_PAPER') throw new Error('MASTER_THETA_PAPER_RUNTIME_REQUIRED');
   if(input.readOnlyPreSubmitPreview===true&&(input.environment.MASTER_PAPER_EXECUTION_ENABLED
@@ -273,7 +277,8 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     followerExecutionEnabled:input.environment.FOLLOWER_PAPER_EXECUTION_ENABLED,
     liveMoneyAuthorized:false,
   });
-  const runtimeContext=await loadPersistenceContext(input.pool,input.alpaca,input.now());
+  const runtimeContext={...await loadPersistenceContext(input.pool,input.alpaca,input.now()),
+    releaseIdentity:input.releaseIdentity??undefined};
   if(input.executionAccountId!==undefined&&input.executionAccountId!==null
     &&input.executionAccountId!==runtimeContext.executionAccountId)
     throw new Error('MASTER_EXECUTION_ACCOUNT_CONTEXT_MISMATCH');

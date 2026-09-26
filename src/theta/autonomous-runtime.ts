@@ -276,6 +276,12 @@ export interface ManagementPolicyEvidenceProvider {
 export interface AutonomousRuntimeDependencies {
   readonly managementPolicyEvidenceProvider?: ManagementPolicyEvidenceProvider;
   readonly scope?: 'FULL' | 'CORE' | 'BROKER' | 'LIFECYCLE' | 'MANAGEMENT' | 'OBSERVATION' | 'EVIDENCE';
+  // Phase 1 Zero-Unknown Reclosure Pass 3 (item 2): the same source/worker
+  // identity `inspectRuntimeSchemaCompatibility` already gates this cycle on
+  // in autonomous-runtime-handler.ts, threaded through so the decision this
+  // cycle persists carries the release identity that produced it. Never
+  // recomputed independently here -- one identity, one source of truth.
+  readonly releaseIdentity?: { readonly sourceSha: string | null; readonly workerSha: string | null };
 }
 
 /**
@@ -541,7 +547,7 @@ export async function runAutonomousRuntimeCycle(
         if(session!=='RUN')return degraded('OPTION_MARKET_SESSION_UNCONFIRMED',retryAt);
         const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,
           executionAccountId:master.executionAccountId,reconciliation:reconciliation as BrokerReconciliationResult,
-          now:()=>new Date().toISOString()});
+          now:()=>new Date().toISOString(),releaseIdentity:dependencies.releaseIdentity??null});
         if(scan.completeness!=='COMPLETE')return degraded(`WAIT_RECHECK_SCAN_${scan.completeness}`,retryAt);
         await cycleStore.markNearMissesTriggered(pending,new Date().toISOString(),scan.scanId);
         opportunityScanCompleted=true;
@@ -556,7 +562,7 @@ export async function runAutonomousRuntimeCycle(
         }
         const scan=await runProductionShadowEvidenceScan({environment,pool,alpaca:master.alpaca,
           executionAccountId:master.executionAccountId,reconciliation:reconciliation as BrokerReconciliationResult,
-          now:()=>new Date().toISOString()});
+          now:()=>new Date().toISOString(),releaseIdentity:dependencies.releaseIdentity??null});
         return scan.completeness==='COMPLETE' ? succeeded() : degraded(`SHADOW_SCAN_${scan.completeness}`,retryAt);
       }
       if(jobType==='PAPER_EXECUTION_HANDOFF'){

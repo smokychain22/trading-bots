@@ -42,6 +42,15 @@ export interface ThetaCyclePersistenceContext {
   readonly executionVersionId: string;
   readonly costModelVersionId: string;
   readonly accountSnapshotId: number;
+  // Phase 1 Zero-Unknown Reclosure Pass 3 (item 2): additive to the
+  // existing `trade.decision.receipt_json` jsonb column -- no migration.
+  // Sourced by the caller from the same identity `autonomous-runtime-
+  // handler.ts` already computes and gates the cycle on
+  // (`process.env.VERCEL_GIT_COMMIT_SHA` / the local worker's registered
+  // `buildSha`), never a second, independent identity mechanism. Optional
+  // so existing callers (tests, the no-submit probe) are unaffected;
+  // absence is persisted honestly as `null`, never coerced to a fake value.
+  readonly releaseIdentity?: { readonly sourceSha: string | null; readonly workerSha: string | null };
 }
 
 export interface PersistedThetaCycle {
@@ -308,7 +317,7 @@ export class PostgresThetaCycleStore {
       tracePersistence('CANDIDATES_COMPLETE');
       const strategyRouteId = await this.persistRoute(client, fusionSnapshotId, cycle);
       const decisionId = await this.persistDecision(client, fusionSnapshotId, cycle, candidates.candidateSetId, candidates.candidateIds,
-        context.strategyVersionId);
+        context.strategyVersionId, context.releaseIdentity ?? null);
       tracePersistence('DECISION_COMPLETE');
       await this.persistPointInTimeEvidence(client,context,cycle,fusionSnapshotId,candidates.candidateSetId,
         candidates.candidateIds,decisionId);
@@ -587,7 +596,8 @@ export class PostgresThetaCycleStore {
   }
 
   private async persistDecision(client: PoolClient, fusionSnapshotId: string, cycle: ThetaShadowCycleResult,
-    candidateSetId: string | null, candidateIds: ReadonlyMap<string, string>, strategyVersionId: string): Promise<string | null> {
+    candidateSetId: string | null, candidateIds: ReadonlyMap<string, string>, strategyVersionId: string,
+    releaseIdentity: { readonly sourceSha: string | null; readonly workerSha: string | null } | null): Promise<string | null> {
     const receipt = cycle.orchestration?.receipt;
     if (receipt === null || receipt === undefined) return null;
     const authority = cycle.strategyFrontier;
@@ -641,15 +651,23 @@ export class PostgresThetaCycleStore {
       : null;
     const decisionAegisAction = aegisAssessmentIdentity?.newRiskState
       ?? cycle.orchestration?.aegis?.newRiskState ?? null;
+    // Phase 1 Zero-Unknown Reclosure Pass 3 (item 2): sourceSha/workerSha are
+    // persisted here, additively, inside the existing receipt_json jsonb
+    // column -- never a new column/migration. Absence is honest `null`
+    // (e.g. a local no-submit run with no release identity supplied), never
+    // coerced. This is the one release-identity field this decision row
+    // carries; do not add a second, competing mechanism elsewhere.
+    const releaseIdentityPayload = { sourceSha: releaseIdentity?.sourceSha ?? null, workerSha: releaseIdentity?.workerSha ?? null };
     const receiptPayload = authority === null
       ? { contractVersion: decisionAuthorityVersion, authority: null,
           aegisInputOrigin: cycle.provenanceDetail.includes('aegisInputs=DERIVED_FROM_REAL') ? 'DERIVED_FROM_REAL' : null,
+          releaseIdentity: releaseIdentityPayload,
           subordinateNewRiskEvidence:
           buildStrategyDecisionEnvelope({ strategyVersionId, strategyBranch: 'THETA_CONVENTIONAL', receipt }),
           executionAuthorized: false }
       : { contractVersion: decisionAuthorityVersion, authority, legacyThetaQReceipt: receipt,
           aegisInputOrigin: cycle.provenanceDetail.includes('aegisInputs=DERIVED_FROM_REAL') ? 'DERIVED_FROM_REAL' : null,
-          aegisAssessmentIdentity,
+          aegisAssessmentIdentity, releaseIdentity: releaseIdentityPayload,
           empiricalUtilityState: authority.empiricalUtilityState, executionAuthorized: false };
     const receiptStorage = projectDecisionReceiptForPostgres(receiptPayload);
     const inserted = await client.query(

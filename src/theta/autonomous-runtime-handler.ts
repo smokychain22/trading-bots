@@ -842,7 +842,13 @@ export default async function autonomousRuntimeHandler(
     const scope=operation==='RUNTIME_CORE_CYCLE'?'CORE':operation==='RUNTIME_BROKER_CYCLE'?'BROKER'
       :operation==='RUNTIME_LIFECYCLE_CYCLE'?'LIFECYCLE':operation==='RUNTIME_MANAGEMENT_CYCLE'?'MANAGEMENT'
         :operation==='RUNTIME_OBSERVATION_CYCLE'?'OBSERVATION':operation==='RUNTIME_EVIDENCE_CYCLE'?'EVIDENCE':'FULL';
-    const report = await runAutonomousRuntimeCycle(environment, runtimePool, new Date(),{scope});
+    // Phase 1 Zero-Unknown Reclosure Pass 3 (item 2): the identical identity
+    // already used above to gate this cycle's schema compatibility -- never
+    // a second computation -- is forwarded so the decision this cycle
+    // persists records the release it actually ran under.
+    const report = await runAutonomousRuntimeCycle(environment, runtimePool, new Date(),{scope,
+      releaseIdentity:{sourceSha:process.env.VERCEL_GIT_COMMIT_SHA??null,
+        workerSha:localIdentity.kind==='VALID'?localIdentity.identity.buildSha:null}});
     if(localWorkerId!==null)await workerStore.cycleCompleted(localWorkerId,report,new Date().toISOString());
     if(report.status==='FAILED'||report.status==='QUARANTINED'){
       const databaseCode=report.jobResults.map((job)=>job.errorCode)

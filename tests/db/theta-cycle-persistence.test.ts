@@ -137,7 +137,11 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
     const store = new PostgresThetaCycleStore(pool);
     const context = { botInstanceId: botId, universeVersionId: null, strategyVersionId: strategyId, featureVersionId: featureId,
       riskLimitVersionId: riskId, executionVersionId: executionId, costModelVersionId: costId,
-      accountSnapshotId: Number(accountSnapshot.rows[0].account_snapshot_id) };
+      accountSnapshotId: Number(accountSnapshot.rows[0].account_snapshot_id),
+      // Phase 1 Zero-Unknown Reclosure Pass 3 (item 2): proves the release
+      // identity actually reaches the persisted decision receipt, additively,
+      // with no new column.
+      releaseIdentity: { sourceSha: 'a'.repeat(40), workerSha: 'b'.repeat(40) } };
     const first = await store.persist(context, cycle);
     const second = await store.persist(context, cycle);
     assert.equal(first.fusionSnapshotId, second.fusionSnapshotId);
@@ -176,6 +180,9 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
       [botId, first.fusionSnapshotId]);
     assert.deepEqual(counts.rows[0], { snapshots: 1, candidate_sets: 1, candidates: 1, candidate_reasons: 1, linked_quotes: 1, decisions: 1,
       routes: 1, opportunities: 2, canonical_branches: 5, canonical_candidates: 3 });
+    const decisionReceipt = await pool.query(`SELECT receipt_json FROM trade.decision WHERE fusion_snapshot_id=$1`, [first.fusionSnapshotId]);
+    assert.deepEqual(decisionReceipt.rows[0].receipt_json.releaseIdentity, { sourceSha: 'a'.repeat(40), workerSha: 'b'.repeat(40) },
+      'the release identity supplied via the persistence context must reach the persisted decision receipt, no migration required');
     const researchEvidence = await pool.query(`SELECT c.branch::text,c.candidate_ref,c.hard_blockers_json
       FROM trade.canonical_strategy_candidate_evidence c
       JOIN trade.canonical_strategy_branch_evidence b USING(branch_evidence_id)
