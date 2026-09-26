@@ -14,6 +14,9 @@ import {
 } from './contract-path-outcome-dataset.js';
 import { classifyUnknown, type UnknownReasonCode } from './unknown-value-taxonomy.js';
 import { buildSessionExperienceFromEvidence, type CycleEvidenceRecord } from './session-experience-builder.js';
+import { adaptCommand5aObservation, projectToRawObservationBundleRow, type Command5aAdapterSubjectContext } from './command5a-canonical-adapter.js';
+import type { ContractPathObservationReceipt } from './contract-path-observation-runtime.js';
+import type { LegIdentityForMark } from './command5a-mark-semantics.js';
 
 export const realDataArrivalHarnessVersion = 'theta-real-data-arrival-harness-v1' as const;
 
@@ -186,3 +189,35 @@ export function runRealDataArrivalPipeline(bundle: ObservationBundle): RealDataA
 
 // classifyUnknown re-exported so a caller can further inspect audit entries without a second import path.
 export { classifyUnknown };
+
+/**
+ * UNIFIED TAKEOVER GAP 5/12: real entry point for Codex's ACTUAL Command
+ * 5A producer shape (`ContractPathObservationReceipt`), not the earlier
+ * hand-specified `RawObservationBundleRow` fixture shape alone. Calls the
+ * SAME canonical adapter (`command5a-canonical-adapter.ts`) any other
+ * consumer must use -- this is not a second, parallel glue path. Any real
+ * runtime export whose shape diverges from what
+ * `adaptCommand5aObservation`/`projectToRawObservationBundleRow` expect
+ * will fail here with a named error (checkpoint mapping is exhaustive,
+ * `DATASET_INCOMPLETE` from the economic-completeness gate throws) rather
+ * than silently producing an economically-empty bundle.
+ */
+export function runRealDataArrivalPipelineFromCommand5A(input: {
+  readonly bundleId: string;
+  readonly decisionAt: string;
+  readonly subject: Command5aAdapterSubjectContext;
+  readonly observations: readonly {
+    readonly receipt: ContractPathObservationReceipt;
+    readonly legIdentities: readonly LegIdentityForMark[];
+  }[];
+}): RealDataArrivalResult {
+  const rows = input.observations.map(({ receipt, legIdentities }) => {
+    const adapted = adaptCommand5aObservation({ receipt, legIdentities, subject: input.subject });
+    return projectToRawObservationBundleRow(adapted);
+  });
+  const bundle: ObservationBundle = {
+    bundleId: input.bundleId, decisionAt: input.decisionAt, subjectId: input.subject.subjectId,
+    wasSelected: input.subject.wasSelected, wasShadowOnly: input.subject.wasShadowOnly, rows,
+  };
+  return runRealDataArrivalPipeline(bundle);
+}
