@@ -98,3 +98,27 @@ def horizon_return(
         state=MomentumFeatureState.OK, return_value=(current_close / anchor_close) - 1.0,
         as_of_index=as_of_index, horizon=horizon, reason_code="MOMENTUM_OK",
     )
+
+
+def momentum_feature_to_result(
+    result: MomentumFeature, as_of: str, retrieved_at: str,
+    source_provider: str = "INTERNAL_BAR_SERIES", version: str = "momentum-horizon-return-v1",
+) -> "FeatureResult":
+    """Adapter: MomentumFeature -> the canonical FeatureResult contract
+    (work package 01), mirroring trend.py's trend_feature_to_result."""
+    from features.feature_contract import FeatureResult, FeatureResultState, FeatureTruthClass
+
+    state_map = {
+        MomentumFeatureState.OK: FeatureResultState.OK,
+        MomentumFeatureState.UNKNOWN: FeatureResultState.UNKNOWN,
+        MomentumFeatureState.INSUFFICIENT_HISTORY: FeatureResultState.INSUFFICIENT_HISTORY,
+        MomentumFeatureState.STALE: FeatureResultState.STALE,
+    }
+    return FeatureResult(
+        feature_id=f"MOMENTUM_HORIZON_RETURN_{result.horizon}", family="MOMENTUM",
+        state=state_map[result.state], truth_class=FeatureTruthClass.DERIVED_FROM_OBSERVED,
+        value=result.return_value, structured_value=None, units="fractional_return",
+        source_provider=source_provider, source_operation="horizon_return",
+        as_of=as_of, retrieved_at=retrieved_at, freshness_seconds=None, coverage=None,
+        version=version, reason_codes=(result.reason_code,),
+    )

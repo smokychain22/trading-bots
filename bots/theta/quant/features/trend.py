@@ -124,3 +124,29 @@ def moving_average_slope(
         state=TrendFeatureState.OK, slope=slope, as_of_index=as_of_index,
         window=slope_window, ma_window=ma_window, reason_code="TREND_OK",
     )
+
+
+def trend_feature_to_result(
+    result: TrendFeature, as_of: str, retrieved_at: str,
+    source_provider: str = "INTERNAL_BAR_SERIES", version: str = "trend-ma-slope-v1",
+) -> "FeatureResult":
+    """Adapter: TrendFeature -> the canonical FeatureResult contract
+    (work package 01). Kept here, next to the producer, rather than in a
+    separate always-imported module, so a caller that only needs the raw
+    TrendFeature never pays for the FeatureResult import."""
+    from features.feature_contract import FeatureResult, FeatureResultState, FeatureTruthClass
+
+    state_map = {
+        TrendFeatureState.OK: FeatureResultState.OK,
+        TrendFeatureState.UNKNOWN: FeatureResultState.UNKNOWN,
+        TrendFeatureState.INSUFFICIENT_HISTORY: FeatureResultState.INSUFFICIENT_HISTORY,
+        TrendFeatureState.STALE: FeatureResultState.STALE,
+    }
+    return FeatureResult(
+        feature_id=f"TREND_MA_SLOPE_{result.ma_window}_{result.window}", family="TREND",
+        state=state_map[result.state], truth_class=FeatureTruthClass.DERIVED_FROM_OBSERVED,
+        value=result.slope, structured_value=None, units="fractional_change_per_window",
+        source_provider=source_provider, source_operation="moving_average_slope",
+        as_of=as_of, retrieved_at=retrieved_at, freshness_seconds=None, coverage=None,
+        version=version, reason_codes=(result.reason_code,),
+    )
