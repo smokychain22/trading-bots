@@ -14,6 +14,23 @@ import { identifiabilityTaxonomyVersion, type IdentifiabilityStatus } from './em
 
 export const managementReturnToGoVersion = 'theta-management-return-to-go-v1' as const;
 
+/**
+ * ADVERSARIAL HARDENING (overnight §36): the exact 13 real canonical
+ * management actions from `management-action-frontier.ts`'s
+ * `ManagementFrontierAction`, plus `WAIT` (the 14th value the real
+ * `p2e-evidence-store.ts` synthesizes for lifecycle states where no
+ * management action applies -- confirmed real in the COMMAND 3 audit).
+ * Kept as a literal, manually-synced list rather than importing the type
+ * directly, so a real Codex enum change is a visible, reviewed diff here
+ * too -- exactly the same discipline `export-schema-drift-detector.ts`
+ * already uses for the export contract.
+ */
+export const CANONICAL_MANAGEMENT_ACTIONS: ReadonlySet<string> = new Set([
+  'HOLD', 'CLOSE_FULL', 'ROLL', 'LET_EXPIRE', 'ACCEPT_ASSIGNMENT', 'REDEPLOY',
+  'RECOVERY_WAIT', 'SELL_STOCK', 'SELL_CC', 'HOLD_CC', 'CLOSE_CC', 'ROLL_CC', 'ALLOW_CALL_AWAY',
+  'WAIT',
+]);
+
 export interface ManagementActionAlternative {
   readonly action: string;
   readonly wasSelected: boolean;
@@ -46,6 +63,11 @@ export function buildManagementReturnToGoRows(input: {
 }): readonly ManagementReturnToGoRow[] {
   const selected = input.alternatives.filter((a) => a.wasSelected);
   if (selected.length !== 1) throw new Error('MANAGEMENT_RETURN_TO_GO_REQUIRES_EXACTLY_ONE_SELECTED_ALTERNATIVE');
+  // ADVERSARIAL (overnight §36): reject enum drift before it can silently
+  // create an unrecognized-action row -- a typo'd or since-renamed action
+  // string must fail loudly, never pass through as if it were real.
+  const unrecognized = input.alternatives.find((a) => !CANONICAL_MANAGEMENT_ACTIONS.has(a.action));
+  if (unrecognized !== undefined) throw new Error(`MANAGEMENT_RETURN_TO_GO_UNRECOGNIZED_ACTION:${unrecognized.action}`);
   if (input.selectedActionResolvedReturnToGo !== null && input.selectedActionResolvedAt === null) {
     throw new Error('MANAGEMENT_RETURN_TO_GO_VALUE_WITHOUT_RESOLVED_AT');
   }

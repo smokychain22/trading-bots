@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildManagementActionValueRows, buildManagementReturnToGoRows } from '../src/research/management-return-to-go.js';
+import { buildManagementActionValueRows, buildManagementReturnToGoRows, CANONICAL_MANAGEMENT_ACTIONS } from '../src/research/management-return-to-go.js';
 
 test('CORE CLAIM: unchosen management actions never inherit the chosen action realized return', () => {
   const rows = buildManagementReturnToGoRows({
@@ -67,4 +67,23 @@ test('values without a resolved timestamp are rejected for the extended builder 
     selectedActionValues: { riskToGo: 5, capitalDaysToGo: null, tailOutcome: null, opportunityCost: null },
     selectedActionTimingClassification: null,
   }), /MANAGEMENT_ACTION_VALUE_INPUTS_WITHOUT_RESOLVED_AT/);
+});
+
+test('ADVERSARIAL (overnight §36): an unrecognized/typo\'d action string is rejected -- no enum drift can silently pass through', () => {
+  assert.throws(() => buildManagementReturnToGoRows({
+    managementDecisionPointId: 'm7',
+    alternatives: [{ action: 'HOLD', wasSelected: true }, { action: 'CLOSE_PARTIAL_TYPO', wasSelected: false }],
+    selectedActionResolvedReturnToGo: null, selectedActionResolvedAt: null,
+  }), /MANAGEMENT_RETURN_TO_GO_UNRECOGNIZED_ACTION:CLOSE_PARTIAL_TYPO/);
+});
+
+test('all 13 real canonical management actions plus WAIT are individually accepted, none rejected as unrecognized', () => {
+  for (const action of CANONICAL_MANAGEMENT_ACTIONS) {
+    const rows = buildManagementReturnToGoRows({
+      managementDecisionPointId: 'm8',
+      alternatives: [{ action, wasSelected: true }],
+      selectedActionResolvedReturnToGo: null, selectedActionResolvedAt: null,
+    });
+    assert.equal(rows[0]?.action, action);
+  }
 });
