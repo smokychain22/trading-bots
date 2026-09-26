@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
 import { LocalResearchHistorySpool } from '../src/storage/local-research-history-spool.js';
 
 function researchInput(overrides: Partial<Parameters<LocalResearchHistorySpool['append']>[0]> = {}) {
@@ -70,6 +71,54 @@ test('local research spool rejects secret-shaped keys and values before writing'
       payload: [{ note: 'postgresql://user:password@host.invalid/db' }],
     })), /LOCAL_RESEARCH_SECRET_VALUE_REJECTED/);
     assert.deepEqual(spool.verify(), { valid: true, checked: 0, invalidBatchIds: [] });
+  } finally {
+    spool.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('local research spool persists contract path observations without granting broker authority', () => {
+  const { spool, cleanup } = harness();
+  try {
+    const receipt = spool.append({
+      batchId: 'path-observation-1', family: 'CONTRACT_PATH_OBSERVATION', sourceSha: 'b'.repeat(40),
+      decisionCycleId: 'cycle-1', snapshotId: 'subject-1', observedAt: '2026-09-25T15:30:00.000Z',
+      rowCount: 1, payload: [{ executionTruthClass: 'MARKET_OBSERVED', brokerFill: false,
+        modeledExecutionPnl: null, brokerActualPnl: null }],
+    });
+    assert.equal(receipt.family, 'CONTRACT_PATH_OBSERVATION');
+    assert.equal(receipt.brokerAuthority, false);
+    assert.deepEqual(spool.verify(), { valid: true, checked: 1, invalidBatchIds: [] });
+  } finally { cleanup(); }
+});
+
+test('existing v1 SQLite spool upgrades its family constraint without losing rows', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-research-spool-upgrade-'));
+  const path = join(root, 'research.sqlite');
+  const legacy = new DatabaseSync(path);
+  legacy.exec(`CREATE TABLE research_batch(
+    batch_id TEXT PRIMARY KEY,
+    family TEXT NOT NULL CHECK(family IN ('CANONICAL_STRATEGY_CANDIDATE_EVIDENCE')),
+    source_sha TEXT NOT NULL,decision_cycle_id TEXT NOT NULL,snapshot_id TEXT NOT NULL,
+    observed_at TEXT NOT NULL,row_count INTEGER NOT NULL CHECK(row_count >= 0),payload_json TEXT NOT NULL,
+    payload_hash TEXT NOT NULL,storage_state TEXT NOT NULL CHECK(storage_state IN ('PENDING_PARQUET','ARCHIVED_PARQUET')),
+    archived_manifest_hash TEXT,created_at TEXT NOT NULL,
+    UNIQUE(family,decision_cycle_id,snapshot_id,payload_hash));
+    INSERT INTO research_batch VALUES('old','CANONICAL_STRATEGY_CANDIDATE_EVIDENCE','${'a'.repeat(40)}',
+      'cycle-old','snapshot-old','2026-09-25T14:30:00.000Z',0,'[]',
+      '${'4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e78a04efc29e8b91cd9b945'}','PENDING_PARQUET',NULL,
+      '2026-09-25T14:30:00.000Z');`);
+  legacy.close();
+  const spool = new LocalResearchHistorySpool(path);
+  try {
+    assert.deepEqual([...spool.batchIds()], ['old']);
+    const added = spool.append({
+      batchId: 'new', family: 'CONTRACT_PATH_OBSERVATION', sourceSha: 'b'.repeat(40),
+      decisionCycleId: 'cycle-new', snapshotId: 'snapshot-new', observedAt: '2026-09-25T15:30:00.000Z',
+      rowCount: 0, payload: [],
+    });
+    assert.equal(added.family, 'CONTRACT_PATH_OBSERVATION');
+    assert.equal(spool.stats().totalBatchCount, 2);
   } finally {
     spool.close();
     rmSync(root, { recursive: true, force: true });

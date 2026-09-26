@@ -82,7 +82,7 @@ def main() -> int:
     if partial_dir.exists():
         shutil.rmtree(partial_dir)
     partial_dir.mkdir(parents=True, exist_ok=False)
-    parquet_path = partial_dir / "canonical-strategy-candidate-evidence.parquet"
+    parquet_path = partial_dir / "theta-research-batches.parquet"
     manifest_path = partial_dir / "manifest.json"
 
     db = duckdb.connect(":memory:")
@@ -161,7 +161,7 @@ def main() -> int:
         shutil.rmtree(partial_dir)
     else:
         partial_dir.rename(archive_dir)
-    parquet_path = archive_dir / "canonical-strategy-candidate-evidence.parquet"
+    parquet_path = archive_dir / str(manifest.get("parquetFile", "theta-research-batches.parquet"))
 
     with source:
         for row in rows:

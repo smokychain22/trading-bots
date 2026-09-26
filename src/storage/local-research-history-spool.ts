@@ -6,7 +6,7 @@ import { canonicalJson } from '../research/point-in-time-evidence.js';
 
 export const localResearchHistorySpoolVersion = 'theta-local-research-history-spool-v1' as const;
 
-export type LocalResearchFamily = 'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE';
+export type LocalResearchFamily = 'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE' | 'CONTRACT_PATH_OBSERVATION';
 
 export interface LocalResearchBatchInput {
   readonly batchId: string;
@@ -97,7 +97,7 @@ export class LocalResearchHistorySpool {
     this.database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;');
     this.database.exec(`CREATE TABLE IF NOT EXISTS research_batch(
       batch_id TEXT PRIMARY KEY,
-      family TEXT NOT NULL CHECK(family IN ('CANONICAL_STRATEGY_CANDIDATE_EVIDENCE')),
+      family TEXT NOT NULL CHECK(family IN ('CANONICAL_STRATEGY_CANDIDATE_EVIDENCE','CONTRACT_PATH_OBSERVATION')),
       source_sha TEXT NOT NULL,
       decision_cycle_id TEXT NOT NULL,
       snapshot_id TEXT NOT NULL,
@@ -111,6 +111,32 @@ export class LocalResearchHistorySpool {
       UNIQUE(family,decision_cycle_id,snapshot_id,payload_hash));
       CREATE INDEX IF NOT EXISTS ix_research_batch_pending
         ON research_batch(storage_state,observed_at,batch_id);`);
+    const schema = this.database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='research_batch'")
+      .get() as { sql: string } | undefined;
+    if (schema !== undefined && !schema.sql.includes('CONTRACT_PATH_OBSERVATION')) this.upgradeFamilyConstraint();
+  }
+
+  private upgradeFamilyConstraint(): void {
+    this.database.exec(`BEGIN IMMEDIATE;
+      CREATE TABLE research_batch_v2(
+        batch_id TEXT PRIMARY KEY,
+        family TEXT NOT NULL CHECK(family IN ('CANONICAL_STRATEGY_CANDIDATE_EVIDENCE','CONTRACT_PATH_OBSERVATION')),
+        source_sha TEXT NOT NULL,
+        decision_cycle_id TEXT NOT NULL,
+        snapshot_id TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        row_count INTEGER NOT NULL CHECK(row_count >= 0),
+        payload_json TEXT NOT NULL,
+        payload_hash TEXT NOT NULL,
+        storage_state TEXT NOT NULL CHECK(storage_state IN ('PENDING_PARQUET','ARCHIVED_PARQUET')),
+        archived_manifest_hash TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(family,decision_cycle_id,snapshot_id,payload_hash));
+      INSERT INTO research_batch_v2 SELECT * FROM research_batch;
+      DROP TABLE research_batch;
+      ALTER TABLE research_batch_v2 RENAME TO research_batch;
+      CREATE INDEX ix_research_batch_pending ON research_batch(storage_state,observed_at,batch_id);
+      COMMIT;`);
   }
 
   close(): void { this.database.close(); }
