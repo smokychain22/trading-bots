@@ -60,10 +60,26 @@ try {
   $receipt | ConvertTo-Json -Compress
 } catch {
   $code = $_.Exception.Message -replace 'postgres(ql)?://[^ ]+','[REDACTED_DATABASE_URL]'
+  $latestPointerPath = Join-Path $root 'latest\current.json'
+  $previousKnownGoodBackupId = $null
+  $previousKnownGoodBackupPreserved = $false
+  if (Test-Path -LiteralPath $latestPointerPath -PathType Leaf) {
+    try {
+      $latestPointer = Get-Content -Raw -LiteralPath $latestPointerPath | ConvertFrom-Json
+      $previousKnownGoodBackupId = [string]$latestPointer.backupId
+      $previousKnownGoodPath = Join-Path $root ([string]$latestPointer.relativePath -replace '/', '\')
+      $previousKnownGoodBackupPreserved = $previousKnownGoodBackupId -ne ''
+        -and (Test-Path -LiteralPath $previousKnownGoodPath -PathType Container)
+        -and (Test-Path -LiteralPath (Join-Path $previousKnownGoodPath 'backup-manifest.json') -PathType Leaf)
+        -and (Test-Path -LiteralPath (Join-Path $previousKnownGoodPath 'restore-verification.json') -PathType Leaf)
+    } catch { $previousKnownGoodBackupPreserved = $false }
+  }
   $failure = [ordered]@{state='MIGRATION_CHECKPOINT_FAILED';failedAt=(Get-Date).ToUniversalTime().ToString('o');
     reason=$code;preMigrationBackupId=$(if($before){$before.backupId}else{$null});
     postMigrationBackupId=$(if($after){$after.backupId}else{$null});
-    previousBackupPreserved=($null -ne $before)}
+    newPreMigrationBackupVerified=($null -ne $before);
+    previousKnownGoodBackupId=$previousKnownGoodBackupId;
+    previousKnownGoodBackupPreserved=$previousKnownGoodBackupPreserved}
   Write-ThetaJson (Join-Path $root ('logs\migration-checkpoint-failed-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.json')) $failure
   throw $code
 } finally {
