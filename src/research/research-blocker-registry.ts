@@ -32,6 +32,31 @@ export interface BlockerRecord {
 
 export const RESEARCH_BLOCKER_REGISTRY: readonly BlockerRecord[] = [
   {
+    contractVersion: researchBlockerRegistryVersion, issueId: 'THETA-DATASET-ADAPTERS-NEEDED-JUSTIFICATION',
+    domain: 'WHOLE_CHAIN_DATASET, MANAGEMENT_DECISION_DATASET, ASSIGNMENT_DATASET, RECOVERY_SURVIVAL_DATASET, EXECUTION_DATASET',
+    owner: 'CLAUDE',
+    currentState: 'CLOSED this pass, on direct re-examination -- these five dataset types were previously misclassified as blanket "needs Codex\'s archive/schema path" without checking whether real, already-typed persistence objects exist today. They do: WholeChainComponentEvidence (postgres-whole-chain-components-repository.ts), ActionEconomics[] (p2e-evidence-store.ts, writes to the research.theta_action_inaction_frontier schema), LifecycleApplication[] (postgres-lifecycle-application-store.ts, real assignment/disposal events), and TransactionCostAnalysis (execution/transaction-cost-analysis.ts) are all real, pure, already-typed objects.',
+    exactMissingInput: 'None -- real adapters now exist in src/research/production-persistence-adapters.ts, consuming these objects as pure-function input.',
+    whyRequired: 'Turns real, already-fetched Codex domain objects into COMMAND 4 dataset-contract rows without waiting for a new export path.',
+    consumer: 'src/research/production-persistence-adapters.ts (adaptWholeChainOutcomeFromEvidence, adaptManagementDatasetFromFrontierActions, adaptAssignmentLabelFromLifecycleEvents, adaptRecoverySurvivalFromLifecycleEvents, adaptSlippageRowFromTca)',
+    canBeBuiltAround: true,
+    nextAction: 'CLOSED this wave. ARCHITECTURAL BOUNDARY (explicit judgment call, not a default): these adapters accept an ALREADY-FETCHED real object as input -- none of them establishes or holds a live Postgres Pool/connection itself, since "database pools"/"Postgres runtime resilience" is a named Codex single-writer domain per CLAUDE.md. A live connection to fetch these objects in the first place remains Codex-owned; the pure transformation of an already-fetched object is Claude-owned and is now done.',
+    testToClose: 'tests/production-persistence-adapters.test.ts (13 tests, real, passing).',
+    blockerClass: 'CODE_SOLVABLE_CLAUDE', resolvedAt: '2026-09-26T00:00:00Z',
+  },
+  {
+    contractVersion: researchBlockerRegistryVersion, issueId: 'THETA-EXECUTED-ENTRY-FILL-TIMESTAMP-GAP',
+    domain: 'EXECUTED_ENTRY_DATASET', owner: 'CODEX',
+    currentState: 'Real, already-typed BrokerOrderSnapshot (src/execution/broker.ts) and the real brokerOrderIntentState() derivation (src/execution/broker-order-state.ts) exist and give qty/filledQty/filledAvgPrice/status -- enough to derive lifecycle STATE -- but BrokerOrderSnapshot carries no per-fill TIMESTAMP field, only submittedAt. buildExecutedEntryEpisode() (entry-unit-separation.ts) requires a real firstFillAt whenever filledQuantity > 0 and throws EXECUTED_ENTRY_FILL_WITHOUT_FILL_TIMESTAMP otherwise -- correctly, since fabricating a fill timestamp from the order snapshot alone would be a real invented value.',
+    exactMissingInput: 'A real fill-event timestamp, joined from Alpaca fill/activity records (BrokerActivity in broker.ts, or the trade.fill table postgres-trade-update-store.ts writes to) rather than the order snapshot alone -- specifically, the exact field/table that carries one confirmed fill\'s timestamp, keyed to the order.',
+    whyRequired: 'Without it, an EXECUTED_ENTRY_DATASET adapter for a filled order cannot honestly report exposureStartAt -- it would have to either fabricate a timestamp (forbidden) or fall back to submittedAt (which is exactly the submission!=fill distinction this whole contract exists to prevent).',
+    consumer: 'src/research/entry-unit-separation.ts',
+    canBeBuiltAround: false,
+    nextAction: 'Name the real BrokerActivity/fill-table join key precisely (Codex-owned, since it requires either a live query joining orders to fills or a richer read type than BrokerOrderSnapshot currently exposes), then build the pure adapter -- the adapter itself (once that join exists) is Claude-owned follow-up work.',
+    testToClose: 'A real adapter test proving a filled order with a real, joined fill timestamp produces a non-null exposureStartAt distinct from submittedAt.',
+    blockerClass: 'CODE_SOLVABLE_CODEX', resolvedAt: null,
+  },
+  {
     contractVersion: researchBlockerRegistryVersion, issueId: 'THETA-CONTRACT-PATH-RUNTIME-OBSERVATION-PRODUCER',
     domain: 'CONTRACT_PATH_DATASET', owner: 'CODEX',
     currentState: 'No runtime process exists that observes and records a candidate/underlying at the 15M/1H/EOD/1D/3D/5D/expiration/common-horizon checkpoints CONTRACT_PATH_DATASET requires.',
