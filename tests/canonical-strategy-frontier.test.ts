@@ -22,6 +22,13 @@ function contract(overrides: Partial<Parameters<typeof normalizeOptionContract>[
   }, NOW);
 }
 
+function qFeasible(): { readonly state: 'EVALUATED_FEASIBLE'; readonly reasonCode: null } {
+  return { state: 'EVALUATED_FEASIBLE', reasonCode: null };
+}
+function qInfeasible(reasonCode = 'THETA_Q_INFEASIBLE'): { readonly state: 'EVALUATED_INFEASIBLE'; readonly reasonCode: string } {
+  return { state: 'EVALUATED_INFEASIBLE', reasonCode };
+}
+
 function routing(eligible: readonly StrategyFamily[]) {
   const families: readonly StrategyFamily[] = ['THETA_Q', 'THETA_H', 'THETA_R', 'THETA_A', 'THETA_C', 'THETA_D'];
   return parseStrategyRoutingResponse({
@@ -273,8 +280,8 @@ test('a Q lattice rejection cannot win Paper selection ahead of a feasible contr
     strike: 185, bid: 1.4, ask: 1.5, delta: -0.16 });
   const feasible = contract();
   const result = buildCanonicalStrategyFrontier({ ...base, contracts: [rejected, feasible],
-    routing: routing(['THETA_Q']), thetaQActionFeasibleByOptionSymbol: {
-      [rejected.optionSymbol]: false, [feasible.optionSymbol]: true,
+    routing: routing(['THETA_Q']), thetaQCandidateEvaluationByOptionSymbol: {
+      [rejected.optionSymbol]: qInfeasible(), [feasible.optionSymbol]: qFeasible(),
     } });
   const conventional = result.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
   assert.ok(conventional?.candidates.find((candidate) => candidate.legs[0]?.optionSymbol === rejected.optionSymbol)
@@ -282,14 +289,14 @@ test('a Q lattice rejection cannot win Paper selection ahead of a feasible contr
   assert.equal(result.selectedCandidateId, `THETA_CONVENTIONAL:${feasible.optionSymbol}`);
 });
 
-test('a contract excluded from the Q lattice cannot open, but a valid Q WAIT stays WAIT', () => {
+test('a contract with no Q evaluation-state entry cannot open, but a valid Q WAIT stays WAIT', () => {
   const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
-    thetaQActionFeasibleByOptionSymbol: {},
+    thetaQCandidateEvaluationByOptionSymbol: {},
     thetaQDecision: { snapshotId: base.snapshotId, timestamp: NOW, underlying: 'AAPL', winningAction: 'WAIT',
       selectedCandidateId: null, quantity: 0 } });
   assert.equal(result.selectedCandidateId, null);
   assert.equal(result.primaryAction, 'GLOBAL_WAIT');
-  assert.ok(result.branches[0]?.candidates[0]?.hardBlockers.includes('THETA_Q_OUTSIDE_EVALUATED_LATTICE'));
+  assert.ok(result.branches[0]?.candidates[0]?.hardBlockers.includes('THETA_Q_EVALUATION_STATE_MISSING'));
   assert.ok(result.globalWaitReasons.includes('THETA_Q_ECONOMIC_WAIT'));
 });
 
@@ -306,8 +313,8 @@ test('Paper-facing selection follows the economic Q winner rather than structura
     strike: 185, bid: 1.4, ask: 1.5, delta: -0.16 });
   const winner = contract();
   const result = buildCanonicalStrategyFrontier({ ...base, contracts: [first, winner],
-    routing: routing(['THETA_Q']), thetaQActionFeasibleByOptionSymbol: {
-      [first.optionSymbol]: true, [winner.optionSymbol]: true,
+    routing: routing(['THETA_Q']), thetaQCandidateEvaluationByOptionSymbol: {
+      [first.optionSymbol]: qFeasible(), [winner.optionSymbol]: qFeasible(),
     }, thetaQDecision: { snapshotId: base.snapshotId, timestamp: NOW, underlying: 'AAPL', winningAction: 'OPEN_REDUCED',
       selectedCandidateId: winner.optionSymbol, quantity: 1 } });
   assert.equal(result.primaryAction, 'OPEN_CSP');
@@ -318,7 +325,7 @@ test('Paper-facing selection follows the economic Q winner rather than structura
 
 test('an economic Q WAIT cannot be promoted to an OPEN by the structural frontier', () => {
   const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()],
-    routing: routing(['THETA_Q']), thetaQActionFeasibleByOptionSymbol: { [contract().optionSymbol]: true },
+    routing: routing(['THETA_Q']), thetaQCandidateEvaluationByOptionSymbol: { [contract().optionSymbol]: qFeasible() },
     thetaQDecision: { snapshotId: base.snapshotId, timestamp: NOW, underlying: 'AAPL', winningAction: 'WAIT',
       selectedCandidateId: null, quantity: 0 } });
   assert.equal(result.primaryAction, 'GLOBAL_WAIT');
@@ -329,7 +336,7 @@ test('an economic Q WAIT cannot be promoted to an OPEN by the structural frontie
 
 test('missing research-only H candidates do not turn a complete Q WAIT into SYSTEM_HOLD', () => {
   const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()],
-    routing: routing(['THETA_Q', 'THETA_H']), thetaQActionFeasibleByOptionSymbol: { [contract().optionSymbol]: true },
+    routing: routing(['THETA_Q', 'THETA_H']), thetaQCandidateEvaluationByOptionSymbol: { [contract().optionSymbol]: qFeasible() },
     thetaQDecision: { snapshotId: base.snapshotId, timestamp: NOW, underlying: 'AAPL', winningAction: 'WAIT',
       selectedCandidateId: null, quantity: 0 } });
   assert.equal(result.branches.find((branch) => branch.branch === 'THETA_HOLD_STRIKE')?.evaluationState,
@@ -349,7 +356,7 @@ test('a mismatched Q receipt or infeasible economic winner fails closed', () => 
       selectedCandidateId: 'AAPL261016P00180000', quantity: 1 },
   ]) {
     const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
-      thetaQActionFeasibleByOptionSymbol: { [contract().optionSymbol]: true }, thetaQDecision: decision });
+      thetaQCandidateEvaluationByOptionSymbol: { [contract().optionSymbol]: qFeasible() }, thetaQDecision: decision });
     assert.equal(result.primaryAction, 'SYSTEM_HOLD');
     assert.equal(result.selectedCandidateId, null);
     assert.equal(result.selectedQuantity, 0);

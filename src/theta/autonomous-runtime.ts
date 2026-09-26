@@ -330,6 +330,24 @@ export function shouldRecoverRuntimeCheckpoint(record:Pick<SchedulerCheckpointRe
   return record.attempt<autonomousSchedulerMaxAttempts||!safeToSupersedeAfterExhaustion.has(kind);
 }
 
+/**
+ * Phase 2 Pass B Final Closure C (directive section 10-12): the exact,
+ * pure decision the PAPER_EXECUTION_HANDOFF job makes from the broker
+ * reconciliation's own `marketOpen` field -- extracted so it is directly
+ * unit-testable without a Postgres pool, a broker client, or any part of
+ * the surrounding job-scheduling machinery. Behavior is unchanged from the
+ * inline check it replaces: `null` means "proceed" (the caller's own
+ * `reconciliation===null` check runs first and is unaffected by this
+ * function), `'MARKET_CLOSED_NO_PAPER_EXECUTION'` means the caller must
+ * `skipped(...)` with that exact code, matching what the same string
+ * meant before extraction.
+ */
+export function paperExecutionHandoffMarketGate(
+  reconciliation: Pick<BrokerReconciliationResult, 'marketOpen'>,
+): 'MARKET_CLOSED_NO_PAPER_EXECUTION' | null {
+  return reconciliation.marketOpen !== true ? 'MARKET_CLOSED_NO_PAPER_EXECUTION' : null;
+}
+
 function scheduledJobs(bucket: string,scope:'FULL'|'CORE'|'BROKER'|'LIFECYCLE'|'MANAGEMENT'|'OBSERVATION'|'EVIDENCE'): readonly DueJob[] {
   return jobTypesForScope(scope).map((jobType) => ({ jobType, correlationKey: `${bucket}:${scope.toLowerCase()}` }));
 }
@@ -543,7 +561,10 @@ export async function runAutonomousRuntimeCycle(
       }
       if(jobType==='PAPER_EXECUTION_HANDOFF'){
         if(reconciliation===null)return degraded('BROKER_RECONCILIATION_REQUIRED',retryAt);
-        if(reconciliation.marketOpen!==true)return skipped('MARKET_CLOSED_NO_PAPER_EXECUTION');
+        {
+          const marketGate=paperExecutionHandoffMarketGate(reconciliation);
+          if(marketGate!==null)return skipped(marketGate);
+        }
         if(!executionControl.managementSubmissionEnabled)
           return degraded('MASTER_PAPER_SUBMISSION_NOT_AUTHORIZED',retryAt);
         if(master.executionAccountId===null)return degraded('MASTER_EXECUTION_ACCOUNT_NOT_CREATED',retryAt);

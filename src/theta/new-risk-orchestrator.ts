@@ -93,6 +93,36 @@ export interface RawCandidateInput {
   readonly strategyAccountPolicyCompatibility?: StrategyAccountPolicyCompatibility;
 }
 
+// Phase 2 Pass B Final Closure C: the smallest truthful per-candidate Q
+// evaluation state the real pipeline actually supports -- replaces the old
+// boolean-only `thetaQActionFeasibleByOptionSymbol` map, whose absence case
+// conflated three structurally different realities (see
+// docs/research/THETA_PHASE2_ROUTER_STRICTNESS_CLOSURE_2026-09-26.md for the
+// full trace). `theta_q_baseline.py:rank_candidates` docstring guarantees
+// every candidate it is SENT is returned (feasible or infeasible, never
+// silently dropped) -- so there is no real "intentionally outside Q's
+// design" state distinct from EVALUATED_INFEASIBLE: a design-based
+// rejection always comes back as an infeasible candidate with a real reason
+// code, never an omission. The only real absence causes are (a) the
+// candidate never reached the bridge call at all (an upstream data-quality/
+// executability/freshness gate rejected it first) or (b) it was sent but
+// the response is missing it (a genuine contract-violation anomaly, not a
+// lattice-design fact).
+export type ThetaQCandidateEvaluationState =
+  | 'EVALUATED_FEASIBLE'
+  | 'EVALUATED_INFEASIBLE'
+  | 'NOT_SENT_UPSTREAM_REJECT'
+  | 'RESPONSE_GAP';
+
+export interface ThetaQCandidateEvaluationEntry {
+  readonly state: ThetaQCandidateEvaluationState;
+  /** The real reason code driving NOT_SENT_UPSTREAM_REJECT (which upstream
+   * gate rejected it) or EVALUATED_INFEASIBLE (Q's own first reason code).
+   * null for EVALUATED_FEASIBLE and RESPONSE_GAP (a response gap has no
+   * reason -- that is exactly what makes it a gap, not a rejection). */
+  readonly reasonCode: string | null;
+}
+
 // Structured provider capability/observation state (replaces the former
 // single providerStateGood boolean, which could not express "account GOOD,
 // option chain STALE, positions UNKNOWN" as three separate facts). Reuses
@@ -288,6 +318,14 @@ export interface NewRiskOrchestrationResult {
   readonly regime: RegimeSnapshotResponse | null;
   readonly routing: StrategyRoutingResponse | null;
   readonly thetaQ: ThetaQResponse | null;
+  /** Populated only when the thetaQ bridge call itself succeeded (mirrors
+   * exactly when `thetaQ` is non-null) -- covers every raw candidate this
+   * cycle considered, not only the ones sent to Q. undefined whenever the
+   * bridge never ran or failed entirely (same gating as `thetaQ === null`),
+   * matching the prior `thetaQActionFeasibleByOptionSymbol` field's
+   * undefined semantics so existing "bridge never ran" behavior is
+   * unchanged. */
+  readonly thetaQCandidateEvaluation?: Readonly<Record<string, ThetaQCandidateEvaluationEntry>>;
   readonly aegis: AegisAssessmentResponse | null;
   readonly aegisByCandidateId?: Readonly<Record<string, AegisAssessmentResponse>>;
   readonly paretoSurvivorIds: readonly string[] | null;
@@ -684,6 +722,23 @@ export async function runNewRiskOrchestration(
   );
   if (!thetaQResult.ok) return systemHoldResult(request, 'THETA_Q_LATTICE', thetaQResult.detail, partialAfterRouting);
 
+  // Truthful per-candidate Q evaluation state (see the type's own doc
+  // comment): built from the exact real sets already computed above, never
+  // inferred or guessed. Every raw candidate this cycle considered gets a
+  // real entry -- nothing is silently absent from this map even though the
+  // downstream feasibility map (below) only covers freshnessEligible.
+  const thetaQResponseByCandidateId = new Map(thetaQResult.data.candidates.map((tq) => [tq.candidateId, tq]));
+  const thetaQCandidateEvaluation: Record<string, ThetaQCandidateEvaluationEntry> = {};
+  for (const c of nonExecutable) thetaQCandidateEvaluation[c.candidateId] = { state: 'NOT_SENT_UPSTREAM_REJECT', reasonCode: 'CONTRACT_NOT_EXECUTABLE' };
+  for (const c of deltaUnknown) thetaQCandidateEvaluation[c.candidateId] = { state: 'NOT_SENT_UPSTREAM_REJECT', reasonCode: 'DELTA_UNKNOWN' };
+  for (const c of freshnessRejected) thetaQCandidateEvaluation[c.candidateId] = { state: 'NOT_SENT_UPSTREAM_REJECT', reasonCode: 'OPTION_QUOTE_FRESHNESS_INSUFFICIENT' };
+  for (const c of freshnessEligible) {
+    const tq = thetaQResponseByCandidateId.get(c.candidateId);
+    thetaQCandidateEvaluation[c.candidateId] = tq === undefined
+      ? { state: 'RESPONSE_GAP', reasonCode: null }
+      : { state: tq.actionFeasible ? 'EVALUATED_FEASIBLE' : 'EVALUATED_INFEASIBLE', reasonCode: tq.actionFeasible ? null : (tq.reasons[0]?.code ?? 'THETA_Q_INFEASIBLE') };
+  }
+
   const rawByCandidateId = new Map(freshnessEligible.map((c) => [c.candidateId, c]));
   const feasibleForFrontier: RawCandidateInput[] = [];
   const economicsByCandidateId = new Map<string, Omit<CandidateEconomics, 'candidateId'>>();
@@ -732,7 +787,7 @@ export async function runNewRiskOrchestration(
       candidates: immediateResults, policyVersion: request.policyVersion, modelVersions: request.modelVersions,
       requiredModelVersions: request.requiredModelVersions, providerStateGood: true,
     });
-    return { receipt, ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all(), candidateEconomics: null };
+    return { receipt, ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: null, paretoSurvivorIds: null, opportunityBook: null, shadowOpportunities: book.all(), candidateEconomics: null };
   }
 
   const paretoResult = await invokeAndValidate(
@@ -763,7 +818,7 @@ export async function runNewRiskOrchestration(
     );
     if (!candidateAegis.ok) {
       return systemHoldResult(request, 'AEGIS', candidateAegis.detail, {
-        ...partialAfterRouting, thetaQ: thetaQResult.data, paretoSurvivorIds: [...survivorIds],
+        ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation, paretoSurvivorIds: [...survivorIds],
       });
     }
     aegisByCandidateId.set(candidate.candidateId, candidateAegis.data);
@@ -821,7 +876,7 @@ export async function runNewRiskOrchestration(
   );
   if (!opportunityResult.ok) {
     return systemHoldResult(request, 'OPPORTUNITY_FRONTIER', opportunityResult.detail, {
-      ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: representativeAegis, paretoSurvivorIds: [...survivorIds],
+      ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: representativeAegis, paretoSurvivorIds: [...survivorIds],
     });
   }
 
@@ -836,7 +891,7 @@ export async function runNewRiskOrchestration(
     if (entry === undefined) continue; // never happens -- every survivor was sent to opportunityFrontier
     if (candidateAegis === undefined) {
       return systemHoldResult(request, 'AEGIS', `Candidate-specific AEGIS result missing for ${candidate.candidateId}.`, {
-        ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: representativeAegis,
+        ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: representativeAegis,
         paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
       });
     }
@@ -872,13 +927,13 @@ export async function runNewRiskOrchestration(
     );
     if (!sizingResult.ok) {
       return systemHoldResult(request, 'SIZING', sizingResult.detail, {
-        ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: candidateAegis, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
+        ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: candidateAegis, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
       });
     }
 
     if (candidate.contract.bid === null) {
       return systemHoldResult(request, 'EXECUTION_QUALITY', 'OPEN candidate has no executable Alpaca bid.', {
-        ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: candidateAegis,
+        ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: candidateAegis,
         paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
       });
     }
@@ -903,7 +958,7 @@ export async function runNewRiskOrchestration(
     );
     if (!executionQualityResult.ok) {
       return systemHoldResult(request, 'EXECUTION_QUALITY', executionQualityResult.detail, {
-        ...partialAfterRouting, thetaQ: thetaQResult.data, aegis: candidateAegis, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
+        ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: candidateAegis, paretoSurvivorIds: [...survivorIds], opportunityBook: opportunityResult.data,
       });
     }
 
@@ -940,7 +995,7 @@ export async function runNewRiskOrchestration(
     receipt, ownership: ownershipResult.data,
     ownershipByCandidateId: Object.fromEntries([...ownershipByCandidateId.entries()].sort(([a],[b])=>a.localeCompare(b))),
     regime: regimeResult.data, routing: routerResult.data,
-    thetaQ: thetaQResult.data, aegis: representativeAegis,
+    thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: representativeAegis,
     aegisByCandidateId: Object.fromEntries([...aegisByCandidateId.entries()].sort(([a], [b]) => a.localeCompare(b))),
     paretoSurvivorIds: [...survivorIds],
     opportunityBook: opportunityResult.data, shadowOpportunities: book.all(),

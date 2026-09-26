@@ -197,6 +197,20 @@ function jsonObject(value: JsonValue | undefined): Record<string, JsonValue> {
   return value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+// Phase 2 Pass B Final Closure C (directive sections 16-20): extracted as
+// its own pure function so the truthful-semantics fix is directly unit-
+// testable without a Postgres pool. See the call site's own comment for
+// the full rationale (regimeState is not a trend measurement; momentum has
+// no real implementation wired anywhere in src/ today).
+export function persistedTechnicalEvidence(regimeState: JsonValue | undefined): Readonly<{
+  regimeState: JsonValue | null; trend: null; trendStatus: 'NOT_IMPLEMENTED';
+  momentum: null; momentumStatus: 'NOT_IMPLEMENTED';
+  drawdown: null; realizedVolatility: null;
+}> {
+  return { regimeState: regimeState ?? null, trend: null, trendStatus: 'NOT_IMPLEMENTED',
+    momentum: null, momentumStatus: 'NOT_IMPLEMENTED', drawdown: null, realizedVolatility: null };
+}
+
 export class PostgresThetaCycleStore {
   constructor(private readonly pool: Pool, private readonly options: PostgresThetaCycleStoreOptions = {}) {}
 
@@ -1041,7 +1055,26 @@ export class PostgresThetaCycleStore {
           skew:optionomicsFeatures.skew ?? null,termStructure:optionomicsFeatures.termStructure ?? null,
           surface:optionomicsFeatures.volatilitySurface ?? null,contractVolatility:optionomicsContract.volatility ?? null,
           marketStructure:optionomicsContract.marketStructure ?? null,
-          providerExposureHeatmap:optionomicsProviderContext.exposureHeatmap ?? null},technical:{trend:snapshot.regimeState,momentum:null,drawdown:null,realizedVolatility:null},
+          providerExposureHeatmap:optionomicsProviderContext.exposureHeatmap ?? null},
+        // Phase 2 Pass B Final Closure C (directive sections 16-20): `trend`
+        // previously aliased `snapshot.regimeState` -- a regime state is not
+        // a trend measurement, and reporting it under that name let a
+        // reader believe an independent trend signal existed when it did
+        // not. `momentum` was hardcoded null at this, its only write site,
+        // with nothing anywhere computing a real value -- indistinguishable
+        // from "measured zero momentum" without this fix. Neither is
+        // fabricated here: `regimeState` is preserved under its own real
+        // name, and `trend`/`momentum` are explicit, typed
+        // NOT_IMPLEMENTED sentinels a consumer cannot mistake for a real
+        // zero/neutral measurement. A real trend-slope/return computation
+        // already exists (underlying-features.ts's computeTrendSlope/
+        // computeReturn, wrapped by pit-feature-materializer.ts) but has no
+        // caller anywhere in src/ today -- wiring it here is a real
+        // integration task (historical bars, window policy, versioning),
+        // deliberately left to a dedicated follow-up rather than folded
+        // into this closure pass per the "no new alpha, truthful semantics
+        // only" standard.
+        technical:persistedTechnicalEvidence(snapshot.regimeState),
         event:{state:snapshot.eventState,companyEvent:typeof contract.optionSymbol==='string'
           ? companyEventByOptionSymbol[contract.optionSymbol]??null:null,
           earningsDistance:null,exDividendState:null},

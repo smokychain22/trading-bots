@@ -523,6 +523,24 @@ try {
           carryForwardCandidateAllowed=$false;strategyEvidenceRecorded=$false} | ConvertTo-Json |
           Set-Content -LiteralPath $statusFile -Encoding utf8
       }
+      # Phase 2 Pass B Final Closure C (directive sections 13-15): a DB/
+      # provider failure at an earlier per-cycle step must not silently
+      # erase basic local operational evidence just because it happened
+      # before the normal success-receipt write further up in this try.
+      # Computed independently of any step above (never assumes a step
+      # that may not have run actually ran), wrapped in its own try/catch
+      # so a receipt-write failure can never itself become a new failure
+      # source -- this must never affect $workerExit or fail-closed
+      # semantics either way.
+      try {
+        $failureMarketSessionDate = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
+          [DateTimeOffset]::UtcNow, 'Eastern Standard Time').ToString('yyyy-MM-dd')
+        $failureReceiptInput = @{ observedAt=$failedAt.ToUniversalTime().ToString('o');
+          marketSessionDate=$failureMarketSessionDate; buildSha=$runtime.buildSha; mode='MASTER_THETA_PAPER';
+          workerId=$runtime.workerId; failureCode=$failureCode; failedOperation=$currentOperation;
+          marketOpen=$null } | ConvertTo-Json -Compress
+        $failureReceiptInput | & node tools/write-local-runtime-receipt.mjs --failure (Join-Path $stateRoot 'receipts') *> $null
+      } catch { }
     }
     if (Test-Path -LiteralPath $stopFile) { break }
     $waitSeconds = if ($workerExit -eq 0) { 60 } else { $delaySeconds }

@@ -438,50 +438,82 @@ test('PROVIDER-FAILURE E2E (critical): a non-executable (stale) quote is preserv
   assert.equal(candidate.executionAuthorized, false, 'a structurally-compared candidate built from a non-executable quote must never itself claim execution authorization');
 });
 
-// Phase 2 Pass B continuation: Q-lattice absence semantics (item 9). These
-// tests pin down the three states the current interface CAN express, and
-// document (via the last two) the real conflation found this pass: a
-// symbol missing from the map always reads as the same
-// THETA_Q_OUTSIDE_EVALUATED_LATTICE code today, whether that is an
-// intentional lattice-design exclusion or an upstream data-quality
-// candidate that never reached the Q bridge -- see the Phase 2 Pass B
-// research doc for the full trace and why this is not fixed in this pass.
-test('Q LATTICE: a candidate explicitly present in the lattice map as feasible gets no lattice-related hard blocker', () => {
+// Phase 2 Pass B Final Closure C: Q-lattice absence semantics FIXED (item 9,
+// section 2 of the directive). thetaQCandidateEvaluationByOptionSymbol now
+// carries a real, truthful per-candidate state -- EVALUATED_FEASIBLE,
+// EVALUATED_INFEASIBLE, NOT_SENT_UPSTREAM_REJECT, or RESPONSE_GAP -- so the
+// old THETA_Q_OUTSIDE_EVALUATED_LATTICE conflation (documented in the Phase
+// 2 Pass B research doc) no longer exists. These tests are the required
+// test matrix (directive section 7, cases A/B/C/D/E/F/G collapsed into the
+// 4 real states the pipeline actually supports -- see
+// ThetaQCandidateEvaluationEntry's doc comment in new-risk-orchestrator.ts
+// for why C/D/E/G all map onto NOT_SENT_UPSTREAM_REJECT with a distinct
+// reasonCode rather than needing 4 separate top-level states).
+test('Q LATTICE STATE A: EVALUATED_FEASIBLE gets no lattice-related hard blocker', () => {
   const c = contract();
   const frontier = buildCanonicalStrategyFrontier({
     ...base, stock: null, contracts: [c], routing: routing(['THETA_Q']),
-    thetaQActionFeasibleByOptionSymbol: { [c.optionSymbol]: true },
+    thetaQCandidateEvaluationByOptionSymbol: { [c.optionSymbol]: { state: 'EVALUATED_FEASIBLE', reasonCode: null } },
   });
   const conventional = frontier.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
   const candidate = conventional?.candidates[0];
   assert.ok(candidate);
-  assert.ok(!candidate.hardBlockers.includes('THETA_Q_OUTSIDE_EVALUATED_LATTICE'));
-  assert.ok(!candidate.hardBlockers.includes('THETA_Q_ACTION_INFEASIBLE'));
+  assert.ok(!candidate.hardBlockers.some((b) => b.startsWith('THETA_Q_')));
 });
 
-test('Q LATTICE: a candidate explicitly present in the lattice map as infeasible gets THETA_Q_ACTION_INFEASIBLE, never the absence code', () => {
+test('Q LATTICE STATE B: EVALUATED_INFEASIBLE gets THETA_Q_ACTION_INFEASIBLE plus the real reason code, never a generic absence code', () => {
   const c = contract();
   const frontier = buildCanonicalStrategyFrontier({
     ...base, stock: null, contracts: [c], routing: routing(['THETA_Q']),
-    thetaQActionFeasibleByOptionSymbol: { [c.optionSymbol]: false },
+    thetaQCandidateEvaluationByOptionSymbol: { [c.optionSymbol]: { state: 'EVALUATED_INFEASIBLE', reasonCode: 'OWNERSHIP_BELOW_FLOOR' } },
   });
   const conventional = frontier.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
   const candidate = conventional?.candidates[0];
   assert.ok(candidate);
   assert.ok(candidate.hardBlockers.includes('THETA_Q_ACTION_INFEASIBLE'));
-  assert.ok(!candidate.hardBlockers.includes('THETA_Q_OUTSIDE_EVALUATED_LATTICE'));
+  assert.ok(candidate.hardBlockers.includes('THETA_Q_INFEASIBLE_REASON:OWNERSHIP_BELOW_FLOOR'));
+  assert.ok(!candidate.hardBlockers.some((b) => b.includes('OUTSIDE_EVALUATED_LATTICE') || b === 'THETA_Q_RESPONSE_GAP'));
 });
 
-test('Q LATTICE: a candidate absent from a non-empty lattice map gets THETA_Q_OUTSIDE_EVALUATED_LATTICE -- CONFLATION: this fires identically whether the exclusion was Q-lattice-design or an upstream data-quality reject, since only the map exists in this interface, not the requested-but-unanswered set', () => {
+test('Q LATTICE STATES C/D/E: NOT_SENT_UPSTREAM_REJECT preserves the real upstream reason (multiplier/delta/freshness), never a lattice-design implication', () => {
+  const c = contract();
+  for (const reasonCode of ['CONTRACT_NOT_EXECUTABLE', 'DELTA_UNKNOWN', 'OPTION_QUOTE_FRESHNESS_INSUFFICIENT']) {
+    const frontier = buildCanonicalStrategyFrontier({
+      ...base, stock: null, contracts: [c], routing: routing(['THETA_Q']),
+      thetaQCandidateEvaluationByOptionSymbol: { [c.optionSymbol]: { state: 'NOT_SENT_UPSTREAM_REJECT', reasonCode } },
+    });
+    const conventional = frontier.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
+    const candidate = conventional?.candidates[0];
+    assert.ok(candidate, `candidate must exist for reasonCode ${reasonCode}`);
+    assert.ok(candidate.hardBlockers.includes(`THETA_Q_NOT_SENT_UPSTREAM_REJECT:${reasonCode}`));
+    assert.ok(!candidate.hardBlockers.includes('THETA_Q_ACTION_INFEASIBLE'), 'never confused with a real Q-evaluated infeasibility');
+  }
+});
+
+test('Q LATTICE STATE F: RESPONSE_GAP (sent to Q, response omitted it) is its own distinct code, never a rejection or a design exclusion', () => {
   const c = contract();
   const frontier = buildCanonicalStrategyFrontier({
     ...base, stock: null, contracts: [c], routing: routing(['THETA_Q']),
-    thetaQActionFeasibleByOptionSymbol: { 'SOME-OTHER-SYMBOL-NEVER-MATCHES': true },
+    thetaQCandidateEvaluationByOptionSymbol: { [c.optionSymbol]: { state: 'RESPONSE_GAP', reasonCode: null } },
   });
   const conventional = frontier.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
   const candidate = conventional?.candidates[0];
   assert.ok(candidate);
-  assert.ok(candidate.hardBlockers.includes('THETA_Q_OUTSIDE_EVALUATED_LATTICE'));
+  assert.ok(candidate.hardBlockers.includes('THETA_Q_RESPONSE_GAP'));
+  assert.ok(!candidate.hardBlockers.includes('THETA_Q_ACTION_INFEASIBLE'));
+  assert.ok(!candidate.hardBlockers.some((b) => b.startsWith('THETA_Q_NOT_SENT_UPSTREAM_REJECT')));
+});
+
+test('Q LATTICE: a symbol with no entry at all in a non-empty evaluation map (a genuine map-coverage anomaly) gets THETA_Q_EVALUATION_STATE_MISSING, distinct from every real state', () => {
+  const c = contract();
+  const frontier = buildCanonicalStrategyFrontier({
+    ...base, stock: null, contracts: [c], routing: routing(['THETA_Q']),
+    thetaQCandidateEvaluationByOptionSymbol: { 'SOME-OTHER-SYMBOL-NEVER-MATCHES': { state: 'EVALUATED_FEASIBLE', reasonCode: null } },
+  });
+  const conventional = frontier.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
+  const candidate = conventional?.candidates[0];
+  assert.ok(candidate);
+  assert.ok(candidate.hardBlockers.includes('THETA_Q_EVALUATION_STATE_MISSING'));
 });
 
 test('Q LATTICE: when the Q bridge never ran at all (map entirely undefined), no lattice-membership hard blocker is applied -- the absence check is skipped, not defaulted to excluded', () => {
@@ -492,8 +524,7 @@ test('Q LATTICE: when the Q bridge never ran at all (map entirely undefined), no
   const conventional = frontier.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
   const candidate = conventional?.candidates[0];
   assert.ok(candidate);
-  assert.ok(!candidate.hardBlockers.includes('THETA_Q_OUTSIDE_EVALUATED_LATTICE'));
-  assert.ok(!candidate.hardBlockers.includes('THETA_Q_ACTION_INFEASIBLE'));
+  assert.ok(!candidate.hardBlockers.some((b) => b.startsWith('THETA_Q_')));
 });
 
 // Item 18: CONTRACT STANDARDNESS/MULTIPLIER perturbation. Same contract,

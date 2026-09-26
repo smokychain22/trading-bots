@@ -82,6 +82,53 @@ export function sanitizeLocalRuntimeReceipt(input) {
   };
 }
 
+export const failureReceiptVersion = 'theta-local-runtime-failure-receipt-v1';
+
+/**
+ * Phase 2 Pass B Final Closure C (directive sections 13-15): a genuine
+ * Postgres/provider failure at ANY earlier per-cycle step must not erase
+ * basic local operational evidence just because the step that failed came
+ * before the normal success-receipt write. This is a deliberately separate,
+ * minimal, bounded, sanitized failure receipt -- never the full 5-scope
+ * success schema (which requires data a failed cycle may never have
+ * reached) -- written to the SAME `receipts/<date>/` directory so it is
+ * discoverable the same way, but distinguishable by its own
+ * `receiptVersion` and a `-FAILURE-` filename marker. It deliberately does
+ * NOT update `latest.json`: that pointer stays reserved for the real
+ * success-receipt hash chain, which stays unbroken by a failure receipt.
+ */
+function sanitizeLocalFailureReceipt(input) {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) throw new Error('LOCAL_FAILURE_RECEIPT_INPUT_INVALID');
+  const observedAt = boundedString(input.observedAt, 40);
+  if (observedAt === null || Number.isNaN(Date.parse(observedAt))) throw new Error('LOCAL_FAILURE_RECEIPT_OBSERVED_AT_INVALID');
+  if (!/^[0-9a-f]{40}$/.test(input.buildSha ?? '')) throw new Error('LOCAL_FAILURE_RECEIPT_BUILD_SHA_INVALID');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.marketSessionDate ?? '')) throw new Error('LOCAL_FAILURE_RECEIPT_SESSION_DATE_INVALID');
+  return {
+    receiptVersion: failureReceiptVersion,
+    observedAt: new Date(observedAt).toISOString(),
+    marketSessionDate: input.marketSessionDate,
+    buildSha: input.buildSha,
+    mode: boundedString(input.mode, 32) ?? 'UNKNOWN',
+    workerId: boundedString(input.workerId, 96) ?? 'UNKNOWN',
+    failureCode: boundedString(input.failureCode, 96) ?? 'LOCAL_WORKER_LOOP_FAILED',
+    failedOperation: boundedString(input.failedOperation, 96) ?? 'UNKNOWN',
+    marketOpen: nullableBoolean(input.marketOpen),
+  };
+}
+
+export async function writeLocalFailureReceipt(input, rootPath = '.theta-local-worker/receipts') {
+  const root = resolve(rootPath);
+  const sanitized = sanitizeLocalFailureReceipt(input);
+  const previousReceiptHash = await readPrevious(root);
+  const body = { ...sanitized, previousReceiptHash };
+  const receiptHash = hash(body);
+  const filename = `${sanitized.observedAt.replaceAll(':', '-').replace('.000Z', 'Z')}-FAILURE-${receiptHash.slice(0, 12)}.json`;
+  const destination = join(root, sanitized.marketSessionDate, filename);
+  const receipt = { ...body, receiptHash };
+  await atomicJson(destination, receipt);
+  return { state: 'PERSISTED_FAILURE', receiptHash, path: relative(root, destination).replaceAll('\\', '/'), observedAt: sanitized.observedAt };
+}
+
 async function readPrevious(root) {
   try {
     const latest = JSON.parse(await readFile(join(root, 'latest.json'), 'utf8'));
@@ -121,7 +168,13 @@ async function main() {
     raw += chunk;
     if (raw.length > 1_000_000) throw new Error('LOCAL_RECEIPT_INPUT_TOO_LARGE');
   }
-  const result = await writeLocalRuntimeReceipt(JSON.parse(raw), process.argv[2]);
+  // `--failure` as the first CLI argument selects the bounded failure-
+  // receipt path (directive sections 13-15); the root path shifts to the
+  // second argument in that mode, keeping the default (success) call
+  // signature completely unchanged for every existing caller.
+  const result = process.argv[2] === '--failure'
+    ? await writeLocalFailureReceipt(JSON.parse(raw), process.argv[3])
+    : await writeLocalRuntimeReceipt(JSON.parse(raw), process.argv[2]);
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 

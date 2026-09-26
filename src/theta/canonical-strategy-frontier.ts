@@ -6,6 +6,7 @@ import { canonicalThetaStrategySources, type ThetaStrategyBranch } from './strat
 import { buildAdaptiveShadowDecisionReceipt, type AdaptiveShadowDecisionReceipt } from './adaptive-decision-brain.js';
 import { securedContractCapacity } from './secured-contract-capacity.js';
 import type { NewRiskDecisionReceipt } from './decision-assembly.js';
+import type { ThetaQCandidateEvaluationEntry } from './new-risk-orchestrator.js';
 import {
   buildDefinedRiskLockedPlan, classifyAlpacaMultiLegSupport, type DefinedRiskLockedPlanResult,
 } from '../research/defined-risk-locked-plan.js';
@@ -159,7 +160,7 @@ export interface CanonicalStrategyFrontierInput {
   readonly unevaluatedUnderlyingCount: number;
   readonly optionomicsContext: JsonValue;
   readonly entryEligibilityByOptionSymbol?: Readonly<Record<string, NonNullable<CanonicalFrontierCandidate['entryEligibility']>>>;
-  readonly thetaQActionFeasibleByOptionSymbol?: Readonly<Record<string, boolean>>;
+  readonly thetaQCandidateEvaluationByOptionSymbol?: Readonly<Record<string, ThetaQCandidateEvaluationEntry>>;
   readonly thetaQDecision?: Pick<NewRiskDecisionReceipt,
     'snapshotId' | 'timestamp' | 'underlying' | 'winningAction' | 'selectedCandidateId' | 'quantity'>;
   readonly optionsApprovedLevel?: number | null;
@@ -308,14 +309,31 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
   const candidateId = `${branch}:${contract.optionSymbol}`;
   const candidateAegisState = aegisStateFor(input, candidateId);
   const evidence = commonEvidence(contract, input, candidateId);
-  if (branch === 'THETA_CONVENTIONAL' && input.thetaQActionFeasibleByOptionSymbol !== undefined) {
-    const latticeFeasible = input.thetaQActionFeasibleByOptionSymbol[contract.optionSymbol];
-    if (latticeFeasible === undefined) {
-      // The Q lattice evaluates a filtered subset of the broader research
-      // chain. Non-members are known exclusions, not missing provider data.
-      evidence.hardBlockers.push('THETA_Q_OUTSIDE_EVALUATED_LATTICE');
-    } else if (!latticeFeasible) {
-      evidence.hardBlockers.push('THETA_Q_ACTION_INFEASIBLE');
+  if (branch === 'THETA_CONVENTIONAL' && input.thetaQCandidateEvaluationByOptionSymbol !== undefined) {
+    const qEvaluation = input.thetaQCandidateEvaluationByOptionSymbol[contract.optionSymbol];
+    // Truthful per-state hard blockers -- see ThetaQCandidateEvaluationEntry's
+    // doc comment (new-risk-orchestrator.ts) for why there is no separate
+    // "outside Q's design" state: the real pipeline never silently omits a
+    // sent candidate from Q's response (theta_q_baseline.py:rank_candidates
+    // guarantees every sent candidate is returned), so a design-based
+    // rejection always arrives as EVALUATED_INFEASIBLE with a real reason,
+    // never as an absence. An absence here is either a candidate that never
+    // reached the bridge (NOT_SENT_UPSTREAM_REJECT, with the real upstream
+    // reason preserved) or a genuine response anomaly (RESPONSE_GAP) -- both
+    // must still hard-block Paper-facing execution, but now with an honest
+    // reason code, never the old "outside lattice design" implication.
+    if (qEvaluation === undefined) {
+      // Bridge ran successfully this cycle but has no entry at all for this
+      // exact option symbol -- a genuine anomaly given the map is meant to
+      // cover every raw candidate the cycle considered, not just those sent
+      // to Q. Never conflated with a real rejection reason.
+      evidence.hardBlockers.push('THETA_Q_EVALUATION_STATE_MISSING');
+    } else if (qEvaluation.state === 'EVALUATED_INFEASIBLE') {
+      evidence.hardBlockers.push('THETA_Q_ACTION_INFEASIBLE', `THETA_Q_INFEASIBLE_REASON:${qEvaluation.reasonCode}`);
+    } else if (qEvaluation.state === 'NOT_SENT_UPSTREAM_REJECT') {
+      evidence.hardBlockers.push(`THETA_Q_NOT_SENT_UPSTREAM_REJECT:${qEvaluation.reasonCode}`);
+    } else if (qEvaluation.state === 'RESPONSE_GAP') {
+      evidence.hardBlockers.push('THETA_Q_RESPONSE_GAP');
     }
   }
   if (candidateAegisState === 'DEFINED_RISK_ONLY') evidence.hardBlockers.push('AEGIS_DEFINED_RISK_ONLY');

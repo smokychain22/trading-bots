@@ -1547,6 +1547,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     candidatesWithCapacity: readonly RawCandidateInput[] = candidates,
     thetaQ: NewRiskOrchestrationResult['thetaQ'] = null,
     thetaQDecision?: NewRiskOrchestrationResult['receipt'],
+    thetaQCandidateEvaluation?: NewRiskOrchestrationResult['thetaQCandidateEvaluation'],
   ): CanonicalStrategyFrontier => {
     const conventionalRisk = conventionalFrontierRiskLookups(candidatesWithCapacity.map((candidate) => ({
       optionSymbol: candidate.contract.optionSymbol, brokerAllowedQty: candidate.brokerAllowedQty,
@@ -1574,8 +1575,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       paperBootstrapAllowedUnknownComponents: candidate.paperBootstrapAllowedUnknownComponents,
       paperBootstrapReasonCodes: candidate.paperBootstrapReasonCodes,
     }])),
-    thetaQActionFeasibleByOptionSymbol: thetaQ === null ? undefined : Object.fromEntries(thetaQ.candidates.map((candidate) =>
-      [candidate.candidateId, candidate.actionFeasible])),
+    thetaQCandidateEvaluationByOptionSymbol: thetaQCandidateEvaluation,
     thetaQDecision,
     });
   };
@@ -1588,8 +1588,9 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     candidatesWithCapacity: readonly RawCandidateInput[] = candidates,
     thetaQ: NewRiskOrchestrationResult['thetaQ'] = null,
     thetaQDecision?: NewRiskOrchestrationResult['receipt'],
+    thetaQCandidateEvaluation?: NewRiskOrchestrationResult['thetaQCandidateEvaluation'],
   ): Pick<ThetaShadowCycleResult, 'strategyFrontier' | 'strategyQualityDiagnostics'> => {
-    const strategyFrontier = strategyFrontierFor(routing, aegis, aegisByCandidateId, candidatesWithCapacity, thetaQ, thetaQDecision);
+    const strategyFrontier = strategyFrontierFor(routing, aegis, aegisByCandidateId, candidatesWithCapacity, thetaQ, thetaQDecision, thetaQCandidateEvaluation);
     return {
       strategyFrontier,
       strategyQualityDiagnostics: buildStrategyQualityShadowDiagnostic({
@@ -1852,7 +1853,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     optionChainComplete, optionContractsComplete, snapshotContentHash: fusionSnapshot.contentHash, fusionSnapshot,
     snapshotValidForNewRisk: fusionSnapshot.validForNewRisk, orchestration,
     ...strategyDecisionFor(orchestration.routing, orchestration.aegis, orchestration.aegisByCandidateId,
-      runtimeCandidates, orchestration.thetaQ, orchestration.receipt),
+      runtimeCandidates, orchestration.thetaQ, orchestration.receipt, orchestration.thetaQCandidateEvaluation),
     provenance, provenanceDetail: detail, blockers,
   };
 }

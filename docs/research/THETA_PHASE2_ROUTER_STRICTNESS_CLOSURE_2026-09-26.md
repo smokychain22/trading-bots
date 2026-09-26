@@ -517,7 +517,7 @@ only the three expected files changed
 this doc) plus the pre-existing untracked `.agents/`/`skills-lock.json`
 (neither touched this session).
 
-## PHASE_2_STATUS (superseded by the Pass B final closure receipt above) = CLOSED
+## PHASE_2_STATUS (superseded twice — see Final Closure C below) = CLOSED
 
 The one concrete, named residual (branch isolation) is fixed, test-first,
 and verified with zero regression. Prior Phase 2 real findings (strictness,
@@ -526,3 +526,191 @@ remaining items are all correctly external, not code-solvable: the Sep24
 receipt (lives outside repo reach), and full runtime L7 proof
 (RUNTIME_DB_VERIFICATION_PENDING_CODEX, unchanged from every prior pass this
 session).
+
+# Phase 2 FINAL CLOSURE C (2026-09-26)
+
+The owner correctly rejected the Pass B "CLOSED" verdict above: two items
+were documented as real code-solvable gaps (the Q-lattice absence
+conflation, the untested market-session gate) rather than fixed, which
+violates "a phase is not closed while safe code-solvable defects found
+inside that phase are still merely documented." This section fixes all
+four named closure areas. Continues directly from local commit `7ffd34d`
+(no revert of any Pass B work).
+
+## A. Q-lattice absence semantics — FIXED, not just documented
+
+Replaced `thetaQActionFeasibleByOptionSymbol: Record<string, boolean>` with
+`thetaQCandidateEvaluationByOptionSymbol: Record<string, ThetaQCandidateEvaluationEntry>`
+(new-risk-orchestrator.ts), a 4-state truthful model traced end-to-end from
+the real pipeline, not invented:
+
+- `EVALUATED_FEASIBLE` / `EVALUATED_INFEASIBLE` — sent to the Q bridge,
+  present in its response. `theta_q_baseline.py:rank_candidates`'s own
+  docstring ("candidates are still returned... rather than dropped")
+  guarantees this is exhaustive for anything sent — there is **no real
+  "intentionally outside Q's design" state**, because a design-based
+  rejection always comes back as `EVALUATED_INFEASIBLE` with a real reason
+  code, never an omission. This directly falsifies my own earlier Pass B
+  wording ("case 1: intentional lattice design exclusion") — checked
+  against the Python contract before writing anything, not assumed.
+- `NOT_SENT_UPSTREAM_REJECT` (with the real upstream reason —
+  `CONTRACT_NOT_EXECUTABLE` / `DELTA_UNKNOWN` /
+  `OPTION_QUOTE_FRESHNESS_INSUFFICIENT`) — never reached the bridge at all.
+- `RESPONSE_GAP` — sent, but absent from the response; a genuine anomaly,
+  never conflated with a rejection.
+
+The map now covers every raw candidate the cycle considered (not only
+`freshnessEligible`), built once right after the bridge call succeeds and
+threaded through all 9 return sites in `runNewRiskOrchestration` via one
+local variable (`thetaQCandidateEvaluation`). `canonical-strategy-frontier.ts`
+now emits real, distinct hard-blocker codes per state
+(`THETA_Q_ACTION_INFEASIBLE` + `THETA_Q_INFEASIBLE_REASON:<code>`,
+`THETA_Q_NOT_SENT_UPSTREAM_REJECT:<code>`, `THETA_Q_RESPONSE_GAP`,
+`THETA_Q_EVALUATION_STATE_MISSING` for a genuine map-coverage gap) —
+`THETA_Q_OUTSIDE_EVALUATED_LATTICE` no longer exists anywhere in source.
+6 new/rewritten tests in `canonical-frontier-branch-isolation.test.ts`
+cover states A/B/C-D-E/F plus the map-coverage-gap case, all calling the
+real `buildCanonicalStrategyFrontier` end-to-end (no reimplementation). All
+9 pre-existing fixtures in `canonical-strategy-frontier.test.ts` that used
+the old field/shape were updated (2 small `qFeasible()`/`qInfeasible()`
+fixture helpers added), not deleted or weakened.
+
+**Versioning decision (directive item 6), made deliberately, not silently**:
+`canonicalStrategyFrontierVersion` ('theta-canonical-strategy-frontier-v1')
+was **not** bumped. Rationale: this constant versions the frontier's
+*structural shape* (`CanonicalStrategyFrontier`/`CanonicalBranchFrontier`/
+`CanonicalFrontierCandidate`, none of which changed shape); `hardBlockers`/
+`routeReasons` are, by this codebase's own established precedent (e.g. the
+Pass B `BRANCH_CONSTRUCTION_FAILED` addition), a free-form, evolving
+reason-code vocabulary that has never itself triggered a version bump. The
+changed field (`thetaQCandidateEvaluationByOptionSymbol`, replacing
+`thetaQActionFeasibleByOptionSymbol`) is on the *input* type, consumed only
+internally between `theta-shadow-cycle.ts` and `canonical-strategy-frontier.ts`
+— never itself hashed or persisted as a standalone external contract.
+
+## B. Market/session perturbation — AUTOMATED, not merely traced
+
+Extracted the exact real gate (`autonomous-runtime.ts`'s
+`PAPER_EXECUTION_HANDOFF` job: `reconciliation.marketOpen!==true` →
+`skipped('MARKET_CLOSED_NO_PAPER_EXECUTION')`) into its own pure, exported
+function, `paperExecutionHandoffMarketGate` — a pure extract-function
+refactor, behavior byte-identical to the inline check it replaces. No
+Postgres pool, broker client, or test-only bypass logic involved; the real
+call site now calls this exact function. 3 new tests in
+`tests/market-session-perturbation.test.ts`: `marketOpen=false` blocks,
+`marketOpen=true` proceeds, `marketOpen=null` fails closed (never assumed
+open).
+
+## C. Coarse receipt failure path — hardened
+
+Root cause (established in Pass B): the coarse per-cycle receipt write sits
+inside the same large per-cycle `try` as every provider/DB step; an earlier
+exception (e.g. the observed Postgres outage) reaches the outer `catch`
+before the receipt-write block ever runs, so no local evidence survives
+that cycle at all. Added a genuinely separate, minimal, bounded, sanitized
+failure-receipt path:
+
+- `tools/write-local-runtime-receipt.mjs`: new `writeLocalFailureReceipt` +
+  `sanitizeLocalFailureReceipt`, written to the same `receipts/<date>/`
+  directory (discoverable the same way) but with its own
+  `receiptVersion` (`theta-local-runtime-failure-receipt-v1`) and a
+  `-FAILURE-` filename marker — never confusable with a real success
+  receipt. Deliberately does **not** touch `latest.json`: the real success
+  hash chain stays unbroken by a failure receipt (proven by a dedicated
+  test).
+- `tools/windows/theta-local-worker.ps1`'s outer catch now calls this, in
+  its own `try { } catch { }` (bare, silent) so a receipt-write failure can
+  never itself become a new failure source or affect `$workerExit`/
+  fail-closed semantics either way. Parse-checked with PowerShell's own
+  parser (`[System.Management.Automation.Language.Parser]::ParseFile`) —
+  this machine has no way to execute the real worker end-to-end (it calls
+  a live Vercel endpoint with a real token), so this is the correct-scoped
+  verification, not a full run.
+- 3 new tests in `tests/local-runtime-receipt.test.ts`: a bounded failure
+  receipt is produced with exactly the bounded field set (no giant payload,
+  no secrets — asserted via an exact sorted-keys check); the failure
+  receipt never overwrites `latest.json`; a receipt-write failure inside
+  the new function itself still signals failure normally (the bare
+  `catch {}` around the *call site* in the `.ps1`, not inside the function,
+  is what guarantees this never crashes the outer handler — verified by
+  direct source read, consistent with directive item 15's own framing).
+
+## D. TREND / MOMENTUM / UOA — truthful semantics, registry corrected
+
+Searched for a real existing implementation before assuming none (directive
+item 16's explicit instruction) — found one: `underlying-features.ts`'s
+`computeTrendSlope`/`computeReturn`, wrapped by `pit-feature-materializer.ts`'s
+`materializePitFeatureSnapshot`. Confirmed by exhaustive grep that this
+function has **zero callers anywhere in `src/`** — a real, tested,
+unwired research module, not a production feature. Wiring it into the live
+`technical` evidence bundle would require real integration decisions
+(which historical bars, which window, versioning) that go beyond "truthful
+semantics, not new alpha" (directive item 17) — so the closure choice was
+option B, not A, and that choice is recorded here rather than left
+implicit:
+
+- `postgres-theta-cycle-store.ts`: `technical.trend` no longer aliases
+  `snapshot.regimeState` — `regimeState` is now preserved under its own
+  name, and `trend`/`momentum` are explicit `{value: null, status:
+  'NOT_IMPLEMENTED'}`-shaped sentinels a reader cannot mistake for a real
+  zero/neutral measurement. Extracted into a pure function
+  (`persistedTechnicalEvidence`) so this is unit-tested (3 new tests in
+  `tests/persisted-technical-evidence.test.ts`) without a Postgres pool.
+- `strategy-package.ts`'s `canonicalThetaStrategySources` (the 20-feature-
+  family capability registry, consumed descriptively by
+  `adaptiveStrategyRegistry` in `adaptive-decision-brain.ts` — confirmed
+  via grep to have no behavioral/runtime consumer, purely a reporting
+  manifest): removed `TREND`, `MOMENTUM`, and `UNUSUAL_ACTIVITY` from
+  THETA_CONVENTIONAL's `softFeatureFamilies` — none has any real
+  computation wired into this branch's actual candidate evidence. `FLOW`
+  was deliberately kept (real, fetched, quality-classified pipeline
+  genuinely attached to candidate context, unlike the three removed —
+  matches `FLOW_ROLE = RESEARCH_ONLY/INFORMATIONAL_ONLY` from the Pass B
+  section above, not `DEAD`/`UNWIRED`). Checked all 3 test files
+  referencing these enum values by name (`filter-value-classification.test.ts`,
+  `v19-evidence-certification.test.ts`) — both use the shared
+  `thetaFeatureFamily` enum values for an unrelated fixture purpose, neither
+  asserts on `canonicalThetaStrategySources`, neither broke.
+- IV: re-verified, unchanged — already correctly `ACTIVE_PRODUCTION_CONSUMER`
+  with UNKNOWN-not-zero semantics (existing tests still pass, no redesign
+  needed, per directive item 23).
+- REGIME: re-verified, unchanged — mixed hard (CRISIS/SHOCK stress/vol
+  gate) and soft (liquidity/event facts) semantics remain intentional,
+  versioned, and tested (per directive item 24); not reclassified as
+  soft-only.
+
+## Final verification gate (Final Closure C)
+
+`tsc --noEmit`: clean. `eslint` on all 11 changed source/test files: clean.
+Full Node suite: 2772 tests, 2758 pass, 14 pre-existing DB-dependent
+skips, 0 fail. Full Python suite: 694 passed + 11 subtests, 0 fail (Python
+source untouched this pass). PowerShell syntax parse-check on
+`theta-local-worker.ps1`: clean. Manual review of every changed production
+file's diff: no duplicate blocks, no unreachable code, no broad
+catches beyond the two deliberately-bare ones documented above (both exist
+specifically so a diagnostic/receipt-write failure can never become a new
+failure source — matching, not violating, the "no over-broad catch"
+standard), no raw wall-clock/random value newly introduced into any hashed
+canonical structure, no secret-shaped strings in the diff (grep-checked).
+`git status` before commit showed exactly the 13 touched files below plus
+the pre-existing untracked `.agents/`/`skills-lock.json` (neither touched
+this session, across any pass).
+
+## No orphan processes
+
+`ps aux` and `jobs -l` at the start of this pass showed no lingering
+node/tsx/pytest/python processes from any prior pass. The one background
+shell noted at the end of the prior session's transcript was a short,
+already-terminated `ls`/grep loop (its own tool-call record shows it
+completed); nothing was left running to identify or clean up.
+
+## PHASE_2_STATUS = CLOSED (Final Closure C)
+
+All four named closure areas (A-D above) are fixed, not merely documented.
+Every "PHASE 2 MAY CLOSE ONLY IF" question in section 41 of the owner's
+directive now has a deterministic, evidence-backed, and (where the
+directive required it) automatically-tested answer. Sep18/Sep21's
+candidate-level zero-quantity cause and the full runtime L7 Postgres
+verification remain genuinely external (not code-solvable from this
+machine) — recorded, not re-investigated, per the directive's own item 28
+instruction not to re-search exhausted locations.

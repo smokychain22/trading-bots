@@ -130,7 +130,21 @@ export const canonicalThetaStrategySources: readonly ThetaStrategyVersionSource[
     lattice: { dteMin: paperBootstrapRuntimePolicy.conventional.minimumDte,
       dteMax: paperBootstrapRuntimePolicy.conventional.maximumDte, optionType: 'PUT',
       deltaResearchBuckets: [0.10, 0.15, 0.20, 0.25, 0.30, 0.40] },
-    softFeatureFamilies: ['LIQUIDITY', 'OWNERSHIP', 'DRAWDOWN_RECOVERY', 'TREND', 'MOMENTUM', 'REALIZED_VOLATILITY', 'IV', 'SKEW', 'TERM_STRUCTURE', 'VOLATILITY_SURFACE', 'FLOW', 'UNUSUAL_ACTIVITY', 'VOLUME_OPEN_INTEREST', 'EVENT_CONTEXT', 'SECTOR', 'CORRELATION', 'PORTFOLIO_EXPOSURE', 'FUNDAMENTAL_QUALITY', 'REGIME', 'EXECUTION_QUALITY'],
+    // Phase 2 Pass B Final Closure C (directive sections 20-22): TREND and
+    // MOMENTUM removed -- neither has any real computation wired into this
+    // branch's actual candidate evidence (verified this pass: `trend`
+    // previously only aliased regimeState, `momentum` was a hardcoded null
+    // with no implementation anywhere in src/). UNUSUAL_ACTIVITY removed --
+    // it exists only as a name in a research taxonomy type, with zero
+    // consuming function anywhere in the decision path. FLOW is kept: it is
+    // a real, fetched, quality-classified pipeline genuinely attached to
+    // this branch's candidate context, even though it is RESEARCH_ONLY/
+    // INFORMATIONAL_ONLY rather than a hard/soft scoring input today -- this
+    // registry has no separate "informational-only" tier, and keeping FLOW
+    // listed (unlike the three removed above) truthfully reflects that a
+    // real, non-fabricated pipeline exists and is reachable, per the Phase 2
+    // Pass B research doc's FLOW_ROLE classification.
+    softFeatureFamilies: ['LIQUIDITY', 'OWNERSHIP', 'DRAWDOWN_RECOVERY', 'REALIZED_VOLATILITY', 'IV', 'SKEW', 'TERM_STRUCTURE', 'VOLATILITY_SURFACE', 'FLOW', 'VOLUME_OPEN_INTEREST', 'EVENT_CONTEXT', 'SECTOR', 'CORRELATION', 'PORTFOLIO_EXPOSURE', 'FUNDAMENTAL_QUALITY', 'REGIME', 'EXECUTION_QUALITY'],
     allowedActions: ['OPEN_CSP', 'HOLD', 'CLOSE_FULL', 'ROLL', 'LET_EXPIRE', 'ACCEPT_ASSIGNMENT', 'REDEPLOY', 'WAIT', 'PASS'] },
   { ...refs, strategyId: 'theta-hold-strike', strategyVersion: '1.0.0-research', branch: 'THETA_HOLD_STRIKE',
     status: 'RESEARCH_ONLY', executionEnabled: false,
