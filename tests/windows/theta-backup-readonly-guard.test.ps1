@@ -57,6 +57,11 @@ foreach ($marker in $orderedMarkers) {
 if ($checkpoint -notmatch '--duration-seconds=900') { throw 'MIGRATION_CHECKPOINT_SOAK_DURATION_NOT_CERTIFIED' }
 if ($checkpoint -notmatch '\$insideBackupRoot') { throw 'PREVIOUS_BACKUP_PATH_CONTAINMENT_NOT_CHECKED' }
 if ($checkpoint -match "-replace '/', '\\\\'") { throw 'PREVIOUS_BACKUP_PATH_USES_PLATFORM_FRAGILE_REWRITE' }
+if ($checkpoint -notmatch '\$beforeDiagnostic') { throw 'PRE_MIGRATION_CHILD_FAILURE_DIAGNOSTIC_NOT_PRESERVED' }
+if ($checkpoint -notmatch '\$afterDiagnostic') { throw 'POST_MIGRATION_CHILD_FAILURE_DIAGNOSTIC_NOT_PRESERVED' }
+if (($checkpoint | Select-String -Pattern '2>&1' -AllMatches).Matches.Count -lt 2) {
+  throw 'BACKUP_CHILD_ERROR_STREAM_NOT_CAPTURED'
+}
 
 $backupPath = Join-Path $PSScriptRoot '..\..\tools\windows\dr\Backup-Theta.ps1'
 $backupSource = Get-Content -Raw -LiteralPath $backupPath

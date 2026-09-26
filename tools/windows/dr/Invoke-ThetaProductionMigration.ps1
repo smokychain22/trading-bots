@@ -13,8 +13,13 @@ $oldAiven = $env:AIVEN_DATABASE_URL
 $oldDatabase = $env:DATABASE_URL
 $oldCheckpoint = $env:THETA_MIGRATION_CHECKPOINT_ACTIVE
 try {
-  $beforeRaw = & $pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Backup-Theta.ps1') -BackupRoot $root
-  if ($LASTEXITCODE -ne 0) { throw 'PRE_MIGRATION_VERIFIED_BACKUP_FAILED' }
+  $beforeRaw = @(& $pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Backup-Theta.ps1') -BackupRoot $root 2>&1 |
+    ForEach-Object { [string]$_ })
+  $beforeExitCode = $LASTEXITCODE
+  if ($beforeExitCode -ne 0) {
+    $beforeDiagnostic = (($beforeRaw | Select-Object -Last 8) -join ' | ') -replace '[\r\n]+',' '
+    throw "PRE_MIGRATION_VERIFIED_BACKUP_FAILED:exit=$beforeExitCode diagnostic=$beforeDiagnostic"
+  }
   $before = $beforeRaw | ConvertFrom-Json
   if ($before.state -ne 'VERIFIED') { throw 'PRE_MIGRATION_VERIFIED_BACKUP_FAILED' }
   $proof = Get-Content -Raw -LiteralPath (Join-Path $before.path 'restore-verification.json') | ConvertFrom-Json
@@ -46,8 +51,13 @@ try {
       throw 'POST_MIGRATION_DATABASE_SOAK_INCOMPLETE_PRE_BACKUP_PRESERVED'
     }
   } finally { Pop-Location }
-  $afterRaw = & $pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Backup-Theta.ps1') -BackupRoot $root
-  if ($LASTEXITCODE -ne 0) { throw 'POST_MIGRATION_VERIFIED_BACKUP_FAILED_PRE_BACKUP_PRESERVED' }
+  $afterRaw = @(& $pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Backup-Theta.ps1') -BackupRoot $root 2>&1 |
+    ForEach-Object { [string]$_ })
+  $afterExitCode = $LASTEXITCODE
+  if ($afterExitCode -ne 0) {
+    $afterDiagnostic = (($afterRaw | Select-Object -Last 8) -join ' | ') -replace '[\r\n]+',' '
+    throw "POST_MIGRATION_VERIFIED_BACKUP_FAILED_PRE_BACKUP_PRESERVED:exit=$afterExitCode diagnostic=$afterDiagnostic"
+  }
   $after = $afterRaw | ConvertFrom-Json
   if ($after.state -ne 'VERIFIED') { throw 'POST_MIGRATION_VERIFIED_BACKUP_FAILED_PRE_BACKUP_PRESERVED' }
   $receipt = [ordered]@{state='PRODUCTION_MIGRATION_VERIFIED';completedAt=(Get-Date).ToUniversalTime().ToString('o');
