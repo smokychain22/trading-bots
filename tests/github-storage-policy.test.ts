@@ -9,6 +9,9 @@ test('ordinary Git accepts compact source and immutable reference artifacts', ()
   assert.equal(assessGitArtifact({
     path: 'fixtures/reference.json', bytes: ordinaryGitMaximumBytes, kind: 'SMALL_IMMUTABLE_REFERENCE', gitLfsPointer: false,
   }).disposition, 'ORDINARY_GIT_ALLOWED');
+  assert.equal(assessGitArtifact({
+    path: 'fixtures/reference.parquet', bytes: 100_000, kind: 'SMALL_IMMUTABLE_REFERENCE', gitLfsPointer: false,
+  }).disposition, 'ORDINARY_GIT_ALLOWED');
 });
 
 test('large, mutable, recovery, and secret artifacts cannot enter ordinary Git', () => {
@@ -30,6 +33,7 @@ test('tracked path inference keeps runtime databases and dumps out of Git', () =
   assert.equal(inferTrackedArtifactKind('research_outputs/chain.sqlite'), 'CONTINUOUS_OR_MUTABLE_DATA');
   assert.equal(inferTrackedArtifactKind('recovery/database.dump'), 'DATABASE_RECOVERY_ARTIFACT');
   assert.equal(inferTrackedArtifactKind('docs/reference/compact.json'), 'SMALL_IMMUTABLE_REFERENCE');
+  assert.equal(inferTrackedArtifactKind('fixtures/compact.parquet'), 'SMALL_IMMUTABLE_REFERENCE');
   assert.equal(inferTrackedArtifactKind('bots/theta/quant/runtime/aegis_contract.py'), 'SOURCE_OR_CONFIGURATION');
   assert.equal(inferTrackedArtifactKind('src/customer/broker-credential-provider.ts'), 'SOURCE_OR_CONFIGURATION');
   assert.equal(inferTrackedArtifactKind('.env.example'), 'SOURCE_OR_CONFIGURATION');

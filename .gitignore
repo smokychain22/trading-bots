@@ -70,7 +70,6 @@ htmlcov/
 *.sqlite3
 *.sqlite
 *.duckdb
-*.parquet
 *.backup
 *.dump
 *.wal

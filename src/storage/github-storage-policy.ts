@@ -27,7 +27,7 @@ export interface GitArtifactPolicyDecision {
 
 export const ordinaryGitMaximumBytes = 10 * 1024 * 1024;
 
-const runtimeBinaryExtension = /\.(?:backup|dump|sqlite|sqlite3|duckdb|parquet|wal)$/i;
+const runtimeBinaryExtension = /\.(?:backup|dump|sqlite|sqlite3|duckdb|wal)$/i;
 
 export function assessGitArtifact(input: GitArtifactPolicyInput): GitArtifactPolicyDecision {
   if (!Number.isSafeInteger(input.bytes) || input.bytes < 0) {
@@ -56,11 +56,11 @@ export function inferTrackedArtifactKind(path: string): GitArtifactKind {
   if (/(^|\/)\.env(?:\.|$)/.test(normalized) && !normalized.endsWith('.env.example')) return 'SECRET_OR_CREDENTIAL';
   if (/(^|\/)(?:credentials?|secrets?|private[-_]?keys?)(?:\.[^/]*)?$/.test(normalized)) return 'SECRET_OR_CREDENTIAL';
   if (/\.(?:backup|dump)$/.test(normalized) || /(^|\/)backups?\//.test(normalized)) return 'DATABASE_RECOVERY_ARTIFACT';
+  if (/(^|\/)(?:fixtures?|reference|manifests?)\//.test(normalized)) return 'SMALL_IMMUTABLE_REFERENCE';
   if (/\.(?:sqlite|sqlite3|duckdb|parquet|wal)$/.test(normalized)
     || /(^|\/)(?:research[_-]?(?:exports?|outputs?)|spool|observations?|option[_-]?chains?)\//.test(normalized)) {
     return 'CONTINUOUS_OR_MUTABLE_DATA';
   }
   if (/\.(?:bin|zip|zst|gz|tar|onnx|pt|pth|h5|pkl|joblib)$/.test(normalized)) return 'LARGE_IMMUTABLE_ARTIFACT';
-  if (/(^|\/)(?:fixtures?|reference|manifests?)\//.test(normalized)) return 'SMALL_IMMUTABLE_REFERENCE';
   return 'SOURCE_OR_CONFIGURATION';
 }
