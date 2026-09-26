@@ -176,6 +176,21 @@ export function evaluateCalibrationFromPredictions(input: {
   readonly evaluationPairs: readonly CalibrationEvaluationPair[]; readonly fittingRowIds: readonly string[];
   readonly independentN: number;
 }): CalibrationEvaluationReceipt | null {
+  // ADVERSARIAL (overnight §23): a non-finite predicted probability is a
+  // real data-integrity violation, not an "insufficient data" case -- if
+  // it were silently allowed through, every downstream metric would
+  // become NaN and (per JavaScript arithmetic) that NaN would propagate
+  // invisibly rather than being caught. Throw loudly instead.
+  const nonFinite = input.evaluationPairs.find((p) => !Number.isFinite(p.predictedProbability));
+  if (nonFinite !== undefined) throw new Error(`CALIBRATION_NON_FINITE_PREDICTION:${nonFinite.rowId}`);
+  // ADVERSARIAL: a duplicate rowId would double-count one real observation
+  // as if it were two independent ones -- reject rather than silently
+  // inflating N.
+  const seenRowIds = new Set<string>();
+  for (const pair of input.evaluationPairs) {
+    if (seenRowIds.has(pair.rowId)) throw new Error(`CALIBRATION_DUPLICATE_ROW_ID:${pair.rowId}`);
+    seenRowIds.add(pair.rowId);
+  }
   const brierScore = computeBrierScore(input.evaluationPairs);
   const logLoss = computeLogLoss(input.evaluationPairs);
   const bins = computeReliabilityBins(input.evaluationPairs);

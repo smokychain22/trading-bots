@@ -154,6 +154,47 @@ function average(values: readonly (number | null)[]): number | null {
   return known.length === 0 ? null : known.reduce((a, b) => a + b, 0) / known.length;
 }
 
+export interface FillPredictionDiagnostics {
+  readonly probability: number;
+  readonly outOfDomain: boolean;
+  readonly outOfDomainFields: readonly string[];
+  readonly modelHasZeroTrainingData: boolean;
+}
+
+/** A standardized feature value more than this many standard deviations
+ * from the training mean is flagged out-of-domain -- the baseline is
+ * still evaluated (never refuses to produce a number), but the caller
+ * receives an explicit, typed signal that this prediction extrapolates
+ * well beyond what the model was ever fit on. */
+const OUT_OF_DOMAIN_Z_THRESHOLD = 4;
+
+/**
+ * ADVERSARIAL HARDENING (overnight §24): the plain `predictFillProbability`
+ * always returns a bare number with no way to distinguish "well-supported
+ * prediction" from "wild extrapolation on unseen feature scale." This
+ * wrapper adds that typed signal without changing the underlying model or
+ * its math.
+ */
+export function predictFillProbabilityWithDiagnostics(
+  model: FillBaselineModel, features: FillFeatureVector,
+): FillPredictionDiagnostics {
+  const probability = predictFillProbability(model, features);
+  const s = model.standardization;
+  const checks: readonly { readonly field: string; readonly value: number | null; readonly stat: FeatureStandardization }[] = [
+    { field: 'quoteAgeSeconds', value: features.quoteAgeSeconds, stat: s.quoteAgeSeconds },
+    { field: 'underlyingLiquidity', value: features.underlyingLiquidity, stat: s.underlyingLiquidity },
+    { field: 'optionOpenInterest', value: features.optionOpenInterest, stat: s.optionOpenInterest },
+    { field: 'optionVolume', value: features.optionVolume, stat: s.optionVolume },
+  ];
+  const outOfDomainFields = checks
+    .filter((c) => c.value !== null && Math.abs(standardize(c.value, c.stat)) > OUT_OF_DOMAIN_Z_THRESHOLD)
+    .map((c) => c.field);
+  return {
+    probability, outOfDomain: outOfDomainFields.length > 0 || model.trainingN === 0,
+    outOfDomainFields, modelHasZeroTrainingData: model.trainingN === 0,
+  };
+}
+
 export function predictFillProbability(model: FillBaselineModel, features: FillFeatureVector): number {
   const c = model.coefficients;
   const s = model.standardization;

@@ -99,3 +99,35 @@ test('evaluateCalibrationFromPredictions still enforces the fitting/evaluation-o
     evaluationPairs: pairs, fittingRowIds: ['shared-id'], independentN: 2,
   }), /CALIBRATION_EVALUATION_OVERLAPS_FITTING_SAMPLE/);
 });
+
+test('ADVERSARIAL (overnight §23): a NaN or infinite predicted probability throws loudly rather than silently propagating NaN through every metric', () => {
+  const withNaN = [pair('e1', Number.NaN, 1), pair('e2', 0.5, 0)];
+  assert.throws(() => evaluateCalibrationFromPredictions({
+    modelId: 'm', modelVersion: 'v1', dataProvenance: 'NON_EMPIRICAL_TEST_DATA', evaluationPairs: withNaN, fittingRowIds: [], independentN: 2,
+  }), /CALIBRATION_NON_FINITE_PREDICTION:e1/);
+  const withInf = [pair('e1', Number.POSITIVE_INFINITY, 1), pair('e2', 0.5, 0)];
+  assert.throws(() => evaluateCalibrationFromPredictions({
+    modelId: 'm', modelVersion: 'v1', dataProvenance: 'NON_EMPIRICAL_TEST_DATA', evaluationPairs: withInf, fittingRowIds: [], independentN: 2,
+  }), /CALIBRATION_NON_FINITE_PREDICTION:e1/);
+});
+
+test('ADVERSARIAL: a duplicate rowId in the evaluation set is rejected, never silently double-counted', () => {
+  const withDupe = [pair('e1', 0.5, 1), pair('e1', 0.6, 0)];
+  assert.throws(() => evaluateCalibrationFromPredictions({
+    modelId: 'm', modelVersion: 'v1', dataProvenance: 'NON_EMPIRICAL_TEST_DATA', evaluationPairs: withDupe, fittingRowIds: [], independentN: 1,
+  }), /CALIBRATION_DUPLICATE_ROW_ID:e1/);
+});
+
+test('a single-row (tiny N) evaluation set returns null rather than a fabricated slope/intercept', () => {
+  const tiny = evaluateCalibrationFromPredictions({
+    modelId: 'm', modelVersion: 'v1', dataProvenance: 'NON_EMPIRICAL_TEST_DATA',
+    evaluationPairs: [pair('e1', 0.5, 1)], fittingRowIds: [], independentN: 1,
+  });
+  assert.equal(tiny, null);
+});
+
+test('CORE CLAIM: log-loss remains finite for predictions exactly at 0 or 1, never -Infinity from an unclamped log(0)', () => {
+  const extreme = [pair('e1', 1, 1), pair('e2', 0, 0), pair('e3', 0.5, 1)];
+  const logLoss = computeLogLoss(extreme);
+  assert.ok(logLoss !== null && Number.isFinite(logLoss));
+});
