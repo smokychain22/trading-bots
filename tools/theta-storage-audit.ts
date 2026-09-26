@@ -7,7 +7,9 @@ import {
   categoryBytes, measuredAppendRates, normalizeRelationStat,
   type AuditedRelation, type PostgresRelationStatRow,
 } from '../src/storage/postgres-storage-audit.js';
-import { aivenDeveloper1BootstrapStorageBudget, assessStorageBudget } from '../src/storage/storage-budget.js';
+import {
+  aivenDeveloper1BootstrapStorageBudget, assessStorageBudget, forecastStorageGrowth,
+} from '../src/storage/storage-budget.js';
 
 const environmentFile = process.argv.find((argument) => argument.startsWith('--environment-file='))
   ?.slice('--environment-file='.length) ?? '.env.local';
@@ -304,6 +306,7 @@ try {
     storageTelemetry,
     storageBudgetPolicy: aivenDeveloper1BootstrapStorageBudget,
     storageBudgetAssessment: assessStorageBudget(storageTelemetry, aivenDeveloper1BootstrapStorageBudget),
+    storageGrowthForecast: forecastStorageGrowth(storageTelemetry, aivenDeveloper1BootstrapStorageBudget),
     measuredAppendRowsPerHourByRelation: measuredAppendRates(
       relations, observedAt, prior?.relations ?? null, prior?.observedAt ?? null,
     ),
