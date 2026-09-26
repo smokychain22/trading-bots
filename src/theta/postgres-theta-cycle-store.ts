@@ -65,7 +65,12 @@ export interface PersistedThetaCycle {
 }
 
 export interface PostgresThetaCycleStoreOptions {
-  readonly persistRelationalCandidateEvidence?: boolean;
+  /**
+   * Explicit research-only opt-in. The safe default keeps the canonical
+   * frontier and bounded cycle projection in PostgreSQL while omitting the
+   * high-volume relational candidate copies that belong in the local archive.
+   */
+  readonly persistRelationalCandidateEvidence: boolean;
 }
 
 export function deterministicRuntimeUuid(value: string): string {
@@ -226,7 +231,7 @@ export function persistedTechnicalEvidence(regimeState: JsonValue | undefined): 
 }
 
 export class PostgresThetaCycleStore {
-  constructor(private readonly pool: Pool, private readonly options: PostgresThetaCycleStoreOptions = {}) {}
+  constructor(private readonly pool: Pool, private readonly options: PostgresThetaCycleStoreOptions) {}
 
   async persist(context: ThetaCyclePersistenceContext, cycle: ThetaShadowCycleResult): Promise<PersistedThetaCycle> {
     // Phase 1 Zero-Unknown Reclosure Pass 3 continuation (item 6): the real
@@ -248,7 +253,7 @@ export class PostgresThetaCycleStore {
     if (fusion.contentHash !== cycle.snapshotContentHash) throw new Error('FUSION_SNAPSHOT_HASH_MISMATCH');
     if (!verifyFusionSnapshot(fusion.snapshot as JsonValue, fusion.contentHash)) throw new Error('FUSION_SNAPSHOT_CONTENT_INVALID');
     const fusionSnapshotId = deterministicRuntimeUuid(`fusion:${context.botInstanceId}:${fusion.contentHash}`);
-    const persistRelationalCandidateEvidence = this.options.persistRelationalCandidateEvidence !== false;
+    const persistRelationalCandidateEvidence = this.options.persistRelationalCandidateEvidence;
     const candidateResearchStorage: PersistedThetaCycle['candidateResearchStorage'] =
       persistRelationalCandidateEvidence ? 'POSTGRES_RELATIONAL' : 'CANONICAL_FRONTIER_PRIMARY_LOCAL_ARCHIVE_PENDING';
     const persistenceStartedAt = Date.now();

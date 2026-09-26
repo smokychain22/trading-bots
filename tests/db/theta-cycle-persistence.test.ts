@@ -134,7 +134,7 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
           rejectionCategory: 'EDGE_UNKNOWN', reasons: [{ code: 'EDGE_UNKNOWN' }], policyVersion: 'test-policy', modelVersions: {}, eventualOutcomeKnown: false, eventualRealizedPnl: null }],
       },
     } as unknown as ThetaShadowCycleResult;
-    const store = new PostgresThetaCycleStore(pool);
+    const store = new PostgresThetaCycleStore(pool, { persistRelationalCandidateEvidence: true });
     const context = { botInstanceId: botId, universeVersionId: null, strategyVersionId: strategyId, featureVersionId: featureId,
       riskLimitVersionId: riskId, executionVersionId: executionId, costModelVersionId: costId,
       accountSnapshotId: Number(accountSnapshot.rows[0].account_snapshot_id),

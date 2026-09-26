@@ -11,13 +11,36 @@ cutover are complete.
 
 | Data family | Target canonical home | Outage or hot buffer | Long-term archive | Trading authority | Runtime state |
 | --- | --- | --- | --- | --- | --- |
+| Source, schemas, migrations, policies, manifests and reproducibility metadata | Private GitHub repository | None | GitHub Releases for reviewed immutable bundles | No | ACTIVE |
+| Small immutable reference datasets and fixtures | Private GitHub repository | None | GitHub Releases when ordinary Git size policy is exceeded | No | ACTIVE WITH CI SIZE/PATH GUARD |
+| Large immutable versioned artifacts | Content-addressed archive | SQLite WAL while assembling | Reviewed GitHub Release or Git LFS only with a governed manifest | No | MANIFESTED ARCHIVE REQUIRED |
+| PostgreSQL recovery artifacts | Verified backup storage | Staging backup generation | Verified daily, weekly and monthly recovery generations | No | ACTIVE |
 | Broker, account, order, position, fill, lifecycle and whole-chain state | PostgreSQL | SQLite WAL | Verified Parquet/DuckDB copy | Yes | ACTIVE |
 | Decision, mutation and reconciliation audit receipts | PostgreSQL | SQLite WAL | Verified Parquet/DuckDB copy | Yes | ACTIVE |
 | High-volume market, risk and candidate observations | Parquet/DuckDB | SQLite WAL | Parquet/DuckDB | No | POSTGRES WRITE CUTOVER PENDING |
 | Research datasets, counterfactuals and model evidence | Parquet/DuckDB | SQLite WAL | Parquet/DuckDB | No | POSTGRES WRITE CUTOVER PENDING |
 | Rebuildable provider and feature caches | Memory | SQLite WAL when needed | None unless promoted to evidence | No | ACTIVE |
 
-PostgreSQL remains the transactional authority. SQLite is an outage spool, not a second trading authority. Parquet/DuckDB is the portable analytical authority for append-heavy history. No archive grants broker authority.
+PostgreSQL remains the transactional authority. GitHub is the versioned source,
+configuration and compact immutable-research tier. SQLite is an outage spool,
+not a second trading authority. Parquet/DuckDB is the portable analytical
+authority for append-heavy history. Database dumps remain in verified backup
+storage. No archive grants broker authority.
+
+Ordinary Git rejects database dumps, runtime SQLite or DuckDB files, continuous
+option-chain history, high-frequency observations, mutable binary databases,
+secrets and large artifacts. Compact immutable Parquet fixtures are permitted
+only in governed fixture/reference paths and remain subject to the ordinary-Git
+size ceiling. Larger immutable artifacts require a reviewed release, Git LFS or
+content-addressed archive manifest. CI enforces this through
+`npm run storage:git-policy`.
+
+The operating objective is `DATABASE_GROWTH = BOUNDED_AND_PREDICTABLE`.
+Available provider disk space is telemetry, not proof that placement is sound.
+Capacity expansion cannot substitute for moving append-heavy research evidence
+out of PostgreSQL. Every local research batch and Parquet manifest carries a
+bot namespace so future bots share the storage mechanism without sharing or
+overwriting THETA evidence.
 
 The machine-readable registry is `src/storage/storage-authority-registry.ts`. Retention cannot authorize PostgreSQL cleanup until a verified archive manifest, row-count parity, deterministic digest parity, Parquet readability and schema parity all pass. This is enforced by `src/storage/retention-policy.ts`.
 

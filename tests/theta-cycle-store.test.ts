@@ -42,7 +42,7 @@ test('quote ledger projects timestamped Alpaca BBO with feed and quality, includ
 test('raw event observations persist even when no derived Optionomics feature snapshot exists', async () => {
   const statements: string[] = [];
   const client = { query: async (sql: string) => { statements.push(sql); return { rows: [], rowCount: 1 }; } } as unknown as PoolClient;
-  const store = new PostgresThetaCycleStore({} as Pool) as unknown as {
+  const store = new PostgresThetaCycleStore({} as Pool, { persistRelationalCandidateEvidence: false }) as unknown as {
     persistOptionomicsEvidence(client: PoolClient, id: string, snapshot: Record<string, unknown>): Promise<void>;
   };
   await store.persistOptionomicsEvidence(client, deterministicRuntimeUuid('test-fusion'), {

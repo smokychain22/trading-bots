@@ -18,7 +18,7 @@ test('a genuine Production persistence call with no release identity is rejected
   const previous = process.env.VERCEL_ENV;
   process.env.VERCEL_ENV = 'production';
   try {
-    const store = new PostgresThetaCycleStore({} as Pool);
+    const store = new PostgresThetaCycleStore({} as Pool, { persistRelationalCandidateEvidence: false });
     await assert.rejects(() => store.persist(baseContext, stubCycle), /PRODUCTION_DECISION_RELEASE_IDENTITY_REQUIRED/);
   } finally {
     if (previous === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = previous;
@@ -29,7 +29,7 @@ test('a genuine Production persistence call WITH a resolved release identity pas
   const previous = process.env.VERCEL_ENV;
   process.env.VERCEL_ENV = 'production';
   try {
-    const store = new PostgresThetaCycleStore({} as Pool);
+    const store = new PostgresThetaCycleStore({} as Pool, { persistRelationalCandidateEvidence: false });
     await assert.rejects(
       () => store.persist({ ...baseContext, releaseIdentity: { sourceSha: 'a'.repeat(40), workerSha: 'a'.repeat(40) } }, stubCycle),
       /FUSION_SNAPSHOT_NOT_AVAILABLE/,
@@ -43,7 +43,7 @@ test('outside Production (no VERCEL_ENV=production), missing release identity do
   const previous = process.env.VERCEL_ENV;
   delete process.env.VERCEL_ENV;
   try {
-    const store = new PostgresThetaCycleStore({} as Pool);
+    const store = new PostgresThetaCycleStore({} as Pool, { persistRelationalCandidateEvidence: false });
     await assert.rejects(() => store.persist(baseContext, stubCycle), /FUSION_SNAPSHOT_NOT_AVAILABLE/);
   } finally {
     if (previous !== undefined) process.env.VERCEL_ENV = previous;
