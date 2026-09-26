@@ -43,20 +43,29 @@ export interface FalseInactivityRecord {
 }
 
 /** Every rate below is reported SEPARATELY -- never combined into one
- * inactivity percentage, per this wave's explicit instruction. */
+ * inactivity percentage, per this wave's explicit instruction.
+ *
+ * **CORRECTED (Phase 2, Profitability Brain Completion Program)**: every
+ * field is `number | null`. `null` means the real denominator (records.length)
+ * was zero -- not computable -- never a fabricated `0` that would read as
+ * "measured zero inactivity." This matches the discipline already
+ * established in `wait-regret-dataset.ts` (`rate()` there returns `null`
+ * on an empty batch); this module previously diverged from that pattern,
+ * which is exactly the kind of UNKNOWN-to-0 coercion this engagement's
+ * standing rule forbids. */
 export interface FalseInactivityRates {
   readonly totalRecords: number;
-  readonly goodWaitRate: number;
-  readonly economicWaitRate: number;
-  readonly safetyRejectRate: number;
-  readonly executionRejectRate: number;
-  readonly implementationFalseRejectRate: number;
-  readonly providerFailureRejectRate: number;
-  readonly dataUnavailableRejectRate: number;
+  readonly goodWaitRate: number | null;
+  readonly economicWaitRate: number | null;
+  readonly safetyRejectRate: number | null;
+  readonly executionRejectRate: number | null;
+  readonly implementationFalseRejectRate: number | null;
+  readonly providerFailureRejectRate: number | null;
+  readonly dataUnavailableRejectRate: number | null;
 }
 
-function rate(records: readonly FalseInactivityRecord[], causes: readonly FalseInactivityCause[]): number {
-  if (records.length === 0) return 0;
+function rate(records: readonly FalseInactivityRecord[], causes: readonly FalseInactivityCause[]): number | null {
+  if (records.length === 0) return null;
   return records.filter((r) => causes.includes(r.cause)).length / records.length;
 }
 

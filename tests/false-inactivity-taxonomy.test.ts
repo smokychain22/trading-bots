@@ -31,11 +31,12 @@ test('PROVIDER_FAILURE_REJECT and DATA_STALE_REJECT both map to PROVIDER', () =>
   assert.equal(falseInactivityToBlockerClass.DATA_STALE_REJECT, 'PROVIDER');
 });
 
-test('empty record set produces all-zero rates, never NaN or a fabricated rate', () => {
+test('CORE CLAIM (corrected, Phase 2): empty record set produces null rates -- never a fabricated 0, never NaN', () => {
   const rates = computeFalseInactivityRates([]);
   assert.equal(rates.totalRecords, 0);
-  assert.equal(rates.goodWaitRate, 0);
-  assert.equal(Number.isNaN(rates.goodWaitRate), false);
+  assert.equal(rates.goodWaitRate, null);
+  assert.equal(rates.implementationFalseRejectRate, null);
+  assert.equal(Number.isNaN(rates.goodWaitRate as unknown as number), false);
 });
 
 test('PIPELINE_NOT_EVALUATED is real, distinct from a reject, and not counted in any reject rate', () => {

@@ -115,6 +115,18 @@ export const RESEARCH_BLOCKER_REGISTRY: readonly BlockerRecord[] = [
     canBeBuiltAround: true, nextAction: 'CLOSED this wave -- see src/research/unknown-value-taxonomy.ts.',
     testToClose: 'tests/unknown-value-taxonomy.test.ts (real, passing).', blockerClass: 'CODE_SOLVABLE_CLAUDE', resolvedAt: '2026-09-26T00:00:00Z',
   },
+  {
+    contractVersion: researchBlockerRegistryVersion, issueId: 'THETA-CANONICAL-FRONTIER-NO-PER-BRANCH-ISOLATION',
+    domain: 'CROSS_STRATEGY_FALLBACK', owner: 'CODEX',
+    currentState: "buildCanonicalStrategyFrontier() (src/theta/canonical-strategy-frontier.ts:561) calls `branchOrder.map((branch) => buildBranch(branch, input))` with no try/catch per branch. buildBranch() itself can throw synchronously (confirmed: line 499's `CANONICAL_STRATEGY_SOURCE_MISSING` Error, plus any unhandled exception inside singleLegPutCandidate/definedRiskCandidate/coveredCallCandidate/stockActionCandidate/rankCandidates for any branch). Since Array.prototype.map fails on the first throw, an exception while constructing H's or D's candidates would currently prevent Q's (and every other branch's) frontier from being produced in that cycle at all.",
+    exactMissingInput: 'Per-branch error isolation (e.g. a try/catch around each buildBranch() call producing a typed BLOCKED_BRANCH_ERROR evaluationState for that one branch, distinct from NOT_APPLICABLE/BLOCKED_MISSING_INPUT) so a research-only branch throwing cannot poison the applicable branches in the same cycle.',
+    whyRequired: "Phase 2 (2I, cross-strategy fallback) of the Profitability Brain Completion Program requires that H/D research-state failures cannot propagate to poison Q's evaluation. Currently proven false by direct code read -- this is a real correctness gap, not a hypothetical one.",
+    consumer: 'src/theta/new-risk-orchestrator.ts (the sole caller of buildCanonicalStrategyFrontier)',
+    canBeBuiltAround: false,
+    nextAction: 'Codex adds per-branch isolation at the buildCanonicalStrategyFrontier() call site -- this file is Production-locked and outside research-branch write authority.',
+    testToClose: 'A test proving a thrown exception during THETA_HOLD_STRIKE or THETA_DEFINED_RISK candidate construction still yields a valid CanonicalStrategyFrontier with THETA_CONVENTIONAL fully evaluated.',
+    blockerClass: 'CODE_SOLVABLE_CODEX', resolvedAt: null,
+  },
 ];
 
 /**
