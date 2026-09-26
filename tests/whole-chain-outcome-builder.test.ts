@@ -15,7 +15,7 @@ function baseComponents(overrides: Partial<WholeChainComponents> = {}): WholeCha
 
 test('a resolved chain with complete components is FACTUAL_OBSERVED', () => {
   const row = buildWholeChainOutcomeRow({
-    wholeChainId: 'wc1', strategyFamily: 'THETA_CONVENTIONAL', rollCount: 0,
+    chainId: 'wc1', strategyFamily: 'THETA_CONVENTIONAL', rollCount: 0,
     components: baseComponents(), dailyCapital: [], observationCutoffAt: '2026-09-25T00:00:00Z', isResolved: true,
   });
   assert.equal(row.state, 'CHAIN_RESOLVED');
@@ -25,7 +25,7 @@ test('a resolved chain with complete components is FACTUAL_OBSERVED', () => {
 
 test('an unresolved chain at cutoff is CHAIN_CENSORED, never dropped, identifiability NOT_IDENTIFIABLE', () => {
   const row = buildWholeChainOutcomeRow({
-    wholeChainId: 'wc2', strategyFamily: 'THETA_CONVENTIONAL', rollCount: 1,
+    chainId: 'wc2', strategyFamily: 'THETA_CONVENTIONAL', rollCount: 1,
     components: baseComponents(), dailyCapital: [], observationCutoffAt: '2026-09-25T00:00:00Z', isResolved: false,
   });
   assert.equal(row.state, 'CHAIN_CENSORED');
@@ -34,7 +34,7 @@ test('an unresolved chain at cutoff is CHAIN_CENSORED, never dropped, identifiab
 
 test('CORE CLAIM: a roll is preserved as a separate credit/cost, never netting away a prior realized loss', () => {
   const row = buildWholeChainOutcomeRow({
-    wholeChainId: 'wc3', strategyFamily: 'THETA_CONVENTIONAL', rollCount: 1,
+    chainId: 'wc3', strategyFamily: 'THETA_CONVENTIONAL', rollCount: 1,
     components: baseComponents({ initialPutPremium: 100, putCloseCosts: 300, rollCredits: 50, rollCloseCosts: 0 }),
     dailyCapital: [], observationCutoffAt: '2026-09-25T00:00:00Z', isResolved: true,
   });
@@ -44,9 +44,9 @@ test('CORE CLAIM: a roll is preserved as a separate credit/cost, never netting a
 
 test('rollCount is reported, never used to fabricate independent trade counts', () => {
   const row = buildWholeChainOutcomeRow({
-    wholeChainId: 'wc4', strategyFamily: 'THETA_DEFINED_RISK', rollCount: 3,
+    chainId: 'wc4', strategyFamily: 'THETA_DEFINED_RISK', rollCount: 3,
     components: baseComponents(), dailyCapital: [], observationCutoffAt: '2026-09-25T00:00:00Z', isResolved: true,
   });
   assert.equal(row.rollCount, 3);
-  assert.equal(row.wholeChainId, 'wc4');
+  assert.equal(row.chainId, 'wc4');
 });

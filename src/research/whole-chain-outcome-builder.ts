@@ -18,7 +18,7 @@ export type WholeChainState = 'CHAIN_OPEN' | 'CHAIN_CENSORED' | 'CHAIN_RESOLVED'
 export interface WholeChainOutcomeRow {
   readonly contractVersion: typeof wholeChainOutcomeBuilderVersion;
   readonly taxonomyVersion: typeof identifiabilityTaxonomyVersion;
-  readonly wholeChainId: string;
+  readonly chainId: string;
   readonly strategyFamily: string;
   readonly state: WholeChainState;
   readonly rollCount: number;
@@ -34,7 +34,7 @@ export interface WholeChainOutcomeRow {
 
 /**
  * `rollCount` is supplied by the caller (a count of real `ROLL_LINK` edges
- * for this `wholeChainId`) rather than inferred here -- this module never
+ * for this `chainId`) rather than inferred here -- this module never
  * counts a roll leg as an independent completed trade; every roll is one
  * link within the SAME chain, and the chain-level P&L already reflects
  * `rollCredits`/`rollCloseCosts` as separate, additive legs (see
@@ -43,7 +43,7 @@ export interface WholeChainOutcomeRow {
  * does not renegotiate that invariant; it only reports it at the row level.
  */
 export function buildWholeChainOutcomeRow(input: {
-  readonly wholeChainId: string;
+  readonly chainId: string;
   readonly strategyFamily: string;
   readonly rollCount: number;
   readonly components: WholeChainComponents;
@@ -66,7 +66,7 @@ export function buildWholeChainOutcomeRow(input: {
   const state: WholeChainState = input.isResolved ? 'CHAIN_RESOLVED' : 'CHAIN_CENSORED';
   return {
     contractVersion: wholeChainOutcomeBuilderVersion, taxonomyVersion: identifiabilityTaxonomyVersion,
-    wholeChainId: input.wholeChainId, strategyFamily: input.strategyFamily, state,
+    chainId: input.chainId, strategyFamily: input.strategyFamily, state,
     rollCount: input.rollCount, pnl, capitalDays, observationCutoffAt: input.observationCutoffAt,
     identifiabilityStatus: state === 'CHAIN_RESOLVED' && pnl.wholeChainPnl !== null ? 'FACTUAL_OBSERVED' : 'NOT_IDENTIFIABLE',
   };

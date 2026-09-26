@@ -70,7 +70,7 @@ export function adaptWholeChainOutcomeFromEvidence(input: {
   if (input.evidence.components === null) return null;
   const components: WholeChainComponents = input.evidence.components;
   return buildWholeChainOutcomeRow({
-    wholeChainId: input.evidence.chainId, strategyFamily: input.strategyFamily, rollCount: input.rollCount,
+    chainId: input.evidence.chainId, strategyFamily: input.strategyFamily, rollCount: input.rollCount,
     components, dailyCapital: input.dailyCapital, observationCutoffAt: input.observationCutoffAt, isResolved: input.isResolved,
   });
 }

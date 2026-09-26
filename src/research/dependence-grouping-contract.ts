@@ -17,7 +17,7 @@ export type DependenceGroupKind = 'WHOLE_CHAIN' | 'OVERLAPPING_UNDERLYING_EXPOSU
 
 export interface DependenceGroupMembership {
   readonly rowId: string;
-  readonly wholeChainId: string | null;
+  readonly chainId: string | null;
   readonly underlying: string | null;
   readonly exposureWindowStart: string | null;
   readonly exposureWindowEnd: string | null;
@@ -31,10 +31,10 @@ export interface DependenceGroupAssignment {
 }
 
 /**
- * `wholeChainId` is the mandatory, primary grouping key -- every row
- * sharing one `wholeChainId` gets the SAME group id regardless of any
+ * `chainId` is the mandatory, primary grouping key -- every row
+ * sharing one `chainId` gets the SAME group id regardless of any
  * other field, so a rolled chain's every leg is structurally forced into
- * one fold. Rows without a `wholeChainId` group by overlapping-underlying-
+ * one fold. Rows without a `chainId` group by overlapping-underlying-
  * exposure-window when both are present, else fall back to a singleton
  * group keyed on the row itself (never silently grouped with an unrelated
  * row merely because both lack richer identity).
@@ -42,8 +42,8 @@ export interface DependenceGroupAssignment {
 export function assignDependenceGroups(memberships: readonly DependenceGroupMembership[]): readonly DependenceGroupAssignment[] {
   const results: DependenceGroupAssignment[] = [];
   for (const m of memberships) {
-    if (m.wholeChainId !== null) {
-      results.push({ rowId: m.rowId, groupId: `chain:${m.wholeChainId}`, groupKind: 'WHOLE_CHAIN' });
+    if (m.chainId !== null) {
+      results.push({ rowId: m.rowId, groupId: `chain:${m.chainId}`, groupKind: 'WHOLE_CHAIN' });
       continue;
     }
     if (m.underlying !== null && m.exposureWindowStart !== null && m.exposureWindowEnd !== null) {

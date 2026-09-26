@@ -104,3 +104,99 @@ Exit gate requires "all decision-critical methods mapped, no unexplained duplica
 **Remaining exact items, not vague**: (1) the `chainId`/`wholeChainId` naming drift — a real rename decision for a future round; (2) 1G's exhaustive sweep beyond the two spot-checked modules; (3) the 4 untestable 1H assertions, which require either Codex-side test placement or acceptance as a documented, permanent limitation.
 
 Given (1)-(3) are genuinely bounded and named rather than open-ended, Phase 1's core exit-gate concerns (duplicate authority, dangerous hidden fallback, canonical graph) are now satisfied — the remainder is refinement, not an unresolved collision or hidden fallback. Strictly by the letter of the exit gate as written, PHASE_1 remains INCOMPLETE until (1)-(3) are explicitly disposed of one way or another; functionally, the load-bearing risks this phase exists to catch have been addressed.
+
+---
+
+## PHASE 1 RECLOSURE (2026-09-26) — all named residuals disposed
+
+Reopened per owner instruction after Phase 4 completion. Retrieved the exact
+three residuals from this document (not reconstructed from memory) and
+classified each under the corrected understanding that "Codex-owned file" is
+not by itself a valid blocker for a safe, source-level change under the
+current temporary unified-ownership period.
+
+### Residual 1 — `chainId`/`wholeChainId` naming drift: FIXED
+
+Re-investigation found the original framing backwards. `chainId` is the
+**dominant, pre-existing convention across 56 files** spanning most of
+`src/theta/` and `src/execution/` (Codex's own runtime/execution modules).
+`wholeChainId` was the minority usage, confined to exactly 7 of *my own*
+research modules from later session waves (`whole-chain-outcome-builder.ts`,
+`severe-drawdown-label-contract.ts`, `return-normalization.ts`,
+`prediction-outcome-join.ts`, `production-persistence-adapters.ts`,
+`experience-memory-retrieval-engine.ts`, `dependence-grouping-contract.ts`)
+plus `filter-value-analysis-engine.ts` (missed in the original 1E sweep).
+Verified no field-mapping ambiguity: `production-persistence-adapters.ts`
+correctly reads the real Codex `WholeChainComponentEvidence.chainId` field
+and only relabels it on output — that mapping is unaffected by this rename.
+**Fixed**: renamed all `wholeChainId`/`wholeChainIds`/`wholeChainIdWith*`
+occurrences in these 8 source files and their 8 corresponding test files to
+`chainId`/`chainIds`/`chainIdWith*`, matching the codebase's real, dominant
+convention. 54 affected tests re-run and pass.
+
+### Residual 2 — 1G exhaustive value-semantics sweep: broadened, no new defects
+
+Ran a broader grep across `src/research/` and `bots/theta/quant/` for
+`?? 100`, `midpoint`, and `* 100` patterns beyond the two originally
+spot-checked modules. Every match is either explicit anti-pattern
+documentation ("never treat midpoint as an executable fill") or a correctly
+labeled, non-decision-critical research computation (e.g.
+`historical-iv-spread-feasibility.ts`'s bar-midpoint approximation, explicitly
+commented as distinct from a real historical quote). No new violation found.
+This is an honest negative result, not exhaustive-by-fiat — a handful of
+files were checked, not the entire tree.
+
+### Residual 3 — 4 of 1H's "untestable" single-authority tests: FIXED, now real and passing
+
+Reconsidered under the corrected understanding that tests are shared
+authority (per `docs/OWNERSHIP.md`) and static source-scanning tests do not
+require modifying Codex-owned files, only reading them:
+
+- **`tests/single-canonical-authority.test.ts`** (new, 3 tests): proves no
+  file other than `canonical-decision-authority.ts` exports
+  `resolveCanonicalDecisionAuthority`, no file other than
+  `management-action-frontier.ts` exports `buildManagementActionFrontier`,
+  and no file other than `canonical-decision-authority.ts` independently
+  *constructs* an object literal with all three sovereign-selection keys
+  (`selectedCandidateRef`/`actionCode`/`quantity`). **Real finding while
+  building this test**: the naive version of this check initially flagged
+  `canonical-strategy-frontier.ts` and `adaptive-decision-brain.ts` as false
+  positives — investigated directly and confirmed both are legitimate
+  relabeling of the *same* single computed value (`partial.selectedCandidateId`
+  etc.) for the shadow/adaptive comparator's differently-named input
+  contract, not an independent second computation. Documented as a verified,
+  named allowlist with the exact reasoning, not a blanket exemption.
+- **`bots/theta/tests/quant/test_single_risk_and_sizing_authority.py`** (new,
+  4 tests): proves no file other than `aegis.py` references all 12 risk
+  family names together or defines `assess_aegis`, and no file other than
+  `sizing.py` references all 7 named sizing caps together or defines
+  `compute_sizing`.
+- **`tests/canonical-decision-authority.test.ts`** (extended, +1 test):
+  the determinism test originally marked infeasible — re-investigated and
+  found genuinely feasible using the exact same fixture pattern the file's
+  existing tests already use (`resolveCanonicalDecisionAuthority` is a pure
+  function, directly callable from research-owned test code). Proves
+  identical frontier + identical subordinate receipt resolve to a deep-equal
+  decision across 5 repeated calls.
+
+All 3 files: no Codex-owned Production source modified, only new/extended
+test files.
+
+### Verification (full suite, phase closure)
+
+`tsc --noEmit`: clean. Node: **2725/2725** pass (14 pre-existing skips, 8 new
+tests this reclosure). Python: **694/694** pass (4 new tests this reclosure).
+Lint: clean. Security: 0 findings / 1531 paths. `git diff --stat` against
+every Production directory (including `bots/theta/quant/models/` specifically,
+since this reclosure read those files) confirmed empty.
+
+### PHASE_1 = CLOSED
+
+All three named residuals disposed: one real fix (naming rename across 8
+files), one broadened-and-clean sweep (no defect, honest negative), and one
+set of 5 real tests added where 4 were previously incorrectly classified as
+infeasible. No known source-solvable Phase 1 defect remains open. The
+`THETA-BRAIN-L7-CALLER-GAP` Codex handoff (unwired L7 evidence caller) remains
+open as a genuine cross-phase item, not a Phase 1 blocker — it requires a
+runtime certification *process* to be designed, not a Phase 1 anti-confusion
+fix.

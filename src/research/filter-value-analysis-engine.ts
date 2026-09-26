@@ -39,8 +39,8 @@ export const filterValueAnalysisEngineVersion = 'theta-filter-value-analysis-eng
  * these from `buildNormalizedReturnSeries`). */
 export interface MatchedAblationPair {
   readonly pairId: string;
-  readonly wholeChainIdWithFeature: string;
-  readonly wholeChainIdWithoutFeature: string;
+  readonly chainIdWithFeature: string;
+  readonly chainIdWithoutFeature: string;
   readonly normalizedReturnWithFeature: number;
   readonly normalizedReturnWithoutFeature: number;
 }

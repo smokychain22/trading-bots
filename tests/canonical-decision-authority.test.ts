@@ -38,3 +38,22 @@ test('the canonical frontier is the only selection authority when legacy evidenc
   assert.equal(resolved.strategyBranch, 'THETA_CONVENTIONAL');
   assert.deepEqual(resolved.reasonCodes, ['CANONICAL_STRUCTURAL_SELECTION', 'SELECTION_AUTHORITY_STRUCTURAL_SAFE_FALLBACK']);
 });
+
+// Phase 1 (Profitability Brain Completion Program) 1H residual closure:
+// same immutable frontier + same subordinate receipt must always resolve to
+// the same canonical decision. This is the determinism test 1H's original
+// closure marked as untestable without touching Codex-owned runtime files --
+// it is not: resolveCanonicalDecisionAuthority is a pure function reachable
+// from research-owned test code with the exact same fixture pattern already
+// used above.
+test('CORE CLAIM: identical frontier + identical subordinate receipt resolve to an identical decision every time', () => {
+  const frontier = {
+    selectedCandidateId: 'CANONICAL-CANDIDATE', primaryAction: 'OPEN_CSP', selectedQuantity: 1,
+    selectedBranch: 'THETA_CONVENTIONAL', decisionAuthorityVersion: 'theta-canonical-decision-authority-v1',
+    globalWaitEarned: false, globalWaitReasons: [],
+  } as unknown as CanonicalStrategyFrontier;
+  const results = Array.from({ length: 5 }, () => resolveCanonicalDecisionAuthority(frontier, receipt()));
+  for (const result of results.slice(1)) {
+    assert.deepEqual(result, results[0]);
+  }
+});

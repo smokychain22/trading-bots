@@ -12,7 +12,7 @@ export const experienceMemoryRetrievalEngineVersion = 'theta-experience-memory-r
 
 export interface HistoricalEpisodeRecord {
   readonly episodeId: string;
-  readonly wholeChainId: string;
+  readonly chainId: string;
   readonly strategy: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE' | 'THETA_DEFINED_RISK';
   readonly labelAvailableAt: string | null;
   readonly regime: string | null;
@@ -79,13 +79,13 @@ export function retrieveSimilarSituations(
     return buildEmptySimilarSituationReport({ queryDecisionId: query.queryDecisionId, similarityDefinitionVersion: query.similarityDefinitionVersion });
   }
 
-  const independentWholeChainIds = new Set(neighbors.map((n) => n.wholeChainId));
+  const independentWholeChainIds = new Set(neighbors.map((n) => n.chainId));
   const strategies: readonly ('THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE' | 'THETA_DEFINED_RISK')[] = ['THETA_CONVENTIONAL', 'THETA_HOLD_STRIKE', 'THETA_DEFINED_RISK'];
   const perStrategy = strategies.map((strategy) => {
     const members = neighbors.filter((n) => n.strategy === strategy);
     return {
       strategy, episodeCount: members.length,
-      independentEpisodeCount: new Set(members.map((m) => m.wholeChainId)).size,
+      independentEpisodeCount: new Set(members.map((m) => m.chainId)).size,
       meanAfterCostOutcome: average(members.map((m) => m.afterCostOutcome).filter((v): v is number => v !== null)),
     };
   });

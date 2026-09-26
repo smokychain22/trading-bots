@@ -5,7 +5,7 @@ import { ALL_CANONICAL_FEATURE_FAMILIES, type FilterValueVerdict } from '../src/
 
 function pair(overrides: Partial<MatchedAblationPair> = {}): MatchedAblationPair {
   return {
-    pairId: 'p1', wholeChainIdWithFeature: 'chain-a', wholeChainIdWithoutFeature: 'chain-b',
+    pairId: 'p1', chainIdWithFeature: 'chain-a', chainIdWithoutFeature: 'chain-b',
     normalizedReturnWithFeature: 0.05, normalizedReturnWithoutFeature: 0.02, ...overrides,
   };
 }

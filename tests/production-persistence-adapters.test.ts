@@ -44,7 +44,7 @@ test('CORE CLAIM: a real, complete WholeChainComponentEvidence adapts into a rea
     dailyCapital: [], observationCutoffAt: '2026-09-26T01:00:00Z', isResolved: true,
   });
   assert.ok(row !== null);
-  assert.equal(row?.wholeChainId, 'chain-1');
+  assert.equal(row?.chainId, 'chain-1');
   assert.equal(row?.state, 'CHAIN_RESOLVED');
   assert.equal(row?.pnl.wholeChainPnl, 300 - 50 + 0 - 0 + 0 + 0 - 0 - 2 - 0); // initialPutPremium - putCloseCosts + dividends + CC(0) - fees, no stock leg
 });

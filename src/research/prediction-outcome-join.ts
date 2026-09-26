@@ -13,7 +13,7 @@ export type JoinStatus = 'JOINED' | 'PENDING' | 'CENSORED';
 export interface OutcomeEvidence {
   readonly entityId: string;
   readonly decisionId: string;
-  readonly wholeChainId: string | null;
+  readonly chainId: string | null;
   readonly targetId: string;
   readonly modelVersionAtOutcomeTime: string;
   readonly featureSnapshotHash: string;

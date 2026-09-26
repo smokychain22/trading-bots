@@ -4,7 +4,7 @@ import { buildNormalizedReturnSeries, computeNormalizedReturn } from '../src/res
 
 function input(overrides: Partial<Parameters<typeof computeNormalizedReturn>[0]> = {}) {
   return {
-    wholeChainId: 'chain-1', strategyFamily: 'THETA_CONVENTIONAL', netPnl: 100,
+    chainId: 'chain-1', strategyFamily: 'THETA_CONVENTIONAL', netPnl: 100,
     capitalAtRisk: 1000, capitalDays: 10, maxLoss: null, collateral: 5000,
     ...overrides,
   };
@@ -34,9 +34,9 @@ test('capital-day normalization multiplies capitalAtRisk by capitalDays', () => 
 });
 
 test('buildNormalizedReturnSeries reports unresolved rows as a count, never silently drops them unaccounted', () => {
-  const rows = [input({ wholeChainId: 'a' }), input({ wholeChainId: 'b', capitalAtRisk: null })];
+  const rows = [input({ chainId: 'a' }), input({ chainId: 'b', capitalAtRisk: null })];
   const series = buildNormalizedReturnSeries(rows, 'capital-at-risk-return-v1');
   assert.equal(series.series.length, 1);
   assert.equal(series.unresolvedCount, 1);
-  assert.deepEqual(series.wholeChainIds, ['a']);
+  assert.deepEqual(series.chainIds, ['a']);
 });

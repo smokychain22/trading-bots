@@ -22,7 +22,7 @@ export interface SevereDrawdownThresholdContract {
 }
 
 export interface SevereDrawdownLabelInput {
-  readonly wholeChainId: string;
+  readonly chainId: string;
   readonly threshold: SevereDrawdownThresholdContract;
   /** The maximum observed adverse excursion as a fraction of capital-at-
    * risk, over the chain's full observed path so far. `null` if no mark
@@ -33,7 +33,7 @@ export interface SevereDrawdownLabelInput {
 
 export interface SevereDrawdownLabelResult {
   readonly contractVersion: typeof severeDrawdownLabelContractVersion;
-  readonly wholeChainId: string;
+  readonly chainId: string;
   readonly label: SevereDrawdownLabel;
   readonly thresholdVersion: string;
 }
@@ -44,7 +44,7 @@ export function buildSevereDrawdownLabel(input: SevereDrawdownLabelInput): Sever
   }
   if (!input.isResolved) {
     return {
-      contractVersion: severeDrawdownLabelContractVersion, wholeChainId: input.wholeChainId,
+      contractVersion: severeDrawdownLabelContractVersion, chainId: input.chainId,
       label: 'RIGHT_CENSORED', thresholdVersion: input.threshold.thresholdVersion,
     };
   }
@@ -53,13 +53,13 @@ export function buildSevereDrawdownLabel(input: SevereDrawdownLabelInput): Sever
     // not a resolved observation either way. Treated as censored for THIS
     // label rather than fabricating a negative from missing evidence.
     return {
-      contractVersion: severeDrawdownLabelContractVersion, wholeChainId: input.wholeChainId,
+      contractVersion: severeDrawdownLabelContractVersion, chainId: input.chainId,
       label: 'RIGHT_CENSORED', thresholdVersion: input.threshold.thresholdVersion,
     };
   }
   const breached = input.peakAdverseExcursionFraction >= input.threshold.severeDrawdownFraction;
   return {
-    contractVersion: severeDrawdownLabelContractVersion, wholeChainId: input.wholeChainId,
+    contractVersion: severeDrawdownLabelContractVersion, chainId: input.chainId,
     label: breached ? 'FACTUAL_POSITIVE' : 'FACTUAL_NEGATIVE', thresholdVersion: input.threshold.thresholdVersion,
   };
 }

@@ -37,7 +37,7 @@ export const RETURN_NORMALIZATION_APPLICABILITY: Readonly<Record<ReturnNormaliza
 };
 
 export interface NormalizedReturnInput {
-  readonly wholeChainId: string;
+  readonly chainId: string;
   readonly strategyFamily: string;
   readonly netPnl: number;
   /** Null when the denominator itself is unknown -- never coerced to a
@@ -51,7 +51,7 @@ export interface NormalizedReturnInput {
 
 export interface NormalizedReturn {
   readonly contractVersion: typeof returnNormalizationVersion;
-  readonly wholeChainId: string;
+  readonly chainId: string;
   readonly normalizationVersion: ReturnNormalizationVersion;
   /** `null` (never `0`) when the required denominator for this basis is
    * unavailable for this row -- an unresolvable normalization is dropped
@@ -88,11 +88,11 @@ export function computeNormalizedReturn(
     }
   })();
   if (denominator === null || denominator <= 0) {
-    return { contractVersion: returnNormalizationVersion, wholeChainId: input.wholeChainId, normalizationVersion, normalizedReturn: null };
+    return { contractVersion: returnNormalizationVersion, chainId: input.chainId, normalizationVersion, normalizedReturn: null };
   }
   return {
     contractVersion: returnNormalizationVersion,
-    wholeChainId: input.wholeChainId,
+    chainId: input.chainId,
     normalizationVersion,
     normalizedReturn: input.netPnl / denominator,
   };
@@ -108,15 +108,15 @@ export function computeNormalizedReturn(
 export function buildNormalizedReturnSeries(
   inputs: readonly NormalizedReturnInput[],
   normalizationVersion: ReturnNormalizationVersion,
-): { readonly series: readonly number[]; readonly wholeChainIds: readonly string[]; readonly unresolvedCount: number } {
+): { readonly series: readonly number[]; readonly chainIds: readonly string[]; readonly unresolvedCount: number } {
   const series: number[] = [];
-  const wholeChainIds: string[] = [];
+  const chainIds: string[] = [];
   let unresolvedCount = 0;
   for (const input of inputs) {
     const normalized = computeNormalizedReturn(input, normalizationVersion);
     if (normalized.normalizedReturn === null) { unresolvedCount += 1; continue; }
     series.push(normalized.normalizedReturn);
-    wholeChainIds.push(input.wholeChainId);
+    chainIds.push(input.chainId);
   }
-  return { series, wholeChainIds, unresolvedCount };
+  return { series, chainIds, unresolvedCount };
 }

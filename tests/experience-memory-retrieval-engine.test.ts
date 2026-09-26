@@ -4,7 +4,7 @@ import { isEligibleHistoricalExperience, retrieveSimilarSituations, type Histori
 
 function episode(overrides: Partial<HistoricalEpisodeRecord> = {}): HistoricalEpisodeRecord {
   return {
-    episodeId: 'e1', wholeChainId: 'chain-1', strategy: 'THETA_CONVENTIONAL',
+    episodeId: 'e1', chainId: 'chain-1', strategy: 'THETA_CONVENTIONAL',
     labelAvailableAt: '2026-09-01T00:00:00Z', regime: 'LOW_VOL', flowCohort: 'FLOW_NEUTRAL',
     afterCostOutcome: 50, wasAssignment: false, wasTailEvent: false, isWaitOutcome: false,
     similarityFeatures: { iv: 0.3, delta: 0.2 }, ...overrides,
