@@ -1,0 +1,151 @@
+{
+  "_provenance": {
+    "note": "REAL historical evidence, verbatim excerpt. Not a fixture-shaped synthetic object. Copied from .theta-local-worker/evidence-spool/theta-evidence.sqlite (local worker read-only inspection, Phase 2/this session), then truncated to the first 3 real candidates per real branch present that day (originally 1995 total frontierCandidates -- truncation is size-only, every kept candidate is byte-identical to the original, no value altered). No secrets/account identifiers were ever present in this schema (the local-evidence-spool writer sanitizes at write time by design).",
+    "decisionCycleId": "no-submit-7981e31e-367c-49f6-99b7-f6b2de657e27",
+    "decisionAsOf": "2026-09-24T17:34:59.216Z",
+    "sourceSha": "7373b482ff81723d18c367ed3c9bf048b67b1db6",
+    "originalFrontierCandidateCount": 1995,
+    "originalBranchCounts": {
+      "THETA_CONVENTIONAL": 683,
+      "THETA_HOLD_STRIKE": 312,
+      "THETA_DEFINED_RISK": 1000
+    }
+  },
+  "symbol": "SPY",
+  "blockers": [
+    "OPTION_CONTRACTS_INCOMPLETE:SHADOW_RESEARCH:PUT",
+    "ALPACA_UNDERLYING_IEX_QUOTE_UNQUALIFIED"
+  ],
+  "brokerMutationAllowed": false,
+  "qCandidateCount": 4,
+  "qDecision": "PASS",
+  "qReasonCodes": [
+    "NO_QUALIFYING_CANDIDATE"
+  ],
+  "frontierCandidates": [
+    {
+      "aegisFamilies": [],
+      "aegisReasonCodes": [],
+      "aegisState": "HARD_VETO",
+      "branch": "THETA_CONVENTIONAL",
+      "candidateId": "THETA_CONVENTIONAL:SPY261023P00500000",
+      "hardBlockers": [
+        "AEGIS_HARD_VETO",
+        "THETA_Q_OUTSIDE_EVALUATED_LATTICE"
+      ],
+      "quantity": 0,
+      "unknownEvidence": []
+    },
+    {
+      "aegisFamilies": [],
+      "aegisReasonCodes": [],
+      "aegisState": "HARD_VETO",
+      "branch": "THETA_CONVENTIONAL",
+      "candidateId": "THETA_CONVENTIONAL:SPY261023P00505000",
+      "hardBlockers": [
+        "AEGIS_HARD_VETO",
+        "THETA_Q_OUTSIDE_EVALUATED_LATTICE"
+      ],
+      "quantity": 0,
+      "unknownEvidence": []
+    },
+    {
+      "aegisFamilies": [],
+      "aegisReasonCodes": [],
+      "aegisState": "HARD_VETO",
+      "branch": "THETA_CONVENTIONAL",
+      "candidateId": "THETA_CONVENTIONAL:SPY261023P00510000",
+      "hardBlockers": [
+        "AEGIS_HARD_VETO",
+        "THETA_Q_OUTSIDE_EVALUATED_LATTICE"
+      ],
+      "quantity": 0,
+      "unknownEvidence": []
+    },
+    {
+      "aegisFamilies": [],
+      "aegisReasonCodes": [],
+      "aegisState": "HARD_VETO",
+      "branch": "THETA_HOLD_STRIKE",
+      "candidateId": "THETA_HOLD_STRIKE:SPY260928P00725000",
+      "hardBlockers": [
+        "AEGIS_HARD_VETO",
+        "ROUTER_NOT_APPLICABLE"
+      ],
+      "quantity": 0,
+      "unknownEvidence": []
+    },
+    {
+      "aegisFamilies": [],
+      "aegisReasonCodes": [],
+      "aegisState": "HARD_VETO",
+      "branch": "THETA_HOLD_STRIKE",
+      "candidateId": "THETA_HOLD_STRIKE:SPY260928P00727000",
+      "hardBlockers": [
+        "AEGIS_HARD_VETO",
+        "ROUTER_NOT_APPLICABLE"
+      ],
+      "quantity": 0,
+      "unknownEvidence": []
+    },
+    {
+      "aegisFamilies": [],
+      "aegisReasonCodes": [],
+      "aegisState": "HARD_VETO",
+      "branch": "THETA_HOLD_STRIKE",
+      "candidateId": "THETA_HOLD_STRIKE:SPY260928P00728000",
+      "hardBlockers": [
+        "AEGIS_HARD_VETO",
+        "ROUTER_NOT_APPLICABLE"
+      ],
+      "quantity": 0,
+      "unknownEvidence": []
+    },
+    {
+      "aegisFamilies": [],
+      "aegisReasonCodes": [],
+      "aegisState": "HARD_VETO",
+      "branch": "THETA_DEFINED_RISK",
+      "candidateId": "THETA_DEFINED_RISK:SPY261016P00520000:SPY261016P00510000",
+      "hardBlockers": [
+        "AEGIS_HARD_VETO",
+        "NON_POSITIVE_NET_CREDIT",
+        "ROUTER_NOT_APPLICABLE"
+      ],
+      "quantity": 0,
+      "unknownEvidence": []
+    },
+    {
+      "aegisFamilies": [],
+      "aegisReasonCodes": [],
+      "aegisState": "HARD_VETO",
+      "branch": "THETA_DEFINED_RISK",
+      "candidateId": "THETA_DEFINED_RISK:SPY261016P00305000:SPY261016P00300000",
+      "hardBlockers": [
+        "AEGIS_HARD_VETO",
+        "NON_POSITIVE_NET_CREDIT",
+        "ROUTER_NOT_APPLICABLE"
+      ],
+      "quantity": 0,
+      "unknownEvidence": [
+        "EXECUTION_QUOTE_REQUIRED:spread too wide"
+      ]
+    },
+    {
+      "aegisFamilies": [],
+      "aegisReasonCodes": [],
+      "aegisState": "HARD_VETO",
+      "branch": "THETA_DEFINED_RISK",
+      "candidateId": "THETA_DEFINED_RISK:SPY261016P00310000:SPY261016P00300000",
+      "hardBlockers": [
+        "AEGIS_HARD_VETO",
+        "NON_POSITIVE_NET_CREDIT",
+        "ROUTER_NOT_APPLICABLE"
+      ],
+      "quantity": 0,
+      "unknownEvidence": [
+        "EXECUTION_QUOTE_REQUIRED:spread too wide"
+      ]
+    }
+  ]
+}

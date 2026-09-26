@@ -58,11 +58,16 @@ test('runtime, empirical, and broker proof advance only sequentially', () => {
 });
 
 // Phase 1 reclosure (THETA-BRAIN-L7-CALLER-GAP): deriveRealCurrentWorkerEvidence
-// is the real caller this gap was missing. This fixture's shape matches the
-// real Sep24 SQLite evidence recovered in Phase 2 (a real THETA_CONVENTIONAL
-// branch, evaluated, with real candidates carrying a real aegisState and a
-// real sizing.quantity) -- not an arbitrary synthetic shape.
-test('CORE CLAIM: a real evaluated frontier with real AEGIS/sizing evidence derives the correct methodIds, never over-claiming an unevaluated branch', () => {
+// is the real caller this gap was missing. Naming correction (Pass 2, item
+// 17): this is a SYNTHETIC_FIXTURE_MATCHING_REAL_SHAPE, not real evidence --
+// its shape mirrors the field structure of the real Sep24 SQLite evidence
+// recovered in Phase 2 (a THETA_CONVENTIONAL branch, evaluated, candidates
+// carrying an aegisState and a sizing.quantity), so it proves the
+// derivation LOGIC is correct against a realistic structure, but it is not
+// itself a claim of real historical data. See
+// tests/theta-real-historical-episode.test.ts for the actual deserialized
+// historical object test.
+test('SYNTHETIC_FIXTURE_MATCHING_REAL_SHAPE: an evaluated frontier with AEGIS/sizing evidence derives the correct methodIds, never over-claiming an unevaluated branch', () => {
   const evidence = deriveRealCurrentWorkerEvidence({
     strategyFrontier: {
       selectedCandidateId: null,

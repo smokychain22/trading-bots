@@ -109,8 +109,32 @@ export const profitabilityBrainMethodRegistry: readonly ProfitabilityBrainMethod
     ['bots/theta/quant/models/aegis.py', 'src/theta/aegis-derivation.ts']),
   method('CONSTRAINED_QUANTITY_SIZING', 'SIZING', 'PRODUCTION_LOCKED', 6,
     ['bots/theta/quant/models/sizing.py', 'src/theta/canonical-strategy-frontier.ts']),
+  // Phase 1 Zero-Unknown Reclosure Pass 2: sourceEvidence corrected after
+  // exact call-graph trace. The REAL, actual selector is
+  // buildCanonicalStrategyFrontier's own internal `structuralSelection`
+  // computation (canonical-strategy-frontier.ts:740,
+  // `selectedCandidateId: structuralSelection?.candidateId ?? null`) --
+  // computed unconditionally, synchronously, every time the frontier is
+  // built, with zero Postgres/network dependency. master-paper-plan-
+  // assembly.ts:59 confirms this by reading `frontier.selectedCandidateId`
+  // directly, never through any intermediary. `canonical-decision-
+  // authority.ts`'s `resolveCanonicalDecisionAuthority` was previously
+  // listed here too, but traced this pass to have exactly one real caller
+  // (`postgres-theta-cycle-store.ts:598`) -- it runs ONLY during Postgres
+  // persistence, reconciling the frontier's already-made selection against
+  // the separate subordinate/legacy receipt. It is a downstream validation/
+  // handoff step, not independent selection logic, and it did NOT execute
+  // during the real Sep24 cycles (Postgres was down that day,
+  // `postgres_state: SPOOLED_LOCAL_PENDING_DB` throughout). Conflating the
+  // two under one methodId would have let a frontier-only cycle (no
+  // Postgres reached) wrongly claim L7 proof for a persistence-time-only
+  // function that never ran. See CANONICAL_DECISION_HANDOFF_VALIDATION
+  // below for that function's own, correctly-scoped entry.
   method('CANONICAL_ENTRY_SELECTION', 'SELECTION', 'PRODUCTION_LOCKED', 6,
-    ['src/theta/canonical-decision-authority.ts', 'src/execution/master-paper-plan-assembly.ts']),
+    ['src/theta/canonical-strategy-frontier.ts', 'src/execution/master-paper-plan-assembly.ts']),
+  method('CANONICAL_DECISION_HANDOFF_VALIDATION', 'SELECTION', 'PRODUCTION_LOCKED', 6,
+    ['src/theta/canonical-decision-authority.ts', 'src/theta/postgres-theta-cycle-store.ts'],
+    'Persistence-time reconciliation only -- runs solely inside postgres-theta-cycle-store.ts, requires a live Postgres write; never independently selects, only confirms the frontier\'s own selection is not silently overridden by the subordinate/legacy receipt.'),
   method('MANAGEMENT_CANDIDATE_DISCOVERY', 'MANAGEMENT', 'PRODUCTION_LOCKED', 6,
     ['src/theta/production-paper-management-candidate-source.ts']),
   method('MANAGEMENT_ACTION_FRONTIER', 'MANAGEMENT', 'PRODUCTION_LOCKED', 6,

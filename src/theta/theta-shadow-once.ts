@@ -1,5 +1,7 @@
 import { assertProviderConfiguration, loadEnvironment, loadEnvironmentFile } from '../config/environment.js';
 import { pathToFileURL } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { runThetaShadowCycle, type ProvenanceOrigin, type ThetaShadowCycleConfig } from './theta-shadow-cycle.js';
 import type { AlpacaProviderConfig } from './alpaca-provider.js';
 import type { OptionomicsProviderConfig } from './optionomics-provider.js';
@@ -8,7 +10,31 @@ import { discoverRealUniverse, type UniverseDiscoveryConfig } from './universe-d
 import type { UnderlyingCandidateInput } from './universe-policy.js';
 import { buildFirstPaperRuntimeTelemetry } from './first-paper-runtime-telemetry.js';
 import { paperBootstrapRuntimePolicy } from './paper-bootstrap-runtime-policy.js';
-import { buildProfitabilityBrainRealityReceipt, deriveRealCurrentWorkerEvidence } from './profitability-brain-reality.js';
+import { deriveRealCurrentWorkerEvidence } from './profitability-brain-reality.js';
+import {
+  buildProfitabilityBrainRealityFromManifest, profitabilityBrainEvidenceManifestVersion,
+  type ProfitabilityBrainEvidenceManifest, type ProfitabilityRuntimeEvidence,
+} from './profitability-brain-evidence-manifest.js';
+import { canonicalJson } from '../research/point-in-time-evidence.js';
+
+// Phase 1 Zero-Unknown Reclosure Pass 2: reuses the existing, already-tested
+// canonical source/worker identity mechanism
+// (profitability-brain-evidence-manifest.ts) rather than a second identity
+// system. `sourceSha`/`workerSha` here are deliberately the SAME value --
+// this command proves "this exact checked-out source, run once, produces
+// this real evidence" (REAL_HISTORICAL_REPLAY_VERIFIED in spirit), which is
+// a genuinely different, narrower claim than "the currently DEPLOYED remote
+// Vercel worker just executed this" (that would require the deployed
+// worker's own reported buildSha, a separate fact this offline command has
+// no way to observe). The immutable-source guard below (git HEAD +
+// clean-tree check) mirrors the identical, already-established pattern in
+// tools/theta-no-submit-probe.ts verbatim -- not reinvented.
+export function currentImmutableSourceSha(): string {
+  const sha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const dirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim();
+  if (!/^[0-9a-f]{40}$/.test(sha) || dirty.length > 0) throw new Error('SHADOW_ONCE_IMMUTABLE_SOURCE_REQUIRED');
+  return sha;
+}
 
 // Safe one-shot entrypoint for runThetaShadowCycle(). Designed to be run
 // later by Codex in a protected environment holding the real Vercel
@@ -204,13 +230,58 @@ async function main(): Promise<number> {
     frontier: result.strategyFrontier,
     alpacaQuoteState: result.fusionSnapshot?.snapshot.alpacaQuoteState,
   });
-  // THETA-BRAIN-L7-CALLER-GAP (Phase 1 reclosure): this is the real caller.
-  // Every genuine run of this command derives its own currentWorkerRealData
-  // evidence directly from THIS run's real strategyFrontier -- never a
-  // fixture, never a hand-typed list -- so the reality receipt below is
-  // only ever as real as this actual cycle's own output.
-  const realEvidence = deriveRealCurrentWorkerEvidence({ strategyFrontier: result.strategyFrontier });
-  const brainReality = buildProfitabilityBrainRealityReceipt({ currentWorkerRealData: realEvidence });
+  // THETA-BRAIN-L7-CALLER-GAP (Phase 1 Zero-Unknown Reclosure Pass 2): the
+  // real caller, now routed through the existing, already-tested
+  // profitability-brain-evidence-manifest.ts identity/linkage system
+  // (never a second identity system, never a bare L7 promotion with no
+  // SHA proof at all). Every genuine run derives its own evidence from
+  // THIS run's real strategyFrontier -- never a fixture -- and the
+  // manifest's own validation (source/worker SHA match, evidence-hash
+  // format, ID uniqueness) is what actually gates whether any method may
+  // reach L7, exactly as it already does for every other manifest caller.
+  let brainRealityManifestViolations: readonly string[] = [];
+  let brainRealityLevelCounts: Record<string, number> | null = null;
+  let realEvidence: readonly string[] = [];
+  try {
+    const sourceSha = currentImmutableSourceSha();
+    const derived = deriveRealCurrentWorkerEvidence({ strategyFrontier: result.strategyFrontier });
+    // Phase 1 Zero-Unknown Reclosure Pass 2 (directive items 29-33): this
+    // command's own `config.aegisInputsOrigin` is honestly `CALLER_MANUAL`
+    // (see defaultShadowCycleConfig's own comment -- sector/correlation/
+    // IV-shock/spread-widening inputs are not yet real-derived for this
+    // specific entrypoint). A method executing with partially-manual inputs
+    // is real EXECUTION but not real-DATA-complete -- AEGIS_RISK_PERMISSION
+    // must never claim L7 from a run whose own risk inputs were manual,
+    // even though the frontier genuinely evaluated. CONSTRAINED_QUANTITY_
+    // SIZING is excluded too: its structural sizing path consumes the same
+    // AEGIS state, so a manual-AEGIS run cannot honestly claim full-real
+    // sizing either.
+    const inputRealnessExclusions = config.aegisInputsOrigin === 'CALLER_MANUAL'
+      ? new Set(['AEGIS_RISK_PERMISSION', 'CONSTRAINED_QUANTITY_SIZING']) : new Set<string>();
+    realEvidence = derived.filter((methodId) => !inputRealnessExclusions.has(methodId));
+    const snapshotIdentity = result.snapshotContentHash ?? 'no-snapshot';
+    const runtime: ProfitabilityRuntimeEvidence[] = realEvidence.map((methodId) => ({
+      methodId, evidenceId: `${result.runId}:${methodId}`,
+      evidenceHash: createHash('sha256').update(`${methodId}:${snapshotIdentity}`).digest('hex'),
+      observedAt: result.finishedAt, sourceSha, workerSha: sourceSha,
+    }));
+    const manifestBody = {
+      contractVersion: profitabilityBrainEvidenceManifestVersion, canonicalSourceSha: sourceSha, currentWorkerSha: sourceSha,
+      generatedAt: result.finishedAt, runtime, empirical: [], brokerAuthorization: [],
+    };
+    const manifest: ProfitabilityBrainEvidenceManifest = {
+      ...manifestBody, manifestHash: createHash('sha256').update(canonicalJson(manifestBody)).digest('hex'),
+    };
+    const built = buildProfitabilityBrainRealityFromManifest(manifest);
+    brainRealityManifestViolations = built.violations;
+    brainRealityLevelCounts = built.receipt.levelCounts;
+  } catch (error) {
+    // An immutable-source violation (dirty tree / no git) must never crash
+    // this command's real evidence probe -- it just means no L7 evidence
+    // can honestly be claimed this run, which is itself a real, reportable
+    // fact, not a reason to fail the whole no-submit cycle.
+    brainRealityManifestViolations = [error instanceof Error ? error.message : 'SHADOW_ONCE_SOURCE_IDENTITY_ERROR'];
+  }
 
   console.info(JSON.stringify({
     runId: result.runId,
@@ -235,7 +306,9 @@ async function main(): Promise<number> {
     blockers: result.blockers,
     persistenceStatus: 'NOT_PERSISTED -- local no-submit evidence probe',
     brainRealityEvidenceThisRun: realEvidence,
-    brainRealityLevelCounts: brainReality.levelCounts,
+    brainRealityLevelCounts,
+    brainRealityManifestViolations,
+    aegisInputsOrigin: config.aegisInputsOrigin,
   }, null, 2));
 
   return result.blockers.length > 0 ? 1 : 0;
