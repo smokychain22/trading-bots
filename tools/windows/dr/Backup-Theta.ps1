@@ -37,6 +37,7 @@ function Invoke-VerifiedDumpWithRetry([string[]]$Arguments, [string]$OutputPath,
 }
 $stage = $null
 $backupId = $null
+$customDumpComplete = $false
 $dumpComplete = $false
 $snapshotKeeper = $null
 try {
@@ -81,6 +82,7 @@ try {
   $script:ThetaBackupSnapshotId = $snapshotKeeper.SnapshotId
   Log 'CONSISTENT_SOURCE_SNAPSHOT_ACQUIRED'
   Invoke-VerifiedDumpWithRetry -Arguments @('--format=custom','--snapshot',$script:ThetaBackupSnapshotId,'--file',(Get-ThetaPgFilePath $archive $source),'--dbname',$source.Database) -OutputPath $archive -Label 'CUSTOM_DUMP'
+  $customDumpComplete = $true
   Invoke-VerifiedDumpWithRetry -Arguments @('--schema-only','--snapshot',$script:ThetaBackupSnapshotId,'--file',(Get-ThetaPgFilePath $schema $source),'--dbname',$source.Database) -OutputPath $schema -Label 'SCHEMA_DUMP'
   Log 'DUMP_COMPLETE'
   $dumpComplete = $true
@@ -246,7 +248,11 @@ SELECT jsonb_build_object(
   if ($stage -and (Test-Path -LiteralPath $stage)) {
     $allowed = Join-Path $root 'daily\.staging-'
     if (-not $stage.StartsWith($allowed, [StringComparison]::OrdinalIgnoreCase)) { throw 'FAILED_STAGE_PATH_UNSAFE' }
-    if ($dumpComplete -and $backupId) {
+    # A completed custom archive remains useful forensic and recovery evidence
+    # when a later schema dump or provider inventory call fails. Keep it in
+    # the explicitly incomplete area. It cannot become latest/verified until
+    # the normal manifest and restore checks pass.
+    if (($customDumpComplete -or $dumpComplete) -and $backupId) {
       $preserved = Join-Path $root ('restore-tests\incomplete-' + $backupId)
       if (Test-Path -LiteralPath $preserved) { throw 'INCOMPLETE_BACKUP_PRESERVATION_TARGET_EXISTS' }
       Move-Item -LiteralPath $stage -Destination $preserved

@@ -67,8 +67,13 @@ try {
     try {
       $latestPointer = Get-Content -Raw -LiteralPath $latestPointerPath | ConvertFrom-Json
       $previousKnownGoodBackupId = [string]$latestPointer.backupId
-      $previousKnownGoodPath = Join-Path $root ([string]$latestPointer.relativePath -replace '/', '\')
+      $previousKnownGoodPath = [IO.Path]::GetFullPath((Join-Path $root ([string]$latestPointer.relativePath)))
+      $expectedBackupRoot = [IO.Path]::GetFullPath((Join-Path $root 'daily'))
+      $insideBackupRoot = $previousKnownGoodPath.StartsWith(
+        ($expectedBackupRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar),
+        [StringComparison]::OrdinalIgnoreCase)
       $previousKnownGoodBackupPreserved = $previousKnownGoodBackupId -ne ''
+        -and $insideBackupRoot
         -and (Test-Path -LiteralPath $previousKnownGoodPath -PathType Container)
         -and (Test-Path -LiteralPath (Join-Path $previousKnownGoodPath 'backup-manifest.json') -PathType Leaf)
         -and (Test-Path -LiteralPath (Join-Path $previousKnownGoodPath 'restore-verification.json') -PathType Leaf)

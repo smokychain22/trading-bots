@@ -55,6 +55,15 @@ foreach ($marker in $orderedMarkers) {
   $cursor = $next + $marker.Length
 }
 if ($checkpoint -notmatch '--duration-seconds=900') { throw 'MIGRATION_CHECKPOINT_SOAK_DURATION_NOT_CERTIFIED' }
+if ($checkpoint -notmatch '\$insideBackupRoot') { throw 'PREVIOUS_BACKUP_PATH_CONTAINMENT_NOT_CHECKED' }
+if ($checkpoint -match "-replace '/', '\\\\'") { throw 'PREVIOUS_BACKUP_PATH_USES_PLATFORM_FRAGILE_REWRITE' }
+
+$backupPath = Join-Path $PSScriptRoot '..\..\tools\windows\dr\Backup-Theta.ps1'
+$backupSource = Get-Content -Raw -LiteralPath $backupPath
+if ($backupSource -notmatch '\$customDumpComplete = \$true') { throw 'CUSTOM_DUMP_COMPLETION_NOT_TRACKED' }
+if ($backupSource -notmatch '\(\$customDumpComplete -or \$dumpComplete\)') {
+  throw 'COMPLETED_CUSTOM_DUMP_NOT_PRESERVED_AFTER_LATER_FAILURE'
+}
 
 $lockRoot = Join-Path ([IO.Path]::GetTempPath()) ('theta-backup-lock-test-' + [guid]::NewGuid().ToString('N'))
 [void](New-Item -ItemType Directory -Path $lockRoot)
