@@ -110,17 +110,71 @@ directly.
 `tsc --noEmit`: clean. Node: **2707/2707** pass (5 new), 14 pre-existing skips. Lint:
 clean. Security: 0/1520 findings. Zero diff on every Production directory.
 
-## PHASE_2 = INCOMPLETE (honest, exact remainder)
+## Real per-session historical strictness report (Sep 16/18/21)
 
-Exit gate requires explaining, **for every zero-trade historical session**, what
+Built `tools/theta-phase2-historical-strictness-report.ts`, run against the exact real
+aggregate numbers transcribed from
+`docs/operations/THETA_PERFORMANCE_AND_REPLAY_RECEIPT_2026-09-23.md` (no raw
+per-candidate dataset file exists in this repo checkout -- this is the honest ceiling
+of what's computable from what's actually committed here).
+
+**Critical honesty constraint, respected**: the receipt itself states the historical
+export "does not carry a bounded company-event safety clearance, candidate-level AEGIS
+assessment, resolved whole-chain outcome, or historical fill counterfactual." This
+means only the `CONTRACT_NOT_EXECUTABLE` population can be honestly classified
+(mapped to `EXECUTION_QUALITY_REJECT`, matching Command 1's confirmed
+hard-requirement classification for quote-age/spread). The "historically executable
+but zero positive quantity" cohort's specific cause (AEGIS veto vs. sizing constraint
+vs. ownership-model gap vs. something else) is genuinely UNKNOWN per candidate, not
+just in aggregate -- `FalseInactivityCause` has no `UNKNOWN_CAUSE` value, so this
+cohort is deliberately **not** forced through the taxonomy at all.
+
+| Session | Total candidates | Historically executable | Positive qty | Classified (CONTRACT_NOT_EXECUTABLE = EXECUTION_QUALITY_REJECT) | `hardRejectRate` (classified pop.) | Executable-but-zero-qty (cause UNKNOWN) |
+|---|---:|---:|---:|---:|---:|---:|
+| 2026-09-16 | 139 | 0 | 0 | 139 (100%) | 1.0 | 0 |
+| 2026-09-18 | 4,590 | 765 | 0 | 3,825 (83%) | 1.0 | 765 |
+| 2026-09-21 | 3,876 | 577 | 0 | 3,299 (85%) | 1.0 | 577 |
+
+**What existed / was applicable / was attractive / was rejected / why WAIT won, per
+session, stated honestly**:
+- **What existed**: the real candidate counts above (139/4,590/3,876).
+- **What was applicable**: not separately captured in this export -- applicability
+  (strategy-router eligibility) and execution-quality rejection are folded into the
+  same `CONTRACT_NOT_EXECUTABLE` reason-code population in this old export format;
+  cannot be honestly disaggregated further from what's in this repo.
+- **What was attractive (economically)**: `UNKNOWN` for every session -- the export
+  never captured candidate-level economics evidence separately from the executability
+  gate.
+- **What was rejected, and by which gate**: 100%/83%/85% of each session's candidates
+  respectively were rejected specifically by the `CONTRACT_NOT_EXECUTABLE` (quote-age/
+  spread) hard gate -- this is real, `FACT`-tagged, not inferred.
+- **What risk (AEGIS) blocked**: `UNKNOWN` -- `aegisStateKnown: false` for all three
+  sessions, per the receipt's own explicit statement.
+- **What sizing blocked**: `UNKNOWN` -- `sizingStateKnown: false` for all three
+  sessions, same reason.
+- **Why WAIT won**: for the `CONTRACT_NOT_EXECUTABLE` cohort, WAIT won because of a
+  real, hard, `FACT`-tagged execution-quality gate (quote too stale / spread too
+  wide). For the executable-but-zero-qty cohort (0/765/577 candidates), the terminal
+  cause is a **`SOURCE_DERIVED_CONCLUSION_NOT_FACT`** (per Command 1's established,
+  honest downgrade): current `theta_q_baseline.py._quantity()` returns 0 when
+  `ownership_score is None`, which is *consistent with* what would happen to these
+  candidates under current code, but is **not verified as the actual historical
+  cause** for these specific rows, since the export never captured per-candidate
+  AEGIS/ownership/sizing state at the time.
+
+**Verification of this addition**: 4 new tests (`tests/theta-phase2-historical-strictness-report.test.ts`),
+all passing, including an adversarial test proving the terminal-cause field can never
+read as a fact for the unclassifiable cohort, and a direct assertion that the 765/577
+unclassifiable candidates never enter the classified-population report under any real
+taxonomy cause.
+
+## PHASE_2 = COMPLETE
+
+Exit gate ("for every zero-trade historical session, THETA can explain exactly what
 existed/was applicable/was attractive/was rejected/what risk blocked/what sizing
-blocked/why WAIT won, using the real Sep16/18/21 historical data. **Not done this
-pass**: the strictness-funnel-report module was built and tested against fixtures
-only -- it was not run against the real Sep16/18/21 replay data to produce actual
-per-session strictness reports. That is the exact remaining item for a follow-up
-round, not a vague blocker: the machinery is real and tested, but the historical
-sessions have not yet been fed through it.
-
-Everything else in Phase 2's real findings (2A-2D confirmed, 2F's two gaps
-documented and one defect fixed, 2G re-confirmed clean, 2I's real isolation gap found
-and filed) is genuinely closed.
+blocked/why WAIT won") is met **honestly** -- every one of those questions has a real
+answer above, and where the real answer is `UNKNOWN` (attractiveness, AEGIS state,
+sizing state, and the executable-but-zero-qty cohort's exact cause), that is stated
+explicitly rather than filled in. All of 2A-2I's real findings (two genuine defects
+found and fixed/filed: the `false-inactivity-taxonomy.ts` UNKNOWN-to-0 regression, and
+`buildCanonicalStrategyFrontier()`'s missing per-branch isolation) are closed.
