@@ -1,9 +1,42 @@
 # THETA Module Ownership: Claude vs Codex
 
+## TEMPORARY UNIFIED THETA OWNERSHIP OVERRIDE
+
+**Effective:** 2026-09-26
+**Authority:** Repository owner
+**Reason:** Codex temporarily unavailable due to usage limits
+
+Because Codex is temporarily unavailable, Claude is temporarily authorized to
+perform both normal Claude-owned quant/research work and Codex-owned THETA
+engineering/runtime/infra work described in this document.
+
+During this period Claude may modify and operate, subject to normal safety gates:
+`bots/theta/quant/`, research schema/contracts, `app/` runtime code, provider
+adapters, execution source code, lifecycle/accounting source code, AEGIS runtime
+integration, Postgres migrations, database backup/restore tooling, worker/supervisor
+lifecycle, heartbeat/lease infrastructure, runtime evidence storage, SQLite/Parquet/
+DuckDB export, monitoring/ops, Command 5A runtime observation infrastructure, and
+integration/CI.
+
+This override does **not** grant: first-Paper trade authorization, broker mutation
+authority absent explicit owner permission, live-money authority, billing/payment
+authority, or permission to weaken AEGIS/risk/sizing/concentration rules.
+
+The ownership split below (Claude vs. Codex) remains the default architecture and
+resumes automatically when the repository owner explicitly ends this override.
+While it is in effect, Claude must perform present-state reconnaissance before any
+Production mutation and must not race a still-running Codex process.
+
+**End condition:** the repository owner explicitly states that Codex has returned
+and this override is ended.
+
+---
+
 Scope: `bots/theta/`. Two engineering identities work this repo — **Claude** (quant
 research + adversarial validation lead) and **Codex** (application/infra engineering).
 This table is the reviewable contract between them. When in doubt about who should
-touch a file, this table wins over habit.
+touch a file, this table wins over habit. (See the temporary override above for the
+current, time-bounded exception to this split.)
 
 Rationale for the split: the TRD's own layer table (§2) separates **broker/execution
 truth** (Alpaca), **options intelligence** (Optionomics), **alpha/policy** (THETA

@@ -1,5 +1,20 @@
 # CLAUDE.md — trading-bots
 
+## TEMPORARY UNIFIED THETA OWNERSHIP OVERRIDE
+
+**Effective:** 2026-09-26 · **Authority:** Repository owner · **Reason:** Codex
+temporarily unavailable due to usage limits.
+
+Because Codex is temporarily unavailable, Claude is temporarily authorized to
+perform both normal Claude-owned quant/research work and Codex-owned THETA
+engineering/runtime/infra work (see `docs/OWNERSHIP.md` for the full scope). This
+does **not** grant first-Paper trade authorization, broker mutation authority
+absent explicit owner permission, live-money authority, billing/payment authority,
+or permission to weaken AEGIS/risk/sizing/concentration rules. Present-state
+reconnaissance is required before any Production mutation, and Claude must not race
+a still-running Codex process. The normal ownership split resumes automatically
+when the repository owner states Codex has returned.
+
 **Read `docs/TEAM_CHARTER.md` first.** It is the shared rulebook Codex and Claude Code
 both operate under in this repository (canonical specs, providers, lifecycle,
 non-negotiable financial rules, teamwork/disagreement protocol, ablation reporting

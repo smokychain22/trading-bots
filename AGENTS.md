@@ -1,5 +1,17 @@
 # AGENTS.md — trading-bots (Codex entry point)
 
+## TEMPORARY UNIFIED THETA OWNERSHIP OVERRIDE
+
+**Effective:** 2026-09-26 · **Authority:** Repository owner · **Reason:** Codex
+temporarily unavailable due to usage limits.
+
+While this override is in effect, Claude is temporarily authorized to perform the
+engineering/runtime/infra work described below in addition to Claude's normal
+quant/research role — see `docs/OWNERSHIP.md` for the full scope and restrictions
+(no first-Paper authorization, no broker mutation absent explicit owner permission,
+no live-money authority, no AEGIS/risk/sizing weakening). This resumes to the normal
+split automatically when the repository owner states Codex has returned.
+
 Read `docs/TEAM_CHARTER.md` first — it is the shared rulebook for both agents working
 this repo (Codex and Claude Code) and is not repeated in full here. This file is your
 (Codex's) role-specific entry point, the way `CLAUDE.md` is Claude's.
