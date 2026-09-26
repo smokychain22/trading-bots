@@ -154,11 +154,17 @@ export function selectSeriousResearchSubjects(
   const ordered = [...reasons.entries()].sort(([idA, reasonsA], [idB, reasonsB]) => {
     const priorityA = Math.min(...[...reasonsA].map((reason) => priority[reason]));
     const priorityB = Math.min(...[...reasonsB].map((reason) => priority[reason]));
-    return priorityA - priorityB || candidateSort(byId.get(idA)!, byId.get(idB)!);
+    const candidateA = byId.get(idA);
+    const candidateB = byId.get(idB);
+    if (candidateA === undefined || candidateB === undefined) {
+      throw new Error(`SERIOUS_SUBJECT_FRONTIER_REFERENCE_MISSING:${candidateA === undefined ? idA : idB}`);
+    }
+    return priorityA - priorityB || candidateSort(candidateA, candidateB);
   }).slice(0, policy.maximumCandidateSubjects);
 
   const subjects: SeriousResearchSubject[] = ordered.map(([candidateId, selectedReasons]) => {
-    const candidate = byId.get(candidateId)!;
+    const candidate = byId.get(candidateId);
+    if (candidate === undefined) throw new Error(`SERIOUS_SUBJECT_FRONTIER_REFERENCE_MISSING:${candidateId}`);
     return {
       subjectId: digest(`${policy.version}:${decisionBucketAt}:CANDIDATE:${candidateId}`),
       kind: 'CANDIDATE', snapshotId: frontier.snapshotId, decisionAt: frontier.timestamp, decisionBucketAt,

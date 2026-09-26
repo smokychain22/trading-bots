@@ -36,8 +36,10 @@ test('market quote is structurally unable to masquerade as a fill or profit', ()
 });
 
 test('missing values remain null while the exact market observation remains factual', () => {
+  const quote = base.quotes[0];
+  assert.ok(quote);
   const receipt = buildContractPathObservationReceipt({ ...base,
-    quotes: [{ ...base.quotes[0]!, bid: null, ask: null, impliedVolatility: null,
+    quotes: [{ ...quote, bid: null, ask: null, impliedVolatility: null,
       delta: null, gamma: null, theta: null, vega: null, quality: 'PARTIAL', reasonCodes: ['BBO_MISSING'] }],
     underlying: { ...base.underlying, price: null } });
   assert.equal(receipt.legs[0]?.bid, null);
@@ -46,8 +48,10 @@ test('missing values remain null while the exact market observation remains fact
 });
 
 test('a different contract or reversed D package leg order fails closed', () => {
+  const quote = base.quotes[0];
+  assert.ok(quote);
   assert.throws(() => buildContractPathObservationReceipt({ ...base,
-    quotes: [{ ...base.quotes[0]!, optionSymbol: 'SPY261120P00495000' }] }),
+    quotes: [{ ...quote, optionSymbol: 'SPY261120P00495000' }] }),
   /CONTRACT_PATH_EXACT_LEG_IDENTITY_MISMATCH/);
 });
 
