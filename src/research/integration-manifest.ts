@@ -61,6 +61,7 @@ export function buildIntegrationManifest(input: IntegrationManifestInput): Integ
     ...listBlockersByClass('REAL_DATA_REQUIRED'),
     ...listBlockersByClass('OWNER_PERMISSION_REQUIRED'),
     ...listBlockersByClass('EXTERNAL_PROVIDER_REQUIRED'),
+    ...listBlockersByClass('EXTERNAL_RUNTIME_CHECKPOINT'),
     ...listBlockersByClass('EMPIRICAL_N_REQUIRED'),
   ].filter((b) => b.resolvedAt === null);
 

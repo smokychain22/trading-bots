@@ -12,7 +12,8 @@ export const researchBlockerRegistryVersion = 'theta-research-blocker-registry-v
 
 export type BlockerClass =
   | 'CODE_SOLVABLE_CLAUDE' | 'CODE_SOLVABLE_CODEX' | 'REAL_DATA_REQUIRED'
-  | 'OWNER_PERMISSION_REQUIRED' | 'EXTERNAL_PROVIDER_REQUIRED' | 'EMPIRICAL_N_REQUIRED';
+  | 'OWNER_PERMISSION_REQUIRED' | 'EXTERNAL_PROVIDER_REQUIRED' | 'EXTERNAL_RUNTIME_CHECKPOINT'
+  | 'EMPIRICAL_N_REQUIRED';
 
 export interface BlockerRecord {
   readonly contractVersion: typeof researchBlockerRegistryVersion;
@@ -47,25 +48,25 @@ export const RESEARCH_BLOCKER_REGISTRY: readonly BlockerRecord[] = [
   {
     contractVersion: researchBlockerRegistryVersion, issueId: 'THETA-EXECUTED-ENTRY-FILL-TIMESTAMP-GAP',
     domain: 'EXECUTED_ENTRY_DATASET', owner: 'CODEX',
-    currentState: 'Real, already-typed BrokerOrderSnapshot (src/execution/broker.ts) and the real brokerOrderIntentState() derivation (src/execution/broker-order-state.ts) exist and give qty/filledQty/filledAvgPrice/status -- enough to derive lifecycle STATE -- but BrokerOrderSnapshot carries no per-fill TIMESTAMP field, only submittedAt. buildExecutedEntryEpisode() (entry-unit-separation.ts) requires a real firstFillAt whenever filledQuantity > 0 and throws EXECUTED_ENTRY_FILL_WITHOUT_FILL_TIMESTAMP otherwise -- correctly, since fabricating a fill timestamp from the order snapshot alone would be a real invented value.',
-    exactMissingInput: 'A real fill-event timestamp, joined from Alpaca fill/activity records (BrokerActivity in broker.ts, or the trade.fill table postgres-trade-update-store.ts writes to) rather than the order snapshot alone -- specifically, the exact field/table that carries one confirmed fill\'s timestamp, keyed to the order.',
+    currentState: 'CLOSED_SOURCE. The canonical Alpaca activity adapter parses transaction_time/date into BrokerActivity.date and preserves orderId. src/research/alpaca-fill-event-adapter.ts filters real FILL/PARTIAL_FILL rows by that orderId, preserves every provider event, and derives firstFillAt, lastFillAt, weighted price, and filled quantity without using submittedAt as a fallback.',
+    exactMissingInput: 'None at source level. Real per-fill timestamps come from BrokerActivity.date, mapped from Alpaca transaction_time/date and keyed by BrokerActivity.orderId. Runtime outcome materialization still depends on real fills existing.',
     whyRequired: 'Without it, an EXECUTED_ENTRY_DATASET adapter for a filled order cannot honestly report exposureStartAt -- it would have to either fabricate a timestamp (forbidden) or fall back to submittedAt (which is exactly the submission!=fill distinction this whole contract exists to prevent).',
     consumer: 'src/research/entry-unit-separation.ts',
     canBeBuiltAround: false,
-    nextAction: 'Name the real BrokerActivity/fill-table join key precisely (Codex-owned, since it requires either a live query joining orders to fills or a richer read type than BrokerOrderSnapshot currently exposes), then build the pure adapter -- the adapter itself (once that join exists) is Claude-owned follow-up work.',
-    testToClose: 'A real adapter test proving a filled order with a real, joined fill timestamp produces a non-null exposureStartAt distinct from submittedAt.',
-    blockerClass: 'CODE_SOLVABLE_CODEX', resolvedAt: null,
+    nextAction: 'No code blocker remains. Collect real Paper fill events after owner-authorized Paper operation, then materialize the executed-entry dataset with the existing adapter and entry-unit separation contract.',
+    testToClose: 'tests/alpaca-fill-event-adapter.test.ts proves order-keyed real fill timestamps, chronological firstFillAt, weighted fill price, and fail-closed UNKNOWN when activity evidence is absent.',
+    blockerClass: 'CODE_SOLVABLE_CODEX', resolvedAt: '2026-09-27T00:00:00Z',
   },
   {
     contractVersion: researchBlockerRegistryVersion, issueId: 'THETA-CONTRACT-PATH-RUNTIME-OBSERVATION-PRODUCER',
     domain: 'CONTRACT_PATH_DATASET', owner: 'CODEX',
-    currentState: 'No runtime process exists that observes and records a candidate/underlying at the 15M/1H/EOD/1D/3D/5D/expiration/common-horizon checkpoints CONTRACT_PATH_DATASET requires.',
-    exactMissingInput: 'A scheduled Codex-owned observation job writing one row per (subjectId, checkpoint) with observedAt, marketMarkPrice, impliedVol, underlyingPrice, and a provenance flag distinguishing a real scheduled observation from a reconstructed/backfilled one.',
+    currentState: 'SOURCE_READY_ISOLATED_AWAITING_PHASE1. The Command-5A branch implements the restart-safe SQLite scheduler, physically GET-only Alpaca observation source, bounded worker, immutable local archive, maturation, canonical adapter, and Windows supervisor wiring. Head 226fb7a passed exact CI 36325225336 with brokerAuthority=false. It remains intentionally isolated until the Production schema-067 checkpoint and locked cutover are complete.',
+    exactMissingInput: 'A healthy Phase-1 runtime checkpoint and locked current-worker deployment. Source implementation is complete on the isolated Command-5A branch. No market observation can be claimed before that branch passes governed integration and actually runs.',
     whyRequired: 'Without it, CONTRACT_PATH_DATASET, filter-value analysis, strategy comparison, experience memory, and the session experience report can never receive real path data -- only fixtures.',
     consumer: 'src/research/contract-path-outcome-dataset.ts, src/research/filter-value-classification.ts, src/research/experience-memory-contract.ts, src/research/session-experience-report.ts',
-    canBeBuiltAround: true, nextAction: 'Codex designs and ships the observation-scheduling process; research side is already contract-complete and ready to consume it on arrival.',
-    testToClose: 'A real-data-arrival test proving the first genuine Codex-produced observation bundle flows through schema validation -> PIT validation -> dataset build with zero new code required.',
-    blockerClass: 'CODE_SOLVABLE_CODEX', resolvedAt: null,
+    canBeBuiltAround: true, nextAction: 'After Aiven quota recovery and Phase-1 closure, review and integrate the isolated Command-5A source, deploy it locked, then collect the first genuine scheduled observation bundle. Do not merge it wholesale or bypass the checkpoint.',
+    testToClose: 'Source tests and exact branch CI pass. Runtime closure requires one genuine deployed observation bundle flowing through schema validation, PIT validation, and dataset build.',
+    blockerClass: 'EXTERNAL_RUNTIME_CHECKPOINT', resolvedAt: null,
   },
   {
     contractVersion: researchBlockerRegistryVersion, issueId: 'THETA-EXPORT-SCHEMA-COMPATIBILITY-NOT-CHECKED',
@@ -118,14 +119,14 @@ export const RESEARCH_BLOCKER_REGISTRY: readonly BlockerRecord[] = [
   {
     contractVersion: researchBlockerRegistryVersion, issueId: 'THETA-CANONICAL-FRONTIER-NO-PER-BRANCH-ISOLATION',
     domain: 'CROSS_STRATEGY_FALLBACK', owner: 'CODEX',
-    currentState: "buildCanonicalStrategyFrontier() (src/theta/canonical-strategy-frontier.ts:561) calls `branchOrder.map((branch) => buildBranch(branch, input))` with no try/catch per branch. buildBranch() itself can throw synchronously (confirmed: line 499's `CANONICAL_STRATEGY_SOURCE_MISSING` Error, plus any unhandled exception inside singleLegPutCandidate/definedRiskCandidate/coveredCallCandidate/stockActionCandidate/rankCandidates for any branch). Since Array.prototype.map fails on the first throw, an exception while constructing H's or D's candidates would currently prevent Q's (and every other branch's) frontier from being produced in that cycle at all.",
-    exactMissingInput: 'Per-branch error isolation (e.g. a try/catch around each buildBranch() call producing a typed BLOCKED_BRANCH_ERROR evaluationState for that one branch, distinct from NOT_APPLICABLE/BLOCKED_MISSING_INPUT) so a research-only branch throwing cannot poison the applicable branches in the same cycle.',
+    currentState: 'CLOSED_SOURCE. buildCanonicalStrategyFrontier() hoists shared routing and stock reads, then buildBranch() isolates branch-local construction and ranking exceptions. A failed H, D, Recovery, or CC branch returns BRANCH_CONSTRUCTION_FAILED while Q and other branches remain evaluable. Shared safety-input failures still invalidate the whole cycle rather than being hidden.',
+    exactMissingInput: 'None. The canonical branch receipt has a distinct BRANCH_CONSTRUCTION_FAILED state and stable, secret-safe failure identity.',
     whyRequired: "Phase 2 (2I, cross-strategy fallback) of the Profitability Brain Completion Program requires that H/D research-state failures cannot propagate to poison Q's evaluation. Currently proven false by direct code read -- this is a real correctness gap, not a hypothetical one.",
     consumer: 'src/theta/new-risk-orchestrator.ts (the sole caller of buildCanonicalStrategyFrontier)',
     canBeBuiltAround: false,
-    nextAction: 'Codex adds per-branch isolation at the buildCanonicalStrategyFrontier() call site -- this file is Production-locked and outside research-branch write authority.',
-    testToClose: 'A test proving a thrown exception during THETA_HOLD_STRIKE or THETA_DEFINED_RISK candidate construction still yields a valid CanonicalStrategyFrontier with THETA_CONVENTIONAL fully evaluated.',
-    blockerClass: 'CODE_SOLVABLE_CODEX', resolvedAt: null,
+    nextAction: 'No code blocker remains. Preserve the branch-local fault boundary and keep shared safety-input failures cycle-fatal.',
+    testToClose: 'tests/canonical-frontier-branch-isolation.test.ts proves branch-local failure isolation, Q survival, deterministic receipts, shared-input fail-closed behavior, and distinction from a genuine empty opportunity set.',
+    blockerClass: 'CODE_SOLVABLE_CODEX', resolvedAt: '2026-09-27T00:00:00Z',
   },
 ];
 
@@ -139,6 +140,15 @@ export function assertNoOpenClaudeSolvableBlockers(registry: readonly BlockerRec
   const open = registry.filter((b) => b.blockerClass === 'CODE_SOLVABLE_CLAUDE' && b.resolvedAt === null);
   if (open.length > 0) {
     throw new Error(`RESEARCH_BLOCKER_REGISTRY_OPEN_CLAUDE_SOLVABLE:${open.map((b) => b.issueId).join(',')}`);
+  }
+}
+
+export function assertNoOpenCodeSolvableBlockers(registry: readonly BlockerRecord[]): void {
+  const open = registry.filter((b) =>
+    (b.blockerClass === 'CODE_SOLVABLE_CLAUDE' || b.blockerClass === 'CODE_SOLVABLE_CODEX')
+    && b.resolvedAt === null);
+  if (open.length > 0) {
+    throw new Error(`RESEARCH_BLOCKER_REGISTRY_OPEN_CODE_SOLVABLE:${open.map((b) => b.issueId).join(',')}`);
   }
 }
 

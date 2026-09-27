@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  RESEARCH_BLOCKER_REGISTRY, assertNoOpenClaudeSolvableBlockers, listBlockersByClass,
+  RESEARCH_BLOCKER_REGISTRY, assertNoOpenClaudeSolvableBlockers,
+  assertNoOpenCodeSolvableBlockers, listBlockersByClass,
 } from '../src/research/research-blocker-registry.js';
 
 test('CORE CLAIM (directive completion rule): no CODE_SOLVABLE_CLAUDE blocker remains open in the real registry', () => {
@@ -16,6 +17,21 @@ test('the assertion actually detects a violation when one exists (adversarial, s
   assert.throws(() => assertNoOpenClaudeSolvableBlockers(withAnOpenOne), /RESEARCH_BLOCKER_REGISTRY_OPEN_CLAUDE_SOLVABLE/);
 });
 
+test('no CODE_SOLVABLE blocker remains open after canonical handoff reconciliation', () => {
+  assert.doesNotThrow(() => assertNoOpenCodeSolvableBlockers(RESEARCH_BLOCKER_REGISTRY));
+  assert.equal(RESEARCH_BLOCKER_REGISTRY.filter((blocker) =>
+    blocker.resolvedAt === null && blocker.blockerClass.startsWith('CODE_SOLVABLE_')).length, 0);
+});
+
+test('the all-owner assertion detects an open Codex-solvable blocker', () => {
+  const first = RESEARCH_BLOCKER_REGISTRY[0] as (typeof RESEARCH_BLOCKER_REGISTRY)[number];
+  const withAnOpenOne = [...RESEARCH_BLOCKER_REGISTRY, {
+    ...first, issueId: 'SYNTHETIC-OPEN-CODEX-BLOCKER', blockerClass: 'CODE_SOLVABLE_CODEX' as const, resolvedAt: null,
+  }];
+  assert.throws(() => assertNoOpenCodeSolvableBlockers(withAnOpenOne),
+    /RESEARCH_BLOCKER_REGISTRY_OPEN_CODE_SOLVABLE:SYNTHETIC-OPEN-CODEX-BLOCKER/);
+});
+
 test('every real, still-open blocker is genuinely external-class (Codex/data/owner/provider), never a deferred code task', () => {
   const open = RESEARCH_BLOCKER_REGISTRY.filter((b) => b.resolvedAt === null);
   for (const blocker of open) {
@@ -27,4 +43,7 @@ test('listBlockersByClass filters correctly', () => {
   const codexOwned = listBlockersByClass('CODE_SOLVABLE_CODEX');
   assert.ok(codexOwned.every((b) => b.blockerClass === 'CODE_SOLVABLE_CODEX'));
   assert.ok(codexOwned.length >= 1);
+  assert.ok(codexOwned.every((b) => b.resolvedAt !== null));
+  const runtimeBlocked = listBlockersByClass('EXTERNAL_RUNTIME_CHECKPOINT');
+  assert.ok(runtimeBlocked.some((b) => b.issueId === 'THETA-CONTRACT-PATH-RUNTIME-OBSERVATION-PRODUCER'));
 });
