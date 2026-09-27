@@ -3,7 +3,7 @@ import type {
   CanonicalBranchFrontier, CanonicalFrontierCandidate, CanonicalStrategyFrontier,
 } from '../theta/canonical-strategy-frontier.js';
 
-export const seriousSubjectSelectionPolicyVersion = 'theta-serious-subject-selection-v1' as const;
+export const seriousSubjectSelectionPolicyVersion = 'theta-serious-subject-selection-v2' as const;
 
 export type SeriousSubjectKind = 'CANDIDATE' | 'WAIT';
 export type SeriousSubjectSelectionReason =
@@ -115,6 +115,7 @@ function addReason(
 export function selectSeriousResearchSubjects(
   frontier: CanonicalStrategyFrontier,
   policy: SeriousSubjectPolicy = defaultSeriousSubjectPolicy,
+  subjectNamespace = '',
 ): SeriousSubjectSelectionReceipt {
   if (policy.version !== seriousSubjectSelectionPolicyVersion) throw new Error('SERIOUS_SUBJECT_POLICY_VERSION_INVALID');
   if (!Number.isInteger(policy.maximumCandidateSubjects) || policy.maximumCandidateSubjects < 1) {
@@ -122,6 +123,9 @@ export function selectSeriousResearchSubjects(
   }
   if (!Number.isInteger(policy.minimumDecisionIntervalMinutes) || policy.minimumDecisionIntervalMinutes < 5
     || policy.minimumDecisionIntervalMinutes > 390) throw new Error('SERIOUS_SUBJECT_POLICY_INTERVAL_INVALID');
+  if (subjectNamespace !== '' && !/^[A-Z][A-Z0-9._-]{0,63}$/.test(subjectNamespace)) {
+    throw new Error('SERIOUS_SUBJECT_NAMESPACE_INVALID');
+  }
   const decisionMs = Date.parse(frontier.timestamp);
   if (!Number.isFinite(decisionMs)) throw new Error('SERIOUS_SUBJECT_DECISION_TIME_INVALID');
   const bucketMs = policy.minimumDecisionIntervalMinutes * 60_000;
@@ -166,7 +170,7 @@ export function selectSeriousResearchSubjects(
     const candidate = byId.get(candidateId);
     if (candidate === undefined) throw new Error(`SERIOUS_SUBJECT_FRONTIER_REFERENCE_MISSING:${candidateId}`);
     return {
-      subjectId: digest(`${policy.version}:${decisionBucketAt}:CANDIDATE:${candidateId}`),
+      subjectId: digest(`${policy.version}:${subjectNamespace}:${decisionBucketAt}:CANDIDATE:${candidateId}`),
       kind: 'CANDIDATE', snapshotId: frontier.snapshotId, decisionAt: frontier.timestamp, decisionBucketAt,
       candidateId, branch: candidate.branch, rankAtDecision: candidate.paretoRank,
       selected: candidateId === frontier.selectedCandidateId,
@@ -177,7 +181,7 @@ export function selectSeriousResearchSubjects(
   });
   if (policy.includeWait && (frontier.primaryAction === 'GLOBAL_WAIT' || frontier.primaryAction === 'SYSTEM_HOLD')) {
     subjects.push({
-      subjectId: digest(`${policy.version}:${decisionBucketAt}:WAIT:${frontier.primaryAction}`),
+      subjectId: digest(`${policy.version}:${subjectNamespace}:${decisionBucketAt}:WAIT:${frontier.primaryAction}`),
       kind: 'WAIT', snapshotId: frontier.snapshotId, decisionAt: frontier.timestamp, decisionBucketAt,
       candidateId: null, branch: null, rankAtDecision: null, selected: false,
       selectionReasons: ['CANONICAL_WAIT'], primaryAction: frontier.primaryAction,

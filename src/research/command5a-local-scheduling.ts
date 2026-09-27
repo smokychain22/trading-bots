@@ -81,7 +81,11 @@ export function scheduleCommand5aFromCanonicalFrontier(input: {
   readonly horizonPolicy: StrategyLearningHorizonPolicy;
   readonly subjectPolicy?: SeriousSubjectPolicy;
 }): Command5aLocalSchedulingReceipt {
-  const selection = selectSeriousResearchSubjects(input.frontier, input.subjectPolicy ?? defaultSeriousSubjectPolicy);
+  const selection = selectSeriousResearchSubjects(
+    input.frontier,
+    input.subjectPolicy ?? defaultSeriousSubjectPolicy,
+    input.underlying,
+  );
   let scheduledJobCount = 0;
   let unscheduledJobCount = 0;
   let candidateSubjectCount = 0;

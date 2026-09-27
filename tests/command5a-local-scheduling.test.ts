@@ -92,7 +92,8 @@ test('restart repairs a subject registered before its jobs were scheduled', () =
   const path = join(root, 'jobs.sqlite');
   try {
     const scheduler = new LocalObservationJobScheduler(path);
-    const selected = selectSeriousResearchSubjects(frontier).subjects.find((subject) => subject.kind === 'CANDIDATE');
+    const selected = selectSeriousResearchSubjects(frontier, undefined, 'SPY').subjects
+      .find((subject) => subject.kind === 'CANDIDATE');
     assert.ok(selected?.kind === 'CANDIDATE');
     const episode = buildShadowEpisodeContract({ subject: selected, decisionId: 'decision-1',
       featureSnapshotHash: 'a'.repeat(64), strategyVersion: frontier.strategyVersion,
