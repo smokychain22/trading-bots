@@ -73,6 +73,38 @@ test('200 valid response: entries normalize with full Greeks/OI/volume/IV', asyn
   assert.equal(entry?.delta, -0.3);
 });
 
+test('declared Optionomics response above the configured byte budget fails before JSON parsing', async () => {
+  const fetchImpl = (async () => jsonResponse(200, [], { 'content-length': '4096' })) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl, { maxResponseBytes: 1024 }), 'SPY');
+  assert.equal(outcome.kind, 'REQUEST_ERROR');
+  if (outcome.kind !== 'REQUEST_ERROR') return;
+  assert.equal(outcome.errorClass, 'RESPONSE_TOO_LARGE');
+  assert.equal(outcome.httpStatus, 200);
+});
+
+test('chunked Optionomics response is bounded by actual streamed bytes without trusting content-length', async () => {
+  const payload = JSON.stringify([{ symbol: 'X', note: 'x'.repeat(2048) }]);
+  const fetchImpl = (async () => new Response(payload, {
+    status: 200, headers: { 'content-type': 'application/json' },
+  })) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl, { maxResponseBytes: 1024 }), 'SPY');
+  assert.equal(outcome.kind, 'REQUEST_ERROR');
+  if (outcome.kind !== 'REQUEST_ERROR') return;
+  assert.equal(outcome.errorClass, 'RESPONSE_TOO_LARGE');
+  assert.equal(outcome.httpStatus, 200);
+});
+
+test('invalid Optionomics response-size policy is a typed local request failure', async () => {
+  let calls = 0;
+  const fetchImpl = (async () => { calls += 1; return jsonResponse(200, []); }) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl, { maxResponseBytes: 0 }), 'SPY');
+  assert.equal(outcome.kind, 'REQUEST_ERROR');
+  if (outcome.kind !== 'REQUEST_ERROR') return;
+  assert.equal(outcome.errorClass, 'INVALID_REQUEST');
+  assert.equal(outcome.attemptCount, 0);
+  assert.equal(calls, 0);
+});
+
 test('historical chain fetch uses only documented point-in-time filters', async () => {
   let requested: URL | null = null;
   const fetchImpl = (async (input) => {

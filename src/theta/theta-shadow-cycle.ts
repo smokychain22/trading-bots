@@ -996,7 +996,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       blockers.push(`OPTIONOMICS_RESPONSE_UNRECOGNIZED:${outcome.detail}`);
     } else {
       const quality: DataQualityState =
-        outcome.errorClass === 'AUTHENTICATION_FAILED' || outcome.errorClass === 'INVALID_PROVIDER_RESPONSE' ? 'INVALID'
+        outcome.errorClass === 'AUTHENTICATION_FAILED' || outcome.errorClass === 'INVALID_PROVIDER_RESPONSE'
+          || outcome.errorClass === 'RESPONSE_TOO_LARGE' ? 'INVALID'
         : outcome.errorClass === 'SUBSCRIPTION_REQUIRED' || outcome.errorClass === 'NOT_ENTITLED' ? 'NOT_ENTITLED'
         : 'DEGRADED';
       optionomicsEvidence = { origin: 'REAL_PROVIDER_ERROR', quality };
@@ -1012,7 +1013,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     const flowUnknown = flowOutcomes.find((outcome) => outcome.kind === 'VALUE_UNKNOWN_AFTER_SUCCESS');
     if (flowError?.kind === 'REQUEST_ERROR') {
       const quality: DataQualityState =
-        flowError.errorClass === 'AUTHENTICATION_FAILED' || flowError.errorClass === 'INVALID_PROVIDER_RESPONSE' ? 'INVALID'
+        flowError.errorClass === 'AUTHENTICATION_FAILED' || flowError.errorClass === 'INVALID_PROVIDER_RESPONSE'
+          || flowError.errorClass === 'RESPONSE_TOO_LARGE' ? 'INVALID'
         : flowError.errorClass === 'SUBSCRIPTION_REQUIRED' || flowError.errorClass === 'NOT_ENTITLED' ? 'NOT_ENTITLED'
         : 'DEGRADED';
       optionomicsFlowEvidence = { origin: 'REAL_PROVIDER_ERROR', quality };
@@ -1048,7 +1050,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       const contextUnknown = contextOutcomes.find((outcome) => outcome.kind === 'VALUE_UNKNOWN_AFTER_SUCCESS');
       if (contextError?.kind === 'REQUEST_ERROR') {
         const quality: DataQualityState =
-          contextError.errorClass === 'AUTHENTICATION_FAILED' || contextError.errorClass === 'INVALID_PROVIDER_RESPONSE' ? 'INVALID'
+          contextError.errorClass === 'AUTHENTICATION_FAILED' || contextError.errorClass === 'INVALID_PROVIDER_RESPONSE'
+            || contextError.errorClass === 'RESPONSE_TOO_LARGE' ? 'INVALID'
           : contextError.errorClass === 'SUBSCRIPTION_REQUIRED' || contextError.errorClass === 'NOT_ENTITLED' ? 'NOT_ENTITLED'
           : 'DEGRADED';
         optionomicsContextEvidence = { origin: 'REAL_PROVIDER_ERROR', quality };
