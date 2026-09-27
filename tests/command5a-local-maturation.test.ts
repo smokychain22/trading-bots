@@ -101,9 +101,16 @@ test('Command-5A maturation archives a selected shadow path without fabricating 
       assert.equal(batches[0]?.payload[0]?.dataset.identifiabilityStatus, 'NOT_IDENTIFIABLE');
       assert.equal(batches[0]?.payload[0]?.dataset.path.length, 1);
     } finally { spool.close(); }
-    const second = matureCommand5aLocalObservations({ scheduler, spoolPath, asOf: OBSERVED_AT });
+    const second = matureCommand5aLocalObservations({ scheduler, spoolPath,
+      asOf: '2026-09-25T16:00:00.000Z' });
     assert.equal(second.materialized, 0);
     assert.equal(second.alreadyMaterialized, 1);
+    const replaySpool = new LocalResearchHistorySpool(spoolPath);
+    try {
+      assert.equal(replaySpool.readDecisionCycleBatches({
+        decisionCycleId: 'cycle-1', family: 'CONTRACT_PATH_DATASET',
+      }).length, 1);
+    } finally { replaySpool.close(); }
   } finally { scheduler.close(); }
 });
 

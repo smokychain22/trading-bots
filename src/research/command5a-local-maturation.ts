@@ -146,6 +146,9 @@ export function matureCommand5aLocalObservations(input: {
         if (result.dataset.identifiabilityStatus !== 'NOT_IDENTIFIABLE') {
           throw new Error('COMMAND5A_SHADOW_DATASET_TRUTH_CLASS_INVALID');
         }
+        const evidenceAvailableAt = observations.reduce((latest, receipt) =>
+          receipt.actualObservedAt > latest ? receipt.actualObservedAt : latest,
+        primaryObservation.actualObservedAt);
         const record: Command5aMaturedDatasetRecord = {
           contractVersion: command5aLocalMaturationVersion,
           subjectId: subject.subjectId,
@@ -154,7 +157,10 @@ export function matureCommand5aLocalObservations(input: {
           observationIds: observations.map((receipt) => receipt.observationId),
           dataset: result.dataset,
           unknownFields: result.unknownAudit,
-          materializedAt: new Date(asOfMs).toISOString(),
+          // This is evidence availability, not wall-clock worker execution.
+          // Reprocessing the same immutable observations at a later time must
+          // produce the same batch identity instead of unbounded duplicates.
+          materializedAt: evidenceAvailableAt,
           sourceSha: subject.sourceSha,
           workerSha: subject.workerSha,
           executionTruthClass: 'MARKET_PATH_ONLY',
