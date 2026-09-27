@@ -45,13 +45,24 @@ promotion decision recorded in `docs/quant/` first.
 | 09 | FLOW feature | SOURCE_IMPLEMENTED | `features/flow.py` | `test_flow.py` (11) | `eabbaeb` |
 | 10 | UNUSUAL_ACTIVITY feature | SOURCE_IMPLEMENTED | `features/unusual_activity.py` | `test_unusual_activity.py` (9) | `0a98898` |
 | 11 | LIQUIDITY feature | SOURCE_IMPLEMENTED | `features/liquidity.py` | `test_liquidity.py` (9) | `bcd04c9` |
-| 12 | EVENT_CONTEXT feature | IN_PROGRESS | -- | -- | -- |
-| 13-20 | SECTOR, CORRELATION, PORTFOLIO_EXPOSURE, DRAWDOWN/RECOVERY, FUNDAMENTAL_QUALITY, REGIME (finish), EXECUTION_QUALITY, 20-family bundle | NOT_STARTED | -- | -- | -- |
-| 21-26 | Feature definitions registry, router research adapter, strictness funnel engine, historical loaders, filter-value analysis, Phase 2 ablations | NOT_STARTED | -- | -- | -- |
-| 27-28 | Immutable quant snapshot contract, T0 research adapter | NOT_STARTED | -- | -- | -- |
+| 12 | EVENT_CONTEXT feature | SOURCE_IMPLEMENTED | `features/event_context.py` | `test_event_context.py` (7) | `451709d` |
+| 13 | SECTOR feature | BLOCKED_DATA (no authorized sector/GICS source anywhere in this repo; typed UNKNOWN contract + Codex handoff implemented) | `features/sector.py` | `test_sector.py` (3) | `de49efc` |
+| 14 | CORRELATION feature | SOURCE_IMPLEMENTED | `features/correlation.py` | `test_correlation.py` (11) | `c27f6e8` |
+| 15 | PORTFOLIO_EXPOSURE feature | SOURCE_IMPLEMENTED | `features/portfolio_exposure.py` | `test_portfolio_exposure.py` (8) | `ec2b597` |
+| 16 | DRAWDOWN_RECOVERY feature | SOURCE_IMPLEMENTED | `features/drawdown_recovery.py` | `test_drawdown_recovery.py` (8) | `935e674` |
+| 17 | FUNDAMENTAL_QUALITY feature | BLOCKED_DATA (same situation as SECTOR) | `features/fundamental_quality.py` | `test_fundamental_quality.py` (2) | `a3cd9d5` |
+| 18 | REGIME wiring (real TREND/REALIZED_VOLATILITY -> real regime_v0.classify()) | CONSUMER_WIRED (first real consumer; regime_v0.py itself pre-existing, not reimplemented) | `features/regime_adapter.py` | `test_regime_adapter.py` (7, end-to-end through the real classifier) | `2f5f3a6` |
+| 19 | EXECUTION_QUALITY (self-caught duplicate-authority bug, fixed) | SOURCE_IMPLEMENTED (adapter over the pre-existing `models/execution_quality.py`, never reimplemented) | `features/execution_quality_adapter.py` | `test_execution_quality_adapter.py` (4) | `f422a0f` |
+| 20 | Complete 20-family feature bundle | SOURCE_IMPLEMENTED (BUNDLE_WIRED for all 20 families -- every family, wired or not, gets exactly one entry, never silently omitted) | `features/feature_bundle.py` | `test_feature_bundle.py` (8) | `2dc1e99` |
+| 21 | Feature definitions registry | SOURCE_IMPLEMENTED | `features/feature_definitions_registry.py` | `test_feature_definitions_registry.py` (5) | `199bbfd` |
+| 22 | Router research adapter (FeatureBundle -> real `strategy_router.py`) | CONSUMER_WIRED (real `route_strategies()` driven end-to-end; final selection explicitly out of scope) | `features/router_research_adapter.py` | `test_router_research_adapter.py` (6) | `e14b81d` |
+| 23 | Strictness funnel engine (real bug found+fixed: rule-order shadowing) | SOURCE_IMPLEMENTED | `features/strictness_funnel.py` | `test_strictness_funnel.py` (12) | `00d4688` |
+| 24 | Historical loaders | SOURCE_IMPLEMENTED for Sep24 (real schema adapter); BLOCKED_DATA for Sep16/Sep18/Sep21 (searched, genuinely do not exist anywhere) | `research/historical_episode_loader.py` | `test_historical_episode_loader.py` (5) | `75b9fe5` |
+| 25-26 | Filter-value analysis, Phase 2 ablations | BLOCKED_DATA (WP24 found exactly ONE real historical episode, N=1 -- no ablation/filter-value comparison is statistically meaningful from a single episode; the loader interface exists and is ready the moment more real episodes exist) | -- | -- | -- |
+| 27-28 | Immutable quant snapshot contract, T0 research adapter | NOT_STARTED (next) | -- | -- | -- |
 | 29-46 | Economic types + Q/H/D/A/C/WAIT economics, cost/slippage model, fill probability, after-cost EV, empirical estimators, assignment/recovery/tail datasets, whole-chain outcomes, management action space/RTG, profit-taking challengers | NOT_STARTED | -- | -- | -- |
 | 47-58 | Entry/management/regime/fill datasets, purged walk-forward, untouched OOS, logistic/tree baselines, calibration (+cohort), model registry, experiment registry | NOT_STARTED | -- | -- | -- |
-| 59-66 | Benchmarks B0-B6, ablations A1-A6, DSR, PBO, multiple-testing ledger, failure attribution, experience memory, reproducibility bundle | NOT_STARTED (BLOCKED_DATA for the benchmark/ablation runs specifically -- no unified historical dataset loader exists yet to feed them, per WP24 being not started) | -- | -- | -- |
+| 59-66 | Benchmarks B0-B6, ablations A1-A6, DSR, PBO, multiple-testing ledger, failure attribution, experience memory, reproducibility bundle | BLOCKED_DATA for real-data runs (same N=1 constraint as WP25-26); infrastructure NOT_STARTED | -- | -- | -- |
 | 67-77 | Future capture contracts, outcome-horizon adapters, expiration/management-checkpoint outcomes, observed/modeled/broker firewall, source validation, missingness audit, coverage report, strictness-vs-economics join, Q-vs-D cohort, WAIT alternatives analysis | NOT_STARTED | -- | -- | -- |
 | 78-84 | Management-chain accounting fixtures, AEGIS/sizing quant contract fixtures, economic monotonicity property tests, leakage test harness, research CLI, performance/memory | NOT_STARTED | -- | -- | -- |
 | 85-100 | Storage classification, Codex handoff pack, Phase 6 real experiment run, shadow prediction receipts, promotion evidence assembler, drift detection, Paper analysis readiness, Paper-vs-model discrepancy, graduation metric engine, release-gate evidence matrix, final integration test, adversarial matrix, duplicate-authority search, TODO elimination, full test gate, final ledger reconciliation | NOT_STARTED | -- | -- | -- |
