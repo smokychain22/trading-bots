@@ -5,7 +5,7 @@ function Invoke-ThetaBoundedProcess {
   param(
     [Parameter(Mandatory)][string]$Executable,
     [string[]]$Arguments = @(),
-    [ValidateRange(1,3600)][int]$TimeoutSeconds,
+    [ValidateRange(1,21600)][int]$TimeoutSeconds,
     [string]$WorkingDirectory = (Get-Location).Path,
     [AllowNull()][string]$StandardInputText = $null
   )

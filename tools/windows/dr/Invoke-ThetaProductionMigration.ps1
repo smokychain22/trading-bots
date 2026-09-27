@@ -1,6 +1,7 @@
 #Requires -Version 7
 param([string]$BackupRoot)
 . (Join-Path $PSScriptRoot 'ThetaBackup.Common.ps1')
+. (Join-Path $PSScriptRoot '..\ThetaProcess.Common.ps1')
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $root = Get-ThetaBackupRoot $BackupRoot
 $pwsh = Join-Path $PSHOME 'pwsh.exe'
@@ -13,12 +14,15 @@ $oldAiven = $env:AIVEN_DATABASE_URL
 $oldDatabase = $env:DATABASE_URL
 $oldCheckpoint = $env:THETA_MIGRATION_CHECKPOINT_ACTIVE
 try {
-  $beforeRaw = @(& $pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Backup-Theta.ps1') -BackupRoot $root 2>&1 |
-    ForEach-Object { [string]$_ })
-  $beforeExitCode = $LASTEXITCODE
+  $beforeProcess = Invoke-ThetaBoundedProcess -Executable $pwsh -TimeoutSeconds 21600 -Arguments @(
+    '-NoProfile','-File',(Join-Path $PSScriptRoot 'Backup-Theta.ps1'),'-BackupRoot',$root)
+  $beforeRaw = $beforeProcess.Output
+  $beforeExitCode = $beforeProcess.ExitCode
+  if ($beforeProcess.State -eq 'TIMED_OUT') {
+    throw 'PRE_MIGRATION_BACKUP_PROCESS_TIMEOUT_PREVIOUS_BACKUP_PRESERVED'
+  }
   if ($beforeExitCode -ne 0) {
-    $beforeDiagnostic = (($beforeRaw | Select-Object -Last 8) -join ' | ') -replace '[\r\n]+',' '
-    throw "PRE_MIGRATION_VERIFIED_BACKUP_FAILED:exit=$beforeExitCode diagnostic=$beforeDiagnostic"
+    throw "PRE_MIGRATION_VERIFIED_BACKUP_FAILED:exit=$beforeExitCode"
   }
   $before = $beforeRaw | ConvertFrom-Json
   if ($before.state -ne 'VERIFIED') { throw 'PRE_MIGRATION_VERIFIED_BACKUP_FAILED' }
@@ -31,32 +35,45 @@ try {
   $env:THETA_MIGRATION_CHECKPOINT_ACTIVE = 'VERIFIED_LOCAL_BACKUP'
   Push-Location $repoRoot
   try {
-    & node tools/database-migrate.mjs | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'PRODUCTION_MIGRATION_FAILED_PRE_BACKUP_PRESERVED' }
-    & node tools/database-verify.mjs | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'POST_MIGRATION_SCHEMA_INVARIANT_FAILED_PRE_BACKUP_PRESERVED' }
-    $storageRaw = & node --import tsx tools/theta-storage-audit.ts --environment-file=.env.local
-    if ($LASTEXITCODE -ne 0) { throw 'POST_MIGRATION_STORAGE_AUDIT_FAILED_PRE_BACKUP_PRESERVED' }
+    $migrationProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 900 -Arguments @(
+      'tools/database-migrate.mjs')
+    if ($migrationProcess.State -eq 'TIMED_OUT') { throw 'PRODUCTION_MIGRATION_PROCESS_TIMEOUT_PRE_BACKUP_PRESERVED' }
+    if ($migrationProcess.ExitCode -ne 0) { throw 'PRODUCTION_MIGRATION_FAILED_PRE_BACKUP_PRESERVED' }
+    $verifyProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 600 -Arguments @(
+      'tools/database-verify.mjs')
+    if ($verifyProcess.State -eq 'TIMED_OUT') { throw 'POST_MIGRATION_SCHEMA_INVARIANT_PROCESS_TIMEOUT_PRE_BACKUP_PRESERVED' }
+    if ($verifyProcess.ExitCode -ne 0) { throw 'POST_MIGRATION_SCHEMA_INVARIANT_FAILED_PRE_BACKUP_PRESERVED' }
+    $storageProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 300 -Arguments @(
+      '--import','tsx','tools/theta-storage-audit.ts','--environment-file=.env.local')
+    $storageRaw = $storageProcess.Output
+    if ($storageProcess.State -eq 'TIMED_OUT') { throw 'POST_MIGRATION_STORAGE_AUDIT_PROCESS_TIMEOUT_PRE_BACKUP_PRESERVED' }
+    if ($storageProcess.ExitCode -ne 0) { throw 'POST_MIGRATION_STORAGE_AUDIT_FAILED_PRE_BACKUP_PRESERVED' }
     $storage = ($storageRaw | Select-Object -Last 1) | ConvertFrom-Json
     if ($storage.state -ne 'PASS' -or $storage.unknownClassificationCount -ne 0) {
       throw 'POST_MIGRATION_STORAGE_AUDIT_INCOMPLETE_PRE_BACKUP_PRESERVED'
     }
-    $soakRaw = & node --import tsx tools/theta-postgres-stability-soak.ts --environment-file=.env.local --duration-seconds=900
-    $soakExitCode = $LASTEXITCODE
+    $soakProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 1020 -Arguments @(
+      '--import','tsx','tools/theta-postgres-stability-soak.ts','--environment-file=.env.local','--duration-seconds=900')
+    $soakRaw = $soakProcess.Output
+    $soakExitCode = $soakProcess.ExitCode
     $soakLog = Join-Path $root ('logs\database-stability-soak-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.jsonl')
     [IO.File]::WriteAllLines($soakLog, [string[]]$soakRaw, [Text.UTF8Encoding]::new($false))
+    if ($soakProcess.State -eq 'TIMED_OUT') { throw 'POST_MIGRATION_DATABASE_SOAK_PROCESS_TIMEOUT_PRE_BACKUP_PRESERVED' }
     if ($soakExitCode -ne 0) { throw 'POST_MIGRATION_DATABASE_SOAK_FAILED_PRE_BACKUP_PRESERVED' }
     $soak = ($soakRaw | Select-Object -Last 1) | ConvertFrom-Json
     if ($soak.result -ne 'PASS' -or $soak.requestedDurationSeconds -lt 900) {
       throw 'POST_MIGRATION_DATABASE_SOAK_INCOMPLETE_PRE_BACKUP_PRESERVED'
     }
   } finally { Pop-Location }
-  $afterRaw = @(& $pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Backup-Theta.ps1') -BackupRoot $root 2>&1 |
-    ForEach-Object { [string]$_ })
-  $afterExitCode = $LASTEXITCODE
+  $afterProcess = Invoke-ThetaBoundedProcess -Executable $pwsh -TimeoutSeconds 21600 -Arguments @(
+    '-NoProfile','-File',(Join-Path $PSScriptRoot 'Backup-Theta.ps1'),'-BackupRoot',$root)
+  $afterRaw = $afterProcess.Output
+  $afterExitCode = $afterProcess.ExitCode
+  if ($afterProcess.State -eq 'TIMED_OUT') {
+    throw 'POST_MIGRATION_BACKUP_PROCESS_TIMEOUT_PRE_BACKUP_PRESERVED'
+  }
   if ($afterExitCode -ne 0) {
-    $afterDiagnostic = (($afterRaw | Select-Object -Last 8) -join ' | ') -replace '[\r\n]+',' '
-    throw "POST_MIGRATION_VERIFIED_BACKUP_FAILED_PRE_BACKUP_PRESERVED:exit=$afterExitCode diagnostic=$afterDiagnostic"
+    throw "POST_MIGRATION_VERIFIED_BACKUP_FAILED_PRE_BACKUP_PRESERVED:exit=$afterExitCode"
   }
   $after = $afterRaw | ConvertFrom-Json
   if ($after.state -ne 'VERIFIED') { throw 'POST_MIGRATION_VERIFIED_BACKUP_FAILED_PRE_BACKUP_PRESERVED' }
