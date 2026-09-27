@@ -1,0 +1,97 @@
+"""Unified research CLI (work package 83).
+
+Each subcommand is a thin dispatcher to an existing, real, independently-
+tested module -- this file never reimplements domain logic. `--input` is a
+path to a JSON file holding whatever arguments that module's real function
+needs (documented per subcommand below); output is JSON on stdout,
+including whatever source/dataset/config hashes the underlying module
+already produces. A subcommand with no real integration target yet prints
+an explicit `BLOCKED_MISSING_INTEGRATION` state rather than a fabricated
+result.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from research.historical_v1_to_v6_bridge import convert_historical_export
+from research.historical_export_dedupe import HistoricalExportEntry, deduplicate_historical_exports
+from research.missingness_engine import build_missingness_report
+from research.benchmark_runner import classify_benchmark_readiness, classify_all_benchmarks
+from research.entry_feature_ablation import execute_entry_feature_ablation
+from research.validation import calibration_metrics
+from research.selection_bias_runner import run_selection_bias_campaign
+from research.reproducibility_bundle import verify_reproducibility_bundle
+from research.historical_coverage_report import build_historical_coverage_report
+from research.production_export_loader import _load_candidate
+from features.strictness_funnel import StrictnessRow, build_strictness_funnel
+
+NOT_YET_INTEGRATED_COMMANDS = ('features', 'dataset-build', 'filter-value')
+COMMANDS = (
+    'historical-convert', 'historical-dedupe', 'missingness', 'coverage', 'strictness', 'benchmark', 'ablation',
+    'calibration', 'selection-bias', 'reproducibility-verify', *NOT_YET_INTEGRATED_COMMANDS,
+)
+
+
+def _load(path: str) -> dict:
+    return json.loads(Path(path).read_text(encoding='utf-8'))
+
+
+def _dispatch(command: str, payload: dict) -> dict:
+    if command == 'historical-convert':
+        result = convert_historical_export(payload['raw'])
+        return {
+            'sourceSchemaVersion': result.source_schema_version, 'sourceHashVerified': result.source_hash_verified,
+            'convertedContentHash': result.converted_content_hash, 'candidateCount': len(result.candidates),
+        }
+    if command == 'historical-dedupe':
+        entries = [HistoricalExportEntry(e['directoryPath'], e['manifestText'], e['dataset']) for e in payload['entries']]
+        report = deduplicate_historical_exports(entries)
+        return dict(report.__dict__)
+    if command == 'missingness':
+        return build_missingness_report(payload['records'], value_key=payload['valueKey'], dimensions=payload.get('dimensions'))
+    if command == 'coverage':
+        candidates = [_load_candidate(raw) for raw in payload['candidates']]
+        return build_historical_coverage_report(candidates)
+    if command == 'strictness':
+        rows = [StrictnessRow(r['strategy'], r['date'], r['reasonCode'], r.get('candidateId')) for r in payload['rows']]
+        report = build_strictness_funnel(rows)
+        return {'totalCount': report.total_count, 'countsByCategory': dict(report.counts_by_category),
+                'ratesByCategory': dict(report.rates_by_category)}
+    if command == 'benchmark':
+        if payload.get('benchmarkId'):
+            return classify_benchmark_readiness(payload['benchmarkId'], payload.get('capabilityEvidence'))
+        return classify_all_benchmarks(payload.get('capabilityEvidence', {}))
+    if command == 'ablation':
+        return execute_entry_feature_ablation(payload['dataset'], payload['baselinePolicy'], payload['policy'], payload['generatedAt'])
+    if command == 'calibration':
+        metrics = calibration_metrics(payload['probabilities'], payload['labels'], payload['binCount'])
+        return {'sampleSize': metrics.sample_size, 'brierScore': metrics.brier_score, 'logLoss': metrics.log_loss,
+                'expectedCalibrationError': metrics.expected_calibration_error}
+    if command == 'selection-bias':
+        return run_selection_bias_campaign(payload)
+    if command == 'reproducibility-verify':
+        return {'verified': verify_reproducibility_bundle(payload['bundle'])}
+    if command in NOT_YET_INTEGRATED_COMMANDS:
+        return {'state': 'BLOCKED_MISSING_INTEGRATION', 'command': command,
+                'reason': f'{command} has no wired CLI integration yet -- the underlying modules exist but require full DatasetExportArtifact/policy assembly not yet CLI-exposed'}
+    raise ValueError(f'RESEARCH_CLI_UNKNOWN_COMMAND:{command}')
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('command', choices=COMMANDS)
+    parser.add_argument('--input', required=True)
+    arguments = parser.parse_args()
+    result = _dispatch(arguments.command, _load(arguments.input))
+    print(json.dumps(result, sort_keys=True))
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
