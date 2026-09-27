@@ -126,11 +126,19 @@ export async function runCommand5aLocalObservationWorker(input: {
   if (dueState !== 'DUE') {
     const reason = dueState === 'DEFERRED_PROVIDER' ? 'MARKET_PROVIDER_UNAVAILABLE' : 'MARKET_SESSION_NOT_OPEN';
     for (const job of claimed) {
-      input.scheduler.defer({ observationJobId: job.observationJobId, claimedBy: input.claimedBy,
-        state: dueState, asOf: input.asOf, reasonCode: reason });
-      count(reasons, reason);
-      if (dueState === 'DEFERRED_PROVIDER') deferredProvider += 1;
-      else deferredMarket += 1;
+      if (job.attempts >= maximumAttempts) {
+        const exhaustedReason = `${reason}_RETRY_LIMIT_EXHAUSTED`;
+        input.scheduler.resolve({ observationJobId: job.observationJobId, claimedBy: input.claimedBy,
+          state: 'CENSORED', resolvedAt: input.asOf, reasonCode: exhaustedReason });
+        censoredRetryExhausted += 1;
+        count(reasons, exhaustedReason);
+      } else {
+        input.scheduler.defer({ observationJobId: job.observationJobId, claimedBy: input.claimedBy,
+          state: dueState, asOf: input.asOf, reasonCode: reason });
+        count(reasons, reason);
+        if (dueState === 'DEFERRED_PROVIDER') deferredProvider += 1;
+        else deferredMarket += 1;
+      }
     }
     return {
       contractVersion: command5aLocalObservationWorkerVersion,

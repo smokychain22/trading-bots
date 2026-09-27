@@ -134,6 +134,33 @@ test('provider outage remains a typed deferral and cannot look like a missed mar
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('a persistent provider outage becomes censored after the governed retry limit', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-command5a-worker-'));
+  try {
+    const { scheduler, job } = setup(root);
+    const source: Command5aReadOnlyObservationSource = {
+      brokerAuthority: false,
+      async marketState() { return { providerAvailable: false, marketSessionOpen: null }; },
+      async observe() { throw new Error('UNREACHABLE'); },
+    };
+    for (const asOf of ['2026-09-25T14:45:00Z', '2026-09-25T14:46:00Z']) {
+      const deferred = await runCommand5aLocalObservationWorker({ scheduler, source,
+        spoolPath: join(root, 'research.sqlite'), claimedBy: `provider-${asOf}`,
+        asOf, claimTtlSeconds: 30, maximumAttempts: 3 });
+      assert.equal(deferred.deferredProvider, 1);
+    }
+    const exhausted = await runCommand5aLocalObservationWorker({ scheduler, source,
+      spoolPath: join(root, 'research.sqlite'), claimedBy: 'provider-terminal',
+      asOf: '2026-09-25T14:47:00Z', claimTtlSeconds: 30, maximumAttempts: 3 });
+    assert.equal(exhausted.deferredProvider, 0);
+    assert.equal(exhausted.censoredRetryExhausted, 1);
+    assert.equal(scheduler.get(job.observationJobId).state, 'CENSORED');
+    assert.equal(scheduler.get(job.observationJobId).reasonCode,
+      'MARKET_PROVIDER_UNAVAILABLE_RETRY_LIMIT_EXHAUSTED');
+    scheduler.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('incomplete market evidence becomes a terminal typed miss rather than a retry loop', async () => {
   const root = mkdtempSync(join(tmpdir(), 'theta-command5a-worker-'));
   try {
