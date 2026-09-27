@@ -36,7 +36,7 @@ export const storageDatasetPolicies: readonly StorageDatasetPolicy[] = [
     classification: 'CANONICAL_AUDIT',
     owner: 'OPERATIONS',
     retentionClass: 'LONG_TERM_AUDIT',
-    maximumInlinePayloadBytes: 128 * 1024,
+    maximumInlinePayloadBytes: 768 * 1024,
     canonicalHome: 'POSTGRESQL',
     archiveFormat: 'ZSTD_PARQUET',
     reconstructionKey: 'bot_id + receipt/event identity + observed_at',
@@ -48,7 +48,7 @@ export const storageDatasetPolicies: readonly StorageDatasetPolicy[] = [
     classification: 'SHORT_RETENTION_OBSERVATION',
     owner: 'PROVIDER_ADAPTER',
     retentionClass: 'HOT_OBSERVATION',
-    maximumInlinePayloadBytes: 64 * 1024,
+    maximumInlinePayloadBytes: 4 * 1024 * 1024,
     canonicalHome: 'PARQUET_DUCKDB',
     archiveFormat: 'ZSTD_PARQUET',
     reconstructionKey: 'bot_id + provider + instrument identity + provider timestamp + received_at',
@@ -99,4 +99,20 @@ export function datasetPolicyForClassification(
 ): StorageDatasetPolicy | null {
   if (classification === 'UNKNOWN_REQUIRES_REVIEW') return null;
   return storageDatasetPolicies.find((policy) => policy.classification === classification) ?? null;
+}
+
+export function assertInlinePayloadWithinPolicy(input: {
+  readonly classification: GovernedRelationClassification;
+  readonly serializedBytes: number;
+  readonly errorCode: string;
+}): void {
+  if (!Number.isInteger(input.serializedBytes) || input.serializedBytes < 0) {
+    throw new Error('STORAGE_INLINE_PAYLOAD_SIZE_INVALID');
+  }
+  if (!/^[A-Z][A-Z0-9_]+$/.test(input.errorCode)) throw new Error('STORAGE_INLINE_PAYLOAD_ERROR_CODE_INVALID');
+  const policy = datasetPolicyForClassification(input.classification);
+  if (policy === null) throw new Error('STORAGE_DATASET_POLICY_MISSING');
+  if (input.serializedBytes > policy.maximumInlinePayloadBytes) {
+    throw new Error(`${input.errorCode}:${input.serializedBytes}:${policy.maximumInlinePayloadBytes}`);
+  }
 }

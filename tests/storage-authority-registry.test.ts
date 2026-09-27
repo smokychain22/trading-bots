@@ -3,7 +3,9 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
 import { authorityForClassification, classifyPostgresRelation, storageAuthorityRegistry } from '../src/storage/storage-authority-registry.js';
-import { datasetPolicyForClassification, storageDatasetPolicies } from '../src/storage/storage-dataset-policy.js';
+import {
+  assertInlinePayloadWithinPolicy, datasetPolicyForClassification, storageDatasetPolicies,
+} from '../src/storage/storage-dataset-policy.js';
 import { evaluateRetentionDisposition } from '../src/storage/retention-policy.js';
 
 test('storage authority keeps transactional state in PostgreSQL and research history in Parquet', () => {
@@ -57,7 +59,19 @@ test('each governed relation class has one bounded storage policy', () => {
   assert.equal(datasetPolicyForClassification('UNKNOWN_REQUIRES_REVIEW'), null);
   assert.equal(datasetPolicyForClassification('RESEARCH_HISTORY')?.canonicalHome, 'PARQUET_DUCKDB');
   assert.equal(datasetPolicyForClassification('CANONICAL_TRADING_STATE')?.cleanupAuthority, 'NEVER_AUTOMATIC');
-  assert.equal(datasetPolicyForClassification('SHORT_RETENTION_OBSERVATION')?.maximumInlinePayloadBytes, 64 * 1024);
+  assert.equal(datasetPolicyForClassification('SHORT_RETENTION_OBSERVATION')?.maximumInlinePayloadBytes, 4 * 1024 * 1024);
+});
+
+test('inline payload policy rejects oversized evidence without truncation', () => {
+  assert.doesNotThrow(() => assertInlinePayloadWithinPolicy({
+    classification: 'CANONICAL_AUDIT', serializedBytes: 768 * 1024, errorCode: 'TEST_PAYLOAD_TOO_LARGE',
+  }));
+  assert.throws(() => assertInlinePayloadWithinPolicy({
+    classification: 'CANONICAL_AUDIT', serializedBytes: 768 * 1024 + 1, errorCode: 'TEST_PAYLOAD_TOO_LARGE',
+  }), /TEST_PAYLOAD_TOO_LARGE:786433:786432/);
+  assert.throws(() => assertInlinePayloadWithinPolicy({
+    classification: 'RESEARCH_HISTORY', serializedBytes: -1, errorCode: 'TEST_PAYLOAD_TOO_LARGE',
+  }), /STORAGE_INLINE_PAYLOAD_SIZE_INVALID/);
 });
 
 test('archive retention never permits cleanup without full parity evidence', () => {
