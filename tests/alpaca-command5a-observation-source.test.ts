@@ -98,3 +98,45 @@ test('missing exact contract stays MISSING and never falls back to another quote
   assert.equal(receipt.reasonCode, 'EXACT_CONTRACT_SNAPSHOT_MISSING');
   assert.equal(receipt.quotes.length, 0);
 });
+
+test('one-sided and stale exact quotes remain typed missing observations, never labels', async () => {
+  for (const scenario of [
+    { quote: { bp: 2.2, ap: null, t: new Date().toISOString() }, reason: 'ASK_MISSING' },
+    { quote: { bp: 2.2, ap: 2.3, t: '2026-01-01T00:00:00.000Z' }, reason: 'QUOTE_STALE' },
+  ]) {
+    const fetchImpl: typeof fetch = async (request) => {
+      const url = new URL(request instanceof Request ? request.url : request.toString());
+      if (url.pathname.includes('/v1beta1/options/snapshots/SPY')) return Response.json({ snapshots: {
+        [symbol]: { latestQuote: scenario.quote, impliedVolatility: 0.21 },
+      }, next_page_token: null });
+      return new Response('unexpected', { status: 500 });
+    };
+    const source = new AlpacaCommand5aObservationSource({ tradingApiBase: 'https://paper-api.alpaca.test',
+      marketDataApiBase: 'https://data.alpaca.test', apiKey: 'test-key', apiSecret: 'test-secret', fetchImpl },
+    { optionFeed: 'indicative', stockFeed: 'iex', maximumResearchQuoteAgeSeconds: 60 });
+    const receipt = await source.observe(inputs());
+    assert.equal(receipt.state, 'MISSING');
+    assert.equal(receipt.reasonCode, scenario.reason);
+    assert.equal(receipt.quotes.length, 0);
+  }
+});
+
+test('missing underlying trade facts cannot become a retrying incomplete dataset', async () => {
+  const fetchImpl: typeof fetch = async (request) => {
+    const url = new URL(request instanceof Request ? request.url : request.toString());
+    if (url.pathname.includes('/v1beta1/options/snapshots/SPY')) return Response.json({ snapshots: {
+      [symbol]: { latestQuote: { bp: 2.2, ap: 2.3, t: new Date().toISOString() }, impliedVolatility: 0.21 },
+    }, next_page_token: null });
+    if (url.pathname === '/v2/stocks/SPY/trades/latest') return Response.json({ trade: {
+      p: null, s: 1, t: new Date().toISOString(),
+    } });
+    return new Response('unexpected', { status: 500 });
+  };
+  const source = new AlpacaCommand5aObservationSource({ tradingApiBase: 'https://paper-api.alpaca.test',
+    marketDataApiBase: 'https://data.alpaca.test', apiKey: 'test-key', apiSecret: 'test-secret', fetchImpl },
+  { optionFeed: 'indicative', stockFeed: 'iex', maximumResearchQuoteAgeSeconds: 60 });
+  const receipt = await source.observe(inputs());
+  assert.equal(receipt.state, 'MISSING');
+  assert.equal(receipt.reasonCode, 'UNDERLYING_TRADE_PRICE_MISSING');
+  assert.equal(receipt.underlying, null);
+});

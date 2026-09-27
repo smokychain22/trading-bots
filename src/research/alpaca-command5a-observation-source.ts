@@ -87,8 +87,13 @@ export class AlpacaCommand5aObservationSource implements Command5aReadOnlyObserv
       const assessment = quoteQuality({ bid: snapshot.bid, ask: snapshot.ask,
         providerTimestamp: snapshot.quoteTimestamp, receivedAt,
         maximumResearchQuoteAgeSeconds: this.options.maximumResearchQuoteAgeSeconds });
-      if (assessment.quality === 'INVALID') return { state: 'INVALID', quotes: [], underlying: null,
-        observedAt: receivedAt, reasonCode: assessment.reasonCodes[0] ?? 'EXACT_CONTRACT_QUOTE_INVALID' };
+      if (assessment.quality !== 'GOOD') return {
+        state: assessment.quality === 'INVALID' ? 'INVALID' : 'MISSING',
+        quotes: [],
+        underlying: null,
+        observedAt: receivedAt,
+        reasonCode: assessment.reasonCodes[0] ?? 'EXACT_CONTRACT_QUOTE_INCOMPLETE',
+      };
       quotes.push({
         optionSymbol: leg.optionSymbol,
         bid: snapshot.bid,
@@ -108,6 +113,19 @@ export class AlpacaCommand5aObservationSource implements Command5aReadOnlyObserv
     }
     const trade = await fetchLatestStockTrade(this.alpaca, input.subject.underlying, this.options.stockFeed);
     const observedAt = new Date().toISOString();
+    if (trade.price === null) return { state: 'MISSING', quotes: [], underlying: null,
+      observedAt, reasonCode: 'UNDERLYING_TRADE_PRICE_MISSING' };
+    if (trade.timestamp === null) return { state: 'MISSING', quotes: [], underlying: null,
+      observedAt, reasonCode: 'UNDERLYING_TRADE_TIMESTAMP_MISSING' };
+    const underlyingAgeSeconds = (Date.parse(observedAt) - Date.parse(trade.timestamp)) / 1_000;
+    if (!Number.isFinite(underlyingAgeSeconds) || underlyingAgeSeconds < 0) {
+      return { state: 'INVALID', quotes: [], underlying: null,
+        observedAt, reasonCode: 'UNDERLYING_TRADE_TIMESTAMP_INVALID' };
+    }
+    if (underlyingAgeSeconds > this.options.maximumResearchQuoteAgeSeconds) {
+      return { state: 'MISSING', quotes: [], underlying: null,
+        observedAt, reasonCode: 'UNDERLYING_TRADE_STALE' };
+    }
     return {
       state: 'READY',
       quotes,
