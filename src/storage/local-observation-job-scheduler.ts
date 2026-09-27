@@ -8,8 +8,9 @@ import {
   type ObservationJobStateRecord,
 } from '../research/observation-job-state.js';
 import type { StrategyLearningObservationJob } from '../research/strategy-learning-horizon.js';
+import type { ShadowEpisodeContract } from '../research/shadow-episode-contract.js';
 
-export const localObservationJobSchedulerVersion = 'theta-local-observation-job-scheduler-v1' as const;
+export const localObservationJobSchedulerVersion = 'theta-local-observation-job-scheduler-v2' as const;
 
 export interface LocalObservationJobReceipt extends ObservationJobStateRecord {
   readonly observationJobId: string;
@@ -20,6 +21,17 @@ export interface LocalObservationJobReceipt extends ObservationJobStateRecord {
   readonly workerSha: string;
   readonly contentHash: string;
   readonly claimedBy: string | null;
+  readonly brokerAuthority: false;
+}
+
+export interface LocalObservationSubjectReceipt {
+  readonly subjectId: string;
+  readonly decisionCycleId: string;
+  readonly underlying: string;
+  readonly episode: ShadowEpisodeContract;
+  readonly sourceSha: string;
+  readonly workerSha: string;
+  readonly contentHash: string;
   readonly brokerAuthority: false;
 }
 
@@ -41,8 +53,20 @@ type JobRow = {
   claimed_by: string | null;
 };
 
+type SubjectRow = {
+  subject_id: string;
+  decision_cycle_id: string;
+  underlying: string;
+  episode_json: string;
+  source_sha: string;
+  worker_sha: string;
+  content_hash: string;
+};
+
 const SHA40 = /^[0-9a-f]{40}$/;
+const SHA256 = /^[0-9a-f]{64}$/;
 const SAFE_ID = /^[A-Za-z0-9_.:@/-]{1,512}$/;
+const SYMBOL = /^[A-Z][A-Z0-9.-]{0,31}$/;
 const hash = (value: string): string => createHash('sha256').update(value).digest('hex');
 
 function toReceipt(row: JobRow): LocalObservationJobReceipt {
@@ -62,6 +86,23 @@ function toReceipt(row: JobRow): LocalObservationJobReceipt {
     resolvedAt: row.resolved_at,
     reasonCode: row.reason_code,
     claimedBy: row.claimed_by,
+    brokerAuthority: false,
+  };
+}
+
+function toSubjectReceipt(row: SubjectRow): LocalObservationSubjectReceipt {
+  const episode = JSON.parse(row.episode_json) as ShadowEpisodeContract;
+  if (episode.subjectId !== row.subject_id || episode.contentHash !== row.content_hash) {
+    throw new Error('LOCAL_OBSERVATION_SUBJECT_INTEGRITY_INVALID');
+  }
+  return {
+    subjectId: row.subject_id,
+    decisionCycleId: row.decision_cycle_id,
+    underlying: row.underlying,
+    episode,
+    sourceSha: row.source_sha,
+    workerSha: row.worker_sha,
+    contentHash: row.content_hash,
     brokerAuthority: false,
   };
 }
@@ -106,10 +147,64 @@ export class LocalObservationJobScheduler {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS ix_observation_job_due
-        ON observation_job(state,target_at,observation_job_id);`);
+        ON observation_job(state,target_at,observation_job_id);
+      CREATE TABLE IF NOT EXISTS observation_subject(
+        subject_id TEXT PRIMARY KEY,
+        decision_cycle_id TEXT NOT NULL,
+        underlying TEXT NOT NULL,
+        episode_json TEXT NOT NULL,
+        source_sha TEXT NOT NULL,
+        worker_sha TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS ix_observation_subject_cycle
+        ON observation_subject(decision_cycle_id,subject_id);`);
   }
 
   close(): void { this.database.close(); }
+
+  registerSubject(input: {
+    readonly decisionCycleId: string;
+    readonly underlying: string;
+    readonly episode: ShadowEpisodeContract;
+  }): LocalObservationSubjectReceipt {
+    if (!SAFE_ID.test(input.decisionCycleId) || !SYMBOL.test(input.underlying)
+      || !SHA256.test(input.episode.subjectId) || !SHA40.test(input.episode.sourceSha)
+      || !SHA40.test(input.episode.workerSha) || !SHA256.test(input.episode.contentHash)
+      || input.episode.brokerAuthority !== false || input.episode.shadowOnly !== true
+      || input.episode.orderSubmitted !== false || input.episode.brokerFill !== false) {
+      throw new Error('LOCAL_OBSERVATION_SUBJECT_INVALID');
+    }
+    const episodeJson = canonicalJson(input.episode);
+    const existing = this.database.prepare('SELECT * FROM observation_subject WHERE subject_id=?')
+      .get(input.episode.subjectId) as SubjectRow | undefined;
+    if (existing !== undefined) {
+      if (existing.decision_cycle_id !== input.decisionCycleId || existing.underlying !== input.underlying
+        || existing.episode_json !== episodeJson || existing.source_sha !== input.episode.sourceSha
+        || existing.worker_sha !== input.episode.workerSha || existing.content_hash !== input.episode.contentHash) {
+        throw new Error('LOCAL_OBSERVATION_SUBJECT_IDENTITY_CONFLICT');
+      }
+      return toSubjectReceipt(existing);
+    }
+    this.database.prepare(`INSERT INTO observation_subject(subject_id,decision_cycle_id,underlying,episode_json,
+      source_sha,worker_sha,content_hash,created_at) VALUES(?,?,?,?,?,?,?,?)`).run(
+      input.episode.subjectId, input.decisionCycleId, input.underlying, episodeJson,
+      input.episode.sourceSha, input.episode.workerSha, input.episode.contentHash, new Date().toISOString(),
+    );
+    return this.getSubject(input.episode.subjectId);
+  }
+
+  getSubject(subjectId: string): LocalObservationSubjectReceipt {
+    const row = this.database.prepare('SELECT * FROM observation_subject WHERE subject_id=?')
+      .get(subjectId) as SubjectRow | undefined;
+    if (row === undefined) throw new Error('LOCAL_OBSERVATION_SUBJECT_NOT_FOUND');
+    return toSubjectReceipt(row);
+  }
+
+  subjectCount(): number {
+    const row = this.database.prepare('SELECT count(*) AS count FROM observation_subject').get() as { count: number };
+    return Number(row.count);
+  }
 
   schedule(input: {
     readonly job: StrategyLearningObservationJob;
