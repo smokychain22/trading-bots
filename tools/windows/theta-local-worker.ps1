@@ -175,6 +175,7 @@ try {
       $command5aMissed = 0
       $command5aDeferredProvider = 0
       $command5aDeferredMarket = 0
+      $command5aCensoredRetryExhausted = 0
       $command5aMaterialized = 0
       $command5aMaturationPending = 0
       $command5aMaturationCensored = 0
@@ -233,6 +234,7 @@ try {
           $command5aMissed = [int]$command5aObservationResult.missed
           $command5aDeferredProvider = [int]$command5aObservationResult.deferredProvider
           $command5aDeferredMarket = [int]$command5aObservationResult.deferredMarket
+          $command5aCensoredRetryExhausted = [int]$command5aObservationResult.censoredRetryExhausted
         } else {
           $command5aObservationState = 'FAILED_NONCRITICAL'
           try { $command5aObservationErrorCode = [string](($command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
@@ -598,6 +600,7 @@ try {
         command5aSchedulingPausedForStorage=$command5aSchedulingPausedForStorage;
         command5aObserved=$command5aObserved;command5aMissed=$command5aMissed;
         command5aDeferredProvider=$command5aDeferredProvider;command5aDeferredMarket=$command5aDeferredMarket;
+        command5aCensoredRetryExhausted=$command5aCensoredRetryExhausted;
         command5aMaterialized=$command5aMaterialized;command5aMaturationPending=$command5aMaturationPending;
         command5aMaturationCensored=$command5aMaturationCensored;
         command5aBacklogState=$command5aBacklogState;command5aHealthErrorCode=$command5aHealthErrorCode;

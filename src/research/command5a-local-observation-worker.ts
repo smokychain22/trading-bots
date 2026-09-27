@@ -39,6 +39,7 @@ export interface Command5aObservationWorkerReport {
   readonly deferredProvider: number;
   readonly deferredMarket: number;
   readonly failedRetryable: number;
+  readonly censoredRetryExhausted: number;
   readonly observationIds: readonly string[];
   readonly reasonCounts: Readonly<Record<string, number>>;
   readonly brokerAuthority: false;
@@ -90,8 +91,13 @@ export async function runCommand5aLocalObservationWorker(input: {
    * fresh enough. Unknown market state remains deferred.
    */
   readonly allowClosedSessionLatestMark?: boolean;
+  readonly maximumAttempts?: number;
 }): Promise<Command5aObservationWorkerReport> {
   if (input.source.brokerAuthority !== false) throw new Error('COMMAND5A_OBSERVATION_SOURCE_AUTHORITY_INVALID');
+  const maximumAttempts = input.maximumAttempts ?? 3;
+  if (!Number.isInteger(maximumAttempts) || maximumAttempts < 1 || maximumAttempts > 100) {
+    throw new Error('COMMAND5A_OBSERVATION_MAXIMUM_ATTEMPTS_INVALID');
+  }
   const claimed = input.scheduler.claimDue({
     asOf: input.asOf,
     claimedBy: input.claimedBy,
@@ -100,10 +106,12 @@ export async function runCommand5aLocalObservationWorker(input: {
   });
   const reasons = new Map<string, number>();
   const observationIds: string[] = [];
-  let observed = 0, missed = 0, invalidated = 0, deferredProvider = 0, deferredMarket = 0, failedRetryable = 0;
+  let observed = 0, missed = 0, invalidated = 0, deferredProvider = 0, deferredMarket = 0;
+  let failedRetryable = 0, censoredRetryExhausted = 0;
   if (claimed.length === 0) return {
     contractVersion: command5aLocalObservationWorkerVersion,
     claimed: 0, observed, missed, invalidated, deferredProvider, deferredMarket, failedRetryable,
+    censoredRetryExhausted,
     observationIds, reasonCounts: {}, brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0,
   };
 
@@ -127,6 +135,7 @@ export async function runCommand5aLocalObservationWorker(input: {
     return {
       contractVersion: command5aLocalObservationWorkerVersion,
       claimed: claimed.length, observed, missed, invalidated, deferredProvider, deferredMarket, failedRetryable,
+      censoredRetryExhausted,
       observationIds, reasonCounts: Object.fromEntries(reasons), brokerAuthority: false,
       orderSubmissions: 0, brokerMutations: 0,
     };
@@ -187,16 +196,25 @@ export async function runCommand5aLocalObservationWorker(input: {
       observationIds.push(receipt.observationId);
       observed += 1;
     } catch {
-      // Leave IN_PROGRESS so the scheduler's claim TTL provides deterministic
-      // crash/archive/provider recovery. Never mark OBSERVED before archive
-      // verification succeeds.
-      failedRetryable += 1;
-      count(reasons, 'OBSERVATION_ATTEMPT_FAILED_RETRYABLE');
+      if (job.attempts >= maximumAttempts) {
+        const reason = 'OBSERVATION_RETRY_LIMIT_EXHAUSTED';
+        input.scheduler.resolve({ observationJobId: job.observationJobId, claimedBy: input.claimedBy,
+          state: 'CENSORED', resolvedAt: input.asOf, reasonCode: reason });
+        censoredRetryExhausted += 1;
+        count(reasons, reason);
+      } else {
+        // Leave IN_PROGRESS so the scheduler's claim TTL provides deterministic
+        // crash/archive/provider recovery. Never mark OBSERVED before archive
+        // verification succeeds.
+        failedRetryable += 1;
+        count(reasons, 'OBSERVATION_ATTEMPT_FAILED_RETRYABLE');
+      }
     }
   }
   return {
     contractVersion: command5aLocalObservationWorkerVersion,
     claimed: claimed.length, observed, missed, invalidated, deferredProvider, deferredMarket, failedRetryable,
+    censoredRetryExhausted,
     observationIds, reasonCounts: Object.fromEntries(reasons), brokerAuthority: false,
     orderSubmissions: 0, brokerMutations: 0,
   };

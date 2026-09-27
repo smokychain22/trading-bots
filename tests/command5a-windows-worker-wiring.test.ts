@@ -21,6 +21,8 @@ test('Windows owner schedules, observes, and matures Command-5A through the immu
   assert.match(command5aRuntime, /state:\s*'COMMAND5A_FAILED'/);
   assert.match(command5aRuntime, /errorCode:\s*command5aSafeFailureCode\(error\)/);
   assert.match(command5aRuntime, /allowClosedSessionLatestMark:\s*true/);
+  assert.match(command5aRuntime, /maximumAttempts:\s*3/);
+  assert.match(source, /command5aCensoredRetryExhausted/);
   assert.doesNotMatch(source, /if \(\$report\.reconciliation\.marketOpen -eq \$true\) \{[\s\S]{0,120}theta-command5a-runtime\.ts[\s\S]{0,100}--mode=observe/);
   assert.match(source, /\$command5aSince = \[string\]\$runtime\.installedAt/);
   assert.doesNotMatch(source, /command5aSince\s*=.*AddMinutes\(-90\)/);

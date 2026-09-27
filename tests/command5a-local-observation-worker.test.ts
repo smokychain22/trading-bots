@@ -184,3 +184,30 @@ test('failed fetch/archive attempt recovers after claim TTL without false OBSERV
     scheduler.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('repeated provider failures terminate as censored instead of retrying forever', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-command5a-worker-'));
+  try {
+    const { scheduler, job } = setup(root);
+    const failing: Command5aReadOnlyObservationSource = {
+      brokerAuthority: false,
+      async marketState() { return { providerAvailable: true, marketSessionOpen: true }; },
+      async observe() { throw new Error('TRANSIENT_PROVIDER_FAILURE'); },
+    };
+    for (const asOf of ['2026-09-25T14:45:00Z', '2026-09-25T14:46:00Z']) {
+      const retry = await runCommand5aLocalObservationWorker({ scheduler, source: failing,
+        spoolPath: join(root, 'research.sqlite'), claimedBy: `observer-${asOf}`,
+        asOf, claimTtlSeconds: 30, maximumAttempts: 3 });
+      assert.equal(retry.failedRetryable, 1);
+      assert.equal(retry.censoredRetryExhausted, 0);
+    }
+    const terminal = await runCommand5aLocalObservationWorker({ scheduler, source: failing,
+      spoolPath: join(root, 'research.sqlite'), claimedBy: 'observer-terminal',
+      asOf: '2026-09-25T14:47:00Z', claimTtlSeconds: 30, maximumAttempts: 3 });
+    assert.equal(terminal.failedRetryable, 0);
+    assert.equal(terminal.censoredRetryExhausted, 1);
+    assert.equal(scheduler.get(job.observationJobId).state, 'CENSORED');
+    assert.equal(scheduler.get(job.observationJobId).reasonCode, 'OBSERVATION_RETRY_LIMIT_EXHAUSTED');
+    scheduler.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

@@ -208,7 +208,7 @@ async function observe(): Promise<void> {
     const report = await runCommand5aLocalObservationWorker({ scheduler, source, spoolPath,
       claimedBy: `command5a:${hostname().replace(/[^A-Za-z0-9_.-]/g, '_')}:${process.pid}`,
       asOf: new Date().toISOString(), claimTtlSeconds: 180, limit: 16,
-      allowClosedSessionLatestMark: true });
+      allowClosedSessionLatestMark: true, maximumAttempts: 3 });
     process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_OBSERVATION_COMPLETE', ...report })}\n`);
   } finally { scheduler.close(); }
 }
