@@ -50,6 +50,10 @@ Commit `ab29f2ad5738fa3c734ddcf220c65521d072a2c1` removed unbounded child-proces
 
 The bounded runner now owns local evidence backfill, research export, the descriptive empirical pipeline, durable evidence bundling, the storage audit, canonical-frontier archive projection, DuckDB probing, Parquet compaction and verification, archive health, runtime receipt writing, and the database-independent no-submit probe. Each call has an explicit deadline, terminates its child process tree on timeout, drains stderr without exposing it, and records a typed timeout state where the status contract has a matching field. A blocked child can no longer stop lease renewal and future locked cycles indefinitely.
 
+### Bounded governed checkpoint
+
+Commit `a04e65f28b68fee5522f59a442d8f26429c33fb6` applies the same process ownership to the outer migration checkpoint. Pre-backup, migration, invariant verification, storage audit, 900-second soak, and post-backup now have stage-specific hard deadlines and typed timeout failures. The checkpoint terminates a timed-out child process tree and preserves the previously verified recovery generation.
+
 ## Governed checkpoint incident
 
 The canonical recovery gate passed with four fresh physical probes, rollback-safe writes, stable postmaster identity, read-only disabled, safe power, adequate connection headroom, a stopped worker, and a preserved prior verified generation.
@@ -95,12 +99,13 @@ Worktree: `work/trading-bots-command5a`
 
 Branch: `codex/theta-command5a`
 
-Current isolated branch head: `faccccc`
+Current isolated branch head: `bc444541f200fb6229110be276b2e165140a1539`
 
 New isolated commits:
 
 - `512486f` bounds schedule, observation, maturation, and health subprocesses
 - `faccccc` bounds local evidence backfill, research export, empirical pipeline, storage audit, archive projection, Parquet compaction and verification, DuckDB dependency probe, runtime receipt writing, and the database-independent no-submit probe
+- `bc44454` reconciles the isolated branch with current main while retaining the Command-5A scheduler and archive-health integration
 
 The shared bounded runner:
 
