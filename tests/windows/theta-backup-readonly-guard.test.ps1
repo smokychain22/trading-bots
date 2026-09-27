@@ -80,6 +80,12 @@ foreach ($required in @('theta-migration-process-receipt-v1','migration-child-',
     throw "MIGRATION_CHILD_OBSERVABILITY_FIELD_MISSING:$required"
   }
 }
+$resume = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\tools\windows\dr\Invoke-ThetaPostMigrationContinuation.ps1')
+foreach ($required in @('theta-post-migration-resume-preflight','duration-seconds=900','ORIGINAL_SCHEMA_064_ROLLBACK_ANCHOR_INVALID',
+    'POST_MIGRATION_RECOVERY_GATE_INVALID_OR_STALE','Enter-ThetaBackupProcessLock','Backup-Theta.ps1','postMigrationRestoreParity')) {
+  if ($resume -notmatch [regex]::Escape($required)) { throw "POST_MIGRATION_RESUME_GUARD_MISSING:$required" }
+}
+if ($resume -match 'database-migrate\.mjs|migrations[\\/].*06[5-7]_') { throw 'POST_MIGRATION_RESUME_REAPPLIES_MIGRATIONS' }
 
 $backupPath = Join-Path $PSScriptRoot '..\..\tools\windows\dr\Backup-Theta.ps1'
 $backupSource = Get-Content -Raw -LiteralPath $backupPath

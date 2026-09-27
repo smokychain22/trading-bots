@@ -43,6 +43,7 @@
     "theta:aegis:iv-backfill": "node --import tsx tools/backfill-aegis-iv-stress.ts --environment-file=.env.local",
     "db:migrate": "node tools/database-migrate.mjs",
     "db:migrate:production:checkpoint": "pwsh -NoProfile -File tools/windows/dr/Invoke-ThetaProductionMigration.ps1",
+    "db:post-migration:continue": "pwsh -NoProfile -File tools/windows/dr/Invoke-ThetaPostMigrationContinuation.ps1",
     "db:verify": "node tools/database-verify.mjs",
     "db:aiven:preflight": "node tools/database-target-preflight.mjs --environment-file=.env.local",
     "db:aiven:import-legacy": "node tools/import-legacy-research-export.mjs",
