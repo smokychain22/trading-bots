@@ -71,6 +71,7 @@ test('quota exhaustion persists a cooldown and preserves local archive inventory
   assert.ok(state.spoolBytes > 0);
   assert.equal(state.schedulerBytes, 0);
   assert.equal(state.parquetBytes, 0);
+  assert.equal(state.activeSpoolBytes, state.spoolBytes);
   assert.equal(state.totalLocalResearchBytes, state.spoolBytes + state.parquetBytes);
   assert.equal(state.spoolWatermark, 'NORMAL');
   assert.equal(state.newSubjectScheduling, 'ALLOW');
@@ -108,10 +109,33 @@ test('successful archive clears quota cooldown and fingerprints latest verified 
   assert.equal(state.failureFamily, null);
   assert.equal(state.parquetFiles, 1);
   assert.ok(state.parquetBytes > 0);
+  assert.equal(state.activeSpoolBytes, state.spoolBytes);
   assert.equal(state.totalLocalResearchBytes, state.spoolBytes + state.parquetBytes);
   assert.match(state.lastManifestHash ?? '', /^[0-9a-f]{64}$/);
   assert.equal(state.duckdbVerification, 'PASS');
   assert.equal(JSON.parse(readFileSync(paths.health, 'utf8')).brokerAuthority, false);
+});
+
+test('verified Parquet inventory does not consume the active SQLite spool budget', () => {
+  const paths = fixture();
+  const directory = join(paths.parquet, 'THETA', 'large-verified-archive');
+  mkdirSync(directory, { recursive: true });
+  const parquetFile = join(directory, 'evidence.parquet');
+  writeFileSync(parquetFile, 'verified-test-archive');
+  truncateSync(parquetFile, localResearchSpoolBudgetBytes + 1);
+  writeFileSync(join(directory, 'manifest.json'), JSON.stringify({
+    generatedAt: '2026-09-25T01:00:00.000Z', parquetFile: 'evidence.parquet', duckdbReadback: 'PASS',
+  }));
+  const state = writeArchiveHealth({
+    healthPath: paths.health, spoolPath: paths.sqlite, parquetRoot: paths.parquet,
+    observedAt: new Date('2026-09-25T01:00:00.000Z'), archiveState: 'ARCHIVED_LOCAL_SQLITE',
+    outcome: 'SUCCESS',
+  });
+  assert.ok(state.totalLocalResearchBytes > localResearchSpoolBudgetBytes);
+  assert.equal(state.activeSpoolBytes, state.spoolBytes);
+  assert.ok(state.activeSpoolBytes < localResearchSpoolBudgetBytes * 0.75);
+  assert.equal(state.spoolWatermark, 'NORMAL');
+  assert.equal(state.newSubjectScheduling, 'ALLOW');
 });
 
 test('legacy archive without explicit readback is not falsely reported corrupt', () => {

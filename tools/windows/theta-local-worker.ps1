@@ -478,6 +478,7 @@ try {
       $localResearchArchiveNextRetryAt = $null
       $localResearchSpoolRows = 0
       $localResearchPendingCompactionRows = 0
+      $localResearchActiveSpoolBytes = 0
       $localResearchTotalBytes = 0
       $localResearchStorageWatermark = 'NORMAL'
       $localResearchParquetFiles = 0
@@ -544,6 +545,7 @@ try {
             $healthResult = $healthOutput | ConvertFrom-Json
             $localResearchSpoolRows = [int]$healthResult.health.spoolRows
             $localResearchPendingCompactionRows = [int]$healthResult.health.pendingCompactionRows
+            $localResearchActiveSpoolBytes = [long]$healthResult.health.activeSpoolBytes
             $localResearchTotalBytes = [long]$healthResult.health.totalLocalResearchBytes
             $localResearchStorageWatermark = [string]$healthResult.health.spoolWatermark
             $localResearchParquetFiles = [int]$healthResult.health.parquetFiles
@@ -589,6 +591,7 @@ try {
         localResearchArchiveNextRetryAt=$localResearchArchiveNextRetryAt;
         localResearchSpoolRows=$localResearchSpoolRows;
         localResearchPendingCompactionRows=$localResearchPendingCompactionRows;
+        localResearchActiveSpoolBytes=$localResearchActiveSpoolBytes;
         localResearchTotalBytes=$localResearchTotalBytes;
         localResearchStorageWatermark=$localResearchStorageWatermark;
         localResearchParquetFiles=$localResearchParquetFiles;localResearchParquetBytes=$localResearchParquetBytes;

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-export const localResearchArchiveHealthVersion = 'theta-local-research-archive-health-v3' as const;
+export const localResearchArchiveHealthVersion = 'theta-local-research-archive-health-v4' as const;
 export const localResearchStorageBudgetBytes = 1024 * 1024 * 1024;
 export const localResearchSpoolBudgetBytes = localResearchStorageBudgetBytes;
 
@@ -24,6 +24,9 @@ export interface LocalResearchArchiveHealth {
   readonly spoolBytes: number;
   readonly schedulerBytes: number;
   readonly parquetBytes: number;
+  /** Mutable SQLite state that can still grow before verified compaction. */
+  readonly activeSpoolBytes: number;
+  /** Complete local inventory, including immutable verified Parquet archives. */
   readonly totalLocalResearchBytes: number;
   readonly spoolWatermark: 'NORMAL' | 'ELEVATED' | 'HIGH' | 'CRITICAL';
   readonly newSubjectScheduling: 'ALLOW' | 'PAUSE_STORAGE_PRESSURE';
@@ -195,9 +198,15 @@ export function writeArchiveHealth(input: {
   const schedulerBytes = input.schedulerPath === undefined ? 0
     : measureLocalResearchStorageBytes([input.schedulerPath]);
   const parquet = parquetState(resolve(input.parquetRoot));
-  const totalLocalResearchBytes = counts.spoolBytes + schedulerBytes + parquet.parquetBytes;
+  const activeSpoolBytes = counts.spoolBytes + schedulerBytes;
+  const totalLocalResearchBytes = activeSpoolBytes + parquet.parquetBytes;
   const retryHours = input.retryAfterHours ?? 12;
-  const spoolWatermark = classifyLocalSpoolWatermark(totalLocalResearchBytes);
+  // Parquet is the intended immutable destination for compacted research data.
+  // Counting it as active spool pressure made every successful archive move the
+  // scheduler permanently closer to PAUSE_STORAGE_PRESSURE. Keep total archive
+  // inventory observable, while applying the spool safety budget only to the
+  // mutable SQLite scheduler/outbox set that still needs compaction.
+  const spoolWatermark = classifyLocalSpoolWatermark(activeSpoolBytes);
   const state: LocalResearchArchiveHealth = {
     contractVersion: localResearchArchiveHealthVersion,
     observedAt,
@@ -215,6 +224,7 @@ export function writeArchiveHealth(input: {
       : input.outcome === 'SUCCESS' ? null : prior.nextRetryAt,
     ...counts,
     schedulerBytes,
+    activeSpoolBytes,
     totalLocalResearchBytes,
     spoolWatermark,
     newSubjectScheduling: spoolWatermark === 'HIGH' || spoolWatermark === 'CRITICAL'
