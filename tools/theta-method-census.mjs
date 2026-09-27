@@ -11,13 +11,15 @@
 //
 // Usage: node tools/theta-method-census.mjs
 import { readFileSync, existsSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
 const root = process.cwd();
 
 function gitFiles(pattern) {
-  return execSync(`git ls-files "${pattern}"`, { cwd: root, maxBuffer: 1024 * 1024 * 50 })
+  return execFileSync('git', ['ls-files', pattern], {
+    cwd: root, maxBuffer: 1024 * 1024 * 50, timeout: 30_000, windowsHide: true,
+  })
     .toString().split('\n').filter(Boolean);
 }
 

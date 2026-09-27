@@ -21,11 +21,17 @@ for (const item of historicalFailureRegressions) {
 }
 
 const testFiles = [...new Set(historicalFailureRegressions.flatMap((item) => item.testFiles))].sort();
+const regressionTimeoutMs = 300_000;
 const execution = unclassified.length === 0
-  ? spawnSync(process.execPath, ['--import', 'tsx', '--test', ...testFiles], { encoding: 'utf8' }) : null;
-const regression = execution !== null && execution.status !== 0
+  ? spawnSync(process.execPath, ['--import', 'tsx', '--test', ...testFiles], {
+    encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: regressionTimeoutMs, windowsHide: true,
+  }) : null;
+const executionTimedOut = execution?.error?.code === 'ETIMEDOUT' || execution?.signal !== null;
+if (executionTimedOut) unclassified.push('HISTORICAL_REGRESSION_PROCESS_TIMEOUT');
+else if (execution?.error !== undefined) unclassified.push('HISTORICAL_REGRESSION_PROCESS_START_FAILED');
+const regression = execution !== null && !executionTimedOut && execution.error === undefined && execution.status !== 0
   ? historicalFailureRegressions.map((item) => item.fixtureId) : [];
-const passed = execution?.status === 0 ? historicalFailureRegressions.length : 0;
+const passed = execution?.status === 0 && !executionTimedOut ? historicalFailureRegressions.length : 0;
 const receipt = {
   contractVersion: historicalFailureRegistryVersion,
   total: historicalFailureRegressions.length,
@@ -36,9 +42,13 @@ const receipt = {
   executedTestFiles: testFiles,
   failureIds: regression,
   unclassifiedReasons: unclassified,
+  executionState: execution === null ? 'NOT_RUN'
+    : executionTimedOut ? 'TIMED_OUT'
+      : execution.error !== undefined ? 'START_FAILED'
+        : execution.status === 0 ? 'PASS' : 'FAILED',
+  executionTimeoutMs: regressionTimeoutMs,
   orderSubmissions: 0,
   brokerMutations: 0,
 };
 process.stdout.write(`${JSON.stringify(receipt)}\n`);
-if (execution?.status !== 0 && execution?.stderr) process.stderr.write(execution.stderr);
 if (receipt.fail !== 0 || receipt.regression !== 0 || receipt.unclassified !== 0) process.exitCode = 1;
