@@ -126,6 +126,7 @@ async function readJsonBodyBounded(input: {
   readonly maxResponseBytes: number;
   readonly path: string;
   readonly attempt: number;
+  readonly signal: AbortSignal;
 }): Promise<unknown> {
   const declaredLength = input.response.headers.get('content-length');
   if (declaredLength !== null && /^\d+$/.test(declaredLength)
@@ -143,7 +144,16 @@ async function readJsonBodyBounded(input: {
   let totalBytes = 0;
   try {
     for (;;) {
-      const next = await reader.read();
+      const next = await new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
+        const aborted = (): void => {
+          const error = new Error('Optionomics response body deadline exceeded.');
+          error.name = 'AbortError';
+          reject(error);
+        };
+        if (input.signal.aborted) { aborted(); return; }
+        input.signal.addEventListener('abort', aborted, { once: true });
+        reader.read().then(resolve, reject).finally(() => input.signal.removeEventListener('abort', aborted));
+      });
       if (next.done) break;
       totalBytes += next.value.byteLength;
       if (totalBytes > input.maxResponseBytes) {
@@ -153,6 +163,9 @@ async function readJsonBodyBounded(input: {
       }
       chunks.push(next.value);
     }
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') await reader.cancel(error.message).catch(() => undefined);
+    throw error;
   } finally {
     reader.releaseLock();
   }
@@ -249,7 +262,8 @@ export async function requestOptionomicsJsonBounded(
     }
     let body: unknown;
     try {
-      body = await readJsonBodyBounded({ response, maxResponseBytes, path: url.pathname, attempt });
+      body = await readJsonBodyBounded({ response, maxResponseBytes, path: url.pathname, attempt,
+        signal: controller.signal });
     } catch (error) {
       if (error instanceof OptionomicsProviderError) throw error;
       if (error instanceof Error && error.name === 'AbortError') {

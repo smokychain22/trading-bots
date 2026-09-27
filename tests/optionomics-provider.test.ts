@@ -380,6 +380,16 @@ test('timeout is classified PROVIDER_TIMEOUT, never hangs the caller', async () 
   assert.equal(outcome.errorClass, 'PROVIDER_TIMEOUT');
 });
 
+test('timeout remains active while a successful response body is still streaming', async () => {
+  const fetchImpl = (async () => new Response(new ReadableStream<Uint8Array>({
+    start() { /* Intentionally never enqueue or close. */ },
+  }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl, { timeoutMs: 5, maxRetryAttempts: 1 }), 'SPY');
+  assert.equal(outcome.kind, 'REQUEST_ERROR');
+  if (outcome.kind !== 'REQUEST_ERROR') return;
+  assert.equal(outcome.errorClass, 'PROVIDER_TIMEOUT');
+});
+
 test('network exception (DNS/connection failure) is classified NETWORK_FAILURE', async () => {
   const fetchImpl = (async () => { throw new Error('getaddrinfo ENOTFOUND'); }) as typeof fetch;
   const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY');
