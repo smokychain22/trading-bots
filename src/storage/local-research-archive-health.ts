@@ -107,6 +107,10 @@ function sqliteFileSetBytes(path: string | undefined): number {
     sum + (existsSync(candidate) ? statSync(candidate).size : 0), 0);
 }
 
+export function measureLocalResearchStorageBytes(paths: readonly string[]): number {
+  return paths.reduce((sum, path) => sum + sqliteFileSetBytes(resolve(path)), 0);
+}
+
 function parquetState(root: string): Pick<LocalResearchArchiveHealth,
   'parquetFiles' | 'lastManifestHash' | 'duckdbVerification'> {
   if (!existsSync(root)) return { parquetFiles: 0, lastManifestHash: null, duckdbVerification: 'NOT_AVAILABLE' };
@@ -166,7 +170,8 @@ export function writeArchiveHealth(input: {
   const prior = readPersisted(healthPath);
   const observedAt = input.observedAt.toISOString();
   const counts = sqliteCounts(resolve(input.spoolPath));
-  const schedulerBytes = sqliteFileSetBytes(input.schedulerPath === undefined ? undefined : resolve(input.schedulerPath));
+  const schedulerBytes = input.schedulerPath === undefined ? 0
+    : measureLocalResearchStorageBytes([input.schedulerPath]);
   const totalLocalResearchBytes = counts.spoolBytes + schedulerBytes;
   const parquet = parquetState(resolve(input.parquetRoot));
   const retryHours = input.retryAfterHours ?? 12;

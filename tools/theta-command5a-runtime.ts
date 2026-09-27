@@ -7,6 +7,9 @@ import { matureCommand5aLocalObservations } from '../src/research/command5a-loca
 import { scheduleCommand5aFromCanonicalFrontier } from '../src/research/command5a-local-scheduling.js';
 import { selectSeriousResearchSubjects } from '../src/research/serious-subject-policy.js';
 import { LocalObservationJobScheduler } from '../src/storage/local-observation-job-scheduler.js';
+import {
+  classifyLocalSpoolWatermark, measureLocalResearchStorageBytes,
+} from '../src/storage/local-research-archive-health.js';
 import type { CanonicalStrategyFrontier } from '../src/theta/canonical-strategy-frontier.js';
 import { decodeCycleEvidenceArchive } from '../src/theta/postgres-cycle-evidence-storage.js';
 import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
@@ -71,6 +74,13 @@ function frontierUnderlying(frontier: CanonicalStrategyFrontier): string | null 
 }
 
 async function schedule(): Promise<void> {
+  const localStorageBytes = measureLocalResearchStorageBytes([schedulerPath, spoolPath]);
+  const localStorageWatermark = classifyLocalSpoolWatermark(localStorageBytes);
+  if (localStorageWatermark === 'HIGH' || localStorageWatermark === 'CRITICAL') {
+    process.stdout.write(`${JSON.stringify({ state: 'PAUSED_STORAGE_WATERMARK', localStorageBytes,
+      localStorageWatermark, brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
+    return;
+  }
   const alpaca = alpacaConfig();
   if (!environment.DATABASE_URL) throw new Error('COMMAND5A_DATABASE_URL_REQUIRED');
   const since = argument('--since=');

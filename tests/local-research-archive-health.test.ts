@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -9,6 +9,7 @@ import {
   classifyArchiveFailure,
   classifyLocalSpoolWatermark,
   localResearchSpoolBudgetBytes,
+  measureLocalResearchStorageBytes,
   writeArchiveHealth,
 } from '../src/storage/local-research-archive-health.js';
 
@@ -38,6 +39,15 @@ test('local research spool watermarks pause new subjects before local storage is
   assert.equal(classifyLocalSpoolWatermark(Math.ceil(localResearchSpoolBudgetBytes * 0.9)), 'HIGH');
   assert.equal(classifyLocalSpoolWatermark(localResearchSpoolBudgetBytes), 'CRITICAL');
   assert.throws(() => classifyLocalSpoolWatermark(-1), /LOCAL_RESEARCH_SPOOL_BYTES_INVALID/);
+  const root = join(tmpdir(), `theta-storage-bytes-${process.pid}-${crypto.randomUUID()}`);
+  mkdirSync(root, { recursive: true });
+  const first = join(root, 'first.sqlite');
+  const second = join(root, 'second.sqlite');
+  writeFileSync(first, 'abcd');
+  writeFileSync(`${first}-wal`, 'ef');
+  writeFileSync(second, 'ghi');
+  truncateSync(second, 3);
+  assert.equal(measureLocalResearchStorageBytes([first, second]), 9);
 });
 
 test('quota exhaustion persists a cooldown and preserves local archive inventory', () => {

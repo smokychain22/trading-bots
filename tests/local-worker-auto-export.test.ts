@@ -51,6 +51,9 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /verify-local-research-parquet\.py/);
   assert.match(source, /PAUSED_STORAGE_WATERMARK/);
   assert.match(source, /newSubjectScheduling/);
+  const command5a = await readFile('tools/theta-command5a-runtime.ts', 'utf8');
+  assert.match(command5a, /PAUSED_STORAGE_WATERMARK/);
+  assert.match(command5a, /measureLocalResearchStorageBytes/);
   assert.match(source, /duckdbAvailable/);
   assert.match(source, /localResearchArchiveState/);
   assert.match(source, /localResearchParquetState/);
