@@ -16,6 +16,7 @@ import type { CanonicalStrategyFrontier } from '../src/theta/canonical-strategy-
 import { decodeCycleEvidenceArchive } from '../src/theta/postgres-cycle-evidence-storage.js';
 import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
 import { fetchMarketCalendar } from '../src/theta/alpaca-provider.js';
+import { createGetOnlyFetch } from '../src/theta/read-only-fetch.js';
 import {
   buildCommand5aCalendarRange,
   classifyCommand5aSchedulingStorage,
@@ -46,10 +47,7 @@ const schedulerPath = argument('--scheduler=') ?? '.theta-local-worker/research-
 const spoolPath = argument('--spool=') ?? '.theta-local-worker/research-spool/theta-research.sqlite';
 const parquetRoot = argument('--parquet-root=') ?? 'C:\\ProjectBackups\\trading-bots\\research-archives';
 const environment = loadEnvironmentFile(environmentFile);
-const readOnlyFetch: typeof fetch = (input, init) => {
-  if ((init?.method ?? 'GET').toUpperCase() !== 'GET') throw new Error('COMMAND5A_NON_GET_REJECTED');
-  return fetch(input, init);
-};
+const readOnlyFetch = createGetOnlyFetch(fetch, 'COMMAND5A_NON_GET_REJECTED');
 function alpacaConfig() {
   if (!environment.ALPACA_API_KEY || !environment.ALPACA_SECRET_KEY || !environment.ALPACA_BASE_URL) {
     throw new Error('COMMAND5A_ALPACA_CONFIGURATION_REQUIRED');
