@@ -16,6 +16,11 @@ import type { CanonicalStrategyFrontier } from '../src/theta/canonical-strategy-
 import { decodeCycleEvidenceArchive } from '../src/theta/postgres-cycle-evidence-storage.js';
 import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
 import { fetchMarketCalendar } from '../src/theta/alpaca-provider.js';
+import {
+  buildCommand5aCalendarRange,
+  command5aSafeFailureCode,
+  processCommand5aPage,
+} from '../src/research/command5a-runtime-planning.js';
 
 type FrontierRow = {
   frontier_id: string;
@@ -66,11 +71,16 @@ function releaseIdentity(receipt: unknown): { sourceSha: string; workerSha: stri
     ? { sourceSha, workerSha } : null;
 }
 
-function fullFrontier(row: FrontierRow): CanonicalStrategyFrontier | null {
-  const raw = row.evidence_archive_gzip === null ? row.frontier_json
-    : decodeCycleEvidenceArchive(row.evidence_archive_gzip).strategyFrontier;
-  return raw !== null && typeof raw === 'object' && !Array.isArray(raw)
-    ? raw as unknown as CanonicalStrategyFrontier : null;
+function fullFrontier(row: FrontierRow): { frontier: CanonicalStrategyFrontier | null; reasonCode: string | null } {
+  try {
+    const raw = row.evidence_archive_gzip === null ? row.frontier_json
+      : decodeCycleEvidenceArchive(row.evidence_archive_gzip).strategyFrontier;
+    return raw !== null && typeof raw === 'object' && !Array.isArray(raw)
+      ? { frontier: raw as unknown as CanonicalStrategyFrontier, reasonCode: null }
+      : { frontier: null, reasonCode: 'FRONTIER_ARCHIVE_MISSING' };
+  } catch {
+    return { frontier: null, reasonCode: 'FRONTIER_ARCHIVE_INVALID' };
+  }
 }
 
 async function schedule(): Promise<void> {
@@ -107,18 +117,19 @@ async function schedule(): Promise<void> {
       WHERE (GREATEST(f.created_at,d.decided_at),f.frontier_id) > ($1::timestamptz,$2::uuid)
       ORDER BY GREATEST(f.created_at,d.decided_at),f.frontier_id LIMIT $3`,
     [cursorReadyAt, cursorFrontierId, limit]);
-    const decoded = query.rows.map((row) => ({ row, frontier: fullFrontier(row) }));
+    const decoded = query.rows.map((row) => ({ row, ...fullFrontier(row) }));
     if (decoded.length === 0) {
       process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_SCHEDULE_CURRENT', frontiersRead: query.rows.length,
         subjects: 0, existingSubjects: 0, jobsScheduled: 0, existingJobs: 0, skipped: 0,
         reasonCounts: {}, sessions: 0, brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
       return;
     }
-    const dateValues = decoded.flatMap(({ frontier }) => frontier === null ? [] : [frontier.timestamp.slice(0, 10),
-      ...frontier.branches.flatMap((branch) => branch.candidates.flatMap((candidate) => candidate.legs.map((leg) => leg.expiration)))]);
-    const orderedDates = [...new Set(dateValues)].sort();
-    const start = orderedDates[0], end = orderedDates.at(-1);
-    if (start === undefined || end === undefined) {
+    const calendarRange = buildCommand5aCalendarRange(decoded.flatMap(({ frontier }) => frontier === null ? [] : [{
+      decisionAt: frontier.timestamp,
+      expirations: frontier.branches.flatMap((branch) => branch.candidates
+        .flatMap((candidate) => candidate.legs.map((leg) => leg.expiration))),
+    }]));
+    if (calendarRange === null) {
       const last = query.rows.at(-1);
       if (last !== undefined) scheduler.advanceSourceCursor({
         readyAt: new Date(last.ready_at).toISOString(), frontierId: last.frontier_id,
@@ -126,11 +137,17 @@ async function schedule(): Promise<void> {
       process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_SCHEDULE_COMPLETE',
         frontiersRead: query.rows.length, subjects: 0, existingSubjects: 0, jobsScheduled: 0,
         existingJobs: 0, skipped: query.rows.length,
-        reasonCounts: { FRONTIER_ARCHIVE_MISSING: query.rows.length }, sessions: 0,
+        reasonCounts: Object.fromEntries(decoded.reduce((counts, item) => {
+          const reason = item.reasonCode ?? 'FRONTIER_TIMESTAMP_INVALID';
+          counts.set(reason, (counts.get(reason) ?? 0) + 1);
+          return counts;
+        }, new Map<string, number>())), sessions: 0,
         brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
       return;
     }
-    const sessions = alpacaCalendarToLearningSessions(await fetchMarketCalendar(alpaca, start, end));
+    const sessions = alpacaCalendarToLearningSessions(await fetchMarketCalendar(
+      alpaca, calendarRange.start, calendarRange.end,
+    ));
     let scheduled = 0, existingJobs = 0, subjects = 0, existingSubjects = 0, skipped = 0;
     let t0OnlySubjects = 0;
     const reasonCounts = new Map<string, number>();
@@ -138,14 +155,14 @@ async function schedule(): Promise<void> {
       skipped += 1;
       reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
     };
-    for (const { row, frontier } of decoded) {
+    const outcomes = processCommand5aPage(decoded, ({ row, frontier, reasonCode }) => {
       const identity = releaseIdentity(row.receipt_json);
       const underlying = frontier === null ? null
         : resolveCommand5aFrontierUnderlying(frontier, row.snapshot_json);
-      if (frontier === null) { skip('FRONTIER_ARCHIVE_MISSING'); continue; }
-      if (identity === null) { skip('RELEASE_IDENTITY_MISSING'); continue; }
-      if (row.decision_id === null) { skip('DECISION_ID_MISSING'); continue; }
-      if (underlying === null) { skip('UNDERLYING_IDENTITY_AMBIGUOUS'); continue; }
+      if (frontier === null) throw new Error(reasonCode ?? 'FRONTIER_ARCHIVE_MISSING');
+      if (identity === null) throw new Error('RELEASE_IDENTITY_MISSING');
+      if (row.decision_id === null) throw new Error('DECISION_ID_MISSING');
+      if (underlying === null) throw new Error('UNDERLYING_IDENTITY_AMBIGUOUS');
       const receipt = scheduleCommand5aFromCanonicalFrontier({ scheduler, frontier,
         decisionCycleId: row.fusion_snapshot_id, decisionId: row.decision_id, underlying,
         featureSnapshotHash: row.snapshot_content_hash, riskVersion: row.risk_limit_version_id,
@@ -158,6 +175,10 @@ async function schedule(): Promise<void> {
       subjects += receipt.subjectCount;
       existingSubjects += receipt.existingSubjectCount;
       t0OnlySubjects += receipt.t0OnlySubjectCount;
+      return receipt;
+    });
+    for (const outcome of outcomes) {
+      if (outcome.state === 'SKIPPED') skip(outcome.reasonCode);
     }
     const last = query.rows.at(-1);
     if (last !== undefined) scheduler.advanceSourceCursor({
@@ -213,12 +234,6 @@ function health(): void {
   } finally { scheduler.close(); }
 }
 
-function safeFailureCode(error: unknown): string {
-  const message = error instanceof Error ? error.message : '';
-  const code = message.split(':', 1)[0] ?? '';
-  return /^[A-Z][A-Z0-9_]{2,160}$/.test(code) ? code : 'COMMAND5A_UNCLASSIFIED_FAILURE';
-}
-
 try {
   if (mode === 'schedule') await schedule();
   else if (mode === 'observe') await observe();
@@ -227,6 +242,6 @@ try {
   else throw new Error('COMMAND5A_MODE_REQUIRED');
 } catch (error) {
   process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_FAILED', mode: mode ?? null,
-    errorCode: safeFailureCode(error), brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
+    errorCode: command5aSafeFailureCode(error), brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
   process.exitCode = 1;
 }
