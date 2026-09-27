@@ -1,3 +1,5 @@
+import { classifyLocalSpoolWatermark } from '../storage/local-research-archive-health.js';
+
 export const command5aRuntimePlanningVersion = 'theta-command5a-runtime-planning-v1' as const;
 
 export const command5aCalendarLookaheadDays = 21;
@@ -18,6 +20,31 @@ export type Command5aPageOutcome<T> =
   | { readonly state: 'SKIPPED'; readonly reasonCode: string };
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+export interface Command5aSchedulingStoragePressure {
+  readonly activeSpoolBytes: number;
+  readonly totalLocalResearchBytes: number;
+  readonly spoolWatermark: ReturnType<typeof classifyLocalSpoolWatermark>;
+}
+
+/** Immutable Parquet is the successful destination of compacted research
+ * history. It stays in total inventory telemetry, but it cannot consume the
+ * mutable SQLite scheduling budget and permanently stop future observation. */
+export function classifyCommand5aSchedulingStorage(input: {
+  readonly schedulerBytes: number;
+  readonly spoolBytes: number;
+  readonly parquetBytes: number;
+}): Command5aSchedulingStoragePressure {
+  for (const value of [input.schedulerBytes, input.spoolBytes, input.parquetBytes]) {
+    if (!Number.isInteger(value) || value < 0) throw new Error('COMMAND5A_STORAGE_BYTES_INVALID');
+  }
+  const activeSpoolBytes = input.schedulerBytes + input.spoolBytes;
+  return {
+    activeSpoolBytes,
+    totalLocalResearchBytes: activeSpoolBytes + input.parquetBytes,
+    spoolWatermark: classifyLocalSpoolWatermark(activeSpoolBytes),
+  };
+}
 
 function dateOnly(value: string): string | null {
   const date = value.slice(0, 10);

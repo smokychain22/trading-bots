@@ -10,7 +10,7 @@ import {
 } from '../src/research/command5a-local-scheduling.js';
 import { LocalObservationJobScheduler } from '../src/storage/local-observation-job-scheduler.js';
 import {
-  classifyLocalSpoolWatermark, measureLocalResearchStorageBytes,
+  measureLocalResearchStorageBytes,
 } from '../src/storage/local-research-archive-health.js';
 import type { CanonicalStrategyFrontier } from '../src/theta/canonical-strategy-frontier.js';
 import { decodeCycleEvidenceArchive } from '../src/theta/postgres-cycle-evidence-storage.js';
@@ -18,6 +18,7 @@ import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js
 import { fetchMarketCalendar } from '../src/theta/alpaca-provider.js';
 import {
   buildCommand5aCalendarRange,
+  classifyCommand5aSchedulingStorage,
   command5aSafeFailureCode,
   processCommand5aPage,
 } from '../src/research/command5a-runtime-planning.js';
@@ -84,10 +85,16 @@ function fullFrontier(row: FrontierRow): { frontier: CanonicalStrategyFrontier |
 }
 
 async function schedule(): Promise<void> {
-  const localStorageBytes = measureLocalResearchStorageBytes([schedulerPath, spoolPath, parquetRoot]);
-  const localStorageWatermark = classifyLocalSpoolWatermark(localStorageBytes);
+  const storage = classifyCommand5aSchedulingStorage({
+    schedulerBytes: measureLocalResearchStorageBytes([schedulerPath]),
+    spoolBytes: measureLocalResearchStorageBytes([spoolPath]),
+    parquetBytes: measureLocalResearchStorageBytes([parquetRoot]),
+  });
+  const localStorageWatermark = storage.spoolWatermark;
   if (localStorageWatermark === 'HIGH' || localStorageWatermark === 'CRITICAL') {
-    process.stdout.write(`${JSON.stringify({ state: 'PAUSED_STORAGE_WATERMARK', localStorageBytes,
+    process.stdout.write(`${JSON.stringify({ state: 'PAUSED_STORAGE_WATERMARK',
+      activeSpoolBytes: storage.activeSpoolBytes,
+      totalLocalResearchBytes: storage.totalLocalResearchBytes,
       localStorageWatermark, brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
     return;
   }

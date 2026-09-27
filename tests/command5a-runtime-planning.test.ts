@@ -3,9 +3,11 @@ import test from 'node:test';
 import {
   buildCommand5aCalendarRange,
   command5aCalendarLookaheadDays,
+  classifyCommand5aSchedulingStorage,
   command5aSafeFailureCode,
   processCommand5aPage,
 } from '../src/research/command5a-runtime-planning.js';
+import { localResearchSpoolBudgetBytes } from '../src/storage/local-research-archive-health.js';
 
 test('short-DTE subjects still request enough calendar coverage for later learning horizons', () => {
   const range = buildCommand5aCalendarRange([{
@@ -36,4 +38,23 @@ test('one invalid frontier does not starve later immutable frontiers in the same
     { state: 'PROCESSED', value: 'GOOD' },
   ]);
   assert.equal(command5aSafeFailureCode(new Error('unsafe detail')), 'COMMAND5A_UNCLASSIFIED_FAILURE');
+});
+
+test('immutable Parquet inventory stays visible without permanently pausing active scheduling', () => {
+  const state = classifyCommand5aSchedulingStorage({
+    schedulerBytes: 1024,
+    spoolBytes: 2048,
+    parquetBytes: localResearchSpoolBudgetBytes * 10,
+  });
+  assert.equal(state.activeSpoolBytes, 3072);
+  assert.equal(state.totalLocalResearchBytes, 3072 + localResearchSpoolBudgetBytes * 10);
+  assert.equal(state.spoolWatermark, 'NORMAL');
+  assert.equal(classifyCommand5aSchedulingStorage({
+    schedulerBytes: localResearchSpoolBudgetBytes,
+    spoolBytes: 0,
+    parquetBytes: 0,
+  }).spoolWatermark, 'CRITICAL');
+  assert.throws(() => classifyCommand5aSchedulingStorage({
+    schedulerBytes: -1, spoolBytes: 0, parquetBytes: 0,
+  }), /COMMAND5A_STORAGE_BYTES_INVALID/);
 });
