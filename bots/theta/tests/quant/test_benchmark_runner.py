@@ -6,7 +6,9 @@ from test_empirical_pipeline import _build_export, _candidate_raw
 from test_whole_chain_dataset import entry_link, outcome
 from research.production_export_loader import load_dataset_export
 from research.entry_episode_training import build_entry_episode_training_dataset
-from research.benchmark_runner import coverage_report, execute_b0_cash_wait, execute_benchmark
+from research.benchmark_runner import (
+    classify_all_benchmarks, classify_benchmark_readiness, coverage_report, execute_b0_cash_wait, execute_benchmark,
+)
 
 
 def policy():
@@ -57,12 +59,42 @@ class BenchmarkRunnerTests(unittest.TestCase):
     def test_coverage_report_lists_gaps_honestly(self):
         report = coverage_report()
         self.assertIn('B0', report['implementedRunnerIds'])
-        self.assertIn('B5', report['unimplementedRunnerIds'])
-        self.assertGreater(len(report['unimplementedRunnerIds']), 0)
+        self.assertIn('B5', report['byState']['RUNNER_IMPLEMENTED_DATA_UNAVAILABLE'])
 
     def test_deterministic_hash_and_roundtrip(self):
         dataset = entry_dataset()
         self.assertEqual(execute_b0_cash_wait(dataset), execute_b0_cash_wait(dataset))
+
+    def test_classify_b0_always_data_available(self):
+        self.assertEqual(classify_benchmark_readiness('B0')['state'], 'RUNNER_IMPLEMENTED_DATA_AVAILABLE')
+
+    def test_classify_mechanic_benchmark_reflects_real_capability_evidence(self):
+        unavailable = classify_benchmark_readiness('B5', {'has_feasible_candidates': False})
+        available = classify_benchmark_readiness('B5', {'has_feasible_candidates': True})
+        self.assertEqual(unavailable['state'], 'RUNNER_IMPLEMENTED_DATA_UNAVAILABLE')
+        self.assertEqual(available['state'], 'RUNNER_IMPLEMENTED_DATA_AVAILABLE')
+
+    def test_classify_missing_policy_ids(self):
+        for benchmark_id in ('B1', 'B2', 'BH-1'):
+            self.assertEqual(classify_benchmark_readiness(benchmark_id)['state'], 'BLOCKED_MISSING_POLICY')
+
+    def test_classify_ablation_ladder_ids_not_applicable(self):
+        for benchmark_id in ('A1', 'A2', 'A3', 'A4', 'A5', 'A6'):
+            result = classify_benchmark_readiness(benchmark_id)
+            self.assertEqual(result['state'], 'NOT_APPLICABLE')
+
+    def test_classify_unregistered_id_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'NOT_REGISTERED'):
+            classify_benchmark_readiness('NOT_A_REAL_ID')
+
+    def test_classify_all_benchmarks_covers_every_registered_id_with_no_leftover_not_implemented(self):
+        classifications = classify_all_benchmarks({})
+        states = {c['state'] for c in classifications.values()}
+        self.assertTrue(states.issubset({
+            'RUNNER_IMPLEMENTED_DATA_AVAILABLE', 'RUNNER_IMPLEMENTED_DATA_UNAVAILABLE',
+            'NOT_APPLICABLE', 'BLOCKED_MISSING_POLICY',
+        }))
+        self.assertGreater(len(classifications), 20)
 
 
 if __name__ == '__main__':
