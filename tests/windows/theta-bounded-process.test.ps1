@@ -1,0 +1,50 @@
+#Requires -Version 7
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+. (Join-Path $PSScriptRoot '..\..\tools\windows\ThetaProcess.Common.ps1')
+
+$pwsh = Join-Path $PSHOME 'pwsh'
+$root = Join-Path ([IO.Path]::GetTempPath()) ('theta-bounded-process-test-' + [guid]::NewGuid().ToString('N'))
+[void](New-Item -ItemType Directory -Path $root)
+try {
+  $successScript = Join-Path $root 'success.ps1'
+  [IO.File]::WriteAllText($successScript, "Write-Output 'bounded-ok'`n", [Text.UTF8Encoding]::new($false))
+  $success = Invoke-ThetaBoundedProcess -Executable $pwsh `
+    -Arguments @('-NoProfile','-File',$successScript) -TimeoutSeconds 10 -WorkingDirectory $root
+  if ($success.State -ne 'COMPLETED' -or $success.ExitCode -ne 0 -or
+      $success.Output.Count -ne 1 -or $success.Output[0] -ne 'bounded-ok') {
+    throw 'THETA_BOUNDED_PROCESS_SUCCESS_RESULT_INVALID'
+  }
+
+  $failureScript = Join-Path $root 'failure.ps1'
+  [IO.File]::WriteAllText($failureScript, @'
+[Console]::Error.WriteLine('sensitive-provider-detail')
+Write-Output '{"errorCode":"SAFE_FAILURE"}'
+exit 7
+'@, [Text.UTF8Encoding]::new($false))
+  $failure = Invoke-ThetaBoundedProcess -Executable $pwsh `
+    -Arguments @('-NoProfile','-File',$failureScript) -TimeoutSeconds 10 -WorkingDirectory $root
+  if ($failure.State -ne 'COMPLETED' -or $failure.ExitCode -ne 7 -or
+      $failure.Output.Count -ne 1 -or $failure.Output[0] -notmatch 'SAFE_FAILURE') {
+    throw 'THETA_BOUNDED_PROCESS_FAILURE_RESULT_INVALID'
+  }
+  if (($failure.Output -join "`n") -match 'sensitive-provider-detail') {
+    throw 'THETA_BOUNDED_PROCESS_EXPOSED_STDERR'
+  }
+
+  $timeoutScript = Join-Path $root 'timeout.ps1'
+  [IO.File]::WriteAllText($timeoutScript, "Start-Sleep -Seconds 30`n", [Text.UTF8Encoding]::new($false))
+  $timer = [Diagnostics.Stopwatch]::StartNew()
+  $timeout = Invoke-ThetaBoundedProcess -Executable $pwsh `
+    -Arguments @('-NoProfile','-File',$timeoutScript) -TimeoutSeconds 1 -WorkingDirectory $root
+  $timer.Stop()
+  if ($timeout.State -ne 'TIMED_OUT' -or $timeout.ExitCode -ne -1 -or $timeout.Output.Count -ne 0) {
+    throw 'THETA_BOUNDED_PROCESS_TIMEOUT_RESULT_INVALID'
+  }
+  if ($timer.Elapsed.TotalSeconds -gt 10) { throw 'THETA_BOUNDED_PROCESS_TIMEOUT_EXIT_TOO_SLOW' }
+} finally {
+  Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+Write-Output 'THETA_BOUNDED_PROCESS_TEST=PASS'

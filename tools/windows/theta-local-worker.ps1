@@ -1,5 +1,6 @@
 param([string]$ControlRoot = '')
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'ThetaProcess.Common.ps1')
 
 if ([string]::IsNullOrWhiteSpace($ControlRoot)) {
   $ControlRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -206,28 +207,34 @@ try {
           # installation, start at the immutable release time so a worker
           # outage longer than 90 minutes cannot erase serious subjects.
           $command5aSince = [string]$runtime.installedAt
-          $command5aScheduleOutput = & node --import tsx tools/theta-command5a-runtime.ts `
-            --mode=schedule "--environment-file=$productionEnvFile" `
-            "--scheduler=$command5aSchedulerPath" "--spool=$command5aSpoolPath" `
-            "--parquet-root=$command5aParquetRoot" `
-            "--since=$command5aSince" --limit=250 2>$null
-          if ($LASTEXITCODE -eq 0) {
+          $command5aScheduleProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 180 -Arguments @(
+            '--import','tsx','tools/theta-command5a-runtime.ts','--mode=schedule',
+            "--environment-file=$productionEnvFile","--scheduler=$command5aSchedulerPath",
+            "--spool=$command5aSpoolPath","--parquet-root=$command5aParquetRoot",
+            "--since=$command5aSince",'--limit=250')
+          $command5aScheduleOutput = $command5aScheduleProcess.Output
+          if ($command5aScheduleProcess.State -eq 'COMPLETED' -and $command5aScheduleProcess.ExitCode -eq 0) {
             $command5aScheduleResult = $command5aScheduleOutput | Select-Object -Last 1 | ConvertFrom-Json
             $command5aScheduleState = [string]$command5aScheduleResult.state
           } else {
             $command5aScheduleState = 'FAILED_NONCRITICAL'
-            try { $command5aScheduleErrorCode = [string](($command5aScheduleOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
-            catch { $command5aScheduleErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+            if ($command5aScheduleProcess.State -eq 'TIMED_OUT') {
+              $command5aScheduleErrorCode = 'COMMAND5A_SCHEDULE_PROCESS_TIMEOUT'
+            } else {
+              try { $command5aScheduleErrorCode = [string](($command5aScheduleOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
+              catch { $command5aScheduleErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+            }
           }
         }
         # Session-close jobs become due when the exchange clock turns closed.
         # Run the bounded worker whenever jobs are due. The read-only source
         # accepts only fresh latest marks after close and types stale/missing
         # marks explicitly, so this cannot fabricate an in-session observation.
-        $command5aObservationOutput = & node --import tsx tools/theta-command5a-runtime.ts `
-          --mode=observe "--environment-file=$productionEnvFile" `
-          "--scheduler=$command5aSchedulerPath" "--spool=$command5aSpoolPath" 2>$null
-        if ($LASTEXITCODE -eq 0) {
+        $command5aObservationProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 180 -Arguments @(
+          '--import','tsx','tools/theta-command5a-runtime.ts','--mode=observe',
+          "--environment-file=$productionEnvFile","--scheduler=$command5aSchedulerPath","--spool=$command5aSpoolPath")
+        $command5aObservationOutput = $command5aObservationProcess.Output
+        if ($command5aObservationProcess.State -eq 'COMPLETED' -and $command5aObservationProcess.ExitCode -eq 0) {
           $command5aObservationResult = $command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json
           $command5aObservationState = [string]$command5aObservationResult.state
           $command5aObserved = [int]$command5aObservationResult.observed
@@ -237,15 +244,20 @@ try {
           $command5aCensoredRetryExhausted = [int]$command5aObservationResult.censoredRetryExhausted
         } else {
           $command5aObservationState = 'FAILED_NONCRITICAL'
-          try { $command5aObservationErrorCode = [string](($command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
-          catch { $command5aObservationErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+          if ($command5aObservationProcess.State -eq 'TIMED_OUT') {
+            $command5aObservationErrorCode = 'COMMAND5A_OBSERVATION_PROCESS_TIMEOUT'
+          } else {
+            try { $command5aObservationErrorCode = [string](($command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
+            catch { $command5aObservationErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+          }
         }
         # Maturation is local and provider-free. It may run while the market
         # is closed and only consumes already verified observation archives.
-        $command5aMaturationOutput = & node --import tsx tools/theta-command5a-runtime.ts `
-          --mode=mature "--environment-file=$productionEnvFile" `
-          "--scheduler=$command5aSchedulerPath" "--spool=$command5aSpoolPath" --limit=64 2>$null
-        if ($LASTEXITCODE -eq 0) {
+        $command5aMaturationProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 120 -Arguments @(
+          '--import','tsx','tools/theta-command5a-runtime.ts','--mode=mature',
+          "--environment-file=$productionEnvFile","--scheduler=$command5aSchedulerPath","--spool=$command5aSpoolPath",'--limit=64')
+        $command5aMaturationOutput = $command5aMaturationProcess.Output
+        if ($command5aMaturationProcess.State -eq 'COMPLETED' -and $command5aMaturationProcess.ExitCode -eq 0) {
           $command5aMaturationResult = $command5aMaturationOutput | Select-Object -Last 1 | ConvertFrom-Json
           $command5aMaturationState = [string]$command5aMaturationResult.state
           $command5aMaterialized = [int]$command5aMaturationResult.materialized
@@ -253,12 +265,17 @@ try {
           $command5aMaturationCensored = [int]$command5aMaturationResult.censored
         } else {
           $command5aMaturationState = 'FAILED_NONCRITICAL'
-          try { $command5aMaturationErrorCode = [string](($command5aMaturationOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
-          catch { $command5aMaturationErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+          if ($command5aMaturationProcess.State -eq 'TIMED_OUT') {
+            $command5aMaturationErrorCode = 'COMMAND5A_MATURATION_PROCESS_TIMEOUT'
+          } else {
+            try { $command5aMaturationErrorCode = [string](($command5aMaturationOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
+            catch { $command5aMaturationErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+          }
         }
-        $command5aHealthOutput = & node --import tsx tools/theta-command5a-runtime.ts `
-          --mode=health "--scheduler=$command5aSchedulerPath" 2>$null
-        if ($LASTEXITCODE -eq 0) {
+        $command5aHealthProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 30 -Arguments @(
+          '--import','tsx','tools/theta-command5a-runtime.ts','--mode=health',"--scheduler=$command5aSchedulerPath")
+        $command5aHealthOutput = $command5aHealthProcess.Output
+        if ($command5aHealthProcess.State -eq 'COMPLETED' -and $command5aHealthProcess.ExitCode -eq 0) {
           $command5aHealthResult = $command5aHealthOutput | Select-Object -Last 1 | ConvertFrom-Json
           $command5aBacklogState = [string]$command5aHealthResult.backlogState
           $command5aUnresolvedJobs = [int]$command5aHealthResult.unresolvedCount
@@ -270,8 +287,12 @@ try {
           $command5aSourceCursor = $command5aHealthResult.sourceCursor
         } else {
           $command5aBacklogState = 'HEALTH_CHECK_FAILED'
-          try { $command5aHealthErrorCode = [string](($command5aHealthOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
-          catch { $command5aHealthErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+          if ($command5aHealthProcess.State -eq 'TIMED_OUT') {
+            $command5aHealthErrorCode = 'COMMAND5A_HEALTH_PROCESS_TIMEOUT'
+          } else {
+            try { $command5aHealthErrorCode = [string](($command5aHealthOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
+            catch { $command5aHealthErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+          }
         }
       } catch {
         if ($command5aScheduleState -eq 'NOT_ATTEMPTED') { $command5aScheduleState = 'FAILED_NONCRITICAL' }

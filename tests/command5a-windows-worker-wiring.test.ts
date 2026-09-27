@@ -23,6 +23,12 @@ test('Windows owner schedules, observes, and matures Command-5A through the immu
   assert.match(command5aRuntime, /allowClosedSessionLatestMark:\s*true/);
   assert.match(command5aRuntime, /maximumAttempts:\s*3/);
   assert.match(source, /command5aCensoredRetryExhausted/);
+  assert.match(source, /Invoke-ThetaBoundedProcess[\s\S]{0,180}theta-command5a-runtime\.ts/);
+  assert.match(source, /COMMAND5A_SCHEDULE_PROCESS_TIMEOUT/);
+  assert.match(source, /COMMAND5A_OBSERVATION_PROCESS_TIMEOUT/);
+  assert.match(source, /COMMAND5A_MATURATION_PROCESS_TIMEOUT/);
+  assert.match(source, /COMMAND5A_HEALTH_PROCESS_TIMEOUT/);
+  assert.doesNotMatch(source, /& node --import tsx tools\/theta-command5a-runtime\.ts/);
   assert.doesNotMatch(source, /if \(\$report\.reconciliation\.marketOpen -eq \$true\) \{[\s\S]{0,120}theta-command5a-runtime\.ts[\s\S]{0,100}--mode=observe/);
   assert.match(source, /\$command5aSince = \[string\]\$runtime\.installedAt/);
   assert.doesNotMatch(source, /command5aSince\s*=.*AddMinutes\(-90\)/);
