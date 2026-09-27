@@ -107,7 +107,9 @@ async function main() {
   if (!environmentFileArgument) throw new Error('RECOVERY_GATE_ENVIRONMENT_FILE_REQUIRED');
   const environment = loadEnvironmentFile(environmentFileArgument.slice('--environment-file='.length));
   if (!environment.AIVEN_DATABASE_URL) throw new Error('AIVEN_DATABASE_URL_NOT_CONFIGURED');
-  const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+    encoding: 'utf8', maxBuffer: 1024 * 1024, timeout: 30_000, windowsHide: true,
+  }).trim();
   const samples = [];
   for (let index = 0; index < requiredRecoveryProbeCount; index++) {
     const sample = await runProbe(environment.AIVEN_DATABASE_URL);

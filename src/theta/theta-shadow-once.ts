@@ -38,10 +38,14 @@ import { canonicalJson } from '../research/point-in-time-evidence.js';
 // entire multi-session engagement) cannot block an otherwise genuinely
 // immutable source checkout from proving its own SHA.
 export function currentImmutableSourceSha(): string {
-  const sha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const sha = execFileSync('git', ['rev-parse', 'HEAD'], {
+    encoding: 'utf8', maxBuffer: 1024 * 1024, timeout: 30_000, windowsHide: true,
+  }).trim();
   if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error('SHADOW_ONCE_IMMUTABLE_SOURCE_REQUIRED');
   try {
-    execFileSync('git', ['diff', '--quiet', 'HEAD', '--'], { stdio: 'ignore' });
+    execFileSync('git', ['diff', '--quiet', 'HEAD', '--'], {
+      stdio: 'ignore', timeout: 30_000, windowsHide: true,
+    });
   } catch {
     throw new Error('SHADOW_ONCE_IMMUTABLE_SOURCE_REQUIRED');
   }

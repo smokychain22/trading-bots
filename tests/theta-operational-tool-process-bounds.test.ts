@@ -25,3 +25,17 @@ test('method census uses argument-safe bounded git execution', () => {
   assert.match(source, /timeout:\s*30_000/);
   assert.doesNotMatch(source, /execSync\(/);
 });
+
+test('runtime and recovery tools bound immutable source identity probes', () => {
+  for (const path of [
+    'src/theta/theta-shadow-once.ts',
+    'tools/theta-no-submit-probe.ts',
+    'tools/theta-runtime-truth.ts',
+    'tools/theta-local-evidence-backfill.ts',
+    'tools/theta-database-recovery-gate.mjs',
+  ]) {
+    const source = readFileSync(path, 'utf8');
+    assert.match(source, /timeout:\s*30_000/, path);
+    assert.match(source, /windowsHide:\s*true/, path);
+  }
+});
