@@ -2,21 +2,25 @@ import { execFileSync } from 'node:child_process';
 import { canonicalSystemTruthRegister } from '../src/theta/canonical-system-truth.js';
 
 const baseline = canonicalSystemTruthRegister.sourceBaselineSha;
-const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+const gitOptions = { encoding: 'utf8' as const, maxBuffer: 16 * 1024 * 1024,
+  timeout: 30_000, windowsHide: true };
+const head = execFileSync('git', ['rev-parse', 'HEAD'], gitOptions).trim();
 const sourceFiles = [...new Set(canonicalSystemTruthRegister.capabilities.flatMap((item) => item.sourceFiles))];
 let sourceVerificationState: 'SOURCE_BASELINE_UNCHANGED' | 'STALE_REVIEW_REQUIRED'
   | 'WORKTREE_DIRTY' | 'UNVERIFIED_GIT_HISTORY';
 let sourceFilesChanged: string[] = [];
 try {
-  execFileSync('git', ['merge-base', '--is-ancestor', baseline, head], { stdio: 'ignore' });
+  execFileSync('git', ['merge-base', '--is-ancestor', baseline, head], {
+    stdio: 'ignore', timeout: 30_000, windowsHide: true,
+  });
   sourceFilesChanged = execFileSync('git', ['diff', '--name-only', baseline, head, '--', ...sourceFiles],
-    { encoding: 'utf8' }).trim().split(/\r?\n/).filter(Boolean);
+    gitOptions).trim().split(/\r?\n/).filter(Boolean);
   sourceVerificationState = sourceFilesChanged.length === 0 ? 'SOURCE_BASELINE_UNCHANGED' : 'STALE_REVIEW_REQUIRED';
 } catch {
   sourceVerificationState = 'UNVERIFIED_GIT_HISTORY';
 }
 const dirtyPaths = execFileSync('git', ['status', '--porcelain', '--', ...sourceFiles,
-  'src/theta/canonical-system-truth.ts', 'tools/theta-system-truth.ts'], { encoding: 'utf8' }).trim();
+  'src/theta/canonical-system-truth.ts', 'tools/theta-system-truth.ts'], gitOptions).trim();
 if (dirtyPaths) sourceVerificationState = 'WORKTREE_DIRTY';
 
 const receipt = {

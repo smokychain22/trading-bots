@@ -22,7 +22,9 @@ if (!artifact || artifact.exportContractVersion !== canonicalEventExportContract
   || artifact.sanitized !== true || artifact.rowCount !== artifact.rows.length
   || artifact.evidenceIds.length !== artifact.rowCount || new Set(artifact.evidenceIds).size !== artifact.rowCount
   || artifact.contentHash !== canonicalExportHash(artifact.rows)) throw new Error('CANONICAL_EVENT_EXPORT_INVALID');
-const mainSha = execFileSync('git', ['rev-parse', 'origin/main'], { cwd: root, encoding: 'utf8' }).trim();
+const mainSha = execFileSync('git', ['rev-parse', 'origin/main'], {
+  cwd: root, encoding: 'utf8', maxBuffer: 1024 * 1024, timeout: 30_000, windowsHide: true,
+}).trim();
 if (artifact.canonicalSourceSha !== mainSha || artifact.releaseEvidence.canonicalSourceSha !== mainSha)
   throw new Error('CANONICAL_EVENT_EXPORT_MAIN_SHA_MISMATCH');
 const outputDir = resolve(root, 'research_exports', 'canonical-events');

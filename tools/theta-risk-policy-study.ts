@@ -7,7 +7,9 @@ const tokenPath = resolve(process.env.THETA_WORKER_TOKEN_FILE ?? '.theta-local-w
 const outputPath = resolve(process.argv[2] ?? '.theta-local-worker/receipts/risk-policy-empirical-study.json');
 const token = (await readFile(tokenPath, 'utf8')).trim();
 if (token.length < 32) throw new Error('THETA_OPERATOR_TOKEN_REQUIRED');
-const buildSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+const buildSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+  encoding: 'utf8', maxBuffer: 1024 * 1024, timeout: 30_000, windowsHide: true,
+}).trim();
 if (!/^[0-9a-f]{40}$/.test(buildSha)) throw new Error('THETA_BUILD_SHA_REQUIRED');
 
 const response = await fetch(endpoint, { method: 'POST', headers: {
@@ -16,7 +18,7 @@ const response = await fetch(endpoint, { method: 'POST', headers: {
   'x-theta-worker-id': 'codex-risk-policy-study',
   'x-theta-host-id': 'windows-owner',
   'x-theta-build-sha': buildSha,
-} });
+}, signal: AbortSignal.timeout(120_000) });
 const result: unknown = await response.json();
 if (!response.ok) {
   const record = result !== null && typeof result === 'object' ? result as Record<string, unknown> : {};

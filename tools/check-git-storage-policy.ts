@@ -5,7 +5,9 @@ import {
   type GitStorageDisposition,
 } from '../src/storage/github-storage-policy.js';
 
-const tracked = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 })
+const tracked = execFileSync('git', ['ls-files', '-z'], {
+  encoding: 'utf8', maxBuffer: 20 * 1024 * 1024, timeout: 30_000, windowsHide: true,
+})
   .split('\0').filter(Boolean);
 const rejected = new Set<GitStorageDisposition>([
   'PROHIBITED', 'ARCHIVE_STORAGE_REQUIRED', 'BACKUP_STORAGE_REQUIRED',

@@ -49,3 +49,21 @@ test('forensic and legacy discovery processes have bounded execution', () => {
   assert.match(legacy, /timeout:discoveryProcessTimeoutMs/g);
   assert.match(legacy, /windowsHide:true/);
 });
+
+test('operator-facing git and HTTP probes cannot wait forever', () => {
+  for (const path of [
+    'tools/capture-canonical-event-export.ts',
+    'tools/export-historical-replay.ts',
+    'tools/check-git-storage-policy.ts',
+    'tools/security-scan.mjs',
+    'tools/summarize-historical-replay.ts',
+    'tools/theta-risk-policy-study.ts',
+    'tools/theta-runtime-wiring-audit.ts',
+    'tools/theta-system-truth.ts',
+  ]) {
+    const source = readFileSync(path, 'utf8');
+    assert.match(source, /timeout:\s*30_000/, path);
+  }
+  const riskStudy = readFileSync('tools/theta-risk-policy-study.ts', 'utf8');
+  assert.match(riskStudy, /AbortSignal\.timeout\(120_000\)/);
+});

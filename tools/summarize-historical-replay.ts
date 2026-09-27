@@ -10,7 +10,9 @@ const input = process.argv.find((argument) => argument.startsWith('--input='))?.
 if (!input) throw new Error('HISTORICAL_REPLAY_INPUT_REQUIRED');
 const artifact = JSON.parse(await readFile(resolve(root, input), 'utf8')) as HistoricalReplayExportArtifact;
 if (!/^[0-9a-f]{40}$/.test(artifact.canonicalSourceSha)) throw new Error('HISTORICAL_REPLAY_SOURCE_SHA_INVALID');
-execFileSync('git', ['cat-file', '-e', `${artifact.canonicalSourceSha}^{commit}`], { cwd: root, stdio: 'ignore' });
+execFileSync('git', ['cat-file', '-e', `${artifact.canonicalSourceSha}^{commit}`], {
+  cwd: root, stdio: 'ignore', timeout: 30_000, windowsHide: true,
+});
 const summary = summarizeHistoricalReplay(artifact);
 const summaryHash = hashJson(summary as unknown as JsonValue);
 const outputDir = resolve(root, 'research_exports', 'historical-replay-summary');

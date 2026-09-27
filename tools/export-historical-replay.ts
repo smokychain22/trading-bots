@@ -14,7 +14,9 @@ const sessionDates = sessionArgument?.split(',').map((value) => value.trim()).fi
   ?? ['2026-09-16', '2026-09-18', '2026-09-21'];
 const environment = loadEnvironmentFile(resolve(root, environmentFile), {});
 if (!environment.DATABASE_URL) throw new Error('DATABASE_URL_MISSING');
-const canonicalSourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+const canonicalSourceSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+  cwd: root, encoding: 'utf8', maxBuffer: 1024 * 1024, timeout: 30_000, windowsHide: true,
+}).trim();
 const pool = new Pool({ connectionString: environment.DATABASE_URL, max: 1, application_name: 'theta_historical_replay_export' });
 
 try {

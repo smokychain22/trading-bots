@@ -6,6 +6,9 @@ const paths = [
   ...new Set(
     execFileSync("git", ["ls-files", "-co", "--exclude-standard", "-z"], {
       encoding: "utf8",
+      maxBuffer: 20 * 1024 * 1024,
+      timeout: 30_000,
+      windowsHide: true,
     })
       .split("\0")
       .filter(Boolean),
