@@ -103,13 +103,14 @@ Worktree: `work/trading-bots-command5a`
 
 Branch: `codex/theta-command5a`
 
-Current isolated branch head: `bc444541f200fb6229110be276b2e165140a1539`
+Current isolated branch head at this receipt: `e0df7dcb1947bd1148b1e811b652427edb0709cd`
 
 New isolated commits:
 
 - `512486f` bounds schedule, observation, maturation, and health subprocesses
 - `faccccc` bounds local evidence backfill, research export, empirical pipeline, storage audit, archive projection, Parquet compaction and verification, DuckDB dependency probe, runtime receipt writing, and the database-independent no-submit probe
 - `bc44454` reconciles the isolated branch with current main while retaining the Command-5A scheduler and archive-health integration
+- `e0df7dc` reconciles the isolated branch with the bounded checkpoint and archive-certification source fixes
 
 The shared bounded runner:
 

@@ -22,10 +22,12 @@ import { createGetOnlyFetch } from '../src/theta/read-only-fetch.js';
 
 const environmentFile = process.argv.find((argument) => argument.startsWith('--environment-file='))
   ?.slice('--environment-file='.length) ?? '.env.local';
-const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+const sourceGitOptions = { encoding: 'utf8' as const, maxBuffer: 1024 * 1024,
+  timeout: 30_000, windowsHide: true };
+const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], sourceGitOptions).trim();
 let probeStage = 'SOURCE_GUARD';
 if (!/^[0-9a-f]{40}$/.test(sourceSha)
-  || execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim()) {
+  || execFileSync('git', ['status', '--porcelain'], sourceGitOptions).trim()) {
   throw new Error('NO_SUBMIT_PROBE_IMMUTABLE_SOURCE_REQUIRED');
 }
 const probeCycleId=`no-submit-${randomUUID()}`;

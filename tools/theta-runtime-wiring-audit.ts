@@ -81,7 +81,9 @@ const contents = new Map(files.map((file) => [file, readFileSync(file, 'utf8')])
 const testFiles = existsSync(path.join(process.cwd(), 'tests'))
   ? sourceFiles(path.join(process.cwd(), 'tests')) : [];
 const testContents = new Map(testFiles.map((file) => [file, readFileSync(file, 'utf8')]));
-const sourceRevision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+const sourceRevision = execFileSync('git', ['rev-parse', 'HEAD'], {
+  encoding: 'utf8', maxBuffer: 1024 * 1024, timeout: 30_000, windowsHide: true,
+}).trim();
 const rows = specs.map((spec) => {
   const definedIn = spec.definitions.filter((file) => existsSync(path.join(process.cwd(), file)));
   const importTokens = definedIn.map((file) => path.basename(file).replace(/\.(ts|py|tsx)$/, '').replaceAll('_', '-'));

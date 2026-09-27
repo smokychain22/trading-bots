@@ -26,7 +26,9 @@ async function main() {
     throw new Error('REPLAY_SOURCE_MANIFEST_MISMATCH');
   }
   // A 40-hex string alone is not release provenance. Require canonical Git ancestry.
-  execFileSync('git', ['merge-base', '--is-ancestor', raw.sourceSha, 'origin/main'], { stdio: 'ignore' });
+  execFileSync('git', ['merge-base', '--is-ancestor', raw.sourceSha, 'origin/main'], {
+    stdio: 'ignore', timeout: 30_000, windowsHide: true,
+  });
   const hashes = new Map(manifest.observations.map((o) => [o.evidenceId, o.normalizedObservationSha256]));
   if (hashes.size !== manifest.observations.length) throw new Error('REPLAY_DUPLICATE_MANIFEST_EVIDENCE');
   const canonical = (v: unknown): string => {

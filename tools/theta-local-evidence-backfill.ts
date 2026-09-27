@@ -9,7 +9,9 @@ const environmentFile=process.argv.find((argument)=>argument.startsWith('--envir
   ?.slice('--environment-file='.length)??'.env.local';
 const environment=loadEnvironmentFile(environmentFile);
 if(!environment.DATABASE_URL)throw new Error('DATABASE_URL_REQUIRED');
-const sourceSha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+const sourceSha=execFileSync('git',['rev-parse','HEAD'],{
+  encoding:'utf8',maxBuffer:1024*1024,timeout:30_000,windowsHide:true,
+}).trim();
 if(!/^[0-9a-f]{40}$/.test(sourceSha))throw new Error('SOURCE_SHA_INVALID');
 const pool:Pool=createRuntimePostgresPool(environment.DATABASE_URL);
 const spool=new LocalEvidenceSpool();

@@ -13,7 +13,9 @@ const start = process.argv.find((arg) => arg.startsWith('--start='))?.slice(8) ?
 const end = process.argv.find((arg) => arg.startsWith('--end='))?.slice(6) ?? new Date().toISOString().slice(0, 10);
 const environmentFile = process.argv.find((arg) => arg.startsWith('--environment-file='))?.slice(19) ?? '.env.local';
 const generatedAt = new Date().toISOString();
-const canonicalSourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+const gitOptions = { encoding: 'utf8' as const, maxBuffer: 16 * 1024 * 1024,
+  timeout: 30_000, windowsHide: true };
+const canonicalSourceSha = execFileSync('git', ['rev-parse', 'HEAD'], gitOptions).trim();
 
 function datesBetween(from: string, to: string): string[] {
   const dates: string[] = [];
@@ -38,7 +40,7 @@ const days = new Map(datesBetween(start, end).map((date) => [date, {
 } satisfies MutableDay]));
 
 const gitLines = execFileSync('git', ['log', `--since=${start}T00:00:00Z`, `--until=${end}T23:59:59Z`,
-  '--date=short', '--pretty=format:@@%ad', '--name-only'], { encoding: 'utf8' }).split(/\r?\n/);
+  '--date=short', '--pretty=format:@@%ad', '--name-only'], gitOptions).split(/\r?\n/);
 let gitDay: MutableDay | undefined;
 for (const line of gitLines) {
   if (line.startsWith('@@')) { gitDay = days.get(line.slice(2)); if (gitDay) gitDay.gitCommits += 1; continue; }
@@ -149,9 +151,15 @@ if (environment.DATABASE_URL) {
   finally { await pool.end().catch(() => undefined); }
 }
 
-const regressions = spawnSync(process.execPath, ['--import', 'tsx', 'tools/theta-historical-regressions.ts'], { encoding: 'utf8' });
+const regressionTimeoutMs = 330_000;
+const regressions = spawnSync(process.execPath, ['--import', 'tsx', 'tools/theta-historical-regressions.ts'], {
+  encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, timeout: regressionTimeoutMs, windowsHide: true,
+});
 let historicalRegressions = 0;
 let regressionUnclassified = 1;
+const regressionProcessState = regressions.error?.code === 'ETIMEDOUT' || regressions.signal !== null
+  ? 'TIMED_OUT' : regressions.error !== undefined ? 'START_FAILED'
+    : regressions.status === 0 ? 'PASS' : 'FAILED';
 try {
   const parsed = JSON.parse(regressions.stdout.trim()) as Record<string, unknown>;
   historicalRegressions = finite(parsed.regression) ?? 0;
@@ -174,5 +182,6 @@ const receipt = buildHistoricalCertification({ generatedAt, canonicalSourceSha, 
   unclassifiedWaitCount: regressionUnclassified, historicalRegressions, unexplainedBehavior: 0,
   codeSolvableBlockers });
 const contentHash = createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
-process.stdout.write(`${JSON.stringify({ ...receipt, contentHash }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ ...receipt, contentHash, regressionProcessState,
+  regressionProcessTimeoutMs: regressionTimeoutMs }, null, 2)}\n`);
 if (historicalRegressions > 0 || regressionUnclassified > 0 || codeSolvableBlockers.length > 0) process.exitCode = 1;

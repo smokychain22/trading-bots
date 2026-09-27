@@ -8,8 +8,10 @@ import { canonicalSystemTruthRegister } from '../src/theta/canonical-system-trut
 import { assessRuntimeSchemaCompatibility } from '../src/theta/runtime-schema-compatibility.js';
 
 const observedAt = new Date().toISOString();
-const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-const sourceDirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim().length > 0;
+const sourceGitOptions = { encoding: 'utf8' as const, maxBuffer: 1024 * 1024,
+  timeout: 30_000, windowsHide: true };
+const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], sourceGitOptions).trim();
+const sourceDirty = execFileSync('git', ['status', '--porcelain'], sourceGitOptions).trim().length > 0;
 const environmentFile = process.argv.find((arg) => arg.startsWith('--environment-file='))
   ?.slice('--environment-file='.length) ?? '.env.local';
 const environment = loadEnvironmentFile(environmentFile);
