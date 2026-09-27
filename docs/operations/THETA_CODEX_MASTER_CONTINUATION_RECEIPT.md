@@ -44,6 +44,12 @@ The preserved generation `2026-09-22_100128-c600e016` passed this verifier local
 
 Commit `fae07aa4932cd4b0a5707eabfacd3533aec4779f` added a daily byte-growth ratio to the storage forecast. A daily growth-budget breach pauses eligible nonessential research persistence before absolute capacity is exhausted. Operational truth remains writable.
 
+### Bounded locked-worker maintenance
+
+Commit `ab29f2ad5738fa3c734ddcf220c65521d072a2c1` removed unbounded child-process waits from the locked Windows supervisor's independent maintenance paths.
+
+The bounded runner now owns local evidence backfill, research export, the descriptive empirical pipeline, durable evidence bundling, the storage audit, canonical-frontier archive projection, DuckDB probing, Parquet compaction and verification, archive health, runtime receipt writing, and the database-independent no-submit probe. Each call has an explicit deadline, terminates its child process tree on timeout, drains stderr without exposing it, and records a typed timeout state where the status contract has a matching field. A blocked child can no longer stop lease renewal and future locked cycles indefinitely.
+
 ## Governed checkpoint incident
 
 The canonical recovery gate passed with four fresh physical probes, rollback-safe writes, stable postmaster identity, read-only disabled, safe power, adequate connection headroom, a stopped worker, and a preserved prior verified generation.
@@ -120,6 +126,17 @@ Main at `fae07aa4932cd4b0a5707eabfacd3533aec4779f`:
 - security scan: pass, zero findings
 - Git storage policy: pass
 - exact GitHub CI run `36322457434`: success
+
+Main worker hardening at `ab29f2ad5738fa3c734ddcf220c65521d072a2c1`:
+
+- PowerShell bounded-process tests: pass
+- local-worker wiring tests: pass
+- PowerShell parser: pass
+- lint and TypeScript check: pass
+- unit tests: 2,855 passing, 0 failing, 15 skipped
+- production build: pass
+- security scan: pass, zero findings
+- Git storage policy: pass
 
 Command-5A isolated branch:
 
