@@ -34,3 +34,16 @@ test('storage growth forecast governs research pressure without blocking operati
   assert.equal(critical.researchWriteDisposition, 'PAUSE_NONESSENTIAL');
   assert.equal(critical.growthState, 'UNKNOWN');
 });
+
+test('a breached daily growth budget pauses nonessential research before capacity is exhausted', () => {
+  const forecast = forecastStorageGrowth({
+    postgresTotalGb: 1, postgresDailyGrowthMb: 256, canonicalStateMb: 100,
+    observationsMb: 100, researchMb: 100, indexesMb: 100, toastMb: 100,
+  }, aivenDeveloper1BootstrapStorageBudget);
+  assert.equal(forecast.watermark, 'CRITICAL');
+  assert.equal(forecast.maximumUtilizationRatio, 2);
+  assert.equal(forecast.researchWriteDisposition, 'PAUSE_NONESSENTIAL');
+  assert.equal(forecast.operationalTruthWritesAllowed, true);
+  assert.equal(forecast.growthState, 'MEASURED_POSITIVE');
+  assert.ok(forecast.projectedDaysToHigh !== null && forecast.projectedDaysToHigh > 0);
+});

@@ -149,6 +149,11 @@
   Comparable session-bound relation sizes are still required before claiming a
   sustained byte-growth rate. Production cleanup remains owner-authorized work
   only after exact relation archive parity.
+- CODE_COMPLETE/VERIFIED_SOURCE: a measured daily-growth breach now raises the
+  same storage watermark as a capacity breach. Nonessential research is paused
+  when the measured byte-growth rate exceeds its budget even if PostgreSQL has
+  not yet reached its absolute size limit. Operational truth writes remain
+  allowed. Unknown growth remains unknown and never becomes zero.
 - Full measured receipt: `docs/operations/THETA_STORAGE_DECOUPLING_AND_AIVEN_AUDIT_2026-09-25.md`.
 
 ## Database-resilient observation closure, 2026-09-24

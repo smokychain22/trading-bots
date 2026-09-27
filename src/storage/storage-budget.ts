@@ -85,6 +85,8 @@ export function forecastStorageGrowth(
     telemetry.researchMb / policy.maximumResearchMb,
     telemetry.indexesMb / policy.maximumIndexesMb,
     telemetry.toastMb / policy.maximumToastMb,
+    ...(telemetry.postgresDailyGrowthMb === null ? []
+      : [Math.max(0, telemetry.postgresDailyGrowthMb) / policy.maximumDailyGrowthMb]),
   ];
   const maximumUtilizationRatio = Math.max(...ratios);
   if (!Number.isFinite(maximumUtilizationRatio) || maximumUtilizationRatio < 0) {
