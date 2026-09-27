@@ -569,6 +569,8 @@ try {
             } elseif ($parquetProcess.State -eq 'TIMED_OUT') {
               $localResearchParquetState = 'PROCESS_TIMEOUT_NONCRITICAL'
             } else { $localResearchParquetState = 'FAILED_NONCRITICAL' }
+          } elseif ($duckdbProbe.State -eq 'TIMED_OUT') {
+            $localResearchParquetState = 'DEPENDENCY_PROBE_PROCESS_TIMEOUT_NONCRITICAL'
           } else { $localResearchParquetState = 'DEPENDENCY_UNAVAILABLE_NONCRITICAL' }
           $parquetVerification = 'NOT_AVAILABLE'
           if ($duckdbAvailable) {
@@ -602,6 +604,9 @@ try {
             $localResearchArchiveFailureFamily = [string]$healthResult.health.failureFamily
             $localResearchTransferQuotaState = [string]$healthResult.health.transferQuotaState
             $localResearchArchiveNextRetryAt = [string]$healthResult.health.nextRetryAt
+          } elseif ($healthProcess.State -eq 'TIMED_OUT') {
+            $localResearchArchiveFailureFamily = 'ARCHIVE_HEALTH_PROCESS_TIMEOUT'
+            $localResearchDuckdbVerification = 'ARCHIVE_HEALTH_PROCESS_TIMEOUT'
           }
         } catch {
           if ($localResearchArchiveState -eq 'NOT_ATTEMPTED') { $localResearchArchiveState = 'FAILED_NONCRITICAL' }
