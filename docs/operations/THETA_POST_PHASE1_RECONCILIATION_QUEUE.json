@@ -1,0 +1,95 @@
+{
+  "contractVersion": "theta-post-phase1-reconciliation-queue-v1",
+  "queueState": "DEFERRED_UNTIL_PHASE1_CLOSED",
+  "authority": "CODEX_CANONICAL_INTEGRATION",
+  "phase1RequiredState": "CLOSED",
+  "claudeBranch": "claude/theta-overnight-quant",
+  "claudeRemoteSha": "dbd812deb128438d8bb437605e7a43acbe5c8194",
+  "remoteShaVerified": true,
+  "mergeBeforePhase1Closed": false,
+  "deployBeforePhase1Closed": false,
+  "brokerAuthority": false,
+  "historicalArchiveFacts": {
+    "contractVersion": "theta-r6-dataset-v1",
+    "rawBackupCopies": 666,
+    "uniqueSnapshots": 109,
+    "uniqueCandidateIds": 7550,
+    "uniqueDecisions": 302,
+    "selectedCandidates": 0,
+    "resolvedOutcomes": 0,
+    "declaredDatasetHashReproduced": false,
+    "promotionGrade": false
+  },
+  "allowedIntegrationClassifications": [
+    "CLEANLY_COMPATIBLE",
+    "NEEDS_APP_WIRING",
+    "SUPERSEDED_BY_MAIN",
+    "CONFLICTING",
+    "RESEARCH_ONLY",
+    "BLOCKED_DATA"
+  ],
+  "requiredTruthClasses": [
+    "MARKET_OBSERVED",
+    "MODELED_RESEARCH",
+    "BROKER_ACTUAL"
+  ],
+  "items": [
+    {
+      "id": "HISTORICAL_DATASET_HASH_INCIDENT",
+      "state": "DEFERRED_UNTIL_PHASE1_CLOSED",
+      "requiredAction": "Investigate the original producer and hash contract without rewriting archived artifacts or overwriting provenance.",
+      "requiredVerdicts": [
+        "CANONICALIZATION_DIFFERENCE",
+        "PRODUCER_VERSION_BUG",
+        "MANIFEST_HASH_SCOPE_DIFFERENCE",
+        "ENCODING_OR_ORDER_ISSUE",
+        "HISTORICAL_IMPLEMENTATION_DEFECT",
+        "ARCHIVE_CORRUPTION"
+      ],
+      "promotionBlocked": true
+    },
+    {
+      "id": "CLAUDE_BRANCH_CONTROLLED_INTEGRATION",
+      "state": "DEFERRED_UNTIL_PHASE1_CLOSED",
+      "requiredAction": "Create an isolated integration branch from final main, compare every accepted change against the pinned Claude SHA, and preserve current runtime and storage fixes.",
+      "blindMergeAllowed": false
+    },
+    {
+      "id": "CODEX_RUNTIME_PRODUCER_HANDOFFS",
+      "state": "DEFERRED_UNTIL_PHASE1_CLOSED",
+      "requiredAction": "Read the future-capture and Command-5A contracts, then wire only missing Codex-owned runtime producers.",
+      "priority": [
+        "fills",
+        "fill latency",
+        "partials",
+        "cancel/replace",
+        "assignment",
+        "exercise",
+        "expiration",
+        "future BBO",
+        "future underlying",
+        "future IV/Greeks",
+        "management outcomes",
+        "whole-chain outcomes"
+      ]
+    },
+    {
+      "id": "B1_B2_BH1_BENCHMARK_MECHANICS",
+      "state": "DEFERRED_UNTIL_PHASE1_CLOSED",
+      "requiredAction": "Inspect canonical benchmark definitions. Implement lifecycle mechanics only where canonical policy is sufficient. Otherwise preserve BLOCKED_MISSING_POLICY with the exact missing definition.",
+      "inventPolicyAllowed": false
+    }
+  ],
+  "forbiddenClaims": [
+    "PROFITABILITY_PROMOTED",
+    "FILL_MODEL_VALIDATED",
+    "ASSIGNMENT_MODEL_VALIDATED",
+    "FEATURE_ABLATION_PROMOTED"
+  ],
+  "safety": {
+    "orderSubmissions": 0,
+    "brokerMutations": 0,
+    "followers": "LOCKED",
+    "liveMoney": "NOT_AUTHORIZED"
+  }
+}

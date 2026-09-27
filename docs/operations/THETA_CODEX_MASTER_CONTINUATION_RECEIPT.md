@@ -148,6 +148,14 @@ Command-5A tests passed after these changes. The full isolated branch suite pass
 
 Command-5A continues to have `brokerAuthority=false`. It remains an isolated research/runtime continuation until the Production integration gate is opened after Phase 1.
 
+## Deferred post-Phase-1 Claude handoff
+
+The owner pinned `claude/theta-overnight-quant` at remote SHA `dbd812deb128438d8bb437605e7a43acbe5c8194`. `git ls-remote` verified that exact remote identity. The branch has not been merged, deployed, or inspected for Production integration during Phase 1.
+
+The controlled queue is stored in `docs/operations/THETA_POST_PHASE1_RECONCILIATION_QUEUE.json`. It records the historical dataset-hash incident, isolated branch-integration classifications, Codex-owned runtime producer priorities, and B1/B2/BH-1 policy boundary. Every item is `DEFERRED_UNTIL_PHASE1_CLOSED`.
+
+The recovered historical archive contains zero selected candidates and zero resolved outcomes. It cannot support profitability, fill-model, assignment-model, or feature-ablation promotion. The declared historical `datasetHash` remains unverified and no archived artifact or provenance was rewritten.
+
 ## Verification performed
 
 Main at `52265ebe1bf9395c291bda9b9ea6f976f1f537a1`:
