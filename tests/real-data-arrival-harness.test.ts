@@ -54,9 +54,15 @@ test('null market fields are audited with a real, classified UNKNOWN reason, nev
 });
 
 test('a selected/executed subject can reach FACTUAL_OBSERVED', () => {
-  const selected = bundle({ wasSelected: true });
+  const selected = bundle({ wasSelected: true, wasShadowOnly: false });
   const result = runRealDataArrivalPipeline(selected);
   assert.equal(result.dataset?.identifiabilityStatus, 'FACTUAL_OBSERVED');
+});
+
+test('a selected shadow-only subject remains NOT_IDENTIFIABLE', () => {
+  const selectedShadow = bundle({ wasSelected: true, wasShadowOnly: true });
+  const result = runRealDataArrivalPipeline(selectedShadow);
+  assert.equal(result.dataset?.identifiabilityStatus, 'NOT_IDENTIFIABLE');
 });
 
 test('ADVERSARIAL (overnight wave, directive §15): the same horizon reported twice for one subject is rejected as a duplicate observation, never silently kept as "the last one wins"', () => {
