@@ -10,7 +10,7 @@ import {
 import type { StrategyLearningObservationJob } from '../research/strategy-learning-horizon.js';
 import type { ShadowEpisodeContract } from '../research/shadow-episode-contract.js';
 
-export const localObservationJobSchedulerVersion = 'theta-local-observation-job-scheduler-v2' as const;
+export const localObservationJobSchedulerVersion = 'theta-local-observation-job-scheduler-v3' as const;
 
 export interface LocalObservationJobReceipt extends ObservationJobStateRecord {
   readonly observationJobId: string;
@@ -158,7 +158,11 @@ export class LocalObservationJobScheduler {
         content_hash TEXT NOT NULL,
         created_at TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS ix_observation_subject_cycle
-        ON observation_subject(decision_cycle_id,subject_id);`);
+        ON observation_subject(decision_cycle_id,subject_id);
+      CREATE TABLE IF NOT EXISTS scheduler_meta(
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL);`);
   }
 
   close(): void { this.database.close(); }
@@ -204,6 +208,54 @@ export class LocalObservationJobScheduler {
   subjectCount(): number {
     const row = this.database.prepare('SELECT count(*) AS count FROM observation_subject').get() as { count: number };
     return Number(row.count);
+  }
+
+  /** Bounded deterministic subject scan for the research-only maturation
+   * worker. Production decisions never read from this local database. */
+  subjects(input: { readonly limit?: number; readonly afterSubjectId?: string } = {}): readonly LocalObservationSubjectReceipt[] {
+    const limit = input.limit ?? 64;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 512) {
+      throw new Error('LOCAL_OBSERVATION_SUBJECT_LIMIT_INVALID');
+    }
+    const after = input.afterSubjectId ?? '';
+    if (after !== '' && !SHA256.test(after)) throw new Error('LOCAL_OBSERVATION_SUBJECT_CURSOR_INVALID');
+    return (this.database.prepare(`SELECT * FROM observation_subject WHERE subject_id > ?
+      ORDER BY subject_id LIMIT ?`).all(after, limit) as unknown as SubjectRow[]).map(toSubjectReceipt);
+  }
+
+  /** Restart-safe round-robin page. A bounded worker therefore reaches old
+   * and new subjects instead of rereading the first lexical page forever. */
+  nextMaturationSubjects(limit = 64): readonly LocalObservationSubjectReceipt[] {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 512) {
+      throw new Error('LOCAL_OBSERVATION_SUBJECT_LIMIT_INVALID');
+    }
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      const cursorRow = this.database.prepare("SELECT value FROM scheduler_meta WHERE key='maturation_cursor'")
+        .get() as { value: string } | undefined;
+      const cursor = cursorRow?.value ?? '';
+      let rows = this.database.prepare(`SELECT * FROM observation_subject WHERE subject_id > ?
+        ORDER BY subject_id LIMIT ?`).all(cursor, limit) as unknown as SubjectRow[];
+      if (rows.length === 0 && cursor !== '') {
+        rows = this.database.prepare('SELECT * FROM observation_subject ORDER BY subject_id LIMIT ?')
+          .all(limit) as unknown as SubjectRow[];
+      }
+      const nextCursor = rows.at(-1)?.subject_id ?? cursor;
+      this.database.prepare(`INSERT INTO scheduler_meta(key,value,updated_at) VALUES('maturation_cursor',?,?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`)
+        .run(nextCursor, new Date().toISOString());
+      this.database.exec('COMMIT');
+      return rows.map(toSubjectReceipt);
+    } catch (error) {
+      this.database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  jobsForSubject(subjectId: string): readonly LocalObservationJobReceipt[] {
+    if (!SHA256.test(subjectId)) throw new Error('LOCAL_OBSERVATION_SUBJECT_ID_INVALID');
+    return (this.database.prepare(`SELECT * FROM observation_job WHERE subject_id=?
+      ORDER BY target_at,horizon_code,observation_job_id`).all(subjectId) as unknown as JobRow[]).map(toReceipt);
   }
 
   schedule(input: {

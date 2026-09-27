@@ -168,10 +168,14 @@ try {
       $command5aObservationState = if ($report.reconciliation.marketOpen -eq $true) {
         'NOT_ATTEMPTED'
       } else { 'DEFERRED_MARKET_CLOSED' }
+      $command5aMaturationState = 'NOT_ATTEMPTED'
       $command5aObserved = 0
       $command5aMissed = 0
       $command5aDeferredProvider = 0
       $command5aDeferredMarket = 0
+      $command5aMaterialized = 0
+      $command5aMaturationPending = 0
+      $command5aMaturationCensored = 0
       $previousErrorActionPreference = $ErrorActionPreference
       $ErrorActionPreference = 'Continue'
       try {
@@ -197,9 +201,22 @@ try {
             $command5aDeferredMarket = [int]$command5aObservationResult.deferredMarket
           } else { $command5aObservationState = 'FAILED_NONCRITICAL' }
         }
+        # Maturation is local and provider-free. It may run while the market
+        # is closed and only consumes already verified observation archives.
+        $command5aMaturationOutput = & node --import tsx tools/theta-command5a-runtime.ts `
+          --mode=mature "--environment-file=$productionEnvFile" `
+          "--scheduler=$command5aSchedulerPath" "--spool=$command5aSpoolPath" --limit=64 2>$null
+        if ($LASTEXITCODE -eq 0) {
+          $command5aMaturationResult = $command5aMaturationOutput | Select-Object -Last 1 | ConvertFrom-Json
+          $command5aMaturationState = [string]$command5aMaturationResult.state
+          $command5aMaterialized = [int]$command5aMaturationResult.materialized
+          $command5aMaturationPending = [int]$command5aMaturationResult.pending
+          $command5aMaturationCensored = [int]$command5aMaturationResult.censored
+        } else { $command5aMaturationState = 'FAILED_NONCRITICAL' }
       } catch {
         if ($command5aScheduleState -eq 'NOT_ATTEMPTED') { $command5aScheduleState = 'FAILED_NONCRITICAL' }
         if ($command5aObservationState -eq 'NOT_ATTEMPTED') { $command5aObservationState = 'FAILED_NONCRITICAL' }
+        if ($command5aMaturationState -eq 'NOT_ATTEMPTED') { $command5aMaturationState = 'FAILED_NONCRITICAL' }
       } finally { $ErrorActionPreference = $previousErrorActionPreference }
       $marketSessionDate = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
         [DateTimeOffset]::UtcNow, 'Eastern Standard Time').ToString('yyyy-MM-dd')
@@ -509,8 +526,11 @@ try {
         localResearchLastManifestHash=$localResearchLastManifestHash;
         localResearchDuckdbVerification=$localResearchDuckdbVerification;
         command5aScheduleState=$command5aScheduleState;command5aObservationState=$command5aObservationState;
+        command5aMaturationState=$command5aMaturationState;
         command5aObserved=$command5aObserved;command5aMissed=$command5aMissed;
         command5aDeferredProvider=$command5aDeferredProvider;command5aDeferredMarket=$command5aDeferredMarket;
+        command5aMaterialized=$command5aMaterialized;command5aMaturationPending=$command5aMaturationPending;
+        command5aMaturationCensored=$command5aMaturationCensored;
         localReceiptState=$localReceiptState;localReceiptHash=$localReceiptHash;
         localEvidenceState=$localEvidenceState;localEvidenceHash=$localEvidenceHash} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8

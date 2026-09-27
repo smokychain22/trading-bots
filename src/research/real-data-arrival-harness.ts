@@ -117,7 +117,12 @@ export function buildDatasetFromBundle(bundle: ObservationBundle): ContractPathO
   return buildContractPathOutcomeRow({
     subjectId: bundle.subjectId, decisionAt: bundle.decisionAt, wasSelected: bundle.wasSelected,
     wasShadowOnly: bundle.wasShadowOnly,
-    identifiabilityStatus: bundle.wasSelected ? 'FACTUAL_OBSERVED' : 'NOT_IDENTIFIABLE',
+    // A canonical selection inside a shadow-only episode is still not an
+    // executed trade. Future market marks describe its path, but they do not
+    // prove a fill, managed episode, or realized P&L. Only a selected,
+    // non-shadow subject may become factual at this boundary.
+    identifiabilityStatus: bundle.wasSelected && !bundle.wasShadowOnly
+      ? 'FACTUAL_OBSERVED' : 'NOT_IDENTIFIABLE',
     path,
     statistics: {
       maximumAdverseExcursion: null, maximumFavorableExcursion: null, peakProfit: null, worstProfit: null,

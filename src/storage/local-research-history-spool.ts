@@ -4,9 +4,12 @@ import { dirname, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { canonicalJson } from '../research/point-in-time-evidence.js';
 
-export const localResearchHistorySpoolVersion = 'multi-bot-local-research-history-spool-v2' as const;
+export const localResearchHistorySpoolVersion = 'multi-bot-local-research-history-spool-v3' as const;
 
-export type LocalResearchFamily = 'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE' | 'CONTRACT_PATH_OBSERVATION';
+export type LocalResearchFamily =
+  | 'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE'
+  | 'CONTRACT_PATH_OBSERVATION'
+  | 'CONTRACT_PATH_DATASET';
 
 export interface LocalResearchBatchInput {
   readonly botNamespace: string;
@@ -40,6 +43,11 @@ export interface LocalResearchSpoolStats {
   readonly archivedParquetBatchCount: number;
   readonly oldestPendingObservedAt: string | null;
   readonly newestPendingObservedAt: string | null;
+}
+
+export interface VerifiedLocalResearchBatch<T = unknown> {
+  readonly receipt: LocalResearchBatchReceipt;
+  readonly payload: readonly T[];
 }
 
 type BatchRow = {
@@ -100,7 +108,7 @@ export class LocalResearchHistorySpool {
     this.database.exec(`CREATE TABLE IF NOT EXISTS research_batch(
       bot_namespace TEXT NOT NULL,
       batch_id TEXT PRIMARY KEY,
-      family TEXT NOT NULL CHECK(family IN ('CANONICAL_STRATEGY_CANDIDATE_EVIDENCE','CONTRACT_PATH_OBSERVATION')),
+      family TEXT NOT NULL CHECK(family IN ('CANONICAL_STRATEGY_CANDIDATE_EVIDENCE','CONTRACT_PATH_OBSERVATION','CONTRACT_PATH_DATASET')),
       source_sha TEXT NOT NULL,
       decision_cycle_id TEXT NOT NULL,
       snapshot_id TEXT NOT NULL,
@@ -113,10 +121,12 @@ export class LocalResearchHistorySpool {
       created_at TEXT NOT NULL,
       UNIQUE(family,decision_cycle_id,snapshot_id,payload_hash));
       CREATE INDEX IF NOT EXISTS ix_research_batch_pending
-        ON research_batch(storage_state,observed_at,batch_id);`);
+        ON research_batch(storage_state,observed_at,batch_id);
+      CREATE INDEX IF NOT EXISTS ix_research_batch_cycle_family
+        ON research_batch(decision_cycle_id,family,observed_at,batch_id);`);
     const schema = this.database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='research_batch'")
       .get() as { sql: string } | undefined;
-    if (schema !== undefined && !schema.sql.includes('CONTRACT_PATH_OBSERVATION')) this.upgradeFamilyConstraint();
+    if (schema !== undefined && !schema.sql.includes('CONTRACT_PATH_DATASET')) this.upgradeFamilyConstraint();
     const columns = this.database.prepare("PRAGMA table_info('research_batch')").all() as unknown as Array<{ name: string }>;
     if (!columns.some((column) => column.name === 'bot_namespace')) {
       this.database.exec("ALTER TABLE research_batch ADD COLUMN bot_namespace TEXT NOT NULL DEFAULT 'THETA'");
@@ -128,7 +138,7 @@ export class LocalResearchHistorySpool {
       CREATE TABLE research_batch_v2(
         bot_namespace TEXT NOT NULL DEFAULT 'THETA',
         batch_id TEXT PRIMARY KEY,
-        family TEXT NOT NULL CHECK(family IN ('CANONICAL_STRATEGY_CANDIDATE_EVIDENCE','CONTRACT_PATH_OBSERVATION')),
+        family TEXT NOT NULL CHECK(family IN ('CANONICAL_STRATEGY_CANDIDATE_EVIDENCE','CONTRACT_PATH_OBSERVATION','CONTRACT_PATH_DATASET')),
         source_sha TEXT NOT NULL,
         decision_cycle_id TEXT NOT NULL,
         snapshot_id TEXT NOT NULL,
@@ -147,6 +157,7 @@ export class LocalResearchHistorySpool {
       DROP TABLE research_batch;
       ALTER TABLE research_batch_v2 RENAME TO research_batch;
       CREATE INDEX ix_research_batch_pending ON research_batch(storage_state,observed_at,batch_id);
+      CREATE INDEX ix_research_batch_cycle_family ON research_batch(decision_cycle_id,family,observed_at,batch_id);
       COMMIT;`);
   }
 
@@ -200,6 +211,50 @@ export class LocalResearchHistorySpool {
       batch_id: string;
     }>;
     return new Set(rows.map((row) => row.batch_id));
+  }
+
+  hasBatch(batchId: string): boolean {
+    if (!SAFE_ID.test(batchId)) throw new Error('LOCAL_RESEARCH_BATCH_ID_INVALID');
+    return this.database.prepare('SELECT 1 AS present FROM research_batch WHERE batch_id=?')
+      .get(batchId) !== undefined;
+  }
+
+  verifyBatch(batchId: string): boolean {
+    if (!SAFE_ID.test(batchId)) throw new Error('LOCAL_RESEARCH_BATCH_ID_INVALID');
+    const row = this.database.prepare('SELECT * FROM research_batch WHERE batch_id=?')
+      .get(batchId) as BatchRow | undefined;
+    if (row === undefined) return false;
+    let payload: unknown;
+    try { payload = JSON.parse(row.payload_json); } catch { return false; }
+    return Array.isArray(payload) && payload.length === row.row_count
+      && sha256(canonicalJson(payload)) === row.payload_hash;
+  }
+
+  /** Reads one bounded decision-cycle slice and verifies every payload before
+   * returning it. This avoids full-history reloads in the maturation worker. */
+  readDecisionCycleBatches<T = unknown>(input: {
+    readonly decisionCycleId: string;
+    readonly family: LocalResearchFamily;
+    readonly limit?: number;
+  }): readonly VerifiedLocalResearchBatch<T>[] {
+    if (!SAFE_ID.test(input.decisionCycleId)) throw new Error('LOCAL_RESEARCH_DECISION_CYCLE_ID_INVALID');
+    const limit = input.limit ?? 256;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
+      throw new Error('LOCAL_RESEARCH_READ_LIMIT_INVALID');
+    }
+    const rows = this.database.prepare(`SELECT * FROM research_batch
+      WHERE decision_cycle_id=? AND family=? ORDER BY observed_at,batch_id LIMIT ?`)
+      .all(input.decisionCycleId, input.family, limit) as unknown as BatchRow[];
+    return rows.map((row) => {
+      let parsed: unknown;
+      try { parsed = JSON.parse(row.payload_json); }
+      catch { throw new Error(`LOCAL_RESEARCH_BATCH_PAYLOAD_INVALID:${row.batch_id}`); }
+      if (!Array.isArray(parsed) || parsed.length !== row.row_count
+        || sha256(canonicalJson(parsed)) !== row.payload_hash) {
+        throw new Error(`LOCAL_RESEARCH_BATCH_PAYLOAD_INTEGRITY_FAILED:${row.batch_id}`);
+      }
+      return { receipt: rowReceipt(row), payload: parsed as T[] };
+    });
   }
 
   stats(): LocalResearchSpoolStats {

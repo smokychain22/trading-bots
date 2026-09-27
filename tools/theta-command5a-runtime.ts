@@ -3,6 +3,7 @@ import { loadEnvironmentFile } from '../src/config/environment.js';
 import { AlpacaCommand5aObservationSource } from '../src/research/alpaca-command5a-observation-source.js';
 import { alpacaCalendarToLearningSessions } from '../src/research/alpaca-learning-calendar.js';
 import { runCommand5aLocalObservationWorker } from '../src/research/command5a-local-observation-worker.js';
+import { matureCommand5aLocalObservations } from '../src/research/command5a-local-maturation.js';
 import { scheduleCommand5aFromCanonicalFrontier } from '../src/research/command5a-local-scheduling.js';
 import { selectSeriousResearchSubjects } from '../src/research/serious-subject-policy.js';
 import { LocalObservationJobScheduler } from '../src/storage/local-observation-job-scheduler.js';
@@ -31,16 +32,18 @@ const environmentFile = argument('--environment-file=') ?? '.env.local';
 const schedulerPath = argument('--scheduler=') ?? '.theta-local-worker/research-spool/theta-observation-jobs.sqlite';
 const spoolPath = argument('--spool=') ?? '.theta-local-worker/research-spool/theta-research.sqlite';
 const environment = loadEnvironmentFile(environmentFile);
-if (!environment.ALPACA_API_KEY || !environment.ALPACA_SECRET_KEY || !environment.ALPACA_BASE_URL) {
-  throw new Error('COMMAND5A_ALPACA_CONFIGURATION_REQUIRED');
-}
 const readOnlyFetch: typeof fetch = (input, init) => {
   if ((init?.method ?? 'GET').toUpperCase() !== 'GET') throw new Error('COMMAND5A_NON_GET_REJECTED');
   return fetch(input, init);
 };
-const alpaca = { tradingApiBase: environment.ALPACA_BASE_URL,
-  marketDataApiBase: 'https://data.alpaca.markets', apiKey: environment.ALPACA_API_KEY,
-  apiSecret: environment.ALPACA_SECRET_KEY, fetchImpl: readOnlyFetch };
+function alpacaConfig() {
+  if (!environment.ALPACA_API_KEY || !environment.ALPACA_SECRET_KEY || !environment.ALPACA_BASE_URL) {
+    throw new Error('COMMAND5A_ALPACA_CONFIGURATION_REQUIRED');
+  }
+  return { tradingApiBase: environment.ALPACA_BASE_URL,
+    marketDataApiBase: 'https://data.alpaca.markets', apiKey: environment.ALPACA_API_KEY,
+    apiSecret: environment.ALPACA_SECRET_KEY, fetchImpl: readOnlyFetch };
+}
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -68,6 +71,7 @@ function frontierUnderlying(frontier: CanonicalStrategyFrontier): string | null 
 }
 
 async function schedule(): Promise<void> {
+  const alpaca = alpacaConfig();
   if (!environment.DATABASE_URL) throw new Error('COMMAND5A_DATABASE_URL_REQUIRED');
   const since = argument('--since=');
   if (since === undefined || !Number.isFinite(Date.parse(since))) throw new Error('COMMAND5A_SINCE_REQUIRED');
@@ -147,6 +151,7 @@ async function schedule(): Promise<void> {
 }
 
 async function observe(): Promise<void> {
+  const alpaca = alpacaConfig();
   const scheduler = new LocalObservationJobScheduler(schedulerPath);
   try {
     const source = new AlpacaCommand5aObservationSource(alpaca, {
@@ -161,6 +166,20 @@ async function observe(): Promise<void> {
   } finally { scheduler.close(); }
 }
 
+function mature(): void {
+  const scheduler = new LocalObservationJobScheduler(schedulerPath);
+  try {
+    const report = matureCommand5aLocalObservations({
+      scheduler,
+      spoolPath,
+      asOf: new Date().toISOString(),
+      limit: Number(argument('--limit=') ?? '64'),
+    });
+    process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_MATURATION_COMPLETE', ...report })}\n`);
+  } finally { scheduler.close(); }
+}
+
 if (mode === 'schedule') await schedule();
 else if (mode === 'observe') await observe();
+else if (mode === 'mature') mature();
 else throw new Error('COMMAND5A_MODE_REQUIRED');

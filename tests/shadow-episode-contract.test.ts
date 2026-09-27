@@ -46,6 +46,7 @@ test('shadow episode preserves both D legs and can never gain broker authority',
   assert.deepEqual(first.legs.map((leg) => leg.optionSymbol),
     ['SPY261120P00500000', 'SPY261120P00495000']);
   assert.equal(first.shadowOnly, true);
+  assert.equal(first.selectedAtDecision, false);
   assert.equal(first.brokerAuthority, false);
   assert.equal(first.orderSubmitted, false);
   assert.equal(first.brokerFill, false);
@@ -64,6 +65,7 @@ test('WAIT receives an auditable shadow identity without a fake contract', () =>
   const receipt = buildShadowEpisodeContract({ subject: wait, ...versions });
   assert.equal(receipt.strategy, 'WAIT');
   assert.equal(receipt.candidateId, null);
+  assert.equal(receipt.selectedAtDecision, false);
   assert.deepEqual(receipt.legs, []);
 });
 

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { canonicalJson } from './point-in-time-evidence.js';
 import type { SeriousResearchSubject } from './serious-subject-policy.js';
 
-export const shadowEpisodeContractVersion = 'theta-shadow-episode-v1' as const;
+export const shadowEpisodeContractVersion = 'theta-shadow-episode-v2' as const;
 
 export interface ShadowEpisodeContract {
   readonly contractVersion: typeof shadowEpisodeContractVersion;
@@ -11,6 +11,9 @@ export interface ShadowEpisodeContract {
   readonly decisionId: string;
   readonly snapshotId: string;
   readonly candidateId: string | null;
+  /** Canonical selection at T0. This is decision evidence only. A shadow
+   * episode still has no broker fill and cannot become a factual outcome. */
+  readonly selectedAtDecision: boolean;
   readonly strategy: string;
   readonly decisionAt: string;
   readonly decisionBucketAt: string;
@@ -85,6 +88,7 @@ export function buildShadowEpisodeContract(input: {
     decisionId: input.decisionId,
     snapshotId: input.subject.snapshotId,
     candidateId: input.subject.candidateId,
+    selectedAtDecision: input.subject.selected,
     strategy: input.subject.kind === 'CANDIDATE' ? input.subject.branch : 'WAIT',
     decisionAt: new Date(decisionAtMs).toISOString(),
     decisionBucketAt: new Date(bucketAtMs).toISOString(),
