@@ -114,6 +114,34 @@ test('provider outage remains a typed deferral and cannot look like a missed mar
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('incomplete market evidence becomes a terminal typed miss rather than a retry loop', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-command5a-worker-'));
+  try {
+    const { scheduler, job } = setup(root);
+    const source: Command5aReadOnlyObservationSource = {
+      brokerAuthority: false,
+      async marketState() { return { providerAvailable: true, marketSessionOpen: true }; },
+      async observe() {
+        return { state: 'MISSING', quotes: [], underlying: null,
+          observedAt: '2026-09-25T14:46:00Z', reasonCode: 'ASK_MISSING' };
+      },
+    };
+    const report = await runCommand5aLocalObservationWorker({ scheduler, source,
+      spoolPath: join(root, 'research.sqlite'), claimedBy: 'observer-1',
+      asOf: '2026-09-25T14:45:00Z', claimTtlSeconds: 30 });
+    assert.equal(report.missed, 1);
+    assert.equal(report.failedRetryable, 0);
+    assert.deepEqual(report.reasonCounts, { ASK_MISSING: 1 });
+    assert.equal(scheduler.get(job.observationJobId).state, 'MISSED');
+    assert.equal(scheduler.get(job.observationJobId).reasonCode, 'ASK_MISSING');
+    const second = await runCommand5aLocalObservationWorker({ scheduler, source,
+      spoolPath: join(root, 'research.sqlite'), claimedBy: 'observer-2',
+      asOf: '2026-09-25T14:47:00Z', claimTtlSeconds: 30 });
+    assert.equal(second.claimed, 0);
+    scheduler.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('failed fetch/archive attempt recovers after claim TTL without false OBSERVED state', async () => {
   const root = mkdtempSync(join(tmpdir(), 'theta-command5a-worker-'));
   try {
