@@ -325,11 +325,15 @@ test('402 is classified SUBSCRIPTION_REQUIRED', async () => {
 });
 
 test('403 is classified NOT_ENTITLED', async () => {
-  const fetchImpl = (async () => new Response('', { status: 403 })) as typeof fetch;
+  let discarded = 0;
+  const fetchImpl = (async () => new Response(new ReadableStream<Uint8Array>({
+    cancel() { discarded += 1; },
+  }), { status: 403 })) as typeof fetch;
   const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY');
   assert.equal(outcome.kind, 'REQUEST_ERROR');
   if (outcome.kind !== 'REQUEST_ERROR') return;
   assert.equal(outcome.errorClass, 'NOT_ENTITLED');
+  assert.equal(discarded, 1);
 });
 
 test('429 then success: a bounded retry recovers, never surfacing the transient 429 as an error', async () => {

@@ -252,6 +252,7 @@ export async function requestOptionomicsJsonBounded(
 
     if (!response.ok) {
       clearTimeout(timer);
+      await response.body?.cancel('THETA_OPTIONOMICS_ERROR_RESPONSE_DISCARDED').catch(() => undefined);
       const retryAfter = response.status === 429 ? parseRetryAfterSeconds(response.headers.get('retry-after')) : null;
       throw new OptionomicsProviderError(classifyErrorStatus(response.status), response.status, `${url.pathname} returned HTTP ${response.status}.`, retryAfter, attempt);
     }
@@ -259,6 +260,7 @@ export async function requestOptionomicsJsonBounded(
     const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
     if (!contentType.includes('application/json') && !contentType.includes('+json')) {
       clearTimeout(timer);
+      await response.body?.cancel('THETA_OPTIONOMICS_UNSUPPORTED_RESPONSE_DISCARDED').catch(() => undefined);
       throw new OptionomicsProviderError('INVALID_PROVIDER_RESPONSE', response.status, `${url.pathname} returned an unsupported content type.`, null, attempt);
     }
     let body: unknown;
