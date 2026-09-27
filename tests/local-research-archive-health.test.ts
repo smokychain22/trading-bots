@@ -58,6 +58,8 @@ test('quota exhaustion persists a cooldown and preserves local archive inventory
   assert.equal(state.spoolRows, 2);
   assert.equal(state.pendingCompactionRows, 1);
   assert.ok(state.spoolBytes > 0);
+  assert.equal(state.schedulerBytes, 0);
+  assert.equal(state.totalLocalResearchBytes, state.spoolBytes);
   assert.equal(state.spoolWatermark, 'NORMAL');
   assert.equal(state.newSubjectScheduling, 'ALLOW');
   assert.equal(state.nextRetryAt, '2026-09-25T12:00:00.000Z');

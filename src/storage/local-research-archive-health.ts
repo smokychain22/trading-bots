@@ -21,6 +21,8 @@ export interface LocalResearchArchiveHealth {
   readonly spoolRows: number;
   readonly pendingCompactionRows: number;
   readonly spoolBytes: number;
+  readonly schedulerBytes: number;
+  readonly totalLocalResearchBytes: number;
   readonly spoolWatermark: 'NORMAL' | 'ELEVATED' | 'HIGH' | 'CRITICAL';
   readonly newSubjectScheduling: 'ALLOW' | 'PAUSE_STORAGE_PRESSURE';
   readonly parquetFiles: number;
@@ -99,6 +101,12 @@ function sqliteCounts(path: string): { spoolRows: number; pendingCompactionRows:
   }
 }
 
+function sqliteFileSetBytes(path: string | undefined): number {
+  if (path === undefined) return 0;
+  return [path, `${path}-wal`, `${path}-shm`].reduce((sum, candidate) =>
+    sum + (existsSync(candidate) ? statSync(candidate).size : 0), 0);
+}
+
 function parquetState(root: string): Pick<LocalResearchArchiveHealth,
   'parquetFiles' | 'lastManifestHash' | 'duckdbVerification'> {
   if (!existsSync(root)) return { parquetFiles: 0, lastManifestHash: null, duckdbVerification: 'NOT_AVAILABLE' };
@@ -145,6 +153,7 @@ export function archiveRetryAllowed(healthPath: string, now: Date): boolean {
 export function writeArchiveHealth(input: {
   readonly healthPath: string;
   readonly spoolPath: string;
+  readonly schedulerPath?: string;
   readonly parquetRoot: string;
   readonly observedAt: Date;
   readonly archiveState: string;
@@ -157,9 +166,11 @@ export function writeArchiveHealth(input: {
   const prior = readPersisted(healthPath);
   const observedAt = input.observedAt.toISOString();
   const counts = sqliteCounts(resolve(input.spoolPath));
+  const schedulerBytes = sqliteFileSetBytes(input.schedulerPath === undefined ? undefined : resolve(input.schedulerPath));
+  const totalLocalResearchBytes = counts.spoolBytes + schedulerBytes;
   const parquet = parquetState(resolve(input.parquetRoot));
   const retryHours = input.retryAfterHours ?? 12;
-  const spoolWatermark = classifyLocalSpoolWatermark(counts.spoolBytes);
+  const spoolWatermark = classifyLocalSpoolWatermark(totalLocalResearchBytes);
   const state: LocalResearchArchiveHealth = {
     contractVersion: localResearchArchiveHealthVersion,
     observedAt,
@@ -176,6 +187,8 @@ export function writeArchiveHealth(input: {
       ? new Date(input.observedAt.getTime() + retryHours * 3_600_000).toISOString()
       : input.outcome === 'SUCCESS' ? null : prior.nextRetryAt,
     ...counts,
+    schedulerBytes,
+    totalLocalResearchBytes,
     spoolWatermark,
     newSubjectScheduling: spoolWatermark === 'HIGH' || spoolWatermark === 'CRITICAL'
       ? 'PAUSE_STORAGE_PRESSURE' : 'ALLOW',

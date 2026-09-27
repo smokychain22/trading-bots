@@ -430,6 +430,8 @@ try {
       $localResearchArchiveNextRetryAt = $null
       $localResearchSpoolRows = 0
       $localResearchPendingCompactionRows = 0
+      $localResearchTotalBytes = 0
+      $localResearchStorageWatermark = 'NORMAL'
       $localResearchParquetFiles = 0
       $localResearchLastManifestHash = $null
       $localResearchDuckdbVerification = 'NOT_AVAILABLE'
@@ -445,6 +447,7 @@ try {
         try {
           $archiveOutput = & node --import tsx tools/archive-canonical-strategy-frontiers.ts `
             "--environment-file=$productionEnvFile" "--sqlite=$researchSpoolPath" `
+            "--scheduler=$command5aSchedulerPath" `
             "--health=$researchArchiveHealthPath" "--parquet-root=$researchParquetRoot" `
             "--since=$($runtime.installedAt)" "--source-sha=$($runtime.buildSha)" --limit=10000
           $archiveExit = $LASTEXITCODE
@@ -486,12 +489,14 @@ try {
             } else { $parquetVerification = 'FAILED' }
           }
           $healthOutput = & node --import tsx tools/archive-canonical-strategy-frontiers.ts `
-            "--sqlite=$researchSpoolPath" "--health=$researchArchiveHealthPath" `
+            "--sqlite=$researchSpoolPath" "--scheduler=$command5aSchedulerPath" "--health=$researchArchiveHealthPath" `
             "--parquet-root=$researchParquetRoot" "--duckdb-verification=$parquetVerification" --health-only
           if ($LASTEXITCODE -eq 0) {
             $healthResult = $healthOutput | ConvertFrom-Json
             $localResearchSpoolRows = [int]$healthResult.health.spoolRows
             $localResearchPendingCompactionRows = [int]$healthResult.health.pendingCompactionRows
+            $localResearchTotalBytes = [long]$healthResult.health.totalLocalResearchBytes
+            $localResearchStorageWatermark = [string]$healthResult.health.spoolWatermark
             $localResearchParquetFiles = [int]$healthResult.health.parquetFiles
             $localResearchLastManifestHash = [string]$healthResult.health.lastManifestHash
             $localResearchDuckdbVerification = [string]$healthResult.health.duckdbVerification
@@ -534,6 +539,8 @@ try {
         localResearchArchiveNextRetryAt=$localResearchArchiveNextRetryAt;
         localResearchSpoolRows=$localResearchSpoolRows;
         localResearchPendingCompactionRows=$localResearchPendingCompactionRows;
+        localResearchTotalBytes=$localResearchTotalBytes;
+        localResearchStorageWatermark=$localResearchStorageWatermark;
         localResearchParquetFiles=$localResearchParquetFiles;
         localResearchLastManifestHash=$localResearchLastManifestHash;
         localResearchDuckdbVerification=$localResearchDuckdbVerification;

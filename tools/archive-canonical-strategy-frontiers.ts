@@ -13,6 +13,7 @@ const value = (prefix: string): string | undefined =>
 
 const environmentFile = value('--environment-file=') ?? '.env.local';
 const spoolPath = value('--sqlite=') ?? '.theta-local-worker/research-spool/theta-research.sqlite';
+const schedulerPath = value('--scheduler=') ?? '.theta-local-worker/research-spool/theta-observation-jobs.sqlite';
 const healthPath = value('--health=') ?? '.theta-local-worker/research-spool/archive-health.json';
 const parquetRoot = value('--parquet-root=') ?? 'C:\\ProjectBackups\\trading-bots\\research-archives';
 const sourceSha = value('--source-sha=');
@@ -24,7 +25,7 @@ const duckdbVerification = duckdbVerificationRaw === 'PASS' || duckdbVerificatio
 const now = new Date();
 if (process.argv.includes('--health-only')) {
   const health = writeArchiveHealth({
-    healthPath, spoolPath, parquetRoot, observedAt: now,
+    healthPath, spoolPath, schedulerPath, parquetRoot, observedAt: now,
     archiveState: 'HEALTH_REFRESHED', outcome: 'UNCHANGED',
     duckdbVerificationOverride: duckdbVerification,
   });
@@ -34,7 +35,7 @@ if (process.argv.includes('--health-only')) {
 if (sourceSha === undefined || since === undefined) throw new Error('LOCAL_ARCHIVE_SOURCE_SHA_AND_SINCE_REQUIRED');
 if (!archiveRetryAllowed(healthPath, now)) {
   const health = writeArchiveHealth({
-    healthPath, spoolPath, parquetRoot, observedAt: now,
+    healthPath, spoolPath, schedulerPath, parquetRoot, observedAt: now,
     archiveState: 'DEFERRED_TRANSFER_QUOTA_COOLDOWN', outcome: 'UNCHANGED',
   });
   process.stdout.write(`${JSON.stringify({ state: health.archiveState, researchRowCount: 0, health })}\n`);
@@ -44,7 +45,7 @@ const environment = loadEnvironmentFile(environmentFile);
 const pool = createRuntimePostgresPool(environment.DATABASE_URL);
 try {
   writeArchiveHealth({
-    healthPath, spoolPath, parquetRoot, observedAt: now,
+    healthPath, spoolPath, schedulerPath, parquetRoot, observedAt: now,
     archiveState: 'ARCHIVE_QUERY_IN_PROGRESS', outcome: 'RETRYING',
   });
   try {
@@ -56,7 +57,7 @@ try {
       limit: limitRaw === undefined ? 10_000 : Number(limitRaw),
     });
     const health = writeArchiveHealth({
-      healthPath, spoolPath, parquetRoot, observedAt: new Date(),
+      healthPath, spoolPath, schedulerPath, parquetRoot, observedAt: new Date(),
       archiveState: report.state, outcome: 'SUCCESS',
     });
     process.stdout.write(`${JSON.stringify({ ...report, health })}\n`);
@@ -64,7 +65,7 @@ try {
     const failureFamily = classifyArchiveFailure(error);
     const quota = failureFamily === 'DATABASE_RESOURCE_QUOTA';
     const health = writeArchiveHealth({
-      healthPath, spoolPath, parquetRoot, observedAt: new Date(),
+      healthPath, spoolPath, schedulerPath, parquetRoot, observedAt: new Date(),
       archiveState: quota ? 'DEFERRED_TRANSFER_QUOTA' : 'FAILED_NONCRITICAL',
       outcome: quota ? 'QUOTA_EXHAUSTED' : 'FAILURE', failureFamily,
     });
