@@ -45,6 +45,13 @@ function count(reasons: Map<string, number>, reason: string): void {
   reasons.set(reason, (reasons.get(reason) ?? 0) + 1);
 }
 
+function maturationFailureCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  const code = message.split(':', 1)[0] ?? '';
+  return /^(?:COMMAND5A|CONTRACT_PATH|RAW_OBSERVATION_BUNDLE|RESEARCH_DATASET)_[A-Z0-9_]{2,160}$/.test(code)
+    ? code : 'MATURATION_FAILED_RETRYABLE_UNCLASSIFIED';
+}
+
 function isObservation(value: unknown): value is ContractPathObservationReceipt {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   const row = value as Record<string, unknown>;
@@ -172,9 +179,9 @@ export function matureCommand5aLocalObservations(input: {
         datasetBatchIds.push(batchId);
         if (existed) alreadyMaterialized += 1;
         else materialized += 1;
-      } catch {
+      } catch (error) {
         failedRetryable += 1;
-        count(reasons, 'MATURATION_FAILED_RETRYABLE');
+        count(reasons, maturationFailureCode(error));
       }
     }
     return {

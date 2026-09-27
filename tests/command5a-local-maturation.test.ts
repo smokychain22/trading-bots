@@ -124,6 +124,8 @@ test('Command-5A maturation preserves pending and missing-archive states instead
       spoolPath: missingSetup.spoolPath, asOf: OBSERVED_AT });
     assert.equal(missing.failedRetryable, 1);
     assert.equal(missing.materialized, 0);
+    assert.deepEqual(missing.reasonCounts, { COMMAND5A_OBSERVED_JOB_ARCHIVE_MISSING: 1 });
+    assert.equal(missing.reasonCounts.MATURATION_FAILED_RETRYABLE, undefined);
   } finally { missingSetup.scheduler.close(); }
 });
 
