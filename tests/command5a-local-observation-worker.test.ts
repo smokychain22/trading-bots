@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import {
   runCommand5aLocalObservationWorker,
+  command5aClosedSessionLatestMarkEligible,
   type Command5aReadOnlyObservationSource,
 } from '../src/research/command5a-local-observation-worker.js';
 import { buildShadowEpisodeContract } from '../src/research/shadow-episode-contract.js';
@@ -35,11 +36,11 @@ const subject: SeriousCandidateSubject = {
     sizing: { quantity: 1, bindingConstraint: 'BROKER', reasons: [] }, paretoRank: 1,
     dominatedBy: [], executionAuthorized: false,
   },
-  subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v1', shadowOnly: true,
+  subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v2', shadowOnly: true,
   brokerAuthority: false, orderSubmitted: false, brokerFill: false,
 };
 
-function setup(root: string) {
+function setup(root: string, horizonCode: '15M' | 'EOD' = '15M') {
   const scheduler = new LocalObservationJobScheduler(join(root, 'jobs.sqlite'));
   const episode = buildShadowEpisodeContract({ subject, decisionId: 'decision-1',
     featureSnapshotHash: 'b'.repeat(64), strategyVersion: 'strategy-v1', riskVersion: 'risk-v1',
@@ -53,24 +54,26 @@ function setup(root: string) {
       closeAt: '2026-09-25T20:00:00Z', source: 'ALPACA_CALENDAR' }],
     policy: { version: 'theta-strategy-learning-horizons-v1', primaryCommonHorizon: '15M',
       tradingDayTarget: 'SESSION_CLOSE' } });
-  const job = jobs.find((row) => row.horizonCode === '15M');
+  const job = jobs.find((row) => row.horizonCode === horizonCode);
   assert.ok(job);
   scheduler.schedule({ job, sourceSha: episode.sourceSha, workerSha: episode.workerSha });
   return { scheduler, job };
 }
 
-function readySource(): Command5aReadOnlyObservationSource {
+function readySource(observedAt = '2026-09-25T14:46:00Z'): Command5aReadOnlyObservationSource {
+  const providerTimestamp = new Date(Date.parse(observedAt) - 1_000).toISOString();
+  const underlyingTimestamp = new Date(Date.parse(observedAt) - 2_000).toISOString();
   return {
     brokerAuthority: false,
     async marketState() { return { providerAvailable: true, marketSessionOpen: true }; },
     async observe() {
-      return { state: 'READY', observedAt: '2026-09-25T14:46:00Z', reasonCode: null,
-        quotes: [{ optionSymbol, bid: 2.2, ask: 2.3, providerTimestamp: '2026-09-25T14:45:59Z',
-          receivedAt: '2026-09-25T14:46:00Z', impliedVolatility: 0.21, delta: -0.2,
+      return { state: 'READY', observedAt, reasonCode: null,
+        quotes: [{ optionSymbol, bid: 2.2, ask: 2.3, providerTimestamp,
+          receivedAt: observedAt, impliedVolatility: 0.21, delta: -0.2,
           gamma: 0.01, theta: -0.03, vega: 0.1, provider: 'ALPACA', feed: 'INDICATIVE',
           quality: 'GOOD', reasonCodes: [] }],
-        underlying: { symbol: 'SPY', price: 550, providerTimestamp: '2026-09-25T14:45:58Z',
-          receivedAt: '2026-09-25T14:46:00Z', provider: 'ALPACA', purpose: 'RESEARCH_REFERENCE_ONLY' } };
+        underlying: { symbol: 'SPY', price: 550, providerTimestamp: underlyingTimestamp,
+          receivedAt: observedAt, provider: 'ALPACA', purpose: 'RESEARCH_REFERENCE_ONLY' } };
     },
   };
 }
@@ -98,19 +101,40 @@ test('real market observation archives before OBSERVED resolution and remains mu
 test('fresh latest evidence resolves a session-close job immediately after the market closes', async () => {
   const root = mkdtempSync(join(tmpdir(), 'theta-command5a-worker-'));
   try {
-    const { scheduler, job } = setup(root);
+    const { scheduler, job } = setup(root, 'EOD');
     const source: Command5aReadOnlyObservationSource = {
-      ...readySource(),
+      ...readySource('2026-09-25T20:01:00Z'),
       async marketState() { return { providerAvailable: true, marketSessionOpen: false }; },
     };
     const report = await runCommand5aLocalObservationWorker({ scheduler, source,
       spoolPath: join(root, 'research.sqlite'), claimedBy: 'observer-post-close',
-      asOf: '2026-09-25T14:45:00Z', claimTtlSeconds: 30,
+      asOf: '2026-09-25T20:01:00Z', claimTtlSeconds: 30,
       allowClosedSessionLatestMark: true });
     assert.equal(report.observed, 1);
     assert.equal(report.deferredMarket, 0);
     assert.equal(report.brokerMutations, 0);
     assert.equal(scheduler.get(job.observationJobId).state, 'OBSERVED');
+    scheduler.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a closed-session latest mark cannot backfill an intraday checkpoint', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-command5a-worker-'));
+  try {
+    const { scheduler, job } = setup(root, '15M');
+    assert.equal(command5aClosedSessionLatestMarkEligible(scheduler.get(job.observationJobId)), false);
+    const source: Command5aReadOnlyObservationSource = {
+      ...readySource('2026-09-25T20:01:00Z'),
+      async marketState() { return { providerAvailable: true, marketSessionOpen: false }; },
+    };
+    const report = await runCommand5aLocalObservationWorker({ scheduler, source,
+      spoolPath: join(root, 'research.sqlite'), claimedBy: 'observer-intraday-post-close',
+      asOf: '2026-09-25T20:01:00Z', claimTtlSeconds: 30,
+      allowClosedSessionLatestMark: true });
+    assert.equal(report.observed, 0);
+    assert.equal(report.deferredMarket, 1);
+    assert.deepEqual(report.reasonCounts, { CLOSED_SESSION_MARK_NOT_VALID_FOR_INTRADAY_TARGET: 1 });
+    assert.equal(scheduler.get(job.observationJobId).state, 'DEFERRED_MARKET');
     scheduler.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

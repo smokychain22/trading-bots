@@ -10,12 +10,13 @@ import {
 import type { StrategyLearningObservationJob } from '../research/strategy-learning-horizon.js';
 import type { ShadowEpisodeContract } from '../research/shadow-episode-contract.js';
 
-export const localObservationJobSchedulerVersion = 'theta-local-observation-job-scheduler-v3' as const;
+export const localObservationJobSchedulerVersion = 'theta-local-observation-job-scheduler-v4' as const;
 
 export interface LocalObservationJobReceipt extends ObservationJobStateRecord {
   readonly observationJobId: string;
   readonly subjectId: string;
   readonly horizonCode: StrategyLearningObservationJob['horizonCode'];
+  readonly derivedFromHorizonCode: StrategyLearningObservationJob['derivedFromHorizonCode'];
   readonly targetSessionDate: string | null;
   readonly sourceSha: string;
   readonly workerSha: string;
@@ -62,6 +63,7 @@ type JobRow = {
   observation_job_id: string;
   subject_id: string;
   horizon_code: StrategyLearningObservationJob['horizonCode'];
+  derived_from_horizon_code: StrategyLearningObservationJob['derivedFromHorizonCode'];
   target_at: string;
   target_session_date: string | null;
   source_sha: string;
@@ -98,6 +100,7 @@ function toReceipt(row: JobRow): LocalObservationJobReceipt {
     observationJobId: row.observation_job_id,
     subjectId: row.subject_id,
     horizonCode: row.horizon_code,
+    derivedFromHorizonCode: row.derived_from_horizon_code,
     targetAt: row.target_at,
     targetSessionDate: row.target_session_date,
     sourceSha: row.source_sha,
@@ -156,6 +159,7 @@ export class LocalObservationJobScheduler {
       observation_job_id TEXT PRIMARY KEY,
       subject_id TEXT NOT NULL,
       horizon_code TEXT NOT NULL,
+      derived_from_horizon_code TEXT,
       target_at TEXT NOT NULL,
       target_session_date TEXT,
       source_sha TEXT NOT NULL,
@@ -187,6 +191,10 @@ export class LocalObservationJobScheduler {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL,
         updated_at TEXT NOT NULL);`);
+    const jobColumns = this.database.prepare('PRAGMA table_info(observation_job)').all() as unknown as Array<{ name: string }>;
+    if (!jobColumns.some((column) => column.name === 'derived_from_horizon_code')) {
+      this.database.exec('ALTER TABLE observation_job ADD COLUMN derived_from_horizon_code TEXT;');
+    }
   }
 
   close(): void { this.database.close(); }
@@ -329,6 +337,7 @@ export class LocalObservationJobScheduler {
       observationJobId: input.job.observationJobId,
       subjectId: input.job.subjectId,
       horizonCode: input.job.horizonCode,
+      derivedFromHorizonCode: input.job.derivedFromHorizonCode,
       targetAt: targetAt.toISOString(),
       targetSessionDate: input.job.targetSessionDate,
       sourceSha: input.sourceSha,
@@ -338,15 +347,32 @@ export class LocalObservationJobScheduler {
     const existing = this.database.prepare('SELECT * FROM observation_job WHERE observation_job_id=?')
       .get(input.job.observationJobId) as JobRow | undefined;
     if (existing !== undefined) {
-      if (existing.content_hash !== contentHash) throw new Error('LOCAL_OBSERVATION_JOB_IDENTITY_CONFLICT');
-      return toReceipt(existing);
+      if (existing.content_hash === contentHash) return toReceipt(existing);
+      const legacyContentHash = hash(canonicalJson({
+        observationJobId: input.job.observationJobId,
+        subjectId: input.job.subjectId,
+        horizonCode: input.job.horizonCode,
+        targetAt: targetAt.toISOString(),
+        targetSessionDate: input.job.targetSessionDate,
+        sourceSha: input.sourceSha,
+        workerSha: input.workerSha,
+      }));
+      if (existing.content_hash !== legacyContentHash || existing.derived_from_horizon_code !== null) {
+        throw new Error('LOCAL_OBSERVATION_JOB_IDENTITY_CONFLICT');
+      }
+      this.database.prepare(`UPDATE observation_job SET derived_from_horizon_code=?,content_hash=?,updated_at=?
+        WHERE observation_job_id=?`).run(input.job.derivedFromHorizonCode, contentHash,
+        new Date().toISOString(), input.job.observationJobId);
+      return this.get(input.job.observationJobId);
     }
     const now = new Date().toISOString();
-    this.database.prepare(`INSERT INTO observation_job(observation_job_id,subject_id,horizon_code,target_at,
-      target_session_date,source_sha,worker_sha,content_hash,state,attempts,last_attempt_at,claim_expires_at,
+    this.database.prepare(`INSERT INTO observation_job(observation_job_id,subject_id,horizon_code,
+      derived_from_horizon_code,target_at,target_session_date,source_sha,worker_sha,content_hash,
+      state,attempts,last_attempt_at,claim_expires_at,
       resolved_at,reason_code,claimed_by,created_at,updated_at)
-      VALUES(?,?,?,?,?,?,?,?,'PENDING',0,NULL,NULL,NULL,NULL,NULL,?,?)`).run(
-      input.job.observationJobId, input.job.subjectId, input.job.horizonCode, targetAt.toISOString(),
+      VALUES(?,?,?,?,?,?,?,?,?,'PENDING',0,NULL,NULL,NULL,NULL,NULL,?,?)`).run(
+      input.job.observationJobId, input.job.subjectId, input.job.horizonCode,
+      input.job.derivedFromHorizonCode, targetAt.toISOString(),
       input.job.targetSessionDate, input.sourceSha, input.workerSha, contentHash, now, now,
     );
     return this.get(input.job.observationJobId);

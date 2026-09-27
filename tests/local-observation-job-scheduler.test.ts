@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
+import { canonicalJson } from '../src/research/point-in-time-evidence.js';
 import { buildStrategyLearningObservationSchedule } from '../src/research/strategy-learning-horizon.js';
 import { LocalObservationJobScheduler } from '../src/storage/local-observation-job-scheduler.js';
 
@@ -45,6 +48,59 @@ test('jobs survive scheduler restart, claim once, and resolve without broker aut
     assert.equal(resolved.state, 'OBSERVED');
     assert.equal(resolved.brokerAuthority, false);
     second.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('primary jobs preserve their factual horizon across scheduler restart', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-observation-jobs-'));
+  const path = join(root, 'jobs.sqlite');
+  try {
+    const jobs = buildStrategyLearningObservationSchedule({
+      subjectId: 'a'.repeat(64), decisionAt: '2026-09-25T14:30:00Z',
+      decisionSessionDate: '2026-09-25', expirationDate: '2026-09-29',
+      sessions: [{ date: '2026-09-25', openAt: '2026-09-25T13:30:00Z',
+        closeAt: '2026-09-25T20:00:00Z', source: 'ALPACA_CALENDAR' }],
+      policy: { version: 'theta-strategy-learning-horizons-v1', primaryCommonHorizon: 'EOD',
+        tradingDayTarget: 'SESSION_CLOSE' },
+    });
+    const primary = jobs.find((job) => job.horizonCode === 'PRIMARY_COMMON_HORIZON');
+    assert.ok(primary);
+    const first = new LocalObservationJobScheduler(path);
+    first.schedule({ job: primary, sourceSha: 'b'.repeat(40), workerSha: 'b'.repeat(40) });
+    first.close();
+    const second = new LocalObservationJobScheduler(path);
+    assert.equal(second.get(primary.observationJobId).derivedFromHorizonCode, 'EOD');
+    second.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('scheduler upgrades a legacy job hash without losing its durable state', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-observation-jobs-'));
+  const path = join(root, 'jobs.sqlite');
+  try {
+    const job = scheduledJob();
+    const first = new LocalObservationJobScheduler(path);
+    first.schedule({ job, sourceSha: 'b'.repeat(40), workerSha: 'b'.repeat(40) });
+    first.close();
+    const legacyHash = createHash('sha256').update(canonicalJson({
+      observationJobId: job.observationJobId,
+      subjectId: job.subjectId,
+      horizonCode: job.horizonCode,
+      targetAt: new Date(job.targetAt as string).toISOString(),
+      targetSessionDate: job.targetSessionDate,
+      sourceSha: 'b'.repeat(40),
+      workerSha: 'b'.repeat(40),
+    })).digest('hex');
+    const raw = new DatabaseSync(path);
+    raw.prepare(`UPDATE observation_job SET derived_from_horizon_code=NULL,content_hash=?
+      WHERE observation_job_id=?`).run(legacyHash, job.observationJobId);
+    raw.close();
+    const upgraded = new LocalObservationJobScheduler(path);
+    const receipt = upgraded.schedule({ job, sourceSha: 'b'.repeat(40), workerSha: 'b'.repeat(40) });
+    assert.equal(receipt.state, 'PENDING');
+    assert.equal(receipt.derivedFromHorizonCode, null);
+    assert.notEqual(receipt.contentHash, legacyHash);
+    upgraded.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

@@ -71,6 +71,18 @@ function safeReason(value: string | null, fallback: string): string {
   return value !== null && /^[A-Z0-9_:-]{1,128}$/.test(value) ? value : fallback;
 }
 
+const sessionCloseHorizons = new Set([
+  'EOD', '1_TRADING_DAY', '3_TRADING_DAYS', '5_TRADING_DAYS', 'EXPIRATION',
+]);
+
+/** A post-close latest mark can represent only a target defined at session
+ * close. Intraday targets must never be backfilled with a later close mark. */
+export function command5aClosedSessionLatestMarkEligible(job: LocalObservationJobReceipt): boolean {
+  const factualHorizon = job.horizonCode === 'PRIMARY_COMMON_HORIZON'
+    ? job.derivedFromHorizonCode : job.horizonCode;
+  return factualHorizon !== null && sessionCloseHorizons.has(factualHorizon);
+}
+
 /**
  * Claims and resolves bounded local Command-5A observation jobs. This worker
  * receives a read-only market source and never imports a mutation-capable
@@ -121,11 +133,17 @@ export async function runCommand5aLocalObservationWorker(input: {
   } catch {
     market = { providerAvailable: false, marketSessionOpen: null };
   }
-  const dueState = classifyObservationDeferral({ ...market,
-    allowClosedSessionLatestMark: input.allowClosedSessionLatestMark });
-  if (dueState !== 'DUE') {
-    const reason = dueState === 'DEFERRED_PROVIDER' ? 'MARKET_PROVIDER_UNAVAILABLE' : 'MARKET_SESSION_NOT_OPEN';
-    for (const job of claimed) {
+  for (const job of claimed) {
+    const closedSessionEligible = input.allowClosedSessionLatestMark === true
+      && command5aClosedSessionLatestMarkEligible(job);
+    const dueState = classifyObservationDeferral({ ...market,
+      allowClosedSessionLatestMark: closedSessionEligible });
+    if (dueState !== 'DUE') {
+      const reason = dueState === 'DEFERRED_PROVIDER'
+        ? 'MARKET_PROVIDER_UNAVAILABLE'
+        : market.marketSessionOpen === false && input.allowClosedSessionLatestMark === true
+          ? 'CLOSED_SESSION_MARK_NOT_VALID_FOR_INTRADAY_TARGET'
+          : 'MARKET_SESSION_NOT_OPEN';
       if (job.attempts >= maximumAttempts) {
         const exhaustedReason = `${reason}_RETRY_LIMIT_EXHAUSTED`;
         input.scheduler.resolve({ observationJobId: job.observationJobId, claimedBy: input.claimedBy,
@@ -139,17 +157,8 @@ export async function runCommand5aLocalObservationWorker(input: {
         if (dueState === 'DEFERRED_PROVIDER') deferredProvider += 1;
         else deferredMarket += 1;
       }
+      continue;
     }
-    return {
-      contractVersion: command5aLocalObservationWorkerVersion,
-      claimed: claimed.length, observed, missed, invalidated, deferredProvider, deferredMarket, failedRetryable,
-      censoredRetryExhausted,
-      observationIds, reasonCounts: Object.fromEntries(reasons), brokerAuthority: false,
-      orderSubmissions: 0, brokerMutations: 0,
-    };
-  }
-
-  for (const job of claimed) {
     let subject: LocalObservationSubjectReceipt;
     try {
       subject = input.scheduler.getSubject(job.subjectId);
