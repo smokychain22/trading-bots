@@ -111,38 +111,120 @@ function Get-ThetaNativePgTool {
   return $path
 }
 
+function ConvertTo-ThetaPgDiagnostic {
+  param([object]$Connection, [string]$Diagnostic)
+  $sanitized = [string]$Diagnostic
+  if ($Connection.Password) { $sanitized = $sanitized.Replace([string]$Connection.Password, '[REDACTED]') }
+  $sanitized = $sanitized -replace '(?i)(password\s*[=:]\s*)\S+', '$1[REDACTED]'
+  $sanitized = $sanitized.Trim()
+  if ($sanitized.Length -gt 2000) { $sanitized = $sanitized.Substring($sanitized.Length - 2000) }
+  return $sanitized
+}
+
+function Get-ThetaPgFailureClass {
+  param([string]$Diagnostic)
+  if ($Diagnostic -match '(?i)exceeded (?:the )?data transfer quota') { return 'AIVEN_DATA_TRANSFER_QUOTA_EXCEEDED' }
+  if ($Diagnostic -match '(?i)(remaining connection slots|too many clients|SQLSTATE\s*53000)') { return 'POSTGRES_53000' }
+  if ($Diagnostic -match '(?i)(database system is starting up|cannot connect now|SQLSTATE\s*57P03)') { return 'POSTGRES_57P03' }
+  if ($Diagnostic -match '(?i)(unexpected eof|connection to server was lost|server closed the connection unexpectedly|SSL SYSCALL|could not receive data|could not send data|ECONNRESET)') {
+    return 'POSTGRES_CONNECTION_LOST'
+  }
+  return 'POSTGRES_TOOL_ERROR'
+}
+
 function Invoke-ThetaPg {
-  param([ValidateSet('pg_dump','pg_restore','psql')][string]$Tool, [object]$Connection, [string[]]$Arguments)
+  param(
+    [ValidateSet('pg_dump','pg_restore','psql')][string]$Tool,
+    [object]$Connection,
+    [string[]]$Arguments,
+    [ValidateRange(1,86400)][int]$TimeoutSeconds = $(if ($Tool -eq 'psql') { 600 } else { 14400 }),
+    [string]$ProgressFilePath,
+    [ValidateRange(0,86400)][int]$NoProgressTimeoutSeconds = 0
+  )
   $keys = @('PGHOST','PGPORT','PGUSER','PGPASSWORD','PGDATABASE','PGSSLMODE','PGCONNECT_TIMEOUT','PGAPPNAME','PGTZ',
     'PGKEEPALIVES','PGKEEPALIVESIDLE','PGKEEPALIVESINTERVAL','PGKEEPALIVESCOUNT','PGTCPUSER_TIMEOUT','WSLENV')
-  $previous = @{}
-  foreach ($key in $keys) { $previous[$key] = [Environment]::GetEnvironmentVariable($key) }
+  if ($NoProgressTimeoutSeconds -gt 0 -and -not $ProgressFilePath) { throw 'POSTGRES_TOOL_PROGRESS_PATH_REQUIRED' }
+  $progressPath = if ($ProgressFilePath) { [IO.Path]::GetFullPath($ProgressFilePath) } else { $null }
+  $startInfo = [Diagnostics.ProcessStartInfo]::new()
+  if ($Connection.Host -eq 'wsl-socket') {
+    $startInfo.FileName = 'wsl.exe'
+    foreach ($argument in @('-d','Ubuntu','--exec',"/usr/lib/postgresql/18/bin/$Tool") + $Arguments) {
+      [void]$startInfo.ArgumentList.Add($argument)
+    }
+  } else {
+    $startInfo.FileName = Get-ThetaNativePgTool $Tool
+    foreach ($argument in $Arguments) { [void]$startInfo.ArgumentList.Add($argument) }
+  }
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $environment = @{
+    PGHOST=$(if ($Connection.Host -eq 'wsl-socket') { '/var/run/postgresql' } else { $Connection.Host })
+    PGPORT=$Connection.Port; PGUSER=$Connection.User; PGPASSWORD=$Connection.Password
+    PGDATABASE=$Connection.Database; PGSSLMODE=$Connection.SslMode; PGCONNECT_TIMEOUT='15'
+    PGAPPNAME='theta-disaster-recovery'; PGTZ='UTC'; PGKEEPALIVES='1'; PGKEEPALIVESIDLE='30'
+    PGKEEPALIVESINTERVAL='10'; PGKEEPALIVESCOUNT='6'; PGTCPUSER_TIMEOUT='120000'
+  }
+  if ($Connection.Host -eq 'wsl-socket') {
+    $existingWslEnv = [Environment]::GetEnvironmentVariable('WSLENV')
+    $environment.WSLENV = (($existingWslEnv | ForEach-Object { if ($_) { $_ + ':' } else { '' } }) +
+      (($keys | Where-Object { $_ -ne 'WSLENV' } | ForEach-Object { $_ + '/u' }) -join ':'))
+  }
+  foreach ($entry in $environment.GetEnumerator()) { $startInfo.Environment[$entry.Key] = [string]$entry.Value }
+  $process = $null
   try {
-    $env:PGHOST = if ($Connection.Host -eq 'wsl-socket') { '/var/run/postgresql' } else { $Connection.Host }
-    $env:PGPORT = $Connection.Port; $env:PGUSER = $Connection.User
-    $env:PGPASSWORD = $Connection.Password; $env:PGDATABASE = $Connection.Database; $env:PGSSLMODE = $Connection.SslMode
-    $env:PGCONNECT_TIMEOUT = '15'; $env:PGAPPNAME = 'theta-disaster-recovery'
-    $env:PGKEEPALIVES = '1'; $env:PGKEEPALIVESIDLE = '30'; $env:PGKEEPALIVESINTERVAL = '10'
-    $env:PGKEEPALIVESCOUNT = '6'; $env:PGTCPUSER_TIMEOUT = '120000'
-    # JSON row digests must use the same timestamp representation on Aiven and
-    # on a restore target whose default PostgreSQL timezone may differ.
-    $env:PGTZ = 'UTC'
-    if ($Connection.Host -eq 'wsl-socket') {
-      $env:WSLENV = (($previous['WSLENV'] | ForEach-Object { if ($_) { $_ + ':' } else { '' } }) + (($keys | Where-Object { $_ -ne 'WSLENV' } | ForEach-Object { $_ + '/u' }) -join ':'))
-      $result = & wsl.exe -d Ubuntu --exec "/usr/lib/postgresql/18/bin/$Tool" @Arguments 2>&1
+    $process = [Diagnostics.Process]::Start($startInfo)
+    if ($null -eq $process) { throw "POSTGRES_TOOL_START_FAILED:$Tool" }
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $startedAt = [DateTimeOffset]::UtcNow
+    $lastProgressAt = $startedAt
+    $lastProgressBytes = if ($progressPath -and (Test-Path -LiteralPath $progressPath -PathType Leaf)) {
+      [long](Get-Item -LiteralPath $progressPath).Length
+    } else { 0L }
+    $timeoutReason = $null
+    while (-not $process.WaitForExit(1000)) {
+      $now = [DateTimeOffset]::UtcNow
+      if (($now - $startedAt).TotalSeconds -ge $TimeoutSeconds) {
+        $timeoutReason = 'HARD_DEADLINE'
+        break
+      }
+      if ($progressPath -and $NoProgressTimeoutSeconds -gt 0) {
+        $currentBytes = if (Test-Path -LiteralPath $progressPath -PathType Leaf) {
+          [long](Get-Item -LiteralPath $progressPath).Length
+        } else { 0L }
+        if ($currentBytes -ne $lastProgressBytes) {
+          $lastProgressBytes = $currentBytes
+          $lastProgressAt = $now
+        } elseif (($now - $lastProgressAt).TotalSeconds -ge $NoProgressTimeoutSeconds) {
+          $timeoutReason = 'NO_PROGRESS'
+          break
+        }
+      }
+    }
+    if ($timeoutReason) {
+      try { if (-not $process.HasExited) { $process.Kill($true) } } catch {}
+      if (-not $process.WaitForExit(10000)) {
+        throw "POSTGRES_TOOL_TERMINATION_FAILED:$Tool reason=$timeoutReason"
+      }
     } else {
-      $result = & (Get-ThetaNativePgTool $Tool) @Arguments 2>&1
+      $process.WaitForExit()
     }
-    if ($LASTEXITCODE -ne 0) {
-      $diagnostic = (($result | Select-Object -Last 20 | Out-String).Trim())
-      if ($Connection.Password) { $diagnostic = $diagnostic.Replace([string]$Connection.Password, '[REDACTED]') }
-      $diagnostic = $diagnostic -replace '(?i)(password\s*[=:]\s*)\S+', '$1[REDACTED]'
-      if ($diagnostic.Length -gt 2000) { $diagnostic = $diagnostic.Substring($diagnostic.Length - 2000) }
-      throw "POSTGRES_TOOL_FAILED:$Tool exit=$LASTEXITCODE diagnostic=$diagnostic"
+    $stdout = $stdoutTask.GetAwaiter().GetResult()
+    $stderr = $stderrTask.GetAwaiter().GetResult()
+    $diagnostic = ConvertTo-ThetaPgDiagnostic -Connection $Connection -Diagnostic $stderr
+    if ($timeoutReason) {
+      throw "POSTGRES_TOOL_TIMEOUT:$Tool reason=$timeoutReason timeoutSeconds=$(if($timeoutReason -eq 'NO_PROGRESS'){$NoProgressTimeoutSeconds}else{$TimeoutSeconds}) progressBytes=$lastProgressBytes diagnostic=$diagnostic"
     }
-    return $result
+    if ($process.ExitCode -ne 0) {
+      $failureClass = Get-ThetaPgFailureClass $diagnostic
+      throw "POSTGRES_TOOL_FAILED:$Tool class=$failureClass exit=$($process.ExitCode) diagnostic=$diagnostic"
+    }
+    if (-not $stdout) { return @() }
+    return @($stdout -split "\r?\n" | Where-Object { $_ -ne '' })
   } finally {
-    foreach ($key in $keys) { [Environment]::SetEnvironmentVariable($key, $previous[$key]) }
+    if ($null -ne $process) { $process.Dispose() }
   }
 }
 
@@ -264,6 +346,41 @@ function Get-ThetaStringSha256 {
   param([Parameter(Mandatory)][string]$Value)
   return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
     [Text.Encoding]::UTF8.GetBytes($Value))).ToLowerInvariant()
+}
+
+function Test-ThetaVerifiedBackupDirectory {
+  param(
+    [Parameter(Mandatory)][string]$BackupDirectory,
+    [Parameter(Mandatory)][string]$ExpectedBackupId,
+    [Parameter(Mandatory)][string]$ExpectedArchiveSha256
+  )
+  if ($ExpectedBackupId -notmatch '^\d{4}-\d{2}-\d{2}_\d{6}-[0-9a-f]{8}$' -or
+      $ExpectedArchiveSha256 -notmatch '^[0-9a-f]{64}$' -or
+      -not (Test-Path -LiteralPath $BackupDirectory -PathType Container)) { return $false }
+  try {
+    $manifestPath = Join-Path $BackupDirectory 'backup-manifest.json'
+    $verificationPath = Join-Path $BackupDirectory 'verification.json'
+    $restorePath = Join-Path $BackupDirectory 'restore-verification.json'
+    $archivePath = Join-Path $BackupDirectory 'database.backup'
+    foreach ($path in @($manifestPath,$verificationPath,$restorePath,$archivePath)) {
+      if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
+    }
+    $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+    $verification = Get-Content -Raw -LiteralPath $verificationPath | ConvertFrom-Json
+    $restore = Get-Content -Raw -LiteralPath $restorePath | ConvertFrom-Json
+    return (
+      [string]$manifest.state -eq 'COMPLETE' -and
+      [string]$manifest.backupId -eq $ExpectedBackupId -and
+      [string]$verification.state -eq 'VERIFIED' -and
+      [string]$verification.backupId -eq $ExpectedBackupId -and
+      [string]$verification.archiveSha256 -eq $ExpectedArchiveSha256 -and
+      [string]$restore.state -eq 'REAL_LOCAL_RESTORE_VERIFIED' -and
+      [string]$restore.backupId -eq $ExpectedBackupId -and
+      [string]$restore.structureParity -eq 'PASS' -and
+      [string]$restore.dataRowcountParity -eq 'PASS' -and
+      [string]$restore.criticalDataVerification -eq 'PASS'
+    )
+  } catch { return $false }
 }
 
 function Get-ThetaStructure {

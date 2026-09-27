@@ -149,6 +149,11 @@
   Comparable session-bound relation sizes are still required before claiming a
   sustained byte-growth rate. Production cleanup remains owner-authorized work
   only after exact relation archive parity.
+- CODE_COMPLETE/VERIFIED_SOURCE: a measured daily-growth breach now raises the
+  same storage watermark as a capacity breach. Nonessential research is paused
+  when the measured byte-growth rate exceeds its budget even if PostgreSQL has
+  not yet reached its absolute size limit. Operational truth writes remain
+  allowed. Unknown growth remains unknown and never becomes zero.
 - Full measured receipt: `docs/operations/THETA_STORAGE_DECOUPLING_AND_AIVEN_AUDIT_2026-09-25.md`.
 
 ## Database-resilient observation closure, 2026-09-24
@@ -653,9 +658,40 @@ No item is complete merely because its type, config, fixture, or UI label exists
   `unexpected eof while reading`. The completed dump was preserved under
   `restore-tests/incomplete-2026-09-25_223047-98fac688`. No migration ran and
   schema remains 064. CLASSIFICATION: CODE_SOLVABLE plus external provider
-  instability. CURRENT_STATE: SOURCE_VERIFIED_AWAITING_EXACT_CI_AND_FRESH_CHECKPOINT. The v2 digest hashes a
+  instability. CURRENT_STATE: CLOSED_SOURCE. The v2 digest hashes a
   bounded integrity projection for high-volume evidence tables, including their
   immutable payload/archive hashes, rather than rematerializing giant JSON/blob
   columns inside constrained PostgreSQL. Read-only transient connection errors
   can retry against the still-live exported snapshot. Exact table identity is
   included in any digest failure.
+
+## Governed migration-checkpoint incident, 2026-09-27
+
+- ID: PRE-BACKUP-AIVEN-TRANSFER-QUOTA. DOMAIN: disaster recovery/provider.
+  OBSERVED: after four healthy recovery-gate probes, the single governed retry
+  started a fresh exported-snapshot custom dump. The archive reached 268,255,232
+  bytes, stopped making file and process progress, and a separate bounded
+  read-only probe returned SQLSTATE `53000` with Aiven's exact sanitized reason,
+  `Your project has exceeded the data transfer quota`. The stalled dump was
+  terminated by exact PID to release the snapshot and process lock. No migration
+  ran, schema remains 064, and the old worker remains offline. CLASSIFICATION:
+  `EXTERNAL_BLOCKED`, with owner/provider action required to restore transfer
+  quota. This incident is infrastructure evidence and never strategy WAIT.
+- ID: POSTGRES-CLIENT-BOUNDED-DEADLINE. DOMAIN: disaster recovery. CURRENT_STATE:
+  CLOSED_SOURCE/VERIFIED_TEST. PostgreSQL client subprocesses now run through a
+  bounded process-tree owner with sanitized output. `psql` has a ten-minute hard
+  deadline, dump/restore tools have a four-hour hard deadline, and production
+  dump files must make byte progress within 15 minutes. Provider transfer-quota
+  errors have their own failure class. A stopped provider client can no longer
+  retain the backup lock or exported snapshot indefinitely.
+- ID: PREVIOUS-VERIFIED-BACKUP-RECEIPT. DOMAIN: disaster recovery. CURRENT_STATE:
+  CLOSED_SOURCE/VERIFIED_TEST. Checkpoint failure receipts now validate the
+  pointed backup manifest, verification receipt, isolated restore parity,
+  archive identity, and path containment through one deterministic helper. The
+  existing verified `2026-09-22_100128-c600e016` recovery point passes that
+  helper. A failed new backup cannot be reported as losing this recovery point.
+- ID: SCHEMA-067-CHECKPOINT. DOMAIN: runtime/database compatibility.
+  CURRENT_STATE: `EXTERNAL_BLOCKED_AIVEN_DATA_TRANSFER_QUOTA`. NEXT_RETRY_WHEN:
+  owner/provider restores transfer quota, the canonical recovery gate passes
+  again, and exact-current-main CI is successful. Do not blind-retry, delete
+  evidence, migrate, or deploy while this condition remains.

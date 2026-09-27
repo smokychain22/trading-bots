@@ -25,7 +25,8 @@ function Invoke-VerifiedDumpWithRetry([string[]]$Arguments, [string]$OutputPath,
     if ($delays[$attempt - 1] -gt 0) { Start-Sleep -Seconds $delays[$attempt - 1] }
     Remove-Item -LiteralPath $OutputPath -Force -ErrorAction SilentlyContinue
     try {
-      Invoke-ThetaPg pg_dump $source $Arguments | Out-Null
+      Invoke-ThetaPg -Tool pg_dump -Connection $source -Arguments $Arguments -ProgressFilePath $OutputPath `
+        -NoProgressTimeoutSeconds 900 -TimeoutSeconds 14400 | Out-Null
       Log "$Label`_COMPLETE attempt=$attempt"
       return
     } catch {
