@@ -91,3 +91,41 @@ test('claim boundary rejects malformed clocks and limits before querying the que
       claimTtlSeconds: 30, limit: 0 }), /LOCAL_OBSERVATION_JOB_LIMIT_INVALID/);
   } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+test('scheduler health exposes overdue, expired, and retry-stalled work without hiding it as empty', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-observation-jobs-'));
+  const scheduler = new LocalObservationJobScheduler(join(root, 'jobs.sqlite'));
+  try {
+    const scheduled = scheduler.schedule({ job: scheduledJob(), sourceSha: 'b'.repeat(40),
+      workerSha: 'b'.repeat(40) });
+    scheduler.claimDue({ asOf: '2026-09-25T14:45:00Z', claimedBy: 'worker-1', claimTtlSeconds: 30 });
+    scheduler.defer({ observationJobId: scheduled.observationJobId, claimedBy: 'worker-1',
+      state: 'DEFERRED_PROVIDER', asOf: '2026-09-25T14:45:01Z', reasonCode: 'ALPACA_READ_UNAVAILABLE' });
+    scheduler.claimDue({ asOf: '2026-09-25T14:46:00Z', claimedBy: 'worker-2', claimTtlSeconds: 30 });
+    const health = scheduler.health({ asOf: '2026-09-25T15:15:00Z',
+      overdueWarningSeconds: 1_800, retryStalledAttemptThreshold: 2 });
+    assert.equal(health.jobCount, 1);
+    assert.equal(health.unresolvedCount, 1);
+    assert.equal(health.dueCount, 1);
+    assert.equal(health.overdueCount, 1);
+    assert.equal(health.expiredClaimCount, 1);
+    assert.equal(health.retryStalledCount, 1);
+    assert.equal(health.oldestUnresolvedTargetAt, '2026-09-25T14:45:00.000Z');
+    assert.equal(health.oldestOverdueSeconds, 1_800);
+    assert.equal(health.backlogState, 'RETRY_STALLED');
+    assert.equal(health.brokerAuthority, false);
+  } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('scheduler health distinguishes an empty queue from current future work', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-observation-jobs-'));
+  const scheduler = new LocalObservationJobScheduler(join(root, 'jobs.sqlite'));
+  try {
+    assert.equal(scheduler.health({ asOf: '2026-09-25T14:00:00Z' }).backlogState, 'EMPTY');
+    scheduler.schedule({ job: scheduledJob(), sourceSha: 'b'.repeat(40), workerSha: 'b'.repeat(40) });
+    const health = scheduler.health({ asOf: '2026-09-25T14:40:00Z' });
+    assert.equal(health.backlogState, 'CURRENT');
+    assert.equal(health.dueCount, 0);
+    assert.equal(health.oldestOverdueSeconds, null);
+  } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
+});

@@ -35,6 +35,23 @@ export interface LocalObservationSubjectReceipt {
   readonly brokerAuthority: false;
 }
 
+export interface LocalObservationSchedulerHealth {
+  readonly contractVersion: typeof localObservationJobSchedulerVersion;
+  readonly observedAt: string;
+  readonly subjectCount: number;
+  readonly jobCount: number;
+  readonly stateCounts: Readonly<Record<string, number>>;
+  readonly unresolvedCount: number;
+  readonly dueCount: number;
+  readonly overdueCount: number;
+  readonly expiredClaimCount: number;
+  readonly retryStalledCount: number;
+  readonly oldestUnresolvedTargetAt: string | null;
+  readonly oldestOverdueSeconds: number | null;
+  readonly backlogState: 'EMPTY' | 'CURRENT' | 'OVERDUE' | 'RETRY_STALLED';
+  readonly brokerAuthority: false;
+}
+
 type JobRow = {
   observation_job_id: string;
   subject_id: string;
@@ -375,5 +392,56 @@ export class LocalObservationJobScheduler {
     const rows = this.database.prepare('SELECT state,count(*) AS count FROM observation_job GROUP BY state')
       .all() as unknown as Array<{ state: string; count: number }>;
     return Object.fromEntries(rows.map((row) => [row.state, Number(row.count)]));
+  }
+
+  health(input: {
+    readonly asOf: string;
+    readonly overdueWarningSeconds?: number;
+    readonly retryStalledAttemptThreshold?: number;
+  }): LocalObservationSchedulerHealth {
+    const asOfMs = Date.parse(input.asOf);
+    const overdueWarningSeconds = input.overdueWarningSeconds ?? 1_800;
+    const retryStalledAttemptThreshold = input.retryStalledAttemptThreshold ?? 3;
+    if (!Number.isFinite(asOfMs)) throw new Error('LOCAL_OBSERVATION_HEALTH_AS_OF_INVALID');
+    if (!Number.isInteger(overdueWarningSeconds) || overdueWarningSeconds < 1
+      || !Number.isInteger(retryStalledAttemptThreshold) || retryStalledAttemptThreshold < 1) {
+      throw new Error('LOCAL_OBSERVATION_HEALTH_POLICY_INVALID');
+    }
+    const stateCounts = this.counts();
+    const subjectCount = this.subjectCount();
+    const jobCount = Object.values(stateCounts).reduce((sum, value) => sum + value, 0);
+    const unresolvedStates = "'PENDING','DUE','DEFERRED_PROVIDER','DEFERRED_MARKET','IN_PROGRESS'";
+    const summary = this.database.prepare(`SELECT count(*) AS unresolved_count,
+      sum(CASE WHEN target_at <= ? THEN 1 ELSE 0 END) AS due_count,
+      sum(CASE WHEN target_at <= ? THEN 1 ELSE 0 END) AS overdue_count,
+      sum(CASE WHEN state='IN_PROGRESS' AND claim_expires_at IS NOT NULL AND claim_expires_at <= ? THEN 1 ELSE 0 END)
+        AS expired_claim_count,
+      sum(CASE WHEN attempts >= ? THEN 1 ELSE 0 END) AS retry_stalled_count,
+      min(target_at) AS oldest_target_at
+      FROM observation_job WHERE state IN (${unresolvedStates})`).get(
+      new Date(asOfMs).toISOString(),
+      new Date(asOfMs - overdueWarningSeconds * 1_000).toISOString(),
+      new Date(asOfMs).toISOString(), retryStalledAttemptThreshold,
+    ) as { unresolved_count: number; due_count: number | null; overdue_count: number | null;
+      expired_claim_count: number | null; retry_stalled_count: number | null; oldest_target_at: string | null };
+    const unresolvedCount = Number(summary.unresolved_count);
+    const dueCount = Number(summary.due_count ?? 0);
+    const overdueCount = Number(summary.overdue_count ?? 0);
+    const expiredClaimCount = Number(summary.expired_claim_count ?? 0);
+    const retryStalledCount = Number(summary.retry_stalled_count ?? 0);
+    const oldestTargetMs = summary.oldest_target_at === null ? Number.NaN : Date.parse(summary.oldest_target_at);
+    const oldestOverdueSeconds = Number.isFinite(oldestTargetMs) && oldestTargetMs <= asOfMs
+      ? Math.floor((asOfMs - oldestTargetMs) / 1_000) : null;
+    return {
+      contractVersion: localObservationJobSchedulerVersion,
+      observedAt: new Date(asOfMs).toISOString(),
+      subjectCount, jobCount, stateCounts, unresolvedCount, dueCount, overdueCount,
+      expiredClaimCount, retryStalledCount,
+      oldestUnresolvedTargetAt: summary.oldest_target_at,
+      oldestOverdueSeconds,
+      backlogState: jobCount === 0 ? 'EMPTY'
+        : retryStalledCount > 0 ? 'RETRY_STALLED' : overdueCount > 0 ? 'OVERDUE' : 'CURRENT',
+      brokerAuthority: false,
+    };
   }
 }

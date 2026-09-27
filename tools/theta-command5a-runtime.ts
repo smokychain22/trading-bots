@@ -189,7 +189,17 @@ function mature(): void {
   } finally { scheduler.close(); }
 }
 
+function health(): void {
+  const scheduler = new LocalObservationJobScheduler(schedulerPath);
+  try {
+    const report = scheduler.health({ asOf: new Date().toISOString() });
+    process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_HEALTH_COMPLETE', ...report,
+      orderSubmissions: 0, brokerMutations: 0 })}\n`);
+  } finally { scheduler.close(); }
+}
+
 if (mode === 'schedule') await schedule();
 else if (mode === 'observe') await observe();
 else if (mode === 'mature') mature();
+else if (mode === 'health') health();
 else throw new Error('COMMAND5A_MODE_REQUIRED');

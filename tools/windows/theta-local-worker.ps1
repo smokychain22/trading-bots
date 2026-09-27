@@ -176,6 +176,13 @@ try {
       $command5aMaterialized = 0
       $command5aMaturationPending = 0
       $command5aMaturationCensored = 0
+      $command5aBacklogState = 'NOT_OBSERVED'
+      $command5aUnresolvedJobs = 0
+      $command5aDueJobs = 0
+      $command5aOverdueJobs = 0
+      $command5aExpiredClaims = 0
+      $command5aRetryStalledJobs = 0
+      $command5aOldestOverdueSeconds = $null
       $command5aArchiveHealthPath = Join-Path $stateRoot 'research-spool\archive-health.json'
       $command5aSchedulingPausedForStorage = $false
       if (Test-Path -LiteralPath $command5aArchiveHealthPath -PathType Leaf) {
@@ -225,6 +232,18 @@ try {
           $command5aMaturationPending = [int]$command5aMaturationResult.pending
           $command5aMaturationCensored = [int]$command5aMaturationResult.censored
         } else { $command5aMaturationState = 'FAILED_NONCRITICAL' }
+        $command5aHealthOutput = & node --import tsx tools/theta-command5a-runtime.ts `
+          --mode=health "--scheduler=$command5aSchedulerPath" 2>$null
+        if ($LASTEXITCODE -eq 0) {
+          $command5aHealthResult = $command5aHealthOutput | Select-Object -Last 1 | ConvertFrom-Json
+          $command5aBacklogState = [string]$command5aHealthResult.backlogState
+          $command5aUnresolvedJobs = [int]$command5aHealthResult.unresolvedCount
+          $command5aDueJobs = [int]$command5aHealthResult.dueCount
+          $command5aOverdueJobs = [int]$command5aHealthResult.overdueCount
+          $command5aExpiredClaims = [int]$command5aHealthResult.expiredClaimCount
+          $command5aRetryStalledJobs = [int]$command5aHealthResult.retryStalledCount
+          $command5aOldestOverdueSeconds = $command5aHealthResult.oldestOverdueSeconds
+        } else { $command5aBacklogState = 'HEALTH_CHECK_FAILED' }
       } catch {
         if ($command5aScheduleState -eq 'NOT_ATTEMPTED') { $command5aScheduleState = 'FAILED_NONCRITICAL' }
         if ($command5aObservationState -eq 'NOT_ATTEMPTED') { $command5aObservationState = 'FAILED_NONCRITICAL' }
@@ -551,6 +570,10 @@ try {
         command5aDeferredProvider=$command5aDeferredProvider;command5aDeferredMarket=$command5aDeferredMarket;
         command5aMaterialized=$command5aMaterialized;command5aMaturationPending=$command5aMaturationPending;
         command5aMaturationCensored=$command5aMaturationCensored;
+        command5aBacklogState=$command5aBacklogState;command5aUnresolvedJobs=$command5aUnresolvedJobs;
+        command5aDueJobs=$command5aDueJobs;command5aOverdueJobs=$command5aOverdueJobs;
+        command5aExpiredClaims=$command5aExpiredClaims;command5aRetryStalledJobs=$command5aRetryStalledJobs;
+        command5aOldestOverdueSeconds=$command5aOldestOverdueSeconds;
         localReceiptState=$localReceiptState;localReceiptHash=$localReceiptHash;
         localEvidenceState=$localEvidenceState;localEvidenceHash=$localEvidenceHash} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
