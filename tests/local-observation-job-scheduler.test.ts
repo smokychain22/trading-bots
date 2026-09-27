@@ -127,6 +127,7 @@ test('scheduler health distinguishes an empty queue from current future work', (
     assert.equal(health.backlogState, 'CURRENT');
     assert.equal(health.dueCount, 0);
     assert.equal(health.oldestOverdueSeconds, null);
+    assert.equal(health.sourceCursor, null);
   } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -148,6 +149,8 @@ test('frontier source cursor survives restart and can only advance', () => {
     second.advanceSourceCursor({ readyAt: '2026-09-25T14:00:00Z',
       frontierId: '22222222-2222-4222-8222-222222222222' });
     assert.equal(second.sourceCursor()?.frontierId, '22222222-2222-4222-8222-222222222222');
+    assert.deepEqual(second.health({ asOf: '2026-09-25T14:01:00Z' }).sourceCursor,
+      second.sourceCursor());
     second.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

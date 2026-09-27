@@ -48,6 +48,7 @@ export interface LocalObservationSchedulerHealth {
   readonly retryStalledCount: number;
   readonly oldestUnresolvedTargetAt: string | null;
   readonly oldestOverdueSeconds: number | null;
+  readonly sourceCursor: LocalObservationSourceCursor | null;
   readonly backlogState: 'EMPTY' | 'CURRENT' | 'OVERDUE' | 'RETRY_STALLED';
   readonly brokerAuthority: false;
 }
@@ -476,6 +477,7 @@ export class LocalObservationJobScheduler {
       expiredClaimCount, retryStalledCount,
       oldestUnresolvedTargetAt: summary.oldest_target_at,
       oldestOverdueSeconds,
+      sourceCursor: this.sourceCursor(),
       backlogState: jobCount === 0 ? 'EMPTY'
         : retryStalledCount > 0 ? 'RETRY_STALLED' : overdueCount > 0 ? 'OVERDUE' : 'CURRENT',
       brokerAuthority: false,

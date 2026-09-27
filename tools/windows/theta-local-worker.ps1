@@ -183,6 +183,7 @@ try {
       $command5aExpiredClaims = 0
       $command5aRetryStalledJobs = 0
       $command5aOldestOverdueSeconds = $null
+      $command5aSourceCursor = $null
       $command5aArchiveHealthPath = Join-Path $stateRoot 'research-spool\archive-health.json'
       $command5aSchedulingPausedForStorage = $false
       if (Test-Path -LiteralPath $command5aArchiveHealthPath -PathType Leaf) {
@@ -246,6 +247,7 @@ try {
           $command5aExpiredClaims = [int]$command5aHealthResult.expiredClaimCount
           $command5aRetryStalledJobs = [int]$command5aHealthResult.retryStalledCount
           $command5aOldestOverdueSeconds = $command5aHealthResult.oldestOverdueSeconds
+          $command5aSourceCursor = $command5aHealthResult.sourceCursor
         } else { $command5aBacklogState = 'HEALTH_CHECK_FAILED' }
       } catch {
         if ($command5aScheduleState -eq 'NOT_ATTEMPTED') { $command5aScheduleState = 'FAILED_NONCRITICAL' }
@@ -576,7 +578,7 @@ try {
         command5aBacklogState=$command5aBacklogState;command5aUnresolvedJobs=$command5aUnresolvedJobs;
         command5aDueJobs=$command5aDueJobs;command5aOverdueJobs=$command5aOverdueJobs;
         command5aExpiredClaims=$command5aExpiredClaims;command5aRetryStalledJobs=$command5aRetryStalledJobs;
-        command5aOldestOverdueSeconds=$command5aOldestOverdueSeconds;
+        command5aOldestOverdueSeconds=$command5aOldestOverdueSeconds;command5aSourceCursor=$command5aSourceCursor;
         localReceiptState=$localReceiptState;localReceiptHash=$localReceiptHash;
         localEvidenceState=$localEvidenceState;localEvidenceHash=$localEvidenceHash} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
