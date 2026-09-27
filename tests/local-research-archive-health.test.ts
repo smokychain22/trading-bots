@@ -87,6 +87,12 @@ test('successful archive clears quota cooldown and fingerprints latest verified 
   writeFileSync(join(directory, 'manifest.json'), JSON.stringify({
     generatedAt: '2026-09-25T01:00:00.000Z', parquetFile: 'evidence.parquet', duckdbReadback: 'PASS',
   }));
+  const partial = join(paths.parquet, 'THETA', '.partial-interrupted');
+  mkdirSync(partial);
+  writeFileSync(join(partial, 'evidence.parquet'), 'incomplete-test-only');
+  writeFileSync(join(partial, 'manifest.json'), JSON.stringify({
+    generatedAt: '2026-09-25T02:00:00.000Z', parquetFile: 'evidence.parquet', duckdbReadback: 'PASS',
+  }));
   writeArchiveHealth({
     healthPath: paths.health, spoolPath: paths.sqlite, parquetRoot: paths.parquet,
     observedAt: new Date('2026-09-25T00:00:00.000Z'), archiveState: 'DEFERRED_TRANSFER_QUOTA',

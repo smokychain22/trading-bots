@@ -137,7 +137,7 @@ function parquetState(root: string): Pick<LocalResearchArchiveHealth,
     .flatMap((entry) => {
       if (entry.isSymbolicLink()) return [];
       const candidate = join(directory, entry.name);
-      if (entry.isDirectory()) return manifestPaths(candidate);
+      if (entry.isDirectory()) return entry.name.startsWith('.') ? [] : manifestPaths(candidate);
       return entry.isFile() && entry.name === 'manifest.json' ? [candidate] : [];
     });
   for (const manifestPath of manifestPaths(root)) {
