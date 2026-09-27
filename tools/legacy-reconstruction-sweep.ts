@@ -13,6 +13,7 @@ import {
 const repository = resolve('.');
 const outputDirectory = resolve('.theta-local-worker/legacy-reconstruction');
 const inventoryPath = resolve('.theta-local-worker/legacy-recovery/legacy-recovery-inventory.json');
+const discoveryProcessTimeoutMs = 120_000;
 const sourceCodeSha = git(['rev-parse', 'HEAD']).trim();
 const generatedAt = new Date().toISOString();
 
@@ -382,7 +383,9 @@ async function inspectSearchSurfaces(){
   const localFiles=new Set<string>();
   for(const root of localRoots){
     const globs=['*.sql','*.dump','*.backup','*.bak','*.json','*.jsonl','*.csv','*.parquet'].flatMap((glob)=>['--glob',glob]);
-    try{for(const path of execFileSync('rg',['--files',...globs,root],{encoding:'utf8',maxBuffer:20_000_000}).split(/\r?\n/))if(dataPattern.test(path))localFiles.add(path);}
+    try{for(const path of execFileSync('rg',['--files',...globs,root],{
+      encoding:'utf8',maxBuffer:20_000_000,timeout:discoveryProcessTimeoutMs,windowsHide:true,
+    }).split(/\r?\n/))if(dataPattern.test(path))localFiles.add(path);}
     catch(error){const status=(error as {status?:number}).status;if(status!==1)throw error;}
   }
   const dumpCount=[...localFiles].filter((path)=>/(?:\.dump|\.backup|\.bak)$/i.test(path)).length;
@@ -392,7 +395,9 @@ async function inspectSearchSurfaces(){
   const trackedDumps=uniqueTracked.filter((path)=>/(?:\.dump|\.backup|\.bak)$/i.test(path)).length;
   let ciArtifactCount:number|null=null;let ciRelevantArtifactCount:number|null=null;let ciStatus='UNAVAILABLE';
   try{
-    const lines=execFileSync('gh',['api','--paginate','repos/smokychain22/trading-bots/actions/artifacts','--jq','.artifacts[] | [.name,.size_in_bytes,.expired,.created_at] | @tsv'],{encoding:'utf8',maxBuffer:20_000_000}).trim().split(/\r?\n/).filter(Boolean);
+    const lines=execFileSync('gh',['api','--paginate','repos/smokychain22/trading-bots/actions/artifacts','--jq','.artifacts[] | [.name,.size_in_bytes,.expired,.created_at] | @tsv'],{
+      encoding:'utf8',maxBuffer:20_000_000,timeout:discoveryProcessTimeoutMs,windowsHide:true,
+    }).trim().split(/\r?\n/).filter(Boolean);
     ciArtifactCount=lines.length;ciRelevantArtifactCount=lines.filter((line)=>/(?:database|postgres|neon|dump|backup|research|dataset)/i.test(line.split('\t')[0]??'')).length;ciStatus='QUERIED';
   }catch{ciStatus='UNAVAILABLE';}
   const summaries=[
@@ -481,7 +486,9 @@ function derivationLogic(relation:string){if(brokerTables.has(relation))return '
 function sha256(value:string|Buffer){return createHash('sha256').update(value).digest('hex');}
 function stableUuid(seed:string){const bytes=Buffer.from(sha256(seed).slice(0,32),'hex');bytes[6]=(bytes[6]!&0x0f)|0x40;bytes[8]=(bytes[8]!&0x3f)|0x80;
   const hex=bytes.toString('hex');return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;}
-function git(args:string[]){return execFileSync('git',args,{cwd:repository,encoding:'utf8'});}
+function git(args:string[]){return execFileSync('git',args,{
+  cwd:repository,encoding:'utf8',maxBuffer:30_000_000,timeout:discoveryProcessTimeoutMs,windowsHide:true,
+});}
 function countBy<T extends Record<string,unknown>>(items:readonly T[],key:keyof T){const result:Record<string,number>={};for(const item of items){const value=String(item[key]);result[value]=(result[value]??0)+1;}return result;}
 
 async function writeReconstructionDocs(manifest:typeof unsignedManifest&{manifestHash:string},research:Awaited<ReturnType<typeof inspectResearchExports>>,searchSummary:Record<string,unknown>){

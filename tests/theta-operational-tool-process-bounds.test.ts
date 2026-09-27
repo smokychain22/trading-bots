@@ -39,3 +39,13 @@ test('runtime and recovery tools bound immutable source identity probes', () => 
     assert.match(source, /windowsHide:\s*true/, path);
   }
 });
+
+test('forensic and legacy discovery processes have bounded execution', () => {
+  const forensic = readFileSync('tools/local-forensic-recovery-sweep.ts', 'utf8');
+  assert.match(forensic, /timeout:localSearchTimeoutMs/);
+  assert.match(forensic, /SEARCH_TIMEOUT/);
+  assert.match(forensic, /timeout:gitProcessTimeoutMs/);
+  const legacy = readFileSync('tools/legacy-reconstruction-sweep.ts', 'utf8');
+  assert.match(legacy, /timeout:discoveryProcessTimeoutMs/g);
+  assert.match(legacy, /windowsHide:true/);
+});

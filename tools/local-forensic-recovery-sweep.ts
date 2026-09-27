@@ -13,6 +13,8 @@ import {
 const repository=resolve('.');
 const outputRoot=resolve('.theta-local-worker/forensic-recovery');
 const chunkRoot=resolve(outputRoot,'chunks');
+const localSearchTimeoutMs=120_000;
+const gitProcessTimeoutMs=120_000;
 const sourceCodeSha=git(['rev-parse','HEAD']).trim();
 const generatedAt=new Date().toISOString();
 const missingInventory=JSON.parse(await readFile(resolve('.theta-local-worker/legacy-reconstruction/missing-parent-inventory.json'),'utf8')) as {
@@ -183,7 +185,9 @@ async function inspectScopedSearchSurfaces(){
   for(const root of roots){
     try{const details=await stat(root.path);if(!details.isDirectory())throw new Error('NOT_DIRECTORY');
       const command=spawnSync('rg',['-l','-F','-f',needlePath,'--glob','!node_modules/**','--glob','!.git/**',root.path],
-        {encoding:'utf8',maxBuffer:20_000_000,windowsHide:true});
+        {encoding:'utf8',maxBuffer:20_000_000,timeout:localSearchTimeoutMs,windowsHide:true});
+      if(command.error?.code==='ETIMEDOUT'||command.signal!==null){
+        rootReceipts.push({scope:root.scope,rootAlias:root.alias,state:'SEARCH_TIMEOUT',matchingFiles:0});continue;}
       const matches=(command.stdout??'').split(/\r?\n/).filter(Boolean);let accepted=0;
       for(const path of matches){if(isSecretBearingPath(path))continue;try{const bytes=await readFile(path);if(bytes.length>64_000_000)continue;
         const keys=scanKeyMatches(bytes);for(const key of keys)recordReference(key,`${root.alias}:${relative(root.path,path).replaceAll('\\','/')}`);
@@ -201,7 +205,9 @@ async function inspectUnreachableGitObjects(){
   for(const line of lines){const match=/unreachable (\w+) ([0-9a-f]{40})/.exec(line);if(!match)continue;
     const [,type,oid]=match;types[type]=(types[type]??0)+1;if(type!=='blob')continue;
     const size=Number(git(['cat-file','-s',oid]).trim());if(size>64_000_000)continue;
-    const bytes=execFileSync('git',['cat-file','blob',oid],{cwd:repository,maxBuffer:70_000_000,windowsHide:true});
+    const bytes=execFileSync('git',['cat-file','blob',oid],{
+      cwd:repository,maxBuffer:70_000_000,timeout:gitProcessTimeoutMs,windowsHide:true,
+    });
     const keys=scanKeyMatches(bytes);if(keys.length>0)missingKeyObjects++;
     for(const key of keys)recordReference(key,`git-unreachable:${oid}`);
     const text=bytes.toString('utf8');const fingerprints=countFingerprints(text);
@@ -262,5 +268,7 @@ function countBy<T extends Record<string,unknown>>(items:readonly T[],key:keyof 
 function sha256(value:string|Buffer):string{return createHash('sha256').update(value).digest('hex');}
 function stableUuid(value:string):string{const hash=sha256(value);return`${hash.slice(0,8)}-${hash.slice(8,12)}-4${hash.slice(13,16)}-8${hash.slice(17,20)}-${hash.slice(20,32)}`;}
 function isUuid(value:string):boolean{return/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value);}
-function git(args:string[]):string{return execFileSync('git',args,{cwd:repository,encoding:'utf8',maxBuffer:30_000_000,windowsHide:true});}
+function git(args:string[]):string{return execFileSync('git',args,{
+  cwd:repository,encoding:'utf8',maxBuffer:30_000_000,timeout:gitProcessTimeoutMs,windowsHide:true,
+});}
 async function writeJson(name:string,value:unknown):Promise<void>{await writeFile(resolve(outputRoot,name),`${JSON.stringify(value,null,2)}\n`,'utf8');}
