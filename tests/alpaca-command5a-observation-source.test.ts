@@ -27,8 +27,8 @@ const subjectInput: SeriousCandidateSubject = {
   brokerAuthority: false, orderSubmitted: false, brokerFill: false,
 };
 
-function inputs() {
-  const episode = buildShadowEpisodeContract({ subject: subjectInput, decisionId: 'decision-1',
+function inputs(inputSubject: SeriousCandidateSubject = subjectInput) {
+  const episode = buildShadowEpisodeContract({ subject: inputSubject, decisionId: 'decision-1',
     featureSnapshotHash: 'b'.repeat(64), strategyVersion: 'strategy-v1', riskVersion: 'risk-v1',
     frontierContentHash: 'd'.repeat(64), optionomicsContextHash: 'e'.repeat(64),
     costVersion: 'cost-v1', executionModelVersion: 'execution-v1', sourceSha: 'c'.repeat(40),
@@ -44,6 +44,26 @@ function inputs() {
     claimedBy: 'observer-1', brokerAuthority: false };
   return { subject, job };
 }
+
+const longSymbol = 'SPY261120P00495000';
+const definedRiskSubject: SeriousCandidateSubject = {
+  ...subjectInput,
+  subjectId: 'f'.repeat(64),
+  branch: 'THETA_DEFINED_RISK',
+  candidateId: 'defined-risk-candidate-1',
+  candidate: {
+    ...subjectInput.candidate,
+    candidateId: 'defined-risk-candidate-1',
+    branch: 'THETA_DEFINED_RISK',
+    action: 'OPEN_DEFINED_RISK',
+    legs: [
+      subjectInput.candidate.legs[0] as typeof subjectInput.candidate.legs[number],
+      { positionIntent: 'BUY_TO_OPEN', optionSymbol: longSymbol, optionType: 'PUT', strike: 495,
+        expiration: '2026-11-20', multiplier: 100, bid: 1.2, ask: 1.3,
+        quoteTimestamp: '2026-09-25T14:29:59Z' },
+    ],
+  },
+};
 
 test('Alpaca source fetches exact leg and stock reference with GET-only research authority', async () => {
   const calls: URL[] = [];
@@ -79,6 +99,34 @@ test('Alpaca source fetches exact leg and stock reference with GET-only research
   assert.equal(snapshot.searchParams.get('strike_price_gte'), '500');
   assert.equal(snapshot.searchParams.get('strike_price_lte'), '500');
   assert.equal(source.brokerAuthority, false);
+});
+
+test('two-leg defined-risk marks use one bounded snapshot page instead of one provider call per leg', async () => {
+  let snapshotCalls = 0;
+  const now = new Date().toISOString();
+  const fetchImpl: typeof fetch = async (request) => {
+    const url = new URL(request instanceof Request ? request.url : request.toString());
+    if (url.pathname.includes('/v1beta1/options/snapshots/SPY')) {
+      snapshotCalls += 1;
+      assert.equal(url.searchParams.get('strike_price_gte'), '495');
+      assert.equal(url.searchParams.get('strike_price_lte'), '500');
+      return Response.json({ snapshots: {
+        [symbol]: { latestQuote: { bp: 2.2, ap: 2.3, t: now }, impliedVolatility: 0.21 },
+        [longSymbol]: { latestQuote: { bp: 1.2, ap: 1.3, t: now }, impliedVolatility: 0.22 },
+      }, next_page_token: null });
+    }
+    if (url.pathname === '/v2/stocks/SPY/trades/latest') return Response.json({ trade: {
+      p: 550, s: 1, t: now,
+    } });
+    return new Response('unexpected', { status: 500 });
+  };
+  const source = new AlpacaCommand5aObservationSource({ tradingApiBase: 'https://paper-api.alpaca.test',
+    marketDataApiBase: 'https://data.alpaca.test', apiKey: 'test-key', apiSecret: 'test-secret', fetchImpl },
+  { optionFeed: 'indicative', stockFeed: 'iex', maximumResearchQuoteAgeSeconds: 60 });
+  const receipt = await source.observe(inputs(definedRiskSubject));
+  assert.equal(receipt.state, 'READY');
+  assert.equal(snapshotCalls, 1);
+  assert.deepEqual(receipt.quotes.map((quote) => quote.optionSymbol), [symbol, longSymbol]);
 });
 
 test('missing exact contract stays MISSING and never falls back to another quote', async () => {

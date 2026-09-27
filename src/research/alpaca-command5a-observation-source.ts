@@ -65,52 +65,75 @@ export class AlpacaCommand5aObservationSource implements Command5aReadOnlyObserv
   }
 
   async observe(input: Parameters<Command5aReadOnlyObservationSource['observe']>[0]): Promise<Command5aObservedSubject> {
-    const quotes: ContractPathQuoteObservation[] = [];
+    const quotesBySymbol = new Map<string, ContractPathQuoteObservation>();
+    const uniqueSymbols = new Set(input.subject.episode.legs.map((leg) => leg.optionSymbol));
+    if (uniqueSymbols.size !== input.subject.episode.legs.length) return {
+      state: 'INVALID', quotes: [], underlying: null, observedAt: new Date().toISOString(),
+      reasonCode: 'DUPLICATE_CONTRACT_LEG',
+    };
+    const groups = new Map<string, typeof input.subject.episode.legs[number][]>();
     for (const leg of input.subject.episode.legs) {
+      const key = `${leg.optionType}:${leg.expiration}`;
+      const existing = groups.get(key) ?? [];
+      existing.push(leg);
+      groups.set(key, existing);
+    }
+    for (const legs of groups.values()) {
+      const first = legs[0];
+      if (first === undefined) continue;
+      const strikes = legs.map((leg) => leg.strike);
       const response = await fetchOptionSnapshots(this.alpaca, {
         underlyingSymbol: input.subject.underlying,
         feed: this.options.optionFeed,
-        optionType: leg.optionType === 'PUT' ? 'put' : 'call',
-        expirationDateGte: leg.expiration,
-        expirationDateLte: leg.expiration,
-        strikePriceGte: leg.strike,
-        strikePriceLte: leg.strike,
+        optionType: first.optionType === 'PUT' ? 'put' : 'call',
+        expirationDateGte: first.expiration,
+        expirationDateLte: first.expiration,
+        strikePriceGte: Math.min(...strikes),
+        strikePriceLte: Math.max(...strikes),
         limit: 100,
         maxPages: 2,
       });
       const receivedAt = new Date().toISOString();
       if (!response.complete) return { state: 'INVALID', quotes: [], underlying: null,
         observedAt: receivedAt, reasonCode: 'EXACT_SNAPSHOT_ENUMERATION_INCOMPLETE' };
-      const snapshot = response.snapshots.get(leg.optionSymbol);
-      if (snapshot === undefined) return { state: 'MISSING', quotes: [], underlying: null,
-        observedAt: receivedAt, reasonCode: 'EXACT_CONTRACT_SNAPSHOT_MISSING' };
-      const assessment = quoteQuality({ bid: snapshot.bid, ask: snapshot.ask,
-        providerTimestamp: snapshot.quoteTimestamp, receivedAt,
-        maximumResearchQuoteAgeSeconds: this.options.maximumResearchQuoteAgeSeconds });
-      if (assessment.quality !== 'GOOD') return {
-        state: assessment.quality === 'INVALID' ? 'INVALID' : 'MISSING',
-        quotes: [],
-        underlying: null,
-        observedAt: receivedAt,
-        reasonCode: assessment.reasonCodes[0] ?? 'EXACT_CONTRACT_QUOTE_INCOMPLETE',
-      };
-      quotes.push({
-        optionSymbol: leg.optionSymbol,
-        bid: snapshot.bid,
-        ask: snapshot.ask,
-        providerTimestamp: snapshot.quoteTimestamp,
-        receivedAt,
-        impliedVolatility: snapshot.impliedVolatility,
-        delta: snapshot.greeks?.delta ?? null,
-        gamma: snapshot.greeks?.gamma ?? null,
-        theta: snapshot.greeks?.theta ?? null,
-        vega: snapshot.greeks?.vega ?? null,
-        provider: 'ALPACA',
-        feed: this.options.optionFeed === 'opra' ? 'OPRA' : 'INDICATIVE',
-        quality: assessment.quality,
-        reasonCodes: assessment.reasonCodes,
-      });
+      for (const leg of legs) {
+        const snapshot = response.snapshots.get(leg.optionSymbol);
+        if (snapshot === undefined) return { state: 'MISSING', quotes: [], underlying: null,
+          observedAt: receivedAt, reasonCode: 'EXACT_CONTRACT_SNAPSHOT_MISSING' };
+        const assessment = quoteQuality({ bid: snapshot.bid, ask: snapshot.ask,
+          providerTimestamp: snapshot.quoteTimestamp, receivedAt,
+          maximumResearchQuoteAgeSeconds: this.options.maximumResearchQuoteAgeSeconds });
+        if (assessment.quality !== 'GOOD') return {
+          state: assessment.quality === 'INVALID' ? 'INVALID' : 'MISSING',
+          quotes: [],
+          underlying: null,
+          observedAt: receivedAt,
+          reasonCode: assessment.reasonCodes[0] ?? 'EXACT_CONTRACT_QUOTE_INCOMPLETE',
+        };
+        quotesBySymbol.set(leg.optionSymbol, {
+          optionSymbol: leg.optionSymbol,
+          bid: snapshot.bid,
+          ask: snapshot.ask,
+          providerTimestamp: snapshot.quoteTimestamp,
+          receivedAt,
+          impliedVolatility: snapshot.impliedVolatility,
+          delta: snapshot.greeks?.delta ?? null,
+          gamma: snapshot.greeks?.gamma ?? null,
+          theta: snapshot.greeks?.theta ?? null,
+          vega: snapshot.greeks?.vega ?? null,
+          provider: 'ALPACA',
+          feed: this.options.optionFeed === 'opra' ? 'OPRA' : 'INDICATIVE',
+          quality: assessment.quality,
+          reasonCodes: assessment.reasonCodes,
+        });
+      }
     }
+    const quotes = input.subject.episode.legs.map((leg) => quotesBySymbol.get(leg.optionSymbol))
+      .filter((quote): quote is ContractPathQuoteObservation => quote !== undefined);
+    if (quotes.length !== input.subject.episode.legs.length) return {
+      state: 'INVALID', quotes: [], underlying: null, observedAt: new Date().toISOString(),
+      reasonCode: 'EXACT_CONTRACT_QUOTE_COVERAGE_INVALID',
+    };
     const trade = await fetchLatestStockTrade(this.alpaca, input.subject.underlying, this.options.stockFeed);
     const observedAt = new Date().toISOString();
     if (trade.price === null) return { state: 'MISSING', quotes: [], underlying: null,
