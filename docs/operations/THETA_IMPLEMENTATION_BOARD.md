@@ -684,6 +684,19 @@ No item is complete merely because its type, config, fixture, or UI label exists
   dump files must make byte progress within 15 minutes. Provider transfer-quota
   errors have their own failure class. A stopped provider client can no longer
   retain the backup lock or exported snapshot indefinitely.
+- ID: MIGRATION-CHECKPOINT-BOUNDED-DEADLINE. DOMAIN: disaster recovery/runtime.
+  CURRENT_STATE: CLOSED_SOURCE/VERIFIED_TEST. The checkpoint now owns bounded
+  process trees for both backup generations, database migration, invariant
+  verification, storage audit and the 900-second soak. Every timeout has a
+  stage-specific failure code and preserves the prior verified backup. Child
+  stderr is drained without being surfaced, preventing a hung child or a
+  provider diagnostic from blocking the checkpoint owner or leaking secrets.
+- ID: ARCHIVE-CERTIFICATION-CHILD-DEADLINE. DOMAIN: research archive runtime.
+  CURRENT_STATE: CLOSED_SOURCE/VERIFIED_TEST. Parquet compaction and DuckDB
+  verification child processes now have bounded execution, hidden windows and
+  stage-specific failure codes. Raw child stderr is never copied into the
+  certification exception, so a failed provider or tool cannot leak a secret
+  through the runtime receipt.
 - ID: PREVIOUS-VERIFIED-BACKUP-RECEIPT. DOMAIN: disaster recovery. CURRENT_STATE:
   CLOSED_SOURCE/VERIFIED_TEST. Checkpoint failure receipts now validate the
   pointed backup manifest, verification receipt, isolated restore parity,

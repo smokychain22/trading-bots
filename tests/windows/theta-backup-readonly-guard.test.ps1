@@ -57,11 +57,17 @@ foreach ($marker in $orderedMarkers) {
 if ($checkpoint -notmatch '--duration-seconds=900') { throw 'MIGRATION_CHECKPOINT_SOAK_DURATION_NOT_CERTIFIED' }
 if ($checkpoint -notmatch '\$insideBackupRoot') { throw 'PREVIOUS_BACKUP_PATH_CONTAINMENT_NOT_CHECKED' }
 if ($checkpoint -match "-replace '/', '\\\\'") { throw 'PREVIOUS_BACKUP_PATH_USES_PLATFORM_FRAGILE_REWRITE' }
-if ($checkpoint -notmatch '\$beforeDiagnostic') { throw 'PRE_MIGRATION_CHILD_FAILURE_DIAGNOSTIC_NOT_PRESERVED' }
-if ($checkpoint -notmatch '\$afterDiagnostic') { throw 'POST_MIGRATION_CHILD_FAILURE_DIAGNOSTIC_NOT_PRESERVED' }
-if (($checkpoint | Select-String -Pattern '2>&1' -AllMatches).Matches.Count -lt 2) {
-  throw 'BACKUP_CHILD_ERROR_STREAM_NOT_CAPTURED'
+if ($checkpoint -notmatch 'Invoke-ThetaBoundedProcess') { throw 'MIGRATION_CHECKPOINT_CHILD_PROCESS_OWNER_MISSING' }
+if ($checkpoint -notmatch 'PRE_MIGRATION_BACKUP_PROCESS_TIMEOUT_PREVIOUS_BACKUP_PRESERVED') {
+  throw 'PRE_MIGRATION_BACKUP_TIMEOUT_NOT_TYPED'
 }
+if ($checkpoint -notmatch 'POST_MIGRATION_DATABASE_SOAK_PROCESS_TIMEOUT_PRE_BACKUP_PRESERVED') {
+  throw 'DATABASE_SOAK_TIMEOUT_NOT_TYPED'
+}
+if ($checkpoint -notmatch 'POST_MIGRATION_BACKUP_PROCESS_TIMEOUT_PRE_BACKUP_PRESERVED') {
+  throw 'POST_MIGRATION_BACKUP_TIMEOUT_NOT_TYPED'
+}
+if ($checkpoint -match '2>&1') { throw 'MIGRATION_CHECKPOINT_CHILD_STDERR_EXPOSURE_REINTRODUCED' }
 
 $backupPath = Join-Path $PSScriptRoot '..\..\tools\windows\dr\Backup-Theta.ps1'
 $backupSource = Get-Content -Raw -LiteralPath $backupPath
