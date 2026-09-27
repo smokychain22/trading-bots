@@ -130,7 +130,12 @@ export function buildShadowEpisodeContract(input: {
     ask: leg.ask,
     quoteTimestamp: leg.quoteTimestamp,
   })) : [];
-  if (input.subject.kind === 'CANDIDATE' && legs.length === 0) throw new Error('SHADOW_EPISODE_LEGS_MISSING');
+  const stockOnlyRecovery = input.subject.kind === 'CANDIDATE'
+    && input.subject.branch === 'THETA_RECOVERY'
+    && (input.subject.candidate.action === 'RECOVERY_WAIT' || input.subject.candidate.action === 'SELL_STOCK');
+  if (input.subject.kind === 'CANDIDATE' && legs.length === 0 && !stockOnlyRecovery) {
+    throw new Error('SHADOW_EPISODE_LEGS_MISSING');
+  }
   const decisionEvidence: ShadowEpisodeDecisionEvidence = input.subject.kind === 'CANDIDATE'
     ? {
       kind: 'CANDIDATE',

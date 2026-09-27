@@ -68,6 +68,7 @@ test('canonical frontier creates restart-safe candidate jobs and preserves WAIT 
     const second = scheduleCommand5aFromCanonicalFrontier(input);
     assert.equal(first.candidateSubjectCount, 1);
     assert.equal(first.waitSubjectCount, 1);
+    assert.equal(first.t0OnlySubjectCount, 1);
     assert.equal(first.existingSubjectCount, 0);
     assert.equal(first.scheduledJobCount, 8);
     assert.equal(first.existingJobCount, 0);
@@ -153,4 +154,40 @@ test('a complete zero-candidate WAIT retains its underlying from the immutable s
   assert.equal(resolveCommand5aFrontierUnderlying(frontier, {
     underlyingState: { symbol: 'QQQ' },
   }), null);
+});
+
+test('stock-only recovery candidates persist as T0-only subjects without fake option jobs', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-command5a-schedule-'));
+  const scheduler = new LocalObservationJobScheduler(join(root, 'jobs.sqlite'));
+  const recoveryCandidate = {
+    ...frontier.branches[0]?.candidates[0],
+    candidateId: 'THETA_RECOVERY:SPY:RECOVERY_WAIT',
+    branch: 'THETA_RECOVERY' as const,
+    action: 'RECOVERY_WAIT' as const,
+    legs: [],
+  };
+  assert.ok(recoveryCandidate.underlying);
+  const recoveryFrontier: CanonicalStrategyFrontier = {
+    ...frontier,
+    branches: [{ ...frontier.branches[0]!, branch: 'THETA_RECOVERY',
+      candidates: [recoveryCandidate], candidateCount: 1, bestCandidateId: recoveryCandidate.candidateId,
+      secondBestCandidateId: null, bestRejectedCandidateId: null }],
+    branchesConsidered: ['THETA_RECOVERY'],
+    branchesEvaluated: ['THETA_RECOVERY'],
+    nearMissCandidateId: recoveryCandidate.candidateId,
+    bestRejectedCandidateId: recoveryCandidate.candidateId,
+  };
+  try {
+    const receipt = scheduleCommand5aFromCanonicalFrontier({ scheduler, frontier: recoveryFrontier,
+      decisionCycleId: 'cycle-recovery', decisionId: 'decision-recovery', underlying: 'SPY',
+      featureSnapshotHash: 'a'.repeat(64), riskVersion: 'risk-v1', costVersion: 'cost-v1',
+      executionModelVersion: 'execution-v1', sourceSha: 'b'.repeat(40), workerSha: 'b'.repeat(40),
+      sessions, horizonPolicy: { version: 'theta-strategy-learning-horizons-v1',
+        primaryCommonHorizon: '1_TRADING_DAY', tradingDayTarget: 'SESSION_CLOSE' } });
+    assert.equal(receipt.candidateSubjectCount, 1);
+    assert.equal(receipt.t0OnlySubjectCount, 2);
+    assert.equal(receipt.scheduledJobCount, 0);
+    assert.equal(scheduler.subjectCount(), 2);
+    assert.deepEqual(scheduler.counts(), {});
+  } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
 });

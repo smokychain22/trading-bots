@@ -80,6 +80,27 @@ test('WAIT receives an auditable shadow identity without a fake contract', () =>
   });
 });
 
+test('stock-only recovery actions persist T0 evidence without inventing an option leg', () => {
+  const recovery: SeriousCandidateSubject = {
+    ...candidateSubject,
+    subjectId: 'f'.repeat(64),
+    candidateId: 'THETA_RECOVERY:SPY:RECOVERY_WAIT',
+    branch: 'THETA_RECOVERY',
+    candidate: {
+      ...candidateSubject.candidate,
+      candidateId: 'THETA_RECOVERY:SPY:RECOVERY_WAIT',
+      branch: 'THETA_RECOVERY',
+      action: 'RECOVERY_WAIT',
+      legs: [],
+    },
+  };
+  const receipt = buildShadowEpisodeContract({ subject: recovery, ...versions });
+  assert.deepEqual(receipt.legs, []);
+  assert.equal(receipt.strategy, 'THETA_RECOVERY');
+  assert.equal(receipt.decisionEvidence.kind, 'CANDIDATE');
+  assert.equal(receipt.brokerAuthority, false);
+});
+
 test('invalid source lineage and future decision bucket fail closed', () => {
   assert.throws(() => buildShadowEpisodeContract({ subject: candidateSubject, ...versions, sourceSha: 'bad' }),
     /SHADOW_EPISODE_IDENTITY_INVALID/);

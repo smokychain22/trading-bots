@@ -132,6 +132,7 @@ async function schedule(): Promise<void> {
     }
     const sessions = alpacaCalendarToLearningSessions(await fetchMarketCalendar(alpaca, start, end));
     let scheduled = 0, existingJobs = 0, subjects = 0, existingSubjects = 0, skipped = 0;
+    let t0OnlySubjects = 0;
     const reasonCounts = new Map<string, number>();
     const skip = (reason: string): void => {
       skipped += 1;
@@ -156,6 +157,7 @@ async function schedule(): Promise<void> {
       existingJobs += receipt.existingJobCount;
       subjects += receipt.subjectCount;
       existingSubjects += receipt.existingSubjectCount;
+      t0OnlySubjects += receipt.t0OnlySubjectCount;
     }
     const last = query.rows.at(-1);
     if (last !== undefined) scheduler.advanceSourceCursor({
@@ -164,6 +166,7 @@ async function schedule(): Promise<void> {
     process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_SCHEDULE_COMPLETE', frontiersRead: query.rows.length,
       subjects, existingSubjects, jobsScheduled: scheduled, skipped,
       existingJobs,
+      t0OnlySubjects,
       reasonCounts: Object.fromEntries(reasonCounts), sessions: sessions.length,
       brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
   } finally {

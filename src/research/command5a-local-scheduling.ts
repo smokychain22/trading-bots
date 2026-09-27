@@ -22,6 +22,7 @@ export interface Command5aLocalSchedulingReceipt {
   readonly subjectCount: number;
   readonly candidateSubjectCount: number;
   readonly waitSubjectCount: number;
+  readonly t0OnlySubjectCount: number;
   readonly existingSubjectCount: number;
   readonly scheduledJobCount: number;
   readonly existingJobCount: number;
@@ -85,6 +86,7 @@ export function scheduleCommand5aFromCanonicalFrontier(input: {
   let unscheduledJobCount = 0;
   let candidateSubjectCount = 0;
   let waitSubjectCount = 0;
+  let t0OnlySubjectCount = 0;
   let existingSubjectCount = 0;
   let existingJobCount = 0;
   for (const subject of selection.subjects) {
@@ -118,9 +120,17 @@ export function scheduleCommand5aFromCanonicalFrontier(input: {
     }
     if (subject.kind === 'WAIT') {
       waitSubjectCount += 1;
+      t0OnlySubjectCount += 1;
       continue;
     }
     candidateSubjectCount += 1;
+    if (episode.legs.length === 0) {
+      // Recovery WAIT / SELL_STOCK has real T0 economics but no option
+      // contract path. Persist the episode and leave option observation jobs
+      // absent rather than inventing a contract or crashing the whole page.
+      t0OnlySubjectCount += 1;
+      continue;
+    }
     const expirations = new Set(episode.legs.map((leg) => leg.expiration));
     if (expirations.size !== 1) throw new Error('COMMAND5A_SUBJECT_EXPIRATION_AMBIGUOUS');
     const expirationDate = episode.legs[0]?.expiration ?? null;
@@ -154,6 +164,7 @@ export function scheduleCommand5aFromCanonicalFrontier(input: {
     subjectCount: selection.subjects.length,
     candidateSubjectCount,
     waitSubjectCount,
+    t0OnlySubjectCount,
     existingSubjectCount,
     scheduledJobCount,
     existingJobCount,
