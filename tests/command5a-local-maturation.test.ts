@@ -114,6 +114,63 @@ test('Command-5A maturation archives a selected shadow path without fabricating 
   } finally { scheduler.close(); }
 });
 
+test('a later expiration observation cannot rewrite the frozen primary-horizon episode', () => {
+  const { scheduler, spoolPath, job } = setup();
+  try {
+    const expirationJob = scheduler.schedule({
+      job: { observationJobId: 'job-expiration', subjectId: SUBJECT_ID,
+        horizonPolicyVersion: 'theta-strategy-learning-horizons-v1', horizonCode: 'EXPIRATION',
+        targetAt: '2026-10-16T20:00:00.000Z', targetSessionDate: '2026-10-16', targetState: 'SCHEDULED',
+        derivedFromHorizonCode: null, brokerAuthority: false },
+      sourceSha: SOURCE_SHA, workerSha: SOURCE_SHA,
+    });
+    const primaryClaim = scheduler.claimDue({ asOf: OBSERVED_AT, claimedBy: 'primary-worker', claimTtlSeconds: 60 });
+    assert.deepEqual(primaryClaim.map((row) => row.observationJobId), [job.observationJobId]);
+    const buildObservation = (observationJobId: string, checkpoint: 'PRIMARY_COMMON_HORIZON' | 'EXPIRATION',
+      targetAt: string, observedAt: string) => buildContractPathObservationReceipt({
+      observationJobId, subjectId: SUBJECT_ID, checkpoint, targetAt, actualObservedAt: observedAt,
+      expectedLegs: [{ optionSymbol: subject.candidateId, side: 'SHORT', optionType: 'PUT',
+        expiration: '2026-10-16', strike: 500, multiplier: 100 }],
+      quotes: [{ optionSymbol: subject.candidateId, bid: 1.5, ask: 1.6,
+        providerTimestamp: targetAt, receivedAt: observedAt,
+        impliedVolatility: 0.25, delta: -0.15, gamma: 0.01, theta: -0.04, vega: 0.1,
+        provider: 'ALPACA', feed: 'OPRA', quality: 'GOOD', reasonCodes: [] }],
+      underlying: { symbol: 'SPY', price: 602, providerTimestamp: targetAt,
+        receivedAt: observedAt, provider: 'ALPACA', purpose: 'RESEARCH_REFERENCE_ONLY' },
+      sourceSha: SOURCE_SHA, workerSha: SOURCE_SHA,
+    });
+    const primaryObservation = buildObservation(job.observationJobId, 'PRIMARY_COMMON_HORIZON', TARGET_AT, OBSERVED_AT);
+    archiveContractPathObservation({ spoolPath, decisionCycleId: 'cycle-1', observation: primaryObservation });
+    scheduler.resolve({ observationJobId: job.observationJobId, claimedBy: 'primary-worker',
+      state: 'OBSERVED', resolvedAt: OBSERVED_AT, reasonCode: null });
+    const first = matureCommand5aLocalObservations({ scheduler, spoolPath, asOf: OBSERVED_AT });
+    assert.equal(first.materialized, 1);
+
+    const expirationObservedAt = '2026-10-16T20:00:05.000Z';
+    const expirationClaim = scheduler.claimDue({ asOf: expirationObservedAt,
+      claimedBy: 'expiration-worker', claimTtlSeconds: 60 });
+    assert.deepEqual(expirationClaim.map((row) => row.observationJobId), [expirationJob.observationJobId]);
+    const expirationObservation = buildObservation(expirationJob.observationJobId, 'EXPIRATION',
+      expirationJob.targetAt, expirationObservedAt);
+    archiveContractPathObservation({ spoolPath, decisionCycleId: 'cycle-1', observation: expirationObservation });
+    scheduler.resolve({ observationJobId: expirationJob.observationJobId, claimedBy: 'expiration-worker',
+      state: 'OBSERVED', resolvedAt: expirationObservedAt, reasonCode: null });
+
+    const replay = matureCommand5aLocalObservations({ scheduler, spoolPath, asOf: expirationObservedAt });
+    assert.equal(replay.materialized, 0);
+    assert.equal(replay.alreadyMaterialized, 1);
+    const spool = new LocalResearchHistorySpool(spoolPath);
+    try {
+      const batches = spool.readDecisionCycleBatches<{ observationIds: string[]; dataset: { path: unknown[] } }>({
+        decisionCycleId: 'cycle-1', family: 'CONTRACT_PATH_DATASET',
+      });
+      assert.equal(batches.length, 1);
+      assert.deepEqual(batches[0]?.payload[0]?.observationIds, [primaryObservation.observationId]);
+      assert.equal(batches[0]?.payload[0]?.dataset.path.length, 1);
+    } finally { spool.close(); }
+  } finally { scheduler.close(); }
+});
+
 test('Command-5A maturation preserves pending and missing-archive states instead of creating labels', () => {
   const pendingSetup = setup('2026-09-26T15:00:00.000Z');
   try {

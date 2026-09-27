@@ -176,13 +176,22 @@ export function matureCommand5aLocalObservations(input: {
           family: 'CONTRACT_PATH_OBSERVATION',
           limit: 256,
         });
+        // The primary common horizon is the terminal cutoff for this dataset
+        // version. A later expiration mark for a longer-DTE contract is useful
+        // evidence, but adding it to an already materialized primary-horizon
+        // row would create a second payload hash for the same episode and could
+        // inflate independent N downstream. Include only jobs in the factual
+        // path at or before the frozen primary target.
+        const pathJobs = jobs.filter((job) => job.targetAt <= primary.targetAt);
+        const pathJobIds = new Set(pathJobs.map((job) => job.observationJobId));
         const observations = batches.flatMap((batch) => batch.payload)
           .filter(isObservation)
           .filter((receipt) => receipt.subjectId === subject.subjectId)
+          .filter((receipt) => pathJobIds.has(receipt.observationJobId))
           .sort((a, b) => a.targetAt.localeCompare(b.targetAt)
             || a.observationJobId.localeCompare(b.observationJobId));
         const byJob = new Map(observations.map((receipt) => [receipt.observationJobId, receipt]));
-        const observedJobs = jobs.filter((job) => job.state === 'OBSERVED');
+        const observedJobs = pathJobs.filter((job) => job.state === 'OBSERVED');
         const missingArchive = observedJobs.find((job) => !byJob.has(job.observationJobId));
         if (missingArchive !== undefined) throw new Error(`COMMAND5A_OBSERVED_JOB_ARCHIVE_MISSING:${missingArchive.observationJobId}`);
         const primaryObservation = byJob.get(primary.observationJobId);
