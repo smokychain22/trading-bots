@@ -12,9 +12,28 @@ same expiry) as an explicit, labeled BASELINE choice -- not a claim that
 this is THETA's own previously-specified policy. Same discipline as
 `realized_volatility.py`'s MODEL-001 baseline-first rule.
 
+**CLASSIFICATION: RESEARCH_BASELINE, not canonical Production THETA
+policy.** This formula must never become production-decisive (e.g. an
+AEGIS/sizing/router gate input) without an explicit canonical-definition/
+promotion decision recorded in `docs/quant/` first -- exactly the same
+rule this module's own module-level docstring now states for any future
+feature where the TRD names a family but does not define its formula.
+`skew_feature_classification` below is the one place code can check this
+programmatically (e.g. a future promotion-evidence assembler, work
+package 89, refusing promotion without an explicit override).
+
 Truth class: DERIVED_FROM_OBSERVED -- computed from real provider IV
 observations (via `iv.py`), never itself a provider-reported field.
 """
+
+RESEARCH_BASELINE_NOT_PRODUCTION_POLICY = "RESEARCH_BASELINE"
+
+
+def skew_feature_classification() -> str:
+    """Returns the one authoritative classification string for this
+    module's formula -- callers (e.g. a future promotion gate) should
+    check this rather than re-deriving the same judgment ad hoc."""
+    return RESEARCH_BASELINE_NOT_PRODUCTION_POLICY
 
 from dataclasses import dataclass
 from typing import Optional, Sequence

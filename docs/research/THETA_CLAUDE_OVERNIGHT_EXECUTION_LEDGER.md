@@ -5,22 +5,47 @@ Tracks real implementation performed under `THETA_CLAUDE_LONG_RUN_IMPLEMENTATION
 `claude/theta-overnight-quant`. Updated after every commit -- one line per
 work package.
 
+## Status vocabulary correction (owner directive, this pass)
+
+A feature family is NOT "fully DONE/COMPLETE" merely because a producer
+and unit tests exist. Real states, applied from this point forward:
+
+`SOURCE_IMPLEMENTED` -> `BUNDLE_WIRED` -> `CONSUMER_WIRED` ->
+`HISTORICAL_DATA_WIRED` -> `EMPIRICALLY_TESTED` -> `RUNTIME_HANDOFF_READY`
+-> `COMPLETE`.
+
+WP01-11 below are re-labeled `SOURCE_IMPLEMENTED` (producer + canonical
+`FeatureResult` conversion + unit tests exist; NOT yet in the 20-family
+bundle (WP20), NOT yet in the feature-definition registry (WP21), NOT yet
+consumed by the router research adapter (WP22, not built), NOT yet fed by
+a real historical dataset loader (WP24, not built), and NOT empirically
+tested against real data). None of these families may be called `COMPLETE`
+until that full chain (producer -> bundle -> registry -> router adapter ->
+historical loader -> ablation/strictness consumer -> reproducibility
+contract) exists end to end.
+
+SKEW (WP05) carries an additional, permanent classification:
+`RESEARCH_BASELINE`, never canonical Production THETA policy -- see
+`features/skew.py`'s own `skew_feature_classification()`. It must not
+become production-decisive without an explicit canonical-definition/
+promotion decision recorded in `docs/quant/` first.
+
 ## Work package status (V2's numbered queue)
 
 | WP | Capability | Status | Source files | Tests | Commit |
 |---|---|---|---|---|---|
-| 01 | Canonical FeatureResult contract | DONE | `features/feature_contract.py` | `test_feature_contract.py` (9) | `774a41f` |
-| 02 | TREND/MOMENTUM integration into contract | DONE | `features/trend.py`, `features/momentum.py` (adapters) | `test_feature_contract.py` | `774a41f` |
-| 03 | REALIZED_VOLATILITY integration | DONE | `features/realized_volatility.py` (`close_to_close_realized_volatility_result`) | `test_realized_volatility_result.py` (9) | `c15d056` |
-| 04 | IV feature | DONE | `features/iv.py` | `test_iv.py` (8) | `aae1dd0` |
-| 05 | SKEW feature | DONE (baseline convention -- no canonical THETA formula existed; documented as such) | `features/skew.py` | `test_skew.py` (9) | `368bd25` |
-| 06 | TERM_STRUCTURE feature | DONE | `features/term_structure.py` | `test_term_structure.py` (8) | `c350a67` |
-| 07 | VOLATILITY_SURFACE feature | DONE | `features/volatility_surface.py` | `test_volatility_surface.py` (6) | `d81d32f` |
-| 08 | VOLUME_OPEN_INTEREST feature | DONE | `features/volume_open_interest.py` | `test_volume_open_interest.py` (6) | `0cd7449` |
-| 09 | FLOW feature | DONE | `features/flow.py` | `test_flow.py` (11) | `eabbaeb` |
-| 10 | UNUSUAL_ACTIVITY feature | DONE | `features/unusual_activity.py` | `test_unusual_activity.py` (9) | `0a98898` |
-| 11 | LIQUIDITY feature | DONE | `features/liquidity.py` | `test_liquidity.py` (9) | `bcd04c9` |
-| 12 | EVENT_CONTEXT feature | NOT_STARTED (next package) | -- | -- | -- |
+| 01 | Canonical FeatureResult contract | SOURCE_IMPLEMENTED | `features/feature_contract.py` | `test_feature_contract.py` (9) | `774a41f` |
+| 02 | TREND/MOMENTUM integration into contract | SOURCE_IMPLEMENTED | `features/trend.py`, `features/momentum.py` (adapters) | `test_feature_contract.py` | `774a41f` |
+| 03 | REALIZED_VOLATILITY integration | SOURCE_IMPLEMENTED | `features/realized_volatility.py` (`close_to_close_realized_volatility_result`) | `test_realized_volatility_result.py` (9) | `c15d056` |
+| 04 | IV feature | SOURCE_IMPLEMENTED | `features/iv.py` | `test_iv.py` (8) | `aae1dd0` |
+| 05 | SKEW feature | SOURCE_IMPLEMENTED, classification=RESEARCH_BASELINE (no canonical THETA formula existed; documented and function-flagged as such, never production-decisive without explicit promotion) | `features/skew.py` | `test_skew.py` (10) | `368bd25` (+ this pass's classification fix) |
+| 06 | TERM_STRUCTURE feature | SOURCE_IMPLEMENTED | `features/term_structure.py` | `test_term_structure.py` (8) | `c350a67` |
+| 07 | VOLATILITY_SURFACE feature | SOURCE_IMPLEMENTED | `features/volatility_surface.py` | `test_volatility_surface.py` (6) | `d81d32f` |
+| 08 | VOLUME_OPEN_INTEREST feature | SOURCE_IMPLEMENTED | `features/volume_open_interest.py` | `test_volume_open_interest.py` (6) | `0cd7449` |
+| 09 | FLOW feature | SOURCE_IMPLEMENTED | `features/flow.py` | `test_flow.py` (11) | `eabbaeb` |
+| 10 | UNUSUAL_ACTIVITY feature | SOURCE_IMPLEMENTED | `features/unusual_activity.py` | `test_unusual_activity.py` (9) | `0a98898` |
+| 11 | LIQUIDITY feature | SOURCE_IMPLEMENTED | `features/liquidity.py` | `test_liquidity.py` (9) | `bcd04c9` |
+| 12 | EVENT_CONTEXT feature | IN_PROGRESS | -- | -- | -- |
 | 13-20 | SECTOR, CORRELATION, PORTFOLIO_EXPOSURE, DRAWDOWN/RECOVERY, FUNDAMENTAL_QUALITY, REGIME (finish), EXECUTION_QUALITY, 20-family bundle | NOT_STARTED | -- | -- | -- |
 | 21-26 | Feature definitions registry, router research adapter, strictness funnel engine, historical loaders, filter-value analysis, Phase 2 ablations | NOT_STARTED | -- | -- | -- |
 | 27-28 | Immutable quant snapshot contract, T0 research adapter | NOT_STARTED | -- | -- | -- |

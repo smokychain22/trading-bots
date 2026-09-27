@@ -78,5 +78,11 @@ class TestRiskReversalSkew(unittest.TestCase):
         self.assertEqual(result.truth_class, FeatureTruthClass.DERIVED_FROM_OBSERVED)
 
 
+class TestSkewClassification(unittest.TestCase):
+    def test_skew_is_explicitly_classified_research_baseline_not_production_policy(self):
+        from features.skew import skew_feature_classification
+        self.assertEqual(skew_feature_classification(), "RESEARCH_BASELINE")
+
+
 if __name__ == "__main__":
     unittest.main()
