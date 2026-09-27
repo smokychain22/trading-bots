@@ -92,6 +92,7 @@ test('restart repairs a subject registered before its jobs were scheduled', () =
     assert.ok(selected?.kind === 'CANDIDATE');
     const episode = buildShadowEpisodeContract({ subject: selected, decisionId: 'decision-1',
       featureSnapshotHash: 'a'.repeat(64), strategyVersion: frontier.strategyVersion,
+      frontierContentHash: frontier.contentHash, optionomicsContextHash: 'b'.repeat(64),
       riskVersion: 'risk-v1', costVersion: 'cost-v1', executionModelVersion: 'execution-v1',
       sourceSha: 'b'.repeat(40), workerSha: 'b'.repeat(40) });
     scheduler.registerSubject({ decisionCycleId: 'cycle-1', underlying: 'SPY', episode });

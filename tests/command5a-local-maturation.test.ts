@@ -54,6 +54,7 @@ function setup(targetAt = TARGET_AT) {
   const scheduler = new LocalObservationJobScheduler(schedulerPath);
   const episode = buildShadowEpisodeContract({ subject, decisionId: 'decision-1',
     featureSnapshotHash: 'c'.repeat(64), strategyVersion: 'strategy-v1', riskVersion: 'risk-v1',
+    frontierContentHash: 'd'.repeat(64), optionomicsContextHash: 'e'.repeat(64),
     costVersion: 'cost-v1', executionModelVersion: 'execution-v1', sourceSha: SOURCE_SHA, workerSha: SOURCE_SHA });
   scheduler.registerSubject({ decisionCycleId: 'cycle-1', underlying: 'SPY', episode });
   const job = scheduler.schedule({
@@ -136,6 +137,7 @@ test('maturation subject cursor advances and wraps so bounded runs cannot starve
     for (const value of ['1', '2', '3']) {
       const episode = buildShadowEpisodeContract({ subject: { ...subject, subjectId: value.repeat(64) },
         decisionId: `decision-${value}`, featureSnapshotHash: value.repeat(64), strategyVersion: 'strategy-v1',
+        frontierContentHash: 'd'.repeat(64), optionomicsContextHash: 'e'.repeat(64),
         riskVersion: 'risk-v1', costVersion: 'cost-v1', executionModelVersion: 'execution-v1',
         sourceSha: SOURCE_SHA, workerSha: SOURCE_SHA });
       scheduler.registerSubject({ decisionCycleId: `cycle-${value}`, underlying: 'SPY', episode });

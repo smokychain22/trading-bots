@@ -34,6 +34,7 @@ const candidateSubject: SeriousCandidateSubject = {
 
 const versions = {
   decisionId: 'decision-1', featureSnapshotHash: 'b'.repeat(64), strategyVersion: 'strategy-v1',
+  frontierContentHash: 'd'.repeat(64), optionomicsContextHash: 'e'.repeat(64),
   riskVersion: 'risk-v1', costVersion: 'cost-v1', executionModelVersion: 'execution-v1',
   sourceSha: 'c'.repeat(40), workerSha: 'c'.repeat(40),
 };
@@ -50,6 +51,12 @@ test('shadow episode preserves both D legs and can never gain broker authority',
   assert.equal(first.brokerAuthority, false);
   assert.equal(first.orderSubmitted, false);
   assert.equal(first.brokerFill, false);
+  assert.equal(first.frontierContentHash, 'd'.repeat(64));
+  assert.equal(first.optionomicsContextHash, 'e'.repeat(64));
+  assert.equal(first.decisionEvidence.kind, 'CANDIDATE');
+  assert.equal(first.decisionEvidence.kind === 'CANDIDATE' ? first.decisionEvidence.aegisState : null, 'ALLOW_FULL');
+  assert.equal(first.decisionEvidence.kind === 'CANDIDATE' ? first.decisionEvidence.sizing.quantity : null, 1);
+  assert.equal(first.decisionEvidence.kind === 'CANDIDATE' ? first.decisionEvidence.economics.maxLoss : null, 400);
 });
 
 test('WAIT receives an auditable shadow identity without a fake contract', () => {
@@ -67,11 +74,17 @@ test('WAIT receives an auditable shadow identity without a fake contract', () =>
   assert.equal(receipt.candidateId, null);
   assert.equal(receipt.selectedAtDecision, false);
   assert.deepEqual(receipt.legs, []);
+  assert.deepEqual(receipt.decisionEvidence, {
+    kind: 'WAIT', primaryAction: 'GLOBAL_WAIT', reasons: ['ACCOUNT_CAPACITY'],
+    bestRejectedCandidateId: 'candidate-1', secondBestCandidateId: null, nearMissCandidateId: 'candidate-1',
+  });
 });
 
 test('invalid source lineage and future decision bucket fail closed', () => {
   assert.throws(() => buildShadowEpisodeContract({ subject: candidateSubject, ...versions, sourceSha: 'bad' }),
     /SHADOW_EPISODE_IDENTITY_INVALID/);
+  assert.throws(() => buildShadowEpisodeContract({ subject: candidateSubject, ...versions,
+    optionomicsContextHash: 'bad' }), /SHADOW_EPISODE_IDENTITY_INVALID/);
   assert.throws(() => buildShadowEpisodeContract({ subject: { ...candidateSubject,
     decisionBucketAt: '2026-09-25T16:00:00Z' }, ...versions }), /SHADOW_EPISODE_TIME_INVALID/);
 });

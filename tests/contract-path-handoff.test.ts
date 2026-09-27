@@ -33,6 +33,7 @@ const subject: SeriousCandidateSubject = {
 
 function bundle() {
   const episode = buildShadowEpisodeContract({ subject, decisionId: 'decision-1', featureSnapshotHash: 'c'.repeat(64),
+    frontierContentHash: 'd'.repeat(64), optionomicsContextHash: 'e'.repeat(64),
     strategyVersion: 'strategy-v1', riskVersion: 'risk-v1', costVersion: 'cost-v1',
     executionModelVersion: 'execution-v1', sourceSha, workerSha: sourceSha });
   const observation = buildContractPathObservationReceipt({ observationJobId: 'job-1', subjectId: subject.subjectId,

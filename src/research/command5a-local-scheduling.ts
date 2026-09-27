@@ -12,6 +12,8 @@ import {
   type StrategyLearningHorizonPolicy,
   type StrategyLearningSession,
 } from './strategy-learning-horizon.js';
+import { canonicalJson } from './point-in-time-evidence.js';
+import { createHash } from 'node:crypto';
 
 export const command5aLocalSchedulingVersion = 'theta-command5a-local-scheduling-v1' as const;
 
@@ -72,6 +74,9 @@ export function scheduleCommand5aFromCanonicalFrontier(input: {
         subject,
         decisionId: input.decisionId,
         featureSnapshotHash: input.featureSnapshotHash,
+        frontierContentHash: input.frontier.contentHash,
+        optionomicsContextHash: createHash('sha256')
+          .update(canonicalJson(input.frontier.optionomicsContext)).digest('hex'),
         strategyVersion: input.frontier.strategyVersion,
         riskVersion: input.riskVersion,
         costVersion: input.costVersion,

@@ -30,6 +30,7 @@ const subjectInput: SeriousCandidateSubject = {
 function inputs() {
   const episode = buildShadowEpisodeContract({ subject: subjectInput, decisionId: 'decision-1',
     featureSnapshotHash: 'b'.repeat(64), strategyVersion: 'strategy-v1', riskVersion: 'risk-v1',
+    frontierContentHash: 'd'.repeat(64), optionomicsContextHash: 'e'.repeat(64),
     costVersion: 'cost-v1', executionModelVersion: 'execution-v1', sourceSha: 'c'.repeat(40),
     workerSha: 'c'.repeat(40) });
   const subject: LocalObservationSubjectReceipt = { subjectId: episode.subjectId, decisionCycleId: 'cycle-1',

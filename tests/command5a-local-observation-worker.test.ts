@@ -43,6 +43,7 @@ function setup(root: string) {
   const scheduler = new LocalObservationJobScheduler(join(root, 'jobs.sqlite'));
   const episode = buildShadowEpisodeContract({ subject, decisionId: 'decision-1',
     featureSnapshotHash: 'b'.repeat(64), strategyVersion: 'strategy-v1', riskVersion: 'risk-v1',
+    frontierContentHash: 'd'.repeat(64), optionomicsContextHash: 'e'.repeat(64),
     costVersion: 'cost-v1', executionModelVersion: 'execution-v1', sourceSha: 'c'.repeat(40),
     workerSha: 'c'.repeat(40) });
   scheduler.registerSubject({ decisionCycleId: 'cycle-1', underlying: 'SPY', episode });
