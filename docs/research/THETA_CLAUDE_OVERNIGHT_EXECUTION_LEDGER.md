@@ -97,8 +97,57 @@ promotion decision recorded in `docs/quant/` first.
 | 39 | Empirical estimator library (Wilson/bootstrap/PF/AvgWin-Loss/drawdown) | SOURCE_IMPLEMENTED (reuses `dataset_readiness.py`'s real `effective_sample_size`, not duplicated) | `research/empirical_estimators.py` | `test_empirical_estimators.py` (12) | `e2bd5f6` |
 | 40 | Assignment label builder (truth hierarchy) | REAL_DATA_PRODUCER (genuinely new; structurally cannot infer from strike crossing -- no such field exists on the input type) | `research/assignment_labels.py` | `test_assignment_labels.py` (7) | `198bf33` |
 | 41-46 | Recovery dataset (survival-ready), tail/drawdown dataset, whole-chain outcome builder, management action space, management RTG, 17 profit-taking challengers | **RECONCILED, NOT_REBUILT** -- real search (before writing anything) found ALL SIX already real, mature, and independently tested: `models/recovery_spec.py`'s `SurvivalPoint`/`RecoverySummary`/`summarize_recovery` (WP41, genuinely survival-analysis-shaped already); `models/severe_drawdown_spec.py` + `research/severe_drawdown_dataset.py` (WP42); `research/whole_chain_dataset.py` (WP43); `models/management_action_value.py`'s `evaluate_management_alternatives`/HOLD/CLOSE/EXPIRE/ROLL/ASSIGN/REDEPLOY valuations (WP44); the same module's `hold_advantage` (WP45, RTG); `research/profit_preservation_research.py` (WP46). Verified via their own pre-existing test suites, not assumed: `test_severe_drawdown_and_recovery_specs.py` (21), `test_recovery_decision.py`, `test_whole_chain_dataset.py`, `test_profit_preservation_research.py`, `test_management_action_value.py` (39 combined) -- all pass. No new competing module created for any of the six. | (pre-existing, unchanged) | (pre-existing, unchanged, verified) | -- |
-| 47-58 | Entry/management/regime/fill datasets (distinct from the decision MODELS just reconciled -- PIT dataset ROWS for training/calibration may still be a genuine gap), purged walk-forward, untouched OOS, logistic/tree baselines, calibration (+cohort), model registry, experiment registry | NOT_STARTED (next -- requires its own reconciliation pass first, per the pattern established this pass) | -- | -- | -- |
-| 59-66 | Benchmarks B0-B6, ablations A1-A6, DSR, PBO, multiple-testing ledger, failure attribution, experience memory, reproducibility bundle | BLOCKED_DATA for real-data runs (same N=1 constraint as WP25-26); infrastructure NOT_STARTED | -- | -- | -- |
+| 47 | Entry dataset | **RECONCILED, NOT_REBUILT** -- `research/entry_episode_training.py`'s `build_entry_episode_training_dataset()` is already a real, mature, PIT-safe entry-episode row builder (dependency grouping, evidence hashes, excluded-reason ledger). Verified via its own pre-existing 18 tests (`test_entry_episode_training.py` + `test_entry_baseline_experiment.py` + `test_entry_feature_ablation.py`), all pass. No new module written. | (pre-existing, unchanged) | (pre-existing, unchanged, verified) | -- |
+| 48 | Management dataset | DATASET_BUILDER, genuinely new -- reuses `whole_chain_dataset.py`'s existing chain-join authority; explodes each chain's `ManagementSnapshot`s into T0 rows with the chain's eventual matured label attached under a separate `futureOutcome` key, never merged into the T0 fields. | `research/management_dataset.py` | `test_management_dataset.py` (5) | `4aba63c` |
+| 49 | Regime dataset | DATASET_BUILDER, genuinely new -- observed inputs read ONLY through a caller-declared explicit `fieldMapping` (no Codex export key name guessed); baseline regime via existing `models/regime_v0.py`; `challengerRegime` always `NOT_IMPLEMENTED` (no promoted challenger exists per that module's own docstring); future outcome kept separate via the same chain-join reuse as WP48. | `research/regime_dataset.py` | `test_regime_dataset.py` (6) | `7ad0f20` |
+| 50 | Fill dataset | DATASET_BUILDER, genuinely new, honestly incomplete by schema -- `dataset_contracts.ExecutionEvidence` mirrors `market.execution_quote_observation` exactly and carries no `filled`/`fillPrice`/`latency`/`cancelReplace` field anywhere in the current Production export schema (read, not assumed). Emits the observable T0 half (arrival BBO/spread/size/contract/quote age/proposed limit as intent) and marks every fill-outcome field explicitly `UNKNOWN` with named `futureIdentifiableFields`. `brokerActualFillCount` is always 0 today, consistent with WP37's own finding. | `research/fill_dataset.py` | `test_fill_dataset.py` (5) | `0f3850e` |
+| 51 | Purged walk-forward | **RECONCILED, NOT_REBUILT** -- `research/validation.py`'s `build_purged_walk_forward_plan()`/`build_grouped_walk_forward_plan()` already implement real timestamp/label-aware purging, embargo, dependency-group handling and a frozen final-OOS suffix. Already consumed by `entry_baseline_experiment.py` (WP53). | (pre-existing, unchanged) | (pre-existing, unchanged, verified) | -- |
+| 52 | Untouched OOS manifest | SOURCE_IMPLEMENTED, genuinely new -- freezes `final_oos_ids` (already reserved by WP51's plan) into one hashed, immutable manifest (dataset hash, scope/date bounds, creation SHA, split version) plus an explicit `assert_not_used_for_tuning()` guard that raises loudly on any overlap. | `research/oos_manifest.py` | `test_oos_manifest.py` (7) | `bae4a83` |
+| 53 | Logistic baselines | **RECONCILED, NOT_REBUILT** -- `research/entry_baseline_experiment.py`'s `execute_entry_baseline()` already fits the shared `fit_logistic_regression` optimizer per purged-walk-forward fold, with `INSUFFICIENT_TRAINING_CLASSES`/`OPTIMIZER_NOT_CONVERGED` states, never a forced fit; `finalOosEvaluated: False` already respects the untouched-OOS rule structurally. | (pre-existing, unchanged) | (pre-existing, unchanged, verified) | -- |
+| 54 | Tree baseline | MODEL_BASELINE, genuinely new -- stdlib-only (repo declares zero third-party deps), deterministic depth-limited CART (Gini impurity, midpoint thresholds), `INSUFFICIENT_SAMPLE` below minimum N or with a single class, meant to run on the identical WP51 splits. | `research/tree_baseline.py` | `test_tree_baseline.py` (6) | `bae4a83` |
+| 55 | Calibration (Platt/isotonic/Brier/log loss/reliability bins) | **RECONCILED, NOT_REBUILT** -- all already real and tested in `research/validation.py` (`calibration_metrics`, `fit_platt_scaler`, `fit_isotonic_calibrator`), already wired into `entry_baseline_experiment.py`. | (pre-existing, unchanged) | (pre-existing, unchanged, verified) | -- |
+| 56 | Cohort calibration | SOURCE_IMPLEMENTED, genuinely new -- groups by any caller-defined cohort key (DTE/delta/regime/ticker/sector) and reuses WP55's `calibration_metrics` per cohort; a cohort below the caller's minimum N is `INSUFFICIENT_SAMPLE`, never a fabricated verdict. | `research/cohort_calibration.py` | `test_cohort_calibration.py` (4) | `3ed6b29` |
+| 57 | Model registry | SOURCE_IMPLEMENTED, genuinely new -- generalizes `severe_drawdown_model_contract.py`'s existing `SevereDrawdownArtifactRegistry` pattern (hash-verified, immutable-per-version, promotion-state-gated) to any task instead of adding a second task-specific registry. The severe-drawdown registry itself is untouched, not migrated. | `research/model_registry.py` | `test_model_registry.py` (7) | `3ed6b29` |
+| 58 | Experiment registry | **RECONCILED, NOT_REBUILT** -- `research/experiment_registry.py` already persists `ExperimentDefinition`/`ExperimentProtocol` records with `MinimumReadiness` gating and `experiments_eligible_at()`, not only winners. | (pre-existing, unchanged) | (pre-existing, unchanged, verified) | -- |
+| 59-66 | Benchmarks B0-B6, ablations A1-A6, DSR, PBO, multiple-testing ledger, failure attribution, experience memory, reproducibility bundle | Partial infrastructure already exists (`research/ablation.py`'s `classify_ablation_result`/`paired_mean_difference`/`welch_mean_difference`; `research/entry_feature_ablation.py`) -- full reconciliation NOT_STARTED. Real-data execution BLOCKED_DATA (same N=1 constraint as WP25-26; see historical-data recovery note below). | -- | -- | -- |
+
+## Historical-data recovery pass (V3 section 4, this pass)
+
+Before permanently accepting WP25/26 `BLOCKED_DATA`, ran one bounded,
+non-destructive discovery pass (read-only; no Codex Production file or
+database touched):
+
+- `C:\ProjectBackups\trading-bots\daily\` (real, dated backup snapshots):
+  found genuine Production research-export artifacts under
+  `external-assets/research_exports/` -- 110-111 hash-named export
+  directories, each with `manifest.json`/`dataset.json`/`handoff.json`/
+  `data-quality.json`. Aggregated `rowCounts` across all of them:
+  `candidateSets=12172, candidates=64923, shadowCandidates=76399,
+  executionEvidence=102975, outcomeSubjects=822,
+  outcomeResolutionReceipts=224` (all other row kinds 0). Source window
+  covers **2026-09-14 to 2026-09-15 only** -- this does NOT match the
+  V3-cited coarse counts (Sep16=139, Sep18=4590, Sep21=3876, total=8605,
+  ~1342 executable). Those specific dates/counts were not found anywhere
+  in this pass (also checked `.git/worktrees`, the `theta-mgmt-intelligence`
+  worktree, the Codex `read-all-my-files-in-depth/work/*` checkouts, and a
+  full home-directory `*.sqlite` sweep -- no `theta-evidence.sqlite` or
+  other historical evidence spool was found anywhere reachable from this
+  machine account today).
+- **Schema-version blocker, not absence**: the found exports declare
+  `"schemaVersion": "theta-r6-dataset-v1"`. The current, in-repo loader
+  (`research/production_export_loader.py`) requires
+  `DATASET_SCHEMA_VERSION = "theta-r6-dataset-v6"` and fails loudly (by
+  design -- "there is no best-effort parsing path") on any version
+  mismatch. Ingesting these v1 exports today would require either an
+  explicit, versioned schema-compatibility bridge or a Codex/owner
+  decision to reconcile v1->v6 -- not a silent shim invented in this
+  pass. Classified `BLOCKED_CODEX` (schema-version reconciliation), not
+  `BLOCKED_DATA` (absence) -- a materially different, more specific
+  finding than the prior N=1 conclusion.
+- WP25/26 remain **not completed** pending that schema reconciliation
+  decision; this does not block WP47-58 above, which operate on
+  `DatasetExportArtifact`/`LoadedDatasetExport` fixtures at the current
+  v6 schema, per the existing test convention.
 | 67-77 | Future capture contracts, outcome-horizon adapters, expiration/management-checkpoint outcomes, observed/modeled/broker firewall, source validation, missingness audit, coverage report, strictness-vs-economics join, Q-vs-D cohort, WAIT alternatives analysis | NOT_STARTED | -- | -- | -- |
 | 78-84 | Management-chain accounting fixtures, AEGIS/sizing quant contract fixtures, economic monotonicity property tests, leakage test harness, research CLI, performance/memory | NOT_STARTED | -- | -- | -- |
 | 85-100 | Storage classification, Codex handoff pack, Phase 6 real experiment run, shadow prediction receipts, promotion evidence assembler, drift detection, Paper analysis readiness, Paper-vs-model discrepancy, graduation metric engine, release-gate evidence matrix, final integration test, adversarial matrix, duplicate-authority search, TODO elimination, full test gate, final ledger reconciliation | NOT_STARTED | -- | -- | -- |
