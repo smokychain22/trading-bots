@@ -18,8 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Optional
-
-STORAGE_CLASSES = ('SOURCE_CONTROL', 'LOCAL_ANALYTICS', 'ARCHIVE', 'EPHEMERAL', 'COMPACT_DB_HANDOFF')
+from research.future_capture_contract import STORAGE_CLASSES
 
 # Above this size, an artifact can never be classified SOURCE_CONTROL,
 # regardless of kind -- large converted history never goes into Git.
