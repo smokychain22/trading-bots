@@ -29,7 +29,7 @@
  */
 import type { ContractPathQuoteObservation } from './contract-path-observation-runtime.js';
 
-export const command5aMarkSemanticsVersion = 'theta-command5a-mark-semantics-v1' as const;
+export const command5aMarkSemanticsVersion = 'theta-command5a-mark-semantics-v2' as const;
 
 export type MarkIdentifiability = 'PRESENT_VALID' | 'NOT_IDENTIFIABLE';
 
@@ -46,7 +46,13 @@ export interface PackageMarkResult {
   readonly markType: 'SINGLE_LEG_MID' | 'DEFINED_RISK_PACKAGE_MID';
   readonly markModelVersion: typeof command5aMarkSemanticsVersion;
   readonly legCount: number;
-  readonly legMarks: readonly { readonly optionSymbol: string; readonly mid: number | null; readonly impliedVolatility: number | null }[];
+  readonly legMarks: readonly {
+    readonly optionSymbol: string;
+    readonly mid: number | null;
+    readonly impliedVolatility: number | null;
+    readonly providerTimestamp: string | null;
+    readonly receivedAt: string;
+  }[];
   readonly packageMark: number | null;
   readonly packageBidIfDefined: number | null;
   readonly packageAskIfDefined: number | null;
@@ -58,11 +64,22 @@ export interface PackageMarkResult {
    * averaged into one scalar. */
   readonly shortLegImpliedVolatility: number | null;
   readonly longLegImpliedVolatility: number | null;
+  /** Descriptive timing evidence only. No synchronization threshold is
+   * invented here. A downstream study must supply its governed threshold. */
+  readonly legTimestampEvidenceState: 'NOT_APPLICABLE' | 'KNOWN' | 'UNKNOWN';
+  readonly providerTimestampSkewMs: number | null;
+  readonly receivedAtSkewMs: number | null;
 }
 
 function mid(bid: number | null, ask: number | null): number | null {
   if (bid === null || ask === null) return null;
   return (bid + ask) / 2;
+}
+
+function timestampSkewMs(left: string | null, right: string | null): number | null {
+  if (left === null || right === null) return null;
+  const leftMs = Date.parse(left), rightMs = Date.parse(right);
+  return Number.isFinite(leftMs) && Number.isFinite(rightMs) ? Math.abs(leftMs - rightMs) : null;
 }
 
 function worstQuality(quotes: readonly ContractPathQuoteObservation[]): 'GOOD' | 'PARTIAL' | 'STALE' | 'INVALID' {
@@ -92,6 +109,7 @@ export function computePackageMark(input: {
   });
   const legMarks = joined.map(({ identity, quote }) => ({
     optionSymbol: identity.optionSymbol, mid: mid(quote.bid, quote.ask), impliedVolatility: quote.impliedVolatility,
+    providerTimestamp: quote.providerTimestamp, receivedAt: quote.receivedAt,
   }));
   const quality = worstQuality(input.quotes);
 
@@ -104,6 +122,7 @@ export function computePackageMark(input: {
       legCount: 1, legMarks, packageMark: singleMid, packageBidIfDefined: only.quote.bid, packageAskIfDefined: only.quote.ask,
       quality, identifiability: singleMid === null ? 'NOT_IDENTIFIABLE' : 'PRESENT_VALID',
       singleLegImpliedVolatility: only.quote.impliedVolatility, shortLegImpliedVolatility: null, longLegImpliedVolatility: null,
+      legTimestampEvidenceState: 'NOT_APPLICABLE', providerTimestampSkewMs: null, receivedAtSkewMs: null,
     };
   }
 
@@ -117,6 +136,8 @@ export function computePackageMark(input: {
   const packageBidIfDefined = short.quote.bid !== null && long.quote.ask !== null ? short.quote.bid - long.quote.ask : null;
   const packageAskIfDefined = short.quote.ask !== null && long.quote.bid !== null ? short.quote.ask - long.quote.bid : null;
   const packageMark = mid(packageBidIfDefined, packageAskIfDefined);
+  const providerTimestampSkewMs = timestampSkewMs(short.quote.providerTimestamp, long.quote.providerTimestamp);
+  const receivedAtSkewMs = timestampSkewMs(short.quote.receivedAt, long.quote.receivedAt);
 
   return {
     contractVersion: command5aMarkSemanticsVersion, markType: 'DEFINED_RISK_PACKAGE_MID', markModelVersion: command5aMarkSemanticsVersion,
@@ -124,5 +145,7 @@ export function computePackageMark(input: {
     identifiability: packageMark === null ? 'NOT_IDENTIFIABLE' : 'PRESENT_VALID',
     singleLegImpliedVolatility: null,
     shortLegImpliedVolatility: short.quote.impliedVolatility, longLegImpliedVolatility: long.quote.impliedVolatility,
+    legTimestampEvidenceState: providerTimestampSkewMs === null || receivedAtSkewMs === null ? 'UNKNOWN' : 'KNOWN',
+    providerTimestampSkewMs, receivedAtSkewMs,
   };
 }
