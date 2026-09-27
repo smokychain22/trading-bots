@@ -83,7 +83,8 @@ try {
           $previousErrorActionPreference = $ErrorActionPreference
           $ErrorActionPreference = 'Continue'
           try {
-            & node --import tsx tools/theta-local-evidence-backfill.ts "--environment-file=$productionEnvFile" *> $null
+            [void](Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 180 -Arguments @(
+              '--import','tsx','tools/theta-local-evidence-backfill.ts',"--environment-file=$productionEnvFile"))
           } finally {
             $ErrorActionPreference = $previousErrorActionPreference
           }
@@ -350,13 +351,16 @@ try {
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-          & node "--env-file=$productionEnvFile" --import tsx tools/theta-research-export.ts --latest *> $null
-          $researchExit = $LASTEXITCODE
+          $researchProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 600 -Arguments @(
+            "--env-file=$productionEnvFile",'--import','tsx','tools/theta-research-export.ts','--latest')
+          $researchExit = if ($researchProcess.State -eq 'COMPLETED') { $researchProcess.ExitCode } else { -1 }
         } finally { $ErrorActionPreference = $previousErrorActionPreference }
         if ($researchExit -eq 0) {
           Set-Content -LiteralPath $exportSessionFile -Value $pendingExportSession -Encoding ascii
           Remove-Item -LiteralPath $pendingExportSessionFile -Force
           $researchExport = 'EXPORTED_FIRST_COMPLETE_SCAN'
+        } elseif ($researchProcess.State -eq 'TIMED_OUT') {
+          $researchExport = 'RESEARCH_EXPORT_PROCESS_TIMEOUT'
         } else {
           $researchExport = 'BLOCKED_ON_EVIDENCE'
         }
@@ -399,17 +403,20 @@ try {
             $previousErrorActionPreference = $ErrorActionPreference
             $ErrorActionPreference = 'Continue'
             try {
-              & $python -m research.empirical_pipeline --export $latestDataset --output (Join-Path $RepositoryPath 'research_outputs') `
-                --evidence-source LIVE_SHADOW --strategy-branch THETA_CONVENTIONAL `
-                --experiment-id $experimentId --target-version theta-research-targets-v1 `
-                --feature-version ([string]$manifest.featureSetVersion) --cost-model-version theta-cost-model-v1 `
-                --split-definition NO_SPLIT_DESCRIPTIVE_ONLY --source-code-commit $runtime.buildSha `
-                --run-timestamp $runTimestamp *> $null
-              $pipelineExit = $LASTEXITCODE
+              $pipelineProcess = Invoke-ThetaBoundedProcess -Executable $python -TimeoutSeconds 900 -Arguments @(
+                '-m','research.empirical_pipeline','--export',$latestDataset,'--output',(Join-Path $RepositoryPath 'research_outputs'),
+                '--evidence-source','LIVE_SHADOW','--strategy-branch','THETA_CONVENTIONAL',
+                '--experiment-id',$experimentId,'--target-version','theta-research-targets-v1',
+                '--feature-version',([string]$manifest.featureSetVersion),'--cost-model-version','theta-cost-model-v1',
+                '--split-definition','NO_SPLIT_DESCRIPTIVE_ONLY','--source-code-commit',([string]$runtime.buildSha),
+                '--run-timestamp',$runTimestamp)
+              $pipelineExit = if ($pipelineProcess.State -eq 'COMPLETED') { $pipelineProcess.ExitCode } else { -1 }
             } finally { $ErrorActionPreference = $previousErrorActionPreference }
             if ($pipelineExit -eq 0) {
               Set-Content -LiteralPath $researchIdentityFile -Value $researchIdentity -Encoding ascii
               $researchExport = 'EXPORTED_AND_RESEARCHED'
+            } elseif ($pipelineProcess.State -eq 'TIMED_OUT') {
+              $researchExport = 'RESEARCH_PIPELINE_PROCESS_TIMEOUT'
             } else {
               $researchExport = 'RESEARCH_PIPELINE_BLOCKED'
             }
@@ -430,11 +437,15 @@ try {
         $localEvidenceState = 'DEFERRED_MARKET_CRITICAL'
       } elseif ((Test-Path -LiteralPath $latestDataset) -and (Test-Path -LiteralPath $latestManifest)) {
         try {
-          $localEvidenceOutput = & node tools/write-local-durable-evidence.mjs research_exports/latest (Join-Path $stateRoot 'evidence')
-          if ($LASTEXITCODE -eq 0) {
+          $localEvidenceProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 120 -Arguments @(
+            'tools/write-local-durable-evidence.mjs','research_exports/latest',(Join-Path $stateRoot 'evidence'))
+          $localEvidenceOutput = $localEvidenceProcess.Output
+          if ($localEvidenceProcess.State -eq 'COMPLETED' -and $localEvidenceProcess.ExitCode -eq 0) {
             $localEvidenceResult = $localEvidenceOutput | ConvertFrom-Json
             $localEvidenceState = [string]$localEvidenceResult.state
             $localEvidenceHash = [string]$localEvidenceResult.bundleHash
+          } elseif ($localEvidenceProcess.State -eq 'TIMED_OUT') {
+            $localEvidenceState = 'PROCESS_TIMEOUT_NONCRITICAL'
           } else { $localEvidenceState = 'FAILED_NONCRITICAL' }
       } catch { $localEvidenceState = 'FAILED_NONCRITICAL' }
       }
@@ -461,16 +472,20 @@ try {
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-          $storageAuditOutput = & node --import tsx tools/theta-storage-audit.ts "--environment-file=$productionEnvFile" `
-            "--output-root=$(Join-Path $stateRoot 'storage-audits')"
-          $storageAuditExit = $LASTEXITCODE
+          $storageAuditProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 300 -Arguments @(
+            '--import','tsx','tools/theta-storage-audit.ts',"--environment-file=$productionEnvFile",
+            "--output-root=$(Join-Path $stateRoot 'storage-audits')")
+          $storageAuditOutput = $storageAuditProcess.Output
+          $storageAuditExit = if ($storageAuditProcess.State -eq 'COMPLETED') { $storageAuditProcess.ExitCode } else { -1 }
         } finally { $ErrorActionPreference = $previousErrorActionPreference }
         if ($storageAuditExit -eq 0) {
           Set-Content -LiteralPath $storageAuditDateFile -Value $storageAuditDate -Encoding ascii
           Remove-Item -LiteralPath $storageAuditFailureFile -Force -ErrorAction SilentlyContinue
           $storageAuditState = 'CAPTURED'
         } else {
-          $storageErrorCode = 'UNCLASSIFIED_STORAGE_AUDIT_FAILURE'
+          $storageErrorCode = if ($storageAuditProcess.State -eq 'TIMED_OUT') {
+            'STORAGE_AUDIT_PROCESS_TIMEOUT'
+          } else { 'UNCLASSIFIED_STORAGE_AUDIT_FAILURE' }
           try {
             $storageAuditResult = $storageAuditOutput | Select-Object -Last 1 | ConvertFrom-Json
             if ([string]$storageAuditResult.errorCode -match '^[A-Z0-9_]+$') {
@@ -516,13 +531,14 @@ try {
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-          $archiveOutput = & node --import tsx tools/archive-canonical-strategy-frontiers.ts `
-            "--environment-file=$productionEnvFile" "--sqlite=$researchSpoolPath" `
-            "--scheduler=$command5aSchedulerPath" `
-            "--health=$researchArchiveHealthPath" "--parquet-root=$researchParquetRoot" `
-            "--since=$($runtime.installedAt)" "--source-sha=$($runtime.buildSha)" --limit=10000
-          $archiveExit = $LASTEXITCODE
-          if ($archiveExit -eq 0) {
+          $archiveProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 600 -Arguments @(
+            '--import','tsx','tools/archive-canonical-strategy-frontiers.ts',
+            "--environment-file=$productionEnvFile","--sqlite=$researchSpoolPath",
+            "--scheduler=$command5aSchedulerPath","--health=$researchArchiveHealthPath",
+            "--parquet-root=$researchParquetRoot","--since=$($runtime.installedAt)",
+            "--source-sha=$($runtime.buildSha)",'--limit=10000')
+          $archiveOutput = $archiveProcess.Output
+          if ($archiveProcess.State -eq 'COMPLETED' -and $archiveProcess.ExitCode -eq 0) {
             $archiveResult = $archiveOutput | ConvertFrom-Json
             $localResearchArchiveState = [string]$archiveResult.state
             $localResearchArchiveRows = [int]$archiveResult.researchRowCount
@@ -531,38 +547,48 @@ try {
               $localResearchTransferQuotaState = [string]$archiveResult.health.transferQuotaState
               $localResearchArchiveNextRetryAt = [string]$archiveResult.health.nextRetryAt
             }
+          } elseif ($archiveProcess.State -eq 'TIMED_OUT') {
+            $localResearchArchiveState = 'PROCESS_TIMEOUT_NONCRITICAL'
           } else { $localResearchArchiveState = 'FAILED_NONCRITICAL' }
           $compactorPython = Join-Path $RepositoryPath '.venv\Scripts\python.exe'
           if (!(Test-Path -LiteralPath $compactorPython)) { $compactorPython = 'python' }
-          & $compactorPython -c 'import duckdb' *> $null
-          if ($LASTEXITCODE -ne 0 -and $compactorPython -ne 'python') {
+          $duckdbProbe = Invoke-ThetaBoundedProcess -Executable $compactorPython -TimeoutSeconds 30 -Arguments @('-c','import duckdb')
+          if (($duckdbProbe.State -ne 'COMPLETED' -or $duckdbProbe.ExitCode -ne 0) -and $compactorPython -ne 'python') {
             $compactorPython = 'python'
-            & $compactorPython -c 'import duckdb' *> $null
+            $duckdbProbe = Invoke-ThetaBoundedProcess -Executable $compactorPython -TimeoutSeconds 30 -Arguments @('-c','import duckdb')
           }
-          $duckdbAvailable = $LASTEXITCODE -eq 0
+          $duckdbAvailable = $duckdbProbe.State -eq 'COMPLETED' -and $duckdbProbe.ExitCode -eq 0
           if ($duckdbAvailable) {
-            $parquetOutput = & $compactorPython tools/compact-local-research-spool.py `
-              "--sqlite=$researchSpoolPath" "--destination=$researchParquetRoot" --limit=1000
-            $parquetExit = $LASTEXITCODE
-            if ($parquetExit -eq 0) {
+            $parquetProcess = Invoke-ThetaBoundedProcess -Executable $compactorPython -TimeoutSeconds 600 -Arguments @(
+              'tools/compact-local-research-spool.py',"--sqlite=$researchSpoolPath",
+              "--destination=$researchParquetRoot",'--limit=1000')
+            $parquetOutput = $parquetProcess.Output
+            if ($parquetProcess.State -eq 'COMPLETED' -and $parquetProcess.ExitCode -eq 0) {
               $parquetResult = $parquetOutput | ConvertFrom-Json
               $localResearchParquetState = [string]$parquetResult.state
+            } elseif ($parquetProcess.State -eq 'TIMED_OUT') {
+              $localResearchParquetState = 'PROCESS_TIMEOUT_NONCRITICAL'
             } else { $localResearchParquetState = 'FAILED_NONCRITICAL' }
           } else { $localResearchParquetState = 'DEPENDENCY_UNAVAILABLE_NONCRITICAL' }
           $parquetVerification = 'NOT_AVAILABLE'
           if ($duckdbAvailable) {
-            $verificationOutput = & $compactorPython tools/verify-local-research-parquet.py `
-              "--root=$researchParquetRoot" `
-              "--cache=$(Join-Path $stateRoot 'research-spool\parquet-verification-cache.json')"
-            if ($LASTEXITCODE -eq 0) {
+            $verificationProcess = Invoke-ThetaBoundedProcess -Executable $compactorPython -TimeoutSeconds 300 -Arguments @(
+              'tools/verify-local-research-parquet.py',"--root=$researchParquetRoot",
+              "--cache=$(Join-Path $stateRoot 'research-spool\parquet-verification-cache.json')")
+            $verificationOutput = $verificationProcess.Output
+            if ($verificationProcess.State -eq 'COMPLETED' -and $verificationProcess.ExitCode -eq 0) {
               $verificationResult = $verificationOutput | ConvertFrom-Json
               $parquetVerification = [string]$verificationResult.state
+            } elseif ($verificationProcess.State -eq 'TIMED_OUT') {
+              $parquetVerification = 'PROCESS_TIMEOUT'
             } else { $parquetVerification = 'FAILED' }
           }
-          $healthOutput = & node --import tsx tools/archive-canonical-strategy-frontiers.ts `
-            "--sqlite=$researchSpoolPath" "--scheduler=$command5aSchedulerPath" "--health=$researchArchiveHealthPath" `
-            "--parquet-root=$researchParquetRoot" "--duckdb-verification=$parquetVerification" --health-only
-          if ($LASTEXITCODE -eq 0) {
+          $healthProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 60 -Arguments @(
+            '--import','tsx','tools/archive-canonical-strategy-frontiers.ts',"--sqlite=$researchSpoolPath",
+            "--scheduler=$command5aSchedulerPath","--health=$researchArchiveHealthPath",
+            "--parquet-root=$researchParquetRoot","--duckdb-verification=$parquetVerification",'--health-only')
+          $healthOutput = $healthProcess.Output
+          if ($healthProcess.State -eq 'COMPLETED' -and $healthProcess.ExitCode -eq 0) {
             $healthResult = $healthOutput | ConvertFrom-Json
             $localResearchSpoolRows = [int]$healthResult.health.spoolRows
             $localResearchPendingCompactionRows = [int]$healthResult.health.pendingCompactionRows
@@ -594,11 +620,15 @@ try {
           researchExport=$researchExport;scopes=@{BROKER=$brokerReport;LIFECYCLE=$lifecycleReport;
             MANAGEMENT=$managementReport;OBSERVATION=$observationReport;EVIDENCE=$report} } |
           ConvertTo-Json -Depth 12 -Compress
-        $receiptOutput = $receiptInput | & node tools/write-local-runtime-receipt.mjs (Join-Path $stateRoot 'receipts')
-        if ($LASTEXITCODE -eq 0) {
+        $receiptProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 30 -Arguments @(
+          'tools/write-local-runtime-receipt.mjs',(Join-Path $stateRoot 'receipts')) -StandardInputText $receiptInput
+        $receiptOutput = $receiptProcess.Output
+        if ($receiptProcess.State -eq 'COMPLETED' -and $receiptProcess.ExitCode -eq 0) {
           $receiptResult = $receiptOutput | ConvertFrom-Json
           $localReceiptState = [string]$receiptResult.state
           $localReceiptHash = [string]$receiptResult.receiptHash
+        } elseif ($receiptProcess.State -eq 'TIMED_OUT') {
+          $localReceiptState = 'PROCESS_TIMEOUT'
         } else { $localReceiptState = 'FAILED' }
       } catch { $localReceiptState = 'FAILED' }
       @{state='ONLINE';lastCycle=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
@@ -675,7 +705,8 @@ try {
           $previousErrorActionPreference = $ErrorActionPreference
           $ErrorActionPreference = 'Continue'
           try {
-            & node --import tsx tools/theta-no-submit-probe.ts "--environment-file=$productionEnvFile" *> $null
+            [void](Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 180 -Arguments @(
+              '--import','tsx','tools/theta-no-submit-probe.ts',"--environment-file=$productionEnvFile"))
           } finally {
             $ErrorActionPreference = $previousErrorActionPreference
           }
@@ -707,7 +738,9 @@ try {
           marketSessionDate=$failureMarketSessionDate; buildSha=$runtime.buildSha; mode='MASTER_THETA_PAPER';
           workerId=$runtime.workerId; failureCode=$failureCode; failedOperation=$currentOperation;
           marketOpen=$null } | ConvertTo-Json -Compress
-        $failureReceiptInput | & node tools/write-local-runtime-receipt.mjs --failure (Join-Path $stateRoot 'receipts') *> $null
+        [void](Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 30 -Arguments @(
+          'tools/write-local-runtime-receipt.mjs','--failure',(Join-Path $stateRoot 'receipts')) `
+          -StandardInputText $failureReceiptInput)
       } catch { }
     }
     if (Test-Path -LiteralPath $stopFile) { break }

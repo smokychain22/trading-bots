@@ -33,6 +33,28 @@ exit 7
     throw 'THETA_BOUNDED_PROCESS_EXPOSED_STDERR'
   }
 
+  $stdinScript = Join-Path $root 'stdin.ps1'
+  [IO.File]::WriteAllText($stdinScript, "[Console]::In.ReadToEnd() | Write-Output`n", [Text.UTF8Encoding]::new($false))
+  $stdin = Invoke-ThetaBoundedProcess -Executable $pwsh `
+    -Arguments @('-NoProfile','-File',$stdinScript) -TimeoutSeconds 10 -WorkingDirectory $root `
+    -StandardInputText 'bounded-stdin'
+  if ($stdin.State -ne 'COMPLETED' -or $stdin.ExitCode -ne 0 -or
+      $stdin.Output.Count -ne 1 -or $stdin.Output[0] -ne 'bounded-stdin') {
+    throw 'THETA_BOUNDED_PROCESS_STDIN_RESULT_INVALID'
+  }
+
+  $blockedStdinScript = Join-Path $root 'blocked-stdin.ps1'
+  [IO.File]::WriteAllText($blockedStdinScript, "Start-Sleep -Seconds 30`n", [Text.UTF8Encoding]::new($false))
+  $stdinTimer = [Diagnostics.Stopwatch]::StartNew()
+  $blockedStdin = Invoke-ThetaBoundedProcess -Executable $pwsh `
+    -Arguments @('-NoProfile','-File',$blockedStdinScript) -TimeoutSeconds 1 -WorkingDirectory $root `
+    -StandardInputText ('x' * 1048576)
+  $stdinTimer.Stop()
+  if ($blockedStdin.State -ne 'TIMED_OUT' -or $blockedStdin.ExitCode -ne -1) {
+    throw 'THETA_BOUNDED_PROCESS_BLOCKED_STDIN_TIMEOUT_INVALID'
+  }
+  if ($stdinTimer.Elapsed.TotalSeconds -gt 10) { throw 'THETA_BOUNDED_PROCESS_BLOCKED_STDIN_EXIT_TOO_SLOW' }
+
   $timeoutScript = Join-Path $root 'timeout.ps1'
   [IO.File]::WriteAllText($timeoutScript, "Start-Sleep -Seconds 30`n", [Text.UTF8Encoding]::new($false))
   $timer = [Diagnostics.Stopwatch]::StartNew()
