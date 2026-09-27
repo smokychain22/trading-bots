@@ -83,6 +83,13 @@ export async function runCommand5aLocalObservationWorker(input: {
   readonly asOf: string;
   readonly claimTtlSeconds: number;
   readonly limit?: number;
+  /**
+   * Session-close targets become due exactly when the exchange clock closes.
+   * When enabled, the source may fetch Alpaca's latest mark after close. Its
+   * ordinary quote-age checks still decide whether that mark is factual and
+   * fresh enough. Unknown market state remains deferred.
+   */
+  readonly allowClosedSessionLatestMark?: boolean;
 }): Promise<Command5aObservationWorkerReport> {
   if (input.source.brokerAuthority !== false) throw new Error('COMMAND5A_OBSERVATION_SOURCE_AUTHORITY_INVALID');
   const claimed = input.scheduler.claimDue({
@@ -106,7 +113,8 @@ export async function runCommand5aLocalObservationWorker(input: {
   } catch {
     market = { providerAvailable: false, marketSessionOpen: null };
   }
-  const dueState = classifyObservationDeferral(market);
+  const dueState = classifyObservationDeferral({ ...market,
+    allowClosedSessionLatestMark: input.allowClosedSessionLatestMark });
   if (dueState !== 'DUE') {
     const reason = dueState === 'DEFERRED_PROVIDER' ? 'MARKET_PROVIDER_UNAVAILABLE' : 'MARKET_SESSION_NOT_OPEN';
     for (const job of claimed) {

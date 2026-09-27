@@ -167,9 +167,7 @@ try {
       $command5aParquetRoot = 'C:\ProjectBackups\trading-bots\research-archives'
       $command5aScheduleState = 'NOT_ATTEMPTED'
       $command5aScheduleErrorCode = $null
-      $command5aObservationState = if ($report.reconciliation.marketOpen -eq $true) {
-        'NOT_ATTEMPTED'
-      } else { 'DEFERRED_MARKET_CLOSED' }
+      $command5aObservationState = 'NOT_ATTEMPTED'
       $command5aObservationErrorCode = $null
       $command5aMaturationState = 'NOT_ATTEMPTED'
       $command5aMaturationErrorCode = $null
@@ -221,22 +219,24 @@ try {
             catch { $command5aScheduleErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
           }
         }
-        if ($report.reconciliation.marketOpen -eq $true) {
-          $command5aObservationOutput = & node --import tsx tools/theta-command5a-runtime.ts `
-            --mode=observe "--environment-file=$productionEnvFile" `
-            "--scheduler=$command5aSchedulerPath" "--spool=$command5aSpoolPath" 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            $command5aObservationResult = $command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json
-            $command5aObservationState = [string]$command5aObservationResult.state
-            $command5aObserved = [int]$command5aObservationResult.observed
-            $command5aMissed = [int]$command5aObservationResult.missed
-            $command5aDeferredProvider = [int]$command5aObservationResult.deferredProvider
-            $command5aDeferredMarket = [int]$command5aObservationResult.deferredMarket
-          } else {
-            $command5aObservationState = 'FAILED_NONCRITICAL'
-            try { $command5aObservationErrorCode = [string](($command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
-            catch { $command5aObservationErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
-          }
+        # Session-close jobs become due when the exchange clock turns closed.
+        # Run the bounded worker whenever jobs are due. The read-only source
+        # accepts only fresh latest marks after close and types stale/missing
+        # marks explicitly, so this cannot fabricate an in-session observation.
+        $command5aObservationOutput = & node --import tsx tools/theta-command5a-runtime.ts `
+          --mode=observe "--environment-file=$productionEnvFile" `
+          "--scheduler=$command5aSchedulerPath" "--spool=$command5aSpoolPath" 2>$null
+        if ($LASTEXITCODE -eq 0) {
+          $command5aObservationResult = $command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json
+          $command5aObservationState = [string]$command5aObservationResult.state
+          $command5aObserved = [int]$command5aObservationResult.observed
+          $command5aMissed = [int]$command5aObservationResult.missed
+          $command5aDeferredProvider = [int]$command5aObservationResult.deferredProvider
+          $command5aDeferredMarket = [int]$command5aObservationResult.deferredMarket
+        } else {
+          $command5aObservationState = 'FAILED_NONCRITICAL'
+          try { $command5aObservationErrorCode = [string](($command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
+          catch { $command5aObservationErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
         }
         # Maturation is local and provider-free. It may run while the market
         # is closed and only consumes already verified observation archives.

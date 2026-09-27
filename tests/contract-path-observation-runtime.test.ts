@@ -60,4 +60,8 @@ test('provider and market deferrals remain typed and never become WAIT', () => {
   assert.equal(classifyObservationDeferral({ providerAvailable: true, marketSessionOpen: false }), 'DEFERRED_MARKET');
   assert.equal(classifyObservationDeferral({ providerAvailable: true, marketSessionOpen: null }), 'DEFERRED_MARKET');
   assert.equal(classifyObservationDeferral({ providerAvailable: true, marketSessionOpen: true }), 'DUE');
+  assert.equal(classifyObservationDeferral({ providerAvailable: true, marketSessionOpen: false,
+    allowClosedSessionLatestMark: true }), 'DUE');
+  assert.equal(classifyObservationDeferral({ providerAvailable: true, marketSessionOpen: null,
+    allowClosedSessionLatestMark: true }), 'DEFERRED_MARKET');
 });

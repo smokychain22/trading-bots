@@ -160,8 +160,10 @@ export function buildContractPathObservationReceipt(input: {
 export function classifyObservationDeferral(input: {
   readonly providerAvailable: boolean;
   readonly marketSessionOpen: boolean | null;
+  readonly allowClosedSessionLatestMark?: boolean;
 }): 'DUE' | 'DEFERRED_PROVIDER' | 'DEFERRED_MARKET' {
   if (!input.providerAvailable) return 'DEFERRED_PROVIDER';
-  if (input.marketSessionOpen !== true) return 'DEFERRED_MARKET';
+  if (input.marketSessionOpen === null) return 'DEFERRED_MARKET';
+  if (!input.marketSessionOpen && input.allowClosedSessionLatestMark !== true) return 'DEFERRED_MARKET';
   return 'DUE';
 }

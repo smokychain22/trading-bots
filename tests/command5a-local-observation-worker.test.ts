@@ -95,6 +95,26 @@ test('real market observation archives before OBSERVED resolution and remains mu
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('fresh latest evidence resolves a session-close job immediately after the market closes', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-command5a-worker-'));
+  try {
+    const { scheduler, job } = setup(root);
+    const source: Command5aReadOnlyObservationSource = {
+      ...readySource(),
+      async marketState() { return { providerAvailable: true, marketSessionOpen: false }; },
+    };
+    const report = await runCommand5aLocalObservationWorker({ scheduler, source,
+      spoolPath: join(root, 'research.sqlite'), claimedBy: 'observer-post-close',
+      asOf: '2026-09-25T14:45:00Z', claimTtlSeconds: 30,
+      allowClosedSessionLatestMark: true });
+    assert.equal(report.observed, 1);
+    assert.equal(report.deferredMarket, 0);
+    assert.equal(report.brokerMutations, 0);
+    assert.equal(scheduler.get(job.observationJobId).state, 'OBSERVED');
+    scheduler.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('provider outage remains a typed deferral and cannot look like a missed market path', async () => {
   const root = mkdtempSync(join(tmpdir(), 'theta-command5a-worker-'));
   try {
