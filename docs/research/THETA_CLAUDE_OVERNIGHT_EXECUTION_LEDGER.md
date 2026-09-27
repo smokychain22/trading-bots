@@ -264,3 +264,131 @@ data-availability finding.
 No TypeScript/JavaScript file touched this session; `tsc`/`eslint` were
 verified clean once at session start (no reason to re-run per-package
 since no TS file changed).
+
+## WP100 — Final ledger reconciliation
+
+Every WP number below has **exactly one** current state, drawn only from
+the seven states V4 section 39 specifies:
+`COMPLETE_SOURCE` / `RECONCILED_EXISTING` / `BLOCKED_DATA` / `BLOCKED_CODEX`
+/ `BLOCKED_FUTURE_TIME` / `NOT_APPLICABLE` / `EMPIRICAL_INSUFFICIENT_SAMPLE`.
+This table is the authoritative final state; the detailed rows earlier in
+this document are the evidence trail behind each one and are not
+separately authoritative where they used an earlier, superseded
+vocabulary (`SOURCE_IMPLEMENTED`, `REAL_DATA_PRODUCER`, etc. — those terms
+remain accurate *description*, but the state that counts for graduation
+purposes is the one here). `COMPLETE_SOURCE` means real, tested source
+code exists and is complete for its stated scope — it is **not** a claim
+of empirical/statistical validation; every WP that attempted real
+empirical validation and came up short on sample is marked
+`EMPIRICAL_INSUFFICIENT_SAMPLE` explicitly, never folded into
+`COMPLETE_SOURCE`.
+
+| WP | Final state |
+|---|---|
+| 01 | COMPLETE_SOURCE |
+| 02 | COMPLETE_SOURCE |
+| 03 | COMPLETE_SOURCE |
+| 04 | COMPLETE_SOURCE |
+| 05 | COMPLETE_SOURCE (RESEARCH_BASELINE classification permanently attached — never production-decisive without a separate promotion decision) |
+| 06 | COMPLETE_SOURCE |
+| 07 | COMPLETE_SOURCE |
+| 08 | COMPLETE_SOURCE |
+| 09 | COMPLETE_SOURCE |
+| 10 | COMPLETE_SOURCE |
+| 11 | COMPLETE_SOURCE |
+| 12 | COMPLETE_SOURCE |
+| 13 | BLOCKED_DATA (no authorized sector/GICS provider exists) |
+| 14 | COMPLETE_SOURCE |
+| 15 | COMPLETE_SOURCE |
+| 16 | COMPLETE_SOURCE |
+| 17 | BLOCKED_DATA (no authorized fundamental-quality provider exists) |
+| 18 | COMPLETE_SOURCE |
+| 19 | COMPLETE_SOURCE |
+| 20 | COMPLETE_SOURCE |
+| 21 | COMPLETE_SOURCE |
+| 22 | COMPLETE_SOURCE |
+| 23 | COMPLETE_SOURCE |
+| 24 | COMPLETE_SOURCE (Sep24 loader real and complete; the missing Sep16/18/21 sub-finding is carried under WP25/26 below, not duplicated here) |
+| 25 | EMPIRICAL_INSUFFICIENT_SAMPLE (a real, deduplicated 7550-candidate population exists — this is not `BLOCKED_DATA` absence — but 0% selection rate and 100% identical rejection reason leave no outcome variance to measure filter sensitivity against) |
+| 26 | BLOCKED_DATA (feature ablation requires a resolved outcome label; none exists anywhere in the recovered archive) |
+| 27 | COMPLETE_SOURCE |
+| 28 | COMPLETE_SOURCE |
+| 29-31 | RECONCILED_EXISTING |
+| 32 | COMPLETE_SOURCE |
+| 33-34 | RECONCILED_EXISTING (folded into the WP29-31 reconciliation: A/C economics) |
+| 35 | COMPLETE_SOURCE |
+| 36 | COMPLETE_SOURCE |
+| 37 | EMPIRICAL_INSUFFICIENT_SAMPLE (label-fitted baseline is real and tested; 0 real `BROKER_ACTUAL` fill labels exist anywhere in this repo) |
+| 38 | COMPLETE_SOURCE |
+| 39 | COMPLETE_SOURCE |
+| 40 | COMPLETE_SOURCE |
+| 41-46 | RECONCILED_EXISTING |
+| 47 | RECONCILED_EXISTING |
+| 48 | COMPLETE_SOURCE |
+| 49 | COMPLETE_SOURCE |
+| 50 | COMPLETE_SOURCE (schema-honest: fill outcome fields are structurally `UNKNOWN`, not a partial implementation) |
+| 51 | RECONCILED_EXISTING |
+| 52 | COMPLETE_SOURCE |
+| 53 | RECONCILED_EXISTING |
+| 54 | COMPLETE_SOURCE |
+| 55 | RECONCILED_EXISTING |
+| 56 | COMPLETE_SOURCE |
+| 57 | COMPLETE_SOURCE |
+| 58 | RECONCILED_EXISTING |
+| 59 | COMPLETE_SOURCE (the classification engine and every mechanic are complete; `B1`/`B2`/`BH-1`'s own internal state is `BLOCKED_MISSING_POLICY` and every mechanic-implemented ID's real-data state is `RUNNER_IMPLEMENTED_DATA_UNAVAILABLE` — both are sub-details carried in the WP59 narrative row above, not separate top-level WPs) |
+| 60 | RECONCILED_EXISTING |
+| 61 | RECONCILED_EXISTING |
+| 62 | RECONCILED_EXISTING |
+| 63 | COMPLETE_SOURCE |
+| 64 | COMPLETE_SOURCE |
+| 65 | COMPLETE_SOURCE |
+| 66 | COMPLETE_SOURCE |
+| 67 | COMPLETE_SOURCE |
+| 68 | COMPLETE_SOURCE |
+| 69 | COMPLETE_SOURCE |
+| 70 | COMPLETE_SOURCE |
+| 71 | COMPLETE_SOURCE |
+| 72 | COMPLETE_SOURCE |
+| 73 | COMPLETE_SOURCE |
+| 74 | COMPLETE_SOURCE |
+| 75 | COMPLETE_SOURCE |
+| 76 | COMPLETE_SOURCE |
+| 77 | COMPLETE_SOURCE |
+| 78 | COMPLETE_SOURCE |
+| 79 | RECONCILED_EXISTING (plus one new property test) |
+| 80 | RECONCILED_EXISTING |
+| 81 | COMPLETE_SOURCE |
+| 82 | COMPLETE_SOURCE |
+| 83 | COMPLETE_SOURCE |
+| 84 | COMPLETE_SOURCE |
+| 85 | COMPLETE_SOURCE |
+| 86 | COMPLETE_SOURCE |
+| 87 | EMPIRICAL_INSUFFICIENT_SAMPLE (the maximum honest campaign against the full deduplicated real archive: 0 selected candidates, 0 outcomes anywhere — a real, negative empirical result, not an infrastructure gap) |
+| 88 | COMPLETE_SOURCE |
+| 89 | COMPLETE_SOURCE |
+| 90 | COMPLETE_SOURCE |
+| 91 | COMPLETE_SOURCE |
+| 92 | COMPLETE_SOURCE |
+| 93 | COMPLETE_SOURCE |
+| 94 | COMPLETE_SOURCE |
+| 95 | COMPLETE_SOURCE |
+| 96 | COMPLETE_SOURCE (2 real defects found and fixed as part of completing this WP) |
+| 97 | COMPLETE_SOURCE (1 real duplicate found and fixed as part of completing this WP) |
+| 98 | COMPLETE_SOURCE (verification found nothing to fix; the one `NotImplementedError` found is a deliberate, documented, pre-existing scope boundary, not touched) |
+| 99 | COMPLETE_SOURCE (full gate passed: 1224 passed / 11 subtests / 0 fail; 0 TS files touched; no secrets found) |
+| 100 | COMPLETE_SOURCE (this reconciliation itself) |
+
+**Cross-cutting finding not owned by a single WP number**: the real
+archived exports' declared `datasetHash` cannot be reproduced from their
+own content via the documented Production hashing formula (found during
+the historical-bridge work preceding WP67). This is `BLOCKED_CODEX` —
+resolving it requires Codex/owner input into why the archived files and
+the documented formula disagree — and is tracked there, not attached to
+any single WP number above.
+
+No `BLOCKED_FUTURE_TIME` state applies to any WP above: every genuine
+future-dependency (real fills, real Paper trading, real assignment
+events) is already correctly represented as either `BLOCKED_DATA` (WP26,
+WP37) or `EMPIRICAL_INSUFFICIENT_SAMPLE` (WP25, WP87), since the
+blocking condition is "this data has never existed in this repo," not "a
+specific future date has not yet arrived."
