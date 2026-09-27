@@ -4,14 +4,14 @@
  * when they contain superseded statements.
  */
 export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v1' as const;
-// Reviewed source baseline for the 2026-09-24 database-resilient no-submit
+// Reviewed source baseline for the 2026-09-27 database-resilient no-submit
 // closure. Later commits may update receipts or this inventory itself without
 // invalidating the reviewed decision-source set. The runtime tool still diffs
 // every capability source file and reports any subsequent source change.
-export const truthSourceBaselineSha = '91b345c038849a482621ac1beb7ecb59d2dc8e5d';
+export const truthSourceBaselineSha = '98103c8243be84be1f1d866f1e546bc7df5a1c22';
 // A worker SHA is operational state. Read it from the current worker lease,
 // never from this source-controlled architectural inventory.
-export const truthLastVerifiedAt = '2026-09-24';
+export const truthLastVerifiedAt = '2026-09-27';
 
 export type TruthProof = 'YES' | 'NO' | 'UNVERIFIED' | 'NOT_APPLICABLE';
 export type TruthDisposition =
@@ -178,7 +178,7 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
     persisted: 'YES', runtimeReachable: 'YES', paperAuthorized: 'NOT_APPLICABLE',
     sourceFiles: ['src/theta/first-paper-blocker-budget.ts', 'src/theta/runtime-behavior-diagnostic.ts',
       'src/execution/master-paper-plan-assembly.ts', 'src/theta/no-submit-probe-guard.ts', 'src/customer/api.ts'],
-    currentBlocker: 'Audit coverage and SPY approval are complete. A current-release natural open-session no-submit proof remains required.',
+    currentBlocker: 'Audit coverage and SPY approval are complete. The governed schema-067 checkpoint is externally blocked by Aiven transfer quota, so the current worker remains stopped. After checkpoint and locked cutover, a current-release natural open-session no-submit proof remains required.',
     safeCurrentBehavior: 'The immutable runtime diagnostic now persists typed SPY event, quote-refresh, AEGIS, sizing, decision, plan and mutation-free pre-submit evidence. The operator derives each dynamic check from that evidence and leaves any stage not naturally reached UNKNOWN.',
     closureTest: 'Clear every independent runtime release check and observe a natural current-release locked no-submit session before any Paper unlock.',
     disposition: 'TRUE_HARD_BLOCKER' }),

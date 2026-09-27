@@ -42,3 +42,10 @@ test('superseded research claims do not become current authority', () => {
   const optionomics = canonicalSystemCapabilities.find((item) => item.capabilityId === 'OPTIONOMICS_RESEARCH_DATA');
   assert.ok(optionomics?.supersededClaims.some((claim) => claim.includes('executable-price authority')));
 });
+
+test('first Paper truth names the governed database checkpoint before runtime proof', () => {
+  const readiness = canonicalSystemCapabilities.find((item) => item.capabilityId === 'FIRST_PAPER_READINESS');
+  assert.match(readiness?.currentBlocker ?? '', /schema-067 checkpoint/i);
+  assert.match(readiness?.currentBlocker ?? '', /Aiven transfer quota/i);
+  assert.equal(readiness?.disposition, 'TRUE_HARD_BLOCKER');
+});
