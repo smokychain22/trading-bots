@@ -82,11 +82,12 @@ try {
       $insideBackupRoot = $previousKnownGoodPath.StartsWith(
         ($expectedBackupRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar),
         [StringComparison]::OrdinalIgnoreCase)
-      $previousKnownGoodBackupPreserved = $previousKnownGoodBackupId -ne ''
-        -and $insideBackupRoot
-        -and (Test-Path -LiteralPath $previousKnownGoodPath -PathType Container)
-        -and (Test-Path -LiteralPath (Join-Path $previousKnownGoodPath 'backup-manifest.json') -PathType Leaf)
-        -and (Test-Path -LiteralPath (Join-Path $previousKnownGoodPath 'restore-verification.json') -PathType Leaf)
+      $previousKnownGoodBackupPreserved = (
+        $insideBackupRoot -and
+        (Test-ThetaVerifiedBackupDirectory -BackupDirectory $previousKnownGoodPath `
+          -ExpectedBackupId $previousKnownGoodBackupId `
+          -ExpectedArchiveSha256 ([string]$latestPointer.archiveSha256))
+      )
     } catch { $previousKnownGoodBackupPreserved = $false }
   }
   $failure = [ordered]@{state='MIGRATION_CHECKPOINT_FAILED';failedAt=(Get-Date).ToUniversalTime().ToString('o');

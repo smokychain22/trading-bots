@@ -348,6 +348,41 @@ function Get-ThetaStringSha256 {
     [Text.Encoding]::UTF8.GetBytes($Value))).ToLowerInvariant()
 }
 
+function Test-ThetaVerifiedBackupDirectory {
+  param(
+    [Parameter(Mandatory)][string]$BackupDirectory,
+    [Parameter(Mandatory)][string]$ExpectedBackupId,
+    [Parameter(Mandatory)][string]$ExpectedArchiveSha256
+  )
+  if ($ExpectedBackupId -notmatch '^\d{4}-\d{2}-\d{2}_\d{6}-[0-9a-f]{8}$' -or
+      $ExpectedArchiveSha256 -notmatch '^[0-9a-f]{64}$' -or
+      -not (Test-Path -LiteralPath $BackupDirectory -PathType Container)) { return $false }
+  try {
+    $manifestPath = Join-Path $BackupDirectory 'backup-manifest.json'
+    $verificationPath = Join-Path $BackupDirectory 'verification.json'
+    $restorePath = Join-Path $BackupDirectory 'restore-verification.json'
+    $archivePath = Join-Path $BackupDirectory 'database.backup'
+    foreach ($path in @($manifestPath,$verificationPath,$restorePath,$archivePath)) {
+      if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
+    }
+    $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+    $verification = Get-Content -Raw -LiteralPath $verificationPath | ConvertFrom-Json
+    $restore = Get-Content -Raw -LiteralPath $restorePath | ConvertFrom-Json
+    return (
+      [string]$manifest.state -eq 'COMPLETE' -and
+      [string]$manifest.backupId -eq $ExpectedBackupId -and
+      [string]$verification.state -eq 'VERIFIED' -and
+      [string]$verification.backupId -eq $ExpectedBackupId -and
+      [string]$verification.archiveSha256 -eq $ExpectedArchiveSha256 -and
+      [string]$restore.state -eq 'REAL_LOCAL_RESTORE_VERIFIED' -and
+      [string]$restore.backupId -eq $ExpectedBackupId -and
+      [string]$restore.structureParity -eq 'PASS' -and
+      [string]$restore.dataRowcountParity -eq 'PASS' -and
+      [string]$restore.criticalDataVerification -eq 'PASS'
+    )
+  } catch { return $false }
+}
+
 function Get-ThetaStructure {
   param([Parameter(Mandatory)][object]$Connection)
   $sql = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'ThetaStructure.sql')

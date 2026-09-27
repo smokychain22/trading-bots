@@ -91,4 +91,34 @@ try {
   Remove-Item -LiteralPath $lockRoot -Recurse -Force
 }
 
+$verifiedRoot = Join-Path ([IO.Path]::GetTempPath()) ('theta-verified-backup-test-' + [guid]::NewGuid().ToString('N'))
+$verifiedId = '2026-09-27_120000-abcdef12'
+$verifiedSha = 'a' * 64
+[void](New-Item -ItemType Directory -Path $verifiedRoot)
+try {
+  [IO.File]::WriteAllBytes((Join-Path $verifiedRoot 'database.backup'), [byte[]](1,2,3))
+  Write-ThetaJson (Join-Path $verifiedRoot 'backup-manifest.json') ([ordered]@{state='COMPLETE';backupId=$verifiedId})
+  Write-ThetaJson (Join-Path $verifiedRoot 'verification.json') ([ordered]@{
+    state='VERIFIED';backupId=$verifiedId;archiveSha256=$verifiedSha
+  })
+  Write-ThetaJson (Join-Path $verifiedRoot 'restore-verification.json') ([ordered]@{
+    state='REAL_LOCAL_RESTORE_VERIFIED';backupId=$verifiedId;structureParity='PASS';
+    dataRowcountParity='PASS';criticalDataVerification='PASS'
+  })
+  if (-not (Test-ThetaVerifiedBackupDirectory -BackupDirectory $verifiedRoot `
+      -ExpectedBackupId $verifiedId -ExpectedArchiveSha256 $verifiedSha)) {
+    throw 'VERIFIED_BACKUP_DIRECTORY_NOT_RECOGNIZED'
+  }
+  Write-ThetaJson (Join-Path $verifiedRoot 'restore-verification.json') ([ordered]@{
+    state='REAL_LOCAL_RESTORE_VERIFIED';backupId=$verifiedId;structureParity='FAIL';
+    dataRowcountParity='PASS';criticalDataVerification='PASS'
+  })
+  if (Test-ThetaVerifiedBackupDirectory -BackupDirectory $verifiedRoot `
+      -ExpectedBackupId $verifiedId -ExpectedArchiveSha256 $verifiedSha) {
+    throw 'FAILED_RESTORE_PARITY_RECOGNIZED_AS_VERIFIED_BACKUP'
+  }
+} finally {
+  Remove-Item -LiteralPath $verifiedRoot -Recurse -Force
+}
+
 Write-Output 'THETA_BACKUP_READONLY_GUARD_TEST=PASS'
