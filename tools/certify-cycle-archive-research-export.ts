@@ -29,10 +29,19 @@ if (!Number.isInteger(maxPasses) || maxPasses < 1 || maxPasses > 1_000) {
 }
 
 const python = existsSync('.venv\\Scripts\\python.exe') ? '.venv\\Scripts\\python.exe' : 'python';
-const runJson = (command: string, args: readonly string[]): Record<string, unknown> => {
-  const result = spawnSync(command, [...args], { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
+const runJson = (stage: string, command: string, args: readonly string[], timeoutMs = 600_000): Record<string, unknown> => {
+  if (!/^[A-Z0-9_]+$/.test(stage)) throw new Error('ARCHIVE_CERTIFICATION_CHILD_STAGE_INVALID');
+  const result = spawnSync(command, [...args], {
+    encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, timeout: timeoutMs, windowsHide: true,
+  });
   const output = result.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1) ?? '';
-  if (result.status !== 0) throw new Error(`ARCHIVE_CERTIFICATION_CHILD_FAILED:${result.stderr.trim()}`);
+  if (result.error?.code === 'ETIMEDOUT' || result.signal !== null) {
+    throw new Error(`ARCHIVE_CERTIFICATION_CHILD_TIMEOUT:${stage}`);
+  }
+  if (result.error !== undefined) throw new Error(`ARCHIVE_CERTIFICATION_CHILD_START_FAILED:${stage}`);
+  if (result.status !== 0) {
+    throw new Error(`ARCHIVE_CERTIFICATION_CHILD_FAILED:${stage}:exit=${result.status ?? 'UNKNOWN'}`);
+  }
   try { return JSON.parse(output) as Record<string, unknown>; }
   catch { throw new Error('ARCHIVE_CERTIFICATION_CHILD_OUTPUT_INVALID'); }
 };
@@ -60,7 +69,7 @@ if (!sqliteVerification.valid) throw new Error('ARCHIVE_CERTIFICATION_SQLITE_HAS
 
 const compactions: Record<string, unknown>[] = [];
 for (let pass = 0; pass < maxPasses; pass += 1) {
-  const receipt = runJson(python, ['tools/compact-local-research-spool.py', '--sqlite', spoolPath,
+  const receipt = runJson('PARQUET_COMPACTION', python, ['tools/compact-local-research-spool.py', '--sqlite', spoolPath,
     '--destination', parquetRoot, '--limit', String(limit)]);
   compactions.push(receipt);
   if (receipt.state === 'NO_PENDING_BATCHES' || Number(receipt.backlogEnd) === 0) break;
@@ -72,7 +81,7 @@ afterCompactionSpool.close();
 if (!finalSqliteVerification.valid || afterCompaction.pendingParquetBatchCount !== 0) {
   throw new Error('ARCHIVE_CERTIFICATION_COMPACTION_INCOMPLETE');
 }
-const parquetVerification = runJson(python, ['tools/verify-local-research-parquet.py',
+const parquetVerification = runJson('PARQUET_VERIFICATION', python, ['tools/verify-local-research-parquet.py',
   '--root', parquetRoot, '--cache', verificationCache]);
 if (parquetVerification.state !== 'PASS') throw new Error('ARCHIVE_CERTIFICATION_PARQUET_VERIFY_FAILED');
 

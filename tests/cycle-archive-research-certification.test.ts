@@ -10,6 +10,9 @@ test('archive certification keeps canonical authority separate and requires comp
   assert.match(source, /pendingParquetBatchCount !== 0/);
   assert.match(source, /sqliteHashVerification/);
   assert.match(source, /parquetVerification/);
+  assert.match(source, /timeout: timeoutMs/);
+  assert.match(source, /ARCHIVE_CERTIFICATION_CHILD_TIMEOUT/);
+  assert.doesNotMatch(source, /result\.stderr/);
   assert.match(source, /brokerAuthority: false/);
   assert.doesNotMatch(source, /submitOrder|createOrder|cancelOrder/);
 });
