@@ -50,6 +50,28 @@ test('incomplete calendar stays explicitly unscheduled instead of inventing a da
   assert.equal(result.find((job) => job.horizonCode === 'PRIMARY_COMMON_HORIZON')?.targetAt, null);
 });
 
+test('intraday horizons outside the decision session stay explicitly unscheduled', () => {
+  const result = buildStrategyLearningObservationSchedule({ ...input,
+    decisionAt: '2026-11-27T17:50:00Z' });
+  const fifteenMinutes = result.find((job) => job.horizonCode === '15M');
+  const oneHour = result.find((job) => job.horizonCode === '1H');
+  assert.equal(fifteenMinutes?.targetState, 'UNSCHEDULED_INTRADAY_TARGET_OUTSIDE_SESSION');
+  assert.equal(fifteenMinutes?.targetAt, null);
+  assert.equal(fifteenMinutes?.targetSessionDate, '2026-11-27');
+  assert.equal(oneHour?.targetState, 'UNSCHEDULED_INTRADAY_TARGET_OUTSIDE_SESSION');
+  assert.equal(oneHour?.targetAt, null);
+});
+
+test('a decision outside the exchange session cannot manufacture intraday targets', () => {
+  const result = buildStrategyLearningObservationSchedule({ ...input,
+    decisionAt: '2026-11-27T13:00:00Z',
+    policy: { ...input.policy, primaryCommonHorizon: '15M' } });
+  assert.equal(result.find((job) => job.horizonCode === '15M')?.targetState,
+    'UNSCHEDULED_INTRADAY_TARGET_OUTSIDE_SESSION');
+  assert.equal(result.find((job) => job.horizonCode === 'PRIMARY_COMMON_HORIZON')?.targetState,
+    'UNSCHEDULED_INTRADAY_TARGET_OUTSIDE_SESSION');
+});
+
 test('same logical schedule is restart deterministic and has no broker authority', () => {
   const first = buildStrategyLearningObservationSchedule(input);
   const second = buildStrategyLearningObservationSchedule(input);
