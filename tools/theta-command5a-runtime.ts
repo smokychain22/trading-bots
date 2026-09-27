@@ -1,0 +1,166 @@
+import { hostname } from 'node:os';
+import { loadEnvironmentFile } from '../src/config/environment.js';
+import { AlpacaCommand5aObservationSource } from '../src/research/alpaca-command5a-observation-source.js';
+import { alpacaCalendarToLearningSessions } from '../src/research/alpaca-learning-calendar.js';
+import { runCommand5aLocalObservationWorker } from '../src/research/command5a-local-observation-worker.js';
+import { scheduleCommand5aFromCanonicalFrontier } from '../src/research/command5a-local-scheduling.js';
+import { selectSeriousResearchSubjects } from '../src/research/serious-subject-policy.js';
+import { LocalObservationJobScheduler } from '../src/storage/local-observation-job-scheduler.js';
+import type { CanonicalStrategyFrontier } from '../src/theta/canonical-strategy-frontier.js';
+import { decodeCycleEvidenceArchive } from '../src/theta/postgres-cycle-evidence-storage.js';
+import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
+import { fetchMarketCalendar } from '../src/theta/alpaca-provider.js';
+
+type FrontierRow = {
+  frontier_id: string;
+  fusion_snapshot_id: string;
+  frontier_json: unknown;
+  evidence_archive_gzip: Buffer | null;
+  snapshot_content_hash: string;
+  decision_id: string | null;
+  receipt_json: unknown;
+  risk_limit_version_id: string;
+  cost_model_version_id: string;
+  execution_version_id: string;
+};
+
+const argument = (prefix: string): string | undefined => process.argv.slice(2)
+  .find((value) => value.startsWith(prefix))?.slice(prefix.length);
+const mode = argument('--mode=');
+const environmentFile = argument('--environment-file=') ?? '.env.local';
+const schedulerPath = argument('--scheduler=') ?? '.theta-local-worker/research-spool/theta-observation-jobs.sqlite';
+const spoolPath = argument('--spool=') ?? '.theta-local-worker/research-spool/theta-research.sqlite';
+const environment = loadEnvironmentFile(environmentFile);
+if (!environment.ALPACA_API_KEY || !environment.ALPACA_SECRET_KEY || !environment.ALPACA_BASE_URL) {
+  throw new Error('COMMAND5A_ALPACA_CONFIGURATION_REQUIRED');
+}
+const readOnlyFetch: typeof fetch = (input, init) => {
+  if ((init?.method ?? 'GET').toUpperCase() !== 'GET') throw new Error('COMMAND5A_NON_GET_REJECTED');
+  return fetch(input, init);
+};
+const alpaca = { tradingApiBase: environment.ALPACA_BASE_URL,
+  marketDataApiBase: 'https://data.alpaca.markets', apiKey: environment.ALPACA_API_KEY,
+  apiSecret: environment.ALPACA_SECRET_KEY, fetchImpl: readOnlyFetch };
+
+function record(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown> : {};
+}
+
+function releaseIdentity(receipt: unknown): { sourceSha: string; workerSha: string } | null {
+  const identity = record(record(receipt).releaseIdentity);
+  const sourceSha = typeof identity.sourceSha === 'string' ? identity.sourceSha : '';
+  const workerSha = typeof identity.workerSha === 'string' ? identity.workerSha : '';
+  return /^[0-9a-f]{40}$/.test(sourceSha) && /^[0-9a-f]{40}$/.test(workerSha)
+    ? { sourceSha, workerSha } : null;
+}
+
+function fullFrontier(row: FrontierRow): CanonicalStrategyFrontier | null {
+  const raw = row.evidence_archive_gzip === null ? row.frontier_json
+    : decodeCycleEvidenceArchive(row.evidence_archive_gzip).strategyFrontier;
+  return raw !== null && typeof raw === 'object' && !Array.isArray(raw)
+    ? raw as unknown as CanonicalStrategyFrontier : null;
+}
+
+function frontierUnderlying(frontier: CanonicalStrategyFrontier): string | null {
+  const values = new Set(frontier.branches.flatMap((branch) => branch.candidates.map((candidate) => candidate.underlying)));
+  return values.size === 1 ? [...values][0] ?? null : null;
+}
+
+async function schedule(): Promise<void> {
+  if (!environment.DATABASE_URL) throw new Error('COMMAND5A_DATABASE_URL_REQUIRED');
+  const since = argument('--since=');
+  if (since === undefined || !Number.isFinite(Date.parse(since))) throw new Error('COMMAND5A_SINCE_REQUIRED');
+  const limit = Number(argument('--limit=') ?? '250');
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new Error('COMMAND5A_LIMIT_INVALID');
+  const pool = createRuntimePostgresPool(environment.DATABASE_URL);
+  const scheduler = new LocalObservationJobScheduler(schedulerPath);
+  try {
+    const query = await pool.query<FrontierRow>(`SELECT f.frontier_id::text,f.fusion_snapshot_id::text,
+      f.frontier_json,s.evidence_archive_gzip,s.content_hash AS snapshot_content_hash,
+      d.decision_id::text,d.receipt_json,s.risk_limit_version_id::text,s.cost_model_version_id::text,
+      s.execution_version_id::text
+      FROM trade.canonical_strategy_frontier f
+      JOIN trade.fusion_snapshot s USING(fusion_snapshot_id)
+      LEFT JOIN trade.decision d USING(fusion_snapshot_id)
+      WHERE f.created_at >= $1::timestamptz
+      ORDER BY f.created_at,f.frontier_id LIMIT $2`, [new Date(since).toISOString(), limit]);
+    const decoded = query.rows.map((row) => ({ row, frontier: fullFrontier(row) }));
+    const pending = decoded.filter(({ frontier }) => {
+      if (frontier === null) return true;
+      return selectSeriousResearchSubjects(frontier).subjects.some((subject) => {
+        try { scheduler.getSubject(subject.subjectId); return false; }
+        catch (error) {
+          if (error instanceof Error && error.message === 'LOCAL_OBSERVATION_SUBJECT_NOT_FOUND') return true;
+          throw error;
+        }
+      });
+    });
+    if (pending.length === 0) {
+      process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_SCHEDULE_CURRENT', frontiersRead: query.rows.length,
+        subjects: 0, existingSubjects: query.rows.length, jobsScheduled: 0, skipped: 0,
+        reasonCounts: {}, sessions: 0, brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
+      return;
+    }
+    const dateValues = pending.flatMap(({ frontier }) => frontier === null ? [] : [frontier.timestamp.slice(0, 10),
+      ...frontier.branches.flatMap((branch) => branch.candidates.flatMap((candidate) => candidate.legs.map((leg) => leg.expiration)))]);
+    const orderedDates = [...new Set(dateValues)].sort();
+    const start = orderedDates[0], end = orderedDates.at(-1);
+    if (start === undefined || end === undefined) {
+      process.stdout.write(`${JSON.stringify({ state: 'NO_SCHEDULABLE_FRONTIERS', frontiersRead: query.rows.length,
+        brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
+      return;
+    }
+    const sessions = alpacaCalendarToLearningSessions(await fetchMarketCalendar(alpaca, start, end));
+    let scheduled = 0, subjects = 0, existingSubjects = 0, skipped = 0;
+    const reasonCounts = new Map<string, number>();
+    const skip = (reason: string): void => {
+      skipped += 1;
+      reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
+    };
+    for (const { row, frontier } of pending) {
+      const identity = releaseIdentity(row.receipt_json);
+      const underlying = frontier === null ? null : frontierUnderlying(frontier);
+      if (frontier === null) { skip('FRONTIER_ARCHIVE_MISSING'); continue; }
+      if (identity === null) { skip('RELEASE_IDENTITY_MISSING'); continue; }
+      if (row.decision_id === null) { skip('DECISION_ID_MISSING'); continue; }
+      if (underlying === null) { skip('UNDERLYING_IDENTITY_AMBIGUOUS'); continue; }
+      const receipt = scheduleCommand5aFromCanonicalFrontier({ scheduler, frontier,
+        decisionCycleId: row.fusion_snapshot_id, decisionId: row.decision_id, underlying,
+        featureSnapshotHash: row.snapshot_content_hash, riskVersion: row.risk_limit_version_id,
+        costVersion: row.cost_model_version_id, executionModelVersion: row.execution_version_id,
+        sourceSha: identity.sourceSha, workerSha: identity.workerSha, sessions,
+        horizonPolicy: { version: 'theta-strategy-learning-horizons-v1',
+          primaryCommonHorizon: '1_TRADING_DAY', tradingDayTarget: 'SESSION_CLOSE' } });
+      scheduled += receipt.scheduledJobCount;
+      subjects += receipt.subjectCount;
+      existingSubjects += receipt.existingSubjectCount;
+    }
+    process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_SCHEDULE_COMPLETE', frontiersRead: query.rows.length,
+      subjects, existingSubjects, jobsScheduled: scheduled, skipped,
+      reasonCounts: Object.fromEntries(reasonCounts), sessions: sessions.length,
+      brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
+  } finally {
+    scheduler.close();
+    await pool.end();
+  }
+}
+
+async function observe(): Promise<void> {
+  const scheduler = new LocalObservationJobScheduler(schedulerPath);
+  try {
+    const source = new AlpacaCommand5aObservationSource(alpaca, {
+      optionFeed: argument('--option-feed=') === 'opra' ? 'opra' : 'indicative',
+      stockFeed: argument('--stock-feed=') === 'sip' ? 'sip' : 'iex',
+      maximumResearchQuoteAgeSeconds: Number(argument('--max-research-quote-age-seconds=') ?? '900'),
+    });
+    const report = await runCommand5aLocalObservationWorker({ scheduler, source, spoolPath,
+      claimedBy: `command5a:${hostname().replace(/[^A-Za-z0-9_.-]/g, '_')}:${process.pid}`,
+      asOf: new Date().toISOString(), claimTtlSeconds: 180, limit: 16 });
+    process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_OBSERVATION_COMPLETE', ...report })}\n`);
+  } finally { scheduler.close(); }
+}
+
+if (mode === 'schedule') await schedule();
+else if (mode === 'observe') await observe();
+else throw new Error('COMMAND5A_MODE_REQUIRED');

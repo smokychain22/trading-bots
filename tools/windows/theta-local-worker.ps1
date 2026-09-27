@@ -157,6 +157,50 @@ try {
       $evidenceHeaders = $headers.Clone()
       $evidenceHeaders['X-Theta-Operation'] = 'runtime-evidence-cycle'
       $report = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $evidenceHeaders -TimeoutSec 290
+      # Command-5A is a bounded, local, research-only continuation of the
+      # canonical frontier. It records exact T0 subjects and later factual
+      # marks without a broker mutation surface. Failures remain visible in
+      # worker status but cannot rewrite the Production decision or turn an
+      # infrastructure issue into WAIT.
+      $command5aSchedulerPath = Join-Path $stateRoot 'research-spool\theta-observation-jobs.sqlite'
+      $command5aSpoolPath = Join-Path $stateRoot 'research-spool\theta-research.sqlite'
+      $command5aScheduleState = 'NOT_ATTEMPTED'
+      $command5aObservationState = if ($report.reconciliation.marketOpen -eq $true) {
+        'NOT_ATTEMPTED'
+      } else { 'DEFERRED_MARKET_CLOSED' }
+      $command5aObserved = 0
+      $command5aMissed = 0
+      $command5aDeferredProvider = 0
+      $command5aDeferredMarket = 0
+      $previousErrorActionPreference = $ErrorActionPreference
+      $ErrorActionPreference = 'Continue'
+      try {
+        $command5aSince = $operationStartedAt.AddMinutes(-90).ToString('o')
+        $command5aScheduleOutput = & node --import tsx tools/theta-command5a-runtime.ts `
+          --mode=schedule "--environment-file=$productionEnvFile" `
+          "--scheduler=$command5aSchedulerPath" "--spool=$command5aSpoolPath" `
+          "--since=$command5aSince" --limit=250 2>$null
+        if ($LASTEXITCODE -eq 0) {
+          $command5aScheduleResult = $command5aScheduleOutput | Select-Object -Last 1 | ConvertFrom-Json
+          $command5aScheduleState = [string]$command5aScheduleResult.state
+        } else { $command5aScheduleState = 'FAILED_NONCRITICAL' }
+        if ($report.reconciliation.marketOpen -eq $true) {
+          $command5aObservationOutput = & node --import tsx tools/theta-command5a-runtime.ts `
+            --mode=observe "--environment-file=$productionEnvFile" `
+            "--scheduler=$command5aSchedulerPath" "--spool=$command5aSpoolPath" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $command5aObservationResult = $command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json
+            $command5aObservationState = [string]$command5aObservationResult.state
+            $command5aObserved = [int]$command5aObservationResult.observed
+            $command5aMissed = [int]$command5aObservationResult.missed
+            $command5aDeferredProvider = [int]$command5aObservationResult.deferredProvider
+            $command5aDeferredMarket = [int]$command5aObservationResult.deferredMarket
+          } else { $command5aObservationState = 'FAILED_NONCRITICAL' }
+        }
+      } catch {
+        if ($command5aScheduleState -eq 'NOT_ATTEMPTED') { $command5aScheduleState = 'FAILED_NONCRITICAL' }
+        if ($command5aObservationState -eq 'NOT_ATTEMPTED') { $command5aObservationState = 'FAILED_NONCRITICAL' }
+      } finally { $ErrorActionPreference = $previousErrorActionPreference }
       $marketSessionDate = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
         [DateTimeOffset]::UtcNow, 'Eastern Standard Time').ToString('yyyy-MM-dd')
       $lastAlpacaQualificationSession = if (Test-Path -LiteralPath $alpacaQualificationSessionFile) {
@@ -464,6 +508,9 @@ try {
         localResearchParquetFiles=$localResearchParquetFiles;
         localResearchLastManifestHash=$localResearchLastManifestHash;
         localResearchDuckdbVerification=$localResearchDuckdbVerification;
+        command5aScheduleState=$command5aScheduleState;command5aObservationState=$command5aObservationState;
+        command5aObserved=$command5aObserved;command5aMissed=$command5aMissed;
+        command5aDeferredProvider=$command5aDeferredProvider;command5aDeferredMarket=$command5aDeferredMarket;
         localReceiptState=$localReceiptState;localReceiptHash=$localReceiptHash;
         localEvidenceState=$localEvidenceState;localEvidenceHash=$localEvidenceHash} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
