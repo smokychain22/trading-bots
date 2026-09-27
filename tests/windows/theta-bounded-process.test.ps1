@@ -20,7 +20,7 @@ try {
   $failureScript = Join-Path $root 'failure.ps1'
   [IO.File]::WriteAllText($failureScript, @'
 [Console]::Error.WriteLine('sensitive-provider-detail')
-Write-Output '{"errorCode":"SAFE_FAILURE"}'
+Write-Output '{"state":"FAILED","reasonCode":"SAFE_FAILURE"}'
 exit 7
 '@, [Text.UTF8Encoding]::new($false))
   $failure = Invoke-ThetaBoundedProcess -Executable $pwsh `
@@ -31,6 +31,21 @@ exit 7
   }
   if (($failure.Output -join "`n") -match 'sensitive-provider-detail') {
     throw 'THETA_BOUNDED_PROCESS_EXPOSED_STDERR'
+  }
+  $failureCode = Get-ThetaBoundedFailureCode -ProcessResult $failure
+  if ($failureCode -ne 'SAFE_FAILURE') { throw 'THETA_BOUNDED_PROCESS_FAILURE_CODE_NOT_RECOVERED' }
+
+  $unsafeFailure = [pscustomobject]@{
+    State='COMPLETED';ExitCode=1;Output=@('{"state":"FAILED","reasonCode":"unsafe detail"}')
+  }
+  if ($null -ne (Get-ThetaBoundedFailureCode -ProcessResult $unsafeFailure)) {
+    throw 'THETA_BOUNDED_PROCESS_UNSAFE_FAILURE_CODE_ACCEPTED'
+  }
+  $lowercaseFailure = [pscustomobject]@{
+    State='COMPLETED';ExitCode=1;Output=@('{"state":"FAILED","reasonCode":"unsafe_detail"}')
+  }
+  if ($null -ne (Get-ThetaBoundedFailureCode -ProcessResult $lowercaseFailure)) {
+    throw 'THETA_BOUNDED_PROCESS_LOWERCASE_FAILURE_CODE_ACCEPTED'
   }
 
   $stdinScript = Join-Path $root 'stdin.ps1'

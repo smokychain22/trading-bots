@@ -22,7 +22,11 @@ try {
     throw 'PRE_MIGRATION_BACKUP_PROCESS_TIMEOUT_PREVIOUS_BACKUP_PRESERVED'
   }
   if ($beforeExitCode -ne 0) {
-    throw "PRE_MIGRATION_VERIFIED_BACKUP_FAILED:exit=$beforeExitCode"
+    $failureCode = Get-ThetaBoundedFailureCode -ProcessResult $beforeProcess
+    if ($failureCode) {
+      throw "PRE_MIGRATION_VERIFIED_BACKUP_FAILED:reason=$failureCode`:exit=$beforeExitCode"
+    }
+    throw "PRE_MIGRATION_VERIFIED_BACKUP_FAILED:reason=BACKUP_FAILURE_RECEIPT_MISSING`:exit=$beforeExitCode"
   }
   $before = $beforeRaw | ConvertFrom-Json
   if ($before.state -ne 'VERIFIED') { throw 'PRE_MIGRATION_VERIFIED_BACKUP_FAILED' }
@@ -73,7 +77,11 @@ try {
     throw 'POST_MIGRATION_BACKUP_PROCESS_TIMEOUT_PRE_BACKUP_PRESERVED'
   }
   if ($afterExitCode -ne 0) {
-    throw "POST_MIGRATION_VERIFIED_BACKUP_FAILED_PRE_BACKUP_PRESERVED:exit=$afterExitCode"
+    $failureCode = Get-ThetaBoundedFailureCode -ProcessResult $afterProcess
+    if ($failureCode) {
+      throw "POST_MIGRATION_VERIFIED_BACKUP_FAILED_PRE_BACKUP_PRESERVED:reason=$failureCode`:exit=$afterExitCode"
+    }
+    throw "POST_MIGRATION_VERIFIED_BACKUP_FAILED_PRE_BACKUP_PRESERVED:reason=BACKUP_FAILURE_RECEIPT_MISSING`:exit=$afterExitCode"
   }
   $after = $afterRaw | ConvertFrom-Json
   if ($after.state -ne 'VERIFIED') { throw 'POST_MIGRATION_VERIFIED_BACKUP_FAILED_PRE_BACKUP_PRESERVED' }

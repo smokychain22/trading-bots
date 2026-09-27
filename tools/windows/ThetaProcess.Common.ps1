@@ -54,3 +54,27 @@ function Invoke-ThetaBoundedProcess {
     if ($null -ne $process) { $process.Dispose() }
   }
 }
+
+function Get-ThetaBoundedFailureCode {
+  param(
+    [Parameter(Mandatory)][object]$ProcessResult
+  )
+  if ($ProcessResult.State -ne 'COMPLETED' -or $ProcessResult.ExitCode -eq 0) { return $null }
+  $candidateLines = @($ProcessResult.Output | Select-Object -Last 10)
+  [array]::Reverse($candidateLines)
+  foreach ($line in $candidateLines) {
+    try {
+      $receipt = [string]$line | ConvertFrom-Json -ErrorAction Stop
+      $stateProperty = $receipt.PSObject.Properties['state']
+      $reasonProperty = $receipt.PSObject.Properties['reasonCode']
+      if ($null -eq $stateProperty -or $null -eq $reasonProperty -or
+          [string]$stateProperty.Value -ne 'FAILED') { continue }
+      $reasonCode = [string]$reasonProperty.Value
+      if ($reasonCode -cmatch '^[A-Z][A-Z0-9_]{2,127}$') { return $reasonCode }
+    } catch {
+      # Child stdout can contain normal progress lines. Only a strict,
+      # secret-free failure receipt is eligible for parent propagation.
+    }
+  }
+  return $null
+}

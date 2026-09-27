@@ -132,6 +132,19 @@ function Get-ThetaPgFailureClass {
   return 'POSTGRES_TOOL_ERROR'
 }
 
+function Get-ThetaBackupFailureCode {
+  param([Parameter(Mandatory)][string]$Message)
+  if ($Message -match '(?i)class=([A-Z][A-Z0-9_]{2,127})(?:\s|$)') {
+    return $Matches[1].ToUpperInvariant()
+  }
+  $postgresClass = Get-ThetaPgFailureClass $Message
+  if ($postgresClass -ne 'POSTGRES_TOOL_ERROR') { return $postgresClass }
+  if ($Message -cmatch '^([A-Z][A-Z0-9_]{2,127})(?::|\s|$)') {
+    return $Matches[1]
+  }
+  return 'BACKUP_FAILURE_UNCLASSIFIED'
+}
+
 function Invoke-ThetaPg {
   param(
     [ValidateSet('pg_dump','pg_restore','psql')][string]$Tool,

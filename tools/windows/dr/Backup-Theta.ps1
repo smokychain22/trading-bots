@@ -245,25 +245,33 @@ SELECT jsonb_build_object(
   Log "SUCCESS backupId=$backupId archiveSha256=$($receipt.archiveSha256)"
   [ordered]@{state='VERIFIED'; backupId=$backupId; path=$final; sourceBytes=$sourceSize; archiveSha256=$receipt.archiveSha256; tableCount=$inventory.tableCount; migrationHead=$inventory.migrationHead} | ConvertTo-Json -Compress
 } catch {
-  Log "FAIL code=$($_.Exception.Message -replace 'postgres(ql)?://[^ ]+','[REDACTED_DATABASE_URL]')"
-  if ($stage -and (Test-Path -LiteralPath $stage)) {
-    $allowed = Join-Path $root 'daily\.staging-'
-    if (-not $stage.StartsWith($allowed, [StringComparison]::OrdinalIgnoreCase)) { throw 'FAILED_STAGE_PATH_UNSAFE' }
-    # A completed custom archive remains useful forensic and recovery evidence
-    # when a later schema dump or provider inventory call fails. Keep it in
-    # the explicitly incomplete area. It cannot become latest/verified until
-    # the normal manifest and restore checks pass.
-    if (($customDumpComplete -or $dumpComplete) -and $backupId) {
-      $preserved = Join-Path $root ('restore-tests\incomplete-' + $backupId)
-      if (Test-Path -LiteralPath $preserved) { throw 'INCOMPLETE_BACKUP_PRESERVATION_TARGET_EXISTS' }
-      Move-Item -LiteralPath $stage -Destination $preserved
-      Log "COMPLETED_DUMP_PRESERVED_AFTER_LATER_FAILURE path=$preserved"
-    } else {
-      Remove-Item -LiteralPath $stage -Recurse -Force
-      Log 'FAILED_STAGING_FILES_REMOVED'
+  $caught = $_
+  $failureCode = Get-ThetaBackupFailureCode ([string]$caught.Exception.Message)
+  Log "FAIL code=$($caught.Exception.Message -replace 'postgres(ql)?://[^ ]+','[REDACTED_DATABASE_URL]')"
+  try {
+    if ($stage -and (Test-Path -LiteralPath $stage)) {
+      $allowed = Join-Path $root 'daily\.staging-'
+      if (-not $stage.StartsWith($allowed, [StringComparison]::OrdinalIgnoreCase)) { throw 'FAILED_STAGE_PATH_UNSAFE' }
+      # A completed custom archive remains useful forensic and recovery evidence
+      # when a later schema dump or provider inventory call fails. Keep it in
+      # the explicitly incomplete area. It cannot become latest/verified until
+      # the normal manifest and restore checks pass.
+      if (($customDumpComplete -or $dumpComplete) -and $backupId) {
+        $preserved = Join-Path $root ('restore-tests\incomplete-' + $backupId)
+        if (Test-Path -LiteralPath $preserved) { throw 'INCOMPLETE_BACKUP_PRESERVATION_TARGET_EXISTS' }
+        Move-Item -LiteralPath $stage -Destination $preserved
+        Log "COMPLETED_DUMP_PRESERVED_AFTER_LATER_FAILURE path=$preserved"
+      } else {
+        Remove-Item -LiteralPath $stage -Recurse -Force
+        Log 'FAILED_STAGING_FILES_REMOVED'
+      }
     }
+  } catch {
+    $failureCode = Get-ThetaBackupFailureCode ([string]$_.Exception.Message)
+    Log "FAILURE_CLEANUP_FAILED code=$failureCode"
   }
-  throw
+  [ordered]@{state='FAILED';reasonCode=$failureCode} | ConvertTo-Json -Compress
+  throw $failureCode
 } finally {
   $script:ThetaBackupSnapshotId = $null
   Stop-ThetaExportedSnapshot $snapshotKeeper

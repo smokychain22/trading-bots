@@ -68,12 +68,35 @@ if ($checkpoint -notmatch 'POST_MIGRATION_BACKUP_PROCESS_TIMEOUT_PRE_BACKUP_PRES
   throw 'POST_MIGRATION_BACKUP_TIMEOUT_NOT_TYPED'
 }
 if ($checkpoint -match '2>&1') { throw 'MIGRATION_CHECKPOINT_CHILD_STDERR_EXPOSURE_REINTRODUCED' }
+if ($checkpoint -notmatch 'Get-ThetaBoundedFailureCode') {
+  throw 'MIGRATION_CHECKPOINT_TYPED_CHILD_FAILURE_NOT_PROPAGATED'
+}
+if ($checkpoint -notmatch 'BACKUP_FAILURE_RECEIPT_MISSING') {
+  throw 'MIGRATION_CHECKPOINT_MISSING_FAILURE_RECEIPT_NOT_TYPED'
+}
 
 $backupPath = Join-Path $PSScriptRoot '..\..\tools\windows\dr\Backup-Theta.ps1'
 $backupSource = Get-Content -Raw -LiteralPath $backupPath
 if ($backupSource -notmatch '\$customDumpComplete = \$true') { throw 'CUSTOM_DUMP_COMPLETION_NOT_TRACKED' }
 if ($backupSource -notmatch '\(\$customDumpComplete -or \$dumpComplete\)') {
   throw 'COMPLETED_CUSTOM_DUMP_NOT_PRESERVED_AFTER_LATER_FAILURE'
+}
+$failureReceiptPattern = [regex]::Escape("state='FAILED';reasonCode=`$failureCode")
+if ($backupSource -notmatch $failureReceiptPattern) {
+  throw 'BACKUP_STRUCTURED_FAILURE_RECEIPT_MISSING'
+}
+
+$failureCases = @(
+  @{Message='POSTGRES_TOOL_FAILED:pg_dump class=AIVEN_DATA_TRANSFER_QUOTA_EXCEEDED exit=1 diagnostic=redacted';Expected='AIVEN_DATA_TRANSFER_QUOTA_EXCEEDED'},
+  @{Message='POSTGRES_TOOL_FAILED:psql class=POSTGRES_53000 exit=1 diagnostic=redacted';Expected='POSTGRES_53000'},
+  @{Message='BACKUP_DISK_SPACE_TOO_LOW:requiredBytes=100 freeBytes=1';Expected='BACKUP_DISK_SPACE_TOO_LOW'},
+  @{Message='arbitrary provider detail';Expected='BACKUP_FAILURE_UNCLASSIFIED'}
+)
+foreach ($case in $failureCases) {
+  $actual = Get-ThetaBackupFailureCode -Message $case.Message
+  if ($actual -ne $case.Expected) {
+    throw "BACKUP_FAILURE_CLASSIFICATION_FAILED:expected=$($case.Expected):actual=$actual"
+  }
 }
 
 $lockRoot = Join-Path ([IO.Path]::GetTempPath()) ('theta-backup-lock-test-' + [guid]::NewGuid().ToString('N'))
