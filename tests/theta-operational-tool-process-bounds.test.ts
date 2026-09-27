@@ -58,6 +58,7 @@ test('operator-facing git and HTTP probes cannot wait forever', () => {
     'tools/security-scan.mjs',
     'tools/summarize-historical-replay.ts',
     'tools/theta-risk-policy-study.ts',
+    'tools/theta-profit-taking-replay.ts',
     'tools/theta-runtime-wiring-audit.ts',
     'tools/theta-system-truth.ts',
   ]) {
