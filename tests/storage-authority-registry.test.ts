@@ -20,6 +20,7 @@ test('storage authority keeps transactional state in PostgreSQL and research his
   assert.equal(classifyPostgresRelation('legacy_neon', 'artifact_record').classification, 'RESEARCH_HISTORY');
   assert.equal(classifyPostgresRelation('core', 'provider_capability').classification, 'CANONICAL_TRADING_STATE');
   assert.equal(classifyPostgresRelation('copy', 'follower_account').classification, 'CANONICAL_TRADING_STATE');
+  assert.equal(classifyPostgresRelation('risk', 'aegis_iv_stress_assessment').classification, 'CANONICAL_AUDIT');
   assert.equal(classifyPostgresRelation('unknown', 'mystery').classification, 'UNKNOWN_REQUIRES_REVIEW');
   assert.equal(authorityForClassification('DERIVABLE_CACHE')?.family, 'REBUILDABLE_PROVIDER_AND_FEATURE_CACHES');
 });

@@ -121,7 +121,7 @@ export const storageAuthorityRegistry: readonly StorageAuthorityEntry[] = [
 ] as const;
 
 const canonicalTradingSchemas = new Set(['broker', 'customer', 'ledger', 'lifecycle']);
-const canonicalAuditSchemas = new Set(['audit', 'evidence', 'ops']);
+const canonicalAuditSchemas = new Set(['audit', 'evidence', 'ops', 'risk']);
 const canonicalControlSchemas = new Set(['core', 'iam']);
 const researchHeavyTradeRelations = new Set([
   'candidate_point_in_time_evidence', 'canonical_strategy_candidate_evidence', 'candidate',
