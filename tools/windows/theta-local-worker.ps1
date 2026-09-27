@@ -166,10 +166,13 @@ try {
       $command5aSpoolPath = Join-Path $stateRoot 'research-spool\theta-research.sqlite'
       $command5aParquetRoot = 'C:\ProjectBackups\trading-bots\research-archives'
       $command5aScheduleState = 'NOT_ATTEMPTED'
+      $command5aScheduleErrorCode = $null
       $command5aObservationState = if ($report.reconciliation.marketOpen -eq $true) {
         'NOT_ATTEMPTED'
       } else { 'DEFERRED_MARKET_CLOSED' }
+      $command5aObservationErrorCode = $null
       $command5aMaturationState = 'NOT_ATTEMPTED'
+      $command5aMaturationErrorCode = $null
       $command5aObserved = 0
       $command5aMissed = 0
       $command5aDeferredProvider = 0
@@ -178,6 +181,7 @@ try {
       $command5aMaturationPending = 0
       $command5aMaturationCensored = 0
       $command5aBacklogState = 'NOT_OBSERVED'
+      $command5aHealthErrorCode = $null
       $command5aUnresolvedJobs = 0
       $command5aDueJobs = 0
       $command5aOverdueJobs = 0
@@ -211,7 +215,11 @@ try {
           if ($LASTEXITCODE -eq 0) {
             $command5aScheduleResult = $command5aScheduleOutput | Select-Object -Last 1 | ConvertFrom-Json
             $command5aScheduleState = [string]$command5aScheduleResult.state
-          } else { $command5aScheduleState = 'FAILED_NONCRITICAL' }
+          } else {
+            $command5aScheduleState = 'FAILED_NONCRITICAL'
+            try { $command5aScheduleErrorCode = [string](($command5aScheduleOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
+            catch { $command5aScheduleErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+          }
         }
         if ($report.reconciliation.marketOpen -eq $true) {
           $command5aObservationOutput = & node --import tsx tools/theta-command5a-runtime.ts `
@@ -224,7 +232,11 @@ try {
             $command5aMissed = [int]$command5aObservationResult.missed
             $command5aDeferredProvider = [int]$command5aObservationResult.deferredProvider
             $command5aDeferredMarket = [int]$command5aObservationResult.deferredMarket
-          } else { $command5aObservationState = 'FAILED_NONCRITICAL' }
+          } else {
+            $command5aObservationState = 'FAILED_NONCRITICAL'
+            try { $command5aObservationErrorCode = [string](($command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
+            catch { $command5aObservationErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+          }
         }
         # Maturation is local and provider-free. It may run while the market
         # is closed and only consumes already verified observation archives.
@@ -237,7 +249,11 @@ try {
           $command5aMaterialized = [int]$command5aMaturationResult.materialized
           $command5aMaturationPending = [int]$command5aMaturationResult.pending
           $command5aMaturationCensored = [int]$command5aMaturationResult.censored
-        } else { $command5aMaturationState = 'FAILED_NONCRITICAL' }
+        } else {
+          $command5aMaturationState = 'FAILED_NONCRITICAL'
+          try { $command5aMaturationErrorCode = [string](($command5aMaturationOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
+          catch { $command5aMaturationErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+        }
         $command5aHealthOutput = & node --import tsx tools/theta-command5a-runtime.ts `
           --mode=health "--scheduler=$command5aSchedulerPath" 2>$null
         if ($LASTEXITCODE -eq 0) {
@@ -250,7 +266,11 @@ try {
           $command5aRetryStalledJobs = [int]$command5aHealthResult.retryStalledCount
           $command5aOldestOverdueSeconds = $command5aHealthResult.oldestOverdueSeconds
           $command5aSourceCursor = $command5aHealthResult.sourceCursor
-        } else { $command5aBacklogState = 'HEALTH_CHECK_FAILED' }
+        } else {
+          $command5aBacklogState = 'HEALTH_CHECK_FAILED'
+          try { $command5aHealthErrorCode = [string](($command5aHealthOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
+          catch { $command5aHealthErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+        }
       } catch {
         if ($command5aScheduleState -eq 'NOT_ATTEMPTED') { $command5aScheduleState = 'FAILED_NONCRITICAL' }
         if ($command5aObservationState -eq 'NOT_ATTEMPTED') { $command5aObservationState = 'FAILED_NONCRITICAL' }
@@ -572,14 +592,16 @@ try {
         localResearchParquetFiles=$localResearchParquetFiles;localResearchParquetBytes=$localResearchParquetBytes;
         localResearchLastManifestHash=$localResearchLastManifestHash;
         localResearchDuckdbVerification=$localResearchDuckdbVerification;
-        command5aScheduleState=$command5aScheduleState;command5aObservationState=$command5aObservationState;
-        command5aMaturationState=$command5aMaturationState;
+        command5aScheduleState=$command5aScheduleState;command5aScheduleErrorCode=$command5aScheduleErrorCode;
+        command5aObservationState=$command5aObservationState;command5aObservationErrorCode=$command5aObservationErrorCode;
+        command5aMaturationState=$command5aMaturationState;command5aMaturationErrorCode=$command5aMaturationErrorCode;
         command5aSchedulingPausedForStorage=$command5aSchedulingPausedForStorage;
         command5aObserved=$command5aObserved;command5aMissed=$command5aMissed;
         command5aDeferredProvider=$command5aDeferredProvider;command5aDeferredMarket=$command5aDeferredMarket;
         command5aMaterialized=$command5aMaterialized;command5aMaturationPending=$command5aMaturationPending;
         command5aMaturationCensored=$command5aMaturationCensored;
-        command5aBacklogState=$command5aBacklogState;command5aUnresolvedJobs=$command5aUnresolvedJobs;
+        command5aBacklogState=$command5aBacklogState;command5aHealthErrorCode=$command5aHealthErrorCode;
+        command5aUnresolvedJobs=$command5aUnresolvedJobs;
         command5aDueJobs=$command5aDueJobs;command5aOverdueJobs=$command5aOverdueJobs;
         command5aExpiredClaims=$command5aExpiredClaims;command5aRetryStalledJobs=$command5aRetryStalledJobs;
         command5aOldestOverdueSeconds=$command5aOldestOverdueSeconds;command5aSourceCursor=$command5aSourceCursor;

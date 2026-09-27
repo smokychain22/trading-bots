@@ -14,6 +14,12 @@ test('Windows owner schedules, observes, and matures Command-5A through the immu
   assert.match(source, /command5aObservationState=\$command5aObservationState/);
   assert.match(source, /command5aMaturationState=\$command5aMaturationState/);
   assert.match(source, /command5aBacklogState=\$command5aBacklogState/);
+  assert.match(source, /command5aScheduleErrorCode=\$command5aScheduleErrorCode/);
+  assert.match(source, /command5aObservationErrorCode=\$command5aObservationErrorCode/);
+  assert.match(source, /command5aMaturationErrorCode=\$command5aMaturationErrorCode/);
+  assert.match(source, /command5aHealthErrorCode=\$command5aHealthErrorCode/);
+  assert.match(command5aRuntime, /state:\s*'COMMAND5A_FAILED'/);
+  assert.match(command5aRuntime, /errorCode:\s*safeFailureCode\(error\)/);
   assert.match(source, /\$command5aSince = \[string\]\$runtime\.installedAt/);
   assert.doesNotMatch(source, /command5aSince\s*=.*AddMinutes\(-90\)/);
   assert.match(command5aRuntime, /GREATEST\(f\.created_at,d\.decided_at\) AS ready_at/);

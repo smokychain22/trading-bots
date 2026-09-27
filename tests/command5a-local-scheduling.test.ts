@@ -159,8 +159,12 @@ test('a complete zero-candidate WAIT retains its underlying from the immutable s
 test('stock-only recovery candidates persist as T0-only subjects without fake option jobs', () => {
   const root = mkdtempSync(join(tmpdir(), 'theta-command5a-schedule-'));
   const scheduler = new LocalObservationJobScheduler(join(root, 'jobs.sqlite'));
+  const baseBranch = frontier.branches[0];
+  const baseCandidate = baseBranch?.candidates[0];
+  assert.ok(baseBranch);
+  assert.ok(baseCandidate);
   const recoveryCandidate = {
-    ...frontier.branches[0]?.candidates[0],
+    ...baseCandidate,
     candidateId: 'THETA_RECOVERY:SPY:RECOVERY_WAIT',
     branch: 'THETA_RECOVERY' as const,
     action: 'RECOVERY_WAIT' as const,
@@ -169,7 +173,7 @@ test('stock-only recovery candidates persist as T0-only subjects without fake op
   assert.ok(recoveryCandidate.underlying);
   const recoveryFrontier: CanonicalStrategyFrontier = {
     ...frontier,
-    branches: [{ ...frontier.branches[0]!, branch: 'THETA_RECOVERY',
+    branches: [{ ...baseBranch, branch: 'THETA_RECOVERY',
       candidates: [recoveryCandidate], candidateCount: 1, bestCandidateId: recoveryCandidate.candidateId,
       secondBestCandidateId: null, bestRejectedCandidateId: null }],
     branchesConsidered: ['THETA_RECOVERY'],

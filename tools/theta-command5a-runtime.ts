@@ -213,8 +213,20 @@ function health(): void {
   } finally { scheduler.close(); }
 }
 
-if (mode === 'schedule') await schedule();
-else if (mode === 'observe') await observe();
-else if (mode === 'mature') mature();
-else if (mode === 'health') health();
-else throw new Error('COMMAND5A_MODE_REQUIRED');
+function safeFailureCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  const code = message.split(':', 1)[0] ?? '';
+  return /^[A-Z][A-Z0-9_]{2,160}$/.test(code) ? code : 'COMMAND5A_UNCLASSIFIED_FAILURE';
+}
+
+try {
+  if (mode === 'schedule') await schedule();
+  else if (mode === 'observe') await observe();
+  else if (mode === 'mature') mature();
+  else if (mode === 'health') health();
+  else throw new Error('COMMAND5A_MODE_REQUIRED');
+} catch (error) {
+  process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_FAILED', mode: mode ?? null,
+    errorCode: safeFailureCode(error), brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
+  process.exitCode = 1;
+}
