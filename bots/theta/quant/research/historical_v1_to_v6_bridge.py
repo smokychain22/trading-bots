@@ -101,8 +101,13 @@ def convert_historical_export(raw: Dict[str, Any]) -> HistoricalConversionResult
     schema_version = raw.get('schemaVersion')
     if schema_version not in KNOWN_LINEAGE_VERSIONS:
         raise DatasetLoadError(f'HISTORICAL_BRIDGE_UNKNOWN_SCHEMA_VERSION:{schema_version}')
+    if not isinstance(raw.get('rows'), dict):
+        raise DatasetLoadError('HISTORICAL_BRIDGE_ROWS_MISSING_OR_MALFORMED')
+    source_window = raw.get('sourceWindow')
+    if not isinstance(source_window, dict) or not source_window.get('start') or not source_window.get('end'):
+        raise DatasetLoadError('HISTORICAL_BRIDGE_SOURCE_WINDOW_INCOMPLETE')
 
-    rows_raw = raw.get('rows', {})
+    rows_raw = raw['rows']
     for row_family in KNOWN_LINEAGE_VERSIONS[: KNOWN_LINEAGE_VERSIONS.index(schema_version) + 1]:
         for family in KNOWN_LINEAGE_INTRODUCED_AT[row_family]:
             _assert_deterministic_order(rows_raw.get(family, []), canonical_json)
