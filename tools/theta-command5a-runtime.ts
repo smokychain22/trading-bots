@@ -221,6 +221,7 @@ async function observe(): Promise<void> {
       optionFeed: argument('--option-feed=') === 'opra' ? 'opra' : 'indicative',
       stockFeed: argument('--stock-feed=') === 'sip' ? 'sip' : 'iex',
       maximumResearchQuoteAgeSeconds: Number(argument('--max-research-quote-age-seconds=') ?? '900'),
+      maximumTargetDelaySeconds: Number(argument('--max-target-delay-seconds=') ?? '900'),
     });
     const report = await runCommand5aLocalObservationWorker({ scheduler, source, spoolPath,
       claimedBy: `command5a:${hostname().replace(/[^A-Za-z0-9_.-]/g, '_')}:${process.pid}`,

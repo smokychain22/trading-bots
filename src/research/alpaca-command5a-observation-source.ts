@@ -10,7 +10,7 @@ import type {
 } from './command5a-local-observation-worker.js';
 import type { ContractPathQuoteObservation } from './contract-path-observation-runtime.js';
 
-export const alpacaCommand5aObservationSourceVersion = 'theta-alpaca-command5a-observation-source-v1' as const;
+export const alpacaCommand5aObservationSourceVersion = 'theta-alpaca-command5a-observation-source-v2' as const;
 
 function quoteQuality(input: {
   readonly bid: number | null;
@@ -51,10 +51,13 @@ export class AlpacaCommand5aObservationSource implements Command5aReadOnlyObserv
       readonly optionFeed: 'opra' | 'indicative';
       readonly stockFeed: 'iex' | 'sip';
       readonly maximumResearchQuoteAgeSeconds: number;
+      readonly maximumTargetDelaySeconds: number;
     },
   ) {
     if (!Number.isFinite(options.maximumResearchQuoteAgeSeconds)
-      || options.maximumResearchQuoteAgeSeconds <= 0) {
+      || options.maximumResearchQuoteAgeSeconds <= 0
+      || !Number.isFinite(options.maximumTargetDelaySeconds)
+      || options.maximumTargetDelaySeconds <= 0) {
       throw new Error('COMMAND5A_RESEARCH_QUOTE_AGE_INVALID');
     }
   }
@@ -65,6 +68,17 @@ export class AlpacaCommand5aObservationSource implements Command5aReadOnlyObserv
   }
 
   async observe(input: Parameters<Command5aReadOnlyObservationSource['observe']>[0]): Promise<Command5aObservedSubject> {
+    const requestStartedAt = new Date().toISOString();
+    const targetAtMs = Date.parse(input.job.targetAt);
+    const requestDelaySeconds = (Date.parse(requestStartedAt) - targetAtMs) / 1_000;
+    if (!Number.isFinite(targetAtMs) || !Number.isFinite(requestDelaySeconds) || requestDelaySeconds < 0) {
+      return { state: 'INVALID', quotes: [], underlying: null, observedAt: requestStartedAt,
+        reasonCode: 'TARGET_OBSERVATION_TIME_INVALID' };
+    }
+    if (requestDelaySeconds > this.options.maximumTargetDelaySeconds) {
+      return { state: 'MISSING', quotes: [], underlying: null, observedAt: requestStartedAt,
+        reasonCode: 'TARGET_OBSERVATION_WINDOW_EXPIRED' };
+    }
     const quotesBySymbol = new Map<string, ContractPathQuoteObservation>();
     const uniqueSymbols = new Set(input.subject.episode.legs.map((leg) => leg.optionSymbol));
     if (uniqueSymbols.size !== input.subject.episode.legs.length) return {
@@ -110,6 +124,17 @@ export class AlpacaCommand5aObservationSource implements Command5aReadOnlyObserv
           observedAt: receivedAt,
           reasonCode: assessment.reasonCodes[0] ?? 'EXACT_CONTRACT_QUOTE_INCOMPLETE',
         };
+        if (snapshot.quoteTimestamp !== null) {
+          const quoteTargetDelaySeconds = (Date.parse(snapshot.quoteTimestamp) - targetAtMs) / 1_000;
+          if (!Number.isFinite(quoteTargetDelaySeconds) || quoteTargetDelaySeconds < 0) return {
+            state: 'MISSING', quotes: [], underlying: null, observedAt: receivedAt,
+            reasonCode: 'EXACT_CONTRACT_QUOTE_PRE_TARGET',
+          };
+          if (quoteTargetDelaySeconds > this.options.maximumTargetDelaySeconds) return {
+            state: 'MISSING', quotes: [], underlying: null, observedAt: receivedAt,
+            reasonCode: 'EXACT_CONTRACT_QUOTE_TARGET_WINDOW_EXPIRED',
+          };
+        }
         quotesBySymbol.set(leg.optionSymbol, {
           optionSymbol: leg.optionSymbol,
           bid: snapshot.bid,
@@ -148,6 +173,15 @@ export class AlpacaCommand5aObservationSource implements Command5aReadOnlyObserv
     if (underlyingAgeSeconds > this.options.maximumResearchQuoteAgeSeconds) {
       return { state: 'MISSING', quotes: [], underlying: null,
         observedAt, reasonCode: 'UNDERLYING_TRADE_STALE' };
+    }
+    const underlyingTargetDelaySeconds = (Date.parse(trade.timestamp) - targetAtMs) / 1_000;
+    if (!Number.isFinite(underlyingTargetDelaySeconds) || underlyingTargetDelaySeconds < 0) {
+      return { state: 'MISSING', quotes: [], underlying: null,
+        observedAt, reasonCode: 'UNDERLYING_TRADE_PRE_TARGET' };
+    }
+    if (underlyingTargetDelaySeconds > this.options.maximumTargetDelaySeconds) {
+      return { state: 'MISSING', quotes: [], underlying: null,
+        observedAt, reasonCode: 'UNDERLYING_TRADE_TARGET_WINDOW_EXPIRED' };
     }
     return {
       state: 'READY',

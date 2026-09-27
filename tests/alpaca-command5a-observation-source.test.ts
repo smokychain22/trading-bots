@@ -23,7 +23,7 @@ const subjectInput: SeriousCandidateSubject = {
     hardBlockers: [], softEvidence: [], unknownEvidence: [], structurallyFeasible: true,
     riskFeasible: true, sizing: { quantity: 1, bindingConstraint: 'BROKER', reasons: [] },
     paretoRank: 1, dominatedBy: [], executionAuthorized: false },
-  subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v1', shadowOnly: true,
+  subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v2', shadowOnly: true,
   brokerAuthority: false, orderSubmitted: false, brokerFill: false,
 };
 
@@ -37,7 +37,8 @@ function inputs(inputSubject: SeriousCandidateSubject = subjectInput) {
     underlying: 'SPY', episode, sourceSha: episode.sourceSha, workerSha: episode.workerSha,
     contentHash: episode.contentHash, brokerAuthority: false };
   const job: LocalObservationJobReceipt = { observationJobId: 'job-1', subjectId: episode.subjectId,
-    horizonCode: '15M', targetAt: '2026-09-25T14:45:00Z', targetSessionDate: '2026-09-25',
+    horizonCode: '15M', derivedFromHorizonCode: null,
+    targetAt: '2026-09-25T14:45:00Z', targetSessionDate: '2026-09-25',
     sourceSha: episode.sourceSha, workerSha: episode.workerSha, contentHash: 'd'.repeat(64),
     state: 'IN_PROGRESS', attempts: 1, lastAttemptAt: '2026-09-25T14:45:00Z',
     claimExpiresAt: '2026-09-25T14:46:00Z', resolvedAt: null, reasonCode: null,
@@ -85,7 +86,8 @@ test('Alpaca source fetches exact leg and stock reference with GET-only research
   };
   const source = new AlpacaCommand5aObservationSource({ tradingApiBase: 'https://paper-api.alpaca.test',
     marketDataApiBase: 'https://data.alpaca.test', apiKey: 'test-key', apiSecret: 'test-secret', fetchImpl },
-  { optionFeed: 'indicative', stockFeed: 'iex', maximumResearchQuoteAgeSeconds: 60 });
+  { optionFeed: 'indicative', stockFeed: 'iex', maximumResearchQuoteAgeSeconds: 60,
+    maximumTargetDelaySeconds: 100_000_000 });
   assert.deepEqual(await source.marketState(), { providerAvailable: true, marketSessionOpen: true });
   const receipt = await source.observe(inputs());
   assert.equal(receipt.state, 'READY');
@@ -122,7 +124,8 @@ test('two-leg defined-risk marks use one bounded snapshot page instead of one pr
   };
   const source = new AlpacaCommand5aObservationSource({ tradingApiBase: 'https://paper-api.alpaca.test',
     marketDataApiBase: 'https://data.alpaca.test', apiKey: 'test-key', apiSecret: 'test-secret', fetchImpl },
-  { optionFeed: 'indicative', stockFeed: 'iex', maximumResearchQuoteAgeSeconds: 60 });
+  { optionFeed: 'indicative', stockFeed: 'iex', maximumResearchQuoteAgeSeconds: 60,
+    maximumTargetDelaySeconds: 100_000_000 });
   const receipt = await source.observe(inputs(definedRiskSubject));
   assert.equal(receipt.state, 'READY');
   assert.equal(snapshotCalls, 1);
@@ -140,7 +143,8 @@ test('missing exact contract stays MISSING and never falls back to another quote
   };
   const source = new AlpacaCommand5aObservationSource({ tradingApiBase: 'https://paper-api.alpaca.test',
     marketDataApiBase: 'https://data.alpaca.test', apiKey: 'test-key', apiSecret: 'test-secret', fetchImpl },
-  { optionFeed: 'indicative', stockFeed: 'iex', maximumResearchQuoteAgeSeconds: 60 });
+  { optionFeed: 'indicative', stockFeed: 'iex', maximumResearchQuoteAgeSeconds: 60,
+    maximumTargetDelaySeconds: 100_000_000 });
   const receipt = await source.observe(inputs());
   assert.equal(receipt.state, 'MISSING');
   assert.equal(receipt.reasonCode, 'EXACT_CONTRACT_SNAPSHOT_MISSING');
@@ -161,7 +165,8 @@ test('one-sided and stale exact quotes remain typed missing observations, never 
     };
     const source = new AlpacaCommand5aObservationSource({ tradingApiBase: 'https://paper-api.alpaca.test',
       marketDataApiBase: 'https://data.alpaca.test', apiKey: 'test-key', apiSecret: 'test-secret', fetchImpl },
-    { optionFeed: 'indicative', stockFeed: 'iex', maximumResearchQuoteAgeSeconds: 60 });
+    { optionFeed: 'indicative', stockFeed: 'iex', maximumResearchQuoteAgeSeconds: 60,
+      maximumTargetDelaySeconds: 100_000_000 });
     const receipt = await source.observe(inputs());
     assert.equal(receipt.state, 'MISSING');
     assert.equal(receipt.reasonCode, scenario.reason);
@@ -182,9 +187,26 @@ test('missing underlying trade facts cannot become a retrying incomplete dataset
   };
   const source = new AlpacaCommand5aObservationSource({ tradingApiBase: 'https://paper-api.alpaca.test',
     marketDataApiBase: 'https://data.alpaca.test', apiKey: 'test-key', apiSecret: 'test-secret', fetchImpl },
-  { optionFeed: 'indicative', stockFeed: 'iex', maximumResearchQuoteAgeSeconds: 60 });
+  { optionFeed: 'indicative', stockFeed: 'iex', maximumResearchQuoteAgeSeconds: 60,
+    maximumTargetDelaySeconds: 100_000_000 });
   const receipt = await source.observe(inputs());
   assert.equal(receipt.state, 'MISSING');
   assert.equal(receipt.reasonCode, 'UNDERLYING_TRADE_PRICE_MISSING');
   assert.equal(receipt.underlying, null);
+});
+
+test('an expired target window is censored without substituting a current mark', async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return new Response('unexpected', { status: 500 });
+  };
+  const source = new AlpacaCommand5aObservationSource({ tradingApiBase: 'https://paper-api.alpaca.test',
+    marketDataApiBase: 'https://data.alpaca.test', apiKey: 'test-key', apiSecret: 'test-secret', fetchImpl },
+  { optionFeed: 'indicative', stockFeed: 'iex', maximumResearchQuoteAgeSeconds: 60,
+    maximumTargetDelaySeconds: 60 });
+  const receipt = await source.observe(inputs());
+  assert.equal(receipt.state, 'MISSING');
+  assert.equal(receipt.reasonCode, 'TARGET_OBSERVATION_WINDOW_EXPIRED');
+  assert.equal(calls, 0);
 });

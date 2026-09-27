@@ -28,7 +28,7 @@ const candidateSubject: SeriousCandidateSubject = {
     sizing: { quantity: 1, bindingConstraint: 'BROKER', reasons: [] }, paretoRank: 1,
     dominatedBy: [], executionAuthorized: false,
   },
-  subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v1',
+  subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v2',
   shadowOnly: true, brokerAuthority: false, orderSubmitted: false, brokerFill: false,
 };
 
@@ -66,7 +66,7 @@ test('WAIT receives an auditable shadow identity without a fake contract', () =>
     candidateId: null, branch: null, rankAtDecision: null, selected: false,
     selectionReasons: ['CANONICAL_WAIT'], primaryAction: 'GLOBAL_WAIT', reasons: ['ACCOUNT_CAPACITY'],
     bestRejectedCandidateId: 'candidate-1', secondBestCandidateId: null, nearMissCandidateId: 'candidate-1',
-    subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v1',
+    subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v2',
     shadowOnly: true, brokerAuthority: false, orderSubmitted: false, brokerFill: false,
   };
   const receipt = buildShadowEpisodeContract({ subject: wait, ...versions });

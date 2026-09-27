@@ -27,7 +27,7 @@ const subject: SeriousCandidateSubject = {
     sizing: { quantity: 1, bindingConstraint: 'BROKER', reasons: [] }, paretoRank: 1,
     dominatedBy: [], executionAuthorized: false,
   },
-  subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v1',
+  subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v2',
   shadowOnly: true, brokerAuthority: false, orderSubmitted: false, brokerFill: false,
 };
 
