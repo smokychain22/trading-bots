@@ -244,6 +244,7 @@ export async function requestOptionomicsJsonBounded(
     }
     if ((response.status === 429 || response.status >= 500) && attempt < maxAttempts) {
       clearTimeout(timer);
+      await response.body?.cancel('THETA_OPTIONOMICS_RETRY_RESPONSE_DISCARDED').catch(() => undefined);
       const retryAfter = parseRetryAfterSeconds(response.headers.get('retry-after'));
       await sleep((retryAfter ?? 1) * 1000);
       continue;

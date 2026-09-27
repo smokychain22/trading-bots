@@ -334,14 +334,18 @@ test('403 is classified NOT_ENTITLED', async () => {
 
 test('429 then success: a bounded retry recovers, never surfacing the transient 429 as an error', async () => {
   let calls = 0;
+  let discarded = 0;
   const fetchImpl = (async () => {
     calls += 1;
-    if (calls === 1) return new Response('', { status: 429, headers: { 'retry-after': '1' } });
+    if (calls === 1) return new Response(new ReadableStream<Uint8Array>({
+      cancel() { discarded += 1; },
+    }), { status: 429, headers: { 'retry-after': '1' } });
     return jsonResponse(200, [{ symbol: 'X', open_interest: 5 }]);
   }) as typeof fetch;
   const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY');
   assert.equal(outcome.kind, 'VALUE_PRESENT');
   assert.equal(calls, 2);
+  assert.equal(discarded, 1);
 });
 
 test('429 exhausted: bounded retries give up and report RATE_LIMITED with attemptCount, never an infinite loop', async () => {
