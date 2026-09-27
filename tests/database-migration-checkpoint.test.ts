@@ -15,6 +15,11 @@ test('the ordinary migration command refuses Aiven before opening a connection',
     timeout: 10_000,
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /AIVEN_PRODUCTION_MIGRATION_REQUIRES_VERIFIED_LOCAL_BACKUP_WORKFLOW/);
+  const receipt = JSON.parse(result.stdout.trim());
+  assert.equal(receipt.state, 'FAILED');
+  assert.equal(receipt.normalizedFailureCode, 'MIGRATION_CHECKPOINT_REQUIRED');
+  assert.equal(receipt.migrationId, 'MIGRATION_PROCESS');
+  assert.equal(result.stderr, '');
   assert.doesNotMatch(result.stderr, /placeholder:placeholder/);
+  assert.doesNotMatch(result.stdout, /placeholder:placeholder/);
 });

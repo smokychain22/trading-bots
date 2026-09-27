@@ -9,6 +9,8 @@ $before = $null
 $after = $null
 $storage = $null
 $soak = $null
+$migrationChildReceiptPath = $null
+$migrationChildFailureCode = $null
 $oldAuthority = $env:DATABASE_RUNTIME_AUTHORITY
 $oldAiven = $env:AIVEN_DATABASE_URL
 $oldDatabase = $env:DATABASE_URL
@@ -39,8 +41,70 @@ try {
   $env:THETA_MIGRATION_CHECKPOINT_ACTIVE = 'VERIFIED_LOCAL_BACKUP'
   Push-Location $repoRoot
   try {
+    $migrationStartedAt = (Get-Date).ToUniversalTime().ToString('o')
     $migrationProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 900 -Arguments @(
       'tools/database-migrate.mjs')
+    $migrationEndedAt = (Get-Date).ToUniversalTime().ToString('o')
+    $migrationEvents = @()
+    foreach ($line in @($migrationProcess.Output)) {
+      try {
+        $candidate = [string]$line | ConvertFrom-Json -ErrorAction Stop
+        if ([string]$candidate.contractVersion -notin @('theta-migration-child-v1','theta-migration-run-v1')) { continue }
+        if ([string]$candidate.state -notin @('STARTED','SKIPPED_ALREADY_APPLIED','COMPLETED','FAILED','MIGRATED')) { continue }
+        $migrationEvents += [ordered]@{
+          contractVersion=[string]$candidate.contractVersion
+          migrationId=$(if($candidate.migrationId){[string]$candidate.migrationId}else{$null})
+          state=[string]$candidate.state
+          program=$(if($candidate.program){[string]$candidate.program}else{$null})
+          command=$(if($candidate.command){[string]$candidate.command}else{$null})
+          startedAt=$(if($candidate.startedAt){[string]$candidate.startedAt}else{$null})
+          endedAt=$(if($candidate.endedAt){[string]$candidate.endedAt}else{$null})
+          processExitCode=$(if($null-ne$candidate.processExitCode){[int]$candidate.processExitCode}else{$null})
+          schemaHeadBefore=$(if($candidate.schemaHeadBefore){[string]$candidate.schemaHeadBefore}else{$null})
+          schemaHeadAfter=$(if($candidate.schemaHeadAfter){[string]$candidate.schemaHeadAfter}else{$null})
+          migrationLedgerChanged=$(if($null-ne$candidate.migrationLedgerChanged){[bool]$candidate.migrationLedgerChanged}else{$null})
+          sqlState=$(if([string]$candidate.sqlState-match'^[0-9A-Z]{5}$'){[string]$candidate.sqlState}else{$null})
+          providerError=$(if([string]$candidate.providerError-match'^[A-Z0-9_]{2,64}$'){[string]$candidate.providerError}else{$null})
+          failureClass=$(if([string]$candidate.failureClass-match'^[A-Z][A-Z0-9_]{1,63}$'){[string]$candidate.failureClass}else{$null})
+          normalizedFailureCode=$(if([string]$candidate.normalizedFailureCode-match'^[A-Z][A-Z0-9_]{2,127}$'){[string]$candidate.normalizedFailureCode}else{$null})
+        }
+      } catch {
+        # Only strict child receipt JSON is durable. Free-form stdout is not.
+      }
+    }
+    $failedMigrationEvent = @($migrationEvents | Where-Object state -eq 'FAILED' | Select-Object -Last 1)
+    if ($failedMigrationEvent.Count -gt 0) { $migrationChildFailureCode = [string]$failedMigrationEvent[0].normalizedFailureCode }
+    if (-not $migrationChildFailureCode -and $migrationProcess.State -eq 'TIMED_OUT') {
+      $migrationChildFailureCode = 'MIGRATION_CHILD_PROCESS_TIMEOUT'
+    }
+    if (-not $migrationChildFailureCode -and $migrationProcess.ExitCode -ne 0) {
+      $stderrCodes = @($migrationProcess.SanitizedStandardError)
+      if ($stderrCodes -contains 'EAI_AGAIN' -or $stderrCodes -contains 'ENOTFOUND') {
+        $migrationChildFailureCode = 'MIGRATION_DB_DNS_FAILURE'
+      } elseif ($stderrCodes -contains 'ECONNRESET' -or $stderrCodes -contains 'ECONNREFUSED' -or
+          $stderrCodes -contains 'ETIMEDOUT' -or $stderrCodes -contains 'EPIPE') {
+        $migrationChildFailureCode = 'MIGRATION_DB_CONNECTION_FAILURE'
+      } elseif ($stderrCodes -contains 'TLS_DIAGNOSTIC_REDACTED') {
+        $migrationChildFailureCode = 'MIGRATION_DB_TLS_FAILURE'
+      } else { $migrationChildFailureCode = 'MIGRATION_CHILD_EXITED_NONZERO' }
+    }
+    $migrationChildReceiptPath = Join-Path $root ('logs\migration-child-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.json')
+    $migrationChildReceipt = [ordered]@{
+      contractVersion='theta-migration-process-receipt-v1'
+      program='node'
+      command='tools/database-migrate.mjs'
+      startedAt=$migrationStartedAt
+      endedAt=$migrationEndedAt
+      processState=[string]$migrationProcess.State
+      processExitCode=[int]$migrationProcess.ExitCode
+      sanitizedStdout=$migrationEvents
+      sanitizedStderr=@($migrationProcess.SanitizedStandardError)
+      schemaHeadBefore=$(if($migrationEvents.Count -gt 0 -and $migrationEvents[0].schemaHeadBefore){$migrationEvents[0].schemaHeadBefore}else{[string]$before.migrationHead})
+      schemaHeadAfter=$(if($migrationEvents.Count-gt0){$migrationEvents[-1].schemaHeadAfter}else{$null})
+      migrationLedgerChanged=(@($migrationEvents|Where-Object migrationLedgerChanged -eq $true).Count-gt0)
+      normalizedFailureCode=$migrationChildFailureCode
+    }
+    Write-ThetaJson $migrationChildReceiptPath $migrationChildReceipt
     if ($migrationProcess.State -eq 'TIMED_OUT') { throw 'PRODUCTION_MIGRATION_PROCESS_TIMEOUT_PRE_BACKUP_PRESERVED' }
     if ($migrationProcess.ExitCode -ne 0) { throw 'PRODUCTION_MIGRATION_FAILED_PRE_BACKUP_PRESERVED' }
     $verifyProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 600 -Arguments @(
@@ -119,6 +183,8 @@ try {
     reason=$code;preMigrationBackupId=$(if($before){$before.backupId}else{$null});
     postMigrationBackupId=$(if($after){$after.backupId}else{$null});
     newPreMigrationBackupVerified=($null -ne $before);
+    migrationChildReceiptPath=$migrationChildReceiptPath;
+    migrationChildFailureCode=$migrationChildFailureCode;
     previousKnownGoodBackupId=$previousKnownGoodBackupId;
     previousKnownGoodBackupPreserved=$previousKnownGoodBackupPreserved}
   Write-ThetaJson (Join-Path $root ('logs\migration-checkpoint-failed-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.json')) $failure

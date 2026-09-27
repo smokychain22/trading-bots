@@ -74,6 +74,12 @@ if ($checkpoint -notmatch 'Get-ThetaBoundedFailureCode') {
 if ($checkpoint -notmatch 'BACKUP_FAILURE_RECEIPT_MISSING') {
   throw 'MIGRATION_CHECKPOINT_MISSING_FAILURE_RECEIPT_NOT_TYPED'
 }
+foreach ($required in @('theta-migration-process-receipt-v1','migration-child-','sanitizedStdout','sanitizedStderr',
+    'schemaHeadBefore','schemaHeadAfter','migrationLedgerChanged','migrationChildReceiptPath','migrationChildFailureCode')) {
+  if ($checkpoint -notmatch [regex]::Escape($required)) {
+    throw "MIGRATION_CHILD_OBSERVABILITY_FIELD_MISSING:$required"
+  }
+}
 
 $backupPath = Join-Path $PSScriptRoot '..\..\tools\windows\dr\Backup-Theta.ps1'
 $backupSource = Get-Content -Raw -LiteralPath $backupPath

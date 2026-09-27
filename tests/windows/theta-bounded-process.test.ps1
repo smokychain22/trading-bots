@@ -19,7 +19,7 @@ try {
 
   $failureScript = Join-Path $root 'failure.ps1'
   [IO.File]::WriteAllText($failureScript, @'
-[Console]::Error.WriteLine('sensitive-provider-detail')
+[Console]::Error.WriteLine('SQLSTATE 57P03 postgresql://owner:secret@private.example/db password=never-persist')
 Write-Output '{"state":"FAILED","reasonCode":"SAFE_FAILURE"}'
 exit 7
 '@, [Text.UTF8Encoding]::new($false))
@@ -29,8 +29,14 @@ exit 7
       $failure.Output.Count -ne 1 -or $failure.Output[0] -notmatch 'SAFE_FAILURE') {
     throw 'THETA_BOUNDED_PROCESS_FAILURE_RESULT_INVALID'
   }
-  if (($failure.Output -join "`n") -match 'sensitive-provider-detail') {
+  if (($failure.Output -join "`n") -match 'never-persist|private\.example|owner:secret') {
     throw 'THETA_BOUNDED_PROCESS_EXPOSED_STDERR'
+  }
+  if (($failure.SanitizedStandardError -join "`n") -match 'never-persist|private\.example|owner:secret') {
+    throw 'THETA_BOUNDED_PROCESS_SANITIZED_STDERR_EXPOSED_SECRET'
+  }
+  if ($failure.SanitizedStandardError -notcontains 'SQLSTATE_57P03') {
+    throw 'THETA_BOUNDED_PROCESS_SQLSTATE_NOT_CLASSIFIED'
   }
   $failureCode = Get-ThetaBoundedFailureCode -ProcessResult $failure
   if ($failureCode -ne 'SAFE_FAILURE') { throw 'THETA_BOUNDED_PROCESS_FAILURE_CODE_NOT_RECOVERED' }
@@ -76,7 +82,8 @@ exit 7
   $timeout = Invoke-ThetaBoundedProcess -Executable $pwsh `
     -Arguments @('-NoProfile','-File',$timeoutScript) -TimeoutSeconds 1 -WorkingDirectory $root
   $timer.Stop()
-  if ($timeout.State -ne 'TIMED_OUT' -or $timeout.ExitCode -ne -1 -or $timeout.Output.Count -ne 0) {
+  if ($timeout.State -ne 'TIMED_OUT' -or $timeout.ExitCode -ne -1 -or $timeout.Output.Count -ne 0 -or
+      $null -eq $timeout.SanitizedStandardError) {
     throw 'THETA_BOUNDED_PROCESS_TIMEOUT_RESULT_INVALID'
   }
   if ($timer.Elapsed.TotalSeconds -gt 10) { throw 'THETA_BOUNDED_PROCESS_TIMEOUT_EXIT_TOO_SLOW' }
