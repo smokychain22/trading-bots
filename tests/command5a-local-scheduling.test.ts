@@ -191,3 +191,18 @@ test('stock-only recovery candidates persist as T0-only subjects without fake op
     assert.deepEqual(scheduler.counts(), {});
   } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+test('snapshot and candidate underlying mismatch fails before subject persistence', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-command5a-schedule-'));
+  const scheduler = new LocalObservationJobScheduler(join(root, 'jobs.sqlite'));
+  try {
+    assert.throws(() => scheduleCommand5aFromCanonicalFrontier({ scheduler, frontier,
+      decisionCycleId: 'cycle-mismatch', decisionId: 'decision-mismatch', underlying: 'QQQ',
+      featureSnapshotHash: 'a'.repeat(64), riskVersion: 'risk-v1', costVersion: 'cost-v1',
+      executionModelVersion: 'execution-v1', sourceSha: 'b'.repeat(40), workerSha: 'b'.repeat(40),
+      sessions, horizonPolicy: { version: 'theta-strategy-learning-horizons-v1',
+        primaryCommonHorizon: '1_TRADING_DAY', tradingDayTarget: 'SESSION_CLOSE' } }),
+    /COMMAND5A_SUBJECT_UNDERLYING_MISMATCH/);
+    assert.equal(scheduler.subjectCount(), 0);
+  } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
+});

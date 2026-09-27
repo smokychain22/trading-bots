@@ -90,6 +90,9 @@ export function scheduleCommand5aFromCanonicalFrontier(input: {
   let existingSubjectCount = 0;
   let existingJobCount = 0;
   for (const subject of selection.subjects) {
+    if (subject.kind === 'CANDIDATE' && subject.candidate.underlying !== input.underlying) {
+      throw new Error('COMMAND5A_SUBJECT_UNDERLYING_MISMATCH');
+    }
     let subjectExisted = false;
     let episode: ShadowEpisodeContract;
     try {
@@ -112,9 +115,6 @@ export function scheduleCommand5aFromCanonicalFrontier(input: {
         sourceSha: input.sourceSha,
         workerSha: input.workerSha,
       });
-      if (subject.kind === 'CANDIDATE' && subject.candidate.underlying !== input.underlying) {
-        throw new Error('COMMAND5A_SUBJECT_UNDERLYING_MISMATCH');
-      }
       input.scheduler.registerSubject({ decisionCycleId: input.decisionCycleId,
         underlying: input.underlying, episode });
     }
