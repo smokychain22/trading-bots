@@ -32,6 +32,32 @@ export interface Command5aLocalSchedulingReceipt {
   readonly brokerMutations: 0;
 }
 
+function object(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown> : {};
+}
+
+/**
+ * Resolves the cycle underlying without requiring at least one candidate.
+ * A complete WAIT frontier may legitimately contain zero candidates, while
+ * the immutable fusion snapshot still carries the exact scanned symbol.
+ */
+export function resolveCommand5aFrontierUnderlying(
+  frontier: CanonicalStrategyFrontier,
+  snapshot: unknown,
+): string | null {
+  const snapshotSymbolValue = object(object(snapshot).underlyingState).symbol;
+  const snapshotSymbol = typeof snapshotSymbolValue === 'string'
+    && /^[A-Z][A-Z0-9.-]{0,31}$/.test(snapshotSymbolValue)
+    ? snapshotSymbolValue : null;
+  const candidateSymbols = new Set(frontier.branches
+    .flatMap((branch) => branch.candidates.map((candidate) => candidate.underlying)));
+  if (candidateSymbols.size > 1) return null;
+  const candidateSymbol = [...candidateSymbols][0] ?? null;
+  if (snapshotSymbol !== null && candidateSymbol !== null && snapshotSymbol !== candidateSymbol) return null;
+  return snapshotSymbol ?? candidateSymbol;
+}
+
 /**
  * Registers bounded serious subjects and their exchange-calendar-derived
  * future observation jobs in the local restart-safe WAL. WAIT is preserved
@@ -84,6 +110,9 @@ export function scheduleCommand5aFromCanonicalFrontier(input: {
         sourceSha: input.sourceSha,
         workerSha: input.workerSha,
       });
+      if (subject.kind === 'CANDIDATE' && subject.candidate.underlying !== input.underlying) {
+        throw new Error('COMMAND5A_SUBJECT_UNDERLYING_MISMATCH');
+      }
       input.scheduler.registerSubject({ decisionCycleId: input.decisionCycleId,
         underlying: input.underlying, episode });
     }

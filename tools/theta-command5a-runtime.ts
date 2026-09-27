@@ -4,7 +4,10 @@ import { AlpacaCommand5aObservationSource } from '../src/research/alpaca-command
 import { alpacaCalendarToLearningSessions } from '../src/research/alpaca-learning-calendar.js';
 import { runCommand5aLocalObservationWorker } from '../src/research/command5a-local-observation-worker.js';
 import { matureCommand5aLocalObservations } from '../src/research/command5a-local-maturation.js';
-import { scheduleCommand5aFromCanonicalFrontier } from '../src/research/command5a-local-scheduling.js';
+import {
+  resolveCommand5aFrontierUnderlying,
+  scheduleCommand5aFromCanonicalFrontier,
+} from '../src/research/command5a-local-scheduling.js';
 import { LocalObservationJobScheduler } from '../src/storage/local-observation-job-scheduler.js';
 import {
   classifyLocalSpoolWatermark, measureLocalResearchStorageBytes,
@@ -18,6 +21,7 @@ type FrontierRow = {
   frontier_id: string;
   ready_at: Date | string;
   fusion_snapshot_id: string;
+  snapshot_json: unknown;
   frontier_json: unknown;
   evidence_archive_gzip: Buffer | null;
   snapshot_content_hash: string;
@@ -69,11 +73,6 @@ function fullFrontier(row: FrontierRow): CanonicalStrategyFrontier | null {
     ? raw as unknown as CanonicalStrategyFrontier : null;
 }
 
-function frontierUnderlying(frontier: CanonicalStrategyFrontier): string | null {
-  const values = new Set(frontier.branches.flatMap((branch) => branch.candidates.map((candidate) => candidate.underlying)));
-  return values.size === 1 ? [...values][0] ?? null : null;
-}
-
 async function schedule(): Promise<void> {
   const localStorageBytes = measureLocalResearchStorageBytes([schedulerPath, spoolPath, parquetRoot]);
   const localStorageWatermark = classifyLocalSpoolWatermark(localStorageBytes);
@@ -97,7 +96,7 @@ async function schedule(): Promise<void> {
     const query = await pool.query<FrontierRow>(`SELECT f.frontier_id::text,
       GREATEST(f.created_at,d.decided_at) AS ready_at,
       f.fusion_snapshot_id::text,
-      f.frontier_json,s.evidence_archive_gzip,s.content_hash AS snapshot_content_hash,
+      s.snapshot_json,f.frontier_json,s.evidence_archive_gzip,s.content_hash AS snapshot_content_hash,
       d.decision_id::text,d.receipt_json,s.risk_limit_version_id::text,s.cost_model_version_id::text,
       s.execution_version_id::text
       FROM trade.canonical_strategy_frontier f
@@ -140,7 +139,8 @@ async function schedule(): Promise<void> {
     };
     for (const { row, frontier } of decoded) {
       const identity = releaseIdentity(row.receipt_json);
-      const underlying = frontier === null ? null : frontierUnderlying(frontier);
+      const underlying = frontier === null ? null
+        : resolveCommand5aFrontierUnderlying(frontier, row.snapshot_json);
       if (frontier === null) { skip('FRONTIER_ARCHIVE_MISSING'); continue; }
       if (identity === null) { skip('RELEASE_IDENTITY_MISSING'); continue; }
       if (row.decision_id === null) { skip('DECISION_ID_MISSING'); continue; }

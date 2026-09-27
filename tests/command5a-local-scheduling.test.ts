@@ -3,7 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { scheduleCommand5aFromCanonicalFrontier } from '../src/research/command5a-local-scheduling.js';
+import {
+  resolveCommand5aFrontierUnderlying,
+  scheduleCommand5aFromCanonicalFrontier,
+} from '../src/research/command5a-local-scheduling.js';
 import { selectSeriousResearchSubjects } from '../src/research/serious-subject-policy.js';
 import { buildShadowEpisodeContract } from '../src/research/shadow-episode-contract.js';
 import type { CanonicalStrategyFrontier } from '../src/theta/canonical-strategy-frontier.js';
@@ -133,4 +136,21 @@ test('repeated decisions in one governed bucket retain the first immutable T0 su
     assert.equal(scheduler.getSubject(candidateSubjectId).episode.decisionId, firstEpisode.decisionId);
     assert.equal(scheduler.getSubject(candidateSubjectId).episode.decisionAt, firstEpisode.decisionAt);
   } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a complete zero-candidate WAIT retains its underlying from the immutable snapshot', () => {
+  const waitFrontier: CanonicalStrategyFrontier = {
+    ...frontier,
+    branches: frontier.branches.map((branch) => ({ ...branch, candidates: [], candidateCount: 0,
+      bestCandidateId: null, secondBestCandidateId: null, bestRejectedCandidateId: null,
+      softRanked: 0 })),
+    nearMissCandidateId: null,
+    bestRejectedCandidateId: null,
+  };
+  assert.equal(resolveCommand5aFrontierUnderlying(waitFrontier, {
+    underlyingState: { symbol: 'SPY' },
+  }), 'SPY');
+  assert.equal(resolveCommand5aFrontierUnderlying(frontier, {
+    underlyingState: { symbol: 'QQQ' },
+  }), null);
 });
