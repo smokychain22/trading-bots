@@ -105,6 +105,20 @@ test('invalid Optionomics response-size policy is a typed local request failure'
   assert.equal(calls, 0);
 });
 
+test('retry and timeout policy are bounded before any provider request', async () => {
+  for (const overrides of [{ maxRetryAttempts: 0 }, { maxRetryAttempts: 6 },
+    { timeoutMs: 0 }, { timeoutMs: 60_001 }]) {
+    let calls = 0;
+    const fetchImpl = (async () => { calls += 1; return jsonResponse(200, []); }) as typeof fetch;
+    const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl, overrides), 'SPY');
+    assert.equal(outcome.kind, 'REQUEST_ERROR');
+    if (outcome.kind !== 'REQUEST_ERROR') continue;
+    assert.equal(outcome.errorClass, 'INVALID_REQUEST');
+    assert.equal(outcome.attemptCount, 0);
+    assert.equal(calls, 0);
+  }
+});
+
 test('historical chain fetch uses only documented point-in-time filters', async () => {
   let requested: URL | null = null;
   const fetchImpl = (async (input) => {

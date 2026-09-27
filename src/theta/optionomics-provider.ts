@@ -198,8 +198,13 @@ export async function requestOptionomicsJsonBounded(
   const now = config.now ?? defaultNow;
   const sleep = config.sleepImpl ?? defaultSleep;
   const timeoutMs = config.timeoutMs ?? 10_000;
-  const maxAttempts = Math.max(1, config.maxRetryAttempts ?? 3);
+  const maxAttempts = config.maxRetryAttempts ?? 3;
   const maxResponseBytes = config.maxResponseBytes ?? defaultMaxResponseBytes;
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000
+    || !Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 5) {
+    throw new OptionomicsProviderError('INVALID_REQUEST', null,
+      'Optionomics timeout or retry policy is invalid.', null, 0);
+  }
   if (!Number.isInteger(maxResponseBytes) || maxResponseBytes < 1 || maxResponseBytes > 64 * 1024 * 1024) {
     throw new OptionomicsProviderError('INVALID_REQUEST', null,
       'Optionomics response-size policy is invalid.', null, 0);
