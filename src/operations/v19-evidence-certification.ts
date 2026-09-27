@@ -149,7 +149,7 @@ export interface V19ExecutionEvidence {
   readonly sourceSha: string;
   readonly sourceClean: boolean;
   readonly runtimeReceiptHash: string;
-  readonly runtimeAligned: boolean;
+  readonly runtimeAlignmentState: 'ALIGNED' | 'EXTERNAL_BLOCKED' | 'MISALIGNED';
   readonly fileAuditFailures: readonly string[];
   readonly testResults: Readonly<Record<string, boolean>>;
   readonly unknownAuditPass: boolean;
@@ -223,7 +223,7 @@ export function buildV19EvidenceCertification(input: V19ExecutionEvidence) {
     ...wholeChain.unproven.map((item) => `WHOLE_CHAIN_UNPROVEN:${item}`),
     ...(input.unknownAuditPass ? [] : ['UNKNOWN_AUDIT_FAILED']),
     ...(input.regressionAuditPass ? [] : ['HISTORICAL_REGRESSION_AUDIT_FAILED']),
-    ...(input.runtimeAligned ? [] : ['CURRENT_WORKER_RUNTIME_ROUTE_NOT_ALIGNED']),
+    ...(input.runtimeAlignmentState === 'MISALIGNED' ? ['CURRENT_WORKER_RUNTIME_ROUTE_NOT_ALIGNED'] : []),
     ...((input.conflictingConfigurationValues ?? []).map((item) => `CONFIGURATION_CONFLICT:${item}`)),
   ];
   const optionalProviderLimits = softFeatureUsageRegistry.filter((item) => item.use === 'PROVIDER_LIMITED')
@@ -263,6 +263,8 @@ export function buildV19EvidenceCertification(input: V19ExecutionEvidence) {
     SHADOW_COMPARATOR_BROKER_AUTHORITY: false,
     SHADOW_COMPARATOR_EXECUTION_AUTHORIZED: false,
     CODE_SOLVABLE: [...new Set(codeSolvable)].sort(),
+    EXTERNAL_RUNTIME_BLOCKERS: input.runtimeAlignmentState === 'EXTERNAL_BLOCKED'
+      ? ['CURRENT_WORKER_LOCKED_OFFLINE_AWAITING_GOVERNED_RUNTIME_ADMISSION'] : [],
     GENERIC_ENGINEERING_UNKNOWN: 0, GENERIC_DECISION_UNKNOWN: 0, GENERIC_WAIT: 0,
     FORWARD_DATA_REQUIRED: ['CURRENT_SESSION_Q_H_D_MARKET_VALUES', 'MANAGED_PAPER_EPISODES'],
     EMPIRICALLY_UNPROVEN: ['ENTRY_AFTER_COST_EV', 'MANAGEMENT_CONTINUATION_VALUE',

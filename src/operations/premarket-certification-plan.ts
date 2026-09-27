@@ -30,6 +30,14 @@ export function classifyLockedWorker(status: Readonly<Record<string, unknown>>,
   const sourceAligned = status.runtimeSha === sourceSha && status.workspaceSha === sourceSha;
   if (safelyRunning && sourceAligned) return { state: 'PASS', detail: 'ONE_CURRENT_SOURCE_ALIGNED_LOCKED_WORKER' };
   if (safelyRunning) return { state: 'FORWARD_DATA_REQUIRED', detail: 'HEALTHY_LOCKED_WORKER_AWAITS_EXACT_CI_CUTOVER' };
+  const intentionallyOfflineAndLocked = status.executionGate === 'LOCKED'
+    && status.taskState === 'Ready'
+    && status.effectiveState === 'NOT_RUNNING'
+    && status.supervisorProcessCount === 0
+    && (status.reportedHealth === undefined || (status.reportedHealth as Record<string, unknown>).state === 'OFFLINE');
+  if (intentionallyOfflineAndLocked) {
+    return { state: 'EXTERNAL_BLOCKED', detail: 'LOCKED_WORKER_OFFLINE_AWAITING_GOVERNED_RUNTIME_ADMISSION' };
+  }
   return { state: 'FAIL', detail: 'WORKER_NOT_SAFELY_RUNNING' };
 }
 

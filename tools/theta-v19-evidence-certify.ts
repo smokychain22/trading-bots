@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { buildV19EvidenceCertification, v19RequiredEvidenceFiles, v19RequiredTestFiles,
   v19ScenarioEvidence } from '../src/operations/v19-evidence-certification.js';
+import { classifyLockedWorker } from '../src/operations/premarket-certification-plan.js';
 
 const run = (command: string, args: readonly string[], timeout = 300_000) => spawnSync(command, [...args], {
   encoding: 'utf8', timeout, windowsHide: true,
@@ -23,7 +24,7 @@ const testResults = Object.fromEntries(v19RequiredTestFiles.map((file) => {
 }));
 const unknown = run(process.execPath, ['--import', 'tsx', 'tools/theta-pre-vps-unknown-audit.ts']);
 const regression = run(process.execPath, ['--import', 'tsx', 'tools/theta-historical-regressions.ts']);
-let runtimeAligned = false;
+let runtimeAlignmentState: 'ALIGNED' | 'EXTERNAL_BLOCKED' | 'MISALIGNED' = 'MISALIGNED';
 let runtimeReceiptHash = createHash('sha256').update('RUNTIME_NOT_PROBED').digest('hex');
 if (process.platform === 'win32') {
   const worker = run('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
@@ -31,12 +32,13 @@ if (process.platform === 'win32') {
   try {
     const line = worker.stdout.trim().split(/\r?\n/).at(-1) ?? '{}';
     const status = JSON.parse(line) as Record<string, unknown>;
-    runtimeAligned = status.runtimeSha === sourceSha && status.healthShaAligned === true
-      && status.taskState === 'Running' && status.executionGate === 'LOCKED';
+    const classification = classifyLockedWorker(status, sourceSha);
+    runtimeAlignmentState = classification.state === 'PASS' ? 'ALIGNED'
+      : classification.state === 'EXTERNAL_BLOCKED' ? 'EXTERNAL_BLOCKED' : 'MISALIGNED';
     runtimeReceiptHash = createHash('sha256').update(line).digest('hex');
-  } catch { runtimeAligned = false; }
+  } catch { runtimeAlignmentState = 'MISALIGNED'; }
 }
-const receipt = buildV19EvidenceCertification({ sourceSha, sourceClean, runtimeReceiptHash, runtimeAligned,
+const receipt = buildV19EvidenceCertification({ sourceSha, sourceClean, runtimeReceiptHash, runtimeAlignmentState,
   fileAuditFailures, testResults, unknownAuditPass: unknown.status === 0,
   regressionAuditPass: regression.status === 0 });
 process.stdout.write(`${JSON.stringify(receipt)}\n`);
