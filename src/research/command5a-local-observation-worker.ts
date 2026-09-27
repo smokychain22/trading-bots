@@ -67,7 +67,7 @@ function expectedLegs(subject: LocalObservationSubjectReceipt) {
 }
 
 function safeReason(value: string | null, fallback: string): string {
-  return value !== null && /^[A-Z0-9_:-]{1,160}$/.test(value) ? value : fallback;
+  return value !== null && /^[A-Z0-9_:-]{1,128}$/.test(value) ? value : fallback;
 }
 
 /**
