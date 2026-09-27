@@ -109,3 +109,27 @@ test('restart repairs a subject registered before its jobs were scheduled', () =
     scheduler.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('repeated decisions in one governed bucket retain the first immutable T0 subject', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-command5a-schedule-'));
+  const scheduler = new LocalObservationJobScheduler(join(root, 'jobs.sqlite'));
+  const input = { scheduler, frontier, decisionCycleId: 'cycle-1', decisionId: 'decision-1',
+    underlying: 'SPY', featureSnapshotHash: 'a'.repeat(64), riskVersion: 'risk-v1',
+    costVersion: 'cost-v1', executionModelVersion: 'execution-v1', sourceSha: 'b'.repeat(40),
+    workerSha: 'b'.repeat(40), sessions,
+    horizonPolicy: { version: 'theta-strategy-learning-horizons-v1' as const,
+      primaryCommonHorizon: '1_TRADING_DAY' as const, tradingDayTarget: 'SESSION_CLOSE' as const } };
+  try {
+    const first = scheduleCommand5aFromCanonicalFrontier(input);
+    const candidateSubjectId = first.subjectIds[0] as string;
+    const firstEpisode = scheduler.getSubject(candidateSubjectId).episode;
+    const repeatedFrontier = { ...frontier, timestamp: '2026-09-25T14:31:00.000Z' };
+    const repeated = scheduleCommand5aFromCanonicalFrontier({ ...input, frontier: repeatedFrontier,
+      decisionCycleId: 'cycle-2', decisionId: 'decision-2' });
+    assert.equal(repeated.existingSubjectCount, 2);
+    assert.equal(repeated.scheduledJobCount, 0);
+    assert.equal(repeated.existingJobCount, 8);
+    assert.equal(scheduler.getSubject(candidateSubjectId).episode.decisionId, firstEpisode.decisionId);
+    assert.equal(scheduler.getSubject(candidateSubjectId).episode.decisionAt, firstEpisode.decisionAt);
+  } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
+});

@@ -6,6 +6,7 @@ import {
   type SeriousSubjectPolicy,
 } from './serious-subject-policy.js';
 import { buildShadowEpisodeContract } from './shadow-episode-contract.js';
+import type { ShadowEpisodeContract } from './shadow-episode-contract.js';
 import {
   buildStrategyLearningObservationSchedule,
   type StrategyLearningHorizonPolicy,
@@ -60,26 +61,27 @@ export function scheduleCommand5aFromCanonicalFrontier(input: {
   let existingJobCount = 0;
   for (const subject of selection.subjects) {
     let subjectExisted = false;
+    let episode: ShadowEpisodeContract;
     try {
-      input.scheduler.getSubject(subject.subjectId);
+      episode = input.scheduler.getSubject(subject.subjectId).episode;
       subjectExisted = true;
       existingSubjectCount += 1;
     } catch (error) {
       if (!(error instanceof Error) || error.message !== 'LOCAL_OBSERVATION_SUBJECT_NOT_FOUND') throw error;
+      episode = buildShadowEpisodeContract({
+        subject,
+        decisionId: input.decisionId,
+        featureSnapshotHash: input.featureSnapshotHash,
+        strategyVersion: input.frontier.strategyVersion,
+        riskVersion: input.riskVersion,
+        costVersion: input.costVersion,
+        executionModelVersion: input.executionModelVersion,
+        sourceSha: input.sourceSha,
+        workerSha: input.workerSha,
+      });
+      input.scheduler.registerSubject({ decisionCycleId: input.decisionCycleId,
+        underlying: input.underlying, episode });
     }
-    const episode = buildShadowEpisodeContract({
-      subject,
-      decisionId: input.decisionId,
-      featureSnapshotHash: input.featureSnapshotHash,
-      strategyVersion: input.frontier.strategyVersion,
-      riskVersion: input.riskVersion,
-      costVersion: input.costVersion,
-      executionModelVersion: input.executionModelVersion,
-      sourceSha: input.sourceSha,
-      workerSha: input.workerSha,
-    });
-    input.scheduler.registerSubject({ decisionCycleId: input.decisionCycleId,
-      underlying: input.underlying, episode });
     if (subject.kind === 'WAIT') {
       waitSubjectCount += 1;
       continue;
@@ -90,8 +92,8 @@ export function scheduleCommand5aFromCanonicalFrontier(input: {
     const expirationDate = episode.legs[0]?.expiration ?? null;
     const schedule = buildStrategyLearningObservationSchedule({
       subjectId: subject.subjectId,
-      decisionAt: subject.decisionAt,
-      decisionSessionDate: subject.decisionAt.slice(0, 10),
+      decisionAt: episode.decisionAt,
+      decisionSessionDate: episode.decisionAt.slice(0, 10),
       expirationDate,
       sessions: input.sessions,
       policy: input.horizonPolicy,
