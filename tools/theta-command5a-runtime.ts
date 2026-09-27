@@ -34,6 +34,7 @@ const mode = argument('--mode=');
 const environmentFile = argument('--environment-file=') ?? '.env.local';
 const schedulerPath = argument('--scheduler=') ?? '.theta-local-worker/research-spool/theta-observation-jobs.sqlite';
 const spoolPath = argument('--spool=') ?? '.theta-local-worker/research-spool/theta-research.sqlite';
+const parquetRoot = argument('--parquet-root=') ?? 'C:\\ProjectBackups\\trading-bots\\research-archives';
 const environment = loadEnvironmentFile(environmentFile);
 const readOnlyFetch: typeof fetch = (input, init) => {
   if ((init?.method ?? 'GET').toUpperCase() !== 'GET') throw new Error('COMMAND5A_NON_GET_REJECTED');
@@ -74,7 +75,7 @@ function frontierUnderlying(frontier: CanonicalStrategyFrontier): string | null 
 }
 
 async function schedule(): Promise<void> {
-  const localStorageBytes = measureLocalResearchStorageBytes([schedulerPath, spoolPath]);
+  const localStorageBytes = measureLocalResearchStorageBytes([schedulerPath, spoolPath, parquetRoot]);
   const localStorageWatermark = classifyLocalSpoolWatermark(localStorageBytes);
   if (localStorageWatermark === 'HIGH' || localStorageWatermark === 'CRITICAL') {
     process.stdout.write(`${JSON.stringify({ state: 'PAUSED_STORAGE_WATERMARK', localStorageBytes,

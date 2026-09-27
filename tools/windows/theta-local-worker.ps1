@@ -164,6 +164,7 @@ try {
       # infrastructure issue into WAIT.
       $command5aSchedulerPath = Join-Path $stateRoot 'research-spool\theta-observation-jobs.sqlite'
       $command5aSpoolPath = Join-Path $stateRoot 'research-spool\theta-research.sqlite'
+      $command5aParquetRoot = 'C:\ProjectBackups\trading-bots\research-archives'
       $command5aScheduleState = 'NOT_ATTEMPTED'
       $command5aObservationState = if ($report.reconciliation.marketOpen -eq $true) {
         'NOT_ATTEMPTED'
@@ -205,6 +206,7 @@ try {
           $command5aScheduleOutput = & node --import tsx tools/theta-command5a-runtime.ts `
             --mode=schedule "--environment-file=$productionEnvFile" `
             "--scheduler=$command5aSchedulerPath" "--spool=$command5aSpoolPath" `
+            "--parquet-root=$command5aParquetRoot" `
             "--since=$command5aSince" --limit=250 2>$null
           if ($LASTEXITCODE -eq 0) {
             $command5aScheduleResult = $command5aScheduleOutput | Select-Object -Last 1 | ConvertFrom-Json
@@ -457,6 +459,7 @@ try {
       $localResearchTotalBytes = 0
       $localResearchStorageWatermark = 'NORMAL'
       $localResearchParquetFiles = 0
+      $localResearchParquetBytes = 0
       $localResearchLastManifestHash = $null
       $localResearchDuckdbVerification = 'NOT_AVAILABLE'
       $localResearchParquetState = if ($report.reconciliation.marketOpen -eq $true) {
@@ -465,7 +468,7 @@ try {
       if ($report.reconciliation.marketOpen -ne $true) {
         $researchSpoolPath = Join-Path $stateRoot 'research-spool\theta-research.sqlite'
         $researchArchiveHealthPath = Join-Path $stateRoot 'research-spool\archive-health.json'
-        $researchParquetRoot = 'C:\ProjectBackups\trading-bots\research-archives'
+        $researchParquetRoot = $command5aParquetRoot
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
@@ -522,6 +525,7 @@ try {
             $localResearchTotalBytes = [long]$healthResult.health.totalLocalResearchBytes
             $localResearchStorageWatermark = [string]$healthResult.health.spoolWatermark
             $localResearchParquetFiles = [int]$healthResult.health.parquetFiles
+            $localResearchParquetBytes = [long]$healthResult.health.parquetBytes
             $localResearchLastManifestHash = [string]$healthResult.health.lastManifestHash
             $localResearchDuckdbVerification = [string]$healthResult.health.duckdbVerification
             $localResearchArchiveFailureFamily = [string]$healthResult.health.failureFamily
@@ -565,7 +569,7 @@ try {
         localResearchPendingCompactionRows=$localResearchPendingCompactionRows;
         localResearchTotalBytes=$localResearchTotalBytes;
         localResearchStorageWatermark=$localResearchStorageWatermark;
-        localResearchParquetFiles=$localResearchParquetFiles;
+        localResearchParquetFiles=$localResearchParquetFiles;localResearchParquetBytes=$localResearchParquetBytes;
         localResearchLastManifestHash=$localResearchLastManifestHash;
         localResearchDuckdbVerification=$localResearchDuckdbVerification;
         command5aScheduleState=$command5aScheduleState;command5aObservationState=$command5aObservationState;

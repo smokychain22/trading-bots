@@ -48,6 +48,7 @@ test('local research spool watermarks pause new subjects before local storage is
   writeFileSync(second, 'ghi');
   truncateSync(second, 3);
   assert.equal(measureLocalResearchStorageBytes([first, second]), 9);
+  assert.equal(measureLocalResearchStorageBytes([root]), 9);
 });
 
 test('quota exhaustion persists a cooldown and preserves local archive inventory', () => {
@@ -69,7 +70,8 @@ test('quota exhaustion persists a cooldown and preserves local archive inventory
   assert.equal(state.pendingCompactionRows, 1);
   assert.ok(state.spoolBytes > 0);
   assert.equal(state.schedulerBytes, 0);
-  assert.equal(state.totalLocalResearchBytes, state.spoolBytes);
+  assert.equal(state.parquetBytes, 0);
+  assert.equal(state.totalLocalResearchBytes, state.spoolBytes + state.parquetBytes);
   assert.equal(state.spoolWatermark, 'NORMAL');
   assert.equal(state.newSubjectScheduling, 'ALLOW');
   assert.equal(state.nextRetryAt, '2026-09-25T12:00:00.000Z');
@@ -99,6 +101,8 @@ test('successful archive clears quota cooldown and fingerprints latest verified 
   assert.equal(state.nextRetryAt, null);
   assert.equal(state.failureFamily, null);
   assert.equal(state.parquetFiles, 1);
+  assert.ok(state.parquetBytes > 0);
+  assert.equal(state.totalLocalResearchBytes, state.spoolBytes + state.parquetBytes);
   assert.match(state.lastManifestHash ?? '', /^[0-9a-f]{64}$/);
   assert.equal(state.duckdbVerification, 'PASS');
   assert.equal(JSON.parse(readFileSync(paths.health, 'utf8')).brokerAuthority, false);

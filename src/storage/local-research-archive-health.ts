@@ -3,8 +3,9 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-export const localResearchArchiveHealthVersion = 'theta-local-research-archive-health-v2' as const;
-export const localResearchSpoolBudgetBytes = 1024 * 1024 * 1024;
+export const localResearchArchiveHealthVersion = 'theta-local-research-archive-health-v3' as const;
+export const localResearchStorageBudgetBytes = 1024 * 1024 * 1024;
+export const localResearchSpoolBudgetBytes = localResearchStorageBudgetBytes;
 
 export type TransferQuotaState = 'TRANSFER_QUOTA_OPEN' | 'TRANSFER_QUOTA_EXHAUSTED' | 'TRANSFER_QUOTA_RECOVERING';
 export type ArchiveFailureFamily = 'DATABASE_RESOURCE_QUOTA' | 'DATABASE_TRANSIENT' | 'ARCHIVE_INTEGRITY' | 'UNKNOWN';
@@ -22,6 +23,7 @@ export interface LocalResearchArchiveHealth {
   readonly pendingCompactionRows: number;
   readonly spoolBytes: number;
   readonly schedulerBytes: number;
+  readonly parquetBytes: number;
   readonly totalLocalResearchBytes: number;
   readonly spoolWatermark: 'NORMAL' | 'ELEVATED' | 'HIGH' | 'CRITICAL';
   readonly newSubjectScheduling: 'ALLOW' | 'PAUSE_STORAGE_PRESSURE';
@@ -46,7 +48,7 @@ export function classifyLocalSpoolWatermark(
   spoolBytes: number,
 ): LocalResearchArchiveHealth['spoolWatermark'] {
   if (!Number.isInteger(spoolBytes) || spoolBytes < 0) throw new Error('LOCAL_RESEARCH_SPOOL_BYTES_INVALID');
-  const spoolRatio = spoolBytes / localResearchSpoolBudgetBytes;
+  const spoolRatio = spoolBytes / localResearchStorageBudgetBytes;
   return spoolRatio >= 1 ? 'CRITICAL'
     : spoolRatio >= 0.9 ? 'HIGH' : spoolRatio >= 0.75 ? 'ELEVATED' : 'NORMAL';
 }
@@ -101,10 +103,23 @@ function sqliteCounts(path: string): { spoolRows: number; pendingCompactionRows:
   }
 }
 
+function pathTreeBytes(path: string): number {
+  if (!existsSync(path)) return 0;
+  const metadata = statSync(path);
+  if (metadata.isFile()) return metadata.size;
+  if (!metadata.isDirectory()) return 0;
+  return readdirSync(path, { withFileTypes: true }).reduce((sum, entry) => {
+    if (entry.isSymbolicLink()) return sum;
+    return sum + pathTreeBytes(join(path, entry.name));
+  }, 0);
+}
+
 function sqliteFileSetBytes(path: string | undefined): number {
   if (path === undefined) return 0;
-  return [path, `${path}-wal`, `${path}-shm`].reduce((sum, candidate) =>
-    sum + (existsSync(candidate) ? statSync(candidate).size : 0), 0);
+  const resolved = resolve(path);
+  if (existsSync(resolved) && statSync(resolved).isDirectory()) return pathTreeBytes(resolved);
+  return [resolved, `${resolved}-wal`, `${resolved}-shm`].reduce((sum, candidate) =>
+    sum + pathTreeBytes(candidate), 0);
 }
 
 export function measureLocalResearchStorageBytes(paths: readonly string[]): number {
@@ -112,8 +127,10 @@ export function measureLocalResearchStorageBytes(paths: readonly string[]): numb
 }
 
 function parquetState(root: string): Pick<LocalResearchArchiveHealth,
-  'parquetFiles' | 'lastManifestHash' | 'duckdbVerification'> {
-  if (!existsSync(root)) return { parquetFiles: 0, lastManifestHash: null, duckdbVerification: 'NOT_AVAILABLE' };
+  'parquetFiles' | 'parquetBytes' | 'lastManifestHash' | 'duckdbVerification'> {
+  if (!existsSync(root)) return { parquetFiles: 0, parquetBytes: 0,
+    lastManifestHash: null, duckdbVerification: 'NOT_AVAILABLE' };
+  const parquetBytes = pathTreeBytes(root);
   const manifests: Array<{ path: string; generatedAt: string }> = [];
   let parquetFiles = 0;
   for (const entry of readdirSync(root, { withFileTypes: true })) {
@@ -127,17 +144,18 @@ function parquetState(root: string): Pick<LocalResearchArchiveHealth,
       if (parquetFile !== null && existsSync(parquetFile)) parquetFiles += 1;
       manifests.push({ path: manifestPath, generatedAt: String(manifest.generatedAt ?? '') });
     } catch {
-      return { parquetFiles, lastManifestHash: null, duckdbVerification: 'FAILED' };
+      return { parquetFiles, parquetBytes, lastManifestHash: null, duckdbVerification: 'FAILED' };
     }
   }
   manifests.sort((left, right) => left.generatedAt.localeCompare(right.generatedAt));
   const latest = manifests.at(-1);
-  if (latest === undefined) return { parquetFiles, lastManifestHash: null, duckdbVerification: 'NOT_AVAILABLE' };
+  if (latest === undefined) return { parquetFiles, parquetBytes,
+    lastManifestHash: null, duckdbVerification: 'NOT_AVAILABLE' };
   const manifestBytes = readFileSync(latest.path);
   const manifest = JSON.parse(manifestBytes.toString('utf8')) as Record<string, unknown>;
   const explicitReadback = manifest.duckdbReadback;
   return {
-    parquetFiles,
+    parquetFiles, parquetBytes,
     lastManifestHash: createHash('sha256').update(manifestBytes).digest('hex'),
     // theta-parquet-archive-v1 performs DuckDB read-back in its Python loader
     // but predates the explicit duckdbReadback field. Missing verification
@@ -172,8 +190,8 @@ export function writeArchiveHealth(input: {
   const counts = sqliteCounts(resolve(input.spoolPath));
   const schedulerBytes = input.schedulerPath === undefined ? 0
     : measureLocalResearchStorageBytes([input.schedulerPath]);
-  const totalLocalResearchBytes = counts.spoolBytes + schedulerBytes;
   const parquet = parquetState(resolve(input.parquetRoot));
+  const totalLocalResearchBytes = counts.spoolBytes + schedulerBytes + parquet.parquetBytes;
   const retryHours = input.retryAfterHours ?? 12;
   const spoolWatermark = classifyLocalSpoolWatermark(totalLocalResearchBytes);
   const state: LocalResearchArchiveHealth = {
