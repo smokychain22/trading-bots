@@ -17,6 +17,7 @@ import { fetchMarketCalendar } from '../src/theta/alpaca-provider.js';
 
 type FrontierRow = {
   frontier_id: string;
+  ready_at: Date | string;
   fusion_snapshot_id: string;
   frontier_json: unknown;
   evidence_archive_gzip: Buffer | null;
@@ -90,15 +91,21 @@ async function schedule(): Promise<void> {
   const pool = createRuntimePostgresPool(environment.DATABASE_URL);
   const scheduler = new LocalObservationJobScheduler(schedulerPath);
   try {
-    const query = await pool.query<FrontierRow>(`SELECT f.frontier_id::text,f.fusion_snapshot_id::text,
+    const cursor = scheduler.sourceCursor();
+    const cursorReadyAt = cursor?.readyAt ?? new Date(since).toISOString();
+    const cursorFrontierId = cursor?.frontierId ?? '00000000-0000-0000-0000-000000000000';
+    const query = await pool.query<FrontierRow>(`SELECT f.frontier_id::text,d.decided_at AS ready_at,
+      f.fusion_snapshot_id::text,
       f.frontier_json,s.evidence_archive_gzip,s.content_hash AS snapshot_content_hash,
       d.decision_id::text,d.receipt_json,s.risk_limit_version_id::text,s.cost_model_version_id::text,
       s.execution_version_id::text
       FROM trade.canonical_strategy_frontier f
       JOIN trade.fusion_snapshot s USING(fusion_snapshot_id)
-      LEFT JOIN trade.decision d USING(fusion_snapshot_id)
-      WHERE f.created_at >= $1::timestamptz
-      ORDER BY f.created_at,f.frontier_id LIMIT $2`, [new Date(since).toISOString(), limit]);
+      JOIN LATERAL (SELECT decision_id,receipt_json,decided_at FROM trade.decision
+        WHERE fusion_snapshot_id=f.fusion_snapshot_id
+        ORDER BY decided_at DESC,decision_id DESC LIMIT 1) d ON true
+      WHERE (d.decided_at,f.frontier_id) > ($1::timestamptz,$2::uuid)
+      ORDER BY d.decided_at,f.frontier_id LIMIT $3`, [cursorReadyAt, cursorFrontierId, limit]);
     const decoded = query.rows.map((row) => ({ row, frontier: fullFrontier(row) }));
     const pending = decoded.filter(({ frontier }) => {
       if (frontier === null) return true;
@@ -111,6 +118,10 @@ async function schedule(): Promise<void> {
       });
     });
     if (pending.length === 0) {
+      const last = query.rows.at(-1);
+      if (last !== undefined) scheduler.advanceSourceCursor({
+        readyAt: new Date(last.ready_at).toISOString(), frontierId: last.frontier_id,
+      });
       process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_SCHEDULE_CURRENT', frontiersRead: query.rows.length,
         subjects: 0, existingSubjects: query.rows.length, jobsScheduled: 0, skipped: 0,
         reasonCounts: {}, sessions: 0, brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
@@ -150,6 +161,10 @@ async function schedule(): Promise<void> {
       subjects += receipt.subjectCount;
       existingSubjects += receipt.existingSubjectCount;
     }
+    const last = query.rows.at(-1);
+    if (last !== undefined) scheduler.advanceSourceCursor({
+      readyAt: new Date(last.ready_at).toISOString(), frontierId: last.frontier_id,
+    });
     process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_SCHEDULE_COMPLETE', frontiersRead: query.rows.length,
       subjects, existingSubjects, jobsScheduled: scheduled, skipped,
       reasonCounts: Object.fromEntries(reasonCounts), sessions: sessions.length,

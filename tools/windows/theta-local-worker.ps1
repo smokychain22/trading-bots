@@ -197,7 +197,10 @@ try {
         if ($command5aSchedulingPausedForStorage) {
           $command5aScheduleState = 'PAUSED_STORAGE_WATERMARK'
         } else {
-          $command5aSince = $operationStartedAt.AddMinutes(-90).ToString('o')
+          # The local source cursor advances across bounded pages. On first
+          # installation, start at the immutable release time so a worker
+          # outage longer than 90 minutes cannot erase serious subjects.
+          $command5aSince = [string]$runtime.installedAt
           $command5aScheduleOutput = & node --import tsx tools/theta-command5a-runtime.ts `
             --mode=schedule "--environment-file=$productionEnvFile" `
             "--scheduler=$command5aSchedulerPath" "--spool=$command5aSpoolPath" `

@@ -52,6 +52,11 @@ export interface LocalObservationSchedulerHealth {
   readonly brokerAuthority: false;
 }
 
+export interface LocalObservationSourceCursor {
+  readonly readyAt: string;
+  readonly frontierId: string;
+}
+
 type JobRow = {
   observation_job_id: string;
   subject_id: string;
@@ -84,6 +89,7 @@ const SHA40 = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const SAFE_ID = /^[A-Za-z0-9_.:@/-]{1,512}$/;
 const SYMBOL = /^[A-Z][A-Z0-9.-]{0,31}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const hash = (value: string): string => createHash('sha256').update(value).digest('hex');
 
 function toReceipt(row: JobRow): LocalObservationJobReceipt {
@@ -267,6 +273,37 @@ export class LocalObservationJobScheduler {
       this.database.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  sourceCursor(): LocalObservationSourceCursor | null {
+    const row = this.database.prepare("SELECT value FROM scheduler_meta WHERE key='frontier_source_cursor'")
+      .get() as { value: string } | undefined;
+    if (row === undefined) return null;
+    let parsed: Partial<LocalObservationSourceCursor>;
+    try { parsed = JSON.parse(row.value) as Partial<LocalObservationSourceCursor>; }
+    catch { throw new Error('LOCAL_OBSERVATION_SOURCE_CURSOR_INVALID'); }
+    if (typeof parsed.readyAt !== 'string' || !Number.isFinite(Date.parse(parsed.readyAt))
+      || typeof parsed.frontierId !== 'string' || !UUID.test(parsed.frontierId)) {
+      throw new Error('LOCAL_OBSERVATION_SOURCE_CURSOR_INVALID');
+    }
+    return { readyAt: new Date(parsed.readyAt).toISOString(), frontierId: parsed.frontierId.toLowerCase() };
+  }
+
+  advanceSourceCursor(cursor: LocalObservationSourceCursor): void {
+    const readyAtMs = Date.parse(cursor.readyAt);
+    if (!Number.isFinite(readyAtMs) || !UUID.test(cursor.frontierId)) {
+      throw new Error('LOCAL_OBSERVATION_SOURCE_CURSOR_INVALID');
+    }
+    const normalized = { readyAt: new Date(readyAtMs).toISOString(), frontierId: cursor.frontierId.toLowerCase() };
+    const prior = this.sourceCursor();
+    if (prior !== null && (normalized.readyAt < prior.readyAt
+      || (normalized.readyAt === prior.readyAt && normalized.frontierId < prior.frontierId))) {
+      throw new Error('LOCAL_OBSERVATION_SOURCE_CURSOR_REGRESSION');
+    }
+    this.database.prepare(`INSERT INTO scheduler_meta(key,value,updated_at)
+      VALUES('frontier_source_cursor',?,?)
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`)
+      .run(canonicalJson(normalized), new Date().toISOString());
   }
 
   jobsForSubject(subjectId: string): readonly LocalObservationJobReceipt[] {

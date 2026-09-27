@@ -129,3 +129,25 @@ test('scheduler health distinguishes an empty queue from current future work', (
     assert.equal(health.oldestOverdueSeconds, null);
   } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+test('frontier source cursor survives restart and can only advance', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-observation-jobs-'));
+  const path = join(root, 'jobs.sqlite');
+  try {
+    const first = new LocalObservationJobScheduler(path);
+    assert.equal(first.sourceCursor(), null);
+    first.advanceSourceCursor({ readyAt: '2026-09-25T14:00:00Z',
+      frontierId: '11111111-1111-4111-8111-111111111111' });
+    first.close();
+    const second = new LocalObservationJobScheduler(path);
+    assert.deepEqual(second.sourceCursor(), { readyAt: '2026-09-25T14:00:00.000Z',
+      frontierId: '11111111-1111-4111-8111-111111111111' });
+    assert.throws(() => second.advanceSourceCursor({ readyAt: '2026-09-25T13:59:59Z',
+      frontierId: '22222222-2222-4222-8222-222222222222' }),
+    /LOCAL_OBSERVATION_SOURCE_CURSOR_REGRESSION/);
+    second.advanceSourceCursor({ readyAt: '2026-09-25T14:00:00Z',
+      frontierId: '22222222-2222-4222-8222-222222222222' });
+    assert.equal(second.sourceCursor()?.frontierId, '22222222-2222-4222-8222-222222222222');
+    second.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

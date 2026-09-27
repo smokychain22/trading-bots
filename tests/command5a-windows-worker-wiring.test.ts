@@ -13,6 +13,8 @@ test('Windows owner schedules, observes, and matures Command-5A through the immu
   assert.match(source, /command5aObservationState=\$command5aObservationState/);
   assert.match(source, /command5aMaturationState=\$command5aMaturationState/);
   assert.match(source, /command5aBacklogState=\$command5aBacklogState/);
+  assert.match(source, /\$command5aSince = \[string\]\$runtime\.installedAt/);
+  assert.doesNotMatch(source, /command5aSince\s*=.*AddMinutes\(-90\)/);
   assert.match(source, /if \(\$report\.reconciliation\.marketOpen -eq \$true\)/);
   assert.doesNotMatch(source, /theta-command5a-runtime\.ts[\s\S]{0,220}(submit|createOrder|postOrder)/i);
 });
