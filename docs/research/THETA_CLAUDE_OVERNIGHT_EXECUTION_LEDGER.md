@@ -109,7 +109,7 @@ promotion decision recorded in `docs/quant/` first.
 | 56 | Cohort calibration | SOURCE_IMPLEMENTED, genuinely new -- groups by any caller-defined cohort key (DTE/delta/regime/ticker/sector) and reuses WP55's `calibration_metrics` per cohort; a cohort below the caller's minimum N is `INSUFFICIENT_SAMPLE`, never a fabricated verdict. | `research/cohort_calibration.py` | `test_cohort_calibration.py` (4) | `3ed6b29` |
 | 57 | Model registry | SOURCE_IMPLEMENTED, genuinely new -- generalizes `severe_drawdown_model_contract.py`'s existing `SevereDrawdownArtifactRegistry` pattern (hash-verified, immutable-per-version, promotion-state-gated) to any task instead of adding a second task-specific registry. The severe-drawdown registry itself is untouched, not migrated. | `research/model_registry.py` | `test_model_registry.py` (7) | `3ed6b29` |
 | 58 | Experiment registry | **RECONCILED, NOT_REBUILT** -- `research/experiment_registry.py` already persists `ExperimentDefinition`/`ExperimentProtocol` records with `MinimumReadiness` gating and `experiments_eligible_at()`, not only winners. | (pre-existing, unchanged) | (pre-existing, unchanged, verified) | -- |
-| 59 | Benchmark execution runner (B0-B6) | SOURCE_IMPLEMENTED, genuinely new -- `benchmarks.json`/`registry.py` already define every canonical ID but nothing executed one. `B0` (cash/WAIT) implemented as a real runner (deterministic by construction: zero capital, zero P&L, zero capital-days). Every other ID (`B3-B6`, `BQ-1..3`, `BR-1..2`, `BA-1..3`, `BC-1..2`) requires simulating a distinct mechanical policy against real data and is honestly `RUNNER_NOT_IMPLEMENTED` -- `coverage_report()` names the gap explicitly. | `research/benchmark_runner.py` | `test_benchmark_runner.py` (7) | `e7123bd` |
+| 59 | Benchmark execution runner (all canonical IDs classified) | SOURCE_IMPLEMENTED, COMPLETE per V4 section 5 -- `B0` is a full deterministic runner. `B3/B4/B5/B6/BQ-1/BQ-2/BQ-3/BR-1/BR-2/BA-1..3/BC-1/BC-2` each have a real, tested mechanic in `research/benchmark_mechanics.py`; `classify_benchmark_readiness()` assigns exactly one of `RUNNER_IMPLEMENTED_DATA_AVAILABLE`/`RUNNER_IMPLEMENTED_DATA_UNAVAILABLE`/`NOT_APPLICABLE`/`BLOCKED_MISSING_POLICY` to every registered ID -- no ID left as a bare `RUNNER_NOT_IMPLEMENTED` stub. `B1`/`B2`/`BH-1` are `BLOCKED_MISSING_POLICY` (need full multi-stage lifecycle simulation, a real, distinct, larger gap). `A1-A6` are `NOT_APPLICABLE` here (executed by WP60's `entry_feature_ablation.py` instead). Against the real deduped historical archive (WP67-era measurement): every mechanic-implemented ID is `RUNNER_IMPLEMENTED_DATA_UNAVAILABLE` (0 feasible candidates, 0 lifecycle events, no delta field). | `research/benchmark_runner.py`, `research/benchmark_mechanics.py` | `test_benchmark_runner.py` (13), `test_benchmark_mechanics.py` (20) | `dc31cb4` |
 | 60 | Ablations (A1-A6 style, baseline vs baseline+one change) | **RECONCILED, NOT_REBUILT** -- `research/entry_feature_ablation.py`'s `execute_entry_feature_ablation()` already runs strict feature-subset variants on identical purged-walk-forward splits, paired via `ablation.py`'s `paired_mean_difference`, with named `INSUFFICIENT_OR_PARTIAL_PAIRED_EVIDENCE` states. Verified via its own 23 pre-existing tests (`test_entry_feature_ablation.py` + `test_ablation.py`), all pass. | (pre-existing, unchanged) | (pre-existing, unchanged, verified) | -- |
 | 61 | DSR (Deflated Sharpe Ratio) | **RECONCILED, NOT_REBUILT** -- `research/selection_bias.py`'s `deflated_sharpe_ratio()` already real and tested. | (pre-existing, unchanged) | (pre-existing, unchanged, verified) | -- |
 | 62 | PBO (Probability of Backtest Overfitting) | **RECONCILED, NOT_REBUILT** -- `research/selection_bias.py`'s `probability_of_backtest_overfitting()` plus `selection_bias_runner.py`'s `run_selection_bias_campaign()` already real and tested (28 pre-existing tests, all pass). | (pre-existing, unchanged) | (pre-existing, unchanged, verified) | -- |
@@ -155,9 +155,68 @@ database touched):
   decision; this does not block WP47-58 above, which operate on
   `DatasetExportArtifact`/`LoadedDatasetExport` fixtures at the current
   v6 schema, per the existing test convention.
-| 67-77 | Future capture contracts, outcome-horizon adapters, expiration/management-checkpoint outcomes, observed/modeled/broker firewall, source validation, missingness audit, coverage report, strictness-vs-economics join, Q-vs-D cohort, WAIT alternatives analysis | NOT_STARTED | -- | -- | -- |
-| 78-84 | Management-chain accounting fixtures, AEGIS/sizing quant contract fixtures, economic monotonicity property tests, leakage test harness, research CLI, performance/memory | NOT_STARTED | -- | -- | -- |
-| 85-100 | Storage classification, Codex handoff pack, Phase 6 real experiment run, shadow prediction receipts, promotion evidence assembler, drift detection, Paper analysis readiness, Paper-vs-model discrepancy, graduation metric engine, release-gate evidence matrix, final integration test, adversarial matrix, duplicate-authority search, TODO elimination, full test gate, final ledger reconciliation | NOT_STARTED | -- | -- | -- |
+## Historical dedupe + v1->v6 bridge (V4, before WP67)
+
+Git-history investigation (commits f9dff66..fa7e589 in
+`src/research/point-in-time-evidence.ts`) proved v1->v6 is purely
+additive at the row-family level -- no field inside candidates/
+candidateSets/shadowCandidates/strategyFrontiers/managementSnapshots/
+lifecycleOutcomes/wholeChainOutcomes/executionEvidence was ever renamed,
+removed, or had its semantics changed. `research/historical_v1_to_v6_bridge.py`
+implements the lenient, research-only loader this proof licenses; found
+and documented (not silently worked around) that the archived files'
+declared `datasetHash` cannot be reproduced from their own content via the
+documented formula -- `source_hash_verified` is always computed and
+reported, never assumed. `research/historical_export_dedupe.py` addresses
+archive-copy duplication (666 raw directories -> 109 unique by manifest
+content) and cross-snapshot row duplication (109 unique snapshots' summed
+rowCounts still overcounts vs. 7550 true unique candidateIds). Verified
+against the full real archive: 109/109 conversions succeed, 0 errors.
+
+**Re-measured real unique history** (V4 section 3, deduped, not raw sums):
+date range 2026-09-14 13:30 to 2026-09-15 15:46 UTC only (Sep16/18/21 were
+searched for and NOT found anywhere reachable on this machine -- see the
+prior pass's historical-data-recovery note); 302 unique candidate sets
+(decisions); 7550 unique candidates; 8731 unique execution-evidence rows;
+0 selected candidates; every candidate `hardStatus=DATA_INSUFFICIENT`,
+`softStatus=REJECTED`, `rejectionReason=CONTRACT_NOT_EXECUTABLE` (100%,
+uniform, zero variance); 0 management snapshots, 0 lifecycle outcomes, 0
+whole-chain outcomes anywhere; 13 unique underlyings; every opaque
+feature family (volatility/technical/event/flow/ownership/account/
+portfolio/aegis/execution/knownEconomics) present on 100% of candidates
+(schema populated) but decisive fields UNKNOWN (ownership acceptability,
+AEGIS state, event state, open interest all UNKNOWN for 100%; no `delta`
+field anywhere).
+
+**WP25/26 status**: real, deduped, unique historical population now
+exists (7550 candidates) and supports population-level analysis (this is
+new -- the strictness/coverage side of WP25 is no longer purely
+`BLOCKED_DATA`), but the economic/filter-VALUE side remains blocked: 0%
+selection rate and 100% identical rejection reason means there is no
+outcome variance to analyze filter sensitivity against. `WP25_STATUS =
+POPULATION_DATA_AVAILABLE_ZERO_OUTCOME_VARIANCE`. `WP26_STATUS =
+BLOCKED_DATA` (feature ablation needs a resolved outcome to ablate
+against; none exists). The v1 schema-hash-verification gap is
+`BLOCKED_CODEX` (needs Codex/owner reconciliation), separate from the
+data-availability finding.
+
+| 67 | Future capture contract | SOURCE_IMPLEMENTED, genuinely new -- registry of unrecoverable fields (fills, assignment/exercise/expiration, future BBO/IV/Greeks, management/whole-chain outcome) with full contract + generated Codex handoffs for required fields. | `research/future_capture_contract.py` | `test_future_capture_contract.py` (7) | `e247245` |
+| 68 | Horizon adapters | SOURCE_IMPLEMENTED, genuinely new -- +15m/+1h/EOD/+1d/+3d/+5d, no provider calls, `captured=None` -> explicit UNKNOWN. Synthetic tests, labeled. | `research/horizon_adapters.py` | `test_horizon_adapters.py` (8) | `03e457b` |
+| 69 | Expiration outcome | SOURCE_IMPLEMENTED, genuinely new -- EXPIRED_OTM/EXPIRED_ITM_NO_ASSIGNMENT_EVIDENCE/ASSIGNED/EXERCISED/CLOSED_BEFORE_EXPIRY/UNKNOWN/CENSORED. ITM alone never infers assignment. | `research/expiration_outcome.py` | `test_expiration_outcome.py` (8) | `45cf65b` |
+| 70 | Management checkpoint outcomes | SOURCE_IMPLEMENTED, genuinely new -- composes over management_dataset.py (WP48) + whole_chain_dataset.py's lifecycleEvents into four explicitly separate fields (T0/later-market/later-lifecycle/whole-chain). | `research/management_checkpoint_outcomes.py` | `test_management_checkpoint_outcomes.py` (4) | `45cf65b` |
+| 71 | Truth firewall | SOURCE_IMPLEMENTED, genuinely new -- blocks MODELED_RESEARCH->BROKER_ACTUAL / SYNTHETIC_FIXTURE->REAL_HISTORICAL / RECONSTRUCTED->BROKER_ACTUAL / RESEARCH_BASELINE->PRODUCTION_CANONICAL without complete promotion evidence. | `research/truth_firewall.py` | `test_truth_firewall.py` (6) | `8f6b033` |
+| 72 | Source data validation | SOURCE_IMPLEMENTED, genuinely new -- non-fatal structured report (schema version, hash, duplicate identity, future timestamps, multiplier sanity, window ordering), distinct from the fail-fast loaders. | `research/source_data_validation.py` | `test_source_data_validation.py` (7) | `8f6b033` |
+| 73 | Missingness engine | SOURCE_IMPLEMENTED, genuinely new -- present/missing by any combination of feature/field/date/strategy/schemaVersion/provider/truthClass/reasonCode, schema-agnostic. | `research/missingness_engine.py` | `test_missingness_engine.py` (6) | `ed8928d` |
+| 74 | Coverage report (deduped) | SOURCE_IMPLEMENTED, genuinely new -- takes an already-deduplicated Candidate sequence, rejects duplicate candidate_id outright. | `research/historical_coverage_report.py` | `test_historical_coverage_report.py` (5) | `ed8928d` |
+| 75 | Strictness/economics join | SOURCE_IMPLEMENTED, genuinely new -- joins only on resolved identity + valid horizon; joined rows carry `executionAuthority=False` and an explicit non-causal label. | `research/strictness_economics_join.py` | `test_strictness_economics_join.py` (5) | `6c95359` |
+| 76 | Q-blocked/D-available cohort | SOURCE_IMPLEMENTED, genuinely new -- cohort membership only; `dExecutionAuthority` always False. | `research/q_blocked_d_available_cohort.py` | `test_q_blocked_d_available_cohort.py` (3) | `6c95359` |
+| 77 | WAIT analysis | SOURCE_IMPLEMENTED, genuinely new -- classifies wait_outcome.py's (WP35, unchanged) opportunity cost into AVOIDED_LOSS/MISSED_OPPORTUNITY/UNIDENTIFIABLE_COUNTERFACTUAL. | `research/wait_analysis.py` | `test_wait_analysis.py` (4) | `6c95359` |
+| 78 | Management accounting fixtures | SOURCE_IMPLEMENTED, genuinely new -- proves roll old-leg realized-loss persistence, fees-once-per-leg, capital-days/basis composition across the full lifecycle. | `research/management_accounting_fixtures.py` | `test_management_accounting_fixtures.py` (7) | `73d64c1` |
+| 79 | AEGIS fixtures | **RECONCILED, NOT_REBUILT** -- hard-veto/unknown-fails-safe already real & tested (`test_aegis.py`/`test_aegis_contract.py`, unchanged); added the one missing monotonicity property against real `models.aegis.assess_aegis()`. | (pre-existing + 1 new test file) | `test_aegis_monotonicity_property.py` (2) | `73d64c1` |
+| 80 | Sizing fixtures | **RECONCILED, NOT_REBUILT** -- 0/low BP, collateral/assignment/portfolio caps, qty-zero, never-floored-to-1, no-martingale, mismatched-multiplier-blocked all already real & tested. No "strategy cap" dimension exists anywhere today -- named gap, not filled. | (pre-existing, unchanged) | (pre-existing, verified) | -- |
+| 81 | Economic property tests | SOURCE_IMPLEMENTED, genuinely new -- fees/slippage/commission increases proven to never increase `defined_risk_economics.py`'s real `net_credit_after_cost`; D's both-leg cost inclusion proven, not assumed. | `test_economic_monotonicity_property.py` (4) | -- | `73d64c1` |
+| 82 | Generic PIT leakage harness | SOURCE_IMPLEMENTED, genuinely new -- reusable `assert_pit_invariant()`, applied against real trend/momentum/realized-volatility code. Found+fixed a test-construction pitfall (these modules encode "now" via array length; must mutate future VALUES in place, never append past the end). | `research/pit_leakage_harness.py` | `test_pit_leakage_harness.py` (4) | `6973e7f` |
+| 83-100 | Research CLI, performance/memory, storage classification, Codex handoff pack, Phase 6 real experiment run, shadow prediction receipts, promotion evidence assembler, drift detection, Paper analysis readiness, Paper-vs-model discrepancy, graduation metric engine, release-gate evidence matrix, final integration test, adversarial matrix, duplicate-authority search, TODO elimination, full test gate, final ledger reconciliation | NOT_STARTED | -- | -- | -- |
 
 ## Design decisions carried across every DONE package (so future packages stay consistent)
 
