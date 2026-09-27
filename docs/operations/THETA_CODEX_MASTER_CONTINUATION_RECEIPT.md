@@ -7,8 +7,8 @@ This receipt records implemented and verified work. It does not authorize a Pape
 ## Canonical source
 
 - Starting main for this continuation: `909afa408ae9233ae98309a69eb222936b1713d2`
-- Current implementation head before this receipt: `52265ebe1bf9395c291bda9b9ea6f976f1f537a1`
-- Exact CI for that head: run `36325138320`, `success`
+- Current source-bearing implementation head before this receipt update: `2d6445cb9eeb5e8ff4210b59b853327e94e15e81`
+- Exact CI for that head: run `36326674981`, `success`
 - Canonical remote: `origin/main`
 - Command-5A remains isolated on `codex/theta-command5a`. It is not deployed and is not merged wholesale into Production.
 
@@ -67,6 +67,18 @@ Every audited subprocess now has an explicit deadline. Long-running historical c
 ### Canonical runtime truth baseline
 
 Commit `52265ebe1bf9395c291bda9b9ea6f976f1f537a1` refreshed the canonical runtime-truth baseline to the last fully verified implementation source. The truth audit reports `SOURCE_BASELINE_UNCHANGED`, no changed source files, zero avoidable unknowns, and the exact remaining first-Paper dependency: restore Aiven transfer quota, complete the schema-067 checkpoint, cut over a locked current release, and collect current-release open-session evidence. This is not a strategy WAIT.
+
+### Typed child-backup failure propagation
+
+Commit `2d6445cb9eeb5e8ff4210b59b853327e94e15e81` closes a checkpoint diagnostics gap without exposing provider stderr. `Backup-Theta.ps1` now emits a strict, secret-free failure receipt containing only `state=FAILED` and a validated uppercase reason code. The bounded parent accepts only that receipt shape and carries the code into the durable migration-checkpoint incident. Missing or malformed child receipts become `BACKUP_FAILURE_RECEIPT_MISSING` instead of a guessed provider cause.
+
+A future Aiven quota failure will therefore be recorded as `AIVEN_DATA_TRANSFER_QUOTA_EXCEEDED` by the canonical checkpoint itself. Raw child stderr remains drained and excluded. Focused PowerShell tests cover accepted receipts, malformed and lowercase rejection, backup failure classification, typed parent propagation, and continued stderr isolation.
+
+### Readiness and blocker reconciliation
+
+The canonical blocker registry now has no open code-solvable Codex or Claude blocker. Real Alpaca fill timestamps and per-branch canonical-frontier fault isolation were verified against their existing Production adapters and regression tests. The isolated Command-5A producer is classified as `EXTERNAL_RUNTIME_CHECKPOINT`, since its source and exact CI are complete while deployment correctly remains behind Phase 1.
+
+An intentionally stopped, fully locked worker behind the governed database checkpoint is classified as `EXTERNAL_BLOCKED` rather than an engineering failure. Active or unexplained worker misalignment still fails. Exact-source V20 certification reports `CODE_SOLVABLE=[]` and `PASS`. Premarket certification reports `engineeringGate=PASS`, `overall=EXTERNAL_BLOCKED`, exact CI pass, and the two runtime blockers `LOCKED_WORKER` and `RUNTIME_TRUTH`.
 
 ## Governed checkpoint incident
 
@@ -152,6 +164,20 @@ Main at `52265ebe1bf9395c291bda9b9ea6f976f1f537a1`:
 - unknown audit: 0 avoidable unknowns, 0 unresolved safety-critical unknowns, 0 unresolved Paper-entry unknowns
 - Python AEGIS suite: 31 passing
 - exact GitHub CI run `36325138320`: success
+
+Latest source-bearing main at `2d6445cb9eeb5e8ff4210b59b853327e94e15e81`:
+
+- TypeScript check: pass
+- lint: pass
+- unit tests: 2,865 passing, 0 failing, 15 skipped
+- production build: pass
+- security scan: pass, zero findings
+- Git storage policy: pass
+- all four Windows backup/process safety suites: pass
+- V19 evidence certification: pass
+- V20 evidence closure: pass with `CODE_SOLVABLE=[]`
+- premarket certification: engineering pass, overall external-blocked
+- exact GitHub CI run `36326674981`: success
 
 Main worker hardening at `ab29f2ad5738fa3c734ddcf220c65521d072a2c1`:
 

@@ -1,5 +1,28 @@
 # THETA implementation board
 
+## Governed checkpoint failure-receipt closure, 2026-09-27
+
+- CLOSED_SOURCE_DEFECT: the bounded migration checkpoint discarded child stderr
+  correctly, but a failed backup then reached the durable incident only as a
+  generic nonzero exit. The separately proven Aiven transfer-quota cause was
+  absent from the canonical checkpoint receipt.
+- CODE_COMPLETE/VERIFIED: the backup child now emits a strict secret-free JSON
+  failure receipt. The parent accepts only `FAILED` plus a validated uppercase
+  reason code, records that code in the checkpoint incident, and maps absent or
+  malformed receipts to `BACKUP_FAILURE_RECEIPT_MISSING`. Raw stderr remains
+  unavailable to the parent.
+- REGRESSION_COVERAGE: PowerShell tests cover quota and connection classification,
+  ordinary backup failures, missing, malformed, and lowercase receipts, typed
+  parent propagation, and stderr isolation. Exact CI run `36326674981` passed at
+  `2d6445cb9eeb5e8ff4210b59b853327e94e15e81`.
+- CURRENT_EXTERNAL_BLOCK: Production remains on schema 064. The worker remains
+  intentionally stopped and locked at `af3d43d14d703c47ff52e833588130af60d61e48`.
+  No new database retry is allowed until Aiven transfer quota is restored and
+  the canonical four-probe recovery gate passes again.
+- CURRENT_CERTIFICATION: V20 reports `CODE_SOLVABLE=[]` and PASS. Premarket
+  certification reports an engineering PASS and overall `EXTERNAL_BLOCKED`.
+  Database interruption remains infrastructure evidence, never strategy WAIT.
+
 ## Quoted-identifier backup guard repair, 2026-09-26
 
 - PROVEN_INCIDENT: the governed pre-migration dump completed its custom archive
