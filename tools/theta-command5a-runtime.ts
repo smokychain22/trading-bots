@@ -5,7 +5,6 @@ import { alpacaCalendarToLearningSessions } from '../src/research/alpaca-learnin
 import { runCommand5aLocalObservationWorker } from '../src/research/command5a-local-observation-worker.js';
 import { matureCommand5aLocalObservations } from '../src/research/command5a-local-maturation.js';
 import { scheduleCommand5aFromCanonicalFrontier } from '../src/research/command5a-local-scheduling.js';
-import { selectSeriousResearchSubjects } from '../src/research/serious-subject-policy.js';
 import { LocalObservationJobScheduler } from '../src/storage/local-observation-job-scheduler.js';
 import {
   classifyLocalSpoolWatermark, measureLocalResearchStorageBytes,
@@ -109,43 +108,36 @@ async function schedule(): Promise<void> {
       ORDER BY GREATEST(f.created_at,d.decided_at),f.frontier_id LIMIT $3`,
     [cursorReadyAt, cursorFrontierId, limit]);
     const decoded = query.rows.map((row) => ({ row, frontier: fullFrontier(row) }));
-    const pending = decoded.filter(({ frontier }) => {
-      if (frontier === null) return true;
-      return selectSeriousResearchSubjects(frontier).subjects.some((subject) => {
-        try { scheduler.getSubject(subject.subjectId); return false; }
-        catch (error) {
-          if (error instanceof Error && error.message === 'LOCAL_OBSERVATION_SUBJECT_NOT_FOUND') return true;
-          throw error;
-        }
-      });
-    });
-    if (pending.length === 0) {
-      const last = query.rows.at(-1);
-      if (last !== undefined) scheduler.advanceSourceCursor({
-        readyAt: new Date(last.ready_at).toISOString(), frontierId: last.frontier_id,
-      });
+    if (decoded.length === 0) {
       process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_SCHEDULE_CURRENT', frontiersRead: query.rows.length,
-        subjects: 0, existingSubjects: query.rows.length, jobsScheduled: 0, skipped: 0,
+        subjects: 0, existingSubjects: 0, jobsScheduled: 0, existingJobs: 0, skipped: 0,
         reasonCounts: {}, sessions: 0, brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
       return;
     }
-    const dateValues = pending.flatMap(({ frontier }) => frontier === null ? [] : [frontier.timestamp.slice(0, 10),
+    const dateValues = decoded.flatMap(({ frontier }) => frontier === null ? [] : [frontier.timestamp.slice(0, 10),
       ...frontier.branches.flatMap((branch) => branch.candidates.flatMap((candidate) => candidate.legs.map((leg) => leg.expiration)))]);
     const orderedDates = [...new Set(dateValues)].sort();
     const start = orderedDates[0], end = orderedDates.at(-1);
     if (start === undefined || end === undefined) {
-      process.stdout.write(`${JSON.stringify({ state: 'NO_SCHEDULABLE_FRONTIERS', frontiersRead: query.rows.length,
+      const last = query.rows.at(-1);
+      if (last !== undefined) scheduler.advanceSourceCursor({
+        readyAt: new Date(last.ready_at).toISOString(), frontierId: last.frontier_id,
+      });
+      process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_SCHEDULE_COMPLETE',
+        frontiersRead: query.rows.length, subjects: 0, existingSubjects: 0, jobsScheduled: 0,
+        existingJobs: 0, skipped: query.rows.length,
+        reasonCounts: { FRONTIER_ARCHIVE_MISSING: query.rows.length }, sessions: 0,
         brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
       return;
     }
     const sessions = alpacaCalendarToLearningSessions(await fetchMarketCalendar(alpaca, start, end));
-    let scheduled = 0, subjects = 0, existingSubjects = 0, skipped = 0;
+    let scheduled = 0, existingJobs = 0, subjects = 0, existingSubjects = 0, skipped = 0;
     const reasonCounts = new Map<string, number>();
     const skip = (reason: string): void => {
       skipped += 1;
       reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
     };
-    for (const { row, frontier } of pending) {
+    for (const { row, frontier } of decoded) {
       const identity = releaseIdentity(row.receipt_json);
       const underlying = frontier === null ? null : frontierUnderlying(frontier);
       if (frontier === null) { skip('FRONTIER_ARCHIVE_MISSING'); continue; }
@@ -160,6 +152,7 @@ async function schedule(): Promise<void> {
         horizonPolicy: { version: 'theta-strategy-learning-horizons-v1',
           primaryCommonHorizon: '1_TRADING_DAY', tradingDayTarget: 'SESSION_CLOSE' } });
       scheduled += receipt.scheduledJobCount;
+      existingJobs += receipt.existingJobCount;
       subjects += receipt.subjectCount;
       existingSubjects += receipt.existingSubjectCount;
     }
@@ -169,6 +162,7 @@ async function schedule(): Promise<void> {
     });
     process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_SCHEDULE_COMPLETE', frontiersRead: query.rows.length,
       subjects, existingSubjects, jobsScheduled: scheduled, skipped,
+      existingJobs,
       reasonCounts: Object.fromEntries(reasonCounts), sessions: sessions.length,
       brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
   } finally {

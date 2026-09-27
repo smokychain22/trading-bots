@@ -21,6 +21,7 @@ export interface Command5aLocalSchedulingReceipt {
   readonly waitSubjectCount: number;
   readonly existingSubjectCount: number;
   readonly scheduledJobCount: number;
+  readonly existingJobCount: number;
   readonly unscheduledJobCount: number;
   readonly subjectIds: readonly string[];
   readonly brokerAuthority: false;
@@ -56,13 +57,13 @@ export function scheduleCommand5aFromCanonicalFrontier(input: {
   let candidateSubjectCount = 0;
   let waitSubjectCount = 0;
   let existingSubjectCount = 0;
+  let existingJobCount = 0;
   for (const subject of selection.subjects) {
+    let subjectExisted = false;
     try {
       input.scheduler.getSubject(subject.subjectId);
+      subjectExisted = true;
       existingSubjectCount += 1;
-      if (subject.kind === 'WAIT') waitSubjectCount += 1;
-      else candidateSubjectCount += 1;
-      continue;
     } catch (error) {
       if (!(error instanceof Error) || error.message !== 'LOCAL_OBSERVATION_SUBJECT_NOT_FOUND') throw error;
     }
@@ -100,8 +101,16 @@ export function scheduleCommand5aFromCanonicalFrontier(input: {
         unscheduledJobCount += 1;
         continue;
       }
+      let jobExisted = false;
+      if (subjectExisted) {
+        try { input.scheduler.get(job.observationJobId); jobExisted = true; }
+        catch (error) {
+          if (!(error instanceof Error) || error.message !== 'LOCAL_OBSERVATION_JOB_NOT_FOUND') throw error;
+        }
+      }
       input.scheduler.schedule({ job, sourceSha: input.sourceSha, workerSha: input.workerSha });
-      scheduledJobCount += 1;
+      if (jobExisted) existingJobCount += 1;
+      else scheduledJobCount += 1;
     }
   }
   return {
@@ -111,6 +120,7 @@ export function scheduleCommand5aFromCanonicalFrontier(input: {
     waitSubjectCount,
     existingSubjectCount,
     scheduledJobCount,
+    existingJobCount,
     unscheduledJobCount,
     subjectIds: selection.subjects.map((subject) => subject.subjectId),
     brokerAuthority: false,

@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { scheduleCommand5aFromCanonicalFrontier } from '../src/research/command5a-local-scheduling.js';
+import { selectSeriousResearchSubjects } from '../src/research/serious-subject-policy.js';
+import { buildShadowEpisodeContract } from '../src/research/shadow-episode-contract.js';
 import type { CanonicalStrategyFrontier } from '../src/theta/canonical-strategy-frontier.js';
 import { LocalObservationJobScheduler } from '../src/storage/local-observation-job-scheduler.js';
 
@@ -65,9 +67,11 @@ test('canonical frontier creates restart-safe candidate jobs and preserves WAIT 
     assert.equal(first.waitSubjectCount, 1);
     assert.equal(first.existingSubjectCount, 0);
     assert.equal(first.scheduledJobCount, 8);
+    assert.equal(first.existingJobCount, 0);
     assert.equal(first.unscheduledJobCount, 0);
     assert.equal(second.existingSubjectCount, 2);
     assert.equal(second.scheduledJobCount, 0);
+    assert.equal(second.existingJobCount, 8);
     assert.equal(scheduler.subjectCount(), 2);
     assert.equal(Object.values(scheduler.counts()).reduce((sum, value) => sum + value, 0), 8);
     scheduler.close();
@@ -76,5 +80,32 @@ test('canonical frontier creates restart-safe candidate jobs and preserves WAIT 
     assert.equal(reopened.subjectCount(), 2);
     assert.equal(reopened.getSubject(first.subjectIds[0] as string).brokerAuthority, false);
     reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('restart repairs a subject registered before its jobs were scheduled', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-command5a-schedule-'));
+  const path = join(root, 'jobs.sqlite');
+  try {
+    const scheduler = new LocalObservationJobScheduler(path);
+    const selected = selectSeriousResearchSubjects(frontier).subjects.find((subject) => subject.kind === 'CANDIDATE');
+    assert.ok(selected?.kind === 'CANDIDATE');
+    const episode = buildShadowEpisodeContract({ subject: selected, decisionId: 'decision-1',
+      featureSnapshotHash: 'a'.repeat(64), strategyVersion: frontier.strategyVersion,
+      riskVersion: 'risk-v1', costVersion: 'cost-v1', executionModelVersion: 'execution-v1',
+      sourceSha: 'b'.repeat(40), workerSha: 'b'.repeat(40) });
+    scheduler.registerSubject({ decisionCycleId: 'cycle-1', underlying: 'SPY', episode });
+    assert.deepEqual(scheduler.jobsForSubject(selected.subjectId), []);
+    const receipt = scheduleCommand5aFromCanonicalFrontier({ scheduler, frontier,
+      decisionCycleId: 'cycle-1', decisionId: 'decision-1', underlying: 'SPY',
+      featureSnapshotHash: 'a'.repeat(64), riskVersion: 'risk-v1', costVersion: 'cost-v1',
+      executionModelVersion: 'execution-v1', sourceSha: 'b'.repeat(40), workerSha: 'b'.repeat(40),
+      sessions, horizonPolicy: { version: 'theta-strategy-learning-horizons-v1',
+        primaryCommonHorizon: '1_TRADING_DAY', tradingDayTarget: 'SESSION_CLOSE' } });
+    assert.equal(receipt.existingSubjectCount, 1);
+    assert.equal(receipt.scheduledJobCount, 8);
+    assert.equal(receipt.existingJobCount, 0);
+    assert.equal(scheduler.jobsForSubject(selected.subjectId).length, 8);
+    scheduler.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
