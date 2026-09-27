@@ -19,8 +19,10 @@ import { fetchMarketCalendar } from '../src/theta/alpaca-provider.js';
 import { createGetOnlyFetch } from '../src/theta/read-only-fetch.js';
 import {
   buildCommand5aCalendarRange,
+  command5aPageFailureDisposition,
   classifyCommand5aSchedulingStorage,
   command5aSafeFailureCode,
+  lastSafeCommand5aPageIndex,
   processCommand5aPage,
 } from '../src/research/command5a-runtime-planning.js';
 
@@ -182,17 +184,27 @@ async function schedule(): Promise<void> {
       t0OnlySubjects += receipt.t0OnlySubjectCount;
       return receipt;
     });
-    for (const outcome of outcomes) {
-      if (outcome.state === 'SKIPPED') skip(outcome.reasonCode);
-    }
-    const last = query.rows.at(-1);
-    if (last !== undefined) scheduler.advanceSourceCursor({
-      readyAt: new Date(last.ready_at).toISOString(), frontierId: last.frontier_id,
+    let firstRetryRequiredIndex: number | null = null;
+    outcomes.forEach((outcome, index) => {
+      if (outcome.state !== 'SKIPPED') return;
+      skip(outcome.reasonCode);
+      if (firstRetryRequiredIndex === null
+        && command5aPageFailureDisposition(outcome.reasonCode) === 'RETRY_REQUIRED') {
+        firstRetryRequiredIndex = index;
+      }
     });
-    process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_SCHEDULE_COMPLETE', frontiersRead: query.rows.length,
+    const lastSafeIndex = lastSafeCommand5aPageIndex(outcomes);
+    const lastSafe = lastSafeIndex >= 0 ? query.rows[lastSafeIndex] : undefined;
+    if (lastSafe !== undefined) scheduler.advanceSourceCursor({
+      readyAt: new Date(lastSafe.ready_at).toISOString(), frontierId: lastSafe.frontier_id,
+    });
+    process.stdout.write(`${JSON.stringify({
+      state: firstRetryRequiredIndex === null ? 'COMMAND5A_SCHEDULE_COMPLETE' : 'COMMAND5A_SCHEDULE_RETRY_REQUIRED',
+      frontiersRead: query.rows.length,
       subjects, existingSubjects, jobsScheduled: scheduled, skipped,
       existingJobs,
       t0OnlySubjects,
+      retryRequired: firstRetryRequiredIndex === null ? 0 : 1,
       reasonCounts: Object.fromEntries(reasonCounts), sessions: sessions.length,
       brokerAuthority: false, orderSubmissions: 0, brokerMutations: 0 })}\n`);
   } finally {

@@ -3,8 +3,10 @@ import test from 'node:test';
 import {
   buildCommand5aCalendarRange,
   command5aCalendarLookaheadDays,
+  command5aPageFailureDisposition,
   classifyCommand5aSchedulingStorage,
   command5aSafeFailureCode,
+  lastSafeCommand5aPageIndex,
   processCommand5aPage,
 } from '../src/research/command5a-runtime-planning.js';
 import { localResearchSpoolBudgetBytes } from '../src/storage/local-research-archive-health.js';
@@ -38,6 +40,19 @@ test('one invalid frontier does not starve later immutable frontiers in the same
     { state: 'PROCESSED', value: 'GOOD' },
   ]);
   assert.equal(command5aSafeFailureCode(new Error('unsafe detail')), 'COMMAND5A_UNCLASSIFIED_FAILURE');
+  assert.equal(command5aPageFailureDisposition('FRONTIER_ARCHIVE_INVALID'), 'TERMINAL_IMMUTABLE_SKIP');
+  assert.equal(command5aPageFailureDisposition('COMMAND5A_UNCLASSIFIED_FAILURE'), 'RETRY_REQUIRED');
+  assert.equal(command5aPageFailureDisposition('LOCAL_OBSERVATION_JOB_IDENTITY_CONFLICT'), 'RETRY_REQUIRED');
+  assert.equal(lastSafeCommand5aPageIndex(outcomes), 1);
+  assert.equal(lastSafeCommand5aPageIndex([
+    { state: 'PROCESSED', value: 'FIRST' },
+    { state: 'SKIPPED', reasonCode: 'COMMAND5A_UNCLASSIFIED_FAILURE' },
+    { state: 'PROCESSED', value: 'THIRD' },
+  ]), 0);
+  assert.equal(lastSafeCommand5aPageIndex([
+    { state: 'SKIPPED', reasonCode: 'COMMAND5A_UNCLASSIFIED_FAILURE' },
+    { state: 'PROCESSED', value: 'SECOND' },
+  ]), -1);
 });
 
 test('immutable Parquet inventory stays visible without permanently pausing active scheduling', () => {

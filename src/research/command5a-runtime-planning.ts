@@ -1,6 +1,6 @@
 import { classifyLocalSpoolWatermark } from '../storage/local-research-archive-health.js';
 
-export const command5aRuntimePlanningVersion = 'theta-command5a-runtime-planning-v1' as const;
+export const command5aRuntimePlanningVersion = 'theta-command5a-runtime-planning-v2' as const;
 
 export const command5aCalendarLookaheadDays = 21;
 
@@ -18,6 +18,30 @@ export interface Command5aCalendarRange {
 export type Command5aPageOutcome<T> =
   | { readonly state: 'PROCESSED'; readonly value: T }
   | { readonly state: 'SKIPPED'; readonly reasonCode: string };
+
+export type Command5aPageFailureDisposition = 'TERMINAL_IMMUTABLE_SKIP' | 'RETRY_REQUIRED';
+
+const terminalImmutablePageFailures = new Set([
+  'FRONTIER_ARCHIVE_MISSING',
+  'FRONTIER_ARCHIVE_INVALID',
+  'FRONTIER_TIMESTAMP_INVALID',
+  'RELEASE_IDENTITY_MISSING',
+  'DECISION_ID_MISSING',
+  'UNDERLYING_IDENTITY_AMBIGUOUS',
+]);
+
+/** Only immutable source defects may be crossed by the durable cursor. Local
+ * SQLite, filesystem, and unknown runtime failures must be retried instead of
+ * becoming a permanently skipped frontier. */
+export function command5aPageFailureDisposition(reasonCode: string): Command5aPageFailureDisposition {
+  return terminalImmutablePageFailures.has(reasonCode) ? 'TERMINAL_IMMUTABLE_SKIP' : 'RETRY_REQUIRED';
+}
+
+export function lastSafeCommand5aPageIndex<T>(outcomes: readonly Command5aPageOutcome<T>[]): number {
+  const firstRetryRequiredIndex = outcomes.findIndex((outcome) => outcome.state === 'SKIPPED'
+    && command5aPageFailureDisposition(outcome.reasonCode) === 'RETRY_REQUIRED');
+  return firstRetryRequiredIndex === -1 ? outcomes.length - 1 : firstRetryRequiredIndex - 1;
+}
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
