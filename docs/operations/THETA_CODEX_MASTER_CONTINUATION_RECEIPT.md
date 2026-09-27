@@ -54,6 +54,10 @@ The bounded runner now owns local evidence backfill, research export, the descri
 
 Commit `a04e65f28b68fee5522f59a442d8f26429c33fb6` applies the same process ownership to the outer migration checkpoint. Pre-backup, migration, invariant verification, storage audit, 900-second soak, and post-backup now have stage-specific hard deadlines and typed timeout failures. The checkpoint terminates a timed-out child process tree and preserves the previously verified recovery generation.
 
+### Bounded archive certification
+
+Commit `2e08a792fa5f4a66a66910ca801b9896d48f993f` bounds the archive-certification Parquet compactor and verifier. Child timeout, start failure, and nonzero exit are stage-specific. Raw stderr is not included in the certification exception.
+
 ## Governed checkpoint incident
 
 The canonical recovery gate passed with four fresh physical probes, rollback-safe writes, stable postmaster identity, read-only disabled, safe power, adequate connection headroom, a stopped worker, and a preserved prior verified generation.
