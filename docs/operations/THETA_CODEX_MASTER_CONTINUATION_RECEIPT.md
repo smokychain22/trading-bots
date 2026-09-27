@@ -7,8 +7,8 @@ This receipt records implemented and verified work. It does not authorize a Pape
 ## Canonical source
 
 - Starting main for this continuation: `909afa408ae9233ae98309a69eb222936b1713d2`
-- Current implementation head before this receipt: `fae07aa4932cd4b0a5707eabfacd3533aec4779f`
-- Exact CI for that head: run `36322457434`, `success`
+- Current implementation head before this receipt: `52265ebe1bf9395c291bda9b9ea6f976f1f537a1`
+- Exact CI for that head: run `36325138320`, `success`
 - Canonical remote: `origin/main`
 - Command-5A remains isolated on `codex/theta-command5a`. It is not deployed and is not merged wholesale into Production.
 
@@ -58,6 +58,16 @@ Commit `a04e65f28b68fee5522f59a442d8f26429c33fb6` applies the same process owner
 
 Commit `2e08a792fa5f4a66a66910ca801b9896d48f993f` bounds the archive-certification Parquet compactor and verifier. Child timeout, start failure, and nonzero exit are stage-specific. Raw stderr is not included in the certification exception.
 
+### Bounded operational and forensic tools
+
+Commits `92857778d387109cf37af335fe0d0947f6e4dd84`, `1793e84d8e8c883a3680b83f00a967fb60b2fe7c`, `815e378e830939efe8a82c8d60ffa222e33193ed`, `5171b2fe7e800974202f1c7fc11a6411002b75eb`, and `98103c8243be84be1f1d866f1e546bc7df5a1c22` closed the remaining unbounded subprocesses in decision-history certification, source-identity lookup, recovery discovery, operator-facing diagnostics, and replay provenance checks.
+
+Every audited subprocess now has an explicit deadline. Long-running historical certification has typed `PASS`, `FAILED`, `TIMED_OUT`, `START_FAILED`, and `NOT_RUN` execution states. Git, ripgrep, GitHub CLI, nested Node, and external Python calls use argument-safe bounded execution. Raw child stderr is not copied into durable receipts.
+
+### Canonical runtime truth baseline
+
+Commit `52265ebe1bf9395c291bda9b9ea6f976f1f537a1` refreshed the canonical runtime-truth baseline to the last fully verified implementation source. The truth audit reports `SOURCE_BASELINE_UNCHANGED`, no changed source files, zero avoidable unknowns, and the exact remaining first-Paper dependency: restore Aiven transfer quota, complete the schema-067 checkpoint, cut over a locked current release, and collect current-release open-session evidence. This is not a strategy WAIT.
+
 ## Governed checkpoint incident
 
 The canonical recovery gate passed with four fresh physical probes, rollback-safe writes, stable postmaster identity, read-only disabled, safe power, adequate connection headroom, a stopped worker, and a preserved prior verified generation.
@@ -103,7 +113,7 @@ Worktree: `work/trading-bots-command5a`
 
 Branch: `codex/theta-command5a`
 
-Current isolated branch head at this receipt: `e0df7dcb1947bd1148b1e811b652427edb0709cd`
+Current isolated branch head at this receipt: `226fb7a3684a0d20c6e205bd5590c39d0d955785`
 
 New isolated commits:
 
@@ -111,6 +121,7 @@ New isolated commits:
 - `faccccc` bounds local evidence backfill, research export, empirical pipeline, storage audit, archive projection, Parquet compaction and verification, DuckDB dependency probe, runtime receipt writing, and the database-independent no-submit probe
 - `bc44454` reconciles the isolated branch with current main while retaining the Command-5A scheduler and archive-health integration
 - `e0df7dc` reconciles the isolated branch with the bounded checkpoint and archive-certification source fixes
+- `226fb7a` merges the current bounded operational tooling and canonical truth baseline into the isolated branch without granting broker authority
 
 The shared bounded runner:
 
@@ -127,15 +138,20 @@ Command-5A continues to have `brokerAuthority=false`. It remains an isolated res
 
 ## Verification performed
 
-Main at `fae07aa4932cd4b0a5707eabfacd3533aec4779f`:
+Main at `52265ebe1bf9395c291bda9b9ea6f976f1f537a1`:
 
 - lint: pass
 - TypeScript check: pass
-- unit tests: 2,854 passing, 0 failing, 15 skipped
+- unit tests: 2,858 passing, 0 failing, 15 skipped
 - production build: pass
 - security scan: pass, zero findings
 - Git storage policy: pass
-- exact GitHub CI run `36322457434`: success
+- historical regression registry: 24 passing, 0 failing, 0 unclassified
+- premarket session simulator: 14 passing, 0 failing
+- accelerated bounded soak: 391 completed cycles, 0 failures, 0 timeouts, 0 unhandled processes, 0 broker mutations
+- unknown audit: 0 avoidable unknowns, 0 unresolved safety-critical unknowns, 0 unresolved Paper-entry unknowns
+- Python AEGIS suite: 31 passing
+- exact GitHub CI run `36325138320`: success
 
 Main worker hardening at `ab29f2ad5738fa3c734ddcf220c65521d072a2c1`:
 
@@ -158,6 +174,9 @@ Command-5A isolated branch:
 - lint: pass
 - security scan: pass, zero findings
 - Git storage policy: pass
+- current isolated head: `226fb7a3684a0d20c6e205bd5590c39d0d955785`
+- focused Command-5A tests: 63 passing, 0 failing
+- exact GitHub CI run `36325225336`: success
 
 ## Remaining governed sequence
 

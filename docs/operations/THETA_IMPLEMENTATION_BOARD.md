@@ -708,3 +708,20 @@ No item is complete merely because its type, config, fixture, or UI label exists
   owner/provider restores transfer quota, the canonical recovery gate passes
   again, and exact-current-main CI is successful. Do not blind-retry, delete
   evidence, migrate, or deploy while this condition remains.
+- ID: OPERATIONAL-SUBPROCESS-DEADLINES. DOMAIN: runtime/tooling reliability.
+  CURRENT_STATE: CLOSED_SOURCE/VERIFIED_CI at `52265ebe`. All audited Git,
+  ripgrep, GitHub CLI, nested Node, external Python, recovery discovery,
+  source-identity, historical-certification and replay-provenance subprocesses
+  now have explicit deadlines and typed failure states. Raw child stderr is not
+  copied into durable receipts. Exact CI run `36325138320` passed.
+- ID: CANONICAL-RUNTIME-TRUTH-BASELINE. DOMAIN: operator truth.
+  CURRENT_STATE: CLOSED_SOURCE/VERIFIED_CI at `52265ebe`. The canonical truth
+  audit reports `SOURCE_BASELINE_UNCHANGED`, no changed source files, zero
+  avoidable unknowns, and preserves the Aiven transfer-quota/schema-067/runtime
+  sequence as an external first-Paper blocker rather than strategy WAIT.
+- ID: COMMAND5A-CURRENT-MAIN-RECONCILIATION. DOMAIN: isolated research runtime.
+  CURRENT_STATE: ISOLATED_NOT_DEPLOYED at `226fb7a`. The branch contains the
+  current bounded tooling and runtime-truth baseline, focused tests pass 63/63,
+  exact CI run `36325225336` passed, and `brokerAuthority=false` remains
+  invariant. It is not merged wholesale and cannot bypass the Phase-1
+  Production checkpoint.
