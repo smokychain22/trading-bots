@@ -49,6 +49,8 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /archive-canonical-strategy-frontiers\.ts/);
   assert.match(source, /compact-local-research-spool\.py/);
   assert.match(source, /verify-local-research-parquet\.py/);
+  assert.match(source, /PAUSED_STORAGE_WATERMARK/);
+  assert.match(source, /newSubjectScheduling/);
   assert.match(source, /duckdbAvailable/);
   assert.match(source, /localResearchArchiveState/);
   assert.match(source, /localResearchParquetState/);

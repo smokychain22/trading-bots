@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-export const localResearchArchiveHealthVersion = 'theta-local-research-archive-health-v1' as const;
+export const localResearchArchiveHealthVersion = 'theta-local-research-archive-health-v2' as const;
+export const localResearchSpoolBudgetBytes = 1024 * 1024 * 1024;
 
 export type TransferQuotaState = 'TRANSFER_QUOTA_OPEN' | 'TRANSFER_QUOTA_EXHAUSTED' | 'TRANSFER_QUOTA_RECOVERING';
 export type ArchiveFailureFamily = 'DATABASE_RESOURCE_QUOTA' | 'DATABASE_TRANSIENT' | 'ARCHIVE_INTEGRITY' | 'UNKNOWN';
@@ -19,6 +20,9 @@ export interface LocalResearchArchiveHealth {
   readonly nextRetryAt: string | null;
   readonly spoolRows: number;
   readonly pendingCompactionRows: number;
+  readonly spoolBytes: number;
+  readonly spoolWatermark: 'NORMAL' | 'ELEVATED' | 'HIGH' | 'CRITICAL';
+  readonly newSubjectScheduling: 'ALLOW' | 'PAUSE_STORAGE_PRESSURE';
   readonly parquetFiles: number;
   readonly lastManifestHash: string | null;
   readonly duckdbVerification: 'PASS' | 'NOT_AVAILABLE' | 'FAILED';
@@ -35,6 +39,15 @@ const emptyPersisted = (): PersistedHealth => ({
   nextRetryAt: null,
   transferQuotaState: 'TRANSFER_QUOTA_OPEN',
 });
+
+export function classifyLocalSpoolWatermark(
+  spoolBytes: number,
+): LocalResearchArchiveHealth['spoolWatermark'] {
+  if (!Number.isInteger(spoolBytes) || spoolBytes < 0) throw new Error('LOCAL_RESEARCH_SPOOL_BYTES_INVALID');
+  const spoolRatio = spoolBytes / localResearchSpoolBudgetBytes;
+  return spoolRatio >= 1 ? 'CRITICAL'
+    : spoolRatio >= 0.9 ? 'HIGH' : spoolRatio >= 0.75 ? 'ELEVATED' : 'NORMAL';
+}
 
 export function classifyArchiveFailure(error: unknown): ArchiveFailureFamily {
   const code = error !== null && typeof error === 'object' && 'code' in error
@@ -68,15 +81,19 @@ function readPersisted(path: string): PersistedHealth {
   }
 }
 
-function sqliteCounts(path: string): { spoolRows: number; pendingCompactionRows: number } {
-  if (!existsSync(path)) return { spoolRows: 0, pendingCompactionRows: 0 };
+function sqliteCounts(path: string): { spoolRows: number; pendingCompactionRows: number; spoolBytes: number } {
+  if (!existsSync(path)) return { spoolRows: 0, pendingCompactionRows: 0, spoolBytes: 0 };
+  const spoolBytes = [path, `${path}-wal`, `${path}-shm`].reduce((sum, candidate) => {
+    if (!existsSync(candidate)) return sum;
+    return sum + statSync(candidate).size;
+  }, 0);
   const database = new DatabaseSync(path, { readOnly: true });
   try {
     const total = database.prepare('SELECT count(*) AS count FROM research_batch').get() as { count: number };
     const pending = database.prepare(
       "SELECT count(*) AS count FROM research_batch WHERE storage_state='PENDING_PARQUET'",
     ).get() as { count: number };
-    return { spoolRows: Number(total.count), pendingCompactionRows: Number(pending.count) };
+    return { spoolRows: Number(total.count), pendingCompactionRows: Number(pending.count), spoolBytes };
   } finally {
     database.close();
   }
@@ -142,6 +159,7 @@ export function writeArchiveHealth(input: {
   const counts = sqliteCounts(resolve(input.spoolPath));
   const parquet = parquetState(resolve(input.parquetRoot));
   const retryHours = input.retryAfterHours ?? 12;
+  const spoolWatermark = classifyLocalSpoolWatermark(counts.spoolBytes);
   const state: LocalResearchArchiveHealth = {
     contractVersion: localResearchArchiveHealthVersion,
     observedAt,
@@ -158,6 +176,9 @@ export function writeArchiveHealth(input: {
       ? new Date(input.observedAt.getTime() + retryHours * 3_600_000).toISOString()
       : input.outcome === 'SUCCESS' ? null : prior.nextRetryAt,
     ...counts,
+    spoolWatermark,
+    newSubjectScheduling: spoolWatermark === 'HIGH' || spoolWatermark === 'CRITICAL'
+      ? 'PAUSE_STORAGE_PRESSURE' : 'ALLOW',
     ...parquet,
     duckdbVerification: input.duckdbVerificationOverride ?? parquet.duckdbVerification,
     brokerAuthority: false,

@@ -7,6 +7,8 @@ import test from 'node:test';
 import {
   archiveRetryAllowed,
   classifyArchiveFailure,
+  classifyLocalSpoolWatermark,
+  localResearchSpoolBudgetBytes,
   writeArchiveHealth,
 } from '../src/storage/local-research-archive-health.js';
 
@@ -30,6 +32,14 @@ test('archive failure classification keeps quota, transient, and integrity failu
   assert.equal(classifyArchiveFailure(new Error('opaque')), 'UNKNOWN');
 });
 
+test('local research spool watermarks pause new subjects before local storage is exhausted', () => {
+  assert.equal(classifyLocalSpoolWatermark(0), 'NORMAL');
+  assert.equal(classifyLocalSpoolWatermark(Math.floor(localResearchSpoolBudgetBytes * 0.75)), 'ELEVATED');
+  assert.equal(classifyLocalSpoolWatermark(Math.ceil(localResearchSpoolBudgetBytes * 0.9)), 'HIGH');
+  assert.equal(classifyLocalSpoolWatermark(localResearchSpoolBudgetBytes), 'CRITICAL');
+  assert.throws(() => classifyLocalSpoolWatermark(-1), /LOCAL_RESEARCH_SPOOL_BYTES_INVALID/);
+});
+
 test('quota exhaustion persists a cooldown and preserves local archive inventory', () => {
   const paths = fixture();
   const observedAt = new Date('2026-09-25T00:00:00.000Z');
@@ -47,6 +57,9 @@ test('quota exhaustion persists a cooldown and preserves local archive inventory
   assert.equal(state.failureFamily, 'DATABASE_RESOURCE_QUOTA');
   assert.equal(state.spoolRows, 2);
   assert.equal(state.pendingCompactionRows, 1);
+  assert.ok(state.spoolBytes > 0);
+  assert.equal(state.spoolWatermark, 'NORMAL');
+  assert.equal(state.newSubjectScheduling, 'ALLOW');
   assert.equal(state.nextRetryAt, '2026-09-25T12:00:00.000Z');
   assert.equal(archiveRetryAllowed(paths.health, new Date('2026-09-25T11:59:59.000Z')), false);
   assert.equal(archiveRetryAllowed(paths.health, new Date('2026-09-25T12:00:00.000Z')), true);

@@ -176,18 +176,30 @@ try {
       $command5aMaterialized = 0
       $command5aMaturationPending = 0
       $command5aMaturationCensored = 0
+      $command5aArchiveHealthPath = Join-Path $stateRoot 'research-spool\archive-health.json'
+      $command5aSchedulingPausedForStorage = $false
+      if (Test-Path -LiteralPath $command5aArchiveHealthPath -PathType Leaf) {
+        try {
+          $command5aPriorArchiveHealth = Get-Content -Raw -LiteralPath $command5aArchiveHealthPath | ConvertFrom-Json
+          $command5aSchedulingPausedForStorage = [string]$command5aPriorArchiveHealth.newSubjectScheduling -eq 'PAUSE_STORAGE_PRESSURE'
+        } catch { $command5aSchedulingPausedForStorage = $true }
+      }
       $previousErrorActionPreference = $ErrorActionPreference
       $ErrorActionPreference = 'Continue'
       try {
-        $command5aSince = $operationStartedAt.AddMinutes(-90).ToString('o')
-        $command5aScheduleOutput = & node --import tsx tools/theta-command5a-runtime.ts `
-          --mode=schedule "--environment-file=$productionEnvFile" `
-          "--scheduler=$command5aSchedulerPath" "--spool=$command5aSpoolPath" `
-          "--since=$command5aSince" --limit=250 2>$null
-        if ($LASTEXITCODE -eq 0) {
-          $command5aScheduleResult = $command5aScheduleOutput | Select-Object -Last 1 | ConvertFrom-Json
-          $command5aScheduleState = [string]$command5aScheduleResult.state
-        } else { $command5aScheduleState = 'FAILED_NONCRITICAL' }
+        if ($command5aSchedulingPausedForStorage) {
+          $command5aScheduleState = 'PAUSED_STORAGE_WATERMARK'
+        } else {
+          $command5aSince = $operationStartedAt.AddMinutes(-90).ToString('o')
+          $command5aScheduleOutput = & node --import tsx tools/theta-command5a-runtime.ts `
+            --mode=schedule "--environment-file=$productionEnvFile" `
+            "--scheduler=$command5aSchedulerPath" "--spool=$command5aSpoolPath" `
+            "--since=$command5aSince" --limit=250 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $command5aScheduleResult = $command5aScheduleOutput | Select-Object -Last 1 | ConvertFrom-Json
+            $command5aScheduleState = [string]$command5aScheduleResult.state
+          } else { $command5aScheduleState = 'FAILED_NONCRITICAL' }
+        }
         if ($report.reconciliation.marketOpen -eq $true) {
           $command5aObservationOutput = & node --import tsx tools/theta-command5a-runtime.ts `
             --mode=observe "--environment-file=$productionEnvFile" `
@@ -527,6 +539,7 @@ try {
         localResearchDuckdbVerification=$localResearchDuckdbVerification;
         command5aScheduleState=$command5aScheduleState;command5aObservationState=$command5aObservationState;
         command5aMaturationState=$command5aMaturationState;
+        command5aSchedulingPausedForStorage=$command5aSchedulingPausedForStorage;
         command5aObserved=$command5aObserved;command5aMissed=$command5aMissed;
         command5aDeferredProvider=$command5aDeferredProvider;command5aDeferredMarket=$command5aDeferredMarket;
         command5aMaterialized=$command5aMaterialized;command5aMaturationPending=$command5aMaturationPending;
