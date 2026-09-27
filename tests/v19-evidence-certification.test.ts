@@ -52,6 +52,6 @@ test('provider limits are separated by Paper criticality', () => {
   const receipt = buildV19EvidenceCertification(passingInput());
   assert.equal(receipt.PAPER_CRITICAL_PROVIDER_LIMITATION_COUNT, 2);
   assert.deepEqual(receipt.OPTIONAL_RESEARCH_PROVIDER_LIMITATIONS.toSorted(),
-    ['FUNDAMENTAL_QUALITY', 'MOMENTUM', 'SECTOR', 'UNUSUAL_ACTIVITY']);
-  assert.equal(receipt.OPTIONAL_RESEARCH_PROVIDER_LIMITATION_COUNT, 4);
+    ['FUNDAMENTAL_QUALITY', 'SECTOR', 'UNUSUAL_ACTIVITY']);
+  assert.equal(receipt.OPTIONAL_RESEARCH_PROVIDER_LIMITATION_COUNT, 3);
 });
