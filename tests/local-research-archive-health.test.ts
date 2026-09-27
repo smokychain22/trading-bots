@@ -81,8 +81,8 @@ test('quota exhaustion persists a cooldown and preserves local archive inventory
 
 test('successful archive clears quota cooldown and fingerprints latest verified manifest', () => {
   const paths = fixture();
-  const directory = join(paths.parquet, '2026-09-25T010000Z_test');
-  mkdirSync(directory);
+  const directory = join(paths.parquet, 'THETA', '2026-09-25T010000Z_test');
+  mkdirSync(directory, { recursive: true });
   writeFileSync(join(directory, 'evidence.parquet'), 'test-only');
   writeFileSync(join(directory, 'manifest.json'), JSON.stringify({
     generatedAt: '2026-09-25T01:00:00.000Z', parquetFile: 'evidence.parquet', duckdbReadback: 'PASS',

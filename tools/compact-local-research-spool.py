@@ -182,7 +182,7 @@ def main() -> int:
         (args.bot,),
     ).fetchone()[0]
     source.close()
-    for stale_partial in destination.glob(f".{archive_id}.partial-*"):
+    for stale_partial in archive_root.glob(f".{archive_id}.partial-*"):
         if stale_partial.is_dir():
             shutil.rmtree(stale_partial)
     print(json.dumps({

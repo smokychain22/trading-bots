@@ -133,11 +133,15 @@ function parquetState(root: string): Pick<LocalResearchArchiveHealth,
   const parquetBytes = pathTreeBytes(root);
   const manifests: Array<{ path: string; generatedAt: string }> = [];
   let parquetFiles = 0;
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const directory = join(root, entry.name);
-    const manifestPath = join(directory, 'manifest.json');
-    if (!existsSync(manifestPath)) continue;
+  const manifestPaths = (directory: string): readonly string[] => readdirSync(directory, { withFileTypes: true })
+    .flatMap((entry) => {
+      if (entry.isSymbolicLink()) return [];
+      const candidate = join(directory, entry.name);
+      if (entry.isDirectory()) return manifestPaths(candidate);
+      return entry.isFile() && entry.name === 'manifest.json' ? [candidate] : [];
+    });
+  for (const manifestPath of manifestPaths(root)) {
+    const directory = dirname(manifestPath);
     try {
       const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
       const parquetFile = typeof manifest.parquetFile === 'string' ? join(directory, manifest.parquetFile) : null;
