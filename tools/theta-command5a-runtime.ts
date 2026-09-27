@@ -94,7 +94,8 @@ async function schedule(): Promise<void> {
     const cursor = scheduler.sourceCursor();
     const cursorReadyAt = cursor?.readyAt ?? new Date(since).toISOString();
     const cursorFrontierId = cursor?.frontierId ?? '00000000-0000-0000-0000-000000000000';
-    const query = await pool.query<FrontierRow>(`SELECT f.frontier_id::text,d.decided_at AS ready_at,
+    const query = await pool.query<FrontierRow>(`SELECT f.frontier_id::text,
+      GREATEST(f.created_at,d.decided_at) AS ready_at,
       f.fusion_snapshot_id::text,
       f.frontier_json,s.evidence_archive_gzip,s.content_hash AS snapshot_content_hash,
       d.decision_id::text,d.receipt_json,s.risk_limit_version_id::text,s.cost_model_version_id::text,
@@ -104,8 +105,9 @@ async function schedule(): Promise<void> {
       JOIN LATERAL (SELECT decision_id,receipt_json,decided_at FROM trade.decision
         WHERE fusion_snapshot_id=f.fusion_snapshot_id
         ORDER BY decided_at DESC,decision_id DESC LIMIT 1) d ON true
-      WHERE (d.decided_at,f.frontier_id) > ($1::timestamptz,$2::uuid)
-      ORDER BY d.decided_at,f.frontier_id LIMIT $3`, [cursorReadyAt, cursorFrontierId, limit]);
+      WHERE (GREATEST(f.created_at,d.decided_at),f.frontier_id) > ($1::timestamptz,$2::uuid)
+      ORDER BY GREATEST(f.created_at,d.decided_at),f.frontier_id LIMIT $3`,
+    [cursorReadyAt, cursorFrontierId, limit]);
     const decoded = query.rows.map((row) => ({ row, frontier: fullFrontier(row) }));
     const pending = decoded.filter(({ frontier }) => {
       if (frontier === null) return true;
