@@ -137,6 +137,41 @@ test('Command-5A maturation preserves pending and missing-archive states instead
   } finally { missingSetup.scheduler.close(); }
 });
 
+test('a terminally missed primary mark creates one durable censored row without fake prices', () => {
+  const missedSetup = setup();
+  try {
+    missedSetup.scheduler.claimDue({ asOf: OBSERVED_AT, claimedBy: 'test-worker', claimTtlSeconds: 60 });
+    missedSetup.scheduler.resolve({ observationJobId: missedSetup.job.observationJobId,
+      claimedBy: 'test-worker', state: 'MISSED', resolvedAt: OBSERVED_AT,
+      reasonCode: 'EXACT_CONTRACT_SNAPSHOT_MISSING' });
+    const first = matureCommand5aLocalObservations({ scheduler: missedSetup.scheduler,
+      spoolPath: missedSetup.spoolPath, asOf: OBSERVED_AT });
+    assert.equal(first.censored, 1);
+    assert.equal(first.materialized, 0);
+    const spool = new LocalResearchHistorySpool(missedSetup.spoolPath);
+    try {
+      const batches = spool.readDecisionCycleBatches<{
+        executionTruthClass: string;
+        observationIds: string[];
+        dataset: { path: unknown[]; statistics: { terminalState: string; assignmentState: string } };
+        unknownFields: { field: string; reason: string }[];
+      }>({ decisionCycleId: 'cycle-1', family: 'CONTRACT_PATH_DATASET' });
+      assert.equal(batches.length, 1);
+      assert.equal(batches[0]?.payload[0]?.executionTruthClass, 'CENSORED_NO_MARKET_PATH');
+      assert.deepEqual(batches[0]?.payload[0]?.observationIds, []);
+      assert.deepEqual(batches[0]?.payload[0]?.dataset.path, []);
+      assert.equal(batches[0]?.payload[0]?.dataset.statistics.terminalState, 'CHAIN_CENSORED');
+      assert.equal(batches[0]?.payload[0]?.dataset.statistics.assignmentState, 'RIGHT_CENSORED');
+      assert.deepEqual(batches[0]?.payload[0]?.unknownFields, [{ rowIndex: -1,
+        field: 'primaryObservation', reason: 'EXACT_CONTRACT_SNAPSHOT_MISSING' }]);
+    } finally { spool.close(); }
+    const second = matureCommand5aLocalObservations({ scheduler: missedSetup.scheduler,
+      spoolPath: missedSetup.spoolPath, asOf: '2026-09-25T16:00:00.000Z' });
+    assert.equal(second.censored, 0);
+    assert.equal(second.alreadyMaterialized, 1);
+  } finally { missedSetup.scheduler.close(); }
+});
+
 test('maturation subject cursor advances and wraps so bounded runs cannot starve later subjects', () => {
   const root = mkdtempSync(join(tmpdir(), 'theta-command5a-cursor-'));
   const scheduler = new LocalObservationJobScheduler(join(root, 'jobs.sqlite'));

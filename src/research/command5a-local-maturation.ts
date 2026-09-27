@@ -4,7 +4,10 @@ import { LocalResearchHistorySpool } from '../storage/local-research-history-spo
 import { canonicalJson } from './point-in-time-evidence.js';
 import type { ContractPathObservationReceipt } from './contract-path-observation-runtime.js';
 import { runRealDataArrivalPipelineFromCommand5A } from './real-data-arrival-harness.js';
-import type { ContractPathOutcomeRow } from './contract-path-outcome-dataset.js';
+import {
+  buildContractPathOutcomeRow,
+  type ContractPathOutcomeRow,
+} from './contract-path-outcome-dataset.js';
 
 export const command5aLocalMaturationVersion = 'theta-command5a-local-maturation-v1' as const;
 
@@ -19,7 +22,7 @@ export interface Command5aMaturedDatasetRecord {
   readonly materializedAt: string;
   readonly sourceSha: string;
   readonly workerSha: string;
-  readonly executionTruthClass: 'MARKET_PATH_ONLY';
+  readonly executionTruthClass: 'MARKET_PATH_ONLY' | 'CENSORED_NO_MARKET_PATH';
   readonly brokerAuthority: false;
   readonly orderSubmissions: 0;
   readonly brokerMutations: 0;
@@ -65,6 +68,29 @@ function isObservation(value: unknown): value is ContractPathObservationReceipt 
     && row.brokerAuthority === false;
 }
 
+function appendDatasetRecord(input: {
+  readonly spool: LocalResearchHistorySpool;
+  readonly record: Command5aMaturedDatasetRecord;
+  readonly snapshotId: string;
+  readonly observedAt: string;
+}): { readonly batchId: string; readonly existed: boolean } {
+  const batchId = createHash('sha256').update(canonicalJson(input.record)).digest('hex');
+  const existed = input.spool.hasBatch(batchId);
+  input.spool.append({
+    botNamespace: 'THETA',
+    batchId,
+    family: 'CONTRACT_PATH_DATASET',
+    sourceSha: input.record.sourceSha,
+    decisionCycleId: input.record.decisionCycleId,
+    snapshotId: input.snapshotId,
+    observedAt: input.observedAt,
+    rowCount: 1,
+    payload: [input.record],
+  });
+  if (!input.spool.verifyBatch(batchId)) throw new Error('COMMAND5A_MATURATION_BATCH_VERIFICATION_FAILED');
+  return { batchId, existed };
+}
+
 /**
  * Converts a completed primary-horizon market path into a durable local
  * research dataset. It never creates a factual trade label. Every Command-5A
@@ -105,8 +131,43 @@ export function matureCommand5aLocalObservations(input: {
         continue;
       }
       if (primary.state !== 'OBSERVED') {
-        censored += 1;
-        count(reasons, `PRIMARY_COMMON_HORIZON_${primary.state}`);
+        const reason = primary.reasonCode ?? `PRIMARY_COMMON_HORIZON_${primary.state}`;
+        const materializedAt = primary.resolvedAt ?? primary.targetAt;
+        const record: Command5aMaturedDatasetRecord = {
+          contractVersion: command5aLocalMaturationVersion,
+          subjectId: subject.subjectId,
+          decisionCycleId: subject.decisionCycleId,
+          primaryObservationJobId: primary.observationJobId,
+          observationIds: [],
+          dataset: buildContractPathOutcomeRow({
+            subjectId: subject.subjectId,
+            decisionAt: subject.episode.decisionAt,
+            wasSelected: subject.episode.selectedAtDecision,
+            wasShadowOnly: true,
+            identifiabilityStatus: 'NOT_IDENTIFIABLE',
+            path: [],
+            statistics: {
+              maximumAdverseExcursion: null, maximumFavorableExcursion: null,
+              peakProfit: null, worstProfit: null, giveback: null, timeToPeakSeconds: null,
+              capitalDays: null, assignmentState: 'RIGHT_CENSORED', recoveryState: null,
+              terminalState: 'CHAIN_CENSORED',
+            },
+          }),
+          unknownFields: [{ rowIndex: -1, field: 'primaryObservation', reason }],
+          materializedAt,
+          sourceSha: subject.sourceSha,
+          workerSha: subject.workerSha,
+          executionTruthClass: 'CENSORED_NO_MARKET_PATH',
+          brokerAuthority: false,
+          orderSubmissions: 0,
+          brokerMutations: 0,
+        };
+        const appended = appendDatasetRecord({ spool, record, snapshotId: subject.episode.snapshotId,
+          observedAt: materializedAt });
+        datasetBatchIds.push(appended.batchId);
+        if (appended.existed) alreadyMaterialized += 1;
+        else censored += 1;
+        count(reasons, reason);
         continue;
       }
       try {
@@ -168,22 +229,10 @@ export function matureCommand5aLocalObservations(input: {
           orderSubmissions: 0,
           brokerMutations: 0,
         };
-        const batchId = createHash('sha256').update(canonicalJson(record)).digest('hex');
-        const existed = spool.hasBatch(batchId);
-        spool.append({
-          botNamespace: 'THETA',
-          batchId,
-          family: 'CONTRACT_PATH_DATASET',
-          sourceSha: subject.sourceSha,
-          decisionCycleId: subject.decisionCycleId,
-          snapshotId: subject.episode.snapshotId,
-          observedAt: primaryObservation.actualObservedAt,
-          rowCount: 1,
-          payload: [record],
-        });
-        if (!spool.verifyBatch(batchId)) throw new Error('COMMAND5A_MATURATION_BATCH_VERIFICATION_FAILED');
-        datasetBatchIds.push(batchId);
-        if (existed) alreadyMaterialized += 1;
+        const appended = appendDatasetRecord({ spool, record, snapshotId: subject.episode.snapshotId,
+          observedAt: primaryObservation.actualObservedAt });
+        datasetBatchIds.push(appended.batchId);
+        if (appended.existed) alreadyMaterialized += 1;
         else materialized += 1;
       } catch (error) {
         failedRetryable += 1;
