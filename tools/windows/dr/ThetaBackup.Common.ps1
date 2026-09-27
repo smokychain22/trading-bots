@@ -330,7 +330,10 @@ function Get-ThetaCriticalDigest {
     # order-independent; the archive SHA-256 remains the complete byte-integrity proof.
     $rowExpression = 'to_jsonb(t)'
     if ($Method -eq 'BOUNDED_INTEGRITY_PROJECTION_V2') {
-      $boundedColumns = switch ($name) {
+      # Wrap the switch result explicitly. PowerShell unwraps an empty pipeline
+      # to $null, so an ordinary critical table with no bounded projection used
+      # to fail at `.Count` after the full archive had already completed.
+      $boundedColumns = @(switch ($name) {
         'trade.fusion_snapshot' { @(
           'fusion_snapshot_id','bot_instance_id','decision_time','trigger_type','universe_version_id',
           'strategy_version_id','feature_version_id','risk_limit_version_id','execution_version_id',
@@ -350,7 +353,7 @@ function Get-ThetaCriticalDigest {
           'feature_version','cost_model_version','regime_version','execution_model_version','content_hash','created_at'
         ); break }
         default { @() }
-      }
+      })
       if ($boundedColumns.Count -gt 0) {
         $available = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
         $prefix = $name + '.'

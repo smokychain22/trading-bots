@@ -46,4 +46,12 @@ if ($script:CapturedDigestSql -match 'snapshot_json|evidence_archive_gzip|to_jso
   throw 'DIGEST_V2_LARGE_PAYLOAD_REINTRODUCED'
 }
 
+$defaultStructure = [pscustomobject]@{
+  tables = @([pscustomobject]@{ name='trade.decision' })
+  columns = @([pscustomobject]@{ name='trade.decision.decision_id' })
+}
+$defaultDigest = Get-ThetaCriticalDigest -Connection ([pscustomobject]@{}) -Structure $defaultStructure
+if ($defaultDigest['trade.decision'] -ne ('a' * 32)) { throw 'DIGEST_V2_DEFAULT_TABLE_RESULT_INVALID' }
+if ($script:CapturedDigestSql -notmatch 'to_jsonb\(t\)') { throw 'DIGEST_V2_DEFAULT_TABLE_SQL_INVALID' }
+
 Write-Output 'theta backup bounded digest v2 test passed'
