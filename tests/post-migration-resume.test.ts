@@ -1,11 +1,30 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  assertPostMigrationExecutionLocked,
   assertPostMigrationResumeState,
   requiredPostMigrationVersions,
   type MigrationLedgerRow,
   type PostMigrationDatabaseState,
 } from '../src/database/post-migration-resume.js';
+
+test('accepts only the typed locked execution configuration', () => {
+  assert.doesNotThrow(() => assertPostMigrationExecutionLocked({
+    MASTER_PAPER_EXECUTION_ENABLED: false,
+    FOLLOWER_PAPER_EXECUTION_ENABLED: false,
+    PAPER_PAUSE_NEW_ORDERS: true,
+  }));
+  assert.throws(() => assertPostMigrationExecutionLocked({
+    MASTER_PAPER_EXECUTION_ENABLED: true,
+    FOLLOWER_PAPER_EXECUTION_ENABLED: false,
+    PAPER_PAUSE_NEW_ORDERS: true,
+  }), /POST_MIGRATION_EXECUTION_FLAGS_NOT_LOCKED/);
+  assert.throws(() => assertPostMigrationExecutionLocked({
+    MASTER_PAPER_EXECUTION_ENABLED: false,
+    FOLLOWER_PAPER_EXECUTION_ENABLED: false,
+    PAPER_PAUSE_NEW_ORDERS: false,
+  }), /POST_MIGRATION_EXECUTION_FLAGS_NOT_LOCKED/);
+});
 
 const ledger = (): MigrationLedgerRow[] => [
   { version: '064_previous_schema_head', count: 1 },

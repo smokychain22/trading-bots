@@ -19,6 +19,22 @@ export interface PostMigrationDatabaseState {
   readonly compressedArchive: boolean;
 }
 
+export interface PostMigrationExecutionEnvironment {
+  readonly MASTER_PAPER_EXECUTION_ENABLED: boolean;
+  readonly FOLLOWER_PAPER_EXECUTION_ENABLED: boolean;
+  readonly PAPER_PAUSE_NEW_ORDERS: boolean;
+}
+
+export function assertPostMigrationExecutionLocked(environment: PostMigrationExecutionEnvironment): void {
+  if (
+    environment.MASTER_PAPER_EXECUTION_ENABLED
+    || environment.FOLLOWER_PAPER_EXECUTION_ENABLED
+    || !environment.PAPER_PAUSE_NEW_ORDERS
+  ) {
+    throw new Error('POST_MIGRATION_EXECUTION_FLAGS_NOT_LOCKED');
+  }
+}
+
 export function assertPostMigrationResumeState(
   ledger: readonly MigrationLedgerRow[],
   state: PostMigrationDatabaseState,

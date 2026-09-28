@@ -1,14 +1,17 @@
 import { execFileSync } from 'node:child_process';
 import pg from 'pg';
 import { loadEnvironmentFile } from '../src/config/environment.js';
-import { assertPostMigrationResumeState, requiredPostMigrationVersions } from '../src/database/post-migration-resume.js';
+import {
+  assertPostMigrationExecutionLocked,
+  assertPostMigrationResumeState,
+  requiredPostMigrationVersions,
+} from '../src/database/post-migration-resume.js';
 import { classifyPostgresRelation } from '../src/storage/storage-authority-registry.js';
 
 const environmentFile=process.argv.find((value)=>value.startsWith('--environment-file='))?.split('=',2)[1]??'.env.local';
 const environment=loadEnvironmentFile(environmentFile);
 if(!environment.AIVEN_DATABASE_URL)throw new Error('AIVEN_DATABASE_URL_NOT_CONFIGURED');
-if(environment.MASTER_PAPER_EXECUTION_ENABLED!=='false'||environment.FOLLOWER_PAPER_EXECUTION_ENABLED!=='false'
-  ||environment.PAPER_PAUSE_NEW_ORDERS!=='true')throw new Error('POST_MIGRATION_EXECUTION_FLAGS_NOT_LOCKED');
+assertPostMigrationExecutionLocked(environment);
 const sourceSha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8',timeout:30_000,windowsHide:true}).trim();
 const client=new pg.Client({connectionString:environment.AIVEN_DATABASE_URL,connectionTimeoutMillis:8_000,
   application_name:'theta-post-migration-resume-preflight'});
