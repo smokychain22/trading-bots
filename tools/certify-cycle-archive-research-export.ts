@@ -28,7 +28,17 @@ if (!Number.isInteger(maxPasses) || maxPasses < 1 || maxPasses > 1_000) {
   throw new Error('ARCHIVE_CERTIFICATION_MAX_PASSES_INVALID');
 }
 
-const python = existsSync('.venv\\Scripts\\python.exe') ? '.venv\\Scripts\\python.exe' : 'python';
+const pythonCandidates = [
+  ...(existsSync('.venv\\Scripts\\python.exe') ? ['.venv\\Scripts\\python.exe'] : []),
+  'python',
+];
+const python = pythonCandidates.find((candidate) => {
+  const probe = spawnSync(candidate, ['-c', 'import duckdb'], {
+    encoding: 'utf8', timeout: 30_000, windowsHide: true,
+  });
+  return probe.error === undefined && probe.signal === null && probe.status === 0;
+});
+if (python === undefined) throw new Error('ARCHIVE_CERTIFICATION_DUCKDB_RUNTIME_UNAVAILABLE');
 const runJson = (stage: string, command: string, args: readonly string[], timeoutMs = 600_000): Record<string, unknown> => {
   if (!/^[A-Z0-9_]+$/.test(stage)) throw new Error('ARCHIVE_CERTIFICATION_CHILD_STAGE_INVALID');
   const result = spawnSync(command, [...args], {

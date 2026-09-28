@@ -12,6 +12,9 @@ test('archive certification keeps canonical authority separate and requires comp
   assert.match(source, /parquetVerification/);
   assert.match(source, /timeout: timeoutMs/);
   assert.match(source, /ARCHIVE_CERTIFICATION_CHILD_TIMEOUT/);
+  assert.match(source, /pythonCandidates\.find/);
+  assert.match(source, /'import duckdb'/);
+  assert.match(source, /ARCHIVE_CERTIFICATION_DUCKDB_RUNTIME_UNAVAILABLE/);
   assert.doesNotMatch(source, /result\.stderr/);
   assert.match(source, /brokerAuthority: false/);
   assert.doesNotMatch(source, /submitOrder|createOrder|cancelOrder/);
