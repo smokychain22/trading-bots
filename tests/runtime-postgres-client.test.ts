@@ -3,7 +3,9 @@ import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import type { Pool, PoolClient } from 'pg';
 import { classifyPostgresRuntimeError, PostgresCommitOutcomeUnknownError } from '../src/theta/postgres-runtime-error.js';
-import { withRuntimePostgresClient, withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '../src/theta/runtime-postgres-client.js';
+import { classifyPostgresAcquisitionPath, withRuntimePostgresClient, withRuntimePostgresReadRetry,
+  withRuntimePostgresTransaction,PostgresCheckedOutClientLostError } from '../src/theta/runtime-postgres-client.js';
+import type { RuntimePostgresClientObservation } from '../src/theta/runtime-postgres-client.js';
 import { PostgresRuntimeCycleStore, safeRuntimeFailure } from '../src/theta/autonomous-runtime.js';
 
 class FakeClient extends EventEmitter {
@@ -20,7 +22,9 @@ class FakeClient extends EventEmitter {
 
 const poolOf = (...clients: FakeClient[]): Pool => {
   let cursor = 0;
-  return { connect: async () => clients[cursor++] as unknown as PoolClient } as Pool;
+  return {options:{max:Math.max(1,clients.length),connectionTimeoutMillis:8_000},
+    totalCount:0,idleCount:0,waitingCount:0,
+    connect: async () => clients[cursor++] as unknown as PoolClient } as unknown as Pool;
 };
 
 test('Postgres classifier distinguishes temporary availability from permanent SQL and auth faults', () => {
@@ -56,6 +60,62 @@ test('checked-out client error is handled and broken client is discarded', async
   assert.equal(client.listenerCount('error'), 0);
 });
 
+test('every acquired client is observed and released on success and query failure',async()=>{
+  const succeeded=new FakeClient();
+  const successObservations:RuntimePostgresClientObservation[]=[];
+  await withRuntimePostgresClient(poolOf(succeeded),(client)=>client.query('SELECT 1'),
+    {observe:(value)=>successObservations.push(value),now:(()=>{let value=0;return()=>value+=10;})()});
+  assert.deepEqual(succeeded.releases,[false]);
+  assert.equal(successObservations.length,1);
+  assert.equal(successObservations[0]?.outcome,'SUCCEEDED_RELEASED');
+  assert.equal(successObservations[0]?.acquisitionDurationMs,10);
+  assert.equal(successObservations[0]?.checkoutDurationMs,10);
+
+  const failed=new FakeClient('SELECT broken',{code:'42601'});
+  const failureObservations:RuntimePostgresClientObservation[]=[];
+  await assert.rejects(withRuntimePostgresClient(poolOf(failed),(client)=>client.query('SELECT broken'),
+    {observe:(value)=>failureObservations.push(value)}),{code:'42601'});
+  assert.deepEqual(failed.releases,[false]);
+  assert.equal(failureObservations[0]?.outcome,'OPERATION_FAILED_RELEASED');
+  assert.equal(failureObservations[0]?.failureSafeCode,'POSTGRES_42601');
+});
+
+test('pool queue timeout and new-connection timeout have distinct acquisition paths',async()=>{
+  const queueObservations:RuntimePostgresClientObservation[]=[];
+  const queuePool={options:{max:2,connectionTimeoutMillis:5_000},totalCount:2,idleCount:0,waitingCount:4,
+    connect:async()=>{throw new Error('timeout exceeded when trying to connect');}} as unknown as Pool;
+  await assert.rejects(withRuntimePostgresClient(queuePool,async()=>1,{observe:(value)=>queueObservations.push(value)}),
+    /timeout exceeded/);
+  assert.equal(queueObservations[0]?.outcome,'ACQUISITION_FAILED');
+  assert.equal(queueObservations[0]?.acquisitionPath,'POOL_QUEUE');
+  assert.equal(queueObservations[0]?.connectionTimeoutMillis,5_000);
+
+  const connectionPool={options:{max:2,connectionTimeoutMillis:5_000},totalCount:0,idleCount:0,waitingCount:0,
+    connect:async()=>{throw new Error('Connection terminated due to connection timeout');}} as unknown as Pool;
+  const connectionObservations:RuntimePostgresClientObservation[]=[];
+  await assert.rejects(withRuntimePostgresClient(connectionPool,async()=>1,
+    {observe:(value)=>connectionObservations.push(value)}),/connection timeout/);
+  assert.equal(connectionObservations[0]?.acquisitionPath,'NEW_CONNECTION');
+  assert.equal(classifyPostgresAcquisitionPath(connectionPool,{total:0,idle:0,waiting:0},{code:'EAI_AGAIN'}),
+    'NEW_CONNECTION');
+  assert.equal(classifyPostgresAcquisitionPath(queuePool,{total:2,idle:0,waiting:4},
+    new Error('timeout exceeded when trying to connect')),'POOL_QUEUE');
+});
+
+test('slow valid query time remains checkout duration and is never acquisition failure',async()=>{
+  const client=new FakeClient();
+  const observations:RuntimePostgresClientObservation[]=[];
+  const times=[0,10,3_010];
+  await withRuntimePostgresClient(poolOf(client),async(checkedOut)=>{
+    await checkedOut.query('SELECT slow but valid');
+    return 1;
+  },{observe:(value)=>observations.push(value),now:()=>times.shift()??3_010});
+  assert.equal(observations[0]?.outcome,'SUCCEEDED_RELEASED');
+  assert.equal(observations[0]?.acquisitionDurationMs,10);
+  assert.equal(observations[0]?.checkoutDurationMs,3_000);
+  assert.equal(observations[0]?.failureSafeCode,null);
+});
+
 test('read retry uses a new client only for a transient failure', async () => {
   const failed = new FakeClient('SELECT 1', { code: '57P03' });
   const recovered = new FakeClient();
@@ -85,6 +145,8 @@ test('query timeout retries reads once while transfer quota and read-only failur
   const receipt = await withRuntimePostgresReadRetry(poolOf(timedOut, recovered),
     (client) => client.query('SELECT bounded'), { maximumAttempts: 2, delayMs: () => 0 });
   assert.equal(receipt.attemptCount, 2);
+  assert.deepEqual(timedOut.releases,[true]);
+  assert.deepEqual(recovered.releases,[false]);
   for (const code of ['53000', '25006']) {
     const failed = new FakeClient('SELECT bulk', { code });
     await assert.rejects(withRuntimePostgresReadRetry(poolOf(failed, new FakeClient()),
@@ -99,6 +161,22 @@ test('transaction rolls back a pre-commit failure without retrying the write', a
     { code: '23505' });
   assert.deepEqual(client.queries, ['BEGIN', 'INSERT evidence', 'ROLLBACK']);
   assert.deepEqual(client.releases, [false]);
+});
+
+test('rollback failure still releases and discards the checked-out client',async()=>{
+  class RollbackFailureClient extends FakeClient{
+    override async query(sql:string):Promise<{rows:unknown[];rowCount:number}>{
+      this.queries.push(sql);
+      if(sql==='INSERT evidence')throw {code:'23505'};
+      if(sql==='ROLLBACK')throw {code:'08006'};
+      return {rows:[],rowCount:0};
+    }
+  }
+  const client=new RollbackFailureClient();
+  await assert.rejects(withRuntimePostgresTransaction(poolOf(client),
+    (checkedOut)=>checkedOut.query('INSERT evidence')),PostgresCheckedOutClientLostError);
+  assert.deepEqual(client.queries,['BEGIN','INSERT evidence','ROLLBACK']);
+  assert.deepEqual(client.releases,[true]);
 });
 
 test('ambiguous COMMIT requires identity reconciliation, never replays the write', async () => {

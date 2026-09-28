@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { loadEnvironmentFile } from '../src/config/environment.js';
+import { runWithBoundedConcurrency } from '../src/theta/bounded-concurrency.js';
 import { classifyPostgresRuntimeError } from '../src/theta/postgres-runtime-error.js';
 import { decodeCycleEvidenceArchive, postgresCycleEvidenceStorageVersion } from '../src/theta/postgres-cycle-evidence-storage.js';
 import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
-import { withRuntimePostgresClient, withRuntimePostgresReadRetry } from '../src/theta/runtime-postgres-client.js';
+import { withRuntimePostgresClient } from '../src/theta/runtime-postgres-client.js';
+import type { RuntimePostgresClientObservation } from '../src/theta/runtime-postgres-client.js';
 
 const environmentFile=process.argv.find((value)=>value.startsWith('--environment-file='))?.split('=',2)[1]??'.env.local';
 const durationArg=process.argv.find((value)=>value.startsWith('--duration-seconds='))?.split('=',2)[1];
@@ -15,14 +17,17 @@ const environment=loadEnvironmentFile(environmentFile);
 if(!environment.DATABASE_URL)throw new Error('DATABASE_NOT_CONFIGURED');
 
 const safeErrors:string[]=[];
+const primaryPoolMax=2;
+const connectionTimeoutMillis=5_000;
 const pool=createRuntimePostgresPool(environment.DATABASE_URL,(code)=>safeErrors.push(code),
-  {maximumConnections:2,applicationName:'theta-db-stability-soak',connectionTimeoutMillis:5_000});
+  {maximumConnections:primaryPoolMax,applicationName:'theta-db-stability-soak',connectionTimeoutMillis});
 const startedAt=new Date().toISOString();
 const deadline=Date.now()+durationSeconds*1_000;
 let iterations=0;
 let reads=0;
 let freshAcquisitions=0;
 let maxPoolTotal=0;
+let maxPoolIdle=0;
 let maxPoolWaiting=0;
 let maxDatabaseConnections=0;
 let maxActiveConnections=0;
@@ -38,15 +43,27 @@ let recoveredReadRetries=0;
 let initialPostmasterStartedAt:string|null=null;
 let postmasterRestartDetected=false;
 const queryLatenciesMs:number[]=[];
+const transactionLifetimesMs:number[]=[];
+const clientObservations:Array<RuntimePostgresClientObservation&{readonly poolKind:'PRIMARY'|'FRESH_PROBE'}>=[];
+let serverSettings:{statementTimeout:string;idleInTransactionSessionTimeout:string;lockTimeout:string}|null=null;
+
+const observeClient=(poolKind:'PRIMARY'|'FRESH_PROBE')=>(observation:RuntimePostgresClientObservation):void=>{
+  clientObservations.push({...observation,poolKind});
+  for(const state of [observation.poolBefore,observation.poolAtAcquire,observation.poolAfterRelease]){
+    if(state===null)continue;
+    maxPoolTotal=Math.max(maxPoolTotal,state.total);
+    maxPoolIdle=Math.max(maxPoolIdle,state.idle);
+    maxPoolWaiting=Math.max(maxPoolWaiting,state.waiting);
+  }
+};
 
 const sha256=(value:string|Buffer):string=>createHash('sha256').update(value).digest('hex');
 
 async function proveSnapshotPersistenceAndArchiveReconstruction():Promise<void>{
-  const latest=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT
+  const latest=await withRuntimePostgresClient(pool,(client)=>client.query(`SELECT
     fusion_snapshot_id,snapshot_json,content_hash
-    FROM trade.fusion_snapshot ORDER BY decision_time DESC LIMIT 1`),{maximumAttempts:2});
-  if(latest.attemptCount>1)recoveredReadRetries++;
-  const row=latest.value.rows[0] as {fusion_snapshot_id?:unknown;snapshot_json?:unknown;content_hash?:unknown}|undefined;
+    FROM trade.fusion_snapshot ORDER BY decision_time DESC LIMIT 1`),{observe:observeClient('PRIMARY')});
+  const row=latest.rows[0] as {fusion_snapshot_id?:unknown;snapshot_json?:unknown;content_hash?:unknown}|undefined;
   if(row===undefined||typeof row.content_hash!=='string'||row.snapshot_json===null||typeof row.snapshot_json!=='object'){
     throw new Error('SOAK_SOURCE_SNAPSHOT_UNAVAILABLE');
   }
@@ -57,6 +74,7 @@ async function proveSnapshotPersistenceAndArchiveReconstruction():Promise<void>{
   const archiveHash=sha256(archiveJson);
   await withRuntimePostgresClient(pool,async(client)=>{
     let transactionOpen=false;
+    const transactionStartedAt=Date.now();
     try{
       await client.query('BEGIN');transactionOpen=true;
       await client.query(`CREATE TEMP TABLE theta_soak_fusion_snapshot
@@ -81,13 +99,15 @@ async function proveSnapshotPersistenceAndArchiveReconstruction():Promise<void>{
       await client.query('ROLLBACK');transactionOpen=false;
     }finally{
       if(transactionOpen)await client.query('ROLLBACK').catch(()=>undefined);
+      transactionLifetimesMs.push(Date.now()-transactionStartedAt);
     }
-  });
+  },{observe:observeClient('PRIMARY')});
 }
 
 async function proveRollbackSafeWrite(iteration:number):Promise<void>{
   await withRuntimePostgresClient(pool,async(client)=>{
     let transactionOpen=false;
+    const transactionStartedAt=Date.now();
     try{
       await client.query('BEGIN');transactionOpen=true;
       await client.query('CREATE TEMP TABLE theta_soak_write_probe(iteration integer NOT NULL) ON COMMIT DROP');
@@ -98,8 +118,9 @@ async function proveRollbackSafeWrite(iteration:number):Promise<void>{
       rollbackSafeWrites++;
     }finally{
       if(transactionOpen)await client.query('ROLLBACK').catch(()=>undefined);
+      transactionLifetimesMs.push(Date.now()-transactionStartedAt);
     }
-  });
+  },{observe:observeClient('PRIMARY')});
 }
 
 function percentile(values:readonly number[],fraction:number):number|null{
@@ -109,44 +130,54 @@ function percentile(values:readonly number[],fraction:number):number|null{
 }
 
 try{
+  const settings=await withRuntimePostgresClient(pool,(client)=>client.query(`SELECT
+    current_setting('statement_timeout') AS statement_timeout,
+    current_setting('idle_in_transaction_session_timeout') AS idle_in_transaction_session_timeout,
+    current_setting('lock_timeout') AS lock_timeout`),{observe:observeClient('PRIMARY')});
+  serverSettings={statementTimeout:String(settings.rows[0]?.statement_timeout??''),
+    idleInTransactionSessionTimeout:String(settings.rows[0]?.idle_in_transaction_session_timeout??''),
+    lockTimeout:String(settings.rows[0]?.lock_timeout??'')};
   await proveSnapshotPersistenceAndArchiveReconstruction();
   while(Date.now()<deadline){
     const iterationStarted=performance.now();
-    const concurrentReads=Array.from({length:6},async(_,index)=>{
-      const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(
-        'SELECT $1::int AS ordinal,pg_sleep(0.025)',[index]),{maximumAttempts:2});
-      return receipt.attemptCount;
-    });
+    const results=await runWithBoundedConcurrency(Array.from({length:6},(_,index)=>index),primaryPoolMax,
+      async(index)=>{
+        await withRuntimePostgresClient(pool,(client)=>client.query(
+          'SELECT $1::int AS ordinal,pg_sleep(0.025)',[index]),{observe:observeClient('PRIMARY')});
+        return 1;
+      });
     await new Promise((resolve)=>setTimeout(resolve,5));
     maxPoolTotal=Math.max(maxPoolTotal,pool.totalCount);
+    maxPoolIdle=Math.max(maxPoolIdle,pool.idleCount);
     maxPoolWaiting=Math.max(maxPoolWaiting,pool.waitingCount);
-    const results=await Promise.all(concurrentReads);
-    recoveredReadRetries+=results.filter((attemptCount)=>attemptCount>1).length;
+    if(pool.waitingCount!==0)throw Object.assign(new Error('SOAK_POOL_WAITERS_NOT_DRAINED'),{code:'SOAK_POOL_WAITERS_NOT_DRAINED'});
     reads+=results.length;
-    const stats=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT
+    const stats=await withRuntimePostgresClient(pool,(client)=>client.query(`SELECT
       (SELECT count(*)::int FROM pg_stat_activity WHERE datname=current_database()) AS connections,
       (SELECT count(*)::int FROM pg_stat_activity WHERE datname=current_database() AND state='active') AS active,
       (SELECT count(*)::int FROM pg_stat_activity WHERE datname=current_database() AND state='idle') AS idle,
       (SELECT count(*)::int FROM pg_stat_activity WHERE datname=current_database() AND state='idle in transaction') AS idle_in_transaction,
       (SELECT count(*)::int FROM pg_stat_activity
         WHERE datname=current_database() AND state='active' AND wait_event IS NOT NULL) AS waiting_sessions,
-      pg_postmaster_start_time()::text AS postmaster_started_at`),
-    {maximumAttempts:2});
-    if(stats.attemptCount>1)recoveredReadRetries++;
+      pg_postmaster_start_time()::text AS postmaster_started_at`),{observe:observeClient('PRIMARY')});
     reads++;
-    maxDatabaseConnections=Math.max(maxDatabaseConnections,Number(stats.value.rows[0]?.connections??0));
-    maxActiveConnections=Math.max(maxActiveConnections,Number(stats.value.rows[0]?.active??0));
-    maxIdleConnections=Math.max(maxIdleConnections,Number(stats.value.rows[0]?.idle??0));
-    maxIdleInTransaction=Math.max(maxIdleInTransaction,Number(stats.value.rows[0]?.idle_in_transaction??0));
-    maxWaitingSessions=Math.max(maxWaitingSessions,Number(stats.value.rows[0]?.waiting_sessions??0));
-    const postmasterStartedAt=String(stats.value.rows[0]?.postmaster_started_at??'');
+    maxDatabaseConnections=Math.max(maxDatabaseConnections,Number(stats.rows[0]?.connections??0));
+    maxActiveConnections=Math.max(maxActiveConnections,Number(stats.rows[0]?.active??0));
+    maxIdleConnections=Math.max(maxIdleConnections,Number(stats.rows[0]?.idle??0));
+    maxIdleInTransaction=Math.max(maxIdleInTransaction,Number(stats.rows[0]?.idle_in_transaction??0));
+    maxWaitingSessions=Math.max(maxWaitingSessions,Number(stats.rows[0]?.waiting_sessions??0));
+    const postmasterStartedAt=String(stats.rows[0]?.postmaster_started_at??'');
     if(initialPostmasterStartedAt===null)initialPostmasterStartedAt=postmasterStartedAt;
     else if(postmasterStartedAt!==initialPostmasterStartedAt)postmasterRestartDetected=true;
     if(iterations%3===0)await proveRollbackSafeWrite(iterations);
     if(iterations%3===0){
       const fresh=createRuntimePostgresPool(environment.DATABASE_URL,(code)=>safeErrors.push(code),
-        {maximumConnections:1,applicationName:'theta-db-fresh-probe',connectionTimeoutMillis:5_000});
-      try{await fresh.query('SELECT 1');freshAcquisitions++;}finally{await fresh.end();}
+        {maximumConnections:1,applicationName:'theta-db-fresh-probe',connectionTimeoutMillis});
+      try{
+        await withRuntimePostgresClient(fresh,(client)=>client.query('SELECT 1'),
+          {observe:observeClient('FRESH_PROBE')});
+        freshAcquisitions++;
+      }finally{await fresh.end();}
     }
     queryLatenciesMs.push(performance.now()-iterationStarted);
     iterations++;
@@ -161,17 +192,46 @@ try{
 }finally{await pool.end().catch(()=>undefined);}
 
 const classifiedPoolErrors=[...new Set(safeErrors)];
-const result={contractVersion:'theta-postgres-stability-soak-v2',startedAt,completedAt:new Date().toISOString(),
+const acquisitionDurationsMs=clientObservations.map((value)=>value.acquisitionDurationMs);
+const checkoutDurationsMs=clientObservations.flatMap((value)=>value.checkoutDurationMs===null?[]:[value.checkoutDurationMs]);
+const connectionCreationDurationsMs=clientObservations.filter((value)=>value.acquisitionPath==='NEW_CONNECTION')
+  .map((value)=>value.acquisitionDurationMs);
+const poolQueueDurationsMs=clientObservations.filter((value)=>value.acquisitionPath==='POOL_QUEUE')
+  .map((value)=>value.acquisitionDurationMs);
+const failedAcquisitions=clientObservations.filter((value)=>value.outcome==='ACQUISITION_FAILED');
+const releasedClients=clientObservations.filter((value)=>value.releasedAt!==null);
+const result={contractVersion:'theta-postgres-stability-soak-v3',startedAt,completedAt:new Date().toISOString(),
   requestedDurationSeconds:durationSeconds,iterations,reads,freshAcquisitions,maxPoolTotal,maxPoolWaiting,
+  maxPoolIdle,
   maxDatabaseConnections,maxActiveConnections,maxIdleConnections,maxIdleInTransaction,maxWaitingSessions,
   rollbackSafeWrites,snapshotPersistenceProofs,archiveReconstructionProofs,recoveredReadRetries,initialPostmasterStartedAt,
   postmasterRestartDetected,queryLatencyMs:{p50:percentile(queryLatenciesMs,0.50),p95:percentile(queryLatenciesMs,0.95),
     max:queryLatenciesMs.length===0?null:Number(Math.max(...queryLatenciesMs).toFixed(3))},
+  poolImplementation:'pg.Pool/pg-pool',poolConfiguration:{max:primaryPoolMax,min:0,connectionTimeoutMillis,
+    idleTimeoutMillis:10_000,maxLifetimeSeconds:60,statementTimeout:serverSettings?.statementTimeout??null,
+    idleInTransactionSessionTimeout:serverSettings?.idleInTransactionSessionTimeout??null,
+    lockTimeout:serverSettings?.lockTimeout??null,queryTimeoutMillis:null,persistentPoolCount:1,
+    transientFreshProbePoolCount:1,maximumSimultaneousPoolCount:2,
+    transientFreshProbePool:'ONE_SEQUENTIAL_POOL_EVERY_THIRD_ITERATION_ENDED_BEFORE_NEXT_ITERATION'},
+  acquisitionTelemetry:{count:clientObservations.length,failedCount:failedAcquisitions.length,
+    releasedCount:releasedClients.length,acquisitionDurationMs:{p50:percentile(acquisitionDurationsMs,0.50),
+      p95:percentile(acquisitionDurationsMs,0.95),max:acquisitionDurationsMs.length===0?null:Math.max(...acquisitionDurationsMs)},
+    connectionCreationDurationMs:{p50:percentile(connectionCreationDurationsMs,0.50),
+      p95:percentile(connectionCreationDurationsMs,0.95),max:connectionCreationDurationsMs.length===0?null:Math.max(...connectionCreationDurationsMs)},
+    poolQueueDurationMs:{p50:percentile(poolQueueDurationsMs,0.50),p95:percentile(poolQueueDurationsMs,0.95),
+      max:poolQueueDurationsMs.length===0?null:Math.max(...poolQueueDurationsMs)},
+    checkoutDurationMs:{p50:percentile(checkoutDurationsMs,0.50),p95:percentile(checkoutDurationsMs,0.95),
+      max:checkoutDurationsMs.length===0?null:Math.max(...checkoutDurationsMs)},
+    transactionLifetimeMs:{p50:percentile(transactionLifetimesMs,0.50),p95:percentile(transactionLifetimesMs,0.95),
+      max:transactionLifetimesMs.length===0?null:Math.max(...transactionLifetimesMs)},
+    dnsDurationMs:null,tlsDurationMs:null,
+    lastFailure:failedAcquisitions.at(-1)??null,recentObservations:clientObservations.slice(-32)},
   classifiedPoolErrors,unclassifiedErrors,lastSafeCode,
   connectionBudget:{poolMax:2,freshProbeMax:1,providerObservedMax:20},
   providerResourceTelemetry:'AIVEN_CONSOLE_REQUIRED',
   orderSubmissions:0,brokerMutations:0,
-  result:lastSafeCode===null&&unclassifiedErrors===0&&maxPoolTotal<=2&&maxIdleInTransaction===0
+  result:lastSafeCode===null&&unclassifiedErrors===0&&maxPoolTotal<=2&&maxPoolWaiting===0&&maxIdleInTransaction===0
+    &&failedAcquisitions.length===0&&releasedClients.length===clientObservations.length
     &&classifiedPoolErrors.length===0&&recoveredReadRetries===0&&!postmasterRestartDetected&&rollbackSafeWrites>0
     &&snapshotPersistenceProofs===1&&archiveReconstructionProofs===1?'PASS':'FAIL'};
 const receiptHash=createHash('sha256').update(JSON.stringify(result)).digest('hex');

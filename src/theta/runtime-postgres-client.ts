@@ -1,15 +1,91 @@
 import type { Pool, PoolClient } from 'pg';
 import { classifyPostgresRuntimeError, PostgresCommitOutcomeUnknownError } from './postgres-runtime-error.js';
 
+export type PostgresAcquisitionPath = 'IDLE_REUSE' | 'POOL_QUEUE' | 'NEW_CONNECTION' | 'UNKNOWN';
+export type PostgresClientObservationOutcome = 'SUCCEEDED_RELEASED' | 'OPERATION_FAILED_RELEASED' | 'ACQUISITION_FAILED';
+
+export interface RuntimePostgresPoolState {
+  readonly total: number;
+  readonly idle: number;
+  readonly waiting: number;
+}
+
+export interface RuntimePostgresClientObservation {
+  readonly requestedAt: string;
+  readonly acquiredAt: string | null;
+  readonly releasedAt: string | null;
+  readonly acquisitionDurationMs: number;
+  readonly checkoutDurationMs: number | null;
+  readonly acquisitionPath: PostgresAcquisitionPath;
+  readonly outcome: PostgresClientObservationOutcome;
+  readonly connectionTimeoutMillis: number | null;
+  readonly poolBefore: RuntimePostgresPoolState;
+  readonly poolAtAcquire: RuntimePostgresPoolState | null;
+  readonly poolAfterRelease: RuntimePostgresPoolState | null;
+  readonly discarded: boolean;
+  readonly failureSafeCode: string | null;
+}
+
+export interface RuntimePostgresClientOptions {
+  readonly observe?: (observation: RuntimePostgresClientObservation) => void;
+  readonly now?: () => number;
+}
+
+function poolState(pool:Pool):RuntimePostgresPoolState{
+  return {total:pool.totalCount,idle:pool.idleCount,waiting:pool.waitingCount};
+}
+
+function poolMaximum(pool:Pool):number|null{
+  const configured=Number(pool.options.max);
+  return Number.isFinite(configured)&&configured>0?configured:null;
+}
+
+function configuredConnectionTimeout(pool:Pool):number|null{
+  const configured=Number(pool.options.connectionTimeoutMillis);
+  return Number.isFinite(configured)&&configured>=0?configured:null;
+}
+
+export function classifyPostgresAcquisitionPath(pool:Pool,before:RuntimePostgresPoolState,
+  error?:unknown):PostgresAcquisitionPath{
+  const message=error!==null&&typeof error==='object'&&typeof (error as {message?:unknown}).message==='string'
+    ?(error as {message:string}).message:'';
+  if(/timeout exceeded when trying to connect/i.test(message))return 'POOL_QUEUE';
+  if(/connection terminated due to connection timeout/i.test(message))return 'NEW_CONNECTION';
+  if(before.idle>0)return 'IDLE_REUSE';
+  const maximum=poolMaximum(pool);
+  if(maximum!==null&&before.total>=maximum)return 'POOL_QUEUE';
+  if(maximum!==null&&before.total<maximum)return 'NEW_CONNECTION';
+  return 'UNKNOWN';
+}
+
 export class PostgresCheckedOutClientLostError extends Error {
   readonly code = 'POSTGRES_CHECKED_OUT_CLIENT_LOST';
   constructor() { super('POSTGRES_CHECKED_OUT_CLIENT_LOST'); }
 }
 
 /** Covers the EventEmitter error path, which a pool's idle-client listener cannot see. */
-export async function withRuntimePostgresClient<T>(pool: Pool, operation: (client: PoolClient, discard: () => void) => Promise<T>): Promise<T> {
-  const client = await pool.connect();
+export async function withRuntimePostgresClient<T>(pool: Pool,
+  operation: (client: PoolClient, discard: () => void) => Promise<T>,
+  options:RuntimePostgresClientOptions={}): Promise<T> {
+  const now=options.now??Date.now;
+  const requestedAtMs=now();
+  const before=poolState(pool);
+  let client:PoolClient;
+  try{client=await pool.connect();}
+  catch(error){
+    const failedAtMs=now();
+    options.observe?.({requestedAt:new Date(requestedAtMs).toISOString(),acquiredAt:null,releasedAt:null,
+      acquisitionDurationMs:Math.max(0,failedAtMs-requestedAtMs),checkoutDurationMs:null,
+      acquisitionPath:classifyPostgresAcquisitionPath(pool,before,error),outcome:'ACQUISITION_FAILED',
+      connectionTimeoutMillis:configuredConnectionTimeout(pool),poolBefore:before,poolAtAcquire:null,
+      poolAfterRelease:null,discarded:false,failureSafeCode:classifyPostgresRuntimeError(error).safeCode});
+    throw error;
+  }
+  const acquiredAtMs=now();
+  const atAcquire=poolState(pool);
   let broken = false;
+  let outcome:PostgresClientObservationOutcome='SUCCEEDED_RELEASED';
+  let failureSafeCode:string|null=null;
   const onError = (): void => { broken = true; };
   client.on('error', onError);
   try {
@@ -17,12 +93,20 @@ export async function withRuntimePostgresClient<T>(pool: Pool, operation: (clien
     if (broken) throw new PostgresCheckedOutClientLostError();
     return result;
   } catch (error) {
+    outcome='OPERATION_FAILED_RELEASED';
+    failureSafeCode=classifyPostgresRuntimeError(error).safeCode;
     if (classifyPostgresRuntimeError(error).retryableRead || error instanceof PostgresCheckedOutClientLostError
       || error instanceof PostgresCommitOutcomeUnknownError) broken = true;
     throw error;
   } finally {
     client.removeListener('error', onError);
     client.release(broken);
+    const releasedAtMs=now();
+    options.observe?.({requestedAt:new Date(requestedAtMs).toISOString(),acquiredAt:new Date(acquiredAtMs).toISOString(),
+      releasedAt:new Date(releasedAtMs).toISOString(),acquisitionDurationMs:Math.max(0,acquiredAtMs-requestedAtMs),
+      checkoutDurationMs:Math.max(0,releasedAtMs-acquiredAtMs),acquisitionPath:classifyPostgresAcquisitionPath(pool,before),
+      outcome,connectionTimeoutMillis:configuredConnectionTimeout(pool),poolBefore:before,poolAtAcquire:atAcquire,
+      poolAfterRelease:poolState(pool),discarded:broken,failureSafeCode});
   }
 }
 
@@ -76,12 +160,12 @@ export interface PostgresReadRetryReceipt<T> {
 /** Only call for read-only operations. Every attempt checks out a fresh client. */
 export async function withRuntimePostgresReadRetry<T>(pool: Pool, operation: (client: PoolClient) => Promise<T>,
   options: { readonly maximumAttempts?: number; readonly delayMs?: (attempt: number) => number;
-    readonly random?: () => number } = {}): Promise<PostgresReadRetryReceipt<T>> {
+    readonly random?: () => number; readonly clientOptions?:RuntimePostgresClientOptions } = {}): Promise<PostgresReadRetryReceipt<T>> {
   const maximumAttempts = Math.max(1, Math.min(3, options.maximumAttempts ?? 3));
   let firstFailureAt: string | null = null;
   for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
     try {
-      const value = await withRuntimePostgresClient(pool, operation);
+      const value = await withRuntimePostgresClient(pool, operation,options.clientOptions);
       return { value, attemptCount: attempt, firstFailureAt, recoveredAt: firstFailureAt === null ? null : new Date().toISOString() };
     } catch (error) {
       if (!classifyPostgresRuntimeError(error).retryableRead || attempt === maximumAttempts) throw error;
