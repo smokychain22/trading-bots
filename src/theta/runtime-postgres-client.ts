@@ -21,6 +21,7 @@ export interface RuntimePostgresClientObservation {
   readonly connectionTimeoutMillis: number | null;
   readonly poolWaitTimeoutMillis: number | null;
   readonly poolBefore: RuntimePostgresPoolState;
+  readonly poolAfterRequest: RuntimePostgresPoolState | null;
   readonly poolAtAcquire: RuntimePostgresPoolState | null;
   readonly poolAfterRelease: RuntimePostgresPoolState | null;
   readonly discarded: boolean;
@@ -71,13 +72,16 @@ export class PostgresPoolWaitTimeoutError extends Error {
 }
 
 function connectWithSeparatePoolWaitTimeout(pool:Pool,before:RuntimePostgresPoolState,
-  poolWaitTimeoutMillis:number|undefined):Promise<PoolClient>{
-  if(poolWaitTimeoutMillis===undefined)return pool.connect();
+  poolWaitTimeoutMillis:number|undefined):{readonly client:Promise<PoolClient>;
+    readonly poolAfterRequest:RuntimePostgresPoolState}{
+  const pending=pool.connect();
+  const poolAfterRequest=poolState(pool);
+  if(poolWaitTimeoutMillis===undefined)return {client:pending,poolAfterRequest};
   const maximum=poolMaximum(pool);
   const queued=before.idle===0&&maximum!==null&&before.total>=maximum;
-  if(!queued)return pool.connect();
+  if(!queued)return {client:pending,poolAfterRequest};
   const timeout=Math.max(1,Math.trunc(poolWaitTimeoutMillis));
-  return new Promise<PoolClient>((resolve,reject)=>{
+  const client=new Promise<PoolClient>((resolve,reject)=>{
     let settled=false;
     let timedOut=false;
     const timer=setTimeout(()=>{
@@ -85,14 +89,15 @@ function connectWithSeparatePoolWaitTimeout(pool:Pool,before:RuntimePostgresPool
       settled=true;timedOut=true;
       reject(new PostgresPoolWaitTimeoutError());
     },timeout);
-    void pool.connect().then((client)=>{
-      if(timedOut||settled){client.release();return;}
-      settled=true;clearTimeout(timer);resolve(client);
+    void pending.then((acquired)=>{
+      if(timedOut||settled){acquired.release();return;}
+      settled=true;clearTimeout(timer);resolve(acquired);
     },(error:unknown)=>{
       if(settled)return;
       settled=true;clearTimeout(timer);reject(error);
     });
   });
+  return {client,poolAfterRequest};
 }
 
 /** Covers the EventEmitter error path, which a pool's idle-client listener cannot see. */
@@ -102,15 +107,20 @@ export async function withRuntimePostgresClient<T>(pool: Pool,
   const now=options.now??Date.now;
   const requestedAtMs=now();
   const before=poolState(pool);
+  let afterRequest:RuntimePostgresPoolState|null=null;
   let client:PoolClient;
-  try{client=await connectWithSeparatePoolWaitTimeout(pool,before,options.poolWaitTimeoutMillis);}
+  try{
+    const acquisition=connectWithSeparatePoolWaitTimeout(pool,before,options.poolWaitTimeoutMillis);
+    afterRequest=acquisition.poolAfterRequest;
+    client=await acquisition.client;
+  }
   catch(error){
     const failedAtMs=now();
     options.observe?.({requestedAt:new Date(requestedAtMs).toISOString(),acquiredAt:null,releasedAt:null,
       acquisitionDurationMs:Math.max(0,failedAtMs-requestedAtMs),checkoutDurationMs:null,
       acquisitionPath:classifyPostgresAcquisitionPath(pool,before,error),outcome:'ACQUISITION_FAILED',
       connectionTimeoutMillis:configuredConnectionTimeout(pool),poolWaitTimeoutMillis:options.poolWaitTimeoutMillis??null,
-      poolBefore:before,poolAtAcquire:null,
+      poolBefore:before,poolAfterRequest:afterRequest,poolAtAcquire:null,
       poolAfterRelease:null,discarded:false,failureSafeCode:classifyPostgresRuntimeError(error).safeCode});
     throw error;
   }
@@ -139,7 +149,7 @@ export async function withRuntimePostgresClient<T>(pool: Pool,
       releasedAt:new Date(releasedAtMs).toISOString(),acquisitionDurationMs:Math.max(0,acquiredAtMs-requestedAtMs),
       checkoutDurationMs:Math.max(0,releasedAtMs-acquiredAtMs),acquisitionPath:classifyPostgresAcquisitionPath(pool,before),
       outcome,connectionTimeoutMillis:configuredConnectionTimeout(pool),poolWaitTimeoutMillis:options.poolWaitTimeoutMillis??null,
-      poolBefore:before,poolAtAcquire:atAcquire,
+      poolBefore:before,poolAfterRequest:afterRequest,poolAtAcquire:atAcquire,
       poolAfterRelease:poolState(pool),discarded:broken,failureSafeCode});
   }
 }

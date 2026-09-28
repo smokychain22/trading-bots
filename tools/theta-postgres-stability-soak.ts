@@ -3,8 +3,11 @@ import { gzipSync } from 'node:zlib';
 import { loadEnvironmentFile } from '../src/config/environment.js';
 import { runWithBoundedConcurrency } from '../src/theta/bounded-concurrency.js';
 import { thetaSoakFreshPhysicalConnectionTimeoutMillis,
-  thetaSoakPoolWaitTimeoutMillis } from '../src/theta/postgres-connection-characterization.js';
+  thetaSoakPoolWaitTimeoutMillis, type FreshPostgresAttemptReceipt } from '../src/theta/postgres-connection-characterization.js';
+import { runInstrumentedFreshPostgresAttempt } from '../src/theta/postgres-fresh-connection-probe.js';
 import { classifyPostgresRuntimeError } from '../src/theta/postgres-runtime-error.js';
+import { classifyPostgresSoakWait, evaluatePostgresSoakAcceptance,
+  type PostgresSoakBatchReceipt, type PostgresSoakWaitEvent } from '../src/theta/postgres-soak-acceptance.js';
 import { decodeCycleEvidenceArchive, postgresCycleEvidenceStorageVersion } from '../src/theta/postgres-cycle-evidence-storage.js';
 import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
 import { withRuntimePostgresClient } from '../src/theta/runtime-postgres-client.js';
@@ -44,18 +47,40 @@ let archiveReconstructionProofs=0;
 let recoveredReadRetries=0;
 let initialPostmasterStartedAt:string|null=null;
 let postmasterRestartDetected=false;
+let finalPoolWaiting=0;
 const queryLatenciesMs:number[]=[];
 const transactionLifetimesMs:number[]=[];
 const clientObservations:Array<RuntimePostgresClientObservation&{readonly poolKind:'PRIMARY'|'FRESH_PROBE'}>=[];
+const waitEvents:PostgresSoakWaitEvent[]=[];
+const batchReceipts:PostgresSoakBatchReceipt[]=[];
+const freshProbeAttempts:FreshPostgresAttemptReceipt[]=[];
+let waitEventSequence=0;
 let serverSettings:{statementTimeout:string;idleInTransactionSessionTimeout:string;lockTimeout:string}|null=null;
 
-const observeClient=(poolKind:'PRIMARY'|'FRESH_PROBE')=>(observation:RuntimePostgresClientObservation):void=>{
+interface SoakOperationContext {readonly batchId:string;readonly concurrentTaskCount:number;readonly operationType:string;}
+
+const observeClient=(poolKind:'PRIMARY'|'FRESH_PROBE',context:SoakOperationContext)=>(
+  observation:RuntimePostgresClientObservation):void=>{
   clientObservations.push({...observation,poolKind});
-  for(const state of [observation.poolBefore,observation.poolAtAcquire,observation.poolAfterRelease]){
+  for(const state of [observation.poolBefore,observation.poolAfterRequest,observation.poolAtAcquire,
+    observation.poolAfterRelease]){
     if(state===null)continue;
     maxPoolTotal=Math.max(maxPoolTotal,state.total);
     maxPoolIdle=Math.max(maxPoolIdle,state.idle);
     maxPoolWaiting=Math.max(maxPoolWaiting,state.waiting);
+  }
+  const pending=observation.poolAfterRequest;
+  if(pending!==null&&pending.waiting>0){
+    const waitEnd=observation.acquiredAt??new Date(Date.parse(observation.requestedAt)+
+      observation.acquisitionDurationMs).toISOString();
+    waitEvents.push({waitEventId:`wait-${++waitEventSequence}`,batchId:context.batchId,
+      waitStart:observation.requestedAt,waitEnd,waitDurationMs:observation.acquisitionDurationMs,
+      poolTotalAtStart:pending.total,poolIdleAtStart:pending.idle,poolWaitingAtStart:pending.waiting,
+      concurrentTaskCount:context.concurrentTaskCount,operationType:context.operationType,
+      acquisitionResult:observation.acquiredAt===null?'ACQUISITION_FAILED':'ACQUIRED',
+      poolWaitingAfterBatch:context.batchId.startsWith('batch-')?null:observation.poolAfterRelease?.waiting??null,
+      classification:classifyPostgresSoakWait({poolTotal:pending.total,poolIdle:pending.idle,
+        poolMaximum:primaryPoolMax})});
   }
 };
 
@@ -64,7 +89,8 @@ const sha256=(value:string|Buffer):string=>createHash('sha256').update(value).di
 async function proveSnapshotPersistenceAndArchiveReconstruction():Promise<void>{
   const latest=await withRuntimePostgresClient(pool,(client)=>client.query(`SELECT
     fusion_snapshot_id,snapshot_json,content_hash
-    FROM trade.fusion_snapshot ORDER BY decision_time DESC LIMIT 1`),{observe:observeClient('PRIMARY'),
+    FROM trade.fusion_snapshot ORDER BY decision_time DESC LIMIT 1`),{observe:observeClient('PRIMARY',
+      {batchId:'setup-snapshot-read',concurrentTaskCount:1,operationType:'SNAPSHOT_READ'}),
     poolWaitTimeoutMillis:thetaSoakPoolWaitTimeoutMillis});
   const row=latest.rows[0] as {fusion_snapshot_id?:unknown;snapshot_json?:unknown;content_hash?:unknown}|undefined;
   if(row===undefined||typeof row.content_hash!=='string'||row.snapshot_json===null||typeof row.snapshot_json!=='object'){
@@ -104,7 +130,8 @@ async function proveSnapshotPersistenceAndArchiveReconstruction():Promise<void>{
       if(transactionOpen)await client.query('ROLLBACK').catch(()=>undefined);
       transactionLifetimesMs.push(Date.now()-transactionStartedAt);
     }
-  },{observe:observeClient('PRIMARY'),poolWaitTimeoutMillis:thetaSoakPoolWaitTimeoutMillis});
+  },{observe:observeClient('PRIMARY',{batchId:'setup-archive-reconstruction',concurrentTaskCount:1,
+    operationType:'ARCHIVE_RECONSTRUCTION'}),poolWaitTimeoutMillis:thetaSoakPoolWaitTimeoutMillis});
 }
 
 async function proveRollbackSafeWrite(iteration:number):Promise<void>{
@@ -123,7 +150,8 @@ async function proveRollbackSafeWrite(iteration:number):Promise<void>{
       if(transactionOpen)await client.query('ROLLBACK').catch(()=>undefined);
       transactionLifetimesMs.push(Date.now()-transactionStartedAt);
     }
-  },{observe:observeClient('PRIMARY'),poolWaitTimeoutMillis:thetaSoakPoolWaitTimeoutMillis});
+  },{observe:observeClient('PRIMARY',{batchId:`rollback-${iteration}`,concurrentTaskCount:1,
+    operationType:'ROLLBACK_SAFE_WRITE'}),poolWaitTimeoutMillis:thetaSoakPoolWaitTimeoutMillis});
 }
 
 function percentile(values:readonly number[],fraction:number):number|null{
@@ -136,7 +164,8 @@ try{
   const settings=await withRuntimePostgresClient(pool,(client)=>client.query(`SELECT
     current_setting('statement_timeout') AS statement_timeout,
     current_setting('idle_in_transaction_session_timeout') AS idle_in_transaction_session_timeout,
-    current_setting('lock_timeout') AS lock_timeout`),{observe:observeClient('PRIMARY'),
+    current_setting('lock_timeout') AS lock_timeout`),{observe:observeClient('PRIMARY',
+      {batchId:'setup-server-settings',concurrentTaskCount:1,operationType:'SERVER_SETTINGS'}),
     poolWaitTimeoutMillis:thetaSoakPoolWaitTimeoutMillis});
   serverSettings={statementTimeout:String(settings.rows[0]?.statement_timeout??''),
     idleInTransactionSessionTimeout:String(settings.rows[0]?.idle_in_transaction_session_timeout??''),
@@ -144,17 +173,33 @@ try{
   await proveSnapshotPersistenceAndArchiveReconstruction();
   while(Date.now()<deadline){
     const iterationStarted=performance.now();
+    const batchId=`batch-${iterations+1}`;
+    let activeBatchTasks=0;
+    let maximumConcurrentTaskCount=0;
+    let completedTaskCount=0;
     const results=await runWithBoundedConcurrency(Array.from({length:6},(_,index)=>index),primaryPoolMax,
       async(index)=>{
-        await withRuntimePostgresClient(pool,(client)=>client.query(
-          'SELECT $1::int AS ordinal,pg_sleep(0.025)',[index]),{observe:observeClient('PRIMARY'),
-          poolWaitTimeoutMillis:thetaSoakPoolWaitTimeoutMillis});
-        return 1;
+        activeBatchTasks++;
+        maximumConcurrentTaskCount=Math.max(maximumConcurrentTaskCount,activeBatchTasks);
+        try{
+          await withRuntimePostgresClient(pool,(client)=>client.query(
+            'SELECT $1::int AS ordinal,pg_sleep(0.025)',[index]),{observe:observeClient('PRIMARY',
+            {batchId,concurrentTaskCount:activeBatchTasks,operationType:'BOUNDED_BATCH_READ'}),
+            poolWaitTimeoutMillis:thetaSoakPoolWaitTimeoutMillis});
+          completedTaskCount++;
+          return 1;
+        }finally{activeBatchTasks--;}
       });
     await new Promise((resolve)=>setTimeout(resolve,5));
     maxPoolTotal=Math.max(maxPoolTotal,pool.totalCount);
     maxPoolIdle=Math.max(maxPoolIdle,pool.idleCount);
     maxPoolWaiting=Math.max(maxPoolWaiting,pool.waitingCount);
+    const poolWaitingAfterBatch=pool.waitingCount;
+    for(const event of waitEvents){
+      if(event.batchId===batchId&&event.poolWaitingAfterBatch===null)event.poolWaitingAfterBatch=poolWaitingAfterBatch;
+    }
+    batchReceipts.push({batchId,expectedTaskCount:results.length,completedTaskCount,maximumConcurrentTaskCount,
+      poolWaitingAfterBatch});
     if(pool.waitingCount!==0)throw Object.assign(new Error('SOAK_POOL_WAITERS_NOT_DRAINED'),{code:'SOAK_POOL_WAITERS_NOT_DRAINED'});
     reads+=results.length;
     const stats=await withRuntimePostgresClient(pool,(client)=>client.query(`SELECT
@@ -164,7 +209,8 @@ try{
       (SELECT count(*)::int FROM pg_stat_activity WHERE datname=current_database() AND state='idle in transaction') AS idle_in_transaction,
       (SELECT count(*)::int FROM pg_stat_activity
         WHERE datname=current_database() AND state='active' AND wait_event IS NOT NULL) AS waiting_sessions,
-      pg_postmaster_start_time()::text AS postmaster_started_at`),{observe:observeClient('PRIMARY'),
+      pg_postmaster_start_time()::text AS postmaster_started_at`),{observe:observeClient('PRIMARY',
+      {batchId:`stats-${iterations+1}`,concurrentTaskCount:1,operationType:'POOL_AND_DATABASE_STATS'}),
       poolWaitTimeoutMillis:thetaSoakPoolWaitTimeoutMillis});
     reads++;
     maxDatabaseConnections=Math.max(maxDatabaseConnections,Number(stats.rows[0]?.connections??0));
@@ -177,14 +223,15 @@ try{
     else if(postmasterStartedAt!==initialPostmasterStartedAt)postmasterRestartDetected=true;
     if(iterations%3===0)await proveRollbackSafeWrite(iterations);
     if(iterations%3===0){
-      const fresh=createRuntimePostgresPool(environment.DATABASE_URL,(code)=>safeErrors.push(code),
-        {maximumConnections:1,applicationName:'theta-db-fresh-probe',
-          connectionTimeoutMillis:thetaSoakFreshPhysicalConnectionTimeoutMillis});
-      try{
-        await withRuntimePostgresClient(fresh,(client)=>client.query('SELECT 1'),
-          {observe:observeClient('FRESH_PROBE')});
-        freshAcquisitions++;
-      }finally{await fresh.end();}
+      const fresh=await runInstrumentedFreshPostgresAttempt({connectionString:environment.DATABASE_URL,
+        connectionTimeoutMillis:thetaSoakFreshPhysicalConnectionTimeoutMillis,
+        applicationName:'theta-db-fresh-probe',attemptId:freshProbeAttempts.length+1});
+      freshProbeAttempts.push(fresh);
+      if(!fresh.success){
+        throw Object.assign(new Error('SOAK_FRESH_PROBE_FAILED'),
+          {code:fresh.errorCode??'POSTGRES_UNKNOWN_ERROR'});
+      }
+      freshAcquisitions++;
     }
     queryLatenciesMs.push(performance.now()-iterationStarted);
     iterations++;
@@ -196,7 +243,10 @@ try{
   const classified=classifyPostgresRuntimeError(error);
   lastSafeCode=classified.safeCode;
   if(classified.safeCode==='POSTGRES_UNKNOWN_ERROR')unclassifiedErrors++;
-}finally{await pool.end().catch(()=>undefined);}
+}finally{
+  finalPoolWaiting=pool.waitingCount;
+  await pool.end().catch(()=>undefined);
+}
 
 const classifiedPoolErrors=[...new Set(safeErrors)];
 const acquisitionDurationsMs=clientObservations.map((value)=>value.acquisitionDurationMs);
@@ -207,9 +257,28 @@ const poolQueueDurationsMs=clientObservations.filter((value)=>value.acquisitionP
   .map((value)=>value.acquisitionDurationMs);
 const failedAcquisitions=clientObservations.filter((value)=>value.outcome==='ACQUISITION_FAILED');
 const releasedClients=clientObservations.filter((value)=>value.releasedAt!==null);
-const result={contractVersion:'theta-postgres-stability-soak-v4',startedAt,completedAt:new Date().toISOString(),
+const acquiredClients=clientObservations.filter((value)=>value.acquiredAt!==null);
+const freshProbeAcquiredCount=freshProbeAttempts.filter((value)=>value.totalConnectionMs!==null).length;
+const freshProbeClosedCount=freshProbeAttempts.filter((value)=>value.closeMs!==null).length;
+const freshProbeClosedAcquiredCount=freshProbeAttempts.filter((value)=>
+  value.totalConnectionMs!==null&&value.closeMs!==null).length;
+const freshProbeFailureCount=freshProbeAttempts.filter((value)=>!value.success).length;
+const summarizeKnown=(values:readonly (number|null)[])=>{
+  const known=values.filter((value):value is number=>value!==null);
+  return {knownCount:known.length,p50:percentile(known,0.50),p95:percentile(known,0.95),
+    max:known.length===0?null:Math.max(...known)};
+};
+const acceptance=evaluatePostgresSoakAcceptance({poolWaitTimeoutMillis:thetaSoakPoolWaitTimeoutMillis,
+  poolMaximum:primaryPoolMax,maxPoolTotal,finalPoolWaiting,waitEvents,batches:batchReceipts,
+  acquiredClients:acquiredClients.length+freshProbeAcquiredCount,
+  releasedClients:releasedClients.length+freshProbeClosedAcquiredCount,failedAcquisitions:failedAcquisitions.length,
+  classifiedPoolErrorCount:classifiedPoolErrors.length,unclassifiedErrors,recoveredReadRetries,
+  postmasterRestartDetected,maxIdleInTransaction,lastSafeCode,rollbackSafeWrites,snapshotPersistenceProofs,
+  archiveReconstructionProofs,freshProbeAttemptCount:freshProbeAttempts.length,freshProbeClosedCount,
+  freshProbeFailureCount});
+const result={contractVersion:'theta-postgres-stability-soak-v5',startedAt,completedAt:new Date().toISOString(),
   requestedDurationSeconds:durationSeconds,iterations,reads,freshAcquisitions,maxPoolTotal,maxPoolWaiting,
-  maxPoolIdle,
+  maxPoolIdle,finalPoolWaiting,
   maxDatabaseConnections,maxActiveConnections,maxIdleConnections,maxIdleInTransaction,maxWaitingSessions,
   rollbackSafeWrites,snapshotPersistenceProofs,archiveReconstructionProofs,recoveredReadRetries,initialPostmasterStartedAt,
   postmasterRestartDetected,queryLatencyMs:{p50:percentile(queryLatenciesMs,0.50),p95:percentile(queryLatenciesMs,0.95),
@@ -220,8 +289,8 @@ const result={contractVersion:'theta-postgres-stability-soak-v4',startedAt,compl
     idleTimeoutMillis:10_000,maxLifetimeSeconds:60,statementTimeout:serverSettings?.statementTimeout??null,
     idleInTransactionSessionTimeout:serverSettings?.idleInTransactionSessionTimeout??null,
     lockTimeout:serverSettings?.lockTimeout??null,queryTimeoutMillis:null,persistentPoolCount:1,
-    transientFreshProbePoolCount:1,maximumSimultaneousPoolCount:2,
-    transientFreshProbePool:'ONE_SEQUENTIAL_POOL_EVERY_THIRD_ITERATION_ENDED_BEFORE_NEXT_ITERATION'},
+    transientFreshProbePoolCount:0,transientFreshProbeClientCount:1,maximumSimultaneousConnectionOwnerCount:2,
+    transientFreshProbe:'ONE_SEQUENTIAL_INSTRUMENTED_CLIENT_EVERY_THIRD_ITERATION_CLOSED_BEFORE_NEXT_ITERATION'},
   acquisitionTelemetry:{count:clientObservations.length,failedCount:failedAcquisitions.length,
     releasedCount:releasedClients.length,acquisitionDurationMs:{p50:percentile(acquisitionDurationsMs,0.50),
       p95:percentile(acquisitionDurationsMs,0.95),max:acquisitionDurationsMs.length===0?null:Math.max(...acquisitionDurationsMs)},
@@ -233,16 +302,27 @@ const result={contractVersion:'theta-postgres-stability-soak-v4',startedAt,compl
       max:checkoutDurationsMs.length===0?null:Math.max(...checkoutDurationsMs)},
     transactionLifetimeMs:{p50:percentile(transactionLifetimesMs,0.50),p95:percentile(transactionLifetimesMs,0.95),
       max:transactionLifetimesMs.length===0?null:Math.max(...transactionLifetimesMs)},
-    dnsDurationMs:null,tlsDurationMs:null,
     lastFailure:failedAcquisitions.at(-1)??null,recentObservations:clientObservations.slice(-32)},
+  waitTelemetry:{eventCount:waitEvents.length,maxTransientWaitMs:acceptance.maxTransientWaitMs,
+    waitersDrainedAfterEveryBatch:acceptance.waitersDrainedAfterEveryBatch,events:waitEvents,batches:batchReceipts},
+  freshConnectionLifecycleTelemetry:{attemptCount:freshProbeAttempts.length,successCount:freshAcquisitions,
+    failureCount:freshProbeFailureCount,closedCount:freshProbeClosedCount,
+    dnsMs:summarizeKnown(freshProbeAttempts.map((value)=>value.dnsMs)),
+    tcpMs:summarizeKnown(freshProbeAttempts.map((value)=>value.tcpMs)),
+    tlsMs:summarizeKnown(freshProbeAttempts.map((value)=>value.tlsMs)),
+    postgresStartupMs:summarizeKnown(freshProbeAttempts.map((value)=>value.postgresStartupMs)),
+    totalConnectionMs:summarizeKnown(freshProbeAttempts.map((value)=>value.totalConnectionMs)),
+    firstQueryMs:summarizeKnown(freshProbeAttempts.map((value)=>value.firstQueryMs)),attempts:freshProbeAttempts},
+  clientLifecycleTelemetry:{primaryAcquiredCount:acquiredClients.length,primaryReleasedCount:releasedClients.length,
+    freshAcquiredCount:freshProbeAcquiredCount,freshClosedAcquiredCount:freshProbeClosedAcquiredCount,
+    acquiredClients:acquiredClients.length+freshProbeAcquiredCount,
+    releasedClients:releasedClients.length+freshProbeClosedAcquiredCount,
+    connectionLeak:acquiredClients.length+freshProbeAcquiredCount!==
+      releasedClients.length+freshProbeClosedAcquiredCount},
   classifiedPoolErrors,unclassifiedErrors,lastSafeCode,
   connectionBudget:{poolMax:2,freshProbeMax:1,providerObservedMax:20},
   providerResourceTelemetry:'AIVEN_CONSOLE_REQUIRED',
-  orderSubmissions:0,brokerMutations:0,
-  result:lastSafeCode===null&&unclassifiedErrors===0&&maxPoolTotal<=2&&maxPoolWaiting===0&&maxIdleInTransaction===0
-    &&failedAcquisitions.length===0&&releasedClients.length===clientObservations.length
-    &&classifiedPoolErrors.length===0&&recoveredReadRetries===0&&!postmasterRestartDetected&&rollbackSafeWrites>0
-    &&snapshotPersistenceProofs===1&&archiveReconstructionProofs===1?'PASS':'FAIL'};
+  acceptance,orderSubmissions:0,brokerMutations:0,result:acceptance.result};
 const receiptHash=createHash('sha256').update(JSON.stringify(result)).digest('hex');
 console.log(JSON.stringify({...result,receiptHash}));
 if(result.result!=='PASS')process.exitCode=1;

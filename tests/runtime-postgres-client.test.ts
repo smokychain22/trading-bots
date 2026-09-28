@@ -107,6 +107,37 @@ test('separate pool-wait timeout releases a client that arrives after the caller
   }finally{await pool.end();}
 });
 
+test('pg-pool exposes a normal next-tick pending handoff while idle clients still exist',async()=>{
+  class ImmediateClient extends EventEmitter{
+    _queryable=true;
+    _ending=false;
+    connect(callback:(error?:Error)=>void):void{queueMicrotask(()=>callback());}
+    end(callback?:()=>void):void{this._ending=true;queueMicrotask(()=>callback?.());}
+    ref():void{}
+    unref():void{}
+  }
+  const {Pool:RealPool}=await import('pg');
+  const pool=new RealPool({Client:ImmediateClient,max:2,connectionTimeoutMillis:1_000,idleTimeoutMillis:0} as never);
+  try{
+    const first=await pool.connect();
+    const secondPromise=pool.connect();
+    const second=await secondPromise;
+    first.release();second.release();
+    await new Promise((resolve)=>setImmediate(resolve));
+    assert.equal(pool.idleCount,2);
+    const observations:RuntimePostgresClientObservation[]=[];
+    await Promise.all([0,1].map(()=>withRuntimePostgresClient(pool,async()=>{
+      await new Promise((resolve)=>setTimeout(resolve,1));
+    },{poolWaitTimeoutMillis:20,observe:(value)=>observations.push(value)})));
+    assert.ok(observations.some((value)=>value.poolBefore.idle>0&&value.poolBefore.waiting>0),
+      'the second same-turn checkout must observe pg-pool pending the first idle-client handoff');
+    assert.ok(observations.every((value)=>value.acquisitionPath==='IDLE_REUSE'));
+    assert.ok(observations.every((value)=>(value.poolAfterRequest?.waiting??0)>0));
+    assert.equal(pool.waitingCount,0);
+    assert.equal(pool.idleCount,2);
+  }finally{await pool.end();}
+});
+
 test('pool queue timeout and new-connection timeout have distinct acquisition paths',async()=>{
   const queueObservations:RuntimePostgresClientObservation[]=[];
   const queuePool={options:{max:2,connectionTimeoutMillis:5_000},totalCount:2,idleCount:0,waitingCount:4,

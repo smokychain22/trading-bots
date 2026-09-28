@@ -30,10 +30,12 @@ test('database soak uses one bounded primary pool without read-retry amplificati
   const source=await readFile(new URL('../tools/theta-postgres-stability-soak.ts',import.meta.url),'utf8');
   assert.match(source,/runWithBoundedConcurrency\([\s\S]*?primaryPoolMax,/);
   assert.doesNotMatch(source,/withRuntimePostgresReadRetry/);
-  assert.match(source,/maxPoolWaiting===0/);
+  assert.match(source,/evaluatePostgresSoakAcceptance/);
+  assert.match(source,/poolWaitingAfterBatch/);
+  assert.match(source,/maxTransientWaitMs/);
   assert.match(source,/persistentPoolCount:1/);
-  assert.match(source,/maximumSimultaneousPoolCount:2/);
-  assert.match(source,/releasedClients\.length===clientObservations\.length/);
-  assert.equal([...source.matchAll(/createRuntimePostgresPool\(/g)].length,2,
-    'one primary pool and one explicitly sequential fresh-probe pool declaration are allowed');
+  assert.match(source,/maximumSimultaneousConnectionOwnerCount:2/);
+  assert.match(source,/releasedClients:releasedClients\.length\+freshProbeClosedAcquiredCount/);
+  assert.equal([...source.matchAll(/createRuntimePostgresPool\(/g)].length,1,
+    'one primary pool is allowed; the fresh probe is one sequential instrumented client');
 });
