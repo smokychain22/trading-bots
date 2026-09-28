@@ -28,6 +28,7 @@ test('unavailable DNS and TLS boundaries remain null rather than fabricated',()=
   assert.equal(receipt.tcpIncludesDns,true);
   assert.equal(receipt.tlsState,'NOT_APPLICABLE');
   assert.equal(receipt.tlsMs,null);
+  assert.equal(receipt.readyMs,40);
 });
 
 test('slow query after a successful connection is not a connection establishment failure',()=>{

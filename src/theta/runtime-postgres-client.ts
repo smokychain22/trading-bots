@@ -3,6 +3,10 @@ import { classifyPostgresRuntimeError, PostgresCommitOutcomeUnknownError } from 
 
 export type PostgresAcquisitionPath = 'IDLE_REUSE' | 'POOL_QUEUE' | 'NEW_CONNECTION' | 'UNKNOWN';
 export type PostgresClientObservationOutcome = 'SUCCEEDED_RELEASED' | 'OPERATION_FAILED_RELEASED' | 'ACQUISITION_FAILED';
+export type PostgresAcquisitionFailureClass = 'POOL_QUEUE_TIMEOUT' | 'PHYSICAL_CONNECTION_TIMEOUT'
+  | 'DNS_RESOLUTION_FAILURE' | 'TCP_CONNECTION_FAILURE' | 'TLS_FAILURE' | 'POSTGRES_STARTUP_FAILURE'
+  | 'AUTHENTICATION_FAILURE' | 'SERVER_REJECTION' | 'POOL_SHUTDOWN_FALLOUT'
+  | 'UNKNOWN_POSTGRES_ACQUISITION_FAILURE';
 
 export interface RuntimePostgresPoolState {
   readonly total: number;
@@ -17,6 +21,10 @@ export interface RuntimePostgresClientObservation {
   readonly acquisitionDurationMs: number;
   readonly checkoutDurationMs: number | null;
   readonly acquisitionPath: PostgresAcquisitionPath;
+  readonly acquisitionFailureClass: PostgresAcquisitionFailureClass | null;
+  readonly poolWaitTimerArmed: boolean;
+  readonly poolQueueDurationMs: number | null;
+  readonly physicalConnectionDurationMs: number | null;
   readonly outcome: PostgresClientObservationOutcome;
   readonly connectionTimeoutMillis: number | null;
   readonly poolWaitTimeoutMillis: number | null;
@@ -35,30 +43,60 @@ export interface RuntimePostgresClientOptions {
 }
 
 function poolState(pool:Pool):RuntimePostgresPoolState{
-  return {total:pool.totalCount,idle:pool.idleCount,waiting:pool.waitingCount};
+  const finite=(value:unknown):number=>Number.isFinite(Number(value))?Number(value):0;
+  return {total:finite(pool.totalCount),idle:finite(pool.idleCount),waiting:finite(pool.waitingCount)};
 }
 
 function poolMaximum(pool:Pool):number|null{
-  const configured=Number(pool.options.max);
+  const configured=Number((pool as Pool&{options?:{max?:unknown}}).options?.max);
   return Number.isFinite(configured)&&configured>0?configured:null;
 }
 
 function configuredConnectionTimeout(pool:Pool):number|null{
-  const configured=Number(pool.options.connectionTimeoutMillis);
+  const configured=Number((pool as Pool&{options?:{connectionTimeoutMillis?:unknown}}).options?.connectionTimeoutMillis);
   return Number.isFinite(configured)&&configured>=0?configured:null;
 }
 
 export function classifyPostgresAcquisitionPath(pool:Pool,before:RuntimePostgresPoolState,
   error?:unknown):PostgresAcquisitionPath{
-  const message=error!==null&&typeof error==='object'&&typeof (error as {message?:unknown}).message==='string'
-    ?(error as {message:string}).message:'';
-  if(/timeout exceeded when trying to connect/i.test(message))return 'POOL_QUEUE';
-  if(/connection terminated due to connection timeout/i.test(message))return 'NEW_CONNECTION';
-  if(before.idle>0)return 'IDLE_REUSE';
+  if(error instanceof PostgresPoolWaitTimeoutError)return 'POOL_QUEUE';
   const maximum=poolMaximum(pool);
+  const unpromisedIdle=Math.max(0,before.idle-before.waiting);
+  if(unpromisedIdle>0)return 'IDLE_REUSE';
   if(maximum!==null&&before.total>=maximum)return 'POOL_QUEUE';
   if(maximum!==null&&before.total<maximum)return 'NEW_CONNECTION';
   return 'UNKNOWN';
+}
+
+function errorCode(error:unknown):string{
+  return error!==null&&typeof error==='object'&&typeof (error as {code?:unknown}).code==='string'
+    ?(error as {code:string}).code:'';
+}
+
+function errorMessage(error:unknown):string{
+  return error!==null&&typeof error==='object'&&typeof (error as {message?:unknown}).message==='string'
+    ?(error as {message:string}).message:'';
+}
+
+export function classifyPostgresAcquisitionFailure(error:unknown,path:PostgresAcquisitionPath):
+PostgresAcquisitionFailureClass{
+  if(error instanceof PostgresPoolWaitTimeoutError)return 'POOL_QUEUE_TIMEOUT';
+  const code=errorCode(error).toUpperCase();
+  const message=errorMessage(error);
+  if(/cannot use a pool after calling end|pool is draining|pool is closed/i.test(message))return 'POOL_SHUTDOWN_FALLOUT';
+  if(code==='EAI_AGAIN'||code==='ENOTFOUND')return 'DNS_RESOLUTION_FAILURE';
+  if(code==='ETIMEDOUT'||code==='ECONNREFUSED'||code==='EHOSTUNREACH'||code==='ENETUNREACH'){
+    return code==='ETIMEDOUT'&&path==='NEW_CONNECTION'?'PHYSICAL_CONNECTION_TIMEOUT':'TCP_CONNECTION_FAILURE';
+  }
+  if(/certificate|self[- ]signed|tls|ssl/i.test(message))return 'TLS_FAILURE';
+  if(code==='28P01'||code==='28000')return 'AUTHENTICATION_FAILURE';
+  if(code==='57P03'||code==='53300'||code==='53000')return 'SERVER_REJECTION';
+  if(path==='POOL_QUEUE'&&/timeout exceeded when trying to connect/i.test(message))return 'POOL_QUEUE_TIMEOUT';
+  if(path==='NEW_CONNECTION'&&/timeout exceeded when trying to connect|connection terminated due to connection timeout/i.test(message)){
+    return 'PHYSICAL_CONNECTION_TIMEOUT';
+  }
+  if(path==='NEW_CONNECTION')return 'POSTGRES_STARTUP_FAILURE';
+  return 'UNKNOWN_POSTGRES_ACQUISITION_FAILURE';
 }
 
 export class PostgresCheckedOutClientLostError extends Error {
@@ -73,13 +111,14 @@ export class PostgresPoolWaitTimeoutError extends Error {
 
 function connectWithSeparatePoolWaitTimeout(pool:Pool,before:RuntimePostgresPoolState,
   poolWaitTimeoutMillis:number|undefined):{readonly client:Promise<PoolClient>;
-    readonly poolAfterRequest:RuntimePostgresPoolState}{
+    readonly poolAfterRequest:RuntimePostgresPoolState;readonly poolWaitTimerArmed:boolean}{
   const pending=pool.connect();
   const poolAfterRequest=poolState(pool);
-  if(poolWaitTimeoutMillis===undefined)return {client:pending,poolAfterRequest};
+  if(poolWaitTimeoutMillis===undefined)return {client:pending,poolAfterRequest,poolWaitTimerArmed:false};
   const maximum=poolMaximum(pool);
-  const queued=before.idle===0&&maximum!==null&&before.total>=maximum;
-  if(!queued)return {client:pending,poolAfterRequest};
+  const unpromisedIdle=Math.max(0,before.idle-before.waiting);
+  const queued=unpromisedIdle===0&&maximum!==null&&before.total>=maximum;
+  if(!queued)return {client:pending,poolAfterRequest,poolWaitTimerArmed:false};
   const timeout=Math.max(1,Math.trunc(poolWaitTimeoutMillis));
   const client=new Promise<PoolClient>((resolve,reject)=>{
     let settled=false;
@@ -97,7 +136,7 @@ function connectWithSeparatePoolWaitTimeout(pool:Pool,before:RuntimePostgresPool
       settled=true;clearTimeout(timer);reject(error);
     });
   });
-  return {client,poolAfterRequest};
+  return {client,poolAfterRequest,poolWaitTimerArmed:true};
 }
 
 /** Covers the EventEmitter error path, which a pool's idle-client listener cannot see. */
@@ -108,17 +147,24 @@ export async function withRuntimePostgresClient<T>(pool: Pool,
   const requestedAtMs=now();
   const before=poolState(pool);
   let afterRequest:RuntimePostgresPoolState|null=null;
+  let poolWaitTimerArmed=false;
   let client:PoolClient;
   try{
     const acquisition=connectWithSeparatePoolWaitTimeout(pool,before,options.poolWaitTimeoutMillis);
     afterRequest=acquisition.poolAfterRequest;
+    poolWaitTimerArmed=acquisition.poolWaitTimerArmed;
     client=await acquisition.client;
   }
   catch(error){
     const failedAtMs=now();
+    const acquisitionPath=classifyPostgresAcquisitionPath(pool,before,error);
+    const acquisitionDurationMs=Math.max(0,failedAtMs-requestedAtMs);
     options.observe?.({requestedAt:new Date(requestedAtMs).toISOString(),acquiredAt:null,releasedAt:null,
-      acquisitionDurationMs:Math.max(0,failedAtMs-requestedAtMs),checkoutDurationMs:null,
-      acquisitionPath:classifyPostgresAcquisitionPath(pool,before,error),outcome:'ACQUISITION_FAILED',
+      acquisitionDurationMs,checkoutDurationMs:null,acquisitionPath,
+      acquisitionFailureClass:classifyPostgresAcquisitionFailure(error,acquisitionPath),poolWaitTimerArmed,
+      poolQueueDurationMs:acquisitionPath==='POOL_QUEUE'||acquisitionPath==='IDLE_REUSE'?acquisitionDurationMs:null,
+      physicalConnectionDurationMs:acquisitionPath==='NEW_CONNECTION'?acquisitionDurationMs:null,
+      outcome:'ACQUISITION_FAILED',
       connectionTimeoutMillis:configuredConnectionTimeout(pool),poolWaitTimeoutMillis:options.poolWaitTimeoutMillis??null,
       poolBefore:before,poolAfterRequest:afterRequest,poolAtAcquire:null,
       poolAfterRelease:null,discarded:false,failureSafeCode:classifyPostgresRuntimeError(error).safeCode});
@@ -148,6 +194,11 @@ export async function withRuntimePostgresClient<T>(pool: Pool,
     options.observe?.({requestedAt:new Date(requestedAtMs).toISOString(),acquiredAt:new Date(acquiredAtMs).toISOString(),
       releasedAt:new Date(releasedAtMs).toISOString(),acquisitionDurationMs:Math.max(0,acquiredAtMs-requestedAtMs),
       checkoutDurationMs:Math.max(0,releasedAtMs-acquiredAtMs),acquisitionPath:classifyPostgresAcquisitionPath(pool,before),
+      acquisitionFailureClass:null,poolWaitTimerArmed,
+      poolQueueDurationMs:['POOL_QUEUE','IDLE_REUSE'].includes(classifyPostgresAcquisitionPath(pool,before))
+        ?Math.max(0,acquiredAtMs-requestedAtMs):null,
+      physicalConnectionDurationMs:classifyPostgresAcquisitionPath(pool,before)==='NEW_CONNECTION'
+        ?Math.max(0,acquiredAtMs-requestedAtMs):null,
       outcome,connectionTimeoutMillis:configuredConnectionTimeout(pool),poolWaitTimeoutMillis:options.poolWaitTimeoutMillis??null,
       poolBefore:before,poolAfterRequest:afterRequest,poolAtAcquire:atAcquire,
       poolAfterRelease:poolState(pool),discarded:broken,failureSafeCode});

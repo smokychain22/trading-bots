@@ -3,7 +3,8 @@ import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import type { Pool, PoolClient } from 'pg';
 import { classifyPostgresRuntimeError, PostgresCommitOutcomeUnknownError } from '../src/theta/postgres-runtime-error.js';
-import { classifyPostgresAcquisitionPath, withRuntimePostgresClient, withRuntimePostgresReadRetry,
+import { classifyPostgresAcquisitionFailure, classifyPostgresAcquisitionPath,
+  withRuntimePostgresClient, withRuntimePostgresReadRetry,
   withRuntimePostgresTransaction,PostgresCheckedOutClientLostError,
   PostgresPoolWaitTimeoutError } from '../src/theta/runtime-postgres-client.js';
 import type { RuntimePostgresClientObservation } from '../src/theta/runtime-postgres-client.js';
@@ -99,6 +100,8 @@ test('separate pool-wait timeout releases a client that arrives after the caller
     await assert.rejects(withRuntimePostgresClient(pool,async()=>1,
       {poolWaitTimeoutMillis:20,observe:(value)=>observations.push(value)}),PostgresPoolWaitTimeoutError);
     assert.equal(observations[0]?.acquisitionPath,'POOL_QUEUE');
+    assert.equal(observations[0]?.acquisitionFailureClass,'POOL_QUEUE_TIMEOUT');
+    assert.equal(observations[0]?.poolWaitTimerArmed,true);
     assert.equal(observations[0]?.poolWaitTimeoutMillis,20);
     held.release();
     await new Promise((resolve)=>setTimeout(resolve,10));
@@ -146,6 +149,8 @@ test('pool queue timeout and new-connection timeout have distinct acquisition pa
     /timeout exceeded/);
   assert.equal(queueObservations[0]?.outcome,'ACQUISITION_FAILED');
   assert.equal(queueObservations[0]?.acquisitionPath,'POOL_QUEUE');
+  assert.equal(queueObservations[0]?.acquisitionFailureClass,'POOL_QUEUE_TIMEOUT');
+  assert.equal(queueObservations[0]?.physicalConnectionDurationMs,null);
   assert.equal(queueObservations[0]?.connectionTimeoutMillis,5_000);
 
   const connectionPool={options:{max:2,connectionTimeoutMillis:5_000},totalCount:0,idleCount:0,waitingCount:0,
@@ -154,10 +159,33 @@ test('pool queue timeout and new-connection timeout have distinct acquisition pa
   await assert.rejects(withRuntimePostgresClient(connectionPool,async()=>1,
     {observe:(value)=>connectionObservations.push(value)}),/connection timeout/);
   assert.equal(connectionObservations[0]?.acquisitionPath,'NEW_CONNECTION');
+  assert.equal(connectionObservations[0]?.acquisitionFailureClass,'PHYSICAL_CONNECTION_TIMEOUT');
+  assert.equal(connectionObservations[0]?.poolQueueDurationMs,null);
   assert.equal(classifyPostgresAcquisitionPath(connectionPool,{total:0,idle:0,waiting:0},{code:'EAI_AGAIN'}),
     'NEW_CONNECTION');
   assert.equal(classifyPostgresAcquisitionPath(queuePool,{total:2,idle:0,waiting:4},
     new Error('timeout exceeded when trying to connect')),'POOL_QUEUE');
+});
+
+test('pool state, not generic pg-pool timeout text, separates a physical connect timeout from starvation',()=>{
+  const pool=({options:{max:2,connectionTimeoutMillis:8_000},totalCount:1,idleCount:1,
+    waitingCount:1} as unknown) as Pool;
+  const before={total:1,idle:1,waiting:1};
+  const generic=new Error('timeout exceeded when trying to connect');
+  const path=classifyPostgresAcquisitionPath(pool,before,generic);
+  assert.equal(path,'NEW_CONNECTION');
+  assert.equal(classifyPostgresAcquisitionFailure(generic,path),'PHYSICAL_CONNECTION_TIMEOUT');
+  assert.equal(classifyPostgresAcquisitionFailure(Object.assign(new Error('lookup failed'),{code:'EAI_AGAIN'}),path),
+    'DNS_RESOLUTION_FAILURE');
+  assert.equal(classifyPostgresAcquisitionFailure(Object.assign(new Error('password failed'),{code:'28P01'}),path),
+    'AUTHENTICATION_FAILURE');
+  assert.equal(classifyPostgresAcquisitionFailure(new Error('TLS certificate verify failed'),path),'TLS_FAILURE');
+  assert.equal(classifyPostgresAcquisitionFailure(Object.assign(new Error('server warming'),{code:'57P03'}),path),
+    'SERVER_REJECTION');
+  assert.equal(classifyPostgresAcquisitionFailure(new Error('startup protocol failed'),path),
+    'POSTGRES_STARTUP_FAILURE');
+  assert.equal(classifyPostgresAcquisitionFailure(new Error('cannot use a pool after calling end'),path),
+    'POOL_SHUTDOWN_FALLOUT');
 });
 
 test('slow valid query time remains checkout duration and is never acquisition failure',async()=>{

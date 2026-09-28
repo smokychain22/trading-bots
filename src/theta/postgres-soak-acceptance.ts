@@ -1,24 +1,37 @@
+import type { PostgresAcquisitionFailureClass, PostgresAcquisitionPath } from './runtime-postgres-client.js';
+
 export type PostgresSoakAcquisitionResult = 'ACQUIRED' | 'ACQUISITION_FAILED';
-export type PostgresSoakWaitClassification = 'PG_POOL_ASYNC_IDLE_HANDOFF' | 'CAPACITY_WAIT' | 'UNKNOWN';
+export type PostgresSoakWaitClassification = 'PG_POOL_ASYNC_IDLE_HANDOFF' | 'CAPACITY_WAIT'
+  | 'PHYSICAL_CONNECTION_ESTABLISHMENT' | 'UNKNOWN';
+export type PostgresSoakBatchState = 'PASS' | 'FAILED' | 'ABORTED_BY_PARENT' | 'NOT_STARTED';
 
 export interface PostgresSoakWaitEvent {
   readonly waitEventId: string;
   readonly batchId: string;
+  readonly taskId: string;
   readonly waitStart: string;
   readonly waitEnd: string;
   readonly waitDurationMs: number;
+  readonly poolQueueDurationMs: number | null;
+  readonly physicalConnectionDurationMs: number | null;
   readonly poolTotalAtStart: number;
   readonly poolIdleAtStart: number;
   readonly poolWaitingAtStart: number;
   readonly concurrentTaskCount: number;
   readonly operationType: string;
   readonly acquisitionResult: PostgresSoakAcquisitionResult;
+  readonly acquisitionPath: PostgresAcquisitionPath;
+  readonly acquisitionFailureClass: PostgresAcquisitionFailureClass | null;
   poolWaitingAfterBatch: number | null;
   readonly classification: PostgresSoakWaitClassification;
 }
 
 export interface PostgresSoakBatchReceipt {
   readonly batchId: string;
+  readonly state: PostgresSoakBatchState;
+  readonly startedAt: string;
+  readonly completedAt: string;
+  readonly failureSafeCode: string | null;
   readonly expectedTaskCount: number;
   readonly completedTaskCount: number;
   readonly maximumConcurrentTaskCount: number;
@@ -54,13 +67,24 @@ export interface PostgresSoakAcceptanceResult {
   readonly reasons: readonly string[];
   readonly transientWaitEventCount: number;
   readonly maxTransientWaitMs: number | null;
+  readonly physicalConnectionEventCount: number;
+  readonly maxPhysicalConnectionMs: number | null;
   readonly waitersDrainedAfterEveryBatch: boolean;
   readonly allBoundedBatchesComplete: boolean;
   readonly hiddenOverConcurrency: boolean;
 }
 
+export function buildPostgresSoakBatchReceipt(input:{readonly batchId:string;readonly startedAt:string;
+  readonly completedAt:string;readonly expectedTaskCount:number;readonly completedTaskCount:number;
+  readonly maximumConcurrentTaskCount:number;readonly poolWaitingAfterBatch:number;
+  readonly failureSafeCode:string|null}):PostgresSoakBatchReceipt{
+  const complete=input.failureSafeCode===null&&input.completedTaskCount===input.expectedTaskCount;
+  return {...input,state:complete?'PASS':'FAILED'};
+}
+
 export function classifyPostgresSoakWait(input:{readonly poolTotal:number;readonly poolIdle:number;
-  readonly poolMaximum:number}):PostgresSoakWaitClassification{
+  readonly poolMaximum:number;readonly acquisitionPath?:PostgresAcquisitionPath}):PostgresSoakWaitClassification{
+  if(input.acquisitionPath==='NEW_CONNECTION')return 'PHYSICAL_CONNECTION_ESTABLISHMENT';
   if(input.poolIdle>0)return 'PG_POOL_ASYNC_IDLE_HANDOFF';
   if(input.poolTotal>=input.poolMaximum)return 'CAPACITY_WAIT';
   return 'UNKNOWN';
@@ -68,8 +92,8 @@ export function classifyPostgresSoakWait(input:{readonly poolTotal:number;readon
 
 export function evaluatePostgresSoakAcceptance(input:PostgresSoakAcceptanceInput):PostgresSoakAcceptanceResult{
   const reasons:string[]=[];
-  const allBoundedBatchesComplete=input.batches.every((batch)=>
-    batch.completedTaskCount===batch.expectedTaskCount);
+  const allBoundedBatchesComplete=input.batches.length>0&&input.batches.every((batch)=>
+    batch.state==='PASS'&&batch.completedTaskCount===batch.expectedTaskCount);
   const waitersDrainedAfterEveryBatch=input.batches.every((batch)=>batch.poolWaitingAfterBatch===0)
     &&input.waitEvents.every((event)=>event.poolWaitingAfterBatch===0);
   const hiddenOverConcurrency=input.maxPoolTotal>input.poolMaximum||input.batches.some((batch)=>
@@ -78,7 +102,8 @@ export function evaluatePostgresSoakAcceptance(input:PostgresSoakAcceptanceInput
   if(hiddenOverConcurrency)reasons.push('SOAK_HIDDEN_OVERCONCURRENCY');
   if(!waitersDrainedAfterEveryBatch)reasons.push('SOAK_POOL_WAITERS_NOT_DRAINED');
   if(input.finalPoolWaiting!==0)reasons.push('SOAK_FINAL_POOL_WAITERS_NONZERO');
-  if(input.waitEvents.some((event)=>event.waitDurationMs>=input.poolWaitTimeoutMillis)){
+  if(input.waitEvents.some((event)=>event.poolQueueDurationMs!==null
+    &&event.poolQueueDurationMs>=input.poolWaitTimeoutMillis)){
     reasons.push('SOAK_POOL_WAIT_DURATION_EXCEEDED');
   }
   if(input.waitEvents.some((event)=>event.acquisitionResult==='ACQUISITION_FAILED')){
@@ -97,9 +122,13 @@ export function evaluatePostgresSoakAcceptance(input:PostgresSoakAcceptanceInput
   if(input.archiveReconstructionProofs!==1)reasons.push('SOAK_ARCHIVE_RECONSTRUCTION_PROOF_MISSING');
   if(input.freshProbeAttemptCount!==input.freshProbeClosedCount)reasons.push('SOAK_FRESH_PROBE_CLOSE_LEAK');
   if(input.freshProbeFailureCount!==0)reasons.push('SOAK_FRESH_PROBE_FAILED');
-  const durations=input.waitEvents.map((event)=>event.waitDurationMs);
+  const durations=input.waitEvents.flatMap((event)=>event.poolQueueDurationMs===null?[]:[event.poolQueueDurationMs]);
+  const physicalDurations=input.waitEvents.flatMap((event)=>event.physicalConnectionDurationMs===null
+    ?[]:[event.physicalConnectionDurationMs]);
   return {result:reasons.length===0?'PASS':'FAIL',reasons:[...new Set(reasons)],
-    transientWaitEventCount:input.waitEvents.length,
+    transientWaitEventCount:durations.length,
     maxTransientWaitMs:durations.length===0?null:Math.max(...durations),waitersDrainedAfterEveryBatch,
+    physicalConnectionEventCount:physicalDurations.length,
+    maxPhysicalConnectionMs:physicalDurations.length===0?null:Math.max(...physicalDurations),
     allBoundedBatchesComplete,hiddenOverConcurrency};
 }

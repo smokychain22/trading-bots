@@ -29,6 +29,7 @@ export interface FreshPostgresAttemptReceipt {
   readonly tlsState: 'MEASURED' | 'NOT_APPLICABLE' | 'UNAVAILABLE' | 'FAILED';
   readonly tlsMs: number | null;
   readonly postgresStartupMs: number | null;
+  readonly readyMs: number | null;
   readonly totalConnectionMs: number | null;
   readonly firstQueryMs: number | null;
   readonly closeMs: number | null;
@@ -110,6 +111,7 @@ export function buildFreshPostgresAttemptReceipt(input:{
     tlsMs:elapsed(boundaries.tlsSecureAtMs,boundaries.tlsStartedAtMs),
     postgresStartupMs:elapsed(boundaries.postgresReadyAtMs,
       tlsApplicable?boundaries.tlsSecureAtMs:boundaries.tcpConnectedAtMs),
+    readyMs:elapsed(boundaries.postgresReadyAtMs,boundaries.connectStartedAtMs),
     totalConnectionMs:elapsed(boundaries.postgresReadyAtMs,boundaries.connectStartedAtMs),
     firstQueryMs:elapsed(boundaries.firstQueryEndedAtMs,boundaries.firstQueryStartedAtMs),
     closeMs:elapsed(boundaries.closeEndedAtMs,boundaries.closeStartedAtMs),

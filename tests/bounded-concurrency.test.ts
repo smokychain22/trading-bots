@@ -26,6 +26,35 @@ test('bounded concurrency rejects invalid limits and propagates task failures',a
   }),/BOUNDED_TASK_FAILED/);
 });
 
+test('bounded concurrency drains already-started work before propagating the first failure',async()=>{
+  let active=0;
+  let released=0;
+  const events:string[]=[];
+  await assert.rejects(runWithBoundedConcurrency([0,1,2,3],2,async(value)=>{
+    active++;
+    events.push(`start-${value}`);
+    try{
+      if(value===0){await new Promise((resolve)=>setTimeout(resolve,5));throw new Error('PRIMARY_FAILURE');}
+      await new Promise((resolve)=>setTimeout(resolve,20));
+      return value;
+    }finally{active--;released++;events.push(`release-${value}`);}
+  }),/PRIMARY_FAILURE/);
+  assert.equal(active,0);
+  assert.equal(released,2);
+  assert.deepEqual(events.slice(0,2),['start-0','start-1']);
+  assert.ok(events.includes('release-1'),'the sibling already in flight must finish before rejection');
+  assert.ok(!events.includes('start-2'),'no new task starts after the first failure');
+});
+
+test('bounded concurrency preserves an explicit undefined rejection without returning partial results',async()=>{
+  let resolved=false;
+  try{
+    await runWithBoundedConcurrency([0,1],1,async()=>{throw undefined;});
+    resolved=true;
+  }catch(error){assert.equal(error,undefined);}
+  assert.equal(resolved,false);
+});
+
 test('database soak uses one bounded primary pool without read-retry amplification',async()=>{
   const source=await readFile(new URL('../tools/theta-postgres-stability-soak.ts',import.meta.url),'utf8');
   assert.match(source,/runWithBoundedConcurrency\([\s\S]*?primaryPoolMax,/);
