@@ -43,9 +43,18 @@ test('superseded research claims do not become current authority', () => {
   assert.ok(optionomics?.supersededClaims.some((claim) => claim.includes('executable-price authority')));
 });
 
-test('first Paper truth names the governed database checkpoint before runtime proof', () => {
+test('first Paper truth names final Mode-B certification without a stale provider blocker', () => {
   const readiness = canonicalSystemCapabilities.find((item) => item.capabilityId === 'FIRST_PAPER_READINESS');
-  assert.match(readiness?.currentBlocker ?? '', /schema-067 checkpoint/i);
-  assert.match(readiness?.currentBlocker ?? '', /Aiven transfer quota/i);
+  assert.match(readiness?.currentBlocker ?? '', /schema head 067/i);
+  assert.match(readiness?.currentBlocker ?? '', /final Mode-B certification/i);
+  assert.match(readiness?.currentBlocker ?? '', /worker is intentionally stopped/i);
+  assert.doesNotMatch(readiness?.currentBlocker ?? '', /transfer quota/i);
   assert.equal(readiness?.disposition, 'TRUE_HARD_BLOCKER');
+});
+
+test('AEGIS truth distinguishes its migration-origin evidence contract from the current schema head', () => {
+  const aegis = canonicalSystemCapabilities.find((item) => item.capabilityId === 'AEGIS_STRESS_AND_PORTFOLIO');
+  assert.match(aegis?.currentBlocker ?? '', /migration-064-origin/i);
+  assert.match(aegis?.currentBlocker ?? '', /schema head 067/i);
+  assert.doesNotMatch(aegis?.closureTest ?? '', /schema-064 assessments/i);
 });

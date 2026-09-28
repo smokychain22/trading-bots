@@ -26,9 +26,19 @@
   restore receipts remain while the temporary database and asset copy do not.
 - MODE_A_ONLY: focused Windows safety tests, 2,924 Node tests, 695 Python tests,
   23 browser tests, lint, typecheck, build, security and Git storage policy all
-  pass. No new recovery gate, 900-second soak, Production backup, restore,
-  deployment or worker start was run for this source correction. Final
-  certification remains pending exact-SHA CI and a later governed Mode-B run.
+  pass. Exact-SHA CI run `36451390074` passed for
+  `9d59e3a9565516e0fcd7e1588e77d555e073a123`. No new recovery gate,
+  900-second soak, Production backup, restore, deployment or worker start was
+  run for this source correction. Final certification remains pending one
+  governed Mode-B run.
+- OPERATOR_TRUTH_RECONCILIATION: the canonical truth register no longer reports
+  Aiven transfer quota as the current schema-067 blocker. Production is at
+  schema head 067, the corrected long soak is diagnostic evidence, the worker
+  is intentionally stopped, and the exact remaining Phase-1 blocker is the
+  single final Mode-B certification chain. The AEGIS wording now distinguishes
+  its migration-064-origin evidence contract from the current database schema.
+  Independent-session IV/spread maturity and current locked runtime proof remain
+  genuine forward-data requirements.
 - SAFETY: order submissions, broker mutations and follower submissions remain
   zero. Master and follower execution remain disabled, new orders remain paused,
   and live authorization remains absent.
@@ -48,13 +58,14 @@
   ordinary backup failures, missing, malformed, and lowercase receipts, typed
   parent propagation, and stderr isolation. Exact CI run `36326674981` passed at
   `2d6445cb9eeb5e8ff4210b59b853327e94e15e81`.
-- CURRENT_EXTERNAL_BLOCK: Production remains on schema 064. The worker remains
+- HISTORICAL_EXTERNAL_BLOCK_SUPERSEDED: Production was on schema 064. The worker was
   intentionally stopped and locked at `af3d43d14d703c47ff52e833588130af60d61e48`.
-  No new database retry is allowed until Aiven transfer quota is restored and
-  the canonical four-probe recovery gate passes again.
-- CURRENT_CERTIFICATION: V20 reports `CODE_SOLVABLE=[]` and PASS. Premarket
-  certification reports an engineering PASS and overall `EXTERNAL_BLOCKED`.
-  Database interruption remains infrastructure evidence, never strategy WAIT.
+  Aiven transfer quota later recovered, migrations reached schema head 067,
+  and this dated block is preserved only as incident evidence. Database
+  interruption remains infrastructure evidence, never strategy WAIT.
+- HISTORICAL_CERTIFICATION: at that time V20 reported `CODE_SOLVABLE=[]` and
+  PASS, while premarket certification reported engineering PASS and overall
+  `EXTERNAL_BLOCKED`. See the newest board section for current Phase-1 truth.
 
 ## Quoted-identifier backup guard repair, 2026-09-26
 
@@ -760,10 +771,10 @@ No item is complete merely because its type, config, fixture, or UI label exists
   existing verified `2026-09-22_100128-c600e016` recovery point passes that
   helper. A failed new backup cannot be reported as losing this recovery point.
 - ID: SCHEMA-067-CHECKPOINT. DOMAIN: runtime/database compatibility.
-  CURRENT_STATE: `EXTERNAL_BLOCKED_AIVEN_DATA_TRANSFER_QUOTA`. NEXT_RETRY_WHEN:
-  owner/provider restores transfer quota, the canonical recovery gate passes
-  again, and exact-current-main CI is successful. Do not blind-retry, delete
-  evidence, migrate, or deploy while this condition remains.
+  HISTORICAL_STATE: `EXTERNAL_BLOCKED_AIVEN_DATA_TRANSFER_QUOTA`.
+  SUPERSEDED: the provider quota later recovered and Production reached schema
+  head 067. This entry records the dated incident only. See the newest board
+  section for the remaining final Mode-B certification chain.
 - ID: OPERATIONAL-SUBPROCESS-DEADLINES. DOMAIN: runtime/tooling reliability.
   CURRENT_STATE: CLOSED_SOURCE/VERIFIED_CI at `52265ebe`. All audited Git,
   ripgrep, GitHub CLI, nested Node, external Python, recovery discovery,

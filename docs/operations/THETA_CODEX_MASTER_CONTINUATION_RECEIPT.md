@@ -1,6 +1,13 @@
 # THETA Codex master continuation receipt
 
-Receipt state: `IN_PROGRESS_EXTERNAL_BLOCK`
+Receipt state: `SUPERSEDED_HISTORICAL_RECEIPT`
+
+Current operator authority is `src/theta/canonical-system-truth.ts` plus the
+newest entries at the top of `docs/operations/THETA_IMPLEMENTATION_BOARD.md`.
+The Aiven transfer-quota block recorded below was real at the time, but it has
+since cleared. Production is at schema head 067 and Phase 1 now awaits one
+final Mode-B certification. The historical details below remain unchanged as
+incident evidence.
 
 This receipt records implemented and verified work. It does not authorize a Paper order, a follower order, or live execution.
 

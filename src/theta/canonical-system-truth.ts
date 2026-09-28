@@ -3,15 +3,15 @@
  * trading authority. Historical research documents remain historical even
  * when they contain superseded statements.
  */
-export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v1' as const;
-// Reviewed source baseline for the 2026-09-27 database-resilient no-submit
-// closure. Later commits may update receipts or this inventory itself without
+export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v2' as const;
+// Reviewed source baseline after the 2026-09-28 Mode-A backup bounded-growth
+// repair. Later commits may update receipts or this inventory itself without
 // invalidating the reviewed decision-source set. The runtime tool still diffs
 // every capability source file and reports any subsequent source change.
-export const truthSourceBaselineSha = '98103c8243be84be1f1d866f1e546bc7df5a1c22';
+export const truthSourceBaselineSha = '9d59e3a9565516e0fcd7e1588e77d555e073a123';
 // A worker SHA is operational state. Read it from the current worker lease,
 // never from this source-controlled architectural inventory.
-export const truthLastVerifiedAt = '2026-09-27';
+export const truthLastVerifiedAt = '2026-09-28';
 
 export type TruthProof = 'YES' | 'NO' | 'UNVERIFIED' | 'NOT_APPLICABLE';
 export type TruthDisposition =
@@ -110,9 +110,9 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
   capability({ capabilityId: 'AEGIS_STRESS_AND_PORTFOLIO', layerIds: [8, 9], sourceImplemented: 'YES', testsPassed: 'YES',
     providerAuthenticated: 'YES', realDataObserved: 'YES', persisted: 'UNVERIFIED', runtimeReachable: 'YES',
     paperAuthorized: 'PAPER_ONLY_LOCKED', sourceFiles: ['src/theta/aegis-iv-stress.ts', 'src/theta/aegis-spread-stress.ts', 'bots/theta/quant/models/aegis.py'],
-    currentBlocker: 'The schema-064 Alpaca IV-cohort and spread baselines need independent real-session maturity, a current observation and locked-runtime proof. The optional schema-065 Optionomics detector is secondary research and is not required by the Paper path.',
+    currentBlocker: 'The migration-064-origin Alpaca IV-cohort and spread baselines need independent real-session maturity, a current observation and locked-runtime proof. Production is currently at schema head 067. The optional migration-065 Optionomics detector is secondary research and is not required by the Paper path.',
     safeCurrentBehavior: 'AEGIS fails closed on missing required evidence; current quote safety is never waived by cold start.',
-    closureTest: 'Persisted real schema-064 assessments and a locked no-submit cycle with full per-family reasons.',
+    closureTest: 'Persisted real canonical Alpaca assessments and a locked no-submit cycle with full per-family reasons.',
     disposition: 'TRUE_HARD_BLOCKER',
     supersededClaims: ['THETA_BRAIN_CAPABILITY_MATRIX: both stress producers permanently null'] }),
   capability({ capabilityId: 'COMPANY_EVENT_AND_CORPORATE_ACTION', layerIds: [7, 9], sourceImplemented: 'YES', testsPassed: 'YES',
@@ -178,7 +178,7 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
     persisted: 'YES', runtimeReachable: 'YES', paperAuthorized: 'NOT_APPLICABLE',
     sourceFiles: ['src/theta/first-paper-blocker-budget.ts', 'src/theta/runtime-behavior-diagnostic.ts',
       'src/execution/master-paper-plan-assembly.ts', 'src/theta/no-submit-probe-guard.ts', 'src/customer/api.ts'],
-    currentBlocker: 'Audit coverage and SPY approval are complete. The governed schema-067 checkpoint is externally blocked by Aiven transfer quota, so the current worker remains stopped. After checkpoint and locked cutover, a current-release natural open-session no-submit proof remains required.',
+    currentBlocker: 'Audit coverage, SPY approval, schema head 067, corrected database soak diagnostics and the backup bounded-growth source repair are complete. The worker is intentionally stopped. One final Mode-B certification remains: fresh preflight and recovery gate, corrected 900-second soak, verified post-migration backup, isolated restore parity, exact-main immutable locked deployment, current-worker proof, durable provenance and deterministic T0 replay. A natural current-release open-session no-submit proof remains forward-data dependent after cutover.',
     safeCurrentBehavior: 'The immutable runtime diagnostic now persists typed SPY event, quote-refresh, AEGIS, sizing, decision, plan and mutation-free pre-submit evidence. The operator derives each dynamic check from that evidence and leaves any stage not naturally reached UNKNOWN.',
     closureTest: 'Clear every independent runtime release check and observe a natural current-release locked no-submit session before any Paper unlock.',
     disposition: 'TRUE_HARD_BLOCKER' }),
