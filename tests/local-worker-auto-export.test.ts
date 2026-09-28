@@ -116,6 +116,10 @@ test('Windows installer does not silently queue evidence capture on laptop batte
   assert.match(source,/THETA_CUTOVER_OLD_SUPERVISOR_NOT_RELEASED/);
   assert.match(source,/\$cutoverMutex\.WaitOne\(20000\)/);
   assert.ok(source.indexOf('$cutoverMutex.WaitOne') < source.indexOf('@{ repositoryPath='));
+  assert.match(source,/Get-Command pwsh\.exe -ErrorAction Stop/);
+  assert.match(source,/THETA_POWERSHELL_7_EXECUTABLE_REQUIRED/);
+  assert.match(source,/New-ScheduledTaskAction -Execute \$pwsh/);
+  assert.doesNotMatch(source,/New-ScheduledTaskAction -Execute 'powershell\.exe'/);
 });
 
 test('non-owner supervisor cleanup cannot delete the active lease or overwrite health', { skip: process.platform !== 'win32' }, () => {

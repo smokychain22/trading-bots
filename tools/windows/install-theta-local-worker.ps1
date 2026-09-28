@@ -85,7 +85,11 @@ try {
   ConvertTo-Json | Set-Content -LiteralPath $runtimeFile -Encoding utf8
 
 $workerScript = Join-Path $PSScriptRoot 'theta-local-worker.ps1'
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$workerScript`" -ControlRoot `"$repositoryPath`""
+$pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
+if ([string]::IsNullOrWhiteSpace($pwsh) -or -not (Test-Path -LiteralPath $pwsh -PathType Leaf)) {
+  throw 'THETA_POWERSHELL_7_EXECUTABLE_REQUIRED'
+}
+$action = New-ScheduledTaskAction -Execute $pwsh -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$workerScript`" -ControlRoot `"$repositoryPath`""
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
   -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries `
