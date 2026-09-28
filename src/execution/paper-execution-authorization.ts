@@ -4,6 +4,7 @@ import { withRuntimePostgresReadRetry, withRuntimePostgresTransaction } from '..
 
 export const masterPaperAuthorizationConfirmation = 'AUTHORIZE_MASTER_THETA_PAPER_MANAGEMENT_ONLY' as const;
 export const firstPaperCanaryActivationConfirmation = 'ACTIVATE_ONE_MASTER_THETA_PAPER_CANARY' as const;
+export const fullPaperExecutionLockConfirmation = 'LOCK_ALL_THETA_PAPER_EXECUTION' as const;
 
 export interface FirstPaperCanaryActivationEvidence {
   readonly brokerAccountStatus:string|null;
@@ -79,6 +80,17 @@ export interface PersistedPaperExecutionControl {
   readonly authorizationEventId:string|null;
 }
 
+export function fullyLockedPaperExecutionControl(
+  current: PersistedPaperExecutionControl,
+): PersistedPaperExecutionControl {
+  return {
+    pauseNewOrders: true,
+    masterExecutionEnabled: false,
+    followerExecutionEnabled: false,
+    authorizationEventId: current.authorizationEventId,
+  };
+}
+
 export interface EffectivePaperExecutionControl {
   readonly masterEnabled:boolean;
   readonly followerEnabled:false;
@@ -118,6 +130,45 @@ export class PostgresPaperExecutionAuthorizationStore{
     return {pauseNewOrders:row.pause_new_orders===true,masterExecutionEnabled:row.master_execution_enabled===true,
       followerExecutionEnabled:row.follower_execution_enabled===true,
       authorizationEventId:typeof row.authorization_event_id==='string'?row.authorization_event_id:null};
+  }
+
+  /** Revokes every broker-submission lane without deleting immutable owner
+   * authorization history. This operation is idempotent and only tightens
+   * authority. Re-enabling any lane still requires its separate governed
+   * authorization path. */
+  async lockAllExecution(input:{confirmation:string;lockedAt:string;sourceRef:string}):Promise<PersistedPaperExecutionControl>{
+    if(input.confirmation!==fullPaperExecutionLockConfirmation)
+      throw new Error('FULL_PAPER_EXECUTION_LOCK_CONFIRMATION_REQUIRED');
+    if(input.sourceRef.trim().length<12)throw new Error('FULL_PAPER_EXECUTION_LOCK_SOURCE_REQUIRED');
+    return withRuntimePostgresTransaction(this.pool,async(client)=>{
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('theta-master-paper-authorization'))`);
+      const currentResult=await client.query(`SELECT pause_new_orders,master_execution_enabled,
+        follower_execution_enabled,authorization_event_id::text
+        FROM ops.paper_execution_control WHERE singleton=true FOR UPDATE`);
+      if(currentResult.rowCount!==1)throw new Error('PAPER_EXECUTION_CONTROL_MISSING');
+      const currentRow=currentResult.rows[0] as Record<string,unknown>;
+      const current:PersistedPaperExecutionControl={
+        pauseNewOrders:currentRow.pause_new_orders===true,
+        masterExecutionEnabled:currentRow.master_execution_enabled===true,
+        followerExecutionEnabled:currentRow.follower_execution_enabled===true,
+        authorizationEventId:typeof currentRow.authorization_event_id==='string'?currentRow.authorization_event_id:null,
+      };
+      const locked=fullyLockedPaperExecutionControl(current);
+      await client.query(`UPDATE ops.paper_execution_control SET pause_new_orders=true,
+        master_execution_enabled=false,follower_execution_enabled=false,
+        changed_by=$1,changed_at=$2 WHERE singleton=true`,[input.sourceRef,input.lockedAt]);
+      return locked;
+    },{verifyCommitted:async(pool,outcome)=>{
+      const receipt=await withRuntimePostgresReadRetry(pool,(client)=>client.query(`SELECT pause_new_orders,
+        master_execution_enabled,follower_execution_enabled,authorization_event_id::text
+        FROM ops.paper_execution_control WHERE singleton=true`));
+      const row=receipt.value.rows[0] as Record<string,unknown>|undefined;
+      if(row===undefined)return false;
+      if(row.pause_new_orders!==true||row.master_execution_enabled!==false||row.follower_execution_enabled!==false
+        ||(typeof row.authorization_event_id==='string'?row.authorization_event_id:null)!==outcome.authorizationEventId)
+        throw new Error('FULL_PAPER_EXECUTION_LOCK_COMMIT_RECONCILIATION_CONFLICT');
+      return true;
+    }});
   }
 
   /** Records the owner's Paper-only authority while leaving new entries paused.

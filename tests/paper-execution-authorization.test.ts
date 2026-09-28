@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  firstPaperCanaryActivationBlockers, resolveEffectivePaperExecutionControl,
+  firstPaperCanaryActivationBlockers, fullyLockedPaperExecutionControl, resolveEffectivePaperExecutionControl,
 } from '../src/execution/paper-execution-authorization.js';
 
 const persisted={pauseNewOrders:true,masterExecutionEnabled:true,followerExecutionEnabled:false,
   authorizationEventId:'b7b415d4-1585-49bd-95dd-839067227b42'} as const;
+
+test('full execution lock disables every submission lane and preserves authorization provenance',()=>{
+  const result=fullyLockedPaperExecutionControl(persisted);
+  assert.deepEqual(result,{pauseNewOrders:true,masterExecutionEnabled:false,followerExecutionEnabled:false,
+    authorizationEventId:persisted.authorizationEventId});
+  assert.deepEqual(fullyLockedPaperExecutionControl(result),result);
+});
 
 test('persisted owner authority enables management while new risk remains paused',()=>{
   const result=resolveEffectivePaperExecutionControl({environmentMasterEnabled:true,environmentFollowerEnabled:false,

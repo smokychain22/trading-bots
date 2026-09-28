@@ -44,6 +44,7 @@
     "db:migrate": "node tools/database-migrate.mjs",
     "db:migrate:production:checkpoint": "pwsh -NoProfile -File tools/windows/dr/Invoke-ThetaProductionMigration.ps1",
     "db:post-migration:continue": "pwsh -NoProfile -File tools/windows/dr/Invoke-ThetaPostMigrationContinuation.ps1",
+    "paper:lock-all-execution": "node --import tsx tools/lock-all-paper-execution.ts --environment-file=.env.local --confirmation=LOCK_ALL_THETA_PAPER_EXECUTION",
     "db:verify": "node tools/database-verify.mjs",
     "db:aiven:preflight": "node tools/database-target-preflight.mjs --environment-file=.env.local",
     "db:aiven:import-legacy": "node tools/import-legacy-research-export.mjs",
