@@ -6,6 +6,7 @@ param(
   [string]$RecoveryGateReceiptPath='.theta-local-worker\receipts\database-recovery-gate-latest.json'
 )
 . (Join-Path $PSScriptRoot 'ThetaBackup.Common.ps1')
+. (Join-Path $PSScriptRoot 'ThetaTime.Common.ps1')
 . (Join-Path $PSScriptRoot '..\ThetaProcess.Common.ps1')
 $repoRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $root=Get-ThetaBackupRoot $BackupRoot
@@ -19,11 +20,24 @@ try{
   $head=(git rev-parse HEAD).Trim();$origin=(git rev-parse origin/main).Trim()
   if($LASTEXITCODE-ne0-or$head-ne$origin-or(git status --porcelain)){throw 'POST_MIGRATION_SOURCE_NOT_CLEAN_EXACT_MAIN'}
   $gatePath=[IO.Path]::GetFullPath((Join-Path $repoRoot $RecoveryGateReceiptPath))
-  $gate=Get-Content -Raw -LiteralPath $gatePath|ConvertFrom-Json
-  if($gate.state-ne'RECOVERY_GATE_SATISFIED'-or-not$gate.checkpointRetryEligible-or$gate.sourceSha-ne$head-or
-      (([DateTimeOffset]::UtcNow-[DateTimeOffset]::Parse($gate.completedAt)).TotalMinutes-gt10)){
+  $gateRaw=Get-Content -Raw -LiteralPath $gatePath
+  $gate=$gateRaw|ConvertFrom-Json
+  $completedAtRaw=$null
+  $gateDocument=$null
+  try{
+    $gateDocument=[Text.Json.JsonDocument]::Parse($gateRaw)
+    $completedAtElement=$gateDocument.RootElement.GetProperty('completedAt')
+    if($completedAtElement.ValueKind-eq[Text.Json.JsonValueKind]::String){$completedAtRaw=$completedAtElement.GetString()}
+  }catch{
+    $completedAtRaw=$null
+  }finally{
+    if($gateDocument){$gateDocument.Dispose()}
+  }
+  if($gate.state-ne'RECOVERY_GATE_SATISFIED'-or-not$gate.checkpointRetryEligible-or$gate.sourceSha-ne$head){
     throw 'POST_MIGRATION_RECOVERY_GATE_INVALID_OR_STALE'
   }
+  try{[void](Assert-ThetaFreshMachineTimestamp -Timestamp $completedAtRaw -MaxAgeSeconds 600 -MaxFutureSkewSeconds 30)}
+  catch{throw "POST_MIGRATION_RECOVERY_GATE_INVALID_OR_STALE:$($_.Exception.Message)"}
   $rollbackPath=Join-Path $root "daily\$RollbackBackupId"
   if(-not(Test-ThetaVerifiedBackupDirectory -BackupDirectory $rollbackPath -ExpectedBackupId $RollbackBackupId `
       -ExpectedArchiveSha256 $RollbackArchiveSha256)){throw 'ORIGINAL_SCHEMA_064_ROLLBACK_ANCHOR_INVALID'}

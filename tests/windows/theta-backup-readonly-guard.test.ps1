@@ -3,6 +3,47 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot '..\..\tools\windows\dr\ThetaBackup.Common.ps1')
+. (Join-Path $PSScriptRoot '..\..\tools\windows\dr\ThetaTime.Common.ps1')
+
+$fixedNow = [DateTimeOffset]::ParseExact(
+  '2026-09-27T22:08:25.482Z',
+  'yyyy-MM-ddTHH:mm:ss.fffK',
+  [Globalization.CultureInfo]::InvariantCulture
+)
+$freshZ = Assert-ThetaFreshMachineTimestamp -Timestamp '2026-09-27T22:08:17.482Z' -NowUtc $fixedNow
+if ([Math]::Abs($freshZ.ageSeconds - 8) -gt 0.001) { throw 'FRESH_Z_TIMESTAMP_AGE_WRONG' }
+$freshOffset = Assert-ThetaFreshMachineTimestamp -Timestamp '2026-09-28T03:08:17.482+05:00' -NowUtc $fixedNow
+if ([Math]::Abs($freshOffset.ageSeconds - 8) -gt 0.001) { throw 'FRESH_OFFSET_TIMESTAMP_AGE_WRONG' }
+$sameInstantDifferentNowOffset = [DateTimeOffset]::ParseExact(
+  '2026-09-28T03:08:25.482+05:00',
+  'yyyy-MM-ddTHH:mm:ss.fffK',
+  [Globalization.CultureInfo]::InvariantCulture
+)
+$timezoneInvariant = Assert-ThetaFreshMachineTimestamp -Timestamp '2026-09-27T22:08:17.482Z' -NowUtc $sameInstantDifferentNowOffset
+if ([Math]::Abs($timezoneInvariant.ageSeconds - 8) -gt 0.001) { throw 'TIMESTAMP_LOCAL_TIMEZONE_CHANGED_AGE' }
+$priorCulture = [Globalization.CultureInfo]::CurrentCulture
+try {
+  [Globalization.CultureInfo]::CurrentCulture = [Globalization.CultureInfo]::GetCultureInfo('ar-SA')
+  $cultureInvariant = Assert-ThetaFreshMachineTimestamp -Timestamp '2026-09-27T22:08:17.482Z' -NowUtc $fixedNow
+  if ([Math]::Abs($cultureInvariant.ageSeconds - 8) -gt 0.001) { throw 'TIMESTAMP_CULTURE_CHANGED_AGE' }
+} finally {
+  [Globalization.CultureInfo]::CurrentCulture = $priorCulture
+}
+$timestampFailureCases = @(
+  @{ Timestamp='2026-09-27T21:58:24.482Z'; Expected='MACHINE_TIMESTAMP_STALE' },
+  @{ Timestamp='2026-09-27T22:08:56.482Z'; Expected='MACHINE_TIMESTAMP_FUTURE' },
+  @{ Timestamp='2026-09-27 22:08:17'; Expected='MACHINE_TIMESTAMP_OFFSET_REQUIRED' },
+  @{ Timestamp='not-a-timestampZ'; Expected='MACHINE_TIMESTAMP_MALFORMED' },
+  @{ Timestamp=$null; Expected='MACHINE_TIMESTAMP_MISSING' }
+)
+foreach ($case in $timestampFailureCases) {
+  try {
+    [void](Assert-ThetaFreshMachineTimestamp -Timestamp $case.Timestamp -NowUtc $fixedNow)
+    throw "TIMESTAMP_FAILURE_CASE_ACCEPTED:$($case.Expected)"
+  } catch {
+    if ($_.Exception.Message -ne $case.Expected) { throw }
+  }
+}
 
 $cases = @(
   @{ Name = 'select'; Sql = 'SELECT 1'; Expected = $true },
@@ -82,7 +123,8 @@ foreach ($required in @('theta-migration-process-receipt-v1','migration-child-',
 }
 $resume = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\tools\windows\dr\Invoke-ThetaPostMigrationContinuation.ps1')
 foreach ($required in @('theta-post-migration-resume-preflight','duration-seconds=900','ORIGINAL_SCHEMA_064_ROLLBACK_ANCHOR_INVALID',
-    'POST_MIGRATION_RECOVERY_GATE_INVALID_OR_STALE','Enter-ThetaBackupProcessLock','Backup-Theta.ps1','postMigrationRestoreParity')) {
+    'POST_MIGRATION_RECOVERY_GATE_INVALID_OR_STALE','Assert-ThetaFreshMachineTimestamp','GetProperty(''completedAt'')',
+    'Enter-ThetaBackupProcessLock','Backup-Theta.ps1','postMigrationRestoreParity')) {
   if ($resume -notmatch [regex]::Escape($required)) { throw "POST_MIGRATION_RESUME_GUARD_MISSING:$required" }
 }
 if ($resume -match 'database-migrate\.mjs|migrations[\\/].*06[5-7]_') { throw 'POST_MIGRATION_RESUME_REAPPLIES_MIGRATIONS' }
