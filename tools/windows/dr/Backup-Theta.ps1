@@ -82,9 +82,12 @@ try {
     }
   }
   $drive = Get-PSDrive -Name $root.Substring(0,1)
-  # Reserve for the staging/daily archive and independently copied weekly and monthly sets.
-  $required = [long][Math]::Max(4GB, ((($sourceSize * 3) + $assetsEstimate) * 3) + 1GB)
-  if ($drive.Free -lt $required) { throw "BACKUP_DISK_SPACE_TOO_LOW:requiredBytes=$required freeBytes=$($drive.Free)" }
+  $freeBytesAtSpacePreflight = [long]$drive.Free
+  [void](Test-ThetaBackupHardLinkCapability -Root $root)
+  $spaceBudget = Get-ThetaBackupSpaceBudget -SourceDatabaseBytes $sourceSize -ExternalAssetsBytes $assetsEstimate
+  $required = [long]$spaceBudget.requiredBytes
+  Log "SPACE_BUDGET policy=$($spaceBudget.policyVersion) sourceBytes=$sourceSize externalAssetsBytes=$assetsEstimate requiredBytes=$required freeBytes=$freeBytesAtSpacePreflight periodicStorage=$($spaceBudget.periodicGenerationStorage)"
+  if ($freeBytesAtSpacePreflight -lt $required) { throw "BACKUP_DISK_SPACE_TOO_LOW:requiredBytes=$required freeBytes=$freeBytesAtSpacePreflight" }
   $backupId = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd_HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0,8)
   $stage = Join-Path $root ('daily\.staging-' + $backupId)
   [void](New-Item -ItemType Directory -Path $stage)
@@ -186,6 +189,7 @@ SELECT jsonb_build_object(
     structureSha256=(Get-ThetaStringSha256 $structureRaw); allTableRowCounts=$allRowCounts;
     sequenceStateSha256=(Get-ThetaStringSha256 $sequenceState);
     criticalDataDigests=$criticalDigests; criticalDigestMethod='BOUNDED_INTEGRITY_PROJECTION_V2'; externalAssets=$assets;
+    backupSpaceBudget=$spaceBudget; freeBytesAtSpacePreflight=$freeBytesAtSpacePreflight;
     secretsIncludedSeparately=$false; restoreRequiresEnvironmentVariables=$true
   }
   Write-ThetaJson (Join-Path $stage 'backup-manifest.json') $manifest
@@ -215,6 +219,7 @@ SELECT jsonb_build_object(
   $final = Join-Path $root ('daily\' + $backupId)
   Move-Item -LiteralPath $stage -Destination $final
   $stage = $null
+  Protect-ThetaImmutableBackupTree -Path $final
   $currentPointer = Join-Path $root 'latest\current.json'
   $previousPointer = Join-Path $root 'latest\previous.json'
   $prior = $null
@@ -222,17 +227,7 @@ SELECT jsonb_build_object(
     $prior = Get-Content -Raw -LiteralPath $currentPointer | ConvertFrom-Json
     $priorPath = [IO.Path]::GetFullPath((Join-Path $root ($prior.relativePath -replace '/', '\')))
     if (-not $priorPath.StartsWith((Join-Path $root 'daily\'),[StringComparison]::OrdinalIgnoreCase)) { throw 'PREVIOUS_BACKUP_POINTER_UNSAFE' }
-    if (Test-Path -LiteralPath $priorPath) { Copy-Item -LiteralPath $currentPointer -Destination $previousPointer -Force }
   }
-  Write-ThetaJson (Join-Path $root 'latest\current.json') ([ordered]@{ backupId=$backupId; relativePath=('daily/' + $backupId); archiveSha256=$receipt.archiveSha256; verifiedAt=$receipt.verifiedAt })
-  $trendPath = Join-Path $root 'logs\database-size-trend.jsonl'
-  $capacity = [Environment]::GetEnvironmentVariable('AIVEN_DISK_CAPACITY_BYTES')
-  $capacityBytes = if ($capacity -match '^[1-9][0-9]*$') { [long]$capacity } else { $null }
-  $trend = [ordered]@{observedAt=(Get-Date).ToUniversalTime().ToString('o');backupId=$backupId;
-    databaseSizeBytes=$sourceSize;archiveBytes=(Get-Item -LiteralPath (Join-Path $final 'database.backup')).Length;
-    diskCapacityBytes=$capacityBytes;databaseFractionOfDisk=$(if($capacityBytes){[math]::Round($sourceSize/$capacityBytes,4)}else{$null});
-    warning=$(if(-not $capacityBytes){'CAPACITY_UNVERIFIED'}elseif($sourceSize/$capacityBytes -ge 0.7){'DATABASE_SIZE_AT_LEAST_70_PERCENT_OF_DISK_EXCLUDING_WAL'}else{'NONE'})}
-  [IO.File]::AppendAllText($trendPath, ((ConvertTo-Json $trend -Compress) + "`n"), [Text.UTF8Encoding]::new($false))
   foreach ($bucket in @('weekly','monthly')) {
     $period = if($bucket -eq 'weekly'){
       $today = Get-Date
@@ -241,7 +236,7 @@ SELECT jsonb_build_object(
     $existing = @(Get-ChildItem -LiteralPath (Join-Path $root $bucket) -Directory | Where-Object Name -Like "$period-*")
     if ($existing.Count -eq 0) {
       $archiveCopy = Join-Path (Join-Path $root $bucket) "$period-$backupId"
-      Copy-Item -LiteralPath $final -Destination $archiveCopy -Recurse
+      Copy-ThetaImmutableTreeWithHardLinks -Source $final -Destination $archiveCopy
       & (Join-Path $PSHOME 'pwsh.exe') -NoProfile -File (Join-Path $PSScriptRoot 'Verify-ThetaBackup.ps1') -BackupDirectory $archiveCopy | Out-Null
       if ($LASTEXITCODE -ne 0) { throw "BACKUP_PERIODIC_COPY_VERIFICATION_FAILED:$bucket" }
     }
@@ -257,8 +252,23 @@ SELECT jsonb_build_object(
       Log "RETAIN_PRUNE bucket=$($bucket[0]) id=$($old.Name)"
     }
   }
+  $trendPath = Join-Path $root 'logs\database-size-trend.jsonl'
+  $capacity = [Environment]::GetEnvironmentVariable('AIVEN_DISK_CAPACITY_BYTES')
+  $capacityBytes = if ($capacity -match '^[1-9][0-9]*$') { [long]$capacity } else { $null }
+  $trend = [ordered]@{observedAt=(Get-Date).ToUniversalTime().ToString('o');backupId=$backupId;
+    databaseSizeBytes=$sourceSize;archiveBytes=(Get-Item -LiteralPath (Join-Path $final 'database.backup')).Length;
+    diskCapacityBytes=$capacityBytes;databaseFractionOfDisk=$(if($capacityBytes){[math]::Round($sourceSize/$capacityBytes,4)}else{$null});
+    warning=$(if(-not $capacityBytes){'CAPACITY_UNVERIFIED'}elseif($sourceSize/$capacityBytes -ge 0.7){'DATABASE_SIZE_AT_LEAST_70_PERCENT_OF_DISK_EXCLUDING_WAL'}else{'NONE'})}
+  [IO.File]::AppendAllText($trendPath, ((ConvertTo-Json $trend -Compress) + "`n"), [Text.UTF8Encoding]::new($false))
+  if ($prior -and (Test-Path -LiteralPath $priorPath)) {
+    Copy-Item -LiteralPath $currentPointer -Destination $previousPointer -Force
+  }
+  Write-ThetaJson $currentPointer ([ordered]@{ backupId=$backupId; relativePath=('daily/' + $backupId); archiveSha256=$receipt.archiveSha256; verifiedAt=$receipt.verifiedAt })
   Log "SUCCESS backupId=$backupId archiveSha256=$($receipt.archiveSha256)"
-  [ordered]@{state='VERIFIED'; backupId=$backupId; path=$final; sourceBytes=$sourceSize; archiveSha256=$receipt.archiveSha256; tableCount=$inventory.tableCount; migrationHead=$inventory.migrationHead} | ConvertTo-Json -Compress
+  [ordered]@{state='VERIFIED'; backupId=$backupId; path=$final; sourceBytes=$sourceSize;
+    archiveSha256=$receipt.archiveSha256; tableCount=$inventory.tableCount; migrationHead=$inventory.migrationHead;
+    spaceBudgetPolicyVersion=$spaceBudget.policyVersion; requiredFreeBytes=$required;
+    freeBytesAtSpacePreflight=$freeBytesAtSpacePreflight; periodicGenerationStorage=$spaceBudget.periodicGenerationStorage} | ConvertTo-Json -Compress
 } catch {
   $caught = $_
   $failureCode = Get-ThetaBackupFailureCode ([string]$caught.Exception.Message)

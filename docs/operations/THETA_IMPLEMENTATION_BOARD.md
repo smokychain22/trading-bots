@@ -1,5 +1,38 @@
 # THETA implementation board
 
+## Phase-1 backup bounded-growth repair, 2026-09-28
+
+- PROVEN_INCIDENT: exact-main schema-067 certification completed a corrected
+  901.591-second PostgreSQL soak with 945 reads, 45 fresh acquisitions, zero
+  failed acquisitions, zero leaked clients, zero PostgreSQL errors and stable
+  postmaster identity. The following backup stopped before dump creation with
+  `BACKUP_DISK_SPACE_TOO_LOW`: 40,321,821,559 bytes required against
+  25,273,114,624 bytes free. No backup, restore, deployment or worker start
+  followed.
+- ROOT_CAUSE: the old preflight multiplied an already conservative
+  three-database working-set estimate by three again to reserve physical daily,
+  weekly and monthly copies. Restore parity also left its isolated PostgreSQL
+  database and full external-asset copy behind after each test. Those were
+  unbounded local certification artifacts, not required recovery evidence.
+- CODE_COMPLETE/VERIFIED_LOCAL: `theta-backup-peak-space-v2` models the actual
+  peak lifecycle as three database-sized working sets, two external-asset sets,
+  1 GiB fixed headroom and a 4 GiB minimum. Weekly/monthly names are verified
+  same-volume hard-link trees over read-only immutable daily files. The backup
+  proves hard-link support before starting a dump and promotes `latest` only
+  after periodic verification and retention complete.
+- CODE_COMPLETE/VERIFIED_LOCAL: isolated restore databases and restored asset
+  copies now have guarded cleanup on success and failure. WSL readiness,
+  create, identity and drop operations have bounded process deadlines. Durable
+  restore receipts remain while the temporary database and asset copy do not.
+- MODE_A_ONLY: focused Windows safety tests, 2,924 Node tests, 695 Python tests,
+  23 browser tests, lint, typecheck, build, security and Git storage policy all
+  pass. No new recovery gate, 900-second soak, Production backup, restore,
+  deployment or worker start was run for this source correction. Final
+  certification remains pending exact-SHA CI and a later governed Mode-B run.
+- SAFETY: order submissions, broker mutations and follower submissions remain
+  zero. Master and follower execution remain disabled, new orders remain paused,
+  and live authorization remains absent.
+
 ## Governed checkpoint failure-receipt closure, 2026-09-27
 
 - CLOSED_SOURCE_DEFECT: the bounded migration checkpoint discarded child stderr

@@ -27,6 +27,21 @@ not a second trading authority. Parquet/DuckDB is the portable analytical
 authority for append-heavy history. Database dumps remain in verified backup
 storage. No archive grants broker authority.
 
+Verified backup generations now use bounded local-storage semantics. A daily
+generation remains a complete independently named recovery set. Weekly and monthly
+names use same-volume hard links to those already verified immutable files instead
+of physically copying the full database archive and external assets again. Deleting
+one retained name does not remove the file contents while another hard link remains.
+The backup preflight proves hard-link capability before starting a dump.
+
+The local restore-parity database and its restored external-asset directory are
+ephemeral certification resources. They are removed after both successful and failed
+restore tests. Restore receipts, hashes and parity results remain durable. The space
+budget `theta-backup-peak-space-v2` reserves three database-sized working sets, two
+external-asset working sets, and 1 GiB of operating headroom, with a 4 GiB minimum.
+It no longer reserves three complete physical copies for daily, weekly and monthly
+names when those names share immutable file content.
+
 Ordinary Git rejects database dumps, runtime SQLite or DuckDB files, continuous
 option-chain history, high-frequency observations, mutable binary databases,
 secrets and large artifacts. Compact immutable Parquet fixtures are permitted

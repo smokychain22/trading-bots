@@ -111,6 +111,121 @@ function Get-ThetaNativePgTool {
   return $path
 }
 
+function Get-ThetaBackupSpaceBudget {
+  param(
+    [Parameter(Mandatory)][long]$SourceDatabaseBytes,
+    [Parameter(Mandatory)][long]$ExternalAssetsBytes
+  )
+  if ($SourceDatabaseBytes -lt 0 -or $ExternalAssetsBytes -lt 0) {
+    throw 'BACKUP_SPACE_BUDGET_NEGATIVE_INPUT'
+  }
+
+  # Peak local use consists of a conservative three database-sized working
+  # sets (custom archive, isolated restore, and restore/format overhead), two
+  # asset sets (the backup plus the temporary restore-verification target),
+  # and a fixed operating reserve. Weekly and monthly generations are NTFS
+  # hard-link trees, so they retain independent names without duplicating file
+  # contents and must not be counted as full physical copies.
+  $databaseWorkingBytes = [decimal]$SourceDatabaseBytes * 3
+  $assetWorkingBytes = [decimal]$ExternalAssetsBytes * 2
+  $fixedReserveBytes = [decimal]1GB
+  $calculatedBytes = $databaseWorkingBytes + $assetWorkingBytes + $fixedReserveBytes
+  $requiredBytes = [decimal][Math]::Max([decimal]4GB, $calculatedBytes)
+  if ($requiredBytes -gt [decimal][long]::MaxValue) { throw 'BACKUP_SPACE_BUDGET_OVERFLOW' }
+
+  return [ordered]@{
+    policyVersion = 'theta-backup-peak-space-v2'
+    sourceDatabaseBytes = $SourceDatabaseBytes
+    externalAssetsBytes = $ExternalAssetsBytes
+    databaseWorkingCopies = 3
+    externalAssetWorkingCopies = 2
+    periodicGenerationStorage = 'SAME_VOLUME_HARD_LINKS'
+    fixedReserveBytes = [long]$fixedReserveBytes
+    minimumRequiredBytes = [long]4GB
+    requiredBytes = [long]$requiredBytes
+  }
+}
+
+function Test-ThetaBackupHardLinkCapability {
+  param([Parameter(Mandatory)][string]$Root)
+  $fullRoot = [IO.Path]::GetFullPath($Root).TrimEnd([char[]]@('\','/'))
+  $probeRoot = Join-Path $fullRoot ('config\.hardlink-probe-' + [guid]::NewGuid().ToString('N'))
+  $source = Join-Path $probeRoot 'source.bin'
+  $link = Join-Path $probeRoot 'link.bin'
+  try {
+    [void](New-Item -ItemType Directory -Path $probeRoot)
+    [IO.File]::WriteAllBytes($source, [byte[]](1, 2, 3, 4))
+    [void](New-Item -ItemType HardLink -Path $link -Target $source -ErrorAction Stop)
+    if (-not (Test-Path -LiteralPath $link -PathType Leaf) -or
+        (Get-ThetaSha256 $source) -ne (Get-ThetaSha256 $link)) {
+      throw 'BACKUP_HARDLINK_CAPABILITY_VERIFICATION_FAILED'
+    }
+    return $true
+  } catch {
+    if ($_.Exception.Message -like 'BACKUP_HARDLINK_*') { throw }
+    throw 'BACKUP_HARDLINK_CAPABILITY_UNAVAILABLE'
+  } finally {
+    if (Test-Path -LiteralPath $probeRoot) {
+      Remove-Item -LiteralPath $probeRoot -Recurse -Force
+    }
+  }
+}
+
+function Copy-ThetaImmutableTreeWithHardLinks {
+  param(
+    [Parameter(Mandatory)][string]$Source,
+    [Parameter(Mandatory)][string]$Destination
+  )
+  $sourceRoot = [IO.Path]::GetFullPath($Source).TrimEnd([char[]]@('\','/'))
+  $destinationRoot = [IO.Path]::GetFullPath($Destination).TrimEnd([char[]]@('\','/'))
+  if (-not (Test-Path -LiteralPath $sourceRoot -PathType Container)) {
+    throw 'BACKUP_HARDLINK_SOURCE_MISSING'
+  }
+  if (Test-Path -LiteralPath $destinationRoot) { throw 'BACKUP_HARDLINK_DESTINATION_EXISTS' }
+  if (-not [IO.Path]::GetPathRoot($sourceRoot).Equals(
+      [IO.Path]::GetPathRoot($destinationRoot), [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'BACKUP_HARDLINK_COPY_REQUIRES_SAME_VOLUME'
+  }
+
+  $destinationPrefix = $destinationRoot + [IO.Path]::DirectorySeparatorChar
+  try {
+    [void](New-Item -ItemType Directory -Path $destinationRoot)
+    foreach ($directory in @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -Directory -Force | Sort-Object FullName)) {
+      $relative = $directory.FullName.Substring($sourceRoot.Length + 1)
+      $target = [IO.Path]::GetFullPath((Join-Path $destinationRoot $relative))
+      if (-not $target.StartsWith($destinationPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'BACKUP_HARDLINK_DESTINATION_PATH_ESCAPE'
+      }
+      [void](New-Item -ItemType Directory -Path $target -Force)
+    }
+    foreach ($file in @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -Force | Sort-Object FullName)) {
+      $relative = $file.FullName.Substring($sourceRoot.Length + 1)
+      $target = [IO.Path]::GetFullPath((Join-Path $destinationRoot $relative))
+      if (-not $target.StartsWith($destinationPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'BACKUP_HARDLINK_DESTINATION_PATH_ESCAPE'
+      }
+      [void](New-Item -ItemType HardLink -Path $target -Target $file.FullName -ErrorAction Stop)
+    }
+  } catch {
+    $caught = $_
+    if (Test-Path -LiteralPath $destinationRoot) {
+      Remove-Item -LiteralPath $destinationRoot -Recurse -Force
+    }
+    throw $caught
+  }
+}
+
+function Protect-ThetaImmutableBackupTree {
+  param([Parameter(Mandatory)][string]$Path)
+  $root = [IO.Path]::GetFullPath($Path)
+  if (-not (Test-Path -LiteralPath $root -PathType Container)) {
+    throw 'BACKUP_IMMUTABLE_TREE_MISSING'
+  }
+  foreach ($file in @(Get-ChildItem -LiteralPath $root -Recurse -File -Force)) {
+    $file.Attributes = $file.Attributes -bor [IO.FileAttributes]::ReadOnly
+  }
+}
+
 function ConvertTo-ThetaPgDiagnostic {
   param([object]$Connection, [string]$Diagnostic)
   $sanitized = [string]$Diagnostic

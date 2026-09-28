@@ -144,9 +144,102 @@ if ($backupSource -match "-Label 'CUSTOM_DUMP' -AllowPreConnectionRetry") {
 if ($backupSource -notmatch 'BACKUP_SNAPSHOT_KEEPER_UNAVAILABLE_FOR_RETRY') {
   throw 'SCHEMA_DUMP_RETRY_MISSING_LIVE_SNAPSHOT_GUARD'
 }
+$spaceBudgetCall = 'Get-ThetaBackupSpaceBudget -SourceDatabaseBytes $sourceSize -ExternalAssetsBytes $assetsEstimate'
+if ($backupSource -notmatch [regex]::Escape($spaceBudgetCall)) {
+  throw 'BACKUP_PEAK_SPACE_BUDGET_NOT_WIRED'
+}
+if ($backupSource -match '\(\(\(\$sourceSize \* 3\) \+ \$assetsEstimate\) \* 3\)') {
+  throw 'BACKUP_OLD_TRIPLE_GENERATION_SPACE_ESTIMATE_REINTRODUCED'
+}
+if ($backupSource -notmatch 'Test-ThetaBackupHardLinkCapability') {
+  throw 'BACKUP_HARDLINK_CAPABILITY_PREFLIGHT_MISSING'
+}
+foreach ($receiptField in @('backupSpaceBudget=$spaceBudget','freeBytesAtSpacePreflight=$freeBytesAtSpacePreflight',
+    'spaceBudgetPolicyVersion=$spaceBudget.policyVersion','periodicGenerationStorage=$spaceBudget.periodicGenerationStorage')) {
+  if ($backupSource -notmatch [regex]::Escape($receiptField)) {
+    throw "BACKUP_SPACE_RECEIPT_FIELD_MISSING:$receiptField"
+  }
+}
+if ($backupSource -notmatch 'Copy-ThetaImmutableTreeWithHardLinks -Source \$final -Destination \$archiveCopy') {
+  throw 'BACKUP_PERIODIC_GENERATION_HARDLINK_COPY_MISSING'
+}
+if ($backupSource -notmatch 'Protect-ThetaImmutableBackupTree -Path \$final') {
+  throw 'BACKUP_VERIFIED_TREE_IMMUTABILITY_GUARD_MISSING'
+}
+if ($backupSource -match 'Copy-Item -LiteralPath \$final -Destination \$archiveCopy -Recurse') {
+  throw 'BACKUP_PERIODIC_FULL_COPY_REINTRODUCED'
+}
+$periodicCopyIndex = $backupSource.IndexOf('Copy-ThetaImmutableTreeWithHardLinks -Source $final -Destination $archiveCopy', [StringComparison]::Ordinal)
+$currentPointerWriteIndex = $backupSource.IndexOf('Write-ThetaJson $currentPointer', [StringComparison]::Ordinal)
+if ($periodicCopyIndex -lt 0 -or $currentPointerWriteIndex -lt 0 -or $currentPointerWriteIndex -lt $periodicCopyIndex) {
+  throw 'BACKUP_LATEST_POINTER_PROMOTED_BEFORE_PERIODIC_VERIFICATION'
+}
 $failureReceiptPattern = [regex]::Escape("state='FAILED';reasonCode=`$failureCode")
 if ($backupSource -notmatch $failureReceiptPattern) {
   throw 'BACKUP_STRUCTURED_FAILURE_RECEIPT_MISSING'
+}
+
+$spaceBudget = Get-ThetaBackupSpaceBudget -SourceDatabaseBytes 4GB -ExternalAssetsBytes 1GB
+if ($spaceBudget.policyVersion -ne 'theta-backup-peak-space-v2' -or
+    [long]$spaceBudget.requiredBytes -ne [long]15GB -or
+    $spaceBudget.periodicGenerationStorage -ne 'SAME_VOLUME_HARD_LINKS') {
+  throw 'BACKUP_PEAK_SPACE_BUDGET_CALCULATION_WRONG'
+}
+$minimumSpaceBudget = Get-ThetaBackupSpaceBudget -SourceDatabaseBytes 1 -ExternalAssetsBytes 1
+if ([long]$minimumSpaceBudget.requiredBytes -ne [long]4GB) {
+  throw 'BACKUP_PEAK_SPACE_MINIMUM_NOT_ENFORCED'
+}
+try {
+  [void](Get-ThetaBackupSpaceBudget -SourceDatabaseBytes -1 -ExternalAssetsBytes 0)
+  throw 'BACKUP_NEGATIVE_SPACE_BUDGET_ACCEPTED'
+} catch {
+  if ($_.Exception.Message -ne 'BACKUP_SPACE_BUDGET_NEGATIVE_INPUT') { throw }
+}
+
+$hardLinkRoot = Join-Path ([IO.Path]::GetTempPath()) ('theta-hardlink-copy-test-' + [guid]::NewGuid().ToString('N'))
+$hardLinkSource = Join-Path $hardLinkRoot 'source'
+$hardLinkDestination = Join-Path $hardLinkRoot 'destination'
+try {
+  [void](New-Item -ItemType Directory -Path (Join-Path $hardLinkSource 'nested') -Force)
+  [IO.File]::WriteAllText((Join-Path $hardLinkSource 'root.txt'), 'before')
+  [IO.File]::WriteAllText((Join-Path $hardLinkSource 'nested\child.txt'), 'child')
+  if (-not (Test-ThetaBackupHardLinkCapability -Root $hardLinkRoot)) {
+    throw 'BACKUP_HARDLINK_CAPABILITY_PROBE_FALSE'
+  }
+  Copy-ThetaImmutableTreeWithHardLinks -Source $hardLinkSource -Destination $hardLinkDestination
+  if ((Get-Content -Raw -LiteralPath (Join-Path $hardLinkDestination 'nested\child.txt')) -ne 'child') {
+    throw 'BACKUP_HARDLINK_NESTED_FILE_MISSING'
+  }
+  [IO.File]::WriteAllText((Join-Path $hardLinkSource 'root.txt'), 'after')
+  if ((Get-Content -Raw -LiteralPath (Join-Path $hardLinkDestination 'root.txt')) -ne 'after') {
+    throw 'BACKUP_PERIODIC_COPY_IS_NOT_A_HARDLINK'
+  }
+  Protect-ThetaImmutableBackupTree -Path $hardLinkSource
+  if (-not ((Get-Item -LiteralPath (Join-Path $hardLinkDestination 'root.txt')).Attributes -band [IO.FileAttributes]::ReadOnly)) {
+    throw 'BACKUP_HARDLINK_COPY_NOT_PROTECTED_READONLY'
+  }
+  try {
+    Copy-ThetaImmutableTreeWithHardLinks -Source $hardLinkSource -Destination $hardLinkDestination
+    throw 'BACKUP_HARDLINK_EXISTING_DESTINATION_ACCEPTED'
+  } catch {
+    if ($_.Exception.Message -ne 'BACKUP_HARDLINK_DESTINATION_EXISTS') { throw }
+  }
+} finally {
+  if (Test-Path -LiteralPath $hardLinkRoot) { Remove-Item -LiteralPath $hardLinkRoot -Recurse -Force }
+}
+
+$restoreTestSource = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\tools\windows\dr\Test-ThetaRestore.ps1')
+$restoreTokens = $null
+$restoreParseErrors = $null
+[void][Management.Automation.Language.Parser]::ParseInput($restoreTestSource, [ref]$restoreTokens, [ref]$restoreParseErrors)
+if ($restoreParseErrors.Count -ne 0) { throw 'RESTORE_TEST_SCRIPT_PARSE_FAILED' }
+foreach ($required in @('Invoke-ThetaBoundedProcess','/usr/lib/postgresql/18/bin/dropdb','''--if-exists'',''--force''',
+    'LOCAL_TEST_DATABASE_CLEANUP_FAILED',
+    'LOCAL_TEST_RESTORE_ASSET_CLEANUP_FAILED','LOCAL_TEST_RESTORE_PRIMARY_AND_CLEANUP_FAILED',
+    'isolatedDatabaseRetained=$false','restoredAssetCopyRetained=$false')) {
+  if ($restoreTestSource -notmatch [regex]::Escape($required)) {
+    throw "RESTORE_TEST_EPHEMERAL_CLEANUP_MISSING:$required"
+  }
 }
 
 $failureCases = @(
