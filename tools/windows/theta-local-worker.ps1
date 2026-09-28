@@ -39,7 +39,7 @@ if ($LASTEXITCODE -ne 0 -or $currentSha -ne $runtime.buildSha) {
     Set-Content -LiteralPath $statusFile -Encoding utf8
   throw 'THETA_RUNTIME_SHA_MISMATCH'
 }
-if ((& git status --porcelain --untracked-files=no).Count -gt 0) { throw 'THETA_RUNTIME_TRACKED_FILES_DIRTY' }
+if (@(& git status --porcelain --untracked-files=no).Count -gt 0) { throw 'THETA_RUNTIME_TRACKED_FILES_DIRTY' }
 
 $mutex = [Threading.Mutex]::new($false, 'Local\THETA_MASTER_PAPER_SUPERVISOR')
 $owned = $false

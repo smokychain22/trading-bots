@@ -172,6 +172,8 @@ test('Windows worker status never reports stale ONLINE health as current when th
   assert.match(workerSource,/failureCode='THETA_RUNTIME_SHA_MISMATCH'/);
   assert.match(workerSource,/executionGate='LOCKED'/);
   assert.match(workerSource,/runtime\.releasePath/);
+  assert.match(workerSource,/@\(& git status --porcelain --untracked-files=no\)\.Count/,
+    'PowerShell 7 strict mode must count an explicit array when git status is empty');
   assert.match(workerSource,/THETA_RUNTIME_RELEASE_PATH_MISMATCH/);
   assert.match(workerSource,/serverErrorCode -eq 'RUNTIME_SCHEMA_INCOMPATIBLE'/);
   assert.match(workerSource,/leaseAcquired=\$false/);
