@@ -30,6 +30,12 @@ CLI and recovery tools own bounded pools, generally max 1. Database migration, l
 
 Every source-owned `new Pool(...)` constructor under `src/` and `tools/` has a distinct `application_name`. `tests/postgres-application-identity.test.ts` scans those source trees and fails if an unnamed pool is introduced. This makes future `pg_stat_activity` ownership evidence attributable without changing connection limits or query behavior.
 
+## Soak timeout authority
+
+The strict Phase-1 soak has two separate timeout meanings. A pooled client may wait at most 5,000 ms when the pool is already occupied. A new physical connection may take at most 8,000 ms, matching the existing recovery-gate and database-preflight connection window. The pool-wait limit is enforced outside `pg-pool`, and a client that arrives after that limit is released immediately.
+
+The earlier 5,000 ms physical-connection value was introduced directly in the soak implementation and had no separate policy authority. A 40-sample sequential Aiven characterization on 2026-09-28 produced 40 valid connections, P50 1,107.864 ms, P95 2,815.925 ms, and a valid maximum of 7,177.684 ms. That maximum included 3,493.316 ms DNS and 1,744.217 ms TCP, then completed TLS, PostgreSQL startup, its first query, and explicit close. This evidence makes 5,000 ms unsuitable as the physical-connect limit while retaining it as a bounded pool-wait limit. The 8,000 ms physical limit is a reliability gate, not a retry or permission to hide a failed connection.
+
 ## Query replay classes
 
 - `SAFE_IDEMPOTENT_READ`: use `withRuntimePostgresReadRetry` when on a critical runtime boundary. Each retry checks out a fresh client.

@@ -4,7 +4,8 @@ import test from 'node:test';
 import type { Pool, PoolClient } from 'pg';
 import { classifyPostgresRuntimeError, PostgresCommitOutcomeUnknownError } from '../src/theta/postgres-runtime-error.js';
 import { classifyPostgresAcquisitionPath, withRuntimePostgresClient, withRuntimePostgresReadRetry,
-  withRuntimePostgresTransaction,PostgresCheckedOutClientLostError } from '../src/theta/runtime-postgres-client.js';
+  withRuntimePostgresTransaction,PostgresCheckedOutClientLostError,
+  PostgresPoolWaitTimeoutError } from '../src/theta/runtime-postgres-client.js';
 import type { RuntimePostgresClientObservation } from '../src/theta/runtime-postgres-client.js';
 import { PostgresRuntimeCycleStore, safeRuntimeFailure } from '../src/theta/autonomous-runtime.js';
 
@@ -68,6 +69,7 @@ test('every acquired client is observed and released on success and query failur
   assert.deepEqual(succeeded.releases,[false]);
   assert.equal(successObservations.length,1);
   assert.equal(successObservations[0]?.outcome,'SUCCEEDED_RELEASED');
+  assert.equal(successObservations[0]?.poolWaitTimeoutMillis,null);
   assert.equal(successObservations[0]?.acquisitionDurationMs,10);
   assert.equal(successObservations[0]?.checkoutDurationMs,10);
 
@@ -78,6 +80,31 @@ test('every acquired client is observed and released on success and query failur
   assert.deepEqual(failed.releases,[false]);
   assert.equal(failureObservations[0]?.outcome,'OPERATION_FAILED_RELEASED');
   assert.equal(failureObservations[0]?.failureSafeCode,'POSTGRES_42601');
+});
+
+test('separate pool-wait timeout releases a client that arrives after the caller timed out',async()=>{
+  class ImmediateClient extends EventEmitter{
+    _queryable=true;
+    _ending=false;
+    connect(callback:(error?:Error)=>void):void{queueMicrotask(()=>callback());}
+    end(callback?:()=>void):void{this._ending=true;queueMicrotask(()=>callback?.());}
+    ref():void{}
+    unref():void{}
+  }
+  const {Pool:RealPool}=await import('pg');
+  const pool=new RealPool({Client:ImmediateClient,max:1,connectionTimeoutMillis:1_000,idleTimeoutMillis:0} as never);
+  try{
+    const held=await pool.connect();
+    const observations:RuntimePostgresClientObservation[]=[];
+    await assert.rejects(withRuntimePostgresClient(pool,async()=>1,
+      {poolWaitTimeoutMillis:20,observe:(value)=>observations.push(value)}),PostgresPoolWaitTimeoutError);
+    assert.equal(observations[0]?.acquisitionPath,'POOL_QUEUE');
+    assert.equal(observations[0]?.poolWaitTimeoutMillis,20);
+    held.release();
+    await new Promise((resolve)=>setTimeout(resolve,10));
+    assert.equal(pool.waitingCount,0);
+    assert.equal(pool.idleCount,1);
+  }finally{await pool.end();}
 });
 
 test('pool queue timeout and new-connection timeout have distinct acquisition paths',async()=>{

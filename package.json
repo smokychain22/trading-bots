@@ -33,6 +33,7 @@
     "theta:truth-runtime": "tsx tools/theta-runtime-truth.ts --environment-file=.env.local",
     "theta:storage:audit": "node --import tsx tools/theta-storage-audit.ts --environment-file=.env.local",
     "theta:db:stability-soak": "node --import tsx tools/theta-postgres-stability-soak.ts --environment-file=.env.local",
+    "theta:db:fresh-connection-diagnostic": "node --import tsx tools/theta-postgres-fresh-connection-diagnostic.ts --environment-file=.env.local",
     "theta:db:recovery-gate": "node --import tsx tools/theta-database-recovery-gate.mjs --environment-file=.env.local --receipt-path=.theta-local-worker/receipts/database-recovery-gate-latest.json",
     "theta:storage:dependencies": "node --import tsx tools/theta-postgres-dependency-audit.ts",
     "theta:storage:archive-frontiers": "node --import tsx tools/archive-canonical-strategy-frontiers.ts",
