@@ -135,6 +135,15 @@ if ($backupSource -notmatch '\$customDumpComplete = \$true') { throw 'CUSTOM_DUM
 if ($backupSource -notmatch '\(\$customDumpComplete -or \$dumpComplete\)') {
   throw 'COMPLETED_CUSTOM_DUMP_NOT_PRESERVED_AFTER_LATER_FAILURE'
 }
+if ($backupSource -notmatch "-Label 'SCHEMA_DUMP' -AllowPreConnectionRetry") {
+  throw 'SCHEMA_DUMP_PRECONNECTION_RETRY_NOT_ENABLED'
+}
+if ($backupSource -match "-Label 'CUSTOM_DUMP' -AllowPreConnectionRetry") {
+  throw 'CUSTOM_DUMP_PRECONNECTION_RETRY_MUST_REMAIN_DISABLED'
+}
+if ($backupSource -notmatch 'BACKUP_SNAPSHOT_KEEPER_UNAVAILABLE_FOR_RETRY') {
+  throw 'SCHEMA_DUMP_RETRY_MISSING_LIVE_SNAPSHOT_GUARD'
+}
 $failureReceiptPattern = [regex]::Escape("state='FAILED';reasonCode=`$failureCode")
 if ($backupSource -notmatch $failureReceiptPattern) {
   throw 'BACKUP_STRUCTURED_FAILURE_RECEIPT_MISSING'
@@ -142,6 +151,8 @@ if ($backupSource -notmatch $failureReceiptPattern) {
 
 $failureCases = @(
   @{Message='POSTGRES_TOOL_FAILED:pg_dump class=AIVEN_DATA_TRANSFER_QUOTA_EXCEEDED exit=1 diagnostic=redacted';Expected='AIVEN_DATA_TRANSFER_QUOTA_EXCEEDED'},
+  @{Message='POSTGRES_TOOL_FAILED:pg_dump class=POSTGRES_DNS_RESOLUTION_FAILED exit=1 diagnostic=redacted';Expected='POSTGRES_DNS_RESOLUTION_FAILED'},
+  @{Message='pg_dump: error: could not translate host name "example.invalid" to address: Temporary failure in name resolution';Expected='POSTGRES_DNS_RESOLUTION_FAILED'},
   @{Message='POSTGRES_TOOL_FAILED:psql class=POSTGRES_53000 exit=1 diagnostic=redacted';Expected='POSTGRES_53000'},
   @{Message='BACKUP_DISK_SPACE_TOO_LOW:requiredBytes=100 freeBytes=1';Expected='BACKUP_DISK_SPACE_TOO_LOW'},
   @{Message='arbitrary provider detail';Expected='BACKUP_FAILURE_UNCLASSIFIED'}
@@ -151,6 +162,24 @@ foreach ($case in $failureCases) {
   if ($actual -ne $case.Expected) {
     throw "BACKUP_FAILURE_CLASSIFICATION_FAILED:expected=$($case.Expected):actual=$actual"
   }
+}
+
+$preConnectionCases = @(
+  @{Message='pg_dump: error: could not translate host name "example.invalid" to address: Temporary failure in name resolution';Expected=$true},
+  @{Message='POSTGRES_TOOL_FAILED:pg_dump class=POSTGRES_DNS_RESOLUTION_FAILED exit=1 diagnostic=redacted';Expected=$true},
+  @{Message='POSTGRES_TOOL_FAILED:pg_dump class=POSTGRES_CONNECTION_LOST exit=1 diagnostic=redacted';Expected=$false},
+  @{Message='POSTGRES_TOOL_FAILED:pg_dump class=POSTGRES_53000 exit=1 diagnostic=redacted';Expected=$false},
+  @{Message='ERROR: invalid snapshot identifier';Expected=$false}
+)
+foreach ($case in $preConnectionCases) {
+  $actual = Test-ThetaPgFailureRetryableBeforeConnection -Message $case.Message
+  if ($actual -ne $case.Expected) {
+    throw "PRECONNECTION_RETRY_CLASSIFICATION_FAILED:expected=$($case.Expected):actual=$actual"
+  }
+}
+$backupCommonSource = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\tools\windows\dr\ThetaBackup.Common.ps1')
+if ($backupCommonSource -notmatch '\$retryable = \(Test-ThetaPgFailureRetryableBeforeConnection') {
+  throw 'READONLY_SNAPSHOT_QUERY_DNS_RETRY_NOT_WIRED'
 }
 
 $lockRoot = Join-Path ([IO.Path]::GetTempPath()) ('theta-backup-lock-test-' + [guid]::NewGuid().ToString('N'))

@@ -124,12 +124,20 @@ function ConvertTo-ThetaPgDiagnostic {
 function Get-ThetaPgFailureClass {
   param([string]$Diagnostic)
   if ($Diagnostic -match '(?i)exceeded (?:the )?data transfer quota') { return 'AIVEN_DATA_TRANSFER_QUOTA_EXCEEDED' }
+  if ($Diagnostic -match '(?i)(could not translate host name|temporary failure in name resolution|name or service not known|no such host is known)') {
+    return 'POSTGRES_DNS_RESOLUTION_FAILED'
+  }
   if ($Diagnostic -match '(?i)(remaining connection slots|too many clients|SQLSTATE\s*53000)') { return 'POSTGRES_53000' }
   if ($Diagnostic -match '(?i)(database system is starting up|cannot connect now|SQLSTATE\s*57P03)') { return 'POSTGRES_57P03' }
   if ($Diagnostic -match '(?i)(unexpected eof|connection to server was lost|server closed the connection unexpectedly|SSL SYSCALL|could not receive data|could not send data|ECONNRESET)') {
     return 'POSTGRES_CONNECTION_LOST'
   }
   return 'POSTGRES_TOOL_ERROR'
+}
+
+function Test-ThetaPgFailureRetryableBeforeConnection {
+  param([Parameter(Mandatory)][string]$Message)
+  return (Get-ThetaBackupFailureCode -Message $Message) -eq 'POSTGRES_DNS_RESOLUTION_FAILED'
 }
 
 function Get-ThetaBackupFailureCode {
@@ -288,7 +296,8 @@ function Invoke-ThetaSql {
       return (($result | Out-String).Trim())
     } catch {
       $message = [string]$_.Exception.Message
-      $retryable = $message -match '(?i)(unexpected eof|connection to server was lost|server closed the connection unexpectedly|SSL SYSCALL|could not receive data|could not send data|connection timed out|timeout expired|could not connect|remaining connection slots|too many clients|POSTGRES_53000|POSTGRES_57P03)'
+      $retryable = (Test-ThetaPgFailureRetryableBeforeConnection -Message $message) -or
+        $message -match '(?i)(unexpected eof|connection to server was lost|server closed the connection unexpectedly|SSL SYSCALL|could not receive data|could not send data|connection timed out|timeout expired|could not connect|remaining connection slots|too many clients|POSTGRES_53000|POSTGRES_57P03)'
       if ($attempt -eq $attempts -or -not $retryable) { throw }
     }
   }

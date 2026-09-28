@@ -15,12 +15,19 @@ Initialize-ThetaBackupRoot $root
 $backupProcessLock = Enter-ThetaBackupProcessLock $root
 $logPath = Join-Path $root ('logs\backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
 function Log([string]$Message) { [IO.File]::AppendAllText($logPath, "$(Get-Date -Format o) $Message`n") }
-function Invoke-VerifiedDumpWithRetry([string[]]$Arguments, [string]$OutputPath, [string]$Label) {
+function Invoke-VerifiedDumpWithRetry(
+  [string[]]$Arguments,
+  [string]$OutputPath,
+  [string]$Label,
+  [switch]$AllowPreConnectionRetry
+) {
   $delays = @(0, 5, 20)
   # An exported snapshot belongs to one keeper transaction. Once a dump
-  # fails, never spend more time retrying against a snapshot that may have
-  # disappeared with a provider connection reset.
-  $maximumAttempts = if ($script:ThetaBackupSnapshotId) { 1 } else { $delays.Count }
+  # reaches PostgreSQL and fails, never retry against a snapshot that may
+  # have disappeared with a provider connection reset. A schema-only dump
+  # may retry a DNS failure that happened before connection, but only while
+  # the original snapshot keeper is still alive.
+  $maximumAttempts = if ($script:ThetaBackupSnapshotId -and -not $AllowPreConnectionRetry) { 1 } else { $delays.Count }
   for ($attempt = 1; $attempt -le $maximumAttempts; $attempt++) {
     if ($delays[$attempt - 1] -gt 0) { Start-Sleep -Seconds $delays[$attempt - 1] }
     Remove-Item -LiteralPath $OutputPath -Force -ErrorAction SilentlyContinue
@@ -33,6 +40,14 @@ function Invoke-VerifiedDumpWithRetry([string[]]$Arguments, [string]$OutputPath,
       $diagnostic = $_.Exception.Message -replace '[\r\n]+',' '
       Log "$Label`_ATTEMPT_FAILED attempt=$attempt diagnostic=$diagnostic"
       if ($attempt -eq $maximumAttempts) { throw }
+      if ($script:ThetaBackupSnapshotId) {
+        if (-not $AllowPreConnectionRetry -or -not (Test-ThetaPgFailureRetryableBeforeConnection -Message $diagnostic)) {
+          throw
+        }
+        if ($null -eq $snapshotKeeper -or $snapshotKeeper.Process.HasExited) {
+          throw 'BACKUP_SNAPSHOT_KEEPER_UNAVAILABLE_FOR_RETRY'
+        }
+      }
     }
   }
 }
@@ -84,7 +99,7 @@ try {
   Log 'CONSISTENT_SOURCE_SNAPSHOT_ACQUIRED'
   Invoke-VerifiedDumpWithRetry -Arguments @('--format=custom','--snapshot',$script:ThetaBackupSnapshotId,'--file',(Get-ThetaPgFilePath $archive $source),'--dbname',$source.Database) -OutputPath $archive -Label 'CUSTOM_DUMP'
   $customDumpComplete = $true
-  Invoke-VerifiedDumpWithRetry -Arguments @('--schema-only','--snapshot',$script:ThetaBackupSnapshotId,'--file',(Get-ThetaPgFilePath $schema $source),'--dbname',$source.Database) -OutputPath $schema -Label 'SCHEMA_DUMP'
+  Invoke-VerifiedDumpWithRetry -Arguments @('--schema-only','--snapshot',$script:ThetaBackupSnapshotId,'--file',(Get-ThetaPgFilePath $schema $source),'--dbname',$source.Database) -OutputPath $schema -Label 'SCHEMA_DUMP' -AllowPreConnectionRetry
   Log 'DUMP_COMPLETE'
   $dumpComplete = $true
   $inventorySql = @'
