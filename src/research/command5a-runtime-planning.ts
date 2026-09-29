@@ -4,6 +4,20 @@ export const command5aRuntimePlanningVersion = 'theta-command5a-runtime-planning
 
 export const command5aCalendarLookaheadDays = 21;
 
+/** An explicit feed request must never silently fall back to another feed. */
+export function resolveCommand5aFeeds(input: {
+  readonly optionFeed?: string;
+  readonly stockFeed?: string;
+}): { readonly optionFeed: 'opra' | 'indicative'; readonly stockFeed: 'iex' | 'sip' } {
+  if (input.optionFeed !== undefined && input.optionFeed !== 'opra' && input.optionFeed !== 'indicative') {
+    throw new Error('COMMAND5A_OPTION_FEED_INVALID');
+  }
+  if (input.stockFeed !== undefined && input.stockFeed !== 'iex' && input.stockFeed !== 'sip') {
+    throw new Error('COMMAND5A_STOCK_FEED_INVALID');
+  }
+  return { optionFeed: input.optionFeed ?? 'indicative', stockFeed: input.stockFeed ?? 'iex' };
+}
+
 export interface Command5aCalendarRangeInput {
   readonly decisionAt: string;
   readonly expirations: readonly string[];

@@ -8,6 +8,7 @@ import {
   command5aSafeFailureCode,
   lastSafeCommand5aPageIndex,
   processCommand5aPage,
+  resolveCommand5aFeeds,
 } from '../src/research/command5a-runtime-planning.js';
 import { localResearchSpoolBudgetBytes } from '../src/storage/local-research-archive-health.js';
 
@@ -21,6 +22,14 @@ test('short-DTE subjects still request enough calendar coverage for later learni
     end: '2026-10-16',
     lookaheadDays: command5aCalendarLookaheadDays,
   });
+});
+
+test('an explicit Command-5A feed cannot silently downgrade to a different feed', () => {
+  assert.deepEqual(resolveCommand5aFeeds({}), { optionFeed: 'indicative', stockFeed: 'iex' });
+  assert.deepEqual(resolveCommand5aFeeds({ optionFeed: 'opra', stockFeed: 'sip' }),
+    { optionFeed: 'opra', stockFeed: 'sip' });
+  assert.throws(() => resolveCommand5aFeeds({ optionFeed: 'opr' }), /COMMAND5A_OPTION_FEED_INVALID/);
+  assert.throws(() => resolveCommand5aFeeds({ stockFeed: 'sipp' }), /COMMAND5A_STOCK_FEED_INVALID/);
 });
 
 test('a later expiration extends the calendar query without changing the decision start', () => {

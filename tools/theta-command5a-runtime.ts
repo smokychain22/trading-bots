@@ -24,6 +24,7 @@ import {
   command5aSafeFailureCode,
   lastSafeCommand5aPageIndex,
   processCommand5aPage,
+  resolveCommand5aFeeds,
 } from '../src/research/command5a-runtime-planning.js';
 
 type FrontierRow = {
@@ -215,11 +216,13 @@ async function schedule(): Promise<void> {
 
 async function observe(): Promise<void> {
   const alpaca = alpacaConfig();
+  const feeds = resolveCommand5aFeeds({ optionFeed: argument('--option-feed='),
+    stockFeed: argument('--stock-feed=') });
   const scheduler = new LocalObservationJobScheduler(schedulerPath);
   try {
     const source = new AlpacaCommand5aObservationSource(alpaca, {
-      optionFeed: argument('--option-feed=') === 'opra' ? 'opra' : 'indicative',
-      stockFeed: argument('--stock-feed=') === 'sip' ? 'sip' : 'iex',
+      optionFeed: feeds.optionFeed,
+      stockFeed: feeds.stockFeed,
       maximumResearchQuoteAgeSeconds: Number(argument('--max-research-quote-age-seconds=') ?? '900'),
       maximumTargetDelaySeconds: Number(argument('--max-target-delay-seconds=') ?? '900'),
     });

@@ -82,6 +82,12 @@ GET-only requests, exact-leg marks, typed provider deferrals, idempotent local
 jobs and bounded process wiring. They do not prove provider entitlement or
 current-worker market outcomes.
 
+The isolated follow-up rejects an invalid explicit `--option-feed` or
+`--stock-feed` instead of silently switching an intended OPRA/SIP research
+observation to indicative/IEX. Default feeds apply only when the option is
+omitted. This is a source-level provenance fix, not a change to executable
+Alpaca quote authority or the deployed locked worker.
+
 The frozen `cf9bc26a3cdd3646a663fe6fa97c8055606a2caa` release still uses
 its earlier provider receipt semantics. This branch's corrected receipt times
 are not deployed. A Phase-1 L7 claim from that worker must be judged against
