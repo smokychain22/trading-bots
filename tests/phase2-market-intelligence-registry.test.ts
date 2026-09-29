@@ -14,6 +14,11 @@ test('Phase-2 provider authority is complete and has one Alpaca Paper option-pri
   assert.match(authorities[0]?.fallback??'',/NONE/);
   assert.equal(providerCapabilityAuthorityMatrix.filter((item)=>item.provider==='OPTIONOMICS')
     .every((item)=>item.pricingSuitability==='NOT_PRICING_AUTHORITY'),true);
+  const capabilities=new Set(providerCapabilityAuthorityMatrix.map((item)=>item.logicalCapability));
+  for(const capability of ['BROKER_ACCOUNT','BROKER_POSITIONS_ORDERS','BROKER_ACTIVITY_AND_FILL_HISTORY',
+    'MARKET_SESSION','UNIVERSE_AND_OPTION_CONTRACTS','OPTION_EXECUTABLE_BBO','UNDERLYING_BBO_TRADE',
+    'UNDERLYING_HISTORY','CORPORATE_ACTIONS','HISTORICAL_OPTION_TRADES_BARS','OPTION_CHAIN_ANALYTICS',
+    'FLOW_EXPOSURE_SURFACE_CONTEXT','EVENT_EARNINGS_CONTEXT'])assert.equal(capabilities.has(capability),true,capability);
 });
 
 test('all 20 feature families have an honest producer, consumer, units, timing and role',()=>{
