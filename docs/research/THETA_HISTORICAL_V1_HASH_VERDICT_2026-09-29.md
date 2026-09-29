@@ -28,7 +28,12 @@ Read-only inspection found 106 v1 exports and one each at v3, v5, and v6.
 The original producer hash was reproduced for 104 v1 files using the
 date-elision, `exportedAt`-excluded variant. The other two v1 files match the
 date-aware, `exportedAt`-excluded variant. All three later-version files match
-the current date-aware identity formula. No file needed a rewritten hash.
+the current date-aware identity formula. The bounded read-only audit
+`tools/theta-audit-historical-export-hashes.ts` inspected all 109 SHA-named
+directories, checked folder, manifest, dataset, source-window and row-count
+agreement, and returned `producerHashReproduced=109`, `issues=[]`,
+`timestampIntegrityUnprotected=104`, and `promotionGrade=false`.
+No file needed a rewritten hash.
 
 One representative v1 archive, declared hash
 `00480c2cb00d33ccdbabcefb6b70baf28e74ceb208826c93901a3ec71d7bc24e`,
