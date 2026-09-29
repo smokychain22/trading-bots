@@ -375,12 +375,15 @@ function assembleFusionSnapshotInput(params: {
   readonly universeEventEvidence: Pick<UnderlyingCandidateInput, 'unsupportedCorporateActionPending' | 'eventNear'> | null;
   readonly universeDecision: UnderlyingDecision | null;
   readonly account: MasterAccountSnapshot | null;
+  readonly accountRetrievedAt: string | null;
   readonly accountOrigin: ProvenanceOrigin;
   readonly accountQuality: DataQualityState;
   readonly contractsOrigin: ProvenanceOrigin;
   readonly contractsQuality: DataQualityState;
+  readonly contractsRetrievedAt: string | null;
   readonly quotesOrigin: ProvenanceOrigin;
   readonly quotesQuality: DataQualityState;
+  readonly quotesRetrievedAt: string | null;
   readonly optionomicsOrigin: ProvenanceOrigin;
   readonly optionomicsQuality: DataQualityState;
   readonly optionomicsChain: NormalizedOptionomicsChain | null;
@@ -393,15 +396,19 @@ function assembleFusionSnapshotInput(params: {
   readonly optionomicsFlowOrigin: ProvenanceOrigin;
   readonly optionomicsFlowQuality: DataQualityState;
   readonly positions: readonly AlpacaPositionSnapshot[];
+  readonly positionsRetrievedAt: string | null;
   readonly positionsOrigin: ProvenanceOrigin;
   readonly positionsQuality: DataQualityState;
   readonly openOrders: readonly AlpacaOpenOrderSnapshot[];
+  readonly openOrdersRetrievedAt: string | null;
   readonly openOrdersOrigin: ProvenanceOrigin;
   readonly openOrdersQuality: DataQualityState;
   readonly clock: AlpacaMarketClock | null;
+  readonly clockRetrievedAt: string | null;
   readonly clockOrigin: ProvenanceOrigin;
   readonly clockQuality: DataQualityState;
   readonly calendar: readonly AlpacaCalendarSession[];
+  readonly calendarRetrievedAt: string | null;
   readonly calendarOrigin: ProvenanceOrigin;
   readonly calendarQuality: DataQualityState;
   readonly derivedExposure: DerivedAccountExposure;
@@ -580,27 +587,33 @@ function assembleFusionSnapshotInput(params: {
     },
     sourceProvenance: [
       {
-        provider: 'ALPACA', operationAlias: 'alpaca.get_account', asOf: params.accountOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        provider: 'ALPACA', operationAlias: 'alpaca.get_account', asOf: null,
+        retrievedAt: params.accountRetrievedAt ?? params.now,
         state: params.accountQuality, contentHash: hashJson(accountJson), feed: null,
         contractVersion: 'alpaca-account-v1', truthRole: 'ACCOUNT', requiredForNewRisk: true,
       },
       {
-        provider: 'ALPACA', operationAlias: 'alpaca.get_option_contracts', asOf: params.contractsOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        provider: 'ALPACA', operationAlias: 'alpaca.get_option_contracts', asOf: null,
+        retrievedAt: params.contractsRetrievedAt ?? params.now,
         state: params.contractsQuality, contentHash: hashJson(contractsJson), feed: null,
         contractVersion: 'alpaca-option-contracts-v1', truthRole: 'CONTRACT', requiredForNewRisk: true,
       },
       {
-        provider: 'ALPACA', operationAlias: 'alpaca.get_option_snapshots', asOf: params.quotesOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        provider: 'ALPACA', operationAlias: 'alpaca.get_option_snapshots', asOf: null,
+        retrievedAt: params.quotesRetrievedAt ?? params.now,
         state: params.quotesQuality, contentHash: hashJson(contractsJson), feed: 'indicative',
         contractVersion: 'alpaca-option-snapshots-v1', truthRole: 'QUOTE', requiredForNewRisk: true,
       },
       {
-        provider: 'OPTIONOMICS', operationAlias: 'optionomics.get_option_chain', asOf: params.optionomicsOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        provider: 'OPTIONOMICS', operationAlias: 'optionomics.get_option_chain', asOf: optionomicsProviderTimestamp,
+        retrievedAt: params.optionomicsChain?.retrievedAt ?? params.now,
         state: optionomicsAttempted ? params.optionomicsQuality : 'UNKNOWN', contentHash: hashJson(params.optionomicsEntries as unknown as JsonValue), feed: null,
         contractVersion: 'optionomics-option-chain-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
       },
       {
-        provider: 'OPTIONOMICS', operationAlias: 'optionomics.get_flow_net', asOf: params.optionomicsFlowOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        provider: 'OPTIONOMICS', operationAlias: 'optionomics.get_flow_net', asOf: null,
+        retrievedAt: params.optionomicsFlowWindows.map((window) => window.retrievedAt)
+          .toSorted((a, b) => Date.parse(b) - Date.parse(a))[0] ?? params.now,
         state: optionomicsAttempted ? params.optionomicsFlowQuality : 'UNKNOWN', contentHash: hashJson(params.optionomicsFlowWindows as unknown as JsonValue), feed: null,
         contractVersion: 'optionomics-net-flow-windows-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
       },
@@ -611,22 +624,26 @@ function assembleFusionSnapshotInput(params: {
         feed: null, contractVersion: observation.contractVersion, truthRole: 'CONTEXT' as const, requiredForNewRisk: false,
       })),
       {
-        provider: 'ALPACA', operationAlias: 'alpaca.get_positions', asOf: params.positionsOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        provider: 'ALPACA', operationAlias: 'alpaca.get_positions', asOf: null,
+        retrievedAt: params.positionsRetrievedAt ?? params.now,
         state: params.positionsQuality, contentHash: hashJson(positionsJson), feed: null,
         contractVersion: 'alpaca-positions-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
       },
       {
-        provider: 'ALPACA', operationAlias: 'alpaca.get_open_orders', asOf: params.openOrdersOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        provider: 'ALPACA', operationAlias: 'alpaca.get_open_orders', asOf: null,
+        retrievedAt: params.openOrdersRetrievedAt ?? params.now,
         state: params.openOrdersQuality, contentHash: hashJson(openOrdersJson), feed: null,
         contractVersion: 'alpaca-open-orders-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
       },
       {
-        provider: 'ALPACA', operationAlias: 'alpaca.get_clock', asOf: params.clockOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        provider: 'ALPACA', operationAlias: 'alpaca.get_clock', asOf: params.clock?.timestamp ?? null,
+        retrievedAt: params.clockRetrievedAt ?? params.now,
         state: params.clockQuality, contentHash: hashJson((params.clock as unknown as JsonValue) ?? { fetched: false }), feed: null,
         contractVersion: 'alpaca-clock-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
       },
       {
-        provider: 'ALPACA', operationAlias: 'alpaca.get_calendar', asOf: params.calendarOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
+        provider: 'ALPACA', operationAlias: 'alpaca.get_calendar', asOf: null,
+        retrievedAt: params.calendarRetrievedAt ?? params.now,
         state: params.calendarQuality, contentHash: hashJson(params.calendar as unknown as JsonValue), feed: null,
         contractVersion: 'alpaca-calendar-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
       },
@@ -787,12 +804,12 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let accountEvidence = notAttemptedEvidence();
   let accountFetchedAt: string | null = null;
   try {
-    // Keep the decision timestamp stable across the cycle, while recording
-    // when each external observation was actually requested. Reusing the
-    // cycle start here would hide a slow/stalled provider sequence from the
-    // temporal-consistency gate.
+    // Preserve the request start for a failed call. On success, replace it
+    // with the response-completion time so a slow provider cannot appear
+    // fresh merely because the cycle began earlier.
     accountFetchedAt = config.now();
-    account = await fetchMasterAccountSnapshot(config.alpaca, decisionTime);
+    account = { ...await fetchMasterAccountSnapshot(config.alpaca, decisionTime), receivedAt: config.now() };
+    accountFetchedAt = account.receivedAt;
     const accountRequiredValuesPresent = account.accountStatus !== null
       && account.equity !== null
       && account.cash !== null
@@ -820,7 +837,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let positionsFetchedAt: string | null = null;
   try {
     positionsFetchedAt = config.now();
-    positions = await fetchPositions(config.alpaca, decisionTime);
+    const fetched = await fetchPositions(config.alpaca, decisionTime);
+    const positionsReceivedAt = config.now();
+    positionsFetchedAt = positionsReceivedAt;
+    positions = fetched.map((position) => ({ ...position, receivedAt: positionsReceivedAt }));
     positionsEvidence = { origin: 'REAL_PROVIDER', quality: 'GOOD' };
   } catch (error) {
     positionsEvidence = failedProviderEvidence(error);
@@ -832,7 +852,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let openOrdersFetchedAt: string | null = null;
   try {
     openOrdersFetchedAt = config.now();
-    openOrders = await fetchOpenOrders(config.alpaca, decisionTime);
+    const fetched = await fetchOpenOrders(config.alpaca, decisionTime);
+    const ordersReceivedAt = config.now();
+    openOrdersFetchedAt = ordersReceivedAt;
+    openOrders = fetched.map((order) => ({ ...order, receivedAt: ordersReceivedAt }));
     openOrdersEvidence = { origin: 'REAL_PROVIDER', quality: 'GOOD' };
   } catch (error) {
     openOrdersEvidence = failedProviderEvidence(error);
@@ -845,8 +868,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   // provider capability failure.
   let clock: AlpacaMarketClock | null = null;
   let clockEvidence = notAttemptedEvidence();
+  let clockRetrievedAt: string | null = null;
   try {
-    clock = await fetchMarketClock(config.alpaca, decisionTime);
+    clock = { ...await fetchMarketClock(config.alpaca, decisionTime), receivedAt: config.now() };
+    clockRetrievedAt = clock.receivedAt;
     clockEvidence = clock.isOpen !== null
       ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
       : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
@@ -866,8 +891,10 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   }
   let calendar: readonly AlpacaCalendarSession[] = [];
   let calendarEvidence = notAttemptedEvidence();
+  let calendarRetrievedAt: string | null = null;
   try {
     calendar = await fetchMarketCalendar(config.alpaca, marketDate, calendarEndDate.toISOString().slice(0, 10));
+    calendarRetrievedAt = config.now();
     calendarEvidence = calendar.length > 0
       ? { origin: 'REAL_PROVIDER', quality: 'GOOD' }
       : { origin: 'REAL_PROVIDER_UNKNOWN', quality: 'UNKNOWN' };
@@ -902,7 +929,9 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       { symbols: [underlying], timeframe: '1Day', start: config.historyStart, end: config.historyEnd, feed: 'iex', maxPages: config.historyMaxPages, adjustment: 'split' },
       receivedAt,
     );
-    const bars = barsResult.bars.filter((b) => b.symbol === underlying);
+    const historyReceivedAt = config.now();
+    const bars = barsResult.bars.filter((b) => b.symbol === underlying)
+      .map((bar) => ({ ...bar, receivedAt: historyReceivedAt }));
     historyBars = bars;
     if (barsResult.complete && bars.length > 0) {
       historyOrigin = 'REAL_PROVIDER';
@@ -1077,6 +1106,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   let optionContractsComplete: boolean | null = null;
   let contractsEvidence = notAttemptedEvidence();
   let quotesEvidence = notAttemptedEvidence();
+  let contractsRetrievedAt: string | null = null;
+  let quotesRetrievedAt: string | null = null;
   const candidates: RawCandidateInput[] = [];
   let mergedContractsForSnapshot: ReturnType<typeof mergeOptionChain> = [];
   let aegisSpreadStressEvidence: AegisSpreadStressAssessmentMap = {};
@@ -1122,6 +1153,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
           underlyingSymbol: underlying, expirationDateGte: window.gte,
           expirationDateLte: window.lte, optionType, showDeliverables: true, limit: 100, maxPages: config.maxOptionPages,
         });
+        contractsRetrievedAt = config.now();
         const seen = new Set(contractItems.map((item) => item.symbol));
         for (const item of result.items) if (!seen.has(item.symbol)) {
           contractItems.push(item);
@@ -1161,6 +1193,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
         limit: 1_000, maxPages: config.maxOptionPages,
       });
       const snapshotReceivedAt = config.now();
+      quotesRetrievedAt = snapshotReceivedAt;
       for (const [symbol, snapshot] of result.snapshots) {
         snapshotsBySymbol.set(symbol, snapshot);
         snapshotReceivedAtBySymbol.set(symbol, snapshotReceivedAt);
@@ -1364,6 +1397,12 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
           :'ALPACA_UNDERLYING_IEX_REFERENCE_UNQUALIFIED');
       }
     }
+    quotesRetrievedAt = [quotesRetrievedAt,
+      ...refreshObservations.filter((observation) => observation.state === 'REFRESHED')
+        .map((observation) => observation.refreshReceivedAt),
+      underlyingQuote?.receivedAt ?? null, underlyingTrade?.receivedAt ?? null]
+      .filter((timestamp): timestamp is string => timestamp !== null)
+      .toSorted((left, right) => Date.parse(right) - Date.parse(left))[0] ?? null;
     // This is the actual PIT decision cutoff. Every exact finalist and
     // underlying quote refresh above was observed no later than this instant.
     decisionTime = config.now();
@@ -1570,7 +1609,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   // so every returned run (successful or not) carries a genuine,
   // deterministic snapshot identity. NEVER a placeholder hash.
   const snapshotInput = assembleFusionSnapshotInput({
-    now: decisionTime, underlying, account,
+    now: decisionTime, underlying, account, accountRetrievedAt: accountFetchedAt,
     universeEventEvidence: (() => {
       const input = inputsBySymbol.get(underlying);
       return input === undefined ? null : {
@@ -1581,15 +1620,21 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     universeDecision: decisions.find((decision) => decision.symbol === underlying) ?? null,
     accountOrigin: accountEvidence.origin, accountQuality: accountEvidence.quality,
     contractsOrigin: contractsEvidence.origin, contractsQuality: contractsEvidence.quality,
+    contractsRetrievedAt,
     quotesOrigin: quotesEvidence.origin, quotesQuality: quotesEvidence.quality,
+    quotesRetrievedAt,
     optionomicsOrigin: optionomicsEvidence.origin, optionomicsQuality: optionomicsEvidence.quality, optionomicsChain, optionomicsEntries,
     optionomicsFlowWindows, optionomicsFlowOrigin: optionomicsFlowEvidence.origin, optionomicsFlowQuality: optionomicsFlowEvidence.quality,
     optionomicsContextObservations, macroEventCoverage, optionomicsContextOrigin: optionomicsContextEvidence.origin,
     optionomicsContextQuality: optionomicsContextEvidence.quality,
     positions, positionsOrigin: positionsEvidence.origin, positionsQuality: positionsEvidence.quality,
+    positionsRetrievedAt: positionsFetchedAt,
     openOrders, openOrdersOrigin: openOrdersEvidence.origin, openOrdersQuality: openOrdersEvidence.quality,
+    openOrdersRetrievedAt: openOrdersFetchedAt,
     clock, clockOrigin: clockEvidence.origin, clockQuality: clockEvidence.quality,
+    clockRetrievedAt,
     calendar, calendarOrigin: calendarEvidence.origin, calendarQuality: calendarEvidence.quality,
+    calendarRetrievedAt,
     derivedExposure,
     portfolioCorrelation,
     mergedContracts: [...mergedContractsForSnapshot],

@@ -446,6 +446,24 @@ itMockedProviderRealCodePath('decision time is finalized after collected quote t
     const quoteTimestamp=raw.quoteTimestamp;
     if(typeof quoteTimestamp==='string')assert.ok(Date.parse(quoteTimestamp)<=decisionAt);
   }
+  const provenance = result.fusionSnapshot?.snapshot.sourceProvenance;
+  assert.ok(Array.isArray(provenance));
+  for (const alias of ['alpaca.get_account', 'alpaca.get_option_contracts', 'alpaca.get_option_snapshots']) {
+    const receipt = provenance.find((item) => item.operationAlias === alias);
+    assert.ok(receipt);
+    assert.equal(receipt.asOf, null);
+    assert.ok(Date.parse(receipt.retrievedAt) <= decisionAt);
+    assert.ok(Date.parse(receipt.retrievedAt) < decisionAt);
+  }
+  const accountReceipt = provenance.find((item) => item.operationAlias === 'alpaca.get_account');
+  assert.ok(accountReceipt);
+  const account = result.fusionSnapshot?.snapshot.accountState;
+  assert.ok(account !== null && typeof account === 'object' && !Array.isArray(account));
+  assert.equal(account.receivedAt, accountReceipt.retrievedAt);
+  const historyReceipt = provenance.find((item) => item.operationAlias === 'alpaca.get_stock_bars');
+  assert.ok(historyReceipt);
+  assert.ok(Date.parse(historyReceipt.retrievedAt) > Date.parse(result.startedAt));
+  assert.ok(Date.parse(historyReceipt.retrievedAt) <= decisionAt);
 });
 
 itMockedProviderRealCodePath('no candidates on this underlying yields a coherent result, never a crash', async () => {

@@ -27,7 +27,7 @@ evidence window without restarting the aligned worker for this status alone.
 | --- | --- | --- | --- |
 | 1 | Current release frozen | `FORWARD_DATA_REQUIRED` | Current-worker open-session canonical frontier, durable method provenance, honest per-method L7 and non-real rejection, persisted T0, provider-free deterministic replay. |
 | 2 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_1` | Current executable two-sided quote entitlement, provenance and PIT operation matrix need qualification. Optional research features cannot become hard entry gates by default. |
-| 3 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_2` | Candidate contracts were already normalized. This branch validates broker-derived portfolio exposure and correlation shape, and rejects provider/contract receipts observed after snapshot decision time or correlation evidence falsely marked usable before availability. Other state blobs, source timestamp truth and current-worker replay still need audit. Research T0 adapters do not prove Production replay. |
+| 3 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_2` | Candidate contracts were already normalized. This branch validates broker-derived portfolio exposure and correlation shape, rejects future-received evidence, and now records actual completed account, positions, orders, clock, calendar, contract and quote receipt times rather than relabeling the decision time as their receipt time. Other state blobs and current-worker replay still need audit. Research T0 adapters do not prove Production replay. |
 | 4 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_3` | Q/H/D/A/C/WAIT economics need after-cost and lifecycle invariants. No empirical continuation value is available. |
 | 5 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_4` | One AEGIS and sizing authority remains mandatory. Simulated idempotency and restart tests do not authorize Paper submissions. |
 | 6 | `SOURCE_COMPLETE_DATA_PENDING` for imported research modules only | `EMPIRICALLY_UNPROVEN` | Historical recovered corpus has no selected or resolved outcomes. Future capture and truth-class joins require later real observations. |
@@ -82,9 +82,16 @@ GET-only requests, exact-leg marks, typed provider deferrals, idempotent local
 jobs and bounded process wiring. They do not prove provider entitlement or
 current-worker market outcomes.
 
+The frozen `cf9bc26a3cdd3646a663fe6fa97c8055606a2caa` release still uses
+its earlier provider receipt semantics. This branch's corrected receipt times
+are not deployed. A Phase-1 L7 claim from that worker must be judged against
+the persisted raw provider and decision timestamps, not inferred from this
+branch's source tests or its synthesized source-provenance fields.
+
 The first isolated integration SHA `d36e0801451b11f01712a86817af8a3c8382928d`
 passed exact-SHA CI run `36534651935`. Later Phase-3 typing work on this
-branch has separate tests and requires its own exact-SHA CI before promotion.
+branch passed exact-SHA CI runs `36535577075` and `36536038309`. The subsequent
+provider-timing correction is source-only and still requires its own CI.
 
 ## Unknown and safety register
 
