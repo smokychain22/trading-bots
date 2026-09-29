@@ -1,0 +1,74 @@
+import sys
+import unittest
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'quant'))
+from test_empirical_pipeline import _candidate_raw
+from research.research_cli import _dispatch
+
+
+class ResearchCliMissingnessTests(unittest.TestCase):
+    def test_missingness_subcommand(self):
+        result = _dispatch('missingness', {
+            'records': [{'value': 1.0, 'feature': 'IV'}, {'value': None, 'feature': 'IV'}],
+            'valueKey': 'value', 'dimensions': ['feature'],
+        })
+        self.assertEqual(result['missingTotal'], 1)
+
+
+class ResearchCliCoverageTests(unittest.TestCase):
+    def test_coverage_subcommand(self):
+        result = _dispatch('coverage', {'candidates': [_candidate_raw(candidate_id='c1')]})
+        self.assertEqual(result['uniqueCandidateCount'], 1)
+
+
+class ResearchCliStrictnessTests(unittest.TestCase):
+    def test_strictness_subcommand(self):
+        result = _dispatch('strictness', {'rows': [
+            {'strategy': 'THETA_CONVENTIONAL', 'date': '2026-01-01', 'reasonCode': 'ECONOMIC_VALUE_INSUFFICIENT', 'candidateId': 'c1'},
+        ]})
+        self.assertEqual(result['totalCount'], 1)
+
+
+class ResearchCliBenchmarkTests(unittest.TestCase):
+    def test_benchmark_single_id_subcommand(self):
+        result = _dispatch('benchmark', {'benchmarkId': 'B0'})
+        self.assertEqual(result['state'], 'RUNNER_IMPLEMENTED_DATA_AVAILABLE')
+
+    def test_benchmark_all_ids_subcommand(self):
+        result = _dispatch('benchmark', {})
+        self.assertGreater(len(result), 20)
+
+
+class ResearchCliCalibrationTests(unittest.TestCase):
+    def test_calibration_subcommand(self):
+        result = _dispatch('calibration', {'probabilities': [0.5, 0.5], 'labels': [1, 0], 'binCount': 2})
+        self.assertEqual(result['sampleSize'], 2)
+
+
+class ResearchCliReproducibilityVerifyTests(unittest.TestCase):
+    def test_reproducibility_verify_subcommand(self):
+        from research.reproducibility_bundle import build_reproducibility_bundle
+        bundle = build_reproducibility_bundle(
+            sourceSha='a' * 40, datasetHash='b' * 64, configHash='c' * 64, featureVersion='fv-1',
+            labelVersion='lv-1', modelVersion='mv-1', splitHash='d' * 64, seed=42,
+            experimentId='EXP-1', metricHash='e' * 64,
+        )
+        result = _dispatch('reproducibility-verify', {'bundle': bundle})
+        self.assertTrue(result['verified'])
+
+
+class ResearchCliNotYetIntegratedTests(unittest.TestCase):
+    def test_not_yet_integrated_commands_report_honestly(self):
+        for command in ('features', 'dataset-build', 'filter-value'):
+            result = _dispatch(command, {})
+            self.assertEqual(result['state'], 'BLOCKED_MISSING_INTEGRATION')
+
+
+class ResearchCliUnknownCommandTests(unittest.TestCase):
+    def test_unknown_command_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'UNKNOWN_COMMAND'):
+            _dispatch('not-a-real-command', {})
+
+
+if __name__ == '__main__':
+    unittest.main()

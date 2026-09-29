@@ -269,3 +269,47 @@ def fit_har_rv_ols(features: Sequence[HarRvFeatures], targets: Sequence[float]) 
         intercept=intercept, beta_daily=beta_daily, beta_weekly=beta_weekly, beta_monthly=beta_monthly,
         observations=len(features),
     )
+
+
+def close_to_close_realized_volatility_result(
+    closes: Sequence[Optional[float]], as_of_index: int, window: int = 20,
+    periods_per_year: float = 252.0, max_bars_since_last: int = 1,
+    as_of: str = "", retrieved_at: str = "", source_provider: str = "INTERNAL_BAR_SERIES",
+    version: str = "realized-vol-close-to-close-v1",
+) -> "FeatureResult":
+    """PIT-safe canonical result for an already observed close series."""
+    from features.feature_contract import FeatureResult, FeatureResultState, FeatureTruthClass
+
+    if as_of_index < 0 or as_of_index >= len(closes):
+        raise ValueError("REALIZED_VOLATILITY_AS_OF_INDEX_OUT_OF_RANGE")
+    if window < 2:
+        raise ValueError("REALIZED_VOLATILITY_WINDOW_TOO_SMALL")
+
+    feature_id = f"REALIZED_VOL_CLOSE_TO_CLOSE_{window}"
+    bars_since_last = (len(closes) - 1) - as_of_index
+    common = dict(feature_id=feature_id, family="REALIZED_VOLATILITY",
+                  units="annualized_stdev", source_provider=source_provider,
+                  source_operation="close_to_close_realized_volatility",
+                  as_of=as_of, retrieved_at=retrieved_at, freshness_seconds=None,
+                  coverage=None, version=version)
+    if bars_since_last > max_bars_since_last:
+        return FeatureResult(state=FeatureResultState.STALE, truth_class=FeatureTruthClass.UNKNOWN,
+                             value=None, structured_value=None,
+                             reason_codes=(f"REALIZED_VOL_STALE:{bars_since_last}_bars_since_as_of",), **common)
+
+    window_closes = closes[: as_of_index + 1][-(window + 1):]
+    if len(window_closes) < window + 1 or any(value is None for value in window_closes):
+        return FeatureResult(state=FeatureResultState.INSUFFICIENT_HISTORY,
+                             truth_class=FeatureTruthClass.UNKNOWN, value=None, structured_value=None,
+                             reason_codes=(f"REALIZED_VOL_INSUFFICIENT_HISTORY:{len(window_closes)}_of_{window + 1}_required",),
+                             **common)
+
+    estimate = close_to_close_realized_volatility(window_closes, periods_per_year=periods_per_year,
+                                                    min_periods=window)
+    if estimate is None:
+        return FeatureResult(state=FeatureResultState.UNKNOWN, truth_class=FeatureTruthClass.UNKNOWN,
+                             value=None, structured_value=None,
+                             reason_codes=("REALIZED_VOL_UNKNOWN:estimator_returned_none",), **common)
+    return FeatureResult(state=FeatureResultState.OK,
+                         truth_class=FeatureTruthClass.DERIVED_FROM_OBSERVED,
+                         value=estimate, structured_value=None, reason_codes=("REALIZED_VOL_OK",), **common)
