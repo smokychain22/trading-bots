@@ -26,10 +26,10 @@ evidence window without restarting the aligned worker for this status alone.
 | Phase | Parallel source state | Closure state | Evidence or exact remaining dependency |
 | --- | --- | --- | --- |
 | 1 | Current release frozen | `FORWARD_DATA_REQUIRED` | Current-worker open-session canonical frontier, durable method provenance, honest per-method L7 and non-real rejection, persisted T0, provider-free deterministic replay. |
-| 2 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_1` | Current executable two-sided quote entitlement, provenance and PIT operation matrix need qualification. Optional research features cannot become hard entry gates by default. |
-| 3 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Canonical candidates, sizing, routing and T0 are typed. Persisted WAIT now carries exact decomposition and cannot self-certify with unclassified blockers or UNKNOWNs. T0 replay uses the Production frontier, rejects tampering and uses no network. Current-worker open-session proof remains pending. |
-| 4 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_3` | Q/H/D/A/C/WAIT economics need after-cost and lifecycle invariants. No empirical continuation value is available. |
-| 5 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_4` | One AEGIS and sizing authority remains mandatory. Simulated idempotency and restart tests do not authorize Paper submissions. |
+| 2 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Provider authority, exact pre-submit identity, PIT timing, 20 feature families and typed provider failures are wired. Exact-SHA CI run `36543964513` passed. Current open-session entitlement and real quote/feature observations remain pending. |
+| 3 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Canonical candidates, sizing, routing and T0 are typed. Persisted WAIT now carries exact decomposition and cannot self-certify with unclassified blockers or UNKNOWNs. T0 replay uses the Production frontier, rejects tampering and uses no network. Exact-SHA CI run `36548131698` passed. Current-worker open-session proof remains pending. |
+| 4 | `SOURCE_COMPLETE_EMPIRICAL_PENDING` | `EMPIRICALLY_UNPROVEN` | Q/H/D/A/C deterministic mechanics, versioned modeled opening costs, position scaling, management alternatives, whole-chain loss preservation, 17 challenger replays, persistence and T0 replay are wired and tested. Current-worker evidence and calibrated EV/POP/continuation values remain unavailable and are not fabricated. |
+| 5 | `PARTIAL_SOURCE` | `SOURCE_DISCOVERY_NEXT` | One AEGIS and sizing authority remains mandatory. Simulated idempotency and restart tests do not authorize Paper submissions. |
 | 6 | `SOURCE_COMPLETE_DATA_PENDING` for imported research modules only | `EMPIRICALLY_UNPROVEN` | Historical recovered corpus has no selected or resolved outcomes. Future capture and truth-class joins require later real observations. |
 | 7 | Existing locked worker observed | `OWNER_GATED` | Paper readiness and first order require separate owner authorization after preceding evidence gates. |
 | 8 | No Paper outcomes | `FUTURE_DATA_REQUIRED` | Actual fills, lifecycle and whole-chain outcomes do not yet exist. |
@@ -173,6 +173,32 @@ expected Production frontier hash. Adversarial replay now covers reorder,
 duplication, omission, tampering, future evidence, unknown strategy and
 provider unavailability. Full evidence is recorded in
 `docs/operations/THETA_PHASE_3_UNIFIED_CLOSURE.md`.
+
+## Phase 4 deterministic strategy-mechanics pass, 2026-09-29
+
+The canonical frontier now consumes one strict, versioned opening-cost policy
+and preserves one-leg versus two-leg costs without claiming broker-actual fees
+or empirical EV. Q/H/C use one option leg and D uses both legs. Position-level
+economics scale known costs and payoff values by quantity. Missing cost policy
+remains `UNKNOWN`.
+
+H now carries explicit short-DTE gamma, theta, assignment, pin, adverse-gap,
+event, liquidity and cost evidence while remaining research-only. D carries
+both exact legs, per-leg BBO state, expiry, two-leg cost, pin distances and an
+explicit uncalibrated simultaneous-fill limitation. A spread credit at or above
+width is rejected instead of producing impossible zero or negative maximum
+loss.
+
+The cost policy and adverse-gap input survive T0 persistence and deterministic
+provider-free replay. Canonical-only Q candidate persistence retains known cost
+inputs but leaves empirical EV null. Existing management and ledger tests prove
+the A/C action surfaces, broker-confirmed inventory requirements, whole-chain
+cash-flow identity and preservation of old roll losses. All 17 profit-taking
+challengers execute in replay and censor missing PIT evidence rather than
+inventing continuation value.
+
+Full evidence and the remaining empirical/runtime limits are recorded in
+`docs/operations/THETA_PHASE_4_UNIFIED_CLOSURE.md`.
 
 | Class | Current state |
 | --- | --- |
