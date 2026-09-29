@@ -1152,7 +1152,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       try {
         const result = await fetchOptionContracts(config.alpaca, {
           underlyingSymbol: underlying, expirationDateGte: window.gte,
-          expirationDateLte: window.lte, optionType, showDeliverables: true, limit: 100, maxPages: config.maxOptionPages,
+          expirationDateLte: window.lte, optionType, showDeliverables: true, limit: 1_000, maxPages: config.maxOptionPages,
         });
         contractsRetrievedAt = config.now();
         const seen = new Set(contractItems.map((item) => item.symbol));

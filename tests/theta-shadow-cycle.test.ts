@@ -219,6 +219,10 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   assert.ok(requestedUrls.some((url) => url.includes('/v1beta1/options/snapshots/SPY')
     && url.includes('expiration_date_gte=2026-10-01')
     && url.includes('expiration_date_lte=2026-11-01')));
+  assert.ok(requestedUrls.some((url) => url.includes('/v2/options/contracts')
+    && url.includes('expiration_date_gte=2026-10-01')
+    && url.includes('expiration_date_lte=2026-11-01')
+    && url.includes('limit=1000')));
   assert.ok(requestedUrls.some((url) => url.includes('/v1beta1/options/snapshots/SPY')
     && url.includes('expiration_date_gte=2026-10-09')
     && url.includes('expiration_date_lte=2026-10-09')
