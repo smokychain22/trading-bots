@@ -45,14 +45,14 @@ test('superseded research claims do not become current authority', () => {
   assert.ok(optionomics?.supersededClaims.some((claim) => claim.includes('executable-price authority')));
 });
 
-test('first Paper truth separates the deployed release from reviewed integration source', () => {
+test('first Paper source truth delegates mutable deployment facts to runtime truth', () => {
   const readiness = canonicalSystemCapabilities.find((item) => item.capabilityId === 'FIRST_PAPER_READINESS');
-  assert.match(readiness?.currentBlocker ?? '', /cf9bc26a3cdd3646a663fe6fa97c8055606a2caa/i);
-  assert.match(readiness?.currentBlocker ?? '', /ff7d4ec2432637851d9ff8304af0661e39b06c62/i);
-  assert.match(readiness?.currentBlocker ?? '', /is not deployed/i);
+  assert.match(readiness?.currentBlocker ?? '', /runtime facts/i);
+  assert.match(readiness?.safeCurrentBehavior ?? '', /theta:truth-runtime/i);
+  assert.doesNotMatch(readiness?.currentBlocker ?? '', /[0-9a-f]{40}/i);
   assert.doesNotMatch(readiness?.currentBlocker ?? '', /worker is intentionally stopped/i);
   assert.doesNotMatch(readiness?.currentBlocker ?? '', /transfer quota/i);
-  assert.equal(readiness?.disposition, 'TRUE_HARD_BLOCKER');
+  assert.equal(readiness?.disposition, 'BUILT_AWAITING_RUNTIME_PROOF');
 });
 
 test('AEGIS truth distinguishes its migration-origin evidence contract from the current schema head', () => {

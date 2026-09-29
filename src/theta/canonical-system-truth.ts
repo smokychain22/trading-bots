@@ -178,10 +178,10 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
     persisted: 'YES', runtimeReachable: 'YES', paperAuthorized: 'NOT_APPLICABLE',
     sourceFiles: ['src/theta/first-paper-blocker-budget.ts', 'src/theta/runtime-behavior-diagnostic.ts',
       'src/execution/master-paper-plan-assembly.ts', 'src/theta/no-submit-probe-guard.ts', 'src/customer/api.ts'],
-    currentBlocker: 'The locked deployed release is cf9bc26a3cdd3646a663fe6fa97c8055606a2caa while the reviewed Phase 2 through Phase 7 integration source is ff7d4ec2432637851d9ff8304af0661e39b06c62. The integration source has exact-SHA CI but is not deployed. A governed impact review, immutable locked cutover and natural current-release open-session no-submit frontier remain required.',
-    safeCurrentBehavior: 'Keep the deployed worker locked and do not infer integration-branch behavior from source tests. The runtime diagnostic persists typed SPY event, quote-refresh, AEGIS, sizing, decision, plan and mutation-free pre-submit evidence, while every unreached stage remains UNKNOWN.',
-    closureTest: 'Complete the controlled impact review, deploy exactly one immutable locked release, then observe a natural current-release no-submit session with durable method provenance and deterministic T0 replay before any Paper unlock.',
-    disposition: 'TRUE_HARD_BLOCKER' }),
+    currentBlocker: 'Deployment alignment and supported-session evidence are runtime facts. Static source truth cannot self-certify the deployed SHA, lease, provider state, current-session frontier, durable method provenance, per-method L7 evidence, persisted T0, or deterministic replay.',
+    safeCurrentBehavior: 'Read deployment and provider state from theta:truth-runtime, keep the worker locked, and do not infer current-worker behavior from source tests. The runtime diagnostic preserves typed SPY event, quote-refresh, AEGIS, sizing, decision, plan and mutation-free pre-submit evidence, while every unreached stage remains UNKNOWN.',
+    closureTest: 'Runtime truth proves exactly one aligned immutable locked release, then a natural supported-session no-submit cycle records durable method provenance, truthful L7 assignment, persisted T0 and deterministic provider-free replay before any Paper unlock.',
+    disposition: 'BUILT_AWAITING_RUNTIME_PROOF' }),
 ];
 
 export const canonicalBrainLayers = [
