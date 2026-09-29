@@ -138,9 +138,37 @@ OPRA entitlement, current option BBO freshness or Phase-2 runtime closure.
 
 ## Unknown and safety register
 
+## Phase 3 decision-truth source pass, 2026-09-29
+
+The persistence audit found a real false-completion defect after the canonical
+frontier had already earned `GLOBAL_WAIT`. `PostgresThetaCycleStore` discarded
+the frontier's actual candidate blockers and soft evidence, then wrote a fixed
+`DATA_INSUFFICIENT` reason with empty hard-gate counts, empty soft families and
+empty blocked branches. That receipt could not explain why Q had no action and
+could make a complete economic or risk rejection look like generic missing
+data.
+
+The store now derives the receipt from the exact canonical frontier. It
+persists classified Q hard-gate counts, observed soft-evidence families,
+blocked branch states and reasons, best and near-miss candidate identities,
+and any unclassified hard blockers. An unclassified hard blocker makes the
+receipt fail validation instead of self-certifying an earned WAIT.
+
+The derivation deliberately scopes Production global-WAIT exhaustion to the
+Paper-authorized Conventional branch. H and D remain visible in the blocked
+branch map, but a missing research input in either branch cannot poison a
+complete Q search. The code also refuses to label a general Q infeasibility as
+`NO_POSITIVE_AFTER_COST_EV`, because empirical after-cost EV remains unknown.
+It uses `NO_RISK_FEASIBLE_CANDIDATE` unless real AEGIS, execution or capital
+evidence provides a narrower primary reason.
+
+This is source and persistence-path correction only. A real current-session
+WAIT receipt from the frozen worker has not been claimed, and the integration
+branch remains undeployed.
+
 | Class | Current state |
 | --- | --- |
-| `CODE_SOLVABLE` | Command-5A runtime producer/consumer port and Phase-2 operation qualification remain under audit. Do not report zero until tested. |
+| `CODE_SOLVABLE` | Phase-3 state, router and T0 call-graph audit remains in progress. Do not report zero until that audit and exact-SHA CI complete. |
 | `DATA_REQUIRED` | Recheck current Alpaca quote entitlement and exact BBO timing in the supported session. |
 | `FUTURE_DATA_REQUIRED` | Open-session current-release frontier/T0, future marks and broker-actual outcomes. |
 | `EXTERNAL_PROVIDER_REQUIRED` | None newly proved by this branch import. Transfer-quota signal needs separate bounded confirmation. |

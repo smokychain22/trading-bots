@@ -7,7 +7,7 @@ import type { ThetaQResponse } from './theta-q-contract.js';
 import { strategyFamilyForCanonicalBranch, type CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
 import { buildStrategyDecisionEnvelope } from './strategy-decision-envelope.js';
 import { resolveCanonicalDecisionAuthority } from './canonical-decision-authority.js';
-import { validateGlobalWaitEvidence, type GlobalWaitEvidence } from './decision-evidence.js';
+import { buildGlobalWaitEvidenceFromFrontier, validateGlobalWaitEvidence } from './decision-evidence.js';
 import {
   deriveOptionomicsTemporalFeatures,
   type OptionomicsFeatureSnapshotReference,
@@ -1244,17 +1244,14 @@ export class PostgresThetaCycleStore {
         ON CONFLICT(content_hash) DO NOTHING`,[JSON.stringify(quoteRows)]);
     }
     if (decisionId!==null && cycle.strategyFrontier?.globalWaitEarned === true) {
-      const eligibleBranches=cycle.strategyFrontier.branchesConsidered;
       const evaluatedBranches=cycle.strategyFrontier.branchesEvaluated;
       const recoveryApplicable=cycle.strategyFrontier.branches.find((branch) => branch.branch==='THETA_RECOVERY')?.applicable ?? false;
       const ccApplicable=cycle.strategyFrontier.branches.find((branch) => branch.branch==='THETA_CC')?.applicable ?? false;
-      const global:GlobalWaitEvidence={reason:'DATA_INSUFFICIENT',eligibleUnderlyingCount:universe.length,
-        underlyingsEvaluated:cycle.selectedUnderlying===null?0:1,contractsEvaluated:frontierCandidates.length,
-        validatedBranchesEligible:eligibleBranches,validatedBranchesEvaluated:evaluatedBranches,
+      const global=buildGlobalWaitEvidenceFromFrontier({frontier:cycle.strategyFrontier,
+        eligibleUnderlyingCount:universe.length,underlyingsEvaluated:universe.length,
         existingPositionManagementEvaluated:true,recoveryOpportunitiesEvaluated:!recoveryApplicable || evaluatedBranches.includes('THETA_RECOVERY'),
         coveredCallOpportunitiesEvaluated:!ccApplicable || evaluatedBranches.includes('THETA_CC'),
-        redeploymentAlternativesEvaluated:true,hardGateCounts:{},softEvidenceFamiliesObserved:[],blockedBranches:{},
-        bestCandidateId:best,secondBestCandidateId:second,bestRejectedCandidateId:bestRejected};
+        redeploymentAlternativesEvaluated:true});
       const validation=validateGlobalWaitEvidence(global);
       const waitPayload={...global,validation};
       await client.query(`INSERT INTO trade.global_wait_evidence(decision_id,candidate_set_id,decision_time,wait_reason,
