@@ -1,4 +1,5 @@
 import {
+  AlpacaProviderError,
   fetchLatestStockTrade,
   fetchMarketClock,
   fetchOptionSnapshots,
@@ -11,6 +12,11 @@ import type {
 import type { ContractPathQuoteObservation } from './contract-path-observation-runtime.js';
 
 export const alpacaCommand5aObservationSourceVersion = 'theta-alpaca-command5a-observation-source-v2' as const;
+
+function providerFailureReason(error: unknown): string {
+  if (!(error instanceof AlpacaProviderError)) return 'PROVIDER_UNCLASSIFIED_ERROR';
+  return error.errorClass === 'PROVIDER_TIMEOUT' ? 'PROVIDER_TIMEOUT' : `PROVIDER_${error.errorClass}`;
+}
 
 function quoteQuality(input: {
   readonly bid: number | null;
@@ -63,8 +69,12 @@ export class AlpacaCommand5aObservationSource implements Command5aReadOnlyObserv
   }
 
   async marketState(): Promise<{ readonly providerAvailable: boolean; readonly marketSessionOpen: boolean | null }> {
-    const clock = await fetchMarketClock(this.alpaca, new Date().toISOString());
-    return { providerAvailable: true, marketSessionOpen: clock.isOpen };
+    try {
+      const clock = await fetchMarketClock(this.alpaca, new Date().toISOString());
+      return { providerAvailable: true, marketSessionOpen: clock.isOpen };
+    } catch {
+      return { providerAvailable: false, marketSessionOpen: null };
+    }
   }
 
   async observe(input: Parameters<Command5aReadOnlyObservationSource['observe']>[0]): Promise<Command5aObservedSubject> {
@@ -79,6 +89,7 @@ export class AlpacaCommand5aObservationSource implements Command5aReadOnlyObserv
       return { state: 'MISSING', quotes: [], underlying: null, observedAt: requestStartedAt,
         reasonCode: 'TARGET_OBSERVATION_WINDOW_EXPIRED' };
     }
+    try {
     const quotesBySymbol = new Map<string, ContractPathQuoteObservation>();
     const uniqueSymbols = new Set(input.subject.episode.legs.map((leg) => leg.optionSymbol));
     if (uniqueSymbols.size !== input.subject.episode.legs.length) return {
@@ -197,5 +208,9 @@ export class AlpacaCommand5aObservationSource implements Command5aReadOnlyObserv
       observedAt,
       reasonCode: null,
     };
+    } catch (error) {
+      return { state: error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE' ? 'INVALID' : 'MISSING',
+        quotes: [], underlying: null, observedAt: new Date().toISOString(), reasonCode: providerFailureReason(error) };
+    }
   }
 }

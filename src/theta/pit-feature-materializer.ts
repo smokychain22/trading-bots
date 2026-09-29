@@ -29,11 +29,14 @@ export interface PitFeatureMaterializerConfig {
 export interface PitFeatureSnapshot {
   readonly underlying: string;
   readonly asOf: string;
-  readonly featureAvailableAt: string;
+  /** Latest provider observation timestamp that contributed to this snapshot. */
+  readonly observedAt: string | null;
+  /** Latest time any contributing input first became available to THETA. */
+  readonly featureAvailableAt: string | null;
   readonly featureVersion: string;
   readonly provider: 'ALPACA';
   readonly feed: string | null;
-  readonly retrievedAt: string;
+  readonly retrievedAt: string | null;
   readonly dataVersion: string;
   readonly adjustment: 'SPLIT_ADJUSTED' | 'ALL_ADJUSTED';
   readonly values: Readonly<Record<string, number | null>>;
@@ -75,13 +78,23 @@ export function materializePitFeatureSnapshot(
     throw new Error('gapThresholdFraction must be positive');
   }
 
-  const relevant = barsAsOf(bars.filter((item) => item.symbol === underlying), config.asOf);
+  const matching = bars.filter((item) => item.symbol === underlying);
+  for (const bar of matching) {
+    const observedAt = Date.parse(bar.timestamp);
+    const retrievedAt = Date.parse(bar.receivedAt);
+    const decisionAt = Date.parse(config.asOf);
+    if (!Number.isFinite(observedAt) || !Number.isFinite(retrievedAt)) throw new Error('PIT_FEATURE_TIMESTAMP_INVALID');
+    if (retrievedAt < observedAt) throw new Error('PIT_FEATURE_RETRIEVAL_PRECEDES_OBSERVATION');
+    if (observedAt <= decisionAt && retrievedAt > decisionAt) throw new Error('PIT_FEATURE_FUTURE_RETRIEVAL');
+  }
+  const relevant = barsAsOf(matching, config.asOf)
+    .filter((item) => Date.parse(item.receivedAt) <= Date.parse(config.asOf));
   const feeds = new Set(relevant.map((item) => item.feed));
   if (feeds.size > 1) throw new Error('mixed Alpaca feeds require separate feature snapshots');
-  const retrievedAt = relevant.reduce(
-    (latest, item) => Date.parse(item.receivedAt) > Date.parse(latest) ? item.receivedAt : latest,
-    '1970-01-01T00:00:00.000Z',
-  );
+  const retrievedAt = relevant.reduce<string | null>((latest, item) => latest === null
+    || Date.parse(item.receivedAt) > Date.parse(latest) ? item.receivedAt : latest, null);
+  const observedAt = relevant.reduce<string | null>((latest, item) => latest === null
+    || Date.parse(item.timestamp) > Date.parse(latest) ? item.timestamp : latest, null);
   const values: Record<string, number | null> = {};
   for (const window of config.returnWindows) values[`return_${window}d`] = computeReturn(relevant, config.asOf, window);
   for (const window of config.movingAverageWindows) values[`ma_${window}`] = simpleMovingAverage(relevant, config.asOf, window);
@@ -104,7 +117,8 @@ export function materializePitFeatureSnapshot(
   return {
     underlying,
     asOf: config.asOf,
-    featureAvailableAt: config.asOf,
+    observedAt,
+    featureAvailableAt: retrievedAt,
     featureVersion: config.featureVersion,
     provider: 'ALPACA',
     feed: feeds.values().next().value ?? null,

@@ -5,6 +5,8 @@ import { executionOptionQuoteContractVersion, qualifyExecutionOptionQuote, type 
 const quote = (overrides: Partial<ExecutionOptionQuote> = {}): ExecutionOptionQuote => ({
   contractVersion: executionOptionQuoteContractVersion,
   contractId: 'AAPL261016P00200000', providerContractId: 'provider-contract',
+  optionIdentity: { underlying:'AAPL', optionSymbol:'provider-contract', expiration:'2026-10-16', strike:200,
+    optionType:'PUT', multiplier:100, contractTradable:true, exerciseStyle:'american', deliverableClassification:'STANDARD_EQUITY' },
   bid: 2.1, ask: 2.2, bidSize: 10, askSize: 20,
   providerTimestamp: '2026-09-14T14:30:08Z', receivedAtUtc: '2026-09-14T14:30:09Z',
   receivedAtMonotonic: 1000, sequence: 2, provider: 'SYNTHETIC_TEST',
@@ -55,4 +57,22 @@ test('Alpaca indicative quote qualifies only for the explicit master Paper use',
     maximumAgeMs:10_000,marketOpen:true,usage:'LIVE'});
   assert.equal(live.qualified,false);
   assert.ok(live.blockers.includes('ORDER_PRICING_SEMANTICS_NOT_PROVEN'));
+});
+
+test('option identity, multiplier, tradability, exercise style and deliverable are independently fail closed',()=>{
+  const expected={underlying:'AAPL',optionSymbol:'provider-contract',expiration:'2026-10-16',strike:200,
+    optionType:'PUT' as const,multiplier:100};
+  const assess=(overrides:Partial<NonNullable<ExecutionOptionQuote['optionIdentity']>>)=>qualifyExecutionOptionQuote({
+    quote:quote({optionIdentity:{...(quote().optionIdentity as NonNullable<ExecutionOptionQuote['optionIdentity']>),...overrides}}),
+    expectedContractId:'AAPL261016P00200000',expectedOptionIdentity:expected,
+    nowUtc:'2026-09-14T14:30:10Z',maximumAgeMs:3000,marketOpen:true,
+  });
+  assert.ok(qualifyExecutionOptionQuote({quote:quote({optionIdentity:null}),expectedContractId:'AAPL261016P00200000',
+    expectedOptionIdentity:expected,nowUtc:'2026-09-14T14:30:10Z',maximumAgeMs:3000,marketOpen:true})
+    .blockers.includes('OPTION_CONTRACT_METADATA_REQUIRED'));
+  assert.ok(assess({strike:201}).blockers.includes('OPTION_CONTRACT_IDENTITY_MISMATCH'));
+  assert.ok(assess({multiplier:10}).blockers.includes('OPTION_MULTIPLIER_MISMATCH'));
+  assert.ok(assess({contractTradable:false}).blockers.includes('OPTION_CONTRACT_NOT_TRADABLE'));
+  assert.ok(assess({exerciseStyle:''}).blockers.includes('OPTION_EXERCISE_STYLE_UNKNOWN'));
+  assert.ok(assess({deliverableClassification:'UNKNOWN'}).blockers.includes('OPTION_DELIVERABLE_UNVERIFIED'));
 });

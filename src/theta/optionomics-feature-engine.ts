@@ -61,7 +61,9 @@ export interface OptionomicsFeatureSnapshot {
   readonly schemaVersion: typeof optionomicsFeatureSchemaVersion;
   readonly provider: 'OPTIONOMICS';
   readonly underlying: string;
-  readonly observedAt: string;
+  readonly observedAt: string | null;
+  readonly availableAt: string;
+  readonly retrievedAt: string;
   readonly responseHash: string;
   readonly contracts: readonly OptionomicsContractFeatureState[];
   readonly skew: FeatureValue<number>;
@@ -243,6 +245,9 @@ export function buildOptionomicsFeatureSnapshot(input: {
   const contracts = input.chain.entries.map((entry) => contractFeatures(
     entry, input.stockPrice, entry.rawSymbol === null ? null : input.multiplierByContract?.get(entry.rawSymbol) ?? null,
   ));
+  const observedAt = input.chain.entries.map((entry)=>entry.asOf)
+    .filter((value):value is string=>value!==null&&Number.isFinite(Date.parse(value)))
+    .toSorted((left,right)=>Date.parse(right)-Date.parse(left))[0]??null;
   const unavailableFamilies = [
     input.chain.entries.some((entry) => entry.impliedVolatility !== null) ? null : 'IV',
     input.flowWindows.length > 0 ? null : 'FLOW',
@@ -255,7 +260,8 @@ export function buildOptionomicsFeatureSnapshot(input: {
   ].filter((value): value is string => value !== null);
   return {
     schemaVersion: optionomicsFeatureSchemaVersion, provider: 'OPTIONOMICS', underlying: input.chain.underlying,
-    observedAt: input.chain.retrievedAt, responseHash: input.chain.responseHash,
+    observedAt, availableAt: input.chain.retrievedAt, retrievedAt: input.chain.retrievedAt,
+    responseHash: input.chain.responseHash,
     contracts, skew: deriveSkew(input.chain.entries, input.skewDeltaTolerance ?? null), termStructure: deriveTerm(input.chain.entries),
     volatilitySurface: deriveSurface(input.chain.entries),
     flow: { windows: input.flowWindows, interpretation: 'UNMODELED_RESEARCH_CONTEXT' },

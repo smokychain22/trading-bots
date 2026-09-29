@@ -25,6 +25,8 @@ const entrySafetyPolicy=buildPaperEntrySafetyPolicyReceipt({decisionAsOf:now,
 });
 const quote:ExecutionOptionQuote={contractVersion:executionOptionQuoteContractVersion,contractId:'AAPL261016P00150000',
   providerContractId:'AAPL261016P00150000',bid:1.2,ask:1.3,bidSize:10,askSize:12,providerTimestamp:now,
+  optionIdentity:{underlying:'AAPL',optionSymbol:'AAPL261016P00150000',expiration:'2026-10-16',strike:150,
+    optionType:'PUT',multiplier:100,contractTradable:true,exerciseStyle:'american',deliverableClassification:'STANDARD_EQUITY'},
   receivedAtUtc:now,receivedAtMonotonic:1,sequence:1,provider:'ALPACA',sourceSemantics:'CONSOLIDATED_NBBO',
   connectionState:'CONNECTED',subscriptionState:'ACTIVE',provenance:{authenticated:true,exactContractMapping:true,documentedForOrderPricing:true}};
 
@@ -145,7 +147,10 @@ test('Paper evidence tier reaches coordinator while empirical EV stays explicitl
 });
 
 test('bootstrap management can open a fully covered call in bounded Paper evidence without claiming empirical EV',async()=>{
-  const callQuote={...quote,contractId:'AAPL261016C00200000',providerContractId:'AAPL261016C00200000'};
+  const callQuote={...quote,contractId:'AAPL261016C00200000',providerContractId:'AAPL261016C00200000',
+    optionIdentity:{underlying:'AAPL',optionSymbol:'AAPL261016C00200000',expiration:'2026-10-16',strike:200,
+      optionType:'CALL' as const,multiplier:100,contractTradable:true,exerciseStyle:'american',
+      deliverableClassification:'STANDARD_EQUITY' as const}};
   const {broker,handoff}=setup(callQuote);
   const result=await handoff.execute(plan({decisionAuthority:'MANAGEMENT',
     managementInputSnapshotId:'88888888-8888-4888-8888-888888888888',

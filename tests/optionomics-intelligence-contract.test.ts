@@ -52,7 +52,7 @@ test('news known-at uses the latest availability timestamp', () => {
   assert.equal(optionomicsKnownAt({ published_at: '2026-09-16T10:00:00Z', analyzed_at: '2026-09-16T10:02:00Z' }, '2026-09-16T10:01:00Z'), '2026-09-16T10:02:00.000Z');
 });
 
-test('strategy requirements fail only the affected branch and preserve optional degradation', () => {
+test('Optionomics degradation is explicit optional context and cannot freeze an otherwise safe branch', () => {
   const result = assessOptionomicsBranchRequirements('THETA_CONVENTIONAL', {
     OPTION_CHAIN: 'GOOD', VOLATILITY: 'GOOD', EVENTS: 'GOOD', FLOW: 'STALE', EXPOSURE: 'UNKNOWN',
   });
@@ -60,6 +60,7 @@ test('strategy requirements fail only the affected branch and preserve optional 
   assert.deepEqual(result.blockers, []);
   assert.deepEqual(result.degradedOptional, ['FLOW:STALE', 'EXPOSURE:UNKNOWN', 'NEWS:UNKNOWN', 'DISCLOSURES:UNKNOWN']);
   const cc = assessOptionomicsBranchRequirements('THETA_CC', { OPTION_CHAIN: 'GOOD', VOLATILITY: 'UNKNOWN', EVENTS: 'GOOD' });
-  assert.equal(cc.ready, false);
-  assert.deepEqual(cc.blockers, ['VOLATILITY:UNKNOWN']);
+  assert.equal(cc.ready, true);
+  assert.deepEqual(cc.blockers, []);
+  assert.ok(cc.degradedOptional.includes('VOLATILITY:UNKNOWN'));
 });

@@ -101,6 +101,41 @@ provider-timing correction passed exact-SHA CI run `36537193800` at
 `16088ccaea4557b4b7751a296df96c53f64eaf21`. It remains source-only
 until a governed release cutover.
 
+## Phase 2 market-intelligence source pass, 2026-09-29
+
+The integration branch now has a typed provider capability and authority
+matrix at `src/theta/phase2-market-intelligence-registry.ts`. It records every
+required governance field for the current Alpaca and Optionomics call paths,
+and maps all 20 feature families to a producer state, consumer, units,
+point-in-time semantics, role and UNKNOWN behavior. Exactly one option-price
+capability is allowed to serve as the locked master Paper reference, Alpaca's
+explicit OPRA or indicative snapshot path. Optionomics remains non-executable
+context.
+
+The source pass found and fixed four current defects:
+
+1. The pre-submit quote carried BBO identity but did not bind current broker
+   contract metadata. The source now refreshes the exact Alpaca contract record
+   with the quote and the handoff independently verifies underlying, OCC symbol,
+   expiry, strike, type, multiplier, tradability, exercise style and standard
+   deliverable classification.
+2. The PIT stock-feature materializer rejected future bar timestamps but could
+   accept a bar retrieved after decision time. It now rejects future retrieval
+   and retrieval-before-observation, and records distinct observed, available
+   and retrieved times without an epoch placeholder.
+3. Command-5A provider exceptions could escape the observation source. Auth,
+   entitlement, rate-limit, timeout, network and malformed-response outcomes
+   now remain typed provider evidence, never an empty opportunity. Explicit
+   OPRA/SIP requests remain unchanged through the call.
+4. The Optionomics branch matrix labeled supplementary analytics as mandatory
+   strategy prerequisites. It is now explicitly optional context for every
+   branch. Missing Optionomics research data cannot globally freeze a valid
+   Alpaca-backed strategy path.
+
+This is source-level Phase-2 progress on the isolated integration branch. It
+does not change the frozen deployed worker and does not prove current-session
+OPRA entitlement, current option BBO freshness or Phase-2 runtime closure.
+
 ## Unknown and safety register
 
 | Class | Current state |

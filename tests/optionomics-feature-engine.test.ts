@@ -30,6 +30,9 @@ test('builds layered contract features and contract-multiplier-safe structural e
     skewDeltaTolerance: 0.05,
   });
   assert.equal(result.responseHash.length, 64);
+  assert.equal(result.observedAt,NOW);
+  assert.equal(result.availableAt,NOW);
+  assert.equal(result.retrievedAt,NOW);
   assert.equal(result.contracts[0]?.structuralEconomics.securedCollateral.value, 50_000);
   assert.equal(result.contracts[0]?.structuralEconomics.grossBidPremiumCash.value, 790);
   assert.ok(Math.abs((result.contracts[0]?.quote.mid.value ?? 0) - 8) < 1e-12);

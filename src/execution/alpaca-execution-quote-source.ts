@@ -1,5 +1,5 @@
 import type { AlpacaProviderConfig } from '../theta/alpaca-provider.js';
-import { fetchLatestStockQuote, fetchOptionSnapshots } from '../theta/alpaca-provider.js';
+import { fetchLatestStockQuote, fetchOptionContracts, fetchOptionSnapshots } from '../theta/alpaca-provider.js';
 import { parseOccOptionSymbol } from '../theta/account-exposure.js';
 import { executionOptionQuoteContractVersion, type ExecutionOptionQuote } from './execution-option-quote.js';
 import type { ApprovedMasterPaperActionPlan, ExecutionOptionQuoteSource } from './master-paper-action-handoff.js';
@@ -16,6 +16,17 @@ function exactOptionSnapshotFilter(plan: ApprovedMasterPaperActionPlan): {
     expirationDateGte: identity.expiration, expirationDateLte: identity.expiration,
     strikePriceGte: identity.strike, strikePriceLte: identity.strike,
     limit: 1000, maxPages: 10 };
+}
+
+function classifyDeliverable(listing: Awaited<ReturnType<typeof fetchOptionContracts>>['items'][number], underlying: string) {
+  if (listing.deliverables === null || listing.deliverables === undefined) return 'UNKNOWN' as const;
+  return listing.deliverables.length === 1
+    && listing.deliverables[0]?.type.toLowerCase() === 'equity'
+    && listing.deliverables[0].symbol === underlying
+    && listing.multiplier !== null
+    && listing.deliverables[0].amount === listing.multiplier
+    && listing.deliverables[0].allocationPercentage === 100
+    ? 'STANDARD_EQUITY' as const : 'ADJUSTED' as const;
 }
 
 /** Fetches one exact current Alpaca quote. Options use Alpaca's Paper-only
@@ -39,11 +50,22 @@ export class AlpacaExecutionQuoteSource implements ExecutionOptionQuoteSource {
     }
     const filter=exactOptionSnapshotFilter(plan);
     if(filter===null)return null;
-    const result=await fetchOptionSnapshots(this.alpaca,filter);
-    if(!result.complete)return null;
+    const [result,contracts]=await Promise.all([
+      fetchOptionSnapshots(this.alpaca,filter),
+      fetchOptionContracts(this.alpaca,{underlyingSymbol:filter.underlyingSymbol,
+        expirationDateGte:filter.expirationDateGte,expirationDateLte:filter.expirationDateLte,
+        optionType:filter.optionType,showDeliverables:true,limit:1000,maxPages:10}),
+    ]);
+    if(!result.complete||!contracts.complete)return null;
     const quote=result.snapshots.get(plan.symbol);
-    if(quote===undefined||quote.bid===null||quote.ask===null)return null;
+    const listing=contracts.items.find((item)=>item.symbol===plan.symbol);
+    if(quote===undefined||quote.bid===null||quote.ask===null||listing===undefined||listing.multiplier===null
+      ||listing.tradable!==true||listing.exerciseStyle==null)return null;
     return {contractVersion:executionOptionQuoteContractVersion,contractId:plan.symbol,providerContractId:plan.symbol,
+      optionIdentity:{underlying:listing.underlyingSymbol??plan.underlying,optionSymbol:listing.symbol,
+        expiration:listing.expirationDate,strike:listing.strikePrice,optionType:listing.optionType,
+        multiplier:listing.multiplier,contractTradable:listing.tradable,exerciseStyle:listing.exerciseStyle,
+        deliverableClassification:classifyDeliverable(listing,plan.underlying)},
       bid:quote.bid,ask:quote.ask,bidSize:quote.bidSize,askSize:quote.askSize,providerTimestamp:quote.quoteTimestamp,
       receivedAtUtc:now,receivedAtMonotonic:performance.now(),sequence:this.sequence,provider:'ALPACA',
       source:'BROKER_INDICATIVE',entitlementState:'QUALIFIED',sourceSemantics:'PAPER_INDICATIVE_REFERENCE',
@@ -66,11 +88,22 @@ export class AlpacaIndicativeOptionQuoteSource implements ExecutionOptionQuoteSo
     const filter=exactOptionSnapshotFilter(plan);
     if(filter===null)return null;
     this.sequence+=1;
-    const result=await fetchOptionSnapshots(this.alpaca,filter);
-    if(!result.complete)return null;
+    const [result,contracts]=await Promise.all([
+      fetchOptionSnapshots(this.alpaca,filter),
+      fetchOptionContracts(this.alpaca,{underlyingSymbol:filter.underlyingSymbol,
+        expirationDateGte:filter.expirationDateGte,expirationDateLte:filter.expirationDateLte,
+        optionType:filter.optionType,showDeliverables:true,limit:1000,maxPages:10}),
+    ]);
+    if(!result.complete||!contracts.complete)return null;
     const quote=result.snapshots.get(plan.symbol);
-    if(quote===undefined||quote.bid===null||quote.ask===null)return null;
+    const listing=contracts.items.find((item)=>item.symbol===plan.symbol);
+    if(quote===undefined||quote.bid===null||quote.ask===null||listing===undefined||listing.multiplier===null
+      ||listing.tradable!==true||listing.exerciseStyle==null)return null;
     return {contractVersion:executionOptionQuoteContractVersion,contractId:plan.symbol,providerContractId:plan.symbol,
+      optionIdentity:{underlying:listing.underlyingSymbol??plan.underlying,optionSymbol:listing.symbol,
+        expiration:listing.expirationDate,strike:listing.strikePrice,optionType:listing.optionType,
+        multiplier:listing.multiplier,contractTradable:listing.tradable,exerciseStyle:listing.exerciseStyle,
+        deliverableClassification:classifyDeliverable(listing,plan.underlying)},
       bid:quote.bid,ask:quote.ask,bidSize:quote.bidSize,askSize:quote.askSize,providerTimestamp:quote.quoteTimestamp,
       receivedAtUtc:now,receivedAtMonotonic:performance.now(),sequence:this.sequence,provider:'ALPACA',
       source:'BROKER_INDICATIVE',entitlementState:'QUALIFIED',sourceSemantics:'PAPER_INDICATIVE_REFERENCE',

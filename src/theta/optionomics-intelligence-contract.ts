@@ -211,11 +211,15 @@ export const thetaOptionomicsRequirementMatrix: Readonly<Record<ThetaOptionomics
   readonly required: readonly OptionomicsIntelligenceFamily[];
   readonly optional: readonly OptionomicsIntelligenceFamily[];
 }>> = Object.freeze({
-  THETA_CONVENTIONAL: { required: ['OPTION_CHAIN', 'VOLATILITY', 'EVENTS'], optional: ['FLOW', 'EXPOSURE', 'NEWS', 'DISCLOSURES'] },
-  THETA_HOLD_STRIKE: { required: ['OPTION_CHAIN', 'GREEKS', 'EVENTS'], optional: ['EXPOSURE', 'FLOW', 'LEVELS'] },
-  THETA_RECOVERY: { required: ['STOCK_QUOTE', 'EVENTS'], optional: ['NEWS', 'DISCLOSURES', 'VOLATILITY', 'OPTION_CHAIN'] },
-  THETA_CC: { required: ['OPTION_CHAIN', 'VOLATILITY', 'EVENTS'], optional: ['FLOW', 'EXPOSURE', 'NEWS'] },
-  THETA_DEFINED_RISK: { required: ['OPTION_CHAIN', 'GREEKS', 'VOLATILITY'], optional: ['SURFACE', 'EXPOSURE', 'FLOW', 'EVENTS'] },
+  // Optionomics is a supplementary intelligence provider. Alpaca remains
+  // broker, current contract and executable BBO truth. Missing optional
+  // Optionomics context may reduce research coverage but may not globally
+  // disable a strategy whose broker/safety evidence is otherwise complete.
+  THETA_CONVENTIONAL: { required: [], optional: ['OPTION_CHAIN', 'VOLATILITY', 'EVENTS', 'FLOW', 'EXPOSURE', 'NEWS', 'DISCLOSURES'] },
+  THETA_HOLD_STRIKE: { required: [], optional: ['OPTION_CHAIN', 'GREEKS', 'EVENTS', 'EXPOSURE', 'FLOW', 'LEVELS'] },
+  THETA_RECOVERY: { required: [], optional: ['STOCK_QUOTE', 'EVENTS', 'NEWS', 'DISCLOSURES', 'VOLATILITY', 'OPTION_CHAIN'] },
+  THETA_CC: { required: [], optional: ['OPTION_CHAIN', 'VOLATILITY', 'EVENTS', 'FLOW', 'EXPOSURE', 'NEWS'] },
+  THETA_DEFINED_RISK: { required: [], optional: ['OPTION_CHAIN', 'GREEKS', 'VOLATILITY', 'SURFACE', 'EXPOSURE', 'FLOW', 'EVENTS'] },
 });
 
 export function assessOptionomicsBranchRequirements(

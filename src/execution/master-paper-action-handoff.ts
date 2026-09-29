@@ -9,6 +9,7 @@ import { executionAuthorizationTiers, type ExecutionAuthorizationTier, type Pape
 import { paperEntrySafetyPolicyReceiptSchema, verifyPaperEntrySafetyPolicyReceipt, type PaperEntrySafetyPolicyReceipt } from '../theta/paper-entry-safety-policy.js';
 import { aegisAssessmentIdentitySchema, verifyAegisAssessmentIdentity, type AegisAssessmentIdentity } from '../theta/aegis-assessment-identity.js';
 import { paperBootstrapRuntimePolicy } from '../theta/paper-bootstrap-runtime-policy.js';
+import { parseOccOptionSymbol } from '../theta/account-exposure.js';
 
 export const masterPaperActionPlanVersion = 'theta-master-paper-action-plan-v4' as const;
 
@@ -218,8 +219,14 @@ export async function prepareMasterPaperAction(
 
   const quote=await quoteSource.getCurrentQuote(plan,now);
   if(quote===null)return blocked('NO_QUOTE',['FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_NOT_YET_QUALIFIED']);
+  const parsedIdentity=plan.optionType===null?null:parseOccOptionSymbol(plan.symbol);
+  if(plan.optionType!==null&&(parsedIdentity===null||parsedIdentity.underlying!==plan.underlying
+    ||parsedIdentity.optionType!==plan.optionType))return blocked('QUOTE_REJECTED',['OPTION_PLAN_IDENTITY_INVALID'],quote);
   const qualification=qualifyExecutionOptionQuote({quote,expectedContractId:plan.symbol,nowUtc:now,
-    maximumAgeMs:maximumQuoteAgeMs as number,marketOpen,usage:'MASTER_PAPER'});
+    maximumAgeMs:maximumQuoteAgeMs as number,marketOpen,usage:'MASTER_PAPER',
+    expectedOptionIdentity:parsedIdentity===null?null:{underlying:parsedIdentity.underlying,optionSymbol:plan.symbol,
+      expiration:parsedIdentity.expiration,strike:parsedIdentity.strike,optionType:parsedIdentity.optionType,
+      multiplier:plan.multiplier}});
   if(!qualification.qualified)return blocked('QUOTE_REJECTED',qualification.blockers,quote,qualification.quoteAgeMs);
   const pricing=decideAdaptiveLimit({side:sideFor(plan.action),quote,attempt:plan.pricingAttempt,
     previousLimit:plan.previousLimit,economicBoundary:plan.economicBoundary,

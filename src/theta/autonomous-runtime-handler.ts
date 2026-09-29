@@ -668,7 +668,7 @@ export default async function autonomousRuntimeHandler(
       const from = requestedAt.slice(0, 10);
       const through = new Date(Date.parse(requestedAt) + 60 * 86_400_000).toISOString().slice(0, 10);
       const contracts = await fetchOptionContracts(master.alpaca, { underlyingSymbol:'SPY', expirationDateGte:from,
-        expirationDateLte:through, optionType:'put', limit:100, maxPages:3 });
+        expirationDateLte:through, optionType:'put', showDeliverables:true, limit:100, maxPages:3 });
       const snapshots = await fetchOptionSnapshots(master.alpaca, { underlyingSymbol:'SPY', feed:'indicative',
         optionType:'put', limit:1000, maxPages:3 });
       const clock = await fetchMarketClock(master.alpaca,new Date().toISOString());
@@ -690,7 +690,16 @@ export default async function autonomousRuntimeHandler(
         throw new Error('QUALIFICATION_SNAPSHOT_ALIGNMENT_FAILED');
       const attemptedAt = new Date().toISOString();
       const quote:ExecutionOptionQuote={contractVersion:executionOptionQuoteContractVersion,contractId:listing.symbol,
-        providerContractId:listing.symbol,bid:snapshot.bid,ask:snapshot.ask,bidSize:snapshot.bidSize,
+        providerContractId:listing.symbol,optionIdentity:listing.multiplier===null||listing.tradable!==true||listing.exerciseStyle==null?null:{
+          underlying:listing.underlyingSymbol??'SPY',optionSymbol:listing.symbol,expiration:listing.expirationDate,
+          strike:listing.strikePrice,optionType:listing.optionType,multiplier:listing.multiplier,
+          contractTradable:listing.tradable,exerciseStyle:listing.exerciseStyle,
+          deliverableClassification:listing.deliverables===null||listing.deliverables===undefined
+            ?'UNKNOWN'
+            :listing.deliverables.length===1&&listing.deliverables[0]?.type.toLowerCase()==='equity'
+              &&listing.deliverables[0].symbol==='SPY'&&listing.deliverables[0].amount===listing.multiplier
+              &&listing.deliverables[0].allocationPercentage===100
+              ?'STANDARD_EQUITY':'ADJUSTED'},bid:snapshot.bid,ask:snapshot.ask,bidSize:snapshot.bidSize,
         askSize:snapshot.askSize,providerTimestamp:snapshot.quoteTimestamp,receivedAtUtc:attemptedAt,
         receivedAtMonotonic:performance.now(),sequence:1,provider:'ALPACA',source:'BROKER_INDICATIVE',
         entitlementState:'QUALIFIED',sourceSemantics:'PAPER_INDICATIVE_REFERENCE',connectionState:'CONNECTED',

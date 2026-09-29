@@ -11,10 +11,24 @@ export type ExecutionQuoteSemantics =
 export type ExecutionQuoteSource = 'BROKER_CONSOLIDATED_OPRA'|'BROKER_INDICATIVE'|'EXTERNAL_MARKET_DATA_PROVIDER'|'SESSION_RECORDED_RESEARCH'|'UNKNOWN';
 export type QuoteEntitlementState = 'NOT_CONFIGURED'|'NO_ENTITLEMENT'|'INDICATIVE_ONLY'|'ENTITLED_UNVERIFIED'|'QUALIFIED'|'STALE'|'PROVIDER_ERROR';
 
+export interface ExecutionOptionIdentity {
+  readonly underlying: string;
+  readonly optionSymbol: string;
+  readonly expiration: string;
+  readonly strike: number;
+  readonly optionType: 'PUT' | 'CALL';
+  readonly multiplier: number;
+  readonly contractTradable: boolean;
+  readonly exerciseStyle: string;
+  readonly deliverableClassification: 'STANDARD_EQUITY' | 'ADJUSTED' | 'UNKNOWN';
+}
+
 export interface ExecutionOptionQuote {
   readonly contractVersion: typeof executionOptionQuoteContractVersion;
   readonly contractId: string;
   readonly providerContractId: string;
+  /** Current broker contract metadata bound to the quote. Equity quotes use null. */
+  readonly optionIdentity?: ExecutionOptionIdentity | null;
   readonly bid: number;
   readonly ask: number;
   readonly bidSize: number | null;
@@ -71,6 +85,8 @@ export function qualifyExecutionOptionQuote(input: {
   readonly maximumAgeMs: number;
   readonly previousSequence?: number | null;
   readonly marketOpen: boolean;
+  readonly expectedOptionIdentity?: Readonly<Pick<ExecutionOptionIdentity,
+    'underlying' | 'optionSymbol' | 'expiration' | 'strike' | 'optionType' | 'multiplier'>> | null;
   /** Indicative quotes are authorized only for the isolated Alpaca Paper runtime. */
   readonly usage?: 'MASTER_PAPER' | 'LIVE';
 }): ExecutionQuoteQualification {
@@ -85,6 +101,24 @@ export function qualifyExecutionOptionQuote(input: {
   const agePolicyValid = Number.isFinite(input.maximumAgeMs) && input.maximumAgeMs >= 0;
   if (!input.quote.contractId.trim() || input.quote.contractId !== input.expectedContractId
     || !input.quote.providerContractId.trim()) blockers.push('CONTRACT_IDENTITY_MISMATCH');
+  if (input.expectedOptionIdentity !== undefined && input.expectedOptionIdentity !== null) {
+    const actual = input.quote.optionIdentity;
+    const expected = input.expectedOptionIdentity;
+    if (actual === undefined || actual === null) blockers.push('OPTION_CONTRACT_METADATA_REQUIRED');
+    else {
+      if (actual.optionSymbol !== expected.optionSymbol || actual.optionSymbol !== input.quote.providerContractId
+        || actual.underlying !== expected.underlying || actual.expiration !== expected.expiration
+        || actual.strike !== expected.strike || actual.optionType !== expected.optionType) {
+        blockers.push('OPTION_CONTRACT_IDENTITY_MISMATCH');
+      }
+      if (actual.multiplier !== expected.multiplier || !Number.isInteger(actual.multiplier) || actual.multiplier <= 0) {
+        blockers.push('OPTION_MULTIPLIER_MISMATCH');
+      }
+      if (actual.contractTradable !== true) blockers.push('OPTION_CONTRACT_NOT_TRADABLE');
+      if (actual.exerciseStyle.trim() === '') blockers.push('OPTION_EXERCISE_STYLE_UNKNOWN');
+      if (actual.deliverableClassification !== 'STANDARD_EQUITY') blockers.push('OPTION_DELIVERABLE_UNVERIFIED');
+    }
+  }
   if (!Number.isFinite(input.quote.bid) || !Number.isFinite(input.quote.ask)
     || input.quote.bid <= 0 || input.quote.ask <= 0) blockers.push('TWO_SIDED_QUOTE_INVALID');
   else if (input.quote.bid > input.quote.ask) blockers.push('QUOTE_CROSSED');

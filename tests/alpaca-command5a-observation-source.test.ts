@@ -210,3 +210,54 @@ test('an expired target window is censored without substituting a current mark',
   assert.equal(receipt.reasonCode, 'TARGET_OBSERVATION_WINDOW_EXPIRED');
   assert.equal(calls, 0);
 });
+
+test('explicit OPRA and SIP requests remain explicit when available, response feed metadata is not invented', async () => {
+  const now = new Date().toISOString();
+  const feeds:string[]=[];
+  const fetchImpl:typeof fetch=async(request)=>{
+    const url=new URL(request instanceof Request?request.url:request.toString());
+    feeds.push(url.searchParams.get('feed')??'MISSING');
+    if(url.pathname.includes('/v1beta1/options/snapshots/SPY'))return Response.json({snapshots:{
+      [symbol]:{latestQuote:{bp:2.2,ap:2.3,t:now}},
+    },next_page_token:null});
+    if(url.pathname==='/v2/stocks/SPY/trades/latest')return Response.json({trade:{p:550,s:1,t:now}});
+    return new Response('unexpected',{status:500});
+  };
+  const source=new AlpacaCommand5aObservationSource({tradingApiBase:'https://paper-api.alpaca.test',
+    marketDataApiBase:'https://data.alpaca.test',apiKey:'test-key',apiSecret:'test-secret',fetchImpl},
+  {optionFeed:'opra',stockFeed:'sip',maximumResearchQuoteAgeSeconds:60,maximumTargetDelaySeconds:100_000_000});
+  const receipt=await source.observe(inputs());
+  assert.equal(receipt.state,'READY');
+  assert.equal(receipt.quotes[0]?.feed,'OPRA');
+  assert.deepEqual(feeds,['opra','sip']);
+});
+
+test('entitlement, rate-limit, malformed and network failures remain typed provider failures, never empty opportunity',async()=>{
+  const scenarios=[
+    {response:async()=>new Response('forbidden',{status:403}),reason:'PROVIDER_NOT_ENTITLED',state:'MISSING'},
+    {response:async()=>new Response('rate limited',{status:429}),reason:'PROVIDER_RATE_LIMITED',state:'MISSING'},
+    {response:async()=>Response.json({unexpected:true}),reason:'PROVIDER_MALFORMED_RESPONSE',state:'INVALID'},
+    {response:async()=>{throw new TypeError('network down');},reason:'PROVIDER_NETWORK_ERROR',state:'MISSING'},
+  ] as const;
+  for(const scenario of scenarios){
+    const source=new AlpacaCommand5aObservationSource({tradingApiBase:'https://paper-api.alpaca.test',
+      marketDataApiBase:'https://data.alpaca.test',apiKey:'test-key',apiSecret:'test-secret',fetchImpl:scenario.response as typeof fetch},
+    {optionFeed:'opra',stockFeed:'sip',maximumResearchQuoteAgeSeconds:60,maximumTargetDelaySeconds:100_000_000});
+    const receipt=await source.observe(inputs());
+    assert.equal(receipt.state,scenario.state);
+    assert.equal(receipt.reasonCode,scenario.reason);
+    assert.equal(receipt.quotes.length,0);
+  }
+});
+
+test('provider timeout is classified separately from entitlement and empty data',async()=>{
+  const fetchImpl:typeof fetch=async(_request,init)=>new Promise((_resolve,reject)=>{
+    init?.signal?.addEventListener('abort',()=>reject(new DOMException('aborted','AbortError')),{once:true});
+  });
+  const source=new AlpacaCommand5aObservationSource({tradingApiBase:'https://paper-api.alpaca.test',
+    marketDataApiBase:'https://data.alpaca.test',apiKey:'test-key',apiSecret:'test-secret',fetchImpl,requestTimeoutMs:5},
+  {optionFeed:'opra',stockFeed:'sip',maximumResearchQuoteAgeSeconds:60,maximumTargetDelaySeconds:100_000_000});
+  const receipt=await source.observe(inputs());
+  assert.equal(receipt.state,'MISSING');
+  assert.equal(receipt.reasonCode,'PROVIDER_TIMEOUT');
+});
