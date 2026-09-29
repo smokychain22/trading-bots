@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
-import { brotliCompressSync, gzipSync } from 'node:zlib';
+import { brotliCompressSync, brotliDecompressSync, gunzipSync, gzipSync } from 'node:zlib';
 import { buildFusionSnapshot, hashJson, type FusionSnapshotInput } from '../src/market/fusion-snapshot.js';
 import { canonicalJson } from '../src/research/point-in-time-evidence.js';
 import { normalizeOptionContract } from '../src/theta/option-contract.js';
+import { buildOptionomicsFeatureSnapshot } from '../src/theta/optionomics-feature-engine.js';
+import { fetchOptionomicsOptionChain } from '../src/theta/optionomics-provider.js';
 import {
   decodeCycleEvidenceArchive,
   postgresCycleEvidenceStorageVersion,
@@ -148,6 +150,46 @@ test('distant repeated derived Optionomics context reconstructs exact frontier a
   assert.equal(canonicalJson(decoded.strategyFrontier), canonicalJson(expanded.strategyFrontier as never));
   assert.equal(canonicalJson(decoded.canonicalFrontierInput), canonicalJson(expanded.canonicalFrontierInput as never));
   assert.equal(sha(canonicalJson(decoded)), projection.archiveHash);
+});
+
+test('derived Optionomics contract features are reconstructed exactly from the normalized chain', async () => {
+  const original = cycle();
+  assert.ok(original.fusionSnapshot !== null);
+  const outcome = await fetchOptionomicsOptionChain({
+    apiBase: 'https://optionomics.ai', email: 'synthetic@example.com', apiToken: 'SYNTHETIC_TEST_TOKEN',
+    now: () => now, fetchImpl: (async () => new Response(JSON.stringify([{
+      symbol: 'SPY261016P00400000', underlying: 'SPY', expiration: '2026-10-16', option_type: 'put',
+      strike: 400, bid: 1, ask: 1.05, implied_volatility: 0.2, delta: -0.2, as_of: now,
+    }]), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch,
+  }, 'SPY');
+  assert.equal(outcome.kind, 'VALUE_PRESENT');
+  if (outcome.kind !== 'VALUE_PRESENT') return;
+  const features = buildOptionomicsFeatureSnapshot({ chain: outcome.value, flowWindows: [], stockPrice: 665.01,
+    multiplierByContract: new Map([['SPY261016P00400000', 100]]) });
+  const snapshot = { ...original.fusionSnapshot.snapshot,
+    optionomicsFeatureState: { optionChain: outcome.value.entries, features } };
+  const expanded = { ...original, fusionSnapshot: { ...original.fusionSnapshot, snapshot },
+    strategyFrontier: { snapshotId: 'features-frontier', optionomicsContext: features,
+      branches: [], selectedCandidateId: null, nearMissCandidateId: null, bestRejectedCandidateId: null },
+    canonicalFrontierInput: { snapshotId: 'features-t0', contracts: snapshot.contractCandidates,
+      optionomicsContext: features } } as unknown as ThetaShadowCycleResult;
+  const stored = projectCycleEvidenceForPostgres(expanded);
+  const uncompressed = gunzipSync(stored.archive);
+  const packedJson = brotliDecompressSync(uncompressed.subarray(Buffer.byteLength('THETA_BR1\0'))).toString('utf8');
+  const packed = JSON.parse(packedJson) as { references: string[] };
+  assert.ok(packed.references.includes('OPTIONOMICS_FEATURE_CONTRACTS_V1'));
+  const decoded = decodeCycleEvidenceArchive(stored.archive);
+  assert.equal(canonicalJson(decoded.snapshot), canonicalJson(snapshot as never));
+  assert.equal(canonicalJson(decoded.strategyFrontier), canonicalJson(expanded.strategyFrontier as never));
+  assert.equal(canonicalJson(decoded.canonicalFrontierInput), canonicalJson(expanded.canonicalFrontierInput as never));
+  assert.equal(sha(canonicalJson(decoded)), stored.archiveHash);
+  const tampered = JSON.parse(packedJson) as {
+    evidence: { snapshot: { optionomicsFeatureState: { features: { contracts: { fullStateHash: string } } } } };
+  };
+  tampered.evidence.snapshot.optionomicsFeatureState.features.contracts.fullStateHash = '0'.repeat(64);
+  const tamperedArchive = gzipSync(Buffer.concat([Buffer.from('THETA_BR1\0'),
+    brotliCompressSync(Buffer.from(JSON.stringify(tampered)))]));
+  assert.throws(() => decodeCycleEvidenceArchive(tamperedArchive), /FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID/);
 });
 
 test('historical v2 gzip archives remain readable and malformed v3 references fail closed', () => {

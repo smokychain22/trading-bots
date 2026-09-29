@@ -3,6 +3,8 @@ import { brotliCompressSync, brotliDecompressSync, constants, gunzipSync, gzipSy
 import type { JsonValue } from '../market/fusion-snapshot.js';
 import { canonicalJson } from '../research/point-in-time-evidence.js';
 import { assertInlinePayloadWithinPolicy } from '../storage/storage-dataset-policy.js';
+import { rebuildOptionomicsContractFeaturesV1 } from './optionomics-feature-engine.js';
+import type { NormalizedOptionomicsEntry } from './optionomics-provider.js';
 import type { CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
 import type { ThetaShadowCycleResult } from './theta-shadow-cycle.js';
 
@@ -107,7 +109,30 @@ export interface PostgresCycleEvidenceProjection {
 }
 
 type PackedReference = 'OPTIONOMICS_RAW_OBSERVATION_PAYLOAD' | 'CANONICAL_FRONTIER_CONTRACTS'
-  | 'STRATEGY_FRONTIER_OPTIONOMICS_CONTEXT' | 'CANONICAL_FRONTIER_OPTIONOMICS_CONTEXT';
+  | 'STRATEGY_FRONTIER_OPTIONOMICS_CONTEXT' | 'CANONICAL_FRONTIER_OPTIONOMICS_CONTEXT'
+  | 'OPTIONOMICS_FEATURE_CONTRACTS_V1';
+
+function rebuildFeatureContracts(snapshot: Readonly<Record<string, JsonValue>>): JsonValue | null {
+  const state = object(snapshot.optionomicsFeatureState);
+  if (!Array.isArray(state.optionChain) || !Array.isArray(snapshot.contractCandidates)) return null;
+  const contracts = snapshot.contractCandidates.map((value) => object(value));
+  const firstPrice = contracts[0]?.underlyingLast;
+  const stockPrice = typeof firstPrice === 'number' && Number.isFinite(firstPrice) ? firstPrice : null;
+  const multiplierByContract = new Map<string, number>();
+  for (const contract of contracts) {
+    if (typeof contract.occSymbol === 'string' && typeof contract.multiplier === 'number') {
+      multiplierByContract.set(contract.occSymbol, contract.multiplier);
+    }
+  }
+  try {
+    return rebuildOptionomicsContractFeaturesV1({
+      entries: state.optionChain as unknown as NormalizedOptionomicsEntry[],
+      stockPrice, multiplierByContract,
+    }) as unknown as JsonValue;
+  } catch {
+    return null;
+  }
+}
 
 function packCycleEvidence(value: Record<string, unknown>): { readonly evidence: Record<string, unknown>; readonly references: PackedReference[] } {
   const references: PackedReference[] = [];
@@ -126,6 +151,20 @@ function packCycleEvidence(value: Record<string, unknown>): { readonly evidence:
   let canonicalFrontierInput = value.canonicalFrontierInput;
   const featureContext = object(object(snapshot.optionomicsFeatureState).features);
   const featureContextJson = Object.keys(featureContext).length > 0 ? canonicalJson(featureContext) : null;
+  const featureContracts = featureContext.contracts;
+  if (Array.isArray(featureContracts) && featureContracts.length > 0) {
+    const rebuilt = rebuildFeatureContracts(snapshot);
+    if (rebuilt !== null && canonicalJson(rebuilt) === canonicalJson(featureContracts)) {
+      const state = object(snapshot.optionomicsFeatureState);
+      snapshot = { ...snapshot, optionomicsFeatureState: { ...state,
+        features: { ...featureContext, contracts: {
+          storageState: 'REBUILD_FROM_NORMALIZED_OPTION_CHAIN_V1',
+          fullStateHash: hash(canonicalJson(featureContracts)),
+        } },
+      } };
+      references.push('OPTIONOMICS_FEATURE_CONTRACTS_V1');
+    }
+  }
   let strategyFrontier = value.strategyFrontier;
   if (featureContextJson !== null
     && strategyFrontier !== null && typeof strategyFrontier === 'object' && !Array.isArray(strategyFrontier)) {
@@ -206,6 +245,19 @@ function unpackCycleEvidence(value: unknown): Record<string, JsonValue> {
         }
         canonicalFrontierInput = { ...canonicalFrontierInput, optionomicsContext: features };
       }
+    } else if (reference === 'OPTIONOMICS_FEATURE_CONTRACTS_V1') {
+      const state = object(snapshot.optionomicsFeatureState);
+      const features = object(state.features);
+      const marker = object(features.contracts);
+      if (marker.storageState !== 'REBUILD_FROM_NORMALIZED_OPTION_CHAIN_V1'
+        || typeof marker.fullStateHash !== 'string') throw new Error('FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID');
+      const rebuilt = rebuildFeatureContracts(snapshot);
+      if (rebuilt === null || hash(canonicalJson(rebuilt)) !== marker.fullStateHash) {
+        throw new Error('FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID');
+      }
+      snapshot = { ...snapshot, optionomicsFeatureState: { ...state,
+        features: { ...features, contracts: rebuilt },
+      } };
     } else throw new Error('FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID');
   }
   return hasCanonicalFrontierInput

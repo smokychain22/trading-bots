@@ -181,6 +181,17 @@ function contractFeatures(entry: NormalizedOptionomicsEntry, stockPrice: number 
   };
 }
 
+/** Pinned archive reconstruction path. A change to contractFeatures must
+ * preserve this V1 result for existing hashes or add a new archive version. */
+export function rebuildOptionomicsContractFeaturesV1(input: {
+  readonly entries: readonly NormalizedOptionomicsEntry[];
+  readonly stockPrice: number | null;
+  readonly multiplierByContract: ReadonlyMap<string, number>;
+}): readonly OptionomicsContractFeatureState[] {
+  return input.entries.map((entry) => contractFeatures(entry, input.stockPrice,
+    entry.rawSymbol === null ? null : input.multiplierByContract.get(entry.rawSymbol) ?? null));
+}
+
 function deriveSkew(entries: readonly NormalizedOptionomicsEntry[], deltaTolerance: number | null): FeatureValue<number> {
   if (deltaTolerance === null) return unknown('25_DELTA_PROXIMITY_TOLERANCE_NOT_CONFIGURED');
   if (!Number.isFinite(deltaTolerance) || deltaTolerance <= 0 || deltaTolerance >= 0.25) return invalid('25_DELTA_PROXIMITY_TOLERANCE_INVALID');
@@ -242,9 +253,10 @@ export function buildOptionomicsFeatureSnapshot(input: {
   };
   const eventContextPopulated = (['EVENTS', 'EARNINGS_FILINGS', 'SYMBOL_NEWS'] as const)
     .some((family) => observation(family)?.populated === true);
-  const contracts = input.chain.entries.map((entry) => contractFeatures(
-    entry, input.stockPrice, entry.rawSymbol === null ? null : input.multiplierByContract?.get(entry.rawSymbol) ?? null,
-  ));
+  const contracts = rebuildOptionomicsContractFeaturesV1({
+    entries: input.chain.entries, stockPrice: input.stockPrice,
+    multiplierByContract: input.multiplierByContract ?? new Map(),
+  });
   const observedAt = input.chain.entries.map((entry)=>entry.asOf)
     .filter((value):value is string=>value!==null&&Number.isFinite(Date.parse(value)))
     .toSorted((left,right)=>Date.parse(right)-Date.parse(left))[0]??null;
