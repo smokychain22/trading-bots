@@ -28,8 +28,8 @@ evidence window without restarting the aligned worker for this status alone.
 | 1 | Current release frozen | `FORWARD_DATA_REQUIRED` | Current-worker open-session canonical frontier, durable method provenance, honest per-method L7 and non-real rejection, persisted T0, provider-free deterministic replay. |
 | 2 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Provider authority, exact pre-submit identity, PIT timing, 20 feature families and typed provider failures are wired. Exact-SHA CI run `36543964513` passed. Current open-session entitlement and real quote/feature observations remain pending. |
 | 3 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Canonical candidates, sizing, routing and T0 are typed. Persisted WAIT now carries exact decomposition and cannot self-certify with unclassified blockers or UNKNOWNs. T0 replay uses the Production frontier, rejects tampering and uses no network. Exact-SHA CI run `36548131698` passed. Current-worker open-session proof remains pending. |
-| 4 | `SOURCE_COMPLETE_EMPIRICAL_PENDING` | `EMPIRICALLY_UNPROVEN` | Q/H/D/A/C deterministic mechanics, versioned modeled opening costs, position scaling, management alternatives, whole-chain loss preservation, 17 challenger replays, persistence and T0 replay are wired and tested. Current-worker evidence and calibrated EV/POP/continuation values remain unavailable and are not fabricated. |
-| 5 | `PARTIAL_SOURCE` | `SOURCE_DISCOVERY_NEXT` | One AEGIS and sizing authority remains mandatory. Simulated idempotency and restart tests do not authorize Paper submissions. |
+| 4 | `SOURCE_COMPLETE_EMPIRICAL_PENDING` | `EMPIRICALLY_UNPROVEN` | Q/H/D/A/C deterministic mechanics, versioned modeled opening costs, position scaling, management alternatives, whole-chain loss preservation, 17 challenger replays, persistence and T0 replay are wired and tested. Exact-SHA CI run `36550676519` passed. Current-worker evidence and calibrated EV/POP/continuation values remain unavailable and are not fabricated. |
+| 5 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | One AEGIS authority, one canonical final sizing authority and one master execution mutation state machine are enforced and tested. Current-worker evidence remains pending. Sector mapping and portfolio Greeks retain typed provider/data limits. Risk-policy optimality remains empirically unproven. |
 | 6 | `SOURCE_COMPLETE_DATA_PENDING` for imported research modules only | `EMPIRICALLY_UNPROVEN` | Historical recovered corpus has no selected or resolved outcomes. Future capture and truth-class joins require later real observations. |
 | 7 | Existing locked worker observed | `OWNER_GATED` | Paper readiness and first order require separate owner authorization after preceding evidence gates. |
 | 8 | No Paper outcomes | `FUTURE_DATA_REQUIRED` | Actual fills, lifecycle and whole-chain outcomes do not yet exist. |
@@ -200,9 +200,35 @@ inventing continuation value.
 Full evidence and the remaining empirical/runtime limits are recorded in
 `docs/operations/THETA_PHASE_4_UNIFIED_CLOSURE.md`.
 
+## Phase 5 risk, sizing and execution authority pass, 2026-09-29
+
+The source now enforces exactly 11 declared hard-rule families across all five
+canonical strategy packages. Soft feature families remain ranking and context
+evidence and cannot silently become hard gates. Python AEGIS remains the sole
+12-family risk authority, `structuralSizing()` remains the final system-wide
+sizing authority, and `PaperOrderCoordinator` remains the only master broker
+mutation state machine.
+
+The final sizing path now distinguishes a missing policy input from a malformed
+one. Invalid caps and reduced-risk multipliers are rejected instead of being
+silently clamped or converted into an earned `GLOBAL_WAIT`. The centralized
+Paper-bootstrap correlation policy supplies and persists its exact version,
+lookback, overlap, freshness and held-symbol bounds.
+
+The consumed risk-policy registry now reports IV shock, spread widening and
+correlation clustering as active versioned bootstrap policies, severe drawdown
+as an empirical research candidate, and sector mapping as a genuinely missing
+authoritative source. Alpaca position snapshots still cannot prove aggregate
+portfolio Greeks, so no zero-valued Greek fallback is claimed.
+
+Execution tests prove deterministic intent persistence, idempotency,
+reconciliation, partial-fill handling, restart recovery, exact quote identity
+and locked failure paths. They do not authorize Paper execution. Full evidence
+is recorded in `docs/operations/THETA_PHASE_5_UNIFIED_CLOSURE.md`.
+
 | Class | Current state |
 | --- | --- |
-| `CODE_SOLVABLE` | Zero known Phase-3 source blockers after local validation. Exact-SHA CI and current-worker runtime evidence remain separate gates. |
+| `CODE_SOLVABLE` | Zero known Phase-5 source blockers after local validation. Exact-SHA CI and current-worker runtime evidence remain separate gates. |
 | `DATA_REQUIRED` | Recheck current Alpaca quote entitlement and exact BBO timing in the supported session. |
 | `FUTURE_DATA_REQUIRED` | Open-session current-release frontier/T0, future marks and broker-actual outcomes. |
 | `EXTERNAL_PROVIDER_REQUIRED` | None newly proved by this branch import. Transfer-quota signal needs separate bounded confirmation. |
