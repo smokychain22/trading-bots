@@ -23,7 +23,7 @@ $supervisorProcesses=@(Get-CimInstance Win32_Process -ErrorAction SilentlyContin
 $supervisorCount=$supervisorProcesses.Count
 $healthTimestamp=$null
 foreach($field in @('observedAt','lastCycle','lastFailure','lastShutdown')){
-  if($null-ne$health-and$null-ne$health.$field){$healthTimestamp=[DateTimeOffset]::Parse([string]$health.$field);break}
+  if($null-ne$health-and$null-ne$health.$field){$healthTimestamp=[DateTimeOffset]$health.$field;break}
 }
 $healthAgeSeconds=if($null-ne$healthTimestamp){[Math]::Max(0,[Math]::Round(([DateTimeOffset]::UtcNow-$healthTimestamp).TotalSeconds))}else{$null}
 $healthFresh=$null-ne$healthAgeSeconds-and$healthAgeSeconds-le420

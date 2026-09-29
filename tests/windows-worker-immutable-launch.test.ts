@@ -40,3 +40,8 @@ test('worker status rejects a mutable or mismatched scheduled-task script', () =
   assert.match(status, /BLOCKED_TASK_SCRIPT_MISMATCH/);
   assert.match(status, /expectedWorkerScript=\$expectedWorkerScript;taskScriptAligned=\$taskScriptAligned/);
 });
+
+test('worker status preserves the timezone on a parsed heartbeat', () => {
+  assert.match(status, /\$healthTimestamp=\[DateTimeOffset\]\$health\.\$field/);
+  assert.doesNotMatch(status, /\[DateTimeOffset\]::Parse\(\[string\]\$health\.\$field\)/);
+});
