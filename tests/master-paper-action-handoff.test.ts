@@ -146,6 +146,14 @@ test('Paper evidence tier reaches coordinator while empirical EV stays explicitl
   assert.equal(result.execution?.brokerOrder?.status,'accepted');
 });
 
+test('a new-risk Paper canary plan larger than one contract fails before quote or broker access',async()=>{
+  const quoteSource=new QuoteSource(quote);
+  await assert.rejects(prepareMasterPaperAction(plan({executionTier:'PAPER_EVIDENCE',quantity:2,
+    canonicalQuantity:2,paperEvidenceQuantity:2,paperEvidenceRiskCap:2,paperEvidenceCapReason:'CANONICAL_QUANTITY_LOWER',
+    expectedAfterCostEv:null,empiricalEconomicsReady:false}),quoteSource,now,true),
+  /FIRST_PAPER_CANARY_QUANTITY_MUST_BE_ONE/);
+});
+
 test('bootstrap management can open a fully covered call in bounded Paper evidence without claiming empirical EV',async()=>{
   const callQuote={...quote,contractId:'AAPL261016C00200000',providerContractId:'AAPL261016C00200000',
     optionIdentity:{underlying:'AAPL',optionSymbol:'AAPL261016C00200000',expiration:'2026-10-16',strike:200,

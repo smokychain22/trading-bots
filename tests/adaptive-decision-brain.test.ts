@@ -62,6 +62,13 @@ test('real frontier alternatives enter the structural comparator without changin
   assert.equal(result.currentPolicyDecision.candidateId, 'c1');
   assert.equal(result.adaptiveShadowDecision.candidateId, null);
   assert.equal(result.adaptiveShadowDecision.quantity, null);
+  assert.equal(required(result.shadowComparison.cohorts[0]).structuralLeaderCandidateId, 'c2');
+  assert.equal(required(result.shadowComparison.cohorts[0]).structuralLeaderState, 'UNIQUE_STRUCTURAL_PARETO_LEADER');
+  assert.equal(required(result.shadowComparison.cohorts[0]).secondBestCandidateId, null);
+  assert.equal(required(result.shadowComparison.cohorts[0]).secondBestState, 'NO_TOTAL_ORDER_WITHOUT_EMPIRICAL_POLICY');
+  assert.ok(required(result.shadowComparison.cohorts[0]).unresolvedDimensions.includes('expectedAfterCostWholeChainPnl'));
+  assert.equal(result.shadowComparison.waitComparisonState, 'WAIT_EXPLICIT_OPPORTUNITY_COST_UNKNOWN');
+  assert.ok(result.adaptiveShadowDecision.reasonCodes.includes('STRUCTURAL_PARETO_RECEIPT_AVAILABLE'));
   assert.equal(result.shadowComparison.brokerAuthority, false);
   const reversed = { ...f, branches: [{ ...required(f.branches[0]), candidates: [...required(f.branches[0]).candidates].reverse() }] };
   assert.equal(buildAdaptiveShadowDecisionReceipt({ frontier: reversed, currentDecision: currentDecision() }).contentHash, result.contentHash);
@@ -111,6 +118,7 @@ test('adaptive shadow is a comparison receipt with no broker mutation authority'
   assert.equal(receipt.executionAuthorized, false);
   assert.equal(receipt.brokerMutationAllowed, false);
   assert.equal(receipt.comparison, 'NO_COMPARISON');
+  assert.equal(receipt.shadowComparison.profitabilityWinner, null);
   assert.deepEqual(receipt.lineage, sovereignDecisionPath);
 });
 

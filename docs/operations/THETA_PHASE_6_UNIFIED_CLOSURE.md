@@ -96,10 +96,12 @@ input and output. BQ-2 now uses deterministic absolute-delta distance and
 fails if a feasible candidate lacks delta.
 
 `B1`, `B2` and `BH-1` remain `BLOCKED_MISSING_POLICY` because their full
-multi-stage lifecycle policies are not completely specified. `BQ-3` remains
-blocked until one exact transparent-baseline policy is frozen. No policy was
-invented to make those states green. A1-A6 continue through the separate
-ablation runner.
+multi-stage lifecycle policies are not completely specified. The later deep
+contradiction pass removed `BQ-3` from this list because its registry already
+froze the exact transparent policy: `theta_q_contract.evaluate_request`.
+The benchmark runner now dispatches that existing v0 contract directly,
+retains `brokerAuthority=false`, and hashes the complete input and output.
+A1-A6 continue through the separate ablation runner.
 
 ## Model ladder and validation
 
@@ -173,7 +175,7 @@ EMPIRICAL_EV_POP_CALIBRATION = EMPIRICALLY_UNPROVEN
 
 ADAPTIVE_STRATEGY_SWITCHING = SHADOW_ONLY_EMPIRICALLY_UNPROVEN
 
-BENCHMARK_POLICY_GAPS = B1, B2, BH-1, BQ-3
+BENCHMARK_POLICY_GAPS = B1, B2, BH-1
 
 PAPER_AND_BROKER_AUTHORITY = false
 

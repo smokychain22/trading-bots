@@ -58,3 +58,13 @@ test('identity mismatch, duplicate exposure, follower mutation, or missing reloc
   assert.ok(receipt.blockers.includes('NEW_RISK_RELOCKED_FALSE'));
   assert.ok(receipt.blockers.includes('FOLLOWER_MUTATION_DETECTED'));
 });
+
+test('a first canary larger than one contract is rejected even when broker quantities match',()=>{
+  const base=input();
+  const receipt=buildFirstCanaryAcceptanceReceipt({...base,
+    expected:{...base.expected,quantity:2},
+    broker:{...base.broker,requestedQuantity:good(2),filledQuantity:good(2)},
+  });
+  assert.equal(receipt.status,'FAILED');
+  assert.ok(receipt.blockers.includes('FIRST_PAPER_CANARY_QUANTITY_MUST_BE_ONE'));
+});

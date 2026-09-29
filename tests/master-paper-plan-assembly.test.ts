@@ -74,6 +74,17 @@ test('assembles one reducing-only Paper evidence CSP plan without inventing empi
   assert.equal(result.plan.multiplier,100);
 });
 
+test('the first Paper evidence plan remains capped at one contract even if a broader environment cap is supplied',()=>{
+  const result=assembleMasterPaperEvidencePlan(input({paperEvidenceRiskCap:3}));
+  assert.equal(result.state,'READY');
+  if(result.state!=='READY')return;
+  assert.equal(result.plan.canonicalQuantity,3);
+  assert.equal(result.plan.paperEvidenceQuantity,1);
+  assert.equal(result.plan.quantity,1);
+  assert.equal(result.plan.paperEvidenceRiskCap,1);
+  assert.equal(result.plan.paperEvidenceCapReason,'PAPER_EVIDENCE_RISK_CAP');
+});
+
 test('global WAIT creates no action plan',()=>{
   const wait={...frontier(),primaryAction:'GLOBAL_WAIT' as const,selectedCandidateId:null,selectedBranch:null,selectedQuantity:0,
     globalWaitEarned:true};

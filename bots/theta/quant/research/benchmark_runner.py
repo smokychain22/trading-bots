@@ -10,10 +10,11 @@ benchmark's realized/counterfactual metrics against a real dataset.
 Every other canonical mechanical benchmark now has a real, tested
 mechanic and dispatcher in `research/benchmark_mechanics.py` and this module
 (`B3`-`B6`, `BQ-1..2`, `BR-1..2`, `BA-1..3`, `BC-1..2`) or is honestly
-`BLOCKED_MISSING_POLICY` (`B1`, `B2`, `BH-1`, `BQ-3`). The lifecycle
-benchmarks require a full multi-stage simulation across positions and BQ-3
-requires one frozen transparent-baseline policy. Those policies have not been
-defined completely enough to execute without invention. `A1`-`A6` are the TRD
+`BLOCKED_MISSING_POLICY` (`B1`, `B2`, `BH-1`). The lifecycle benchmarks
+require a full multi-stage simulation across positions. `BQ-3` uses the
+already-frozen `theta_q_contract.evaluate_request` boundary, so the runner
+executes the exact transparent v0 baseline without reimplementing or silently
+changing its policy. `A1`-`A6` are the TRD
 ablation ladder steps registered in the same `benchmarks.json` file, but
 they are executed by `research/entry_feature_ablation.py`/`ablation.py`
 (work package 60), not this benchmark runner -- `classify_benchmark_readiness`
@@ -44,13 +45,14 @@ from research.benchmark_mechanics import (
     random_eligible_selection, select_by_metric,
     unconditional_hold_to_basis_recovery,
 )
+from runtime.theta_q_contract import evaluate_request as evaluate_theta_q_v0
 
 IMPLEMENTED_BENCHMARK_IDS = ('B0',)
 
 MECHANIC_IMPLEMENTED_BENCHMARK_IDS = (
-    'B3', 'B4', 'B5', 'B6', 'BQ-1', 'BQ-2', 'BR-1', 'BR-2', 'BA-1', 'BA-2', 'BA-3', 'BC-1', 'BC-2',
+    'B3', 'B4', 'B5', 'B6', 'BQ-1', 'BQ-2', 'BQ-3', 'BR-1', 'BR-2', 'BA-1', 'BA-2', 'BA-3', 'BC-1', 'BC-2',
 )
-MISSING_POLICY_BENCHMARK_IDS = ('B1', 'B2', 'BH-1', 'BQ-3')
+MISSING_POLICY_BENCHMARK_IDS = ('B1', 'B2', 'BH-1')
 ABLATION_LADDER_IDS = ('A1', 'A2', 'A3', 'A4', 'A5', 'A6')
 
 # The specific real-data capability each mechanic-implemented ID needs,
@@ -60,6 +62,7 @@ _REQUIRED_CAPABILITY = {
     'B3': 'has_price_paths', 'B4': 'has_price_paths', 'BR-1': 'has_price_paths', 'BR-2': 'has_price_paths',
     'B5': 'has_feasible_candidates', 'BQ-1': 'has_feasible_candidates',
     'BQ-2': 'has_delta_field',
+    'BQ-3': 'has_theta_q_v0_inputs',
     'B6': 'has_lifecycle_events', 'BA-1': 'has_lifecycle_events', 'BA-2': 'has_lifecycle_events',
     'BA-3': 'has_lifecycle_events', 'BC-1': 'has_lifecycle_events', 'BC-2': 'has_lifecycle_events',
 }
@@ -80,9 +83,7 @@ def classify_benchmark_readiness(benchmark_id: str, capability_evidence: Optiona
         return {'benchmarkId': benchmark_id, 'state': 'RUNNER_IMPLEMENTED_DATA_AVAILABLE',
                 'reason': 'DETERMINISTIC_BY_CONSTRUCTION_NO_DATA_NEEDED'}
     if benchmark_id in MISSING_POLICY_BENCHMARK_IDS:
-        reason = ('REQUIRES_FROZEN_TRANSPARENT_BASELINE_POLICY_NOT_YET_SELECTED'
-                  if benchmark_id == 'BQ-3'
-                  else 'REQUIRES_MULTI_STAGE_LIFECYCLE_SIMULATION_NOT_YET_BUILT')
+        reason = 'REQUIRES_MULTI_STAGE_LIFECYCLE_SIMULATION_NOT_YET_BUILT'
         return {'benchmarkId': benchmark_id, 'state': 'BLOCKED_MISSING_POLICY',
                 'reason': reason}
     if benchmark_id in MECHANIC_IMPLEMENTED_BENCHMARK_IDS:
@@ -171,6 +172,9 @@ def _execute_mechanical(benchmark_id: str, payload: dict) -> dict:
     elif benchmark_id == 'BQ-2':
         _require(payload, 'candidates', 'targetDelta')
         result = closest_delta_selection(payload['candidates'], payload['targetDelta'])
+    elif benchmark_id == 'BQ-3':
+        _require(payload, 'request')
+        result = evaluate_theta_q_v0(payload['request'])
     elif benchmark_id == 'BR-1':
         _require(payload, 'entryCredit', 'underlyingPriceAtExpiration', 'strike')
         result = hold_to_expiry_outcome(payload['entryCredit'], payload['underlyingPriceAtExpiration'], payload['strike'])

@@ -3,7 +3,7 @@ import { parseOccOptionSymbol } from './account-exposure.js';
 import { cashSecuredPutMaxLossAtZero, compareCrossStrategy, ENTRY_WHOLE_CHAIN_V1,
   unknownDatum, type CandidateComparisonInput } from '../research/cross-strategy-common-horizon-contract.js';
 
-export const canonicalShadowComparisonVersion = 'theta-canonical-shadow-comparison-v1' as const;
+export const canonicalShadowComparisonVersion = 'theta-canonical-shadow-comparison-v2' as const;
 const required = <T>(value: T | null | undefined): T => {
   if (value === null || value === undefined) throw new Error('SHADOW_VALIDATION_INVARIANT');
   return value;
@@ -56,19 +56,31 @@ export function buildCanonicalShadowComparison(frontier: Pick<CanonicalStrategyF
     const group = groups.get(key) ?? [];
     group.push(projected); groups.set(key, group);
   }
-  const cohorts = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([cohortId, members]) => ({
-    cohortId, candidates: members, comparison: compareCrossStrategy(members, ENTRY_WHOLE_CHAIN_V1),
-    structuralParetoCandidateIds: members.filter((c) => !members.some((other) => {
+  const cohorts = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([cohortId, members]) => {
+    const comparison = compareCrossStrategy(members, ENTRY_WHOLE_CHAIN_V1);
+    const structuralParetoCandidateIds = members.filter((c) => !members.some((other) => {
       const vector = (item: CandidateComparisonInput) => [required(item.deterministic.executableOpenCreditDebit),
         -required(item.deterministic.capitalRequirement), -required(item.deterministic.maxLoss), -required(item.deterministic.bidAskSpread)];
       const a = vector(other); const b = vector(c);
       return a.every((v, i) => v >= required(b[i])) && a.some((v, i) => v > required(b[i]));
-    })).map((c) => c.candidateId),
-    structuralParetoMeaning: 'CREDIT_CAPITAL_THEORETICAL_MAX_LOSS_SPREAD_ONLY_NOT_EXPECTED_UTILITY',
-    sourceCandidateIds: members.map((c) => c.candidateId),
-    waitAlternative: { action: 'WAIT', incrementalOptionCashFlow: 0, incrementalOptionCollateral: 0,
-      opportunityCost: null, reason: 'NO_NEW_POSITION_NOT_ZERO_OPPORTUNITY_COST' },
-  }));
+    })).map((c) => c.candidateId);
+    const unresolvedDimensions = comparison.profileReadiness === 'NOT_EVALUATED'
+      ? [...ENTRY_WHOLE_CHAIN_V1.requiredDimensions] : [...comparison.missingRequiredDimensions];
+    return {
+      cohortId, candidates: members, comparison, structuralParetoCandidateIds,
+      structuralLeaderCandidateId: structuralParetoCandidateIds.length === 1 ? structuralParetoCandidateIds[0] ?? null : null,
+      structuralLeaderState: structuralParetoCandidateIds.length === 1 ? 'UNIQUE_STRUCTURAL_PARETO_LEADER' as const
+        : structuralParetoCandidateIds.length > 1 ? 'MULTIPLE_NONDOMINATED_NO_TOTAL_ORDER' as const
+          : 'NO_STRUCTURAL_LEADER' as const,
+      secondBestCandidateId: null,
+      secondBestState: 'NO_TOTAL_ORDER_WITHOUT_EMPIRICAL_POLICY' as const,
+      unresolvedDimensions,
+      structuralParetoMeaning: 'CREDIT_CAPITAL_THEORETICAL_MAX_LOSS_SPREAD_ONLY_NOT_EXPECTED_UTILITY',
+      sourceCandidateIds: members.map((c) => c.candidateId),
+      waitAlternative: { action: 'WAIT', incrementalOptionCashFlow: 0, incrementalOptionCollateral: 0,
+        opportunityCost: null, reason: 'NO_NEW_POSITION_NOT_ZERO_OPPORTUNITY_COST' },
+    };
+  });
   const hasPeers = cohorts.some((c) => c.candidates.length > 1);
   return {
     version: canonicalShadowComparisonVersion, snapshotId: frontier.snapshotId, decisionAsOf: frontier.timestamp,
@@ -82,6 +94,7 @@ export function buildCanonicalShadowComparison(frontier: Pick<CanonicalStrategyF
       .every((b) => b.evaluated && !b.enumerationTruncated),
     crossHorizonState: 'NO_COMPARISON_FORWARD_COMMON_HORIZON_EVIDENCE_REQUIRED',
     profitabilityWinner: null, empiricalState: 'EV_MODEL_NOT_EMPIRICALLY_READY',
+    waitComparisonState: 'WAIT_EXPLICIT_OPPORTUNITY_COST_UNKNOWN',
     brokerAuthority: false as const, executionAuthorized: false as const,
   };
 }

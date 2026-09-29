@@ -235,11 +235,15 @@ point-in-time datasets, measures WAIT regret and multi-cause failures, and
 enforces purged walk-forward, embargo, untouched OOS, calibration,
 selection-bias and promotion gates.
 
-The source audit found one false-completion defect in benchmark execution.
+The source audit found two false-completion defects in benchmark execution.
 The registry classified 13 mechanical benchmarks as implemented, but the
 runner could execute only B0. Those 13 benchmarks now have deterministic,
-versioned, hashed dispatch receipts. B1, B2, BH-1 and BQ-3 stay explicitly
-blocked on missing policy definitions rather than receiving invented policy.
+versioned, hashed dispatch receipts. A later contradiction pass found that
+`BQ-3` already had an exact policy in the registry: the frozen
+`theta_q_contract.evaluate_request` THETA-Q v0 boundary. `BQ-3` now executes
+that contract with a versioned, hashed input and no broker authority. B1, B2
+and BH-1 stay explicitly blocked on incomplete multi-stage lifecycle policy
+definitions rather than receiving invented policy.
 
 The Python research CLI now validates the real feature registry and names the
 canonical TypeScript authority for dataset construction and filter-value

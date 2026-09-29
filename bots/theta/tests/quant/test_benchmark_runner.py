@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'quant'))
 from test_empirical_pipeline import _build_export, _candidate_raw
 from test_whole_chain_dataset import entry_link, outcome
+from test_theta_q_contract import _request as theta_q_request
 from research.production_export_loader import load_dataset_export
 from research.entry_episode_training import build_entry_episode_training_dataset
 from research.benchmark_runner import (
@@ -65,6 +66,7 @@ class BenchmarkRunnerTests(unittest.TestCase):
             'B6': {'entryPrice': 100.0, 'exitPrice': 110.0},
             'BQ-1': {'candidates': [], 'metricKey': 'entryPremium', 'higherIsBetter': True},
             'BQ-2': {'candidates': [], 'targetDelta': .2},
+            'BQ-3': {'request': theta_q_request()},
             'BR-1': {'entryCredit': 1.0, 'underlyingPriceAtExpiration': 110.0, 'strike': 100.0},
             'BR-2': {'entryCredit': 1.0, 'pricePath': [['t1', .4]]},
             'BA-1': {'assigned': True}, 'BA-2': {'originalBasis': 100.0, 'currentPrice': 90.0},
@@ -106,8 +108,24 @@ class BenchmarkRunnerTests(unittest.TestCase):
         self.assertEqual(available['state'], 'RUNNER_IMPLEMENTED_DATA_AVAILABLE')
 
     def test_classify_missing_policy_ids(self):
-        for benchmark_id in ('B1', 'B2', 'BH-1', 'BQ-3'):
+        for benchmark_id in ('B1', 'B2', 'BH-1'):
             self.assertEqual(classify_benchmark_readiness(benchmark_id)['state'], 'BLOCKED_MISSING_POLICY')
+
+    def test_bq3_uses_the_frozen_theta_q_v0_contract_without_broker_authority(self):
+        result = execute_benchmark('BQ-3', {
+            'policyVersion': 'theta-q-v0-benchmark-policy-v1', 'request': theta_q_request(),
+        })
+        self.assertEqual(result['state'], 'EXECUTED')
+        self.assertEqual(result['result']['contractVersion'], 'theta-q-runtime-v1')
+        self.assertEqual(result['result']['recommendation']['selectedCandidateId'], 'candidate-1')
+        self.assertFalse(result['brokerAuthority'])
+        self.assertFalse(result['result']['recommendation']['executionAuthorized'])
+
+    def test_bq3_readiness_tracks_real_input_availability(self):
+        self.assertEqual(classify_benchmark_readiness('BQ-3', {'has_theta_q_v0_inputs': False})['state'],
+                         'RUNNER_IMPLEMENTED_DATA_UNAVAILABLE')
+        self.assertEqual(classify_benchmark_readiness('BQ-3', {'has_theta_q_v0_inputs': True})['state'],
+                         'RUNNER_IMPLEMENTED_DATA_AVAILABLE')
 
     def test_classify_ablation_ladder_ids_not_applicable(self):
         for benchmark_id in ('A1', 'A2', 'A3', 'A4', 'A5', 'A6'):

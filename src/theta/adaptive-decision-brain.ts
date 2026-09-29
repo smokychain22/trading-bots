@@ -4,7 +4,7 @@ import type { CanonicalFrontierAction } from './canonical-strategy-frontier.js';
 import { canonicalThetaStrategySources, type ThetaStrategyBranch } from './strategy-package.js';
 import { buildCanonicalShadowComparison } from './canonical-shadow-comparison.js';
 
-export const adaptiveDecisionBrainVersion = 'theta-adaptive-decision-brain-shadow-v3' as const;
+export const adaptiveDecisionBrainVersion = 'theta-adaptive-decision-brain-shadow-v4' as const;
 
 export type EvidenceValueState = 'KNOWN' | 'UNKNOWN' | 'NOT_APPLICABLE' | 'INVALID';
 export type EvidencePolicyRole =
@@ -322,6 +322,7 @@ export function buildAdaptiveShadowDecisionReceipt(input: {
       reasonCodes: [
         'ADAPTIVE_POLICY_RESEARCH_ONLY', 'EMPIRICAL_UTILITY_NOT_PROMOTED',
         'NO_BROKER_AUTHORITY', 'NO_ADAPTIVE_ACTION_INFERRED',
+        ...(shadowComparison.state === 'STRUCTURAL_COMPARISON' ? ['STRUCTURAL_PARETO_RECEIPT_AVAILABLE'] : []),
       ],
     },
     lineage: sovereignDecisionPath,

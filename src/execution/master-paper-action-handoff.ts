@@ -88,6 +88,8 @@ export const masterPaperActionPlanSchema = z.object({
   if(plan.quantity!==plan.paperEvidenceQuantity)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_QUANTITY_MISMATCH'});
   if(plan.paperEvidenceQuantity>plan.canonicalQuantity)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_QUANTITY_MAY_NOT_INCREASE'});
   if(plan.paperEvidenceQuantity>plan.paperEvidenceRiskCap)context.addIssue({code:'custom',message:'PAPER_EVIDENCE_RISK_CAP_EXCEEDED'});
+  if(plan.decisionAuthority==='NEW_RISK'&&plan.executionTier==='PAPER_EVIDENCE'&&plan.quantity>1)
+    context.addIssue({code:'custom',message:'FIRST_PAPER_CANARY_QUANTITY_MUST_BE_ONE'});
   if(plan.decisionAuthority==='NEW_RISK'&&(plan.managementInputSnapshotId!==null||plan.managementActionFrontierId!==null))
     context.addIssue({code:'custom',message:'NEW_RISK_PLAN_MAY_NOT_REFERENCE_MANAGEMENT_AUTHORITY'});
   if(plan.decisionAuthority==='NEW_RISK'&&plan.aegisAssessmentIdentity===undefined)

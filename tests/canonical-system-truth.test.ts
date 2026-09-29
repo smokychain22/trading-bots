@@ -9,6 +9,8 @@ test('canonical truth register covers each brain layer with named source and hon
   assert.equal(canonicalBrainLayers.length, 21);
   assert.equal(canonicalSystemTruthRegister.brainLayers.length, 21);
   assert.equal(canonicalSystemTruthRegister.auditCoverage, 'COMPLETE');
+  assert.equal(canonicalSystemTruthRegister.coverageMeaning, 'CORE_CAPABILITY_AND_21_LAYER_COVERAGE');
+  assert.equal(canonicalSystemTruthRegister.deepInventoryAuthority, 'npm run theta:truth:deep-inventory');
   assert.equal('observedWorkerSha' in canonicalSystemTruthRegister, false);
   assert.equal(canonicalSystemTruthRegister.brokerMutationsAuthorized, false);
   assert.equal(canonicalSystemTruthRegister.followerExecutionAuthorized, false);
@@ -38,16 +40,17 @@ test('superseded research claims do not become current authority', () => {
   assert.ok(router?.supersededClaims.some((claim) => claim.includes('no H/D')));
   assert.ok(management?.supersededClaims.some((claim) => claim.includes('no roll')));
   assert.ok(aegis?.supersededClaims.some((claim) => claim.includes('permanently null')));
-  assert.equal(aegis?.disposition, 'TRUE_HARD_BLOCKER');
+  assert.equal(aegis?.disposition, 'BUILT_AWAITING_RUNTIME_PROOF');
   const optionomics = canonicalSystemCapabilities.find((item) => item.capabilityId === 'OPTIONOMICS_RESEARCH_DATA');
   assert.ok(optionomics?.supersededClaims.some((claim) => claim.includes('executable-price authority')));
 });
 
-test('first Paper truth names final Mode-B certification without a stale provider blocker', () => {
+test('first Paper truth separates the deployed release from reviewed integration source', () => {
   const readiness = canonicalSystemCapabilities.find((item) => item.capabilityId === 'FIRST_PAPER_READINESS');
-  assert.match(readiness?.currentBlocker ?? '', /schema head 067/i);
-  assert.match(readiness?.currentBlocker ?? '', /final Mode-B certification/i);
-  assert.match(readiness?.currentBlocker ?? '', /worker is intentionally stopped/i);
+  assert.match(readiness?.currentBlocker ?? '', /cf9bc26a3cdd3646a663fe6fa97c8055606a2caa/i);
+  assert.match(readiness?.currentBlocker ?? '', /ff7d4ec2432637851d9ff8304af0661e39b06c62/i);
+  assert.match(readiness?.currentBlocker ?? '', /is not deployed/i);
+  assert.doesNotMatch(readiness?.currentBlocker ?? '', /worker is intentionally stopped/i);
   assert.doesNotMatch(readiness?.currentBlocker ?? '', /transfer quota/i);
   assert.equal(readiness?.disposition, 'TRUE_HARD_BLOCKER');
 });

@@ -5,7 +5,16 @@ const baseline = canonicalSystemTruthRegister.sourceBaselineSha;
 const gitOptions = { encoding: 'utf8' as const, maxBuffer: 16 * 1024 * 1024,
   timeout: 30_000, windowsHide: true };
 const head = execFileSync('git', ['rev-parse', 'HEAD'], gitOptions).trim();
-const sourceFiles = [...new Set(canonicalSystemTruthRegister.capabilities.flatMap((item) => item.sourceFiles))];
+// Truth and inventory modules describe the reviewed source set. A committed
+// edit to one of these administrative files must not make the register report
+// itself as a changed trading capability forever. They still participate in
+// the dirty-worktree check below.
+const administrativeTruthFiles = new Set([
+  'src/theta/canonical-system-truth.ts',
+  'src/theta/deep-system-inventory.ts',
+]);
+const sourceFiles = [...new Set(canonicalSystemTruthRegister.capabilities.flatMap((item) => item.sourceFiles))]
+  .filter((file) => !administrativeTruthFiles.has(file));
 let sourceVerificationState: 'SOURCE_BASELINE_UNCHANGED' | 'STALE_REVIEW_REQUIRED'
   | 'WORKTREE_DIRTY' | 'UNVERIFIED_GIT_HISTORY';
 let sourceFilesChanged: string[] = [];
@@ -20,7 +29,7 @@ try {
   sourceVerificationState = 'UNVERIFIED_GIT_HISTORY';
 }
 const dirtyPaths = execFileSync('git', ['status', '--porcelain', '--', ...sourceFiles,
-  'src/theta/canonical-system-truth.ts', 'tools/theta-system-truth.ts'], gitOptions).trim();
+  ...administrativeTruthFiles, 'tools/theta-system-truth.ts', 'tools/theta-deep-system-inventory.ts'], gitOptions).trim();
 if (dirtyPaths) sourceVerificationState = 'WORKTREE_DIRTY';
 
 const receipt = {

@@ -3,15 +3,15 @@
  * trading authority. Historical research documents remain historical even
  * when they contain superseded statements.
  */
-export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v2' as const;
-// Reviewed source baseline after the 2026-09-28 Mode-A backup bounded-growth
-// repair. Later commits may update receipts or this inventory itself without
-// invalidating the reviewed decision-source set. The runtime tool still diffs
-// every capability source file and reports any subsequent source change.
-export const truthSourceBaselineSha = '9d59e3a9565516e0fcd7e1588e77d555e073a123';
+export const canonicalSystemTruthVersion = 'theta-canonical-system-truth-v3' as const;
+// Reviewed source baseline after the 2026-09-29 Phase 2 through Phase 7 source
+// passes. Administrative truth and inventory files are checked for a clean
+// worktree, but do not invalidate their own reviewed decision-source baseline.
+// The runtime tool still diffs every actual capability source file.
+export const truthSourceBaselineSha = 'ff7d4ec2432637851d9ff8304af0661e39b06c62';
 // A worker SHA is operational state. Read it from the current worker lease,
 // never from this source-controlled architectural inventory.
-export const truthLastVerifiedAt = '2026-09-28';
+export const truthLastVerifiedAt = '2026-09-29';
 
 export type TruthProof = 'YES' | 'NO' | 'UNVERIFIED' | 'NOT_APPLICABLE';
 export type TruthDisposition =
@@ -110,10 +110,10 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
   capability({ capabilityId: 'AEGIS_STRESS_AND_PORTFOLIO', layerIds: [8, 9], sourceImplemented: 'YES', testsPassed: 'YES',
     providerAuthenticated: 'YES', realDataObserved: 'YES', persisted: 'UNVERIFIED', runtimeReachable: 'YES',
     paperAuthorized: 'PAPER_ONLY_LOCKED', sourceFiles: ['src/theta/aegis-iv-stress.ts', 'src/theta/aegis-spread-stress.ts', 'bots/theta/quant/models/aegis.py'],
-    currentBlocker: 'The migration-064-origin Alpaca IV-cohort and spread baselines need independent real-session maturity, a current observation and locked-runtime proof. Production is currently at schema head 067. The optional migration-065 Optionomics detector is secondary research and is not required by the Paper path.',
+    currentBlocker: 'The migration-064-origin Alpaca IV-cohort and spread baselines need independent real-session maturity, a current observation and locked current-release proof. Production is at schema head 067. The explicit Paper cold-start policy may classify an immature historical detector as not applicable, but never waives current quote quality or absolute-spread safety. The optional migration-065 Optionomics detector remains secondary research.',
     safeCurrentBehavior: 'AEGIS fails closed on missing required evidence; current quote safety is never waived by cold start.',
     closureTest: 'Persisted real canonical Alpaca assessments and a locked no-submit cycle with full per-family reasons.',
-    disposition: 'TRUE_HARD_BLOCKER',
+    disposition: 'BUILT_AWAITING_RUNTIME_PROOF',
     supersededClaims: ['THETA_BRAIN_CAPABILITY_MATRIX: both stress producers permanently null'] }),
   capability({ capabilityId: 'COMPANY_EVENT_AND_CORPORATE_ACTION', layerIds: [7, 9], sourceImplemented: 'YES', testsPassed: 'YES',
     providerAuthenticated: 'YES', realDataObserved: 'YES', persisted: 'YES', runtimeReachable: 'YES',
@@ -178,9 +178,9 @@ export const canonicalSystemCapabilities: readonly SystemCapabilityTruth[] = [
     persisted: 'YES', runtimeReachable: 'YES', paperAuthorized: 'NOT_APPLICABLE',
     sourceFiles: ['src/theta/first-paper-blocker-budget.ts', 'src/theta/runtime-behavior-diagnostic.ts',
       'src/execution/master-paper-plan-assembly.ts', 'src/theta/no-submit-probe-guard.ts', 'src/customer/api.ts'],
-    currentBlocker: 'Audit coverage, SPY approval, schema head 067, corrected database soak diagnostics and the backup bounded-growth source repair are complete. The worker is intentionally stopped. One final Mode-B certification remains: fresh preflight and recovery gate, corrected 900-second soak, verified post-migration backup, isolated restore parity, exact-main immutable locked deployment, current-worker proof, durable provenance and deterministic T0 replay. A natural current-release open-session no-submit proof remains forward-data dependent after cutover.',
-    safeCurrentBehavior: 'The immutable runtime diagnostic now persists typed SPY event, quote-refresh, AEGIS, sizing, decision, plan and mutation-free pre-submit evidence. The operator derives each dynamic check from that evidence and leaves any stage not naturally reached UNKNOWN.',
-    closureTest: 'Clear every independent runtime release check and observe a natural current-release locked no-submit session before any Paper unlock.',
+    currentBlocker: 'The locked deployed release is cf9bc26a3cdd3646a663fe6fa97c8055606a2caa while the reviewed Phase 2 through Phase 7 integration source is ff7d4ec2432637851d9ff8304af0661e39b06c62. The integration source has exact-SHA CI but is not deployed. A governed impact review, immutable locked cutover and natural current-release open-session no-submit frontier remain required.',
+    safeCurrentBehavior: 'Keep the deployed worker locked and do not infer integration-branch behavior from source tests. The runtime diagnostic persists typed SPY event, quote-refresh, AEGIS, sizing, decision, plan and mutation-free pre-submit evidence, while every unreached stage remains UNKNOWN.',
+    closureTest: 'Complete the controlled impact review, deploy exactly one immutable locked release, then observe a natural current-release no-submit session with durable method provenance and deterministic T0 replay before any Paper unlock.',
     disposition: 'TRUE_HARD_BLOCKER' }),
 ];
 
@@ -195,6 +195,9 @@ export const canonicalBrainLayers = [
 export const canonicalSystemTruthRegister = {
   schemaVersion: canonicalSystemTruthVersion,
   auditCoverage: 'COMPLETE' as const,
+  coverageMeaning: 'CORE_CAPABILITY_AND_21_LAYER_COVERAGE' as const,
+  deepInventoryAuthority: 'npm run theta:truth:deep-inventory' as const,
+  deepInventoryVersion: 'theta-deep-system-inventory-v1' as const,
   sourceBaselineSha: truthSourceBaselineSha,
   lastVerifiedAt: truthLastVerifiedAt,
   brokerMutationsAuthorized: false,

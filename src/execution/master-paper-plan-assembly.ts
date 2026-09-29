@@ -90,7 +90,10 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
   if (!Number.isInteger(multiplier) || multiplier <= 0) blockers.push('CONTRACT_MULTIPLIER_INVALID');
   const structuralCredit = selected?.economics.premiumPerShare ?? null;
   if (!finite(structuralCredit) || structuralCredit <= 0) blockers.push('STRUCTURAL_CREDIT_UNKNOWN');
-  const sizing = applyPaperEvidenceRiskCap(frontier.selectedQuantity, input.paperEvidenceRiskCap);
+  // The unpromoted new-risk lane is the first Paper canary. Its independent
+  // safety ceiling is one contract even when a broader environment cap was
+  // configured for later Paper evidence or management activity.
+  const sizing = applyPaperEvidenceRiskCap(frontier.selectedQuantity, Math.min(input.paperEvidenceRiskCap, 1));
   if (sizing.paperEvidenceQuantity === 0) blockers.push('PAPER_EVIDENCE_QUANTITY_ZERO');
   if (input.aegisState === null) blockers.push('AEGIS_SELECTION_LINEAGE_MISSING');
   else if (!['ALLOW_FULL', 'ALLOW_REDUCED'].includes(input.aegisState)) blockers.push('AEGIS_NOT_APPROVED');

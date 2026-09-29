@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Evidence } from '../theta/first-paper-order-readiness.js';
 
-export const firstCanaryAcceptanceVersion = 'theta-first-canary-acceptance-v2' as const;
+export const firstCanaryAcceptanceVersion = 'theta-first-canary-acceptance-v3' as const;
 
 export type CanaryBrokerState = 'ACKNOWLEDGED' | 'WORKING' | 'PARTIAL' | 'FILLED' | 'REJECTED' | 'CANCELED' | 'EXPIRED';
 
@@ -75,6 +75,7 @@ export function buildFirstCanaryAcceptanceReceipt(input: FirstCanaryAcceptanceIn
   const pending: string[] = [];
   if (!Number.isFinite(Date.parse(input.asOf))) blockers.push('AS_OF_INVALID');
   if (!Number.isInteger(input.expected.quantity) || input.expected.quantity <= 0) blockers.push('EXPECTED_QUANTITY_INVALID');
+  else if (input.expected.quantity !== 1) blockers.push('FIRST_PAPER_CANARY_QUANTITY_MUST_BE_ONE');
 
   requireTrue(input.persistence.decisionPersisted, 'DECISION_PERSISTED', blockers);
   requireTrue(input.persistence.orderIntentPersisted, 'ORDER_INTENT_PERSISTED', blockers);

@@ -153,8 +153,8 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
       [first.fusionSnapshotId]);
     assert.equal(storedFrontier.rows.length, 1);
     const shadow = storedFrontier.rows[0].frontier_json.adaptiveShadowDecision;
-    assert.equal(shadow.contractVersion, 'theta-adaptive-decision-brain-shadow-v3');
-    assert.equal(shadow.shadowComparison.version, 'theta-canonical-shadow-comparison-v1');
+    assert.equal(shadow.contractVersion, 'theta-adaptive-decision-brain-shadow-v4');
+    assert.equal(shadow.shadowComparison.version, 'theta-canonical-shadow-comparison-v2');
     assert.equal(shadow.shadowComparison.brokerAuthority, false);
     assert.equal(shadow.adaptiveShadowDecision.candidateId, null);
     assert.equal(shadow.shadowComparison.profitabilityWinner, null);
