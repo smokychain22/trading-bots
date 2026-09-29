@@ -142,6 +142,7 @@ function unpackCycleEvidence(value: unknown): Record<string, JsonValue> {
     || !Array.isArray(packed.references)) throw new Error('FUSION_CYCLE_ARCHIVE_INVALID');
   const evidence = packed.evidence as Record<string, JsonValue>;
   let snapshot = object(evidence.snapshot);
+  const hasCanonicalFrontierInput = Object.hasOwn(evidence, 'canonicalFrontierInput');
   let canonicalFrontierInput = evidence.canonicalFrontierInput ?? null;
   const seen = new Set<string>();
   for (const reference of packed.references) {
@@ -166,7 +167,9 @@ function unpackCycleEvidence(value: unknown): Record<string, JsonValue> {
       canonicalFrontierInput = { ...input, contracts: snapshot.contractCandidates };
     } else throw new Error('FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID');
   }
-  return { ...evidence, snapshot, canonicalFrontierInput };
+  return hasCanonicalFrontierInput
+    ? { ...evidence, snapshot, canonicalFrontierInput }
+    : { ...evidence, snapshot };
 }
 
 export function projectCycleEvidenceForPostgres(cycle: ThetaShadowCycleResult): PostgresCycleEvidenceProjection {

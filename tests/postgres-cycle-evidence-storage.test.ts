@@ -89,6 +89,7 @@ test('PostgreSQL projection is bounded while compressed archive retains the comp
   const decoded = decodeCycleEvidenceArchive(projection.archive);
   assert.equal(decoded.contractVersion, postgresCycleEvidenceStorageVersion);
   assert.equal(decoded.snapshotContentHash, value.snapshotContentHash);
+  assert.equal(sha(canonicalJson(decoded)), projection.archiveHash);
   assert.equal(hashJson(decoded.snapshot as never), value.snapshotContentHash);
   const decodedSnapshot = decoded.snapshot as Record<string, unknown>;
   assert.equal((decodedSnapshot.contractCandidates as unknown[]).length, 120);
