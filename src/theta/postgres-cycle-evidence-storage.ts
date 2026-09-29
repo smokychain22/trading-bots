@@ -231,6 +231,22 @@ export function projectCycleEvidenceForPostgres(cycle: ThetaShadowCycleResult): 
     [constants.BROTLI_PARAM_LGWIN]: 24,
   } });
   const archive = gzipSync(Buffer.concat([packedArchivePrefix, compressed]), { level: 1 });
+  if (archive.byteLength > MAX_COMPRESSED_ARCHIVE_BYTES && process.env.VERCEL_ENV === 'production') {
+    const optionomics = object(fullSnapshot.optionomicsFeatureState);
+    const bytes = (value: unknown): number => Buffer.byteLength(canonicalJson(value as JsonValue));
+    // The governed cap still fails closed. Sizes alone identify which evidence
+    // tier needs work without logging provider responses or changing replay.
+    console.error(JSON.stringify({ event: 'THETA_CYCLE_ARCHIVE_OVERSIZE_V1',
+      archiveBytes: archive.byteLength, snapshotBytes: bytes(fullSnapshot),
+      contractCandidatesBytes: bytes(allContracts),
+      optionomicsRawObservationsBytes: bytes(optionomics.rawObservations ?? null),
+      optionomicsFeaturesBytes: bytes(optionomics.features ?? null),
+      optionomicsOptionChainBytes: bytes(optionomics.optionChain ?? null),
+      optionomicsFlowBytes: bytes(optionomics.netFlowWindows ?? null),
+      frontierBytes: bytes(cycle.strategyFrontier), thetaQBytes: bytes(cycle.orchestration?.thetaQ ?? null),
+      canonicalFrontierInputBytes: bytes(cycle.canonicalFrontierInput ?? null),
+    }));
+  }
   assertInlinePayloadWithinPolicy({
     classification: 'SHORT_RETENTION_OBSERVATION', serializedBytes: archive.byteLength,
     errorCode: 'FUSION_CYCLE_ARCHIVE_POLICY_PAYLOAD_TOO_LARGE',
@@ -263,7 +279,7 @@ export function decodeCycleEvidenceArchive(archive: Buffer): Record<string, Json
 }
 
 export function projectCanonicalFrontierForPostgres(frontier: CanonicalStrategyFrontier): {
-  readonly projection: CanonicalStrategyFrontier; readonly projectionHash: string;
+  readonly projection: Readonly<Record<string, JsonValue>>; readonly projectionHash: string;
 } {
   const keep = new Set<string>([
     frontier.selectedCandidateId,
@@ -271,14 +287,39 @@ export function projectCanonicalFrontierForPostgres(frontier: CanonicalStrategyF
     frontier.bestRejectedCandidateId,
     ...frontier.branches.flatMap((branch) => [branch.bestCandidateId, branch.secondBestCandidateId, branch.bestRejectedCandidateId]),
   ].filter((value): value is string => value !== null));
-  const projection = {
+  const adaptive = frontier.adaptiveShadowDecision;
+  const projection: Readonly<Record<string, JsonValue>> = {
     ...frontier,
     branches: frontier.branches.map((branch) => ({
       ...branch,
       candidates: branch.candidates.filter((candidate) => keep.has(candidate.candidateId)),
     })),
-  };
-  const projectionJson = canonicalJson(projection as unknown as JsonValue);
+    optionomicsContext: {
+      storageState: 'FULL_STATE_IN_COMPRESSED_CYCLE_ARCHIVE',
+      fullStateHash: hash(canonicalJson(frontier.optionomicsContext)),
+    },
+    adaptiveShadowDecision: adaptive === undefined ? null : {
+      ...adaptive,
+      storageState: 'FULL_STATE_IN_COMPRESSED_CYCLE_ARCHIVE',
+      fullStateHash: hash(canonicalJson(adaptive)),
+      shadowComparison: {
+        ...adaptive.shadowComparison,
+        cohorts: adaptive.shadowComparison.cohorts.map((cohort) => ({
+          cohortId: cohort.cohortId,
+          sourceCandidateIds: cohort.sourceCandidateIds,
+          structuralParetoCandidateIds: cohort.structuralParetoCandidateIds,
+          structuralLeaderCandidateId: cohort.structuralLeaderCandidateId,
+          structuralLeaderState: cohort.structuralLeaderState,
+          unresolvedDimensions: cohort.unresolvedDimensions,
+          candidateCount: cohort.candidates.length,
+        })),
+        excluded: adaptive.shadowComparison.excluded.map((entry) => ({
+          candidateId: entry.candidateId, reasons: entry.reasons,
+        })),
+      },
+    },
+  } as unknown as Readonly<Record<string, JsonValue>>;
+  const projectionJson = canonicalJson(projection);
   const bytes = Buffer.byteLength(projectionJson);
   assertInlinePayloadWithinPolicy({
     classification: 'CANONICAL_AUDIT', serializedBytes: bytes,

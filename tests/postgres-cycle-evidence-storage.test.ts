@@ -8,8 +8,11 @@ import { normalizeOptionContract } from '../src/theta/option-contract.js';
 import {
   decodeCycleEvidenceArchive,
   postgresCycleEvidenceStorageVersion,
+  projectCanonicalFrontierForPostgres,
   projectCycleEvidenceForPostgres,
+  projectDecisionReceiptForPostgres,
 } from '../src/theta/postgres-cycle-evidence-storage.js';
+import type { CanonicalStrategyFrontier } from '../src/theta/canonical-strategy-frontier.js';
 import { projectOperationalThetaCandidates } from '../src/theta/postgres-theta-cycle-store.js';
 import type { ThetaShadowCycleResult } from '../src/theta/theta-shadow-cycle.js';
 import { flatPortfolioExposure } from './helpers/flat-portfolio-exposure.js';
@@ -170,6 +173,33 @@ test('distant repeated provider evidence exceeds the old gzip cap but round-trip
   assert.equal(canonicalJson(decoded.canonicalFrontierInput), canonicalJson(expanded.canonicalFrontierInput as never));
 });
 
+test('oversize archive fails closed and production telemetry reports sizes without provider contents', () => {
+  const original = cycle();
+  assert.ok(original.fusionSnapshot !== null);
+  const bulk = Array.from({ length: 200_000 }, (_, index) => sha(`unique-provider-row-${index}`)).join('');
+  const snapshot = { ...original.fusionSnapshot.snapshot,
+    optionomicsFeatureState: { rawObservations: [{ payload: { rows: bulk } }], features: { contracts: [] } } };
+  const expanded = { ...original, fusionSnapshot: { ...original.fusionSnapshot, snapshot } } as ThetaShadowCycleResult;
+  const priorEnvironment = process.env.VERCEL_ENV;
+  const priorError = console.error;
+  const telemetry: string[] = [];
+  try {
+    process.env.VERCEL_ENV = 'production';
+    console.error = (line: unknown) => { telemetry.push(String(line)); };
+    assert.throws(() => projectCycleEvidenceForPostgres(expanded), /FUSION_CYCLE_ARCHIVE_POLICY_PAYLOAD_TOO_LARGE/);
+  } finally {
+    console.error = priorError;
+    if (priorEnvironment === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = priorEnvironment;
+  }
+  assert.equal(telemetry.length, 1);
+  const receipt = JSON.parse(telemetry[0] ?? '{}') as Record<string, unknown>;
+  assert.equal(receipt.event, 'THETA_CYCLE_ARCHIVE_OVERSIZE_V1');
+  assert.ok(Number(receipt.archiveBytes) > 4 * 1024 * 1024);
+  assert.ok(Number(receipt.optionomicsRawObservationsBytes) > 4 * 1024 * 1024);
+  assert.ok(!telemetry[0]?.includes(bulk.slice(0, 64)));
+});
+
 test('operational candidate projection keeps selected and diagnostic near-misses without duplicating the full research set', () => {
   const value = cycle();
   const projected = projectOperationalThetaCandidates(value);
@@ -177,4 +207,51 @@ test('operational candidate projection keeps selected and diagnostic near-misses
   assert.ok(projected.some((candidate) => candidate.candidateId === value.orchestration?.receipt.selectedCandidateId));
   assert.ok(projected.some((candidate) => candidate.actionFeasible));
   assert.ok(projected.some((candidate) => !candidate.actionFeasible));
+});
+
+test('queryable frontier and decision receipts remain bounded while preserving archive identity and selected economics', () => {
+  const bulkyEvidence = Array.from({ length: 30_000 }, (_, index) => sha(`optionomics-${index}`)).join('');
+  const selectedCandidate = {
+    candidateId: 'SPY261016P00400000', economics: { executableCredit: 1.25 },
+    hardBlockers: [], sizing: { quantity: 1, bindingConstraint: 'BUYING_POWER', reasons: [] },
+  };
+  const adaptive = {
+    contractVersion: 'theta-adaptive-decision-brain-shadow-v4',
+    adaptiveShadowDecision: { action: 'NO_COMPARISON', candidateId: null, quantity: null, strategy: null },
+    shadowComparison: {
+      version: 'theta-canonical-shadow-comparison-v2', brokerAuthority: false, profitabilityWinner: null,
+      cohorts: [{ cohortId: 'SPY:2026-10-16', sourceCandidateIds: [selectedCandidate.candidateId],
+        structuralParetoCandidateIds: [selectedCandidate.candidateId], structuralLeaderCandidateId: selectedCandidate.candidateId,
+        structuralLeaderState: 'UNIQUE_STRUCTURAL_PARETO_LEADER', unresolvedDimensions: [],
+        candidates: [{ candidateId: selectedCandidate.candidateId, rawEvidence: bulkyEvidence.slice(0, 180_000) }] }],
+      excluded: [], candidateEligibility: [],
+    },
+    contentHash: sha('adaptive-full'),
+  };
+  const frontier = {
+    selectedCandidateId: selectedCandidate.candidateId, nearMissCandidateId: null, bestRejectedCandidateId: null,
+    branches: [{ bestCandidateId: selectedCandidate.candidateId, secondBestCandidateId: null,
+      bestRejectedCandidateId: null, candidates: [selectedCandidate] }],
+    optionomicsContext: { rawEvidence: bulkyEvidence }, adaptiveShadowDecision: adaptive,
+    primaryAction: 'OPEN_CSP', selectedQuantity: 1, contentHash: sha('full-frontier'),
+  } as unknown as CanonicalStrategyFrontier;
+  assert.ok(Buffer.byteLength(canonicalJson(frontier as never)) > 768 * 1024);
+  const projected = projectCanonicalFrontierForPostgres(frontier);
+  const record = projected.projection;
+  assert.ok(Buffer.byteLength(canonicalJson(record as never)) < 768 * 1024);
+  assert.equal((record.optionomicsContext as Record<string, unknown>).fullStateHash,
+    sha(canonicalJson(frontier.optionomicsContext)));
+  const shadow = record.adaptiveShadowDecision as Record<string, unknown>;
+  assert.equal(shadow.fullStateHash, sha(canonicalJson(adaptive as never)));
+  assert.equal(shadow.contentHash, adaptive.contentHash);
+  assert.equal(((shadow.shadowComparison as Record<string, unknown>).cohorts as unknown[]).length, 1);
+  assert.equal(((record.branches as { candidates: { candidateId: string; economics: unknown }[] }[])[0]?.candidates[0]?.candidateId),
+    selectedCandidate.candidateId);
+  assert.deepEqual(((record.branches as { candidates: { economics: unknown }[] }[])[0]?.candidates[0]?.economics),
+    selectedCandidate.economics);
+  const decision = projectDecisionReceiptForPostgres({ authority: frontier, releaseIdentity: { sourceSha: 'a'.repeat(40) } });
+  assert.ok(Buffer.byteLength(canonicalJson(decision.projection as never)) < 768 * 1024);
+  assert.equal((decision.projection.authority as Record<string, unknown>).contentHash, frontier.contentHash);
+  assert.equal(adaptive.shadowComparison.cohorts[0]?.candidates[0]?.rawEvidence.length, 180_000,
+    'projection must not mutate the full in-memory archive evidence');
 });
