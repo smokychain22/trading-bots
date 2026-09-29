@@ -4,7 +4,7 @@ Receipt date: 2026-09-29
 
 START_SHA = b7290f28376075cca208c405ef047548c2d3ee50
 
-SOURCE_SHA = commit containing this receipt
+SOURCE_SHA = 9fcbf527220cbd0619ff0b66b37a0dbef9ce2437
 
 STATE = SOURCE_COMPLETE_RUNTIME_PENDING
 
@@ -52,7 +52,7 @@ GIT_STORAGE_POLICY = PASS
 
 REPLAY_STATE = Source contracts are deterministic and tested. A current-session Phase-2 T0 replay remains coupled to the Phase-1 forward-data requirement.
 
-CI_STATE = PENDING exact-SHA CI for the commit containing this receipt
+CI_STATE = PASS, exact-SHA GitHub Actions run 36543964513
 
 ## Reality and unresolved evidence
 
@@ -85,4 +85,3 @@ FOLLOWER_SUBMISSIONS = 0
 LIVE_AUTHORIZATION = NOT_GRANTED
 
 FINAL_STATUS = SOURCE_COMPLETE_RUNTIME_PENDING
-
