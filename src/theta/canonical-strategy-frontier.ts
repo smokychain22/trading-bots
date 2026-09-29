@@ -428,6 +428,10 @@ function aegisStateFor(input: CanonicalStrategyFrontierInput, candidateId: strin
     Object.hasOwn(input.aegisNewRiskStateByCandidateId, candidateId)) {
     return input.aegisNewRiskStateByCandidateId[candidateId] ?? null;
   }
+  // Once exact Conventional assessments exist, the representative state is
+  // not evidence that every other chain contract was assessed by AEGIS.
+  if (input.aegisNewRiskStateByCandidateId !== undefined && candidateId.startsWith('THETA_CONVENTIONAL:'))
+    return null;
   return input.aegisNewRiskState;
 }
 

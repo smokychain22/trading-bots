@@ -267,6 +267,26 @@ test('a candidate-specific unknown AEGIS state never falls back to a permissive 
   assert.equal(result.primaryAction, 'SYSTEM_HOLD');
 });
 
+test('an unassessed Q contract cannot inherit a representative AEGIS veto from another finalist', () => {
+  const assessed = contract();
+  const unassessed = contract({ optionSymbol: 'AAPL261016P00185000', occSymbol: 'AAPL261016P00185000',
+    strike: 185, bid: 1.4, ask: 1.5, delta: -0.16 });
+  const result = buildCanonicalStrategyFrontier({ ...base, contracts: [assessed, unassessed],
+    routing: routing(['THETA_Q']), aegisNewRiskState: 'HARD_VETO',
+    aegisNewRiskStateByCandidateId: { 'THETA_CONVENTIONAL:AAPL261016P00190000': 'HARD_VETO' },
+    thetaQCandidateEvaluationByOptionSymbol: {
+      [assessed.optionSymbol]: qFeasible(),
+      [unassessed.optionSymbol]: { state: 'NOT_SENT_UPSTREAM_REJECT', reasonCode: 'NOT_SELECTED_FOR_FINALIST_REFRESH' },
+    },
+  });
+  const conventional = result.branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
+  const missing = conventional?.candidates.find((candidate) => candidate.legs[0]?.optionSymbol === unassessed.optionSymbol);
+  assert.equal(missing?.aegisState, null);
+  assert.ok(missing?.hardBlockers.includes('THETA_Q_NOT_SENT_UPSTREAM_REJECT:NOT_SELECTED_FOR_FINALIST_REFRESH'));
+  assert.ok(!missing?.hardBlockers.includes('AEGIS_HARD_VETO'));
+  assert.equal(missing?.sizing.quantity, 0);
+});
+
 test('AEGIS zero sizing preserves the exact binding family and reason', () => {
   const candidateId='THETA_CONVENTIONAL:AAPL261016P00190000';
   const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),

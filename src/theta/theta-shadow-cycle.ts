@@ -64,6 +64,26 @@ import { assessPortfolioCorrelation, type PortfolioCorrelationObservation } from
 import { deriveRealCurrentWorkerEvidence } from './profitability-brain-reality.js';
 import { classifyMethodInputProvenance, type MethodInputProvenance } from './profitability-method-input-provenance.js';
 
+/** Distinguish unshortlisted chain contracts from missing Q finalist responses. */
+export function completeConventionalFrontierEvaluationCoverage(
+  contracts: readonly Pick<NormalizedOptionContract, 'optionSymbol' | 'optionType' | 'dte'>[],
+  finalistOptionSymbols: ReadonlySet<string>,
+  evaluations: NonNullable<NewRiskOrchestrationResult['thetaQCandidateEvaluation']>,
+  lattice: { readonly dteMin: number; readonly dteMax: number },
+): NonNullable<NewRiskOrchestrationResult['thetaQCandidateEvaluation']> {
+  const complete: Record<string, NonNullable<NewRiskOrchestrationResult['thetaQCandidateEvaluation']>[string]> = {
+    ...evaluations,
+  };
+  for (const contract of contracts) {
+    if (contract.optionType !== 'PUT' || contract.dte < lattice.dteMin || contract.dte > lattice.dteMax) continue;
+    if (Object.hasOwn(complete, contract.optionSymbol) || finalistOptionSymbols.has(contract.optionSymbol)) continue;
+    complete[contract.optionSymbol] = {
+      state: 'NOT_SENT_UPSTREAM_REJECT', reasonCode: 'NOT_SELECTED_FOR_FINALIST_REFRESH',
+    };
+  }
+  return complete;
+}
+
 /** Never relabel a Conventional assessment as Hold-Strike risk evidence. */
 export function conventionalFrontierRiskLookups(
   candidates: readonly { readonly optionSymbol: string; readonly brokerAllowedQty: number }[],
@@ -1684,6 +1704,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   const optionomicsDerivedContext = optionomicsSnapshotState !== null && typeof optionomicsSnapshotState === 'object'
     && !Array.isArray(optionomicsSnapshotState)
     ? optionomicsSnapshotState.features ?? null : null;
+  const conventionalSource = canonicalThetaStrategySources.find((source) => source.branch === 'THETA_CONVENTIONAL');
+  if (conventionalSource === undefined) throw new Error('THETA_CONVENTIONAL_SOURCE_MISSING');
   const strategyFrontierFor = (
     routing: NewRiskOrchestrationResult['routing'],
     aegis: NewRiskOrchestrationResult['aegis'],
@@ -1696,6 +1718,13 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     const conventionalRisk = conventionalFrontierRiskLookups(candidatesWithCapacity.map((candidate) => ({
       optionSymbol: candidate.contract.optionSymbol, brokerAllowedQty: candidate.brokerAllowedQty,
     })), aegisByCandidateId);
+    const qEvaluationForFrontier = thetaQCandidateEvaluation === undefined ? undefined
+      : completeConventionalFrontierEvaluationCoverage(
+        mergedContractsForSnapshot,
+        new Set(candidatesWithCapacity.map((candidate) => candidate.contract.optionSymbol)),
+        thetaQCandidateEvaluation,
+        conventionalSource.lattice,
+      );
     const frontierInput: CanonicalStrategyFrontierInput = {
     snapshotId: fusionSnapshot.contentHash, timestamp: decisionTime, strategyVersion: config.policyVersion,
     contracts: mergedContractsForSnapshot, routing, stock: stockState, assignmentCapacityQty: null,
@@ -1721,13 +1750,11 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       paperBootstrapAllowedUnknownComponents: candidate.paperBootstrapAllowedUnknownComponents,
       paperBootstrapReasonCodes: candidate.paperBootstrapReasonCodes,
     }])),
-    thetaQCandidateEvaluationByOptionSymbol: thetaQCandidateEvaluation,
+    thetaQCandidateEvaluationByOptionSymbol: qEvaluationForFrontier,
     thetaQDecision,
     };
     return { frontier: buildCanonicalStrategyFrontier(frontierInput), input: frontierInput };
   };
-  const conventionalSource = canonicalThetaStrategySources.find((source) => source.branch === 'THETA_CONVENTIONAL');
-  if (conventionalSource === undefined) throw new Error('THETA_CONVENTIONAL_SOURCE_MISSING');
   const strategyDecisionFor = (
     routing: NewRiskOrchestrationResult['routing'],
     aegis: NewRiskOrchestrationResult['aegis'],

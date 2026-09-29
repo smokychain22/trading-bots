@@ -3,7 +3,8 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { candidateQuoteAgeSeconds, candidateStressAegisOverrides, classifyShadowCycleProvenance,
-  conventionalFrontierRiskLookups, runThetaShadowCycle, separateCandidateQuantityAuthorities,
+  completeConventionalFrontierEvaluationCoverage, conventionalFrontierRiskLookups,
+  runThetaShadowCycle, separateCandidateQuantityAuthorities,
   type ThetaShadowCycleConfig } from '../src/theta/theta-shadow-cycle.js';
 import type { AlpacaProviderConfig } from '../src/theta/alpaca-provider.js';
 import type { PythonBridgeConfig } from '../src/theta/python-bridge.js';
@@ -90,6 +91,20 @@ test('Conventional risk evidence cannot be relabelled as Hold-Strike evidence', 
   assert.deepEqual(lookup.aegisNewRiskStateByCandidateId, { 'THETA_CONVENTIONAL:SPY261009P00500000': 'ALLOW_FULL' });
   assert.deepEqual(lookup.aegisBindingReasonsByCandidateId, { 'THETA_CONVENTIONAL:SPY261009P00500000': [] });
   assert.equal(Object.keys(lookup.brokerAllowedQtyByCandidateId).some((id) => id.startsWith('THETA_HOLD_STRIKE:')), false);
+});
+
+test('full-chain Q evidence labels unshortlisted contracts without hiding a missing finalist response', () => {
+  const coverage = completeConventionalFrontierEvaluationCoverage([
+    { optionSymbol: 'SPY261009P00500000', optionType: 'PUT', dte: 30 },
+    { optionSymbol: 'SPY261009P00505000', optionType: 'PUT', dte: 30 },
+    { optionSymbol: 'SPY261009C00500000', optionType: 'CALL', dte: 30 },
+  ], new Set(['SPY261009P00505000']), {}, { dteMin: 20, dteMax: 60 });
+  assert.deepEqual(coverage['SPY261009P00500000'], {
+    state: 'NOT_SENT_UPSTREAM_REJECT', reasonCode: 'NOT_SELECTED_FOR_FINALIST_REFRESH',
+  });
+  assert.equal(coverage['SPY261009P00505000'], undefined,
+    'a shortlisted finalist with no Q response must remain a visible map-coverage anomaly');
+  assert.equal(coverage['SPY261009C00500000'], undefined);
 });
 
 test('Conventional AEGIS lookup preserves exact blocking family codes', () => {
