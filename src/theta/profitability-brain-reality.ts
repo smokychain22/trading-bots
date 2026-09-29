@@ -325,8 +325,12 @@ export function deriveRealCurrentWorkerEvidence(result: RealCycleEvidenceShape):
       found.add('CONVENTIONAL_CANDIDATE_ENUMERATION');
       if (branch.candidates.length > 0) found.add('Q_STRUCTURAL_ECONOMIC_DECISION');
     }
-    if (branch.branch === 'THETA_RECOVERY') found.add('RECOVERY_CANDIDATE_ENUMERATION');
-    if (branch.branch === 'THETA_CC') found.add('COVERED_CALL_CANDIDATE_ENUMERATION');
+    // An evaluated flat-account branch with no inventory or candidates did
+    // not execute its lifecycle candidate producer on current inventory.
+    if (branch.branch === 'THETA_RECOVERY' && branch.candidates.length > 0)
+      found.add('RECOVERY_CANDIDATE_ENUMERATION');
+    if (branch.branch === 'THETA_CC' && branch.candidates.length > 0)
+      found.add('COVERED_CALL_CANDIDATE_ENUMERATION');
     for (const candidate of branch.candidates) {
       if (candidate.aegisState !== null && candidate.aegisState !== undefined) found.add('AEGIS_RISK_PERMISSION');
       if (typeof candidate.sizing?.quantity === 'number') found.add('CONSTRAINED_QUANTITY_SIZING');

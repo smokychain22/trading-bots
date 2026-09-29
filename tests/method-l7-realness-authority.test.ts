@@ -112,3 +112,14 @@ test('7b. fully-real method inputs but MISMATCHED source/worker identity -> no L
   assert.ok(result.violations.includes('SOURCE_WORKER_SHA_MISMATCH'));
   assert.notEqual(result.receipt.methods.find((m) => m.methodId === 'STRATEGY_APPLICABILITY_ROUTER')?.level, 'L7_CURRENT_WORKER_REAL_DATA');
 });
+
+test('an unclassified Q economic method cannot claim L7 from execution alone', () => {
+  const provenance = classifyMethodInputProvenance({
+    executedMethodIds: ['Q_STRUCTURAL_ECONOMIC_DECISION', 'AEGIS_RISK_PERMISSION'],
+    routerPortfolioOrigin: 'CALLER_MANUAL',
+    aegisInputsOrigin: 'DERIVED_FROM_REAL', marketDataOrigin: 'REAL_PROVIDER',
+  });
+  const realEvidence = filterToRealInputEvidence(
+    ['Q_STRUCTURAL_ECONOMIC_DECISION', 'AEGIS_RISK_PERMISSION'], provenance);
+  assert.deepEqual(realEvidence, ['AEGIS_RISK_PERMISSION']);
+});

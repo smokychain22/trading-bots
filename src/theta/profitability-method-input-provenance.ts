@@ -70,11 +70,9 @@ const decisiveMethodIds = [
  * (current-worker L7) credit. A methodId only survives this filter when it
  * both executed (present in `executedMethodIds`) AND this classifier says
  * its decisive inputs were fully REAL -- PARTIAL_REAL/MANUAL/SYNTHETIC/
- * UNKNOWN/VERSIONED_POLICY-only never qualify. A methodId with no
- * provenance row at all (not one of the 8 classified methods) is passed
- * through unfiltered -- this function only NARROWS the methods it has an
- * opinion about, it never widens or invents evidence for methods outside
- * its own scope.
+ * UNKNOWN/VERSIONED_POLICY-only never qualify. A method without a
+ * provenance row cannot claim current-worker L7 until its decisive inputs
+ * are classified and persisted.
  */
 export function filterToRealInputEvidence(
   executedMethodIds: readonly string[],
@@ -83,8 +81,7 @@ export function filterToRealInputEvidence(
   const byId = new Map(provenance.map((row) => [row.methodId, row]));
   return executedMethodIds.filter((methodId) => {
     const row = byId.get(methodId);
-    if (row === undefined) return true;
-    return row.inputRealness === 'REAL';
+    return row?.executed === true && row.inputRealness === 'REAL';
   });
 }
 

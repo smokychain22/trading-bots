@@ -103,6 +103,22 @@ test('a null frontier (bridge never ran / cycle failed before the brain) derives
   assert.deepEqual(evidence, []);
 });
 
+test('flat-account lifecycle branches with zero candidates do not claim current Recovery or CC enumeration', () => {
+  const evidence = deriveRealCurrentWorkerEvidence({ strategyFrontier: {
+    selectedCandidateId: null,
+    branches: [
+      { branch: 'THETA_CONVENTIONAL', evaluated: true, candidates: [
+        { aegisState: 'HARD_VETO', sizing: { quantity: 0 } },
+      ] },
+      { branch: 'THETA_RECOVERY', evaluated: true, candidates: [] },
+      { branch: 'THETA_CC', evaluated: true, candidates: [] },
+    ],
+  } });
+  assert.ok(!evidence.includes('RECOVERY_CANDIDATE_ENUMERATION'));
+  assert.ok(!evidence.includes('COVERED_CALL_CANDIDATE_ENUMERATION'));
+  assert.ok(evidence.includes('CONVENTIONAL_CANDIDATE_ENUMERATION'));
+});
+
 test('feeding real derived evidence into buildProfitabilityBrainRealityReceipt genuinely promotes those methods to L7, and only those methods', () => {
   const evidence = deriveRealCurrentWorkerEvidence({
     strategyFrontier: {
