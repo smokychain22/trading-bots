@@ -90,7 +90,9 @@ test('Windows supervisor exports once after a complete scan without gaining an o
   assert.match(source, /failedOperation=\$currentOperation/);
   assert.match(source, /operationStartedAt=\$operationStartedAt\.ToString\('o'\)/);
   assert.match(source, /elapsedMilliseconds=/);
-  assert.match(source, /X-Theta-Safe-Error-Code/);
+  assert.match(source, /Get-ThetaSafeHttpFailure -Exception \$failureException/);
+  const processCommon = await readFile('tools/windows/ThetaProcess.Common.ps1', 'utf8');
+  assert.match(processCommon, /X-Theta-Safe-Error-Code/);
   assert.match(source, /serverErrorCode=\$serverErrorCode/);
   assert.match(source, /RUNTIME_EVIDENCE_CYCLE/);
   assert.match(source, /OPTIONOMICS_QUOTE_QUALIFICATION/);

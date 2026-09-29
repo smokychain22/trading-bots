@@ -686,20 +686,16 @@ try {
     } catch {
       $workerExit = 1
       $failedAt = [DateTimeOffset]::UtcNow
-      $httpStatus = if ($null -ne $_.Exception.Response -and $null -ne $_.Exception.Response.StatusCode) {
-        [int]$_.Exception.Response.StatusCode
-      } else { $null }
-      $exceptionType = $_.Exception.GetType().Name
+      $failureException = $_.Exception
+      $httpFailure = Get-ThetaSafeHttpFailure -Exception $failureException
+      $httpStatus = $httpFailure.HttpStatus
+      $exceptionType = $failureException.GetType().Name
       $failureCode = if ($null -ne $httpStatus) { "HTTP_$httpStatus" }
         elseif ($exceptionType -match '^[A-Za-z0-9_.-]{1,96}$') { "LOCAL_$exceptionType" }
         else { 'LOCAL_WORKER_LOOP_FAILED' }
       # Read only the server's explicit safe-error-code header. Never inspect
       # an error body, request URL, exception message, or authentication header.
-      $serverErrorCode = $null
-      if ($null -ne $_.Exception.Response -and $null -ne $_.Exception.Response.Headers) {
-        $candidateCode = [string]$_.Exception.Response.Headers['X-Theta-Safe-Error-Code']
-        if ($candidateCode -cmatch '^(POSTGRES|ALPACA|OPTIONOMICS|RUNTIME|THETA)_[A-Z0-9_]{2,87}$') { $serverErrorCode = $candidateCode }
-      }
+      $serverErrorCode = $httpFailure.ServerErrorCode
       @{state='DEGRADED';lastFailure=$failedAt.ToString('o');buildSha=$runtime.buildSha;
         mode='MASTER_THETA_PAPER';executionGate='LOCKED';failureCode=$failureCode;
         serverErrorCode=$serverErrorCode;

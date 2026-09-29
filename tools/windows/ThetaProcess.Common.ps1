@@ -21,6 +21,41 @@ function ConvertTo-ThetaSanitizedStandardError {
   return [string[]]@($codes | Sort-Object)
 }
 
+function Get-ThetaSafeHttpFailure {
+  param([Parameter(Mandatory)][object]$Exception)
+  # PowerShell strict mode throws PropertyNotFoundException for non-HTTP
+  # exceptions. A failure classifier must never terminate the supervisor.
+  $responseProperty = $Exception.PSObject.Properties['Response']
+  $response = if ($null -ne $responseProperty) { $responseProperty.Value } else { $null }
+  $httpStatus = $null
+  $serverErrorCode = $null
+  if ($null -ne $response) {
+    $statusProperty = $response.PSObject.Properties['StatusCode']
+    if ($null -ne $statusProperty -and $null -ne $statusProperty.Value) {
+      try { $httpStatus = [int]$statusProperty.Value } catch { }
+    }
+    $headersProperty = $response.PSObject.Properties['Headers']
+    if ($null -ne $headersProperty -and $null -ne $headersProperty.Value) {
+      $headers = $headersProperty.Value
+      $candidate = $null
+      try {
+        if ($headers -is [System.Net.Http.Headers.HttpHeaders]) {
+          if ($headers.Contains('X-Theta-Safe-Error-Code')) {
+            $candidate = [string](@($headers.GetValues('X-Theta-Safe-Error-Code')) | Select-Object -First 1)
+          }
+        } elseif ($headers -is [System.Collections.IDictionary] -or
+          $headers -is [System.Net.WebHeaderCollection]) {
+          $candidate = [string]$headers['X-Theta-Safe-Error-Code']
+        }
+      } catch { }
+      if ($candidate -cmatch '^(POSTGRES|ALPACA|OPTIONOMICS|RUNTIME|THETA)_[A-Z0-9_]{2,87}$') {
+        $serverErrorCode = $candidate
+      }
+    }
+  }
+  return [pscustomobject]@{ HttpStatus=$httpStatus; ServerErrorCode=$serverErrorCode }
+}
+
 function Invoke-ThetaBoundedProcess {
   param(
     [Parameter(Mandatory)][string]$Executable,
