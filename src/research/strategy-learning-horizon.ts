@@ -26,7 +26,8 @@ export interface StrategyLearningObservationJob {
   readonly horizonCode: StrategyLearningHorizonCode;
   readonly targetAt: string | null;
   readonly targetSessionDate: string | null;
-  readonly targetState: 'SCHEDULED' | 'UNSCHEDULED_CALENDAR_INCOMPLETE' | 'UNSCHEDULED_EXPIRATION_SESSION_MISSING';
+  readonly targetState: 'SCHEDULED' | 'UNSCHEDULED_CALENDAR_INCOMPLETE'
+    | 'UNSCHEDULED_EXPIRATION_SESSION_MISSING' | 'UNSCHEDULED_INTRADAY_TARGET_OUTSIDE_SESSION';
   readonly derivedFromHorizonCode: Exclude<StrategyLearningHorizonCode, 'PRIMARY_COMMON_HORIZON'> | null;
   readonly brokerAuthority: false;
 }
@@ -81,6 +82,28 @@ function scheduledSessionTarget(
     : target(subjectId, policy, horizonCode, new Date(session.closeAt).toISOString(), session.date, 'SCHEDULED');
 }
 
+function scheduledIntradayTarget(
+  subjectId: string,
+  policy: StrategyLearningHorizonPolicy,
+  horizonCode: '15M' | '1H',
+  decisionAtMs: number,
+  offsetMinutes: number,
+  session: StrategyLearningSession | undefined,
+): StrategyLearningObservationJob {
+  if (session === undefined) {
+    return target(subjectId, policy, horizonCode, null, null, 'UNSCHEDULED_CALENDAR_INCOMPLETE');
+  }
+  const openAtMs = Date.parse(session.openAt);
+  const closeAtMs = Date.parse(session.closeAt);
+  const targetAtMs = decisionAtMs + offsetMinutes * 60_000;
+  if (decisionAtMs < openAtMs || decisionAtMs > closeAtMs || targetAtMs > closeAtMs) {
+    return target(subjectId, policy, horizonCode, null, session.date,
+      'UNSCHEDULED_INTRADAY_TARGET_OUTSIDE_SESSION');
+  }
+  return target(subjectId, policy, horizonCode, new Date(targetAtMs).toISOString(),
+    session.date, 'SCHEDULED');
+}
+
 /**
  * Builds the strategy-learning schedule from explicit exchange sessions.
  * Trading-day offsets always mean actual Alpaca sessions and therefore never
@@ -113,10 +136,8 @@ export function buildStrategyLearningObservationSchedule(input: {
   const put = (job: StrategyLearningObservationJob): void => {
     byCode.set(job.horizonCode as Exclude<StrategyLearningHorizonCode, 'PRIMARY_COMMON_HORIZON'>, job);
   };
-  put(target(input.subjectId, input.policy, '15M', new Date(decision + 15 * 60_000).toISOString(),
-    input.decisionSessionDate, 'SCHEDULED'));
-  put(target(input.subjectId, input.policy, '1H', new Date(decision + 60 * 60_000).toISOString(),
-    input.decisionSessionDate, 'SCHEDULED'));
+  put(scheduledIntradayTarget(input.subjectId, input.policy, '15M', decision, 15, decisionSession));
+  put(scheduledIntradayTarget(input.subjectId, input.policy, '1H', decision, 60, decisionSession));
   put(scheduledSessionTarget(input.subjectId, input.policy, 'EOD', decisionSession));
   put(scheduledSessionTarget(input.subjectId, input.policy, '1_TRADING_DAY',
     decisionIndex >= 0 ? sessions[decisionIndex + 1] : undefined));

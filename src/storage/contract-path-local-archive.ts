@@ -36,8 +36,7 @@ export function archiveContractPathObservation(input: {
       rowCount: 1,
       payload: [input.observation],
     });
-    const verification = spool.verify();
-    if (!verification.valid) throw new Error('CONTRACT_PATH_LOCAL_ARCHIVE_VERIFICATION_FAILED');
+    if (!spool.verifyBatch(receipt.batchId)) throw new Error('CONTRACT_PATH_LOCAL_ARCHIVE_VERIFICATION_FAILED');
     return {
       contractVersion: contractPathLocalArchiveVersion,
       observationId: input.observation.observationId,

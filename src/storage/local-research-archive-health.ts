@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-export const localResearchArchiveHealthVersion = 'theta-local-research-archive-health-v1' as const;
+export const localResearchArchiveHealthVersion = 'theta-local-research-archive-health-v4' as const;
+export const localResearchStorageBudgetBytes = 1024 * 1024 * 1024;
+export const localResearchSpoolBudgetBytes = localResearchStorageBudgetBytes;
 
 export type TransferQuotaState = 'TRANSFER_QUOTA_OPEN' | 'TRANSFER_QUOTA_EXHAUSTED' | 'TRANSFER_QUOTA_RECOVERING';
 export type ArchiveFailureFamily = 'DATABASE_RESOURCE_QUOTA' | 'DATABASE_TRANSIENT' | 'ARCHIVE_INTEGRITY' | 'UNKNOWN';
@@ -19,6 +21,15 @@ export interface LocalResearchArchiveHealth {
   readonly nextRetryAt: string | null;
   readonly spoolRows: number;
   readonly pendingCompactionRows: number;
+  readonly spoolBytes: number;
+  readonly schedulerBytes: number;
+  readonly parquetBytes: number;
+  /** Mutable SQLite state that can still grow before verified compaction. */
+  readonly activeSpoolBytes: number;
+  /** Complete local inventory, including immutable verified Parquet archives. */
+  readonly totalLocalResearchBytes: number;
+  readonly spoolWatermark: 'NORMAL' | 'ELEVATED' | 'HIGH' | 'CRITICAL';
+  readonly newSubjectScheduling: 'ALLOW' | 'PAUSE_STORAGE_PRESSURE';
   readonly parquetFiles: number;
   readonly lastManifestHash: string | null;
   readonly duckdbVerification: 'PASS' | 'NOT_AVAILABLE' | 'FAILED';
@@ -35,6 +46,15 @@ const emptyPersisted = (): PersistedHealth => ({
   nextRetryAt: null,
   transferQuotaState: 'TRANSFER_QUOTA_OPEN',
 });
+
+export function classifyLocalSpoolWatermark(
+  spoolBytes: number,
+): LocalResearchArchiveHealth['spoolWatermark'] {
+  if (!Number.isInteger(spoolBytes) || spoolBytes < 0) throw new Error('LOCAL_RESEARCH_SPOOL_BYTES_INVALID');
+  const spoolRatio = spoolBytes / localResearchStorageBudgetBytes;
+  return spoolRatio >= 1 ? 'CRITICAL'
+    : spoolRatio >= 0.9 ? 'HIGH' : spoolRatio >= 0.75 ? 'ELEVATED' : 'NORMAL';
+}
 
 export function classifyArchiveFailure(error: unknown): ArchiveFailureFamily {
   const code = error !== null && typeof error === 'object' && 'code' in error
@@ -68,47 +88,81 @@ function readPersisted(path: string): PersistedHealth {
   }
 }
 
-function sqliteCounts(path: string): { spoolRows: number; pendingCompactionRows: number } {
-  if (!existsSync(path)) return { spoolRows: 0, pendingCompactionRows: 0 };
+function sqliteCounts(path: string): { spoolRows: number; pendingCompactionRows: number; spoolBytes: number } {
+  if (!existsSync(path)) return { spoolRows: 0, pendingCompactionRows: 0, spoolBytes: 0 };
+  const spoolBytes = [path, `${path}-wal`, `${path}-shm`].reduce((sum, candidate) => {
+    if (!existsSync(candidate)) return sum;
+    return sum + statSync(candidate).size;
+  }, 0);
   const database = new DatabaseSync(path, { readOnly: true });
   try {
     const total = database.prepare('SELECT count(*) AS count FROM research_batch').get() as { count: number };
     const pending = database.prepare(
       "SELECT count(*) AS count FROM research_batch WHERE storage_state='PENDING_PARQUET'",
     ).get() as { count: number };
-    return { spoolRows: Number(total.count), pendingCompactionRows: Number(pending.count) };
+    return { spoolRows: Number(total.count), pendingCompactionRows: Number(pending.count), spoolBytes };
   } finally {
     database.close();
   }
 }
 
+function pathTreeBytes(path: string): number {
+  if (!existsSync(path)) return 0;
+  const metadata = statSync(path);
+  if (metadata.isFile()) return metadata.size;
+  if (!metadata.isDirectory()) return 0;
+  return readdirSync(path, { withFileTypes: true }).reduce((sum, entry) => {
+    if (entry.isSymbolicLink()) return sum;
+    return sum + pathTreeBytes(join(path, entry.name));
+  }, 0);
+}
+
+function sqliteFileSetBytes(path: string | undefined): number {
+  if (path === undefined) return 0;
+  const resolved = resolve(path);
+  if (existsSync(resolved) && statSync(resolved).isDirectory()) return pathTreeBytes(resolved);
+  return [resolved, `${resolved}-wal`, `${resolved}-shm`].reduce((sum, candidate) =>
+    sum + pathTreeBytes(candidate), 0);
+}
+
+export function measureLocalResearchStorageBytes(paths: readonly string[]): number {
+  return paths.reduce((sum, path) => sum + sqliteFileSetBytes(resolve(path)), 0);
+}
+
 function parquetState(root: string): Pick<LocalResearchArchiveHealth,
-  'parquetFiles' | 'lastManifestHash' | 'duckdbVerification'> {
-  if (!existsSync(root)) return { parquetFiles: 0, lastManifestHash: null, duckdbVerification: 'NOT_AVAILABLE' };
+  'parquetFiles' | 'parquetBytes' | 'lastManifestHash' | 'duckdbVerification'> {
+  if (!existsSync(root)) return { parquetFiles: 0, parquetBytes: 0,
+    lastManifestHash: null, duckdbVerification: 'NOT_AVAILABLE' };
+  const parquetBytes = pathTreeBytes(root);
   const manifests: Array<{ path: string; generatedAt: string }> = [];
   let parquetFiles = 0;
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const directory = join(root, entry.name);
-    const manifestPath = join(directory, 'manifest.json');
-    if (!existsSync(manifestPath)) continue;
+  const manifestPaths = (directory: string): readonly string[] => readdirSync(directory, { withFileTypes: true })
+    .flatMap((entry) => {
+      if (entry.isSymbolicLink()) return [];
+      const candidate = join(directory, entry.name);
+      if (entry.isDirectory()) return entry.name.startsWith('.') ? [] : manifestPaths(candidate);
+      return entry.isFile() && entry.name === 'manifest.json' ? [candidate] : [];
+    });
+  for (const manifestPath of manifestPaths(root)) {
+    const directory = dirname(manifestPath);
     try {
       const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
       const parquetFile = typeof manifest.parquetFile === 'string' ? join(directory, manifest.parquetFile) : null;
       if (parquetFile !== null && existsSync(parquetFile)) parquetFiles += 1;
       manifests.push({ path: manifestPath, generatedAt: String(manifest.generatedAt ?? '') });
     } catch {
-      return { parquetFiles, lastManifestHash: null, duckdbVerification: 'FAILED' };
+      return { parquetFiles, parquetBytes, lastManifestHash: null, duckdbVerification: 'FAILED' };
     }
   }
   manifests.sort((left, right) => left.generatedAt.localeCompare(right.generatedAt));
   const latest = manifests.at(-1);
-  if (latest === undefined) return { parquetFiles, lastManifestHash: null, duckdbVerification: 'NOT_AVAILABLE' };
+  if (latest === undefined) return { parquetFiles, parquetBytes,
+    lastManifestHash: null, duckdbVerification: 'NOT_AVAILABLE' };
   const manifestBytes = readFileSync(latest.path);
   const manifest = JSON.parse(manifestBytes.toString('utf8')) as Record<string, unknown>;
   const explicitReadback = manifest.duckdbReadback;
   return {
-    parquetFiles,
+    parquetFiles, parquetBytes,
     lastManifestHash: createHash('sha256').update(manifestBytes).digest('hex'),
     // theta-parquet-archive-v1 performs DuckDB read-back in its Python loader
     // but predates the explicit duckdbReadback field. Missing verification
@@ -128,6 +182,7 @@ export function archiveRetryAllowed(healthPath: string, now: Date): boolean {
 export function writeArchiveHealth(input: {
   readonly healthPath: string;
   readonly spoolPath: string;
+  readonly schedulerPath?: string;
   readonly parquetRoot: string;
   readonly observedAt: Date;
   readonly archiveState: string;
@@ -140,8 +195,18 @@ export function writeArchiveHealth(input: {
   const prior = readPersisted(healthPath);
   const observedAt = input.observedAt.toISOString();
   const counts = sqliteCounts(resolve(input.spoolPath));
+  const schedulerBytes = input.schedulerPath === undefined ? 0
+    : measureLocalResearchStorageBytes([input.schedulerPath]);
   const parquet = parquetState(resolve(input.parquetRoot));
+  const activeSpoolBytes = counts.spoolBytes + schedulerBytes;
+  const totalLocalResearchBytes = activeSpoolBytes + parquet.parquetBytes;
   const retryHours = input.retryAfterHours ?? 12;
+  // Parquet is the intended immutable destination for compacted research data.
+  // Counting it as active spool pressure made every successful archive move the
+  // scheduler permanently closer to PAUSE_STORAGE_PRESSURE. Keep total archive
+  // inventory observable, while applying the spool safety budget only to the
+  // mutable SQLite scheduler/outbox set that still needs compaction.
+  const spoolWatermark = classifyLocalSpoolWatermark(activeSpoolBytes);
   const state: LocalResearchArchiveHealth = {
     contractVersion: localResearchArchiveHealthVersion,
     observedAt,
@@ -158,6 +223,12 @@ export function writeArchiveHealth(input: {
       ? new Date(input.observedAt.getTime() + retryHours * 3_600_000).toISOString()
       : input.outcome === 'SUCCESS' ? null : prior.nextRetryAt,
     ...counts,
+    schedulerBytes,
+    activeSpoolBytes,
+    totalLocalResearchBytes,
+    spoolWatermark,
+    newSubjectScheduling: spoolWatermark === 'HIGH' || spoolWatermark === 'CRITICAL'
+      ? 'PAUSE_STORAGE_PRESSURE' : 'ALLOW',
     ...parquet,
     duckdbVerification: input.duckdbVerificationOverride ?? parquet.duckdbVerification,
     brokerAuthority: false,

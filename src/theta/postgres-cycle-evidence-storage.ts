@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import type { JsonValue } from '../market/fusion-snapshot.js';
 import { canonicalJson } from '../research/point-in-time-evidence.js';
+import { assertInlinePayloadWithinPolicy } from '../storage/storage-dataset-policy.js';
 import type { CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
 import type { ThetaShadowCycleResult } from './theta-shadow-cycle.js';
 
@@ -121,6 +122,10 @@ export function projectCycleEvidenceForPostgres(cycle: ThetaShadowCycleResult): 
   };
   const snapshotJson = canonicalJson(snapshot);
   const snapshotBytes = Buffer.byteLength(snapshotJson);
+  assertInlinePayloadWithinPolicy({
+    classification: 'CANONICAL_AUDIT', serializedBytes: snapshotBytes,
+    errorCode: 'FUSION_SNAPSHOT_POLICY_PAYLOAD_TOO_LARGE',
+  });
   if (snapshotBytes > MAX_PROJECTION_BYTES) throw new Error(`FUSION_SNAPSHOT_PROJECTION_TOO_LARGE:${snapshotBytes}`);
   const archiveValue = {
     contractVersion: postgresCycleEvidenceStorageVersion,
@@ -148,6 +153,10 @@ export function projectCycleEvidenceForPostgres(cycle: ThetaShadowCycleResult): 
   };
   const archiveJson = canonicalJson(archiveValue as unknown as JsonValue);
   const archive = gzipSync(Buffer.from(archiveJson), { level: 9 });
+  assertInlinePayloadWithinPolicy({
+    classification: 'SHORT_RETENTION_OBSERVATION', serializedBytes: archive.byteLength,
+    errorCode: 'FUSION_CYCLE_ARCHIVE_POLICY_PAYLOAD_TOO_LARGE',
+  });
   if (archive.byteLength > MAX_COMPRESSED_ARCHIVE_BYTES) {
     throw new Error(`FUSION_CYCLE_ARCHIVE_TOO_LARGE:${archive.byteLength}`);
   }
@@ -189,6 +198,10 @@ export function projectCanonicalFrontierForPostgres(frontier: CanonicalStrategyF
   };
   const projectionJson = canonicalJson(projection as unknown as JsonValue);
   const bytes = Buffer.byteLength(projectionJson);
+  assertInlinePayloadWithinPolicy({
+    classification: 'CANONICAL_AUDIT', serializedBytes: bytes,
+    errorCode: 'CANONICAL_FRONTIER_POLICY_PAYLOAD_TOO_LARGE',
+  });
   if (bytes > MAX_PROJECTION_BYTES) throw new Error(`CANONICAL_FRONTIER_PROJECTION_TOO_LARGE:${bytes}`);
   return { projection, projectionHash: hash(projectionJson) };
 }
@@ -201,6 +214,10 @@ export function projectDecisionReceiptForPostgres(value: Record<string, unknown>
     ? value : { ...value, authority: projectCanonicalFrontierForPostgres(authority).projection };
   const projectionJson = canonicalJson(projection as JsonValue);
   const bytes = Buffer.byteLength(projectionJson);
+  assertInlinePayloadWithinPolicy({
+    classification: 'CANONICAL_AUDIT', serializedBytes: bytes,
+    errorCode: 'DECISION_RECEIPT_POLICY_PAYLOAD_TOO_LARGE',
+  });
   if (bytes > MAX_PROJECTION_BYTES) throw new Error(`DECISION_RECEIPT_PROJECTION_TOO_LARGE:${bytes}`);
   return { projection, projectionHash: hash(projectionJson) };
 }

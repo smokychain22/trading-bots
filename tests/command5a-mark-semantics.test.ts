@@ -22,6 +22,8 @@ test('CORE CLAIM: single-leg mark is mid(bid, ask), matching this codebase\'s ow
   assert.equal(result.identifiability, 'PRESENT_VALID');
   assert.equal(result.singleLegImpliedVolatility, 0.28);
   assert.equal(result.shortLegImpliedVolatility, null);
+  assert.equal(result.legTimestampEvidenceState, 'NOT_APPLICABLE');
+  assert.equal(result.providerTimestampSkewMs, null);
 });
 
 test('CORE CLAIM: two-leg (D) package mark uses conservative short.bid-long.ask / short.ask-long.bid, never leg-mid averaging', () => {
@@ -41,6 +43,39 @@ test('CORE CLAIM: two-leg (D) package mark uses conservative short.bid-long.ask 
   assert.equal(result.packageAskIfDefined, 2.10);
   assert.equal(result.packageMark, (1.95 + 2.10) / 2);
   assert.equal(result.identifiability, 'PRESENT_VALID');
+  assert.equal(result.legTimestampEvidenceState, 'KNOWN');
+  assert.equal(result.providerTimestampSkewMs, 0);
+  assert.equal(result.receivedAtSkewMs, 0);
+});
+
+test('multi-leg marks preserve exact leg timestamps and descriptive skew without inventing a synchronization threshold', () => {
+  const result = computePackageMark({
+    legIdentities: [{ optionSymbol: 'A', side: 'SHORT' }, { optionSymbol: 'B', side: 'LONG' }],
+    quotes: [
+      quote({ optionSymbol: 'A', providerTimestamp: '2026-09-21T14:00:00.000Z', receivedAt: '2026-09-21T14:00:01.000Z' }),
+      quote({ optionSymbol: 'B', providerTimestamp: '2026-09-21T14:00:02.500Z', receivedAt: '2026-09-21T14:00:04.000Z' }),
+    ],
+  });
+  assert.equal(result.legTimestampEvidenceState, 'KNOWN');
+  assert.equal(result.providerTimestampSkewMs, 2_500);
+  assert.equal(result.receivedAtSkewMs, 3_000);
+  assert.deepEqual(result.legMarks.map((leg) => ({
+    optionSymbol: leg.optionSymbol, providerTimestamp: leg.providerTimestamp, receivedAt: leg.receivedAt,
+  })), [
+    { optionSymbol: 'A', providerTimestamp: '2026-09-21T14:00:00.000Z', receivedAt: '2026-09-21T14:00:01.000Z' },
+    { optionSymbol: 'B', providerTimestamp: '2026-09-21T14:00:02.500Z', receivedAt: '2026-09-21T14:00:04.000Z' },
+  ]);
+  assert.ok(!('synchronized' in result));
+});
+
+test('missing multi-leg provider timestamp remains UNKNOWN instead of assuming synchronization', () => {
+  const result = computePackageMark({
+    legIdentities: [{ optionSymbol: 'A', side: 'SHORT' }, { optionSymbol: 'B', side: 'LONG' }],
+    quotes: [quote({ optionSymbol: 'A' }), quote({ optionSymbol: 'B', providerTimestamp: null })],
+  });
+  assert.equal(result.legTimestampEvidenceState, 'UNKNOWN');
+  assert.equal(result.providerTimestampSkewMs, null);
+  assert.equal(result.receivedAtSkewMs, 0);
 });
 
 test('CORE CLAIM: multi-leg IV is never averaged into one spread scalar -- shortLegIV and longLegIV stay separate', () => {

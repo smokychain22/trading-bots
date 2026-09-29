@@ -73,6 +73,52 @@ test('200 valid response: entries normalize with full Greeks/OI/volume/IV', asyn
   assert.equal(entry?.delta, -0.3);
 });
 
+test('declared Optionomics response above the configured byte budget fails before JSON parsing', async () => {
+  const fetchImpl = (async () => jsonResponse(200, [], { 'content-length': '4096' })) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl, { maxResponseBytes: 1024 }), 'SPY');
+  assert.equal(outcome.kind, 'REQUEST_ERROR');
+  if (outcome.kind !== 'REQUEST_ERROR') return;
+  assert.equal(outcome.errorClass, 'RESPONSE_TOO_LARGE');
+  assert.equal(outcome.httpStatus, 200);
+});
+
+test('chunked Optionomics response is bounded by actual streamed bytes without trusting content-length', async () => {
+  const payload = JSON.stringify([{ symbol: 'X', note: 'x'.repeat(2048) }]);
+  const fetchImpl = (async () => new Response(payload, {
+    status: 200, headers: { 'content-type': 'application/json' },
+  })) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl, { maxResponseBytes: 1024 }), 'SPY');
+  assert.equal(outcome.kind, 'REQUEST_ERROR');
+  if (outcome.kind !== 'REQUEST_ERROR') return;
+  assert.equal(outcome.errorClass, 'RESPONSE_TOO_LARGE');
+  assert.equal(outcome.httpStatus, 200);
+});
+
+test('invalid Optionomics response-size policy is a typed local request failure', async () => {
+  let calls = 0;
+  const fetchImpl = (async () => { calls += 1; return jsonResponse(200, []); }) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl, { maxResponseBytes: 0 }), 'SPY');
+  assert.equal(outcome.kind, 'REQUEST_ERROR');
+  if (outcome.kind !== 'REQUEST_ERROR') return;
+  assert.equal(outcome.errorClass, 'INVALID_REQUEST');
+  assert.equal(outcome.attemptCount, 0);
+  assert.equal(calls, 0);
+});
+
+test('retry and timeout policy are bounded before any provider request', async () => {
+  for (const overrides of [{ maxRetryAttempts: 0 }, { maxRetryAttempts: 6 },
+    { timeoutMs: 0 }, { timeoutMs: 60_001 }]) {
+    let calls = 0;
+    const fetchImpl = (async () => { calls += 1; return jsonResponse(200, []); }) as typeof fetch;
+    const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl, overrides), 'SPY');
+    assert.equal(outcome.kind, 'REQUEST_ERROR');
+    if (outcome.kind !== 'REQUEST_ERROR') continue;
+    assert.equal(outcome.errorClass, 'INVALID_REQUEST');
+    assert.equal(outcome.attemptCount, 0);
+    assert.equal(calls, 0);
+  }
+});
+
 test('historical chain fetch uses only documented point-in-time filters', async () => {
   let requested: URL | null = null;
   const fetchImpl = (async (input) => {
@@ -279,23 +325,31 @@ test('402 is classified SUBSCRIPTION_REQUIRED', async () => {
 });
 
 test('403 is classified NOT_ENTITLED', async () => {
-  const fetchImpl = (async () => new Response('', { status: 403 })) as typeof fetch;
+  let discarded = 0;
+  const fetchImpl = (async () => new Response(new ReadableStream<Uint8Array>({
+    cancel() { discarded += 1; },
+  }), { status: 403 })) as typeof fetch;
   const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY');
   assert.equal(outcome.kind, 'REQUEST_ERROR');
   if (outcome.kind !== 'REQUEST_ERROR') return;
   assert.equal(outcome.errorClass, 'NOT_ENTITLED');
+  assert.equal(discarded, 1);
 });
 
 test('429 then success: a bounded retry recovers, never surfacing the transient 429 as an error', async () => {
   let calls = 0;
+  let discarded = 0;
   const fetchImpl = (async () => {
     calls += 1;
-    if (calls === 1) return new Response('', { status: 429, headers: { 'retry-after': '1' } });
+    if (calls === 1) return new Response(new ReadableStream<Uint8Array>({
+      cancel() { discarded += 1; },
+    }), { status: 429, headers: { 'retry-after': '1' } });
     return jsonResponse(200, [{ symbol: 'X', open_interest: 5 }]);
   }) as typeof fetch;
   const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl), 'SPY');
   assert.equal(outcome.kind, 'VALUE_PRESENT');
   assert.equal(calls, 2);
+  assert.equal(discarded, 1);
 });
 
 test('429 exhausted: bounded retries give up and report RATE_LIMITED with attemptCount, never an infinite loop', async () => {
@@ -329,6 +383,16 @@ test('timeout is classified PROVIDER_TIMEOUT, never hangs the caller', async () 
     });
   }) as typeof fetch;
   const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl, { timeoutMs: 5 }), 'SPY');
+  assert.equal(outcome.kind, 'REQUEST_ERROR');
+  if (outcome.kind !== 'REQUEST_ERROR') return;
+  assert.equal(outcome.errorClass, 'PROVIDER_TIMEOUT');
+});
+
+test('timeout remains active while a successful response body is still streaming', async () => {
+  const fetchImpl = (async () => new Response(new ReadableStream<Uint8Array>({
+    start() { /* Intentionally never enqueue or close. */ },
+  }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+  const outcome = await fetchOptionomicsOptionChain(baseConfig(fetchImpl, { timeoutMs: 5, maxRetryAttempts: 1 }), 'SPY');
   assert.equal(outcome.kind, 'REQUEST_ERROR');
   if (outcome.kind !== 'REQUEST_ERROR') return;
   assert.equal(outcome.errorClass, 'PROVIDER_TIMEOUT');

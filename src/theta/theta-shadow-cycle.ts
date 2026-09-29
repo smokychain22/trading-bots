@@ -409,6 +409,11 @@ function assembleFusionSnapshotInput(params: {
   readonly mergedContracts: FusionSnapshotInput['contractCandidates'];
   readonly ownershipFeatures: JsonValue;
   readonly regimeFeatures: JsonValue;
+  readonly technicalFeatureState: JsonValue;
+  readonly technicalFeatureQuality: DataQualityState;
+  readonly technicalFeatureProviderAsOf: string | null;
+  readonly technicalFeatureRetrievedAt: string;
+  readonly technicalFeatureFeed: string | null;
   readonly policyVersion: string;
   readonly modelVersions: Readonly<Record<string, string>>;
   readonly aegisIvStressEvidence: AegisIvStressAssessment | null;
@@ -550,7 +555,10 @@ function assembleFusionSnapshotInput(params: {
           missingSemantics: ['EARNINGS_CALENDAR_DAY_DISTANCE_NOT_PROVEN',
             'EARNINGS_NEGATIVE_ASSURANCE_UNAVAILABLE', 'EX_DIVIDEND_STATE_UNAVAILABLE'] } as unknown as JsonValue)
       : null,
-    regimeState: params.regimeFeatures,
+    regimeState: params.regimeFeatures !== null && typeof params.regimeFeatures === 'object'
+      && !Array.isArray(params.regimeFeatures)
+      ? { ...params.regimeFeatures, technicalFeatures: params.technicalFeatureState }
+      : { regime: params.regimeFeatures, technicalFeatures: params.technicalFeatureState },
     expertPriorState: null,
     riskState: { ivStress: params.aegisIvStressEvidence,
       alpacaContractIvStress: { methodology: 'ALPACA_CONTRACT_IV_COHORT_SHOCK',
@@ -616,6 +624,12 @@ function assembleFusionSnapshotInput(params: {
         provider: 'ALPACA', operationAlias: 'alpaca.get_calendar', asOf: params.calendarOrigin === 'REAL_PROVIDER' ? params.now : null, retrievedAt: params.now,
         state: params.calendarQuality, contentHash: hashJson(params.calendar as unknown as JsonValue), feed: null,
         contractVersion: 'alpaca-calendar-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
+      },
+      {
+        provider: 'ALPACA', operationAlias: 'alpaca.get_stock_bars', asOf: params.technicalFeatureProviderAsOf,
+        retrievedAt: params.technicalFeatureRetrievedAt, state: params.technicalFeatureQuality,
+        contentHash: hashJson(params.technicalFeatureState), feed: params.technicalFeatureFeed,
+        contractVersion: 'theta-underlying-technical-features-v1', truthRole: 'CONTEXT', requiredForNewRisk: false,
       },
     ],
     providerHealth: [
@@ -858,6 +872,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   }
 
   let historyOrigin: ProvenanceOrigin = 'NOT_ATTEMPTED';
+  let historyQuality: DataQualityState = 'UNKNOWN';
   let historyBars: readonly HistoricalBar[] = [];
   let receivedAt = decisionTime;
   let ret1d: number | null = null;
@@ -886,6 +901,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     historyBars = bars;
     if (barsResult.complete && bars.length > 0) {
       historyOrigin = 'REAL_PROVIDER';
+      historyQuality = 'GOOD';
       ret1d = computeReturn(bars, receivedAt, 1);
       ret5d = computeReturn(bars, receivedAt, 5);
       ret20d = computeReturn(bars, receivedAt, 20);
@@ -908,12 +924,52 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       // an error, per the correction that a real empty/partial result is
       // authentic reality rather than a fixture or a failure.
       historyOrigin = 'REAL_PROVIDER_UNKNOWN';
+      historyQuality = 'UNKNOWN';
       if (!barsResult.complete) blockers.push('STOCK_HISTORY_INCOMPLETE');
     }
   } catch (error) {
     historyOrigin = 'REAL_PROVIDER_ERROR';
+    historyQuality = failedProviderEvidence(error).quality;
     blockers.push(`STOCK_HISTORY_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
   }
+
+  const latestHistoryBar = [...historyBars]
+    .filter((bar) => Number.isFinite(Date.parse(bar.timestamp)) && Date.parse(bar.timestamp) <= Date.parse(decisionTime))
+    .toSorted((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))[0] ?? null;
+  const latestHistoryReceipt = [...historyBars]
+    .filter((bar) => Number.isFinite(Date.parse(bar.receivedAt)))
+    .toSorted((left, right) => Date.parse(right.receivedAt) - Date.parse(left.receivedAt))[0] ?? null;
+  const technicalFeatureState: JsonValue = {
+    contractVersion: 'theta-underlying-technical-features-v1',
+    provider: 'ALPACA',
+    operationAlias: 'alpaca.get_stock_bars',
+    asOf: decisionTime,
+    providerAsOf: latestHistoryBar?.timestamp ?? null,
+    retrievedAt: latestHistoryReceipt?.receivedAt ?? decisionTime,
+    sourceState: historyOrigin,
+    dataQuality: historyQuality,
+    feed: latestHistoryBar?.feed ?? 'iex',
+    adjustment: 'split',
+    barCount: historyBars.length,
+    values: {
+      return1d: ret1d, return5d: ret5d, return20d: ret20d, return60d: ret60d,
+      movingAverageRelative20d: ma20Rel, movingAverageRelative50d: ma50Rel,
+      movingAverageRelative200d: ma200Rel, trendSlope20d: maSlope,
+      realizedVolatility10d: rv10, realizedVolatility20d: rv20, realizedVolatility60d: rv60,
+      downsideSemivariance60d: downsideSemivariance, drawdown60d: drawdown,
+      gapFrequency60d: gapFrequency, maxAdverseGap60d: maxAdverseGap,
+    },
+    methods: {
+      momentum: 'CLOSE_TO_CLOSE_RETURN_5_COMPLETED_DAILY_BARS',
+      trend: 'NORMALIZED_LINEAR_REGRESSION_SLOPE_20_COMPLETED_DAILY_BARS',
+      realizedVolatility: 'ANNUALIZED_DAILY_LOG_RETURN_STDDEV_20_COMPLETED_DAILY_BARS',
+      drawdown: 'CURRENT_DRAWDOWN_FROM_60_COMPLETED_DAILY_BAR_RUNNING_PEAK',
+    },
+    units: {
+      momentum: 'DECIMAL_RETURN', trend: 'NORMALIZED_SLOPE_PER_BAR',
+      realizedVolatility: 'ANNUALIZED_DECIMAL', drawdown: 'DECIMAL_RETURN',
+    },
+  };
 
   // Optionomics is fetched independently of Alpaca's option-chain calls --
   // its own success/failure is a genuinely separate fact from Alpaca's.
@@ -940,7 +996,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       blockers.push(`OPTIONOMICS_RESPONSE_UNRECOGNIZED:${outcome.detail}`);
     } else {
       const quality: DataQualityState =
-        outcome.errorClass === 'AUTHENTICATION_FAILED' || outcome.errorClass === 'INVALID_PROVIDER_RESPONSE' ? 'INVALID'
+        outcome.errorClass === 'AUTHENTICATION_FAILED' || outcome.errorClass === 'INVALID_PROVIDER_RESPONSE'
+          || outcome.errorClass === 'RESPONSE_TOO_LARGE' ? 'INVALID'
         : outcome.errorClass === 'SUBSCRIPTION_REQUIRED' || outcome.errorClass === 'NOT_ENTITLED' ? 'NOT_ENTITLED'
         : 'DEGRADED';
       optionomicsEvidence = { origin: 'REAL_PROVIDER_ERROR', quality };
@@ -956,7 +1013,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     const flowUnknown = flowOutcomes.find((outcome) => outcome.kind === 'VALUE_UNKNOWN_AFTER_SUCCESS');
     if (flowError?.kind === 'REQUEST_ERROR') {
       const quality: DataQualityState =
-        flowError.errorClass === 'AUTHENTICATION_FAILED' || flowError.errorClass === 'INVALID_PROVIDER_RESPONSE' ? 'INVALID'
+        flowError.errorClass === 'AUTHENTICATION_FAILED' || flowError.errorClass === 'INVALID_PROVIDER_RESPONSE'
+          || flowError.errorClass === 'RESPONSE_TOO_LARGE' ? 'INVALID'
         : flowError.errorClass === 'SUBSCRIPTION_REQUIRED' || flowError.errorClass === 'NOT_ENTITLED' ? 'NOT_ENTITLED'
         : 'DEGRADED';
       optionomicsFlowEvidence = { origin: 'REAL_PROVIDER_ERROR', quality };
@@ -992,7 +1050,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       const contextUnknown = contextOutcomes.find((outcome) => outcome.kind === 'VALUE_UNKNOWN_AFTER_SUCCESS');
       if (contextError?.kind === 'REQUEST_ERROR') {
         const quality: DataQualityState =
-          contextError.errorClass === 'AUTHENTICATION_FAILED' || contextError.errorClass === 'INVALID_PROVIDER_RESPONSE' ? 'INVALID'
+          contextError.errorClass === 'AUTHENTICATION_FAILED' || contextError.errorClass === 'INVALID_PROVIDER_RESPONSE'
+            || contextError.errorClass === 'RESPONSE_TOO_LARGE' ? 'INVALID'
           : contextError.errorClass === 'SUBSCRIPTION_REQUIRED' || contextError.errorClass === 'NOT_ENTITLED' ? 'NOT_ENTITLED'
           : 'DEGRADED';
         optionomicsContextEvidence = { origin: 'REAL_PROVIDER_ERROR', quality };
@@ -1534,6 +1593,11 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       recoveryHistory:config.recoveryHistory??null } as unknown as JsonValue,
     regimeFeatures: { maSlope, rv20, maxAdverseGap, drawdown, companyEventByOptionSymbol,
       aegisGapStressAssessment: gapAssessment } as unknown as JsonValue,
+    technicalFeatureState,
+    technicalFeatureQuality: historyQuality,
+    technicalFeatureProviderAsOf: latestHistoryBar?.timestamp ?? null,
+    technicalFeatureRetrievedAt: latestHistoryReceipt?.receivedAt ?? decisionTime,
+    technicalFeatureFeed: latestHistoryBar?.feed ?? 'iex',
     policyVersion: config.policyVersion,
     modelVersions: {
       ...config.modelVersions,

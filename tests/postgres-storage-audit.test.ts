@@ -14,6 +14,8 @@ test('normalizes exact size counters and labels planner and bloat indicators hon
   assert.equal(normalized.classification, 'RESEARCH_HISTORY');
   assert.equal(normalized.deadTupleRatio, 0.1);
   assert.equal(normalized.indexToTableRatio, 0.5);
+  assert.equal(normalized.datasetPolicy?.canonicalHome, 'PARQUET_DUCKDB');
+  assert.equal(normalized.datasetPolicy?.botNamespaceRequired, true);
   assert.equal(categoryBytes([normalized]).RESEARCH_HISTORY, 175);
 });
 

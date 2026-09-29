@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { buildT0ReplayBundle, classifyT0ReplayBundleBuildError, replayFromT0Bundle, t0ReplayBundlePayloadType,
   type T0ReplayBundle } from '../src/theta/t0-replay-bundle.js';
-import type { CanonicalStrategyFrontierInput } from '../src/theta/canonical-strategy-frontier.js';
+import { buildCanonicalStrategyFrontier, type CanonicalStrategyFrontierInput } from '../src/theta/canonical-strategy-frontier.js';
 import { normalizeOptionContract, type NormalizedOptionContract } from '../src/theta/option-contract.js';
 import { parseStrategyRoutingResponse, type StrategyFamily } from '../src/theta/strategy-router-contract.js';
 import { LocalEvidenceSpool } from '../src/theta/local-evidence-spool.js';
@@ -59,6 +59,23 @@ const realCycleInput: CanonicalStrategyFrontierInput = {
   stock: null, assignmentCapacityQty: 2, aegisNewRiskState: 'ALLOW_FULL',
   buyingPower: 100_000, eventState: null, unmanagedBrokerPositionCount: 0, unevaluatedUnderlyingCount: 0,
   optionomicsContext: { state: 'UNKNOWN' },
+  brokerAllowedQty: 3,
+  brokerAllowedQtyByCandidateId: { 'THETA_CONVENTIONAL:AAPL261016P00190000': 1 },
+  sizingPolicy: { policyVersion: 'sizing-v1', maximumTickerAllocationPct: 0.5 },
+  aegisNewRiskStateByCandidateId: { 'THETA_CONVENTIONAL:AAPL261016P00190000': 'ALLOW_REDUCED' },
+  aegisBindingReasonsByCandidateId: { 'THETA_CONVENTIONAL:AAPL261016P00190000': ['CANDIDATE_LIMIT'] },
+  entryEligibilityByOptionSymbol: { AAPL261016P00190000: {
+    basis: 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED', paperBootstrapPolicyVersion: 'bootstrap-v1',
+    paperBootstrapAllowedUnknownComponents: ['EXPECTED_AFTER_COST_EV'],
+    paperBootstrapReasonCodes: ['BOUNDED_PAPER_BOOTSTRAP'],
+  } },
+  thetaQCandidateEvaluationByOptionSymbol: { AAPL261016P00190000: {
+    state: 'EVALUATED_FEASIBLE', reasonCode: null,
+  } },
+  thetaQDecision: {
+    snapshotId: 'snap-1', timestamp: NOW, underlying: 'AAPL', winningAction: 'OPEN_REDUCED',
+    selectedCandidateId: 'AAPL261016P00190000', quantity: 1,
+  },
 };
 
 test('buildT0ReplayBundle captures exactly buildCanonicalStrategyFrontier\'s real input fields, round-trip validated by the same zod schemas the production types use', () => {
@@ -66,6 +83,9 @@ test('buildT0ReplayBundle captures exactly buildCanonicalStrategyFrontier\'s rea
   assert.equal(bundle.contracts.length, 1);
   assert.equal(bundle.contracts[0]?.optionSymbol, 'AAPL261016P00190000');
   assert.equal(bundle.aegisNewRiskState, 'ALLOW_FULL');
+  assert.equal(bundle.aegisNewRiskStateByCandidateId?.['THETA_CONVENTIONAL:AAPL261016P00190000'], 'ALLOW_REDUCED');
+  assert.equal(bundle.thetaQCandidateEvaluationByOptionSymbol?.AAPL261016P00190000?.state, 'EVALUATED_FEASIBLE');
+  assert.equal(bundle.thetaQDecision?.winningAction, 'OPEN_REDUCED');
 });
 
 test('REAL_CANONICAL_BRAIN_REPLAY: a bundle built, persisted, and reloaded through the real LocalEvidenceSpool mechanism replays to the real, same-shape frontier -- zero provider calls', () => {
@@ -82,13 +102,15 @@ test('REAL_CANONICAL_BRAIN_REPLAY: a bundle built, persisted, and reloaded throu
     const reloaded = spool.listByPayloadType(t0ReplayBundlePayloadType, 10);
     assert.equal(reloaded.length, 1);
     const reloadedBundle = reloaded[0]?.payload as T0ReplayBundle;
-    const originalFrontier = buildT0ReplayBundle(realCycleInput);
-    assert.deepEqual(reloadedBundle, originalFrontier, 'persistence must not alter the bundle');
+    const originalBundle = buildT0ReplayBundle(realCycleInput);
+    assert.deepEqual(reloadedBundle, originalBundle, 'persistence must not alter the bundle');
 
     const replayed = replayFromT0Bundle(reloadedBundle);
-    const original = replayFromT0Bundle(bundle);
+    const original = buildCanonicalStrategyFrontier(realCycleInput);
     assert.equal(replayed.selectedCandidateId, original.selectedCandidateId);
     assert.equal(replayed.primaryAction, original.primaryAction);
+    assert.equal(replayed.selectedQuantity, original.selectedQuantity);
+    assert.equal(replayed.contentHash, original.contentHash);
     const conventionalBranch = replayed.branches.find((b) => b.branch === 'THETA_CONVENTIONAL');
     assert.ok(conventionalBranch !== undefined && conventionalBranch.candidates.length > 0,
       'the real canonical frontier logic actually ran and produced a real candidate, not a stub');

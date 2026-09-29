@@ -51,6 +51,8 @@ testWithDuckDb('Parquet compaction resumes after interruption without duplicate 
   const finalized = readdirSync(botDirectory, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'));
   assert.equal(finalized.length, 1);
+  assert.equal(readdirSync(botDirectory, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith('.')).length, 0);
   const archiveName = finalized[0]?.name;
   assert.ok(archiveName !== undefined);
   const manifest = JSON.parse(readFileSync(join(botDirectory, archiveName, 'manifest.json'), 'utf8')) as Record<string, unknown>;

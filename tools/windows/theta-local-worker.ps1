@@ -159,6 +159,147 @@ try {
       $evidenceHeaders = $headers.Clone()
       $evidenceHeaders['X-Theta-Operation'] = 'runtime-evidence-cycle'
       $report = Invoke-RestMethod -Method Post -Uri $runtime.endpoint -Headers $evidenceHeaders -TimeoutSec 290
+      # Command-5A is a bounded, local, research-only continuation of the
+      # canonical frontier. It records exact T0 subjects and later factual
+      # marks without a broker mutation surface. Failures remain visible in
+      # worker status but cannot rewrite the Production decision or turn an
+      # infrastructure issue into WAIT.
+      $command5aSchedulerPath = Join-Path $stateRoot 'research-spool\theta-observation-jobs.sqlite'
+      $command5aSpoolPath = Join-Path $stateRoot 'research-spool\theta-research.sqlite'
+      $command5aParquetRoot = 'C:\ProjectBackups\trading-bots\research-archives'
+      $command5aScheduleState = 'NOT_ATTEMPTED'
+      $command5aScheduleErrorCode = $null
+      $command5aObservationState = 'NOT_ATTEMPTED'
+      $command5aObservationErrorCode = $null
+      $command5aMaturationState = 'NOT_ATTEMPTED'
+      $command5aMaturationErrorCode = $null
+      $command5aObserved = 0
+      $command5aMissed = 0
+      $command5aDeferredProvider = 0
+      $command5aDeferredMarket = 0
+      $command5aCensoredRetryExhausted = 0
+      $command5aMaterialized = 0
+      $command5aMaturationPending = 0
+      $command5aMaturationCensored = 0
+      $command5aBacklogState = 'NOT_OBSERVED'
+      $command5aHealthErrorCode = $null
+      $command5aUnresolvedJobs = 0
+      $command5aDueJobs = 0
+      $command5aOverdueJobs = 0
+      $command5aExpiredClaims = 0
+      $command5aRetryStalledJobs = 0
+      $command5aOldestOverdueSeconds = $null
+      $command5aSourceCursor = $null
+      $command5aArchiveHealthPath = Join-Path $stateRoot 'research-spool\archive-health.json'
+      $command5aSchedulingPausedForStorage = $false
+      if (Test-Path -LiteralPath $command5aArchiveHealthPath -PathType Leaf) {
+        try {
+          $command5aPriorArchiveHealth = Get-Content -Raw -LiteralPath $command5aArchiveHealthPath | ConvertFrom-Json
+          $command5aSchedulingPausedForStorage = [string]$command5aPriorArchiveHealth.newSubjectScheduling -eq 'PAUSE_STORAGE_PRESSURE'
+        } catch { $command5aSchedulingPausedForStorage = $true }
+      }
+      $previousErrorActionPreference = $ErrorActionPreference
+      $ErrorActionPreference = 'Continue'
+      try {
+        if ($command5aSchedulingPausedForStorage) {
+          $command5aScheduleState = 'PAUSED_STORAGE_WATERMARK'
+        } else {
+          # The local source cursor advances across bounded pages. On first
+          # installation, start at the immutable release time so a worker
+          # outage longer than 90 minutes cannot erase serious subjects.
+          $command5aSince = [string]$runtime.installedAt
+          $command5aScheduleProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 180 -Arguments @(
+            '--import','tsx','tools/theta-command5a-runtime.ts','--mode=schedule',
+            "--environment-file=$productionEnvFile","--scheduler=$command5aSchedulerPath",
+            "--spool=$command5aSpoolPath","--parquet-root=$command5aParquetRoot",
+            "--since=$command5aSince",'--limit=250')
+          $command5aScheduleOutput = $command5aScheduleProcess.Output
+          if ($command5aScheduleProcess.State -eq 'COMPLETED' -and $command5aScheduleProcess.ExitCode -eq 0) {
+            $command5aScheduleResult = $command5aScheduleOutput | Select-Object -Last 1 | ConvertFrom-Json
+            $command5aScheduleState = [string]$command5aScheduleResult.state
+          } else {
+            $command5aScheduleState = 'FAILED_NONCRITICAL'
+            if ($command5aScheduleProcess.State -eq 'TIMED_OUT') {
+              $command5aScheduleErrorCode = 'COMMAND5A_SCHEDULE_PROCESS_TIMEOUT'
+            } else {
+              try { $command5aScheduleErrorCode = [string](($command5aScheduleOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
+              catch { $command5aScheduleErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+            }
+          }
+        }
+        # Session-close jobs become due when the exchange clock turns closed.
+        # Run the bounded worker whenever jobs are due. The read-only source
+        # accepts only fresh latest marks after close and types stale/missing
+        # marks explicitly, so this cannot fabricate an in-session observation.
+        $command5aObservationProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 180 -Arguments @(
+          '--import','tsx','tools/theta-command5a-runtime.ts','--mode=observe',
+          "--environment-file=$productionEnvFile","--scheduler=$command5aSchedulerPath","--spool=$command5aSpoolPath")
+        $command5aObservationOutput = $command5aObservationProcess.Output
+        if ($command5aObservationProcess.State -eq 'COMPLETED' -and $command5aObservationProcess.ExitCode -eq 0) {
+          $command5aObservationResult = $command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json
+          $command5aObservationState = [string]$command5aObservationResult.state
+          $command5aObserved = [int]$command5aObservationResult.observed
+          $command5aMissed = [int]$command5aObservationResult.missed
+          $command5aDeferredProvider = [int]$command5aObservationResult.deferredProvider
+          $command5aDeferredMarket = [int]$command5aObservationResult.deferredMarket
+          $command5aCensoredRetryExhausted = [int]$command5aObservationResult.censoredRetryExhausted
+        } else {
+          $command5aObservationState = 'FAILED_NONCRITICAL'
+          if ($command5aObservationProcess.State -eq 'TIMED_OUT') {
+            $command5aObservationErrorCode = 'COMMAND5A_OBSERVATION_PROCESS_TIMEOUT'
+          } else {
+            try { $command5aObservationErrorCode = [string](($command5aObservationOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
+            catch { $command5aObservationErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+          }
+        }
+        # Maturation is local and provider-free. It may run while the market
+        # is closed and only consumes already verified observation archives.
+        $command5aMaturationProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 120 -Arguments @(
+          '--import','tsx','tools/theta-command5a-runtime.ts','--mode=mature',
+          "--environment-file=$productionEnvFile","--scheduler=$command5aSchedulerPath","--spool=$command5aSpoolPath",'--limit=64')
+        $command5aMaturationOutput = $command5aMaturationProcess.Output
+        if ($command5aMaturationProcess.State -eq 'COMPLETED' -and $command5aMaturationProcess.ExitCode -eq 0) {
+          $command5aMaturationResult = $command5aMaturationOutput | Select-Object -Last 1 | ConvertFrom-Json
+          $command5aMaturationState = [string]$command5aMaturationResult.state
+          $command5aMaterialized = [int]$command5aMaturationResult.materialized
+          $command5aMaturationPending = [int]$command5aMaturationResult.pending
+          $command5aMaturationCensored = [int]$command5aMaturationResult.censored
+        } else {
+          $command5aMaturationState = 'FAILED_NONCRITICAL'
+          if ($command5aMaturationProcess.State -eq 'TIMED_OUT') {
+            $command5aMaturationErrorCode = 'COMMAND5A_MATURATION_PROCESS_TIMEOUT'
+          } else {
+            try { $command5aMaturationErrorCode = [string](($command5aMaturationOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
+            catch { $command5aMaturationErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+          }
+        }
+        $command5aHealthProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 30 -Arguments @(
+          '--import','tsx','tools/theta-command5a-runtime.ts','--mode=health',"--scheduler=$command5aSchedulerPath")
+        $command5aHealthOutput = $command5aHealthProcess.Output
+        if ($command5aHealthProcess.State -eq 'COMPLETED' -and $command5aHealthProcess.ExitCode -eq 0) {
+          $command5aHealthResult = $command5aHealthOutput | Select-Object -Last 1 | ConvertFrom-Json
+          $command5aBacklogState = [string]$command5aHealthResult.backlogState
+          $command5aUnresolvedJobs = [int]$command5aHealthResult.unresolvedCount
+          $command5aDueJobs = [int]$command5aHealthResult.dueCount
+          $command5aOverdueJobs = [int]$command5aHealthResult.overdueCount
+          $command5aExpiredClaims = [int]$command5aHealthResult.expiredClaimCount
+          $command5aRetryStalledJobs = [int]$command5aHealthResult.retryStalledCount
+          $command5aOldestOverdueSeconds = $command5aHealthResult.oldestOverdueSeconds
+          $command5aSourceCursor = $command5aHealthResult.sourceCursor
+        } else {
+          $command5aBacklogState = 'HEALTH_CHECK_FAILED'
+          if ($command5aHealthProcess.State -eq 'TIMED_OUT') {
+            $command5aHealthErrorCode = 'COMMAND5A_HEALTH_PROCESS_TIMEOUT'
+          } else {
+            try { $command5aHealthErrorCode = [string](($command5aHealthOutput | Select-Object -Last 1 | ConvertFrom-Json).errorCode) }
+            catch { $command5aHealthErrorCode = 'COMMAND5A_UNCLASSIFIED_FAILURE' }
+          }
+        }
+      } catch {
+        if ($command5aScheduleState -eq 'NOT_ATTEMPTED') { $command5aScheduleState = 'FAILED_NONCRITICAL' }
+        if ($command5aObservationState -eq 'NOT_ATTEMPTED') { $command5aObservationState = 'FAILED_NONCRITICAL' }
+        if ($command5aMaturationState -eq 'NOT_ATTEMPTED') { $command5aMaturationState = 'FAILED_NONCRITICAL' }
+      } finally { $ErrorActionPreference = $previousErrorActionPreference }
       $marketSessionDate = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
         [DateTimeOffset]::UtcNow, 'Eastern Standard Time').ToString('yyyy-MM-dd')
       $lastAlpacaQualificationSession = if (Test-Path -LiteralPath $alpacaQualificationSessionFile) {
@@ -373,7 +514,11 @@ try {
       $localResearchArchiveNextRetryAt = $null
       $localResearchSpoolRows = 0
       $localResearchPendingCompactionRows = 0
+      $localResearchActiveSpoolBytes = 0
+      $localResearchTotalBytes = 0
+      $localResearchStorageWatermark = 'NORMAL'
       $localResearchParquetFiles = 0
+      $localResearchParquetBytes = 0
       $localResearchLastManifestHash = $null
       $localResearchDuckdbVerification = 'NOT_AVAILABLE'
       $localResearchParquetState = if ($report.reconciliation.marketOpen -eq $true) {
@@ -382,15 +527,16 @@ try {
       if ($report.reconciliation.marketOpen -ne $true) {
         $researchSpoolPath = Join-Path $stateRoot 'research-spool\theta-research.sqlite'
         $researchArchiveHealthPath = Join-Path $stateRoot 'research-spool\archive-health.json'
-        $researchParquetRoot = 'C:\ProjectBackups\trading-bots\research-archives'
+        $researchParquetRoot = $command5aParquetRoot
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
           $archiveProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 600 -Arguments @(
             '--import','tsx','tools/archive-canonical-strategy-frontiers.ts',
             "--environment-file=$productionEnvFile","--sqlite=$researchSpoolPath",
-            "--health=$researchArchiveHealthPath","--parquet-root=$researchParquetRoot",
-            "--since=$($runtime.installedAt)","--source-sha=$($runtime.buildSha)",'--limit=10000')
+            "--scheduler=$command5aSchedulerPath","--health=$researchArchiveHealthPath",
+            "--parquet-root=$researchParquetRoot","--since=$($runtime.installedAt)",
+            "--source-sha=$($runtime.buildSha)",'--limit=10000')
           $archiveOutput = $archiveProcess.Output
           if ($archiveProcess.State -eq 'COMPLETED' -and $archiveProcess.ExitCode -eq 0) {
             $archiveResult = $archiveOutput | ConvertFrom-Json
@@ -441,14 +587,18 @@ try {
           }
           $healthProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 60 -Arguments @(
             '--import','tsx','tools/archive-canonical-strategy-frontiers.ts',"--sqlite=$researchSpoolPath",
-            "--health=$researchArchiveHealthPath","--parquet-root=$researchParquetRoot",
-            "--duckdb-verification=$parquetVerification",'--health-only')
+            "--scheduler=$command5aSchedulerPath","--health=$researchArchiveHealthPath",
+            "--parquet-root=$researchParquetRoot","--duckdb-verification=$parquetVerification",'--health-only')
           $healthOutput = $healthProcess.Output
           if ($healthProcess.State -eq 'COMPLETED' -and $healthProcess.ExitCode -eq 0) {
             $healthResult = $healthOutput | ConvertFrom-Json
             $localResearchSpoolRows = [int]$healthResult.health.spoolRows
             $localResearchPendingCompactionRows = [int]$healthResult.health.pendingCompactionRows
+            $localResearchActiveSpoolBytes = [long]$healthResult.health.activeSpoolBytes
+            $localResearchTotalBytes = [long]$healthResult.health.totalLocalResearchBytes
+            $localResearchStorageWatermark = [string]$healthResult.health.spoolWatermark
             $localResearchParquetFiles = [int]$healthResult.health.parquetFiles
+            $localResearchParquetBytes = [long]$healthResult.health.parquetBytes
             $localResearchLastManifestHash = [string]$healthResult.health.lastManifestHash
             $localResearchDuckdbVerification = [string]$healthResult.health.duckdbVerification
             $localResearchArchiveFailureFamily = [string]$healthResult.health.failureFamily
@@ -497,9 +647,26 @@ try {
         localResearchArchiveNextRetryAt=$localResearchArchiveNextRetryAt;
         localResearchSpoolRows=$localResearchSpoolRows;
         localResearchPendingCompactionRows=$localResearchPendingCompactionRows;
-        localResearchParquetFiles=$localResearchParquetFiles;
+        localResearchActiveSpoolBytes=$localResearchActiveSpoolBytes;
+        localResearchTotalBytes=$localResearchTotalBytes;
+        localResearchStorageWatermark=$localResearchStorageWatermark;
+        localResearchParquetFiles=$localResearchParquetFiles;localResearchParquetBytes=$localResearchParquetBytes;
         localResearchLastManifestHash=$localResearchLastManifestHash;
         localResearchDuckdbVerification=$localResearchDuckdbVerification;
+        command5aScheduleState=$command5aScheduleState;command5aScheduleErrorCode=$command5aScheduleErrorCode;
+        command5aObservationState=$command5aObservationState;command5aObservationErrorCode=$command5aObservationErrorCode;
+        command5aMaturationState=$command5aMaturationState;command5aMaturationErrorCode=$command5aMaturationErrorCode;
+        command5aSchedulingPausedForStorage=$command5aSchedulingPausedForStorage;
+        command5aObserved=$command5aObserved;command5aMissed=$command5aMissed;
+        command5aDeferredProvider=$command5aDeferredProvider;command5aDeferredMarket=$command5aDeferredMarket;
+        command5aCensoredRetryExhausted=$command5aCensoredRetryExhausted;
+        command5aMaterialized=$command5aMaterialized;command5aMaturationPending=$command5aMaturationPending;
+        command5aMaturationCensored=$command5aMaturationCensored;
+        command5aBacklogState=$command5aBacklogState;command5aHealthErrorCode=$command5aHealthErrorCode;
+        command5aUnresolvedJobs=$command5aUnresolvedJobs;
+        command5aDueJobs=$command5aDueJobs;command5aOverdueJobs=$command5aOverdueJobs;
+        command5aExpiredClaims=$command5aExpiredClaims;command5aRetryStalledJobs=$command5aRetryStalledJobs;
+        command5aOldestOverdueSeconds=$command5aOldestOverdueSeconds;command5aSourceCursor=$command5aSourceCursor;
         localReceiptState=$localReceiptState;localReceiptHash=$localReceiptHash;
         localEvidenceState=$localEvidenceState;localEvidenceHash=$localEvidenceHash} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8

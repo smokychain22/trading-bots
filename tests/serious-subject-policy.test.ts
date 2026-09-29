@@ -100,6 +100,15 @@ test('long-lived identities are cadence-bounded while the immutable first snapsh
   assert.equal(first.subjects[0]?.decisionBucketAt, '2026-09-25T15:00:00.000Z');
 });
 
+test('subject identities are isolated by underlying namespace', () => {
+  const spy = selectSeriousResearchSubjects(frontier(), undefined, 'SPY');
+  const qqq = selectSeriousResearchSubjects(frontier(), undefined, 'QQQ');
+  assert.equal(spy.subjects.length, qqq.subjects.length);
+  assert.ok(spy.subjects.every((subject, index) => subject.subjectId !== qqq.subjects[index]?.subjectId));
+  assert.throws(() => selectSeriousResearchSubjects(frontier(), undefined, 'spy'),
+    /SERIOUS_SUBJECT_NAMESPACE_INVALID/);
+});
+
 test('H retains H identity and D preserves both exact legs', () => {
   const receipt = selectSeriousResearchSubjects(frontier());
   const h = receipt.subjects.find((subject) => subject.kind === 'CANDIDATE' && subject.candidateId === 'h1');

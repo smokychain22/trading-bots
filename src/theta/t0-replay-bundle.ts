@@ -31,7 +31,35 @@ import { strategyRoutingResponseSchema } from './strategy-router-contract.js';
 // next, obvious step once this exists, and is called out explicitly in the
 // Codex handoff rather than done silently here.
 export const t0ReplayBundlePayloadType = 'T0_REPLAY_BUNDLE' as const;
-export const t0ReplayBundleContractVersion = 'theta-t0-replay-bundle-v1' as const;
+export const t0ReplayBundleContractVersion = 'theta-t0-replay-bundle-v2' as const;
+
+const aegisStateSchema = z.enum([
+  'ALLOW_FULL', 'ALLOW_REDUCED', 'HOLD_ONLY', 'HARD_VETO', 'DEFINED_RISK_ONLY', 'EMERGENCY_EXIT_ONLY',
+]).nullable();
+
+const entryEligibilitySchema = z.object({
+  basis: z.enum(['EMPIRICAL_OWNERSHIP', 'PAPER_ENTRY_BOOTSTRAP_UNCALIBRATED', 'INELIGIBLE']),
+  paperBootstrapPolicyVersion: z.string().nullable(),
+  paperBootstrapAllowedUnknownComponents: z.array(z.string()),
+  paperBootstrapReasonCodes: z.array(z.string()),
+});
+
+const thetaQCandidateEvaluationSchema = z.object({
+  state: z.enum(['EVALUATED_FEASIBLE', 'EVALUATED_INFEASIBLE', 'NOT_SENT_UPSTREAM_REJECT', 'RESPONSE_GAP']),
+  reasonCode: z.string().nullable(),
+});
+
+const thetaQDecisionSchema = z.object({
+  snapshotId: z.string().min(1),
+  timestamp: z.string().min(1),
+  underlying: z.string().min(1),
+  winningAction: z.enum([
+    'OPEN_FULL', 'OPEN_REDUCED', 'OPEN_ALTERNATE_CONTRACT', 'OPEN_ALTERNATE_EXPIRY',
+    'OPEN_ALTERNATE_STRUCTURE', 'WAIT', 'PASS', 'SYSTEM_HOLD', 'HARD_VETO',
+  ]),
+  selectedCandidateId: z.string().nullable(),
+  quantity: z.number().int().nonnegative(),
+});
 
 const stockSchema = z.object({
   underlying: z.string().min(1), shares: z.number().nullable(), currentPrice: z.number().nullable(),
@@ -48,11 +76,19 @@ export const t0ReplayBundleSchema = z.object({
   stock: stockSchema,
   assignmentCapacityQty: z.number().nullable(),
   buyingPower: z.number().nullable().optional(),
-  aegisNewRiskState: z.enum(['ALLOW_FULL', 'ALLOW_REDUCED', 'HOLD_ONLY', 'HARD_VETO', 'DEFINED_RISK_ONLY', 'EMERGENCY_EXIT_ONLY']).nullable(),
+  brokerAllowedQty: z.number().int().nonnegative().optional(),
+  brokerAllowedQtyByCandidateId: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  sizingPolicy: z.record(z.string(), z.unknown()).optional(),
+  aegisNewRiskState: aegisStateSchema,
+  aegisNewRiskStateByCandidateId: z.record(z.string(), aegisStateSchema).optional(),
+  aegisBindingReasonsByCandidateId: z.record(z.string(), z.array(z.string())).optional(),
   eventState: z.string().nullable(),
   unmanagedBrokerPositionCount: z.number(),
   unevaluatedUnderlyingCount: z.number(),
   optionomicsContext: z.unknown(),
+  entryEligibilityByOptionSymbol: z.record(z.string(), entryEligibilitySchema).optional(),
+  thetaQCandidateEvaluationByOptionSymbol: z.record(z.string(), thetaQCandidateEvaluationSchema).optional(),
+  thetaQDecision: thetaQDecisionSchema.optional(),
   optionsApprovedLevel: z.number().nullable().optional(),
   optionsTradingLevel: z.number().nullable().optional(),
 });
@@ -84,10 +120,25 @@ export function buildT0ReplayBundle(input: CanonicalStrategyFrontierInput): T0Re
     snapshotId: input.snapshotId, timestamp: input.timestamp, strategyVersion: input.strategyVersion,
     contracts: [...input.contracts], routing: input.routing, stock: input.stock,
     assignmentCapacityQty: input.assignmentCapacityQty, buyingPower: input.buyingPower ?? null,
+    brokerAllowedQty: input.brokerAllowedQty,
+    brokerAllowedQtyByCandidateId: input.brokerAllowedQtyByCandidateId,
+    sizingPolicy: input.sizingPolicy,
     aegisNewRiskState: input.aegisNewRiskState, eventState: input.eventState,
+    aegisNewRiskStateByCandidateId: input.aegisNewRiskStateByCandidateId,
+    aegisBindingReasonsByCandidateId: input.aegisBindingReasonsByCandidateId === undefined ? undefined
+      : Object.fromEntries(Object.entries(input.aegisBindingReasonsByCandidateId)
+        .map(([candidateId, reasons]) => [candidateId, [...reasons]])),
     unmanagedBrokerPositionCount: input.unmanagedBrokerPositionCount,
     unevaluatedUnderlyingCount: input.unevaluatedUnderlyingCount,
     optionomicsContext: input.optionomicsContext,
+    entryEligibilityByOptionSymbol: input.entryEligibilityByOptionSymbol === undefined ? undefined
+      : Object.fromEntries(Object.entries(input.entryEligibilityByOptionSymbol).map(([symbol, evidence]) => [symbol, {
+        ...evidence,
+        paperBootstrapAllowedUnknownComponents: [...evidence.paperBootstrapAllowedUnknownComponents],
+        paperBootstrapReasonCodes: [...evidence.paperBootstrapReasonCodes],
+      }])),
+    thetaQCandidateEvaluationByOptionSymbol: input.thetaQCandidateEvaluationByOptionSymbol,
+    thetaQDecision: input.thetaQDecision,
     optionsApprovedLevel: input.optionsApprovedLevel ?? null, optionsTradingLevel: input.optionsTradingLevel ?? null,
   };
   const parsed = t0ReplayBundleSchema.parse(bundle);
@@ -109,10 +160,18 @@ export function replayFromT0Bundle(bundle: T0ReplayBundle): CanonicalStrategyFro
     snapshotId: parsed.snapshotId, timestamp: parsed.timestamp, strategyVersion: parsed.strategyVersion,
     contracts: parsed.contracts, routing: parsed.routing, stock: parsed.stock,
     assignmentCapacityQty: parsed.assignmentCapacityQty, buyingPower: parsed.buyingPower ?? null,
+    brokerAllowedQty: parsed.brokerAllowedQty,
+    brokerAllowedQtyByCandidateId: parsed.brokerAllowedQtyByCandidateId,
+    sizingPolicy: parsed.sizingPolicy,
     aegisNewRiskState: parsed.aegisNewRiskState, eventState: parsed.eventState,
+    aegisNewRiskStateByCandidateId: parsed.aegisNewRiskStateByCandidateId,
+    aegisBindingReasonsByCandidateId: parsed.aegisBindingReasonsByCandidateId,
     unmanagedBrokerPositionCount: parsed.unmanagedBrokerPositionCount,
     unevaluatedUnderlyingCount: parsed.unevaluatedUnderlyingCount,
     optionomicsContext: parsed.optionomicsContext as CanonicalStrategyFrontierInput['optionomicsContext'],
+    entryEligibilityByOptionSymbol: parsed.entryEligibilityByOptionSymbol,
+    thetaQCandidateEvaluationByOptionSymbol: parsed.thetaQCandidateEvaluationByOptionSymbol,
+    thetaQDecision: parsed.thetaQDecision,
     optionsApprovedLevel: parsed.optionsApprovedLevel ?? null, optionsTradingLevel: parsed.optionsTradingLevel ?? null,
   };
   return buildCanonicalStrategyFrontier(replayInput);

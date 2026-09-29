@@ -38,6 +38,9 @@ test('local research spool is immutable, idempotent, hash-verified, and never br
     assert.equal(first.brokerAuthority, false);
     assert.equal(spool.pending().length, 1);
     assert.deepEqual([...spool.batchIds()], ['batch-1']);
+    assert.equal(spool.hasBatch('batch-1'), true);
+    assert.equal(spool.verifyBatch('batch-1'), true);
+    assert.equal(spool.verifyBatch('missing'), false);
     assert.deepEqual(spool.stats(), {
       totalBatchCount: 1,
       pendingParquetBatchCount: 1,

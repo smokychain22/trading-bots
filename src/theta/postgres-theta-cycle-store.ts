@@ -216,18 +216,77 @@ function jsonObject(value: JsonValue | undefined): Record<string, JsonValue> {
   return value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
-// Phase 2 Pass B Final Closure C (directive sections 16-20): extracted as
-// its own pure function so the truthful-semantics fix is directly unit-
-// testable without a Postgres pool. See the call site's own comment for
-// the full rationale (regimeState is not a trend measurement; momentum has
-// no real implementation wired anywhere in src/ today).
+export type PersistedTechnicalFeatureStatus = 'AVAILABLE' | 'INSUFFICIENT_INPUTS' | 'PROVIDER_ERROR'
+  | 'STALE' | 'INVALID' | 'NOT_ENTITLED' | 'NOT_ATTEMPTED' | 'SOURCE_NOT_WIRED';
+
+function finiteJsonNumber(value: JsonValue | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function technicalFeatureStatus(
+  value: number | null,
+  quality: JsonValue | undefined,
+  sourceState: JsonValue | undefined,
+  wired: boolean,
+): PersistedTechnicalFeatureStatus {
+  if (!wired) return 'SOURCE_NOT_WIRED';
+  if (value !== null && quality === 'GOOD') return 'AVAILABLE';
+  if (quality === 'STALE') return 'STALE';
+  if (quality === 'INVALID') return 'INVALID';
+  if (quality === 'NOT_ENTITLED') return 'NOT_ENTITLED';
+  if (quality === 'DEGRADED' || sourceState === 'REAL_PROVIDER_ERROR') return 'PROVIDER_ERROR';
+  if (sourceState === 'NOT_ATTEMPTED') return 'NOT_ATTEMPTED';
+  return 'INSUFFICIENT_INPUTS';
+}
+
+// This pure projection consumes the immutable, PIT-bound Alpaca stock-bar
+// feature receipt embedded in FusionSnapshot.regimeState. It never derives a
+// value at persistence time and never aliases a regime label as a measurement.
 export function persistedTechnicalEvidence(regimeState: JsonValue | undefined): Readonly<{
-  regimeState: JsonValue | null; trend: null; trendStatus: 'NOT_IMPLEMENTED';
-  momentum: null; momentumStatus: 'NOT_IMPLEMENTED';
-  drawdown: null; realizedVolatility: null;
+  regimeState: JsonValue | null;
+  trend: number | null; trendStatus: PersistedTechnicalFeatureStatus;
+  trendMethod: JsonValue | null; trendUnit: JsonValue | null;
+  momentum: number | null; momentumStatus: PersistedTechnicalFeatureStatus;
+  momentumMethod: JsonValue | null; momentumUnit: JsonValue | null;
+  drawdown: number | null; drawdownStatus: PersistedTechnicalFeatureStatus;
+  realizedVolatility: number | null; realizedVolatilityStatus: PersistedTechnicalFeatureStatus;
+  source: JsonValue | null;
 }> {
-  return { regimeState: regimeState ?? null, trend: null, trendStatus: 'NOT_IMPLEMENTED',
-    momentum: null, momentumStatus: 'NOT_IMPLEMENTED', drawdown: null, realizedVolatility: null };
+  const regime = jsonObject(regimeState);
+  const technical = jsonObject(regime.technicalFeatures);
+  const values = jsonObject(technical.values);
+  const methods = jsonObject(technical.methods);
+  const units = jsonObject(technical.units);
+  const wired = Object.keys(technical).length > 0;
+  const quality = technical.dataQuality;
+  const sourceState = technical.sourceState;
+  const trend = finiteJsonNumber(values.trendSlope20d);
+  const momentum = finiteJsonNumber(values.return5d);
+  const drawdown = finiteJsonNumber(values.drawdown60d);
+  const realizedVolatility = finiteJsonNumber(values.realizedVolatility20d);
+  const source = wired ? {
+    contractVersion: technical.contractVersion ?? null,
+    provider: technical.provider ?? null,
+    operationAlias: technical.operationAlias ?? null,
+    asOf: technical.asOf ?? null,
+    providerAsOf: technical.providerAsOf ?? null,
+    retrievedAt: technical.retrievedAt ?? null,
+    sourceState: sourceState ?? null,
+    dataQuality: quality ?? null,
+    feed: technical.feed ?? null,
+    adjustment: technical.adjustment ?? null,
+    barCount: technical.barCount ?? null,
+  } as JsonValue : null;
+  return {
+    regimeState: regimeState ?? null,
+    trend, trendStatus: technicalFeatureStatus(trend, quality, sourceState, wired),
+    trendMethod: methods.trend ?? null, trendUnit: units.trend ?? null,
+    momentum, momentumStatus: technicalFeatureStatus(momentum, quality, sourceState, wired),
+    momentumMethod: methods.momentum ?? null, momentumUnit: units.momentum ?? null,
+    drawdown, drawdownStatus: technicalFeatureStatus(drawdown, quality, sourceState, wired),
+    realizedVolatility, realizedVolatilityStatus: technicalFeatureStatus(realizedVolatility, quality, sourceState, wired),
+    source,
+  };
 }
 
 export class PostgresThetaCycleStore {
@@ -1098,24 +1157,10 @@ export class PostgresThetaCycleStore {
           surface:optionomicsFeatures.volatilitySurface ?? null,contractVolatility:optionomicsContract.volatility ?? null,
           marketStructure:optionomicsContract.marketStructure ?? null,
           providerExposureHeatmap:optionomicsProviderContext.exposureHeatmap ?? null},
-        // Phase 2 Pass B Final Closure C (directive sections 16-20): `trend`
-        // previously aliased `snapshot.regimeState` -- a regime state is not
-        // a trend measurement, and reporting it under that name let a
-        // reader believe an independent trend signal existed when it did
-        // not. `momentum` was hardcoded null at this, its only write site,
-        // with nothing anywhere computing a real value -- indistinguishable
-        // from "measured zero momentum" without this fix. Neither is
-        // fabricated here: `regimeState` is preserved under its own real
-        // name, and `trend`/`momentum` are explicit, typed
-        // NOT_IMPLEMENTED sentinels a consumer cannot mistake for a real
-        // zero/neutral measurement. A real trend-slope/return computation
-        // already exists (underlying-features.ts's computeTrendSlope/
-        // computeReturn, wrapped by pit-feature-materializer.ts) but has no
-        // caller anywhere in src/ today -- wiring it here is a real
-        // integration task (historical bars, window policy, versioning),
-        // deliberately left to a dedicated follow-up rather than folded
-        // into this closure pass per the "no new alpha, truthful semantics
-        // only" standard.
+        // The immutable FusionSnapshot carries the exact Alpaca bar-derived
+        // values and source timing. Persistence only projects that receipt,
+        // so it cannot recompute with later bars or turn missing input into a
+        // neutral zero.
         technical:persistedTechnicalEvidence(snapshot.regimeState),
         event:{state:snapshot.eventState,companyEvent:typeof contract.optionSymbol==='string'
           ? companyEventByOptionSymbol[contract.optionSymbol]??null:null,

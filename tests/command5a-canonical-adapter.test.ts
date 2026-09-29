@@ -98,4 +98,5 @@ test('CORE CLAIM (gap 5/12): the real-data-arrival harness consumes a real Comma
   assert.equal(result.pitValid, true);
   assert.ok(result.dataset !== null);
   assert.equal(result.dataset?.path[0]?.marketMarkPath, 2.05);
+  assert.equal(result.dataset?.identifiabilityStatus, 'NOT_IDENTIFIABLE');
 });

@@ -27,12 +27,13 @@ const subject: SeriousCandidateSubject = {
     sizing: { quantity: 1, bindingConstraint: 'BROKER', reasons: [] }, paretoRank: 1,
     dominatedBy: [], executionAuthorized: false,
   },
-  subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v1',
+  subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v2',
   shadowOnly: true, brokerAuthority: false, orderSubmitted: false, brokerFill: false,
 };
 
 function bundle() {
   const episode = buildShadowEpisodeContract({ subject, decisionId: 'decision-1', featureSnapshotHash: 'c'.repeat(64),
+    frontierContentHash: 'd'.repeat(64), optionomicsContextHash: 'e'.repeat(64),
     strategyVersion: 'strategy-v1', riskVersion: 'risk-v1', costVersion: 'cost-v1',
     executionModelVersion: 'execution-v1', sourceSha, workerSha: sourceSha });
   const observation = buildContractPathObservationReceipt({ observationJobId: 'job-1', subjectId: subject.subjectId,

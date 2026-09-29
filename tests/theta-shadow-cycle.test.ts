@@ -244,6 +244,18 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   assert.equal(gapReceipt.currentSession, '2026-09-10');
   assert.equal(gapReceipt.state, 'READY');
   assert.equal(gapReceipt.stressGapDetected, false);
+  const technical = regimeState.technicalFeatures as Record<string, unknown>;
+  const technicalValues = technical.values as Record<string, unknown>;
+  assert.equal(technical.contractVersion, 'theta-underlying-technical-features-v1');
+  assert.equal(technical.provider, 'ALPACA');
+  assert.equal(technical.dataQuality, 'GOOD');
+  assert.equal(technical.barCount, 65);
+  assert.equal(typeof technicalValues.return5d, 'number');
+  assert.equal(typeof technicalValues.trendSlope20d, 'number');
+  assert.equal(typeof technicalValues.realizedVolatility20d, 'number');
+  assert.ok(result.fusionSnapshot?.snapshot.sourceProvenance.some((entry) =>
+    entry.provider === 'ALPACA' && entry.operationAlias === 'alpaca.get_stock_bars'
+      && entry.contractVersion === 'theta-underlying-technical-features-v1' && entry.state === 'GOOD'));
   assert.ok(result.orchestration?.thetaQ !== null || result.orchestration?.receipt.winningAction === 'PASS');
   const portfolio = result.fusionSnapshot?.snapshot.portfolioExposure as Record<string, unknown>;
   assert.equal((portfolio.correlationObservation as Record<string, unknown>).state, 'NOT_APPLICABLE');

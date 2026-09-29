@@ -38,6 +38,7 @@ export interface OptionomicsProviderConfig {
   readonly now?: () => string; // injectable clock for retrievedAt -- never `new Date()` called directly in this module's logic
   readonly timeoutMs?: number; // default 10_000
   readonly maxRetryAttempts?: number; // default 3 -- total attempts including the first, bounded, safe-GET-only
+  readonly maxResponseBytes?: number; // default 8 MiB -- enforced while streaming, before JSON parsing
   readonly sleepImpl?: (ms: number) => Promise<void>; // injectable -- tests must never sleep unboundedly on a real clock
 }
 
@@ -75,6 +76,7 @@ export type OptionomicsErrorClass =
   | 'PROVIDER_FAILURE' // 5xx
   | 'PROVIDER_TIMEOUT' // request exceeded timeoutMs
   | 'NETWORK_FAILURE' // fetch threw (DNS/connection/etc), not a timeout
+  | 'RESPONSE_TOO_LARGE' // response exceeded the configured bounded byte budget
   | 'INVALID_PROVIDER_RESPONSE'; // 2xx but non-JSON or schema-invalid body
 
 export class OptionomicsProviderError extends Error {
@@ -117,6 +119,70 @@ function parseRetryAfterSeconds(header: string | null): number | null {
   return null;
 }
 
+const defaultMaxResponseBytes = 8 * 1024 * 1024;
+
+async function readJsonBodyBounded(input: {
+  readonly response: Response;
+  readonly maxResponseBytes: number;
+  readonly path: string;
+  readonly attempt: number;
+  readonly signal: AbortSignal;
+}): Promise<unknown> {
+  const declaredLength = input.response.headers.get('content-length');
+  if (declaredLength !== null && /^\d+$/.test(declaredLength)
+    && Number(declaredLength) > input.maxResponseBytes) {
+    await input.response.body?.cancel('THETA_OPTIONOMICS_RESPONSE_TOO_LARGE');
+    throw new OptionomicsProviderError('RESPONSE_TOO_LARGE', input.response.status,
+      `${input.path} exceeded the bounded response size.`, null, input.attempt);
+  }
+  if (input.response.body === null) {
+    throw new OptionomicsProviderError('INVALID_PROVIDER_RESPONSE', input.response.status,
+      `${input.path} returned an empty body.`, null, input.attempt);
+  }
+  const reader = input.response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    for (;;) {
+      const next = await new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
+        const aborted = (): void => {
+          const error = new Error('Optionomics response body deadline exceeded.');
+          error.name = 'AbortError';
+          reject(error);
+        };
+        if (input.signal.aborted) { aborted(); return; }
+        input.signal.addEventListener('abort', aborted, { once: true });
+        reader.read().then(resolve, reject).finally(() => input.signal.removeEventListener('abort', aborted));
+      });
+      if (next.done) break;
+      totalBytes += next.value.byteLength;
+      if (totalBytes > input.maxResponseBytes) {
+        await reader.cancel('THETA_OPTIONOMICS_RESPONSE_TOO_LARGE');
+        throw new OptionomicsProviderError('RESPONSE_TOO_LARGE', input.response.status,
+          `${input.path} exceeded the bounded response size.`, null, input.attempt);
+      }
+      chunks.push(next.value);
+    }
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') await reader.cancel(error.message).catch(() => undefined);
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+  } catch {
+    throw new OptionomicsProviderError('INVALID_PROVIDER_RESPONSE', input.response.status,
+      `${input.path} returned a non-JSON body.`, null, input.attempt);
+  }
+}
+
 export interface OptionomicsRequestOutcome {
   readonly body: unknown;
   readonly httpStatus: number;
@@ -145,7 +211,17 @@ export async function requestOptionomicsJsonBounded(
   const now = config.now ?? defaultNow;
   const sleep = config.sleepImpl ?? defaultSleep;
   const timeoutMs = config.timeoutMs ?? 10_000;
-  const maxAttempts = Math.max(1, config.maxRetryAttempts ?? 3);
+  const maxAttempts = config.maxRetryAttempts ?? 3;
+  const maxResponseBytes = config.maxResponseBytes ?? defaultMaxResponseBytes;
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000
+    || !Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 5) {
+    throw new OptionomicsProviderError('INVALID_REQUEST', null,
+      'Optionomics timeout or retry policy is invalid.', null, 0);
+  }
+  if (!Number.isInteger(maxResponseBytes) || maxResponseBytes < 1 || maxResponseBytes > 64 * 1024 * 1024) {
+    throw new OptionomicsProviderError('INVALID_REQUEST', null,
+      'Optionomics response-size policy is invalid.', null, 0);
+  }
   const headers = authHeaders(config);
 
   let attempt = 0;
@@ -166,28 +242,41 @@ export async function requestOptionomicsJsonBounded(
       }
       throw new OptionomicsProviderError('NETWORK_FAILURE', null, `Network error reaching ${url.host}${url.pathname} -- ${error instanceof Error ? error.name : 'unknown'}.`, null, attempt);
     }
-    clearTimeout(timer);
-
     if ((response.status === 429 || response.status >= 500) && attempt < maxAttempts) {
+      clearTimeout(timer);
+      await response.body?.cancel('THETA_OPTIONOMICS_RETRY_RESPONSE_DISCARDED').catch(() => undefined);
       const retryAfter = parseRetryAfterSeconds(response.headers.get('retry-after'));
       await sleep((retryAfter ?? 1) * 1000);
       continue;
     }
 
     if (!response.ok) {
+      clearTimeout(timer);
+      await response.body?.cancel('THETA_OPTIONOMICS_ERROR_RESPONSE_DISCARDED').catch(() => undefined);
       const retryAfter = response.status === 429 ? parseRetryAfterSeconds(response.headers.get('retry-after')) : null;
       throw new OptionomicsProviderError(classifyErrorStatus(response.status), response.status, `${url.pathname} returned HTTP ${response.status}.`, retryAfter, attempt);
     }
 
     const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
     if (!contentType.includes('application/json') && !contentType.includes('+json')) {
+      clearTimeout(timer);
+      await response.body?.cancel('THETA_OPTIONOMICS_UNSUPPORTED_RESPONSE_DISCARDED').catch(() => undefined);
       throw new OptionomicsProviderError('INVALID_PROVIDER_RESPONSE', response.status, `${url.pathname} returned an unsupported content type.`, null, attempt);
     }
     let body: unknown;
     try {
-      body = await response.json();
-    } catch {
-      throw new OptionomicsProviderError('INVALID_PROVIDER_RESPONSE', response.status, `${url.pathname} returned a non-JSON body.`, null, attempt);
+      body = await readJsonBodyBounded({ response, maxResponseBytes, path: url.pathname, attempt,
+        signal: controller.signal });
+    } catch (error) {
+      if (error instanceof OptionomicsProviderError) throw error;
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new OptionomicsProviderError('PROVIDER_TIMEOUT', null,
+          `Request to ${url.pathname} exceeded ${timeoutMs}ms.`, null, attempt);
+      }
+      throw new OptionomicsProviderError('NETWORK_FAILURE', null,
+        `Network error reading ${url.host}${url.pathname}.`, null, attempt);
+    } finally {
+      clearTimeout(timer);
     }
     return {
       body, httpStatus: response.status, requestedAt, retrievedAt: now(), correlationId,

@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
+import { canonicalJson } from '../src/research/point-in-time-evidence.js';
 import { buildStrategyLearningObservationSchedule } from '../src/research/strategy-learning-horizon.js';
 import { LocalObservationJobScheduler } from '../src/storage/local-observation-job-scheduler.js';
 
@@ -48,6 +51,59 @@ test('jobs survive scheduler restart, claim once, and resolve without broker aut
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('primary jobs preserve their factual horizon across scheduler restart', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-observation-jobs-'));
+  const path = join(root, 'jobs.sqlite');
+  try {
+    const jobs = buildStrategyLearningObservationSchedule({
+      subjectId: 'a'.repeat(64), decisionAt: '2026-09-25T14:30:00Z',
+      decisionSessionDate: '2026-09-25', expirationDate: '2026-09-29',
+      sessions: [{ date: '2026-09-25', openAt: '2026-09-25T13:30:00Z',
+        closeAt: '2026-09-25T20:00:00Z', source: 'ALPACA_CALENDAR' }],
+      policy: { version: 'theta-strategy-learning-horizons-v1', primaryCommonHorizon: 'EOD',
+        tradingDayTarget: 'SESSION_CLOSE' },
+    });
+    const primary = jobs.find((job) => job.horizonCode === 'PRIMARY_COMMON_HORIZON');
+    assert.ok(primary);
+    const first = new LocalObservationJobScheduler(path);
+    first.schedule({ job: primary, sourceSha: 'b'.repeat(40), workerSha: 'b'.repeat(40) });
+    first.close();
+    const second = new LocalObservationJobScheduler(path);
+    assert.equal(second.get(primary.observationJobId).derivedFromHorizonCode, 'EOD');
+    second.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('scheduler upgrades a legacy job hash without losing its durable state', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-observation-jobs-'));
+  const path = join(root, 'jobs.sqlite');
+  try {
+    const job = scheduledJob();
+    const first = new LocalObservationJobScheduler(path);
+    first.schedule({ job, sourceSha: 'b'.repeat(40), workerSha: 'b'.repeat(40) });
+    first.close();
+    const legacyHash = createHash('sha256').update(canonicalJson({
+      observationJobId: job.observationJobId,
+      subjectId: job.subjectId,
+      horizonCode: job.horizonCode,
+      targetAt: new Date(job.targetAt as string).toISOString(),
+      targetSessionDate: job.targetSessionDate,
+      sourceSha: 'b'.repeat(40),
+      workerSha: 'b'.repeat(40),
+    })).digest('hex');
+    const raw = new DatabaseSync(path);
+    raw.prepare(`UPDATE observation_job SET derived_from_horizon_code=NULL,content_hash=?
+      WHERE observation_job_id=?`).run(legacyHash, job.observationJobId);
+    raw.close();
+    const upgraded = new LocalObservationJobScheduler(path);
+    const receipt = upgraded.schedule({ job, sourceSha: 'b'.repeat(40), workerSha: 'b'.repeat(40) });
+    assert.equal(receipt.state, 'PENDING');
+    assert.equal(receipt.derivedFromHorizonCode, null);
+    assert.notEqual(receipt.contentHash, legacyHash);
+    upgraded.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('expired claims recover after restart and provider deferral stays typed', () => {
   const root = mkdtempSync(join(tmpdir(), 'theta-observation-jobs-'));
   const path = join(root, 'jobs.sqlite');
@@ -90,4 +146,67 @@ test('claim boundary rejects malformed clocks and limits before querying the que
     assert.throws(() => scheduler.claimDue({ asOf: '2026-09-25T14:45:00Z', claimedBy: 'worker-1',
       claimTtlSeconds: 30, limit: 0 }), /LOCAL_OBSERVATION_JOB_LIMIT_INVALID/);
   } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('scheduler health exposes overdue, expired, and retry-stalled work without hiding it as empty', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-observation-jobs-'));
+  const scheduler = new LocalObservationJobScheduler(join(root, 'jobs.sqlite'));
+  try {
+    const scheduled = scheduler.schedule({ job: scheduledJob(), sourceSha: 'b'.repeat(40),
+      workerSha: 'b'.repeat(40) });
+    scheduler.claimDue({ asOf: '2026-09-25T14:45:00Z', claimedBy: 'worker-1', claimTtlSeconds: 30 });
+    scheduler.defer({ observationJobId: scheduled.observationJobId, claimedBy: 'worker-1',
+      state: 'DEFERRED_PROVIDER', asOf: '2026-09-25T14:45:01Z', reasonCode: 'ALPACA_READ_UNAVAILABLE' });
+    scheduler.claimDue({ asOf: '2026-09-25T14:46:00Z', claimedBy: 'worker-2', claimTtlSeconds: 30 });
+    const health = scheduler.health({ asOf: '2026-09-25T15:15:00Z',
+      overdueWarningSeconds: 1_800, retryStalledAttemptThreshold: 2 });
+    assert.equal(health.jobCount, 1);
+    assert.equal(health.unresolvedCount, 1);
+    assert.equal(health.dueCount, 1);
+    assert.equal(health.overdueCount, 1);
+    assert.equal(health.expiredClaimCount, 1);
+    assert.equal(health.retryStalledCount, 1);
+    assert.equal(health.oldestUnresolvedTargetAt, '2026-09-25T14:45:00.000Z');
+    assert.equal(health.oldestOverdueSeconds, 1_800);
+    assert.equal(health.backlogState, 'RETRY_STALLED');
+    assert.equal(health.brokerAuthority, false);
+  } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('scheduler health distinguishes an empty queue from current future work', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-observation-jobs-'));
+  const scheduler = new LocalObservationJobScheduler(join(root, 'jobs.sqlite'));
+  try {
+    assert.equal(scheduler.health({ asOf: '2026-09-25T14:00:00Z' }).backlogState, 'EMPTY');
+    scheduler.schedule({ job: scheduledJob(), sourceSha: 'b'.repeat(40), workerSha: 'b'.repeat(40) });
+    const health = scheduler.health({ asOf: '2026-09-25T14:40:00Z' });
+    assert.equal(health.backlogState, 'CURRENT');
+    assert.equal(health.dueCount, 0);
+    assert.equal(health.oldestOverdueSeconds, null);
+    assert.equal(health.sourceCursor, null);
+  } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('frontier source cursor survives restart and can only advance', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-observation-jobs-'));
+  const path = join(root, 'jobs.sqlite');
+  try {
+    const first = new LocalObservationJobScheduler(path);
+    assert.equal(first.sourceCursor(), null);
+    first.advanceSourceCursor({ readyAt: '2026-09-25T14:00:00Z',
+      frontierId: '11111111-1111-4111-8111-111111111111' });
+    first.close();
+    const second = new LocalObservationJobScheduler(path);
+    assert.deepEqual(second.sourceCursor(), { readyAt: '2026-09-25T14:00:00.000Z',
+      frontierId: '11111111-1111-4111-8111-111111111111' });
+    assert.throws(() => second.advanceSourceCursor({ readyAt: '2026-09-25T13:59:59Z',
+      frontierId: '22222222-2222-4222-8222-222222222222' }),
+    /LOCAL_OBSERVATION_SOURCE_CURSOR_REGRESSION/);
+    second.advanceSourceCursor({ readyAt: '2026-09-25T14:00:00Z',
+      frontierId: '22222222-2222-4222-8222-222222222222' });
+    assert.equal(second.sourceCursor()?.frontierId, '22222222-2222-4222-8222-222222222222');
+    assert.deepEqual(second.health({ asOf: '2026-09-25T14:01:00Z' }).sourceCursor,
+      second.sourceCursor());
+    second.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

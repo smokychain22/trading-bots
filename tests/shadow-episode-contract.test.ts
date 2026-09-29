@@ -28,12 +28,13 @@ const candidateSubject: SeriousCandidateSubject = {
     sizing: { quantity: 1, bindingConstraint: 'BROKER', reasons: [] }, paretoRank: 1,
     dominatedBy: [], executionAuthorized: false,
   },
-  subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v1',
+  subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v2',
   shadowOnly: true, brokerAuthority: false, orderSubmitted: false, brokerFill: false,
 };
 
 const versions = {
   decisionId: 'decision-1', featureSnapshotHash: 'b'.repeat(64), strategyVersion: 'strategy-v1',
+  frontierContentHash: 'd'.repeat(64), optionomicsContextHash: 'e'.repeat(64),
   riskVersion: 'risk-v1', costVersion: 'cost-v1', executionModelVersion: 'execution-v1',
   sourceSha: 'c'.repeat(40), workerSha: 'c'.repeat(40),
 };
@@ -46,9 +47,16 @@ test('shadow episode preserves both D legs and can never gain broker authority',
   assert.deepEqual(first.legs.map((leg) => leg.optionSymbol),
     ['SPY261120P00500000', 'SPY261120P00495000']);
   assert.equal(first.shadowOnly, true);
+  assert.equal(first.selectedAtDecision, false);
   assert.equal(first.brokerAuthority, false);
   assert.equal(first.orderSubmitted, false);
   assert.equal(first.brokerFill, false);
+  assert.equal(first.frontierContentHash, 'd'.repeat(64));
+  assert.equal(first.optionomicsContextHash, 'e'.repeat(64));
+  assert.equal(first.decisionEvidence.kind, 'CANDIDATE');
+  assert.equal(first.decisionEvidence.kind === 'CANDIDATE' ? first.decisionEvidence.aegisState : null, 'ALLOW_FULL');
+  assert.equal(first.decisionEvidence.kind === 'CANDIDATE' ? first.decisionEvidence.sizing.quantity : null, 1);
+  assert.equal(first.decisionEvidence.kind === 'CANDIDATE' ? first.decisionEvidence.economics.maxLoss : null, 400);
 });
 
 test('WAIT receives an auditable shadow identity without a fake contract', () => {
@@ -58,18 +66,46 @@ test('WAIT receives an auditable shadow identity without a fake contract', () =>
     candidateId: null, branch: null, rankAtDecision: null, selected: false,
     selectionReasons: ['CANONICAL_WAIT'], primaryAction: 'GLOBAL_WAIT', reasons: ['ACCOUNT_CAPACITY'],
     bestRejectedCandidateId: 'candidate-1', secondBestCandidateId: null, nearMissCandidateId: 'candidate-1',
-    subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v1',
+    subjectSelectionPolicyVersion: 'theta-serious-subject-selection-v2',
     shadowOnly: true, brokerAuthority: false, orderSubmitted: false, brokerFill: false,
   };
   const receipt = buildShadowEpisodeContract({ subject: wait, ...versions });
   assert.equal(receipt.strategy, 'WAIT');
   assert.equal(receipt.candidateId, null);
+  assert.equal(receipt.selectedAtDecision, false);
   assert.deepEqual(receipt.legs, []);
+  assert.deepEqual(receipt.decisionEvidence, {
+    kind: 'WAIT', primaryAction: 'GLOBAL_WAIT', reasons: ['ACCOUNT_CAPACITY'],
+    bestRejectedCandidateId: 'candidate-1', secondBestCandidateId: null, nearMissCandidateId: 'candidate-1',
+  });
+});
+
+test('stock-only recovery actions persist T0 evidence without inventing an option leg', () => {
+  const recovery: SeriousCandidateSubject = {
+    ...candidateSubject,
+    subjectId: 'f'.repeat(64),
+    candidateId: 'THETA_RECOVERY:SPY:RECOVERY_WAIT',
+    branch: 'THETA_RECOVERY',
+    candidate: {
+      ...candidateSubject.candidate,
+      candidateId: 'THETA_RECOVERY:SPY:RECOVERY_WAIT',
+      branch: 'THETA_RECOVERY',
+      action: 'RECOVERY_WAIT',
+      legs: [],
+    },
+  };
+  const receipt = buildShadowEpisodeContract({ subject: recovery, ...versions });
+  assert.deepEqual(receipt.legs, []);
+  assert.equal(receipt.strategy, 'THETA_RECOVERY');
+  assert.equal(receipt.decisionEvidence.kind, 'CANDIDATE');
+  assert.equal(receipt.brokerAuthority, false);
 });
 
 test('invalid source lineage and future decision bucket fail closed', () => {
   assert.throws(() => buildShadowEpisodeContract({ subject: candidateSubject, ...versions, sourceSha: 'bad' }),
     /SHADOW_EPISODE_IDENTITY_INVALID/);
+  assert.throws(() => buildShadowEpisodeContract({ subject: candidateSubject, ...versions,
+    optionomicsContextHash: 'bad' }), /SHADOW_EPISODE_IDENTITY_INVALID/);
   assert.throws(() => buildShadowEpisodeContract({ subject: { ...candidateSubject,
     decisionBucketAt: '2026-09-25T16:00:00Z' }, ...versions }), /SHADOW_EPISODE_TIME_INVALID/);
 });

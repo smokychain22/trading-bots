@@ -1,4 +1,5 @@
 import { classifyPostgresRelation, type RelationClassification } from './storage-authority-registry.js';
+import { datasetPolicyForClassification, type StorageDatasetPolicy } from './storage-dataset-policy.js';
 
 export interface PostgresRelationStatRow {
   readonly schema_name: string;
@@ -42,6 +43,7 @@ export interface AuditedRelation {
   readonly lastAutoanalyze: string | null;
   readonly classification: RelationClassification;
   readonly classificationRationale: string;
+  readonly datasetPolicy: StorageDatasetPolicy | null;
 }
 
 const finiteNonnegative = (value: string | number, name: string): number => {
@@ -79,6 +81,7 @@ export function normalizeRelationStat(row: PostgresRelationStatRow): AuditedRela
     lastVacuum: timestamp(row.last_vacuum), lastAutovacuum: timestamp(row.last_autovacuum),
     lastAnalyze: timestamp(row.last_analyze), lastAutoanalyze: timestamp(row.last_autoanalyze),
     classification: classified.classification, classificationRationale: classified.rationale,
+    datasetPolicy: datasetPolicyForClassification(classified.classification),
   };
 }
 

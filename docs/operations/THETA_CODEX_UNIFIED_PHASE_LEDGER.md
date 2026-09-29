@@ -67,10 +67,20 @@ the schema-067 PostgreSQL and recovery fixes. A branch merge would delete or
 replace current Production database tooling, so no wholesale merge is allowed.
 Its GET-only Alpaca future-observation source, bounded scheduling, namespace
 isolation, local SQLite subjects/jobs, maturation, provider deferrals, storage
-watermarks and Windows scheduling remain a controlled porting queue. Each
-accepted component needs its own current-main compatibility test. The existing
-main has contracts and a local job scheduler, but no proven current-worker
-Command-5A collection of a real T0 subject yet.
+watermarks and Windows scheduling have now been merged into this isolated
+integration branch. The merge auto-resolved against current main's later
+PostgreSQL, schema-067, backup and release fixes. The integrated delta contains
+61 files and does not delete those later main facilities. This is source and
+test integration only. No Command-5A component has been deployed into the
+frozen Phase-1 worker, and no real T0 subject has been captured by it.
+
+The integrated source passed TypeScript checking, lint, 68 focused
+Command-5A/read-only tests, 2,967 passing Node tests with 15 skipped,
+1,222 Python unittest cases, four Windows backup/deadline tests, 23 browser
+tests, build, security scan and Git storage policy. The focused tests prove
+GET-only requests, exact-leg marks, typed provider deferrals, idempotent local
+jobs and bounded process wiring. They do not prove provider entitlement or
+current-worker market outcomes.
 
 ## Unknown and safety register
 

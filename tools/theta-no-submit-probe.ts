@@ -18,6 +18,7 @@ import { buildLocalAegisRiskHistory, type LocalAegisRiskObservation } from '../s
 import { buildT0ReplayBundle, classifyT0ReplayBundleBuildError } from '../src/theta/t0-replay-bundle.js';
 import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment,
   type PaperEntryBootstrapAssessment } from '../src/theta/paper-entry-bootstrap.js';
+import { createGetOnlyFetch } from '../src/theta/read-only-fetch.js';
 
 const environmentFile = process.argv.find((argument) => argument.startsWith('--environment-file='))
   ?.slice('--environment-file='.length) ?? '.env.local';
@@ -77,10 +78,7 @@ const alpaca = {
   apiKey: environment.ALPACA_API_KEY, apiSecret: environment.ALPACA_SECRET_KEY,
   // Every Alpaca call in this probe is physically read-only, independent
   // of the runtime flags and of the Paper action-plan store.
-  fetchImpl: (input: RequestInfo | URL, init?: RequestInit) => {
-    if ((init?.method ?? 'GET').toUpperCase() !== 'GET') throw new Error('NO_SUBMIT_PROBE_NON_GET_REJECTED');
-    return fetch(input, init);
-  },
+  fetchImpl: createGetOnlyFetch(fetch, 'NO_SUBMIT_PROBE_NON_GET_REJECTED'),
 };
 let poolConnectionFailed = false;
 const pool = createRuntimePostgresPool(environment.DATABASE_URL,()=>{poolConnectionFailed=true;});
