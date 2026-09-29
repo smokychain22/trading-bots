@@ -31,7 +31,7 @@ evidence window without restarting the aligned worker for this status alone.
 | 4 | `SOURCE_COMPLETE_EMPIRICAL_PENDING` | `EMPIRICALLY_UNPROVEN` | Q/H/D/A/C deterministic mechanics, versioned modeled opening costs, position scaling, management alternatives, whole-chain loss preservation, 17 challenger replays, persistence and T0 replay are wired and tested. Exact-SHA CI run `36550676519` passed. Current-worker evidence and calibrated EV/POP/continuation values remain unavailable and are not fabricated. |
 | 5 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | One AEGIS authority, one canonical final sizing authority and one master execution mutation state machine are enforced and tested. Exact-SHA CI run `36552617374` passed. Current-worker evidence remains pending. Sector mapping and portfolio Greeks retain typed provider/data limits. Risk-policy optimality remains empirically unproven. |
 | 6 | `SOURCE_COMPLETE_EMPIRICAL_PENDING` | `EMPIRICALLY_UNPROVEN` | Historical provenance, future capture, outcomes, datasets, regret, attribution, model ladder, validation and promotion governance are wired. Mechanical benchmark dispatch is executable. Historical corpus has zero selected or resolved outcomes, and integrated future capture needs later real observations. |
-| 7 | Existing locked worker observed | `OWNER_GATED` | Paper readiness and first order require separate owner authorization after preceding evidence gates. |
+| 7 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Evidence-derived readiness, locked session controls, per-cycle diagnostics, archive health and Command-5A backlog telemetry are wired and tested. Exact-SHA CI run `36555183670` passed. A complete current-release supported-session run remains pending. First Paper order remains separately owner-gated. |
 | 8 | No Paper outcomes | `FUTURE_DATA_REQUIRED` | Actual fills, lifecycle and whole-chain outcomes do not yet exist. |
 | 9 | No live permission | `OWNER_GATED` | Live-money authorization was not granted. |
 
@@ -265,3 +265,28 @@ percent win-rate claim follows from source completeness. Full evidence is in
 `MASTER_PAPER_EXECUTION_ENABLED=false`,
 `FOLLOWER_PAPER_EXECUTION_ENABLED=false`, `PAPER_PAUSE_NEW_ORDERS=true`,
 `LIVE_AUTHORIZATION=NOT_GRANTED`.
+
+## Phase 7 locked-runtime readiness source pass, 2026-09-29
+
+The Phase-7 audit removed three false readiness claims. A blocked event-safety
+policy can no longer pass merely because the receipt exists, incomplete option
+enumeration cannot certify canonical-decision reachability, and optional
+Optionomics research health no longer controls the required-provider gate.
+Alpaca and a completed approved-symbol runtime cycle remain the required market
+and broker evidence.
+
+The existing source already exposes per-cycle candidate, WAIT, AEGIS, sizing,
+near-miss and finalist quote-refresh telemetry. The resident Windows worker
+also records local archive, spool, Parquet, DuckDB and Command-5A backlog health,
+including overdue and retry-stalled jobs. Restart, process deadlines, lease,
+duplicate-worker protection, database degradation, broker reconciliation,
+operator locks and alert behavior are covered by deterministic and integration
+tests.
+
+No source-only test supplies the missing real full-session observations. Phase
+7 therefore remains `SOURCE_COMPLETE_RUNTIME_PENDING`, with current-worker
+session rates, real provider latency, real quote freshness, archive and future
+observation backlog transitions, and the full no-submit frontier still
+`FORWARD_DATA_REQUIRED`. The first Paper order remains owner-gated. Full
+evidence is recorded in
+`docs/operations/THETA_PHASE_7_UNIFIED_CLOSURE.md`.
