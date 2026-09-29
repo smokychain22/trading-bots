@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildV20EvidenceClosure, criticalDimensionProbeSpecs, crossStrategyProbeSpecs,
   realDataRouteProbeSpecs, strategyCapabilityProbeIds, strategyIdentityProbeSpecs,
-  v18CoverageProbeSpecs, type ExecutedNamedTest } from '../src/operations/v20-evidence-closure.js';
+  selectSuccessfulExactCiRun, v18CoverageProbeSpecs,
+  type ExecutedNamedTest } from '../src/operations/v20-evidence-closure.js';
 import { v19ScenarioEvidence } from '../src/operations/v19-evidence-certification.js';
 
 const key = (file: string, id: string) => `${file}#${id}`;
@@ -48,4 +49,19 @@ test('Paper-critical provider limits remain separate and prevent first-Paper rea
   assert.ok(receipt.PROVIDER_LIMITED.PAPER_CRITICAL.length > 0);
   assert.equal(receipt.PAPER_CRITICAL_PROVIDER_READINESS, 'PROVIDER_LIMITED');
   assert.equal(receipt.READY_FOR_FIRST_PAPER, 'NO');
+});
+
+test('exact CI evidence selects only a completed successful run for the exact source SHA', () => {
+  assert.equal(selectSuccessfulExactCiRun([
+    { databaseId: 10, status: 'completed', conclusion: 'success', headSha: 'other' },
+    { databaseId: 11, status: 'in_progress', conclusion: '', headSha: 'target' },
+    { databaseId: 12, status: 'completed', conclusion: 'failure', headSha: 'target' },
+    { databaseId: 13, status: 'completed', conclusion: 'success', headSha: 'target' },
+  ], 'target'), '13');
+});
+
+test('exact CI evidence remains unverified when no exact successful run exists', () => {
+  assert.equal(selectSuccessfulExactCiRun([
+    { databaseId: 10, status: 'completed', conclusion: 'success', headSha: 'other' },
+  ], 'target'), null);
 });

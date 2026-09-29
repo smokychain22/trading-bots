@@ -1,20 +1,28 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, truncateSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import {
   archiveRetryAllowed,
   classifyArchiveFailure,
   classifyLocalSpoolWatermark,
   localResearchSpoolBudgetBytes,
   measureLocalResearchStorageBytes,
+  summarizeLocalResearchStorage,
   writeArchiveHealth,
 } from '../src/storage/local-research-archive-health.js';
 
+const temporaryRoots = new Set<string>();
+afterEach(() => {
+  for (const root of temporaryRoots) rmSync(root, { recursive: true, force: true });
+  temporaryRoots.clear();
+});
+
 function fixture(): { root: string; sqlite: string; health: string; parquet: string } {
   const root = join(tmpdir(), `theta-archive-health-${process.pid}-${crypto.randomUUID()}`);
+  temporaryRoots.add(root);
   const sqlite = join(root, 'spool.sqlite');
   const health = join(root, 'health.json');
   const parquet = join(root, 'parquet');
@@ -40,6 +48,7 @@ test('local research spool watermarks pause new subjects before local storage is
   assert.equal(classifyLocalSpoolWatermark(localResearchSpoolBudgetBytes), 'CRITICAL');
   assert.throws(() => classifyLocalSpoolWatermark(-1), /LOCAL_RESEARCH_SPOOL_BYTES_INVALID/);
   const root = join(tmpdir(), `theta-storage-bytes-${process.pid}-${crypto.randomUUID()}`);
+  temporaryRoots.add(root);
   mkdirSync(root, { recursive: true });
   const first = join(root, 'first.sqlite');
   const second = join(root, 'second.sqlite');
@@ -122,7 +131,6 @@ test('verified Parquet inventory does not consume the active SQLite spool budget
   mkdirSync(directory, { recursive: true });
   const parquetFile = join(directory, 'evidence.parquet');
   writeFileSync(parquetFile, 'verified-test-archive');
-  truncateSync(parquetFile, localResearchSpoolBudgetBytes + 1);
   writeFileSync(join(directory, 'manifest.json'), JSON.stringify({
     generatedAt: '2026-09-25T01:00:00.000Z', parquetFile: 'evidence.parquet', duckdbReadback: 'PASS',
   }));
@@ -131,11 +139,19 @@ test('verified Parquet inventory does not consume the active SQLite spool budget
     observedAt: new Date('2026-09-25T01:00:00.000Z'), archiveState: 'ARCHIVED_LOCAL_SQLITE',
     outcome: 'SUCCESS',
   });
-  assert.ok(state.totalLocalResearchBytes > localResearchSpoolBudgetBytes);
+  assert.ok(state.totalLocalResearchBytes > state.activeSpoolBytes);
   assert.equal(state.activeSpoolBytes, state.spoolBytes);
   assert.ok(state.activeSpoolBytes < localResearchSpoolBudgetBytes * 0.75);
   assert.equal(state.spoolWatermark, 'NORMAL');
   assert.equal(state.newSubjectScheduling, 'ALLOW');
+
+  const syntheticLargeArchive = summarizeLocalResearchStorage(
+    state.activeSpoolBytes,
+    localResearchSpoolBudgetBytes + 1,
+  );
+  assert.ok(syntheticLargeArchive.totalLocalResearchBytes > localResearchSpoolBudgetBytes);
+  assert.equal(syntheticLargeArchive.activeSpoolBytes, state.activeSpoolBytes);
+  assert.equal(syntheticLargeArchive.spoolWatermark, 'NORMAL');
 });
 
 test('legacy archive without explicit readback is not falsely reported corrupt', () => {

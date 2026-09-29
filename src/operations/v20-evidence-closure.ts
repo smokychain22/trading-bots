@@ -147,6 +147,24 @@ export interface V20EvidenceInput {
   readonly ownerPaperAuthorized: boolean;
 }
 
+export interface GithubWorkflowRunEvidence {
+  readonly databaseId?: string | number;
+  readonly status?: string;
+  readonly conclusion?: string;
+  readonly headSha?: string;
+}
+
+export function selectSuccessfulExactCiRun(
+  rows: readonly GithubWorkflowRunEvidence[],
+  sourceSha: string,
+): string | null {
+  const successful = rows.find((row) => row.headSha === sourceSha
+    && row.status === 'completed'
+    && row.conclusion === 'success'
+    && (typeof row.databaseId === 'string' || typeof row.databaseId === 'number'));
+  return successful ? String(successful.databaseId) : null;
+}
+
 export function buildV20EvidenceClosure(input: V20EvidenceInput) {
   const scenarioTests = v19ScenarioEvidence.map((item) => input.namedTests[key(item.testFile, item.testId)]);
   const routeProofs = realDataRouteProbeSpecs.map((item) => ({ ...item, state: passed(input.namedTests, item) ? 'PASS' : 'FAIL' }));

@@ -56,6 +56,20 @@ export function classifyLocalSpoolWatermark(
     : spoolRatio >= 0.9 ? 'HIGH' : spoolRatio >= 0.75 ? 'ELEVATED' : 'NORMAL';
 }
 
+export function summarizeLocalResearchStorage(
+  activeSpoolBytes: number,
+  parquetBytes: number,
+): Pick<LocalResearchArchiveHealth, 'activeSpoolBytes' | 'totalLocalResearchBytes' | 'spoolWatermark'> {
+  if (!Number.isInteger(parquetBytes) || parquetBytes < 0) {
+    throw new Error('LOCAL_RESEARCH_PARQUET_BYTES_INVALID');
+  }
+  return {
+    activeSpoolBytes,
+    totalLocalResearchBytes: activeSpoolBytes + parquetBytes,
+    spoolWatermark: classifyLocalSpoolWatermark(activeSpoolBytes),
+  };
+}
+
 export function classifyArchiveFailure(error: unknown): ArchiveFailureFamily {
   const code = error !== null && typeof error === 'object' && 'code' in error
     ? String((error as { code?: unknown }).code ?? '') : '';
@@ -198,15 +212,13 @@ export function writeArchiveHealth(input: {
   const schedulerBytes = input.schedulerPath === undefined ? 0
     : measureLocalResearchStorageBytes([input.schedulerPath]);
   const parquet = parquetState(resolve(input.parquetRoot));
-  const activeSpoolBytes = counts.spoolBytes + schedulerBytes;
-  const totalLocalResearchBytes = activeSpoolBytes + parquet.parquetBytes;
+  const storage = summarizeLocalResearchStorage(counts.spoolBytes + schedulerBytes, parquet.parquetBytes);
   const retryHours = input.retryAfterHours ?? 12;
   // Parquet is the intended immutable destination for compacted research data.
   // Counting it as active spool pressure made every successful archive move the
   // scheduler permanently closer to PAUSE_STORAGE_PRESSURE. Keep total archive
   // inventory observable, while applying the spool safety budget only to the
   // mutable SQLite scheduler/outbox set that still needs compaction.
-  const spoolWatermark = classifyLocalSpoolWatermark(activeSpoolBytes);
   const state: LocalResearchArchiveHealth = {
     contractVersion: localResearchArchiveHealthVersion,
     observedAt,
@@ -224,10 +236,10 @@ export function writeArchiveHealth(input: {
       : input.outcome === 'SUCCESS' ? null : prior.nextRetryAt,
     ...counts,
     schedulerBytes,
-    activeSpoolBytes,
-    totalLocalResearchBytes,
-    spoolWatermark,
-    newSubjectScheduling: spoolWatermark === 'HIGH' || spoolWatermark === 'CRITICAL'
+    activeSpoolBytes: storage.activeSpoolBytes,
+    totalLocalResearchBytes: storage.totalLocalResearchBytes,
+    spoolWatermark: storage.spoolWatermark,
+    newSubjectScheduling: storage.spoolWatermark === 'HIGH' || storage.spoolWatermark === 'CRITICAL'
       ? 'PAUSE_STORAGE_PRESSURE' : 'ALLOW',
     ...parquet,
     duckdbVerification: input.duckdbVerificationOverride ?? parquet.duckdbVerification,

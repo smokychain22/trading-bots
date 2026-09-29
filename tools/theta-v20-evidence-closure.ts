@@ -2,7 +2,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { buildV20EvidenceClosure, criticalDimensionProbeSpecs, crossStrategyProbeSpecs,
   realDataRouteProbeSpecs, strategyCapabilityProbeIds, strategyIdentityProbeSpecs,
-  v18CoverageProbeSpecs, type EvidenceProbeSpec, type ExecutedNamedTest }
+  selectSuccessfulExactCiRun, v18CoverageProbeSpecs, type EvidenceProbeSpec, type ExecutedNamedTest,
+  type GithubWorkflowRunEvidence }
   from '../src/operations/v20-evidence-closure.js';
 import { v19ScenarioEvidence } from '../src/operations/v19-evidence-certification.js';
 
@@ -75,13 +76,21 @@ if (process.platform === 'win32') {
     && status.executionGate === 'LOCKED' && status.healthShaAligned === true;
 }
 let exactCi = 'UNVERIFIED';
-const ci = run('gh', ['run', 'list', '--commit', sourceSha, '--limit', '20', '--json',
-  'databaseId,status,conclusion,headSha'], 60_000);
-try {
-  const rows = JSON.parse(ci.stdout) as Array<Record<string, unknown>>;
-  const successful = rows.find((row) => row.headSha === sourceSha && row.status === 'completed' && row.conclusion === 'success');
-  if (successful) exactCi = String(successful.databaseId);
-} catch { /* retained as UNVERIFIED */ }
+const ciArguments = [
+  ['run', 'list', '--commit', sourceSha, '--limit', '20', '--json', 'databaseId,status,conclusion,headSha'],
+  ['run', 'list', '--limit', '100', '--json', 'databaseId,status,conclusion,headSha'],
+] as const;
+for (const args of ciArguments) {
+  const ci = run('gh', args, 20_000);
+  try {
+    const rows = JSON.parse(ci.stdout) as GithubWorkflowRunEvidence[];
+    const successful = selectSuccessfulExactCiRun(rows, sourceSha);
+    if (successful) {
+      exactCi = successful;
+      break;
+    }
+  } catch { /* try the bounded fallback, then retain UNVERIFIED */ }
+}
 
 const receipt = buildV20EvidenceClosure({ sourceSha, workerSha, exactCi,
   sourceClean: run('git', ['status', '--porcelain'], 30_000).stdout.trim().length === 0,
