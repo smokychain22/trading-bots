@@ -48,7 +48,7 @@ import { qualifyOptionomicsProvider,persistOptionomicsQualification } from "../p
 import { optionomicsConfigFromEnvironment } from "../theta/theta-shadow-once.js";
 import { canonicalThetaStrategyRegistry } from "../theta/strategy-package.js";
 import { buildR8Readiness } from "../theta/r8-readiness.js";
-import { assessReconciliationReadiness, assessRuntimeFirstPaperReadiness, buildThetaFirstPaperReadiness,
+import { assessReconciliationReadiness, assessRequiredProviderReadiness, assessRuntimeFirstPaperReadiness, buildThetaFirstPaperReadiness,
   type FirstPaperChecks } from "../theta/first-paper-blocker-budget.js";
 import { canonicalPreVpsUnknownAuditSummary } from "../theta/pre-vps-unknown-register.js";
 
@@ -570,9 +570,8 @@ export default async function customerHandler(
             : unknown('DATABASE_WRITE_TRANSACTION_NOT_PROVEN','database-readiness','EXTERNAL'),
         brokerHealthy:workerCycleHealthy&&localWorker.alpaca_health==='GOOD'
           ? pass('runtime-worker-status') : unknown('BROKER_CURRENT_HEALTH_NOT_PROVEN','runtime-worker-status','PROVIDER'),
-        providerHealthy:p2fStatus.optionomics.secret_state==='AUTH_VALID'&&localWorker.optionomics_health==='GOOD'
-          ? pass('provider-qualification-and-worker')
-          : unknown('PROVIDER_CURRENT_HEALTH_NOT_PROVEN','provider-qualification-and-worker','PROVIDER'),
+        providerHealthy:assessRequiredProviderReadiness({workerCycleHealthy,alpacaHealth:localWorker.alpaca_health,
+          evidence:runtimeBehavior.first_paper_evidence,approvedSymbol:'SPY'}),
         ...runtimeFirstPaperChecks,
         reconciliationReady:reconciliationCheck,
         workerReleaseReady:workerCycleHealthy&&

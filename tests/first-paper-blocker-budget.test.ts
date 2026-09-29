@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assessReconciliationReadiness, assessRuntimeFirstPaperReadiness, buildThetaFirstPaperReadiness,
+import { assessReconciliationReadiness, assessRequiredProviderReadiness, assessRuntimeFirstPaperReadiness, buildThetaFirstPaperReadiness,
   firstPaperCheckNames, type FirstPaperChecks } from '../src/theta/first-paper-blocker-budget.js';
 import type { RuntimeFirstPaperEvidence } from '../src/theta/runtime-behavior-diagnostic.js';
 
@@ -108,4 +108,36 @@ test('missing sizing telemetry stays UNKNOWN rather than becoming an observed ze
     state:'UNKNOWN',source:'latest-runtime-first-paper-evidence',
     blocker:'RUNTIME_SIZING_TELEMETRY_NOT_OBSERVED',blockerClass:'EXTERNAL',
   });
+});
+
+test('a blocked entry-safety policy cannot be reported event-ready',()=>{
+  const checks=assessRuntimeFirstPaperReadiness({evidence:runtimeEvidence({entrySafetyPolicy:{
+    action:'BLOCK',companyEventState:'PROVIDER_LIMITED',corporateActionState:'PARTIAL_COVERAGE',
+    decisionAsOf:'2026-09-24T14:00:00.000Z'}}),approvedSymbol:'SPY',currentOpenPositions:0,
+    reconciliationReady:true});
+  assert.equal(checks.eventEvidenceReady.state,'FAIL');
+  if(checks.eventEvidenceReady.state==='PASS')throw new Error('TEST_EXPECTED_BLOCKER');
+  assert.equal(checks.eventEvidenceReady.blockerClass,'PROVIDER');
+  assert.match(checks.eventEvidenceReady.blocker,/ENTRY_SAFETY_BLOCK/);
+});
+
+test('an incomplete contract enumeration cannot certify canonical decision reachability',()=>{
+  const incomplete=assessRuntimeFirstPaperReadiness({evidence:runtimeEvidence({optionContractsComplete:false}),
+    approvedSymbol:'SPY',currentOpenPositions:0,reconciliationReady:true});
+  assert.deepEqual(incomplete.canonicalDecisionReachable,{state:'FAIL',source:'latest-runtime-first-paper-evidence',
+    blocker:'OPTION_ENUMERATION_INCOMPLETE',blockerClass:'PROVIDER'});
+  const unknown=assessRuntimeFirstPaperReadiness({evidence:runtimeEvidence({optionChainComplete:null}),
+    approvedSymbol:'SPY',currentOpenPositions:0,reconciliationReady:true});
+  assert.equal(unknown.canonicalDecisionReachable.state,'UNKNOWN');
+});
+
+test('required-provider readiness uses Alpaca runtime authority and never optional Optionomics health',()=>{
+  assert.equal(assessRequiredProviderReadiness({workerCycleHealthy:true,alpacaHealth:'GOOD',
+    evidence:runtimeEvidence(),approvedSymbol:'SPY'}).state,'PASS');
+  assert.deepEqual(assessRequiredProviderReadiness({workerCycleHealthy:true,alpacaHealth:'GOOD',
+    evidence:null,approvedSymbol:'SPY'}),{state:'UNKNOWN',source:'required-provider-runtime-evidence',
+    blocker:'REQUIRED_PROVIDER_SYMBOL_CYCLE_NOT_OBSERVED',blockerClass:'EXTERNAL'});
+  const failed=assessRequiredProviderReadiness({workerCycleHealthy:true,alpacaHealth:'GOOD',
+    evidence:runtimeEvidence({cycleState:'FAILED',cycleErrorCode:'ALPACA_HTTP_503'}),approvedSymbol:'SPY'});
+  assert.equal(failed.state,'FAIL');
 });

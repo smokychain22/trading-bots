@@ -28,6 +28,25 @@ const unresolved = (blocker:string,source:string,blockerClass:FirstPaperBlockerC
 const blocked = (blocker:string,source:string,blockerClass:FirstPaperBlockerClass):FirstPaperCheck =>
   ({state:'FAIL',blocker,source,blockerClass});
 
+/** Required-provider readiness is based on the broker/market authority and a
+ * completed approved-symbol runtime path. Optional Optionomics research
+ * context is deliberately absent from this gate. */
+export function assessRequiredProviderReadiness(input:{
+  readonly workerCycleHealthy:boolean;
+  readonly alpacaHealth:string|null;
+  readonly evidence:RuntimeFirstPaperEvidence|null;
+  readonly approvedSymbol:string;
+}):FirstPaperCheck{
+  const source='required-provider-runtime-evidence';
+  if(!input.workerCycleHealthy||input.alpacaHealth!=='GOOD')return unresolved(
+    'REQUIRED_ALPACA_PROVIDER_HEALTH_NOT_PROVEN',source,'PROVIDER');
+  const symbol=input.evidence?.symbols.find((item)=>item.symbol===input.approvedSymbol)??null;
+  if(symbol===null)return unresolved('REQUIRED_PROVIDER_SYMBOL_CYCLE_NOT_OBSERVED',source,'EXTERNAL');
+  if(symbol.cycleState==='FAILED')return blocked(symbol.cycleErrorCode??'REQUIRED_PROVIDER_SYMBOL_CYCLE_FAILED',
+    source,'PROVIDER');
+  return observed(`${source}:alpaca-and-approved-symbol-cycle`);
+}
+
 /** Derives readiness from one immutable real-provider scan. It never turns a stage that was not reached into PASS. */
 export function assessRuntimeFirstPaperReadiness(input:{
   readonly evidence:RuntimeFirstPaperEvidence|null;
@@ -55,7 +74,12 @@ export function assessRuntimeFirstPaperReadiness(input:{
   }
   const eventEvidenceReady=symbol.entrySafetyPolicy===null
     ? unresolved('ENTRY_SAFETY_POLICY_NOT_OBSERVED',source,'PROVIDER')
-    : observed(`${source}:entry-safety-policy`);
+    : symbol.entrySafetyPolicy.action==='CLEAR'
+      ? observed(`${source}:entry-safety-policy`)
+      : blocked(`ENTRY_SAFETY_BLOCK:${symbol.entrySafetyPolicy.companyEventState}:${symbol.entrySafetyPolicy.corporateActionState}`,
+        source,/(UNKNOWN|ERROR|LIMITED|PARTIAL|STALE|NOT_ENTITLED)/.test(
+          `${symbol.entrySafetyPolicy.companyEventState}:${symbol.entrySafetyPolicy.corporateActionState}`,
+        )?'PROVIDER':'POLICY');
   const refresh=symbol.runtimeTelemetry?.finalistRefresh;
   let quotePipelineReady:FirstPaperCheck;
   if(refresh?.state!=='OBSERVED')quotePipelineReady=unresolved('FINALIST_REFRESH_NOT_OBSERVED',source,'EXTERNAL');
@@ -81,9 +105,13 @@ export function assessRuntimeFirstPaperReadiness(input:{
     positiveSizingReachable=blocked(`NO_POSITIVE_SIZE:${Object.keys(symbol.runtimeTelemetry.bindingConstraintCounts)
       .toSorted().join(',')||'UNKNOWN_BINDING_CONSTRAINT'}`,source,'POLICY');
   }
-  const canonicalDecisionReachable=symbol.qDecision!==null&&symbol.canonicalAction!==null
-    ? observed(`${source}:canonical-decision`)
-    : unresolved('CANONICAL_DECISION_NOT_OBSERVED',source,'EXTERNAL');
+  const canonicalDecisionReachable=symbol.optionChainComplete!==true||symbol.optionContractsComplete!==true
+    ? symbol.optionChainComplete===false||symbol.optionContractsComplete===false
+      ? blocked('OPTION_ENUMERATION_INCOMPLETE',source,'PROVIDER')
+      : unresolved('OPTION_ENUMERATION_COMPLETENESS_NOT_OBSERVED',source,'EXTERNAL')
+    : symbol.qDecision!==null&&symbol.canonicalAction!==null
+      ? observed(`${source}:canonical-decision`)
+      : unresolved('CANONICAL_DECISION_NOT_OBSERVED',source,'EXTERNAL');
   const paperPlanReachable=symbol.preSubmit?.planState==='READY'
     ? observed(`${source}:paper-plan`)
     : symbol.preSubmit?.planState==='BLOCKED'
