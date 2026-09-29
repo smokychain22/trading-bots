@@ -33,6 +33,8 @@ for (const directory of readdirSync(root).filter((name) => shaName.test(name)).s
     }
     if (canonicalJson(manifest.rowCounts) !== canonicalJson(artifact.rowCounts)
       || canonicalJson(manifest.sourceWindow) !== canonicalJson(artifact.sourceWindow)
+      || canonicalJson(manifest.strategyVersions) !== canonicalJson(artifact.strategyVersions)
+      || manifest.featureSetVersion !== artifact.featureSetVersion
       || manifest.exportedAt !== artifact.exportedAt) {
       throw new Error('MANIFEST_ARTIFACT_PROVENANCE_MISMATCH');
     }
