@@ -47,7 +47,7 @@ The 1225-test quant suite and 11 subtests passed on this integration branch.
 | Module group | Classification | Consumer and maturity truth |
 | --- | --- | --- |
 | Feature contracts, 20 families, regime/router adapters | `RESEARCH_ONLY`, `NEEDS_APP_WIRING` | Typed and tested, not a current-worker Production ranking authority. Provider-qualified input is still required for many features. |
-| Historical dedupe, v1-to-v6 bridge, coverage and strictness | `RESEARCH_ONLY`, `BLOCKED_DATA` | Useful for structural evidence. Declared historical dataset hashes remain unverified and cannot support promotion. |
+| Historical dedupe, v1-to-v6 bridge, coverage and strictness | `RESEARCH_ONLY`, `BLOCKED_DATA` | The v1 producer-hash mismatch is explained and reproduced in `docs/research/THETA_HISTORICAL_V1_HASH_VERDICT_2026-09-29.md`. Earlier v1 hashes omitted timestamp values, so these files still cannot support promotion on hash evidence alone. No resolved outcomes exist. |
 | Future capture, assignment/expiration, fill and management datasets | `RESEARCH_ONLY`, `NEEDS_APP_WIRING` | Contracts and offline builders exist. Real future and broker-actual producers are not established by these modules. |
 | Baselines, calibration, walk-forward, OOS, selection-bias and benchmarks | `RESEARCH_ONLY`, `BLOCKED_EMPIRICAL` | Executable tests are present. No resolved independent outcomes justify fitted probabilities, EV or strategy promotion. |
 | Claude `validation_experiment.py` SHA change | `CONFLICTING`, not imported | Current main accepts an exact checkout HEAD in isolated offline validation. Claude's version would require ancestry in `origin/main`, breaking integration-worktree validation. |
@@ -91,7 +91,9 @@ branch's source tests or its synthesized source-provenance fields.
 The first isolated integration SHA `d36e0801451b11f01712a86817af8a3c8382928d`
 passed exact-SHA CI run `36534651935`. Later Phase-3 typing work on this
 branch passed exact-SHA CI runs `36535577075` and `36536038309`. The subsequent
-provider-timing correction is source-only and still requires its own CI.
+provider-timing correction passed exact-SHA CI run `36537193800` at
+`16088ccaea4557b4b7751a296df96c53f64eaf21`. It remains source-only
+until a governed release cutover.
 
 ## Unknown and safety register
 

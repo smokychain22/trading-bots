@@ -21,21 +21,18 @@ the only real blocker to loading an older archive was the hard
 `schema_version != DATASET_SCHEMA_VERSION` equality gate.
 
 **Hash verification limitation, found and documented, not silently
-skipped**: this module attempted to reproduce the archived files'
-declared `datasetHash` using the exact documented formula (from both the
-v1-era and v6-era `buildDatasetExport()` source: `sha256(canonicalJson({
-schemaVersion, sourceWindow, featureSetVersion, strategyVersions (sorted+
-deduped), rows, rowCounts }))`, `exportedAt` excluded from identity from
-v6 onward) against real files under `C:\\ProjectBackups\\trading-bots\\`.
-The recomputed hash did NOT match the declared hash for the files
-inspected, under either the v1-era or v6-era formula. This module
-therefore NEVER claims a converted historical export is hash-verified; it
-records `source_hash_verified=False` explicitly and always, and a
-consumer must treat every row here as `truth_class=MODELED_RESEARCH`-tier
-provenance at best (never `BROKER_ACTUAL`, never promoted to
-"Production-signed") until/unless the discrepancy is independently
-resolved by Codex (who owns the export tooling and the backup pipeline
-that may have reformatted these files after the original write).
+skipped**: the earlier modern-formula attempt could not reproduce the
+declared v1 hash. Codex later traced the original producer defect. Before
+commit e213081 its canonicalizer represented PostgreSQL Date objects as
+empty objects in the hash, while dataset.json serialized them as ISO text.
+The read-only forensic verifier in `src/research/legacy-v1-export-hash.ts`
+reproduces both that historical producer variant and the later date-aware
+variant. See `docs/research/THETA_HISTORICAL_V1_HASH_VERDICT_2026-09-29.md`.
+This bridge still NEVER claims a converted export is hash-verified, since it
+does not run that separate verifier. The early producer hash did not protect
+timestamp text, so hash reproduction alone cannot promote the archive or
+turn its rows into BROKER_ACTUAL evidence. `source_hash_verified=False`
+remains explicit until a separately governed integrity chain is wired.
 
 This module does not mutate the originals -- it only reads them.
 """
