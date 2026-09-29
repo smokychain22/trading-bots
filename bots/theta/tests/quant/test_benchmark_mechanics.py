@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'quant'))
 from research.benchmark_mechanics import (
-    buy_and_hold_return, covered_call_max_yield_selection, fixed_capture_exit, fixed_time_exit,
+    buy_and_hold_return, closest_delta_selection, covered_call_max_yield_selection, fixed_capture_exit, fixed_time_exit,
     hold_to_expiry_outcome, immediate_cc_after_assignment, mechanical_assignment_response,
     random_eligible_selection, select_by_metric, unconditional_hold_to_basis_recovery,
 )
@@ -36,6 +36,16 @@ class RandomEligibleSelectionTests(unittest.TestCase):
     def test_excludes_ineligible(self):
         cands = [candidate('c1', hard='REJECTED')]
         self.assertIsNone(random_eligible_selection(cands, 1))
+
+
+class ClosestDeltaSelectionTests(unittest.TestCase):
+    def test_selects_nearest_absolute_delta_deterministically(self):
+        cands = [candidate('c2', delta=-0.22), candidate('c1', delta=-0.18), candidate('c3', delta=-0.4)]
+        self.assertEqual(closest_delta_selection(cands, 0.20)['candidateId'], 'c1')
+
+    def test_missing_delta_is_not_silently_skipped(self):
+        with self.assertRaisesRegex(ValueError, 'DELTA_MISSING:c1'):
+            closest_delta_selection([candidate('c1')], 0.20)
 
 
 class FixedCaptureExitTests(unittest.TestCase):

@@ -5,9 +5,9 @@ tested module -- this file never reimplements domain logic. `--input` is a
 path to a JSON file holding whatever arguments that module's real function
 needs (documented per subcommand below); output is JSON on stdout,
 including whatever source/dataset/config hashes the underlying module
-already produces. A subcommand with no real integration target yet prints
-an explicit `BLOCKED_MISSING_INTEGRATION` state rather than a fabricated
-result.
+already produces. Capabilities whose canonical implementation is TypeScript
+return that exact authority path instead of duplicating domain logic in
+Python.
 """
 from __future__ import annotations
 
@@ -22,19 +22,23 @@ if __package__ in (None, ""):
 from research.historical_v1_to_v6_bridge import convert_historical_export
 from research.historical_export_dedupe import HistoricalExportEntry, deduplicate_historical_exports
 from research.missingness_engine import build_missingness_report
-from research.benchmark_runner import classify_benchmark_readiness, classify_all_benchmarks
+from research.benchmark_runner import classify_benchmark_readiness, classify_all_benchmarks, execute_benchmark
 from research.entry_feature_ablation import execute_entry_feature_ablation
 from research.validation import calibration_metrics
 from research.selection_bias_runner import run_selection_bias_campaign
 from research.reproducibility_bundle import verify_reproducibility_bundle
 from research.historical_coverage_report import build_historical_coverage_report
 from research.production_export_loader import _load_candidate
+from research.registry import load_feature_family_ids, validate_registry
 from features.strictness_funnel import StrictnessRow, build_strictness_funnel
 
-NOT_YET_INTEGRATED_COMMANDS = ('features', 'dataset-build', 'filter-value')
+CANONICAL_TYPESCRIPT_COMMANDS = {
+    'dataset-build': 'tools/theta-research-dataset-cli.ts',
+    'filter-value': 'src/research/filter-value-analysis-engine.ts',
+}
 COMMANDS = (
     'historical-convert', 'historical-dedupe', 'missingness', 'coverage', 'strictness', 'benchmark', 'ablation',
-    'calibration', 'selection-bias', 'reproducibility-verify', *NOT_YET_INTEGRATED_COMMANDS,
+    'calibration', 'selection-bias', 'reproducibility-verify', 'features', *CANONICAL_TYPESCRIPT_COMMANDS,
 )
 
 
@@ -64,6 +68,8 @@ def _dispatch(command: str, payload: dict) -> dict:
         return {'totalCount': report.total_count, 'countsByCategory': dict(report.counts_by_category),
                 'ratesByCategory': dict(report.rates_by_category)}
     if command == 'benchmark':
+        if payload.get('execute') is True:
+            return execute_benchmark(payload['benchmarkId'], payload['benchmarkInput'])
         if payload.get('benchmarkId'):
             return classify_benchmark_readiness(payload['benchmarkId'], payload.get('capabilityEvidence'))
         return classify_all_benchmarks(payload.get('capabilityEvidence', {}))
@@ -77,9 +83,15 @@ def _dispatch(command: str, payload: dict) -> dict:
         return run_selection_bias_campaign(payload)
     if command == 'reproducibility-verify':
         return {'verified': verify_reproducibility_bundle(payload['bundle'])}
-    if command in NOT_YET_INTEGRATED_COMMANDS:
-        return {'state': 'BLOCKED_MISSING_INTEGRATION', 'command': command,
-                'reason': f'{command} has no wired CLI integration yet -- the underlying modules exist but require full DatasetExportArtifact/policy assembly not yet CLI-exposed'}
+    if command == 'features':
+        validate_registry()
+        identifiers = sorted(load_feature_family_ids())
+        return {'state': 'REGISTRY_VALID', 'featureFamilyIds': identifiers, 'featureFamilyCount': len(identifiers),
+                'brokerAuthority': False}
+    if command in CANONICAL_TYPESCRIPT_COMMANDS:
+        return {'state': 'CANONICAL_TYPESCRIPT_PATH', 'command': command,
+                'implementation': CANONICAL_TYPESCRIPT_COMMANDS[command], 'brokerAuthority': False,
+                'reason': 'The canonical implementation is TypeScript; the Python CLI does not duplicate its authority.'}
     raise ValueError(f'RESEARCH_CLI_UNKNOWN_COMMAND:{command}')
 
 

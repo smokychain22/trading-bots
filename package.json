@@ -70,6 +70,7 @@
     "theta:research-export:events": "tsx tools/capture-canonical-event-export.ts",
     "theta:research-export:historical-replay": "node --import tsx tools/export-historical-replay.ts --environment-file=.env.local",
     "theta:research-analyze:historical-replay": "node --import tsx tools/summarize-historical-replay.ts",
+    "theta:research:dataset-build": "node --import tsx tools/theta-research-dataset-cli.ts",
     "theta:performance:current": "node --import tsx tools/theta-current-performance-receipt.ts --environment-file=.env.local",
     "theta:evidence:durable": "node tools/write-local-durable-evidence.mjs research_exports/latest .theta-local-worker/evidence",
     "theta:evidence:backfill": "node --import tsx tools/theta-local-evidence-backfill.ts --environment-file=.env.local",

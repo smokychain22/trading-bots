@@ -48,9 +48,40 @@ class BenchmarkRunnerTests(unittest.TestCase):
         result = execute_benchmark('B0', entry_dataset())
         self.assertEqual(result['benchmarkId'], 'B0')
 
-    def test_unimplemented_registered_benchmark_raises_named_error(self):
-        with self.assertRaisesRegex(ValueError, 'RUNNER_NOT_IMPLEMENTED:B5'):
-            execute_benchmark('B5', entry_dataset())
+    def test_mechanical_benchmark_dispatches_real_runner(self):
+        result = execute_benchmark('B5', {'policyVersion': 'benchmark-test-v1', 'candidates': [
+            {'candidateId': 'c1', 'hardStatus': 'FEASIBLE'},
+            {'candidateId': 'c2', 'hardStatus': 'FEASIBLE'},
+        ], 'seed': 42})
+        self.assertEqual(result['state'], 'EXECUTED')
+        self.assertIn(result['result']['candidateId'], ('c1', 'c2'))
+        self.assertFalse(result['brokerAuthority'])
+
+    def test_all_mechanic_implemented_ids_have_dispatch(self):
+        inputs = {
+            'B3': {'entryCredit': 1.0, 'pricePath': [['t1', .4]], 'captureFraction': .5},
+            'B4': {'entryCredit': 1.0, 'pricePath': [['t1', .4]], 'holdBars': 1},
+            'B5': {'candidates': [], 'seed': 1},
+            'B6': {'entryPrice': 100.0, 'exitPrice': 110.0},
+            'BQ-1': {'candidates': [], 'metricKey': 'entryPremium', 'higherIsBetter': True},
+            'BQ-2': {'candidates': [], 'targetDelta': .2},
+            'BR-1': {'entryCredit': 1.0, 'underlyingPriceAtExpiration': 110.0, 'strike': 100.0},
+            'BR-2': {'entryCredit': 1.0, 'pricePath': [['t1', .4]]},
+            'BA-1': {'assigned': True}, 'BA-2': {'originalBasis': 100.0, 'currentPrice': 90.0},
+            'BA-3': {'assigned': True}, 'BC-1': {'candidates': []}, 'BC-2': {'assigned': True},
+        }
+        for benchmark_id, benchmark_input in inputs.items():
+            with self.subTest(benchmark_id=benchmark_id):
+                self.assertEqual(execute_benchmark(benchmark_id,
+                    {'policyVersion': 'benchmark-test-v1', **benchmark_input})['state'], 'EXECUTED')
+
+    def test_policy_blocked_benchmark_rejects_execution(self):
+        with self.assertRaisesRegex(ValueError, 'BLOCKED_MISSING_POLICY:B1'):
+            execute_benchmark('B1', {})
+
+    def test_mechanical_execution_requires_versioned_policy(self):
+        with self.assertRaisesRegex(ValueError, 'POLICY_VERSION_REQUIRED'):
+            execute_benchmark('B6', {'entryPrice': 100.0, 'exitPrice': 110.0})
 
     def test_unregistered_benchmark_id_rejected(self):
         with self.assertRaisesRegex(ValueError, 'NOT_REGISTERED'):
@@ -75,7 +106,7 @@ class BenchmarkRunnerTests(unittest.TestCase):
         self.assertEqual(available['state'], 'RUNNER_IMPLEMENTED_DATA_AVAILABLE')
 
     def test_classify_missing_policy_ids(self):
-        for benchmark_id in ('B1', 'B2', 'BH-1'):
+        for benchmark_id in ('B1', 'B2', 'BH-1', 'BQ-3'):
             self.assertEqual(classify_benchmark_readiness(benchmark_id)['state'], 'BLOCKED_MISSING_POLICY')
 
     def test_classify_ablation_ladder_ids_not_applicable(self):

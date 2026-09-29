@@ -8,11 +8,12 @@ benchmark's realized/counterfactual metrics against a real dataset.
 
 `B0` (cash/WAIT) is a full, deterministic runner (`execute_b0_cash_wait`).
 Every other canonical mechanical benchmark now has a real, tested
-mechanic in `research/benchmark_mechanics.py` (`B3`-`B6`, `BQ-1..3`,
-`BR-1..2`, `BA-1..3`, `BC-2`) or is honestly `BLOCKED_MISSING_POLICY`
-(`B1`, `B2`, `BH-1` -- these require a full multi-stage lifecycle/backtest
-simulation across several open positions over time, not a single pure
-mechanic, and that simulation has not been built). `A1`-`A6` are the TRD
+mechanic and dispatcher in `research/benchmark_mechanics.py` and this module
+(`B3`-`B6`, `BQ-1..2`, `BR-1..2`, `BA-1..3`, `BC-1..2`) or is honestly
+`BLOCKED_MISSING_POLICY` (`B1`, `B2`, `BH-1`, `BQ-3`). The lifecycle
+benchmarks require a full multi-stage simulation across positions and BQ-3
+requires one frozen transparent-baseline policy. Those policies have not been
+defined completely enough to execute without invention. `A1`-`A6` are the TRD
 ablation ladder steps registered in the same `benchmarks.json` file, but
 they are executed by `research/entry_feature_ablation.py`/`ablation.py`
 (work package 60), not this benchmark runner -- `classify_benchmark_readiness`
@@ -36,13 +37,20 @@ from typing import Dict, Optional, Sequence
 from research.production_export_loader import canonical_json, sha256_hex
 from research.empirical_estimators import EstimatorResult, avg_win_avg_loss, max_drawdown, profit_factor, wilson_interval
 from research.registry import load_benchmark_ids
+from research.benchmark_mechanics import (
+    buy_and_hold_return, closest_delta_selection, covered_call_max_yield_selection,
+    fixed_capture_exit, fixed_time_exit, hold_to_expiry_outcome,
+    immediate_cc_after_assignment, mechanical_assignment_response,
+    random_eligible_selection, select_by_metric,
+    unconditional_hold_to_basis_recovery,
+)
 
 IMPLEMENTED_BENCHMARK_IDS = ('B0',)
 
 MECHANIC_IMPLEMENTED_BENCHMARK_IDS = (
-    'B3', 'B4', 'B5', 'B6', 'BQ-1', 'BQ-2', 'BQ-3', 'BR-1', 'BR-2', 'BA-1', 'BA-2', 'BA-3', 'BC-1', 'BC-2',
+    'B3', 'B4', 'B5', 'B6', 'BQ-1', 'BQ-2', 'BR-1', 'BR-2', 'BA-1', 'BA-2', 'BA-3', 'BC-1', 'BC-2',
 )
-MISSING_POLICY_BENCHMARK_IDS = ('B1', 'B2', 'BH-1')
+MISSING_POLICY_BENCHMARK_IDS = ('B1', 'B2', 'BH-1', 'BQ-3')
 ABLATION_LADDER_IDS = ('A1', 'A2', 'A3', 'A4', 'A5', 'A6')
 
 # The specific real-data capability each mechanic-implemented ID needs,
@@ -50,7 +58,7 @@ ABLATION_LADDER_IDS = ('A1', 'A2', 'A3', 'A4', 'A5', 'A6')
 # with real coverage flips the classification automatically, honestly.
 _REQUIRED_CAPABILITY = {
     'B3': 'has_price_paths', 'B4': 'has_price_paths', 'BR-1': 'has_price_paths', 'BR-2': 'has_price_paths',
-    'B5': 'has_feasible_candidates', 'BQ-1': 'has_feasible_candidates', 'BQ-3': 'has_feasible_candidates',
+    'B5': 'has_feasible_candidates', 'BQ-1': 'has_feasible_candidates',
     'BQ-2': 'has_delta_field',
     'B6': 'has_lifecycle_events', 'BA-1': 'has_lifecycle_events', 'BA-2': 'has_lifecycle_events',
     'BA-3': 'has_lifecycle_events', 'BC-1': 'has_lifecycle_events', 'BC-2': 'has_lifecycle_events',
@@ -72,8 +80,11 @@ def classify_benchmark_readiness(benchmark_id: str, capability_evidence: Optiona
         return {'benchmarkId': benchmark_id, 'state': 'RUNNER_IMPLEMENTED_DATA_AVAILABLE',
                 'reason': 'DETERMINISTIC_BY_CONSTRUCTION_NO_DATA_NEEDED'}
     if benchmark_id in MISSING_POLICY_BENCHMARK_IDS:
+        reason = ('REQUIRES_FROZEN_TRANSPARENT_BASELINE_POLICY_NOT_YET_SELECTED'
+                  if benchmark_id == 'BQ-3'
+                  else 'REQUIRES_MULTI_STAGE_LIFECYCLE_SIMULATION_NOT_YET_BUILT')
         return {'benchmarkId': benchmark_id, 'state': 'BLOCKED_MISSING_POLICY',
-                'reason': 'REQUIRES_MULTI_STAGE_LIFECYCLE_SIMULATION_NOT_YET_BUILT'}
+                'reason': reason}
     if benchmark_id in MECHANIC_IMPLEMENTED_BENCHMARK_IDS:
         capability = _REQUIRED_CAPABILITY[benchmark_id]
         available = bool((capability_evidence or {}).get(capability))
@@ -122,16 +133,80 @@ def execute_b0_cash_wait(entry_dataset: dict) -> dict:
     return {**payload, 'contentHash': sha256_hex(canonical_json(payload))}
 
 
-_RUNNERS = {'B0': execute_b0_cash_wait}
+def _executed(benchmark_id: str, benchmark_input: dict, result: object) -> dict:
+    payload = {
+        'benchmarkId': benchmark_id, 'state': 'EXECUTED',
+        'inputHash': sha256_hex(canonical_json(benchmark_input)), 'result': result,
+        'brokerAuthority': False, 'empiricalPromotion': False,
+    }
+    return {**payload, 'contentHash': sha256_hex(canonical_json(payload))}
 
 
-def execute_benchmark(benchmark_id: str, entry_dataset: dict) -> dict:
+def _require(payload: dict, *names: str) -> None:
+    missing = [name for name in names if name not in payload]
+    if missing:
+        raise ValueError(f'BENCHMARK_INPUT_MISSING:{missing[0]}')
+
+
+def _execute_mechanical(benchmark_id: str, payload: dict) -> dict:
+    if not isinstance(payload.get('policyVersion'), str) or not payload['policyVersion'].strip():
+        raise ValueError('BENCHMARK_POLICY_VERSION_REQUIRED')
+    if benchmark_id == 'B3':
+        _require(payload, 'entryCredit', 'pricePath', 'captureFraction')
+        result = fixed_capture_exit(payload['entryCredit'], payload['pricePath'], payload['captureFraction'])
+    elif benchmark_id == 'B4':
+        _require(payload, 'entryCredit', 'pricePath', 'holdBars')
+        result = fixed_time_exit(payload['pricePath'], payload['entryCredit'], payload['holdBars'])
+    elif benchmark_id == 'B5':
+        _require(payload, 'candidates', 'seed')
+        result = random_eligible_selection(payload['candidates'], payload['seed'])
+    elif benchmark_id == 'B6':
+        _require(payload, 'entryPrice', 'exitPrice')
+        result = {'return': buy_and_hold_return(payload['entryPrice'], payload['exitPrice'])}
+    elif benchmark_id == 'BQ-1':
+        _require(payload, 'candidates', 'metricKey', 'higherIsBetter')
+        if payload['metricKey'] not in ('entryPremium', 'ivRank'):
+            raise ValueError('BENCHMARK_BQ1_METRIC_NOT_PRE_REGISTERED')
+        result = select_by_metric(payload['candidates'], payload['metricKey'], payload['higherIsBetter'])
+    elif benchmark_id == 'BQ-2':
+        _require(payload, 'candidates', 'targetDelta')
+        result = closest_delta_selection(payload['candidates'], payload['targetDelta'])
+    elif benchmark_id == 'BR-1':
+        _require(payload, 'entryCredit', 'underlyingPriceAtExpiration', 'strike')
+        result = hold_to_expiry_outcome(payload['entryCredit'], payload['underlyingPriceAtExpiration'], payload['strike'])
+    elif benchmark_id == 'BR-2':
+        _require(payload, 'entryCredit', 'pricePath')
+        result = fixed_capture_exit(payload['entryCredit'], payload['pricePath'], 0.5)
+    elif benchmark_id == 'BA-1':
+        _require(payload, 'assigned')
+        result = {'action': mechanical_assignment_response(payload['assigned'], 'BA1_CLOSE_BEFORE_ASSIGNMENT')}
+    elif benchmark_id == 'BA-2':
+        _require(payload, 'originalBasis', 'currentPrice')
+        result = unconditional_hold_to_basis_recovery(payload['originalBasis'], payload['currentPrice'])
+    elif benchmark_id == 'BA-3':
+        _require(payload, 'assigned')
+        result = {'action': mechanical_assignment_response(payload['assigned'], 'BA3_UNCONDITIONAL_ACCEPT')}
+    elif benchmark_id == 'BC-1':
+        _require(payload, 'candidates')
+        result = covered_call_max_yield_selection(payload['candidates'])
+    elif benchmark_id == 'BC-2':
+        _require(payload, 'assigned')
+        result = {'action': immediate_cc_after_assignment(payload['assigned'])}
+    else:
+        raise ValueError(f'BENCHMARK_RUNNER_NOT_IMPLEMENTED:{benchmark_id}')
+    return _executed(benchmark_id, payload, result)
+
+
+def execute_benchmark(benchmark_id: str, benchmark_input: dict) -> dict:
     if benchmark_id not in load_benchmark_ids():
         raise ValueError(f'BENCHMARK_ID_NOT_REGISTERED:{benchmark_id}')
-    runner = _RUNNERS.get(benchmark_id)
-    if runner is None:
-        raise ValueError(f'BENCHMARK_RUNNER_NOT_IMPLEMENTED:{benchmark_id}')
-    return runner(entry_dataset)
+    if benchmark_id == 'B0':
+        return execute_b0_cash_wait(benchmark_input)
+    if benchmark_id in MISSING_POLICY_BENCHMARK_IDS:
+        raise ValueError(f'BENCHMARK_BLOCKED_MISSING_POLICY:{benchmark_id}')
+    if benchmark_id in ABLATION_LADDER_IDS:
+        raise ValueError(f'BENCHMARK_EXECUTION_NOT_APPLICABLE_USE_ABLATION_RUNNER:{benchmark_id}')
+    return _execute_mechanical(benchmark_id, benchmark_input)
 
 
 def coverage_report(capability_evidence: Optional[Dict[str, bool]] = None) -> Dict[str, object]:
@@ -142,6 +217,6 @@ def coverage_report(capability_evidence: Optional[Dict[str, bool]] = None) -> Di
         by_state.setdefault(classification['state'], []).append(benchmark_id)
     return {
         'registeredBenchmarkIds': sorted(registered),
-        'implementedRunnerIds': sorted(set(IMPLEMENTED_BENCHMARK_IDS) & registered),
+        'implementedRunnerIds': sorted((set(IMPLEMENTED_BENCHMARK_IDS) | set(MECHANIC_IMPLEMENTED_BENCHMARK_IDS)) & registered),
         'byState': by_state,
     }

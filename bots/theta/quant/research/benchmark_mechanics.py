@@ -12,6 +12,7 @@ missing real one.
 from __future__ import annotations
 
 import random
+import math
 from typing import Dict, Optional, Sequence, Tuple
 
 
@@ -39,6 +40,27 @@ def random_eligible_selection(candidates: Sequence[Dict[str, object]], seed: int
     if not eligible:
         return None
     return random.Random(seed).choice(eligible)
+
+
+def closest_delta_selection(
+    candidates: Sequence[Dict[str, object]], target_delta: float,
+) -> Optional[Dict[str, object]]:
+    """BQ-2: choose the FEASIBLE contract closest to one pre-registered
+    absolute delta. Candidate identity breaks exact-distance ties so replay is
+    deterministic. Missing or malformed delta remains an error, never a
+    silently skipped row."""
+    if not math.isfinite(target_delta) or not (0 < target_delta < 1):
+        raise ValueError('BENCHMARK_MECHANIC_TARGET_DELTA_INVALID')
+    eligible = [c for c in candidates if c.get('hardStatus') == 'FEASIBLE']
+    if not eligible:
+        return None
+    missing = [c.get('candidateId') for c in eligible
+               if not isinstance(c.get('delta'), (int, float)) or not math.isfinite(float(c['delta']))]
+    if missing:
+        raise ValueError(f'BENCHMARK_MECHANIC_DELTA_MISSING:{missing[0]}')
+    return min(eligible, key=lambda c: (
+        round(abs(abs(float(c['delta'])) - target_delta), 12), str(c.get('candidateId', '')),
+    ))
 
 
 def fixed_capture_exit(entry_credit: float, price_path: Sequence[Tuple[str, float]], capture_fraction: float) -> Optional[dict]:

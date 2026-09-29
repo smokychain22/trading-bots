@@ -38,6 +38,12 @@ class ResearchCliBenchmarkTests(unittest.TestCase):
         result = _dispatch('benchmark', {})
         self.assertGreater(len(result), 20)
 
+    def test_benchmark_execution_subcommand(self):
+        result = _dispatch('benchmark', {'execute': True, 'benchmarkId': 'B6',
+            'benchmarkInput': {'policyVersion': 'benchmark-test-v1', 'entryPrice': 100.0, 'exitPrice': 110.0}})
+        self.assertEqual(result['state'], 'EXECUTED')
+        self.assertAlmostEqual(result['result']['return'], .1)
+
 
 class ResearchCliCalibrationTests(unittest.TestCase):
     def test_calibration_subcommand(self):
@@ -57,11 +63,22 @@ class ResearchCliReproducibilityVerifyTests(unittest.TestCase):
         self.assertTrue(result['verified'])
 
 
-class ResearchCliNotYetIntegratedTests(unittest.TestCase):
-    def test_not_yet_integrated_commands_report_honestly(self):
-        for command in ('features', 'dataset-build', 'filter-value'):
+class ResearchCliAuthorityRoutingTests(unittest.TestCase):
+    def test_features_validates_and_lists_the_real_registry(self):
+        result = _dispatch('features', {})
+        self.assertEqual(result['state'], 'REGISTRY_VALID')
+        self.assertGreater(result['featureFamilyCount'], 0)
+        self.assertFalse(result['brokerAuthority'])
+
+    def test_typescript_authorities_are_not_duplicated_in_python(self):
+        expected = {
+            'dataset-build': 'tools/theta-research-dataset-cli.ts',
+            'filter-value': 'src/research/filter-value-analysis-engine.ts',
+        }
+        for command, implementation in expected.items():
             result = _dispatch(command, {})
-            self.assertEqual(result['state'], 'BLOCKED_MISSING_INTEGRATION')
+            self.assertEqual(result['state'], 'CANONICAL_TYPESCRIPT_PATH')
+            self.assertEqual(result['implementation'], implementation)
 
 
 class ResearchCliUnknownCommandTests(unittest.TestCase):
