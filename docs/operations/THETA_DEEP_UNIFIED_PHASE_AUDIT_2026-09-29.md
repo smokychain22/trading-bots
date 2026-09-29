@@ -107,6 +107,12 @@ validation.
    launches the supervisor itself from the release directory. Worker status
    and premarket certification independently reject a task whose script path
    is not aligned with the immutable release.
+8. The prior worker shutdown cannot be assigned a factual cause because Task
+   Scheduler operational history was disabled and the old final receipt stored
+   only `OFFLINE`. The supervisor now fails closed if its own path is outside
+   the immutable release, records its SHA-256 script hash, and distinguishes a
+   governed stop request, an unhandled error, and an unexpected scope exit.
+   This improves the next shutdown receipt without rewriting the old incident.
 
 ## Phase truth
 

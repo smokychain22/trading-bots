@@ -29,6 +29,16 @@ $token = (Get-Content -Raw -LiteralPath $tokenFile).Trim()
 if ($runtime.repositoryPath -ne $ControlRoot) { throw 'THETA_RUNTIME_CONTROL_PATH_MISMATCH' }
 if ($runtime.releasePath -ne $RepositoryPath) { throw 'THETA_RUNTIME_RELEASE_PATH_MISMATCH' }
 if ($token.Length -lt 32) { throw 'THETA_LOCAL_WORKER_TOKEN_INVALID' }
+$supervisorScriptPath = (Resolve-Path -LiteralPath $PSCommandPath).Path
+$expectedSupervisorScriptPath = Join-Path $RepositoryPath 'tools\windows\theta-local-worker.ps1'
+if (![string]::Equals($supervisorScriptPath,$expectedSupervisorScriptPath,[StringComparison]::OrdinalIgnoreCase)) {
+  @{state='BLOCKED';observedAt=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
+    mode='MASTER_THETA_PAPER';executionGate='LOCKED';failureCode='THETA_SUPERVISOR_SCRIPT_PATH_MISMATCH';
+    supervisorScriptPath=$supervisorScriptPath;expectedSupervisorScriptPath=$expectedSupervisorScriptPath} |
+    ConvertTo-Json | Set-Content -LiteralPath $statusFile -Encoding utf8
+  throw 'THETA_SUPERVISOR_SCRIPT_PATH_MISMATCH'
+}
+$supervisorScriptHash = (Get-FileHash -LiteralPath $supervisorScriptPath -Algorithm SHA256).Hash.ToLowerInvariant()
 
 Set-Location -LiteralPath $RepositoryPath
 $currentSha = (& git rev-parse HEAD).Trim()
@@ -43,6 +53,8 @@ if (@(& git status --porcelain --untracked-files=no).Count -gt 0) { throw 'THETA
 
 $mutex = [Threading.Mutex]::new($false, 'Local\THETA_MASTER_PAPER_SUPERVISOR')
 $owned = $false
+$supervisorShutdownReason = 'UNEXPECTED_SCOPE_EXIT'
+$supervisorFailureCode = $null
 try {
   try { $owned = $mutex.WaitOne(0) }
   catch [Threading.AbandonedMutexException] { $owned = $true }
@@ -756,6 +768,14 @@ try {
     }
     if ($workerExit -ne 0) { $delaySeconds = [Math]::Min(300, $delaySeconds * 2) }
   }
+  if (Test-Path -LiteralPath $stopFile) { $supervisorShutdownReason = 'GOVERNED_STOP_REQUEST' }
+} catch {
+  $supervisorShutdownReason = 'UNHANDLED_SUPERVISOR_ERROR'
+  $supervisorExceptionType = $_.Exception.GetType().Name
+  $supervisorFailureCode = if ($supervisorExceptionType -match '^[A-Za-z0-9_.-]{1,96}$') {
+    "LOCAL_$supervisorExceptionType"
+  } else { 'LOCAL_UNHANDLED_SUPERVISOR_ERROR' }
+  throw
 } finally {
   # A contender that never owned the supervisor cannot release its lease or
   # overwrite its status. This also covers exit 23 during a cutover race.
@@ -769,7 +789,9 @@ try {
     } catch {}
     try {
       @{state='OFFLINE';lastShutdown=(Get-Date).ToUniversalTime().ToString('o');buildSha=$runtime.buildSha;
-        mode='MASTER_THETA_PAPER';executionGate='LOCKED'} | ConvertTo-Json |
+        mode='MASTER_THETA_PAPER';executionGate='LOCKED';shutdownReason=$supervisorShutdownReason;
+        failureCode=$supervisorFailureCode;supervisorScriptPath=$supervisorScriptPath;
+        supervisorScriptHash=$supervisorScriptHash} | ConvertTo-Json |
         Set-Content -LiteralPath $statusFile -Encoding utf8
     } finally { $mutex.ReleaseMutex() }
   }

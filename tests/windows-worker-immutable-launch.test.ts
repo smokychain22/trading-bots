@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const installer = readFileSync('tools/windows/install-theta-local-worker.ps1', 'utf8');
 const status = readFileSync('tools/windows/status-theta-local-worker.ps1', 'utf8');
+const worker = readFileSync('tools/windows/theta-local-worker.ps1', 'utf8');
 
 test('Windows scheduled task launches the supervisor from the immutable release', () => {
   assert.match(
@@ -19,6 +20,18 @@ test('Windows scheduled task launches the supervisor from the immutable release'
     installer,
     /New-ScheduledTaskAction[\s\S]{0,180}-File `"\$workerScript`"[\s\S]{0,180}-ControlRoot `"\$repositoryPath`"/,
   );
+});
+
+test('supervisor proves its own immutable path and preserves a typed shutdown reason', () => {
+  assert.match(worker, /\$supervisorScriptPath\s*=.*\$PSCommandPath/);
+  assert.match(worker, /\$expectedSupervisorScriptPath\s*=\s*Join-Path \$RepositoryPath 'tools\\windows\\theta-local-worker\.ps1'/);
+  assert.match(worker, /THETA_SUPERVISOR_SCRIPT_PATH_MISMATCH/);
+  assert.match(worker, /Get-FileHash[^\r\n]+-Algorithm SHA256/);
+  assert.match(worker, /\$supervisorShutdownReason\s*=\s*'UNEXPECTED_SCOPE_EXIT'/);
+  assert.match(worker, /\$supervisorShutdownReason\s*=\s*'GOVERNED_STOP_REQUEST'/);
+  assert.match(worker, /\$supervisorShutdownReason\s*=\s*'UNHANDLED_SUPERVISOR_ERROR'/);
+  assert.match(worker, /shutdownReason=\$supervisorShutdownReason/);
+  assert.match(worker, /supervisorScriptHash=\$supervisorScriptHash/);
 });
 
 test('worker status rejects a mutable or mismatched scheduled-task script', () => {
