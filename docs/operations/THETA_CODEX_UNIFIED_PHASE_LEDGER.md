@@ -31,7 +31,7 @@ evidence window without restarting the aligned worker for this status alone.
 | 4 | `SOURCE_COMPLETE_EMPIRICAL_PENDING` | `EMPIRICALLY_UNPROVEN` | Q/H/D/A/C deterministic mechanics, versioned modeled opening costs, position scaling, management alternatives, whole-chain loss preservation, 17 challenger replays, persistence and T0 replay are wired and tested. Exact-SHA CI run `36550676519` passed. Current-worker evidence and calibrated EV/POP/continuation values remain unavailable and are not fabricated. |
 | 5 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | One AEGIS authority, one canonical final sizing authority and one master execution mutation state machine are enforced and tested. Exact-SHA CI run `36552617374` passed. Current-worker evidence remains pending. Sector mapping and portfolio Greeks retain typed provider/data limits. Risk-policy optimality remains empirically unproven. |
 | 6 | `SOURCE_COMPLETE_EMPIRICAL_PENDING` | `EMPIRICALLY_UNPROVEN` | Historical provenance, future capture, outcomes, datasets, regret, attribution, model ladder, validation and promotion governance are wired. Mechanical benchmark dispatch is executable. Historical corpus has zero selected or resolved outcomes, and integrated future capture needs later real observations. |
-| 7 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Evidence-derived readiness, locked session controls, per-cycle diagnostics, archive health and Command-5A backlog telemetry are wired and tested. Exact-SHA CI run `36555183670` passed. A complete current-release supported-session run remains pending. First Paper order remains separately owner-gated. |
+| 7 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Evidence-derived readiness, locked session controls, per-cycle diagnostics, archive health and Command-5A backlog telemetry are wired and tested. Exact-SHA CI run `36555971370` passed. A complete current-release supported-session run remains pending. First Paper order remains separately owner-gated. |
 | 8 | No Paper outcomes | `FUTURE_DATA_REQUIRED` | Actual fills, lifecycle and whole-chain outcomes do not yet exist. |
 | 9 | No live permission | `OWNER_GATED` | Live-money authorization was not granted. |
 
@@ -268,12 +268,18 @@ percent win-rate claim follows from source completeness. Full evidence is in
 
 ## Phase 7 locked-runtime readiness source pass, 2026-09-29
 
-The Phase-7 audit removed three false readiness claims. A blocked event-safety
+The Phase-7 audit removed four false readiness claims. A blocked event-safety
 policy can no longer pass merely because the receipt exists, incomplete option
 enumeration cannot certify canonical-decision reachability, and optional
 Optionomics research health no longer controls the required-provider gate.
 Alpaca and a completed approved-symbol runtime cycle remain the required market
 and broker evidence.
+
+The R8 operator view also stopped self-declaring the router, frontier and
+Optionomics transport ready, stopped treating any database connection as proof
+of lifecycle, label and whole-chain readiness, and stopped using the locked
+execution gate as a proxy for quote qualification. Each dimension now comes
+from its actual runtime or persistence evidence.
 
 The existing source already exposes per-cycle candidate, WAIT, AEGIS, sizing,
 near-miss and finalist quote-refresh telemetry. The resident Windows worker

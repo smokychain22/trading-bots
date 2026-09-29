@@ -4,7 +4,7 @@ Receipt date: 2026-09-29
 
 START_SHA = b09bd7fd516424eef08d4a65643598108227290e
 
-SOURCE_SHA = e34ecf3716bc629988e1634a82daaff161ddd9f6
+SOURCE_SHA = 9f8be17b1b8dfcdcfe3e82b664909dfaaa5f487e
 
 STATE = SOURCE_COMPLETE_RUNTIME_PENDING
 
@@ -14,7 +14,7 @@ Paper order, Paper fills, empirical profitability or live-money authority.
 
 ## Readiness authority correction
 
-The Phase-7 audit found three false-readiness paths in the operator API.
+The Phase-7 audit found four false-readiness paths in the operator API.
 
 1. A non-null event policy was reported ready even when its decision was
    `BLOCK` because required event or corporate-action coverage was limited.
@@ -30,6 +30,13 @@ The Phase-7 audit found three false-readiness paths in the operator API.
    broker and market authority plus a completed approved-symbol runtime cycle.
    Optionomics remains optional research context and cannot freeze an otherwise
    valid Alpaca-backed Q path.
+4. The R8 operator view hardcoded router, frontier and Optionomics transport as
+   ready, inferred lifecycle, labels and whole-chain accounting from a database
+   connection, and confused a locked execution gate with quote-provider
+   readiness. Those dimensions now derive from the observed runtime scan,
+   reconciliation, qualified quote path, provider receipt, outcome schema and
+   whole-chain simulation. Execution can remain locked while quote readiness is
+   reported independently.
 
 Missing evidence remains `UNKNOWN`. A failed provider cycle remains `FAIL`.
 No missing value becomes false, zero or safe.
@@ -84,9 +91,9 @@ live execution stay locked while this runtime evidence accumulates.
 
 ## Validation
 
-FOCUSED_PHASE_7_TESTS = PASS, 21 tests
+FOCUSED_PHASE_7_TESTS = PASS, 33 tests
 
-NODE_SUITE = PASS, 3010 passed, 15 skipped, 0 failed, 3025 total
+NODE_SUITE = PASS, 3012 passed, 15 skipped, 0 failed, 3027 total
 
 PYTHON_QUANT_SUITE = PASS, 1232 tests and 24 subtests
 
@@ -98,7 +105,7 @@ SECURITY_SCAN = PASS, 0 findings
 
 GIT_STORAGE_POLICY = PASS
 
-SOURCE_EXACT_SHA_CI = PASS, run 36555183670 at e34ecf3716bc629988e1634a82daaff161ddd9f6
+SOURCE_EXACT_SHA_CI = PASS, run 36555971370 at 9f8be17b1b8dfcdcfe3e82b664909dfaaa5f487e
 
 ## Reality receipt
 
