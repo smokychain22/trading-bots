@@ -128,6 +128,7 @@ test('future-received provider, contract and correlation evidence cannot enter a
   assert.throws(() => buildFusionSnapshot(futureContract), /FUSION_SNAPSHOT_FUTURE_CONTRACT_RECEIPT/);
 
   const correlation = assessPortfolioCorrelation({
+    policyVersion: 'correlation-test-v1',
     candidateUnderlying: 'SPY', currentExposureByUnderlying: {}, bars: [],
     providerState: 'COMPLETE', decisionAsOf: '2026-09-09T18:30:00Z',
     evaluatedAt: '2026-09-09T18:30:00Z', lookbackSessions: 20,

@@ -51,6 +51,7 @@ const correlationPairSchema = z.object({
 }).strict();
 const correlationObservationSchema = z.object({
   version: z.literal('theta-portfolio-correlation-observation-v1'),
+  policyVersion: z.string().min(1),
   authority: z.literal('ALPACA_MARKET_OBSERVATION_NO_BROKER_AUTHORITY'),
   state: z.enum(['NOT_APPLICABLE', 'KNOWN', 'DATA_INSUFFICIENT', 'STALE', 'PARTIAL_COVERAGE', 'PROVIDER_ERROR']),
   candidateUnderlying: z.string().min(1), evaluatedAt: utcTimestamp,

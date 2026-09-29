@@ -1,6 +1,7 @@
 import { entryModelFamilies } from '../research/theta-entry-model-readiness.js';
 import { canonicalV7ProfitTakingPolicies } from '../research/profit-taking-experiment.js';
 import { canonicalThetaStrategySources, thetaFeatureFamily, thetaHardRule, thetaStrategyAction } from './strategy-package.js';
+import { RISK_POLICY_REGISTRY, type RiskPolicyRegistryEntry } from './risk-policy-registry.js';
 
 export const profitabilityBrainRealityVersion = 'theta-profitability-brain-reality-v4' as const;
 
@@ -279,6 +280,7 @@ export interface ProfitabilityBrainRealityReceipt {
   readonly levelCounts: Readonly<Record<RealityLevel, number>>;
   readonly brokerAuthorizedMethodCount: number;
   readonly fiveStrategyRealityMatrix: readonly FiveStrategyRealityRow[];
+  readonly riskPolicies: readonly RiskPolicyRegistryEntry[];
 }
 
 // Phase 1 reclosure (THETA-BRAIN-L7-CALLER-GAP): buildProfitabilityBrainRealityReceipt
@@ -384,5 +386,6 @@ export function buildProfitabilityBrainRealityReceipt(input: {
     levelCounts,
     brokerAuthorizedMethodCount: methods.filter((item) => item.level === 'L9_BROKER_AUTHORIZED').length,
     fiveStrategyRealityMatrix,
+    riskPolicies: RISK_POLICY_REGISTRY,
   };
 }

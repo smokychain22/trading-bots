@@ -15,6 +15,7 @@ export interface PortfolioCorrelationPair {
 
 export interface PortfolioCorrelationObservation {
   readonly version: typeof portfolioCorrelationEvidenceVersion;
+  readonly policyVersion: string;
   readonly authority: 'ALPACA_MARKET_OBSERVATION_NO_BROKER_AUTHORITY';
   readonly state: 'NOT_APPLICABLE' | 'KNOWN' | 'DATA_INSUFFICIENT' | 'STALE' | 'PARTIAL_COVERAGE' | 'PROVIDER_ERROR';
   readonly candidateUnderlying: string;
@@ -35,6 +36,7 @@ export interface PortfolioCorrelationObservation {
 }
 
 export function assessPortfolioCorrelation(input: {
+  readonly policyVersion: string;
   readonly candidateUnderlying: string;
   readonly currentExposureByUnderlying: Readonly<Record<string, number>>;
   readonly bars: readonly HistoricalBar[];
@@ -47,7 +49,7 @@ export function assessPortfolioCorrelation(input: {
 }): PortfolioCorrelationObservation {
   const decisionMs = Date.parse(input.decisionAsOf);
   const evaluatedMs = Date.parse(input.evaluatedAt);
-  if (!input.candidateUnderlying || input.candidateUnderlying.length > 64 || !Number.isFinite(decisionMs)
+  if (!input.policyVersion || !input.candidateUnderlying || input.candidateUnderlying.length > 64 || !Number.isFinite(decisionMs)
     || !Number.isFinite(evaluatedMs) || evaluatedMs < decisionMs
     || !Number.isInteger(input.lookbackSessions) || input.lookbackSessions < 2
     || !Number.isInteger(input.minimumOverlappingReturns) || input.minimumOverlappingReturns < 2
@@ -61,6 +63,7 @@ export function assessPortfolioCorrelation(input: {
     .filter(([, value]) => value > 0).sort(([left], [right]) => left.localeCompare(right));
   const base = {
     version: portfolioCorrelationEvidenceVersion,
+    policyVersion: input.policyVersion,
     authority: 'ALPACA_MARKET_OBSERVATION_NO_BROKER_AUTHORITY' as const,
     candidateUnderlying: input.candidateUnderlying, evaluatedAt: input.evaluatedAt,
     decisionAsOf: input.decisionAsOf, lookbackSessions: input.lookbackSessions,

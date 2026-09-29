@@ -345,6 +345,17 @@ export function canonicalStrategyFrontierContentHash(
 const nonnegativeInteger = (value: unknown): number | null =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
 
+type SizingCapState =
+  | { readonly state: 'KNOWN'; readonly value: number }
+  | { readonly state: 'MISSING' }
+  | { readonly state: 'INVALID' };
+
+const sizingCapState = (value: unknown): SizingCapState => {
+  if (value === null || value === undefined) return { state: 'MISSING' };
+  const parsed = nonnegativeInteger(value);
+  return parsed === null ? { state: 'INVALID' } : { state: 'KNOWN', value: parsed };
+};
+
 function structuralSizing(
   action: CanonicalFrontierAction,
   collateral: number | null,
@@ -368,10 +379,15 @@ function structuralSizing(
   ];
   const brokerAllowedQty = input.brokerAllowedQtyByCandidateId?.[candidateId] ?? input.brokerAllowedQty;
   if (brokerAllowedQty !== undefined) namedCaps.push(['BROKER_ALLOWED', brokerAllowedQty]);
-  const parsed: Array<[string, number | null]> = namedCaps.map(([name, value]) => [name, nonnegativeInteger(value)]);
-  if (parsed.some(([, value]) => value === null)) {
+  const capStates = namedCaps.map(([name, value]) => [name, sizingCapState(value)] as const);
+  const invalidCaps = capStates.filter(([, state]) => state.state === 'INVALID').map(([name]) => name);
+  if (invalidCaps.length > 0) {
+    return { quantity: 0, bindingConstraint: 'SIZING_POLICY_INVALID', reasons: invalidCaps.map((name) => `${name}_INVALID`) };
+  }
+  if (capStates.some(([, state]) => state.state === 'MISSING')) {
     return { quantity: 0, bindingConstraint: 'SIZING_POLICY_INCOMPLETE', reasons: ['REQUIRED_SIZING_CAP_UNKNOWN'] };
   }
+  const parsed = capStates.map(([name, state]) => [name, (state as Extract<SizingCapState, { state: 'KNOWN' }>).value] as [string, number]);
   if (action === 'SELL_CC') {
     if (actionCapacityQty === null) return { quantity: 0, bindingConstraint: 'COVERED_SHARES_UNKNOWN', reasons: ['COVERED_SHARE_CAPACITY_UNKNOWN'] };
     parsed.push(['COVERED_SHARE_CAPACITY', Math.max(0, Math.floor(actionCapacityQty))]);
@@ -387,8 +403,12 @@ function structuralSizing(
   for (const [name, value] of parsed.slice(1) as Array<[string, number]>) {
     if (value < quantity) [bindingConstraint, quantity] = [name, value];
   }
-  const reducedMultiplier = typeof policy?.reducedStateMultiplier === 'number' && Number.isFinite(policy.reducedStateMultiplier)
-    ? Math.max(0, Math.min(1, policy.reducedStateMultiplier)) : null;
+  const reducedMultiplierInput = policy?.reducedStateMultiplier;
+  const reducedMultiplier = typeof reducedMultiplierInput === 'number' && Number.isFinite(reducedMultiplierInput)
+    && reducedMultiplierInput >= 0 && reducedMultiplierInput <= 1 ? reducedMultiplierInput : null;
+  if (reducedMultiplierInput !== null && reducedMultiplierInput !== undefined && reducedMultiplier === null) {
+    return { quantity: 0, bindingConstraint: 'SIZING_POLICY_INVALID', reasons: ['REDUCED_MULTIPLIER_INVALID'] };
+  }
   if (candidateAegisState === null || ['HOLD_ONLY', 'HARD_VETO', 'EMERGENCY_EXIT_ONLY'].includes(candidateAegisState)) {
     const exactReasons=input.aegisBindingReasonsByCandidateId?.[candidateId]?.filter((reason)=>reason.trim().length>0)??[];
     return { quantity: 0,
@@ -924,7 +944,7 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
   const universeIncomplete = input.unevaluatedUnderlyingCount > 0;
   const sizingEvidenceUnknown = globallyRanked.filter((candidate) => candidate.branch === 'THETA_CONVENTIONAL'
     && candidate.riskFeasible &&
-    candidate.sizing.quantity === 0 && ['AEGIS_UNKNOWN', 'SIZING_POLICY_INCOMPLETE',
+    candidate.sizing.quantity === 0 && ['AEGIS_UNKNOWN', 'SIZING_POLICY_INCOMPLETE', 'SIZING_POLICY_INVALID',
       'COLLATERAL_INPUT_UNKNOWN', 'REDUCED_MULTIPLIER_UNKNOWN', 'UNKNOWN_STOCK_CAPACITY',
       'COVERED_SHARES_UNKNOWN']
       .includes(candidate.sizing.bindingConstraint));

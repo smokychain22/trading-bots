@@ -10,7 +10,7 @@ function bar(symbol: string, day: number, close: number, receivedAt = '2026-09-2
     open: close, high: close, low: close, close, volume: 1000, tradeCount: 10,
     vwap: close, provider: 'ALPACA', feed: 'iex', receivedAt };
 }
-const base = { candidateUnderlying: 'SPY', decisionAsOf, evaluatedAt,
+const base = { policyVersion: 'correlation-test-v1', candidateUnderlying: 'SPY', decisionAsOf, evaluatedAt,
   providerState: 'COMPLETE' as const, lookbackSessions: 4, minimumOverlappingReturns: 3,
   maxBarAgeCalendarDays: 5 };
 

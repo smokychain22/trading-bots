@@ -1,7 +1,7 @@
 """Phase 1 (Profitability Brain Completion Program) 1H residual closure.
 
-Real, static source-scanning regression tests proving no second module
-independently defines a risk-permission or sizing authority. These are
+Real, static source-scanning regression tests proving no second Python module
+independently defines the AEGIS authority or branch-level sizing calculator. These are
 structural guards against a *future* duplicate being introduced -- not a
 runtime behavioral proof (that would require exercising the real broker/
 account inputs, out of this repository's current authority).
@@ -53,7 +53,7 @@ class SingleAegisAuthorityTests(unittest.TestCase):
         self.assertEqual(offenders, [])
 
 
-class SingleSizingAuthorityTests(unittest.TestCase):
+class SinglePythonSizingCalculatorTests(unittest.TestCase):
     def test_only_sizing_py_references_all_seven_named_caps_together(self):
         offenders = []
         for path in _all_python_files():

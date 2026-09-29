@@ -1,4 +1,4 @@
-export const paperBootstrapRuntimePolicyVersion = 'theta-paper-bootstrap-runtime-policy-v1' as const;
+export const paperBootstrapRuntimePolicyVersion = 'theta-paper-bootstrap-runtime-policy-v2' as const;
 
 // One source of truth for the deterministic Paper-bootstrap controls that are
 // shared by candidate construction, risk, sizing, and the final read-only
@@ -47,6 +47,13 @@ export const paperBootstrapRuntimePolicy = Object.freeze({
     maximumRecoveryCapacityPct: 0.3,
     stressGapThresholdAbsoluteReturn: 0.05,
   }),
+  portfolioCorrelation: Object.freeze({
+    policyVersion: 'theta-portfolio-correlation-paper-bootstrap-v1',
+    maximumHeldSymbols: 20,
+    lookbackSessions: 60,
+    minimumOverlappingReturns: 20,
+    maxBarAgeCalendarDays: 5,
+  }),
 });
 
 export type PresessionConfigurationRole = 'HARD_SAFETY' | 'STRUCTURAL_FILTER' | 'SIZING_LIMIT';
@@ -91,6 +98,10 @@ export const presessionConfigurationRegistry: readonly PresessionConfigurationEn
   entry('aegis.maximumAssignmentCapacityPct', paperBootstrapRuntimePolicy.aegis.maximumAssignmentCapacityPct, 'PERCENT_FRACTION', 'HARD_SAFETY', 'Aegis'),
   entry('aegis.maximumRecoveryCapacityPct', paperBootstrapRuntimePolicy.aegis.maximumRecoveryCapacityPct, 'PERCENT_FRACTION', 'HARD_SAFETY', 'Aegis'),
   entry('aegis.stressGapThresholdAbsoluteReturn', paperBootstrapRuntimePolicy.aegis.stressGapThresholdAbsoluteReturn, 'PERCENT_FRACTION', 'HARD_SAFETY', 'AegisGapStress'),
+  entry('portfolioCorrelation.maximumHeldSymbols', paperBootstrapRuntimePolicy.portfolioCorrelation.maximumHeldSymbols, 'COUNT', 'HARD_SAFETY', 'PortfolioCorrelationEvidence'),
+  entry('portfolioCorrelation.lookbackSessions', paperBootstrapRuntimePolicy.portfolioCorrelation.lookbackSessions, 'COUNT', 'HARD_SAFETY', 'PortfolioCorrelationEvidence'),
+  entry('portfolioCorrelation.minimumOverlappingReturns', paperBootstrapRuntimePolicy.portfolioCorrelation.minimumOverlappingReturns, 'COUNT', 'HARD_SAFETY', 'PortfolioCorrelationEvidence'),
+  entry('portfolioCorrelation.maxBarAgeCalendarDays', paperBootstrapRuntimePolicy.portfolioCorrelation.maxBarAgeCalendarDays, 'DAYS', 'HARD_SAFETY', 'PortfolioCorrelationEvidence'),
   entry('sizing.riskBudgetQuantityCap', paperBootstrapRuntimePolicy.sizing.riskBudgetQuantityCap, 'COUNT', 'SIZING_LIMIT', 'Sizing'),
   entry('sizing.collateralQuantityCap', paperBootstrapRuntimePolicy.sizing.collateralQuantityCap, 'COUNT', 'SIZING_LIMIT', 'Sizing'),
   entry('sizing.concentrationQuantityCap', paperBootstrapRuntimePolicy.sizing.concentrationQuantityCap, 'COUNT', 'SIZING_LIMIT', 'Sizing'),
@@ -114,6 +125,8 @@ export const decisionCriticalConfigurationFields: readonly string[] = Object.fre
   'aegis.maximumCorrelationClusterPct', 'aegis.maximumPortfolioCapitalAtRiskPct',
   'aegis.maximumInventoryCapacityPct', 'aegis.maximumAssignmentCapacityPct',
   'aegis.maximumRecoveryCapacityPct', 'aegis.stressGapThresholdAbsoluteReturn',
+  'portfolioCorrelation.maximumHeldSymbols', 'portfolioCorrelation.lookbackSessions',
+  'portfolioCorrelation.minimumOverlappingReturns', 'portfolioCorrelation.maxBarAgeCalendarDays',
 ]);
 
 export interface PresessionConfigurationAudit {
@@ -150,6 +163,16 @@ export function auditPresessionConfiguration(): PresessionConfigurationAudit {
     compoundStressHoldCountValid: Number.isInteger(paperBootstrapRuntimePolicy.aegis.compoundStressHoldCount)
       && paperBootstrapRuntimePolicy.aegis.compoundStressHoldCount >= 2,
     reducedSizingBounded: paperBootstrapRuntimePolicy.sizing.reducedStateMultiplier > 0 && paperBootstrapRuntimePolicy.sizing.reducedStateMultiplier <= 1,
+    portfolioCorrelationPolicyValid: Number.isInteger(paperBootstrapRuntimePolicy.portfolioCorrelation.maximumHeldSymbols)
+      && paperBootstrapRuntimePolicy.portfolioCorrelation.maximumHeldSymbols > 0
+      && Number.isInteger(paperBootstrapRuntimePolicy.portfolioCorrelation.lookbackSessions)
+      && paperBootstrapRuntimePolicy.portfolioCorrelation.lookbackSessions >= 2
+      && Number.isInteger(paperBootstrapRuntimePolicy.portfolioCorrelation.minimumOverlappingReturns)
+      && paperBootstrapRuntimePolicy.portfolioCorrelation.minimumOverlappingReturns >= 2
+      && paperBootstrapRuntimePolicy.portfolioCorrelation.minimumOverlappingReturns
+        <= paperBootstrapRuntimePolicy.portfolioCorrelation.lookbackSessions
+      && Number.isInteger(paperBootstrapRuntimePolicy.portfolioCorrelation.maxBarAgeCalendarDays)
+      && paperBootstrapRuntimePolicy.portfolioCorrelation.maxBarAgeCalendarDays > 0,
     deltaBandsOrdered: paperBootstrapRuntimePolicy.conventional.deltaBands.every(([low, high]) => low >= 0 && high <= 1 && low < high),
   } as const;
   const pass = duplicateNames.size === 0 && unregisteredFields.length === 0

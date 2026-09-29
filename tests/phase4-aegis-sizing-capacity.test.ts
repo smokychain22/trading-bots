@@ -111,3 +111,37 @@ test('CAPACITY MONOTONICITY (item 78): a worse AEGIS state can only reduce or ho
   assert.ok(qFull && qReduced);
   assert.ok(qReduced.sizing.quantity <= qFull.sizing.quantity);
 });
+
+test('invalid sizing caps fail closed as invalid policy instead of being disguised as missing evidence', () => {
+  const c = contract();
+  const frontier = buildCanonicalStrategyFrontier({
+    ...base,
+    buyingPower: 100_000,
+    sizingPolicy: { ...sizingPolicy, liquidityQtyCap: -1 },
+    contracts: [c],
+    routing: routing(['THETA_Q']),
+  });
+  const q = frontier.branches.find((b) => b.branch === 'THETA_CONVENTIONAL')?.candidates[0];
+  assert.ok(q);
+  assert.equal(q.sizing.quantity, 0);
+  assert.equal(q.sizing.bindingConstraint, 'SIZING_POLICY_INVALID');
+  assert.deepEqual(q.sizing.reasons, ['LIQUIDITY_CAP_INVALID']);
+  assert.equal(frontier.globalWaitEarned, false, 'invalid policy evidence must not earn a market-opportunity WAIT');
+});
+
+test('out-of-range reduced sizing multiplier is rejected and never silently clamped', () => {
+  const c = contract();
+  const frontier = buildCanonicalStrategyFrontier({
+    ...base,
+    aegisNewRiskState: 'ALLOW_REDUCED',
+    buyingPower: 100_000,
+    sizingPolicy: { ...sizingPolicy, reducedStateMultiplier: 1.5 },
+    contracts: [c],
+    routing: routing(['THETA_Q']),
+  });
+  const q = frontier.branches.find((b) => b.branch === 'THETA_CONVENTIONAL')?.candidates[0];
+  assert.ok(q);
+  assert.equal(q.sizing.quantity, 0);
+  assert.equal(q.sizing.bindingConstraint, 'SIZING_POLICY_INVALID');
+  assert.deepEqual(q.sizing.reasons, ['REDUCED_MULTIPLIER_INVALID']);
+});

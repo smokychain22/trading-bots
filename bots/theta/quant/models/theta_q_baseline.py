@@ -331,13 +331,14 @@ class BaselinePolicy:
         Phase 4 (naming ambiguity fix, directive item 3): this is a
         CANDIDATE-STAGE quantity cap, over a narrower 4-cap subset
         (risk_budget/collateral/concentration/broker_allowed) -- it is
-        NEVER the broker-facing final quantity. The real, canonical, final
-        sizing authority is `sizing.py:compute_sizing()`'s 9-cap
-        `min()`, consumed downstream via `sizingResult.data.quantity` in
-        `new-risk-orchestrator.ts` (confirmed by trace: no caller anywhere
-        reads this method's result or `CandidateEvaluation.quantity` as the
-        final broker-facing size). This was previously named `_quantity()`,
-        which read as if it might be that final authority -- it never was."""
+        NEVER the broker-facing final quantity. `sizing.py:compute_sizing()`
+        is the branch-level nine-cap calculator consumed by
+        `new-risk-orchestrator.ts`. The system-wide final quantity comes
+        from `canonical-strategy-frontier.ts:structuralSizing()` and can
+        only reduce the subordinate receipt quantity. No caller reads this
+        method's result or `CandidateEvaluation.quantity` as the final
+        broker-facing size. This was previously named `_quantity()`, which
+        read as if it might be that final authority -- it never was."""
         if ownership_score is None and not paper_bootstrap_eligible:
             return 0
         qty_base = min(

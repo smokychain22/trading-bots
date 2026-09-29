@@ -39,6 +39,7 @@ import {
 import { assessAegisGapStress, deriveCandidateMarketQuality, deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProviderState } from './aegis-derivation.js';
 import { buildCanonicalStrategyFrontier, canonicalOpeningCostPolicyFromUnknown, type CanonicalStrategyFrontier,
   type CanonicalStrategyFrontierInput } from './canonical-strategy-frontier.js';
+import { paperBootstrapRuntimePolicy } from './paper-bootstrap-runtime-policy.js';
 import { canonicalThetaStrategySources } from './strategy-package.js';
 import {
   buildStrategyQualityShadowDiagnostic,
@@ -1510,7 +1511,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   if (exposureDerivationTrustworthy) {
     const heldSymbols = Object.entries(derivedExposure.exposureByUnderlying)
       .filter(([, value]) => value > 0).map(([symbol]) => symbol);
-    if (heldSymbols.length <= 20) {
+    const correlationPolicy = paperBootstrapRuntimePolicy.portfolioCorrelation;
+    if (heldSymbols.length <= correlationPolicy.maximumHeldSymbols) {
       const otherSymbols = heldSymbols.filter((symbol) => symbol !== underlying);
       let otherBars: readonly HistoricalBar[] = [];
       let correlationProviderState: 'COMPLETE' | 'INCOMPLETE' | 'ERROR' = historyOrigin === 'REAL_PROVIDER'
@@ -1531,14 +1533,16 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       const observedAt = config.now();
       try {
         portfolioCorrelation = assessPortfolioCorrelation({
+          policyVersion: correlationPolicy.policyVersion,
           candidateUnderlying: underlying,
           currentExposureByUnderlying: derivedExposure.exposureByUnderlying,
           // The source adapter stamps request time. Use the later completion
           // time here so the observation can never masquerade as earlier PIT.
           bars: [...historyBars, ...otherBars].map((bar) => ({ ...bar, receivedAt: observedAt })),
           providerState: correlationProviderState, decisionAsOf: decisionTime,
-          evaluatedAt: observedAt, lookbackSessions: 60,
-          minimumOverlappingReturns: 20, maxBarAgeCalendarDays: 5,
+          evaluatedAt: observedAt, lookbackSessions: correlationPolicy.lookbackSessions,
+          minimumOverlappingReturns: correlationPolicy.minimumOverlappingReturns,
+          maxBarAgeCalendarDays: correlationPolicy.maxBarAgeCalendarDays,
         });
       } catch {
         blockers.push('PORTFOLIO_CORRELATION_OBSERVATION_INVALID');

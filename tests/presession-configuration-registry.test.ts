@@ -13,7 +13,7 @@ test('pre-session configuration registry has one valid typed authority', () => {
   assert.equal(audit.invalidEntries.length, 0);
   assert.equal(audit.entryCount, presessionConfigurationRegistry.length);
   assert.equal(audit.entryCount, decisionCriticalConfigurationFields.length);
-  assert.equal(audit.entryCount, 30);
+  assert.equal(audit.entryCount, 34);
   assert.ok(Object.values(audit.invariants).every(Boolean));
 });
 
@@ -36,4 +36,6 @@ test('Q lattice, AEGIS, and sizing preserve bootstrap settings without claiming 
   assert.equal(paperBootstrapRuntimePolicy.conventional.maximumDte, 60);
   assert.equal(paperBootstrapRuntimePolicy.sizing.reducedStateMultiplier, 0.5);
   assert.equal(paperBootstrapRuntimePolicy.aegis.maximumTickerConcentrationPct, 0.15);
+  assert.equal(paperBootstrapRuntimePolicy.portfolioCorrelation.policyVersion, 'theta-portfolio-correlation-paper-bootstrap-v1');
+  assert.equal(paperBootstrapRuntimePolicy.portfolioCorrelation.minimumOverlappingReturns, 20);
 });

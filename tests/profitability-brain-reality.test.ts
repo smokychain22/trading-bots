@@ -18,6 +18,9 @@ test('V7 census counts product strategies and actions from canonical registries'
   assert.equal(receipt.profitTakingChallengerCount, 17);
   assert.equal(receipt.methodCount, profitabilityBrainMethodRegistry.length);
   assert.equal(receipt.brokerAuthorizedMethodCount, 0);
+  assert.equal(receipt.riskPolicies.length, 5);
+  assert.equal(receipt.riskPolicies.find((item) => item.key === 'IV_SHOCK')?.status, 'PAPER_BOOTSTRAP_ACTIVE');
+  assert.equal(receipt.riskPolicies.find((item) => item.key === 'SECTOR_MAPPING')?.status, 'MISSING');
 });
 
 test('router applicability and adaptive economic switching remain separate capabilities', () => {
