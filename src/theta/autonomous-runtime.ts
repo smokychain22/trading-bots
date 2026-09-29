@@ -120,6 +120,10 @@ export function safeRuntimeFailure(error: unknown): { code: string; detail: stri
     return { code:`OPTIONOMICS_PROVIDER_${error.errorClass}_${status}`,
       detail:`Optionomics operation failed with ${error.errorClass} and ${status}.` };
   }
+  if (error instanceof Error && error.message.startsWith('SHADOW_CONTEXT_VERSION_HASH_MISMATCH:')) {
+    return { code:'RUNTIME_SHADOW_CONTEXT_VERSION_HASH_MISMATCH',
+      detail:'The persisted immutable shadow strategy version differs from the current source payload.' };
+  }
   const databaseFailure = classifyPostgresRuntimeError(error);
   if (databaseFailure.retryableRead || databaseFailure.safeCode === 'POSTGRES_COMMIT_OUTCOME_UNKNOWN') {
     return { code: databaseFailure.safeCode,

@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
+import { masterShadowContextVersions } from '../src/research/master-shadow-context.js';
+import { canonicalJson } from '../src/research/point-in-time-evidence.js';
 import { buildStrategyRegistry, canonicalBranchForRouterFamily, canonicalThetaStrategyRegistry,
   canonicalThetaStrategySources, resolveStrategyVersion, type ThetaStrategyVersionSource } from '../src/theta/strategy-package.js';
 
@@ -14,7 +17,7 @@ test('all five canonical branches are registered and execution remains disabled'
   const branches = [...canonicalThetaStrategyRegistry.values()].map((config) => config.branch);
   assert.deepEqual(new Set(branches), new Set(['THETA_CONVENTIONAL', 'THETA_HOLD_STRIKE', 'THETA_RECOVERY', 'THETA_CC', 'THETA_DEFINED_RISK']));
   assert.equal([...canonicalThetaStrategyRegistry.values()].every((config) => config.executionEnabled === false), true);
-  assert.equal(canonicalThetaStrategyRegistry.has('theta-conventional@1.0.1-research'), true);
+  assert.equal(canonicalThetaStrategyRegistry.has('theta-conventional@1.0.2-research'), true);
 });
 
 test('resolved versions are immutable and have stable configuration hashes', () => {
@@ -24,6 +27,15 @@ test('resolved versions are immutable and have stable configuration hashes', () 
   assert.equal(first.configurationHash, second.configurationHash);
   assert.equal(Object.isFrozen(first), true);
   assert.equal(Object.isFrozen(first.lattice), true);
+});
+
+test('shadow context uses a new immutable version when the conventional strategy payload changes', () => {
+  const strategy = canonicalThetaStrategyRegistry.get(masterShadowContextVersions.strategy);
+  assert.ok(strategy);
+  assert.equal(masterShadowContextVersions.strategy, 'theta-conventional@1.0.2-research');
+  assert.equal(strategy.softFeatureFamilies.includes('UNUSUAL_ACTIVITY'), false);
+  assert.equal(createHash('sha256').update(canonicalJson(strategy)).digest('hex'),
+    'bfac19bdacd5e5d4c54ba3022e8baeac838afa005f632f5264121987d812c0d8');
 });
 
 test('duplicate strategy versions are rejected', () => {

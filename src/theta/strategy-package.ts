@@ -125,7 +125,7 @@ const refs = {
 };
 
 export const canonicalThetaStrategySources: readonly ThetaStrategyVersionSource[] = [
-  { ...refs, strategyId: 'theta-conventional', strategyVersion: '1.0.1-research', branch: 'THETA_CONVENTIONAL',
+  { ...refs, strategyId: 'theta-conventional', strategyVersion: '1.0.2-research', branch: 'THETA_CONVENTIONAL',
     status: 'SHADOW', executionEnabled: false,
     lattice: { dteMin: paperBootstrapRuntimePolicy.conventional.minimumDte,
       dteMax: paperBootstrapRuntimePolicy.conventional.maximumDte, optionType: 'PUT',

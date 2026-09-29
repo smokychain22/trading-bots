@@ -19,3 +19,9 @@ test('runtime diagnostics expose only SQLSTATE and sanitized constraint identity
   assert.equal(result.code,'POSTGRES_23514');
   assert.doesNotMatch(result.detail,/secret=value/);
 });
+
+test('immutable strategy-version conflicts remain typed without leaking payloads',()=>{
+  const result=safeRuntimeFailure(new Error('SHADOW_CONTEXT_VERSION_HASH_MISMATCH:theta-conventional@1.0.1-research'));
+  assert.equal(result.code,'RUNTIME_SHADOW_CONTEXT_VERSION_HASH_MISMATCH');
+  assert.doesNotMatch(JSON.stringify(result),/1\.0\.1-research/);
+});
