@@ -199,6 +199,18 @@ function deepFreeze<T>(value: T): Readonly<T> {
 
 export function buildFusionSnapshot(rawInput: FusionSnapshotInput): FusionSnapshot {
   const parsed = fusionSnapshotInputSchema.parse(rawInput);
+  const decisionMs = Date.parse(parsed.decisionTimeUtc);
+  const futureReceipt = parsed.sourceProvenance.find((item) => Date.parse(item.retrievedAt) > decisionMs)
+    ?? parsed.providerHealth.find((item) => Date.parse(item.retrievedAt) > decisionMs);
+  if (futureReceipt !== undefined) throw new Error('FUSION_SNAPSHOT_FUTURE_PROVIDER_RECEIPT');
+  if (parsed.contractCandidates.some((contract) => Date.parse(contract.receivedAt) > decisionMs)) {
+    throw new Error('FUSION_SNAPSHOT_FUTURE_CONTRACT_RECEIPT');
+  }
+  const correlation = parsed.portfolioExposure.correlationObservation;
+  if (correlation !== null && correlation.usableForDecision && correlation.sourceAvailableAt !== null
+    && Date.parse(correlation.sourceAvailableAt) > Date.parse(correlation.decisionAsOf)) {
+    throw new Error('FUSION_SNAPSHOT_FUTURE_CORRELATION_EVIDENCE');
+  }
 
   for (const truthRole of ['ACCOUNT', 'CONTRACT', 'QUOTE'] as const) {
     const hasRequiredTruth = parsed.sourceProvenance.some(

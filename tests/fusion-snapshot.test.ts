@@ -7,6 +7,7 @@ import {
   verifyFusionSnapshot,
 } from '../src/market/fusion-snapshot.js';
 import { flatPortfolioExposure } from './helpers/flat-portfolio-exposure.js';
+import { assessPortfolioCorrelation } from '../src/theta/portfolio-correlation-evidence.js';
 
 const payloadHash = 'a'.repeat(64);
 
@@ -111,6 +112,33 @@ test('missing or malformed portfolio exposure cannot become a valid decision sna
     ...flatPortfolioExposure(), correlationObservation: { state: 'KNOWN' },
   } as unknown as FusionSnapshotInput['portfolioExposure'];
   assert.throws(() => buildFusionSnapshot(malformedCorrelation));
+});
+
+test('future-received provider, contract and correlation evidence cannot enter a PIT snapshot', () => {
+  const futureProvider = fixture();
+  const quoteProvenance = futureProvider.sourceProvenance[2];
+  assert.ok(quoteProvenance);
+  quoteProvenance.retrievedAt = '2026-09-09T18:30:01Z';
+  assert.throws(() => buildFusionSnapshot(futureProvider), /FUSION_SNAPSHOT_FUTURE_PROVIDER_RECEIPT/);
+
+  const futureContract = fixture();
+  const contract = futureContract.contractCandidates[0];
+  assert.ok(contract);
+  contract.receivedAt = '2026-09-09T18:30:01Z';
+  assert.throws(() => buildFusionSnapshot(futureContract), /FUSION_SNAPSHOT_FUTURE_CONTRACT_RECEIPT/);
+
+  const correlation = assessPortfolioCorrelation({
+    candidateUnderlying: 'SPY', currentExposureByUnderlying: {}, bars: [],
+    providerState: 'COMPLETE', decisionAsOf: '2026-09-09T18:30:00Z',
+    evaluatedAt: '2026-09-09T18:30:00Z', lookbackSessions: 20,
+    minimumOverlappingReturns: 10, maxBarAgeCalendarDays: 5,
+  });
+  const futureCorrelation = fixture();
+  futureCorrelation.portfolioExposure = {
+    ...flatPortfolioExposure(),
+    correlationObservation: { ...correlation, sourceAvailableAt: '2026-09-09T18:30:01Z' },
+  };
+  assert.throws(() => buildFusionSnapshot(futureCorrelation), /FUSION_SNAPSHOT_FUTURE_CORRELATION_EVIDENCE/);
 });
 
 test('stale executable quote truth blocks new risk', () => {
