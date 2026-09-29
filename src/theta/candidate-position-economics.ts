@@ -46,6 +46,10 @@ export interface CandidatePositionEconomics {
   readonly positionCollateral: number | null;
   readonly positionMaxProfit: number | null;
   readonly positionMaxLoss: number | null;
+  readonly positionModeledOpeningCost: number | null;
+  readonly positionNetPremiumAfterOpeningCost: number | null;
+  readonly positionMaxProfitAfterOpeningCost: number | null;
+  readonly positionMaxLossAfterOpeningCost: number | null;
   /** Break-even is a per-share PRICE, never scaled by quantity -- carried
    * through unchanged to make this explicit to any consumer that might
    * otherwise assume every field here scales. */
@@ -86,6 +90,8 @@ export function computeCandidatePositionEconomics(
       contractVersion: candidatePositionEconomicsVersion, candidateId: candidate.candidateId, quantity,
       validity: 'INVALID_QUANTITY', invalidReason, perContract,
       positionGrossPremium: null, positionCollateral: null, positionMaxProfit: null, positionMaxLoss: null,
+      positionModeledOpeningCost: null, positionNetPremiumAfterOpeningCost: null,
+      positionMaxProfitAfterOpeningCost: null, positionMaxLossAfterOpeningCost: null,
       breakEvenPerShare: perContract.breakEven, capitalDayYieldRate: perContract.capitalDayYield,
     };
   }
@@ -97,6 +103,10 @@ export function computeCandidatePositionEconomics(
     positionCollateral: scaledOrNull(perContract.collateral, quantity),
     positionMaxProfit: scaledOrNull(perContract.maxProfit, quantity),
     positionMaxLoss: scaledOrNull(perContract.maxLoss, quantity),
+    positionModeledOpeningCost: scaledOrNull(perContract.modeledOpeningCosts.total, quantity),
+    positionNetPremiumAfterOpeningCost: scaledOrNull(perContract.modeledOpeningCosts.netPremiumAfterOpeningCost, quantity),
+    positionMaxProfitAfterOpeningCost: scaledOrNull(perContract.modeledOpeningCosts.maxProfitAfterOpeningCost, quantity),
+    positionMaxLossAfterOpeningCost: scaledOrNull(perContract.modeledOpeningCosts.maxLossAfterOpeningCost, quantity),
     // Never scaled -- per-share price and a dimensionless-per-day rate.
     breakEvenPerShare: perContract.breakEven,
     capitalDayYieldRate: perContract.capitalDayYield,

@@ -80,6 +80,13 @@ export const canonicalSizingPolicySchema = z.object({
   reducedStateMultiplier: z.number().finite().min(0).max(1).nullable().optional(),
 }).strict();
 
+export const canonicalOpeningCostPolicySchema = z.object({
+  commissionPerContract: z.number().finite().nonnegative(),
+  feesPerContract: z.number().finite().nonnegative(),
+  estimatedSlippagePerContract: z.number().finite().nonnegative(),
+  costModelVersion: z.string().min(1),
+}).strict();
+
 export const t0ReplayBundleSchema = z.object({
   contractVersion: z.literal(t0ReplayBundleContractVersion),
   snapshotId: z.string().min(1),
@@ -94,6 +101,8 @@ export const t0ReplayBundleSchema = z.object({
   brokerAllowedQty: z.number().int().nonnegative().optional(),
   brokerAllowedQtyByCandidateId: z.record(z.string(), z.number().int().nonnegative()).optional(),
   sizingPolicy: canonicalSizingPolicySchema.optional(),
+  openingCostPolicy: canonicalOpeningCostPolicySchema.nullable().optional(),
+  maxAdverseGap60d: z.number().finite().nullable().optional(),
   aegisNewRiskState: aegisStateSchema,
   aegisNewRiskStateByCandidateId: z.record(z.string(), aegisStateSchema).optional(),
   aegisBindingReasonsByCandidateId: z.record(z.string(), z.array(z.string())).optional(),
@@ -155,6 +164,8 @@ export function buildT0ReplayBundle(input: CanonicalStrategyFrontierInput): T0Re
     brokerAllowedQty: input.brokerAllowedQty,
     brokerAllowedQtyByCandidateId: input.brokerAllowedQtyByCandidateId,
     sizingPolicy: input.sizingPolicy,
+    openingCostPolicy: input.openingCostPolicy,
+    maxAdverseGap60d: input.maxAdverseGap60d ?? null,
     aegisNewRiskState: input.aegisNewRiskState, eventState: input.eventState,
     aegisNewRiskStateByCandidateId: input.aegisNewRiskStateByCandidateId,
     aegisBindingReasonsByCandidateId: input.aegisBindingReasonsByCandidateId === undefined ? undefined
@@ -195,6 +206,8 @@ export function replayFromT0Bundle(bundle: T0ReplayBundle): CanonicalStrategyFro
     brokerAllowedQty: parsed.brokerAllowedQty,
     brokerAllowedQtyByCandidateId: parsed.brokerAllowedQtyByCandidateId,
     sizingPolicy: parsed.sizingPolicy,
+    openingCostPolicy: parsed.openingCostPolicy,
+    maxAdverseGap60d: parsed.maxAdverseGap60d ?? null,
     aegisNewRiskState: parsed.aegisNewRiskState, eventState: parsed.eventState,
     aegisNewRiskStateByCandidateId: parsed.aegisNewRiskStateByCandidateId,
     aegisBindingReasonsByCandidateId: parsed.aegisBindingReasonsByCandidateId,

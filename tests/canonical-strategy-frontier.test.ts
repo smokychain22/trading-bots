@@ -80,6 +80,23 @@ test('candidate persistence leaves incomplete economics unknown instead of inven
   assert.ok(zeroCollateral?.reasons.some((reason) => reason.code === 'CANDIDATE_ECONOMICS_INCOMPLETE'));
 });
 
+test('canonical-only Q persistence preserves known modeled opening-cost inputs without fabricating EV', () => {
+  const frontier = buildCanonicalStrategyFrontier({ ...base, eventState: 'CLEAR',
+    openingCostPolicy: { commissionPerContract: 0.65, feesPerContract: 0.05,
+      estimatedSlippagePerContract: 1, costModelVersion: 'opening-cost-v1' },
+    contracts: [contract()], routing: routing(['THETA_Q']) });
+  const projected = projectPersistableThetaCandidates({
+    strategyFrontier: frontier,
+    orchestration: { thetaQ: { candidates: [] }, ownership: { ownability: 0.8 } },
+  } as unknown as ThetaShadowCycleResult)[0];
+  assert.equal(projected?.economics?.commission_per_contract, 0.65);
+  assert.equal(projected?.economics?.fees_per_contract, 0.05);
+  assert.equal(projected?.economics?.est_slippage_per_contract, 1);
+  assert.equal(projected?.economics?.cost_model_version, 'opening-cost-v1');
+  assert.equal(projected?.economics?.ev_net, null);
+  assert.equal(projected?.economics?.ev_net_unknown_reason, 'EV_MODEL_NOT_EMPIRICALLY_READY');
+});
+
 test('evaluates all five canonical branches exactly once and soft UNKNOWN evidence does not veto a valid CSP', () => {
   const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']) });
   assert.deepEqual(result.branches.map((branch) => branch.branch), [

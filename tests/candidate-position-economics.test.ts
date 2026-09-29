@@ -44,7 +44,10 @@ const base = {
   sizingPolicy: { riskBudgetQtyCap: 4, collateralQtyCap: 4, concentrationQtyCap: 3,
     assignmentCapacityQtyCap: 3, tailRiskQtyCap: 2, correlationQtyCap: 2,
     liquidityQtyCap: 2, reducedStateMultiplier: 0.5 },
+  openingCostPolicy: { commissionPerContract: 0.65, feesPerContract: 0.05,
+    estimatedSlippagePerContract: 1, costModelVersion: 'test-cost-v1' },
   eventState: null, unmanagedBrokerPositionCount: 0, unevaluatedUnderlyingCount: 0,
+  maxAdverseGap60d: 0.025,
   optionomicsContext: { state: 'UNKNOWN' } as const,
 };
 
@@ -72,6 +75,8 @@ test('QUANTITY MATRIX: position economics scale linearly for 0, 1, 2, 5', () => 
     assert.equal(position.positionMaxLoss, maxLoss * quantity);
     assert.equal(position.positionMaxProfit, maxProfit * quantity);
     assert.equal(position.positionCollateral, collateral * quantity);
+    assert.equal(position.positionModeledOpeningCost,
+      num(candidate.economics.modeledOpeningCosts.total, 'opening cost must be known') * quantity);
     // break-even and the rate must never scale
     assert.equal(position.breakEvenPerShare, candidate.economics.breakEven);
     assert.equal(position.capitalDayYieldRate, candidate.economics.capitalDayYield);
@@ -85,6 +90,8 @@ test('PROPERTY: doubling quantity doubles position max loss/profit/collateral, n
   assert.equal(two.positionMaxLoss, num(one.positionMaxLoss, 'one.positionMaxLoss must be known') * 2);
   assert.equal(two.positionMaxProfit, num(one.positionMaxProfit, 'one.positionMaxProfit must be known') * 2);
   assert.equal(two.positionCollateral, num(one.positionCollateral, 'one.positionCollateral must be known') * 2);
+  assert.equal(two.positionModeledOpeningCost,
+    num(one.positionModeledOpeningCost, 'one.positionModeledOpeningCost must be known') * 2);
   assert.equal(two.breakEvenPerShare, one.breakEvenPerShare);
 });
 
@@ -94,6 +101,7 @@ test('quantity=0 produces a real zero position, not a null-shaped "no trade exis
   assert.equal(position.positionMaxLoss, 0);
   assert.equal(position.positionMaxProfit, 0);
   assert.equal(position.positionCollateral, 0);
+  assert.equal(position.positionModeledOpeningCost, 0);
   assert.equal(position.perContract.maxLoss, candidate.economics.maxLoss, 'per-contract economics must be unchanged at quantity=0');
 });
 
@@ -169,6 +177,8 @@ test('D (defined-risk) position totals scale by quantity identically to Q -- net
   assert.equal(three.positionMaxLoss, num(one.positionMaxLoss, 'D one.positionMaxLoss must be known') * 3);
   assert.equal(three.positionMaxProfit, num(one.positionMaxProfit, 'D one.positionMaxProfit must be known') * 3);
   assert.equal(three.positionCollateral, num(one.positionCollateral, 'D one.positionCollateral must be known') * 3);
+  assert.equal(three.positionModeledOpeningCost, num(one.positionModeledOpeningCost,
+    'D one.positionModeledOpeningCost must be known') * 3);
   assert.equal(three.breakEvenPerShare, one.breakEvenPerShare);
 });
 
@@ -181,6 +191,13 @@ test('H (Hold-Strike, same short-put payoff structure as Q, different DTE lattic
   const four = computeCandidatePositionEconomics(candidate, 4);
   assert.equal(four.positionMaxLoss, num(one.positionMaxLoss, 'H one.positionMaxLoss must be known') * 4);
   assert.equal(four.breakEvenPerShare, one.breakEvenPerShare);
+  assert.equal(candidate.shortDteRiskEvidence?.authority, 'RESEARCH_ONLY');
+  assert.equal(candidate.shortDteRiskEvidence?.gamma, c.gamma);
+  assert.equal(candidate.shortDteRiskEvidence?.theta, c.theta);
+  assert.equal(candidate.shortDteRiskEvidence?.maxAdverseGap60d, 0.025);
+  assert.equal(candidate.shortDteRiskEvidence?.assignmentConsequence, 'SHORT_PUT_MAY_ASSIGN_STOCK');
+  assert.ok(typeof candidate.shortDteRiskEvidence?.pinDistancePct === 'number');
+  assert.ok(candidate.shortDteRiskEvidence?.unknownReasons.includes('EVENT_STATE_UNKNOWN'));
 });
 
 test('ASSIGNMENT ENTRY EXPOSURE: invalid quantity fails closed, distinct from the multiplier failure', () => {

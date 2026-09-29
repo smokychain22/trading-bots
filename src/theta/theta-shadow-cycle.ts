@@ -37,7 +37,7 @@ import {
   deriveRecoveryInventoryValue,
 } from './account-exposure.js';
 import { assessAegisGapStress, deriveCandidateMarketQuality, deriveExecutionQualityAcceptable, deriveLiquidityAcceptable, deriveProviderState } from './aegis-derivation.js';
-import { buildCanonicalStrategyFrontier, type CanonicalStrategyFrontier,
+import { buildCanonicalStrategyFrontier, canonicalOpeningCostPolicyFromUnknown, type CanonicalStrategyFrontier,
   type CanonicalStrategyFrontierInput } from './canonical-strategy-frontier.js';
 import { canonicalThetaStrategySources } from './strategy-package.js';
 import {
@@ -1699,6 +1699,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     optionsApprovedLevel: account?.optionsApprovedLevel ?? null,
     optionsTradingLevel: account?.optionsTradingLevel ?? null,
     sizingPolicy: config.sizingPolicy,
+    openingCostPolicy: canonicalOpeningCostPolicyFromUnknown(config.costAssumptions),
+    maxAdverseGap60d: maxAdverseGap,
     brokerAllowedQtyByCandidateId: conventionalRisk.brokerAllowedQtyByCandidateId,
     aegisNewRiskState: aegis?.newRiskState ?? null, eventState: eventContextPopulated ? 'OBSERVED' : null,
     aegisNewRiskStateByCandidateId: conventionalRisk.aegisNewRiskStateByCandidateId,

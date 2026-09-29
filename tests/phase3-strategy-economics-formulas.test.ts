@@ -55,6 +55,8 @@ function baseInput(overrides: Partial<CanonicalStrategyFrontierInput> = {}): Can
       riskBudgetQtyCap: 10, collateralQtyCap: 10, concentrationQtyCap: 10, assignmentCapacityQtyCap: 10,
       tailRiskQtyCap: 10, correlationQtyCap: 10, liquidityQtyCap: 10, reducedStateMultiplier: 0.5,
     },
+    openingCostPolicy: { commissionPerContract: 0.65, feesPerContract: 0.05,
+      estimatedSlippagePerContract: 1, costModelVersion: 'test-cost-v1' },
     ...overrides,
   };
 }
@@ -79,6 +81,13 @@ test('CORE CLAIM (3F): defined-risk maxLoss/maxProfit/breakEven exactly match th
   assert.equal(candidate.economics.maxLoss, expectedMaxLoss);
   assert.equal(candidate.economics.breakEven, expectedBreakEven);
   assert.equal(candidate.economics.collateral, expectedMaxLoss, 'D collateral is defined as maxLoss, never undefined-risk collateral');
+  assert.equal(candidate.multiLegRiskEvidence?.state, 'STRUCTURAL_READY_FILL_UNCALIBRATED');
+  assert.equal(candidate.multiLegRiskEvidence?.shortLegQuoteState, 'TWO_SIDED');
+  assert.equal(candidate.multiLegRiskEvidence?.longLegQuoteState, 'TWO_SIDED');
+  assert.equal(candidate.multiLegRiskEvidence?.simultaneousFillState, 'NOT_OBSERVED_RESEARCH_ONLY');
+  assert.equal(candidate.multiLegRiskEvidence?.fillRiskState, 'UNCALIBRATED');
+  assert.equal(candidate.multiLegRiskEvidence?.expiration, shortPut.expiration);
+  assert.ok(typeof candidate.multiLegRiskEvidence?.shortStrikePinDistancePct === 'number');
 });
 
 test('CLOSED (Phase 3, THETA-Q-CSP-MAXLOSS-NOT-POPULATED): Q single-leg CSP maxLoss now matches the Command 3 formula (strike*multiplier - creditReceived, gross of costs) instead of always being null', () => {
@@ -128,6 +137,82 @@ test('after-cost EV is always typed null on both Q and D -- delta is never subst
   assert.equal(d.economics.expectedAfterCostEv, null);
   // real delta is present but never used to derive expectedAfterCostEv
   assert.equal(q.delta, -0.2);
+});
+
+test('defined-risk rejects an impossible credit at or above spread width', () => {
+  const shortPut = normalizeOptionContract(baseRaw({ optionSymbol: 'SPY-IMPOSSIBLE-S', strike: 500, bid: 12, ask: 12.2 }), RECEIVED_AT);
+  const longPut = normalizeOptionContract(baseRaw({ optionSymbol: 'SPY-IMPOSSIBLE-L', strike: 490, bid: 1.5, ask: 1.7 }), RECEIVED_AT);
+  const candidate = must(buildCanonicalStrategyFrontier(baseInput({ contracts: [shortPut, longPut] }))
+    .branches.find((b) => b.branch === 'THETA_DEFINED_RISK')?.candidates
+    .find((c) => c.legs[0]?.optionSymbol === 'SPY-IMPOSSIBLE-S' && c.legs[1]?.optionSymbol === 'SPY-IMPOSSIBLE-L'),
+  'impossible D candidate');
+  assert.equal(candidate.structurallyFeasible, false);
+  assert.ok(candidate.hardBlockers.includes('NET_CREDIT_NOT_BELOW_SPREAD_WIDTH'));
+});
+
+test('Phase 4 opening-cost arithmetic charges one option leg for Q and both legs for D without fabricating EV', () => {
+  const put = normalizeOptionContract(baseRaw({ optionSymbol: 'SPY-COST-Q', strike: 500, bid: 5, ask: 5.2 }), RECEIVED_AT);
+  const shortPut = normalizeOptionContract(baseRaw({ optionSymbol: 'SPY-COST-D-S', strike: 500, bid: 5, ask: 5.2 }), RECEIVED_AT);
+  const longPut = normalizeOptionContract(baseRaw({ optionSymbol: 'SPY-COST-D-L', strike: 490, bid: 1.5, ask: 1.7 }), RECEIVED_AT);
+  const frontier = buildCanonicalStrategyFrontier(baseInput({ contracts: [put, shortPut, longPut] }));
+  const q = must(frontier.branches.find((b) => b.branch === 'THETA_CONVENTIONAL')?.candidates
+    .find((c) => c.legs[0]?.optionSymbol === 'SPY-COST-Q'), 'Q cost candidate');
+  const d = must(frontier.branches.find((b) => b.branch === 'THETA_DEFINED_RISK')?.candidates
+    .find((c) => c.legs[0]?.optionSymbol === 'SPY-COST-D-S' && c.legs[1]?.optionSymbol === 'SPY-COST-D-L'), 'D cost candidate');
+  assert.equal(q.economics.modeledOpeningCosts.optionLegCount, 1);
+  assert.ok(Math.abs(must(q.economics.modeledOpeningCosts.total, 'Q total cost') - 1.7) < 1e-12);
+  assert.equal(d.economics.modeledOpeningCosts.optionLegCount, 2);
+  assert.ok(Math.abs(must(d.economics.modeledOpeningCosts.total, 'D total cost') - 3.4) < 1e-12);
+  assert.ok(Math.abs(must(q.economics.modeledOpeningCosts.maxProfitAfterOpeningCost, 'Q net max profit')
+    - (must(q.economics.maxProfit, 'Q gross max profit') - 1.7)) < 1e-12);
+  assert.ok(Math.abs(must(d.economics.modeledOpeningCosts.maxLossAfterOpeningCost, 'D net max loss')
+    - (must(d.economics.maxLoss, 'D gross max loss') + 3.4)) < 1e-12);
+  assert.equal(q.economics.expectedAfterCostEv, null);
+  assert.equal(d.economics.expectedAfterCostEv, null);
+});
+
+test('Phase 4 monotonicity: higher fees and slippage cannot improve cost-adjusted outcomes', () => {
+  const put = normalizeOptionContract(baseRaw({ optionSymbol: 'SPY-COST-MONO', strike: 500, bid: 5, ask: 5.2 }), RECEIVED_AT);
+  const low = buildCanonicalStrategyFrontier(baseInput({ contracts: [put], openingCostPolicy: {
+    commissionPerContract: 0.65, feesPerContract: 0.05, estimatedSlippagePerContract: 0.25,
+    costModelVersion: 'low-cost-v1',
+  } })).branches.find((b) => b.branch === 'THETA_CONVENTIONAL')?.candidates[0];
+  const high = buildCanonicalStrategyFrontier(baseInput({ contracts: [put], openingCostPolicy: {
+    commissionPerContract: 0.65, feesPerContract: 1.05, estimatedSlippagePerContract: 2.25,
+    costModelVersion: 'high-cost-v1',
+  } })).branches.find((b) => b.branch === 'THETA_CONVENTIONAL')?.candidates[0];
+  assert.ok(low && high);
+  assert.ok(must(high.economics.modeledOpeningCosts.total, 'high total cost')
+    > must(low.economics.modeledOpeningCosts.total, 'low total cost'));
+  assert.ok(must(high.economics.modeledOpeningCosts.maxProfitAfterOpeningCost, 'high-cost max profit')
+    < must(low.economics.modeledOpeningCosts.maxProfitAfterOpeningCost, 'low-cost max profit'));
+  assert.ok(must(high.economics.modeledOpeningCosts.maxLossAfterOpeningCost, 'high-cost max loss')
+    > must(low.economics.modeledOpeningCosts.maxLossAfterOpeningCost, 'low-cost max loss'));
+  assert.ok(must(high.economics.modeledOpeningCosts.capitalDayYieldAfterOpeningCost, 'high-cost capital-day yield')
+    < must(low.economics.modeledOpeningCosts.capitalDayYieldAfterOpeningCost, 'low-cost capital-day yield'));
+});
+
+test('Phase 4 monotonicity: higher collateral cannot improve capital-day efficiency when net premium is unchanged', () => {
+  const lowerCapital = normalizeOptionContract(baseRaw({ optionSymbol: 'SPY-CAP-LOW', strike: 400,
+    underlyingBid: 510, underlyingAsk: 510.1, underlyingLast: 510.05, bid: 5, ask: 5.2 }), RECEIVED_AT);
+  const higherCapital = normalizeOptionContract(baseRaw({ optionSymbol: 'SPY-CAP-HIGH', strike: 500,
+    underlyingBid: 510, underlyingAsk: 510.1, underlyingLast: 510.05, bid: 5, ask: 5.2 }), RECEIVED_AT);
+  const candidates = buildCanonicalStrategyFrontier(baseInput({ contracts: [lowerCapital, higherCapital] }))
+    .branches.find((b) => b.branch === 'THETA_CONVENTIONAL')?.candidates ?? [];
+  const low = must(candidates.find((c) => c.legs[0]?.optionSymbol === 'SPY-CAP-LOW'), 'low-capital candidate');
+  const high = must(candidates.find((c) => c.legs[0]?.optionSymbol === 'SPY-CAP-HIGH'), 'high-capital candidate');
+  assert.ok(must(high.economics.collateral, 'high collateral') > must(low.economics.collateral, 'low collateral'));
+  assert.ok(must(high.economics.modeledOpeningCosts.capitalDayYieldAfterOpeningCost, 'high-capital yield')
+    < must(low.economics.modeledOpeningCosts.capitalDayYieldAfterOpeningCost, 'low-capital yield'));
+});
+
+test('Phase 4 missing opening-cost policy stays UNKNOWN rather than becoming zero cost', () => {
+  const put = normalizeOptionContract(baseRaw({ optionSymbol: 'SPY-COST-UNKNOWN' }), RECEIVED_AT);
+  const candidate = must(buildCanonicalStrategyFrontier(baseInput({ contracts: [put], openingCostPolicy: null }))
+    .branches.find((b) => b.branch === 'THETA_CONVENTIONAL')?.candidates[0], 'Q candidate');
+  assert.equal(candidate.economics.modeledOpeningCosts.state, 'UNKNOWN');
+  assert.equal(candidate.economics.modeledOpeningCosts.total, null);
+  assert.equal(candidate.economics.modeledOpeningCosts.netPremiumAfterOpeningCost, null);
 });
 
 test('serious alternatives are persisted, not just the frontier winner: multiple candidates survive per branch', () => {

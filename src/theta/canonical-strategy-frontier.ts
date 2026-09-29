@@ -56,6 +56,25 @@ export interface CanonicalFrontierEconomics {
    * has after-cost economics yet (see `expectedAfterCostEv`). */
   readonly grossReturnOnCollateral: number | null;
   readonly capitalDayYield: number | null;
+  /** Deterministic opening-cost arithmetic. These values describe the
+   * configured cost model for one strategy unit, one option contract for
+   * Q/H/C and one two-leg spread for D. They are not actual broker fees,
+   * fill slippage, expected value, or evidence of profitability. */
+  readonly modeledOpeningCosts: {
+    readonly state: 'KNOWN_MODELED' | 'UNKNOWN' | 'NOT_APPLICABLE';
+    readonly reason: string | null;
+    readonly costModelVersion: string | null;
+    readonly optionLegCount: number;
+    readonly commission: number | null;
+    readonly fees: number | null;
+    readonly slippage: number | null;
+    readonly total: number | null;
+    readonly netPremiumAfterOpeningCost: number | null;
+    readonly maxProfitAfterOpeningCost: number | null;
+    readonly maxLossAfterOpeningCost: number | null;
+    readonly returnOnCollateralAfterOpeningCost: number | null;
+    readonly capitalDayYieldAfterOpeningCost: number | null;
+  };
   readonly expectedAfterCostEv: null;
 }
 
@@ -70,6 +89,37 @@ export interface CanonicalFrontierCandidate {
   readonly moneyness: number | null;
   readonly spreadPct: number | null;
   readonly liquidity: { readonly volume: number | null; readonly openInterest: number | null };
+  readonly shortDteRiskEvidence: {
+    readonly state: 'READY' | 'PARTIAL';
+    readonly dte: number;
+    readonly gamma: number | null;
+    readonly theta: number | null;
+    readonly distanceToStrikePct: number | null;
+    readonly pinDistancePct: number | null;
+    readonly maxAdverseGap60d: number | null;
+    readonly assignmentConsequence: 'SHORT_PUT_MAY_ASSIGN_STOCK';
+    readonly eventState: string | null;
+    readonly spreadPct: number | null;
+    readonly openInterest: number | null;
+    readonly volume: number | null;
+    readonly modeledOpeningCost: number | null;
+    readonly unknownReasons: readonly string[];
+    readonly authority: 'RESEARCH_ONLY';
+  } | null;
+  readonly multiLegRiskEvidence: {
+    readonly state: 'STRUCTURAL_READY_FILL_UNCALIBRATED' | 'PARTIAL';
+    readonly expiration: string | null;
+    readonly shortLegQuoteState: 'TWO_SIDED' | 'INCOMPLETE';
+    readonly longLegQuoteState: 'TWO_SIDED' | 'INCOMPLETE';
+    readonly simultaneousFillState: 'NOT_OBSERVED_RESEARCH_ONLY';
+    readonly fillRiskState: 'UNCALIBRATED';
+    readonly shortStrikePinDistancePct: number | null;
+    readonly longStrikePinDistancePct: number | null;
+    readonly combinedSpreadPct: number | null;
+    readonly modeledOpeningCost: number | null;
+    readonly unknownReasons: readonly string[];
+    readonly authority: 'RESEARCH_ONLY';
+  } | null;
   readonly economics: CanonicalFrontierEconomics;
   readonly assignmentCapacityQty: number | null;
   readonly aegisState: CanonicalStrategyFrontierInput['aegisNewRiskState'];
@@ -157,6 +207,13 @@ export interface CanonicalSizingPolicy {
   readonly reducedStateMultiplier?: number | null;
 }
 
+export interface CanonicalOpeningCostPolicy {
+  readonly commissionPerContract: number;
+  readonly feesPerContract: number;
+  readonly estimatedSlippagePerContract: number;
+  readonly costModelVersion: string;
+}
+
 export interface CanonicalStrategyFrontierInput {
   readonly snapshotId: string;
   readonly timestamp: string;
@@ -175,6 +232,8 @@ export interface CanonicalStrategyFrontierInput {
   readonly brokerAllowedQty?: number;
   readonly brokerAllowedQtyByCandidateId?: Readonly<Record<string, number>>;
   readonly sizingPolicy?: CanonicalSizingPolicy;
+  readonly openingCostPolicy?: CanonicalOpeningCostPolicy | null;
+  readonly maxAdverseGap60d?: number | null;
   readonly aegisNewRiskState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO' | 'DEFINED_RISK_ONLY' | 'EMERGENCY_EXIT_ONLY' | null;
   readonly aegisNewRiskStateByCandidateId?: Readonly<Record<string, CanonicalStrategyFrontierInput['aegisNewRiskState']>>;
   readonly aegisBindingReasonsByCandidateId?: Readonly<Record<string, readonly string[]>>;
@@ -213,6 +272,66 @@ const stable = (value: unknown): string => {
   return JSON.stringify(value);
 };
 const digest = (value: unknown): string => createHash('sha256').update(stable(value)).digest('hex');
+
+export function canonicalOpeningCostPolicyFromUnknown(value: unknown): CanonicalOpeningCostPolicy | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const commissionPerContract = record.commissionPerContract;
+  const feesPerContract = record.feesPerContract;
+  const estimatedSlippagePerContract = record.estimatedSlippagePerContract;
+  const costModelVersion = record.costModelVersion;
+  if (typeof commissionPerContract !== 'number' || !Number.isFinite(commissionPerContract) || commissionPerContract < 0
+    || typeof feesPerContract !== 'number' || !Number.isFinite(feesPerContract) || feesPerContract < 0
+    || typeof estimatedSlippagePerContract !== 'number' || !Number.isFinite(estimatedSlippagePerContract)
+    || estimatedSlippagePerContract < 0 || typeof costModelVersion !== 'string' || costModelVersion.trim() === '') {
+    return null;
+  }
+  return { commissionPerContract, feesPerContract, estimatedSlippagePerContract, costModelVersion };
+}
+
+function modeledOpeningCosts(input: {
+  readonly policy: CanonicalOpeningCostPolicy | null | undefined;
+  readonly optionLegCount: number;
+  readonly grossPremium: number | null;
+  readonly maxProfit: number | null;
+  readonly maxLoss: number | null;
+  readonly collateral: number | null;
+  readonly dte: number | null;
+  readonly applicable?: boolean;
+}): CanonicalFrontierEconomics['modeledOpeningCosts'] {
+  if (input.applicable === false) return {
+    state: 'NOT_APPLICABLE', reason: 'NO_OPTION_OPENING_ACTION', costModelVersion: null,
+    optionLegCount: 0, commission: null, fees: null, slippage: null, total: null,
+    netPremiumAfterOpeningCost: null, maxProfitAfterOpeningCost: null,
+    maxLossAfterOpeningCost: null, returnOnCollateralAfterOpeningCost: null,
+    capitalDayYieldAfterOpeningCost: null,
+  };
+  const policy = input.policy;
+  if (policy === null || policy === undefined) return {
+    state: 'UNKNOWN', reason: 'OPENING_COST_POLICY_UNKNOWN', costModelVersion: null,
+    optionLegCount: input.optionLegCount, commission: null, fees: null, slippage: null, total: null,
+    netPremiumAfterOpeningCost: null, maxProfitAfterOpeningCost: null,
+    maxLossAfterOpeningCost: null, returnOnCollateralAfterOpeningCost: null,
+    capitalDayYieldAfterOpeningCost: null,
+  };
+  const commission = policy.commissionPerContract * input.optionLegCount;
+  const fees = policy.feesPerContract * input.optionLegCount;
+  const slippage = policy.estimatedSlippagePerContract * input.optionLegCount;
+  const total = commission + fees + slippage;
+  const netPremiumAfterOpeningCost = input.grossPremium === null ? null : input.grossPremium - total;
+  const maxProfitAfterOpeningCost = input.maxProfit === null ? null : input.maxProfit - total;
+  const maxLossAfterOpeningCost = input.maxLoss === null ? null : input.maxLoss + total;
+  const returnOnCollateralAfterOpeningCost = maxProfitAfterOpeningCost === null || input.collateral === null
+    || input.collateral <= 0 ? null : maxProfitAfterOpeningCost / input.collateral;
+  const capitalDayYieldAfterOpeningCost = returnOnCollateralAfterOpeningCost === null || input.dte === null
+    || input.dte <= 0 ? null : returnOnCollateralAfterOpeningCost / input.dte;
+  return {
+    state: 'KNOWN_MODELED', reason: null, costModelVersion: policy.costModelVersion,
+    optionLegCount: input.optionLegCount, commission, fees, slippage, total,
+    netPremiumAfterOpeningCost, maxProfitAfterOpeningCost, maxLossAfterOpeningCost,
+    returnOnCollateralAfterOpeningCost, capitalDayYieldAfterOpeningCost,
+  };
+}
 
 export function canonicalStrategyFrontierContentHash(
   frontier: Omit<CanonicalStrategyFrontier, 'contentHash'>,
@@ -367,12 +486,41 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
   else if (assignmentCapacityQty <= 0) evidence.hardBlockers.push('NO_ASSIGNMENT_CAPACITY');
   const cushion = finite(contract.underlyingReferencePrice) && finite(contract.breakEven) && contract.underlyingReferencePrice > 0
     ? (contract.underlyingReferencePrice - contract.breakEven) / contract.underlyingReferencePrice : null;
+  const grossPremium = premium === null ? null : premium * contract.multiplier;
+  const maxProfit = grossPremium;
+  const maxLoss = premium === null ? null : (contract.strike - premium) * contract.multiplier;
+  const openingCosts = modeledOpeningCosts({ policy: input.openingCostPolicy, optionLegCount: 1,
+    grossPremium, maxProfit, maxLoss, collateral, dte: contract.dte });
+  const shortDteUnknownReasons = branch === 'THETA_HOLD_STRIKE' ? [
+    ...(contract.gamma === null ? ['GAMMA_UNKNOWN'] : []),
+    ...(contract.theta === null ? ['THETA_UNKNOWN'] : []),
+    ...(contract.underlyingReferencePrice === null ? ['UNDERLYING_REFERENCE_UNKNOWN'] : []),
+    ...(input.maxAdverseGap60d === null || input.maxAdverseGap60d === undefined ? ['MAX_ADVERSE_GAP_60D_UNKNOWN'] : []),
+    ...(input.eventState === null ? ['EVENT_STATE_UNKNOWN'] : []),
+    ...(contract.spreadPct === null ? ['SPREAD_UNKNOWN'] : []),
+    ...(contract.openInterest === null ? ['OPEN_INTEREST_UNKNOWN'] : []),
+    ...(contract.volume === null ? ['VOLUME_UNKNOWN'] : []),
+    ...(openingCosts.total === null ? ['OPENING_COST_UNKNOWN'] : []),
+  ] : [];
+  const spot = contract.underlyingReferencePrice;
   return {
     candidateId, branch, action: 'OPEN_CSP', underlying: contract.underlying,
     legs: [leg(contract, 'SELL_TO_OPEN')], dte: contract.dte, delta: contract.delta, moneyness: contract.moneyness,
     spreadPct: contract.spreadPct, liquidity: { volume: contract.volume, openInterest: contract.openInterest },
+    shortDteRiskEvidence: branch === 'THETA_HOLD_STRIKE' ? {
+      state: shortDteUnknownReasons.length === 0 ? 'READY' : 'PARTIAL', dte: contract.dte,
+      gamma: contract.gamma, theta: contract.theta,
+      distanceToStrikePct: spot === null || contract.strike <= 0 ? null : (spot - contract.strike) / contract.strike,
+      pinDistancePct: spot === null || spot <= 0 ? null : Math.abs(spot - contract.strike) / spot,
+      maxAdverseGap60d: input.maxAdverseGap60d ?? null,
+      assignmentConsequence: 'SHORT_PUT_MAY_ASSIGN_STOCK', eventState: input.eventState,
+      spreadPct: contract.spreadPct, openInterest: contract.openInterest, volume: contract.volume,
+      modeledOpeningCost: openingCosts.total, unknownReasons: shortDteUnknownReasons,
+      authority: 'RESEARCH_ONLY',
+    } : null,
+    multiLegRiskEvidence: null,
     economics: {
-      premiumPerShare: premium, grossPremium: premium === null ? null : premium * contract.multiplier,
+      premiumPerShare: premium, grossPremium,
       // Phase 3 (THETA-Q-CSP-MAXLOSS-NOT-POPULATED, reproduced test-first):
       // a cash-secured short put's contractual worst case (underlying -> 0)
       // is fully determined by strike, entry credit, and multiplier -- all
@@ -383,12 +531,12 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
       // treatment immediately above and D's identical `(width - netCredit)
       // * multiplier` pattern below -- same convention, same sign (a
       // positive magnitude, never a signed PnL).
-      collateral, maxProfit: premium === null ? null : premium * contract.multiplier,
-      maxLoss: premium === null ? null : (contract.strike - premium) * contract.multiplier,
+      collateral, maxProfit, maxLoss,
       breakEven: contract.breakEven, downsideCushion: cushion, retainedUpside: null, callAwayProceeds: null,
       wholeChainPnlAtCallAway: null,
       grossReturnOnCollateral: premium === null || collateral <= 0 ? null : (premium * contract.multiplier) / collateral,
       capitalDayYield: premium === null || contract.dte <= 0 ? null : premium * contract.multiplier / (collateral * contract.dte),
+      modeledOpeningCosts: openingCosts,
       expectedAfterCostEv: null,
     },
     assignmentCapacityQty, aegisState: candidateAegisState, ...evidence,
@@ -413,9 +561,22 @@ function definedRiskCandidate(shortPut: NormalizedOptionContract, longPut: Norma
   if (shortPut.multiplier !== longPut.multiplier) hardBlockers.push('MISMATCHED_MULTIPLIER');
   if (netCredit === null) hardBlockers.push('MULTI_LEG_PRICE_UNKNOWN');
   else if (netCredit <= 0) hardBlockers.push('NON_POSITIVE_NET_CREDIT');
+  else if (width > 0 && netCredit >= width) hardBlockers.push('NET_CREDIT_NOT_BELOW_SPREAD_WIDTH');
   const multiplier = shortPut.multiplier;
   const maxProfit = netCredit === null ? null : netCredit * multiplier;
   const maxLoss = netCredit === null ? null : (width - netCredit) * multiplier;
+  const openingCosts = modeledOpeningCosts({ policy: input.openingCostPolicy, optionLegCount: 2,
+    grossPremium: maxProfit, maxProfit, maxLoss, collateral: maxLoss, dte: shortPut.dte });
+  const spot = shortPut.underlyingReferencePrice;
+  const shortTwoSided = finite(shortPut.bid) && finite(shortPut.ask) && shortPut.bid <= shortPut.ask;
+  const longTwoSided = finite(longPut.bid) && finite(longPut.ask) && longPut.bid <= longPut.ask;
+  const multiLegUnknownReasons = [
+    ...(!shortTwoSided ? ['SHORT_LEG_BBO_INCOMPLETE'] : []),
+    ...(!longTwoSided ? ['LONG_LEG_BBO_INCOMPLETE'] : []),
+    ...(spot === null ? ['UNDERLYING_REFERENCE_UNKNOWN'] : []),
+    ...(openingCosts.total === null ? ['OPENING_COST_UNKNOWN'] : []),
+    'SIMULTANEOUS_FILL_NOT_OBSERVED', 'FILL_RISK_UNCALIBRATED',
+  ];
   return {
     candidateId,
     branch: 'THETA_DEFINED_RISK', action: 'OPEN_DEFINED_RISK', underlying: shortPut.underlying,
@@ -426,12 +587,27 @@ function definedRiskCandidate(shortPut: NormalizedOptionContract, longPut: Norma
       volume: finite(shortPut.volume) && finite(longPut.volume) ? Math.min(shortPut.volume, longPut.volume) : null,
       openInterest: finite(shortPut.openInterest) && finite(longPut.openInterest) ? Math.min(shortPut.openInterest, longPut.openInterest) : null,
     },
+    shortDteRiskEvidence: null,
+    multiLegRiskEvidence: {
+      state: multiLegUnknownReasons.length === 2 ? 'STRUCTURAL_READY_FILL_UNCALIBRATED' : 'PARTIAL',
+      expiration: shortPut.expiration === longPut.expiration ? shortPut.expiration : null,
+      shortLegQuoteState: shortTwoSided ? 'TWO_SIDED' : 'INCOMPLETE',
+      longLegQuoteState: longTwoSided ? 'TWO_SIDED' : 'INCOMPLETE',
+      simultaneousFillState: 'NOT_OBSERVED_RESEARCH_ONLY', fillRiskState: 'UNCALIBRATED',
+      shortStrikePinDistancePct: spot === null || spot <= 0 ? null : Math.abs(spot - shortPut.strike) / spot,
+      longStrikePinDistancePct: spot === null || spot <= 0 ? null : Math.abs(spot - longPut.strike) / spot,
+      combinedSpreadPct: finite(shortPut.spreadPct) && finite(longPut.spreadPct)
+        ? shortPut.spreadPct + longPut.spreadPct : null,
+      modeledOpeningCost: openingCosts.total, unknownReasons: multiLegUnknownReasons,
+      authority: 'RESEARCH_ONLY',
+    },
     economics: {
       premiumPerShare: netCredit, grossPremium: maxProfit, collateral: maxLoss, maxProfit, maxLoss,
       breakEven: netCredit === null ? null : shortPut.strike - netCredit, downsideCushion: null,
       retainedUpside: null, callAwayProceeds: null, wholeChainPnlAtCallAway: null,
       grossReturnOnCollateral: maxProfit === null || maxLoss === null || maxLoss <= 0 ? null : maxProfit / maxLoss,
       capitalDayYield: maxProfit === null || maxLoss === null || maxLoss <= 0 || shortPut.dte <= 0 ? null : maxProfit / (maxLoss * shortPut.dte),
+      modeledOpeningCosts: openingCosts,
       expectedAfterCostEv: null,
     },
     assignmentCapacityQty: null, aegisState: candidateAegisState, hardBlockers: [...new Set(hardBlockers)],
@@ -458,10 +634,15 @@ function stockActionCandidate(action: 'RECOVERY_WAIT' | 'SELL_STOCK', input: Can
     candidateId: `THETA_RECOVERY:${stock.underlying}:${action}`, branch: 'THETA_RECOVERY', action,
     underlying: stock.underlying, legs: [], dte: null, delta: null, moneyness: null, spreadPct: null,
     liquidity: { volume: null, openInterest: null },
+    shortDteRiskEvidence: null,
+    multiLegRiskEvidence: null,
     economics: {
       premiumPerShare: null, grossPremium: null, collateral: null, maxProfit: null, maxLoss: null, breakEven: null,
       downsideCushion: null, retainedUpside: null, callAwayProceeds: null, wholeChainPnlAtCallAway: null,
-      grossReturnOnCollateral: null, capitalDayYield: null, expectedAfterCostEv: null,
+      grossReturnOnCollateral: null, capitalDayYield: null,
+      modeledOpeningCosts: modeledOpeningCosts({ policy: input.openingCostPolicy, optionLegCount: 0,
+        grossPremium: null, maxProfit: null, maxLoss: null, collateral: null, dte: null, applicable: false }),
+      expectedAfterCostEv: null,
     },
     assignmentCapacityQty: stock.shares, aegisState: input.aegisNewRiskState,
     hardBlockers, softEvidence: [`OWNERSHIP_STATE:STOCK_HELD`, `ACTION:${action}`], unknownEvidence,
@@ -485,15 +666,21 @@ function coveredCallCandidate(contract: NormalizedOptionContract, input: Canonic
   const callAwayProceeds = contract.strike * contract.multiplier;
   const chainPnlAtCallAway = stock.wholeChainEconomicBasisPerShare === null || premium === null ? null
     : (contract.strike - stock.wholeChainEconomicBasisPerShare + premium) * contract.multiplier;
+  const grossPremium = premium === null ? null : premium * contract.multiplier;
   return {
     candidateId, branch: 'THETA_CC', action: 'SELL_CC', underlying: contract.underlying,
     legs: [leg(contract, 'SELL_TO_OPEN')], dte: contract.dte, delta: contract.delta, moneyness: contract.moneyness,
     spreadPct: contract.spreadPct, liquidity: { volume: contract.volume, openInterest: contract.openInterest },
+    shortDteRiskEvidence: null,
+    multiLegRiskEvidence: null,
     economics: {
-      premiumPerShare: premium, grossPremium: premium === null ? null : premium * contract.multiplier,
+      premiumPerShare: premium, grossPremium,
       collateral: 0, maxProfit: null, maxLoss: null, breakEven: null, downsideCushion: null,
       retainedUpside, callAwayProceeds, wholeChainPnlAtCallAway: chainPnlAtCallAway,
-      grossReturnOnCollateral: null, capitalDayYield: null, expectedAfterCostEv: null,
+      grossReturnOnCollateral: null, capitalDayYield: null,
+      modeledOpeningCosts: modeledOpeningCosts({ policy: input.openingCostPolicy, optionLegCount: 1,
+        grossPremium, maxProfit: grossPremium, maxLoss: null, collateral: null, dte: contract.dte }),
+      expectedAfterCostEv: null,
     },
     assignmentCapacityQty: coveredQty, aegisState: candidateAegisState, ...evidence,
     structurallyFeasible: evidence.hardBlockers.length === 0, riskFeasible: evidence.hardBlockers.length === 0,

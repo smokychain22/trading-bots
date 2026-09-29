@@ -182,11 +182,15 @@ export function projectPersistableThetaCandidates(cycle:ThetaShadowCycleResult):
         secured_collateral_per_contract:collateral as number,
         credit_collateral_ratio:(maxProfit as number)/(collateral as number),ev_net:null,
         ev_net_unknown_reason:'EV_MODEL_NOT_EMPIRICALLY_READY',
-        // This candidate was never sent to/evaluated by the real Q bridge
-        // (it only exists in the canonical frontier) -- there is no real
-        // cost-model data to report here, so this is honestly null, never
-        // a fabricated version string or a fabricated zero cost.
-        commission_per_contract:null,fees_per_contract:null,est_slippage_per_contract:null,cost_model_version:null}});
+        // This candidate was never evaluated by the Q bridge, but the
+        // canonical frontier now carries the same explicit versioned
+        // opening-cost policy used to build the cycle. Preserve those
+        // modeled inputs when known. They remain model assumptions, never
+        // broker-actual fees or fills. UNKNOWN remains null.
+        commission_per_contract:candidate.economics.modeledOpeningCosts.commission,
+        fees_per_contract:candidate.economics.modeledOpeningCosts.fees,
+        est_slippage_per_contract:candidate.economics.modeledOpeningCosts.slippage,
+        cost_model_version:candidate.economics.modeledOpeningCosts.costModelVersion}});
     known.add(optionSymbol);
   }
   return evaluated;

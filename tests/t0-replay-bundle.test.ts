@@ -64,6 +64,8 @@ const realCycleInput: CanonicalStrategyFrontierInput = {
   sizingPolicy: { policyVersion: 'sizing-v1', riskBudgetQtyCap: 4, collateralQtyCap: 3,
     concentrationQtyCap: 2, assignmentCapacityQtyCap: 2, tailRiskQtyCap: 2,
     correlationQtyCap: 2, liquidityQtyCap: 2, reducedStateMultiplier: 0.5 },
+  openingCostPolicy: { commissionPerContract: 0.65, feesPerContract: 0.05,
+    estimatedSlippagePerContract: 1, costModelVersion: 'test-cost-v1' },
   aegisNewRiskStateByCandidateId: { 'THETA_CONVENTIONAL:AAPL261016P00190000': 'ALLOW_REDUCED' },
   aegisBindingReasonsByCandidateId: { 'THETA_CONVENTIONAL:AAPL261016P00190000': ['CANDIDATE_LIMIT'] },
   entryEligibilityByOptionSymbol: { AAPL261016P00190000: {
@@ -87,6 +89,7 @@ test('buildT0ReplayBundle captures exactly buildCanonicalStrategyFrontier\'s rea
   assert.equal(bundle.aegisNewRiskState, 'ALLOW_FULL');
   assert.equal(bundle.aegisNewRiskStateByCandidateId?.['THETA_CONVENTIONAL:AAPL261016P00190000'], 'ALLOW_REDUCED');
   assert.equal(bundle.thetaQCandidateEvaluationByOptionSymbol?.AAPL261016P00190000?.state, 'EVALUATED_FEASIBLE');
+  assert.equal(bundle.openingCostPolicy?.costModelVersion, 'test-cost-v1');
   assert.equal(bundle.thetaQDecision?.winningAction, 'OPEN_REDUCED');
 });
 
@@ -162,6 +165,18 @@ test('T0 rejects unknown sizing settings instead of silently stripping an unused
   assert.throws(() => buildT0ReplayBundle(invalidInput), /unrecognized_keys/i);
 });
 
+test('T0 rejects unknown or invalid opening-cost settings', () => {
+  const extra = { ...realCycleInput, openingCostPolicy: {
+    ...realCycleInput.openingCostPolicy, ungovernedRebate: 1,
+  } } as unknown as CanonicalStrategyFrontierInput;
+  assert.throws(() => buildT0ReplayBundle(extra), /unrecognized_keys/i);
+  const negative = { ...realCycleInput, openingCostPolicy: {
+    commissionPerContract: 0.65, feesPerContract: 0.05,
+    estimatedSlippagePerContract: -1, costModelVersion: 'bad-cost-v1',
+  } } as CanonicalStrategyFrontierInput;
+  assert.throws(() => buildT0ReplayBundle(negative));
+});
+
 test('T0 rejects non-finite supplementary context before persistence', () => {
   const invalidInput = {
     ...realCycleInput,
@@ -194,6 +209,10 @@ test('T0 replay rejects duplicated, missing and tampered candidate inputs', () =
     /T0_REPLAY_FRONTIER_HASH_MISMATCH/);
   assert.throws(() => replayFromT0Bundle({ ...bundle, strategyVersion: 'tampered-policy-version' }),
     /T0_REPLAY_FRONTIER_HASH_MISMATCH/);
+  assert.throws(() => replayFromT0Bundle({ ...bundle, openingCostPolicy: {
+    commissionPerContract: 0.65, feesPerContract: 0.05,
+    estimatedSlippagePerContract: 2, costModelVersion: 'tampered-cost-v2',
+  } }), /T0_REPLAY_FRONTIER_HASH_MISMATCH/);
 });
 
 test('T0 rejects future observations and unknown router strategies before replay', () => {
