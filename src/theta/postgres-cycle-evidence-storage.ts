@@ -106,7 +106,8 @@ export interface PostgresCycleEvidenceProjection {
   readonly archiveCompressedBytes: number;
 }
 
-type PackedReference = 'OPTIONOMICS_RAW_OBSERVATION_PAYLOAD' | 'CANONICAL_FRONTIER_CONTRACTS';
+type PackedReference = 'OPTIONOMICS_RAW_OBSERVATION_PAYLOAD' | 'CANONICAL_FRONTIER_CONTRACTS'
+  | 'STRATEGY_FRONTIER_OPTIONOMICS_CONTEXT' | 'CANONICAL_FRONTIER_OPTIONOMICS_CONTEXT';
 
 function packCycleEvidence(value: Record<string, unknown>): { readonly evidence: Record<string, unknown>; readonly references: PackedReference[] } {
   const references: PackedReference[] = [];
@@ -123,15 +124,36 @@ function packCycleEvidence(value: Record<string, unknown>): { readonly evidence:
     references.push('OPTIONOMICS_RAW_OBSERVATION_PAYLOAD');
   }
   let canonicalFrontierInput = value.canonicalFrontierInput;
-  if (canonicalFrontierInput !== null && typeof canonicalFrontierInput === 'object' && !Array.isArray(canonicalFrontierInput)) {
-    const input = canonicalFrontierInput as Record<string, JsonValue>;
-    if (Array.isArray(input.contracts) && input.contracts.length > 0
-      && canonicalJson(input.contracts) === canonicalJson(snapshot.contractCandidates ?? null)) {
-      canonicalFrontierInput = { ...input, contracts: [] };
-      references.push('CANONICAL_FRONTIER_CONTRACTS');
+  const featureContext = object(object(snapshot.optionomicsFeatureState).features);
+  const featureContextJson = Object.keys(featureContext).length > 0 ? canonicalJson(featureContext) : null;
+  let strategyFrontier = value.strategyFrontier;
+  if (featureContextJson !== null
+    && strategyFrontier !== null && typeof strategyFrontier === 'object' && !Array.isArray(strategyFrontier)) {
+    const frontier = strategyFrontier as Record<string, JsonValue>;
+    if (frontier.optionomicsContext !== undefined
+      && (frontier.optionomicsContext === featureContext
+        || canonicalJson(frontier.optionomicsContext) === featureContextJson)) {
+      strategyFrontier = { ...frontier, optionomicsContext: null };
+      references.push('STRATEGY_FRONTIER_OPTIONOMICS_CONTEXT');
     }
   }
-  return { evidence: { ...value, snapshot, canonicalFrontierInput }, references };
+  if (canonicalFrontierInput !== null && typeof canonicalFrontierInput === 'object' && !Array.isArray(canonicalFrontierInput)) {
+    const input = canonicalFrontierInput as Record<string, JsonValue>;
+    let packedInput = input;
+    if (featureContextJson !== null && input.optionomicsContext !== undefined
+      && (input.optionomicsContext === featureContext
+        || canonicalJson(input.optionomicsContext) === featureContextJson)) {
+      packedInput = { ...packedInput, optionomicsContext: null };
+      references.push('CANONICAL_FRONTIER_OPTIONOMICS_CONTEXT');
+    }
+    if (Array.isArray(input.contracts) && input.contracts.length > 0
+      && canonicalJson(input.contracts) === canonicalJson(snapshot.contractCandidates ?? null)) {
+      packedInput = { ...packedInput, contracts: [] };
+      references.push('CANONICAL_FRONTIER_CONTRACTS');
+    }
+    canonicalFrontierInput = packedInput;
+  }
+  return { evidence: { ...value, snapshot, strategyFrontier, canonicalFrontierInput }, references };
 }
 
 function unpackCycleEvidence(value: unknown): Record<string, JsonValue> {
@@ -142,6 +164,7 @@ function unpackCycleEvidence(value: unknown): Record<string, JsonValue> {
     || !Array.isArray(packed.references)) throw new Error('FUSION_CYCLE_ARCHIVE_INVALID');
   const evidence = packed.evidence as Record<string, JsonValue>;
   let snapshot = object(evidence.snapshot);
+  let strategyFrontier = evidence.strategyFrontier ?? null;
   const hasCanonicalFrontierInput = Object.hasOwn(evidence, 'canonicalFrontierInput');
   let canonicalFrontierInput = evidence.canonicalFrontierInput ?? null;
   const seen = new Set<string>();
@@ -165,11 +188,29 @@ function unpackCycleEvidence(value: unknown): Record<string, JsonValue> {
       const input = canonicalFrontierInput as Record<string, JsonValue>;
       if (!Array.isArray(input.contracts) || input.contracts.length !== 0) throw new Error('FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID');
       canonicalFrontierInput = { ...input, contracts: snapshot.contractCandidates };
+    } else if (reference === 'STRATEGY_FRONTIER_OPTIONOMICS_CONTEXT'
+      || reference === 'CANONICAL_FRONTIER_OPTIONOMICS_CONTEXT') {
+      const features = object(object(snapshot.optionomicsFeatureState).features);
+      if (Object.keys(features).length === 0) throw new Error('FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID');
+      if (reference === 'STRATEGY_FRONTIER_OPTIONOMICS_CONTEXT') {
+        if (strategyFrontier === null || typeof strategyFrontier !== 'object' || Array.isArray(strategyFrontier)
+          || (strategyFrontier as Record<string, JsonValue>).optionomicsContext !== null) {
+          throw new Error('FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID');
+        }
+        strategyFrontier = { ...strategyFrontier, optionomicsContext: features };
+      } else {
+        if (canonicalFrontierInput === null || typeof canonicalFrontierInput !== 'object'
+          || Array.isArray(canonicalFrontierInput)
+          || (canonicalFrontierInput as Record<string, JsonValue>).optionomicsContext !== null) {
+          throw new Error('FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID');
+        }
+        canonicalFrontierInput = { ...canonicalFrontierInput, optionomicsContext: features };
+      }
     } else throw new Error('FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID');
   }
   return hasCanonicalFrontierInput
-    ? { ...evidence, snapshot, canonicalFrontierInput }
-    : { ...evidence, snapshot };
+    ? { ...evidence, snapshot, strategyFrontier, canonicalFrontierInput }
+    : { ...evidence, snapshot, strategyFrontier };
 }
 
 export function projectCycleEvidenceForPostgres(cycle: ThetaShadowCycleResult): PostgresCycleEvidenceProjection {
@@ -234,14 +275,20 @@ export function projectCycleEvidenceForPostgres(cycle: ThetaShadowCycleResult): 
   if (archive.byteLength > MAX_COMPRESSED_ARCHIVE_BYTES && process.env.VERCEL_ENV === 'production') {
     const optionomics = object(fullSnapshot.optionomicsFeatureState);
     const bytes = (value: unknown): number => Buffer.byteLength(canonicalJson(value as JsonValue));
+    const compressedBytes = (value: unknown): number => brotliCompressSync(Buffer.from(canonicalJson(value as JsonValue)), {
+      params: { [constants.BROTLI_PARAM_QUALITY]: 6, [constants.BROTLI_PARAM_LGWIN]: 24 },
+    }).byteLength;
     // The governed cap still fails closed. Sizes alone identify which evidence
     // tier needs work without logging provider responses or changing replay.
     console.error(JSON.stringify({ event: 'THETA_CYCLE_ARCHIVE_OVERSIZE_V1',
       archiveBytes: archive.byteLength, snapshotBytes: bytes(fullSnapshot),
       contractCandidatesBytes: bytes(allContracts),
       optionomicsRawObservationsBytes: bytes(optionomics.rawObservations ?? null),
+      optionomicsRawObservationsCompressedBytes: compressedBytes(optionomics.rawObservations ?? null),
       optionomicsFeaturesBytes: bytes(optionomics.features ?? null),
+      optionomicsFeaturesCompressedBytes: compressedBytes(optionomics.features ?? null),
       optionomicsOptionChainBytes: bytes(optionomics.optionChain ?? null),
+      optionomicsOptionChainCompressedBytes: compressedBytes(optionomics.optionChain ?? null),
       optionomicsFlowBytes: bytes(optionomics.netFlowWindows ?? null),
       frontierBytes: bytes(cycle.strategyFrontier), thetaQBytes: bytes(cycle.orchestration?.thetaQ ?? null),
       canonicalFrontierInputBytes: bytes(cycle.canonicalFrontierInput ?? null),

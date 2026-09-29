@@ -114,15 +114,40 @@ test('packed archive reconstructs duplicated provider and T0 inputs exactly', ()
   const expanded = {
     ...original,
     fusionSnapshot: { ...original.fusionSnapshot, snapshot: expandedSnapshot },
-    canonicalFrontierInput: { contracts: snapshot.contractCandidates, snapshotId: 'test-t0' },
+    strategyFrontier: { snapshotId: 'test-frontier', optionomicsContext: optionomics.features,
+      branches: [], selectedCandidateId: null, nearMissCandidateId: null, bestRejectedCandidateId: null },
+    canonicalFrontierInput: { contracts: snapshot.contractCandidates, snapshotId: 'test-t0',
+      optionomicsContext: optionomics.features },
   } as unknown as ThetaShadowCycleResult;
   const projection = projectCycleEvidenceForPostgres(expanded);
   const decoded = decodeCycleEvidenceArchive(projection.archive);
   assert.equal(decoded.contractVersion, postgresCycleEvidenceStorageVersion);
   assert.equal(canonicalJson(decoded.snapshot), canonicalJson(expandedSnapshot as never));
+  assert.equal(canonicalJson(decoded.strategyFrontier), canonicalJson(expanded.strategyFrontier as never));
   assert.equal(canonicalJson(decoded.canonicalFrontierInput), canonicalJson(expanded.canonicalFrontierInput as never));
   assert.equal(sha(canonicalJson(decoded as never)), projection.archiveHash);
   assert.ok(projection.archiveCompressedBytes < 4 * 1024 * 1024);
+});
+
+test('distant repeated derived Optionomics context reconstructs exact frontier and T0 with one archive copy', () => {
+  const original = cycle();
+  assert.ok(original.fusionSnapshot !== null);
+  const bulk = Array.from({ length: 70_000 }, (_, index) => sha(`derived-feature-${index}`)).join('');
+  const features = { schemaVersion: 'test-v1', contracts: [], derived: bulk };
+  const snapshot = { ...original.fusionSnapshot.snapshot,
+    optionomicsFeatureState: { rawObservations: [], features } };
+  const expanded = { ...original, fusionSnapshot: { ...original.fusionSnapshot, snapshot },
+    strategyFrontier: { snapshotId: 'large-frontier', optionomicsContext: features,
+      branches: [], selectedCandidateId: null, nearMissCandidateId: null, bestRejectedCandidateId: null },
+    canonicalFrontierInput: { snapshotId: 'large-t0', contracts: snapshot.contractCandidates,
+      optionomicsContext: features } } as unknown as ThetaShadowCycleResult;
+  const projection = projectCycleEvidenceForPostgres(expanded);
+  assert.ok(projection.archiveCompressedBytes <= 4 * 1024 * 1024);
+  const decoded = decodeCycleEvidenceArchive(projection.archive);
+  assert.equal(canonicalJson(decoded.snapshot), canonicalJson(snapshot as never));
+  assert.equal(canonicalJson(decoded.strategyFrontier), canonicalJson(expanded.strategyFrontier as never));
+  assert.equal(canonicalJson(decoded.canonicalFrontierInput), canonicalJson(expanded.canonicalFrontierInput as never));
+  assert.equal(sha(canonicalJson(decoded)), projection.archiveHash);
 });
 
 test('historical v2 gzip archives remain readable and malformed v3 references fail closed', () => {
@@ -197,6 +222,7 @@ test('oversize archive fails closed and production telemetry reports sizes witho
   assert.equal(receipt.event, 'THETA_CYCLE_ARCHIVE_OVERSIZE_V1');
   assert.ok(Number(receipt.archiveBytes) > 4 * 1024 * 1024);
   assert.ok(Number(receipt.optionomicsRawObservationsBytes) > 4 * 1024 * 1024);
+  assert.ok(Number(receipt.optionomicsRawObservationsCompressedBytes) > 0);
   assert.ok(!telemetry[0]?.includes(bulk.slice(0, 64)));
 });
 
