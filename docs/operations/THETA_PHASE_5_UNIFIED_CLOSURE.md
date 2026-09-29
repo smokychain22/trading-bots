@@ -128,7 +128,7 @@ SECURITY_SCAN = PASS, 0 findings
 
 GIT_STORAGE_POLICY = PASS
 
-EXACT_SHA_CI = PENDING_FOR_RECEIPT_COMMIT
+EXACT_SHA_CI = PASS, run 36552617374 at c9d61d5a3a803b1e7f0be8aa726fddf7cde2eed1
 
 ## Reality and remaining dependencies
 

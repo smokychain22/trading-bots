@@ -29,8 +29,8 @@ evidence window without restarting the aligned worker for this status alone.
 | 2 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Provider authority, exact pre-submit identity, PIT timing, 20 feature families and typed provider failures are wired. Exact-SHA CI run `36543964513` passed. Current open-session entitlement and real quote/feature observations remain pending. |
 | 3 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Canonical candidates, sizing, routing and T0 are typed. Persisted WAIT now carries exact decomposition and cannot self-certify with unclassified blockers or UNKNOWNs. T0 replay uses the Production frontier, rejects tampering and uses no network. Exact-SHA CI run `36548131698` passed. Current-worker open-session proof remains pending. |
 | 4 | `SOURCE_COMPLETE_EMPIRICAL_PENDING` | `EMPIRICALLY_UNPROVEN` | Q/H/D/A/C deterministic mechanics, versioned modeled opening costs, position scaling, management alternatives, whole-chain loss preservation, 17 challenger replays, persistence and T0 replay are wired and tested. Exact-SHA CI run `36550676519` passed. Current-worker evidence and calibrated EV/POP/continuation values remain unavailable and are not fabricated. |
-| 5 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | One AEGIS authority, one canonical final sizing authority and one master execution mutation state machine are enforced and tested. Current-worker evidence remains pending. Sector mapping and portfolio Greeks retain typed provider/data limits. Risk-policy optimality remains empirically unproven. |
-| 6 | `SOURCE_COMPLETE_DATA_PENDING` for imported research modules only | `EMPIRICALLY_UNPROVEN` | Historical recovered corpus has no selected or resolved outcomes. Future capture and truth-class joins require later real observations. |
+| 5 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | One AEGIS authority, one canonical final sizing authority and one master execution mutation state machine are enforced and tested. Exact-SHA CI run `36552617374` passed. Current-worker evidence remains pending. Sector mapping and portfolio Greeks retain typed provider/data limits. Risk-policy optimality remains empirically unproven. |
+| 6 | `SOURCE_COMPLETE_EMPIRICAL_PENDING` | `EMPIRICALLY_UNPROVEN` | Historical provenance, future capture, outcomes, datasets, regret, attribution, model ladder, validation and promotion governance are wired. Mechanical benchmark dispatch is executable. Historical corpus has zero selected or resolved outcomes, and integrated future capture needs later real observations. |
 | 7 | Existing locked worker observed | `OWNER_GATED` | Paper readiness and first order require separate owner authorization after preceding evidence gates. |
 | 8 | No Paper outcomes | `FUTURE_DATA_REQUIRED` | Actual fills, lifecycle and whole-chain outcomes do not yet exist. |
 | 9 | No live permission | `OWNER_GATED` | Live-money authorization was not granted. |
@@ -226,9 +226,35 @@ reconciliation, partial-fill handling, restart recovery, exact quote identity
 and locked failure paths. They do not authorize Paper execution. Full evidence
 is recorded in `docs/operations/THETA_PHASE_5_UNIFIED_CLOSURE.md`.
 
+## Phase 6 learning and empirical-research source pass, 2026-09-29
+
+The current research stack preserves the legacy timestamp-hash defect as
+structural-only evidence, validates current exports independently, schedules
+and matures GET-only future observations, resolves typed outcomes, builds
+point-in-time datasets, measures WAIT regret and multi-cause failures, and
+enforces purged walk-forward, embargo, untouched OOS, calibration,
+selection-bias and promotion gates.
+
+The source audit found one false-completion defect in benchmark execution.
+The registry classified 13 mechanical benchmarks as implemented, but the
+runner could execute only B0. Those 13 benchmarks now have deterministic,
+versioned, hashed dispatch receipts. B1, B2, BH-1 and BQ-3 stay explicitly
+blocked on missing policy definitions rather than receiving invented policy.
+
+The Python research CLI now validates the real feature registry and names the
+canonical TypeScript authority for dataset construction and filter-value
+analysis instead of reporting a missing integration or duplicating the same
+domain logic. The dataset builder is exposed through
+`npm run theta:research:dataset-build`.
+
+The recovered corpus still has zero selected candidates and zero resolved
+outcomes. No empirical EV, POP, profitability, adaptive switching or 70-80
+percent win-rate claim follows from source completeness. Full evidence is in
+`docs/operations/THETA_PHASE_6_UNIFIED_CLOSURE.md`.
+
 | Class | Current state |
 | --- | --- |
-| `CODE_SOLVABLE` | Zero known Phase-5 source blockers after local validation. Exact-SHA CI and current-worker runtime evidence remain separate gates. |
+| `CODE_SOLVABLE` | Zero known Phase-6 source blockers after local validation. Exact-SHA CI and current-worker runtime evidence remain separate gates. |
 | `DATA_REQUIRED` | Recheck current Alpaca quote entitlement and exact BBO timing in the supported session. |
 | `FUTURE_DATA_REQUIRED` | Open-session current-release frontier/T0, future marks and broker-actual outcomes. |
 | `EXTERNAL_PROVIDER_REQUIRED` | None newly proved by this branch import. Transfer-quota signal needs separate bounded confirmation. |
