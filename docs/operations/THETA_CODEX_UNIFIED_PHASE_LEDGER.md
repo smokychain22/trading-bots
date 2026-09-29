@@ -27,7 +27,7 @@ evidence window without restarting the aligned worker for this status alone.
 | --- | --- | --- | --- |
 | 1 | Current release frozen | `FORWARD_DATA_REQUIRED` | Current-worker open-session canonical frontier, durable method provenance, honest per-method L7 and non-real rejection, persisted T0, provider-free deterministic replay. |
 | 2 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_1` | Current executable two-sided quote entitlement, provenance and PIT operation matrix need qualification. Optional research features cannot become hard entry gates by default. |
-| 3 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_2` | Candidate contracts were already normalized. This branch validates broker-derived portfolio exposure and correlation shape, rejects future-received evidence, and now records actual completed account, positions, orders, clock, calendar, contract and quote receipt times rather than relabeling the decision time as their receipt time. Other state blobs and current-worker replay still need audit. Research T0 adapters do not prove Production replay. |
+| 3 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Canonical candidates, sizing, routing and T0 are typed. Persisted WAIT now carries exact decomposition and cannot self-certify with unclassified blockers or UNKNOWNs. T0 replay uses the Production frontier, rejects tampering and uses no network. Current-worker open-session proof remains pending. |
 | 4 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_3` | Q/H/D/A/C/WAIT economics need after-cost and lifecycle invariants. No empirical continuation value is available. |
 | 5 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_4` | One AEGIS and sizing authority remains mandatory. Simulated idempotency and restart tests do not authorize Paper submissions. |
 | 6 | `SOURCE_COMPLETE_DATA_PENDING` for imported research modules only | `EMPIRICALLY_UNPROVEN` | Historical recovered corpus has no selected or resolved outcomes. Future capture and truth-class joins require later real observations. |
@@ -166,9 +166,17 @@ This is source and persistence-path correction only. A real current-session
 WAIT receipt from the frozen worker has not been claimed, and the integration
 branch remains undeployed.
 
+The completed Phase-3 source pass also replaces remaining `z.unknown()`
+FusionSnapshot persistence fields with a finite JSON-value boundary, gives
+canonical sizing an explicit type and schema, and binds T0 replay to the
+expected Production frontier hash. Adversarial replay now covers reorder,
+duplication, omission, tampering, future evidence, unknown strategy and
+provider unavailability. Full evidence is recorded in
+`docs/operations/THETA_PHASE_3_UNIFIED_CLOSURE.md`.
+
 | Class | Current state |
 | --- | --- |
-| `CODE_SOLVABLE` | Phase-3 state, router and T0 call-graph audit remains in progress. Do not report zero until that audit and exact-SHA CI complete. |
+| `CODE_SOLVABLE` | Zero known Phase-3 source blockers after local validation. Exact-SHA CI and current-worker runtime evidence remain separate gates. |
 | `DATA_REQUIRED` | Recheck current Alpaca quote entitlement and exact BBO timing in the supported session. |
 | `FUTURE_DATA_REQUIRED` | Open-session current-release frontier/T0, future marks and broker-actual outcomes. |
 | `EXTERNAL_PROVIDER_REQUIRED` | None newly proved by this branch import. Transfer-quota signal needs separate bounded confirmation. |
