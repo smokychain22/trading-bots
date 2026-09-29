@@ -1,7 +1,7 @@
 # THETA deep unified phase audit, 2026-09-29
 
-This receipt records the source audit performed on the isolated
-`codex/theta-unified-integration` branch. It does not authorize an order,
+This receipt records the source audit integrated through code SHA
+`1dc8fe9460438326a8782faa5d28d9da851c6368` on canonical `main`. It does not authorize an order,
 promote a research strategy, or claim evidence from a worker that has not run
 this source.
 
@@ -10,6 +10,8 @@ this source.
 | Field | Value |
 | --- | --- |
 | Integration baseline before this wave | `ff7d4ec2432637851d9ff8304af0661e39b06c62` |
+| Validated integrated code SHA | `1dc8fe9460438326a8782faa5d28d9da851c6368` |
+| Exact-SHA CI | `36569357862` = `PASS` |
 | Deployed locked release at audit time | `cf9bc26a3cdd3646a663fe6fa97c8055606a2caa` |
 | Production schema head | `067` |
 | Decision-critical denominator | 45 typed fields in `theta-decision-critical-evidence-registry-v1` |
@@ -136,18 +138,20 @@ validation.
 | Paper/live governance tests | 4 passed |
 | Benchmark runner tests | 18 passed |
 | Full Python suite | 1,231 passed |
-| Full Node suite | 3,042 tests, 3,027 passed, 15 skipped, 0 failed |
+| Full Node suite | 3,046 tests, 3,031 passed, 15 skipped, 0 failed |
 | Typecheck, lint, build | passed |
 | Browser suite | 23 passed |
 | Security scan | 1,778 paths, zero findings |
-| Git storage policy | 1,777 tracked files, zero findings |
+| Git storage policy | 1,778 tracked files, zero findings |
 | Historical regression suite | 24 of 24 passed, zero unclassified |
 | Session simulator | 14 of 14 passed, zero broker mutations and submissions |
 | Accelerated failure soak | 391 complete cycles, zero failures, typed injected provider and infrastructure faults |
 | UNKNOWN audit | 0 avoidable, 2 open typed states, 0 safety-critical, 0 Paper-entry |
+| V20 evidence closure | `PASS`, 21/21 real-data routes, 61/61 scenarios, 65/65 capability probes, 11/11 cross-strategy probes, zero code-solvable blockers |
+| Local test-storage hygiene | 806 abandoned test-only temp directories removed, 45.007 GiB reclaimed, and deterministic cleanup added |
 
-These are source and simulation results. Exact-SHA CI and deployment evidence
-are recorded separately after the branch is committed and pushed.
+These are source and simulation results. Exact-SHA CI passed. Deployment
+evidence remains separate because the database recovery gate failed closed.
 
 ## Remaining work classification
 
@@ -159,7 +163,7 @@ are recorded separately after the branch is committed and pushed.
 | `OWNER_PERMISSION_REQUIRED` | First actual Alpaca Paper order and every live-money action. |
 
 `REMAINING_CODE_SOLVABLE_BLOCKERS = 0` for the reviewed decision-critical
-source denominator after the immutable-launch correction. The corrected source
-still requires exact-SHA CI and a later governed locked cutover after the
-database recovery gate passes. The failed `EAI_AGAIN` gate and the stopped
+source denominator after the immutable-launch, V20 CI-resolution, and local
+test-storage corrections. The corrected source requires a later governed
+locked cutover after the database recovery gate passes. The failed `EAI_AGAIN` gate and the stopped
 worker are infrastructure state. They are not strategy `WAIT` evidence.
