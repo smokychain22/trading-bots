@@ -84,7 +84,10 @@ try {
   endpoint='https://trading-bots-one.vercel.app/api/theta-runtime' } |
   ConvertTo-Json | Set-Content -LiteralPath $runtimeFile -Encoding utf8
 
-$workerScript = Join-Path $PSScriptRoot 'theta-local-worker.ps1'
+$workerScript = Join-Path $releasePath 'tools\windows\theta-local-worker.ps1'
+if (!(Test-Path -LiteralPath $workerScript -PathType Leaf)) {
+  throw 'THETA_RELEASE_WORKER_SCRIPT_MISSING'
+}
 $pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
 if ([string]::IsNullOrWhiteSpace($pwsh) -or -not (Test-Path -LiteralPath $pwsh -PathType Leaf)) {
   throw 'THETA_POWERSHELL_7_EXECUTABLE_REQUIRED'

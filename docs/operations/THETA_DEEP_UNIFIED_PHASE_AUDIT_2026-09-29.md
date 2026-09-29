@@ -12,7 +12,7 @@ this source.
 | Integration baseline before this wave | `ff7d4ec2432637851d9ff8304af0661e39b06c62` |
 | Deployed locked release at audit time | `cf9bc26a3cdd3646a663fe6fa97c8055606a2caa` |
 | Production schema head | `067` |
-| Decision-critical denominator | 47 typed fields in `theta-decision-critical-evidence-registry-v1` |
+| Decision-critical denominator | 45 typed fields in `theta-decision-critical-evidence-registry-v1` |
 | Static inventory rows | 278 |
 | PostgreSQL relations inventoried | 156 |
 | Authoritative inventory rows with relations | 434 |
@@ -25,7 +25,7 @@ this source.
 The broad keyword scan found 3,205 source lines containing discovery terms such
 as `unknown`, `default`, `fallback`, `research only`, or `TODO`. That index is
 not a blocker count. The authoritative decision-critical review is the typed
-47-field evidence registry together with the governed UNKNOWN audit. The audit
+45-field evidence registry together with the governed UNKNOWN audit. The audit
 reports zero avoidable UNKNOWNs, zero unresolved safety-critical UNKNOWNs, and
 zero unresolved Paper-entry UNKNOWNs. Optional, empirical, provider-limited,
 and not-applicable states remain typed rather than being converted to false or
@@ -96,14 +96,23 @@ validation.
    incomplete.
 5. A broad keyword discovery index was labeled `REVIEW_REQUIRED`, which could
    be misread as thousands of unresolved blockers. The receipt now names the
-   typed 47-field registry as the authoritative decision-critical denominator
+   typed 45-field registry as the authoritative decision-critical denominator
    and labels the keyword scan as discovery-only.
+6. The database recovery gate could collapse a known local environment
+   precondition into `UNCLASSIFIED_DATABASE_ERROR`. Known local preconditions
+   now retain their typed code. The first actual current-main gate still
+   stopped at probe one on `EAI_AGAIN`, so no cutover or worker start followed.
+7. The Windows task launched `theta-local-worker.ps1` from mutable `main` while
+   the runtime payload came from the immutable release. The installer now
+   launches the supervisor itself from the release directory. Worker status
+   and premarket certification independently reject a task whose script path
+   is not aligned with the immutable release.
 
 ## Phase truth
 
 | Phase | Current truth |
 | --- | --- |
-| Phase 1 | Deployed release is locked and older than this integration source. Current-worker open-session proof, durable method provenance, truthful L7 assignment, persisted T0, and provider-free replay remain forward-data/runtime work. |
+| Phase 1 | The older release is stopped and execution remains locked. The installed task's mutable supervisor path is now explicitly rejected, while corrected immutable launch is source-tested and awaits a governed cutover. The current-main database gate stopped at probe one on `EAI_AGAIN`. Current-worker open-session proof, durable method provenance, truthful L7 assignment, persisted T0, and provider-free replay remain forward-data/runtime work. |
 | Phase 2 | Provider authority, exact executable quote identity, PIT timing, 20 feature families, and typed provider failures are source-complete. Current-session provider evidence remains forward-data dependent. |
 | Phase 3 | Candidate, sizing, WAIT decomposition, T0 identity, tamper rejection, and provider-free replay are source-complete. Current-worker proof remains pending. |
 | Phase 4 | Five-strategy mechanics and 17 management/profit challengers are deterministic and tested. H and D stay research-only, while A and C require applicable broker inventory. Profitability remains empirically unproven. |
@@ -121,11 +130,11 @@ validation.
 | Paper/live governance tests | 4 passed |
 | Benchmark runner tests | 18 passed |
 | Full Python suite | 1,231 passed |
-| Full Node suite | passed |
+| Full Node suite | 3,042 tests, 3,027 passed, 15 skipped, 0 failed |
 | Typecheck, lint, build | passed |
 | Browser suite | 23 passed |
-| Security scan | 1,777 paths, zero findings |
-| Git storage policy | 1,771 files, zero findings |
+| Security scan | 1,778 paths, zero findings |
+| Git storage policy | 1,777 tracked files, zero findings |
 | Historical regression suite | 24 of 24 passed, zero unclassified |
 | Session simulator | 14 of 14 passed, zero broker mutations and submissions |
 | Accelerated failure soak | 391 complete cycles, zero failures, typed injected provider and infrastructure faults |
@@ -144,5 +153,7 @@ are recorded separately after the branch is committed and pushed.
 | `OWNER_PERMISSION_REQUIRED` | First actual Alpaca Paper order and every live-money action. |
 
 `REMAINING_CODE_SOLVABLE_BLOCKERS = 0` for the reviewed decision-critical
-source denominator. The branch still requires exact-SHA CI, a governed impact
-review, and a locked cutover before any current-worker claim can be made.
+source denominator after the immutable-launch correction. The corrected source
+still requires exact-SHA CI and a later governed locked cutover after the
+database recovery gate passes. The failed `EAI_AGAIN` gate and the stopped
+worker are infrastructure state. They are not strategy `WAIT` evidence.

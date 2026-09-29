@@ -26,15 +26,18 @@ test('exact CI distinguishes pending, failed, and passing runs', () => {
 
 test('worker alignment compares the runtime SHA with current source', () => {
   const healthy = { taskState: 'Running', runtimeShaAligned: true, healthShaAligned: true,
-    executionGate: 'LOCKED', runtimeSha: 'old', workspaceSha: 'new' };
+    taskScriptAligned: true, executionGate: 'LOCKED', runtimeSha: 'old', workspaceSha: 'new' };
   assert.equal(classifyLockedWorker(healthy, 'new').state, 'FORWARD_DATA_REQUIRED');
   assert.equal(classifyLockedWorker({ ...healthy, runtimeSha: 'new' }, 'new').state, 'PASS');
   assert.equal(classifyLockedWorker({ ...healthy, executionGate: 'ACTIVE' }, 'new').state, 'FAIL');
   const governedOffline = { taskState: 'Ready', effectiveState: 'NOT_RUNNING', supervisorProcessCount: 0,
-    runtimeShaAligned: true, healthShaAligned: true, executionGate: 'LOCKED', runtimeSha: 'old', workspaceSha: 'new',
+    runtimeShaAligned: true, healthShaAligned: true, taskScriptAligned: true,
+    executionGate: 'LOCKED', runtimeSha: 'old', workspaceSha: 'new',
     reportedHealth: { state: 'OFFLINE' } };
   assert.deepEqual(classifyLockedWorker(governedOffline, 'new'), {
     state: 'EXTERNAL_BLOCKED', detail: 'LOCKED_WORKER_OFFLINE_AWAITING_GOVERNED_RUNTIME_ADMISSION',
   });
+  assert.equal(classifyLockedWorker({ ...healthy, taskScriptAligned: false }, 'new').state, 'FAIL');
+  assert.equal(classifyLockedWorker({ ...governedOffline, taskScriptAligned: false }, 'new').state, 'FAIL');
   assert.equal(classifyLockedWorker({ ...governedOffline, executionGate: 'ACTIVE' }, 'new').state, 'FAIL');
 });

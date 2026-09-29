@@ -26,13 +26,15 @@ export function classifyExactCi(rows: readonly { readonly headSha?: string; read
 export function classifyLockedWorker(status: Readonly<Record<string, unknown>>,
   sourceSha: string): PremarketCertificationClassification {
   const safelyRunning = status.taskState === 'Running' && status.runtimeShaAligned === true
-    && status.healthShaAligned === true && status.executionGate === 'LOCKED';
+    && status.healthShaAligned === true && status.taskScriptAligned === true
+    && status.executionGate === 'LOCKED';
   const sourceAligned = status.runtimeSha === sourceSha && status.workspaceSha === sourceSha;
   if (safelyRunning && sourceAligned) return { state: 'PASS', detail: 'ONE_CURRENT_SOURCE_ALIGNED_LOCKED_WORKER' };
   if (safelyRunning) return { state: 'FORWARD_DATA_REQUIRED', detail: 'HEALTHY_LOCKED_WORKER_AWAITS_EXACT_CI_CUTOVER' };
   const intentionallyOfflineAndLocked = status.executionGate === 'LOCKED'
     && status.taskState === 'Ready'
     && status.effectiveState === 'NOT_RUNNING'
+    && status.taskScriptAligned === true
     && status.supervisorProcessCount === 0
     && (status.reportedHealth === undefined || (status.reportedHealth as Record<string, unknown>).state === 'OFFLINE');
   if (intentionallyOfflineAndLocked) {
@@ -92,6 +94,7 @@ export const premarketCertificationGroups: readonly PremarketCertificationGroup[
   ] },
   { id: 'RESTART_LEASE_AND_STORAGE', testFiles: [
     'tests/resident-worker.test.ts', 'tests/runtime-request-lease.test.ts', 'tests/local-worker-auto-export.test.ts',
+    'tests/windows-worker-immutable-launch.test.ts',
     'tests/local-research-history-spool.test.ts', 'tests/local-research-archive-health.test.ts',
     'tests/canonical-frontier-local-archive.test.ts',
   ] },

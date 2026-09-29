@@ -12,6 +12,10 @@ $releasePath=if($null-ne$runtime-and$null-ne$runtime.releasePath){[string]$runti
 $releaseSha=if($null-ne$releasePath-and(Test-Path -LiteralPath $releasePath)){(& git -C $releasePath rev-parse HEAD 2>$null).Trim()}else{$null}
 $runtimeShaAligned=$null-ne$runtime-and$releaseSha-eq[string]$runtime.buildSha
 $healthShaAligned=$null-ne$health-and$null-ne$runtime-and[string]$health.buildSha-eq[string]$runtime.buildSha
+$expectedWorkerScript=if($null-ne$releasePath){Join-Path $releasePath 'tools\windows\theta-local-worker.ps1'}else{$null}
+$taskArguments=if($null-ne$task-and@($task.Actions).Count-eq1){[string]$task.Actions[0].Arguments}else{$null}
+$taskScriptAligned=$null-ne$expectedWorkerScript-and$null-ne$taskArguments-and
+  $taskArguments.IndexOf(('"'+$expectedWorkerScript+'"'),[StringComparison]::OrdinalIgnoreCase)-ge0
 $taskRunning=$null-ne$task-and[string]$task.State-eq'Running'
 $supervisorProcesses=@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
   $null-ne$_.CommandLine-and$_.CommandLine-match'(?i)[\\/]theta-local-worker\.ps1(?:"|\s|$)'
@@ -25,10 +29,12 @@ $healthAgeSeconds=if($null-ne$healthTimestamp){[Math]::Max(0,[Math]::Round(([Dat
 $healthFresh=$null-ne$healthAgeSeconds-and$healthAgeSeconds-le420
 $effectiveState=if($taskRunning){if($supervisorCount-eq0){'WORKER_ABSENT'}
   elseif($supervisorCount-gt1){'DUPLICATE_SUPERVISOR'}
+  elseif(-not$taskScriptAligned){'BLOCKED_TASK_SCRIPT_MISMATCH'}
   elseif(-not$runtimeShaAligned){'BLOCKED_RUNTIME_SHA_MISMATCH'}
   elseif(-not$healthShaAligned){'STARTING_NEW_RELEASE'}
   elseif([string]$health.state-eq'SCHEMA_INCOMPATIBLE'){'SCHEMA_INCOMPATIBLE'}
   elseif(-not$healthFresh){'STALE_HEARTBEAT'}else{[string]$health.state}}
+  elseif($null-ne$task-and-not$taskScriptAligned){'BLOCKED_TASK_SCRIPT_MISMATCH'}
   elseif($null-ne$runtime-and-not$runtimeShaAligned){'BLOCKED_RUNTIME_SHA_MISMATCH'}
   elseif($null-ne$task){'NOT_RUNNING'}else{'NOT_INSTALLED'}
 $settings=if($null-ne$task){$task.Settings}else{$null}
@@ -43,6 +49,7 @@ Write-Output (@{installed=$null-ne$task;taskState=if($null-ne$task){[string]$tas
   multipleInstances=if($null-ne$settings){[string]$settings.MultipleInstances}else{'UNKNOWN'};
   reportedHealth=$health;effectiveState=$effectiveState;runtimeSha=if($null-ne$runtime){[string]$runtime.buildSha}else{$null};
   workspaceSha=$workspaceSha;releasePath=$releasePath;releaseSha=$releaseSha;runtimeShaAligned=$runtimeShaAligned;
+  expectedWorkerScript=$expectedWorkerScript;taskScriptAligned=$taskScriptAligned;
   healthShaAligned=$healthShaAligned;supervisorProcessCount=$supervisorCount;
   supervisorProcessIds=@($supervisorProcesses|ForEach-Object{[int]$_.ProcessId});healthAgeSeconds=$healthAgeSeconds;
   healthFresh=$healthFresh;leaseState='UNVERIFIED_BY_LOCAL_STATUS';

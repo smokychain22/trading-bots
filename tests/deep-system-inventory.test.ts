@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { decisionCriticalEvidenceFields } from '../src/theta/decision-critical-evidence-registry.js';
 import {
   claudeWorkPackageInventory, databaseRelationInventoryFromNames, deepSystemInventory, infrastructureInventory,
   methodInventory, summarizeDeepSystemInventory,
@@ -23,6 +25,12 @@ test('deep inventory covers every mandated cardinality without duplicate or blan
   assert.equal(summary.byCategory.INFRASTRUCTURE, 20);
   assert.equal(summary.liveAuthorizedRows, 0);
   assert.equal(summary.ownerPermissionRequiredRows, 1);
+});
+
+test('deep audit denominator matches the canonical typed evidence registry', () => {
+  const audit = readFileSync('docs/operations/THETA_DEEP_UNIFIED_PHASE_AUDIT_2026-09-29.md', 'utf8');
+  assert.match(audit, new RegExp(`Decision-critical denominator \\| ${decisionCriticalEvidenceFields.length} typed fields`));
+  assert.doesNotMatch(audit, /47[- ]field evidence registry|47 typed fields/);
 });
 
 test('database relation inventory preserves storage classification and rejects unknown placement', () => {
