@@ -65,8 +65,17 @@ export function assessRecoveryProbeSeries(samples, options = {}) {
   };
 }
 
-const safeErrorCode = (error) => typeof error?.code === 'string' && /^[A-Z0-9_]{2,40}$/.test(error.code)
-  ? error.code : 'UNCLASSIFIED_DATABASE_ERROR';
+const knownLocalFailureCodes = new Set([
+  'RECOVERY_GATE_ENVIRONMENT_FILE_REQUIRED',
+  'AIVEN_DATABASE_URL_NOT_CONFIGURED',
+  'RECOVERY_GATE_RECEIPT_PATH_INVALID',
+]);
+
+export const classifyRecoveryGateError = (error) => {
+  if (typeof error?.code === 'string' && /^[A-Z0-9_]{2,40}$/.test(error.code)) return error.code;
+  if (typeof error?.message === 'string' && knownLocalFailureCodes.has(error.message)) return error.message;
+  return 'UNCLASSIFIED_DATABASE_ERROR';
+};
 
 async function runProbe(connectionString) {
   const client = new pg.Client({ connectionString, connectionTimeoutMillis: 8_000,
@@ -95,7 +104,7 @@ async function runProbe(connectionString) {
     await client.query('ROLLBACK').catch(() => undefined);
     return { observedAt, connectivity: 'FAIL', ssl: 'NOT_REACHED', defaultTransactionReadOnly: null,
       transactionReadOnly: null, maxConnections: null, clientBackendsAtProbe: null, postmasterStart: null,
-      transactionWriteRollback: 'NOT_REACHED', errorCode: safeErrorCode(error) };
+      transactionWriteRollback: 'NOT_REACHED', errorCode: classifyRecoveryGateError(error) };
   } finally {
     await client.end().catch(() => undefined);
   }
@@ -136,6 +145,6 @@ const invokedPath = process.argv[1] ? new URL(`file:///${process.argv[1].replace
 if (import.meta.url === invokedPath) main().catch((error) => {
   process.stderr.write(`${JSON.stringify({ contractVersion: recoveryGateContractVersion,
     state: 'RECOVERY_GATE_FAILED', checkpointRetryEligible: false, decisionAuthority: 'INFRASTRUCTURE_DEFERRED',
-    errorCode: safeErrorCode(error) })}\n`);
+    errorCode: classifyRecoveryGateError(error) })}\n`);
   process.exitCode = 1;
 });

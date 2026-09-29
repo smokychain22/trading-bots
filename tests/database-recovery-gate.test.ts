@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assessRecoveryProbeSeries } from '../tools/theta-database-recovery-gate.mjs';
+import { assessRecoveryProbeSeries, classifyRecoveryGateError } from '../tools/theta-database-recovery-gate.mjs';
 
 const healthy = (index: number) => ({
   observedAt: new Date(Date.parse('2026-09-27T00:00:00.000Z') + index * 30_000).toISOString(),
@@ -43,4 +43,11 @@ test('database recovery gate rejects compressed timing, restart, read-only and l
 test('database recovery policy cannot be weakened through options', () => {
   assert.throws(() => assessRecoveryProbeSeries([], { requiredCount: 3 }), /REQUIRED_COUNT_BELOW_POLICY/);
   assert.throws(() => assessRecoveryProbeSeries([], { minimumIntervalSeconds: 29 }), /INTERVAL_BELOW_POLICY/);
+});
+
+test('database recovery gate preserves known local preconditions without accepting arbitrary messages', () => {
+  assert.equal(classifyRecoveryGateError(new Error('AIVEN_DATABASE_URL_NOT_CONFIGURED')),
+    'AIVEN_DATABASE_URL_NOT_CONFIGURED');
+  assert.equal(classifyRecoveryGateError(Object.assign(new Error('provider detail'), { code: '53000' })), '53000');
+  assert.equal(classifyRecoveryGateError(new Error('unexpected provider detail')), 'UNCLASSIFIED_DATABASE_ERROR');
 });
