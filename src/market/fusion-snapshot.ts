@@ -33,6 +33,50 @@ const executableTruthSchema = z.object({
   quote: evidenceState,
 });
 
+const finite = z.number().finite();
+const finiteOrUnknown = finite.nullable();
+const nonnegativeCount = z.number().int().nonnegative();
+const correlationPairSchema = z.object({
+  heldUnderlying: z.string().min(1), exposureDollars: finite,
+  correlation: finiteOrUnknown, overlappingReturns: nonnegativeCount,
+  state: z.enum(['KNOWN', 'DATA_INSUFFICIENT', 'STALE']), reason: z.string().nullable(),
+}).strict();
+const correlationObservationSchema = z.object({
+  version: z.literal('theta-portfolio-correlation-observation-v1'),
+  authority: z.literal('ALPACA_MARKET_OBSERVATION_NO_BROKER_AUTHORITY'),
+  state: z.enum(['NOT_APPLICABLE', 'KNOWN', 'DATA_INSUFFICIENT', 'STALE', 'PARTIAL_COVERAGE', 'PROVIDER_ERROR']),
+  candidateUnderlying: z.string().min(1), evaluatedAt: utcTimestamp,
+  sourceAvailableAt: utcTimestamp.nullable(), decisionAsOf: utcTimestamp,
+  usableForDecision: z.boolean(), lookbackSessions: nonnegativeCount,
+  minimumOverlappingReturns: nonnegativeCount, maxBarAgeCalendarDays: nonnegativeCount,
+  returnConvention: z.literal('CLOSE_TO_CLOSE_LOG_RETURN_COMPLETED_DAILY_BARS'),
+  pairs: z.array(correlationPairSchema), maxAbsoluteCorrelation: finiteOrUnknown,
+  exposureWeightedCorrelation: finiteOrUnknown, knownPairCoverage: finiteOrUnknown,
+  sourceBarHash: z.string().regex(/^[0-9a-f]{64}$/).nullable(), reason: z.string().min(1),
+}).strict();
+
+// This is the existing broker-derived account exposure, frozen alongside its
+// separately observed correlation evidence. A missing or malformed portfolio
+// state cannot silently become a valid replay snapshot.
+const portfolioExposureSchema = z.object({
+  equity: finiteOrUnknown, cash: finiteOrUnknown, buyingPower: finiteOrUnknown,
+  optionsBuyingPower: finiteOrUnknown, cspCollateralRequired: finiteOrUnknown,
+  stockInventoryValue: finiteOrUnknown,
+  stockValueByUnderlying: z.record(z.string(), finite),
+  shortPutCount: nonnegativeCount, shortCallCount: nonnegativeCount,
+  longPutCount: nonnegativeCount, longCallCount: nonnegativeCount,
+  openOrderCount: nonnegativeCount, pendingOpeningCapitalAtRisk: finiteOrUnknown,
+  pendingAssignmentCollateral: finiteOrUnknown,
+  pendingExposureByUnderlying: z.record(z.string(), finite),
+  unclassifiedOpenOrderIds: z.array(z.string().min(1)),
+  portfolioCapitalAtRiskPct: finiteOrUnknown, tickerConcentrationPct: finiteOrUnknown,
+  largestConcentrationUnderlying: z.string().nullable(),
+  exposureByUnderlying: z.record(z.string(), finite),
+  riskyUnderlyings: z.array(z.string().min(1)),
+  unparsedOptionSymbols: z.array(z.string().min(1)),
+  correlationObservation: correlationObservationSchema.nullable(),
+}).strict();
+
 // Gap 1 (docs/quant/phase6_router/FUSION_SNAPSHOT_AUDIT.md): a single named
 // provider-health field, distinct from the per-operation sourceProvenance
 // array, so a caller doesn't have to reconstruct system-level health by
@@ -66,13 +110,7 @@ const fusionSnapshotInputSchema = z.object({
   contractCandidates: z.array(normalizedOptionContractSchema),
   accountState: z.unknown(),
   positionState: z.unknown(),
-  // Gap 2: portfolio-level exposure (concentration/correlation/sector),
-  // distinct from the raw positionState blob -- what aegis.py's
-  // SECTOR/CORRELATION/PORTFOLIO risk families actually consume. Kept as
-  // z.unknown() consistent with this schema's existing pattern for
-  // state blobs whose internal shape is owned by the risk layer, not this
-  // module -- FusionSnapshot's job is to pin it point-in-time, not define it.
-  portfolioExposure: z.unknown(),
+  portfolioExposure: portfolioExposureSchema,
   alpacaQuoteState: z.unknown(),
   optionomicsFeatureState: z.unknown(),
   eventState: z.unknown(),

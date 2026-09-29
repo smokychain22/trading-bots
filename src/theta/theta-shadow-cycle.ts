@@ -536,7 +536,12 @@ function assembleFusionSnapshotInput(params: {
     accountState: accountJson,
     positionState: { positions: positionsJson, openOrders: openOrdersJson },
     portfolioExposure: { ...params.derivedExposure,
-      correlationObservation: params.portfolioCorrelation } as unknown as JsonValue,
+      unclassifiedOpenOrderIds: [...params.derivedExposure.unclassifiedOpenOrderIds],
+      riskyUnderlyings: [...params.derivedExposure.riskyUnderlyings],
+      unparsedOptionSymbols: [...params.derivedExposure.unparsedOptionSymbols],
+      correlationObservation: params.portfolioCorrelation === null ? null
+        : { ...params.portfolioCorrelation,
+            pairs: params.portfolioCorrelation.pairs.map((pair) => ({ ...pair })) } },
     alpacaQuoteState: params.finalistQuoteRefresh,
     optionomicsFeatureState: optionomicsAttempted ? optionomicsJson : null, // honestly absent when not configured, never fabricated
     eventState: eventContextObservations.length > 0 || params.macroEventCoverage !== null

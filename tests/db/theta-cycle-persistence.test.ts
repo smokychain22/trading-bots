@@ -10,6 +10,7 @@ import { normalizeOptionContract } from '../../src/theta/option-contract.js';
 import { buildCanonicalStrategyFrontier } from '../../src/theta/canonical-strategy-frontier.js';
 import type { StrategyRoutingResponse } from '../../src/theta/strategy-router-contract.js';
 import type { ThetaShadowCycleResult } from '../../src/theta/theta-shadow-cycle.js';
+import { flatPortfolioExposure } from '../helpers/flat-portfolio-exposure.js';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 
@@ -71,7 +72,8 @@ test('PostgreSQL atomically persists and idempotently replays a complete decisio
     ];
     const snapshotInput: FusionSnapshotInput = {
       botId: 'THETA', decisionTimeUtc: now, triggerType: 'TEST', marketSession: { isOpen: false }, underlyingState: { symbol: 'SPY' },
-      contractCandidates: [contract, ...researchContracts], accountState: { status: 'ACTIVE' }, positionState: { positions: [], orders: [] }, portfolioExposure: {},
+      contractCandidates: [contract, ...researchContracts], accountState: { status: 'ACTIVE' },
+      positionState: { positions: [], orders: [] }, portfolioExposure: flatPortfolioExposure(),
       alpacaQuoteState: null, optionomicsFeatureState: null, eventState: null, regimeState: null, expertPriorState: null,
       riskState: null, strategyRouterState: null,
       versions: { strategyVersion: 'test', featureVersion: 'test', riskLimitVersion: 'test', executionVersion: 'test', costModelVersion: 'test', dataVersion: 'test', modelVersions: {} },

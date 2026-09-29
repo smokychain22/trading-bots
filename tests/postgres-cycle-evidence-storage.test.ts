@@ -10,6 +10,7 @@ import {
 } from '../src/theta/postgres-cycle-evidence-storage.js';
 import { projectOperationalThetaCandidates } from '../src/theta/postgres-theta-cycle-store.js';
 import type { ThetaShadowCycleResult } from '../src/theta/theta-shadow-cycle.js';
+import { flatPortfolioExposure } from './helpers/flat-portfolio-exposure.js';
 
 const sha = (value: string): string => createHash('sha256').update(value).digest('hex');
 const now = '2026-09-25T15:00:00.000Z';
@@ -37,7 +38,8 @@ function cycle(): ThetaShadowCycleResult {
   const input: FusionSnapshotInput = {
     botId: 'THETA', decisionTimeUtc: now, triggerType: 'TEST', marketSession: { isOpen: true },
     underlyingState: { symbol: 'SPY', last: 665.01 }, contractCandidates: contracts,
-    accountState: { status: 'ACTIVE' }, positionState: { positions: [], orders: [] }, portfolioExposure: {},
+    accountState: { status: 'ACTIVE' }, positionState: { positions: [], orders: [] },
+    portfolioExposure: flatPortfolioExposure(),
     alpacaQuoteState: null,
     optionomicsFeatureState: {
       rawObservations: Array.from({ length: 20 }, (_, index) => ({ operationAlias: `op-${index}`, payload: { rows: contracts } })),

@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import type { FusionSnapshotInput, JsonValue } from '../src/market/fusion-snapshot.js';
 import { evaluateFusionSnapshot, type ThetaQClient } from '../src/theta/evaluation.js';
+import { flatPortfolioExposure } from './helpers/flat-portfolio-exposure.js';
 
 function snapshotFixture(): FusionSnapshotInput {
   const hash = 'd'.repeat(64);
@@ -21,7 +22,7 @@ function snapshotFixture(): FusionSnapshotInput {
   return {
     botId: 'THETA', decisionTimeUtc: '2026-09-09T18:30:02Z', triggerType: 'PERIODIC_SCAN',
     marketSession: {}, underlyingState: {}, contractCandidates: [], accountState: {}, positionState: {},
-    portfolioExposure: {}, strategyRouterState: {},
+    portfolioExposure: flatPortfolioExposure(), strategyRouterState: {},
     alpacaQuoteState: {}, optionomicsFeatureState: {}, eventState: {}, regimeState: {},
     expertPriorState: {}, riskState: {},
     versions: {

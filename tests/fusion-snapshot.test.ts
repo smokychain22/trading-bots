@@ -6,6 +6,7 @@ import {
   type FusionSnapshotInput,
   verifyFusionSnapshot,
 } from '../src/market/fusion-snapshot.js';
+import { flatPortfolioExposure } from './helpers/flat-portfolio-exposure.js';
 
 const payloadHash = 'a'.repeat(64);
 
@@ -33,7 +34,7 @@ function fixture(): FusionSnapshotInput {
     }],
     accountState: { status: 'ACTIVE', buyingPower: 100000 },
     positionState: { positions: [] },
-    portfolioExposure: { tickerConcentrationPct: 0, sectorConcentrationPct: 0 },
+    portfolioExposure: flatPortfolioExposure(),
     strategyRouterState: { eligible: ['THETA_Q'] },
     alpacaQuoteState: { bid: 4.1, ask: 4.3, feed: 'OPRA' },
     optionomicsFeatureState: { ivRank: null },
@@ -92,6 +93,24 @@ test('same semantic FusionSnapshot inputs produce the same hash', () => {
   assert.equal(builtFirst.validForNewRisk, true);
   assert.equal(builtFirst.snapshot.decisionTimeUtc, '2026-09-09T18:30:00.000Z');
   assert.equal(verifyFusionSnapshot(builtFirst.snapshot, builtFirst.contentHash), true);
+});
+
+test('missing or malformed portfolio exposure cannot become a valid decision snapshot', () => {
+  const missing = fixture();
+  missing.portfolioExposure = {} as FusionSnapshotInput['portfolioExposure'];
+  assert.throws(() => buildFusionSnapshot(missing));
+
+  const invalidCount = fixture();
+  invalidCount.portfolioExposure = {
+    ...flatPortfolioExposure(), shortPutCount: -1,
+  };
+  assert.throws(() => buildFusionSnapshot(invalidCount));
+
+  const malformedCorrelation = fixture();
+  malformedCorrelation.portfolioExposure = {
+    ...flatPortfolioExposure(), correlationObservation: { state: 'KNOWN' },
+  } as unknown as FusionSnapshotInput['portfolioExposure'];
+  assert.throws(() => buildFusionSnapshot(malformedCorrelation));
 });
 
 test('stale executable quote truth blocks new risk', () => {

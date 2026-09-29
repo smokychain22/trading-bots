@@ -27,7 +27,7 @@ evidence window without restarting the aligned worker for this status alone.
 | --- | --- | --- | --- |
 | 1 | Current release frozen | `FORWARD_DATA_REQUIRED` | Current-worker open-session canonical frontier, durable method provenance, honest per-method L7 and non-real rejection, persisted T0, provider-free deterministic replay. |
 | 2 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_1` | Current executable two-sided quote entitlement, provenance and PIT operation matrix need qualification. Optional research features cannot become hard entry gates by default. |
-| 3 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_2` | Strongly typed FusionSnapshot and adversarial replay need current-source audit. Research T0 adapters do not prove Production replay. |
+| 3 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_2` | Candidate contracts were already normalized. This branch now validates the complete broker-derived portfolio exposure and correlation observation shape in FusionSnapshot. Other state blobs, PIT cross-field checks and current-worker replay still need audit. Research T0 adapters do not prove Production replay. |
 | 4 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_3` | Q/H/D/A/C/WAIT economics need after-cost and lifecycle invariants. No empirical continuation value is available. |
 | 5 | `PARTIAL_SOURCE` | `WAITING_ON_PHASE_4` | One AEGIS and sizing authority remains mandatory. Simulated idempotency and restart tests do not authorize Paper submissions. |
 | 6 | `SOURCE_COMPLETE_DATA_PENDING` for imported research modules only | `EMPIRICALLY_UNPROVEN` | Historical recovered corpus has no selected or resolved outcomes. Future capture and truth-class joins require later real observations. |
@@ -81,6 +81,10 @@ tests, build, security scan and Git storage policy. The focused tests prove
 GET-only requests, exact-leg marks, typed provider deferrals, idempotent local
 jobs and bounded process wiring. They do not prove provider entitlement or
 current-worker market outcomes.
+
+The first isolated integration SHA `d36e0801451b11f01712a86817af8a3c8382928d`
+passed exact-SHA CI run `36534651935`. Later Phase-3 typing work on this
+branch has separate tests and requires its own exact-SHA CI before promotion.
 
 ## Unknown and safety register
 

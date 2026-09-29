@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { buildFusionSnapshot, type FusionSnapshotInput } from '../src/market/fusion-snapshot.js';
+import { flatPortfolioExposure } from './helpers/flat-portfolio-exposure.js';
 import { normalizeOptionContract, type NormalizedOptionContract } from '../src/theta/option-contract.js';
 import { parseStrategyRoutingResponse, type StrategyFamily } from '../src/theta/strategy-router-contract.js';
 import type { CanonicalStrategyFrontierInput } from '../src/theta/canonical-strategy-frontier.js';
@@ -62,7 +63,8 @@ function realisticCycle(): ThetaShadowCycleResult {
   const input: FusionSnapshotInput = {
     botId: 'THETA', decisionTimeUtc: now, triggerType: 'TEST', marketSession: { isOpen: true },
     underlyingState: { symbol: 'SPY', last: 665.01 }, contractCandidates: [contract()],
-    accountState: { status: 'ACTIVE' }, positionState: { positions: [], orders: [] }, portfolioExposure: {},
+    accountState: { status: 'ACTIVE' }, positionState: { positions: [], orders: [] },
+    portfolioExposure: flatPortfolioExposure(),
     alpacaQuoteState: null,
     optionomicsFeatureState: { schemaVersion: 'test-v1', contracts: [contract()], unavailableFamilies: [] },
     eventState: { state: 'CLEAR' }, regimeState: { companyEventByOptionSymbol: {} }, expertPriorState: null,
