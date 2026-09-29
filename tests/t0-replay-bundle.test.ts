@@ -61,7 +61,9 @@ const realCycleInput: CanonicalStrategyFrontierInput = {
   optionomicsContext: { state: 'UNKNOWN' },
   brokerAllowedQty: 3,
   brokerAllowedQtyByCandidateId: { 'THETA_CONVENTIONAL:AAPL261016P00190000': 1 },
-  sizingPolicy: { policyVersion: 'sizing-v1', maximumTickerAllocationPct: 0.5 },
+  sizingPolicy: { policyVersion: 'sizing-v1', riskBudgetQtyCap: 4, collateralQtyCap: 3,
+    concentrationQtyCap: 2, assignmentCapacityQtyCap: 2, tailRiskQtyCap: 2,
+    correlationQtyCap: 2, liquidityQtyCap: 2, reducedStateMultiplier: 0.5 },
   aegisNewRiskStateByCandidateId: { 'THETA_CONVENTIONAL:AAPL261016P00190000': 'ALLOW_REDUCED' },
   aegisBindingReasonsByCandidateId: { 'THETA_CONVENTIONAL:AAPL261016P00190000': ['CANDIDATE_LIMIT'] },
   entryEligibilityByOptionSymbol: { AAPL261016P00190000: {
@@ -150,4 +152,58 @@ test('a genuine build failure (invalid input) is classified BUILD_FAILED, distin
     assert.equal(classified.reason, 'BUILD_FAILED');
     assert.equal(classified.byteSize, null);
   }
+});
+
+test('T0 rejects unknown sizing settings instead of silently stripping an unused authority', () => {
+  const invalidInput = {
+    ...realCycleInput,
+    sizingPolicy: { ...realCycleInput.sizingPolicy, maximumTickerAllocationPct: 0.5 },
+  } as unknown as CanonicalStrategyFrontierInput;
+  assert.throws(() => buildT0ReplayBundle(invalidInput), /unrecognized_keys/i);
+});
+
+test('T0 rejects non-finite supplementary context before persistence', () => {
+  const invalidInput = {
+    ...realCycleInput,
+    optionomicsContext: { state: 'READY', iv: Number.NaN },
+  } as unknown as CanonicalStrategyFrontierInput;
+  assert.throws(() => buildT0ReplayBundle(invalidInput));
+});
+
+test('T0 replay is stable under candidate reorder and uses no provider surface', () => {
+  const second = contract({ optionSymbol: 'AAPL261016P00185000', occSymbol: 'AAPL261016P00185000', strike: 185 });
+  const bundle = buildT0ReplayBundle({ ...realCycleInput, contracts: [contract(), second] });
+  const reordered: T0ReplayBundle = { ...bundle, contracts: [...bundle.contracts].reverse() };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (() => { throw new Error('NETWORK_FORBIDDEN_DURING_T0_REPLAY'); }) as typeof fetch;
+  try {
+    assert.equal(replayFromT0Bundle(reordered).contentHash, bundle.expectedFrontierContentHash);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('T0 replay rejects duplicated, missing and tampered candidate inputs', () => {
+  const second = contract({ optionSymbol: 'AAPL261016P00185000', occSymbol: 'AAPL261016P00185000', strike: 185 });
+  const bundle = buildT0ReplayBundle({ ...realCycleInput, contracts: [contract(), second] });
+  const firstContract = bundle.contracts[0];
+  assert.ok(firstContract !== undefined);
+  assert.throws(() => replayFromT0Bundle({ ...bundle, contracts: [...bundle.contracts, firstContract] }),
+    /T0_REPLAY_FRONTIER_HASH_MISMATCH/);
+  assert.throws(() => replayFromT0Bundle({ ...bundle, contracts: bundle.contracts.slice(1) }),
+    /T0_REPLAY_FRONTIER_HASH_MISMATCH/);
+  assert.throws(() => replayFromT0Bundle({ ...bundle, strategyVersion: 'tampered-policy-version' }),
+    /T0_REPLAY_FRONTIER_HASH_MISMATCH/);
+});
+
+test('T0 rejects future observations and unknown router strategies before replay', () => {
+  const future = contract({ quoteTimestamp: '2026-09-14T15:00:01.000Z' });
+  assert.throws(() => buildT0ReplayBundle({ ...realCycleInput, contracts: [future] }), /future evidence/);
+  const bundle = buildT0ReplayBundle(realCycleInput);
+  const unknownStrategy = structuredClone(bundle) as unknown as Record<string, unknown>;
+  const route = unknownStrategy.routing as { results: Array<{ strategyFamily: string }> };
+  const firstRoute = route.results[0];
+  assert.ok(firstRoute !== undefined);
+  firstRoute.strategyFamily = 'THETA_UNKNOWN';
+  assert.throws(() => replayFromT0Bundle(unknownStrategy as unknown as T0ReplayBundle));
 });

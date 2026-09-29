@@ -180,9 +180,15 @@ test('replay verification detects modified evidence', () => {
 test('non-JSON numbers and missing Alpaca provenance are rejected', () => {
   const badNumber = fixture();
   badNumber.underlyingState = { price: Number.NaN };
-  assert.throws(() => buildFusionSnapshot(badNumber), /non-finite number/);
+  assert.throws(() => buildFusionSnapshot(badNumber), /received NaN|non-finite number/);
 
   const noAlpaca = fixture();
   noAlpaca.sourceProvenance = [];
   assert.throws(() => buildFusionSnapshot(noAlpaca));
+});
+
+test('all supplementary FusionSnapshot evidence is JSON-safe at the persistence boundary', () => {
+  const invalid = fixture();
+  invalid.strategyRouterState = { eligible: ['THETA_Q'], callback: () => 'not persistable' } as unknown as FusionSnapshotInput['strategyRouterState'];
+  assert.throws(() => buildFusionSnapshot(invalid));
 });

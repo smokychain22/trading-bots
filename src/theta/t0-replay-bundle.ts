@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { buildCanonicalStrategyFrontier, type CanonicalStrategyFrontier, type CanonicalStrategyFrontierInput } from './canonical-strategy-frontier.js';
+import { jsonValueSchema } from '../market/fusion-snapshot.js';
 import { normalizedOptionContractSchema } from './option-contract.js';
 import { strategyRoutingResponseSchema } from './strategy-router-contract.js';
 
@@ -66,11 +67,25 @@ const stockSchema = z.object({
   brokerCostBasisPerShare: z.number().nullable(), wholeChainEconomicBasisPerShare: z.number().nullable(),
 }).nullable();
 
+const optionalQuantityCap = z.number().int().nonnegative().nullable().optional();
+export const canonicalSizingPolicySchema = z.object({
+  policyVersion: z.string().min(1).optional(),
+  riskBudgetQtyCap: optionalQuantityCap,
+  collateralQtyCap: optionalQuantityCap,
+  concentrationQtyCap: optionalQuantityCap,
+  assignmentCapacityQtyCap: optionalQuantityCap,
+  tailRiskQtyCap: optionalQuantityCap,
+  correlationQtyCap: optionalQuantityCap,
+  liquidityQtyCap: optionalQuantityCap,
+  reducedStateMultiplier: z.number().finite().min(0).max(1).nullable().optional(),
+}).strict();
+
 export const t0ReplayBundleSchema = z.object({
   contractVersion: z.literal(t0ReplayBundleContractVersion),
   snapshotId: z.string().min(1),
   timestamp: z.string().min(1),
   strategyVersion: z.string().min(1),
+  expectedFrontierContentHash: z.string().regex(/^[0-9a-f]{64}$/),
   contracts: normalizedOptionContractSchema.array(),
   routing: strategyRoutingResponseSchema.nullable(),
   stock: stockSchema,
@@ -78,19 +93,34 @@ export const t0ReplayBundleSchema = z.object({
   buyingPower: z.number().nullable().optional(),
   brokerAllowedQty: z.number().int().nonnegative().optional(),
   brokerAllowedQtyByCandidateId: z.record(z.string(), z.number().int().nonnegative()).optional(),
-  sizingPolicy: z.record(z.string(), z.unknown()).optional(),
+  sizingPolicy: canonicalSizingPolicySchema.optional(),
   aegisNewRiskState: aegisStateSchema,
   aegisNewRiskStateByCandidateId: z.record(z.string(), aegisStateSchema).optional(),
   aegisBindingReasonsByCandidateId: z.record(z.string(), z.array(z.string())).optional(),
   eventState: z.string().nullable(),
   unmanagedBrokerPositionCount: z.number(),
   unevaluatedUnderlyingCount: z.number(),
-  optionomicsContext: z.unknown(),
+  optionomicsContext: jsonValueSchema,
   entryEligibilityByOptionSymbol: z.record(z.string(), entryEligibilitySchema).optional(),
   thetaQCandidateEvaluationByOptionSymbol: z.record(z.string(), thetaQCandidateEvaluationSchema).optional(),
   thetaQDecision: thetaQDecisionSchema.optional(),
   optionsApprovedLevel: z.number().nullable().optional(),
   optionsTradingLevel: z.number().nullable().optional(),
+}).strict().superRefine((bundle, context) => {
+  const decisionAt = Date.parse(bundle.timestamp);
+  if (!Number.isFinite(decisionAt)) return;
+  bundle.contracts.forEach((contract, index) => {
+    for (const [field, value] of [['receivedAt', contract.receivedAt], ['quoteTimestamp', contract.quoteTimestamp],
+      ['tradeTimestamp', contract.tradeTimestamp], ['greeksTimestamp', contract.greeksTimestamp],
+      ['underlyingTimestamp', contract.underlyingTimestamp], ['underlyingQuoteReceivedAt', contract.underlyingQuoteReceivedAt]] as const) {
+      if (value !== null && value !== undefined && Date.parse(value) > decisionAt) {
+        context.addIssue({ code: 'custom', path: ['contracts', index, field], message: 'future evidence cannot enter a T0 replay bundle' });
+      }
+    }
+  });
+  if (bundle.routing !== null && (bundle.routing.snapshotId !== bundle.snapshotId || bundle.routing.timestamp !== bundle.timestamp)) {
+    context.addIssue({ code: 'custom', path: ['routing'], message: 'routing identity must match the frozen T0 snapshot' });
+  }
 });
 
 export type T0ReplayBundle = z.infer<typeof t0ReplayBundleSchema>;
@@ -115,9 +145,11 @@ export function classifyT0ReplayBundleBuildError(error: unknown): T0ReplayBundle
 }
 
 export function buildT0ReplayBundle(input: CanonicalStrategyFrontierInput): T0ReplayBundle {
+  const expectedFrontierContentHash = buildCanonicalStrategyFrontier(input).contentHash;
   const bundle: T0ReplayBundle = {
     contractVersion: t0ReplayBundleContractVersion,
     snapshotId: input.snapshotId, timestamp: input.timestamp, strategyVersion: input.strategyVersion,
+    expectedFrontierContentHash,
     contracts: [...input.contracts], routing: input.routing, stock: input.stock,
     assignmentCapacityQty: input.assignmentCapacityQty, buyingPower: input.buyingPower ?? null,
     brokerAllowedQty: input.brokerAllowedQty,
@@ -168,11 +200,15 @@ export function replayFromT0Bundle(bundle: T0ReplayBundle): CanonicalStrategyFro
     aegisBindingReasonsByCandidateId: parsed.aegisBindingReasonsByCandidateId,
     unmanagedBrokerPositionCount: parsed.unmanagedBrokerPositionCount,
     unevaluatedUnderlyingCount: parsed.unevaluatedUnderlyingCount,
-    optionomicsContext: parsed.optionomicsContext as CanonicalStrategyFrontierInput['optionomicsContext'],
+    optionomicsContext: parsed.optionomicsContext,
     entryEligibilityByOptionSymbol: parsed.entryEligibilityByOptionSymbol,
     thetaQCandidateEvaluationByOptionSymbol: parsed.thetaQCandidateEvaluationByOptionSymbol,
     thetaQDecision: parsed.thetaQDecision,
     optionsApprovedLevel: parsed.optionsApprovedLevel ?? null, optionsTradingLevel: parsed.optionsTradingLevel ?? null,
   };
-  return buildCanonicalStrategyFrontier(replayInput);
+  const replayed = buildCanonicalStrategyFrontier(replayInput);
+  if (replayed.contentHash !== parsed.expectedFrontierContentHash) {
+    throw new Error(`T0_REPLAY_FRONTIER_HASH_MISMATCH:${parsed.expectedFrontierContentHash}:${replayed.contentHash}`);
+  }
+  return replayed;
 }

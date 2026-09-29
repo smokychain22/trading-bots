@@ -4,6 +4,14 @@ import { normalizedOptionContractSchema } from '../theta/option-contract.js';
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
+/** Runtime schema for persisted supplementary evidence. This rejects
+ * functions, undefined values, non-finite numbers and other values that
+ * JSONB or the local spool would silently alter. */
+export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() => z.union([
+  z.null(), z.boolean(), z.number().finite(), z.string(), z.array(jsonValueSchema),
+  z.record(z.string(), jsonValueSchema),
+]));
+
 const utcTimestamp = z.string().datetime({ offset: true }).transform((value) => new Date(value).toISOString());
 
 const evidenceState = z.enum(['GOOD', 'DEGRADED', 'STALE', 'UNKNOWN', 'INVALID', 'NOT_ENTITLED']);
@@ -102,26 +110,30 @@ const fusionSnapshotInputSchema = z.object({
   botId: z.literal('THETA'),
   decisionTimeUtc: utcTimestamp,
   triggerType: z.string().min(1),
-  marketSession: z.unknown(),
-  underlyingState: z.unknown(),
+  marketSession: jsonValueSchema,
+  underlyingState: jsonValueSchema,
   // Gap 3: was z.array(z.unknown()) -- now the canonical normalized
   // contract shape (src/theta/option-contract.ts), so a snapshot's
   // candidates are schema-validated rather than an untyped blob.
   contractCandidates: z.array(normalizedOptionContractSchema),
-  accountState: z.unknown(),
-  positionState: z.unknown(),
+  accountState: jsonValueSchema,
+  positionState: jsonValueSchema,
   portfolioExposure: portfolioExposureSchema,
-  alpacaQuoteState: z.unknown(),
-  optionomicsFeatureState: z.unknown(),
-  eventState: z.unknown(),
-  regimeState: z.unknown(),
-  expertPriorState: z.unknown(),
-  riskState: z.unknown(),
+  alpacaQuoteState: jsonValueSchema,
+  optionomicsFeatureState: jsonValueSchema,
+  eventState: jsonValueSchema,
+  regimeState: jsonValueSchema,
+  expertPriorState: jsonValueSchema,
+  riskState: jsonValueSchema,
   // Gap 4: pins the strategy-router's eligibility output (strategy_router.py
   // / strategy-router-contract.ts) to this snapshot, so a replayed decision
   // can show which families were even eligible to compete, not just which
   // one won.
-  strategyRouterState: z.unknown(),
+  // The FusionSnapshot freezes pre-router market evidence. The downstream
+  // canonical T0 bundle carries the fully typed StrategyRoutingResponse.
+  // Historical fixtures may contain a JSON router summary, so this field is
+  // JSON-safe rather than falsely claiming the runtime response schema.
+  strategyRouterState: jsonValueSchema,
   versions: versionManifestSchema,
   sourceProvenance: z.array(provenanceSchema).min(1),
   // Gap 1.

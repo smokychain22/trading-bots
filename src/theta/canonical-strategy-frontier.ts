@@ -145,6 +145,18 @@ export interface CanonicalStrategyFrontier {
   readonly contentHash: string;
 }
 
+export interface CanonicalSizingPolicy {
+  readonly policyVersion?: string;
+  readonly riskBudgetQtyCap?: number | null;
+  readonly collateralQtyCap?: number | null;
+  readonly concentrationQtyCap?: number | null;
+  readonly assignmentCapacityQtyCap?: number | null;
+  readonly tailRiskQtyCap?: number | null;
+  readonly correlationQtyCap?: number | null;
+  readonly liquidityQtyCap?: number | null;
+  readonly reducedStateMultiplier?: number | null;
+}
+
 export interface CanonicalStrategyFrontierInput {
   readonly snapshotId: string;
   readonly timestamp: string;
@@ -162,7 +174,7 @@ export interface CanonicalStrategyFrontierInput {
   readonly buyingPower?: number | null;
   readonly brokerAllowedQty?: number;
   readonly brokerAllowedQtyByCandidateId?: Readonly<Record<string, number>>;
-  readonly sizingPolicy?: Readonly<Record<string, unknown>>;
+  readonly sizingPolicy?: CanonicalSizingPolicy;
   readonly aegisNewRiskState: 'ALLOW_FULL' | 'ALLOW_REDUCED' | 'HOLD_ONLY' | 'HARD_VETO' | 'DEFINED_RISK_ONLY' | 'EMERGENCY_EXIT_ONLY' | null;
   readonly aegisNewRiskStateByCandidateId?: Readonly<Record<string, CanonicalStrategyFrontierInput['aegisNewRiskState']>>;
   readonly aegisBindingReasonsByCandidateId?: Readonly<Record<string, readonly string[]>>;
