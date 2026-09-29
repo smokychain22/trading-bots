@@ -42,7 +42,7 @@ test('a missing contractVersion field is MISSING_REQUIRED_FIELD', () => {
 });
 
 test('a real but different (unrecognized) version string is VERSION_AHEAD_UNSUPPORTED or VERSION_BEHIND_UNSUPPORTED, never guessed compatible', () => {
-  const ahead = detectExportSchemaDrift(fullArchive({ contractVersion: 'theta-postgres-cycle-evidence-storage-v3' }));
+  const ahead = detectExportSchemaDrift(fullArchive({ contractVersion: 'theta-postgres-cycle-evidence-storage-v4' }));
   assert.equal(ahead.verdict, 'VERSION_AHEAD_UNSUPPORTED');
   const behind = detectExportSchemaDrift(fullArchive({ contractVersion: 'theta-postgres-cycle-evidence-storage-v1' }));
   assert.equal(behind.verdict, 'VERSION_BEHIND_UNSUPPORTED');
@@ -56,4 +56,10 @@ test('ADVERSARIAL: assertExportSchemaCompatible throws with the exact verdict on
 
 test('assertExportSchemaCompatible does not throw on a compatible archive', () => {
   assert.doesNotThrow(() => assertExportSchemaCompatible(fullArchive()));
+});
+
+test('decoded historical v2 archives remain compatible with the v3 research adapter', () => {
+  const historical = fullArchive({ contractVersion: 'theta-postgres-cycle-evidence-storage-v2' });
+  assert.equal(detectExportSchemaDrift(historical).verdict, 'BACKWARD_COMPATIBLE');
+  assert.doesNotThrow(() => assertExportSchemaCompatible(historical));
 });

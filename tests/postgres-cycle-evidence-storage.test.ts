@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
+import { brotliCompressSync, gzipSync } from 'node:zlib';
 import { buildFusionSnapshot, hashJson, type FusionSnapshotInput } from '../src/market/fusion-snapshot.js';
+import { canonicalJson } from '../src/research/point-in-time-evidence.js';
 import { normalizeOptionContract } from '../src/theta/option-contract.js';
 import {
   decodeCycleEvidenceArchive,
@@ -93,6 +95,78 @@ test('PostgreSQL projection is bounded while compressed archive retains the comp
   assert.equal((projection.snapshot.contractCandidates as unknown[]).length, 4);
   assert.equal((projection.snapshot.optionomicsFeatureState as Record<string, unknown>).storageState,
     'FULL_STATE_IN_COMPRESSED_CYCLE_ARCHIVE');
+});
+
+test('packed archive reconstructs duplicated provider and T0 inputs exactly', () => {
+  const original = cycle();
+  assert.ok(original.fusionSnapshot !== null);
+  const snapshot = original.fusionSnapshot.snapshot;
+  const optionomics = snapshot.optionomicsFeatureState as Record<string, unknown>;
+  const rawObservations = optionomics.rawObservations as { payload: unknown }[];
+  const expandedSnapshot = {
+    ...snapshot,
+    optionomicsFeatureState: { ...optionomics, rawObservation: { payload: rawObservations[0]?.payload } },
+  };
+  const expanded = {
+    ...original,
+    fusionSnapshot: { ...original.fusionSnapshot, snapshot: expandedSnapshot },
+    canonicalFrontierInput: { contracts: snapshot.contractCandidates, snapshotId: 'test-t0' },
+  } as unknown as ThetaShadowCycleResult;
+  const projection = projectCycleEvidenceForPostgres(expanded);
+  const decoded = decodeCycleEvidenceArchive(projection.archive);
+  assert.equal(decoded.contractVersion, postgresCycleEvidenceStorageVersion);
+  assert.equal(canonicalJson(decoded.snapshot), canonicalJson(expandedSnapshot as never));
+  assert.equal(canonicalJson(decoded.canonicalFrontierInput), canonicalJson(expanded.canonicalFrontierInput as never));
+  assert.equal(sha(canonicalJson(decoded as never)), projection.archiveHash);
+  assert.ok(projection.archiveCompressedBytes < 4 * 1024 * 1024);
+});
+
+test('historical v2 gzip archives remain readable and malformed v3 references fail closed', () => {
+  const historical = { contractVersion: 'theta-postgres-cycle-evidence-storage-v2', snapshot: { botId: 'THETA' } };
+  assert.deepEqual(decodeCycleEvidenceArchive(gzipSync(JSON.stringify(historical))), historical);
+  const malformed = {
+    format: 'THETA_PACKED_CYCLE_V3',
+    evidence: { contractVersion: postgresCycleEvidenceStorageVersion, snapshot: {} },
+    references: ['CANONICAL_FRONTIER_CONTRACTS'],
+  };
+  const archive = gzipSync(Buffer.concat([Buffer.from('THETA_BR1\0'),
+    brotliCompressSync(Buffer.from(JSON.stringify(malformed)))]));
+  assert.throws(() => decodeCycleEvidenceArchive(archive), /FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID/);
+});
+
+test('distant repeated provider evidence exceeds the old gzip cap but round-trips below the governed cap', () => {
+  const original = cycle();
+  assert.ok(original.fusionSnapshot !== null);
+  const bulk = Array.from({ length: 55_000 }, (_, index) => sha(`provider-row-${index}`)).join('');
+  const payload = { rows: bulk };
+  const snapshot = {
+    ...original.fusionSnapshot.snapshot,
+    optionomicsFeatureState: {
+      rawObservation: { payload }, rawObservations: [{ payload }],
+      features: { bulk, contracts: [] }, optionChain: [], netFlowWindows: [],
+    },
+  };
+  const expanded = {
+    ...original,
+    fusionSnapshot: { ...original.fusionSnapshot, snapshot },
+    canonicalFrontierInput: { contracts: snapshot.contractCandidates, snapshotId: 'large-t0' },
+  } as unknown as ThetaShadowCycleResult;
+  const oldShape = {
+    contractVersion: 'theta-postgres-cycle-evidence-storage-v2',
+    snapshotContentHash: original.snapshotContentHash, snapshot,
+    strategyFrontier: original.strategyFrontier,
+    thetaQ: original.orchestration?.thetaQ ?? null,
+    decisionReceipt: original.orchestration?.receipt ?? null,
+    shadowOpportunities: original.orchestration?.shadowOpportunities ?? [],
+    canonicalFrontierInput: expanded.canonicalFrontierInput,
+    methodInputProvenance: expanded.methodInputProvenance,
+  };
+  assert.ok(gzipSync(Buffer.from(canonicalJson(oldShape as never)), { level: 9 }).length > 4 * 1024 * 1024);
+  const projection = projectCycleEvidenceForPostgres(expanded);
+  assert.ok(projection.archiveCompressedBytes <= 4 * 1024 * 1024);
+  const decoded = decodeCycleEvidenceArchive(projection.archive);
+  assert.equal(canonicalJson(decoded.snapshot), canonicalJson(snapshot as never));
+  assert.equal(canonicalJson(decoded.canonicalFrontierInput), canonicalJson(expanded.canonicalFrontierInput as never));
 });
 
 test('operational candidate projection keeps selected and diagnostic near-misses without duplicating the full research set', () => {

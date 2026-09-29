@@ -1,12 +1,14 @@
 import { createHash } from 'node:crypto';
-import { gunzipSync, gzipSync } from 'node:zlib';
+import { brotliCompressSync, brotliDecompressSync, constants, gunzipSync, gzipSync } from 'node:zlib';
 import type { JsonValue } from '../market/fusion-snapshot.js';
 import { canonicalJson } from '../research/point-in-time-evidence.js';
 import { assertInlinePayloadWithinPolicy } from '../storage/storage-dataset-policy.js';
 import type { CanonicalStrategyFrontier } from './canonical-strategy-frontier.js';
 import type { ThetaShadowCycleResult } from './theta-shadow-cycle.js';
 
-export const postgresCycleEvidenceStorageVersion = 'theta-postgres-cycle-evidence-storage-v2' as const;
+export const postgresCycleEvidenceStorageVersion = 'theta-postgres-cycle-evidence-storage-v3' as const;
+const previousStorageVersion = 'theta-postgres-cycle-evidence-storage-v2';
+const packedArchivePrefix = Buffer.from('THETA_BR1\0');
 const MAX_PROJECTION_BYTES = 768 * 1024;
 const MAX_COMPRESSED_ARCHIVE_BYTES = 4 * 1024 * 1024;
 
@@ -104,6 +106,69 @@ export interface PostgresCycleEvidenceProjection {
   readonly archiveCompressedBytes: number;
 }
 
+type PackedReference = 'OPTIONOMICS_RAW_OBSERVATION_PAYLOAD' | 'CANONICAL_FRONTIER_CONTRACTS';
+
+function packCycleEvidence(value: Record<string, unknown>): { readonly evidence: Record<string, unknown>; readonly references: PackedReference[] } {
+  const references: PackedReference[] = [];
+  let snapshot = value.snapshot as Record<string, JsonValue>;
+  const optionomics = object(snapshot.optionomicsFeatureState);
+  const rawObservation = object(optionomics.rawObservation);
+  const rawObservations = Array.isArray(optionomics.rawObservations) ? optionomics.rawObservations : [];
+  const firstRawObservation = object(rawObservations[0]);
+  if (rawObservation.payload !== undefined && firstRawObservation.payload !== undefined
+    && canonicalJson(rawObservation.payload) === canonicalJson(firstRawObservation.payload)) {
+    snapshot = { ...snapshot, optionomicsFeatureState: {
+      ...optionomics, rawObservation: { ...rawObservation, payload: null },
+    } };
+    references.push('OPTIONOMICS_RAW_OBSERVATION_PAYLOAD');
+  }
+  let canonicalFrontierInput = value.canonicalFrontierInput;
+  if (canonicalFrontierInput !== null && typeof canonicalFrontierInput === 'object' && !Array.isArray(canonicalFrontierInput)) {
+    const input = canonicalFrontierInput as Record<string, JsonValue>;
+    if (Array.isArray(input.contracts) && input.contracts.length > 0
+      && canonicalJson(input.contracts) === canonicalJson(snapshot.contractCandidates ?? null)) {
+      canonicalFrontierInput = { ...input, contracts: [] };
+      references.push('CANONICAL_FRONTIER_CONTRACTS');
+    }
+  }
+  return { evidence: { ...value, snapshot, canonicalFrontierInput }, references };
+}
+
+function unpackCycleEvidence(value: unknown): Record<string, JsonValue> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('FUSION_CYCLE_ARCHIVE_INVALID');
+  const packed = value as Record<string, unknown>;
+  if (packed.format !== 'THETA_PACKED_CYCLE_V3' || packed.evidence === null
+    || typeof packed.evidence !== 'object' || Array.isArray(packed.evidence)
+    || !Array.isArray(packed.references)) throw new Error('FUSION_CYCLE_ARCHIVE_INVALID');
+  const evidence = packed.evidence as Record<string, JsonValue>;
+  let snapshot = object(evidence.snapshot);
+  let canonicalFrontierInput = evidence.canonicalFrontierInput ?? null;
+  const seen = new Set<string>();
+  for (const reference of packed.references) {
+    if (typeof reference !== 'string' || seen.has(reference)) throw new Error('FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID');
+    seen.add(reference);
+    if (reference === 'OPTIONOMICS_RAW_OBSERVATION_PAYLOAD') {
+      const optionomics = object(snapshot.optionomicsFeatureState);
+      const rawObservation = object(optionomics.rawObservation);
+      const observations = Array.isArray(optionomics.rawObservations) ? optionomics.rawObservations : [];
+      const first = object(observations[0]);
+      if (rawObservation.payload !== null || first.payload === undefined) throw new Error('FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID');
+      snapshot = { ...snapshot, optionomicsFeatureState: {
+        ...optionomics, rawObservation: { ...rawObservation, payload: first.payload },
+      } };
+    } else if (reference === 'CANONICAL_FRONTIER_CONTRACTS') {
+      if (canonicalFrontierInput === null || typeof canonicalFrontierInput !== 'object'
+        || Array.isArray(canonicalFrontierInput) || !Array.isArray(snapshot.contractCandidates)) {
+        throw new Error('FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID');
+      }
+      const input = canonicalFrontierInput as Record<string, JsonValue>;
+      if (!Array.isArray(input.contracts) || input.contracts.length !== 0) throw new Error('FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID');
+      canonicalFrontierInput = { ...input, contracts: snapshot.contractCandidates };
+    } else throw new Error('FUSION_CYCLE_ARCHIVE_REFERENCE_INVALID');
+  }
+  return { ...evidence, snapshot, canonicalFrontierInput };
+}
+
 export function projectCycleEvidenceForPostgres(cycle: ThetaShadowCycleResult): PostgresCycleEvidenceProjection {
   if (cycle.fusionSnapshot === null) throw new Error('FUSION_SNAPSHOT_NOT_AVAILABLE');
   const fullSnapshot = cycle.fusionSnapshot.snapshot;
@@ -152,7 +217,17 @@ export function projectCycleEvidenceForPostgres(cycle: ThetaShadowCycleResult): 
     methodInputProvenance: cycle.methodInputProvenance,
   };
   const archiveJson = canonicalJson(archiveValue as unknown as JsonValue);
-  const archive = gzipSync(Buffer.from(archiveJson), { level: 9 });
+  const packed = packCycleEvidence(archiveValue);
+  const packedJson = canonicalJson({ format: 'THETA_PACKED_CYCLE_V3',
+    evidence: packed.evidence, references: packed.references } as JsonValue);
+  // The outer gzip preserves the existing bytea/backup contract. Brotli's
+  // larger window can deduplicate distant option-chain evidence without
+  // dropping a single decisive or research field from the decoded archive.
+  const compressed = brotliCompressSync(Buffer.from(packedJson), { params: {
+    [constants.BROTLI_PARAM_QUALITY]: 6,
+    [constants.BROTLI_PARAM_LGWIN]: 24,
+  } });
+  const archive = gzipSync(Buffer.concat([packedArchivePrefix, compressed]), { level: 1 });
   assertInlinePayloadWithinPolicy({
     classification: 'SHORT_RETENTION_OBSERVATION', serializedBytes: archive.byteLength,
     errorCode: 'FUSION_CYCLE_ARCHIVE_POLICY_PAYLOAD_TOO_LARGE',
@@ -173,10 +248,14 @@ export function projectCycleEvidenceForPostgres(cycle: ThetaShadowCycleResult): 
 }
 
 export function decodeCycleEvidenceArchive(archive: Buffer): Record<string, JsonValue> {
-  const value = JSON.parse(gunzipSync(archive).toString('utf8')) as unknown;
+  const uncompressed = gunzipSync(archive);
+  const value = uncompressed.subarray(0, packedArchivePrefix.length).equals(packedArchivePrefix)
+    ? unpackCycleEvidence(JSON.parse(brotliDecompressSync(uncompressed.subarray(packedArchivePrefix.length)).toString('utf8')))
+    : JSON.parse(uncompressed.toString('utf8')) as unknown;
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('FUSION_CYCLE_ARCHIVE_INVALID');
   const record = value as Record<string, JsonValue>;
-  if (record.contractVersion !== postgresCycleEvidenceStorageVersion) throw new Error('FUSION_CYCLE_ARCHIVE_VERSION_INVALID');
+  if (record.contractVersion !== postgresCycleEvidenceStorageVersion
+    && record.contractVersion !== previousStorageVersion) throw new Error('FUSION_CYCLE_ARCHIVE_VERSION_INVALID');
   return record;
 }
 

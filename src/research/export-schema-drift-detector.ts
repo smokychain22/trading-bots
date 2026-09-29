@@ -16,7 +16,8 @@ export const exportSchemaDriftDetectorVersion = 'theta-export-schema-drift-detec
 /** The exact contract version this research branch's adapters were built
  * against. Bump this deliberately (with adapter changes) whenever Codex's
  * export version changes -- never silently. */
-export const RESEARCH_EXPECTED_EXPORT_CONTRACT_VERSION = 'theta-postgres-cycle-evidence-storage-v2' as const;
+export const RESEARCH_EXPECTED_EXPORT_CONTRACT_VERSION = 'theta-postgres-cycle-evidence-storage-v3' as const;
+const backwardCompatibleExportContractVersion = 'theta-postgres-cycle-evidence-storage-v2';
 
 export type SchemaDriftVerdict =
   | 'COMPATIBLE'
@@ -83,6 +84,9 @@ export function detectExportSchemaDrift(
   } else if (observedVersion === RESEARCH_EXPECTED_EXPORT_CONTRACT_VERSION) {
     verdict = 'COMPATIBLE';
     reasons.push('exact contract version match, all required fields present, no unknown enum values');
+  } else if (observedVersion === backwardCompatibleExportContractVersion) {
+    verdict = 'BACKWARD_COMPATIBLE';
+    reasons.push('decoded v2 and v3 archives expose the same required semantic fields');
   } else if (observedVersion === '') {
     verdict = 'MISSING_REQUIRED_FIELD';
     reasons.push('contractVersion field itself is missing or not a string');
@@ -115,7 +119,7 @@ export function assertExportSchemaCompatible(
   observedCandidateStatuses: readonly string[] = [],
 ): void {
   const result = detectExportSchemaDrift(decodedArchive, observedCandidateStatuses);
-  if (result.verdict !== 'COMPATIBLE') {
+  if (result.verdict !== 'COMPATIBLE' && result.verdict !== 'BACKWARD_COMPATIBLE') {
     throw new Error(`EXPORT_SCHEMA_DRIFT:${result.verdict}:${result.reasons.join('; ')}`);
   }
 }
