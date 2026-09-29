@@ -5,6 +5,57 @@ export interface R8ReadinessInput {readonly r7EngineeringComplete:boolean;readon
   readonly optionomicsRealAuthReady:boolean;readonly executionQuoteProviderReady:boolean;readonly operationalFirstPaperReady:boolean;
   readonly empiricalPolicyReady:boolean;readonly managementPolicyPromoted:boolean;
   readonly labelPipelineReady:boolean;readonly wholeChainAccountingReady:boolean;readonly trainingReady:boolean;}
+
+export interface R8RuntimeEvidence {
+  readonly unknownAuditComplete:boolean;
+  readonly implementationBlockerCount:number|null;
+  readonly brokerHealthReady:boolean;
+  readonly reconciliationReady:boolean;
+  readonly workerOnline:boolean;
+  readonly marketSession:string;
+  readonly runtimeScanObserved:boolean;
+  readonly strategiesConsidered:number|null;
+  readonly finalAction:string;
+  readonly masterExecutionEnabled:boolean;
+  readonly followerExecutionEnabled:boolean;
+  readonly newOrdersPaused:boolean;
+  readonly databaseConnected:boolean;
+  readonly optionomicsLastCheck:string|null;
+  readonly optionomicsSecretState:string;
+  readonly executionQuoteReady:boolean;
+  readonly operationalFirstPaperReady:boolean;
+  readonly outcomeSchemaObserved:boolean;
+  readonly wholeChainSimulationComplete:boolean;
+  readonly policyEvaluationReadiness:string;
+}
+
+/** Builds the R8 display dimensions from observed runtime evidence. Source
+ * presence and a database connection alone cannot certify that the router,
+ * frontier, quote path, label schema, or whole-chain path actually ran. */
+export function deriveR8ReadinessInput(evidence:R8RuntimeEvidence):R8ReadinessInput {
+  const strategyRouterReady=evidence.runtimeScanObserved
+    &&evidence.strategiesConsidered!==null&&evidence.strategiesConsidered>0;
+  const actionFrontierReady=evidence.runtimeScanObserved
+    &&['ACTION_READY','WAIT','SYSTEM_HOLD'].includes(evidence.finalAction);
+  return {
+    r7EngineeringComplete:evidence.unknownAuditComplete&&evidence.implementationBlockerCount===0,
+    brokerTruthReady:evidence.brokerHealthReady&&evidence.reconciliationReady,
+    sessionStateReady:evidence.workerOnline&&['OPEN','CLOSED'].includes(evidence.marketSession),
+    positionLifecycleReady:evidence.reconciliationReady,
+    strategyRouterReady,actionFrontierReady,
+    operatorSafetyReady:evidence.databaseConnected&&!evidence.masterExecutionEnabled
+      &&!evidence.followerExecutionEnabled&&evidence.newOrdersPaused,
+    optionomicsTransportReady:evidence.optionomicsLastCheck!==null,
+    optionomicsRealAuthReady:evidence.optionomicsSecretState==='AUTH_VALID',
+    executionQuoteProviderReady:evidence.executionQuoteReady,
+    operationalFirstPaperReady:evidence.operationalFirstPaperReady,
+    empiricalPolicyReady:false,managementPolicyPromoted:false,
+    labelPipelineReady:evidence.outcomeSchemaObserved,
+    wholeChainAccountingReady:evidence.wholeChainSimulationComplete,
+    trainingReady:evidence.policyEvaluationReadiness==='EVALUABLE',
+  };
+}
+
 export function buildR8Readiness(input:R8ReadinessInput){
   const dimensions={R7_ENGINEERING_COMPLETE:input.r7EngineeringComplete,BROKER_TRUTH_READY:input.brokerTruthReady,
     SESSION_STATE_READY:input.sessionStateReady,POSITION_LIFECYCLE_READY:input.positionLifecycleReady,

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {qualifyOptionomicsProvider,optionomicsFamilyContracts} from '../src/providers/optionomics-qualification.js';
 import {aggregateCompatibleExecutionQuotes,executionOptionQuoteContractVersion,type ExecutionOptionQuote} from '../src/execution/execution-option-quote.js';
-import {buildR8Readiness} from '../src/theta/r8-readiness.js';
+import {buildR8Readiness,deriveR8ReadinessInput} from '../src/theta/r8-readiness.js';
 import {assembleDecisionExplanation} from '../src/theta/decision-explainability.js';
 import {classifyPathCheckpoint,type PositionPathCheckpoint} from '../src/theta/position-path-state.js';
 import {mergeAlert} from '../src/ops/theta-alerts.js';
@@ -84,6 +84,36 @@ test('R8 readiness cannot be forced through an unqualified quote source',()=>{
   assert.equal(receipt.paperActivationGate,'BLOCKED');assert.equal(receipt.executionAuthorized,false);
   assert.equal(receipt.empiricalValidationGate,'BLOCKED');
   assert.equal(receipt.managementPolicyPromotion,'NOT_PROMOTED_UNAVAILABLE');
+});
+test('R8 runtime dimensions require observed paths and do not infer readiness from database connectivity',()=>{
+  const input=deriveR8ReadinessInput({unknownAuditComplete:true,implementationBlockerCount:0,
+    brokerHealthReady:true,reconciliationReady:true,workerOnline:true,marketSession:'OPEN',
+    runtimeScanObserved:false,strategiesConsidered:null,finalAction:'UNKNOWN',masterExecutionEnabled:false,
+    followerExecutionEnabled:false,newOrdersPaused:true,databaseConnected:true,optionomicsLastCheck:null,
+    optionomicsSecretState:'NOT_CONFIGURED',executionQuoteReady:false,operationalFirstPaperReady:false,
+    outcomeSchemaObserved:false,wholeChainSimulationComplete:false,policyEvaluationReadiness:'NOT_EVALUABLE'});
+  assert.equal(input.r7EngineeringComplete,true);
+  assert.equal(input.strategyRouterReady,false);
+  assert.equal(input.actionFrontierReady,false);
+  assert.equal(input.executionQuoteProviderReady,false);
+  assert.equal(input.optionomicsTransportReady,false);
+  assert.equal(input.labelPipelineReady,false);
+  assert.equal(input.wholeChainAccountingReady,false);
+  assert.equal(input.trainingReady,false);
+});
+test('R8 quote readiness comes from the qualified quote path while execution remains locked',()=>{
+  const input=deriveR8ReadinessInput({unknownAuditComplete:true,implementationBlockerCount:0,
+    brokerHealthReady:true,reconciliationReady:true,workerOnline:true,marketSession:'OPEN',
+    runtimeScanObserved:true,strategiesConsidered:3,finalAction:'WAIT',masterExecutionEnabled:false,
+    followerExecutionEnabled:false,newOrdersPaused:true,databaseConnected:true,
+    optionomicsLastCheck:'2026-09-29T14:00:00.000Z',optionomicsSecretState:'AUTH_VALID',
+    executionQuoteReady:true,operationalFirstPaperReady:true,outcomeSchemaObserved:true,
+    wholeChainSimulationComplete:true,policyEvaluationReadiness:'EVALUABLE'});
+  assert.equal(input.strategyRouterReady,true);
+  assert.equal(input.actionFrontierReady,true);
+  assert.equal(input.operatorSafetyReady,true);
+  assert.equal(input.executionQuoteProviderReady,true);
+  assert.equal(input.trainingReady,true);
 });
 test('explanations distinguish WAIT and preserve missing evidence',()=>{
   const x=assembleDecisionExplanation({action:'WAIT',feasibleAlternatives:[],infeasibleAlternatives:[{action:'OPEN_CSP',reason:'QUOTE_MISSING'}],

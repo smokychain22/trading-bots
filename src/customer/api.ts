@@ -47,7 +47,7 @@ import { Pool } from "pg";
 import { qualifyOptionomicsProvider,persistOptionomicsQualification } from "../providers/optionomics-qualification.js";
 import { optionomicsConfigFromEnvironment } from "../theta/theta-shadow-once.js";
 import { canonicalThetaStrategyRegistry } from "../theta/strategy-package.js";
-import { buildR8Readiness } from "../theta/r8-readiness.js";
+import { buildR8Readiness, deriveR8ReadinessInput } from "../theta/r8-readiness.js";
 import { assessReconciliationReadiness, assessRequiredProviderReadiness, assessRuntimeFirstPaperReadiness, buildThetaFirstPaperReadiness,
   type FirstPaperChecks } from "../theta/first-paper-blocker-budget.js";
 import { canonicalPreVpsUnknownAuditSummary } from "../theta/pre-vps-unknown-register.js";
@@ -587,15 +587,24 @@ export default async function customerHandler(
         unresolvedSafetyCriticalCount:canonicalPreVpsUnknownAuditSummary.unresolvedSafetyCriticalCount,
         unresolvedPaperEntryCount:canonicalPreVpsUnknownAuditSummary.unresolvedPaperEntryCount});
       const firstPaperOperationalBlockers=firstPaperReadiness.blockers.map((blocker)=>blocker.code);
-      const r8Readiness=buildR8Readiness({r7EngineeringComplete:true,brokerTruthReady:localWorker.alpaca_health==='GOOD',
-        sessionStateReady:localWorker.market_session!=='UNKNOWN',
-        positionLifecycleReady:database.state==='CONNECTED',strategyRouterReady:true,actionFrontierReady:true,
-        operatorSafetyReady:database.state==='CONNECTED',optionomicsTransportReady:true,
-        optionomicsRealAuthReady:p2fStatus.optionomics.secret_state==='AUTH_VALID',
-        executionQuoteProviderReady:localWorker.execution_gate==='ACTIVE',
-        operationalFirstPaperReady:firstPaperOperationalBlockers.length===0,empiricalPolicyReady:false,managementPolicyPromoted:false,
-        labelPipelineReady:database.state==='CONNECTED',wholeChainAccountingReady:database.state==='CONNECTED',
-        trainingReady:(outcomeResearch.resolved_labels??0)>0});
+      const r8Readiness=buildR8Readiness(deriveR8ReadinessInput({
+        unknownAuditComplete:firstPaperReadiness.unknownAuditCoverage==='COMPLETE',
+        implementationBlockerCount:firstPaperReadiness.implementationBlockerCount,
+        brokerHealthReady:firstPaperChecks.brokerHealthy.state==='PASS',
+        reconciliationReady:firstPaperChecks.reconciliationReady.state==='PASS',
+        workerOnline:localWorker.online,marketSession:localWorker.market_session,
+        runtimeScanObserved:runtimeBehavior.scan_id!==null,strategiesConsidered:runtimeBehavior.strategies_considered,
+        finalAction:runtimeBehavior.final_action,
+        masterExecutionEnabled:executionControl.masterEnabled,followerExecutionEnabled:executionControl.followerEnabled,
+        newOrdersPaused:executionControl.pauseNewOrders,databaseConnected:database.state==='CONNECTED',
+        optionomicsLastCheck:p2fStatus.optionomics.last_check,
+        optionomicsSecretState:p2fStatus.optionomics.secret_state,
+        executionQuoteReady:firstPaperChecks.quotePipelineReady.state==='PASS',
+        operationalFirstPaperReady:firstPaperOperationalBlockers.length===0,
+        outcomeSchemaObserved:outcomeResearch.resolved_labels!==null,
+        wholeChainSimulationComplete:p2gStatus.simulation.state==='COMPLETE',
+        policyEvaluationReadiness:outcomeResearch.policy_evaluation_readiness,
+      }));
       return send(response, 200, {
         api_version: "v1",
         data: {
