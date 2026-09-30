@@ -796,7 +796,10 @@ export async function runNewRiskOrchestration(
       contractVersion: 'theta-pareto-frontier-runtime-v1', snapshotId: request.snapshotId, timestamp: request.timestamp,
       candidates: feasibleForFrontier.map((c) => ({ candidateId: c.candidateId, ...(economicsByCandidateId.get(c.candidateId) as Omit<CandidateEconomics, 'candidateId'>) })),
     },
-    (payload) => parseParetoFrontierResponse(payload),
+    (payload) => parseParetoFrontierResponse(payload, {
+      snapshotId: request.snapshotId, timestamp: request.timestamp,
+      candidateIds: feasibleForFrontier.map((candidate) => candidate.candidateId),
+    }),
   );
   if (!paretoResult.ok) return systemHoldResult(request, 'PARETO_FRONTIER', paretoResult.detail, { ...partialAfterRouting, thetaQ: thetaQResult.data });
   const survivorIds = new Set(survivingCandidateIds(paretoResult.data));

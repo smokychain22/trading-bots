@@ -38,3 +38,18 @@ test('survivingCandidateIds extracts only the non-dominated set', () => {
   const response = parseParetoFrontierResponse(basePayload());
   assert.deepEqual(survivingCandidateIds(response), ['a']);
 });
+
+test('a bridge response must cover the exact requested snapshot, time and candidate set', () => {
+  const payload=basePayload({timestamp:'2026-09-30T14:00:00.000Z'});
+  const expected={snapshotId:'snapshot-1',timestamp:'2026-09-30T14:00:00.000Z',candidateIds:['a','b']};
+  assert.deepEqual(survivingCandidateIds(parseParetoFrontierResponse(payload,expected)),['a']);
+  assert.throws(()=>parseParetoFrontierResponse(basePayload({...payload,
+    results:[{candidateId:'a',survivesFrontier:true,dominatedBy:[]}]}),expected),
+  /PARETO_RESPONSE_CANDIDATE_SET_MISMATCH/);
+  assert.throws(()=>parseParetoFrontierResponse(basePayload({...payload,snapshotId:'other'}),expected),
+    /PARETO_RESPONSE_IDENTITY_MISMATCH/);
+  assert.throws(()=>parseParetoFrontierResponse(basePayload({...payload,
+    results:[{candidateId:'a',survivesFrontier:true,dominatedBy:[]},
+      {candidateId:'b',survivesFrontier:false,dominatedBy:['unknown']}]}),expected),
+  /PARETO_RESPONSE_DOMINATOR_INVALID/);
+});

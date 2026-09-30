@@ -140,7 +140,9 @@ export async function runCrossSymbolEconomicFrontier(
       contractVersion: paretoFrontierContractVersion, snapshotId, timestamp,
       candidates: combinedInputs.map((c) => ({ candidateId: c.combinedCandidateId, ...c.economics })),
     },
-    (payload) => parseParetoFrontierResponse(payload),
+    (payload) => parseParetoFrontierResponse(payload, {
+      snapshotId, timestamp, candidateIds: combinedInputs.map((candidate) => candidate.combinedCandidateId),
+    }),
   );
 
   if (!paretoResult.ok) {

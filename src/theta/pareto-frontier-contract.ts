@@ -71,8 +71,27 @@ export const paretoFrontierResponseSchema = z.object({
 
 export type ParetoFrontierResponse = z.infer<typeof paretoFrontierResponseSchema>;
 
-export function parseParetoFrontierResponse(payload: unknown): ParetoFrontierResponse {
-  return paretoFrontierResponseSchema.parse(payload);
+export function parseParetoFrontierResponse(payload: unknown, expected?: {
+  readonly snapshotId: string;
+  readonly timestamp: string;
+  readonly candidateIds: readonly string[];
+}): ParetoFrontierResponse {
+  const response = paretoFrontierResponseSchema.parse(payload);
+  if (expected === undefined) return response;
+  if (response.snapshotId !== expected.snapshotId || response.timestamp !== expected.timestamp) {
+    throw new Error('PARETO_RESPONSE_IDENTITY_MISMATCH');
+  }
+  const requestedIds = new Set(expected.candidateIds);
+  const returnedIds = new Set(response.results.map((result) => result.candidateId));
+  if (requestedIds.size !== expected.candidateIds.length || returnedIds.size !== requestedIds.size
+    || [...returnedIds].some((id) => !requestedIds.has(id))) {
+    throw new Error('PARETO_RESPONSE_CANDIDATE_SET_MISMATCH');
+  }
+  if (response.results.some((result) => result.dominatedBy.some((id) =>
+    id === result.candidateId || !requestedIds.has(id)))) {
+    throw new Error('PARETO_RESPONSE_DOMINATOR_INVALID');
+  }
+  return response;
 }
 
 export function survivingCandidateIds(response: ParetoFrontierResponse): readonly string[] {
