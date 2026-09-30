@@ -1,5 +1,6 @@
 import { parseAlpacaBarsPage, type FetchHistoricalBarsParams, type HistoricalBar, type RawAlpacaBarsPage } from './underlying-history.js';
 import type { AlpacaOptionContractListing, AlpacaOptionSnapshot } from './option-chain-ingestion.js';
+import { providerNetworkFailureCode } from './provider-network-failure.js';
 
 // R1B production Alpaca provider service: typed, canonical accessors over
 // the real Alpaca Trading API and Market Data API. This module owns HOST
@@ -72,14 +73,17 @@ async function requestJson(fetchImpl: typeof fetch, url: URL, headers: HeadersIn
     }
     try {
       return await response.json();
-    } catch {
+    } catch (error) {
       if (controller.signal.aborted) throw new AlpacaProviderError('PROVIDER_TIMEOUT', null, `${url.pathname} read timed out.`);
+      const detail = providerNetworkFailureCode(error);
+      if (detail !== 'PROVIDER_NETWORK_UNKNOWN') throw new AlpacaProviderError('NETWORK_ERROR', response.status, detail, detail);
       throw new AlpacaProviderError('MALFORMED_RESPONSE', response.status, `${url.pathname} returned a non-JSON body.`);
     }
   } catch (error) {
     if (error instanceof AlpacaProviderError) throw error;
     if (controller.signal.aborted) throw new AlpacaProviderError('PROVIDER_TIMEOUT', null, `${url.pathname} read timed out.`);
-    throw new AlpacaProviderError('NETWORK_ERROR', null, `Network error reaching ${url.host}${url.pathname} -- ${error instanceof Error ? error.name : 'unknown'}.`);
+    const detail = providerNetworkFailureCode(error);
+    throw new AlpacaProviderError('NETWORK_ERROR', null, detail, detail);
   } finally {
     clearTimeout(timeout);
   }

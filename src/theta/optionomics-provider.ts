@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { providerNetworkFailureCode } from './provider-network-failure.js';
 
 // R1 parallel slice: production Optionomics REST adapter. Follows the same
 // conventions as alpaca-provider.ts (typed config, injectable fetchImpl,
@@ -108,7 +109,7 @@ const classifyErrorStatus = (status: number): OptionomicsErrorClass => {
 // defensively; an unparseable value never crashes the caller, it just
 // yields null (treated as "no explicit guidance", not zero).
 function parseRetryAfterSeconds(header: string | null): number | null {
-  if (header === null) return null;
+  if (header === null || header.trim() === '') return null;
   const asSeconds = Number(header);
   if (Number.isFinite(asSeconds) && asSeconds >= 0) return asSeconds;
   const asDate = Date.parse(header);
@@ -240,12 +241,19 @@ export async function requestOptionomicsJsonBounded(
       if (error instanceof Error && error.name === 'AbortError') {
         throw new OptionomicsProviderError('PROVIDER_TIMEOUT', null, `Request to ${url.pathname} exceeded ${timeoutMs}ms.`, null, attempt);
       }
-      throw new OptionomicsProviderError('NETWORK_FAILURE', null, `Network error reaching ${url.host}${url.pathname} -- ${error instanceof Error ? error.name : 'unknown'}.`, null, attempt);
+      throw new OptionomicsProviderError('NETWORK_FAILURE', null, providerNetworkFailureCode(error), null, attempt);
     }
     if ((response.status === 429 || response.status >= 500) && attempt < maxAttempts) {
       clearTimeout(timer);
       await response.body?.cancel('THETA_OPTIONOMICS_RETRY_RESPONSE_DISCARDED').catch(() => undefined);
       const retryAfter = parseRetryAfterSeconds(response.headers.get('retry-after'));
+      // Respect the server's delay without sleeping beyond the governed
+      // request window or overflowing setTimeout into an immediate retry.
+      // Return the actual delay so a later scheduler can defer honestly.
+      if ((retryAfter ?? 1) * 1000 > timeoutMs) {
+        throw new OptionomicsProviderError(classifyErrorStatus(response.status), response.status,
+          'OPTIONOMICS_RETRY_AFTER_EXCEEDS_REQUEST_WINDOW', retryAfter, attempt);
+      }
       await sleep((retryAfter ?? 1) * 1000);
       continue;
     }
@@ -274,7 +282,7 @@ export async function requestOptionomicsJsonBounded(
           `Request to ${url.pathname} exceeded ${timeoutMs}ms.`, null, attempt);
       }
       throw new OptionomicsProviderError('NETWORK_FAILURE', null,
-        `Network error reading ${url.host}${url.pathname}.`, null, attempt);
+        providerNetworkFailureCode(error), null, attempt);
     } finally {
       clearTimeout(timer);
     }

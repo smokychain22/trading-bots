@@ -17,6 +17,29 @@ import { proveOptionomicsExecutionQuoteContract } from '../src/theta/optionomics
 
 const NOW = '2026-09-10T15:00:00.000Z';
 
+test('large Retry-After defers without sleeping, retrying early, or overflowing the timer', async () => {
+  for (const status of [429, 503]) {
+    let calls = 0, sleeps = 0;
+    const fetchImpl = (async () => { calls++; return new Response('', { status, headers: { 'retry-after': '9999999999' } }); }) as typeof fetch;
+    const result = await fetchOptionomicsOptionChain(baseConfig(fetchImpl, { timeoutMs: 1000,
+      sleepImpl: async () => { sleeps++; } }), 'SPY');
+    assert.equal(result.kind, 'REQUEST_ERROR');
+    if (result.kind !== 'REQUEST_ERROR') return;
+    assert.equal(result.retryAfterSeconds, 9999999999);
+    assert.equal(result.detail, 'OPTIONOMICS_RETRY_AFTER_EXCEEDS_REQUEST_WINDOW');
+    assert.equal(calls, 1); assert.equal(sleeps, 0);
+  }
+});
+
+test('blank Retry-After is absent guidance, never a fabricated zero delay', async () => {
+  let calls = 0;
+  const sleeps: number[] = [];
+  const fetchImpl = (async () => ++calls === 1 ? new Response('', { status: 429, headers: { 'retry-after': ' ' } })
+    : jsonResponse(200, [])) as typeof fetch;
+  const result = await fetchOptionomicsOptionChain(baseConfig(fetchImpl, { sleepImpl: async ms => { sleeps.push(ms); } }), 'SPY');
+  assert.equal(result.kind, 'VALUE_PRESENT'); assert.deepEqual(sleeps, [1000]);
+});
+
 const jsonResponse = (status: number, body: unknown, headers: HeadersInit = {}): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
 
