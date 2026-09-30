@@ -4,6 +4,7 @@
   "runtimeReleaseSha": "36adb6404d02d6008450680bfe8df87f0eb7d369",
   "databaseAdmission": "WRITABLE_SCHEMA_067",
   "activeWorkerLeasesObserved": 1,
+  "sourceFixShaAwaitingWorker": "cb9471137f5e62c6754dd325a9e125c54470cb46",
   "supportedSessionCurrentReleaseProof": "NOT_OBSERVED",
   "readyForFirstPaper": false,
   "entries": [
@@ -36,6 +37,12 @@
       "class": "RUNTIME_UNVERIFIED",
       "evidence": "Older release reported four HARD_VETO finalists, but the per-family matrix was not recovered from Production",
       "decisionEffect": "No exact candidate-specific veto explanation can be claimed"
+    },
+    {
+      "id": "SEPTEMBER_29_T0_REPLAY_VERSION",
+      "class": "STRUCTURAL_POLICY_INCOMPATIBILITY",
+      "evidence": "Persisted T0 from aa179 replayed through current frontier code with a different content hash after the candidate-specific AEGIS fallback changed; raw T0 is 36.7 MB and exceeds the standalone 4 MiB bundle cap",
+      "decisionEffect": "Historical same-source replay is separate from a current-policy counterfactual and must not be relabeled as a current-release match"
     },
     {
       "id": "CURRENT_EVENT_NEGATIVE_ASSURANCE",

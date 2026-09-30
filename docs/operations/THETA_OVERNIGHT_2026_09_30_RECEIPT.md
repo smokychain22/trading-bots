@@ -130,3 +130,19 @@ installed `36adb64` release. The one governed premarket cutover has already
 been consumed, so this noncritical health correction must wait for the next
 safe release. No supported-session current-release candidate or AEGIS proof
 has occurred.
+
+Exact main `cb9471137f5e62c6754dd325a9e125c54470cb46` passed CI run
+`36668750535`. This SHA fixes the local-only Command-5A health dependency but
+has not been deployed because a second premarket cutover for a noncritical
+health display defect is not warranted.
+
+The Sep 29 persisted T0 archive was fetched read-only once Aiven recovered.
+Its 2,601-contract canonical input serialized to about 36.7 MB, so the
+standalone 4 MiB `T0ReplayBundle` builder correctly rejected it as too large.
+Direct provider-free replay through the current frontier function completed,
+but its hash differed from the archived hash. This is a version-sensitive
+counterfactual, not proof that the old run was nondeterministic. The archived
+run used `aa179`, while `c331` changed `aegisStateFor` to stop copying one
+representative AEGIS state onto unassessed Conventional contracts. A
+same-source historical replay and a current-policy comparison must remain
+separate receipts. No old archive or provenance was rewritten.
