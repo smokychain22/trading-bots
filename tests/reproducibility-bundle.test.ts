@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -85,4 +86,35 @@ test('a predictionReceiptId that IS actually saved resolves and passes verificat
     assert.equal(result.valid, true);
     assert.deepEqual(result.missingPredictionReceipts, []);
   } finally { cleanup(); }
+});
+
+test('existence is insufficient when dataset, model, metrics or outcome identity differs', () => {
+  const { store, cleanup } = harness();
+  try {
+    store.saveModelRecord(modelRecord());
+    const bundle = buildReproducibilityBundle({ model: modelRecord(), campaignId: null, normalizationVersion: null, predictionReceiptIds: [], outcomeJoinPredictionIds: [] });
+    assert.equal(verifyReproducibilityBundle({ ...bundle, datasetHash: 'f'.repeat(64) }, store).valid, false);
+    assert.equal(verifyReproducibilityBundle({ ...bundle, metricsSnapshot: { ...bundle.metricsSnapshot, independentN: 1000 } }, store).valid, false);
+    assert.equal(verifyReproducibilityBundle({ ...bundle, outcomeJoinPredictionIds: ['missing'] }, store).valid, false);
+    store.saveShadowPredictionReceipt(buildShadowPredictionReceipt({ predictionId: 'foreign', modelId: 'another', modelVersion: 'v1', targetId: 'ENTRY_PROFITABILITY', entityId: 'e', decisionId: 'd', featureSnapshotHash: 'h', predictedAt: '2026-09-26', prediction: 0.5, uncertainty: null, sourceSha: 'b'.repeat(40), workerSha: null, strategyScope: 'THETA_CONVENTIONAL' }));
+    assert.equal(verifyReproducibilityBundle({ ...bundle, predictionReceiptIds: ['foreign'] }, store).valid, false);
+  } finally { cleanup(); }
+});
+
+test('offline CLI persists exact model, prediction and resolved join and verifies after a second process restart', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-research-ledger-'));
+  try {
+    const prediction = buildShadowPredictionReceipt({ predictionId: 'p1', modelId: 'entry-baseline', modelVersion: 'v1', targetId: 'ENTRY_PROFITABILITY', entityId: 'c1', decisionId: 'd1', featureSnapshotHash: 'h1', predictedAt: '2026-09-26T00:00:00Z', prediction: 0.5, uncertainty: null, sourceSha: 'b'.repeat(40), workerSha: null, strategyScope: 'THETA_CONVENTIONAL' });
+    const bundle = buildReproducibilityBundle({ model: modelRecord(), campaignId: null, normalizationVersion: null, predictionReceiptIds: ['p1'], outcomeJoinPredictionIds: ['p1'] });
+    const payload = { version: 'theta-research-ledger-input-v1', models: [modelRecord()], predictions: [prediction], selectionBias: [],
+      joins: [{ predictionId: 'p1', outcome: { entityId: 'c1', decisionId: 'd1', chainId: null, targetId: 'ENTRY_PROFITABILITY', modelVersionAtOutcomeTime: 'v1', featureSnapshotHash: 'h1', observedOutcome: 1, resolvedAt: '2026-09-27T00:00:00Z', isResolved: true }, joinedAt: '2026-09-27T01:00:00Z' }], bundle };
+    const input = join(root, 'input.json'), store = join(root, 'ledger.sqlite');
+    writeFileSync(input, JSON.stringify(payload));
+    for (let i = 0; i < 2; i += 1) {
+      const result = JSON.parse(execFileSync(process.execPath, ['--import', 'tsx', 'tools/theta-research-ledger.ts', `--input=${input}`, `--store=${store}`], { encoding: 'utf8', timeout: 15000 }));
+      assert.equal(result.integrity.checked, 3);
+      assert.equal(result.verification.valid, true);
+      assert.equal(result.promotionGranted, false);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

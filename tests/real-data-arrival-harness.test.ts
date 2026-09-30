@@ -53,10 +53,23 @@ test('null market fields are audited with a real, classified UNKNOWN reason, nev
   assert.ok(result.unknownAudit.some((u) => u.field === 'marketMarkPrice'));
 });
 
-test('a selected/executed subject can reach FACTUAL_OBSERVED', () => {
+test('selection without fills and terminal whole-chain evidence never becomes a factual resolved outcome', () => {
   const selected = bundle({ wasSelected: true, wasShadowOnly: false });
   const result = runRealDataArrivalPipeline(selected);
-  assert.equal(result.dataset?.identifiabilityStatus, 'FACTUAL_OBSERVED');
+  assert.equal(result.dataset?.identifiabilityStatus, 'NOT_IDENTIFIABLE');
+  assert.equal(result.sessionOutcomeState?.outcomeMatured, false);
+  assert.equal(result.dataset?.path[0]?.marketMarkPath, 1.25);
+});
+
+test('cross-subject, malformed numeric and pre-T0 long-horizon observations fail before dataset construction', () => {
+  const row = bundle().rows[0];
+  assert.ok(row);
+  for (const override of [{ subjectId: 'OTHER' }, { marketMarkPrice: NaN }, { impliedVolatility: Infinity }, { underlyingPrice: 0 }]) {
+    assert.equal(runRealDataArrivalPipeline(bundle({ rows: [{ ...row, ...override }] })).schemaValid, false);
+  }
+  assert.equal(runRealDataArrivalPipeline(bundle({ rows: [{ ...row, checkpoint: 'EXPIRATION', observedAt: '2026-09-25' }] })).pitValid, false);
+  assert.equal(runRealDataArrivalPipeline(bundle({ rows: [] })).sessionOutcomeState?.futureObservationRecorded, false);
+  assert.equal(runRealDataArrivalPipeline(null as never).schemaValid, false);
 });
 
 test('a selected shadow-only subject remains NOT_IDENTIFIABLE', () => {

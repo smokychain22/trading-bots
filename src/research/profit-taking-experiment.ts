@@ -100,6 +100,8 @@ function requireKnownForCounterfactual<T>(
  * function that treats `TAKE_50` differently.
  */
 export function buildProfitTakingComparisonRow(input: Omit<ProfitTakingComparisonRow, 'contractVersion'>): ProfitTakingComparisonRow {
+  if (!input.state.episodeId?.trim() || !input.state.chainId?.trim() || !input.state.decisionId?.trim()) throw new Error('PROFIT_TAKING_IDENTITY_REQUIRED');
+  if (!['OBSERVED_PARALLEL', 'ESTIMABLE', 'NOT_IDENTIFIABLE'].includes(input.counterfactualOutcomeState)) throw new Error('PROFIT_TAKING_INVALID_IDENTIFIABILITY');
   if (!Number.isFinite(Date.parse(input.state.decisionAt))) throw new Error('PROFIT_TAKING_INVALID_DECISION_AT');
   if (input.labelAvailableAt !== null) {
     const labelMs = Date.parse(input.labelAvailableAt);
@@ -116,11 +118,13 @@ export function buildProfitTakingComparisonRow(input: Omit<ProfitTakingCompariso
     ['incrementalExecutionCost', input.incrementalExecutionCost],
   ] as const) {
     requireKnownForCounterfactual(input.counterfactualOutcomeState, value, name);
+    if (value !== null && !Number.isFinite(value)) throw new Error(`PROFIT_TAKING_NONFINITE:${name}`);
+    if (value !== null && input.labelAvailableAt === null) throw new Error('PROFIT_TAKING_VALUE_WITHOUT_LABEL_TIME');
   }
   if (input.incrementalWholeChainNetPnl !== null && input.actualOutcomeRef === null) {
     throw new Error('PROFIT_TAKING_INCREMENTAL_PNL_WITHOUT_ACTUAL_OUTCOME_REF');
   }
-  return { contractVersion: profitTakingExperimentVersion, ...input };
+  return { ...input, contractVersion: profitTakingExperimentVersion };
 }
 
 const fixedPolicies = [

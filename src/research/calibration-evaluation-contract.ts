@@ -59,22 +59,43 @@ export function buildCalibrationReceipt(input: {
   readonly independentN: number;
   readonly confidenceIntervalWidth95: number | null;
 }): CalibrationEvaluationReceipt {
+  for (const ids of [input.evaluationRowIds, input.fittingRowIds]) {
+    if (new Set(ids).size !== ids.length || ids.some((id) => !id?.trim())) throw new Error('CALIBRATION_ROW_IDENTITIES_INVALID');
+  }
   const fittingSet = new Set(input.fittingRowIds);
   if (input.evaluationRowIds.some((id) => fittingSet.has(id))) throw new Error('CALIBRATION_EVALUATION_OVERLAPS_FITTING_SAMPLE');
-  return {
+  const receipt: CalibrationEvaluationReceipt = {
     contractVersion: calibrationEvaluationContractVersion, modelId: input.modelId, modelVersion: input.modelVersion,
     dataProvenance: input.dataProvenance, brierScore: input.brierScore, logLoss: input.logLoss, ece: input.ece,
     calibrationSlope: input.calibrationSlope, calibrationIntercept: input.calibrationIntercept,
     reliabilityBins: input.reliabilityBins, n: input.evaluationRowIds.length, independentN: input.independentN,
     confidenceIntervalWidth95: input.confidenceIntervalWidth95,
   };
+  validateCalibrationReceipt(receipt);
+  return structuredClone(receipt);
+}
+
+export function validateCalibrationReceipt(receipt: CalibrationEvaluationReceipt): void {
+  if (receipt.contractVersion !== calibrationEvaluationContractVersion || !receipt.modelId?.trim() || !receipt.modelVersion?.trim() ||
+    !['REAL_EMPIRICAL_DATA', 'NON_EMPIRICAL_TEST_DATA'].includes(receipt.dataProvenance)) throw new Error('CALIBRATION_IDENTITY_OR_PROVENANCE_INVALID');
+  if (!Number.isSafeInteger(receipt.n) || receipt.n <= 0 || !Number.isSafeInteger(receipt.independentN) ||
+    receipt.independentN < 0 || receipt.independentN > receipt.n) throw new Error('CALIBRATION_SAMPLE_SIZE_INVALID');
+  for (const key of ['brierScore', 'logLoss', 'ece', 'calibrationSlope', 'calibrationIntercept'] as const) {
+    const value = receipt[key];
+    if (!Number.isFinite(value) || (['brierScore', 'logLoss', 'ece'].includes(key) && value < 0) ||
+      (['brierScore', 'ece'].includes(key) && value > 1)) throw new Error(`CALIBRATION_METRIC_INVALID:${key}`);
+  }
+  if (receipt.confidenceIntervalWidth95 !== null && (!Number.isFinite(receipt.confidenceIntervalWidth95) || receipt.confidenceIntervalWidth95 < 0)) throw new Error('CALIBRATION_INTERVAL_INVALID');
+  const ece = computeEce(receipt.reliabilityBins, receipt.n);
+  if (ece === null || Math.abs(ece - receipt.ece) > 1e-10) throw new Error('CALIBRATION_ECE_BIN_MISMATCH');
 }
 
 /** A `NON_EMPIRICAL_TEST_DATA` receipt is structurally ineligible for
  * promotion evidence -- callers must check this before ever citing a
  * calibration receipt in a promotion decision. */
 export function isEligibleForPromotionEvidence(receipt: CalibrationEvaluationReceipt): boolean {
-  return receipt.dataProvenance === 'REAL_EMPIRICAL_DATA';
+  validateCalibrationReceipt(receipt);
+  return receipt.dataProvenance === 'REAL_EMPIRICAL_DATA' && receipt.independentN > 0;
 }
 
 /**
@@ -99,13 +120,27 @@ function clampProbability(p: number): number {
   return Math.min(1 - 1e-12, Math.max(1e-12, p));
 }
 
+function validatePairs(pairs: readonly CalibrationEvaluationPair[]): void {
+  const ids = new Set<string>();
+  for (const pair of pairs) {
+    if (!pair.rowId?.trim()) throw new Error('CALIBRATION_ROW_ID_REQUIRED');
+    if (ids.has(pair.rowId)) throw new Error(`CALIBRATION_DUPLICATE_ROW_ID:${pair.rowId}`);
+    ids.add(pair.rowId);
+    if (!Number.isFinite(pair.predictedProbability)) throw new Error(`CALIBRATION_NON_FINITE_PREDICTION:${pair.rowId}`);
+    if (pair.predictedProbability < 0 || pair.predictedProbability > 1) throw new Error('CALIBRATION_PROBABILITY_OUT_OF_RANGE');
+    if (pair.observedOutcome !== 0 && pair.observedOutcome !== 1) throw new Error('CALIBRATION_OUTCOME_NOT_BINARY');
+  }
+}
+
 export function computeBrierScore(pairs: readonly CalibrationEvaluationPair[]): number | null {
+  validatePairs(pairs);
   if (pairs.length === 0) return null;
   const sum = pairs.reduce((acc, p) => acc + (p.predictedProbability - p.observedOutcome) ** 2, 0);
   return sum / pairs.length;
 }
 
 export function computeLogLoss(pairs: readonly CalibrationEvaluationPair[]): number | null {
+  validatePairs(pairs);
   if (pairs.length === 0) return null;
   const sum = pairs.reduce((acc, p) => {
     const clamped = clampProbability(p.predictedProbability);
@@ -118,6 +153,8 @@ export function computeLogLoss(pairs: readonly CalibrationEvaluationPair[]): num
  * values and counts, never a fabricated bin for an empty range (empty
  * bins are simply omitted, not reported with a fake n=0 row). */
 export function computeReliabilityBins(pairs: readonly CalibrationEvaluationPair[], binCount = 10): readonly ReliabilityBin[] {
+  validatePairs(pairs);
+  if (!Number.isSafeInteger(binCount) || binCount <= 0 || binCount > 10000) throw new Error('CALIBRATION_BIN_COUNT_INVALID');
   const bins: ReliabilityBin[] = [];
   for (let i = 0; i < binCount; i += 1) {
     const lower = i / binCount;
@@ -138,7 +175,17 @@ export function computeReliabilityBins(pairs: readonly CalibrationEvaluationPair
  * the standard weighted-average calibration-gap definition. `null` when
  * no bins have any members. */
 export function computeEce(bins: readonly ReliabilityBin[], totalN: number): number | null {
-  if (bins.length === 0 || totalN === 0) return null;
+  if (!Number.isSafeInteger(totalN) || totalN < 0) throw new Error('CALIBRATION_SAMPLE_SIZE_INVALID');
+  if (bins.length === 0 && totalN === 0) return null;
+  let count = 0, previousUpper = 0;
+  for (const bin of bins) {
+    if (!Number.isSafeInteger(bin.n) || bin.n <= 0 ||
+      [bin.binLower, bin.binUpper, bin.meanPredicted, bin.meanObserved].some((v) => !Number.isFinite(v) || v < 0 || v > 1) ||
+      bin.binUpper <= bin.binLower || bin.binLower < previousUpper || bin.meanPredicted < bin.binLower || bin.meanPredicted > bin.binUpper) throw new Error('CALIBRATION_BIN_INVALID');
+    previousUpper = bin.binUpper;
+    count += bin.n;
+  }
+  if (count !== totalN || totalN === 0) throw new Error('CALIBRATION_BIN_COUNT_MISMATCH');
   return bins.reduce((acc, bin) => acc + (bin.n / totalN) * Math.abs(bin.meanObserved - bin.meanPredicted), 0);
 }
 
@@ -151,6 +198,7 @@ export function computeEce(bins: readonly ReliabilityBin[], totalN: number): num
  * fabricated regression line).
  */
 export function computeCalibrationSlopeIntercept(pairs: readonly CalibrationEvaluationPair[]): { readonly slope: number | null; readonly intercept: number | null } {
+  validatePairs(pairs);
   const n = pairs.length;
   if (n < 2) return { slope: null, intercept: null };
   const meanX = pairs.reduce((a, p) => a + p.predictedProbability, 0) / n;
@@ -176,6 +224,8 @@ export function evaluateCalibrationFromPredictions(input: {
   readonly evaluationPairs: readonly CalibrationEvaluationPair[]; readonly fittingRowIds: readonly string[];
   readonly independentN: number;
 }): CalibrationEvaluationReceipt | null {
+  if (!Number.isSafeInteger(input.independentN) || input.independentN < 0 || input.independentN > input.evaluationPairs.length) throw new Error('CALIBRATION_SAMPLE_SIZE_INVALID');
+  if (input.evaluationPairs.some((p) => input.fittingRowIds.includes(p.rowId))) throw new Error('CALIBRATION_EVALUATION_OVERLAPS_FITTING_SAMPLE');
   // ADVERSARIAL (overnight §23): a non-finite predicted probability is a
   // real data-integrity violation, not an "insufficient data" case -- if
   // it were silently allowed through, every downstream metric would

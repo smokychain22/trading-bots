@@ -61,6 +61,10 @@ export function buildManagementReturnToGoRows(input: {
   readonly selectedActionResolvedReturnToGo: number | null;
   readonly selectedActionResolvedAt: string | null;
 }): readonly ManagementReturnToGoRow[] {
+  if (!input.managementDecisionPointId?.trim() || new Set(input.alternatives.map((a) => a.action)).size !== input.alternatives.length ||
+    input.alternatives.some((a) => typeof a.wasSelected !== 'boolean')) throw new Error('MANAGEMENT_RETURN_TO_GO_IDENTITIES_INVALID');
+  if (input.selectedActionResolvedReturnToGo !== null && !Number.isFinite(input.selectedActionResolvedReturnToGo)) throw new Error('MANAGEMENT_RETURN_TO_GO_NONFINITE');
+  if (input.selectedActionResolvedAt !== null && !Number.isFinite(Date.parse(input.selectedActionResolvedAt))) throw new Error('MANAGEMENT_RETURN_TO_GO_INVALID_TIME');
   const selected = input.alternatives.filter((a) => a.wasSelected);
   if (selected.length !== 1) throw new Error('MANAGEMENT_RETURN_TO_GO_REQUIRES_EXACTLY_ONE_SELECTED_ALTERNATIVE');
   // ADVERSARIAL (overnight §36): reject enum drift before it can silently
@@ -126,6 +130,7 @@ export function buildManagementActionValueRows(input: {
   readonly selectedActionValues: ManagementActionValueInputs;
   readonly selectedActionTimingClassification: ManagementTimingClassification | null;
 }): readonly ManagementActionValueRow[] {
+  for (const value of Object.values(input.selectedActionValues)) if (value !== null && !Number.isFinite(value)) throw new Error('MANAGEMENT_ACTION_VALUE_NONFINITE');
   const baseRows = buildManagementReturnToGoRows(input);
   const emptyValues: ManagementActionValueInputs = { riskToGo: null, capitalDaysToGo: null, tailOutcome: null, opportunityCost: null };
   if (input.selectedActionValues.riskToGo !== null || input.selectedActionValues.capitalDaysToGo !== null

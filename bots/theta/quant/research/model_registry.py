@@ -11,6 +11,7 @@ mature, independently-tested module outside this work package's scope.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from copy import deepcopy
 from typing import Dict, Mapping, Optional, Tuple
 from research.production_export_loader import canonical_json, sha256_hex
 
@@ -47,7 +48,7 @@ def build_registry_entry(**values: object) -> ModelRegistryEntry:
                      'label_version', 'split_hash', 'hyperparam_hash', 'created_at'):
         if not values.get(required):
             raise ValueError(f'MODEL_REGISTRY_FIELD_REQUIRED:{required}')
-    payload = dict(values)
+    payload = deepcopy(dict(values))
     expected = _entry_hash(payload)
     return ModelRegistryEntry(**payload, entry_hash=expected)  # type: ignore[arg-type]
 
@@ -71,15 +72,15 @@ class ModelRegistry:
         existing = self._entries.get(key)
         if existing is not None and existing.entry_hash != entry.entry_hash:
             raise ValueError('MODEL_REGISTRY_VERSION_IS_IMMUTABLE')
-        self._entries[key] = entry
+        self._entries[key] = deepcopy(entry)
 
     def get(self, task: str, model_version: str) -> Optional[ModelRegistryEntry]:
-        return self._entries.get((task, model_version))
+        return deepcopy(self._entries.get((task, model_version)))
 
     def promoted(self, task: Optional[str] = None) -> Tuple[ModelRegistryEntry, ...]:
         eligible = ('MODEL_PAPER_RISK_ELIGIBLE', 'MODEL_EMPIRICALLY_PROMOTED')
-        return tuple(sorted(
+        return deepcopy(tuple(sorted(
             (item for item in self._entries.values()
              if item.promotion_state in eligible and (task is None or item.task == task)),
             key=lambda item: (item.task, item.created_at, item.model_version),
-        ))
+        )))

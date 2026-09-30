@@ -26,9 +26,10 @@ import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { canonicalJson } from '../research/point-in-time-evidence.js';
-import type { ModelRegistryRecord } from '../research/empirical-model-registry.js';
+import { validateModelRegistryRecord, type ModelRegistryRecord } from '../research/empirical-model-registry.js';
 import type { SelectionBiasReceipt } from '../research/selection-bias-receipt.js';
 import type { ShadowFailureReceipt, ShadowPredictionReceipt } from '../research/shadow-prediction-receipt.js';
+import { joinPredictionToOutcome, type OutcomeEvidence, type PredictionOutcomeJoinRecord } from '../research/prediction-outcome-join.js';
 
 export const researchDurableStoreVersion = 'theta-research-durable-store-v1' as const;
 
@@ -37,6 +38,17 @@ const sha256 = (value: string): string => createHash('sha256').update(value).dig
 
 function assertSafeId(name: string, value: string): void {
   if (!SAFE_ID.test(value)) throw new Error(`RESEARCH_DURABLE_STORE_${name.toUpperCase()}_INVALID`);
+}
+
+function decodeVerified<T>(row: { content_json: string; content_hash: string } | undefined,
+  identity: Readonly<Record<string, string>>): T | null {
+  if (row === undefined) return null;
+  if (sha256(row.content_json) !== row.content_hash) throw new Error('RESEARCH_DURABLE_STORE_HASH_MISMATCH');
+  const value = JSON.parse(row.content_json) as Record<string, unknown>;
+  if (value === null || typeof value !== 'object' || Object.entries(identity).some(([key, id]) => value[key] !== id)) {
+    throw new Error('RESEARCH_DURABLE_STORE_IDENTITY_MISMATCH');
+  }
+  return value as T;
 }
 
 /**
@@ -55,9 +67,10 @@ function upsertImmutable(
   insertParams: readonly SQLInputValue[],
 ): 'INSERTED' | 'ALREADY_PRESENT_IDENTICAL' {
   const whereClause = keyColumns.map((c) => `${c}=?`).join(' AND ');
-  const existing = db.prepare(`SELECT content_hash FROM ${table} WHERE ${whereClause}`)
-    .get(...keyValues) as { content_hash: string } | undefined;
+  const existing = db.prepare(`SELECT content_json, content_hash FROM ${table} WHERE ${whereClause}`)
+    .get(...keyValues) as { content_json: string; content_hash: string } | undefined;
   if (existing !== undefined) {
+    decodeVerified(existing, {});
     if (existing.content_hash !== contentHash) {
       throw new Error(`RESEARCH_DURABLE_STORE_IDENTITY_CONFLICT:${table}:${keyValues.join('::')}`);
     }
@@ -89,6 +102,10 @@ export class ResearchDurableStore {
       CREATE TABLE IF NOT EXISTS shadow_failure_receipt(
         failure_id TEXT NOT NULL PRIMARY KEY,
         content_json TEXT NOT NULL, content_hash TEXT NOT NULL, created_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS prediction_outcome_join(
+        prediction_id TEXT NOT NULL, joined_at TEXT NOT NULL,
+        content_json TEXT NOT NULL, content_hash TEXT NOT NULL, created_at TEXT NOT NULL,
+        PRIMARY KEY(prediction_id, joined_at));
     `);
   }
 
@@ -108,11 +125,14 @@ export class ResearchDurableStore {
   saveModelRecord(record: ModelRegistryRecord): 'INSERTED' | 'ALREADY_PRESENT_IDENTICAL' {
     assertSafeId('modelId', record.modelId);
     assertSafeId('modelVersion', record.modelVersion);
+    validateModelRegistryRecord(record);
     if (!record.isBaseline && record.baselineModelId !== null) {
-      const baselineVersions = this.listModelVersions(record.baselineModelId);
-      if (baselineVersions.length === 0) {
+      if (!record.baselineModelVersion) throw new Error('MODEL_REGISTRY_EXACT_BASELINE_REQUIRED');
+      const baseline = this.getModelRecord(record.baselineModelId, record.baselineModelVersion);
+      if (baseline === null) {
         throw new Error(`RESEARCH_DURABLE_STORE_BASELINE_NOT_FOUND:${record.baselineModelId}`);
       }
+      if (!baseline.isBaseline || baseline.targetId !== record.targetId) throw new Error('RESEARCH_DURABLE_STORE_BASELINE_INCOMPATIBLE');
     }
     const json = canonicalJson(record);
     const hash = sha256(json);
@@ -126,15 +146,17 @@ export class ResearchDurableStore {
 
   getModelRecord(modelId: string, modelVersion: string): ModelRegistryRecord | null {
     const row = this.database.prepare(
-      'SELECT content_json FROM model_registry_record WHERE model_id=? AND model_version=?',
-    ).get(modelId, modelVersion) as { content_json: string } | undefined;
-    return row === undefined ? null : (JSON.parse(row.content_json) as ModelRegistryRecord);
+      'SELECT content_json, content_hash FROM model_registry_record WHERE model_id=? AND model_version=?',
+    ).get(modelId, modelVersion) as { content_json: string; content_hash: string } | undefined;
+    const record = decodeVerified<ModelRegistryRecord>(row, { modelId, modelVersion });
+    if (record !== null) validateModelRegistryRecord(record);
+    return record;
   }
 
   listModelVersions(modelId: string): readonly string[] {
     const rows = this.database.prepare('SELECT model_version FROM model_registry_record WHERE model_id=?')
       .all(modelId) as unknown as Array<{ model_version: string }>;
-    return rows.map((r) => r.model_version);
+    return rows.map((r) => r.model_version).sort();
   }
 
   saveSelectionBiasReceipt(receipt: SelectionBiasReceipt): 'INSERTED' | 'ALREADY_PRESENT_IDENTICAL' {
@@ -149,9 +171,9 @@ export class ResearchDurableStore {
   }
 
   getSelectionBiasReceipt(researchCampaignId: string): SelectionBiasReceipt | null {
-    const row = this.database.prepare('SELECT content_json FROM selection_bias_receipt WHERE research_campaign_id=?')
-      .get(researchCampaignId) as { content_json: string } | undefined;
-    return row === undefined ? null : (JSON.parse(row.content_json) as SelectionBiasReceipt);
+    const row = this.database.prepare('SELECT content_json, content_hash FROM selection_bias_receipt WHERE research_campaign_id=?')
+      .get(researchCampaignId) as { content_json: string; content_hash: string } | undefined;
+    return decodeVerified<SelectionBiasReceipt>(row, { researchCampaignId });
   }
 
   saveShadowPredictionReceipt(receipt: ShadowPredictionReceipt): 'INSERTED' | 'ALREADY_PRESENT_IDENTICAL' {
@@ -170,9 +192,9 @@ export class ResearchDurableStore {
    * referenced prediction receipt actually exists, not merely trust a
    * caller's ID string. */
   getShadowPredictionReceipt(predictionId: string): ShadowPredictionReceipt | null {
-    const row = this.database.prepare('SELECT content_json FROM shadow_prediction_receipt WHERE prediction_id=?')
-      .get(predictionId) as { content_json: string } | undefined;
-    return row === undefined ? null : (JSON.parse(row.content_json) as ShadowPredictionReceipt);
+    const row = this.database.prepare('SELECT content_json, content_hash FROM shadow_prediction_receipt WHERE prediction_id=?')
+      .get(predictionId) as { content_json: string; content_hash: string } | undefined;
+    return decodeVerified<ShadowPredictionReceipt>(row, { predictionId });
   }
 
   saveShadowFailureReceipt(receipt: ShadowFailureReceipt): 'INSERTED' | 'ALREADY_PRESENT_IDENTICAL' {
@@ -186,6 +208,36 @@ export class ResearchDurableStore {
     );
   }
 
+  getShadowFailureReceipt(failureId: string): ShadowFailureReceipt | null {
+    const row = this.database.prepare('SELECT content_json, content_hash FROM shadow_failure_receipt WHERE failure_id=?')
+      .get(failureId) as { content_json: string; content_hash: string } | undefined;
+    return decodeVerified<ShadowFailureReceipt>(row, { failureId });
+  }
+
+  savePredictionOutcomeJoin(predictionId: string, outcome: OutcomeEvidence, joinedAt: string): PredictionOutcomeJoinRecord {
+    assertSafeId('predictionId', predictionId);
+    const prediction = this.getShadowPredictionReceipt(predictionId);
+    if (prediction === null) throw new Error('RESEARCH_DURABLE_STORE_PREDICTION_NOT_FOUND');
+    const join = joinPredictionToOutcome(prediction, outcome, joinedAt);
+    const resolved = this.getPredictionOutcomeJoins(predictionId).filter((r) => r.status === 'JOINED');
+    if (resolved.some((r) => r.outcome !== join.outcome || join.status !== 'JOINED')) throw new Error('RESEARCH_DURABLE_STORE_RESOLVED_OUTCOME_CONFLICT');
+    const json = canonicalJson(join);
+    upsertImmutable(this.database, 'prediction_outcome_join', ['prediction_id', 'joined_at'], [predictionId, joinedAt], json, sha256(json),
+      'INSERT INTO prediction_outcome_join(prediction_id,joined_at,content_json,content_hash,created_at) VALUES(?,?,?,?,?)',
+      [predictionId, joinedAt, json, sha256(json), joinedAt]);
+    return join;
+  }
+
+  getPredictionOutcomeJoins(predictionId: string): readonly PredictionOutcomeJoinRecord[] {
+    const rows = this.database.prepare('SELECT joined_at, content_json, content_hash FROM prediction_outcome_join WHERE prediction_id=? ORDER BY joined_at')
+      .all(predictionId) as unknown as Array<{ joined_at: string; content_json: string; content_hash: string }>;
+    return rows.map((row) => {
+      const decoded = decodeVerified<PredictionOutcomeJoinRecord>(row, { predictionId, joinedAt: row.joined_at });
+      if (decoded === null) throw new Error('RESEARCH_DURABLE_STORE_JOIN_ROW_MISSING');
+      return decoded;
+    });
+  }
+
   /** Verifies every stored row's content hash against its stored JSON --
    * proves the store has not been silently corrupted or hand-edited. */
   verify(): { readonly valid: boolean; readonly checked: number; readonly invalidKeys: readonly string[] } {
@@ -194,6 +246,7 @@ export class ResearchDurableStore {
       { table: 'selection_bias_receipt', keyCols: ['research_campaign_id'] },
       { table: 'shadow_prediction_receipt', keyCols: ['prediction_id'] },
       { table: 'shadow_failure_receipt', keyCols: ['failure_id'] },
+      { table: 'prediction_outcome_join', keyCols: ['prediction_id', 'joined_at'] },
     ];
     const invalid: string[] = [];
     let checked = 0;

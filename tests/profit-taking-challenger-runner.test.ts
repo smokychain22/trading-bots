@@ -43,3 +43,22 @@ test('all 17 canonical policies are represented in every run result, even with z
   assert.equal(result.perPolicy.length, 17);
   assert.equal(result.numberOfTrials, 17);
 });
+
+test('missing or unidentified labels cannot create policy-specific denominators', () => {
+  const rows = canonicalV7ProfitTakingPolicies.flatMap((policy) => [rowFor('e1', policy, 10), rowFor('e2', policy, 20)]);
+  const incomplete = rows.map((r) => r.state.episodeId === 'e1' && r.challengerPolicy === 'FIXED_05' ? { ...r, incrementalWholeChainNetPnl: null } : r);
+  const result = runProfitTakingChallengerComparison(incomplete);
+  assert.deepEqual(result.metricCohorts.incrementalWholeChainNetPnl, ['e2']);
+  assert.deepEqual(result.metricCohorts.incrementalCapitalDays, ['e1', 'e2']);
+  assert.ok(result.perPolicy.every((p) => p.episodeCount === 1 && p.averageIncrementalWholeChainNetPnl === 20));
+  assert.deepEqual(result, runProfitTakingChallengerComparison([...incomplete].reverse()));
+});
+
+test('duplicate labels and mixed observed/modeled cohorts fail rather than overwrite or pool evidence', () => {
+  const rows = canonicalV7ProfitTakingPolicies.map((p) => rowFor('e1', p, 10));
+  const first = rows[0];
+  assert.ok(first);
+  assert.throws(() => runProfitTakingChallengerComparison([...rows, first]), /DUPLICATE/);
+  assert.throws(() => runProfitTakingChallengerComparison(rows.map((r, i) => i === 0 ? { ...r, counterfactualOutcomeState: 'ESTIMABLE' } : r)), /MIXED_TRUTH/);
+  assert.throws(() => runProfitTakingChallengerComparison([{ ...first, incrementalWholeChainNetPnl: NaN }]), /NONFINITE/);
+});

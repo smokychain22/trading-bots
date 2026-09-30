@@ -1,5 +1,44 @@
 # THETA Phase 6 Unified Closure Receipt
 
+## Current review, 2026-09-30
+
+STATE = IMPLEMENTING_REVIEWED_DENOMINATOR
+
+The older source-complete receipt below is historical, not current acceptance.
+Phase 5 is committed at `6fb779a7dfaffe83a5cb4eac7e9ce5f31d8b28a6` with
+235 reviewed evidence-bound passes and full local validation. Exact CI is
+`36784413296` PASS, and main CI `36785012900` PASS. Phase 6's 15 master subsections
+remain under review. No current-worker or empirical promotion is claimed.
+
+Proven source defects to close, in order: mutable in-memory registry records
+and key collisions; unverified SQLite reads and baseline identity; incomplete
+reproducibility bindings; selection falsely counted as a factual/mature outcome;
+cross-policy cohort drift; calibration numeric/provenance boundaries; promotion
+self-certification from strings and booleans. Then verify the remaining WAIT,
+counterfactual, attribution, dataset, walk-forward and professional-reference
+consumers against executed evidence. Preserve original artifacts and UNKNOWN.
+
+Completed integrity checkpoint: immutable registry records, exact baseline
+version binding, SQLite read/hash verification, durable prediction/outcome
+joins, reproducibility reference verification and an offline research-ledger
+consumer. Selection or future quote observations cannot certify a factual
+resolved outcome. Open inventory cannot be labeled resolved, and benchmark
+cashflows remain modeled. Challenger summaries now use explicit common
+identified cohorts. Calibration rejects malformed probabilities and metrics.
+
+Executed validation: Node 3,322 PASS / 16 skipped / zero failures, Python 1,247
+PASS, typecheck/lint/build/security/storage PASS. Reviewed Phase 2/3/4/5
+evidence reruns passed 578/249/222/235 respectively. Tests are engineering
+evidence, not real empirical outcomes. The ledger CLI was executed with
+synthetic fixtures across two separate processes to prove restart/idempotence.
+
+Still open and next exact action: implement a policy-frozen final held-out
+evaluation in the existing baseline engine, prevent ablation from consuming
+that holdout, then close promotion checks that still trust caller booleans.
+Review all remaining 15 master subsections before declaring Phase 6 complete.
+These changes are offline research tooling only. No Production checkpoint,
+deployment, order or worker restart is part of this review.
+
 Receipt date: 2026-09-29
 
 START_SHA = c9d61d5a3a803b1e7f0be8aa726fddf7cde2eed1

@@ -12,6 +12,7 @@
  * invent a parallel truth taxonomy.
  */
 import { assertNotShadowClaimingObservedParallel, type IdentifiabilityStatus } from './empirical-identifiability-taxonomy.js';
+import type { WholeChainOutcomeRow } from './whole-chain-outcome-builder.js';
 
 export const contractPathOutcomeDatasetVersion = 'theta-contract-path-outcome-dataset-v1' as const;
 
@@ -46,13 +47,14 @@ export interface ContractPathOutcomeRow {
   readonly contractVersion: typeof contractPathOutcomeDatasetVersion;
   readonly subjectId: string;
   readonly decisionAt: string;
-  /** Whether this subject was ever actually selected/executed -- the sole
-   * gate on whether `FACTUAL_OBSERVED` is even reachable for it. */
+  /** Selection is necessary but not sufficient evidence of execution. */
   readonly wasSelected: boolean;
   readonly wasShadowOnly: boolean;
   readonly identifiabilityStatus: IdentifiabilityStatus;
   readonly path: readonly PathObservation[];
   readonly statistics: PathStatistics;
+  /** Exact linked canonical whole-chain materialization, never inferred from selection. */
+  readonly factualOutcome?: { readonly subjectId: string; readonly wholeChain: WholeChainOutcomeRow };
 }
 
 /**
@@ -63,11 +65,27 @@ export interface ContractPathOutcomeRow {
  * constructing the row object directly with a different status.
  */
 export function buildContractPathOutcomeRow(input: Omit<ContractPathOutcomeRow, 'contractVersion'>): ContractPathOutcomeRow {
+  if (!Number.isFinite(Date.parse(input.decisionAt)) || !input.subjectId?.trim()) throw new Error('CONTRACT_PATH_IDENTITY_OR_TIME_INVALID');
+  if (input.wasShadowOnly && input.identifiabilityStatus === 'FACTUAL_OBSERVED') throw new Error('CONTRACT_PATH_SHADOW_CANNOT_BE_FACTUAL_OBSERVED');
+  const checkpoints = new Set<string>();
+  for (const row of input.path) {
+    if (checkpoints.has(row.checkpoint)) throw new Error('CONTRACT_PATH_DUPLICATE_CHECKPOINT');
+    checkpoints.add(row.checkpoint);
+    if (row.observedAt !== null && (!Number.isFinite(Date.parse(row.observedAt)) || Date.parse(row.observedAt) < Date.parse(input.decisionAt))) throw new Error('CONTRACT_PATH_INVALID_OBSERVATION_TIME');
+    for (const value of [row.marketMarkPath, row.modeledAfterCostPath]) if (value !== null && (!Number.isFinite(value) || row.observedAt === null)) throw new Error('CONTRACT_PATH_UNTIMED_OR_NONFINITE_VALUE');
+  }
   if (!input.wasSelected && input.identifiabilityStatus === 'FACTUAL_OBSERVED') {
     throw new Error('CONTRACT_PATH_UNSELECTED_CANDIDATE_CANNOT_BE_FACTUAL_OBSERVED');
   }
+  if (input.identifiabilityStatus === 'FACTUAL_OBSERVED') {
+    const evidence = input.factualOutcome;
+    if (evidence?.subjectId !== input.subjectId || evidence.wholeChain.state !== 'CHAIN_RESOLVED' ||
+      evidence.wholeChain.identifiabilityStatus !== 'FACTUAL_OBSERVED' || evidence.wholeChain.pnl.cashflowBasis !== 'ACTUAL_FILL_CASHFLOW' ||
+      evidence.wholeChain.pnl.wholeChainPnl === null || !Number.isFinite(evidence.wholeChain.pnl.wholeChainPnl) ||
+      !Number.isFinite(Date.parse(evidence.wholeChain.observationCutoffAt)) || Date.parse(evidence.wholeChain.observationCutoffAt) < Date.parse(input.decisionAt)) throw new Error('CONTRACT_PATH_FACTUAL_WHOLE_CHAIN_EVIDENCE_REQUIRED');
+  }
   assertNotShadowClaimingObservedParallel({ status: input.identifiabilityStatus, wasShadowOnly: input.wasShadowOnly });
-  return { contractVersion: contractPathOutcomeDatasetVersion, ...input };
+  return { ...input, contractVersion: contractPathOutcomeDatasetVersion };
 }
 
 /**

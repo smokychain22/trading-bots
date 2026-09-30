@@ -2,6 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildManagementActionValueRows, buildManagementReturnToGoRows, CANONICAL_MANAGEMENT_ACTIONS } from '../src/research/management-return-to-go.js';
 
+test('malformed management values, times and duplicate actions never become factual labels', () => {
+  const input = { managementDecisionPointId: 'm1', alternatives: [{ action: 'HOLD', wasSelected: true }], selectedActionResolvedReturnToGo: 1, selectedActionResolvedAt: '2026-09-25T00:00:00Z' };
+  assert.throws(() => buildManagementReturnToGoRows({ ...input, selectedActionResolvedReturnToGo: NaN }), /NONFINITE/);
+  assert.throws(() => buildManagementReturnToGoRows({ ...input, selectedActionResolvedAt: 'bad' }), /INVALID_TIME/);
+  assert.throws(() => buildManagementReturnToGoRows({ ...input, alternatives: [...input.alternatives, { action: 'HOLD', wasSelected: false }] }), /IDENTITIES_INVALID/);
+  assert.throws(() => buildManagementActionValueRows({ ...input, selectedActionValues: { riskToGo: Infinity, capitalDaysToGo: null, tailOutcome: null, opportunityCost: null }, selectedActionTimingClassification: null }), /NONFINITE/);
+});
+
 test('CORE CLAIM: unchosen management actions never inherit the chosen action realized return', () => {
   const rows = buildManagementReturnToGoRows({
     managementDecisionPointId: 'm1',

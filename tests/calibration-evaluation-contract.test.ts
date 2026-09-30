@@ -12,7 +12,7 @@ function baseReceiptInput(overrides: Partial<Parameters<typeof buildCalibrationR
     modelId: 'm1', modelVersion: 'v1', dataProvenance: 'REAL_EMPIRICAL_DATA' as const,
     evaluationRowIds: ['e1', 'e2'], fittingRowIds: ['f1', 'f2'],
     brierScore: 0.2, logLoss: 0.5, ece: 0.05, calibrationSlope: 1.0, calibrationIntercept: 0.0,
-    reliabilityBins: [], independentN: 2, confidenceIntervalWidth95: 0.1, ...overrides,
+    reliabilityBins: [{ binLower: 0, binUpper: 1, meanPredicted: 0.55, meanObserved: 0.5, n: 2 }], independentN: 2, confidenceIntervalWidth95: 0.1, ...overrides,
   };
 }
 
@@ -130,4 +130,16 @@ test('CORE CLAIM: log-loss remains finite for predictions exactly at 0 or 1, nev
   const extreme = [pair('e1', 1, 1), pair('e2', 0, 0), pair('e3', 0.5, 1)];
   const logLoss = computeLogLoss(extreme);
   assert.ok(logLoss !== null && Number.isFinite(logLoss));
+});
+
+test('invalid probabilities, binary labels, N and forged bin summaries cannot certify calibration', () => {
+  for (const pairs of [[pair('x', -0.1, 1)], [pair('x', 1.1, 1)], [pair('x', 0.5, 2 as never)]]) {
+    assert.throws(() => computeBrierScore(pairs), /CALIBRATION_/);
+    assert.throws(() => computeLogLoss(pairs), /CALIBRATION_/);
+  }
+  for (const independentN of [-1, NaN, 3, 0.5]) assert.throws(() => buildCalibrationReceipt(baseReceiptInput({ independentN })), /SAMPLE_SIZE/);
+  assert.throws(() => buildCalibrationReceipt(baseReceiptInput({ reliabilityBins: [] })), /BIN_COUNT/);
+  assert.throws(() => buildCalibrationReceipt(baseReceiptInput({ ece: 0 })), /ECE_BIN_MISMATCH/);
+  assert.throws(() => buildCalibrationReceipt(baseReceiptInput({ evaluationRowIds: ['e1', 'e1'] })), /ROW_IDENTITIES/);
+  assert.equal(isEligibleForPromotionEvidence(buildCalibrationReceipt(baseReceiptInput({ independentN: 0 }))), false);
 });

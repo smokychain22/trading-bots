@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { buildWholeChainOutcomeRow } from '../src/research/whole-chain-outcome-builder.js';
 import {
   buildContractPathOutcomeRow, classifyRejectedCandidateFavorablePath, type PathStatistics,
 } from '../src/research/contract-path-outcome-dataset.js';
@@ -27,11 +28,16 @@ test('ADVERSARIAL: an unselected candidate cannot be constructed with FACTUAL_OB
 });
 
 test('a selected, resolved candidate can be FACTUAL_OBSERVED', () => {
+  const wholeChain = buildWholeChainOutcomeRow({ chainId: 'wc1', strategyFamily: 'Q', rollCount: 0, dailyCapital: [], observationCutoffAt: '2026-09-27T00:00:00Z', isResolved: true,
+    components: { cashflowBasis: 'ACTUAL_FILL_CASHFLOW', initialPutPremium: 100, putCloseCosts: 0, rollCredits: 0, rollCloseCosts: 0, assignmentStrike: null, stockSharesAssigned: 0, dividends: 0, coveredCallPremium: 0, coveredCallCloseCosts: 0, stockSaleOrCallAwayProceeds: null, fees: 0, executionCostNotEmbeddedInCashflows: 0, tcaExecutionShortfall: 0, currentStockMarkPerShare: null, openStockShares: 0 } });
   const row = buildContractPathOutcomeRow({
     subjectId: 'c2', decisionAt: '2026-09-26T14:00:00Z', wasSelected: true, wasShadowOnly: false,
     identifiabilityStatus: 'FACTUAL_OBSERVED', path: [], statistics: { ...EMPTY_STATS, terminalState: 'CHAIN_RESOLVED' },
+    factualOutcome: { subjectId: 'c2', wholeChain },
   });
   assert.equal(row.identifiabilityStatus, 'FACTUAL_OBSERVED');
+  assert.throws(() => buildContractPathOutcomeRow({ subjectId: row.subjectId, decisionAt: row.decisionAt, wasSelected: true, wasShadowOnly: false,
+    identifiabilityStatus: 'FACTUAL_OBSERVED', path: [], statistics: row.statistics }), /FACTUAL_WHOLE_CHAIN_EVIDENCE_REQUIRED/);
 });
 
 test('ADVERSARIAL: a shadow-only prediction cannot claim OBSERVED_PARALLEL', () => {

@@ -7,10 +7,12 @@
  * where EVERY policy has a resolved comparison row.
  */
 import {
-  type ProfitTakingComparisonRow, type V7ProfitTakingPolicy, canonicalV7ProfitTakingPolicies,
+  buildProfitTakingComparisonRow, type ProfitTakingComparisonRow, type V7ProfitTakingPolicy, canonicalV7ProfitTakingPolicies,
 } from './profit-taking-experiment.js';
 
-export const profitTakingChallengerRunnerVersion = 'theta-profit-taking-challenger-runner-v1' as const;
+export const profitTakingChallengerRunnerVersion = 'theta-profit-taking-challenger-runner-v2' as const;
+const metricKeys = ['incrementalWholeChainNetPnl', 'incrementalCapitalDays', 'incrementalDownside', 'incrementalExecutionCost'] as const;
+type Metric = typeof metricKeys[number];
 
 export interface ChallengerPolicyMetrics {
   readonly policy: V7ProfitTakingPolicy;
@@ -32,10 +34,13 @@ export interface ProfitTakingChallengerRunResult {
    * counted. */
   readonly numberOfTrials: number;
   readonly trialIdentities: readonly string[];
+  readonly metricCohorts: Readonly<Record<Metric, readonly string[]>>;
+  readonly truthClass: ProfitTakingComparisonRow['counterfactualOutcomeState'] | null;
 }
 
 function average(values: readonly number[]): number | null {
-  return values.length === 0 ? null : values.reduce((a, b) => a + b, 0) / values.length;
+  const result = values.reduce((a, b) => a + b / values.length, 0);
+  return values.length === 0 || !Number.isFinite(result) ? null : result;
 }
 
 /**
@@ -54,30 +59,48 @@ export function runProfitTakingChallengerComparison(
   for (const row of rows) {
     const policy = row.challengerPolicy;
     if (!canonicalV7ProfitTakingPolicies.includes(policy as V7ProfitTakingPolicy)) continue; // legacy policies excluded from this canonical runner
+    buildProfitTakingComparisonRow(row);
+    if (rowsByPolicy.get(policy as V7ProfitTakingPolicy)?.has(row.state.episodeId)) throw new Error('PROFIT_TAKING_DUPLICATE_EPISODE_POLICY');
     rowsByPolicy.get(policy as V7ProfitTakingPolicy)?.set(row.state.episodeId, row);
   }
 
   const episodeIdSets = [...rowsByPolicy.values()].map((m) => new Set(m.keys()));
   const allEpisodeIds = new Set(rows.map((r) => r.state.episodeId));
-  const commonEpisodeIds = [...allEpisodeIds].filter((id) => episodeIdSets.every((set) => set.has(id)));
-  const excludedEpisodeIds = [...allEpisodeIds].filter((id) => !commonEpisodeIds.includes(id));
+  const completeIds = [...allEpisodeIds].sort().filter((id) => episodeIdSets.every((set) => set.has(id)));
+  const requireRow = (map: Map<string, ProfitTakingComparisonRow> | undefined, id: string): ProfitTakingComparisonRow => {
+    const row = map?.get(id);
+    if (row === undefined) throw new Error('PROFIT_TAKING_COHORT_INVARIANT');
+    return row;
+  };
+  const identifiedIds = completeIds.filter((id) => [...rowsByPolicy.values()].every((map) => {
+    const row = requireRow(map, id);
+    return row.counterfactualOutcomeState !== 'NOT_IDENTIFIABLE' && row.labelAvailableAt !== null;
+  }));
+  const truthClasses = new Set(identifiedIds.flatMap((id) => [...rowsByPolicy.values()].map((map) => requireRow(map, id).counterfactualOutcomeState)));
+  if (truthClasses.size > 1) throw new Error('PROFIT_TAKING_MIXED_TRUTH_COHORT');
+  const metricCohorts = Object.fromEntries(metricKeys.map((key) => [key, identifiedIds.filter((id) => [...rowsByPolicy.values()].every((map) => requireRow(map, id)[key] !== null))])) as Record<Metric, string[]>;
+  const commonEpisodeIds = metricCohorts.incrementalWholeChainNetPnl;
+  const excludedEpisodeIds = [...allEpisodeIds].sort().filter((id) => !commonEpisodeIds.includes(id));
 
   const perPolicy: ChallengerPolicyMetrics[] = canonicalV7ProfitTakingPolicies.map((policy) => {
-    const policyRows = commonEpisodeIds
-      .map((id) => rowsByPolicy.get(policy)?.get(id))
-      .filter((r): r is ProfitTakingComparisonRow => r !== undefined && r.counterfactualOutcomeState !== 'NOT_IDENTIFIABLE');
+    const mean = (key: Metric) => average(metricCohorts[key].map((id) => {
+      const value = requireRow(rowsByPolicy.get(policy), id)[key];
+      if (value === null) throw new Error('PROFIT_TAKING_METRIC_COHORT_INVARIANT');
+      return value;
+    }));
     return {
-      policy, episodeCount: policyRows.length,
-      averageIncrementalWholeChainNetPnl: average(policyRows.map((r) => r.incrementalWholeChainNetPnl).filter((v): v is number => v !== null)),
-      averageIncrementalCapitalDays: average(policyRows.map((r) => r.incrementalCapitalDays).filter((v): v is number => v !== null)),
-      averageIncrementalDownside: average(policyRows.map((r) => r.incrementalDownside).filter((v): v is number => v !== null)),
-      averageIncrementalExecutionCost: average(policyRows.map((r) => r.incrementalExecutionCost).filter((v): v is number => v !== null)),
+      policy, episodeCount: commonEpisodeIds.length,
+      averageIncrementalWholeChainNetPnl: mean('incrementalWholeChainNetPnl'),
+      averageIncrementalCapitalDays: mean('incrementalCapitalDays'),
+      averageIncrementalDownside: mean('incrementalDownside'),
+      averageIncrementalExecutionCost: mean('incrementalExecutionCost'),
     };
   });
 
   return {
     contractVersion: profitTakingChallengerRunnerVersion,
     commonEpisodeCount: commonEpisodeIds.length, excludedEpisodeIds, perPolicy,
+    metricCohorts, truthClass: [...truthClasses][0] ?? null,
     numberOfTrials: canonicalV7ProfitTakingPolicies.length,
     trialIdentities: canonicalV7ProfitTakingPolicies.map((p) => `profit-taking-challenger::${p}`),
   };

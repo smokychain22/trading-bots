@@ -59,8 +59,22 @@ const VALID_PROVENANCE: ReadonlySet<string> = new Set(['REAL_SCHEDULED_OBSERVATI
 
 export function validateBundleSchema(bundle: ObservationBundle): readonly SchemaValidationFailure[] {
   const failures: SchemaValidationFailure[] = [];
+  if (bundle === null || typeof bundle !== 'object' || !Array.isArray(bundle.rows)) {
+    return [{ rowIndex: -1, field: 'bundle', reason: 'bundle object and rows array required' }];
+  }
+  for (const key of ['wasSelected', 'wasShadowOnly'] as const) if (typeof bundle[key] !== 'boolean') {
+    failures.push({ rowIndex: -1, field: key, reason: 'boolean required' });
+  }
+  if (typeof bundle.bundleId !== 'string' || !bundle.bundleId.trim()) failures.push({ rowIndex: -1, field: 'bundleId', reason: 'nonempty identity required' });
   const seenCheckpoints = new Set<string>();
   bundle.rows.forEach((row, index) => {
+    if (row === null || typeof row !== 'object') { failures.push({ rowIndex: index, field: 'row', reason: 'object required' }); return; }
+    if (row.subjectId !== bundle.subjectId) failures.push({ rowIndex: index, field: 'subjectId', reason: 'row identity differs from bundle' });
+    for (const key of ['marketMarkPrice', 'impliedVolatility', 'underlyingPrice'] as const) {
+      if (row[key] !== null && (!Number.isFinite(row[key]) || row[key] < 0 || (key === 'underlyingPrice' && row[key] === 0))) {
+        failures.push({ rowIndex: index, field: key, reason: 'finite valid market value or null required' });
+      }
+    }
     if (!VALID_CHECKPOINTS.has(row.checkpoint)) failures.push({ rowIndex: index, field: 'checkpoint', reason: `unknown checkpoint: ${row.checkpoint}` });
     if (!Number.isFinite(Date.parse(row.observedAt))) failures.push({ rowIndex: index, field: 'observedAt', reason: 'not a valid timestamp' });
     if (!SHA_PATTERN.test(row.sourceSha)) failures.push({ rowIndex: index, field: 'sourceSha', reason: 'not a 40-hex sha' });
@@ -77,12 +91,7 @@ export function validateBundleSchema(bundle: ObservationBundle): readonly Schema
   if (!Number.isFinite(Date.parse(bundle.decisionAt))) {
     failures.push({ rowIndex: -1, field: 'bundle.decisionAt', reason: 'not a valid timestamp' });
   }
-  if (bundle.subjectId.length === 0) failures.push({ rowIndex: -1, field: 'bundle.subjectId', reason: 'empty subjectId' });
-  // Every row's own subjectId (implicit via the bundle-level field here,
-  // since RawObservationBundleRow does not carry a redundant per-row
-  // subjectId) must be consistent -- this schema puts subjectId once at
-  // the bundle level precisely to make a cross-row mismatch structurally
-  // impossible rather than something to validate.
+  if (typeof bundle.subjectId !== 'string' || bundle.subjectId.trim().length === 0) failures.push({ rowIndex: -1, field: 'bundle.subjectId', reason: 'empty subjectId' });
   return failures;
 }
 
@@ -91,16 +100,13 @@ export interface PitValidationFailure {
   readonly reason: string;
 }
 
-/** Step 2: PIT validation. A row's `observedAt` must not be AFTER the
- * bundle's own `decisionAt` for checkpoints at or before the decision
- * (15M/1H/EOD are same-cycle observations) -- a future-timestamped "same
- * cycle" observation is a real leakage failure, caught here rather than
- * silently accepted into a dataset. */
+/** These are future outcome observations, never decision inputs. Every
+ * checkpoint must be on or after T0, including expiration and long horizons. */
 export function validateBundlePit(bundle: ObservationBundle): readonly PitValidationFailure[] {
   const failures: PitValidationFailure[] = [];
   const decisionMs = Date.parse(bundle.decisionAt);
   bundle.rows.forEach((row, index) => {
-    if (['15M', '1H', 'EOD'].includes(row.checkpoint) && Date.parse(row.observedAt) < decisionMs) {
+    if (!Number.isFinite(decisionMs) || !Number.isFinite(Date.parse(row.observedAt)) || Date.parse(row.observedAt) < decisionMs) {
       failures.push({ rowIndex: index, reason: `${row.checkpoint} observation timestamped before decisionAt -- structurally impossible for a same/next-session checkpoint` });
     }
   });
@@ -110,6 +116,7 @@ export function validateBundlePit(bundle: ObservationBundle): readonly PitValida
 /** Step 3: dataset build -- reuses the real, already-tested
  * `buildContractPathOutcomeRow`, never reimplements its invariant. */
 export function buildDatasetFromBundle(bundle: ObservationBundle): ContractPathOutcomeRow {
+  if (validateBundleSchema(bundle).length > 0 || validateBundlePit(bundle).length > 0) throw new Error('OBSERVATION_BUNDLE_INVALID');
   const path: PathObservation[] = bundle.rows.map((row) => ({
     checkpoint: row.checkpoint as PathCheckpoint, observedAt: row.observedAt,
     marketMarkPath: row.marketMarkPrice, modeledAfterCostPath: null,
@@ -117,12 +124,9 @@ export function buildDatasetFromBundle(bundle: ObservationBundle): ContractPathO
   return buildContractPathOutcomeRow({
     subjectId: bundle.subjectId, decisionAt: bundle.decisionAt, wasSelected: bundle.wasSelected,
     wasShadowOnly: bundle.wasShadowOnly,
-    // A canonical selection inside a shadow-only episode is still not an
-    // executed trade. Future market marks describe its path, but they do not
-    // prove a fill, managed episode, or realized P&L. Only a selected,
-    // non-shadow subject may become factual at this boundary.
-    identifiabilityStatus: bundle.wasSelected && !bundle.wasShadowOnly
-      ? 'FACTUAL_OBSERVED' : 'NOT_IDENTIFIABLE',
+    // Selection and market marks do not prove execution or a resolved episode.
+    // This bundle has no broker fills, whole-chain costs or terminal ledger.
+    identifiabilityStatus: 'NOT_IDENTIFIABLE',
     path,
     statistics: {
       maximumAdverseExcursion: null, maximumFavorableExcursion: null, peakProfit: null, worstProfit: null,
@@ -159,6 +163,7 @@ export interface RealDataArrivalResult {
   readonly dataset: ContractPathOutcomeRow | null;
   readonly unknownAudit: readonly UnknownAuditEntry[];
   readonly sessionReportCycleCount: number;
+  readonly sessionOutcomeState?: { readonly futureObservationRecorded: boolean; readonly outcomeMatured: false; readonly outcomePending: true };
 }
 
 /** The full pipeline, step by step, stopping early and reporting exactly
@@ -179,8 +184,8 @@ export function runRealDataArrivalPipeline(bundle: ObservationBundle): RealDataA
   const cycleRecord: CycleEvidenceRecord = {
     cycleId: bundle.bundleId, observedAt: bundle.decisionAt,
     subjectsBySubjectKind: { CONTRACT: 1, Q: 0, H: 0, D: 0, RECOVERY_CC: 0 },
-    wasWait: !bundle.wasSelected, futureObservationRecorded: true, outcomeMatured: bundle.wasSelected,
-    outcomePending: !bundle.wasSelected, observationMissed: false, providerFailed: false,
+    wasWait: !bundle.wasSelected, futureObservationRecorded: bundle.rows.length > 0, outcomeMatured: false,
+    outcomePending: true, observationMissed: false, providerFailed: false,
     identifiable: dataset.identifiabilityStatus !== 'NOT_IDENTIFIABLE', flowCohort: null,
     wasAssignmentEvent: false, wasRecoveryEvent: false, strategyComparisonPerformed: false, newCalibrationSample: false,
     unresolvedFields: unknownAudit.map((u) => ({ field: u.field, reason: u.reason })),
@@ -189,6 +194,7 @@ export function runRealDataArrivalPipeline(bundle: ObservationBundle): RealDataA
   return {
     contractVersion: realDataArrivalHarnessVersion, schemaValid: true, schemaFailures: [], pitValid: true, pitFailures: [],
     dataset, unknownAudit, sessionReportCycleCount: sessionResult.cyclesProcessed,
+    sessionOutcomeState: { futureObservationRecorded: bundle.rows.length > 0, outcomeMatured: false, outcomePending: true },
   };
 }
 

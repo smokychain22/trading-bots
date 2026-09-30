@@ -57,7 +57,51 @@ export interface ModelRegistryRecord {
    * at PAPER_CHALLENGER/PAPER_PROMOTED with no recorded baseline evidence
    * to beat. */
   readonly baselineModelId: string | null;
+  readonly baselineModelVersion?: string | null;
   readonly isBaseline: boolean;
+}
+
+/** Metadata validation is shared by both stores. It grants no promotion authority. */
+export function validateModelRegistryRecord(record: ModelRegistryRecord): void {
+  const fail = (field: string): never => { throw new Error(`MODEL_REGISTRY_INVALID_${field}`); };
+  if (record.contractVersion !== empiricalModelRegistryVersion) fail('VERSION');
+  for (const field of ['modelId', 'modelVersion', 'targetId', 'featureSetVersion', 'datasetId', 'labelVersion',
+    'dependenceGroupingVersion', 'purgeVersion', 'costModelVersion'] as const) {
+    if (typeof record[field] !== 'string' || record[field].trim().length === 0) fail(field);
+  }
+  for (const field of ['datasetHash', 'artifactHash'] as const) if (!/^[a-f0-9]{64}$/.test(record[field])) fail(field);
+  if (!/^[a-f0-9]{40}$/.test(record.codeSha)) fail('CODE_SHA');
+  if (typeof record.isBaseline !== 'boolean' || !['RESEARCH', 'SHADOW', 'PAPER_CHALLENGER', 'PAPER_PROMOTED'].includes(record.promotionState)) fail('PROMOTION_METADATA');
+  if (!Number.isSafeInteger(record.numberOfTrials) || record.numberOfTrials < 1) fail('NUMBER_OF_TRIALS');
+  if (!Number.isFinite(Date.parse(record.createdAt))) fail('CREATED_AT');
+  const window = (value: { start: string; end: string }, name: string): [number, number] => {
+    const start = Date.parse(value.start), end = Date.parse(value.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) fail(name);
+    return [start, end];
+  };
+  const [, trainEnd] = window(record.trainingWindow, 'TRAINING_WINDOW');
+  let validationEnd = trainEnd;
+  for (const value of record.validationWindows) {
+    const [start, end] = window(value, 'VALIDATION_WINDOW');
+    if (start <= trainEnd) fail('VALIDATION_OVERLAPS_TRAINING');
+    validationEnd = Math.max(validationEnd, end);
+  }
+  if (record.finalOosWindow !== null && window(record.finalOosWindow, 'OOS_WINDOW')[0] <= validationEnd) fail('OOS_OVERLAP');
+  for (const scope of [record.strategyScope, record.actionScope]) {
+    if (!Array.isArray(scope) || new Set(scope).size !== scope.length || scope.some((s) => typeof s !== 'string' || !s.trim())) fail('SCOPE');
+  }
+  for (const name of ['brierScore', 'logLoss', 'ece', 'independentN'] as const) {
+    const value = record.metrics[name];
+    if (value !== null && (!Number.isFinite(value) || value < 0 ||
+      ((name === 'brierScore' || name === 'ece') && value > 1) || (name === 'independentN' && !Number.isSafeInteger(value)))) fail(`METRIC_${name}`);
+  }
+  if ((record.calibrationMethod === null) !== (record.calibrationArtifactHash === null) ||
+    (record.calibrationArtifactHash !== null && !/^[a-f0-9]{64}$/.test(record.calibrationArtifactHash))) fail('CALIBRATION');
+  if (!record.isBaseline && record.baselineModelId === null && ['PAPER_CHALLENGER', 'PAPER_PROMOTED'].includes(record.promotionState)) {
+    throw new Error('MODEL_REGISTRY_CHALLENGER_WITHOUT_BASELINE');
+  }
+  if (record.isBaseline && (record.baselineModelId !== null || record.baselineModelVersion != null)) throw new Error('MODEL_REGISTRY_BASELINE_CANNOT_REFERENCE_ANOTHER_BASELINE');
+  if (record.baselineModelId !== null && (!record.baselineModelId.trim() || !record.baselineModelVersion?.trim() || record.baselineModelId === record.modelId)) fail('EXACT_BASELINE_REFERENCE');
 }
 
 function recordIdentity(record: ModelRegistryRecord): string {
@@ -75,18 +119,18 @@ function recordIdentity(record: ModelRegistryRecord): string {
 export class EmpiricalModelRegistry {
   private readonly records = new Map<string, ModelRegistryRecord>();
 
-  private key(modelId: string, modelVersion: string): string { return `${modelId}::${modelVersion}`; }
+  private key(modelId: string, modelVersion: string): string { return JSON.stringify([modelId, modelVersion]); }
 
   register(record: ModelRegistryRecord): void {
-    if (record.numberOfTrials < 1) throw new Error('MODEL_REGISTRY_INVALID_NUMBER_OF_TRIALS');
-    if (Date.parse(record.trainingWindow.end) < Date.parse(record.trainingWindow.start)) throw new Error('MODEL_REGISTRY_INVALID_TRAINING_WINDOW');
-    if (!record.isBaseline && record.baselineModelId === null && (record.promotionState === 'PAPER_CHALLENGER' || record.promotionState === 'PAPER_PROMOTED')) {
-      throw new Error('MODEL_REGISTRY_CHALLENGER_WITHOUT_BASELINE');
+    validateModelRegistryRecord(record);
+    if (record.baselineModelId !== null) {
+      if (!record.baselineModelVersion) throw new Error('MODEL_REGISTRY_EXACT_BASELINE_REQUIRED');
+      const baseline = this.get(record.baselineModelId, record.baselineModelVersion);
+      if (!baseline?.isBaseline || baseline.targetId !== record.targetId) throw new Error('MODEL_REGISTRY_BASELINE_NOT_FOUND_OR_INCOMPATIBLE');
     }
-    if (record.isBaseline && record.baselineModelId !== null) throw new Error('MODEL_REGISTRY_BASELINE_CANNOT_REFERENCE_ANOTHER_BASELINE');
     const key = this.key(record.modelId, record.modelVersion);
     const existing = this.records.get(key);
-    if (existing === undefined) { this.records.set(key, record); return; }
+    if (existing === undefined) { this.records.set(key, structuredClone(record)); return; }
     if (recordIdentity(existing) !== recordIdentity(record)) {
       throw new Error(`MODEL_REGISTRY_IMMUTABLE_VERSION_CONFLICT:${key}`);
     }
@@ -94,12 +138,13 @@ export class EmpiricalModelRegistry {
   }
 
   get(modelId: string, modelVersion: string): ModelRegistryRecord | null {
-    return this.records.get(this.key(modelId, modelVersion)) ?? null;
+    const record = this.records.get(this.key(modelId, modelVersion));
+    return record === undefined ? null : structuredClone(record);
   }
 
   /** Deliberately no `getLatest`/`getCurrent` method exists on this class --
    * every consumer must supply an exact version. */
   listVersions(modelId: string): readonly string[] {
-    return [...this.records.values()].filter((r) => r.modelId === modelId).map((r) => r.modelVersion);
+    return [...this.records.values()].filter((r) => r.modelId === modelId).map((r) => r.modelVersion).sort();
   }
 }

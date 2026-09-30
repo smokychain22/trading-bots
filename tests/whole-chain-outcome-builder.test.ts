@@ -23,6 +23,16 @@ test('a resolved chain with complete components is FACTUAL_OBSERVED', () => {
   assert.equal(row.pnl.wholeChainPnl, 100);
 });
 
+test('a malformed roll count cannot be recorded as a resolved whole-chain fact', () => {
+  for (const rollCount of [NaN, Infinity, -1, 0.5]) assert.throws(() => buildWholeChainOutcomeRow({ chainId: 'wc1', strategyFamily: 'THETA_CONVENTIONAL', rollCount, components: baseComponents(), dailyCapital: [], observationCutoffAt: '2026-09-25T00:00:00Z', isResolved: true }), /INVALID_ROLL_COUNT/);
+});
+
+test('benchmark cashflows never become broker-factual labels and open stock cannot be declared resolved', () => {
+  const input = { chainId: 'wc1', strategyFamily: 'THETA_CONVENTIONAL', rollCount: 0, components: baseComponents({ cashflowBasis: 'BENCHMARK_CASHFLOW' }), dailyCapital: [], observationCutoffAt: '2026-09-25T00:00:00Z', isResolved: true };
+  assert.equal(buildWholeChainOutcomeRow(input).identifiabilityStatus, 'MODEL_BASED_ESTIMATE');
+  assert.throws(() => buildWholeChainOutcomeRow({ ...input, components: baseComponents({ openStockShares: 100 }) }), /RESOLVED_WITH_OPEN_STOCK/);
+});
+
 test('an unresolved chain at cutoff is CHAIN_CENSORED, never dropped, identifiability NOT_IDENTIFIABLE', () => {
   const row = buildWholeChainOutcomeRow({
     chainId: 'wc2', strategyFamily: 'THETA_CONVENTIONAL', rollCount: 1,

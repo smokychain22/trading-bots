@@ -52,7 +52,9 @@ export function buildWholeChainOutcomeRow(input: {
   readonly isResolved: boolean;
 }): WholeChainOutcomeRow {
   if (!Number.isFinite(Date.parse(input.observationCutoffAt))) throw new Error('WHOLE_CHAIN_INVALID_OBSERVATION_CUTOFF');
-  if (input.rollCount < 0) throw new Error('WHOLE_CHAIN_INVALID_ROLL_COUNT');
+  if (!Number.isSafeInteger(input.rollCount) || input.rollCount < 0) throw new Error('WHOLE_CHAIN_INVALID_ROLL_COUNT');
+  if (typeof input.isResolved !== 'boolean' || !input.chainId?.trim() || !input.strategyFamily?.trim()) throw new Error('WHOLE_CHAIN_INVALID_IDENTITY_OR_RESOLUTION');
+  if (input.isResolved && input.components.openStockShares !== 0) throw new Error('WHOLE_CHAIN_RESOLVED_WITH_OPEN_STOCK');
   const pnl = computeWholeChainPnl(input.components);
   const capitalDays = input.dailyCapital.length === 0 ? null : capitalDaysFromDailySeries(input.dailyCapital);
   // A chain materialized into a dataset row at `observationCutoffAt` is
@@ -68,6 +70,8 @@ export function buildWholeChainOutcomeRow(input: {
     contractVersion: wholeChainOutcomeBuilderVersion, taxonomyVersion: identifiabilityTaxonomyVersion,
     chainId: input.chainId, strategyFamily: input.strategyFamily, state,
     rollCount: input.rollCount, pnl, capitalDays, observationCutoffAt: input.observationCutoffAt,
-    identifiabilityStatus: state === 'CHAIN_RESOLVED' && pnl.wholeChainPnl !== null ? 'FACTUAL_OBSERVED' : 'NOT_IDENTIFIABLE',
+    identifiabilityStatus: state === 'CHAIN_RESOLVED' && pnl.wholeChainPnl !== null
+      ? pnl.cashflowBasis === 'ACTUAL_FILL_CASHFLOW' ? 'FACTUAL_OBSERVED' : 'MODEL_BASED_ESTIMATE'
+      : 'NOT_IDENTIFIABLE',
   };
 }

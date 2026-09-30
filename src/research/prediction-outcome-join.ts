@@ -39,6 +39,12 @@ export interface PredictionOutcomeJoinRecord {
 export function joinPredictionToOutcome(
   prediction: ShadowPredictionReceipt, outcome: OutcomeEvidence, joinedAt: string,
 ): PredictionOutcomeJoinRecord {
+  const predictionMs = Date.parse(prediction.predictedAt), joinedMs = Date.parse(joinedAt);
+  const resolvedMs = outcome.resolvedAt === null ? null : Date.parse(outcome.resolvedAt);
+  if (!Number.isFinite(predictionMs) || !Number.isFinite(joinedMs) || joinedMs < predictionMs ||
+    (resolvedMs !== null && (!Number.isFinite(resolvedMs) || resolvedMs > joinedMs))) throw new Error('JOIN_INVALID_TIMING');
+  if (typeof outcome.isResolved !== 'boolean' || (outcome.isResolved && resolvedMs === null) ||
+    (outcome.observedOutcome !== null && !Number.isFinite(outcome.observedOutcome))) throw new Error('JOIN_INVALID_OUTCOME');
   if (prediction.entityId !== outcome.entityId) throw new Error('JOIN_ENTITY_MISMATCH');
   if (prediction.decisionId !== outcome.decisionId) throw new Error('JOIN_DECISION_IDENTITY_MISMATCH');
   if (prediction.targetId !== outcome.targetId) throw new Error('JOIN_TARGET_INCOMPATIBLE');

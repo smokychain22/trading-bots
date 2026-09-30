@@ -15,6 +15,14 @@ def entry(model_version='v1', promotion_state='RESEARCH_FIT_NOT_PROMOTED', task=
 
 
 class ModelRegistryTests(unittest.TestCase):
+    def test_nested_metadata_cannot_mutate_registered_identity(self):
+        registry = ModelRegistry()
+        original = entry()
+        registry.register(original)
+        original.metrics['brier'] = 0.9
+        registry.get('entry', 'v1').metrics['brier'] = 0.8
+        self.assertEqual(registry.get('entry', 'v1').metrics['brier'], 0.2)
+
     def test_register_and_get(self):
         registry = ModelRegistry()
         registry.register(entry())

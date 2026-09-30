@@ -97,7 +97,7 @@ test('CORE CLAIM (overnight §21): a challenger referencing a baseline that was 
   try {
     const challenger = modelRecord({
       modelId: 'entry-challenger', modelVersion: 'v1', isBaseline: false,
-      baselineModelId: 'entry-baseline-never-saved', promotionState: 'PAPER_CHALLENGER',
+      baselineModelId: 'entry-baseline-never-saved', baselineModelVersion: 'v1', promotionState: 'PAPER_CHALLENGER',
     });
     assert.throws(() => store.saveModelRecord(challenger), /RESEARCH_DURABLE_STORE_BASELINE_NOT_FOUND:entry-baseline-never-saved/);
   } finally { cleanup(); }
@@ -109,7 +109,7 @@ test('a challenger referencing a REAL, already-saved baseline is accepted', () =
     store.saveModelRecord(modelRecord({ modelId: 'entry-baseline', modelVersion: 'v1', isBaseline: true }));
     const challenger = modelRecord({
       modelId: 'entry-challenger', modelVersion: 'v1', isBaseline: false,
-      baselineModelId: 'entry-baseline', promotionState: 'PAPER_CHALLENGER',
+      baselineModelId: 'entry-baseline', baselineModelVersion: 'v1', promotionState: 'PAPER_CHALLENGER',
     });
     assert.equal(store.saveModelRecord(challenger), 'INSERTED');
   } finally { cleanup(); }
@@ -132,6 +132,8 @@ test('ADVERSARIAL: an immutable-record mutation attempt (raw UPDATE bypassing th
     const result = reopened.verify();
     assert.equal(result.valid, false);
     assert.ok(result.invalidKeys.some((k) => k.includes('entry-baseline')));
+    assert.throws(() => reopened.getModelRecord('entry-baseline', 'v1'), /HASH_MISMATCH/);
+    assert.throws(() => reopened.saveModelRecord(modelRecord()), /HASH_MISMATCH/);
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -182,6 +184,8 @@ test('ADVERSARIAL: shadow-prediction hash corruption is caught by verify(), same
     const result = reopened.verify();
     assert.equal(result.valid, false);
     assert.ok(result.invalidKeys.some((k) => k.includes('p1')));
+    assert.throws(() => reopened.getShadowPredictionReceipt('p1'), /HASH_MISMATCH/);
+    assert.throws(() => reopened.saveShadowPredictionReceipt(predictionReceipt()), /HASH_MISMATCH/);
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
