@@ -92,6 +92,15 @@ export const opportunityFrontierResponseSchema = z.object({
     || actionableIds.size !== openIds.length || openIds.some((id) => !actionableIds.has(id))) {
     context.addIssue({ code: 'custom', message: 'actionableCandidateIds must exactly match OPEN entries' });
   }
+  if (response.globalIdle !== null) {
+    if (response.globalIdle.contractsEvaluated !== response.entries.length) {
+      context.addIssue({ code: 'custom', message: 'globalIdle contract count must match evaluated entries' });
+    }
+    if (response.globalIdle.bestRejectedCandidateId !== null
+      && !ids.includes(response.globalIdle.bestRejectedCandidateId)) {
+      context.addIssue({ code: 'custom', message: 'globalIdle best rejected candidate must be evaluated' });
+    }
+  }
 });
 
 export type OpportunityFrontierResponse = z.infer<typeof opportunityFrontierResponseSchema>;

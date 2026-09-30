@@ -71,3 +71,16 @@ test('actionable IDs must exactly match OPEN entries',()=>{
   assert.throws(()=>parseOpportunityFrontierResponse(basePayload({actionableCandidateIds:['c1','c1']})),
     /actionableCandidateIds must exactly match OPEN entries/);
 });
+
+test('a global idle report cannot undercount evaluated contracts or name an absent near miss',()=>{
+  const idle={reason:'NO_POSITIVE_AFTER_COST_EDGE',eligibleUnderlyingsScanned:1,
+    contractsEvaluated:0,positiveEvCandidates:0,riskRejectedCandidates:0,
+    executionRejectedCandidates:0,bestRejectedCandidateId:null,bestRejectedEv:null};
+  const entries=[{candidateId:'c1',rank:null,disposition:'PASS',waitReason:null,
+    rejectionCategory:'NEGATIVE_EV',reasons:[]}];
+  assert.throws(()=>parseOpportunityFrontierResponse(basePayload({entries,
+    actionableCandidateIds:[],globalIdle:idle})),/globalIdle contract count must match evaluated entries/);
+  assert.throws(()=>parseOpportunityFrontierResponse(basePayload({entries,
+    actionableCandidateIds:[],globalIdle:{...idle,contractsEvaluated:1,
+      bestRejectedCandidateId:'missing'}})),/globalIdle best rejected candidate must be evaluated/);
+});
