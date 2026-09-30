@@ -1,0 +1,57 @@
+{
+  "version": "theta-current-blocker-register-2026-09-30-v1",
+  "asOfUtc": "2026-09-30T01:48:05Z",
+  "runtimeReleaseSha": "c3317698d34de275a96957e91177095bfdcab406",
+  "supportedSessionCurrentReleaseProof": "NOT_OBSERVED",
+  "readyForFirstPaper": false,
+  "entries": [
+    {
+      "id": "AIVEN_RESOURCE_LIMIT",
+      "class": "EXTERNAL_PROVIDER_BLOCKED",
+      "evidence": "Two bounded read-only checks returned SQLSTATE 53000",
+      "decisionEffect": "Current Production archive and readiness cannot be verified"
+    },
+    {
+      "id": "COMMAND5A_OVERDUE_OBSERVATIONS",
+      "class": "FORWARD_DATA_REQUIRED",
+      "evidence": "Local SQLite contained 266 overdue jobs and no OBSERVED jobs",
+      "decisionEffect": "Missed exact future marks cannot be relabeled MARKET_OBSERVED"
+    },
+    {
+      "id": "CURRENT_RELEASE_WORKER_SESSION",
+      "class": "RUNTIME_UNVERIFIED",
+      "evidence": "c331 worker has not completed a supported-session SPY no-submit cycle",
+      "decisionEffect": "Candidate, AEGIS, sizing, finalist and plan states are not current-release certified"
+    },
+    {
+      "id": "FOUR_FINALIST_AEGIS_MATRIX",
+      "class": "RUNTIME_UNVERIFIED",
+      "evidence": "Older release reported four HARD_VETO finalists, but the per-family matrix was not recovered from Production",
+      "decisionEffect": "No exact candidate-specific veto explanation can be claimed"
+    },
+    {
+      "id": "CURRENT_EVENT_NEGATIVE_ASSURANCE",
+      "class": "PROVIDER_OR_RUNTIME_UNVERIFIED",
+      "evidence": "Static V20 provider-limited classification is not a current runtime provider query",
+      "decisionEffect": "Event and corporate-action clearance cannot be inferred"
+    },
+    {
+      "id": "CURRENT_EXECUTABLE_BBO",
+      "class": "RUNTIME_UNVERIFIED",
+      "evidence": "No current-release supported-session exact-contract Alpaca quote refresh",
+      "decisionEffect": "First-Paper order pricing cannot be certified"
+    },
+    {
+      "id": "PROFITABILITY_MODEL",
+      "class": "EMPIRICALLY_UNPROVEN",
+      "evidence": "Insufficient resolved independent Paper whole-chain outcomes",
+      "decisionEffect": "Expected after-cost EV and win-rate claims remain unavailable"
+    },
+    {
+      "id": "FIRST_PAPER_ORDER_PERMISSION",
+      "class": "OWNER_PERMISSION_REQUIRED",
+      "evidence": "Owner has not authorized the first actual Paper submission",
+      "decisionEffect": "Master, follower and new-order controls remain locked"
+    }
+  ]
+}

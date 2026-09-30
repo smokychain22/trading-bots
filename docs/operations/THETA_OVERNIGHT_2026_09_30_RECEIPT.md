@@ -2,6 +2,8 @@
 
 This receipt distinguishes observed runtime facts from branch source changes.
 It is not a Paper authorization or an empirical profitability claim.
+The machine-readable dated register is
+`docs/operations/THETA_CURRENT_BLOCKER_REGISTER.json`.
 
 ```json
 {
