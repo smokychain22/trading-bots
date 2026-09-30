@@ -21,6 +21,7 @@ import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment,
 import { createGetOnlyFetch } from '../src/theta/read-only-fetch.js';
 import { classifyNoSubmitDecisionAuthority } from '../src/theta/no-submit-decision-authority.js';
 import { assessRuntimeSchemaCompatibility } from '../src/theta/runtime-schema-compatibility.js';
+import { withRuntimePostgresClient, type RuntimePostgresClientObservation } from '../src/theta/runtime-postgres-client.js';
 
 const environmentFile = process.argv.find((argument) => argument.startsWith('--environment-file='))
   ?.slice('--environment-file='.length) ?? '.env.local';
@@ -84,6 +85,12 @@ const alpaca = {
 };
 let poolConnectionFailed = false;
 const pool = createRuntimePostgresPool(environment.DATABASE_URL,()=>{poolConnectionFailed=true;});
+const observeDatabaseRead=(operation:string)=>(observation:RuntimePostgresClientObservation):void=>{
+  spoolEvidence('DATABASE_CLIENT_OBSERVED',{operation,...observation,
+    // The shared checkout observer measures acquisition and query lifetime,
+    // not individual socket phases. Never infer those missing boundaries.
+    dnsMs:null,tcpMs:null,tlsMs:null,pgStartupMs:null,brokerMutationAllowed:false});
+};
 let paperEntryBootstrap:PaperEntryBootstrapAssessment|undefined;
 let recoveryInventoryUnderlyingsForFallback:readonly string[]|undefined;
 try {
@@ -92,7 +99,9 @@ try {
   spoolEvidence('PROVIDER_STATE_READY',{marketOpen:clock.isOpen,brokerHost:'paper-api.alpaca.markets',brokerMutationAllowed:false},
     {ALPACA:typeof clock.timestamp==='string'?clock.timestamp:null});
   probeStage = 'DATABASE_SCHEMA_READ';
-  const migrations = await pool.query<{version:string}>(`SELECT version FROM core.schema_migration ORDER BY version`);
+  const migrations = await withRuntimePostgresClient(pool,
+    (client)=>client.query<{version:string}>(`SELECT version FROM core.schema_migration ORDER BY version`),
+    {observe:observeDatabaseRead(probeStage)});
   // This CLI is the local evidence worker. Do not imply it is the resident
   // supervisor, and do not use a private schema authority for this probe.
   const schemaCompatibility=assessRuntimeSchemaCompatibility({
@@ -113,9 +122,10 @@ try {
     probeStage = 'BROKER_ACCOUNT_READ';
     const account = z.object({ id: z.string().min(1) }).passthrough().parse(await broker.getAccount());
     probeStage = 'MASTER_ACCOUNT_LOOKUP';
-    const master = await pool.query(`SELECT follower_account_id FROM copy.follower_account
+    const master = await withRuntimePostgresClient(pool,(client)=>client.query(`SELECT follower_account_id FROM copy.follower_account
       WHERE provider_account_ref=$1 AND account_role='MASTER_THETA_PAPER'
-        AND environment='PAPER' AND connection_status='CONNECTED' AND disconnected_at IS NULL`, [account.id]);
+        AND environment='PAPER' AND connection_status='CONNECTED' AND disconnected_at IS NULL`, [account.id]),
+    {observe:observeDatabaseRead(probeStage)});
     if (master.rowCount !== 1) throw new Error('NO_SUBMIT_PROBE_MASTER_CONNECTION_INVALID');
     probeStage = 'BROKER_RECONCILIATION';
     const reconciliation = await runReadOnlyBrokerReconciliation({

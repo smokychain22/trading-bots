@@ -52,4 +52,7 @@ test('probe source preserves schema authority and original failure before fallba
     < source.indexOf("probeStage='DATABASE_INDEPENDENT_PROVIDER_OBSERVATION'"));
   assert.doesNotMatch(source,/canonicalAction:symbol\.canonicalAction/);
   assert.doesNotMatch(source,/WHERE version IN/);
+  assert.equal(source.match(/observe:observeDatabaseRead\(probeStage\)/g)?.length,2);
+  assert.match(source,/spoolEvidence\('DATABASE_CLIENT_OBSERVED'/);
+  assert.match(source,/dnsMs:null,tcpMs:null,tlsMs:null,pgStartupMs:null/);
 });

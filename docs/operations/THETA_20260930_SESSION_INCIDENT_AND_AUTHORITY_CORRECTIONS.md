@@ -40,6 +40,10 @@ sizing, finalist selection or a final trading decision. Its outcome is
    enumeration cannot certify GLOBAL_WAIT.
 2. The probe records the failed stage and pool counters before fallback. It
    labels fallback decisions provisional in both spool and console receipts.
+   Its two initial database reads now use the existing client observation
+   wrapper, retaining acquisition path, failure class, checkout/release timing
+   and pool counters. Socket-phase boundaries remain null because that wrapper
+   cannot measure them. Timeout settings and retry policy are unchanged.
 3. The local-evidence authority helper always denies broker mutation, including
    after PostgreSQL backfill. This was a latent API defect, not evidence of a
    real unauthorized order. No Production consumer of that helper was found.
@@ -73,11 +77,11 @@ observation, executes the real local maturation path, and verifies a single
 durable dataset and idempotent replay. Its modeled fixture remains a test,
 not a real resolved market outcome or empirical promotion.
 
-Initial full validation passed 3114 Node tests with 15 skipped, 1231 Python
-tests and 23 browser tests. The later schema/stage patch passed 23 focused
-tests and is subject to final exact-SHA CI. Typecheck, lint, build, security and
-Git storage checks passed before that small patch and must remain green on the
-final commit. Windows recovery tests run only against disposable test artifacts.
+Full local validation passed 3116 Node tests with 15 skipped, 1231 Python
+tests and 23 browser tests. The later initial-read telemetry patch passed 29
+focused tests and is subject to final exact-SHA CI. Typecheck, lint, build,
+security and Git storage checks passed. All four Windows backup/recovery suites
+passed against disposable test artifacts. No Production certification was rerun.
 
 Reticle was skipped because these changes are backend/CLI-only with no UI
 surface. The existing browser regression suite was still executed.
