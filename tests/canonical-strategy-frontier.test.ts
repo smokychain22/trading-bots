@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildCanonicalStrategyFrontier } from '../src/theta/canonical-strategy-frontier.js';
+import { buildCanonicalStrategyFrontier, describeStructuralTopTwo } from '../src/theta/canonical-strategy-frontier.js';
 import { normalizeOptionContract, type NormalizedOptionContract } from '../src/theta/option-contract.js';
 import { parseStrategyRoutingResponse, type StrategyFamily } from '../src/theta/strategy-router-contract.js';
 import { paperEntryCandidateCohort } from '../src/research/production-shadow-runtime.js';
@@ -55,6 +55,24 @@ const base = {
   eventState: null, unmanagedBrokerPositionCount: 0, unevaluatedUnderlyingCount: 0,
   optionomicsContext: { state: 'UNKNOWN' } as const,
 };
+
+test('structural tie diagnostics preserve exact and floating-point objective margins independent of ordering', () => {
+  const frontier = buildCanonicalStrategyFrontier({ ...base, eventState: 'CLEAR',
+    contracts: [contract()], routing: routing(['THETA_Q']) });
+  const candidate = frontier.branches[0]?.candidates[0];
+  assert.ok(candidate);
+  const first = { ...candidate, candidateId: 'A', paretoRank: 1 };
+  for (const epsilon of [0, Number.EPSILON * 256, 0.000001]) {
+    const second = { ...candidate, candidateId: 'B', paretoRank: 1,
+      economics: { ...candidate.economics, grossPremium: (candidate.economics.grossPremium ?? 0) + epsilon } };
+    const expectedDifference = (first.economics.grossPremium ?? 0) - (second.economics.grossPremium ?? 0);
+    const forward = describeStructuralTopTwo([first, second]);
+    assert.deepEqual(forward, describeStructuralTopTwo([second, first]));
+    assert.equal(forward.state, expectedDifference === 0 ? 'EXACT_TIE' : 'NEAR_TIE');
+    assert.equal(forward.objectiveMargins.find(row => row.name === 'grossPremium')?.difference, expectedDifference);
+    assert.equal(forward.selectionAuthority, false);
+  }
+});
 
 test('candidate persistence leaves incomplete economics unknown instead of inventing breakeven or zero yield', () => {
   const frontier = buildCanonicalStrategyFrontier({ ...base, eventState: 'CLEAR',

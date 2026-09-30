@@ -5,7 +5,7 @@ import { buildFusionSnapshot, type FusionSnapshotInput } from '../src/market/fus
 import { flatPortfolioExposure } from './helpers/flat-portfolio-exposure.js';
 import { normalizeOptionContract, type NormalizedOptionContract } from '../src/theta/option-contract.js';
 import { parseStrategyRoutingResponse, type StrategyFamily } from '../src/theta/strategy-router-contract.js';
-import type { CanonicalStrategyFrontierInput } from '../src/theta/canonical-strategy-frontier.js';
+import { buildCanonicalStrategyFrontier, type CanonicalStrategyFrontierInput } from '../src/theta/canonical-strategy-frontier.js';
 import {
   decodeCycleEvidenceArchive,
   projectCycleEvidenceForPostgres,
@@ -114,4 +114,38 @@ test('REAL_CANONICAL_BRAIN_REPLAY (writer-integrated): the real Postgres evidenc
   assert.equal(replayed.primaryAction, original.primaryAction);
   assert.equal(replayed.selectedQuantity, original.selectedQuantity);
   assert.equal(replayed.contentHash, original.contentHash, 'deterministic identity must match when replayed from the persisted bundle');
+});
+
+test('archive brain explanation preserves all branch alternatives, reasons, risk, quantity and comparison without a second selector', () => {
+  const cycle = realisticCycle();
+  const frontier = buildCanonicalStrategyFrontier(realCanonicalFrontierInput);
+  const enriched = { ...cycle, strategyFrontier: frontier };
+  const decoded = decodeCycleEvidenceArchive(projectCycleEvidenceForPostgres(enriched).archive);
+  assert.deepEqual(decoded.strategyFrontier, frontier);
+  const recovered = decoded.strategyFrontier as unknown as typeof frontier;
+  assert.equal(recovered.branches.length, 5);
+  for (const branch of recovered.branches) {
+    assert.equal(branch.candidateCount, branch.candidates.length);
+    assert.ok(Array.isArray(branch.routeReasons));
+    assert.equal(typeof branch.applicable, 'boolean');
+    assert.equal(typeof branch.evaluationState, 'string');
+    for (const candidate of branch.candidates) {
+      assert.ok(Array.isArray(candidate.hardBlockers));
+      assert.ok(Array.isArray(candidate.unknownEvidence));
+      assert.ok('aegisState' in candidate);
+      assert.ok('collateral' in candidate.economics);
+      assert.equal(typeof candidate.sizing.bindingConstraint, 'string');
+      assert.equal(typeof candidate.sizing.quantity, 'number');
+    }
+  }
+  assert.deepEqual(recovered.structuralTopTwo, frontier.structuralTopTwo);
+  assert.deepEqual(recovered.globalWaitReasons, frontier.globalWaitReasons);
+  assert.deepEqual(recovered.adaptiveShadowDecision, frontier.adaptiveShadowDecision);
+  assert.equal(recovered.selectedQuantity, frontier.selectedQuantity);
+  assert.equal(recovered.primaryAction, frontier.primaryAction);
+  assert.equal(recovered.executionAuthorized, false);
+  // The exact input and full snapshot supply account/lifecycle facts. This
+  // explanation projection does not fabricate missing lifecycle or risk data.
+  assert.deepEqual(decoded.canonicalFrontierInput, realCanonicalFrontierInput);
+  assert.equal(decodeCycleEvidenceArchive(projectCycleEvidenceForPostgres(cycle).archive).strategyFrontier, null);
 });

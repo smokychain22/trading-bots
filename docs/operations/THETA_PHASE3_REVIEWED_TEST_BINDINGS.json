@@ -1,0 +1,316 @@
+[
+  {
+    "id": "3.1",
+    "reviewedBehavior": "The real TypeScript/Python path executes ownership, regime, lifecycle applicability, Q economics, candidate AEGIS, sizing and decision assembly. The canonical frontier then owns selection. This is synthetic-provider integration, not L7.",
+    "sources": [
+      "src/theta/new-risk-orchestrator.ts",
+      "src/theta/theta-shadow-cycle.ts",
+      "src/theta/canonical-strategy-frontier.ts",
+      "src/theta/canonical-decision-authority.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/new-risk-orchestrator.test.ts",
+        "names": [
+          "a real THETA-Q lattice candidate flows end to end to a decision receipt with sizing and execution quality"
+        ]
+      },
+      {
+        "file": "tests/theta-shadow-cycle.test.ts",
+        "names": [
+          "a full cycle with real-shaped mocked Alpaca data reaches a decision receipt via the real Python pipeline"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "3.2",
+    "reviewedBehavior": "Authority graph and conservative decision-shaped source scan distinguish selectors, subordinate calculations, display, research and shadow. Only the coordinator invokes broker mutations.",
+    "sources": [
+      "docs/research/THETA_BRAIN_AUTHORITY_GRAPH.json",
+      "src/theta/canonical-decision-authority.ts",
+      "src/theta/adaptive-decision-brain.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/brain-authority-graph.test.ts",
+        "names": [
+          "one entry selector, management selector, final sizer, AEGIS and broker mutator",
+          "no Production source outside the coordinator calls broker mutation methods"
+        ]
+      },
+      {
+        "file": "tests/brain-decision-producer-scan.test.ts",
+        "names": [
+          "every decision-shaped TypeScript and Python file has a declared authority role"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "3.3",
+    "reviewedBehavior": "All 20 feature families have reviewed consumers or explicit absent/unqualified consumers. Momentum is unscored, RV20 feeds regime, pairwise correlation stays shadow, sole-risk-group exposure feeds AEGIS. Six-role projections are declarations, not runtime proof.",
+    "sources": [
+      "src/theta/phase2-market-intelligence-registry.ts",
+      "docs/research/THETA_PHASE3_FEATURE_CONSUMER_AUDIT.md",
+      "bots/theta/quant/models/ownership_v0.py",
+      "bots/theta/quant/models/regime_v0.py",
+      "src/theta/account-exposure.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase2-market-intelligence-registry.test.ts",
+        "names": [
+          "five-strategy six-role decision registry is unique, complete and does not promote research",
+          "feature authority distinguishes active RV context, unscored momentum and shadow strategy consumers"
+        ]
+      },
+      {
+        "file": "tests/theta-shadow-cycle.test.ts",
+        "names": [
+          "held-symbol bars reach persisted portfolio correlation without gaining AEGIS authority"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "3.4",
+    "reviewedBehavior": "Action-specific management requirements retain passive actions with stale quote-dependent evidence. Entry requirements do not become branch-wide stock management requirements.",
+    "sources": [
+      "src/theta/management-action-frontier.ts",
+      "src/theta/management-input-state.ts",
+      "src/theta/adaptive-decision-brain.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/management-action-frontier.test.ts",
+        "names": [
+          "stale broker state blocks quote-dependent actions but keeps passive management available",
+          "expiration actions require exact moneyness rather than DTE alone"
+        ]
+      },
+      {
+        "file": "tests/adaptive-decision-brain.test.ts",
+        "names": [
+          "shadow strategy inventory does not apply entry-only hard rules to stock management"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "3.5",
+    "reviewedBehavior": "Current broker reads override manual flat defaults. Failed reads remain unknown. Open CSP routes management instead of new entry. Router is applicability, not adaptive economic selection.",
+    "sources": [
+      "src/theta/broker-router-portfolio.ts",
+      "src/theta/theta-shadow-cycle.ts",
+      "bots/theta/quant/models/strategy_router.py"
+    ],
+    "tests": [
+      {
+        "file": "tests/broker-router-portfolio.test.ts",
+        "names": [
+          "complete empty reads prove flat state, failed reads never do",
+          "stock and pending orders change applicability without inventing assignment"
+        ]
+      },
+      {
+        "file": "tests/theta-shadow-cycle.test.ts",
+        "names": [
+          "Production broker router mode overrides manual defaults and persists exact origin",
+          "Production failed positions read persists unknown router state instead of the default flat account"
+        ]
+      },
+      {
+        "file": "tests/new-risk-orchestrator.test.ts",
+        "names": [
+          "an already-open CSP lifecycle routes THETA_Q ineligible and produces zero evaluated candidates"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "3.6",
+    "reviewedBehavior": "Structural comparison is a common-expiry, same-payoff-horizon shadow receipt with explicit WAIT opportunity-cost uncertainty and no empirical winner or broker authority.",
+    "sources": [
+      "src/theta/canonical-shadow-comparison.ts",
+      "src/theta/adaptive-decision-brain.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/adaptive-decision-brain.test.ts",
+        "names": [
+          "real frontier alternatives enter the structural comparator without changing Q or inventing EV",
+          "different expirations are never treated as a common payoff horizon",
+          "a current-policy WAIT is not presented as adaptive agreement without an adaptive policy"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "3.7",
+    "reviewedBehavior": "Optional Optionomics and shadow discovery failures do not replace valid Q authority. Incomplete Q enumeration cannot earn economic GLOBAL_WAIT.",
+    "sources": [
+      "src/theta/theta-shadow-cycle.ts",
+      "src/theta/canonical-strategy-frontier.ts",
+      "src/theta/decision-evidence.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/theta-shadow-cycle.test.ts",
+        "names": [
+          "an Optionomics provider failure is recorded honestly (REAL_PROVIDER_ERROR) and never blocks the rest of the cycle",
+          "shadow contract outage remains visible without downgrading primary Conventional contract evidence"
+        ]
+      },
+      {
+        "file": "tests/canonical-strategy-frontier.test.ts",
+        "names": [
+          "bounded shortlist and response gaps are incomplete searches, never economic GLOBAL_WAIT",
+          "a safe evaluated Q OPEN survives unrelated shortlist gaps without claiming complete enumeration",
+          "missing research-only H candidates do not turn a complete Q WAIT into SYSTEM_HOLD"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "3.8",
+    "reviewedBehavior": "Attractive candidates cannot bypass exact-candidate AEGIS, non-executability, unavailable quantity or stale quote evidence.",
+    "sources": [
+      "src/theta/new-risk-orchestrator.ts",
+      "src/theta/canonical-strategy-frontier.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/new-risk-orchestrator.test.ts",
+        "names": [
+          "one good quote cannot authorize a different candidate with failed market quality",
+          "a non-executable contract (e.g. unverified multiplier) is excluded from the lattice call before delta is even checked, recorded as PASS/CONTRACT_NOT_EXECUTABLE",
+          "a stale option quote is excluded from the lattice call and recorded as WAIT/WAIT_LIQUIDITY, NEVER as PASS -- never sent to Python"
+        ]
+      },
+      {
+        "file": "tests/canonical-strategy-frontier.test.ts",
+        "names": [
+          "candidate-specific AEGIS veto cannot be bypassed by a globally permissive state",
+          "Q sizing never increases when any governed capacity decreases",
+          "quantity zero is authoritative GLOBAL_WAIT after complete evaluation, never forced to one"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "3.9",
+    "reviewedBehavior": "Unknown candidate risk never inherits representative clearance. Governed immature-baseline applicability cannot turn unrelated tail uncertainty into size. Unclassified evidence stays explicit.",
+    "sources": [
+      "src/theta/new-risk-orchestrator.ts",
+      "src/theta/canonical-strategy-frontier.ts",
+      "src/theta/decision-evidence.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/new-risk-orchestrator.test.ts",
+        "names": [
+          "candidate-specific UNKNOWN risk evidence overrides permissive pre-trade inputs and holds",
+          "Paper bootstrap cannot turn an unrelated TailQuality UNKNOWN into quantity"
+        ]
+      },
+      {
+        "file": "tests/decision-evidence.test.ts",
+        "names": [
+          "WAIT decomposition distinguishes required, optional and unclassified UNKNOWN evidence"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "3.10",
+    "reviewedBehavior": "Actual canonical replay checks order/key permutation and temporal action/strategy/quantity changes. Exact and near ties retain raw numeric margins. It does not invent hysteresis or empirical stability.",
+    "sources": [
+      "src/research/canonical-brain-stability.ts",
+      "tools/theta-brain-stability.ts",
+      "src/theta/canonical-strategy-frontier.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/canonical-brain-stability.test.ts",
+        "names": [
+          "stability audit executes canonical replay and irrelevant-context attacks without changing Q or inflating N",
+          "a genuine capacity boundary is recorded as a changed-input transition without inventing hysteresis",
+          "temporal stability requires chronological PIT samples",
+          "stability CLI consumes a persisted T0 without provider or broker requests"
+        ]
+      },
+      {
+        "file": "tests/canonical-strategy-frontier.test.ts",
+        "names": [
+          "structural tie diagnostics preserve exact and floating-point objective margins independent of ordering",
+          "bounded defined-risk enumeration is invariant to provider contract order"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "3.11",
+    "reviewedBehavior": "Huge, tiny and duplicate optional research context does not alter canonical Q selection or quantity. This does not freeze meaningful safety/economic inputs.",
+    "sources": [
+      "src/research/canonical-brain-stability.ts",
+      "src/theta/canonical-strategy-frontier.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/canonical-brain-stability.test.ts",
+        "names": [
+          "tiny research perturbations and duplicate research concepts never oscillate the canonical action"
+        ]
+      },
+      {
+        "file": "tests/canonical-strategy-frontier.test.ts",
+        "names": [
+          "research-only context changes cannot alter the Paper-facing Q action or quantity"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "3.12",
+    "reviewedBehavior": "Exact contract duplicates collapse, conflicting observations fail closed, duplicate shadow feature IDs are rejected. Shadow bootstrap weights are versioned, not an empirical Production score.",
+    "sources": [
+      "src/theta/canonical-strategy-frontier.ts",
+      "src/research/shadow-feature-contribution.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/canonical-strategy-frontier.test.ts",
+        "names": [
+          "duplicate copies of one exact broker contract cannot manufacture a second Q alternative",
+          "conflicting observations for one Q contract fail the Q branch closed without becoming WAIT"
+        ]
+      },
+      {
+        "file": "tests/shadow-feature-contribution.test.ts",
+        "names": [
+          "unqualified, stale, future, zero-weight and duplicate feature inputs cannot invent contributions",
+          "every computed score is labeled BOOTSTRAP_NON_EMPIRICAL, never presented as validated"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "3.13",
+    "reviewedBehavior": "Existing archive roundtrip retains full canonical alternatives, per-candidate hard/unknown/risk/quantity/economics, common comparison, raw T0 and snapshot. Unreached frontier remains null. No duplicate decision authority is introduced.",
+    "sources": [
+      "src/theta/postgres-cycle-evidence-storage.ts",
+      "src/theta/t0-replay-bundle.ts",
+      "src/theta/canonical-strategy-frontier.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/t0-replay-bundle-writer-integration.test.ts",
+        "names": [
+          "archive brain explanation preserves all branch alternatives, reasons, risk, quantity and comparison without a second selector",
+          "REAL_CANONICAL_BRAIN_REPLAY (writer-integrated): the real Postgres evidence writer persists canonicalFrontierInput, and the decoded archive replays to the real frontier"
+        ]
+      }
+    ]
+  }
+]

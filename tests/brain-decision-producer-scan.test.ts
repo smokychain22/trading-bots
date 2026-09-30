@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 type ProducerClass = 'PRODUCTION_AUTHORITY' | 'SUBORDINATE_CALCULATOR' | 'SHADOW'
   | 'RESEARCH' | 'DISPLAY' | 'LEGACY';
 const root = fileURLToPath(new URL('../', import.meta.url));
-const markers = /selectedCandidateId|selected_action|bestCandidate|bestStrategy|primaryAction|recommendedAction|winner|nextAction|orderDecision|strategyDecision/;
+const markers = /selectedCandidate|selected_action|bestCandidate|bestStrategy|primaryAction|recommendedAction|winner|nextAction|orderDecision|strategyDecision|selectedStrategy|orderPlan/;
 const files = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
   const full = path.join(directory, entry.name);
   return entry.isDirectory() ? files(full) : /\.(ts|tsx|py)$/.test(entry.name) ? [full] : [];
@@ -17,6 +17,7 @@ const files = (directory: string): string[] => readdirSync(directory, { withFile
 // a selected field is not necessarily its producer. This test is an audit
 // tripwire for new decision-shaped modules, not a claim of runtime reachability.
 const thetaClass: Readonly<Record<string, ProducerClass>> = {
+  'adaptive-decision-brain.ts': 'SHADOW',
   'canonical-decision-authority.ts': 'SUBORDINATE_CALCULATOR',
   'canonical-strategy-frontier.ts': 'PRODUCTION_AUTHORITY',
   'covered-call-lattice.ts': 'RESEARCH',
