@@ -90,7 +90,7 @@ export const profitabilityBrainMethodRegistry: readonly ProfitabilityBrainMethod
   method('CONVENTIONAL_CANDIDATE_ENUMERATION', 'CANDIDATE_ENUMERATION', 'PRODUCTION_LOCKED', 6,
     ['bots/theta/quant/models/theta_q_lattice.py', 'src/theta/canonical-strategy-frontier.ts']),
   method('HOLD_STRIKE_CANDIDATE_ENUMERATION', 'CANDIDATE_ENUMERATION', 'RESEARCH_ONLY', 6,
-    ['bots/theta/quant/models/theta_h_baseline.py', 'src/research/shadow-strategy-orchestrator.ts']),
+    ['src/theta/canonical-strategy-frontier.ts', 'src/research/shadow-strategy-orchestrator.ts']),
   method('DEFINED_RISK_CANDIDATE_ENUMERATION', 'CANDIDATE_ENUMERATION', 'RESEARCH_ONLY', 6,
     ['src/theta/canonical-strategy-frontier.ts', 'src/research/shadow-strategy-orchestrator.ts']),
   method('DEFINED_RISK_LOCKED_MULTI_LEG_PLAN', 'EXECUTION', 'RESEARCH_ONLY', 6,
@@ -297,6 +297,7 @@ export interface ProfitabilityBrainRealityReceipt {
 // under-claiming (a real method that ran but isn't detected) is safe;
 // over-claiming (a methodId marked real when it didn't run) is not.
 export interface RealCycleEvidenceShape {
+  readonly orchestration?: { readonly routing: unknown; readonly thetaQ: unknown } | null;
   readonly strategyFrontier: {
     readonly branches: readonly {
       readonly branch: string;
@@ -311,20 +312,26 @@ export function deriveRealCurrentWorkerEvidence(result: RealCycleEvidenceShape):
   const frontier = result.strategyFrontier;
   if (frontier === null) return [];
   const found = new Set<string>();
-  // The frontier itself only exists once routing/applicability and the
-  // current decision state have genuinely been evaluated for this cycle.
-  found.add('CURRENT_DECISION_STATE');
-  found.add('STRATEGY_APPLICABILITY_ROUTER');
-  // Selection authority (resolveCanonicalDecisionAuthority) always runs
-  // once a real frontier exists -- its result may be null (no candidate),
-  // which is itself real evidence the selection method executed.
+    // A frontier can also be built on the no-candidate path without calling
+    // the applicability router or Q economics. Require those actual outputs.
+    found.add('CURRENT_DECISION_STATE');
+    if (result.orchestration?.routing != null) found.add('STRATEGY_APPLICABILITY_ROUTER');
+    if (result.orchestration?.thetaQ != null) found.add('Q_STRUCTURAL_ECONOMIC_DECISION');
+    // The canonical frontier itself performs selection, including no selection.
+    // resolveCanonicalDecisionAuthority subsequently validates that result.
   found.add('CANONICAL_ENTRY_SELECTION');
   for (const branch of frontier.branches) {
     if (!branch.evaluated) continue;
-    if (branch.branch === 'THETA_CONVENTIONAL') {
-      found.add('CONVENTIONAL_CANDIDATE_ENUMERATION');
-      if (branch.candidates.length > 0) found.add('Q_STRUCTURAL_ECONOMIC_DECISION');
+      if (branch.branch === 'THETA_CONVENTIONAL' && branch.candidates.length > 0) {
+        found.add('CONVENTIONAL_CANDIDATE_ENUMERATION');
     }
+    // The canonical frontier also enumerates counterfactual H/D candidates
+    // when the applicability router rejects their execution. Preserve actual
+    // enumeration without claiming applicability, profitability or authority.
+    if (branch.branch === 'THETA_HOLD_STRIKE' && branch.candidates.length > 0)
+      found.add('HOLD_STRIKE_CANDIDATE_ENUMERATION');
+    if (branch.branch === 'THETA_DEFINED_RISK' && branch.candidates.length > 0)
+      found.add('DEFINED_RISK_CANDIDATE_ENUMERATION');
     // An evaluated flat-account branch with no inventory or candidates did
     // not execute its lifecycle candidate producer on current inventory.
     if (branch.branch === 'THETA_RECOVERY' && branch.candidates.length > 0)

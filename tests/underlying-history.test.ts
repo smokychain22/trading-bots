@@ -86,7 +86,7 @@ test('barsAsOf excludes any bar timestamped after asOf -- no future leakage', ()
     bars: { SPY: [rawBar('2026-09-01T00:00:00Z', 500), rawBar('2026-09-05T00:00:00Z', 505), rawBar('2026-09-10T00:00:00Z', 510)] },
     next_page_token: null,
   };
-  const { bars } = parseAlpacaBarsPage(raw, 'iex', NOW);
+  const { bars } = parseAlpacaBarsPage(raw, 'iex', '2026-09-05T00:00:00Z');
   const asOf = barsAsOf(bars, '2026-09-05T00:00:00Z');
   assert.equal(asOf.length, 2);
   assert.ok(asOf.every((b) => new Date(b.timestamp).getTime() <= new Date('2026-09-05T00:00:00Z').getTime()));
@@ -94,8 +94,18 @@ test('barsAsOf excludes any bar timestamped after asOf -- no future leakage', ()
 
 test('barsAsOf is inclusive of a bar exactly at asOf, never accidentally excludes the boundary', () => {
   const raw: RawAlpacaBarsPage = { bars: { SPY: [rawBar('2026-09-05T00:00:00Z', 505)] }, next_page_token: null };
-  const { bars } = parseAlpacaBarsPage(raw, 'iex', NOW);
+  const { bars } = parseAlpacaBarsPage(raw, 'iex', '2026-09-05T00:00:00Z');
   assert.equal(barsAsOf(bars, '2026-09-05T00:00:00Z').length, 1);
+});
+
+test('bars observed after the cutoff cannot be backdated using an older provider timestamp', () => {
+  const { bars } = parseAlpacaBarsPage({bars:{SPY:[rawBar('2026-09-01T00:00:00Z',500)]},next_page_token:null},
+    'iex', '2026-09-05T00:00:01Z');
+  assert.equal(barsAsOf(bars, '2026-09-05T00:00:00Z').length, 0);
+  assert.equal(barsAsOf(bars, '2026-09-05T00:00:01Z').length, 1);
+  const first = bars[0];
+  assert.ok(first);
+  assert.equal(barsAsOf([{...first,receivedAt:'invalid'}], NOW).length, 0);
 });
 
 test('historical research pagination deduplicates exact bars but rejects revisions and token loops', async () => {

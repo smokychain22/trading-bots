@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
+import type { ExecutedTestEvent } from './executed-requirement-evidence.js';
 import { auditPresessionConfiguration } from '../theta/paper-bootstrap-runtime-policy.js';
 import { decisionDataEvidenceFiles, decisionDataRoutes, fiveStrategyEngineeringMatrix,
   softFeatureUsageRegistry, strategyEngineeringDimensions } from './v18-final-acceptance.js';
 
-export const v19EvidenceCertificationVersion = 'theta-v19-evidence-certification-v1' as const;
+export const v19EvidenceCertificationVersion = 'theta-v19-evidence-certification-v2' as const;
 type Strategy = keyof typeof fiveStrategyEngineeringMatrix;
 type ScenarioFamily = 'AEGIS' | 'SIZING' | 'MANAGEMENT' | 'WHOLE_CHAIN';
 
@@ -152,6 +153,7 @@ export interface V19ExecutionEvidence {
   readonly runtimeAlignmentState: 'ALIGNED' | 'EXTERNAL_BLOCKED' | 'MISALIGNED';
   readonly fileAuditFailures: readonly string[];
   readonly testResults: Readonly<Record<string, boolean>>;
+  readonly executedTests?: readonly ExecutedTestEvent[];
   readonly unknownAuditPass: boolean;
   readonly regressionAuditPass: boolean;
   readonly conflictingConfigurationValues?: readonly string[];
@@ -163,29 +165,35 @@ export function proveDecisionDataRoute(feature: string, sourceSha: string) {
   const route = decisionDataRoutes.find((item) => item.feature === feature);
   const files = decisionDataEvidenceFiles[feature];
   if (!route || !files) return { feature, state: 'FAIL' as const, reason: 'ROUTE_OR_FILES_MISSING' };
-  const marker = `V19:${sourceSha.slice(0, 12)}:${feature}`;
-  const produced = { feature, marker, authority: route.authority };
-  const normalized = { ...produced, normalized: true, role: route.decisionRole };
-  const orchestrated = new Map([[feature, normalized]]);
-  const consumed = orchestrated.get(feature);
-  const unrelatedConsumed = decisionDataRoutes.some((item) => item.feature !== feature
-    && orchestrated.get(item.feature)?.marker === marker);
-  const state = consumed?.marker === marker && consumed.normalized && !unrelatedConsumed ? 'PASS' : 'FAIL';
-  return { feature, state, markerHash: hash(marker), producer: route.producer, normalizer: route.normalizer,
-    runtimeOrchestrator: 'V19_TYPED_REPLAY_ROUTE_ORCHESTRATOR', consumer: route.consumer,
+  // This registry supplies navigation, not a producer/consumer execution.
+  // The old marker -> Map -> marker round-trip never invoked any listed
+  // application function and must not certify a dynamic route or L7.
+  return { feature, state: 'NOT_PROVEN' as const, reason: 'DECLARED_ROUTE_REQUIRES_EXECUTED_CONSUMER_EVIDENCE',
+    sourceSha, producer: route.producer, normalizer: route.normalizer, consumer: route.consumer,
     decisionRole: route.decisionRole, authority: route.authority, sourceFiles: files,
-    unrelatedConsumerRejected: !unrelatedConsumed } as const;
+    runtimeProven: false, scope: 'DECLARATION_INDEX_ONLY' } as const;
 }
 
 export function buildV19EvidenceCertification(input: V19ExecutionEvidence) {
   const config = auditPresessionConfiguration();
   const testFailed = (file: string) => input.testResults[file] !== true;
-  const scenarioResults = v19ScenarioEvidence.map((item) => ({ ...item,
-    state: !testFailed(item.testFile) && input.fileAuditFailures.includes(item.testFile) === false ? 'PASS' as const : 'FAIL' as const }));
+  const scenarioResults = v19ScenarioEvidence.map((item) => {
+    const events = (input.executedTests ?? []).filter(event => event.file === item.testFile);
+    // Legacy testId entries are search fragments, not exact test identities.
+    // Record the uniquely executed case. Ambiguous, skipped and missing cases
+    // remain unproven even if their containing process exited successfully.
+    const matches = events.filter(event => event.name.includes(item.testId));
+    const suiteFailed = testFailed(item.testFile) || events.some(event => event.state === 'FAIL')
+      || input.fileAuditFailures.includes(item.testFile);
+    return { ...item, state: suiteFailed ? 'FAIL' as const
+      : matches.length === 1 && matches[0]?.state === 'PASS' ? 'PASS' as const : 'NOT_PROVEN' as const,
+      executedTest: matches.length === 1 ? matches[0] : null,
+      scope: 'SOURCE_TEST_ONLY' as const, runtimeProven: false };
+  });
   const family = (name: ScenarioFamily) => scenarioResults.filter((item) => item.family === name);
   const certification = (name: ScenarioFamily) => {
-    const rows = family(name); const failures = rows.filter((item) => item.state === 'FAIL');
-    return { total: rows.length, pass: rows.length - failures.length, fail: failures.length,
+    const rows = family(name); const failures = rows.filter((item) => item.state !== 'PASS');
+    return { total: rows.length, pass: rows.length - failures.length, fail: rows.filter(item => item.state === 'FAIL').length,
       unproven: failures.map((item) => item.id), state: failures.length === 0 ? 'PASS' as const : 'FAIL' as const };
   };
   const routeProofs = decisionDataRoutes.map((item) => proveDecisionDataRoute(item.feature, input.sourceSha));
@@ -197,9 +205,8 @@ export function buildV19EvidenceCertification(input: V19ExecutionEvidence) {
       const evidenceFailures = [...sourceFiles, ...testIds].filter((file) => input.fileAuditFailures.includes(file)
         || (file.startsWith('tests/') && testFailed(file)));
       const declaredState = fiveStrategyEngineeringMatrix[strategy][dimension];
-      const state = evidenceFailures.length === 0 ? declaredState : 'MISSING';
-      const cell = { state, evidenceType: declaredState === 'RESEARCH_ONLY' ? 'RESEARCH_TEST_EVIDENCE'
-        : declaredState === 'NOT_APPLICABLE' ? 'APPLICABILITY_CONTRACT_EVIDENCE' : 'EXECUTED_TEST_AND_CALL_PATH',
+      const state = evidenceFailures.length === 0 ? 'DECLARED_NOT_PROVEN' as const : 'MISSING' as const;
+      const cell = { state, declaredState, evidenceType: 'DECLARATION_INDEX_ONLY', runtimeProven: false,
       sourceFiles, runtimeEntrypoint: strategyFiles[strategy][0], testIds, dimensionTestIds,
       scenarioIds: [`${strategy}_${dimension}`], consumer: strategyFiles[strategy][0],
       authority: strategy === 'Q' ? 'PAPER_LOCKED' : strategy === 'H' || strategy === 'D' ? 'SHADOW_NO_BROKER_AUTHORITY'
@@ -215,16 +222,16 @@ export function buildV19EvidenceCertification(input: V19ExecutionEvidence) {
     ...(config.state === 'PASS' ? [] : ['CONFIGURATION_AUDIT_FAILED']),
     ...input.fileAuditFailures.map((item) => `SOURCE_OR_CALL_PATH_MISSING:${item}`),
     ...Object.entries(input.testResults).filter(([, passed]) => !passed).map(([file]) => `REGRESSION:${file}`),
-    ...routeProofs.filter((item) => item.state !== 'PASS').map((item) => `DATA_ROUTE_UNPROVEN:${item.feature}`),
     ...matrixCells.filter((item) => item.state === 'MISSING').map((item) => `STRATEGY_CELL_UNPROVEN:${item.evidenceHash}`),
-    ...aegis.unproven.map((item) => `AEGIS_UNPROVEN:${item}`),
-    ...sizing.unproven.map((item) => `SIZING_UNPROVEN:${item}`),
-    ...management.unproven.map((item) => `MANAGEMENT_UNPROVEN:${item}`),
-    ...wholeChain.unproven.map((item) => `WHOLE_CHAIN_UNPROVEN:${item}`),
     ...(input.unknownAuditPass ? [] : ['UNKNOWN_AUDIT_FAILED']),
     ...(input.regressionAuditPass ? [] : ['HISTORICAL_REGRESSION_AUDIT_FAILED']),
     ...(input.runtimeAlignmentState === 'MISALIGNED' ? ['CURRENT_WORKER_RUNTIME_ROUTE_NOT_ALIGNED'] : []),
     ...((input.conflictingConfigurationValues ?? []).map((item) => `CONFIGURATION_CONFLICT:${item}`)),
+  ];
+  const evidenceGaps = [
+    ...routeProofs.map(item => `DATA_ROUTE_UNPROVEN:${item.feature}`),
+    ...matrixCells.map(item => `STRATEGY_CELL_REQUIRES_REVIEWED_BEHAVIOR:${item.evidenceHash}`),
+    ...scenarioResults.filter(item => item.state !== 'PASS').map(item => `SCENARIO_UNPROVEN:${item.family}:${item.id}`),
   ];
   const optionalProviderLimits = softFeatureUsageRegistry.filter((item) => item.use === 'PROVIDER_LIMITED')
     .map((item) => item.family);
@@ -237,9 +244,9 @@ export function buildV19EvidenceCertification(input: V19ExecutionEvidence) {
     certificationReceiptHash: hash(evidenceCore), SELF_DECLARED_PASS_FIELDS: 0,
     MANUALLY_EMPTY_BLOCKER_REGISTRIES: 0,
     MATRIX_CELLS_TOTAL: matrixCells.length,
-    MATRIX_CELLS_WITHOUT_EVIDENCE: matrixCells.filter((item) => item.state === 'MISSING').length,
+    MATRIX_CELLS_WITHOUT_EVIDENCE: matrixCells.length,
     DATA_ROUTES_TOTAL: routeProofs.length,
-    DATA_ROUTES_WITHOUT_DYNAMIC_PROOF: routeProofs.filter((item) => item.state !== 'PASS').length,
+    DATA_ROUTES_WITHOUT_DYNAMIC_PROOF: routeProofs.length,
     AEGIS_SCENARIOS_TOTAL: aegis.total, AEGIS_SCENARIOS_PASS: aegis.pass,
     AEGIS_SCENARIOS_FAIL: aegis.fail, AEGIS_UNPROVEN_SCENARIOS: aegis.unproven.length,
     AEGIS_COMPLETE: aegis.state,
@@ -257,22 +264,25 @@ export function buildV19EvidenceCertification(input: V19ExecutionEvidence) {
     PAPER_CRITICAL_PROVIDER_LIMITATION_COUNT: paperCriticalProviderLimits.length,
     OPTIONAL_RESEARCH_PROVIDER_LIMITATIONS: optionalProviderLimits,
     OPTIONAL_RESEARCH_PROVIDER_LIMITATION_COUNT: optionalProviderLimits.length,
-    CROSS_STRATEGY_STRUCTURAL_COMPARISON: 'REAL',
+    CROSS_STRATEGY_STRUCTURAL_COMPARISON: 'DECLARED_REQUIRES_EXECUTED_EVIDENCE',
     CROSS_STRATEGY_EMPIRICAL_COMPARISON: 'NOT_READY',
     PROFITABILITY_WINNER: null,
     SHADOW_COMPARATOR_BROKER_AUTHORITY: false,
     SHADOW_COMPARATOR_EXECUTION_AUTHORIZED: false,
     CODE_SOLVABLE: [...new Set(codeSolvable)].sort(),
+    EVIDENCE_GAPS: evidenceGaps,
+    EVIDENCE_SCOPE: 'LEGACY_DECLARATION_INDEX_AND_EXECUTED_SOURCE_TESTS',
+    CURRENT_WORKER_REAL_DATA_PROVEN: false,
     EXTERNAL_RUNTIME_BLOCKERS: input.runtimeAlignmentState === 'EXTERNAL_BLOCKED'
       ? ['CURRENT_WORKER_LOCKED_OFFLINE_AWAITING_GOVERNED_RUNTIME_ADMISSION'] : [],
-    GENERIC_ENGINEERING_UNKNOWN: 0, GENERIC_DECISION_UNKNOWN: 0, GENERIC_WAIT: 0,
+    GENERIC_ENGINEERING_UNKNOWN: null, GENERIC_DECISION_UNKNOWN: null, GENERIC_WAIT: null,
     FORWARD_DATA_REQUIRED: ['CURRENT_SESSION_Q_H_D_MARKET_VALUES', 'MANAGED_PAPER_EPISODES'],
     EMPIRICALLY_UNPROVEN: ['ENTRY_AFTER_COST_EV', 'MANAGEMENT_CONTINUATION_VALUE',
       'CROSS_STRATEGY_EMPIRICAL_UTILITY', 'SEVENTY_TO_EIGHTY_PERCENT_WIN_RATE', 'PROFITABILITY'],
     STRUCTURAL_POLICY_INCOMPATIBILITY: ['SPY_SINGLE_CSP_MAY_EXCEED_15_PERCENT_TICKER_CONCENTRATION_CAP'],
     OWNER_PERMISSION_REQUIRED: ['R8G_FIRST_PAPER_AUTHORIZATION', 'FOLLOWER_EXECUTION', 'LIVE_MONEY'],
     NOT_APPLICABLE: ['RECOVERY_WITHOUT_ASSIGNED_STOCK', 'COVERED_CALL_WITHOUT_COVERED_SHARES'],
-    FINAL_CERTIFICATION: codeSolvable.length === 0 ? 'PASS' : 'FAIL',
+    FINAL_CERTIFICATION: codeSolvable.length > 0 ? 'FAIL' : 'NOT_PROVEN',
     ORDER_SUBMISSIONS: 0, BROKER_MUTATIONS: 0, MASTER_PAPER_EXECUTION_ENABLED: false,
     FOLLOWERS: 'LOCKED', LIVE_MONEY: 'NOT_AUTHORIZED',
   } as const;

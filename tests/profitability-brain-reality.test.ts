@@ -72,6 +72,7 @@ test('runtime, empirical, and broker proof advance only sequentially', () => {
 // historical object test.
 test('SYNTHETIC_FIXTURE_MATCHING_REAL_SHAPE: an evaluated frontier with AEGIS/sizing evidence derives the correct methodIds, never over-claiming an unevaluated branch', () => {
   const evidence = deriveRealCurrentWorkerEvidence({
+    orchestration: { routing: { state: 'FIXTURE' }, thetaQ: { state: 'FIXTURE' } },
     strategyFrontier: {
       selectedCandidateId: null,
       branches: [
@@ -101,6 +102,16 @@ test('SYNTHETIC_FIXTURE_MATCHING_REAL_SHAPE: an evaluated frontier with AEGIS/si
 test('a null frontier (bridge never ran / cycle failed before the brain) derives zero real evidence, never a false claim', () => {
   const evidence = deriveRealCurrentWorkerEvidence({ strategyFrontier: null });
   assert.deepEqual(evidence, []);
+});
+
+test('frontier existence and candidate presence do not prove router or Q economics executed', () => {
+  const evidence = deriveRealCurrentWorkerEvidence({ strategyFrontier: {
+    selectedCandidateId: null, branches: [{ branch: 'THETA_CONVENTIONAL', evaluated: true,
+      candidates: [{ aegisState: null, sizing: { quantity: 0 } }] }],
+  }, orchestration: { routing: null, thetaQ: null } });
+  assert.ok(evidence.includes('CONVENTIONAL_CANDIDATE_ENUMERATION'));
+  assert.ok(!evidence.includes('STRATEGY_APPLICABILITY_ROUTER'));
+  assert.ok(!evidence.includes('Q_STRUCTURAL_ECONOMIC_DECISION'));
 });
 
 test('flat-account lifecycle branches with zero candidates do not claim current Recovery or CC enumeration', () => {

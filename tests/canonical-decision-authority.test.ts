@@ -39,6 +39,17 @@ test('the canonical frontier is the only selection authority when legacy evidenc
   assert.deepEqual(resolved.reasonCodes, ['CANONICAL_STRUCTURAL_SELECTION', 'SELECTION_AUTHORITY_STRUCTURAL_SAFE_FALLBACK']);
 });
 
+test('canonical SYSTEM_HOLD preserves incomplete-search causes at the persistence handoff', () => {
+  const reasons = ['PAPER_CANDIDATE_EVALUATION_INCOMPLETE:NOT_EVALUATED_SHORTLIST_BOUND:632'];
+  const frontier = { selectedCandidateId: null, primaryAction: 'SYSTEM_HOLD', selectedQuantity: 0,
+    selectedBranch: null, decisionAuthorityVersion: 'theta-canonical-decision-authority-v1',
+    globalWaitEarned: false, globalWaitReasons: reasons } as unknown as CanonicalStrategyFrontier;
+  const resolved = resolveCanonicalDecisionAuthority(frontier, receipt());
+  assert.equal(resolved.actionCode, 'SYSTEM_HOLD');
+  assert.ok(resolved.reasonCodes.includes(reasons[0] ?? 'MISSING_REASON'));
+  assert.equal(resolved.quantity, 0);
+});
+
 // Phase 1 (Profitability Brain Completion Program) 1H residual closure:
 // same immutable frontier + same subordinate receipt must always resolve to
 // the same canonical decision. This is the determinism test 1H's original

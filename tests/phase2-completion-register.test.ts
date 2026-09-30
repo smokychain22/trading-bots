@@ -45,6 +45,23 @@ test('Phase-2 denominator is explicit and cannot inherit a global certificate',(
    assert.equal(recorded.runtimeProven,false);
    assert.deepEqual(result.sourceHashes,recorded.sourceHashes);
    assert.equal(result.passed,recorded.passed);
+   if(['2.2.FAULT_MATRIX','2.4.FRESH_CYCLE'].includes(String(row.ID))){
+    const reference=row.DISPOSABLE_DB_EVIDENCE as Record<string,string>;
+    assert.ok(reference,`${row.ID}:disposable execution required`);
+    const {artifactHash:dbHash,...dbBody}=JSON.parse(readFileSync(reference.artifactPath,'utf8'));
+    assert.equal(dbHash,createHash('sha256').update(JSON.stringify(dbBody)).digest('hex'));
+    assert.equal(dbHash,reference.artifactHash);
+    assert.equal(dbBody.sourceSha,reference.sourceSha);
+    assert.equal(dbBody.ciRun,reference.ciRun);
+    assert.equal(dbBody.currentWorkerProven,false);
+    const proof=dbBody.runs.find((run:{binding:ReviewedRequirementBinding})=>run.binding.id===row.ID);
+    assert.ok(proof,`${row.ID}:reviewed disposable case binding required`);
+    const hashes=Object.fromEntries(Object.keys(proof.result.sourceHashes)
+     .map(path=>[path,evidenceSourceHash(readFileSync(path,'utf8'))]));
+    assert.deepEqual(proof.result.sourceHashes,hashes);
+    assert.deepEqual(proof.result,certifyExecutedRequirement(proof.binding,proof.result.executedTests,hashes));
+    assert.equal(proof.result.state,'PASS');
+   }
   }
  }
 });

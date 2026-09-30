@@ -87,10 +87,10 @@ const f=(family:FeatureFamilyAuthority['family'],role:FeatureRole,producerState:
 export const featureFamilyAuthorityMatrix: readonly FeatureFamilyAuthority[] = Object.freeze([
   f('LIQUIDITY','EXECUTION_QUALITY','PRODUCTION','Alpaca exact BBO + execution-quality','executability, AEGIS, sizing','USD/share, ratio','required current evidence blocks execution only'),
   f('OWNERSHIP','STRATEGY_APPLICABILITY','PRODUCTION','ownership contract/account state','Q/H applicability and assignment decision','score/components','unknown applicability remains UNKNOWN'),
-  f('DRAWDOWN_RECOVERY','PORTFOLIO_CONTEXT','SHADOW','PIT price/equity path + lifecycle evidence','management and recovery research','USD and decimal fraction','does not globally block new-risk Q'),
+  f('DRAWDOWN_RECOVERY','PORTFOLIO_CONTEXT','PRODUCTION','PIT price/equity path + lifecycle evidence','ownership tail component, regime stress, management and recovery research','USD and decimal fraction','bootstrap model gaps remain explicitly governed; known tail evidence is retained'),
   f('TREND','UNCERTAINTY_MODIFIER','PRODUCTION','Alpaca PIT bars/underlying features','regime and qualified soft evidence','slope/return','missing stays optional UNKNOWN'),
-  f('MOMENTUM','RESEARCH_ONLY','SHADOW','Alpaca PIT bars/underlying features','shadow evaluation','decimal return','no Production veto'),
-  f('REALIZED_VOLATILITY','EMPIRICAL_SIGNAL','SHADOW','Alpaca PIT bars','VRP and risk research','annualized decimal','no Production veto'),
+  f('MOMENTUM','RESEARCH_ONLY','SHADOW','Alpaca PIT bars/underlying features','ownership contract validates returns but ownership_v0 does not score them; archived research only','decimal return','no Production momentum veto or rank contribution'),
+  f('REALIZED_VOLATILITY','UNCERTAINTY_MODIFIER','PRODUCTION','Alpaca PIT completed daily bars','regime_v0 volatility classification via rv20, then strategy applicability context','annualized decimal','unknown volatility remains explicit regime uncertainty, never assumed calm'),
   f('IV','UNCERTAINTY_MODIFIER','PRODUCTION','Alpaca snapshot or qualified Optionomics observation','AEGIS IV stress and volatility context','decimal','required only for the specific IV stress assessment, maturity stays explicit'),
   f('SKEW','RESEARCH_ONLY','RESEARCH','qualified Optionomics chain','strategy-quality research','decimal IV difference','no Production veto'),
   f('TERM_STRUCTURE','RESEARCH_ONLY','RESEARCH','qualified Optionomics chain','strategy-quality and management research','decimal IV difference','no Production veto'),
@@ -127,8 +127,8 @@ const featureUseDeclarations: Readonly<Record<ThetaStrategyBranch, FeatureUseDec
       'PORTFOLIO_EXPOSURE', 'EXECUTION_QUALITY'],
     REQUIRED_WHEN_APPLICABLE: ['CORRELATION'],
     OPTIONAL_RANKING: ['TREND'],
-    UNCERTAINTY_ONLY: ['DRAWDOWN_RECOVERY', 'IV', 'SECTOR', 'REGIME'],
-    RESEARCH_ONLY: ['MOMENTUM', 'REALIZED_VOLATILITY', 'SKEW', 'TERM_STRUCTURE',
+    UNCERTAINTY_ONLY: ['DRAWDOWN_RECOVERY', 'IV', 'SECTOR', 'REGIME', 'REALIZED_VOLATILITY'],
+    RESEARCH_ONLY: ['MOMENTUM', 'SKEW', 'TERM_STRUCTURE',
       'VOLATILITY_SURFACE', 'FLOW', 'UNUSUAL_ACTIVITY', 'FUNDAMENTAL_QUALITY'],
   },
   THETA_HOLD_STRIKE: {
@@ -234,7 +234,8 @@ export const thetaStrategyDecisionInputRegistry: readonly StrategyDecisionInputD
       const use = manifest[authority.family];
       if (use === 'IRRELEVANT') return [];
       const role = decisionRole(use, authority);
-      const productionEvidence = authority.producerState === 'PRODUCTION' && role !== 'RESEARCH_ONLY';
+      const productionEvidence = authority.producerState === 'PRODUCTION' && role !== 'RESEARCH_ONLY'
+        && strategy !== 'THETA_HOLD_STRIKE' && strategy !== 'THETA_DEFINED_RISK';
       return [{
         featureId: authority.family, strategy, role,
         required: use === 'REQUIRED', requiredWhenApplicable: use === 'REQUIRED_WHEN_APPLICABLE',

@@ -100,7 +100,7 @@ test('full-chain Q evidence labels unshortlisted contracts without hiding a miss
     { optionSymbol: 'SPY261009C00500000', optionType: 'CALL', dte: 30 },
   ], new Set(['SPY261009P00505000']), {}, { dteMin: 20, dteMax: 60 });
   assert.deepEqual(coverage['SPY261009P00500000'], {
-    state: 'NOT_SENT_UPSTREAM_REJECT', reasonCode: 'NOT_SELECTED_FOR_FINALIST_REFRESH',
+    state: 'NOT_EVALUATED_SHORTLIST_BOUND', reasonCode: 'NOT_SELECTED_FOR_FINALIST_REFRESH',
   });
   assert.equal(coverage['SPY261009P00505000'], undefined,
     'a shortlisted finalist with no Q response must remain a visible map-coverage anomaly');
@@ -292,7 +292,8 @@ itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data r
   assert.equal(technical.contractVersion, 'theta-underlying-technical-features-v1');
   assert.equal(technical.provider, 'ALPACA');
   assert.equal(technical.dataQuality, 'GOOD');
-  assert.equal(technical.barCount, 65);
+  assert.equal(technical.barCount, 64);
+  assert.equal(technical.observedBarCount, 65);
   assert.equal(typeof technicalValues.return5d, 'number');
   assert.equal(typeof technicalValues.trendSlope20d, 'number');
   assert.equal(typeof technicalValues.realizedVolatility20d, 'number');
@@ -507,6 +508,31 @@ itMockedProviderRealCodePath('decision time is finalized after collected quote t
   assert.ok(historyReceipt);
   assert.ok(Date.parse(historyReceipt.retrievedAt) > Date.parse(result.startedAt));
   assert.ok(Date.parse(historyReceipt.retrievedAt) <= decisionAt);
+  const regime = result.fusionSnapshot?.snapshot.regimeState as Record<string, unknown>;
+  const technical = regime.technicalFeatures as Record<string, unknown>;
+  assert.ok(Date.parse(String(technical.retrievedAt)) <= Date.parse(String(technical.asOf)));
+  const values = technical.values as Record<string, unknown>;
+  assert.equal(typeof values.return5d, 'number', 'valid acquired history must not be evaluated at the earlier request time');
+});
+
+itMockedProviderRealCodePath('a developing daily candle cannot masquerade as completed-session trend or volatility evidence', async () => {
+  const regular = mockAlpacaFetch({ hasContracts: true, hasBars: true });
+  const baseline = await runThetaShadowCycle(baseConfig());
+  const changed = await runThetaShadowCycle(baseConfig({ alpaca: { ...alpacaConfig({hasContracts:true,hasBars:true}),
+    fetchImpl: (async (input, init) => {
+      const response = await regular(input, init);
+      if (!String(input).includes('/v2/stocks/bars')) return response;
+      const body = await response.json() as {bars: {SPY: unknown[]}};
+      body.bars.SPY.push({t:'2026-09-10T04:00:00Z',o:1000,h:1100,l:900,c:1050,v:1_000_000,n:100,vw:1020});
+      return jsonResponse(200, body);
+    }) as typeof fetch } }));
+  const technical = (cycle: typeof baseline) => {
+    assert.ok(cycle.fusionSnapshot);
+    return (cycle.fusionSnapshot.snapshot.regimeState as Record<string, unknown>).technicalFeatures as Record<string, unknown>;
+  };
+  assert.deepEqual(technical(changed).values, technical(baseline).values);
+  assert.equal(technical(changed).completedBarPolicy, 'PRIOR_SESSION_DAILY_BARS_ONLY');
+  assert.equal(Number(technical(changed).observedBarCount), Number(technical(baseline).observedBarCount) + 1);
 });
 
 itMockedProviderRealCodePath('no candidates on this underlying yields a coherent result, never a crash', async () => {

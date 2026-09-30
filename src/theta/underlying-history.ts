@@ -165,5 +165,5 @@ export async function fetchAllHistoricalBars(
  */
 export function barsAsOf(bars: readonly HistoricalBar[], asOf: string): readonly HistoricalBar[] {
   const asOfMs = new Date(asOf).getTime();
-  return bars.filter((bar) => new Date(bar.timestamp).getTime() <= asOfMs);
+  return bars.filter((bar) => Date.parse(bar.timestamp) <= asOfMs && Date.parse(bar.receivedAt) <= asOfMs);
 }

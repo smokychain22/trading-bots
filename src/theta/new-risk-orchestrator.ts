@@ -112,6 +112,7 @@ export type ThetaQCandidateEvaluationState =
   | 'EVALUATED_FEASIBLE'
   | 'EVALUATED_INFEASIBLE'
   | 'NOT_SENT_UPSTREAM_REJECT'
+  | 'NOT_EVALUATED_SHORTLIST_BOUND'
   | 'RESPONSE_GAP';
 
 export interface ThetaQCandidateEvaluationEntry {

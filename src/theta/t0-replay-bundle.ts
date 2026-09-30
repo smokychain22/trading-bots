@@ -62,7 +62,7 @@ const entryEligibilitySchema = z.object({
 });
 
 const thetaQCandidateEvaluationSchema = z.object({
-  state: z.enum(['EVALUATED_FEASIBLE', 'EVALUATED_INFEASIBLE', 'NOT_SENT_UPSTREAM_REJECT', 'RESPONSE_GAP']),
+  state: z.enum(['EVALUATED_FEASIBLE', 'EVALUATED_INFEASIBLE', 'NOT_SENT_UPSTREAM_REJECT', 'NOT_EVALUATED_SHORTLIST_BOUND', 'RESPONSE_GAP']),
   reasonCode: z.string().nullable(),
 });
 

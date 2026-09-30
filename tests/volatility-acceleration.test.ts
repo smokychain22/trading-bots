@@ -6,7 +6,8 @@ import type { HistoricalBar } from '../src/theta/underlying-history.js';
 const bars=Array.from({length:70},(_,index):HistoricalBar=>{
   const timestamp=new Date(Date.UTC(2026,0,index+1)).toISOString();
   const close=100+index+(index%2===0?1:-1);
-  return {symbol:'AAPL',timestamp,open:close-0.5,high:close+1,low:close-1,close,volume:1_000_000};
+  return {symbol:'AAPL',timestamp,open:close-0.5,high:close+1,low:close-1,close,volume:1_000_000,
+    receivedAt:timestamp,provider:'ALPACA',feed:'iex',tradeCount:1,vwap:close};
 });
 
 test('volatility acceleration is PIT-safe shadow evidence with no broker authority',()=>{

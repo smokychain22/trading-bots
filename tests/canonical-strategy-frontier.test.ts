@@ -6,6 +6,9 @@ import { parseStrategyRoutingResponse, type StrategyFamily } from '../src/theta/
 import { paperEntryCandidateCohort } from '../src/research/production-shadow-runtime.js';
 import { projectPersistableThetaCandidates } from '../src/theta/postgres-theta-cycle-store.js';
 import type { ThetaShadowCycleResult } from '../src/theta/theta-shadow-cycle.js';
+import { deriveRealCurrentWorkerEvidence } from '../src/theta/profitability-brain-reality.js';
+import { classifyMethodInputProvenance, filterToRealInputEvidence } from '../src/theta/profitability-method-input-provenance.js';
+import { buildGlobalWaitEvidenceFromFrontier, validateGlobalWaitEvidence } from '../src/theta/decision-evidence.js';
 
 const NOW = '2026-09-14T15:00:00.000Z';
 
@@ -401,6 +404,70 @@ test('an unassessed Q contract cannot inherit a representative AEGIS veto from a
   assert.ok(missing?.hardBlockers.includes('THETA_Q_NOT_SENT_UPSTREAM_REJECT:NOT_SELECTED_FOR_FINALIST_REFRESH'));
   assert.ok(!missing?.hardBlockers.includes('AEGIS_HARD_VETO'));
   assert.equal(missing?.sizing.quantity, 0);
+  assert.equal(result.globalWaitEarned, false);
+  assert.equal(result.primaryAction, 'SYSTEM_HOLD');
+  assert.equal(result.paperEvaluationCoverage?.incompleteReasonCounts.NOT_EVALUATED_SHORTLIST_BOUND, 1);
+});
+
+test('bounded shortlist and response gaps are incomplete searches, never economic GLOBAL_WAIT', () => {
+  for (const evaluation of [
+    { state: 'NOT_EVALUATED_SHORTLIST_BOUND' as const, reasonCode: 'NOT_SELECTED_FOR_FINALIST_REFRESH' },
+    { state: 'RESPONSE_GAP' as const, reasonCode: null },
+    { state: 'NOT_SENT_UPSTREAM_REJECT' as const, reasonCode: 'DELTA_UNKNOWN' },
+    { state: 'NOT_SENT_UPSTREAM_REJECT' as const, reasonCode: 'OPTION_QUOTE_FRESHNESS_INSUFFICIENT' },
+  ]) {
+    const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
+      thetaQCandidateEvaluationByOptionSymbol: { [contract().optionSymbol]: evaluation },
+      thetaQDecision: { snapshotId: base.snapshotId, timestamp: NOW, underlying: 'AAPL', winningAction: 'WAIT',
+        selectedCandidateId: null, quantity: 0 } });
+    assert.equal(result.primaryAction, 'SYSTEM_HOLD');
+    assert.equal(result.globalWaitEarned, false);
+    assert.equal(result.paperEvaluationCoverage?.notEvaluatedCount, 1);
+    assert.equal(result.paperEvaluationCoverage?.evaluatedCount, 0);
+    assert.equal(result.paperEvaluationCoverage?.state, 'INCOMPLETE');
+    assert.equal(result.selectedQuantity, 0);
+    const persisted = buildGlobalWaitEvidenceFromFrontier({ frontier: result, eligibleUnderlyingCount: 1,
+      underlyingsEvaluated: 1, existingPositionManagementEvaluated: true, recoveryOpportunitiesEvaluated: true,
+      coveredCallOpportunitiesEvaluated: true, redeploymentAlternativesEvaluated: true });
+    assert.equal(persisted.contractsEnumerated, 1);
+    assert.equal(persisted.contractsEvaluated, 0);
+    assert.equal(validateGlobalWaitEvidence(persisted).earned, false);
+    assert.ok(validateGlobalWaitEvidence(persisted).violations.includes('PAPER_EVALUATION_INCOMPLETE'));
+  }
+});
+
+test('a safe evaluated Q OPEN survives unrelated shortlist gaps without claiming complete enumeration', () => {
+  const unassessed = contract({ optionSymbol: 'AAPL261016P00185000', occSymbol: 'AAPL261016P00185000', strike: 185 });
+  const input = { ...base, contracts: [contract(), unassessed], routing: routing(['THETA_Q']),
+    thetaQCandidateEvaluationByOptionSymbol: { [contract().optionSymbol]: qFeasible(),
+      [unassessed.optionSymbol]: { state: 'NOT_EVALUATED_SHORTLIST_BOUND' as const, reasonCode: 'NOT_SELECTED_FOR_FINALIST_REFRESH' } },
+    thetaQDecision: { snapshotId: base.snapshotId, timestamp: NOW, underlying: 'AAPL', winningAction: 'OPEN_FULL' as const,
+      selectedCandidateId: contract().optionSymbol, quantity: 1 } };
+  const result = buildCanonicalStrategyFrontier(input);
+  assert.equal(result.primaryAction, 'OPEN_CSP');
+  assert.equal(result.selectedQuantity, 1);
+  assert.equal(result.paperEvaluationCoverage?.state, 'INCOMPLETE');
+  assert.equal(result.globalWaitEarned, false);
+  assert.equal(result.executionAuthorized, false);
+  assert.equal(result.contentHash, buildCanonicalStrategyFrontier({ ...input, contracts: [...input.contracts].reverse() }).contentHash);
+});
+
+test('actual canonical H and D enumeration reaches method provenance without granting realness to fixtures', () => {
+  const h = contract({ optionSymbol: 'AAPL260918P00195000', occSymbol: 'AAPL260918P00195000',
+    strike: 195, expiration: '2026-09-18' });
+  const d = contract({ optionSymbol: 'AAPL261016P00185000', occSymbol: 'AAPL261016P00185000', strike: 185 });
+  const frontier = buildCanonicalStrategyFrontier({ ...base, contracts: [contract(), h, d], routing: routing(['THETA_Q']) });
+  const executed = deriveRealCurrentWorkerEvidence({ strategyFrontier: frontier });
+  const provenance = classifyMethodInputProvenance({ executedMethodIds: executed, marketDataOrigin: 'SYNTHETIC_FIXTURE',
+    routerPortfolioOrigin: 'SYNTHETIC_FIXTURE', aegisInputsOrigin: 'SYNTHETIC_FIXTURE' });
+  for (const [branch, method] of [['THETA_HOLD_STRIKE', 'HOLD_STRIKE_CANDIDATE_ENUMERATION'],
+    ['THETA_DEFINED_RISK', 'DEFINED_RISK_CANDIDATE_ENUMERATION']]) {
+    assert.ok((frontier.branches.find(row => row.branch === branch)?.candidateCount ?? 0) > 0);
+    assert.equal(provenance.find(row => row.methodId === method)?.executed, true);
+    assert.ok(!filterToRealInputEvidence(executed, provenance).includes(method));
+  }
+  assert.equal(frontier.selectedBranch, 'THETA_CONVENTIONAL');
+  assert.equal(frontier.executionAuthorized, false);
 });
 
 test('AEGIS zero sizing preserves the exact binding family and reason', () => {
@@ -442,22 +509,22 @@ test('a Q lattice rejection cannot win Paper selection ahead of a feasible contr
   assert.equal(result.selectedCandidateId, `THETA_CONVENTIONAL:${feasible.optionSymbol}`);
 });
 
-test('a contract with no Q evaluation-state entry cannot open, but a valid Q WAIT stays WAIT', () => {
+test('a Q WAIT with missing candidate evaluation cannot certify complete GLOBAL_WAIT', () => {
   const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
     thetaQCandidateEvaluationByOptionSymbol: {},
     thetaQDecision: { snapshotId: base.snapshotId, timestamp: NOW, underlying: 'AAPL', winningAction: 'WAIT',
       selectedCandidateId: null, quantity: 0 } });
   assert.equal(result.selectedCandidateId, null);
-  assert.equal(result.primaryAction, 'GLOBAL_WAIT');
+  assert.equal(result.primaryAction, 'SYSTEM_HOLD');
   assert.ok(result.branches[0]?.candidates[0]?.hardBlockers.includes('THETA_Q_EVALUATION_STATE_MISSING'));
-  assert.ok(result.globalWaitReasons.includes('THETA_Q_ECONOMIC_WAIT'));
+  assert.ok(result.globalWaitReasons.includes('PAPER_CANDIDATE_EVALUATION_INCOMPLETE:EVALUATION_STATE_MISSING:1'));
 });
 
-test('a null Q lattice after quote freshness rejection cannot become an OPEN or false missing-evidence HOLD', () => {
+test('a null Q lattice cannot earn a global economic WAIT without exact evaluation coverage', () => {
   const result = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
     thetaQDecision: { snapshotId: base.snapshotId, timestamp: NOW, underlying: 'AAPL', winningAction: 'WAIT',
       selectedCandidateId: null, quantity: 0 } });
-  assert.equal(result.primaryAction, 'GLOBAL_WAIT');
+  assert.equal(result.primaryAction, 'SYSTEM_HOLD');
   assert.equal(result.selectedQuantity, 0);
 });
 

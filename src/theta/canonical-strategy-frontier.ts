@@ -191,6 +191,15 @@ export interface CanonicalStrategyFrontier {
   readonly bestRejectedCandidateId: string | null;
   readonly globalWaitEarned: boolean;
   readonly globalWaitReasons: readonly string[];
+  /** Optional only for old archives. New receipts always retain bounded
+   * search coverage separately from genuine economic rejection. */
+  readonly paperEvaluationCoverage?: {
+    readonly state: 'COMPLETE' | 'INCOMPLETE' | 'STRUCTURAL_ONLY';
+    readonly candidateCount: number;
+    readonly evaluatedCount: number;
+    readonly notEvaluatedCount: number;
+    readonly incompleteReasonCounts: Readonly<Record<string, number>>;
+  };
   readonly empiricalEconomicsReady: false;
   readonly executionAuthorized: false;
   readonly optionomicsContext: JsonValue;
@@ -504,6 +513,8 @@ function singleLegPutCandidate(branch: 'THETA_CONVENTIONAL' | 'THETA_HOLD_STRIKE
       evidence.hardBlockers.push('THETA_Q_ACTION_INFEASIBLE', `THETA_Q_INFEASIBLE_REASON:${qEvaluation.reasonCode}`);
     } else if (qEvaluation.state === 'NOT_SENT_UPSTREAM_REJECT') {
       evidence.hardBlockers.push(`THETA_Q_NOT_SENT_UPSTREAM_REJECT:${qEvaluation.reasonCode}`);
+    } else if (qEvaluation.state === 'NOT_EVALUATED_SHORTLIST_BOUND') {
+      evidence.hardBlockers.push('THETA_Q_NOT_EVALUATED_SHORTLIST_BOUND');
     } else if (qEvaluation.state === 'RESPONSE_GAP') {
       evidence.hardBlockers.push('THETA_Q_RESPONSE_GAP');
     }
@@ -760,7 +771,8 @@ function dominatesVector(left: ParetoVector, right: ParetoVector): boolean {
   return better;
 }
 
-const candidateRankOrder = (a: CanonicalFrontierCandidate, b: CanonicalFrontierCandidate): number =>
+export const candidateRankOrder = (a: Pick<CanonicalFrontierCandidate, 'paretoRank' | 'unknownEvidence' | 'candidateId'>,
+  b: Pick<CanonicalFrontierCandidate, 'paretoRank' | 'unknownEvidence' | 'candidateId'>): number =>
   (a.paretoRank ?? Number.MAX_SAFE_INTEGER) - (b.paretoRank ?? Number.MAX_SAFE_INTEGER)
     || a.unknownEvidence.length - b.unknownEvidence.length || a.candidateId.localeCompare(b.candidateId);
 
@@ -1061,9 +1073,32 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
       .includes(candidate.sizing.bindingConstraint));
   const paperBranch = branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
   const paperBranchEvaluated = paperBranch?.applicable === true && paperBranch.evaluationState === 'EVALUATED';
+  const qEvaluationRequired = input.thetaQCandidateEvaluationByOptionSymbol !== undefined || decision !== undefined;
+  const incompleteReasonCounts: Record<string, number> = {};
+  for (const candidate of paperCandidates) {
+    if (!qEvaluationRequired) continue;
+    const symbol = candidate.legs[0]?.optionSymbol;
+    const evaluation = symbol === undefined ? undefined : input.thetaQCandidateEvaluationByOptionSymbol?.[symbol];
+    if (evaluation?.state === 'EVALUATED_FEASIBLE' || evaluation?.state === 'EVALUATED_INFEASIBLE') continue;
+    // An upstream safety/data rejection blocks this candidate's execution,
+    // but does not prove its economic inferiority. In particular, the
+    // refresh budget and a missing Q response cannot earn GLOBAL_WAIT.
+    const reason = evaluation === undefined ? 'EVALUATION_STATE_MISSING'
+      : evaluation.reasonCode === 'NOT_SELECTED_FOR_FINALIST_REFRESH' ? 'NOT_EVALUATED_SHORTLIST_BOUND'
+      : `${evaluation.state}:${evaluation.reasonCode ?? 'NO_RESPONSE'}`;
+    incompleteReasonCounts[reason] = (incompleteReasonCounts[reason] ?? 0) + 1;
+  }
+  const notEvaluatedCount = Object.values(incompleteReasonCounts).reduce((sum, count) => sum + count, 0);
+  const paperEvaluationCoverage = {
+    state: !qEvaluationRequired ? 'STRUCTURAL_ONLY' as const : notEvaluatedCount > 0 ? 'INCOMPLETE' as const : 'COMPLETE' as const,
+    candidateCount: paperCandidates.length,
+    evaluatedCount: qEvaluationRequired ? paperCandidates.length - notEvaluatedCount : 0,
+    notEvaluatedCount,
+    incompleteReasonCounts: Object.fromEntries(Object.entries(incompleteReasonCounts).sort(([a], [b]) => a.localeCompare(b))),
+  };
   const globalWaitEarned = !managementAuthorityRequired && paperBranchEvaluated && blockedApplicable.length === 0
     && !managementIncomplete && !universeIncomplete && sizingEvidenceUnknown.length === 0
-    && !decisionInvalid && structuralSelection === null;
+    && notEvaluatedCount === 0 && !decisionInvalid && structuralSelection === null;
   const partial = {
     contractVersion: canonicalStrategyFrontierVersion, snapshotId: input.snapshotId, timestamp: input.timestamp,
     strategyVersion: input.strategyVersion, decisionAuthorityVersion: canonicalDecisionAuthorityVersion,
@@ -1078,9 +1113,12 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
     structuralTopTwo: describeStructuralTopTwo(sizedNewRisk),
     nearMissCandidateId: nearMiss?.candidateId ?? null,
     bestRejectedCandidateId: rejected[0]?.candidateId ?? null,
+    paperEvaluationCoverage,
     globalWaitEarned, globalWaitReasons: globalWaitEarned ? ['PAPER_AUTHORIZED_BRANCH_EVALUATED',
       decision !== undefined ? `THETA_Q_ECONOMIC_${decision.winningAction}` : 'NO_RISK_FEASIBLE_ACTION']
       : [...blockedApplicable.map((branch) => `BRANCH_NOT_FULLY_EVALUATED:${branch.branch}`),
+          ...Object.entries(paperEvaluationCoverage.incompleteReasonCounts)
+            .map(([reason, count]) => `PAPER_CANDIDATE_EVALUATION_INCOMPLETE:${reason}:${count}`),
           ...(!paperBranch?.applicable ? ['PAPER_BRANCH_NOT_APPLICABLE'] : []),
           ...(decision !== undefined && !decisionSnapshotValid ? ['THETA_Q_DECISION_SNAPSHOT_MISMATCH'] : []),
           ...(decision !== undefined && openDecision && decisionCandidate === null ? ['THETA_Q_WINNER_NOT_STRUCTURALLY_FEASIBLE'] : []),

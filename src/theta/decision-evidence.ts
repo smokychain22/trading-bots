@@ -63,6 +63,11 @@ export const globalWaitReason = z.enum([
 ]);
 
 export interface GlobalWaitEvidence {
+  /** Absent only in legacy evidence. New builder preserves the canonical
+   * verdict instead of independently certifying a partial search as WAIT. */
+  readonly canonicalWaitEarned?: boolean;
+  readonly contractsEnumerated?: number;
+  readonly paperEvaluationCoverage?: CanonicalStrategyFrontier['paperEvaluationCoverage'];
   readonly reason: z.infer<typeof globalWaitReason>;
   readonly eligibleUnderlyingCount: number;
   readonly underlyingsEvaluated: number;
@@ -101,6 +106,8 @@ export interface GlobalWaitValidation {
 /** A global WAIT is valid only after the currently eligible search surface was exhausted. */
 export function validateGlobalWaitEvidence(input: GlobalWaitEvidence): GlobalWaitValidation {
   const violations: string[] = [];
+  if (input.canonicalWaitEarned === false) violations.push('CANONICAL_GLOBAL_WAIT_NOT_EARNED');
+  if (input.paperEvaluationCoverage?.state === 'INCOMPLETE') violations.push('PAPER_EVALUATION_INCOMPLETE');
   if (!Number.isInteger(input.eligibleUnderlyingCount) || input.eligibleUnderlyingCount < 0) {
     violations.push('ELIGIBLE_UNDERLYING_COUNT_INVALID');
   }
@@ -144,7 +151,7 @@ const blockerClass = (reason:string):HardGateCode|null => {
   if(reason==='ROUTER_NOT_APPLICABLE'||reason.includes('STOCK_INVENTORY'))return 'ACCOUNT_STATE_INCOMPATIBLE';
   if(reason.startsWith('THETA_Q_INFEASIBLE_REASON:')||reason==='THETA_Q_ACTION_INFEASIBLE')return 'STRATEGY_ECONOMIC_REJECT';
   if(reason.startsWith('THETA_Q_NOT_SENT_UPSTREAM_REJECT:')||reason==='THETA_Q_EVALUATION_STATE_MISSING'
-    ||reason==='THETA_Q_RESPONSE_GAP')return 'STRATEGY_EVALUATION_INVALID';
+    ||reason==='THETA_Q_RESPONSE_GAP'||reason==='THETA_Q_NOT_EVALUATED_SHORTLIST_BOUND')return 'STRATEGY_EVALUATION_INVALID';
   if(reason.includes('OCC_')||reason.includes('SPREAD')||reason.includes('EXPIRATION')
     ||reason.includes('NET_CREDIT')||reason.includes('CONTRACT'))return 'INVALID_CONTRACT';
   return null;
@@ -219,7 +226,10 @@ export function buildGlobalWaitEvidenceFromFrontier(input:{
   const eligiblePaperBranches=input.frontier.branchesConsidered.filter((branch)=>branch==='THETA_CONVENTIONAL');
   const evaluatedPaperBranches=input.frontier.branchesEvaluated.filter((branch)=>branch==='THETA_CONVENTIONAL');
   return {reason,eligibleUnderlyingCount:input.eligibleUnderlyingCount,underlyingsEvaluated:input.underlyingsEvaluated,
-    contractsEvaluated:candidates.length,
+    canonicalWaitEarned:input.frontier.globalWaitEarned,
+    contractsEnumerated:candidates.length,
+    paperEvaluationCoverage:input.frontier.paperEvaluationCoverage,
+    contractsEvaluated:input.frontier.paperEvaluationCoverage?.evaluatedCount??candidates.length,
     hardSafetyRejected:candidates.filter((candidate)=>candidate.hardBlockers.some((blocker)=>{
       const category=blockerClass(blocker);
       return category!==null&&!['STRATEGY_ECONOMIC_REJECT','STRATEGY_EVALUATION_INVALID','ACCOUNT_STATE_INCOMPATIBLE'].includes(category);

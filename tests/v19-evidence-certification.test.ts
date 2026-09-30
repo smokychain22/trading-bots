@@ -9,27 +9,30 @@ const passingInput = () => ({ sourceSha, sourceClean: true, runtimeReceiptHash: 
   fileAuditFailures: [] as string[], testResults: Object.fromEntries(v19RequiredTestFiles.map((file) => [file, true])),
   unknownAuditPass: true, regressionAuditPass: true });
 
-test('all decision routes carry a unique value through producer, normalizer, orchestrator, and intended consumer', () => {
+test('declared routes cannot certify dynamic producers or consumers through a synthetic marker round-trip', () => {
   const proofs = decisionDataRoutes.map((item) => proveDecisionDataRoute(item.feature, sourceSha));
   assert.equal(proofs.length, 21);
-  assert.ok(proofs.every((item) => item.state === 'PASS' && item.unrelatedConsumerRejected));
-  assert.equal(new Set(proofs.map((item) => item.markerHash)).size, proofs.length);
+  assert.ok(proofs.every((item) => item.state === 'NOT_PROVEN' && item.runtimeProven === false));
+  assert.ok(proofs.every(item => !Object.hasOwn(item, 'markerHash')));
 });
 
-test('V19 certification is derived from executed evidence with no uncovered matrix cell or scenario', () => {
+test('legacy file booleans and declared matrix states cannot self-certify V19', () => {
   const receipt = buildV19EvidenceCertification(passingInput());
   assert.equal(receipt.MATRIX_CELLS_TOTAL, 105);
-  assert.equal(receipt.MATRIX_CELLS_WITHOUT_EVIDENCE, 0);
+  assert.equal(receipt.MATRIX_CELLS_WITHOUT_EVIDENCE, 105);
   const cells = Object.values(receipt.strategyMatrix).flatMap((row) => Object.values(row));
   assert.ok(cells.every((cell) => cell.dimensionTestIds.length > 0));
   assert.ok(cells.every((cell) => cell.dimensionTestIds.every((file) => cell.testIds.includes(file))));
-  assert.equal(receipt.DATA_ROUTES_WITHOUT_DYNAMIC_PROOF, 0);
-  assert.equal(receipt.AEGIS_UNPROVEN_SCENARIOS, 0);
-  assert.equal(receipt.SIZING_UNPROVEN_SCENARIOS, 0);
-  assert.equal(receipt.MANAGEMENT_UNPROVEN_SCENARIOS, 0);
-  assert.equal(receipt.WHOLE_CHAIN_UNPROVEN_SCENARIOS, 0);
+  assert.equal(receipt.DATA_ROUTES_WITHOUT_DYNAMIC_PROOF, 21);
+  assert.equal(receipt.AEGIS_UNPROVEN_SCENARIOS, receipt.AEGIS_SCENARIOS_TOTAL);
+  assert.equal(receipt.SIZING_UNPROVEN_SCENARIOS, receipt.SIZING_SCENARIOS_TOTAL);
+  assert.equal(receipt.MANAGEMENT_UNPROVEN_SCENARIOS, receipt.MANAGEMENT_SCENARIOS_TOTAL);
+  assert.equal(receipt.WHOLE_CHAIN_UNPROVEN_SCENARIOS, receipt.WHOLE_CHAIN_SCENARIOS_TOTAL);
   assert.deepEqual(receipt.CODE_SOLVABLE, []);
-  assert.equal(receipt.FINAL_CERTIFICATION, 'PASS');
+  assert.equal(receipt.FINAL_CERTIFICATION, 'NOT_PROVEN');
+  assert.equal(receipt.GENERIC_WAIT, null);
+  assert.equal(receipt.GENERIC_DECISION_UNKNOWN, null);
+  assert.ok(cells.every(cell => cell.state === 'DECLARED_NOT_PROVEN' && !cell.runtimeProven));
   assert.equal(receipt.PROFITABILITY_WINNER, null);
   assert.equal(receipt.SHADOW_COMPARATOR_BROKER_AUTHORITY, false);
 });
@@ -53,7 +56,22 @@ test('a locked worker intentionally offline behind governed runtime admission is
   assert.deepEqual(receipt.CODE_SOLVABLE, []);
   assert.deepEqual(receipt.EXTERNAL_RUNTIME_BLOCKERS,
     ['CURRENT_WORKER_LOCKED_OFFLINE_AWAITING_GOVERNED_RUNTIME_ADMISSION']);
-  assert.equal(receipt.FINAL_CERTIFICATION, 'PASS');
+  assert.equal(receipt.FINAL_CERTIFICATION, 'NOT_PROVEN');
+});
+
+test('scenario evidence requires a uniquely executed passing case and cannot inherit skipped or failed companions', () => {
+  const event = { file: 'tests/aegis-alpaca-iv-stress.test.ts',
+    name: 'twenty independent same-cohort sessions support the detector', state: 'PASS' as const };
+  const state = (events: Parameters<typeof buildV19EvidenceCertification>[0]['executedTests']) =>
+    buildV19EvidenceCertification({ ...passingInput(), executedTests: events }).scenarioResults
+      .find(row => row.id === 'IV_STRESS');
+  assert.equal(state([event])?.state, 'PASS');
+  assert.equal(state([event])?.runtimeProven, false);
+  assert.equal(state([{ ...event, state: 'SKIPPED' }])?.state, 'NOT_PROVEN');
+  assert.equal(state([{ ...event, state: 'TODO' }])?.state, 'NOT_PROVEN');
+  assert.equal(state([event, { ...event, name: `${event.name} duplicate` }])?.state, 'NOT_PROVEN');
+  assert.equal(state([event, { ...event, name: 'companion', state: 'FAIL' }])?.state, 'FAIL');
+  assert.equal(state([{ ...event, file: 'tests/another.test.ts' }])?.state, 'NOT_PROVEN');
 });
 
 test('provider limits are separated by Paper criticality', () => {

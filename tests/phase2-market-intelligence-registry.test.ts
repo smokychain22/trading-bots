@@ -95,3 +95,15 @@ test('five-strategy six-role decision registry is unique, complete and does not 
     input.strategy === 'THETA_CC' && input.featureId === 'BROKER_CONFIRMED_COVERED_SHARES')?.role,
   'STRATEGY_APPLICABILITY');
 });
+
+test('feature authority distinguishes active RV context, unscored momentum and shadow strategy consumers', () => {
+  const rv = featureFamilyAuthorityMatrix.find(row => row.family === 'REALIZED_VOLATILITY');
+  assert.equal(rv?.producerState, 'PRODUCTION');
+  assert.match(rv?.consumer ?? '', /regime_v0.*rv20/);
+  assert.equal(thetaStrategyFeatureManifest.THETA_CONVENTIONAL.REALIZED_VOLATILITY, 'UNCERTAINTY_ONLY');
+  assert.match(featureFamilyAuthorityMatrix.find(row => row.family === 'MOMENTUM')?.consumer ?? '', /does not score/);
+  for (const row of thetaStrategyDecisionInputRegistry.filter(row =>
+    row.strategy === 'THETA_HOLD_STRIKE' || row.strategy === 'THETA_DEFINED_RISK')) {
+    assert.equal(row.authority, 'SHADOW_OR_RESEARCH');
+  }
+});

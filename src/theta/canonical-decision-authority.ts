@@ -45,7 +45,7 @@ export function resolveCanonicalDecisionAuthority(
     quantity: frontier.selectedQuantity,
     strategyBranch: frontier.selectedBranch,
     decisionAuthorityVersion: frontier.decisionAuthorityVersion,
-    reasonCodes: [...(frontier.globalWaitEarned ? frontier.globalWaitReasons
+    reasonCodes: [...(frontier.globalWaitEarned || frontier.primaryAction === 'SYSTEM_HOLD' ? frontier.globalWaitReasons
       : frontier.primaryAction === 'MANAGEMENT_AUTHORITY' ? ['MANAGEMENT_FIRST']
         : frontier.selectedCandidateId === null ? ['CANONICAL_STRUCTURAL_SELECTION_UNAVAILABLE']
           : ['CANONICAL_STRUCTURAL_SELECTION']), 'SELECTION_AUTHORITY_STRUCTURAL_SAFE_FALLBACK'],

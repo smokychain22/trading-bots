@@ -79,7 +79,7 @@ export function completeConventionalFrontierEvaluationCoverage(
     if (contract.optionType !== 'PUT' || contract.dte < lattice.dteMin || contract.dte > lattice.dteMax) continue;
     if (Object.hasOwn(complete, contract.optionSymbol) || finalistOptionSymbols.has(contract.optionSymbol)) continue;
     complete[contract.optionSymbol] = {
-      state: 'NOT_SENT_UPSTREAM_REJECT', reasonCode: 'NOT_SELECTED_FOR_FINALIST_REFRESH',
+      state: 'NOT_EVALUATED_SHORTLIST_BOUND', reasonCode: 'NOT_SELECTED_FOR_FINALIST_REFRESH',
     };
   }
   return complete;
@@ -960,9 +960,15 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       receivedAt,
     );
     const historyReceivedAt = config.now();
-    const bars = barsResult.bars.filter((b) => b.symbol === underlying)
+    const observedBars = barsResult.bars.filter((b) => b.symbol === underlying)
       .map((bar) => ({ ...bar, receivedAt: historyReceivedAt }));
-    historyBars = bars;
+    historyBars = observedBars;
+    // Completed-session close features exclude the developing current daily
+    // candle. Keep it in historyBars for the separate current-open gap method.
+    // Features cannot be computed at the earlier request timestamp now that
+    // each response carries its real availability boundary.
+    receivedAt = historyReceivedAt;
+    const bars = observedBars.filter(bar => bar.timestamp.slice(0, 10) < marketDate);
     if (barsResult.complete && bars.length > 0) {
       historyOrigin = 'REAL_PROVIDER';
       historyQuality = 'GOOD';
@@ -998,7 +1004,8 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   }
 
   const latestHistoryBar = [...historyBars]
-    .filter((bar) => Number.isFinite(Date.parse(bar.timestamp)) && Date.parse(bar.timestamp) <= Date.parse(decisionTime))
+    .filter((bar) => Number.isFinite(Date.parse(bar.timestamp)) && bar.timestamp.slice(0, 10) < marketDate
+      && Date.parse(bar.timestamp) <= Date.parse(receivedAt) && Date.parse(bar.receivedAt) <= Date.parse(receivedAt))
     .toSorted((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))[0] ?? null;
   const latestHistoryReceipt = [...historyBars]
     .filter((bar) => Number.isFinite(Date.parse(bar.receivedAt)))
@@ -1007,14 +1014,16 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     contractVersion: 'theta-underlying-technical-features-v1',
     provider: 'ALPACA',
     operationAlias: 'alpaca.get_stock_bars',
-    asOf: decisionTime,
+    asOf: receivedAt,
     providerAsOf: latestHistoryBar?.timestamp ?? null,
     retrievedAt: latestHistoryReceipt?.receivedAt ?? decisionTime,
     sourceState: historyOrigin,
     dataQuality: historyQuality,
     feed: latestHistoryBar?.feed ?? 'iex',
     adjustment: 'split',
-    barCount: historyBars.length,
+    barCount: historyBars.filter(bar => bar.timestamp.slice(0, 10) < marketDate).length,
+    observedBarCount: historyBars.length,
+    completedBarPolicy: 'PRIOR_SESSION_DAILY_BARS_ONLY',
     values: {
       return1d: ret1d, return5d: ret5d, return20d: ret20d, return60d: ret60d,
       movingAverageRelative20d: ma20Rel, movingAverageRelative50d: ma50Rel,
@@ -1783,7 +1792,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
   ): Pick<ThetaShadowCycleResult, 'strategyFrontier' | 'strategyQualityDiagnostics' | 'canonicalFrontierInput' | 'methodInputProvenance'> => {
     const { frontier: strategyFrontier, input: canonicalFrontierInput } = strategyFrontierFor(
       routing, aegis, aegisByCandidateId, candidatesWithCapacity, thetaQ, thetaQDecision, thetaQCandidateEvaluation);
-    const executedMethodIds = deriveRealCurrentWorkerEvidence({ strategyFrontier });
+    const executedMethodIds = deriveRealCurrentWorkerEvidence({ strategyFrontier, orchestration: { routing, thetaQ } });
     const methodInputProvenance = classifyMethodInputProvenance({
       executedMethodIds, routerPortfolioOrigin,
       aegisInputsOrigin: config.aegisInputsOrigin, marketDataOrigin: contractsEvidence.origin,

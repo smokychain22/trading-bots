@@ -6,7 +6,7 @@ import type { HistoricalBar } from '../src/theta/underlying-history.js';
 const bar = (symbol: string, day: number, feed = 'iex'): HistoricalBar => ({
   symbol, timestamp: new Date(Date.UTC(2025, 0, day)).toISOString(), open: 100, high: 101, low: 99, close: 100,
   volume: 10, tradeCount: 1, vwap: 100, provider: 'ALPACA', feed,
-  receivedAt: '2025-02-01T00:00:00.000Z',
+  receivedAt: '2025-01-03T23:59:59.000Z',
 });
 const request = {
   eligibleUnderlyings: ['MSFT', 'AAPL', 'MISSING'], requestWindow: { start: '2025-01-01T00:00:00Z', end: '2025-01-03T23:59:59Z' },
@@ -26,4 +26,10 @@ test('extracts deterministic eligible PIT bars with request provenance and missi
 
 test('rejects a request whose retrieval chronology is invalid', () => {
   assert.throws(() => extractHistoricalBars([], { ...request, asOf: '2025-03-01T00:00:00Z' }), /start <= end <= asOf <= retrievedAt/);
+});
+
+test('late received historical bars cannot supply an earlier decision', () => {
+  const result = extractHistoricalBars([{ ...bar('AAPL', 1), receivedAt: '2025-02-01T00:00:00Z' }], request);
+  assert.equal(result.bars.length, 0);
+  assert.ok(result.missingUnderlyings.includes('AAPL'));
 });

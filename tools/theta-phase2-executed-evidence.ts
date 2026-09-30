@@ -33,6 +33,22 @@ const body={version:'theta-phase2-executed-evidence-v1',observedAt:new Date().to
 const receipt={...body,artifactHash:createHash('sha256').update(JSON.stringify(body)).digest('hex')};
 const output=resolve('docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json');
 mkdirSync(dirname(output),{recursive:true});writeFileSync(output,JSON.stringify(receipt,null,2)+'\n');
+// Refresh only already-reviewed engineering rows. A failed rerun invalidates
+// the old receipt and never silently preserves a previous PASS.
+const registerPath='docs/operations/THETA_PHASE2_COMPLETION_REGISTER.json';
+const register=JSON.parse(readFileSync(registerPath,'utf8'));
+for(const row of register.requirements){
+  const result=results.find(result=>result.requirementId===row.ID);
+  if(!result||row.CLOSURE_STATE!=='CLOSED_ENGINEERING')continue;
+  row.TEST_RESULT={...result,command:body.command,artifactPath:'docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json',artifactHash:receipt.artifactHash};
+  if(!body.executionSucceeded||result.state!=='PASS'){
+    row.CLOSURE_STATE=row.CURRENT_STATUS='EVIDENCE_INVALIDATED';
+    row.BLOCKER_CLASS='EXECUTED_REQUIREMENT_NOT_PROVEN';
+  }
+}
+register.PHASE2_CODE_SOLVABLE_COMPLETE=register.requirements.filter((row:{CODE_SOLVABLE:boolean;CLOSURE_STATE:string})=>row.CODE_SOLVABLE&&row.CLOSURE_STATE==='CLOSED_ENGINEERING').length;
+register.PHASE2_CODE_SOLVABLE_REMAINING=register.PHASE2_CODE_SOLVABLE-register.PHASE2_CODE_SOLVABLE_COMPLETE;
+writeFileSync(registerPath,JSON.stringify(register,null,2)+'\n');
 console.log(JSON.stringify({output,executionSucceeded:body.executionSucceeded,passed:body.passed,failed:body.failed,
   requirements:results.map(row=>({id:row.requirementId,state:row.state,blockers:row.blockers}))}));
 if(!body.executionSucceeded||results.some(result=>result.state!=='PASS'))process.exitCode=1;

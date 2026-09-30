@@ -18,7 +18,7 @@
     "worker:windows:uninstall": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/windows/uninstall-theta-local-worker.ps1",
     "worker:deployment-readiness": "node --import tsx tools/worker-deployment-readiness.ts",
     "dev": "tsx watch src/index.ts",
-    "test": "tsx --test tests/**/*.test.ts",
+    "test": "node tools/run-node-tests.mjs",
     "lint": "eslint src tests public/assets",
     "test:browser": "playwright test",
     "scan:security": "node tools/security-scan.mjs",

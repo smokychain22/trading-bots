@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { candidateRankOrder } from '../src/theta/canonical-strategy-frontier.js';
 
 /**
  * Phase 1 (1H): proves candidateId is only a final, deterministic tiebreak
  * among candidates already tied on paretoRank and unknownEvidence.length --
- * never a driver of which economically-different candidate wins. Reimplements
- * the exact comparator from canonical-strategy-frontier.ts:rankCandidates()
- * against minimal fixtures rather than importing the real (Codex-owned,
- * read-only for this session) module.
+ * never a driver of which economically-different candidate wins. Exercises
+ * the actual Production comparator, not a duplicate implementation.
  */
 interface Fixture {
   readonly candidateId: string;
@@ -16,9 +15,9 @@ interface Fixture {
 }
 
 function sortLikeRankCandidates(candidates: readonly Fixture[]): readonly Fixture[] {
-  return candidates.toSorted((a, b) => (a.paretoRank - b.paretoRank)
-    || (a.unknownEvidenceLength - b.unknownEvidenceLength)
-    || a.candidateId.localeCompare(b.candidateId));
+  const normalized = (candidate: Fixture) => ({ ...candidate,
+    unknownEvidence: Array.from({ length: candidate.unknownEvidenceLength }, (_, index) => `UNKNOWN_${index}`) });
+  return candidates.toSorted((a, b) => candidateRankOrder(normalized(a), normalized(b)));
 }
 
 test('CORE CLAIM: a strictly better paretoRank always wins, even against a lexically-earlier ID', () => {
@@ -40,4 +39,5 @@ test('candidateId is used only as the final tiebreak among truly-tied candidates
   const second: Fixture = { candidateId: 'ZZZ', paretoRank: 1, unknownEvidenceLength: 0 };
   const [winner] = sortLikeRankCandidates([second, first]);
   assert.equal(winner.candidateId, 'AAA');
+  assert.deepEqual(sortLikeRankCandidates([first, second]), sortLikeRankCandidates([second, first]));
 });

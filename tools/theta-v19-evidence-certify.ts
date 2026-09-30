@@ -4,9 +4,10 @@ import { spawnSync } from 'node:child_process';
 import { buildV19EvidenceCertification, v19RequiredEvidenceFiles, v19RequiredTestFiles,
   v19ScenarioEvidence } from '../src/operations/v19-evidence-certification.js';
 import { classifyLockedWorker } from '../src/operations/premarket-certification-plan.js';
+import type { ExecutedTestEvent } from '../src/operations/executed-requirement-evidence.js';
 
 const run = (command: string, args: readonly string[], timeout = 300_000) => spawnSync(command, [...args], {
-  encoding: 'utf8', timeout, windowsHide: true,
+  encoding: 'utf8', timeout, windowsHide: true, maxBuffer: 16 * 1024 * 1024,
 });
 const git = (...args: string[]) => (run('git', args, 30_000).stdout.trim().split(/\r?\n/).at(-1) ?? '');
 const sourceSha = git('rev-parse', 'HEAD');
@@ -17,10 +18,16 @@ for (const item of v19ScenarioEvidence) {
     fileAuditFailures.push(`${item.testFile}#${item.testId}`);
   }
 }
+const executedTests: ExecutedTestEvent[] = [];
 const testResults = Object.fromEntries(v19RequiredTestFiles.map((file) => {
   if (!existsSync(file)) return [file, false];
-  const result = run(process.execPath, ['--import', 'tsx', '--test', file]);
-  return [file, result.status === 0];
+  const result = run(process.execPath, ['--import', 'tsx', '--test',
+    '--test-reporter=./tools/theta-test-evidence-reporter.mjs', file]);
+  const events = result.stdout.split(/\r?\n/).filter(line => line.startsWith('{'))
+    .map(line => JSON.parse(line) as ExecutedTestEvent);
+  executedTests.push(...events);
+  return [file, result.status === 0 && !result.error && events.some(event => event.state === 'PASS')
+    && !events.some(event => event.state === 'FAIL')];
 }));
 const unknown = run(process.execPath, ['--import', 'tsx', 'tools/theta-pre-vps-unknown-audit.ts']);
 const regression = run(process.execPath, ['--import', 'tsx', 'tools/theta-historical-regressions.ts']);
@@ -39,7 +46,9 @@ if (process.platform === 'win32') {
   } catch { runtimeAlignmentState = 'MISALIGNED'; }
 }
 const receipt = buildV19EvidenceCertification({ sourceSha, sourceClean, runtimeReceiptHash, runtimeAlignmentState,
-  fileAuditFailures, testResults, unknownAuditPass: unknown.status === 0,
+  fileAuditFailures, testResults, executedTests, unknownAuditPass: unknown.status === 0,
   regressionAuditPass: regression.status === 0 });
 process.stdout.write(`${JSON.stringify(receipt)}\n`);
-if (receipt.FINAL_CERTIFICATION !== 'PASS') process.exitCode = 1;
+// This legacy index cannot grant global certification. Requirement-specific
+// executed evidence belongs in the current phase completion registers.
+process.exitCode = receipt.FINAL_CERTIFICATION === 'FAIL' ? 1 : 2;

@@ -268,7 +268,7 @@ async function main(): Promise<number> {
   let realEvidence: readonly string[] = [];
   try {
     const sourceSha = currentImmutableSourceSha();
-    const derived = deriveRealCurrentWorkerEvidence({ strategyFrontier: result.strategyFrontier });
+    const derived = deriveRealCurrentWorkerEvidence({ strategyFrontier: result.strategyFrontier, orchestration: result.orchestration });
     // Phase 1 Zero-Unknown Reclosure Pass 3 source-final (items 11-13): the
     // old broad `aegisInputsOrigin === 'CALLER_MANUAL'` exclusion (Pass 2)
     // is REMOVED, not kept as a second, competing reality rule. The single

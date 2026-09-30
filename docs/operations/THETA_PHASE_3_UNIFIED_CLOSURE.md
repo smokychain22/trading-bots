@@ -1,5 +1,38 @@
 # THETA Phase 3 Unified Closure Receipt
 
+## Current correction, 2026-10-01
+
+The September 29 receipt below is historical and cannot certify the current
+Phase-3 denominator. Current source review disproved several prior assumptions:
+
+- Linux CI shell expansion omitted top-level Node test files. The canonical test
+  command now discovers files recursively in Node, with an executed discovery test.
+- Unrefreshed Q candidates were counted as evaluated when claiming GLOBAL_WAIT.
+  Current coverage distinguishes shortlist bounds, missing responses and evaluated
+  economic rejections. Incomplete searches become SYSTEM_HOLD with exact counts.
+- Frontier presence did not prove the router or Q economics ran. Method provenance
+  now requires their actual outputs, independently of candidate enumeration.
+- Daily feature extraction ignored receipt time and could use a developing daily
+  candle. Current extraction enforces availability and uses prior-session daily bars.
+- The old V19 marker round-trip and global test status were self-certification.
+  Declared routes and strategy cells now remain NOT_PROVEN without executed evidence.
+- The lexical/Pareto ordering test duplicated the comparator. It now invokes the
+  actual canonical comparator.
+
+CURRENT_PHASE_3_STATE = REQUIREMENT_RECONCILIATION_IN_PROGRESS
+
+CURRENT_WORKER_PROOF = NOT_CLAIMED_FOR_THESE_CHANGES
+
+The active entry selector is `buildCanonicalStrategyFrontier`.
+`resolveCanonicalDecisionAuthority` is its persistence handoff, not another selector.
+RV20 is real Production regime context. Momentum returns are validated and archived
+but are not scored by ownership_v0. H/D input roles retain shadow authority.
+
+The older zero-blocker count is superseded by this requirement-level review. No
+trading policy threshold, execution permission or worker was changed by this pass.
+
+## Historical receipt retained verbatim
+
 Receipt date: 2026-09-29
 
 START_SHA = 3967973af383be3f287ff5fd954993aa7bbfdfff

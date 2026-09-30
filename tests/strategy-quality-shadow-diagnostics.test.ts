@@ -10,7 +10,8 @@ const NOW = '2026-09-19T15:00:00.000Z';
 const sampleHistoryBars=Array.from({length:70},(_,index):HistoricalBar=>{
   const timestamp=new Date(Date.UTC(2026,6,index+1)).toISOString();
   const close=100+index+(index%2===0?1:-1);
-  return {symbol:'AAPL',timestamp,open:close-0.5,high:close+1,low:close-1,close,volume:1_000_000};
+  return {symbol:'AAPL',timestamp,open:close-0.5,high:close+1,low:close-1,close,volume:1_000_000,
+    receivedAt:timestamp,provider:'ALPACA',feed:'iex',tradeCount:1,vwap:close};
 });
 
 const contract = (symbol:string,expiration:string,strike:number,bid:number,ask:number):NormalizedOptionContract =>

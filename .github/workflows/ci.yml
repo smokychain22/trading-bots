@@ -50,7 +50,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run check
-      - run: npm test
+      - run: npm test -- --evidence=.ci-test-evidence/node-suite.jsonl
       - run: npm run build
       - run: npm run scan:security
       - run: npm run storage:git-policy

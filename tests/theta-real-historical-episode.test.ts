@@ -70,10 +70,10 @@ test('REAL_HISTORICAL_EVIDENCE_TEST: the actual Sep24 Q_READY object (not a fixt
   // THETA_HOLD_STRIKE and THETA_DEFINED_RISK were genuinely evaluated
   // (real candidates exist), so their dependent methods are real evidence.
   assert.ok(evidence.includes('CURRENT_DECISION_STATE'));
-  assert.ok(evidence.includes('STRATEGY_APPLICABILITY_ROUTER'));
+  assert.ok(!evidence.includes('STRATEGY_APPLICABILITY_ROUTER'), 'candidate-only archive has no router output proof');
   assert.ok(evidence.includes('CANONICAL_ENTRY_SELECTION'));
   assert.ok(evidence.includes('CONVENTIONAL_CANDIDATE_ENUMERATION'));
-  assert.ok(evidence.includes('Q_STRUCTURAL_ECONOMIC_DECISION'));
+  assert.ok(!evidence.includes('Q_STRUCTURAL_ECONOMIC_DECISION'), 'candidate-only archive has no Q economic output proof');
   assert.ok(evidence.includes('AEGIS_RISK_PERMISSION'), 'real aegisState="HARD_VETO" was genuinely present that day');
   assert.ok(evidence.includes('CONSTRAINED_QUANTITY_SIZING'), 'real sizing.quantity=0 was genuinely present that day');
   // Real, historically true absence: no stock was held on Sep24 (Phase 2

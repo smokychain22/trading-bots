@@ -6,7 +6,7 @@ import type { HistoricalBar } from '../src/theta/underlying-history.js';
 const point = (symbol: string, day: number, close: number): HistoricalBar => ({
   symbol, timestamp: new Date(Date.UTC(2025, 0, day)).toISOString(), open: close, high: close, low: close,
   close, volume: 100, tradeCount: 1, vwap: close, provider: 'ALPACA', feed: 'iex',
-  receivedAt: new Date(Date.UTC(2025, 0, 20)).toISOString(),
+  receivedAt: new Date(Date.UTC(2025, 0, day)).toISOString(),
 });
 
 // Two regimes: days 1-8 AAA rises while BBB falls (negative correlation); days
