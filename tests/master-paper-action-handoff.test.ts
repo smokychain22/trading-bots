@@ -59,7 +59,7 @@ class Broker implements PaperBrokerAdapter{
 
 const setup=(value:ExecutionOptionQuote|null=quote)=>{const broker=new Broker();const coordinator=new PaperOrderCoordinator(broker,
   new InMemoryPaperOrderStore(),{masterEnabled:true,followerEnabled:false,pauseNewOrders:false});return{broker,
-    handoff:new MasterPaperActionHandoff(new QuoteSource(value),new MasterPaperExecutionOrchestrator(coordinator))};};
+    handoff:new MasterPaperActionHandoff(new QuoteSource(value),new MasterPaperExecutionOrchestrator(coordinator),undefined,()=>now)};};
 
 test('approved canonical action reaches the existing Paper coordinator exactly once',async()=>{
   const {broker,handoff}=setup();const result=await handoff.execute(plan(),now,true);
@@ -82,6 +82,7 @@ test('pre-submit policy rejects a quote that the longer action-plan window would
     new QuoteSource({...quote,providerTimestamp:'2026-09-14T13:59:40.000Z'}),
     new MasterPaperExecutionOrchestrator(coordinator),
     {policyVersion:'pre-submit-test-v1',effectiveAt:'2026-09-01T00:00:00.000Z',maximumAgeMs:10_000},
+    ()=>now,
   );
   const result=await handoff.execute(plan(),now,true);
   assert.equal(result.state,'QUOTE_REJECTED');
@@ -129,13 +130,39 @@ test('Optionomics research quotes cannot become executable Paper quote authority
 
 test('read-only preparation proves the exact pre-submit boundary without a broker or coordinator',async()=>{
   const result=await prepareMasterPaperAction(plan({executionTier:'PAPER_EVIDENCE',expectedAfterCostEv:null,
-    empiricalEconomicsReady:false}),new QuoteSource(quote),now,true);
+    empiricalEconomicsReady:false}),new QuoteSource(quote),now,true,undefined,()=>now);
   assert.equal(result.state,'READY_TO_SUBMIT');
   assert.equal(result.blockers.length,0);
   assert.equal(result.command?.request.symbol,plan().symbol);
   assert.equal(result.command?.request.limit_price,'1.30');
   assert.equal(result.quote?.sourceSemantics,'CONSOLIDATED_NBBO');
   assert.equal(result.quoteAgeMs,0);
+});
+
+test('pre-submit evaluates fresh quotes after the request and includes network delay in age and expiry',async()=>{
+  const later='2026-09-14T14:00:20.000Z';
+  const fresh={...quote,providerTimestamp:'2026-09-14T14:00:19.000Z',receivedAtUtc:later};
+  const policy={policyVersion:'pre-submit-test-v1',effectiveAt:'2026-09-01T00:00:00Z',maximumAgeMs:10_000};
+  const ready=await prepareMasterPaperAction(plan(),new QuoteSource(fresh),now,true,policy,()=>later);
+  assert.equal(ready.state,'READY_TO_SUBMIT');
+  assert.equal(ready.evaluatedAt,later);
+  assert.equal(ready.quoteAgeMs,1000);
+  const stale=await prepareMasterPaperAction(plan(),new QuoteSource({...quote,receivedAtUtc:later}),now,true,policy,()=>later);
+  assert.equal(stale.state,'QUOTE_REJECTED');
+  assert.ok(stale.blockers.includes('QUOTE_STALE'));
+  const expired=await prepareMasterPaperAction(plan({decisionExpiresAt:'2026-09-14T14:00:10.000Z'}),
+    new QuoteSource(fresh),now,true,policy,()=>later);
+  assert.equal(expired.state,'BLOCKED');
+  assert.deepEqual(expired.blockers,['DECISION_EXPIRED_DURING_QUOTE_REFRESH']);
+  assert.equal(expired.command,null);
+});
+
+test('pre-submit rejects a backwards or invalid completion clock without trusting the quote clock',async()=>{
+  for(const time of ['invalid','2026-09-14T13:59:59.000Z']) {
+    const result=await prepareMasterPaperAction(plan(),new QuoteSource(quote),now,true,undefined,()=>time);
+    assert.equal(result.state,'BLOCKED');
+    assert.deepEqual(result.blockers,['PRE_SUBMIT_CLOCK_INVALID']);
+  }
 });
 
 test('Paper evidence tier reaches coordinator while empirical EV stays explicitly UNKNOWN',async()=>{

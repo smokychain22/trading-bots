@@ -21,6 +21,10 @@ export interface RuntimeReadOnlyPreSubmitProof {
   readonly quoteProvider: string | null;
   readonly quoteSemantics: string | null;
   readonly quoteAgeMs: number | null;
+  /** Absent in old archives, never inferred from the cycle start. */
+  readonly quoteReceivedAt?: string | null;
+  readonly quoteProviderAt?: string | null;
+  readonly quoteEvaluatedAt?: string | null;
   readonly limitPrice: number | null;
   readonly quoteAgePolicyVersion: string | null;
   readonly brokerMutationSurface: false;

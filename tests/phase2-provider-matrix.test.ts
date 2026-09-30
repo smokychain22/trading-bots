@@ -83,6 +83,26 @@ test('empty terminal page and omitted optional terminal token are valid without 
   }
 });
 
+test('malformed, partial and timed-out later pages cannot certify completed contract or quote enumeration',async()=>{
+  for(const kind of ['contracts','snapshots'] as const) {
+    for(const fault of ['json','partial','token','timeout'] as const) {
+      let calls=0;
+      const cfg={...config(async(_url,init)=>{
+        if(calls++===0)return response({option_contracts:[contract],snapshots:{[contract.symbol]:quote},next_page_token:'next'});
+        if(fault==='json')return new Response('not-json',{status:200});
+        if(fault==='partial')return response({next_page_token:null});
+        if(fault==='token')return response({option_contracts:[],snapshots:{},next_page_token:7});
+        return new Promise<Response>((_resolve,reject)=>init?.signal?.addEventListener('abort',
+          ()=>reject(new DOMException('synthetic timeout','AbortError')),{once:true}));
+      }),requestTimeoutMs:20};
+      await assert.rejects(kind==='contracts'?fetchOptionContracts(cfg,params):fetchOptionSnapshots(cfg,snapshotParams),
+        (error:unknown)=>error instanceof AlpacaProviderError
+          &&error.errorClass===(fault==='timeout'?'PROVIDER_TIMEOUT':'MALFORMED_RESPONSE'));
+      assert.equal(calls,2);
+    }
+  }
+});
+
 test('bars cannot inflate independent history through repeated observations or token loops',async()=>{
   const bar={t:at,o:100,h:101,l:99,c:100,v:100,vw:0};
   const input={symbols:['SPY'],timeframe:'1Day',start:at,end:at,feed:'iex',maxPages:3,adjustment:'raw' as const};

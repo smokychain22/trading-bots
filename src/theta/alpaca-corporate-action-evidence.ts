@@ -49,6 +49,7 @@ export interface CorporateActionRead {
   readonly start: string;
   readonly end: string;
   readonly requestedDataQuality: 'all';
+  readonly requestedAt?: string;
   readonly firstObservedAt: string;
   readonly pagesRead: number;
   readonly paginationComplete: boolean;
@@ -64,6 +65,7 @@ export async function readAlpacaCorporateActions(input: {
   readonly end: string;
   readonly observedAt: string;
   readonly maxPages?: number;
+  readonly now?: () => string;
 }): Promise<CorporateActionRead> {
   const host = new URL(input.config.marketDataApiBase);
   if (host.protocol !== 'https:' || host.hostname !== 'data.alpaca.markets') throw new Error('ALPACA_CORPORATE_ACTION_HOST_INVALID');
@@ -82,6 +84,7 @@ export async function readAlpacaCorporateActions(input: {
   let pageToken: string | null = null;
   let pagesRead = 0;
   let paginationComplete = false;
+  let receivedAt = input.observedAt;
   while (pagesRead < maxPages) {
     const url = new URL('/v1/corporate-actions', host);
     url.searchParams.set('symbols', symbols.join(','));
@@ -95,6 +98,10 @@ export async function readAlpacaCorporateActions(input: {
     }, signal: AbortSignal.timeout(10_000) });
     if (!response.ok) throw new Error(`ALPACA_CORPORATE_ACTION_HTTP_${response.status}`);
     const body = record(await response.json());
+    const pageReceivedAt = (input.now ?? (() => new Date().toISOString()))();
+    if (!Number.isFinite(Date.parse(pageReceivedAt)) || Date.parse(pageReceivedAt) < Date.parse(receivedAt))
+      throw new Error('ALPACA_CORPORATE_ACTION_RECEIPT_TIME_INVALID');
+    receivedAt = pageReceivedAt;
     const families = record(body?.corporate_actions);
     if (families === null) throw new Error('ALPACA_CORPORATE_ACTION_RESPONSE_INVALID');
     for (const [family, rawList] of Object.entries(families)) {
@@ -125,7 +132,7 @@ export async function readAlpacaCorporateActions(input: {
         observations.push({ provider: 'ALPACA', authority: 'ALPACA_BROKER_LIFECYCLE', family, symbol,
           providerIdHash: providerId === null ? null : hash(providerId), payloadHash,
           processDate, exDate, declarationDate, providerKnownAt: null,
-          thetaFirstObservedAt: input.observedAt,
+          thetaFirstObservedAt: receivedAt,
           // Unknown/new action families also need review. Cash dividends are
           // tracked for early-assignment risk but are not an unsupported contract change.
           pendingUnsupported: family !== 'cash_dividends' && [processDate, exDate].some((value) => value !== null && value >= start && value <= end),
@@ -140,7 +147,7 @@ export async function readAlpacaCorporateActions(input: {
     pageToken = next;
   }
   return { version: corporateActionEvidenceVersion, provider: 'ALPACA', operation: 'GET /v1/corporate-actions',
-    symbols, start, end, requestedDataQuality: 'all', firstObservedAt: input.observedAt,
+    symbols, start, end, requestedDataQuality: 'all', requestedAt: input.observedAt, firstObservedAt: receivedAt,
     pagesRead, paginationComplete, negativeCoverageQualified: false, observations };
 }
 

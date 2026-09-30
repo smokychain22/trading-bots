@@ -26,11 +26,14 @@ test('both Paper quote sources scope the pre-submit read to exact OCC expiration
       SPY261009P00500000: { latestQuote: { bp: 0.11, ap: 0.12, bs: 40, as: 35, t: '2026-10-01T14:30:00Z' } },
     }, next_page_token: null });
   }) as typeof fetch;
-  const sources = [new AlpacaExecutionQuoteSource(config(fetchImpl)), new AlpacaIndicativeOptionQuoteSource(config(fetchImpl))];
+  const receivedAt='2026-10-01T14:30:03Z';
+  const sources = [new AlpacaExecutionQuoteSource(config(fetchImpl),()=>receivedAt), new AlpacaIndicativeOptionQuoteSource(config(fetchImpl),()=>receivedAt)];
   for (const source of sources) {
     const quote = await source.getCurrentQuote(plan(), '2026-10-01T14:30:01Z');
     assert.equal(quote?.contractId, 'SPY261009P00500000');
     assert.equal(quote?.sourceSemantics, 'PAPER_INDICATIVE_REFERENCE');
+    assert.equal(quote?.receivedAtUtc,receivedAt);
+    assert.equal(quote?.provenance.requestedAt,'2026-10-01T14:30:01Z');
     assert.deepEqual(quote?.optionIdentity, {
       underlying: 'SPY', optionSymbol: 'SPY261009P00500000', expiration: '2026-10-09', strike: 500,
       optionType: 'PUT', multiplier: 100, contractTradable: true, exerciseStyle: 'american',

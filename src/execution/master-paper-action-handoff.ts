@@ -148,6 +148,7 @@ export interface MasterPaperActionHandoffResult {
 
 export interface MasterPaperActionPreparationResult {
   readonly actionPlanId: string;
+  readonly evaluatedAt: string;
   readonly state: 'BLOCKED' | 'NO_QUOTE' | 'QUOTE_REJECTED' | 'PRICE_REJECTED' | 'READY_TO_SUBMIT';
   readonly blockers: readonly string[];
   readonly command: MasterPaperExecutionCommand | null;
@@ -182,12 +183,14 @@ export async function prepareMasterPaperAction(
   now: string,
   marketOpen: boolean,
   quoteAgePolicy: PreSubmitQuoteAgePolicy = paperBootstrapPreSubmitQuoteAgePolicy,
+  clock:()=>string=()=>new Date().toISOString(),
 ): Promise<MasterPaperActionPreparationResult> {
   const plan=masterPaperActionPlanSchema.parse(raw) as ApprovedMasterPaperActionPlan;
+  let evaluatedAt=now;
   const blocked=(state:Exclude<MasterPaperActionPreparationResult['state'],'READY_TO_SUBMIT'>,
     blockers:readonly string[],quote:ExecutionOptionQuote|null=null,quoteAgeMs:number|null=null,
     pricing:AdaptiveLimitDecision|null=null):MasterPaperActionPreparationResult=>({
-    actionPlanId:plan.actionPlanId,state,blockers,command:null,quote,quoteAgeMs,pricing,
+    actionPlanId:plan.actionPlanId,evaluatedAt,state,blockers,command:null,quote,quoteAgeMs,pricing,
     quoteAgePolicyVersion:quoteAgePolicy.policyVersion,
   });
   const blockers:string[]=[];
@@ -214,17 +217,24 @@ export async function prepareMasterPaperAction(
   }
   const entrySafetyPolicy=plan.decisionAuthority==='NEW_RISK'?verifyPaperEntrySafetyPolicyReceipt(plan.entrySafetyPolicy):null;
   if(plan.decisionAuthority==='NEW_RISK'&&entrySafetyPolicy?.action!=='CLEAR')blockers.push('ENTRY_SAFETY_POLICY_NOT_CLEARED');
-  const maximumQuoteAgeMs=preSubmitMaximumQuoteAgeMs({policy:quoteAgePolicy,now,
+  let maximumQuoteAgeMs=preSubmitMaximumQuoteAgeMs({policy:quoteAgePolicy,now,
     decisionExpiresAt:plan.decisionExpiresAt});
   if(maximumQuoteAgeMs===null)blockers.push('PRE_SUBMIT_QUOTE_AGE_POLICY_INVALID');
   if(blockers.length>0)return blocked('BLOCKED',blockers);
 
   const quote=await quoteSource.getCurrentQuote(plan,now);
+  const completedAt=clock();
+  if (!Number.isFinite(Date.parse(completedAt)) || Date.parse(completedAt)<Date.parse(now))
+    return blocked('BLOCKED',['PRE_SUBMIT_CLOCK_INVALID'],quote);
+  evaluatedAt=completedAt;
+  maximumQuoteAgeMs=preSubmitMaximumQuoteAgeMs({policy:quoteAgePolicy,now:evaluatedAt,
+    decisionExpiresAt:plan.decisionExpiresAt});
+  if(maximumQuoteAgeMs===null)return blocked('BLOCKED',['DECISION_EXPIRED_DURING_QUOTE_REFRESH'],quote);
   if(quote===null)return blocked('NO_QUOTE',['FRESH_TRUSTED_TWO_SIDED_OPTION_QUOTE_NOT_YET_QUALIFIED']);
   const parsedIdentity=plan.optionType===null?null:parseOccOptionSymbol(plan.symbol);
   if(plan.optionType!==null&&(parsedIdentity===null||parsedIdentity.underlying!==plan.underlying
     ||parsedIdentity.optionType!==plan.optionType))return blocked('QUOTE_REJECTED',['OPTION_PLAN_IDENTITY_INVALID'],quote);
-  const qualification=qualifyExecutionOptionQuote({quote,expectedContractId:plan.symbol,nowUtc:now,
+  const qualification=qualifyExecutionOptionQuote({quote,expectedContractId:plan.symbol,nowUtc:evaluatedAt,
     maximumAgeMs:maximumQuoteAgeMs as number,marketOpen,usage:'MASTER_PAPER',
     expectedOptionIdentity:parsedIdentity===null?null:{underlying:parsedIdentity.underlying,optionSymbol:plan.symbol,
       expiration:parsedIdentity.expiration,strike:parsedIdentity.strike,optionType:parsedIdentity.optionType,
@@ -254,8 +264,8 @@ export async function prepareMasterPaperAction(
     accountVerified:plan.accountVerified,optionsCapabilityVerified:plan.optionsCapabilityVerified,aegisState:plan.aegisState,
     executionTier:plan.executionTier,canonicalQuantity:plan.canonicalQuantity,paperEvidenceQuantity:plan.paperEvidenceQuantity,
     empiricalEconomicsReady:plan.empiricalEconomicsReady,expectedAfterCostEv:plan.expectedAfterCostEv,
-    now,decisionExpiresAt:plan.decisionExpiresAt,attempt:plan.pricingAttempt+1});
-  return {actionPlanId:plan.actionPlanId,state:'READY_TO_SUBMIT',blockers:[],command,quote,
+    now:evaluatedAt,decisionExpiresAt:plan.decisionExpiresAt,attempt:plan.pricingAttempt+1});
+  return {actionPlanId:plan.actionPlanId,evaluatedAt,state:'READY_TO_SUBMIT',blockers:[],command,quote,
     quoteAgeMs:qualification.quoteAgeMs,pricing,quoteAgePolicyVersion:quoteAgePolicy.policyVersion};
 }
 
@@ -270,18 +280,19 @@ export class MasterPaperActionHandoff {
     private readonly quoteSource: ExecutionOptionQuoteSource,
     private readonly execution: MasterPaperExecutionOrchestrator,
     private readonly quoteAgePolicy: PreSubmitQuoteAgePolicy = paperBootstrapPreSubmitQuoteAgePolicy,
+    private readonly clock:()=>string=()=>new Date().toISOString(),
   ) {}
 
   async execute(raw: ApprovedMasterPaperActionPlan, now: string, marketOpen: boolean): Promise<MasterPaperActionHandoffResult> {
     const plan=masterPaperActionPlanSchema.parse(raw) as ApprovedMasterPaperActionPlan;
-    const prepared=await prepareMasterPaperAction(plan,this.quoteSource,now,marketOpen,this.quoteAgePolicy);
+    const prepared=await prepareMasterPaperAction(plan,this.quoteSource,now,marketOpen,this.quoteAgePolicy,this.clock);
     if(prepared.state!=='READY_TO_SUBMIT'){
       return {actionPlanId:prepared.actionPlanId,state:prepared.state,blockers:prepared.blockers,execution:null};
     }
     if(prepared.command===null||prepared.quote===null||prepared.pricing===null)
       throw new Error('MASTER_PAPER_ACTION_PREPARATION_INVARIANT_FAILED');
     return {actionPlanId:plan.actionPlanId,state:'EXECUTED',blockers:[],execution:await this.execution.execute(prepared.command,{
-      eventType:'INITIAL_LIMIT',eventTime:now,quote:prepared.quote,quoteAgeMs:prepared.quoteAgeMs,
+      eventType:'INITIAL_LIMIT',eventTime:prepared.evaluatedAt,quote:prepared.quote,quoteAgeMs:prepared.quoteAgeMs,
       pricing:prepared.pricing,fillPrice:null,filledQuantity:null,attemptNo:plan.pricingAttempt+1,
       reasonCode:`ORDER_HANDOFF_REFERENCE:${this.quoteAgePolicy.policyVersion}`,
     })};

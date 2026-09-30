@@ -18,7 +18,7 @@ test('positive split evidence is mapped and first-observed, while absence stays 
     assert.equal(request.searchParams.get('data_quality'), 'all');
     return json({ corporate_actions: { forward_splits: [{ id: 'provider-private-id', symbol: 'AAPL',
       process_date: '2026-10-01', ex_date: '2026-10-01' }] }, next_page_token: null });
-  }), symbols: ['AAPL'], start: '2026-09-21', end: '2026-10-21', observedAt });
+  }), symbols: ['AAPL'], start: '2026-09-21', end: '2026-10-21', observedAt, now:()=>observedAt });
   assert.equal(read.paginationComplete, true);
   assert.equal(read.negativeCoverageQualified, false);
   assert.equal(read.observations.length, 1);
@@ -58,6 +58,20 @@ test('unsupported corporate action with missing or invalid effective dates canno
       forward_splits: [{ id: 'undated', symbol: 'SPY', ...dates }],
     } })), symbols: ['SPY'], start: '2026-09-21', end: '2026-10-21', observedAt }), /DATE_INVALID|RELEVANCE_UNKNOWN/);
   }
+});
+
+test('event receipt time is after response acquisition and never backdated to request start', async () => {
+  const completedAt = '2026-09-21T14:00:10.000Z';
+  let bodyRead = false;
+  const read = await readAlpacaCorporateActions({ config: config(async () => ({ ok: true, status: 200,
+    json: async () => { bodyRead=true; return { corporate_actions: { forward_splits: [{ id:'event',symbol:'SPY',ex_date:'2026-10-01' }] } }; },
+  }) as Response), symbols:['SPY'],start:'2026-09-21',end:'2026-10-21',observedAt,
+  now:()=>{assert.equal(bodyRead,true);return completedAt;} });
+  assert.equal(read.requestedAt,observedAt);
+  assert.equal(read.firstObservedAt,completedAt);
+  assert.equal(read.observations[0]?.thetaFirstObservedAt,completedAt);
+  await assert.rejects(readAlpacaCorporateActions({config:config(async()=>json({corporate_actions:{}})),
+    symbols:['SPY'],start:'2026-09-21',end:'2026-10-21',observedAt,now:()=> '2026-09-21T13:59:00Z'}),/RECEIPT_TIME_INVALID/);
 });
 
 test('host, symbol, and date mismatches cannot become evidence', async () => {

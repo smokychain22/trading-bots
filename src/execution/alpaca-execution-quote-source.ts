@@ -35,7 +35,8 @@ function classifyDeliverable(listing: Awaited<ReturnType<typeof fetchOptionContr
  * qualification. Entitlement and missingness fail closed. */
 export class AlpacaExecutionQuoteSource implements ExecutionOptionQuoteSource {
   private sequence=0;
-  constructor(private readonly alpaca:AlpacaProviderConfig){}
+  constructor(private readonly alpaca:AlpacaProviderConfig,
+    private readonly clock:()=>string=()=>new Date().toISOString()){}
 
   async getCurrentQuote(plan:ApprovedMasterPaperActionPlan,now:string):Promise<ExecutionOptionQuote|null>{
     this.sequence+=1;
@@ -44,18 +45,19 @@ export class AlpacaExecutionQuoteSource implements ExecutionOptionQuoteSource {
       if(quote.bid===null||quote.ask===null)return null;
       return {contractVersion:executionOptionQuoteContractVersion,contractId:plan.symbol,providerContractId:plan.symbol,
         bid:quote.bid,ask:quote.ask,bidSize:quote.bidSize,askSize:quote.askSize,providerTimestamp:quote.timestamp,
-        receivedAtUtc:now,receivedAtMonotonic:performance.now(),sequence:this.sequence,provider:'ALPACA',
+        receivedAtUtc:this.clock(),receivedAtMonotonic:performance.now(),sequence:this.sequence,provider:'ALPACA',
         sourceSemantics:'TRUSTED_TWO_SIDED_ORDER_PRICING',connectionState:'CONNECTED',subscriptionState:'ACTIVE',
-        provenance:{authenticated:true,exactContractMapping:true,documentedForOrderPricing:true,feed:quote.feed}};
+        provenance:{authenticated:true,exactContractMapping:true,documentedForOrderPricing:true,feed:quote.feed,requestedAt:now}};
     }
     const filter=exactOptionSnapshotFilter(plan);
     if(filter===null)return null;
-    const [result,contracts]=await Promise.all([
-      fetchOptionSnapshots(this.alpaca,filter),
+    const [snapshotRead,contracts]=await Promise.all([
+      fetchOptionSnapshots(this.alpaca,filter).then(result=>({result,receivedAt:this.clock(),monotonic:performance.now()})),
       fetchOptionContracts(this.alpaca,{underlyingSymbol:filter.underlyingSymbol,
         expirationDateGte:filter.expirationDateGte,expirationDateLte:filter.expirationDateLte,
         optionType:filter.optionType,showDeliverables:true,limit:1000,maxPages:10}),
     ]);
+    const result=snapshotRead.result;
     if(!result.complete||!contracts.complete)return null;
     const quote=result.snapshots.get(plan.symbol);
     const listing=contracts.items.find((item)=>item.symbol===plan.symbol);
@@ -67,10 +69,10 @@ export class AlpacaExecutionQuoteSource implements ExecutionOptionQuoteSource {
         multiplier:listing.multiplier,contractTradable:listing.tradable,exerciseStyle:listing.exerciseStyle,
         deliverableClassification:classifyDeliverable(listing,plan.underlying)},
       bid:quote.bid,ask:quote.ask,bidSize:quote.bidSize,askSize:quote.askSize,providerTimestamp:quote.quoteTimestamp,
-      receivedAtUtc:now,receivedAtMonotonic:performance.now(),sequence:this.sequence,provider:'ALPACA',
+      receivedAtUtc:snapshotRead.receivedAt,receivedAtMonotonic:snapshotRead.monotonic,sequence:this.sequence,provider:'ALPACA',
       source:'BROKER_INDICATIVE',entitlementState:'QUALIFIED',sourceSemantics:'PAPER_INDICATIVE_REFERENCE',
       connectionState:'CONNECTED',subscriptionState:'ACTIVE',provenance:{authenticated:true,exactContractMapping:true,
-        documentedForOrderPricing:false,feed:'INDICATIVE',paperOnly:true,semanticUse:'MASTER_THETA_PAPER_LIMIT_REFERENCE'}};
+        documentedForOrderPricing:false,feed:'INDICATIVE',paperOnly:true,semanticUse:'MASTER_THETA_PAPER_LIMIT_REFERENCE',requestedAt:now}};
   }
 }
 
@@ -81,19 +83,21 @@ export class AlpacaExecutionQuoteSource implements ExecutionOptionQuoteSource {
  */
 export class AlpacaIndicativeOptionQuoteSource implements ExecutionOptionQuoteSource {
   private sequence=0;
-  constructor(private readonly alpaca:AlpacaProviderConfig){}
+  constructor(private readonly alpaca:AlpacaProviderConfig,
+    private readonly clock:()=>string=()=>new Date().toISOString()){}
 
   async getCurrentQuote(plan:ApprovedMasterPaperActionPlan,now:string):Promise<ExecutionOptionQuote|null>{
     if(plan.action==='SELL_STOCK')return null;
     const filter=exactOptionSnapshotFilter(plan);
     if(filter===null)return null;
     this.sequence+=1;
-    const [result,contracts]=await Promise.all([
-      fetchOptionSnapshots(this.alpaca,filter),
+    const [snapshotRead,contracts]=await Promise.all([
+      fetchOptionSnapshots(this.alpaca,filter).then(result=>({result,receivedAt:this.clock(),monotonic:performance.now()})),
       fetchOptionContracts(this.alpaca,{underlyingSymbol:filter.underlyingSymbol,
         expirationDateGte:filter.expirationDateGte,expirationDateLte:filter.expirationDateLte,
         optionType:filter.optionType,showDeliverables:true,limit:1000,maxPages:10}),
     ]);
+    const result=snapshotRead.result;
     if(!result.complete||!contracts.complete)return null;
     const quote=result.snapshots.get(plan.symbol);
     const listing=contracts.items.find((item)=>item.symbol===plan.symbol);
@@ -105,9 +109,9 @@ export class AlpacaIndicativeOptionQuoteSource implements ExecutionOptionQuoteSo
         multiplier:listing.multiplier,contractTradable:listing.tradable,exerciseStyle:listing.exerciseStyle,
         deliverableClassification:classifyDeliverable(listing,plan.underlying)},
       bid:quote.bid,ask:quote.ask,bidSize:quote.bidSize,askSize:quote.askSize,providerTimestamp:quote.quoteTimestamp,
-      receivedAtUtc:now,receivedAtMonotonic:performance.now(),sequence:this.sequence,provider:'ALPACA',
+      receivedAtUtc:snapshotRead.receivedAt,receivedAtMonotonic:snapshotRead.monotonic,sequence:this.sequence,provider:'ALPACA',
       source:'BROKER_INDICATIVE',entitlementState:'QUALIFIED',sourceSemantics:'PAPER_INDICATIVE_REFERENCE',
       connectionState:'CONNECTED',subscriptionState:'ACTIVE',provenance:{authenticated:true,exactContractMapping:true,
-        documentedForOrderPricing:false,feed:'INDICATIVE',paperOnly:true,semanticUse:'MASTER_THETA_PAPER_LIMIT_REFERENCE'}};
+        documentedForOrderPricing:false,feed:'INDICATIVE',paperOnly:true,semanticUse:'MASTER_THETA_PAPER_LIMIT_REFERENCE',requestedAt:now}};
   }
 }

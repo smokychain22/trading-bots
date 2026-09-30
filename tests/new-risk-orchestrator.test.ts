@@ -417,7 +417,7 @@ itMockedProviderRealCodePath('a delta-UNKNOWN contract is excluded from the latt
 });
 
 itMockedProviderRealCodePath('a stale option quote is excluded from the lattice call and recorded as WAIT/WAIT_LIQUIDITY, NEVER as PASS -- never sent to Python', async () => {
-  const staleTimestamp = new Date(Date.now() - 3600_000).toISOString(); // 1 hour old
+  const staleTimestamp = new Date(Date.parse(NOW) - 3600_000).toISOString(); // 1 hour before the fixed decision time
   const result = await runNewRiskOrchestration(bridge(), baseRequest({
     candidates: [candidate('C1', { contract: contract({ optionSymbol: 'C1', quoteTimestamp: staleTimestamp }) })],
   }));

@@ -325,7 +325,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       const start=observedAt.slice(0,10);
       const end=new Date(Date.parse(`${start}T00:00:00Z`)+45*86_400_000).toISOString().slice(0,10);
       const read=await readAlpacaCorporateActions({config:input.alpaca,
-        symbols:corporateActionSymbols,start,end,observedAt});
+        symbols:corporateActionSymbols,start,end,observedAt,now:input.now});
       corporateActionRead=read;
       await persistAlpacaCorporateActionRead(input.pool,read);
       if(!read.paginationComplete)runtimeSafetyBlockers.push('ALPACA_CORPORATE_ACTION_PAGINATION_INCOMPLETE');
@@ -396,7 +396,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   const actionPlansBlocked:string[]=[...runtimeSafetyBlockers];
   const readOnlyPreSubmitProofs:ReadOnlyPreSubmitProof[]=[];
   const entrySafetyBySymbol=new Map<string,RuntimeFirstPaperSymbolEvidence['entrySafetyPolicy']>();
-  const readOnlyQuoteSource=input.readOnlyPreSubmitPreview===true?new AlpacaExecutionQuoteSource(input.alpaca):null;
+  const readOnlyQuoteSource=input.readOnlyPreSubmitPreview===true?new AlpacaExecutionQuoteSource(input.alpaca,input.now):null;
   const evidenceStore=new PostgresShadowEvidenceRuntimeStore(input.pool);
   for(const member of scan.results){
     if(member.cycle?.fusionSnapshot===null||member.cycle===null) continue;
@@ -516,12 +516,14 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
           {botInstanceId:runtimeContext.botInstanceId,underlyingId:assembled.plan.underlyingId}))actionPlansReady++;
         if(readOnlyQuoteSource!==null){
           try{
-            const prepared=await prepareMasterPaperAction(assembled.plan,readOnlyQuoteSource,planNow,true);
+            const prepared=await prepareMasterPaperAction(assembled.plan,readOnlyQuoteSource,planNow,true,undefined,input.now);
             readOnlyPreSubmitProofs.push({symbol:member.symbol,planState:'READY',planBlockers:[],
               preSubmitState:prepared.state==='READY_TO_SUBMIT'?'READY_TO_SUBMIT_BUT_DISABLED':prepared.state,
               preSubmitBlockers:prepared.blockers,optionSymbol:assembled.plan.symbol,
               quoteProvider:prepared.quote?.provider??null,quoteSemantics:prepared.quote?.sourceSemantics??null,
               quoteAgeMs:prepared.quoteAgeMs,limitPrice:prepared.pricing?.limitPrice??null,
+              quoteReceivedAt:prepared.quote?.receivedAtUtc??null,quoteProviderAt:prepared.quote?.providerTimestamp??null,
+              quoteEvaluatedAt:prepared.evaluatedAt,
               quoteAgePolicyVersion:prepared.quoteAgePolicyVersion,brokerMutationSurface:false});
           }catch(error){
             const providerError=error instanceof AlpacaProviderError;
