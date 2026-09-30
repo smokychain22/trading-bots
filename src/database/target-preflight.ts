@@ -1,3 +1,4 @@
+import { connectOwnedPostgresPool } from './owned-pool-client.js';
 import { Pool } from 'pg';
 
 export interface DatabaseTargetPreflight {
@@ -90,7 +91,7 @@ export async function preflightDatabaseSource(connectionString: string): Promise
     idleTimeoutMillis: 1_000,
     application_name: 'theta-database-source-preflight',
   });
-  const client = await pool.connect();
+  const client = await connectOwnedPostgresPool(pool);
   try {
     const result = await client.query(`SELECT
       current_setting('server_version') AS version,
@@ -135,7 +136,7 @@ export async function preflightDatabaseTarget(connectionString: string): Promise
     idleTimeoutMillis: 1_000,
     application_name: 'theta-database-target-preflight',
   });
-  const client = await pool.connect();
+  const client = await connectOwnedPostgresPool(pool);
   try {
     const result = await client.query(`SELECT
       current_setting('server_version') AS version,

@@ -29,6 +29,33 @@ const poolOf = (...clients: FakeClient[]): Pool => {
     connect: async () => clients[cursor++] as unknown as PoolClient } as unknown as Pool;
 };
 
+test('observation sink failure cannot mask a committed result or original database failure',async(t)=>{
+  t.mock.method(console,'warn',()=>{});
+  const success=new FakeClient();
+  assert.equal(await withRuntimePostgresClient(poolOf(success),async()=>42,
+    {observe:()=>{throw new Error('private sink detail');}}),42);
+  assert.deepEqual(success.releases,[false]);
+  const failure=Object.assign(new Error('private database detail'),{code:'ECONNRESET'});
+  const client=new FakeClient('SELECT 1',failure);
+  await assert.rejects(withRuntimePostgresClient(poolOf(client),async(c)=>c.query('SELECT 1'),
+    {observe:()=>{throw new Error('sink error');}}),(error:unknown)=>error===failure);
+  assert.deepEqual(client.releases,[true]);
+});
+
+test('checked-out event preserves safe SQLSTATE and operation timing without private error text',async()=>{
+  const observations:RuntimePostgresClientObservation[]=[];
+  const client=new FakeClient();
+  await assert.rejects(withRuntimePostgresClient(poolOf(client),async(c)=>{
+    c.emit('error',Object.assign(new Error('private-host private-user'),{code:'57P01'}));
+  },{observe:(o)=>observations.push(o)}),PostgresCheckedOutClientLostError);
+  assert.equal(observations[0]?.sqlState,'57P01');
+  assert.equal(observations[0]?.socketCode,null);
+  assert.ok(observations[0]?.operationStartedAt);
+  assert.ok(observations[0]?.releasedAt);
+  assert.equal(observations[0]?.discarded,true);
+  assert.doesNotMatch(JSON.stringify(observations),/private-host|private-user/);
+});
+
 test('Postgres classifier distinguishes temporary availability from permanent SQL and auth faults', () => {
   assert.equal(classifyPostgresRuntimeError({ code: '57P03' }).errorClass, 'TRANSIENT_SERVER_UNAVAILABLE');
   assert.equal(classifyPostgresRuntimeError({ code: '57P01' }).retryableRead, true);
@@ -72,7 +99,8 @@ test('every acquired client is observed and released on success and query failur
   assert.equal(successObservations[0]?.outcome,'SUCCEEDED_RELEASED');
   assert.equal(successObservations[0]?.poolWaitTimeoutMillis,null);
   assert.equal(successObservations[0]?.acquisitionDurationMs,10);
-  assert.equal(successObservations[0]?.checkoutDurationMs,10);
+  assert.equal(successObservations[0]?.operationDurationMs,10);
+  assert.equal(successObservations[0]?.checkoutDurationMs,20);
 
   const failed=new FakeClient('SELECT broken',{code:'42601'});
   const failureObservations:RuntimePostgresClientObservation[]=[];

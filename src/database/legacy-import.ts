@@ -1,3 +1,4 @@
+import { connectOwnedPostgresPool } from './owned-pool-client.js';
 import { z } from 'zod';
 import { Pool } from 'pg';
 
@@ -48,7 +49,7 @@ export async function applyLegacyImportRequest(connectionString: string, input: 
   const request = legacyImportRequestSchema.parse(input);
   const pool = new Pool({ connectionString, max: 1, connectionTimeoutMillis: 8_000, idleTimeoutMillis: 1_000,
     application_name: 'theta-aiven-legacy-staging-import' });
-  const client = await pool.connect();
+  const client = await connectOwnedPostgresPool(pool);
   try {
     if (request.kind === 'START') {
       await client.query('BEGIN');

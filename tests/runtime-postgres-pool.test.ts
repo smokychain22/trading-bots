@@ -41,3 +41,20 @@ test('runtime pool has an explicit bounded connection budget and identity',async
     assert.equal(pool.options.application_name,'theta-budget-test');
   }finally{await pool.end();}
 });
+
+test('a failing telemetry reporter cannot reintroduce uncaught idle or checked-out errors', async () => {
+  const pool=createRuntimePostgresPool('postgres://synthetic@localhost/test',()=>{throw new Error('private reporter failure');});
+  try {
+    const client=new EventEmitter();
+    pool.emit('connect',client as never);
+    assert.doesNotThrow(()=>pool.emit('error',Object.assign(new Error('private'),{code:'57P03'})));
+    assert.doesNotThrow(()=>client.emit('error',Object.assign(new Error('private'),{code:'ECONNRESET'})));
+  } finally {await pool.end();}
+});
+
+test('invalid numeric pool options cannot silently become pg default capacity or an unbounded timeout',()=>{
+  for(const value of [NaN,Infinity,-Infinity,0,-1,1.5]){
+    assert.throws(()=>createRuntimePostgresPool('synthetic',undefined,{maximumConnections:value}),/POOL_MAX_INVALID/);
+    assert.throws(()=>createRuntimePostgresPool('synthetic',undefined,{connectionTimeoutMillis:value}),/CONNECTION_TIMEOUT_INVALID/);
+  }
+});

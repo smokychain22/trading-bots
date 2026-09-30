@@ -1,3 +1,4 @@
+import { connectOwnedPostgresPool } from './owned-pool-client.js';
 import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -59,7 +60,7 @@ export async function validateDatabaseTarget(
     idleTimeoutMillis: 1_000,
     application_name: 'theta-aiven-canonical-validation',
   });
-  const client = await pool.connect();
+  const client = await connectOwnedPostgresPool(pool);
   try {
     for (const { file, sql } of protocolSafe) {
       await client.query('BEGIN');

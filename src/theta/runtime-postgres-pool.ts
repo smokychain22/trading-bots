@@ -12,6 +12,18 @@ export interface RuntimePostgresPoolOptions {
 export function createRuntimePostgresPool(connectionString: string,
   report: (code: string) => void = (code) => { console.warn('THETA_RUNTIME_DATABASE_IDLE_CLIENT_ERROR', code); },
   options: RuntimePostgresPoolOptions = {}): Pool {
+  if (options.maximumConnections !== undefined
+    && (!Number.isSafeInteger(options.maximumConnections) || options.maximumConnections < 1)) {
+    throw new Error('POSTGRES_POOL_MAX_INVALID');
+  }
+  if (options.connectionTimeoutMillis !== undefined
+    && (!Number.isSafeInteger(options.connectionTimeoutMillis) || options.connectionTimeoutMillis < 1)) {
+    throw new Error('POSTGRES_CONNECTION_TIMEOUT_INVALID');
+  }
+  const safeReport = (code: string): void => {
+    try { report(code); }
+    catch { console.warn('POSTGRES_ERROR_REPORTER_FAILED'); }
+  };
   const maximumConnections=Math.max(1,Math.min(4,options.maximumConnections??2));
   const pool = new Pool({ connectionString,
     idleTimeoutMillis: 10_000, maxLifetimeSeconds: 60,
@@ -19,7 +31,7 @@ export function createRuntimePostgresPool(connectionString: string,
     max:maximumConnections,connectionTimeoutMillis:options.connectionTimeoutMillis??8_000 });
   pool.on('error', (error: Error & { code?: unknown }) => {
     const classification = classifyPostgresRuntimeError(error);
-    report(classification.safeCode === 'POSTGRES_UNKNOWN_ERROR'
+    safeReport(classification.safeCode === 'POSTGRES_UNKNOWN_ERROR'
       ? 'POSTGRES_IDLE_CONNECTION_ERROR' : classification.safeCode);
   });
   // Pool-level `error` covers only idle clients. Aiven can terminate a client
@@ -31,7 +43,7 @@ export function createRuntimePostgresPool(connectionString: string,
   pool.on('connect', (client) => {
     client.on('error', (error: Error & { code?: unknown }) => {
       const classification = classifyPostgresRuntimeError(error);
-      report(classification.safeCode === 'POSTGRES_UNKNOWN_ERROR'
+      safeReport(classification.safeCode === 'POSTGRES_UNKNOWN_ERROR'
         ? 'POSTGRES_CHECKED_OUT_CONNECTION_ERROR' : classification.safeCode);
     });
   });

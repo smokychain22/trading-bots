@@ -1,3 +1,4 @@
+import { connectOwnedPostgresPool } from './owned-pool-client.js';
 import { createHash } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
 import { z } from 'zod';
@@ -78,7 +79,7 @@ export async function importLocalForensicChunk(connectionString:string,input:unk
   if(computeLocalForensicChunkHash(unsigned)!==chunkHash)throw codedError('LOCAL_FORENSIC_CHUNK_HASH_MISMATCH');
   const pool=new Pool({connectionString,max:1,connectionTimeoutMillis:8_000,idleTimeoutMillis:1_000,
     application_name:'theta-aiven-local-forensic-import'});
-  const client=await pool.connect();
+  const client=await connectOwnedPostgresPool(pool);
   try{
     await client.query('BEGIN');
     try{

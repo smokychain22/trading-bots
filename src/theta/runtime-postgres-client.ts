@@ -15,6 +15,11 @@ export interface RuntimePostgresPoolState {
 }
 
 export interface RuntimePostgresClientObservation {
+  readonly operationStartedAt: string | null;
+  readonly operationDurationMs: number | null;
+  readonly sqlState: string | null;
+  readonly socketCode: string | null;
+  readonly exceptionFamily: string | null;
   readonly requestedAt: string;
   readonly acquiredAt: string | null;
   readonly releasedAt: string | null;
@@ -34,6 +39,25 @@ export interface RuntimePostgresClientObservation {
   readonly poolAfterRelease: RuntimePostgresPoolState | null;
   readonly discarded: boolean;
   readonly failureSafeCode: string | null;
+}
+
+/** Messages and arbitrary error names can contain credentials. Only bounded
+ * protocol codes and standard exception families are allowed into receipts. */
+function failureDetail(error: unknown): { sqlState: string | null; socketCode: string | null; exceptionFamily: string | null } {
+  const code = errorCode(error);
+  const socketCodes = new Set(['ECONNRESET','ECONNREFUSED','ETIMEDOUT','EPIPE','EAI_AGAIN','ENOTFOUND',
+    'EHOSTUNREACH','ENETUNREACH','ERR_TLS_CERT_ALTNAME_INVALID','CERT_HAS_EXPIRED','DEPTH_ZERO_SELF_SIGNED_CERT']);
+  const name = error instanceof Error ? error.constructor.name : 'UnknownThrowValue';
+  return {sqlState:/^[0-9A-Z]{5}$/.test(code) ? code : null,
+    socketCode:socketCodes.has(code) ? code : null,
+    exceptionFamily:['Error','TypeError','RangeError','SyntaxError','AggregateError'].includes(name) ? name : 'Error'};
+}
+
+function emitObservation(options: RuntimePostgresClientOptions, observation: RuntimePostgresClientObservation): void {
+  // Telemetry failure must not mask the original DB error or turn a committed
+  // write into an apparent failure that a caller might retry.
+  try { options.observe?.(observation); }
+  catch { console.warn('POSTGRES_OBSERVATION_SINK_FAILED'); }
 }
 
 export interface RuntimePostgresClientOptions {
@@ -159,7 +183,8 @@ export async function withRuntimePostgresClient<T>(pool: Pool,
     const failedAtMs=now();
     const acquisitionPath=classifyPostgresAcquisitionPath(pool,before,error);
     const acquisitionDurationMs=Math.max(0,failedAtMs-requestedAtMs);
-    options.observe?.({requestedAt:new Date(requestedAtMs).toISOString(),acquiredAt:null,releasedAt:null,
+    emitObservation(options,{operationStartedAt:null,operationDurationMs:null,...failureDetail(error),
+      requestedAt:new Date(requestedAtMs).toISOString(),acquiredAt:null,releasedAt:null,
       acquisitionDurationMs,checkoutDurationMs:null,acquisitionPath,
       acquisitionFailureClass:classifyPostgresAcquisitionFailure(error,acquisitionPath),poolWaitTimerArmed,
       poolQueueDurationMs:acquisitionPath==='POOL_QUEUE'||acquisitionPath==='IDLE_REUSE'?acquisitionDurationMs:null,
@@ -175,7 +200,8 @@ export async function withRuntimePostgresClient<T>(pool: Pool,
   let broken = false;
   let outcome:PostgresClientObservationOutcome='SUCCEEDED_RELEASED';
   let failureSafeCode:string|null=null;
-  const onError = (): void => { broken = true; };
+  let detail: ReturnType<typeof failureDetail> = {sqlState:null,socketCode:null,exceptionFamily:null};
+  const onError = (error: unknown): void => { broken = true; detail=failureDetail(error); };
   client.on('error', onError);
   try {
     const result = await operation(client, () => { broken = true; });
@@ -184,14 +210,18 @@ export async function withRuntimePostgresClient<T>(pool: Pool,
   } catch (error) {
     outcome='OPERATION_FAILED_RELEASED';
     failureSafeCode=classifyPostgresRuntimeError(error).safeCode;
+    if (!(error instanceof PostgresCheckedOutClientLostError)) detail=failureDetail(error);
     if (classifyPostgresRuntimeError(error).retryableRead || error instanceof PostgresCheckedOutClientLostError
       || error instanceof PostgresCommitOutcomeUnknownError) broken = true;
     throw error;
   } finally {
+    const operationEndedAtMs=now();
     client.removeListener('error', onError);
     client.release(broken);
     const releasedAtMs=now();
-    options.observe?.({requestedAt:new Date(requestedAtMs).toISOString(),acquiredAt:new Date(acquiredAtMs).toISOString(),
+    emitObservation(options,{operationStartedAt:new Date(acquiredAtMs).toISOString(),
+      operationDurationMs:Math.max(0,operationEndedAtMs-acquiredAtMs),...detail,
+      requestedAt:new Date(requestedAtMs).toISOString(),acquiredAt:new Date(acquiredAtMs).toISOString(),
       releasedAt:new Date(releasedAtMs).toISOString(),acquisitionDurationMs:Math.max(0,acquiredAtMs-requestedAtMs),
       checkoutDurationMs:Math.max(0,releasedAtMs-acquiredAtMs),acquisitionPath:classifyPostgresAcquisitionPath(pool,before),
       acquisitionFailureClass:null,poolWaitTimerArmed,

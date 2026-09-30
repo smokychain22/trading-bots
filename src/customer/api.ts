@@ -26,6 +26,7 @@ import {
   startAlpacaOAuth,
 } from "./alpaca-oauth.js";
 import { checkDatabaseReadiness } from "./database-readiness.js";
+import { createSingleFlightRead, readSequentially } from './operator-status-read-batch.js';
 import {
   privatePaperBetaReadiness,
   readLocalWorkerReadiness,
@@ -51,6 +52,22 @@ import { buildR8Readiness, deriveR8ReadinessInput } from "../theta/r8-readiness.
 import { assessReconciliationReadiness, assessRequiredProviderReadiness, assessRuntimeFirstPaperReadiness, buildThetaFirstPaperReadiness,
   type FirstPaperChecks } from "../theta/first-paper-blocker-budget.js";
 import { canonicalPreVpsUnknownAuditSummary } from "../theta/pre-vps-unknown-register.js";
+
+function readStatusDatabase(databaseUrl: string | undefined, pauseNewOrders: boolean) {
+  return readSequentially([
+    async()=>{
+      if(!databaseUrl)return {newEntriesPaused:pauseNewOrders,emergencyExecutionLock:false,
+        brokerSubmissionBlocked:true,reconciliationEnabled:true,managementEnabled:true,source:'DEFAULT',asOf:null,stateVersion:0};
+      const store=new PostgresOperatorControlStore(databaseUrl);
+      try{return await store.current(pauseNewOrders);}finally{await store.close();}
+    },
+    ()=>checkDatabaseReadiness(databaseUrl),()=>readLocalWorkerReadiness(databaseUrl),
+    ()=>readMasterRuntimeEvidence(databaseUrl),()=>readLatestRuntimeBehavior(databaseUrl),
+    ()=>readOutcomeResearchVisibility(databaseUrl),()=>readP2FOperatorStatus(databaseUrl),
+    ()=>readP2GOperatorStatus(databaseUrl),
+  ] as const);
+}
+const statusDatabaseRead = createSingleFlightRead<Awaited<ReturnType<typeof readStatusDatabase>>>();
 
 const simulationSchema = z
   .object({
@@ -522,17 +539,9 @@ export default async function customerHandler(
       const oauth = oauthConfiguration(environment);
       const privateBeta = privatePaperApiKeyConfiguration(environment);
       const connectionConfigured = oauth.configured || privateBeta.configured;
-      const operatorControl=environment.DATABASE_URL ? await (async()=>{
-        const store=new PostgresOperatorControlStore(environment.DATABASE_URL as string);
-        return store.current(environment.PAPER_PAUSE_NEW_ORDERS).finally(()=>store.close());
-      })() : {newEntriesPaused:environment.PAPER_PAUSE_NEW_ORDERS,emergencyExecutionLock:false,
-        brokerSubmissionBlocked:true,reconciliationEnabled:true,managementEnabled:true,source:"DEFAULT",asOf:null,stateVersion:0};
-      const [database,localWorker,runtimeEvidence,runtimeBehavior,outcomeResearch,p2fStatus,p2gStatus] = await Promise.all([
-        checkDatabaseReadiness(environment.DATABASE_URL),readLocalWorkerReadiness(environment.DATABASE_URL),
-        readMasterRuntimeEvidence(environment.DATABASE_URL),readLatestRuntimeBehavior(environment.DATABASE_URL),
-        readOutcomeResearchVisibility(environment.DATABASE_URL),readP2FOperatorStatus(environment.DATABASE_URL),
-        readP2GOperatorStatus(environment.DATABASE_URL),
-      ]);
+      const [operatorControl,database,localWorker,runtimeEvidence,runtimeBehavior,outcomeResearch,p2fStatus,p2gStatus] =
+        await statusDatabaseRead(JSON.stringify([environment.DATABASE_URL,environment.PAPER_PAUSE_NEW_ORDERS]),
+          ()=>readStatusDatabase(environment.DATABASE_URL,environment.PAPER_PAUSE_NEW_ORDERS));
       const executionControl = {
         masterEnabled: environment.MASTER_PAPER_EXECUTION_ENABLED && !operatorControl.emergencyExecutionLock,
         followerEnabled: environment.FOLLOWER_PAPER_EXECUTION_ENABLED,

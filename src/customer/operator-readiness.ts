@@ -2,6 +2,7 @@ import type { Environment } from "../config/environment.js";
 import { missingProviderVariables } from "../config/environment.js";
 import { checkOptionomics, type CheckResult } from "../providers/readiness.js";
 import { Pool } from "pg";
+import { readSequentially } from './operator-status-read-batch.js';
 import type { RuntimeFirstPaperEvidence } from "../theta/runtime-behavior-diagnostic.js";
 
 export type OptionomicsReadiness = {
@@ -369,11 +370,11 @@ export async function readP2FOperatorStatus(databaseUrl?:string):Promise<P2FOper
     application_name:'theta-operator-p2f-status'});
   try{const relation=await pool.query(`SELECT to_regclass('research.optionomics_provider_qualification_receipt') IS NOT NULL AS ready`);
     if(relation.rows[0]?.ready!==true)return empty;
-    const [q,a]=await Promise.all([pool.query(`SELECT secret_state,attempted_at,real_payload_count,stale_capability_count,evidence_hash,
+    const [q,a]=await readSequentially([()=>pool.query(`SELECT secret_state,attempted_at,real_payload_count,stale_capability_count,evidence_hash,
       (SELECT count(*) FROM jsonb_array_elements(families_json) f WHERE f->>'state'='QUALIFIED') AS qualified,
       (SELECT count(*) FROM jsonb_array_elements(families_json) f WHERE f->>'state' IN ('BLOCKED','INVALID','UNKNOWN')) AS blocked
       FROM research.optionomics_provider_qualification_receipt ORDER BY attempted_at DESC LIMIT 1`),
-      pool.query(`SELECT event_type,severity,first_seen_at,last_seen_at,occurrence_count,state,source,related_ref
+      ()=>pool.query(`SELECT event_type,severity,first_seen_at,last_seen_at,occurrence_count,state,source,related_ref
         FROM ops.theta_alert_event WHERE state='ACTIVE' ORDER BY CASE severity WHEN 'CRITICAL' THEN 1 WHEN 'WARNING' THEN 2 ELSE 3 END,last_seen_at DESC LIMIT 50`)]);
     const row=q.rows[0];const iso=(v:unknown)=>v instanceof Date?v.toISOString():v==null?null:String(v);
     return {optionomics:row?{secret_state:String(row.secret_state),last_check:iso(row.attempted_at),qualified_capabilities:Number(row.qualified),
@@ -398,13 +399,13 @@ export async function readP2GOperatorStatus(databaseUrl?:string):Promise<P2GOper
     application_name:'theta-operator-p2g-status'});
   try{const relation=await pool.query(`SELECT to_regclass('research.theta_synthetic_lifecycle_receipt') IS NOT NULL AS ready`);
     if(relation.rows[0]?.ready!==true)return empty;
-    const [simulation,preview,families,hold,alerts]=await Promise.all([
-      pool.query(`SELECT scenario_id,terminal_state,whole_chain_net_pnl,capital_days,content_hash FROM research.theta_synthetic_lifecycle_receipt ORDER BY simulated_at DESC LIMIT 1`),
-      pool.query(`SELECT result,blocker_codes,previewed_at,receipt_hash FROM research.theta_paper_order_preview_receipt ORDER BY previewed_at DESC LIMIT 1`),
-      pool.query(`SELECT DISTINCT ON(family) family,status,qualified,sample_count,missing_field_count,stale_count,observed_at
+    const [simulation,preview,families,hold,alerts]=await readSequentially([
+      ()=>pool.query(`SELECT scenario_id,terminal_state,whole_chain_net_pnl,capital_days,content_hash FROM research.theta_synthetic_lifecycle_receipt ORDER BY simulated_at DESC LIMIT 1`),
+      ()=>pool.query(`SELECT result,blocker_codes,previewed_at,receipt_hash FROM research.theta_paper_order_preview_receipt ORDER BY previewed_at DESC LIMIT 1`),
+      ()=>pool.query(`SELECT DISTINCT ON(family) family,status,qualified,sample_count,missing_field_count,stale_count,observed_at
         FROM research.optionomics_family_health_observation ORDER BY family,observed_at DESC`),
-      pool.query(`SELECT hold_evidence_state,observed_at FROM research.theta_action_inaction_frontier ORDER BY observed_at DESC LIMIT 1`),
-      pool.query(`SELECT event_type,severity,state,COALESCE(evidence_json->>'lifecycleTransition','UNKNOWN') AS transition,
+      ()=>pool.query(`SELECT hold_evidence_state,observed_at FROM research.theta_action_inaction_frontier ORDER BY observed_at DESC LIMIT 1`),
+      ()=>pool.query(`SELECT event_type,severity,state,COALESCE(evidence_json->>'lifecycleTransition','UNKNOWN') AS transition,
         first_seen_at,last_seen_at,occurrence_count,source,related_ref FROM ops.theta_alert_event ORDER BY last_seen_at DESC LIMIT 50`)]);
     const iso=(value:unknown)=>value instanceof Date?value.toISOString():value==null?null:String(value),s=simulation.rows[0],p=preview.rows[0],h=hold.rows[0];
     return {simulation:s?{state:'COMPLETE',scenario_id:String(s.scenario_id),terminal_state:String(s.terminal_state),

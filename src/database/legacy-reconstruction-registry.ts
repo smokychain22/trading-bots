@@ -1,3 +1,4 @@
+import { connectOwnedPostgresPool } from './owned-pool-client.js';
 import { createHash } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
 import { z } from 'zod';
@@ -73,7 +74,7 @@ export async function importLegacyReconstructionManifest(connectionString:string
     throw codedError('LEGACY_RECONSTRUCTION_DUPLICATE_TARGET_RELATION');
   const pool=new Pool({connectionString,max:1,connectionTimeoutMillis:8_000,idleTimeoutMillis:1_000,
     application_name:'theta-aiven-legacy-reconstruction-import'});
-  const client=await pool.connect();
+  const client=await connectOwnedPostgresPool(pool);
   try{
     await client.query('BEGIN');
     try{

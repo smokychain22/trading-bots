@@ -87,6 +87,9 @@ let poolConnectionFailed = false;
 const pool = createRuntimePostgresPool(environment.DATABASE_URL,()=>{poolConnectionFailed=true;});
 const observeDatabaseRead=(operation:string)=>(observation:RuntimePostgresClientObservation):void=>{
   spoolEvidence('DATABASE_CLIENT_OBSERVED',{operation,...observation,
+    cycleId:probeCycleId,workerSha:sourceSha,queryClass:'READ_ONLY_SINGLE_QUERY',
+    queryStartedAt:observation.operationStartedAt,queryDurationMs:observation.operationDurationMs,
+    transactionState:'AUTOCOMMIT_READ',clientAcquired:observation.acquiredAt!==null,
     // The shared checkout observer measures acquisition and query lifetime,
     // not individual socket phases. Never infer those missing boundaries.
     dnsMs:null,tcpMs:null,tlsMs:null,pgStartupMs:null,brokerMutationAllowed:false});

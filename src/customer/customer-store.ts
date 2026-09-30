@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import { createRuntimePostgresPool } from "../theta/runtime-postgres-pool.js";
+import { withRuntimePostgresTransaction } from "../theta/runtime-postgres-client.js";
 import type { EncryptedSecret } from "./customer-security.js";
 import { paperCopyPolicySchema, recommendedCopyPolicy, storedCopyPolicy, type PaperCopyPolicy } from "./copy-policy.js";
 
@@ -226,9 +227,7 @@ export class PostgresCustomerStore implements CustomerStore {
   }
 
   async saveFollower(input: SaveFollowerInput) {
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
+    await withRuntimePostgresTransaction(this.pool, async (client) => {
       // Serialize credential replacement with owner role designation. JSON field
       // access keeps this additive deployment compatible before migration 010.
       const current = await client.query(`SELECT provider_account_ref,
@@ -302,16 +301,12 @@ export class PostgresCustomerStore implements CustomerStore {
            state = EXCLUDED.state, updated_at = now()`,
         [input.customerId, follower.rows[0].follower_account_id, input.accountReady && !isMaster ? "READY" : "BLOCKED"],
       );
-      await client.query("COMMIT");
-      const saved = await this.getFollower(input.customerId);
-      if (!saved) throw new Error("FOLLOWER_PERSISTENCE_FAILED");
-      return saved;
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
+    });
+    // Read back only after release. A max-one pool must not acquire a second
+    // client while the committed transaction's client is still checked out.
+    const saved = await this.getFollower(input.customerId);
+    if (!saved) throw new Error("FOLLOWER_PERSISTENCE_FAILED");
+    return saved;
   }
 
   async getFollower(customerId: string) {
@@ -418,9 +413,7 @@ export class PostgresCustomerStore implements CustomerStore {
   async saveParticipation(customerId: string, allocationUsd: number, selectedPolicy?: PaperCopyPolicy) {
     const policy = paperCopyPolicySchema.parse(selectedPolicy ?? recommendedCopyPolicy(allocationUsd));
     if (policy.allocation_usd !== allocationUsd) throw new Error("ALLOCATION_POLICY_MISMATCH");
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
+    await withRuntimePostgresTransaction(this.pool, async (client) => {
       const follower = await client.query(
         `SELECT follower_account_id FROM copy.follower_account AS f
          WHERE customer_id = $1 AND disconnected_at IS NULL AND account_ready = true
@@ -454,13 +447,7 @@ export class PostgresCustomerStore implements CustomerStore {
          WHERE customer_id = $1`,
         [customerId, allocationUsd, insertedPolicy.rows[0].policy_version],
       );
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
+    });
     const follower = await this.getFollower(customerId);
     if (!follower) throw new Error("FOLLOWER_NOT_CONNECTED");
     return follower;
@@ -469,9 +456,7 @@ export class PostgresCustomerStore implements CustomerStore {
   async setParticipation(customerId:string,command:"PAUSE_NEW_TRADES"|"RESUME_NEW_TRADES"){
     const participation=command==="PAUSE_NEW_TRADES"?"STOP_NEW_TRADES_MANAGE_EXISTING":"COPY_NEW_AND_MANAGE";
     const customerState=command==="PAUSE_NEW_TRADES"?"STOP_NEW_ENTRIES":"ACTIVE";
-    const client=await this.pool.connect();
-    try{
-      await client.query("BEGIN");
+    await withRuntimePostgresTransaction(this.pool, async (client) => {
       const follower=await client.query(`UPDATE copy.follower_account SET participation=$2,updated_at=now()
         WHERE customer_id=$1 AND account_role='FOLLOWER_THETA_PAPER' AND account_ready=true
           AND disconnected_at IS NULL RETURNING follower_account_id`,[customerId,participation]);
@@ -483,8 +468,7 @@ export class PostgresCustomerStore implements CustomerStore {
       await client.query(`INSERT INTO copy.operator_audit_event(operator_subject,action,target_type,target_id,result,metadata_json)
         VALUES($1,$2,'FOLLOWER_ACCOUNT',$3,'APPLIED',$4::jsonb)`,[customerId,command,
         follower.rows[0].follower_account_id,JSON.stringify({orderSubmission:'LOCKED'})]);
-      await client.query("COMMIT");
-    }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
+    });
     const result=await this.getFollower(customerId);
     if(!result)throw new Error("FOLLOWER_NOT_CONNECTED");
     return result;
@@ -507,9 +491,7 @@ export class PostgresCustomerStore implements CustomerStore {
   }
 
   async disconnectFollower(customerId: string) {
-    const client = await this.pool.connect();
-    try {
-      await client.query("BEGIN");
+    await withRuntimePostgresTransaction(this.pool, async (client) => {
       await client.query(
         `UPDATE copy.alpaca_oauth_token SET revoked_at = now(), ciphertext = decode('', 'hex')
          WHERE customer_id = $1 AND revoked_at IS NULL`,
@@ -526,13 +508,7 @@ export class PostgresCustomerStore implements CustomerStore {
          WHERE customer_id = $1`,
         [customerId],
       );
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
+    });
   }
 }
 

@@ -1,3 +1,4 @@
+import { connectOwnedPostgresPool } from './owned-pool-client.js';
 import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -45,7 +46,7 @@ export async function migrateDatabaseTarget(
     idleTimeoutMillis: 1_000,
     application_name: 'theta-aiven-canonical-migration',
   });
-  const client = await pool.connect();
+  const client = await connectOwnedPostgresPool(pool);
   const appliedNow: string[] = [];
   try {
     await client.query('SELECT pg_advisory_lock($1)', [863_801_009]);
