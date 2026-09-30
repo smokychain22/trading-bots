@@ -222,7 +222,7 @@ function attachEntryThesis(
       `The selected PUT strike is ${contract.strike}, delta is ${contract.delta ?? 'UNKNOWN'}, and break-even is ${breakEven}.`,
       commonEvidence),
     whyNow: claim('KNOWN',
-      `The current snapshot produced ${receipt.winningAction}, AEGIS ${selected.aegis?.newRiskState ?? 'UNKNOWN'}, quantity ${selected.sizing?.quantity ?? 0}, and execution recommendation ${selected.executionQuality?.recommendedAction ?? 'UNKNOWN'}.`,
+      `The current snapshot produced ${receipt.winningAction}, AEGIS ${selected.aegis?.newRiskState ?? 'UNKNOWN'}, quantity ${selected.sizing.quantity}, and execution recommendation ${selected.executionQuality?.recommendedAction ?? 'UNKNOWN'}.`,
       quoteEvidence),
     quantityReason: claim('KNOWN',
       `The selected quantity is ${selected.sizing.quantity}; the binding capacity is ${selected.sizing.bindingConstraint}; sizing reasons are ${selected.sizing.reasons.join(', ')}. Quantity was not forced to one.`,

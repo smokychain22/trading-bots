@@ -152,14 +152,18 @@ export async function runCrossSymbolEconomicFrontier(
   const survivorIds = new Set(survivingCandidateIds(paretoResult.data));
   const resultByCombinedId = new Map(paretoResult.data.results.map((r) => [r.candidateId, r]));
 
-  const combinedCandidates: CombinedFrontierCandidate[] = combinedInputs.map((c) => {
+  const combinedCandidates: CombinedFrontierCandidate[] = [];
+  for (const c of combinedInputs) {
     const paretoEntry = resultByCombinedId.get(c.combinedCandidateId);
-    return {
+    if (paretoEntry === undefined) {
+      return failClosed(snapshotId, timestamp, perUnderlying, 'PARETO_RESPONSE_CANDIDATE_SET_MISMATCH');
+    }
+    combinedCandidates.push({
       underlying: c.underlying, candidateId: c.candidateId, combinedCandidateId: c.combinedCandidateId,
-      economics: c.economics, survivesFrontier: paretoEntry?.survivesFrontier ?? false,
-      dominatedBy: paretoEntry?.dominatedBy ?? [],
-    };
-  });
+      economics: c.economics, survivesFrontier: paretoEntry.survivesFrontier,
+      dominatedBy: paretoEntry.dominatedBy,
+    });
+  }
 
   const disposition = confirmWinnerAgainstOwnPipeline(computeFrontierDisposition(combinedCandidates, survivorIds), perUnderlying);
 
