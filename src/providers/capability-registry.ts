@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import type { CheckResult, EvidenceCapabilityResult } from './readiness.js';
+import { withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 
 export type PersistableCapabilityResult = CheckResult | EvidenceCapabilityResult;
 
@@ -68,9 +69,7 @@ export async function persistProviderCapabilities(
   provider: 'ALPACA' | 'OPTIONOMICS',
   results: readonly PersistableCapabilityResult[],
 ): Promise<{ providerConnectionId: string; capabilityCount: number }> {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  return withRuntimePostgresTransaction(pool, async client => {
     const providerConnectionId = await ensureConnection(client, provider);
     if (provider === 'ALPACA' && results.some((result) => result.capability === 'HISTORICAL_OPTION_BARS')) {
       await client.query(
@@ -125,12 +124,6 @@ export async function persistProviderCapabilities(
       [providerConnectionId, connectionState,
         JSON.stringify({ lastCapabilityCount: results.length, credentialValuesLogged: false })],
     );
-    await client.query('COMMIT');
     return { providerConnectionId, capabilityCount: results.length };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }

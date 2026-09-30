@@ -26,7 +26,9 @@ export function deriveBrokerRouterPortfolio(input: {
     || !['us_equity', 'us_option'].includes(p.assetClass ?? '')
     || (p.assetClass === 'us_option' && parseOccOptionSymbol(p.symbol) === null)))
     return unknown('BROKER_POSITION_UNCLASSIFIED');
-  if (input.orders.some(o => o.symbol === null)) return unknown('BROKER_ORDER_IDENTITY_UNKNOWN');
+  if (input.orders.some(o => o.symbol === null ||
+    (!/^[A-Z]{1,6}(?:[.-][A-Z])?$/.test(o.symbol) && parseOccOptionSymbol(o.symbol) === null)))
+    return unknown('BROKER_ORDER_IDENTITY_UNKNOWN');
   const positions = input.positions.filter(p => p.quantity !== 0 &&
     (p.symbol === input.underlying || parseOccOptionSymbol(p.symbol)?.underlying === input.underlying));
   const stocks = positions.filter(p => p.assetClass === 'us_equity');

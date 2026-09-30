@@ -77,6 +77,7 @@ export async function readAlpacaCorporateActions(input: {
   const maxPages = input.maxPages ?? 5;
   if (!Number.isInteger(maxPages) || maxPages < 1 || maxPages > 10) throw new Error('ALPACA_CORPORATE_ACTION_PAGE_BOUND_INVALID');
   const observations: CorporateActionObservation[] = [];
+  const byIdentity = new Map<string, string>();
   const seenTokens = new Set<string>();
   let pageToken: string | null = null;
   let pagesRead = 0;
@@ -107,8 +108,22 @@ export async function readAlpacaCorporateActions(input: {
         const processDate = date(action.process_date);
         const exDate = date(action.ex_date);
         const declarationDate = date(action.declaration_date);
+        for (const field of ['process_date', 'ex_date', 'declaration_date']) {
+          if (action[field] !== undefined && action[field] !== null && date(action[field]) === null)
+            throw new Error('ALPACA_CORPORATE_ACTION_DATE_INVALID');
+        }
+        if (family !== 'cash_dividends' && processDate === null && exDate === null)
+          throw new Error('ALPACA_CORPORATE_ACTION_RELEVANCE_UNKNOWN');
+        const payloadHash = hash(canonical(action));
+        const identity = providerId === null ? `${family}:payload:${payloadHash}` : `${family}:id:${hash(providerId)}`;
+        const previous = byIdentity.get(identity);
+        if (previous !== undefined) {
+          if (previous !== payloadHash) throw new Error('ALPACA_CORPORATE_ACTION_DUPLICATE_CONFLICT');
+          continue;
+        }
+        byIdentity.set(identity, payloadHash);
         observations.push({ provider: 'ALPACA', authority: 'ALPACA_BROKER_LIFECYCLE', family, symbol,
-          providerIdHash: providerId === null ? null : hash(providerId), payloadHash: hash(canonical(action)),
+          providerIdHash: providerId === null ? null : hash(providerId), payloadHash,
           processDate, exDate, declarationDate, providerKnownAt: null,
           thetaFirstObservedAt: input.observedAt,
           // Unknown/new action families also need review. Cash dividends are

@@ -254,6 +254,43 @@ test('fetchOpenOrders rejects rows without a usable provider order identity', as
   }
 });
 
+test('open order enumeration uses bounded identity cursors without dropping tied timestamps', async () => {
+  for (const count of [0, 1, 50, 500, 501, 1000, 1001]) {
+    const rows = Array.from({ length: count }, (_, n) => ({ id: `order-${n}`, symbol: 'SPY', submitted_at: NOW }));
+    let calls = 0;
+    const fetchImpl: typeof fetch = async input => {
+      const url = new URL(String(input));
+      assert.equal(url.searchParams.get('limit'), '500');
+      assert.equal(url.searchParams.get('nested'), 'false');
+      assert.equal(url.searchParams.get('direction'), 'desc');
+      assert.equal(url.searchParams.has('until'), false);
+      const offset = calls++ * 500;
+      assert.equal(url.searchParams.get('before_order_id'), offset === 0 ? null : `order-${offset - 1}`);
+      return jsonResponse(200, rows.slice(offset, offset + 500));
+    };
+    const result = await fetchOpenOrders(baseConfig(fetchImpl), NOW);
+    assert.equal(result.length, count);
+    assert.equal(calls, Math.floor(count / 500) + 1);
+  }
+});
+
+test('open order pagination failures never return a falsely complete partial set', async () => {
+  const page = Array.from({ length: 500 }, (_, n) => ({ id: `order-${n}`, symbol: 'SPY' }));
+  await assert.rejects(fetchOpenOrders(baseConfig(async () => jsonResponse(200, page)), NOW), /CURSOR_REPEATED/);
+  await assert.rejects(fetchOpenOrders(baseConfig(async () => jsonResponse(200, page)), NOW, { maxPages: 1 }), /PAGINATION_INCOMPLETE/);
+  for (const maxPages of [0, -1, NaN, Infinity, 1.5]) {
+    let calls = 0;
+    await assert.rejects(fetchOpenOrders(baseConfig(async () => { calls++; return jsonResponse(200, []); }), NOW, { maxPages }), /PAGE_BOUND_INVALID/);
+    assert.equal(calls, 0);
+  }
+  let calls = 0;
+  await assert.rejects(fetchOpenOrders(baseConfig(async () => jsonResponse(200, calls++ === 0 ? page
+    : [{ id: 'order-499', symbol: 'QQQ' }])), NOW), /DUPLICATE_CONFLICT/);
+  calls = 0;
+  await assert.rejects(fetchOpenOrders(baseConfig(async () => calls++ === 0 ? jsonResponse(200, page)
+    : jsonResponse(503, {})), NOW), (error: unknown) => error instanceof AlpacaProviderError && error.httpStatus === 503);
+});
+
 test('fetchMarketClock parses timestamp/isOpen', async () => {
   const fetchImpl = (async () => jsonResponse(200, { timestamp: NOW, is_open: true, next_open: NOW, next_close: NOW })) as typeof fetch;
   const result = await fetchMarketClock(baseConfig(fetchImpl), NOW);

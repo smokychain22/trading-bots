@@ -210,13 +210,26 @@ export interface AlpacaOpenOrderSnapshot {
   readonly receivedAt: string;
 }
 
-export async function fetchOpenOrders(config: AlpacaProviderConfig, receivedAt: string): Promise<readonly AlpacaOpenOrderSnapshot[]> {
+export async function fetchOpenOrders(config: AlpacaProviderConfig, receivedAt: string,
+  options: { readonly maxPages?: number } = {}): Promise<readonly AlpacaOpenOrderSnapshot[]> {
   const fetchImpl = config.fetchImpl ?? fetch;
+  const maxPages = options.maxPages ?? 100;
+  if (!Number.isSafeInteger(maxPages) || maxPages < 1)
+    throw new AlpacaProviderError('MALFORMED_RESPONSE', null, 'ALPACA_OPEN_ORDERS_PAGE_BOUND_INVALID');
+  const orders = new Map<string, AlpacaOpenOrderSnapshot>();
+  const cursors = new Set<string>();
+  let beforeOrderId: string | null = null;
+  for (let page = 0; page < maxPages; page++) {
   const url = new URL('/v2/orders', config.tradingApiBase);
-  url.search = new URLSearchParams({ status: 'open' }).toString();
+  // Order-ID pagination avoids skipping orders with the same submitted_at.
+  // Explicit flat results retain individual legs. A partial page set never
+  // becomes proof that the account has no other pending orders.
+  url.search = new URLSearchParams({ status: 'open', limit: '500', direction: 'desc', nested: 'false' }).toString();
+  if (beforeOrderId !== null) url.searchParams.set('before_order_id', beforeOrderId);
   const body = await requestJson(fetchImpl, url, authHeaders(config), config.requestTimeoutMs);
   if (!Array.isArray(body)) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/orders did not return an array.');
-  return body.map((value) => {
+  if (body.length > 500) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, 'ALPACA_OPEN_ORDERS_PAGE_LIMIT_EXCEEDED');
+  const normalized = body.map((value): AlpacaOpenOrderSnapshot => {
     const raw = providerRow(value, '/v2/orders');
     const orderId = nonEmptyString(raw.id);
     if (orderId === null) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, '/v2/orders returned a row without identity.');
@@ -238,6 +251,20 @@ export async function fetchOpenOrders(config: AlpacaProviderConfig, receivedAt: 
       receivedAt,
     };
   });
+  for (const order of normalized) {
+    const prior = orders.get(order.orderId);
+    if (prior !== undefined && JSON.stringify(prior) !== JSON.stringify(order))
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', null, 'ALPACA_OPEN_ORDERS_DUPLICATE_CONFLICT');
+    orders.set(order.orderId, order);
+  }
+  if (body.length < 500) return [...orders.values()];
+  const cursor = normalized.at(-1)?.orderId;
+  if (cursor === undefined) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, 'ALPACA_OPEN_ORDERS_CURSOR_MISSING');
+  if (cursors.has(cursor)) throw new AlpacaProviderError('MALFORMED_RESPONSE', null, 'ALPACA_OPEN_ORDERS_CURSOR_REPEATED');
+  cursors.add(cursor);
+  beforeOrderId = cursor;
+  }
+  throw new AlpacaProviderError('MALFORMED_RESPONSE', null, 'ALPACA_OPEN_ORDERS_PAGINATION_INCOMPLETE');
 }
 
 // ---------------------------------------------------------------------------

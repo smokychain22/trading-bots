@@ -3,10 +3,11 @@ import test from 'node:test';
 import type { Pool } from 'pg';
 import { persistProviderCapabilities } from '../src/providers/capability-registry.js';
 import type { CheckResult } from '../src/providers/readiness.js';
+import { EventEmitter } from 'node:events';
 
 test('capability registry persists sanitized metadata and no account financial values', async () => {
   const queries: { text: string; values: readonly unknown[] }[] = [];
-  const client = {
+  const client = Object.assign(new EventEmitter(), {
     async query(text: string, values: readonly unknown[] = []) {
       queries.push({ text, values });
       if (text.includes('SELECT provider_connection_id')) {
@@ -15,7 +16,7 @@ test('capability registry persists sanitized metadata and no account financial v
       return { rowCount: 1, rows: [] };
     },
     release() {},
-  };
+  });
   const pool = { async connect() { return client; } } as unknown as Pool;
   const result: CheckResult = {
     provider: 'ALPACA', capability: 'ACCOUNT_ENVIRONMENT', operationAlias: 'alpaca.get_account',
@@ -41,7 +42,7 @@ test('capability registry persists sanitized metadata and no account financial v
 
 test('capability registry rolls back provider mismatches', async () => {
   const commands: string[] = [];
-  const client = {
+  const client = Object.assign(new EventEmitter(), {
     async query(text: string) {
       commands.push(text);
       if (text.includes('SELECT provider_connection_id')) {
@@ -50,7 +51,7 @@ test('capability registry rolls back provider mismatches', async () => {
       return { rowCount: 1, rows: [] };
     },
     release() {},
-  };
+  });
   const pool = { async connect() { return client; } } as unknown as Pool;
   const result: CheckResult = {
     provider: 'OPTIONOMICS', capability: 'OPTIONOMICS_AUTHENTICATION', operationAlias: 'opt.list_tickers',
@@ -61,4 +62,23 @@ test('capability registry rolls back provider mismatches', async () => {
   };
   await assert.rejects(persistProviderCapabilities(pool, 'ALPACA', [result]), /PROVIDER_CAPABILITY_RESULT_MISMATCH/);
   assert.equal(commands.includes('ROLLBACK'), true);
+});
+
+test('capability persistence discards a broken rollback client and never repeats writes', async () => {
+  const commands: string[] = [];
+  const releases: unknown[] = [];
+  const client = Object.assign(new EventEmitter(), {
+    async query(text: string) {
+      commands.push(text);
+      if (text === 'BEGIN') return { rows: [], rowCount: 0 };
+      if (text === 'ROLLBACK') throw Object.assign(new Error('synthetic disconnect'), { code: '08006' });
+      throw Object.assign(new Error('synthetic unavailable'), { code: '57P03' });
+    },
+    release(broken?: boolean) { releases.push(broken); },
+  });
+  await assert.rejects(persistProviderCapabilities({ connect: async () => client } as unknown as Pool, 'ALPACA', []),
+    /POSTGRES_CHECKED_OUT_CLIENT_LOST/);
+  assert.deepEqual(releases, [true]);
+  assert.equal(commands.filter(command => command === 'BEGIN').length, 1);
+  assert.equal(commands.filter(command => command === 'ROLLBACK').length, 1);
 });

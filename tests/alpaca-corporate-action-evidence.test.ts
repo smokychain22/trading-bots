@@ -40,6 +40,26 @@ test('pagination is bounded and a repeated token fails closed', async () => {
     symbols: ['SPY'], start: '2026-09-21', end: '2026-10-21', observedAt, maxPages: 3 }), /PAGINATION_INVALID/);
 });
 
+test('corporate action page duplicates cannot inflate evidence or hide conflicting revisions', async () => {
+  for (const conflict of [false, true]) {
+    let calls = 0;
+    const read = readAlpacaCorporateActions({ config: config(async () => json({ corporate_actions: {
+      forward_splits: [{ id: 'same-event', symbol: 'SPY', ex_date: conflict && calls > 0 ? '2026-10-02' : '2026-10-01' }],
+    }, next_page_token: calls++ === 0 ? 'next' : null })), symbols: ['SPY'],
+    start: '2026-09-21', end: '2026-10-21', observedAt });
+    if (conflict) await assert.rejects(read, /DUPLICATE_CONFLICT/);
+    else assert.equal((await read).observations.length, 1);
+  }
+});
+
+test('unsupported corporate action with missing or invalid effective dates cannot look harmless', async () => {
+  for (const dates of [{}, { ex_date: '2026-02-30' }, { process_date: 0 }, { declaration_date: '', ex_date: '2026-10-01' }]) {
+    await assert.rejects(readAlpacaCorporateActions({ config: config(async () => json({ corporate_actions: {
+      forward_splits: [{ id: 'undated', symbol: 'SPY', ...dates }],
+    } })), symbols: ['SPY'], start: '2026-09-21', end: '2026-10-21', observedAt }), /DATE_INVALID|RELEVANCE_UNKNOWN/);
+  }
+});
+
 test('host, symbol, and date mismatches cannot become evidence', async () => {
   const wrongHost = { ...config(async () => json({ corporate_actions: {}, next_page_token: null })), marketDataApiBase: 'https://api.alpaca.markets' };
   await assert.rejects(readAlpacaCorporateActions({ config: wrongHost, symbols: ['SPY'], start: '2026-09-21', end: '2026-10-21', observedAt }), /HOST_INVALID/);

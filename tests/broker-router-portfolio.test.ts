@@ -39,3 +39,15 @@ test('unclassified identity, missing quantity and mixed option exposure cannot b
     assert.equal(deriveBrokerRouterPortfolio({ ...base, positions: [item] }).portfolio.lifecycleState, 'UNKNOWN');
   }
 });
+
+test('unparseable or adjusted open orders cannot prove absence of pending SPY exposure', () => {
+  for (const symbol of [null, '', 'SPY1261016P00500000', 'broken', 'SPY261016Pbad', 'BTC/USD']) {
+    const result = deriveBrokerRouterPortfolio({ ...base, orders: [{ symbol } as AlpacaOpenOrderSnapshot] });
+    assert.equal(result.portfolio.lifecycleState, 'UNKNOWN');
+    assert.equal(result.reason, 'BROKER_ORDER_IDENTITY_UNKNOWN');
+  }
+  for (const symbol of ['QQQ', 'BRK.B', 'QQQ261016P00500000']) {
+    assert.equal(deriveBrokerRouterPortfolio({ ...base, orders: [{ symbol } as AlpacaOpenOrderSnapshot] })
+      .portfolio.lifecycleState, 'CASH_AVAILABLE');
+  }
+});

@@ -73,6 +73,14 @@ const environmentSchema = z.object({
   VERCEL_ORG_ID: z.string().min(1).optional(),
   VERCEL_TOKEN: z.string().min(1).optional()
 }).superRefine((environment, context) => {
+  if (environment.NODE_ENV === 'production' && environment.THETA_AUTONOMOUS_WORKER_ENABLED) {
+    if (environment.DATABASE_RUNTIME_AUTHORITY !== 'AIVEN') {
+      context.addIssue({ code: 'custom', path: ['DATABASE_RUNTIME_AUTHORITY'], message: 'Production worker requires explicit AIVEN authority' });
+    }
+    if (environment.AIVEN_DATABASE_URL && !new URL(environment.AIVEN_DATABASE_URL).hostname.endsWith('.aivencloud.com')) {
+      context.addIssue({ code: 'custom', path: ['AIVEN_DATABASE_URL'], message: 'Production worker requires the Aiven service target' });
+    }
+  }
   if (environment.DATABASE_RUNTIME_AUTHORITY === 'AIVEN' && !environment.AIVEN_DATABASE_URL) {
     context.addIssue({ code: 'custom', path: ['AIVEN_DATABASE_URL'], message: 'required when DATABASE_RUNTIME_AUTHORITY=AIVEN' });
   }

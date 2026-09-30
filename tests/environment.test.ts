@@ -63,6 +63,22 @@ test('Aiven runtime authority fails closed without a configured Aiven target', (
   assert.throws(() => loadEnvironment({ DATABASE_RUNTIME_AUTHORITY: 'AIVEN' }), /AIVEN_DATABASE_URL/);
 });
 
+test('Production worker cannot silently inherit legacy or generic database authority', () => {
+  const base = { NODE_ENV: 'production', THETA_AUTONOMOUS_WORKER_ENABLED: 'true',
+    DATABASE_URL: 'postgres://user:synthetic@legacy.neon.tech/theta' };
+  assert.throws(() => loadEnvironment(base), /explicit AIVEN authority/);
+  assert.throws(() => loadEnvironment({ ...base, DATABASE_RUNTIME_AUTHORITY: 'AIVEN',
+    AIVEN_DATABASE_URL: base.DATABASE_URL }), /Aiven service target/);
+  const result = loadEnvironment({ ...base, DATABASE_RUNTIME_AUTHORITY: 'AIVEN',
+    AIVEN_DATABASE_URL: 'postgres://user:synthetic@service.aivencloud.com/theta?sslmode=require' });
+  assert.ok(result.DATABASE_URL);
+  assert.ok(result.LEGACY_NEON_DATABASE_URL);
+  assert.equal(new URL(result.DATABASE_URL).hostname, 'service.aivencloud.com');
+  assert.equal(new URL(result.LEGACY_NEON_DATABASE_URL).hostname, 'legacy.neon.tech');
+  assert.doesNotThrow(() => loadEnvironment({ NODE_ENV: 'test', THETA_AUTONOMOUS_WORKER_ENABLED: 'true',
+    DATABASE_URL: 'postgres://user:synthetic@127.0.0.1/theta_disposable' }));
+});
+
 test('reports missing Alpaca settings by name only', () => {
   const environment = loadEnvironment({});
   assert.deepEqual(missingProviderVariables(environment, 'ALPACA'), [
