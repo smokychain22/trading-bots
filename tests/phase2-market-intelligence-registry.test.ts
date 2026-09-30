@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import test from 'node:test';
 import { featureFamilyAuthorityMatrix, providerCapabilityAuthorityMatrix,
-  thetaStrategyFeatureManifest, validatePhase2MarketIntelligenceRegistry } from '../src/theta/phase2-market-intelligence-registry.js';
+  thetaStrategyDecisionInputRegistry, thetaStrategyFeatureManifest,
+  validatePhase2MarketIntelligenceRegistry } from '../src/theta/phase2-market-intelligence-registry.js';
 import { thetaFeatureFamily } from '../src/theta/strategy-package.js';
 
 test('Phase-2 provider authority is complete and has one Alpaca Paper option-price authority',()=>{
@@ -57,4 +58,40 @@ test('every branch declares all 20 feature roles without promoting research to a
   assert.equal(thetaStrategyFeatureManifest.THETA_CONVENTIONAL.FLOW, 'RESEARCH_ONLY');
   assert.equal(thetaStrategyFeatureManifest.THETA_RECOVERY.EXECUTION_QUALITY, 'UNCERTAINTY_ONLY');
   assert.equal(thetaStrategyFeatureManifest.THETA_CC.EXECUTION_QUALITY, 'UNCERTAINTY_ONLY');
+});
+
+test('five-strategy six-role decision registry is unique, complete and does not promote research', () => {
+  const keys = thetaStrategyDecisionInputRegistry.map((input) => `${input.strategy}:${input.featureId}`);
+  assert.equal(new Set(keys).size, keys.length);
+  for (const [strategy, manifest] of Object.entries(thetaStrategyFeatureManifest)) {
+    for (const family of thetaFeatureFamily.options) {
+      const entries = thetaStrategyDecisionInputRegistry.filter((input) =>
+        input.strategy === strategy && input.featureId === family);
+      assert.equal(entries.length, manifest[family] === 'IRRELEVANT' ? 0 : 1, `${strategy}:${family}`);
+      const entry = entries[0];
+      if (!entry) continue;
+      assert.ok(entry.producer && entry.consumer && entry.missingBehavior && entry.staleBehavior);
+      if (entry.role === 'RESEARCH_ONLY') {
+        assert.equal(entry.mayVeto, false);
+        assert.equal(entry.mayRank, false);
+        assert.equal(entry.mayChangeSize, false);
+      }
+    }
+  }
+  assert.equal(thetaStrategyDecisionInputRegistry.find((input) =>
+    input.strategy === 'THETA_CONVENTIONAL' && input.featureId === 'EVENT_CONTEXT')?.role, 'HARD_SAFETY');
+  assert.equal(thetaStrategyDecisionInputRegistry.find((input) =>
+    input.strategy === 'THETA_RECOVERY' && input.featureId === 'OWNERSHIP')?.role, 'STRATEGY_APPLICABILITY');
+  assert.equal(thetaStrategyDecisionInputRegistry.find((input) =>
+    input.strategy === 'THETA_CONVENTIONAL' && input.featureId === 'FLOW')?.role, 'RESEARCH_ONLY');
+  for (const strategy of Object.keys(thetaStrategyFeatureManifest)) {
+    assert.ok(thetaStrategyDecisionInputRegistry.some((input) => input.strategy === strategy
+      && input.role === 'STRUCTURAL_ECONOMICS'), `${strategy} needs branch-specific structural facts`);
+  }
+  assert.equal(thetaStrategyDecisionInputRegistry.find((input) =>
+    input.strategy === 'THETA_DEFINED_RISK' && input.featureId === 'ORDERED_SHORT_AND_LONG_PUT_OCC')?.authority,
+  'SHADOW_OR_RESEARCH');
+  assert.equal(thetaStrategyDecisionInputRegistry.find((input) =>
+    input.strategy === 'THETA_CC' && input.featureId === 'BROKER_CONFIRMED_COVERED_SHARES')?.role,
+  'STRATEGY_APPLICABILITY');
 });

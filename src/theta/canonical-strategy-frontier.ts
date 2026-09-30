@@ -186,6 +186,7 @@ export interface CanonicalStrategyFrontier {
   readonly selectedQuantity: number;
   readonly empiricalUtilityState: 'UNKNOWN_NOT_YET_CALIBRATED';
   readonly secondBestCandidateId: string | null;
+  readonly structuralTopTwo: StructuralTopTwoDiagnostic;
   readonly nearMissCandidateId: string | null;
   readonly bestRejectedCandidateId: string | null;
   readonly globalWaitEarned: boolean;
@@ -763,6 +764,48 @@ const candidateRankOrder = (a: CanonicalFrontierCandidate, b: CanonicalFrontierC
   (a.paretoRank ?? Number.MAX_SAFE_INTEGER) - (b.paretoRank ?? Number.MAX_SAFE_INTEGER)
     || a.unknownEvidence.length - b.unknownEvidence.length || a.candidateId.localeCompare(b.candidateId);
 
+export interface StructuralTopTwoDiagnostic {
+  readonly state: 'NO_COMPARISON' | 'CLEAR_WINNER' | 'NEAR_TIE' | 'EXACT_TIE';
+  readonly firstCandidateId: string | null;
+  readonly secondCandidateId: string | null;
+  readonly paretoRankDifference: number | null;
+  readonly unknownCountDifference: number | null;
+  readonly objectiveMargins: readonly { readonly name: string; readonly first: number | null;
+    readonly second: number | null; readonly difference: number | null }[];
+  readonly selectionAuthority: false;
+}
+
+// Equal rank and equal unknown count means the final ordering fell to the
+// canonical candidate ID. Distinct objectives in that class are a Pareto
+// trade-off, not a calibrated probability or percentage-defined near tie.
+export function describeStructuralTopTwo(candidates: readonly CanonicalFrontierCandidate[]): StructuralTopTwoDiagnostic {
+  const [first, second] = candidates.filter((candidate) => candidate.riskFeasible
+    && candidate.sizing.quantity > 0).toSorted(candidateRankOrder);
+  if (!first || !second) return { state:'NO_COMPARISON',firstCandidateId:first?.candidateId ?? null,
+    secondCandidateId:null,paretoRankDifference:null,unknownCountDifference:null,
+    objectiveMargins:[],selectionAuthority:false };
+  const firstObjectives = objectives(first);
+  const secondObjectives = objectives(second);
+  const names = first.action === 'OPEN_CSP'
+    ? ['grossPremium','collateral','spreadPct','downsideCushion']
+    : first.action === 'OPEN_DEFINED_RISK' ? ['maxProfit','maxLoss','spreadPct']
+      : first.action === 'SELL_CC' ? ['grossPremium','spreadPct','retainedUpside'] : [];
+  const objectiveMargins = firstObjectives.map((objective, index) => {
+    const other = secondObjectives[index]?.value ?? null;
+    return { name:names[index] ?? `objective_${index}`, first:objective.value,second:other,
+      difference:objective.value === null || other === null ? null : objective.value - other };
+  });
+  const paretoRankDifference = (second.paretoRank ?? Number.MAX_SAFE_INTEGER)
+    - (first.paretoRank ?? Number.MAX_SAFE_INTEGER);
+  const unknownCountDifference = second.unknownEvidence.length - first.unknownEvidence.length;
+  const identityOnly = paretoRankDifference === 0 && unknownCountDifference === 0;
+  const exactObjectives = firstObjectives.length === secondObjectives.length
+    && objectiveMargins.every((margin) => margin.difference === 0);
+  return { state:identityOnly ? exactObjectives ? 'EXACT_TIE' : 'NEAR_TIE' : 'CLEAR_WINNER',
+    firstCandidateId:first.candidateId,secondCandidateId:second.candidateId,
+    paretoRankDifference,unknownCountDifference,objectiveMargins,selectionAuthority:false };
+}
+
 function rankCandidates(candidates: readonly CanonicalFrontierCandidate[]): readonly CanonicalFrontierCandidate[] {
   type Entry = { readonly candidate: CanonicalFrontierCandidate; readonly vector: ParetoVector };
   const groups = new Map<string, Entry[]>();
@@ -1030,6 +1073,7 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
     selectedQuantity,
     empiricalUtilityState: 'UNKNOWN_NOT_YET_CALIBRATED' as const,
     secondBestCandidateId: secondBest?.candidateId ?? null,
+    structuralTopTwo: describeStructuralTopTwo(sizedNewRisk),
     nearMissCandidateId: nearMiss?.candidateId ?? null,
     bestRejectedCandidateId: rejected[0]?.candidateId ?? null,
     globalWaitEarned, globalWaitReasons: globalWaitEarned ? ['PAPER_AUTHORIZED_BRANCH_EVALUATED',

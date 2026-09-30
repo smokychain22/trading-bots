@@ -180,8 +180,94 @@ export const thetaStrategyFeatureManifest: Readonly<Record<ThetaStrategyBranch,
     THETA_HOLD_STRIKE: featureManifestFor(featureUseDeclarations.THETA_HOLD_STRIKE),
     THETA_DEFINED_RISK: featureManifestFor(featureUseDeclarations.THETA_DEFINED_RISK),
     THETA_RECOVERY: featureManifestFor(featureUseDeclarations.THETA_RECOVERY),
-    THETA_CC: featureManifestFor(featureUseDeclarations.THETA_CC),
-  });
+  THETA_CC: featureManifestFor(featureUseDeclarations.THETA_CC),
+});
+
+// Governance projection of the existing manifest. This is deliberately not
+// consulted by the Paper frontier, AEGIS, or sizing. A feature absent from a
+// branch's manifest is irrelevant there and is not a decision input.
+export type StrategyDecisionInputRole = 'HARD_SAFETY' | 'STRATEGY_APPLICABILITY'
+  | 'STRUCTURAL_ECONOMICS' | 'OPTIONAL_RANKING' | 'UNCERTAINTY_MODIFIER' | 'RESEARCH_ONLY';
+export interface StrategyDecisionInputDeclaration {
+  readonly featureId: string;
+  readonly strategy: ThetaStrategyBranch;
+  readonly role: StrategyDecisionInputRole;
+  readonly required: boolean;
+  readonly requiredWhenApplicable: boolean;
+  readonly producer: string;
+  readonly consumer: string;
+  readonly missingBehavior: string;
+  readonly staleBehavior: string;
+  readonly mayVeto: boolean;
+  readonly mayRank: boolean;
+  readonly mayChangeSize: boolean;
+  readonly authority: 'PRODUCTION_EVIDENCE' | 'SHADOW_OR_RESEARCH';
+}
+
+const structuralInputs: Readonly<Record<ThetaStrategyBranch, readonly string[]>> = {
+  THETA_CONVENTIONAL: ['PUT_OCC_STRIKE_EXPIRY_MULTIPLIER', 'EXECUTABLE_PUT_CREDIT',
+    'SECURED_COLLATERAL_AND_CAPITAL_DAYS'],
+  THETA_HOLD_STRIKE: ['SHORT_DTE_PUT_OCC_STRIKE_EXPIRY_MULTIPLIER', 'EXECUTABLE_PUT_CREDIT',
+    'SHORT_DTE_PREMIUM_AND_CAPITAL_DAYS'],
+  THETA_DEFINED_RISK: ['ORDERED_SHORT_AND_LONG_PUT_OCC', 'SAME_EXPIRY_AND_MULTIPLIER',
+    'TWO_LEG_EXECUTABLE_NET_CREDIT', 'MAX_PROFIT_MAX_LOSS_BREAKEVEN'],
+  THETA_RECOVERY: ['BROKER_CONFIRMED_STOCK_SHARES', 'WHOLE_CHAIN_STOCK_BASIS',
+    'CURRENT_STOCK_SALE_ECONOMICS'],
+  THETA_CC: ['BROKER_CONFIRMED_COVERED_SHARES', 'CALL_OCC_STRIKE_EXPIRY_MULTIPLIER',
+    'EXECUTABLE_CALL_CREDIT_AND_CALL_AWAY_ECONOMICS'],
+};
+
+function decisionRole(use: StrategyFeatureUse, authority: FeatureFamilyAuthority): StrategyDecisionInputRole {
+  if (use === 'RESEARCH_ONLY') return 'RESEARCH_ONLY';
+  if (use === 'UNCERTAINTY_ONLY') return 'UNCERTAINTY_MODIFIER';
+  if (use === 'OPTIONAL_RANKING') return 'OPTIONAL_RANKING';
+  if (authority.role === 'STRATEGY_APPLICABILITY') return 'STRATEGY_APPLICABILITY';
+  if (authority.role === 'HARD_SAFETY' || authority.role === 'RISK_CAPACITY'
+    || authority.role === 'EXECUTION_QUALITY') return 'HARD_SAFETY';
+  return 'STRUCTURAL_ECONOMICS';
+}
+
+export const thetaStrategyDecisionInputRegistry: readonly StrategyDecisionInputDeclaration[] = Object.freeze([
+  ...(Object.entries(thetaStrategyFeatureManifest) as Array<[ThetaStrategyBranch,
+    Readonly<Record<FeatureFamily, StrategyFeatureUse>>]>).flatMap(([strategy, manifest]) =>
+    featureFamilyAuthorityMatrix.flatMap((authority) => {
+      const use = manifest[authority.family];
+      if (use === 'IRRELEVANT') return [];
+      const role = decisionRole(use, authority);
+      const productionEvidence = authority.producerState === 'PRODUCTION' && role !== 'RESEARCH_ONLY';
+      return [{
+        featureId: authority.family, strategy, role,
+        required: use === 'REQUIRED', requiredWhenApplicable: use === 'REQUIRED_WHEN_APPLICABLE',
+        producer: authority.producer, consumer: authority.consumer,
+        missingBehavior: authority.unknownBehavior,
+        staleBehavior: use === 'REQUIRED' || use === 'REQUIRED_WHEN_APPLICABLE'
+          ? 'STALE_REQUIRED_EVIDENCE_FAILS_CLOSED' : 'STALE_OPTIONAL_EVIDENCE_HAS_NO_PAPER_VETO',
+        mayVeto: role === 'HARD_SAFETY',
+        mayRank: role === 'STRUCTURAL_ECONOMICS' || role === 'OPTIONAL_RANKING',
+        mayChangeSize: role !== 'RESEARCH_ONLY' && (authority.family === 'PORTFOLIO_EXPOSURE'
+          || authority.family === 'CORRELATION'),
+        authority: productionEvidence ? 'PRODUCTION_EVIDENCE' as const : 'SHADOW_OR_RESEARCH' as const,
+      }];
+    })),
+  ...(Object.entries(structuralInputs) as Array<[ThetaStrategyBranch, readonly string[]]>).flatMap(
+    ([strategy, featureIds]) => featureIds.map((featureId) => ({
+      featureId, strategy, role: featureId.startsWith('BROKER_CONFIRMED_')
+        ? 'STRATEGY_APPLICABILITY' as const : 'STRUCTURAL_ECONOMICS' as const,
+      required: strategy !== 'THETA_RECOVERY' && strategy !== 'THETA_CC',
+      requiredWhenApplicable: strategy === 'THETA_RECOVERY' || strategy === 'THETA_CC',
+      producer: strategy === 'THETA_RECOVERY' || strategy === 'THETA_CC'
+        ? 'Reconciled Alpaca inventory, option contract and whole-chain ledger'
+        : 'Normalized Alpaca option contracts and exact executable BBO',
+      consumer: strategy === 'THETA_RECOVERY' || strategy === 'THETA_CC'
+        ? 'Canonical management action frontier' : 'Canonical strategy candidate construction and economics',
+      missingBehavior: 'BRANCH_CANDIDATE_UNAVAILABLE_WITH_EXPLICIT_REASON',
+      staleBehavior: 'STALE_STRUCTURAL_EVIDENCE_CANNOT_FORM_EXECUTABLE_CANDIDATE',
+      mayVeto: false, mayRank: !featureId.startsWith('BROKER_CONFIRMED_'), mayChangeSize: featureId.includes('COLLATERAL')
+        || featureId.includes('MAX_PROFIT_MAX_LOSS') || featureId.includes('COVERED_SHARES'),
+      authority: strategy === 'THETA_HOLD_STRIKE' || strategy === 'THETA_DEFINED_RISK'
+        ? 'SHADOW_OR_RESEARCH' as const : 'PRODUCTION_EVIDENCE' as const,
+    }))),
+]);
 
 export function validatePhase2MarketIntelligenceRegistry(): readonly string[] {
   const issues:string[]=[];
@@ -192,5 +278,17 @@ export function validatePhase2MarketIntelligenceRegistry(): readonly string[] {
   if(quoteAuthorities.length!==1||quoteAuthorities[0]?.provider!=='ALPACA')issues.push('EXECUTION_QUOTE_AUTHORITY_NOT_UNIQUE');
   if(providerCapabilityAuthorityMatrix.some((item)=>item.fallback.trim()===''))issues.push('PROVIDER_FALLBACK_UNCLASSIFIED');
   if(featureFamilyAuthorityMatrix.some((item)=>item.timestampSemantics.trim()===''||item.units.trim()===''))issues.push('FEATURE_SEMANTICS_INCOMPLETE');
+  const declared = new Set<string>();
+  for (const input of thetaStrategyDecisionInputRegistry) {
+    const key = `${input.strategy}:${input.featureId}`;
+    if (declared.has(key)) issues.push(`DUPLICATE_STRATEGY_DECISION_ROLE:${key}`);
+    declared.add(key);
+    if (!input.producer || !input.consumer || !input.missingBehavior || !input.staleBehavior) {
+      issues.push(`INCOMPLETE_STRATEGY_DECISION_ROLE:${key}`);
+    }
+    if (input.role === 'RESEARCH_ONLY' && (input.mayVeto || input.mayRank || input.mayChangeSize)) {
+      issues.push(`RESEARCH_FEATURE_HAS_PRODUCTION_AUTHORITY:${key}`);
+    }
+  }
   return issues;
 }

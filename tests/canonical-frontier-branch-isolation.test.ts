@@ -220,6 +220,56 @@ test('a THETA_HOLD_STRIKE construction failure does not prevent THETA_CONVENTION
   assert.ok(holdStrike, 'THETA_HOLD_STRIKE must still appear in the frontier');
 });
 
+test('contract order and irrelevant Optionomics research context do not reselect Paper Q', () => {
+  const first = contract();
+  const second = contract({optionSymbol:'AAPL261017P00190000',occSymbol:'AAPL261017P00190000',
+    expiration:'2026-10-17'});
+  const build = (contracts: readonly NormalizedOptionContract[], context: unknown) =>
+    buildCanonicalStrategyFrontier({...base,stock:null,contracts,routing:routing(['THETA_Q']),
+      optionomicsContext:context as never});
+  const baseline = build([first,second],{state:'RESEARCH_ONLY',flow:1});
+  const reordered = build([second,first],{flow:1,state:'RESEARCH_ONLY'});
+  const changedResearch = build([first,second],{state:'RESEARCH_ONLY',flow:1_000_000});
+  for (const other of [reordered,changedResearch]) {
+    assert.equal(other.primaryAction,baseline.primaryAction);
+    assert.equal(other.selectedCandidateId,baseline.selectedCandidateId);
+    assert.equal(other.selectedQuantity,baseline.selectedQuantity);
+    assert.deepEqual(other.branches.find((branch)=>branch.branch==='THETA_CONVENTIONAL')?.candidates
+      .map((candidate)=>candidate.candidateId), baseline.branches.find((branch)=>branch.branch==='THETA_CONVENTIONAL')?.candidates
+      .map((candidate)=>candidate.candidateId));
+  }
+  assert.equal(canonicalStrategyFrontierContentHash(reordered),canonicalStrategyFrontierContentHash(baseline));
+});
+
+test('structural exact tie is diagnostic only and uses a stable identity fallback', () => {
+  const first=contract();
+  const second=contract({optionSymbol:'AAPL261017P00190000',occSymbol:'AAPL261017P00190000',
+    expiration:'2026-10-17'});
+  const build=(contracts:readonly NormalizedOptionContract[])=>buildCanonicalStrategyFrontier({
+    ...base,stock:null,contracts,routing:routing(['THETA_Q']),
+  });
+  const direct=build([first,second]);
+  const reversed=build([second,first]);
+  assert.deepEqual(direct.structuralTopTwo,reversed.structuralTopTwo);
+  assert.equal(direct.structuralTopTwo.selectionAuthority,false);
+  assert.equal(direct.selectedCandidateId,reversed.selectedCandidateId);
+  assert.equal(direct.primaryAction,reversed.primaryAction);
+  assert.equal(direct.selectedQuantity,reversed.selectedQuantity);
+  assert.equal(direct.structuralTopTwo.state,'EXACT_TIE');
+});
+
+test('Pareto trade-off reports a near tie without changing Q selection authority', () => {
+  const higherCredit=contract();
+  const lowerCollateral=contract({optionSymbol:'AAPL261017P00180000',occSymbol:'AAPL261017P00180000',
+    expiration:'2026-10-17',strike:180,bid:1,ask:1.1});
+  const frontier=buildCanonicalStrategyFrontier({...base,stock:null,
+    contracts:[lowerCollateral,higherCredit],routing:routing(['THETA_Q'])});
+  assert.equal(frontier.structuralTopTwo.state,'NEAR_TIE');
+  assert.equal(frontier.structuralTopTwo.paretoRankDifference,0);
+  assert.ok(frontier.structuralTopTwo.objectiveMargins.some((margin)=>margin.difference !== 0));
+  assert.equal(frontier.structuralTopTwo.selectionAuthority,false);
+});
+
 test('CORE CLAIM (false-WAIT prevention): a THETA_CONVENTIONAL (Q) construction failure must never be silently reported as globalWaitEarned/PAPER_AUTHORIZED_BRANCH_EVALUATED', () => {
   let filterCallCount = 0;
   const contracts = [contract()];
