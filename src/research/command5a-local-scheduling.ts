@@ -158,7 +158,10 @@ export function scheduleCommand5aFromCanonicalFrontier(input: {
           if (!(error instanceof Error) || error.message !== 'LOCAL_OBSERVATION_JOB_NOT_FOUND') throw error;
         }
       }
-      input.scheduler.schedule({ job, sourceSha: input.sourceSha, workerSha: input.workerSha });
+      // The hourly subject belongs to its first T0 decision. A later cycle
+      // can select the same candidate after a release cutover, but its job
+      // lineage must still match the immutable episode already in the WAL.
+      input.scheduler.schedule({ job, sourceSha: episode.sourceSha, workerSha: episode.workerSha });
       if (jobExisted) existingJobCount += 1;
       else scheduledJobCount += 1;
     }

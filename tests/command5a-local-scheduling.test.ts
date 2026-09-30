@@ -131,12 +131,17 @@ test('repeated decisions in one governed bucket retain the first immutable T0 su
     const firstEpisode = scheduler.getSubject(candidateSubjectId).episode;
     const repeatedFrontier = { ...frontier, timestamp: '2026-09-25T14:31:00.000Z' };
     const repeated = scheduleCommand5aFromCanonicalFrontier({ ...input, frontier: repeatedFrontier,
-      decisionCycleId: 'cycle-2', decisionId: 'decision-2' });
+      decisionCycleId: 'cycle-2', decisionId: 'decision-2', sourceSha: 'c'.repeat(40),
+      workerSha: 'c'.repeat(40) });
     assert.equal(repeated.existingSubjectCount, 2);
     assert.equal(repeated.scheduledJobCount, 0);
     assert.equal(repeated.existingJobCount, 8);
     assert.equal(scheduler.getSubject(candidateSubjectId).episode.decisionId, firstEpisode.decisionId);
     assert.equal(scheduler.getSubject(candidateSubjectId).episode.decisionAt, firstEpisode.decisionAt);
+    for (const job of scheduler.jobsForSubject(candidateSubjectId)) {
+      assert.equal(job.sourceSha, firstEpisode.sourceSha);
+      assert.equal(job.workerSha, firstEpisode.workerSha);
+    }
   } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
