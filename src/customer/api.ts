@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
+import { containRuntimePostgresPool } from "../theta/runtime-postgres-pool.js";
 import { botDetail, botSummaries } from "./catalog.js";
 import { matchesOperatorToken } from "../providers/readiness-handler.js";
 import { loadEnvironment } from "../config/environment.js";
@@ -502,7 +503,8 @@ export default async function customerHandler(
         if(!sameOrigin(request))return send(response,403,{error:{code:"ORIGIN_REJECTED"}});
         if(!environment.DATABASE_URL)return send(response,503,{error:{code:"QUALIFICATION_DATABASE_UNAVAILABLE"}});
         const pool=new Pool({connectionString:environment.DATABASE_URL,max:1,connectionTimeoutMillis:5_000,
-          application_name:'theta-api-optionomics-qualification'});
+application_name:'theta-api-optionomics-qualification'});
+        containRuntimePostgresPool(pool);
         try{const receipt=await qualifyOptionomicsProvider({mode:'REAL_AUTHENTICATED',at:new Date().toISOString(),symbol:'SPY',
           config:optionomicsConfigFromEnvironment(environment)});await persistOptionomicsQualification(pool,receipt);
           return send(response,receipt.secretState==='AUTH_VALID'?200:207,{api_version:'v1',data:{version:receipt.version,

@@ -15,7 +15,9 @@ test('real disposable PostgreSQL preserves user limits, master role and tenant i
   const connectionString = process.env.TEST_DATABASE_URL;
   assert.ok(connectionString);
   const url = new URL(connectionString);
-  assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname), 'Disposable local database only');
+  assert.ok(['127.0.0.1', 'localhost', ''].includes(url.hostname), 'Disposable local database only');
+  assert.ok(url.searchParams.get('host')===null||url.searchParams.get('host')==='/var/run/postgresql');
+  assert.ok(['/trading_bots','/theta_phase2_recovery_ci'].includes(url.pathname),'DISPOSABLE_TEST_DATABASE_REQUIRED');
   const pool = new Pool({ connectionString: url.toString(), max: 3 });
   try {
     const store = new PostgresCustomerStore(pool);
@@ -76,14 +78,20 @@ test('real disposable PostgreSQL preserves user limits, master role and tenant i
     } as Environment;
     const originalFetch = globalThis.fetch;
     const observedMethods: string[] = [];
-    const cycleAt = new Date(Date.now() - 60_000);
+    let accountUnavailable=false;
+    let accountReads=0;
+    const cycleAt = new Date(Date.now() - 5 * 60_000);
     const marketDate = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
     }).format(cycleAt);
     globalThis.fetch = (async (request, init) => {
       observedMethods.push(init?.method ?? 'GET');
       const requestUrl = new URL(String(request));
-      if (requestUrl.pathname === '/v2/account') return Response.json({ id: input.providerAccountRef, status: 'ACTIVE' });
+      if (requestUrl.pathname === '/v2/account') {
+        accountReads+=1;
+        return accountUnavailable ? Response.json({message:'synthetic outage'},{status:503})
+          : Response.json({ id: input.providerAccountRef, status: 'ACTIVE' });
+      }
       if (requestUrl.pathname === '/v2/positions') return Response.json([]);
       if (requestUrl.pathname === '/v2/orders') return Response.json([]);
       if (requestUrl.pathname === '/v2/account/activities') return Response.json([]);
@@ -113,6 +121,30 @@ test('real disposable PostgreSQL preserves user limits, master role and tenant i
         (SELECT count(*)::int FROM trade.broker_order) AS broker_orders`,
       [first.correlationId, `POSITION_RECONCILIATION:${first.correlationId.slice('theta-runtime:'.length)}`]);
       assert.deepEqual(runtimeEvidence.rows[0], { cycles: 1, reconciliations: 1, broker_orders: 0 });
+
+      // Exercise the actual Production cycle and persistence after an outage,
+      // not the offline circuit simulator. A failed cycle cannot reuse first's
+      // good reconciliation, and recovery must fetch and persist fresh truth.
+      accountUnavailable=true;
+      const failed=await runAutonomousRuntimeCycle(environment,pool,new Date(cycleAt.getTime()+60_000),{scope:'BROKER'});
+      assert.equal(failed.status,'FAILED');
+      assert.equal(failed.reconciliation,null);
+      assert.ok(failed.jobResults.some(job=>job.errorCode?.includes('HTTP_503')));
+      const readsBeforeRecovery=accountReads;
+      accountUnavailable=false;
+      const recovered=await runAutonomousRuntimeCycle(environment,pool,new Date(cycleAt.getTime()+120_000),{scope:'BROKER'});
+      assert.equal(recovered.status,'SUCCEEDED',JSON.stringify(recovered.jobResults));
+      assert.ok(accountReads>readsBeforeRecovery);
+      assert.notEqual(recovered.correlationId,failed.correlationId);
+      assert.notEqual(recovered.reconciliation?.snapshotId,first.reconciliation?.snapshotId);
+      assert.equal(recovered.reconciliation?.dataQuality,'GOOD');
+      const persisted=await pool.query('SELECT reconciliation_snapshot_id FROM trade.broker_reconciliation_snapshot WHERE reconciliation_snapshot_id=$1',
+        [recovered.reconciliation?.snapshotId]);
+      assert.equal(persisted.rowCount,1);
+      assert.deepEqual(new Set(observedMethods),new Set(['GET']));
+      assert.equal(recovered.masterPaperOrdersSubmitted+recovered.followerPaperOrdersSubmitted+recovered.liveOrdersSubmitted,0);
+      assert.equal(pool.waitingCount,0);
+      assert.equal(pool.totalCount,pool.idleCount);
     } finally {
       globalThis.fetch = originalFetch;
     }

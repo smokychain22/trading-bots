@@ -5,7 +5,7 @@ import { AlpacaProviderError, fetchMasterAccountEvidence, fetchOptionSnapshots, 
 import { discoverRealUniverse, type UniverseDiscoveryResult } from '../theta/universe-discovery.js';
 import type { UnderlyingCandidateInput } from '../theta/universe-policy.js';
 import { defaultShadowCycleConfig, optionomicsConfigFromEnvironment } from '../theta/theta-shadow-once.js';
-import { runThetaShadowCycle } from '../theta/theta-shadow-cycle.js';
+import { runThetaShadowCycle, type ThetaShadowCycleResult } from '../theta/theta-shadow-cycle.js';
 import type { PythonBridgeConfig } from '../theta/python-bridge.js';
 import { PostgresThetaCycleStore } from '../theta/postgres-theta-cycle-store.js';
 import { buildObservationSchedule, PostgresShadowEvidenceRuntimeStore, runCrossSymbolShadowScan } from './shadow-evidence-runtime.js';
@@ -43,6 +43,12 @@ import { buildFirstPaperRuntimeTelemetry } from '../theta/first-paper-runtime-te
 export type ReadOnlyPreSubmitProof = RuntimeReadOnlyPreSubmitProof;
 
 export type ProductionShadowSymbolDiagnostic = RuntimeFirstPaperSymbolEvidence;
+
+export function observedDecisionCounts(cycle: ThetaShadowCycleResult | null):
+  Pick<ProductionShadowSymbolDiagnostic, 'qLatticeTotal' | 'selectedQuantity'> {
+  return { qLatticeTotal: cycle?.orchestration?.thetaQ?.candidates.length ?? null,
+    selectedQuantity: cycle?.strategyFrontier?.selectedQuantity ?? null };
+}
 
 export interface ProductionShadowScanReport {
   readonly scanId:string; readonly completeness:string; readonly candidateCount:number;
@@ -617,11 +623,11 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     const quoteState=cycle?.fusionSnapshot?.snapshot.alpacaQuoteState;
     return {symbol:member.symbol,cycleState:cycle===null?'FAILED':'COMPLETED',cycleErrorCode:member.errorCode,
       optionChainComplete:cycle?.optionChainComplete??null,optionContractsComplete:cycle?.optionContractsComplete??null,
-      qLatticeTotal:cycle?.orchestration?.thetaQ?.candidates.length??0,
+      ...observedDecisionCounts(cycle),
       qDecision:cycle?.orchestration?.receipt.winningAction??null,
       qReasonCodes:cycle?.orchestration?.receipt.reasonCodes??[],selectedCandidateId:frontier?.selectedCandidateId??null,
       selectedOptionSymbol:selected?.legs[0]?.optionSymbol??null,canonicalAction:frontier?.primaryAction??null,
-      selectedQuantity:frontier?.selectedQuantity??0,aegisState:selected?.aegisState??cycle?.orchestration?.aegis?.newRiskState??null,
+      aegisState:selected?.aegisState??cycle?.orchestration?.aegis?.newRiskState??null,
       entrySafetyPolicy:entrySafetyBySymbol.get(member.symbol)??null,
       runtimeTelemetry:cycle===null?null:buildFirstPaperRuntimeTelemetry({frontier,alpacaQuoteState:quoteState}),
       cycleBlockers:cycle?.blockers??[],preSubmit:readOnlyPreSubmitProofs.find((proof)=>proof.symbol===member.symbol)??null};

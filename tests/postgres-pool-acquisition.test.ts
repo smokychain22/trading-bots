@@ -63,8 +63,10 @@ test('old six-on-two soak pattern deterministically creates its own queue timeou
       await new Promise((resolve)=>setTimeout(resolve,30));
       return 1;
     }));
-    await new Promise((resolve)=>setTimeout(resolve,5));
     maxWaiting=Math.max(maxWaiting,pool.waitingCount);
+    // Attach rejection handlers in the same turn. Under full-suite CPU load a
+    // sampling timer can run after the queue deadline, creating an unhandled
+    // test promise even though this test intentionally expects that rejection.
     const settled=await Promise.allSettled(operations);
     assert.equal(maxWaiting,4);
     assert.ok(settled.some((value)=>value.status==='rejected'

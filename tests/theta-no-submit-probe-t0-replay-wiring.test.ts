@@ -20,7 +20,7 @@ const probeSource = readFileSync(probeSourcePath, 'utf8');
 test('the T0 replay bundle wiring inside the database-independent fallback path never calls a broker/order-submission surface', () => {
   const wiringStart = probeSource.indexOf("if(symbol.canonicalFrontierInput!==null){");
   assert.ok(wiringStart >= 0, 'the T0 replay wiring block must exist in the database-independent fallback path');
-  const wiringEnd = probeSource.indexOf('spoolEvidence(\'QUOTES_READY\'', wiringStart);
+  const wiringEnd = probeSource.indexOf('spoolReachedStage(\'QUOTES_READY\'', wiringStart);
   assert.ok(wiringEnd > wiringStart);
   const wiringBlock = probeSource.slice(wiringStart, wiringEnd);
   assert.doesNotMatch(wiringBlock, /broker\.|placeOrder|submitOrder|createOrder|cancelOrder|replaceOrder/,

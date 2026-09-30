@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { containRuntimePostgresPool } from "../theta/runtime-postgres-pool.js";
 
 export type DatabaseReadiness = {
   readonly state: "MISSING" | "CONNECTED" | "MIGRATION_REQUIRED" | "DEGRADED";
@@ -52,6 +53,7 @@ export async function checkDatabaseReadiness(
     idleTimeoutMillis: 1_000,
     application_name: 'theta-customer-database-readiness',
   });
+  containRuntimePostgresPool(pool);
   try {
     const objects = await pool.query(`SELECT
       current_setting('default_transaction_read_only') AS default_transaction_read_only,

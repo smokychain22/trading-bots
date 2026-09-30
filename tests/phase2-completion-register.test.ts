@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
+import { certifyExecutedRequirement, evidenceSourceHash, type ReviewedRequirementBinding } from '../src/operations/executed-requirement-evidence.js';
 
 test('Phase-2 denominator is explicit and cannot inherit a global certificate',()=>{
  const register=JSON.parse(readFileSync('docs/operations/THETA_PHASE2_COMPLETION_REGISTER.json','utf8'));
+ const bindings=JSON.parse(readFileSync('docs/operations/THETA_PHASE2_REVIEWED_TEST_BINDINGS.json','utf8')) as ReviewedRequirementBinding[];
+ const { artifactHash, ...body }=JSON.parse(readFileSync('docs/operations/evidence/THETA_PHASE2_EXECUTED_TESTS.json','utf8'));
+ assert.equal(artifactHash,createHash('sha256').update(JSON.stringify(body)).digest('hex'));
  const rows=register.requirements as Record<string,unknown>[];
  assert.equal(new Set(rows.map(r=>r.ID)).size,rows.length);
  assert.equal(register.PHASE2_TOTAL,rows.length);
@@ -26,6 +31,20 @@ test('Phase-2 denominator is explicit and cannot inherit a global certificate',(
    const result=row.TEST_RESULT as Record<string,unknown>;
    assert.equal(result.failed,0);assert.ok(Number(result.passed)>0);
    assert.ok(result.command&&result.artifactHash&&result.sourceHashes);
+   assert.equal(result.artifactHash,artifactHash,`${row.ID}:wrong artifact`);
+   assert.equal(body.executionSucceeded,true);
+   const binding=bindings.find(binding=>binding.id===row.ID);
+   assert.ok(binding,`${row.ID}:review missing`);
+   const recorded=body.results.find((record: { requirementId: string })=>record.requirementId===row.ID);
+   assert.ok(recorded,`${row.ID}:executed evidence missing`);
+   const currentHashes=Object.fromEntries(Object.keys(recorded.sourceHashes)
+    .map(path=>[path,evidenceSourceHash(readFileSync(path,'utf8'))]));
+   assert.deepEqual(recorded.sourceHashes,currentHashes,`${row.ID}:source changed since proof`);
+   assert.deepEqual(recorded,certifyExecutedRequirement(binding,recorded.executedTests,currentHashes));
+   assert.equal(recorded.state,'PASS');
+   assert.equal(recorded.runtimeProven,false);
+   assert.deepEqual(result.sourceHashes,recorded.sourceHashes);
+   assert.equal(result.passed,recorded.passed);
   }
  }
 });

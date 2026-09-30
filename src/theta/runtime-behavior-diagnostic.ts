@@ -36,13 +36,15 @@ export interface RuntimeFirstPaperSymbolEvidence {
   readonly cycleErrorCode: string | null;
   readonly optionChainComplete: boolean | null;
   readonly optionContractsComplete: boolean | null;
-  readonly qLatticeTotal: number;
+  /** Null means Q enumeration was not reached. Zero requires an observed empty lattice. */
+  readonly qLatticeTotal: number | null;
   readonly qDecision: string | null;
   readonly qReasonCodes: readonly string[];
   readonly selectedCandidateId: string | null;
   readonly selectedOptionSymbol: string | null;
   readonly canonicalAction: string | null;
-  readonly selectedQuantity: number;
+  /** Null means the canonical frontier was not reached. */
+  readonly selectedQuantity: number | null;
   readonly aegisState: string | null;
   readonly entrySafetyPolicy: null | {
     readonly action: 'BLOCK' | 'CLEAR';

@@ -1,7 +1,39 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { Pool } from 'pg';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
+import { createRuntimePostgresPool, containRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
+
+test('temporary pool containment is idempotent and preserves owned connection policy', async () => {
+  const codes:string[]=[];
+  const pool=new Pool({max:1,connectionTimeoutMillis:5000,idleTimeoutMillis:1000});
+  const options={...pool.options};
+  try {
+    assert.equal(containRuntimePostgresPool(pool,code=>codes.push(code)),pool);
+    containRuntimePostgresPool(pool,()=>assert.fail('second observer must not be installed'));
+    assert.deepEqual(pool.options,options);
+    assert.equal(pool.listenerCount('error'),1);
+    assert.equal(pool.listenerCount('connect'),1);
+    const client=new EventEmitter();pool.emit('connect',client as never);
+    assert.doesNotThrow(()=>client.emit('error',Object.assign(new Error('private'),{code:'ECONNRESET'})));
+    assert.doesNotThrow(()=>pool.emit('error',Object.assign(new Error('private'),{code:'57P03'})));
+    assert.deepEqual(codes,['POSTGRES_ECONNRESET','POSTGRES_57P03']);
+  } finally {await pool.end();}
+});
+
+test('every request-owned raw pool installs containment before its first operation',()=>{
+  for(const file of ['src/customer/operator-readiness.ts','src/customer/database-readiness.ts',
+    'src/customer/api.ts','src/theta/autonomous-runtime-handler.ts']){
+    const source=readFileSync(file,'utf8');
+    const creations=[...source.matchAll(/const pool\s*=\s*new Pool\([\s\S]*?\);/g)];
+    assert.ok(creations.length>0,file);
+    for(const match of creations){
+      assert.ok(match.index!==undefined);
+      assert.match(source.slice(match.index+match[0].length),/^\s*containRuntimePostgresPool\(pool\);/,file);
+    }
+  }
+});
 
 test('idle Postgres disconnect is handled and reported without secret-bearing error text', async () => {
   const codes: string[] = [];

@@ -4,6 +4,52 @@ Execution locks remain unchanged. Source corrections below are local tested
 engineering until the exact release is reviewed, CI-verified and deployed.
 No entry here closes the full phase.
 
+## Requirement-specific closure pass
+
+- Request-owned PostgreSQL pools now use the same idle/checked-out error
+  containment as the persistent pools, without changing limits or retries.
+  The ownership inventory classifies every source constructor. Per-process
+  capacity is explicit. A serverless fleet-wide maximum is not fabricated.
+- Unreached Q enumeration and sizing retain null through the Production
+  projection, persisted diagnostic and operator loader. Observed zero remains
+  zero. Malformed persisted operator-control booleans fail closed, including
+  idempotent replay and rollback/release paths.
+- The database-independent observation path had the same false-zero problem
+  and wrote READY envelopes even for failed stages. It now records explicit
+  stage-not-observed and blocked-plan receipts. A later failure cannot prove
+  that an unreported earlier stage never ran. Finalist receipt time follows
+  actual response completion rather than the request start.
+- A disposable PostgreSQL test runs the actual autonomous cycle through a
+  broker-read failure and recovery. The recovered cycle performs fresh reads,
+  uses a new identity and persists a new snapshot with zero submissions.
+- Linux CI now binds Python integration tests to its installed interpreter.
+  Previously the local Windows fallback could hide skipped orchestration
+  cases on Linux. Disposable database test names are archived by exact CI SHA.
+- The historical F01-F24 index is explicitly navigation metadata. Reviewed
+  requirement bindings select exact executed regression cases instead of
+  granting PASS from source patterns, enums or a global certificate.
+- The full-suite stress run exposed a test-only unhandled-rejection race in
+  the intentional six-on-two starvation reproduction. Rejection handlers now
+  attach in the same turn, before any timer wait. No runtime timeout changed.
+- A generated evidence artifact binds each reviewed requirement to executed
+  test names and source/test hashes. It cannot grant runtime or broker maturity.
+  The closure-register test checks artifact integrity and rejects stale hashes.
+
+No Production migration, soak, backup, execution-gate change or broker mutation
+was performed for this source/acceptance work. Deployment proof remains separate.
+
+Final source-pass validation: 570 focused requirement tests and the full Node
+suite of 3220 passed, 16 skipped, zero failures. Typecheck/lint/build and
+security/storage checks passed. The Python 1234, browser 23 and four Windows
+recovery test results above remain scoped to their unchanged components.
+The CI workflow will execute the full combined release, including the newly
+enabled Linux Python orchestration cases and disposable PostgreSQL recovery.
+
+A bounded read-only health check at 2026-09-30T19:07:56.406Z observed schema
+067, writable admission, unchanged postmaster start, d870f29 locked runtime,
+one active lease and GOOD reconciliation with zero positions/open orders.
+No restart or cutover was performed. This does not deploy the source fixes.
+
 ## Subsequent executed corrections
 
 - Required provider failures and SYSTEM_HOLD cannot certify canonical WAIT.

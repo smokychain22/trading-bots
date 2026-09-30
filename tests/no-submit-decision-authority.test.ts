@@ -69,4 +69,9 @@ test('probe source preserves schema authority and original failure before fallba
   assert.equal(source.match(/observe:observeDatabaseRead\(probeStage\)/g)?.length,2);
   assert.match(source,/spoolEvidence\('DATABASE_CLIENT_OBSERVED'/);
   assert.match(source,/dnsMs:null,tcpMs:null,tlsMs:null,pgStartupMs:null/);
+  assert.match(source,/if\(databaseIndependentStageReached\(symbol,stage\)\)spoolEvidence\(stage,payload,timestamps\)/);
+  assert.match(source,/spoolEvidence\('STAGE_NOT_OBSERVED'/);
+  assert.match(source,/spoolEvidence\('PLAN_BLOCKED'/);
+  for(const stage of ['Q_READY','AEGIS_READY','SIZING_READY','DECISION_READY'])
+    assert.ok(source.includes(`spoolReachedStage('${stage}'`),stage);
 });

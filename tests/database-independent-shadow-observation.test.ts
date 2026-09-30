@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Environment } from '../src/config/environment.js';
-import { runDatabaseIndependentShadowObservation } from '../src/theta/database-independent-shadow-observation.js';
+import { databaseIndependentStageReached, runDatabaseIndependentShadowObservation } from '../src/theta/database-independent-shadow-observation.js';
 import type { AlpacaProviderConfig } from '../src/theta/alpaca-provider.js';
 import type { ThetaShadowCycleResult } from '../src/theta/theta-shadow-cycle.js';
 import type { UniverseDiscoveryResult } from '../src/theta/universe-discovery.js';
@@ -40,10 +40,18 @@ test('database-independent observation runs real-path dependencies but can never
   assert.equal(report.brokerMutationCapability,'BLOCKED_CANONICAL_POSTGRES_REQUIRED');
   assert.equal(report.deadlinePolicy.version,'theta-db-independent-deadline-v1');
   assert.deepEqual(report.approvedSymbolsDiscovered,['SPY']);
-  assert.equal(report.symbols[0]?.qCandidateCount,0);
+  assert.equal(report.symbols[0]?.qCandidateCount,null);
+  assert.equal(report.symbols[0]?.selectedQuantity,null);
   assert.deepEqual(report.symbols[0]?.qReasonCodes,[]);
   assert.deepEqual(report.symbols[0]?.qCandidates,[]);
-  assert.equal(report.symbols[0]?.exactRefresh.state,'NOT_APPLICABLE');
+  assert.equal(report.symbols[0]?.exactRefresh.state,'NOT_REACHED');
+  const symbol=report.symbols[0];assert.ok(symbol);
+  for(const stage of ['Q_READY','AEGIS_READY','SIZING_READY','DECISION_READY','METHOD_PROVENANCE_READY'])
+    assert.equal(databaseIndependentStageReached(symbol,stage),false,stage);
+  assert.equal(databaseIndependentStageReached({...symbol,qCandidateCount:0},'Q_READY'),true);
+  assert.equal(databaseIndependentStageReached({...symbol,selectedQuantity:0},'SIZING_READY'),false);
+  assert.equal(databaseIndependentStageReached({...symbol,selectedQuantity:0,
+    assessmentsObserved:{aegis:true,sizing:true}},'SIZING_READY'),true);
 });
 
 test('a stalled canonical cycle becomes typed partial evidence within the configured deadline',async()=>{
@@ -52,6 +60,11 @@ test('a stalled canonical cycle becomes typed partial evidence within the config
       runCycle:async()=>new Promise<ThetaShadowCycleResult>(()=>{})}});
   assert.equal(report.symbols[0]?.state,'FAILED');
   assert.equal(report.symbols[0]?.failureCode,'DATABASE_INDEPENDENT_CYCLE_TIMEOUT');
+  assert.equal(report.symbols[0]?.qCandidateCount,null);
+  assert.equal(report.symbols[0]?.selectedQuantity,null);
+  const symbol=report.symbols[0];assert.ok(symbol);
+  for(const stage of ['QUOTES_READY','Q_READY','AEGIS_READY','SIZING_READY','DECISION_READY'])
+    assert.equal(databaseIndependentStageReached(symbol,stage),false,stage);
   assert.equal(report.brokerMutationCapability,'BLOCKED_CANONICAL_POSTGRES_REQUIRED');
 });
 
@@ -60,7 +73,7 @@ test('database-independent observation refreshes the exact selected contract wit
   const cycle={...baseCycle,strategyFrontier:{selectedCandidateId:'candidate-1',selectedQuantity:1,primaryAction:'OPEN',
     branches:[{candidates:[{candidateId:'candidate-1',branch:'THETA_CONVENTIONAL',aegisState:'ALLOW_FULL',
       hardBlockers:[],unknownEvidence:[],sizing:{quantity:1},legs:[{optionSymbol}]}]}]},
-    orchestration:{thetaQ:{candidates:[{candidateId:'candidate-1',actionFeasible:true,quantity:1,reasons:[],
+    orchestration:{shadowOpportunities:[],thetaQ:{candidates:[{candidateId:'candidate-1',actionFeasible:true,quantity:1,reasons:[],
       paperBootstrapReasonCodes:[]}]},receipt:{winningAction:'OPEN',reasonCodes:['CANDIDATE_SELECTED']},
       ownershipByCandidateId:{'candidate-1':{ownability:0.8,components:[{name:'LiquidityQuality',value:1,
         reasons:[{code:'LIQUIDITY_ACCEPTABLE'}]}]}},
@@ -68,7 +81,8 @@ test('database-independent observation refreshes the exact selected contract wit
         reasons:[{code:'SYSTEM_CLEAR'}]}],reasons:[{code:'ALL_FAMILIES_CLEAR'}]}},
       aegis:{newRiskState:'ALLOW_FULL'}}} as unknown as ThetaShadowCycleResult;
   let refreshCalls=0;
-  const report=await runDatabaseIndependentShadowObservation({environment,alpaca,now,dependencies:{
+  const observedAt=()=>refreshCalls===0?now():'2026-09-24T15:30:05.000Z';
+  const report=await runDatabaseIndependentShadowObservation({environment,alpaca,now:observedAt,dependencies:{
     discover:async()=>discovery,runCycle:async()=>cycle,
     refreshExact:async()=>{refreshCalls+=1;return {complete:true,snapshots:new Map([[optionSymbol,{bid:4.1,ask:4.2,
       bidSize:10,askSize:12,quoteTimestamp:'2026-09-24T15:29:59.000Z'}]])} as never;},
@@ -76,6 +90,7 @@ test('database-independent observation refreshes the exact selected contract wit
   assert.equal(refreshCalls,1);
   assert.equal(report.symbols[0]?.exactRefresh.state,'READY_READ_ONLY');
   assert.equal(report.symbols[0]?.exactRefresh.bid,4.1);
+  assert.equal(report.symbols[0]?.exactRefresh.receivedAt,'2026-09-24T15:30:05.000Z');
   assert.equal(report.symbols[0]?.selectedQuantity,1);
   assert.equal(report.symbols[0]?.canonicalAction,'OPEN');
   assert.equal(report.symbols[0]?.qCandidates[0]?.ownershipOwnability,0.8);

@@ -34,8 +34,9 @@ export interface DatabaseIndependentSymbolObservation {
   readonly decisionAsOf:string|null;
   readonly optionContractsComplete:boolean|null;
   readonly optionChainComplete:boolean|null;
-  readonly qCandidateCount:number;
+  readonly qCandidateCount:number|null;
   readonly qDecision:string|null;
+  readonly assessmentsObserved:{readonly aegis:boolean;readonly sizing:boolean};
   readonly qReasonCodes:readonly string[];
   readonly qCandidates:readonly {
     readonly candidateId:string;
@@ -67,14 +68,14 @@ export interface DatabaseIndependentSymbolObservation {
   readonly canonicalAction:string|null;
   readonly selectedCandidateId:string|null;
   readonly selectedOptionSymbol:string|null;
-  readonly selectedQuantity:number;
+  readonly selectedQuantity:number|null;
   readonly aegisState:string|null;
   readonly blockers:readonly string[];
   readonly riskHistory:{readonly scanned:number;readonly spreadQualified:number;readonly spreadRejected:number;
     readonly ivQualified:number;readonly ivRejected:number};
   readonly riskObservations:readonly LocalAegisRiskObservation[];
   readonly exactRefresh:{
-    readonly state:'NOT_APPLICABLE'|'READY_READ_ONLY'|'QUOTE_MISSING'|'INCOMPLETE'|'PROVIDER_ERROR';
+    readonly state:'NOT_REACHED'|'NOT_APPLICABLE'|'READY_READ_ONLY'|'QUOTE_MISSING'|'INCOMPLETE'|'PROVIDER_ERROR';
     readonly optionSymbol:string|null;
     readonly providerTimestamp:string|null;
     readonly receivedAt:string|null;
@@ -82,6 +83,21 @@ export interface DatabaseIndependentSymbolObservation {
     readonly ask:number|null;
     readonly brokerMutationSurface:false;
   };
+}
+
+/** Receipt reachability only, never decision or execution authority. */
+export function databaseIndependentStageReached(symbol:DatabaseIndependentSymbolObservation, stage:string):boolean {
+  if(symbol.state==='FAILED')return false;
+  switch(stage){
+    case 'METHOD_PROVENANCE_READY':return symbol.methodInputProvenance.length>0;
+    case 'QUOTES_READY':return symbol.optionChainComplete!==null;
+    case 'Q_READY':return symbol.qCandidateCount!==null;
+    case 'RISK_OBSERVATIONS_READY':return symbol.snapshotId!==null;
+    case 'AEGIS_READY':return symbol.assessmentsObserved.aegis;
+    case 'SIZING_READY':return symbol.assessmentsObserved.sizing;
+    case 'DECISION_READY':return symbol.canonicalAction!==null;
+    default:return false;
+  }
 }
 
 export interface DatabaseIndependentShadowObservationReport {
@@ -134,18 +150,23 @@ async function exactReadOnlyRefresh(alpaca:AlpacaProviderConfig,cycle:ThetaShado
   const selected=frontier?.branches.flatMap((branch)=>branch.candidates)
     .find((candidate)=>candidate.candidateId===frontier.selectedCandidateId)??null;
   const optionSymbol=selected?.legs[0]?.optionSymbol??null;
-  if(optionSymbol===null)return {state:'NOT_APPLICABLE',optionSymbol:null,providerTimestamp:null,receivedAt:null,
+  if(optionSymbol===null)return {state:frontier==null?'NOT_REACHED':'NOT_APPLICABLE',optionSymbol:null,providerTimestamp:null,receivedAt:null,
     bid:null,ask:null,brokerMutationSurface:false};
   const identity=parseOccOptionSymbol(optionSymbol);
   if(identity===null)return {state:'QUOTE_MISSING',optionSymbol,providerTimestamp:null,receivedAt:null,
     bid:null,ask:null,brokerMutationSurface:false};
-  const receivedAt=now();
+  const requestedAt=now();
+  let receivedAt:string|null=null;
   try{
     const result=await bounded(refresh(alpaca,{underlyingSymbol:identity.underlying,feed:'indicative',
       optionType:identity.optionType.toLowerCase() as 'put'|'call',
       expirationDateGte:identity.expiration,expirationDateLte:identity.expiration,
       strikePriceGte:identity.strike,strikePriceLte:identity.strike,limit:1000,maxPages:10}),timeoutMs,
     'DATABASE_INDEPENDENT_EXACT_REFRESH_TIMEOUT');
+    const responseAt=now();
+    if(!Number.isFinite(Date.parse(responseAt))||Date.parse(responseAt)<Date.parse(requestedAt))
+      throw new Error('EXACT_REFRESH_RECEIPT_TIME_INVALID');
+    receivedAt=responseAt;
     if(!result.complete)return {state:'INCOMPLETE',optionSymbol,providerTimestamp:null,receivedAt,
       bid:null,ask:null,brokerMutationSurface:false};
     const quote=result.snapshots.get(optionSymbol);
@@ -226,11 +247,14 @@ export async function runDatabaseIndependentShadowObservation(input:{
           contract:parsed.data})];
       });
       symbols.push({symbol:underlying.symbol,state:'COMPLETED',failureCode:null,
-        canonicalFrontierInput:cycle.canonicalFrontierInput,methodInputProvenance:cycle.methodInputProvenance,
+        canonicalFrontierInput:cycle.canonicalFrontierInput??null,methodInputProvenance:cycle.methodInputProvenance??[],
         snapshotId:cycle.snapshotContentHash,decisionAsOf:cycle.fusionSnapshot===null?null
           :String(cycle.fusionSnapshot.snapshot.decisionTimeUtc),
         optionContractsComplete:cycle.optionContractsComplete,optionChainComplete:cycle.optionChainComplete,
-        qCandidateCount:q?.candidates.length??0,qDecision:cycle.orchestration?.receipt.winningAction??null,
+        qCandidateCount:q?.candidates.length??null,qDecision:cycle.orchestration?.receipt.winningAction??null,
+        assessmentsObserved:{aegis:cycle.orchestration?.aegis!=null
+          ||Object.keys(cycle.orchestration?.aegisByCandidateId??{}).length>0,
+          sizing:cycle.orchestration?.shadowOpportunities.some(candidate=>candidate.recommendedQuantity!=null)??false},
         qReasonCodes:cycle.orchestration?.receipt.reasonCodes??[],
         qCandidates:q?.candidates.map((candidate)=>{
           const ownership=cycle.orchestration?.ownershipByCandidateId?.[candidate.candidateId];
@@ -247,13 +271,13 @@ export async function runDatabaseIndependentShadowObservation(input:{
           const aegisIdentity=candidate.legs[0]?.optionSymbol??candidate.candidateId;
           const aegis=cycle.orchestration?.aegisByCandidateId?.[aegisIdentity];
           return {candidateId:candidate.candidateId,branch:candidate.branch,hardBlockers:candidate.hardBlockers,
-            unknownEvidence:candidate.unknownEvidence,quantity:candidate.sizing?.quantity??0,aegisState:candidate.aegisState,
+            unknownEvidence:candidate.unknownEvidence,quantity:candidate.sizing.quantity,aegisState:candidate.aegisState,
             aegisFamilies:aegis?.families.map((family)=>({family:family.family,state:family.state,
               reasonCodes:family.reasons.map((reason)=>reason.code)}))??[],
             aegisReasonCodes:aegis?.reasons.map((reason)=>reason.code)??[]};
         }))??[],
         canonicalAction:frontier?.primaryAction??null,selectedCandidateId:frontier?.selectedCandidateId??null,
-        selectedOptionSymbol:selected?.legs[0]?.optionSymbol??null,selectedQuantity:frontier?.selectedQuantity??0,
+        selectedOptionSymbol:selected?.legs[0]?.optionSymbol??null,selectedQuantity:frontier?.selectedQuantity??null,
         aegisState:selected?.aegisState??cycle.orchestration?.aegis?.newRiskState??null,blockers:cycle.blockers,
         riskHistory:{scanned:input.localRiskHistory?.scanned??0,
           spreadQualified:input.localRiskHistory?.spread.length??0,
@@ -263,15 +287,16 @@ export async function runDatabaseIndependentShadowObservation(input:{
         exactRefresh:await exactReadOnlyRefresh(input.alpaca,cycle,input.now,dependencies.refreshExact,deadlinePolicy.exactRefreshMs)});
     }catch(error){
       symbols.push({symbol:underlying.symbol,state:'FAILED',failureCode:safeCode(error),canonicalFrontierInput:null,methodInputProvenance:[],snapshotId:null,decisionAsOf:null,
-        optionContractsComplete:null,optionChainComplete:null,qCandidateCount:0,qDecision:null,canonicalAction:null,
+        optionContractsComplete:null,optionChainComplete:null,qCandidateCount:null,qDecision:null,canonicalAction:null,
+        assessmentsObserved:{aegis:false,sizing:false},
         qReasonCodes:[],qCandidates:[],frontierCandidates:[],
-        selectedCandidateId:null,selectedOptionSymbol:null,selectedQuantity:0,aegisState:null,blockers:[safeCode(error)],
+        selectedCandidateId:null,selectedOptionSymbol:null,selectedQuantity:null,aegisState:null,blockers:[safeCode(error)],
         riskHistory:{scanned:input.localRiskHistory?.scanned??0,
           spreadQualified:input.localRiskHistory?.spread.length??0,
           spreadRejected:input.localRiskHistory?.spreadRejected??0,
           ivQualified:input.localRiskHistory?.alpacaIv.length??0,
           ivRejected:input.localRiskHistory?.ivRejected??0},riskObservations:[],
-        exactRefresh:{state:'NOT_APPLICABLE',optionSymbol:null,providerTimestamp:null,receivedAt:null,bid:null,ask:null,
+        exactRefresh:{state:'NOT_REACHED',optionSymbol:null,providerTimestamp:null,receivedAt:null,bid:null,ask:null,
           brokerMutationSurface:false}});
     }
   }

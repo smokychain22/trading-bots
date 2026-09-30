@@ -2,6 +2,7 @@ import type { Environment } from "../config/environment.js";
 import { missingProviderVariables } from "../config/environment.js";
 import { checkOptionomics, type CheckResult } from "../providers/readiness.js";
 import { Pool } from "pg";
+import { containRuntimePostgresPool } from '../theta/runtime-postgres-pool.js';
 import { readSequentially } from './operator-status-read-batch.js';
 import type { RuntimeFirstPaperEvidence } from "../theta/runtime-behavior-diagnostic.js";
 
@@ -97,6 +98,7 @@ export async function readLocalWorkerReadiness(databaseUrl?:string):Promise<Loca
   if(!databaseUrl)return unknown;
   const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000,
     application_name:'theta-operator-worker-readiness'});
+  containRuntimePostgresPool(pool);
   try{
     const exists=await pool.query(`SELECT to_regclass('ops.runtime_worker_status') IS NOT NULL AS ready`);
     if(exists.rows[0]?.ready!==true)return unknown;
@@ -146,6 +148,7 @@ export async function readMasterRuntimeEvidence(databaseUrl?:string):Promise<Mas
   if(!databaseUrl)return empty;
   const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000,
     application_name:'theta-operator-runtime-evidence'});
+  containRuntimePostgresPool(pool);
   try{
     const result=await pool.query(`WITH latest_decision AS (
         SELECT action_code,decided_at,strategy_branch,fusion_snapshot_id
@@ -210,6 +213,7 @@ export async function readOutcomeResearchVisibility(databaseUrl?:string):Promise
   if(!databaseUrl)return empty;
   const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000,
     application_name:'theta-operator-outcome-visibility'});
+  containRuntimePostgresPool(pool);
   try{
     const exists=await pool.query(`SELECT to_regclass('research.theta_resolved_outcome_label') IS NOT NULL AS ready`);
     if(exists.rows[0]?.ready!==true)return empty;
@@ -287,6 +291,7 @@ export async function readLatestRuntimeBehavior(databaseUrl?:string):Promise<Run
   if(!databaseUrl)return empty;
   const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000,
     application_name:'theta-operator-runtime-behavior'});
+  containRuntimePostgresPool(pool);
   try{
     const relation=await pool.query(`SELECT to_regclass('research.theta_runtime_behavior_diagnostic') IS NOT NULL AS ready`);
     if(relation.rows[0]?.ready!==true)return empty;
@@ -323,7 +328,7 @@ export async function readLatestRuntimeBehavior(databaseUrl?:string):Promise<Run
   }catch{return empty;}finally{await pool.end();}
 }
 
-function parseRuntimeFirstPaperEvidence(value:unknown):RuntimeFirstPaperEvidence|null {
+export function parseRuntimeFirstPaperEvidence(value:unknown):RuntimeFirstPaperEvidence|null {
   if(value===null||typeof value!=='object'||Array.isArray(value))return null;
   const evidence=value as Record<string,unknown>;
   if(evidence.version!=='theta-first-paper-runtime-evidence-v1'||evidence.brokerMutationSurface!==false
@@ -332,13 +337,14 @@ function parseRuntimeFirstPaperEvidence(value:unknown):RuntimeFirstPaperEvidence
   const strings=(item:unknown):boolean=>Array.isArray(item)&&item.every((entry)=>typeof entry==='string');
   const nullableString=(item:unknown):boolean=>item===null||typeof item==='string';
   const nullableBoolean=(item:unknown):boolean=>item===null||typeof item==='boolean';
+  const nullableCount=(item:unknown):boolean=>item===null||(typeof item==='number'&&Number.isSafeInteger(item)&&item>=0);
   const valid=evidence.symbols.every((item)=>{
     if(!record(item)||typeof item.symbol!=='string'||!['COMPLETED','FAILED'].includes(String(item.cycleState))
       ||!nullableString(item.cycleErrorCode)||!nullableBoolean(item.optionChainComplete)
-      ||!nullableBoolean(item.optionContractsComplete)||!Number.isSafeInteger(item.qLatticeTotal)
+      ||!nullableBoolean(item.optionContractsComplete)||!nullableCount(item.qLatticeTotal)
       ||!nullableString(item.qDecision)||!strings(item.qReasonCodes)||!nullableString(item.selectedCandidateId)
       ||!nullableString(item.selectedOptionSymbol)||!nullableString(item.canonicalAction)
-      ||!Number.isSafeInteger(item.selectedQuantity)||!nullableString(item.aegisState)
+      ||!nullableCount(item.selectedQuantity)||!nullableString(item.aegisState)
       ||!strings(item.cycleBlockers))return false;
     if(item.entrySafetyPolicy!==null&&(!record(item.entrySafetyPolicy)
       ||!['BLOCK','CLEAR'].includes(String(item.entrySafetyPolicy.action))
@@ -368,6 +374,7 @@ export async function readP2FOperatorStatus(databaseUrl?:string):Promise<P2FOper
     blocked_capabilities:null,real_payload_count:null,stale_capability_count:null,latest_receipt_hash:null},alerts:[]};
   if(!databaseUrl)return empty;const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000,
     application_name:'theta-operator-p2f-status'});
+  containRuntimePostgresPool(pool);
   try{const relation=await pool.query(`SELECT to_regclass('research.optionomics_provider_qualification_receipt') IS NOT NULL AS ready`);
     if(relation.rows[0]?.ready!==true)return empty;
     const [q,a]=await readSequentially([()=>pool.query(`SELECT secret_state,attempted_at,real_payload_count,stale_capability_count,evidence_hash,
@@ -397,6 +404,7 @@ export async function readP2GOperatorStatus(databaseUrl?:string):Promise<P2GOper
     provider_families:[],hold:{state:'HOLD_UNKNOWN',observed_at:null},alert_history:[]};
   if(!databaseUrl)return empty;const pool=new Pool({connectionString:databaseUrl,max:1,connectionTimeoutMillis:5_000,
     application_name:'theta-operator-p2g-status'});
+  containRuntimePostgresPool(pool);
   try{const relation=await pool.query(`SELECT to_regclass('research.theta_synthetic_lifecycle_receipt') IS NOT NULL AS ready`);
     if(relation.rows[0]?.ready!==true)return empty;
     const [simulation,preview,families,hold,alerts]=await readSequentially([

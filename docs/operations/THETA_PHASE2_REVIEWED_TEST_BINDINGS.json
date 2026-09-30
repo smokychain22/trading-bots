@@ -1,0 +1,845 @@
+[
+  {
+    "id": "2.1.TELEMETRY",
+    "reviewedBehavior": "Canonical checkout/transaction wrappers retain sanitized cause, acquisition, operation, checkout and release timings. Observer failure cannot change the database result.",
+    "sources": [
+      "src/theta/runtime-postgres-client.ts",
+      "src/theta/postgres-runtime-error.ts",
+      "tools/theta-no-submit-probe.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/runtime-postgres-client.test.ts",
+        "names": [
+          "observation sink failure cannot mask a committed result or original database failure",
+          "checked-out event preserves safe SQLSTATE and operation timing without private error text",
+          "every acquired client is observed and released on success and query failure",
+          "rollback failure still releases and discards the checked-out client",
+          "ambiguous COMMIT requires identity reconciliation, never replays the write"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.2.AUTHORITY",
+    "reviewedBehavior": "Production worker requires explicit Aiven target. Legacy/generic URLs cannot silently become runtime authority. Explicit-file precedence and safe validation are executed.",
+    "sources": [
+      "src/config/environment.ts",
+      "src/theta/autonomous-runtime-handler.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/environment.test.ts",
+        "names": [
+          "Production worker cannot silently inherit legacy or generic database authority",
+          "Aiven runtime authority fails closed without a configured Aiven target",
+          "parses dotenv quotes and lets the explicit file override stale process values",
+          "a configuration error message never contains the secret value that triggered it"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.2.STATUS_FANOUT",
+    "reviewedBehavior": "Overlapping same-database status reads share one in-flight batch. Completed/failed responses are not reused and owned helper lifetimes are sequential, not a claimed fleet-wide bound.",
+    "sources": [
+      "src/customer/operator-status-read-batch.ts",
+      "src/customer/operator-readiness.ts",
+      "src/customer/api.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/operator-status-read-batch.test.ts",
+        "names": [
+          "overlapping status readers share one bounded batch without caching completed truth",
+          "failed batch releases single-flight ownership and never reuses a partial result",
+          "distinct database identities never share an operator result",
+          "Production operator status and max-one helpers use bounded reads"
+        ]
+      },
+      {
+        "file": "tests/runtime-postgres-pool.test.ts",
+        "names": [
+          "temporary pool containment is idempotent and preserves owned connection policy",
+          "every request-owned raw pool installs containment before its first operation"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.3.FAILURE_AUTHORITY",
+    "reviewedBehavior": "Required provider or persistence failure invalidates decision certification. Local backfill preserves evidence only and cannot authorize a broker action.",
+    "sources": [
+      "src/theta/no-submit-decision-authority.ts",
+      "src/theta/local-evidence-spool.ts",
+      "src/research/production-shadow-runtime.ts",
+      "tools/theta-no-submit-probe.ts",
+      "src/theta/database-independent-shadow-observation.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/no-submit-decision-authority.test.ts",
+        "names": [
+          "incomplete enumeration cannot certify a global WAIT",
+          "a required provider failure or SYSTEM_HOLD cannot be certified by complete enumeration",
+          "backfilled or persisted local evidence never becomes broker authority"
+        ]
+      },
+      {
+        "file": "tests/production-shadow-runtime.test.ts",
+        "names": [
+          "corporate-action database failures propagate rather than becoming provider gaps or WAIT",
+          "required provider failure invalidates scan authority even when inner enumeration earned WAIT"
+        ]
+      },
+      {
+        "file": "tests/local-evidence-spool.test.ts",
+        "names": [
+          "backfill is idempotent, verifies ambiguous writes, and unlocks no broker mutation itself"
+        ]
+      },
+      {
+        "file": "tests/database-independent-shadow-observation.test.ts",
+        "names": [
+          "database-independent observation runs real-path dependencies but can never authorize mutation",
+          "a stalled canonical cycle becomes typed partial evidence within the configured deadline",
+          "database-independent observation refreshes the exact selected contract with a GET-only quote"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.6.COUNTS",
+    "reviewedBehavior": "Injected HTTP pages pass through the real Alpaca adapters at every required contract and snapshot boundary, preserving exact count and completeness.",
+    "sources": [
+      "src/theta/alpaca-provider.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/alpaca-provider.test.ts",
+        "names": [
+          "option contract pagination remains complete across boundary sizes through 10,000 contracts"
+        ]
+      },
+      {
+        "file": "tests/phase2-provider-matrix.test.ts",
+        "names": [
+          "snapshot pagination preserves 0 exact identities including later pages",
+          "snapshot pagination preserves 1 exact identities including later pages",
+          "snapshot pagination preserves 99 exact identities including later pages",
+          "snapshot pagination preserves 100 exact identities including later pages",
+          "snapshot pagination preserves 101 exact identities including later pages",
+          "snapshot pagination preserves 999 exact identities including later pages",
+          "snapshot pagination preserves 1000 exact identities including later pages",
+          "snapshot pagination preserves 1001 exact identities including later pages",
+          "snapshot pagination preserves 1090 exact identities including later pages",
+          "snapshot pagination preserves 1511 exact identities including later pages",
+          "snapshot pagination preserves 2000 exact identities including later pages",
+          "snapshot pagination preserves 2601 exact identities including later pages",
+          "snapshot pagination preserves 5000 exact identities including later pages",
+          "snapshot pagination preserves 10000 exact identities including later pages"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.6.ADVERSARIAL",
+    "reviewedBehavior": "Later-page failures, token loops, conflicting duplicates and malformed page boundaries fail typed. Legitimate empty terminal pages do not invent rows.",
+    "sources": [
+      "src/theta/alpaca-provider.ts",
+      "src/theta/underlying-history.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase2-provider-matrix.test.ts",
+        "names": [
+          "non-finite or nonpositive pagination bounds fail before requesting any provider page",
+          "identical reordered contract/snapshot pages deduplicate and conflicting evidence fails typed",
+          "empty terminal page and omitted optional terminal token are valid without fabricating extra rows",
+          "malformed, partial and timed-out later pages cannot certify completed contract or quote enumeration",
+          "HTTP 401 after a valid first page cannot become complete or empty",
+          "HTTP 403 after a valid first page cannot become complete or empty",
+          "HTTP 404 after a valid first page cannot become complete or empty",
+          "HTTP 408 after a valid first page cannot become complete or empty",
+          "HTTP 429 after a valid first page cannot become complete or empty",
+          "HTTP 500 after a valid first page cannot become complete or empty",
+          "HTTP 502 after a valid first page cannot become complete or empty",
+          "HTTP 503 after a valid first page cannot become complete or empty",
+          "HTTP 504 after a valid first page cannot become complete or empty"
+        ]
+      },
+      {
+        "file": "tests/alpaca-provider.test.ts",
+        "names": [
+          "snapshot pagination rejects repeated tokens and deduplicates identical exact-contract quotes",
+          "open order pagination failures never return a falsely complete partial set"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.7.FEED",
+    "reviewedBehavior": "Actual normalization and pre-submit adapters retain requested feed and exact identity, never substituting Optionomics for executable Alpaca BBO. Indicative remains governed Paper reference only.",
+    "sources": [
+      "src/theta/alpaca-provider.ts",
+      "src/theta/option-chain-ingestion.ts",
+      "src/execution/alpaca-execution-quote-source.ts",
+      "src/execution/trusted-option-quote.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/option-chain-ingestion.test.ts",
+        "names": [
+          "Alpaca bid/ask is NEVER substituted by an Optionomics quote, even when Optionomics has one",
+          "requestedFeed is preserved as the contract feed, INDICATIVE never silently reported as OPRA",
+          "a fresh IEX trade supplies moneyness without becoming option execution authority"
+        ]
+      },
+      {
+        "file": "tests/trusted-option-quote.test.ts",
+        "names": [
+          "qualifies proven Optionomics two-sided evidence for research only, never execution",
+          "Alpaca indicative is accepted only as a master Paper reference"
+        ]
+      },
+      {
+        "file": "tests/alpaca-execution-quote-source.test.ts",
+        "names": [
+          "pre-submit quote refuses ambiguous identity and incomplete provider pages"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.9.NEGATIVE_ASSURANCE",
+    "reviewedBehavior": "Production event/corporate safety consumers distinguish complete bounded macro coverage, positive-only earnings, empty corporate reads and explicit governed fund applicability. No generic absence-to-clear.",
+    "sources": [
+      "src/theta/alpaca-corporate-action-evidence.ts",
+      "src/theta/earnings-event-evidence.ts",
+      "src/theta/macro-event-policy.ts",
+      "src/theta/paper-entry-safety-policy.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/earnings-event-evidence.test.ts",
+        "names": [
+          "absence of a metrics observation is not negative earnings assurance",
+          "known earnings distance preserves trading-session units and positive-only authority"
+        ]
+      },
+      {
+        "file": "tests/alpaca-corporate-action-evidence.test.ts",
+        "names": [
+          "a sparse later response cannot erase a persisted positive action in the decision window",
+          "persisted positive lookup fails closed on bad input, corrupt row, or storage error"
+        ]
+      },
+      {
+        "file": "tests/paper-entry-safety-policy.test.ts",
+        "names": [
+          "corporate-action policy never maps a successful empty read to qualified absence",
+          "corporate-action policy blocks positives, partial coverage, provider errors, adjusted contracts, and incomplete fallback",
+          "unknown earnings coverage and unknown instrument class remain blocked"
+        ]
+      },
+      {
+        "file": "tests/macro-event-policy.test.ts",
+        "names": [
+          "complete bounded coverage produces a versioned known false, never an assumed false",
+          "incomplete coverage and missing schedule time remain unknown"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.12.MISSING",
+    "reviewedBehavior": "Provider malformed values stay unknown, measured zero survives. Production account persistence uses canonical normalization and unreached Q/sizing remains null through operator loading.",
+    "sources": [
+      "src/theta/alpaca-provider.ts",
+      "src/theta/optionomics-provider.ts",
+      "src/research/master-shadow-context.ts",
+      "src/research/production-shadow-runtime.ts",
+      "src/customer/operator-readiness.ts",
+      "src/theta/runtime-behavior-diagnostic.ts",
+      "src/customer/operator-control.ts",
+      "src/theta/database-independent-shadow-observation.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/provider-boundary-fuzz.test.ts",
+        "names": [
+          "provider boundary fuzz never turns malformed or absent values into executable defaults",
+          "unknown activity and Greeks stay null and never acquire fabricated provenance"
+        ]
+      },
+      {
+        "file": "tests/master-shadow-context.test.ts",
+        "names": [
+          "actual persistence-context path reads normalized broker evidence before acquiring a transaction"
+        ]
+      },
+      {
+        "file": "tests/production-shadow-runtime.test.ts",
+        "names": [
+          "unreached Q and sizing persist as null and survive the operator loader, observed zero remains zero"
+        ]
+      },
+      {
+        "file": "tests/optionomics-provider.test.ts",
+        "names": [
+          "malformed numeric values remain UNKNOWN while decimal zero and negative Greeks survive",
+          "200 option with OI = 0 is a real zero, never conflated with UNKNOWN",
+          "200 option with OI absent is UNKNOWN (null), never coerced to zero"
+        ]
+      },
+      {
+        "file": "tests/operator-control.test.ts",
+        "names": [
+          "persisted missing or contradictory execution controls fail closed and always release the read client",
+          "idempotent control replay cannot bypass persisted-state validation"
+        ]
+      },
+      {
+        "file": "tests/database-independent-shadow-observation.test.ts",
+        "names": [
+          "database-independent observation runs real-path dependencies but can never authorize mutation",
+          "a stalled canonical cycle becomes typed partial evidence within the configured deadline",
+          "database-independent observation refreshes the exact selected contract with a GET-only quote"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.2.OWNERS",
+    "reviewedBehavior": "All 65 current construction sites are inventoried by AST, including 29 source sites, explicit tools and the fresh-probe client. Process singletons, request/admin ownership and borrowed pools are distinguished. Global serverless/process concurrency is deliberately not claimed bounded.",
+    "sources": [
+      "tools/theta-postgres-owner-inventory.ts",
+      "src/worker/resident-worker.ts",
+      "src/customer/operator-control.ts",
+      "src/theta/runtime-postgres-pool.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/postgres-owner-inventory.test.ts",
+        "names": [
+          "pool inventory classifies every construction without inventing a fleet connection bound"
+        ]
+      },
+      {
+        "file": "tests/owned-pool-client.test.ts",
+        "names": [
+          "owned pool acquisition failure closes the pool and preserves the exact cause",
+          "all seven ephemeral preflight/import/migration acquisitions use the failure-safe owner boundary"
+        ]
+      },
+      {
+        "file": "tests/runtime-postgres-pool.test.ts",
+        "names": [
+          "temporary pool containment is idempotent and preserves owned connection policy"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.5.FAILURE_MATRIX",
+    "reviewedBehavior": "Both real adapters execute injected HTTP/transport/malformed failures. HTTP status survives; no error becomes an empty successful market. Retry guidance and streaming-body deadlines remain bounded.",
+    "sources": [
+      "src/theta/alpaca-provider.ts",
+      "src/theta/optionomics-provider.ts",
+      "src/theta/provider-network-failure.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase2-provider-matrix.test.ts",
+        "names": [
+          "HTTP 401 after a valid first page cannot become complete or empty",
+          "Optionomics HTTP 401 retains failure and status instead of empty evidence",
+          "HTTP 403 after a valid first page cannot become complete or empty",
+          "Optionomics HTTP 403 retains failure and status instead of empty evidence",
+          "HTTP 404 after a valid first page cannot become complete or empty",
+          "Optionomics HTTP 404 retains failure and status instead of empty evidence",
+          "HTTP 408 after a valid first page cannot become complete or empty",
+          "Optionomics HTTP 408 retains failure and status instead of empty evidence",
+          "HTTP 429 after a valid first page cannot become complete or empty",
+          "Optionomics HTTP 429 retains failure and status instead of empty evidence",
+          "HTTP 500 after a valid first page cannot become complete or empty",
+          "Optionomics HTTP 500 retains failure and status instead of empty evidence",
+          "HTTP 502 after a valid first page cannot become complete or empty",
+          "Optionomics HTTP 502 retains failure and status instead of empty evidence",
+          "HTTP 503 after a valid first page cannot become complete or empty",
+          "Optionomics HTTP 503 retains failure and status instead of empty evidence",
+          "HTTP 504 after a valid first page cannot become complete or empty",
+          "Optionomics HTTP 504 retains failure and status instead of empty evidence",
+          "malformed, partial and timed-out later pages cannot certify completed contract or quote enumeration"
+        ]
+      },
+      {
+        "file": "tests/provider-network-failure.test.ts",
+        "names": [
+          "Alpaca and Optionomics preserve sanitized transport classes through real adapters",
+          "Alpaca body reset retains network failure rather than malformed JSON"
+        ]
+      },
+      {
+        "file": "tests/optionomics-provider.test.ts",
+        "names": [
+          "large Retry-After defers without sleeping, retrying early, or overflowing the timer",
+          "timeout remains active while a successful response body is still streaming"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.10.PIT",
+    "reviewedBehavior": "Production feature materialization, corporate/quote receipt timing and research label separation retain actual availability boundaries. Historical research event utilities are tested as utilities, not claimed Production event authority.",
+    "sources": [
+      "src/theta/pit-feature-materializer.ts",
+      "src/theta/optionomics-feature-engine.ts",
+      "src/theta/alpaca-corporate-action-evidence.ts",
+      "src/theta/finalist-quote-refresh.ts",
+      "src/research/point-in-time-evidence.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/pit-feature-materializer.test.ts",
+        "names": [
+          "future bars cannot alter a point-in-time feature snapshot",
+          "a bar observed before T0 but retrieved after T0 is rejected as future evidence",
+          "retrieval cannot precede the provider observation"
+        ]
+      },
+      {
+        "file": "tests/optionomics-feature-engine.test.ts",
+        "names": [
+          "feature availability includes the latest contributing context and flow receipt"
+        ]
+      },
+      {
+        "file": "tests/optionomics-raw-observation-time.test.ts",
+        "names": [
+          "raw Optionomics as-of is retrieval time, never the later decision time",
+          "future or malformed provider time is quarantined, never rewritten as valid evidence"
+        ]
+      },
+      {
+        "file": "tests/finalist-quote-refresh.test.ts",
+        "names": [
+          "refresh receipt preserves stage timing and rejects future-observed evidence"
+        ]
+      },
+      {
+        "file": "tests/alpaca-corporate-action-evidence.test.ts",
+        "names": [
+          "event receipt time is after response acquisition and never backdated to request start"
+        ]
+      },
+      {
+        "file": "tests/point-in-time-evidence.test.ts",
+        "names": [
+          "candidate evidence is deterministic and rejects future labels anywhere in feature payload",
+          "nested generic outcome and result keys are excluded from point-in-time features"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.11.DUPLICATES",
+    "reviewedBehavior": "Actual provider adapters, feature consumer, canonical frontier and copy identity logic execute repeated/out-of-order identities and conflicting revisions. Standalone normalized-event utility is not substituted for Production corporate/event consumers.",
+    "sources": [
+      "src/theta/alpaca-provider.ts",
+      "src/theta/optionomics-provider.ts",
+      "src/theta/optionomics-feature-engine.ts",
+      "src/theta/canonical-strategy-frontier.ts",
+      "src/theta/alpaca-corporate-action-evidence.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase2-provider-matrix.test.ts",
+        "names": [
+          "identical reordered contract/snapshot pages deduplicate and conflicting evidence fails typed",
+          "bars cannot inflate independent history through repeated observations or token loops"
+        ]
+      },
+      {
+        "file": "tests/optionomics-provider.test.ts",
+        "names": [
+          "duplicate Optionomics contracts cannot amplify context or silently choose a conflicting revision"
+        ]
+      },
+      {
+        "file": "tests/optionomics-feature-engine.test.ts",
+        "names": [
+          "feature availability includes the latest contributing context and flow receipt"
+        ]
+      },
+      {
+        "file": "tests/alpaca-corporate-action-evidence.test.ts",
+        "names": [
+          "corporate action page duplicates cannot inflate evidence or hide conflicting revisions"
+        ]
+      },
+      {
+        "file": "tests/canonical-strategy-frontier.test.ts",
+        "names": [
+          "duplicate copies of one exact broker contract cannot manufacture a second Q alternative",
+          "conflicting observations for one Q contract fail the Q branch closed without becoming WAIT",
+          "duplicate D contracts cannot inflate bounded spread pair enumeration"
+        ]
+      },
+      {
+        "file": "tests/copy-engine-contract.test.ts",
+        "names": [
+          "stable copy identities make duplicate events and webhook replays no-ops"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.5.CAPABILITIES",
+    "reviewedBehavior": "Registry is governance metadata only. Actual adapter and real Python composition tests prove normalized account, positions, option contracts, qualified context, optional-provider failure isolation and exact read-only marks. Endpoint entitlement is separately runtime-qualified.",
+    "sources": [
+      "src/theta/phase2-market-intelligence-registry.ts",
+      "src/theta/theta-shadow-cycle.ts",
+      "src/research/alpaca-command5a-observation-source.ts",
+      "src/providers/provider-readiness.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase2-market-intelligence-registry.test.ts",
+        "names": [
+          "Phase-2 provider authority is complete and has one Alpaca Paper option-price authority"
+        ]
+      },
+      {
+        "file": "tests/theta-shadow-cycle.test.ts",
+        "names": [
+          "a full cycle with real-shaped mocked Alpaca data reaches a decision receipt via the real Python pipeline",
+          "confirmed Optionomics context families are fetched on bounded cadence and attached to one immutable cycle",
+          "an Optionomics provider failure is recorded honestly (REAL_PROVIDER_ERROR) and never blocks the rest of the cycle",
+          "positions and open orders are fetched every cycle; a real empty account (no positions, no open orders) is honestly REAL_PROVIDER/GOOD, never a fetch failure"
+        ]
+      },
+      {
+        "file": "tests/alpaca-command5a-observation-source.test.ts",
+        "names": [
+          "Alpaca source fetches exact leg and stock reference with GET-only research authority",
+          "missing exact contract stays MISSING and never falls back to another quote"
+        ]
+      },
+      {
+        "file": "tests/provider-readiness.test.ts",
+        "names": [
+          "process-environment auth differential uses only Paper GETs and returns statuses without bodies or credentials",
+          "capability discovery rejects routes absent from the documentation"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.9.EVENTS",
+    "reviewedBehavior": "Positive earnings retains sessions, incomplete coverage stays unknown, scheduled macro and corporate action families retain dates and no invented negative coverage. Event normalization is an offline utility, not a claimed Production consumer.",
+    "sources": [
+      "src/theta/earnings-event-evidence.ts",
+      "src/theta/alpaca-corporate-action-evidence.ts",
+      "src/theta/macro-event-policy.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/earnings-event-evidence.test.ts",
+        "names": [
+          "known earnings distance preserves trading-session units and positive-only authority",
+          "missing and invalid provider values stay distinct",
+          "absence of a metrics observation is not negative earnings assurance"
+        ]
+      },
+      {
+        "file": "tests/alpaca-corporate-action-evidence.test.ts",
+        "names": [
+          "corporate action families preserve dated positive evidence without gaining negative assurance",
+          "unsupported corporate action with missing or invalid effective dates cannot look harmless",
+          "a sparse later response cannot erase a persisted positive action in the decision window"
+        ]
+      },
+      {
+        "file": "tests/macro-event-policy.test.ts",
+        "names": [
+          "complete bounded coverage produces a versioned known false, never an assumed false",
+          "a timestamp-valid scheduled Fed event inside the horizon produces known true",
+          "incomplete coverage and missing schedule time remain unknown"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.12.UNITS",
+    "reviewedBehavior": "Actual normalization and cost consumers preserve USD/share, decimal IV/delta/spread, real multipliers, bps/dollars, DTE and New York DST session timing.",
+    "sources": [
+      "src/theta/option-contract.ts",
+      "src/execution/transaction-cost-analysis.ts",
+      "src/research/alpaca-learning-calendar.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/option-contract.test.ts",
+        "names": [
+          "provider units remain dollars per share and decimal ratios without percent or cents rescaling",
+          "multiplier is carried through unchanged, never assumed to be 100",
+          "DTE is computed from asOfDate to expiration, not assumed"
+        ]
+      },
+      {
+        "file": "tests/transaction-cost-analysis.test.ts",
+        "names": [
+          "seller TCA uses direction-aware implementation shortfall and multiplier",
+          "buy-to-close reverses the adverse direction",
+          "no fill preserves unknown execution fields rather than zero"
+        ]
+      },
+      {
+        "file": "tests/alpaca-learning-calendar.test.ts",
+        "names": [
+          "New York session conversion preserves DST and standard-time exchange clocks",
+          "incomplete Alpaca calendar rows stay excluded instead of gaining invented hours"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.X.PERFORMANCE",
+    "reviewedBehavior": "Offline synthetic 2601/5000/10000 exercises actual adapters, deduplication, feature computation, hash/serialization and SQLite WAL readback five times each. P50/P95/MAX and sampled memory are measured, not Production latency.",
+    "sources": [
+      "tools/theta-provider-performance-probe.ts",
+      "src/theta/alpaca-provider.ts",
+      "src/theta/optionomics-provider.ts",
+      "src/theta/optionomics-feature-engine.ts",
+      "src/storage/local-research-history-spool.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase2-performance.test.ts",
+        "names": [
+          "provider performance probe executes all bounded adapter feature and local persistence stages"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.2.FAULT_MATRIX",
+    "reviewedBehavior": "Deterministic error injection covers acquisition, checkout, query, rollback, ambiguous commit identity readback and bounded queue release. Dedicated disposable PostgreSQL execution is additionally required for full fault-matrix closure.",
+    "sources": [
+      "src/theta/runtime-postgres-client.ts",
+      "src/theta/runtime-postgres-pool.ts",
+      "src/theta/postgres-runtime-error.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/runtime-postgres-client.test.ts",
+        "names": [
+          "every acquired client is observed and released on success and query failure",
+          "separate pool-wait timeout releases a client that arrives after the caller timed out",
+          "slow valid query time remains checkout duration and is never acquisition failure",
+          "transaction rolls back a pre-commit failure without retrying the write",
+          "rollback failure still releases and discards the checked-out client",
+          "ambiguous COMMIT requires identity reconciliation, never replays the write"
+        ]
+      },
+      {
+        "file": "tests/postgres-pool-acquisition.test.ts",
+        "names": [
+          "bounded work equal to pool capacity completes without pending waiters",
+          "old six-on-two soak pattern deterministically creates its own queue timeout"
+        ]
+      },
+      {
+        "file": "tests/postgres-execution-commit-reconciliation.test.ts",
+        "names": [
+          "action-plan enqueue reconciles a lost COMMIT response without replaying the insert",
+          "action-plan enqueue keeps absent and conflicting ambiguous commits distinct",
+          "atomic management publication reconciles the decision and complete plan group after lost COMMIT"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.4.FRESH_CYCLE",
+    "reviewedBehavior": "Runtime cycle store expires only stale unfinished identities. Actual shadow cycle obtains a new run ID and fails stale evidence closed. Production customer persistence recovery test is separately required, and offline circuit tests do not prove deployed circuit behavior.",
+    "sources": [
+      "src/theta/autonomous-runtime.ts",
+      "src/theta/theta-shadow-cycle.ts",
+      "src/theta/database-health-circuit.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/runtime-postgres-client.test.ts",
+        "names": [
+          "a recovered cycle marks only stale RUNNING rows failed before starting a new cycle"
+        ]
+      },
+      {
+        "file": "tests/theta-shadow-cycle.test.ts",
+        "names": [
+          "runId is unique per cycle",
+          "an account fetch failure is recorded as a blocker, never silently ignored, and the cycle still completes coherently",
+          "a stale required observation (account fetched long before the decision moment) becomes SYSTEM_HOLD_STALE_ACCOUNT, never a strategy WAIT/PASS"
+        ]
+      },
+      {
+        "file": "tests/database-health-circuit.test.ts",
+        "names": [
+          "database circuit requires consecutive fresh probes and a new cycle boundary",
+          "a non-retryable failure discards earlier recovery successes in the offline model"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.X.HISTORY",
+    "reviewedBehavior": "Reviewed F01-F24 cases bind actual executed behavior, not regex presence or an inherited global certificate. These are synthetic regressions, not historical fills or current-worker proof.",
+    "sources": [
+      "src/operations/historical-failure-registry.ts",
+      "src/theta/runtime-postgres-client.ts",
+      "src/theta/strategy-account-policy-compatibility.ts",
+      "src/theta/canonical-strategy-frontier.ts",
+      "src/theta/no-submit-decision-authority.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/runtime-postgres-client.test.ts",
+        "names": [
+          "checked-out client error is handled and broken client is discarded",
+          "Postgres classifier distinguishes temporary availability from permanent SQL and auth faults",
+          "a 57P03 failure is not represented as WAIT or a fabricated AEGIS veto",
+          "query timeout retries reads once while transfer quota and read-only failures do not loop"
+        ]
+      },
+      {
+        "file": "tests/alpaca-provider.test.ts",
+        "names": [
+          "Alpaca reads are abortable and release their deadline after a successful response"
+        ]
+      },
+      {
+        "file": "tests/theta-shadow-once-config.test.ts",
+        "names": [
+          "default shadow acquisition requests enough calendar history for MA200 and records lineage"
+        ]
+      },
+      {
+        "file": "tests/ownership-contract.test.ts",
+        "names": [
+          "any UNKNOWN component forces ownability to UNKNOWN, never a fabricated number"
+        ]
+      },
+      {
+        "file": "tests/strategy-account-policy-compatibility.test.ts",
+        "names": [
+          "missing account evidence remains unknown and broker zero remains distinct from policy incompatibility",
+          "one SPY CSP minimum is explicitly account-policy incompatible while market applicability remains true"
+        ]
+      },
+      {
+        "file": "tests/aegis-stress-baseline-maturity.test.ts",
+        "names": [
+          "BASELINE_ACCUMULATING when below any single policy minimum -- never silently treated as sufficient"
+        ]
+      },
+      {
+        "file": "tests/runtime-postgres-pool.test.ts",
+        "names": [
+          "checked-out Postgres disconnect is handled before it can become an uncaught exception"
+        ]
+      },
+      {
+        "file": "tests/option-chain-ingestion.test.ts",
+        "names": [
+          "a fresh IEX trade supplies moneyness without becoming option execution authority"
+        ]
+      },
+      {
+        "file": "tests/finalist-quote-refresh.test.ts",
+        "names": [
+          "refresh receipt preserves stage timing and rejects future-observed evidence"
+        ]
+      },
+      {
+        "file": "tests/aegis-alpaca-iv-stress.test.ts",
+        "names": [
+          "same session, other feed, DTE, and moneyness cannot enter the baseline"
+        ]
+      },
+      {
+        "file": "tests/runtime-request-lease.test.ts",
+        "names": [
+          "primary worker lease outlives the bounded server request"
+        ]
+      },
+      {
+        "file": "tests/new-risk-orchestrator.test.ts",
+        "names": [
+          "candidate spread detector evidence replaces the global UNKNOWN without weakening other AEGIS inputs"
+        ]
+      },
+      {
+        "file": "tests/macro-event-policy.test.ts",
+        "names": [
+          "incomplete coverage and missing schedule time remain unknown"
+        ]
+      },
+      {
+        "file": "tests/alpaca-corporate-action-evidence.test.ts",
+        "names": [
+          "positive split evidence is mapped and first-observed, while absence stays unqualified"
+        ]
+      },
+      {
+        "file": "tests/canonical-strategy-frontier.test.ts",
+        "names": [
+          "missing research-only H candidates do not turn a complete Q WAIT into SYSTEM_HOLD",
+          "Paper-facing selection follows the economic Q winner rather than structural or lexical order"
+        ]
+      },
+      {
+        "file": "tests/no-submit-decision-authority.test.ts",
+        "names": [
+          "incomplete enumeration cannot certify a global WAIT"
+        ]
+      },
+      {
+        "file": "tests/trusted-option-quote.test.ts",
+        "names": [
+          "qualifies proven Optionomics two-sided evidence for research only, never execution"
+        ]
+      },
+      {
+        "file": "tests/local-research-archive-health.test.ts",
+        "names": [
+          "quota exhaustion persists a cooldown and preserves local archive inventory"
+        ]
+      },
+      {
+        "file": "tests/runtime-schema-compatibility.test.ts",
+        "names": [
+          "schema 064 is a typed fail-closed state before lease or cycle work"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "2.13.REGISTER",
+    "reviewedBehavior": "A requirement needs reviewed exact executed cases and source/test hashes. Skips, unrelated global PASS and failing companion suites cannot certify it. The register test independently recomputes the denominator.",
+    "sources": [
+      "src/operations/executed-requirement-evidence.ts",
+      "tools/theta-phase2-executed-evidence.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/executed-requirement-evidence.test.ts",
+        "names": [
+          "closure requires the exact executed file and case with bound source and test hashes",
+          "a failing companion prevents a selected pass from laundering the suite failure",
+          "source evidence normalizes checkout newlines without normalizing semantic content"
+        ]
+      }
+    ]
+  }
+]

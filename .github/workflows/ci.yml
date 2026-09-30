@@ -45,6 +45,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install "duckdb>=1.4,<2"
+      - name: Bind real Python orchestration tests to the configured interpreter
+        run: echo "PYTHON_EXECUTABLE_FOR_TESTS=$(python -c 'import sys; print(sys.executable)')" >> "$GITHUB_ENV"
       - run: npm ci
       - run: npm run lint
       - run: npm run check
@@ -107,10 +109,20 @@ jobs:
       - name: Test real customer persistence in disposable PostgreSQL
         env:
           TEST_DATABASE_URL: postgresql://trading_bots:ci-only-password@127.0.0.1:5432/trading_bots
-        run: npx tsx --test --test-concurrency=1 tests/db/*.test.ts
+        run: |
+          mkdir -p .ci-test-evidence
+          git rev-parse HEAD > .ci-test-evidence/source-sha.txt
+          npx tsx --test --test-concurrency=1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tools/theta-test-evidence-reporter.mjs --test-reporter-destination=.ci-test-evidence/disposable-persistence.jsonl tests/db/*.test.ts
       - name: Prove runtime fault containment in a dedicated disposable PostgreSQL database
         env:
           THETA_RUNTIME_FAULT_DATABASE_URL: postgresql://trading_bots:ci-only-password@127.0.0.1:5432/theta_runtime_fault_ci
         run: |
           createdb -h 127.0.0.1 -U trading_bots theta_runtime_fault_ci
-          npx tsx --test tests/db/runtime-postgres-faults.test.ts
+          npx tsx --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tools/theta-test-evidence-reporter.mjs --test-reporter-destination=.ci-test-evidence/disposable-faults.jsonl tests/db/runtime-postgres-faults.test.ts
+      - name: Preserve sanitized disposable-database executed test identities
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: disposable-database-test-evidence
+          path: .ci-test-evidence/
+          retention-days: 14

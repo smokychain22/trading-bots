@@ -95,9 +95,9 @@ export function assessRuntimeFirstPaperReadiness(input:{
       ? unresolved('CURRENT_AEGIS_STATE_NOT_OBSERVED',source,'EXTERNAL')
       : blocked(`CURRENT_AEGIS_${symbol.aegisState}`,source,'POLICY');
   let positiveSizingReachable:FirstPaperCheck;
-  if(symbol.selectedQuantity>0||((symbol.runtimeTelemetry?.positiveSizeCandidateCount??0)>0)){
+  if((symbol.selectedQuantity!==null&&symbol.selectedQuantity>0)||((symbol.runtimeTelemetry?.positiveSizeCandidateCount??0)>0)){
     positiveSizingReachable=observed(`${source}:sizing`);
-  }else if(symbol.qLatticeTotal===0){
+  }else if(symbol.qLatticeTotal===null){
     positiveSizingReachable=unresolved('Q_LATTICE_NOT_OBSERVED_FOR_SIZING',source,'EXTERNAL');
   }else if(symbol.runtimeTelemetry===null){
     positiveSizingReachable=unresolved('RUNTIME_SIZING_TELEMETRY_NOT_OBSERVED',source,'EXTERNAL');

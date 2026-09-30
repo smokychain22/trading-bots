@@ -52,7 +52,7 @@ import { executionOptionQuoteContractVersion, type ExecutionOptionQuote } from '
 import { persistQuoteProviderQualification, qualifyQuoteProvider } from '../execution/quote-provider-qualification.js';
 import { readZeroTradeDiagnostic } from './zero-trade-diagnostic.js';
 import { runRiskPolicyEmpiricalStudy } from '../research/risk-policy-empirical-study.js';
-import { createRuntimePostgresPool } from './runtime-postgres-pool.js';
+import { createRuntimePostgresPool, containRuntimePostgresPool } from './runtime-postgres-pool.js';
 import { runtimeRequestLeaseExpiresAt } from './runtime-request-lease.js';
 import { classifyPostgresRuntimeError } from './postgres-runtime-error.js';
 import { withRuntimePostgresClient } from './runtime-postgres-client.js';
@@ -363,7 +363,8 @@ export default async function autonomousRuntimeHandler(
       return;
     }
     const pool = new Pool({ connectionString: environment.AIVEN_DATABASE_URL, max: 1, connectionTimeoutMillis: 8_000,
-      application_name: 'theta-corporate-action-capture' });
+application_name: 'theta-corporate-action-capture' });
+    containRuntimePostgresPool(pool);
     try {
       const symbolsResult = await pool.query<{ symbol: string }>(`SELECT DISTINCT u.symbol
         FROM trade.candidate c JOIN market.underlying u ON u.underlying_id=c.underlying_id

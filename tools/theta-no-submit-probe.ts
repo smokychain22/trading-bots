@@ -13,7 +13,7 @@ import { LocalEvidenceSpool } from '../src/theta/local-evidence-spool.js';
 import { PostgresLocalEvidenceBackfillTarget } from '../src/theta/postgres-local-evidence-backfill.js';
 import { classifyPostgresRuntimeError } from '../src/theta/postgres-runtime-error.js';
 import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
-import { runDatabaseIndependentShadowObservation } from '../src/theta/database-independent-shadow-observation.js';
+import { databaseIndependentStageReached, runDatabaseIndependentShadowObservation } from '../src/theta/database-independent-shadow-observation.js';
 import { buildLocalAegisRiskHistory, type LocalAegisRiskObservation } from '../src/theta/local-aegis-risk-history.js';
 import { buildT0ReplayBundle, classifyT0ReplayBundleBuildError } from '../src/theta/t0-replay-bundle.js';
 import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment,
@@ -220,9 +220,14 @@ try {
         recoveryInventoryUnderlyings:recoveryInventoryUnderlyingsForFallback,
         localRiskHistory,
         now:()=>new Date().toISOString()});
-      spoolEvidence('CONTRACTS_READY',{universeFunnel:local.universeFunnel,universeBlockers:local.universeBlockers,
+      spoolEvidence('UNIVERSE_READY',{universeFunnel:local.universeFunnel,universeBlockers:local.universeBlockers,
         approvedSymbolsDiscovered:local.approvedSymbolsDiscovered,brokerMutationAllowed:false});
       for(const symbol of local.symbols){
+        const spoolReachedStage=(stage:string,payload:unknown,timestamps:Readonly<Record<string,string|null>>={}):void=>{
+          if(databaseIndependentStageReached(symbol,stage))spoolEvidence(stage,payload,timestamps);
+          else spoolEvidence('STAGE_NOT_OBSERVED',{symbol:symbol.symbol,stage,failureCode:symbol.failureCode,
+            evidenceState:symbol.state,brokerMutationAllowed:false});
+        };
         // Phase 1 Zero-Unknown Reclosure Pass 3 (T0 replay wiring, items
         // 1-5): built directly from the SAME object the canonical frontier
         // actually ran on this cycle -- never a parallel reconstruction. A
@@ -243,29 +248,29 @@ try {
         // -- never recomputed here. Durably spooled so a post-deploy
         // verification reads real, persisted evidence, never a transient
         // in-memory result.
-        spoolEvidence('METHOD_PROVENANCE_READY',{symbol:symbol.symbol,
+        spoolReachedStage('METHOD_PROVENANCE_READY',{symbol:symbol.symbol,
           methodInputProvenance:symbol.methodInputProvenance,brokerMutationAllowed:false});
-        spoolEvidence('QUOTES_READY',{symbol:symbol.symbol,optionContractsComplete:symbol.optionContractsComplete,
+        spoolReachedStage('QUOTES_READY',{symbol:symbol.symbol,optionContractsComplete:symbol.optionContractsComplete,
           optionChainComplete:symbol.optionChainComplete,exactRefresh:symbol.exactRefresh,brokerMutationAllowed:false},
         {ALPACA:symbol.exactRefresh.providerTimestamp});
-        spoolEvidence('Q_READY',{symbol:symbol.symbol,qCandidateCount:symbol.qCandidateCount,qDecision:symbol.qDecision,
+        spoolReachedStage('Q_READY',{symbol:symbol.symbol,qCandidateCount:symbol.qCandidateCount,qDecision:symbol.qDecision,
           qReasonCodes:symbol.qReasonCodes,qCandidates:symbol.qCandidates,
           frontierCandidates:symbol.frontierCandidates,blockers:symbol.blockers,brokerMutationAllowed:false});
-        spoolEvidence('RISK_OBSERVATIONS_READY',{symbol:symbol.symbol,history:symbol.riskHistory,
+        spoolReachedStage('RISK_OBSERVATIONS_READY',{symbol:symbol.symbol,history:symbol.riskHistory,
           observations:symbol.riskObservations as readonly LocalAegisRiskObservation[],brokerMutationAllowed:false},
         {ALPACA:symbol.riskObservations.map((observation)=>observation.contract.quoteTimestamp)
           .filter((value):value is string=>value!==null).toSorted().at(-1)??null});
-        spoolEvidence('AEGIS_READY',{symbol:symbol.symbol,aegisState:symbol.aegisState,
+        spoolReachedStage('AEGIS_READY',{symbol:symbol.symbol,aegisState:symbol.aegisState,
           evidenceState:symbol.state,brokerMutationAllowed:false});
-        spoolEvidence('SIZING_READY',{symbol:symbol.symbol,selectedQuantity:symbol.selectedQuantity,
-          bindingState:symbol.selectedQuantity>0?'POSITIVE_BUT_MUTATION_BLOCKED':'ZERO_OR_NO_SELECTION',brokerMutationAllowed:false});
-        spoolEvidence('DECISION_READY',{symbol:symbol.symbol,
+        spoolReachedStage('SIZING_READY',{symbol:symbol.symbol,selectedQuantity:symbol.selectedQuantity,
+          bindingState:symbol.selectedQuantity===null?'CANONICAL_SELECTION_NOT_OBSERVED':symbol.selectedQuantity>0?'POSITIVE_BUT_MUTATION_BLOCKED':'ZERO_OR_NO_SELECTION',brokerMutationAllowed:false});
+        spoolReachedStage('DECISION_READY',{symbol:symbol.symbol,
           ...classifyNoSubmitDecisionAuthority({databaseFailure:category,scanComplete:false,
             computedAction:symbol.canonicalAction}),
           selectedCandidateId:symbol.selectedCandidateId,selectedOptionSymbol:symbol.selectedOptionSymbol,
           brokerMutationAllowed:false});
       }
-      spoolEvidence('PLAN_READY',{planState:'BLOCKED_CANONICAL_POSTGRES_REQUIRED',
+      spoolEvidence('PLAN_BLOCKED',{planState:'BLOCKED_CANONICAL_POSTGRES_REQUIRED',
         brokerMutationCapability:local.brokerMutationCapability,brokerMutationAllowed:false});
       console.info(JSON.stringify({state:'DATABASE_UNAVAILABLE_LOCAL_OBSERVATION_COMPLETED',errorCategory:category,
         ...classifyNoSubmitDecisionAuthority({databaseFailure:category,scanComplete:false,computedAction:null}),
@@ -278,8 +283,8 @@ try {
             .flatMap((family)=>family.reasonCodes.map((reason)=>`${family.family}:${reason}`))))].toSorted();
           return {symbol:symbol.symbol,state:symbol.state,qCandidateCount:symbol.qCandidateCount,
             qDecision:symbol.qDecision,qReasonCodes:symbol.qReasonCodes,
-            qFeasibleCount:symbol.qCandidates.filter((candidate)=>candidate.actionFeasible).length,
-            qPositiveQuantityCount:symbol.qCandidates.filter((candidate)=>candidate.quantity>0).length,
+            qFeasibleCount:symbol.qCandidateCount===null?null:symbol.qCandidates.filter((candidate)=>candidate.actionFeasible).length,
+            qPositiveQuantityCount:symbol.qCandidateCount===null?null:symbol.qCandidates.filter((candidate)=>candidate.quantity>0).length,
             ...classifyNoSubmitDecisionAuthority({databaseFailure:category,scanComplete:false,
               computedAction:symbol.canonicalAction}),selectedQuantity:symbol.selectedQuantity,
             riskHistory:symbol.riskHistory,riskObservations:{total:symbol.riskObservations.length,

@@ -40,6 +40,18 @@ test('pagination is bounded and a repeated token fails closed', async () => {
     symbols: ['SPY'], start: '2026-09-21', end: '2026-10-21', observedAt, maxPages: 3 }), /PAGINATION_INVALID/);
 });
 
+test('corporate action families preserve dated positive evidence without gaining negative assurance', async () => {
+  for (const family of ['cash_dividends', 'forward_splits', 'reverse_splits', 'mergers', 'spin_offs', 'stock_dividends']) {
+    const result = await readAlpacaCorporateActions({ config: config(async () => json({ corporate_actions: {
+      [family]: [{ id: family, symbol: 'SPY', ex_date: '2026-10-01' }],
+    } })), symbols: ['SPY'], start: '2026-09-21', end: '2026-10-21', observedAt, now: () => observedAt });
+    assert.equal(result.observations.length, 1, family);
+    assert.equal(result.observations[0]?.pendingUnsupported, family !== 'cash_dividends', family);
+    assert.equal(result.negativeCoverageQualified, false);
+    assert.equal(result.observations[0]?.providerKnownAt, null);
+  }
+});
+
 test('corporate action page duplicates cannot inflate evidence or hide conflicting revisions', async () => {
   for (const conflict of [false, true]) {
     let calls = 0;

@@ -2,13 +2,35 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AlpacaProviderError } from '../src/theta/alpaca-provider.js';
 import { applyPendingUnsupportedCorporateActions, classifyObservationFailure, ivStressApplicability, ivStressEvidenceForUnderlying, ivStressPaperBlockers, ivStressPaperPlanPersistenceReady, paperBootstrapAuthoritySymbols, paperEntryEventEvidenceBlockers, refreshScanIvStress, missingObservationReason,
-  universeDiscoveryDiagnosticBlockers,productionScanDecisionStatus,loadCorporateActionSafetyEvidence } from '../src/research/production-shadow-runtime.js';
+  universeDiscoveryDiagnosticBlockers,productionScanDecisionStatus,loadCorporateActionSafetyEvidence,observedDecisionCounts } from '../src/research/production-shadow-runtime.js';
+import { parseRuntimeFirstPaperEvidence } from '../src/customer/operator-readiness.js';
+import type { ThetaShadowCycleResult } from '../src/theta/theta-shadow-cycle.js';
 import { assessAegisIvStress, normalizeOptionomicsAtmIvObservation,
   paperBootstrapAegisIvStressPolicy } from '../src/theta/aegis-iv-stress.js';
 import type { NormalizedOptionomicsContextObservation } from '../src/theta/optionomics-provider.js';
 import type { Pool } from 'pg';
 import type { UnderlyingCandidateInput } from '../src/theta/universe-policy.js';
 import type { CorporateActionRead } from '../src/theta/alpaca-corporate-action-evidence.js';
+
+test('unreached Q and sizing persist as null and survive the operator loader, observed zero remains zero',()=>{
+  const evidence=(counts:ReturnType<typeof observedDecisionCounts>)=>({
+    version:'theta-first-paper-runtime-evidence-v1',brokerMutationSurface:false,symbols:[{
+      symbol:'SPY',cycleState:'FAILED',cycleErrorCode:'PROVIDER_ERROR',optionChainComplete:null,
+      optionContractsComplete:null,...counts,qDecision:null,qReasonCodes:[],selectedCandidateId:null,
+      selectedOptionSymbol:null,canonicalAction:null,aegisState:null,entrySafetyPolicy:null,
+      runtimeTelemetry:null,cycleBlockers:[],preSubmit:null}]});
+  const unreached=observedDecisionCounts(null);
+  assert.deepEqual(unreached,{qLatticeTotal:null,selectedQuantity:null});
+  assert.deepEqual(parseRuntimeFirstPaperEvidence(evidence(unreached)),evidence(unreached));
+  const reached=observedDecisionCounts({orchestration:{thetaQ:{candidates:[]}},strategyFrontier:{selectedQuantity:0}} as unknown as ThetaShadowCycleResult);
+  assert.deepEqual(reached,{qLatticeTotal:0,selectedQuantity:0});
+  assert.deepEqual(parseRuntimeFirstPaperEvidence(evidence(reached)),evidence(reached));
+  for(const invalid of [-1,NaN,Infinity,undefined,'0',false]){
+    const payload=evidence(unreached);const symbol=payload.symbols[0];assert.ok(symbol);
+    Object.assign(symbol,{qLatticeTotal:invalid});
+    assert.equal(parseRuntimeFirstPaperEvidence(payload),null);
+  }
+});
 
 test('corporate-action database failures propagate rather than becoming provider gaps or WAIT',async()=>{
   const at='2026-09-30T15:00:00.000Z';

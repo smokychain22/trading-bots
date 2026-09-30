@@ -150,6 +150,21 @@ test('DTE is computed from asOfDate to expiration, not assumed', () => {
   assert.equal(contract.dte, 10);
 });
 
+test('provider units remain dollars per share and decimal ratios without percent or cents rescaling', () => {
+  const contract = normalizeOptionContract(baseRaw({ bid: 1, ask: 1.1, multiplier: 10,
+    iv: .28, delta: -.22, maxSpreadPctForExecutable: .1 }), NOW);
+  assert.equal(contract.bid, 1);
+  assert.equal(contract.ask, 1.1);
+  assert.equal(contract.iv, .28);
+  assert.equal(contract.delta, -.22);
+  assert.equal(contract.multiplier, 10);
+  assert.equal(contract.breakEven, 199);
+  assert.ok(Math.abs((contract.spreadPct ?? NaN) - .1 / 1.05) < 1e-9);
+  assert.equal(contract.executable, true);
+  assert.equal(normalizeOptionContract(baseRaw({ bid: 1, ask: 1.1,
+    maxSpreadPctForExecutable: .09 }), NOW).executable, false);
+});
+
 test('volume/openInterest carry per-feature provenance independent of the quote source, never inferred', () => {
   const alpacaSourced = normalizeOptionContract(baseRaw({ source: 'ALPACA', volumeSource: 'ALPACA', openInterestSource: 'OPTIONOMICS' }), NOW);
   assert.equal(alpacaSourced.volumeSource, 'ALPACA');

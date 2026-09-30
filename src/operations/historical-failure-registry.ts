@@ -16,7 +16,8 @@ const fixture = (fixtureId: HistoricalFailureRegression['fixtureId'], failureFin
 });
 
 /**
- * Executable, sanitized index of every retained live failure family. The
+ * Sanitized source index of retained live failure families, not an executed
+ * certificate. proofPattern is a navigation hint only. The
  * referenced tests carry deterministic inputs and assertions. Provider
  * credentials, account identifiers, and raw payloads are deliberately absent.
  */
@@ -60,7 +61,7 @@ export const historicalFailureRegressions: readonly HistoricalFailureRegression[
   fixture('F19_Q_ECONOMIC_WINNER_AUTHORITY', 'structural or lexical candidate replaced Q economics',
     'Q_ECONOMIC_WINNER_REQUIRED', ['tests/canonical-strategy-frontier.test.ts'], 'economic winner'),
   fixture('F20_NO_CANDIDATE_NOT_EQUAL_NO_OPPORTUNITY', 'incomplete enumeration became NO_OPPORTUNITY',
-    'DATA_INSUFFICIENT_NOT_NO_OPPORTUNITY', ['tests/decision-assembly.test.ts'], 'no candidates'),
+    'DATA_INSUFFICIENT_NOT_NO_OPPORTUNITY', ['tests/no-submit-decision-authority.test.ts'], 'incomplete enumeration'),
   fixture('F21_OPTIONOMICS_EXECUTION_AUTHORITY_LEAK', 'research quote became executable authority',
     'ALPACA_EXECUTABLE_MARKET_ONLY', ['tests/trusted-option-quote.test.ts'], 'research only, never execution'),
   fixture('F22_POSTGRES_57014_QUERY_TIMEOUT', 'statement timeout lost typed retry semantics',

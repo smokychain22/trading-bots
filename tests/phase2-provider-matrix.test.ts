@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {AlpacaProviderError,fetchOptionContracts,fetchOptionSnapshots,fetchStockBars,
   type AlpacaProviderConfig} from '../src/theta/alpaca-provider.js';
+import { fetchOptionomicsOptionChain } from '../src/theta/optionomics-provider.js';
 const at='2026-09-30T14:00:00.000Z';
 const config=(fetchImpl:typeof fetch):AlpacaProviderConfig=>({tradingApiBase:'https://paper-api.alpaca.markets',
   marketDataApiBase:'https://data.alpaca.markets',apiKey:'SYNTHETIC_TEST',apiSecret:'SYNTHETIC_TEST',fetchImpl});
@@ -43,6 +44,18 @@ for(const count of [0,1,99,100,101,999,1000,1001,1090,1511,2000,2601,5000,10000]
 }
 
 for(const status of [401,403,404,408,429,500,502,503,504]){
+  test(`Optionomics HTTP ${status} retains failure and status instead of empty evidence`,async()=>{
+    let calls=0;
+    const result=await fetchOptionomicsOptionChain({apiBase:'https://optionomics.ai',apiToken:'SYNTHETIC',
+      email:'synthetic@example.invalid',maxRetryAttempts:1,now:()=>at,
+      fetchImpl:async()=>{calls++;return response({},status);}},'SPY');
+    assert.equal(result.kind,'REQUEST_ERROR');
+    if(result.kind!=='REQUEST_ERROR')return;
+    assert.equal(result.httpStatus,status);
+    assert.equal(result.errorClass,status===401?'AUTHENTICATION_FAILED':status===403?'NOT_ENTITLED'
+      :status===429?'RATE_LIMITED':'PROVIDER_FAILURE');
+    assert.equal(calls,1);
+  });
   test(`HTTP ${status} after a valid first page cannot become complete or empty`,async()=>{
     for(const kind of ['contracts','snapshots'] as const){
       let page=0;
