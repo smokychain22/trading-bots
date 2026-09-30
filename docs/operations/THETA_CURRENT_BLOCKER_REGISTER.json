@@ -1,26 +1,26 @@
 {
-  "version": "theta-current-blocker-register-2026-09-30-v2",
-  "asOfUtc": "2026-09-30T06:08:40Z",
-  "sourceShaAtObservedBaseline": "fd54cff7b640633b8ff438e4fdea6a6846008571",
-  "deployedShaAtObservedBaseline": "fd54cff7b640633b8ff438e4fdea6a6846008571",
-  "workerShaAtObservedBaseline": "fd54cff7b640633b8ff438e4fdea6a6846008571",
-  "exactCiAtObservedBaseline": { "run": 36670394966, "state": "PASS" },
+  "version": "theta-current-blocker-register-2026-09-30-v3",
+  "asOfUtc": "2026-09-30T07:35:07Z",
+  "sourceShaAtObservedBaseline": "c6d2fcdc51fa44edc3cd8d0710d678672fc0bfb3",
+  "deployedShaAtObservedBaseline": "c6d2fcdc51fa44edc3cd8d0710d678672fc0bfb3",
+  "workerShaAtObservedBaseline": "c6d2fcdc51fa44edc3cd8d0710d678672fc0bfb3",
+  "exactCiAtObservedBaseline": { "run": 36683092251, "state": "PASS" },
   "supervisorCountAtObservedBaseline": 1,
   "leaseCountAtObservedBaseline": 1,
   "brokerAtObservedBaseline": "GOOD_RECONCILIATION",
   "positionsAtObservedBaseline": 0,
   "openOrdersAtObservedBaseline": 0,
   "marketState": "CLOSED_AT_OBSERVED_CYCLE_NOT_A_CURRENT_MARKET_OPEN_PROOF",
-  "command5aHealthAtUtc": "2026-09-30T06:08:40.747Z",
+  "command5aHealthAtUtc": "2026-09-30T07:29:03.085Z",
   "command5aBacklog": {
-    "subjects": 397, "jobs": 2794, "pending": 1961, "missed": 646,
-    "censored": 172, "deferredMarket": 15, "overdue": 166,
+    "subjects": 397, "jobs": 2794, "pending": 1810, "missed": 762,
+    "censored": 222, "deferredMarket": 0, "overdue": 0,
     "expiredClaims": 0, "retryStalled": 0
   },
   "archiveState": "REAL_SEP29_CAPTURE_HASH_VERIFIED_ORIGINAL_RELEASE_REPLAY_MATCHED_2601_CONTRACTS",
-  "researchExportState": "SOURCE_QUERY_FANOUT_BOUNDED_CURRENT_DB_EXPORT_NOT_YET_VERIFIED",
-  "spoolState": "LOCAL_COMMAND5A_SCHEDULER_READ_ONLY_HEALTH_VERIFIED_RESEARCH_SPOOL_NOT_RECHECKED",
-  "runtimeReleaseSha": "fd54cff7b640633b8ff438e4fdea6a6846008571",
+  "researchExportState": "ONE_REAL_POSTGRES_FRONTIER_SQLITE_HASH_PARQUET_DUCKDB_CERTIFIED_IDEMPOTENT_2026_09_30",
+  "spoolState": "ONE_CERTIFICATION_BATCH_VERIFIED_AND_ARCHIVED_LOCAL_RUNTIME_SPOOL_RETAINS_LARGE_LEGACY_PAYLOAD",
+  "runtimeReleaseSha": "c6d2fcdc51fa44edc3cd8d0710d678672fc0bfb3",
   "databaseAdmission": "WRITABLE_SCHEMA_067",
   "activeWorkerLeasesObserved": 1,
   "sourceFixShaAwaitingWorker": null,
@@ -42,19 +42,19 @@
     {
       "id": "COMMAND5A_OVERDUE_OBSERVATIONS",
       "class": "CURRENT_MARKET_REQUIRED",
-      "evidence": "The fd54cff worker reported Command5A SCHEDULE_COMPLETE with an advancing cursor. Read-only scheduler health at 06:08:40Z found 166 overdue, 646 missed, 172 censored and 1961 pending jobs. Missing exact historical marks cannot be recovered by a source fix.",
+      "evidence": "The c6d2fcd worker reported Command5A SCHEDULE_COMPLETE. Read-only scheduler health at 07:29:03Z found zero overdue, zero expired claims, zero stalled retries, 762 missed, 222 censored and 1810 future pending jobs. Missing exact historical marks cannot be recovered by a source fix.",
       "decisionEffect": "Missed exact future marks cannot be relabeled MARKET_OBSERVED"
     },
     {
       "id": "CURRENT_RELEASE_WORKER_SESSION",
       "class": "FORWARD_DATA_REQUIRED",
-      "evidence": "fd54cff worker produced a locked closed-session cycle at 2026-09-30T05:40:35Z and fresh heartbeat, but no supported-session SPY cycle on that release",
+      "evidence": "c6d2fcd worker produced a locked closed-session cycle at 2026-09-30T07:26:02Z with one active lease and fresh heartbeat, but no supported-session SPY cycle on that release",
       "decisionEffect": "Candidate, AEGIS, sizing, finalist and plan states are not supported-session certified"
     },
     {
       "id": "COMMAND5A_HEALTH_RELEASE_GAP",
       "class": "CLOSED_CURRENT_RELEASE",
-      "evidence": "fd54cff current locked worker reports ONLINE with Command5A SCHEDULE_COMPLETE, one lease, broker reconciliation GOOD and zero positions/open orders",
+      "evidence": "c6d2fcd current locked worker reports ONLINE with Command5A SCHEDULE_COMPLETE, one lease, broker reconciliation GOOD and zero positions/open orders",
       "decisionEffect": "No longer a source or release mismatch"
     },
     {
@@ -80,6 +80,24 @@
       "class": "RUNTIME_UNVERIFIED",
       "evidence": "No current-release supported-session exact-contract Alpaca quote refresh",
       "decisionEffect": "First-Paper order pricing cannot be certified"
+    },
+    {
+      "id": "RESEARCH_ARCHIVE_QUADRATIC_PAYLOAD",
+      "class": "SOURCE_FIXED_RUNTIME_CERTIFIED_ONE_WINDOW",
+      "evidence": "The old full-branch-per-candidate export failed with RangeError Invalid string length on a real 1,965-row frontier. The corrected projection serializes that same persisted frontier in 6,395,508 bytes. One real PostgreSQL frontier passed SQLite hash verification, complete backlog drain, ZSTD Parquet compaction and DuckDB readback. A repeat run processed zero batches and hit the same verified manifest cache.",
+      "decisionEffect": "Archive export works for the certified window without storing candidate history relationally. Wider-window retention is not inferred from one frontier."
+    },
+    {
+      "id": "LEGACY_LOCAL_RESEARCH_SQLITE_PAYLOAD_RETENTION",
+      "class": "CODE_SOLVABLE_STORAGE_RETENTION_PENDING",
+      "evidence": "The existing local theta-research.sqlite measured 681,402,368 physical bytes with one archived batch containing a 340,356,490-byte legacy payload and 83,176 free pages. Parquet verification passed, but there is no governed SQLite payload-thinning and reconstruction path yet.",
+      "decisionEffect": "Do not delete or overwrite the legacy evidence blindly. New exports are linear-size, while safe retention and a rebuild/readback path remain required for bounded local storage."
+    },
+    {
+      "id": "PARQUET_VERIFIER_MANIFEST_ONLY_CACHE",
+      "class": "SOURCE_FIXED_EXACT_CI_PENDING",
+      "evidence": "The verifier formerly accepted a cached PASS from unchanged manifest bytes without checking the referenced Parquet file. The source now hashes the actual Parquet bytes before every spool-archive cache hit and disables the cache shortcut for dataset archives. A deterministic regression corrupts a warm-cache Parquet file and requires ARCHIVE_PARQUET_HASH_MISMATCH. The real one-frontier archive reverified PASS after the change.",
+      "decisionEffect": "A stale cache can no longer bless modified spool Parquet bytes; exact-SHA CI and locked release alignment remain before source closure."
     },
     {
       "id": "PROFITABILITY_MODEL",

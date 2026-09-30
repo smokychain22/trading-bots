@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -62,9 +62,18 @@ testWithDuckDb('Parquet compaction resumes after interruption without duplicate 
     '--root', destination, '--cache', join(root, 'verification-cache.json')], { encoding: 'utf8' });
   assert.equal(verified.status, 0, verified.stderr || verified.stdout);
   assert.equal((JSON.parse(verified.stdout) as Record<string, unknown>).state, 'PASS');
+  const warm = spawnSync('python', [resolve('tools/verify-local-research-parquet.py'),
+    '--root', destination, '--cache', join(root, 'verification-cache.json')], { encoding: 'utf8' });
+  assert.equal(warm.status, 0, warm.stderr || warm.stdout);
+  assert.equal((JSON.parse(warm.stdout) as Record<string, unknown>).cacheHit, true);
   const again = spawnSync('python', [script, '--sqlite', sqlite, '--destination', destination],
     { encoding: 'utf8' });
   assert.equal(again.status, 0, again.stderr);
   assert.equal((JSON.parse(again.stdout) as Record<string, unknown>).state, 'NO_PENDING_BATCHES');
+  appendFileSync(join(botDirectory, archiveName, String(manifest.parquetFile)), Buffer.from('tamper'));
+  const corrupted = spawnSync('python', [resolve('tools/verify-local-research-parquet.py'),
+    '--root', destination, '--cache', join(root, 'verification-cache.json')], { encoding: 'utf8' });
+  assert.notEqual(corrupted.status, 0);
+  assert.match(corrupted.stdout, /ARCHIVE_PARQUET_HASH_MISMATCH/);
   rmSync(root, { recursive: true, force: true });
 });

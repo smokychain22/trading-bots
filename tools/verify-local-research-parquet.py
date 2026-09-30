@@ -81,10 +81,29 @@ def main() -> int:
         print(json.dumps({"state": "NOT_AVAILABLE", "manifestCount": 0, "cacheHit": False}))
         return 0
     manifest_bytes = [(path, path.read_bytes()) for path in manifests]
+    # A manifest-only cache key can return PASS after its Parquet bytes have
+    # changed. Rehash every referenced spool file before accepting a cache hit.
+    # Dataset archives use their own verifier and are never cache-shortcut.
+    cache_eligible = True
+    for path, raw in manifest_bytes:
+        manifest = json.loads(raw)
+        format_version = manifest.get("formatVersion") or manifest.get("contractVersion")
+        if format_version in {
+            "theta-local-research-parquet-manifest-v1",
+            "multi-bot-local-research-parquet-manifest-v2",
+        }:
+            parquet_name = manifest.get("parquetFile")
+            if not isinstance(parquet_name, str) or not parquet_name or pathlib.Path(parquet_name).name != parquet_name:
+                raise RuntimeError("ARCHIVE_PARQUET_PATH_INVALID")
+            parquet_path = path.parent / parquet_name
+            if not parquet_path.is_file() or sha256_file(parquet_path) != manifest.get("parquetSha256"):
+                raise RuntimeError("ARCHIVE_PARQUET_HASH_MISMATCH")
+        else:
+            cache_eligible = False
     inventory_hash = sha256_bytes(b"".join(
         str(path.relative_to(root)).encode("utf-8") + b"\0" + raw for path, raw in manifest_bytes
     ))
-    if cache_path.exists():
+    if cache_eligible and cache_path.exists():
         try:
             cached = json.loads(cache_path.read_text(encoding="utf-8"))
             if cached.get("inventoryHash") == inventory_hash and cached.get("state") == "PASS":

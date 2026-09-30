@@ -20,6 +20,25 @@ readiness. The correction removes duplicate live-runtime gating that caused a
 Phase-1/Phase-7 loop. It does not rewrite historical receipts or promote old
 worker evidence to current-release L7.
 
+## Phase 1 foundation closure, 2026-09-30
+
+`FOUNDATION_ENGINEERING_AND_REPLAY` is CLOSED on the scoped evidence above.
+Schema 067 was writable. The exact-main locked Windows release at
+`c6d2fcdc51fa44edc3cd8d0710d678672fc0bfb3` had one supervisor and one
+active lease, GOOD Alpaca Paper reconciliation, zero positions and open orders,
+and no observed order submission. Exact-SHA CI `36683092251` passed. The real
+September 29 cycle archive passed its stored hash check. Its original clean
+release reproduced the complete 2,601-contract frontier hash without provider
+calls. Current-policy replay was classified separately as a cross-source
+counterfactual, never historical reproduction. Persisted method provenance
+allows real-input credit for only AEGIS and constrained sizing in that older
+cycle. Manual and partial-real inputs receive no real-input credit, and no
+historical method receives current-release L7 credit from this replay.
+
+The current release's natural supported-session candidate, AEGIS, sizing,
+finalist and quote-latency proof remains Phase 7. Empirical profitability and
+the first Paper order remain unproven and unauthorized.
+
 ## Authority at branch creation, 2026-09-29
 
 | Item | Verified state |
@@ -42,7 +61,7 @@ evidence window without restarting the aligned worker for this status alone.
 
 | Phase | Parallel source state | Closure state | Evidence or exact remaining dependency |
 | --- | --- | --- | --- |
-| 1 | Foundation replay source complete, release pending | `FOUNDATION_RELEASE_VERIFICATION_IN_PROGRESS` | The real September 29 archive was read with stored hash verification. The clean original aa179862 release replayed all 2,601 contracts to the exact historical frontier hash, with zero provider requests. L7 realness and non-real negative controls have source tests. The new replay tool still needs exact-SHA CI and locked release alignment. Current-release natural open-session L7 is Phase 7. |
+| 1 | Foundation replay source and locked release verified | `CLOSED_FOUNDATION_ENGINEERING_AND_REPLAY` | Exact-SHA CI `36683092251`, clean aligned locked worker `c6d2fcdc`, schema 067, GOOD broker reconciliation, verified 2,601-contract historical same-source replay, method-provenance negative controls and a separate current-policy counterfactual. Current-release natural open-session L7 is Phase 7. |
 | 2 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Provider authority, exact pre-submit identity, PIT timing, 20 feature families and typed provider failures are wired. Exact-SHA CI run `36543964513` passed. Current open-session entitlement and real quote/feature observations remain pending. |
 | 3 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Canonical candidates, sizing, routing and T0 are typed. Persisted WAIT now carries exact decomposition and cannot self-certify with unclassified blockers or UNKNOWNs. T0 replay uses the Production frontier, rejects tampering and uses no network. Exact-SHA CI run `36548131698` passed. Current-worker open-session proof remains pending. |
 | 4 | `SOURCE_COMPLETE_EMPIRICAL_PENDING` | `EMPIRICALLY_UNPROVEN` | Q/H/D/A/C deterministic mechanics, versioned modeled opening costs, position scaling, management alternatives, whole-chain loss preservation, 17 challenger replays, persistence and T0 replay are wired and tested. Exact-SHA CI run `36550676519` passed. Current-worker evidence and calibrated EV/POP/continuation values remain unavailable and are not fabricated. |
