@@ -1,5 +1,36 @@
 # THETA Phase 7 Unified Closure Receipt
 
+## Current continuation, 2026-09-30 23:36 UTC
+
+Phase 6 reviewed engineering is closed at source `5edd91dc37f58c80e2c3911aef4fcc14d28b79ee`,
+CI `36791530791` PASS. Phase 7 is active, not closed.
+
+Fresh bounded checks found writable schema 067, stable September-22 postmaster,
+3/20 connections, no active lease, and one locked Windows supervisor still on
+`d870f294`. Production Vercel is already on `2df52412`. Its identity guard
+stops the old supervisor before cycle/lease acquisition. The local broad
+`SCHEMA_INCOMPATIBLE` status is a source/worker SHA mismatch, not evidence
+that migration 067 is missing. This run reached no strategy stage.
+
+Server-side provider readiness returned HTTP 200 with authenticated Paper master
+identity, zero positions/open orders, market closed and execution LOCKED.
+OPRA returned NOT_ENTITLED, indicative data AVAILABLE_WITH_LIMITS. Optionomics
+returned 37 successful capability HTTP responses, not empirical validation.
+Local operator-token auth returned 401. The local environment has no master
+decryption key, so it cannot substitute for server-owned credentials. A first
+local preflight used the existing credential accessor, which updates token
+last-used metadata before decryption. Its safe failure was refined to
+MASTER_CREDENTIAL_KEY_VERSION_MISMATCH by a SELECT-only follow-up. Neither
+diagnostic invoked broker mutations. Original sanitized receipts are preserved
+under the ignored canonical `.theta-local-worker/receipts/` directory.
+
+Next: validated exact-main locked cutover with current safe admission and AC,
+then fresh current-worker persistence/lease proof. Reuse Phase-1 recovery
+evidence. No database soak, backup or migration is part of this source-only
+release alignment. Full supported-session acceptance remains FORWARD_DATA_REQUIRED.
+
+## Historical source receipt
+
 Receipt date: 2026-09-29
 
 START_SHA = b09bd7fd516424eef08d4a65643598108227290e

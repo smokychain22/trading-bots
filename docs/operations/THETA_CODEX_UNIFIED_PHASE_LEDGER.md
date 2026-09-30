@@ -11,11 +11,25 @@ is on main at `6fb779a7dfaffe83a5cb4eac7e9ce5f31d8b28a6`, main CI
 `2df52412ebaa7d8e210d989829e82814c8fc6f1b`, main CI `36787793409` PASS.
 The follow-up reviewed all 15 Phase-6 requirement groups with 128 bound
 executed Node cases, including the Python research bridge, and 1,267 Python
-tests independently. Final release CI remains pending this follow-up commit.
+tests independently. Follow-up source `5edd91dc37f58c80e2c3911aef4fcc14d28b79ee`
+passed exact CI `36791530791`. Phase 6 reviewed engineering is closed.
 Current scope and limitations are in `THETA_PHASE_6_UNIFIED_CLOSURE.md`.
 Phase 7 current-release runtime acceptance is next. The resident locked
 worker has not changed during the Phase-6 source batches. No current-worker,
 profitability or broker-authorized maturity follows from these tests.
+
+Phase-7 admission at 23:36 UTC found writable schema 067, stable postmaster,
+3/20 database connections and no active lease. The Windows supervisor remains
+pinned to `d870f294`; Vercel serves main `2df52412`. Its compatibility guard
+therefore rejects a cycle before the lease or strategy stages. This is a release
+identity mismatch, not a migration requirement or strategy WAIT. Authenticated
+server-side provider readiness returned HTTP 200, locked, verified Paper master,
+flat account and zero open orders. Market closed. OPRA still returned 403
+NOT_ENTITLED; indicative quotes remain limited. Optionomics returned 37 HTTP 200
+capability responses, which establish transport rather than complete semantics.
+The next step is exact-main CI and one governed locked release alignment,
+followed by actual current-worker proof. No backup, soak or migration is needed
+for these source-only changes.
 Do not reopen Phase 1 or run a backup/soak as a source-validation step.
 
 ## PHASE_SCOPE_CORRECTION_2026_09_30

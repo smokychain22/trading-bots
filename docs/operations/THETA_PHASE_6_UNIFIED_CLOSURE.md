@@ -2,7 +2,10 @@
 
 ## Current review, 2026-09-30
 
-STATE = REVIEWED_ENGINEERING_VALIDATED_CI_PENDING
+STATE = CLOSED_REVIEWED_ENGINEERING_EMPIRICAL_PENDING
+
+Follow-up source `5edd91dc37f58c80e2c3911aef4fcc14d28b79ee` passed exact-SHA
+CI `36791530791`, including disposable PostgreSQL schema/fault tests.
 
 The older source-complete receipt below is historical, not current acceptance.
 Phase 5 is committed at `6fb779a7dfaffe83a5cb4eac7e9ce5f31d8b28a6` with
@@ -59,7 +62,8 @@ passed 1,267 tests. Bindings and per-file hashes are in
 `THETA_PHASE6_REVIEWED_TEST_BINDINGS.json` and
 `evidence/THETA_PHASE6_EXECUTED_TESTS.json`. This proves scoped engineering,
 not current-worker L7, empirical usefulness, authenticity of caller-supplied
-research data, or broker authorization. Exact release CI is still required.
+research data, or broker authorization. Final release deployment still requires
+exact release CI and the existing locked cutover procedure.
 
 Final local validation passed: Node 3,337 with 16 explicit environment-gated
 skips, Python 1,267, browser 23, four Windows safety/deadline suites, typecheck,
