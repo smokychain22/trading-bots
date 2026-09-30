@@ -100,6 +100,20 @@ export const opportunityFrontierResponseSchema = z.object({
       && !ids.includes(response.globalIdle.bestRejectedCandidateId)) {
       context.addIssue({ code: 'custom', message: 'globalIdle best rejected candidate must be evaluated' });
     }
+    // The Python producer counts these two mutually exclusive rejection
+    // categories from the returned entries. Positive EV is counted from the
+    // request economics and cannot be reconstructed from this response.
+    if (response.globalIdle.riskRejectedCandidates !== response.entries.filter((entry) =>
+      entry.rejectionCategory === 'AEGIS').length) {
+      context.addIssue({ code: 'custom', message: 'globalIdle risk rejection count must match AEGIS entries' });
+    }
+    if (response.globalIdle.executionRejectedCandidates !== response.entries.filter((entry) =>
+      entry.rejectionCategory === 'LIQUIDITY').length) {
+      context.addIssue({ code: 'custom', message: 'globalIdle execution rejection count must match LIQUIDITY entries' });
+    }
+    if (response.globalIdle.positiveEvCandidates > response.entries.length) {
+      context.addIssue({ code: 'custom', message: 'globalIdle positive EV count exceeds evaluated entries' });
+    }
   }
 });
 

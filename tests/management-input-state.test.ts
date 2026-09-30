@@ -68,10 +68,12 @@ test('unknown broker fill fees keep whole-chain economics unknown',()=>{
 test('missing or malformed ledger aggregates never become known zero economics',()=>{
   const fields=['open_stock_shares','realized_option_pnl','realized_stock_pnl','dividends','fees'] as const;
   for (const field of fields) {
-    assert.throws(()=>assembleManagementInput({...base,[field]:null},{
-      managementInputSnapshotId:`invalid-${field}`,reconciliationSnapshotId:'recon-1',
-      observedAt:'2026-09-12T14:00:00.000Z',
-    }),new RegExp(`MANAGEMENT_LEDGER_AGGREGATE_INVALID:${field}`));
+    for (const invalid of [null, undefined, 'NaN', 'Infinity', '-Infinity']) {
+      assert.throws(()=>assembleManagementInput({...base,[field]:invalid},{
+        managementInputSnapshotId:`invalid-${field}`,reconciliationSnapshotId:'recon-1',
+        observedAt:'2026-09-12T14:00:00.000Z',
+      }),new RegExp(`MANAGEMENT_LEDGER_AGGREGATE_INVALID:${field}`));
+    }
   }
   const zero=assembleManagementInput({...base,realized_option_pnl:'0',fees:'0'},{
     managementInputSnapshotId:'valid-zero',reconciliationSnapshotId:'recon-1',

@@ -84,3 +84,21 @@ test('a global idle report cannot undercount evaluated contracts or name an abse
     actionableCandidateIds:[],globalIdle:{...idle,contractsEvaluated:1,
       bestRejectedCandidateId:'missing'}})),/globalIdle best rejected candidate must be evaluated/);
 });
+
+test('global idle rejection categories reconcile with evaluated dispositions',()=>{
+  const idle={reason:'NO_POSITIVE_AFTER_COST_EDGE',eligibleUnderlyingsScanned:1,
+    contractsEvaluated:2,positiveEvCandidates:1,riskRejectedCandidates:1,
+    executionRejectedCandidates:1,bestRejectedCandidateId:'c1',bestRejectedEv:-1};
+  const entries=[
+    {candidateId:'c1',rank:null,disposition:'PASS',waitReason:null,rejectionCategory:'AEGIS',reasons:[]},
+    {candidateId:'c2',rank:null,disposition:'PASS',waitReason:null,rejectionCategory:'LIQUIDITY',reasons:[]},
+  ];
+  const payload=basePayload({entries,actionableCandidateIds:[],globalIdle:idle});
+  assert.equal(parseOpportunityFrontierResponse(payload).globalIdle?.contractsEvaluated,2);
+  assert.throws(()=>parseOpportunityFrontierResponse(basePayload({...payload,
+    globalIdle:{...idle,riskRejectedCandidates:0}})),/risk rejection count/);
+  assert.throws(()=>parseOpportunityFrontierResponse(basePayload({...payload,
+    globalIdle:{...idle,executionRejectedCandidates:0}})),/execution rejection count/);
+  assert.throws(()=>parseOpportunityFrontierResponse(basePayload({...payload,
+    globalIdle:{...idle,positiveEvCandidates:3}})),/positive EV count/);
+});

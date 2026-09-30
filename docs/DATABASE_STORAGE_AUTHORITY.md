@@ -13,6 +13,19 @@ Status: canonical runtime policy as of 2026-09-18.
 | Local durable evidence | Content-addressed research and recovery bundles | Deterministic PIT exports, provenance, lifecycle and outcome evidence | Noncritical |
 | Local ephemeral storage | Cache and disposable computation | Regenerable intermediate data | Noncritical |
 
+## Repository visibility and data placement
+
+The `smokychain22/trading-bots` repository was observed as public on 2026-09-30. Visibility is an owner decision and this policy does not change it. Treat every commit, including Git history, as public. Use these explicit tiers:
+
+| Tier | Allowed content | Prohibited content |
+| --- | --- | --- |
+| `PUBLIC_REPO_SAFE` | Source, schema, policy, documentation, synthetic fixtures, and sanitized compact manifests | Credentials, broker/account records, raw provider responses, private datasets, database dumps, and production environment files |
+| `LOCAL_PRIVATE` | Git-ignored runtime configuration, bounded outage spool, private diagnostic receipts, and encrypted or access-controlled local archives | A second transactional trading authority |
+| `DATABASE_PRIVATE` | Aiven transactional state, compact audit identity, idempotency, leases, and controlled operational evidence | Unbounded raw research history or a substitute for external archive storage |
+| `EXTERNAL_PRIVATE_STORAGE` | Verified large immutable archives, Parquet history, and recovery artifacts with hashes and access controls | Broker mutation authority or unhashed evidence promoted to empirical truth |
+
+Do not infer privacy from `package.json`'s `private` flag. That flag prevents npm publication and says nothing about GitHub visibility. GitHub Releases and Git LFS under this repository are public too. Before committing, run `scan:security` and `storage:git-policy`; neither scan proves that historical commits never exposed a secret. Historical exposure needs a separate bounded review and an owner-led response without printing values or rotating credentials automatically.
+
 Local evidence never becomes broker, lifecycle, idempotency, or transactional authority. It cannot authorize an order.
 
 ## Environment contract
