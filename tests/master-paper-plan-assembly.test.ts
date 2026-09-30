@@ -124,6 +124,36 @@ test('a plan cannot use an AEGIS state from a different candidate',()=>{
   assert.ok(result.blockers.includes('AEGIS_SELECTION_LINEAGE_MISMATCH'));
 });
 
+test('invalid Paper cap is a typed blocker and a genuine zero cap stays zero',()=>{
+  for(const paperEvidenceRiskCap of [-1,0.5,Number.NaN,Number.POSITIVE_INFINITY]){
+    const result=assembleMasterPaperEvidencePlan(input({paperEvidenceRiskCap}));
+    assert.equal(result.state,'BLOCKED');
+    assert.ok(result.blockers.includes('PAPER_EVIDENCE_RISK_CAP_INVALID'));
+  }
+  const zero=assembleMasterPaperEvidencePlan(input({paperEvidenceRiskCap:0}));
+  assert.equal(zero.state,'BLOCKED');
+  assert.ok(zero.blockers.includes('PAPER_EVIDENCE_QUANTITY_ZERO'));
+});
+
+test('Paper plan rejects a frontier whose selection or quantity contradicts its candidate',()=>{
+  const original=frontier();
+  const branch=original.branches[0];
+  const selected=branch?.candidates[0];
+  assert.ok(branch&&selected);
+  const inconsistent=[
+    {frontier:{...original,selectedBranch:'THETA_HOLD_STRIKE' as const},code:'CANONICAL_SELECTION_LINEAGE_INVALID'},
+    {frontier:{...original,globalWaitEarned:true},code:'CANONICAL_SELECTION_LINEAGE_INVALID'},
+    {frontier:{...original,selectedQuantity:4},code:'CANONICAL_SIZING_LINEAGE_INVALID'},
+    {frontier:{...original,branches:[{...branch,candidates:[{...selected,sizing:{...selected.sizing,quantity:0}}]}]},
+      code:'CANONICAL_SIZING_LINEAGE_INVALID'},
+  ];
+  for(const {frontier:changed,code} of inconsistent){
+    const result=assembleMasterPaperEvidencePlan(input({frontier:changed}));
+    assert.equal(result.state,'BLOCKED');
+    assert.ok(result.blockers.includes(code),code);
+  }
+});
+
 test('plan assembly rejects AEGIS evidence whose immutable identity was changed',()=>{
   const identity=testAegisAssessmentIdentity({persistedCandidateId});
   const result=assembleMasterPaperEvidencePlan(input({

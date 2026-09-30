@@ -125,6 +125,9 @@ test('hold-strike evaluates 2-5 DTE near-expiry contracts without treating missi
   assert.equal(hold?.candidates[0]?.riskFeasible, true);
   assert.ok(hold?.candidates[0]?.unknownEvidence.includes('DELTA_UNKNOWN'));
   assert.equal(result.selectedBranch, null, 'research-only Hold-Strike cannot become the Paper selection');
+  assert.equal(result.globalWaitEarned, false, 'an H-only cycle cannot certify a Paper GLOBAL_WAIT');
+  assert.equal(result.primaryAction, 'SYSTEM_HOLD');
+  assert.ok(result.globalWaitReasons.includes('PAPER_BRANCH_NOT_APPLICABLE'));
 });
 
 test('defined-risk frontier prices both legs with the broker multiplier and keeps the branch research-only', () => {
@@ -139,6 +142,27 @@ test('defined-risk frontier prices both legs with the broker multiplier and keep
   assert.equal(spread?.executionAuthorized, false);
   assert.equal(result.definedRiskLockedPlan.plan?.brokerMultiLegSupport, 'UNKNOWN');
   assert.equal(result.selectedBranch, null, 'research-only Defined Risk cannot become the Paper selection');
+  assert.equal(result.globalWaitEarned, false, 'a D-only cycle cannot certify a Paper GLOBAL_WAIT');
+  assert.ok(result.globalWaitReasons.includes('PAPER_BRANCH_NOT_APPLICABLE'));
+});
+
+test('bounded defined-risk enumeration is invariant to provider contract order', () => {
+  const puts = Array.from({ length: 46 }, (_, index) => {
+    const strike = 160 + index;
+    const optionSymbol = `AAPL261016P${String(strike * 1000).padStart(8, '0')}`;
+    return contract({ optionSymbol, occSymbol: optionSymbol, strike });
+  });
+  const forward = buildCanonicalStrategyFrontier({ ...base, contracts: puts, routing: routing(['THETA_D']) });
+  const reversed = buildCanonicalStrategyFrontier({ ...base, contracts: puts.toReversed(), routing: routing(['THETA_D']) });
+  const definedForward = forward.branches.find((branch) => branch.branch === 'THETA_DEFINED_RISK');
+  const definedReversed = reversed.branches.find((branch) => branch.branch === 'THETA_DEFINED_RISK');
+  assert.equal(definedForward?.candidateCount, 1000);
+  assert.equal(definedForward?.enumerationTruncated, true);
+  assert.equal(definedForward?.evaluationState, 'BLOCKED_MISSING_INPUT');
+  assert.deepEqual(definedForward?.candidates.map((candidate) => candidate.candidateId),
+    definedReversed?.candidates.map((candidate) => candidate.candidateId));
+  assert.equal(forward.contentHash, reversed.contentHash);
+  assert.equal(forward.globalWaitEarned, false);
 });
 
 test('defined-risk plan records Level 3 MLeg support while remaining locked and non-submittable', () => {

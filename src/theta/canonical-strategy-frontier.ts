@@ -812,7 +812,12 @@ function buildBranch(
       raw = input.contracts.filter((contract) => contract.optionType === 'PUT' && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax)
         .map((contract) => singleLegPutCandidate(branch, contract, input));
     } else if (branch === 'THETA_DEFINED_RISK') {
-      const puts = input.contracts.filter((contract) => contract.optionType === 'PUT' && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax);
+      // The bounded research enumeration must not depend on provider page
+      // order. A provider reorder must retain the same 1,000 structures and
+      // the same incomplete-enumeration receipt.
+      const puts = input.contracts.filter((contract) => contract.optionType === 'PUT' && contract.dte >= source.lattice.dteMin && contract.dte <= source.lattice.dteMax)
+        .toSorted((a, b) => a.expiration.localeCompare(b.expiration) || a.strike - b.strike
+          || a.optionSymbol.localeCompare(b.optionSymbol));
       outer: for (const shortPut of puts) for (const longPut of puts) {
         if (shortPut.expiration === longPut.expiration && longPut.strike < shortPut.strike) {
           if (raw.length >= maxDefinedRiskStructuresPerCycle) { enumerationTruncated = true; break outer; }
@@ -952,7 +957,9 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
       'COLLATERAL_INPUT_UNKNOWN', 'REDUCED_MULTIPLIER_UNKNOWN', 'UNKNOWN_STOCK_CAPACITY',
       'COVERED_SHARES_UNKNOWN']
       .includes(candidate.sizing.bindingConstraint));
-  const globalWaitEarned = !managementAuthorityRequired && applicable.length > 0 && blockedApplicable.length === 0
+  const paperBranch = branches.find((branch) => branch.branch === 'THETA_CONVENTIONAL');
+  const paperBranchEvaluated = paperBranch?.applicable === true && paperBranch.evaluationState === 'EVALUATED';
+  const globalWaitEarned = !managementAuthorityRequired && paperBranchEvaluated && blockedApplicable.length === 0
     && !managementIncomplete && !universeIncomplete && sizingEvidenceUnknown.length === 0
     && !decisionInvalid && structuralSelection === null;
   const partial = {
@@ -971,6 +978,7 @@ export function buildCanonicalStrategyFrontier(input: CanonicalStrategyFrontierI
     globalWaitEarned, globalWaitReasons: globalWaitEarned ? ['PAPER_AUTHORIZED_BRANCH_EVALUATED',
       decision !== undefined ? `THETA_Q_ECONOMIC_${decision.winningAction}` : 'NO_RISK_FEASIBLE_ACTION']
       : [...blockedApplicable.map((branch) => `BRANCH_NOT_FULLY_EVALUATED:${branch.branch}`),
+          ...(!paperBranch?.applicable ? ['PAPER_BRANCH_NOT_APPLICABLE'] : []),
           ...(decision !== undefined && !decisionSnapshotValid ? ['THETA_Q_DECISION_SNAPSHOT_MISMATCH'] : []),
           ...(decision !== undefined && openDecision && decisionCandidate === null ? ['THETA_Q_WINNER_NOT_STRUCTURALLY_FEASIBLE'] : []),
           ...(decision !== undefined && openDecision && (!Number.isInteger(decision.quantity) || decision.quantity <= 0)

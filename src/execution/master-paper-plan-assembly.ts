@@ -69,12 +69,18 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
   if (frontier.primaryAction !== 'OPEN_CSP') blockers.push(`ACTION_NOT_YET_CONNECTED:${frontier.primaryAction}`);
   if (selected?.action !== 'OPEN_CSP') blockers.push('SELECTED_ACTION_NOT_OPEN_CSP');
   if (selected?.branch !== 'THETA_CONVENTIONAL') blockers.push('BRANCH_NOT_AUTHORIZED_FOR_MASTER_PAPER_ENTRY');
+  if (selected?.branch !== frontier.selectedBranch || selected?.action !== frontier.primaryAction
+    || frontier.globalWaitEarned) blockers.push('CANONICAL_SELECTION_LINEAGE_INVALID');
   if (selectedBranch?.status !== 'SHADOW') blockers.push('STRATEGY_BRANCH_NOT_PAPER_EVIDENCE_ELIGIBLE');
   if (selected?.legs.length !== 1) blockers.push('SINGLE_LEG_CSP_REQUIRED');
   const selectedLeg = selected?.legs[0];
   if (selectedLeg?.positionIntent !== 'SELL_TO_OPEN' || selectedLeg?.optionType !== 'PUT') blockers.push('CSP_LEG_IDENTITY_INVALID');
   if (!selected?.structurallyFeasible || !selected.riskFeasible || selected.hardBlockers.length > 0) blockers.push('HARD_VALIDITY_FAILED');
   if (frontier.selectedQuantity <= 0) blockers.push('CANONICAL_QUANTITY_ZERO');
+  if (!Number.isSafeInteger(frontier.selectedQuantity) || !Number.isSafeInteger(selected?.sizing.quantity)
+    || selected === undefined || selected.sizing.quantity < frontier.selectedQuantity) {
+    blockers.push('CANONICAL_SIZING_LINEAGE_INVALID');
+  }
   if (input.executionAccountId === null) blockers.push('MASTER_EXECUTION_ACCOUNT_NOT_CREATED');
   if (input.persistedCandidateId === null) blockers.push('SELECTED_CANDIDATE_NOT_PERSISTED');
   if (input.optionContractId === null || input.underlyingId === null) blockers.push('PERSISTED_CONTRACT_IDENTITY_MISSING');
@@ -93,8 +99,9 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
   // The unpromoted new-risk lane is the first Paper canary. Its independent
   // safety ceiling is one contract even when a broader environment cap was
   // configured for later Paper evidence or management activity.
-  const sizing = applyPaperEvidenceRiskCap(frontier.selectedQuantity, Math.min(input.paperEvidenceRiskCap, 1));
-  if (sizing.paperEvidenceQuantity === 0) blockers.push('PAPER_EVIDENCE_QUANTITY_ZERO');
+  if (!Number.isSafeInteger(input.paperEvidenceRiskCap) || input.paperEvidenceRiskCap < 0) {
+    blockers.push('PAPER_EVIDENCE_RISK_CAP_INVALID');
+  }
   if (input.aegisState === null) blockers.push('AEGIS_SELECTION_LINEAGE_MISSING');
   else if (!['ALLOW_FULL', 'ALLOW_REDUCED'].includes(input.aegisState)) blockers.push('AEGIS_NOT_APPROVED');
   if (input.aegisInputOrigin !== 'DERIVED_FROM_REAL') blockers.push('AEGIS_REAL_INPUT_LINEAGE_MISSING');
@@ -130,6 +137,11 @@ export function assembleMasterPaperEvidencePlan(input: MasterPaperPlanAssemblyIn
     || !finite(input.modeledRoundTripCostPerContract) || !finite(structuralCredit) || multiplier <= 0
     || input.aegisState === null || !['ALLOW_FULL', 'ALLOW_REDUCED'].includes(input.aegisState)) {
     return { state: 'BLOCKED', plan: null, blockers: [...new Set(blockers)] };
+  }
+
+  const sizing = applyPaperEvidenceRiskCap(frontier.selectedQuantity, Math.min(input.paperEvidenceRiskCap, 1));
+  if (sizing.paperEvidenceQuantity === 0) {
+    return { state: 'BLOCKED', plan: null, blockers: ['PAPER_EVIDENCE_QUANTITY_ZERO'] };
   }
 
   const economicBoundary = ceilToTick(Math.max(
