@@ -1,0 +1,82 @@
+{
+  "version": "theta-premarket-code-solvable-register-v1",
+  "scope": "INSPECTED_CURRENT_WORKTREE_AND_2026_09_30_DIRECTIVE_ITEMS_ONLY",
+  "globalZeroClaim": false,
+  "counts": {
+    "inspectedCodeSolvable": 4,
+    "sourceImplementedAndFocusedTested": 4,
+    "inspectedSourceFixRemaining": 0,
+    "notFullyAuditedDirectiveFamilies": 5
+  },
+  "items": [
+    {
+      "id": "P1_LARGE_T0_VERSION_AWARE_REPLAY",
+      "phase": 1,
+      "component": "cycle archive replay",
+      "bugOrGap": "The optional 4 MiB standalone bundle cannot carry the 36.7 MiB September 29 T0, and current-policy replay was confused with historical reproduction.",
+      "rootCauseKnown": true,
+      "testExists": true,
+      "fixExists": true,
+      "deployed": false,
+      "blocksMarketOperation": false,
+      "blocksFirstPaper": "FOUNDATION_PROOF_ONLY",
+      "canFixNow": true,
+      "status": "SOURCE_COMPLETE_REAL_SEP29_ARCHIVE_CAPTURED_HISTORICAL_SHA_REPLAY_MATCHED"
+    },
+    {
+      "id": "P2_OPTION_CONTRACT_PAGINATION_GUARDS",
+      "phase": 2,
+      "component": "Alpaca contract and snapshot pagination",
+      "bugOrGap": "A repeated page token or duplicate exact-contract identity could pass through pagination until a page bound or silently overwrite a snapshot.",
+      "rootCauseKnown": true,
+      "testExists": true,
+      "fixExists": true,
+      "deployed": false,
+      "blocksMarketOperation": true,
+      "blocksFirstPaper": true,
+      "canFixNow": true,
+      "status": "SOURCE_COMPLETE_RELEASE_PENDING"
+    },
+    {
+      "id": "P6_RESEARCH_EXPORT_POOL_FANOUT",
+      "phase": 6,
+      "component": "research dataset export",
+      "bugOrGap": "Eighteen concurrent reads entered a two-client pg-pool queue with an acquisition deadline and no per-query timing receipt.",
+      "rootCauseKnown": "SOURCE_CONCURRENCY_PROVEN_RUNTIME_TIMEOUT_CAUSALITY_NOT_PROVEN",
+      "testExists": true,
+      "fixExists": true,
+      "deployed": false,
+      "blocksMarketOperation": false,
+      "blocksFirstPaper": false,
+      "canFixNow": true,
+      "status": "SOURCE_HARDENED_REAL_EXPORT_NOT_YET_VERIFIED"
+    },
+    {
+      "id": "P7_IMMUTABLE_RELEASE_DOTENV_REGRESSION",
+      "phase": 7,
+      "component": "Command-5A release sandbox",
+      "bugOrGap": "Health and maturation needed executable proof outside the developer checkout with no repo .env.local.",
+      "rootCauseKnown": true,
+      "testExists": true,
+      "fixExists": "EXISTING_SOURCE_VERIFIED_BY_NEW_SANDBOX_TEST",
+      "deployed": true,
+      "blocksMarketOperation": false,
+      "blocksFirstPaper": false,
+      "canFixNow": true,
+      "status": "TEST_COMPLETE"
+    }
+  ],
+  "notFullyAuditedDirectiveFamilies": [
+    "FULL_21_DAY_INCIDENT_MATRIX",
+    "ALL_PROVIDER_CHAOS_VARIANTS",
+    "FULL_RELEASE_SANDBOX_WITH_AUTHENTICATED_PROVIDER_MODES",
+    "RESEARCH_EXPORT_REAL_DB_CURRENT_2X_5X_STRESS",
+    "COMMAND5A_LIVE_OBSERVATION_AND_MATURATION"
+  ],
+  "safety": {
+    "orderSubmissions": 0,
+    "brokerMutations": 0,
+    "followerExecution": "LOCKED",
+    "liveMoney": "NOT_AUTHORIZED"
+  }
+}

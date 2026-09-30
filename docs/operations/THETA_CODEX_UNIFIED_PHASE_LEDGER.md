@@ -3,6 +3,23 @@
 This ledger records parallel source work separately from release closure. It is
 not an authorization to place an order or to deploy this integration branch.
 
+## PHASE_SCOPE_CORRECTION_2026_09_30
+
+Phase 1 is `FOUNDATION_ENGINEERING_AND_REPLAY`. Its closure requires source and
+release identity, schema and persistence correctness, broker read-only
+reconciliation, method-provenance and L7-classifier correctness, negative L7
+controls, persisted T0 reconstruction, provider-free replay, and deterministic
+failure handling. An older real supported-session T0 can test the current
+foundation without claiming that the current release ran during that session.
+
+Phase 7 is `CURRENT_RELEASE_SUPPORTED_SESSION_ACCEPTANCE`. It owns the current
+worker's natural open-session L7 proof, quote-latency distribution, market-open
+candidate frontier, live candidate-bound AEGIS and sizing population, and
+full-session rates. These remain required before first-Paper operational
+readiness. The correction removes duplicate live-runtime gating that caused a
+Phase-1/Phase-7 loop. It does not rewrite historical receipts or promote old
+worker evidence to current-release L7.
+
 ## Authority at branch creation, 2026-09-29
 
 | Item | Verified state |
@@ -25,13 +42,13 @@ evidence window without restarting the aligned worker for this status alone.
 
 | Phase | Parallel source state | Closure state | Evidence or exact remaining dependency |
 | --- | --- | --- | --- |
-| 1 | Current release frozen | `FORWARD_DATA_REQUIRED` | Current-worker open-session canonical frontier, durable method provenance, honest per-method L7 and non-real rejection, persisted T0, provider-free deterministic replay. |
+| 1 | Foundation replay source complete, release pending | `FOUNDATION_RELEASE_VERIFICATION_IN_PROGRESS` | The real September 29 archive was read with stored hash verification. The clean original aa179862 release replayed all 2,601 contracts to the exact historical frontier hash, with zero provider requests. L7 realness and non-real negative controls have source tests. The new replay tool still needs exact-SHA CI and locked release alignment. Current-release natural open-session L7 is Phase 7. |
 | 2 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Provider authority, exact pre-submit identity, PIT timing, 20 feature families and typed provider failures are wired. Exact-SHA CI run `36543964513` passed. Current open-session entitlement and real quote/feature observations remain pending. |
 | 3 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Canonical candidates, sizing, routing and T0 are typed. Persisted WAIT now carries exact decomposition and cannot self-certify with unclassified blockers or UNKNOWNs. T0 replay uses the Production frontier, rejects tampering and uses no network. Exact-SHA CI run `36548131698` passed. Current-worker open-session proof remains pending. |
 | 4 | `SOURCE_COMPLETE_EMPIRICAL_PENDING` | `EMPIRICALLY_UNPROVEN` | Q/H/D/A/C deterministic mechanics, versioned modeled opening costs, position scaling, management alternatives, whole-chain loss preservation, 17 challenger replays, persistence and T0 replay are wired and tested. Exact-SHA CI run `36550676519` passed. Current-worker evidence and calibrated EV/POP/continuation values remain unavailable and are not fabricated. |
 | 5 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | One AEGIS authority, one canonical final sizing authority and one master execution mutation state machine are enforced and tested. Exact-SHA CI run `36552617374` passed. Current-worker evidence remains pending. Sector mapping and portfolio Greeks retain typed provider/data limits. Risk-policy optimality remains empirically unproven. |
 | 6 | `SOURCE_COMPLETE_EMPIRICAL_PENDING` | `EMPIRICALLY_UNPROVEN` | Historical provenance, future capture, outcomes, datasets, regret, attribution, model ladder, validation and promotion governance are wired. Mechanical benchmark dispatch is executable. Historical corpus has zero selected or resolved outcomes, and integrated future capture needs later real observations. |
-| 7 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `FORWARD_DATA_REQUIRED` | Evidence-derived readiness, locked session controls, per-cycle diagnostics, archive health and Command-5A backlog telemetry are wired and tested. Exact-SHA CI run `36555971370` passed. A complete current-release supported-session run remains pending. First Paper order remains separately owner-gated. |
+| 7 | `SOURCE_COMPLETE_RUNTIME_PENDING` | `CURRENT_RELEASE_SUPPORTED_SESSION_ACCEPTANCE_PENDING` | Evidence-derived readiness, locked session controls, per-cycle diagnostics, archive health and Command-5A backlog telemetry are wired and tested. A complete current-release supported-session run with live quote latency, candidate frontier, AEGIS, sizing and full-session rates remains pending. First Paper order remains separately owner-gated. |
 | 8 | No Paper outcomes | `FUTURE_DATA_REQUIRED` | Actual fills, lifecycle and whole-chain outcomes do not yet exist. |
 | 9 | No live permission | `OWNER_GATED` | Live-money authorization was not granted. |
 

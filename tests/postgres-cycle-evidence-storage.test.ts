@@ -14,7 +14,9 @@ import {
   projectCycleEvidenceForPostgres,
   projectDecisionReceiptForPostgres,
 } from '../src/theta/postgres-cycle-evidence-storage.js';
-import type { CanonicalStrategyFrontier } from '../src/theta/canonical-strategy-frontier.js';
+import { buildCanonicalStrategyFrontier, type CanonicalStrategyFrontier,
+  type CanonicalStrategyFrontierInput } from '../src/theta/canonical-strategy-frontier.js';
+import { replayCycleArchive } from '../src/theta/cycle-archive-replay.js';
 import { projectOperationalThetaCandidates } from '../src/theta/postgres-theta-cycle-store.js';
 import type { ThetaShadowCycleResult } from '../src/theta/theta-shadow-cycle.js';
 import { flatPortfolioExposure } from './helpers/flat-portfolio-exposure.js';
@@ -101,6 +103,26 @@ test('PostgreSQL projection is bounded while compressed archive retains the comp
   assert.equal((projection.snapshot.contractCandidates as unknown[]).length, 4);
   assert.equal((projection.snapshot.optionomicsFeatureState as Record<string, unknown>).storageState,
     'FULL_STATE_IN_COMPRESSED_CYCLE_ARCHIVE');
+});
+
+test('the real packed PostgreSQL archive feeds provider-free same-source T0 replay', () => {
+  const original = cycle();
+  const replayInput: CanonicalStrategyFrontierInput = {
+    snapshotId: 'packed-replay', timestamp: now, strategyVersion: 'test', contracts: [], routing: null,
+    stock: null, assignmentCapacityQty: null, aegisNewRiskState: null, eventState: null,
+    unmanagedBrokerPositionCount: 0, unevaluatedUnderlyingCount: 0, optionomicsContext: null,
+  };
+  const expanded = { ...original, canonicalFrontierInput: replayInput,
+    strategyFrontier: buildCanonicalStrategyFrontier(replayInput) } as ThetaShadowCycleResult;
+  const projection = projectCycleEvidenceForPostgres(expanded);
+  const sourceSha = 'a'.repeat(40);
+  const replayed = replayCycleArchive(projection.archive, {
+    cycleId: 'packed-replay', sourceSha,
+    archiveSha256: createHash('sha256').update(projection.archive).digest('hex'),
+    archiveContentHash: projection.archiveHash,
+  }, sourceSha);
+  assert.equal(replayed.state, 'SAME_SOURCE_REPRODUCED');
+  assert.equal(replayed.providerRequests, 0);
 });
 
 test('cycle archive preserves each finalist AEGIS result rather than only a representative state', () => {

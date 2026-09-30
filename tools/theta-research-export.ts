@@ -1,8 +1,8 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { Pool } from 'pg';
 import { loadEnvironment } from '../src/config/environment.js';
 import { PostgresDatasetExporter, researchExportSafeFailureCode } from '../src/research/postgres-dataset-export.js';
+import { createRuntimePostgresPool } from '../src/theta/runtime-postgres-pool.js';
 import { buildR6ReadinessReceipt } from '../src/research/r6-readiness.js';
 import { buildResearchHandoff, hasExportableEvidence } from '../src/research/research-handoff.js';
 
@@ -21,9 +21,14 @@ async function main():Promise<void>{
   const connectionString=loadEnvironment().DATABASE_URL;
   if (!connectionString) throw new Error('DATABASE_CONNECTION_NOT_CONFIGURED');
   const featureSetVersion=value('--feature-set-version')??'theta-r6-feature-set-v1';
-  const pool=new Pool({connectionString,max:2,application_name:'theta-research-export'});
+  const pool=createRuntimePostgresPool(connectionString,(code)=>{
+    process.stderr.write(`${JSON.stringify({event:'THETA_RESEARCH_EXPORT_IDLE_DATABASE_ERROR',code})}\n`);
+  },{maximumConnections:2,applicationName:'theta-research-export'});
   try {
-  const exporter=new PostgresDatasetExporter(pool);
+  const exporter=new PostgresDatasetExporter(pool,(timing)=>{
+    // Static relation name, timing and count only. Never log row payloads or connection details.
+    process.stderr.write(`${JSON.stringify({event:'THETA_RESEARCH_EXPORT_QUERY_V1',...timing})}\n`);
+  });
   const newest=args.includes('--latest')||(!args.includes('--from')&&!args.includes('--to'))
     ? await exporter.newestEvidenceWindow() : null;
   const start=parsedDate(value('--from'),'EXPORT_FROM')??newest?.start??null;

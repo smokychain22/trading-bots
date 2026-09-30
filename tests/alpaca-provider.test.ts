@@ -330,7 +330,12 @@ test('a missing contract array is provider-malformed, while an explicit empty ar
 });
 
 test('fetchOptionContracts marks complete=false (never silently complete) when maxPages is hit with more remaining, but preserves items already fetched', async () => {
-  const fetchImpl = (async () => jsonResponse(200, { option_contracts: [{ symbol: 'X', strike_price: '1', expiration_date: '2026-10-09' }], next_page_token: 'always-more' })) as typeof fetch;
+  let page = 0;
+  const fetchImpl = (async () => {
+    page += 1;
+    return jsonResponse(200, { option_contracts: [{ symbol: `X${page}`, strike_price: '1', expiration_date: '2026-10-09' }],
+      next_page_token: `page-${page + 1}` });
+  }) as typeof fetch;
   const result = await fetchOptionContracts(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01', optionType: 'put', limit: 1, maxPages: 2 });
   assert.equal(result.complete, false);
   assert.equal(result.items.length, 2);
@@ -365,6 +370,70 @@ test('fetchOptionSnapshots preserves a missing Greeks object as null, never fabr
   const fetchImpl = (async () => jsonResponse(200, { snapshots: { X: { latestQuote: { bp: 1, ap: 1.1 } } }, next_page_token: null })) as typeof fetch;
   const result = await fetchOptionSnapshots(baseConfig(fetchImpl), { underlyingSymbol: 'SPY', feed: 'indicative', optionType: 'put', limit: 10, maxPages: 5 });
   assert.equal(result.snapshots.get('X')?.greeks, null);
+});
+
+test('option contract pagination remains complete across boundary sizes through 10,000 contracts', async () => {
+  for (const count of [0, 1, 99, 100, 101, 999, 1000, 1001, 1090, 1511, 2000, 2601, 5000, 10000]) {
+    let page = 0;
+    const fetchImpl = (async () => {
+      const start = page * 1000;
+      const length = Math.max(0, Math.min(1000, count - start));
+      page += 1;
+      return jsonResponse(200, {
+        option_contracts: Array.from({ length }, (_, offset) => ({
+          symbol: `SPY261009P${String(500000 + start + offset).padStart(8, '0')}`,
+          strike_price: String(500 + (start + offset) / 1000), expiration_date: '2026-10-09',
+        })),
+        next_page_token: start + length < count ? `page-${page}` : null,
+      });
+    }) as typeof fetch;
+    const result = await fetchOptionContracts(baseConfig(fetchImpl), {
+      underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01',
+      optionType: 'put', limit: 1000, maxPages: 20,
+    });
+    assert.equal(result.complete, true, `count=${count}`);
+    assert.equal(result.items.length, count, `count=${count}`);
+    assert.equal(result.pagesFetched, Math.max(1, Math.ceil(count / 1000)), `count=${count}`);
+  }
+});
+
+test('repeated or empty page tokens and duplicate contract IDs fail closed', async () => {
+  const params = { underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01',
+    optionType: 'put' as const, limit: 1, maxPages: 10 };
+  const row = { symbol: 'SPY261009P00500000', strike_price: '500', expiration_date: '2026-10-09' };
+  for (const token of ['same', '']) {
+    let requests = 0;
+    const fetchImpl = (async () => {
+      requests += 1;
+      return jsonResponse(200, { option_contracts: [row], next_page_token: token });
+    }) as typeof fetch;
+    await assert.rejects(fetchOptionContracts(baseConfig(fetchImpl), params), (error: unknown) =>
+      error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+    assert.ok(requests <= 2);
+  }
+  let page = 0;
+  const duplicate = (async () => {
+    page += 1;
+    return jsonResponse(200, { option_contracts: [row], next_page_token: page === 1 ? 'p2' : null });
+  }) as typeof fetch;
+  await assert.rejects(fetchOptionContracts(baseConfig(duplicate), params), (error: unknown) =>
+    error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+});
+
+test('rate limit and server failure after a valid first contract page are not empty opportunities', async () => {
+  const params = { underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01',
+    optionType: 'put' as const, limit: 1, maxPages: 10 };
+  for (const [status, errorClass] of [[429, 'RATE_LIMITED'], [503, 'SERVER_ERROR']] as const) {
+    let page = 0;
+    const fetchImpl = (async () => {
+      page += 1;
+      return page === 1 ? jsonResponse(200, { option_contracts: [{ symbol: 'SPY261009P00500000',
+        strike_price: '500', expiration_date: '2026-10-09' }], next_page_token: 'p2' })
+        : jsonResponse(status, { message: 'provider failed' });
+    }) as typeof fetch;
+    await assert.rejects(fetchOptionContracts(baseConfig(fetchImpl), params), (error: unknown) =>
+      error instanceof AlpacaProviderError && error.errorClass === errorClass);
+  }
 });
 
 test('fetchOptionSnapshots rejects malformed optional nested objects instead of fabricating an empty snapshot', async () => {
@@ -550,6 +619,27 @@ test('fetchTradableAssets truncates deterministically and reports complete=false
   const result = await fetchTradableAssets(baseConfig(fetchImpl), 3);
   assert.equal(result.assets.length, 3);
   assert.equal(result.complete, false);
+});
+
+test('snapshot pagination rejects repeated tokens and repeated exact-contract quotes', async () => {
+  const params = { underlyingSymbol: 'SPY', feed: 'indicative' as const,
+    optionType: 'put' as const, limit: 1, maxPages: 5 };
+  let tokenPage = 0;
+  const repeatedToken = (async () => {
+    tokenPage += 1;
+    return jsonResponse(200, { snapshots: { [String(tokenPage)]: { latestQuote: { bp: 1, ap: 1.1 } } },
+      next_page_token: 'same' });
+  }) as typeof fetch;
+  await assert.rejects(fetchOptionSnapshots(baseConfig(repeatedToken), params), (error: unknown) =>
+    error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+  let duplicatePage = 0;
+  const duplicate = (async () => {
+    duplicatePage += 1;
+    return jsonResponse(200, { snapshots: { SPY261009P00500000: { latestQuote: { bp: 1, ap: 1.1 } } },
+      next_page_token: duplicatePage === 1 ? 'p2' : null });
+  }) as typeof fetch;
+  await assert.rejects(fetchOptionSnapshots(baseConfig(duplicate), params), (error: unknown) =>
+    error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
 });
 
 test('fetchOptionContracts rejects an impossible expiration date instead of accepting a shaped string', async () => {

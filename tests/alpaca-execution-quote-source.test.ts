@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AlpacaExecutionQuoteSource, AlpacaIndicativeOptionQuoteSource } from '../src/execution/alpaca-execution-quote-source.js';
 import type { ApprovedMasterPaperActionPlan } from '../src/execution/master-paper-action-handoff.js';
-import type { AlpacaProviderConfig } from '../src/theta/alpaca-provider.js';
+import { AlpacaProviderError, type AlpacaProviderConfig } from '../src/theta/alpaca-provider.js';
 
 const plan = (symbol = 'SPY261009P00500000'): ApprovedMasterPaperActionPlan => ({
   action: 'OPEN_CSP', optionContractId: 'contract-id', optionType: 'PUT', underlying: 'SPY', symbol,
@@ -71,8 +71,9 @@ test('pre-submit quote refuses ambiguous identity and incomplete provider pages'
   // requested contract was uniquely and completely observed.
   const incompleteConfig = config(fetchImpl);
   const incompleteSource = new AlpacaIndicativeOptionQuoteSource(incompleteConfig);
-  // The snapshot adapter is bounded to ten pages, so a repeated page token
-  // yields incomplete coverage and must not become an executable reference.
-  assert.equal(await incompleteSource.getCurrentQuote(plan(), '2026-10-01T14:30:01Z'), null);
-  assert.equal(requests, 11);
+  // A repeated provider token is malformed, not a valid empty quote. The
+  // exact-contract handoff must fail closed before it can build a price.
+  await assert.rejects(incompleteSource.getCurrentQuote(plan(), '2026-10-01T14:30:01Z'),
+    (error:unknown)=>error instanceof AlpacaProviderError&&error.errorClass==='MALFORMED_RESPONSE');
+  assert.ok(requests >= 2 && requests <= 3);
 });

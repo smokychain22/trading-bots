@@ -10,6 +10,8 @@ test('research export failures remain typed without exposing provider diagnostic
     'RESEARCH_EXPORT_UNCLASSIFIED_FAILURE');
   assert.equal(researchExportSafeFailureCode(new Error('NO_POINT_IN_TIME_EVIDENCE_TO_EXPORT')),
     'NO_POINT_IN_TIME_EVIDENCE_TO_EXPORT');
+  assert.equal(researchExportSafeFailureCode(new Error('timeout exceeded when trying to connect')),
+    'RESEARCH_EXPORT_POSTGRES_CONNECTION_ACQUISITION_TIMEOUT');
 });
 
 test('latest export bounds the source to one UTC decision day instead of all history', async () => {
@@ -79,5 +81,42 @@ test('Production exporter emits the stable camel-case research wire contract', a
   assert.match(sql, /prior\.opened_at<=ol\.opened_at/);
   assert.match(sql, /theta_position_path_checkpoint/);
   assert.match(sql, /theta_policy_learning_record/);
+  assert.match(artifact.datasetHash, /^[0-9a-f]{64}$/);
+});
+
+test('research export holds at most two database queries in flight across its 18-read fanout', async () => {
+  let inFlight = 0;
+  let maximumInFlight = 0;
+  let completed = 0;
+  const pool = {
+    query: async () => {
+      inFlight += 1;
+      maximumInFlight = Math.max(maximumInFlight, inFlight);
+      try {
+        await new Promise<void>((resolve) => setTimeout(resolve, 3));
+        completed += 1;
+        return { rows: [], rowCount: 0 };
+      } finally { inFlight -= 1; }
+    },
+  } as unknown as Pool;
+  const timings: Array<{ relation:string; rows:number; outcome:string }> = [];
+  await new PostgresDatasetExporter(pool,(timing)=>timings.push(timing)).export({
+    start: '2026-09-14T00:00:00.000Z', end: '2026-09-15T00:00:00.000Z',
+    exportedAt: '2026-09-15T01:00:00.000Z', featureSetVersion: 'feature-v1',
+  });
+  assert.equal(maximumInFlight, 2);
+  assert.equal(inFlight, 0);
+  assert.equal(completed, 19);
+  assert.equal(timings.length, 19);
+  assert.ok(timings.every((timing)=>timing.outcome==='OK'&&timing.rows===0));
+  assert.ok(timings.some((timing)=>timing.relation==='research.theta_dataset_export'));
+});
+
+test('research export timing observer failure cannot turn valid evidence into a failed export', async () => {
+  const pool = { query: async () => ({ rows: [], rowCount: 0 }) } as unknown as Pool;
+  const artifact = await new PostgresDatasetExporter(pool, () => { throw new Error('LOG_SINK_DOWN'); }).export({
+    start: '2026-09-14T00:00:00.000Z', end: '2026-09-15T00:00:00.000Z',
+    exportedAt: '2026-09-15T01:00:00.000Z', featureSetVersion: 'feature-v1',
+  });
   assert.match(artifact.datasetHash, /^[0-9a-f]{64}$/);
 });

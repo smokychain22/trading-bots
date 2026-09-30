@@ -388,6 +388,8 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
   let pageToken: string | null = null;
   let pages = 0;
   let complete = true;
+  const seenTokens = new Set<string>();
+  const seenContracts = new Set<string>();
 
   do {
     const url = new URL('/v2/options/contracts', config.tradingApiBase);
@@ -408,6 +410,10 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
     if (page.next_page_token !== undefined && page.next_page_token !== null && typeof page.next_page_token !== 'string') {
       throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned an invalid page token.');
     }
+    const nextToken = page.next_page_token;
+    if (typeof nextToken === 'string' && (nextToken.length === 0 || seenTokens.has(nextToken))) {
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts repeated or emptied its page token.');
+    }
     for (const c of page.option_contracts as unknown[]) {
       if (c === null || typeof c !== 'object' || Array.isArray(c)) {
         throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned an invalid contract row.');
@@ -419,6 +425,10 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
       if (!symbol || strikePrice === null || strikePrice <= 0 || !validDateOnly(expirationDate)) {
         throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned an invalid contract identity.');
       }
+      if (seenContracts.has(symbol)) {
+        throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts repeated a contract identity.');
+      }
+      seenContracts.add(symbol);
       const deliverables = contract.deliverables;
       if (params.showDeliverables === true && deliverables !== null && deliverables !== undefined
         && !Array.isArray(deliverables)) {
@@ -452,6 +462,7 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
       });
     }
     pageToken = page.next_page_token as string | null | undefined ?? null;
+    if (pageToken !== null) seenTokens.add(pageToken);
     pages += 1;
     if (pages >= params.maxPages && pageToken !== null) {
       complete = false;
@@ -494,6 +505,7 @@ export async function fetchOptionSnapshots(config: AlpacaProviderConfig, params:
   let pageToken: string | null = null;
   let pages = 0;
   let complete = true;
+  const seenTokens = new Set<string>();
 
   do {
     const url = new URL(`/v1beta1/options/snapshots/${params.underlyingSymbol}`, config.marketDataApiBase);
@@ -515,13 +527,21 @@ export async function fetchOptionSnapshots(config: AlpacaProviderConfig, params:
     if (page.next_page_token !== undefined && page.next_page_token !== null && typeof page.next_page_token !== 'string') {
       throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v1beta1/options/snapshots returned an invalid page token.');
     }
+    const nextToken = page.next_page_token;
+    if (typeof nextToken === 'string' && (nextToken.length === 0 || seenTokens.has(nextToken))) {
+      throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v1beta1/options/snapshots repeated or emptied its page token.');
+    }
     for (const [symbol, raw] of Object.entries(page.snapshots)) {
       if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
         throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v1beta1/options/snapshots returned an invalid snapshot row.');
       }
+      if (snapshots.has(symbol)) {
+        throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v1beta1/options/snapshots repeated a contract identity.');
+      }
       snapshots.set(symbol, parseOneSnapshot(raw as Record<string, unknown>));
     }
     pageToken = page.next_page_token as string | null | undefined ?? null;
+    if (pageToken !== null) seenTokens.add(pageToken);
     pages += 1;
     if (pages >= params.maxPages && pageToken !== null) {
       complete = false;

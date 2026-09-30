@@ -1,10 +1,29 @@
 {
-  "version": "theta-current-blocker-register-2026-09-30-v1",
-  "asOfUtc": "2026-09-30T04:23:41Z",
-  "runtimeReleaseSha": "36adb6404d02d6008450680bfe8df87f0eb7d369",
+  "version": "theta-current-blocker-register-2026-09-30-v2",
+  "asOfUtc": "2026-09-30T06:08:40Z",
+  "sourceShaAtObservedBaseline": "fd54cff7b640633b8ff438e4fdea6a6846008571",
+  "deployedShaAtObservedBaseline": "fd54cff7b640633b8ff438e4fdea6a6846008571",
+  "workerShaAtObservedBaseline": "fd54cff7b640633b8ff438e4fdea6a6846008571",
+  "exactCiAtObservedBaseline": { "run": 36670394966, "state": "PASS" },
+  "supervisorCountAtObservedBaseline": 1,
+  "leaseCountAtObservedBaseline": 1,
+  "brokerAtObservedBaseline": "GOOD_RECONCILIATION",
+  "positionsAtObservedBaseline": 0,
+  "openOrdersAtObservedBaseline": 0,
+  "marketState": "CLOSED_AT_OBSERVED_CYCLE_NOT_A_CURRENT_MARKET_OPEN_PROOF",
+  "command5aHealthAtUtc": "2026-09-30T06:08:40.747Z",
+  "command5aBacklog": {
+    "subjects": 397, "jobs": 2794, "pending": 1961, "missed": 646,
+    "censored": 172, "deferredMarket": 15, "overdue": 166,
+    "expiredClaims": 0, "retryStalled": 0
+  },
+  "archiveState": "REAL_SEP29_CAPTURE_HASH_VERIFIED_ORIGINAL_RELEASE_REPLAY_MATCHED_2601_CONTRACTS",
+  "researchExportState": "SOURCE_QUERY_FANOUT_BOUNDED_CURRENT_DB_EXPORT_NOT_YET_VERIFIED",
+  "spoolState": "LOCAL_COMMAND5A_SCHEDULER_READ_ONLY_HEALTH_VERIFIED_RESEARCH_SPOOL_NOT_RECHECKED",
+  "runtimeReleaseSha": "fd54cff7b640633b8ff438e4fdea6a6846008571",
   "databaseAdmission": "WRITABLE_SCHEMA_067",
   "activeWorkerLeasesObserved": 1,
-  "sourceFixShaAwaitingWorker": "cb9471137f5e62c6754dd325a9e125c54470cb46",
+  "sourceFixShaAwaitingWorker": null,
   "supportedSessionCurrentReleaseProof": "NOT_OBSERVED",
   "readyForFirstPaper": false,
   "entries": [
@@ -15,22 +34,28 @@
       "decisionEffect": "Do not infer permanent reliability from one recovered window"
     },
     {
+      "id": "AIVEN_DNS_AT_CYCLE_CAPTURE",
+      "class": "RECOVERED_MONITOR",
+      "evidence": "The first read-only capture attempt failed at connection establishment with EAI_AGAIN. A later bounded DNS check and capture succeeded with database archive hash verification.",
+      "decisionEffect": "The temporary DNS failure was infrastructure, not strategy WAIT. Monitor recurrence without invalidating verified archive bytes."
+    },
+    {
       "id": "COMMAND5A_OVERDUE_OBSERVATIONS",
-      "class": "FORWARD_DATA_REQUIRED",
-      "evidence": "Local SQLite contained 266 overdue jobs and no OBSERVED jobs",
+      "class": "CURRENT_MARKET_REQUIRED",
+      "evidence": "The fd54cff worker reported Command5A SCHEDULE_COMPLETE with an advancing cursor. Read-only scheduler health at 06:08:40Z found 166 overdue, 646 missed, 172 censored and 1961 pending jobs. Missing exact historical marks cannot be recovered by a source fix.",
       "decisionEffect": "Missed exact future marks cannot be relabeled MARKET_OBSERVED"
     },
     {
       "id": "CURRENT_RELEASE_WORKER_SESSION",
       "class": "FORWARD_DATA_REQUIRED",
-      "evidence": "36adb64 worker produced a locked closed-session cycle and fresh heartbeat, but no supported-session SPY cycle",
+      "evidence": "fd54cff worker produced a locked closed-session cycle at 2026-09-30T05:40:35Z and fresh heartbeat, but no supported-session SPY cycle on that release",
       "decisionEffect": "Candidate, AEGIS, sizing, finalist and plan states are not supported-session certified"
     },
     {
       "id": "COMMAND5A_HEALTH_RELEASE_GAP",
-      "class": "SOURCE_FIXED_AWAITING_RELEASE",
-      "evidence": "Worker health child omitted the explicit production.env path, while direct read-only health with that path passed; source now loads environment only for provider modes",
-      "decisionEffect": "Worker reports HEALTH_CHECK_FAILED until a later governed release"
+      "class": "CLOSED_CURRENT_RELEASE",
+      "evidence": "fd54cff current locked worker reports ONLINE with Command5A SCHEDULE_COMPLETE, one lease, broker reconciliation GOOD and zero positions/open orders",
+      "decisionEffect": "No longer a source or release mismatch"
     },
     {
       "id": "FOUR_FINALIST_AEGIS_MATRIX",
@@ -40,9 +65,9 @@
     },
     {
       "id": "SEPTEMBER_29_T0_REPLAY_VERSION",
-      "class": "STRUCTURAL_POLICY_INCOMPATIBILITY",
-      "evidence": "Persisted T0 from aa179 replayed through current frontier code with a different content hash after the candidate-specific AEGIS fallback changed; raw T0 is 36.7 MB and exceeds the standalone 4 MiB bundle cap",
-      "decisionEffect": "Historical same-source replay is separate from a current-policy counterfactual and must not be relabeled as a current-release match"
+      "class": "CLOSED_FOUNDATION_REPLAY_CURRENT_POLICY_COUNTERFACTUAL_REMAINS_SEPARATE",
+      "evidence": "The real 3,834,854-byte compressed archive passed its stored database content hash check. The clean immutable aa179862 release replayed 2,601 contracts to exactly the historical frontier hash 52e5ed441da1eae7cff69fc26232c12bea729f5b8ebf461ddaca16d92bcdf57a, with GLOBAL_WAIT and zero provider requests. The 36.7 MiB raw T0 is reconstructed from the packed archive instead of the optional 4 MiB spool bundle.",
+      "decisionEffect": "Historical same-source replay is verified. Current-code changes are counterfactuals and must not be relabeled as historical nondeterminism or current-release live proof."
     },
     {
       "id": "CURRENT_EVENT_NEGATIVE_ASSURANCE",

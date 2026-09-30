@@ -1,12 +1,19 @@
 import { randomUUID } from 'node:crypto';
-import type { Pool } from 'pg';
+import type { Pool, QueryResult, QueryResultRow } from 'pg';
 import { buildDatasetExport, type DatasetExportArtifact } from './point-in-time-evidence.js';
+import { classifyPostgresRuntimeError } from '../theta/postgres-runtime-error.js';
 
 export interface DatasetExportRequest {
   readonly start:string; readonly end:string; readonly exportedAt:string; readonly featureSetVersion:string;
 }
 
 export interface DatasetEvidenceWindow { readonly start:string; readonly end:string; readonly rows:number; }
+export interface ResearchExportQueryTiming {
+  readonly relation:string;
+  readonly durationMs:number;
+  readonly rows:number;
+  readonly outcome:'OK'|'ERROR';
+}
 
 export function researchExportSafeFailureCode(error: unknown): string {
   const providerCode = error !== null && typeof error === 'object'
@@ -16,17 +23,52 @@ export function researchExportSafeFailureCode(error: unknown): string {
   if (providerCode === 'EAI_AGAIN' || providerCode === 'ENOTFOUND') return 'RESEARCH_EXPORT_NETWORK_DNS';
   if (providerCode === 'ECONNRESET' || providerCode === 'ETIMEDOUT') return 'RESEARCH_EXPORT_NETWORK_FAILURE';
   const message = error instanceof Error ? error.message : '';
+  const postgres = classifyPostgresRuntimeError(error);
+  if (postgres.safeCode !== 'POSTGRES_UNKNOWN_ERROR') return `RESEARCH_EXPORT_${postgres.safeCode}`;
   return /^[A-Z][A-Z0-9_]{2,120}$/.test(message) ? message : 'RESEARCH_EXPORT_UNCLASSIFIED_FAILURE';
 }
 
 export class PostgresDatasetExporter {
-  constructor(private readonly pool:Pool) {}
+  private activeQueries = 0;
+  private readonly waiters: Array<() => void> = [];
+  constructor(private readonly pool:Pool,
+    private readonly onQueryTiming?: (timing:ResearchExportQueryTiming)=>void) {}
+
+  private emitTiming(timing:ResearchExportQueryTiming):void {
+    try { this.onQueryTiming?.(timing); }
+    catch { /* Diagnostic logging has no authority over the export. */ }
+  }
+
+  // The export launches many independent research reads. Only two may enter
+  // pg-pool at once, matching the two-client exporter pool. Queueing here has
+  // no pg-pool acquisition deadline and releases on success or failure.
+  private async query<T extends QueryResultRow = QueryResultRow>(sql:string,values?:unknown[]):Promise<QueryResult<T>> {
+    if(this.activeQueries>=2)await new Promise<void>((resolve)=>this.waiters.push(resolve));
+    else this.activeQueries+=1;
+    const startedAt=performance.now();
+    const relation=/\bFROM\s+([a-z_]+\.[a-z_]+)/i.exec(sql)?.[1]
+      ?? (/\bINTO\s+([a-z_]+\.[a-z_]+)/i.exec(sql)?.[1] ?? 'UNKNOWN_STATIC_QUERY');
+    try{
+      const result=await this.pool.query<T>(sql,values);
+      this.emitTiming({relation,durationMs:Math.round(performance.now()-startedAt),
+        rows:result.rows.length,outcome:'OK'});
+      return result;
+    }catch(error){
+      this.emitTiming({relation,durationMs:Math.round(performance.now()-startedAt),rows:0,outcome:'ERROR'});
+      throw error;
+    }
+    finally{
+      const next=this.waiters.shift();
+      if(next===undefined)this.activeQueries-=1;
+      else next(); // Transfer this slot before another caller can acquire it.
+    }
+  }
 
   async newestEvidenceWindow():Promise<DatasetEvidenceWindow|null> {
     // --latest is one UTC decision day, not the entire accumulated history.
     // Reading every historical JSON payload on each worker cycle made the
     // post-close export unbounded as evidence accumulated.
-    const newest=await this.pool.query(`SELECT GREATEST(
+    const newest=await this.query(`SELECT GREATEST(
       (SELECT decision_time FROM trade.candidate_set_evidence ORDER BY decision_time DESC LIMIT 1),
       (SELECT decision_time FROM trade.candidate_point_in_time_evidence ORDER BY decision_time DESC LIMIT 1)
     ) AS latest`);
@@ -36,7 +78,7 @@ export class PostgresDatasetExporter {
     if (!Number.isFinite(epoch)) throw new Error('LATEST_DATASET_DECISION_TIME_INVALID');
     const start=new Date(epoch).toISOString().slice(0,10)+'T00:00:00.000Z';
     const end=new Date(Date.parse(start)+86_400_000).toISOString();
-    const counts=await this.pool.query(`SELECT
+    const counts=await this.query(`SELECT
       (SELECT count(*)::int FROM trade.candidate_set_evidence
         WHERE decision_time >= $1 AND decision_time < $2)
       + (SELECT count(*)::int FROM trade.candidate_point_in_time_evidence
@@ -50,13 +92,13 @@ export class PostgresDatasetExporter {
     const parameters = [request.start,request.end];
     const [sets,candidates,shadow,frontiers,optionChains,management,lifecycle,chains,quotes,outcomeSubjects,
       outcomeObservations,outcomeReceipts,resolvedLabels,policyLearning,positionPaths,actionFrontiers,timingSnapshots,entryLinks] = await Promise.all([
-      this.pool.query(`SELECT candidate_set_id AS "candidateSetId",decision_time AS "decisionTime",
+      this.query(`SELECT candidate_set_id AS "candidateSetId",decision_time AS "decisionTime",
         universe_evaluated_json AS "universeEvaluated",branches_considered_json AS "branchesConsidered",counts_json AS counts,
         best_candidate_id AS "bestCandidateId",second_best_candidate_id AS "secondBestCandidateId",
         best_rejected_candidate_id AS "bestRejectedCandidateId",completeness_state AS "completenessState",
         missing_scope_json AS "missingScope",content_hash AS "contentHash"
         FROM trade.candidate_set_evidence WHERE decision_time >= $1 AND decision_time < $2 ORDER BY decision_time,candidate_set_id`,parameters),
-      this.pool.query(`SELECT candidate_id AS "candidateId",decision_id AS "decisionId",fusion_snapshot_id AS "fusionSnapshotId",
+      this.query(`SELECT candidate_id AS "candidateId",decision_id AS "decisionId",fusion_snapshot_id AS "fusionSnapshotId",
         decision_time AS "decisionTime",branch,rank_at_decision AS "rankAtDecision",selected,hard_status AS "hardStatus",
         soft_status AS "softStatus",rejection_reason AS "rejectionReason",contract_json AS contract,market_json AS market,
         volatility_json AS volatility,technical_json AS technical,event_json AS event,flow_json AS flow,ownership_json AS ownership,
@@ -67,7 +109,7 @@ export class PostgresDatasetExporter {
           'costModelVersion',cost_model_version,'regimeVersion',regime_version,'executionModelVersion',execution_model_version) AS lineage,
         content_hash AS "contentHash"
         FROM trade.candidate_point_in_time_evidence WHERE decision_time >= $1 AND decision_time < $2 ORDER BY decision_time,candidate_id`,parameters),
-      this.pool.query(`SELECT so.opportunity_id AS "opportunityId",so.fusion_snapshot_id AS "fusionSnapshotId",
+      this.query(`SELECT so.opportunity_id AS "opportunityId",so.fusion_snapshot_id AS "fusionSnapshotId",
         so.observed_at AS "observedAt",so.underlying,so.contract_symbol AS "contractSymbol",
         so.strategy_branch AS "strategyBranch",so.ev_net AS "evNet",so.tail_adjusted_ev AS "tailAdjustedEv",
         so.return_per_capital_day AS "returnPerCapitalDay",so.capital_required AS "capitalRequired",so.uncertainty,
@@ -77,7 +119,7 @@ export class PostgresDatasetExporter {
         so.rejection_category AS "rejectionCategory",so.reasons_json AS reasons,so.policy_version AS "policyVersion",
         so.model_versions_json AS "modelVersions"
         FROM trade.shadow_opportunity so WHERE observed_at >= $1 AND observed_at < $2 ORDER BY observed_at,opportunity_id`,parameters),
-      this.pool.query(`SELECT frontier_id AS "frontierId",fusion_snapshot_id AS "fusionSnapshotId",observed_at AS "observedAt",
+      this.query(`SELECT frontier_id AS "frontierId",fusion_snapshot_id AS "fusionSnapshotId",observed_at AS "observedAt",
         contract_version AS "contractVersion",strategy_version AS "strategyVersion",
         decision_authority_version AS "decisionAuthorityVersion",branches_considered_json AS "branchesConsidered",
         branches_evaluated_json AS "branchesEvaluated",selected_branch AS "selectedBranch",
@@ -97,7 +139,7 @@ export class PostgresDatasetExporter {
           '[]'::jsonb) AS "candidateEvidence"
         FROM trade.canonical_strategy_frontier
         WHERE observed_at >= $1 AND observed_at < $2 ORDER BY observed_at,frontier_id`,parameters),
-      this.pool.query(`SELECT chain_decision_evidence_id AS "chainDecisionEvidenceId",
+      this.query(`SELECT chain_decision_evidence_id AS "chainDecisionEvidenceId",
         fusion_snapshot_id AS "fusionSnapshotId",observed_at AS "observedAt",underlying,
         contract_version AS "contractVersion",liquidity_policy_version AS "liquidityPolicyVersion",
         chain_snapshot_json AS "chainSnapshot",expiration_frontier_json AS "expirationFrontier",
@@ -109,7 +151,7 @@ export class PostgresDatasetExporter {
         content_hash AS "contentHash"
         FROM research.theta_option_chain_decision_evidence
         WHERE observed_at >= $1 AND observed_at < $2 ORDER BY observed_at,chain_decision_evidence_id`,parameters),
-      this.pool.query(`SELECT mis.management_input_snapshot_id AS "managementInputSnapshotId",
+      this.query(`SELECT mis.management_input_snapshot_id AS "managementInputSnapshotId",
         mis.fusion_snapshot_id AS "fusionSnapshotId",mis.chain_id AS "chainId",mis.observed_at AS "observedAt",
         mis.lifecycle_state AS "lifecycleState",mis.input_json AS "inputFields",mis.unknown_fields_json AS "unknownFields",
         mis.change_json AS "changeFields",mis.content_hash AS "contentHash",COALESCE(maf.actions_json,'[]'::jsonb) AS actions,
@@ -123,12 +165,12 @@ export class PostgresDatasetExporter {
           ORDER BY shadow_policy.created_at DESC LIMIT 1),'{}'::jsonb) AS "shadowPolicyEvidence"
         FROM trade.management_input_snapshot mis LEFT JOIN trade.management_action_frontier maf USING(management_input_snapshot_id)
         WHERE mis.observed_at >= $1 AND mis.observed_at < $2 ORDER BY mis.observed_at,mis.management_input_snapshot_id`,parameters),
-      this.pool.query(`SELECT lifecycle_application_id AS "lifecycleApplicationId",evidence_key AS "evidenceKey",
+      this.query(`SELECT lifecycle_application_id AS "lifecycleApplicationId",evidence_key AS "evidenceKey",
         chain_id AS "chainId",event_kind AS "eventKind",provider_activity_ref_hash AS "providerActivityRefHash",
         transition_path_json AS "transitionPath",applied_at AS "appliedAt",result_hash AS "resultHash",detail_json AS detail
         FROM trade.lifecycle_application
         WHERE applied_at >= $1 AND applied_at < $2 ORDER BY applied_at,lifecycle_application_id`,parameters),
-      this.pool.query(`SELECT outcome_label_id AS "outcomeLabelId",subject_type AS "subjectType",subject_id AS "subjectId",
+      this.query(`SELECT outcome_label_id AS "outcomeLabelId",subject_type AS "subjectType",subject_id AS "subjectId",
         label_available_at AS "labelAvailableAt",label_version AS "labelVersion",censoring_state AS "censoringState",
         whole_chain_net_pnl AS "wholeChainNetPnl",managed_episode_pnl AS "managedEpisodePnl",
         return_on_secured_capital AS "returnOnSecuredCapital",return_per_capital_day AS "returnPerCapitalDay",
@@ -137,21 +179,21 @@ export class PostgresDatasetExporter {
         outcomes_json AS outcomes,provenance_json AS provenance,content_hash AS "contentHash"
         FROM research.theta_outcome_label WHERE label_available_at >= $1 AND label_available_at < $2
         AND subject_type IN ('WHOLE_CHAIN','MANAGED_EPISODE') ORDER BY label_available_at,outcome_label_id`,parameters),
-      this.pool.query(`SELECT quote_observation_id AS "quoteObservationId",candidate_id AS "candidateId",
+      this.query(`SELECT quote_observation_id AS "quoteObservationId",candidate_id AS "candidateId",
         management_input_snapshot_id AS "managementInputSnapshotId",observation_role AS "observationRole",
         observed_at AS "observedAt",provider_timestamp AS "providerTimestamp",ingestion_timestamp AS "ingestionTimestamp",
         source,operation_alias AS "operationAlias",feed,contract_version AS "contractVersion",bid,ask,bid_size AS "bidSize",
         ask_size AS "askSize",proposed_limit AS "proposedLimit",data_quality AS "dataQuality",content_hash AS "contentHash"
         FROM market.execution_quote_observation WHERE observed_at >= $1 AND observed_at < $2
         ORDER BY observed_at,quote_observation_id`,parameters),
-      this.pool.query(`SELECT outcome_subject_id AS "outcomeSubjectId",subject_id AS "subjectId",label_type AS "labelType",
+      this.query(`SELECT outcome_subject_id AS "outcomeSubjectId",subject_id AS "subjectId",label_type AS "labelType",
         decision_timestamp AS "decisionTimestamp",feature_snapshot_hash AS "featureSnapshotHash",
         candidate_universe_hash AS "candidateUniverseHash",exact_contract_id AS "exactContractId",
         strategy_version AS "strategyVersion",horizon_id AS "horizonId",horizon_closes_at AS "horizonClosesAt",
         resolver_contract_version AS "resolverContractVersion",execution_authorized AS "executionAuthorized",
         content_hash AS "contentHash" FROM research.theta_outcome_subject
         WHERE decision_timestamp >= $1 AND decision_timestamp < $2 ORDER BY decision_timestamp,outcome_subject_id`,parameters),
-      this.pool.query(`SELECT o.outcome_observation_id AS "outcomeObservationId",o.outcome_subject_id AS "outcomeSubjectId",
+      this.query(`SELECT o.outcome_observation_id AS "outcomeObservationId",o.outcome_subject_id AS "outcomeSubjectId",
         o.observed_at AS "observedAt",o.provider_timestamp AS "providerTimestamp",o.received_at AS "receivedAt",
         o.source,o.provenance_class AS "provenanceClass",o.completeness,o.reason_codes_json AS "reasonCodes",
         o.exact_contract_id AS "exactContractId",o.bid,o.ask,o.underlying_spot AS "underlyingSpot",
@@ -159,7 +201,7 @@ export class PostgresDatasetExporter {
         o.lifecycle_state AS "lifecycleState",o.terminal,o.observation_json AS observation,o.content_hash AS "contentHash"
         FROM research.theta_outcome_observation o JOIN research.theta_outcome_subject s USING(outcome_subject_id)
         WHERE s.decision_timestamp >= $1 AND s.decision_timestamp < $2 ORDER BY o.observed_at,o.outcome_observation_id`,parameters),
-      this.pool.query(`SELECT r.outcome_resolution_receipt_id AS "outcomeResolutionReceiptId",
+      this.query(`SELECT r.outcome_resolution_receipt_id AS "outcomeResolutionReceiptId",
         r.outcome_subject_id AS "outcomeSubjectId",r.resolution_state AS "resolutionState",
         r.provenance_class AS "provenanceClass",r.completeness,r.decision_timestamp AS "decisionTimestamp",
         r.outcome_observation_start AS "outcomeObservationStart",r.outcome_observation_end AS "outcomeObservationEnd",
@@ -169,7 +211,7 @@ export class PostgresDatasetExporter {
         FROM research.theta_outcome_resolution_receipt r JOIN research.theta_outcome_subject s USING(outcome_subject_id)
         WHERE s.decision_timestamp >= $1 AND s.decision_timestamp < $2
         ORDER BY r.resolution_timestamp,r.outcome_resolution_receipt_id`,parameters),
-      this.pool.query(`SELECT l.resolved_outcome_label_id AS "resolvedOutcomeLabelId",l.outcome_subject_id AS "outcomeSubjectId",
+      this.query(`SELECT l.resolved_outcome_label_id AS "resolvedOutcomeLabelId",l.outcome_subject_id AS "outcomeSubjectId",
         l.outcome_resolution_receipt_id AS "outcomeResolutionReceiptId",l.label_type AS "labelType",
         l.provenance_class AS "provenanceClass",l.completeness,l.decision_timestamp AS "decisionTimestamp",
         l.label_available_at AS "labelAvailableAt",l.label_version AS "labelVersion",l.market_mark_json AS "marketMark",
@@ -178,7 +220,7 @@ export class PostgresDatasetExporter {
         FROM research.theta_resolved_outcome_label l JOIN research.theta_outcome_subject s USING(outcome_subject_id)
         WHERE s.decision_timestamp >= $1 AND s.decision_timestamp < $2
         ORDER BY l.label_available_at,l.resolved_outcome_label_id`,parameters),
-      this.pool.query(`SELECT policy_learning_record_id AS "policyLearningRecordId",outcome_subject_id AS "outcomeSubjectId",
+      this.query(`SELECT policy_learning_record_id AS "policyLearningRecordId",outcome_subject_id AS "outcomeSubjectId",
         resolved_outcome_label_id AS "resolvedOutcomeLabelId",decision_timestamp AS "decisionTimestamp",
         label_available_at AS "labelAvailableAt",strategy_branch AS "strategyBranch",selected_action AS "selectedAction",
         action_set_json AS "actionSet",pit_context_json AS "pitContext",option_context_json AS "optionContext",
@@ -189,25 +231,25 @@ export class PostgresDatasetExporter {
         execution_authorized AS "executionAuthorized",content_hash AS "contentHash"
         FROM research.theta_policy_learning_record WHERE decision_timestamp >= $1 AND decision_timestamp < $2
         ORDER BY decision_timestamp,policy_learning_record_id`,parameters),
-      this.pool.query(`SELECT position_path_checkpoint_id AS "positionPathCheckpointId",chain_id AS "chainId",
+      this.query(`SELECT position_path_checkpoint_id AS "positionPathCheckpointId",chain_id AS "chainId",
         management_input_snapshot_id AS "managementInputSnapshotId",observed_at AS "observedAt",
         path_classification AS "pathClassification",checkpoint_json AS checkpoint,
         execution_authorized AS "executionAuthorized",content_hash AS "contentHash"
         FROM research.theta_position_path_checkpoint WHERE observed_at >= $1 AND observed_at < $2
         ORDER BY observed_at,position_path_checkpoint_id`,parameters),
-      this.pool.query(`SELECT action_inaction_frontier_id AS "actionInactionFrontierId",chain_id AS "chainId",
+      this.query(`SELECT action_inaction_frontier_id AS "actionInactionFrontierId",chain_id AS "chainId",
         management_input_snapshot_id AS "managementInputSnapshotId",observed_at AS "observedAt",
         hold_evidence_state AS "holdEvidenceState",frontier_json AS frontier,
         execution_authorized AS "executionAuthorized",content_hash AS "contentHash"
         FROM research.theta_action_inaction_frontier WHERE observed_at >= $1 AND observed_at < $2
         ORDER BY observed_at,action_inaction_frontier_id`,parameters),
-      this.pool.query(`SELECT strategy_timing_snapshot_id AS "strategyTimingSnapshotId",chain_id AS "chainId",
+      this.query(`SELECT strategy_timing_snapshot_id AS "strategyTimingSnapshotId",chain_id AS "chainId",
         management_input_snapshot_id AS "managementInputSnapshotId",observed_at AS "observedAt",session_state AS "sessionState",
         option_time_json AS "optionTime",timing_router_json AS "timingRouter",
         execution_authorized AS "executionAuthorized",content_hash AS "contentHash"
         FROM research.theta_strategy_timing_snapshot WHERE observed_at >= $1 AND observed_at < $2
         ORDER BY observed_at,strategy_timing_snapshot_id`,parameters),
-      this.pool.query(`SELECT ol.option_leg_id AS "optionLegId",ol.chain_id AS "chainId",
+      this.query(`SELECT ol.option_leg_id AS "optionLegId",ol.chain_id AS "chainId",
         ol.option_contract_id AS "optionContractId",oc.contract_symbol AS "contractSymbol",d.decision_id AS "decisionId",
         d.selected_candidate_id AS "candidateId",cp.branch,cp.decision_time AS "decisionAt",
         ol.opened_at AS "legOpenedAt",ec.opened_at AS "chainOpenedAt",
@@ -242,7 +284,7 @@ export class PostgresDatasetExporter {
         resolvedOutcomeLabels:resolvedLabels.rows,policyLearningRecords:policyLearning.rows,
         positionPathCheckpoints:positionPaths.rows,actionInactionFrontiers:actionFrontiers.rows,
         strategyTimingSnapshots:timingSnapshots.rows,entryChainLinks:entryLinks.rows} });
-    await this.pool.query(`INSERT INTO research.theta_dataset_export(dataset_export_id,source_window_start,source_window_end,
+    await this.query(`INSERT INTO research.theta_dataset_export(dataset_export_id,source_window_start,source_window_end,
       exported_at,schema_version,feature_set_version,strategy_versions_json,row_counts_json,dataset_hash)
       VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9) ON CONFLICT(dataset_hash) DO NOTHING`,[
       randomUUID(),request.start,request.end,request.exportedAt,artifact.schemaVersion,artifact.featureSetVersion,
