@@ -105,3 +105,28 @@ input. No current-runtime preauthorization builder is claimed here.
 `MASTER_PAPER_EXECUTION_ENABLED=false`,
 `FOLLOWER_PAPER_EXECUTION_ENABLED=false`, `PAPER_PAUSE_NEW_ORDERS=true`,
 `LIVE_AUTHORIZATION=NOT_GRANTED`, `READY_FOR_FIRST_PAPER=NO`.
+
+## Later locked-runtime update, 04:23 UTC
+
+Exact main `36adb6404d02d6008450680bfe8df87f0eb7d369` passed CI run
+`36657634840`. A governed immutable locked cutover replaced the old c331
+supervisor. The old supervisor was asked to stop, then its exact identified
+noncritical archive child was terminated after the task stopped. SQLite
+`PRAGMA quick_check` returned `ok`. The installer produced one c331 successor
+only, at `36adb64`, with one resident PowerShell supervisor. A read-only DB
+check saw schema 067, read-only `off`, one active worker lease and 16 total
+connections. The new worker had a fresh heartbeat and a closed-session cycle.
+The pre-cutover read-only broker reconciliation was GOOD, with zero positions,
+zero open orders, zero entry-blocking broker facts and 11 historical
+accounting-only facts. No order was submitted.
+
+The new release exposed one real noncritical wiring defect: the Command-5A
+health subprocess used the release checkout's absent `.env.local` instead of
+the explicit Production environment file. A direct local health invocation
+with the correct file succeeded and read 1,904 jobs. Source now avoids loading
+the provider environment for local-only health and maturation, with a
+deterministic missing-dotenv regression. This correction is not in the
+installed `36adb64` release. The one governed premarket cutover has already
+been consumed, so this noncritical health correction must wait for the next
+safe release. No supported-session current-release candidate or AEGIS proof
+has occurred.

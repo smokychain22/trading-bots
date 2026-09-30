@@ -1,15 +1,33 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
+import { LocalObservationJobScheduler } from '../src/storage/local-observation-job-scheduler.js';
 
 const source = readFileSync('tools/windows/theta-local-worker.ps1', 'utf8');
 const command5aRuntime = readFileSync('tools/theta-command5a-runtime.ts', 'utf8');
+
+test('local Command-5A health does not depend on a release-local dotenv file', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-command5a-health-'));
+  try {
+    const path = join(root, 'jobs.sqlite');
+    new LocalObservationJobScheduler(path).close();
+    const result = spawnSync(process.execPath, ['--import', 'tsx', 'tools/theta-command5a-runtime.ts',
+      '--mode=health', `--environment-file=${join(root, 'missing.env')}`, `--scheduler=${path}`],
+    { cwd: process.cwd(), encoding: 'utf8', timeout: 10_000 });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).state, 'COMMAND5A_HEALTH_COMPLETE');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 test('Windows owner schedules, observes, and matures Command-5A through the immutable release with no broker authority', () => {
   assert.match(source, /theta-command5a-runtime\.ts[^\r\n]*`?[\s\S]{0,180}--mode=schedule/);
   assert.match(source, /theta-command5a-runtime\.ts[^\r\n]*`?[\s\S]{0,180}--mode=observe/);
   assert.match(source, /theta-command5a-runtime\.ts[^\r\n]*`?[\s\S]{0,180}--mode=mature/);
   assert.match(source, /theta-command5a-runtime\.ts[^\r\n]*`?[\s\S]{0,180}--mode=health/);
+  assert.match(source, /'--mode=health',[\s\S]{0,100}"--environment-file=\$productionEnvFile"/);
   assert.match(source, /command5aScheduleState=\$command5aScheduleState/);
   assert.match(source, /command5aObservationState=\$command5aObservationState/);
   assert.match(source, /command5aMaturationState=\$command5aMaturationState/);

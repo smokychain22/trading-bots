@@ -49,9 +49,9 @@ const environmentFile = argument('--environment-file=') ?? '.env.local';
 const schedulerPath = argument('--scheduler=') ?? '.theta-local-worker/research-spool/theta-observation-jobs.sqlite';
 const spoolPath = argument('--spool=') ?? '.theta-local-worker/research-spool/theta-research.sqlite';
 const parquetRoot = argument('--parquet-root=') ?? 'C:\\ProjectBackups\\trading-bots\\research-archives';
-const environment = loadEnvironmentFile(environmentFile);
 const readOnlyFetch = createGetOnlyFetch(fetch, 'COMMAND5A_NON_GET_REJECTED');
 function alpacaConfig() {
+  const environment = loadEnvironmentFile(environmentFile);
   if (!environment.ALPACA_API_KEY || !environment.ALPACA_SECRET_KEY || !environment.ALPACA_BASE_URL) {
     throw new Error('COMMAND5A_ALPACA_CONFIGURATION_REQUIRED');
   }
@@ -86,6 +86,7 @@ function fullFrontier(row: FrontierRow): { frontier: CanonicalStrategyFrontier |
 }
 
 async function schedule(): Promise<void> {
+  const environment = loadEnvironmentFile(environmentFile);
   const storage = classifyCommand5aSchedulingStorage({
     schedulerBytes: measureLocalResearchStorageBytes([schedulerPath]),
     spoolBytes: measureLocalResearchStorageBytes([spoolPath]),

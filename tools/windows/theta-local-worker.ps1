@@ -286,7 +286,8 @@ try {
           }
         }
         $command5aHealthProcess = Invoke-ThetaBoundedProcess -Executable 'node' -TimeoutSeconds 30 -Arguments @(
-          '--import','tsx','tools/theta-command5a-runtime.ts','--mode=health',"--scheduler=$command5aSchedulerPath")
+          '--import','tsx','tools/theta-command5a-runtime.ts','--mode=health',
+          "--environment-file=$productionEnvFile","--scheduler=$command5aSchedulerPath")
         $command5aHealthOutput = $command5aHealthProcess.Output
         if ($command5aHealthProcess.State -eq 'COMPLETED' -and $command5aHealthProcess.ExitCode -eq 0) {
           $command5aHealthResult = $command5aHealthOutput | Select-Object -Last 1 | ConvertFrom-Json

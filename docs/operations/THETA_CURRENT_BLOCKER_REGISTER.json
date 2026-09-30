@@ -1,15 +1,17 @@
 {
   "version": "theta-current-blocker-register-2026-09-30-v1",
-  "asOfUtc": "2026-09-30T01:48:05Z",
-  "runtimeReleaseSha": "c3317698d34de275a96957e91177095bfdcab406",
+  "asOfUtc": "2026-09-30T04:23:41Z",
+  "runtimeReleaseSha": "36adb6404d02d6008450680bfe8df87f0eb7d369",
+  "databaseAdmission": "WRITABLE_SCHEMA_067",
+  "activeWorkerLeasesObserved": 1,
   "supportedSessionCurrentReleaseProof": "NOT_OBSERVED",
   "readyForFirstPaper": false,
   "entries": [
     {
-      "id": "AIVEN_RESOURCE_LIMIT",
-      "class": "EXTERNAL_PROVIDER_BLOCKED",
-      "evidence": "Two bounded read-only checks returned SQLSTATE 53000",
-      "decisionEffect": "Current Production archive and readiness cannot be verified"
+      "id": "AIVEN_TRANSFER_QUOTA_HISTORY",
+      "class": "RECOVERED_MONITOR",
+      "evidence": "Earlier SQLSTATE 53000, followed by read-only off, schema 067 and successful persisted broker reconciliation and worker lease",
+      "decisionEffect": "Do not infer permanent reliability from one recovered window"
     },
     {
       "id": "COMMAND5A_OVERDUE_OBSERVATIONS",
@@ -19,9 +21,15 @@
     },
     {
       "id": "CURRENT_RELEASE_WORKER_SESSION",
-      "class": "RUNTIME_UNVERIFIED",
-      "evidence": "c331 worker has not completed a supported-session SPY no-submit cycle",
-      "decisionEffect": "Candidate, AEGIS, sizing, finalist and plan states are not current-release certified"
+      "class": "FORWARD_DATA_REQUIRED",
+      "evidence": "36adb64 worker produced a locked closed-session cycle and fresh heartbeat, but no supported-session SPY cycle",
+      "decisionEffect": "Candidate, AEGIS, sizing, finalist and plan states are not supported-session certified"
+    },
+    {
+      "id": "COMMAND5A_HEALTH_RELEASE_GAP",
+      "class": "SOURCE_FIXED_AWAITING_RELEASE",
+      "evidence": "Worker health child omitted the explicit production.env path, while direct read-only health with that path passed; source now loads environment only for provider modes",
+      "decisionEffect": "Worker reports HEALTH_CHECK_FAILED until a later governed release"
     },
     {
       "id": "FOUR_FINALIST_AEGIS_MATRIX",
