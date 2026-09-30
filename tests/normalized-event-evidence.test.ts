@@ -47,3 +47,26 @@ test('identical repeated event evidence remains a single observation', () => {
   const first = normalizeEventEvidence(raw, '2025-01-16T00:00:00Z');
   assert.deepEqual(reconcileEventEvidence([first, first]), [first]);
 });
+
+test('a PIT-invalid duplicate cannot be erased by page ordering', () => {
+  const first = normalizeEventEvidence(raw, '2025-01-16T00:00:00Z');
+  const future = normalizeEventEvidence({ ...raw, observedAt: '2025-01-17T00:00:00Z' }, '2025-01-16T00:00:00Z');
+  const forward = reconcileEventEvidence([first, future]);
+  assert.deepEqual(forward, reconcileEventEvidence([future, first]));
+  assert.equal(forward.length, 2);
+  assert.ok(forward.every((event) => event.verificationState === 'CONFLICT'));
+  assert.ok(forward.some((event) => event.reasons.includes('NOT_OBSERVED_AT_DECISION')));
+});
+
+test('consistent repeated observation keeps first observed time independent of page order', () => {
+  const first = normalizeEventEvidence(raw, '2025-01-16T00:00:00Z');
+  const later = normalizeEventEvidence({ ...raw, observedAt: '2025-01-15T13:00:00Z' }, '2025-01-16T00:00:00Z');
+  assert.deepEqual(reconcileEventEvidence([later, first]), [first]);
+  assert.deepEqual(reconcileEventEvidence([first, later]), [first]);
+});
+
+test('changed provider-known time remains conflicting evidence', () => {
+  const first = normalizeEventEvidence(raw, '2025-01-16T00:00:00Z');
+  const changed = normalizeEventEvidence({ ...raw, knownAt: '2025-01-15T11:59:00Z' }, '2025-01-16T00:00:00Z');
+  assert.ok(reconcileEventEvidence([first, changed]).every((event) => event.verificationState === 'CONFLICT'));
+});

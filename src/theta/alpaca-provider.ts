@@ -29,6 +29,12 @@ const authHeaders = (config: AlpacaProviderConfig): HeadersInit => ({
   'APCA-API-SECRET-KEY': config.apiSecret,
 });
 
+function assertPaginationBounds(maxPages: number, limit?: number): void {
+  if (!Number.isSafeInteger(maxPages) || maxPages < 1
+    || (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1)))
+    throw new AlpacaProviderError('INVALID_REQUEST', null, 'ALPACA_PAGINATION_BOUND_INVALID');
+}
+
 export type AlpacaErrorClass = 'INVALID_REQUEST' | 'INVALID_AUTH' | 'NOT_ENTITLED' | 'RATE_LIMITED' | 'SERVER_ERROR' | 'NETWORK_ERROR' | 'PROVIDER_TIMEOUT' | 'MALFORMED_RESPONSE';
 
 export class AlpacaProviderError extends Error {
@@ -383,13 +389,14 @@ export interface PaginatedResult<T> {
 }
 
 export async function fetchOptionContracts(config: AlpacaProviderConfig, params: FetchOptionContractsParams): Promise<PaginatedResult<AlpacaOptionContractListing>> {
+  assertPaginationBounds(params.maxPages, params.limit);
   const fetchImpl = config.fetchImpl ?? fetch;
   const items: AlpacaOptionContractListing[] = [];
   let pageToken: string | null = null;
   let pages = 0;
   let complete = true;
   const seenTokens = new Set<string>();
-  const seenContracts = new Set<string>();
+  const seenContracts = new Map<string,string>();
 
   do {
     const url = new URL('/v2/options/contracts', config.tradingApiBase);
@@ -425,10 +432,6 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
       if (!symbol || strikePrice === null || strikePrice <= 0 || !validDateOnly(expirationDate)) {
         throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts returned an invalid contract identity.');
       }
-      if (seenContracts.has(symbol)) {
-        throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v2/options/contracts repeated a contract identity.');
-      }
-      seenContracts.add(symbol);
       const deliverables = contract.deliverables;
       if (params.showDeliverables === true && deliverables !== null && deliverables !== undefined
         && !Array.isArray(deliverables)) {
@@ -448,7 +451,7 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
         return { type, symbol: deliverableSymbol, amount,
           allocationPercentage: asNumberOrNull(row.allocation_percentage) };
       }) : null;
-      items.push({
+      const normalized:AlpacaOptionContractListing={
         symbol,
         strikePrice,
         expirationDate,
@@ -459,7 +462,12 @@ export async function fetchOptionContracts(config: AlpacaProviderConfig, params:
         underlyingSymbol: asStringOrNull(contract.underlying_symbol),
         exerciseStyle: asStringOrNull(contract.style),
         deliverables: parsedDeliverables,
-      });
+      };
+      const signature=JSON.stringify(normalized);
+      const previous=seenContracts.get(symbol);
+      if(previous!==undefined&&previous!==signature)throw new AlpacaProviderError('MALFORMED_RESPONSE',200,
+        '/v2/options/contracts returned conflicting contract observations.','ALPACA_CONTRACT_DUPLICATE_CONFLICT');
+      if(previous===undefined){seenContracts.set(symbol,signature);items.push(normalized);}
     }
     pageToken = page.next_page_token as string | null | undefined ?? null;
     if (pageToken !== null) seenTokens.add(pageToken);
@@ -492,6 +500,7 @@ export interface PaginatedSnapshotsResult {
 }
 
 export async function fetchOptionSnapshots(config: AlpacaProviderConfig, params: FetchOptionSnapshotsParams): Promise<PaginatedSnapshotsResult> {
+  assertPaginationBounds(params.maxPages, params.limit);
   if(!(params.expirationDateGte === undefined || validDateOnly(params.expirationDateGte))
     || !(params.expirationDateLte === undefined || validDateOnly(params.expirationDateLte))
     ||(params.expirationDateGte!==undefined&&params.expirationDateLte!==undefined
@@ -535,10 +544,13 @@ export async function fetchOptionSnapshots(config: AlpacaProviderConfig, params:
       if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
         throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v1beta1/options/snapshots returned an invalid snapshot row.');
       }
-      if (snapshots.has(symbol)) {
-        throw new AlpacaProviderError('MALFORMED_RESPONSE', 200, '/v1beta1/options/snapshots repeated a contract identity.');
+      const parsed=parseOneSnapshot(raw as Record<string,unknown>);
+      const previous=snapshots.get(symbol);
+      if(previous!==undefined&&JSON.stringify(previous)!==JSON.stringify(parsed)){
+        throw new AlpacaProviderError('MALFORMED_RESPONSE',200,
+          '/v1beta1/options/snapshots returned conflicting contract observations.','ALPACA_SNAPSHOT_DUPLICATE_CONFLICT');
       }
-      snapshots.set(symbol, parseOneSnapshot(raw as Record<string, unknown>));
+      if(previous===undefined)snapshots.set(symbol,parsed);
     }
     pageToken = page.next_page_token as string | null | undefined ?? null;
     if (pageToken !== null) seenTokens.add(pageToken);
@@ -643,6 +655,7 @@ export interface StockBarsResult {
 }
 
 export async function fetchStockBars(config: AlpacaProviderConfig, params: FetchStockBarsParams, receivedAt: string): Promise<StockBarsResult> {
+  assertPaginationBounds(params.maxPages);
   const fetchImpl = config.fetchImpl ?? fetch;
   const fetchPage = async (pageToken: string | null): Promise<RawAlpacaBarsPage> => {
     const url = new URL('/v2/stocks/bars', config.marketDataApiBase);
@@ -663,6 +676,8 @@ export async function fetchStockBars(config: AlpacaProviderConfig, params: Fetch
   // page-size limit applies to total data points (not per symbol) and a
   // multi-symbol request's first page may contain only one symbol.
   const allBars: HistoricalBar[] = [];
+  const seenBars=new Map<string,string>();
+  const seenBarTokens=new Set<string>();
   let providerZeroVwapCount = 0;
   let pageToken: string | null = null;
   let pages = 0;
@@ -680,9 +695,21 @@ export async function fetchStockBars(config: AlpacaProviderConfig, params: Fetch
         '/v2/stocks/bars returned invalid bar evidence.', safeDetailCode);
     }
     const { bars, nextPageToken } = parsed;
-    allBars.push(...bars);
-    providerZeroVwapCount += parsed.providerZeroVwapCount;
+    for(const bar of bars){
+      const identity=`${bar.symbol}:${Date.parse(bar.timestamp)}`;
+      const signature=JSON.stringify({...bar,timestamp:Date.parse(bar.timestamp)});
+      const previous=seenBars.get(identity);
+      if(previous!==undefined&&previous!==signature)throw new AlpacaProviderError('MALFORMED_RESPONSE',200,
+        '/v2/stocks/bars returned conflicting observations.','ALPACA_BAR_DUPLICATE_CONFLICT');
+      if(previous===undefined){seenBars.set(identity,signature);allBars.push(bar);
+        if(bar.vwapSourceState==='PROVIDER_ZERO_UNAVAILABLE')providerZeroVwapCount++;}
+    }
     pageToken = nextPageToken;
+    if(pageToken!==null){
+      if(pageToken.length===0||seenBarTokens.has(pageToken))throw new AlpacaProviderError('MALFORMED_RESPONSE',200,
+        '/v2/stocks/bars repeated or emptied its page token.','ALPACA_BAR_PAGINATION_INVALID');
+      seenBarTokens.add(pageToken);
+    }
     pages += 1;
     if (pages >= params.maxPages && pageToken !== null) {
       complete = false;

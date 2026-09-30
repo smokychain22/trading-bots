@@ -97,3 +97,26 @@ test('barsAsOf is inclusive of a bar exactly at asOf, never accidentally exclude
   const { bars } = parseAlpacaBarsPage(raw, 'iex', NOW);
   assert.equal(barsAsOf(bars, '2026-09-05T00:00:00Z').length, 1);
 });
+
+test('historical research pagination deduplicates exact bars but rejects revisions and token loops', async () => {
+  for (const mode of ['IDENTICAL', 'CONFLICT', 'LOOP'] as const) {
+    let pages = 0;
+    const fetchPage = async (): Promise<RawAlpacaBarsPage> => ({
+      bars: { SPY: [rawBar(NOW, mode === 'CONFLICT' && pages > 0 ? 501 : 500)] },
+      next_page_token: ++pages === 1 || mode === 'LOOP' ? 'next' : null,
+    });
+    if (mode === 'IDENTICAL') assert.equal((await fetchAllHistoricalBars(fetchPage, NOW, 'iex', 10)).length, 1);
+    else await assert.rejects(fetchAllHistoricalBars(fetchPage, NOW, 'iex', 10),
+      new RegExp(mode === 'CONFLICT' ? 'DUPLICATE_CONFLICT' : 'PAGINATION_INVALID'));
+    assert.equal(pages, 2);
+  }
+});
+
+test('historical bar page bounds cannot silently disable the termination guard', async () => {
+  for (const bound of [NaN, Infinity, 0, -1, 0.5]) {
+    let called = false;
+    await assert.rejects(fetchAllHistoricalBars(async () => { called = true; return {bars:{},next_page_token:null}; }, NOW, 'iex', bound),
+      /INVALID_PAGE_BOUND/);
+    assert.equal(called, false);
+  }
+});

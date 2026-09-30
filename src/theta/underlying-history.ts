@@ -121,18 +121,32 @@ export async function fetchAllHistoricalBars(
   feed: string | null,
   maxPages: number,
 ): Promise<readonly HistoricalBar[]> {
+  if (!Number.isSafeInteger(maxPages) || maxPages < 1) throw new Error('ALPACA_BARS_INVALID_PAGE_BOUND');
   const allBars: HistoricalBar[] = [];
+  const seenBars = new Map<string, string>();
+  const seenTokens = new Set<string>();
   let pageToken: string | null = null;
   let pages = 0;
 
   do {
     const raw = await fetchPage(pageToken);
     const { bars, nextPageToken } = parseAlpacaBarsPage(raw, feed, receivedAt);
-    allBars.push(...bars);
+    for (const bar of bars) {
+      const instant = Date.parse(bar.timestamp);
+      const key = `${bar.symbol}:${instant}`;
+      const signature = JSON.stringify({ ...bar, timestamp: instant });
+      const prior = seenBars.get(key);
+      if (prior !== undefined && prior !== signature) throw new Error('ALPACA_BARS_DUPLICATE_CONFLICT');
+      if (prior === undefined) { seenBars.set(key, signature); allBars.push(bar); }
+    }
     pageToken = nextPageToken;
     pages += 1;
     if (pages >= maxPages && pageToken !== null) {
       throw new Error(`fetchAllHistoricalBars: exceeded maxPages=${maxPages} with more pages remaining -- refusing to silently truncate.`);
+    }
+    if (pageToken !== null) {
+      if (!pageToken.trim() || seenTokens.has(pageToken)) throw new Error('ALPACA_BARS_PAGINATION_INVALID');
+      seenTokens.add(pageToken);
     }
   } while (pageToken !== null);
 

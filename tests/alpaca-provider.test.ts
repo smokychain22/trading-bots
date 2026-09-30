@@ -397,7 +397,7 @@ test('option contract pagination remains complete across boundary sizes through 
   }
 });
 
-test('repeated or empty page tokens and duplicate contract IDs fail closed', async () => {
+test('repeated or empty page tokens fail closed while identical contract rows deduplicate', async () => {
   const params = { underlyingSymbol: 'SPY', expirationDateGte: '2026-10-01', expirationDateLte: '2026-11-01',
     optionType: 'put' as const, limit: 1, maxPages: 10 };
   const row = { symbol: 'SPY261009P00500000', strike_price: '500', expiration_date: '2026-10-09' };
@@ -416,8 +416,9 @@ test('repeated or empty page tokens and duplicate contract IDs fail closed', asy
     page += 1;
     return jsonResponse(200, { option_contracts: [row], next_page_token: page === 1 ? 'p2' : null });
   }) as typeof fetch;
-  await assert.rejects(fetchOptionContracts(baseConfig(duplicate), params), (error: unknown) =>
-    error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+  const result=await fetchOptionContracts(baseConfig(duplicate), params);
+  assert.equal(result.items.length,1);
+  assert.equal(result.complete,true);
 });
 
 test('rate limit and server failure after a valid first contract page are not empty opportunities', async () => {
@@ -542,15 +543,16 @@ test('fetchStockBars follows next_page_token across pages, including a first pag
   assert.ok(result.bars.some((b) => b.symbol === 'QQQ'));
 });
 
-test('fetchStockBars marks the dataset INCOMPLETE (never silently complete) when maxPages is hit with more remaining, but keeps the bars already fetched', async () => {
-  const fetchImpl = (async () => jsonResponse(200, { bars: { SPY: [{ t: NOW, o: 1, h: 1, l: 1, c: 1, v: 1 }] }, next_page_token: 'always-more' })) as typeof fetch;
+test('fetchStockBars marks the dataset INCOMPLETE when maxPages is reached without inflating duplicate bars', async () => {
+  let page=0;
+  const fetchImpl = (async () => jsonResponse(200, { bars: { SPY: [{ t: NOW, o: 1, h: 1, l: 1, c: 1, v: 1 }] }, next_page_token: `more-${++page}` })) as typeof fetch;
   const result = await fetchStockBars(
     baseConfig(fetchImpl),
     { symbols: ['SPY'], timeframe: '1Day', start: '2026-09-01T00:00:00Z', end: '2026-09-10T00:00:00Z', feed: 'iex', maxPages: 2, adjustment: 'raw' },
     NOW,
   );
   assert.equal(result.complete, false);
-  assert.equal(result.bars.length, 2); // bars from both attempted pages are preserved, never discarded
+  assert.equal(result.bars.length, 1); // identical evidence is represented once
 });
 
 test('fetchStockBars classifies a malformed bar as a provider response error', async () => {
@@ -621,7 +623,7 @@ test('fetchTradableAssets truncates deterministically and reports complete=false
   assert.equal(result.complete, false);
 });
 
-test('snapshot pagination rejects repeated tokens and repeated exact-contract quotes', async () => {
+test('snapshot pagination rejects repeated tokens and deduplicates identical exact-contract quotes', async () => {
   const params = { underlyingSymbol: 'SPY', feed: 'indicative' as const,
     optionType: 'put' as const, limit: 1, maxPages: 5 };
   let tokenPage = 0;
@@ -638,8 +640,9 @@ test('snapshot pagination rejects repeated tokens and repeated exact-contract qu
     return jsonResponse(200, { snapshots: { SPY261009P00500000: { latestQuote: { bp: 1, ap: 1.1 } } },
       next_page_token: duplicatePage === 1 ? 'p2' : null });
   }) as typeof fetch;
-  await assert.rejects(fetchOptionSnapshots(baseConfig(duplicate), params), (error: unknown) =>
-    error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
+  const result=await fetchOptionSnapshots(baseConfig(duplicate),params);
+  assert.equal(result.snapshots.size,1);
+  assert.equal(result.complete,true);
 });
 
 test('fetchOptionContracts rejects an impossible expiration date instead of accepting a shaped string', async () => {
