@@ -58,6 +58,13 @@ sizing, finalist selection or a final trading decision. Its outcome is
    explicit `LOCAL_RESEARCH_READ_LIMIT_EXCEEDED`, not a truncated successful
    read. Pending-batch metadata no longer loads every large JSON payload.
    This does not prune any archive or claim to finish retention cleanup.
+7. A later local worker status showed ONLINE on the unchanged release, with
+   deferred storage work incorrectly reporting zero bytes and NORMAL. Deferred
+   measurements now remain null and NOT_OBSERVED. A PowerShell regression
+   executes the actual initialization block without launching the supervisor.
+   Command-5A connection/SQL failure reporting now reuses the shared safe
+   PostgreSQL classifier. Its previously observed unclassified scheduling error
+   cannot be retroactively assigned a specific cause.
 
 ## Test evidence and limits
 
@@ -77,7 +84,7 @@ observation, executes the real local maturation path, and verifies a single
 durable dataset and idempotent replay. Its modeled fixture remains a test,
 not a real resolved market outcome or empirical promotion.
 
-Full local validation passed 3116 Node tests with 15 skipped, 1231 Python
+Full local validation passed 3118 Node tests with 15 skipped, 1231 Python
 tests and 23 browser tests. The later initial-read telemetry patch passed 29
 focused tests and is subject to final exact-SHA CI. Typecheck, lint, build,
 security and Git storage checks passed. All four Windows backup/recovery suites

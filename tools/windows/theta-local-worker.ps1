@@ -521,17 +521,17 @@ try {
       $localResearchArchiveState = if ($report.reconciliation.marketOpen -eq $true) {
         'DEFERRED_MARKET_CRITICAL'
       } else { 'NOT_ATTEMPTED' }
-      $localResearchArchiveRows = 0
+      $localResearchArchiveRows = $null
       $localResearchArchiveFailureFamily = $null
-      $localResearchTransferQuotaState = 'TRANSFER_QUOTA_OPEN'
+      $localResearchTransferQuotaState = 'NOT_OBSERVED'
       $localResearchArchiveNextRetryAt = $null
-      $localResearchSpoolRows = 0
-      $localResearchPendingCompactionRows = 0
-      $localResearchActiveSpoolBytes = 0
-      $localResearchTotalBytes = 0
-      $localResearchStorageWatermark = 'NORMAL'
-      $localResearchParquetFiles = 0
-      $localResearchParquetBytes = 0
+      $localResearchSpoolRows = $null
+      $localResearchPendingCompactionRows = $null
+      $localResearchActiveSpoolBytes = $null
+      $localResearchTotalBytes = $null
+      $localResearchStorageWatermark = 'NOT_OBSERVED'
+      $localResearchParquetFiles = $null
+      $localResearchParquetBytes = $null
       $localResearchLastManifestHash = $null
       $localResearchDuckdbVerification = 'NOT_AVAILABLE'
       $localResearchParquetState = if ($report.reconciliation.marketOpen -eq $true) {

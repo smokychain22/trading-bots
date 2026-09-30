@@ -24,7 +24,12 @@
   acquisition and checkout observations without changing timeouts or retries.
 - RELEASE_PENDING: these changes are on `codex/brain-hardening`, not the active
   release. Exact branch CI is required. Do not call them current-worker proven.
-- VALIDATION: 3116 Node tests passed, 15 skipped, 1231 Python tests passed,
+- ADDITIONAL_RUNTIME_FINDING: a later ONLINE worker receipt labeled deferred
+  storage measurements zero/NORMAL. Source now retains null/NOT_OBSERVED,
+  verified by executing the isolated PowerShell initialization block. Command-5A
+  error reporting now uses the shared safe PostgreSQL classifier. The old
+  unclassified scheduling error is not retroactively attributed to the database.
+- VALIDATION: 3118 Node tests passed, 15 skipped, 1231 Python tests passed,
   23 browser tests passed, four Windows recovery suites passed, and typecheck,
   lint, build, security and Git storage checks passed. The final small CLI
   telemetry patch also passed 29 focused tests.

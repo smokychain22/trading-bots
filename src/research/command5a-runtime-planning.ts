@@ -1,4 +1,5 @@
 import { classifyLocalSpoolWatermark } from '../storage/local-research-archive-health.js';
+import { classifyPostgresRuntimeError } from '../theta/postgres-runtime-error.js';
 
 export const command5aRuntimePlanningVersion = 'theta-command5a-runtime-planning-v2' as const;
 
@@ -121,6 +122,8 @@ export function command5aSafeFailureCode(error: unknown): string {
   if (providerCode === 'EAI_AGAIN' || providerCode === 'ENOTFOUND') return 'COMMAND5A_NETWORK_DNS';
   const message = error instanceof Error ? error.message : '';
   if (/database is locked/i.test(message)) return 'COMMAND5A_SQLITE_BUSY';
+  const postgres = classifyPostgresRuntimeError(error);
+  if (postgres.safeCode !== 'POSTGRES_UNKNOWN_ERROR') return `COMMAND5A_${postgres.safeCode}`;
   const code = message.split(':', 1)[0] ?? '';
   return /^[A-Z][A-Z0-9_]{2,160}$/.test(code) ? code : 'COMMAND5A_UNCLASSIFIED_FAILURE';
 }

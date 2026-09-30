@@ -86,3 +86,12 @@ test('immutable Parquet inventory stays visible without permanently pausing acti
     schedulerBytes: -1, spoolBytes: 0, parquetBytes: 0,
   }), /COMMAND5A_STORAGE_BYTES_INVALID/);
 });
+
+test('Command-5A preserves connection and SQL failures without exposing private detail',()=>{
+  assert.equal(command5aSafeFailureCode(new Error('Connection terminated unexpectedly; private-detail')),
+    'COMMAND5A_POSTGRES_CONNECTION_TERMINATED');
+  assert.equal(command5aSafeFailureCode(Object.assign(new Error('private-detail'),{code:'42703'})),
+    'COMMAND5A_POSTGRES_42703');
+  assert.equal(command5aSafeFailureCode(new Error('private-detail')), 'COMMAND5A_UNCLASSIFIED_FAILURE');
+  assert.equal(command5aPageFailureDisposition('COMMAND5A_POSTGRES_CONNECTION_TERMINATED'),'RETRY_REQUIRED');
+});
