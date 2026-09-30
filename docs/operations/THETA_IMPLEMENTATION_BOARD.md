@@ -1,5 +1,43 @@
 # THETA implementation board
 
+## Current-session authority and maturation corrections, 2026-09-30
+
+- CURRENT_FOUNDATION: Phase 1 remains
+  `CLOSED_FOUNDATION_ENGINEERING_AND_REPLAY`. Older stopped-worker and pending
+  migration entries below describe their dated incidents, not current status.
+- OBSERVED_RELEASE: main, deployment and the single immutable Windows supervisor
+  were aligned on `6e74280293f25b3569b2dd026dc1e9c3552b933a`. Exact CI
+  `36720753562` passed. No deployment or restart occurred in this pass.
+- INFRASTRUCTURE_DEFERRED: the manual open-session probe again encountered
+  `POSTGRES_CONNECTION_TERMINATED` after one successful bounded connection and
+  rollback-write recovery check. Manual retries stopped. The original failing
+  SQL operation was not retained by the old receipt, so root cause remains
+  unresolved. Separate worker persistence does not certify the failed probe.
+- CODE_COMPLETE/WIRED/VERIFIED_LOCAL: `ac697b4` separates provisional no-submit
+  results from canonical authority, denies authority after evidence backfill,
+  sanitizes frontier error logs and reuses the canonical schema authority.
+- CODE_COMPLETE/WIRED/VERIFIED_LOCAL: `f79292c` fixes cycle-wide observation
+  truncation in Command-5A maturation. The real local test path materializes the
+  desired subject despite 260 earlier unrelated observations and remains
+  idempotent. Overflow is explicit, and pending metadata omits payload JSON.
+- CODE_COMPLETE/WIRED/VERIFIED_LOCAL: `341613d` records initial database-read
+  acquisition and checkout observations without changing timeouts or retries.
+- RELEASE_PENDING: these changes are on `codex/brain-hardening`, not the active
+  release. Exact branch CI is required. Do not call them current-worker proven.
+- VALIDATION: 3116 Node tests passed, 15 skipped, 1231 Python tests passed,
+  23 browser tests passed, four Windows recovery suites passed, and typecheck,
+  lint, build, security and Git storage checks passed. The final small CLI
+  telemetry patch also passed 29 focused tests.
+- STILL_OPEN: current-session canonical chain, incident root-cause evidence,
+  exhaustive registry-to-consumer coverage, staged performance coverage and
+  governed legacy SQLite retention. No zero-code-blocker claim is made.
+- SAFETY: no orders, broker mutations or follower submissions. All execution
+  locks preserved. No strategy thresholds, sizing caps or AEGIS policy changed.
+
+See `THETA_CURRENT_BLOCKER_REGISTER.json` and
+`THETA_20260930_SESSION_INCIDENT_AND_AUTHORITY_CORRECTIONS.md` for evidence scope
+and the separation between local tests, runtime observations and empirical work.
+
 ## Phase-1 backup bounded-growth repair, 2026-09-28
 
 - PROVEN_INCIDENT: exact-main schema-067 certification completed a corrected
