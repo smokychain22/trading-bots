@@ -135,6 +135,15 @@ itMockedProviderRealCodePath('a real THETA-Q lattice candidate flows end to end 
   assert.ok(result.routing !== null);
   assert.ok(result.thetaQ !== null);
   assert.ok(result.aegis !== null);
+  assert.equal(result.aegis.families.length, 12);
+  for (const family of result.aegis.families) {
+    assert.ok(family.inputEvidence);
+    assert.equal(family.inputEvidence.decisionId, result.aegis.decisionId);
+    assert.equal(family.inputEvidence.snapshotId, result.aegis.snapshotId);
+    assert.equal(family.inputEvidence.sourceFreshness, 'NOT_PROVEN_BY_RISK_ENGINE');
+    assert.equal(family.inputEvidence.sourceObservedAt, null);
+    assert.equal(family.inputEvidence.quantityCapacity, null);
+  }
   assert.ok(result.opportunityBook !== null);
   assert.equal(result.thetaQ?.candidates.length, 1);
   // THETA-Q's own baseline has no calibrated entry-outcome model yet, so

@@ -83,6 +83,8 @@ const portfolioExposureSchema = z.object({
   exposureByUnderlying: z.record(z.string(), finite),
   riskyUnderlyings: z.array(z.string().min(1)),
   unparsedOptionSymbols: z.array(z.string().min(1)),
+  unclassifiedPositionSymbols: z.array(z.string().min(1)).optional(),
+  longOptionValue: z.number().finite().nonnegative().nullable().optional(),
   correlationObservation: correlationObservationSchema.nullable(),
 }).strict();
 

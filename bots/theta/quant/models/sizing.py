@@ -10,6 +10,7 @@ input through which a caller could smuggle loss-conditioned scaling in.
 """
 
 from dataclasses import dataclass
+import math
 from typing import List, Optional
 
 from models.aegis import RiskState
@@ -48,6 +49,22 @@ class SizingResult:
 
 
 def compute_sizing(policy: SizingPolicy, inputs: SizingInputs) -> SizingResult:
+    for owner, names in ((policy, ("risk_budget_qty_cap", "collateral_qty_cap", "concentration_qty_cap",
+                                  "assignment_capacity_qty_cap", "tail_risk_qty_cap", "correlation_qty_cap", "liquidity_qty_cap")),
+                         (inputs, ("broker_allowed_qty",))):
+        for name in names:
+            value = getattr(owner, name)
+            if type(value) is not int or value < 0 or value > 9007199254740991:
+                raise ValueError(f"{name} must be a nonnegative safe integer")
+    multiplier = policy.reduced_state_multiplier
+    if isinstance(multiplier, bool) or not isinstance(multiplier, (int, float)) or not math.isfinite(multiplier) or not 0 <= multiplier <= 1:
+        raise ValueError("reduced_state_multiplier must be finite and between zero and one")
+    for name in ("equity", "cash", "buying_power", "required_collateral_per_contract"):
+        value = getattr(inputs, name)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)):
+            raise ValueError(f"{name} must be finite or UNKNOWN")
+    if not isinstance(inputs.risk_state, RiskState):
+        raise ValueError("risk_state must be a governed RiskState")
     reasons: List[ReasonCode] = []
 
     if inputs.risk_state in (RiskState.HOLD_ONLY, RiskState.HARD_VETO):
@@ -68,7 +85,10 @@ def compute_sizing(policy: SizingPolicy, inputs: SizingInputs) -> SizingResult:
         reasons.append(ReasonCode("INVALID_COLLATERAL", -1, "required_collateral_per_contract must be > 0."))
         return SizingResult(quantity=0, capital_required=None, binding_constraint="INVALID_INPUT", reasons=reasons)
 
-    collateral_affordable_qty = int(inputs.buying_power // inputs.required_collateral_per_contract)
+    affordable = inputs.buying_power // inputs.required_collateral_per_contract
+    if not math.isfinite(affordable):
+        raise ValueError("collateral affordability overflow")
+    collateral_affordable_qty = int(affordable)
 
     caps = {
         "RISK_BUDGET": policy.risk_budget_qty_cap,
@@ -91,6 +111,8 @@ def compute_sizing(policy: SizingPolicy, inputs: SizingInputs) -> SizingResult:
         raw_qty = reduced_qty
 
     capital_required = raw_qty * inputs.required_collateral_per_contract
+    if not math.isfinite(capital_required):
+        raise ValueError("capital_required overflow")
     reasons.append(ReasonCode("SIZING_COMPUTED", 0, f"quantity={raw_qty} binding_constraint={binding_constraint}"))
     if raw_qty == 0:
         reasons.append(ReasonCode("QUANTITY_ZERO", 0, "Quantity zero is a valid, expected sizing outcome -- never floored to 1."))

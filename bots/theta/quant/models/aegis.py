@@ -23,9 +23,30 @@ risk states computed here.
 
 from dataclasses import dataclass
 from enum import Enum
+import math
 from typing import FrozenSet, List, Optional
 
 from models.common import ReasonCode
+
+# Family input lineage lives with the risk authority. Adapters serialize this
+# mapping rather than defining a parallel family registry.
+AEGIS_NUMERIC_FAMILY_FIELDS = {
+    "UNDERLYING": ("tickerConcentrationPct", "maxTickerConcentrationPct"),
+    "SECTOR": ("sectorConcentrationPct", "maxSectorConcentrationPct"),
+    "CORRELATION": ("correlationClusterExposurePct", "maxCorrelationClusterPct"),
+    "PORTFOLIO": ("portfolioCapitalAtRiskPct", "maxPortfolioCapitalAtRiskPct"),
+    "INVENTORY": ("inventoryCapacityUsedPct", "maxInventoryCapacityPct"),
+    "ASSIGNMENT": ("assignmentCapacityUsedPct", "maxAssignmentCapacityPct"),
+    "RECOVERY": ("recoveryCapacityUsedPct", "maxRecoveryCapacityPct"),
+}
+AEGIS_STATE_FAMILY_FIELDS = {
+    "PER_TRADE": ("liquidityAcceptable",),
+    "LIQUIDITY": ("stressSpreadWideningDetected", "stressSpreadWideningApplicability"),
+    "EXECUTION": ("executionQualityAcceptable",),
+    "PROVIDER": ("providerState",),
+    "SYSTEM": ("stressGapDetected", "stressIvShockDetected", "stressSpreadWideningDetected",
+               "stressIvShockApplicability", "stressSpreadWideningApplicability"),
+}
 
 
 class RiskState(str, Enum):
@@ -182,6 +203,43 @@ def _system(policy: AegisPolicy, inputs: AegisInputs) -> RiskFamilyAssessment:
 
 
 def assess_aegis(policy: AegisPolicy, inputs: AegisInputs) -> AegisAssessment:
+    # Validate at the engine boundary as well as JSON transport. NaN compares
+    # false in both threshold branches, and strings/integers are not booleans.
+    # Neither may silently produce ALLOW_FULL. Exposure is a nonnegative
+    # fraction and can exceed one when actual committed capital exceeds equity.
+    numeric_inputs = (
+        "ticker_concentration_pct", "sector_concentration_pct", "correlation_cluster_exposure_pct",
+        "portfolio_capital_at_risk_pct", "inventory_capacity_used_pct", "assignment_capacity_used_pct",
+        "recovery_capacity_used_pct",
+    )
+    numeric_policy = (
+        "max_ticker_concentration_pct", "max_sector_concentration_pct", "max_correlation_cluster_pct",
+        "max_portfolio_capital_at_risk_pct", "max_inventory_capacity_pct", "max_assignment_capacity_pct",
+        "max_recovery_capacity_pct",
+    )
+    for owner, names, nullable in ((inputs, numeric_inputs, True), (policy, numeric_policy, False)):
+        for name in names:
+            value = getattr(owner, name)
+            if value is None and nullable:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+                raise ValueError(f"{name} must be a finite nonnegative fraction" + (" or UNKNOWN" if nullable else ""))
+    multiplier = policy.hard_cap_multiplier
+    if isinstance(multiplier, bool) or not isinstance(multiplier, (int, float)) or not math.isfinite(multiplier) or multiplier <= 1:
+        raise ValueError("hard_cap_multiplier must be finite and greater than one")
+    if any(not math.isfinite(getattr(policy, name) * multiplier) for name in numeric_policy):
+        raise ValueError("hard risk threshold must remain finite")
+    if type(policy.compound_stress_hold_count) is not int or policy.compound_stress_hold_count < 2:
+        raise ValueError("compound_stress_hold_count must be an integer at least two")
+    for name in ("liquidity_acceptable", "execution_quality_acceptable", "stress_gap_detected",
+                 "stress_iv_shock_detected", "stress_spread_widening_detected"):
+        value = getattr(inputs, name)
+        if value is not None and type(value) is not bool:
+            raise ValueError(f"{name} must be boolean or UNKNOWN")
+    if inputs.provider_state is not None and (not isinstance(inputs.provider_state, str) or not inputs.provider_state.strip()):
+        raise ValueError("provider_state must be a nonempty string or UNKNOWN")
+    if not policy.provider_required_states or any(not isinstance(value, str) or not value.strip() for value in policy.provider_required_states):
+        raise ValueError("provider_required_states must contain nonempty provider states")
     allowed_applicability = {"REQUIRED", "PAPER_COLD_START_NOT_APPLICABLE"}
     if inputs.stress_iv_shock_applicability not in allowed_applicability or inputs.stress_spread_widening_applicability not in allowed_applicability:
         raise ValueError("stress applicability must be REQUIRED or PAPER_COLD_START_NOT_APPLICABLE")

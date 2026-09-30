@@ -36,6 +36,46 @@ test('parseOccOptionSymbol parses a standard OCC symbol exactly', () => {
   assert.deepEqual(parsed, { underlying: 'SPY', expiration: '2026-10-09', optionType: 'PUT', strike: 500 });
 });
 
+test('unclassifiable position quantity or asset never becomes zero portfolio exposure', () => {
+  for (const invalid of [null, NaN, Infinity, 0, 0.5]) {
+    const exposure = deriveAccountExposure(account(), [position({ assetClass: 'us_option',
+      symbol: 'SPY261009P00500000', quantity: invalid, side: 'short' })], []);
+    assert.equal(exposure.cspCollateralRequired, null);
+    assert.equal(exposure.tickerConcentrationPct, null);
+    assert.equal(exposure.portfolioCapitalAtRiskPct, null);
+    assert.deepEqual(exposure.unclassifiedPositionSymbols, ['SPY261009P00500000']);
+    assert.equal(deriveCandidateInclusiveAegisInputs(exposure, [], { underlying: 'SPY',
+      securedCollateralPerContract: 50_000, quantity: 1 }, 0).tickerConcentrationPct, null);
+  }
+  for (const p of [position({ assetClass: 'crypto' }), position({ marketValue: NaN }),
+    position({ marketValue: -5000, side: 'short' })]) {
+    const exposure = deriveAccountExposure(account(), [p], []);
+    assert.equal(exposure.portfolioCapitalAtRiskPct, null);
+    assert.equal(exposure.tickerConcentrationPct, null);
+  }
+});
+
+test('long option marks count as current capital at risk without inventing a short-leg hedge offset', () => {
+  const exposure = deriveAccountExposure(account(), [position({ assetClass: 'us_option',
+    symbol: 'SPY261009P00500000', quantity: 1, marketValue: 1200, side: 'long' })], []);
+  assert.equal(exposure.longOptionValue, 1200);
+  assert.equal(exposure.cspCollateralRequired, 0);
+  assert.equal(exposure.portfolioCapitalAtRiskPct, 0.012);
+  assert.equal(exposure.tickerConcentrationPct, 0.012);
+  const proposed = deriveCandidateInclusiveAegisInputs(exposure, [], { underlying: 'SPY', securedCollateralPerContract: 50_000, quantity: 1 }, 0);
+  assert.equal(proposed.portfolioCapitalAtRiskPct, 0.512);
+});
+
+test('uncovered short calls cannot masquerade as an empty portfolio and covered shares are counted only once', () => {
+  const call = position({ assetClass: 'us_option', symbol: 'SPY261009C00500000', quantity: -1, side: 'short', marketValue: -1200 });
+  const uncovered = deriveAccountExposure(account(), [call], []);
+  assert.equal(uncovered.portfolioCapitalAtRiskPct, null);
+  assert.deepEqual(uncovered.unclassifiedPositionSymbols, [call.symbol]);
+  const covered = deriveAccountExposure(account(), [call, position({ symbol: 'SPY', quantity: 100, marketValue: 50_000 })], []);
+  assert.equal(covered.portfolioCapitalAtRiskPct, 0.5);
+  assert.deepEqual(covered.unclassifiedPositionSymbols, []);
+});
+
 test('impossible OCC expiries cannot become account or execution identity',()=>{
   for(const date of ['260230','260229','260431','260631','260000','261301'])
     assert.equal(parseOccOptionSymbol(`SPY${date}P00500000`),null,date);
@@ -223,6 +263,19 @@ test('pending order intent ambiguity preserves candidate-inclusive capacity as U
   assert.equal(result.evidenceState, 'UNKNOWN_INSUFFICIENT_ACCOUNT_STATE');
   assert.equal(result.assignmentCapacityUsedPct, null);
   assert.ok(result.unknownReasons.includes('PENDING_ORDER_INTENT_NOT_CLASSIFIED'));
+});
+
+test('invalid pending option quantities prices or multipliers cannot manufacture zero reserved risk', () => {
+  for (const quantity of [NaN, Infinity, 0.5, Number.MAX_SAFE_INTEGER + 1]) {
+    const result = deriveAccountExposure(account(), [], [openOrder({ symbol: 'SPY261009P00500000', positionIntent: 'sell_to_open', quantity })]);
+    assert.equal(result.pendingOpeningCapitalAtRisk, null);
+    assert.deepEqual(result.unclassifiedOpenOrderIds, ['order-1']);
+  }
+  for (const limitPrice of [NaN, Infinity, 0]) {
+    const result = deriveAccountExposure(account(), [], [openOrder({ symbol: 'SPY261009P00500000', positionIntent: 'buy_to_open', limitPrice })]);
+    assert.equal(result.pendingOpeningCapitalAtRisk, null);
+  }
+  for (const multiplier of [0, -1, NaN, Infinity]) assert.throws(() => deriveAccountExposure(account(), [], [], multiplier), /MULTIPLIER_INVALID/);
 });
 
 test('documented sell-to-open position intent turns a pending CSP into real reserved assignment exposure', () => {

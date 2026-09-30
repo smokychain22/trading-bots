@@ -29,6 +29,17 @@ test('below every threshold is NORMAL', () => {
   assert.equal(result.regime, 'NORMAL');
 });
 
+test('invalid drawdown never becomes NORMAL and malformed research policy is rejected', () => {
+  const input = { currentDrawdownFraction: 0.1, trailingLossEpisodeCount: null, asOf: '2026-09-26T00:00:00Z' };
+  for (const value of [NaN, Infinity, -Infinity, -0.1]) {
+    assert.equal(classifyAccountDrawdownRegime({ ...input, currentDrawdownFraction: value }, POLICY).regime, 'UNKNOWN');
+  }
+  for (const cautionDrawdownFraction of [NaN, Infinity, -1, 0, 0.1, 0.3]) {
+    assert.throws(() => classifyAccountDrawdownRegime(input, { ...POLICY, cautionDrawdownFraction }), /POLICY_INVALID/);
+  }
+  assert.throws(() => classifyAccountDrawdownRegime({ ...input, asOf: 'invalid' }, POLICY), /ASOF_INVALID/);
+});
+
 test('exactly at the caution threshold is CAUTION (inclusive boundary)', () => {
   const result = classifyAccountDrawdownRegime(
     { currentDrawdownFraction: 0.05, trailingLossEpisodeCount: 1, asOf: '2026-09-26T00:00:00Z' },

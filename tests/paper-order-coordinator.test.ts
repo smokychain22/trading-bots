@@ -3,6 +3,7 @@ import test from 'node:test';
 import { AlpacaPaperBrokerError, type BrokerOrderRequest, type BrokerOrderSnapshot, type PaperBrokerAdapter } from '../src/execution/broker.js';
 import { executionMode, type ExecutionGateContext, type PaperExecutionControl } from '../src/execution/execution-control.js';
 import { InMemoryPaperOrderStore, PaperOrderCoordinator } from '../src/execution/paper-order-coordinator.js';
+import { ORDER_INTENT_TRANSITIONS } from '../src/theta/order-intent-state.js';
 
 const order: BrokerOrderRequest = { symbol: 'AAPL261016P00150000', qty: 1, side: 'sell', type: 'limit', time_in_force: 'day', limit_price: '1.25', client_order_id: 'theta-test-1' };
 const brokerOrder: BrokerOrderSnapshot = { id: 'broker-1', clientOrderId: order.client_order_id, symbol: order.symbol, qty: 1, filledQty: 0, filledAvgPrice: null, side: 'sell', status: 'accepted', limitPrice: 1.25, submittedAt: '2026-09-11T14:30:00Z', replacedBy: null, replaces: null };
@@ -174,7 +175,7 @@ test('replace persists a distinct lineage intent and never increases working exp
 });
 
 test('replace cannot set total quantity equal to an already partial-filled quantity', async () => {
-  const broker = new MockBroker(); broker.lookupResult = { ...brokerOrder, qty: 2, filledQty: 1, status: 'partially_filled' };
+  const broker = new MockBroker(); broker.lookupResult = { ...brokerOrder, clientOrderId: 'theta-partial-original', qty: 2, filledQty: 1, status: 'partially_filled' };
   const store = new InMemoryPaperOrderStore();
   const coordinator = new PaperOrderCoordinator(broker, store, control({ masterEnabled: true, pauseNewOrders: false }));
   await coordinator.prepare({
@@ -189,4 +190,86 @@ test('replace cannot set total quantity equal to an already partial-filled quant
     decisionId: '33333333-3333-4333-8333-333333333333', persistedAt: gate.now, ...executionLineage,
   }, gate), /MAY_NOT_INCREASE/);
   assert.equal(broker.replaceCalls, 0);
+});
+
+test('reconciliation rejects foreign broker identity malformed quantity and unknown status without changing local truth', async () => {
+  for (const overrides of [{ clientOrderId: 'foreign' }, { symbol: 'OTHER' }, { side: 'buy' as const }, { qty: 2 },
+    { positionIntent: 'buy_to_close' as const }, { filledQty: NaN }, { filledQty: 2 }, { status: 'filled', filledQty: 0 },
+    { status: 'provider_new_unknown_state' }]) {
+    const broker = new MockBroker(), store = new InMemoryPaperOrderStore();
+    const coordinator = new PaperOrderCoordinator(broker, store, control());
+    const intent = await prepare(coordinator);
+    await store.transitionIntent(intent.orderIntentId, 'READY', 'SUBMITTING');
+    broker.lookupResult = { ...brokerOrder, ...overrides };
+    await assert.rejects(coordinator.reconcileIntent(intent.orderIntentId), /BROKER_ORDER_(INTENT_IDENTITY_MISMATCH|QUANTITY_INVALID|STATUS_UNKNOWN)/);
+    assert.equal((await store.getIntent(intent.orderIntentId))?.status, 'SUBMITTING');
+    assert.equal(broker.submitCalls + broker.replaceCalls + broker.cancelCalls, 0);
+  }
+});
+
+test('restart at every persisted order state reconciles active evidence or preserves non-submitted and terminal intent without mutation', async () => {
+  for (const status of Object.keys(ORDER_INTENT_TRANSITIONS) as Array<keyof typeof ORDER_INTENT_TRANSITIONS>) {
+    const broker = new MockBroker(), store = new InMemoryPaperOrderStore();
+    const coordinator = new PaperOrderCoordinator(broker, store, control());
+    const intent = await prepare(coordinator);
+    store.intents.set(intent.orderIntentId, { ...intent, status });
+    const untouched = ['PROPOSED', 'PREFLIGHT', 'READY', 'FILLED', 'CANCELED', 'REJECTED', 'EXPIRED'].includes(status);
+    broker.lookupResult = untouched ? null : { ...brokerOrder, status: 'filled', filledQty: 1 };
+    await coordinator.recoverAfterRestart();
+    // Resident PENDING_ORDER_MANAGEMENT also reads activeIntents and invokes
+    // reconcileIntent, independently of interrupted-submit recovery.
+    if (['SUBMITTED', 'ACKNOWLEDGED', 'PARTIAL', 'CANCEL_REQUESTED'].includes(status)) await coordinator.reconcileIntent(intent.orderIntentId);
+    assert.equal((await store.getIntent(intent.orderIntentId))?.status, untouched ? status : 'FILLED', status);
+    assert.equal(broker.submitCalls + broker.replaceCalls + broker.cancelCalls, 0, status);
+    assert.equal(store.attempts.size, 0, status);
+  }
+});
+
+test('fast cancellation and pending cancellation can resolve an interrupted submission', async () => {
+  for (const [brokerStatus, expected] of [['canceled', 'CANCELED'], ['expired', 'EXPIRED'], ['pending_cancel', 'CANCEL_REQUESTED']]) {
+    const broker = new MockBroker(), store = new InMemoryPaperOrderStore();
+    const coordinator = new PaperOrderCoordinator(broker, store, control());
+    const intent = await prepare(coordinator);
+    await store.transitionIntent(intent.orderIntentId, 'READY', 'SUBMITTING');
+    broker.lookupResult = { ...brokerOrder, status: brokerStatus as string };
+    await coordinator.recoverAfterRestart();
+    assert.equal((await store.getIntent(intent.orderIntentId))?.status, expected);
+    assert.equal(broker.submitCalls, 0);
+  }
+});
+
+test('nonfinite promoted EV and unsafe quantity never obtain broker authorization', async () => {
+  for (const ev of [NaN, Infinity, -Infinity]) {
+    const broker = new MockBroker(), store = new InMemoryPaperOrderStore();
+    const coordinator = new PaperOrderCoordinator(broker, store, control({ masterEnabled: true, pauseNewOrders: false }));
+    const intent = await prepare(coordinator);
+    store.intents.set(intent.orderIntentId, { ...intent, authorizationEvidence: { ...intent.authorizationEvidence,
+      executionTier: 'EMPIRICALLY_PROMOTED_PAPER', empiricalEconomicsReady: true, expectedAfterCostEv: ev } });
+    await assert.rejects(coordinator.submit(intent.orderIntentId, gate), /EMPIRICAL_PROMOTION_ECONOMICS_NOT_READY/);
+    assert.equal(broker.submitCalls, 0);
+  }
+  const broker = new MockBroker(), store = new InMemoryPaperOrderStore();
+  const coordinator = new PaperOrderCoordinator(broker, store, control({ masterEnabled: true, pauseNewOrders: false }));
+  const intent = await prepare(coordinator);
+  const qty = Number.MAX_SAFE_INTEGER + 1;
+  store.intents.set(intent.orderIntentId, { ...intent, request: { ...intent.request, qty },
+    authorizationEvidence: { ...intent.authorizationEvidence, canonicalQuantity: qty, paperEvidenceQuantity: qty } });
+  await assert.rejects(coordinator.submit(intent.orderIntentId, gate), /PAPER_EVIDENCE_QUANTITY_INVALID/);
+  assert.equal(broker.submitCalls, 0);
+});
+
+test('replacement of a working risk-opening order cannot bypass a new-entry pause or AEGIS veto', async () => {
+  for (const paused of [true, false]) {
+    const broker = new MockBroker(), store = new InMemoryPaperOrderStore();
+    broker.lookupResult = brokerOrder;
+    const coordinator = new PaperOrderCoordinator(broker, store, control({ masterEnabled: true, pauseNewOrders: paused }));
+    const intent = await prepare(coordinator);
+    await store.transitionIntent(intent.orderIntentId, 'READY', 'SUBMITTING');
+    const replacement = { ...intent, orderIntentId: '44444444-4444-4444-8444-444444444444',
+      request: { ...intent.request, client_order_id: 'replacement', limit_price: '1.20' } };
+    await assert.rejects(coordinator.replace(intent.orderIntentId, replacement,
+      { ...gate, isNewEntry: false, aegisState: paused ? 'ALLOW_FULL' : 'HARD_VETO' }), /NEW_ORDERS_PAUSED|AEGIS_NOT_APPROVED/);
+    assert.equal(broker.replaceCalls, 0);
+    assert.equal(broker.submitCalls, 0);
+  }
 });

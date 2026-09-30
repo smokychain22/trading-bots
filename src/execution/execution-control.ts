@@ -46,7 +46,7 @@ export function evaluateExecutionGate(control: PaperExecutionControl, context: E
   if (!context.optionsCapabilityVerified) blockers.push('OPTIONS_CAPABILITY_NOT_VERIFIED');
   if (!context.intentPersisted) blockers.push('INTENT_NOT_PERSISTED');
   if (operation !== 'CANCEL' && context.isNewEntry && !['ALLOW_FULL', 'ALLOW_REDUCED'].includes(context.aegisState)) blockers.push('AEGIS_NOT_APPROVED');
-  if (!Number.isInteger(context.quantity) || context.quantity <= 0) blockers.push('QUANTITY_NOT_POSITIVE_INTEGER');
+  if (!Number.isSafeInteger(context.quantity) || context.quantity <= 0) blockers.push('QUANTITY_NOT_POSITIVE_INTEGER');
   if (operation !== 'CANCEL' && !context.quoteFresh) blockers.push('QUOTE_NOT_FRESH');
   if (operation !== 'CANCEL' && context.priceEvidence === 'UNVERIFIED') blockers.push('EXECUTABLE_PRICE_EVIDENCE_NOT_VERIFIED');
   const expiresAt = Date.parse(context.decisionExpiresAt);

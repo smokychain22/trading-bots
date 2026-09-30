@@ -58,6 +58,17 @@ export function classifyAccountDrawdownRegime(
   inputs: AccountDrawdownRegimeInputs,
   policy: AccountDrawdownRegimeThresholdPolicy,
 ): AccountDrawdownRegimeResult {
+  const thresholds = [policy.cautionDrawdownFraction, policy.defensiveDrawdownFraction, policy.pauseNewRiskDrawdownFraction];
+  if (!policy.policyVersion.trim() || thresholds.some(value => !Number.isFinite(value) || value <= 0)
+    || policy.cautionDrawdownFraction >= policy.defensiveDrawdownFraction
+    || policy.defensiveDrawdownFraction >= policy.pauseNewRiskDrawdownFraction) {
+    throw new Error('DRAWDOWN_RESEARCH_POLICY_INVALID');
+  }
+  if (!Number.isFinite(Date.parse(inputs.asOf))) throw new Error('DRAWDOWN_RESEARCH_ASOF_INVALID');
+  if (inputs.currentDrawdownFraction !== null
+    && (!Number.isFinite(inputs.currentDrawdownFraction) || inputs.currentDrawdownFraction < 0)) {
+    return { regime: 'UNKNOWN', reason: 'DRAWDOWN_INPUT_INVALID', policyVersion: policy.policyVersion, evaluatedAt: inputs.asOf };
+  }
   if (inputs.currentDrawdownFraction === null) {
     return {
       regime: 'UNKNOWN',

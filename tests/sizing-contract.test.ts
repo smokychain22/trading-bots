@@ -36,3 +36,10 @@ test('non-finite sizing values are rejected', () => {
     assert.throws(() => parseSizingResultResponse(basePayload({ capitalRequired: value })));
   }
 });
+
+test('positive option sizing cannot carry unknown zero or negative collateral', () => {
+  for (const capitalRequired of [null, 0, -1]) {
+    assert.throws(() => parseSizingResultResponse(basePayload({ capitalRequired })));
+  }
+  assert.equal(parseSizingResultResponse(basePayload({ quantity: 0, capitalRequired: null })).quantity, 0);
+});

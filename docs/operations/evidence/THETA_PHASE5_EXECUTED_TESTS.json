@@ -1,0 +1,722 @@
+{
+  "version": "theta-phase5-executed-evidence-v1",
+  "observedAt": "2026-09-30T22:05:40.653Z",
+  "checkoutHead": "075273a175cd2084043c099e925be1c86c3cd9cc",
+  "identityAuthority": "PER_FILE_HASHES_INCLUDE_UNCOMMITTED_CHANGES",
+  "command": "node --import tsx tools/theta-phase3-executed-evidence.ts --phase=5",
+  "executionSucceeded": true,
+  "results": [
+    {
+      "requirementId": "5.1",
+      "reviewedBehavior": "Exactly twelve risk families, strict candidate/decision/snapshot/time/policy identity, serialized consumed input evidence. Risk engine cannot invent upstream source freshness or independent family contract capacity.",
+      "state": "PASS",
+      "scope": "SOURCE_ENGINEERING_ONLY",
+      "runtimeProven": false,
+      "brokerAuthorized": false,
+      "passed": 3,
+      "failed": 0,
+      "blockers": [],
+      "sourceHashes": {
+        "bots/theta/quant/models/aegis.py": "8be03029ea106c5c07c93f2385602a90be5199f35d3cbb34e7c560c2cf7c63ff",
+        "bots/theta/quant/runtime/aegis_contract.py": "d9896d1df50f21a64616595e37529c9fa892e14e203a4a549be9e95f1dc1b2b2",
+        "src/theta/aegis-contract.ts": "18bddcdcda754a3c71a4c926114479f57844f2a81418602475c78a030be852a8",
+        "src/theta/new-risk-orchestrator.ts": "7eedac1d034b84ab1934d6f7887b968a1eb8e8a7b97dda123d8bca0cf5d37f01",
+        "tests/aegis-contract.test.ts": "966eedd35c6f60c5357ed3e46d61427a4f0f4cdcf419ee4486404ed2fb0146c4",
+        "tests/phase5-python-boundaries.test.ts": "060b92778bf1d64158562698eefe93f0e51c7b98cb6c1e42103ce79b46d091b2"
+      },
+      "executedTests": [
+        {
+          "file": "tests/aegis-contract.test.ts",
+          "name": "AEGIS rejects omitted duplicated extra and renamed families even when the reported state is permissive",
+          "state": "PASS",
+          "durationMs": 7.1162,
+          "line": 1
+        },
+        {
+          "file": "tests/aegis-contract.test.ts",
+          "name": "AEGIS response cannot be reused across candidate snapshot decision time or policy",
+          "state": "PASS",
+          "durationMs": 1.3295,
+          "line": 1
+        },
+        {
+          "file": "tests/phase5-python-boundaries.test.ts",
+          "name": "Phase-5 executed Python authority rejects malformed inputs and checks every numeric AEGIS and sizing boundary",
+          "state": "PASS",
+          "durationMs": 415.5826,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "requirementId": "5.2",
+      "reviewedBehavior": "Actual Python risk and sizing authorities execute numeric boundary matrices. Stale/future observation states stay restrictive. Optimal thresholds remain empirical, no policy threshold was loosened.",
+      "state": "PASS",
+      "scope": "SOURCE_ENGINEERING_ONLY",
+      "runtimeProven": false,
+      "brokerAuthorized": false,
+      "passed": 3,
+      "failed": 0,
+      "blockers": [],
+      "sourceHashes": {
+        "bots/theta/quant/models/aegis.py": "8be03029ea106c5c07c93f2385602a90be5199f35d3cbb34e7c560c2cf7c63ff",
+        "bots/theta/quant/models/sizing.py": "3e32dbe2be21885da6b000362348a08b4ade6d8d01379f0d80e9ad5b1e0ff23a",
+        "bots/theta/tests/quant/test_aegis_numeric_boundaries.py": "92d1f1fceb161ddd309d74980969bd9a1da3029279a4c2b6b3e0b7135a652fb4",
+        "bots/theta/tests/quant/test_sizing_numeric_boundaries.py": "0cc1e8aa16a9ab4299167190ff31fed2063ea701e62da32dc00f13178b30b557",
+        "src/research/aegis-stress-baseline-maturity.ts": "b5d64170bea68822558cdb41c8854757db79e560001d0148a48cba97814c36d8",
+        "tests/aegis-stress-baseline-maturity.test.ts": "c36d2efd20a6778ce99eddc7b35bc3bdcd9eadc7e126ea80e28ba1bd01b20e33",
+        "tests/phase5-python-boundaries.test.ts": "060b92778bf1d64158562698eefe93f0e51c7b98cb6c1e42103ce79b46d091b2"
+      },
+      "executedTests": [
+        {
+          "file": "tests/phase5-python-boundaries.test.ts",
+          "name": "Phase-5 executed Python authority rejects malformed inputs and checks every numeric AEGIS and sizing boundary",
+          "state": "PASS",
+          "durationMs": 415.5826,
+          "line": 1
+        },
+        {
+          "file": "tests/aegis-stress-baseline-maturity.test.ts",
+          "name": "cold-start baseline cannot hide a stale or invalid current observation",
+          "state": "PASS",
+          "durationMs": 0.3195,
+          "line": 1
+        },
+        {
+          "file": "tests/aegis-stress-baseline-maturity.test.ts",
+          "name": "future-available historical evidence cannot make the detector ready",
+          "state": "PASS",
+          "durationMs": 0.1343,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "requirementId": "5.3",
+      "reviewedBehavior": "Candidate-bound USD budget explains existing canonical caps, broker capacity separately from AEGIS. Additional cash reserve and strategy dollar allocation are explicitly NOT_CONFIGURED, never invented zeros. Drawdown sizing is research-only until policy/calibration approval.",
+      "state": "PASS",
+      "scope": "SOURCE_ENGINEERING_ONLY",
+      "runtimeProven": false,
+      "brokerAuthorized": false,
+      "passed": 5,
+      "failed": 0,
+      "blockers": [],
+      "sourceHashes": {
+        "src/theta/account-exposure.ts": "78f18509021178f35e363eceee39ec1a85b8875f8b22d5d6a97230923f912a19",
+        "src/theta/canonical-strategy-frontier.ts": "da104e425ad7347d976832666f03633ec69a4c69996a7d65df73080de262d0eb",
+        "src/theta/capital-budget-evidence.ts": "df187fa320f6f1f4c8ef4b39e28dc62b0658bbd1277fb22d6f3174e262fba917",
+        "src/theta/theta-shadow-cycle.ts": "988ff8ec23b5de790082eeabea0a779934e6ac4ed1999ea5e59fde47e0030d3b",
+        "tests/account-exposure.test.ts": "f3ef498d322e6cb11a635c5a315c522dd261b962fe349f1a7953c76673299bb7",
+        "tests/phase4-aegis-sizing-capacity.test.ts": "3306c30a1e2a69ce23f8c0eb870e4c51351ec3859ac69ba8c877910065ebb030"
+      },
+      "executedTests": [
+        {
+          "file": "tests/phase4-aegis-sizing-capacity.test.ts",
+          "name": "canonical sizing waterfall preserves broker and policy capacities separately from AEGIS with candidate identity",
+          "state": "PASS",
+          "durationMs": 22.4313,
+          "line": 1
+        },
+        {
+          "file": "tests/phase4-aegis-sizing-capacity.test.ts",
+          "name": "inapplicable router retains counterfactual capacities but allocates zero final capital",
+          "state": "PASS",
+          "durationMs": 3.2216,
+          "line": 1
+        },
+        {
+          "file": "tests/account-exposure.test.ts",
+          "name": "unclassifiable position quantity or asset never becomes zero portfolio exposure",
+          "state": "PASS",
+          "durationMs": 2.1189,
+          "line": 1
+        },
+        {
+          "file": "tests/account-exposure.test.ts",
+          "name": "long option marks count as current capital at risk without inventing a short-leg hedge offset",
+          "state": "PASS",
+          "durationMs": 0.6677,
+          "line": 1
+        },
+        {
+          "file": "tests/account-exposure.test.ts",
+          "name": "uncovered short calls cannot masquerade as an empty portfolio and covered shares are counted only once",
+          "state": "PASS",
+          "durationMs": 0.5291,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "requirementId": "5.4",
+      "reviewedBehavior": "Integer capacity minimum, reduced risk multiplier, honest zero and invalid/missing input explanations persist through archive/T0. No empirical confidence multiplier is granted before calibration.",
+      "state": "PASS",
+      "scope": "SOURCE_ENGINEERING_ONLY",
+      "runtimeProven": false,
+      "brokerAuthorized": false,
+      "passed": 4,
+      "failed": 0,
+      "blockers": [],
+      "sourceHashes": {
+        "src/theta/canonical-strategy-frontier.ts": "da104e425ad7347d976832666f03633ec69a4c69996a7d65df73080de262d0eb",
+        "src/theta/postgres-cycle-evidence-storage.ts": "a5db052bfa9a0392f44f5f4ccd55b019b8f335b69985e61410ea1b3a26889705",
+        "src/theta/sizing-contract.ts": "0bd79b8af0c2dc77ca2aebd55241f226c46f657974c9d33d0f3c3e92b1c02065",
+        "tests/phase4-aegis-sizing-capacity.test.ts": "3306c30a1e2a69ce23f8c0eb870e4c51351ec3859ac69ba8c877910065ebb030",
+        "tests/postgres-cycle-evidence-storage.test.ts": "4653a12218a5bb69f74468ab0361447d5a1d3262a517d2aeda0a0a35bd320268"
+      },
+      "executedTests": [
+        {
+          "file": "tests/phase4-aegis-sizing-capacity.test.ts",
+          "name": "sizing waterfall preserves missing and invalid capacities without reporting them as known zero",
+          "state": "PASS",
+          "durationMs": 4.6244,
+          "line": 1
+        },
+        {
+          "file": "tests/phase4-aegis-sizing-capacity.test.ts",
+          "name": "CAPACITY MONOTONICITY (item 78): reducing buying power can only reduce or hold quantity, never increase it",
+          "state": "PASS",
+          "durationMs": 2.5995,
+          "line": 1
+        },
+        {
+          "file": "tests/phase4-aegis-sizing-capacity.test.ts",
+          "name": "CAPACITY MONOTONICITY (item 78): a worse AEGIS state can only reduce or hold quantity, never increase it",
+          "state": "PASS",
+          "durationMs": 2.4161,
+          "line": 1
+        },
+        {
+          "file": "tests/postgres-cycle-evidence-storage.test.ts",
+          "name": "the real packed PostgreSQL archive feeds provider-free same-source T0 replay",
+          "state": "PASS",
+          "durationMs": 452.1492,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "requirementId": "5.5",
+      "reviewedBehavior": "Eight offline sizing challengers and deterministic file-input CLI. Caller-supplied calibration metadata is not an empirical artifact certificate. Unknown probabilities/payoffs stay blocked. None can control Production.",
+      "state": "PASS",
+      "scope": "SOURCE_ENGINEERING_ONLY",
+      "runtimeProven": false,
+      "brokerAuthorized": false,
+      "passed": 4,
+      "failed": 0,
+      "blockers": [],
+      "sourceHashes": {
+        "src/research/sizing-challenger-replay.ts": "d0958965574db22ab5b4ea825a4185725515e8e42d9ea9c68c88de6e7a45f357",
+        "tests/sizing-challenger-replay.test.ts": "35af1f3b75bdd3f9335891583cd00cdf02608ba31ad9187640e9ce1bd97db68a",
+        "tools/theta-sizing-challengers.ts": "86258039d32789a0e628280ff2410529c20423a4aec8fbadd8749e5b43d0abf6"
+      },
+      "executedTests": [
+        {
+          "file": "tests/sizing-challenger-replay.test.ts",
+          "name": "eight sizing challengers execute distinct explicit formulas without changing Production or granting promotion",
+          "state": "PASS",
+          "durationMs": 16.1067,
+          "line": 1
+        },
+        {
+          "file": "tests/sizing-challenger-replay.test.ts",
+          "name": "missing required evidence stays null while measured zero capacity stays zero",
+          "state": "PASS",
+          "durationMs": 2.4472,
+          "line": 1
+        },
+        {
+          "file": "tests/sizing-challenger-replay.test.ts",
+          "name": "Kelly rejects uncalibrated mismatched immature future and numerically invalid evidence",
+          "state": "PASS",
+          "durationMs": 2.0389,
+          "line": 1
+        },
+        {
+          "file": "tests/sizing-challenger-replay.test.ts",
+          "name": "offline CLI consumes explicit experiment file and emits a deterministic replay receipt without providers",
+          "state": "PASS",
+          "durationMs": 274.3516,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "requirementId": "5.6",
+      "reviewedBehavior": "Empirical descriptive tail statistics stay separate from calibrated forecasts, malformed drawdown cannot become NORMAL, missing cohort components stay unknown, zero independent N cannot borrow raw confidence. Live stress maturity and correlated inputs preserve PIT.",
+      "state": "PASS",
+      "scope": "SOURCE_ENGINEERING_ONLY",
+      "runtimeProven": false,
+      "brokerAuthorized": false,
+      "passed": 6,
+      "failed": 0,
+      "blockers": [],
+      "sourceHashes": {
+        "src/research/account-drawdown-regime-research.ts": "bd34b5bcd39421c80bc7e376bda089d4e39b3b5ea7bcb66b14698ee4d5215e9d",
+        "src/research/aegis-stress-baseline-maturity.ts": "b5d64170bea68822558cdb41c8854757db79e560001d0148a48cba97814c36d8",
+        "src/research/defined-risk-vs-csp-paired-study.ts": "394e1f3b433312f07d58cdd0dd7113f5686cde87700005d016eada3a1274d291",
+        "src/research/r8-performance-analytics.ts": "3d6cea62b81f3c20c12c15c629ab4c53837d6c1085c1b75dedae5e8d51c2fece",
+        "tests/account-drawdown-regime-research.test.ts": "b5ded9bd35716ac58dc3196601705639d47f4288879cf392d3cc4e6e673d3292",
+        "tests/correlation-evidence.test.ts": "0573d7fa29ceaf2dd4cbaca1d336b28a5b72203066e4c4efd0fa90c5fc9c8659",
+        "tests/defined-risk-vs-csp-paired-study.test.ts": "616f2d035dbb956bb8cbe81ff85db13523c697b9b178b27f292f585b590ca24d",
+        "tests/r8-performance-analytics.test.ts": "26a4e5cd1e68c2aa21ef772bbe38d541691bf5e5680feda51eba8315bb272236"
+      },
+      "executedTests": [
+        {
+          "file": "tests/r8-performance-analytics.test.ts",
+          "name": "explicit zero independent N cannot borrow raw sample confidence",
+          "state": "PASS",
+          "durationMs": 0.4995,
+          "line": 1
+        },
+        {
+          "file": "tests/r8-performance-analytics.test.ts",
+          "name": "empirical tail uses fractional boundary mass and finite aggregates stay finite or unknown",
+          "state": "PASS",
+          "durationMs": 0.7243,
+          "line": 1
+        },
+        {
+          "file": "tests/defined-risk-vs-csp-paired-study.test.ts",
+          "name": "cohort tail and gross statistics preserve missing evidence and never call MAE portfolio drawdown",
+          "state": "PASS",
+          "durationMs": 0.7612,
+          "line": 1
+        },
+        {
+          "file": "tests/account-drawdown-regime-research.test.ts",
+          "name": "invalid drawdown never becomes NORMAL and malformed research policy is rejected",
+          "state": "PASS",
+          "durationMs": 1.1343,
+          "line": 1
+        },
+        {
+          "file": "tests/correlation-evidence.test.ts",
+          "name": "computes pairwise evidence only from synchronized PIT returns",
+          "state": "PASS",
+          "durationMs": 4.8017,
+          "line": 1
+        },
+        {
+          "file": "tests/correlation-evidence.test.ts",
+          "name": "insufficient overlap and zero variance remain UNKNOWN",
+          "state": "PASS",
+          "durationMs": 0.8719,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "requirementId": "5.7",
+      "reviewedBehavior": "All persisted order-state restart paths are tested against mock broker truth. Resident active-order reconciliation remains separate from ambiguous-submission recovery. Exact identity and malformed statuses fail closed.",
+      "state": "PASS",
+      "scope": "SOURCE_ENGINEERING_ONLY",
+      "runtimeProven": false,
+      "brokerAuthorized": false,
+      "passed": 3,
+      "failed": 0,
+      "blockers": [],
+      "sourceHashes": {
+        "src/execution/paper-order-coordinator.ts": "f891524ff8b4f52b7b298bfaed70d640fd5fe733ed5cf10e7487cf45db77fcf7",
+        "src/theta/autonomous-runtime.ts": "bc368cd815d6407c4a7c61e07022ed17910e0fd450048a882322fb4cacf94244",
+        "src/theta/order-intent-state.ts": "81912dd15430ebd83b5f5387bcb96d5178a7dfc526e2ac317bc6b70a599b6e41",
+        "tests/paper-order-coordinator.test.ts": "6029da30153d14205ac702adefb2aacba1de5af6a0c742799adf01ac792f6129"
+      },
+      "executedTests": [
+        {
+          "file": "tests/paper-order-coordinator.test.ts",
+          "name": "restart at every persisted order state reconciles active evidence or preserves non-submitted and terminal intent without mutation",
+          "state": "PASS",
+          "durationMs": 1.5457,
+          "line": 1
+        },
+        {
+          "file": "tests/paper-order-coordinator.test.ts",
+          "name": "fast cancellation and pending cancellation can resolve an interrupted submission",
+          "state": "PASS",
+          "durationMs": 0.7373,
+          "line": 1
+        },
+        {
+          "file": "tests/paper-order-coordinator.test.ts",
+          "name": "reconciliation rejects foreign broker identity malformed quantity and unknown status without changing local truth",
+          "state": "PASS",
+          "durationMs": 1.7987,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "requirementId": "5.8",
+      "reviewedBehavior": "Lost response or post-acceptance local write failure remains reconcile-before-retry. Deterministic client order identity prevents blind resubmit.",
+      "state": "PASS",
+      "scope": "SOURCE_ENGINEERING_ONLY",
+      "runtimeProven": false,
+      "brokerAuthorized": false,
+      "passed": 4,
+      "failed": 0,
+      "blockers": [],
+      "sourceHashes": {
+        "src/execution/master-paper-execution-orchestrator.ts": "675c5f936ae3eca323da52e2bf0cee50163461b5b3c469b911d9f059d28df544",
+        "src/execution/paper-order-coordinator.ts": "f891524ff8b4f52b7b298bfaed70d640fd5fe733ed5cf10e7487cf45db77fcf7",
+        "tests/master-paper-execution-orchestrator.test.ts": "f42621f303b6e078f5d469f75772233eb9befa4a513c786e790df9287e7b49f7",
+        "tests/paper-order-coordinator.test.ts": "6029da30153d14205ac702adefb2aacba1de5af6a0c742799adf01ac792f6129"
+      },
+      "executedTests": [
+        {
+          "file": "tests/paper-order-coordinator.test.ts",
+          "name": "ambiguous submission reconciles by client_order_id and never retries submit",
+          "state": "PASS",
+          "durationMs": 0.992,
+          "line": 1
+        },
+        {
+          "file": "tests/paper-order-coordinator.test.ts",
+          "name": "ambiguous submission absent at broker stays RECONCILING and never blindly retries",
+          "state": "PASS",
+          "durationMs": 0.7135,
+          "line": 1
+        },
+        {
+          "file": "tests/paper-order-coordinator.test.ts",
+          "name": "a local write failure after broker acceptance remains restart-recoverable, never REJECTED",
+          "state": "PASS",
+          "durationMs": 0.8171,
+          "line": 1
+        },
+        {
+          "file": "tests/master-paper-execution-orchestrator.test.ts",
+          "name": "an unresolved prior submission blocks a different new order",
+          "state": "PASS",
+          "durationMs": 0.6111,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "requirementId": "5.9",
+      "reviewedBehavior": "Multi-contract partial close preserves actual realized economics and remaining exposure. Later fills count prior partial economics once. Partial roll close cannot open successor leg.",
+      "state": "PASS",
+      "scope": "SOURCE_ENGINEERING_ONLY",
+      "runtimeProven": false,
+      "brokerAuthorized": false,
+      "passed": 3,
+      "failed": 0,
+      "blockers": [],
+      "sourceHashes": {
+        "src/execution/broker-fill-lifecycle-router.ts": "b0fd3771ee46f92c8b1a1bc1f5303ab70a42395d41669d9e96b220d8ba5416c2",
+        "tests/broker-fill-lifecycle-router.test.ts": "7e2c204f3caf45c624af02c2153dc85774c45db94b014e0f1d6ac426042d85f6"
+      },
+      "executedTests": [
+        {
+          "file": "tests/broker-fill-lifecycle-router.test.ts",
+          "name": "terminal partial close records cumulative actual-fill economics and leaves the remainder open",
+          "state": "PASS",
+          "durationMs": 0.8052,
+          "line": 1
+        },
+        {
+          "file": "tests/broker-fill-lifecycle-router.test.ts",
+          "name": "a later close of the remaining quantity includes prior partial realized economics exactly once",
+          "state": "PASS",
+          "durationMs": 0.4371,
+          "line": 1
+        },
+        {
+          "file": "tests/broker-fill-lifecycle-router.test.ts",
+          "name": "terminal partial roll close never authorizes a successor leg",
+          "state": "PASS",
+          "durationMs": 1.3696,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "requirementId": "5.10",
+      "reviewedBehavior": "Exact executable quote and identity refresh has independently governed freshness, network-delay-aware expiry, safety/AEGIS requirements and GET-only preparation. Replacement cannot bypass pause/veto by falsely labeling a risk-opening order risk-reducing.",
+      "state": "PASS",
+      "scope": "SOURCE_ENGINEERING_ONLY",
+      "runtimeProven": false,
+      "brokerAuthorized": false,
+      "passed": 5,
+      "failed": 0,
+      "blockers": [],
+      "sourceHashes": {
+        "src/execution/execution-option-quote.ts": "cd7134e5a877501f5ceff293a0d8e5dcbd566b85ee2a84b6ed24cef6d9a08506",
+        "src/execution/master-paper-action-handoff.ts": "16fa810463322f92b260d2d14708848b41e21cbea4613152825092128879dc5d",
+        "src/execution/paper-order-coordinator.ts": "f891524ff8b4f52b7b298bfaed70d640fd5fe733ed5cf10e7487cf45db77fcf7",
+        "tests/master-paper-action-handoff.test.ts": "a0e725d7e8316b0a815e3f0a30714e002573b693f587a02d47b04f7a66cb3e95",
+        "tests/paper-order-coordinator.test.ts": "6029da30153d14205ac702adefb2aacba1de5af6a0c742799adf01ac792f6129"
+      },
+      "executedTests": [
+        {
+          "file": "tests/master-paper-action-handoff.test.ts",
+          "name": "pre-submit evaluates fresh quotes after the request and includes network delay in age and expiry",
+          "state": "PASS",
+          "durationMs": 7.3806,
+          "line": 1
+        },
+        {
+          "file": "tests/master-paper-action-handoff.test.ts",
+          "name": "new-risk handoff rejects a tampered AEGIS assessment identity before broker mutation",
+          "state": "PASS",
+          "durationMs": 2.4508,
+          "line": 1
+        },
+        {
+          "file": "tests/master-paper-action-handoff.test.ts",
+          "name": "live tiers and stale or wrong contract evidence never reach broker submission",
+          "state": "PASS",
+          "durationMs": 2.6824,
+          "line": 1
+        },
+        {
+          "file": "tests/master-paper-action-handoff.test.ts",
+          "name": "read-only preparation proves the exact pre-submit boundary without a broker or coordinator",
+          "state": "PASS",
+          "durationMs": 2.3967,
+          "line": 1
+        },
+        {
+          "file": "tests/paper-order-coordinator.test.ts",
+          "name": "replacement of a working risk-opening order cannot bypass a new-entry pause or AEGIS veto",
+          "state": "PASS",
+          "durationMs": 0.9035,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "requirementId": "5.11",
+      "reviewedBehavior": "Dedicated Paper authority requires environment plus immutable owner authorization, schema and operational evidence. All current execution stays locked. Tests use synthetic owner grants, never actual order permission.",
+      "state": "PASS",
+      "scope": "SOURCE_ENGINEERING_ONLY",
+      "runtimeProven": false,
+      "brokerAuthorized": false,
+      "passed": 4,
+      "failed": 0,
+      "blockers": [],
+      "sourceHashes": {
+        "src/execution/paper-execution-authorization.ts": "71c08f2f2c6b72a35469d473785442539c18b1bbc859947ccf985268746173cb",
+        "tests/paper-execution-authorization.test.ts": "04f6170d9e3a11938cb919c7aa85c42ec2178957e48a55f64ae280177bd80d2f"
+      },
+      "executedTests": [
+        {
+          "file": "tests/paper-execution-authorization.test.ts",
+          "name": "full execution lock disables every submission lane and preserves authorization provenance",
+          "state": "PASS",
+          "durationMs": 3.0554,
+          "line": 1
+        },
+        {
+          "file": "tests/paper-execution-authorization.test.ts",
+          "name": "master authority requires both environment opt-in and immutable authorization lineage",
+          "state": "PASS",
+          "durationMs": 0.2761,
+          "line": 1
+        },
+        {
+          "file": "tests/paper-execution-authorization.test.ts",
+          "name": "first canary activation requires every Paper-only operational gate",
+          "state": "PASS",
+          "durationMs": 0.4322,
+          "line": 1
+        },
+        {
+          "file": "tests/paper-execution-authorization.test.ts",
+          "name": "first canary activation rejects follower/live-adjacent state, stale evidence, and any prior order",
+          "state": "PASS",
+          "durationMs": 0.3729,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "requirementId": "5.12",
+      "reviewedBehavior": "Follower copies economic intent through independent integer capacities and current qualified quotes, with explicit divergence. Locked risk-reducing exits retain exit supremacy. Follower persistence cleans up transactions on failures.",
+      "state": "PASS",
+      "scope": "SOURCE_ENGINEERING_ONLY",
+      "runtimeProven": false,
+      "brokerAuthorized": false,
+      "passed": 5,
+      "failed": 0,
+      "blockers": [],
+      "sourceHashes": {
+        "src/customer/copy-engine-contract.ts": "6a217433318549732e2d60ee64c3947a1beb6d60ebdfffd77438d913519bcc9c",
+        "src/customer/follower-paper-runtime.ts": "8437197b3932ceb72c0d8b982b56225fa82d07e6d05c52ebd09bde057b04c6c1",
+        "src/customer/postgres-follower-paper-runtime.ts": "d60d98951356307707a3e80b8dd5b5cf363d8d1f5ecc3da76d878f2d6749bc05",
+        "tests/copy-engine-contract.test.ts": "50a631c41e2e706d58949c318a076d33ea71da4f10c0d469d6746f1e5c98689d",
+        "tests/follower-paper-runtime.test.ts": "88790a3f395dc046ab7a525c6f2a1985be4a65eca168de7e50c6ffbc558db561",
+        "tests/follower-runtime-transactions.test.ts": "3e17aeaa741656a517e7aaddbcfbc75837ba215ec927b1ddb686859c3d09bc5e"
+      },
+      "executedTests": [
+        {
+          "file": "tests/copy-engine-contract.test.ts",
+          "name": "master quantity five adapts to follower quantities two, one, and zero",
+          "state": "PASS",
+          "durationMs": 14.1211,
+          "line": 1
+        },
+        {
+          "file": "tests/copy-engine-contract.test.ts",
+          "name": "each follower capacity independently binds and zero is never forced to one",
+          "state": "PASS",
+          "durationMs": 3.0282,
+          "line": 1
+        },
+        {
+          "file": "tests/follower-paper-runtime.test.ts",
+          "name": "follower Paper action plan uses current qualified BBO and remains non-submittable",
+          "state": "PASS",
+          "durationMs": 19.6094,
+          "line": 1
+        },
+        {
+          "file": "tests/follower-paper-runtime.test.ts",
+          "name": "follower exit supremacy allows only locked risk-reducing plans under veto",
+          "state": "PASS",
+          "durationMs": 22.2399,
+          "line": 1
+        },
+        {
+          "file": "tests/follower-runtime-transactions.test.ts",
+          "name": "follower rollback failure discards the client and lost COMMIT is unknown without automatic retry",
+          "state": "PASS",
+          "durationMs": 6.6751,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "requirementId": "5.13",
+      "reviewedBehavior": "Duplicate signals, disconnected account, stale quotes, partial/rejected/ambiguous orders, manual position divergence, pending master-close/roll races and restart remain explicit without automatic retry.",
+      "state": "PASS",
+      "scope": "SOURCE_ENGINEERING_ONLY",
+      "runtimeProven": false,
+      "brokerAuthorized": false,
+      "passed": 7,
+      "failed": 0,
+      "blockers": [],
+      "sourceHashes": {
+        "src/customer/copy-engine-contract.ts": "6a217433318549732e2d60ee64c3947a1beb6d60ebdfffd77438d913519bcc9c",
+        "src/customer/follower-paper-runtime.ts": "8437197b3932ceb72c0d8b982b56225fa82d07e6d05c52ebd09bde057b04c6c1",
+        "tests/copy-engine-contract.test.ts": "50a631c41e2e706d58949c318a076d33ea71da4f10c0d469d6746f1e5c98689d",
+        "tests/follower-paper-runtime.test.ts": "88790a3f395dc046ab7a525c6f2a1985be4a65eca168de7e50c6ffbc558db561"
+      },
+      "executedTests": [
+        {
+          "file": "tests/copy-engine-contract.test.ts",
+          "name": "stable copy identities make duplicate events and webhook replays no-ops",
+          "state": "PASS",
+          "durationMs": 1.2533,
+          "line": 1
+        },
+        {
+          "file": "tests/copy-engine-contract.test.ts",
+          "name": "OAuth disconnect, stale quote, and slippage failure block safely",
+          "state": "PASS",
+          "durationMs": 1.0294,
+          "line": 1
+        },
+        {
+          "file": "tests/copy-engine-contract.test.ts",
+          "name": "partial fill, rejection, and ambiguous submission never trigger a blind retry",
+          "state": "PASS",
+          "durationMs": 0.8919,
+          "line": 1
+        },
+        {
+          "file": "tests/copy-engine-contract.test.ts",
+          "name": "master close or roll before follower fill must reconcile the pending order without planning duplicate exposure",
+          "state": "PASS",
+          "durationMs": 1.9085,
+          "line": 1
+        },
+        {
+          "file": "tests/copy-engine-contract.test.ts",
+          "name": "an unlinked existing follower position is divergence even when the copied ledger quantity is zero",
+          "state": "PASS",
+          "durationMs": 0.6518,
+          "line": 1
+        },
+        {
+          "file": "tests/follower-paper-runtime.test.ts",
+          "name": "follower lifecycle divergence covers missed entry, fills, rolls, assignment, recovery, CC, call-away and restart",
+          "state": "PASS",
+          "durationMs": 35.4553,
+          "line": 1
+        },
+        {
+          "file": "tests/follower-paper-runtime.test.ts",
+          "name": "follower plan rejects malformed quantity and reconciliation rejects wrong side or position intent",
+          "state": "PASS",
+          "durationMs": 5.858,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "requirementId": "5.14",
+      "reviewedBehavior": "Engineering denominator is per-case executed evidence, not an inherited global certificate. Canonical decision authority, eleven hard-rule families and sovereign mutation coordinator remain separate from empirical optimality, current-worker validation and owner permission.",
+      "state": "PASS",
+      "scope": "SOURCE_ENGINEERING_ONLY",
+      "runtimeProven": false,
+      "brokerAuthorized": false,
+      "passed": 5,
+      "failed": 0,
+      "blockers": [],
+      "sourceHashes": {
+        "src/operations/executed-requirement-evidence.ts": "281e997e75b7b093d872291288c2f06492ecea49e29e3c6f30faa3d2e5be3b5e",
+        "src/theta/canonical-decision-authority.ts": "32c2ea86555ff855d2e0b5fb3b8c194ee42438bccd2df110754c8f37273d4c82",
+        "tests/executed-requirement-evidence.test.ts": "408832f02d9a38348777db95f64109783d0c1d1a62b950db951b84dd765dff86",
+        "tests/phase5-authority-structure.test.ts": "cca8c61581d0d44fff6386982acde398f7ac77d675c391dafeaaeeeb7578c223"
+      },
+      "executedTests": [
+        {
+          "file": "tests/executed-requirement-evidence.test.ts",
+          "name": "closure requires the exact executed file and case with bound source and test hashes",
+          "state": "PASS",
+          "durationMs": 2.577,
+          "line": 1
+        },
+        {
+          "file": "tests/executed-requirement-evidence.test.ts",
+          "name": "a failing companion prevents a selected pass from laundering the suite failure",
+          "state": "PASS",
+          "durationMs": 0.4019,
+          "line": 1
+        },
+        {
+          "file": "tests/phase5-authority-structure.test.ts",
+          "name": "all five product strategies carry the exact eleven governed hard-rule families",
+          "state": "PASS",
+          "durationMs": 2.4703,
+          "line": 1
+        },
+        {
+          "file": "tests/phase5-authority-structure.test.ts",
+          "name": "PaperOrderCoordinator is the sole source caller of broker mutation methods",
+          "state": "PASS",
+          "durationMs": 3.0371,
+          "line": 1
+        },
+        {
+          "file": "tests/phase5-authority-structure.test.ts",
+          "name": "the sovereign decision quantity comes from the canonical frontier, never the subordinate receipt",
+          "state": "PASS",
+          "durationMs": 1.4902,
+          "line": 1
+        }
+      ]
+    }
+  ],
+  "passed": 235,
+  "failed": 0,
+  "skipped": 0,
+  "currentWorkerProven": false,
+  "brokerAuthorized": false,
+  "providerRequests": 0,
+  "brokerMutations": 0,
+  "scope": "REVIEWED_SOURCE_ENGINEERING_NOT_L7_OR_EMPIRICAL",
+  "artifactHash": "eee1d9ac1ad29574dc825dbc91de9de3b23b4da2c146bcaacef3a84f6604568a"
+}

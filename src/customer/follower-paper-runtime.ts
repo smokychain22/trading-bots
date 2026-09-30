@@ -66,10 +66,13 @@ export function assembleLockedFollowerPaperActionPlan(input:AssembleFollowerPape
     maximumQuoteAgeMs:z.number().int().positive(),marketOpen:z.boolean(),
   }).parse(input);
   const action=orderActionSchema.parse(input.copyPlan.action);
+  if (!Number.isSafeInteger(input.copyPlan.intendedQuantity) || input.copyPlan.intendedQuantity < 0)
+    throw new Error('FOLLOWER_COPY_QUANTITY_INVALID');
   if(input.copyPlan.executionAuthorized!==false)throw new Error('FOLLOWER_COPY_PLAN_MUST_BE_LOCKED');
   if(input.copyPlan.nextAction!=='PERSIST_PLAN'||input.copyPlan.intendedQuantity<=0)
     throw new Error('FOLLOWER_COPY_PLAN_NOT_ORDERABLE');
-  if(!['ALLOW_FULL','ALLOW_REDUCED'].includes(parsed.aegisState))throw new Error('FOLLOWER_AEGIS_NOT_APPROVED');
+  const opensRisk=['OPEN_CSP','ROLL_CSP_OPEN','OPEN_CC','ROLL_CC_OPEN'].includes(action);
+  if(opensRisk&&!['ALLOW_FULL','ALLOW_REDUCED'].includes(parsed.aegisState))throw new Error('FOLLOWER_AEGIS_NOT_APPROVED');
   if(Date.parse(parsed.decisionExpiresAt)<=Date.parse(parsed.now))throw new Error('FOLLOWER_DECISION_EXPIRED');
   assertNoSecretShapedKeys(input.quote);
   const decisionWindowMs=Date.parse(parsed.decisionExpiresAt)-Date.parse(parsed.now);
@@ -115,7 +118,12 @@ export function classifyFollowerOrderReconciliation(input:{
   if(input.plan.executionAuthorized!==false)throw new Error('FOLLOWER_ACTION_PLAN_MUST_BE_LOCKED');
   const order=input.brokerOrder;
   if(order===null)return {state:'BROKER_ABSENT',filledQuantity:0,requiresReconciliation:false};
+  if (!Number.isFinite(order.qty) || !Number.isFinite(order.filledQty))
+    throw new Error('FOLLOWER_BROKER_QUANTITY_INVALID');
   if(order.clientOrderId!==input.plan.clientOrderId||order.symbol!==input.plan.symbol)
+    return {state:'UNKNOWN_SUBMISSION',filledQuantity:order.filledQty,requiresReconciliation:true};
+  if(order.side.toUpperCase()!==input.plan.side || (order.positionIntent != null
+    && order.positionIntent.toUpperCase()!==input.plan.positionIntent))
     return {state:'UNKNOWN_SUBMISSION',filledQuantity:order.filledQty,requiresReconciliation:true};
   if(order.qty!==input.plan.quantity||order.filledQty<0||order.filledQty>order.qty)
     return {state:'UNKNOWN_SUBMISSION',filledQuantity:order.filledQty,requiresReconciliation:true};

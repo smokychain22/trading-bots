@@ -18,11 +18,11 @@ const quote:ExecutionOptionQuote={contractVersion:'execution-option-quote-v1',co
   receivedAtMonotonic:10,sequence:1,provider:'ALPACA',sourceSemantics:'CONSOLIDATED_NBBO',
   connectionState:'CONNECTED',subscriptionState:'ACTIVE',
   provenance:{authenticated:true,exactContractMapping:true,documentedForOrderPricing:true}};
-const assemble=(action:FollowerCopyPlan['action']='OPEN_CSP')=>assembleLockedFollowerPaperActionPlan({
+const assemble=(action:FollowerCopyPlan['action']='OPEN_CSP', overrides:Partial<Parameters<typeof assembleLockedFollowerPaperActionPlan>[0]>={})=>assembleLockedFollowerPaperActionPlan({
   copyPlan:copyPlan(action),workspaceId:'10000000-0000-4000-8000-000000000001',
   followerAccountId:'10000000-0000-4000-8000-000000000002',symbol:'AAPL261016P00150000',quote,
   proposedLimit:1.25,aegisState:'ALLOW_FULL',aegisPolicyVersion:'follower-aegis-v1',
-  now:'2026-09-15T14:30:00.200Z',decisionExpiresAt:'2026-09-15T14:30:05.000Z',maximumQuoteAgeMs:1000,marketOpen:true});
+  now:'2026-09-15T14:30:00.200Z',decisionExpiresAt:'2026-09-15T14:30:05.000Z',maximumQuoteAgeMs:1000,marketOpen:true,...overrides});
 
 test('follower Paper action plan uses current qualified BBO and remains non-submittable',()=>{
   const plan=assemble();
@@ -118,4 +118,27 @@ test('all option order actions retain explicit position intent',()=>{
     ['SELL_STOCK','SELL',null],
   ];
   for(const [action,side,intent] of cases){const plan=assemble(action);assert.equal(plan.side,side);assert.equal(plan.positionIntent,intent);}
+});
+
+test('follower exit supremacy allows only locked risk-reducing plans under veto', () => {
+  for (const aegisState of ['HOLD_ONLY', 'HARD_VETO'] as const) {
+    for (const action of ['CLOSE_CSP', 'REDUCE_CSP', 'ROLL_CSP_CLOSE', 'CLOSE_CC', 'REDUCE_CC', 'ROLL_CC_CLOSE', 'SELL_STOCK'] as const) {
+      const plan = assemble(action, { aegisState });
+      assert.equal(plan.executionAuthorized, false);
+      assert.equal(plan.aegisState, aegisState);
+    }
+    for (const action of ['OPEN_CSP', 'ROLL_CSP_OPEN', 'OPEN_CC', 'ROLL_CC_OPEN'] as const)
+      assert.throws(() => assemble(action, { aegisState }), /FOLLOWER_AEGIS_NOT_APPROVED/);
+  }
+});
+
+test('follower plan rejects malformed quantity and reconciliation rejects wrong side or position intent', () => {
+  for (const intendedQuantity of [NaN, Infinity, -1, 0.5, Number.MAX_SAFE_INTEGER + 1])
+    assert.throws(() => assemble('OPEN_CSP', { copyPlan: { ...copyPlan(), intendedQuantity } }), /QUANTITY_INVALID/);
+  const plan = assemble();
+  const order = { id: 'broker-1', clientOrderId: plan.clientOrderId, symbol: plan.symbol, qty: 2, filledQty: 2,
+    filledAvgPrice: 1.25, side: 'sell' as const, status: 'filled', limitPrice: 1.25, submittedAt: null, replacedBy: null, replaces: null };
+  assert.equal(classifyFollowerOrderReconciliation({ plan, brokerOrder: { ...order, side: 'buy' } }).state, 'UNKNOWN_SUBMISSION');
+  assert.equal(classifyFollowerOrderReconciliation({ plan, brokerOrder: { ...order, positionIntent: 'buy_to_close' } }).state, 'UNKNOWN_SUBMISSION');
+  assert.throws(() => classifyFollowerOrderReconciliation({ plan, brokerOrder: { ...order, filledQty: NaN } }), /QUANTITY_INVALID/);
 });

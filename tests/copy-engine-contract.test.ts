@@ -61,6 +61,23 @@ test("master quantity five adapts to follower quantities two, one, and zero", ()
   assert.equal(zero.executionAuthorized, false);
 });
 
+test('master close or roll before follower fill must reconcile the pending order without planning duplicate exposure', () => {
+  for (const action of ['OPEN_CSP', 'CLOSE_CSP', 'ROLL_CSP_OPEN', 'ROLL_CSP_CLOSE', 'OPEN_CC'] as const) {
+    const plan = planFollowerCopy(event({ action }), follower({ brokerOrderState: 'PENDING' }));
+    assert.equal(plan.reason, 'BROKER_PENDING_REQUIRES_RECONCILIATION');
+    assert.equal(plan.nextAction, 'RECONCILE');
+    assert.equal(plan.intendedQuantity, 0);
+    assert.equal(plan.executionAuthorized, false);
+  }
+});
+
+test('an unlinked existing follower position is divergence even when the copied ledger quantity is zero', () => {
+  const plan = planFollowerCopy(event(), follower({ actualBrokerQuantity: 1, existingCopiedQuantity: 0 }));
+  assert.equal(plan.reason, 'BROKER_POSITION_DIVERGED');
+  assert.equal(plan.nextAction, 'RECONCILE');
+  assert.equal(plan.openQuantity, 0);
+});
+
 test("master close maps to the actual copied quantity and never opens risk", () => {
   const plan = planFollowerCopy(
     event({ action: "CLOSE_CSP", masterQuantity: 5, masterFilledQuantity: 5 }),

@@ -75,6 +75,7 @@ export interface DerivedAccountExposure {
   // present as if it were the whole truth.
   readonly cspCollateralRequired: number | null;
   readonly stockInventoryValue: number | null; // sum of marketValue across us_equity positions; null if any is UNKNOWN
+  readonly longOptionValue?: number | null; // current marked value at risk for held long options, not an offset against short collateral
   readonly stockValueByUnderlying: Readonly<Record<string, number>>;
   readonly shortPutCount: number;
   readonly shortCallCount: number;
@@ -93,6 +94,7 @@ export interface DerivedAccountExposure {
   readonly exposureByUnderlying: Readonly<Record<string, number>>;
   readonly riskyUnderlyings: readonly string[];
   readonly unparsedOptionSymbols: readonly string[]; // option positions whose symbol did not match the documented OCC format -- never silently dropped from view
+  readonly unclassifiedPositionSymbols?: readonly string[];
 }
 
 export interface CandidateExposureFootprint {
@@ -163,6 +165,7 @@ export function deriveAccountExposure(
   openOrders: readonly AlpacaOpenOrderSnapshot[],
   multiplier = 100,
 ): DerivedAccountExposure {
+  if (!Number.isFinite(multiplier) || multiplier <= 0) throw new Error('ACCOUNT_EXPOSURE_MULTIPLIER_INVALID');
   const equity = account?.equity ?? null;
   const cash = account?.cash ?? null;
   const buyingPower = account?.buyingPower ?? null;
@@ -170,7 +173,12 @@ export function deriveAccountExposure(
 
   const optionPositions: ClassifiedOptionPosition[] = [];
   const unparsedOptionSymbols: string[] = [];
+  const unclassifiedPositionSymbols: string[] = [];
+  let optionQuantityUnknown = false;
   let stockInventoryValue: number | null = 0;
+  let longOptionValue: number | null = 0;
+  const longOptionByUnderlying = new Map<string, number>();
+  const stockSharesByUnderlying = new Map<string, number>();
   const stockValueByUnderlying = new Map<string, number>();
 
   for (const position of positions) {
@@ -181,25 +189,31 @@ export function deriveAccountExposure(
         continue;
       }
       const quantity = position.quantity ?? null;
-      if (quantity === null) continue; // UNKNOWN quantity -- cannot classify this position's exposure at all
+      if (quantity === null || !Number.isSafeInteger(quantity) || quantity === 0) {
+        unclassifiedPositionSymbols.push(position.symbol);
+        optionQuantityUnknown = true;
+        continue;
+      }
       const side: ClassifiedOptionPosition['side'] = position.side === 'short' || quantity < 0 ? 'SHORT' : 'LONG';
       optionPositions.push({ symbol: position.symbol, parsed, quantity, side, marketValue: position.marketValue, unrealizedPl: position.unrealizedPl });
     } else if (position.assetClass === 'us_equity') {
-      if (position.marketValue === null) {
+      if (position.marketValue === null || !Number.isFinite(position.marketValue) || position.marketValue < 0
+        || position.side === 'short') {
+        unclassifiedPositionSymbols.push(position.symbol);
         stockInventoryValue = null; // one UNKNOWN stock value poisons the total -- never understate
       } else if (stockInventoryValue !== null) {
         stockInventoryValue += position.marketValue;
         stockValueByUnderlying.set(position.symbol, (stockValueByUnderlying.get(position.symbol) ?? 0) + position.marketValue);
+        if (position.quantity !== null && Number.isFinite(position.quantity) && position.quantity >= 0)
+          stockSharesByUnderlying.set(position.symbol, (stockSharesByUnderlying.get(position.symbol) ?? 0) + position.quantity);
       }
-    }
-    // Any other/unrecognized assetClass is neither stock nor option
-    // exposure this module understands -- deliberately not counted rather
-    // than guessed into one bucket or the other.
+    } else unclassifiedPositionSymbols.push(position.symbol);
   }
 
   let shortPutCount = 0, shortCallCount = 0, longPutCount = 0, longCallCount = 0;
   let cspCollateralRequired: number | null = 0;
   const collateralByUnderlying = new Map<string, number>();
+  const shortCallSharesByUnderlying = new Map<string, number>();
   for (const op of optionPositions) {
     if (op.side === 'SHORT' && op.parsed.optionType === 'PUT') {
       shortPutCount += 1;
@@ -208,15 +222,30 @@ export function deriveAccountExposure(
       collateralByUnderlying.set(op.parsed.underlying, (collateralByUnderlying.get(op.parsed.underlying) ?? 0) + collateral);
     } else if (op.side === 'SHORT' && op.parsed.optionType === 'CALL') {
       shortCallCount += 1;
+      shortCallSharesByUnderlying.set(op.parsed.underlying,
+        (shortCallSharesByUnderlying.get(op.parsed.underlying) ?? 0) + Math.abs(op.quantity) * multiplier);
     } else if (op.side === 'LONG' && op.parsed.optionType === 'PUT') {
       longPutCount += 1;
     } else if (op.side === 'LONG' && op.parsed.optionType === 'CALL') {
       longCallCount += 1;
     }
+    if (op.side === 'LONG') {
+      if (op.marketValue === null || !Number.isFinite(op.marketValue) || op.marketValue < 0) {
+        longOptionValue = null;
+        unclassifiedPositionSymbols.push(op.symbol);
+      } else {
+        if (longOptionValue !== null) longOptionValue += op.marketValue;
+        longOptionByUnderlying.set(op.parsed.underlying, (longOptionByUnderlying.get(op.parsed.underlying) ?? 0) + op.marketValue);
+      }
+    }
+  }
+  for (const op of optionPositions) if (op.side === 'SHORT' && op.parsed.optionType === 'CALL'
+    && (shortCallSharesByUnderlying.get(op.parsed.underlying) ?? Infinity) > (stockSharesByUnderlying.get(op.parsed.underlying) ?? 0)) {
+    unclassifiedPositionSymbols.push(op.symbol);
   }
   // Unparsed option symbols make CSP collateral itself unknowable as a
   // complete figure -- a partial sum would silently understate real risk.
-  if (unparsedOptionSymbols.length > 0) cspCollateralRequired = null;
+  if (unparsedOptionSymbols.length > 0 || optionQuantityUnknown || !Number.isFinite(cspCollateralRequired)) cspCollateralRequired = null;
 
   let pendingOpeningCapitalAtRisk: number | null = 0;
   let pendingAssignmentCollateral: number | null = 0;
@@ -224,11 +253,16 @@ export function deriveAccountExposure(
   const unclassifiedOpenOrderIds: string[] = [];
   for (const order of openOrders) {
     if (order.positionIntent === 'buy_to_close' || order.positionIntent === 'sell_to_close') continue;
-    if (order.positionIntent === null || order.symbol === null || order.quantity === null || order.quantity <= 0) {
+    if (order.positionIntent === null || order.symbol === null || order.quantity === null
+      || !Number.isFinite(order.quantity) || order.quantity <= 0) {
       unclassifiedOpenOrderIds.push(order.orderId);
       continue;
     }
     const parsed = parseOccOptionSymbol(order.symbol);
+    if (parsed !== null && !Number.isSafeInteger(order.quantity)) {
+      unclassifiedOpenOrderIds.push(order.orderId);
+      continue;
+    }
     if (order.positionIntent === 'sell_to_open') {
       if (parsed === null || parsed.optionType !== 'PUT') {
         // A short call may be covered or uncovered. The order response alone
@@ -237,6 +271,7 @@ export function deriveAccountExposure(
         continue;
       }
       const collateral = parsed.strike * requiredMultiplier(multiplier) * order.quantity;
+      if (!Number.isFinite(collateral)) { unclassifiedOpenOrderIds.push(order.orderId); continue; }
       pendingOpeningCapitalAtRisk += collateral;
       pendingAssignmentCollateral += collateral;
       pendingExposureByUnderlying.set(parsed.underlying,
@@ -244,11 +279,12 @@ export function deriveAccountExposure(
       continue;
     }
     if (order.positionIntent === 'buy_to_open') {
-      if (order.limitPrice === null || order.limitPrice < 0) {
+      if (order.limitPrice === null || !Number.isFinite(order.limitPrice) || order.limitPrice <= 0) {
         unclassifiedOpenOrderIds.push(order.orderId);
         continue;
       }
       const capital = order.limitPrice * order.quantity * (parsed === null ? 1 : requiredMultiplier(multiplier));
+      if (!Number.isFinite(capital)) { unclassifiedOpenOrderIds.push(order.orderId); continue; }
       const underlying = parsed?.underlying ?? order.symbol;
       pendingOpeningCapitalAtRisk += capital;
       pendingExposureByUnderlying.set(underlying,
@@ -262,22 +298,22 @@ export function deriveAccountExposure(
 
   const portfolioCapitalAtRiskPct =
     equity !== null && equity > 0 && cspCollateralRequired !== null && stockInventoryValue !== null
-      && pendingOpeningCapitalAtRisk !== null
-      ? (cspCollateralRequired + stockInventoryValue + pendingOpeningCapitalAtRisk) / equity
+      && pendingOpeningCapitalAtRisk !== null && longOptionValue !== null && unclassifiedPositionSymbols.length === 0
+      ? (cspCollateralRequired + stockInventoryValue + longOptionValue + pendingOpeningCapitalAtRisk) / equity
       : null;
 
   let largestConcentrationUnderlying: string | null = null;
   let tickerConcentrationPct: number | null = null;
   const exposureByUnderlying = new Map<string, number>();
   if (equity !== null && equity > 0 && cspCollateralRequired !== null && stockInventoryValue !== null
-    && pendingOpeningCapitalAtRisk !== null) {
+    && pendingOpeningCapitalAtRisk !== null && longOptionValue !== null && unclassifiedPositionSymbols.length === 0) {
     const underlyings = new Set<string>([
-      ...stockValueByUnderlying.keys(), ...collateralByUnderlying.keys(), ...pendingExposureByUnderlying.keys(),
+      ...stockValueByUnderlying.keys(), ...collateralByUnderlying.keys(), ...pendingExposureByUnderlying.keys(), ...longOptionByUnderlying.keys(),
     ]);
     let largestExposure = -Infinity;
     for (const underlying of underlyings) {
       const exposure = (stockValueByUnderlying.get(underlying) ?? 0) + (collateralByUnderlying.get(underlying) ?? 0)
-        + (pendingExposureByUnderlying.get(underlying) ?? 0);
+        + (pendingExposureByUnderlying.get(underlying) ?? 0) + (longOptionByUnderlying.get(underlying) ?? 0);
       exposureByUnderlying.set(underlying, exposure);
       if (exposure > largestExposure) {
         largestExposure = exposure;
@@ -289,7 +325,7 @@ export function deriveAccountExposure(
 
   return {
     equity, cash, buyingPower, optionsBuyingPower,
-    cspCollateralRequired, stockInventoryValue,
+    cspCollateralRequired, stockInventoryValue, longOptionValue,
     stockValueByUnderlying: Object.fromEntries([...stockValueByUnderlying.entries()].sort(([a], [b]) => a.localeCompare(b))),
     shortPutCount, shortCallCount, longPutCount, longCallCount,
     openOrderCount: openOrders.length,
@@ -299,7 +335,7 @@ export function deriveAccountExposure(
     portfolioCapitalAtRiskPct, tickerConcentrationPct, largestConcentrationUnderlying,
     exposureByUnderlying: Object.fromEntries([...exposureByUnderlying.entries()].sort(([a], [b]) => a.localeCompare(b))),
     riskyUnderlyings: [...exposureByUnderlying.keys()].sort(),
-    unparsedOptionSymbols,
+    unparsedOptionSymbols, unclassifiedPositionSymbols,
   };
 }
 
@@ -342,11 +378,15 @@ export function deriveCandidateInclusiveAegisInputs(
   const unknownReasons: string[] = [];
   const equity = exposure.equity;
   const candidateCapital = candidate.securedCollateralPerContract * candidate.quantity;
+  const longValue = exposure.longOptionValue === undefined
+    ? exposure.longPutCount + exposure.longCallCount === 0 ? 0 : null : exposure.longOptionValue;
   const baseKnown = equity !== null && equity > 0 && exposure.cspCollateralRequired !== null
-    && exposure.stockInventoryValue !== null && Number.isFinite(candidateCapital) && candidateCapital >= 0
+    && exposure.stockInventoryValue !== null && longValue !== null && Number.isFinite(longValue)
+    && Number.isFinite(candidateCapital) && candidateCapital >= 0
     && exposure.pendingOpeningCapitalAtRisk !== null && exposure.pendingAssignmentCollateral !== null
     && recoveryInventoryValue !== null && Number.isFinite(recoveryInventoryValue) && recoveryInventoryValue >= 0
-    && exposure.unparsedOptionSymbols.length === 0 && exposure.unclassifiedOpenOrderIds.length === 0;
+    && exposure.unparsedOptionSymbols.length === 0 && exposure.unclassifiedOpenOrderIds.length === 0
+    && (exposure.unclassifiedPositionSymbols?.length ?? 0) === 0;
   if (!baseKnown) unknownReasons.push('ACCOUNT_OR_CURRENT_EXPOSURE_INCOMPLETE');
   if (openOrders.length !== exposure.openOrderCount) unknownReasons.push('PENDING_ORDER_SNAPSHOT_MISMATCH');
   if (exposure.unclassifiedOpenOrderIds.length > 0) unknownReasons.push('PENDING_ORDER_INTENT_NOT_CLASSIFIED');
@@ -362,7 +402,7 @@ export function deriveCandidateInclusiveAegisInputs(
   const currentUnderlyingExposure = exposure.exposureByUnderlying[candidate.underlying] ?? 0;
   const proposedUnderlyingExposure = currentUnderlyingExposure + candidateCapital;
   const postTradeCapitalAtRisk = (exposure.cspCollateralRequired as number)
-    + (exposure.stockInventoryValue as number) + (exposure.pendingOpeningCapitalAtRisk as number) + candidateCapital;
+    + (exposure.stockInventoryValue as number) + (longValue as number) + (exposure.pendingOpeningCapitalAtRisk as number) + candidateCapital;
   const postTradeUnderlyings = new Set([...exposure.riskyUnderlyings, candidate.underlying]);
   const soleRiskGroup = postTradeUnderlyings.size === 1 ? proposedUnderlyingExposure / denominator : null;
   if (soleRiskGroup === null) {

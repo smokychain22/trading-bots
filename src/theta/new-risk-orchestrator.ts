@@ -818,7 +818,11 @@ export async function runNewRiskOrchestration(
         policy: request.aegisPolicy,
         inputs: { ...request.aegisInputs, ...candidate.aegisInputOverrides },
       },
-      (payload) => parseAegisAssessmentResponse(payload),
+      (payload) => parseAegisAssessmentResponse(payload, {
+        decisionId: `${request.snapshotId}:${candidate.candidateId}`, snapshotId: request.snapshotId,
+        timestamp: request.timestamp,
+        policyVersion: typeof request.aegisPolicy.policyVersion === 'string' ? request.aegisPolicy.policyVersion : undefined,
+      }),
     );
     if (!candidateAegis.ok) {
       return systemHoldResult(request, 'AEGIS', candidateAegis.detail, {

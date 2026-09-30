@@ -24,6 +24,9 @@ export const sizingResultResponseSchema = z.object({
   if (response.quantity === 0 && response.capitalRequired !== null && response.capitalRequired !== 0) {
     context.addIssue({ code: 'custom', message: 'zero quantity must not carry a nonzero capital requirement' });
   }
+  if (response.quantity > 0 && (response.capitalRequired === null || response.capitalRequired <= 0)) {
+    context.addIssue({ code: 'custom', message: 'positive option quantity requires known positive collateral' });
+  }
 });
 
 export type SizingResultResponse = z.infer<typeof sizingResultResponseSchema>;

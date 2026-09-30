@@ -1,5 +1,41 @@
 # THETA Phase 5 Unified Closure Receipt
 
+## Current execution checkpoint, 2026-09-30
+
+STATE = REVIEWED_ENGINEERING_VERIFIED_RELEASE_CI_PENDING
+
+The September 29 source-complete statement below is historical and is not the
+current acceptance result. Current reviewed base is
+`075273a175cd2084043c099e925be1c86c3cd9cc`. Its exact CI
+`36777818484` passed. Phase 1 remains closed. No production checkpoint,
+deployment, worker restart, broker mutation or order is authorized by this
+source checkpoint.
+
+Current changes cover strict AEGIS numeric boundaries and twelve-family
+identity/consumed-input receipts, canonical sizing waterfall and capital-budget
+projection, unknown account exposure, follower transaction cleanup and pending
+order reconciliation, and eight executable offline sizing challengers. These
+are bound to 14 reviewed groups in `THETA_PHASE5_REVIEWED_TEST_BINDINGS.json`
+and `evidence/THETA_PHASE5_EXECUTED_TESTS.json`: 235 executed passes, no skips.
+The final broad Node run passed 3,311 tests with 16 explicit integration skips.
+Python passed 1,246 tests. Typecheck, lint, build, security and storage checks
+passed. Browser passed 23 tests. All four Windows backup-readonly, digest,
+PostgreSQL-tool-deadline and bounded-process suites passed. Reticle is not
+applicable to these backend/CLI-only changes. No UI feature was changed.
+
+Closed source defects include tail-risk cohort missing-value/finite boundaries,
+explicit zero independent-N confidence, router-inapplicability capital receipt
+consistency, and the reviewed execution/follower failure matrix. Replacement
+orders retain new-entry pause and AEGIS checks. Broker snapshots must match
+the exact intent before advancing local state. All execution proof here uses
+test brokers, never a real order endpoint. The next exact action is release
+commit/push and exact-SHA CI, then Phase 6. No reviewed Phase-5 code defect
+remains open. Unconfigured dollar-budget policies remain explicitly unconfigured,
+not invented. Current
+worker proof belongs to Phase 7. Profitability, tail-model calibration and
+policy optimality remain empirically unproven. No research result gains
+Production authority from a deterministic test.
+
 Receipt date: 2026-09-29
 
 START_SHA = ef23e32d97db20b8955a486ad294855151b8d6b7

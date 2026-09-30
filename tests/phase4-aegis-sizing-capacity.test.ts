@@ -51,6 +51,65 @@ const base = {
   optionomicsContext: { state: 'UNKNOWN' } as const,
 };
 
+test('canonical sizing waterfall preserves broker and policy capacities separately from AEGIS with candidate identity', () => {
+  const c = contract();
+  const build = (state: 'ALLOW_FULL' | 'HARD_VETO' | 'ALLOW_REDUCED') => {
+    const candidate = buildCanonicalStrategyFrontier({
+    ...base, sizingPolicy: { ...sizingPolicy, policyVersion: 'test-sizing-v1' },
+    contracts: [c], routing: routing(['THETA_Q']), buyingPower: 100_000, aegisNewRiskState: state,
+    }).branches.find(branch => branch.branch === 'THETA_CONVENTIONAL')?.candidates[0];
+    assert.ok(candidate);
+    return candidate;
+  };
+  const full = build('ALLOW_FULL'), veto = build('HARD_VETO'), reduced = build('ALLOW_REDUCED');
+  const evidence = veto.sizing.waterfall;
+  assert.ok(evidence);
+  assert.equal(evidence.version, 'theta-canonical-sizing-waterfall-v1');
+  assert.equal(evidence.candidateId, veto.candidateId);
+  assert.equal(evidence.snapshotId, base.snapshotId);
+  assert.equal(evidence.asOf, NOW);
+  assert.equal(evidence.policyVersion, 'test-sizing-v1');
+  assert.equal(evidence.quantityUnit, 'CONTRACTS');
+  assert.deepEqual(evidence.caps.find(cap => cap.name === 'BROKER_ALLOWED'), { name: 'BROKER_ALLOWED', state: 'KNOWN', value: 10 });
+  assert.equal(evidence.caps.find(cap => cap.name === 'BUYING_POWER_AFFORDABLE')?.value, 5);
+  assert.equal(evidence.preAegisQuantity, full.sizing.quantity);
+  assert.equal(veto.sizing.quantity, 0);
+  assert.equal(evidence.capitalBudget.brokerBuyingPower.value, 100_000);
+  assert.equal(evidence.capitalBudget.availableNewRiskCapital.value, 95_000);
+  assert.equal(evidence.capitalBudget.finalCapitalBudget.value, 0);
+  assert.equal(evidence.capitalBudget.maxTradeCapital.value, 190_000);
+  assert.equal(evidence.capitalBudget.cashReserve.state, 'NOT_CONFIGURED');
+  assert.equal(evidence.capitalBudget.cashReserve.value, null);
+  assert.ok(evidence.preAegisQuantity !== null);
+  assert.equal(reduced.sizing.quantity, Math.floor(evidence.preAegisQuantity * 0.5));
+  assert.deepEqual(JSON.parse(JSON.stringify(evidence)), evidence, 'archive/JSONB-compatible exact evidence');
+});
+
+test('inapplicable router retains counterfactual capacities but allocates zero final capital', () => {
+  const frontier = buildCanonicalStrategyFrontier({ ...base, contracts: [contract(),
+    contract({ optionSymbol: 'AAPL261016P00180000', occSymbol: 'AAPL261016P00180000', strike: 180, bid: 0.6, ask: 0.7 })],
+    routing: routing([]), buyingPower: 100_000 });
+  const q = frontier.branches.find(branch => branch.branch === 'THETA_DEFINED_RISK')?.candidates[0];
+  assert.ok(q?.sizing.waterfall);
+  assert.equal(q.sizing.quantity, 0);
+  assert.equal(q.sizing.bindingConstraint, 'ROUTER_NOT_APPLICABLE');
+  assert.equal(q.sizing.waterfall.capitalBudget.finalCapitalBudget.value, 0);
+  assert.ok((q.sizing.waterfall.preAegisQuantity ?? 0) > 0);
+});
+
+test('sizing waterfall preserves missing and invalid capacities without reporting them as known zero', () => {
+  for (const riskBudgetQtyCap of [null, NaN, Number.MAX_SAFE_INTEGER + 1]) {
+    const frontier = buildCanonicalStrategyFrontier({ ...base, contracts: [contract()], routing: routing(['THETA_Q']),
+      buyingPower: 100_000, sizingPolicy: { ...sizingPolicy, riskBudgetQtyCap } });
+    const candidate = frontier.branches.find(branch => branch.branch === 'THETA_CONVENTIONAL')?.candidates[0];
+    assert.ok(candidate?.sizing.waterfall);
+    assert.equal(candidate.sizing.quantity, 0);
+    assert.deepEqual(candidate.sizing.waterfall.caps.find(cap => cap.name === 'RISK_BUDGET'), {
+      name: 'RISK_BUDGET', value: null, state: riskBudgetQtyCap === null ? 'MISSING' : 'INVALID',
+    });
+  }
+});
+
 test('Q VS D CAPITAL TEST (item 49): a small account buying power blocks Q (large cash-secured collateral) via the real BUYING_POWER_AFFORDABLE cap, while D (bounded max-loss capital) remains sizeable -- proven with the real structuralSizing() mechanism, not a stub', () => {
   const shortPut = contract({ optionSymbol: 'AAPL261016P00190000', strike: 190, bid: 2, ask: 2.1 });
   const longPut = contract({ optionSymbol: 'AAPL261016P00180000', occSymbol: 'AAPL261016P00180000', strike: 180, bid: 0.6, ask: 0.7 });

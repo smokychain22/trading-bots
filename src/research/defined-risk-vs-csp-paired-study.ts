@@ -755,20 +755,35 @@ export interface CohortOutcomeMetrics {
  * would be empty.
  */
 export function computeCohortOutcomeMetrics(records: readonly EntryFutureOutcomeRecord[], tailFraction: number): CohortOutcomeMetrics {
+  if (!Number.isFinite(tailFraction) || tailFraction <= 0 || tailFraction > 1) throw new Error('COHORT_TAIL_FRACTION_INVALID');
+  if (records.some(record => !record.candidateId.trim()) || new Set(records.map(record => record.candidateId)).size !== records.length)
+    throw new Error('COHORT_CANDIDATE_ID_INVALID_OR_DUPLICATE');
+  for (const record of records) {
+    for (const value of [record.wholeChainNetPnl, record.grossProfitComponent, record.grossLossComponent]) {
+      if (value !== null && !Number.isFinite(value)) throw new Error('COHORT_OUTCOME_NONFINITE');
+    }
+    if ((record.grossProfitComponent !== null && record.grossProfitComponent < 0)
+      || (record.grossLossComponent !== null && record.grossLossComponent > 0)) throw new Error('COHORT_GROSS_COMPONENT_SIGN_INVALID');
+  }
   const resolved = records.filter((r) => r.wholeChainNetPnl !== null);
   if (resolved.length === 0) return { resolvedCount: 0, profitFactor: null, expectedShortfall: null, maxDrawdown: null };
 
-  const grossProfitSum = resolved.reduce((sum, r) => sum + Math.max(0, r.grossProfitComponent ?? 0), 0);
-  const grossLossSum = resolved.reduce((sum, r) => sum + Math.abs(Math.min(0, r.grossLossComponent ?? 0)), 0);
-  const profitFactor = grossLossSum === 0 ? null : grossProfitSum / grossLossSum;
+  const completeGross = resolved.every(record => record.grossProfitComponent !== null && record.grossLossComponent !== null);
+  const grossProfitSum = completeGross ? resolved.reduce((sum, r) => sum + (r.grossProfitComponent as number), 0) : null;
+  const grossLossSum = completeGross ? resolved.reduce((sum, r) => sum - (r.grossLossComponent as number), 0) : null;
+  const rawProfitFactor = grossProfitSum === null || grossLossSum === null || grossLossSum === 0
+    || !Number.isFinite(grossProfitSum) || !Number.isFinite(grossLossSum) ? null : grossProfitSum / grossLossSum;
+  const profitFactor = rawProfitFactor !== null && Number.isFinite(rawProfitFactor) ? rawProfitFactor : null;
 
   const sortedPnl = resolved.map((r) => r.wholeChainNetPnl as number).sort((a, b) => a - b);
-  const tailCount = Math.max(1, Math.floor(sortedPnl.length * tailFraction));
+  const tailCount = Math.floor(sortedPnl.length * tailFraction);
   const tailSlice = sortedPnl.slice(0, Math.min(tailCount, sortedPnl.length));
-  const expectedShortfall = tailSlice.length === 0 ? null : tailSlice.reduce((sum, v) => sum + v, 0) / tailSlice.length;
+  const tailMean = tailSlice.length === 0 ? null : tailSlice.reduce((sum, v) => sum + v / tailSlice.length, 0);
+  const expectedShortfall = tailMean !== null && Number.isFinite(tailMean) ? tailMean : null;
 
-  const maeValues = resolved.map((r) => r.maxAdverseExcursion).filter((v): v is number => v !== null);
-  const maxDrawdown = maeValues.length === 0 ? null : Math.min(...maeValues);
+  // Per-episode MAE is not a time-ordered portfolio equity path. No account
+  // drawdown can be reconstructed from these atomic records alone.
+  const maxDrawdown = null;
 
   return { resolvedCount: resolved.length, profitFactor, expectedShortfall, maxDrawdown };
 }

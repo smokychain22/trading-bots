@@ -1,7 +1,7 @@
 {
   "version": "theta-phase3-executed-evidence-v1",
-  "observedAt": "2026-09-30T21:07:25.515Z",
-  "checkoutHead": "8adb758324aa84c91c0c36f2b44f20fb2bdecd6a",
+  "observedAt": "2026-09-30T22:08:43.238Z",
+  "checkoutHead": "075273a175cd2084043c099e925be1c86c3cd9cc",
   "identityAuthority": "PER_FILE_HASHES_INCLUDE_UNCOMMITTED_CHANGES",
   "command": "node --import tsx tools/theta-phase3-executed-evidence.ts --phase=3",
   "executionSucceeded": true,
@@ -18,10 +18,10 @@
       "blockers": [],
       "sourceHashes": {
         "src/theta/canonical-decision-authority.ts": "32c2ea86555ff855d2e0b5fb3b8c194ee42438bccd2df110754c8f37273d4c82",
-        "src/theta/canonical-strategy-frontier.ts": "ec57ea4306b6dc500eb0e31b360afd99898e1e635bb7f85b59e8b7a67d769414",
-        "src/theta/new-risk-orchestrator.ts": "f25e24f379ad1ee4e75609afdebbd497c393c82962cd0066854bd70b79eb809a",
-        "src/theta/theta-shadow-cycle.ts": "34bd60edd512698253019fb404657a4213b16e50f0acdedb8bf3cc4b3c480c9b",
-        "tests/new-risk-orchestrator.test.ts": "623377a2b0ba28ac186d8820cb90a7f579e9149fca02f2693233d05da30413ac",
+        "src/theta/canonical-strategy-frontier.ts": "da104e425ad7347d976832666f03633ec69a4c69996a7d65df73080de262d0eb",
+        "src/theta/new-risk-orchestrator.ts": "7eedac1d034b84ab1934d6f7887b968a1eb8e8a7b97dda123d8bca0cf5d37f01",
+        "src/theta/theta-shadow-cycle.ts": "988ff8ec23b5de790082eeabea0a779934e6ac4ed1999ea5e59fde47e0030d3b",
+        "tests/new-risk-orchestrator.test.ts": "35bee7bc6241e850e3003f2862f63bed8bbfa1785426ce17c007ee7b407e6e09",
         "tests/theta-shadow-cycle.test.ts": "0a9a86ec29be00e6d073397843257c9da76b0e59f14e456dadf4f766cddc8cc5"
       },
       "executedTests": [
@@ -29,14 +29,14 @@
           "file": "tests/new-risk-orchestrator.test.ts",
           "name": "a real THETA-Q lattice candidate flows end to end to a decision receipt with sizing and execution quality",
           "state": "PASS",
-          "durationMs": 2183.8418,
+          "durationMs": 1756.8819,
           "line": 1
         },
         {
           "file": "tests/theta-shadow-cycle.test.ts",
           "name": "a full cycle with real-shaped mocked Alpaca data reaches a decision receipt via the real Python pipeline",
           "state": "PASS",
-          "durationMs": 983.6615,
+          "durationMs": 790.4903,
           "line": 1
         }
       ]
@@ -63,21 +63,21 @@
           "file": "tests/brain-authority-graph.test.ts",
           "name": "one entry selector, management selector, final sizer, AEGIS and broker mutator",
           "state": "PASS",
-          "durationMs": 1.977,
+          "durationMs": 1.726,
           "line": 1
         },
         {
           "file": "tests/brain-authority-graph.test.ts",
           "name": "no Production source outside the coordinator calls broker mutation methods",
           "state": "PASS",
-          "durationMs": 165.2306,
+          "durationMs": 149.6042,
           "line": 1
         },
         {
           "file": "tests/brain-decision-producer-scan.test.ts",
           "name": "every decision-shaped TypeScript and Python file has a declared authority role",
           "state": "PASS",
-          "durationMs": 389.3454,
+          "durationMs": 252.2178,
           "line": 1
         }
       ]
@@ -96,7 +96,7 @@
         "bots/theta/quant/models/ownership_v0.py": "138b80195624c98837952843f94b64b521d2b12123a94397b5aba3b7638a084c",
         "bots/theta/quant/models/regime_v0.py": "b9899877f4a80e0a3d4bcb0c5fbc90f64a5aa630426be80d99ae2af53159ff7e",
         "docs/research/THETA_PHASE3_FEATURE_CONSUMER_AUDIT.md": "6ef2f383b29bfcc4b05ad243dd01a3148b72777f528a4c51481d8c9f85d12193",
-        "src/theta/account-exposure.ts": "7614ab0edacf05e4307215598898d4378194f03ca62b658b820ea3d4fa34b868",
+        "src/theta/account-exposure.ts": "78f18509021178f35e363eceee39ec1a85b8875f8b22d5d6a97230923f912a19",
         "src/theta/phase2-market-intelligence-registry.ts": "0baae8becd25573ead16a870b07fb935d9795bba6c24f693603858241e3e67b1",
         "tests/phase2-market-intelligence-registry.test.ts": "b19b7e25e5d149c8f3a7f8864c4bda2d0609e98d7e2cecf27547ddd63cbaaba8",
         "tests/theta-shadow-cycle.test.ts": "0a9a86ec29be00e6d073397843257c9da76b0e59f14e456dadf4f766cddc8cc5"
@@ -106,21 +106,21 @@
           "file": "tests/phase2-market-intelligence-registry.test.ts",
           "name": "five-strategy six-role decision registry is unique, complete and does not promote research",
           "state": "PASS",
-          "durationMs": 1.7359,
+          "durationMs": 2.2395,
           "line": 1
         },
         {
           "file": "tests/phase2-market-intelligence-registry.test.ts",
           "name": "feature authority distinguishes active RV context, unscored momentum and shadow strategy consumers",
           "state": "PASS",
-          "durationMs": 0.4013,
+          "durationMs": 0.5405,
           "line": 1
         },
         {
           "file": "tests/theta-shadow-cycle.test.ts",
           "name": "held-symbol bars reach persisted portfolio correlation without gaining AEGIS authority",
           "state": "PASS",
-          "durationMs": 755.9914,
+          "durationMs": 979.3382,
           "line": 1
         }
       ]
@@ -147,21 +147,21 @@
           "file": "tests/management-action-frontier.test.ts",
           "name": "stale broker state blocks quote-dependent actions but keeps passive management available",
           "state": "PASS",
-          "durationMs": 2.2425,
+          "durationMs": 0.7639,
           "line": 1
         },
         {
           "file": "tests/management-action-frontier.test.ts",
           "name": "expiration actions require exact moneyness rather than DTE alone",
           "state": "PASS",
-          "durationMs": 1.6057,
+          "durationMs": 0.8021,
           "line": 1
         },
         {
           "file": "tests/adaptive-decision-brain.test.ts",
           "name": "shadow strategy inventory does not apply entry-only hard rules to stock management",
           "state": "PASS",
-          "durationMs": 0.41,
+          "durationMs": 0.6519,
           "line": 1
         }
       ]
@@ -179,9 +179,9 @@
       "sourceHashes": {
         "bots/theta/quant/models/strategy_router.py": "b21adf22d952bb17a821b6b3102851e42a86cf1383a9e25af25ee27a3cc37ced",
         "src/theta/broker-router-portfolio.ts": "b03c67a051166b770ad43fc7dd4b4d3b2eb8e28daa9fcb5d7ac7713fd82a3cd7",
-        "src/theta/theta-shadow-cycle.ts": "34bd60edd512698253019fb404657a4213b16e50f0acdedb8bf3cc4b3c480c9b",
+        "src/theta/theta-shadow-cycle.ts": "988ff8ec23b5de790082eeabea0a779934e6ac4ed1999ea5e59fde47e0030d3b",
         "tests/broker-router-portfolio.test.ts": "a96356e6dab8758355058b89612d75029e35d7d1fdc3931139e42b6f85f78074",
-        "tests/new-risk-orchestrator.test.ts": "623377a2b0ba28ac186d8820cb90a7f579e9149fca02f2693233d05da30413ac",
+        "tests/new-risk-orchestrator.test.ts": "35bee7bc6241e850e3003f2862f63bed8bbfa1785426ce17c007ee7b407e6e09",
         "tests/theta-shadow-cycle.test.ts": "0a9a86ec29be00e6d073397843257c9da76b0e59f14e456dadf4f766cddc8cc5"
       },
       "executedTests": [
@@ -189,35 +189,35 @@
           "file": "tests/broker-router-portfolio.test.ts",
           "name": "complete empty reads prove flat state, failed reads never do",
           "state": "PASS",
-          "durationMs": 3.0577,
+          "durationMs": 3.7204,
           "line": 1
         },
         {
           "file": "tests/broker-router-portfolio.test.ts",
           "name": "stock and pending orders change applicability without inventing assignment",
           "state": "PASS",
-          "durationMs": 1.2388,
+          "durationMs": 1.4557,
           "line": 1
         },
         {
           "file": "tests/theta-shadow-cycle.test.ts",
           "name": "Production broker router mode overrides manual defaults and persists exact origin",
           "state": "PASS",
-          "durationMs": 1287.1806,
+          "durationMs": 1012.9493,
           "line": 1
         },
         {
           "file": "tests/theta-shadow-cycle.test.ts",
           "name": "Production failed positions read persists unknown router state instead of the default flat account",
           "state": "PASS",
-          "durationMs": 430.1178,
+          "durationMs": 416.4258,
           "line": 1
         },
         {
           "file": "tests/new-risk-orchestrator.test.ts",
           "name": "an already-open CSP lifecycle routes THETA_Q ineligible and produces zero evaluated candidates",
           "state": "PASS",
-          "durationMs": 754.523,
+          "durationMs": 394.366,
           "line": 1
         }
       ]
@@ -242,21 +242,21 @@
           "file": "tests/adaptive-decision-brain.test.ts",
           "name": "real frontier alternatives enter the structural comparator without changing Q or inventing EV",
           "state": "PASS",
-          "durationMs": 38.1806,
+          "durationMs": 10.6962,
           "line": 1
         },
         {
           "file": "tests/adaptive-decision-brain.test.ts",
           "name": "different expirations are never treated as a common payoff horizon",
           "state": "PASS",
-          "durationMs": 1.3917,
+          "durationMs": 1.6793,
           "line": 1
         },
         {
           "file": "tests/adaptive-decision-brain.test.ts",
           "name": "a current-policy WAIT is not presented as adaptive agreement without an adaptive policy",
           "state": "PASS",
-          "durationMs": 0.4323,
+          "durationMs": 0.5267,
           "line": 1
         }
       ]
@@ -272,9 +272,9 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/canonical-strategy-frontier.ts": "ec57ea4306b6dc500eb0e31b360afd99898e1e635bb7f85b59e8b7a67d769414",
+        "src/theta/canonical-strategy-frontier.ts": "da104e425ad7347d976832666f03633ec69a4c69996a7d65df73080de262d0eb",
         "src/theta/decision-evidence.ts": "bb6be3d2e79d0722a6472b97cd7bc4c3cf24961d012374474fe6fa36a5bb17db",
-        "src/theta/theta-shadow-cycle.ts": "34bd60edd512698253019fb404657a4213b16e50f0acdedb8bf3cc4b3c480c9b",
+        "src/theta/theta-shadow-cycle.ts": "988ff8ec23b5de790082eeabea0a779934e6ac4ed1999ea5e59fde47e0030d3b",
         "tests/canonical-strategy-frontier.test.ts": "13c6ea385014a0f38221a66fb8904c5d3474d0b929c8e5be3668fa0a25a060e3",
         "tests/theta-shadow-cycle.test.ts": "0a9a86ec29be00e6d073397843257c9da76b0e59f14e456dadf4f766cddc8cc5"
       },
@@ -283,35 +283,35 @@
           "file": "tests/theta-shadow-cycle.test.ts",
           "name": "an Optionomics provider failure is recorded honestly (REAL_PROVIDER_ERROR) and never blocks the rest of the cycle",
           "state": "PASS",
-          "durationMs": 1340.2136,
+          "durationMs": 777.5612,
           "line": 1
         },
         {
           "file": "tests/theta-shadow-cycle.test.ts",
           "name": "shadow contract outage remains visible without downgrading primary Conventional contract evidence",
           "state": "PASS",
-          "durationMs": 1365.7153,
+          "durationMs": 834.8511,
           "line": 1
         },
         {
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "bounded shortlist and response gaps are incomplete searches, never economic GLOBAL_WAIT",
           "state": "PASS",
-          "durationMs": 6.3215,
+          "durationMs": 4.6042,
           "line": 1
         },
         {
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "a safe evaluated Q OPEN survives unrelated shortlist gaps without claiming complete enumeration",
           "state": "PASS",
-          "durationMs": 4.4353,
+          "durationMs": 2.6267,
           "line": 1
         },
         {
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "missing research-only H candidates do not turn a complete Q WAIT into SYSTEM_HOLD",
           "state": "PASS",
-          "durationMs": 15.2583,
+          "durationMs": 0.7531,
           "line": 1
         }
       ]
@@ -327,52 +327,52 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/canonical-strategy-frontier.ts": "ec57ea4306b6dc500eb0e31b360afd99898e1e635bb7f85b59e8b7a67d769414",
-        "src/theta/new-risk-orchestrator.ts": "f25e24f379ad1ee4e75609afdebbd497c393c82962cd0066854bd70b79eb809a",
+        "src/theta/canonical-strategy-frontier.ts": "da104e425ad7347d976832666f03633ec69a4c69996a7d65df73080de262d0eb",
+        "src/theta/new-risk-orchestrator.ts": "7eedac1d034b84ab1934d6f7887b968a1eb8e8a7b97dda123d8bca0cf5d37f01",
         "tests/canonical-strategy-frontier.test.ts": "13c6ea385014a0f38221a66fb8904c5d3474d0b929c8e5be3668fa0a25a060e3",
-        "tests/new-risk-orchestrator.test.ts": "623377a2b0ba28ac186d8820cb90a7f579e9149fca02f2693233d05da30413ac"
+        "tests/new-risk-orchestrator.test.ts": "35bee7bc6241e850e3003f2862f63bed8bbfa1785426ce17c007ee7b407e6e09"
       },
       "executedTests": [
         {
           "file": "tests/new-risk-orchestrator.test.ts",
           "name": "one good quote cannot authorize a different candidate with failed market quality",
           "state": "PASS",
-          "durationMs": 1211.9166,
+          "durationMs": 1033.117,
           "line": 1
         },
         {
           "file": "tests/new-risk-orchestrator.test.ts",
           "name": "a non-executable contract (e.g. unverified multiplier) is excluded from the lattice call before delta is even checked, recorded as PASS/CONTRACT_NOT_EXECUTABLE",
           "state": "PASS",
-          "durationMs": 444.575,
+          "durationMs": 566.7965,
           "line": 1
         },
         {
           "file": "tests/new-risk-orchestrator.test.ts",
           "name": "a stale option quote is excluded from the lattice call and recorded as WAIT/WAIT_LIQUIDITY, NEVER as PASS -- never sent to Python",
           "state": "PASS",
-          "durationMs": 410.0703,
+          "durationMs": 695.2138,
           "line": 1
         },
         {
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "candidate-specific AEGIS veto cannot be bypassed by a globally permissive state",
           "state": "PASS",
-          "durationMs": 45.8961,
+          "durationMs": 1.8477,
           "line": 1
         },
         {
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "Q sizing never increases when any governed capacity decreases",
           "state": "PASS",
-          "durationMs": 51.5571,
+          "durationMs": 72.1495,
           "line": 1
         },
         {
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "quantity zero is authoritative GLOBAL_WAIT after complete evaluation, never forced to one",
           "state": "PASS",
-          "durationMs": 3.521,
+          "durationMs": 0.8447,
           "line": 1
         }
       ]
@@ -388,13 +388,13 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/canonical-strategy-frontier.ts": "ec57ea4306b6dc500eb0e31b360afd99898e1e635bb7f85b59e8b7a67d769414",
+        "src/theta/canonical-strategy-frontier.ts": "da104e425ad7347d976832666f03633ec69a4c69996a7d65df73080de262d0eb",
         "src/theta/decision-evidence.ts": "bb6be3d2e79d0722a6472b97cd7bc4c3cf24961d012374474fe6fa36a5bb17db",
-        "src/theta/new-risk-orchestrator.ts": "f25e24f379ad1ee4e75609afdebbd497c393c82962cd0066854bd70b79eb809a",
+        "src/theta/new-risk-orchestrator.ts": "7eedac1d034b84ab1934d6f7887b968a1eb8e8a7b97dda123d8bca0cf5d37f01",
         "src/theta/paper-bootstrap-management-policy.ts": "f3a0c030cd7c31dc82f0de635bfd50db3f8367b71c3881564809a87ab01d963c",
         "src/theta/thesis-invalidation.ts": "950954403ae3704472255a0be138449ec5940fc929bcc2d675701c1a1eb22a81",
         "tests/decision-evidence.test.ts": "f50a65f4e4a053fb08c36636a5df4dab06ef9fc33c959a2068bf31207078343f",
-        "tests/new-risk-orchestrator.test.ts": "623377a2b0ba28ac186d8820cb90a7f579e9149fca02f2693233d05da30413ac",
+        "tests/new-risk-orchestrator.test.ts": "35bee7bc6241e850e3003f2862f63bed8bbfa1785426ce17c007ee7b407e6e09",
         "tests/paper-bootstrap-management-policy.test.ts": "79c0237ebaebae7e5889dcb0b18a70a12f16165b4e70d95634594be0f2e90a44"
       },
       "executedTests": [
@@ -402,28 +402,28 @@
           "file": "tests/new-risk-orchestrator.test.ts",
           "name": "candidate-specific UNKNOWN risk evidence overrides permissive pre-trade inputs and holds",
           "state": "PASS",
-          "durationMs": 1284.0305,
+          "durationMs": 1142.9579,
           "line": 1
         },
         {
           "file": "tests/new-risk-orchestrator.test.ts",
           "name": "Paper bootstrap cannot turn an unrelated TailQuality UNKNOWN into quantity",
           "state": "PASS",
-          "durationMs": 997.8992,
+          "durationMs": 645.9973,
           "line": 1
         },
         {
           "file": "tests/paper-bootstrap-management-policy.test.ts",
           "name": "missing optional thesis context cannot create a close bias in the real management policy",
           "state": "PASS",
-          "durationMs": 4.922,
+          "durationMs": 4.3438,
           "line": 1
         },
         {
           "file": "tests/decision-evidence.test.ts",
           "name": "WAIT decomposition distinguishes required, optional and unclassified UNKNOWN evidence",
           "state": "PASS",
-          "durationMs": 1.4787,
+          "durationMs": 2.0668,
           "line": 1
         }
       ]
@@ -440,7 +440,7 @@
       "blockers": [],
       "sourceHashes": {
         "src/research/canonical-brain-stability.ts": "ea2497de30f789c3451a67f6fd1a783c619055820ac8f35f58940e1817bab202",
-        "src/theta/canonical-strategy-frontier.ts": "ec57ea4306b6dc500eb0e31b360afd99898e1e635bb7f85b59e8b7a67d769414",
+        "src/theta/canonical-strategy-frontier.ts": "da104e425ad7347d976832666f03633ec69a4c69996a7d65df73080de262d0eb",
         "tests/canonical-brain-stability.test.ts": "5a014cdb93f389868789981867892d8ed435b3e61d52df14f63c88d378dd4f17",
         "tests/canonical-strategy-frontier.test.ts": "13c6ea385014a0f38221a66fb8904c5d3474d0b929c8e5be3668fa0a25a060e3",
         "tools/theta-brain-stability.ts": "16cc0dd9a4c833fda816a0a64bfdb6a2d681b12a69a30c0d67c3a97699fd48c4"
@@ -450,42 +450,42 @@
           "file": "tests/canonical-brain-stability.test.ts",
           "name": "stability audit executes canonical replay and irrelevant-context attacks without changing Q or inflating N",
           "state": "PASS",
-          "durationMs": 67.444,
+          "durationMs": 79.1998,
           "line": 1
         },
         {
           "file": "tests/canonical-brain-stability.test.ts",
           "name": "a genuine capacity boundary is recorded as a changed-input transition without inventing hysteresis",
           "state": "PASS",
-          "durationMs": 16.1549,
+          "durationMs": 22.8015,
           "line": 1
         },
         {
           "file": "tests/canonical-brain-stability.test.ts",
           "name": "temporal stability requires chronological PIT samples",
           "state": "PASS",
-          "durationMs": 18.4327,
+          "durationMs": 11.5079,
           "line": 1
         },
         {
           "file": "tests/canonical-brain-stability.test.ts",
           "name": "stability CLI consumes a persisted T0 without provider or broker requests",
           "state": "PASS",
-          "durationMs": 913.0876,
+          "durationMs": 885.7915,
           "line": 1
         },
         {
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "structural tie diagnostics preserve exact and floating-point objective margins independent of ordering",
           "state": "PASS",
-          "durationMs": 18.1637,
+          "durationMs": 27.3143,
           "line": 1
         },
         {
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "bounded defined-risk enumeration is invariant to provider contract order",
           "state": "PASS",
-          "durationMs": 276.0967,
+          "durationMs": 447.5538,
           "line": 1
         }
       ]
@@ -502,7 +502,7 @@
       "blockers": [],
       "sourceHashes": {
         "src/research/canonical-brain-stability.ts": "ea2497de30f789c3451a67f6fd1a783c619055820ac8f35f58940e1817bab202",
-        "src/theta/canonical-strategy-frontier.ts": "ec57ea4306b6dc500eb0e31b360afd99898e1e635bb7f85b59e8b7a67d769414",
+        "src/theta/canonical-strategy-frontier.ts": "da104e425ad7347d976832666f03633ec69a4c69996a7d65df73080de262d0eb",
         "tests/canonical-brain-stability.test.ts": "5a014cdb93f389868789981867892d8ed435b3e61d52df14f63c88d378dd4f17",
         "tests/canonical-strategy-frontier.test.ts": "13c6ea385014a0f38221a66fb8904c5d3474d0b929c8e5be3668fa0a25a060e3"
       },
@@ -511,14 +511,14 @@
           "file": "tests/canonical-brain-stability.test.ts",
           "name": "tiny research perturbations and duplicate research concepts never oscillate the canonical action",
           "state": "PASS",
-          "durationMs": 54.8685,
+          "durationMs": 33.9585,
           "line": 1
         },
         {
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "research-only context changes cannot alter the Paper-facing Q action or quantity",
           "state": "PASS",
-          "durationMs": 4.2828,
+          "durationMs": 3.7743,
           "line": 1
         }
       ]
@@ -535,7 +535,7 @@
       "blockers": [],
       "sourceHashes": {
         "src/research/shadow-feature-contribution.ts": "201ab4eeb34e1ae99b62f159cb6810d1fd5a4afe258050d986b51bbddca53a22",
-        "src/theta/canonical-strategy-frontier.ts": "ec57ea4306b6dc500eb0e31b360afd99898e1e635bb7f85b59e8b7a67d769414",
+        "src/theta/canonical-strategy-frontier.ts": "da104e425ad7347d976832666f03633ec69a4c69996a7d65df73080de262d0eb",
         "tests/canonical-strategy-frontier.test.ts": "13c6ea385014a0f38221a66fb8904c5d3474d0b929c8e5be3668fa0a25a060e3",
         "tests/shadow-feature-contribution.test.ts": "4c77761660a42fbf85ae77acd81f8d189052a1d558217ee9529f9a2c8793970b"
       },
@@ -544,28 +544,28 @@
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "duplicate copies of one exact broker contract cannot manufacture a second Q alternative",
           "state": "PASS",
-          "durationMs": 4.606,
+          "durationMs": 4.3824,
           "line": 1
         },
         {
           "file": "tests/canonical-strategy-frontier.test.ts",
           "name": "conflicting observations for one Q contract fail the Q branch closed without becoming WAIT",
           "state": "PASS",
-          "durationMs": 4.6568,
+          "durationMs": 3.0621,
           "line": 1
         },
         {
           "file": "tests/shadow-feature-contribution.test.ts",
           "name": "unqualified, stale, future, zero-weight and duplicate feature inputs cannot invent contributions",
           "state": "PASS",
-          "durationMs": 1.5144,
+          "durationMs": 1.2202,
           "line": 1
         },
         {
           "file": "tests/shadow-feature-contribution.test.ts",
           "name": "every computed score is labeled BOOTSTRAP_NON_EMPIRICAL, never presented as validated",
           "state": "PASS",
-          "durationMs": 0.4538,
+          "durationMs": 0.5035,
           "line": 1
         }
       ]
@@ -581,7 +581,7 @@
       "failed": 0,
       "blockers": [],
       "sourceHashes": {
-        "src/theta/canonical-strategy-frontier.ts": "ec57ea4306b6dc500eb0e31b360afd99898e1e635bb7f85b59e8b7a67d769414",
+        "src/theta/canonical-strategy-frontier.ts": "da104e425ad7347d976832666f03633ec69a4c69996a7d65df73080de262d0eb",
         "src/theta/postgres-cycle-evidence-storage.ts": "a5db052bfa9a0392f44f5f4ccd55b019b8f335b69985e61410ea1b3a26889705",
         "src/theta/t0-replay-bundle.ts": "6f3a605e2b34538e9291895761b9f35a13784944ef18ebcae6ce4b50235d665f",
         "tests/t0-replay-bundle-writer-integration.test.ts": "5d838e98bd1d2fc33ade8b8932502340b31577b64f3d455df467e56ecafb4e6e"
@@ -591,14 +591,14 @@
           "file": "tests/t0-replay-bundle-writer-integration.test.ts",
           "name": "archive brain explanation preserves all branch alternatives, reasons, risk, quantity and comparison without a second selector",
           "state": "PASS",
-          "durationMs": 24.8415,
+          "durationMs": 20.0915,
           "line": 1
         },
         {
           "file": "tests/t0-replay-bundle-writer-integration.test.ts",
           "name": "REAL_CANONICAL_BRAIN_REPLAY (writer-integrated): the real Postgres evidence writer persists canonicalFrontierInput, and the decoded archive replays to the real frontier",
           "state": "PASS",
-          "durationMs": 57.8761,
+          "durationMs": 47.037,
           "line": 1
         }
       ]
@@ -612,5 +612,5 @@
   "providerRequests": 0,
   "brokerMutations": 0,
   "scope": "REVIEWED_SOURCE_ENGINEERING_NOT_L7_OR_EMPIRICAL",
-  "artifactHash": "736fb78ae45b38c55ca7e863cd66be8613b8f417a1291c02805e7bd79e2cf5ce"
+  "artifactHash": "34bc9fa624df83c152619ce1bd27f54d096f1ad4d33d86d2ce7be30a86432b72"
 }

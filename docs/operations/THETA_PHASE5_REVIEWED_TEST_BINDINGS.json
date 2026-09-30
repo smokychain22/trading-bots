@@ -1,0 +1,349 @@
+[
+  {
+    "id": "5.1",
+    "reviewedBehavior": "Exactly twelve risk families, strict candidate/decision/snapshot/time/policy identity, serialized consumed input evidence. Risk engine cannot invent upstream source freshness or independent family contract capacity.",
+    "sources": [
+      "src/theta/aegis-contract.ts",
+      "src/theta/new-risk-orchestrator.ts",
+      "bots/theta/quant/models/aegis.py",
+      "bots/theta/quant/runtime/aegis_contract.py"
+    ],
+    "tests": [
+      {
+        "file": "tests/aegis-contract.test.ts",
+        "names": [
+          "AEGIS rejects omitted duplicated extra and renamed families even when the reported state is permissive",
+          "AEGIS response cannot be reused across candidate snapshot decision time or policy"
+        ]
+      },
+      {
+        "file": "tests/phase5-python-boundaries.test.ts",
+        "names": [
+          "Phase-5 executed Python authority rejects malformed inputs and checks every numeric AEGIS and sizing boundary"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "5.2",
+    "reviewedBehavior": "Actual Python risk and sizing authorities execute numeric boundary matrices. Stale/future observation states stay restrictive. Optimal thresholds remain empirical, no policy threshold was loosened.",
+    "sources": [
+      "bots/theta/quant/models/aegis.py",
+      "bots/theta/quant/models/sizing.py",
+      "bots/theta/tests/quant/test_aegis_numeric_boundaries.py",
+      "bots/theta/tests/quant/test_sizing_numeric_boundaries.py",
+      "src/research/aegis-stress-baseline-maturity.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase5-python-boundaries.test.ts",
+        "names": [
+          "Phase-5 executed Python authority rejects malformed inputs and checks every numeric AEGIS and sizing boundary"
+        ]
+      },
+      {
+        "file": "tests/aegis-stress-baseline-maturity.test.ts",
+        "names": [
+          "cold-start baseline cannot hide a stale or invalid current observation",
+          "future-available historical evidence cannot make the detector ready"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "5.3",
+    "reviewedBehavior": "Candidate-bound USD budget explains existing canonical caps, broker capacity separately from AEGIS. Additional cash reserve and strategy dollar allocation are explicitly NOT_CONFIGURED, never invented zeros. Drawdown sizing is research-only until policy/calibration approval.",
+    "sources": [
+      "src/theta/capital-budget-evidence.ts",
+      "src/theta/account-exposure.ts",
+      "src/theta/canonical-strategy-frontier.ts",
+      "src/theta/theta-shadow-cycle.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase4-aegis-sizing-capacity.test.ts",
+        "names": [
+          "canonical sizing waterfall preserves broker and policy capacities separately from AEGIS with candidate identity",
+          "inapplicable router retains counterfactual capacities but allocates zero final capital"
+        ]
+      },
+      {
+        "file": "tests/account-exposure.test.ts",
+        "names": [
+          "unclassifiable position quantity or asset never becomes zero portfolio exposure",
+          "long option marks count as current capital at risk without inventing a short-leg hedge offset",
+          "uncovered short calls cannot masquerade as an empty portfolio and covered shares are counted only once"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "5.4",
+    "reviewedBehavior": "Integer capacity minimum, reduced risk multiplier, honest zero and invalid/missing input explanations persist through archive/T0. No empirical confidence multiplier is granted before calibration.",
+    "sources": [
+      "src/theta/canonical-strategy-frontier.ts",
+      "src/theta/sizing-contract.ts",
+      "src/theta/postgres-cycle-evidence-storage.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase4-aegis-sizing-capacity.test.ts",
+        "names": [
+          "sizing waterfall preserves missing and invalid capacities without reporting them as known zero",
+          "CAPACITY MONOTONICITY (item 78): reducing buying power can only reduce or hold quantity, never increase it",
+          "CAPACITY MONOTONICITY (item 78): a worse AEGIS state can only reduce or hold quantity, never increase it"
+        ]
+      },
+      {
+        "file": "tests/postgres-cycle-evidence-storage.test.ts",
+        "names": [
+          "the real packed PostgreSQL archive feeds provider-free same-source T0 replay"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "5.5",
+    "reviewedBehavior": "Eight offline sizing challengers and deterministic file-input CLI. Caller-supplied calibration metadata is not an empirical artifact certificate. Unknown probabilities/payoffs stay blocked. None can control Production.",
+    "sources": [
+      "src/research/sizing-challenger-replay.ts",
+      "tools/theta-sizing-challengers.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/sizing-challenger-replay.test.ts",
+        "names": [
+          "eight sizing challengers execute distinct explicit formulas without changing Production or granting promotion",
+          "missing required evidence stays null while measured zero capacity stays zero",
+          "Kelly rejects uncalibrated mismatched immature future and numerically invalid evidence",
+          "offline CLI consumes explicit experiment file and emits a deterministic replay receipt without providers"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "5.6",
+    "reviewedBehavior": "Empirical descriptive tail statistics stay separate from calibrated forecasts, malformed drawdown cannot become NORMAL, missing cohort components stay unknown, zero independent N cannot borrow raw confidence. Live stress maturity and correlated inputs preserve PIT.",
+    "sources": [
+      "src/research/r8-performance-analytics.ts",
+      "src/research/defined-risk-vs-csp-paired-study.ts",
+      "src/research/account-drawdown-regime-research.ts",
+      "src/research/aegis-stress-baseline-maturity.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/r8-performance-analytics.test.ts",
+        "names": [
+          "explicit zero independent N cannot borrow raw sample confidence",
+          "empirical tail uses fractional boundary mass and finite aggregates stay finite or unknown"
+        ]
+      },
+      {
+        "file": "tests/defined-risk-vs-csp-paired-study.test.ts",
+        "names": [
+          "cohort tail and gross statistics preserve missing evidence and never call MAE portfolio drawdown"
+        ]
+      },
+      {
+        "file": "tests/account-drawdown-regime-research.test.ts",
+        "names": [
+          "invalid drawdown never becomes NORMAL and malformed research policy is rejected"
+        ]
+      },
+      {
+        "file": "tests/correlation-evidence.test.ts",
+        "names": [
+          "computes pairwise evidence only from synchronized PIT returns",
+          "insufficient overlap and zero variance remain UNKNOWN"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "5.7",
+    "reviewedBehavior": "All persisted order-state restart paths are tested against mock broker truth. Resident active-order reconciliation remains separate from ambiguous-submission recovery. Exact identity and malformed statuses fail closed.",
+    "sources": [
+      "src/execution/paper-order-coordinator.ts",
+      "src/theta/order-intent-state.ts",
+      "src/theta/autonomous-runtime.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/paper-order-coordinator.test.ts",
+        "names": [
+          "restart at every persisted order state reconciles active evidence or preserves non-submitted and terminal intent without mutation",
+          "fast cancellation and pending cancellation can resolve an interrupted submission",
+          "reconciliation rejects foreign broker identity malformed quantity and unknown status without changing local truth"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "5.8",
+    "reviewedBehavior": "Lost response or post-acceptance local write failure remains reconcile-before-retry. Deterministic client order identity prevents blind resubmit.",
+    "sources": [
+      "src/execution/paper-order-coordinator.ts",
+      "src/execution/master-paper-execution-orchestrator.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/paper-order-coordinator.test.ts",
+        "names": [
+          "ambiguous submission reconciles by client_order_id and never retries submit",
+          "ambiguous submission absent at broker stays RECONCILING and never blindly retries",
+          "a local write failure after broker acceptance remains restart-recoverable, never REJECTED"
+        ]
+      },
+      {
+        "file": "tests/master-paper-execution-orchestrator.test.ts",
+        "names": [
+          "an unresolved prior submission blocks a different new order"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "5.9",
+    "reviewedBehavior": "Multi-contract partial close preserves actual realized economics and remaining exposure. Later fills count prior partial economics once. Partial roll close cannot open successor leg.",
+    "sources": [
+      "src/execution/broker-fill-lifecycle-router.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/broker-fill-lifecycle-router.test.ts",
+        "names": [
+          "terminal partial close records cumulative actual-fill economics and leaves the remainder open",
+          "a later close of the remaining quantity includes prior partial realized economics exactly once",
+          "terminal partial roll close never authorizes a successor leg"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "5.10",
+    "reviewedBehavior": "Exact executable quote and identity refresh has independently governed freshness, network-delay-aware expiry, safety/AEGIS requirements and GET-only preparation. Replacement cannot bypass pause/veto by falsely labeling a risk-opening order risk-reducing.",
+    "sources": [
+      "src/execution/master-paper-action-handoff.ts",
+      "src/execution/paper-order-coordinator.ts",
+      "src/execution/execution-option-quote.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/master-paper-action-handoff.test.ts",
+        "names": [
+          "pre-submit evaluates fresh quotes after the request and includes network delay in age and expiry",
+          "new-risk handoff rejects a tampered AEGIS assessment identity before broker mutation",
+          "live tiers and stale or wrong contract evidence never reach broker submission",
+          "read-only preparation proves the exact pre-submit boundary without a broker or coordinator"
+        ]
+      },
+      {
+        "file": "tests/paper-order-coordinator.test.ts",
+        "names": [
+          "replacement of a working risk-opening order cannot bypass a new-entry pause or AEGIS veto"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "5.11",
+    "reviewedBehavior": "Dedicated Paper authority requires environment plus immutable owner authorization, schema and operational evidence. All current execution stays locked. Tests use synthetic owner grants, never actual order permission.",
+    "sources": [
+      "src/execution/paper-execution-authorization.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/paper-execution-authorization.test.ts",
+        "names": [
+          "full execution lock disables every submission lane and preserves authorization provenance",
+          "master authority requires both environment opt-in and immutable authorization lineage",
+          "first canary activation requires every Paper-only operational gate",
+          "first canary activation rejects follower/live-adjacent state, stale evidence, and any prior order"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "5.12",
+    "reviewedBehavior": "Follower copies economic intent through independent integer capacities and current qualified quotes, with explicit divergence. Locked risk-reducing exits retain exit supremacy. Follower persistence cleans up transactions on failures.",
+    "sources": [
+      "src/customer/copy-engine-contract.ts",
+      "src/customer/follower-paper-runtime.ts",
+      "src/customer/postgres-follower-paper-runtime.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/copy-engine-contract.test.ts",
+        "names": [
+          "master quantity five adapts to follower quantities two, one, and zero",
+          "each follower capacity independently binds and zero is never forced to one"
+        ]
+      },
+      {
+        "file": "tests/follower-paper-runtime.test.ts",
+        "names": [
+          "follower Paper action plan uses current qualified BBO and remains non-submittable",
+          "follower exit supremacy allows only locked risk-reducing plans under veto"
+        ]
+      },
+      {
+        "file": "tests/follower-runtime-transactions.test.ts",
+        "names": [
+          "follower rollback failure discards the client and lost COMMIT is unknown without automatic retry"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "5.13",
+    "reviewedBehavior": "Duplicate signals, disconnected account, stale quotes, partial/rejected/ambiguous orders, manual position divergence, pending master-close/roll races and restart remain explicit without automatic retry.",
+    "sources": [
+      "src/customer/copy-engine-contract.ts",
+      "src/customer/follower-paper-runtime.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/copy-engine-contract.test.ts",
+        "names": [
+          "stable copy identities make duplicate events and webhook replays no-ops",
+          "OAuth disconnect, stale quote, and slippage failure block safely",
+          "partial fill, rejection, and ambiguous submission never trigger a blind retry",
+          "master close or roll before follower fill must reconcile the pending order without planning duplicate exposure",
+          "an unlinked existing follower position is divergence even when the copied ledger quantity is zero"
+        ]
+      },
+      {
+        "file": "tests/follower-paper-runtime.test.ts",
+        "names": [
+          "follower lifecycle divergence covers missed entry, fills, rolls, assignment, recovery, CC, call-away and restart",
+          "follower plan rejects malformed quantity and reconciliation rejects wrong side or position intent"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "5.14",
+    "reviewedBehavior": "Engineering denominator is per-case executed evidence, not an inherited global certificate. Canonical decision authority, eleven hard-rule families and sovereign mutation coordinator remain separate from empirical optimality, current-worker validation and owner permission.",
+    "sources": [
+      "src/operations/executed-requirement-evidence.ts",
+      "src/theta/canonical-decision-authority.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/executed-requirement-evidence.test.ts",
+        "names": [
+          "closure requires the exact executed file and case with bound source and test hashes",
+          "a failing companion prevents a selected pass from laundering the suite failure"
+        ]
+      },
+      {
+        "file": "tests/phase5-authority-structure.test.ts",
+        "names": [
+          "all five product strategies carry the exact eleven governed hard-rule families",
+          "PaperOrderCoordinator is the sole source caller of broker mutation methods",
+          "the sovereign decision quantity comes from the canonical frontier, never the subordinate receipt"
+        ]
+      }
+    ]
+  }
+]

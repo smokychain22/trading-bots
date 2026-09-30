@@ -3,6 +3,20 @@
 This ledger records parallel source work separately from release closure. It is
 not an authorization to place an order or to deploy this integration branch.
 
+## Active continuation checkpoint, 2026-09-30
+
+Phase 5 has completed its reviewed 14-group engineering denominator, with
+235 executed evidence-bound tests. Release CI is pending the current commit.
+The precise completed/open source work and next action are recorded in
+`THETA_PHASE_5_UNIFIED_CLOSURE.md`. Reviewed Phase-2/3/4 execution artifacts
+remain scoped to their own denominators. The current integration base is
+`075273a175cd2084043c099e925be1c86c3cd9cc`, CI `36777818484` PASS.
+The resident locked worker has not been changed by this source batch. Phase-5
+tail-risk and evidence defects have focused and full-suite proof. Phase 6
+continues with proven model-registry mutation, unchecked SQLite reads,
+reproducibility identity, challenger cohort drift and observation-label defects.
+Do not reopen Phase 1 or run a backup/soak as a source-validation step.
+
 ## PHASE_SCOPE_CORRECTION_2026_09_30
 
 Phase 1 is `FOUNDATION_ENGINEERING_AND_REPLAY`. Its closure requires source and

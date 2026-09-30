@@ -71,3 +71,32 @@ test('win-rate reliability uses governed effective independent N when supplied',
 test('effective N cannot exceed resolved independent evidence',()=>{
   assert.throws(()=>buildR8PerformanceReceipt([episode()],[],{effectiveIndependentN:2}),/R8_EFFECTIVE_N_INVALID/);
 });
+
+test('explicit zero independent N cannot borrow raw sample confidence',()=>{
+  const result=buildR8PerformanceReceipt([episode()],[],{effectiveIndependentN:0});
+  assert.equal(result.winRate,1, 'raw descriptive rate remains visible');
+  assert.equal(result.effectiveIndependentN,0);
+  assert.equal(result.winRateInterval95,null);
+  assert.ok(result.unknownFields.includes('winRateInterval95'));
+  assert.equal(result.empiricalValidation,'NOT_ESTABLISHED_BY_DESCRIPTIVE_RECEIPT');
+});
+
+test('research metrics reject duplicate episodes and ambiguous equity chronology',()=>{
+  assert.throws(()=>buildR8PerformanceReceipt([episode(),episode()],[]),/DUPLICATE/);
+  const result=buildR8PerformanceReceipt([episode()],[
+    {at:'2026-01-01T00:00:00Z',equity:100}, {at:'2026-01-01T00:00:00.000Z',equity:50},
+  ]);
+  assert.equal(result.maxDrawdown,null);
+  assert.equal(result.navChange,null);
+});
+
+test('empirical tail uses fractional boundary mass and finite aggregates stay finite or unknown',()=>{
+  const episodes=[episode({wholeChainPnl:-100}),episode({episodeId:'e2',wholeChainPnl:20}),episode({episodeId:'e3',wholeChainPnl:100})];
+  const result=buildR8PerformanceReceipt(episodes,[],{expectedShortfallAlpha:0.5});
+  assert.ok(Math.abs((result.expectedShortfall ?? NaN)-(-60))<1e-10);
+  assert.equal(result.expectedShortfallMethod,'EMPIRICAL_FRACTIONAL_LOWER_TAIL_NOT_FORECAST');
+  const overflow=buildR8PerformanceReceipt([episode({wholeChainPnl:1e308}),episode({episodeId:'e2',wholeChainPnl:1e308})],[]);
+  assert.equal(overflow.wholeChainPnl,null);
+  assert.equal(overflow.expectancy,null);
+  assert.ok(!Object.values(overflow).some(value=>typeof value==='number'&&!Number.isFinite(value)));
+});

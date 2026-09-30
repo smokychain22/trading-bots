@@ -138,6 +138,7 @@ export interface FollowerCopyPlan {
     | "ROLL_REQUIRES_EXPLICIT_LEGS"
     | "BROKER_REJECTED"
     | "UNKNOWN_SUBMISSION_REQUIRES_RECONCILIATION"
+    | "BROKER_PENDING_REQUIRES_RECONCILIATION"
     | "BROKER_POSITION_DIVERGED"
     | "ASSIGNMENT_DIVERGED"
     | "PARTIAL_FILL_REQUIRES_RECONCILIATION"
@@ -240,6 +241,8 @@ export function planFollowerCopy(
   }
   if (follower.brokerOrderState === "UNKNOWN_SUBMISSION")
     return blocked(base, "UNKNOWN_SUBMISSION_REQUIRES_RECONCILIATION", "RECONCILING", "RECONCILE");
+  if (follower.brokerOrderState === "PENDING")
+    return blocked(base, "BROKER_PENDING_REQUIRES_RECONCILIATION", "RECONCILING", "RECONCILE");
   if (follower.brokerOrderState === "PARTIAL_FILL")
     return blocked(base, "PARTIAL_FILL_REQUIRES_RECONCILIATION", "PARTIAL_SYNC", "RECONCILE");
   if (follower.brokerOrderState === "REJECTED")
@@ -258,7 +261,7 @@ export function planFollowerCopy(
     && !follower.followerBrokerLifecycleConfirmed)
     return blocked(base, "FOLLOWER_BROKER_LIFECYCLE_UNCONFIRMED", "RECONCILING", "RECONCILE");
 
-  if (follower.actualBrokerQuantity !== follower.existingCopiedQuantity && follower.existingCopiedQuantity > 0)
+  if (follower.actualBrokerQuantity !== follower.existingCopiedQuantity)
     return blocked(base, "BROKER_POSITION_DIVERGED", "DIVERGED", "RECONCILE");
   if (event.action === "ASSIGN_STOCK" && follower.followerAssigned === false)
     return blocked(base, "ASSIGNMENT_DIVERGED", "DIVERGED", "RECONCILE");

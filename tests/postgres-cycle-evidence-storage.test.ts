@@ -17,6 +17,7 @@ import {
 import { buildCanonicalStrategyFrontier, type CanonicalStrategyFrontier,
   type CanonicalStrategyFrontierInput } from '../src/theta/canonical-strategy-frontier.js';
 import { replayCycleArchive } from '../src/theta/cycle-archive-replay.js';
+import { parseStrategyRoutingResponse } from '../src/theta/strategy-router-contract.js';
 import { projectOperationalThetaCandidates } from '../src/theta/postgres-theta-cycle-store.js';
 import type { ThetaShadowCycleResult } from '../src/theta/theta-shadow-cycle.js';
 import { flatPortfolioExposure } from './helpers/flat-portfolio-exposure.js';
@@ -108,13 +109,26 @@ test('PostgreSQL projection is bounded while compressed archive retains the comp
 test('the real packed PostgreSQL archive feeds provider-free same-source T0 replay', () => {
   const original = cycle();
   const replayInput: CanonicalStrategyFrontierInput = {
-    snapshotId: 'packed-replay', timestamp: now, strategyVersion: 'test', contracts: [], routing: null,
+    snapshotId: 'packed-replay', timestamp: now, strategyVersion: 'test',
+    contracts: [{ ...contract(0), dte: 35, expiration: '2026-10-30', optionSymbol: 'SPY261030P00400000', occSymbol: 'SPY261030P00400000' }],
+    routing: parseStrategyRoutingResponse({ contractVersion: 'theta-strategy-router-runtime-v1', snapshotId: 'packed-replay',
+      timestamp: now, policyVersion: 'test', results: ['THETA_Q', 'THETA_H', 'THETA_R', 'THETA_A', 'THETA_C', 'THETA_D'].map(strategyFamily => ({
+        strategyFamily, eligible: strategyFamily === 'THETA_Q', eligibilityState: strategyFamily === 'THETA_Q' ? 'ELIGIBLE_CHALLENGER' : 'INELIGIBLE_STATE',
+        reasons: [{ code: 'TEST_ROUTE', polarity: 0, detail: 'Synthetic route for archive integration test' }], policyVersion: 'test',
+      })) }),
     stock: null, assignmentCapacityQty: null, aegisNewRiskState: null, eventState: null,
     unmanagedBrokerPositionCount: 0, unevaluatedUnderlyingCount: 0, optionomicsContext: null,
   };
   const expanded = { ...original, canonicalFrontierInput: replayInput,
     strategyFrontier: buildCanonicalStrategyFrontier(replayInput) } as ThetaShadowCycleResult;
   const projection = projectCycleEvidenceForPostgres(expanded);
+  const decoded = decodeCycleEvidenceArchive(projection.archive);
+  const actual = (expanded.strategyFrontier as CanonicalStrategyFrontier).branches
+    .flatMap(branch => branch.candidates).map(candidate => candidate.sizing.waterfall);
+  assert.ok(actual.some(waterfall => waterfall !== undefined));
+  const recovered = (decoded.strategyFrontier as unknown as CanonicalStrategyFrontier).branches
+    .flatMap(branch => branch.candidates).map(candidate => candidate.sizing.waterfall);
+  assert.deepEqual(recovered, actual, 'candidate-bound sizing waterfall survives canonical archive and loader');
   const sourceSha = 'a'.repeat(40);
   const replayed = replayCycleArchive(projection.archive, {
     cycleId: 'packed-replay', sourceSha,

@@ -31,7 +31,7 @@ export const ORDER_INTENT_TRANSITIONS: Readonly<Record<OrderIntentState, readonl
   // Broker truth can skip an intermediate event. A fast fill may arrive
   // before a separate acknowledgement is observed, so terminal or partial
   // states are valid direct transitions after a persisted submission.
-  SUBMITTING: ['SUBMITTED', 'ACKNOWLEDGED', 'PARTIAL', 'FILLED', 'UNKNOWN_SUBMISSION', 'REJECTED'],
+  SUBMITTING: ['SUBMITTED', 'ACKNOWLEDGED', 'PARTIAL', 'FILLED', 'CANCEL_REQUESTED', 'CANCELED', 'EXPIRED', 'UNKNOWN_SUBMISSION', 'REJECTED'],
   SUBMITTED: ['ACKNOWLEDGED', 'PARTIAL', 'FILLED', 'CANCEL_REQUESTED', 'CANCELED', 'EXPIRED', 'REJECTED', 'UNKNOWN_SUBMISSION'],
   ACKNOWLEDGED: ['PARTIAL', 'FILLED', 'CANCEL_REQUESTED', 'CANCELED', 'EXPIRED', 'REJECTED'],
   PARTIAL: ['FILLED', 'CANCEL_REQUESTED', 'CANCELED', 'EXPIRED'],
@@ -47,7 +47,7 @@ export const ORDER_INTENT_TRANSITIONS: Readonly<Record<OrderIntentState, readonl
   // state the broker actually proves the order is in -- including PROPOSED,
   // which permits a genuinely NEW order intent once this one is proven to
   // have never reached the broker at all.
-  RECONCILING: ['SUBMITTED', 'ACKNOWLEDGED', 'PARTIAL', 'FILLED', 'CANCELED', 'REJECTED', 'EXPIRED', 'PROPOSED'],
+  RECONCILING: ['SUBMITTED', 'ACKNOWLEDGED', 'PARTIAL', 'FILLED', 'CANCEL_REQUESTED', 'CANCELED', 'REJECTED', 'EXPIRED', 'PROPOSED'],
 };
 
 export class InvalidOrderIntentTransitionError extends Error {

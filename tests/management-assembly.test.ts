@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { assembleManagementDecision, type ManagementAssemblyInput } from '../src/theta/management-assembly.js';
 import type { ManagementDecisionResponse } from '../src/theta/management-contract.js';
-import type { AegisAssessmentResponse } from '../src/theta/aegis-contract.js';
+import { riskFamilySchema, type AegisAssessmentResponse } from '../src/theta/aegis-contract.js';
 import type { ExecutionQualityResponse } from '../src/theta/execution-quality-contract.js';
 
 const NOW = new Date().toISOString();
@@ -20,7 +20,7 @@ const management = (selectedAction: ManagementDecisionResponse['selectedAction']
 
 const aegis = (state: AegisAssessmentResponse['newRiskState']): AegisAssessmentResponse => ({
   contractVersion: 'theta-aegis-runtime-v1', decisionId: 'd1', snapshotId: 's1', timestamp: NOW, policyVersion: 'v1', compoundStressHoldCount: 2, policyConfigurationHash: 'a'.repeat(64),
-  families: [{ family: 'PER_TRADE', state, reasons: [] }], newRiskState: state, reasons: [],
+  families: riskFamilySchema.options.map(family => ({ family, state: state, reasons: [] })), newRiskState: state, reasons: [],
   permittedActions: ['CLOSE', 'CANCEL', 'BUY_TO_CLOSE', 'RECONCILE', 'REDUCE_POSITION', 'SAFETY_EXIT'],
 });
 

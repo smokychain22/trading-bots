@@ -1,4 +1,5 @@
 import { buildAegisAssessmentIdentity, type AegisAssessmentIdentity } from '../../src/theta/aegis-assessment-identity.js';
+import { riskFamilySchema } from '../../src/theta/aegis-contract.js';
 
 const exitActions = ['CLOSE', 'CANCEL', 'BUY_TO_CLOSE', 'RECONCILE', 'REDUCE_POSITION', 'SAFETY_EXIT'] as const;
 
@@ -38,7 +39,7 @@ export function testAegisAssessmentIdentity(input: Partial<{
       policyVersion: 'aegis-policy-v1',
       compoundStressHoldCount: 2,
       policyConfigurationHash: 'a'.repeat(64),
-      families: [{ family: 'SYSTEM', state: newRiskState, reasons: [] }],
+      families: riskFamilySchema.options.map(family => ({ family, state: newRiskState, reasons: [] })),
       newRiskState,
       reasons: [],
       permittedActions: [...exitActions, 'OPEN_CSP'],

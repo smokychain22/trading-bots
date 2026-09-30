@@ -52,11 +52,14 @@ export function assessStrategyAccountPolicyCompatibility(input: {
     bindingPolicies: ['BROKER_CAPACITY'], reasons: ['BROKER_CAPACITY_BELOW_MINIMUM_EXECUTABLE_QUANTITY'],
   };
   const equity = input.exposure.equity;
+  const longValue = input.exposure.longOptionValue === undefined
+    ? input.exposure.longPutCount + input.exposure.longCallCount === 0 ? 0 : null : input.exposure.longOptionValue;
   const capital = input.minimumCapitalRequired;
   if (input.marketApplicable === null || input.policy === null || equity === null || equity <= 0
     || capital === null || !Number.isFinite(capital) || capital <= 0
     || input.exposure.cspCollateralRequired === null || input.exposure.stockInventoryValue === null
-    || input.exposure.pendingOpeningCapitalAtRisk === null || input.exposure.pendingAssignmentCollateral === null) {
+    || input.exposure.pendingOpeningCapitalAtRisk === null || input.exposure.pendingAssignmentCollateral === null
+    || longValue === null || (input.exposure.unclassifiedPositionSymbols?.length ?? 0) > 0) {
     return {
       ...base, state: 'UNKNOWN', accountFeasible: null, minimumTickerConcentrationPct: null,
       policyLimitPct: input.policy?.maxTickerConcentrationPct ?? null,
@@ -69,7 +72,7 @@ export function assessStrategyAccountPolicyCompatibility(input: {
   const minimumTickerConcentrationPct = (currentUnderlying + capital) / equity;
   const minimumPortfolioRiskPct = (
     input.exposure.cspCollateralRequired + input.exposure.stockInventoryValue
-    + input.exposure.pendingOpeningCapitalAtRisk + capital
+    + input.exposure.pendingOpeningCapitalAtRisk + longValue + capital
   ) / equity;
   const minimumAssignmentPct = (
     input.exposure.cspCollateralRequired + input.exposure.pendingAssignmentCollateral + capital

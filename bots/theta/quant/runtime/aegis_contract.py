@@ -22,6 +22,7 @@ _QUANT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_QUANT_DIR))
 
 from models.aegis import AegisInputs, AegisPolicy, assess_aegis, permitted_actions_for  # noqa: E402
+from models.aegis import AEGIS_NUMERIC_FAMILY_FIELDS, AEGIS_STATE_FAMILY_FIELDS  # noqa: E402
 
 CONTRACT_VERSION = "theta-aegis-runtime-v1"
 
@@ -101,6 +102,31 @@ def evaluate_request(request: dict[str, Any]) -> dict[str, Any]:
 
     permitted_actions = sorted(permitted_actions_for(assessment.new_risk_state))
 
+    # Audit the exact inputs consumed by the sovereign model. These are
+    # decision-snapshot values, not a claim that source freshness was proven.
+    # Source observation times remain unknown unless the upstream receipt
+    # supplies them. No probability or contract capacity is inferred here.
+    input_data = {**request["inputs"], "stressIvShockApplicability": inputs.stress_iv_shock_applicability,
+                  "stressSpreadWideningApplicability": inputs.stress_spread_widening_applicability}
+
+    def family_evidence(family):
+        pair = AEGIS_NUMERIC_FAMILY_FIELDS.get(family)
+        names = (pair[0],) if pair else AEGIS_STATE_FAMILY_FIELDS[family]
+        threshold = policy_data[pair[1]] if pair else None
+        return {
+            "version": "theta-aegis-family-input-evidence-v1", "decisionId": decision_id,
+            "snapshotId": snapshot_id, "decisionAsOf": timestamp, "policyVersion": policy.policy_version,
+            "inputs": {name: input_data[name] for name in names},
+            "unit": "DECIMAL_EQUITY_FRACTION" if pair else "TYPED_STATE",
+            "source": "BOUND_REQUEST_SNAPSHOT", "sourceObservedAt": None, "sourceFreshness": "NOT_PROVEN_BY_RISK_ENGINE",
+            "rule": "VALUE_GTE_HARD_VETO_GTE_SOFT_REDUCED" if pair else "CANONICAL_AEGIS_" + family,
+            "softThreshold": threshold,
+            "hardThreshold": threshold * policy.hard_cap_multiplier if pair else None,
+            "providerRequiredStates": sorted(policy.provider_required_states) if family == "PROVIDER" else None,
+            "compoundStressHoldCount": policy.compound_stress_hold_count if family == "SYSTEM" else None,
+            "quantityCapacity": None, "capacityState": "DERIVED_SEPARATELY_BY_CANONICAL_SIZING",
+        }
+
     return {
         "contractVersion": CONTRACT_VERSION,
         "decisionId": decision_id,
@@ -112,7 +138,8 @@ def evaluate_request(request: dict[str, Any]) -> dict[str, Any]:
             json.dumps(policy_data, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
         ).hexdigest(),
         "families": [
-            {"family": f.family.value, "state": f.state.value, "reasons": [asdict(r) for r in f.reasons]}
+            {"family": f.family.value, "state": f.state.value, "reasons": [asdict(r) for r in f.reasons],
+             "inputEvidence": family_evidence(f.family.value)}
             for f in assessment.families
         ],
         "newRiskState": assessment.new_risk_state.value,

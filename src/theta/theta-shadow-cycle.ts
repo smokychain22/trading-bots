@@ -569,6 +569,8 @@ function assembleFusionSnapshotInput(params: {
       unclassifiedOpenOrderIds: [...params.derivedExposure.unclassifiedOpenOrderIds],
       riskyUnderlyings: [...params.derivedExposure.riskyUnderlyings],
       unparsedOptionSymbols: [...params.derivedExposure.unparsedOptionSymbols],
+      unclassifiedPositionSymbols: params.derivedExposure.unclassifiedPositionSymbols === undefined
+        ? undefined : [...params.derivedExposure.unclassifiedPositionSymbols],
       correlationObservation: params.portfolioCorrelation === null ? null
         : { ...params.portfolioCorrelation,
             pairs: params.portfolioCorrelation.pairs.map((pair) => ({ ...pair })) } },
@@ -1755,6 +1757,11 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     snapshotId: fusionSnapshot.contentHash, timestamp: decisionTime, strategyVersion: config.policyVersion,
     contracts: mergedContractsForSnapshot, routing, stock: stockState, assignmentCapacityQty: null,
     buyingPower: account?.optionsBuyingPower ?? account?.buyingPower ?? null,
+    capitalBudgetAccountEvidence: exposureDerivationTrustworthy && account !== null ? {
+      observedAt: [account.receivedAt, ...positions.map(position => position.receivedAt), ...openOrders.map(order => order.receivedAt)]
+        .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? account.receivedAt,
+      exposure: derivedExposure,
+    } : null,
     optionsApprovedLevel: account?.optionsApprovedLevel ?? null,
     optionsTradingLevel: account?.optionsTradingLevel ?? null,
     sizingPolicy: config.sizingPolicy,

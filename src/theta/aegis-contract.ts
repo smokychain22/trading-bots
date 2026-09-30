@@ -24,7 +24,7 @@ export const riskStateSchema = z.enum([
   'HARD_VETO',
 ]);
 
-const riskFamilySchema = z.enum([
+export const riskFamilySchema = z.enum([
   'PER_TRADE',
   'UNDERLYING',
   'SECTOR',
@@ -43,6 +43,20 @@ const familyAssessmentSchema = z.object({
   family: riskFamilySchema,
   state: riskStateSchema,
   reasons: z.array(reasonSchema),
+  // Optional for older immutable receipts. Current Python emits this exact
+  // consumed-input trace. It doesn't invent upstream source observation time.
+  inputEvidence: z.object({
+    version: z.literal('theta-aegis-family-input-evidence-v1'),
+    decisionId: z.string().min(1), snapshotId: z.string().min(1), decisionAsOf: z.string().datetime({ offset: true }),
+    policyVersion: z.string().min(1),
+    inputs: z.record(z.string(), z.union([z.number().finite(), z.string(), z.boolean(), z.null()])),
+    unit: z.enum(['DECIMAL_EQUITY_FRACTION', 'TYPED_STATE']), source: z.literal('BOUND_REQUEST_SNAPSHOT'),
+    sourceObservedAt: z.null(), sourceFreshness: z.literal('NOT_PROVEN_BY_RISK_ENGINE'),
+    rule: z.string().min(1), softThreshold: z.number().finite().nonnegative().nullable(),
+    hardThreshold: z.number().finite().nonnegative().nullable(), providerRequiredStates: z.array(z.string()).nullable(),
+    compoundStressHoldCount: z.number().int().min(2).nullable(), quantityCapacity: z.null(),
+    capacityState: z.literal('DERIVED_SEPARATELY_BY_CANONICAL_SIZING'),
+  }).optional(),
 });
 
 // Risk-reducing actions this contract requires to always be permitted,
@@ -58,11 +72,23 @@ export const aegisAssessmentResponseSchema = z.object({
   policyVersion: z.string().min(1),
   compoundStressHoldCount: z.number().int().min(2),
   policyConfigurationHash: z.string().regex(/^[a-f0-9]{64}$/),
-  families: z.array(familyAssessmentSchema).min(1),
+  families: z.array(familyAssessmentSchema).length(riskFamilySchema.options.length),
   newRiskState: riskStateSchema,
   reasons: z.array(reasonSchema),
   permittedActions: z.array(z.string().min(1)),
 }).superRefine((response, context) => {
+  const names = response.families.map(family => family.family);
+  for (const family of response.families) {
+    const evidence = family.inputEvidence;
+    if (evidence && (evidence.decisionId !== response.decisionId || evidence.snapshotId !== response.snapshotId
+      || evidence.decisionAsOf !== response.timestamp || evidence.policyVersion !== response.policyVersion)) {
+      context.addIssue({ code: 'custom', message: 'AEGIS family input evidence identity mismatch' });
+    }
+  }
+  if (new Set(names).size !== riskFamilySchema.options.length
+    || riskFamilySchema.options.some(name => !names.includes(name))) {
+    context.addIssue({ code: 'custom', message: 'AEGIS must assess each of the twelve risk families exactly once' });
+  }
   const strictness: Record<z.infer<typeof riskStateSchema>, number> = {
     ALLOW_FULL: 0,
     ALLOW_REDUCED: 1,
@@ -86,8 +112,14 @@ export const aegisAssessmentResponseSchema = z.object({
 
 export type AegisAssessmentResponse = z.infer<typeof aegisAssessmentResponseSchema>;
 
-export function parseAegisAssessmentResponse(payload: unknown): AegisAssessmentResponse {
-  return aegisAssessmentResponseSchema.parse(payload);
+export function parseAegisAssessmentResponse(payload: unknown, expected?: {
+  decisionId: string; snapshotId: string; timestamp: string; policyVersion?: string;
+}): AegisAssessmentResponse {
+  const response = aegisAssessmentResponseSchema.parse(payload);
+  if (expected && (response.decisionId !== expected.decisionId || response.snapshotId !== expected.snapshotId
+    || response.timestamp !== expected.timestamp || (expected.policyVersion !== undefined && response.policyVersion !== expected.policyVersion)))
+    throw new Error('AEGIS_RESPONSE_IDENTITY_MISMATCH');
+  return response;
 }
 
 export function isActionPermitted(response: AegisAssessmentResponse, action: string): boolean {

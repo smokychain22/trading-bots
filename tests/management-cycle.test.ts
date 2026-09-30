@@ -7,7 +7,7 @@ import type { PythonBridgeConfig } from '../src/theta/python-bridge.js';
 import type { ManagementOrchestrationRequest } from '../src/theta/management-orchestrator.js';
 import type { AssignmentOrchestrationRequest } from '../src/theta/assignment-orchestrator.js';
 import type { RecoveryOrchestrationRequest } from '../src/theta/recovery-orchestrator.js';
-import type { AegisAssessmentResponse } from '../src/theta/aegis-contract.js';
+import { riskFamilySchema, type AegisAssessmentResponse } from '../src/theta/aegis-contract.js';
 
 const CANDIDATE_PYTHON_PATHS = [
   process.env.PYTHON_EXECUTABLE_FOR_TESTS,
@@ -34,7 +34,7 @@ const HASH = 'a'.repeat(64);
 
 const aegis = (): AegisAssessmentResponse => ({
   contractVersion: 'theta-aegis-runtime-v1', decisionId: 'd1', snapshotId: 's1', timestamp: NOW, policyVersion: 'v1', compoundStressHoldCount: 2, policyConfigurationHash: 'a'.repeat(64),
-  families: [{ family: 'PER_TRADE', state: 'ALLOW_FULL', reasons: [] }], newRiskState: 'ALLOW_FULL', reasons: [],
+  families: riskFamilySchema.options.map(family => ({ family, state: 'ALLOW_FULL' as const, reasons: [] })), newRiskState: 'ALLOW_FULL', reasons: [],
   permittedActions: ['CLOSE', 'CANCEL', 'BUY_TO_CLOSE', 'RECONCILE', 'REDUCE_POSITION', 'SAFETY_EXIT'],
 });
 

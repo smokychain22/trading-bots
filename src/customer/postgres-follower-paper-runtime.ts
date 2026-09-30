@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Pool,PoolClient } from 'pg';
 import { z } from 'zod';
+import { withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 import { canonicalJson } from '../research/point-in-time-evidence.js';
 import type { BrokerOrderSnapshot } from '../execution/broker.js';
 import {
@@ -18,9 +19,7 @@ export class PostgresFollowerPaperRuntimeStore{
     const at=z.string().datetime({offset:true}).parse(createdAt);
     if(plan.executionAuthorized!==false||plan.executionGate!=='FOLLOWER_EXECUTION_DISABLED')
       throw new Error('FOLLOWER_EXECUTION_GATE_MUST_REMAIN_LOCKED');
-    const client=await this.pool.connect();
-    try{
-      await client.query('BEGIN');
+    return withRuntimePostgresTransaction(this.pool, async client => {
       const authority=await client.query(`SELECT fce.workspace_id,fce.follower_account_id,fce.execution_authorized,
         fce.copy_state,foi.follower_order_intent_id,foi.client_order_id,foi.quantity,foi.limit_price,foi.state
         FROM copy.follower_copy_event fce JOIN copy.follower_order_intent foi
@@ -50,7 +49,7 @@ export class PostgresFollowerPaperRuntimeStore{
         const existing=await client.query(`SELECT content_hash FROM copy.follower_paper_action_plan
           WHERE follower_action_plan_id=$1`,[plan.actionPlanId]);
         if(existing.rows[0]?.content_hash!==contentHash)throw new Error('FOLLOWER_ACTION_PLAN_IDEMPOTENCY_CONFLICT');
-        await client.query('COMMIT'); return 'DUPLICATE';
+        return 'DUPLICATE' as const;
       }
       await this.persistPlanEvent(client,plan.actionPlanId,'PLANNED_LOCKED',null,0,false,
         {executionGate:plan.executionGate,executionAuthorized:false},at);
@@ -58,17 +57,15 @@ export class PostgresFollowerPaperRuntimeStore{
         last_follower_action_plan_id,updated_at) VALUES($1,$2,'READY',$3,$4)
         ON CONFLICT(follower_account_id) DO UPDATE SET last_follower_action_plan_id=EXCLUDED.last_follower_action_plan_id,
           updated_at=EXCLUDED.updated_at`,[plan.workspaceId,plan.followerAccountId,plan.actionPlanId,at]);
-      await client.query('COMMIT'); return 'INSERTED';
-    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+      return 'INSERTED' as const;
+    });
   }
 
   async recordOrderReconciliation(input:{plan:FollowerPaperActionPlan;brokerOrder:BrokerOrderSnapshot|null;
     observedAt:string}):Promise<ReturnType<typeof classifyFollowerOrderReconciliation>>{
     const observedAt=z.string().datetime({offset:true}).parse(input.observedAt);
     const result=classifyFollowerOrderReconciliation({plan:input.plan,brokerOrder:input.brokerOrder});
-    const client=await this.pool.connect();
-    try{
-      await client.query('BEGIN');
+    return withRuntimePostgresTransaction(this.pool, async client => {
       const stored=await client.query(`SELECT workspace_id,follower_account_id,execution_authorized,execution_gate,content_hash
         FROM copy.follower_paper_action_plan WHERE follower_action_plan_id=$1 FOR SHARE`,[input.plan.actionPlanId]);
       const row=stored.rows[0] as Record<string,unknown>|undefined;
@@ -96,8 +93,8 @@ export class PostgresFollowerPaperRuntimeStore{
         reconciliationEventKey]);
       await client.query(`UPDATE copy.follower_runtime_checkpoint SET runtime_state=$2,last_reconciled_at=$3,updated_at=$3
         WHERE follower_account_id=$1`,[input.plan.followerAccountId,result.requiresReconciliation?'RECONCILING':'READY',observedAt]);
-      await client.query('COMMIT'); return result;
-    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+      return result;
+    });
   }
 
   async recordLifecycleDivergence(input:Parameters<typeof classifyFollowerLifecycleDivergence>[0]&{

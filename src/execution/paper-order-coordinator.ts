@@ -62,6 +62,29 @@ export interface PrepareIntentInput extends Omit<PersistedPaperOrderIntent, 'sta
 export type PaperOrderGate = Omit<ExecutionGateContext,
   'intentPersisted' | 'accountKind' | 'environment' | 'clientOrderId' | 'quantity' | 'operation'>;
 
+function validateAuthorizationEvidence(intent: PersistedPaperOrderIntent | PrepareIntentInput): void {
+  const evidence = intent.authorizationEvidence;
+  if (!['PAPER_EVIDENCE', 'EMPIRICALLY_PROMOTED_PAPER'].includes(evidence.executionTier)) throw new Error('LIVE_EXECUTION_NOT_AUTHORIZED');
+  if (![evidence.canonicalQuantity, evidence.paperEvidenceQuantity, intent.request.qty].every(value => Number.isSafeInteger(value) && value > 0)
+    || intent.request.qty !== evidence.paperEvidenceQuantity || evidence.paperEvidenceQuantity > evidence.canonicalQuantity)
+    throw new Error('PAPER_EVIDENCE_QUANTITY_INVALID');
+  if (thetaActionOpensNewRisk(intent.action) && evidence.executionTier === 'EMPIRICALLY_PROMOTED_PAPER'
+    && (evidence.empiricalEconomicsReady !== true || evidence.expectedAfterCostEv === null
+      || !Number.isFinite(evidence.expectedAfterCostEv) || evidence.expectedAfterCostEv <= 0))
+    throw new Error('EMPIRICAL_PROMOTION_ECONOMICS_NOT_READY');
+}
+
+function assertBrokerSnapshotMatches(intent: PersistedPaperOrderIntent, order: BrokerOrderSnapshot): void {
+  if (order.clientOrderId !== intent.request.client_order_id || order.symbol !== intent.request.symbol
+    || order.side !== intent.request.side || order.qty !== intent.request.qty
+    || (order.positionIntent != null && order.positionIntent !== intent.request.position_intent)
+    || (intent.brokerOrderId !== null && order.id !== intent.brokerOrderId)) throw new Error('BROKER_ORDER_INTENT_IDENTITY_MISMATCH');
+  if (!order.id.trim() || !Number.isSafeInteger(order.qty) || order.qty <= 0
+    || !Number.isSafeInteger(order.filledQty) || order.filledQty < 0 || order.filledQty > order.qty
+    || (['fill', 'filled'].includes(order.status.toLowerCase()) && order.filledQty !== order.qty))
+    throw new Error('BROKER_ORDER_QUANTITY_INVALID');
+}
+
 export class PaperOrderCoordinator {
   constructor(
     private readonly broker: PaperBrokerAdapter,
@@ -89,14 +112,7 @@ export class PaperOrderCoordinator {
     const intent = await this.store.getIntent(orderIntentId);
     if (intent === null) throw new Error('Order intent must be persisted before submission.');
     const expectedNewRisk = thetaActionOpensNewRisk(intent.action);
-    const tierEvidence=intent.authorizationEvidence;
-    if(!['PAPER_EVIDENCE','EMPIRICALLY_PROMOTED_PAPER'].includes(tierEvidence.executionTier))
-      throw new Error('LIVE_EXECUTION_NOT_AUTHORIZED');
-    if(intent.request.qty!==tierEvidence.paperEvidenceQuantity||tierEvidence.paperEvidenceQuantity>tierEvidence.canonicalQuantity)
-      throw new Error('PAPER_EVIDENCE_QUANTITY_INVALID');
-    if(expectedNewRisk&&tierEvidence.executionTier==='EMPIRICALLY_PROMOTED_PAPER'&&
-      (!tierEvidence.empiricalEconomicsReady||tierEvidence.expectedAfterCostEv===null||tierEvidence.expectedAfterCostEv<=0))
-      throw new Error('EMPIRICAL_PROMOTION_ECONOMICS_NOT_READY');
+    validateAuthorizationEvidence(intent);
     if (gate.isNewEntry !== expectedNewRisk) throw new Error('ORDER_ACTION_RISK_CLASSIFICATION_MISMATCH');
     const expectedPriceEvidence = intent.action === 'SELL_STOCK' ? 'ALPACA_STOCK_BBO' : 'QUALIFIED_OPTION_BBO';
     if (gate.priceEvidence !== expectedPriceEvidence) throw new Error('ORDER_EXECUTABLE_PRICE_PROVENANCE_MISMATCH');
@@ -145,7 +161,9 @@ export class PaperOrderCoordinator {
   async syncBrokerSnapshot(orderIntentId: string, brokerOrder: BrokerOrderSnapshot): Promise<OrderIntentState> {
     const intent = await this.store.getIntent(orderIntentId);
     if (intent === null) throw new Error('Order intent cannot be synchronized before persistence.');
-    const brokerState = brokerOrderIntentState(brokerOrder) ?? 'SUBMITTED';
+    assertBrokerSnapshotMatches(intent, brokerOrder);
+    const brokerState = brokerOrderIntentState(brokerOrder);
+    if (brokerState === null) throw new Error('BROKER_ORDER_STATUS_UNKNOWN');
     if (intent.status === brokerState) return brokerState;
     const terminal = new Set<OrderIntentState>(['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED']);
     if (terminal.has(intent.status)) return intent.status;
@@ -222,12 +240,13 @@ export class PaperOrderCoordinator {
       || replacement.request.qty > original.request.qty) {
       throw new Error('REPLACEMENT_QUANTITY_MAY_NOT_INCREASE_EXPOSURE');
     }
+    validateAuthorizationEvidence(replacement);
     const persistedReplacement = await this.prepare(replacement);
     if (persistedReplacement.status !== 'READY') return this.reconcileIntent(replacement.orderIntentId);
     const expectedPriceEvidence = original.action === 'SELL_STOCK' ? 'ALPACA_STOCK_BBO' : 'QUALIFIED_OPTION_BBO';
     if (gate.priceEvidence !== expectedPriceEvidence) throw new Error('ORDER_EXECUTABLE_PRICE_PROVENANCE_MISMATCH');
     const authorization = authorizeBrokerMutation(this.control, {
-      ...gate, operation: 'REPLACE', isNewEntry: false, intentPersisted: true,
+      ...gate, operation: 'REPLACE', isNewEntry: thetaActionOpensNewRisk(replacement.action), intentPersisted: true,
       accountKind: this.broker.accountKind, environment: this.broker.environment,
       clientOrderId: replacement.request.client_order_id, quantity: replacement.request.qty,
     });

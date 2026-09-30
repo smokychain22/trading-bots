@@ -1,4 +1,4 @@
-export const r8PerformanceAnalyticsVersion='theta-r8-performance-analytics-v2' as const;
+export const r8PerformanceAnalyticsVersion='theta-r8-performance-analytics-v3' as const;
 
 export interface R8StrategyLineage {
   readonly strategyVersion:string; readonly policyVersion:string; readonly riskVersion:string;
@@ -40,19 +40,27 @@ export interface R8PerformanceReceipt {
   readonly profitFactor:number|null; readonly payoffRatio:number|null;
   readonly averageWin:number|null; readonly averageLoss:number|null;
   readonly expectedShortfall:number|null; readonly expectedShortfallAlpha:number;
+  readonly expectedShortfallMethod:'EMPIRICAL_FRACTIONAL_LOWER_TAIL_NOT_FORECAST';
+  readonly empiricalValidation:'NOT_ESTABLISHED_BY_DESCRIPTIVE_RECEIPT';
   readonly assignmentRate:number|null; readonly medianRecoveryDurationDays:number|null;
   readonly coveredCallContribution:number|null; readonly callAwayRate:number|null; readonly unknownFields:readonly string[];
 }
 
 const finite=(value:number|null):value is number=>value!==null&&Number.isFinite(value);
-const strictSum=(values:readonly (number|null)[]):number|null=>values.length>0&&values.every(finite)
-  ?values.reduce<number>((sum,value)=>sum+(value as number),0):null;
+const strictSum=(values:readonly (number|null)[]):number|null=>{
+  if(values.length===0||!values.every(finite))return null;
+  const sum=values.reduce<number>((total,value)=>total+(value as number),0);
+  return Number.isFinite(sum)?sum:null;
+};
 const mean=(values:readonly (number|null)[]):number|null=>{
   const sum=strictSum(values);
   return sum===null?null:sum/values.length;
 };
-const ratio=(numerator:number|null,denominator:number|null):number|null=>finite(numerator)&&finite(denominator)&&denominator!==0?numerator/denominator:null;
-const rate=(values:readonly (boolean|null)[]):number|null=>values.length>0&&values.every((value)=>value!==null)
+const ratio=(numerator:number|null,denominator:number|null):number|null=>{
+  const value=finite(numerator)&&finite(denominator)&&denominator!==0?numerator/denominator:null;
+  return value!==null&&Number.isFinite(value)?value:null;
+};
+const rate=(values:readonly (boolean|null)[]):number|null=>values.length>0&&values.every((value)=>typeof value==='boolean')
   ?values.filter(Boolean).length/values.length:null;
 function wilsonInterval(successRate:number,sampleN:number,state:R8WinRateInterval['state']):R8WinRateInterval {
   const z=1.959963984540054,denominator=1+(z*z)/sampleN;
@@ -68,12 +76,13 @@ function median(values:readonly (number|null)[]):number|null {
 }
 function drawdown(points:readonly R8EquityPoint[]):number|null {
   if(points.length===0||points.some((point)=>!finite(point.equity)||!Number.isFinite(Date.parse(point.at))))return null;
+  if(new Set(points.map(point=>Date.parse(point.at))).size!==points.length)return null;
   const sorted=points.slice().sort((left,right)=>Date.parse(left.at)-Date.parse(right.at));
   const first=sorted[0];
   if(first===undefined||!finite(first.equity))return null;
   let peak=first.equity,worst=0;
   for(const point of sorted){const equity=point.equity as number;peak=Math.max(peak,equity);worst=Math.min(worst,equity-peak);}
-  return worst;
+  return Number.isFinite(worst)?worst:null;
 }
 function fieldSum(episodes:readonly R8EpisodeEvidence[],field:keyof R8EpisodeEvidence):number|null {
   return strictSum(episodes.map((episode)=>episode[field] as number|null));
@@ -81,6 +90,8 @@ function fieldSum(episodes:readonly R8EpisodeEvidence[],field:keyof R8EpisodeEvi
 
 export function buildR8PerformanceReceipt(episodes:readonly R8EpisodeEvidence[],equity:readonly R8EquityPoint[],
   options:R8PerformanceOptions={}):R8PerformanceReceipt {
+  if(episodes.some(episode=>!episode.episodeId.trim())||new Set(episodes.map(episode=>episode.episodeId)).size!==episodes.length)
+    throw new Error('R8_EPISODE_ID_INVALID_OR_DUPLICATE');
   const outcomes=episodes.map((episode)=>episode.wholeChainPnl),resolved=outcomes.filter(finite);
   const wins=resolved.filter((value)=>value>0),losses=resolved.filter((value)=>value<0);
   const effectiveIndependentN=options.effectiveIndependentN??null;
@@ -95,27 +106,34 @@ export function buildR8PerformanceReceipt(episodes:readonly R8EpisodeEvidence[],
   const capitalDays=fieldSum(episodes,'capitalDays'),wholeChainPnl=fieldSum(episodes,'wholeChainPnl');
   const orderedEquity=equity.slice().sort((left,right)=>Date.parse(left.at)-Date.parse(right.at));
   const firstEquity=orderedEquity[0]?.equity??null,lastEquity=orderedEquity.at(-1)?.equity??null;
-  const navChange=orderedEquity.length<2||!finite(firstEquity)||!finite(lastEquity)?null:lastEquity-firstEquity;
+  const validEquity=equity.length>=2&&drawdown(equity)!==null;
+  const navDelta=!validEquity||!finite(firstEquity)||!finite(lastEquity)?null:lastEquity-firstEquity;
+  const navChange=navDelta!==null&&Number.isFinite(navDelta)?navDelta:null;
   const assigned=episodes.filter((episode)=>episode.assigned===true);
   const winRate=resolved.length>0?wins.length/resolved.length:null;
-  const intervalN=effectiveIndependentN!==null&&effectiveIndependentN>0?effectiveIndependentN:resolved.length;
+  const intervalN=effectiveIndependentN??resolved.length;
   const winRateInterval95=winRate===null||intervalN===0?null:wilsonInterval(winRate,intervalN,
     effectiveIndependentN!==null?'EFFECTIVE_N_ADJUSTED':'RAW_EPISODE_COUNT_ONLY');
-  const averageWin=wins.length>0?wins.reduce((sum,value)=>sum+value,0)/wins.length:null;
-  const averageLoss=losses.length>0?losses.reduce((sum,value)=>sum+value,0)/losses.length:null;
-  const payoffRatio=averageWin===null||averageLoss===null||averageLoss===0?null:averageWin/Math.abs(averageLoss);
-  const expectancy=resolved.length>0?resolved.reduce((sum,value)=>sum+value,0)/resolved.length:null;
+  const averageWin=mean(wins);
+  const averageLoss=mean(losses);
+  const payoffRatio=ratio(averageWin,averageLoss===null?null:Math.abs(averageLoss));
+  const expectancy=mean(resolved);
   const sortedOutcomes=resolved.slice().sort((left,right)=>left-right);
-  const tailCount=sortedOutcomes.length===0?0:Math.max(1,Math.ceil(sortedOutcomes.length*expectedShortfallAlpha));
-  const expectedShortfall=tailCount===0?null:sortedOutcomes.slice(0,tailCount).reduce((sum,value)=>sum+value,0)/tailCount;
+  // Descriptive empirical distribution, fractional boundary mass. This is
+  // neither an independently calibrated tail model nor a future-loss forecast.
+  const tailMass=sortedOutcomes.length*expectedShortfallAlpha;
+  const tailMean=tailMass===0?null:sortedOutcomes.slice(0,Math.ceil(tailMass)).reduce((sum,value,index)=>
+    sum+value*(Math.min(1,tailMass-index)/tailMass),0);
+  const expectedShortfall=tailMean!==null&&Number.isFinite(tailMean)?tailMean:null;
   const metrics={
     navChange,realizedPnl:fieldSum(episodes,'realizedPnl'),unrealizedPnl:fieldSum(episodes,'unrealizedPnl'),legPnl:fieldSum(episodes,'legPnl'),
     managedEpisodePnl:fieldSum(episodes,'managedEpisodePnl'),wholeChainPnl,premiumCollected:fieldSum(episodes,'premiumCollected'),
     stockPnl:fieldSum(episodes,'stockPnl'),feesAndCosts:fieldSum(episodes,'feesAndCosts'),tca:fieldSum(episodes,'tca'),
     meanMfe:mean(episodes.map((episode)=>episode.mfe)),meanMae:mean(episodes.map((episode)=>episode.mae)),maxDrawdown:drawdown(equity),capitalDays,
     returnPerCapitalDay:ratio(wholeChainPnl,capitalDays),winRate,winRateInterval95,effectiveIndependentN,expectancy,
-    profitFactor:losses.length>0?grossProfit/grossLoss:null,payoffRatio,averageWin,averageLoss,
-    expectedShortfall,expectedShortfallAlpha,
+    profitFactor:losses.length>0?ratio(grossProfit,grossLoss):null,payoffRatio,averageWin,averageLoss,
+    expectedShortfall,expectedShortfallAlpha,expectedShortfallMethod:'EMPIRICAL_FRACTIONAL_LOWER_TAIL_NOT_FORECAST' as const,
+    empiricalValidation:'NOT_ESTABLISHED_BY_DESCRIPTIVE_RECEIPT' as const,
     assignmentRate:rate(episodes.map((episode)=>episode.assigned)),
     medianRecoveryDurationDays:assigned.length>0?median(assigned.map((episode)=>episode.recoveryDurationDays)):null,
     coveredCallContribution:fieldSum(episodes,'coveredCallContribution'),callAwayRate:rate(assigned.map((episode)=>episode.calledAway)),

@@ -405,3 +405,17 @@ test('computeCohortOutcomeMetrics returns null fields (never a fabricated 0) whe
   assert.equal(metrics.profitFactor, null);
   assert.equal(metrics.expectedShortfall, null);
 });
+
+test('cohort tail and gross statistics preserve missing evidence and never call MAE portfolio drawdown', () => {
+  const result = computeCohortOutcomeMetrics([
+    resolvedRecord({ grossProfitComponent: null }),
+    resolvedRecord({ candidateId: 'r2', wholeChainNetPnl: -20, grossProfitComponent: 0, grossLossComponent: -20 }),
+  ], 0.05);
+  assert.equal(result.profitFactor, null);
+  assert.equal(result.expectedShortfall, null, 'the documented whole-observation tail is empty at floor(2 * 0.05)');
+  assert.equal(result.maxDrawdown, null, 'episode MAE cannot identify portfolio drawdown');
+  for (const fraction of [NaN, Infinity, 0, -1, 1.1]) assert.throws(() => computeCohortOutcomeMetrics([], fraction), /TAIL_FRACTION_INVALID/);
+  assert.throws(() => computeCohortOutcomeMetrics([resolvedRecord(), resolvedRecord()], 1), /DUPLICATE/);
+  assert.throws(() => computeCohortOutcomeMetrics([resolvedRecord({ wholeChainNetPnl: NaN })], 1), /NONFINITE/);
+  assert.throws(() => computeCohortOutcomeMetrics([resolvedRecord({ grossLossComponent: 1 })], 1), /SIGN_INVALID/);
+});
