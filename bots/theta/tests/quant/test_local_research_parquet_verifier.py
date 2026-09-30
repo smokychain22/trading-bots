@@ -20,7 +20,7 @@ class LocalResearchParquetVerifierTests(unittest.TestCase):
             check=False, capture_output=True, text=True,
         )
 
-    def test_verifies_legacy_archive_and_uses_content_cache(self):
+    def test_verifies_legacy_archive_without_a_manifest_only_cache_shortcut(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "source.json"
@@ -33,7 +33,11 @@ class LocalResearchParquetVerifierTests(unittest.TestCase):
             self.assertFalse(json.loads(first.stdout)["cacheHit"])
             second = self.run_verifier(root / "archives", cache)
             self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
-            self.assertTrue(json.loads(second.stdout)["cacheHit"])
+            self.assertFalse(json.loads(second.stdout)["cacheHit"])
+            (root / "archives" / "one" / "evidence.parquet").write_bytes(b"tampered-after-cache")
+            corrupted = self.run_verifier(root / "archives", cache)
+            self.assertNotEqual(corrupted.returncode, 0)
+            self.assertEqual(json.loads(corrupted.stdout)["state"], "FAILED")
 
     def test_tampered_parquet_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
