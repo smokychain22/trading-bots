@@ -361,6 +361,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       const config=defaultShadowCycleConfig(input.alpaca,optionomics,bridge(input.environment),[underlying],discovery.candidatesOrigin);
       const recoveryHistory=await loadRecoveryHistory(input.pool,underlying.symbol,input.now());
       return runThetaShadowCycle({...config,evaluationMode:'SHADOW_EVIDENCE',paperEntryBootstrap,recoveryHistory,recoveryInventoryUnderlyings,
+        routerPortfolioSource:'CURRENT_BROKER_READS',
         aegisInputsOrigin:'DERIVED_FROM_REAL',
         aegisIvStressEvidence:ivStressRefresh.assessment,
         aegisSpreadStressAssessor:({contracts,decisionAsOf})=>assessAegisSpreadStressForContracts({

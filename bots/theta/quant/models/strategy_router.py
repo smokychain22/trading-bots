@@ -36,6 +36,7 @@ class StrategyFamily(str, Enum):
 
 
 class LifecycleState(str, Enum):
+    UNKNOWN = "UNKNOWN"
     CASH_AVAILABLE = "CASH_AVAILABLE"
     CSP_OPEN = "CSP_OPEN"
     ASSIGNMENT_RISK = "ASSIGNMENT_RISK"
@@ -119,9 +120,9 @@ class PortfolioContext:
     underlying/chain this routing decision concerns."""
 
     lifecycle_state: LifecycleState
-    stock_shares_held: float
-    open_option_exists: bool
-    assignment_imminent: bool
+    stock_shares_held: Optional[float]
+    open_option_exists: Optional[bool]
+    assignment_imminent: Optional[bool]
 
 
 @dataclass(frozen=True)
@@ -172,6 +173,13 @@ def route_strategies(
     # LAYER 1: lifecycle state determines which families are even relevant.
     lifecycle = portfolio.lifecycle_state
 
+    if lifecycle == LifecycleState.UNKNOWN or portfolio.stock_shares_held is None or portfolio.open_option_exists is None:
+        return [
+            _ineligible(family, EligibilityState.INELIGIBLE_DATA, "PORTFOLIO_STATE_UNKNOWN",
+                        "Broker portfolio evidence or canonical lifecycle is unavailable.", policy)
+            for family in StrategyFamily
+        ]
+
     # THETA-R: only relevant to an existing option position, and only while
     # it's genuinely open or mid-roll -- never competes for a brand-new entry.
     if lifecycle in (LifecycleState.CSP_OPEN, LifecycleState.ROLL_PENDING, LifecycleState.CC_OPEN):
@@ -186,6 +194,9 @@ def route_strategies(
     if lifecycle in (LifecycleState.ASSIGNMENT_RISK, LifecycleState.STOCK_HELD, LifecycleState.RECOVERY) or portfolio.assignment_imminent:
         results.append(_eligible(StrategyFamily.THETA_A, EligibilityState.ELIGIBLE_PRIMARY,
                                   "ASSIGNMENT_OR_STOCK_PRESENT", f"lifecycle_state={lifecycle.value}", policy))
+    elif portfolio.assignment_imminent is None:
+        results.append(_ineligible(StrategyFamily.THETA_A, EligibilityState.INELIGIBLE_DATA,
+                                    "ASSIGNMENT_IMMINENCE_UNKNOWN", "Assignment imminence is not proved by a position alone.", policy))
     else:
         results.append(_ineligible(StrategyFamily.THETA_A, EligibilityState.INELIGIBLE_STATE,
                                     "NO_ASSIGNMENT_OR_STOCK", "Neither assignment risk nor stock ownership present.", policy))
@@ -201,7 +212,7 @@ def route_strategies(
 
     # THETA-Q / THETA-H: only relevant to fresh entries -- i.e. cash
     # available and no conflicting existing exposure on this chain.
-    entry_relevant = lifecycle == LifecycleState.CASH_AVAILABLE
+    entry_relevant = lifecycle == LifecycleState.CASH_AVAILABLE and not portfolio.open_option_exists and portfolio.stock_shares_held == 0
     if not entry_relevant:
         for family in (StrategyFamily.THETA_Q, StrategyFamily.THETA_H, StrategyFamily.THETA_D):
             results.append(_ineligible(family, EligibilityState.INELIGIBLE_STATE,

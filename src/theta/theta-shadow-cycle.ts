@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { deriveBrokerRouterPortfolio } from './broker-router-portfolio.js';
 import {
   AlpacaProviderError,
   fetchMarketCalendar, fetchMarketClock, fetchMasterAccountSnapshot, fetchOpenOrders, fetchOptionContracts, fetchOptionSnapshots,
@@ -235,6 +236,7 @@ export interface ThetaShadowCycleConfig {
   readonly regimePolicy: Record<string, unknown>;
   readonly routerPolicy: Record<string, unknown> & { thetaQMinOwnershipAcceptability: number };
   readonly routerPortfolio: Record<string, unknown>;
+  readonly routerPortfolioSource?: 'CURRENT_BROKER_READS';
   // Phase 1 Zero-Unknown Reclosure Pass 3 continuation (items 12-14):
   // optional and additive so every existing caller (production, tests,
   // research tools) is unaffected by its absence. When a caller knows
@@ -882,6 +884,13 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     openOrdersEvidence = failedProviderEvidence(error);
     blockers.push(`OPEN_ORDERS_FETCH_FAILED:${error instanceof Error ? error.message : 'unknown'}`);
   }
+
+  const brokerRouter = config.routerPortfolioSource === 'CURRENT_BROKER_READS'
+    ? deriveBrokerRouterPortfolio({ underlying, positions, orders: openOrders,
+      accountReady: accountEvidence.quality === 'GOOD', positionsReady: positionsEvidence.quality === 'GOOD',
+      ordersReady: openOrdersEvidence.quality === 'GOOD', observedAt: config.now() }) : null;
+  const routerPortfolio = brokerRouter?.portfolio ?? config.routerPortfolio;
+  const routerPortfolioOrigin = brokerRouter?.origin ?? config.routerPortfolioOrigin;
 
   // Market clock -- a confirmed real VALUE (open/closed), never a data-
   // quality question. A closed market is an operational precondition
@@ -1685,7 +1694,15 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
     earningsEvidence,
     macroRiskEvidence,
   });
-  const fusionSnapshot = buildFusionSnapshot(snapshotInput);
+  const fusionSnapshot = buildFusionSnapshot({ ...snapshotInput,
+    positionState: { positions: positions as unknown as JsonValue, openOrders: openOrders as unknown as JsonValue,
+      routerPortfolio: routerPortfolio as JsonValue,
+      routerPortfolioEvidence: brokerRouter === null ? null : {
+        version: brokerRouter.version, origin: brokerRouter.origin, reason: brokerRouter.reason,
+        observedAt: brokerRouter.observedAt, accountObservedAt: accountFetchedAt,
+        positionsObservedAt: positionsFetchedAt, ordersObservedAt: openOrdersFetchedAt,
+      } },
+  });
   const stockPosition = underlyingStockPosition !== null
     && (underlyingStockPosition.quantity === null || underlyingStockPosition.quantity > 0)
     ? underlyingStockPosition : null;
@@ -1768,7 +1785,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       routing, aegis, aegisByCandidateId, candidatesWithCapacity, thetaQ, thetaQDecision, thetaQCandidateEvaluation);
     const executedMethodIds = deriveRealCurrentWorkerEvidence({ strategyFrontier });
     const methodInputProvenance = classifyMethodInputProvenance({
-      executedMethodIds, routerPortfolioOrigin: config.routerPortfolioOrigin,
+      executedMethodIds, routerPortfolioOrigin,
       aegisInputsOrigin: config.aegisInputsOrigin, marketDataOrigin: contractsEvidence.origin,
     });
     return {
@@ -2015,7 +2032,7 @@ export async function runThetaShadowCycle(config: ThetaShadowCycleConfig): Promi
       maSlope, rv20, maxAdverseGap, earningsDistanceDays: null, corporateActionPending: null,
       macroRiskFlag: macroRiskEvidence.macroRiskFlag, spreadPct: null, portfolioOrMarketDrawdown: drawdown,
     },
-    routerPolicy: config.routerPolicy, routerPortfolio: config.routerPortfolio,
+    routerPolicy: config.routerPolicy, routerPortfolio,
     latticeConfig: config.latticeConfig, thetaQSizingPolicy: config.thetaQSizingPolicy, costAssumptions: config.costAssumptions,
     aegisPolicy: config.aegisPolicy, aegisInputs: effectiveAegisInputs,
     opportunityFrontierPolicy: config.opportunityFrontierPolicy, maxAcceptableSpreadPct: config.maxAcceptableSpreadPct,

@@ -123,3 +123,13 @@ test('an unclassified Q economic method cannot claim L7 from execution alone', (
     ['Q_STRUCTURAL_ECONOMIC_DECISION', 'AEGIS_RISK_PERMISSION'], provenance);
   assert.deepEqual(realEvidence, ['AEGIS_RISK_PERMISSION']);
 });
+
+test('self-declared REAL cannot override manual, missing or policy-only decisive evidence', () => {
+  for (const decisiveInputs of [[], [{ name: 'state', origin: 'CALLER_MANUAL' as const }],
+    [{ name: 'policy', origin: 'VERSIONED_POLICY_CONSTANT' as const }],
+    [{ name: 'quote', origin: 'REAL_PROVIDER' as const }, { name: 'state', origin: 'REAL_PROVIDER_UNKNOWN' as const }]]) {
+    assert.deepEqual(filterToRealInputEvidence(['STRATEGY_APPLICABILITY_ROUTER'], [{
+      methodId: 'STRATEGY_APPLICABILITY_ROUTER', executed: true, inputRealness: 'REAL', decisiveInputs, notes: 'untrusted claim',
+    }]), []);
+  }
+});

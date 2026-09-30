@@ -33,6 +33,26 @@ def _request(**overrides):
 
 
 class StrategyRouterContractTests(unittest.TestCase):
+    def test_unknown_portfolio_never_becomes_flat(self):
+        request = _request(portfolio={"lifecycleState": "UNKNOWN", "stockSharesHeld": None,
+                                     "openOptionExists": None, "assignmentImminent": None})
+        results = evaluate_request(request)["results"]
+        self.assertTrue(all(not row["eligible"] for row in results))
+        self.assertTrue(all(row["reasons"][0]["code"] == "PORTFOLIO_STATE_UNKNOWN" for row in results))
+
+    def test_option_exposure_prevents_fresh_entry_despite_conflicting_cash_label(self):
+        request = _request()
+        request["portfolio"]["openOptionExists"] = True
+        results = evaluate_request(request)["results"]
+        self.assertTrue(all(not row["eligible"] for row in results if row["strategyFamily"] in {"THETA_Q", "THETA_H", "THETA_D"}))
+
+    def test_unknown_assignment_does_not_prevent_existing_option_management(self):
+        request = _request(portfolio={"lifecycleState": "CSP_OPEN", "stockSharesHeld": 0,
+                                     "openOptionExists": True, "assignmentImminent": None})
+        results = {row["strategyFamily"]: row for row in evaluate_request(request)["results"]}
+        self.assertTrue(results["THETA_R"]["eligible"])
+        self.assertEqual(results["THETA_A"]["reasons"][0]["code"], "ASSIGNMENT_IMMINENCE_UNKNOWN")
+
     def test_every_family_gets_a_result_never_a_partial_vote(self):
         response = evaluate_request(_request())
         self.assertEqual(len(response["results"]), 6)

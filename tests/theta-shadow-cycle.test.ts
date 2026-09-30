@@ -228,6 +228,30 @@ const baseConfig = (overrides: Partial<ThetaShadowCycleConfig> = {}): ThetaShado
 
 const itMockedProviderRealCodePath = pythonExecutablePath === undefined ? test.skip : test;
 
+itMockedProviderRealCodePath('Production broker router mode overrides manual defaults and persists exact origin', async () => {
+  const result = await runThetaShadowCycle(baseConfig({ routerPortfolioSource: 'CURRENT_BROKER_READS',
+    routerPortfolio: { lifecycleState: 'STOCK_HELD', stockSharesHeld: 100, openOptionExists: false, assignmentImminent: false },
+    routerPortfolioOrigin: 'CALLER_MANUAL' }));
+  const state = result.fusionSnapshot?.snapshot.positionState as Record<string, unknown>;
+  assert.equal((state.routerPortfolio as Record<string, unknown>).lifecycleState, 'CASH_AVAILABLE');
+  assert.equal((state.routerPortfolioEvidence as Record<string, unknown>).origin, 'DERIVED_FROM_REAL');
+  assert.equal((state.routerPortfolioEvidence as Record<string, unknown>).positionsObservedAt, NOW);
+  assert.equal(result.methodInputProvenance.find(row => row.methodId === 'STRATEGY_APPLICABILITY_ROUTER')?.inputRealness, 'REAL');
+  assert.ok(result.orchestration?.routing?.results.some(row => row.strategyFamily === 'THETA_Q' && row.eligible));
+});
+
+itMockedProviderRealCodePath('Production failed positions read persists unknown router state instead of the default flat account', async () => {
+  const regular = mockAlpacaFetch({ hasContracts: true, hasBars: true });
+  const fetchImpl: typeof fetch = (input, init) => String(input).includes('/v2/positions')
+    ? Promise.resolve(jsonResponse(503, { message: 'unavailable' })) : regular(input, init);
+  const result = await runThetaShadowCycle(baseConfig({ routerPortfolioSource: 'CURRENT_BROKER_READS',
+    alpaca: { ...alpacaConfig({ hasContracts: true, hasBars: true }), fetchImpl } }));
+  const state = result.fusionSnapshot?.snapshot.positionState as Record<string, unknown>;
+  assert.equal((state.routerPortfolio as Record<string, unknown>).lifecycleState, 'UNKNOWN');
+  assert.equal((state.routerPortfolio as Record<string, unknown>).stockSharesHeld, null);
+  assert.notEqual(result.methodInputProvenance.find(row => row.methodId === 'STRATEGY_APPLICABILITY_ROUTER')?.inputRealness, 'REAL');
+});
+
 itMockedProviderRealCodePath('a full cycle with real-shaped mocked Alpaca data reaches a decision receipt via the real Python pipeline', async () => {
   requestedUrls = [];
   const result = await runThetaShadowCycle(baseConfig());

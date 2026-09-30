@@ -81,7 +81,10 @@ export function filterToRealInputEvidence(
   const byId = new Map(provenance.map((row) => [row.methodId, row]));
   return executedMethodIds.filter((methodId) => {
     const row = byId.get(methodId);
-    return row?.executed === true && row.inputRealness === 'REAL';
+    return row?.executed === true && row.inputRealness === 'REAL'
+      && row.decisiveInputs.some(value => originToRealness(value.origin === 'VERSIONED_POLICY_CONSTANT' ? undefined : value.origin) === 'REAL')
+      && row.decisiveInputs.every(value => value.origin === 'VERSIONED_POLICY_CONSTANT'
+        || originToRealness(value.origin) === 'REAL');
   });
 }
 
@@ -123,7 +126,9 @@ export function classifyMethodInputProvenance(input: ClassifyMethodInputProvenan
       methodId: 'AEGIS_RISK_PERMISSION', executed: executed.has('AEGIS_RISK_PERMISSION'),
       inputRealness: aegisRealness === 'MANUAL' ? 'PARTIAL_REAL' : aegisRealness,
       decisiveInputs: [{ name: 'aegisInputs (concentration/liquidity/stress family)', origin: input.aegisInputsOrigin }],
-      notes: 'aegisInputsOrigin=CALLER_MANUAL in this entrypoint is itself a mixed reality, not a full-manual one: tickerConcentrationPct/portfolioCapitalAtRiskPct/providerState/liquidityAcceptable/executionQualityAcceptable/stressGapDetected are real-derived when trustworthy; sector/correlation/IV-shock/spread-widening remain manual fixture values (account-exposure.ts/aegis-derivation.ts) -- classified PARTIAL_REAL, never REAL, to reflect that split honestly.',
+      notes: aegisRealness === 'MANUAL'
+        ? 'Caller-supplied risk inputs are mixed with real-derived exposure. This run cannot claim fully real AEGIS inputs.'
+        : 'Realness follows the declared risk-input origin. A realness label does not prove risk clearance or empirical validation.',
     },
     {
       methodId: 'CONSTRAINED_QUANTITY_SIZING', executed: executed.has('CONSTRAINED_QUANTITY_SIZING'),
@@ -132,13 +137,14 @@ export function classifyMethodInputProvenance(input: ClassifyMethodInputProvenan
         { name: 'AEGIS state (same mixed reality as AEGIS_RISK_PERMISSION)', origin: input.aegisInputsOrigin },
         { name: 'sizing policy (versioned risk/collateral/concentration caps)', origin: 'VERSIONED_POLICY_CONSTANT' },
       ],
-      notes: 'Consumes the same AEGIS state as AEGIS_RISK_PERMISSION -- inherits its PARTIAL_REAL ceiling, never independently more real.',
+      notes: 'Consumes the same AEGIS state as AEGIS_RISK_PERMISSION and cannot be independently more real than that evidence.',
     },
     {
       methodId: 'CANONICAL_ENTRY_SELECTION', executed: executed.has('CANONICAL_ENTRY_SELECTION'),
       inputRealness: combine([marketRealness, routerRealness, aegisRealness === 'MANUAL' ? 'PARTIAL_REAL' : aegisRealness]),
       decisiveInputs: [
         { name: 'cross-branch candidate frontier (mixed realness, see per-branch enumeration rows)', origin: input.marketDataOrigin },
+        { name: 'applicability gate (router output)', origin: input.routerPortfolioOrigin ?? 'NOT_ATTEMPTED' },
         { name: 'AEGIS/sizing state feeding candidate feasibility', origin: input.aegisInputsOrigin },
       ],
       notes: 'Selection executing (structuralSelection ran) is never itself proof its inputs were fully real -- this must never be auto-promoted past the weakest real input feeding the frontier it selects over.',
