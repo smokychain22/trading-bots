@@ -161,7 +161,9 @@ test('CORE CLAIM (determinism): a branch-local construction failure produces an 
   assert.deepEqual(recoveryReasons[1], recoveryReasons[2]);
 });
 
-test('CORE CLAIM (sanitization): a raw error message containing secret-like content never reaches the canonical hashed receipt', () => {
+test('CORE CLAIM (sanitization): provider exception detail cannot reach canonical receipts or operational logs', (t) => {
+  const logged:unknown[][]=[];
+  t.mock.method(console,'error',(...args:unknown[])=>{logged.push(args);});
   const secretLookingMessage = 'connection failed: postgres://admin:sup3rSecretPassw0rd@aiven-host.example.com:5432/db?sslmode=require account=ACCT-998877';
   const hostileStockWithSecretError = new Proxy({ shares: 100, currentPrice: 100, brokerCostBasisPerShare: 90, wholeChainEconomicBasisPerShare: 90 }, {
     get(target, prop) {
@@ -179,6 +181,9 @@ test('CORE CLAIM (sanitization): a raw error message containing secret-like cont
   const recovery = frontier.branches.find((branch) => branch.branch === 'THETA_RECOVERY');
   assert.ok(recovery);
   assert.ok(recovery.routeReasons.every((reason) => !reason.includes(secretLookingMessage)));
+  assert.equal(logged.length,1);
+  assert.doesNotMatch(JSON.stringify(logged),/sup3rSecretPassw0rd|ACCT-998877|aiven-host/);
+  assert.match(JSON.stringify(logged),/BRANCH_CONSTRUCTION_ERROR_TYPE:Error/);
 });
 
 test('CORE CLAIM (semantics): a THETA_RECOVERY branch that IS genuinely applicable (real stock exists) but whose construction fails must report applicable=true, never a false NOT_APPLICABLE-shaped falsehood', () => {
@@ -268,6 +273,65 @@ test('Pareto trade-off reports a near tie without changing Q selection authority
   assert.equal(frontier.structuralTopTwo.paretoRankDifference,0);
   assert.ok(frontier.structuralTopTwo.objectiveMargins.some((margin)=>margin.difference !== 0));
   assert.equal(frontier.structuralTopTwo.selectionAuthority,false);
+});
+
+test('optional research UNKNOWNs, pairs, duplicates and huge values cannot oscillate the canonical Q winner',()=>{
+  const fields=['flow','sector','portfolioGreeks','fundamentals','researchModel','skew','termStructure'];
+  const first=contract();
+  const input={...base,stock:null,contracts:[first],routing:routing(['THETA_Q','THETA_H','THETA_D']),
+    thetaQDecision:{snapshotId:base.snapshotId,timestamp:NOW,underlying:'AAPL',winningAction:'OPEN_FULL' as const,
+      selectedCandidateId:first.optionSymbol,quantity:1}};
+  const baseline=buildCanonicalStrategyFrontier(input);
+  assert.equal(baseline.primaryAction,'OPEN_CSP','the baseline must actually OPEN structurally, not agree on an accidental WAIT');
+  assert.equal(baseline.selectedQuantity,1);
+  const contexts:unknown[]=[null,{}, {state:'UNAVAILABLE'}, {state:'PROVIDER_ERROR'}];
+  for(const field of fields){
+    contexts.push({[field]:null},{[field]:{state:'UNKNOWN'}},{[field]:1e30},
+      {[field]:[{value:1},{value:1}]});
+    for(const other of fields.filter((name)=>name!==field))contexts.push({[field]:null,[other]:null});
+  }
+  for(const context of contexts){
+    const current=buildCanonicalStrategyFrontier({...input,optionomicsContext:context as never});
+    assert.equal(current.primaryAction,baseline.primaryAction);
+    assert.equal(current.selectedCandidateId,baseline.selectedCandidateId);
+    assert.equal(current.selectedQuantity,baseline.selectedQuantity);
+    assert.equal(current.selectedBranch,'THETA_CONVENTIONAL');
+  }
+});
+
+test('required risk and account evidence cannot inherit an otherwise valid economic OPEN',()=>{
+  const first=contract();
+  const input={...base,stock:null,contracts:[first],routing:routing(['THETA_Q']),
+    thetaQDecision:{snapshotId:base.snapshotId,timestamp:NOW,underlying:'AAPL',winningAction:'OPEN_FULL' as const,
+      selectedCandidateId:first.optionSymbol,quantity:1}};
+  assert.equal(buildCanonicalStrategyFrontier(input).primaryAction,'OPEN_CSP');
+  for(const override of [{aegisNewRiskState:null},{aegisNewRiskState:'HARD_VETO' as const},
+    {assignmentCapacityQty:0},{buyingPower:null},{brokerAllowedQty:0},
+    {sizingPolicy:{...base.sizingPolicy,collateralQtyCap:0}}]){
+    const result=buildCanonicalStrategyFrontier({...input,...override});
+    assert.equal(result.selectedQuantity,0,JSON.stringify(override));
+    assert.equal(result.selectedCandidateId,null);
+    assert.notEqual(result.primaryAction,'OPEN_CSP');
+  }
+});
+
+test('irrelevant epsilon perturbations and provider order cannot cause Q to switch into H or D',()=>{
+  const first=contract();
+  const second=contract({optionSymbol:'AAPL261017P00185000',occSymbol:'AAPL261017P00185000',
+    strike:185,expiration:'2026-10-17',bid:1,ask:1.1});
+  let prior:string|null=null;
+  for(let sample=0;sample<40;sample++){
+    const frontier=buildCanonicalStrategyFrontier({...base,stock:null,
+      contracts:sample%2?[first,second]:[second,first],routing:routing(['THETA_Q','THETA_H','THETA_D']),
+      optionomicsContext:{flow:1+(sample%2?1:-1)*Number.EPSILON,regimeResearchScore:sample},
+      thetaQDecision:{snapshotId:base.snapshotId,timestamp:NOW,underlying:'AAPL',winningAction:'OPEN_FULL',
+        selectedCandidateId:first.optionSymbol,quantity:1}});
+    assert.equal(frontier.primaryAction,'OPEN_CSP');
+    assert.equal(frontier.selectedBranch,'THETA_CONVENTIONAL');
+    assert.equal(frontier.selectedQuantity,1);
+    if(prior!==null)assert.equal(frontier.selectedCandidateId,prior);
+    prior=frontier.selectedCandidateId;
+  }
 });
 
 test('CORE CLAIM (false-WAIT prevention): a THETA_CONVENTIONAL (Q) construction failure must never be silently reported as globalWaitEarned/PAPER_AUTHORIZED_BRANCH_EVALUATED', () => {

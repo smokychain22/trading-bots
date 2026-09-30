@@ -50,6 +50,21 @@ test('CSP_OPEN near expiration with near-exhausted remaining value closes determ
   assert.equal(frontier.decisionState, 'ACTION_SELECTED');
 });
 
+test('adjacent management observations with identical economics do not oscillate from optional metadata or key order',()=>{
+  for(const fixture of [
+    {bid:1,ask:1.1,at:'2026-09-12T14:00:00.000Z',expected:'HOLD'},
+    {bid:0.01,ask:0.02,at:'2026-10-13T14:00:00.000Z',expected:'CLOSE_FULL'},
+  ]){
+    for(let index=0;index<30;index++){
+      const metadata=index%2?{researchFlow:1e12,unused:null}:{unused:null,researchFlow:-1e12};
+      const input=state('CSP_OPEN',{bid:fixture.bid,ask:fixture.ask,research_metadata:metadata},fixture.at);
+      const evidence=evaluatePaperBootstrapManagementPolicy(input);
+      assert.equal(evidence?.selectedAction,fixture.expected);
+      assert.equal(buildManagementActionFrontier(input,evidence).selectedAction,fixture.expected);
+    }
+  }
+});
+
 test('Paper-bootstrap timing thresholds preserve defaults and record provenance', () => {
   const input = state('CSP_OPEN', { bid: 0.01, ask: 0.02 }, '2026-10-13T14:00:00.000Z');
   const evidence = evaluatePaperBootstrapManagementPolicy(input);

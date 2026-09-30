@@ -19,6 +19,8 @@ import { buildT0ReplayBundle, classifyT0ReplayBundleBuildError } from '../src/th
 import { assessPaperEntryBootstrap, classifyAlpacaBrokerEnvironment,
   type PaperEntryBootstrapAssessment } from '../src/theta/paper-entry-bootstrap.js';
 import { createGetOnlyFetch } from '../src/theta/read-only-fetch.js';
+import { classifyNoSubmitDecisionAuthority } from '../src/theta/no-submit-decision-authority.js';
+import { assessRuntimeSchemaCompatibility } from '../src/theta/runtime-schema-compatibility.js';
 
 const environmentFile = process.argv.find((argument) => argument.startsWith('--environment-file='))
   ?.slice('--environment-file='.length) ?? '.env.local';
@@ -87,16 +89,19 @@ let recoveryInventoryUnderlyingsForFallback:readonly string[]|undefined;
 try {
   probeStage = 'BROKER_CLOCK_READ';
   const clock = await broker.getClock();
-  spoolEvidence('ACCOUNT_READY',{marketOpen:clock.isOpen,brokerHost:'paper-api.alpaca.markets',brokerMutationAllowed:false},
+  spoolEvidence('PROVIDER_STATE_READY',{marketOpen:clock.isOpen,brokerHost:'paper-api.alpaca.markets',brokerMutationAllowed:false},
     {ALPACA:typeof clock.timestamp==='string'?clock.timestamp:null});
   probeStage = 'DATABASE_SCHEMA_READ';
-  const migrations = await pool.query(`SELECT version FROM core.schema_migration
-    WHERE version IN ('064_alpaca_corporate_action_observation','065_aegis_iv_stress_evidence','066_local_observation_evidence')
-    ORDER BY version`);
+  const migrations = await pool.query<{version:string}>(`SELECT version FROM core.schema_migration ORDER BY version`);
+  // This CLI is the local evidence worker. Do not imply it is the resident
+  // supervisor, and do not use a private schema authority for this probe.
+  const schemaCompatibility=assessRuntimeSchemaCompatibility({
+    appliedVersions:migrations.rows.map((row)=>row.version),sourceSha,workerSha:sourceSha});
+  spoolEvidence('SCHEMA_CHECKED',{schemaCompatibility,brokerMutationAllowed:false});
+  if(!schemaCompatibility.compatible)
+    throw new Error(`NO_SUBMIT_PROBE_SCHEMA_${schemaCompatibility.state}`);
   spool.recordDatabaseProbeSuccess(new Date().toISOString());
-  if (!migrations.rows.some((row) => row.version === '064_alpaca_corporate_action_observation'))
-    throw new Error('NO_SUBMIT_PROBE_SCHEMA_064_REQUIRED');
-  const schema = migrations.rows.some((row) => row.version === '065_aegis_iv_stress_evidence') ? '065' : '064';
+  const schema = schemaCompatibility.observedHead;
   const localEvidenceBackfillReady=migrations.rows.some((row)=>row.version==='066_local_observation_evidence');
   if (clock.isOpen !== true) {
     console.info(JSON.stringify({ state: clock.isOpen === false ? 'MARKET_CLOSED_NO_SCAN' : 'SESSION_UNCONFIRMED_NO_SCAN',
@@ -150,30 +155,44 @@ try {
         readOnlyPreSubmitPreview: true, scanScope:'APPROVED_PAPER_BOOTSTRAP_ONLY' }),240_000,
       'NO_SUBMIT_PROBE_SHADOW_SCAN_TIMEOUT');
       if (scan.actionPlansReady !== 0) throw new Error('NO_SUBMIT_PROBE_ACTION_PLAN_UNEXPECTED');
+      const authority=classifyNoSubmitDecisionAuthority({databaseFailure:poolConnectionFailed
+        ?'DATABASE_CONNECTION_LOST_NO_SUBMIT':null,scanComplete:scan.completeness==='COMPLETE',
+      computedAction:scan.behaviorDiagnostic.finalAction});
       spoolEvidence('PLAN_READY',{scanId:scan.scanId,completeness:scan.completeness,candidateCount:scan.candidateCount,
         symbolsAttempted:scan.symbolsAttempted,symbolsCompleted:scan.symbolsCompleted,
-        finalAction:scan.behaviorDiagnostic.finalAction,actionPlansReady:scan.actionPlansReady,
+        ...authority,finalAction:authority.canonicalAction,actionPlansReady:scan.actionPlansReady,
         actionPlanBlockers:scan.actionPlansBlocked,readOnlyPreSubmitProofs:scan.readOnlyPreSubmitProofs,
         brokerMutationAllowed:false});
       if(localEvidenceBackfillReady)await spool.backfill(new PostgresLocalEvidenceBackfillTarget(pool),sourceSha);
+      const finalAuthority=classifyNoSubmitDecisionAuthority({databaseFailure:poolConnectionFailed
+        ?'DATABASE_CONNECTION_LOST_NO_SUBMIT':null,scanComplete:scan.completeness==='COMPLETE',
+      computedAction:scan.behaviorDiagnostic.finalAction});
       console.info(JSON.stringify({ state: poolConnectionFailed ? 'DATABASE_CONNECTION_LOST_NO_SUBMIT'
         : 'CURRENT_SOURCE_NO_SUBMIT_SCAN_COMPLETED', schema, sourceSha,
+        ...finalAuthority,
         completeness: scan.completeness, symbolsAttempted: scan.symbolsAttempted,
         symbolsCompleted: scan.symbolsCompleted, candidateCount: scan.candidateCount,
         observationsScheduled: scan.observationsScheduled,
         paperActionPlansReady: scan.actionPlansReady,
-        symbolDiagnostics: scan.symbolDiagnostics,
+        symbolDiagnostics: finalAuthority.canonicalPersistence ? scan.symbolDiagnostics : null,
+        provisionalSymbolDiagnostics: finalAuthority.canonicalPersistence ? null : scan.symbolDiagnostics,
         readOnlyPreSubmitProofs: scan.readOnlyPreSubmitProofs,
-        finalAction: scan.behaviorDiagnostic.finalAction,
+        finalAction: finalAuthority.canonicalAction,
         brokerMutations: 0, orderSubmissions: 0,
         masterExecution: 'LOCKED', followerExecution: 'LOCKED', liveMoney: 'NOT_AUTHORIZED' }));
-      process.exitCode = !poolConnectionFailed && scan.completeness === 'COMPLETE' ? 0 : 1;
+      process.exitCode = finalAuthority.exitCode;
     }
   }
 } catch (error) {
   const category = classifyNoSubmitProbeError(error);
   const databaseFailure=classifyPostgresRuntimeError(error);
+  const failedProbeStage=probeStage;
   if(databaseFailure.retryableRead||isRetryableNoSubmitDatabaseFailure(error,category)){
+    // Capture the failed stage before entering a provider-only diagnostic.
+    // The fallback must never erase the original infrastructure incident.
+    spoolEvidence('CYCLE_FAILED',{probeStage:failedProbeStage,errorCategory:category,
+      ...classifyNoSubmitDecisionAuthority({databaseFailure:category,scanComplete:false,computedAction:null}),
+      pool:{total:pool.totalCount,idle:pool.idleCount,waiting:pool.waitingCount},brokerMutationAllowed:false});
     spool?.recordDatabaseFailure(new Date().toISOString(),false);
     try{
       probeStage='DATABASE_INDEPENDENT_PROVIDER_OBSERVATION';
@@ -227,14 +246,18 @@ try {
           evidenceState:symbol.state,brokerMutationAllowed:false});
         spoolEvidence('SIZING_READY',{symbol:symbol.symbol,selectedQuantity:symbol.selectedQuantity,
           bindingState:symbol.selectedQuantity>0?'POSITIVE_BUT_MUTATION_BLOCKED':'ZERO_OR_NO_SELECTION',brokerMutationAllowed:false});
-        spoolEvidence('DECISION_READY',{symbol:symbol.symbol,canonicalAction:symbol.canonicalAction,
+        spoolEvidence('DECISION_READY',{symbol:symbol.symbol,
+          ...classifyNoSubmitDecisionAuthority({databaseFailure:category,scanComplete:false,
+            computedAction:symbol.canonicalAction}),
           selectedCandidateId:symbol.selectedCandidateId,selectedOptionSymbol:symbol.selectedOptionSymbol,
-          canonicalPersistence:false,brokerMutationAllowed:false});
+          brokerMutationAllowed:false});
       }
       spoolEvidence('PLAN_READY',{planState:'BLOCKED_CANONICAL_POSTGRES_REQUIRED',
         brokerMutationCapability:local.brokerMutationCapability,brokerMutationAllowed:false});
       console.info(JSON.stringify({state:'DATABASE_UNAVAILABLE_LOCAL_OBSERVATION_COMPLETED',errorCategory:category,
-        probeStage,sourceSha,approvedSymbolsDiscovered:local.approvedSymbolsDiscovered,
+        ...classifyNoSubmitDecisionAuthority({databaseFailure:category,scanComplete:false,computedAction:null}),
+        failedProbeStage,probeStage,sourceSha,cycleId:probeCycleId,
+        approvedSymbolsDiscovered:local.approvedSymbolsDiscovered,
         symbolStates:local.symbols.map((symbol)=>{
           const conventional=symbol.frontierCandidates.filter((candidate)=>candidate.branch==='THETA_CONVENTIONAL');
           const bindingAegisReasons=[...new Set(conventional.flatMap((candidate)=>candidate.aegisFamilies
@@ -244,7 +267,8 @@ try {
             qDecision:symbol.qDecision,qReasonCodes:symbol.qReasonCodes,
             qFeasibleCount:symbol.qCandidates.filter((candidate)=>candidate.actionFeasible).length,
             qPositiveQuantityCount:symbol.qCandidates.filter((candidate)=>candidate.quantity>0).length,
-            canonicalAction:symbol.canonicalAction,selectedQuantity:symbol.selectedQuantity,
+            ...classifyNoSubmitDecisionAuthority({databaseFailure:category,scanComplete:false,
+              computedAction:symbol.canonicalAction}),selectedQuantity:symbol.selectedQuantity,
             riskHistory:symbol.riskHistory,riskObservations:{total:symbol.riskObservations.length,
               spreadQualified:symbol.riskObservations.filter((row)=>row.spreadHistoryState==='QUALIFIED').length,
               spreadRejected:symbol.riskObservations.filter((row)=>row.spreadHistoryState==='REJECTED').length,
@@ -254,7 +278,7 @@ try {
               (candidate)=>candidate.aegisState??'UNKNOWN')).map(([state,rows])=>[state,rows?.length??0])),
             bindingAegisReasons,exactRefreshState:symbol.exactRefresh.state};
         }),brokerMutations:0,orderSubmissions:0}));
-      process.exitCode=0;
+      process.exitCode=1;
     }catch(localError){
       const localCategory=classifyNoSubmitProbeError(localError);
       try{spoolEvidence('CYCLE_FAILED',{probeStage,errorCategory:localCategory,brokerMutationAllowed:false});}catch{}

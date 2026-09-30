@@ -132,9 +132,12 @@ function fromRow(row: EnvelopeRow): LocalEvidenceEnvelope {
   };
 }
 
-export function brokerMutationAllowedForEvidence(envelope: LocalEvidenceEnvelope): boolean {
-  return envelope.postgresPersistenceState === 'PERSISTED_POSTGRES'
-    || envelope.postgresPersistenceState === 'BACKFILLED_POSTGRES';
+export function brokerMutationAllowedForEvidence(_envelope: LocalEvidenceEnvelope): false {
+  // Storage durability is not execution authorization. Historical/local
+  // diagnostics remain evidence after backfill, and require a fresh canonical
+  // decision plus the independent execution gates before any broker action.
+  void _envelope;
+  return false;
 }
 
 export class LocalEvidenceSpool {

@@ -844,13 +844,15 @@ function rankCandidates(candidates: readonly CanonicalFrontierCandidate[]): read
 // `error.message` into canonical output (an arbitrary exception message
 // could contain a provider payload fragment, filesystem path, or other
 // diagnostic detail not vetted for a canonical decision receipt). The raw
-// message is still surfaced, out-of-band, via console.error for real
-// operational visibility -- it is simply not part of the hashed,
-// deterministic economic/decision receipt.
+// message must also stay out of operational logs. Log the same bounded
+// identity so a provider exception cannot disclose credentials there.
 function stableBranchFailureReasonCode(error: unknown): string {
   if (error instanceof Error && error.message === 'CONFLICTING_CONTRACT_OBSERVATIONS')
     return error.message;
-  const errorClassName = error instanceof Error ? error.constructor.name : 'UnknownThrowValue';
+  const standardClasses = new Set(['Error','TypeError','RangeError','SyntaxError','ReferenceError','URIError','AggregateError']);
+  const errorClassName = error instanceof Error
+    ? standardClasses.has(error.constructor.name) ? error.constructor.name : 'Error'
+    : 'UnknownThrowValue';
   return `BRANCH_CONSTRUCTION_ERROR_TYPE:${errorClassName}`;
 }
 
@@ -958,7 +960,7 @@ function buildBranch(
     // canonical receipt -- never a silent catch{}. Console output is not
     // hashed and does not need to be deterministic across replays.
     console.error(`[canonical-strategy-frontier] branch construction failed`, {
-      branch, message: error instanceof Error ? error.message : String(error),
+      branch, errorCode: stableBranchFailureReasonCode(error),
       failedAt: new Date().toISOString(),
     });
     return {

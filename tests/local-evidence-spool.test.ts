@@ -62,6 +62,11 @@ test('backfill is idempotent, verifies ambiguous writes, and unlocks no broker m
     assert.equal(records.size,2);
     assert.equal(brokerMutationAllowedForEvidence(one),false);
     assert.equal(brokerMutationAllowedForEvidence(two),false);
+    const reloaded=spool.listByPayloadType('Q_READY');
+    assert.equal(reloaded.length,1);
+    assert.equal(reloaded[0]?.postgresPersistenceState,'BACKFILLED_POSTGRES');
+    assert.ok(reloaded[0]);
+    assert.equal(brokerMutationAllowedForEvidence(reloaded[0]),false);
   }finally{cleanup();}
 });
 
