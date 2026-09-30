@@ -60,6 +60,7 @@ from research.production_export_loader import (
     sha256_hex,
 )
 from research.research_targets import target_definition_version
+from research.registry import hypothesis_evidence_context
 
 PIPELINE_VERSION = "theta-empirical-pipeline-v2"
 
@@ -299,6 +300,7 @@ def _build_manifest(
         "split_definition": config.split_definition,
         "experiment_id": config.experiment_id,
         "hypothesis_id": config.hypothesis_id,
+        "professional_source_context": hypothesis_evidence_context(config.hypothesis_id),
         "readiness_state": readiness.value,
         "effective_n_method": "DEPENDENCY_COMPONENT_PROXY_NOT_EMPIRICALLY_CALIBRATED",
         "source_code_commit": source_code_commit,
@@ -352,6 +354,7 @@ def run_theta_empirical_pipeline(
     entry_training_policy: Optional[Dict[str, Any]] = None,
     entry_baseline_policy: Optional[Dict[str, Any]] = None,
     entry_ablation_policy: Optional[Dict[str, Any]] = None,
+    entry_baseline_artifact_to_verify: Optional[Dict[str, Any]] = None,
 ) -> PipelineResult:
     """One call does everything. Behavior by readiness (never bypassed):
 
@@ -449,6 +452,8 @@ def run_theta_empirical_pipeline(
     manifest['experiment_config_hash'] = sha256_hex(canonical_json({k: v for k, v in manifest.items() if k != 'experiment_config_hash'}))
     from research.whole_chain_dataset import build_whole_chain_dataset
     whole_chain_dataset = build_whole_chain_dataset(export)
+    from research.failure_attribution import attribute_export_failures
+    failure_attribution = attribute_export_failures(export)
     entry_training_dataset = None
     if entry_training_policy is not None:
         from research.entry_episode_training import build_entry_episode_training_dataset
@@ -460,6 +465,12 @@ def run_theta_empirical_pipeline(
         from research.entry_baseline_experiment import execute_entry_baseline
         entry_baseline = execute_entry_baseline(entry_training_dataset, entry_baseline_policy, run_timestamp)
     entry_ablation = None
+    entry_reproduction = None
+    if entry_baseline_artifact_to_verify is not None:
+        if entry_training_dataset is None or entry_baseline_policy is None:
+            raise ValueError('ENTRY_REPRODUCTION_REQUIRES_DATASET_AND_BASELINE_POLICY')
+        from research.entry_baseline_experiment import verify_entry_baseline_artifact
+        entry_reproduction = verify_entry_baseline_artifact(entry_training_dataset, entry_baseline_policy, entry_baseline_artifact_to_verify)
     if entry_ablation_policy is not None:
         if entry_training_dataset is None or entry_baseline_policy is None:
             raise ValueError('ENTRY_ABLATION_REQUIRES_DATASET_AND_BASELINE_POLICY')
@@ -468,6 +479,7 @@ def run_theta_empirical_pipeline(
     manifest['entry_feature_join'] = entry_training_dataset['state'] if entry_training_dataset else 'FEATURE_POLICY_NOT_SUPPLIED'
     manifest['entry_baseline_execution'] = entry_baseline['state'] if entry_baseline else 'BASELINE_POLICY_NOT_SUPPLIED'
     manifest['entry_baseline_authority'] = 'EXPLORATORY_RESEARCH_NO_PROMOTION'
+    manifest['entry_baseline_reproduction'] = entry_reproduction
     manifest['experiment_config_hash'] = sha256_hex(canonical_json({k: v for k, v in manifest.items() if k != 'experiment_config_hash'}))
 
     controlled = None
@@ -488,8 +500,10 @@ def run_theta_empirical_pipeline(
                 "manifest": manifest,
                 "data_quality": quality,
                 "whole_chain_episode_dataset": whole_chain_dataset,
+                "failure_attribution": failure_attribution,
                 "entry_episode_training_dataset": entry_training_dataset,
                 "entry_baseline_experiment": entry_baseline,
+                "entry_baseline_reproduction": entry_reproduction,
                 "entry_feature_ablation": entry_ablation,
                 "readiness": {
                     "readiness_state": readiness.value,
@@ -574,6 +588,7 @@ def _build_arg_parser():
     parser.add_argument("--entry-training-policy", default=None, help="frozen feature/timing policy for explicit CSP entry-label joins")
     parser.add_argument("--entry-baseline-policy", default=None, help="frozen purged-split and optimizer policy for research-only entry fit")
     parser.add_argument("--entry-ablation-policy", default=None, help="frozen feature-subset ablations on identical cohorts and PIT folds")
+    parser.add_argument("--verify-entry-baseline", default=None, help="saved baseline artifact to recompute from the exact local export and policies, without providers")
     parser.add_argument("--run-timestamp", default="")
     for flag in _SUFFICIENCY_FLAGS:
         # Caller-supplied and caller-justified: omitting them leaves
@@ -638,6 +653,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         entry_training_policy=json.loads(Path(args.entry_training_policy).read_text(encoding='utf-8')) if args.entry_training_policy else None,
         entry_baseline_policy=json.loads(Path(args.entry_baseline_policy).read_text(encoding='utf-8')) if args.entry_baseline_policy else None,
         entry_ablation_policy=json.loads(Path(args.entry_ablation_policy).read_text(encoding='utf-8')) if args.entry_ablation_policy else None,
+        entry_baseline_artifact_to_verify=json.loads(Path(args.verify_entry_baseline).read_text(encoding='utf-8')) if args.verify_entry_baseline else None,
     )
 
     print(f"status={result.status}")

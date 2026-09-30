@@ -30,6 +30,37 @@ class FailureAttributionTests(unittest.TestCase):
         evidence = {'dataQuality': 'STALE'}
         self.assertEqual(attribute_failure(evidence), attribute_failure(evidence))
 
+    def test_cause_dimensions_require_explicit_dated_provenance(self):
+        from research.failure_attribution import CAUSE_DIMENSIONS
+        causes = [{'cause': c, 'evidenceId': c, 'reason': 'test-only reported observation', 'observedAt': '2026-01-01T12:00:00Z'} for c in CAUSE_DIMENSIONS]
+        result = attribute_failure({'causeEvidence': causes})
+        self.assertEqual(len(result['causeEvidence']), 21)
+        self.assertEqual(result['scope'], 'REPORTED_CONTRIBUTING_FACTS_NOT_PROVEN_CAUSAL_EFFECT')
+        with self.assertRaisesRegex(ValueError, 'DUPLICATE_CAUSE'):
+            attribute_failure({'causeEvidence': causes + causes})
+        with self.assertRaisesRegex(ValueError, 'PROVENANCE_REQUIRED'):
+            attribute_failure({'causeEvidence': [{'cause': 'EVENT'}]})
+        with self.assertRaisesRegex(ValueError, 'LATENCY_INVALID'):
+            attribute_failure({'fillLatencySeconds': float('nan')})
+
+    def test_export_consumer_keeps_unknown_quality_unattributed(self):
+        from research.failure_attribution import attribute_export_failures
+        from research.production_export_loader import load_dataset_export
+        from test_empirical_pipeline import _build_export, _candidate_raw
+        for quality, labels in [('UNKNOWN', ['UNATTRIBUTED']), ('STALE', ['DATA_QUALITY'])]:
+            candidate = _candidate_raw()
+            candidate['providerProvenance'][0]['state'] = quality
+            export = load_dataset_export(_build_export(candidates=[candidate]))
+            result = attribute_export_failures(export)
+            self.assertEqual(result['datasetHash'], export.dataset_hash)
+            self.assertEqual(result['rows'][0]['attribution']['labels'], labels)
+
+    def test_actual_cli_dispatches_attribution(self):
+        from research.research_cli import _dispatch
+        result = _dispatch('failure-attribution', {'accountingReconciled': False})
+        self.assertEqual(result['labels'], ['ACCOUNTING'])
+        self.assertFalse(result['brokerAuthority'])
+
 
 if __name__ == '__main__':
     unittest.main()

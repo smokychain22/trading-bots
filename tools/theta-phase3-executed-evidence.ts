@@ -4,10 +4,10 @@ import { spawnSync } from 'node:child_process';
 import { certifyExecutedRequirement, evidenceSourceHash,
   type ReviewedRequirementBinding, type ExecutedTestEvent } from '../src/operations/executed-requirement-evidence.js';
 
-const phase = process.argv.includes('--phase=5') ? 5 : process.argv.includes('--phase=4') ? 4 : 3;
-if (process.argv.slice(2).some(arg => !['--phase=3', '--phase=4', '--phase=5'].includes(arg))
+const phase = process.argv.includes('--phase=6') ? 6 : process.argv.includes('--phase=5') ? 5 : process.argv.includes('--phase=4') ? 4 : 3;
+if (process.argv.slice(2).some(arg => !['--phase=3', '--phase=4', '--phase=5', '--phase=6'].includes(arg))
   || process.argv.slice(2).length > 1) throw new Error('UNSUPPORTED_PHASE_ARGUMENT');
-const denominator = phase === 3 ? 13 : phase === 4 ? 12 : 14;
+const denominator = phase === 3 ? 13 : phase === 4 ? 12 : phase === 5 ? 14 : 15;
 const bindings = JSON.parse(readFileSync(`docs/operations/THETA_PHASE${phase}_REVIEWED_TEST_BINDINGS.json`, 'utf8')) as ReviewedRequirementBinding[];
 if (bindings.length !== denominator || bindings.some((row, i) => row.id !== `${phase}.${i + 1}`))
   throw new Error(`PHASE${phase}_REVIEWED_DENOMINATOR_INCOMPLETE`);

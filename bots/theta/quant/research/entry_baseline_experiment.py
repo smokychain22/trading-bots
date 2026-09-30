@@ -34,6 +34,12 @@ def execute_entry_baseline(dataset, policy, generated_at):
         raise ValueError('ENTRY_BASELINE_POLICY_REQUIRED')
     generated = timestamp(generated_at)
     frozen = timestamp(policy['frozenAt'])
+    oos_policy = policy.get('finalOosEvaluation')
+    if oos_policy is not None and (not isinstance(oos_policy, dict)
+            or set(oos_policy) != {'modelSelection', 'calibration'}
+            or oos_policy['modelSelection'] != 'LAST_COMPLETED_DEVELOPMENT_FOLD'
+            or oos_policy['calibration'] not in ('NONE', 'PLATT', 'ISOTONIC')):
+        raise ValueError('ENTRY_BASELINE_FINAL_OOS_POLICY_INVALID')
     split_config = policy['splitConfig']
     if any(type(v) is not int for v in split_config.values()):
         raise ValueError('ENTRY_BASELINE_INTEGER_SPLIT_REQUIRED')
@@ -57,7 +63,7 @@ def execute_entry_baseline(dataset, policy, generated_at):
         r['observationId'], r['dependencyGroupId'], r['decisionAt'], r['featureAvailableAt'],
         r['labelAvailableAt'], r['labelWindowEnd']) for r in rows],
         WalkForwardConfig(**split_config), policy['embargoSeconds'], policy['policyId'])
-    folds, registry = [], []
+    folds, registry, fitted = [], [], []
     for number, split in enumerate(plan.plan.splits):
         train = [by_id[i] for i in split.train_ids]
         labels = [r['positiveWholeChainLabel'] for r in train]
@@ -99,10 +105,42 @@ def execute_entry_baseline(dataset, policy, generated_at):
         if not all(isfinite(v) for v in forward_scores):
             raise ValueError('ENTRY_BASELINE_NONFINITE_FORWARD_SCORE')
         registry.append({'modelId': model_id, 'model': model, 'calibration': calibrated})
+        fitted.append((number, model_id, fit, means, scales, constant, calibrators, split))
         folds.append({'fold': number, 'state': 'RESEARCH_FORWARD_EVALUATED', 'split': asdict(split),
             'modelId': model_id, 'uncalibratedMetrics': asdict(calibration_metrics(forward_scores, forward_labels, policy['calibrationBins'])),
             'forwardPredictions': [{'observationId': i, 'probability': scores[i]} for i in split.forward_ids],
             'calibration': calibrated})
+    final_oos = {'state': 'RESERVED_NOT_REQUESTED', 'predictions': [], 'metrics': None}
+    if oos_policy is not None:
+        final_oos['state'] = 'INSUFFICIENT_ELIGIBLE_EVIDENCE'
+        if fitted and plan.plan.final_oos_ids:
+            # The frozen rule selects the last completed development fold, never
+            # the best held-out result. Reuse its fit/scaler/calibrator verbatim.
+            number, model_id, fit, means, scales, constant, calibrators, split = fitted[-1]
+            method = oos_policy['calibration']
+            calibrator = None if method == 'NONE' else calibrators[method]
+            final_oos.update({'fold': number, 'modelId': model_id, 'calibration': method,
+                'modelSelection': oos_policy['modelSelection'], 'refittedOnHoldout': False})
+            if method != 'NONE' and calibrator is None:
+                final_oos['state'] = 'INSUFFICIENT_CALIBRATION_EVIDENCE'
+            else:
+                heldout = plan.plan.final_oos_ids
+                development = (*split.train_ids, *split.validation_ids, *split.forward_ids)
+                if set(heldout).intersection(development):
+                    raise ValueError('ENTRY_BASELINE_FINAL_OOS_OVERLAP')
+                probabilities = []
+                for identity in heldout:
+                    row = by_id[identity]
+                    values = tuple(0.0 if i in constant else (row['features'][i] - means[i]) / scales[i]
+                                   for i in range(len(means)))
+                    raw = predict_probability(fit, values)
+                    probabilities.append(raw if method == 'NONE' else calibrator.predict(raw))
+                final_oos.update({'state': 'HELD_OUT_RESEARCH_EVALUATED',
+                    'predictions': [{'observationId': i, 'probability': p} for i, p in zip(heldout, probabilities)],
+                    'metrics': asdict(calibration_metrics(probabilities,
+                        [by_id[i]['positiveWholeChainLabel'] for i in heldout], policy['calibrationBins'])),
+                    'dependencyComponentCount': len({by_id[i]['dependencyGroupId'] for i in heldout}),
+                    'effectiveIndependentN': None})
     payload = {'version': 'theta-entry-baseline-experiment-v1', 'datasetHash': dataset['contentHash'],
         'policy': policy, 'policyHash': hashed(policy), 'generatedAt': generated_at,
         'evidenceClass': dataset['evidenceClass'], 'selectionScope': dataset['selectionScope'],
@@ -110,6 +148,28 @@ def execute_entry_baseline(dataset, policy, generated_at):
         'selectionBiasWarnings': ['SELECTED_ENTRIES_ONLY_NOT_ALL_OPPORTUNITIES',
                                   'RESOLVED_COMPLETE_CASE_BASELINE_NOT_CENSORING_ADJUSTED'],
         'state': 'RESEARCH_FORWARD_EVALUATED' if registry else 'INSUFFICIENT_ELIGIBLE_EVIDENCE',
-        'finalOosEvaluated': False, 'effectiveIndependentN': None, 'brokerAuthority': False, 'modelPromoted': False,
+        'finalOosEvaluated': final_oos['state'] == 'HELD_OUT_RESEARCH_EVALUATED', 'finalOos': final_oos,
+        'effectiveIndependentN': None, 'brokerAuthority': False, 'modelPromoted': False,
         'profitability': 'EMPIRICALLY_UNPROVEN', 'productionEvModel': 'EV_MODEL_NOT_EMPIRICALLY_READY'}
     return {**plain(payload), 'contentHash': hashed(payload)}
+
+
+def verify_entry_baseline_artifact(dataset: dict, policy: dict, artifact: dict) -> dict:
+    """Recompute a saved fit and evaluations from exact local PIT inputs.
+
+    Hash validity alone cannot prove that a reported prediction was generated
+    by its declared model. This verifier executes the same canonical engine.
+    It establishes deterministic reproduction, not profitability or promotion.
+    """
+    if not isinstance(artifact, dict) or not isinstance(artifact.get('generatedAt'), str):
+        raise ValueError('ENTRY_BASELINE_ARTIFACT_INVALID')
+    unsigned = {key: value for key, value in artifact.items() if key != 'contentHash'}
+    if artifact.get('contentHash') != hashed(unsigned):
+        raise ValueError('ENTRY_BASELINE_ARTIFACT_HASH_MISMATCH')
+    reproduced = execute_entry_baseline(dataset, policy, artifact['generatedAt'])
+    if reproduced != artifact:
+        raise ValueError('ENTRY_BASELINE_REPRODUCTION_MISMATCH')
+    return {'version': 'theta-entry-baseline-reproduction-v1', 'state': 'DETERMINISTIC_REPRODUCTION_PASS',
+            'datasetHash': dataset['contentHash'], 'policyHash': hashed(policy),
+            'artifactHash': artifact['contentHash'], 'scope': 'REPLAY_NOT_EMPIRICAL_VALIDATION',
+            'brokerAuthority': False, 'modelPromoted': False}

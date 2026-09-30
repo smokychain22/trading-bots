@@ -16,6 +16,7 @@ export const entryModelFamilies: readonly EntryModelFamily[] = [
   'REGULARIZED_LOGISTIC', 'CALIBRATED_TREE', 'GRADIENT_BOOSTED_BASELINE', 'QUANTILE_DOWNSIDE',
 ];
 export type EntryModelTarget = 'P_WHOLE_CHAIN_PROFITABLE' | 'EXPECTED_WHOLE_CHAIN_NET_PNL' | 'P_ASSIGNMENT' | 'EXPECTED_CAPITAL_DAYS' | 'DOWNSIDE_P01' | 'DOWNSIDE_P05' | 'DOWNSIDE_P10' | 'DOWNSIDE_P25';
+export const entryModelTargets: readonly EntryModelTarget[] = ['P_WHOLE_CHAIN_PROFITABLE', 'EXPECTED_WHOLE_CHAIN_NET_PNL', 'P_ASSIGNMENT', 'EXPECTED_CAPITAL_DAYS', 'DOWNSIDE_P01', 'DOWNSIDE_P05', 'DOWNSIDE_P10', 'DOWNSIDE_P25'];
 export type ReadinessState = 'DATASET_NOT_READY' | 'INSUFFICIENT_EFFECTIVE_N' | 'TRAINING_READY' | 'TRAINED' | 'CALIBRATION_FAILED' | 'OOS_FAILED' | 'OOS_SUPPORTED';
 
 export interface DatasetSufficiencyInput {
@@ -47,6 +48,57 @@ export interface EvaluationMetrics {
   readonly effectiveIndependentN: number;
 }
 
+/** Paired, held-out rows. This verifies a comparison, not external data authenticity. */
+export interface EntryOosComparison {
+  readonly policyVersion: string;
+  readonly frozenAt: string;
+  readonly trainingEnd: string;
+  readonly validationEnd: string;
+  readonly embargoSeconds: number;
+  readonly minimumPairedRows: number;
+  readonly minimumLossImprovement: number;
+  readonly fittingRowIds: readonly string[];
+  readonly rows: readonly {
+    observationId: string; decisionAt: string; featureAvailableAt: string; labelAvailableAt: string;
+    prediction: number; baselinePrediction: number; outcome: number;
+  }[];
+}
+
+export function evaluateEntryOosComparison(target: EntryModelTarget, evidence: EntryOosComparison, asOf: string): {
+  supported: boolean; pairedN: number; modelLoss: number; baselineLoss: number; metric: string;
+} {
+  if (!entryModelTargets.includes(target)) throw new Error('OOS_TARGET_INVALID');
+  const time = (s: string): number => { const n = Date.parse(s); if (!Number.isFinite(n)) throw new Error('OOS_INVALID_TIME'); return n; };
+  if (!evidence.policyVersion?.trim() || !Number.isSafeInteger(evidence.minimumPairedRows) || evidence.minimumPairedRows < 1 ||
+    !Number.isFinite(evidence.minimumLossImprovement) || evidence.minimumLossImprovement < 0 ||
+    !Number.isSafeInteger(evidence.embargoSeconds) || evidence.embargoSeconds < 0) throw new Error('OOS_EXPLICIT_POLICY_REQUIRED');
+  const frozen = time(evidence.frozenAt), train = time(evidence.trainingEnd), validation = time(evidence.validationEnd);
+  if (frozen > train || validation <= train || !evidence.fittingRowIds.length || !evidence.rows.length) throw new Error('OOS_PARTITIONS_REQUIRED');
+  const ids = new Set(evidence.fittingRowIds);
+  if (ids.size !== evidence.fittingRowIds.length || evidence.fittingRowIds.some((id) => !id.trim())) throw new Error('OOS_FIT_IDENTITIES_INVALID');
+  const binary = target.startsWith('P_');
+  const quantile = ({ DOWNSIDE_P01: 0.01, DOWNSIDE_P05: 0.05, DOWNSIDE_P10: 0.1, DOWNSIDE_P25: 0.25 } as Partial<Record<EntryModelTarget, number>>)[target];
+  const loss = (prediction: number, actual: number): number => quantile === undefined ? (prediction - actual) ** 2
+    : Math.max(quantile * (actual - prediction), (quantile - 1) * (actual - prediction));
+  let modelLoss = 0, baselineLoss = 0;
+  for (const row of evidence.rows) {
+    if (!row.observationId.trim() || ids.has(row.observationId)) throw new Error('OOS_DUPLICATE_OR_FITTING_OVERLAP');
+    ids.add(row.observationId);
+    const decision = time(row.decisionAt);
+    if (decision <= validation + evidence.embargoSeconds * 1000 || time(row.featureAvailableAt) > decision ||
+      time(row.labelAvailableAt) < decision || time(row.labelAvailableAt) > time(asOf)) throw new Error('OOS_PIT_VIOLATION');
+    if ([row.prediction, row.baselinePrediction, row.outcome].some((v) => !Number.isFinite(v)) ||
+      (binary && (row.outcome !== 0 && row.outcome !== 1 || [row.prediction, row.baselinePrediction].some((v) => v < 0 || v > 1)))) throw new Error('OOS_VALUES_INVALID');
+    modelLoss += loss(row.prediction, row.outcome);
+    baselineLoss += loss(row.baselinePrediction, row.outcome);
+  }
+  modelLoss /= evidence.rows.length;
+  baselineLoss /= evidence.rows.length;
+  if (!Number.isFinite(modelLoss) || !Number.isFinite(baselineLoss)) throw new Error('OOS_LOSS_OVERFLOW');
+  return { supported: evidence.rows.length >= evidence.minimumPairedRows && baselineLoss - modelLoss > evidence.minimumLossImprovement,
+    pairedN: evidence.rows.length, modelLoss, baselineLoss, metric: binary ? 'BRIER' : quantile === undefined ? 'SQUARED_ERROR' : 'PINBALL_LOSS' };
+}
+
 export interface EntryModelReadinessAssessment {
   readonly contractVersion: typeof thetaEntryModelReadinessVersion;
   readonly modelFamily: EntryModelFamily;
@@ -56,12 +108,10 @@ export interface EntryModelReadinessAssessment {
   readonly reason: string;
   readonly sufficiency: DatasetSufficiencyInput;
   readonly evaluation: EvaluationMetrics | null;
-  /** True only when OOS evidence shows real incremental value over the
-   * simplest baseline -- never true merely because a metric looks good
-   * in isolation. Advanced-model families (HMM/survival/LSTM/etc.) are
-   * out of scope for this module entirely; it only governs the 4
-   * baseline families. */
-  readonly promotionEligible: boolean;
+  /** This research comparison never certifies empirical provenance or promotion. */
+  readonly promotionEligible: false;
+  readonly comparison: ReturnType<typeof evaluateEntryOosComparison> | null;
+  readonly evidenceScope: 'RESEARCH_INPUT_VALIDATION_NOT_EMPIRICAL_PROVENANCE_CERTIFICATION';
 }
 
 /**
@@ -81,21 +131,28 @@ export function assessEntryModelReadiness(input: {
    * to accept a "trained" claim it cannot verify was gated correctly. */
   readonly evaluation?: EvaluationMetrics;
   readonly oosSupported?: boolean;
+  readonly oosComparison?: EntryOosComparison;
 }): EntryModelReadinessAssessment {
   if (!Number.isFinite(Date.parse(input.asOf))) throw new Error('INVALID_ASOF');
+  if (!entryModelFamilies.includes(input.modelFamily) || !entryModelTargets.includes(input.target)) throw new Error('MODEL_FAMILY_OR_TARGET_INVALID');
+  if ((input.modelFamily === 'QUANTILE_DOWNSIDE' && !input.target.startsWith('DOWNSIDE_')) ||
+    (input.modelFamily === 'REGULARIZED_LOGISTIC' && !input.target.startsWith('P_'))) throw new Error('MODEL_FAMILY_TARGET_INCOMPATIBLE');
   const s = input.sufficiency;
+  const scope = { evidenceScope: 'RESEARCH_INPUT_VALIDATION_NOT_EMPIRICAL_PROVENANCE_CERTIFICATION' as const, comparison: null };
   for (const [name, value] of [
     ['rawRowCount', s.rawRowCount], ['resolvedLabelRowCount', s.resolvedLabelRowCount], ['censoredRowCount', s.censoredRowCount],
     ['effectiveIndependentN', s.effectiveIndependentN], ['minimumEffectiveN', s.minimumEffectiveN],
     ['distinctUnderlyingCount', s.distinctUnderlyingCount], ['minimumDistinctUnderlyings', s.minimumDistinctUnderlyings],
   ] as const) {
-    if (!Number.isInteger(value) || value < 0) throw new Error(`INVALID_SUFFICIENCY_FIELD:${name}`);
+    if (!Number.isSafeInteger(value) || value < 0) throw new Error(`INVALID_SUFFICIENCY_FIELD:${name}`);
   }
   if (s.resolvedLabelRowCount + s.censoredRowCount > s.rawRowCount) throw new Error('SUFFICIENCY_COUNTS_INCONSISTENT');
+  if (s.minimumEffectiveN < 1 || s.minimumDistinctUnderlyings < 1) throw new Error('POSITIVE_SUFFICIENCY_POLICY_REQUIRED');
+  if (s.effectiveIndependentN > s.resolvedLabelRowCount || s.distinctUnderlyingCount > s.rawRowCount) throw new Error('SUFFICIENCY_COUNTS_INCONSISTENT');
 
   if (s.rawRowCount === 0) {
     return {
-      contractVersion: thetaEntryModelReadinessVersion, modelFamily: input.modelFamily, target: input.target, asOf: input.asOf,
+      ...scope, contractVersion: thetaEntryModelReadinessVersion, modelFamily: input.modelFamily, target: input.target, asOf: input.asOf,
       state: 'DATASET_NOT_READY', reason: 'Zero raw rows -- dataset does not exist yet.', sufficiency: s, evaluation: null, promotionEligible: false,
     };
   }
@@ -103,7 +160,7 @@ export function assessEntryModelReadiness(input: {
   if (insufficientN) {
     if (input.evaluation !== undefined) throw new Error('EVALUATION_SUPPLIED_DESPITE_INSUFFICIENT_N');
     return {
-      contractVersion: thetaEntryModelReadinessVersion, modelFamily: input.modelFamily, target: input.target, asOf: input.asOf,
+      ...scope, contractVersion: thetaEntryModelReadinessVersion, modelFamily: input.modelFamily, target: input.target, asOf: input.asOf,
       state: 'INSUFFICIENT_EFFECTIVE_N',
       reason: `effectiveIndependentN=${s.effectiveIndependentN} (min ${s.minimumEffectiveN}) or distinctUnderlyingCount=${s.distinctUnderlyingCount} (min ${s.minimumDistinctUnderlyings}) below policy minimum.`,
       sufficiency: s, evaluation: null, promotionEligible: false,
@@ -111,29 +168,32 @@ export function assessEntryModelReadiness(input: {
   }
   if (input.evaluation === undefined) {
     return {
-      contractVersion: thetaEntryModelReadinessVersion, modelFamily: input.modelFamily, target: input.target, asOf: input.asOf,
+      ...scope, contractVersion: thetaEntryModelReadinessVersion, modelFamily: input.modelFamily, target: input.target, asOf: input.asOf,
       state: 'TRAINING_READY', reason: 'Sufficiency minimums met; no evaluation supplied yet.', sufficiency: s, evaluation: null, promotionEligible: false,
     };
   }
   if (input.evaluation.effectiveIndependentN !== s.effectiveIndependentN) throw new Error('EVALUATION_N_MISMATCH');
-  const calibrationOk = input.evaluation.calibrationSlope !== null && input.evaluation.calibrationIntercept !== null
+  if (Object.values(input.evaluation).some((value) => value !== null && !Number.isFinite(value))) throw new Error('EVALUATION_METRIC_NONFINITE');
+  const calibrationOk = !input.target.startsWith('P_') || input.evaluation.calibrationSlope !== null && input.evaluation.calibrationIntercept !== null
     && Math.abs(input.evaluation.calibrationSlope - 1) < 0.25 && Math.abs(input.evaluation.calibrationIntercept) < 0.1;
   if (!calibrationOk) {
     return {
-      contractVersion: thetaEntryModelReadinessVersion, modelFamily: input.modelFamily, target: input.target, asOf: input.asOf,
+      ...scope, contractVersion: thetaEntryModelReadinessVersion, modelFamily: input.modelFamily, target: input.target, asOf: input.asOf,
       state: 'CALIBRATION_FAILED', reason: 'Calibration slope/intercept outside real acceptance bounds, or not supplied.',
       sufficiency: s, evaluation: input.evaluation, promotionEligible: false,
     };
   }
-  if (input.oosSupported !== true) {
+  if (input.oosComparison === undefined) {
     return {
-      contractVersion: thetaEntryModelReadinessVersion, modelFamily: input.modelFamily, target: input.target, asOf: input.asOf,
-      state: 'TRAINED', reason: 'Calibration passed; OOS support not yet confirmed.', sufficiency: s, evaluation: input.evaluation, promotionEligible: false,
+      ...scope, contractVersion: thetaEntryModelReadinessVersion, modelFamily: input.modelFamily, target: input.target, asOf: input.asOf,
+      state: 'TRAINED', reason: 'Evaluation supplied. Caller OOS flags are not evidence; paired held-out rows are required.', sufficiency: s, evaluation: input.evaluation, promotionEligible: false,
     };
   }
+  const comparison = evaluateEntryOosComparison(input.target, input.oosComparison, input.asOf);
   return {
+    ...scope, comparison,
     contractVersion: thetaEntryModelReadinessVersion, modelFamily: input.modelFamily, target: input.target, asOf: input.asOf,
-    state: 'OOS_SUPPORTED', reason: 'Calibration passed and real OOS support confirmed.',
-    sufficiency: s, evaluation: input.evaluation, promotionEligible: true,
+    state: comparison.supported ? 'OOS_SUPPORTED' : 'OOS_FAILED', reason: 'Paired held-out predictive loss comparison executed. Dataset provenance and promotion require separate canonical evidence review.',
+    sufficiency: s, evaluation: input.evaluation, promotionEligible: false,
   };
 }

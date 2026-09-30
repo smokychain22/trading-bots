@@ -5,8 +5,8 @@ import { buildShadowFailureReceipt, buildShadowPredictionReceipt, recordShadowFa
 test('CORE CLAIM: a shadow prediction receipt is structurally brokerAuthority=false and shadowOnly=true', () => {
   const receipt = buildShadowPredictionReceipt({
     predictionId: 'p1', modelId: 'm1', modelVersion: 'v1', targetId: 'ENTRY_PROFITABILITY', entityId: 'c1',
-    decisionId: 'd1', featureSnapshotHash: 'h1', predictedAt: '2026-09-25T00:00:00Z', prediction: 0.4,
-    uncertainty: 0.1, sourceSha: 'sha1', workerSha: null, strategyScope: 'THETA_CONVENTIONAL',
+    decisionId: 'd1', featureSnapshotHash: 'a'.repeat(64), predictedAt: '2026-09-25T00:00:00Z', prediction: 0.4,
+    uncertainty: 0.1, sourceSha: 'b'.repeat(40), workerSha: null, strategyScope: 'THETA_CONVENTIONAL',
   });
   assert.equal(receipt.brokerAuthority, false);
   assert.equal(receipt.shadowOnly, true);
@@ -15,8 +15,8 @@ test('CORE CLAIM: a shadow prediction receipt is structurally brokerAuthority=fa
 test('a non-finite prediction is rejected', () => {
   assert.throws(() => buildShadowPredictionReceipt({
     predictionId: 'p2', modelId: 'm1', modelVersion: 'v1', targetId: 'ENTRY_PROFITABILITY', entityId: 'c1',
-    decisionId: 'd1', featureSnapshotHash: 'h1', predictedAt: '2026-09-25T00:00:00Z', prediction: NaN,
-    uncertainty: null, sourceSha: 'sha1', workerSha: null, strategyScope: 'THETA_CONVENTIONAL',
+    decisionId: 'd1', featureSnapshotHash: 'a'.repeat(64), predictedAt: '2026-09-25T00:00:00Z', prediction: NaN,
+    uncertainty: null, sourceSha: 'b'.repeat(40), workerSha: null, strategyScope: 'THETA_CONVENTIONAL',
   }), /SHADOW_PREDICTION_NON_FINITE/);
 });
 

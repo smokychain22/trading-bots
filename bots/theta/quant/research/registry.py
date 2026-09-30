@@ -9,6 +9,7 @@ Codex-owned) wires up imports across bots/theta/quant/'s subpackages.
 """
 
 import json
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set
@@ -17,6 +18,7 @@ _RESEARCH_DATA_DIR = Path(__file__).resolve().parent / "data"
 _EXPERT_PRIORS_DATA_DIR = (
     Path(__file__).resolve().parent.parent / "expert_priors" / "data"
 )
+_PUBLIC_EVIDENCE_DATA_DIR = Path(__file__).resolve().parent.parent / "public_evidence" / "data"
 
 CANDIDATE_ACTIONS = {
     "WAIT",
@@ -136,6 +138,53 @@ def load_experiment_ids() -> Set[str]:
     return {e["experiment_id"] for e in raw["experiments"]}
 
 
+def load_public_evidence_registry() -> dict:
+    raw = _load_json(_PUBLIC_EVIDENCE_DATA_DIR, "public_evidence_sources.json")
+    if raw.get("production_authority") != "NONE" or not raw.get("version"):
+        raise ResearchRegistryError("PUBLIC_REFERENCE_AUTHORITY_INVALID")
+    seen = set()
+    for source in raw["sources"]:
+        sid = source.get("source_id")
+        if not isinstance(sid, str) or not sid.strip() or sid in seen:
+            raise ResearchRegistryError("PUBLIC_REFERENCE_ID_INVALID_OR_DUPLICATE")
+        seen.add(sid)
+        if source.get("production_authority") != "NONE":
+            raise ResearchRegistryError(f"{sid}: PUBLIC_REFERENCE_AUTHORITY_INVALID")
+        for field in ("publisher", "strategy", "data_quality", "bias"):
+            if not isinstance(source.get(field), str) or not source[field].strip():
+                raise ResearchRegistryError(f"{sid}: PUBLIC_REFERENCE_{field}_MISSING")
+        if source.get("state") == "PRIMARY_REFERENCE_VERIFIED":
+            for field in ("url", "claim", "market_period", "testable_hypothesis"):
+                if not isinstance(source.get(field), str) or not source[field].strip():
+                    raise ResearchRegistryError(f"{sid}: PUBLIC_REFERENCE_{field}_MISSING")
+            if not source["url"].startswith("https://"):
+                raise ResearchRegistryError(f"{sid}: PUBLIC_REFERENCE_URL_INVALID")
+        elif source.get("state") == "OWNER_SOURCE_NOT_SUPPLIED":
+            if any(source.get(field) is not None for field in ("url", "claim", "market_period", "testable_hypothesis")):
+                raise ResearchRegistryError(f"{sid}: MISSING_REFERENCE_HAS_FABRICATED_CLAIM")
+        else:
+            raise ResearchRegistryError(f"{sid}: PUBLIC_REFERENCE_STATE_INVALID")
+    return raw
+
+
+def hypothesis_evidence_context(hypothesis_id: Optional[str]) -> dict:
+    """Reference provenance, never a feature, empirical result or promotion gate."""
+    raw = load_public_evidence_registry()
+    identity = json.dumps(raw, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    hypotheses = {h["hypothesis_id"]: h for h in load_hypotheses_raw()}
+    hypothesis = hypotheses.get(hypothesis_id)
+    if hypothesis_id is not None and hypothesis is None:
+        raise ResearchRegistryError(f"UNKNOWN_HYPOTHESIS:{hypothesis_id}")
+    refs = hypothesis.get("public_evidence_refs", []) if hypothesis else []
+    by_id = {s["source_id"]: s for s in raw["sources"]}
+    if len(set(refs)) != len(refs) or any(ref not in by_id for ref in refs):
+        raise ResearchRegistryError(f"{hypothesis_id}: PUBLIC_REFERENCE_UNKNOWN_OR_DUPLICATE")
+    return {"registry_version": raw["version"], "registry_hash": hashlib.sha256(identity.encode("utf-8")).hexdigest(),
+            "state": "REFERENCES_BOUND" if refs else "NO_PUBLIC_REFERENCE",
+            "hypothesis_id": hypothesis_id, "sources": [by_id[ref] for ref in sorted(refs)],
+            "production_authority": "NONE", "empirical_validation": "NOT_ESTABLISHED_BY_REFERENCE"}
+
+
 def validate_registry() -> None:
     """Runs every cross-reference check described in
     bots/theta/tests/quant/test_research_registry.py, raising
@@ -155,6 +204,7 @@ def validate_registry() -> None:
 
     for h in hypotheses_raw:
         hid = h["hypothesis_id"]
+        hypothesis_evidence_context(hid)
 
         if h["archetype_id"] not in archetype_ids:
             raise ResearchRegistryError(f"{hid}: unknown archetype_id {h['archetype_id']!r}")

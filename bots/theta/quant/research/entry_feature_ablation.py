@@ -10,6 +10,8 @@ from research.ablation import paired_mean_difference
 
 
 def execute_entry_feature_ablation(dataset, baseline_policy, policy, generated_at):
+    if baseline_policy.get('finalOosEvaluation') is not None:
+        raise ValueError('ENTRY_ABLATION_FINAL_OOS_ACCESS_FORBIDDEN')
     if policy.get('version') != 'theta-entry-feature-ablation-policy-v1' or not policy.get('policyId'):
         raise ValueError('ENTRY_ABLATION_POLICY_REQUIRED')
     frozen = timestamp(policy['frozenAt'])

@@ -17,7 +17,7 @@ function model(overrides: Partial<ModelRegistryRecord> = {}): ModelRegistryRecor
     numberOfTrials: 3, selectionBiasReceiptId: 'campaign-1',
     metrics: { brierScore: 0.2, logLoss: 0.5, ece: 0.05, independentN: 500 },
     artifactHash: 'c'.repeat(64), createdAt: '2026-09-26T00:00:00Z', promotionState: 'PAPER_CHALLENGER',
-    baselineModelId: 'entry-baseline-v0', isBaseline: false,
+    baselineModelId: 'entry-baseline-v0', baselineModelVersion: 'v0', isBaseline: false,
     ...overrides,
   };
 }
@@ -26,7 +26,8 @@ function calibration(overrides: Partial<CalibrationEvaluationReceipt> = {}): Cal
   return {
     contractVersion: 'theta-calibration-evaluation-contract-v1', modelId: 'entry-baseline', modelVersion: 'v1',
     dataProvenance: 'REAL_EMPIRICAL_DATA', brierScore: 0.2, logLoss: 0.5, ece: 0.05,
-    calibrationSlope: 1.0, calibrationIntercept: 0.0, reliabilityBins: [], n: 500, independentN: 500,
+    calibrationSlope: 1.0, calibrationIntercept: 0.0,
+    reliabilityBins: [{binLower:0,binUpper:1,meanPredicted:0.5,meanObserved:0.55,n:500}], n: 500, independentN: 500,
     confidenceIntervalWidth95: 0.05, ...overrides,
   };
 }
@@ -51,11 +52,13 @@ function fullInput(overrides: Partial<PromotionEvidenceInput> = {}): PromotionEv
   };
 }
 
-test('CORE CLAIM: a fully complete evidence package is eligibleForReview, with all 11 requirements satisfied', () => {
+test('caller declarations can complete metadata but cannot certify executed empirical evidence', () => {
   const result = assemblePromotionEvidence(fullInput(), '2026-09-26T01:00:00Z');
-  assert.equal(result.eligibleForReview, true);
+  assert.equal(result.eligibleForReview, false);
+  assert.equal(result.metadataComplete, true);
+  assert.equal(result.evidenceScope, 'METADATA_AND_CALLER_DECLARATIONS_NOT_EXECUTED_EMPIRICAL_PROOF');
   assert.equal(result.missing.length, 0);
-  assert.equal(result.satisfied.length, 11);
+  assert.equal(result.declaredPresent.length, 11);
 });
 
 test('ADVERSARIAL (overnight §40): missing calibration receipt alone makes the whole package NOT eligible -- no partial-credit "mostly ready" state', () => {

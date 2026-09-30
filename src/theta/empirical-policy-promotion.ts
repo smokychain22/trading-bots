@@ -107,12 +107,23 @@ export function assessEmpiricalPolicyPromotion(
   for (const metric of requiredMetrics) {
     if (receipt.metrics[metric] === null) blockers.push(`METRIC_${metric.toUpperCase()}_UNKNOWN`);
   }
+  for (const metric of ['managedEpisodeWinRate', 'wholeChainWinRate', 'brierScore', 'deflatedSharpeRatio', 'probabilityOfBacktestOverfitting'] as const) {
+    const value = receipt.metrics[metric];
+    if (value !== null && (value < 0 || value > 1)) blockers.push(`METRIC_${metric.toUpperCase()}_OUT_OF_RANGE`);
+  }
+  if (receipt.metrics.effectiveIndependentN !== null && receipt.metrics.effectiveIndependentN <= 0) blockers.push('INDEPENDENT_SAMPLE_EMPTY');
+  if (receipt.metrics.capitalDays !== null && receipt.metrics.capitalDays <= 0) blockers.push('CAPITAL_DAYS_INVALID');
+  if (receipt.metrics.profitFactor !== null && receipt.metrics.profitFactor < 0) blockers.push('PROFIT_FACTOR_INVALID');
+  if (receipt.metrics.averageWin !== null && receipt.metrics.averageWin < 0) blockers.push('AVERAGE_WIN_INVALID');
+  if (receipt.metrics.averageLoss !== null && receipt.metrics.averageLoss > 0) blockers.push('AVERAGE_LOSS_INVALID');
+  if (new Set(receipt.acceptanceCriteria.map(c => c.id.trim())).size !== receipt.acceptanceCriteria.length ||
+    receipt.acceptanceCriteria.some(c => !c.id.trim() || !c.evidenceReference?.trim())) blockers.push('ACCEPTANCE_CRITERIA_IDENTITIES_INVALID');
   if (receipt.acceptanceCriteria.some((criterion) => !criterion.passed || criterion.evidenceReference === null)) {
     blockers.push('ACCEPTANCE_CRITERIA_NOT_PROVEN');
   }
   if (receipt.executionEvidence !== 'PROVEN') blockers.push('EXECUTION_EVIDENCE_NOT_PROVEN');
   if (receipt.approval !== 'APPROVED') blockers.push('HUMAN_APPROVAL_NOT_GRANTED');
-  if (receipt.approval === 'APPROVED' && (receipt.approvalIdentity === null || receipt.approvalTimestamp === null)) {
+  if (receipt.approval === 'APPROVED' && (!receipt.approvalIdentity?.trim() || receipt.approvalTimestamp === null)) {
     blockers.push('APPROVAL_PROVENANCE_MISSING');
   }
   if (receipt.approvalTimestamp !== null && Date.parse(receipt.approvalTimestamp) <= Date.parse(receipt.outOfSampleWindow.end)) {

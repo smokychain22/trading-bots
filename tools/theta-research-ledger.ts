@@ -5,6 +5,7 @@ import type { ModelRegistryRecord } from '../src/research/empirical-model-regist
 import { buildSelectionBiasReceipt, type SelectionBiasReceipt } from '../src/research/selection-bias-receipt.js';
 import { verifyReproducibilityBundle, type ReproducibilityBundle } from '../src/research/reproducibility-bundle.js';
 import type { OutcomeEvidence } from '../src/research/prediction-outcome-join.js';
+import { assessEntryModelReadiness } from '../src/research/theta-entry-model-readiness.js';
 
 // Explicit local-only intake. No environment loading, network, broker or Production DB.
 const args = process.argv.slice(2);
@@ -16,6 +17,7 @@ const input = JSON.parse(readFileSync(inputPath, 'utf8')) as {
   version: string; models: ModelRegistryRecord[]; predictions: ShadowPredictionReceipt[];
   selectionBias: SelectionBiasReceipt[]; joins: { predictionId: string; outcome: OutcomeEvidence; joinedAt: string }[];
   bundle: ReproducibilityBundle;
+  entryReadiness?: Parameters<typeof assessEntryModelReadiness>[0];
 };
 if (input.version !== 'theta-research-ledger-input-v1' ||
   [input.models, input.predictions, input.selectionBias, input.joins].some((v) => !Array.isArray(v))) throw new Error('RESEARCH_LEDGER_INPUT_INVALID');
@@ -27,7 +29,8 @@ try {
   for (const join of input.joins) store.savePredictionOutcomeJoin(join.predictionId, join.outcome, join.joinedAt);
   const integrity = store.verify();
   const verification = verifyReproducibilityBundle(input.bundle, store);
+  const entryReadiness = input.entryReadiness === undefined ? null : assessEntryModelReadiness(input.entryReadiness);
   process.stdout.write(JSON.stringify({ version: 'theta-research-ledger-receipt-v1', integrity, verification,
-    brokerAuthority: false, promotionGranted: false, profitability: 'EMPIRICALLY_UNPROVEN' }) + '\n');
+    entryReadiness, brokerAuthority: false, promotionGranted: false, profitability: 'EMPIRICALLY_UNPROVEN' }) + '\n');
   if (!integrity.valid || !verification.valid) process.exitCode = 1;
 } finally { store.close(); }

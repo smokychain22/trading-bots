@@ -1,0 +1,109 @@
+{
+  "version": "theta-professional-source-registry-v1",
+  "reviewed_at": "2026-09-30T22:57:07Z",
+  "production_authority": "NONE",
+  "sources": [
+    {
+      "source_id": "cboe_put_index", "publisher": "Cboe", "state": "PRIMARY_REFERENCE_VERIFIED",
+      "url": "https://www.cboe.com/insights/posts/benchmark-indices-series-income-generation-and-smoother-returns-with-cboes-bxm-bxmd-put-and-cmbo-indices/",
+      "claim": "PUT is a hypothetical monthly SPX option-writing benchmark. Historical index comparisons are not account fills.",
+      "market_period": "Article dated 2021-07-20, monthly index history discussed from July 1986.",
+      "strategy": "Q reference benchmark", "data_quality": "Published index analysis, underlying observations not imported.",
+      "bias": "Index construction and selected comparison period. SPX cash settlement differs from SPY assignment.",
+      "testable_hypothesis": "Compare secured-put after-cost outcomes with a declared benchmark on matched periods, including tail loss.",
+      "production_authority": "NONE"
+    },
+    {
+      "source_id": "cboe_bxm_index", "publisher": "Cboe", "state": "PRIMARY_REFERENCE_VERIFIED",
+      "url": "https://cdn.cboe.com/api/global/us_indices/governance/BXD_Methodology.pdf",
+      "claim": "BXM models index ownership plus monthly at-the-money SPX call writing.",
+      "market_period": "Methodology reviewed 2026-09-30, no performance sample imported.",
+      "strategy": "C benchmark", "data_quality": "Primary methodology, hypothetical portfolio.",
+      "bias": "Index execution and settlement assumptions differ from physical-stock covered calls.",
+      "testable_hypothesis": "Compare premium, retained upside and whole-chain downside under matched covered-call policies.",
+      "production_authority": "NONE"
+    },
+    {
+      "source_id": "cboe_30delta_buywrite_bxmd", "publisher": "Cboe", "state": "PRIMARY_REFERENCE_VERIFIED",
+      "url": "https://cdn.cboe.com/api/global/us_indices/governance/BXD_Methodology.pdf",
+      "claim": "BXMD writes a monthly out-of-the-money SPX call with delta nearest 0.30 against index exposure.",
+      "market_period": "Methodology reviewed 2026-09-30, no performance sample imported.",
+      "strategy": "C strike challenger", "data_quality": "Primary methodology, hypothetical portfolio.",
+      "bias": "Benchmark delta and pricing conventions are not a calibrated THETA rule.",
+      "testable_hypothesis": "Test the premium versus retained-upside tradeoff against ATM writing with identical cost assumptions.",
+      "production_authority": "NONE"
+    },
+    {
+      "source_id": "cboe_weekly_putwrite_wput", "publisher": "Cboe", "state": "PRIMARY_REFERENCE_VERIFIED",
+      "url": "https://cdn.cboe.com/api/global/us_indices/governance/Cboe_PutWrite_Indices_Methodology.pdf",
+      "claim": "WPUT combines weekly ATM SPX puts with cash collateral held in Treasury bills.",
+      "market_period": "Methodology reviewed 2026-09-30, no performance sample imported.",
+      "strategy": "H versus Q horizon research", "data_quality": "Primary index construction, not managed episodes.",
+      "bias": "Weekly index rolls cannot establish the edge of a 2-5 DTE SPY strategy.",
+      "testable_hypothesis": "Compare matched short and longer expiry policies after costs and assignment/tail burden.",
+      "production_authority": "NONE"
+    },
+    {
+      "source_id": "carr_wu_2009_variance_risk_premia", "publisher": "Carr and Wu, Review of Financial Studies", "state": "PRIMARY_REFERENCE_VERIFIED",
+      "url": "https://public.econ.duke.edu/~get/browse/courses/201/spr12/DOWNLOADS/WorkingPapers_Now_Published/cw_rfs_09.pdf",
+      "claim": "The paper estimates variance risk premia using synthetic variance swaps and subsequent realized variance.",
+      "market_period": "1996-01-04 to 2003-02-28 overall, per-security start/end dates differ.",
+      "strategy": "Volatility research for Q/H/D", "data_quality": "Peer-reviewed empirical method with OptionMetrics observations, raw data not imported.",
+      "bias": "Historical period and instrument selection. Variance is not volatility. Future realized variance is a label, never an entry feature.",
+      "testable_hypothesis": "Evaluate PIT implied-versus-forecast variance evidence against future realized-variance labels out of sample.",
+      "production_authority": "NONE"
+    },
+    {
+      "source_id": "tastytrade_45dte_21dte_50pct_management", "publisher": "tastylive", "state": "PRIMARY_REFERENCE_VERIFIED",
+      "url": "https://www.tastylive.com/news-insights/How-Capital-Allocation-Impacts-Volatility",
+      "claim": "A practitioner comparison uses 45-DTE SPY strangles with expiry, 50-percent profit and 21-DTE exits.",
+      "market_period": "Published 2024-07-01. Exact sample dates are not specified in the retrieved text.",
+      "strategy": "Management challenger prior", "data_quality": "Practitioner summary, raw trades and complete reproduction inputs unavailable.",
+      "bias": "Commercial source, strangles differ from CSPs, execution assumptions require independent validation.",
+      "testable_hypothesis": "Run the existing profit/time challengers on the same THETA paths without favoring either management hypothesis in advance.",
+      "production_authority": "NONE"
+    },
+    {
+      "source_id": "occ_oic_cash_secured_put", "publisher": "Options Industry Council", "state": "PRIMARY_REFERENCE_VERIFIED",
+      "url": "https://www.optionseducation.org/strategies/all-strategies/cash-secured-put",
+      "claim": "Cash-secured puts reserve purchase funds and retain substantial stock downside after assignment.",
+      "market_period": "Educational mechanics, no empirical sample.", "strategy": "Q/A lifecycle mechanics",
+      "data_quality": "Primary education, not profitability evidence.", "bias": "Strategy suitability and acquisition preference are not implied by ability to collateralize.",
+      "testable_hypothesis": "Separate assignment capacity from economic preference and preserve full stock downside in lifecycle comparisons.",
+      "production_authority": "NONE"
+    },
+    {
+      "source_id": "orats_backtester_methodology", "publisher": "ORATS", "state": "PRIMARY_REFERENCE_VERIFIED",
+      "url": "https://orats.com/docs/intraday-backtester-api",
+      "claim": "ORATS documents a parameterized options backtesting API. Documentation access does not establish account entitlement or validated results.",
+      "market_period": "Current reference reviewed 2026-09-30, no dataset requested.", "strategy": "Research execution assumptions",
+      "data_quality": "Vendor API documentation only.", "bias": "Vendor definitions can change, legacy methodology URL redirects. Do not import undocumented fill assumptions.",
+      "testable_hypothesis": "Compare declared execution assumptions on matched evidence if an authorized reproducible dataset is supplied.",
+      "production_authority": "NONE"
+    },
+    {
+      "source_id": "alpaca_paper_limitations", "publisher": "Alpaca", "state": "PRIMARY_REFERENCE_VERIFIED",
+      "url": "https://docs.alpaca.markets/us/docs/paper-trading",
+      "claim": "Paper simulation omits market impact, latency slippage and order queue position.",
+      "market_period": "Current documentation reviewed 2026-09-30.", "strategy": "Execution calibration across strategies",
+      "data_quality": "Primary provider capability documentation.", "bias": "Paper broker fills are Paper facts, not live fill-model validation.",
+      "testable_hypothesis": "Report modeled costs and observed Paper fills separately and stress assumptions before any live graduation.",
+      "production_authority": "NONE"
+    },
+    {
+      "source_id": "quantwheel_owner_reference", "publisher": "QuantWheel", "state": "OWNER_SOURCE_NOT_SUPPLIED", "url": null,
+      "claim": null, "market_period": null, "strategy": "Dealer-context research only", "data_quality": "No attributable owner dataset or method supplied.",
+      "bias": "Unavailable provenance cannot support an edge claim.", "testable_hypothesis": null, "production_authority": "NONE"
+    },
+    {
+      "source_id": "alertsify_owner_reference", "publisher": "Alertsify", "state": "OWNER_SOURCE_NOT_SUPPLIED", "url": null,
+      "claim": null, "market_period": null, "strategy": "Trader-prior research only", "data_quality": "No attributable owner dataset or method supplied.",
+      "bias": "Unavailable provenance cannot support an edge claim.", "testable_hypothesis": null, "production_authority": "NONE"
+    },
+    {
+      "source_id": "collective2_owner_reference", "publisher": "Collective2", "state": "OWNER_SOURCE_NOT_SUPPLIED", "url": null,
+      "claim": null, "market_period": null, "strategy": "Trader-prior research only", "data_quality": "No attributable owner dataset or method supplied.",
+      "bias": "Unavailable provenance cannot support an edge claim.", "testable_hypothesis": null, "production_authority": "NONE"
+    }
+  ]
+}

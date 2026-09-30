@@ -35,5 +35,6 @@ def assemble_promotion_evidence(evidence: Dict[str, Any]) -> dict:
         'version': 'theta-promotion-evidence-assembler-v1', 'state': 'EVIDENCE_ASSEMBLED_NOT_A_PROMOTION_DECISION',
         'missingCategories': [], 'evidence': {category: evidence[category] for category in MANDATORY_CATEGORIES},
         'promotionGranted': False,
+        'evidenceScope': 'CATEGORY_PRESENCE_NOT_EXECUTED_EMPIRICAL_PROOF',
     }
     return {**payload, 'contentHash': sha256_hex(canonical_json(payload))}

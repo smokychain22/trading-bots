@@ -8,7 +8,7 @@ function baseInput(overrides: Partial<Parameters<typeof buildSelectionBiasReceip
     numberOfTrials: 3, trialIdentities: ['t1', 't2', 't3'],
     dsr: { deflatedSharpeRatio: 0.4, expectedMaxSharpeUnderNull: 0.3, pValue: 0.2 },
     pbo: { probabilityOfBacktestOverfitting: 0.3, numberOfCombinatorialSplits: 10 },
-    inputDatasetHash: 'h1', dependencyGroupingVersion: 'dg1', codeSha: 'sha1', createdAt: '2026-09-25T00:00:00Z', ...overrides,
+    inputDatasetHash: 'a'.repeat(64), dependencyGroupingVersion: 'dg1', codeSha: 'b'.repeat(40), createdAt: '2026-09-25T00:00:00Z', ...overrides,
   };
 }
 
@@ -32,4 +32,15 @@ test('ADVERSARIAL: raw unnormalized returns cannot be silently used -- a normali
 test('DSR is scoped to continuous-return series, not rare binary-event targets', () => {
   assert.equal(isDsrApplicableTargetKind('CONTINUOUS_RETURN_SERIES'), true);
   assert.equal(isDsrApplicableTargetKind('RARE_BINARY_EVENT'), false);
+});
+
+test('selection-bias receipt rejects nonfinite metrics, missing provenance and empty trials', () => {
+  for (const patch of [{ numberOfTrials: 0, trialIdentities: [] }, { codeSha: 'unknown' },
+    { dsr: { deflatedSharpeRatio: NaN, expectedMaxSharpeUnderNull: 0, pValue: 0.1 } },
+    { pbo: { probabilityOfBacktestOverfitting: 2, numberOfCombinatorialSplits: 1 } }]) {
+    assert.throws(() => buildSelectionBiasReceipt(baseInput(patch)), /SELECTION_BIAS_/);
+  }
+  const input = baseInput(), built = buildSelectionBiasReceipt(input);
+  input.trialIdentities[0] = 'mutated';
+  assert.equal(built.trialIdentities[0], 't1');
 });

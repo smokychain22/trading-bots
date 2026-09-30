@@ -55,8 +55,19 @@ export function isDsrApplicableTargetKind(targetKind: 'CONTINUOUS_RETURN_SERIES'
 export function buildSelectionBiasReceipt(
   input: Omit<SelectionBiasReceipt, 'contractVersion'>,
 ): SelectionBiasReceipt {
+  if (!Number.isSafeInteger(input.numberOfTrials) || input.numberOfTrials < 1) throw new Error('SELECTION_BIAS_INVALID_TRIAL_COUNT');
   if (input.trialIdentities.length !== input.numberOfTrials) throw new Error('SELECTION_BIAS_TRIAL_COUNT_MISMATCH');
   if (new Set(input.trialIdentities).size !== input.trialIdentities.length) throw new Error('SELECTION_BIAS_DUPLICATE_TRIAL_IDENTITY');
   if (input.returnNormalizationVersion.trim().length === 0) throw new Error('SELECTION_BIAS_RETURN_NORMALIZATION_REQUIRED');
-  return { contractVersion: selectionBiasReceiptVersion, ...input };
+  for (const value of [input.researchCampaignId, input.dependencyGroupingVersion, ...input.trialIdentities]) {
+    if (typeof value !== 'string' || !value.trim()) throw new Error('SELECTION_BIAS_IDENTITY_REQUIRED');
+  }
+  if (!/^[a-f0-9]{64}$/.test(input.inputDatasetHash) || !/^[a-f0-9]{40}$/.test(input.codeSha) ||
+    !Number.isFinite(Date.parse(input.createdAt))) throw new Error('SELECTION_BIAS_PROVENANCE_INVALID');
+  for (const value of [input.dsr.deflatedSharpeRatio, input.dsr.pValue, input.pbo.probabilityOfBacktestOverfitting]) {
+    if (!Number.isFinite(value) || value < 0 || value > 1) throw new Error('SELECTION_BIAS_PROBABILITY_INVALID');
+  }
+  if (!Number.isFinite(input.dsr.expectedMaxSharpeUnderNull) || !Number.isSafeInteger(input.pbo.numberOfCombinatorialSplits) ||
+    input.pbo.numberOfCombinatorialSplits < 1) throw new Error('SELECTION_BIAS_METRIC_INVALID');
+  return structuredClone({ ...input, contractVersion: selectionBiasReceiptVersion });
 }

@@ -9,7 +9,7 @@
  * favorably -- `computeWaitRegretMetrics` structurally excludes
  * `hardVsSoft: 'HARD'` rows from every regret-rate numerator.
  */
-import type { FalseInactivityCause } from './false-inactivity-taxonomy.js';
+import { falseInactivityToBlockerClass, type FalseInactivityCause } from './false-inactivity-taxonomy.js';
 import type { FirstPaperBlockerClass } from '../theta/first-paper-blocker-budget.js';
 
 export const waitRegretDatasetVersion = 'theta-wait-regret-dataset-v1' as const;
@@ -50,13 +50,14 @@ export interface WaitRegretRow {
 
 /** hardVsSoft is derived, never caller-asserted independently of the
  * real cause -- a real HARD_SAFETY_REJECT/EXECUTION_QUALITY_REJECT/
- * AEGIS_REJECT is always HARD; everything else defaults SOFT unless the
- * caller has a real reason to override (not exposed here -- this keeps
- * the mapping single-sourced from the taxonomy, not duplicated per call
- * site). */
-const HARD_CAUSES: ReadonlySet<FalseInactivityCause> = new Set(['HARD_SAFETY_REJECT', 'EXECUTION_QUALITY_REJECT', 'AEGIS_REJECT']);
+ * AEGIS_REJECT, EVENT_REJECT and SIZING_REJECT are always HARD. Caller
+ * fields cannot override this mapping. Infrastructure and unidentified
+ * rows remain excluded from regret even when they are classified SOFT. */
+const HARD_CAUSES: ReadonlySet<FalseInactivityCause> = new Set(['HARD_SAFETY_REJECT', 'EXECUTION_QUALITY_REJECT', 'AEGIS_REJECT', 'EVENT_REJECT', 'SIZING_REJECT']);
 
 export function buildWaitRegretRow(input: Omit<WaitRegretRow, 'contractVersion' | 'hardVsSoft'>): WaitRegretRow {
+  if (!input.waitDecisionId?.trim() || !input.cycleId?.trim() || !Object.hasOwn(falseInactivityToBlockerClass, input.exactReason) ||
+    !['OBSERVED_PARALLEL','ESTIMABLE','NOT_IDENTIFIABLE'].includes(input.counterfactualIdentifiability)) throw new Error('WAIT_REGRET_IDENTITY_OR_STATE_INVALID');
   if (!Number.isFinite(Date.parse(input.decisionAt))) throw new Error('WAIT_REGRET_INVALID_DECISION_AT');
   if (input.labelAvailableAt !== null) {
     const labelMs = Date.parse(input.labelAvailableAt);
@@ -64,10 +65,13 @@ export function buildWaitRegretRow(input: Omit<WaitRegretRow, 'contractVersion' 
     if (labelMs < Date.parse(input.decisionAt)) throw new Error('WAIT_REGRET_LABEL_BEFORE_DECISION');
   }
   if (input.futureOutcome !== null && input.labelAvailableAt === null) throw new Error('WAIT_REGRET_OUTCOME_WITHOUT_LABEL_AVAILABLE_AT');
+  if (input.futureOutcome !== null && (!Number.isFinite(Date.parse(input.futureOutcome.observedAt)) ||
+    Date.parse(input.futureOutcome.observedAt) < Date.parse(input.decisionAt) ||
+    (input.futureOutcome.wholeChainNetPnlIfTaken !== null && !Number.isFinite(input.futureOutcome.wholeChainNetPnlIfTaken)))) throw new Error('WAIT_REGRET_OUTCOME_INVALID');
   if (input.futureOutcome !== null && Date.parse(input.futureOutcome.observedAt) > Date.parse(input.labelAvailableAt as string)) {
     throw new Error('WAIT_REGRET_FUTURE_OUTCOME_AFTER_LABEL_AVAILABLE_AT');
   }
-  return { contractVersion: waitRegretDatasetVersion, hardVsSoft: HARD_CAUSES.has(input.exactReason) ? 'HARD' : 'SOFT', ...input };
+  return structuredClone({ ...input, contractVersion: waitRegretDatasetVersion, hardVsSoft: HARD_CAUSES.has(input.exactReason) ? 'HARD' : 'SOFT' });
 }
 
 export interface WaitRegretMetrics {
@@ -78,6 +82,8 @@ export interface WaitRegretMetrics {
   readonly falseAcceptRate: null;
   readonly gateRegretRate: number | null;
   readonly decisionRegretRate: number | null;
+  readonly modeledCounterfactualRows: number;
+  readonly modeledGateRegretRate: number | null;
   readonly opportunityConversionRate: null;
   readonly rejectedCandidatePresenceRate: number | null;
   readonly implementationFalseRejectRate: number | null;
@@ -101,10 +107,14 @@ function rate(rows: readonly WaitRegretRow[], predicate: (row: WaitRegretRow) =>
  * what its (irrelevant, uncomputed) future outcome would have been.
  */
 export function computeWaitRegretMetrics(rows: readonly WaitRegretRow[]): WaitRegretMetrics {
+  rows = rows.map(buildWaitRegretRow);
+  if (new Set(rows.map(row => JSON.stringify([row.cycleId,row.waitDecisionId]))).size !== rows.length) throw new Error('WAIT_REGRET_DUPLICATE_DECISION');
   const softIdentifiable = rows.filter((r) => r.hardVsSoft === 'SOFT'
+    && ['ECONOMIC_WAIT','IMPLEMENTATION_FALSE_REJECT'].includes(r.exactReason)
     && r.counterfactualIdentifiability !== 'NOT_IDENTIFIABLE'
     && typeof r.futureOutcome?.wholeChainNetPnlIfTaken === 'number');
   const observedParallel = softIdentifiable.filter((r) => r.counterfactualIdentifiability === 'OBSERVED_PARALLEL');
+  const modeled = softIdentifiable.filter((r) => r.counterfactualIdentifiability === 'ESTIMABLE');
   const positiveOutcome = (row: WaitRegretRow): boolean => {
     const value = row.futureOutcome?.wholeChainNetPnlIfTaken;
     return typeof value === 'number' && value > 0;
@@ -114,11 +124,13 @@ export function computeWaitRegretMetrics(rows: readonly WaitRegretRow[]): WaitRe
     totalRows: rows.length,
     softIdentifiableRows: softIdentifiable.length,
     observedParallelRows: observedParallel.length,
-    falseRejectRate: rate(softIdentifiable, (r) => positiveOutcome(r)
+    falseRejectRate: rate(observedParallel, (r) => positiveOutcome(r)
       && (r.exactReason === 'IMPLEMENTATION_FALSE_REJECT' || r.exactReason === 'ECONOMIC_WAIT')),
     falseAcceptRate: null, // WAIT-only evidence has no accepted-then-lost denominator.
-    gateRegretRate: rate(softIdentifiable, positiveOutcome),
+    gateRegretRate: rate(observedParallel, positiveOutcome),
     decisionRegretRate: rate(observedParallel, positiveOutcome),
+    modeledCounterfactualRows: modeled.length,
+    modeledGateRegretRate: rate(modeled, positiveOutcome),
     opportunityConversionRate: null, // Candidate presence does not establish an actual conversion.
     rejectedCandidatePresenceRate: rate(rows, (r) => r.bestRejectedCandidate !== null),
     implementationFalseRejectRate: rate(rows, (r) => r.exactReason === 'IMPLEMENTATION_FALSE_REJECT'),

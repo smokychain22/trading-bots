@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  RESEARCH_COMPLETION_REGISTRY, listCapabilitiesByDomain, listCapabilitiesRequiringCodexRuntime,
+  RESEARCH_COMPLETION_REGISTRY, listCapabilitiesByDomain, listCapabilitiesRequiringCodexRuntime, researchRegistryEvidenceScope,
 } from '../src/research/research-completion-registry.js';
+
+test('historical registry declarations cannot certify current engineering or empirical readiness', () => {
+  assert.equal(researchRegistryEvidenceScope.state, 'HISTORICAL_DECLARATION_NOT_CURRENT_ACCEPTANCE');
+  assert.equal(researchRegistryEvidenceScope.empiricalPromotion, false);
+  assert.equal(researchRegistryEvidenceScope.currentWorkerProven, false);
+});
 
 test('every capability has at least one real source file and a valid implementation state', () => {
   const validStates = new Set([

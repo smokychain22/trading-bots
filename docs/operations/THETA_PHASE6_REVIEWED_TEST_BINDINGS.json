@@ -1,0 +1,403 @@
+[
+  {
+    "id": "6.1",
+    "reviewedBehavior": "Observation, outcome, dataset, challenger and governance paths are executable offline. Synthetic execution is not current-worker or empirical proof. SQLite ledger survives process restart and checks exact model/outcome bindings.",
+    "sources": [
+      "bots/theta/quant/research/empirical_pipeline.py",
+      "bots/theta/quant/research/production_export_loader.py",
+      "bots/theta/quant/research/entry_episode_training.py",
+      "src/research/real-data-arrival-harness.ts",
+      "src/research/reproducibility-bundle.ts",
+      "src/storage/research-durable-store.ts",
+      "tools/theta-research-ledger.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase6-python-research.test.ts",
+        "names": [
+          "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls"
+        ]
+      },
+      {
+        "file": "tests/reproducibility-bundle.test.ts",
+        "names": [
+          "offline CLI persists exact model, prediction and resolved join and verifies after a second process restart"
+        ]
+      },
+      {
+        "file": "tests/empirical-policy-promotion.test.ts",
+        "names": [
+          "complete evidence can become review-ready but never self-promotes or authorizes execution"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "6.2",
+    "reviewedBehavior": "WAIT alternatives retain canonical reasons, best and second candidate, and separate observed/modelled denominators. Safety and infrastructure rejection cannot become regret from a favorable future path.",
+    "sources": [
+      "src/research/wait-regret-dataset.ts",
+      "src/research/false-inactivity-taxonomy.ts",
+      "src/research/canonical-export-adapters.ts",
+      "bots/theta/quant/research/wait_outcome.py",
+      "bots/theta/quant/research/wait_analysis.py",
+      "src/theta/canonical-strategy-frontier.ts",
+      "src/theta/postgres-cycle-evidence-storage.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase6-python-research.test.ts",
+        "names": [
+          "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls"
+        ]
+      },
+      {
+        "file": "tests/wait-regret-dataset.test.ts",
+        "names": [
+          "hard reason cannot be overridden and event sizing provider failures never become favorable-path regret",
+          "modeled and observed counterfactual regret have separate denominators"
+        ]
+      },
+      {
+        "file": "tests/canonical-export-adapters.test.ts",
+        "names": [
+          "a WAIT cycle (no branch contains the selected id) reports every alternative unchosen, never forces one"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "6.3",
+    "reviewedBehavior": "Archive adapters preserve selected and unchosen candidates and strategy branches. Management datasets retain all action economics. Alternative observations remain counterfactual, no hypothetical fill is a broker fact.",
+    "sources": [
+      "src/research/canonical-export-adapters.ts",
+      "src/research/production-persistence-adapters.ts",
+      "bots/theta/quant/research/management_dataset.py",
+      "bots/theta/quant/research/whole_chain_dataset.py",
+      "tools/theta-research-dataset-cli.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase6-python-research.test.ts",
+        "names": [
+          "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls"
+        ]
+      },
+      {
+        "file": "tests/canonical-export-adapters.test.ts",
+        "names": [
+          "CORE CLAIM: decision-candidate adapter marks exactly the frontier-selected candidate SELECTED, all others REJECTED",
+          "no candidate row ever carries a realized-outcome field -- structurally impossible per entry-unit-separation"
+        ]
+      },
+      {
+        "file": "tests/production-persistence-adapters.test.ts",
+        "names": [
+          "CORE CLAIM: a real 14-action ActionEconomics[] adapts into ManagementActionValueRow[] with the taken action factual, others counterfactual"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "6.4",
+    "reviewedBehavior": "Twenty-one cause dimensions require timestamped evidence. Pipeline persists candidate-bound attribution and unassigned causes. Reported contributing facts are not claimed as identified causal effects.",
+    "sources": [
+      "bots/theta/quant/research/failure_attribution.py",
+      "bots/theta/quant/research/empirical_pipeline.py",
+      "bots/theta/quant/research/research_cli.py",
+      "bots/theta/tests/quant/test_failure_attribution.py"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase6-python-research.test.ts",
+        "names": [
+          "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "6.5",
+    "reviewedBehavior": "Future marks, selected status and actual fills are distinct. Explicit truth classes cannot be inferred from numeric values. Incomplete and open episodes remain censored or unidentifiable.",
+    "sources": [
+      "src/research/real-data-arrival-harness.ts",
+      "src/research/contract-path-label-maturation.ts",
+      "src/research/empirical-identifiability-taxonomy.ts",
+      "bots/theta/quant/research/wait_outcome.py",
+      "bots/theta/quant/research/whole_chain_dataset.py"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase6-python-research.test.ts",
+        "names": [
+          "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls"
+        ]
+      },
+      {
+        "file": "tests/real-data-arrival-harness.test.ts",
+        "names": [
+          "selection without fills and terminal whole-chain evidence never becomes a factual resolved outcome",
+          "a selected shadow-only subject remains NOT_IDENTIFIABLE"
+        ]
+      },
+      {
+        "file": "tests/contract-path-label-maturation.test.ts",
+        "names": [
+          "market marks mature MAE/MFE without pretending they are fills or realized PnL"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "6.6",
+    "reviewedBehavior": "Separate PnL, probability, downside, assignment, duration, execution and capital targets retain units. Binary, continuous and quantile held-out comparisons use different loss functions. Model fitting beyond supplied evidence remains unqualified.",
+    "sources": [
+      "src/research/theta-entry-model-readiness.ts",
+      "bots/theta/quant/research/research_targets.py",
+      "bots/theta/quant/research/entry_episode_training.py",
+      "bots/theta/quant/research/dataset_contracts.py",
+      "bots/theta/tests/quant/test_research_targets.py"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase6-python-research.test.ts",
+        "names": [
+          "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls"
+        ]
+      },
+      {
+        "file": "tests/theta-entry-model-readiness.test.ts",
+        "names": [
+          "paired OOS executes target-appropriate loss and cannot authorize promotion",
+          "caller-supplied OOS flag cannot certify held-out support or promotion"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "6.7",
+    "reviewedBehavior": "Existing baseline engine fits deterministic, regularized logistic and shallow-tree challengers with explicit policies. Registered complex families are not presented as executed trained models. Advanced empirical usefulness remains unproven.",
+    "sources": [
+      "bots/theta/quant/research/entry_baseline_experiment.py",
+      "bots/theta/quant/research/entry_feature_ablation.py",
+      "bots/theta/quant/research/empirical_pipeline.py",
+      "src/research/empirical-model-registry.ts",
+      "bots/theta/tests/quant/test_entry_baseline_experiment.py"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase6-python-research.test.ts",
+        "names": [
+          "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls"
+        ]
+      },
+      {
+        "file": "tests/theta-entry-model-readiness.test.ts",
+        "names": [
+          "zero raw rows is DATASET_NOT_READY",
+          "ADVERSARIAL: never optimizes/promotes on accuracy/AUC/win-rate alone -- EvaluationMetrics has no such field"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "6.8",
+    "reviewedBehavior": "Brier, log loss, reliability, slope/intercept and Platt/isotonic execute with fit/evaluation separation. Missing N, constant predictions and malformed values cannot yield fabricated calibration confidence.",
+    "sources": [
+      "src/research/calibration-evaluation-contract.ts",
+      "bots/theta/quant/research/validation.py",
+      "bots/theta/quant/research/entry_baseline_experiment.py",
+      "bots/theta/tests/quant/test_validation.py"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase6-python-research.test.ts",
+        "names": [
+          "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls"
+        ]
+      },
+      {
+        "file": "tests/calibration-evaluation-contract.test.ts",
+        "names": [
+          "ADVERSARIAL: calibration must never be evaluated on the same rows used to fit the calibrator",
+          "invalid probabilities, binary labels, N and forged bin summaries cannot certify calibration"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "6.9",
+    "reviewedBehavior": "Purged chronological splits, embargo, experiment identity, selection-bias campaign and frozen final holdout are executable. Ablation cannot use final OOS. Saved fits reproduce from exact dataset/policy and fail on rehashed tampering.",
+    "sources": [
+      "bots/theta/quant/research/validation.py",
+      "bots/theta/quant/research/validation_experiment.py",
+      "bots/theta/quant/research/selection_bias_runner.py",
+      "bots/theta/quant/research/entry_baseline_experiment.py",
+      "bots/theta/quant/research/entry_feature_ablation.py",
+      "src/research/selection-bias-receipt.ts",
+      "bots/theta/tests/quant/test_entry_feature_ablation.py"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase6-python-research.test.ts",
+        "names": [
+          "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls"
+        ]
+      },
+      {
+        "file": "tests/theta-entry-model-readiness.test.ts",
+        "names": [
+          "paired OOS rejects future features, fit overlap, malformed values and missing policy"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "6.10",
+    "reviewedBehavior": "Primary-source registry is validated, hash-bound and consumed by empirical experiment manifests. Nine references have bounded documented claims. Three owner-only research sources remain OWNER_SOURCE_NOT_SUPPLIED, never invented.",
+    "sources": [
+      "bots/theta/quant/public_evidence/data/public_evidence_sources.json",
+      "bots/theta/quant/research/registry.py",
+      "bots/theta/quant/research/empirical_pipeline.py",
+      "bots/theta/tests/quant/test_research_registry.py"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase6-python-research.test.ts",
+        "names": [
+          "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "6.11",
+    "reviewedBehavior": "Professional claims become registered hypotheses and explicit benchmark/ablation policies. Existing runner executes specified mechanics. B1/B2/BH-1 remain blocked by missing owner policy, not invented universal rules.",
+    "sources": [
+      "bots/theta/quant/research/data/hypotheses.json",
+      "bots/theta/quant/research/registry.py",
+      "bots/theta/quant/research/benchmark_runner.py",
+      "bots/theta/quant/research/benchmark_mechanics.py",
+      "bots/theta/quant/research/entry_feature_ablation.py",
+      "bots/theta/tests/quant/test_benchmark_runner.py"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase6-python-research.test.ts",
+        "names": [
+          "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "6.12",
+    "reviewedBehavior": "Future IV-minus-subsequent-RV labels require frozen calendar, explicit units, same-underlying marks and PIT IV. Existing research estimator is reused. Future label fields are forbidden in entry features; missing grid/IV stays insufficient.",
+    "sources": [
+      "bots/theta/quant/research/future_volatility_label.py",
+      "bots/theta/quant/research/production_export_loader.py",
+      "bots/theta/quant/research/research_cli.py",
+      "bots/theta/quant/features/realized_volatility.py",
+      "src/research/point-in-time-evidence.ts",
+      "bots/theta/tests/quant/test_future_volatility_label.py"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase6-python-research.test.ts",
+        "names": [
+          "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls"
+        ]
+      },
+      {
+        "file": "tests/point-in-time-evidence.test.ts",
+        "names": [
+          "dataset window rejects malformed or timezone-free timestamps and future volatility labels"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "6.13",
+    "reviewedBehavior": "Qualified dealer/surface features retain shadow/bootstrap scope. Unknown, stale, future and duplicate context cannot manufacture scores or override Production ranking.",
+    "sources": [
+      "src/research/shadow-feature-contribution.ts",
+      "src/theta/optionomics-feature-destinations.ts",
+      "src/research/qualified-soft-feature-evidence.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/shadow-feature-contribution.test.ts",
+        "names": [
+          "CORE CLAIM: shadow rank never overwrites currentProductionRank -- both are preserved independently",
+          "every computed score is labeled BOOTSTRAP_NON_EMPIRICAL, never presented as validated",
+          "unqualified, stale, future, zero-weight and duplicate feature inputs cannot invent contributions"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "6.14",
+    "reviewedBehavior": "After-cost expectancy, win/loss payoff, drawdown/tail, capital and recovery metrics remain separate. Empty/missing data stays unknown and independent N cannot be inflated. The win-rate target does not authorize promotion.",
+    "sources": [
+      "src/research/r8-performance-analytics.ts",
+      "bots/theta/quant/research/graduation_metric_engine.py",
+      "bots/theta/quant/features/drawdown_recovery.py",
+      "bots/theta/tests/quant/test_graduation_metric_engine.py"
+    ],
+    "tests": [
+      {
+        "file": "tests/phase6-python-research.test.ts",
+        "names": [
+          "Phase-6 Python research executes datasets attribution held-out fitting calibration benchmarks and future-label firewalls"
+        ]
+      },
+      {
+        "file": "tests/r8-performance-analytics.test.ts",
+        "names": [
+          "R8 performance reports complete after-cost episode economics without replacing missing values with zero",
+          "explicit zero independent N cannot borrow raw sample confidence",
+          "an empty evidence set reports UNKNOWN metrics rather than fabricated zeroes"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "6.15",
+    "reviewedBehavior": "Engineering acceptance binds reviewed source/test bytes and named executed cases. Historical registry declarations are superseded. Promotion requires canonical reviewed evidence and explicit hash-bound approval, not boolean self-certification. No current-worker or empirical claim follows from these tests.",
+    "sources": [
+      "src/operations/executed-requirement-evidence.ts",
+      "src/research/promotion-evidence-assembler.ts",
+      "src/research/research-completion-registry.ts",
+      "src/theta/empirical-policy-promotion.ts",
+      "src/theta/promoted-management-policy-provider.ts"
+    ],
+    "tests": [
+      {
+        "file": "tests/executed-requirement-evidence.test.ts",
+        "names": [
+          "closure requires the exact executed file and case with bound source and test hashes",
+          "a failing companion prevents a selected pass from laundering the suite failure"
+        ]
+      },
+      {
+        "file": "tests/promotion-evidence-assembler.test.ts",
+        "names": [
+          "caller declarations can complete metadata but cannot certify executed empirical evidence"
+        ]
+      },
+      {
+        "file": "tests/empirical-policy-promotion.test.ts",
+        "names": [
+          "explicit promotion binds the complete reviewed receipt and rejects malformed approval metadata",
+          "management promotion pins input and gives each evaluator an isolated reviewed artifact"
+        ]
+      },
+      {
+        "file": "tests/research-completion-registry.test.ts",
+        "names": [
+          "historical registry declarations cannot certify current engineering or empirical readiness"
+        ]
+      }
+    ]
+  }
+]

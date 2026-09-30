@@ -42,7 +42,13 @@ export function buildShadowPredictionReceipt(
 ): ShadowPredictionReceipt {
   if (!Number.isFinite(Date.parse(input.predictedAt))) throw new Error('SHADOW_PREDICTION_INVALID_PREDICTED_AT');
   if (!Number.isFinite(input.prediction)) throw new Error('SHADOW_PREDICTION_NON_FINITE');
-  return { contractVersion: shadowPredictionReceiptVersion, ...input, shadowOnly: true, brokerAuthority: false };
+  if (input.uncertainty !== null && (!Number.isFinite(input.uncertainty) || input.uncertainty < 0)) throw new Error('SHADOW_PREDICTION_UNCERTAINTY_INVALID');
+  for (const field of ['predictionId', 'modelId', 'modelVersion', 'targetId', 'entityId', 'decisionId', 'strategyScope'] as const) {
+    if (typeof input[field] !== 'string' || !input[field].trim()) throw new Error(`SHADOW_PREDICTION_IDENTITY_INVALID:${field}`);
+  }
+  if (!/^[a-f0-9]{64}$/.test(input.featureSnapshotHash) || !/^[a-f0-9]{40}$/.test(input.sourceSha) ||
+    (input.workerSha !== null && !/^[a-f0-9]{40}$/.test(input.workerSha))) throw new Error('SHADOW_PREDICTION_PROVENANCE_INVALID');
+  return { ...input, contractVersion: shadowPredictionReceiptVersion, shadowOnly: true, brokerAuthority: false };
 }
 
 export type ShadowFailureState =
@@ -65,7 +71,12 @@ export interface ShadowFailureReceipt {
 export function buildShadowFailureReceipt(
   input: Omit<ShadowFailureReceipt, 'contractVersion' | 'shadowOnly' | 'brokerAuthority'>,
 ): ShadowFailureReceipt {
-  return { contractVersion: shadowPredictionReceiptVersion, ...input, shadowOnly: true, brokerAuthority: false };
+  if (!Number.isFinite(Date.parse(input.observedAt)) || !['SHADOW_UNAVAILABLE', 'SHADOW_MODEL_TIMEOUT', 'SHADOW_FEATURE_MISSING',
+    'SHADOW_MODEL_NAN', 'SHADOW_VERSION_MISMATCH', 'SHADOW_UNSUPPORTED_STATE'].includes(input.failureState)) throw new Error('SHADOW_FAILURE_STATE_OR_TIME_INVALID');
+  for (const field of ['failureId', 'modelId', 'entityId', 'decisionId', 'detail'] as const) {
+    if (typeof input[field] !== 'string' || !input[field].trim()) throw new Error(`SHADOW_FAILURE_IDENTITY_INVALID:${field}`);
+  }
+  return { ...input, contractVersion: shadowPredictionReceiptVersion, shadowOnly: true, brokerAuthority: false };
 }
 
 /**

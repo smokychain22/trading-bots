@@ -141,11 +141,23 @@ test('ADVERSARIAL: an immutable-record mutation attempt (raw UPDATE bypassing th
 function predictionReceipt(overrides: Parameters<typeof buildShadowPredictionReceipt>[0] extends infer T ? Partial<T> : never = {}) {
   return buildShadowPredictionReceipt({
     predictionId: 'p1', modelId: 'entry-baseline', modelVersion: 'v1', targetId: 'ENTRY_PROFITABILITY',
-    entityId: 'c1', decisionId: 'd1', featureSnapshotHash: 'h1', predictedAt: '2026-09-26T00:00:00Z',
-    prediction: 0.5, uncertainty: null, sourceSha: 'sha1', workerSha: null, strategyScope: 'THETA_CONVENTIONAL',
+    entityId: 'c1', decisionId: 'd1', featureSnapshotHash: 'a'.repeat(64), predictedAt: '2026-09-26T00:00:00Z',
+    prediction: 0.5, uncertainty: null, sourceSha: 'b'.repeat(40), workerSha: null, strategyScope: 'THETA_CONVENTIONAL',
     ...overrides,
   });
 }
+
+test('direct persistence cannot bypass finite-value, identity or shadow-authority checks', () => {
+  const { store, cleanup } = harness();
+  try {
+    const receipt = predictionReceipt();
+    for (const patch of [{ prediction: NaN }, { uncertainty: -1 }, { sourceSha: 'unknown' }, { decisionId: '' },
+      { brokerAuthority: true as never }, { shadowOnly: false as never }]) {
+      assert.throws(() => store.saveShadowPredictionReceipt({ ...receipt, ...patch }), /SHADOW_PREDICTION_|RESEARCH_PREDICTION_/);
+    }
+    assert.equal(store.verify().checked, 0);
+  } finally { cleanup(); }
+});
 
 test('CORE CLAIM (overnight §22): duplicate shadow-prediction ID -- identical content is idempotent, conflicting content throws', () => {
   const { store, cleanup } = harness();

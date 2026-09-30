@@ -9,7 +9,7 @@ from test_entry_episode_training import policy as feature_policy, training_fixtu
 from test_empirical_pipeline import _config
 from research.production_export_loader import load_dataset_export
 from research.entry_episode_training import build_entry_episode_training_dataset
-from research.entry_baseline_experiment import execute_entry_baseline, hashed
+from research.entry_baseline_experiment import execute_entry_baseline, verify_entry_baseline_artifact, hashed
 from research.empirical_pipeline import run_theta_empirical_pipeline
 
 
@@ -44,6 +44,75 @@ def rehash(value):
 
 
 class EntryBaselineTests(unittest.TestCase):
+    def test_saved_fit_reproduces_and_rehashed_forgery_is_rejected(self):
+        raw, p = fixture(), policy()
+        result = execute_entry_baseline(raw, p, '2026-01-10T00:00:00Z')
+        self.assertEqual(verify_entry_baseline_artifact(raw, p, result)['state'], 'DETERMINISTIC_REPRODUCTION_PASS')
+        changed = copy.deepcopy(result)
+        changed['folds'][0]['forwardPredictions'][0]['probability'] = 0.999
+        with self.assertRaisesRegex(ValueError, 'HASH_MISMATCH'):
+            verify_entry_baseline_artifact(raw, p, changed)
+        with self.assertRaisesRegex(ValueError, 'REPRODUCTION_MISMATCH'):
+            verify_entry_baseline_artifact(raw, p, rehash(changed))
+
+    def test_pipeline_persists_reproduction_receipt_from_exact_local_inputs(self):
+        raw, p = training_fixture(), policy()
+        dataset = build_entry_episode_training_dataset(load_dataset_export(raw), feature_policy())
+        saved = execute_entry_baseline(dataset, p, '2026-01-10T00:00:00Z')
+        with tempfile.TemporaryDirectory() as temporary:
+            result = run_theta_empirical_pipeline(raw, _config(), output_root=Path(temporary),
+                run_timestamp='2026-01-10T00:00:00Z', entry_training_policy=feature_policy(),
+                entry_baseline_policy=p, entry_baseline_artifact_to_verify=saved)
+            receipt_path = next(Path(path) for path in result.artifacts_written if path.endswith('/entry_baseline_reproduction.json') or path.endswith('\\entry_baseline_reproduction.json'))
+            receipt = json.loads(receipt_path.read_text())
+            self.assertEqual(receipt['artifactHash'], saved['contentHash'])
+            self.assertFalse(receipt['modelPromoted'])
+            self.assertEqual(result.manifest['entry_baseline_reproduction'], receipt)
+
+    def test_frozen_final_holdout_executes_without_refit_or_promotion(self):
+        for method in ('NONE', 'PLATT', 'ISOTONIC'):
+            p = policy()
+            p['finalOosEvaluation'] = {'modelSelection': 'LAST_COMPLETED_DEVELOPMENT_FOLD', 'calibration': method}
+            raw = fixture()
+            # Mixed labels at identical calibration scores admit a finite
+            # Platt fit. Perfectly separated two-row samples need not converge.
+            raw['rows'][3]['features'] = list(raw['rows'][2]['features'])
+            rehash(raw)
+            result = execute_entry_baseline(raw, p, '2026-01-10T00:00:00Z')
+            self.assertTrue(result['finalOosEvaluated'])
+            self.assertEqual(result['finalOos']['metrics']['sample_size'], 1)
+            self.assertEqual([r['observationId'] for r in result['finalOos']['predictions']], ['8'])
+            self.assertEqual(result['finalOos']['modelId'], result['folds'][0]['modelId'])
+            self.assertFalse(result['finalOos']['refittedOnHoldout'])
+            self.assertFalse(result['modelPromoted'])
+            self.assertIsNone(result['finalOos']['effectiveIndependentN'])
+            self.assertEqual(result, execute_entry_baseline(raw, p, '2026-01-10T00:00:00Z'))
+
+    def test_holdout_labels_never_change_fit_calibrator_or_predictions(self):
+        p = policy()
+        p['finalOosEvaluation'] = {'modelSelection': 'LAST_COMPLETED_DEVELOPMENT_FOLD', 'calibration': 'ISOTONIC'}
+        raw = fixture()
+        first = execute_entry_baseline(raw, p, '2026-01-10T00:00:00Z')
+        raw['rows'][-1]['positiveWholeChainLabel'] = 1
+        changed = execute_entry_baseline(rehash(raw), p, '2026-01-10T00:00:00Z')
+        for key in ('fit', 'means', 'scales'):
+            self.assertEqual(first['registry'][0]['model'][key], changed['registry'][0]['model'][key])
+        self.assertEqual(first['registry'][0]['calibration'], changed['registry'][0]['calibration'])
+        self.assertEqual(first['finalOos']['predictions'], changed['finalOos']['predictions'])
+
+    def test_final_holdout_refuses_missing_fit_calibration_or_unfrozen_selection(self):
+        p = policy()
+        p['finalOosEvaluation'] = {'modelSelection': 'LAST_COMPLETED_DEVELOPMENT_FOLD', 'calibration': 'ISOTONIC'}
+        p['minimumCalibrationRows'] = 999
+        result = execute_entry_baseline(fixture(), p, '2026-01-10T00:00:00Z')
+        self.assertFalse(result['finalOosEvaluated'])
+        self.assertEqual(result['finalOos']['state'], 'INSUFFICIENT_CALIBRATION_EVIDENCE')
+        p['minimumTrainingRows'] = 999
+        self.assertFalse(execute_entry_baseline(fixture(), p, '2026-01-10T00:00:00Z')['finalOosEvaluated'])
+        p['finalOosEvaluation']['modelSelection'] = 'BEST_OOS_BRIER'
+        with self.assertRaisesRegex(ValueError, 'FINAL_OOS_POLICY_INVALID'):
+            execute_entry_baseline(fixture(), p, '2026-01-10T00:00:00Z')
+
     def test_train_calibrate_forward_registry_end_to_end_and_reproducible(self):
         result = execute_entry_baseline(fixture(), policy(), '2026-01-10T00:00:00Z')
         self.assertEqual(result['state'], 'RESEARCH_FORWARD_EVALUATED')

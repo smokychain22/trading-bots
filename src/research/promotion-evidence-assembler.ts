@@ -3,19 +3,18 @@
  * `brokerAuthority: false`. This module NEVER promotes a model -- it does
  * not write `promotionState`, does not call `ResearchDurableStore`, and
  * has no import path into any Production/decision-authority module. It
- * only ASSEMBLES a real evidence checklist and REFUSES eligibility unless
- * every required item is genuinely present.
+ * only assembles metadata and caller declarations. Those declarations are
+ * not executed empirical proof. Canonical policy promotion remains in
+ * theta/empirical-policy-promotion.ts, with explicit reviewed governance.
  *
- * "Eligible" here means "a human reviewer now has a complete, honestly-
- * assembled evidence package to review" -- it is never itself an
- * authorization, and the assembler's own output type has no field that
- * could be mistaken for one (no `approved`, no `promoted`).
+ * Metadata completeness never grants empirical review eligibility or
+ * authorization. Executed evidence and canonical governance are separate.
  */
-import type { ModelRegistryRecord } from './empirical-model-registry.js';
-import type { SelectionBiasReceipt } from './selection-bias-receipt.js';
-import type { CalibrationEvaluationReceipt } from './calibration-evaluation-contract.js';
+import { validateModelRegistryRecord, type ModelRegistryRecord } from './empirical-model-registry.js';
+import { buildSelectionBiasReceipt, type SelectionBiasReceipt } from './selection-bias-receipt.js';
+import { validateCalibrationReceipt, type CalibrationEvaluationReceipt } from './calibration-evaluation-contract.js';
 
-export const promotionEvidenceAssemblerVersion = 'theta-promotion-evidence-assembler-v1' as const;
+export const promotionEvidenceAssemblerVersion = 'theta-promotion-evidence-assembler-v2' as const;
 
 export type PromotionEvidenceRequirement =
   | 'REAL_EMPIRICAL_PROVENANCE' | 'INDEPENDENT_N_MEETS_GATE' | 'PIT_VALIDATION_PASS'
@@ -40,20 +39,25 @@ export interface PromotionEvidenceAssembly {
   readonly contractVersion: typeof promotionEvidenceAssemblerVersion;
   readonly modelId: string;
   readonly modelVersion: string;
-  readonly satisfied: readonly PromotionEvidenceRequirement[];
+  readonly declaredPresent: readonly PromotionEvidenceRequirement[];
   readonly missing: readonly PromotionEvidenceRequirement[];
-  readonly eligibleForReview: boolean;
+  readonly metadataComplete: boolean;
+  readonly eligibleForReview: false;
+  readonly evidenceScope: 'METADATA_AND_CALLER_DECLARATIONS_NOT_EXECUTED_EMPIRICAL_PROOF';
+  readonly canonicalPromotionAuthority: 'theta/empirical-policy-promotion.ts';
   readonly assembledAt: string;
 }
 
 /**
- * Assembles the real evidence checklist and refuses `eligibleForReview`
- * unless EVERY requirement is genuinely satisfied. Never returns
- * `eligibleForReview: true` from a partial checklist -- there is no
- * "mostly ready" state in this contract, matching the directive's own
- * instruction that this module ONLY assembles/refuses, never grades.
+ * This legacy checklist has no observations, experiment artifacts or resolved
+ * provenance to verify caller claims. Report their presence without certifying
+ * them. It is not a competing promotion authority.
  */
 export function assemblePromotionEvidence(input: PromotionEvidenceInput, assembledAt: string): PromotionEvidenceAssembly {
+  validateModelRegistryRecord(input.model);
+  if (!Number.isSafeInteger(input.minimumIndependentN) || input.minimumIndependentN <= 0 || !Number.isFinite(Date.parse(assembledAt))) throw new Error('PROMOTION_CHECKLIST_POLICY_OR_TIME_INVALID');
+  if (input.calibrationReceipt !== null) validateCalibrationReceipt(input.calibrationReceipt);
+  if (input.selectionBiasReceipt !== null) buildSelectionBiasReceipt(input.selectionBiasReceipt);
   const checks: readonly { readonly requirement: PromotionEvidenceRequirement; readonly satisfied: boolean }[] = [
     { requirement: 'REAL_EMPIRICAL_PROVENANCE', satisfied: input.model.datasetId.length > 0 && input.model.datasetHash.length > 0 },
     { requirement: 'INDEPENDENT_N_MEETS_GATE', satisfied: (input.model.metrics.independentN ?? 0) >= input.minimumIndependentN },
@@ -62,14 +66,17 @@ export function assemblePromotionEvidence(input: PromotionEvidenceInput, assembl
     { requirement: 'UNTOUCHED_OOS_PASS', satisfied: input.untouchedOosPassed && input.model.finalOosWindow !== null },
     {
       requirement: 'CALIBRATION_PRESENT',
-      satisfied: input.calibrationReceipt !== null && input.calibrationReceipt.dataProvenance === 'REAL_EMPIRICAL_DATA',
+      satisfied: input.calibrationReceipt !== null && input.calibrationReceipt.dataProvenance === 'REAL_EMPIRICAL_DATA' &&
+        input.calibrationReceipt.modelId === input.model.modelId && input.calibrationReceipt.modelVersion === input.model.modelVersion,
     },
     { requirement: 'AFTER_COST_METRICS_PRESENT', satisfied: input.afterCostMetricsPresent },
     { requirement: 'TAIL_METRICS_PRESENT', satisfied: input.tailMetricsPresent },
     { requirement: 'EXECUTION_REALISM_PRESENT', satisfied: input.executionRealismPresent },
     {
       requirement: 'SELECTION_BIAS_RECEIPT_PRESENT',
-      satisfied: input.selectionBiasReceipt !== null && input.model.selectionBiasReceiptId === input.selectionBiasReceipt.researchCampaignId,
+      satisfied: input.selectionBiasReceipt !== null && input.model.selectionBiasReceiptId === input.selectionBiasReceipt.researchCampaignId &&
+        input.selectionBiasReceipt.inputDatasetHash === input.model.datasetHash && input.selectionBiasReceipt.codeSha === input.model.codeSha &&
+        input.selectionBiasReceipt.dependencyGroupingVersion === input.model.dependenceGroupingVersion && input.selectionBiasReceipt.numberOfTrials === input.model.numberOfTrials,
     },
     { requirement: 'MODEL_ARTIFACT_HASH_PRESENT', satisfied: input.model.artifactHash.length > 0 },
   ];
@@ -80,6 +87,8 @@ export function assemblePromotionEvidence(input: PromotionEvidenceInput, assembl
   return {
     contractVersion: promotionEvidenceAssemblerVersion,
     modelId: input.model.modelId, modelVersion: input.model.modelVersion,
-    satisfied, missing, eligibleForReview: missing.length === 0, assembledAt,
+    declaredPresent: satisfied, missing, metadataComplete: missing.length === 0, eligibleForReview: false, assembledAt,
+    evidenceScope: 'METADATA_AND_CALLER_DECLARATIONS_NOT_EXECUTED_EMPIRICAL_PROOF',
+    canonicalPromotionAuthority: 'theta/empirical-policy-promotion.ts',
   };
 }

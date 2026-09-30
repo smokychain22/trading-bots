@@ -5,14 +5,14 @@ import { buildShadowPredictionReceipt } from '../src/research/shadow-prediction-
 
 const PREDICTION = buildShadowPredictionReceipt({
   predictionId: 'p1', modelId: 'm1', modelVersion: 'v1', targetId: 'ENTRY_PROFITABILITY', entityId: 'c1',
-  decisionId: 'd1', featureSnapshotHash: 'h1', predictedAt: '2026-09-25T00:00:00Z', prediction: 0.5,
-  uncertainty: null, sourceSha: 'sha1', workerSha: null, strategyScope: 'THETA_CONVENTIONAL',
+  decisionId: 'd1', featureSnapshotHash: 'a'.repeat(64), predictedAt: '2026-09-25T00:00:00Z', prediction: 0.5,
+  uncertainty: null, sourceSha: 'b'.repeat(40), workerSha: null, strategyScope: 'THETA_CONVENTIONAL',
 });
 
 test('a resolved, matching outcome joins successfully', () => {
   const result = joinPredictionToOutcome(PREDICTION, {
     entityId: 'c1', decisionId: 'd1', chainId: 'wc1', targetId: 'ENTRY_PROFITABILITY',
-    modelVersionAtOutcomeTime: 'v1', featureSnapshotHash: 'h1', observedOutcome: 1, resolvedAt: '2026-09-26T00:00:00Z', isResolved: true,
+    modelVersionAtOutcomeTime: 'v1', featureSnapshotHash: 'a'.repeat(64), observedOutcome: 1, resolvedAt: '2026-09-26T00:00:00Z', isResolved: true,
   }, '2026-09-26T01:00:00Z');
   assert.equal(result.status, 'JOINED');
   assert.equal(result.outcome, 1);
@@ -21,7 +21,7 @@ test('a resolved, matching outcome joins successfully', () => {
 test('an unresolved episode stays PENDING, never joined', () => {
   const result = joinPredictionToOutcome(PREDICTION, {
     entityId: 'c1', decisionId: 'd1', chainId: null, targetId: 'ENTRY_PROFITABILITY',
-    modelVersionAtOutcomeTime: 'v1', featureSnapshotHash: 'h1', observedOutcome: null, resolvedAt: null, isResolved: false,
+    modelVersionAtOutcomeTime: 'v1', featureSnapshotHash: 'a'.repeat(64), observedOutcome: null, resolvedAt: null, isResolved: false,
   }, '2026-09-26T01:00:00Z');
   assert.equal(result.status, 'PENDING');
 });
@@ -29,7 +29,7 @@ test('an unresolved episode stays PENDING, never joined', () => {
 test('a resolved episode with no identifiable outcome is CENSORED, not a fabricated value', () => {
   const result = joinPredictionToOutcome(PREDICTION, {
     entityId: 'c1', decisionId: 'd1', chainId: null, targetId: 'ENTRY_PROFITABILITY',
-    modelVersionAtOutcomeTime: 'v1', featureSnapshotHash: 'h1', observedOutcome: null, resolvedAt: '2026-09-26T00:00:00Z', isResolved: true,
+    modelVersionAtOutcomeTime: 'v1', featureSnapshotHash: 'a'.repeat(64), observedOutcome: null, resolvedAt: '2026-09-26T00:00:00Z', isResolved: true,
   }, '2026-09-26T01:00:00Z');
   assert.equal(result.status, 'CENSORED');
 });
@@ -44,14 +44,14 @@ test('ADVERSARIAL: feature-hash mismatch is rejected', () => {
 test('ADVERSARIAL: an outcome resolved before the prediction was made is rejected', () => {
   assert.throws(() => joinPredictionToOutcome(PREDICTION, {
     entityId: 'c1', decisionId: 'd1', chainId: null, targetId: 'ENTRY_PROFITABILITY',
-    modelVersionAtOutcomeTime: 'v1', featureSnapshotHash: 'h1', observedOutcome: 1, resolvedAt: '2026-09-24T00:00:00Z', isResolved: true,
+    modelVersionAtOutcomeTime: 'v1', featureSnapshotHash: 'a'.repeat(64), observedOutcome: 1, resolvedAt: '2026-09-24T00:00:00Z', isResolved: true,
   }, '2026-09-26T01:00:00Z'), /JOIN_OUTCOME_RESOLVED_BEFORE_PREDICTION/);
 });
 
 test('ADVERSARIAL (overnight §22): an outcome resolved under a DIFFERENT model version is rejected, never silently joined', () => {
   assert.throws(() => joinPredictionToOutcome(PREDICTION, {
     entityId: 'c1', decisionId: 'd1', chainId: null, targetId: 'ENTRY_PROFITABILITY',
-    modelVersionAtOutcomeTime: 'v2-DIFFERENT', featureSnapshotHash: 'h1', observedOutcome: 1, resolvedAt: '2026-09-26T00:00:00Z', isResolved: true,
+    modelVersionAtOutcomeTime: 'v2-DIFFERENT', featureSnapshotHash: 'a'.repeat(64), observedOutcome: 1, resolvedAt: '2026-09-26T00:00:00Z', isResolved: true,
   }, '2026-09-26T01:00:00Z'), /JOIN_MODEL_VERSION_MISMATCH/);
 });
 
@@ -59,7 +59,7 @@ test('ADVERSARIAL: the original prediction receipt is never mutated by the join'
   const before = { ...PREDICTION };
   joinPredictionToOutcome(PREDICTION, {
     entityId: 'c1', decisionId: 'd1', chainId: null, targetId: 'ENTRY_PROFITABILITY',
-    modelVersionAtOutcomeTime: 'v1', featureSnapshotHash: 'h1', observedOutcome: 1, resolvedAt: '2026-09-26T00:00:00Z', isResolved: true,
+    modelVersionAtOutcomeTime: 'v1', featureSnapshotHash: 'a'.repeat(64), observedOutcome: 1, resolvedAt: '2026-09-26T00:00:00Z', isResolved: true,
   }, '2026-09-26T01:00:00Z');
   assert.deepEqual(PREDICTION, before);
 });

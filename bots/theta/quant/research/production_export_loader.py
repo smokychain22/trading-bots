@@ -203,7 +203,7 @@ _FORBIDDEN_FEATURE_KEYS = frozenset({
     "realizedpnl", "futurepnl", "outcome", "result", "assignedafter", "recoveredafter",
     "futurefill", "futurequote", "futurereturn",
     # Production's recursive feature firewall also rejects these bare terms.
-    "future", "pnl", "realizedreturn",
+    "future", "pnl", "realizedreturn", "subsequentrealizedvolatility", "futurerealizedvolatility", "futurevolatilitylabel",
 })
 
 

@@ -99,3 +99,29 @@ test('a labeled row without a numeric whole-chain counterfactual does not create
   assert.equal(metrics.softIdentifiableRows, 0);
   assert.equal(metrics.falseRejectRate, null);
 });
+
+test('hard reason cannot be overridden and event sizing provider failures never become favorable-path regret', () => {
+  for (const exactReason of ['EVENT_REJECT','SIZING_REJECT','PROVIDER_FAILURE_REJECT','PIPELINE_NOT_EVALUATED'] as const) {
+    const row = buildWaitRegretRow({...baseInput({exactReason,labelAvailableAt:DECISION_AT,
+      futureOutcome:{wholeChainNetPnlIfTaken:100,observedAt:DECISION_AT},counterfactualIdentifiability:'OBSERVED_PARALLEL'}),hardVsSoft:'SOFT'} as never);
+    assert.equal(computeWaitRegretMetrics([row]).gateRegretRate,null);
+    if (exactReason === 'EVENT_REJECT' || exactReason === 'SIZING_REJECT') assert.equal(row.hardVsSoft,'HARD');
+  }
+});
+
+test('modeled and observed counterfactual regret have separate denominators', () => {
+  const row = buildWaitRegretRow(baseInput({labelAvailableAt:DECISION_AT,
+    futureOutcome:{wholeChainNetPnlIfTaken:100,observedAt:DECISION_AT},counterfactualIdentifiability:'ESTIMABLE'}));
+  const metrics = computeWaitRegretMetrics([row]);
+  assert.equal(metrics.gateRegretRate,null);
+  assert.equal(metrics.modeledGateRegretRate,1);
+  assert.equal(metrics.modeledCounterfactualRows,1);
+  assert.throws(()=>computeWaitRegretMetrics([row,row]),/DUPLICATE_DECISION/);
+});
+
+test('malformed future evidence does not enter a regret denominator', () => {
+  for (const futureOutcome of [{wholeChainNetPnlIfTaken:NaN,observedAt:DECISION_AT},
+    {wholeChainNetPnlIfTaken:100,observedAt:'invalid'},{wholeChainNetPnlIfTaken:100,observedAt:'2026-09-21T14:00:00Z'}]) {
+    assert.throws(()=>buildWaitRegretRow(baseInput({labelAvailableAt:DECISION_AT,futureOutcome})),/OUTCOME_INVALID/);
+  }
+});

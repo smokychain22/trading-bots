@@ -27,8 +27,8 @@ import { dirname, resolve } from 'node:path';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { canonicalJson } from '../research/point-in-time-evidence.js';
 import { validateModelRegistryRecord, type ModelRegistryRecord } from '../research/empirical-model-registry.js';
-import type { SelectionBiasReceipt } from '../research/selection-bias-receipt.js';
-import type { ShadowFailureReceipt, ShadowPredictionReceipt } from '../research/shadow-prediction-receipt.js';
+import { buildSelectionBiasReceipt, selectionBiasReceiptVersion, type SelectionBiasReceipt } from '../research/selection-bias-receipt.js';
+import { buildShadowFailureReceipt, buildShadowPredictionReceipt, shadowPredictionReceiptVersion, type ShadowFailureReceipt, type ShadowPredictionReceipt } from '../research/shadow-prediction-receipt.js';
 import { joinPredictionToOutcome, type OutcomeEvidence, type PredictionOutcomeJoinRecord } from '../research/prediction-outcome-join.js';
 
 export const researchDurableStoreVersion = 'theta-research-durable-store-v1' as const;
@@ -160,6 +160,8 @@ export class ResearchDurableStore {
   }
 
   saveSelectionBiasReceipt(receipt: SelectionBiasReceipt): 'INSERTED' | 'ALREADY_PRESENT_IDENTICAL' {
+    if (receipt.contractVersion !== selectionBiasReceiptVersion) throw new Error('RESEARCH_SELECTION_VERSION_INVALID');
+    buildSelectionBiasReceipt(receipt);
     assertSafeId('researchCampaignId', receipt.researchCampaignId);
     const json = canonicalJson(receipt);
     const hash = sha256(json);
@@ -173,10 +175,17 @@ export class ResearchDurableStore {
   getSelectionBiasReceipt(researchCampaignId: string): SelectionBiasReceipt | null {
     const row = this.database.prepare('SELECT content_json, content_hash FROM selection_bias_receipt WHERE research_campaign_id=?')
       .get(researchCampaignId) as { content_json: string; content_hash: string } | undefined;
-    return decodeVerified<SelectionBiasReceipt>(row, { researchCampaignId });
+    const receipt = decodeVerified<SelectionBiasReceipt>(row, { researchCampaignId });
+    if (receipt !== null) {
+      if (receipt.contractVersion !== selectionBiasReceiptVersion) throw new Error('RESEARCH_SELECTION_VERSION_INVALID');
+      buildSelectionBiasReceipt(receipt);
+    }
+    return receipt;
   }
 
   saveShadowPredictionReceipt(receipt: ShadowPredictionReceipt): 'INSERTED' | 'ALREADY_PRESENT_IDENTICAL' {
+    if (receipt.contractVersion !== shadowPredictionReceiptVersion || receipt.brokerAuthority !== false || receipt.shadowOnly !== true) throw new Error('RESEARCH_PREDICTION_AUTHORITY_INVALID');
+    buildShadowPredictionReceipt(receipt);
     assertSafeId('predictionId', receipt.predictionId);
     const json = canonicalJson(receipt);
     const hash = sha256(json);
@@ -194,10 +203,17 @@ export class ResearchDurableStore {
   getShadowPredictionReceipt(predictionId: string): ShadowPredictionReceipt | null {
     const row = this.database.prepare('SELECT content_json, content_hash FROM shadow_prediction_receipt WHERE prediction_id=?')
       .get(predictionId) as { content_json: string; content_hash: string } | undefined;
-    return decodeVerified<ShadowPredictionReceipt>(row, { predictionId });
+    const receipt = decodeVerified<ShadowPredictionReceipt>(row, { predictionId });
+    if (receipt !== null) {
+      if (receipt.contractVersion !== shadowPredictionReceiptVersion || receipt.brokerAuthority !== false || receipt.shadowOnly !== true) throw new Error('RESEARCH_PREDICTION_AUTHORITY_INVALID');
+      buildShadowPredictionReceipt(receipt);
+    }
+    return receipt;
   }
 
   saveShadowFailureReceipt(receipt: ShadowFailureReceipt): 'INSERTED' | 'ALREADY_PRESENT_IDENTICAL' {
+    if (receipt.contractVersion !== shadowPredictionReceiptVersion || receipt.brokerAuthority !== false || receipt.shadowOnly !== true) throw new Error('RESEARCH_FAILURE_AUTHORITY_INVALID');
+    buildShadowFailureReceipt(receipt);
     assertSafeId('failureId', receipt.failureId);
     const json = canonicalJson(receipt);
     const hash = sha256(json);
@@ -211,7 +227,12 @@ export class ResearchDurableStore {
   getShadowFailureReceipt(failureId: string): ShadowFailureReceipt | null {
     const row = this.database.prepare('SELECT content_json, content_hash FROM shadow_failure_receipt WHERE failure_id=?')
       .get(failureId) as { content_json: string; content_hash: string } | undefined;
-    return decodeVerified<ShadowFailureReceipt>(row, { failureId });
+    const receipt = decodeVerified<ShadowFailureReceipt>(row, { failureId });
+    if (receipt !== null) {
+      if (receipt.contractVersion !== shadowPredictionReceiptVersion || receipt.brokerAuthority !== false || receipt.shadowOnly !== true) throw new Error('RESEARCH_FAILURE_AUTHORITY_INVALID');
+      buildShadowFailureReceipt(receipt);
+    }
+    return receipt;
   }
 
   savePredictionOutcomeJoin(predictionId: string, outcome: OutcomeEvidence, joinedAt: string): PredictionOutcomeJoinRecord {

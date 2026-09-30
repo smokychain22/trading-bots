@@ -22,11 +22,15 @@ during a T0 decision):
 
 from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 from typing import Optional
 
 
 def _parse_iso(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError('WAIT_TIMESTAMP_TIMEZONE_REQUIRED')
+    return parsed
 
 
 @dataclass(frozen=True)
@@ -61,26 +65,52 @@ class MaturedWaitOutcome:
     underlying_price_at_maturation: float
     maturation_timestamp: str
     horizon_return: Optional[float]  # None if underlying_price_at_decision was UNKNOWN/zero at T0
-    opportunity_cost_vs_best_rejected: Optional[float]  # None if best_rejected_candidate_utility was UNKNOWN at T0
-    truth_class: str = "REAL_HISTORICAL"
+    opportunity_cost_vs_best_rejected: Optional[float]  # Same-capital, same-horizon return difference, not T0 utility minus stock return.
+    truth_class: str = "UNKNOWN"
+    counterfactual_truth_class: str = "UNKNOWN"
+    counterfactual_evidence_id: Optional[str] = None
 
 
 def build_matured_wait_outcome(
     decision: T0WaitDecision, underlying_price_at_decision: Optional[float],
     underlying_price_at_maturation: float, maturation_timestamp: str,
+    alternative: Optional[dict] = None,
+    observation_truth_class: str = 'UNKNOWN',
 ) -> MaturedWaitOutcome:
+    if observation_truth_class not in ('MARKET_OBSERVED', 'MODELED_RESEARCH', 'SYNTHETIC_TEST', 'UNKNOWN'):
+        raise ValueError('WAIT_OBSERVATION_TRUTH_INVALID')
     if _parse_iso(maturation_timestamp) <= _parse_iso(decision.decision_timestamp):
         raise ValueError("WAIT_OUTCOME_MATURATION_NOT_AFTER_DECISION_TIME_HINDSIGHT_LEAKAGE")
+    for price in (underlying_price_at_decision, underlying_price_at_maturation):
+        if price is not None and (type(price) not in (float, int) or not isfinite(price) or price <= 0):
+            raise ValueError('WAIT_PRICE_INVALID')
+    if underlying_price_at_maturation is None:
+        raise ValueError('WAIT_MATURATION_PRICE_REQUIRED')
     horizon_return = (
         None if underlying_price_at_decision is None or underlying_price_at_decision == 0.0
         else (underlying_price_at_maturation / underlying_price_at_decision) - 1.0
     )
-    opportunity_cost = (
-        None if decision.best_rejected_candidate_utility is None or horizon_return is None
-        else decision.best_rejected_candidate_utility - horizon_return
-    )
+    opportunity_cost, truth, evidence_id = None, 'UNKNOWN', None
+    if alternative is not None:
+        if alternative.get('candidateId') != decision.best_rejected_candidate_id or not decision.best_rejected_candidate_id:
+            raise ValueError('WAIT_ALTERNATIVE_IDENTITY_MISMATCH')
+        if not alternative.get('evidenceId') or not alternative.get('costModelVersion') or alternative.get('units') != 'AFTER_COST_RETURN_FRACTION_ON_SAME_CAPITAL':
+            raise ValueError('WAIT_ALTERNATIVE_PROVENANCE_OR_UNITS_INVALID')
+        if (_parse_iso(alternative['horizonStart']) != _parse_iso(decision.decision_timestamp) or
+                _parse_iso(alternative['horizonEnd']) != _parse_iso(maturation_timestamp) or
+                _parse_iso(alternative['labelAvailableAt']) < _parse_iso(maturation_timestamp)):
+            raise ValueError('WAIT_ALTERNATIVE_HORIZON_INVALID')
+        truth = alternative.get('truthClass')
+        if truth not in ('MARKET_OBSERVED_COUNTERFACTUAL', 'MODELED_COUNTERFACTUAL', 'SYNTHETIC_TEST'):
+            raise ValueError('WAIT_ALTERNATIVE_TRUTH_INVALID')
+        values = [alternative.get('alternativeReturn'), alternative.get('waitReturn')]
+        if any(type(v) not in (float, int) or not isfinite(v) for v in values):
+            raise ValueError('WAIT_ALTERNATIVE_RETURN_INVALID')
+        opportunity_cost = values[0] - values[1]
+        evidence_id = alternative['evidenceId']
     return MaturedWaitOutcome(
         underlying_price_at_decision=underlying_price_at_decision,
         underlying_price_at_maturation=underlying_price_at_maturation, maturation_timestamp=maturation_timestamp,
         horizon_return=horizon_return, opportunity_cost_vs_best_rejected=opportunity_cost,
+        truth_class=observation_truth_class, counterfactual_truth_class=truth, counterfactual_evidence_id=evidence_id,
     )

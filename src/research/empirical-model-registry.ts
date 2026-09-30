@@ -105,16 +105,12 @@ export function validateModelRegistryRecord(record: ModelRegistryRecord): void {
 }
 
 function recordIdentity(record: ModelRegistryRecord): string {
-  const withoutCreatedAt: Record<string, unknown> = { ...record };
-  delete withoutCreatedAt.createdAt;
-  return sha256(canonicalJson(withoutCreatedAt));
+  return sha256(canonicalJson(record));
 }
 
 /**
- * In-memory, append-only registry. A real durable backing store is a
- * future Codex/infra integration concern (see the CODEX_INTEGRATION_HANDOFF
- * in this build wave's final report) -- this module defines the exact
- * contract and immutability semantics independent of storage.
+ * In-memory, append-only registry. ResearchDurableStore applies the same
+ * validation and exact identity to the local SQLite research ledger.
  */
 export class EmpiricalModelRegistry {
   private readonly records = new Map<string, ModelRegistryRecord>();

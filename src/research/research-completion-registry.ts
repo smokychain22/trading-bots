@@ -2,8 +2,9 @@
  * COMMAND 5C-7 item 5. Machine-readable research completion registry.
  * Seeded from a real survey of `src/research/` (106 files) and
  * `bots/theta/quant/research/` at commit time -- NOT a narrative
- * checklist. This registry records the highest-priority capabilities this
- * directive named; it is a living registry, not an exhaustive catalogue of
+ * checklist. This is a HISTORICAL DECLARATION at the SHA below, not current
+ * executed acceptance. The reviewed Phase-6 evidence file supersedes its
+ * completion claims. It is not an exhaustive catalogue of
  * every one of the 106+ files (that would be padding, not signal -- most
  * of those files are themselves the `sourceFiles` entries below).
  *
@@ -14,6 +15,12 @@
  */
 
 export const researchCompletionRegistryVersion = 'theta-research-completion-registry-v1' as const;
+export const researchRegistryEvidenceScope = {
+  state: 'HISTORICAL_DECLARATION_NOT_CURRENT_ACCEPTANCE',
+  currentAcceptancePath: 'docs/operations/evidence/THETA_PHASE6_EXECUTED_TESTS.json',
+  currentWorkerProven: false,
+  empiricalPromotion: false,
+} as const;
 
 export type CapabilityImplementationState =
   | 'NOT_STARTED' | 'CONTRACT_ONLY' | 'IMPLEMENTED' | 'TESTED'

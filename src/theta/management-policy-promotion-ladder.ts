@@ -69,6 +69,11 @@ function validateThresholds(thresholds: ManagementPolicyPromotionThresholds): vo
   requirePositive(thresholds.minActingEpisodesForChampion, 'minActingEpisodesForChampion');
   requirePositive(thresholds.minCalibrationSampleSize, 'minCalibrationSampleSize');
   requirePositive(thresholds.maxAcceptableBrierScore, 'maxAcceptableBrierScore');
+  if ([thresholds.minShadowEpisodesForCandidate, thresholds.minActingEpisodesForChampion, thresholds.minCalibrationSampleSize]
+    .some(n => !Number.isSafeInteger(n) || n <= 0) || thresholds.maxAcceptableBrierScore > 1 ||
+    typeof thresholds.requireOutOfSampleValidation !== 'boolean' || typeof thresholds.requireHumanReview !== 'boolean') {
+    throw new Error('MANAGEMENT_POLICY_PROMOTION_INVALID_THRESHOLD_DOMAIN');
+  }
 }
 
 /**
@@ -81,6 +86,13 @@ export function evaluateManagementPolicyPromotion(
   evidence: ManagementPolicyPromotionEvidence, thresholds: ManagementPolicyPromotionThresholds,
 ): ManagementPolicyPromotionAssessment {
   validateThresholds(thresholds);
+  if (!evidence.candidatePolicyVersion?.trim() ||
+    [evidence.shadowComparisonEpisodes, evidence.candidateActingEpisodes, evidence.calibrationSampleSize].some(n => !Number.isSafeInteger(n) || n < 0) ||
+    (evidence.realizedAfterCostUtility !== null && !Number.isFinite(evidence.realizedAfterCostUtility)) ||
+    (evidence.calibrationBrierScore !== null && (!Number.isFinite(evidence.calibrationBrierScore) || evidence.calibrationBrierScore < 0 || evidence.calibrationBrierScore > 1)) ||
+    typeof evidence.outOfSampleValidated !== 'boolean' || typeof evidence.humanReviewApproved !== 'boolean') {
+    throw new Error('MANAGEMENT_POLICY_PROMOTION_INVALID_EVIDENCE');
+  }
   const blockers: string[] = [];
   const reasons: string[] = [`CANDIDATE_POLICY_${evidence.candidatePolicyVersion}`];
 

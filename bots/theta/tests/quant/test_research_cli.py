@@ -16,6 +16,19 @@ class ResearchCliMissingnessTests(unittest.TestCase):
 
 
 class ResearchCliCoverageTests(unittest.TestCase):
+    def test_management_and_regime_materialize_verified_export_with_explicit_policy(self):
+        from test_management_dataset import fixture, policy as management_policy
+        from test_regime_dataset import policy as regime_policy
+        for command, policy in [('management-dataset', management_policy()), ('regime-dataset', regime_policy())]:
+            result = _dispatch(command, {'export': fixture(), 'policy': policy})
+            self.assertGreater(result['rowCount'], 0)
+            self.assertEqual(len(result['contentHash']), 64)
+            broken = fixture()
+            broken['datasetHash'] = '0' * 64
+            from research.production_export_loader import DatasetLoadError
+            with self.assertRaises(DatasetLoadError):
+                _dispatch(command, {'export': broken, 'policy': policy})
+
     def test_coverage_subcommand(self):
         result = _dispatch('coverage', {'candidates': [_candidate_raw(candidate_id='c1')]})
         self.assertEqual(result['uniqueCandidateCount'], 1)

@@ -33,7 +33,7 @@ const forbiddenFeatureKeys = new Set([
   'returnonsecuredcapital','returnpercapitaldaylabel','maxadverseexcursion','maxfavorableexcursion',
   'assignmentoutcome','recoveryduration','closeoutcome','rolloutcome','ccoutcome','callawayoutcome',
   'realizedexecutioncost','eventualrealizedpnl','futureoutcome','outcomelabel',
-  'outcome','future','result','realizedreturn','pnl',
+  'outcome','future','result','realizedreturn','pnl','subsequentrealizedvolatility','futurerealizedvolatility','futurevolatilitylabel',
 ]);
 
 function normalizedKey(value:string): string { return value.replace(/[^a-z0-9]/gi,'').toLowerCase(); }
@@ -194,7 +194,8 @@ export interface DatasetExportArtifact {
 const byCanonical = (a:unknown,b:unknown):number => canonicalJson(a).localeCompare(canonicalJson(b));
 export function buildDatasetExport(input:{sourceWindow:{start:string;end:string}; exportedAt:string; featureSetVersion:string;
   strategyVersions:readonly string[]; rows:DatasetExportRows}):DatasetExportArtifact {
-  if (Date.parse(input.sourceWindow.end)<Date.parse(input.sourceWindow.start)) throw new Error('DATASET_WINDOW_INVALID');
+  if ([input.sourceWindow.start,input.sourceWindow.end,input.exportedAt].some(v=>!timestamp.safeParse(v).success) ||
+    Date.parse(input.sourceWindow.end)<Date.parse(input.sourceWindow.start)) throw new Error('DATASET_WINDOW_INVALID');
   assertNoFutureLabels(input.rows.candidateSets,'candidateSets');
   assertNoFutureLabels(input.rows.candidates,'candidates');
   assertNoFutureLabels(input.rows.shadowCandidates,'shadowCandidates');

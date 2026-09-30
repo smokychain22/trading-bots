@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
+import { canonicalJson } from '../src/research/point-in-time-evidence.js';
+import { createPromotedManagementPolicyProvider, validateExplicitPromotion } from '../src/theta/promoted-management-policy-provider.js';
 import {
   assessEmpiricalPolicyPromotion,
   empiricalPolicyPromotionContractVersion,
@@ -61,4 +64,46 @@ test('overlapping evidence windows fail the point-in-time promotion boundary', (
   });
   assert.equal(assessment.readyForHumanPromotionReview, false);
   assert.ok(assessment.blockers.includes('TRAIN_VALIDATION_EMBARGO_FAILED'));
+});
+
+test('promotion rejects impossible metrics, empty samples and duplicate criteria', () => {
+  const input = receipt();
+  for (const metrics of [{...input.metrics, managedEpisodeWinRate: 50}, {...input.metrics, probabilityOfBacktestOverfitting: -1},
+    {...input.metrics, effectiveIndependentN: 0}, {...input.metrics, capitalDays: 0}, {...input.metrics, averageLoss: 5}]) {
+    assert.equal(assessEmpiricalPolicyPromotion({...input, metrics}).readyForHumanPromotionReview, false);
+  }
+  assert.equal(assessEmpiricalPolicyPromotion({...input, acceptanceCriteria: [...input.acceptanceCriteria, ...input.acceptanceCriteria]}).readyForHumanPromotionReview, false);
+  assert.equal(assessEmpiricalPolicyPromotion({...input, approvalIdentity: ' '}).readyForHumanPromotionReview, false);
+});
+
+function artifact() {
+  const promotion = {state:'PROMOTED' as const, policyVersion:receipt().policyVersion, datasetHash:receipt().datasetHash,
+    approvedBy:'owner-governance',approvedAt:'2026-01-03T00:00:00.000Z',governanceVersion:'fixture-v1',
+    receiptHash:createHash('sha256').update(canonicalJson(receipt())).digest('hex')};
+  return {receipt: structuredClone(receipt()), promotion:{...promotion,contentHash:createHash('sha256').update(JSON.stringify(promotion)).digest('hex')}};
+}
+
+test('explicit promotion binds the complete reviewed receipt and rejects malformed approval metadata', () => {
+  assert.deepEqual(validateExplicitPromotion(artifact()), []);
+  const changed = artifact();
+  assert.ok(validateExplicitPromotion({...changed,receipt:{...changed.receipt,metrics:{...changed.receipt.metrics,afterCostExpectedValue:99}}}).includes('PROMOTION_RECEIPT_HASH_MISMATCH'));
+  for (const override of [{approvedAt:'invalid'},{approvedBy:' '},{governanceVersion:''}]) {
+    const altered = {...changed,promotion:{...changed.promotion,...override}};
+    assert.ok(validateExplicitPromotion(altered).includes('PROMOTION_APPROVAL_IDENTITY_INVALID'));
+  }
+});
+
+test('management promotion pins input and gives each evaluator an isolated reviewed artifact', async () => {
+  const input = artifact();
+  const seen: string[] = [];
+  const provider = createPromotedManagementPolicyProvider(input, async (_state, approved) => {
+    seen.push(approved.promotion.approvedBy);
+    Object.assign(approved.promotion, {approvedBy:'evaluator-change'});
+    return null;
+  });
+  assert.ok(provider);
+  input.promotion.approvedBy = 'caller-change';
+  await provider.evaluate({} as never);
+  await provider.evaluate({} as never);
+  assert.deepEqual(seen,['owner-governance','owner-governance']);
 });

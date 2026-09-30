@@ -7,6 +7,7 @@ Run with (from the repo root, once a Python toolchain is set up):
 
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 _QUANT_DIR = Path(__file__).resolve().parents[2] / "quant"
@@ -21,6 +22,49 @@ class RegistryValidatesCleanlyTests(unittest.TestCase):
         # something in the data files is internally inconsistent and must be
         # fixed before any backtester or model pipeline consumes this data.
         registry.validate_registry()
+
+    def test_public_references_resolve_without_production_authority(self):
+        for h in registry.load_hypotheses_raw():
+            context = registry.hypothesis_evidence_context(h["hypothesis_id"])
+            self.assertEqual(len(context["registry_hash"]), 64)
+            self.assertEqual(context["production_authority"], "NONE")
+            self.assertEqual({s["source_id"] for s in context["sources"]}, set(h.get("public_evidence_refs", [])))
+        missing = [s for s in registry.load_public_evidence_registry()["sources"] if s["state"] == "OWNER_SOURCE_NOT_SUPPLIED"]
+        self.assertEqual(len(missing), 3)
+        self.assertTrue(all(s["claim"] is None for s in missing))
+
+    def test_missing_duplicate_or_unknown_reference_fails_closed(self):
+        for refs in (["unknown"], ["cboe_put_index", "cboe_put_index"]):
+            with patch.object(registry, "load_hypotheses_raw", return_value=[{"hypothesis_id": "H", "public_evidence_refs": refs}]):
+                with self.assertRaisesRegex(registry.ResearchRegistryError, "PUBLIC_REFERENCE_UNKNOWN_OR_DUPLICATE"):
+                    registry.hypothesis_evidence_context("H")
+        with self.assertRaisesRegex(registry.ResearchRegistryError, "UNKNOWN_HYPOTHESIS"):
+            registry.hypothesis_evidence_context("invented")
+
+    def test_reference_cannot_gain_authority_or_invent_missing_claim(self):
+        raw = registry.load_public_evidence_registry()
+        raw["sources"][0]["production_authority"] = "PRODUCTION"
+        with patch.object(registry, "_load_json", return_value=raw):
+            with self.assertRaisesRegex(registry.ResearchRegistryError, "AUTHORITY_INVALID"):
+                registry.load_public_evidence_registry()
+        raw = registry.load_public_evidence_registry()
+        raw["sources"][-1]["claim"] = "profitable"
+        with patch.object(registry, "_load_json", return_value=raw):
+            with self.assertRaisesRegex(registry.ResearchRegistryError, "FABRICATED_CLAIM"):
+                registry.load_public_evidence_registry()
+
+    def test_pipeline_persists_hash_bound_source_context_without_changing_readiness(self):
+        from research.empirical_pipeline import run_theta_empirical_pipeline
+        from research.dataset_readiness import ExperimentConfig, EvidenceSourceLabel
+        from research.dataset_contracts import ThetaStrategyBranch
+        config = ExperimentConfig(dataset_hash="", target_version="v1", feature_version="v1",
+                                  strategy_branch=ThetaStrategyBranch.THETA_CONVENTIONAL, cost_model_version="v1",
+                                  split_definition="v1", experiment_id="EXP-Q-01", hypothesis_id="H-Q-01",
+                                  evidence_source=EvidenceSourceLabel.HISTORICAL_REPLAY)
+        result = run_theta_empirical_pipeline(None, config)
+        self.assertEqual(result.status, "DATASET_ABSENT")
+        self.assertEqual(len(result.manifest["professional_source_context"]["sources"]), 2)
+        self.assertEqual(result.manifest["professional_source_context"]["empirical_validation"], "NOT_ESTABLISHED_BY_REFERENCE")
 
 
 class HypothesisCoverageTests(unittest.TestCase):

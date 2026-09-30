@@ -75,8 +75,8 @@ test('a predictionReceiptId that IS actually saved resolves and passes verificat
     store.saveModelRecord(modelRecord());
     store.saveShadowPredictionReceipt(buildShadowPredictionReceipt({
       predictionId: 'p1', modelId: 'entry-baseline', modelVersion: 'v1', targetId: 'ENTRY_PROFITABILITY',
-      entityId: 'c1', decisionId: 'd1', featureSnapshotHash: 'h1', predictedAt: '2026-09-26T00:00:00Z',
-      prediction: 0.5, uncertainty: null, sourceSha: 'sha1', workerSha: null, strategyScope: 'THETA_CONVENTIONAL',
+      entityId: 'c1', decisionId: 'd1', featureSnapshotHash: 'a'.repeat(64), predictedAt: '2026-09-26T00:00:00Z',
+      prediction: 0.5, uncertainty: null, sourceSha: 'b'.repeat(40), workerSha: null, strategyScope: 'THETA_CONVENTIONAL',
     }));
     const bundle = buildReproducibilityBundle({
       model: modelRecord(), campaignId: null, normalizationVersion: null,
@@ -96,7 +96,7 @@ test('existence is insufficient when dataset, model, metrics or outcome identity
     assert.equal(verifyReproducibilityBundle({ ...bundle, datasetHash: 'f'.repeat(64) }, store).valid, false);
     assert.equal(verifyReproducibilityBundle({ ...bundle, metricsSnapshot: { ...bundle.metricsSnapshot, independentN: 1000 } }, store).valid, false);
     assert.equal(verifyReproducibilityBundle({ ...bundle, outcomeJoinPredictionIds: ['missing'] }, store).valid, false);
-    store.saveShadowPredictionReceipt(buildShadowPredictionReceipt({ predictionId: 'foreign', modelId: 'another', modelVersion: 'v1', targetId: 'ENTRY_PROFITABILITY', entityId: 'e', decisionId: 'd', featureSnapshotHash: 'h', predictedAt: '2026-09-26', prediction: 0.5, uncertainty: null, sourceSha: 'b'.repeat(40), workerSha: null, strategyScope: 'THETA_CONVENTIONAL' }));
+    store.saveShadowPredictionReceipt(buildShadowPredictionReceipt({ predictionId: 'foreign', modelId: 'another', modelVersion: 'v1', targetId: 'ENTRY_PROFITABILITY', entityId: 'e', decisionId: 'd', featureSnapshotHash: 'a'.repeat(64), predictedAt: '2026-09-26', prediction: 0.5, uncertainty: null, sourceSha: 'b'.repeat(40), workerSha: null, strategyScope: 'THETA_CONVENTIONAL' }));
     assert.equal(verifyReproducibilityBundle({ ...bundle, predictionReceiptIds: ['foreign'] }, store).valid, false);
   } finally { cleanup(); }
 });
@@ -104,10 +104,13 @@ test('existence is insufficient when dataset, model, metrics or outcome identity
 test('offline CLI persists exact model, prediction and resolved join and verifies after a second process restart', () => {
   const root = mkdtempSync(join(tmpdir(), 'theta-research-ledger-'));
   try {
-    const prediction = buildShadowPredictionReceipt({ predictionId: 'p1', modelId: 'entry-baseline', modelVersion: 'v1', targetId: 'ENTRY_PROFITABILITY', entityId: 'c1', decisionId: 'd1', featureSnapshotHash: 'h1', predictedAt: '2026-09-26T00:00:00Z', prediction: 0.5, uncertainty: null, sourceSha: 'b'.repeat(40), workerSha: null, strategyScope: 'THETA_CONVENTIONAL' });
+    const prediction = buildShadowPredictionReceipt({ predictionId: 'p1', modelId: 'entry-baseline', modelVersion: 'v1', targetId: 'ENTRY_PROFITABILITY', entityId: 'c1', decisionId: 'd1', featureSnapshotHash: 'a'.repeat(64), predictedAt: '2026-09-26T00:00:00Z', prediction: 0.5, uncertainty: null, sourceSha: 'b'.repeat(40), workerSha: null, strategyScope: 'THETA_CONVENTIONAL' });
     const bundle = buildReproducibilityBundle({ model: modelRecord(), campaignId: null, normalizationVersion: null, predictionReceiptIds: ['p1'], outcomeJoinPredictionIds: ['p1'] });
     const payload = { version: 'theta-research-ledger-input-v1', models: [modelRecord()], predictions: [prediction], selectionBias: [],
-      joins: [{ predictionId: 'p1', outcome: { entityId: 'c1', decisionId: 'd1', chainId: null, targetId: 'ENTRY_PROFITABILITY', modelVersionAtOutcomeTime: 'v1', featureSnapshotHash: 'h1', observedOutcome: 1, resolvedAt: '2026-09-27T00:00:00Z', isResolved: true }, joinedAt: '2026-09-27T01:00:00Z' }], bundle };
+      joins: [{ predictionId: 'p1', outcome: { entityId: 'c1', decisionId: 'd1', chainId: null, targetId: 'ENTRY_PROFITABILITY', modelVersionAtOutcomeTime: 'v1', featureSnapshotHash: 'a'.repeat(64), observedOutcome: 1, resolvedAt: '2026-09-27T00:00:00Z', isResolved: true }, joinedAt: '2026-09-27T01:00:00Z' }], bundle,
+      entryReadiness: { modelFamily: 'REGULARIZED_LOGISTIC', target: 'P_ASSIGNMENT', asOf: '2026-09-27T01:00:00Z',
+        sufficiency: { rawRowCount: 0, resolvedLabelRowCount: 0, censoredRowCount: 0, effectiveIndependentN: 0,
+          minimumEffectiveN: 2, distinctUnderlyingCount: 0, minimumDistinctUnderlyings: 1 } } };
     const input = join(root, 'input.json'), store = join(root, 'ledger.sqlite');
     writeFileSync(input, JSON.stringify(payload));
     for (let i = 0; i < 2; i += 1) {
@@ -115,6 +118,7 @@ test('offline CLI persists exact model, prediction and resolved join and verifie
       assert.equal(result.integrity.checked, 3);
       assert.equal(result.verification.valid, true);
       assert.equal(result.promotionGranted, false);
+      assert.equal(result.entryReadiness.state, 'DATASET_NOT_READY');
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

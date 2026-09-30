@@ -29,12 +29,20 @@ class TestT0WaitDecision(unittest.TestCase):
 
 
 class TestBuildMaturedWaitOutcome(unittest.TestCase):
-    def test_real_horizon_return_and_opportunity_cost(self):
+    def test_t0_utility_never_becomes_realized_opportunity_cost(self):
         decision = _decision()
         outcome = build_matured_wait_outcome(decision, 500.0, 510.0, "2026-09-25T17:34:59Z")
         self.assertAlmostEqual(outcome.horizon_return, 0.02)
-        self.assertAlmostEqual(outcome.opportunity_cost_vs_best_rejected, 0.05 - 0.02)
-        self.assertEqual(outcome.truth_class, "REAL_HISTORICAL")
+        self.assertIsNone(outcome.opportunity_cost_vs_best_rejected)
+        self.assertEqual(outcome.truth_class, "UNKNOWN")
+        self.assertEqual(outcome.counterfactual_truth_class, "UNKNOWN")
+
+    def test_numbers_alone_cannot_certify_observed_or_broker_truth(self):
+        for truth in ('MARKET_OBSERVED', 'MODELED_RESEARCH', 'SYNTHETIC_TEST', 'UNKNOWN'):
+            result = build_matured_wait_outcome(_decision(), 500, 510, '2026-09-25T17:34:59Z', observation_truth_class=truth)
+            self.assertEqual(result.truth_class, truth)
+        with self.assertRaisesRegex(ValueError, 'WAIT_OBSERVATION_TRUTH_INVALID'):
+            build_matured_wait_outcome(_decision(), 500, 510, '2026-09-25T17:34:59Z', observation_truth_class='BROKER_ACTUAL')
 
     def test_maturation_at_or_before_decision_time_is_rejected_hindsight_leakage(self):
         decision = _decision()
@@ -57,8 +65,8 @@ class TestBuildMaturedWaitOutcome(unittest.TestCase):
 
     def test_zero_price_at_decision_never_divides_by_zero(self):
         decision = _decision()
-        outcome = build_matured_wait_outcome(decision, 0.0, 510.0, "2026-09-25T17:34:59Z")
-        self.assertIsNone(outcome.horizon_return)
+        with self.assertRaisesRegex(ValueError, 'WAIT_PRICE_INVALID'):
+            build_matured_wait_outcome(decision, 0.0, 510.0, "2026-09-25T17:34:59Z")
 
 
 if __name__ == "__main__":

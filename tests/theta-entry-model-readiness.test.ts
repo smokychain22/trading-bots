@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assessEntryModelReadiness, type DatasetSufficiencyInput, type EvaluationMetrics } from '../src/research/theta-entry-model-readiness.js';
+import { assessEntryModelReadiness, evaluateEntryOosComparison, type EntryOosComparison, type DatasetSufficiencyInput, type EvaluationMetrics } from '../src/research/theta-entry-model-readiness.js';
 
 const ASOF = '2026-09-22T14:00:00Z';
 
@@ -23,7 +23,7 @@ function goodEval(overrides: Partial<EvaluationMetrics> = {}): EvaluationMetrics
 test('zero raw rows is DATASET_NOT_READY', () => {
   const result = assessEntryModelReadiness({
     modelFamily: 'REGULARIZED_LOGISTIC', target: 'P_WHOLE_CHAIN_PROFITABLE', asOf: ASOF,
-    sufficiency: sufficiency({ rawRowCount: 0, resolvedLabelRowCount: 0, censoredRowCount: 0 }),
+    sufficiency: sufficiency({ rawRowCount: 0, resolvedLabelRowCount: 0, censoredRowCount: 0, effectiveIndependentN: 0, distinctUnderlyingCount: 0 }),
   });
   assert.equal(result.state, 'DATASET_NOT_READY');
 });
@@ -52,13 +52,46 @@ test('sufficiency met, no evaluation supplied, is TRAINING_READY', () => {
   assert.equal(result.state, 'TRAINING_READY');
 });
 
-test('CORE CLAIM: only real, passing calibration + confirmed OOS reaches OOS_SUPPORTED/promotionEligible=true', () => {
+test('caller-supplied OOS flag cannot certify held-out support or promotion', () => {
   const result = assessEntryModelReadiness({
     modelFamily: 'QUANTILE_DOWNSIDE', target: 'DOWNSIDE_P05', asOf: ASOF, sufficiency: sufficiency(),
     evaluation: goodEval(), oosSupported: true,
   });
+  assert.equal(result.state, 'TRAINED');
+  assert.equal(result.promotionEligible, false);
+});
+
+function heldout(): EntryOosComparison {
+  return { policyVersion: 'FIXTURE_ONLY', frozenAt: '2026-01-01T00:00:00Z', trainingEnd: '2026-02-01T00:00:00Z',
+    validationEnd: '2026-03-01T00:00:00Z', embargoSeconds: 60, minimumPairedRows: 2, minimumLossImprovement: 0,
+    fittingRowIds: ['train-1'], rows: [0, 1].map((outcome, i) => ({ observationId: `oos-${i}`, decisionAt: '2026-04-01T00:00:00Z',
+      featureAvailableAt: '2026-03-31T23:59:59Z', labelAvailableAt: '2026-04-02T00:00:00Z', prediction: outcome ? 0.8 : 0.2, baselinePrediction: 0.5, outcome })) };
+}
+
+test('paired OOS executes target-appropriate loss and cannot authorize promotion', () => {
+  const evidence = heldout();
+  assert.equal(evaluateEntryOosComparison('P_ASSIGNMENT', evidence, ASOF).metric, 'BRIER');
+  assert.equal(evaluateEntryOosComparison('EXPECTED_WHOLE_CHAIN_NET_PNL', evidence, ASOF).metric, 'SQUARED_ERROR');
+  assert.equal(evaluateEntryOosComparison('DOWNSIDE_P05', evidence, ASOF).metric, 'PINBALL_LOSS');
+  const result = assessEntryModelReadiness({ modelFamily: 'REGULARIZED_LOGISTIC', target: 'P_ASSIGNMENT', asOf: ASOF,
+    sufficiency: sufficiency(), evaluation: goodEval(), oosComparison: evidence });
   assert.equal(result.state, 'OOS_SUPPORTED');
-  assert.equal(result.promotionEligible, true);
+  assert.equal(result.comparison?.pairedN, 2);
+  assert.equal(result.promotionEligible, false);
+  assert.equal(evaluateEntryOosComparison('P_ASSIGNMENT', { ...evidence, minimumLossImprovement: 1 }, ASOF).supported, false);
+});
+
+test('paired OOS rejects future features, fit overlap, malformed values and missing policy', () => {
+  const evidence = heldout();
+  const first = evidence.rows[0];
+  assert.ok(first);
+  for (const patch of [{ observationId: 'train-1' }, { featureAvailableAt: '2026-04-02T00:00:00Z' },
+    { labelAvailableAt: '2027-01-01T00:00:00Z' }, { prediction: NaN }, { outcome: 0.5 }]) {
+    assert.throws(() => evaluateEntryOosComparison('P_ASSIGNMENT', { ...evidence, rows: [{ ...first, ...patch }] }, ASOF), /OOS_/);
+  }
+  assert.throws(() => evaluateEntryOosComparison('P_ASSIGNMENT', { ...evidence, minimumPairedRows: 0 }, ASOF), /POLICY/);
+  assert.throws(() => assessEntryModelReadiness({ modelFamily: 'REGULARIZED_LOGISTIC', target: 'P_ASSIGNMENT', asOf: ASOF,
+    sufficiency: sufficiency({ minimumEffectiveN: 0 }) }), /POSITIVE_SUFFICIENCY/);
 });
 
 test('good evaluation but oosSupported not confirmed stays TRAINED, not promotable', () => {

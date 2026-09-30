@@ -28,7 +28,7 @@ export const falseInactivityToBlockerClass: Readonly<Record<FalseInactivityCause
   HARD_SAFETY_REJECT: null, // not a first-Paper readiness blocker -- the gate working as intended
   EXECUTION_QUALITY_REJECT: null, // same -- correctly hard per THETA_HARD_VS_SOFT_DECISION_AUDIT.md
   EVENT_REJECT: 'POLICY',
-  AEGIS_REJECT: 'IMPLEMENTATION', // when caused by the known stressIvShock/SpreadWidening null-producer gap (Q-6)
+  AEGIS_REJECT: null, // A risk veto alone is not proof of an implementation defect.
   SIZING_REJECT: 'POLICY',
   IMPLEMENTATION_FALSE_REJECT: 'IMPLEMENTATION',
   PROVIDER_FAILURE_REJECT: 'PROVIDER',

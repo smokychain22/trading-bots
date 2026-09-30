@@ -5,16 +5,17 @@ not an authorization to place an order or to deploy this integration branch.
 
 ## Active continuation checkpoint, 2026-09-30
 
-Phase 5 has completed its reviewed 14-group engineering denominator, with
-235 executed evidence-bound tests. Release CI is pending the current commit.
-The precise completed/open source work and next action are recorded in
-`THETA_PHASE_5_UNIFIED_CLOSURE.md`. Reviewed Phase-2/3/4 execution artifacts
-remain scoped to their own denominators. The current integration base is
-`075273a175cd2084043c099e925be1c86c3cd9cc`, CI `36777818484` PASS.
-The resident locked worker has not been changed by this source batch. Phase-5
-tail-risk and evidence defects have focused and full-suite proof. Phase 6
-continues with proven model-registry mutation, unchecked SQLite reads,
-reproducibility identity, challenger cohort drift and observation-label defects.
+Phases 2 through 5 passed their reviewed engineering denominators. Phase 5
+is on main at `6fb779a7dfaffe83a5cb4eac7e9ce5f31d8b28a6`, main CI
+`36785012900` PASS. Phase-6 integrity is on main at
+`2df52412ebaa7d8e210d989829e82814c8fc6f1b`, main CI `36787793409` PASS.
+The follow-up reviewed all 15 Phase-6 requirement groups with 128 bound
+executed Node cases, including the Python research bridge, and 1,267 Python
+tests independently. Final release CI remains pending this follow-up commit.
+Current scope and limitations are in `THETA_PHASE_6_UNIFIED_CLOSURE.md`.
+Phase 7 current-release runtime acceptance is next. The resident locked
+worker has not changed during the Phase-6 source batches. No current-worker,
+profitability or broker-authorized maturity follows from these tests.
 Do not reopen Phase 1 or run a backup/soak as a source-validation step.
 
 ## PHASE_SCOPE_CORRECTION_2026_09_30
@@ -71,7 +72,11 @@ a deferred storage audit at this observation. Its circuit still reported
 WAIT and not proof of an open-session decision. Recheck it during the open-session
 evidence window without restarting the aligned worker for this status alone.
 
-## Phase source and closure states
+## Historical phase source and closure states
+
+This earlier snapshot is retained for provenance. The active continuation
+checkpoint and reviewed per-phase evidence above supersede its source claims,
+CI references and deployment descriptions.
 
 | Phase | Parallel source state | Closure state | Evidence or exact remaining dependency |
 | --- | --- | --- | --- |

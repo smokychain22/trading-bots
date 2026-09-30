@@ -173,7 +173,7 @@
       "rationale": "Directly contradicts H-R-02's patience thesis. Both are corpus-supported by different experts and both stay open -- TRD's own failure-DNA table explicitly rejects both 'roll every loser' and a universal hold-to-expiry assumption, so resolving this by averaging the two experts' behavior would manufacture a compromise neither actually demonstrated. The correct resolution is regime/DTE/branch-conditional, decided by A5 (dynamic management ablation) evidence, not by picking a side here.",
       "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
       "public_evidence_refs": ["tastytrade_45dte_21dte_50pct_management"],
-      "public_evidence_note": "tastytrade's own published secondary-sourced findings (see public_evidence_sources.json) lean toward THIS side (early 21-DTE/50%-credit management beating hold-to-expiry in their sampled history) -- recorded as a TRANSPARENT_PRACTITIONER_STUDY-tier prior favoring H-R-01, not as confirmation; H-R-02 remains open and must still be tested head-to-head on THETA's own data per this hypothesis's acceptance/rejection criteria."
+      "public_evidence_note": "The primary practitioner article compares SPY strangles, not THETA CSPs. Exact sample dates and raw trades are unavailable in the retrieved text. This is hypothesis context only. H-R-01 and H-R-02 require matched THETA paths and independent OOS evaluation."
     },
     {
       "hypothesis_id": "H-R-02",
@@ -205,7 +205,7 @@
       "rationale": "See H-R-01 -- this pair is deliberately preserved as competing hypotheses rather than resolved by inspection. TRD Appendix I explicitly frames the 25/50/75% profit-take grid and hold-to-expiry as baselines to test, not laws.",
       "data_availability_status": "TESTABLE_WITH_HISTORICAL_OPTIONOMICS_ALPACA_DATA",
       "public_evidence_refs": ["tastytrade_45dte_21dte_50pct_management"],
-      "public_evidence_note": "The same tastytrade-sourced prior linked from H-R-01 leans AGAINST this hypothesis's patience thesis in their own sampled history -- recorded here too so the competing-hypothesis pair carries the same evidence context on both sides, not asymmetrically. A practitioner prior leaning one way is not evidence this hypothesis should be rejected without THETA's own OOS test; single-source practitioner backtests are also known to disagree with each other across platforms and periods."
+      "public_evidence_note": "Carries the same primary practitioner reference as H-R-01. Strangle results cannot reject CSP patience without a matched THETA test. Neither competing hypothesis is confirmed by this reference."
     },
     {
       "hypothesis_id": "H-R-03",

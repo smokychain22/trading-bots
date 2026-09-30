@@ -62,3 +62,13 @@ test('invalid (negative) thresholds are rejected rather than silently accepted',
   assert.throws(() => evaluateManagementPolicyPromotion(evidence(), { ...thresholds, minShadowEpisodesForCandidate: -1 }),
     /MANAGEMENT_POLICY_PROMOTION_INVALID_THRESHOLD/);
 });
+
+test('NaN, fractional samples, zero sample gates and truthy non-booleans cannot bypass promotion', () => {
+  for (const override of [{shadowComparisonEpisodes:NaN},{candidateActingEpisodes:1.5},
+    {realizedAfterCostUtility:NaN},{calibrationBrierScore:NaN},{outOfSampleValidated:'true'}]) {
+    assert.throws(()=>evaluateManagementPolicyPromotion(evidence(override as never),thresholds),/INVALID_EVIDENCE/);
+  }
+  for (const override of [{minCalibrationSampleSize:0},{minShadowEpisodesForCandidate:0.5},{maxAcceptableBrierScore:2}]) {
+    assert.throws(()=>evaluateManagementPolicyPromotion(evidence(),{...thresholds,...override}),/INVALID_THRESHOLD/);
+  }
+});

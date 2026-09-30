@@ -19,6 +19,12 @@ def policy():
 
 
 class EntryAblationTests(unittest.TestCase):
+    def test_ablation_cannot_consume_reserved_final_holdout(self):
+        baseline = baseline_policy()
+        baseline['finalOosEvaluation'] = {'modelSelection': 'LAST_COMPLETED_DEVELOPMENT_FOLD', 'calibration': 'NONE'}
+        with self.assertRaisesRegex(ValueError, 'FINAL_OOS_ACCESS_FORBIDDEN'):
+            execute_entry_feature_ablation(fixture(), baseline, policy(), '2026-01-10T00:00:00Z')
+
     def test_real_runner_refits_subsets_on_identical_rows_and_splits(self):
         result = execute_entry_feature_ablation(fixture(), baseline_policy(), policy(), '2026-01-10T00:00:00Z')
         self.assertEqual(len(result['comparisons']), 2)

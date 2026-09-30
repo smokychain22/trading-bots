@@ -71,6 +71,12 @@ test('an identical re-registration is an idempotent no-op, not an error', () => 
   assert.doesNotThrow(() => registry.register(record()));
 });
 
+test('creation provenance is immutable in memory as well as durable storage', () => {
+  const registry = new EmpiricalModelRegistry();
+  registry.register(record());
+  assert.throws(() => registry.register(record({ createdAt: '2026-10-01T00:00:00Z' })), /IMMUTABLE_VERSION_CONFLICT/);
+});
+
 test('registry owns its copies and tuple identities cannot collide', () => {
   const registry = new EmpiricalModelRegistry();
   const input = record();

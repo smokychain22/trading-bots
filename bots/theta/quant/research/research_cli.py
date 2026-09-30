@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import asdict
 from pathlib import Path
 
 if __package__ in (None, ""):
@@ -28,8 +29,14 @@ from research.validation import calibration_metrics
 from research.selection_bias_runner import run_selection_bias_campaign
 from research.reproducibility_bundle import verify_reproducibility_bundle
 from research.historical_coverage_report import build_historical_coverage_report
-from research.production_export_loader import _load_candidate
+from research.production_export_loader import _load_candidate, load_dataset_export
+from research.management_dataset import build_management_dataset
+from research.regime_dataset import build_regime_dataset
+from research.future_volatility_label import build_future_volatility_label
 from research.registry import load_feature_family_ids, validate_registry
+from research.failure_attribution import attribute_failure
+from research.wait_outcome import T0WaitDecision, build_matured_wait_outcome
+from research.wait_analysis import classify_wait_regret
 from features.strictness_funnel import StrictnessRow, build_strictness_funnel
 
 CANONICAL_TYPESCRIPT_COMMANDS = {
@@ -38,7 +45,8 @@ CANONICAL_TYPESCRIPT_COMMANDS = {
 }
 COMMANDS = (
     'historical-convert', 'historical-dedupe', 'missingness', 'coverage', 'strictness', 'benchmark', 'ablation',
-    'calibration', 'selection-bias', 'reproducibility-verify', 'features', *CANONICAL_TYPESCRIPT_COMMANDS,
+    'calibration', 'selection-bias', 'reproducibility-verify', 'features', 'failure-attribution', 'wait-outcome',
+    'management-dataset', 'regime-dataset', 'future-volatility-label', *CANONICAL_TYPESCRIPT_COMMANDS,
 )
 
 
@@ -47,6 +55,20 @@ def _load(path: str) -> dict:
 
 
 def _dispatch(command: str, payload: dict) -> dict:
+    if command == 'future-volatility-label':
+        return build_future_volatility_label(payload)
+    if command in ('management-dataset', 'regime-dataset'):
+        export = load_dataset_export(payload['export'])
+        builder = build_management_dataset if command == 'management-dataset' else build_regime_dataset
+        return builder(export, payload['policy'])
+    if command == 'failure-attribution':
+        return attribute_failure(payload)
+    if command == 'wait-outcome':
+        outcome = build_matured_wait_outcome(T0WaitDecision(**payload['decision']),
+            payload['underlyingPriceAtDecision'], payload['underlyingPriceAtMaturation'], payload['maturationTimestamp'],
+            payload.get('alternative'), payload.get('observationTruthClass', 'UNKNOWN'))
+        return {'outcome': asdict(outcome), 'economicComparison': classify_wait_regret(outcome).value,
+                'decisionAssessment': 'NOT_ASSESSED_NO_GATE_OVERRIDE', 'brokerAuthority': False}
     if command == 'historical-convert':
         result = convert_historical_export(payload['raw'])
         return {

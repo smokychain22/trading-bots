@@ -2,7 +2,7 @@
 
 ## Current review, 2026-09-30
 
-STATE = IMPLEMENTING_REVIEWED_DENOMINATOR
+STATE = REVIEWED_ENGINEERING_VALIDATED_CI_PENDING
 
 The older source-complete receipt below is historical, not current acceptance.
 Phase 5 is committed at `6fb779a7dfaffe83a5cb4eac7e9ce5f31d8b28a6` with
@@ -32,12 +32,55 @@ evidence reruns passed 578/249/222/235 respectively. Tests are engineering
 evidence, not real empirical outcomes. The ledger CLI was executed with
 synthetic fixtures across two separate processes to prove restart/idempotence.
 
-Still open and next exact action: implement a policy-frozen final held-out
-evaluation in the existing baseline engine, prevent ablation from consuming
-that holdout, then close promotion checks that still trust caller booleans.
-Review all remaining 15 master subsections before declaring Phase 6 complete.
-These changes are offline research tooling only. No Production checkpoint,
-deployment, order or worker restart is part of this review.
+The follow-up now executes policy-frozen final held-out evaluation using the
+last completed development fold without refitting, and rejects ablation that
+would consume the holdout. Saved fits are recomputed from their exact local
+dataset and policy. Rehashing fabricated predictions does not pass reproduction.
+Promotion declarations no longer self-certify empirical eligibility. Canonical
+management approval binds the complete reviewed receipt, rejects malformed
+metadata and pins the validated artifact against later mutation.
+
+WAIT analytics separate safety, infrastructure, economic, observed and modeled
+cases. T0 utility cannot be subtracted from a stock return and called realized
+opportunity cost. Numeric observations have UNKNOWN truth unless explicitly
+classified. Future RV uses the existing research estimator with frozen grid,
+same-symbol provenance, explicit units and future-label-only semantics.
+
+The empirical pipeline now persists evidence-bound failure attribution and a
+hash-bound primary-source context. The source registry has nine primary
+references and three explicitly absent owner-supplied sources. Management and
+regime dataset builders, WAIT analysis and future volatility labels have
+executable offline CLI consumers. Historical research registry declarations
+are explicitly superseded, not counted as executed acceptance.
+
+All 15 reviewed requirement groups passed 128 named evidence-bound Node tests,
+including an executed Python research-suite bridge. The independent Python run
+passed 1,267 tests. Bindings and per-file hashes are in
+`THETA_PHASE6_REVIEWED_TEST_BINDINGS.json` and
+`evidence/THETA_PHASE6_EXECUTED_TESTS.json`. This proves scoped engineering,
+not current-worker L7, empirical usefulness, authenticity of caller-supplied
+research data, or broker authorization. Exact release CI is still required.
+
+Final local validation passed: Node 3,337 with 16 explicit environment-gated
+skips, Python 1,267, browser 23, four Windows safety/deadline suites, typecheck,
+lint, build, security and Git storage policy. The affected Phase-2 PIT evidence
+was rerun and rebound, 579 passes. The first concurrent validation attempt
+had three subprocess deadline failures and one browser deadline failure under
+local load, plus a correctly detected stale Phase-2 evidence hash. Isolated
+full-suite reruns passed without changing runtime timeout policy or assertions.
+
+Remaining external/data gates: resolved independent outcomes, source-qualified
+future observations, actual fills and execution costs, calibrated empirical
+EV/POP, owner-supplied QuantWheel/Alertsify/Collective2 materials, and complete
+owner policy for B1/B2/BH-1. Those policy gaps stay BLOCKED_MISSING_POLICY.
+No universal lifecycle policy was invented. Advanced model families remain
+untrained/unpromoted until simpler baselines justify them.
+
+Next phase is Phase 7 current-release supported-session acceptance. No
+Production checkpoint, deployment, order or worker restart was performed by
+this Phase-6 review. Phase 1 remains closed.
+
+## Historical receipt, superseded by the reviewed evidence above
 
 Receipt date: 2026-09-29
 

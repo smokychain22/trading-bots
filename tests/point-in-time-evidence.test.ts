@@ -69,3 +69,13 @@ test('current whole-chain mark is allowed only inside timestamped management evi
   assert.throws(()=>assertNoFutureLabels([{ futureOutcome:'WIN' }],'managementSnapshots'),
     /FUTURE_LABEL_IN_FEATURE_PAYLOAD/);
 });
+
+test('dataset window rejects malformed or timezone-free timestamps and future volatility labels',()=>{
+  for (const start of ['invalid','2026-01-01T00:00:00','2026-02-31T00:00:00Z']) {
+    assert.throws(()=>buildDatasetExport({sourceWindow:{start,end:'2026-03-01T00:00:00Z'},
+      exportedAt:'2026-03-02T00:00:00Z',featureSetVersion:'test',strategyVersions:[],rows:{} as never}),/DATASET_WINDOW_INVALID/);
+  }
+  for (const key of ['subsequentRealizedVolatility','futureRealizedVolatility','futureVolatilityLabel']) {
+    assert.throws(()=>assertNoFutureLabels({volatility:{[key]:.2}}),/FUTURE_LABEL_IN_FEATURE_PAYLOAD/);
+  }
+});
