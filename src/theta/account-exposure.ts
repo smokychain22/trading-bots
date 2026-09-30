@@ -42,6 +42,8 @@ export function parseOccOptionSymbol(symbol: string): ParsedOccOptionSymbol | nu
   const month = Number(mm);
   const day = Number(dd);
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const expiry = new Date(Date.UTC(year, month - 1, day));
+  if (expiry.getUTCFullYear() !== year || expiry.getUTCMonth() !== month - 1 || expiry.getUTCDate() !== day) return null;
   const strike = Number(strikeDigits) / 1000;
   if (!Number.isFinite(strike) || strike <= 0) return null;
   return {

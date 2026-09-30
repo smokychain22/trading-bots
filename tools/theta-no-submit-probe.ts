@@ -143,7 +143,7 @@ try {
     probeSnapshotId=reconciliation.snapshotId;
     spoolEvidence('ACCOUNT_READY',{reconciliationState:reconciliation.dataQuality,positions:reconciliation.positionCount,
       openOrders:reconciliation.openOrderCount,entryBlockingFactCount:reconciliation.entryBlockingFactCount,
-      brokerMutationAllowed:false},{ALPACA:reconciliation.providerTimestamp});
+      brokerMutationAllowed:false,reconciliationObservedAt:reconciliation.observedAt});
     if (reconciliation.dataQuality !== 'GOOD' || reconciliation.marketOpen !== true
       || !reconciliation.calendarSessionConfirmed || reconciliation.entryBlockingFactCount > 0
       || reconciliation.localOnlyIntentCount > 0) {
@@ -170,7 +170,7 @@ try {
       if (scan.actionPlansReady !== 0) throw new Error('NO_SUBMIT_PROBE_ACTION_PLAN_UNEXPECTED');
       const authority=classifyNoSubmitDecisionAuthority({databaseFailure:poolConnectionFailed
         ?'DATABASE_CONNECTION_LOST_NO_SUBMIT':null,scanComplete:scan.completeness==='COMPLETE',
-      computedAction:scan.behaviorDiagnostic.finalAction});
+      computedAction:scan.behaviorDiagnostic.finalAction,requiredProviderBlockers:scan.behaviorDiagnostic.providerBlockers});
       spoolEvidence('PLAN_READY',{scanId:scan.scanId,completeness:scan.completeness,candidateCount:scan.candidateCount,
         symbolsAttempted:scan.symbolsAttempted,symbolsCompleted:scan.symbolsCompleted,
         ...authority,finalAction:authority.canonicalAction,actionPlansReady:scan.actionPlansReady,
@@ -179,7 +179,7 @@ try {
       if(localEvidenceBackfillReady)await spool.backfill(new PostgresLocalEvidenceBackfillTarget(pool),sourceSha);
       const finalAuthority=classifyNoSubmitDecisionAuthority({databaseFailure:poolConnectionFailed
         ?'DATABASE_CONNECTION_LOST_NO_SUBMIT':null,scanComplete:scan.completeness==='COMPLETE',
-      computedAction:scan.behaviorDiagnostic.finalAction});
+      computedAction:scan.behaviorDiagnostic.finalAction,requiredProviderBlockers:scan.behaviorDiagnostic.providerBlockers});
       console.info(JSON.stringify({ state: poolConnectionFailed ? 'DATABASE_CONNECTION_LOST_NO_SUBMIT'
         : 'CURRENT_SOURCE_NO_SUBMIT_SCAN_COMPLETED', schema, sourceSha,
         ...finalAuthority,

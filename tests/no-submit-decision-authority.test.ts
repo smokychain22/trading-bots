@@ -42,6 +42,20 @@ test('backfilled or persisted local evidence never becomes broker authority',()=
   }
 });
 
+test('a required provider failure or SYSTEM_HOLD cannot be certified by complete enumeration',()=>{
+  for(const action of ['WAIT','GLOBAL_WAIT','ACTION_READY']){
+    const result=classifyNoSubmitDecisionAuthority({databaseFailure:null,scanComplete:true,
+      computedAction:action,requiredProviderBlockers:['ALPACA_CORPORATE_ACTION_READ_FAILED']});
+    assert.equal(result.outcome,'PROVIDER_DEFERRED');
+    assert.equal(result.canonicalAction,null);
+    assert.equal(result.provisionalAction,action);
+    assert.equal(result.exitCode,1);
+  }
+  const hold=classifyNoSubmitDecisionAuthority({databaseFailure:null,scanComplete:true,computedAction:'SYSTEM_HOLD'});
+  assert.equal(hold.outcome,'SYSTEM_HOLD');
+  assert.equal(hold.canonicalPersistence,false);
+});
+
 test('probe source preserves schema authority and original failure before fallback',()=>{
   // Wiring assertion only. This is not a claim of a live broker/database run.
   const source=readFileSync(new URL('../tools/theta-no-submit-probe.ts',import.meta.url),'utf8');

@@ -13,7 +13,8 @@ export interface DatabaseCircuitReceipt {
   readonly carryForwardCandidateAllowed:false;
 }
 
-/** Pure policy used by supervisors and tests. It never authorizes a decision or mutation. */
+/** Offline policy model. The resident PowerShell supervisor owns its runtime
+ * circuit separately. This model never proves deployed recovery or authorizes a mutation. */
 export class DatabaseHealthCircuit {
   private stateValue:DatabaseHealthState='DB_HEALTHY';
   private consecutiveFailures=0;
@@ -21,12 +22,12 @@ export class DatabaseHealthCircuit {
   constructor(private readonly failuresToOpen=2,private readonly successesToRecover=4) {}
 
   failure(classification:PostgresRuntimeErrorClassification):DatabaseCircuitReceipt {
+    this.recoverySuccesses=0;
     if(!classification.retryableRead){
       this.stateValue='DB_CIRCUIT_OPEN';
       this.consecutiveFailures=Math.max(this.failuresToOpen,this.consecutiveFailures+1);
     }else{
       this.consecutiveFailures++;
-      this.recoverySuccesses=0;
       this.stateValue=this.consecutiveFailures>=this.failuresToOpen?'DB_CIRCUIT_OPEN':'DB_TRANSIENT_FAILURE';
     }
     return this.receipt();

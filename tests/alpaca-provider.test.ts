@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   AlpacaProviderError,
   fetchMasterAccountSnapshot,
+  fetchMasterAccountEvidence,
   fetchMarketCalendar,
   fetchMarketClock,
   fetchLatestStockQuote,
@@ -252,6 +253,28 @@ test('fetchOpenOrders rejects rows without a usable provider order identity', as
     await assert.rejects(() => fetchOpenOrders(baseConfig(fetchImpl), NOW), (error: unknown) =>
       error instanceof AlpacaProviderError && error.errorClass === 'MALFORMED_RESPONSE');
   }
+});
+
+test('persistence account read shares bounded normalization and records actual response time',async()=>{
+  let calls=0;
+  const evidence=await fetchMasterAccountEvidence(baseConfig(async(_url,init)=>{
+    assert.equal(init?.method,undefined);assert.ok(init?.signal);
+    return jsonResponse(200,{id:'synthetic-id',equity:'',cash:false,buying_power:'0',options_trading_level:'2'});
+  }),()=>calls++===0?NOW:'2026-09-10T15:00:03.000Z');
+  assert.equal(evidence.providerAccountId,'synthetic-id');
+  assert.equal(evidence.snapshot.receivedAt,'2026-09-10T15:00:03.000Z');
+  assert.equal(evidence.snapshot.equity,null);assert.equal(evidence.snapshot.cash,null);
+  assert.equal(evidence.snapshot.buyingPower,0);assert.equal(evidence.snapshot.optionsTradingLevel,2);
+  assert.equal(Object.hasOwn(evidence.snapshot,'providerAccountId'),false);
+});
+
+test('persistence account read rejects missing identity and remains timeout bounded',async()=>{
+  for(const id of [null,'',false])await assert.rejects(fetchMasterAccountEvidence(
+    baseConfig(async()=>jsonResponse(200,{id})),()=>NOW),/MASTER_ACCOUNT_IDENTITY_UNKNOWN/);
+  await assert.rejects(fetchMasterAccountEvidence({...baseConfig(async(_url,init)=>
+    new Promise<Response>((_resolve,reject)=>init?.signal?.addEventListener('abort',
+      ()=>reject(new DOMException('timeout','AbortError')),{once:true}))),requestTimeoutMs:20},()=>NOW),
+    (error:unknown)=>error instanceof AlpacaProviderError&&error.errorClass==='PROVIDER_TIMEOUT');
 });
 
 test('open order enumeration uses bounded identity cursors without dropping tied timestamps', async () => {

@@ -2,12 +2,44 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildOptionomicsFeatureSnapshot } from '../src/theta/optionomics-feature-engine.js';
 import { fetchOptionomicsContextObservation, fetchOptionomicsOptionChain, type OptionomicsProviderConfig } from '../src/theta/optionomics-provider.js';
+import type { NormalizedOptionomicsFlowWindow } from '../src/theta/optionomics-provider.js';
 
 const NOW = '2026-09-14T15:00:00.000Z';
 const config = (payload: unknown): OptionomicsProviderConfig => ({
   apiBase: 'https://optionomics.ai', email: 'synthetic@example.com', apiToken: 'SYNTHETIC_TEST_TOKEN',
   now: () => NOW, sleepImpl: async () => {},
   fetchImpl: (async () => new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch,
+});
+
+test('feature availability includes the latest contributing context and flow receipt',async()=>{
+  const chain=await fetchOptionomicsOptionChain(config([{symbol:'X',implied_volatility:.2}]),'SPY');
+  const context=await fetchOptionomicsContextObservation(config({date:'2026-09-14',metrics:{iv_rank:42}}),'METRICS','SPY');
+  assert.equal(chain.kind,'VALUE_PRESENT');assert.equal(context.kind,'VALUE_PRESENT');
+  if(chain.kind!=='VALUE_PRESENT'||context.kind!=='VALUE_PRESENT')return;
+  const late={...context.value,retrievedAt:'2026-09-14T15:00:05.000Z'};
+  const flow:NormalizedOptionomicsFlowWindow={underlying:'SPY',windowHours:1,requestedFromUnixSeconds:0,
+    requestedToUnixSeconds:3600,resolution:'5m',netCalls:[{value:1}],netPuts:[],
+    retrievedAt:'2026-09-14T15:00:08.000Z',evidenceClass:'RESEARCH_CONTEXT_ONLY',executableTruth:false};
+  const result=buildOptionomicsFeatureSnapshot({chain:chain.value,flowWindows:[flow,flow],contextObservations:[late,late],stockPrice:500});
+  assert.equal(result.availableAt,flow.retrievedAt);
+  assert.equal(result.retrievedAt,flow.retrievedAt);
+  assert.equal(result.providerContext.observations.length,1);
+  assert.equal(result.flow.windows.length,1);
+  assert.deepEqual(result.providerContext.invalidFamilies,[]);
+  for(const badContext of [{...late,responseHash:'f'.repeat(64)},
+    {...late,normalized:{injectedValue:99}},{...late,underlying:'SQQQ'}]){
+    const invalid=buildOptionomicsFeatureSnapshot({chain:chain.value,flowWindows:[],contextObservations:[late,badContext],stockPrice:500});
+    assert.equal(invalid.providerContext.metrics,null);
+    assert.deepEqual(invalid.providerContext.invalidFamilies,['METRICS']);
+    assert.ok(invalid.unavailableFamilies.includes('CONTEXT_INVALID:METRICS'));
+    assert.equal(invalid.empiricalEvReady,false);
+  }
+  const conflict=buildOptionomicsFeatureSnapshot({chain:chain.value,flowWindows:[flow,{...flow,netCalls:[{value:2}]}],stockPrice:500});
+  assert.equal(conflict.flow.windows.length,0);
+  assert.equal(conflict.flow.invalidWindowKeys?.length,1);
+  const invalidTime=buildOptionomicsFeatureSnapshot({chain:chain.value,flowWindows:[{...flow,retrievedAt:'invalid'}],stockPrice:500});
+  assert.equal(invalidTime.availableAt,null);
+  assert.ok(invalidTime.unavailableFamilies.includes('INPUT_RECEIPT_TIME_INVALID'));
 });
 
 test('builds layered contract features and contract-multiplier-safe structural economics', async () => {

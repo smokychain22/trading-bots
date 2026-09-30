@@ -36,6 +36,12 @@ test('parseOccOptionSymbol parses a standard OCC symbol exactly', () => {
   assert.deepEqual(parsed, { underlying: 'SPY', expiration: '2026-10-09', optionType: 'PUT', strike: 500 });
 });
 
+test('impossible OCC expiries cannot become account or execution identity',()=>{
+  for(const date of ['260230','260229','260431','260631','260000','261301'])
+    assert.equal(parseOccOptionSymbol(`SPY${date}P00500000`),null,date);
+  assert.equal(parseOccOptionSymbol('SPY280229P00500000')?.expiration,'2028-02-29');
+});
+
 test('parseOccOptionSymbol parses a call symbol and a non-round strike', () => {
   const parsed = parseOccOptionSymbol('AAPL270115C00187500');
   assert.deepEqual(parsed, { underlying: 'AAPL', expiration: '2027-01-15', optionType: 'CALL', strike: 187.5 });

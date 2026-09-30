@@ -14,7 +14,7 @@ const snapshot = (overrides: Partial<OptionomicsFeatureSnapshotReference> = {}):
   featureSnapshotId: '11111111-1111-4111-8111-111111111111',
   underlying: 'SPY',
   observedAt: '2026-09-15T14:30:00.000Z',
-  schemaVersion: 'theta-optionomics-features-v3',
+  schemaVersion: 'theta-optionomics-features-v4',
   featureState: {
     skew: featureValue(0.03),
     termStructure: featureValue(0.02),

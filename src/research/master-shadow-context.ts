@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from 'pg';
 import { canonicalThetaStrategyRegistry } from '../theta/strategy-package.js';
 import { deterministicRuntimeUuid } from '../theta/postgres-theta-cycle-store.js';
 import { canonicalJson } from './point-in-time-evidence.js';
+import { withRuntimePostgresTransaction } from '../theta/runtime-postgres-client.js';
 
 export const masterShadowContextVersions = Object.freeze({
   strategy: 'theta-conventional@1.0.2-research',
@@ -49,9 +50,7 @@ async function upsertVersion(client: PoolClient, input: {
 
 /** Build a research-only context for the already designated, verified master. */
 export async function ensureMasterShadowContext(pool: Pool, verifiedProviderAccountId: string): Promise<MasterShadowContext> {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  return withRuntimePostgresTransaction(pool,async(client)=>{
     await client.query('SELECT pg_advisory_xact_lock(863801019)');
     const master = await client.query(`SELECT f.workspace_id,f.token_secret_id,f.provider_account_ref,
       f.account_status,f.connection_status,f.disconnected_at,f.account_ready,
@@ -136,12 +135,8 @@ export async function ensureMasterShadowContext(pool: Pool, verifiedProviderAcco
         feature_version_id=EXCLUDED.feature_version_id,state='IDLE'`, [botInstanceId, workspaceId, resolvedAccountId,
         strategyVersionId, riskLimitVersionId, executionVersionId, costModelVersionId, featureVersionId]);
     const bot = await client.query(`SELECT bot_instance_id FROM core.bot_instance WHERE account_id=$1 AND bot_code='THETA'`, [resolvedAccountId]);
-    await client.query('COMMIT');
     return { botInstanceId:String(bot.rows[0].bot_instance_id), accountId:resolvedAccountId, executionAccountId,
       strategyVersionId,
       featureVersionId, riskLimitVersionId, executionVersionId, costModelVersionId };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally { client.release(); }
+  });
 }

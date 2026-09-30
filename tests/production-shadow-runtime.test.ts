@@ -2,12 +2,46 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AlpacaProviderError } from '../src/theta/alpaca-provider.js';
 import { applyPendingUnsupportedCorporateActions, classifyObservationFailure, ivStressApplicability, ivStressEvidenceForUnderlying, ivStressPaperBlockers, ivStressPaperPlanPersistenceReady, paperBootstrapAuthoritySymbols, paperEntryEventEvidenceBlockers, refreshScanIvStress, missingObservationReason,
-  universeDiscoveryDiagnosticBlockers } from '../src/research/production-shadow-runtime.js';
+  universeDiscoveryDiagnosticBlockers,productionScanDecisionStatus,loadCorporateActionSafetyEvidence } from '../src/research/production-shadow-runtime.js';
 import { assessAegisIvStress, normalizeOptionomicsAtmIvObservation,
   paperBootstrapAegisIvStressPolicy } from '../src/theta/aegis-iv-stress.js';
 import type { NormalizedOptionomicsContextObservation } from '../src/theta/optionomics-provider.js';
 import type { Pool } from 'pg';
 import type { UnderlyingCandidateInput } from '../src/theta/universe-policy.js';
+import type { CorporateActionRead } from '../src/theta/alpaca-corporate-action-evidence.js';
+
+test('corporate-action database failures propagate rather than becoming provider gaps or WAIT',async()=>{
+  const at='2026-09-30T15:00:00.000Z';
+  const input={pool:{} as Pool,config:{tradingApiBase:'https://paper-api.alpaca.markets',
+    marketDataApiBase:'https://data.alpaca.markets',apiKey:'SYNTHETIC',apiSecret:'SYNTHETIC'},
+    symbols:['SPY'],start:'2026-09-30',end:'2026-10-01',observedAt:at,now:()=>at};
+  const read={observations:[],paginationComplete:true} as unknown as CorporateActionRead;
+  const failure=Object.assign(new Error('synthetic database failure'),{code:'57P01'});
+  for(const failingStage of ['read','persist','load']){
+    const calls:string[]=[];
+    const deps={read:async()=>{calls.push('read');if(failingStage==='read')throw failure;return read;},
+      persist:async()=>{calls.push('persist');if(failingStage==='persist')throw failure;return {observationCount:0,newRows:0};},
+      load:async()=>{calls.push('load');throw failure;}};
+    if(failingStage==='read'){
+      assert.equal((await loadCorporateActionSafetyEvidence(input,deps)).read,null);
+      assert.deepEqual(calls,['read']);
+    }else{
+      await assert.rejects(loadCorporateActionSafetyEvidence(input,deps),(error:unknown)=>error===failure);
+      assert.deepEqual(calls,failingStage==='persist'?['read','persist']:['read','persist','load']);
+    }
+  }
+});
+
+test('required provider failure invalidates scan authority even when inner enumeration earned WAIT',()=>{
+  for(const requiredProviderBlockers of [['ALPACA_CORPORATE_ACTION_READ_FAILED'],['ALPACA_CORPORATE_ACTION_PAGINATION_INCOMPLETE']]){
+    assert.deepEqual(productionScanDecisionStatus({completeness:'COMPLETE',globalWaitEarned:true,
+      actionPlansReady:0,requiredProviderBlockers}),{completeness:'PARTIAL',globalWaitEarned:false,finalAction:'SYSTEM_HOLD'});
+  }
+  assert.deepEqual(productionScanDecisionStatus({completeness:'COMPLETE',globalWaitEarned:true,
+    actionPlansReady:0,requiredProviderBlockers:[]}),{completeness:'COMPLETE',globalWaitEarned:true,finalAction:'WAIT'});
+  assert.equal(productionScanDecisionStatus({completeness:'PARTIAL',globalWaitEarned:true,
+    actionPlansReady:1,requiredProviderBlockers:[]}).finalAction,'SYSTEM_HOLD');
+});
 
 test('bounded zero-candidate discovery cannot be called an opportunity-free market', () => {
   const funnel={assetsDiscovered:100,assetsTruncatedByBound:true,assetsAfterExchangeFilter:80,

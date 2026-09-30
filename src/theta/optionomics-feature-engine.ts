@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { canonicalJson } from '../research/point-in-time-evidence.js';
 import type {
   NormalizedOptionomicsChain,
   NormalizedOptionomicsContextObservation,
@@ -6,7 +7,7 @@ import type {
   NormalizedOptionomicsFlowWindow,
 } from './optionomics-provider.js';
 
-export const optionomicsFeatureSchemaVersion = 'theta-optionomics-features-v3' as const;
+export const optionomicsFeatureSchemaVersion = 'theta-optionomics-features-v4' as const;
 
 export type FeatureState = 'KNOWN' | 'UNKNOWN' | 'INVALID';
 
@@ -62,8 +63,8 @@ export interface OptionomicsFeatureSnapshot {
   readonly provider: 'OPTIONOMICS';
   readonly underlying: string;
   readonly observedAt: string | null;
-  readonly availableAt: string;
-  readonly retrievedAt: string;
+  readonly availableAt: string | null;
+  readonly retrievedAt: string | null;
   readonly responseHash: string;
   readonly contracts: readonly OptionomicsContractFeatureState[];
   readonly skew: FeatureValue<number>;
@@ -71,6 +72,7 @@ export interface OptionomicsFeatureSnapshot {
   readonly volatilitySurface: FeatureValue<Readonly<Record<string, number>>>;
   readonly flow: {
     readonly windows: readonly NormalizedOptionomicsFlowWindow[];
+    readonly invalidWindowKeys?: readonly string[];
     readonly interpretation: 'UNMODELED_RESEARCH_CONTEXT';
   };
   readonly providerContext: {
@@ -83,6 +85,7 @@ export interface OptionomicsFeatureSnapshot {
     readonly earningsFilings: Readonly<Record<string, unknown>> | null;
     readonly symbolNews: Readonly<Record<string, unknown>> | null;
     readonly observations: readonly Omit<NormalizedOptionomicsContextObservation, 'rawPayload'>[];
+    readonly invalidFamilies?: readonly string[];
     readonly interpretation: 'PROVIDER_CONTEXT_WITH_UNVERIFIED_UNITS_NO_EXECUTION_AUTHORITY';
   };
   readonly unavailableFamilies: readonly string[];
@@ -241,9 +244,31 @@ export function buildOptionomicsFeatureSnapshot(input: {
   readonly multiplierByContract?: ReadonlyMap<string, number>;
   readonly skewDeltaTolerance?: number | null;
 }): OptionomicsFeatureSnapshot {
-  const contextObservations = input.contextObservations ?? [];
+  const allContext = input.contextObservations ?? [];
+  const byFamily=new Map<NormalizedOptionomicsContextObservation['family'],NormalizedOptionomicsContextObservation>();
+  const invalidFamilies=new Set<string>();
+  for(const row of allContext){
+    const prior=byFamily.get(row.family);
+    if((row.underlying!==null&&row.underlying!==input.chain.underlying)
+      ||(prior!==undefined&&(prior.responseHash!==row.responseHash
+        ||canonicalJson(prior.normalized)!==canonicalJson(row.normalized)
+        ||prior.providerTimestamp!==row.providerTimestamp||prior.sessionDate!==row.sessionDate)))invalidFamilies.add(row.family);
+    if(prior===undefined||Date.parse(row.retrievedAt)<Date.parse(prior.retrievedAt))byFamily.set(row.family,row);
+  }
+  const contextObservations=[...byFamily.values()].sort((a,b)=>a.family.localeCompare(b.family));
+  const windows=new Map<string,NormalizedOptionomicsFlowWindow>(),invalidWindowKeys=new Set<string>();
+  for(const row of input.flowWindows){
+    const key=JSON.stringify([row.underlying,row.windowHours,row.requestedFromUnixSeconds,row.requestedToUnixSeconds,row.resolution]);
+    const prior=windows.get(key);
+    if(row.underlying!==input.chain.underlying||(prior!==undefined
+      &&canonicalJson([prior.netCalls,prior.netPuts])!==canonicalJson([row.netCalls,row.netPuts])))invalidWindowKeys.add(key);
+    if(prior===undefined)windows.set(key,row);
+  }
+  const flowWindows=[...windows].filter(([key])=>!invalidWindowKeys.has(key)).sort(([a],[b])=>a.localeCompare(b)).map(([,row])=>row);
+  const receiptTimes=[input.chain.retrievedAt,...allContext.map(row=>row.retrievedAt),...input.flowWindows.map(row=>row.retrievedAt)].map(Date.parse);
+  const retrievedAt=receiptTimes.every(Number.isFinite)?new Date(Math.max(...receiptTimes)).toISOString():null;
   const observation = (family: NormalizedOptionomicsContextObservation['family']): NormalizedOptionomicsContextObservation | null =>
-    contextObservations.find((candidate) => candidate.family === family) ?? null;
+    invalidFamilies.has(family)?null:byFamily.get(family)??null;
   const context = (family: NormalizedOptionomicsContextObservation['family']): Readonly<Record<string, unknown>> | null =>
     observation(family)?.normalized ?? null;
   const knownContextValue = (family: NormalizedOptionomicsContextObservation['family'], field: string): boolean => {
@@ -262,7 +287,10 @@ export function buildOptionomicsFeatureSnapshot(input: {
     .toSorted((left,right)=>Date.parse(right)-Date.parse(left))[0]??null;
   const unavailableFamilies = [
     input.chain.entries.some((entry) => entry.impliedVolatility !== null) ? null : 'IV',
-    input.flowWindows.length > 0 ? null : 'FLOW',
+    flowWindows.length > 0 ? null : 'FLOW',
+    retrievedAt===null?'INPUT_RECEIPT_TIME_INVALID':null,
+    ...[...invalidFamilies].sort().map(family=>`CONTEXT_INVALID:${family}`),
+    ...(invalidWindowKeys.size>0?['FLOW_WINDOW_CONFLICT']:[]),
     knownContextValue('METRICS', 'ivRank') ? null : 'IV_RANK',
     knownContextValue('METRICS', 'ivPercentile') ? null : 'IV_PERCENTILE',
     observation('VANNA_EXPOSURE_HEATMAP')?.populated === true ? null : 'VANNA',
@@ -272,11 +300,11 @@ export function buildOptionomicsFeatureSnapshot(input: {
   ].filter((value): value is string => value !== null);
   return {
     schemaVersion: optionomicsFeatureSchemaVersion, provider: 'OPTIONOMICS', underlying: input.chain.underlying,
-    observedAt, availableAt: input.chain.retrievedAt, retrievedAt: input.chain.retrievedAt,
+    observedAt, availableAt: retrievedAt, retrievedAt,
     responseHash: input.chain.responseHash,
     contracts, skew: deriveSkew(input.chain.entries, input.skewDeltaTolerance ?? null), termStructure: deriveTerm(input.chain.entries),
     volatilitySurface: deriveSurface(input.chain.entries),
-    flow: { windows: input.flowWindows, interpretation: 'UNMODELED_RESEARCH_CONTEXT' },
+    flow: { windows: flowWindows, invalidWindowKeys:[...invalidWindowKeys].sort(), interpretation: 'UNMODELED_RESEARCH_CONTEXT' },
     providerContext: {
       metrics: context('METRICS'), exposureHeatmap: context('EXPOSURE_HEATMAP'),
       vannaExposureHeatmap: context('VANNA_EXPOSURE_HEATMAP'),
@@ -288,6 +316,7 @@ export function buildOptionomicsFeatureSnapshot(input: {
         void rawPayload;
         return normalizedObservation;
       }),
+      invalidFamilies:[...invalidFamilies].sort(),
       interpretation: 'PROVIDER_CONTEXT_WITH_UNVERIFIED_UNITS_NO_EXECUTION_AUTHORITY',
     },
     unavailableFamilies, empiricalEvReady: false,

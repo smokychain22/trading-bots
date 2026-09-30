@@ -38,3 +38,12 @@ test('provider resource exhaustion opens the circuit without a blind read retry'
   assert.equal(receipt.state,'DB_CIRCUIT_OPEN');
   assert.equal(receipt.decisionAuthority,'INFRASTRUCTURE_DEFERRED');
 });
+
+test('a non-retryable failure discards earlier recovery successes in the offline model',()=>{
+  const circuit=new DatabaseHealthCircuit(1,3);
+  circuit.failure(classifyPostgresRuntimeError({code:'57P01'}));
+  circuit.recoveryProbeSucceeded();circuit.recoveryProbeSucceeded();
+  assert.equal(circuit.failure(classifyPostgresRuntimeError({code:'53000'})).recoverySuccesses,0);
+  assert.equal(circuit.recoveryProbeSucceeded().state,'DB_RECOVERY_PROBING');
+  assert.throws(()=>circuit.startFreshCycleAfterRecovery(),/DATABASE_RECOVERY_NOT_PROVEN/);
+});

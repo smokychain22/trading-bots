@@ -4,6 +4,8 @@ export function classifyNoSubmitDecisionAuthority(input: {
   readonly databaseFailure: string | null;
   readonly scanComplete: boolean;
   readonly computedAction: string | null;
+  /** Required-path failures only. Optional research gaps do not enter this list. */
+  readonly requiredProviderBlockers?: readonly string[];
 }) {
   if (input.databaseFailure !== null) return {
     outcome: 'INFRASTRUCTURE_DEFERRED' as const,
@@ -16,13 +18,15 @@ export function classifyNoSubmitDecisionAuthority(input: {
     executionEligible: false,
     exitCode: 1 as const,
   };
-  if (!input.scanComplete || input.computedAction === null) return {
-    outcome: !input.scanComplete ? 'PROVIDER_DEFERRED' as const : 'SYSTEM_HOLD' as const,
+  const providerBlocker=input.requiredProviderBlockers?.[0]??null;
+  if (providerBlocker!==null || !input.scanComplete || input.computedAction === null || input.computedAction === 'SYSTEM_HOLD') return {
+    outcome: providerBlocker!==null || !input.scanComplete ? 'PROVIDER_DEFERRED' as const : 'SYSTEM_HOLD' as const,
     decisionState: 'PROVISIONAL_COMPUTE_RESULT' as const,
     evidenceUse: 'PARTIAL_DIAGNOSTIC_ONLY' as const,
     canonicalAction: null,
     provisionalAction: input.computedAction,
-    primaryStop: !input.scanComplete ? 'CANONICAL_SCAN_INCOMPLETE' : 'CANONICAL_ACTION_MISSING',
+    primaryStop: providerBlocker ?? (!input.scanComplete ? 'CANONICAL_SCAN_INCOMPLETE'
+      : input.computedAction === 'SYSTEM_HOLD' ? 'CANONICAL_SYSTEM_HOLD' : 'CANONICAL_ACTION_MISSING'),
     canonicalPersistence: false,
     executionEligible: false,
     exitCode: 1 as const,

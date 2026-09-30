@@ -4,6 +4,29 @@ Execution locks remain unchanged. Source corrections below are local tested
 engineering until the exact release is reviewed, CI-verified and deployed.
 No entry here closes the full phase.
 
+## Subsequent executed corrections
+
+- Required provider failures and SYSTEM_HOLD cannot certify canonical WAIT.
+  Corporate-action persistence failures now propagate as infrastructure errors.
+- Account persistence uses the bounded canonical Alpaca adapter, preserves unknown
+  numeric values, and timestamps actual response completion. Transaction rollback
+  failure discards the client. Calendar-invalid OCC expiries are rejected.
+- Optionomics duplicate contracts and conflicting/cross-symbol context preserve
+  typed uncertainty. Feature availability follows the latest input receipt.
+- Fresh finalist and corporate-action evidence uses actual response completion,
+  with plan expiry and quote age evaluated after the request finishes.
+- Real disposable PostgreSQL tests executed timeout, own-backend termination,
+  idle-client termination, rollback and queue-drain paths. Production was not
+  fault-injected. CI also runs this isolated database suite.
+- Offline performance tooling now exercises decoding, normalization, features,
+  hashing and SQLite WAL round-trip at 2601/5000/10000 rows. Synthetic local
+  timings do not certify Aiven latency or current-market behavior.
+
+Latest local validation for this correction batch: Node 3199 passed, 16 skipped,
+Python 1234 passed, browser 23 passed, typecheck/lint/build passed, security scan
+zero findings, storage policy and four Windows recovery scripts passed. These
+are source tests, not a deployed release or an inherited phase certificate.
+
 | Item | Proven cause and correction | Requirement-specific tests | Runtime impact |
 | --- | --- | --- | --- |
 | DB observer | Throwing telemetry could mask a successful operation or the original failure. Isolate callback failure and retain sanitized SQLSTATE and operation timing. | runtime-postgres-client, runtime-postgres-pool | Observability only, no new retry or timeout. |

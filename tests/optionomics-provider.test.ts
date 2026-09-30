@@ -75,6 +75,17 @@ const baseConfig = (fetchImpl: typeof fetch, overrides: Partial<OptionomicsProvi
   ...overrides,
 });
 
+test('duplicate Optionomics contracts cannot amplify context or silently choose a conflicting revision',async()=>{
+  for(const wrapped of [false,true])for(const conflict of [false,true]){
+    const row={symbol:'SPY261016P00500000',underlying:'SPY',expiration:'2026-10-16',option_type:'put',strike:500,delta:-.2};
+    const rows=[row,{...row,delta:conflict?-.3:-.2}];
+    const result=await fetchOptionomicsOptionChain(baseConfig(async()=>jsonResponse(200,wrapped?{options:rows}:rows)),'SPY');
+    if(conflict){assert.equal(result.kind,'VALUE_UNKNOWN_AFTER_SUCCESS');
+      if(result.kind==='VALUE_UNKNOWN_AFTER_SUCCESS')assert.equal(result.detail,'OPTIONOMICS_CHAIN_DUPLICATE_CONFLICT');
+    }else{assert.equal(result.kind,'VALUE_PRESENT');if(result.kind==='VALUE_PRESENT')assert.equal(result.value.entries.length,1);}
+  }
+});
+
 test('200 valid response: entries normalize with full Greeks/OI/volume/IV', async () => {
   const fetchImpl = (async () => jsonResponse(200, [
     { symbol: 'SPY260910P00500000', underlying: 'SPY', expiration: '2026-09-10', option_type: 'put', strike: 500, open_interest: 1200, volume: 340, implied_volatility: 0.22, delta: -0.3, gamma: 0.01, theta: -0.05, vega: 0.1, rho: -0.02, as_of: NOW },

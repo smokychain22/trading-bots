@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { Pool } from 'pg';
 import type { Environment } from '../config/environment.js';
-import { AlpacaProviderError, fetchOptionSnapshots, type AlpacaProviderConfig } from '../theta/alpaca-provider.js';
+import { AlpacaProviderError, fetchMasterAccountEvidence, fetchOptionSnapshots, type AlpacaProviderConfig } from '../theta/alpaca-provider.js';
 import { discoverRealUniverse, type UniverseDiscoveryResult } from '../theta/universe-discovery.js';
 import type { UnderlyingCandidateInput } from '../theta/universe-policy.js';
 import { defaultShadowCycleConfig, optionomicsConfigFromEnvironment } from '../theta/theta-shadow-once.js';
@@ -277,7 +277,7 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     followerExecutionEnabled:input.environment.FOLLOWER_PAPER_EXECUTION_ENABLED,
     liveMoneyAuthorized:false,
   });
-  const runtimeContext={...await loadPersistenceContext(input.pool,input.alpaca,input.now()),
+  const runtimeContext={...await loadPersistenceContext(input.pool,input.alpaca,input.now),
     releaseIdentity:input.releaseIdentity??undefined};
   if(input.executionAccountId!==undefined&&input.executionAccountId!==null
     &&input.executionAccountId!==runtimeContext.executionAccountId)
@@ -320,25 +320,22 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
   let corporateActionProviderError=false;
   const corporateActionSymbols=[...new Set([...scanUnderlyingsRaw.map((candidate)=>candidate.symbol),...recoveryInventoryUnderlyings])].sort().slice(0,20);
   if(corporateActionSymbols.length>0){
-    try{
-      const observedAt=input.now();
-      const start=observedAt.slice(0,10);
-      const end=new Date(Date.parse(`${start}T00:00:00Z`)+45*86_400_000).toISOString().slice(0,10);
-      const read=await readAlpacaCorporateActions({config:input.alpaca,
-        symbols:corporateActionSymbols,start,end,observedAt,now:input.now});
+    const observedAt=input.now();
+    const start=observedAt.slice(0,10);
+    const end=new Date(Date.parse(`${start}T00:00:00Z`)+45*86_400_000).toISOString().slice(0,10);
+    const evidence=await loadCorporateActionSafetyEvidence({pool:input.pool,config:input.alpaca,
+      symbols:corporateActionSymbols,start,end,observedAt,now:input.now});
+    const read=evidence.read;
+    if(read===null){
+      corporateActionProviderError=true;
+      runtimeSafetyBlockers.push('ALPACA_CORPORATE_ACTION_READ_FAILED');
+    }else{
       corporateActionRead=read;
-      await persistAlpacaCorporateActionRead(input.pool,read);
       if(!read.paginationComplete)runtimeSafetyBlockers.push('ALPACA_CORPORATE_ACTION_PAGINATION_INCOMPLETE');
-      const persistedPending=await loadPersistedPendingCorporateActionSymbols(input.pool,{
-        symbols:corporateActionSymbols,start,end,decisionAsOf:input.now(),
-      });
       currentPendingUnsupportedSymbols=new Set(read.observations.filter((row)=>row.pendingUnsupported).map((row)=>row.symbol));
       pendingUnsupportedSymbols=new Set([...currentPendingUnsupportedSymbols,
-        ...persistedPending]);
+        ...evidence.persistedPending]);
       corporateActionReadSucceeded=read.paginationComplete;
-    }catch{
-      corporateActionProviderError=true;
-      runtimeSafetyBlockers.push('ALPACA_CORPORATE_ACTION_READ_OR_PERSISTENCE_FAILED');
     }
   }
   const scanUnderlyings=applyPendingUnsupportedCorporateActions(scanUnderlyingsRaw,pendingUnsupportedSymbols);
@@ -629,13 +626,17 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       runtimeTelemetry:cycle===null?null:buildFirstPaperRuntimeTelemetry({frontier,alpacaQuoteState:quoteState}),
       cycleBlockers:cycle?.blockers??[],preSubmit:readOnlyPreSubmitProofs.find((proof)=>proof.symbol===member.symbol)??null};
   });
+  const requiredProviderBlockers=[...new Set([...runtimeSafetyBlockers,...discoveryBlockers,...scan.missingScope,
+    ...scan.results.flatMap((member)=>member.errorCode?[member.errorCode]:[])])].toSorted();
+  const decisionStatus=productionScanDecisionStatus({completeness:discovery.candidates.length===0?'DATA_INSUFFICIENT':scan.completeness,
+    globalWaitEarned:scan.globalWaitEarned,actionPlansReady,requiredProviderBlockers});
   const behaviorDiagnostic=await new PostgresRuntimeBehaviorDiagnosticStore(input.pool).persist({
     scanId:scan.scanId,decisionIds:[...persisted.values()].flatMap((value)=>value.decisionId?[value.decisionId]:[]).toSorted(),
     observedAt:scan.finishedAt,session,universeSize:scan.boundary.eligibleSymbols.length,
     strategiesConsidered:branchFrontiers.length,strategiesApplicable:branchFrontiers.filter((branch)=>branch.applicable).length,
     strategiesRejected:branchFrontiers.filter((branch)=>!branch.applicable||branch.evaluationState==='BLOCKED_MISSING_INPUT').length,
-    strategyDiagnostics,completeness:discovery.candidates.length===0?'DATA_INSUFFICIENT':scan.completeness,
-    globalWaitEarned:scan.globalWaitEarned,globalWaitReasons:scan.globalWaitReasons,
+    strategyDiagnostics,completeness:decisionStatus.completeness,
+    globalWaitEarned:decisionStatus.globalWaitEarned,globalWaitReasons:scan.globalWaitReasons,
     // Decision-level counts share the Paper-authorized branch population.
     // Strategy-level counts above still include every research alternative.
     candidateCount:entryCandidates.length,
@@ -655,19 +656,19 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
       .some(isQuoteEvidence)).length,
     liquidityRejectionCount:rejectedCandidates.filter((candidate)=>[...candidate.hardBlockers,...candidate.unknownEvidence]
       .some(isLiquidityEvidence)).length,
-    hardGateCounts,finalAction:actionPlansReady>0?'ACTION_READY':scan.globalWaitEarned?'WAIT':'SYSTEM_HOLD',
+    hardGateCounts,finalAction:decisionStatus.finalAction,
     waitReasons:actionPlansReady>0?[]:[...new Set([...scan.globalWaitReasons,...actionPlansBlocked,...discoveryBlockers])].toSorted(),
     bestRejectedCandidates,antiParalysisFindings,
     universeBreadthChallenger,
     universeDiscoveryFunnel:discovery.funnel,
     strategyQualityChallengers:scan.results.flatMap((member)=>member.cycle?.strategyQualityDiagnostics
       ?[member.cycle.strategyQualityDiagnostics]:[]),
-    providerBlockers:[...new Set([...discoveryBlockers,...scan.missingScope,...scan.results.flatMap((member)=>member.errorCode?[member.errorCode]:[])])].toSorted(),
+    providerBlockers:requiredProviderBlockers,
     actionPlansReady,actionPlanBlockers:[...new Set(actionPlansBlocked)].toSorted(),
     firstPaperEvidence:{version:'theta-first-paper-runtime-evidence-v1',symbols:symbolDiagnostics,brokerMutationSurface:false},
   });
   const virtualOpening=await new PostgresShadowVirtualTrader(input.pool).createOpeningIntent(scan.scanId,scan.finishedAt);
-  return {scanId:scan.scanId,completeness:discovery.candidates.length===0?'DATA_INSUFFICIENT':scan.completeness,
+  return {scanId:scan.scanId,completeness:decisionStatus.completeness,
     candidateCount:scan.candidateCount,
     researchMissingScope:scan.researchMissingScope,
     symbolsAttempted:scan.symbolsAttempted,symbolsCompleted:scan.symbolsCompleted,observationsScheduled,
@@ -675,20 +676,50 @@ export async function runProductionShadowEvidenceScan(input:{environment:Environ
     symbolDiagnostics,readOnlyPreSubmitProofs};
 }
 
-async function loadPersistenceContext(pool:Pool,alpaca:AlpacaProviderConfig,asOf:string){
-  const response=await (alpaca.fetchImpl??fetch)(new URL('/v2/account',alpaca.tradingApiBase),{
-    headers:{'APCA-API-KEY-ID':alpaca.apiKey,'APCA-API-SECRET-KEY':alpaca.apiSecret}});
-  if(!response.ok) throw new Error(`MASTER_ACCOUNT_CONTEXT_HTTP_${response.status}`);
-  const account=await response.json() as Record<string,unknown>;
-  if(typeof account.id!=='string') throw new Error('MASTER_ACCOUNT_IDENTITY_UNKNOWN');
-  const context=await ensureMasterShadowContext(pool,account.id);
+export async function loadPersistenceContext(pool:Pool,alpaca:AlpacaProviderConfig,now:()=>string){
+  const evidence=await fetchMasterAccountEvidence(alpaca,now);
+  const account=evidence.snapshot;
+  const context=await ensureMasterShadowContext(pool,evidence.providerAccountId);
   const snapshot=await pool.query(`INSERT INTO trade.account_snapshot(account_id,equity,cash,buying_power,options_buying_power,options_level,as_of,retrieved_at)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$7) RETURNING account_snapshot_id`,[context.accountId,n(account.equity),n(account.cash),n(account.buying_power),
-    n(account.options_buying_power),n(account.options_trading_level),asOf]);
+    VALUES($1,$2,$3,$4,$5,$6,$7,$7) RETURNING account_snapshot_id`,[context.accountId,account.equity,account.cash,account.buyingPower,
+    account.optionsBuyingPower,account.optionsTradingLevel,account.receivedAt]);
   return {botInstanceId:context.botInstanceId,executionAccountId:context.executionAccountId,
     universeVersionId:null,strategyVersionId:context.strategyVersionId,
     featureVersionId:context.featureVersionId,riskLimitVersionId:context.riskLimitVersionId,
     executionVersionId:context.executionVersionId,costModelVersionId:context.costModelVersionId,
     accountSnapshotId:Number(snapshot.rows[0].account_snapshot_id)};
 }
-const n=(value:unknown):number|null=>value==null||!Number.isFinite(Number(value))?null:Number(value);
+const n=(value:unknown):number|null=>typeof value==='number'&&Number.isFinite(value)?value:null;
+
+/** Only a provider read may degrade to unavailable event evidence. Persistence
+ * failures propagate unchanged to the outer infrastructure incident handler. */
+export async function loadCorporateActionSafetyEvidence(input:Parameters<typeof readAlpacaCorporateActions>[0]&{
+  readonly pool:Pool;readonly now:()=>string;
+},dependencies={read:readAlpacaCorporateActions,persist:persistAlpacaCorporateActionRead,
+  load:loadPersistedPendingCorporateActionSymbols}):Promise<{
+    readonly read:CorporateActionRead|null;readonly persistedPending:ReadonlySet<string>;
+  }>{
+  let read:CorporateActionRead;
+  try{read=await dependencies.read(input);}
+  catch{return {read:null,persistedPending:new Set()};}
+  await dependencies.persist(input.pool,read);
+  const persistedPending=await dependencies.load(input.pool,{symbols:input.symbols,start:input.start,
+    end:input.end,decisionAsOf:input.now()});
+  return {read,persistedPending};
+}
+
+/** Required-path provider incompleteness cannot earn a strategic WAIT. Optional
+ * research scope is deliberately excluded by the caller. */
+export function productionScanDecisionStatus(input:{
+  readonly completeness:import('./shadow-evidence-runtime.js').ScanCompleteness;
+  readonly globalWaitEarned:boolean;readonly actionPlansReady:number;
+  readonly requiredProviderBlockers:readonly string[];
+}) {
+  const blocked=input.requiredProviderBlockers.length>0||input.completeness!=='COMPLETE';
+  return {
+    completeness:input.requiredProviderBlockers.length>0?'PARTIAL' as const:input.completeness,
+    globalWaitEarned:!blocked&&input.globalWaitEarned,
+    finalAction:blocked?'SYSTEM_HOLD' as const:input.actionPlansReady>0?'ACTION_READY' as const
+      :input.globalWaitEarned?'WAIT' as const:'SYSTEM_HOLD' as const,
+  };
+}

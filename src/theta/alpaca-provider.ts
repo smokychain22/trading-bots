@@ -139,8 +139,31 @@ const optionalProviderRow = (value: unknown, operation: string): Record<string, 
 };
 
 export async function fetchMasterAccountSnapshot(config: AlpacaProviderConfig, receivedAt: string): Promise<MasterAccountSnapshot> {
+  return normalizeMasterAccount(await fetchAccountBody(config),receivedAt);
+}
+
+async function fetchAccountBody(config: AlpacaProviderConfig):Promise<Record<string,unknown>> {
   const fetchImpl = config.fetchImpl ?? fetch;
-  const body = providerRow(await requestJson(fetchImpl, new URL('/v2/account', config.tradingApiBase), authHeaders(config), config.requestTimeoutMs), '/v2/account');
+  return providerRow(await requestJson(fetchImpl, new URL('/v2/account', config.tradingApiBase), authHeaders(config), config.requestTimeoutMs), '/v2/account');
+}
+
+/** Server-side persistence context only. Raw identity stays out of the public
+ * snapshot. Uses the same bounded GET/parser as the ordinary account read. */
+export async function fetchMasterAccountEvidence(config:AlpacaProviderConfig,
+  clock:()=>string=()=>new Date().toISOString()):Promise<{
+    readonly providerAccountId:string;readonly requestedAt:string;readonly snapshot:MasterAccountSnapshot;
+  }> {
+  const requestedAt=clock();
+  const body=await fetchAccountBody(config);
+  const receivedAt=clock();
+  if(!Number.isFinite(Date.parse(requestedAt))||!Number.isFinite(Date.parse(receivedAt))
+    ||Date.parse(receivedAt)<Date.parse(requestedAt))throw new Error('ALPACA_ACCOUNT_RECEIPT_TIME_INVALID');
+  const providerAccountId=nonEmptyString(body.id);
+  if(providerAccountId===null)throw new AlpacaProviderError('MALFORMED_RESPONSE',null,'MASTER_ACCOUNT_IDENTITY_UNKNOWN');
+  return {providerAccountId,requestedAt,snapshot:normalizeMasterAccount(body,receivedAt)};
+}
+
+function normalizeMasterAccount(body:Record<string,unknown>,receivedAt:string):MasterAccountSnapshot {
   const accountId = asStringOrNull(body.id);
   return {
     accountStatus: asStringOrNull(body.status),

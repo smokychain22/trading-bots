@@ -506,6 +506,23 @@ function normalizeOneEntry(raw: Record<string, unknown>, retrievedAt: string): N
   };
 }
 
+function normalizeUniqueChainRows(rows:Record<string,unknown>[],retrievedAt:string):NormalizedOptionomicsEntry[]|null {
+  const entries:NormalizedOptionomicsEntry[]=[],seen=new Map<string,string>();
+  for(const row of rows){
+    const entry=normalizeOneEntry(row,retrievedAt);
+    const identity=entry.rawSymbol??(entry.underlying!==null&&entry.expiration!==null
+      &&entry.optionType!==null&&entry.strike!==null
+      ?JSON.stringify([entry.underlying,entry.expiration,entry.optionType,entry.strike]):null);
+    if(identity!==null){
+      const fingerprint=JSON.stringify(entry),prior=seen.get(identity);
+      if(prior!==undefined){if(prior!==fingerprint)return null;continue;}
+      seen.set(identity,fingerprint);
+    }
+    entries.push(entry);
+  }
+  return entries;
+}
+
 /**
  * Fetches and normalizes one underlying's option chain from Optionomics'
  * documented GET /api/v1/stocks/{symbol}/options endpoint. Returns a
@@ -555,9 +572,12 @@ export async function fetchOptionomicsOptionChain(
         return { kind: 'VALUE_UNKNOWN_AFTER_SUCCESS', httpStatus, retrievedAt,
           detail: `${url.pathname} returned an options array with malformed rows; completeness cannot be asserted.` };
       }
+      const entries=normalizeUniqueChainRows(wrapped as Record<string,unknown>[],retrievedAt);
+      if(entries===null)return {kind:'VALUE_UNKNOWN_AFTER_SUCCESS',httpStatus,retrievedAt,
+        detail:'OPTIONOMICS_CHAIN_DUPLICATE_CONFLICT'};
       return {
         kind: 'VALUE_PRESENT',
-        value: { ...provenance, responseHash: hashRawPayload(body), rawPayload: sanitizeProviderPayload(body, config), entries: (wrapped as Record<string, unknown>[]).map((e) => normalizeOneEntry(e, retrievedAt)), pagesFetched: 1, complete: true },
+        value: { ...provenance, responseHash: hashRawPayload(body), rawPayload: sanitizeProviderPayload(body, config), entries, pagesFetched: 1, complete: true },
         httpStatus,
         retrievedAt,
       };
@@ -566,9 +586,12 @@ export async function fetchOptionomicsOptionChain(
       return { kind: 'VALUE_UNKNOWN_AFTER_SUCCESS', httpStatus, retrievedAt,
         detail: `${url.pathname} returned an options array with malformed rows; completeness cannot be asserted.` };
     }
+    const entries=normalizeUniqueChainRows(body as Record<string,unknown>[],retrievedAt);
+    if(entries===null)return {kind:'VALUE_UNKNOWN_AFTER_SUCCESS',httpStatus,retrievedAt,
+      detail:'OPTIONOMICS_CHAIN_DUPLICATE_CONFLICT'};
     return {
       kind: 'VALUE_PRESENT',
-      value: { ...provenance, responseHash: hashRawPayload(body), rawPayload: sanitizeProviderPayload(body, config), entries: (body as Record<string, unknown>[]).map((e) => normalizeOneEntry(e, retrievedAt)), pagesFetched: 1, complete: true },
+      value: { ...provenance, responseHash: hashRawPayload(body), rawPayload: sanitizeProviderPayload(body, config), entries, pagesFetched: 1, complete: true },
       httpStatus,
       retrievedAt,
     };
