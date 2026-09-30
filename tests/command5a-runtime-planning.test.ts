@@ -49,6 +49,10 @@ test('one invalid frontier does not starve later immutable frontiers in the same
     { state: 'PROCESSED', value: 'GOOD' },
   ]);
   assert.equal(command5aSafeFailureCode(new Error('unsafe detail')), 'COMMAND5A_UNCLASSIFIED_FAILURE');
+  assert.equal(command5aSafeFailureCode(Object.assign(new Error('quota'), { code: '53000' })),
+    'COMMAND5A_POSTGRES_RESOURCE_LIMIT');
+  assert.equal(command5aSafeFailureCode(Object.assign(new Error('locked'), { code: 'SQLITE_BUSY' })),
+    'COMMAND5A_SQLITE_BUSY');
   assert.equal(command5aPageFailureDisposition('FRONTIER_ARCHIVE_INVALID'), 'TERMINAL_IMMUTABLE_SKIP');
   assert.equal(command5aPageFailureDisposition('COMMAND5A_UNCLASSIFIED_FAILURE'), 'RETRY_REQUIRED');
   assert.equal(command5aPageFailureDisposition('LOCAL_OBSERVATION_JOB_IDENTITY_CONFLICT'), 'RETRY_REQUIRED');

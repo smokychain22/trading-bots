@@ -7,7 +7,7 @@ import { projectCanonicalStrategyEvidence } from '../theta/postgres-theta-cycle-
 import { decodeCycleEvidenceArchive } from '../theta/postgres-cycle-evidence-storage.js';
 import { LocalResearchHistorySpool, type LocalResearchBatchReceipt } from './local-research-history-spool.js';
 
-export const canonicalFrontierLocalArchiveVersion = 'theta-canonical-frontier-local-archive-v2' as const;
+export const canonicalFrontierLocalArchiveVersion = 'theta-canonical-frontier-local-archive-v3' as const;
 
 interface FrontierRow {
   readonly frontier_id: string;
@@ -31,6 +31,10 @@ export interface CanonicalFrontierArchiveReport {
   readonly researchRowCount: number;
   readonly reproducibleHashCount: number;
   readonly legacyEmbeddedHashCount: number;
+  /** Only the newly written bounded batch is re-read on this worker pass.
+   * Full-history verification belongs to the separate storage certificate. */
+  readonly verifiedBatchCount: number;
+  readonly historicalIntegrity: 'NOT_RECHECKED_IN_WORKER';
   readonly pendingParquetBatchCount: number;
   readonly sourceFrontierCount: number;
   readonly backlogStart: number;
@@ -158,8 +162,9 @@ export async function archiveCanonicalStrategyFrontiers(input: {
       if (batch.hashVerification === 'REPRODUCIBLE_PERSISTED_JSON') reproducibleHashCount += 1;
       else legacyEmbeddedHashCount += 1;
     }
-    const verification = spool.verify();
-    if (!verification.valid) throw new Error('LOCAL_ARCHIVE_SQLITE_VERIFICATION_FAILED');
+    for (const receipt of receipts) {
+      if (!spool.verifyBatch(receipt.batchId)) throw new Error('LOCAL_ARCHIVE_SQLITE_VERIFICATION_FAILED');
+    }
     const coverageComplete = backlogStart <= receipts.length;
     const backlogEnd = Math.max(0, backlogStart - receipts.length);
     const remaining = missing.slice(receipts.length);
@@ -177,6 +182,8 @@ export async function archiveCanonicalStrategyFrontiers(input: {
       researchRowCount,
       reproducibleHashCount,
       legacyEmbeddedHashCount,
+      verifiedBatchCount: receipts.length,
+      historicalIntegrity: 'NOT_RECHECKED_IN_WORKER',
       pendingParquetBatchCount: stats.pendingParquetBatchCount,
       sourceFrontierCount: identities.rows.length,
       backlogStart,

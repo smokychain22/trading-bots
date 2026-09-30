@@ -115,7 +115,7 @@ export interface FirstPaperOrderReadinessInput {
 }
 
 export interface FirstPaperOrderReadinessReceipt extends FirstPaperOrderReadinessInput {
-  readonly receiptVersion: 'theta-first-paper-order-readiness-v2';
+  readonly receiptVersion: 'theta-first-paper-order-readiness-v3';
   readonly receiptHash: string;
   /** Compatibility field. Its canonical meaning is operational blockers only. */
   readonly blockers: readonly string[];
@@ -129,6 +129,33 @@ export interface FirstPaperOrderReadinessReceipt extends FirstPaperOrderReadines
   readonly masterPaperOrders: 0;
   readonly followerPaperOrders: 0;
   readonly liveOrders: 0;
+}
+
+export interface PreAuthorizationFirstPaperReadiness {
+  readonly authority: 'READ_ONLY_DIAGNOSTIC';
+  readonly nonOwnerOperationallyReady: boolean;
+  readonly nonOwnerOperationalBlockers: readonly string[];
+  readonly ownerLockBlockers: readonly string[];
+  readonly empiricalBlockers: readonly string[];
+  readonly orderSubmissionAuthorized: false;
+}
+
+/** Shows whether anything besides the intentional owner locks still blocks a
+ * bounded Paper canary. It never changes the actual readiness or mutation gate. */
+export function buildPreAuthorizationFirstPaperReadiness(
+  receipt: FirstPaperOrderReadinessReceipt,
+): PreAuthorizationFirstPaperReadiness {
+  const ownerLocks = new Set(['OWNER_PAPER_AUTHORIZATION_NOT_GRANTED', 'NEW_ENTRIES_PAUSED']);
+  const ownerLockBlockers = receipt.operationalBlockers.filter((code) => ownerLocks.has(code));
+  const nonOwnerOperationalBlockers = receipt.operationalBlockers.filter((code) => !ownerLocks.has(code));
+  return {
+    authority: 'READ_ONLY_DIAGNOSTIC',
+    nonOwnerOperationallyReady: nonOwnerOperationalBlockers.length === 0,
+    nonOwnerOperationalBlockers,
+    ownerLockBlockers,
+    empiricalBlockers: receipt.empiricalBlockers,
+    orderSubmissionAuthorized: false,
+  };
 }
 
 const PAPER_HOST = 'https://paper-api.alpaca.markets';
@@ -240,6 +267,10 @@ export function buildFirstPaperOrderReadinessReceipt(input: FirstPaperOrderReadi
   if (bid !== null && ask !== null && limit !== null && (limit < bid || limit > ask)) blockers.push('LIMIT_OUTSIDE_BBO');
   if (quoteAge !== null && (!Number.isFinite(quoteAge) || quoteAge < 0 || quoteAge > input.quote.maximumAgeSeconds)) blockers.push('QUOTE_STALE');
   if (!input.quote.bid.source.trim() || input.quote.bid.source !== input.quote.ask.source) blockers.push('QUOTE_PROVENANCE_INCONSISTENT');
+  if (input.quote.bid.state === 'GOOD' && input.quote.ask.state === 'GOOD'
+    && (!/^ALPACA(?:_|$)/.test(input.quote.bid.source) || !/^ALPACA(?:_|$)/.test(input.quote.ask.source))) {
+    blockers.push('EXECUTION_QUOTE_SOURCE_NOT_ALPACA');
+  }
   const paperIndicative = feed === 'PAPER_INDICATIVE_REFERENCE';
   if (feed !== null && !['CONSOLIDATED_NBBO', 'TRUSTED_TWO_SIDED_ORDER_PRICING', 'PAPER_INDICATIVE_REFERENCE'].includes(feed)) blockers.push('ORDER_PRICING_SEMANTICS_NOT_PROVEN');
   if (providerAuthenticated === false) blockers.push('QUOTE_PROVIDER_NOT_AUTHENTICATED');
@@ -327,7 +358,7 @@ export function buildFirstPaperOrderReadinessReceipt(input: FirstPaperOrderReadi
   const managementPolicyPromotionStatus = managementPromotion === 'READY'
     ? 'READY' as const : 'NOT_PROMOTED_UNAVAILABLE' as const;
   const base = {
-    receiptVersion: 'theta-first-paper-order-readiness-v2' as const,
+    receiptVersion: 'theta-first-paper-order-readiness-v3' as const,
     ...input,
     blockers: operationalBlockers,
     operationalBlockers,

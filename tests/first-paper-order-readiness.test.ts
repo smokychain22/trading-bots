@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  buildFirstPaperOrderReadinessReceipt, type Evidence, type FirstPaperOrderReadinessInput,
+  buildFirstPaperOrderReadinessReceipt, buildPreAuthorizationFirstPaperReadiness,
+  type Evidence, type FirstPaperOrderReadinessInput,
 } from '../src/theta/first-paper-order-readiness.js';
 
 const now = '2026-09-12T14:30:00.000Z';
@@ -69,6 +70,35 @@ test('complete evidence produces a deterministic YES receipt while every order c
   assert.match(first.receiptHash, /^[0-9a-f]{64}$/);
   assert.equal(first.operations.workerMode, 'LOCAL_LAPTOP');
   assert.deepEqual([first.masterPaperOrders, first.followerPaperOrders, first.liveOrders], [0, 0, 0]);
+});
+
+test('qualified research quotes cannot become first-Paper executable BBO authority', () => {
+  const input = validInput();
+  const researchQuote = good(1.20, 'OPTIONOMICS');
+  const receipt = buildFirstPaperOrderReadinessReceipt({ ...input,
+    quote: { ...input.quote, bid: researchQuote, ask: good(1.30, 'OPTIONOMICS') },
+  });
+  assert.equal(receipt.readyForFirstPaperOrder, 'NO');
+  assert.ok(receipt.operationalBlockers.includes('EXECUTION_QUOTE_SOURCE_NOT_ALPACA'));
+  const impersonated = buildFirstPaperOrderReadinessReceipt({ ...input,
+    quote: { ...input.quote, bid: good(1.2, 'ALPACAX'), ask: good(1.3, 'ALPACAX') },
+  });
+  assert.ok(impersonated.operationalBlockers.includes('EXECUTION_QUOTE_SOURCE_NOT_ALPACA'));
+});
+
+test('pre-authorization view removes only intentional owner locks and cannot authorize an order', () => {
+  const input = validInput();
+  const locked = buildFirstPaperOrderReadinessReceipt({ ...input,
+    operations: { ...input.operations, ownerAuthorization: 'NOT_GRANTED', newEntriesPaused: good(true),
+      emergencyExecutionLock: good(true) },
+  });
+  const view = buildPreAuthorizationFirstPaperReadiness(locked);
+  assert.deepEqual(view.ownerLockBlockers,
+    ['NEW_ENTRIES_PAUSED', 'OWNER_PAPER_AUTHORIZATION_NOT_GRANTED']);
+  assert.ok(view.nonOwnerOperationalBlockers.includes('EMERGENCY_EXECUTION_LOCKED'));
+  assert.equal(view.nonOwnerOperationallyReady, false);
+  assert.equal(view.orderSubmissionAuthorized, false);
+  assert.equal(locked.readyForFirstPaperOrder, 'NO');
 });
 
 test('UNKNOWN inputs remain explicit blockers and never become zero', () => {

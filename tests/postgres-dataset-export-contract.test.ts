@@ -1,7 +1,44 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Pool } from 'pg';
-import { PostgresDatasetExporter } from '../src/research/postgres-dataset-export.js';
+import { PostgresDatasetExporter, researchExportSafeFailureCode } from '../src/research/postgres-dataset-export.js';
+
+test('research export failures remain typed without exposing provider diagnostics', () => {
+  assert.equal(researchExportSafeFailureCode(Object.assign(new Error('quota detail'), { code: '53000' })),
+    'RESEARCH_EXPORT_POSTGRES_RESOURCE_LIMIT');
+  assert.equal(researchExportSafeFailureCode(new Error('postgres://user:secret@host')),
+    'RESEARCH_EXPORT_UNCLASSIFIED_FAILURE');
+  assert.equal(researchExportSafeFailureCode(new Error('NO_POINT_IN_TIME_EVIDENCE_TO_EXPORT')),
+    'NO_POINT_IN_TIME_EVIDENCE_TO_EXPORT');
+});
+
+test('latest export bounds the source to one UTC decision day instead of all history', async () => {
+  const statements: string[] = [];
+  const parameters: unknown[][] = [];
+  const pool = {
+    query: async (sql: string, values?: unknown[]) => {
+      statements.push(sql);
+      parameters.push(values ?? []);
+      return statements.length === 1
+        ? { rows: [{ latest: new Date('2026-09-29T23:59:59.000Z') }] }
+        : { rows: [{ rows: 7 }] };
+    },
+  } as unknown as Pool;
+  assert.deepEqual(await new PostgresDatasetExporter(pool).newestEvidenceWindow(), {
+    start: '2026-09-29T00:00:00.000Z', end: '2026-09-30T00:00:00.000Z', rows: 7,
+  });
+  assert.match(statements[0] ?? '', /ORDER BY decision_time DESC LIMIT 1/);
+  assert.deepEqual(parameters[1], ['2026-09-29T00:00:00.000Z', '2026-09-30T00:00:00.000Z']);
+  assert.doesNotMatch(statements.join('\n'), /min\(decision_time\)/i);
+});
+
+test('latest export preserves no-evidence and invalid-timestamp states', async () => {
+  const empty = { query: async () => ({ rows: [{ latest: null }] }) } as unknown as Pool;
+  assert.equal(await new PostgresDatasetExporter(empty).newestEvidenceWindow(), null);
+  const invalid = { query: async () => ({ rows: [{ latest: 'invalid' }] }) } as unknown as Pool;
+  await assert.rejects(new PostgresDatasetExporter(invalid).newestEvidenceWindow(),
+    /LATEST_DATASET_DECISION_TIME_INVALID/);
+});
 
 test('Production exporter emits the stable camel-case research wire contract', async () => {
   const statements: string[] = [];

@@ -294,6 +294,10 @@ export function projectCycleEvidenceForPostgres(cycle: ThetaShadowCycleResult): 
     snapshot: fullSnapshot,
     strategyFrontier: cycle.strategyFrontier,
     thetaQ: cycle.orchestration?.thetaQ ?? null,
+    // Preserve each assessed finalist's own risk result. The representative
+    // assessment and frontier blocker codes cannot reconstruct a four-finalist
+    // family matrix after the cycle has ended.
+    aegisByCandidateId: cycle.orchestration?.aegisByCandidateId ?? {},
     decisionReceipt: cycle.orchestration?.receipt ?? null,
     shadowOpportunities: cycle.orchestration?.shadowOpportunities ?? [],
     // Phase 1 Zero-Unknown Reclosure Pass 3 (T0 replay wiring, item 4): the

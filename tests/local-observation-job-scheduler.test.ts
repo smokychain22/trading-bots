@@ -187,6 +187,22 @@ test('scheduler health distinguishes an empty queue from current future work', (
   } finally { scheduler.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
+test('read-only health inspection does not initialize or mutate the scheduler', () => {
+  const root = mkdtempSync(join(tmpdir(), 'theta-observation-jobs-'));
+  const path = join(root, 'jobs.sqlite');
+  try {
+    assert.throws(() => new LocalObservationJobScheduler(path, { readOnly: true }));
+    const writer = new LocalObservationJobScheduler(path);
+    writer.schedule({ job: scheduledJob(), sourceSha: 'b'.repeat(40), workerSha: 'b'.repeat(40) });
+    const reader = new LocalObservationJobScheduler(path, { readOnly: true });
+    try {
+      assert.equal(reader.health({ asOf: '2026-09-25T14:40:00Z' }).jobCount, 1);
+      assert.throws(() => reader.advanceSourceCursor({ readyAt: '2026-09-25T14:00:00Z',
+        frontierId: '11111111-1111-4111-8111-111111111111' }));
+    } finally { reader.close(); writer.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('frontier source cursor survives restart and can only advance', () => {
   const root = mkdtempSync(join(tmpdir(), 'theta-observation-jobs-'));
   const path = join(root, 'jobs.sqlite');

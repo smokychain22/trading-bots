@@ -33,11 +33,14 @@ test('Windows owner schedules, observes, and matures Command-5A through the immu
   assert.match(source, /Invoke-ThetaBoundedProcess[\s\S]{0,220}theta-research-export\.ts/);
   assert.match(source, /Invoke-ThetaBoundedProcess[\s\S]{0,220}theta-storage-audit\.ts/);
   assert.match(source, /Invoke-ThetaBoundedProcess[\s\S]{0,260}archive-canonical-strategy-frontiers\.ts/);
+  assert.match(source, /"--source-sha=\$\(\$runtime\.buildSha\)",'--limit=1'/);
   assert.match(source, /Invoke-ThetaBoundedProcess[\s\S]{0,180}theta-no-submit-probe\.ts/);
   assert.match(source, /Invoke-ThetaBoundedProcess[\s\S]{0,200}write-local-runtime-receipt\.mjs/);
   assert.doesNotMatch(source, /& node (?:--import|--env-file|tools\/)/);
   assert.doesNotMatch(source, /if \(\$report\.reconciliation\.marketOpen -eq \$true\) \{[\s\S]{0,120}theta-command5a-runtime\.ts[\s\S]{0,100}--mode=observe/);
   assert.match(source, /\$command5aSince = \[string\]\$runtime\.installedAt/);
+  assert.match(source, /"--since=\$command5aSince",'--limit=8'/);
+  assert.doesNotMatch(source, /"--since=\$command5aSince",'--limit=250'/);
   assert.doesNotMatch(source, /command5aSince\s*=.*AddMinutes\(-90\)/);
   assert.match(command5aRuntime, /GREATEST\(f\.created_at,d\.decided_at\) AS ready_at/);
   assert.match(command5aRuntime, /scheduler\.sourceCursor\(\)/);

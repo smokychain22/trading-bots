@@ -150,11 +150,14 @@ function persistState(database: DatabaseSync, row: JobRow, state: ObservationJob
 export class LocalObservationJobScheduler {
   private readonly database: DatabaseSync;
 
-  constructor(path = '.theta-local-worker/research-spool/theta-observation-jobs.sqlite') {
+  constructor(path = '.theta-local-worker/research-spool/theta-observation-jobs.sqlite',
+    options: { readonly readOnly?: boolean } = {}) {
     const databasePath = resolve(path);
-    mkdirSync(dirname(databasePath), { recursive: true });
-    this.database = new DatabaseSync(databasePath);
-    this.database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;');
+    if (!options.readOnly) mkdirSync(dirname(databasePath), { recursive: true });
+    this.database = new DatabaseSync(databasePath, { readOnly: options.readOnly === true });
+    this.database.exec('PRAGMA busy_timeout=5000;');
+    if (options.readOnly) return;
+    this.database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
     this.database.exec(`CREATE TABLE IF NOT EXISTS observation_job(
       observation_job_id TEXT PRIMARY KEY,
       subject_id TEXT NOT NULL,

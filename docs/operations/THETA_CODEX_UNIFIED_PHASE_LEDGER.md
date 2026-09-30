@@ -270,6 +270,28 @@ percent win-rate claim follows from source completeness. Full evidence is in
 `FOLLOWER_PAPER_EXECUTION_ENABLED=false`, `PAPER_PAUSE_NEW_ORDERS=true`,
 `LIVE_AUTHORIZATION=NOT_GRANTED`.
 
+## 2026-09-30 overnight correction, source candidate only
+
+The 2026-09-29 current-worker evidence remains separate from this branch's
+source corrections. The supported-session run on the older release reached
+candidate-bound AEGIS and returned `GLOBAL_WAIT` after four assessed finalists
+were vetoed. Its family-level four-finalist matrix has not been reconstructed
+from Production because Aiven currently returns SQLSTATE `53000`. The result
+must not be relabeled a current-release strategy decision. The newer locked
+worker has not produced a supported-session cycle.
+
+The overnight branch bounds Command-5A scheduling and local frontier archiving
+per worker invocation, limits `--latest` research export to the newest UTC
+decision day, preserves each assessed finalist's AEGIS result in future cycle
+archives, and removes Optionomics research qualification from the first-Paper
+executable-quote authority. These are source changes until exact CI and a
+governed locked cutover prove runtime behavior. Local Command-5A already has
+overdue and missed jobs. Later current snapshots cannot be substituted for
+the missed observation targets. Full details and blockers are in
+`docs/operations/THETA_OVERNIGHT_2026_09_30_RECEIPT.md`.
+
+`READY_FOR_FIRST_PAPER=NO`. Master and follower execution remain locked.
+
 ## Phase 7 locked-runtime readiness source pass, 2026-09-29
 
 The Phase-7 audit removed four false readiness claims. A blocked event-safety

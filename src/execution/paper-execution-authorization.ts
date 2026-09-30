@@ -232,13 +232,13 @@ export class PostgresPaperExecutionAuthorizationStore{
           WHERE version='061_paper_execution_control_normalization') AS required_schema_baseline_present,
         (EXISTS(SELECT 1 FROM core.provider_capability pc JOIN core.provider_connection cn
           ON cn.provider_connection_id=pc.provider_connection_id WHERE cn.provider_code='ALPACA'
+          AND cn.environment='PAPER' AND pc.checked_at>now()-interval '1 hour'
           AND pc.capability_code IN ('OPTIONS_MARKET_DATA_OPRA','OPTIONS_MARKET_DATA_INDICATIVE','CURRENT_OPTION_SNAPSHOTS_INDICATIVE')
           AND pc.status='GOOD' AND pc.entitlement IN ('AVAILABLE','AVAILABLE_WITH_LIMITS'))
          OR EXISTS(SELECT 1 FROM research.quote_provider_qualification_receipt WHERE provider='ALPACA'
           AND semantics='PAPER_INDICATIVE_REFERENCE' AND qualified=true AND entitlement_state='QUALIFIED'
           AND attempted_at>now()-interval '1 hour')
-         OR EXISTS(SELECT 1 FROM research.optionomics_quote_qualification_run WHERE ready=true
-          AND readiness_state='READY' AND semantic_authority='ORDER_PRICING_DOCUMENTED')) AS quote_ready
+         ) AS quote_ready
         FROM ops.paper_execution_control pec WHERE pec.singleton=true FOR UPDATE`);
       if(state.rowCount!==1)throw new Error('PAPER_EXECUTION_CONTROL_MISSING');
       const row=state.rows[0] as Record<string,unknown>;

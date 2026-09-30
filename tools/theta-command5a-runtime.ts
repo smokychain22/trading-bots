@@ -248,7 +248,7 @@ function mature(): void {
 }
 
 function health(): void {
-  const scheduler = new LocalObservationJobScheduler(schedulerPath);
+  const scheduler = new LocalObservationJobScheduler(schedulerPath, { readOnly: true });
   try {
     const report = scheduler.health({ asOf: new Date().toISOString() });
     process.stdout.write(`${JSON.stringify({ state: 'COMMAND5A_HEALTH_COMPLETE', ...report,

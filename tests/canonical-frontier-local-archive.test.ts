@@ -143,12 +143,15 @@ test('bounded archive runs drain oldest unspooled frontiers instead of repeating
     assert.equal(first.backlogStart, 2);
     assert.equal(first.backlogEnd, 1);
     assert.equal(first.coverageComplete, false);
+    assert.equal(first.verifiedBatchCount, 1);
+    assert.equal(first.historicalIntegrity, 'NOT_RECHECKED_IN_WORKER');
     const second = await archiveCanonicalStrategyFrontiers({
       pool, spoolPath, sourceSha: 'a'.repeat(40), since: '2026-09-25T00:00:00.000Z', limit: 1,
     });
     assert.equal(second.backlogStart, 1);
     assert.equal(second.backlogEnd, 0);
     assert.equal(second.coverageComplete, true);
+    assert.equal(second.verifiedBatchCount, 1);
     const spool = new LocalResearchHistorySpool(spoolPath);
     try { assert.equal(spool.stats().totalBatchCount, 2); } finally { spool.close(); }
   } finally { rmSync(root, { recursive: true, force: true }); }

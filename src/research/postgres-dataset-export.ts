@@ -8,17 +8,41 @@ export interface DatasetExportRequest {
 
 export interface DatasetEvidenceWindow { readonly start:string; readonly end:string; readonly rows:number; }
 
+export function researchExportSafeFailureCode(error: unknown): string {
+  const providerCode = error !== null && typeof error === 'object'
+    ? (error as { code?: unknown }).code : undefined;
+  if (providerCode === '53000') return 'RESEARCH_EXPORT_POSTGRES_RESOURCE_LIMIT';
+  if (providerCode === '57P03') return 'RESEARCH_EXPORT_POSTGRES_UNAVAILABLE';
+  if (providerCode === 'EAI_AGAIN' || providerCode === 'ENOTFOUND') return 'RESEARCH_EXPORT_NETWORK_DNS';
+  if (providerCode === 'ECONNRESET' || providerCode === 'ETIMEDOUT') return 'RESEARCH_EXPORT_NETWORK_FAILURE';
+  const message = error instanceof Error ? error.message : '';
+  return /^[A-Z][A-Z0-9_]{2,120}$/.test(message) ? message : 'RESEARCH_EXPORT_UNCLASSIFIED_FAILURE';
+}
+
 export class PostgresDatasetExporter {
   constructor(private readonly pool:Pool) {}
 
   async newestEvidenceWindow():Promise<DatasetEvidenceWindow|null> {
-    const result=await this.pool.query(`SELECT min(decision_time)::text AS start,
-      (max(decision_time) + interval '1 millisecond')::text AS "end",count(*)::int AS rows
-      FROM (SELECT decision_time FROM trade.candidate_set_evidence
-        UNION ALL SELECT decision_time FROM trade.candidate_point_in_time_evidence) evidence_window`);
-    const row=result.rows[0];
-    return row?.start&&row?.end&&Number(row.rows)>0
-      ? {start:String(row.start),end:String(row.end),rows:Number(row.rows)} : null;
+    // --latest is one UTC decision day, not the entire accumulated history.
+    // Reading every historical JSON payload on each worker cycle made the
+    // post-close export unbounded as evidence accumulated.
+    const newest=await this.pool.query(`SELECT GREATEST(
+      (SELECT decision_time FROM trade.candidate_set_evidence ORDER BY decision_time DESC LIMIT 1),
+      (SELECT decision_time FROM trade.candidate_point_in_time_evidence ORDER BY decision_time DESC LIMIT 1)
+    ) AS latest`);
+    const latest=newest.rows[0]?.latest;
+    if (latest===null||latest===undefined) return null;
+    const epoch=Date.parse(String(latest));
+    if (!Number.isFinite(epoch)) throw new Error('LATEST_DATASET_DECISION_TIME_INVALID');
+    const start=new Date(epoch).toISOString().slice(0,10)+'T00:00:00.000Z';
+    const end=new Date(Date.parse(start)+86_400_000).toISOString();
+    const counts=await this.pool.query(`SELECT
+      (SELECT count(*)::int FROM trade.candidate_set_evidence
+        WHERE decision_time >= $1 AND decision_time < $2)
+      + (SELECT count(*)::int FROM trade.candidate_point_in_time_evidence
+        WHERE decision_time >= $1 AND decision_time < $2) AS rows`,[start,end]);
+    const rows=Number(counts.rows[0]?.rows);
+    return Number.isInteger(rows)&&rows>0 ? {start,end,rows} : null;
   }
 
   async export(request:DatasetExportRequest):Promise<DatasetExportArtifact> {

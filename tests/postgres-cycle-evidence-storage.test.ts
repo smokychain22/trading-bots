@@ -103,6 +103,17 @@ test('PostgreSQL projection is bounded while compressed archive retains the comp
     'FULL_STATE_IN_COMPRESSED_CYCLE_ARCHIVE');
 });
 
+test('cycle archive preserves each finalist AEGIS result rather than only a representative state', () => {
+  const original = cycle();
+  const assessments = {
+    SPY261016P00400000: { newRiskState: 'HARD_VETO', families: [{ family: 'CORRELATION', state: 'HARD_VETO', reasons: [] }] },
+    SPY261016P00401000: { newRiskState: 'ALLOW_REDUCED', families: [{ family: 'LIQUIDITY', state: 'ALLOW_REDUCED', reasons: [] }] },
+  };
+  const expanded = { ...original, orchestration: { ...original.orchestration, aegisByCandidateId: assessments } } as unknown as ThetaShadowCycleResult;
+  const decoded = decodeCycleEvidenceArchive(projectCycleEvidenceForPostgres(expanded).archive);
+  assert.deepEqual(decoded.aegisByCandidateId, assessments);
+});
+
 test('packed archive reconstructs duplicated provider and T0 inputs exactly', () => {
   const original = cycle();
   assert.ok(original.fusionSnapshot !== null);

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   firstPaperCanaryActivationBlockers, fullyLockedPaperExecutionControl, resolveEffectivePaperExecutionControl,
@@ -60,6 +61,16 @@ const activation=()=>({activatedAt:'2026-09-18T15:00:00.000Z',runtime:{brokerAcc
 
 test('first canary activation requires every Paper-only operational gate',()=>{
   assert.deepEqual(firstPaperCanaryActivationBlockers(activation()),[]);
+});
+
+test('first canary activation cannot use Optionomics as execution quote authority', () => {
+  const source = readFileSync('src/execution/paper-execution-authorization.ts', 'utf8');
+  const quoteGate = source.slice(source.indexOf('AS required_schema_baseline_present,'),
+    source.indexOf('AS quote_ready'));
+  assert.match(quoteGate, /provider='ALPACA'/);
+  assert.match(quoteGate, /cn\.environment='PAPER'/);
+  assert.match(quoteGate, /pc\.checked_at>now\(\)-interval '1 hour'/);
+  assert.doesNotMatch(quoteGate, /optionomics_quote_qualification_run/i);
 });
 
 test('an additive migration head remains valid when the required schema baseline exists',()=>{

@@ -112,7 +112,15 @@ export function buildCommand5aCalendarRange(
 }
 
 export function command5aSafeFailureCode(error: unknown): string {
+  const providerCode = error !== null && typeof error === 'object'
+    ? (error as { code?: unknown }).code : undefined;
+  if (providerCode === 'SQLITE_BUSY' || providerCode === 'SQLITE_LOCKED') return 'COMMAND5A_SQLITE_BUSY';
+  if (providerCode === 'SQLITE_CORRUPT') return 'COMMAND5A_SQLITE_CORRUPT';
+  if (providerCode === '53000') return 'COMMAND5A_POSTGRES_RESOURCE_LIMIT';
+  if (providerCode === '57P03') return 'COMMAND5A_POSTGRES_UNAVAILABLE';
+  if (providerCode === 'EAI_AGAIN' || providerCode === 'ENOTFOUND') return 'COMMAND5A_NETWORK_DNS';
   const message = error instanceof Error ? error.message : '';
+  if (/database is locked/i.test(message)) return 'COMMAND5A_SQLITE_BUSY';
   const code = message.split(':', 1)[0] ?? '';
   return /^[A-Z][A-Z0-9_]{2,160}$/.test(code) ? code : 'COMMAND5A_UNCLASSIFIED_FAILURE';
 }

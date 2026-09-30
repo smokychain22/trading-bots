@@ -224,7 +224,7 @@ try {
             '--import','tsx','tools/theta-command5a-runtime.ts','--mode=schedule',
             "--environment-file=$productionEnvFile","--scheduler=$command5aSchedulerPath",
             "--spool=$command5aSpoolPath","--parquet-root=$command5aParquetRoot",
-            "--since=$command5aSince",'--limit=250')
+            "--since=$command5aSince",'--limit=8')
           $command5aScheduleOutput = $command5aScheduleProcess.Output
           if ($command5aScheduleProcess.State -eq 'COMPLETED' -and $command5aScheduleProcess.ExitCode -eq 0) {
             $command5aScheduleResult = $command5aScheduleOutput | Select-Object -Last 1 | ConvertFrom-Json
@@ -548,7 +548,7 @@ try {
             "--environment-file=$productionEnvFile","--sqlite=$researchSpoolPath",
             "--scheduler=$command5aSchedulerPath","--health=$researchArchiveHealthPath",
             "--parquet-root=$researchParquetRoot","--since=$($runtime.installedAt)",
-            "--source-sha=$($runtime.buildSha)",'--limit=10000')
+            "--source-sha=$($runtime.buildSha)",'--limit=1')
           $archiveOutput = $archiveProcess.Output
           if ($archiveProcess.State -eq 'COMPLETED' -and $archiveProcess.ExitCode -eq 0) {
             $archiveResult = $archiveOutput | ConvertFrom-Json

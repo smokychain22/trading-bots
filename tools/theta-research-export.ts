@@ -2,7 +2,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Pool } from 'pg';
 import { loadEnvironment } from '../src/config/environment.js';
-import { PostgresDatasetExporter } from '../src/research/postgres-dataset-export.js';
+import { PostgresDatasetExporter, researchExportSafeFailureCode } from '../src/research/postgres-dataset-export.js';
 import { buildR6ReadinessReceipt } from '../src/research/r6-readiness.js';
 import { buildResearchHandoff, hasExportableEvidence } from '../src/research/research-handoff.js';
 
@@ -68,7 +68,7 @@ async function main():Promise<void>{
 
 try { await main(); }
 catch(error){
-  const code=error instanceof Error?error.message:'RESEARCH_EXPORT_FAILED';
+  const code=researchExportSafeFailureCode(error);
   process.stdout.write(`${JSON.stringify({state:'BLOCKED',code})}\n`);
   process.exitCode=2;
 }
