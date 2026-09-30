@@ -76,9 +76,14 @@ export function canonicalFrontierResearchBatch(
   const frontier = frontierObject as unknown as CanonicalStrategyFrontier;
   const rows: unknown[] = [];
   for (const projection of projectCanonicalStrategyEvidence(frontier)) {
+    // The candidate is stored once in its own row. Embedding the full branch
+    // here repeats its entire candidate array in every row, making export
+    // quadratic and exhausting V8's maximum string length on real frontiers.
+    const { candidates: omittedCandidates, ...branchMetadata } = projection.branch;
+    void omittedCandidates;
     if (projection.candidates.length === 0) rows.push({
       recordType: 'BRANCH_WITHOUT_CANDIDATES' as const,
-      branch: projection.branch,
+      branch: branchMetadata,
       selected: false,
       candidate: null,
       frontierId: rowIdentity.frontier_id,
@@ -88,7 +93,7 @@ export function canonicalFrontierResearchBatch(
     });
     else for (const { candidate, selected } of projection.candidates) rows.push({
         recordType: 'BRANCH_CANDIDATE' as const,
-        branch: projection.branch,
+        branch: branchMetadata,
         selected,
         candidate,
         frontierId: rowIdentity.frontier_id,

@@ -58,6 +58,12 @@ test('verified canonical frontier projects into an immutable local research batc
     content_hash: value.contentHash,
   }, 'a'.repeat(40));
   assert.equal(batch.rowCount, 1);
+  const row = (batch.receiptInput.payload as Array<{ branch: Record<string, unknown>;
+    candidate: { candidateId: string }; selected: boolean }>)[0];
+  assert.equal(row?.branch.candidateCount, 1);
+  assert.equal(Object.hasOwn(row?.branch ?? {}, 'candidates'), false);
+  assert.equal(row?.candidate.candidateId, value.selectedCandidateId);
+  assert.equal(row?.selected, true);
   const root = mkdtempSync(join(tmpdir(), 'theta-frontier-archive-'));
   const spool = new LocalResearchHistorySpool(join(root, 'research.sqlite'));
   try {
@@ -69,6 +75,34 @@ test('verified canonical frontier projects into an immutable local research batc
     spool.close();
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('candidate archive payload is linear rather than repeating each full branch', () => {
+  const one = frontier();
+  const firstBranch = one.branches[0];
+  const firstCandidate = firstBranch?.candidates[0];
+  assert.ok(firstBranch && firstCandidate);
+  const candidates = Array.from({ length: 250 }, (_, index) => ({
+    ...firstCandidate, candidateId: `${firstCandidate.candidateId}-${index}`,
+  }));
+  const branch = { ...firstBranch, candidateCount: candidates.length, candidates };
+  const { contentHash: ignored, ...withoutHash } = one;
+  void ignored;
+  const base = { ...withoutHash, branches: [branch], selectedCandidateId: candidates[0]?.candidateId ?? null };
+  const expanded = { ...base, contentHash: canonicalStrategyFrontierContentHash(base) };
+  const batch = canonicalFrontierResearchBatch(expanded, {
+    frontier_id: '55555555-5555-4555-8555-555555555555',
+    fusion_snapshot_id: '66666666-6666-4666-8666-666666666666',
+    observed_at: expanded.timestamp,
+    content_hash: expanded.contentHash,
+  }, 'a'.repeat(40));
+  const rows = batch.receiptInput.payload as Array<{
+    branch: Record<string, unknown>; candidate: { candidateId: string };
+  }>;
+  assert.equal(rows.length, 250);
+  assert.ok(rows.every((row) => !Object.hasOwn(row.branch, 'candidates')));
+  assert.equal(new Set(rows.map((row) => row.candidate.candidateId)).size, 250);
+  assert.ok(Buffer.byteLength(JSON.stringify(rows)) < 2_000_000);
 });
 
 test('frontier projection preserves an explicitly represented empty branch', () => {
