@@ -83,6 +83,16 @@ test('QUANTITY MATRIX: position economics scale linearly for 0, 1, 2, 5', () => 
   }
 });
 
+test('position scaling rejects numeric overflow and nonfinite per-contract economics', () => {
+  const candidate = qCandidate();
+  for (const value of [NaN, Infinity, Number.MAX_VALUE]) {
+    const result = computeCandidatePositionEconomics({ ...candidate, economics: { ...candidate.economics, collateral: value } }, 2);
+    assert.equal(result.validity, 'INVALID_ECONOMICS');
+    assert.equal(result.positionCollateral, null);
+  }
+  assert.equal(computeCandidatePositionEconomics(candidate, Number.MAX_SAFE_INTEGER + 1).validity, 'INVALID_QUANTITY');
+});
+
 test('PROPERTY: doubling quantity doubles position max loss/profit/collateral, never changes break-even', () => {
   const candidate = qCandidate();
   const one = computeCandidatePositionEconomics(candidate, 1);

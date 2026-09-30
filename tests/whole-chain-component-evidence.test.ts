@@ -68,3 +68,20 @@ test('canonical evidence serialization and hashing are restart deterministic', (
   assert.equal(canonicalJson(value),canonicalJson(reordered));
   assert.equal(wholeChainEvidenceHash(value),wholeChainEvidenceHash(reordered));
 });
+
+test('partial stock exits require known realized proceeds even while shares remain open', () => {
+  const evidence = { ...completeEvidence(), assignmentStrike: knownField(100, asOf, source),
+    stockSharesAssigned: knownField(200, asOf, source), openStockShares: knownField(100, asOf, source),
+    currentStockMarkPerShare: knownField(105, asOf, source) };
+  assert.deepEqual(componentsFromEvidence(evidence).blockers, ['stockSaleOrCallAwayProceeds:UNKNOWN']);
+  assert.ok(componentsFromEvidence({ ...evidence, stockSaleOrCallAwayProceeds: knownField(9000, asOf, source) }).components);
+});
+
+test('KNOWN status cannot bless null nonfinite negative counts or future accounting evidence', () => {
+  for (const value of [null, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(componentsFromEvidence({ ...completeEvidence(), fees: { ...knownField(0, asOf, source), value } }).components, null);
+  }
+  assert.equal(componentsFromEvidence({ ...completeEvidence(), openStockShares: knownField(-1, asOf, source) }).components, null);
+  assert.equal(componentsFromEvidence({ ...completeEvidence(), fees: knownField(1, asOf,
+    source.map(item => ({ ...item, observedAt: '2026-09-19T15:00:00.000Z' }))) }).components, null);
+});

@@ -27,7 +27,7 @@ import type { CanonicalFrontierCandidate } from './canonical-strategy-frontier.j
 
 export const candidatePositionEconomicsVersion = 'theta-candidate-position-economics-v1' as const;
 
-export type CandidatePositionEconomicsValidity = 'VALID' | 'INVALID_QUANTITY';
+export type CandidatePositionEconomicsValidity = 'VALID' | 'INVALID_QUANTITY' | 'INVALID_ECONOMICS';
 
 export interface CandidatePositionEconomics {
   readonly contractVersion: typeof candidatePositionEconomicsVersion;
@@ -79,16 +79,22 @@ export function computeCandidatePositionEconomics(
   const perContract = candidate.economics;
   const invalidReason = !Number.isFinite(quantity)
     ? 'QUANTITY_NOT_FINITE'
-    : !Number.isInteger(quantity)
+    : !Number.isSafeInteger(quantity)
       ? 'QUANTITY_NOT_INTEGER'
       : quantity < 0
         ? 'QUANTITY_NEGATIVE'
         : null;
+  const monetary = [perContract.grossPremium, perContract.collateral, perContract.maxProfit, perContract.maxLoss,
+    perContract.modeledOpeningCosts.total, perContract.modeledOpeningCosts.netPremiumAfterOpeningCost,
+    perContract.modeledOpeningCosts.maxProfitAfterOpeningCost, perContract.modeledOpeningCosts.maxLossAfterOpeningCost];
+  const invalidEconomics = monetary.some(value => value !== null && (!Number.isFinite(value) || !Number.isFinite(value * quantity)))
+    || [perContract.breakEven, perContract.capitalDayYield].some(value => value !== null && !Number.isFinite(value));
 
-  if (invalidReason !== null) {
+  if (invalidReason !== null || invalidEconomics) {
     return {
       contractVersion: candidatePositionEconomicsVersion, candidateId: candidate.candidateId, quantity,
-      validity: 'INVALID_QUANTITY', invalidReason, perContract,
+      validity: invalidReason !== null ? 'INVALID_QUANTITY' : 'INVALID_ECONOMICS',
+      invalidReason: invalidReason ?? 'NONFINITE_OR_OVERFLOWING_ECONOMICS', perContract,
       positionGrossPremium: null, positionCollateral: null, positionMaxProfit: null, positionMaxLoss: null,
       positionModeledOpeningCost: null, positionNetPremiumAfterOpeningCost: null,
       positionMaxProfitAfterOpeningCost: null, positionMaxLossAfterOpeningCost: null,
@@ -122,7 +128,7 @@ export function computeCandidatePositionEconomics(
 // failure" rule requires: expose the facts, never the probability, never
 // treat this as itself a max-loss claim.
 export interface ShortPutAssignmentEntryExposure {
-  readonly validity: 'VALID' | 'UNKNOWN_MULTIPLIER' | 'INVALID_QUANTITY';
+  readonly validity: 'VALID' | 'UNKNOWN_MULTIPLIER' | 'INVALID_QUANTITY' | 'INVALID_ECONOMICS';
   readonly invalidReason: string | null;
   /** `multiplier * quantity`, the real share count if assigned -- never
    * assumed 100; `null` if multiplier or quantity is not a known,
@@ -146,13 +152,20 @@ export function computeShortPutAssignmentEntryExposure(input: {
   readonly quantity: number;
   readonly deliverableClassification?: 'STANDARD_EQUITY' | 'ADJUSTED' | 'UNKNOWN';
 }): ShortPutAssignmentEntryExposure {
-  if (!Number.isFinite(input.quantity) || !Number.isInteger(input.quantity) || input.quantity < 0) {
+  if (!Number.isSafeInteger(input.quantity) || input.quantity < 0) {
     return { validity: 'INVALID_QUANTITY', invalidReason: 'QUANTITY_NOT_A_NONNEGATIVE_INTEGER', assignedShareCount: null, assignmentCashRequirement: null, effectiveAssignedBasisPerShare: null };
   }
   const deliverable = input.deliverableClassification ?? 'STANDARD_EQUITY';
   const standardMultiplier = deliverable === 'STANDARD_EQUITY' && Number.isFinite(input.multiplier) && Number.isInteger(input.multiplier) && input.multiplier > 0;
   if (!standardMultiplier) {
     return { validity: 'UNKNOWN_MULTIPLIER', invalidReason: `DELIVERABLE_${deliverable}_NOT_NAIVELY_CALCULABLE`, assignedShareCount: null, assignmentCashRequirement: null, effectiveAssignedBasisPerShare: null };
+  }
+  if (!Number.isFinite(input.strike) || input.strike <= 0
+    || (input.premiumPerShare !== null && (!Number.isFinite(input.premiumPerShare) || input.premiumPerShare < 0))
+    || !Number.isSafeInteger(input.multiplier * input.quantity)
+    || !Number.isFinite(input.strike * input.multiplier * input.quantity)) {
+    return { validity: 'INVALID_ECONOMICS', invalidReason: 'ASSIGNMENT_INPUT_NONFINITE_NEGATIVE_OR_OVERFLOW',
+      assignedShareCount: null, assignmentCashRequirement: null, effectiveAssignedBasisPerShare: null };
   }
   return {
     validity: 'VALID', invalidReason: null,

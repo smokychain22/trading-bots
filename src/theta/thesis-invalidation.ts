@@ -1,7 +1,8 @@
 import type { ManagementInputState } from './management-input-state.js';
 import { buildLossStateVector, type LossStateVector } from './loss-state-vector.js';
+import { riskStateSchema } from './aegis-contract.js';
 
-export const thesisInvalidationVersion = 'theta-thesis-invalidation-v1' as const;
+export const thesisInvalidationVersion = 'theta-thesis-invalidation-v2' as const;
 
 /**
  * Separates PRICE_LOSS (the position's current mark is unfavorable) from
@@ -34,6 +35,8 @@ export interface ThesisInvalidationAssessment {
   readonly uninterpretedSignals: readonly string[];
   readonly uncertaintyNote: string;
   readonly lossState: LossStateVector;
+  readonly originalEntryThesisHash: string | null;
+  readonly entryBreakEvenBreached: boolean | null;
 }
 
 function finite(value: number | null): value is number {
@@ -41,6 +44,7 @@ function finite(value: number | null): value is number {
 }
 
 function eventStateLabel(eventState: unknown): string | null {
+  if (typeof eventState === 'string') return eventState;
   if (eventState !== null && typeof eventState === 'object' && !Array.isArray(eventState) && 'state' in eventState) {
     const value = (eventState as Record<string, unknown>).state;
     return typeof value === 'string' ? value : null;
@@ -70,22 +74,39 @@ function priceStructureBroken(state: ManagementInputState): boolean | null {
 
 export function assessThesisInvalidation(state: ManagementInputState): ThesisInvalidationAssessment {
   const lossState = buildLossStateVector(state);
+  const originalThesis = state.originalEntryThesis?.state === 'VERIFIED' ? state.originalEntryThesis.receipt : null;
   const lossDollars = priceLossDollars(state);
   const priceLossKnown = lossDollars !== null;
   const structureBroken = priceStructureBroken(state);
 
   const thesisFailureSignals: string[] = [];
   const uninterpretedSignals: string[] = [];
+  if (originalThesis === null) uninterpretedSignals.push(state.originalEntryThesis?.reason ?? 'ORIGINAL_ENTRY_THESIS_UNAVAILABLE');
+  // Breaching original break-even is descriptive price evidence, never proof
+  // of structural thesis failure and never an independent close instruction.
+  const entryBreakEvenBreached = originalThesis !== null && finite(state.market.spot)
+    ? state.market.spot < originalThesis.breakEven : null;
 
   if (structureBroken === true) thesisFailureSignals.push('PRICE_STRUCTURE_BREAK_ITM_AGAINST_SHORT_PREMIUM_THESIS');
   if (state.context.aegisState === 'HARD_VETO') thesisFailureSignals.push('AEGIS_HARD_VETO');
-  else if (typeof state.context.aegisState === 'string' && !['ALLOW_FULL', 'ALLOW_REDUCED'].includes(state.context.aegisState)) {
+  else if (riskStateSchema.safeParse(state.context.aegisState).success
+    && typeof state.context.aegisState === 'string' && !['ALLOW_FULL', 'ALLOW_REDUCED'].includes(state.context.aegisState)) {
     thesisFailureSignals.push(`AEGIS_STATE_ADVERSE_${state.context.aegisState}`);
+  } else if (state.context.aegisState !== null && !riskStateSchema.safeParse(state.context.aegisState).success) {
+    uninterpretedSignals.push('AEGIS_STATE_UNQUALIFIED');
   }
-  if (state.context.dividendExDateState !== null) thesisFailureSignals.push('DIVIDEND_EX_DATE_RISK_PRESENT');
+  // Presence of an event object/date is not a qualified adverse event. Use
+  // the existing tri-state semantics, retaining unknown/opaque evidence.
+  // The action frontier still enforces its own required-evidence safety.
+  const safeLabels = new Set(['CLEAR', 'ABSENT_VERIFIED', 'NOT_APPLICABLE']);
+  const dividendLabel = eventStateLabel(state.context.dividendExDateState);
+  if (dividendLabel === 'PRESENT') thesisFailureSignals.push('DIVIDEND_EX_DATE_RISK_PRESENT');
+  else if (state.context.dividendExDateState !== null && !safeLabels.has(dividendLabel ?? ''))
+    uninterpretedSignals.push('DIVIDEND_STATE_UNQUALIFIED');
   const eventLabel = eventStateLabel(state.context.eventState);
-  if (eventLabel !== null && eventLabel !== 'CLEAR') thesisFailureSignals.push(`EVENT_STATE_${eventLabel}`);
+  if (eventLabel === 'PRESENT' || eventLabel === 'EARNINGS_IMMINENT') thesisFailureSignals.push(`EVENT_STATE_${eventLabel}`);
   else if (state.context.eventState !== null && eventLabel === null) uninterpretedSignals.push('EVENT_STATE_SHAPE_UNRECOGNIZED');
+  else if (eventLabel !== null && !safeLabels.has(eventLabel)) uninterpretedSignals.push('EVENT_STATE_UNQUALIFIED');
 
   // These context fields have no codebase-verified sub-schema this module
   // can safely interpret -- their presence is reported, never their
@@ -111,5 +132,6 @@ export function assessThesisInvalidation(state: ManagementInputState): ThesisInv
     contractVersion: thesisInvalidationVersion, asOf: state.observedAt,
     priceLossKnown, priceLossDollars: lossDollars, priceStructureBroken: structureBroken,
     classification, thesisFailureSignals, uninterpretedSignals, uncertaintyNote, lossState,
+    originalEntryThesisHash: originalThesis?.immutableHash ?? null, entryBreakEvenBreached,
   };
 }

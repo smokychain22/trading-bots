@@ -1,7 +1,7 @@
 import type { ManagementInputState } from './management-input-state.js';
 import { computeEffectiveStockBasis, type WholeChainComponents } from './whole-chain-economics.js';
 
-export const recoveryStateVersion = 'theta-recovery-state-v1' as const;
+export const recoveryStateVersion = 'theta-recovery-state-v2' as const;
 
 /**
  * A structured state vector for an assigned/held stock position deciding
@@ -89,6 +89,9 @@ export interface RecoveryState {
    * it, so this is never silently conflated with a canonical P&L figure.
    */
   readonly capitalOpportunityCostDollars: number | null;
+  /** Elapsed cost above is historical context, never a avoidable forward cost. */
+  readonly forwardOpportunityCostDollars: number | null;
+  readonly forwardHorizonDays: number | null;
   readonly capitalBasisSource: BasisSource;
   readonly portfolioBurdenDataPresent: boolean;
   readonly dataCompleteness: {
@@ -104,8 +107,8 @@ function finite(value: number | null): value is number {
 function daysBetween(fromIso: string | null, toIso: string): number | null {
   if (fromIso === null) return null;
   const from = Date.parse(fromIso), to = Date.parse(toIso);
-  if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
-  return Math.max(0, (to - from) / 86_400_000);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from > to) return null;
+  return (to - from) / 86_400_000;
 }
 
 function fraction(mark: number | null, basis: number | null): number | null {
@@ -132,6 +135,7 @@ function fraction(mark: number | null, basis: number | null): number | null {
 export function buildRecoveryState(
   state: ManagementInputState, assignedAtObservedAt: string | null = null, annualOpportunityCostRate: number | null = null,
   wholeChainComponents: WholeChainComponents | null = null,
+  forwardHorizonDays: number | null = null,
 ): RecoveryState {
   const { stockBasisPerShare, stockMarkPerShare, openStockShares } = state.economics;
   const canonicalBasis = wholeChainComponents === null ? null : computeEffectiveStockBasis(wholeChainComponents);
@@ -158,13 +162,21 @@ export function buildRecoveryState(
   // `capitalBasisSource` names which one, so it is never silently
   // conflated with a canonical whole-chain P&L claim.
   const capitalBasisReference = canonicalEffectiveBasisPerShare ?? recordedLotBasisReferencePerShare;
-  const capitalLocked = finite(capitalBasisReference) && openStockShares > 0 ? capitalBasisReference * openStockShares : null;
-  const capitalOpportunityCostDollars = capitalLocked !== null && capitalDaysSoFar !== null && annualOpportunityCostRate !== null
+  const capitalLocked = finite(capitalBasisReference) && capitalBasisReference >= 0 && finite(openStockShares) && openStockShares > 0
+    ? capitalBasisReference * openStockShares : null;
+  const validRate = finite(annualOpportunityCostRate) && annualOpportunityCostRate >= 0;
+  const rawOpportunityCost = finite(capitalLocked) && capitalDaysSoFar !== null && validRate
     ? capitalLocked * annualOpportunityCostRate * (capitalDaysSoFar / 365) : null;
+  const capitalOpportunityCostDollars = finite(rawOpportunityCost) ? rawOpportunityCost : null;
+  const validHorizon = finite(forwardHorizonDays) && forwardHorizonDays >= 0;
+  const rawForwardCost = finite(capitalLocked) && validRate && validHorizon
+    ? capitalLocked * annualOpportunityCostRate * forwardHorizonDays / 365 : null;
+  const forwardOpportunityCostDollars = finite(rawForwardCost) ? rawForwardCost : null;
 
   const requiresCallerInput: string[] = [];
-  if (assignedAtObservedAt === null) requiresCallerInput.push('assignedAtObservedAt (for capitalDaysSoFar)');
-  if (annualOpportunityCostRate === null) requiresCallerInput.push('annualOpportunityCostRate (for capitalOpportunityCostDollars)');
+  if (capitalDaysSoFar === null) requiresCallerInput.push('assignedAtObservedAt (valid non-future time for capitalDaysSoFar)');
+  if (!validRate) requiresCallerInput.push('annualOpportunityCostRate (finite nonnegative rate for capitalOpportunityCostDollars)');
+  if (!validHorizon) requiresCallerInput.push('forwardHorizonDays (explicit prospective evaluation horizon)');
   if (wholeChainComponents === null) {
     requiresCallerInput.push(`wholeChainComponents (for the ONE canonical effective basis -- canonicalEffectiveBasisPerShare stays UNKNOWN; basisSource=${basisSource} is a lower-confidence reference only, never presented as canonical)`);
   } else if (canonicalBasis?.complete === false) {
@@ -180,6 +192,7 @@ export function buildRecoveryState(
     eventRiskPresent: state.context.eventState !== null,
     recoveryProbabilityEstimate: null, expectedRecoveryTimeDays: null, furtherDownsideEstimate: null,
     coveredCallCandidateQualityKnown: false, capitalDaysSoFar, capitalOpportunityCostDollars,
+    forwardOpportunityCostDollars, forwardHorizonDays: validHorizon ? forwardHorizonDays : null,
     capitalBasisSource: finite(capitalBasisReference) ? basisSource : 'UNKNOWN',
     portfolioBurdenDataPresent: state.context.concentration !== null,
     dataCompleteness: {

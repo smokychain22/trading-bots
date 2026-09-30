@@ -1,7 +1,7 @@
 import { computeWholeChainPnl, type WholeChainComponents } from './whole-chain-economics.js';
 import { eventRiskPenaltyContribution, isEventRiskUnknown, type EventRiskState } from './event-risk-state.js';
 
-export const coveredCallLatticeVersion = 'theta-covered-call-lattice-v2' as const;
+export const coveredCallLatticeVersion = 'theta-covered-call-lattice-v3' as const;
 
 /**
  * Evaluates ALTERNATIVE covered-call candidates (never blindly picks the
@@ -145,6 +145,13 @@ export function computeCoveredCallUtility(
   const knownComponents: string[] = [];
   const unknownComponents: string[] = ['capitalReleaseBenefit', 'recoveryBenefit', 'callAwayProbabilityProxy', 'tailRisk', 'executionUncertaintyBeyondSpread'];
   const reasons: string[] = [];
+  if ([assessment.premiumIncomeDollars, assessment.upsideSacrificedDollars, assessment.spreadDollars]
+    .some(value => value !== null && (!Number.isFinite(value) || value < 0))
+    || [weights.upsideSacrificePerDollarWeight, weights.spreadPerDollarWeight, weights.eventRiskPenalty,
+      weights.dividendExDateRiskPenalty, weights.belowBasisPenalty].some(value => !Number.isFinite(value) || value < 0)) {
+    return { utility: null, knownComponents, unknownComponents, reasons: ['UTILITY_INPUT_INVALID'],
+      weightsProvenance: weights.provenance, utilityVersion: coveredCallLatticeVersion };
+  }
   if (assessment.premiumIncomeDollars === null) {
     return {
       utility: null, knownComponents, unknownComponents, reasons: ['PREMIUM_UNKNOWN_CANNOT_RANK'],
@@ -180,7 +187,8 @@ export function computeCoveredCallUtility(
   if (assessment.belowBasis) { utility -= weights.belowBasisPenalty; reasons.push(`BELOW_BASIS_PENALTY_${weights.belowBasisPenalty.toFixed(2)}`); }
 
   return {
-    utility, knownComponents, unknownComponents, reasons,
+    utility: Number.isFinite(utility) ? utility : null, knownComponents, unknownComponents,
+    reasons: Number.isFinite(utility) ? reasons : [...reasons, 'UTILITY_OVERFLOW'],
     weightsProvenance: weights.provenance, utilityVersion: coveredCallLatticeVersion,
   };
 }
@@ -197,19 +205,25 @@ export function computeCoveredCallUtility(
  */
 export function evaluateCoveredCallCandidates(
   basisPerShare: number | null, currentStockPrice: number | null, sharesHeld: number,
-  wholeChainBase: Omit<WholeChainComponents, 'coveredCallPremium' | 'coveredCallCloseCosts' | 'stockSaleOrCallAwayProceeds' | 'currentStockMarkPerShare' | 'openStockShares'>,
+  wholeChainBase: Omit<WholeChainComponents, 'currentStockMarkPerShare' | 'openStockShares'>,
   candidates: readonly CoveredCallCandidate[], utilityWeights: CoveredCallUtilityWeights,
   referenceUpsidePrice: number | null = null, belowBasisAllowed = false,
 ): readonly CoveredCallAssessment[] {
   return candidates.map((candidate): CoveredCallAssessment => {
     const reasons: string[] = [];
+    const coveredShares = candidate.multiplier * candidate.quantity;
+    const validCoverage = Number.isSafeInteger(candidate.multiplier) && candidate.multiplier > 0
+      && Number.isSafeInteger(candidate.quantity) && candidate.quantity > 0 && Number.isSafeInteger(coveredShares)
+      && Number.isFinite(sharesHeld) && sharesHeld >= coveredShares
+      && Number.isFinite(candidate.strike) && candidate.strike > 0;
+    if (!validCoverage) reasons.push('CC_CONTRACT_OR_SHARE_COVERAGE_INVALID');
     const belowBasis = basisPerShare !== null && candidate.strike < basisPerShare;
     if (belowBasis) {
       reasons.push(belowBasisAllowed
         ? 'BELOW_BASIS_EVALUATED_UNDER_CALLER_JUSTIFIED_POLICY' : 'BELOW_BASIS_CC_REJECTED_BY_BOOTSTRAP_POLICY');
     }
 
-    const hasQuote = candidate.bid !== null && candidate.ask !== null && Number.isFinite(candidate.bid) && Number.isFinite(candidate.ask)
+    const hasQuote = validCoverage && candidate.bid !== null && candidate.ask !== null && Number.isFinite(candidate.bid) && Number.isFinite(candidate.ask)
       && (candidate.bid as number) >= 0 && (candidate.ask as number) >= (candidate.bid as number);
     // Conservative, executable reference: the BID side, never the
     // midpoint -- a midpoint is not a guaranteed fill, and this module
@@ -220,18 +234,23 @@ export function evaluateCoveredCallCandidates(
     const midReferenceDollars = hasQuote
       ? ((candidate.bid as number) + (candidate.ask as number)) / 2 * candidate.multiplier * candidate.quantity : null;
     const spreadDollars = hasQuote ? ((candidate.ask as number) - (candidate.bid as number)) * candidate.multiplier : null;
-    const callAwayPriceDollars = candidate.strike * candidate.multiplier * candidate.quantity;
+    const callAwayPriceDollars = validCoverage ? candidate.strike * coveredShares : null;
 
     const upsideSacrificedDollars = referenceUpsidePrice !== null && referenceUpsidePrice > candidate.strike
-      ? (referenceUpsidePrice - candidate.strike) * sharesHeld : referenceUpsidePrice !== null ? 0 : null;
+      ? (referenceUpsidePrice - candidate.strike) * coveredShares : referenceUpsidePrice !== null ? 0 : null;
+
+    const historicalProceeds = wholeChainBase.stockSharesAssigned === sharesHeld ? 0 : wholeChainBase.stockSaleOrCallAwayProceeds;
+    const totalPremium = wholeChainBase.coveredCallPremium !== null && premiumIncomeDollars !== null
+      ? wholeChainBase.coveredCallPremium + premiumIncomeDollars : null;
 
     const wholeChainPnlIfCalledAway = premiumIncomeDollars === null ? null : computeWholeChainPnl({
-      ...wholeChainBase, coveredCallPremium: premiumIncomeDollars, coveredCallCloseCosts: 0,
-      stockSaleOrCallAwayProceeds: callAwayPriceDollars, currentStockMarkPerShare: null, openStockShares: 0,
+      ...wholeChainBase, cashflowBasis: 'BENCHMARK_CASHFLOW', coveredCallPremium: totalPremium,
+      stockSaleOrCallAwayProceeds: historicalProceeds === null || callAwayPriceDollars === null ? null : historicalProceeds + callAwayPriceDollars,
+      currentStockMarkPerShare: currentStockPrice, openStockShares: sharesHeld - coveredShares,
     }).wholeChainPnl;
     const wholeChainPnlIfNotCalled = premiumIncomeDollars === null ? null : computeWholeChainPnl({
-      ...wholeChainBase, coveredCallPremium: premiumIncomeDollars, coveredCallCloseCosts: 0,
-      stockSaleOrCallAwayProceeds: null, currentStockMarkPerShare: currentStockPrice, openStockShares: sharesHeld,
+      ...wholeChainBase, cashflowBasis: 'BENCHMARK_CASHFLOW', coveredCallPremium: totalPremium,
+      stockSaleOrCallAwayProceeds: historicalProceeds, currentStockMarkPerShare: currentStockPrice, openStockShares: sharesHeld,
     }).wholeChainPnl;
 
     if (premiumIncomeDollars !== null) {
@@ -267,7 +286,8 @@ export function selectableCoveredCallCandidates(
   assessments: readonly CoveredCallAssessment[], belowBasisAllowed = false,
 ): readonly CoveredCallAssessment[] {
   return assessments.filter((assessment) =>
-    assessment.utility.utility !== null && (belowBasisAllowed || !assessment.belowBasis));
+    assessment.utility.utility !== null && Number.isFinite(assessment.utility.utility)
+      && (belowBasisAllowed || !assessment.belowBasis));
 }
 
 interface DominanceDimension {
@@ -295,9 +315,8 @@ function dominanceDimensions(assessment: CoveredCallAssessment): readonly Domina
 }
 
 /**
- * Conservative dominance: `a` dominates `b` only on dimensions BOTH know
- * (a dimension unknown to either side is simply skipped for that pair --
- * it can never manufacture false dominance either way), and only when `a`
+ * Conservative dominance: asymmetric unknown dimensions prevent dominance.
+ * Dimensions unknown to both sides are skipped. On the remaining dimensions `a`
  * is at least as good on every shared-known dimension and strictly better
  * on at least one. A candidate with no shared-known dimensions at all
  * dominates nothing.
@@ -307,7 +326,8 @@ function dominates(a: CoveredCallAssessment, b: CoveredCallAssessment): boolean 
   let comparedAny = false, strictlyBetterSomewhere = false;
   for (let index = 0; index < dimsA.length; index += 1) {
     const dimA = dimsA[index] as DominanceDimension, dimB = dimsB[index] as DominanceDimension;
-    if (dimA.value === null || dimB.value === null) continue;
+    if (dimA.value === null && dimB.value === null) continue;
+    if (dimA.value === null || dimB.value === null) return false;
     comparedAny = true;
     const normA = dimA.higherIsBetter ? dimA.value : -dimA.value;
     const normB = dimB.higherIsBetter ? dimB.value : -dimB.value;
@@ -347,5 +367,7 @@ export function bestCoveredCallCandidate(
   const nondominated = nondominatedCoveredCallCandidates(selectable);
   if (nondominated.length === 0) return null;
   return nondominated.reduce((champion, candidate) =>
-    (candidate.utility.utility as number) > (champion.utility.utility as number) ? candidate : champion);
+    (candidate.utility.utility as number) > (champion.utility.utility as number)
+      || (candidate.utility.utility === champion.utility.utility
+        && candidate.candidate.optionContractId.localeCompare(champion.candidate.optionContractId) < 0) ? candidate : champion);
 }

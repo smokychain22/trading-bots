@@ -1,4 +1,4 @@
-export const commonHorizonEconomicsVersion = 'theta-common-horizon-economics-v1' as const;
+export const commonHorizonEconomicsVersion = 'theta-common-horizon-economics-v2' as const;
 
 /**
  * Formalizes the "same state, same forward horizon, no premium
@@ -37,8 +37,9 @@ export interface SunkEconomicsInputs {
  * silently treated as zero.
  */
 export function sunkRealizedEconomics(inputs: SunkEconomicsInputs): number | null {
-  if (inputs.fees === null) return null;
-  return inputs.realizedOptionPnl + inputs.realizedStockPnl + inputs.dividends - inputs.fees;
+  if (inputs.fees === null || !Object.values(inputs).every(Number.isFinite)) return null;
+  const value = inputs.realizedOptionPnl + inputs.realizedStockPnl + inputs.dividends - inputs.fees;
+  return Number.isFinite(value) ? value : null;
 }
 
 export interface ForwardContinuationInputs {
@@ -63,6 +64,9 @@ export interface ForwardContinuationResult {
  */
 export function forwardContinuationCashFlow(inputs: ForwardContinuationInputs): ForwardContinuationResult {
   const { closeCostDollars, openCreditDollars } = inputs;
+  if ([closeCostDollars, openCreditDollars].some(value => value !== null && (!Number.isFinite(value) || value < 0))) {
+    return { netCashFlow: null, complete: false, reasons: ['FORWARD_CASH_FLOW_VALUE_INVALID'] };
+  }
   if (closeCostDollars === null && openCreditDollars === null) {
     return { netCashFlow: null, complete: false, reasons: ['NO_FORWARD_CASH_FLOW_LEGS_KNOWN'] };
   }

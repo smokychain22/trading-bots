@@ -41,7 +41,7 @@ export class PostgresP2EEvidenceStore{
         throw new Error('P2E_FRONTIER_ALIGNMENT_FAILED');
       }
       const prior=await this.pool.query(`SELECT checkpoint_json FROM research.theta_position_path_checkpoint
-        WHERE chain_id=$1 ORDER BY observed_at,position_path_checkpoint_id`,[state.chainId]);
+        WHERE chain_id=$1 AND observed_at < $2 ORDER BY observed_at,content_hash`,[state.chainId,state.observedAt]);
       const path=buildPositionPathCheckpoint(state,prior.rows.map((row)=>row.checkpoint_json as PositionPathCheckpoint));
       const priorRow=prior.rows.at(-1);const priorPath=priorRow===undefined?null:priorRow.checkpoint_json as PositionPathCheckpoint;
       const checkpoint=classifyPathCheckpoint(path,priorPath);

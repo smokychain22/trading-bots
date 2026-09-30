@@ -1,5 +1,46 @@
 # THETA Phase 4 Unified Closure Receipt
 
+## Current requirement reconciliation, 2026-10-01
+
+CURRENT_STATE = IMPLEMENTING_REQUIREMENT_CLOSURE
+
+The historical September 29 source-complete claim below is superseded for
+current certification. Direct call-graph and executed tests found these defects:
+
+- Unknown or safe event/dividend objects could create an adverse thesis signal.
+- Partial stock exits omitted realized losses while shares remained open.
+- Covered-call scenarios omitted prior call losses and disposed of uncovered shares.
+- Historical recovery holding cost was treated as avoidable forward cost.
+- A roll releasing collateral was penalized as if it required additional collateral.
+- Future path checkpoints could manufacture a peak, and path identity omitted history.
+- Original entry theses were persisted but never loaded by management.
+- Nonfinite monetary inputs could become apparently valid economics.
+
+The current correction preserves separate realized/unrealized legs, PIT timing,
+cash-flow history, explicit forward horizons, deterministic ties and immutable
+entry-thesis lineage. Scenario proceeds remain BENCHMARK_CASHFLOW, not fills.
+Source tests do not promote empirical models or prove deployed behavior.
+
+The call graph also confirms an outstanding integration task: the existing
+whole-chain repository is not yet consumed by the resident management scan.
+`attachWholeChainEvidence` is still inert at this checkpoint. The original
+thesis loader now reaches management, but the full typed current-thesis-health
+assessment still needs requirement-level reconciliation. Neither item may be
+closed using the old global certificate.
+
+Checkpoint validation: Node 3269 PASS / 16 SKIP, Python 1234 PASS,
+typecheck/lint/build PASS, security findings 0, Git storage policy PASS.
+The separate Phase-3 executed artifact covers 13 reviewed behaviors with
+247 executed tests and no skips. These counts are source tests only.
+
+WORKER_CHANGED = NO
+
+ORDER_SUBMISSIONS = 0
+
+BROKER_MUTATIONS = 0
+
+## Historical receipt, retained as historical evidence only
+
 Receipt date: 2026-09-29
 
 START_SHA = a7ad45c97b87eec0f61e0f2b20e5047a89f50c58

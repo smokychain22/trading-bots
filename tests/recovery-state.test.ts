@@ -119,3 +119,14 @@ test('SAME complete chain history produces the SAME canonicalEffectiveBasisPerSh
   assert.equal(first.canonicalEffectiveBasisPerShare, second.canonicalEffectiveBasisPerShare);
   assert.equal(first.canonicalEffectiveBasisPerShare, computeEffectiveStockBasis(completeChain).effectiveStockBasisPerShare);
 });
+
+test('future assignment time and nonfinite opportunity rates stay invalid rather than zero elapsed economics', () => {
+  const future = buildRecoveryState(state(), '2026-09-13T14:00:00.000Z', 0.05);
+  assert.equal(future.capitalDaysSoFar, null);
+  assert.equal(future.capitalOpportunityCostDollars, null);
+  assert.ok(future.dataCompleteness.requiresCallerInput.some(value => value.startsWith('assignedAtObservedAt')));
+  for (const rate of [NaN, Infinity, -0.1]) {
+    assert.equal(buildRecoveryState(state(), '2026-08-13T14:00:00.000Z', rate).capitalOpportunityCostDollars, null);
+  }
+  assert.equal(buildRecoveryState(state(), '2026-08-13T14:00:00.000Z', 0).capitalOpportunityCostDollars, 0);
+});

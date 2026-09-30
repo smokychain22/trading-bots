@@ -1,6 +1,6 @@
 import { forwardContinuationCashFlow } from './common-horizon-economics.js';
 
-export const rollIncrementalUtilityVersion = 'theta-roll-incremental-utility-v1' as const;
+export const rollIncrementalUtilityVersion = 'theta-roll-incremental-utility-v2' as const;
 
 /**
  * ROLL is a replacement trade: close the old leg, open a new one. This
@@ -78,6 +78,8 @@ export function evaluateRollCandidates(
   const assessments = candidates.map((candidate): RollCandidateAssessment => {
     const daysExtended = daysBetween(oldLeg.expiration, candidate.expiration);
     const incrementalCapitalDollars = oldLeg.capitalCommittedDollars !== null && candidate.capitalCommittedDollars !== null
+      && Number.isFinite(oldLeg.capitalCommittedDollars) && oldLeg.capitalCommittedDollars >= 0
+      && Number.isFinite(candidate.capitalCommittedDollars) && candidate.capitalCommittedDollars >= 0
       ? candidate.capitalCommittedDollars - oldLeg.capitalCommittedDollars : null;
     // A roll structurally always has TWO legs (close the old, open the
     // new) -- unlike a single-leg close or a fresh covered-call sale, a
@@ -96,9 +98,12 @@ export function evaluateRollCandidates(
       closeCostDollars: oldLeg.closeCostDollars, openCreditDollars: candidate.openCreditDollars,
     });
     const netCreditDollars = forward.netCashFlow;
+    if (!forward.complete || netCreditDollars === null) return { candidate, netCreditDollars: null,
+      incrementalCapitalDollars, daysExtended, rollIncrementalUtility: null, reasons: forward.reasons };
     const capitalDayPenalty = incrementalCapitalDollars !== null && daysExtended !== null
-      ? incrementalCapitalDayWeight * Math.abs(incrementalCapitalDollars) * daysExtended : null;
-    const rollIncrementalUtility = capitalDayPenalty === null ? null : (netCreditDollars as number) - capitalDayPenalty;
+      ? incrementalCapitalDayWeight * Math.max(0, incrementalCapitalDollars) * daysExtended : null;
+    const rawUtility = capitalDayPenalty === null ? null : netCreditDollars - capitalDayPenalty;
+    const rollIncrementalUtility = rawUtility !== null && Number.isFinite(rawUtility) ? rawUtility : null;
     const reasons = [
       `NET_CREDIT_${(netCreditDollars as number).toFixed(2)}`,
       daysExtended !== null ? `DAYS_EXTENDED_${daysExtended}` : 'DAYS_EXTENDED_UNKNOWN',
@@ -109,7 +114,8 @@ export function evaluateRollCandidates(
   });
 
   const ranked = assessments.filter((assessment): assessment is RollCandidateAssessment & { rollIncrementalUtility: number } =>
-    assessment.rollIncrementalUtility !== null).sort((left, right) => right.rollIncrementalUtility - left.rollIncrementalUtility);
+    assessment.rollIncrementalUtility !== null).sort((left, right) => right.rollIncrementalUtility - left.rollIncrementalUtility
+      || left.candidate.optionContractId.localeCompare(right.candidate.optionContractId));
   const bestCandidate = ranked[0] ?? null;
   // HOLD's baseline utility is 0 by the same convention used throughout the
   // bootstrap management policy -- a roll must clear that bar, not merely

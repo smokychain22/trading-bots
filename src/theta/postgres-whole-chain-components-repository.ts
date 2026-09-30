@@ -341,7 +341,10 @@ export class PostgresWholeChainComponentsRepository {
     if (assignedShares.status === 'UNKNOWN' || openShares.status === 'UNKNOWN') {
       return unknownField(asOf, ['STOCK_EXIT_DEPENDS_ON_UNKNOWN_ASSIGNMENT_OR_SHARES'], [lotSource]);
     }
-    if ((assignedShares.value ?? 0) === 0 || (openShares.value ?? 0) > 0) {
+    if (assignedShares.value === null || openShares.value === null || openShares.value > assignedShares.value
+      || openShares.value < 0) return unknownField(asOf, ['STOCK_EXIT_SHARE_IDENTITY_INVALID'], [lotSource]);
+    const exitedShares = assignedShares.value - openShares.value;
+    if (exitedShares === 0) {
       return unknownField(asOf, ['STOCK_EXIT_NOT_REALIZED_AS_OF'], [lotSource]);
     }
     const disposed = lots.filter((row) => row.disposed_at != null && iso(row.disposed_at) !== null
@@ -350,7 +353,12 @@ export class PostgresWholeChainComponentsRepository {
       const shares = number(row.shares), price = number(row.disposed_price_per_share);
       return shares === null || price === null ? null : shares * price;
     });
-    return proceeds.length > 0 && proceeds.every((value): value is number => value !== null)
+    const disposedShares = disposed.map(row => number(row.shares));
+    if (disposedShares.some(value => value === null || value <= 0)
+      || sum(disposedShares as number[]) !== exitedShares) {
+      return unknownField(asOf, ['STOCK_EXIT_SHARE_COVERAGE_INCOMPLETE'], [lotSource]);
+    }
+    return proceeds.length > 0 && proceeds.every((value): value is number => value !== null && Number.isFinite(value))
       ? knownField(sum(proceeds), asOf, [lotSource])
       : unknownField(asOf, ['STOCK_EXIT_PROCEEDS_INCOMPLETE'], [lotSource]);
   }

@@ -9,6 +9,41 @@ const components = (overrides: Partial<WholeChainComponents> = {}): WholeChainCo
   currentStockMarkPerShare: 190, openStockShares: 100, ...overrides,
 });
 
+test('partial stock exits preserve realized losses and remaining unrealized P&L together', () => {
+  for (const remaining of [0, 50, 100, 150, 200]) {
+    for (const exitPrice of [90, 100, 110]) {
+      const sold = 200 - remaining;
+      const result = computeWholeChainPnl(components({
+        assignmentStrike: 100, stockSharesAssigned: 200, openStockShares: remaining,
+        stockSaleOrCallAwayProceeds: sold > 0 ? sold * exitPrice : null,
+        currentStockMarkPerShare: remaining > 0 ? 105 : null,
+        coveredCallPremium: 0, coveredCallCloseCosts: 0,
+      }));
+      assert.equal(result.wholeChainPnl, 217 + sold * (exitPrice - 100) + remaining * 5);
+      if (sold > 0) assert.equal(result.legLevelPnl.find(leg => leg.label === 'STOCK_PNL_AT_SALE_OR_CALL_AWAY')?.amount,
+        sold * (exitPrice - 100));
+    }
+  }
+});
+
+test('missing partial stock exit proceeds cannot disappear behind a known remaining mark', () => {
+  const result = computeWholeChainPnl(components({ stockSharesAssigned: 200, openStockShares: 100,
+    coveredCallPremium: 0, coveredCallCloseCosts: 0 }));
+  assert.equal(result.wholeChainPnl, null);
+  assert.equal(result.legLevelPnl.find(leg => leg.label === 'STOCK_PNL_AT_SALE_OR_CALL_AWAY')?.amount, null);
+});
+
+test('invalid and overflowing accounting numbers cannot produce complete economics', () => {
+  for (const value of [Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(computeEffectiveStockBasis(components({ fees: value })).complete, false);
+    assert.equal(computeWholeChainPnl(components({ fees: value, coveredCallPremium: 0, coveredCallCloseCosts: 0 })).wholeChainPnl, null);
+  }
+  assert.equal(computeWholeChainPnl(components({ openStockShares: 101,
+    coveredCallPremium: 0, coveredCallCloseCosts: 0 })).wholeChainPnl, null);
+  assert.equal(computeEffectiveStockBasis(components({ initialPutPremium: Number.MAX_VALUE,
+    rollCredits: Number.MAX_VALUE })).complete, false);
+});
+
 test('computeEffectiveStockBasis returns NO_ASSIGNMENT_RECORDED when there was never an assignment', () => {
   const result = computeEffectiveStockBasis(components({ assignmentStrike: null, stockSharesAssigned: 0 }));
   assert.equal(result.effectiveStockBasisPerShare, null);

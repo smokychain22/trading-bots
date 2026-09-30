@@ -7,9 +7,10 @@ import {
 } from '../src/theta/covered-call-lattice.js';
 import type { WholeChainComponents } from '../src/theta/whole-chain-economics.js';
 
-const wholeChainBase: Omit<WholeChainComponents, 'coveredCallPremium' | 'coveredCallCloseCosts' | 'stockSaleOrCallAwayProceeds' | 'currentStockMarkPerShare' | 'openStockShares'> = {
+const wholeChainBase: Omit<WholeChainComponents, 'currentStockMarkPerShare' | 'openStockShares'> = {
   cashflowBasis:'ACTUAL_FILL_CASHFLOW',initialPutPremium:200,putCloseCosts:0,rollCredits:0,rollCloseCosts:0,assignmentStrike:195,stockSharesAssigned:100,
   dividends:0,fees:2,executionCostNotEmbeddedInCashflows:0,tcaExecutionShortfall:3,
+  coveredCallPremium:0,coveredCallCloseCosts:0,stockSaleOrCallAwayProceeds:null,
 };
 
 const inertWeights: CoveredCallUtilityWeights = {
@@ -193,4 +194,37 @@ test('bestCoveredCallCandidate returns null when every candidate is unselectable
   const assessments = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase,
     [candidate({ bid: null, ask: null })], inertWeights);
   assert.equal(bestCoveredCallCandidate(assessments), null);
+});
+
+test('covered-call utility ties select the same exact contract under input permutation', () => {
+  const rows = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase,
+    [candidate({ optionContractId: 'z' }), candidate({ optionContractId: 'a' })], inertWeights);
+  assert.equal(bestCoveredCallCandidate(rows)?.candidate.optionContractId, 'a');
+  assert.equal(bestCoveredCallCandidate([...rows].reverse())?.candidate.optionContractId, 'a');
+});
+
+test('partial covered-call call-away preserves uncovered inventory and all prior chain losses', () => {
+  const [result] = evaluateCoveredCallCandidates(195, 190, 200,
+    { ...wholeChainBase, stockSharesAssigned: 300, stockSaleOrCallAwayProceeds: 18000,
+      coveredCallPremium: 150, coveredCallCloseCosts: 400 }, [candidate()], inertWeights, 220);
+  // Sold 100 at 180 previously, 100 called at 200, 100 retained at 190.
+  assert.equal(result?.wholeChainPnlIfCalledAway, 200 + 150 - 400 + 100 - 2 - 1500 + 500 - 500);
+  assert.equal(result?.wholeChainPnlIfNotCalled, 200 + 150 - 400 + 100 - 2 - 1500 - 1000);
+  assert.equal(result?.upsideSacrificedDollars, 2000, 'only covered shares surrender upside');
+});
+
+test('covered-call lattice cannot rank uncovered or malformed contract quantities', () => {
+  for (const quantity of [0, -1, 0.5, 2, Infinity]) {
+    const results = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [candidate({ quantity })], inertWeights);
+    assert.equal(bestCoveredCallCandidate(results), null);
+    assert.ok(results[0]?.reasons.includes('CC_CONTRACT_OR_SHARE_COVERAGE_INVALID'));
+  }
+});
+
+test('a higher-premium call with unknown event risk cannot Pareto-eliminate a proven-safe call', () => {
+  const results = evaluateCoveredCallCandidates(195, 190, 100, wholeChainBase, [
+    candidate({ optionContractId: 'unknown', bid: 2, ask: 2.1, eventRisk: 'UNKNOWN' }),
+    candidate({ optionContractId: 'safe', bid: 1, ask: 1.1 }),
+  ], inertWeights);
+  assert.equal(nondominatedCoveredCallCandidates(results).length, 2);
 });

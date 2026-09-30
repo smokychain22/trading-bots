@@ -1,6 +1,6 @@
 import type { ManagementInputState } from './management-input-state.js';
 
-export const lossStateVectorVersion = 'theta-loss-state-vector-v1' as const;
+export const lossStateVectorVersion = 'theta-loss-state-vector-v2' as const;
 
 /**
  * A forward-looking LOSS STATE vector for a single open leg/position. This
@@ -56,6 +56,8 @@ export interface LossStateVector {
   readonly dte: number | null;
   readonly capitalLockedDollars: number | null;
   readonly capitalDaysSoFar: number | null;
+  /** Legacy field above is elapsed time, not a dollar-day integral. */
+  readonly capitalTimeUnit: 'CALENDAR_DAYS_ELAPSED';
   // -- liquidity / execution --
   readonly quoteSpreadDollarsPerContract: number | null;
   // -- context passthrough (opaque; never interpreted here) --
@@ -71,6 +73,7 @@ export interface LossStateVector {
   readonly dataCompleteness: {
     readonly missingUpstreamFields: readonly string[];
     readonly requiresEntrySnapshot: readonly string[];
+    readonly invalidEvidence: readonly string[];
   };
 }
 
@@ -80,18 +83,24 @@ function finite(value: number | null): value is number {
 
 function daysBetween(fromIso: string, toIso: string): number | null {
   const from = Date.parse(fromIso), to = Date.parse(toIso);
-  if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
-  return Math.max(0, (to - from) / 86_400_000);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from > to) return null;
+  return (to - from) / 86_400_000;
 }
 
 function capitalLocked(state: ManagementInputState): number | null {
   const { strike, multiplier, contracts } = state.contract;
-  if (state.lifecycleState === 'CSP_OPEN' || state.lifecycleState === 'CC_OPEN') {
-    if (!finite(strike) || !finite(multiplier) || !finite(contracts)) return null;
-    return strike * multiplier * contracts;
+  if (state.lifecycleState === 'CSP_OPEN') {
+    if (!finite(strike) || strike <= 0 || !finite(multiplier) || multiplier <= 0
+      || !finite(contracts) || contracts <= 0) return null;
+    const capital = strike * multiplier * contracts;
+    return Number.isFinite(capital) ? capital : null;
   }
-  if (state.economics.stockBasisPerShare !== null && state.economics.openStockShares > 0) {
-    return state.economics.stockBasisPerShare * state.economics.openStockShares;
+  // A covered call commits existing stock. Its strike is a contingent sale
+  // price, not cash-secured-put collateral or the cost of the held shares.
+  if (finite(state.economics.stockBasisPerShare) && state.economics.stockBasisPerShare >= 0
+    && Number.isFinite(state.economics.openStockShares) && state.economics.openStockShares > 0) {
+    const capital = state.economics.stockBasisPerShare * state.economics.openStockShares;
+    return Number.isFinite(capital) ? capital : null;
   }
   return null;
 }
@@ -112,12 +121,17 @@ const UPSTREAM_FIELDS_NOT_YET_PLUMBED = [
 export function buildLossStateVector(
   state: ManagementInputState, entrySnapshot: LossStateEntrySnapshot | null = null,
 ): LossStateVector {
+  const invalidEvidence: string[] = [];
+  if (entrySnapshot !== null && daysBetween(entrySnapshot.observedAt, state.observedAt) === null) {
+    invalidEvidence.push('ENTRY_SNAPSHOT_TIME_INVALID_OR_FUTURE');
+    entrySnapshot = null;
+  }
   const { spot, iv, delta, gamma, theta, vega, dte, optionBid, optionAsk } = state.market;
   const { strike, optionType, multiplier, contracts } = state.contract;
   const { entryCreditDebit, stockBasisPerShare, stockMarkPerShare } = state.economics;
 
   const underlyingDrawdownFraction = entrySnapshot?.spotAtEntry !== null && entrySnapshot?.spotAtEntry !== undefined
-    && finite(entrySnapshot.spotAtEntry) && finite(spot)
+    && finite(entrySnapshot.spotAtEntry) && entrySnapshot.spotAtEntry > 0 && finite(spot)
     ? (spot - entrySnapshot.spotAtEntry) / entrySnapshot.spotAtEntry
     : finite(stockMarkPerShare) && finite(stockBasisPerShare) && stockBasisPerShare !== 0
       ? (stockMarkPerShare - stockBasisPerShare) / stockBasisPerShare : null;
@@ -132,13 +146,15 @@ export function buildLossStateVector(
   const distanceToBreakevenFraction = finite(spot) && breakevenPerShare !== null && breakevenPerShare !== 0
     ? (spot - breakevenPerShare) / breakevenPerShare : null;
 
-  const expectedMoveDollars = finite(iv) && finite(spot) && finite(dte) && dte >= 0
+  const expectedMoveDollars = finite(iv) && iv >= 0 && finite(spot) && spot > 0 && finite(dte) && dte >= 0
     ? spot * iv * Math.sqrt(dte / 365) : null;
 
-  const ivAtEntry = entrySnapshot?.ivAtEntry ?? null;
-  const ivChange = finite(iv) && finite(ivAtEntry) ? iv - ivAtEntry : null;
+  const rawEntryIv = entrySnapshot?.ivAtEntry ?? null;
+  const ivAtEntry = finite(rawEntryIv) && rawEntryIv >= 0 ? rawEntryIv : null;
+  const ivChange = finite(iv) && iv >= 0 && finite(ivAtEntry) ? iv - ivAtEntry : null;
 
-  const spreadDollars = finite(optionBid) && finite(optionAsk) && finite(multiplier)
+  const spreadDollars = finite(optionBid) && optionBid >= 0 && finite(optionAsk) && optionAsk >= optionBid
+    && finite(multiplier) && multiplier > 0
     ? (optionAsk - optionBid) * multiplier : null;
 
   const capitalDaysSoFar = entrySnapshot !== null ? daysBetween(entrySnapshot.observedAt, state.observedAt) : null;
@@ -154,7 +170,7 @@ export function buildLossStateVector(
     underlyingDrawdownFraction, distanceToStrikeFraction, distanceToBreakevenFraction, expectedMoveDollars,
     ivCurrent: iv, ivAtEntry, ivChange,
     delta, gamma, theta, vega, deltaAtEntry: entrySnapshot?.deltaAtEntry ?? null,
-    dte, capitalLockedDollars: capitalLocked(state), capitalDaysSoFar,
+    dte, capitalLockedDollars: capitalLocked(state), capitalDaysSoFar, capitalTimeUnit: 'CALENDAR_DAYS_ELAPSED',
     quoteSpreadDollarsPerContract: spreadDollars,
     eventStatePresent: state.context.eventState !== null,
     dividendExDateStatePresent: state.context.dividendExDateState !== null,
@@ -163,6 +179,6 @@ export function buildLossStateVector(
     concentrationPresent: state.context.concentration !== null,
     sectorCorrelationPresent: state.context.sectorCorrelation !== null,
     aegisState: typeof state.context.aegisState === 'string' ? state.context.aegisState : null,
-    dataCompleteness: { missingUpstreamFields, requiresEntrySnapshot },
+    dataCompleteness: { missingUpstreamFields, requiresEntrySnapshot, invalidEvidence },
   };
 }

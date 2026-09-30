@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import type { ManagementInputState } from './management-input-state.js';
+import { hashJson, type JsonValue } from '../market/fusion-snapshot.js';
+import { buildLossStateVector } from './loss-state-vector.js';
 
-export const positionPathVersion = 'theta-position-path-v1' as const;
+export const positionPathVersion = 'theta-position-path-v2' as const;
 export type PositionPathClassification = 'NEW_POSITION'|'EARLY_WINNER'|'EARLY_LOSER'|'NORMAL_ADVERSE_MOVE'|
   'MATURE_WINNER'|'WINNER_GIVEBACK'|'WINNER_TO_LOSER'|'THESIS_DETERIORATION'|'ACCELERATING_LOSS'|
   'LATE_EXPIRY_LOSS'|'EVENT_DRIVEN_LOSS'|'LIQUIDITY_MARK_LOSS'|'RECOVERY_IMPROVING'|
@@ -55,8 +57,11 @@ function classify(input:ManagementInputState, previous:PositionPathCheckpoint|nu
 
 export function buildPositionPathCheckpoint(input:ManagementInputState,
   history:readonly PositionPathCheckpoint[]):PositionPathCheckpoint {
-  const ordered=[...history].filter((item)=>item.chainId===input.chainId)
-    .sort((a,b)=>Date.parse(a.observedAt)-Date.parse(b.observedAt));
+  const decisionMs = Date.parse(input.observedAt);
+  if (!Number.isFinite(decisionMs)) throw new Error('POSITION_PATH_DECISION_TIME_INVALID');
+  const ordered=[...history].filter((item)=>item.chainId===input.chainId && Number.isFinite(Date.parse(item.observedAt))
+    && Date.parse(item.observedAt) < decisionMs)
+    .sort((a,b)=>Date.parse(a.observedAt)-Date.parse(b.observedAt) || a.checkpointIdentity.localeCompare(b.checkpointIdentity));
   const previous=ordered[ordered.length-1]??null;
   const current=input.economics.wholeChainPnl;
   const known=[...ordered.map((item)=>item.currentWholeChainPnl),current].filter(finite);
@@ -64,6 +69,7 @@ export function buildPositionPathCheckpoint(input:ManagementInputState,
   const giveback=finite(peak)&&finite(current)?Math.max(0,peak-current):null;
   const elapsedHours=previous===null?null:(Date.parse(input.observedAt)-Date.parse(previous.observedAt))/3_600_000;
   const unknown:string[]=[];
+  if (ordered.length !== history.filter(item => item.chainId === input.chainId).length) unknown.push('NON_PRIOR_HISTORY_EXCLUDED');
   if(current===null)unknown.push('CURRENT_WHOLE_CHAIN_PNL_UNKNOWN');
   if(input.market.spot===null)unknown.push('SPOT_UNKNOWN');
   if(input.market.dte===null)unknown.push('DTE_UNKNOWN');
@@ -71,20 +77,28 @@ export function buildPositionPathCheckpoint(input:ManagementInputState,
     gamma:velocity(input.market.gamma,evidenceNumber(previous?.evidence.gamma),elapsedHours),
     theta:velocity(input.market.theta,evidenceNumber(previous?.evidence.theta),elapsedHours),
     vega:velocity(input.market.vega,evidenceNumber(previous?.evidence.vega),elapsedHours)};
-  const evidence={spot:input.market.spot,strike:input.contract.strike,breakeven:input.contract.strike!==null&&input.economics.entryCreditDebit!==null&&input.contract.multiplier!==null&&input.contract.contracts!==null&&input.contract.contracts>0
-      ? input.contract.strike-input.economics.entryCreditDebit/(input.contract.multiplier*input.contract.contracts):null,
+  const premiumPerShare = finite(input.economics.entryCreditDebit) && finite(input.contract.multiplier)
+    && input.contract.multiplier > 0 && finite(input.contract.contracts) && input.contract.contracts > 0
+    ? input.economics.entryCreditDebit / (input.contract.multiplier * input.contract.contracts) : null;
+  const breakeven = finite(input.contract.strike) && finite(premiumPerShare) && input.contract.optionType !== null
+    ? input.contract.strike + (input.contract.optionType === 'PUT' ? -premiumPerShare : premiumPerShare) : null;
+  const capital = buildLossStateVector(input).capitalLockedDollars;
+  const rawCapitalDays = finite(capital) && finite(elapsedHours) ? capital * elapsedHours / 24 : null;
+  const evidence={spot:input.market.spot,strike:input.contract.strike,breakeven:finite(breakeven) ? breakeven : null,
+    capitalDaysUnit:'USD_CALENDAR_DAYS_INTERVAL', historyCount:ordered.length,
     optionBid:input.market.optionBid,optionAsk:input.market.optionAsk,quoteTimestamp:input.market.quoteTimestamp,
     delta:input.market.delta,gamma:input.market.gamma,theta:input.market.theta,vega:input.market.vega,iv:input.market.iv,
     eventState:input.context.eventState,recoveryState:input.context.recoveryState,regimeState:input.context.regimeState};
-  const identity=createHash('sha256').update(JSON.stringify({chainId:input.chainId,inputHash:input.contentHash,version:positionPathVersion})).digest('hex');
+  const historyHash = hashJson(JSON.parse(JSON.stringify(ordered)) as JsonValue);
+  const identity=createHash('sha256').update(JSON.stringify({chainId:input.chainId,inputHash:input.contentHash,
+    historyHash,version:positionPathVersion})).digest('hex');
   return {version:positionPathVersion,checkpointIdentity:identity,chainId:input.chainId,
     managementInputSnapshotId:input.managementInputSnapshotId,observedAt:input.observedAt,
     classification:classify(input,previous,peak,current,giveback),currentWholeChainPnl:current,
     currentOptionPnl:input.economics.unrealizedOptionPnl,peakWholeChainPnl:peak,troughWholeChainPnl:trough,
     profitGiveback:giveback,drawdownFromPeak:giveback,pnlVelocityPerHour:velocity(current,previous?.currentWholeChainPnl??null,elapsedHours),
     spotVelocityPerHour:velocity(input.market.spot,evidenceNumber(previous?.evidence.spot),elapsedHours),greekVelocityPerHour:greekVelocity,
-    dte:input.market.dte,capitalDaysObserved:input.contract.strike!==null&&input.contract.multiplier!==null&&input.contract.contracts!==null&&elapsedHours!==null
-      ? input.contract.strike*input.contract.multiplier*input.contract.contracts*elapsedHours/24:null,
+    dte:input.market.dte,capitalDaysObserved:finite(rawCapitalDays) ? rawCapitalDays : null,
     markQuality:input.market.quoteQuality,evidence,unknownFields:[...new Set(unknown)].sort(),executionAuthorized:false};
 }
 
@@ -97,6 +111,7 @@ export function classifyPathCheckpoint(current:PositionPathCheckpoint,previous:P
   if(current.troughWholeChainPnl!==null&&(previous.troughWholeChainPnl===null||current.troughWholeChainPnl<previous.troughWholeChainPnl))
     return {evidenceKind:'SEMANTIC_PATH_CHECKPOINT',checkpointReason:'NEW_TROUGH'};
   if(current.dte!==previous.dte)return {evidenceKind:'SEMANTIC_PATH_CHECKPOINT',checkpointReason:'DTE_BUCKET_TRANSITION'};
-  if(current.evidence.eventState!==previous.evidence.eventState)return {evidenceKind:'SEMANTIC_PATH_CHECKPOINT',checkpointReason:'EVENT_STATE_CHANGED'};
+  if(hashJson((current.evidence.eventState ?? null) as JsonValue)!==hashJson((previous.evidence.eventState ?? null) as JsonValue))
+    return {evidenceKind:'SEMANTIC_PATH_CHECKPOINT',checkpointReason:'EVENT_STATE_CHANGED'};
   return {evidenceKind:'RAW_CYCLE_SNAPSHOT',checkpointReason:'CYCLE_OBSERVATION'};
 }

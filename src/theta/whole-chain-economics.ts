@@ -1,4 +1,6 @@
-export const wholeChainEconomicsVersion = 'theta-whole-chain-economics-v1' as const;
+export const wholeChainEconomicsVersion = 'theta-whole-chain-economics-v2' as const;
+
+const finite = (value: number | null): value is number => typeof value === 'number' && Number.isFinite(value);
 
 /**
  * Formalizes whole-chain economics for a Wheel chain that may have rolled,
@@ -15,8 +17,7 @@ export interface WholeChainComponents {
   readonly initialPutPremium: number | null;
   /** Actual close debits for non-roll put closes, including terminal partial closes. */
   readonly putCloseCosts: number | null;
-  /** Sum of all roll opening credits across every roll in this chain (each roll's own net-credit,
-   * already computed via forwardContinuationCashFlow at the time it happened -- never re-derived here). */
+  /** Sum of gross opening credits across every roll. Old-leg close debits remain separate. */
   readonly rollCredits: number | null;
   /** Sum of all roll closing costs (the OLD leg's close cost at each roll) -- kept separate from
    * rollCredits so a roll's own gross mechanics stay visible, not netted away before this point. */
@@ -37,7 +38,7 @@ export interface WholeChainComponents {
   readonly coveredCallPremium: number | null;
   readonly coveredCallCloseCosts: number | null;
   /** Proceeds from selling the stock outright OR from a call-away (per-share price * shares), or
-   * null if the stock (or a covered-call obligation on it) is still open. */
+   * Includes realized partial exits while other shares remain open. Null when unproven or no exit applies. */
   readonly stockSaleOrCallAwayProceeds: number | null;
   /**
    * `null` means UNKNOWN -- no trusted fee evidence exists. See the
@@ -69,7 +70,7 @@ export interface EffectiveStockBasisResult {
  *   - (netPutPremiumRetained / sharesAssigned)
  *   + (fees + executionCostNotEmbeddedInCashflows) / sharesAssigned
  *
- * netPutPremiumRetained = initialPutPremium + rollCredits - rollCloseCosts.
+ * netPutPremiumRetained = initialPutPremium - putCloseCosts + rollCredits - rollCloseCosts.
  * Returns null (never a partial/fabricated number) when there was no
  * assignment at all, or when any required component is unknown.
  */
@@ -81,12 +82,11 @@ export function computeEffectiveStockBasis(components: WholeChainComponents): Ef
     };
   }
   const missingComponents: string[] = [];
-  if (components.initialPutPremium === null) missingComponents.push('initialPutPremium');
-  if (components.putCloseCosts === null) missingComponents.push('putCloseCosts');
-  if (components.rollCredits === null) missingComponents.push('rollCredits');
-  if (components.rollCloseCosts === null) missingComponents.push('rollCloseCosts');
-  if (components.fees === null) missingComponents.push('fees');
-  if (components.executionCostNotEmbeddedInCashflows === null) missingComponents.push('executionCostNotEmbeddedInCashflows');
+  for (const key of ['initialPutPremium', 'putCloseCosts', 'rollCredits', 'rollCloseCosts', 'fees',
+    'executionCostNotEmbeddedInCashflows', 'assignmentStrike', 'stockSharesAssigned'] as const) {
+    if (!finite(components[key])) missingComponents.push(key);
+  }
+  if (finite(components.assignmentStrike) && components.assignmentStrike <= 0) missingComponents.push('assignmentStrike:INVALID');
   if (missingComponents.length > 0) {
     return { contractVersion: wholeChainEconomicsVersion, effectiveStockBasisPerShare: null, complete: false, missingComponents };
   }
@@ -94,9 +94,12 @@ export function computeEffectiveStockBasis(components: WholeChainComponents): Ef
     + (components.rollCredits as number) - (components.rollCloseCosts as number);
   const perShareAdjustment = (netPutPremiumRetained - (components.fees as number)
     - (components.executionCostNotEmbeddedInCashflows as number)) / components.stockSharesAssigned;
+  const basis = components.assignmentStrike - perShareAdjustment;
+  if (!finite(basis)) return { contractVersion: wholeChainEconomicsVersion, effectiveStockBasisPerShare: null,
+    complete: false, missingComponents: ['NONFINITE_DERIVED_BASIS'] };
   return {
     contractVersion: wholeChainEconomicsVersion,
-    effectiveStockBasisPerShare: components.assignmentStrike - perShareAdjustment,
+    effectiveStockBasisPerShare: basis,
     complete: true, missingComponents: [],
   };
 }
@@ -136,15 +139,18 @@ export function computeWholeChainPnl(components: WholeChainComponents): WholeCha
     { label: 'EXECUTION_COST_NOT_EMBEDDED_IN_CASHFLOWS', amount: components.executionCostNotEmbeddedInCashflows === null
       ? null : -components.executionCostNotEmbeddedInCashflows },
   ];
-  // The stock leg is EITHER still-open (an unrealized mark) OR closed (sale/
-  // call-away proceeds) -- never both, and the leg that does not apply is
-  // omitted entirely rather than reported as a fabricated zero or a
-  // spurious "unknown" that would poison an otherwise-complete sum.
+  // A partially exited inventory has BOTH realized and unrealized legs.
+  // Allocation of acquisition cost must conserve the assigned share count.
+  const validShares = finite(components.stockSharesAssigned) && finite(components.openStockShares)
+    && components.stockSharesAssigned >= 0 && components.openStockShares >= 0
+    && components.openStockShares <= components.stockSharesAssigned;
+  if (!validShares) legs.push({ label: 'STOCK_SHARE_IDENTITY_INVALID', amount: null });
   if (components.openStockShares > 0) {
     const unrealizedStockMtm = components.currentStockMarkPerShare !== null && components.assignmentStrike !== null
       ? (components.currentStockMarkPerShare - components.assignmentStrike) * components.openStockShares : null;
     legs.push({ label: 'UNREALIZED_STOCK_MTM', amount: unrealizedStockMtm });
-  } else if (components.assignmentStrike !== null) {
+  }
+  if (validShares && components.stockSharesAssigned > components.openStockShares) {
     // Shares were assigned at some point and are no longer held. The
     // ACQUISITION cost paid at assignment (assignmentStrike * shares) is a
     // real, distinct cash outflow that must be netted against the sale/
@@ -154,12 +160,15 @@ export function computeWholeChainPnl(components: WholeChainComponents): WholeCha
     // review: a $19,500 acquisition was previously omitted entirely,
     // inflating whole-chain P&L by exactly that amount). This leg is the
     // stock position's own realized P&L, not its gross proceeds.
-    const stockPnl = components.stockSaleOrCallAwayProceeds === null ? null
-      : components.stockSaleOrCallAwayProceeds - components.assignmentStrike * components.stockSharesAssigned;
+    const exitedShares = components.stockSharesAssigned - components.openStockShares;
+    const stockPnl = !finite(components.stockSaleOrCallAwayProceeds) || !finite(components.assignmentStrike)
+      ? null : components.stockSaleOrCallAwayProceeds - components.assignmentStrike * exitedShares;
     legs.push({ label: 'STOCK_PNL_AT_SALE_OR_CALL_AWAY', amount: stockPnl });
   }
-  const anyUnknown = legs.some((leg) => leg.amount === null);
-  const wholeChainPnl = anyUnknown ? null : legs.reduce((sum, leg) => sum + (leg.amount as number), 0);
-  return { contractVersion: wholeChainEconomicsVersion, legLevelPnl: legs, wholeChainPnl,
+  const normalizedLegs = legs.map(leg => ({ ...leg, amount: finite(leg.amount) ? leg.amount : null }));
+  const sum = normalizedLegs.some(leg => leg.amount === null) ? null
+    : normalizedLegs.reduce((total, leg) => total + (leg.amount as number), 0);
+  const wholeChainPnl = finite(sum) ? sum : null;
+  return { contractVersion: wholeChainEconomicsVersion, legLevelPnl: normalizedLegs, wholeChainPnl,
     cashflowBasis:components.cashflowBasis,tcaExecutionShortfall:components.tcaExecutionShortfall };
 }

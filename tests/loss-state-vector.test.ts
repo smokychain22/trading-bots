@@ -62,3 +62,27 @@ test('names upstream fields (Optionomics skew/GEX/flow/liquidity) as not yet plu
   assert.ok(vector.dataCompleteness.missingUpstreamFields.includes('skew_change'));
   assert.ok(vector.dataCompleteness.missingUpstreamFields.includes('liquidity_open_interest_volume'));
 });
+
+test('covered-call capital uses confirmed stock basis and shares, never call strike collateral', () => {
+  const input = state('CC_OPEN', { option_type: 'CALL', strike: '220', open_stock_shares: '100', stock_basis_per_share: '195' });
+  assert.equal(buildLossStateVector(input).capitalLockedDollars, 19_500);
+  assert.equal(buildLossStateVector({ ...input, economics: { ...input.economics, stockBasisPerShare: null } }).capitalLockedDollars, null);
+});
+
+test('future entry snapshots cannot create zero elapsed time or future IV and spot evidence', () => {
+  const vector = buildLossStateVector(state('CSP_OPEN'), { observedAt: '2026-09-13T14:00:00Z',
+    spotAtEntry: 210, ivAtEntry: 0.3, deltaAtEntry: -0.25, gammaAtEntry: null, thetaAtEntry: null, vegaAtEntry: null });
+  assert.equal(vector.capitalDaysSoFar, null);
+  assert.equal(vector.ivAtEntry, null);
+  assert.equal(vector.underlyingDrawdownFraction, null);
+  assert.deepEqual(vector.dataCompleteness.invalidEvidence, ['ENTRY_SNAPSHOT_TIME_INVALID_OR_FUTURE']);
+  assert.equal(vector.capitalTimeUnit, 'CALENDAR_DAYS_ELAPSED');
+});
+
+test('zero entry spot and crossed market cannot fabricate infinite drawdown or negative spread', () => {
+  const input = state('CSP_OPEN', { bid: 3, ask: 1 });
+  const vector = buildLossStateVector(input, { observedAt: '2026-09-01T14:00:00Z', spotAtEntry: 0,
+    ivAtEntry: 0.3, deltaAtEntry: null, gammaAtEntry: null, thetaAtEntry: null, vegaAtEntry: null });
+  assert.equal(vector.underlyingDrawdownFraction, null);
+  assert.equal(vector.quoteSpreadDollarsPerContract, null);
+});

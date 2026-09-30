@@ -7,6 +7,7 @@ import { PostgresWholeChainComponentsRepository } from './postgres-whole-chain-c
 import type { WholeChainComponentEvidence } from './whole-chain-component-evidence.js';
 import { securedContractCapacity } from './secured-contract-capacity.js';
 import type { ManagementCandidateDiscovery } from './management-candidate-evidence.js';
+import { loadManagementEntryThesis, type ManagementEntryThesis } from './management-entry-thesis.js';
 
 export const managementInputVersion = 'theta-management-input-v4' as const;
 
@@ -55,6 +56,7 @@ export interface ManagementInputState {
   readonly observedAt: string;
   readonly evidenceBundle: ManagementDecisionEvidenceBundle;
   readonly managementCandidateDiscovery?: ManagementCandidateDiscovery | null;
+  readonly originalEntryThesis?: ManagementEntryThesis;
   readonly lifecycleState: ThetaLifecycleState;
   readonly underlying: string;
   readonly underlyingId: string;
@@ -405,6 +407,10 @@ export function assembleManagementInput(row: Row, input: {
     reconciliationSnapshotId: input.reconciliationSnapshotId,
     fusionSnapshotId: text(row.fusion_snapshot_id), chainId: String(row.chain_id), observedAt: input.observedAt,
     evidenceBundle, managementCandidateDiscovery:candidateDiscovery,
+    originalEntryThesis: loadManagementEntryThesis(row.original_entry_thesis, {
+      decisionId: row.original_decision_id, snapshotId: row.original_snapshot_id,
+      decidedAt: row.original_decided_at, underlying: String(row.underlying), managementAsOf: input.observedAt,
+    }),
     lifecycleState, underlying: String(row.underlying),
     underlyingId: String(row.underlying_id),
     contract: { optionLegId: text(row.option_leg_id), optionContractId: text(row.option_contract_id), symbol: contractSymbol,
@@ -450,6 +456,8 @@ export class PostgresManagementInputStore {
     candidateDiscoveryByChain: ReadonlyMap<string,ManagementCandidateDiscovery> = new Map()): Promise<readonly ManagementInputState[]> {
     const result = await this.pool.query(`
       SELECT ec.chain_id,ec.lifecycle_state,u.underlying_id,u.symbol AS underlying,
+        original_entry.decision_id AS original_decision_id,original_entry.fusion_snapshot_id AS original_snapshot_id,
+        original_entry.decided_at AS original_decided_at,original_entry.entry_thesis AS original_entry_thesis,
         ol.option_leg_id,ol.remaining_quantity AS quantity,ol.entry_credit_debit,oc.option_contract_id,oc.contract_symbol,oc.option_type,
         oc.strike,oc.expiration_date,oc.multiplier,
         oq.bid,oq.ask,oq.as_of AS quote_as_of,oq.retrieved_at AS quote_retrieved_at,oq.feed,oq.quality AS quote_quality,
@@ -486,6 +494,21 @@ export class PostgresManagementInputStore {
         ORDER BY l.opened_at DESC LIMIT 1
       ) ol ON true
       LEFT JOIN market.option_contract oc ON oc.option_contract_id=ol.option_contract_id
+      LEFT JOIN LATERAL (
+        -- Logical receipt identities differ from storage UUIDs. Bind to the
+        -- original receipt envelope, preserving the canonical row via first_leg.
+        SELECT COALESCE(d.receipt_json #>> '{legacyThetaQReceipt,decisionId}',
+            d.receipt_json #>> '{subordinateNewRiskEvidence,receipt,decisionId}') AS decision_id,
+          COALESCE(d.receipt_json #>> '{legacyThetaQReceipt,snapshotId}',
+            d.receipt_json #>> '{subordinateNewRiskEvidence,receipt,snapshotId}') AS fusion_snapshot_id,
+          COALESCE(d.receipt_json #>> '{legacyThetaQReceipt,timestamp}',
+            d.receipt_json #>> '{subordinateNewRiskEvidence,receipt,timestamp}') AS decided_at,
+          COALESCE(d.receipt_json #> '{legacyThetaQReceipt,entryThesisReceipt}',
+            d.receipt_json #> '{subordinateNewRiskEvidence,receipt,entryThesisReceipt}') AS entry_thesis
+        FROM trade.option_leg first_leg JOIN trade.decision d ON d.decision_id=first_leg.decision_id
+        WHERE first_leg.chain_id=ec.chain_id
+        ORDER BY first_leg.opened_at,first_leg.option_leg_id LIMIT 1
+      ) original_entry ON true
       LEFT JOIN LATERAL (
         SELECT COALESCE(sum(other_leg.quantity-COALESCE((SELECT sum(p.closed_quantity)
           FROM trade.option_partial_close_realization p WHERE p.option_leg_id=other_leg.option_leg_id),0)),0) AS total_remaining

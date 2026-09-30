@@ -200,11 +200,13 @@
   },
   {
     "id": "3.9",
-    "reviewedBehavior": "Unknown candidate risk never inherits representative clearance. Governed immature-baseline applicability cannot turn unrelated tail uncertainty into size. Unclassified evidence stays explicit.",
+    "reviewedBehavior": "Unknown candidate risk never inherits representative clearance. Optional unknown thesis context cannot manufacture an adverse management bias. Governed immature-baseline applicability cannot turn unrelated tail uncertainty into size.",
     "sources": [
       "src/theta/new-risk-orchestrator.ts",
       "src/theta/canonical-strategy-frontier.ts",
-      "src/theta/decision-evidence.ts"
+      "src/theta/decision-evidence.ts",
+      "src/theta/thesis-invalidation.ts",
+      "src/theta/paper-bootstrap-management-policy.ts"
     ],
     "tests": [
       {
@@ -213,6 +215,10 @@
           "candidate-specific UNKNOWN risk evidence overrides permissive pre-trade inputs and holds",
           "Paper bootstrap cannot turn an unrelated TailQuality UNKNOWN into quantity"
         ]
+      },
+      {
+        "file": "tests/paper-bootstrap-management-policy.test.ts",
+        "names": ["missing optional thesis context cannot create a close bias in the real management policy"]
       },
       {
         "file": "tests/decision-evidence.test.ts",

@@ -132,7 +132,7 @@ test('alert dedup increments occurrence count without changing first seen',()=>{
   assert.equal(resolved.lifecycleTransition,'RESOLVED');assert.equal(reopened.lifecycleTransition,'REOPENED');
 });
 
-const checkpoint=(classification:PositionPathCheckpoint['classification'],pnl:number):PositionPathCheckpoint=>({version:'theta-position-path-v1',checkpointIdentity:'x',chainId:'c',managementInputSnapshotId:'m',observedAt:'2026-09-15T10:00:00Z',classification,
+const checkpoint=(classification:PositionPathCheckpoint['classification'],pnl:number):PositionPathCheckpoint=>({version:'theta-position-path-v2',checkpointIdentity:'x',chainId:'c',managementInputSnapshotId:'m',observedAt:'2026-09-15T10:00:00Z',classification,
   currentWholeChainPnl:pnl,currentOptionPnl:pnl,peakWholeChainPnl:pnl,troughWholeChainPnl:pnl,profitGiveback:0,drawdownFromPeak:0,pnlVelocityPerHour:null,spotVelocityPerHour:null,
   greekVelocityPerHour:{delta:null,gamma:null,theta:null,vega:null},dte:30,capitalDaysObserved:null,markQuality:null,
   evidence:{spot:null,strike:null,breakeven:null,optionBid:null,optionAsk:null,quoteTimestamp:null,delta:null,gamma:null,theta:null,vega:null,iv:null,eventState:null,recoveryState:null,regimeState:null},unknownFields:[],executionAuthorized:false});

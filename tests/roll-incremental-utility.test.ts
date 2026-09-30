@@ -58,3 +58,16 @@ test('days extended and incremental capital are computed and exposed on the winn
   assert.equal(best?.daysExtended, 35);
   assert.equal(best?.incrementalCapitalDollars, -500);
 });
+
+test('released capital is not charged as additional capital and ties are provider-order independent', () => {
+  const a = candidate({ optionContractId: 'a' }), b = candidate({ optionContractId: 'b' });
+  assert.equal(evaluateRollCandidates(oldLeg, null, [a], 1).bestCandidate?.rollIncrementalUtility, 50);
+  assert.equal(evaluateRollCandidates(oldLeg, null, [a, b], 1).bestCandidate?.candidate.optionContractId,
+    evaluateRollCandidates(oldLeg, null, [b, a], 1).bestCandidate?.candidate.optionContractId);
+});
+
+test('nonfinite roll economics never rank or produce a fabricated finite utility', () => {
+  for (const value of [NaN, Infinity, -1]) {
+    assert.equal(evaluateRollCandidates(oldLeg, null, [candidate({ openCreditDollars: value })], 0).bestCandidate, null);
+  }
+});

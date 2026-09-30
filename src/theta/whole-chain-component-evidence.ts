@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export const wholeChainComponentEvidenceVersion = 'theta-whole-chain-component-evidence-v2' as const;
+export const wholeChainComponentEvidenceVersion = 'theta-whole-chain-component-evidence-v3' as const;
 
 export type WholeChainEvidenceStatus = 'KNOWN' | 'KNOWN_ZERO' | 'UNKNOWN';
 
@@ -110,7 +110,7 @@ export function componentsFromEvidence(evidence: Omit<WholeChainComponentEvidenc
   readonly components: WholeChainComponentsInput | null;
   readonly blockers: readonly string[];
 } {
-  const required: ReadonlyArray<readonly [string, WholeChainEvidenceField<unknown>]> = [
+  const required: Array<readonly [string, WholeChainEvidenceField<number>]> = [
     ['initialPutPremium', evidence.initialPutPremium],
     ['putCloseCosts', evidence.putCloseCosts],
     ['rollCredits', evidence.rollCredits],
@@ -122,19 +122,28 @@ export function componentsFromEvidence(evidence: Omit<WholeChainComponentEvidenc
     ['fees', evidence.fees],
     ['openStockShares', evidence.openStockShares],
   ];
-  const blockers = required.filter(([, field]) => field.status === 'UNKNOWN').map(([name]) => `${name}:UNKNOWN`);
-  if (evidence.stockSharesAssigned.status !== 'UNKNOWN' && (evidence.stockSharesAssigned.value ?? 0) > 0
-      && evidence.assignmentStrike.status === 'UNKNOWN') {
-    blockers.push('assignmentStrike:UNKNOWN');
+  if ((evidence.stockSharesAssigned.value ?? 0) > 0) {
+    required.push(['assignmentStrike', evidence.assignmentStrike]);
   }
-  if (evidence.openStockShares.status !== 'UNKNOWN' && (evidence.openStockShares.value ?? 0) > 0
-      && evidence.currentStockMarkPerShare.status === 'UNKNOWN') {
-    blockers.push('currentStockMarkPerShare:UNKNOWN');
+  if ((evidence.openStockShares.value ?? 0) > 0) {
+    required.push(['currentStockMarkPerShare', evidence.currentStockMarkPerShare]);
   }
-  if (evidence.stockSharesAssigned.status !== 'UNKNOWN' && (evidence.stockSharesAssigned.value ?? 0) > 0
-      && evidence.openStockShares.status !== 'UNKNOWN' && evidence.openStockShares.value === 0
-      && evidence.stockSaleOrCallAwayProceeds.status === 'UNKNOWN') {
-    blockers.push('stockSaleOrCallAwayProceeds:UNKNOWN');
+  if (evidence.stockSharesAssigned.value !== null && evidence.openStockShares.value !== null
+      && evidence.stockSharesAssigned.value > evidence.openStockShares.value) {
+    required.push(['stockSaleOrCallAwayProceeds', evidence.stockSaleOrCallAwayProceeds]);
+  }
+  const blockers: string[] = [];
+  const decisionMs = Date.parse(evidence.asOf);
+  if (!Number.isFinite(decisionMs)) blockers.push('asOf:INVALID');
+  for (const [name, field] of required) {
+    if (field.status === 'UNKNOWN') { blockers.push(`${name}:UNKNOWN`); continue; }
+    if (typeof field.value !== 'number' || !Number.isFinite(field.value)) blockers.push(`${name}:INVALID`);
+    const times = [field.asOf, ...field.sources.map(item => item.observedAt).filter((time): time is string => time !== null)];
+    if (times.some(time => !Number.isFinite(Date.parse(time)) || Date.parse(time) > decisionMs)) blockers.push(`${name}:PIT_INVALID`);
+  }
+  const assigned = evidence.stockSharesAssigned.value, open = evidence.openStockShares.value;
+  if (assigned !== null && open !== null && (assigned < 0 || open < 0 || open > assigned)) {
+    blockers.push('stockShares:INVALID_IDENTITY');
   }
   if (blockers.length > 0) return { components: null, blockers };
   return {

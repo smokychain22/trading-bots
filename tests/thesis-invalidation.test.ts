@@ -38,9 +38,31 @@ test('an AEGIS hard veto is a thesis-failure signal independent of price', () =>
   assert.ok(assessment.thesisFailureSignals.includes('AEGIS_HARD_VETO'));
 });
 
-test('a non-CLEAR event state is surfaced as a named thesis-failure signal', () => {
+test('a positively known imminent event is surfaced as a named thesis-failure signal', () => {
   const assessment = assessThesisInvalidation(state({}, { eventState: { state: 'EARNINGS_IMMINENT' } }));
   assert.ok(assessment.thesisFailureSignals.includes('EVENT_STATE_EARNINGS_IMMINENT'));
+});
+
+test('unknown or verified-safe event and dividend context cannot manufacture thesis failure', () => {
+  for (const label of ['UNKNOWN', 'PROVIDER_ERROR', 'PROVIDER_LIMITED', 'STALE', 'NOT_APPLICABLE', 'ABSENT_VERIFIED', 'CLEAR']) {
+    const input = state({}, { eventState: { state: label, exDividendState: label },
+      riskState: { assignmentCapacity: 1, newRiskState: 'UNKNOWN' } });
+    const assessment = assessThesisInvalidation(input);
+    assert.deepEqual(assessment.thesisFailureSignals, [], label);
+    assert.ok(assessment.uninterpretedSignals.includes('AEGIS_STATE_UNQUALIFIED'));
+    if (['UNKNOWN', 'PROVIDER_ERROR', 'PROVIDER_LIMITED', 'STALE'].includes(label)) {
+      assert.ok(assessment.uninterpretedSignals.includes('EVENT_STATE_UNQUALIFIED'));
+      assert.ok(assessment.uninterpretedSignals.includes('DIVIDEND_STATE_UNQUALIFIED'));
+    }
+  }
+  const dated = assessThesisInvalidation(state({}, { eventState: { state: 'CLEAR', exDividendDate: '2027-01-01' } }));
+  assert.deepEqual(dated.thesisFailureSignals, []);
+  assert.ok(dated.uninterpretedSignals.includes('DIVIDEND_STATE_UNQUALIFIED'));
+});
+
+test('explicit PRESENT dividend risk remains separate from absent and unknown evidence', () => {
+  const assessment = assessThesisInvalidation(state({}, { eventState: { state: 'CLEAR', exDividendState: 'PRESENT' } }));
+  assert.ok(assessment.thesisFailureSignals.includes('DIVIDEND_EX_DATE_RISK_PRESENT'));
 });
 
 test('opaque context fields with no verified schema are reported as uninterpreted, never counted as failure', () => {

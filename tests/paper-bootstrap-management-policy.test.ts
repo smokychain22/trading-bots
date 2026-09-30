@@ -50,6 +50,19 @@ test('CSP_OPEN near expiration with near-exhausted remaining value closes determ
   assert.equal(frontier.decisionState, 'ACTION_SELECTED');
 });
 
+test('missing optional thesis context cannot create a close bias in the real management policy', () => {
+  const input = state('CSP_OPEN', { bid: 2.5, ask: 2.6 });
+  const baseline = evaluatePaperBootstrapManagementPolicy({ ...input, thesisFailureUtilityBias: 2 });
+  assert.equal(baseline?.selectedAction, 'HOLD');
+  for (const label of ['UNKNOWN', 'PROVIDER_LIMITED', 'ABSENT_VERIFIED', 'NOT_APPLICABLE']) {
+    const result = evaluatePaperBootstrapManagementPolicy({ ...input, thesisFailureUtilityBias: 2,
+      context: { ...input.context, eventState: { state: label }, dividendExDateState: label } });
+    assert.equal(result?.selectedAction, baseline?.selectedAction, label);
+    assert.deepEqual(result?.actionValues.map(row => [row.action, row.utility]),
+      baseline?.actionValues.map(row => [row.action, row.utility]), label);
+  }
+});
+
 test('adjacent management observations with identical economics do not oscillate from optional metadata or key order',()=>{
   for(const fixture of [
     {bid:1,ask:1.1,at:'2026-09-12T14:00:00.000Z',expected:'HOLD'},
@@ -281,7 +294,7 @@ test('uncertainty on CLOSE_FULL reflects the count of uninterpreted context sign
   const input = state('CSP_OPEN', { ...overrides, bid: 0.05, ask: 0.06 }, '2026-10-13T14:00:00.000Z');
   const evidence = evaluatePaperBootstrapManagementPolicy(input);
   const closeValue = evidence?.actionValues.find((value) => value.action === 'CLOSE_FULL');
-  assert.equal(closeValue?.uncertainty, 2);
+  assert.equal(closeValue?.uncertainty, 3); // Two opaque contexts plus unavailable original entry thesis.
 });
 
 test('with no sellCcPremiumUtilityWeight supplied, SELL_CC stays neutral (tied with RECOVERY_WAIT) even with a valid, positive-premium candidate -- no permanent law favors it', () => {
@@ -443,7 +456,7 @@ test('RECOVERY_WAIT wins by default when no candidates or economic reason to act
 test('SELL_STOCK is no longer permanently handicapped -- it wins over RECOVERY_WAIT when a justified opportunity-cost weight applies to a real, known capital cost', () => {
   const input = {
     ...state('RECOVERY_WAIT'), assignedAtObservedAt: '2026-08-13T14:00:00.000Z', annualOpportunityCostRate: 0.05,
-    sellStockOpportunityCostUtilityWeight: 0.02,
+    sellStockOpportunityCostUtilityWeight: 0.02, recoveryForwardHorizonDays: 30,
   };
   const evidence = evaluatePaperBootstrapManagementPolicy(input);
   assert.equal(evidence?.selectedAction, 'SELL_STOCK');
@@ -506,7 +519,7 @@ test('RECOVERY_WAIT/SELL_STOCK/SELL_CC can EACH win rationally -- no action carr
   // cost weight against a real, known capital cost).
   const sellStockWins = evaluatePaperBootstrapManagementPolicy({
     ...state('RECOVERY_WAIT'), assignedAtObservedAt: '2026-08-13T14:00:00.000Z', annualOpportunityCostRate: 0.05,
-    sellStockOpportunityCostUtilityWeight: 0.02,
+    sellStockOpportunityCostUtilityWeight: 0.02, recoveryForwardHorizonDays: 30,
   });
   assert.equal(sellStockWins?.selectedAction, 'SELL_STOCK');
 
@@ -521,13 +534,27 @@ test('RECOVERY_WAIT/SELL_STOCK/SELL_CC can EACH win rationally -- no action carr
 
 test('RECOVERY_WAIT carries a real (non-flat-zero) forward-economics utility once a known capital opportunity cost applies -- it is the mirror image of SELL_STOCK\'s own benefit-of-selling term', () => {
   const input = { ...state('RECOVERY_WAIT'), assignedAtObservedAt: '2026-08-13T14:00:00.000Z', annualOpportunityCostRate: 0.05,
-    sellStockOpportunityCostUtilityWeight: 0.02 };
+    sellStockOpportunityCostUtilityWeight: 0.02, recoveryForwardHorizonDays: 30 };
   const evidence = evaluatePaperBootstrapManagementPolicy(input);
   const recoveryValue = evidence?.actionValues.find((value) => value.action === 'RECOVERY_WAIT');
   const sellStockValue = evidence?.actionValues.find((value) => value.action === 'SELL_STOCK');
   assert.ok((recoveryValue?.utility as number) < 0, 'RECOVERY_WAIT must pay the known cost of continuing to wait');
   assert.equal(recoveryValue?.utility, -(sellStockValue?.utility as number));
   assert.ok(recoveryValue?.reasons.some((reason) => reason.startsWith('CONTINUING_CAPITAL_OPPORTUNITY_COST_') && !reason.endsWith('UNKNOWN')));
+});
+
+test('past recovery holding cost cannot manufacture an avoidable forward cost or force stock sale', () => {
+  const base = { ...state('RECOVERY_WAIT'), annualOpportunityCostRate: 0.05, sellStockOpportunityCostUtilityWeight: 0.02 };
+  for (const assignedAtObservedAt of ['2025-01-01T00:00:00Z', '2026-09-11T14:00:00Z']) {
+    const result = evaluatePaperBootstrapManagementPolicy({ ...base, assignedAtObservedAt });
+    assert.equal(result?.selectedAction, 'RECOVERY_WAIT');
+    assert.equal(result?.actionValues.find(value => value.action === 'RECOVERY_WAIT')?.opportunityCost, null);
+    assert.equal(result?.actionValues.find(value => value.action === 'RECOVERY_WAIT')?.incrementalCapitalDays, null);
+  }
+  const old = evaluatePaperBootstrapManagementPolicy({ ...base, assignedAtObservedAt: '2025-01-01T00:00:00Z', recoveryForwardHorizonDays: 30 });
+  const recent = evaluatePaperBootstrapManagementPolicy({ ...base, assignedAtObservedAt: '2026-09-11T14:00:00Z', recoveryForwardHorizonDays: 30 });
+  assert.equal(old?.actionValues.find(value => value.action === 'SELL_STOCK')?.utility,
+    recent?.actionValues.find(value => value.action === 'SELL_STOCK')?.utility);
 });
 
 test('ROLL_CC with multiple candidates picks the best combination of NetRollCredit and AdditionalUpsideDollars, not merely the largest credit', () => {
@@ -569,7 +596,7 @@ test('ROLL_CC falls back to the single-candidate path (valueForSingleRollCandida
 test('ALLOW_CALL_AWAY surfaces the real canonical whole-chain call-away P&L (never a second formula, gross proceeds never presented as profit), and stays UNKNOWN when canonical basis is unknown', () => {
   const completeChain = {
     cashflowBasis:'ACTUAL_FILL_CASHFLOW' as const,initialPutPremium:300,putCloseCosts:0,rollCredits:0,rollCloseCosts:0,assignmentStrike:195,stockSharesAssigned:100,
-    dividends: 0, coveredCallPremium: null, coveredCallCloseCosts: null, stockSaleOrCallAwayProceeds: null,
+    dividends: 0, coveredCallPremium: 200, coveredCallCloseCosts: 0, stockSaleOrCallAwayProceeds: null,
     fees:0,executionCostNotEmbeddedInCashflows:0,tcaExecutionShortfall:0,currentStockMarkPerShare:null,openStockShares:100,
   };
   // canonicalBasis = 195 - (300/100) = 192. Call away at strike 200:
@@ -598,7 +625,7 @@ test('ALLOW_CALL_AWAY surfaces the real canonical whole-chain call-away P&L (nev
 test('ALLOW_CALL_AWAY correctly registers a loss when called away below the canonical basis, never masked by gross proceeds', () => {
   const completeChain = {
     cashflowBasis:'ACTUAL_FILL_CASHFLOW' as const,initialPutPremium:50,putCloseCosts:0,rollCredits:0,rollCloseCosts:0,assignmentStrike:195,stockSharesAssigned:100,
-    dividends: 0, coveredCallPremium: null, coveredCallCloseCosts: null, stockSaleOrCallAwayProceeds: null,
+    dividends: 0, coveredCallPremium: 200, coveredCallCloseCosts: 0, stockSaleOrCallAwayProceeds: null,
     fees:0,executionCostNotEmbeddedInCashflows:0,tcaExecutionShortfall:0,currentStockMarkPerShare:null,openStockShares:100,
   };
   // canonicalBasis = 195 - (50/100) = 194.5. Call-away strike 200 is
@@ -615,6 +642,19 @@ test('ALLOW_CALL_AWAY correctly registers a loss when called away below the cano
   // proceeds = 190*100 = 19,000. Stock leg = 19,000 - 194.5*100 = -450.
   // Plus CC premium 200, fees 0: wholeChainPnl = 200 - 450 = -250.
   assert.ok(callAway?.reasons.includes('CANONICAL_WHOLE_CHAIN_CALL_AWAY_PNL_-250.00'));
+});
+
+test('call-away scenario preserves historical call losses and charges actual fees exactly once', () => {
+  const chain = { cashflowBasis: 'ACTUAL_FILL_CASHFLOW' as const, initialPutPremium: 300, putCloseCosts: 0,
+    rollCredits: 0, rollCloseCosts: 0, assignmentStrike: 195, stockSharesAssigned: 100,
+    dividends: 0, coveredCallPremium: 400, coveredCallCloseCosts: 500, stockSaleOrCallAwayProceeds: null,
+    fees: 10, executionCostNotEmbeddedInCashflows: 0, tcaExecutionShortfall: 0, currentStockMarkPerShare: null, openStockShares: 100 };
+  const input = { ...state('CC_OPEN', { open_stock_shares: '100', stock_basis_per_share: '195', fees: '10' }), wholeChainComponents: chain };
+  const result = evaluatePaperBootstrapManagementPolicy(input)?.actionValues.find(value => value.action === 'ALLOW_CALL_AWAY');
+  assert.ok(result?.reasons.includes('CANONICAL_WHOLE_CHAIN_CALL_AWAY_PNL_690.00'));
+  const unknown = evaluatePaperBootstrapManagementPolicy({ ...input, wholeChainComponents: { ...chain, coveredCallCloseCosts: null } });
+  assert.ok(unknown?.actionValues.find(value => value.action === 'ALLOW_CALL_AWAY')?.reasons
+    .includes('CANONICAL_WHOLE_CHAIN_CALL_AWAY_PNL_UNKNOWN_BASIS_INCOMPLETE'));
 });
 
 test('CC_OPEN with no known reason to act holds the covered call', () => {

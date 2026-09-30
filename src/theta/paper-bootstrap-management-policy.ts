@@ -23,7 +23,7 @@ const DEFAULT_CC_UTILITY_WEIGHTS: CoveredCallUtilityWeights = {
   dividendExDateRiskPenalty: 0, belowBasisPenalty: 0, provenance: BOOTSTRAP_NEUTRAL_CC_WEIGHT_PROVENANCE,
 };
 
-export const paperBootstrapManagementPolicyVersion = 'theta-paper-bootstrap-management-policy-v1' as const;
+export const paperBootstrapManagementPolicyVersion = 'theta-paper-bootstrap-management-policy-v2' as const;
 
 /**
  * PAPER_BOOTSTRAP_MANAGEMENT_POLICY.
@@ -122,9 +122,11 @@ export interface PaperBootstrapPolicyInput extends ManagementInputState {
    * omitted, capital-days/opportunity-cost stay UNKNOWN rather than fabricated. */
   readonly assignedAtObservedAt?: string | null;
   readonly annualOpportunityCostRate?: number | null;
+  /** Explicit prospective comparison horizon. Elapsed holding time cannot substitute for it. */
+  readonly recoveryForwardHorizonDays?: number | null;
   /**
    * Required, caller-justified weight converting a KNOWN capital
-   * opportunity cost (RecoveryState.capitalOpportunityCostDollars) into a
+   * forward opportunity cost (RecoveryState.forwardOpportunityCostDollars) into a
    * positive utility contribution for SELL_STOCK. Defaults to 0 (inert)
    * when omitted. This -- together with `thesisFailureUtilityBias`, which
    * SELL_STOCK now also reacts to exactly like CLOSE_FULL/ROLL -- replaces
@@ -571,33 +573,19 @@ function valueForSellCcFromCandidates(
     openInterest: null, volume: null,
     dividendExDateRisk: candidate.dividendExDateRisk ?? 'UNKNOWN', eventRisk: candidate.eventRisk ?? 'UNKNOWN',
   }));
-  // wholeChainPnlIfCalledAway/IfNotCalled make a CANONICAL whole-chain
-  // P&L claim -- assignmentStrike here is therefore ONLY ever the
-  // canonical basis, never the reference. When canonical is unknown,
-  // this stays null, which correctly propagates into
-  // computeWholeChainPnl's own stock-leg logic reporting those figures
-  // as UNKNOWN rather than fabricated from a lower-confidence reference.
-  //
-  // When canonicalBasis IS known, it already came from
-  // computeEffectiveStockBasis folding initialPutPremium/rollCredits/
-  // rollCloseCosts/execution costs INTO the strike itself -- passing those same
-  // components again here as `null` would wrongly re-flag them as
-  // genuinely unknown and force the combined sum to UNKNOWN even though
-  // they are honestly, structurally already accounted for (0, not
-  // fabricated, not double-counted -- a real defect this pass fixes: a
-  // KNOWN canonical basis was silently unable to ever produce a KNOWN
-  // combined whole-chain P&L here). They remain `null` (genuinely
-  // unknown) only when canonicalBasis itself is unknown.
-  const embeddedInCanonicalBasis = canonicalBasis !== null ? 0 : null;
-  const wholeChainBase = {
-    initialPutPremium: embeddedInCanonicalBasis,putCloseCosts:embeddedInCanonicalBasis,rollCredits: embeddedInCanonicalBasis,
-    rollCloseCosts: embeddedInCanonicalBasis, assignmentStrike: canonicalBasis,
+  // Preserve original cash-flow legs, including prior call losses and
+  // partial stock exits. Adjusted basis cannot substitute for full history
+  // or justify deducting already-embedded fees for a second time.
+  const wholeChainBase = state.wholeChainComponents ?? {
+    initialPutPremium: null,putCloseCosts:null,rollCredits: null,
+    rollCloseCosts: null, assignmentStrike: null,
     stockSharesAssigned: state.economics.openStockShares, dividends: state.economics.dividends,
     // Passed through honestly -- `?? 0` would silently convert genuinely
     // UNKNOWN fee evidence (state.economics.fees is null specifically
     // when unknown_fill_fees is true) into a fabricated real zero.
     fees: state.economics.fees,cashflowBasis:'ACTUAL_FILL_CASHFLOW' as const,
-    executionCostNotEmbeddedInCashflows:embeddedInCanonicalBasis,tcaExecutionShortfall:null,
+    executionCostNotEmbeddedInCashflows:null,tcaExecutionShortfall:null,
+    coveredCallPremium:null,coveredCallCloseCosts:null,stockSaleOrCallAwayProceeds:null,
   };
   const assessments = evaluateCoveredCallCandidates(
     operationalBasis, state.economics.stockMarkPerShare, state.economics.openStockShares, wholeChainBase, latticeCandidates,
@@ -736,11 +724,11 @@ function valueFor(
       // magnitude the way the two mechanisms above never do either.
       const adjustment = thesisUtilityAdjustment(thesis, state.thesisFailureUtilityBias ?? 0);
       const waitOpportunityCostWeight = state.sellStockOpportunityCostUtilityWeight ?? 0;
-      const waitOpportunityCostContribution = recoveryState.capitalOpportunityCostDollars !== null
-        ? waitOpportunityCostWeight * recoveryState.capitalOpportunityCostDollars : 0;
+      const waitOpportunityCostContribution = recoveryState.forwardOpportunityCostDollars !== null
+        ? waitOpportunityCostWeight * recoveryState.forwardOpportunityCostDollars : 0;
       return {
-        ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: recoveryState.capitalDaysSoFar,
-        executionCostRisk: null, opportunityCost: recoveryState.capitalOpportunityCostDollars, uncertainty: null,
+        ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: recoveryState.forwardHorizonDays,
+        executionCostRisk: null, opportunityCost: recoveryState.forwardOpportunityCostDollars, uncertainty: null,
         utility: -adjustment.closeBias - waitOpportunityCostContribution,
         executionEvidence: null,
         reasons: [
@@ -749,7 +737,8 @@ function valueFor(
           `CANONICAL_DISTANCE_TO_BASIS_FRACTION_${recoveryState.canonicalDistanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.canonicalDistanceToBasisFraction.toFixed(4)}`,
           `REFERENCE_DISTANCE_TO_BASIS_FRACTION_${recoveryState.referenceDistanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.referenceDistanceToBasisFraction.toFixed(4)}`,
           `CAPITAL_DAYS_SO_FAR_${recoveryState.capitalDaysSoFar === null ? 'UNKNOWN' : recoveryState.capitalDaysSoFar.toFixed(1)}`,
-          `CONTINUING_CAPITAL_OPPORTUNITY_COST_${recoveryState.capitalOpportunityCostDollars === null ? 'UNKNOWN' : recoveryState.capitalOpportunityCostDollars.toFixed(2)}`,
+          `CONTINUING_CAPITAL_OPPORTUNITY_COST_${recoveryState.forwardOpportunityCostDollars === null ? 'UNKNOWN' : recoveryState.forwardOpportunityCostDollars.toFixed(2)}`,
+          'ELAPSED_CAPITAL_COST_IS_HISTORICAL_CONTEXT_NOT_FORWARD_UTILITY',
           `PORTFOLIO_BURDEN_DATA_PRESENT_${recoveryState.portfolioBurdenDataPresent}`,
           `EVENT_RISK_CONTEXT_PRESENT_${recoveryState.eventRiskPresent}`,
           'RECOVERY_PROBABILITY_NOT_MODELED_NO_FABRICATED_ESTIMATE',
@@ -847,23 +836,18 @@ function valueFor(
       // rather than silently substituting the recorded-lot reference.
       const { strike, multiplier, contracts } = state.contract;
       const proceeds = finite(strike) && finite(multiplier) && finite(contracts) ? strike * multiplier * contracts : null;
-      const canonicalBasis = recoveryState.canonicalEffectiveBasisPerShare;
       const referenceBasis = recoveryState.recordedLotBasisReferencePerShare;
-      // When canonicalBasis IS known, it already folds
-      // initialPutPremium/rollCredits/rollCloseCosts/execution costs into the
-      // strike itself -- re-passing those as `null` would wrongly force
-      // this combined sum to UNKNOWN even though they are honestly,
-      // structurally already accounted for (0, not fabricated, not
-      // double-counted). The REFERENCE basis carries no such adjustment
-      // (it may be nothing more than the raw assignment strike), so those
-      // components genuinely stay unknown for that lower-confidence path.
-      const canonicalCallAwayPnl = proceeds === null || canonicalBasis === null ? null : computeWholeChainPnl({
-        initialPutPremium: 0,putCloseCosts:0,rollCredits: 0, rollCloseCosts: 0, assignmentStrike: canonicalBasis,
-        stockSharesAssigned: state.economics.openStockShares, dividends: state.economics.dividends,
-        fees: state.economics.fees,cashflowBasis:'ACTUAL_FILL_CASHFLOW',executionCostNotEmbeddedInCashflows:0,
-        tcaExecutionShortfall:null,coveredCallPremium: state.economics.entryCreditDebit,
-        coveredCallCloseCosts: 0, stockSaleOrCallAwayProceeds: proceeds, currentStockMarkPerShare: null, openStockShares: 0,
-      }).wholeChainPnl;
+      const chain = state.wholeChainComponents;
+      const calledShares = finite(multiplier) && finite(contracts) ? multiplier * contracts : null;
+      const historicalProceeds = chain?.stockSharesAssigned === state.economics.openStockShares ? 0
+        : chain?.stockSaleOrCallAwayProceeds ?? null;
+      const canonicalCallAwayPnl = chain == null || proceeds === null || calledShares === null || historicalProceeds === null
+        || calledShares > state.economics.openStockShares ? null : computeWholeChainPnl({
+          ...chain, cashflowBasis: 'BENCHMARK_CASHFLOW',
+          stockSaleOrCallAwayProceeds: historicalProceeds + proceeds,
+          currentStockMarkPerShare: state.economics.stockMarkPerShare,
+          openStockShares: state.economics.openStockShares - calledShares,
+        }).wholeChainPnl;
       const referenceCallAwayPnl = proceeds === null || referenceBasis === null ? null : computeWholeChainPnl({
         initialPutPremium: null,putCloseCosts:null,rollCredits: null, rollCloseCosts: null, assignmentStrike: referenceBasis,
         stockSharesAssigned: state.economics.openStockShares, dividends: state.economics.dividends,
@@ -875,6 +859,7 @@ function valueFor(
         ...base, ...UNKNOWN_VALUE, utility: 0,
         reasons: [
           'DEFERRED_TO_STRUCTURAL_EXPIRATION_HANDLING',
+          'CALL_AWAY_SCENARIO_NOT_A_REALIZED_FILL',
           canonicalCallAwayPnl !== null ? `CANONICAL_WHOLE_CHAIN_CALL_AWAY_PNL_${canonicalCallAwayPnl.toFixed(2)}`
             : 'CANONICAL_WHOLE_CHAIN_CALL_AWAY_PNL_UNKNOWN_BASIS_INCOMPLETE',
           referenceCallAwayPnl !== null ? `REFERENCE_WHOLE_CHAIN_CALL_AWAY_PNL_USING_RECORDED_LOT_BASIS_${referenceCallAwayPnl.toFixed(2)}`
@@ -921,17 +906,17 @@ function valueFor(
       //       thesisFailureUtilityBias already governing CLOSE_FULL/ROLL,
       //       never a second, independently-invented bias.
       //   (b) a known, real capital opportunity cost (from
-      //       RecoveryState.capitalOpportunityCostDollars, itself only
+      //       RecoveryState.forwardOpportunityCostDollars, itself only
       //       computed when the caller supplied entry data + a justified
       //       annual rate) times a caller-justified weight -- an honest,
       //       quantified economic reason, never a fabricated one.
       // Both default to 0/neutral. Neither is invented internally.
       const opportunityCostWeight = state.sellStockOpportunityCostUtilityWeight ?? 0;
-      const opportunityCostContribution = recoveryState.capitalOpportunityCostDollars !== null
-        ? opportunityCostWeight * recoveryState.capitalOpportunityCostDollars : 0;
+      const opportunityCostContribution = recoveryState.forwardOpportunityCostDollars !== null
+        ? opportunityCostWeight * recoveryState.forwardOpportunityCostDollars : 0;
       return {
         ...base, expectedFutureValue: null, downsideTailEstimate: null, incrementalCapitalDays: 0,
-        executionCostRisk: null, opportunityCost: recoveryState.capitalOpportunityCostDollars, uncertainty: null,
+        executionCostRisk: null, opportunityCost: recoveryState.forwardOpportunityCostDollars, uncertainty: null,
         utility: adjustment.closeBias + opportunityCostContribution,
         executionEvidence: null,
         reasons: [
@@ -943,6 +928,8 @@ function valueFor(
           `CANONICAL_DISTANCE_TO_BASIS_FRACTION_${recoveryState.canonicalDistanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.canonicalDistanceToBasisFraction.toFixed(4)}`,
           `REFERENCE_DISTANCE_TO_BASIS_FRACTION_${recoveryState.referenceDistanceToBasisFraction === null ? 'UNKNOWN' : recoveryState.referenceDistanceToBasisFraction.toFixed(4)}`,
           `CAPITAL_OPPORTUNITY_COST_${recoveryState.capitalOpportunityCostDollars === null ? 'UNKNOWN' : recoveryState.capitalOpportunityCostDollars.toFixed(2)}`,
+          `FORWARD_OPPORTUNITY_COST_${recoveryState.forwardOpportunityCostDollars === null ? 'UNKNOWN' : recoveryState.forwardOpportunityCostDollars.toFixed(2)}`,
+          'ELAPSED_CAPITAL_COST_IS_HISTORICAL_CONTEXT_NOT_FORWARD_UTILITY',
           ...adjustment.reasons,
         ],
       };
@@ -1069,6 +1056,7 @@ export function evaluatePaperBootstrapManagementPolicy(
   const thesis = assessThesisInvalidation(state);
   const recoveryState = buildRecoveryState(
     state, state.assignedAtObservedAt ?? null, state.annualOpportunityCostRate ?? null, state.wholeChainComponents ?? null,
+    state.recoveryForwardHorizonDays ?? null,
   );
 
   const actionValues = actionSet.map((action) =>
