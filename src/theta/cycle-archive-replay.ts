@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { buildCanonicalStrategyFrontier, type CanonicalStrategyFrontierInput } from './canonical-strategy-frontier.js';
 import { decodeCycleEvidenceArchive } from './postgres-cycle-evidence-storage.js';
 import { canonicalJson } from '../research/point-in-time-evidence.js';
+import { filterToRealInputEvidence, type MethodInputProvenance } from './profitability-method-input-provenance.js';
 
 export interface CycleArchiveReplayIdentity {
   readonly cycleId: string;
@@ -23,6 +24,10 @@ export type CycleArchiveReplayResult = {
   readonly expectedSelectedCandidateId: string | null;
   readonly replayedSelectedCandidateId: string | null;
   readonly inputContractCount: number;
+  readonly methodProvenanceState: 'PRESENT' | 'MISSING_LEGACY';
+  readonly executedMethodIds: readonly string[];
+  readonly realInputEligibleMethodIds: readonly string[];
+  readonly nonRealExecutedMethodIds: readonly string[];
   readonly providerRequests: 0;
   readonly brokerMutations: 0;
 };
@@ -65,6 +70,40 @@ export function replayCycleArchive(
     throw new Error('CYCLE_ARCHIVE_REPLAY_T0_OR_FRONTIER_INVALID');
   }
   const replayed = implementation.build(input as unknown as CanonicalStrategyFrontierInput);
+  const rawProvenance = decoded.methodInputProvenance;
+  if (rawProvenance !== undefined && rawProvenance !== null && !Array.isArray(rawProvenance)) {
+    throw new Error('CYCLE_ARCHIVE_REPLAY_METHOD_PROVENANCE_INVALID');
+  }
+  const provenance = (rawProvenance ?? []) as unknown[];
+  const ids = new Set<string>();
+  const validOrigins = new Set(['REAL_PROVIDER', 'REAL_PROVIDER_UNKNOWN', 'REAL_PROVIDER_ERROR',
+    'DERIVED_FROM_REAL', 'SYNTHETIC_FIXTURE', 'CALLER_MANUAL', 'NOT_ATTEMPTED',
+    'VERSIONED_POLICY_CONSTANT']);
+  for (const row of provenance) {
+    if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+      throw new Error('CYCLE_ARCHIVE_REPLAY_METHOD_PROVENANCE_INVALID');
+    }
+    const value = row as Record<string, unknown>;
+    if (typeof value.methodId !== 'string' || value.methodId.length === 0 || ids.has(value.methodId)
+      || typeof value.executed !== 'boolean'
+      || !['REAL', 'PARTIAL_REAL', 'VERSIONED_POLICY', 'MANUAL', 'SYNTHETIC', 'UNKNOWN'].includes(String(value.inputRealness))
+      || !Array.isArray(value.decisiveInputs) || value.decisiveInputs.length === 0
+      || value.decisiveInputs.some((item: unknown) => item === null || typeof item !== 'object'
+        || Array.isArray(item) || typeof (item as Record<string, unknown>).name !== 'string'
+        || !validOrigins.has(String((item as Record<string, unknown>).origin)))) {
+      throw new Error('CYCLE_ARCHIVE_REPLAY_METHOD_PROVENANCE_INVALID');
+    }
+    if (value.inputRealness === 'REAL' && value.decisiveInputs.some((item: unknown) =>
+      !['REAL_PROVIDER', 'DERIVED_FROM_REAL', 'VERSIONED_POLICY_CONSTANT'].includes(
+        String((item as Record<string, unknown>).origin)))) {
+      throw new Error('CYCLE_ARCHIVE_REPLAY_METHOD_PROVENANCE_CONTRADICTORY');
+    }
+    ids.add(value.methodId);
+  }
+  const typedProvenance = provenance as MethodInputProvenance[];
+  const executedMethodIds = typedProvenance.filter((row) => row.executed).map((row) => row.methodId);
+  const realInputEligibleMethodIds = filterToRealInputEvidence(executedMethodIds, typedProvenance);
+  const realInputEligible = new Set(realInputEligibleMethodIds);
   const expectedHash = expectedRecord.contentHash as string;
   const sameSource = identity.sourceSha === replaySourceSha;
   const sameResult = replayed.contentHash === expectedHash;
@@ -83,6 +122,10 @@ export function replayCycleArchive(
       ? expectedRecord.selectedCandidateId : null,
     replayedSelectedCandidateId: replayed.selectedCandidateId,
     inputContractCount: inputRecord.contracts.length,
+    methodProvenanceState: rawProvenance == null ? 'MISSING_LEGACY' : 'PRESENT',
+    executedMethodIds,
+    realInputEligibleMethodIds,
+    nonRealExecutedMethodIds: executedMethodIds.filter((id) => !realInputEligible.has(id)),
     providerRequests: 0,
     brokerMutations: 0,
   };

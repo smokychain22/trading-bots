@@ -40,6 +40,12 @@ counterfactual classifications. They do not rewrite the historical action or
 prove that the current release ran in the old session. The report includes
 action, candidate identity, both hashes, and source identities. Missing T0,
 missing frontier, altered bytes, and altered decoded content fail closed.
+The receipt also projects the archived method-input provenance through the
+existing real-input filter. `realInputEligibleMethodIds` means those executed
+methods had real decisive inputs in that historical cycle. It does not grant
+current-worker L7. A missing legacy provenance array remains
+`MISSING_LEGACY` with no eligible methods. Duplicate, malformed or
+contradictory `REAL` provenance fails closed.
 
 The first September 30 read-only capture failed with Aiven DNS `EAI_AGAIN`.
 After DNS recovered, the exact September 29 archive was captured with its
@@ -51,3 +57,11 @@ frontier hash reproduced exactly as
 The historical action was `GLOBAL_WAIT`. This is foundation replay evidence,
 not proof that the current release produced that historical decision. Phase 7
 separately owns current-release supported-session proof.
+
+The verified archived provenance has six executed methods. Only
+`AEGIS_RISK_PERMISSION` and `CONSTRAINED_QUANTITY_SIZING` qualify as real-input
+methods. `CURRENT_DECISION_STATE` and `STRATEGY_APPLICABILITY_ROUTER` were
+manual-input, while `CONVENTIONAL_CANDIDATE_ENUMERATION` and
+`CANONICAL_ENTRY_SELECTION` were partial-real. Hold-Strike and Defined Risk
+enumeration did not execute in this cycle. None of those historical method
+labels are promoted to current-release L7 or empirical profitability.
