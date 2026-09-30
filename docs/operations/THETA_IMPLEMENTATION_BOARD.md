@@ -1,5 +1,35 @@
 # THETA implementation board
 
+## Phase-2 continuation and current-release proof, 2026-09-30
+
+This section supersedes the dated release-pending observation below. Phase 1
+remains closed. Main and the immutable locked Windows supervisor were aligned
+to `d870f29472e2d6c0596e719a8924116aaf746993`, exact CI `36732286189` passed.
+The bounded 15:20 UTC read showed one renewing lease, fresh heartbeat, GOOD
+broker reconciliation, zero positions and zero open orders. No execution gate
+was unlocked. This is a PowerShell resident supervisor, not a local Node worker.
+
+The current-worker archive `084b8458-05f3-49a0-87c0-4dec8c7508d8` was hash-verified
+and replayed without provider re-fetch. Expected and reconstructed frontier
+hashes match. Its GLOBAL_WAIT remains a recorded decision, not proof that every
+decision input was correct. In particular, this archive exposed the Production
+router's inherited manual portfolio default. The review branch now derives
+entry applicability from that cycle's broker reads and persists origin/timing.
+Unknown assignment or unclassified option lifecycle remains unknown. Canonical
+management authority and all execution locks remain unchanged.
+
+The Phase-2 requirement denominator is
+`THETA_PHASE2_COMPLETION_REGISTER.json`. Global test counts and source presence
+do not close rows. Pending reviewed changes also bound operator status reads,
+close owned pools after failed acquisition, prevent customer transaction nested
+acquisition, preserve DB error telemetry, and reject conflicting provider
+duplicates. They require exact-source CI and subsequent deployment proof.
+
+Real provider limitations remain explicit: OPRA entitlement returned 403 while
+indicative was available. No feed downgrade or threshold change was made.
+Command-5A overdue history remains an open runtime finding, not a closed item.
+
+
 ## Current-session authority and maturation corrections, 2026-09-30
 
 - CURRENT_FOUNDATION: Phase 1 remains

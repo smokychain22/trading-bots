@@ -1,0 +1,696 @@
+{
+  "version": "theta-phase2-completion-register-v1",
+  "currentPhase": 2,
+  "phase1": "CLOSED_FOUNDATION_ENGINEERING_AND_REPLAY",
+  "authority": "THETA_MASTER_COMPLETION_DIRECTIVE_2026-09-30 sections 2.1-2.13 plus execution-mode Phase-2 extensions",
+  "completionRule": "Source presence and a global CI pass do not close a row. Each row requires reviewed behavior and executed, requirement-specific evidence. Runtime dependencies stay separate.",
+  "requirements": [
+    {
+      "ID": "2.1.INCIDENT",
+      "AREA": "DATABASE",
+      "REQUIREMENT": "Immutable original failure envelope and narrow evidence-backed cause classification",
+      "SOURCE_AUTHORITY": [
+        "tools/theta-no-submit-probe.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/no-submit-decision-authority.test.ts"
+      ],
+      "CLOSURE_STATE": "SOURCE_FIXED_AWAITING_RUNTIME",
+      "BLOCKER_CLASS": "RUNTIME_RECOVERY_REQUIRED",
+      "CODE_SOLVABLE": false,
+      "RUNTIME_EVIDENCE": "September 30 14:09 termination. Original SQLSTATE/socket/query timing unavailable. Do not infer external cause.",
+      "CURRENT_STATUS": "SOURCE_FIXED_AWAITING_RUNTIME",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": false,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "NO_SOURCE_FIX_PROVEN",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED"
+    },
+    {
+      "ID": "2.1.TELEMETRY",
+      "AREA": "DATABASE",
+      "REQUIREMENT": "Failure envelope includes operation/query/acquisition/checkout/release/transaction timings and safe SQLSTATE/socket identity",
+      "SOURCE_AUTHORITY": [
+        "src/theta/runtime-postgres-client.ts",
+        "tools/theta-no-submit-probe.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/runtime-postgres-client.test.ts"
+      ],
+      "CLOSURE_STATE": "OPEN",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "OPEN",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.2.AUTHORITY",
+      "AREA": "DATABASE",
+      "REQUIREMENT": "Aiven runtime authority cannot be replaced by legacy or ambient credentials",
+      "SOURCE_AUTHORITY": [
+        "src/config/environment.ts",
+        "src/theta/autonomous-runtime-handler.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/environment.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.2.OWNERS",
+      "AREA": "DATABASE",
+      "REQUIREMENT": "All pool/client sites classified with lifetime, capacity and concurrent connection budget",
+      "SOURCE_AUTHORITY": [
+        "src/theta/runtime-postgres-pool.ts",
+        "src/customer/operator-readiness.ts",
+        "src/customer/api.ts"
+      ],
+      "TEST_AUTHORITY": [],
+      "CLOSURE_STATE": "OPEN",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "OPEN",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.2.FAULT_MATRIX",
+      "AREA": "DATABASE",
+      "REQUIREMENT": "Disposable faults prove release, rollback, unknown commit, timeout, restart, admission, concurrent runtime and helper behavior",
+      "SOURCE_AUTHORITY": [
+        "src/theta/runtime-postgres-client.ts",
+        "src/theta/postgres-runtime-error.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/runtime-postgres-client.test.ts",
+        "tests/postgres-pool-acquisition.test.ts",
+        "tests/postgres-execution-commit-reconciliation.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.2.STATUS_FANOUT",
+      "AREA": "DATABASE",
+      "REQUIREMENT": "Concurrent status requests cannot multiply temporary pools or self-starve a max-one helper",
+      "SOURCE_AUTHORITY": [
+        "src/customer/api.ts",
+        "src/customer/operator-readiness.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/operator-status-read-batch.test.ts"
+      ],
+      "CLOSURE_STATE": "OPEN",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "OPEN",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.3.FAILURE_AUTHORITY",
+      "AREA": "RUNTIME",
+      "REQUIREMENT": "Infrastructure/provider failures never certify canonical WAIT or authorize backfilled decisions",
+      "SOURCE_AUTHORITY": [
+        "src/theta/no-submit-decision-authority.ts",
+        "src/theta/local-evidence-spool.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/no-submit-decision-authority.test.ts",
+        "tests/local-evidence-spool.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.4.FRESH_CYCLE",
+      "AREA": "RUNTIME",
+      "REQUIREMENT": "Recovery creates fresh identity and broker/market evidence rather than resuming stale T0",
+      "SOURCE_AUTHORITY": [
+        "src/theta/autonomous-runtime-handler.ts",
+        "src/theta/database-health-circuit.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/database-health-circuit.test.ts",
+        "tests/database-resilient-observation-cycle.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.5.CAPABILITIES",
+      "AREA": "PROVIDERS",
+      "REQUIREMENT": "Every integrated capability has authority, endpoint, entitlement, time, feed, failure and consumer contracts",
+      "SOURCE_AUTHORITY": [
+        "src/theta/phase2-market-intelligence-registry.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/phase2-market-intelligence-registry.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.5.AUTH_CURRENT",
+      "AREA": "PROVIDERS",
+      "REQUIREMENT": "Current endpoint auth/entitlement evidence is separately timestamped, never inferred from registry",
+      "SOURCE_AUTHORITY": [
+        "src/providers/provider-readiness.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/provider-readiness.test.ts"
+      ],
+      "CLOSURE_STATE": "RUNTIME_REQUIRED",
+      "BLOCKER_CLASS": "CURRENT_MARKET_REQUIRED",
+      "CODE_SOLVABLE": false,
+      "CURRENT_STATUS": "RUNTIME_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": false,
+      "CURRENT_MARKET_REQUIRED": true,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "NO_SOURCE_FIX_PROVEN",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": {
+        "observedAt": "2026-09-30T15:07:02.363Z",
+        "receipt": "private .theta-local-worker/receipts/remote-provider-preflight-20260930.json",
+        "alpacaPaper": "CONNECTED_FLAT",
+        "opra": "NOT_ENTITLED_HTTP_403",
+        "indicative": "AVAILABLE_WITH_LIMITS",
+        "optionomics": "AUTHENTICATED_CAPABILITY_READS_SUCCEEDED",
+        "scope": "endpoint availability only, not field-semantic completeness"
+      }
+    },
+    {
+      "ID": "2.5.FAILURE_MATRIX",
+      "AREA": "PROVIDERS",
+      "REQUIREMENT": "401/403/404/408/429/500/502/503/504/DNS/TLS/reset/timeout/malformed/partial retain typed states",
+      "SOURCE_AUTHORITY": [
+        "src/theta/alpaca-provider.ts",
+        "src/theta/optionomics-provider.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/alpaca-provider.test.ts",
+        "tests/optionomics-provider.test.ts",
+        "tests/provider-boundary-fuzz.test.ts",
+        "tests/phase2-provider-matrix.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.6.COUNTS",
+      "AREA": "PROVIDERS",
+      "REQUIREMENT": "Both contracts and snapshots paginate 0/1/99/100/101/999/1000/1001/1090/1511/2000/2601/5000/10000 without truncation",
+      "SOURCE_AUTHORITY": [
+        "src/theta/alpaca-provider.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/alpaca-provider.test.ts",
+        "tests/phase2-provider-matrix.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.6.ADVERSARIAL",
+      "AREA": "PROVIDERS",
+      "REQUIREMENT": "Token loops, absent/malformed tokens, duplicate/out-of-order pages, empty final page, midchain failures never silently certify incomplete enumeration",
+      "SOURCE_AUTHORITY": [
+        "src/theta/alpaca-provider.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/alpaca-provider.test.ts",
+        "tests/phase2-provider-matrix.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.7.FEED",
+      "AREA": "DATA_TRUTH",
+      "REQUIREMENT": "Requested and actual feed stay explicit, OPRA cannot silently become indicative, research prices cannot execute",
+      "SOURCE_AUTHORITY": [
+        "src/theta/alpaca-provider.ts",
+        "src/execution/alpaca-execution-quote-source.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/alpaca-execution-quote-source.test.ts",
+        "tests/trusted-option-quote.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.8.POLLING",
+      "AREA": "PROVIDERS",
+      "REQUIREMENT": "Current polling request/freshness/refresh latency measured before any streaming adoption",
+      "SOURCE_AUTHORITY": [
+        "src/theta/finalist-quote-refresh.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/finalist-quote-refresh.test.ts"
+      ],
+      "CLOSURE_STATE": "RUNTIME_REQUIRED",
+      "BLOCKER_CLASS": "CURRENT_MARKET_REQUIRED",
+      "CODE_SOLVABLE": false,
+      "CURRENT_STATUS": "RUNTIME_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": false,
+      "CURRENT_MARKET_REQUIRED": true,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "NO_SOURCE_FIX_PROVEN",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.9.EVENTS",
+      "AREA": "DATA_TRUTH",
+      "REQUIREMENT": "Earnings, ex-date, split, merger, spinoff and distributions preserve CLEAR/BLOCK/UNKNOWN/STALE/PROVIDER_LIMITED",
+      "SOURCE_AUTHORITY": [
+        "src/theta/normalized-event-evidence.ts",
+        "src/theta/earnings-event-evidence.ts",
+        "src/theta/alpaca-corporate-action-evidence.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/normalized-event-evidence.test.ts",
+        "tests/earnings-event-evidence.test.ts",
+        "tests/alpaca-corporate-action-evidence.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.9.NEGATIVE_ASSURANCE",
+      "AREA": "DATA_TRUTH",
+      "REQUIREMENT": "Empty, delayed and conflicting provider evidence cannot assert clear without bounded coverage",
+      "SOURCE_AUTHORITY": [
+        "src/theta/alpaca-corporate-action-evidence.ts",
+        "src/theta/earnings-event-evidence.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/alpaca-corporate-action-evidence.test.ts",
+        "tests/earnings-event-evidence.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.10.PIT",
+      "AREA": "DATA_TRUTH",
+      "REQUIREMENT": "Future bars/quotes/events/labels and retrospective retrieval cannot enter an older decision",
+      "SOURCE_AUTHORITY": [
+        "src/theta/normalized-event-evidence.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/event-pit-toolkit.test.ts",
+        "tests/optionomics-raw-observation-time.test.ts",
+        "tests/finalist-quote-refresh.test.ts",
+        "tests/pit-feature-materializer.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.11.DUPLICATES",
+      "AREA": "DATA_TRUTH",
+      "REQUIREMENT": "Contracts/quotes/bars/events/features/pages/context/webhooks cannot inflate counts or signal. Conflicts fail typed",
+      "SOURCE_AUTHORITY": [
+        "src/theta/alpaca-provider.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/alpaca-provider.test.ts",
+        "tests/optionomics-provider.test.ts",
+        "tests/normalized-event-evidence.test.ts",
+        "tests/phase2-provider-matrix.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.12.UNITS",
+      "AREA": "DATA_TRUTH",
+      "REQUIREMENT": "Percent/decimal/bps/USD/cents/share/contract/delta/volatility/DTE/multiplier/UTC/DST stay distinct",
+      "SOURCE_AUTHORITY": [
+        "src/theta/alpaca-provider.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/option-contract.test.ts",
+        "tests/option-chain-ingestion.test.ts",
+        "tests/provider-boundary-fuzz.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.12.MISSING",
+      "AREA": "DATA_TRUTH",
+      "REQUIREMENT": "Null/undefined/empty/NaN/Infinity/fake false and zero remain distinct from measured values",
+      "SOURCE_AUTHORITY": [
+        "src/theta/alpaca-provider.ts",
+        "tools/windows/theta-local-worker.ps1"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/provider-boundary-fuzz.test.ts",
+        "tests/windows-worker-storage-observation.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.X.PERFORMANCE",
+      "AREA": "PERFORMANCE",
+      "REQUIREMENT": "2601/5000/10000 decode/normalize/dedupe/feature/event/persist stage P50/P95/MAX and heap scaling",
+      "SOURCE_AUTHORITY": [
+        "src/theta/alpaca-provider.ts"
+      ],
+      "TEST_AUTHORITY": [],
+      "CLOSURE_STATE": "OPEN",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "OPEN",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.X.HISTORY",
+      "AREA": "REGRESSION",
+      "REQUIREMENT": "Every enumerated historical incident binds current source and executed regression without relying on old certificate",
+      "SOURCE_AUTHORITY": [
+        "src/operations/historical-failure-registry.ts"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/historical-failure-registry.test.ts"
+      ],
+      "CLOSURE_STATE": "REVIEW_REQUIRED",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "REVIEW_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.X.CUTOVER",
+      "AREA": "RUNTIME",
+      "REQUIREMENT": "One exact-CI main release, one locked immutable supervisor and one renewing lease with durable cycles",
+      "SOURCE_AUTHORITY": [
+        "tools/windows/install-theta-local-worker.ps1"
+      ],
+      "TEST_AUTHORITY": [],
+      "CLOSURE_STATE": "RUNTIME_REQUIRED",
+      "BLOCKER_CLASS": "RUNTIME_RECOVERY_REQUIRED",
+      "CODE_SOLVABLE": false,
+      "CURRENT_STATUS": "RUNTIME_REQUIRED",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": false,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "NO_SOURCE_FIX_PROVEN",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    },
+    {
+      "ID": "2.13.REGISTER",
+      "AREA": "TRUTH",
+      "REQUIREMENT": "Phase denominator recomputed with source/test/runtime authorities, no inherited global PASS",
+      "SOURCE_AUTHORITY": [
+        "docs/operations/THETA_PHASE2_COMPLETION_REGISTER.json"
+      ],
+      "TEST_AUTHORITY": [
+        "tests/phase2-completion-register.test.ts"
+      ],
+      "CLOSURE_STATE": "OPEN",
+      "BLOCKER_CLASS": "CODE_SOLVABLE",
+      "CODE_SOLVABLE": true,
+      "CURRENT_STATUS": "OPEN",
+      "CONFIG_SOLVABLE": false,
+      "OFFLINE_TESTABLE": true,
+      "CURRENT_MARKET_REQUIRED": false,
+      "PROVIDER_LIMITED": false,
+      "OWNER_GATED": false,
+      "FIX_REQUIRED": "REVIEW_OR_FIX",
+      "FIX_COMMIT": null,
+      "TEST_RESULT": "NOT_YET_REQUIREMENT_CERTIFIED",
+      "RUNTIME_EVIDENCE": null
+    }
+  ],
+  "continuation": {
+    "CURRENT_PHASE": 2,
+    "CURRENT_SUBSECTION": "provider duplicate/PIT boundary coverage, connection owner budget, executed-evidence register",
+    "COMPLETED_ITEMS": [
+      "five reviewed commits integrated and pushed, main d870f29 exact CI 36732286189 PASS",
+      "flat master verified through authenticated Vercel runtime, locks unchanged",
+      "immutable d870f29 supervisor installed after zero supervisors/leases; one renewing lease, GOOD broker reconciliation and flat account verified at 15:20 UTC",
+      "current-worker archive 084b8458-05f3-49a0-87c0-4dec8c7508d8 hash verified and SAME_SOURCE_REPRODUCED without provider fetch; this proves replay, not decision quality",
+      "operator status single-flight bounded helpers and safe DB observer tests pass",
+      "Alpaca snapshot counts 0 through 10000 and mid-page HTTP fault tests pass",
+      "event duplicate PIT and historical bar deduplication regressions pass",
+      "two development-only brace-expansion vulnerabilities updated, npm audit zero"
+    ],
+    "OPEN_ITEMS": [
+      "Phase 2 requirement-level audit remains open, no global test-count closure",
+      "full connection owner manifest and fleet budget truth",
+      "remaining provider duplicate, units, fault and performance cases",
+      "broker-derived router portfolio fix requires current-worker proof after reviewed release integration",
+      "Phase 3: V19 proveDecisionDataRoute uses a synthetic local map, not the real Production call graph. Must not certify live feature flow."
+    ],
+    "SOURCE_CHANGES": [
+      "src/customer/operator-status-read-batch.ts",
+      "src/customer/api.ts",
+      "src/customer/operator-readiness.ts",
+      "src/theta/runtime-postgres-client.ts",
+      "src/theta/alpaca-provider.ts",
+      "src/theta/normalized-event-evidence.ts",
+      "src/theta/underlying-history.ts",
+      "tools/theta-no-submit-probe.ts",
+      "package-lock.json"
+    ],
+    "TESTS_RUN": [
+      "Node 3168 PASS, 15 SKIP before final customer transaction regressions",
+      "Python 1234 PASS",
+      "typecheck lint build PASS",
+      "security findings 0, Git storage policy PASS",
+      "focused event/history 19 PASS"
+    ],
+    "KNOWN_EXTERNAL_BLOCKERS": [
+      "OPRA HTTP 403, no silent feed downgrade",
+      "local master vault absent, authenticated Vercel runtime credentials work",
+      "historical local DB termination cause cannot be reconstructed from absent original telemetry"
+    ],
+    "NEXT_EXACT_ACTION": "Finish connection ownership/fault matrix and provider units/performance evidence, certify each reviewed row from executed tests, commit coherent changes and require exact CI. Phase 3 follows genuine Phase-2 engineering closure."
+  },
+  "PHASE2_TOTAL": 25,
+  "PHASE2_CODE_SOLVABLE": 21,
+  "PHASE2_CODE_SOLVABLE_COMPLETE": 0,
+  "PHASE2_CODE_SOLVABLE_REMAINING": 21
+}
