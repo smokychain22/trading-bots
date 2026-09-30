@@ -85,10 +85,34 @@ export const opportunityFrontierResponseSchema = z.object({
   if (response.actionableCandidateIds.length === 0 && response.entries.length > 0 && response.globalIdle === null) {
     context.addIssue({ code: 'custom', message: 'no actionable candidate requires a globalIdle report proving the book was searched' });
   }
+  const openIds = response.entries.filter((entry) => OPEN_DISPOSITIONS.has(entry.disposition))
+    .map((entry) => entry.candidateId);
+  const actionableIds = new Set(response.actionableCandidateIds);
+  if (actionableIds.size !== response.actionableCandidateIds.length
+    || actionableIds.size !== openIds.length || openIds.some((id) => !actionableIds.has(id))) {
+    context.addIssue({ code: 'custom', message: 'actionableCandidateIds must exactly match OPEN entries' });
+  }
 });
 
 export type OpportunityFrontierResponse = z.infer<typeof opportunityFrontierResponseSchema>;
 
-export function parseOpportunityFrontierResponse(payload: unknown): OpportunityFrontierResponse {
-  return opportunityFrontierResponseSchema.parse(payload);
+export function parseOpportunityFrontierResponse(payload: unknown, expected?: {
+  readonly snapshotId: string;
+  readonly timestamp: string;
+  readonly policyVersion: string;
+  readonly candidateIds: readonly string[];
+}): OpportunityFrontierResponse {
+  const response = opportunityFrontierResponseSchema.parse(payload);
+  if (expected === undefined) return response;
+  if (response.snapshotId !== expected.snapshotId || response.timestamp !== expected.timestamp
+    || response.policyVersion !== expected.policyVersion) {
+    throw new Error('OPPORTUNITY_RESPONSE_IDENTITY_MISMATCH');
+  }
+  const requestedIds = new Set(expected.candidateIds);
+  const returnedIds = new Set(response.entries.map((entry) => entry.candidateId));
+  if (requestedIds.size !== expected.candidateIds.length || returnedIds.size !== requestedIds.size
+    || [...returnedIds].some((id) => !requestedIds.has(id))) {
+    throw new Error('OPPORTUNITY_RESPONSE_CANDIDATE_SET_MISMATCH');
+  }
+  return response;
 }

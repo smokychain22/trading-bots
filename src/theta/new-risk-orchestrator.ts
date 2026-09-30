@@ -875,7 +875,11 @@ export async function runNewRiskOrchestration(
         };
       }),
     },
-    (payload) => parseOpportunityFrontierResponse(payload),
+    (payload) => parseOpportunityFrontierResponse(payload, {
+      snapshotId: request.snapshotId, timestamp: request.timestamp,
+      policyVersion: request.opportunityFrontierPolicy.policyVersion,
+      candidateIds: survivors.map((candidate) => candidate.candidateId),
+    }),
   );
   if (!opportunityResult.ok) {
     return systemHoldResult(request, 'OPPORTUNITY_FRONTIER', opportunityResult.detail, {
@@ -891,7 +895,12 @@ export async function runNewRiskOrchestration(
     const econ = economicsByCandidateId.get(candidate.candidateId) as Omit<CandidateEconomics, 'candidateId'>;
     const entry = entryByCandidateId.get(candidate.candidateId);
     const candidateAegis = aegisByCandidateId.get(candidate.candidateId);
-    if (entry === undefined) continue; // never happens -- every survivor was sent to opportunityFrontier
+    if (entry === undefined) {
+      return systemHoldResult(request, 'OPPORTUNITY_FRONTIER', 'OPPORTUNITY_RESPONSE_CANDIDATE_SET_MISMATCH', {
+        ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation,
+        aegis: representativeAegis, paretoSurvivorIds: [...survivorIds],
+      });
+    }
     if (candidateAegis === undefined) {
       return systemHoldResult(request, 'AEGIS', `Candidate-specific AEGIS result missing for ${candidate.candidateId}.`, {
         ...partialAfterRouting, thetaQ: thetaQResult.data, thetaQCandidateEvaluation, aegis: representativeAegis,

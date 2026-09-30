@@ -54,3 +54,20 @@ test('a well-formed actionable response parses cleanly', () => {
   const response = parseOpportunityFrontierResponse(basePayload());
   assert.equal(response.actionableCandidateIds.length, 1);
 });
+
+test('a missing candidate cannot turn complete enumeration into a false global idle', () => {
+  const payload=basePayload({timestamp:'2026-09-30T14:00:00.000Z'});
+  const expected={snapshotId:'snapshot-1',timestamp:'2026-09-30T14:00:00.000Z',
+    policyVersion:'v1',candidateIds:['c1','c2']};
+  assert.throws(()=>parseOpportunityFrontierResponse(payload,expected),
+    /OPPORTUNITY_RESPONSE_CANDIDATE_SET_MISMATCH/);
+  assert.throws(()=>parseOpportunityFrontierResponse(basePayload({...payload,policyVersion:'other'}),expected),
+    /OPPORTUNITY_RESPONSE_IDENTITY_MISMATCH/);
+});
+
+test('actionable IDs must exactly match OPEN entries',()=>{
+  assert.throws(()=>parseOpportunityFrontierResponse(basePayload({actionableCandidateIds:['other']})),
+    /actionableCandidateIds must exactly match OPEN entries/);
+  assert.throws(()=>parseOpportunityFrontierResponse(basePayload({actionableCandidateIds:['c1','c1']})),
+    /actionableCandidateIds must exactly match OPEN entries/);
+});
