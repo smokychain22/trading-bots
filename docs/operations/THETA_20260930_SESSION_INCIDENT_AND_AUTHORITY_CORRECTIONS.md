@@ -48,6 +48,12 @@ sizing, finalist selection or a final trading decision. Its outcome is
 5. The probe uses the existing schema compatibility authority and observed
    migration head. Its former restricted query reported 065 even on 067. A
    clock-only read is now PROVIDER_STATE_READY rather than ACCOUNT_READY.
+6. Command-5A maturation formerly loaded only the first 256 observation batches
+   across a whole cycle before selecting a subject. It now scopes the SQL read
+   to the archived subject identity before applying the bound. Overflow is an
+   explicit `LOCAL_RESEARCH_READ_LIMIT_EXCEEDED`, not a truncated successful
+   read. Pending-batch metadata no longer loads every large JSON payload.
+   This does not prune any archive or claim to finish retention cleanup.
 
 ## Test evidence and limits
 
@@ -61,6 +67,11 @@ frontier boundary, not every upstream feature producer. Repeated unchanged
 management economics do not establish empirical policy stability. Neither test
 promotes H/D, estimates profitability, proves all 20 feature families consumed,
 or certifies all management lifecycles on a current real account.
+
+The Command-5A regression places 260 unrelated subjects before the desired
+observation, executes the real local maturation path, and verifies a single
+durable dataset and idempotent replay. Its modeled fixture remains a test,
+not a real resolved market outcome or empirical promotion.
 
 Initial full validation passed 3114 Node tests with 15 skipped, 1231 Python
 tests and 23 browser tests. The later schema/stage patch passed 23 focused

@@ -55,6 +55,9 @@ type BatchRow = {
   snapshot_id: string; observed_at: string; row_count: number; payload_json: string; payload_hash: string;
   storage_state: 'PENDING_PARQUET' | 'ARCHIVED_PARQUET'; archived_manifest_hash: string | null;
 };
+type BatchMetadataRow = Omit<BatchRow, 'payload_json' | 'archived_manifest_hash'>;
+const batchMetadataColumns = `bot_namespace,batch_id,family,source_sha,decision_cycle_id,snapshot_id,
+  observed_at,row_count,payload_hash,storage_state`;
 
 const SAFE_ID = /^[A-Za-z0-9_.:@/-]{1,512}$/;
 const SHA = /^[0-9a-f]{40}$/;
@@ -83,7 +86,7 @@ function assertSafeResearchPayload(value: unknown, path = '$'): void {
   }
 }
 
-function rowReceipt(row: BatchRow): LocalResearchBatchReceipt {
+function rowReceipt(row: BatchMetadataRow): LocalResearchBatchReceipt {
   return {
     botNamespace: row.bot_namespace, batchId: row.batch_id, family: row.family, sourceSha: row.source_sha,
     decisionCycleId: row.decision_cycle_id, snapshotId: row.snapshot_id,
@@ -202,8 +205,8 @@ export class LocalResearchHistorySpool {
 
   pending(limit = 100): readonly LocalResearchBatchReceipt[] {
     const bounded = Math.max(1, Math.min(10_000, Math.floor(limit)));
-    return (this.database.prepare(`SELECT * FROM research_batch WHERE storage_state='PENDING_PARQUET'
-      ORDER BY observed_at,batch_id LIMIT ?`).all(bounded) as unknown as BatchRow[]).map(rowReceipt);
+    return (this.database.prepare(`SELECT ${batchMetadataColumns} FROM research_batch WHERE storage_state='PENDING_PARQUET'
+      ORDER BY observed_at,batch_id LIMIT ?`).all(bounded) as unknown as BatchMetadataRow[]).map(rowReceipt);
   }
 
   batchIds(): ReadonlySet<string> {
@@ -235,16 +238,24 @@ export class LocalResearchHistorySpool {
   readDecisionCycleBatches<T = unknown>(input: {
     readonly decisionCycleId: string;
     readonly family: LocalResearchFamily;
+    readonly snapshotId?: string;
     readonly limit?: number;
   }): readonly VerifiedLocalResearchBatch<T>[] {
     if (!SAFE_ID.test(input.decisionCycleId)) throw new Error('LOCAL_RESEARCH_DECISION_CYCLE_ID_INVALID');
+    if (input.snapshotId !== undefined && !SAFE_ID.test(input.snapshotId)) {
+      throw new Error('LOCAL_RESEARCH_SNAPSHOT_ID_INVALID');
+    }
     const limit = input.limit ?? 256;
     if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
       throw new Error('LOCAL_RESEARCH_READ_LIMIT_INVALID');
     }
+    const parameters = input.snapshotId === undefined
+      ? [input.decisionCycleId, input.family, limit + 1]
+      : [input.decisionCycleId, input.family, input.snapshotId, limit + 1];
     const rows = this.database.prepare(`SELECT * FROM research_batch
-      WHERE decision_cycle_id=? AND family=? ORDER BY observed_at,batch_id LIMIT ?`)
-      .all(input.decisionCycleId, input.family, limit) as unknown as BatchRow[];
+      WHERE decision_cycle_id=? AND family=? ${input.snapshotId === undefined ? '' : 'AND snapshot_id=?'}
+      ORDER BY observed_at,batch_id LIMIT ?`).all(...parameters) as unknown as BatchRow[];
+    if (rows.length > limit) throw new Error('LOCAL_RESEARCH_READ_LIMIT_EXCEEDED');
     return rows.map((row) => {
       let parsed: unknown;
       try { parsed = JSON.parse(row.payload_json); }

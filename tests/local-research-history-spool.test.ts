@@ -129,3 +129,21 @@ test('existing v1 SQLite spool upgrades its family constraint without losing row
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('cycle reads scope subjects before the bound and reject silent truncation', () => {
+  const {spool,cleanup}=harness();
+  try {
+    for(let index=0;index<4;index++)spool.append(researchInput({batchId:`batch-${index}`,
+      snapshotId:index<3?'other-subject':'wanted-subject',payload:[{id:index}]}));
+    assert.throws(()=>spool.readDecisionCycleBatches({decisionCycleId:'cycle-1',
+      family:'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE',limit:2}),/LOCAL_RESEARCH_READ_LIMIT_EXCEEDED/);
+    const rows=spool.readDecisionCycleBatches({decisionCycleId:'cycle-1',
+      family:'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE',snapshotId:'wanted-subject',limit:1});
+    assert.equal(rows.length,1);
+    assert.equal(rows[0]?.receipt.batchId,'batch-3');
+    assert.throws(()=>spool.readDecisionCycleBatches({decisionCycleId:'cycle-1',
+      family:'CANONICAL_STRATEGY_CANDIDATE_EVIDENCE',snapshotId:'bad subject'}),/SNAPSHOT_ID_INVALID/);
+    assert.equal(spool.pending(2).length,2);
+    assert.equal(spool.verify().checked,4);
+  } finally {cleanup();}
+});

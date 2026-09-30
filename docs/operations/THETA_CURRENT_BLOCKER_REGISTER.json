@@ -46,6 +46,7 @@
     "privateReceipts": "Local ignored receipts preserve original incident, bounded recovery observations and repeated probe failure. No raw account/provider payload is committed."
   },
   "currentSourceCorrections": [
+    {"id":"COMMAND5A_CYCLE_WIDE_OBSERVATION_TRUNCATION","class":"CODE_SOLVABLE","state":"SOURCE_TESTED_AWAITING_EXACT_CI_AND_RELEASE","tests":["tests/command5a-local-maturation.test.ts","tests/local-research-history-spool.test.ts"],"fix":"Scope observation reads by archived subject before the bound. Fail explicitly on overflow. Pending metadata reads omit payload JSON."},
     {"id":"NO_SUBMIT_FALSE_CANONICAL_RECEIPT","class":"CODE_SOLVABLE","state":"SOURCE_TESTED_AWAITING_EXACT_CI_AND_RELEASE","tests":["tests/no-submit-decision-authority.test.ts"],"fix":"Database fallback is provisional, canonical action null, exit code nonzero, original failed stage preserved."},
     {"id":"BACKFILL_AUTHORITY_ESCALATION","class":"CODE_SOLVABLE","state":"SOURCE_TESTED_AWAITING_EXACT_CI_AND_RELEASE","tests":["tests/no-submit-decision-authority.test.ts","tests/local-evidence-spool.test.ts"],"fix":"Local evidence never grants broker authority, including after durable backfill. No Production caller of the old helper was found."},
     {"id":"FRONTIER_EXCEPTION_LOG_DISCLOSURE","class":"CODE_SOLVABLE","state":"SOURCE_TESTED_AWAITING_EXACT_CI_AND_RELEASE","tests":["tests/canonical-frontier-branch-isolation.test.ts"],"fix":"Bounded error identity replaces raw exception messages in branch logs."},

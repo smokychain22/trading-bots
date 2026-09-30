@@ -85,6 +85,15 @@ test('Command-5A maturation archives a selected shadow path without fabricating 
         receivedAt: OBSERVED_AT, provider: 'ALPACA', purpose: 'RESEARCH_REFERENCE_ONLY' },
       sourceSha: SOURCE_SHA, workerSha: SOURCE_SHA,
     });
+    // More than the old cycle-wide 256-row bound, all before the desired
+    // observation. Unrelated subjects must not starve this subject's dataset.
+    const crowdedSpool = new LocalResearchHistorySpool(spoolPath);
+    try {
+      for(let index=0;index<260;index++)crowdedSpool.append({botNamespace:'THETA',
+        batchId:`unrelated-${index}`,family:'CONTRACT_PATH_OBSERVATION',sourceSha:SOURCE_SHA,
+        decisionCycleId:'cycle-1',snapshotId:`other-${index}`,observedAt:TARGET_AT,
+        rowCount:1,payload:[{subjectId:`other-${index}`} ]});
+    } finally {crowdedSpool.close();}
     archiveContractPathObservation({ spoolPath, decisionCycleId: 'cycle-1', observation });
     scheduler.resolve({ observationJobId: job.observationJobId, claimedBy: 'test-worker',
       state: 'OBSERVED', resolvedAt: OBSERVED_AT, reasonCode: null });

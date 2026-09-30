@@ -51,7 +51,7 @@ function count(reasons: Map<string, number>, reason: string): void {
 function maturationFailureCode(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
   const code = message.split(':', 1)[0] ?? '';
-  return /^(?:COMMAND5A|CONTRACT_PATH|RAW_OBSERVATION_BUNDLE|RESEARCH_DATASET)_[A-Z0-9_]{2,160}$/.test(code)
+  return /^(?:COMMAND5A|CONTRACT_PATH|RAW_OBSERVATION_BUNDLE|RESEARCH_DATASET|LOCAL_RESEARCH)_[A-Z0-9_]{2,160}$/.test(code)
     ? code : 'MATURATION_FAILED_RETRYABLE_UNCLASSIFIED';
 }
 
@@ -174,6 +174,9 @@ export function matureCommand5aLocalObservations(input: {
         const batches = spool.readDecisionCycleBatches<unknown>({
           decisionCycleId: subject.decisionCycleId,
           family: 'CONTRACT_PATH_OBSERVATION',
+          // Contract-path archives use subjectId as snapshotId. Scope before
+          // applying the bound so unrelated subjects cannot hide this path.
+          snapshotId: subject.subjectId,
           limit: 256,
         });
         // The primary common horizon is the terminal cutoff for this dataset
